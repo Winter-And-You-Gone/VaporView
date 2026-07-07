@@ -1400,8 +1400,8 @@ int main(int argc, char **argv)
                 logFilterMenu->cornerRadius() == 16 &&
                 logFilterMenu->panelPadding() == 8 &&
                 logFilterMenu->property("floatingPanelChrome").toBool() &&
-                logFilterMenu->property("shadowMargin").toInt() == 0 &&
-                logFilterMenu->styleSheet().contains(QStringLiteral("background-color: #FFFFFF; border: none; border-radius: 16px; padding: 8px 0px")),
+                logFilterMenu->property("shadowMargin").toInt() == 22 &&
+                logFilterMenu->styleSheet().contains(QStringLiteral("background-color: transparent; border: none; border-radius: 16px; padding: 8px 0px")),
             "log filter menu shares the macOS-style floating single-level popup chrome");
     for (VaporView::SingleLevelPopupMenuRow *row : logFilterMenu->rows())
     {
@@ -1411,8 +1411,9 @@ int main(int argc, char **argv)
                     row->checkLabel() != nullptr &&
                     row->checkLabel()->geometry().right() > row->textLabel()->geometry().right(),
                 "log filter menu rows share text-left and check-right layout");
-        require(row->geometry().left() <= 1 &&
-                    row->geometry().right() >= logFilterMenu->width() - 3,
+        const int shadowMargin = logFilterMenu->property("shadowMargin").toInt();
+        require(row->geometry().left() <= shadowMargin + 1 &&
+                    row->geometry().right() >= logFilterMenu->width() - shadowMargin - 3,
                 "log filter menu hover background spans the full floating panel row width");
     }
     logFilterMenu->hide();
@@ -2087,8 +2088,8 @@ int main(int argc, char **argv)
                     menu->cornerRadius() == 16 &&
                     menu->panelPadding() == 8 &&
                     menu->property("floatingPanelChrome").toBool() &&
-                    menu->property("shadowMargin").toInt() == 0 &&
-                    menu->styleSheet().contains(QStringLiteral("background-color: #FFFFFF; border: none; border-radius: 16px; padding: 8px 0px")),
+                    menu->property("shadowMargin").toInt() == 22 &&
+                    menu->styleSheet().contains(QStringLiteral("background-color: transparent; border: none; border-radius: 16px; padding: 8px 0px")),
                 "TCP wave display menu uses the macOS-style floating single-level popup chrome");
         QLabel *rowLabel = findLabelByText(menu, labels);
         require(rowLabel != nullptr, message);
@@ -2097,8 +2098,9 @@ int main(int argc, char **argv)
         require(rowWidget->property("textAlignment").toString() == QStringLiteral("left") &&
                     rowWidget->property("checkIconAlignment").toString() == QStringLiteral("right"),
                 "TCP wave display menu row keeps text left and check icon right");
-        require(rowWidget->geometry().left() <= 1 &&
-                    rowWidget->geometry().right() >= menu->width() - 3,
+        const int shadowMargin = menu->property("shadowMargin").toInt();
+        require(rowWidget->geometry().left() <= shadowMargin + 1 &&
+                    rowWidget->geometry().right() >= menu->width() - shadowMargin - 3,
                 "TCP wave display menu hover background spans the full floating panel row width");
         clickWidget(rowWidget, 160);
     };

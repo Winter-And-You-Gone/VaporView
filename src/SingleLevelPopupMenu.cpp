@@ -5,12 +5,16 @@
 #include <QApplication>
 #include <QEvent>
 #include <QFontMetrics>
+#include <QGuiApplication>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPaintEvent>
+#include <QImage>
 #include <QRegion>
 #include <QResizeEvent>
+#include <QScreen>
 #include <QSizePolicy>
 #include <QShowEvent>
 #include <QStyle>
@@ -18,9 +22,130 @@
 #include <QWidgetAction>
 
 #include <algorithm>
+#include <vector>
 
 namespace VaporView
 {
+namespace
+{
+constexpr int kMenuShadowMargin = 22;
+
+QImage boxBlurredAlpha(const QSize& size,
+                       const QRectF& sourceRect,
+                       qreal radius,
+                       int blurRadius,
+                       int iterations)
+{
+    QImage alpha(size, QImage::Format_ARGB32_Premultiplied);
+    alpha.fill(Qt::transparent);
+    {
+        QPainter maskPainter(&alpha);
+        maskPainter.setRenderHint(QPainter::Antialiasing, true);
+        maskPainter.setPen(Qt::NoPen);
+        maskPainter.setBrush(Qt::black);
+        QPainterPath path;
+        path.addRoundedRect(sourceRect, radius, radius);
+        maskPainter.fillPath(path, Qt::black);
+    }
+
+    const int w = alpha.width();
+    const int h = alpha.height();
+    if (w <= 0 || h <= 0 || blurRadius <= 0)
+    {
+        return alpha;
+    }
+
+    std::vector<uchar> src(static_cast<size_t>(w * h));
+    std::vector<uchar> tmp(src.size());
+    std::vector<uchar> dst(src.size());
+    for (int y = 0; y < h; ++y)
+    {
+        const auto *line = reinterpret_cast<const QRgb *>(alpha.constScanLine(y));
+        for (int x = 0; x < w; ++x)
+        {
+            src[static_cast<size_t>(y * w + x)] = static_cast<uchar>(qAlpha(line[x]));
+        }
+    }
+
+    const int diameter = blurRadius * 2 + 1;
+    for (int pass = 0; pass < iterations; ++pass)
+    {
+        for (int y = 0; y < h; ++y)
+        {
+            int sum = 0;
+            for (int x = -blurRadius; x <= blurRadius; ++x)
+            {
+                const int cx = std::clamp(x, 0, w - 1);
+                sum += src[static_cast<size_t>(y * w + cx)];
+            }
+            for (int x = 0; x < w; ++x)
+            {
+                tmp[static_cast<size_t>(y * w + x)] = static_cast<uchar>(sum / diameter);
+                const int removeX = std::clamp(x - blurRadius, 0, w - 1);
+                const int addX = std::clamp(x + blurRadius + 1, 0, w - 1);
+                sum += src[static_cast<size_t>(y * w + addX)] - src[static_cast<size_t>(y * w + removeX)];
+            }
+        }
+
+        for (int x = 0; x < w; ++x)
+        {
+            int sum = 0;
+            for (int y = -blurRadius; y <= blurRadius; ++y)
+            {
+                const int cy = std::clamp(y, 0, h - 1);
+                sum += tmp[static_cast<size_t>(cy * w + x)];
+            }
+            for (int y = 0; y < h; ++y)
+            {
+                dst[static_cast<size_t>(y * w + x)] = static_cast<uchar>(sum / diameter);
+                const int removeY = std::clamp(y - blurRadius, 0, h - 1);
+                const int addY = std::clamp(y + blurRadius + 1, 0, h - 1);
+                sum += tmp[static_cast<size_t>(addY * w + x)] - tmp[static_cast<size_t>(removeY * w + x)];
+            }
+        }
+        src.swap(dst);
+    }
+
+    QImage blurred(size, QImage::Format_ARGB32_Premultiplied);
+    blurred.fill(Qt::transparent);
+    for (int y = 0; y < h; ++y)
+    {
+        auto *line = reinterpret_cast<QRgb *>(blurred.scanLine(y));
+        for (int x = 0; x < w; ++x)
+        {
+            const int a = src[static_cast<size_t>(y * w + x)];
+            line[x] = qRgba(0, 0, 0, a);
+        }
+    }
+    return blurred;
+}
+
+void drawTintedAlphaImage(QPainter& painter,
+                          const QImage& alpha,
+                          const QColor& tint,
+                          int maxAlpha)
+{
+    if (alpha.isNull() || maxAlpha <= 0)
+    {
+        return;
+    }
+
+    QImage tinted(alpha.size(), QImage::Format_ARGB32_Premultiplied);
+    tinted.fill(Qt::transparent);
+    for (int y = 0; y < alpha.height(); ++y)
+    {
+        const auto *srcLine = reinterpret_cast<const QRgb *>(alpha.constScanLine(y));
+        auto *dstLine = reinterpret_cast<QRgb *>(tinted.scanLine(y));
+        for (int x = 0; x < alpha.width(); ++x)
+        {
+            const int a = (qAlpha(srcLine[x]) * maxAlpha) / 255;
+            dstLine[x] = qRgba(tint.red(), tint.green(), tint.blue(), a);
+        }
+    }
+    painter.drawImage(QPoint(0, 0), tinted);
+}
+}
+
 SingleLevelPopupMenuRow::SingleLevelPopupMenuRow(QWidget *parent)
     : QWidget(parent)
     , text_label_(new QLabel(this))
@@ -145,6 +270,11 @@ void SingleLevelPopupMenuRow::setMinimumRowWidth(int width)
 {
     minimum_row_width_ = std::max(1, width);
     setMinimumWidth(minimum_row_width_);
+    if (this->width() < minimum_row_width_)
+    {
+        resize(minimum_row_width_, height() > 0 ? height() : row_height_);
+    }
+    layoutChildren();
     updateGeometry();
 }
 
@@ -251,7 +381,8 @@ void SingleLevelPopupMenuRow::layoutChildren()
     check_label_->setGeometry(checkX, 0, check_slot_width_, h);
 
     int textX = left_padding_;
-    int textWidth = std::max(0, checkX - row_spacing_ - textX);
+    const int availableTextWidth = std::max(0, checkX - row_spacing_ - textX);
+    int textWidth = availableTextWidth;
     if (text_alignment_ == SingleLevelPopupTextAlignment::Center)
     {
         textX = left_padding_ + check_slot_width_ + row_spacing_;
@@ -259,7 +390,7 @@ void SingleLevelPopupMenuRow::layoutChildren()
     }
     if (text_fixed_width_ > 0 && text_alignment_ != SingleLevelPopupTextAlignment::Center)
     {
-        textWidth = std::min(text_fixed_width_, std::max(0, width() - textX - right_padding_));
+        textWidth = std::min(text_fixed_width_, availableTextWidth);
     }
     text_label_->setGeometry(textX, 0, textWidth, h);
 }
@@ -297,8 +428,12 @@ SingleLevelPopupMenu::SingleLevelPopupMenu(QWidget *parent)
     : QMenu(parent)
 {
     setObjectName(QStringLiteral("singleLevelPopupMenu"));
+    setWindowFlag(Qt::FramelessWindowHint, true);
     setAttribute(Qt::WA_TranslucentBackground, true);
-    setAttribute(Qt::WA_StyledBackground, true);
+    setAttribute(Qt::WA_NoSystemBackground, true);
+    setAttribute(Qt::WA_StyledBackground, false);
+    setAutoFillBackground(false);
+    setWindowFlag(Qt::NoDropShadowWindowHint, true);
     refreshTheme();
 }
 
@@ -373,13 +508,17 @@ void SingleLevelPopupMenu::refreshTheme()
     const bool dark = isDarkThemeEnabled();
     const int horizontalPadding = panel_padding_ >= 8 ? 0 : panel_padding_;
     const bool floatingPanel = panel_padding_ >= 8;
-    setContentsMargins(0, 0, 0, 0);
+    setAttribute(Qt::WA_TranslucentBackground, true);
+    setAttribute(Qt::WA_NoSystemBackground, floatingPanel);
+    setAttribute(Qt::WA_StyledBackground, !floatingPanel);
+    setAutoFillBackground(false);
+    const int margin = shadowMargin();
+    setContentsMargins(margin, margin, margin, margin);
     setProperty("floatingPanelChrome", floatingPanel);
-    setProperty("shadowMargin", 0);
+    setProperty("shadowMargin", margin);
 
     const QString panelRule = floatingPanel
-        ? QStringLiteral("background-color: %1; border: none; border-radius: %2px; padding: %3px %4px;")
-              .arg(dark ? appThemeColorName(AppThemeColor::MenuPanel, dark) : QStringLiteral("#FFFFFF"))
+        ? QStringLiteral("background-color: transparent; border: none; border-radius: %1px; padding: %2px %3px;")
               .arg(corner_radius_)
               .arg(panel_padding_)
               .arg(horizontalPadding)
@@ -413,10 +552,39 @@ void SingleLevelPopupMenu::popupFrom(QWidget *anchor, SingleLevelPopupAnchor anc
     ensurePolished();
     adjustSize();
     const QSize popupSize = sizeHint();
-    QPoint popupTopLeft = anchor->mapToGlobal(QPoint(0, anchor->height()));
+    const QRect anchorRect(anchor->mapToGlobal(QPoint(0, 0)), anchor->size());
+    const int margin = shadowMargin();
+    QPoint popupTopLeft = anchor->mapToGlobal(QPoint(-margin, anchor->height() - margin));
     if (anchorEdge == SingleLevelPopupAnchor::Right)
     {
-        popupTopLeft = anchor->mapToGlobal(QPoint(anchor->width() - popupSize.width(), anchor->height()));
+        popupTopLeft = anchor->mapToGlobal(QPoint(anchor->width() - popupSize.width() + margin,
+                                                 anchor->height() - margin));
+    }
+    if (QScreen *screen = QGuiApplication::screenAt(anchorRect.center()))
+    {
+        const QRect available = screen->availableGeometry().adjusted(8, 8, -8, -8);
+        QRect hostAvailable;
+        if (QWidget *hostWindow = anchor->window())
+        {
+            hostAvailable = QRect(hostWindow->mapToGlobal(QPoint(0, 0)), hostWindow->size()).adjusted(8, 8, -8, -8);
+        }
+        const bool exceedsScreenBottom = popupTopLeft.y() + popupSize.height() > available.bottom() + 1;
+        const bool exceedsHostBottom = hostAvailable.isValid() &&
+                                       popupTopLeft.y() + popupSize.height() > hostAvailable.bottom() + 1;
+        if (exceedsScreenBottom || exceedsHostBottom)
+        {
+            const int upwardTop = anchorRect.top() - popupSize.height() + margin;
+            if (!hostAvailable.isValid() || upwardTop >= hostAvailable.top())
+            {
+                popupTopLeft.setY(upwardTop);
+            }
+        }
+        popupTopLeft.setX(std::clamp(popupTopLeft.x(),
+                                     available.left(),
+                                     std::max(available.left(), available.right() - popupSize.width() + 1)));
+        popupTopLeft.setY(std::clamp(popupTopLeft.y(),
+                                     available.top(),
+                                     std::max(available.top(), available.bottom() - popupSize.height() + 1)));
     }
     popupTopLeft += offset;
     popup(popupTopLeft);
@@ -426,6 +594,13 @@ void SingleLevelPopupMenu::popupFrom(QWidget *anchor, SingleLevelPopupAnchor anc
 
 void SingleLevelPopupMenu::applyRoundedMask()
 {
+    if (shadowMargin() > 0)
+    {
+        clearMask();
+        setProperty("roundedMaskApplied", false);
+        return;
+    }
+
     const QSize menuSize = maskSize();
     if (!menuSize.isValid() || menuSize.isEmpty())
     {
@@ -438,6 +613,47 @@ void SingleLevelPopupMenu::applyRoundedMask()
                         corner_radius_);
     setMask(QRegion(path.toFillPolygon().toPolygon()));
     setProperty("roundedMaskApplied", !mask().isEmpty());
+}
+
+void SingleLevelPopupMenu::paintEvent(QPaintEvent *event)
+{
+    if (shadowMargin() <= 0)
+    {
+        QMenu::paintEvent(event);
+        return;
+    }
+
+    Q_UNUSED(event);
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setCompositionMode(QPainter::CompositionMode_Clear);
+    painter.fillRect(rect(), Qt::transparent);
+    painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+
+    const QRectF panel = panelRect();
+    if (!panel.isValid() || panel.isEmpty())
+    {
+        return;
+    }
+
+    const bool dark = isDarkThemeEnabled();
+    const QColor shadowTint = QColor(0, 0, 0);
+    const QImage softShadow = boxBlurredAlpha(size(),
+                                              panel.adjusted(-1.0, 7.0, 1.0, 10.0),
+                                              corner_radius_ + 2.0,
+                                              9,
+                                              3);
+    const QImage contactShadow = boxBlurredAlpha(size(),
+                                                 panel.adjusted(0.0, 1.0, 0.0, 2.0),
+                                                 corner_radius_,
+                                                 4,
+                                                 2);
+    drawTintedAlphaImage(painter, softShadow, shadowTint, dark ? 82 : 38);
+    drawTintedAlphaImage(painter, contactShadow, shadowTint, dark ? 48 : 14);
+
+    QPainterPath panelPath;
+    panelPath.addRoundedRect(panel, corner_radius_, corner_radius_);
+    painter.fillPath(panelPath, dark ? appThemeColor(AppThemeColor::MenuPanel, dark) : QColor(255, 255, 255));
 }
 
 void SingleLevelPopupMenu::resizeEvent(QResizeEvent *event)
@@ -457,6 +673,17 @@ void SingleLevelPopupMenu::showEvent(QShowEvent *event)
         syncRowWidths();
         applyRoundedMask();
     });
+}
+
+int SingleLevelPopupMenu::shadowMargin() const
+{
+    return panel_padding_ >= 8 ? kMenuShadowMargin : 0;
+}
+
+QRect SingleLevelPopupMenu::panelRect() const
+{
+    const int margin = shadowMargin();
+    return rect().adjusted(margin, margin, -margin, -margin);
 }
 
 QSize SingleLevelPopupMenu::maskSize() const
@@ -479,7 +706,7 @@ void SingleLevelPopupMenu::syncRowWidths()
     {
         return;
     }
-    const int availableWidth = std::max(1, width() - 2);
+    const int availableWidth = std::max(1, panelRect().width());
     for (SingleLevelPopupMenuRow *row : rows())
     {
         if (!row)

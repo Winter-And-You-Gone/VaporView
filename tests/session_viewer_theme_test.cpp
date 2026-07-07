@@ -881,8 +881,8 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(heatPaletteMenu->cornerRadius() == 16 &&
                 heatPaletteMenu->panelPadding() == 8 &&
                 heatPaletteMenu->property("floatingPanelChrome").toBool() &&
-                heatPaletteMenu->property("shadowMargin").toInt() == 0 &&
-                heatPaletteMenu->styleSheet().contains(QStringLiteral("background-color: #FFFFFF; border: none; border-radius: 16px; padding: 8px 0px")),
+                heatPaletteMenu->property("shadowMargin").toInt() == 22 &&
+                heatPaletteMenu->styleSheet().contains(QStringLiteral("background-color: transparent; border: none; border-radius: 16px; padding: 8px 0px")),
             "heat palette menu uses the macOS-style floating single-level popup chrome");
     require(heatPaletteMenu->actions().size() == 3, "heat palette menu exposes the curated vivid ramps");
     require(heatMetricMenu->actions().size() == 4, "heat metric selector exposes peak, humidity, temperature, and pressure");
