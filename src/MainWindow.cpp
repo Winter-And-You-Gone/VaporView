@@ -18008,6 +18008,20 @@ void MainWindow::setCollectors(CollectorSnapshot collectors)
     if (temperature_controller_collector_) temperature_controller_collector_->setEnglish(is_english_);
 }
 
+void MainWindow::clearTemperatureControllerDataUi()
+{
+    current_temperature_controller_ = VaporView::TemperatureControllerData();
+    if (temperature_controller_panel_)
+    {
+        temperature_controller_panel_->updateRate(0.0);
+        temperature_controller_panel_->updateData(current_temperature_controller_);
+    }
+    if (temperature_overview_panel_)
+    {
+        temperature_overview_panel_->updateData(current_temperature_controller_);
+    }
+}
+
 void MainWindow::stopAllCollectors()
 {
     CollectorSnapshot collectors;
@@ -18594,13 +18608,13 @@ void MainWindow::onConnectClicked()
     current_ptb_ = VaporView::PtbData();
     current_hmp_ = VaporView::HmpData();
     current_lidar_ = VaporView::LidarData();
+    current_temperature_controller_ = VaporView::TemperatureControllerData();
 
     if (epsilon_panel_) epsilon_panel_->updateData(current_epsilon_);
     if (ptb_panel_) ptb_panel_->updateData(current_ptb_);
     if (hmp_panel_) hmp_panel_->updateData(current_hmp_);
     if (lidar_panel_) lidar_panel_->updateData(current_lidar_);
-    if (temperature_controller_panel_) temperature_controller_panel_->updateData(current_temperature_controller_);
-    if (temperature_overview_panel_) temperature_overview_panel_->updateData(current_temperature_controller_);
+    clearTemperatureControllerDataUi();
     updateEnvironmentStatusIcons(false, false, false);
 
     if (epsilon_panel_) epsilon_panel_->updateRate(0.0);
@@ -19040,6 +19054,7 @@ void MainWindow::onDisconnectClicked()
 
     stopRecording(true);
     stopAllCollectors();
+    clearTemperatureControllerDataUi();
     if (connection_thread_.joinable())
     {
         connection_thread_.join();
@@ -19630,7 +19645,7 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
             }
             else if (item.device_id == VaporView::SkyDeviceId::TemperatureController)
             {
-                current_temperature_controller_ = VaporView::TemperatureControllerData();
+                clearTemperatureControllerDataUi();
             }
         }
     }

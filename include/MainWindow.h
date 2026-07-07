@@ -595,6 +595,7 @@ private:
     void setImuFormatSelection(const QString& format);
     void setImuBaudSelection(int baud);
     void setImuRateSelection(int rate);
+    void clearTemperatureControllerDataUi();
     void stopAllCollectors();
     CollectorSnapshot snapshotCollectors() const;
     void setCollectors(CollectorSnapshot collectors);

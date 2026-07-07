@@ -1742,6 +1742,27 @@ int main(int argc, char **argv)
             "temperature overview output enable capsule is enabled with controller data");
     require(temperatureOutputSwitch->isChecked(),
             "temperature overview output enable capsule reflects the confirmed controller output state");
+    VaporView::TelemetryStatus disconnectedTemperatureStatus;
+    disconnectedTemperatureStatus.devices.push_back(
+        VaporView::DeviceStatusItem{VaporView::SkyDeviceId::TemperatureController,
+                                    VaporView::DeviceState::Disconnected,
+                                    0,
+                                    0,
+                                    0,
+                                    0});
+    require(QMetaObject::invokeMethod(&window,
+                                      "onRemoteTelemetryStatusUpdated",
+                                      Qt::DirectConnection,
+                                      Q_ARG(VaporView::TelemetryStatus, disconnectedTemperatureStatus)),
+            "remote temperature controller disconnect status can be applied");
+    processEventsFor(50);
+    require(!temperatureChannelButton->isEnabled(),
+            "temperature overview channel selector is disabled after controller disconnect");
+    require(temperatureChannelButton->property("available").isValid() &&
+                !temperatureChannelButton->property("available").toBool(),
+            "temperature overview channel selector marks disconnected controller data unavailable");
+    require(!temperatureOutputSwitch->isEnabled(),
+            "temperature overview output enable capsule is disabled after controller disconnect");
 
     QLabel *peakTrendTitle = nullptr;
     const QList<QLabel*> sectionTitleLabels =
