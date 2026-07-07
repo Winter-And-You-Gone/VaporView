@@ -4806,6 +4806,7 @@ public:
     void setSamples(const QVector<double>& samples)
     {
         samples_ = samples;
+        updateSampleProperties();
         update();
     }
 
@@ -4881,20 +4882,7 @@ protected:
             return;
         }
 
-        auto [minIt, maxIt] = std::minmax_element(finiteSamples.cbegin(), finiteSamples.cend());
-        double minValue = *minIt;
-        double maxValue = *maxIt;
-        if (std::abs(maxValue - minValue) < 1e-6)
-        {
-            minValue -= 1.0;
-            maxValue += 1.0;
-        }
-        else
-        {
-            const double pad = (maxValue - minValue) * 0.08;
-            minValue -= pad;
-            maxValue += pad;
-        }
+        const auto [minValue, maxValue] = temperatureAxisRange(finiteSamples);
 
         QPolygonF polyline;
         polyline.reserve(finiteSamples.size());
@@ -4915,6 +4903,45 @@ protected:
     }
 
 private:
+    static std::pair<double, double> temperatureAxisRange(const QVector<double>& finiteSamples)
+    {
+        double minValue = 20.0;
+        double maxValue = 25.0;
+        if (finiteSamples.isEmpty())
+        {
+            return {minValue, maxValue};
+        }
+
+        auto [minIt, maxIt] = std::minmax_element(finiteSamples.cbegin(), finiteSamples.cend());
+        if (*minIt < minValue)
+        {
+            minValue = std::floor(*minIt) - 1.0;
+        }
+        if (*maxIt > maxValue)
+        {
+            maxValue = std::ceil(*maxIt) + 1.0;
+        }
+        return {minValue, maxValue};
+    }
+
+    void updateSampleProperties()
+    {
+        QVector<double> finiteSamples;
+        finiteSamples.reserve(samples_.size());
+        for (double value : samples_)
+        {
+            if (std::isfinite(value))
+            {
+                finiteSamples.append(value);
+            }
+        }
+
+        const auto [minValue, maxValue] = temperatureAxisRange(finiteSamples);
+        setProperty("sampleCount", finiteSamples.size());
+        setProperty("yAxisMinC", minValue);
+        setProperty("yAxisMaxC", maxValue);
+    }
+
     void applyPlotSizing()
     {
         if (compact_mode_)
@@ -5595,13 +5622,6 @@ public:
                 }
             }
         }
-        else
-        {
-            for (auto& history : measured_temperature_history_)
-            {
-                history.clear();
-            }
-        }
         refreshChannelUi();
     }
 
@@ -6100,13 +6120,6 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
                     history.removeFirst();
                 }
             }
-        }
-    }
-    else
-    {
-        for (auto& history : measured_temperature_history_)
-        {
-            history.clear();
         }
     }
     updateChannelData(0, controllerData.channels[0], controllerData.valid);
@@ -18008,7 +18021,7 @@ void MainWindow::setCollectors(CollectorSnapshot collectors)
     if (temperature_controller_collector_) temperature_controller_collector_->setEnglish(is_english_);
 }
 
-void MainWindow::clearTemperatureControllerDataUi()
+void MainWindow::invalidateTemperatureControllerDataUi()
 {
     current_temperature_controller_ = VaporView::TemperatureControllerData();
     if (temperature_controller_panel_)
@@ -18614,7 +18627,7 @@ void MainWindow::onConnectClicked()
     if (ptb_panel_) ptb_panel_->updateData(current_ptb_);
     if (hmp_panel_) hmp_panel_->updateData(current_hmp_);
     if (lidar_panel_) lidar_panel_->updateData(current_lidar_);
-    clearTemperatureControllerDataUi();
+    invalidateTemperatureControllerDataUi();
     updateEnvironmentStatusIcons(false, false, false);
 
     if (epsilon_panel_) epsilon_panel_->updateRate(0.0);
@@ -19054,7 +19067,7 @@ void MainWindow::onDisconnectClicked()
 
     stopRecording(true);
     stopAllCollectors();
-    clearTemperatureControllerDataUi();
+    invalidateTemperatureControllerDataUi();
     if (connection_thread_.joinable())
     {
         connection_thread_.join();
@@ -19645,7 +19658,7 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
             }
             else if (item.device_id == VaporView::SkyDeviceId::TemperatureController)
             {
-                clearTemperatureControllerDataUi();
+                invalidateTemperatureControllerDataUi();
             }
         }
     }

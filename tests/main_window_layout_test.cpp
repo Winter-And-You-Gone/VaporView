@@ -1742,6 +1742,32 @@ int main(int argc, char **argv)
             "temperature overview output enable capsule is enabled with controller data");
     require(temperatureOutputSwitch->isChecked(),
             "temperature overview output enable capsule reflects the confirmed controller output state");
+    const QList<QWidget*> temperatureTrendPlots =
+        window.findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot"));
+    require(!temperatureTrendPlots.isEmpty(),
+            "temperature trend plots exist after controller data arrives");
+    for (QWidget *plot : temperatureTrendPlots)
+    {
+        require(plot->property("sampleCount").toInt() > 0,
+                "temperature trend plot has samples after controller data arrives");
+        require(plot->property("yAxisMinC").toDouble() == 20.0 &&
+                    plot->property("yAxisMaxC").toDouble() == 25.0,
+                "temperature trend plot keeps the default 20-25 C axis range for in-range samples");
+    }
+
+    validTemperatureData.channels[0].measured_temperature_c = 12.0;
+    require(QMetaObject::invokeMethod(&window,
+                                      "onRemoteTemperatureControllerStatusUpdated",
+                                      Qt::DirectConnection,
+                                      Q_ARG(VaporView::TemperatureControllerData, validTemperatureData)),
+            "temperature overview can receive a low controller data frame");
+    processEventsFor(50);
+    for (QWidget *plot : temperatureTrendPlots)
+    {
+        require(plot->property("yAxisMinC").toDouble() == 11.0 &&
+                    plot->property("yAxisMaxC").toDouble() == 25.0,
+                "temperature trend plot extends the lower axis only when data drops below 20 C");
+    }
     VaporView::TelemetryStatus disconnectedTemperatureStatus;
     disconnectedTemperatureStatus.devices.push_back(
         VaporView::DeviceStatusItem{VaporView::SkyDeviceId::TemperatureController,
@@ -1763,6 +1789,11 @@ int main(int argc, char **argv)
             "temperature overview channel selector marks disconnected controller data unavailable");
     require(!temperatureOutputSwitch->isEnabled(),
             "temperature overview output enable capsule is disabled after controller disconnect");
+    for (QWidget *plot : temperatureTrendPlots)
+    {
+        require(plot->property("sampleCount").toInt() > 0,
+                "temperature trend plot keeps existing samples when controller disconnects");
+    }
 
     QLabel *peakTrendTitle = nullptr;
     const QList<QLabel*> sectionTitleLabels =
