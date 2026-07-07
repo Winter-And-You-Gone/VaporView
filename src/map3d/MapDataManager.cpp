@@ -546,9 +546,9 @@ void collectOsmLayerContracts(MapDataDiagnostics& diagnostics)
             .arg(diagnostics.osmRoadsPath),
         QStringLiteral("%1 -> layer water -> OGRFeatures osm-water -> FeatureImage OSM water fill")
             .arg(diagnostics.osmWaterPath),
-        QStringLiteral("%1 -> layer buildings -> OGRFeatures osm-buildings -> FeatureImage OSM building footprints + TiledFeatureModel OSM building extrusion")
+        QStringLiteral("%1 -> layer buildings -> generated data only; not rendered by the safe default full-local earth template")
             .arg(diagnostics.osmBuildingsPath),
-        QStringLiteral("%1 -> layer places -> OGRFeatures osm-places -> TiledFeatureModel OSM place labels")
+        QStringLiteral("%1 -> layer places -> generated data only; not rendered by the safe default full-local earth template")
             .arg(diagnostics.osmPlacesPath)
     };
 }
@@ -621,9 +621,10 @@ void finalizeSelection(MapDataSelection& selection)
             .arg(diagnostics.selectedDemLayerAvailable
                      ? diagnostics.selectedElevationSource
                      : QStringLiteral("missing")),
-        QStringLiteral("OSM vector layers: %1 (%2/4)")
+        QStringLiteral("OSM vector files: %1 (%2/4); safe rendered layers: %3")
             .arg(diagnostics.selectedOsmLayersAvailable ? QStringLiteral("ready") : QStringLiteral("missing"))
-            .arg(diagnostics.osmLayerCount),
+            .arg(diagnostics.osmLayerCount)
+            .arg(diagnostics.selectedOsmLayersAvailable ? QStringLiteral("water, roads") : QStringLiteral("none")),
         QStringLiteral("Optional imagery overlays: %1 (%2/3)")
             .arg(diagnostics.localImageryMenuAvailable ? QStringLiteral("menu ready") : QStringLiteral("not menu ready"))
             .arg(diagnostics.localImageryMenuEntryCount),
@@ -638,8 +639,10 @@ void finalizeSelection(MapDataSelection& selection)
     {
     case MapDataMode::FullLocalMap:
         diagnostics.readinessSummary =
-            QStringLiteral("Ready for full offline local map: Natural Earth, %1 elevation, and OSM vectors are selected.")
+            QStringLiteral("Ready for full offline local map: Natural Earth, %1 elevation, and safe OSM water/road context are selected.")
                 .arg(diagnostics.selectedElevationSource);
+        diagnostics.readinessNextSteps.push_back(
+            QStringLiteral("OSM buildings and places are prepared for diagnostics, but are not auto-rendered because full-country labels/buildings can stall the 3D map."));
         if (!diagnostics.localImageryAvailable)
         {
             diagnostics.readinessNextSteps.push_back(
@@ -973,10 +976,12 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
         diagnostics.selectedOsmLayersAvailable = true;
         diagnostics.selectedElevationSource = bestAvailableDemSource(diagnostics);
         diagnostics.selectedFullLocalEarthPath = selectedFullLocalEarthPath;
-        diagnostics.selectedOsmLayerCount = diagnostics.osmLayerCount;
+        diagnostics.selectedOsmLayerCount = 2;
         diagnostics.messages.push_back(
-            QStringLiteral("Selected full local map with offline OSM vector layers and %1 elevation.")
+            QStringLiteral("Selected full local map with safe offline OSM water/road layers and %1 elevation.")
                 .arg(diagnostics.selectedElevationSource));
+        diagnostics.messages.push_back(
+            QStringLiteral("OSM buildings and place labels are available as generated GeoPackages but are not rendered by default to avoid CJK glyph boxes and zoom-time stalls."));
         finalizeSelection(selection);
         return selection;
     }

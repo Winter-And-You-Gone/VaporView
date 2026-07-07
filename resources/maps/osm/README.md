@@ -11,7 +11,7 @@ Expected generated files:
 
 Use `scripts/prepare-osm-local-data.py` to convert a local `.osm.pbf` or `.osm` extract into these GeoPackage files with GDAL/OGR. Large OSM inputs and generated GeoPackages are intentionally ignored by git.
 
-The full-local earth template renders these local files as water fill, road lines, building footprints, local building extrusion, and place labels. It does not use online OSM tiles. The conversion script writes `extrusion_height_m` for buildings from local OSM `height`, `building:height`, `building:levels`, or `levels` tags, with a 10 m fallback. The extrusion is a visual context layer, not surveyed building-height data.
+The full-local earth template renders water fill and road lines by default. Building and place GeoPackages are generated and reported in diagnostics, but are not auto-rendered because full-country labels/buildings can create missing font glyph boxes and stall the native 3D view while zooming. It does not use online OSM tiles. The conversion script writes `extrusion_height_m` for buildings from local OSM `height`, `building:height`, `building:levels`, or `levels` tags, with a 10 m fallback for later opt-in building rendering.
 
 Example:
 

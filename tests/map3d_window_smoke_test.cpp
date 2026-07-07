@@ -319,8 +319,8 @@ int main(int argc, char** argv)
             "diagnostics include expected OSM layer contract section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("layer roads")),
             "diagnostics include expected OSM roads GeoPackage layer name");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("TiledFeatureModel OSM place labels")),
-            "diagnostics include OSM place label render contract");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("generated data only")),
+            "diagnostics include safe-default OSM generated-data contract");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("OSG_LIBRARY_PATH:")),
             "diagnostics include OSG plugin environment");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("osgEarth environment:")),

@@ -124,7 +124,9 @@ QString selectedOsmLabel(const MapDataDiagnostics& diagnostics)
     {
         return QStringLiteral("not selected (%1/4 files)").arg(diagnostics.osmLayerCount);
     }
-    return QStringLiteral("%1 layers").arg(diagnostics.selectedOsmLayerCount);
+    return QStringLiteral("%1 safe layers (water/roads, %2/4 files)")
+        .arg(diagnostics.selectedOsmLayerCount)
+        .arg(diagnostics.osmLayerCount);
 }
 
 QString fileAvailabilityLabel(bool available, const QString& path)

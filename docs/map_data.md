@@ -153,17 +153,16 @@ python scripts/prepare-osm-local-data.py resources/maps/osm/local_extract.osm.pb
 
 If `ogrinfo` is unavailable, `--check` still reports missing files, but layer-name validation requires GDAL/OGR.
 
-The current full-local earth template renders local OSM context offline:
+The current full-local earth template renders local OSM context offline in a safe default mode:
 
 - water polygons as a blue draped `FeatureImage`
 - roads as a yellow draped `FeatureImage`
-- building footprints as a tan draped `FeatureImage`
-- building polygons as a coarse fixed-height `TiledFeatureModel` extrusion
-- place names as a `TiledFeatureModel` label layer
+- building GeoPackages as prepared local data only, not rendered by default
+- place GeoPackages as prepared local data only, not rendered by default
 
-The 3D Map diagnostics also prints the expected OSM layer contract for each file: `roads.gpkg -> layer roads -> OGRFeatures osm-roads -> FeatureImage OSM roads`, `water.gpkg -> layer water -> OGRFeatures osm-water -> FeatureImage OSM water fill`, `buildings.gpkg -> layer buildings -> OGRFeatures osm-buildings -> FeatureImage OSM building footprints + TiledFeatureModel OSM building extrusion`, and `places.gpkg -> layer places -> OGRFeatures osm-places -> TiledFeatureModel OSM place labels`. If a GeoPackage exists but the vector layer does not render, compare this contract with `ogrinfo -ro -so resources/maps/osm/<file>.gpkg <layer>` and the matching `.earth` feature name. `scripts/prepare-osm-local-data.py --check` performs that layer-name check when `ogrinfo` is available, and it additionally verifies that `buildings.gpkg` exposes the `extrusion_height_m` field required by the local building-extrusion style.
+The 3D Map diagnostics also prints the expected OSM layer contract for each file: `roads.gpkg -> layer roads -> OGRFeatures osm-roads -> FeatureImage OSM roads`, `water.gpkg -> layer water -> OGRFeatures osm-water -> FeatureImage OSM water fill`, `buildings.gpkg -> layer buildings -> generated data only; not rendered by the safe default full-local earth template`, and `places.gpkg -> layer places -> generated data only; not rendered by the safe default full-local earth template`. If a GeoPackage exists but a safe rendered layer does not appear, compare this contract with `ogrinfo -ro -so resources/maps/osm/<file>.gpkg <layer>` and the matching `.earth` feature name. `scripts/prepare-osm-local-data.py --check` performs that layer-name check when `ogrinfo` is available, and it additionally verifies that `buildings.gpkg` exposes the `extrusion_height_m` field for later opt-in building rendering.
 
-The building extrusion reads `extrusion_height_m` from the generated `buildings.gpkg` layer and clamps the result to at least 10 m. The helper derives that field from local OSM height or level tags when present, and otherwise writes the 10 m fallback. This gives local 3D context without relying on online tiles or proprietary building-height sources; it is still not a surveyed building-height model.
+The helper still writes `extrusion_height_m` into the generated `buildings.gpkg` layer from local OSM height or level tags when present, and otherwise writes the 10 m fallback. The automatic full-local `.earth` templates do not render building extrusion or place labels by default because full-country OSM extracts can create missing-font boxes for CJK labels and can stall osgEarth while zooming.
 
 ## Optional Local High-Resolution Imagery
 
@@ -258,7 +257,7 @@ For SRTM fallback validation, place SRTM GeoTIFF tiles in `resources/maps/terrai
 7. Build and start VaporView with `-DVAPORVIEW_ENABLE_OSGEARTH=ON`.
 8. Open the 3D Map window and click `地图诊断`.
 9. Confirm the mode is `Full local map` and the loaded earth file is `vaporview_full_local.earth` for Copernicus DEM or `vaporview_full_local_srtm.earth` for SRTM-only fallback.
-10. Zoom into the OSM extract area and confirm local water, roads, building footprints, coarse building extrusion, and place labels are visible.
+10. Zoom into the OSM extract area and confirm local water and roads are visible. Building and place GeoPackages should appear in diagnostics as prepared data, but they are not rendered by the safe default template.
 
 ## Optional Imagery And 3D Tiles Diagnostics Flow
 

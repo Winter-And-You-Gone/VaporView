@@ -1,4 +1,4 @@
-<map name="VaporView Full Local Map + SRTM">
+<map name="VaporView Full Local Map Safe Default + SRTM">
     <!-- Offline global visual background. This is not terrain elevation. -->
     <GDALImage name="Natural Earth II 1:50m shaded relief with water">
         <url>natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt</url>
@@ -11,7 +11,16 @@
         <interpolation>bilinear</interpolation>
     </GDALElevation>
 
-    <!-- Local OSM vector GeoPackages prepared by scripts/prepare-osm-local-data.py. -->
+    <!--
+        Local OSM vector GeoPackages prepared by scripts/prepare-osm-local-data.py.
+
+        Safety note:
+        full-country OSM extracts can contain a very large number of place labels
+        and building polygons. Loading those as osgEarth text/model layers can show
+        missing font glyph boxes on CJK names and can stall the render thread when
+        zooming. The automatic full-local template therefore renders only light
+        draped context layers by default.
+    -->
     <OGRFeatures name="osm-water">
         <url>osm/water.gpkg</url>
     </OGRFeatures>
@@ -20,93 +29,28 @@
         <url>osm/roads.gpkg</url>
     </OGRFeatures>
 
-    <OGRFeatures name="osm-buildings">
-        <url>osm/buildings.gpkg</url>
-    </OGRFeatures>
-
-    <OGRFeatures name="osm-places">
-        <url>osm/places.gpkg</url>
-    </OGRFeatures>
-
     <FeatureImage name="OSM water fill" min_level="6">
         <features>osm-water</features>
         <styles>
-            <style type="text/css"><![CDATA[
+            <style type="text/css">
                 default {
                     fill:         #3f86b9;
                     stroke:       #76b9df;
                     stroke-width: 1px;
                 }
-            ]]></style>
+            </style>
         </styles>
     </FeatureImage>
-
-    <FeatureImage name="OSM building footprints" min_level="13">
-        <features>osm-buildings</features>
-        <styles>
-            <style type="text/css"><![CDATA[
-                default {
-                    fill:         #d7c1a3;
-                    stroke:       #8f7659;
-                    stroke-width: 1px;
-                }
-            ]]></style>
-        </styles>
-    </FeatureImage>
-
-    <TiledFeatureModel name="OSM building extrusion" features="osm-buildings" pickable="true">
-        <profile>global-geodetic</profile>
-        <min_level>14</min_level>
-        <max_level>18</max_level>
-        <styles>
-            <style type="text/css"><![CDATA[
-                default {
-                    fill:                    #d7c1a3;
-                    extrusion-height:        Math.max(feature.properties.extrusion_height_m, 10.0);
-                    extrusion-flatten:       true;
-                    extrusion-wall-gradient: 0.35;
-                    altitude-clamping:       terrain;
-                    altitude-technique:      map;
-                    altitude-binding:        vertex;
-                    render-lighting:         true;
-                }
-            ]]></style>
-        </styles>
-    </TiledFeatureModel>
 
     <FeatureImage name="OSM roads" min_level="8">
         <features>osm-roads</features>
         <styles>
-            <style type="text/css"><![CDATA[
+            <style type="text/css">
                 default {
                     stroke:       #f6df8f;
                     stroke-width: 2px;
                 }
-            ]]></style>
+            </style>
         </styles>
     </FeatureImage>
-
-    <TiledFeatureModel name="OSM place labels" features="osm-places" pickable="true">
-        <profile>global-geodetic</profile>
-        <min_level>7</min_level>
-        <max_level>16</max_level>
-        <styles>
-            <style type="text/css"><![CDATA[
-                default {
-                    text-content:    feature.properties.name;
-                    text-encoding:   utf-8;
-                    text-align:      center_center;
-                    text-declutter:  true;
-                    text-size:       18.0;
-                    text-color:      #f4f1e8;
-                    text-halo:       #202020;
-                    render-depth-test: false;
-                }
-            ]]></style>
-        </styles>
-    </TiledFeatureModel>
-
-    <screen_space_layout>
-        <sort_by_priority>true</sort_by_priority>
-    </screen_space_layout>
 </map>

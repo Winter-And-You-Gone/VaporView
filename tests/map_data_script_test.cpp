@@ -224,16 +224,10 @@ int main()
             QStringLiteral("full local earth renders OSM water with FeatureImage"));
     require(fullLocalEarthText.contains(QStringLiteral("<FeatureImage name=\"OSM roads\"")),
             QStringLiteral("full local earth renders OSM roads with FeatureImage"));
-    require(fullLocalEarthText.contains(QStringLiteral("<FeatureImage name=\"OSM building footprints\"")),
-            QStringLiteral("full local earth renders OSM building footprints with FeatureImage"));
-    require(fullLocalEarthText.contains(QStringLiteral("<TiledFeatureModel name=\"OSM building extrusion\"")),
-            QStringLiteral("full local earth renders OSM buildings with TiledFeatureModel extrusion"));
-    require(fullLocalEarthText.contains(QStringLiteral("extrusion-height:        Math.max(feature.properties.extrusion_height_m, 10.0)"))
-                && fullLocalEarthText.contains(QStringLiteral("extrusion-flatten:       true"))
-                && fullLocalEarthText.contains(QStringLiteral("altitude-clamping:       terrain")),
-            QStringLiteral("full local earth uses standardized building extrusion height with fallback"));
-    require(fullLocalEarthText.contains(QStringLiteral("<TiledFeatureModel name=\"OSM place labels\"")),
-            QStringLiteral("full local earth renders OSM place labels with TiledFeatureModel"));
+    require(!fullLocalEarthText.contains(QStringLiteral("<TiledFeatureModel name=\"OSM building extrusion\""))
+                && !fullLocalEarthText.contains(QStringLiteral("<TiledFeatureModel name=\"OSM place labels\""))
+                && fullLocalEarthText.contains(QStringLiteral("draped context layers")),
+            QStringLiteral("full local earth keeps buildings and place labels out of the safe default render path"));
     for (const QString& forbidden : forbiddenOnlineSources)
     {
         require(!fullLocalEarthText.toLower().contains(forbidden),
@@ -241,12 +235,11 @@ int main()
     }
 
     const QString fullLocalSrtmEarthText = readTextFile(fullLocalSrtmEarth);
-    require(fullLocalSrtmEarthText.contains(QStringLiteral("<TiledFeatureModel name=\"OSM building extrusion\"")),
-            QStringLiteral("SRTM full local earth also renders OSM buildings with extrusion"));
-    require(fullLocalSrtmEarthText.contains(QStringLiteral("extrusion-height:        Math.max(feature.properties.extrusion_height_m, 10.0)"))
-                && fullLocalSrtmEarthText.contains(QStringLiteral("extrusion-flatten:       true"))
-                && fullLocalSrtmEarthText.contains(QStringLiteral("altitude-clamping:       terrain")),
-            QStringLiteral("SRTM full local earth uses standardized building extrusion height with fallback"));
+    require(fullLocalSrtmEarthText.contains(QStringLiteral("<FeatureImage name=\"OSM water fill\""))
+                && fullLocalSrtmEarthText.contains(QStringLiteral("<FeatureImage name=\"OSM roads\""))
+                && !fullLocalSrtmEarthText.contains(QStringLiteral("<TiledFeatureModel name=\"OSM building extrusion\""))
+                && !fullLocalSrtmEarthText.contains(QStringLiteral("<TiledFeatureModel name=\"OSM place labels\"")),
+            QStringLiteral("SRTM full local earth also uses the safe water/road default render path"));
     for (const QString& forbidden : forbiddenOnlineSources)
     {
         require(!fullLocalSrtmEarthText.toLower().contains(forbidden),
