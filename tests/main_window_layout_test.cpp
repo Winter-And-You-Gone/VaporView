@@ -1799,7 +1799,7 @@ int main(int argc, char **argv)
                 "temperature trend plot keeps the default 20-25 C axis range for in-range samples");
         require(plot->property("axisLabelsVisible").toBool(),
                 "temperature trend plot exposes visible axis labels");
-        require(plot->property("yAxisTickCount").toInt() == 5 &&
+        require(plot->property("yAxisTickCount").toInt() == 6 &&
                     plot->property("xAxisTickCount").toInt() == 5,
                 "temperature trend plot shows numeric ticks on both axes");
     }

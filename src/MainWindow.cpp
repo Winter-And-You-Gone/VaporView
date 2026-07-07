@@ -4856,7 +4856,7 @@ protected:
         const QFontMetrics fm = painter.fontMetrics();
         const QFontMetrics axisFm(axisFont);
         painter.setPen(text);
-        constexpr int kYAxisTicks = 4;
+        constexpr int kYAxisTicks = 5;
         constexpr int kXAxisTicks = 4;
         constexpr qreal kLeftAxisWidth = 32.0;
         constexpr qreal kBottomAxisHeight = 18.0;
@@ -5004,7 +5004,7 @@ private:
         setProperty("yAxisMinC", minValue);
         setProperty("yAxisMaxC", maxValue);
         setProperty("axisLabelsVisible", true);
-        setProperty("yAxisTickCount", 5);
+        setProperty("yAxisTickCount", 6);
         setProperty("xAxisTickCount", 5);
     }
 
@@ -10071,7 +10071,7 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
         if (ok)
         {
             const VaporView::TemperatureControllerData latest = collectors.temperature_controller->getLatestData();
-            if (latest.valid)
+            if (latest.valid && latest.timestamp >= current_temperature_controller_.timestamp)
             {
                 current_temperature_controller_ = latest;
             }
@@ -10112,7 +10112,11 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
                 temperatureCommandStatusText(command, channel, false, failedDetail),
                 true);
         }
-        current_temperature_controller_ = collectors.temperature_controller->getLatestData();
+        const VaporView::TemperatureControllerData latest = collectors.temperature_controller->getLatestData();
+        if (latest.timestamp >= current_temperature_controller_.timestamp)
+        {
+            current_temperature_controller_ = latest;
+        }
         restoreTemperatureCommandUi(command, channel);
         return;
     }
@@ -19297,7 +19301,12 @@ void MainWindow::onTemperatureControllerDataReady()
     const CollectorSnapshot collectors = snapshotCollectors();
     if (collectors.temperature_controller)
     {
-        current_temperature_controller_ = collectors.temperature_controller->getLatestData();
+        const VaporView::TemperatureControllerData latest = collectors.temperature_controller->getLatestData();
+        if (latest.timestamp < current_temperature_controller_.timestamp)
+        {
+            return;
+        }
+        current_temperature_controller_ = latest;
     }
 }
 
