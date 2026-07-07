@@ -1205,6 +1205,11 @@ QPixmap renderLucidePixmap(const QByteArray& svgData, const QColor& color, qreal
     pixmap.fill(Qt::transparent);
 
     QSvgRenderer renderer(tinted);
+    if (!renderer.isValid())
+    {
+        return QPixmap();
+    }
+
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing, true);
     renderer.render(&painter, QRectF(2, 2, 28, 28));
@@ -1224,6 +1229,18 @@ QColor toolbarColor(AppThemeColor color);
 
 QIcon createLucideIcon(const QString& iconName, const QColor& color)
 {
+    static QHash<QString, QIcon> cache;
+    const QColor disabledColor = toolbarColor(AppThemeColor::ToolbarDisabled);
+    const QString cacheKey = QStringLiteral("%1:%2:%3")
+        .arg(iconName)
+        .arg(color.rgba(), 0, 16)
+        .arg(disabledColor.rgba(), 0, 16);
+    auto it = cache.constFind(cacheKey);
+    if (it != cache.constEnd())
+    {
+        return it.value();
+    }
+
     QFile file(findResourceFile(QStringLiteral("resources/lucide/%1.svg").arg(iconName)));
     if (!file.open(QIODevice::ReadOnly))
     {
@@ -1233,7 +1250,8 @@ QIcon createLucideIcon(const QString& iconName, const QColor& color)
     const QByteArray svgData = file.readAll();
     QIcon icon;
     addLucideIconPixmaps(icon, svgData, color, QIcon::Normal);
-    addLucideIconPixmaps(icon, svgData, toolbarColor(AppThemeColor::ToolbarDisabled), QIcon::Disabled);
+    addLucideIconPixmaps(icon, svgData, disabledColor, QIcon::Disabled);
+    cache.insert(cacheKey, icon);
     return icon;
 }
 
