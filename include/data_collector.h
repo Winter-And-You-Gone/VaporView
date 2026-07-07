@@ -253,11 +253,14 @@ private:
   TemperatureControllerData latest_data_;
   RawFrameCallback raw_frame_callback_;
   uint8_t slave_address_ = 1;
+  std::mutex modbus_mutex_;
 
   bool readSnapshot(TemperatureControllerData& sample);
   bool readChannel(uint8_t channel, TemperatureControllerChannelData& channel_data);
   bool readRegisters(uint16_t address, uint16_t count, std::vector<uint16_t>& registers, int wait_ms = 200);
+  bool readRegistersUnlocked(uint16_t address, uint16_t count, std::vector<uint16_t>& registers, int wait_ms);
   bool writeRegisters(uint16_t address, const std::vector<uint16_t>& registers, int wait_ms = 200);
+  bool writeRegistersUnlocked(uint16_t address, const std::vector<uint16_t>& registers, int wait_ms);
   bool writeAndConfirm(uint8_t channel, uint16_t address, const std::vector<uint16_t>& registers);
   bool readResponseFrame(uint8_t function_code, std::vector<uint8_t>& frame, int wait_ms);
   void publishRawFrame(const std::vector<uint8_t>& frame);

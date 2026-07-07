@@ -118,6 +118,7 @@ constexpr uint8_t kMsgUnixTime = 0x51;
 constexpr uint8_t kMsgFormattedTime = 0x52;
 constexpr uint8_t kMsgRawGnss = 0x59;
 constexpr uint8_t kMsgSatellites = 0x5A;
+constexpr int kTemperatureControllerModbusCommandGapMs = 5;
 constexpr uint8_t kMsgGeodeticPos = 0x5C;
 constexpr uint8_t kMsgEcefPos = 0x5D;
 constexpr uint8_t kMsgMainMavlinkTunnel = 0xF0;
@@ -3393,13 +3394,21 @@ bool TemperatureControllerCollector::readResponseFrame(uint8_t function_code, st
         }
         const uint8_t received_function = buffer[1];
         size_t frame_size = 0;
-        if (received_function == 0x03)
+        if (received_function == function_code)
         {
-          frame_size = static_cast<size_t>(buffer[2]) + 5;
-        }
-        else if (received_function == 0x10)
-        {
-          frame_size = 8;
+          if (function_code == 0x03)
+          {
+            frame_size = static_cast<size_t>(buffer[2]) + 5;
+          }
+          else if (function_code == 0x10)
+          {
+            frame_size = 8;
+          }
+          else
+          {
+            buffer.erase(buffer.begin());
+            continue;
+          }
         }
         else if (received_function == static_cast<uint8_t>(function_code | 0x80u))
         {
@@ -3429,8 +3438,15 @@ bool TemperatureControllerCollector::readResponseFrame(uint8_t function_code, st
 
 bool TemperatureControllerCollector::readRegisters(uint16_t address, uint16_t count, std::vector<uint16_t>& registers, int wait_ms)
 {
+  std::lock_guard<std::mutex> lock(modbus_mutex_);
+  return readRegistersUnlocked(address, count, registers, wait_ms);
+}
+
+bool TemperatureControllerCollector::readRegistersUnlocked(uint16_t address, uint16_t count, std::vector<uint16_t>& registers, int wait_ms)
+{
   using namespace TemperatureControllerProtocol;
   const QByteArray request = buildReadRegistersRequest(slave_address_, address, count);
+  sleepMs(kTemperatureControllerModbusCommandGapMs);
   serial_.flush();
   if (serial_.write(request.constData(), static_cast<size_t>(request.size())) != request.size())
   {
@@ -3453,9 +3469,16 @@ bool TemperatureControllerCollector::readRegisters(uint16_t address, uint16_t co
 
 bool TemperatureControllerCollector::writeRegisters(uint16_t address, const std::vector<uint16_t>& registers, int wait_ms)
 {
+  std::lock_guard<std::mutex> lock(modbus_mutex_);
+  return writeRegistersUnlocked(address, registers, wait_ms);
+}
+
+bool TemperatureControllerCollector::writeRegistersUnlocked(uint16_t address, const std::vector<uint16_t>& registers, int wait_ms)
+{
   using namespace TemperatureControllerProtocol;
   const QVector<uint16_t> values(registers.cbegin(), registers.cend());
   const QByteArray request = buildWriteRegistersRequest(slave_address_, address, values);
+  sleepMs(kTemperatureControllerModbusCommandGapMs);
   serial_.flush();
   if (serial_.write(request.constData(), static_cast<size_t>(request.size())) != request.size())
   {
@@ -3473,12 +3496,13 @@ bool TemperatureControllerCollector::writeRegisters(uint16_t address, const std:
 
 bool TemperatureControllerCollector::writeAndConfirm(uint8_t channel, uint16_t address, const std::vector<uint16_t>& registers)
 {
-  if (!writeRegisters(address, registers))
+  std::lock_guard<std::mutex> lock(modbus_mutex_);
+  if (!writeRegistersUnlocked(address, registers, 200))
   {
     return false;
   }
   std::vector<uint16_t> read_back;
-  if (!readRegisters(address, static_cast<uint16_t>(registers.size()), read_back, 200))
+  if (!readRegistersUnlocked(address, static_cast<uint16_t>(registers.size()), read_back, 200))
   {
     return false;
   }
