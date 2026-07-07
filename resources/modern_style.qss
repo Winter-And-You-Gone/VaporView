@@ -477,7 +477,7 @@ QPushButton#temperatureOverviewOutputSwitch {
     padding: 0px;
     margin: 0px;
     color: @vv-text;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
 }
 

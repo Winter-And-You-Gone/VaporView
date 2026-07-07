@@ -1518,8 +1518,8 @@ int main(int argc, char **argv)
                                  "temperature overview value pill font matches the other capsules");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QPushButton#temperatureOverviewOutputSwitch {"),
-                                 QStringLiteral("font-size: 13px"),
-                                 "temperature overview output switch font matches the other capsules");
+                                 QStringLiteral("font-size: 14px"),
+                                 "temperature overview output switch font is enlarged for readability");
     const int temperatureSummarySpacing = temperatureOverviewSummary->layout()->spacing();
     int temperatureSummaryControlHeight =
         temperatureChannelButton->height() + temperatureOutputSwitch->height() +
@@ -1530,8 +1530,10 @@ int main(int argc, char **argv)
         require(pill->height() >= 44,
                 "temperature overview value capsules are taller than the old compact pills");
     }
-    require(temperatureOutputSwitch->height() >= 56,
-            "temperature overview output enable capsule keeps enough height for its two-row switch");
+    require(temperatureChannelButton->height() <= 38,
+            "temperature overview channel selector is shorter than the value and output capsules");
+    require(temperatureOutputSwitch->height() >= 68,
+            "temperature overview output enable capsule keeps extra height for its two-row switch");
     require(std::abs(temperatureSummaryControlHeight - temperatureOverviewSummary->height()) <= 2,
             "temperature overview summary capsules fill the available card body height");
 
@@ -1774,18 +1776,25 @@ int main(int argc, char **argv)
             "temperature overview output enable capsule is enabled with controller data");
     require(temperatureOutputSwitch->isChecked(),
             "temperature overview output enable capsule reflects the confirmed controller output state");
-    bool sawTemperatureOverviewTwoLineValue = false;
+    bool sawTemperatureOverviewTargetValue = false;
+    bool sawTemperatureOverviewCurrentValue = false;
     for (QLabel *pill : temperatureValuePills)
     {
         if (pill->text().contains(QLatin1Char('\n')) &&
-            pill->text().contains(QStringLiteral("24.750℃")) &&
+            pill->text().contains(QStringLiteral("25.00000℃")) &&
+            pill->text().contains(QStringLiteral("目标温度")))
+        {
+            sawTemperatureOverviewTargetValue = true;
+        }
+        if (pill->text().contains(QLatin1Char('\n')) &&
+            pill->text().contains(QStringLiteral("24.75000℃")) &&
             pill->text().contains(QStringLiteral("当前温度")))
         {
-            sawTemperatureOverviewTwoLineValue = true;
+            sawTemperatureOverviewCurrentValue = true;
         }
     }
-    require(sawTemperatureOverviewTwoLineValue,
-            "temperature overview value pill uses title-over-value layout with three decimal minimum precision");
+    require(sawTemperatureOverviewTargetValue && sawTemperatureOverviewCurrentValue,
+            "temperature overview value pills use title-over-value layout with five decimal places");
     const QList<QWidget*> temperatureTrendPlots =
         window.findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot"));
     require(!temperatureTrendPlots.isEmpty(),
@@ -1794,9 +1803,9 @@ int main(int argc, char **argv)
     {
         require(plot->property("sampleCount").toInt() > 0,
                 "temperature trend plot has samples after controller data arrives");
-        require(plot->property("yAxisMinC").toDouble() == 20.0 &&
-                    plot->property("yAxisMaxC").toDouble() == 25.0,
-                "temperature trend plot keeps the default 20-25 C axis range for in-range samples");
+        require(plot->property("yAxisMinC").toDouble() == 23.0 &&
+                    plot->property("yAxisMaxC").toDouble() == 27.0,
+                "temperature trend plot centers the default axis range around the target temperature");
         require(plot->property("axisLabelsVisible").toBool(),
                 "temperature trend plot exposes visible axis labels");
         require(plot->property("yAxisTickCount").toInt() == 6 &&
@@ -1814,8 +1823,8 @@ int main(int argc, char **argv)
     for (QWidget *plot : temperatureTrendPlots)
     {
         require(plot->property("yAxisMinC").toDouble() == 11.0 &&
-                    plot->property("yAxisMaxC").toDouble() == 25.0,
-                "temperature trend plot extends the lower axis only when data drops below 20 C");
+                    plot->property("yAxisMaxC").toDouble() == 27.0,
+                "temperature trend plot extends the lower axis only when data drops below the target-centered range");
     }
     VaporView::TelemetryStatus disconnectedTemperatureStatus;
     disconnectedTemperatureStatus.devices.push_back(

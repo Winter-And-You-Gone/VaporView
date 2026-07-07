@@ -40,6 +40,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -320,6 +321,9 @@ private:
     QComboBox *controller_mode_combo_ = nullptr;
     std::array<ChannelWidgets, 2> channels_{};
     std::array<QVector<double>, 2> measured_temperature_history_{};
+    std::array<double, 2> target_temperature_by_channel_{
+        std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::quiet_NaN()};
     bool is_english_ = false;
 };
 

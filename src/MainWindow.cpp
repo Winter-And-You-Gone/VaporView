@@ -4830,6 +4830,15 @@ public:
         update();
     }
 
+    void setTargetTemperature(double celsius)
+    {
+        target_temperature_c_ = std::isfinite(celsius)
+            ? celsius
+            : std::numeric_limits<double>::quiet_NaN();
+        updateSampleProperties();
+        update();
+    }
+
 protected:
     void paintEvent(QPaintEvent *event) override
     {
@@ -4858,9 +4867,9 @@ protected:
         painter.setPen(text);
         constexpr int kYAxisTicks = 5;
         constexpr int kXAxisTicks = 4;
-        constexpr qreal kLeftAxisWidth = 32.0;
+        const qreal leftAxisWidth = axisFm.horizontalAdvance(QStringLiteral("999")) + 6.0;
         constexpr qreal kBottomAxisHeight = 18.0;
-        const QRectF plotRect = rect().adjusted(kLeftAxisWidth, 4.0, -4.0, -kBottomAxisHeight);
+        const QRectF plotRect = rect().adjusted(leftAxisWidth, 4.0, -4.0, -kBottomAxisHeight);
         auto drawGridAndAxes = [&](double minValue, double maxValue, int sampleCount) {
             painter.setPen(QPen(grid, 1));
             for (int i = 0; i <= kXAxisTicks; ++i)
@@ -4896,9 +4905,13 @@ protected:
                     : qRound((sampleCount - 1) * i / static_cast<double>(kXAxisTicks));
                 const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(kXAxisTicks);
                 const QString label = QString::number(sampleIndex);
-                const QRectF labelRect(x - 18.0,
+                const qreal labelWidth = std::max<qreal>(36.0, axisFm.horizontalAdvance(label) + 8.0);
+                const qreal labelLeft = std::clamp(x - labelWidth / 2.0,
+                                                   plotRect.left(),
+                                                   std::max(plotRect.left(), width() - labelWidth - 2.0));
+                const QRectF labelRect(labelLeft,
                                        plotRect.bottom() + 2.0,
-                                       36.0,
+                                       labelWidth,
                                        axisFm.height());
                 painter.drawText(labelRect, Qt::AlignHCenter | Qt::AlignTop, label);
             }
@@ -4917,7 +4930,8 @@ protected:
 
         if (finiteSamples.isEmpty() || plotRect.width() <= 1.0 || plotRect.height() <= 1.0)
         {
-            drawGridAndAxes(20.0, 25.0, 0);
+            const auto [minValue, maxValue] = temperatureAxisRange(QVector<double>(), target_temperature_c_);
+            drawGridAndAxes(minValue, maxValue, 0);
             painter.setPen(muted);
             QRectF visiblePlotRect = plotRect.intersected(QRectF(visibleRegion().boundingRect()));
             if (!visiblePlotRect.isValid() || visiblePlotRect.width() <= 1.0 || visiblePlotRect.height() <= 1.0)
@@ -4937,7 +4951,7 @@ protected:
             return;
         }
 
-        const auto [minValue, maxValue] = temperatureAxisRange(finiteSamples);
+        const auto [minValue, maxValue] = temperatureAxisRange(finiteSamples, target_temperature_c_);
         drawGridAndAxes(minValue, maxValue, finiteSamples.size());
 
         QPolygonF polyline;
@@ -4966,10 +4980,10 @@ private:
             : QString::number(value, 'f', 1);
     }
 
-    static std::pair<double, double> temperatureAxisRange(const QVector<double>& finiteSamples)
+    static std::pair<double, double> temperatureAxisRange(const QVector<double>& finiteSamples, double targetTemperature)
     {
-        double minValue = 20.0;
-        double maxValue = 25.0;
+        double minValue = std::isfinite(targetTemperature) ? targetTemperature - 2.0 : 20.0;
+        double maxValue = std::isfinite(targetTemperature) ? targetTemperature + 2.0 : 25.0;
         if (finiteSamples.isEmpty())
         {
             return {minValue, maxValue};
@@ -4999,7 +5013,7 @@ private:
             }
         }
 
-        const auto [minValue, maxValue] = temperatureAxisRange(finiteSamples);
+        const auto [minValue, maxValue] = temperatureAxisRange(finiteSamples, target_temperature_c_);
         setProperty("sampleCount", finiteSamples.size());
         setProperty("yAxisMinC", minValue);
         setProperty("yAxisMaxC", maxValue);
@@ -5024,6 +5038,7 @@ private:
     }
 
     QVector<double> samples_;
+    double target_temperature_c_ = std::numeric_limits<double>::quiet_NaN();
     int channel_index_ = 0;
     bool compact_mode_ = false;
     bool is_english_ = false;
@@ -5037,12 +5052,6 @@ QString temperatureOverviewValueText(double value)
     }
 
     QString text = QLocale::c().toString(value, 'f', 5);
-    while (text.contains(QLatin1Char('.')) &&
-           text.endsWith(QLatin1Char('0')) &&
-           text.section(QLatin1Char('.'), 1).size() > 3)
-    {
-        text.chop(1);
-    }
     return text + QStringLiteral("℃");
 }
 
@@ -5176,8 +5185,8 @@ protected:
         QFont segmentFont = font();
         segmentFont.setWeight(QFont::DemiBold);
 
-        constexpr qreal kTitleHeight = 18.0;
-        constexpr qreal kTitleGap = 1.0;
+        constexpr qreal kTitleHeight = 20.0;
+        constexpr qreal kTitleGap = 2.0;
         const QRectF labelRect(trackRect.left(), trackRect.top(), trackRect.width(), kTitleHeight);
         const QRectF switchRect(trackRect.left(),
                                 labelRect.bottom() + kTitleGap,
@@ -5554,7 +5563,7 @@ public:
         channel_button_ = new QToolButton(summary_widget_);
         channel_button_->setObjectName(QStringLiteral("temperatureOverviewChannelButton"));
         channel_button_->setFixedWidth(kOverviewControlWidth);
-        channel_button_->setMinimumHeight(kOverviewMinimumPillHeight);
+        channel_button_->setFixedHeight(kOverviewChannelHeight);
         channel_button_->setPopupMode(QToolButton::InstantPopup);
         channel_button_->setToolButtonStyle(Qt::ToolButtonTextOnly);
         channel_button_->setLayoutDirection(Qt::LeftToRight);
@@ -5570,7 +5579,7 @@ public:
             action->setText(text);
             action->setDefaultWidget(button);
             button->setObjectName(QStringLiteral("temperatureOverviewChannelMenuItem"));
-            button->setFixedSize(kOverviewControlWidth, kOverviewMinimumPillHeight);
+            button->setFixedSize(kOverviewControlWidth, kOverviewChannelHeight);
             button->setCursor(Qt::PointingHandCursor);
             button->setFocusPolicy(Qt::NoFocus);
             button->setText(text);
@@ -5601,14 +5610,14 @@ public:
         });
         channel_button_->setMenu(channel_menu_);
         channel_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
-        summaryLayout->addWidget(channel_button_, 1);
+        summaryLayout->addWidget(channel_button_, 0);
 
         target_temp_value_ = new QLabel(summary_widget_);
         target_temp_value_->setObjectName(QStringLiteral("temperatureOverviewValuePill"));
         target_temp_value_->setAlignment(Qt::AlignCenter);
         target_temp_value_->setWordWrap(false);
         target_temp_value_->setFixedWidth(kOverviewControlWidth);
-        target_temp_value_->setMinimumHeight(kOverviewMinimumPillHeight);
+        target_temp_value_->setMinimumHeight(kOverviewMinimumValueHeight);
         target_temp_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
         summaryLayout->addWidget(target_temp_value_, 1);
 
@@ -5617,7 +5626,7 @@ public:
         current_temp_value_->setAlignment(Qt::AlignCenter);
         current_temp_value_->setWordWrap(false);
         current_temp_value_->setFixedWidth(kOverviewControlWidth);
-        current_temp_value_->setMinimumHeight(kOverviewMinimumPillHeight);
+        current_temp_value_->setMinimumHeight(kOverviewMinimumValueHeight);
         current_temp_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
         summaryLayout->addWidget(current_temp_value_, 1);
 
@@ -5635,7 +5644,7 @@ public:
                 output_enabled_callback_(currentChannelNumber(), requested);
             }
         });
-        summaryLayout->addWidget(output_switch_button_);
+        summaryLayout->addWidget(output_switch_button_, 2);
 
         layout->addWidget(summary_widget_, 0);
 
@@ -5686,6 +5695,11 @@ public:
         {
             for (int i = 0; i < static_cast<int>(measured_temperature_history_.size()); ++i)
             {
+                const double target = sample.channels[i].target_temperature_c;
+                if (std::isfinite(target))
+                {
+                    target_temperature_by_channel_[i] = target;
+                }
                 const double measured = sample.channels[i].measured_temperature_c;
                 if (std::isfinite(measured))
                 {
@@ -5737,8 +5751,9 @@ public:
 private:
     static constexpr int kOverviewControlWidth = 99;
     static constexpr int kOverviewSummarySpacing = 4;
-    static constexpr int kOverviewMinimumPillHeight = 44;
-    static constexpr int kOverviewMinimumOutputHeight = 56;
+    static constexpr int kOverviewChannelHeight = 34;
+    static constexpr int kOverviewMinimumValueHeight = 44;
+    static constexpr int kOverviewMinimumOutputHeight = 68;
 
     quint8 currentChannelNumber() const
     {
@@ -5884,6 +5899,7 @@ private:
         if (plot_)
         {
             plot_->setChannelIndex(index);
+            plot_->setTargetTemperature(target_temperature_by_channel_[index]);
             plot_->setSamples(measured_temperature_history_[index]);
         }
     }
@@ -5901,6 +5917,9 @@ private:
     TemperatureTrendPlotWidget *plot_ = nullptr;
     VaporView::TemperatureControllerData latest_data_;
     std::array<QVector<double>, 2> measured_temperature_history_{};
+    std::array<double, 2> target_temperature_by_channel_{
+        std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::quiet_NaN()};
     std::function<void(quint8, bool)> output_enabled_callback_;
     int selected_channel_index_ = 0;
     bool summary_height_update_pending_ = false;
@@ -5994,6 +6013,7 @@ void TemperatureControllerPanel::setupUi()
         {
             const int channelIndex = std::clamp(index, 0, 1);
             temperature_plot_->setChannelIndex(channelIndex);
+            temperature_plot_->setTargetTemperature(target_temperature_by_channel_[channelIndex]);
             temperature_plot_->setSamples(measured_temperature_history_[channelIndex]);
         }
     });
@@ -6257,6 +6277,11 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
     {
         for (int i = 0; i < static_cast<int>(measured_temperature_history_.size()); ++i)
         {
+            const double target = controllerData.channels[i].target_temperature_c;
+            if (std::isfinite(target))
+            {
+                target_temperature_by_channel_[i] = target;
+            }
             const double measured = controllerData.channels[i].measured_temperature_c;
             if (std::isfinite(measured))
             {
@@ -6275,6 +6300,7 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
     {
         const int channelIndex = std::clamp(tabs_->currentIndex(), 0, 1);
         temperature_plot_->setChannelIndex(channelIndex);
+        temperature_plot_->setTargetTemperature(target_temperature_by_channel_[channelIndex]);
         temperature_plot_->setSamples(measured_temperature_history_[channelIndex]);
     }
 }
@@ -7406,7 +7432,7 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 600; }"
             "QLabel#homeTelemetrySummaryTitleLabel[skyTelemetryTitle=\"true\"] { color: @vv-primary; }"
             "QLabel#temperatureOverviewValuePill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; padding: 2px 3px; margin: 0px; }"
-            "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; padding: 0px; margin: 0px; color: @vv-text; font-size: 13px; font-weight: 700; }"
+            "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; padding: 0px; margin: 0px; color: @vv-text; font-size: 14px; font-weight: 700; }"
             "QToolButton#temperatureOverviewChannelButton { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-primary; font-size: 13px; font-weight: 700; padding: 1px 0px; text-align: center; }"
             "QToolButton#temperatureOverviewChannelButton[available=\"false\"] { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }"
             "QToolButton#temperatureOverviewChannelButton:hover, QToolButton#temperatureOverviewChannelButton:pressed { background-color: @vv-surface; border-color: @vv-border-strong; }"
