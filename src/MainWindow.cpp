@@ -96,6 +96,7 @@
 #include <windowsx.h>
 #endif
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <functional>
@@ -4777,6 +4778,7 @@ public:
         setObjectName(QStringLiteral("temperatureTrendPlot"));
         setFont(numericFontFrom(font()));
         applyPlotSizing();
+        updateSampleProperties();
     }
 
     void setCompactMode(bool compact)
@@ -4831,23 +4833,58 @@ protected:
         const QColor line = VaporView::appThemeColor(VaporView::AppThemeColor::PlotSeriesTemperature, dark);
 
         painter.fillRect(rect(), background);
+        QFont axisFont = font();
+        axisFont.setPointSize(std::max(8, axisFont.pointSize() - 2));
         const QFontMetrics fm = painter.fontMetrics();
+        const QFontMetrics axisFm(axisFont);
         painter.setPen(text);
-        const QRectF plotRect = rect().adjusted(4, 4, -4, -4);
-        auto drawGrid = [&]() {
+        constexpr int kYAxisTicks = 4;
+        constexpr int kXAxisTicks = 4;
+        constexpr qreal kLeftAxisWidth = 32.0;
+        constexpr qreal kBottomAxisHeight = 18.0;
+        const QRectF plotRect = rect().adjusted(kLeftAxisWidth, 4.0, -4.0, -kBottomAxisHeight);
+        auto drawGridAndAxes = [&](double minValue, double maxValue, int sampleCount) {
             painter.setPen(QPen(grid, 1));
-            for (int i = 0; i <= 4; ++i)
+            for (int i = 0; i <= kXAxisTicks; ++i)
             {
-                const qreal x = plotRect.left() + plotRect.width() * i / 4.0;
+                const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(kXAxisTicks);
                 painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
             }
-            for (int i = 0; i <= 4; ++i)
+            for (int i = 0; i <= kYAxisTicks; ++i)
             {
-                const qreal y = plotRect.top() + plotRect.height() * i / 4.0;
+                const qreal y = plotRect.top() + plotRect.height() * i / static_cast<qreal>(kYAxisTicks);
                 painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
             }
             painter.setPen(QPen(border, 1));
             painter.drawRect(plotRect);
+
+            painter.setFont(axisFont);
+            painter.setPen(muted);
+            for (int i = 0; i <= kYAxisTicks; ++i)
+            {
+                const double value = maxValue - (maxValue - minValue) * i / static_cast<double>(kYAxisTicks);
+                const qreal y = plotRect.top() + plotRect.height() * i / static_cast<qreal>(kYAxisTicks);
+                const QString label = axisTickLabel(value);
+                const QRectF labelRect(0.0,
+                                       y - axisFm.height() / 2.0,
+                                       plotRect.left() - 4.0,
+                                       axisFm.height());
+                painter.drawText(labelRect, Qt::AlignRight | Qt::AlignVCenter, label);
+            }
+            for (int i = 0; i <= kXAxisTicks; ++i)
+            {
+                const int sampleIndex = sampleCount <= 1
+                    ? 0
+                    : qRound((sampleCount - 1) * i / static_cast<double>(kXAxisTicks));
+                const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(kXAxisTicks);
+                const QString label = QString::number(sampleIndex);
+                const QRectF labelRect(x - 18.0,
+                                       plotRect.bottom() + 2.0,
+                                       36.0,
+                                       axisFm.height());
+                painter.drawText(labelRect, Qt::AlignHCenter | Qt::AlignTop, label);
+            }
+            painter.setFont(font());
         };
 
         QVector<double> finiteSamples;
@@ -4860,9 +4897,9 @@ protected:
             }
         }
 
-        drawGrid();
         if (finiteSamples.isEmpty() || plotRect.width() <= 1.0 || plotRect.height() <= 1.0)
         {
+            drawGridAndAxes(20.0, 25.0, 0);
             painter.setPen(muted);
             QRectF visiblePlotRect = plotRect.intersected(QRectF(visibleRegion().boundingRect()));
             if (!visiblePlotRect.isValid() || visiblePlotRect.width() <= 1.0 || visiblePlotRect.height() <= 1.0)
@@ -4883,6 +4920,7 @@ protected:
         }
 
         const auto [minValue, maxValue] = temperatureAxisRange(finiteSamples);
+        drawGridAndAxes(minValue, maxValue, finiteSamples.size());
 
         QPolygonF polyline;
         polyline.reserve(finiteSamples.size());
@@ -4903,6 +4941,13 @@ protected:
     }
 
 private:
+    static QString axisTickLabel(double value)
+    {
+        return std::abs(value - std::round(value)) < 0.05
+            ? QString::number(qRound(value))
+            : QString::number(value, 'f', 1);
+    }
+
     static std::pair<double, double> temperatureAxisRange(const QVector<double>& finiteSamples)
     {
         double minValue = 20.0;
@@ -4940,6 +4985,9 @@ private:
         setProperty("sampleCount", finiteSamples.size());
         setProperty("yAxisMinC", minValue);
         setProperty("yAxisMaxC", maxValue);
+        setProperty("axisLabelsVisible", true);
+        setProperty("yAxisTickCount", 5);
+        setProperty("xAxisTickCount", 5);
     }
 
     void applyPlotSizing()
@@ -5469,11 +5517,6 @@ public:
         setObjectName(QStringLiteral("temperatureOverviewPanel"));
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-        constexpr int kOverviewControlWidth = 99;
-        constexpr int kOverviewSummaryWidth = kOverviewControlWidth;
-        constexpr int kOverviewPillHeight = 40;
-        constexpr int kOverviewOutputPillHeight = 56;
-
         auto *layout = new QHBoxLayout(this);
         layout->setContentsMargins(kHomeOverviewBodyPadding,
                                    kHomeOverviewBodyPadding,
@@ -5481,16 +5524,19 @@ public:
                                    kHomeOverviewBodyPadding);
         layout->setSpacing(7);
 
-        auto *summary = new QWidget(this);
-        summary->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
-        summary->setFixedWidth(kOverviewSummaryWidth);
-        auto *summaryLayout = new QVBoxLayout(summary);
+        summary_widget_ = new QWidget(this);
+        summary_widget_->setObjectName(QStringLiteral("temperatureOverviewSummary"));
+        summary_widget_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+        summary_widget_->setFixedWidth(kOverviewControlWidth);
+        summary_widget_->installEventFilter(this);
+        auto *summaryLayout = new QVBoxLayout(summary_widget_);
         summaryLayout->setContentsMargins(0, 0, 0, 0);
-        summaryLayout->setSpacing(4);
+        summaryLayout->setSpacing(kOverviewSummarySpacing);
 
-        channel_button_ = new QToolButton(summary);
+        channel_button_ = new QToolButton(summary_widget_);
         channel_button_->setObjectName(QStringLiteral("temperatureOverviewChannelButton"));
-        channel_button_->setFixedSize(kOverviewControlWidth, kOverviewPillHeight);
+        channel_button_->setFixedWidth(kOverviewControlWidth);
+        channel_button_->setMinimumHeight(kOverviewMinimumPillHeight);
         channel_button_->setPopupMode(QToolButton::InstantPopup);
         channel_button_->setToolButtonStyle(Qt::ToolButtonTextOnly);
         channel_button_->setLayoutDirection(Qt::LeftToRight);
@@ -5499,13 +5545,14 @@ public:
         channel_menu_ = new QMenu(channel_button_);
         channel_menu_->setObjectName(QStringLiteral("temperatureOverviewChannelMenu"));
         channel_menu_->setFixedWidth(kOverviewControlWidth);
-        auto configureChannelMenuAction = [this, kOverviewControlWidth, kOverviewPillHeight](QWidgetAction *action,
-                                                                                              QPushButton *button,
-                                                                                              const QString& text) {
+        connect(channel_menu_, &QMenu::aboutToShow, this, [this]() {
+            updateSummaryControlHeights();
+        });
+        auto configureChannelMenuAction = [this](QWidgetAction *action, QPushButton *button, const QString& text) {
             action->setText(text);
             action->setDefaultWidget(button);
             button->setObjectName(QStringLiteral("temperatureOverviewChannelMenuItem"));
-            button->setFixedSize(kOverviewControlWidth, kOverviewPillHeight);
+            button->setFixedSize(kOverviewControlWidth, kOverviewMinimumPillHeight);
             button->setCursor(Qt::PointingHandCursor);
             button->setFocusPolicy(Qt::NoFocus);
             button->setText(text);
@@ -5535,26 +5582,34 @@ public:
             if (channel_menu_) channel_menu_->hide();
         });
         channel_button_->setMenu(channel_menu_);
-        summaryLayout->addWidget(channel_button_);
+        channel_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+        summaryLayout->addWidget(channel_button_, 1);
 
-        target_temp_value_ = new QLabel(summary);
+        target_temp_value_ = new QLabel(summary_widget_);
         target_temp_value_->setObjectName(QStringLiteral("temperatureOverviewValuePill"));
         target_temp_value_->setAlignment(Qt::AlignCenter);
         target_temp_value_->setWordWrap(false);
-        target_temp_value_->setFixedSize(kOverviewControlWidth, kOverviewPillHeight);
-        target_temp_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        summaryLayout->addWidget(target_temp_value_);
+        target_temp_value_->setFixedWidth(kOverviewControlWidth);
+        target_temp_value_->setMinimumHeight(kOverviewMinimumPillHeight);
+        target_temp_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+        summaryLayout->addWidget(target_temp_value_, 1);
 
-        current_temp_value_ = new QLabel(summary);
+        current_temp_value_ = new QLabel(summary_widget_);
         current_temp_value_->setObjectName(QStringLiteral("temperatureOverviewValuePill"));
         current_temp_value_->setAlignment(Qt::AlignCenter);
         current_temp_value_->setWordWrap(false);
-        current_temp_value_->setFixedSize(kOverviewControlWidth, kOverviewPillHeight);
-        current_temp_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        summaryLayout->addWidget(current_temp_value_);
+        current_temp_value_->setFixedWidth(kOverviewControlWidth);
+        current_temp_value_->setMinimumHeight(kOverviewMinimumPillHeight);
+        current_temp_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+        summaryLayout->addWidget(current_temp_value_, 1);
 
-        output_switch_button_ = new TemperatureOverviewSwitchButton(summary);
-        output_switch_button_->setFixedSize(kOverviewControlWidth, kOverviewOutputPillHeight);
+        output_switch_button_ = new TemperatureOverviewSwitchButton(summary_widget_);
+        output_switch_button_->setFixedWidth(kOverviewControlWidth);
+        output_switch_button_->setMinimumHeight(kOverviewMinimumOutputHeight);
+        output_switch_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+        output_switch_button_->setStyleSheet(QStringLiteral(
+            "QPushButton#temperatureOverviewOutputSwitch { min-height: %1px; max-height: 16777215px; }")
+            .arg(kOverviewMinimumOutputHeight));
         connect(output_switch_button_, &QPushButton::clicked, this, [this]() {
             const bool requested = !output_switch_button_->switchChecked();
             if (output_enabled_callback_)
@@ -5564,8 +5619,7 @@ public:
         });
         summaryLayout->addWidget(output_switch_button_);
 
-        summaryLayout->addStretch(1);
-        layout->addWidget(summary, 0, Qt::AlignTop);
+        layout->addWidget(summary_widget_, 0);
 
         auto *divider = new QFrame(this);
         divider->setObjectName(QStringLiteral("homeOverviewDivider"));
@@ -5588,6 +5642,8 @@ public:
 
         setEnglish(false);
         updateData(VaporView::TemperatureControllerData());
+        updateSummaryControlHeights();
+        scheduleSummaryControlHeightUpdate();
     }
 
     void setEnglish(bool english)
@@ -5632,6 +5688,24 @@ public:
         output_enabled_callback_ = std::move(callback);
     }
 
+protected:
+    void resizeEvent(QResizeEvent *event) override
+    {
+        QWidget::resizeEvent(event);
+        updateSummaryControlHeights();
+        scheduleSummaryControlHeightUpdate();
+    }
+
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (watched == summary_widget_ && event->type() == QEvent::Resize)
+        {
+            scheduleSummaryControlHeightUpdate();
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
+public:
     void updateThemedIcons()
     {
         if (channel_button_)
@@ -5643,9 +5717,64 @@ public:
     }
 
 private:
+    static constexpr int kOverviewControlWidth = 99;
+    static constexpr int kOverviewSummarySpacing = 4;
+    static constexpr int kOverviewMinimumPillHeight = 44;
+    static constexpr int kOverviewMinimumOutputHeight = 56;
+
     quint8 currentChannelNumber() const
     {
         return static_cast<quint8>(currentChannelIndex() + 1);
+    }
+
+    void scheduleSummaryControlHeightUpdate()
+    {
+        if (summary_height_update_pending_)
+        {
+            return;
+        }
+        summary_height_update_pending_ = true;
+        QTimer::singleShot(0, this, [this]() {
+            summary_height_update_pending_ = false;
+            updateSummaryControlHeights();
+        });
+    }
+
+    void updateSummaryControlHeights()
+    {
+        if (!summary_widget_ || !channel_button_)
+        {
+            return;
+        }
+
+        const int channelHeight = channel_button_->height();
+        auto setMenuItemHeight = [](QWidget *widget, const QSize& size) {
+            if (!widget)
+            {
+                return;
+            }
+
+            if (widget->minimumSize() != size || widget->maximumSize() != size || widget->size() != size)
+            {
+                widget->setFixedSize(size);
+                widget->resize(size);
+                widget->updateGeometry();
+            }
+        };
+        setMenuItemHeight(channel_menu_button_1_, QSize(kOverviewControlWidth, channelHeight));
+        setMenuItemHeight(channel_menu_button_2_, QSize(kOverviewControlWidth, channelHeight));
+        if (channel_menu_)
+        {
+            channel_menu_->setFixedWidth(kOverviewControlWidth);
+            const QString menuStyle = QStringLiteral(
+                "QMenu#temperatureOverviewChannelMenu::item { min-height: %1px; max-height: %1px; padding: 0px; margin: 0px; }"
+                "QPushButton#temperatureOverviewChannelMenuItem { min-height: %1px; max-height: %1px; }")
+                .arg(channelHeight);
+            if (channel_menu_->styleSheet() != menuStyle)
+            {
+                channel_menu_->setStyleSheet(menuStyle);
+            }
+        }
     }
 
     int currentChannelIndex() const
@@ -5742,6 +5871,7 @@ private:
     }
 
     QToolButton *channel_button_ = nullptr;
+    QWidget *summary_widget_ = nullptr;
     QMenu *channel_menu_ = nullptr;
     QAction *channel_action_1_ = nullptr;
     QAction *channel_action_2_ = nullptr;
@@ -5755,6 +5885,7 @@ private:
     std::array<QVector<double>, 2> measured_temperature_history_{};
     std::function<void(quint8, bool)> output_enabled_callback_;
     int selected_channel_index_ = 0;
+    bool summary_height_update_pending_ = false;
     bool is_english_ = false;
 };
 
@@ -7256,16 +7387,16 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#homeTelemetrySummaryNameLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 700; }"
             "QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 600; }"
             "QLabel#homeTelemetrySummaryTitleLabel[skyTelemetryTitle=\"true\"] { color: @vv-primary; }"
-            "QLabel#temperatureOverviewValuePill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 11px; font-weight: 700; padding: 2px 3px; margin: 0px; }"
-            "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; min-height: 56px; max-height: 56px; padding: 0px; margin: 0px; color: @vv-text; font-size: 13px; font-weight: 700; }"
+            "QLabel#temperatureOverviewValuePill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; padding: 2px 3px; margin: 0px; }"
+            "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; padding: 0px; margin: 0px; color: @vv-text; font-size: 13px; font-weight: 700; }"
             "QToolButton#temperatureOverviewChannelButton { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-primary; font-size: 13px; font-weight: 700; padding: 1px 0px; text-align: center; }"
             "QToolButton#temperatureOverviewChannelButton[available=\"false\"] { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }"
             "QToolButton#temperatureOverviewChannelButton:hover, QToolButton#temperatureOverviewChannelButton:pressed { background-color: @vv-surface; border-color: @vv-border-strong; }"
             "QToolButton#temperatureOverviewChannelButton[available=\"false\"]:hover, QToolButton#temperatureOverviewChannelButton[available=\"false\"]:pressed { background-color: @vv-surface-alt; border-color: @vv-border; }"
             "QToolButton#temperatureOverviewChannelButton::menu-indicator { image: url(combo_arrow_down.xpm); width: 12px; height: 8px; subcontrol-origin: padding; subcontrol-position: center right; right: 8px; }"
             "QMenu#temperatureOverviewChannelMenu { padding: 0px; }"
-            "QMenu#temperatureOverviewChannelMenu::item { min-width: 99px; max-width: 99px; min-height: 40px; max-height: 40px; padding: 9px 0px; margin: 0px; }"
-            "QPushButton#temperatureOverviewChannelMenuItem { background-color: transparent; border: none; border-radius: 8px; color: @vv-text; font-size: 13px; font-weight: 700; min-width: 99px; max-width: 99px; min-height: 40px; max-height: 40px; padding: 0px; margin: 0px; }"
+            "QMenu#temperatureOverviewChannelMenu::item { min-width: 99px; max-width: 99px; padding: 0px; margin: 0px; }"
+            "QPushButton#temperatureOverviewChannelMenuItem { background-color: transparent; border: none; border-radius: 8px; color: @vv-text; font-size: 13px; font-weight: 700; min-width: 99px; max-width: 99px; padding: 0px; margin: 0px; }"
             "QPushButton#temperatureOverviewChannelMenuItem:hover, QPushButton#temperatureOverviewChannelMenuItem:pressed, QPushButton#temperatureOverviewChannelMenuItem[selected=\"true\"] { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "QFrame#homeOverviewDivider { background-color: @vv-border; border: none; min-width: 1px; max-width: 1px; }"
             "QLabel#epsilonSectionLabel { color: @vv-text; background-color: @vv-surface-alt; border: none; border-right: 1px solid @vv-border; font-size: 14px; font-weight: 700; padding: 2px; }"

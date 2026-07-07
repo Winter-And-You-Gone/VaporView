@@ -1504,6 +1504,36 @@ int main(int argc, char **argv)
             "temperature overview output enable capsule exists");
     require(!temperatureOutputSwitch->isEnabled(),
             "temperature overview output enable capsule is disabled without controller data");
+    auto *temperatureOverviewSummary =
+        window.findChild<QWidget *>(QStringLiteral("temperatureOverviewSummary"));
+    require(temperatureOverviewSummary != nullptr,
+            "temperature overview summary column exists");
+    require(temperatureOverviewSummary->layout() != nullptr,
+            "temperature overview summary column has a layout");
+    processEventsFor(50);
+    activateLayouts(&window);
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QLabel#temperatureOverviewValuePill {"),
+                                 QStringLiteral("font-size: 13px"),
+                                 "temperature overview value pill font matches the other capsules");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QPushButton#temperatureOverviewOutputSwitch {"),
+                                 QStringLiteral("font-size: 13px"),
+                                 "temperature overview output switch font matches the other capsules");
+    const int temperatureSummarySpacing = temperatureOverviewSummary->layout()->spacing();
+    int temperatureSummaryControlHeight =
+        temperatureChannelButton->height() + temperatureOutputSwitch->height() +
+        temperatureSummarySpacing * 3;
+    for (QLabel *pill : temperatureValuePills)
+    {
+        temperatureSummaryControlHeight += pill->height();
+        require(pill->height() >= 44,
+                "temperature overview value capsules are taller than the old compact pills");
+    }
+    require(temperatureOutputSwitch->height() >= 56,
+            "temperature overview output enable capsule keeps enough height for its two-row switch");
+    require(std::abs(temperatureSummaryControlHeight - temperatureOverviewSummary->height()) <= 2,
+            "temperature overview summary capsules fill the available card body height");
 
     const QList<QFrame*> homeTelemetryPills =
         deviceOverviewCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
@@ -1767,6 +1797,11 @@ int main(int argc, char **argv)
         require(plot->property("yAxisMinC").toDouble() == 20.0 &&
                     plot->property("yAxisMaxC").toDouble() == 25.0,
                 "temperature trend plot keeps the default 20-25 C axis range for in-range samples");
+        require(plot->property("axisLabelsVisible").toBool(),
+                "temperature trend plot exposes visible axis labels");
+        require(plot->property("yAxisTickCount").toInt() == 5 &&
+                    plot->property("xAxisTickCount").toInt() == 5,
+                "temperature trend plot shows numeric ticks on both axes");
     }
 
     validTemperatureData.channels[0].measured_temperature_c = 12.0;

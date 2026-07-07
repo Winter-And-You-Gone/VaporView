@@ -465,7 +465,7 @@ QLabel#temperatureOverviewValuePill {
     border-radius: 10px;
     color: @vv-text-strong;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 700;
     padding: 2px 3px;
     margin: 0px;
@@ -474,8 +474,6 @@ QLabel#temperatureOverviewValuePill {
 QPushButton#temperatureOverviewOutputSwitch {
     background-color: transparent;
     border: none;
-    min-height: 56px;
-    max-height: 56px;
     padding: 0px;
     margin: 0px;
     color: @vv-text;
@@ -528,9 +526,7 @@ QMenu#temperatureOverviewChannelMenu {
 QMenu#temperatureOverviewChannelMenu::item {
     min-width: 99px;
     max-width: 99px;
-    min-height: 40px;
-    max-height: 40px;
-    padding: 9px 0px;
+    padding: 0px;
     margin: 0px;
 }
 
@@ -543,8 +539,6 @@ QPushButton#temperatureOverviewChannelMenuItem {
     font-weight: 700;
     min-width: 99px;
     max-width: 99px;
-    min-height: 40px;
-    max-height: 40px;
     padding: 0px;
     margin: 0px;
 }
