@@ -1,6 +1,7 @@
 #include "map3d/Map3DWindow.h"
 
 #include "AppTheme.h"
+#include "SingleLevelPopupMenu.h"
 #include "geo/SessionTrackReader.h"
 #include "geo/TrajectoryQuality.h"
 #include "map3d/OsgEarthViewWidget.h"
@@ -24,6 +25,7 @@
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QWidgetAction>
 
 #include <algorithm>
 #include <cmath>
@@ -141,6 +143,20 @@ QString imageryOptionLabel(const LocalImageryOption& option)
     return QStringLiteral("%1 - %2")
         .arg(option.label,
              option.available ? QStringLiteral("available") : QStringLiteral("missing VRT/template"));
+}
+
+void configureMenuRow(VaporView::SingleLevelPopupMenuRow* row, int minimumWidth = 250)
+{
+    if (!row)
+    {
+        return;
+    }
+    row->setTextAlignment(VaporView::SingleLevelPopupTextAlignment::Left);
+    row->setHorizontalPadding(18, 14);
+    row->setRowSpacing(6);
+    row->setCheckSlotWidth(0);
+    row->setRowHeight(34);
+    row->setMinimumRowWidth(minimumWidth);
 }
 
 int sanitizeMaxVisibleSamples(int value)
@@ -368,7 +384,12 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     QAction* loadEarthAction = toolbar->addAction(QStringLiteral("加载 Earth 文件"));
     connect(loadEarthAction, &QAction::triggered, this, &Map3DWindow::openEarthFile);
 
-    local_imagery_menu_ = new QMenu(QStringLiteral("本地影像"), this);
+    local_imagery_menu_ = new VaporView::SingleLevelPopupMenu(this);
+    local_imagery_menu_->setTitle(QStringLiteral("本地影像"));
+    local_imagery_menu_->setObjectName(QStringLiteral("map3DLocalImageryMenu"));
+    local_imagery_menu_->setPanelPadding(6);
+    local_imagery_menu_->setCornerRadius(8);
+    local_imagery_menu_->refreshTheme();
     local_imagery_action_ = toolbar->addAction(QStringLiteral("本地影像"));
     local_imagery_action_->setObjectName(QStringLiteral("map3DLocalImageryAction"));
     local_imagery_action_->setMenu(local_imagery_menu_);
@@ -1109,7 +1130,15 @@ void Map3DWindow::setMapSelection(const MapDataSelection& selection)
         local_imagery_menu_->clear();
         for (const LocalImageryOption& option : map_selection_.diagnostics.localImageryOptions)
         {
-            QAction* action = local_imagery_menu_->addAction(imageryOptionLabel(option));
+            auto* row = new VaporView::SingleLevelPopupMenuRow(local_imagery_menu_);
+            row->setText(imageryOptionLabel(option));
+            configureMenuRow(row);
+            row->setEnabled(option.available);
+            row->setToolTip(QStringLiteral("%1\nVRT: %2\nEarth: %3")
+                                .arg(option.available ? QStringLiteral("可加载") : QStringLiteral("缺少本地 VRT 或 earth 模板"),
+                                     option.vrtPath,
+                                     option.earthFilePath));
+            QWidgetAction* action = local_imagery_menu_->addRow(row);
             action->setObjectName(QStringLiteral("map3DLocalImagery_%1").arg(option.key));
             action->setEnabled(option.available);
             action->setToolTip(QStringLiteral("%1\nVRT: %2\nEarth: %3")

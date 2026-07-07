@@ -14,11 +14,12 @@ class QAction;
 class QComboBox;
 class QDialog;
 class QLabel;
-class QMenu;
 class QPlainTextEdit;
 class QSlider;
 class QSpinBox;
 class QTimer;
+
+namespace VaporView { class SingleLevelPopupMenu; }
 
 namespace VaporView::Map3D {
 
@@ -88,7 +89,7 @@ private:
     QAction* clear_local_3d_tiles_action_ = nullptr;
     QAction* load_aircraft_model_action_ = nullptr;
     QAction* reset_aircraft_model_action_ = nullptr;
-    QMenu* local_imagery_menu_ = nullptr;
+    VaporView::SingleLevelPopupMenu* local_imagery_menu_ = nullptr;
     QAction* replay_action_ = nullptr;
     QAction* replay_stop_action_ = nullptr;
     QSlider* replay_slider_ = nullptr;

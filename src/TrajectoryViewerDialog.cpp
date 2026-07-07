@@ -1,6 +1,7 @@
 #include "AppTheme.h"
 #include "TrajectoryViewerDialog.h"
 #include "CustomTitleBar.h"
+#include "SingleLevelPopupMenu.h"
 
 #include <QApplication>
 #include <QAction>
@@ -70,6 +71,9 @@ using VaporView::appThemeColorName;
 using VaporView::configureComboBoxPopup;
 using VaporView::isDarkThemeEnabled;
 using VaporView::isDarkThemePalette;
+using VaporView::SingleLevelPopupMenu;
+using VaporView::SingleLevelPopupMenuRow;
+using VaporView::SingleLevelPopupTextAlignment;
 
 namespace
 {
@@ -451,6 +455,11 @@ QIcon createTitleBarIcon(const QString& iconName, bool dark)
     return createLucideIcon(iconName, dark
         ? appThemeColor(AppThemeColor::TextTitle, true)
         : appThemeColor(AppThemeColor::TextStrong, false));
+}
+
+QIcon createMenuCheckIcon(bool dark)
+{
+    return createLucideIcon(QStringLiteral("check"), appThemeColor(AppThemeColor::MenuCheckText, dark));
 }
 
 QColor defaultTrackColor()
@@ -2923,13 +2932,13 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , point_size_slider_(new QSlider(Qt::Horizontal, this))
     , heat_palette_card_(new QFrame(this))
     , heat_metric_button_(new QToolButton(this))
-    , heat_metric_menu_(new QMenu(this))
+    , heat_metric_menu_(new SingleLevelPopupMenu(this))
     , heat_gradient_bar_(new HeatGradientBarWidget(this))
     , heat_min_label_(new QLabel(this))
     , heat_mid_label_(new QLabel(this))
     , heat_max_label_(new QLabel(this))
     , heat_palette_button_(new QToolButton(this))
-    , heat_palette_menu_(new QMenu(this))
+    , heat_palette_menu_(new SingleLevelPopupMenu(this))
     , map_tools_card_(new QFrame(this))
     , point_detail_card_(new QFrame(this))
     , filter_current_point_button_(new QToolButton(this))
@@ -3180,9 +3189,9 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
         ? QStringLiteral("Choose the peak heatmap color ramp.")
         : QStringLiteral("选择峰值热力图色带。"));
     heat_palette_menu_->setObjectName(QStringLiteral("trajectoryHeatPaletteMenu"));
-    heat_palette_menu_->setAttribute(Qt::WA_TranslucentBackground, true);
-    heat_palette_menu_->setWindowFlag(Qt::FramelessWindowHint, true);
-    heat_palette_menu_->setWindowFlag(Qt::NoDropShadowWindowHint, true);
+    heat_palette_menu_->setPanelPadding(6);
+    heat_palette_menu_->setCornerRadius(8);
+    heat_palette_menu_->refreshTheme();
     heat_palette_button_->setMenu(heat_palette_menu_);
 
     heat_palette_card_->setObjectName(QStringLiteral("trajectoryHeatLegendCard"));
@@ -3199,9 +3208,9 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     heat_metric_button_->setIconSize(QSize(14, 14));
     heat_metric_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     heat_metric_menu_->setObjectName(QStringLiteral("trajectoryHeatMetricMenu"));
-    heat_metric_menu_->setAttribute(Qt::WA_TranslucentBackground, true);
-    heat_metric_menu_->setWindowFlag(Qt::FramelessWindowHint, true);
-    heat_metric_menu_->setWindowFlag(Qt::NoDropShadowWindowHint, true);
+    heat_metric_menu_->setPanelPadding(6);
+    heat_metric_menu_->setCornerRadius(8);
+    heat_metric_menu_->refreshTheme();
     heat_metric_button_->setMenu(heat_metric_menu_);
     for (auto *label : {heat_min_label_, heat_mid_label_, heat_max_label_})
     {
@@ -3562,12 +3571,6 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QToolButton#trajectoryHeatPaletteButton { background-color: transparent; border: none; border-radius: 4px; color: @vv-text; min-width: 28px; max-width: 28px; min-height: 24px; max-height: 24px; padding: 0px; }"
         "QDialog#trajectoryViewerDialog QToolButton#trajectoryHeatPaletteButton:hover, QDialog#trajectoryViewerDialog QToolButton#trajectoryHeatPaletteButton:focus { background-color: @vv-title-hover; border: none; }"
         "QDialog#trajectoryViewerDialog QToolButton#trajectoryHeatPaletteButton::menu-indicator { image: none; width: 0px; }"
-        "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatPaletteMenu { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; padding: 4px; margin: 0px; }"
-        "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatPaletteMenu::item { background-color: transparent; border-radius: 4px; padding: 6px 18px; }"
-        "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatPaletteMenu::item:selected { background-color: @vv-primary-subtle; color: @vv-primary; }"
-        "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatMetricMenu { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; padding: 4px; margin: 0px; }"
-        "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatMetricMenu::item { background-color: transparent; border-radius: 4px; padding: 6px 18px; }"
-        "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatMetricMenu::item:selected { background-color: @vv-primary-subtle; color: @vv-primary; }"
         "QDialog#trajectoryViewerDialog QToolButton#titleBarButton { background-color: transparent; border: none; border-radius: 6px; padding: 0px; margin: 0px; }"
         "QDialog#trajectoryViewerDialog QToolButton#titleBarButton:hover, QDialog#trajectoryViewerDialog QToolButton#titleBarButton:focus { background-color: @vv-title-hover; border: none; }"
         "QDialog#trajectoryViewerDialog QToolButton#titleBarButton::menu-indicator { image: none; width: 0px; height: 0px; }"),
@@ -4344,10 +4347,22 @@ void TrajectoryViewerDialog::updateHeatMetricCombo()
     const HeatMetric currentMetric = static_cast<TrajectoryMapWidget*>(map_widget_)->heatMetric();
     QSignalBlocker blocker(heat_metric_menu_);
     heat_metric_menu_->clear();
+    const QIcon checkIcon = createMenuCheckIcon(isDarkThemeEnabled());
     for (int index = 0; index < 4; ++index)
     {
         const HeatMetric metric = heatMetricFromComboIndex(index);
-        QAction *action = heat_metric_menu_->addAction(heatMetricName(metric, is_english_));
+        auto *row = new SingleLevelPopupMenuRow(heat_metric_menu_);
+        row->setText(heatMetricName(metric, is_english_));
+        row->setTextAlignment(SingleLevelPopupTextAlignment::Left);
+        row->setHorizontalPadding(18, 14);
+        row->setRowSpacing(6);
+        row->setCheckSlotWidth(18);
+        row->setCheckIconSize(QSize(16, 16));
+        row->setRowHeight(32);
+        row->setMinimumRowWidth(132);
+        row->setCheckIcon(checkIcon);
+        row->setChecked(metric == currentMetric);
+        QAction *action = heat_metric_menu_->addRow(row);
         action->setData(index);
         action->setCheckable(true);
         action->setChecked(metric == currentMetric);
@@ -4505,9 +4520,21 @@ void TrajectoryViewerDialog::updateTexts()
         heat_palette_menu_->clear();
         const HeatPalette palette = static_cast<TrajectoryMapWidget*>(map_widget_)->heatPalette();
         const int currentIndex = heatPaletteComboIndex(palette);
+        const QIcon checkIcon = createMenuCheckIcon(isDarkThemeEnabled());
         for (int index = 0; index < kHeatPaletteCount; ++index)
         {
-            QAction *action = heat_palette_menu_->addAction(heatPaletteName(heatPaletteFromComboIndex(index), is_english_));
+            auto *row = new SingleLevelPopupMenuRow(heat_palette_menu_);
+            row->setText(heatPaletteName(heatPaletteFromComboIndex(index), is_english_));
+            row->setTextAlignment(SingleLevelPopupTextAlignment::Left);
+            row->setHorizontalPadding(18, 14);
+            row->setRowSpacing(6);
+            row->setCheckSlotWidth(18);
+            row->setCheckIconSize(QSize(16, 16));
+            row->setRowHeight(32);
+            row->setMinimumRowWidth(150);
+            row->setCheckIcon(checkIcon);
+            row->setChecked(index == currentIndex);
+            QAction *action = heat_palette_menu_->addRow(row);
             action->setData(index);
             action->setCheckable(true);
             action->setChecked(index == currentIndex);

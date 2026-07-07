@@ -2,6 +2,7 @@
 #include "MainWindow.h"
 #include "RawDataParserWindow.h"
 #include "SessionViewerWindow.h"
+#include "SingleLevelPopupMenu.h"
 #include "TrajectoryViewerDialog.h"
 
 #include <QAbstractItemView>
@@ -682,10 +683,10 @@ void testTrajectoryViewerUsesSidebarLayout()
     auto *mapToolsCard = dialog.findChild<QFrame *>(QStringLiteral("trajectoryMapToolsCard"));
     auto *pointDetailCard = dialog.findChild<QFrame *>(QStringLiteral("trajectoryPointDetailCard"));
     auto *heatMetricButton = dialog.findChild<QToolButton *>(QStringLiteral("trajectoryHeatMetricButton"));
-    auto *heatMetricMenu = dialog.findChild<QMenu *>(QStringLiteral("trajectoryHeatMetricMenu"));
+    auto *heatMetricMenu = dialog.findChild<VaporView::SingleLevelPopupMenu *>(QStringLiteral("trajectoryHeatMetricMenu"));
     auto *heatGradientBar = dialog.findChild<QWidget *>(QStringLiteral("trajectoryHeatGradientBar"));
     auto *heatPaletteButton = dialog.findChild<QToolButton *>(QStringLiteral("trajectoryHeatPaletteButton"));
-    auto *heatPaletteMenu = dialog.findChild<QMenu *>(QStringLiteral("trajectoryHeatPaletteMenu"));
+    auto *heatPaletteMenu = dialog.findChild<VaporView::SingleLevelPopupMenu *>(QStringLiteral("trajectoryHeatPaletteMenu"));
     auto *pointDetailCloseButton = dialog.findChild<QToolButton *>(QStringLiteral("trajectoryPointDetailCloseButton"));
     auto *filterCard = dialog.findChild<QFrame *>(QStringLiteral("trajectoryFilterCard"));
     auto *filterTitle = dialog.findChild<QLabel *>(QStringLiteral("trajectoryFilterTitle"));
@@ -876,18 +877,41 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(heatPaletteButton->arrowType() == Qt::NoArrow && !heatPaletteButton->icon().isNull(),
             "heat palette button uses a single lucide chevron affordance");
     require(heatPaletteMenu->testAttribute(Qt::WA_TranslucentBackground),
-            "heat palette menu uses a transparent popup background for rounded corners");
-    require(heatPaletteMenu->windowFlags().testFlag(Qt::FramelessWindowHint)
-                && heatPaletteMenu->windowFlags().testFlag(Qt::NoDropShadowWindowHint),
-            "heat palette menu avoids native popup chrome around rounded corners");
+            "heat palette menu uses the shared translucent popup background for rounded corners");
+    require(heatPaletteMenu->cornerRadius() == 8 && heatPaletteMenu->panelPadding() == 6,
+            "heat palette menu uses the shared single-level popup chrome");
     require(heatPaletteMenu->actions().size() == 3, "heat palette menu exposes the curated vivid ramps");
     require(heatMetricMenu->actions().size() == 4, "heat metric selector exposes peak, humidity, temperature, and pressure");
     require(heatMetricButton->arrowType() == Qt::NoArrow && !heatMetricButton->icon().isNull(),
             "heat metric button uses the same lucide chevron affordance as the heat palette selector");
-    for (QAction *action : heatPaletteMenu->actions())
+    bool foundCheckedHeatPaletteRow = false;
+    for (VaporView::SingleLevelPopupMenuRow *row : heatPaletteMenu->rows())
     {
-        require(action != nullptr && !action->text().trimmed().isEmpty(), "heat palette menu text is visible");
+        require(row != nullptr && !row->text().trimmed().isEmpty(), "heat palette menu text is visible");
+        require(row->property("textAlignment").toString() == QStringLiteral("left"),
+                "heat palette menu rows use the shared left-aligned selector layout");
+        if (row->isChecked())
+        {
+            foundCheckedHeatPaletteRow = true;
+            require(row->property("hasCheckIcon").toBool(),
+                    "selected heat palette row shows the shared check indicator");
+        }
     }
+    require(foundCheckedHeatPaletteRow, "heat palette menu marks the selected ramp");
+    bool foundCheckedHeatMetricRow = false;
+    for (VaporView::SingleLevelPopupMenuRow *row : heatMetricMenu->rows())
+    {
+        require(row != nullptr && !row->text().trimmed().isEmpty(), "heat metric menu text is visible");
+        require(row->property("textAlignment").toString() == QStringLiteral("left"),
+                "heat metric menu rows use the shared left-aligned selector layout");
+        if (row->isChecked())
+        {
+            foundCheckedHeatMetricRow = true;
+            require(row->property("hasCheckIcon").toBool(),
+                    "selected heat metric row shows the shared check indicator");
+        }
+    }
+    require(foundCheckedHeatMetricRow, "heat metric menu marks the selected metric");
     require(map->isAncestorOf(heatLegendCard), "heat legend card floats inside the map");
     require(heatLegendCard->isAncestorOf(heatPaletteButton), "heat palette control is inside floating heat legend");
     require(!sidebar->isAncestorOf(heatPaletteButton), "heat palette control is no longer in sidebar");
@@ -1026,16 +1050,12 @@ void testTrajectoryViewerUsesSidebarLayout()
             "trajectory viewer stylesheet renders the heat palette as an arrow-only selector");
     require(styleSheet.contains(QStringLiteral("QToolButton#trajectoryHeatPaletteButton::menu-indicator")),
             "trajectory viewer stylesheet hides the native menu indicator");
-    require(styleSheet.contains(QStringLiteral("QMenu#trajectoryHeatPaletteMenu")),
-            "trajectory viewer stylesheet includes heat palette popup menu styling");
-    require(styleSheet.contains(QStringLiteral("QMenu#trajectoryHeatPaletteMenu"))
-                && styleSheet.contains(QStringLiteral("border-radius: 6px"))
-                && styleSheet.contains(QStringLiteral("margin: 0px")),
-            "heat palette popup menu keeps rounded corners flush with the transparent popup");
+    require(!styleSheet.contains(QStringLiteral("QMenu#trajectoryHeatPaletteMenu")),
+            "trajectory viewer stylesheet leaves heat palette popup chrome to SingleLevelPopupMenu");
     require(styleSheet.contains(QStringLiteral("QToolButton#trajectoryHeatMetricButton")),
             "trajectory viewer stylesheet renders the heat metric as a menu button");
-    require(styleSheet.contains(QStringLiteral("QMenu#trajectoryHeatMetricMenu")),
-            "trajectory viewer stylesheet reuses menu styling for the heat metric popup");
+    require(!styleSheet.contains(QStringLiteral("QMenu#trajectoryHeatMetricMenu")),
+            "trajectory viewer stylesheet leaves heat metric popup chrome to SingleLevelPopupMenu");
     require(styleSheet.contains(QStringLiteral("QFrame#trajectoryViewerMapPanel")),
             "trajectory viewer stylesheet includes rounded map panel styling");
 

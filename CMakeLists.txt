@@ -134,7 +134,9 @@ target_link_libraries(vaporview_protocol PUBLIC
 
 add_library(vaporview_app_theme STATIC
     src/AppTheme.cpp
+    src/SingleLevelPopupMenu.cpp
     include/AppTheme.h
+    include/SingleLevelPopupMenu.h
 )
 
 target_include_directories(vaporview_app_theme PUBLIC
@@ -454,7 +456,6 @@ target_link_libraries(vaporview_sky_tui PUBLIC
 
 set(NAV_WINDOW_SOURCES
     src/MainWindow.cpp
-    src/SingleLevelPopupMenu.cpp
     src/GroundTelemetryService.cpp
     src/SkyDeviceConfigDialog.cpp
     src/TcpWavePanel.cpp
@@ -475,8 +476,8 @@ set(NAV_SOURCES
 
 set(NAV_HEADERS
     include/AppTheme.h
-    include/MainWindow.h
     include/SingleLevelPopupMenu.h
+    include/MainWindow.h
     include/GroundTelemetryService.h
     include/SkyDeviceConfigDialog.h
     include/TcpWavePanel.h

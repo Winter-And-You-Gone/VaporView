@@ -20,6 +20,8 @@ class QSlider;
 class QPushButton;
 class QVBoxLayout;
 
+namespace VaporView { class SingleLevelPopupMenu; }
+
 class TrajectoryViewerDialog : public QDialog
 {
     Q_OBJECT
@@ -111,13 +113,13 @@ private:
     QSlider *point_size_slider_;
     QFrame *heat_palette_card_;
     QToolButton *heat_metric_button_;
-    QMenu *heat_metric_menu_;
+    VaporView::SingleLevelPopupMenu *heat_metric_menu_;
     QWidget *heat_gradient_bar_;
     QLabel *heat_min_label_;
     QLabel *heat_mid_label_;
     QLabel *heat_max_label_;
     QToolButton *heat_palette_button_;
-    QMenu *heat_palette_menu_;
+    VaporView::SingleLevelPopupMenu *heat_palette_menu_;
     QFrame *map_tools_card_;
     QFrame *point_detail_card_;
     QToolButton *filter_current_point_button_;

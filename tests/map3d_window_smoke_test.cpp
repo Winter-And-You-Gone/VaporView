@@ -1,5 +1,6 @@
 #include "geo/GeoTypes.h"
 #include "map3d/Map3DWindow.h"
+#include "SingleLevelPopupMenu.h"
 
 #include <QAbstractItemView>
 #include <QAction>
@@ -10,7 +11,6 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QLabel>
-#include <QMenu>
 #include <QPlainTextEdit>
 #include <QSettings>
 #include <QSlider>
@@ -125,6 +125,8 @@ int main(int argc, char** argv)
     require(resetViewAction->isEnabled(), "reset view action exists");
     require(diagnosticsAction->isEnabled(), "diagnostics action exists");
     require(localImageryAction->menu() != nullptr, "local imagery action has a menu");
+    require(qobject_cast<VaporView::SingleLevelPopupMenu*>(localImageryAction->menu()) != nullptr,
+            "local imagery action uses the shared single-level popup menu");
     require(!localImageryAction->isEnabled(), "local imagery action starts disabled without local imagery VRTs");
     require(!local3DTilesAction->isEnabled(), "local 3D Tiles action starts disabled without a valid local tileset");
     require(!clearLocal3DTilesAction->isEnabled(), "clear local 3D Tiles action starts disabled before preview load");
