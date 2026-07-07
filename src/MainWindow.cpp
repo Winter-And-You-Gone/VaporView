@@ -7,6 +7,7 @@
 #include "RtkConfigDialog.h"
 #include "SessionViewerWindow.h"
 #include "SkyDeviceConfigDialog.h"
+#include "SingleLevelPopupMenu.h"
 #include "TcpWaveEncoding.h"
 #include "TcpWavePanel.h"
 #include "VisualTextLabel.h"
@@ -79,7 +80,6 @@
 #include <QSettings>
 #include <QStackedWidget>
 #include <QStyle>
-#include <QStyleOptionButton>
 #include <QStyleOptionToolButton>
 #include <QThread>
 #include <QToolButton>
@@ -117,6 +117,10 @@ using VaporView::appThemePalette;
 using VaporView::appThemeRgba;
 using VaporView::applyAppThemeTokens;
 using VaporView::kAppDarkThemeProperty;
+using VaporView::SingleLevelPopupAnchor;
+using VaporView::SingleLevelPopupMenu;
+using VaporView::SingleLevelPopupMenuRow;
+using VaporView::SingleLevelPopupTextAlignment;
 
 namespace
 {
@@ -5625,48 +5629,6 @@ protected:
     }
 };
 
-class TemperatureOverviewChannelMenuButton final : public QPushButton
-{
-public:
-    explicit TemperatureOverviewChannelMenuButton(QWidget *parent = nullptr)
-        : QPushButton(parent)
-    {
-        setProperty("textAlignment", QStringLiteral("center"));
-        setProperty("checkIconAlignment", QStringLiteral("right"));
-    }
-
-protected:
-    void paintEvent(QPaintEvent *event) override
-    {
-        Q_UNUSED(event);
-
-        QPainter painter(this);
-        QStyleOptionButton option;
-        initStyleOption(&option);
-        option.text.clear();
-        option.icon = QIcon();
-        style()->drawControl(QStyle::CE_PushButton, &option, &painter, this);
-
-        painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.setPen(palette().color(QPalette::ButtonText));
-        QFont textFont = font();
-        textFont.setWeight(QFont::DemiBold);
-        painter.setFont(textFont);
-        painter.drawText(rect().adjusted(20, 0, -20, 0), Qt::AlignCenter, text());
-
-        const QIcon currentIcon = icon();
-        if (!currentIcon.isNull())
-        {
-            const QSize size = iconSize().isValid() ? iconSize() : QSize(14, 14);
-            const QRect iconRect(width() - size.width() - 10,
-                                 (height() - size.height()) / 2,
-                                 size.width(),
-                                 size.height());
-            currentIcon.paint(&painter, iconRect, Qt::AlignCenter, isEnabled() ? QIcon::Normal : QIcon::Disabled);
-        }
-    }
-};
-
 class TemperatureControllerOverviewPanel : public QWidget
 {
 public:
@@ -5702,46 +5664,46 @@ public:
         channel_button_->setIconSize(QSize(14, 14));
         channel_button_->setFocusPolicy(Qt::StrongFocus);
         channel_button_->setCursor(Qt::PointingHandCursor);
-        channel_menu_ = new QMenu(channel_button_);
+        channel_menu_ = new SingleLevelPopupMenu(channel_button_);
         channel_menu_->setObjectName(QStringLiteral("temperatureOverviewChannelMenu"));
         channel_menu_->setFixedWidth(kOverviewControlWidth);
-        channel_menu_->setAttribute(Qt::WA_TranslucentBackground, true);
-        channel_menu_->setAttribute(Qt::WA_StyledBackground, true);
-        channel_menu_->setWindowFlag(Qt::NoDropShadowWindowHint, true);
+        channel_menu_->setPanelPadding(kOverviewMenuPadding);
+        channel_menu_->setCornerRadius(kOverviewMenuCornerRadius);
+        channel_menu_->refreshTheme();
         connect(channel_menu_, &QMenu::aboutToShow, this, [this]() {
             updateSummaryControlHeights();
-            applyChannelMenuRoundedMask();
+            if (channel_menu_) channel_menu_->applyRoundedMask();
         });
         connect(channel_button_, &QToolButton::clicked, this, [this]() {
             popupChannelMenu();
         });
-        auto configureChannelMenuAction = [this](QWidgetAction *action, QPushButton *button, const QString& text) {
+        auto configureChannelMenuAction = [this](SingleLevelPopupMenuRow *row, const QString& text) {
+            QFont rowFont = row->font();
+            rowFont.setWeight(QFont::DemiBold);
+            row->setFont(rowFont);
+            row->setTextAlignment(SingleLevelPopupTextAlignment::Center);
+            row->setCheckSlotWidth(18);
+            row->setCheckIconSize(QSize(14, 14));
+            row->setHorizontalPadding(12, 10);
+            row->setRowSpacing(4);
+            row->setRowHeight(kOverviewChannelHeight);
+            row->setMinimumRowWidth(kOverviewMenuItemWidth);
+            row->setFixedSize(kOverviewMenuItemWidth, kOverviewChannelHeight);
+            row->setCursor(Qt::PointingHandCursor);
+            row->setFocusPolicy(Qt::NoFocus);
+            row->setText(text);
+            QWidgetAction *action = channel_menu_->addRow(row);
             action->setText(text);
-            action->setDefaultWidget(button);
-            button->setObjectName(QStringLiteral("temperatureOverviewChannelMenuItem"));
-            button->setFixedSize(kOverviewMenuItemWidth, kOverviewChannelHeight);
-            button->setCursor(Qt::PointingHandCursor);
-            button->setFocusPolicy(Qt::NoFocus);
-            button->setText(text);
-            button->setFlat(true);
-            button->setLayoutDirection(Qt::RightToLeft);
-            button->setIconSize(QSize(14, 14));
-            channel_menu_->addAction(action);
+            return action;
         };
-        auto *channelWidgetAction1 = new QWidgetAction(channel_menu_);
-        auto *channelWidgetAction2 = new QWidgetAction(channel_menu_);
-        channel_menu_button_1_ = new TemperatureOverviewChannelMenuButton(channel_menu_);
-        channel_menu_button_2_ = new TemperatureOverviewChannelMenuButton(channel_menu_);
-        configureChannelMenuAction(channelWidgetAction1, channel_menu_button_1_, QStringLiteral("通道1"));
-        configureChannelMenuAction(channelWidgetAction2, channel_menu_button_2_, QStringLiteral("通道2"));
-        channel_action_1_ = channelWidgetAction1;
-        channel_action_2_ = channelWidgetAction2;
+        channel_menu_row_1_ = new SingleLevelPopupMenuRow(channel_menu_);
+        channel_menu_row_2_ = new SingleLevelPopupMenuRow(channel_menu_);
+        channel_action_1_ = configureChannelMenuAction(channel_menu_row_1_, QStringLiteral("通道1"));
+        channel_action_2_ = configureChannelMenuAction(channel_menu_row_2_, QStringLiteral("通道2"));
         for (QAction *action : {channel_action_1_, channel_action_2_})
         {
             action->setCheckable(true);
         }
-        connect(channel_menu_button_1_, &QPushButton::clicked, channel_action_1_, &QAction::trigger);
-        connect(channel_menu_button_2_, &QPushButton::clicked, channel_action_2_, &QAction::trigger);
         connect(channel_action_1_, &QAction::triggered, this, [this]() {
             selectChannel(0);
             if (channel_menu_) channel_menu_->hide();
@@ -5888,13 +5850,14 @@ public:
                                                       toolbarColor(AppThemeColor::ToolbarBlue)));
             channel_button_->setIconSize(QSize(14, 14));
         }
-        syncChannelMenuButton(channel_menu_button_1_, channel_action_1_);
-        syncChannelMenuButton(channel_menu_button_2_, channel_action_2_);
+        syncChannelMenuRow(channel_menu_row_1_, channel_action_1_);
+        syncChannelMenuRow(channel_menu_row_2_, channel_action_2_);
     }
 
 private:
     static constexpr int kOverviewControlWidth = 99;
     static constexpr int kOverviewMenuPadding = 2;
+    static constexpr int kOverviewMenuCornerRadius = 8;
     static constexpr int kOverviewMenuItemWidth = kOverviewControlWidth - kOverviewMenuPadding * 2;
     static constexpr int kOverviewSummarySpacing = 4;
     static constexpr int kOverviewChannelHeight = 34;
@@ -5927,12 +5890,14 @@ private:
         }
 
         const int channelHeight = channel_button_->height();
-        auto setMenuItemHeight = [](QWidget *widget, const QSize& size) {
+        auto setMenuItemHeight = [](SingleLevelPopupMenuRow *widget, const QSize& size) {
             if (!widget)
             {
                 return;
             }
 
+            widget->setRowHeight(size.height());
+            widget->setMinimumRowWidth(size.width());
             if (widget->minimumSize() != size || widget->maximumSize() != size || widget->size() != size)
             {
                 widget->setFixedSize(size);
@@ -5940,19 +5905,12 @@ private:
                 widget->updateGeometry();
             }
         };
-        setMenuItemHeight(channel_menu_button_1_, QSize(kOverviewMenuItemWidth, channelHeight));
-        setMenuItemHeight(channel_menu_button_2_, QSize(kOverviewMenuItemWidth, channelHeight));
+        setMenuItemHeight(channel_menu_row_1_, QSize(kOverviewMenuItemWidth, channelHeight));
+        setMenuItemHeight(channel_menu_row_2_, QSize(kOverviewMenuItemWidth, channelHeight));
         if (channel_menu_)
         {
             channel_menu_->setFixedWidth(kOverviewControlWidth);
-            const QString menuStyle = QStringLiteral(
-                "QMenu#temperatureOverviewChannelMenu::item { min-height: %1px; max-height: %1px; padding: 0px; margin: 0px; }"
-                "QPushButton#temperatureOverviewChannelMenuItem { min-height: %1px; max-height: %1px; }")
-                .arg(channelHeight);
-            if (channel_menu_->styleSheet() != menuStyle)
-            {
-                channel_menu_->setStyleSheet(menuStyle);
-            }
+            channel_menu_->refreshTheme();
         }
     }
 
@@ -5964,39 +5922,7 @@ private:
         }
 
         updateSummaryControlHeights();
-        channel_menu_->ensurePolished();
-        channel_menu_->adjustSize();
-        applyChannelMenuRoundedMask();
-        const QPoint popupTopLeft = channel_button_->mapToGlobal(QPoint(0, channel_button_->height()));
-        channel_menu_->popup(popupTopLeft);
-        channel_menu_->move(popupTopLeft);
-        applyChannelMenuRoundedMask();
-    }
-
-    void applyChannelMenuRoundedMask()
-    {
-        if (!channel_menu_)
-        {
-            return;
-        }
-
-        QSize menuSize = channel_menu_->size();
-        if (!menuSize.isValid() || menuSize.isEmpty())
-        {
-            menuSize = channel_menu_->sizeHint();
-        }
-        if (!menuSize.isValid() || menuSize.isEmpty())
-        {
-            return;
-        }
-
-        constexpr qreal kMenuRadius = 10.0;
-        QPainterPath path;
-        path.addRoundedRect(QRectF(QPointF(0.0, 0.0), QSizeF(menuSize)).adjusted(0.0, 0.0, -1.0, -1.0),
-                            kMenuRadius,
-                            kMenuRadius);
-        channel_menu_->setMask(QRegion(path.toFillPolygon().toPolygon()));
-        channel_menu_->setProperty("roundedMaskApplied", !channel_menu_->mask().isEmpty());
+        channel_menu_->popupFrom(channel_button_);
     }
 
     int currentChannelIndex() const
@@ -6039,27 +5965,23 @@ private:
         }
         if (channel_action_1_) channel_action_1_->setChecked(currentChannelIndex() == 0);
         if (channel_action_2_) channel_action_2_->setChecked(currentChannelIndex() == 1);
-        syncChannelMenuButton(channel_menu_button_1_, channel_action_1_);
-        syncChannelMenuButton(channel_menu_button_2_, channel_action_2_);
+        syncChannelMenuRow(channel_menu_row_1_, channel_action_1_);
+        syncChannelMenuRow(channel_menu_row_2_, channel_action_2_);
     }
 
-    void syncChannelMenuButton(QPushButton *button, QAction *action)
+    void syncChannelMenuRow(SingleLevelPopupMenuRow *row, QAction *action)
     {
-        if (!button || !action)
+        if (!row || !action)
         {
             return;
         }
-        button->setText(action->text());
-        button->setProperty("selected", action->isChecked());
+        row->setText(action->text());
         const bool selected = action->isChecked();
-        button->setIcon(selected
-            ? createLucideIcon(QStringLiteral("check"),
-                               toolbarColor(AppThemeColor::ToolbarBlue))
-            : QIcon());
-        button->setProperty("hasCheckIcon", selected);
-        button->style()->unpolish(button);
-        button->style()->polish(button);
-        button->update();
+        row->setCheckIcon(createLucideIcon(QStringLiteral("check"),
+                                           toolbarColor(AppThemeColor::MenuCheckText)));
+        row->setChecked(selected);
+        row->refreshTheme();
+        row->update();
     }
 
     void refreshChannelUi()
@@ -6101,11 +6023,11 @@ private:
 
     QToolButton *channel_button_ = nullptr;
     QWidget *summary_widget_ = nullptr;
-    QMenu *channel_menu_ = nullptr;
+    SingleLevelPopupMenu *channel_menu_ = nullptr;
     QAction *channel_action_1_ = nullptr;
     QAction *channel_action_2_ = nullptr;
-    QPushButton *channel_menu_button_1_ = nullptr;
-    QPushButton *channel_menu_button_2_ = nullptr;
+    SingleLevelPopupMenuRow *channel_menu_row_1_ = nullptr;
+    SingleLevelPopupMenuRow *channel_menu_row_2_ = nullptr;
     QLabel *target_temp_value_ = nullptr;
     QLabel *current_temp_value_ = nullptr;
     TemperatureOverviewSwitchButton *output_switch_button_ = nullptr;
@@ -7633,10 +7555,6 @@ void MainWindow::loadModernStyleSheet()
             "QToolButton#temperatureOverviewChannelButton:hover, QToolButton#temperatureOverviewChannelButton:pressed { background-color: @vv-surface; border-color: @vv-border-strong; }"
             "QToolButton#temperatureOverviewChannelButton[available=\"false\"]:hover, QToolButton#temperatureOverviewChannelButton[available=\"false\"]:pressed { background-color: @vv-surface-alt; border-color: @vv-border; }"
             "QToolButton#temperatureOverviewChannelButton::menu-indicator { image: none; width: 0px; height: 0px; }"
-            "QMenu#temperatureOverviewChannelMenu { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; padding: 2px; }"
-            "QMenu#temperatureOverviewChannelMenu::item { min-width: 95px; max-width: 95px; padding: 0px; margin: 0px; }"
-            "QPushButton#temperatureOverviewChannelMenuItem { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 13px; font-weight: 700; min-width: 95px; max-width: 95px; padding: 0px 8px; margin: 0px; }"
-            "QPushButton#temperatureOverviewChannelMenuItem:hover, QPushButton#temperatureOverviewChannelMenuItem:pressed, QPushButton#temperatureOverviewChannelMenuItem[selected=\"true\"] { background-color: transparent; color: @vv-primary; }"
             "QFrame#homeOverviewDivider { background-color: @vv-border; border: none; min-width: 1px; max-width: 1px; }"
             "QLabel#epsilonSectionLabel { color: @vv-text; background-color: @vv-surface-alt; border: none; border-right: 1px solid @vv-border; font-size: 14px; font-weight: 700; padding: 2px; }"
             "QLabel#valueLabel { font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 14px; font-weight: 600; }"
@@ -10917,39 +10835,22 @@ void MainWindow::setupToolBar()
     clear_log_action_->setIcon(createClearLogIcon());
     connect(clear_log_action_, &QAction::triggered, this, &MainWindow::onClearLogClicked);
 
+    log_filter_menu_ = new SingleLevelPopupMenu(this);
+    log_filter_menu_->setObjectName(QStringLiteral("logFilterMenu"));
+    log_filter_menu_->refreshTheme();
+
     auto createLogFilterAction = [this](bool *enabled) {
-        auto *action = new QWidgetAction(this);
+        auto *row = new SingleLevelPopupMenuRow(log_filter_menu_);
+        row->setTextAlignment(SingleLevelPopupTextAlignment::Left);
+        row->setHorizontalPadding(scalePixels(18), scalePixels(14));
+        row->setRowSpacing(scalePixels(6));
+        row->setCheckSlotWidth(scalePixels(18));
+        row->setCheckIconSize(QSize(scalePixels(16), scalePixels(16)));
+        row->setRowHeight(scalePixels(36));
+        row->setMinimumRowWidth(scalePixels(120));
+        row->setCloseOnClick(true);
+        auto *action = log_filter_menu_->addRow(row);
         action->setCheckable(false);
-        auto *row = new QPushButton();
-        row->setObjectName(QStringLiteral("logFilterMenuItem"));
-        row->setFlat(true);
-        row->setCursor(Qt::PointingHandCursor);
-        row->setFocusPolicy(Qt::NoFocus);
-        row->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        row->setMinimumHeight(scalePixels(36));
-        auto *rowLayout = new QHBoxLayout(row);
-        rowLayout->setContentsMargins(scalePixels(24), scalePixels(8), scalePixels(14), scalePixels(8));
-        rowLayout->setSpacing(scalePixels(8));
-
-        auto *textLabel = new QLabel(row);
-        textLabel->setObjectName(QStringLiteral("logFilterMenuText"));
-        textLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-        rowLayout->addWidget(textLabel, 1);
-
-        auto *checkLabel = new QLabel(row);
-        checkLabel->setObjectName(QStringLiteral("logFilterMenuCheck"));
-        checkLabel->setFixedWidth(scalePixels(22));
-        checkLabel->setAlignment(Qt::AlignCenter);
-        rowLayout->addWidget(checkLabel, 0, Qt::AlignVCenter);
-
-        action->setDefaultWidget(row);
-        connect(row, &QPushButton::clicked, this, [this, action]() {
-            action->trigger();
-            if (log_filter_menu_)
-            {
-                log_filter_menu_->hide();
-            }
-        });
         connect(action, &QAction::triggered, this, [this, enabled]() {
             *enabled = !*enabled;
             updateLogFilterAction();
@@ -10962,12 +10863,6 @@ void MainWindow::setupToolBar()
     log_filter_config_action_ = createLogFilterAction(&log_filter_config_enabled_);
     log_filter_connection_action_ = createLogFilterAction(&log_filter_connection_enabled_);
     log_filter_recording_action_ = createLogFilterAction(&log_filter_recording_enabled_);
-
-    log_filter_menu_ = new QMenu(this);
-    log_filter_menu_->addAction(log_filter_ack_action_);
-    log_filter_menu_->addAction(log_filter_config_action_);
-    log_filter_menu_->addAction(log_filter_connection_action_);
-    log_filter_menu_->addAction(log_filter_recording_action_);
 
     session_viewer_action_->setIcon(createWaveformViewerIcon());
 #ifdef VAPORVIEW_HAS_OSGEARTH
@@ -13956,9 +13851,7 @@ void MainWindow::setupLogPanel()
             }
             log_filter_btn_->setDown(true);
             updateLogFilterAction();
-            const QSize menuSize = log_filter_menu_->sizeHint();
-            const QPoint anchor = log_filter_btn_->mapToGlobal(QPoint(log_filter_btn_->width(), log_filter_btn_->height()));
-            log_filter_menu_->popup(QPoint(anchor.x() - menuSize.width(), anchor.y()));
+            log_filter_menu_->popupFrom(log_filter_btn_, SingleLevelPopupAnchor::Right);
         });
         connect(log_filter_menu_, &QMenu::aboutToHide, log_filter_btn_, [button = log_filter_btn_]() {
             button->setProperty("logFilterMenuHideMs", QDateTime::currentMSecsSinceEpoch());
@@ -15545,14 +15438,7 @@ void MainWindow::updateLogFilterAction()
         return;
     }
 
-    const QIcon checkIcon = createMenuCheckIcon();
-    const QString rowStyle = QStringLiteral(
-        "QPushButton#logFilterMenuItem { border: none; border-radius: 0px; background: transparent; padding: 0px; }"
-        "QPushButton#logFilterMenuItem:hover { background-color: %1; }"
-        "QLabel#logFilterMenuText { color: %2; background: transparent; border: none; }"
-        "QLabel#logFilterMenuCheck { background: transparent; border: none; }")
-            .arg(appThemeColorName(dark_theme_enabled_ ? AppThemeColor::MenuHover : AppThemeColor::PrimarySubtle, dark_theme_enabled_),
-                 appThemeColorName(dark_theme_enabled_ ? AppThemeColor::MenuText : AppThemeColor::Text, dark_theme_enabled_));
+    const QIcon checkIcon = createMenuCheckIcon(dark_theme_enabled_);
     const QStringList filterTexts = is_english_
         ? QStringList{
               QStringLiteral("Filter ACK logs"),
@@ -15570,13 +15456,17 @@ void MainWindow::updateLogFilterAction()
     {
         filterTextWidth = std::max(filterTextWidth, filterTextMetrics.horizontalAdvance(text));
     }
-    const int checkSlotWidth = scalePixels(22);
-    const int menuItemWidth = scalePixels(24) + filterTextWidth + scalePixels(8) + checkSlotWidth + scalePixels(14);
+    const int rowLeftPadding = scalePixels(18);
+    const int rowRightPadding = scalePixels(14);
+    const int rowSpacing = scalePixels(6);
+    const int checkSlotWidth = scalePixels(18);
+    const int rowHeight = scalePixels(36);
+    const int menuItemWidth = rowLeftPadding + filterTextWidth + rowSpacing + checkSlotWidth + rowRightPadding;
 
-    const auto updateAction = [this, &checkIcon, &rowStyle, filterTextWidth, checkSlotWidth, menuItemWidth](QAction *action,
-                                                            bool enabled,
-                                                            const QString& englishText,
-                                                            const QString& chineseText,
+    const auto updateAction = [this, &checkIcon, filterTextWidth, checkSlotWidth, menuItemWidth, rowHeight, rowLeftPadding, rowRightPadding, rowSpacing](QAction *action,
+                                                             bool enabled,
+                                                             const QString& englishText,
+                                                             const QString& chineseText,
                                                             const QString& englishDetail,
                                                             const QString& chineseDetail) {
         if (!action)
@@ -15590,22 +15480,27 @@ void MainWindow::updateLogFilterAction()
         action->setStatusTip(action->toolTip());
 
         auto *widgetAction = qobject_cast<QWidgetAction *>(action);
-        auto *row = widgetAction ? qobject_cast<QPushButton *>(widgetAction->defaultWidget()) : nullptr;
-        auto *textLabel = row ? row->findChild<QLabel *>(QStringLiteral("logFilterMenuText")) : nullptr;
-        auto *checkLabel = row ? row->findChild<QLabel *>(QStringLiteral("logFilterMenuCheck")) : nullptr;
-        if (!row || !textLabel || !checkLabel)
+        auto *row = widgetAction ? qobject_cast<SingleLevelPopupMenuRow *>(widgetAction->defaultWidget()) : nullptr;
+        if (!row)
         {
             action->setIcon(enabled ? checkIcon : QIcon());
             return;
         }
 
-        row->setStyleSheet(rowStyle);
+        row->setHorizontalPadding(rowLeftPadding, rowRightPadding);
+        row->setRowSpacing(rowSpacing);
+        row->setCheckSlotWidth(checkSlotWidth);
+        row->setCheckIconSize(QSize(scalePixels(16), scalePixels(16)));
+        row->setRowHeight(rowHeight);
+        row->setMinimumRowWidth(menuItemWidth);
         row->setFixedWidth(menuItemWidth);
-        textLabel->setText(text);
-        textLabel->setFixedWidth(filterTextWidth);
-        checkLabel->setFixedWidth(checkSlotWidth);
-        const QSize checkSize(scalePixels(16), scalePixels(16));
-        checkLabel->setPixmap(enabled ? checkIcon.pixmap(checkSize) : QPixmap());
+        row->setTextFixedWidth(filterTextWidth);
+        row->setText(text);
+        row->setToolTip(detail);
+        row->setStatusTip(detail);
+        row->setCheckIcon(checkIcon);
+        row->setChecked(enabled);
+        row->refreshTheme();
     };
 
     updateAction(log_filter_ack_action_,
@@ -15637,6 +15532,8 @@ void MainWindow::updateLogFilterAction()
     {
         log_filter_menu_->setTitle(is_english_ ? QStringLiteral("Log Filters")
                                                : QStringLiteral("日志过滤"));
+        log_filter_menu_->setFixedWidth(menuItemWidth + log_filter_menu_->panelPadding() * 2);
+        log_filter_menu_->refreshTheme();
     }
     if (log_filter_btn_)
     {

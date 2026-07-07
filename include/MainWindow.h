@@ -62,6 +62,7 @@ class EpsilonPanel;
 class SourceModeOverviewSwitchButton;
 class TemperatureTrendPlotWidget;
 class TemperatureControllerOverviewPanel;
+namespace VaporView { class SingleLevelPopupMenu; }
 namespace VaporView { class SkyDeviceConfigDialog; }
 #ifdef VAPORVIEW_HAS_OSGEARTH
 namespace VaporView::Map3D { class Map3DWindow; }
@@ -837,7 +838,7 @@ private:
     QMenu *language_menu_;
     QMenu *help_menu_;
     QMenu *recording_rate_menu_;
-    QMenu *log_filter_menu_;
+    VaporView::SingleLevelPopupMenu *log_filter_menu_;
     QFrame *title_application_panel_;
     QFrame *title_application_sub_panel_;
 

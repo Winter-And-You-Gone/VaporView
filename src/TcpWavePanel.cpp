@@ -1,5 +1,6 @@
 #include "CustomTitleBar.h"
 #include "AppTheme.h"
+#include "SingleLevelPopupMenu.h"
 #include "TcpWavePanel.h"
 #include "VisualTextLabel.h"
 #include <QAbstractSocket>
@@ -55,6 +56,10 @@
 
 using VaporView::AppThemeColor;
 using VaporView::appThemeColor;
+using VaporView::SingleLevelPopupAnchor;
+using VaporView::SingleLevelPopupMenu;
+using VaporView::SingleLevelPopupMenuRow;
+using VaporView::SingleLevelPopupTextAlignment;
 
 namespace
 {
@@ -412,127 +417,17 @@ void updateSectionTitleIcons(QWidget *root, bool dark)
     }
 }
 
-class WaveDisplayMenuRow final : public QWidget
-{
-public:
-    explicit WaveDisplayMenuRow(QWidget *parent = nullptr)
-        : QWidget(parent)
-        , text_label_(new QLabel(this))
-        , check_label_(new QLabel(this))
-    {
-        setAttribute(Qt::WA_Hover, true);
-        setCursor(Qt::PointingHandCursor);
-        setFixedHeight(34);
-        setMinimumWidth(238);
-
-        auto *layout = new QHBoxLayout(this);
-        layout->setContentsMargins(12, 0, 10, 0);
-        layout->setSpacing(16);
-        text_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-        text_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        layout->addWidget(text_label_, 1);
-        check_label_->setFixedSize(18, 18);
-        check_label_->setAlignment(Qt::AlignCenter);
-        layout->addWidget(check_label_, 0, Qt::AlignVCenter | Qt::AlignRight);
-        refreshTheme();
-    }
-
-    void setText(const QString& text)
-    {
-        text_label_->setText(text);
-    }
-
-    void setCheckIcon(const QIcon& icon)
-    {
-        check_icon_ = icon;
-        updateCheckIcon();
-    }
-
-    void setChecked(bool checked)
-    {
-        checked_ = checked;
-        updateCheckIcon();
-    }
-
-    void setClickedCallback(std::function<void()> callback)
-    {
-        clicked_ = std::move(callback);
-    }
-
-    void refreshTheme()
-    {
-        const bool dark = VaporView::isDarkThemeEnabled();
-        text_label_->setStyleSheet(QStringLiteral("QLabel { color: %1; background: transparent; }")
-            .arg(appThemeColor(AppThemeColor::MenuText, dark).name(QColor::HexRgb)));
-        updateCheckIcon();
-        update();
-    }
-
-protected:
-    void paintEvent(QPaintEvent *event) override
-    {
-        Q_UNUSED(event);
-        QPainter painter(this);
-        const bool dark = VaporView::isDarkThemeEnabled();
-        if (underMouse())
-        {
-            painter.fillRect(rect(), appThemeColor(AppThemeColor::MenuHover, dark));
-        }
-    }
-
-    void mouseReleaseEvent(QMouseEvent *event) override
-    {
-        if (event->button() == Qt::LeftButton && rect().contains(event->position().toPoint()))
-        {
-            if (clicked_)
-            {
-                clicked_();
-            }
-            event->accept();
-            return;
-        }
-        QWidget::mouseReleaseEvent(event);
-    }
-
-    void enterEvent(QEnterEvent *event) override
-    {
-        QWidget::enterEvent(event);
-        update();
-    }
-
-    void leaveEvent(QEvent *event) override
-    {
-        QWidget::leaveEvent(event);
-        update();
-    }
-
-private:
-    void updateCheckIcon()
-    {
-        if (!checked_ || check_icon_.isNull())
-        {
-            check_label_->clear();
-            return;
-        }
-        check_label_->setPixmap(check_icon_.pixmap(18, 18));
-    }
-
-    QLabel *text_label_;
-    QLabel *check_label_;
-    QIcon check_icon_;
-    std::function<void()> clicked_;
-    bool checked_ = false;
-};
-
 class WaveDisplayTitleLabel final : public VaporView::VisualTextLabel
 {
 public:
     explicit WaveDisplayTitleLabel(QWidget *parent = nullptr)
         : VaporView::VisualTextLabel(parent)
-        , menu_(new QMenu(this))
+        , menu_(new SingleLevelPopupMenu(this))
     {
         setFocusPolicy(Qt::NoFocus);
         setMouseTracking(true);
+        menu_->setObjectName(QStringLiteral("waveDisplayMenu"));
+        menu_->refreshTheme();
         show_all_row_ = addModeRow(0);
         show_raw_row_ = addModeRow(1);
         show_harmonic_row_ = addModeRow(2);
@@ -608,7 +503,7 @@ public:
     void setCheckIcon(const QIcon& icon)
     {
         check_icon_ = icon;
-        for (WaveDisplayMenuRow *row : {show_all_row_, show_raw_row_, show_harmonic_row_, show_peak_trend_row_})
+        for (SingleLevelPopupMenuRow *row : {show_all_row_, show_raw_row_, show_harmonic_row_, show_peak_trend_row_})
         {
             row->setCheckIcon(check_icon_);
             row->refreshTheme();
@@ -622,8 +517,7 @@ public:
 
     void popupMenuFrom(QWidget *anchor)
     {
-        QWidget *popupAnchor = anchor ? anchor : this;
-        menu_->popup(popupAnchor->mapToGlobal(QPoint(0, popupAnchor->height())));
+        menu_->popupFrom(anchor ? anchor : this);
     }
 
 protected:
@@ -690,7 +584,7 @@ protected:
             event->button() == Qt::LeftButton &&
             iconRect().contains(event->position().toPoint()))
         {
-            menu_->popup(mapToGlobal(QPoint(iconRect().left(), height())));
+            menu_->popupFrom(this, SingleLevelPopupAnchor::Left, QPoint(iconRect().left(), 0));
             event->accept();
             return;
         }
@@ -752,11 +646,11 @@ private:
 
     QIcon normal_icon_;
     QIcon check_icon_;
-    QMenu *menu_;
-    WaveDisplayMenuRow *show_all_row_ = nullptr;
-    WaveDisplayMenuRow *show_raw_row_ = nullptr;
-    WaveDisplayMenuRow *show_harmonic_row_ = nullptr;
-    WaveDisplayMenuRow *show_peak_trend_row_ = nullptr;
+    SingleLevelPopupMenu *menu_;
+    SingleLevelPopupMenuRow *show_all_row_ = nullptr;
+    SingleLevelPopupMenuRow *show_raw_row_ = nullptr;
+    SingleLevelPopupMenuRow *show_harmonic_row_ = nullptr;
+    SingleLevelPopupMenuRow *show_peak_trend_row_ = nullptr;
     std::function<void(bool, bool, bool, bool)> mode_changed_;
     bool show_all_ = false;
     bool show_raw_ = false;
@@ -765,13 +659,19 @@ private:
     bool icon_hovered_ = false;
     bool inline_icon_visible_ = false;
 
-    WaveDisplayMenuRow *addModeRow(int mode)
+    SingleLevelPopupMenuRow *addModeRow(int mode)
     {
-        auto *row = new WaveDisplayMenuRow(menu_);
-        auto *action = new QWidgetAction(menu_);
-        action->setDefaultWidget(row);
-        menu_->addAction(action);
-        row->setClickedCallback([this, mode]() {
+        auto *row = new SingleLevelPopupMenuRow(menu_);
+        row->setTextAlignment(SingleLevelPopupTextAlignment::Left);
+        row->setHorizontalPadding(18, 14);
+        row->setRowSpacing(6);
+        row->setCheckSlotWidth(18);
+        row->setCheckIconSize(QSize(18, 18));
+        row->setRowHeight(34);
+        row->setMinimumRowWidth(238);
+        row->setCloseOnClick(mode == 0);
+        auto *action = menu_->addRow(row);
+        connect(action, &QAction::triggered, this, [this, mode]() {
             if (mode == 0)
             {
                 setCurrentStates(!show_all_, false, false, false);
@@ -796,10 +696,6 @@ private:
             if (mode_changed_)
             {
                 mode_changed_(show_all_, show_raw_, show_harmonic_, show_peak_trend_);
-            }
-            if (mode == 0)
-            {
-                menu_->hide();
             }
         });
         return row;

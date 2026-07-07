@@ -453,6 +453,7 @@ target_link_libraries(vaporview_sky_tui PUBLIC
 
 set(NAV_WINDOW_SOURCES
     src/MainWindow.cpp
+    src/SingleLevelPopupMenu.cpp
     src/GroundTelemetryService.cpp
     src/SkyDeviceConfigDialog.cpp
     src/TcpWavePanel.cpp
@@ -474,6 +475,7 @@ set(NAV_SOURCES
 set(NAV_HEADERS
     include/AppTheme.h
     include/MainWindow.h
+    include/SingleLevelPopupMenu.h
     include/GroundTelemetryService.h
     include/SkyDeviceConfigDialog.h
     include/TcpWavePanel.h

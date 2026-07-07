@@ -1,6 +1,7 @@
 #include "AppTheme.h"
 #include "MainWindow.h"
 #include "RtkConfigDialog.h"
+#include "SingleLevelPopupMenu.h"
 
 #include <QApplication>
 #include <QAction>
@@ -1343,6 +1344,50 @@ int main(int argc, char **argv)
     hoverWidget(hoverTitleButton, false);
     require(!hoverTitleButton->property("titleBarHover").toBool(),
             "main title bar button hover property is cleared by leave");
+
+    QToolButton *logFilterButton = nullptr;
+    const QList<QToolButton*> titleBarButtons =
+        window.findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
+    for (QToolButton *button : titleBarButtons)
+    {
+        if (button && (button->toolTip() == QStringLiteral("日志过滤") ||
+                       button->toolTip() == QStringLiteral("Log filters")))
+        {
+            logFilterButton = button;
+            break;
+        }
+    }
+    require(logFilterButton != nullptr, "log filter title-bar button exists");
+    logFilterButton->click();
+    processEventsFor(120);
+    VaporView::SingleLevelPopupMenu *logFilterMenu = nullptr;
+    for (QWidget *topLevel : QApplication::topLevelWidgets())
+    {
+        auto *menu = qobject_cast<VaporView::SingleLevelPopupMenu *>(topLevel);
+        if (menu && menu->isVisible() &&
+            (menu->title() == QStringLiteral("日志过滤") ||
+             menu->title() == QStringLiteral("Log Filters")))
+        {
+            logFilterMenu = menu;
+            break;
+        }
+    }
+    require(logFilterMenu != nullptr, "log filter menu uses the shared single-level popup");
+    require(logFilterMenu->rows().size() == 4 &&
+                logFilterMenu->cornerRadius() == 8 &&
+                logFilterMenu->panelPadding() == 6,
+            "log filter menu shares the standard single-level popup chrome");
+    for (VaporView::SingleLevelPopupMenuRow *row : logFilterMenu->rows())
+    {
+        require(row->property("textAlignment").toString() == QStringLiteral("left") &&
+                    row->property("checkIconAlignment").toString() == QStringLiteral("right") &&
+                    row->textLabel() != nullptr &&
+                    row->checkLabel() != nullptr &&
+                    row->checkLabel()->geometry().right() > row->textLabel()->geometry().right(),
+                "log filter menu rows share text-left and check-right layout");
+    }
+    logFilterMenu->hide();
+    processEventsFor(50);
     hoverWidget(checkedSidebarButton, true);
     require(checkedSidebarButton->property("_vv_hover").toBool(),
             "sidebar button hover property is enabled by enter");
@@ -1481,35 +1526,36 @@ int main(int argc, char **argv)
             "temperature overview channel menu width matches capsule width");
     require(temperatureChannelButton->menu()->actions().size() == 2,
             "temperature overview channel menu has two channel options");
-    const QList<QPushButton*> temperatureChannelMenuButtons =
-        temperatureChannelButton->menu()->findChildren<QPushButton *>(QStringLiteral("temperatureOverviewChannelMenuItem"));
-    require(temperatureChannelMenuButtons.size() == 2,
-            "temperature overview channel menu uses custom button rows");
+    const QList<VaporView::SingleLevelPopupMenuRow*> temperatureChannelMenuRows =
+        temperatureChannelButton->menu()->findChildren<VaporView::SingleLevelPopupMenuRow *>();
+    require(temperatureChannelMenuRows.size() == 2,
+            "temperature overview channel menu uses the shared single-level popup rows");
     int selectedTemperatureChannelMenuItems = 0;
-    for (QPushButton *button : temperatureChannelMenuButtons)
+    for (VaporView::SingleLevelPopupMenuRow *row : temperatureChannelMenuRows)
     {
-        require(button->layoutDirection() == Qt::RightToLeft,
-                "temperature overview channel menu check icon sits after the channel text");
-        require(button->property("textAlignment").toString() == QStringLiteral("center") &&
-                    button->property("checkIconAlignment").toString() == QStringLiteral("right"),
+        require(row->property("textAlignment").toString() == QStringLiteral("center") &&
+                    row->property("checkIconAlignment").toString() == QStringLiteral("right"),
                 "temperature overview channel menu item text is centered while check icon is right-aligned");
-        if (button->property("hasCheckIcon").toBool())
+        require(row->textLabel() != nullptr && row->checkLabel() != nullptr,
+                "temperature overview channel menu row exposes text and check slots");
+        require(row->textLabel()->alignment() == Qt::AlignCenter,
+                "temperature overview channel menu text label is centered");
+        require(row->checkLabel()->geometry().right() > row->textLabel()->geometry().right(),
+                "temperature overview channel menu check slot is right-aligned");
+        if (row->property("hasCheckIcon").toBool())
         {
             ++selectedTemperatureChannelMenuItems;
-            require(!button->icon().isNull(),
+            require(row->isChecked(),
                     "temperature overview selected channel menu item shows a check icon");
         }
     }
     require(selectedTemperatureChannelMenuItems == 1,
             "temperature overview channel menu marks only the selected channel with a check icon");
-    requireLastStyleRuleContains(qApp->styleSheet(),
-                                 QStringLiteral("QMenu#temperatureOverviewChannelMenu {"),
-                                 QStringLiteral("border-radius: 10px"),
-                                 "temperature overview channel menu keeps rounded corners");
-    requireLastStyleRuleContains(qApp->styleSheet(),
-                                 QStringLiteral("QPushButton#temperatureOverviewChannelMenuItem:hover,"),
-                                 QStringLiteral("background-color: transparent"),
-                                 "temperature overview channel menu selection does not use a colored background");
+    auto *temperatureChannelPopup = qobject_cast<VaporView::SingleLevelPopupMenu *>(temperatureChannelButton->menu());
+    require(temperatureChannelPopup != nullptr &&
+                temperatureChannelPopup->cornerRadius() == 8 &&
+                temperatureChannelPopup->panelPadding() == 2,
+            "temperature overview channel menu uses the shared single-level popup chrome");
     temperatureChannelButton->menu()->popup(temperatureChannelButton->mapToGlobal(QPoint(0, temperatureChannelButton->height())));
     processEventsFor(50);
     require(temperatureChannelButton->menu()->property("roundedMaskApplied").toBool() &&
@@ -1978,21 +2024,23 @@ int main(int argc, char **argv)
     auto *peakTrendGroup = groupForSectionTitle(peakTrendTitle);
     require(rawWaveGroup != nullptr && harmonicWaveGroup != nullptr && peakTrendGroup != nullptr,
             "TCP wave subcards can be identified before display-mode changes");
-    auto visibleWaveDisplayMenu = []() -> QMenu * {
+    auto visibleSingleLevelMenu = [](const QStringList& titles) -> VaporView::SingleLevelPopupMenu * {
         for (QWidget *topLevel : QApplication::topLevelWidgets())
         {
-            auto *menu = qobject_cast<QMenu *>(topLevel);
+            auto *menu = qobject_cast<VaporView::SingleLevelPopupMenu *>(topLevel);
             if (menu && menu->isVisible() &&
-                (menu->title() == QStringLiteral("波形显示") ||
-                 menu->title() == QStringLiteral("Wave Display")))
+                titles.contains(menu->title()))
             {
                 return menu;
             }
         }
         return nullptr;
     };
+    auto visibleWaveDisplayMenu = [&]() -> VaporView::SingleLevelPopupMenu * {
+        return visibleSingleLevelMenu({QStringLiteral("波形显示"), QStringLiteral("Wave Display")});
+    };
     auto clickWaveDisplayMenuRow = [&](const QStringList& labels, const char *message) {
-        QMenu *menu = visibleWaveDisplayMenu();
+        VaporView::SingleLevelPopupMenu *menu = visibleWaveDisplayMenu();
         if (!menu)
         {
             tcpWaveDisplayButton->click();
@@ -2000,10 +2048,17 @@ int main(int argc, char **argv)
             menu = visibleWaveDisplayMenu();
         }
         require(menu != nullptr, "TCP wave display menu opens from the title-bar settings button");
+        require(menu->rows().size() == 4 &&
+                    menu->cornerRadius() == 8 &&
+                    menu->panelPadding() == 6,
+                "TCP wave display menu uses the shared single-level popup chrome");
         QLabel *rowLabel = findLabelByText(menu, labels);
         require(rowLabel != nullptr, message);
-        QWidget *rowWidget = rowLabel->parentWidget();
+        auto *rowWidget = qobject_cast<VaporView::SingleLevelPopupMenuRow *>(rowLabel->parentWidget());
         require(rowWidget != nullptr, message);
+        require(rowWidget->property("textAlignment").toString() == QStringLiteral("left") &&
+                    rowWidget->property("checkIconAlignment").toString() == QStringLiteral("right"),
+                "TCP wave display menu row keeps text left and check icon right");
         clickWidget(rowWidget, 160);
     };
     clickWaveDisplayMenuRow({QStringLiteral("全部显示"), QStringLiteral("Show All")},
