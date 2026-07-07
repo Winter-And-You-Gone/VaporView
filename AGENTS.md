@@ -32,6 +32,10 @@
 
 - 对可能超过 30 秒或输出很大的命令，尤其是 `cmake --build`、`ctest`、GUI 布局测试和部署步骤，优先分段执行：先构建目标或相关测试，再跑完整构建/完整测试，不要把所有步骤塞进一条很长的链式命令。
 - 避免把 MSVC include trace、部署日志等海量输出直接刷到对话里。长构建可以把 stdout/stderr 写入 `build/Release` 下唯一命名的临时日志，只摘录 `warning`、`error`、`FAIL`、`ninja:`、测试摘要等关键行；任务结束前删除这些临时日志，除非用户明确需要保留。
+- 测试范围默认按改动面收敛，不要每次无脑跑全量 `ctest`。只改某个模块或 UI 局部时，优先构建相关 target 并只跑直接相关测试；例如 UI 样式/布局改动通常跑 `main_window_layout_test`、`session_viewer_theme_test`，涉及 3D 地图窗口时再加 `map3d_window_smoke_test` 或 `main_window_map3d_live_test`。
+- 只有改到共享底层、CMake/链接结构、协议/记录链路、跨进程 SkyCore/SkyTui、公共数据格式、或大范围重构时，才默认跑完整 `ctest`。发布前或用户明确要求全量验证时也跑完整 `ctest`。
+- push 前的硬性要求是使用 `build/Release` 重新构建将要推送的版本；除非本轮改动风险需要或用户要求，push 前不必额外重复全量测试。
+- 对 `VAPORVIEW_ENABLE_OSGEARTH` 相关工作，验证顺序默认先 OFF、后 ON，并让最终 `build/Release` 保持 ON，方便用户直接看 3D 地图效果。OFF 阶段通常只需确认默认构建可用；ON 阶段按改动范围跑相关 3D/UI 测试。
 - 如果用户中断、工具超时、或上一条命令疑似卡住，继续前先检查残留进程，例如 `cmake`、`ctest`、`ninja`、`MSBuild`、`cl`、`link`、`VaporView` 和相关测试 exe。只结束能确认属于本次任务的残留进程，不要误杀无关桌面程序。
 - UI/布局验证需要截图时，截图导出代码和截图文件默认只作临时检查；视觉确认后移除临时代码和产物，再进入最终构建、测试、提交。
 - 不要在构建或测试进程仍在后台运行时提交或 push。提交前确认工作区只包含本次任务相关文件，push 前仍按上面的 `build/Release` 规则重新构建。
