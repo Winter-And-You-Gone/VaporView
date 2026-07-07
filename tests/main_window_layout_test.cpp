@@ -3,6 +3,7 @@
 #include "RtkConfigDialog.h"
 #include "SingleLevelPopupMenu.h"
 
+#include <QAbstractItemView>
 #include <QApplication>
 #include <QAction>
 #include <QColor>
@@ -61,6 +62,16 @@ void require(bool condition, const char *message)
         std::cerr << "FAIL: " << message << '\n';
         std::exit(1);
     }
+}
+
+void requireComboPopupStyled(QComboBox *combo, const char *message)
+{
+    require(combo != nullptr, message);
+    require(combo->property("vaporViewComboPopupStyled").toBool(), message);
+    require(combo->view() != nullptr, message);
+    require(combo->view()->property("vaporViewComboPopupStyled").toBool(), message);
+    require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"), message);
+    require(combo->view()->styleSheet().contains(QStringLiteral("border-radius: 6px")), message);
 }
 
 void requireLabelTextOneOf(const QLabel *label, const QStringList& expected, const char *message);
@@ -514,6 +525,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(serverEdit != nullptr && usernameEdit != nullptr && portEdit != nullptr &&
                 passwordEdit != nullptr && mountpointCombo != nullptr && fetchMountpointsButton != nullptr,
             "RTK NTRIP compact fields exist for alignment checks");
+    requireComboPopupStyled(mountpointCombo,
+                            "RTK mountpoint combo uses the shared popup styling helper");
     const int rtkInputHeight = serverEdit->height();
     const QList<QPushButton*> rtkPushButtons = dialog->findChildren<QPushButton *>();
     const QStringList manualConfigButtonTexts = {
@@ -572,6 +585,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(ggaSourceCombo != nullptr && ggaToggleButton != nullptr && ggaOutputText != nullptr &&
                 ggaSourceLabel != nullptr && ggaFrequencyLabel != nullptr,
             "RTK GGA source controls exist");
+    requireComboPopupStyled(ggaSourceCombo,
+                            "RTK GGA source combo uses the shared popup styling helper");
     require(ggaSourceCombo->currentText() == QStringLiteral("Epsilon生成") ||
                 ggaSourceCombo->currentText() == QStringLiteral("Epsilon generated"),
             "RTK GGA source defaults to the compact Epsilon generated label");
@@ -622,6 +637,14 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                 reconnectCombo != nullptr && applyLeverButton != nullptr && refreshPortsButton != nullptr &&
                 autoDetectPortsButton != nullptr && leverHelpButton != nullptr && outputPortLabel != nullptr,
             "RTK RTCM output controls exist");
+    requireComboPopupStyled(outputPortCombo,
+                            "RTK output port combo uses the shared popup styling helper");
+    requireComboPopupStyled(baudrateCombo,
+                            "RTK baudrate combo uses the shared popup styling helper");
+    requireComboPopupStyled(timeoutCombo,
+                            "RTK timeout combo uses the shared popup styling helper");
+    requireComboPopupStyled(reconnectCombo,
+                            "RTK reconnect combo uses the shared popup styling helper");
     require(widgetX(outputPortCombo) - (widgetX(outputPortLabel) + outputPortLabel->width()) <= 12,
             "RTK RTCM output port combo sits close to its label");
     require(outputPortCombo->width() <= 100 &&
@@ -1483,6 +1506,12 @@ int main(int argc, char **argv)
     auto *temperatureRateCombo = window.findChild<QComboBox *>(QStringLiteral("temperatureRateCombo"));
     require(temperaturePortCombo != nullptr && temperatureBaudCombo != nullptr && temperatureRateCombo != nullptr,
             "RD105 serial controls exist in device configuration");
+    requireComboPopupStyled(temperaturePortCombo,
+                            "temperature port combo uses the shared popup styling helper");
+    requireComboPopupStyled(temperatureBaudCombo,
+                            "temperature baud combo uses the shared popup styling helper");
+    requireComboPopupStyled(temperatureRateCombo,
+                            "temperature rate combo uses the shared popup styling helper");
 #ifdef Q_OS_WIN
     require(temperaturePortCombo->currentText() == QStringLiteral("COM9"),
             "RD105 local serial port defaults to COM9");

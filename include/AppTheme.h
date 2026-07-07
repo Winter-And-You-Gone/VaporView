@@ -5,6 +5,8 @@
 #include <QPalette>
 #include <QString>
 
+class QComboBox;
+
 namespace VaporView
 {
 
@@ -159,6 +161,8 @@ bool isDarkThemeEnabled();
 
 QPalette appThemePalette(bool dark);
 QPalette appThemePalette(bool dark, const QPalette& basePalette);
+
+void configureComboBoxPopup(QComboBox *combo, bool dark);
 
 QString applyAppThemeTokens(QString styleSheet, bool dark);
 QString startupAppThemeStyleSheet(bool dark);

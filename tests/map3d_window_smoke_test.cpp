@@ -1,6 +1,7 @@
 #include "geo/GeoTypes.h"
 #include "map3d/Map3DWindow.h"
 
+#include <QAbstractItemView>
 #include <QAction>
 #include <QApplication>
 #include <QComboBox>
@@ -32,6 +33,16 @@ void require(bool condition, const char* message)
         std::cerr << "FAIL: " << message << '\n';
         std::exit(1);
     }
+}
+
+void requireComboPopupStyled(QComboBox *combo, const char *message)
+{
+    require(combo != nullptr, message);
+    require(combo->property("vaporViewComboPopupStyled").toBool(), message);
+    require(combo->view() != nullptr, message);
+    require(combo->view()->property("vaporViewComboPopupStyled").toBool(), message);
+    require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"), message);
+    require(combo->view()->styleSheet().contains(QStringLiteral("border-radius: 6px")), message);
 }
 
 void writeSessionTrack(QTemporaryDir& sessionDir)
@@ -127,6 +138,8 @@ int main(int argc, char** argv)
                 || local3DTilesAction->toolTip().contains(QStringLiteral("3D Tiles")),
             "local 3D Tiles action explains why it is unavailable");
     require(replaySpeedCombo != nullptr, "replay speed combo exists");
+    requireComboPopupStyled(replaySpeedCombo,
+                            "map3d replay speed combo uses the shared popup styling helper");
     require(replaySlider != nullptr, "replay slider exists");
     require(maxVisibleSamplesSpin != nullptr, "max visible samples spin box exists");
     require(followAction->isCheckable(), "follow aircraft action is checkable");

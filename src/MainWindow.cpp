@@ -116,6 +116,7 @@ using VaporView::appThemeColorName;
 using VaporView::appThemePalette;
 using VaporView::appThemeRgba;
 using VaporView::applyAppThemeTokens;
+using VaporView::configureComboBoxPopup;
 using VaporView::kAppDarkThemeProperty;
 using VaporView::SingleLevelPopupAnchor;
 using VaporView::SingleLevelPopupMenu;
@@ -8454,6 +8455,7 @@ void MainWindow::applyStyleConfiguration()
     qApp->setPalette(appThemePalette(dark_theme_enabled_));
     qApp->setFont(appFont);
     qApp->setStyleSheet(scaledStyleSheet(themedStyleSheet()));
+    configureComboPopupsIn(this);
     setWindowsTitleBarDark(this, dark_theme_enabled_);
     applyScaledUiMetrics();
     if (rtk_config_dialog_)
@@ -8514,6 +8516,25 @@ void MainWindow::applyStyleConfiguration()
             updateResponsiveHomeLayout();
         });
     });
+}
+
+void MainWindow::configureComboPopup(QComboBox *combo) const
+{
+    configureComboBoxPopup(combo, dark_theme_enabled_);
+}
+
+void MainWindow::configureComboPopupsIn(QWidget *scope) const
+{
+    if (!scope)
+    {
+        return;
+    }
+
+    const QList<QComboBox*> combos = scope->findChildren<QComboBox *>();
+    for (QComboBox *combo : combos)
+    {
+        configureComboPopup(combo);
+    }
 }
 
 void MainWindow::setFontScale(int percent)
@@ -17139,28 +17160,7 @@ void MainWindow::onScheduledRecordingClicked()
         modeCombo->setItemData(i, QSize(0, scalePixels(42)), Qt::SizeHintRole);
     }
     auto applyModeComboPopupStyle = [this, modeCombo]() {
-        if (!modeCombo || !modeCombo->view())
-        {
-            return;
-        }
-
-        const QColor popupBase = appThemeColor(dark_theme_enabled_ ? AppThemeColor::Window : AppThemeColor::Surface, dark_theme_enabled_);
-        const QColor popupBorder = appThemeColor(AppThemeColor::Border, dark_theme_enabled_);
-        const QColor popupText = appThemeColor(dark_theme_enabled_ ? AppThemeColor::TextStrong : AppThemeColor::Text, dark_theme_enabled_);
-        const QColor popupHighlight = appThemeColor(AppThemeColor::PopupHighlight, dark_theme_enabled_);
-        const QColor popupHighlightText = appThemeColor(dark_theme_enabled_ ? AppThemeColor::TextStrong : AppThemeColor::Text, dark_theme_enabled_);
-        QPalette popupPalette = modeCombo->view()->palette();
-        popupPalette.setColor(QPalette::Base, popupBase);
-        popupPalette.setColor(QPalette::Text, popupText);
-        popupPalette.setColor(QPalette::Highlight, popupHighlight);
-        popupPalette.setColor(QPalette::HighlightedText, popupHighlightText);
-        modeCombo->view()->setPalette(popupPalette);
-        modeCombo->view()->setMouseTracking(true);
-        modeCombo->view()->setStyleSheet(QStringLiteral(
-            "QAbstractItemView { background-color: %1; border: 1px solid %2; color: %3; outline: 0px; padding: 4px; selection-background-color: %4; selection-color: %5; }"
-            "QAbstractItemView::item { padding-left: 12px; padding-right: 12px; border: 0px; border-radius: 4px; background-color: transparent; }"
-            "QAbstractItemView::item:hover, QAbstractItemView::item:selected, QAbstractItemView::item:selected:active, QAbstractItemView::item:selected:!active { background-color: %4; color: %5; }")
-                .arg(popupBase.name(), popupBorder.name(), popupText.name(), popupHighlight.name(), popupHighlightText.name()));
+        configureComboPopup(modeCombo);
     };
     applyModeComboPopupStyle();
     rootLayout->addWidget(createScheduledRow(bodyWidget,
@@ -20361,6 +20361,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     forwardPortCombo->setEditable(true);
     forwardPortCombo->addItem(selectText);
     forwardPortCombo->addItems(availablePorts);
+    configureComboPopup(forwardPortCombo);
     const QString savedForwardPort = settings.value("epsilon_rtcm_forward_port").toString().trimmed();
     if (!savedForwardPort.isEmpty())
     {
@@ -20374,6 +20375,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
                                 QStringLiteral("460800"),
                                 QStringLiteral("921600")});
     forwardBaudCombo->setCurrentText(settings.value("epsilon_rtcm_forward_baud", "115200").toString());
+    configureComboPopup(forwardBaudCombo);
     formLayout->addRow(is_english_ ? "RTCM Port Baud:" : "RTCM 串口波特率：", forwardBaudCombo);
 
     auto *openRtkConfigCheck = new QCheckBox(
@@ -20635,6 +20637,7 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
         {
             combo->addItem(packetRateText(rateHz), rateHz);
         }
+        configureComboPopup(combo);
         const int initialRateHz = initialRates.count(option.packet_id) ? initialRates.at(option.packet_id) : groupedRates.at(option.packet_id);
         const int comboIndex = combo->findData(initialRateHz);
         if (comboIndex >= 0)

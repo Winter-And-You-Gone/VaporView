@@ -56,6 +56,7 @@ using VaporView::AppThemeColor;
 using VaporView::appThemeColor;
 using VaporView::appThemeColorName;
 using VaporView::appThemeRgba;
+using VaporView::configureComboBoxPopup;
 using VaporView::isDarkThemeEnabled;
 using VaporView::isDarkThemePalette;
 
@@ -333,6 +334,7 @@ QComboBox *createTimingComboBox(QWidget *parent, const QString &defaultValue)
     combo->setEditable(true);
     combo->addItems({"1000", "2000", "5000", "10000", "30000", "60000"});
     combo->setCurrentText(defaultValue);
+    configureComboBoxPopup(combo, isDarkThemeEnabled());
     if (combo->lineEdit())
     {
         combo->lineEdit()->setValidator(new QIntValidator(1000, 60000, combo));
@@ -1171,6 +1173,7 @@ void RtkConfigDialog::setupUi()
     mountpoint_combo_->setObjectName(QStringLiteral("rtkMountpointCombo"));
     mountpoint_combo_->setEditable(true);
     mountpoint_combo_->setInsertPolicy(QComboBox::NoInsert);
+    configureComboBoxPopup(mountpoint_combo_, isDarkThemeEnabled());
     config_layout_->addWidget(mountpoint_combo_, row, 5);
     fetch_mountpoints_btn_ = new QPushButton(this);
     fetch_mountpoints_btn_->setObjectName(QStringLiteral("rtkFetchMountpointsButton"));
@@ -1215,6 +1218,7 @@ void RtkConfigDialog::setupUi()
     output_port_combo_ = new QComboBox(this);
     output_port_combo_->setObjectName(QStringLiteral("rtkOutputPortCombo"));
     output_port_combo_->setEditable(true);
+    configureComboBoxPopup(output_port_combo_, isDarkThemeEnabled());
     firstOutputRow.second->addWidget(output_port_combo_);
 
     baudrate_label_ = createFieldLabel();
@@ -1223,6 +1227,7 @@ void RtkConfigDialog::setupUi()
     baudrate_combo_->setObjectName(QStringLiteral("rtkBaudrateCombo"));
     baudrate_combo_->addItems({"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"});
     baudrate_combo_->setCurrentText("115200");
+    configureComboBoxPopup(baudrate_combo_, isDarkThemeEnabled());
     firstOutputRow.second->addWidget(baudrate_combo_);
     output_layout_->addWidget(firstOutputRow.first, 0, Qt::AlignLeft);
 
@@ -1336,6 +1341,7 @@ void RtkConfigDialog::setupUi()
     gga_port_combo_ = new QComboBox(this);
     gga_port_combo_->setObjectName(QStringLiteral("rtkGgaPortCombo"));
     gga_port_combo_->setEditable(true);
+    configureComboBoxPopup(gga_port_combo_, isDarkThemeEnabled());
     gga_header_layout_->addWidget(gga_port_combo_, 0, 1);
 
     gga_toggle_btn_ = new QPushButton(this);

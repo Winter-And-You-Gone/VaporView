@@ -228,6 +228,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
 
     target_link_libraries(vaporview_map3d_osgearth
         PUBLIC
+            vaporview_app_theme
             vaporview_geo_core
             Qt6::Widgets
             Qt6::OpenGLWidgets

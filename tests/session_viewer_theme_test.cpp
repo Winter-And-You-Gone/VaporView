@@ -4,6 +4,7 @@
 #include "SessionViewerWindow.h"
 #include "TrajectoryViewerDialog.h"
 
+#include <QAbstractItemView>
 #include <QApplication>
 #include <QComboBox>
 #include <QCoreApplication>
@@ -60,6 +61,16 @@ void require(bool condition, const char *message)
         std::cerr << "FAIL: " << message << '\n';
         std::exit(1);
     }
+}
+
+void requireComboPopupStyled(QComboBox *combo, const char *message)
+{
+    require(combo != nullptr, message);
+    require(combo->property("vaporViewComboPopupStyled").toBool(), message);
+    require(combo->view() != nullptr, message);
+    require(combo->view()->property("vaporViewComboPopupStyled").toBool(), message);
+    require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"), message);
+    require(combo->view()->styleSheet().contains(QStringLiteral("border-radius: 6px")), message);
 }
 
 bool processEventsUntil(int timeoutMs, const std::function<bool()>& condition)
@@ -737,6 +748,8 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(mapPanel != nullptr, "trajectory viewer map panel exists");
     require(map != nullptr, "trajectory viewer map exists");
     require(mapSourceCombo != nullptr, "trajectory viewer map source control exists");
+    requireComboPopupStyled(mapSourceCombo,
+                            "trajectory map source combo uses the shared popup styling helper");
     require(heatLegendCard != nullptr, "trajectory viewer floating heat legend card exists");
     require(mapToolsCard != nullptr, "trajectory viewer floating map tools card exists");
     require(pointDetailCard != nullptr, "trajectory viewer floating point detail card exists");
@@ -755,6 +768,8 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(peakSearchStartSpin != nullptr, "trajectory viewer peak search start control exists");
     require(peakSearchEndSpin != nullptr, "trajectory viewer peak search end control exists");
     require(peakFilterModeCombo != nullptr, "trajectory viewer peak filter mode control exists");
+    requireComboPopupStyled(peakFilterModeCombo,
+                            "trajectory peak filter combo uses the shared popup styling helper");
     require(peakFilterMinEdit != nullptr, "trajectory viewer peak filter min control exists");
     require(peakFilterMaxEdit != nullptr, "trajectory viewer peak filter max control exists");
     require(peakApplyButton != nullptr, "trajectory viewer peak settings apply button exists");

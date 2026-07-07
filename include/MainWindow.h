@@ -452,6 +452,8 @@ private:
     void setupDeviceConfigPage();
     void setupDataPanels();
     void setupLogPanel();
+    void configureComboPopup(QComboBox *combo) const;
+    void configureComboPopupsIn(QWidget *scope) const;
     void loadModernStyleSheet();
     void log(const QString& message);
     void updateRecordingStatusLabel();

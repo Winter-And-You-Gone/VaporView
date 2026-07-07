@@ -56,6 +56,8 @@
 
 using VaporView::AppThemeColor;
 using VaporView::appThemeColor;
+using VaporView::configureComboBoxPopup;
+using VaporView::isDarkThemeEnabled;
 using VaporView::SingleLevelPopupAnchor;
 using VaporView::SingleLevelPopupMenu;
 using VaporView::SingleLevelPopupMenuRow;
@@ -2516,6 +2518,7 @@ void TcpWavePanel::onConfigurePeakFilterClicked()
     modeCombo->addItem(is_english_ ? QStringLiteral("Exclude Range") : QStringLiteral("排除区间"), static_cast<int>(PeakFilterMode::ExcludeRange));
     modeCombo->setCurrentIndex(std::max(0, modeCombo->findData(static_cast<int>(peak_filter_settings_.mode))));
     modeCombo->setMinimumWidth(inputColumnWidth);
+    configureComboBoxPopup(modeCombo, isDarkThemeEnabled());
     addFormRow(2, is_english_ ? QStringLiteral("Trend Filter") : QStringLiteral("趋势过滤"), modeCombo);
 
     auto *minEdit = new QLineEdit(QString::number(peak_filter_settings_.min_value, 'f', 6), formWidget);

@@ -67,6 +67,8 @@
 using VaporView::AppThemeColor;
 using VaporView::appThemeColor;
 using VaporView::appThemeColorName;
+using VaporView::configureComboBoxPopup;
+using VaporView::isDarkThemeEnabled;
 using VaporView::isDarkThemePalette;
 
 namespace
@@ -3058,6 +3060,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     peak_search_end_spin_->setRange(0, 10000000);
     peak_search_end_spin_->setSingleStep(1000);
     peak_filter_mode_combo_->setObjectName(QStringLiteral("trajectoryPeakFilterModeCombo"));
+    configureComboBoxPopup(peak_filter_mode_combo_, isDarkThemeEnabled());
     peak_filter_min_edit_->setObjectName(QStringLiteral("trajectoryPeakFilterMinEdit"));
     peak_filter_max_edit_->setObjectName(QStringLiteral("trajectoryPeakFilterMaxEdit"));
     peak_filter_min_edit_->setClearButtonEnabled(true);
@@ -3162,6 +3165,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     map_source_combo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     map_source_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     map_source_combo_->setToolTip(is_english_ ? QStringLiteral("Map source") : QStringLiteral("底图来源"));
+    configureComboBoxPopup(map_source_combo_, isDarkThemeEnabled());
 
     heat_palette_button_->setObjectName(QStringLiteral("trajectoryHeatPaletteButton"));
     heat_palette_button_->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -3732,6 +3736,7 @@ void TrajectoryViewerDialog::refreshPeakFilterModeCombo()
     peak_filter_mode_combo_->addItem(is_english_ ? QStringLiteral("IQR") : QStringLiteral("IQR"), 1);
     peak_filter_mode_combo_->addItem(is_english_ ? QStringLiteral("Keep Range") : QStringLiteral("保留区间"), 2);
     peak_filter_mode_combo_->addItem(is_english_ ? QStringLiteral("Exclude Range") : QStringLiteral("排除区间"), 3);
+    configureComboBoxPopup(peak_filter_mode_combo_, isDarkThemeEnabled());
     const int index = currentData.isValid() ? peak_filter_mode_combo_->findData(currentData) : 0;
     peak_filter_mode_combo_->setCurrentIndex(index >= 0 ? index : 0);
     const int mode = peak_filter_mode_combo_->currentData().toInt();

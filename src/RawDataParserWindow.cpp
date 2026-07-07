@@ -58,6 +58,7 @@
 using VaporView::AppThemeColor;
 using VaporView::appThemeColor;
 using VaporView::appThemeColorName;
+using VaporView::configureComboBoxPopup;
 using VaporView::isDarkThemeEnabled;
 
 namespace
@@ -942,6 +943,7 @@ void RawDataParserWindow::Impl::setupUi()
     filterLayout->setSpacing(6);
 
     device_combo = new QComboBox(owner);
+    configureComboBoxPopup(device_combo, isDarkThemeEnabled());
     type_filter = new QLineEdit(owner);
     time_from = new QLineEdit(owner);
     time_to = new QLineEdit(owner);

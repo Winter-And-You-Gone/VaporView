@@ -1,5 +1,6 @@
 #include "map3d/Map3DWindow.h"
 
+#include "AppTheme.h"
 #include "geo/SessionTrackReader.h"
 #include "geo/TrajectoryQuality.h"
 #include "map3d/OsgEarthViewWidget.h"
@@ -293,6 +294,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
                                    QStringLiteral("2x"),
                                    QStringLiteral("5x"),
                                    QStringLiteral("10x")});
+    VaporView::configureComboBoxPopup(replay_speed_combo_, VaporView::isDarkThemeEnabled());
     toolbar->addWidget(replay_speed_combo_);
 
     replay_slider_ = new QSlider(Qt::Horizontal, toolbar);

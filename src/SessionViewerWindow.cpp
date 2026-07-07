@@ -5086,6 +5086,7 @@ void SessionViewerWindow::onConfigurePeakFilterClicked()
     modeCombo->addItem(is_english_ ? QStringLiteral("Exclude Range") : QStringLiteral("排除区间"), static_cast<int>(PeakFilterMode::ExcludeRange));
     modeCombo->setCurrentIndex(std::max(0, modeCombo->findData(static_cast<int>(peak_filter_settings_.mode))));
     modeCombo->setMinimumWidth(inputColumnWidth);
+    VaporView::configureComboBoxPopup(modeCombo, VaporView::isDarkThemeEnabled());
     addFormRow(2, is_english_ ? QStringLiteral("Method") : QStringLiteral("方式"), modeCombo);
 
     auto *minEdit = new QLineEdit(QString::number(peak_filter_settings_.min_value, 'f', 6), formWidget);

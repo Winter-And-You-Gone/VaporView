@@ -1,6 +1,8 @@
 #include "AppTheme.h"
 
+#include <QAbstractItemView>
 #include <QApplication>
+#include <QComboBox>
 #include <QStyle>
 #include <QVariant>
 
@@ -566,6 +568,59 @@ QPalette appThemePalette(bool dark, const QPalette& basePalette)
     palette.setColor(QPalette::Disabled, QPalette::Text, appThemeColor(AppThemeColor::TextDisabled, true));
     palette.setColor(QPalette::Disabled, QPalette::ButtonText, appThemeColor(AppThemeColor::TextDisabled, true));
     return palette;
+}
+
+void configureComboBoxPopup(QComboBox *combo, bool dark)
+{
+    if (!combo || !combo->view())
+    {
+        return;
+    }
+
+    combo->setProperty("vaporViewComboPopupStyled", true);
+
+    QAbstractItemView *view = combo->view();
+    view->setObjectName(QStringLiteral("vaporViewComboPopupView"));
+    view->setProperty("vaporViewComboPopupStyled", true);
+    view->setMouseTracking(true);
+
+    const QColor popupBase = appThemeColor(dark ? AppThemeColor::Window : AppThemeColor::Surface, dark);
+    const QColor popupBorder = appThemeColor(AppThemeColor::Border, dark);
+    const QColor popupText = appThemeColor(dark ? AppThemeColor::TextStrong : AppThemeColor::Text, dark);
+    const QColor popupHighlight = appThemeColor(AppThemeColor::PopupHighlight, dark);
+    const QColor popupHighlightText = appThemeColor(dark ? AppThemeColor::TextStrong : AppThemeColor::Text, dark);
+    const QColor disabledText = appThemeColor(AppThemeColor::TextDisabled, dark);
+
+    QPalette popupPalette = view->palette();
+    popupPalette.setColor(QPalette::Base, popupBase);
+    popupPalette.setColor(QPalette::Text, popupText);
+    popupPalette.setColor(QPalette::Highlight, popupHighlight);
+    popupPalette.setColor(QPalette::HighlightedText, popupHighlightText);
+    popupPalette.setColor(QPalette::Disabled, QPalette::Text, disabledText);
+    view->setPalette(popupPalette);
+    view->setStyleSheet(QStringLiteral(
+        "QAbstractItemView#vaporViewComboPopupView { "
+        "background-color: %1; border: 1px solid %2; border-radius: 6px; "
+        "color: %3; outline: 0px; padding: 4px; "
+        "selection-background-color: %4; selection-color: %5; }"
+        "QAbstractItemView#vaporViewComboPopupView::item { "
+        "background-color: transparent; border: 0px; border-radius: 4px; "
+        "min-height: 28px; padding: 6px 12px; }"
+        "QAbstractItemView#vaporViewComboPopupView::item:hover, "
+        "QAbstractItemView#vaporViewComboPopupView::item:selected, "
+        "QAbstractItemView#vaporViewComboPopupView::item:selected:active, "
+        "QAbstractItemView#vaporViewComboPopupView::item:selected:!active { "
+        "background-color: %4; color: %5; }"
+        "QAbstractItemView#vaporViewComboPopupView::item:disabled { "
+        "background-color: transparent; color: %6; }"
+        "QAbstractItemView#vaporViewComboPopupView::item:selected:disabled { "
+        "background-color: %4; color: %6; }")
+        .arg(popupBase.name(),
+             popupBorder.name(),
+             popupText.name(),
+             popupHighlight.name(),
+             popupHighlightText.name(),
+             disabledText.name()));
 }
 
 QString applyAppThemeTokens(QString styleSheet, bool dark)

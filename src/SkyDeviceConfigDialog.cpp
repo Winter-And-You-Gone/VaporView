@@ -823,6 +823,7 @@ void SkyDeviceConfigDialog::createSerialFields(QFormLayout *layout, SerialRow& r
     row.port = new QComboBox(this);
     row.port->setEditable(true);
     row.port->setInsertPolicy(QComboBox::NoInsert);
+    VaporView::configureComboBoxPopup(row.port, VaporView::isDarkThemeEnabled());
     row.baud = new QSpinBox(this);
     row.baud->setRange(1200, 4000000);
     row.frequency = new QDoubleSpinBox(this);
