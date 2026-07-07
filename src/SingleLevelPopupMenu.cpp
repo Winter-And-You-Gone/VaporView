@@ -9,7 +9,6 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
-#include <QPaintEvent>
 #include <QRegion>
 #include <QResizeEvent>
 #include <QSizePolicy>
@@ -22,11 +21,6 @@
 
 namespace VaporView
 {
-namespace
-{
-constexpr int kMenuShadowMargin = 14;
-}
-
 SingleLevelPopupMenuRow::SingleLevelPopupMenuRow(QWidget *parent)
     : QWidget(parent)
     , text_label_(new QLabel(this))
@@ -305,7 +299,6 @@ SingleLevelPopupMenu::SingleLevelPopupMenu(QWidget *parent)
     setObjectName(QStringLiteral("singleLevelPopupMenu"));
     setAttribute(Qt::WA_TranslucentBackground, true);
     setAttribute(Qt::WA_StyledBackground, true);
-    setWindowFlag(Qt::NoDropShadowWindowHint, true);
     refreshTheme();
 }
 
@@ -379,13 +372,14 @@ void SingleLevelPopupMenu::refreshTheme()
 
     const bool dark = isDarkThemeEnabled();
     const int horizontalPadding = panel_padding_ >= 8 ? 0 : panel_padding_;
-    const int chromeMargin = shadowMargin();
-    setContentsMargins(chromeMargin, chromeMargin, chromeMargin, chromeMargin);
-    setProperty("floatingPanelChrome", chromeMargin > 0);
-    setProperty("shadowMargin", chromeMargin);
+    const bool floatingPanel = panel_padding_ >= 8;
+    setContentsMargins(0, 0, 0, 0);
+    setProperty("floatingPanelChrome", floatingPanel);
+    setProperty("shadowMargin", 0);
 
-    const QString panelRule = chromeMargin > 0
-        ? QStringLiteral("background-color: transparent; border: none; border-radius: %1px; padding: %2px %3px;")
+    const QString panelRule = floatingPanel
+        ? QStringLiteral("background-color: %1; border: none; border-radius: %2px; padding: %3px %4px;")
+              .arg(dark ? appThemeColorName(AppThemeColor::MenuPanel, dark) : QStringLiteral("#FFFFFF"))
               .arg(corner_radius_)
               .arg(panel_padding_)
               .arg(horizontalPadding)
@@ -419,11 +413,10 @@ void SingleLevelPopupMenu::popupFrom(QWidget *anchor, SingleLevelPopupAnchor anc
     ensurePolished();
     adjustSize();
     const QSize popupSize = sizeHint();
-    QPoint popupTopLeft = anchor->mapToGlobal(QPoint(-shadowMargin(), anchor->height() - shadowMargin()));
+    QPoint popupTopLeft = anchor->mapToGlobal(QPoint(0, anchor->height()));
     if (anchorEdge == SingleLevelPopupAnchor::Right)
     {
-        popupTopLeft = anchor->mapToGlobal(QPoint(anchor->width() - popupSize.width() + shadowMargin(),
-                                                 anchor->height() - shadowMargin()));
+        popupTopLeft = anchor->mapToGlobal(QPoint(anchor->width() - popupSize.width(), anchor->height()));
     }
     popupTopLeft += offset;
     popup(popupTopLeft);
@@ -466,56 +459,6 @@ void SingleLevelPopupMenu::showEvent(QShowEvent *event)
     });
 }
 
-void SingleLevelPopupMenu::paintEvent(QPaintEvent *event)
-{
-    if (shadowMargin() <= 0)
-    {
-        QMenu::paintEvent(event);
-        return;
-    }
-
-    QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-
-    const QRectF panel = panelRect();
-    if (!panel.isValid() || panel.isEmpty())
-    {
-        return;
-    }
-
-    const bool dark = isDarkThemeEnabled();
-    const QColor shadowA = dark ? QColor(0, 0, 0, 115) : QColor(15, 23, 42, 34);
-    const QColor shadowB = dark ? QColor(0, 0, 0, 70) : QColor(15, 23, 42, 22);
-    const QColor shadowC = dark ? QColor(0, 0, 0, 42) : QColor(15, 23, 42, 14);
-
-    auto drawLayer = [&](const QRectF& rect, const QColor& color, qreal radius) {
-        QPainterPath layer;
-        layer.addRoundedRect(rect, radius, radius);
-        painter.fillPath(layer, color);
-    };
-
-    drawLayer(panel.adjusted(-1.0, 5.0, 1.0, 7.0), shadowC, corner_radius_ + 3.0);
-    drawLayer(panel.adjusted(-1.0, 2.0, 1.0, 4.0), shadowB, corner_radius_ + 2.0);
-    drawLayer(panel.adjusted(0.0, 1.0, 0.0, 2.0), shadowA, corner_radius_ + 1.0);
-
-    QPainterPath panelPath;
-    panelPath.addRoundedRect(panel, corner_radius_, corner_radius_);
-    painter.fillPath(panelPath, dark ? appThemeColor(AppThemeColor::MenuPanel, dark) : QColor(255, 255, 255));
-}
-
-int SingleLevelPopupMenu::shadowMargin() const
-{
-    return panel_padding_ >= 8 ? kMenuShadowMargin : 0;
-}
-
-QRect SingleLevelPopupMenu::panelRect() const
-{
-    return rect().adjusted(kMenuShadowMargin,
-                           kMenuShadowMargin,
-                           -kMenuShadowMargin,
-                           -kMenuShadowMargin);
-}
-
 QSize SingleLevelPopupMenu::maskSize() const
 {
     QSize menuSize = size();
@@ -536,7 +479,7 @@ void SingleLevelPopupMenu::syncRowWidths()
     {
         return;
     }
-    const int availableWidth = std::max(1, panelRect().width());
+    const int availableWidth = std::max(1, width() - 2);
     for (SingleLevelPopupMenuRow *row : rows())
     {
         if (!row)

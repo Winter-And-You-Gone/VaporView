@@ -117,11 +117,8 @@ public:
 protected:
     void resizeEvent(QResizeEvent *event) override;
     void showEvent(QShowEvent *event) override;
-    void paintEvent(QPaintEvent *event) override;
 
 private:
-    int shadowMargin() const;
-    QRect panelRect() const;
     QSize maskSize() const;
     void syncRowWidths();
 
