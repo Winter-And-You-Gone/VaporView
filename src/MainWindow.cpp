@@ -4963,6 +4963,23 @@ private:
     bool is_english_ = false;
 };
 
+QString temperatureOverviewValueText(double value)
+{
+    if (!std::isfinite(value))
+    {
+        return QStringLiteral("---℃");
+    }
+
+    QString text = QLocale::c().toString(value, 'f', 5);
+    while (text.contains(QLatin1Char('.')) &&
+           text.endsWith(QLatin1Char('0')) &&
+           text.section(QLatin1Char('.'), 1).size() > 3)
+    {
+        text.chop(1);
+    }
+    return text + QStringLiteral("℃");
+}
+
 void setTemperatureOverviewPillText(QLabel *label, const QString& title, const QString& value)
 {
     if (!label)
@@ -4970,22 +4987,7 @@ void setTemperatureOverviewPillText(QLabel *label, const QString& title, const Q
         return;
     }
 
-    QString text = value;
-    if (!title.isEmpty())
-    {
-        bool asciiTitle = true;
-        for (const QChar ch : title)
-        {
-            if (ch.unicode() > 0x7f)
-            {
-                asciiTitle = false;
-                break;
-            }
-        }
-        text = QStringLiteral("%1%2%3").arg(title,
-                                            asciiTitle ? QStringLiteral(": ") : QStringLiteral("："),
-                                            value);
-    }
+    const QString text = title.isEmpty() ? value : QStringLiteral("%1\n%2").arg(title, value);
     label->setText(text);
     label->style()->unpolish(label);
     label->style()->polish(label);
@@ -5075,9 +5077,7 @@ protected:
             ? appThemeColor(AppThemeColor::HomeDeviceSuccess, dark)
             : appThemeColor(AppThemeColor::HomeDeviceDanger, dark);
         const QColor border = appThemeColor(AppThemeColor::Border, dark);
-        const QColor fill = enabled
-            ? appThemeColor(AppThemeColor::PrimarySubtle, dark)
-            : appThemeColor(AppThemeColor::SurfaceAlt, dark);
+        const QColor fill = appThemeColor(AppThemeColor::Surface, dark);
         const QColor switchFill = enabled
             ? stateFill
             : appThemeColor(AppThemeColor::Surface, dark);
@@ -5110,8 +5110,8 @@ protected:
         QFont segmentFont = font();
         segmentFont.setWeight(QFont::DemiBold);
 
-        const qreal kTitleHeight = QFontMetricsF(titleFont).height() + 2.0;
-        constexpr qreal kTitleGap = 2.0;
+        constexpr qreal kTitleHeight = 18.0;
+        constexpr qreal kTitleGap = 1.0;
         const QRectF labelRect(trackRect.left(), trackRect.top(), trackRect.width(), kTitleHeight);
         const QRectF switchRect(trackRect.left(),
                                 labelRect.bottom() + kTitleGap,
@@ -5471,7 +5471,7 @@ public:
 
         constexpr int kOverviewControlWidth = 99;
         constexpr int kOverviewSummaryWidth = kOverviewControlWidth;
-        constexpr int kOverviewPillHeight = 34;
+        constexpr int kOverviewPillHeight = 40;
         constexpr int kOverviewOutputPillHeight = 56;
 
         auto *layout = new QHBoxLayout(this);
@@ -5540,6 +5540,7 @@ public:
         target_temp_value_ = new QLabel(summary);
         target_temp_value_->setObjectName(QStringLiteral("temperatureOverviewValuePill"));
         target_temp_value_->setAlignment(Qt::AlignCenter);
+        target_temp_value_->setWordWrap(false);
         target_temp_value_->setFixedSize(kOverviewControlWidth, kOverviewPillHeight);
         target_temp_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         summaryLayout->addWidget(target_temp_value_);
@@ -5547,6 +5548,7 @@ public:
         current_temp_value_ = new QLabel(summary);
         current_temp_value_->setObjectName(QStringLiteral("temperatureOverviewValuePill"));
         current_temp_value_->setAlignment(Qt::AlignCenter);
+        current_temp_value_->setWordWrap(false);
         current_temp_value_->setFixedSize(kOverviewControlWidth, kOverviewPillHeight);
         current_temp_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         summaryLayout->addWidget(current_temp_value_);
@@ -5712,16 +5714,12 @@ private:
         const bool targetValid = valid && std::isfinite(channel.target_temperature_c);
         setTemperatureOverviewPillText(
             target_temp_value_,
-            is_english_ ? QStringLiteral("Target") : QStringLiteral("目标"),
-            compactDecimalWithUnit(targetValid ? channel.target_temperature_c : std::numeric_limits<double>::quiet_NaN(),
-                                   3,
-                                   QStringLiteral("°C")));
+            is_english_ ? QStringLiteral("Target Temp") : QStringLiteral("目标温度"),
+            temperatureOverviewValueText(targetValid ? channel.target_temperature_c : std::numeric_limits<double>::quiet_NaN()));
         setTemperatureOverviewPillText(
             current_temp_value_,
-            is_english_ ? QStringLiteral("Current") : QStringLiteral("当前"),
-            compactDecimalWithUnit(measuredValid ? channel.measured_temperature_c : std::numeric_limits<double>::quiet_NaN(),
-                                   3,
-                                   QStringLiteral("°C")));
+            is_english_ ? QStringLiteral("Current Temp") : QStringLiteral("当前温度"),
+            temperatureOverviewValueText(measuredValid ? channel.measured_temperature_c : std::numeric_limits<double>::quiet_NaN()));
         if (channel_button_)
         {
             channel_button_->setProperty("available", valid);
@@ -7258,16 +7256,16 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#homeTelemetrySummaryNameLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 700; }"
             "QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 600; }"
             "QLabel#homeTelemetrySummaryTitleLabel[skyTelemetryTitle=\"true\"] { color: @vv-primary; }"
-            "QLabel#temperatureOverviewValuePill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 12px; font-weight: 700; padding: 1px 4px; margin: 0px; }"
+            "QLabel#temperatureOverviewValuePill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 11px; font-weight: 700; padding: 2px 3px; margin: 0px; }"
             "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; min-height: 56px; max-height: 56px; padding: 0px; margin: 0px; color: @vv-text; font-size: 13px; font-weight: 700; }"
-            "QToolButton#temperatureOverviewChannelButton { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; border-radius: 10px; color: @vv-primary; font-size: 13px; font-weight: 700; padding: 1px 0px; text-align: center; }"
+            "QToolButton#temperatureOverviewChannelButton { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-primary; font-size: 13px; font-weight: 700; padding: 1px 0px; text-align: center; }"
             "QToolButton#temperatureOverviewChannelButton[available=\"false\"] { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }"
-            "QToolButton#temperatureOverviewChannelButton:hover, QToolButton#temperatureOverviewChannelButton:pressed { background-color: @vv-primary-subtle; border-color: @vv-primary-subtle-pressed; }"
+            "QToolButton#temperatureOverviewChannelButton:hover, QToolButton#temperatureOverviewChannelButton:pressed { background-color: @vv-surface; border-color: @vv-border-strong; }"
             "QToolButton#temperatureOverviewChannelButton[available=\"false\"]:hover, QToolButton#temperatureOverviewChannelButton[available=\"false\"]:pressed { background-color: @vv-surface-alt; border-color: @vv-border; }"
             "QToolButton#temperatureOverviewChannelButton::menu-indicator { image: url(combo_arrow_down.xpm); width: 12px; height: 8px; subcontrol-origin: padding; subcontrol-position: center right; right: 8px; }"
             "QMenu#temperatureOverviewChannelMenu { padding: 0px; }"
-            "QMenu#temperatureOverviewChannelMenu::item { min-width: 99px; max-width: 99px; min-height: 34px; max-height: 34px; padding: 9px 0px; margin: 0px; }"
-            "QPushButton#temperatureOverviewChannelMenuItem { background-color: transparent; border: none; border-radius: 8px; color: @vv-text; font-size: 13px; font-weight: 700; min-width: 99px; max-width: 99px; min-height: 34px; max-height: 34px; padding: 0px; margin: 0px; }"
+            "QMenu#temperatureOverviewChannelMenu::item { min-width: 99px; max-width: 99px; min-height: 40px; max-height: 40px; padding: 9px 0px; margin: 0px; }"
+            "QPushButton#temperatureOverviewChannelMenuItem { background-color: transparent; border: none; border-radius: 8px; color: @vv-text; font-size: 13px; font-weight: 700; min-width: 99px; max-width: 99px; min-height: 40px; max-height: 40px; padding: 0px; margin: 0px; }"
             "QPushButton#temperatureOverviewChannelMenuItem:hover, QPushButton#temperatureOverviewChannelMenuItem:pressed, QPushButton#temperatureOverviewChannelMenuItem[selected=\"true\"] { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "QFrame#homeOverviewDivider { background-color: @vv-border; border: none; min-width: 1px; max-width: 1px; }"
             "QLabel#epsilonSectionLabel { color: @vv-text; background-color: @vv-surface-alt; border: none; border-right: 1px solid @vv-border; font-size: 14px; font-weight: 700; padding: 2px; }"

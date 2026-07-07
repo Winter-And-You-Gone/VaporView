@@ -1495,6 +1495,8 @@ int main(int argc, char **argv)
     {
         require(!pill->property("hasData").isValid(),
                 "temperature overview value pill does not carry availability styling state");
+        require(!pill->wordWrap(),
+                "temperature overview value pill uses explicit two-line text without wrapping");
     }
     auto *temperatureOutputSwitch =
         window.findChild<QPushButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
@@ -1742,6 +1744,18 @@ int main(int argc, char **argv)
             "temperature overview output enable capsule is enabled with controller data");
     require(temperatureOutputSwitch->isChecked(),
             "temperature overview output enable capsule reflects the confirmed controller output state");
+    bool sawTemperatureOverviewTwoLineValue = false;
+    for (QLabel *pill : temperatureValuePills)
+    {
+        if (pill->text().contains(QLatin1Char('\n')) &&
+            pill->text().contains(QStringLiteral("24.750℃")) &&
+            pill->text().contains(QStringLiteral("当前温度")))
+        {
+            sawTemperatureOverviewTwoLineValue = true;
+        }
+    }
+    require(sawTemperatureOverviewTwoLineValue,
+            "temperature overview value pill uses title-over-value layout with three decimal minimum precision");
     const QList<QWidget*> temperatureTrendPlots =
         window.findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot"));
     require(!temperatureTrendPlots.isEmpty(),

@@ -465,9 +465,9 @@ QLabel#temperatureOverviewValuePill {
     border-radius: 10px;
     color: @vv-text-strong;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
-    padding: 1px 4px;
+    padding: 2px 3px;
     margin: 0px;
 }
 
@@ -484,8 +484,8 @@ QPushButton#temperatureOverviewOutputSwitch {
 }
 
 QToolButton#temperatureOverviewChannelButton {
-    background-color: @vv-primary-subtle;
-    border: 1px solid @vv-primary-subtle-pressed;
+    background-color: @vv-surface;
+    border: 1px solid @vv-border;
     border-radius: 10px;
     color: @vv-primary;
     font-size: 13px;
@@ -502,8 +502,8 @@ QToolButton#temperatureOverviewChannelButton[available="false"] {
 
 QToolButton#temperatureOverviewChannelButton:hover,
 QToolButton#temperatureOverviewChannelButton:pressed {
-    background-color: @vv-primary-subtle;
-    border-color: @vv-primary-subtle-pressed;
+    background-color: @vv-surface;
+    border-color: @vv-border-strong;
 }
 
 QToolButton#temperatureOverviewChannelButton[available="false"]:hover,
@@ -528,8 +528,8 @@ QMenu#temperatureOverviewChannelMenu {
 QMenu#temperatureOverviewChannelMenu::item {
     min-width: 99px;
     max-width: 99px;
-    min-height: 34px;
-    max-height: 34px;
+    min-height: 40px;
+    max-height: 40px;
     padding: 9px 0px;
     margin: 0px;
 }
@@ -543,8 +543,8 @@ QPushButton#temperatureOverviewChannelMenuItem {
     font-weight: 700;
     min-width: 99px;
     max-width: 99px;
-    min-height: 34px;
-    max-height: 34px;
+    min-height: 40px;
+    max-height: 40px;
     padding: 0px;
     margin: 0px;
 }
