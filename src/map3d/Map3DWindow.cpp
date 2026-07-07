@@ -388,7 +388,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     local_imagery_menu_->setTitle(QStringLiteral("本地影像"));
     local_imagery_menu_->setObjectName(QStringLiteral("map3DLocalImageryMenu"));
     local_imagery_menu_->setPanelPadding(8);
-    local_imagery_menu_->setCornerRadius(8);
+    local_imagery_menu_->setCornerRadius(16);
     local_imagery_menu_->refreshTheme();
     local_imagery_action_ = toolbar->addAction(QStringLiteral("本地影像"));
     local_imagery_action_->setObjectName(QStringLiteral("map3DLocalImageryAction"));

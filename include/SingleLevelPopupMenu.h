@@ -117,12 +117,15 @@ public:
 protected:
     void resizeEvent(QResizeEvent *event) override;
     void showEvent(QShowEvent *event) override;
+    void paintEvent(QPaintEvent *event) override;
 
 private:
+    int shadowMargin() const;
+    QRect panelRect() const;
     QSize maskSize() const;
     void syncRowWidths();
 
-    int corner_radius_ = 8;
+    int corner_radius_ = 16;
     int panel_padding_ = 8;
 };
 
