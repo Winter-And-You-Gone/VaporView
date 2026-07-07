@@ -1512,6 +1512,9 @@ int main(int argc, char **argv)
                                  "temperature overview channel menu selection does not use a colored background");
     temperatureChannelButton->menu()->popup(temperatureChannelButton->mapToGlobal(QPoint(0, temperatureChannelButton->height())));
     processEventsFor(50);
+    require(temperatureChannelButton->menu()->property("roundedMaskApplied").toBool() &&
+                !temperatureChannelButton->menu()->mask().isEmpty(),
+            "temperature overview channel menu clips the popup window to rounded corners");
     for (QAction *action : temperatureChannelButton->menu()->actions())
     {
         const QRect actionRect = temperatureChannelButton->menu()->actionGeometry(action);

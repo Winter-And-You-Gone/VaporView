@@ -68,9 +68,11 @@
 #include <QHash>
 #include <QIcon>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPalette>
 #include <QPolygonF>
 #include <QPixmap>
+#include <QRegion>
 #include <QSvgRenderer>
 #include <QSet>
 #include <QSignalBlocker>
@@ -5708,6 +5710,7 @@ public:
         channel_menu_->setWindowFlag(Qt::NoDropShadowWindowHint, true);
         connect(channel_menu_, &QMenu::aboutToShow, this, [this]() {
             updateSummaryControlHeights();
+            applyChannelMenuRoundedMask();
         });
         connect(channel_button_, &QToolButton::clicked, this, [this]() {
             popupChannelMenu();
@@ -5963,9 +5966,37 @@ private:
         updateSummaryControlHeights();
         channel_menu_->ensurePolished();
         channel_menu_->adjustSize();
+        applyChannelMenuRoundedMask();
         const QPoint popupTopLeft = channel_button_->mapToGlobal(QPoint(0, channel_button_->height()));
         channel_menu_->popup(popupTopLeft);
         channel_menu_->move(popupTopLeft);
+        applyChannelMenuRoundedMask();
+    }
+
+    void applyChannelMenuRoundedMask()
+    {
+        if (!channel_menu_)
+        {
+            return;
+        }
+
+        QSize menuSize = channel_menu_->size();
+        if (!menuSize.isValid() || menuSize.isEmpty())
+        {
+            menuSize = channel_menu_->sizeHint();
+        }
+        if (!menuSize.isValid() || menuSize.isEmpty())
+        {
+            return;
+        }
+
+        constexpr qreal kMenuRadius = 10.0;
+        QPainterPath path;
+        path.addRoundedRect(QRectF(QPointF(0.0, 0.0), QSizeF(menuSize)).adjusted(0.0, 0.0, -1.0, -1.0),
+                            kMenuRadius,
+                            kMenuRadius);
+        channel_menu_->setMask(QRegion(path.toFillPolygon().toPolygon()));
+        channel_menu_->setProperty("roundedMaskApplied", !channel_menu_->mask().isEmpty());
     }
 
     int currentChannelIndex() const
