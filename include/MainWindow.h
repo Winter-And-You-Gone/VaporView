@@ -301,7 +301,7 @@ private:
         QLabel *pid_label_text = nullptr;
         QLabel *auto_pid_label_text = nullptr;
         QDoubleSpinBox *target_spin = nullptr;
-        QComboBox *enable_combo = nullptr;
+        QPushButton *enable_switch = nullptr;
         QComboBox *mode_combo = nullptr;
         QSpinBox *max_output_spin = nullptr;
         QSpinBox *kp_spin = nullptr;
