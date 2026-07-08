@@ -2568,7 +2568,7 @@ QPushButton:disabled {
     background-color: @vv-border;
     color: @vv-text-disabled-strong;
 }
-TemperatureControllerPanel QFrame#temperatureChannelSidebar {
+TemperatureControllerPanel QFrame#temperatureChannelTopBar {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
     border-radius: 8px;
@@ -6317,19 +6317,18 @@ void TemperatureControllerPanel::setupUi()
     configCard->setFrameShape(QFrame::NoFrame);
     configCard->setAttribute(Qt::WA_StyledBackground, true);
     configCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    auto *configCardLayout = new QHBoxLayout(configCard);
+    auto *configCardLayout = new QVBoxLayout(configCard);
     configCardLayout->setContentsMargins(12, 12, 12, 12);
-    configCardLayout->setSpacing(12);
+    configCardLayout->setSpacing(10);
 
-    channel_sidebar_ = new QFrame(configCard);
-    channel_sidebar_->setObjectName(QStringLiteral("temperatureChannelSidebar"));
-    channel_sidebar_->setFrameShape(QFrame::NoFrame);
-    channel_sidebar_->setAttribute(Qt::WA_StyledBackground, true);
-    channel_sidebar_->setFixedWidth(112);
-    channel_sidebar_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
-    auto *channelSidebarLayout = new QVBoxLayout(channel_sidebar_);
-    channelSidebarLayout->setContentsMargins(6, 6, 6, 6);
-    channelSidebarLayout->setSpacing(6);
+    channel_top_bar_ = new QFrame(configCard);
+    channel_top_bar_->setObjectName(QStringLiteral("temperatureChannelTopBar"));
+    channel_top_bar_->setFrameShape(QFrame::NoFrame);
+    channel_top_bar_->setAttribute(Qt::WA_StyledBackground, true);
+    channel_top_bar_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    auto *channelTopBarLayout = new QHBoxLayout(channel_top_bar_);
+    channelTopBarLayout->setContentsMargins(6, 6, 6, 6);
+    channelTopBarLayout->setSpacing(6);
 
     auto createChannelButton = [this](int index) {
         auto *button = new QPushButton(this);
@@ -6337,9 +6336,8 @@ void TemperatureControllerPanel::setupUi()
         button->setProperty("temperatureChannelSelector", true);
         button->setCheckable(true);
         button->setCursor(Qt::PointingHandCursor);
-        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        button->setMinimumHeight(34);
-        button->setMaximumHeight(34);
+        button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        button->setFixedSize(84, 34);
         button->setText(index == 0 ? QStringLiteral("通道1") : QStringLiteral("通道2"));
         connect(button, &QPushButton::clicked, this, [this, index]() {
             selectChannel(index);
@@ -6348,17 +6346,16 @@ void TemperatureControllerPanel::setupUi()
     };
     channel_button_1_ = createChannelButton(0);
     channel_button_2_ = createChannelButton(1);
-    channelSidebarLayout->addWidget(channel_button_1_);
-    channelSidebarLayout->addWidget(channel_button_2_);
-    channelSidebarLayout->addStretch(1);
-    configCardLayout->addWidget(channel_sidebar_, 0);
+    channelTopBarLayout->addWidget(channel_button_1_);
+    channelTopBarLayout->addWidget(channel_button_2_);
+    configCardLayout->addWidget(channel_top_bar_, 0, Qt::AlignLeft);
 
     channel_stack_ = new QStackedWidget(configCard);
     channel_stack_->setObjectName(QStringLiteral("temperatureChannelStack"));
     channel_stack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     channel_stack_->addWidget(createChannelPage(0));
     channel_stack_->addWidget(createChannelPage(1));
-    configCardLayout->addWidget(channel_stack_, 1);
+    configCardLayout->addWidget(channel_stack_, 0);
     selectChannel(0);
     layout->addWidget(configCard, 0);
 
@@ -8093,7 +8090,7 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton#compactTcpButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
             "QPushButton#compactTcpStartButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
             "TemperatureControllerPanel QFrame#temperatureConfigCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
-            "TemperatureControllerPanel QFrame#temperatureChannelSidebar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
+            "TemperatureControllerPanel QFrame#temperatureChannelTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
             "TemperatureControllerPanel QStackedWidget#temperatureChannelStack { background-color: transparent; border: none; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 34px; max-height: 34px; padding: 0px 10px; text-align: center; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
@@ -8107,7 +8104,7 @@ QString temperatureControllerConfigStyleSheet()
 {
     return QStringLiteral(
         "TemperatureControllerPanel QFrame#temperatureConfigCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
-        "TemperatureControllerPanel QFrame#temperatureChannelSidebar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
+        "TemperatureControllerPanel QFrame#temperatureChannelTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
         "TemperatureControllerPanel QStackedWidget#temperatureChannelStack { background-color: transparent; border: none; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 34px; max-height: 34px; padding: 0px 10px; text-align: center; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"

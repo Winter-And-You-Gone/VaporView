@@ -1151,7 +1151,7 @@ TemperatureControllerPanel QFrame#temperatureConfigCard {
     border-radius: 8px;
 }
 
-TemperatureControllerPanel QFrame#temperatureChannelSidebar {
+TemperatureControllerPanel QFrame#temperatureChannelTopBar {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
     border-radius: 8px;

@@ -328,7 +328,7 @@ private:
     void updateChannelData(int index, const VaporView::TemperatureControllerChannelData& channel, bool valid);
     int channelIndex(quint8 channel) const;
 
-    QFrame *channel_sidebar_ = nullptr;
+    QFrame *channel_top_bar_ = nullptr;
     QPushButton *channel_button_1_ = nullptr;
     QPushButton *channel_button_2_ = nullptr;
     QStackedWidget *channel_stack_ = nullptr;

@@ -2247,8 +2247,8 @@ int main(int argc, char **argv)
             "temperature controller title-bar connect/reconnect buttons are usable in local serial mode");
     auto *temperatureConfigCard =
         temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureConfigCard"));
-    auto *temperatureChannelSidebar =
-        temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureChannelSidebar"));
+    auto *temperatureChannelTopBar =
+        temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureChannelTopBar"));
     auto *temperatureChannelStack =
         temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelStack"));
     auto *temperatureConfigChannelButton1 =
@@ -2267,20 +2267,20 @@ int main(int argc, char **argv)
         }
     }
     require(temperatureConfigCard != nullptr &&
-                temperatureChannelSidebar != nullptr &&
+                temperatureChannelTopBar != nullptr &&
                 temperatureChannelStack != nullptr &&
                 temperatureConfigChannelButton1 != nullptr &&
                 temperatureConfigChannelButton2 != nullptr &&
                 temperatureConfigPlot != nullptr,
-            "temperature controller page exposes a sidebar channel selector and a full-width trend plot");
+            "temperature controller page exposes a top channel selector and a full-width trend plot");
     require(temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureConfigTabs")) == nullptr,
             "temperature controller no longer uses the native tab widget that drew the gray base bar");
-    require(temperatureChannelSidebar->parentWidget() == temperatureConfigCard &&
+    require(temperatureChannelTopBar->parentWidget() == temperatureConfigCard &&
                 temperatureChannelStack->parentWidget() == temperatureConfigCard,
-            "temperature channel sidebar and page stack live inside the internal config card");
-    require(temperatureConfigChannelButton1->parentWidget() == temperatureChannelSidebar &&
-                temperatureConfigChannelButton2->parentWidget() == temperatureChannelSidebar,
-            "temperature channel buttons live in the sidebar");
+            "temperature channel top bar and page stack live inside the internal config card");
+    require(temperatureConfigChannelButton1->parentWidget() == temperatureChannelTopBar &&
+                temperatureConfigChannelButton2->parentWidget() == temperatureChannelTopBar,
+            "temperature channel buttons live in the top bar");
     require(temperatureConfigChannelButton1->property("temperatureChannelSelector").toBool() &&
                 temperatureConfigChannelButton2->property("temperatureChannelSelector").toBool(),
             "temperature channel buttons use the scoped selector style");
@@ -2289,32 +2289,32 @@ int main(int argc, char **argv)
                 temperatureConfigChannelButton1->isChecked() &&
                 !temperatureConfigChannelButton2->isChecked() &&
                 temperatureChannelStack->currentIndex() == 0,
-            "temperature channel sidebar defaults to channel 1");
-    const QRect sidebarRectInCard(temperatureChannelSidebar->mapTo(temperatureConfigCard, QPoint(0, 0)),
-                                  temperatureChannelSidebar->size());
+            "temperature channel top bar defaults to channel 1");
+    const QRect topBarRectInCard(temperatureChannelTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                 temperatureChannelTopBar->size());
     const QRect stackRectInCard(temperatureChannelStack->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                 temperatureChannelStack->size());
-    require(sidebarRectInCard.right() < stackRectInCard.left() &&
-                sidebarRectInCard.width() >= 100 &&
-                sidebarRectInCard.width() <= 130 &&
-                stackRectInCard.width() > sidebarRectInCard.width(),
-            "temperature channel selector is a narrow left sidebar beside the config stack");
-    require(temperatureConfigChannelButton1->y() < temperatureConfigChannelButton2->y() &&
+    require(topBarRectInCard.bottom() < stackRectInCard.top() &&
+                topBarRectInCard.left() <= stackRectInCard.left() + 1 &&
+                topBarRectInCard.width() < stackRectInCard.width(),
+            "temperature channel selector is a compact top bar above the config stack");
+    require(temperatureConfigChannelButton1->x() < temperatureConfigChannelButton2->x() &&
+                std::abs(temperatureConfigChannelButton1->y() - temperatureConfigChannelButton2->y()) <= 1 &&
                 temperatureConfigChannelButton1->height() == 34 &&
                 temperatureConfigChannelButton2->height() == 34,
-            "temperature channel sidebar arranges compact channel buttons vertically");
+            "temperature channel top bar arranges compact channel buttons horizontally");
     clickWidget(temperatureConfigChannelButton2, 150);
     activateLayouts(&window);
     require(temperatureChannelStack->currentIndex() == 1 &&
                 !temperatureConfigChannelButton1->isChecked() &&
                 temperatureConfigChannelButton2->isChecked(),
-            "temperature channel sidebar switches the visible channel page");
+            "temperature channel top bar switches the visible channel page");
     clickWidget(temperatureConfigChannelButton1, 150);
     activateLayouts(&window);
     require(temperatureChannelStack->currentIndex() == 0 &&
                 temperatureConfigChannelButton1->isChecked() &&
                 !temperatureConfigChannelButton2->isChecked(),
-            "temperature channel sidebar can switch back to channel 1");
+            "temperature channel top bar can switch back to channel 1");
     const QRect cardRectInPanel(temperatureConfigCard->mapTo(temperaturePanel, QPoint(0, 0)),
                                 temperatureConfigCard->size());
     const QRect plotRectInPanel(temperatureConfigPlot->mapTo(temperaturePanel, QPoint(0, 0)),
@@ -2331,17 +2331,17 @@ int main(int argc, char **argv)
                                  QStringLiteral("border-radius: 8px"),
                                  "temperature channel controls are wrapped in an internal rounded card");
     requireLastStyleRuleContains(qApp->styleSheet(),
-                                 QStringLiteral("TemperatureControllerPanel QFrame#temperatureChannelSidebar {"),
+                                 QStringLiteral("TemperatureControllerPanel QFrame#temperatureChannelTopBar {"),
                                  QStringLiteral("border-radius: 8px"),
-                                 "temperature channel selector uses a rounded sidebar");
+                                 "temperature channel selector uses a rounded top bar");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] {"),
                                  QStringLiteral("background-color: transparent"),
-                                 "temperature channel sidebar buttons override the global primary button fill");
+                                 "temperature channel top bar buttons override the global primary button fill");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked {"),
                                  QStringLiteral("font-weight: 600"),
-                                 "temperature channel sidebar marks the selected channel without native tab chrome");
+                                 "temperature channel top bar marks the selected channel without native tab chrome");
 
     auto *temperatureScrollArea =
         temperaturePageForLayout->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
