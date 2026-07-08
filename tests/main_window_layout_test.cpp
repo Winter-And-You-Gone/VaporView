@@ -2524,6 +2524,10 @@ int main(int argc, char **argv)
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::Danger, false),
                                  "temperature factory reset button is styled as a standalone danger action");
     requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("TemperatureControllerPanel QLabel[temperatureMaxOutputWarning=\"true\"] {"),
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::Danger, false),
+                                 "temperature max output label is marked red");
+    requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QSpinBox[temperatureMaxOutputWarning=\"true\"] {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::Danger, false),
                                  "temperature max output value is marked red");
@@ -2579,10 +2583,13 @@ int main(int argc, char **argv)
             "temperature max output value carries warning styling");
     const QList<QLabel*> maxOutputLabels =
         maxOutputSpin->parentWidget()->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
+    const QColor warningTextColor = VaporView::appThemeColor(VaporView::AppThemeColor::Danger, false);
     require(!maxOutputLabels.isEmpty() &&
                 maxOutputLabels.first()->text() == QStringLiteral("最大输出电压百分比(%)") &&
                 maxOutputLabels.first()->property("temperatureMaxOutputWarning").toBool(),
             "temperature max output label is renamed and marked red");
+    require(maxOutputSpin->palette().color(QPalette::Text) == warningTextColor,
+            "temperature max output value palette is actually painted red");
     require(targetSpin->width() >= 170,
             "temperature target spin reserves enough width for five decimals");
     require(kpSpin->width() >= 80 &&

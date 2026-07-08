@@ -1611,6 +1611,20 @@ void setWidgetBooleanProperty(QWidget *widget, const char *propertyName, bool en
     widget->update();
 }
 
+void setDangerTextPalette(QWidget *widget)
+{
+    if (!widget)
+    {
+        return;
+    }
+
+    QPalette palette = widget->palette();
+    const QColor danger = appThemeColor(AppThemeColor::Danger, VaporView::isDarkThemeEnabled());
+    palette.setColor(QPalette::WindowText, danger);
+    palette.setColor(QPalette::Text, danger);
+    widget->setPalette(palette);
+}
+
 void configureHoverParticipant(QWidget *widget, const char *participantProperty, QObject *eventFilter)
 {
     if (!widget)
@@ -6641,14 +6655,16 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
 
     channel.max_output_spin = new QSpinBox(this);
     channel.max_output_spin->setObjectName(QStringLiteral("temperatureMaxOutputSpinChannel%1").arg(index + 1));
-    channel.max_output_spin->setProperty("temperatureMaxOutputWarning", true);
+    setWidgetBooleanProperty(channel.max_output_spin, "temperatureMaxOutputWarning", true);
+    setDangerTextPalette(channel.max_output_spin);
     channel.max_output_spin->setRange(0, 90);
     channel.max_output_spin->setSuffix(QStringLiteral(" %"));
     channel.max_output_spin->setFixedWidth(kTemperatureControllerCompactInputWidth);
     addField(0, 0, QStringLiteral("最大输出电压百分比(%)"), channel.max_output_spin, channel.max_output_label_text);
     if (channel.max_output_label_text)
     {
-        channel.max_output_label_text->setProperty("temperatureMaxOutputWarning", true);
+        setWidgetBooleanProperty(channel.max_output_label_text, "temperatureMaxOutputWarning", true);
+        setDangerTextPalette(channel.max_output_label_text);
         channel.max_output_label_text->setFixedWidth(kTemperatureControllerMaxOutputLabelWidth);
     }
 
@@ -7019,7 +7035,12 @@ void TemperatureControllerPanel::updateChannelTexts()
         if (channel.target_label_text) channel.target_label_text->setText(is_english_ ? QStringLiteral("Target Temp (°C)") : QStringLiteral("目标温度(°C)"));
         if (channel.enable_label_text) channel.enable_label_text->setText(is_english_ ? QStringLiteral("Output Enable") : QStringLiteral("输出使能"));
         if (channel.mode_label_text) channel.mode_label_text->setText(is_english_ ? QStringLiteral("Output Mode") : QStringLiteral("输出模式"));
-        if (channel.max_output_label_text) channel.max_output_label_text->setText(is_english_ ? QStringLiteral("Max Output Voltage (%)") : QStringLiteral("最大输出电压百分比(%)"));
+        if (channel.max_output_label_text)
+        {
+            channel.max_output_label_text->setText(is_english_ ? QStringLiteral("Max Output Voltage (%)") : QStringLiteral("最大输出电压百分比(%)"));
+            setDangerTextPalette(channel.max_output_label_text);
+        }
+        setDangerTextPalette(channel.max_output_spin);
         if (channel.pid_label_text) channel.pid_label_text->setText(QStringLiteral("PID"));
         if (channel.auto_pid_label_text) channel.auto_pid_label_text->setText(is_english_ ? QStringLiteral("Auto PID") : QStringLiteral("自动 PID"));
         if (channel.enable_switch)
