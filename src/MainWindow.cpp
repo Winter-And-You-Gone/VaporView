@@ -6409,13 +6409,33 @@ void TemperatureControllerPanel::setupUi()
     channelTopBarLayout->addWidget(channel_button_2_);
     channelTopBarLayout->addWidget(common_settings_button_);
     channelSelectorRowLayout->addWidget(channel_top_bar_, 0, Qt::AlignVCenter);
+
+    common_.factory_reset_button = new QPushButton(QStringLiteral("恢复出厂设置"), channelSelectorRow);
+    common_.factory_reset_button->setObjectName(QStringLiteral("temperatureFactoryResetButton"));
+    common_.factory_reset_button->setCursor(Qt::PointingHandCursor);
+    common_.factory_reset_button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    common_.factory_reset_button->setFixedSize(142, 34);
+    common_.factory_reset_button->setIconSize(QSize(18, 18));
+    common_.factory_reset_button->setIcon(createLucideIcon(QStringLiteral("refresh-cw"),
+                                                           appThemeColor(AppThemeColor::Danger, VaporView::isDarkThemeEnabled())));
+    common_.factory_reset_button->setVisible(false);
+    connect(common_.factory_reset_button, &QPushButton::clicked, this, [this]() {
+        emit factoryResetRequested();
+    });
+    channelSelectorRowLayout->addWidget(common_.factory_reset_button, 0, Qt::AlignVCenter);
     channelTopRowLayout->addWidget(channelSelectorRow, 0, Qt::AlignLeft);
 
     channel_top_controls_stack_ = new QStackedWidget(channelTopRow);
     channel_top_controls_stack_->setObjectName(QStringLiteral("temperatureChannelTopControlsStack"));
     channel_top_controls_stack_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    channel_top_controls_stack_->setFixedHeight(kTemperatureControllerTopEnableHeight);
     channel_top_controls_stack_->addWidget(createChannelTopControlsPage(0));
     channel_top_controls_stack_->addWidget(createChannelTopControlsPage(1));
+    auto *commonTopControlsPage = new QWidget(channel_top_controls_stack_);
+    commonTopControlsPage->setObjectName(QStringLiteral("temperatureChannelTopControlsPageCommon"));
+    commonTopControlsPage->setFixedHeight(kTemperatureControllerTopEnableHeight);
+    commonTopControlsPage->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    channel_top_controls_stack_->addWidget(commonTopControlsPage);
     channelTopRowLayout->addWidget(channel_top_controls_stack_, 0, Qt::AlignLeft);
     configCardLayout->addWidget(channelTopRow, 0, Qt::AlignLeft);
 
@@ -6718,19 +6738,6 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
     common_.internal_temperature_edit->setFixedWidth(kTemperatureControllerInputWidth);
     addField(1, 1, QStringLiteral("温控器自身温度(°C)"), common_.internal_temperature_edit, common_.internal_temperature_label_text);
 
-    common_.factory_reset_button = new QPushButton(QStringLiteral("恢复出厂设置"), this);
-    common_.factory_reset_button->setObjectName(QStringLiteral("temperatureFactoryResetButton"));
-    common_.factory_reset_button->setCursor(Qt::PointingHandCursor);
-    common_.factory_reset_button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    common_.factory_reset_button->setFixedSize(142, 34);
-    common_.factory_reset_button->setIconSize(QSize(18, 18));
-    common_.factory_reset_button->setIcon(createLucideIcon(QStringLiteral("refresh-cw"),
-                                                           appThemeColor(AppThemeColor::Danger, VaporView::isDarkThemeEnabled())));
-    connect(common_.factory_reset_button, &QPushButton::clicked, this, [this]() {
-        emit factoryResetRequested();
-    });
-    layout->addWidget(common_.factory_reset_button, 2, 1, Qt::AlignRight | Qt::AlignBottom);
-
     connect(common_.address_spin, &QSpinBox::editingFinished, this, [this]() {
         emit deviceAddressRequested(static_cast<quint16>(common_.address_spin->value()));
     });
@@ -6758,8 +6765,12 @@ void TemperatureControllerPanel::selectChannel(int index)
     }
     if (channel_top_controls_stack_)
     {
-        channel_top_controls_stack_->setVisible(pageIndex < 2);
-        channel_top_controls_stack_->setCurrentIndex(channelIndex);
+        channel_top_controls_stack_->setVisible(true);
+        channel_top_controls_stack_->setCurrentIndex(pageIndex < 2 ? channelIndex : 2);
+    }
+    if (common_.factory_reset_button)
+    {
+        common_.factory_reset_button->setVisible(pageIndex == 2);
     }
     auto updateButton = [pageIndex](QPushButton *button, int buttonIndex) {
         if (!button)

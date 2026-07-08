@@ -2372,23 +2372,25 @@ int main(int argc, char **argv)
             "temperature output enable, mode, and target controls sit together under the channel switcher");
     require(topCommonRect.right() < stackRectInCard.right(),
             "temperature common settings selector stays inside the compact top bar");
-    require(temperatureChannelStack->isAncestorOf(factoryResetButton) &&
-                !temperatureChannelTopRow->isAncestorOf(factoryResetButton) &&
+    require(temperatureChannelSelectorRow->isAncestorOf(factoryResetButton) &&
+                !temperatureChannelStack->isAncestorOf(factoryResetButton) &&
                 !temperatureChannelTopBar->isAncestorOf(factoryResetButton) &&
                 !factoryResetButton->isVisible() &&
                 !factoryResetButton->icon().isNull(),
-            "temperature factory reset button only lives inside the common settings page with a lucide icon");
+            "temperature factory reset button sits beside common settings and starts hidden");
     require(enableSwitch->height() == 56 &&
                 enableSwitch->width() == 118 &&
                 enableSwitch->focusPolicy() == Qt::NoFocus,
             "temperature output enable uses the same fixed homepage switch geometry without a focus frame");
     const int channel1StackHeight = temperatureChannelStack->height();
+    const int channel1TopRowHeight = temperatureChannelTopRow->height();
     clickWidget(temperatureConfigChannelButton2, 150);
     activateLayouts(&window);
     require(temperatureChannelTopControlsStack->currentIndex() == 1 &&
                 temperatureChannelTopControlsStack->isVisible() &&
                 temperatureChannelStack->currentIndex() == 1 &&
                 std::abs(temperatureChannelStack->height() - channel1StackHeight) <= 1 &&
+                std::abs(temperatureChannelTopRow->height() - channel1TopRowHeight) <= 1 &&
                 !temperatureConfigChannelButton1->isChecked() &&
                 temperatureConfigChannelButton2->isChecked() &&
                 !temperatureCommonSettingsButton->isChecked(),
@@ -2396,20 +2398,30 @@ int main(int argc, char **argv)
     clickWidget(temperatureCommonSettingsButton, 150);
     activateLayouts(&window);
     const int commonStackHeight = temperatureChannelStack->height();
-    require(!temperatureChannelTopControlsStack->isVisible() &&
+    require(temperatureChannelTopControlsStack->isVisible() &&
+                temperatureChannelTopControlsStack->currentIndex() == 2 &&
                 temperatureChannelStack->currentIndex() == 2 &&
                 std::abs(commonStackHeight - channel1StackHeight) <= 1 &&
+                std::abs(temperatureChannelTopRow->height() - channel1TopRowHeight) <= 1 &&
                 factoryResetButton->isVisible() &&
                 !temperatureConfigChannelButton1->isChecked() &&
                 !temperatureConfigChannelButton2->isChecked() &&
                 temperatureCommonSettingsButton->isChecked(),
             "temperature top bar switches to a common settings page without channel-only controls");
+    const QRect commonButtonRectInSelector(temperatureCommonSettingsButton->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
+                                           temperatureCommonSettingsButton->size());
+    const QRect factoryResetRectInSelector(factoryResetButton->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
+                                           factoryResetButton->size());
+    require(factoryResetRectInSelector.left() > commonButtonRectInSelector.right() &&
+                std::abs(factoryResetRectInSelector.center().y() - commonButtonRectInSelector.center().y()) <= 2,
+            "temperature factory reset button appears immediately to the right of common settings");
     clickWidget(temperatureConfigChannelButton1, 150);
     activateLayouts(&window);
     require(temperatureChannelTopControlsStack->currentIndex() == 0 &&
                 temperatureChannelTopControlsStack->isVisible() &&
                 temperatureChannelStack->currentIndex() == 0 &&
                 std::abs(temperatureChannelStack->height() - channel1StackHeight) <= 1 &&
+                std::abs(temperatureChannelTopRow->height() - channel1TopRowHeight) <= 1 &&
                 !factoryResetButton->isVisible() &&
                 temperatureConfigChannelButton1->isChecked() &&
                 !temperatureConfigChannelButton2->isChecked() &&
@@ -2566,8 +2578,9 @@ int main(int argc, char **argv)
                                 "temperature common over-temperature output field uses left label and right value layout");
     requireCommonFieldRowLayout(commonInternalTemperatureEdit,
                                 "temperature common internal temperature field uses left label and right value layout");
-    require(temperatureChannelStack->isAncestorOf(factoryResetButton),
-            "temperature factory reset button lives inside the common settings page");
+    require(temperatureChannelSelectorRow->isAncestorOf(factoryResetButton) &&
+                !temperatureChannelStack->isAncestorOf(factoryResetButton),
+            "temperature factory reset button lives beside the common settings selector");
     if (checkedSidebarButton && !checkedSidebarButton->isChecked())
     {
         clickWidget(checkedSidebarButton, 150);
