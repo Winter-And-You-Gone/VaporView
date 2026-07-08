@@ -2524,7 +2524,7 @@ int main(int argc, char **argv)
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::Danger, false),
                                  "temperature factory reset button is styled as a standalone danger action");
     requireLastStyleRuleContains(qApp->styleSheet(),
-                                 QStringLiteral("TemperatureControllerPanel QLabel[temperatureMaxOutputWarning=\"true\"] {"),
+                                 QStringLiteral("TemperatureControllerPanel QLabel#fieldLabel[temperatureMaxOutputWarning=\"true\"] {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::Danger, false),
                                  "temperature max output label is marked red");
     requireLastStyleRuleContains(qApp->styleSheet(),

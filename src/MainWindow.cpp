@@ -8518,7 +8518,7 @@ QString temperatureControllerConfigStyleSheet()
         "TemperatureControllerPanel QPushButton[temperatureOutputEnableSwitch=\"true\"] { background-color: transparent; border: none; padding: 0px; margin: 0px; min-width: 106px; max-width: 106px; min-height: 34px; max-height: 34px; outline: none; }"
         "TemperatureControllerPanel QPushButton#temperatureFactoryResetButton { background-color: transparent; border: 1px solid @vv-danger; border-radius: 8px; color: @vv-danger; font-size: 14px; font-weight: 600; padding: 0px 12px; text-align: center; }"
         "TemperatureControllerPanel QPushButton#temperatureFactoryResetButton:hover { background-color: rgba(220, 38, 38, 0.08); }"
-        "TemperatureControllerPanel QLabel[temperatureMaxOutputWarning=\"true\"] { color: @vv-danger; }"
+        "TemperatureControllerPanel QLabel#fieldLabel[temperatureMaxOutputWarning=\"true\"] { color: @vv-danger; }"
         "TemperatureControllerPanel QSpinBox[temperatureMaxOutputWarning=\"true\"] { color: @vv-danger; }");
 }
 
