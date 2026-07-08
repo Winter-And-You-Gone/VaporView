@@ -71,7 +71,9 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
     require(combo->view() != nullptr, message);
     require(combo->view()->property("vaporViewComboPopupStyled").toBool(), message);
     require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"), message);
-    require(combo->view()->styleSheet().contains(QStringLiteral("border-radius: 6px")), message);
+    require(combo->view()->styleSheet().contains(QStringLiteral("border-radius: 10px")) &&
+                combo->view()->styleSheet().contains(QStringLiteral("padding: 12px 4px")),
+            message);
 }
 
 bool processEventsUntil(int timeoutMs, const std::function<bool()>& condition)
@@ -878,11 +880,11 @@ void testTrajectoryViewerUsesSidebarLayout()
             "heat palette button uses a single lucide chevron affordance");
     require(heatPaletteMenu->testAttribute(Qt::WA_TranslucentBackground),
             "heat palette menu uses the shared translucent popup background for rounded corners");
-    require(heatPaletteMenu->cornerRadius() == 16 &&
-                heatPaletteMenu->panelPadding() == 8 &&
+    require(heatPaletteMenu->cornerRadius() == 10 &&
+                heatPaletteMenu->panelPadding() == 12 &&
                 heatPaletteMenu->property("floatingPanelChrome").toBool() &&
                 heatPaletteMenu->property("shadowMargin").toInt() == 22 &&
-                heatPaletteMenu->styleSheet().contains(QStringLiteral("background-color: transparent; border: none; border-radius: 16px; padding: 8px 0px")),
+                heatPaletteMenu->styleSheet().contains(QStringLiteral("background-color: transparent; border: none; border-radius: 10px; padding: 12px 0px")),
             "heat palette menu uses the macOS-style floating single-level popup chrome");
     require(heatPaletteMenu->actions().size() == 3, "heat palette menu exposes the curated vivid ramps");
     require(heatMetricMenu->actions().size() == 4, "heat metric selector exposes peak, humidity, temperature, and pressure");

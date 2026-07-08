@@ -71,7 +71,9 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
     require(combo->view() != nullptr, message);
     require(combo->view()->property("vaporViewComboPopupStyled").toBool(), message);
     require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"), message);
-    require(combo->view()->styleSheet().contains(QStringLiteral("border-radius: 6px")), message);
+    require(combo->view()->styleSheet().contains(QStringLiteral("border-radius: 10px")) &&
+                combo->view()->styleSheet().contains(QStringLiteral("padding: 12px 4px")),
+            message);
 }
 
 void requireLabelTextOneOf(const QLabel *label, const QStringList& expected, const char *message);
@@ -1574,8 +1576,7 @@ int main(int argc, char **argv)
         }
     }
     require(logFilterButton != nullptr, "log filter title-bar button exists");
-    logFilterButton->click();
-    processEventsFor(120);
+    clickWidget(logFilterButton, 180);
     VaporView::SingleLevelPopupMenu *logFilterMenu = nullptr;
     for (QWidget *topLevel : QApplication::topLevelWidgets())
     {
@@ -1589,13 +1590,18 @@ int main(int argc, char **argv)
         }
     }
     require(logFilterMenu != nullptr, "log filter menu uses the shared single-level popup");
-    require(logFilterMenu->rows().size() == 4 &&
-                logFilterMenu->cornerRadius() == 16 &&
-                logFilterMenu->panelPadding() == 8 &&
-                logFilterMenu->property("floatingPanelChrome").toBool() &&
-                logFilterMenu->property("shadowMargin").toInt() == 22 &&
-                logFilterMenu->styleSheet().contains(QStringLiteral("background-color: transparent; border: none; border-radius: 16px; padding: 8px 0px")),
-            "log filter menu shares the macOS-style floating single-level popup chrome");
+    require(logFilterMenu->rows().size() == 4,
+            "log filter menu exposes four filter rows");
+    require(logFilterMenu->cornerRadius() == 10,
+            "log filter menu uses the shared 10px popup corner radius");
+    require(logFilterMenu->panelPadding() == 12,
+            "log filter menu uses the shared 12px popup vertical padding");
+    require(logFilterMenu->property("floatingPanelChrome").toBool(),
+            "log filter menu uses floating popup chrome");
+    require(logFilterMenu->property("shadowMargin").toInt() == 22,
+            "log filter menu preserves floating popup shadow margin");
+    require(logFilterMenu->styleSheet().contains(QStringLiteral("background-color: transparent; border: none; border-radius: 10px; padding: 12px 0px")),
+            "log filter menu stylesheet reflects the shared 10px radius and 12px padding");
     for (VaporView::SingleLevelPopupMenuRow *row : logFilterMenu->rows())
     {
         require(row->property("textAlignment").toString() == QStringLiteral("left") &&
@@ -1748,11 +1754,8 @@ int main(int argc, char **argv)
     require(temperatureChannelButton->menu() != nullptr,
             "temperature overview channel selector menu exists");
     require(temperatureChannelButton->menu()->testAttribute(Qt::WA_TranslucentBackground) &&
-                temperatureChannelButton->menu()->testAttribute(Qt::WA_StyledBackground),
-            "temperature overview channel menu uses a translucent styled background for rounded corners");
-    require(temperatureChannelButton->menu()->minimumWidth() == temperatureChannelButton->width() &&
-                temperatureChannelButton->menu()->maximumWidth() == temperatureChannelButton->width(),
-            "temperature overview channel menu width matches capsule width");
+                !temperatureChannelButton->menu()->testAttribute(Qt::WA_StyledBackground),
+            "temperature overview channel menu uses the floating translucent popup chrome");
     require(temperatureChannelButton->menu()->actions().size() == 2,
             "temperature overview channel menu has two channel options");
     const QList<VaporView::SingleLevelPopupMenuRow*> temperatureChannelMenuRows =
@@ -1782,21 +1785,28 @@ int main(int argc, char **argv)
             "temperature overview channel menu marks only the selected channel with a check icon");
     auto *temperatureChannelPopup = qobject_cast<VaporView::SingleLevelPopupMenu *>(temperatureChannelButton->menu());
     require(temperatureChannelPopup != nullptr &&
-                temperatureChannelPopup->cornerRadius() == 8 &&
-                temperatureChannelPopup->panelPadding() == 2,
+                temperatureChannelPopup->cornerRadius() == 10 &&
+                temperatureChannelPopup->panelPadding() == 12,
             "temperature overview channel menu uses the shared single-level popup chrome");
+    const int temperatureChannelShadowMargin = temperatureChannelPopup->property("shadowMargin").toInt();
+    require(temperatureChannelShadowMargin == 22 &&
+                temperatureChannelPopup->property("floatingPanelChrome").toBool(),
+            "temperature overview channel menu uses the unified floating popup margins");
+    require(temperatureChannelButton->menu()->minimumWidth() == temperatureChannelButton->width() + temperatureChannelShadowMargin * 2 &&
+                temperatureChannelButton->menu()->maximumWidth() == temperatureChannelButton->width() + temperatureChannelShadowMargin * 2,
+            "temperature overview channel menu reserves shadow space outside the capsule width");
+    require(temperatureChannelPopup->styleSheet().contains(QStringLiteral("background-color: transparent; border: none; border-radius: 10px; padding: 12px 0px")),
+            "temperature overview channel menu applies the shared floating popup style");
     temperatureChannelButton->menu()->popup(temperatureChannelButton->mapToGlobal(QPoint(0, temperatureChannelButton->height())));
     processEventsFor(50);
-    require(temperatureChannelButton->menu()->property("roundedMaskApplied").toBool() &&
-                !temperatureChannelButton->menu()->mask().isEmpty(),
-            "temperature overview channel menu clips the popup window to rounded corners");
+    require(!temperatureChannelButton->menu()->property("roundedMaskApplied").toBool() &&
+                temperatureChannelButton->menu()->mask().isEmpty(),
+            "temperature overview channel menu leaves rounded clipping to the floating popup painter");
     for (QAction *action : temperatureChannelButton->menu()->actions())
     {
         const QRect actionRect = temperatureChannelButton->menu()->actionGeometry(action);
         require(std::abs(actionRect.width() - temperatureChannelButton->width()) <= 4,
                 "temperature overview channel menu option width matches capsule width");
-        require(actionRect.width() <= temperatureChannelButton->width() - 4,
-                "temperature overview channel menu option leaves padding for rounded menu corners");
         require(std::abs(actionRect.height() - temperatureChannelButton->height()) <= 4,
                 "temperature overview channel menu option height matches capsule height");
     }
@@ -2277,13 +2287,18 @@ int main(int argc, char **argv)
             menu = visibleWaveDisplayMenu();
         }
         require(menu != nullptr, "TCP wave display menu opens from the title-bar settings button");
-        require(menu->rows().size() == 4 &&
-                    menu->cornerRadius() == 16 &&
-                    menu->panelPadding() == 8 &&
-                    menu->property("floatingPanelChrome").toBool() &&
-                    menu->property("shadowMargin").toInt() == 22 &&
-                    menu->styleSheet().contains(QStringLiteral("background-color: transparent; border: none; border-radius: 16px; padding: 8px 0px")),
-                "TCP wave display menu uses the macOS-style floating single-level popup chrome");
+        require(menu->rows().size() == 4,
+                "TCP wave display menu exposes the four display modes");
+        require(menu->cornerRadius() == 10,
+                "TCP wave display menu uses the unified 10px corner radius");
+        require(menu->panelPadding() == 12,
+                "TCP wave display menu uses the unified 12px vertical padding");
+        require(menu->property("floatingPanelChrome").toBool(),
+                "TCP wave display menu uses floating single-level popup chrome");
+        require(menu->property("shadowMargin").toInt() == 22,
+                "TCP wave display menu reserves the shared floating popup shadow margin");
+        require(menu->styleSheet().contains(QStringLiteral("background-color: transparent; border: none; border-radius: 10px; padding: 12px 0px")),
+                "TCP wave display menu applies the unified floating popup stylesheet");
         QLabel *rowLabel = findLabelByText(menu, labels);
         require(rowLabel != nullptr, message);
         auto *rowWidget = qobject_cast<VaporView::SingleLevelPopupMenuRow *>(rowLabel->parentWidget());

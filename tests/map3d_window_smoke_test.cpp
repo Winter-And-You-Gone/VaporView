@@ -42,7 +42,9 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
     require(combo->view() != nullptr, message);
     require(combo->view()->property("vaporViewComboPopupStyled").toBool(), message);
     require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"), message);
-    require(combo->view()->styleSheet().contains(QStringLiteral("border-radius: 6px")), message);
+    require(combo->view()->styleSheet().contains(QStringLiteral("border-radius: 10px")) &&
+                combo->view()->styleSheet().contains(QStringLiteral("padding: 12px 4px")),
+            message);
 }
 
 void writeSessionTrack(QTemporaryDir& sessionDir)

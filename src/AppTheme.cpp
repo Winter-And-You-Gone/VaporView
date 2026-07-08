@@ -311,7 +311,7 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::MenuMetaText:
         return hexColor(dark ? "#D3D0C6" : kClaudeLightTextSecondary);
     case AppThemeColor::MenuCheckText:
-        return hexColor(dark ? "#AFC38B" : kBrandGreen);
+        return hexColor(dark ? kBrandLight : kBrandDark);
     case AppThemeColor::MenuDisabledText:
         return hexColor(dark ? "#7D7A70" : kClaudeLightTextDisabled);
     case AppThemeColor::AccentWarm:
@@ -600,8 +600,8 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
     view->setPalette(popupPalette);
     view->setStyleSheet(QStringLiteral(
         "QAbstractItemView#vaporViewComboPopupView { "
-        "background-color: %1; border: 1px solid %2; border-radius: 6px; "
-        "color: %3; outline: 0px; padding: 4px; "
+        "background-color: %1; border: 1px solid %2; border-radius: 10px; "
+        "color: %3; outline: 0px; padding: 12px 4px; "
         "selection-background-color: %4; selection-color: %5; }"
         "QAbstractItemView#vaporViewComboPopupView::item { "
         "background-color: transparent; border: 0px; border-radius: 4px; "

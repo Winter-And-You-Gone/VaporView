@@ -125,8 +125,8 @@ private:
     QSize maskSize() const;
     void syncRowWidths();
 
-    int corner_radius_ = 16;
-    int panel_padding_ = 8;
+    int corner_radius_ = 10;
+    int panel_padding_ = 12;
 };
 
 }

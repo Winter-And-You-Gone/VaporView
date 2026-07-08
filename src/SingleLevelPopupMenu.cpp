@@ -427,6 +427,8 @@ void SingleLevelPopupMenuRow::updateLabelStyles()
 SingleLevelPopupMenu::SingleLevelPopupMenu(QWidget *parent)
     : QMenu(parent)
 {
+    corner_radius_ = 10;
+    panel_padding_ = 12;
     setObjectName(QStringLiteral("singleLevelPopupMenu"));
     setWindowFlag(Qt::FramelessWindowHint, true);
     setAttribute(Qt::WA_TranslucentBackground, true);

@@ -5889,7 +5889,7 @@ public:
         channel_button_->setCursor(Qt::PointingHandCursor);
         channel_menu_ = new SingleLevelPopupMenu(channel_button_);
         channel_menu_->setObjectName(QStringLiteral("temperatureOverviewChannelMenu"));
-        channel_menu_->setFixedWidth(kOverviewControlWidth);
+        channel_menu_->setFixedWidth(kOverviewMenuOuterWidth);
         channel_menu_->setPanelPadding(kOverviewMenuPadding);
         channel_menu_->setCornerRadius(kOverviewMenuCornerRadius);
         channel_menu_->refreshTheme();
@@ -6079,9 +6079,11 @@ public:
 
 private:
     static constexpr int kOverviewControlWidth = 99;
-    static constexpr int kOverviewMenuPadding = 2;
-    static constexpr int kOverviewMenuCornerRadius = 8;
-    static constexpr int kOverviewMenuItemWidth = kOverviewControlWidth - kOverviewMenuPadding * 2;
+    static constexpr int kOverviewMenuPadding = 12;
+    static constexpr int kOverviewMenuCornerRadius = 10;
+    static constexpr int kOverviewMenuShadowMargin = 22;
+    static constexpr int kOverviewMenuItemWidth = kOverviewControlWidth;
+    static constexpr int kOverviewMenuOuterWidth = kOverviewControlWidth + kOverviewMenuShadowMargin * 2;
     static constexpr int kOverviewSummarySpacing = 4;
     static constexpr int kOverviewChannelHeight = 34;
     static constexpr int kOverviewMinimumValueHeight = 44;
@@ -6132,7 +6134,7 @@ private:
         setMenuItemHeight(channel_menu_row_2_, QSize(kOverviewMenuItemWidth, channelHeight));
         if (channel_menu_)
         {
-            channel_menu_->setFixedWidth(kOverviewControlWidth);
+            channel_menu_->setFixedWidth(kOverviewMenuOuterWidth);
             channel_menu_->refreshTheme();
         }
     }
@@ -7728,7 +7730,7 @@ void MainWindow::loadModernStyleSheet()
             "QMenuBar { background-color: @vv-surface; border-bottom: 1px solid @vv-border; padding: 4px 8px; }"
             "QMenuBar::item { background-color: transparent; padding: 6px 12px; border-radius: 4px; color: @vv-text; }"
             "QMenuBar::item:selected { background-color: @vv-primary-subtle; color: @vv-primary; }"
-            "QMenu { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 6px; padding: 8px 0px; }"
+            "QMenu { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; padding: 12px 0px; }"
             "QMenu::item { padding: 8px 32px 8px 16px; color: @vv-text; }"
             "QMenu::item:selected { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "QToolBar { background-color: @vv-surface; border-bottom: 1px solid @vv-border; padding: 8px 12px; spacing: 8px; }"
@@ -7798,7 +7800,7 @@ void MainWindow::loadModernStyleSheet()
             "QComboBox:hover { border-color: @vv-border-strong; }"
             "QComboBox:focus { border-color: @vv-primary; border-width: 1px; }"
             "QComboBox:disabled { background-color: @vv-surface-alt; color: @vv-text; }"
-            "QComboBox QAbstractItemView { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; selection-background-color: @vv-primary-subtle; selection-color: @vv-primary; padding: 4px; outline: none; }"
+            "QComboBox QAbstractItemView { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text; selection-background-color: @vv-primary-subtle; selection-color: @vv-primary; padding: 12px 4px; outline: none; }"
             "QComboBox QAbstractItemView::item { background-color: transparent; color: @vv-text; padding: 6px 12px; border: none; }"
             "QComboBox QAbstractItemView::item:hover, QComboBox QAbstractItemView::item:selected, QComboBox QAbstractItemView::item:selected:active, QComboBox QAbstractItemView::item:selected:!active { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "QComboBox QAbstractItemView::item:disabled { background-color: transparent; color: @vv-text-disabled; }"
@@ -11091,6 +11093,8 @@ void MainWindow::setupToolBar()
 
     log_filter_menu_ = new SingleLevelPopupMenu(this);
     log_filter_menu_->setObjectName(QStringLiteral("logFilterMenu"));
+    log_filter_menu_->setPanelPadding(12);
+    log_filter_menu_->setCornerRadius(10);
     log_filter_menu_->refreshTheme();
 
     auto createLogFilterAction = [this](bool *enabled) {
