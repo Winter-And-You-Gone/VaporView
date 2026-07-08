@@ -284,16 +284,18 @@ class FloatingTitleMenuPanel final : public QFrame
 {
 public:
     explicit FloatingTitleMenuPanel(QWidget *parent = nullptr)
-        : QFrame(parent)
+        : QFrame(parent, Qt::Tool | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint)
     {
         setObjectName(QStringLiteral("floatingTitleMenuPanel"));
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
         setAttribute(Qt::WA_StyledBackground, false);
+        setAttribute(Qt::WA_ShowWithoutActivating, true);
         setAutoFillBackground(false);
         setFocusPolicy(Qt::NoFocus);
         setFrameShape(QFrame::NoFrame);
         setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        setWindowModality(Qt::NonModal);
         setContentsMargins(kFloatingMenuShadowMarginPx,
                            kFloatingMenuShadowMarginPx,
                            kFloatingMenuShadowMarginPx,
@@ -11823,19 +11825,22 @@ void MainWindow::createTitleApplicationMenuPanel()
                 const int subMenuTop = std::max(0, sectionRow->y() - menuVerticalPadding - subMenuBorderWidth);
                 subMenu->setFixedSize(subMenuWidth, currentPage->height());
                 setFloatingMenuContentFixedSize(subPanel, subMenu->size());
-                const QPoint subMenuPos = panel->mapTo(this, floatingMenuContentRect(panel).topLeft() + QPoint(mainMenuWidth, subMenuTop));
+                const QPoint subMenuPos = panel->mapToGlobal(floatingMenuContentRect(panel).topLeft() + QPoint(mainMenuWidth, subMenuTop));
                 const int popupMargin = scalePixels(4);
                 int subMenuX = subMenuPos.x();
-                if (subMenuX + subPanel->width() > width() - popupMargin)
+                const QRect screenRect = screen() ? screen()->availableGeometry() : QRect(QPoint(0, 0), size());
+                if (subMenuX + subPanel->width() > screenRect.right() - popupMargin)
                 {
-                    subMenuX = panel->x() + floatingMenuContentRect(panel).left() - subPanel->width();
+                    subMenuX = panel->mapToGlobal(floatingMenuContentRect(panel).topLeft()).x() - subPanel->width();
                 }
                 subMenuX = std::clamp(subMenuX,
-                                      popupMargin,
-                                      std::max(popupMargin, width() - subPanel->width() - popupMargin));
+                                      screenRect.left() + popupMargin,
+                                      std::max(screenRect.left() + popupMargin,
+                                               screenRect.right() - subPanel->width() - popupMargin));
                 const int subMenuY = std::clamp(subMenuPos.y(),
-                                                popupMargin,
-                                                std::max(popupMargin, height() - subPanel->height() - popupMargin));
+                                                screenRect.top() + popupMargin,
+                                                std::max(screenRect.top() + popupMargin,
+                                                         screenRect.bottom() - subPanel->height() - popupMargin));
                 subPanel->move(subMenuX, subMenuY);
                 subMenu->move(floatingMenuContentRect(subPanel).topLeft());
                 subMenu->raise();
@@ -11886,12 +11891,15 @@ void MainWindow::showTitleApplicationMenu()
         return;
     }
 
-    const QPoint anchor = title_menu_btn_->mapTo(this, QPoint(0, title_menu_btn_->height() + scalePixels(4)));
+    const QPoint anchor = title_menu_btn_->mapToGlobal(QPoint(0, title_menu_btn_->height() + scalePixels(4)));
     const int popupMargin = scalePixels(4);
+    const QRect screenRect = screen() ? screen()->availableGeometry() : QRect(mapToGlobal(QPoint(0, 0)), size());
     const int x = std::clamp(anchor.x() - scalePixels(kFloatingMenuShadowMarginPx),
-                             popupMargin,
-                             std::max(popupMargin, width() - title_application_panel_->width() - popupMargin));
-    const int y = std::max(anchor.y() - scalePixels(kFloatingMenuShadowMarginPx), popupMargin);
+                             screenRect.left() + popupMargin,
+                             std::max(screenRect.left() + popupMargin,
+                                      screenRect.right() - title_application_panel_->width() - popupMargin));
+    const int y = std::max(anchor.y() - scalePixels(kFloatingMenuShadowMarginPx),
+                           screenRect.top() + popupMargin);
     title_application_panel_->move(x, y);
     if (title_application_sub_panel_)
     {
