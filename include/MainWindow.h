@@ -27,7 +27,7 @@
 #include <QProgressBar>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
-#include <QTabWidget>
+#include <QStackedWidget>
 #include <QTimer>
 #include <QAction>
 #include <QActionGroup>
@@ -323,11 +323,15 @@ private:
 
     void setupUi();
     QWidget *createChannelPage(int index);
+    void selectChannel(int index);
     void updateChannelTexts();
     void updateChannelData(int index, const VaporView::TemperatureControllerChannelData& channel, bool valid);
     int channelIndex(quint8 channel) const;
 
-    QTabWidget *tabs_ = nullptr;
+    QFrame *channel_sidebar_ = nullptr;
+    QPushButton *channel_button_1_ = nullptr;
+    QPushButton *channel_button_2_ = nullptr;
+    QStackedWidget *channel_stack_ = nullptr;
     TemperatureTrendPlotWidget *temperature_plot_ = nullptr;
     QLabel *rate_label_ = nullptr;
     QLabel *internal_temperature_label_ = nullptr;
@@ -346,6 +350,7 @@ private:
     std::array<PendingChannelEdits, 2> pending_channel_edits_{};
     bool pending_controller_mode_ = false;
     int pending_controller_mode_value_ = 0;
+    int selected_channel_index_ = 0;
     bool is_english_ = false;
 };
 

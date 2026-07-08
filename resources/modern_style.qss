@@ -1145,51 +1145,43 @@ TemperatureControllerPanel QLabel#highlightedValue {
     border-radius: 0px;
 }
 
-TemperatureControllerPanel QTabWidget::pane {
-    background-color: transparent;
-    border: none;
-    border-radius: 0px;
-    top: 0px;
-}
-
 TemperatureControllerPanel QFrame#temperatureConfigCard {
     background-color: @vv-surface;
     border: 1px solid @vv-border;
     border-radius: 8px;
 }
 
-TemperatureControllerPanel QTabBar {
-    qproperty-drawBase: 0;
+TemperatureControllerPanel QFrame#temperatureChannelSidebar {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
     border-radius: 8px;
-    margin-bottom: 12px;
-    padding: 2px;
 }
 
-TemperatureControllerPanel QTabBar::base {
+TemperatureControllerPanel QStackedWidget#temperatureChannelStack {
     background-color: transparent;
     border: none;
-    height: 0px;
 }
 
-TemperatureControllerPanel QTabBar::tab {
+TemperatureControllerPanel QPushButton[temperatureChannelSelector="true"] {
     background-color: transparent;
     border: none;
-    border-radius: 6px;
     color: @vv-text;
-    margin: 0px;
-    padding: 4px 16px;
-    min-height: 24px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0px 10px;
+    text-align: center;
 }
 
-TemperatureControllerPanel QTabBar::tab:selected {
+TemperatureControllerPanel QPushButton[temperatureChannelSelector="true"]:checked {
     background-color: @vv-surface;
     color: @vv-primary;
     font-weight: 600;
 }
 
-TemperatureControllerPanel QTabBar::tab:!selected:hover {
+TemperatureControllerPanel QPushButton[temperatureChannelSelector="true"]:!checked:hover {
     background-color: @vv-primary-subtle;
     color: @vv-primary;
 }

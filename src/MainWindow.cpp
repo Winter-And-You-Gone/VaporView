@@ -37,8 +37,6 @@
 #include <QFontDatabase>
 #include <QFontMetrics>
 #include <QSaveFile>
-#include <QTabBar>
-#include <QTabWidget>
 #include <QTextStream>
 #include <QStringConverter>
 #include <QDateTime>
@@ -2570,30 +2568,10 @@ QPushButton:disabled {
     background-color: @vv-border;
     color: @vv-text-disabled-strong;
 }
-TemperatureControllerPanel QTabWidget::pane {
-    background-color: @vv-surface;
-    border: 1px solid @vv-border;
-    border-radius: 4px;
-    top: -1px;
-}
-TemperatureControllerPanel QTabBar::tab {
+TemperatureControllerPanel QFrame#temperatureChannelSidebar {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
-    border-bottom: none;
-    border-top-left-radius: 4px;
-    border-top-right-radius: 4px;
-    color: @vv-text;
-    padding: 4px 14px;
-    min-height: 22px;
-}
-TemperatureControllerPanel QTabBar::tab:selected {
-    background-color: @vv-surface;
-    color: @vv-primary;
-    font-weight: 600;
-}
-TemperatureControllerPanel QTabBar::tab:!selected:hover {
-    background-color: @vv-primary-subtle;
-    color: @vv-primary;
+    border-radius: 8px;
 }
 QScrollBar:vertical {
     background-color: @vv-surface-sunken;
@@ -6339,20 +6317,49 @@ void TemperatureControllerPanel::setupUi()
     configCard->setFrameShape(QFrame::NoFrame);
     configCard->setAttribute(Qt::WA_StyledBackground, true);
     configCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    auto *configCardLayout = new QVBoxLayout(configCard);
-    configCardLayout->setContentsMargins(12, 10, 12, 12);
-    configCardLayout->setSpacing(0);
+    auto *configCardLayout = new QHBoxLayout(configCard);
+    configCardLayout->setContentsMargins(12, 12, 12, 12);
+    configCardLayout->setSpacing(12);
 
-    tabs_ = new QTabWidget(configCard);
-    tabs_->setObjectName(QStringLiteral("temperatureConfigTabs"));
-    tabs_->setDocumentMode(true);
-    tabs_->tabBar()->setDrawBase(false);
-    tabs_->tabBar()->setExpanding(false);
-    tabs_->tabBar()->setUsesScrollButtons(false);
-    tabs_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    tabs_->addTab(createChannelPage(0), QStringLiteral("通道1"));
-    tabs_->addTab(createChannelPage(1), QStringLiteral("通道2"));
-    configCardLayout->addWidget(tabs_, 0);
+    channel_sidebar_ = new QFrame(configCard);
+    channel_sidebar_->setObjectName(QStringLiteral("temperatureChannelSidebar"));
+    channel_sidebar_->setFrameShape(QFrame::NoFrame);
+    channel_sidebar_->setAttribute(Qt::WA_StyledBackground, true);
+    channel_sidebar_->setFixedWidth(112);
+    channel_sidebar_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    auto *channelSidebarLayout = new QVBoxLayout(channel_sidebar_);
+    channelSidebarLayout->setContentsMargins(6, 6, 6, 6);
+    channelSidebarLayout->setSpacing(6);
+
+    auto createChannelButton = [this](int index) {
+        auto *button = new QPushButton(this);
+        button->setObjectName(QStringLiteral("temperatureChannelSelectorButton%1").arg(index + 1));
+        button->setProperty("temperatureChannelSelector", true);
+        button->setCheckable(true);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        button->setMinimumHeight(34);
+        button->setMaximumHeight(34);
+        button->setText(index == 0 ? QStringLiteral("通道1") : QStringLiteral("通道2"));
+        connect(button, &QPushButton::clicked, this, [this, index]() {
+            selectChannel(index);
+        });
+        return button;
+    };
+    channel_button_1_ = createChannelButton(0);
+    channel_button_2_ = createChannelButton(1);
+    channelSidebarLayout->addWidget(channel_button_1_);
+    channelSidebarLayout->addWidget(channel_button_2_);
+    channelSidebarLayout->addStretch(1);
+    configCardLayout->addWidget(channel_sidebar_, 0);
+
+    channel_stack_ = new QStackedWidget(configCard);
+    channel_stack_->setObjectName(QStringLiteral("temperatureChannelStack"));
+    channel_stack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    channel_stack_->addWidget(createChannelPage(0));
+    channel_stack_->addWidget(createChannelPage(1));
+    configCardLayout->addWidget(channel_stack_, 1);
+    selectChannel(0);
     layout->addWidget(configCard, 0);
 
     temperature_plot_ = new TemperatureTrendPlotWidget(this);
@@ -6360,15 +6367,6 @@ void TemperatureControllerPanel::setupUi()
     temperature_plot_->setCompactMode(true);
     temperature_plot_->setMinimumHeight(220);
     temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    connect(tabs_, &QTabWidget::currentChanged, this, [this](int index) {
-        if (temperature_plot_)
-        {
-            const int channelIndex = std::clamp(index, 0, 1);
-            temperature_plot_->setChannelIndex(channelIndex);
-            temperature_plot_->setTargetTemperature(target_temperature_by_channel_[channelIndex]);
-            temperature_plot_->setSamples(measured_temperature_history_[channelIndex]);
-        }
-    });
     layout->addWidget(temperature_plot_, 1);
 
     status_label_ = new QLabel(this);
@@ -6383,7 +6381,7 @@ void TemperatureControllerPanel::setupUi()
 
 QWidget *TemperatureControllerPanel::createChannelPage(int index)
 {
-    QWidget *page = new QWidget(tabs_);
+    QWidget *page = new QWidget(channel_stack_);
     auto *layout = new QGridLayout(page);
     layout->setContentsMargins(16, 12, 16, 12);
     layout->setHorizontalSpacing(16);
@@ -6523,6 +6521,37 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     return page;
 }
 
+void TemperatureControllerPanel::selectChannel(int index)
+{
+    const int channelIndex = std::clamp(index, 0, 1);
+    selected_channel_index_ = channelIndex;
+    if (channel_stack_)
+    {
+        channel_stack_->setCurrentIndex(channelIndex);
+    }
+
+    auto updateButton = [channelIndex](QPushButton *button, int buttonIndex) {
+        if (!button)
+        {
+            return;
+        }
+        const QSignalBlocker blocker(button);
+        button->setChecked(channelIndex == buttonIndex);
+        button->style()->unpolish(button);
+        button->style()->polish(button);
+        button->update();
+    };
+    updateButton(channel_button_1_, 0);
+    updateButton(channel_button_2_, 1);
+
+    if (temperature_plot_)
+    {
+        temperature_plot_->setChannelIndex(channelIndex);
+        temperature_plot_->setTargetTemperature(target_temperature_by_channel_[channelIndex]);
+        temperature_plot_->setSamples(measured_temperature_history_[channelIndex]);
+    }
+}
+
 void TemperatureControllerPanel::updateRate(double hz)
 {
     if (rate_label_)
@@ -6652,11 +6681,8 @@ void TemperatureControllerPanel::updateChannelTexts()
             ? QStringLiteral("RD105 CONTMODE. Modes 2 and 3 require a resistor temperature sensor on channel 2.")
             : QStringLiteral("RD105 CONTMODE。使用模式2和3时，通道2传感器接口应接入电阻温度传感器。"));
     }
-    if (tabs_)
-    {
-        tabs_->setTabText(0, is_english_ ? QStringLiteral("Channel 1") : QStringLiteral("通道1"));
-        tabs_->setTabText(1, is_english_ ? QStringLiteral("Channel 2") : QStringLiteral("通道2"));
-    }
+    if (channel_button_1_) channel_button_1_->setText(is_english_ ? QStringLiteral("Channel 1") : QStringLiteral("通道1"));
+    if (channel_button_2_) channel_button_2_->setText(is_english_ ? QStringLiteral("Channel 2") : QStringLiteral("通道2"));
     for (ChannelWidgets& channel : channels_)
     {
         if (channel.target_label_text) channel.target_label_text->setText(is_english_ ? QStringLiteral("Target Temp (°C)") : QStringLiteral("目标温度(°C)"));
@@ -6831,9 +6857,9 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
     }
     updateChannelData(0, controllerData.channels[0], controllerData.valid);
     updateChannelData(1, controllerData.channels[1], controllerData.valid);
-    if (temperature_plot_ && tabs_)
+    if (temperature_plot_)
     {
-        const int channelIndex = std::clamp(tabs_->currentIndex(), 0, 1);
+        const int channelIndex = std::clamp(selected_channel_index_, 0, 1);
         temperature_plot_->setChannelIndex(channelIndex);
         temperature_plot_->setTargetTemperature(target_temperature_by_channel_[channelIndex]);
         temperature_plot_->setSamples(measured_temperature_history_[channelIndex]);
@@ -8066,13 +8092,12 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton:disabled { background-color: @vv-border-strong; color: @vv-white; }"
             "QPushButton#compactTcpButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
             "QPushButton#compactTcpStartButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
-            "TemperatureControllerPanel QTabWidget::pane { background-color: transparent; border: none; border-radius: 0px; top: 0px; }"
             "TemperatureControllerPanel QFrame#temperatureConfigCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
-            "TemperatureControllerPanel QTabBar { qproperty-drawBase: 0; background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; margin-bottom: 12px; padding: 2px; }"
-            "TemperatureControllerPanel QTabBar::base { background-color: transparent; border: none; height: 0px; }"
-            "TemperatureControllerPanel QTabBar::tab { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; margin: 0px; padding: 4px 16px; min-height: 24px; }"
-            "TemperatureControllerPanel QTabBar::tab:selected { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
-            "TemperatureControllerPanel QTabBar::tab:!selected:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
+            "TemperatureControllerPanel QFrame#temperatureChannelSidebar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
+            "TemperatureControllerPanel QStackedWidget#temperatureChannelStack { background-color: transparent; border: none; }"
+            "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 34px; max-height: 34px; padding: 0px 10px; text-align: center; }"
+            "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
+            "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "QToolTip { background-color: rgb(45, 45, 45); color: #FFFFFF; border: 1px solid #474747; border-radius: 13px; padding: 8px 16px; font-size: 16px; }";
     }
 
@@ -8081,13 +8106,12 @@ void MainWindow::loadModernStyleSheet()
 QString temperatureControllerConfigStyleSheet()
 {
     return QStringLiteral(
-        "TemperatureControllerPanel QTabWidget::pane { background-color: transparent; border: none; border-radius: 0px; top: 0px; }"
         "TemperatureControllerPanel QFrame#temperatureConfigCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
-        "TemperatureControllerPanel QTabBar { qproperty-drawBase: 0; background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; margin-bottom: 12px; padding: 2px; }"
-        "TemperatureControllerPanel QTabBar::base { background-color: transparent; border: none; height: 0px; }"
-        "TemperatureControllerPanel QTabBar::tab { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; margin: 0px; padding: 4px 16px; min-height: 24px; }"
-        "TemperatureControllerPanel QTabBar::tab:selected { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
-        "TemperatureControllerPanel QTabBar::tab:!selected:hover { background-color: @vv-primary-subtle; color: @vv-primary; }");
+        "TemperatureControllerPanel QFrame#temperatureChannelSidebar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
+        "TemperatureControllerPanel QStackedWidget#temperatureChannelStack { background-color: transparent; border: none; }"
+        "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 34px; max-height: 34px; padding: 0px 10px; text-align: center; }"
+        "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
+        "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }");
 }
 
 QString MainWindow::themedStyleSheet() const
