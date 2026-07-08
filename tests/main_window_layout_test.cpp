@@ -35,6 +35,7 @@
 #include <QTextOption>
 #include <QTimer>
 #include <QToolButton>
+#include <QTabBar>
 #include <QTabWidget>
 #include <QWidget>
 #include <algorithm>
@@ -2265,6 +2266,10 @@ int main(int argc, char **argv)
             "temperature controller page exposes an internal config card and a full-width trend plot");
     require(temperatureTabs->parentWidget() == temperatureConfigCard,
             "temperature channel tabs live inside the internal config card");
+    require(temperatureTabs->tabBar() != nullptr &&
+                !temperatureTabs->tabBar()->drawBase() &&
+                !temperatureTabs->tabBar()->expanding(),
+            "temperature channel tabs disable the native tab-bar base line");
     const QRect cardRectInPanel(temperatureConfigCard->mapTo(temperaturePanel, QPoint(0, 0)),
                                 temperatureConfigCard->size());
     const QRect plotRectInPanel(temperatureConfigPlot->mapTo(temperaturePanel, QPoint(0, 0)),
@@ -2284,6 +2289,14 @@ int main(int argc, char **argv)
                                  QStringLiteral("TemperatureControllerPanel QFrame#temperatureConfigCard {"),
                                  QStringLiteral("border-radius: 8px"),
                                  "temperature channel controls are wrapped in an internal rounded card");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("TemperatureControllerPanel QTabBar {"),
+                                 QStringLiteral("qproperty-drawBase: 0"),
+                                 "temperature channel selector uses an embedded segmented tab bar");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("TemperatureControllerPanel QTabBar::tab {"),
+                                 QStringLiteral("border: none"),
+                                 "temperature channel tabs avoid the old protruding tab borders");
 
     auto *temperatureScrollArea =
         temperaturePageForLayout->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));

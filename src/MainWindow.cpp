@@ -37,6 +37,7 @@
 #include <QFontDatabase>
 #include <QFontMetrics>
 #include <QSaveFile>
+#include <QTabBar>
 #include <QTabWidget>
 #include <QTextStream>
 #include <QStringConverter>
@@ -6345,6 +6346,9 @@ void TemperatureControllerPanel::setupUi()
     tabs_ = new QTabWidget(configCard);
     tabs_->setObjectName(QStringLiteral("temperatureConfigTabs"));
     tabs_->setDocumentMode(true);
+    tabs_->tabBar()->setDrawBase(false);
+    tabs_->tabBar()->setExpanding(false);
+    tabs_->tabBar()->setUsesScrollButtons(false);
     tabs_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     tabs_->addTab(createChannelPage(0), QStringLiteral("通道1"));
     tabs_->addTab(createChannelPage(1), QStringLiteral("通道2"));
@@ -8064,7 +8068,9 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton#compactTcpStartButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
             "TemperatureControllerPanel QTabWidget::pane { background-color: transparent; border: none; border-radius: 0px; top: 0px; }"
             "TemperatureControllerPanel QFrame#temperatureConfigCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
-            "TemperatureControllerPanel QTabBar::tab { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-bottom: none; border-top-left-radius: 4px; border-top-right-radius: 4px; color: @vv-text; padding: 4px 14px; min-height: 22px; }"
+            "TemperatureControllerPanel QTabBar { qproperty-drawBase: 0; background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; margin-bottom: 12px; padding: 2px; }"
+            "TemperatureControllerPanel QTabBar::base { background-color: transparent; border: none; height: 0px; }"
+            "TemperatureControllerPanel QTabBar::tab { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; margin: 0px; padding: 4px 16px; min-height: 24px; }"
             "TemperatureControllerPanel QTabBar::tab:selected { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
             "TemperatureControllerPanel QTabBar::tab:!selected:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "QToolTip { background-color: rgb(45, 45, 45); color: #FFFFFF; border: 1px solid #474747; border-radius: 13px; padding: 8px 16px; font-size: 16px; }";
@@ -8076,7 +8082,12 @@ QString temperatureControllerConfigStyleSheet()
 {
     return QStringLiteral(
         "TemperatureControllerPanel QTabWidget::pane { background-color: transparent; border: none; border-radius: 0px; top: 0px; }"
-        "TemperatureControllerPanel QFrame#temperatureConfigCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }");
+        "TemperatureControllerPanel QFrame#temperatureConfigCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
+        "TemperatureControllerPanel QTabBar { qproperty-drawBase: 0; background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; margin-bottom: 12px; padding: 2px; }"
+        "TemperatureControllerPanel QTabBar::base { background-color: transparent; border: none; height: 0px; }"
+        "TemperatureControllerPanel QTabBar::tab { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; margin: 0px; padding: 4px 16px; min-height: 24px; }"
+        "TemperatureControllerPanel QTabBar::tab:selected { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
+        "TemperatureControllerPanel QTabBar::tab:!selected:hover { background-color: @vv-primary-subtle; color: @vv-primary; }");
 }
 
 QString MainWindow::themedStyleSheet() const
