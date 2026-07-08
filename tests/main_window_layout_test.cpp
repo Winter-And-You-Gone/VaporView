@@ -291,9 +291,12 @@ void requireTitleMenuFloatingPanel(QFrame *panel, const char *message)
     require(panel->property("shadowMargin").toInt() == 22, message);
     require(panel->property("cornerRadius").toInt() == 10, message);
     require(panel->testAttribute(Qt::WA_TranslucentBackground), message);
+    const bool dark = qApp && qApp->property(VaporView::kAppDarkThemeProperty).toBool();
+    const QString menuHover = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuHover, dark);
     require(panel->styleSheet().contains(QStringLiteral("QFrame#titleApplicationMainMenu")) &&
                 panel->styleSheet().contains(QStringLiteral("background-color: transparent")) &&
                 panel->styleSheet().contains(QStringLiteral("border: none")) &&
+                panel->styleSheet().contains(QStringLiteral("background-color: %1").arg(menuHover)) &&
                 !panel->styleSheet().contains(QStringLiteral("border: 1px solid")),
             "title menu leaves chrome to the floating panel painter");
 }
@@ -1037,6 +1040,46 @@ void requireLastStyleRuleContains(const QString& styleSheet,
     require(rule.contains(expected), message);
 }
 
+void requireMenuPopupStyleUnified(const QString& styleSheet, bool dark, const char *message)
+{
+    const QString hoverColor = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuHover, dark);
+    const QString textColor = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuText, dark);
+    const QString disabledColor = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuDisabledText, dark);
+
+    requireLastStyleRuleContains(styleSheet,
+                                 QStringLiteral("QMenu {"),
+                                 QStringLiteral("border-radius: 10px"),
+                                 message);
+    requireLastStyleRuleContains(styleSheet,
+                                 QStringLiteral("QMenu {"),
+                                 QStringLiteral("padding: 12px 0px"),
+                                 message);
+    requireLastStyleRuleContains(styleSheet,
+                                 QStringLiteral("QMenu {"),
+                                 QStringLiteral("color: %1").arg(textColor),
+                                 message);
+    requireLastStyleRuleContains(styleSheet,
+                                 QStringLiteral("QMenu::item {"),
+                                 QStringLiteral("border-radius: 0px"),
+                                 message);
+    requireLastStyleRuleContains(styleSheet,
+                                 QStringLiteral("QMenu::item {"),
+                                 QStringLiteral("border: none"),
+                                 message);
+    requireLastStyleRuleContains(styleSheet,
+                                 QStringLiteral("QMenu::item:selected {"),
+                                 QStringLiteral("background-color: %1").arg(hoverColor),
+                                 message);
+    requireLastStyleRuleContains(styleSheet,
+                                 QStringLiteral("QMenu::item:selected {"),
+                                 QStringLiteral("color: %1").arg(textColor),
+                                 message);
+    requireLastStyleRuleContains(styleSheet,
+                                 QStringLiteral("QMenu::item:disabled {"),
+                                 QStringLiteral("color: %1").arg(disabledColor),
+                                 message);
+}
+
 QList<QFrame*> sortedTelemetrySections(QWidget *summaryContainer)
 {
     if (!summaryContainer)
@@ -1302,6 +1345,9 @@ int main(int argc, char **argv)
                 qApp->styleSheet().contains(QStringLiteral("square-check-big.svg")) &&
                 !qApp->styleSheet().contains(QStringLiteral("lucide/check.svg")),
             "checkbox indicators use lucide square and square-check-big icons");
+    requireMenuPopupStyleUnified(qApp->styleSheet(),
+                                 false,
+                                 "light popup menus use the shared menu hover and rounded panel style");
     const QSize originalWindowSize = window.size();
 
     auto *appLayoutSplitter = window.findChild<QSplitter *>(QStringLiteral("appLayoutSplitter"));
@@ -2065,6 +2111,9 @@ int main(int argc, char **argv)
     require(qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
             "main window is in dark theme for overview style checks");
     const QString darkOverviewStyleSheet = qApp->styleSheet();
+    requireMenuPopupStyleUnified(darkOverviewStyleSheet,
+                                 true,
+                                 "dark popup menus use the shared menu hover and rounded panel style");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QFrame#homeTelemetrySummaryPill {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::FieldBackground, true),

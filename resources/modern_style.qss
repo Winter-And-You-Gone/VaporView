@@ -64,21 +64,29 @@ QMenuBar::item:pressed {
 
 /* 菜单 */
 QMenu {
-    background-color: @vv-surface;
+    background-color: @vv-menu-panel;
     border: 1px solid @vv-border;
-    border-radius: 6px;
-    padding: 4px 0px;
+    border-radius: 10px;
+    color: @vv-menu-text;
+    padding: 12px 0px;
 }
 
 QMenu::item {
-    padding: 4px 24px 4px 12px;
+    background-color: transparent;
+    border: none;
     border-radius: 0px;
-    color: @vv-text;
+    color: @vv-menu-text;
+    padding: 8px 32px 8px 16px;
 }
 
 QMenu::item:selected {
-    background-color: @vv-primary-subtle;
-    color: @vv-primary;
+    background-color: @vv-menu-hover;
+    color: @vv-menu-text;
+}
+
+QMenu::item:disabled {
+    background-color: transparent;
+    color: @vv-menu-disabled;
 }
 
 /* 工具栏 */

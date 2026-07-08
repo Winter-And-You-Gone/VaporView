@@ -1942,7 +1942,7 @@ QFrame#titleApplicationMenuItem {
 }
 QFrame#titleApplicationMenuItem[selected="true"],
 QFrame#titleApplicationMenuItem:hover {
-    background-color: @vv-border;
+    background-color: @vv-menu-hover;
 }
 QLabel#titleApplicationMenuText {
     color: @vv-menu-text;
@@ -2844,6 +2844,29 @@ QLabel#statusIndicator[status="disconnected"] {
 QLabel#statusIndicator[status="warning"] {
     background-color: @vv-warning-bg;
     color: @vv-warning;
+}
+)") + QStringLiteral(R"(
+QMenu {
+    background-color: @vv-menu-panel;
+    border: 1px solid @vv-border;
+    border-radius: 10px;
+    color: @vv-menu-text;
+    padding: 12px 0px;
+}
+QMenu::item {
+    background-color: transparent;
+    border: none;
+    border-radius: 0px;
+    color: @vv-menu-text;
+    padding: 8px 32px 8px 16px;
+}
+QMenu::item:selected {
+    background-color: @vv-menu-hover;
+    color: @vv-menu-text;
+}
+QMenu::item:disabled {
+    background-color: transparent;
+    color: @vv-menu-disabled;
 }
 )");
 }
@@ -8355,9 +8378,10 @@ void MainWindow::loadModernStyleSheet()
             "QMenuBar { background-color: @vv-surface; border-bottom: 1px solid @vv-border; padding: 4px 8px; }"
             "QMenuBar::item { background-color: transparent; padding: 6px 12px; border-radius: 4px; color: @vv-text; }"
             "QMenuBar::item:selected { background-color: @vv-primary-subtle; color: @vv-primary; }"
-            "QMenu { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; padding: 12px 0px; }"
-            "QMenu::item { padding: 8px 32px 8px 16px; color: @vv-text; }"
-            "QMenu::item:selected { background-color: @vv-primary-subtle; color: @vv-primary; }"
+            "QMenu { background-color: @vv-menu-panel; border: 1px solid @vv-border; border-radius: 10px; color: @vv-menu-text; padding: 12px 0px; }"
+            "QMenu::item { background-color: transparent; border: none; border-radius: 0px; color: @vv-menu-text; padding: 8px 32px 8px 16px; }"
+            "QMenu::item:selected { background-color: @vv-menu-hover; color: @vv-menu-text; }"
+            "QMenu::item:disabled { background-color: transparent; color: @vv-menu-disabled; }"
             "QToolBar { background-color: @vv-surface; border-bottom: 1px solid @vv-border; padding: 8px 12px; spacing: 8px; }"
             "QToolBar QToolButton { background-color: transparent; border: none; border-radius: 6px; padding: 10px 14px; color: @vv-text; font-size: 15px; }"
             "QToolBar QToolButton:hover { background-color: @vv-surface-alt; }"
