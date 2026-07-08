@@ -762,7 +762,6 @@ constexpr int kEpsilonMotionValueColumnWidth = 145;
 constexpr int kEpsilonFieldBaseSpacing = 2;
 constexpr int kEpsilonMotionFieldSpacing = 8;
 constexpr int kEpsilonFieldMinimumHeight = 20;
-constexpr int kTemperatureControllerCardWidth = 960;
 constexpr int kTemperatureControllerPlotWidth = 260;
 constexpr int kTemperatureControllerPlotMinHeight = 190;
 constexpr int kTemperatureControllerValueWidth = 126;
@@ -6334,23 +6333,19 @@ void TemperatureControllerPanel::setupUi()
     statusLayout->setColumnStretch(4, 1);
     layout->addLayout(statusLayout);
 
-    auto *bodyLayout = new QHBoxLayout();
-    bodyLayout->setContentsMargins(0, 0, 0, 0);
-    bodyLayout->setSpacing(10);
-
     tabs_ = new QTabWidget(this);
+    tabs_->setObjectName(QStringLiteral("temperatureConfigTabs"));
     tabs_->setDocumentMode(true);
-    tabs_->setFixedWidth(520);
-    tabs_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    tabs_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     tabs_->addTab(createChannelPage(0), QStringLiteral("通道1"));
     tabs_->addTab(createChannelPage(1), QStringLiteral("通道2"));
-    bodyLayout->addWidget(tabs_, 0);
+    layout->addWidget(tabs_, 0);
 
     temperature_plot_ = new TemperatureTrendPlotWidget(this);
+    temperature_plot_->setProperty("temperatureConfigPlot", true);
     temperature_plot_->setCompactMode(true);
-    temperature_plot_->setMinimumWidth(320);
-    bodyLayout->addWidget(temperature_plot_, 1);
-    layout->setAlignment(bodyLayout, Qt::AlignLeft | Qt::AlignTop);
+    temperature_plot_->setMinimumHeight(220);
+    temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     connect(tabs_, &QTabWidget::currentChanged, this, [this](int index) {
         if (temperature_plot_)
         {
@@ -6360,7 +6355,7 @@ void TemperatureControllerPanel::setupUi()
             temperature_plot_->setSamples(measured_temperature_history_[channelIndex]);
         }
     });
-    layout->addLayout(bodyLayout, 1);
+    layout->addWidget(temperature_plot_, 1);
 
     status_label_ = new QLabel(this);
     status_label_->setObjectName(QStringLiteral("fieldLabel"));
@@ -6376,12 +6371,11 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
 {
     QWidget *page = new QWidget(tabs_);
     auto *layout = new QGridLayout(page);
-    layout->setContentsMargins(16, 16, 16, 16);
-    layout->setHorizontalSpacing(18);
-    layout->setVerticalSpacing(14);
-    layout->setColumnStretch(0, 0);
-    layout->setColumnStretch(1, 0);
-    layout->setColumnStretch(2, 0);
+    layout->setContentsMargins(16, 12, 16, 12);
+    layout->setHorizontalSpacing(16);
+    layout->setVerticalSpacing(10);
+    layout->setColumnStretch(0, 1);
+    layout->setColumnStretch(1, 1);
     ChannelWidgets& channel = channels_[index];
 
     auto makeFieldLabel = [this](const QString& text) {
@@ -6397,13 +6391,16 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
         label = makeFieldLabel(labelText);
         editor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         auto *cell = new QWidget();
-        cell->setFixedWidth(kTemperatureControllerControlLabelWidth);
-        auto *cellLayout = new QVBoxLayout(cell);
+        cell->setObjectName(QStringLiteral("temperatureConfigFieldRow"));
+        cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        cell->setMinimumHeight(34);
+        auto *cellLayout = new QHBoxLayout(cell);
         cellLayout->setContentsMargins(0, 0, 0, 0);
-        cellLayout->setSpacing(4);
-        cellLayout->addWidget(label, 0, Qt::AlignLeft);
-        cellLayout->addWidget(editor, 0, Qt::AlignLeft);
-        layout->addWidget(cell, row, column, 1, columnSpan, Qt::AlignLeft | Qt::AlignTop);
+        cellLayout->setSpacing(10);
+        cellLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        cellLayout->addStretch(1);
+        cellLayout->addWidget(editor, 0, Qt::AlignRight | Qt::AlignVCenter);
+        layout->addWidget(cell, row, column, 1, columnSpan);
     };
 
     auto createCombo = [this]() {
@@ -6433,7 +6430,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     channel.max_output_spin->setRange(0, 90);
     channel.max_output_spin->setSuffix(QStringLiteral(" %"));
     channel.max_output_spin->setFixedWidth(kTemperatureControllerWideInputWidth);
-    addField(0, 2, QStringLiteral("最大输出电压百分比(%)"), channel.max_output_spin, channel.max_output_label_text);
+    addField(1, 0, QStringLiteral("最大输出电压百分比(%)"), channel.max_output_spin, channel.max_output_label_text);
 
     channel.kp_spin = new QSpinBox(this);
     channel.ki_spin = new QSpinBox(this);
@@ -6447,11 +6444,24 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
         spin->setFixedWidth(kTemperatureControllerPidInputWidth);
         spin->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     }
-    addField(1, 0, QStringLiteral("P"), channel.kp_spin, channel.pid_label_text);
-    QLabel *kiLabel = nullptr;
-    QLabel *kdLabel = nullptr;
-    addField(1, 1, QStringLiteral("I"), channel.ki_spin, kiLabel);
-    addField(1, 2, QStringLiteral("D"), channel.kd_spin, kdLabel);
+    auto *pidEditor = new QWidget(this);
+    pidEditor->setObjectName(QStringLiteral("temperaturePidEditorChannel%1").arg(index + 1));
+    pidEditor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    auto *pidLayout = new QHBoxLayout(pidEditor);
+    pidLayout->setContentsMargins(0, 0, 0, 0);
+    pidLayout->setSpacing(6);
+    auto addPidSpin = [pidLayout](const QString& labelText, QSpinBox *spin) {
+        auto *label = new QLabel(labelText);
+        label->setObjectName(QStringLiteral("fieldLabel"));
+        label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        label->setMinimumWidth(12);
+        pidLayout->addWidget(label, 0, Qt::AlignVCenter);
+        pidLayout->addWidget(spin, 0, Qt::AlignVCenter);
+    };
+    addPidSpin(QStringLiteral("P"), channel.kp_spin);
+    addPidSpin(QStringLiteral("I"), channel.ki_spin);
+    addPidSpin(QStringLiteral("D"), channel.kd_spin);
+    addField(1, 1, QStringLiteral("PID"), pidEditor, channel.pid_label_text);
 
     channel.target_spin = new QDoubleSpinBox(this);
     channel.target_spin->setObjectName(QStringLiteral("temperatureTargetSpinChannel%1").arg(index + 1));
@@ -6467,7 +6477,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     channel.auto_pid_combo->addItem(QStringLiteral("关闭"), 0);
     channel.auto_pid_combo->addItem(QStringLiteral("PID自整定"), 1);
     channel.auto_pid_combo->addItem(QStringLiteral("实时优化(预留)"), 2);
-    addField(2, 1, QStringLiteral("自动 PID"), channel.auto_pid_combo, channel.auto_pid_label_text, 2);
+    addField(2, 1, QStringLiteral("自动 PID"), channel.auto_pid_combo, channel.auto_pid_label_text);
     layout->setRowStretch(3, 1);
 
     const quint8 channelNumber = static_cast<quint8>(index + 1);
@@ -6639,7 +6649,7 @@ void TemperatureControllerPanel::updateChannelTexts()
         if (channel.enable_label_text) channel.enable_label_text->setText(is_english_ ? QStringLiteral("Output Enable") : QStringLiteral("输出使能"));
         if (channel.mode_label_text) channel.mode_label_text->setText(is_english_ ? QStringLiteral("Output Mode") : QStringLiteral("输出模式"));
         if (channel.max_output_label_text) channel.max_output_label_text->setText(is_english_ ? QStringLiteral("Max Output (%)") : QStringLiteral("最大输出电压百分比(%)"));
-        if (channel.pid_label_text) channel.pid_label_text->setText(QStringLiteral("P"));
+        if (channel.pid_label_text) channel.pid_label_text->setText(QStringLiteral("PID"));
         if (channel.auto_pid_label_text) channel.auto_pid_label_text->setText(is_english_ ? QStringLiteral("Auto PID") : QStringLiteral("自动 PID"));
         if (channel.enable_combo)
         {
@@ -14133,7 +14143,7 @@ void MainWindow::setupDataPanels()
 
     temperature_controller_group_ = new QGroupBox(this);
     temperature_controller_group_->setObjectName("sensorGroupBox");
-    temperature_controller_group_->setMinimumWidth(kTemperatureControllerCardWidth);
+    temperature_controller_group_->setMinimumWidth(0);
     temperature_controller_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     auto *temperatureLayout = new QVBoxLayout(temperature_controller_group_);
     temperatureLayout->setContentsMargins(1, 0, 1, 1);

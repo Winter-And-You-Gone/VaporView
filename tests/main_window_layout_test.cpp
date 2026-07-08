@@ -35,6 +35,7 @@
 #include <QTextOption>
 #include <QTimer>
 #include <QToolButton>
+#include <QTabWidget>
 #include <QWidget>
 #include <algorithm>
 #include <cstdlib>
@@ -2187,6 +2188,8 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureControllerModeCombo"));
     auto *targetSpin =
         temperaturePanel->findChild<QDoubleSpinBox *>(QStringLiteral("temperatureTargetSpinChannel1"));
+    auto *enableCombo =
+        temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureOutputEnableComboChannel1"));
     auto *modeCombo =
         temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureOutputModeComboChannel1"));
     auto *maxOutputSpin =
@@ -2199,10 +2202,88 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QSpinBox *>(QStringLiteral("temperaturePidKdSpinChannel1"));
     auto *autoPidCombo =
         temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureAutoPidComboChannel1"));
-    require(controllerModeCombo != nullptr && targetSpin != nullptr && modeCombo != nullptr &&
+    require(controllerModeCombo != nullptr && targetSpin != nullptr && enableCombo != nullptr && modeCombo != nullptr &&
                 maxOutputSpin != nullptr && kpSpin != nullptr && kiSpin != nullptr &&
                 kdSpin != nullptr && autoPidCombo != nullptr,
             "temperature controller editable controls are discoverable for stale telemetry checks");
+
+    clickWidget(temperatureNavButton, 150);
+    activateLayouts(&window);
+    auto *temperaturePageForLayout = window.findChild<QWidget *>(QStringLiteral("temperaturePage"));
+    require(temperaturePageForLayout != nullptr && temperaturePageForLayout->isVisible(),
+            "temperature page is visible for controller layout checks");
+    auto *temperatureTabs =
+        temperaturePanel->findChild<QTabWidget *>(QStringLiteral("temperatureConfigTabs"));
+    QWidget *temperatureConfigPlot = nullptr;
+    const QList<QWidget*> controllerTrendPlots =
+        temperaturePanel->findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot"));
+    for (QWidget *plot : controllerTrendPlots)
+    {
+        if (plot->property("temperatureConfigPlot").toBool())
+        {
+            temperatureConfigPlot = plot;
+            break;
+        }
+    }
+    require(temperatureTabs != nullptr && temperatureConfigPlot != nullptr,
+            "temperature controller page exposes tabs and a full-width trend plot");
+    const QRect tabsRectInPanel(temperatureTabs->mapTo(temperaturePanel, QPoint(0, 0)),
+                                temperatureTabs->size());
+    const QRect plotRectInPanel(temperatureConfigPlot->mapTo(temperaturePanel, QPoint(0, 0)),
+                                temperatureConfigPlot->size());
+    require(tabsRectInPanel.bottom() < plotRectInPanel.top(),
+            "temperature trend plot is laid out below the channel configuration tabs");
+    require(std::abs(tabsRectInPanel.left() - plotRectInPanel.left()) <= 2 &&
+                std::abs(tabsRectInPanel.width() - plotRectInPanel.width()) <= 2,
+            "temperature trend plot follows the full channel configuration width");
+    require(plotRectInPanel.width() >= temperaturePanel->width() - 32,
+            "temperature trend plot expands to the controller panel width");
+
+    auto *temperatureScrollArea =
+        temperaturePageForLayout->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
+    require(temperatureScrollArea != nullptr &&
+                temperatureScrollArea->horizontalScrollBar() != nullptr &&
+                temperatureScrollArea->horizontalScrollBar()->maximum() == 0,
+            "temperature configuration page fits horizontally without clipping");
+
+    auto requireFieldRowLayout = [](QWidget *editor, const char *message) {
+        require(editor != nullptr && editor->parentWidget() != nullptr, message);
+        QWidget *row = editor->parentWidget();
+        require(row->objectName() == QStringLiteral("temperatureConfigFieldRow"), message);
+        const QList<QLabel*> labels =
+            row->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
+        require(!labels.isEmpty(), message);
+        const QRect labelRect(labels.first()->mapTo(row, QPoint(0, 0)), labels.first()->size());
+        const QRect editorRect(editor->mapTo(row, QPoint(0, 0)), editor->size());
+        require(labelRect.left() <= 1 &&
+                    labelRect.right() < editorRect.left() &&
+                    editorRect.right() >= row->rect().right() - 1,
+                message);
+    };
+    requireFieldRowLayout(targetSpin,
+                          "temperature target field uses left label and right value layout");
+    requireFieldRowLayout(enableCombo,
+                          "temperature output enable field uses left label and right value layout");
+    requireFieldRowLayout(modeCombo,
+                          "temperature output mode field uses left label and right value layout");
+    requireFieldRowLayout(maxOutputSpin,
+                          "temperature max output field uses left label and right value layout");
+    requireFieldRowLayout(autoPidCombo,
+                          "temperature auto PID field uses left label and right value layout");
+    auto *pidEditor =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePidEditorChannel1"));
+    require(pidEditor != nullptr &&
+                kpSpin->parentWidget() == pidEditor &&
+                kiSpin->parentWidget() == pidEditor &&
+                kdSpin->parentWidget() == pidEditor,
+            "temperature PID controls are grouped as one right-side editor");
+    requireFieldRowLayout(pidEditor,
+                          "temperature PID field uses left label and right grouped value layout");
+    if (checkedSidebarButton && !checkedSidebarButton->isChecked())
+    {
+        clickWidget(checkedSidebarButton, 150);
+        activateLayouts(&window);
+    }
 
     {
         const QSignalBlocker controllerModeBlocker(controllerModeCombo);
