@@ -2336,6 +2336,8 @@ int main(int argc, char **argv)
                                         temperatureChannelSelectorRow->size());
     const QRect topBarRectInRow(temperatureChannelTopBar->mapTo(temperatureChannelTopRow, QPoint(0, 0)),
                                 temperatureChannelTopBar->size());
+    const QRect topControlsStackRectInTopRow(temperatureChannelTopControlsStack->mapTo(temperatureChannelTopRow, QPoint(0, 0)),
+                                             temperatureChannelTopControlsStack->size());
     const QRect stackRectInCard(temperatureChannelStack->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                 temperatureChannelStack->size());
     require(topRowRectInCard.bottom() < stackRectInCard.top() &&
@@ -2390,6 +2392,9 @@ int main(int argc, char **argv)
     require(topModeRect.right() < topTargetRect.left() &&
                 std::abs(topModeRect.center().y() - topTargetRect.center().y()) <= 2,
             "temperature mode and target controls sit together under the channel switcher");
+    require(topModeRect.bottom() <= topControlsStackRectInTopRow.bottom() &&
+                topTargetRect.bottom() <= topControlsStackRectInTopRow.bottom(),
+            "temperature top controls fit within the top control stack without clipping");
     require(topCommonRect.right() < stackRectInCard.right(),
             "temperature common settings selector stays inside the compact top bar");
     require(temperatureChannelSelectorRow->isAncestorOf(factoryResetButton) &&
@@ -2439,6 +2444,19 @@ int main(int argc, char **argv)
                 !temperatureConfigChannelButton2->isChecked() &&
                 temperatureCommonSettingsButton->isChecked(),
             "temperature top bar switches to a common settings page with only the common action visible");
+    const QRect commonAddressRowRect(addressSpin->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
+                                     addressSpin->parentWidget()->size());
+    const QRect commonBaudRowRect(rs485BaudCombo->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
+                                  rs485BaudCombo->parentWidget()->size());
+    const QRect commonOvertempRowRect(overtempOutputCombo->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
+                                      overtempOutputCombo->parentWidget()->size());
+    const QRect commonInternalRowRect(commonInternalTemperatureEdit->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
+                                      commonInternalTemperatureEdit->parentWidget()->size());
+    require(std::abs(commonAddressRowRect.top() - commonBaudRowRect.top()) <= 2 &&
+                std::abs(commonOvertempRowRect.top() - commonInternalRowRect.top()) <= 2 &&
+                commonOvertempRowRect.top() > commonAddressRowRect.bottom() &&
+                commonInternalRowRect.bottom() <= temperatureChannelStack->rect().bottom(),
+            "temperature common settings rows fit inside the stack without overlap or clipping");
     const QRect commonButtonRectInSelector(temperatureCommonSettingsButton->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
                                            temperatureCommonSettingsButton->size());
     const QRect factoryResetRectInSelector(factoryResetButton->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
@@ -2549,6 +2567,10 @@ int main(int argc, char **argv)
     require(std::abs(maxOutputRowRect.top() - pidRowRect.top()) <= 2 &&
                 std::abs(pidRowRect.top() - autoPidRowRect.top()) <= 2,
             "temperature max output, PID, and auto PID fields stay on one row");
+    require(maxOutputRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
+                pidRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
+                autoPidRowRect.bottom() <= temperatureChannelStack->rect().bottom(),
+            "temperature channel fields fit inside the stack without clipping");
     require(maxOutputSpin->property("temperatureMaxOutputWarning").toBool(),
             "temperature max output value carries warning styling");
     const QList<QLabel*> maxOutputLabels =

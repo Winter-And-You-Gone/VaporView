@@ -796,8 +796,10 @@ constexpr int kTemperatureControllerCompactPidInputWidth = 82;
 constexpr int kTemperatureControllerMaxOutputLabelWidth = 168;
 constexpr int kTemperatureControllerCompactLabelWidth = 72;
 constexpr int kTemperatureControllerControlLabelWidth = 150;
-constexpr int kTemperatureControllerChannelStackHeight = 50;
-constexpr int kTemperatureControllerCommonStackHeight = 92;
+constexpr int kTemperatureControllerConfigRowHeight = 38;
+constexpr int kTemperatureControllerTopControlsHeight = 38;
+constexpr int kTemperatureControllerChannelStackHeight = 54;
+constexpr int kTemperatureControllerCommonStackHeight = 100;
 constexpr int kTemperatureControllerHistoryLimit = 240;
 constexpr int kRemotePacketRateWindowMs = 5000;
 constexpr qint64 kTcpRecordingStatusRefreshMs = 500;
@@ -6437,12 +6439,12 @@ void TemperatureControllerPanel::setupUi()
     channel_top_controls_stack_ = new QStackedWidget(channelTopRow);
     channel_top_controls_stack_->setObjectName(QStringLiteral("temperatureChannelTopControlsStack"));
     channel_top_controls_stack_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    channel_top_controls_stack_->setFixedHeight(34);
+    channel_top_controls_stack_->setFixedHeight(kTemperatureControllerTopControlsHeight);
     channel_top_controls_stack_->addWidget(createChannelTopControlsPage(0));
     channel_top_controls_stack_->addWidget(createChannelTopControlsPage(1));
     auto *commonTopControlsPage = new QWidget(channel_top_controls_stack_);
     commonTopControlsPage->setObjectName(QStringLiteral("temperatureChannelTopControlsPageCommon"));
-    commonTopControlsPage->setFixedHeight(34);
+    commonTopControlsPage->setFixedHeight(kTemperatureControllerTopControlsHeight);
     commonTopControlsPage->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     channel_top_controls_stack_->addWidget(commonTopControlsPage);
     channelTopRowLayout->addWidget(channel_top_controls_stack_, 0, Qt::AlignLeft);
@@ -6481,6 +6483,7 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
     QWidget *page = new QWidget(channel_top_controls_stack_);
     page->setObjectName(QStringLiteral("temperatureChannelTopControlsPageChannel%1").arg(index + 1));
     page->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    page->setFixedHeight(kTemperatureControllerTopControlsHeight);
     auto *layout = new QHBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(12);
@@ -6500,6 +6503,7 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
         auto *field = new QWidget();
         field->setObjectName(QStringLiteral("temperatureTopBarField"));
         field->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        field->setFixedHeight(kTemperatureControllerTopControlsHeight);
         auto *fieldLayout = new QHBoxLayout(field);
         fieldLayout->setContentsMargins(0, 0, 0, 0);
         fieldLayout->setSpacing(8);
@@ -6570,7 +6574,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
         auto *cell = new QWidget();
         cell->setObjectName(QStringLiteral("temperatureConfigFieldRow"));
         cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        cell->setMinimumHeight(34);
+        cell->setFixedHeight(kTemperatureControllerConfigRowHeight);
         auto *cellLayout = new QHBoxLayout(cell);
         cellLayout->setContentsMargins(0, 0, 0, 0);
         cellLayout->setSpacing(10);
@@ -6656,7 +6660,7 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
 {
     QWidget *page = new QWidget(channel_stack_);
     page->setObjectName(QStringLiteral("temperatureCommonSettingsPage"));
-    page->setFixedHeight(kTemperatureControllerChannelStackHeight);
+    page->setFixedHeight(kTemperatureControllerCommonStackHeight);
     auto *layout = new QGridLayout(page);
     layout->setContentsMargins(16, 8, 16, 8);
     layout->setHorizontalSpacing(18);
@@ -6679,7 +6683,7 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
         auto *cell = new QWidget();
         cell->setObjectName(QStringLiteral("temperatureCommonFieldRow"));
         cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        cell->setMinimumHeight(34);
+        cell->setFixedHeight(kTemperatureControllerConfigRowHeight);
         auto *cellLayout = new QHBoxLayout(cell);
         cellLayout->setContentsMargins(0, 0, 0, 0);
         cellLayout->setSpacing(10);
