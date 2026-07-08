@@ -57,6 +57,7 @@ public:
     bool closeOnClick() const;
     QLabel *textLabel() const;
     QLabel *checkLabel() const;
+    void clearHover();
     void refreshTheme();
 
     QSize sizeHint() const override;
@@ -77,6 +78,7 @@ private:
     void layoutChildren();
     void updateCheckIcon();
     void updateLabelStyles();
+    void setHovered(bool hovered);
 
     QLabel *text_label_;
     QLabel *check_label_;
@@ -125,6 +127,7 @@ private:
     QRect panelRect() const;
     QSize maskSize() const;
     void syncRowWidths();
+    void clearRowHoverStates();
 
     int corner_radius_ = 10;
     int panel_padding_ = 12;

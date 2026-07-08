@@ -1626,6 +1626,35 @@ int main(int argc, char **argv)
         require(row->textLabel()->width() >= rowTextMetrics.horizontalAdvance(row->text()),
                 "log filter menu row text is not clipped by the popup content width");
     }
+    VaporView::SingleLevelPopupMenuRow *logFilterFirstRow = logFilterMenu->rows().first();
+    hoverWidget(logFilterFirstRow, true, 40);
+    require(logFilterFirstRow->property("hovered").toBool(),
+            "log filter menu row records hover before selection");
+    clickWidget(logFilterFirstRow, 120);
+    require(!logFilterMenu->isVisible(),
+            "log filter menu closes after selecting a filter row");
+    processEventsFor(260);
+    clickWidget(logFilterButton, 180);
+    logFilterMenu = nullptr;
+    for (QWidget *topLevel : QApplication::topLevelWidgets())
+    {
+        auto *menu = qobject_cast<VaporView::SingleLevelPopupMenu *>(topLevel);
+        if (menu && menu->isVisible() &&
+            (menu->title() == QStringLiteral("日志过滤") ||
+             menu->title() == QStringLiteral("Log Filters")))
+        {
+            logFilterMenu = menu;
+            break;
+        }
+    }
+    require(logFilterMenu != nullptr,
+            "log filter menu reopens after selecting a checked row");
+    logFilterFirstRow = logFilterMenu->rows().first();
+    require(logFilterFirstRow->isChecked() &&
+                logFilterFirstRow->property("hasCheckIcon").toBool(),
+            "selected log filter row reopens with only its check indicator");
+    require(!logFilterFirstRow->property("hovered").toBool(),
+            "selected log filter row does not keep stale hover highlight after reopening");
     logFilterMenu->hide();
     processEventsFor(50);
     hoverWidget(checkedSidebarButton, true);
@@ -2419,7 +2448,34 @@ int main(int argc, char **argv)
         require(rowWidget->geometry().left() <= shadowMargin + 1 &&
                     rowWidget->geometry().right() >= menu->width() - shadowMargin - 3,
                 "TCP wave display menu hover background spans the full floating panel row width");
+        hoverWidget(rowWidget, true, 40);
+        require(rowWidget->property("hovered").toBool(),
+                "TCP wave display menu row records hover before selection");
         clickWidget(rowWidget, 160);
+    };
+    auto requireCheckedWaveDisplayRowsHaveNoStaleHover = [&]() {
+        tcpWaveDisplayButton->click();
+        processEventsFor(120);
+        VaporView::SingleLevelPopupMenu *menu = visibleWaveDisplayMenu();
+        require(menu != nullptr,
+                "TCP wave display menu reopens after selecting a checked display row");
+        bool foundCheckedRow = false;
+        for (VaporView::SingleLevelPopupMenuRow *row : menu->rows())
+        {
+            if (!row->isChecked())
+            {
+                continue;
+            }
+            foundCheckedRow = true;
+            require(row->property("hasCheckIcon").toBool(),
+                    "selected TCP wave display row reopens with its check indicator");
+            require(!row->property("hovered").toBool(),
+                    "selected TCP wave display row does not keep stale hover highlight after reopening");
+        }
+        require(foundCheckedRow,
+                "TCP wave display menu has at least one checked row after re-enabling raw signal");
+        menu->hide();
+        processEventsFor(80);
     };
     clickWaveDisplayMenuRow({QStringLiteral("全部显示"), QStringLiteral("Show All")},
                             "TCP wave display menu can toggle the selected show-all row back off");
@@ -2461,6 +2517,7 @@ int main(int argc, char **argv)
     {
         menu->hide();
     }
+    requireCheckedWaveDisplayRowsHaveNoStaleHover();
     processEventsFor(200);
     activateLayouts(&window);
     require(rawWaveGroup->isVisible() && !harmonicWaveGroup->isVisible() && !peakTrendGroup->isVisible(),

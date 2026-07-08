@@ -172,6 +172,7 @@ SingleLevelPopupMenuRow::SingleLevelPopupMenuRow(QWidget *parent)
     setProperty("checkIconAlignment", QStringLiteral("right"));
     setProperty("selected", false);
     setProperty("hasCheckIcon", false);
+    setProperty("hovered", false);
 
     refreshTheme();
     layoutChildren();
@@ -298,6 +299,11 @@ QLabel *SingleLevelPopupMenuRow::checkLabel() const
     return check_label_;
 }
 
+void SingleLevelPopupMenuRow::clearHover()
+{
+    setHovered(false);
+}
+
 void SingleLevelPopupMenuRow::refreshTheme()
 {
     updateLabelStyles();
@@ -336,15 +342,13 @@ void SingleLevelPopupMenuRow::changeEvent(QEvent *event)
 void SingleLevelPopupMenuRow::enterEvent(QEnterEvent *event)
 {
     QWidget::enterEvent(event);
-    hovered_ = true;
-    update();
+    setHovered(true);
 }
 
 void SingleLevelPopupMenuRow::leaveEvent(QEvent *event)
 {
     QWidget::leaveEvent(event);
-    hovered_ = false;
-    update();
+    setHovered(false);
 }
 
 void SingleLevelPopupMenuRow::mouseReleaseEvent(QMouseEvent *event)
@@ -422,6 +426,17 @@ void SingleLevelPopupMenuRow::updateLabelStyles()
         .arg(checkColor));
     text_label_->setEnabled(isEnabled());
     check_label_->setEnabled(isEnabled());
+}
+
+void SingleLevelPopupMenuRow::setHovered(bool hovered)
+{
+    if (hovered_ == hovered)
+    {
+        return;
+    }
+    hovered_ = hovered;
+    setProperty("hovered", hovered_);
+    update();
 }
 
 SingleLevelPopupMenu::SingleLevelPopupMenu(QWidget *parent)
@@ -556,6 +571,7 @@ void SingleLevelPopupMenu::popupFrom(QWidget *anchor, SingleLevelPopupAnchor anc
     }
 
     refreshTheme();
+    clearRowHoverStates();
     ensurePolished();
     adjustSize();
     const QSize popupSize = sizeHint();
@@ -673,6 +689,7 @@ void SingleLevelPopupMenu::resizeEvent(QResizeEvent *event)
 void SingleLevelPopupMenu::showEvent(QShowEvent *event)
 {
     QMenu::showEvent(event);
+    clearRowHoverStates();
     refreshTheme();
     syncRowWidths();
     applyRoundedMask();
@@ -726,6 +743,17 @@ void SingleLevelPopupMenu::syncRowWidths()
         {
             row->setMinimumRowWidth(availableWidth);
             row->setFixedWidth(availableWidth);
+        }
+    }
+}
+
+void SingleLevelPopupMenu::clearRowHoverStates()
+{
+    for (SingleLevelPopupMenuRow *row : rows())
+    {
+        if (row)
+        {
+            row->clearHover();
         }
     }
 }
