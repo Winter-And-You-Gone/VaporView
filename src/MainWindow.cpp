@@ -787,8 +787,8 @@ constexpr int kTemperatureControllerPlotMinHeight = 190;
 constexpr int kTemperatureControllerValueWidth = 126;
 constexpr int kTemperatureControllerInputWidth = 112;
 constexpr int kTemperatureControllerWideInputWidth = 138;
-constexpr int kTemperatureControllerTopEnableWidth = 118;
-constexpr int kTemperatureControllerTopEnableHeight = 56;
+constexpr int kTemperatureControllerTopEnableWidth = 106;
+constexpr int kTemperatureControllerTopEnableHeight = 34;
 constexpr int kTemperatureControllerTopModeWidth = 132;
 constexpr int kTemperatureControllerTopTargetWidth = 172;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
@@ -796,7 +796,7 @@ constexpr int kTemperatureControllerCompactPidInputWidth = 82;
 constexpr int kTemperatureControllerMaxOutputLabelWidth = 168;
 constexpr int kTemperatureControllerCompactLabelWidth = 72;
 constexpr int kTemperatureControllerControlLabelWidth = 150;
-constexpr int kTemperatureControllerChannelStackHeight = 114;
+constexpr int kTemperatureControllerChannelStackHeight = 92;
 constexpr int kTemperatureControllerHistoryLimit = 240;
 constexpr int kRemotePacketRateWindowMs = 5000;
 constexpr qint64 kTcpRecordingStatusRefreshMs = 500;
@@ -5466,18 +5466,10 @@ protected:
 
         const qreal gap = 3.0;
         const QRectF trackRect = pillRect.adjusted(gap, gap, -gap, -gap);
-        QFont titleFont = font();
-        titleFont.setWeight(QFont::DemiBold);
         QFont segmentFont = font();
         segmentFont.setWeight(QFont::DemiBold);
 
-        constexpr qreal kTitleHeight = 20.0;
-        constexpr qreal kTitleGap = 2.0;
-        const QRectF labelRect(trackRect.left(), trackRect.top(), trackRect.width(), kTitleHeight);
-        const QRectF switchRect(trackRect.left(),
-                                labelRect.bottom() + kTitleGap,
-                                trackRect.width(),
-                                std::max<qreal>(0.0, trackRect.bottom() - labelRect.bottom() - kTitleGap));
+        const QRectF switchRect = trackRect;
         constexpr qreal kInnerGap = 2.0;
         const QRectF switchCapsuleRect = switchRect.adjusted(0.5, 0.5, -0.5, -0.5);
         const QRectF switchContentRect = switchCapsuleRect.adjusted(kInnerGap, kInnerGap, -kInnerGap, -kInnerGap);
@@ -5505,9 +5497,6 @@ protected:
         painter.setBrush(selectedFill);
         painter.drawRoundedRect(selectedRect, kControlRadius - gap - kInnerGap, kControlRadius - gap - kInnerGap);
 
-        painter.setFont(titleFont);
-        painter.setPen(text);
-        painter.drawText(labelRect, Qt::AlignCenter, outputLabelText());
         const QRectF offRect(switchContentRect.left(), switchContentRect.top(), segmentWidth, switchContentRect.height());
         const QRectF onRect(switchContentRect.left() + segmentWidth, switchContentRect.top(), segmentWidth, switchContentRect.height());
         const bool offSelected = thumb_position_ < 0.5;
@@ -5543,15 +5532,10 @@ private:
         return is_english_ ? QStringLiteral("Output Enable") : QStringLiteral("输出使能");
     }
 
-    QString displayText() const
-    {
-        return QStringLiteral("%1: %2")
-            .arg(outputLabelText(), isChecked() ? onText() : offText());
-    }
-
     void refreshText()
     {
-        const QString text = displayText();
+        const QString text = QStringLiteral("%1: %2")
+            .arg(outputLabelText(), isChecked() ? onText() : offText());
         setText(text);
         setToolTip(text);
         setStatusTip(text);
@@ -6410,6 +6394,30 @@ void TemperatureControllerPanel::setupUi()
     channelTopBarLayout->addWidget(common_settings_button_);
     channelSelectorRowLayout->addWidget(channel_top_bar_, 0, Qt::AlignVCenter);
 
+    output_enable_top_label_ = new QLabel(QStringLiteral("输出使能"), channelSelectorRow);
+    output_enable_top_label_->setObjectName(QStringLiteral("temperatureOutputEnableTopLabel"));
+    output_enable_top_label_->setProperty("temperatureOutputEnableTopLabel", true);
+    output_enable_top_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    output_enable_top_label_->setMinimumHeight(kTemperatureControllerTopEnableHeight);
+    channelSelectorRowLayout->addWidget(output_enable_top_label_, 0, Qt::AlignVCenter);
+
+    auto createEnableSwitch = [this, channelSelectorRow](int index) {
+        auto *enableSwitch = new TemperatureOverviewSwitchButton(channelSelectorRow);
+        enableSwitch->setObjectName(QStringLiteral("temperatureOutputEnableSwitchChannel%1").arg(index + 1));
+        enableSwitch->setProperty("temperatureOutputEnableSwitch", true);
+        enableSwitch->setFixedSize(kTemperatureControllerTopEnableWidth, kTemperatureControllerTopEnableHeight);
+        enableSwitch->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        const quint8 channelNumber = static_cast<quint8>(index + 1);
+        connect(enableSwitch, &QPushButton::clicked, this, [this, channelNumber, enableSwitch]() {
+            emit outputEnabledRequested(channelNumber, !enableSwitch->switchChecked());
+        });
+        return enableSwitch;
+    };
+    channels_[0].enable_switch = createEnableSwitch(0);
+    channels_[1].enable_switch = createEnableSwitch(1);
+    channelSelectorRowLayout->addWidget(channels_[0].enable_switch, 0, Qt::AlignVCenter);
+    channelSelectorRowLayout->addWidget(channels_[1].enable_switch, 0, Qt::AlignVCenter);
+
     common_.factory_reset_button = new QPushButton(QStringLiteral("恢复出厂设置"), channelSelectorRow);
     common_.factory_reset_button->setObjectName(QStringLiteral("temperatureFactoryResetButton"));
     common_.factory_reset_button->setCursor(Qt::PointingHandCursor);
@@ -6428,12 +6436,12 @@ void TemperatureControllerPanel::setupUi()
     channel_top_controls_stack_ = new QStackedWidget(channelTopRow);
     channel_top_controls_stack_->setObjectName(QStringLiteral("temperatureChannelTopControlsStack"));
     channel_top_controls_stack_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    channel_top_controls_stack_->setFixedHeight(kTemperatureControllerTopEnableHeight);
+    channel_top_controls_stack_->setFixedHeight(34);
     channel_top_controls_stack_->addWidget(createChannelTopControlsPage(0));
     channel_top_controls_stack_->addWidget(createChannelTopControlsPage(1));
     auto *commonTopControlsPage = new QWidget(channel_top_controls_stack_);
     commonTopControlsPage->setObjectName(QStringLiteral("temperatureChannelTopControlsPageCommon"));
-    commonTopControlsPage->setFixedHeight(kTemperatureControllerTopEnableHeight);
+    commonTopControlsPage->setFixedHeight(34);
     commonTopControlsPage->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     channel_top_controls_stack_->addWidget(commonTopControlsPage);
     channelTopRowLayout->addWidget(channel_top_controls_stack_, 0, Qt::AlignLeft);
@@ -6499,33 +6507,12 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
         layout->addWidget(field, 0, Qt::AlignVCenter);
     };
 
-    auto addTopEditor = [layout](QWidget *editor) {
-        editor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        auto *field = new QWidget();
-        field->setObjectName(QStringLiteral("temperatureTopBarField"));
-        field->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        auto *fieldLayout = new QHBoxLayout(field);
-        fieldLayout->setContentsMargins(0, 0, 0, 0);
-        fieldLayout->setSpacing(0);
-        fieldLayout->addWidget(editor, 0, Qt::AlignLeft | Qt::AlignVCenter);
-        layout->addWidget(field, 0, Qt::AlignVCenter);
-    };
-
     auto createCombo = [this](int width) {
         auto *combo = new QComboBox(this);
         combo->setFixedWidth(width);
         combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
         return combo;
     };
-
-    auto *enableSwitch = new TemperatureOverviewSwitchButton(this);
-    enableSwitch->setObjectName(QStringLiteral("temperatureOutputEnableSwitchChannel%1").arg(index + 1));
-    enableSwitch->setProperty("temperatureOutputEnableSwitch", true);
-    enableSwitch->setFixedSize(kTemperatureControllerTopEnableWidth, kTemperatureControllerTopEnableHeight);
-    enableSwitch->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    channel.enable_switch = enableSwitch;
-    channel.enable_label_text = nullptr;
-    addTopEditor(enableSwitch);
 
     channel.mode_combo = createCombo(kTemperatureControllerTopModeWidth);
     channel.mode_combo->setObjectName(QStringLiteral("temperatureOutputModeComboChannel%1").arg(index + 1));
@@ -6544,9 +6531,6 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
     addTopField(QStringLiteral("目标温度(°C)"), channel.target_spin, channel.target_label_text);
 
     const quint8 channelNumber = static_cast<quint8>(index + 1);
-    connect(enableSwitch, &QPushButton::clicked, this, [this, channelNumber, enableSwitch]() {
-        emit outputEnabledRequested(channelNumber, !enableSwitch->switchChecked());
-    });
     connect(channel.mode_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.mode_combo](int) {
         emit outputModeRequested(channelNumber, static_cast<quint16>(combo->currentData().toUInt()));
     });
@@ -6562,9 +6546,9 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     QWidget *page = new QWidget(channel_stack_);
     page->setFixedHeight(kTemperatureControllerChannelStackHeight);
     auto *layout = new QGridLayout(page);
-    layout->setContentsMargins(16, 12, 16, 12);
+    layout->setContentsMargins(16, 8, 16, 8);
     layout->setHorizontalSpacing(16);
-    layout->setVerticalSpacing(10);
+    layout->setVerticalSpacing(8);
     layout->setColumnStretch(0, 1);
     layout->setColumnStretch(1, 1);
     layout->setColumnStretch(2, 1);
@@ -6674,9 +6658,9 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
     page->setObjectName(QStringLiteral("temperatureCommonSettingsPage"));
     page->setFixedHeight(kTemperatureControllerChannelStackHeight);
     auto *layout = new QGridLayout(page);
-    layout->setContentsMargins(16, 12, 16, 12);
+    layout->setContentsMargins(16, 8, 16, 8);
     layout->setHorizontalSpacing(18);
-    layout->setVerticalSpacing(12);
+    layout->setVerticalSpacing(8);
     layout->setColumnStretch(0, 1);
     layout->setColumnStretch(1, 1);
     layout->setRowStretch(2, 1);
@@ -6954,6 +6938,7 @@ void TemperatureControllerPanel::updateChannelTexts()
     if (channel_button_1_) channel_button_1_->setText(is_english_ ? QStringLiteral("Channel 1") : QStringLiteral("通道1"));
     if (channel_button_2_) channel_button_2_->setText(is_english_ ? QStringLiteral("Channel 2") : QStringLiteral("通道2"));
     if (common_settings_button_) common_settings_button_->setText(is_english_ ? QStringLiteral("Common") : QStringLiteral("通用设置"));
+    if (output_enable_top_label_) output_enable_top_label_->setText(is_english_ ? QStringLiteral("Output Enable") : QStringLiteral("输出使能"));
     if (common_.address_label_text) common_.address_label_text->setText(is_english_ ? QStringLiteral("RS485 address") : QStringLiteral("设置温控器485站号"));
     if (common_.rs485_baud_label_text) common_.rs485_baud_label_text->setText(is_english_ ? QStringLiteral("RS485 baud") : QStringLiteral("设置485串口波特率"));
     if (common_.overtemp_output_label_text) common_.overtemp_output_label_text->setText(is_english_ ? QStringLiteral("Over-temp output") : QStringLiteral("过温输出模式"));
@@ -8433,7 +8418,8 @@ void MainWindow::loadModernStyleSheet()
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 34px; max-height: 34px; padding: 0px 10px; text-align: center; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
-            "TemperatureControllerPanel QPushButton[temperatureOutputEnableSwitch=\"true\"] { background-color: transparent; border: none; padding: 0px; margin: 0px; min-width: 118px; max-width: 118px; min-height: 56px; max-height: 56px; outline: none; }"
+            "TemperatureControllerPanel QLabel[temperatureOutputEnableTopLabel=\"true\"] { color: @vv-text; font-size: 14px; font-weight: 600; }"
+            "TemperatureControllerPanel QPushButton[temperatureOutputEnableSwitch=\"true\"] { background-color: transparent; border: none; padding: 0px; margin: 0px; min-width: 106px; max-width: 106px; min-height: 34px; max-height: 34px; outline: none; }"
             "QToolTip { background-color: rgb(45, 45, 45); color: #FFFFFF; border: 1px solid #474747; border-radius: 13px; padding: 8px 16px; font-size: 16px; }";
     }
 
@@ -8448,7 +8434,8 @@ QString temperatureControllerConfigStyleSheet()
         "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 34px; max-height: 34px; padding: 0px 10px; text-align: center; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
-        "TemperatureControllerPanel QPushButton[temperatureOutputEnableSwitch=\"true\"] { background-color: transparent; border: none; padding: 0px; margin: 0px; min-width: 118px; max-width: 118px; min-height: 56px; max-height: 56px; outline: none; }"
+        "TemperatureControllerPanel QLabel[temperatureOutputEnableTopLabel=\"true\"] { color: @vv-text; font-size: 14px; font-weight: 600; }"
+        "TemperatureControllerPanel QPushButton[temperatureOutputEnableSwitch=\"true\"] { background-color: transparent; border: none; padding: 0px; margin: 0px; min-width: 106px; max-width: 106px; min-height: 34px; max-height: 34px; outline: none; }"
         "TemperatureControllerPanel QPushButton#temperatureFactoryResetButton { background-color: transparent; border: 1px solid @vv-danger; border-radius: 8px; color: @vv-danger; font-size: 14px; font-weight: 600; padding: 0px 12px; text-align: center; }"
         "TemperatureControllerPanel QPushButton#temperatureFactoryResetButton:hover { background-color: rgba(220, 38, 38, 0.08); }"
         "TemperatureControllerPanel QLabel[temperatureMaxOutputWarning=\"true\"] { color: @vv-danger; }"
