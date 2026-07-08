@@ -6321,7 +6321,14 @@ void TemperatureControllerPanel::setupUi()
     configCardLayout->setContentsMargins(12, 12, 12, 12);
     configCardLayout->setSpacing(10);
 
-    channel_top_bar_ = new QFrame(configCard);
+    auto *channelTopRow = new QWidget(configCard);
+    channelTopRow->setObjectName(QStringLiteral("temperatureChannelTopRow"));
+    channelTopRow->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    auto *channelTopRowLayout = new QHBoxLayout(channelTopRow);
+    channelTopRowLayout->setContentsMargins(0, 0, 0, 0);
+    channelTopRowLayout->setSpacing(12);
+
+    channel_top_bar_ = new QFrame(channelTopRow);
     channel_top_bar_->setObjectName(QStringLiteral("temperatureChannelTopBar"));
     channel_top_bar_->setFrameShape(QFrame::NoFrame);
     channel_top_bar_->setAttribute(Qt::WA_StyledBackground, true);
@@ -6348,14 +6355,15 @@ void TemperatureControllerPanel::setupUi()
     channel_button_2_ = createChannelButton(1);
     channelTopBarLayout->addWidget(channel_button_1_);
     channelTopBarLayout->addWidget(channel_button_2_);
-    channelTopBarLayout->addSpacing(8);
-    channel_top_controls_stack_ = new QStackedWidget(channel_top_bar_);
+    channelTopRowLayout->addWidget(channel_top_bar_, 0, Qt::AlignVCenter);
+
+    channel_top_controls_stack_ = new QStackedWidget(channelTopRow);
     channel_top_controls_stack_->setObjectName(QStringLiteral("temperatureChannelTopControlsStack"));
     channel_top_controls_stack_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     channel_top_controls_stack_->addWidget(createChannelTopControlsPage(0));
     channel_top_controls_stack_->addWidget(createChannelTopControlsPage(1));
-    channelTopBarLayout->addWidget(channel_top_controls_stack_);
-    configCardLayout->addWidget(channel_top_bar_, 0, Qt::AlignLeft);
+    channelTopRowLayout->addWidget(channel_top_controls_stack_, 0, Qt::AlignVCenter);
+    configCardLayout->addWidget(channelTopRow, 0, Qt::AlignLeft);
 
     channel_stack_ = new QStackedWidget(configCard);
     channel_stack_->setObjectName(QStringLiteral("temperatureChannelStack"));

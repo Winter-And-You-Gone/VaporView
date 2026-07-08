@@ -2247,6 +2247,8 @@ int main(int argc, char **argv)
             "temperature controller title-bar connect/reconnect buttons are usable in local serial mode");
     auto *temperatureConfigCard =
         temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureConfigCard"));
+    auto *temperatureChannelTopRow =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureChannelTopRow"));
     auto *temperatureChannelTopBar =
         temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureChannelTopBar"));
     auto *temperatureChannelTopControlsStack =
@@ -2269,6 +2271,7 @@ int main(int argc, char **argv)
         }
     }
     require(temperatureConfigCard != nullptr &&
+                temperatureChannelTopRow != nullptr &&
                 temperatureChannelTopBar != nullptr &&
                 temperatureChannelTopControlsStack != nullptr &&
                 temperatureChannelStack != nullptr &&
@@ -2278,10 +2281,11 @@ int main(int argc, char **argv)
             "temperature controller page exposes a top channel selector and a full-width trend plot");
     require(temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureConfigTabs")) == nullptr,
             "temperature controller no longer uses the native tab widget that drew the gray base bar");
-    require(temperatureChannelTopBar->parentWidget() == temperatureConfigCard &&
-                temperatureChannelTopControlsStack->parentWidget() == temperatureChannelTopBar &&
+    require(temperatureChannelTopRow->parentWidget() == temperatureConfigCard &&
+                temperatureChannelTopBar->parentWidget() == temperatureChannelTopRow &&
+                temperatureChannelTopControlsStack->parentWidget() == temperatureChannelTopRow &&
                 temperatureChannelStack->parentWidget() == temperatureConfigCard,
-            "temperature channel top bar, top controls, and page stack live in the internal config card");
+            "temperature channel top row, switcher, top controls, and page stack live in the internal config card");
     require(temperatureConfigChannelButton1->parentWidget() == temperatureChannelTopBar &&
                 temperatureConfigChannelButton2->parentWidget() == temperatureChannelTopBar,
             "temperature channel buttons live in the top bar");
@@ -2295,13 +2299,15 @@ int main(int argc, char **argv)
                 temperatureChannelTopControlsStack->currentIndex() == 0 &&
                 temperatureChannelStack->currentIndex() == 0,
             "temperature channel top bar defaults to channel 1");
-    const QRect topBarRectInCard(temperatureChannelTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)),
-                                 temperatureChannelTopBar->size());
+    const QRect topRowRectInCard(temperatureChannelTopRow->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                 temperatureChannelTopRow->size());
+    const QRect topBarRectInRow(temperatureChannelTopBar->mapTo(temperatureChannelTopRow, QPoint(0, 0)),
+                                temperatureChannelTopBar->size());
     const QRect stackRectInCard(temperatureChannelStack->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                 temperatureChannelStack->size());
-    require(topBarRectInCard.bottom() < stackRectInCard.top() &&
-                topBarRectInCard.left() <= stackRectInCard.left() + 1 &&
-                topBarRectInCard.width() < stackRectInCard.width(),
+    require(topRowRectInCard.bottom() < stackRectInCard.top() &&
+                topRowRectInCard.left() <= stackRectInCard.left() + 1 &&
+                topBarRectInRow.width() < stackRectInCard.width(),
             "temperature channel selector is a compact top bar above the config stack");
     require(temperatureConfigChannelButton1->x() < temperatureConfigChannelButton2->x() &&
                 std::abs(temperatureConfigChannelButton1->y() - temperatureConfigChannelButton2->y()) <= 1 &&
@@ -2309,13 +2315,15 @@ int main(int argc, char **argv)
                 temperatureConfigChannelButton2->height() == 34,
             "temperature channel top bar arranges compact channel buttons horizontally");
     require(temperatureChannelTopControlsStack->isAncestorOf(enableCombo) &&
-                temperatureChannelTopControlsStack->isAncestorOf(modeCombo),
-            "temperature output enable and mode controls live in the top bar control stack");
-    const QRect topEnableRect(temperatureChannelTopBar->mapFromGlobal(enableCombo->mapToGlobal(QPoint(0, 0))),
+                temperatureChannelTopControlsStack->isAncestorOf(modeCombo) &&
+                !temperatureChannelTopBar->isAncestorOf(enableCombo) &&
+                !temperatureChannelTopBar->isAncestorOf(modeCombo),
+            "temperature output enable and mode controls live outside the gray channel switcher frame");
+    const QRect topEnableRect(temperatureChannelTopRow->mapFromGlobal(enableCombo->mapToGlobal(QPoint(0, 0))),
                               enableCombo->size());
-    const QRect topModeRect(temperatureChannelTopBar->mapFromGlobal(modeCombo->mapToGlobal(QPoint(0, 0))),
+    const QRect topModeRect(temperatureChannelTopRow->mapFromGlobal(modeCombo->mapToGlobal(QPoint(0, 0))),
                             modeCombo->size());
-    const QRect topChannel2Rect(temperatureConfigChannelButton2->mapTo(temperatureChannelTopBar, QPoint(0, 0)),
+    const QRect topChannel2Rect(temperatureConfigChannelButton2->mapTo(temperatureChannelTopRow, QPoint(0, 0)),
                                 temperatureConfigChannelButton2->size());
     require(topChannel2Rect.right() < topEnableRect.left() &&
                 topEnableRect.right() < topModeRect.left() &&
