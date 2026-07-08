@@ -11380,7 +11380,8 @@ void MainWindow::createTitleApplicationMenuPanel()
     const int rowSpacing = scalePixels(6);
     const int checkColumnWidth = scalePixels(18);
     const int checkIconSize = scalePixels(16);
-    const int arrowColumnWidth = scalePixels(14);
+    const int arrowFontSize = std::max(scalePixels(20), menuFont.pixelSize() + scalePixels(4));
+    const int arrowColumnWidth = std::max(scalePixels(18), arrowFontSize);
     const int shortcutGap = scalePixels(24);
     const int mainMenuMinWidth = scalePixels(72);
     const int subMenuMinWidth = scalePixels(72);
@@ -11638,6 +11639,7 @@ void MainWindow::createTitleApplicationMenuPanel()
          rowSpacing,
          checkColumnWidth,
          checkIconSize,
+         arrowFontSize,
          arrowColumnWidth](QWidget *parent,
                            const QString& text,
                            const QString& trailingText,
@@ -11706,6 +11708,10 @@ void MainWindow::createTitleApplicationMenuPanel()
             arrowLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
             arrowLabel->setMargin(0);
             arrowLabel->setIndent(0);
+            QFont arrowFont = arrowLabel->font();
+            arrowFont.setPixelSize(arrowFontSize);
+            arrowFont.setWeight(QFont::DemiBold);
+            arrowLabel->setFont(arrowFont);
             arrowLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
             rowLayout->addWidget(arrowLabel);
         }
@@ -11721,8 +11727,10 @@ void MainWindow::createTitleApplicationMenuPanel()
     };
 
     auto sectionRows = std::make_shared<QVector<QFrame *>>();
+    auto activeNestedSource = std::make_shared<QFrame *>(nullptr);
 
-    auto hideNestedMenu = [subPanel, subMenu, nestedPanel, nestedMenu]() {
+    auto hideNestedMenu = [subPanel, subMenu, nestedPanel, nestedMenu, activeNestedSource]() {
+        *activeNestedSource = nullptr;
         nestedMenu->hide();
         nestedPanel->hide();
         setFloatingMenuContentFixedSize(subPanel, subMenu->size());
@@ -11746,6 +11754,13 @@ void MainWindow::createTitleApplicationMenuPanel()
             hideNestedMenu();
             return;
         }
+
+        if (*activeNestedSource == sourceRow && nestedPanel->isVisible() && nestedMenu->isVisible())
+        {
+            nestedPanel->raise();
+            return;
+        }
+        *activeNestedSource = sourceRow;
 
         clearLayout(nestedLayout);
         bool needsCheckColumn = false;
@@ -11815,8 +11830,6 @@ void MainWindow::createTitleApplicationMenuPanel()
         nestedMenu->raise();
         nestedPanel->show();
         nestedPanel->raise();
-        subPanel->raise();
-        nestedPanel->raise();
     };
 
     for (int sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex)
@@ -11872,7 +11885,8 @@ void MainWindow::createTitleApplicationMenuPanel()
         sectionRow->setProperty("selected", false);
         sectionRows->push_back(sectionRow);
         mainLayout->addWidget(sectionRow);
-        sectionRow->installEventFilter(new MenuItemEventFilter([this, stack, subMenu, mainMenu, panel, subPanel, nestedPanel, mainMenuWidth, menuVerticalPadding, rowSpacing, subMenuWidths, sectionRows, sectionRow, sectionIndex, nestedMenu]() {
+        sectionRow->installEventFilter(new MenuItemEventFilter([this, stack, subMenu, mainMenu, panel, subPanel, nestedPanel, mainMenuWidth, menuVerticalPadding, rowSpacing, subMenuWidths, sectionRows, sectionRow, sectionIndex, nestedMenu, activeNestedSource]() {
+            *activeNestedSource = nullptr;
             nestedMenu->hide();
             nestedPanel->hide();
             stack->setCurrentIndex(sectionIndex);

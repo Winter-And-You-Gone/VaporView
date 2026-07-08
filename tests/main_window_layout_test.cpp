@@ -1438,6 +1438,13 @@ int main(int argc, char **argv)
         titleApplicationMainMenu,
         titleApplicationRows,
         "title bar application main menu rows stay inside rounded vertical padding");
+    auto *rootArrowLabel =
+        titleApplicationRows.first()->findChild<QLabel *>(QStringLiteral("titleApplicationMenuArrow"));
+    auto *rootTextLabel =
+        titleApplicationRows.first()->findChild<QLabel *>(QStringLiteral("titleApplicationMenuText"));
+    require(rootArrowLabel != nullptr && rootTextLabel != nullptr &&
+                rootArrowLabel->font().pixelSize() > rootTextLabel->font().pixelSize(),
+            "title bar application submenu chevron is larger than menu text");
     hoverWidget(titleApplicationRows.first(), true, 120);
     auto *titleApplicationSubPanel = window.findChild<QFrame *>(QStringLiteral("titleApplicationSubPanel"));
     requireTitleMenuFloatingPanel(titleApplicationSubPanel,
@@ -1535,6 +1542,20 @@ int main(int argc, char **argv)
             "title bar application tertiary panel overlaps the secondary panel edge for visual grouping");
     require(titleApplicationNestedMenu->height() > titleApplicationSubMenu->height(),
             "title bar application tertiary panel can be taller without stretching the secondary panel");
+    const QSize nestedPanelSizeBeforeRepeatedHover = titleApplicationNestedPanel->size();
+    const QRect nestedPanelGeometryBeforeRepeatedHover = titleApplicationNestedPanel->geometry();
+    QFrame *firstNestedRowBeforeRepeatedHover = nestedRows.isEmpty() ? nullptr : nestedRows.first();
+    hoverWidget(nestedCommandRow, true, 120);
+    require(titleApplicationNestedPanel->isVisible(),
+            "title bar application nested submenu remains visible while hovering its source row");
+    require(titleApplicationNestedPanel->size() == nestedPanelSizeBeforeRepeatedHover &&
+                titleApplicationNestedPanel->geometry() == nestedPanelGeometryBeforeRepeatedHover,
+            "title bar application nested submenu is not rebuilt or moved on repeated source hover");
+    const QList<QFrame*> nestedRowsAfterRepeatedHover =
+        titleApplicationNestedMenu->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem"));
+    require(!nestedRowsAfterRepeatedHover.isEmpty() &&
+                nestedRowsAfterRepeatedHover.first() == firstNestedRowBeforeRepeatedHover,
+            "title bar application nested submenu keeps its row widgets on repeated source hover");
     titleApplicationPanel->hide();
     titleApplicationSubPanel->hide();
     titleApplicationNestedPanel->hide();
