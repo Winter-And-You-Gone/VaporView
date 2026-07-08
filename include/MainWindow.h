@@ -843,6 +843,7 @@ private:
     VaporView::SingleLevelPopupMenu *log_filter_menu_;
     QFrame *title_application_panel_;
     QFrame *title_application_sub_panel_;
+    QFrame *title_application_nested_panel_;
 
     QSplitter *app_layout_splitter_;
     QSplitter *main_content_splitter_;

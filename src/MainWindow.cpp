@@ -1879,7 +1879,8 @@ QString titleApplicationPanelStyleSheet(bool dark)
     {
         return applyAppThemeTokens(QStringLiteral(R"(
 QFrame#titleApplicationPanel,
-QFrame#titleApplicationSubPanel {
+QFrame#titleApplicationSubPanel,
+QFrame#titleApplicationNestedPanel {
     background-color: transparent;
     border: none;
 }
@@ -1939,7 +1940,8 @@ QScrollArea#titleApplicationSubScroll > QWidget > QWidget {
 
     return applyAppThemeTokens(QStringLiteral(R"(
 QFrame#titleApplicationPanel,
-QFrame#titleApplicationSubPanel {
+QFrame#titleApplicationSubPanel,
+QFrame#titleApplicationNestedPanel {
     background-color: transparent;
     border: none;
 }
@@ -6763,6 +6765,7 @@ MainWindow::MainWindow(QWidget *parent)
     , log_filter_menu_(nullptr)
     , title_application_panel_(nullptr)
     , title_application_sub_panel_(nullptr)
+    , title_application_nested_panel_(nullptr)
     , app_layout_splitter_(nullptr)
     , main_content_splitter_(nullptr)
     , home_overview_splitter_(nullptr)
@@ -7446,7 +7449,8 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 
     const bool titleMenuVisible =
         (title_application_panel_ && title_application_panel_->isVisible()) ||
-        (title_application_sub_panel_ && title_application_sub_panel_->isVisible());
+        (title_application_sub_panel_ && title_application_sub_panel_->isVisible()) ||
+        (title_application_nested_panel_ && title_application_nested_panel_->isVisible());
     if (titleMenuVisible)
     {
         if (eventType == QEvent::ApplicationDeactivate ||
@@ -7459,6 +7463,10 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             if (title_application_sub_panel_)
             {
                 title_application_sub_panel_->hide();
+            }
+            if (title_application_nested_panel_)
+            {
+                title_application_nested_panel_->hide();
             }
         }
         else if (eventType == QEvent::MouseButtonPress)
@@ -7473,7 +7481,8 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 
             const bool insideMenu =
                 containsGlobalPoint(title_application_panel_) ||
-                containsGlobalPoint(title_application_sub_panel_);
+                containsGlobalPoint(title_application_sub_panel_) ||
+                containsGlobalPoint(title_application_nested_panel_);
             const bool insideMenuButton = containsGlobalPoint(title_menu_btn_);
 
             if (!insideMenu && !insideMenuButton)
@@ -7485,6 +7494,10 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 if (title_application_sub_panel_)
                 {
                     title_application_sub_panel_->hide();
+                }
+                if (title_application_nested_panel_)
+                {
+                    title_application_nested_panel_->hide();
                 }
             }
         }
@@ -11265,15 +11278,17 @@ void MainWindow::addTitleBarSeparator(QHBoxLayout *layout)
 
 void MainWindow::discardTitleApplicationMenuPanel()
 {
-    if (!title_application_panel_ && !title_application_sub_panel_)
+    if (!title_application_panel_ && !title_application_sub_panel_ && !title_application_nested_panel_)
     {
         return;
     }
 
     QFrame *panel = title_application_panel_;
     QFrame *subPanel = title_application_sub_panel_;
+    QFrame *nestedPanel = title_application_nested_panel_;
     title_application_panel_ = nullptr;
     title_application_sub_panel_ = nullptr;
+    title_application_nested_panel_ = nullptr;
     if (panel)
     {
         panel->hide();
@@ -11283,6 +11298,11 @@ void MainWindow::discardTitleApplicationMenuPanel()
     {
         subPanel->hide();
         subPanel->deleteLater();
+    }
+    if (nestedPanel)
+    {
+        nestedPanel->hide();
+        nestedPanel->deleteLater();
     }
 }
 
@@ -11305,6 +11325,12 @@ void MainWindow::createTitleApplicationMenuPanel()
     title_application_sub_panel_ = subPanel;
     subPanel->raise();
 
+    auto *nestedPanel = new FloatingTitleMenuPanel(this);
+    nestedPanel->setObjectName(QStringLiteral("titleApplicationNestedPanel"));
+    nestedPanel->hide();
+    title_application_nested_panel_ = nestedPanel;
+    nestedPanel->raise();
+
     auto closePanel = [this]() {
         if (title_application_panel_)
         {
@@ -11313,6 +11339,10 @@ void MainWindow::createTitleApplicationMenuPanel()
         if (title_application_sub_panel_)
         {
             title_application_sub_panel_->hide();
+        }
+        if (title_application_nested_panel_)
+        {
+            title_application_nested_panel_->hide();
         }
     };
 
@@ -11354,6 +11384,7 @@ void MainWindow::createTitleApplicationMenuPanel()
     const int mainMenuMinWidth = scalePixels(72);
     const int subMenuMinWidth = scalePixels(72);
     subPanel->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_));
+    nestedPanel->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_));
     auto commandRowsHeight = [menuVerticalPadding, rowHeight](const QVector<TitleMenuCommand>& commands) {
         return menuVerticalPadding * 2 + rowHeight * static_cast<int>(commands.size());
     };
@@ -11574,7 +11605,7 @@ void MainWindow::createTitleApplicationMenuPanel()
     subMenu->move(0, 0);
     subMenu->hide();
 
-    auto *nestedMenu = new QFrame(subPanel);
+    auto *nestedMenu = new QFrame(nestedPanel);
     nestedMenu->setObjectName(QStringLiteral("titleApplicationNestedMenu"));
     nestedMenu->setAttribute(Qt::WA_StyledBackground, true);
     nestedMenu->hide();
@@ -11690,8 +11721,9 @@ void MainWindow::createTitleApplicationMenuPanel()
 
     auto sectionRows = std::make_shared<QVector<QFrame *>>();
 
-    auto hideNestedMenu = [subPanel, subMenu, nestedMenu]() {
+    auto hideNestedMenu = [subPanel, subMenu, nestedPanel, nestedMenu]() {
         nestedMenu->hide();
+        nestedPanel->hide();
         setFloatingMenuContentFixedSize(subPanel, subMenu->size());
     };
 
@@ -11748,18 +11780,42 @@ void MainWindow::createTitleApplicationMenuPanel()
         }
 
         const int nestedHeight = commandRowsHeight(commands);
-        const QPoint contentTopLeft = floatingMenuContentRect(subPanel).topLeft();
+        const int submenuOverlap = std::max(6, rowSpacing + 2);
         const int sourceY = sourceRow->mapTo(subMenu, QPoint(0, 0)).y();
         const int nestedY = std::clamp(sourceY,
                                        0,
                                        std::max(0, std::max(subMenu->height(), nestedHeight) - nestedHeight));
         nestedMenu->setFixedSize(nestedWidth, nestedHeight);
-        nestedMenu->move(contentTopLeft + QPoint(subMenu->width(), nestedY));
+        setFloatingMenuContentFixedSize(nestedPanel, nestedMenu->size());
+        nestedMenu->move(floatingMenuContentRect(nestedPanel).topLeft());
+
+        const QRect screenRect = screen() ? screen()->availableGeometry() : QRect(QPoint(0, 0), size());
+        const int popupMargin = scalePixels(4);
+        const QPoint desiredContentTopLeft =
+            subMenu->mapToGlobal(QPoint(subMenu->width() - submenuOverlap, nestedY));
+        const QPoint nestedPanelContentOffset = floatingMenuContentRect(nestedPanel).topLeft();
+        QPoint nestedPanelPos = desiredContentTopLeft - nestedPanelContentOffset;
+        if (nestedPanelPos.x() + nestedPanel->width() > screenRect.right() - popupMargin)
+        {
+            const QPoint leftDesiredContentTopLeft =
+                subMenu->mapToGlobal(QPoint(-nestedWidth + submenuOverlap, nestedY));
+            nestedPanelPos = leftDesiredContentTopLeft - nestedPanelContentOffset;
+        }
+        nestedPanelPos.setX(std::clamp(nestedPanelPos.x(),
+                                       screenRect.left() + popupMargin,
+                                       std::max(screenRect.left() + popupMargin,
+                                                screenRect.right() - nestedPanel->width() - popupMargin)));
+        nestedPanelPos.setY(std::clamp(nestedPanelPos.y(),
+                                       screenRect.top() + popupMargin,
+                                       std::max(screenRect.top() + popupMargin,
+                                                screenRect.bottom() - nestedPanel->height() - popupMargin)));
+        nestedPanel->move(nestedPanelPos);
         nestedMenu->show();
         nestedMenu->raise();
-        setFloatingMenuContentFixedSize(subPanel,
-                                        QSize(subMenu->width() + nestedMenu->width(),
-                                              std::max(subMenu->height(), nestedY + nestedMenu->height())));
+        nestedPanel->show();
+        nestedPanel->raise();
+        subPanel->raise();
+        nestedPanel->raise();
     };
 
     for (int sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex)
@@ -11815,8 +11871,9 @@ void MainWindow::createTitleApplicationMenuPanel()
         sectionRow->setProperty("selected", false);
         sectionRows->push_back(sectionRow);
         mainLayout->addWidget(sectionRow);
-        sectionRow->installEventFilter(new MenuItemEventFilter([this, stack, subMenu, mainMenu, panel, subPanel, mainMenuWidth, menuVerticalPadding, subMenuWidths, sectionRows, sectionRow, sectionIndex, nestedMenu]() {
+        sectionRow->installEventFilter(new MenuItemEventFilter([this, stack, subMenu, mainMenu, panel, subPanel, nestedPanel, mainMenuWidth, menuVerticalPadding, rowSpacing, subMenuWidths, sectionRows, sectionRow, sectionIndex, nestedMenu]() {
             nestedMenu->hide();
+            nestedPanel->hide();
             stack->setCurrentIndex(sectionIndex);
             if (QWidget *currentPage = stack->currentWidget())
             {
@@ -11825,23 +11882,28 @@ void MainWindow::createTitleApplicationMenuPanel()
                 const int subMenuTop = std::max(0, sectionRow->y() - menuVerticalPadding - subMenuBorderWidth);
                 subMenu->setFixedSize(subMenuWidth, currentPage->height());
                 setFloatingMenuContentFixedSize(subPanel, subMenu->size());
-                const QPoint subMenuPos = panel->mapToGlobal(floatingMenuContentRect(panel).topLeft() + QPoint(mainMenuWidth, subMenuTop));
                 const int popupMargin = scalePixels(4);
-                int subMenuX = subMenuPos.x();
                 const QRect screenRect = screen() ? screen()->availableGeometry() : QRect(QPoint(0, 0), size());
-                if (subMenuX + subPanel->width() > screenRect.right() - popupMargin)
+                const int submenuOverlap = std::max(6, rowSpacing + 2);
+                const QPoint subPanelContentOffset = floatingMenuContentRect(subPanel).topLeft();
+                const QPoint desiredContentTopLeft =
+                    mainMenu->mapToGlobal(QPoint(mainMenuWidth - submenuOverlap, subMenuTop));
+                QPoint subPanelPos = desiredContentTopLeft - subPanelContentOffset;
+                if (subPanelPos.x() + subPanel->width() > screenRect.right() - popupMargin)
                 {
-                    subMenuX = panel->mapToGlobal(floatingMenuContentRect(panel).topLeft()).x() - subPanel->width();
+                    const QPoint leftDesiredContentTopLeft =
+                        mainMenu->mapToGlobal(QPoint(-subMenuWidth + submenuOverlap, subMenuTop));
+                    subPanelPos = leftDesiredContentTopLeft - subPanelContentOffset;
                 }
-                subMenuX = std::clamp(subMenuX,
-                                      screenRect.left() + popupMargin,
-                                      std::max(screenRect.left() + popupMargin,
-                                               screenRect.right() - subPanel->width() - popupMargin));
-                const int subMenuY = std::clamp(subMenuPos.y(),
-                                                screenRect.top() + popupMargin,
-                                                std::max(screenRect.top() + popupMargin,
-                                                         screenRect.bottom() - subPanel->height() - popupMargin));
-                subPanel->move(subMenuX, subMenuY);
+                subPanelPos.setX(std::clamp(subPanelPos.x(),
+                                            screenRect.left() + popupMargin,
+                                            std::max(screenRect.left() + popupMargin,
+                                                     screenRect.right() - subPanel->width() - popupMargin)));
+                subPanelPos.setY(std::clamp(subPanelPos.y(),
+                                            screenRect.top() + popupMargin,
+                                            std::max(screenRect.top() + popupMargin,
+                                                     screenRect.bottom() - subPanel->height() - popupMargin)));
+                subPanel->move(subPanelPos);
                 subMenu->move(floatingMenuContentRect(subPanel).topLeft());
                 subMenu->raise();
                 subMenu->show();
@@ -11866,6 +11928,7 @@ void MainWindow::createTitleApplicationMenuPanel()
     mainMenu->move(panelContentRect.topLeft());
     setFloatingMenuContentFixedSize(panel, mainMenu->size());
     setFloatingMenuContentFixedSize(subPanel, QSize(subMenu->width(), 0));
+    setFloatingMenuContentFixedSize(nestedPanel, QSize(nestedMenu->width(), 0));
 }
 
 void MainWindow::showTitleApplicationMenu()
@@ -11888,6 +11951,10 @@ void MainWindow::showTitleApplicationMenu()
         {
             title_application_sub_panel_->hide();
         }
+        if (title_application_nested_panel_)
+        {
+            title_application_nested_panel_->hide();
+        }
         return;
     }
 
@@ -11904,6 +11971,10 @@ void MainWindow::showTitleApplicationMenu()
     if (title_application_sub_panel_)
     {
         title_application_sub_panel_->hide();
+    }
+    if (title_application_nested_panel_)
+    {
+        title_application_nested_panel_->hide();
     }
     title_application_panel_->show();
     title_application_panel_->raise();
@@ -14845,6 +14916,11 @@ void MainWindow::updateCustomTitleBarStyle()
         title_application_sub_panel_->hide();
         title_application_sub_panel_->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_));
     }
+    if (title_application_nested_panel_)
+    {
+        title_application_nested_panel_->hide();
+        title_application_nested_panel_->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_));
+    }
     if (window_minimize_btn_)
     {
         window_minimize_btn_->setIcon(createTitleBarIcon(QStringLiteral("minus"), dark_theme_enabled_));
@@ -15119,6 +15195,10 @@ void MainWindow::updateWindowResizeHandles()
     if (title_application_sub_panel_ && title_application_sub_panel_->isVisible())
     {
         title_application_sub_panel_->raise();
+    }
+    if (title_application_nested_panel_ && title_application_nested_panel_->isVisible())
+    {
+        title_application_nested_panel_->raise();
     }
 }
 

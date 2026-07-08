@@ -1412,8 +1412,81 @@ int main(int argc, char **argv)
     require(titleApplicationSubMenu->geometry().left() >= titleApplicationSubPanel->property("shadowMargin").toInt() &&
                 titleApplicationSubMenu->geometry().top() >= titleApplicationSubPanel->property("shadowMargin").toInt(),
             "title bar application submenu content is inset inside the shadow margin");
+
+    QFrame *nestedRootRow = nullptr;
+    for (QFrame *row : titleApplicationRows)
+    {
+        const QList<QLabel*> labels = row->findChildren<QLabel *>(QStringLiteral("titleApplicationMenuText"));
+        for (const QLabel *label : labels)
+        {
+            if (label && (label->text() == QStringLiteral("开发者") ||
+                          label->text() == QStringLiteral("Developer")))
+            {
+                nestedRootRow = row;
+                break;
+            }
+        }
+        if (nestedRootRow)
+        {
+            break;
+        }
+    }
+    require(nestedRootRow != nullptr,
+            "title bar application menu exposes a root row with nested commands");
+    hoverWidget(nestedRootRow, true, 120);
+    const QSize subPanelSizeBeforeNested = titleApplicationSubPanel->size();
+    QRect subContentGlobalBefore(titleApplicationSubMenu->mapToGlobal(QPoint(0, 0)),
+                                 titleApplicationSubMenu->size());
+
+    QFrame *nestedCommandRow = nullptr;
+    const QList<QFrame*> subRows =
+        titleApplicationSubMenu->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem"));
+    for (QFrame *row : subRows)
+    {
+        const QList<QLabel*> labels = row->findChildren<QLabel *>(QStringLiteral("titleApplicationMenuText"));
+        for (const QLabel *label : labels)
+        {
+            if (label && (label->text() == QStringLiteral("设备CSV记录频率") ||
+                          label->text() == QStringLiteral("Device CSV recording rate")))
+            {
+                nestedCommandRow = row;
+                break;
+            }
+        }
+        if (nestedCommandRow)
+        {
+            break;
+        }
+    }
+    require(nestedCommandRow != nullptr,
+            "title bar application submenu exposes a row with tertiary commands");
+    hoverWidget(nestedCommandRow, true, 120);
+
+    auto *titleApplicationNestedPanel = window.findChild<QFrame *>(QStringLiteral("titleApplicationNestedPanel"));
+    requireTitleMenuFloatingPanel(titleApplicationNestedPanel,
+                                  "title bar application nested submenu uses separate floating chrome");
+    require(titleApplicationNestedPanel->isVisible(),
+            "title bar application nested submenu opens from a submenu row hover");
+    auto *titleApplicationNestedMenu =
+        titleApplicationNestedPanel->findChild<QFrame *>(QStringLiteral("titleApplicationNestedMenu"));
+    require(titleApplicationNestedMenu != nullptr,
+            "title bar application nested submenu content is inside its own floating panel");
+    require(titleApplicationNestedMenu->parentWidget() == titleApplicationNestedPanel,
+            "title bar application nested submenu is not parented into the secondary panel");
+    require(titleApplicationSubPanel->size() == subPanelSizeBeforeNested,
+            "title bar application secondary panel size is independent from the tertiary panel");
+    require(titleApplicationNestedPanel != titleApplicationSubPanel,
+            "title bar application tertiary panel is a separate region");
+    const QRect nestedContentGlobal(titleApplicationNestedMenu->mapToGlobal(QPoint(0, 0)),
+                                    titleApplicationNestedMenu->size());
+    require(nestedContentGlobal.left() < subContentGlobalBefore.right() &&
+                nestedContentGlobal.left() > subContentGlobalBefore.left(),
+            "title bar application tertiary panel overlaps the secondary panel edge for visual grouping");
+    require(titleApplicationNestedMenu->height() > titleApplicationSubMenu->height(),
+            "title bar application tertiary panel can be taller without stretching the secondary panel");
     titleApplicationPanel->hide();
     titleApplicationSubPanel->hide();
+    titleApplicationNestedPanel->hide();
     processEventsFor(50);
 
     QToolButton *logFilterButton = nullptr;
