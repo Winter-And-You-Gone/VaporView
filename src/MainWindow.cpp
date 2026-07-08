@@ -128,7 +128,7 @@ using VaporView::SingleLevelPopupTextAlignment;
 namespace
 {
 constexpr int kFloatingMenuShadowMarginPx = 22;
-constexpr int kFloatingMenuCornerRadiusPx = 16;
+constexpr int kFloatingMenuCornerRadiusPx = 10;
 
 class MenuItemEventFilter : public QObject
 {
@@ -11372,8 +11372,7 @@ void MainWindow::createTitleApplicationMenuPanel()
     const QFontMetrics menuMetrics(menuFont);
     const int rowVerticalPadding = scalePixels(4);
     const int rowHeight = std::max(scalePixels(28), menuMetrics.height() + rowVerticalPadding * 2);
-    const int menuVerticalPadding =
-        std::max({scalePixels(6), rowHeight / 3, kFloatingMenuCornerRadiusPx + 2});
+    const int menuVerticalPadding = scalePixels(12);
     panel->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_));
     const int rowLeftPadding = scalePixels(18);
     const int rowRightPadding = scalePixels(14);

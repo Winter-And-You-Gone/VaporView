@@ -278,7 +278,7 @@ void requireTitleMenuFloatingPanel(QFrame *panel, const char *message)
     require(panel != nullptr, message);
     require(panel->property("floatingPanelChrome").toBool(), message);
     require(panel->property("shadowMargin").toInt() == 22, message);
-    require(panel->property("cornerRadius").toInt() == 16, message);
+    require(panel->property("cornerRadius").toInt() == 10, message);
     require(panel->testAttribute(Qt::WA_TranslucentBackground), message);
     require(panel->styleSheet().contains(QStringLiteral("QFrame#titleApplicationMainMenu")) &&
                 panel->styleSheet().contains(QStringLiteral("background-color: transparent")) &&
