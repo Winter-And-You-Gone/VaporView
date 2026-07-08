@@ -68,9 +68,11 @@
 #include <QResizeEvent>
 #include <QHash>
 #include <QIcon>
+#include <QImage>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPalette>
+#include <QPaintEvent>
 #include <QPolygonF>
 #include <QPixmap>
 #include <QRegion>
@@ -125,6 +127,9 @@ using VaporView::SingleLevelPopupTextAlignment;
 
 namespace
 {
+constexpr int kFloatingMenuShadowMarginPx = 22;
+constexpr int kFloatingMenuCornerRadiusPx = 16;
+
 class MenuItemEventFilter : public QObject
 {
 public:
@@ -161,6 +166,219 @@ private:
     std::function<void()> hover_callback_;
     std::function<void()> click_callback_;
 };
+
+QImage menuBoxBlurredAlpha(const QSize& size,
+                           const QRectF& sourceRect,
+                           qreal radius,
+                           int blurRadius,
+                           int iterations)
+{
+    QImage alpha(size, QImage::Format_ARGB32_Premultiplied);
+    alpha.fill(Qt::transparent);
+    {
+        QPainter maskPainter(&alpha);
+        maskPainter.setRenderHint(QPainter::Antialiasing, true);
+        maskPainter.setPen(Qt::NoPen);
+        QPainterPath path;
+        path.addRoundedRect(sourceRect, radius, radius);
+        maskPainter.fillPath(path, Qt::black);
+    }
+
+    const int w = alpha.width();
+    const int h = alpha.height();
+    if (w <= 0 || h <= 0 || blurRadius <= 0)
+    {
+        return alpha;
+    }
+
+    std::vector<uchar> src(static_cast<size_t>(w * h));
+    std::vector<uchar> tmp(src.size());
+    std::vector<uchar> dst(src.size());
+    for (int y = 0; y < h; ++y)
+    {
+        const auto *line = reinterpret_cast<const QRgb *>(alpha.constScanLine(y));
+        for (int x = 0; x < w; ++x)
+        {
+            src[static_cast<size_t>(y * w + x)] = static_cast<uchar>(qAlpha(line[x]));
+        }
+    }
+
+    const int diameter = blurRadius * 2 + 1;
+    for (int pass = 0; pass < iterations; ++pass)
+    {
+        for (int y = 0; y < h; ++y)
+        {
+            int sum = 0;
+            for (int x = -blurRadius; x <= blurRadius; ++x)
+            {
+                const int cx = std::clamp(x, 0, w - 1);
+                sum += src[static_cast<size_t>(y * w + cx)];
+            }
+            for (int x = 0; x < w; ++x)
+            {
+                tmp[static_cast<size_t>(y * w + x)] = static_cast<uchar>(sum / diameter);
+                const int removeX = std::clamp(x - blurRadius, 0, w - 1);
+                const int addX = std::clamp(x + blurRadius + 1, 0, w - 1);
+                sum += src[static_cast<size_t>(y * w + addX)] - src[static_cast<size_t>(y * w + removeX)];
+            }
+        }
+
+        for (int x = 0; x < w; ++x)
+        {
+            int sum = 0;
+            for (int y = -blurRadius; y <= blurRadius; ++y)
+            {
+                const int cy = std::clamp(y, 0, h - 1);
+                sum += tmp[static_cast<size_t>(cy * w + x)];
+            }
+            for (int y = 0; y < h; ++y)
+            {
+                dst[static_cast<size_t>(y * w + x)] = static_cast<uchar>(sum / diameter);
+                const int removeY = std::clamp(y - blurRadius, 0, h - 1);
+                const int addY = std::clamp(y + blurRadius + 1, 0, h - 1);
+                sum += tmp[static_cast<size_t>(addY * w + x)] - tmp[static_cast<size_t>(removeY * w + x)];
+            }
+        }
+        src.swap(dst);
+    }
+
+    QImage blurred(size, QImage::Format_ARGB32_Premultiplied);
+    blurred.fill(Qt::transparent);
+    for (int y = 0; y < h; ++y)
+    {
+        auto *line = reinterpret_cast<QRgb *>(blurred.scanLine(y));
+        for (int x = 0; x < w; ++x)
+        {
+            line[x] = qRgba(0, 0, 0, src[static_cast<size_t>(y * w + x)]);
+        }
+    }
+    return blurred;
+}
+
+void drawMenuTintedAlphaImage(QPainter& painter,
+                              const QImage& alpha,
+                              const QColor& tint,
+                              int maxAlpha)
+{
+    if (alpha.isNull() || maxAlpha <= 0)
+    {
+        return;
+    }
+
+    QImage tinted(alpha.size(), QImage::Format_ARGB32_Premultiplied);
+    tinted.fill(Qt::transparent);
+    for (int y = 0; y < alpha.height(); ++y)
+    {
+        const auto *srcLine = reinterpret_cast<const QRgb *>(alpha.constScanLine(y));
+        auto *dstLine = reinterpret_cast<QRgb *>(tinted.scanLine(y));
+        for (int x = 0; x < alpha.width(); ++x)
+        {
+            const int a = (qAlpha(srcLine[x]) * maxAlpha) / 255;
+            dstLine[x] = qRgba(tint.red(), tint.green(), tint.blue(), a);
+        }
+    }
+    painter.drawImage(QPoint(0, 0), tinted);
+}
+
+class FloatingTitleMenuPanel final : public QFrame
+{
+public:
+    explicit FloatingTitleMenuPanel(QWidget *parent = nullptr)
+        : QFrame(parent)
+    {
+        setObjectName(QStringLiteral("floatingTitleMenuPanel"));
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        setAttribute(Qt::WA_NoSystemBackground, true);
+        setAttribute(Qt::WA_StyledBackground, false);
+        setAutoFillBackground(false);
+        setFocusPolicy(Qt::NoFocus);
+        setFrameShape(QFrame::NoFrame);
+        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        setContentsMargins(kFloatingMenuShadowMarginPx,
+                           kFloatingMenuShadowMarginPx,
+                           kFloatingMenuShadowMarginPx,
+                           kFloatingMenuShadowMarginPx);
+        setProperty("floatingPanelChrome", true);
+        setProperty("shadowMargin", kFloatingMenuShadowMarginPx);
+        setProperty("cornerRadius", kFloatingMenuCornerRadiusPx);
+    }
+
+    QRect contentRect() const
+    {
+        return rect().adjusted(kFloatingMenuShadowMarginPx,
+                               kFloatingMenuShadowMarginPx,
+                               -kFloatingMenuShadowMarginPx,
+                               -kFloatingMenuShadowMarginPx);
+    }
+
+    void setContentFixedSize(const QSize& size)
+    {
+        content_size_ = size.expandedTo(QSize(0, 0));
+        setFixedSize(content_size_ + QSize(kFloatingMenuShadowMarginPx * 2,
+                                           kFloatingMenuShadowMarginPx * 2));
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        Q_UNUSED(event);
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setCompositionMode(QPainter::CompositionMode_Clear);
+        painter.fillRect(rect(), Qt::transparent);
+        painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+
+        const QRectF panel = contentRect();
+        if (!panel.isValid() || panel.isEmpty())
+        {
+            return;
+        }
+
+        const bool dark = qApp && qApp->property(kAppDarkThemeProperty).toBool();
+        const QColor shadowTint(0, 0, 0);
+        const QImage softShadow = menuBoxBlurredAlpha(size(),
+                                                      panel.adjusted(-1.0, 7.0, 1.0, 10.0),
+                                                      kFloatingMenuCornerRadiusPx + 2.0,
+                                                      9,
+                                                      3);
+        const QImage contactShadow = menuBoxBlurredAlpha(size(),
+                                                         panel.adjusted(0.0, 1.0, 0.0, 2.0),
+                                                         kFloatingMenuCornerRadiusPx,
+                                                         4,
+                                                         2);
+        drawMenuTintedAlphaImage(painter, softShadow, shadowTint, dark ? 82 : 38);
+        drawMenuTintedAlphaImage(painter, contactShadow, shadowTint, dark ? 48 : 14);
+
+        QPainterPath panelPath;
+        panelPath.addRoundedRect(panel, kFloatingMenuCornerRadiusPx, kFloatingMenuCornerRadiusPx);
+        painter.fillPath(panelPath, dark ? appThemeColor(AppThemeColor::MenuPanel, true) : QColor(255, 255, 255));
+    }
+
+private:
+    QSize content_size_;
+};
+
+QRect floatingMenuContentRect(QWidget *panel)
+{
+    if (auto *floatingPanel = dynamic_cast<FloatingTitleMenuPanel *>(panel))
+    {
+        return floatingPanel->contentRect();
+    }
+    return panel ? panel->rect() : QRect();
+}
+
+void setFloatingMenuContentFixedSize(QWidget *panel, const QSize& size)
+{
+    if (auto *floatingPanel = dynamic_cast<FloatingTitleMenuPanel *>(panel))
+    {
+        floatingPanel->setContentFixedSize(size);
+        return;
+    }
+    if (panel)
+    {
+        panel->setFixedSize(size);
+    }
+}
 
 class AppSidebarFrame final : public QFrame
 {
@@ -1653,7 +1871,7 @@ QColor toolbarColor(AppThemeColor color)
     return appThemeColor(color, isDarkToolbarTheme());
 }
 
-QString titleApplicationPanelStyleSheet(bool dark, int cornerRadius = 8)
+QString titleApplicationPanelStyleSheet(bool dark)
 {
     if (dark)
     {
@@ -1666,9 +1884,9 @@ QFrame#titleApplicationSubPanel {
 QFrame#titleApplicationMainMenu,
 QFrame#titleApplicationSubMenu,
 QFrame#titleApplicationNestedMenu {
-    background-color: @vv-surface;
-    border: 1px solid @vv-border;
-    border-radius: %1px;
+    background-color: transparent;
+    border: none;
+    border-radius: 0px;
 }
 QFrame#titleApplicationMenuItem {
     background-color: transparent;
@@ -1714,7 +1932,7 @@ QScrollArea#titleApplicationSubScroll > QWidget > QWidget {
     background-color: transparent;
     border: none;
 }
-)").arg(cornerRadius), true);
+)"), true);
     }
 
     return applyAppThemeTokens(QStringLiteral(R"(
@@ -1726,9 +1944,9 @@ QFrame#titleApplicationSubPanel {
 QFrame#titleApplicationMainMenu,
 QFrame#titleApplicationSubMenu,
 QFrame#titleApplicationNestedMenu {
-    background-color: @vv-surface;
-    border: 1px solid @vv-border;
-    border-radius: %1px;
+    background-color: transparent;
+    border: none;
+    border-radius: 0px;
 }
 QFrame#titleApplicationMenuItem {
     background-color: transparent;
@@ -1774,7 +1992,7 @@ QScrollArea#titleApplicationSubScroll > QWidget > QWidget {
     background-color: transparent;
     border: none;
 }
-)").arg(cornerRadius), false);
+)"), false);
 }
 
 QString customTitleBarStyleSheet(bool dark)
@@ -11073,20 +11291,14 @@ void MainWindow::createTitleApplicationMenuPanel()
         return;
     }
 
-    auto *panel = new QFrame(this);
+    auto *panel = new FloatingTitleMenuPanel(this);
     panel->setObjectName(QStringLiteral("titleApplicationPanel"));
-    panel->setAttribute(Qt::WA_StyledBackground, true);
-    panel->setFocusPolicy(Qt::NoFocus);
-    panel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     panel->hide();
     title_application_panel_ = panel;
     panel->raise();
 
-    auto *subPanel = new QFrame(this);
+    auto *subPanel = new FloatingTitleMenuPanel(this);
     subPanel->setObjectName(QStringLiteral("titleApplicationSubPanel"));
-    subPanel->setAttribute(Qt::WA_StyledBackground, true);
-    subPanel->setFocusPolicy(Qt::NoFocus);
-    subPanel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     subPanel->hide();
     title_application_sub_panel_ = subPanel;
     subPanel->raise();
@@ -11129,8 +11341,7 @@ void MainWindow::createTitleApplicationMenuPanel()
     const int rowVerticalPadding = scalePixels(4);
     const int rowHeight = std::max(scalePixels(28), menuMetrics.height() + rowVerticalPadding * 2);
     const int menuVerticalPadding = std::max(scalePixels(6), rowHeight / 3);
-    const int menuCornerRadius = std::min(scalePixels(8), menuVerticalPadding);
-    panel->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_, menuCornerRadius));
+    panel->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_));
     const int rowLeftPadding = scalePixels(18);
     const int rowRightPadding = scalePixels(14);
     const int rowSpacing = scalePixels(6);
@@ -11140,7 +11351,7 @@ void MainWindow::createTitleApplicationMenuPanel()
     const int shortcutGap = scalePixels(24);
     const int mainMenuMinWidth = scalePixels(72);
     const int subMenuMinWidth = scalePixels(72);
-    subPanel->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_, menuCornerRadius));
+    subPanel->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_));
     auto commandRowsHeight = [menuVerticalPadding, rowHeight](const QVector<TitleMenuCommand>& commands) {
         return menuVerticalPadding * 2 + rowHeight * static_cast<int>(commands.size());
     };
@@ -11479,7 +11690,7 @@ void MainWindow::createTitleApplicationMenuPanel()
 
     auto hideNestedMenu = [subPanel, subMenu, nestedMenu]() {
         nestedMenu->hide();
-        subPanel->setFixedSize(subMenu->size());
+        setFloatingMenuContentFixedSize(subPanel, subMenu->size());
     };
 
     auto clearLayout = [](QLayout *layout) {
@@ -11535,16 +11746,18 @@ void MainWindow::createTitleApplicationMenuPanel()
         }
 
         const int nestedHeight = commandRowsHeight(commands);
-        const int sourceY = sourceRow->mapTo(subPanel, QPoint(0, 0)).y();
+        const QPoint contentTopLeft = floatingMenuContentRect(subPanel).topLeft();
+        const int sourceY = sourceRow->mapTo(subMenu, QPoint(0, 0)).y();
         const int nestedY = std::clamp(sourceY,
                                        0,
                                        std::max(0, std::max(subMenu->height(), nestedHeight) - nestedHeight));
         nestedMenu->setFixedSize(nestedWidth, nestedHeight);
-        nestedMenu->move(subMenu->width(), nestedY);
+        nestedMenu->move(contentTopLeft + QPoint(subMenu->width(), nestedY));
         nestedMenu->show();
         nestedMenu->raise();
-        subPanel->setFixedSize(subMenu->width() + nestedMenu->width(),
-                               std::max(subMenu->height(), nestedY + nestedMenu->height()));
+        setFloatingMenuContentFixedSize(subPanel,
+                                        QSize(subMenu->width() + nestedMenu->width(),
+                                              std::max(subMenu->height(), nestedY + nestedMenu->height())));
     };
 
     for (int sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex)
@@ -11609,13 +11822,13 @@ void MainWindow::createTitleApplicationMenuPanel()
                 const int subMenuBorderWidth = std::max(1, subMenu->frameWidth());
                 const int subMenuTop = std::max(0, sectionRow->y() - menuVerticalPadding - subMenuBorderWidth);
                 subMenu->setFixedSize(subMenuWidth, currentPage->height());
-                subPanel->setFixedSize(subMenu->size());
-                const QPoint subMenuPos = panel->mapTo(this, QPoint(mainMenuWidth, subMenuTop));
+                setFloatingMenuContentFixedSize(subPanel, subMenu->size());
+                const QPoint subMenuPos = panel->mapTo(this, floatingMenuContentRect(panel).topLeft() + QPoint(mainMenuWidth, subMenuTop));
                 const int popupMargin = scalePixels(4);
                 int subMenuX = subMenuPos.x();
                 if (subMenuX + subPanel->width() > width() - popupMargin)
                 {
-                    subMenuX = panel->x() - subPanel->width();
+                    subMenuX = panel->x() + floatingMenuContentRect(panel).left() - subPanel->width();
                 }
                 subMenuX = std::clamp(subMenuX,
                                       popupMargin,
@@ -11624,7 +11837,7 @@ void MainWindow::createTitleApplicationMenuPanel()
                                                 popupMargin,
                                                 std::max(popupMargin, height() - subPanel->height() - popupMargin));
                 subPanel->move(subMenuX, subMenuY);
-                subMenu->move(0, 0);
+                subMenu->move(floatingMenuContentRect(subPanel).topLeft());
                 subMenu->raise();
                 subMenu->show();
                 subPanel->show();
@@ -11644,8 +11857,10 @@ void MainWindow::createTitleApplicationMenuPanel()
     }
     mainLayout->addStretch(1);
     stack->setCurrentIndex(0);
-    panel->setFixedSize(mainMenuWidth, mainMenu->height());
-    subPanel->setFixedSize(subMenu->width(), 0);
+    const QRect panelContentRect = floatingMenuContentRect(panel);
+    mainMenu->move(panelContentRect.topLeft());
+    setFloatingMenuContentFixedSize(panel, mainMenu->size());
+    setFloatingMenuContentFixedSize(subPanel, QSize(subMenu->width(), 0));
 }
 
 void MainWindow::showTitleApplicationMenu()
@@ -11672,10 +11887,11 @@ void MainWindow::showTitleApplicationMenu()
     }
 
     const QPoint anchor = title_menu_btn_->mapTo(this, QPoint(0, title_menu_btn_->height() + scalePixels(4)));
-    const int x = std::clamp(anchor.x(),
-                             scalePixels(4),
-                             std::max(scalePixels(4), width() - title_application_panel_->width() - scalePixels(4)));
-    const int y = std::max(anchor.y(), scalePixels(4));
+    const int popupMargin = scalePixels(4);
+    const int x = std::clamp(anchor.x() - scalePixels(kFloatingMenuShadowMarginPx),
+                             popupMargin,
+                             std::max(popupMargin, width() - title_application_panel_->width() - popupMargin));
+    const int y = std::max(anchor.y() - scalePixels(kFloatingMenuShadowMarginPx), popupMargin);
     title_application_panel_->move(x, y);
     if (title_application_sub_panel_)
     {

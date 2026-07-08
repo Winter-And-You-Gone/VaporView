@@ -273,6 +273,20 @@ void hoverWidget(QWidget *widget, bool hovered, int waitMs = 50)
     }
 }
 
+void requireTitleMenuFloatingPanel(QFrame *panel, const char *message)
+{
+    require(panel != nullptr, message);
+    require(panel->property("floatingPanelChrome").toBool(), message);
+    require(panel->property("shadowMargin").toInt() == 22, message);
+    require(panel->property("cornerRadius").toInt() == 16, message);
+    require(panel->testAttribute(Qt::WA_TranslucentBackground), message);
+    require(panel->styleSheet().contains(QStringLiteral("QFrame#titleApplicationMainMenu")) &&
+                panel->styleSheet().contains(QStringLiteral("background-color: transparent")) &&
+                panel->styleSheet().contains(QStringLiteral("border: none")) &&
+                !panel->styleSheet().contains(QStringLiteral("border: 1px solid")),
+            "title menu leaves chrome to the floating panel painter");
+}
+
 void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
 {
     QPushButton *homeButton = nullptr;
@@ -1367,6 +1381,40 @@ int main(int argc, char **argv)
     hoverWidget(hoverTitleButton, false);
     require(!hoverTitleButton->property("titleBarHover").toBool(),
             "main title bar button hover property is cleared by leave");
+
+    auto *titleMenuButton = window.findChild<QToolButton *>(QStringLiteral("titleBarMenuButton"));
+    require(titleMenuButton != nullptr, "title bar application menu button exists");
+    clickWidget(titleMenuButton, 120);
+    auto *titleApplicationPanel = window.findChild<QFrame *>(QStringLiteral("titleApplicationPanel"));
+    requireTitleMenuFloatingPanel(titleApplicationPanel,
+                                  "title bar application menu uses the shared floating rounded shadow chrome");
+    auto *titleApplicationMainMenu =
+        titleApplicationPanel->findChild<QFrame *>(QStringLiteral("titleApplicationMainMenu"));
+    require(titleApplicationMainMenu != nullptr,
+            "title bar application menu content is inside the floating panel");
+    require(titleApplicationMainMenu->geometry().left() >= titleApplicationPanel->property("shadowMargin").toInt() &&
+                titleApplicationMainMenu->geometry().top() >= titleApplicationPanel->property("shadowMargin").toInt(),
+            "title bar application menu content is inset inside the shadow margin");
+    const QList<QFrame*> titleApplicationRows =
+        titleApplicationMainMenu->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem"));
+    require(!titleApplicationRows.isEmpty(),
+            "title bar application menu exposes hoverable root rows");
+    hoverWidget(titleApplicationRows.first(), true, 120);
+    auto *titleApplicationSubPanel = window.findChild<QFrame *>(QStringLiteral("titleApplicationSubPanel"));
+    requireTitleMenuFloatingPanel(titleApplicationSubPanel,
+                                  "title bar application submenu uses the shared floating rounded shadow chrome");
+    require(titleApplicationSubPanel->isVisible(),
+            "title bar application submenu opens from a root row hover");
+    auto *titleApplicationSubMenu =
+        titleApplicationSubPanel->findChild<QFrame *>(QStringLiteral("titleApplicationSubMenu"));
+    require(titleApplicationSubMenu != nullptr,
+            "title bar application submenu content is inside the floating panel");
+    require(titleApplicationSubMenu->geometry().left() >= titleApplicationSubPanel->property("shadowMargin").toInt() &&
+                titleApplicationSubMenu->geometry().top() >= titleApplicationSubPanel->property("shadowMargin").toInt(),
+            "title bar application submenu content is inset inside the shadow margin");
+    titleApplicationPanel->hide();
+    titleApplicationSubPanel->hide();
+    processEventsFor(50);
 
     QToolButton *logFilterButton = nullptr;
     const QList<QToolButton*> titleBarButtons =
