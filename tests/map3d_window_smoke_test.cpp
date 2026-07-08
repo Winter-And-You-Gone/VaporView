@@ -1,3 +1,4 @@
+#include "AppTheme.h"
 #include "geo/GeoTypes.h"
 #include "map3d/Map3DWindow.h"
 #include "SingleLevelPopupMenu.h"
@@ -42,8 +43,13 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
     require(combo->view() != nullptr, message);
     require(combo->view()->property("vaporViewComboPopupStyled").toBool(), message);
     require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"), message);
-    require(combo->view()->styleSheet().contains(QStringLiteral("border-radius: 10px")) &&
-                combo->view()->styleSheet().contains(QStringLiteral("padding: 12px 4px")),
+    const QString popupStyle = combo->view()->styleSheet();
+    const QString hoverColor = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuHover,
+                                                            VaporView::isDarkThemeEnabled());
+    require(popupStyle.contains(QStringLiteral("border-radius: 10px")) &&
+                popupStyle.contains(QStringLiteral("padding: 12px 0px")) &&
+                popupStyle.contains(QStringLiteral("background-color: %1").arg(hoverColor)) &&
+                !popupStyle.contains(QStringLiteral("padding: 12px 4px")),
             message);
 }
 

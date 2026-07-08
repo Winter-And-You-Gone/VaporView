@@ -73,8 +73,13 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
     require(combo->view() != nullptr, message);
     require(combo->view()->property("vaporViewComboPopupStyled").toBool(), message);
     require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"), message);
-    require(combo->view()->styleSheet().contains(QStringLiteral("border-radius: 10px")) &&
-                combo->view()->styleSheet().contains(QStringLiteral("padding: 12px 4px")),
+    const QString popupStyle = combo->view()->styleSheet();
+    const QString hoverColor = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuHover,
+                                                            VaporView::isDarkThemeEnabled());
+    require(popupStyle.contains(QStringLiteral("border-radius: 10px")) &&
+                popupStyle.contains(QStringLiteral("padding: 12px 0px")) &&
+                popupStyle.contains(QStringLiteral("background-color: %1").arg(hoverColor)) &&
+                !popupStyle.contains(QStringLiteral("padding: 12px 4px")),
             message);
 }
 
@@ -2191,6 +2196,17 @@ int main(int argc, char **argv)
             "temperature controller panel exists for pending command refresh checks");
     auto *controllerModeCombo =
         temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureControllerModeCombo"));
+    QLabel *controllerModeLabel = nullptr;
+    for (QLabel *label : temperaturePanel->findChildren<QLabel *>(QStringLiteral("fieldLabel")))
+    {
+        if (label->property("temperatureControllerModeLabel").toBool())
+        {
+            controllerModeLabel = label;
+            break;
+        }
+    }
+    auto *temperatureStatusRateLabel =
+        temperaturePanel->findChild<QLabel *>(QStringLiteral("rateLabel"));
     auto *targetSpin =
         temperaturePanel->findChild<QDoubleSpinBox *>(QStringLiteral("temperatureTargetSpinChannel1"));
     auto *enableSwitch =
@@ -2219,7 +2235,8 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QLineEdit *>(QStringLiteral("temperatureCommonInternalTemperatureEdit"));
     auto *factoryResetButton =
         temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureFactoryResetButton"));
-    require(controllerModeCombo != nullptr && targetSpin != nullptr && enableSwitch != nullptr && enableSwitch2 != nullptr && modeCombo != nullptr &&
+    require(controllerModeCombo != nullptr && controllerModeLabel != nullptr && temperatureStatusRateLabel != nullptr &&
+                targetSpin != nullptr && enableSwitch != nullptr && enableSwitch2 != nullptr && modeCombo != nullptr &&
                 maxOutputSpin != nullptr && kpSpin != nullptr && kiSpin != nullptr &&
                 kdSpin != nullptr && autoPidCombo != nullptr &&
                 addressSpin != nullptr && rs485BaudCombo != nullptr && overtempOutputCombo != nullptr &&
@@ -2330,6 +2347,17 @@ int main(int argc, char **argv)
                 temperatureChannelTopControlsStack->currentIndex() == 0 &&
                 temperatureChannelStack->currentIndex() == 0,
             "temperature channel top bar defaults to channel 1");
+    const QRect temperatureHeaderRateRect(temperatureStatusRateLabel->mapTo(temperaturePanel, QPoint(0, 0)),
+                                          temperatureStatusRateLabel->size());
+    const QRect controllerModeLabelRect(controllerModeLabel->mapTo(temperaturePanel, QPoint(0, 0)),
+                                        controllerModeLabel->size());
+    const QRect controllerModeComboRect(controllerModeCombo->mapTo(temperaturePanel, QPoint(0, 0)),
+                                        controllerModeCombo->size());
+    require(temperatureHeaderRateRect.right() < controllerModeLabelRect.left() &&
+                controllerModeLabelRect.right() < controllerModeComboRect.left() &&
+                std::abs(temperatureHeaderRateRect.center().y() - controllerModeLabelRect.center().y()) <= 2 &&
+                std::abs(controllerModeLabelRect.center().y() - controllerModeComboRect.center().y()) <= 2,
+            "temperature controller mode label and combo sit on the status row to the right of Hz");
     const QRect topRowRectInCard(temperatureChannelTopRow->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                  temperatureChannelTopRow->size());
     const QRect selectorRowRectInTopRow(temperatureChannelSelectorRow->mapTo(temperatureChannelTopRow, QPoint(0, 0)),

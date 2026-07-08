@@ -584,12 +584,12 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
     view->setProperty("vaporViewComboPopupStyled", true);
     view->setMouseTracking(true);
 
-    const QColor popupBase = appThemeColor(dark ? AppThemeColor::Window : AppThemeColor::Surface, dark);
+    const QColor popupBase = appThemeColor(AppThemeColor::MenuPanel, dark);
     const QColor popupBorder = appThemeColor(AppThemeColor::Border, dark);
-    const QColor popupText = appThemeColor(dark ? AppThemeColor::TextStrong : AppThemeColor::Text, dark);
-    const QColor popupHighlight = appThemeColor(AppThemeColor::PopupHighlight, dark);
-    const QColor popupHighlightText = appThemeColor(dark ? AppThemeColor::TextStrong : AppThemeColor::Text, dark);
-    const QColor disabledText = appThemeColor(AppThemeColor::TextDisabled, dark);
+    const QColor popupText = appThemeColor(AppThemeColor::MenuText, dark);
+    const QColor popupHighlight = appThemeColor(AppThemeColor::MenuHover, dark);
+    const QColor popupHighlightText = appThemeColor(AppThemeColor::MenuText, dark);
+    const QColor disabledText = appThemeColor(AppThemeColor::MenuDisabledText, dark);
 
     QPalette popupPalette = view->palette();
     popupPalette.setColor(QPalette::Base, popupBase);
@@ -601,10 +601,10 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
     view->setStyleSheet(QStringLiteral(
         "QAbstractItemView#vaporViewComboPopupView { "
         "background-color: %1; border: 1px solid %2; border-radius: 10px; "
-        "color: %3; outline: 0px; padding: 12px 4px; "
+        "color: %3; outline: 0px; padding: 12px 0px; "
         "selection-background-color: %4; selection-color: %5; }"
         "QAbstractItemView#vaporViewComboPopupView::item { "
-        "background-color: transparent; border: 0px; border-radius: 4px; "
+        "background-color: transparent; border: 0px; border-radius: 10px; "
         "min-height: 28px; padding: 6px 12px; }"
         "QAbstractItemView#vaporViewComboPopupView::item:hover, "
         "QAbstractItemView#vaporViewComboPopupView::item:selected, "

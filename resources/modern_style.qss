@@ -640,23 +640,29 @@ QComboBox::down-arrow {
 }
 
 QComboBox QAbstractItemView {
-    background-color: @vv-surface;
+    background-color: @vv-menu-panel;
     border: 1px solid @vv-border;
-    border-radius: 4px;
-    selection-background-color: @vv-primary-subtle;
-    selection-color: @vv-primary;
-    padding: 2px;
+    border-radius: 10px;
+    color: @vv-menu-text;
+    selection-background-color: @vv-menu-hover;
+    selection-color: @vv-menu-text;
+    padding: 12px 0px;
     outline: none;
 }
 
 QComboBox QAbstractItemView::item {
     min-height: 30px;
-    padding: 4px 8px;
-    border-radius: 2px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 10px;
 }
 
-QComboBox QAbstractItemView::item:hover {
-    background-color: @vv-surface-alt;
+QComboBox QAbstractItemView::item:hover,
+QComboBox QAbstractItemView::item:selected,
+QComboBox QAbstractItemView::item:selected:active,
+QComboBox QAbstractItemView::item:selected:!active {
+    background-color: @vv-menu-hover;
+    color: @vv-menu-text;
 }
 
 /* 文本编辑框 */

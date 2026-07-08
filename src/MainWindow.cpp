@@ -2577,32 +2577,36 @@ QDoubleSpinBox:disabled {
     color: @vv-text-disabled;
 }
 QComboBox QAbstractItemView {
-    background-color: @vv-surface;
+    background-color: @vv-menu-panel;
     border: 1px solid @vv-border;
-    color: @vv-text;
-    selection-background-color: @vv-popup-highlight;
-    selection-color: @vv-text;
+    border-radius: 10px;
+    color: @vv-menu-text;
+    selection-background-color: @vv-menu-hover;
+    selection-color: @vv-menu-text;
+    padding: 12px 0px;
     outline: none;
 }
 QComboBox QAbstractItemView::item {
     background-color: transparent;
-    color: @vv-text;
+    color: @vv-menu-text;
     padding: 6px 12px;
+    border: none;
+    border-radius: 10px;
 }
 QComboBox QAbstractItemView::item:hover,
 QComboBox QAbstractItemView::item:selected,
 QComboBox QAbstractItemView::item:selected:active,
 QComboBox QAbstractItemView::item:selected:!active {
-    background-color: @vv-popup-highlight;
-    color: @vv-text;
+    background-color: @vv-menu-hover;
+    color: @vv-menu-text;
 }
 QComboBox QAbstractItemView::item:disabled {
     background-color: transparent;
-    color: @vv-text-disabled;
+    color: @vv-menu-disabled;
 }
 QComboBox QAbstractItemView::item:selected:disabled {
-    background-color: @vv-popup-highlight;
-    color: @vv-text-disabled;
+    background-color: @vv-menu-hover;
+    color: @vv-menu-disabled;
 }
 QPushButton {
     background-color: @vv-primary;
@@ -6319,6 +6323,7 @@ void TemperatureControllerPanel::setupUi()
     error_code_label_->setMaximumWidth(kTemperatureControllerValueWidth);
     controller_mode_lbl_ = new QLabel(this);
     controller_mode_lbl_->setObjectName(QStringLiteral("fieldLabel"));
+    controller_mode_lbl_->setProperty("temperatureControllerModeLabel", true);
     controller_mode_lbl_->setMinimumHeight(22);
     setFixedTextLabelWidth(controller_mode_lbl_, temperatureControllerStatusLabelWidthCandidates(), 4);
     controller_mode_combo_ = new QComboBox(this);
@@ -6341,9 +6346,9 @@ void TemperatureControllerPanel::setupUi()
     statusLayout->addWidget(internal_temperature_label_, 0, 1, Qt::AlignVCenter | Qt::AlignLeft);
     statusLayout->addWidget(error_code_lbl_, 0, 2, Qt::AlignVCenter | Qt::AlignLeft);
     statusLayout->addWidget(error_code_label_, 0, 3, Qt::AlignVCenter | Qt::AlignLeft);
-    statusLayout->addWidget(rate_label_, 0, 4, Qt::AlignVCenter | Qt::AlignRight);
-    statusLayout->addWidget(controller_mode_lbl_, 1, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    statusLayout->addWidget(controller_mode_combo_, 1, 1, 1, 2, Qt::AlignVCenter | Qt::AlignLeft);
+    statusLayout->addWidget(rate_label_, 0, 5, Qt::AlignVCenter | Qt::AlignRight);
+    statusLayout->addWidget(controller_mode_lbl_, 0, 6, Qt::AlignVCenter | Qt::AlignLeft);
+    statusLayout->addWidget(controller_mode_combo_, 0, 7, Qt::AlignVCenter | Qt::AlignLeft);
     statusLayout->setColumnStretch(4, 1);
     layout->addLayout(statusLayout);
 
@@ -8420,11 +8425,11 @@ void MainWindow::loadModernStyleSheet()
             "QComboBox:hover { border-color: @vv-border-strong; }"
             "QComboBox:focus { border-color: @vv-primary; border-width: 1px; }"
             "QComboBox:disabled { background-color: @vv-surface-alt; color: @vv-text; }"
-            "QComboBox QAbstractItemView { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text; selection-background-color: @vv-primary-subtle; selection-color: @vv-primary; padding: 12px 4px; outline: none; }"
-            "QComboBox QAbstractItemView::item { background-color: transparent; color: @vv-text; padding: 6px 12px; border: none; }"
-            "QComboBox QAbstractItemView::item:hover, QComboBox QAbstractItemView::item:selected, QComboBox QAbstractItemView::item:selected:active, QComboBox QAbstractItemView::item:selected:!active { background-color: @vv-primary-subtle; color: @vv-primary; }"
-            "QComboBox QAbstractItemView::item:disabled { background-color: transparent; color: @vv-text-disabled; }"
-            "QComboBox QAbstractItemView::item:selected:disabled { background-color: @vv-primary-subtle; color: @vv-text-disabled; }"
+            "QComboBox QAbstractItemView { background-color: @vv-menu-panel; border: 1px solid @vv-border; border-radius: 10px; color: @vv-menu-text; selection-background-color: @vv-menu-hover; selection-color: @vv-menu-text; padding: 12px 0px; outline: none; }"
+            "QComboBox QAbstractItemView::item { background-color: transparent; color: @vv-menu-text; padding: 6px 12px; border: none; border-radius: 10px; }"
+            "QComboBox QAbstractItemView::item:hover, QComboBox QAbstractItemView::item:selected, QComboBox QAbstractItemView::item:selected:active, QComboBox QAbstractItemView::item:selected:!active { background-color: @vv-menu-hover; color: @vv-menu-text; }"
+            "QComboBox QAbstractItemView::item:disabled { background-color: transparent; color: @vv-menu-disabled; }"
+            "QComboBox QAbstractItemView::item:selected:disabled { background-color: @vv-menu-hover; color: @vv-menu-disabled; }"
             "QLineEdit { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 6px; padding: 4px 10px; min-height: 26px; max-height: 26px; color: @vv-text; font-size: 14px; }"
             "QLineEdit:hover { border-color: @vv-border-strong; }"
             "QLineEdit:focus { border-color: @vv-primary; border-width: 1px; }"
