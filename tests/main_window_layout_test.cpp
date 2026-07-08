@@ -9,6 +9,7 @@
 #include <QColor>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QDoubleSpinBox>
 #include <QElapsedTimer>
 #include <QFrame>
 #include <QGroupBox>
@@ -1445,8 +1446,14 @@ int main(int argc, char **argv)
     auto *rootTextLabel =
         titleApplicationRows.first()->findChild<QLabel *>(QStringLiteral("titleApplicationMenuText"));
     require(rootArrowLabel != nullptr && rootTextLabel != nullptr &&
-                rootArrowLabel->font().pixelSize() > rootTextLabel->font().pixelSize(),
-            "title bar application submenu chevron is larger than menu text");
+                rootArrowLabel->property("usesLucideChevron").toBool() &&
+                rootArrowLabel->property("iconSize").toInt() > rootTextLabel->font().pixelSize() &&
+                !rootArrowLabel->pixmap().isNull(),
+            "title bar application submenu chevron uses a larger lucide icon");
+    const int rootArrowCenterDelta =
+        std::abs(rootArrowLabel->geometry().center().y() - titleApplicationRows.first()->rect().center().y());
+    require(rootArrowCenterDelta <= 1,
+            "title bar application submenu chevron is vertically centered in the menu row");
     hoverWidget(titleApplicationRows.first(), true, 120);
     auto *titleApplicationSubPanel = window.findChild<QFrame *>(QStringLiteral("titleApplicationSubPanel"));
     requireTitleMenuFloatingPanel(titleApplicationSubPanel,
@@ -2094,6 +2101,13 @@ int main(int argc, char **argv)
     validTemperatureData.channels[0].target_temperature_c = 25.0;
     validTemperatureData.channels[0].measured_temperature_c = 24.75;
     validTemperatureData.channels[0].output_enabled = true;
+    validTemperatureData.channels[0].output_mode = 0;
+    validTemperatureData.channels[0].max_output_percent = 70;
+    validTemperatureData.channels[0].kp = 10;
+    validTemperatureData.channels[0].ki = 20;
+    validTemperatureData.channels[0].kd = 30;
+    validTemperatureData.channels[0].auto_pid_mode = 0;
+    validTemperatureData.controller_mode = 0;
     const bool temperatureUpdateInvoked = QMetaObject::invokeMethod(
         &window,
         "onRemoteTemperatureControllerStatusUpdated",
@@ -2132,6 +2146,97 @@ int main(int argc, char **argv)
     }
     require(sawTemperatureOverviewTargetValue && sawTemperatureOverviewCurrentValue,
             "temperature overview value pills use title-over-value layout with five decimal places");
+
+    auto *temperaturePanel = window.findChild<TemperatureControllerPanel *>();
+    require(temperaturePanel != nullptr,
+            "temperature controller panel exists for pending command refresh checks");
+    auto *controllerModeCombo =
+        temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureControllerModeCombo"));
+    auto *targetSpin =
+        temperaturePanel->findChild<QDoubleSpinBox *>(QStringLiteral("temperatureTargetSpinChannel1"));
+    auto *modeCombo =
+        temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureOutputModeComboChannel1"));
+    auto *maxOutputSpin =
+        temperaturePanel->findChild<QSpinBox *>(QStringLiteral("temperatureMaxOutputSpinChannel1"));
+    auto *kpSpin =
+        temperaturePanel->findChild<QSpinBox *>(QStringLiteral("temperaturePidKpSpinChannel1"));
+    auto *kiSpin =
+        temperaturePanel->findChild<QSpinBox *>(QStringLiteral("temperaturePidKiSpinChannel1"));
+    auto *kdSpin =
+        temperaturePanel->findChild<QSpinBox *>(QStringLiteral("temperaturePidKdSpinChannel1"));
+    auto *autoPidCombo =
+        temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureAutoPidComboChannel1"));
+    require(controllerModeCombo != nullptr && targetSpin != nullptr && modeCombo != nullptr &&
+                maxOutputSpin != nullptr && kpSpin != nullptr && kiSpin != nullptr &&
+                kdSpin != nullptr && autoPidCombo != nullptr,
+            "temperature controller editable controls are discoverable for stale telemetry checks");
+
+    {
+        const QSignalBlocker controllerModeBlocker(controllerModeCombo);
+        const QSignalBlocker targetBlocker(targetSpin);
+        const QSignalBlocker modeBlocker(modeCombo);
+        const QSignalBlocker maxOutputBlocker(maxOutputSpin);
+        const QSignalBlocker kpBlocker(kpSpin);
+        const QSignalBlocker kiBlocker(kiSpin);
+        const QSignalBlocker kdBlocker(kdSpin);
+        const QSignalBlocker autoPidBlocker(autoPidCombo);
+        controllerModeCombo->setCurrentIndex(controllerModeCombo->findData(3));
+        targetSpin->setValue(26.5);
+        modeCombo->setCurrentIndex(modeCombo->findData(2));
+        maxOutputSpin->setValue(80);
+        kpSpin->setValue(11);
+        kiSpin->setValue(22);
+        kdSpin->setValue(33);
+        autoPidCombo->setCurrentIndex(autoPidCombo->findData(1));
+    }
+
+    VaporView::TemperatureControllerCommand pendingCommand;
+    pendingCommand.channel = 1;
+    pendingCommand.controller_mode = 3;
+    temperaturePanel->markCommandPending(VaporView::CommandId::SetTemperatureControllerMode, pendingCommand);
+    pendingCommand.target_temperature_c = 26.5;
+    temperaturePanel->markCommandPending(VaporView::CommandId::SetTemperatureTarget, pendingCommand);
+    pendingCommand.output_mode = 2;
+    temperaturePanel->markCommandPending(VaporView::CommandId::SetTemperatureOutputMode, pendingCommand);
+    pendingCommand.max_output_percent = 80;
+    temperaturePanel->markCommandPending(VaporView::CommandId::SetTemperatureMaxOutputPercent, pendingCommand);
+    pendingCommand.kp = 11;
+    pendingCommand.ki = 22;
+    pendingCommand.kd = 33;
+    temperaturePanel->markCommandPending(VaporView::CommandId::SetTemperaturePid, pendingCommand);
+    pendingCommand.auto_pid_mode = 1;
+    temperaturePanel->markCommandPending(VaporView::CommandId::SetTemperatureAutoPid, pendingCommand);
+    temperaturePanel->updateData(validTemperatureData);
+    require(controllerModeCombo->currentData().toInt() == 3 &&
+                std::abs(targetSpin->value() - 26.5) < 0.0001 &&
+                modeCombo->currentData().toInt() == 2 &&
+                maxOutputSpin->value() == 80 &&
+                kpSpin->value() == 11 &&
+                kiSpin->value() == 22 &&
+                kdSpin->value() == 33 &&
+                autoPidCombo->currentData().toInt() == 1,
+            "pending temperature controller edits are not overwritten by stale telemetry values");
+
+    validTemperatureData.controller_mode = 3;
+    validTemperatureData.channels[0].target_temperature_c = 26.5;
+    validTemperatureData.channels[0].output_mode = 2;
+    validTemperatureData.channels[0].max_output_percent = 80;
+    validTemperatureData.channels[0].kp = 11;
+    validTemperatureData.channels[0].ki = 22;
+    validTemperatureData.channels[0].kd = 33;
+    validTemperatureData.channels[0].auto_pid_mode = 1;
+    temperaturePanel->updateData(validTemperatureData);
+    validTemperatureData.controller_mode = 0;
+    validTemperatureData.channels[0].target_temperature_c = 25.0;
+    validTemperatureData.channels[0].output_mode = 0;
+    validTemperatureData.channels[0].max_output_percent = 70;
+    validTemperatureData.channels[0].kp = 10;
+    validTemperatureData.channels[0].ki = 20;
+    validTemperatureData.channels[0].kd = 30;
+    validTemperatureData.channels[0].auto_pid_mode = 0;
+    temperaturePanel->updateData(validTemperatureData);
+    processEventsFor(50);
+
     const QList<QWidget*> temperatureTrendPlots =
         window.findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot"));
     require(!temperatureTrendPlots.isEmpty(),

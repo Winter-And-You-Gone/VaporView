@@ -275,6 +275,8 @@ public:
     void setEnglish(bool english);
     void setCommandStatus(const QString& text, bool error = false);
     void setOutputEnabledControl(quint8 channel, bool enabled);
+    void markCommandPending(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload);
+    void clearCommandPending(VaporView::CommandId command, quint8 channel);
 
 signals:
     void targetTemperatureRequested(quint8 channel, double celsius);
@@ -303,11 +305,27 @@ private:
         QSpinBox *kd_spin = nullptr;
         QComboBox *auto_pid_combo = nullptr;
     };
+    struct PendingChannelEdits
+    {
+        bool target_temperature = false;
+        double target_temperature_c = std::numeric_limits<double>::quiet_NaN();
+        bool output_mode = false;
+        int output_mode_value = 0;
+        bool max_output_percent = false;
+        int max_output_percent_value = 0;
+        bool pid = false;
+        int kp = 0;
+        int ki = 0;
+        int kd = 0;
+        bool auto_pid = false;
+        int auto_pid_mode = 0;
+    };
 
     void setupUi();
     QWidget *createChannelPage(int index);
     void updateChannelTexts();
     void updateChannelData(int index, const VaporView::TemperatureControllerChannelData& channel, bool valid);
+    int channelIndex(quint8 channel) const;
 
     QTabWidget *tabs_ = nullptr;
     TemperatureTrendPlotWidget *temperature_plot_ = nullptr;
@@ -325,6 +343,9 @@ private:
     std::array<double, 2> target_temperature_by_channel_{
         std::numeric_limits<double>::quiet_NaN(),
         std::numeric_limits<double>::quiet_NaN()};
+    std::array<PendingChannelEdits, 2> pending_channel_edits_{};
+    bool pending_controller_mode_ = false;
+    int pending_controller_mode_value_ = 0;
     bool is_english_ = false;
 };
 

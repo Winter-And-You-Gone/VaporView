@@ -6309,6 +6309,7 @@ void TemperatureControllerPanel::setupUi()
     controller_mode_lbl_->setMinimumHeight(22);
     setFixedTextLabelWidth(controller_mode_lbl_, temperatureControllerStatusLabelWidthCandidates(), 4);
     controller_mode_combo_ = new QComboBox(this);
+    controller_mode_combo_->setObjectName(QStringLiteral("temperatureControllerModeCombo"));
     controller_mode_combo_->setFixedWidth(206);
     controller_mode_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     controller_mode_combo_->addItem(QStringLiteral("独立控制"), 0);
@@ -6413,11 +6414,13 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     };
 
     channel.enable_combo = createCombo();
+    channel.enable_combo->setObjectName(QStringLiteral("temperatureOutputEnableComboChannel%1").arg(index + 1));
     channel.enable_combo->addItem(QStringLiteral("关闭"), false);
     channel.enable_combo->addItem(QStringLiteral("开启"), true);
     addField(0, 0, QStringLiteral("输出使能"), channel.enable_combo, channel.enable_label_text);
 
     channel.mode_combo = createCombo();
+    channel.mode_combo->setObjectName(QStringLiteral("temperatureOutputModeComboChannel%1").arg(index + 1));
     channel.mode_combo->setFixedWidth(kTemperatureControllerWideInputWidth);
     channel.mode_combo->addItem(QStringLiteral("制冷和加热"), 0);
     channel.mode_combo->addItem(QStringLiteral("制冷"), 1);
@@ -6426,6 +6429,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     addField(0, 1, QStringLiteral("输出模式"), channel.mode_combo, channel.mode_label_text);
 
     channel.max_output_spin = new QSpinBox(this);
+    channel.max_output_spin->setObjectName(QStringLiteral("temperatureMaxOutputSpinChannel%1").arg(index + 1));
     channel.max_output_spin->setRange(0, 90);
     channel.max_output_spin->setSuffix(QStringLiteral(" %"));
     channel.max_output_spin->setFixedWidth(kTemperatureControllerWideInputWidth);
@@ -6434,6 +6438,9 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     channel.kp_spin = new QSpinBox(this);
     channel.ki_spin = new QSpinBox(this);
     channel.kd_spin = new QSpinBox(this);
+    channel.kp_spin->setObjectName(QStringLiteral("temperaturePidKpSpinChannel%1").arg(index + 1));
+    channel.ki_spin->setObjectName(QStringLiteral("temperaturePidKiSpinChannel%1").arg(index + 1));
+    channel.kd_spin->setObjectName(QStringLiteral("temperaturePidKdSpinChannel%1").arg(index + 1));
     for (QSpinBox *spin : {channel.kp_spin, channel.ki_spin, channel.kd_spin})
     {
         spin->setRange(0, std::numeric_limits<int>::max());
@@ -6447,6 +6454,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     addField(1, 2, QStringLiteral("D"), channel.kd_spin, kdLabel);
 
     channel.target_spin = new QDoubleSpinBox(this);
+    channel.target_spin->setObjectName(QStringLiteral("temperatureTargetSpinChannel%1").arg(index + 1));
     channel.target_spin->setRange(-40.0, 100.0);
     channel.target_spin->setDecimals(3);
     channel.target_spin->setSuffix(QStringLiteral(" °C"));
@@ -6454,6 +6462,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     addField(2, 0, QStringLiteral("目标温度(°C)"), channel.target_spin, channel.target_label_text);
 
     channel.auto_pid_combo = createCombo();
+    channel.auto_pid_combo->setObjectName(QStringLiteral("temperatureAutoPidComboChannel%1").arg(index + 1));
     channel.auto_pid_combo->setFixedWidth(kTemperatureControllerWideInputWidth);
     channel.auto_pid_combo->addItem(QStringLiteral("关闭"), 0);
     channel.auto_pid_combo->addItem(QStringLiteral("PID自整定"), 1);
@@ -6508,6 +6517,96 @@ void TemperatureControllerPanel::setEnglish(bool english)
         temperature_plot_->setEnglish(english);
     }
     updateChannelTexts();
+}
+
+int TemperatureControllerPanel::channelIndex(quint8 channel) const
+{
+    if (channel == 0 || channel > channels_.size())
+    {
+        return -1;
+    }
+    return static_cast<int>(channel - 1);
+}
+
+void TemperatureControllerPanel::markCommandPending(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload)
+{
+    const int index = channelIndex(payload.channel == 0 ? 1 : payload.channel);
+    PendingChannelEdits *pending = index >= 0 ? &pending_channel_edits_[index] : nullptr;
+    switch (command)
+    {
+    case VaporView::CommandId::SetTemperatureTarget:
+        if (pending)
+        {
+            pending->target_temperature = true;
+            pending->target_temperature_c = payload.target_temperature_c;
+        }
+        break;
+    case VaporView::CommandId::SetTemperatureOutputMode:
+        if (pending)
+        {
+            pending->output_mode = true;
+            pending->output_mode_value = static_cast<int>(payload.output_mode);
+        }
+        break;
+    case VaporView::CommandId::SetTemperatureMaxOutputPercent:
+        if (pending)
+        {
+            pending->max_output_percent = true;
+            pending->max_output_percent_value = static_cast<int>(payload.max_output_percent);
+        }
+        break;
+    case VaporView::CommandId::SetTemperaturePid:
+        if (pending)
+        {
+            pending->pid = true;
+            pending->kp = static_cast<int>(payload.kp);
+            pending->ki = static_cast<int>(payload.ki);
+            pending->kd = static_cast<int>(payload.kd);
+        }
+        break;
+    case VaporView::CommandId::SetTemperatureAutoPid:
+        if (pending)
+        {
+            pending->auto_pid = true;
+            pending->auto_pid_mode = static_cast<int>(payload.auto_pid_mode);
+        }
+        break;
+    case VaporView::CommandId::SetTemperatureControllerMode:
+        pending_controller_mode_ = true;
+        pending_controller_mode_value_ = static_cast<int>(payload.controller_mode);
+        break;
+    default:
+        break;
+    }
+}
+
+void TemperatureControllerPanel::clearCommandPending(VaporView::CommandId command, quint8 channel)
+{
+    const int index = channelIndex(channel == 0 ? 1 : channel);
+    PendingChannelEdits *pending = index >= 0 ? &pending_channel_edits_[index] : nullptr;
+    switch (command)
+    {
+    case VaporView::CommandId::SetTemperatureTarget:
+        if (pending) pending->target_temperature = false;
+        break;
+    case VaporView::CommandId::SetTemperatureOutputMode:
+        if (pending) pending->output_mode = false;
+        break;
+    case VaporView::CommandId::SetTemperatureMaxOutputPercent:
+        if (pending) pending->max_output_percent = false;
+        break;
+    case VaporView::CommandId::SetTemperaturePid:
+        if (pending) pending->pid = false;
+        break;
+    case VaporView::CommandId::SetTemperatureAutoPid:
+        if (pending) pending->auto_pid = false;
+        break;
+    case VaporView::CommandId::SetTemperatureControllerMode:
+        pending_controller_mode_ = false;
+        break;
+    default:
+        break;
+    }
 }
 
 void TemperatureControllerPanel::updateChannelTexts()
@@ -6573,6 +6672,11 @@ void TemperatureControllerPanel::updateChannelTexts()
 void TemperatureControllerPanel::updateChannelData(int index, const VaporView::TemperatureControllerChannelData& channelData, bool valid)
 {
     ChannelWidgets& channel = channels_[index];
+    PendingChannelEdits& pending = pending_channel_edits_[index];
+    auto hasEditorFocus = [](QWidget *widget) {
+        QWidget *focus = QApplication::focusWidget();
+        return widget && (widget->hasFocus() || (focus && widget->isAncestorOf(focus)));
+    };
     if (valid)
     {
         const QSignalBlocker targetBlocker(channel.target_spin);
@@ -6583,17 +6687,69 @@ void TemperatureControllerPanel::updateChannelData(int index, const VaporView::T
         const QSignalBlocker kpBlocker(channel.kp_spin);
         const QSignalBlocker kiBlocker(channel.ki_spin);
         const QSignalBlocker kdBlocker(channel.kd_spin);
-        channel.target_spin->setValue(channelData.target_temperature_c);
+
+        if (pending.target_temperature &&
+            std::isfinite(channelData.target_temperature_c) &&
+            std::abs(channelData.target_temperature_c - pending.target_temperature_c) < 0.00001)
+        {
+            pending.target_temperature = false;
+        }
+        if (!pending.target_temperature && !hasEditorFocus(channel.target_spin))
+        {
+            channel.target_spin->setValue(channelData.target_temperature_c);
+        }
+
         const int enableIndex = channel.enable_combo->findData(channelData.output_enabled);
         channel.enable_combo->setCurrentIndex(enableIndex >= 0 ? enableIndex : 0);
-        const int modeIndex = channel.mode_combo->findData(channelData.output_mode);
-        channel.mode_combo->setCurrentIndex(modeIndex >= 0 ? modeIndex : 0);
-        const int autoPidIndex = channel.auto_pid_combo->findData(channelData.auto_pid_mode);
-        channel.auto_pid_combo->setCurrentIndex(autoPidIndex >= 0 ? autoPidIndex : 0);
-        channel.max_output_spin->setValue(channelData.max_output_percent);
-        channel.kp_spin->setValue(channelData.kp);
-        channel.ki_spin->setValue(channelData.ki);
-        channel.kd_spin->setValue(channelData.kd);
+
+        if (pending.output_mode && channelData.output_mode == pending.output_mode_value)
+        {
+            pending.output_mode = false;
+        }
+        if (!pending.output_mode && !hasEditorFocus(channel.mode_combo))
+        {
+            const int modeIndex = channel.mode_combo->findData(channelData.output_mode);
+            channel.mode_combo->setCurrentIndex(modeIndex >= 0 ? modeIndex : 0);
+        }
+
+        if (pending.auto_pid && channelData.auto_pid_mode == pending.auto_pid_mode)
+        {
+            pending.auto_pid = false;
+        }
+        if (!pending.auto_pid && !hasEditorFocus(channel.auto_pid_combo))
+        {
+            const int autoPidIndex = channel.auto_pid_combo->findData(channelData.auto_pid_mode);
+            channel.auto_pid_combo->setCurrentIndex(autoPidIndex >= 0 ? autoPidIndex : 0);
+        }
+
+        if (pending.max_output_percent && channelData.max_output_percent == pending.max_output_percent_value)
+        {
+            pending.max_output_percent = false;
+        }
+        if (!pending.max_output_percent && !hasEditorFocus(channel.max_output_spin))
+        {
+            channel.max_output_spin->setValue(channelData.max_output_percent);
+        }
+
+        if (pending.pid &&
+            channelData.kp == pending.kp &&
+            channelData.ki == pending.ki &&
+            channelData.kd == pending.kd)
+        {
+            pending.pid = false;
+        }
+        if (!pending.pid && !hasEditorFocus(channel.kp_spin))
+        {
+            channel.kp_spin->setValue(channelData.kp);
+        }
+        if (!pending.pid && !hasEditorFocus(channel.ki_spin))
+        {
+            channel.ki_spin->setValue(channelData.ki);
+        }
+        if (!pending.pid && !hasEditorFocus(channel.kd_spin))
+        {
+            channel.kd_spin->setValue(channelData.kd);
+        }
     }
 }
 
@@ -6604,8 +6760,21 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
     if (controller_mode_combo_)
     {
         const QSignalBlocker blocker(controller_mode_combo_);
-        const int modeIndex = controller_mode_combo_->findData(controllerData.valid ? controllerData.controller_mode : 0);
-        controller_mode_combo_->setCurrentIndex(modeIndex >= 0 ? modeIndex : 0);
+        if (pending_controller_mode_ &&
+            controllerData.valid &&
+            controllerData.controller_mode == pending_controller_mode_value_)
+        {
+            pending_controller_mode_ = false;
+        }
+        QWidget *focus = QApplication::focusWidget();
+        const bool controllerModeHasFocus =
+            controller_mode_combo_->hasFocus() ||
+            (focus && controller_mode_combo_->isAncestorOf(focus));
+        if (!pending_controller_mode_ && !controllerModeHasFocus)
+        {
+            const int modeIndex = controller_mode_combo_->findData(controllerData.valid ? controllerData.controller_mode : 0);
+            controller_mode_combo_->setCurrentIndex(modeIndex >= 0 ? modeIndex : 0);
+        }
     }
     if (!error_text_label_)
     {
@@ -7219,6 +7388,7 @@ MainWindow::MainWindow(QWidget *parent)
                         const quint8 channel = request.channel == 0 ? 1 : request.channel;
                         if (temperature_controller_panel_)
                         {
+                            temperature_controller_panel_->clearCommandPending(commandId, channel);
                             temperature_controller_panel_->setCommandStatus(
                                 temperatureCommandStatusText(commandId,
                                                              channel,
@@ -10396,6 +10566,10 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
     const CollectorSnapshot collectors = snapshotCollectors();
     if (collectors.temperature_controller && collectors.temperature_controller->isRunning())
     {
+        if (temperature_controller_panel_)
+        {
+            temperature_controller_panel_->markCommandPending(command, payload);
+        }
         auto applyConfirmedLocalCommand = [this, command, channel, &payload]() {
             current_temperature_controller_.valid = true;
             current_temperature_controller_.timestamp = std::chrono::steady_clock::now();
@@ -10473,6 +10647,7 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
             applyConfirmedLocalCommand();
             if (temperature_controller_panel_)
             {
+                temperature_controller_panel_->clearCommandPending(command, channel);
                 temperature_controller_panel_->setCommandStatus(temperatureCommandStatusText(command, channel, false));
                 temperature_controller_panel_->updateData(current_temperature_controller_);
             }
@@ -10503,6 +10678,7 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
             : QStringLiteral("RD105 本地命令失败：写入或读回确认失败"));
         if (temperature_controller_panel_)
         {
+            temperature_controller_panel_->clearCommandPending(command, channel);
             temperature_controller_panel_->setCommandStatus(
                 temperatureCommandStatusText(command, channel, false, failedDetail),
                 true);
@@ -10524,6 +10700,7 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
         : QStringLiteral("本地 RD105 温控器未连接，无法下发温控命令"));
     if (temperature_controller_panel_)
     {
+        temperature_controller_panel_->clearCommandPending(command, channel);
         temperature_controller_panel_->setCommandStatus(
             temperatureCommandStatusText(command, channel, false, detail),
             true);
@@ -10554,6 +10731,7 @@ void MainWindow::sendRemoteTemperatureCommand(VaporView::CommandId command, cons
     remote_temperature_commands_.insert(seq, payload);
     if (temperature_controller_panel_)
     {
+        temperature_controller_panel_->markCommandPending(command, payload);
         temperature_controller_panel_->setCommandStatus(temperatureCommandStatusText(command, payload.channel, true));
     }
     restoreTemperatureCommandUi(command, payload.channel == 0 ? 1 : payload.channel);
@@ -11704,17 +11882,21 @@ void MainWindow::createTitleApplicationMenuPanel()
 
         if (!arrow.isEmpty())
         {
-            auto *arrowLabel = new QLabel(arrow, row);
+            auto *arrowLabel = new QLabel(row);
             arrowLabel->setObjectName(QStringLiteral("titleApplicationMenuArrow"));
             arrowLabel->setEnabled(enabled);
-            arrowLabel->setFixedWidth(arrowColumnWidth);
+            arrowLabel->setFixedSize(arrowColumnWidth, rowHeight);
             arrowLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
             arrowLabel->setMargin(0);
             arrowLabel->setIndent(0);
-            QFont arrowFont = arrowLabel->font();
-            arrowFont.setPixelSize(arrowFontSize);
-            arrowFont.setWeight(QFont::DemiBold);
-            arrowLabel->setFont(arrowFont);
+            const bool dark = qApp->property(kAppDarkThemeProperty).toBool();
+            const QColor arrowColor = appThemeColor(enabled ? AppThemeColor::MenuText
+                                                            : AppThemeColor::MenuDisabledText,
+                                                   dark);
+            const QSize arrowIconSize(arrowFontSize, arrowFontSize);
+            arrowLabel->setPixmap(createLucideIcon(QStringLiteral("chevron-right"), arrowColor).pixmap(arrowIconSize));
+            arrowLabel->setProperty("usesLucideChevron", true);
+            arrowLabel->setProperty("iconSize", arrowFontSize);
             arrowLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
             rowLayout->addWidget(arrowLabel);
         }
@@ -20367,6 +20549,10 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
         }
         if (temperature_controller_panel_)
         {
+            if (!(ok && noError))
+            {
+                temperature_controller_panel_->clearCommandPending(ack.command_id, request.channel == 0 ? 1 : request.channel);
+            }
             temperature_controller_panel_->setCommandStatus(
                 temperatureCommandStatusText(ack.command_id,
                                              request.channel == 0 ? 1 : request.channel,
