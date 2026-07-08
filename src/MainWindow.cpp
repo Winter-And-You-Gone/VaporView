@@ -788,6 +788,7 @@ constexpr int kTemperatureControllerValueWidth = 126;
 constexpr int kTemperatureControllerInputWidth = 112;
 constexpr int kTemperatureControllerWideInputWidth = 138;
 constexpr int kTemperatureControllerTopEnableWidth = 118;
+constexpr int kTemperatureControllerTopEnableHeight = 56;
 constexpr int kTemperatureControllerTopModeWidth = 132;
 constexpr int kTemperatureControllerTopTargetWidth = 172;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
@@ -795,6 +796,7 @@ constexpr int kTemperatureControllerCompactPidInputWidth = 82;
 constexpr int kTemperatureControllerMaxOutputLabelWidth = 168;
 constexpr int kTemperatureControllerCompactLabelWidth = 72;
 constexpr int kTemperatureControllerControlLabelWidth = 150;
+constexpr int kTemperatureControllerChannelStackHeight = 114;
 constexpr int kTemperatureControllerHistoryLimit = 240;
 constexpr int kRemotePacketRateWindowMs = 5000;
 constexpr qint64 kTcpRecordingStatusRefreshMs = 500;
@@ -2334,6 +2336,10 @@ QPushButton#appSidebarButton {
     max-height: 34px;
     padding: 6px 8px;
     text-align: left;
+    outline: none;
+}
+QPushButton#appSidebarButton:focus {
+    outline: none;
 }
 QPushButton#appSidebarButton[_vv_sidebar_compact="true"] {
     min-width: 42px;
@@ -2342,6 +2348,7 @@ QPushButton#appSidebarButton[_vv_sidebar_compact="true"] {
     max-height: 42px;
     padding: 0px;
     text-align: center;
+    outline: none;
 }
 QPushButton#appSidebarButton:hover {
     background-color: @vv-primary-subtle;
@@ -5356,7 +5363,7 @@ public:
         setCheckable(true);
         setObjectName(QStringLiteral("temperatureOverviewOutputSwitch"));
         setCursor(Qt::PointingHandCursor);
-        setFocusPolicy(Qt::TabFocus);
+        setFocusPolicy(Qt::NoFocus);
         setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         thumb_position_ = isChecked() ? 1.0 : 0.0;
         thumb_animation_ = new QVariantAnimation(this);
@@ -6402,19 +6409,6 @@ void TemperatureControllerPanel::setupUi()
     channelTopBarLayout->addWidget(channel_button_2_);
     channelTopBarLayout->addWidget(common_settings_button_);
     channelSelectorRowLayout->addWidget(channel_top_bar_, 0, Qt::AlignVCenter);
-
-    common_.factory_reset_button = new QPushButton(QStringLiteral("恢复出厂设置"), channelTopRow);
-    common_.factory_reset_button->setObjectName(QStringLiteral("temperatureFactoryResetButton"));
-    common_.factory_reset_button->setCursor(Qt::PointingHandCursor);
-    common_.factory_reset_button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    common_.factory_reset_button->setFixedSize(142, 34);
-    common_.factory_reset_button->setIconSize(QSize(18, 18));
-    common_.factory_reset_button->setIcon(createLucideIcon(QStringLiteral("refresh-cw"),
-                                                           appThemeColor(AppThemeColor::Danger, VaporView::isDarkThemeEnabled())));
-    connect(common_.factory_reset_button, &QPushButton::clicked, this, [this]() {
-        emit factoryResetRequested();
-    });
-    channelSelectorRowLayout->addWidget(common_.factory_reset_button, 0, Qt::AlignVCenter);
     channelTopRowLayout->addWidget(channelSelectorRow, 0, Qt::AlignLeft);
 
     channel_top_controls_stack_ = new QStackedWidget(channelTopRow);
@@ -6428,6 +6422,7 @@ void TemperatureControllerPanel::setupUi()
     channel_stack_ = new QStackedWidget(configCard);
     channel_stack_->setObjectName(QStringLiteral("temperatureChannelStack"));
     channel_stack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    channel_stack_->setFixedHeight(kTemperatureControllerChannelStackHeight);
     channel_stack_->addWidget(createChannelPage(0));
     channel_stack_->addWidget(createChannelPage(1));
     channel_stack_->addWidget(createCommonSettingsPage());
@@ -6506,7 +6501,7 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
     auto *enableSwitch = new TemperatureOverviewSwitchButton(this);
     enableSwitch->setObjectName(QStringLiteral("temperatureOutputEnableSwitchChannel%1").arg(index + 1));
     enableSwitch->setProperty("temperatureOutputEnableSwitch", true);
-    enableSwitch->setFixedSize(kTemperatureControllerTopEnableWidth, 46);
+    enableSwitch->setFixedSize(kTemperatureControllerTopEnableWidth, kTemperatureControllerTopEnableHeight);
     enableSwitch->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     channel.enable_switch = enableSwitch;
     channel.enable_label_text = nullptr;
@@ -6545,6 +6540,7 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
 QWidget *TemperatureControllerPanel::createChannelPage(int index)
 {
     QWidget *page = new QWidget(channel_stack_);
+    page->setFixedHeight(kTemperatureControllerChannelStackHeight);
     auto *layout = new QGridLayout(page);
     layout->setContentsMargins(16, 12, 16, 12);
     layout->setHorizontalSpacing(16);
@@ -6552,6 +6548,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     layout->setColumnStretch(0, 1);
     layout->setColumnStretch(1, 1);
     layout->setColumnStretch(2, 1);
+    layout->setRowStretch(1, 1);
     ChannelWidgets& channel = channels_[index];
 
     auto makeFieldLabel = [this](const QString& text) {
@@ -6631,8 +6628,6 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     channel.auto_pid_combo->addItem(QStringLiteral("PID自整定"), 1);
     channel.auto_pid_combo->addItem(QStringLiteral("实时优化(预留)"), 2);
     addField(0, 2, QStringLiteral("自动 PID"), channel.auto_pid_combo, channel.auto_pid_label_text);
-    layout->setRowStretch(1, 1);
-
     const quint8 channelNumber = static_cast<quint8>(index + 1);
     connect(channel.auto_pid_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.auto_pid_combo](int) {
         emit autoPidRequested(channelNumber, static_cast<quint16>(combo->currentData().toUInt()));
@@ -6657,12 +6652,14 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
 {
     QWidget *page = new QWidget(channel_stack_);
     page->setObjectName(QStringLiteral("temperatureCommonSettingsPage"));
+    page->setFixedHeight(kTemperatureControllerChannelStackHeight);
     auto *layout = new QGridLayout(page);
     layout->setContentsMargins(16, 12, 16, 12);
     layout->setHorizontalSpacing(18);
     layout->setVerticalSpacing(12);
     layout->setColumnStretch(0, 1);
     layout->setColumnStretch(1, 1);
+    layout->setRowStretch(2, 1);
 
     auto makeFieldLabel = [this](const QString& text) {
         auto *label = new QLabel(text, this);
@@ -6721,7 +6718,18 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
     common_.internal_temperature_edit->setFixedWidth(kTemperatureControllerInputWidth);
     addField(1, 1, QStringLiteral("温控器自身温度(°C)"), common_.internal_temperature_edit, common_.internal_temperature_label_text);
 
-    layout->setRowStretch(2, 1);
+    common_.factory_reset_button = new QPushButton(QStringLiteral("恢复出厂设置"), this);
+    common_.factory_reset_button->setObjectName(QStringLiteral("temperatureFactoryResetButton"));
+    common_.factory_reset_button->setCursor(Qt::PointingHandCursor);
+    common_.factory_reset_button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    common_.factory_reset_button->setFixedSize(142, 34);
+    common_.factory_reset_button->setIconSize(QSize(18, 18));
+    common_.factory_reset_button->setIcon(createLucideIcon(QStringLiteral("refresh-cw"),
+                                                           appThemeColor(AppThemeColor::Danger, VaporView::isDarkThemeEnabled())));
+    connect(common_.factory_reset_button, &QPushButton::clicked, this, [this]() {
+        emit factoryResetRequested();
+    });
+    layout->addWidget(common_.factory_reset_button, 2, 1, Qt::AlignRight | Qt::AlignBottom);
 
     connect(common_.address_spin, &QSpinBox::editingFinished, this, [this]() {
         emit deviceAddressRequested(static_cast<quint16>(common_.address_spin->value()));
@@ -6753,7 +6761,6 @@ void TemperatureControllerPanel::selectChannel(int index)
         channel_top_controls_stack_->setVisible(pageIndex < 2);
         channel_top_controls_stack_->setCurrentIndex(channelIndex);
     }
-
     auto updateButton = [pageIndex](QPushButton *button, int buttonIndex) {
         if (!button)
         {
@@ -8258,8 +8265,9 @@ void MainWindow::loadModernStyleSheet()
             "QMainWindow { background-color: @vv-surface; }"
             "QWidget#appCentralWidget, QWidget#mainCardsPane, QFrame#appSidebar, QStackedWidget#mainPageStack, QWidget#temperaturePage, QWidget#deviceConfigPage, QWidget#logSidePanel, QMainWindow#sessionViewerWindow, QWidget#sessionViewerCentralWidget, QWidget#sessionViewerViewport, QWidget#sessionViewerContentPane, QScrollArea#mainCardsScrollArea, QScrollArea#sessionViewerScrollArea, QWidget#mainCardsViewport, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QScrollArea#sessionViewerScrollArea > QWidget, QScrollArea#sessionViewerScrollArea > QWidget > QWidget, QSplitter#appLayoutSplitter, QSplitter#mainContentSplitter, QSplitter#homeOverviewSplitter, QSplitter#homeOverviewSplitter > QWidget, QSplitter#sessionViewerContentSplitter { background-color: @vv-surface; }"
             "QFrame#appSidebar { background-color: @vv-surface; border-right: 1px solid @vv-border; }"
-            "QPushButton#appSidebarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-weight: 600; min-height: 34px; max-height: 34px; padding: 6px 8px; text-align: left; }"
-            "QPushButton#appSidebarButton[_vv_sidebar_compact=\"true\"] { min-width: 42px; max-width: 42px; min-height: 42px; max-height: 42px; padding: 0px; text-align: center; }"
+            "QPushButton#appSidebarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-weight: 600; min-height: 34px; max-height: 34px; padding: 6px 8px; text-align: left; outline: none; }"
+            "QPushButton#appSidebarButton:focus { outline: none; }"
+            "QPushButton#appSidebarButton[_vv_sidebar_compact=\"true\"] { min-width: 42px; max-width: 42px; min-height: 42px; max-height: 42px; padding: 0px; text-align: center; outline: none; }"
             "QPushButton#appSidebarButton:hover, QPushButton#appSidebarButton[_vv_hover=\"true\"] { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "QPushButton#appSidebarButton:checked { background-color: @vv-primary; border-color: @vv-primary; color: @vv-white; }"
             "QPushButton#dangerButton { background-color: @vv-danger; border: 1px solid @vv-danger; border-radius: 6px; color: @vv-white; font-weight: 700; padding: 6px 14px; }"
@@ -8414,6 +8422,7 @@ void MainWindow::loadModernStyleSheet()
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 34px; max-height: 34px; padding: 0px 10px; text-align: center; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
+            "TemperatureControllerPanel QPushButton[temperatureOutputEnableSwitch=\"true\"] { background-color: transparent; border: none; padding: 0px; margin: 0px; min-width: 118px; max-width: 118px; min-height: 56px; max-height: 56px; outline: none; }"
             "QToolTip { background-color: rgb(45, 45, 45); color: #FFFFFF; border: 1px solid #474747; border-radius: 13px; padding: 8px 16px; font-size: 16px; }";
     }
 
@@ -8428,7 +8437,7 @@ QString temperatureControllerConfigStyleSheet()
         "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 34px; max-height: 34px; padding: 0px 10px; text-align: center; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
-        "TemperatureControllerPanel QPushButton[temperatureOutputEnableSwitch=\"true\"] { background-color: transparent; border: none; padding: 0px; margin: 0px; }"
+        "TemperatureControllerPanel QPushButton[temperatureOutputEnableSwitch=\"true\"] { background-color: transparent; border: none; padding: 0px; margin: 0px; min-width: 118px; max-width: 118px; min-height: 56px; max-height: 56px; outline: none; }"
         "TemperatureControllerPanel QPushButton#temperatureFactoryResetButton { background-color: transparent; border: 1px solid @vv-danger; border-radius: 8px; color: @vv-danger; font-size: 14px; font-weight: 600; padding: 0px 12px; text-align: center; }"
         "TemperatureControllerPanel QPushButton#temperatureFactoryResetButton:hover { background-color: rgba(220, 38, 38, 0.08); }"
         "TemperatureControllerPanel QLabel[temperatureMaxOutputWarning=\"true\"] { color: @vv-danger; }"
@@ -12985,6 +12994,7 @@ void MainWindow::setupCentralWidget()
         button->setProperty(kSidebarHoverProperty, false);
         configureHoverParticipant(button, kSidebarHoverParticipantProperty, this);
         button->setCheckable(true);
+        button->setFocusPolicy(Qt::NoFocus);
         button->setMinimumWidth(0);
         button->setMaximumWidth(QWIDGETSIZE_MAX);
         button->setFixedHeight(kAppSidebarButtonHeight);

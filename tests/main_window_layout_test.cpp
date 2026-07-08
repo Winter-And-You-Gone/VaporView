@@ -1350,6 +1350,8 @@ int main(int argc, char **argv)
     require(checkedSidebarButton->iconSize().width() >= 28 &&
                 checkedSidebarButton->iconSize().height() >= 28,
             "compact sidebar lucide icon is visually larger");
+    require(checkedSidebarButton->focusPolicy() == Qt::NoFocus,
+            "compact sidebar selected icon does not draw a keyboard focus frame");
     QPushButton *temperatureNavButton = nullptr;
     for (QPushButton *button : sidebarButtons)
     {
@@ -2359,38 +2361,45 @@ int main(int argc, char **argv)
                             modeCombo->size());
     const QRect topTargetRect(temperatureChannelTopRow->mapFromGlobal(targetSpin->mapToGlobal(QPoint(0, 0))),
                               targetSpin->size());
-    const QRect topChannel2Rect(temperatureConfigChannelButton2->mapTo(temperatureChannelTopRow, QPoint(0, 0)),
-                                temperatureConfigChannelButton2->size());
     const QRect topCommonRect(temperatureCommonSettingsButton->mapTo(temperatureChannelTopRow, QPoint(0, 0)),
                               temperatureCommonSettingsButton->size());
-    const QRect topFactoryResetRect(factoryResetButton->mapTo(temperatureChannelTopRow, QPoint(0, 0)),
-                                    factoryResetButton->size());
     require(selectorRowRectInTopRow.top() < topEnableRect.top(),
-            "temperature channel selector and factory reset action sit above the channel controls");
-    require(topChannel2Rect.right() < topCommonRect.left() &&
-                topCommonRect.right() < topFactoryResetRect.left() &&
-                topEnableRect.right() < topModeRect.left() &&
+            "temperature channel selector sits above the channel controls");
+    require(topEnableRect.right() < topModeRect.left() &&
                 topModeRect.right() < topTargetRect.left() &&
                 std::abs(topEnableRect.center().y() - topModeRect.center().y()) <= 2 &&
                 std::abs(topModeRect.center().y() - topTargetRect.center().y()) <= 2,
             "temperature output enable, mode, and target controls sit together under the channel switcher");
-    require(factoryResetButton->parentWidget() == temperatureChannelSelectorRow &&
+    require(topCommonRect.right() < stackRectInCard.right(),
+            "temperature common settings selector stays inside the compact top bar");
+    require(temperatureChannelStack->isAncestorOf(factoryResetButton) &&
+                !temperatureChannelTopRow->isAncestorOf(factoryResetButton) &&
                 !temperatureChannelTopBar->isAncestorOf(factoryResetButton) &&
+                !factoryResetButton->isVisible() &&
                 !factoryResetButton->icon().isNull(),
-            "temperature factory reset button sits beside common settings with a lucide icon");
+            "temperature factory reset button only lives inside the common settings page with a lucide icon");
+    require(enableSwitch->height() == 56 &&
+                enableSwitch->width() == 118 &&
+                enableSwitch->focusPolicy() == Qt::NoFocus,
+            "temperature output enable uses the same fixed homepage switch geometry without a focus frame");
+    const int channel1StackHeight = temperatureChannelStack->height();
     clickWidget(temperatureConfigChannelButton2, 150);
     activateLayouts(&window);
     require(temperatureChannelTopControlsStack->currentIndex() == 1 &&
                 temperatureChannelTopControlsStack->isVisible() &&
                 temperatureChannelStack->currentIndex() == 1 &&
+                std::abs(temperatureChannelStack->height() - channel1StackHeight) <= 1 &&
                 !temperatureConfigChannelButton1->isChecked() &&
                 temperatureConfigChannelButton2->isChecked() &&
                 !temperatureCommonSettingsButton->isChecked(),
             "temperature channel top bar switches the visible channel page");
     clickWidget(temperatureCommonSettingsButton, 150);
     activateLayouts(&window);
+    const int commonStackHeight = temperatureChannelStack->height();
     require(!temperatureChannelTopControlsStack->isVisible() &&
                 temperatureChannelStack->currentIndex() == 2 &&
+                std::abs(commonStackHeight - channel1StackHeight) <= 1 &&
+                factoryResetButton->isVisible() &&
                 !temperatureConfigChannelButton1->isChecked() &&
                 !temperatureConfigChannelButton2->isChecked() &&
                 temperatureCommonSettingsButton->isChecked(),
@@ -2400,6 +2409,8 @@ int main(int argc, char **argv)
     require(temperatureChannelTopControlsStack->currentIndex() == 0 &&
                 temperatureChannelTopControlsStack->isVisible() &&
                 temperatureChannelStack->currentIndex() == 0 &&
+                std::abs(temperatureChannelStack->height() - channel1StackHeight) <= 1 &&
+                !factoryResetButton->isVisible() &&
                 temperatureConfigChannelButton1->isChecked() &&
                 !temperatureConfigChannelButton2->isChecked() &&
                 !temperatureCommonSettingsButton->isChecked(),
@@ -2433,8 +2444,12 @@ int main(int argc, char **argv)
                                  "temperature channel top bar marks the selected channel without native tab chrome");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton[temperatureOutputEnableSwitch=\"true\"] {"),
-                                 QStringLiteral("background-color: transparent"),
+                                 QStringLiteral("min-height: 56px"),
                                  "temperature output enable switch keeps the homepage switch painting");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QPushButton#appSidebarButton {"),
+                                 QStringLiteral("outline: none"),
+                                 "sidebar buttons suppress native dotted focus outlines");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton#temperatureFactoryResetButton {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::Danger, false),
@@ -2551,8 +2566,8 @@ int main(int argc, char **argv)
                                 "temperature common over-temperature output field uses left label and right value layout");
     requireCommonFieldRowLayout(commonInternalTemperatureEdit,
                                 "temperature common internal temperature field uses left label and right value layout");
-    require(!temperatureChannelStack->isAncestorOf(factoryResetButton),
-            "temperature factory reset button lives outside the common settings page");
+    require(temperatureChannelStack->isAncestorOf(factoryResetButton),
+            "temperature factory reset button lives inside the common settings page");
     if (checkedSidebarButton && !checkedSidebarButton->isChecked())
     {
         clickWidget(checkedSidebarButton, 150);

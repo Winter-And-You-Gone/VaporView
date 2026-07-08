@@ -162,6 +162,11 @@ QPushButton#appSidebarButton {
     max-height: 34px;
     padding: 6px 8px;
     text-align: left;
+    outline: none;
+}
+
+QPushButton#appSidebarButton:focus {
+    outline: none;
 }
 
 QPushButton#appSidebarButton[_vv_sidebar_compact="true"] {
@@ -171,6 +176,7 @@ QPushButton#appSidebarButton[_vv_sidebar_compact="true"] {
     max-height: 42px;
     padding: 0px;
     text-align: center;
+    outline: none;
 }
 
 QPushButton#appSidebarButton:hover,
