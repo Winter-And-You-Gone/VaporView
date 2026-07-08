@@ -2310,7 +2310,7 @@ int main(int argc, char **argv)
     require(temperatureChannelTopRow->parentWidget() == temperatureConfigCard &&
                 temperatureChannelSelectorRow->parentWidget() == temperatureChannelTopRow &&
                 temperatureChannelTopBar->parentWidget() == temperatureChannelSelectorRow &&
-                temperatureChannelTopControlsStack->parentWidget() == temperatureChannelTopRow &&
+                temperatureChannelTopControlsStack->parentWidget() == temperatureChannelSelectorRow &&
                 temperatureChannelStack->parentWidget() == temperatureConfigCard,
             "temperature channel top row, switcher, top controls, and page stack live in the internal config card");
     require(temperatureConfigChannelButton1->parentWidget() == temperatureChannelTopBar &&
@@ -2367,7 +2367,7 @@ int main(int argc, char **argv)
                 temperatureChannelTopControlsStack->isAncestorOf(targetSpin) &&
                 !temperatureChannelTopBar->isAncestorOf(modeCombo) &&
                 !temperatureChannelTopBar->isAncestorOf(targetSpin),
-            "temperature output enable switches live beside common settings while mode and target remain below");
+            "temperature output enable switches live beside common settings while mode and target share the top row");
     require(temperatureOutputEnableTopLabel->isVisible() &&
                 enableSwitch->isVisible() &&
                 !enableSwitch2->isVisible(),
@@ -2376,6 +2376,8 @@ int main(int argc, char **argv)
                                    temperatureOutputEnableTopLabel->size());
     const QRect topEnableRect(enableSwitch->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
                               enableSwitch->size());
+    const QRect topEnableRectInTopRow(temperatureChannelTopRow->mapFromGlobal(enableSwitch->mapToGlobal(QPoint(0, 0))),
+                                      enableSwitch->size());
     const QRect topModeRect(temperatureChannelTopRow->mapFromGlobal(modeCombo->mapToGlobal(QPoint(0, 0))),
                             modeCombo->size());
     const QRect topTargetRect(temperatureChannelTopRow->mapFromGlobal(targetSpin->mapToGlobal(QPoint(0, 0))),
@@ -2387,11 +2389,12 @@ int main(int argc, char **argv)
                 std::abs(topEnableLabelRect.center().y() - topCommonRect.center().y()) <= 2 &&
                 std::abs(topEnableRect.center().y() - topCommonRect.center().y()) <= 2,
             "temperature output enable stays immediately to the right of common settings");
-    require(selectorRowRectInTopRow.bottom() < topModeRect.top(),
-            "temperature channel selector sits above the channel output controls");
+    require(topEnableRectInTopRow.right() < topControlsStackRectInTopRow.left() &&
+                std::abs(topEnableRectInTopRow.center().y() - topControlsStackRectInTopRow.center().y()) <= 2,
+            "temperature mode and target controls sit to the right of output enable");
     require(topModeRect.right() < topTargetRect.left() &&
                 std::abs(topModeRect.center().y() - topTargetRect.center().y()) <= 2,
-            "temperature mode and target controls sit together under the channel switcher");
+            "temperature mode and target controls sit together in the top row");
     require(topModeRect.bottom() <= topControlsStackRectInTopRow.bottom() &&
                 topTargetRect.bottom() <= topControlsStackRectInTopRow.bottom(),
             "temperature top controls fit within the top control stack without clipping");
@@ -2430,11 +2433,11 @@ int main(int argc, char **argv)
     clickWidget(temperatureCommonSettingsButton, 150);
     activateLayouts(&window);
     const int commonStackHeight = temperatureChannelStack->height();
-    require(!temperatureChannelTopControlsStack->isVisible() &&
+    require(temperatureChannelTopControlsStack->isVisible() &&
                 temperatureChannelTopControlsStack->currentIndex() == 2 &&
                 temperatureChannelStack->currentIndex() == 2 &&
-                commonStackHeight > channel1StackHeight &&
-                temperatureChannelTopRow->height() < channel1TopRowHeight &&
+                std::abs(commonStackHeight - channel1StackHeight) <= 1 &&
+                std::abs(temperatureChannelTopRow->height() - channel1TopRowHeight) <= 1 &&
                 std::abs(temperatureConfigCard->height() - channel1ConfigCardHeight) <= 1 &&
                 !temperatureOutputEnableTopLabel->isVisible() &&
                 !enableSwitch->isVisible() &&
@@ -2443,27 +2446,28 @@ int main(int argc, char **argv)
                 !temperatureConfigChannelButton1->isChecked() &&
                 !temperatureConfigChannelButton2->isChecked() &&
                 temperatureCommonSettingsButton->isChecked(),
-            "temperature top bar switches to a common settings page with only the common action visible");
-    const QRect commonAddressRowRect(addressSpin->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
-                                     addressSpin->parentWidget()->size());
-    const QRect commonBaudRowRect(rs485BaudCombo->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
-                                  rs485BaudCombo->parentWidget()->size());
-    const QRect commonOvertempRowRect(overtempOutputCombo->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
-                                      overtempOutputCombo->parentWidget()->size());
-    const QRect commonInternalRowRect(commonInternalTemperatureEdit->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
-                                      commonInternalTemperatureEdit->parentWidget()->size());
-    require(std::abs(commonAddressRowRect.top() - commonBaudRowRect.top()) <= 2 &&
-                std::abs(commonOvertempRowRect.top() - commonInternalRowRect.top()) <= 2 &&
-                commonOvertempRowRect.top() > commonAddressRowRect.bottom() &&
-                commonInternalRowRect.bottom() <= temperatureChannelStack->rect().bottom(),
-            "temperature common settings rows fit inside the stack without overlap or clipping");
+            "temperature top bar switches to a common settings page with common top controls visible");
     const QRect commonButtonRectInSelector(temperatureCommonSettingsButton->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
                                            temperatureCommonSettingsButton->size());
     const QRect factoryResetRectInSelector(factoryResetButton->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
                                            factoryResetButton->size());
+    const QRect commonAddressRowRect(temperatureChannelSelectorRow->mapFromGlobal(addressSpin->parentWidget()->mapToGlobal(QPoint(0, 0))),
+                                     addressSpin->parentWidget()->size());
+    const QRect commonBaudRowRect(temperatureChannelSelectorRow->mapFromGlobal(rs485BaudCombo->parentWidget()->mapToGlobal(QPoint(0, 0))),
+                                  rs485BaudCombo->parentWidget()->size());
     require(factoryResetRectInSelector.left() > commonButtonRectInSelector.right() &&
-                std::abs(factoryResetRectInSelector.center().y() - commonButtonRectInSelector.center().y()) <= 2,
-            "temperature factory reset button appears immediately to the right of common settings");
+                factoryResetRectInSelector.right() < commonAddressRowRect.left() &&
+                commonAddressRowRect.right() < commonBaudRowRect.left() &&
+                std::abs(factoryResetRectInSelector.center().y() - commonAddressRowRect.center().y()) <= 2 &&
+                std::abs(commonAddressRowRect.center().y() - commonBaudRowRect.center().y()) <= 2,
+            "temperature common address and baud controls sit to the right of factory reset");
+    const QRect commonOvertempRowRect(overtempOutputCombo->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
+                                      overtempOutputCombo->parentWidget()->size());
+    const QRect commonInternalRowRect(commonInternalTemperatureEdit->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
+                                      commonInternalTemperatureEdit->parentWidget()->size());
+    require(std::abs(commonOvertempRowRect.top() - commonInternalRowRect.top()) <= 2 &&
+                commonInternalRowRect.bottom() <= temperatureChannelStack->rect().bottom(),
+            "temperature common settings remaining fields fit inside the stack without overlap or clipping");
     clickWidget(temperatureConfigChannelButton1, 150);
     activateLayouts(&window);
     require(temperatureChannelTopControlsStack->currentIndex() == 0 &&
@@ -2603,6 +2607,10 @@ int main(int argc, char **argv)
                              "temperature output mode field moves to the top channel bar");
     requireTopBarFieldLayout(targetSpin,
                              "temperature target field moves to the right of output mode in the top channel bar");
+    requireTopBarFieldLayout(addressSpin,
+                             "temperature common RS485 address field moves to the top channel bar");
+    requireTopBarFieldLayout(rs485BaudCombo,
+                             "temperature common RS485 baud field moves to the right of factory reset");
     auto requireCommonFieldRowLayout = [temperatureChannelStack](QWidget *editor, const char *message) {
         require(editor != nullptr && editor->parentWidget() != nullptr, message);
         QWidget *row = editor->parentWidget();
@@ -2618,10 +2626,6 @@ int main(int argc, char **argv)
                     editorRect.right() >= row->rect().right() - 1,
                 message);
     };
-    requireCommonFieldRowLayout(addressSpin,
-                                "temperature common RS485 address field uses left label and right value layout");
-    requireCommonFieldRowLayout(rs485BaudCombo,
-                                "temperature common RS485 baud field uses left label and right value layout");
     requireCommonFieldRowLayout(overtempOutputCombo,
                                 "temperature common over-temperature output field uses left label and right value layout");
     requireCommonFieldRowLayout(commonInternalTemperatureEdit,

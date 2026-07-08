@@ -799,7 +799,7 @@ constexpr int kTemperatureControllerControlLabelWidth = 150;
 constexpr int kTemperatureControllerConfigRowHeight = 38;
 constexpr int kTemperatureControllerTopControlsHeight = 38;
 constexpr int kTemperatureControllerChannelStackHeight = 54;
-constexpr int kTemperatureControllerCommonStackHeight = 100;
+constexpr int kTemperatureControllerCommonStackHeight = kTemperatureControllerChannelStackHeight;
 constexpr int kTemperatureControllerHistoryLimit = 240;
 constexpr int kRemotePacketRateWindowMs = 5000;
 constexpr qint64 kTcpRecordingStatusRefreshMs = 500;
@@ -6434,20 +6434,16 @@ void TemperatureControllerPanel::setupUi()
         emit factoryResetRequested();
     });
     channelSelectorRowLayout->addWidget(common_.factory_reset_button, 0, Qt::AlignVCenter);
-    channelTopRowLayout->addWidget(channelSelectorRow, 0, Qt::AlignLeft);
 
-    channel_top_controls_stack_ = new QStackedWidget(channelTopRow);
+    channel_top_controls_stack_ = new QStackedWidget(channelSelectorRow);
     channel_top_controls_stack_->setObjectName(QStringLiteral("temperatureChannelTopControlsStack"));
     channel_top_controls_stack_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     channel_top_controls_stack_->setFixedHeight(kTemperatureControllerTopControlsHeight);
     channel_top_controls_stack_->addWidget(createChannelTopControlsPage(0));
     channel_top_controls_stack_->addWidget(createChannelTopControlsPage(1));
-    auto *commonTopControlsPage = new QWidget(channel_top_controls_stack_);
-    commonTopControlsPage->setObjectName(QStringLiteral("temperatureChannelTopControlsPageCommon"));
-    commonTopControlsPage->setFixedHeight(kTemperatureControllerTopControlsHeight);
-    commonTopControlsPage->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    channel_top_controls_stack_->addWidget(commonTopControlsPage);
-    channelTopRowLayout->addWidget(channel_top_controls_stack_, 0, Qt::AlignLeft);
+    channel_top_controls_stack_->addWidget(createCommonTopControlsPage());
+    channelSelectorRowLayout->addWidget(channel_top_controls_stack_, 0, Qt::AlignVCenter);
+    channelTopRowLayout->addWidget(channelSelectorRow, 0, Qt::AlignLeft);
     configCardLayout->addWidget(channelTopRow, 0, Qt::AlignLeft);
 
     channel_stack_ = new QStackedWidget(configCard);
@@ -6543,6 +6539,65 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
         emit targetTemperatureRequested(channelNumber, spin->value());
     });
 
+    return page;
+}
+
+QWidget *TemperatureControllerPanel::createCommonTopControlsPage()
+{
+    QWidget *page = new QWidget(channel_top_controls_stack_);
+    page->setObjectName(QStringLiteral("temperatureChannelTopControlsPageCommon"));
+    page->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    page->setFixedHeight(kTemperatureControllerTopControlsHeight);
+    auto *layout = new QHBoxLayout(page);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(12);
+
+    auto makeFieldLabel = [](const QString& text) {
+        auto *label = new QLabel(text);
+        label->setObjectName(QStringLiteral("fieldLabel"));
+        label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        label->setMinimumHeight(22);
+        return label;
+    };
+
+    auto addTopField = [layout, &makeFieldLabel](const QString& labelText, QWidget *editor, QLabel *&label) {
+        label = makeFieldLabel(labelText);
+        editor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        auto *field = new QWidget();
+        field->setObjectName(QStringLiteral("temperatureTopBarField"));
+        field->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        field->setFixedHeight(kTemperatureControllerTopControlsHeight);
+        auto *fieldLayout = new QHBoxLayout(field);
+        fieldLayout->setContentsMargins(0, 0, 0, 0);
+        fieldLayout->setSpacing(8);
+        fieldLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        fieldLayout->addWidget(editor, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        layout->addWidget(field, 0, Qt::AlignVCenter);
+    };
+
+    common_.address_spin = new QSpinBox(this);
+    common_.address_spin->setObjectName(QStringLiteral("temperatureDeviceAddressSpin"));
+    common_.address_spin->setRange(1, 247);
+    common_.address_spin->setFixedWidth(kTemperatureControllerInputWidth);
+    addTopField(QStringLiteral("设置温控器485站号"), common_.address_spin, common_.address_label_text);
+
+    common_.rs485_baud_combo = new QComboBox(this);
+    common_.rs485_baud_combo->setObjectName(QStringLiteral("temperatureRs485BaudCombo"));
+    common_.rs485_baud_combo->setFixedWidth(kTemperatureControllerWideInputWidth);
+    common_.rs485_baud_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    const QList<int> baudRates = {4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800};
+    for (int i = 0; i < baudRates.size(); ++i)
+    {
+        common_.rs485_baud_combo->addItem(QString::number(baudRates.at(i)), i);
+    }
+    addTopField(QStringLiteral("设置485串口波特率"), common_.rs485_baud_combo, common_.rs485_baud_label_text);
+
+    connect(common_.address_spin, &QSpinBox::editingFinished, this, [this]() {
+        emit deviceAddressRequested(static_cast<quint16>(common_.address_spin->value()));
+    });
+    connect(common_.rs485_baud_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        emit rs485BaudRequested(static_cast<quint16>(common_.rs485_baud_combo->currentData().toUInt()));
+    });
     return page;
 }
 
@@ -6660,7 +6715,7 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
 {
     QWidget *page = new QWidget(channel_stack_);
     page->setObjectName(QStringLiteral("temperatureCommonSettingsPage"));
-    page->setFixedHeight(kTemperatureControllerCommonStackHeight);
+    page->setFixedHeight(kTemperatureControllerChannelStackHeight);
     auto *layout = new QGridLayout(page);
     layout->setContentsMargins(16, 8, 16, 8);
     layout->setHorizontalSpacing(18);
@@ -6693,44 +6748,21 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
         layout->addWidget(cell, row, column);
     };
 
-    common_.address_spin = new QSpinBox(this);
-    common_.address_spin->setObjectName(QStringLiteral("temperatureDeviceAddressSpin"));
-    common_.address_spin->setRange(1, 247);
-    common_.address_spin->setFixedWidth(kTemperatureControllerInputWidth);
-    addField(0, 0, QStringLiteral("设置温控器485站号"), common_.address_spin, common_.address_label_text);
-
-    common_.rs485_baud_combo = new QComboBox(this);
-    common_.rs485_baud_combo->setObjectName(QStringLiteral("temperatureRs485BaudCombo"));
-    common_.rs485_baud_combo->setFixedWidth(kTemperatureControllerWideInputWidth);
-    common_.rs485_baud_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
-    const QList<int> baudRates = {4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800};
-    for (int i = 0; i < baudRates.size(); ++i)
-    {
-        common_.rs485_baud_combo->addItem(QString::number(baudRates.at(i)), i);
-    }
-    addField(0, 1, QStringLiteral("设置485串口波特率"), common_.rs485_baud_combo, common_.rs485_baud_label_text);
-
     common_.overtemp_output_combo = new QComboBox(this);
     common_.overtemp_output_combo->setObjectName(QStringLiteral("temperatureOvertempOutputModeCombo"));
     common_.overtemp_output_combo->setFixedWidth(kTemperatureControllerWideInputWidth);
     common_.overtemp_output_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     common_.overtemp_output_combo->addItem(QStringLiteral("继续输出"), 0);
     common_.overtemp_output_combo->addItem(QStringLiteral("关闭输出"), 1);
-    addField(1, 0, QStringLiteral("过温输出模式"), common_.overtemp_output_combo, common_.overtemp_output_label_text);
+    addField(0, 0, QStringLiteral("过温输出模式"), common_.overtemp_output_combo, common_.overtemp_output_label_text);
 
     common_.internal_temperature_edit = new QLineEdit(this);
     common_.internal_temperature_edit->setObjectName(QStringLiteral("temperatureCommonInternalTemperatureEdit"));
     common_.internal_temperature_edit->setReadOnly(true);
     common_.internal_temperature_edit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     common_.internal_temperature_edit->setFixedWidth(kTemperatureControllerInputWidth);
-    addField(1, 1, QStringLiteral("温控器自身温度(°C)"), common_.internal_temperature_edit, common_.internal_temperature_label_text);
+    addField(0, 1, QStringLiteral("温控器自身温度(°C)"), common_.internal_temperature_edit, common_.internal_temperature_label_text);
 
-    connect(common_.address_spin, &QSpinBox::editingFinished, this, [this]() {
-        emit deviceAddressRequested(static_cast<quint16>(common_.address_spin->value()));
-    });
-    connect(common_.rs485_baud_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
-        emit rs485BaudRequested(static_cast<quint16>(common_.rs485_baud_combo->currentData().toUInt()));
-    });
     connect(common_.overtemp_output_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
         emit overtempOutputModeRequested(static_cast<quint16>(common_.overtemp_output_combo->currentData().toUInt()));
     });
@@ -6756,8 +6788,16 @@ void TemperatureControllerPanel::selectChannel(int index)
     }
     if (channel_top_controls_stack_)
     {
-        channel_top_controls_stack_->setVisible(pageIndex < 2);
+        channel_top_controls_stack_->setVisible(true);
         channel_top_controls_stack_->setCurrentIndex(pageIndex < 2 ? channelIndex : 2);
+        if (QWidget *currentTopControls = channel_top_controls_stack_->currentWidget())
+        {
+            const int currentWidth = currentTopControls->sizeHint().width();
+            if (currentWidth > 0)
+            {
+                channel_top_controls_stack_->setFixedWidth(currentWidth);
+            }
+        }
         channel_top_controls_stack_->updateGeometry();
     }
     if (common_.factory_reset_button)
