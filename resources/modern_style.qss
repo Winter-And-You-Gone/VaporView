@@ -1146,10 +1146,16 @@ TemperatureControllerPanel QLabel#highlightedValue {
 }
 
 TemperatureControllerPanel QTabWidget::pane {
+    background-color: transparent;
+    border: none;
+    border-radius: 0px;
+    top: 0px;
+}
+
+TemperatureControllerPanel QFrame#temperatureConfigCard {
     background-color: @vv-surface;
     border: 1px solid @vv-border;
-    border-radius: 4px;
-    top: -1px;
+    border-radius: 8px;
 }
 
 TemperatureControllerPanel QTabBar::tab {

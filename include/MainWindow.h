@@ -676,6 +676,9 @@ private:
     QPushButton *createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device);
     void setRemoteDeviceButtonsEnabled(bool enabled);
     void updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, VaporView::DeviceState state);
+    void updateTemperatureControllerTitleText();
+    void updateTemperatureTitleButtonsState();
+    void handleTemperatureTitleButton(VaporView::CommandId command);
 #ifdef VAPORVIEW_HAS_OSGEARTH
     void maybeForwardMap3DSample(const VaporView::EpsilonData& epsilonData, quint64 recordTimestampUs);
     void noteMap3DSampleDrop(const QString& source, const QString& reason, quint64 recordTimestampUs = 0);

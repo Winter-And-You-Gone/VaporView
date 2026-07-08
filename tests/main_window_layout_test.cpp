@@ -2212,6 +2212,42 @@ int main(int argc, char **argv)
     auto *temperaturePageForLayout = window.findChild<QWidget *>(QStringLiteral("temperaturePage"));
     require(temperaturePageForLayout != nullptr && temperaturePageForLayout->isVisible(),
             "temperature page is visible for controller layout checks");
+    QLabel *temperatureControllerTitleLabel = nullptr;
+    const QList<QLabel*> temperaturePageTitleLabels =
+        temperaturePageForLayout->findChildren<QLabel *>(QStringLiteral("sectionTitleLabel"));
+    for (QLabel *label : temperaturePageTitleLabels)
+    {
+        if (label->text().contains(QStringLiteral("RD105激光驱动板温控器")))
+        {
+            temperatureControllerTitleLabel = label;
+            break;
+        }
+    }
+#ifdef Q_OS_WIN
+    const QString expectedTemperaturePortText = QStringLiteral("COM9");
+#else
+    const QString expectedTemperaturePortText = QStringLiteral("/dev/ttyRD105");
+#endif
+    require(temperatureControllerTitleLabel != nullptr &&
+                temperatureControllerTitleLabel->text().contains(expectedTemperaturePortText) &&
+                !temperatureControllerTitleLabel->text().contains(QStringLiteral("RD105温控器")),
+            "temperature controller title names the laser driver board and shows the selected serial port");
+    auto *temperatureTitleConnectButton =
+        temperaturePageForLayout->findChild<QPushButton *>(QStringLiteral("temperatureTitleConnectButton"));
+    auto *temperatureTitleDisconnectButton =
+        temperaturePageForLayout->findChild<QPushButton *>(QStringLiteral("temperatureTitleDisconnectButton"));
+    auto *temperatureTitleReconnectButton =
+        temperaturePageForLayout->findChild<QPushButton *>(QStringLiteral("temperatureTitleReconnectButton"));
+    require(temperatureTitleConnectButton != nullptr &&
+                temperatureTitleDisconnectButton != nullptr &&
+                temperatureTitleReconnectButton != nullptr,
+            "temperature controller title-bar connection buttons are discoverable");
+    require(temperatureTitleConnectButton->isEnabled() &&
+                !temperatureTitleDisconnectButton->isEnabled() &&
+                temperatureTitleReconnectButton->isEnabled(),
+            "temperature controller title-bar connect/reconnect buttons are usable in local serial mode");
+    auto *temperatureConfigCard =
+        temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureConfigCard"));
     auto *temperatureTabs =
         temperaturePanel->findChild<QTabWidget *>(QStringLiteral("temperatureConfigTabs"));
     QWidget *temperatureConfigPlot = nullptr;
@@ -2225,19 +2261,29 @@ int main(int argc, char **argv)
             break;
         }
     }
-    require(temperatureTabs != nullptr && temperatureConfigPlot != nullptr,
-            "temperature controller page exposes tabs and a full-width trend plot");
-    const QRect tabsRectInPanel(temperatureTabs->mapTo(temperaturePanel, QPoint(0, 0)),
-                                temperatureTabs->size());
+    require(temperatureConfigCard != nullptr && temperatureTabs != nullptr && temperatureConfigPlot != nullptr,
+            "temperature controller page exposes an internal config card and a full-width trend plot");
+    require(temperatureTabs->parentWidget() == temperatureConfigCard,
+            "temperature channel tabs live inside the internal config card");
+    const QRect cardRectInPanel(temperatureConfigCard->mapTo(temperaturePanel, QPoint(0, 0)),
+                                temperatureConfigCard->size());
     const QRect plotRectInPanel(temperatureConfigPlot->mapTo(temperaturePanel, QPoint(0, 0)),
                                 temperatureConfigPlot->size());
-    require(tabsRectInPanel.bottom() < plotRectInPanel.top(),
-            "temperature trend plot is laid out below the channel configuration tabs");
-    require(std::abs(tabsRectInPanel.left() - plotRectInPanel.left()) <= 2 &&
-                std::abs(tabsRectInPanel.width() - plotRectInPanel.width()) <= 2,
-            "temperature trend plot follows the full channel configuration width");
+    require(cardRectInPanel.bottom() < plotRectInPanel.top(),
+            "temperature trend plot is laid out below the channel configuration card");
+    require(std::abs(cardRectInPanel.left() - plotRectInPanel.left()) <= 2 &&
+                std::abs(cardRectInPanel.width() - plotRectInPanel.width()) <= 2,
+            "temperature trend plot follows the full channel configuration card width");
     require(plotRectInPanel.width() >= temperaturePanel->width() - 32,
             "temperature trend plot expands to the controller panel width");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("TemperatureControllerPanel QTabWidget::pane {"),
+                                 QStringLiteral("border: none"),
+                                 "temperature channel tabs do not draw the old pane line above the tabs");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("TemperatureControllerPanel QFrame#temperatureConfigCard {"),
+                                 QStringLiteral("border-radius: 8px"),
+                                 "temperature channel controls are wrapped in an internal rounded card");
 
     auto *temperatureScrollArea =
         temperaturePageForLayout->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));

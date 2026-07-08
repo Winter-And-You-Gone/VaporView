@@ -6333,13 +6333,23 @@ void TemperatureControllerPanel::setupUi()
     statusLayout->setColumnStretch(4, 1);
     layout->addLayout(statusLayout);
 
-    tabs_ = new QTabWidget(this);
+    auto *configCard = new QFrame(this);
+    configCard->setObjectName(QStringLiteral("temperatureConfigCard"));
+    configCard->setFrameShape(QFrame::NoFrame);
+    configCard->setAttribute(Qt::WA_StyledBackground, true);
+    configCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    auto *configCardLayout = new QVBoxLayout(configCard);
+    configCardLayout->setContentsMargins(12, 10, 12, 12);
+    configCardLayout->setSpacing(0);
+
+    tabs_ = new QTabWidget(configCard);
     tabs_->setObjectName(QStringLiteral("temperatureConfigTabs"));
     tabs_->setDocumentMode(true);
     tabs_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     tabs_->addTab(createChannelPage(0), QStringLiteral("通道1"));
     tabs_->addTab(createChannelPage(1), QStringLiteral("通道2"));
-    layout->addWidget(tabs_, 0);
+    configCardLayout->addWidget(tabs_, 0);
+    layout->addWidget(configCard, 0);
 
     temperature_plot_ = new TemperatureTrendPlotWidget(this);
     temperature_plot_->setProperty("temperatureConfigPlot", true);
@@ -8052,13 +8062,21 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton:disabled { background-color: @vv-border-strong; color: @vv-white; }"
             "QPushButton#compactTcpButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
             "QPushButton#compactTcpStartButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
-            "TemperatureControllerPanel QTabWidget::pane { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 4px; top: -1px; }"
+            "TemperatureControllerPanel QTabWidget::pane { background-color: transparent; border: none; border-radius: 0px; top: 0px; }"
+            "TemperatureControllerPanel QFrame#temperatureConfigCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
             "TemperatureControllerPanel QTabBar::tab { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-bottom: none; border-top-left-radius: 4px; border-top-right-radius: 4px; color: @vv-text; padding: 4px 14px; min-height: 22px; }"
             "TemperatureControllerPanel QTabBar::tab:selected { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
             "TemperatureControllerPanel QTabBar::tab:!selected:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "QToolTip { background-color: rgb(45, 45, 45); color: #FFFFFF; border: 1px solid #474747; border-radius: 13px; padding: 8px 16px; font-size: 16px; }";
     }
 
+}
+
+QString temperatureControllerConfigStyleSheet()
+{
+    return QStringLiteral(
+        "TemperatureControllerPanel QTabWidget::pane { background-color: transparent; border: none; border-radius: 0px; top: 0px; }"
+        "TemperatureControllerPanel QFrame#temperatureConfigCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }");
 }
 
 QString MainWindow::themedStyleSheet() const
@@ -8075,11 +8093,13 @@ QString MainWindow::themedStyleSheet() const
               applyAppThemeTokens(darkOverviewStyleSheet(), true) +
               mainCardsScrollBarStyle +
               rtkConfigCardStyle +
-              applyAppThemeTokens(customTitleBarStyleSheet(true), true)
+              applyAppThemeTokens(customTitleBarStyleSheet(true), true) +
+              applyAppThemeTokens(temperatureControllerConfigStyleSheet(), true)
         : baseStyle +
               mainCardsScrollBarStyle +
               rtkConfigCardStyle +
-              applyAppThemeTokens(customTitleBarStyleSheet(false), false);
+              applyAppThemeTokens(customTitleBarStyleSheet(false), false) +
+              applyAppThemeTokens(temperatureControllerConfigStyleSheet(), false);
 }
 
 QString MainWindow::scaledStyleSheet(const QString& styleSheet) const
@@ -9287,6 +9307,8 @@ void MainWindow::bindRememberedInputState()
         connect(combo, &QComboBox::currentTextChanged, this, [this](const QString&) {
             saveRememberedInputState();
             updateHomeDeviceStatusCapsules();
+            updateTemperatureControllerTitleText();
+            updateTemperatureTitleButtonsState();
         });
     };
 
@@ -9398,6 +9420,8 @@ void MainWindow::updateSourceModeUi()
     if (sky_telemetry_tcp_port_spin_) sky_telemetry_tcp_port_spin_->setVisible(tcpTelemetry);
     if (sky_device_config_btn_) sky_device_config_btn_->setEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
     setRemoteDeviceButtonsEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
+    updateTemperatureControllerTitleText();
+    updateTemperatureTitleButtonsState();
     updateRemoteTelemetrySummaryLabel();
     updateHomeDeviceStatusCapsules();
     updateConfigCardHeightForSourceMode();
@@ -10527,6 +10551,137 @@ void MainWindow::setRemoteDeviceButtonsEnabled(bool enabled)
         {
             widget->setVisible(true);
         }
+    }
+}
+
+void MainWindow::updateTemperatureControllerTitleText()
+{
+    if (!temperature_controller_inline_title_lbl_)
+    {
+        return;
+    }
+
+    const QString portText = temperature_port_combo_
+        ? temperature_port_combo_->currentText().trimmed()
+        : QString();
+    const bool hasPort = !portText.isEmpty() && !portText.startsWith(QStringLiteral("--"));
+    const QString base = is_english_
+        ? QStringLiteral("RD105 Laser Driver Board Temperature Controller")
+        : QStringLiteral("RD105激光驱动板温控器");
+    const QString portDisplay = hasPort
+        ? portText
+        : (is_english_ ? QStringLiteral("No serial port") : QStringLiteral("未选择串口"));
+    temperature_controller_inline_title_lbl_->setText(QStringLiteral("%1 · %2").arg(base, portDisplay));
+    temperature_controller_inline_title_lbl_->setToolTip(is_english_
+        ? QStringLiteral("Selected RD105 serial port: %1").arg(portDisplay)
+        : QStringLiteral("当前 RD105 串口：%1").arg(portDisplay));
+}
+
+void MainWindow::updateTemperatureTitleButtonsState()
+{
+    const QString connectText = is_english_ ? QStringLiteral("Connect") : QStringLiteral("连接");
+    const QString disconnectText = is_english_ ? QStringLiteral("Disconnect") : QStringLiteral("断开");
+    const QString reconnectText = is_english_ ? QStringLiteral("Reconnect") : QStringLiteral("重连");
+    if (temperature_remote_connect_btn_) temperature_remote_connect_btn_->setText(connectText);
+    if (temperature_remote_disconnect_btn_) temperature_remote_disconnect_btn_->setText(disconnectText);
+    if (temperature_remote_reconnect_btn_) temperature_remote_reconnect_btn_->setText(reconnectText);
+    for (QPushButton *button : {temperature_remote_connect_btn_,
+                                temperature_remote_disconnect_btn_,
+                                temperature_remote_reconnect_btn_})
+    {
+        if (button)
+        {
+            fitButtonMinimumWidth(button, 64);
+        }
+    }
+
+    if (isRemoteSkyMode())
+    {
+        const bool remoteCommandEnabled = ground_telemetry_service_ && ground_telemetry_service_->isOpen();
+        if (temperature_remote_connect_btn_) temperature_remote_connect_btn_->setEnabled(remoteCommandEnabled);
+        if (temperature_remote_disconnect_btn_) temperature_remote_disconnect_btn_->setEnabled(remoteCommandEnabled);
+        if (temperature_remote_reconnect_btn_) temperature_remote_reconnect_btn_->setEnabled(remoteCommandEnabled);
+        updateRemoteDeviceButtonText(VaporView::SkyDeviceId::TemperatureController,
+                                     remote_device_states_.value(VaporView::SkyDeviceId::TemperatureController,
+                                                                 VaporView::DeviceState::Disconnected));
+        return;
+    }
+
+    const bool hasPort = homeDevicePortSelected(VaporView::SkyDeviceId::TemperatureController);
+    const bool connected = homeDeviceConnected(VaporView::SkyDeviceId::TemperatureController);
+    const bool canConnect = hasPort && !connected && connect_btn_ && connect_btn_->isEnabled();
+    const bool canDisconnect = connected && disconnect_btn_ && disconnect_btn_->isEnabled();
+    const bool canReconnect = hasPort && !connection_attempt_in_progress_ &&
+        !port_detection_in_progress_ && !epsilon_reconfigure_in_progress_ &&
+        (canConnect || canDisconnect);
+    if (temperature_remote_connect_btn_) temperature_remote_connect_btn_->setEnabled(canConnect);
+    if (temperature_remote_disconnect_btn_) temperature_remote_disconnect_btn_->setEnabled(canDisconnect);
+    if (temperature_remote_reconnect_btn_) temperature_remote_reconnect_btn_->setEnabled(canReconnect);
+
+    const QString portText = temperature_port_combo_
+        ? temperature_port_combo_->currentText().trimmed()
+        : QString();
+    const QString portDisplay = hasPort
+        ? portText
+        : (is_english_ ? QStringLiteral("No serial port selected") : QStringLiteral("未选择串口"));
+    if (temperature_remote_connect_btn_)
+    {
+        temperature_remote_connect_btn_->setToolTip(is_english_
+            ? QStringLiteral("Connect the local RD105 on %1").arg(portDisplay)
+            : QStringLiteral("连接本地 RD105：%1").arg(portDisplay));
+    }
+    if (temperature_remote_disconnect_btn_)
+    {
+        temperature_remote_disconnect_btn_->setToolTip(is_english_
+            ? QStringLiteral("Disconnect the local RD105 on %1").arg(portDisplay)
+            : QStringLiteral("断开本地 RD105：%1").arg(portDisplay));
+    }
+    if (temperature_remote_reconnect_btn_)
+    {
+        temperature_remote_reconnect_btn_->setToolTip(is_english_
+            ? QStringLiteral("Reconnect the local RD105 on %1").arg(portDisplay)
+            : QStringLiteral("重连本地 RD105：%1").arg(portDisplay));
+    }
+}
+
+void MainWindow::handleTemperatureTitleButton(VaporView::CommandId command)
+{
+    if (isRemoteSkyMode())
+    {
+        sendRemoteDeviceCommand(command, VaporView::SkyDeviceId::TemperatureController);
+        return;
+    }
+
+    if (command == VaporView::CommandId::DisconnectDevice)
+    {
+        if (disconnect_btn_ && disconnect_btn_->isEnabled())
+        {
+            disconnect_btn_->trigger();
+        }
+        return;
+    }
+
+    if (command == VaporView::CommandId::ReconnectDevice)
+    {
+        if (homeDeviceConnected(VaporView::SkyDeviceId::TemperatureController) &&
+            disconnect_btn_ && disconnect_btn_->isEnabled())
+        {
+            disconnect_btn_->trigger();
+            QTimer::singleShot(0, this, [this]() {
+                if (connect_btn_ && connect_btn_->isEnabled())
+                {
+                    connect_btn_->trigger();
+                }
+            });
+            return;
+        }
+        command = VaporView::CommandId::ConnectDevice;
+    }
+
+    if (command == VaporView::CommandId::ConnectDevice &&
+        connect_btn_ && connect_btn_->isEnabled())
+    {
+        connect_btn_->trigger();
     }
 }
 
@@ -14160,15 +14315,35 @@ void MainWindow::setupDataPanels()
                                                                          QStringLiteral("thermometer"),
                                                                          kMainPageButtonHeight,
                                                                          &temperatureTitleCluster);
-    temperatureTitleLayout->addWidget(temperatureTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    temperatureTitleLayout->addStretch(1);
+    temperatureTitleCluster->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    temperature_controller_inline_title_lbl_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    temperatureTitleLayout->addWidget(temperatureTitleCluster, 1, Qt::AlignVCenter | Qt::AlignLeft);
     temperature_remote_buttons_widget_ = new QWidget(temperatureTitleBar);
+    temperature_remote_buttons_widget_->setObjectName(QStringLiteral("temperatureTitleButtons"));
     auto *temperatureRemoteLayout = new QHBoxLayout(temperature_remote_buttons_widget_);
     temperatureRemoteLayout->setContentsMargins(0, 0, 0, 0);
     temperatureRemoteLayout->setSpacing(4);
     temperature_remote_connect_btn_ = createRemoteDeviceButton(QStringLiteral("连接"), VaporView::CommandId::ConnectDevice, VaporView::SkyDeviceId::TemperatureController);
     temperature_remote_disconnect_btn_ = createRemoteDeviceButton(QStringLiteral("断开"), VaporView::CommandId::DisconnectDevice, VaporView::SkyDeviceId::TemperatureController);
     temperature_remote_reconnect_btn_ = createRemoteDeviceButton(QStringLiteral("重连"), VaporView::CommandId::ReconnectDevice, VaporView::SkyDeviceId::TemperatureController);
+    temperature_remote_connect_btn_->setObjectName(QStringLiteral("temperatureTitleConnectButton"));
+    temperature_remote_disconnect_btn_->setObjectName(QStringLiteral("temperatureTitleDisconnectButton"));
+    temperature_remote_reconnect_btn_->setObjectName(QStringLiteral("temperatureTitleReconnectButton"));
+    for (QPushButton *button : {temperature_remote_connect_btn_,
+                                temperature_remote_disconnect_btn_,
+                                temperature_remote_reconnect_btn_})
+    {
+        QObject::disconnect(button, nullptr, this, nullptr);
+    }
+    connect(temperature_remote_connect_btn_, &QPushButton::clicked, this, [this]() {
+        handleTemperatureTitleButton(VaporView::CommandId::ConnectDevice);
+    });
+    connect(temperature_remote_disconnect_btn_, &QPushButton::clicked, this, [this]() {
+        handleTemperatureTitleButton(VaporView::CommandId::DisconnectDevice);
+    });
+    connect(temperature_remote_reconnect_btn_, &QPushButton::clicked, this, [this]() {
+        handleTemperatureTitleButton(VaporView::CommandId::ReconnectDevice);
+    });
     temperatureRemoteLayout->addWidget(temperature_remote_connect_btn_);
     temperatureRemoteLayout->addWidget(temperature_remote_disconnect_btn_);
     temperatureRemoteLayout->addWidget(temperature_remote_reconnect_btn_);
@@ -14604,8 +14779,9 @@ void MainWindow::setEnglish(bool english)
     }
     if (temperature_controller_inline_title_lbl_)
     {
-        temperature_controller_inline_title_lbl_->setText(english ? "RD105 Temperature Controller" : "RD105温控器");
+        updateTemperatureControllerTitleText();
     }
+    updateTemperatureTitleButtonsState();
     if (global_rate_lbl_) global_rate_lbl_->setText(english ? "Global Rate:" : "统一频率:");
     if (epsilon_rate_lbl_) epsilon_rate_lbl_->setText(english ? "Packets:" : "包频率:");
     if (epsilon_packet_rates_btn_)
@@ -18909,6 +19085,8 @@ void MainWindow::onRefreshPortsClicked()
     updateCombo(lidar_port_combo_);
     updateCombo(temperature_port_combo_);
     syncDeviceConfigPageFromHome();
+    updateTemperatureControllerTitleText();
+    updateTemperatureTitleButtonsState();
 
     log(QString(is_english_ ? "Ports refreshed: %1 serial ports"
                             : "端口已刷新: %1 个串口")
