@@ -322,6 +322,7 @@ private:
     };
 
     void setupUi();
+    QWidget *createChannelTopControlsPage(int index);
     QWidget *createChannelPage(int index);
     void selectChannel(int index);
     void updateChannelTexts();
@@ -331,6 +332,7 @@ private:
     QFrame *channel_top_bar_ = nullptr;
     QPushButton *channel_button_1_ = nullptr;
     QPushButton *channel_button_2_ = nullptr;
+    QStackedWidget *channel_top_controls_stack_ = nullptr;
     QStackedWidget *channel_stack_ = nullptr;
     TemperatureTrendPlotWidget *temperature_plot_ = nullptr;
     QLabel *rate_label_ = nullptr;

@@ -6348,6 +6348,13 @@ void TemperatureControllerPanel::setupUi()
     channel_button_2_ = createChannelButton(1);
     channelTopBarLayout->addWidget(channel_button_1_);
     channelTopBarLayout->addWidget(channel_button_2_);
+    channelTopBarLayout->addSpacing(8);
+    channel_top_controls_stack_ = new QStackedWidget(channel_top_bar_);
+    channel_top_controls_stack_->setObjectName(QStringLiteral("temperatureChannelTopControlsStack"));
+    channel_top_controls_stack_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    channel_top_controls_stack_->addWidget(createChannelTopControlsPage(0));
+    channel_top_controls_stack_->addWidget(createChannelTopControlsPage(1));
+    channelTopBarLayout->addWidget(channel_top_controls_stack_);
     configCardLayout->addWidget(channel_top_bar_, 0, Qt::AlignLeft);
 
     channel_stack_ = new QStackedWidget(configCard);
@@ -6374,6 +6381,70 @@ void TemperatureControllerPanel::setupUi()
     setEnglish(false);
     setCommandStatus(QStringLiteral("写入命令会在天空端读回确认后才返回成功。"));
     updateData(VaporView::TemperatureControllerData());
+}
+
+QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
+{
+    QWidget *page = new QWidget(channel_top_controls_stack_);
+    page->setObjectName(QStringLiteral("temperatureChannelTopControlsPageChannel%1").arg(index + 1));
+    page->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    auto *layout = new QHBoxLayout(page);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(12);
+    ChannelWidgets& channel = channels_[index];
+
+    auto makeFieldLabel = [](const QString& text) {
+        auto *label = new QLabel(text);
+        label->setObjectName(QStringLiteral("fieldLabel"));
+        label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        label->setMinimumHeight(22);
+        return label;
+    };
+
+    auto addTopField = [layout, &makeFieldLabel](const QString& labelText, QWidget *editor, QLabel *&label) {
+        label = makeFieldLabel(labelText);
+        editor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        auto *field = new QWidget();
+        field->setObjectName(QStringLiteral("temperatureTopBarField"));
+        field->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        auto *fieldLayout = new QHBoxLayout(field);
+        fieldLayout->setContentsMargins(0, 0, 0, 0);
+        fieldLayout->setSpacing(8);
+        fieldLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        fieldLayout->addWidget(editor, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        layout->addWidget(field, 0, Qt::AlignVCenter);
+    };
+
+    auto createCombo = [this](int width) {
+        auto *combo = new QComboBox(this);
+        combo->setFixedWidth(width);
+        combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+        return combo;
+    };
+
+    channel.enable_combo = createCombo(kTemperatureControllerInputWidth);
+    channel.enable_combo->setObjectName(QStringLiteral("temperatureOutputEnableComboChannel%1").arg(index + 1));
+    channel.enable_combo->addItem(QStringLiteral("关闭"), false);
+    channel.enable_combo->addItem(QStringLiteral("开启"), true);
+    addTopField(QStringLiteral("输出使能"), channel.enable_combo, channel.enable_label_text);
+
+    channel.mode_combo = createCombo(kTemperatureControllerWideInputWidth);
+    channel.mode_combo->setObjectName(QStringLiteral("temperatureOutputModeComboChannel%1").arg(index + 1));
+    channel.mode_combo->addItem(QStringLiteral("制冷和加热"), 0);
+    channel.mode_combo->addItem(QStringLiteral("制冷"), 1);
+    channel.mode_combo->addItem(QStringLiteral("加热"), 2);
+    channel.mode_combo->addItem(QStringLiteral("关闭"), 3);
+    addTopField(QStringLiteral("输出模式"), channel.mode_combo, channel.mode_label_text);
+
+    const quint8 channelNumber = static_cast<quint8>(index + 1);
+    connect(channel.enable_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.enable_combo](int) {
+        emit outputEnabledRequested(channelNumber, combo->currentData().toBool());
+    });
+    connect(channel.mode_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.mode_combo](int) {
+        emit outputModeRequested(channelNumber, static_cast<quint16>(combo->currentData().toUInt()));
+    });
+
+    return page;
 }
 
 QWidget *TemperatureControllerPanel::createChannelPage(int index)
@@ -6412,34 +6483,12 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
         layout->addWidget(cell, row, column, 1, columnSpan);
     };
 
-    auto createCombo = [this]() {
-        auto *combo = new QComboBox(this);
-        combo->setFixedWidth(kTemperatureControllerInputWidth);
-        combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
-        return combo;
-    };
-
-    channel.enable_combo = createCombo();
-    channel.enable_combo->setObjectName(QStringLiteral("temperatureOutputEnableComboChannel%1").arg(index + 1));
-    channel.enable_combo->addItem(QStringLiteral("关闭"), false);
-    channel.enable_combo->addItem(QStringLiteral("开启"), true);
-    addField(0, 0, QStringLiteral("输出使能"), channel.enable_combo, channel.enable_label_text);
-
-    channel.mode_combo = createCombo();
-    channel.mode_combo->setObjectName(QStringLiteral("temperatureOutputModeComboChannel%1").arg(index + 1));
-    channel.mode_combo->setFixedWidth(kTemperatureControllerWideInputWidth);
-    channel.mode_combo->addItem(QStringLiteral("制冷和加热"), 0);
-    channel.mode_combo->addItem(QStringLiteral("制冷"), 1);
-    channel.mode_combo->addItem(QStringLiteral("加热"), 2);
-    channel.mode_combo->addItem(QStringLiteral("关闭"), 3);
-    addField(0, 1, QStringLiteral("输出模式"), channel.mode_combo, channel.mode_label_text);
-
     channel.max_output_spin = new QSpinBox(this);
     channel.max_output_spin->setObjectName(QStringLiteral("temperatureMaxOutputSpinChannel%1").arg(index + 1));
     channel.max_output_spin->setRange(0, 90);
     channel.max_output_spin->setSuffix(QStringLiteral(" %"));
     channel.max_output_spin->setFixedWidth(kTemperatureControllerWideInputWidth);
-    addField(1, 0, QStringLiteral("最大输出电压百分比(%)"), channel.max_output_spin, channel.max_output_label_text);
+    addField(0, 0, QStringLiteral("最大输出电压百分比(%)"), channel.max_output_spin, channel.max_output_label_text);
 
     channel.kp_spin = new QSpinBox(this);
     channel.ki_spin = new QSpinBox(this);
@@ -6470,7 +6519,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     addPidSpin(QStringLiteral("P"), channel.kp_spin);
     addPidSpin(QStringLiteral("I"), channel.ki_spin);
     addPidSpin(QStringLiteral("D"), channel.kd_spin);
-    addField(1, 1, QStringLiteral("PID"), pidEditor, channel.pid_label_text);
+    addField(0, 1, QStringLiteral("PID"), pidEditor, channel.pid_label_text);
 
     channel.target_spin = new QDoubleSpinBox(this);
     channel.target_spin->setObjectName(QStringLiteral("temperatureTargetSpinChannel%1").arg(index + 1));
@@ -6478,24 +6527,19 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     channel.target_spin->setDecimals(3);
     channel.target_spin->setSuffix(QStringLiteral(" °C"));
     channel.target_spin->setFixedWidth(kTemperatureControllerWideInputWidth);
-    addField(2, 0, QStringLiteral("目标温度(°C)"), channel.target_spin, channel.target_label_text);
+    addField(1, 0, QStringLiteral("目标温度(°C)"), channel.target_spin, channel.target_label_text);
 
-    channel.auto_pid_combo = createCombo();
+    channel.auto_pid_combo = new QComboBox(this);
     channel.auto_pid_combo->setObjectName(QStringLiteral("temperatureAutoPidComboChannel%1").arg(index + 1));
     channel.auto_pid_combo->setFixedWidth(kTemperatureControllerWideInputWidth);
+    channel.auto_pid_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     channel.auto_pid_combo->addItem(QStringLiteral("关闭"), 0);
     channel.auto_pid_combo->addItem(QStringLiteral("PID自整定"), 1);
     channel.auto_pid_combo->addItem(QStringLiteral("实时优化(预留)"), 2);
-    addField(2, 1, QStringLiteral("自动 PID"), channel.auto_pid_combo, channel.auto_pid_label_text);
-    layout->setRowStretch(3, 1);
+    addField(1, 1, QStringLiteral("自动 PID"), channel.auto_pid_combo, channel.auto_pid_label_text);
+    layout->setRowStretch(2, 1);
 
     const quint8 channelNumber = static_cast<quint8>(index + 1);
-    connect(channel.enable_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.enable_combo](int) {
-        emit outputEnabledRequested(channelNumber, combo->currentData().toBool());
-    });
-    connect(channel.mode_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.mode_combo](int) {
-        emit outputModeRequested(channelNumber, static_cast<quint16>(combo->currentData().toUInt()));
-    });
     connect(channel.auto_pid_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.auto_pid_combo](int) {
         emit autoPidRequested(channelNumber, static_cast<quint16>(combo->currentData().toUInt()));
     });
@@ -6525,6 +6569,10 @@ void TemperatureControllerPanel::selectChannel(int index)
     if (channel_stack_)
     {
         channel_stack_->setCurrentIndex(channelIndex);
+    }
+    if (channel_top_controls_stack_)
+    {
+        channel_top_controls_stack_->setCurrentIndex(channelIndex);
     }
 
     auto updateButton = [channelIndex](QPushButton *button, int buttonIndex) {

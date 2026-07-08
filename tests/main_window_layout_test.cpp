@@ -2249,6 +2249,8 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureConfigCard"));
     auto *temperatureChannelTopBar =
         temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureChannelTopBar"));
+    auto *temperatureChannelTopControlsStack =
+        temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelTopControlsStack"));
     auto *temperatureChannelStack =
         temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelStack"));
     auto *temperatureConfigChannelButton1 =
@@ -2268,6 +2270,7 @@ int main(int argc, char **argv)
     }
     require(temperatureConfigCard != nullptr &&
                 temperatureChannelTopBar != nullptr &&
+                temperatureChannelTopControlsStack != nullptr &&
                 temperatureChannelStack != nullptr &&
                 temperatureConfigChannelButton1 != nullptr &&
                 temperatureConfigChannelButton2 != nullptr &&
@@ -2276,8 +2279,9 @@ int main(int argc, char **argv)
     require(temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureConfigTabs")) == nullptr,
             "temperature controller no longer uses the native tab widget that drew the gray base bar");
     require(temperatureChannelTopBar->parentWidget() == temperatureConfigCard &&
+                temperatureChannelTopControlsStack->parentWidget() == temperatureChannelTopBar &&
                 temperatureChannelStack->parentWidget() == temperatureConfigCard,
-            "temperature channel top bar and page stack live inside the internal config card");
+            "temperature channel top bar, top controls, and page stack live in the internal config card");
     require(temperatureConfigChannelButton1->parentWidget() == temperatureChannelTopBar &&
                 temperatureConfigChannelButton2->parentWidget() == temperatureChannelTopBar,
             "temperature channel buttons live in the top bar");
@@ -2288,6 +2292,7 @@ int main(int argc, char **argv)
                 temperatureConfigChannelButton2->isCheckable() &&
                 temperatureConfigChannelButton1->isChecked() &&
                 !temperatureConfigChannelButton2->isChecked() &&
+                temperatureChannelTopControlsStack->currentIndex() == 0 &&
                 temperatureChannelStack->currentIndex() == 0,
             "temperature channel top bar defaults to channel 1");
     const QRect topBarRectInCard(temperatureChannelTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)),
@@ -2303,15 +2308,31 @@ int main(int argc, char **argv)
                 temperatureConfigChannelButton1->height() == 34 &&
                 temperatureConfigChannelButton2->height() == 34,
             "temperature channel top bar arranges compact channel buttons horizontally");
+    require(temperatureChannelTopControlsStack->isAncestorOf(enableCombo) &&
+                temperatureChannelTopControlsStack->isAncestorOf(modeCombo),
+            "temperature output enable and mode controls live in the top bar control stack");
+    const QRect topEnableRect(temperatureChannelTopBar->mapFromGlobal(enableCombo->mapToGlobal(QPoint(0, 0))),
+                              enableCombo->size());
+    const QRect topModeRect(temperatureChannelTopBar->mapFromGlobal(modeCombo->mapToGlobal(QPoint(0, 0))),
+                            modeCombo->size());
+    const QRect topChannel2Rect(temperatureConfigChannelButton2->mapTo(temperatureChannelTopBar, QPoint(0, 0)),
+                                temperatureConfigChannelButton2->size());
+    require(topChannel2Rect.right() < topEnableRect.left() &&
+                topEnableRect.right() < topModeRect.left() &&
+                std::abs(topEnableRect.center().y() - topChannel2Rect.center().y()) <= 2 &&
+                std::abs(topModeRect.center().y() - topChannel2Rect.center().y()) <= 2,
+            "temperature output enable and mode controls sit to the right of the channel switcher");
     clickWidget(temperatureConfigChannelButton2, 150);
     activateLayouts(&window);
-    require(temperatureChannelStack->currentIndex() == 1 &&
+    require(temperatureChannelTopControlsStack->currentIndex() == 1 &&
+                temperatureChannelStack->currentIndex() == 1 &&
                 !temperatureConfigChannelButton1->isChecked() &&
                 temperatureConfigChannelButton2->isChecked(),
             "temperature channel top bar switches the visible channel page");
     clickWidget(temperatureConfigChannelButton1, 150);
     activateLayouts(&window);
-    require(temperatureChannelStack->currentIndex() == 0 &&
+    require(temperatureChannelTopControlsStack->currentIndex() == 0 &&
+                temperatureChannelStack->currentIndex() == 0 &&
                 temperatureConfigChannelButton1->isChecked() &&
                 !temperatureConfigChannelButton2->isChecked(),
             "temperature channel top bar can switch back to channel 1");
@@ -2366,10 +2387,6 @@ int main(int argc, char **argv)
     };
     requireFieldRowLayout(targetSpin,
                           "temperature target field uses left label and right value layout");
-    requireFieldRowLayout(enableCombo,
-                          "temperature output enable field uses left label and right value layout");
-    requireFieldRowLayout(modeCombo,
-                          "temperature output mode field uses left label and right value layout");
     requireFieldRowLayout(maxOutputSpin,
                           "temperature max output field uses left label and right value layout");
     requireFieldRowLayout(autoPidCombo,
@@ -2383,6 +2400,24 @@ int main(int argc, char **argv)
             "temperature PID controls are grouped as one right-side editor");
     requireFieldRowLayout(pidEditor,
                           "temperature PID field uses left label and right grouped value layout");
+    auto requireTopBarFieldLayout = [temperatureChannelTopControlsStack](QWidget *editor, const char *message) {
+        require(editor != nullptr && editor->parentWidget() != nullptr, message);
+        QWidget *row = editor->parentWidget();
+        require(row->objectName() == QStringLiteral("temperatureTopBarField"), message);
+        require(temperatureChannelTopControlsStack->isAncestorOf(row), message);
+        const QList<QLabel*> labels =
+            row->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
+        require(!labels.isEmpty(), message);
+        const QRect labelRect(labels.first()->mapTo(row, QPoint(0, 0)), labels.first()->size());
+        const QRect editorRect(editor->mapTo(row, QPoint(0, 0)), editor->size());
+        require(labelRect.left() <= 1 &&
+                    labelRect.right() < editorRect.left(),
+                message);
+    };
+    requireTopBarFieldLayout(enableCombo,
+                             "temperature output enable field moves to the top channel bar");
+    requireTopBarFieldLayout(modeCombo,
+                             "temperature output mode field moves to the top channel bar");
     if (checkedSidebarButton && !checkedSidebarButton->isChecked())
     {
         clickWidget(checkedSidebarButton, 150);
