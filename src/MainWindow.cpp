@@ -11372,7 +11372,8 @@ void MainWindow::createTitleApplicationMenuPanel()
     const QFontMetrics menuMetrics(menuFont);
     const int rowVerticalPadding = scalePixels(4);
     const int rowHeight = std::max(scalePixels(28), menuMetrics.height() + rowVerticalPadding * 2);
-    const int menuVerticalPadding = std::max(scalePixels(6), rowHeight / 3);
+    const int menuVerticalPadding =
+        std::max({scalePixels(6), rowHeight / 3, kFloatingMenuCornerRadiusPx + 2});
     panel->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_));
     const int rowLeftPadding = scalePixels(18);
     const int rowRightPadding = scalePixels(14);

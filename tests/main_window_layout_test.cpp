@@ -287,6 +287,40 @@ void requireTitleMenuFloatingPanel(QFrame *panel, const char *message)
             "title menu leaves chrome to the floating panel painter");
 }
 
+void requireMenuRowsRespectRoundedVerticalPadding(QFrame *panel,
+                                                  QFrame *menu,
+                                                  const QList<QFrame *>& rows,
+                                                  const char *message)
+{
+    require(panel != nullptr, message);
+    require(menu != nullptr, message);
+    require(!rows.isEmpty(), message);
+
+    const int minVerticalGap = panel->property("cornerRadius").toInt() + 2;
+    const QRect menuGlobal(menu->mapToGlobal(QPoint(0, 0)), menu->size());
+    int topGap = std::numeric_limits<int>::max();
+    int bottomGap = std::numeric_limits<int>::max();
+    int visibleRows = 0;
+    for (QFrame *row : rows)
+    {
+        if (!row || !row->isVisibleTo(menu))
+        {
+            continue;
+        }
+        const QRect rowGlobal(row->mapToGlobal(QPoint(0, 0)), row->size());
+        if (!menuGlobal.intersects(rowGlobal))
+        {
+            continue;
+        }
+        topGap = std::min(topGap, rowGlobal.top() - menuGlobal.top());
+        bottomGap = std::min(bottomGap, menuGlobal.bottom() - rowGlobal.bottom());
+        ++visibleRows;
+    }
+
+    require(visibleRows > 0, message);
+    require(topGap >= minVerticalGap && bottomGap >= minVerticalGap, message);
+}
+
 void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
 {
     QPushButton *homeButton = nullptr;
@@ -1399,6 +1433,11 @@ int main(int argc, char **argv)
         titleApplicationMainMenu->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem"));
     require(!titleApplicationRows.isEmpty(),
             "title bar application menu exposes hoverable root rows");
+    requireMenuRowsRespectRoundedVerticalPadding(
+        titleApplicationPanel,
+        titleApplicationMainMenu,
+        titleApplicationRows,
+        "title bar application main menu rows stay inside rounded vertical padding");
     hoverWidget(titleApplicationRows.first(), true, 120);
     auto *titleApplicationSubPanel = window.findChild<QFrame *>(QStringLiteral("titleApplicationSubPanel"));
     requireTitleMenuFloatingPanel(titleApplicationSubPanel,
@@ -1441,6 +1480,11 @@ int main(int argc, char **argv)
     QFrame *nestedCommandRow = nullptr;
     const QList<QFrame*> subRows =
         titleApplicationSubMenu->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem"));
+    requireMenuRowsRespectRoundedVerticalPadding(
+        titleApplicationSubPanel,
+        titleApplicationSubMenu,
+        subRows,
+        "title bar application submenu rows stay inside rounded vertical padding");
     for (QFrame *row : subRows)
     {
         const QList<QLabel*> labels = row->findChildren<QLabel *>(QStringLiteral("titleApplicationMenuText"));
@@ -1471,6 +1515,13 @@ int main(int argc, char **argv)
         titleApplicationNestedPanel->findChild<QFrame *>(QStringLiteral("titleApplicationNestedMenu"));
     require(titleApplicationNestedMenu != nullptr,
             "title bar application nested submenu content is inside its own floating panel");
+    const QList<QFrame*> nestedRows =
+        titleApplicationNestedMenu->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem"));
+    requireMenuRowsRespectRoundedVerticalPadding(
+        titleApplicationNestedPanel,
+        titleApplicationNestedMenu,
+        nestedRows,
+        "title bar application nested submenu rows stay inside rounded vertical padding");
     require(titleApplicationNestedMenu->parentWidget() == titleApplicationNestedPanel,
             "title bar application nested submenu is not parented into the secondary panel");
     require(titleApplicationSubPanel->size() == subPanelSizeBeforeNested,
