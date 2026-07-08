@@ -3546,6 +3546,12 @@ bool TemperatureControllerCollector::readSnapshot(TemperatureControllerData& sam
   if (!readChannel(1, sample.channels[0])) return false;
   if (!readChannel(2, sample.channels[1])) return false;
   std::vector<uint16_t> registers;
+  if (!readRegisters(static_cast<uint16_t>(Register::DeviceAddress), 1, registers)) return false;
+  sample.device_address = static_cast<int>(registers[0]);
+  if (!readRegisters(static_cast<uint16_t>(Register::Rs485Baud), 1, registers)) return false;
+  sample.rs485_baud_index = static_cast<int>(registers[0]);
+  if (!readRegisters(static_cast<uint16_t>(Register::OvertempOutputMode), 1, registers)) return false;
+  sample.overtemp_output_mode = static_cast<int>(registers[0]);
   if (!readRegisters(static_cast<uint16_t>(Register::InternalTemperature), 1, registers)) return false;
   sample.internal_temperature_c = decodeInt16(QVector<uint16_t>(registers.cbegin(), registers.cend()));
   if (!readRegisters(static_cast<uint16_t>(Register::ErrorCode), 1, registers)) return false;
@@ -3640,6 +3646,61 @@ bool TemperatureControllerCollector::setControllerMode(uint16_t mode)
   }
   const QVector<uint16_t> values = encodeInt16(static_cast<int16_t>(mode));
   return writeAndConfirm(1, static_cast<uint16_t>(Register::ControllerMode), std::vector<uint16_t>(values.cbegin(), values.cend()));
+}
+
+bool TemperatureControllerCollector::setDeviceAddress(uint16_t address)
+{
+  using namespace TemperatureControllerProtocol;
+  if (address == 0 || address > 247)
+  {
+    return false;
+  }
+  const QVector<uint16_t> values = encodeUInt16(address);
+  std::lock_guard<std::mutex> lock(modbus_mutex_);
+  if (!writeRegistersUnlocked(static_cast<uint16_t>(Register::DeviceAddress),
+                              std::vector<uint16_t>(values.cbegin(), values.cend()),
+                              200))
+  {
+    return false;
+  }
+  slave_address_ = static_cast<uint8_t>(address);
+  std::vector<uint16_t> read_back;
+  return readRegistersUnlocked(static_cast<uint16_t>(Register::DeviceAddress), 1, read_back, 500) &&
+         !read_back.empty() &&
+         read_back[0] == address;
+}
+
+bool TemperatureControllerCollector::setRs485BaudIndex(uint16_t baud_index)
+{
+  using namespace TemperatureControllerProtocol;
+  if (baud_index > 7)
+  {
+    return false;
+  }
+  const QVector<uint16_t> values = encodeUInt16(baud_index);
+  return writeRegisters(static_cast<uint16_t>(Register::Rs485Baud),
+                        std::vector<uint16_t>(values.cbegin(), values.cend()),
+                        500);
+}
+
+bool TemperatureControllerCollector::setOvertempOutputMode(uint16_t mode)
+{
+  using namespace TemperatureControllerProtocol;
+  if (mode > 1)
+  {
+    return false;
+  }
+  const QVector<uint16_t> values = encodeUInt16(mode);
+  return writeAndConfirm(1, static_cast<uint16_t>(Register::OvertempOutputMode), std::vector<uint16_t>(values.cbegin(), values.cend()));
+}
+
+bool TemperatureControllerCollector::restoreFactoryDefaults()
+{
+  using namespace TemperatureControllerProtocol;
+  const QVector<uint16_t> values = encodeUInt16(1);
+  return writeRegisters(static_cast<uint16_t>(Register::FactoryReset),
+                        std::vector<uint16_t>(values.cbegin(), values.cend()),
+                        500);
 }
 
 void TemperatureControllerCollector::run()

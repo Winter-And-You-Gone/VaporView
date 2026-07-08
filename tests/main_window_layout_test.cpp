@@ -2140,7 +2140,11 @@ int main(int argc, char **argv)
     validTemperatureData.channels[0].ki = 20;
     validTemperatureData.channels[0].kd = 30;
     validTemperatureData.channels[0].auto_pid_mode = 0;
+    validTemperatureData.internal_temperature_c = 25.0;
     validTemperatureData.controller_mode = 0;
+    validTemperatureData.device_address = 2;
+    validTemperatureData.rs485_baud_index = 7;
+    validTemperatureData.overtemp_output_mode = 0;
     const bool temperatureUpdateInvoked = QMetaObject::invokeMethod(
         &window,
         "onRemoteTemperatureControllerStatusUpdated",
@@ -2201,9 +2205,21 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QSpinBox *>(QStringLiteral("temperaturePidKdSpinChannel1"));
     auto *autoPidCombo =
         temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureAutoPidComboChannel1"));
+    auto *addressSpin =
+        temperaturePanel->findChild<QSpinBox *>(QStringLiteral("temperatureDeviceAddressSpin"));
+    auto *rs485BaudCombo =
+        temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureRs485BaudCombo"));
+    auto *overtempOutputCombo =
+        temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureOvertempOutputModeCombo"));
+    auto *commonInternalTemperatureEdit =
+        temperaturePanel->findChild<QLineEdit *>(QStringLiteral("temperatureCommonInternalTemperatureEdit"));
+    auto *factoryResetButton =
+        temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureFactoryResetButton"));
     require(controllerModeCombo != nullptr && targetSpin != nullptr && enableCombo != nullptr && modeCombo != nullptr &&
                 maxOutputSpin != nullptr && kpSpin != nullptr && kiSpin != nullptr &&
-                kdSpin != nullptr && autoPidCombo != nullptr,
+                kdSpin != nullptr && autoPidCombo != nullptr &&
+                addressSpin != nullptr && rs485BaudCombo != nullptr && overtempOutputCombo != nullptr &&
+                commonInternalTemperatureEdit != nullptr && factoryResetButton != nullptr,
             "temperature controller editable controls are discoverable for stale telemetry checks");
 
     clickWidget(temperatureNavButton, 150);
@@ -2259,6 +2275,8 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureChannelSelectorButton1"));
     auto *temperatureConfigChannelButton2 =
         temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureChannelSelectorButton2"));
+    auto *temperatureCommonSettingsButton =
+        temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureCommonSettingsButton"));
     QWidget *temperatureConfigPlot = nullptr;
     const QList<QWidget*> controllerTrendPlots =
         temperaturePanel->findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot"));
@@ -2277,6 +2295,7 @@ int main(int argc, char **argv)
                 temperatureChannelStack != nullptr &&
                 temperatureConfigChannelButton1 != nullptr &&
                 temperatureConfigChannelButton2 != nullptr &&
+                temperatureCommonSettingsButton != nullptr &&
                 temperatureConfigPlot != nullptr,
             "temperature controller page exposes a top channel selector and a full-width trend plot");
     require(temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureConfigTabs")) == nullptr,
@@ -2287,15 +2306,19 @@ int main(int argc, char **argv)
                 temperatureChannelStack->parentWidget() == temperatureConfigCard,
             "temperature channel top row, switcher, top controls, and page stack live in the internal config card");
     require(temperatureConfigChannelButton1->parentWidget() == temperatureChannelTopBar &&
-                temperatureConfigChannelButton2->parentWidget() == temperatureChannelTopBar,
-            "temperature channel buttons live in the top bar");
+                temperatureConfigChannelButton2->parentWidget() == temperatureChannelTopBar &&
+                temperatureCommonSettingsButton->parentWidget() == temperatureChannelTopBar,
+            "temperature channel and common settings buttons live in the top bar");
     require(temperatureConfigChannelButton1->property("temperatureChannelSelector").toBool() &&
-                temperatureConfigChannelButton2->property("temperatureChannelSelector").toBool(),
+                temperatureConfigChannelButton2->property("temperatureChannelSelector").toBool() &&
+                temperatureCommonSettingsButton->property("temperatureChannelSelector").toBool(),
             "temperature channel buttons use the scoped selector style");
     require(temperatureConfigChannelButton1->isCheckable() &&
                 temperatureConfigChannelButton2->isCheckable() &&
+                temperatureCommonSettingsButton->isCheckable() &&
                 temperatureConfigChannelButton1->isChecked() &&
                 !temperatureConfigChannelButton2->isChecked() &&
+                !temperatureCommonSettingsButton->isChecked() &&
                 temperatureChannelTopControlsStack->currentIndex() == 0 &&
                 temperatureChannelStack->currentIndex() == 0,
             "temperature channel top bar defaults to channel 1");
@@ -2310,39 +2333,63 @@ int main(int argc, char **argv)
                 topBarRectInRow.width() < stackRectInCard.width(),
             "temperature channel selector is a compact top bar above the config stack");
     require(temperatureConfigChannelButton1->x() < temperatureConfigChannelButton2->x() &&
+                temperatureConfigChannelButton2->x() < temperatureCommonSettingsButton->x() &&
                 std::abs(temperatureConfigChannelButton1->y() - temperatureConfigChannelButton2->y()) <= 1 &&
+                std::abs(temperatureConfigChannelButton2->y() - temperatureCommonSettingsButton->y()) <= 1 &&
                 temperatureConfigChannelButton1->height() == 34 &&
-                temperatureConfigChannelButton2->height() == 34,
+                temperatureConfigChannelButton2->height() == 34 &&
+                temperatureCommonSettingsButton->height() == 34,
             "temperature channel top bar arranges compact channel buttons horizontally");
     require(temperatureChannelTopControlsStack->isAncestorOf(enableCombo) &&
                 temperatureChannelTopControlsStack->isAncestorOf(modeCombo) &&
+                temperatureChannelTopControlsStack->isAncestorOf(targetSpin) &&
                 !temperatureChannelTopBar->isAncestorOf(enableCombo) &&
-                !temperatureChannelTopBar->isAncestorOf(modeCombo),
-            "temperature output enable and mode controls live outside the gray channel switcher frame");
+                !temperatureChannelTopBar->isAncestorOf(modeCombo) &&
+                !temperatureChannelTopBar->isAncestorOf(targetSpin),
+            "temperature output enable, mode, and target controls live outside the gray channel switcher frame");
     const QRect topEnableRect(temperatureChannelTopRow->mapFromGlobal(enableCombo->mapToGlobal(QPoint(0, 0))),
                               enableCombo->size());
     const QRect topModeRect(temperatureChannelTopRow->mapFromGlobal(modeCombo->mapToGlobal(QPoint(0, 0))),
                             modeCombo->size());
+    const QRect topTargetRect(temperatureChannelTopRow->mapFromGlobal(targetSpin->mapToGlobal(QPoint(0, 0))),
+                              targetSpin->size());
     const QRect topChannel2Rect(temperatureConfigChannelButton2->mapTo(temperatureChannelTopRow, QPoint(0, 0)),
                                 temperatureConfigChannelButton2->size());
-    require(topChannel2Rect.right() < topEnableRect.left() &&
+    const QRect topCommonRect(temperatureCommonSettingsButton->mapTo(temperatureChannelTopRow, QPoint(0, 0)),
+                              temperatureCommonSettingsButton->size());
+    require(topChannel2Rect.right() < topCommonRect.left() &&
+                topCommonRect.right() < topEnableRect.left() &&
                 topEnableRect.right() < topModeRect.left() &&
+                topModeRect.right() < topTargetRect.left() &&
                 std::abs(topEnableRect.center().y() - topChannel2Rect.center().y()) <= 2 &&
-                std::abs(topModeRect.center().y() - topChannel2Rect.center().y()) <= 2,
-            "temperature output enable and mode controls sit to the right of the channel switcher");
+                std::abs(topModeRect.center().y() - topChannel2Rect.center().y()) <= 2 &&
+                std::abs(topTargetRect.center().y() - topChannel2Rect.center().y()) <= 2,
+            "temperature output enable, mode, and target controls sit to the right of the channel switcher");
     clickWidget(temperatureConfigChannelButton2, 150);
     activateLayouts(&window);
     require(temperatureChannelTopControlsStack->currentIndex() == 1 &&
+                temperatureChannelTopControlsStack->isVisible() &&
                 temperatureChannelStack->currentIndex() == 1 &&
                 !temperatureConfigChannelButton1->isChecked() &&
-                temperatureConfigChannelButton2->isChecked(),
+                temperatureConfigChannelButton2->isChecked() &&
+                !temperatureCommonSettingsButton->isChecked(),
             "temperature channel top bar switches the visible channel page");
+    clickWidget(temperatureCommonSettingsButton, 150);
+    activateLayouts(&window);
+    require(!temperatureChannelTopControlsStack->isVisible() &&
+                temperatureChannelStack->currentIndex() == 2 &&
+                !temperatureConfigChannelButton1->isChecked() &&
+                !temperatureConfigChannelButton2->isChecked() &&
+                temperatureCommonSettingsButton->isChecked(),
+            "temperature top bar switches to a common settings page without channel-only controls");
     clickWidget(temperatureConfigChannelButton1, 150);
     activateLayouts(&window);
     require(temperatureChannelTopControlsStack->currentIndex() == 0 &&
+                temperatureChannelTopControlsStack->isVisible() &&
                 temperatureChannelStack->currentIndex() == 0 &&
                 temperatureConfigChannelButton1->isChecked() &&
-                !temperatureConfigChannelButton2->isChecked(),
+                !temperatureConfigChannelButton2->isChecked() &&
+                !temperatureCommonSettingsButton->isChecked(),
             "temperature channel top bar can switch back to channel 1");
     const QRect cardRectInPanel(temperatureConfigCard->mapTo(temperaturePanel, QPoint(0, 0)),
                                 temperatureConfigCard->size());
@@ -2393,8 +2440,6 @@ int main(int argc, char **argv)
                     editorRect.right() >= row->rect().right() - 1,
                 message);
     };
-    requireFieldRowLayout(targetSpin,
-                          "temperature target field uses left label and right value layout");
     requireFieldRowLayout(maxOutputSpin,
                           "temperature max output field uses left label and right value layout");
     requireFieldRowLayout(autoPidCombo,
@@ -2408,6 +2453,15 @@ int main(int argc, char **argv)
             "temperature PID controls are grouped as one right-side editor");
     requireFieldRowLayout(pidEditor,
                           "temperature PID field uses left label and right grouped value layout");
+    const QRect maxOutputRowRect(maxOutputSpin->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
+                                 maxOutputSpin->parentWidget()->size());
+    const QRect pidRowRect(pidEditor->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
+                           pidEditor->parentWidget()->size());
+    const QRect autoPidRowRect(autoPidCombo->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
+                               autoPidCombo->parentWidget()->size());
+    require(std::abs(maxOutputRowRect.top() - pidRowRect.top()) <= 2 &&
+                std::abs(pidRowRect.top() - autoPidRowRect.top()) <= 2,
+            "temperature max output, PID, and auto PID fields stay on one row");
     auto requireTopBarFieldLayout = [temperatureChannelTopControlsStack](QWidget *editor, const char *message) {
         require(editor != nullptr && editor->parentWidget() != nullptr, message);
         QWidget *row = editor->parentWidget();
@@ -2426,6 +2480,33 @@ int main(int argc, char **argv)
                              "temperature output enable field moves to the top channel bar");
     requireTopBarFieldLayout(modeCombo,
                              "temperature output mode field moves to the top channel bar");
+    requireTopBarFieldLayout(targetSpin,
+                             "temperature target field moves to the right of output mode in the top channel bar");
+    auto requireCommonFieldRowLayout = [temperatureChannelStack](QWidget *editor, const char *message) {
+        require(editor != nullptr && editor->parentWidget() != nullptr, message);
+        QWidget *row = editor->parentWidget();
+        require(row->objectName() == QStringLiteral("temperatureCommonFieldRow"), message);
+        require(temperatureChannelStack->isAncestorOf(row), message);
+        const QList<QLabel*> labels =
+            row->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
+        require(!labels.isEmpty(), message);
+        const QRect labelRect(labels.first()->mapTo(row, QPoint(0, 0)), labels.first()->size());
+        const QRect editorRect(editor->mapTo(row, QPoint(0, 0)), editor->size());
+        require(labelRect.left() <= 1 &&
+                    labelRect.right() < editorRect.left() &&
+                    editorRect.right() >= row->rect().right() - 1,
+                message);
+    };
+    requireCommonFieldRowLayout(addressSpin,
+                                "temperature common RS485 address field uses left label and right value layout");
+    requireCommonFieldRowLayout(rs485BaudCombo,
+                                "temperature common RS485 baud field uses left label and right value layout");
+    requireCommonFieldRowLayout(overtempOutputCombo,
+                                "temperature common over-temperature output field uses left label and right value layout");
+    requireCommonFieldRowLayout(commonInternalTemperatureEdit,
+                                "temperature common internal temperature field uses left label and right value layout");
+    require(temperatureChannelStack->isAncestorOf(factoryResetButton),
+            "temperature factory reset button lives in the common settings page");
     if (checkedSidebarButton && !checkedSidebarButton->isChecked())
     {
         clickWidget(checkedSidebarButton, 150);
@@ -2441,6 +2522,9 @@ int main(int argc, char **argv)
         const QSignalBlocker kiBlocker(kiSpin);
         const QSignalBlocker kdBlocker(kdSpin);
         const QSignalBlocker autoPidBlocker(autoPidCombo);
+        const QSignalBlocker addressBlocker(addressSpin);
+        const QSignalBlocker rs485BaudBlocker(rs485BaudCombo);
+        const QSignalBlocker overtempOutputBlocker(overtempOutputCombo);
         controllerModeCombo->setCurrentIndex(controllerModeCombo->findData(3));
         targetSpin->setValue(26.5);
         modeCombo->setCurrentIndex(modeCombo->findData(2));
@@ -2449,6 +2533,9 @@ int main(int argc, char **argv)
         kiSpin->setValue(22);
         kdSpin->setValue(33);
         autoPidCombo->setCurrentIndex(autoPidCombo->findData(1));
+        addressSpin->setValue(9);
+        rs485BaudCombo->setCurrentIndex(rs485BaudCombo->findData(5));
+        overtempOutputCombo->setCurrentIndex(overtempOutputCombo->findData(1));
     }
 
     VaporView::TemperatureControllerCommand pendingCommand;
@@ -2467,6 +2554,12 @@ int main(int argc, char **argv)
     temperaturePanel->markCommandPending(VaporView::CommandId::SetTemperaturePid, pendingCommand);
     pendingCommand.auto_pid_mode = 1;
     temperaturePanel->markCommandPending(VaporView::CommandId::SetTemperatureAutoPid, pendingCommand);
+    pendingCommand.device_address = 9;
+    temperaturePanel->markCommandPending(VaporView::CommandId::SetTemperatureDeviceAddress, pendingCommand);
+    pendingCommand.rs485_baud_index = 5;
+    temperaturePanel->markCommandPending(VaporView::CommandId::SetTemperatureRs485Baud, pendingCommand);
+    pendingCommand.overtemp_output_mode = 1;
+    temperaturePanel->markCommandPending(VaporView::CommandId::SetTemperatureOvertempOutputMode, pendingCommand);
     temperaturePanel->updateData(validTemperatureData);
     require(controllerModeCombo->currentData().toInt() == 3 &&
                 std::abs(targetSpin->value() - 26.5) < 0.0001 &&
@@ -2475,7 +2568,10 @@ int main(int argc, char **argv)
                 kpSpin->value() == 11 &&
                 kiSpin->value() == 22 &&
                 kdSpin->value() == 33 &&
-                autoPidCombo->currentData().toInt() == 1,
+                autoPidCombo->currentData().toInt() == 1 &&
+                addressSpin->value() == 9 &&
+                rs485BaudCombo->currentData().toInt() == 5 &&
+                overtempOutputCombo->currentData().toInt() == 1,
             "pending temperature controller edits are not overwritten by stale telemetry values");
 
     validTemperatureData.controller_mode = 3;
@@ -2486,6 +2582,9 @@ int main(int argc, char **argv)
     validTemperatureData.channels[0].ki = 22;
     validTemperatureData.channels[0].kd = 33;
     validTemperatureData.channels[0].auto_pid_mode = 1;
+    validTemperatureData.device_address = 9;
+    validTemperatureData.rs485_baud_index = 5;
+    validTemperatureData.overtemp_output_mode = 1;
     temperaturePanel->updateData(validTemperatureData);
     validTemperatureData.controller_mode = 0;
     validTemperatureData.channels[0].target_temperature_c = 25.0;
@@ -2495,8 +2594,13 @@ int main(int argc, char **argv)
     validTemperatureData.channels[0].ki = 20;
     validTemperatureData.channels[0].kd = 30;
     validTemperatureData.channels[0].auto_pid_mode = 0;
+    validTemperatureData.device_address = 2;
+    validTemperatureData.rs485_baud_index = 7;
+    validTemperatureData.overtemp_output_mode = 0;
     temperaturePanel->updateData(validTemperatureData);
     processEventsFor(50);
+    require(commonInternalTemperatureEdit->text() == QStringLiteral("25"),
+            "temperature common settings page shows the controller internal temperature");
 
     const QList<QWidget*> temperatureTrendPlots =
         window.findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot"));

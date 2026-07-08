@@ -69,6 +69,10 @@ enum class CommandId : quint16
     SetTemperaturePid = 44,
     SetTemperatureAutoPid = 45,
     SetTemperatureControllerMode = 46,
+    SetTemperatureDeviceAddress = 47,
+    SetTemperatureRs485Baud = 48,
+    SetTemperatureOvertempOutputMode = 49,
+    RestoreTemperatureFactoryDefaults = 50,
     ShutdownCore = 90,
 };
 
@@ -238,6 +242,9 @@ struct TemperatureControllerCommand
     quint32 kd = 0;
     quint16 auto_pid_mode = 0;
     quint16 controller_mode = 0;
+    quint16 device_address = 1;
+    quint16 rs485_baud_index = 1;
+    quint16 overtemp_output_mode = 1;
 };
 
 struct DeviceStatusItem

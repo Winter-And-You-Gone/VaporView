@@ -129,6 +129,27 @@ namespace
 constexpr int kFloatingMenuShadowMarginPx = 22;
 constexpr int kFloatingMenuCornerRadiusPx = 10;
 
+bool isTemperatureCommonCommand(VaporView::CommandId command)
+{
+    return command == VaporView::CommandId::SetTemperatureControllerMode ||
+           command == VaporView::CommandId::SetTemperatureDeviceAddress ||
+           command == VaporView::CommandId::SetTemperatureRs485Baud ||
+           command == VaporView::CommandId::SetTemperatureOvertempOutputMode ||
+           command == VaporView::CommandId::RestoreTemperatureFactoryDefaults;
+}
+
+int temperatureRs485BaudRateForIndex(quint16 index)
+{
+    static constexpr std::array<int, 8> kRates = {4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800};
+    return index < kRates.size() ? kRates.at(index) : 9600;
+}
+
+int rememberedTemperatureSlaveAddress()
+{
+    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+    return std::clamp(settings.value(QStringLiteral("serial/temperature_slave_address"), 1).toInt(), 1, 247);
+}
+
 class MenuItemEventFilter : public QObject
 {
 public:
@@ -766,7 +787,12 @@ constexpr int kTemperatureControllerPlotMinHeight = 190;
 constexpr int kTemperatureControllerValueWidth = 126;
 constexpr int kTemperatureControllerInputWidth = 112;
 constexpr int kTemperatureControllerWideInputWidth = 138;
-constexpr int kTemperatureControllerPidInputWidth = 82;
+constexpr int kTemperatureControllerTopEnableWidth = 86;
+constexpr int kTemperatureControllerTopModeWidth = 112;
+constexpr int kTemperatureControllerTopTargetWidth = 128;
+constexpr int kTemperatureControllerCompactInputWidth = 108;
+constexpr int kTemperatureControllerCompactPidInputWidth = 56;
+constexpr int kTemperatureControllerCompactLabelWidth = 112;
 constexpr int kTemperatureControllerControlLabelWidth = 150;
 constexpr int kTemperatureControllerHistoryLimit = 240;
 constexpr int kRemotePacketRateWindowMs = 5000;
@@ -6344,7 +6370,7 @@ void TemperatureControllerPanel::setupUi()
         button->setCheckable(true);
         button->setCursor(Qt::PointingHandCursor);
         button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        button->setFixedSize(84, 34);
+        button->setFixedSize(72, 34);
         button->setText(index == 0 ? QStringLiteral("通道1") : QStringLiteral("通道2"));
         connect(button, &QPushButton::clicked, this, [this, index]() {
             selectChannel(index);
@@ -6353,8 +6379,20 @@ void TemperatureControllerPanel::setupUi()
     };
     channel_button_1_ = createChannelButton(0);
     channel_button_2_ = createChannelButton(1);
+    common_settings_button_ = new QPushButton(this);
+    common_settings_button_->setObjectName(QStringLiteral("temperatureCommonSettingsButton"));
+    common_settings_button_->setProperty("temperatureChannelSelector", true);
+    common_settings_button_->setCheckable(true);
+    common_settings_button_->setCursor(Qt::PointingHandCursor);
+    common_settings_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    common_settings_button_->setFixedSize(88, 34);
+    common_settings_button_->setText(QStringLiteral("通用设置"));
+    connect(common_settings_button_, &QPushButton::clicked, this, [this]() {
+        selectChannel(2);
+    });
     channelTopBarLayout->addWidget(channel_button_1_);
     channelTopBarLayout->addWidget(channel_button_2_);
+    channelTopBarLayout->addWidget(common_settings_button_);
     channelTopRowLayout->addWidget(channel_top_bar_, 0, Qt::AlignVCenter);
 
     channel_top_controls_stack_ = new QStackedWidget(channelTopRow);
@@ -6370,6 +6408,7 @@ void TemperatureControllerPanel::setupUi()
     channel_stack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     channel_stack_->addWidget(createChannelPage(0));
     channel_stack_->addWidget(createChannelPage(1));
+    channel_stack_->addWidget(createCommonSettingsPage());
     configCardLayout->addWidget(channel_stack_, 0);
     selectChannel(0);
     layout->addWidget(configCard, 0);
@@ -6430,13 +6469,13 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
         return combo;
     };
 
-    channel.enable_combo = createCombo(kTemperatureControllerInputWidth);
+    channel.enable_combo = createCombo(kTemperatureControllerTopEnableWidth);
     channel.enable_combo->setObjectName(QStringLiteral("temperatureOutputEnableComboChannel%1").arg(index + 1));
     channel.enable_combo->addItem(QStringLiteral("关闭"), false);
     channel.enable_combo->addItem(QStringLiteral("开启"), true);
     addTopField(QStringLiteral("输出使能"), channel.enable_combo, channel.enable_label_text);
 
-    channel.mode_combo = createCombo(kTemperatureControllerWideInputWidth);
+    channel.mode_combo = createCombo(kTemperatureControllerTopModeWidth);
     channel.mode_combo->setObjectName(QStringLiteral("temperatureOutputModeComboChannel%1").arg(index + 1));
     channel.mode_combo->addItem(QStringLiteral("制冷和加热"), 0);
     channel.mode_combo->addItem(QStringLiteral("制冷"), 1);
@@ -6444,12 +6483,23 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
     channel.mode_combo->addItem(QStringLiteral("关闭"), 3);
     addTopField(QStringLiteral("输出模式"), channel.mode_combo, channel.mode_label_text);
 
+    channel.target_spin = new QDoubleSpinBox(this);
+    channel.target_spin->setObjectName(QStringLiteral("temperatureTargetSpinChannel%1").arg(index + 1));
+    channel.target_spin->setRange(-40.0, 100.0);
+    channel.target_spin->setDecimals(5);
+    channel.target_spin->setSuffix(QStringLiteral(" °C"));
+    channel.target_spin->setFixedWidth(kTemperatureControllerTopTargetWidth);
+    addTopField(QStringLiteral("目标温度(°C)"), channel.target_spin, channel.target_label_text);
+
     const quint8 channelNumber = static_cast<quint8>(index + 1);
     connect(channel.enable_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.enable_combo](int) {
         emit outputEnabledRequested(channelNumber, combo->currentData().toBool());
     });
     connect(channel.mode_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.mode_combo](int) {
         emit outputModeRequested(channelNumber, static_cast<quint16>(combo->currentData().toUInt()));
+    });
+    connect(channel.target_spin, &QDoubleSpinBox::editingFinished, this, [this, channelNumber, spin = channel.target_spin]() {
+        emit targetTemperatureRequested(channelNumber, spin->value());
     });
 
     return page;
@@ -6464,6 +6514,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     layout->setVerticalSpacing(10);
     layout->setColumnStretch(0, 1);
     layout->setColumnStretch(1, 1);
+    layout->setColumnStretch(2, 1);
     ChannelWidgets& channel = channels_[index];
 
     auto makeFieldLabel = [this](const QString& text) {
@@ -6471,7 +6522,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
         label->setObjectName(QStringLiteral("fieldLabel"));
         label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         label->setMinimumHeight(22);
-        label->setFixedWidth(kTemperatureControllerControlLabelWidth);
+        label->setFixedWidth(kTemperatureControllerCompactLabelWidth);
         return label;
     };
 
@@ -6495,8 +6546,8 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     channel.max_output_spin->setObjectName(QStringLiteral("temperatureMaxOutputSpinChannel%1").arg(index + 1));
     channel.max_output_spin->setRange(0, 90);
     channel.max_output_spin->setSuffix(QStringLiteral(" %"));
-    channel.max_output_spin->setFixedWidth(kTemperatureControllerWideInputWidth);
-    addField(0, 0, QStringLiteral("最大输出电压百分比(%)"), channel.max_output_spin, channel.max_output_label_text);
+    channel.max_output_spin->setFixedWidth(kTemperatureControllerCompactInputWidth);
+    addField(0, 0, QStringLiteral("最大输出电压(%)"), channel.max_output_spin, channel.max_output_label_text);
 
     channel.kp_spin = new QSpinBox(this);
     channel.ki_spin = new QSpinBox(this);
@@ -6507,7 +6558,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     for (QSpinBox *spin : {channel.kp_spin, channel.ki_spin, channel.kd_spin})
     {
         spin->setRange(0, std::numeric_limits<int>::max());
-        spin->setFixedWidth(kTemperatureControllerPidInputWidth);
+        spin->setFixedWidth(kTemperatureControllerCompactPidInputWidth);
         spin->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     }
     auto *pidEditor = new QWidget(this);
@@ -6529,23 +6580,15 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     addPidSpin(QStringLiteral("D"), channel.kd_spin);
     addField(0, 1, QStringLiteral("PID"), pidEditor, channel.pid_label_text);
 
-    channel.target_spin = new QDoubleSpinBox(this);
-    channel.target_spin->setObjectName(QStringLiteral("temperatureTargetSpinChannel%1").arg(index + 1));
-    channel.target_spin->setRange(-40.0, 100.0);
-    channel.target_spin->setDecimals(3);
-    channel.target_spin->setSuffix(QStringLiteral(" °C"));
-    channel.target_spin->setFixedWidth(kTemperatureControllerWideInputWidth);
-    addField(1, 0, QStringLiteral("目标温度(°C)"), channel.target_spin, channel.target_label_text);
-
     channel.auto_pid_combo = new QComboBox(this);
     channel.auto_pid_combo->setObjectName(QStringLiteral("temperatureAutoPidComboChannel%1").arg(index + 1));
-    channel.auto_pid_combo->setFixedWidth(kTemperatureControllerWideInputWidth);
+    channel.auto_pid_combo->setFixedWidth(kTemperatureControllerCompactInputWidth);
     channel.auto_pid_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     channel.auto_pid_combo->addItem(QStringLiteral("关闭"), 0);
     channel.auto_pid_combo->addItem(QStringLiteral("PID自整定"), 1);
     channel.auto_pid_combo->addItem(QStringLiteral("实时优化(预留)"), 2);
-    addField(1, 1, QStringLiteral("自动 PID"), channel.auto_pid_combo, channel.auto_pid_label_text);
-    layout->setRowStretch(2, 1);
+    addField(0, 2, QStringLiteral("自动 PID"), channel.auto_pid_combo, channel.auto_pid_label_text);
+    layout->setRowStretch(1, 1);
 
     const quint8 channelNumber = static_cast<quint8>(index + 1);
     connect(channel.auto_pid_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.auto_pid_combo](int) {
@@ -6553,9 +6596,6 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     });
     connect(channel.max_output_spin, &QSpinBox::editingFinished, this, [this, channelNumber, spin = channel.max_output_spin]() {
         emit maxOutputPercentRequested(channelNumber, static_cast<quint16>(spin->value()));
-    });
-    connect(channel.target_spin, &QDoubleSpinBox::editingFinished, this, [this, channelNumber, spin = channel.target_spin]() {
-        emit targetTemperatureRequested(channelNumber, spin->value());
     });
     auto emitPid = [this, channelNumber, index]() {
         const ChannelWidgets& channel = channels_[index];
@@ -6570,34 +6610,131 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     return page;
 }
 
+QWidget *TemperatureControllerPanel::createCommonSettingsPage()
+{
+    QWidget *page = new QWidget(channel_stack_);
+    page->setObjectName(QStringLiteral("temperatureCommonSettingsPage"));
+    auto *layout = new QGridLayout(page);
+    layout->setContentsMargins(16, 12, 16, 12);
+    layout->setHorizontalSpacing(18);
+    layout->setVerticalSpacing(12);
+    layout->setColumnStretch(0, 1);
+    layout->setColumnStretch(1, 1);
+
+    auto makeFieldLabel = [this](const QString& text) {
+        auto *label = new QLabel(text, this);
+        label->setObjectName(QStringLiteral("fieldLabel"));
+        label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        label->setMinimumHeight(22);
+        label->setFixedWidth(kTemperatureControllerControlLabelWidth);
+        return label;
+    };
+
+    auto addField = [layout, &makeFieldLabel](int row, int column, const QString& labelText, QWidget *editor, QLabel *&label) {
+        label = makeFieldLabel(labelText);
+        editor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        auto *cell = new QWidget();
+        cell->setObjectName(QStringLiteral("temperatureCommonFieldRow"));
+        cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        cell->setMinimumHeight(34);
+        auto *cellLayout = new QHBoxLayout(cell);
+        cellLayout->setContentsMargins(0, 0, 0, 0);
+        cellLayout->setSpacing(10);
+        cellLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        cellLayout->addStretch(1);
+        cellLayout->addWidget(editor, 0, Qt::AlignRight | Qt::AlignVCenter);
+        layout->addWidget(cell, row, column);
+    };
+
+    common_.address_spin = new QSpinBox(this);
+    common_.address_spin->setObjectName(QStringLiteral("temperatureDeviceAddressSpin"));
+    common_.address_spin->setRange(1, 247);
+    common_.address_spin->setFixedWidth(kTemperatureControllerInputWidth);
+    addField(0, 0, QStringLiteral("设置温控器485站号"), common_.address_spin, common_.address_label_text);
+
+    common_.rs485_baud_combo = new QComboBox(this);
+    common_.rs485_baud_combo->setObjectName(QStringLiteral("temperatureRs485BaudCombo"));
+    common_.rs485_baud_combo->setFixedWidth(kTemperatureControllerWideInputWidth);
+    common_.rs485_baud_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    const QList<int> baudRates = {4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800};
+    for (int i = 0; i < baudRates.size(); ++i)
+    {
+        common_.rs485_baud_combo->addItem(QString::number(baudRates.at(i)), i);
+    }
+    addField(0, 1, QStringLiteral("设置485串口波特率"), common_.rs485_baud_combo, common_.rs485_baud_label_text);
+
+    common_.overtemp_output_combo = new QComboBox(this);
+    common_.overtemp_output_combo->setObjectName(QStringLiteral("temperatureOvertempOutputModeCombo"));
+    common_.overtemp_output_combo->setFixedWidth(kTemperatureControllerWideInputWidth);
+    common_.overtemp_output_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    common_.overtemp_output_combo->addItem(QStringLiteral("继续输出"), 0);
+    common_.overtemp_output_combo->addItem(QStringLiteral("关闭输出"), 1);
+    addField(1, 0, QStringLiteral("过温输出模式"), common_.overtemp_output_combo, common_.overtemp_output_label_text);
+
+    common_.internal_temperature_edit = new QLineEdit(this);
+    common_.internal_temperature_edit->setObjectName(QStringLiteral("temperatureCommonInternalTemperatureEdit"));
+    common_.internal_temperature_edit->setReadOnly(true);
+    common_.internal_temperature_edit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    common_.internal_temperature_edit->setFixedWidth(kTemperatureControllerInputWidth);
+    addField(1, 1, QStringLiteral("温控器自身温度(°C)"), common_.internal_temperature_edit, common_.internal_temperature_label_text);
+
+    common_.factory_reset_button = new QPushButton(QStringLiteral("恢复出厂设置"), this);
+    common_.factory_reset_button->setObjectName(QStringLiteral("temperatureFactoryResetButton"));
+    common_.factory_reset_button->setFixedWidth(132);
+    layout->addWidget(common_.factory_reset_button, 2, 0, 1, 2, Qt::AlignCenter);
+    layout->setRowStretch(3, 1);
+
+    connect(common_.address_spin, &QSpinBox::editingFinished, this, [this]() {
+        emit deviceAddressRequested(static_cast<quint16>(common_.address_spin->value()));
+    });
+    connect(common_.rs485_baud_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        emit rs485BaudRequested(static_cast<quint16>(common_.rs485_baud_combo->currentData().toUInt()));
+    });
+    connect(common_.overtemp_output_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        emit overtempOutputModeRequested(static_cast<quint16>(common_.overtemp_output_combo->currentData().toUInt()));
+    });
+    connect(common_.factory_reset_button, &QPushButton::clicked, this, [this]() {
+        emit factoryResetRequested();
+    });
+
+    return page;
+}
+
 void TemperatureControllerPanel::selectChannel(int index)
 {
-    const int channelIndex = std::clamp(index, 0, 1);
-    selected_channel_index_ = channelIndex;
+    const int pageIndex = std::clamp(index, 0, 2);
+    selected_config_page_index_ = pageIndex;
+    if (pageIndex < 2)
+    {
+        selected_channel_index_ = pageIndex;
+    }
+    const int channelIndex = std::clamp(selected_channel_index_, 0, 1);
     if (channel_stack_)
     {
-        channel_stack_->setCurrentIndex(channelIndex);
+        channel_stack_->setCurrentIndex(pageIndex);
     }
     if (channel_top_controls_stack_)
     {
+        channel_top_controls_stack_->setVisible(pageIndex < 2);
         channel_top_controls_stack_->setCurrentIndex(channelIndex);
     }
 
-    auto updateButton = [channelIndex](QPushButton *button, int buttonIndex) {
+    auto updateButton = [pageIndex](QPushButton *button, int buttonIndex) {
         if (!button)
         {
             return;
         }
         const QSignalBlocker blocker(button);
-        button->setChecked(channelIndex == buttonIndex);
+        button->setChecked(pageIndex == buttonIndex);
         button->style()->unpolish(button);
         button->style()->polish(button);
         button->update();
     };
     updateButton(channel_button_1_, 0);
     updateButton(channel_button_2_, 1);
+    updateButton(common_settings_button_, 2);
 
-    if (temperature_plot_)
+    if (temperature_plot_ && pageIndex < 2)
     {
         temperature_plot_->setChannelIndex(channelIndex);
         temperature_plot_->setTargetTemperature(target_temperature_by_channel_[channelIndex]);
@@ -6681,6 +6818,21 @@ void TemperatureControllerPanel::markCommandPending(VaporView::CommandId command
         pending_controller_mode_ = true;
         pending_controller_mode_value_ = static_cast<int>(payload.controller_mode);
         break;
+    case VaporView::CommandId::SetTemperatureDeviceAddress:
+        pending_common_edits_.device_address = true;
+        pending_common_edits_.device_address_value = static_cast<int>(payload.device_address);
+        break;
+    case VaporView::CommandId::SetTemperatureRs485Baud:
+        pending_common_edits_.rs485_baud = true;
+        pending_common_edits_.rs485_baud_index = static_cast<int>(payload.rs485_baud_index);
+        break;
+    case VaporView::CommandId::SetTemperatureOvertempOutputMode:
+        pending_common_edits_.overtemp_output_mode = true;
+        pending_common_edits_.overtemp_output_mode_value = static_cast<int>(payload.overtemp_output_mode);
+        break;
+    case VaporView::CommandId::RestoreTemperatureFactoryDefaults:
+        pending_common_edits_ = PendingCommonEdits{};
+        break;
     default:
         break;
     }
@@ -6710,6 +6862,18 @@ void TemperatureControllerPanel::clearCommandPending(VaporView::CommandId comman
     case VaporView::CommandId::SetTemperatureControllerMode:
         pending_controller_mode_ = false;
         break;
+    case VaporView::CommandId::SetTemperatureDeviceAddress:
+        pending_common_edits_.device_address = false;
+        break;
+    case VaporView::CommandId::SetTemperatureRs485Baud:
+        pending_common_edits_.rs485_baud = false;
+        break;
+    case VaporView::CommandId::SetTemperatureOvertempOutputMode:
+        pending_common_edits_.overtemp_output_mode = false;
+        break;
+    case VaporView::CommandId::RestoreTemperatureFactoryDefaults:
+        pending_common_edits_ = PendingCommonEdits{};
+        break;
     default:
         break;
     }
@@ -6736,12 +6900,24 @@ void TemperatureControllerPanel::updateChannelTexts()
     }
     if (channel_button_1_) channel_button_1_->setText(is_english_ ? QStringLiteral("Channel 1") : QStringLiteral("通道1"));
     if (channel_button_2_) channel_button_2_->setText(is_english_ ? QStringLiteral("Channel 2") : QStringLiteral("通道2"));
+    if (common_settings_button_) common_settings_button_->setText(is_english_ ? QStringLiteral("Common") : QStringLiteral("通用设置"));
+    if (common_.address_label_text) common_.address_label_text->setText(is_english_ ? QStringLiteral("RS485 address") : QStringLiteral("设置温控器485站号"));
+    if (common_.rs485_baud_label_text) common_.rs485_baud_label_text->setText(is_english_ ? QStringLiteral("RS485 baud") : QStringLiteral("设置485串口波特率"));
+    if (common_.overtemp_output_label_text) common_.overtemp_output_label_text->setText(is_english_ ? QStringLiteral("Over-temp output") : QStringLiteral("过温输出模式"));
+    if (common_.internal_temperature_label_text) common_.internal_temperature_label_text->setText(is_english_ ? QStringLiteral("Internal temp (°C)") : QStringLiteral("温控器自身温度(°C)"));
+    if (common_.factory_reset_button) common_.factory_reset_button->setText(is_english_ ? QStringLiteral("Factory Reset") : QStringLiteral("恢复出厂设置"));
+    if (common_.overtemp_output_combo)
+    {
+        const QSignalBlocker blocker(common_.overtemp_output_combo);
+        common_.overtemp_output_combo->setItemText(0, is_english_ ? QStringLiteral("Continue output") : QStringLiteral("继续输出"));
+        common_.overtemp_output_combo->setItemText(1, is_english_ ? QStringLiteral("Disable output") : QStringLiteral("关闭输出"));
+    }
     for (ChannelWidgets& channel : channels_)
     {
         if (channel.target_label_text) channel.target_label_text->setText(is_english_ ? QStringLiteral("Target Temp (°C)") : QStringLiteral("目标温度(°C)"));
         if (channel.enable_label_text) channel.enable_label_text->setText(is_english_ ? QStringLiteral("Output Enable") : QStringLiteral("输出使能"));
         if (channel.mode_label_text) channel.mode_label_text->setText(is_english_ ? QStringLiteral("Output Mode") : QStringLiteral("输出模式"));
-        if (channel.max_output_label_text) channel.max_output_label_text->setText(is_english_ ? QStringLiteral("Max Output (%)") : QStringLiteral("最大输出电压百分比(%)"));
+        if (channel.max_output_label_text) channel.max_output_label_text->setText(is_english_ ? QStringLiteral("Max Output (%)") : QStringLiteral("最大输出电压(%)"));
         if (channel.pid_label_text) channel.pid_label_text->setText(QStringLiteral("PID"));
         if (channel.auto_pid_label_text) channel.auto_pid_label_text->setText(is_english_ ? QStringLiteral("Auto PID") : QStringLiteral("自动 PID"));
         if (channel.enable_combo)
@@ -6887,6 +7063,51 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
         ? (is_english_ ? QStringLiteral("RD105 reported an error bitmask. Check the controller/manual before enabling output.")
                        : QStringLiteral("RD105 返回错误位掩码。开启输出前请检查温控器和手册。"))
         : (is_english_ ? QStringLiteral("No error reported") : QStringLiteral("未报告错误")));
+    auto hasEditorFocus = [](QWidget *widget) {
+        QWidget *focus = QApplication::focusWidget();
+        return widget && (widget->hasFocus() || (focus && widget->isAncestorOf(focus)));
+    };
+    if (controllerData.valid)
+    {
+        if (pending_common_edits_.device_address &&
+            controllerData.device_address == pending_common_edits_.device_address_value)
+        {
+            pending_common_edits_.device_address = false;
+        }
+        if (common_.address_spin && !pending_common_edits_.device_address && !hasEditorFocus(common_.address_spin))
+        {
+            const QSignalBlocker blocker(common_.address_spin);
+            common_.address_spin->setValue(std::clamp(controllerData.device_address, common_.address_spin->minimum(), common_.address_spin->maximum()));
+        }
+        if (pending_common_edits_.rs485_baud &&
+            controllerData.rs485_baud_index == pending_common_edits_.rs485_baud_index)
+        {
+            pending_common_edits_.rs485_baud = false;
+        }
+        if (common_.rs485_baud_combo && !pending_common_edits_.rs485_baud && !hasEditorFocus(common_.rs485_baud_combo))
+        {
+            const QSignalBlocker blocker(common_.rs485_baud_combo);
+            const int baudIndex = common_.rs485_baud_combo->findData(controllerData.rs485_baud_index);
+            common_.rs485_baud_combo->setCurrentIndex(baudIndex >= 0 ? baudIndex : 0);
+        }
+        if (pending_common_edits_.overtemp_output_mode &&
+            controllerData.overtemp_output_mode == pending_common_edits_.overtemp_output_mode_value)
+        {
+            pending_common_edits_.overtemp_output_mode = false;
+        }
+        if (common_.overtemp_output_combo && !pending_common_edits_.overtemp_output_mode && !hasEditorFocus(common_.overtemp_output_combo))
+        {
+            const QSignalBlocker blocker(common_.overtemp_output_combo);
+            const int overtempIndex = common_.overtemp_output_combo->findData(controllerData.overtemp_output_mode);
+            common_.overtemp_output_combo->setCurrentIndex(overtempIndex >= 0 ? overtempIndex : 0);
+        }
+    }
+    if (common_.internal_temperature_edit)
+    {
+        common_.internal_temperature_edit->setText(controllerData.valid && std::isfinite(controllerData.internal_temperature_c)
+            ? QString::number(controllerData.internal_temperature_c, 'f', 0)
+            : QStringLiteral("---"));
+    }
     if (controllerData.valid)
     {
         for (int i = 0; i < static_cast<int>(measured_temperature_history_.size()); ++i)
@@ -10856,9 +11077,53 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
                     break;
                 }
             }
-            if (command == VaporView::CommandId::SetTemperatureControllerMode)
+            switch (command)
             {
+            case VaporView::CommandId::SetTemperatureControllerMode:
                 current_temperature_controller_.controller_mode = static_cast<int>(payload.controller_mode);
+                break;
+            case VaporView::CommandId::SetTemperatureDeviceAddress:
+                current_temperature_controller_.device_address = static_cast<int>(payload.device_address);
+                QSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"))
+                    .setValue(QStringLiteral("serial/temperature_slave_address"), static_cast<int>(payload.device_address));
+                break;
+            case VaporView::CommandId::SetTemperatureRs485Baud:
+                current_temperature_controller_.rs485_baud_index = static_cast<int>(payload.rs485_baud_index);
+                {
+                    const QString baudText = QString::number(temperatureRs485BaudRateForIndex(payload.rs485_baud_index));
+                    QSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"))
+                        .setValue(QStringLiteral("serial/temperature_baud"), baudText);
+                    if (temperature_baud_combo_)
+                    {
+                        const QSignalBlocker blocker(temperature_baud_combo_);
+                        if (temperature_baud_combo_->findText(baudText) < 0)
+                        {
+                            temperature_baud_combo_->addItem(baudText);
+                        }
+                        temperature_baud_combo_->setCurrentText(baudText);
+                    }
+                }
+                break;
+            case VaporView::CommandId::SetTemperatureOvertempOutputMode:
+                current_temperature_controller_.overtemp_output_mode = static_cast<int>(payload.overtemp_output_mode);
+                break;
+            case VaporView::CommandId::RestoreTemperatureFactoryDefaults:
+                current_temperature_controller_.device_address = 1;
+                current_temperature_controller_.rs485_baud_index = 1;
+                current_temperature_controller_.overtemp_output_mode = 1;
+                {
+                    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+                    settings.setValue(QStringLiteral("serial/temperature_slave_address"), 1);
+                    settings.setValue(QStringLiteral("serial/temperature_baud"), QStringLiteral("9600"));
+                    if (temperature_baud_combo_)
+                    {
+                        const QSignalBlocker blocker(temperature_baud_combo_);
+                        temperature_baud_combo_->setCurrentText(QStringLiteral("9600"));
+                    }
+                }
+                break;
+            default:
+                break;
             }
         };
 
@@ -10886,6 +11151,18 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
         case VaporView::CommandId::SetTemperatureControllerMode:
             ok = collectors.temperature_controller->setControllerMode(payload.controller_mode);
             break;
+        case VaporView::CommandId::SetTemperatureDeviceAddress:
+            ok = collectors.temperature_controller->setDeviceAddress(payload.device_address);
+            break;
+        case VaporView::CommandId::SetTemperatureRs485Baud:
+            ok = collectors.temperature_controller->setRs485BaudIndex(payload.rs485_baud_index);
+            break;
+        case VaporView::CommandId::SetTemperatureOvertempOutputMode:
+            ok = collectors.temperature_controller->setOvertempOutputMode(payload.overtemp_output_mode);
+            break;
+        case VaporView::CommandId::RestoreTemperatureFactoryDefaults:
+            ok = collectors.temperature_controller->restoreFactoryDefaults();
+            break;
         default:
             break;
         }
@@ -10908,12 +11185,11 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
             {
                 temperature_overview_panel_->updateData(current_temperature_controller_);
             }
-            log(command == VaporView::CommandId::SetTemperatureControllerMode
+            log(isTemperatureCommonCommand(command)
                     ? QString(is_english_
-                          ? "RD105 local command confirmed: %1 mode=%2"
-                          : "RD105 本地命令已确认：%1 模式=%2")
+                          ? "RD105 local command confirmed: %1"
+                          : "RD105 本地命令已确认：%1")
                           .arg(VaporView::commandIdName(command))
-                          .arg(payload.controller_mode)
                     : QString(is_english_
                           ? "RD105 local command confirmed: %1 channel=%2"
                           : "RD105 本地命令已确认：%1 通道=%2")
@@ -10988,13 +11264,12 @@ void MainWindow::sendRemoteTemperatureCommand(VaporView::CommandId command, cons
         temperature_controller_panel_->setCommandStatus(temperatureCommandStatusText(command, payload.channel, true));
     }
     restoreTemperatureCommandUi(command, payload.channel == 0 ? 1 : payload.channel);
-    if (command == VaporView::CommandId::SetTemperatureControllerMode)
+    if (isTemperatureCommonCommand(command))
     {
         log(QString(is_english_
-                ? "RD105 command sent: %1 mode=%2 seq=%3"
-                : "RD105 命令已下发：%1 模式=%2 序号=%3")
+                ? "RD105 command sent: %1 seq=%2"
+                : "RD105 命令已下发：%1 序号=%2")
                 .arg(VaporView::commandIdName(command))
-                .arg(payload.controller_mode)
                 .arg(seq));
     }
     else
@@ -11042,7 +11317,11 @@ bool MainWindow::isTemperatureCommand(VaporView::CommandId command) const
            command == VaporView::CommandId::SetTemperatureMaxOutputPercent ||
            command == VaporView::CommandId::SetTemperaturePid ||
            command == VaporView::CommandId::SetTemperatureAutoPid ||
-           command == VaporView::CommandId::SetTemperatureControllerMode;
+           command == VaporView::CommandId::SetTemperatureControllerMode ||
+           command == VaporView::CommandId::SetTemperatureDeviceAddress ||
+           command == VaporView::CommandId::SetTemperatureRs485Baud ||
+           command == VaporView::CommandId::SetTemperatureOvertempOutputMode ||
+           command == VaporView::CommandId::RestoreTemperatureFactoryDefaults;
 }
 
 QString MainWindow::temperatureCommandStatusText(VaporView::CommandId command, quint8 channel, bool pending, const QString& detail) const
@@ -11071,11 +11350,23 @@ QString MainWindow::temperatureCommandStatusText(VaporView::CommandId command, q
     case VaporView::CommandId::SetTemperatureControllerMode:
         action = is_english_ ? QStringLiteral("controller mode") : QStringLiteral("温控器模式");
         break;
+    case VaporView::CommandId::SetTemperatureDeviceAddress:
+        action = is_english_ ? QStringLiteral("RS485 address") : QStringLiteral("485站号");
+        break;
+    case VaporView::CommandId::SetTemperatureRs485Baud:
+        action = is_english_ ? QStringLiteral("RS485 baud") : QStringLiteral("485波特率");
+        break;
+    case VaporView::CommandId::SetTemperatureOvertempOutputMode:
+        action = is_english_ ? QStringLiteral("over-temp output mode") : QStringLiteral("过温输出模式");
+        break;
+    case VaporView::CommandId::RestoreTemperatureFactoryDefaults:
+        action = is_english_ ? QStringLiteral("factory reset") : QStringLiteral("恢复出厂设置");
+        break;
     default:
         action = VaporView::commandIdName(command);
         break;
     }
-    if (command == VaporView::CommandId::SetTemperatureControllerMode)
+    if (isTemperatureCommonCommand(command))
     {
         if (pending)
         {
@@ -14495,6 +14786,39 @@ void MainWindow::setupDataPanels()
         command.channel = 1;
         command.controller_mode = mode;
         sendTemperatureCommand(VaporView::CommandId::SetTemperatureControllerMode, command);
+    });
+    connect(temperature_controller_panel_, &TemperatureControllerPanel::deviceAddressRequested, this, [this](quint16 address) {
+        VaporView::TemperatureControllerCommand command;
+        command.channel = 1;
+        command.device_address = address;
+        sendTemperatureCommand(VaporView::CommandId::SetTemperatureDeviceAddress, command);
+    });
+    connect(temperature_controller_panel_, &TemperatureControllerPanel::rs485BaudRequested, this, [this](quint16 baudIndex) {
+        VaporView::TemperatureControllerCommand command;
+        command.channel = 1;
+        command.rs485_baud_index = baudIndex;
+        sendTemperatureCommand(VaporView::CommandId::SetTemperatureRs485Baud, command);
+    });
+    connect(temperature_controller_panel_, &TemperatureControllerPanel::overtempOutputModeRequested, this, [this](quint16 mode) {
+        VaporView::TemperatureControllerCommand command;
+        command.channel = 1;
+        command.overtemp_output_mode = mode;
+        sendTemperatureCommand(VaporView::CommandId::SetTemperatureOvertempOutputMode, command);
+    });
+    connect(temperature_controller_panel_, &TemperatureControllerPanel::factoryResetRequested, this, [this]() {
+        const QMessageBox::StandardButton answer = QMessageBox::question(
+            this,
+            is_english_ ? QStringLiteral("Restore Factory Settings") : QStringLiteral("恢复出厂设置"),
+            is_english_
+                ? QStringLiteral("Restore RD105 factory settings? This resets the address, baud rate, and temperature parameters.")
+                : QStringLiteral("确定恢复 RD105 出厂设置？这会重置站号、波特率和温控参数。"));
+        if (answer != QMessageBox::Yes)
+        {
+            return;
+        }
+        VaporView::TemperatureControllerCommand command;
+        command.channel = 1;
+        sendTemperatureCommand(VaporView::CommandId::RestoreTemperatureFactoryDefaults, command);
     });
     temperatureLayout->addWidget(temperature_controller_panel_);
 
@@ -19408,7 +19732,7 @@ void MainWindow::onAutoDetectPortsClicked()
             const int baud = baudText.toInt();
             return ProbeSpec{"temperature", "RD105", baudText, [probeCollector, baud](const QString& port_name) {
                 auto collector = std::make_unique<VaporView::TemperatureControllerCollector>();
-                collector->setSlaveAddress(1);
+                collector->setSlaveAddress(static_cast<uint8_t>(rememberedTemperatureSlaveAddress()));
                 return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(baud));
             }};
         };
@@ -19811,7 +20135,7 @@ void MainWindow::onConnectClicked()
         collectors.hmp->setSampleRate(hmpRate);
         collectors.lidar->setSampleRate(lidarRate);
         collectors.temperature_controller->setSampleRate(temperatureRate);
-        collectors.temperature_controller->setSlaveAddress(1);
+        collectors.temperature_controller->setSlaveAddress(static_cast<uint8_t>(rememberedTemperatureSlaveAddress()));
 
         collectors.epsilon->setLogCallback(logCallback);
         collectors.ptb->setLogCallback(logCallback);

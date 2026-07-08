@@ -230,6 +230,9 @@ struct TemperatureControllerData
   double internal_temperature_c = std::numeric_limits<double>::quiet_NaN();
   uint16_t error_code = 0;
   int controller_mode = 0;
+  int device_address = 1;
+  int rs485_baud_index = 1;
+  int overtemp_output_mode = 1;
 
   std::chrono::steady_clock::time_point timestamp{};
   bool valid = false;

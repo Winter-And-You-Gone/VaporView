@@ -286,6 +286,10 @@ signals:
     void pidRequested(quint8 channel, quint32 kp, quint32 ki, quint32 kd);
     void autoPidRequested(quint8 channel, quint16 mode);
     void controllerModeRequested(quint16 mode);
+    void deviceAddressRequested(quint16 address);
+    void rs485BaudRequested(quint16 baudIndex);
+    void overtempOutputModeRequested(quint16 mode);
+    void factoryResetRequested();
 
 private:
     struct ChannelWidgets
@@ -320,10 +324,32 @@ private:
         bool auto_pid = false;
         int auto_pid_mode = 0;
     };
+    struct CommonWidgets
+    {
+        QLabel *address_label_text = nullptr;
+        QLabel *rs485_baud_label_text = nullptr;
+        QLabel *overtemp_output_label_text = nullptr;
+        QLabel *internal_temperature_label_text = nullptr;
+        QSpinBox *address_spin = nullptr;
+        QComboBox *rs485_baud_combo = nullptr;
+        QComboBox *overtemp_output_combo = nullptr;
+        QLineEdit *internal_temperature_edit = nullptr;
+        QPushButton *factory_reset_button = nullptr;
+    };
+    struct PendingCommonEdits
+    {
+        bool device_address = false;
+        int device_address_value = 1;
+        bool rs485_baud = false;
+        int rs485_baud_index = 1;
+        bool overtemp_output_mode = false;
+        int overtemp_output_mode_value = 1;
+    };
 
     void setupUi();
     QWidget *createChannelTopControlsPage(int index);
     QWidget *createChannelPage(int index);
+    QWidget *createCommonSettingsPage();
     void selectChannel(int index);
     void updateChannelTexts();
     void updateChannelData(int index, const VaporView::TemperatureControllerChannelData& channel, bool valid);
@@ -332,6 +358,7 @@ private:
     QFrame *channel_top_bar_ = nullptr;
     QPushButton *channel_button_1_ = nullptr;
     QPushButton *channel_button_2_ = nullptr;
+    QPushButton *common_settings_button_ = nullptr;
     QStackedWidget *channel_top_controls_stack_ = nullptr;
     QStackedWidget *channel_stack_ = nullptr;
     TemperatureTrendPlotWidget *temperature_plot_ = nullptr;
@@ -344,15 +371,18 @@ private:
     QLabel *error_code_lbl_ = nullptr;
     QLabel *controller_mode_lbl_ = nullptr;
     QComboBox *controller_mode_combo_ = nullptr;
+    CommonWidgets common_{};
     std::array<ChannelWidgets, 2> channels_{};
     std::array<QVector<double>, 2> measured_temperature_history_{};
     std::array<double, 2> target_temperature_by_channel_{
         std::numeric_limits<double>::quiet_NaN(),
         std::numeric_limits<double>::quiet_NaN()};
     std::array<PendingChannelEdits, 2> pending_channel_edits_{};
+    PendingCommonEdits pending_common_edits_{};
     bool pending_controller_mode_ = false;
     int pending_controller_mode_value_ = 0;
     int selected_channel_index_ = 0;
+    int selected_config_page_index_ = 0;
     bool is_english_ = false;
 };
 

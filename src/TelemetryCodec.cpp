@@ -179,6 +179,10 @@ QString commandIdName(CommandId id)
     case CommandId::SetTemperaturePid: return QStringLiteral("SetTemperaturePid");
     case CommandId::SetTemperatureAutoPid: return QStringLiteral("SetTemperatureAutoPid");
     case CommandId::SetTemperatureControllerMode: return QStringLiteral("SetTemperatureControllerMode");
+    case CommandId::SetTemperatureDeviceAddress: return QStringLiteral("SetTemperatureDeviceAddress");
+    case CommandId::SetTemperatureRs485Baud: return QStringLiteral("SetTemperatureRs485Baud");
+    case CommandId::SetTemperatureOvertempOutputMode: return QStringLiteral("SetTemperatureOvertempOutputMode");
+    case CommandId::RestoreTemperatureFactoryDefaults: return QStringLiteral("RestoreTemperatureFactoryDefaults");
     case CommandId::ShutdownCore: return QStringLiteral("ShutdownCore");
     }
     return QStringLiteral("UnknownCommand");
@@ -897,6 +901,9 @@ QByteArray TelemetryCodec::serializeTemperatureControllerStatus(const Temperatur
     {
         appendLe<quint16>(payload, static_cast<quint16>(std::clamp(channel.auto_pid_mode, 0, 65535)));
     }
+    appendLe<quint16>(payload, static_cast<quint16>(std::clamp(data.device_address, 0, 65535)));
+    appendLe<quint16>(payload, static_cast<quint16>(std::clamp(data.rs485_baud_index, 0, 65535)));
+    appendLe<quint16>(payload, static_cast<quint16>(std::clamp(data.overtemp_output_mode, 0, 65535)));
     return payload;
 }
 
@@ -959,6 +966,21 @@ bool TelemetryCodec::parseTemperatureControllerStatus(const QByteArray& payload,
             }
             channel.auto_pid_mode = autoPidMode;
         }
+        quint16 deviceAddress = 0;
+        quint16 rs485BaudIndex = 0;
+        quint16 overtempOutputMode = 0;
+        if (readLe(payload, offset, deviceAddress))
+        {
+            data.device_address = deviceAddress;
+            if (readLe(payload, offset, rs485BaudIndex))
+            {
+                data.rs485_baud_index = rs485BaudIndex;
+                if (readLe(payload, offset, overtempOutputMode))
+                {
+                    data.overtemp_output_mode = overtempOutputMode;
+                }
+            }
+        }
     }
     return true;
 }
@@ -978,6 +1000,9 @@ QByteArray TelemetryCodec::serializeTemperatureControllerCommand(const Temperatu
     appendLe<quint32>(payload, command.kd);
     appendLe<quint16>(payload, command.auto_pid_mode);
     appendLe<quint16>(payload, command.controller_mode);
+    appendLe<quint16>(payload, command.device_address);
+    appendLe<quint16>(payload, command.rs485_baud_index);
+    appendLe<quint16>(payload, command.overtemp_output_mode);
     return payload;
 }
 
@@ -1010,6 +1035,21 @@ bool TelemetryCodec::parseTemperatureControllerCommand(const QByteArray& payload
         if (readLe(payload, offset, controllerMode))
         {
             command.controller_mode = controllerMode;
+            quint16 deviceAddress = 0;
+            quint16 rs485BaudIndex = 0;
+            quint16 overtempOutputMode = 0;
+            if (readLe(payload, offset, deviceAddress))
+            {
+                command.device_address = deviceAddress;
+                if (readLe(payload, offset, rs485BaudIndex))
+                {
+                    command.rs485_baud_index = rs485BaudIndex;
+                    if (readLe(payload, offset, overtempOutputMode))
+                    {
+                        command.overtemp_output_mode = overtempOutputMode;
+                    }
+                }
+            }
         }
     }
     return true;

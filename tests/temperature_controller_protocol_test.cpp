@@ -91,6 +91,14 @@ bool checkChannelAddressOffset()
                   "channel 2 auto PID address mismatch");
     ok &= require(static_cast<quint16>(VaporView::TemperatureControllerProtocol::Register::ControllerMode) == 0x0004,
                   "controller mode address mismatch");
+    ok &= require(static_cast<quint16>(VaporView::TemperatureControllerProtocol::Register::FactoryReset) == 0x0000,
+                  "factory reset address mismatch");
+    ok &= require(static_cast<quint16>(VaporView::TemperatureControllerProtocol::Register::DeviceAddress) == 0x0002,
+                  "device address register mismatch");
+    ok &= require(static_cast<quint16>(VaporView::TemperatureControllerProtocol::Register::Rs485Baud) == 0x0009,
+                  "RS485 baud register mismatch");
+    ok &= require(static_cast<quint16>(VaporView::TemperatureControllerProtocol::Register::OvertempOutputMode) == 0x000B,
+                  "over-temperature output mode register mismatch");
     return ok;
 }
 

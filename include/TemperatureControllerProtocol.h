@@ -14,6 +14,10 @@ namespace TemperatureControllerProtocol
 
 enum class Register : quint16
 {
+    FactoryReset = 0x0000,
+    DeviceAddress = 0x0002,
+    Rs485Baud = 0x0009,
+    OvertempOutputMode = 0x000B,
     TargetTemperature = 0x1000,
     MeasuredTemperature = 0x1002,
     Resistor = 0x1004,

@@ -720,10 +720,10 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         return result;
     };
 
-    auto temperatureCommand = [&](auto method) {
+    auto temperatureCommand = [&](auto method, bool requireChannel = true) {
         TemperatureControllerCommand request;
         if (!TelemetryCodec::parseTemperatureControllerCommand(command.payload, request) ||
-            request.channel < 1 || request.channel > 2)
+            (requireChannel && (request.channel < 1 || request.channel > 2)))
         {
             result.ack = makeAck(command, CommandErrorCode::InvalidPayload);
             return result;
@@ -856,7 +856,27 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         return temperatureCommand([this](const TemperatureControllerCommand& request) {
             CommandErrorCode error = CommandErrorCode::Ok;
             return device_manager_.setTemperatureControllerMode(request.controller_mode, &error);
-        });
+        }, false);
+    case CommandId::SetTemperatureDeviceAddress:
+        return temperatureCommand([this](const TemperatureControllerCommand& request) {
+            CommandErrorCode error = CommandErrorCode::Ok;
+            return device_manager_.setTemperatureDeviceAddress(request.device_address, &error);
+        }, false);
+    case CommandId::SetTemperatureRs485Baud:
+        return temperatureCommand([this](const TemperatureControllerCommand& request) {
+            CommandErrorCode error = CommandErrorCode::Ok;
+            return device_manager_.setTemperatureRs485Baud(request.rs485_baud_index, &error);
+        }, false);
+    case CommandId::SetTemperatureOvertempOutputMode:
+        return temperatureCommand([this](const TemperatureControllerCommand& request) {
+            CommandErrorCode error = CommandErrorCode::Ok;
+            return device_manager_.setTemperatureOvertempOutputMode(request.overtemp_output_mode, &error);
+        }, false);
+    case CommandId::RestoreTemperatureFactoryDefaults:
+        return temperatureCommand([this](const TemperatureControllerCommand&) {
+            CommandErrorCode error = CommandErrorCode::Ok;
+            return device_manager_.restoreTemperatureFactoryDefaults(&error);
+        }, false);
     case CommandId::EnableWaveformStreaming:
         setWaveformStreamingEnabled(true);
         break;

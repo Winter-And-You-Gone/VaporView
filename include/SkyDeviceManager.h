@@ -51,6 +51,10 @@ public:
     bool setTemperaturePid(quint8 channel, quint32 kp, quint32 ki, quint32 kd, CommandErrorCode *errorCode = nullptr);
     bool setTemperatureAutoPid(quint8 channel, quint16 mode, CommandErrorCode *errorCode = nullptr);
     bool setTemperatureControllerMode(quint16 mode, CommandErrorCode *errorCode = nullptr);
+    bool setTemperatureDeviceAddress(quint16 address, CommandErrorCode *errorCode = nullptr);
+    bool setTemperatureRs485Baud(quint16 baudIndex, CommandErrorCode *errorCode = nullptr);
+    bool setTemperatureOvertempOutputMode(quint16 mode, CommandErrorCode *errorCode = nullptr);
+    bool restoreTemperatureFactoryDefaults(CommandErrorCode *errorCode = nullptr);
 
     EpsilonData latestEpsilon() const;
     PtbData latestPtb() const;

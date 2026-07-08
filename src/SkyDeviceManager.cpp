@@ -44,6 +44,22 @@ double positiveDegrees(double degrees)
     return value;
 }
 
+int temperatureRs485BaudRateForIndex(quint16 index)
+{
+    switch (index)
+    {
+    case 0: return 4800;
+    case 1: return 9600;
+    case 2: return 19200;
+    case 3: return 38400;
+    case 4: return 57600;
+    case 5: return 115200;
+    case 6: return 230400;
+    case 7: return 460800;
+    default: return 9600;
+    }
+}
+
 void setQuaternionFromEuler(EpsilonData& data)
 {
     const double roll = degToRad(data.roll_deg);
@@ -454,6 +470,68 @@ bool SkyDeviceManager::setTemperatureControllerMode(quint16 mode, CommandErrorCo
         return false;
     }
     const bool ok = temperature_controller_->setControllerMode(mode);
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    return ok;
+}
+
+bool SkyDeviceManager::setTemperatureDeviceAddress(quint16 address, CommandErrorCode *errorCode)
+{
+    if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        return false;
+    }
+    const bool ok = temperature_controller_->setDeviceAddress(address);
+    if (ok)
+    {
+        config_.temperature_controller.slave_address = static_cast<int>(address);
+    }
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    return ok;
+}
+
+bool SkyDeviceManager::setTemperatureRs485Baud(quint16 baudIndex, CommandErrorCode *errorCode)
+{
+    if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        return false;
+    }
+    const bool ok = temperature_controller_->setRs485BaudIndex(baudIndex);
+    if (ok)
+    {
+        config_.temperature_controller.baud_rate = temperatureRs485BaudRateForIndex(baudIndex);
+    }
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    return ok;
+}
+
+bool SkyDeviceManager::setTemperatureOvertempOutputMode(quint16 mode, CommandErrorCode *errorCode)
+{
+    if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        return false;
+    }
+    const bool ok = temperature_controller_->setOvertempOutputMode(mode);
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    return ok;
+}
+
+bool SkyDeviceManager::restoreTemperatureFactoryDefaults(CommandErrorCode *errorCode)
+{
+    if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        return false;
+    }
+    const bool ok = temperature_controller_->restoreFactoryDefaults();
+    if (ok)
+    {
+        config_.temperature_controller.slave_address = 1;
+        config_.temperature_controller.baud_rate = 9600;
+        temperature_controller_->setSlaveAddress(1);
+    }
     if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
     return ok;
 }

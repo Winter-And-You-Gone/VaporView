@@ -35,6 +35,10 @@ void testProtocolEnumValues()
     require(static_cast<quint16>(VaporView::CommandId::SetTemperatureTarget) == 40, "CommandId SetTemperatureTarget value");
     require(static_cast<quint16>(VaporView::CommandId::SetTemperatureAutoPid) == 45, "CommandId SetTemperatureAutoPid value");
     require(static_cast<quint16>(VaporView::CommandId::SetTemperatureControllerMode) == 46, "CommandId SetTemperatureControllerMode value");
+    require(static_cast<quint16>(VaporView::CommandId::SetTemperatureDeviceAddress) == 47, "CommandId SetTemperatureDeviceAddress value");
+    require(static_cast<quint16>(VaporView::CommandId::SetTemperatureRs485Baud) == 48, "CommandId SetTemperatureRs485Baud value");
+    require(static_cast<quint16>(VaporView::CommandId::SetTemperatureOvertempOutputMode) == 49, "CommandId SetTemperatureOvertempOutputMode value");
+    require(static_cast<quint16>(VaporView::CommandId::RestoreTemperatureFactoryDefaults) == 50, "CommandId RestoreTemperatureFactoryDefaults value");
     require(static_cast<quint16>(VaporView::CommandId::ShutdownCore) == 90, "CommandId ShutdownCore value");
 }
 
@@ -224,6 +228,9 @@ void testWaveform()
     command.kd = 33;
     command.auto_pid_mode = 1;
     command.controller_mode = 3;
+    command.device_address = 9;
+    command.rs485_baud_index = 5;
+    command.overtemp_output_mode = 1;
     VaporView::TemperatureControllerCommand parsedCommand;
     require(VaporView::TelemetryCodec::parseTemperatureControllerCommand(
                 VaporView::TelemetryCodec::serializeTemperatureControllerCommand(command), parsedCommand),
@@ -234,12 +241,19 @@ void testWaveform()
     require(parsedCommand.output_mode == 3 && parsedCommand.max_output_percent == 80, "temperature command output values");
     require(parsedCommand.kp == 11 && parsedCommand.ki == 22 && parsedCommand.kd == 33, "temperature command pid values");
     require(parsedCommand.auto_pid_mode == 1 && parsedCommand.controller_mode == 3, "temperature command advanced values");
+    require(parsedCommand.device_address == 9 &&
+                parsedCommand.rs485_baud_index == 5 &&
+                parsedCommand.overtemp_output_mode == 1,
+            "temperature command common settings values");
 
     VaporView::TemperatureControllerData status;
     status.valid = true;
     status.internal_temperature_c = 32.25;
     status.error_code = 7;
     status.controller_mode = 2;
+    status.device_address = 9;
+    status.rs485_baud_index = 5;
+    status.overtemp_output_mode = 1;
     status.channels[0].target_temperature_c = 25.0;
     status.channels[0].measured_temperature_c = 24.9;
     status.channels[0].output_enabled = true;
@@ -258,6 +272,10 @@ void testWaveform()
     require(parsedStatus.error_code == 7, "temperature status error code");
     require(std::fabs(parsedStatus.internal_temperature_c - 32.25) < 0.000001, "temperature status internal temp");
     require(parsedStatus.controller_mode == 2, "temperature status controller mode");
+    require(parsedStatus.device_address == 9 &&
+                parsedStatus.rs485_baud_index == 5 &&
+                parsedStatus.overtemp_output_mode == 1,
+            "temperature status common settings");
     require(parsedStatus.channels[0].output_enabled && parsedStatus.channels[0].kp == 100 && parsedStatus.channels[0].auto_pid_mode == 1, "temperature status channel one");
     require(std::fabs(parsedStatus.channels[1].output_percent - 12.5) < 0.000001 && parsedStatus.channels[1].auto_pid_mode == 2, "temperature status channel two");
 }

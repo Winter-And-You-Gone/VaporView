@@ -244,6 +244,10 @@ public:
   bool setPid(uint8_t channel, uint32_t kp, uint32_t ki, uint32_t kd);
   bool setAutoPid(uint8_t channel, uint16_t mode);
   bool setControllerMode(uint16_t mode);
+  bool setDeviceAddress(uint16_t address);
+  bool setRs485BaudIndex(uint16_t baud_index);
+  bool setOvertempOutputMode(uint16_t mode);
+  bool restoreFactoryDefaults();
 
 protected:
   void run() override;
