@@ -500,6 +500,11 @@ int SingleLevelPopupMenu::panelPadding() const
     return panel_padding_;
 }
 
+void SingleLevelPopupMenu::setPanelContentWidth(int width)
+{
+    setFixedWidth(std::max(1, width) + shadowMargin() * 2);
+}
+
 void SingleLevelPopupMenu::refreshTheme()
 {
     if (objectName().isEmpty())

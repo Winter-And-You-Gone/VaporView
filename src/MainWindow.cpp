@@ -16057,8 +16057,8 @@ void MainWindow::updateLogFilterAction()
     {
         log_filter_menu_->setTitle(is_english_ ? QStringLiteral("Log Filters")
                                                : QStringLiteral("日志过滤"));
-        log_filter_menu_->setFixedWidth(menuItemWidth + log_filter_menu_->panelPadding() * 2);
         log_filter_menu_->refreshTheme();
+        log_filter_menu_->setPanelContentWidth(menuItemWidth);
     }
     if (log_filter_btn_)
     {

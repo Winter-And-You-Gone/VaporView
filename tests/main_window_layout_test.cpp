@@ -11,6 +11,7 @@
 #include <QCoreApplication>
 #include <QDoubleSpinBox>
 #include <QElapsedTimer>
+#include <QFontMetrics>
 #include <QFrame>
 #include <QGroupBox>
 #include <QIcon>
@@ -1621,6 +1622,9 @@ int main(int argc, char **argv)
         require(row->geometry().left() <= shadowMargin + 1 &&
                     row->geometry().right() >= logFilterMenu->width() - shadowMargin - 3,
                 "log filter menu hover background spans the full floating panel row width");
+        const QFontMetrics rowTextMetrics(row->textLabel()->font());
+        require(row->textLabel()->width() >= rowTextMetrics.horizontalAdvance(row->text()),
+                "log filter menu row text is not clipped by the popup content width");
     }
     logFilterMenu->hide();
     processEventsFor(50);

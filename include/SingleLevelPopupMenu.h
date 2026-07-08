@@ -108,6 +108,7 @@ public:
     int cornerRadius() const;
     void setPanelPadding(int padding);
     int panelPadding() const;
+    void setPanelContentWidth(int width);
     void refreshTheme();
     void popupFrom(QWidget *anchor,
                    SingleLevelPopupAnchor anchorEdge = SingleLevelPopupAnchor::Left,
