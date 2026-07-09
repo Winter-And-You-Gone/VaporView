@@ -5,10 +5,9 @@
 #include <QComboBox>
 #include <QEvent>
 #include <QFrame>
-#include <QPainter>
+#include <QListView>
 #include <QPainterPath>
 #include <QRegion>
-#include <QStyle>
 #include <QVariant>
 #include <QWidget>
 
@@ -21,11 +20,11 @@ namespace
 
 constexpr int kComboPopupCornerRadius = 10;
 constexpr int kComboPopupAnchorGap = 0;
+constexpr int kComboPopupBorderWidth = 1;
 constexpr const char *kComboPopupMaskFilterProperty = "vaporViewComboPopupMaskFilterInstalled";
 constexpr const char *kComboPopupContainerMaskFilterProperty = "vaporViewComboPopupContainerMaskFilterInstalled";
 constexpr const char *kComboPopupOwnerProperty = "vaporViewComboPopupOwner";
 constexpr const char *kComboPopupContainerAligningProperty = "vaporViewComboPopupContainerAligning";
-constexpr const char *kComboPopupBorderOverlayName = "vaporViewComboPopupBorderOverlay";
 
 QColor hexColor(const char *value)
 {
@@ -81,98 +80,47 @@ QWidget *comboPopupAnchorForView(QAbstractItemView *view)
     return qobject_cast<QWidget *>(view->property(kComboPopupOwnerProperty).value<QObject *>());
 }
 
-class ComboPopupBorderOverlay final : public QWidget
+class ComboPopupListView final : public QListView
 {
 public:
-    explicit ComboPopupBorderOverlay(QWidget *parent)
-        : QWidget(parent)
+    explicit ComboPopupListView(QWidget *parent = nullptr)
+        : QListView(parent)
     {
-        setObjectName(QString::fromLatin1(kComboPopupBorderOverlayName));
-        setAttribute(Qt::WA_TransparentForMouseEvents, true);
-        setAttribute(Qt::WA_NoSystemBackground, true);
-        setAutoFillBackground(false);
-        if (parent)
-        {
-            parent->installEventFilter(this);
-        }
     }
 
-    void setBorderColor(const QColor& color)
+    void applyBorderInset()
     {
-        if (border_color_ == color)
-        {
-            return;
-        }
-        border_color_ = color;
-        setProperty("borderColor", border_color_.name());
-        update();
+        setViewportMargins(kComboPopupBorderWidth,
+                           kComboPopupBorderWidth,
+                           kComboPopupBorderWidth,
+                           kComboPopupBorderWidth);
+        setProperty("vaporViewComboPopupViewportMargin", kComboPopupBorderWidth);
     }
-
-protected:
-    bool eventFilter(QObject *watched, QEvent *event) override
-    {
-        if (watched == parentWidget())
-        {
-            const QEvent::Type type = event->type();
-            if (type == QEvent::Show || type == QEvent::Resize || type == QEvent::Polish)
-            {
-                setGeometry(parentWidget()->rect());
-                raise();
-                show();
-                update();
-            }
-        }
-        return QWidget::eventFilter(watched, event);
-    }
-
-    void paintEvent(QPaintEvent *) override
-    {
-        if (!border_color_.isValid() || width() < 2 || height() < 2)
-        {
-            return;
-        }
-
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.setPen(QPen(border_color_, 1.0));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5),
-                                kComboPopupCornerRadius,
-                                kComboPopupCornerRadius);
-    }
-
-private:
-    QColor border_color_;
 };
 
-void updateComboPopupBorderOverlay(QAbstractItemView *view)
+QAbstractItemView *ensureComboPopupView(QComboBox *combo)
 {
-    if (!view)
+    if (!combo || !combo->view())
     {
-        return;
+        return nullptr;
     }
 
-    QWidget *borderParent = view->viewport();
-    if (!borderParent)
+    if (auto *popupView = dynamic_cast<ComboPopupListView *>(combo->view()))
     {
-        borderParent = view;
+        return popupView;
     }
 
-    auto *overlay = static_cast<ComboPopupBorderOverlay *>(
-        borderParent->findChild<QWidget *>(QString::fromLatin1(kComboPopupBorderOverlayName),
-                                           Qt::FindDirectChildrenOnly));
-    if (!overlay)
-    {
-        overlay = new ComboPopupBorderOverlay(borderParent);
-    }
+    auto *popupView = new ComboPopupListView(combo);
+    combo->setView(popupView);
+    return popupView;
+}
 
-    const bool dark = view->property("vaporViewComboPopupDarkTheme").toBool();
-    overlay->setBorderColor(appThemeColor(AppThemeColor::Border, dark));
-    overlay->setProperty("vaporViewComboPopupBorderOverlay", true);
-    overlay->setProperty("cornerRadius", kComboPopupCornerRadius);
-    overlay->setGeometry(borderParent->rect());
-    overlay->raise();
-    overlay->show();
+void applyComboPopupViewportInset(QAbstractItemView *view)
+{
+    if (auto *popupView = dynamic_cast<ComboPopupListView *>(view))
+    {
+        popupView->applyBorderInset();
+    }
 }
 
 void alignComboPopupContainerToAnchor(QWidget *container, QAbstractItemView *view)
@@ -226,7 +174,6 @@ protected:
                 if (auto *view = container->findChild<QAbstractItemView *>(QStringLiteral("vaporViewComboPopupView")))
                 {
                     alignComboPopupContainerToAnchor(container, view);
-                    updateComboPopupBorderOverlay(view);
                 }
             }
         }
@@ -302,9 +249,9 @@ void applyComboPopupOpaqueBackground(QAbstractItemView *view)
 void applyComboPopupRoundedMask(QAbstractItemView *view)
 {
     applyComboPopupOpaqueBackground(view);
+    applyComboPopupViewportInset(view);
     applyRoundedWidgetMask(view, "vaporViewComboPopupRoundedMaskApplied");
     configureComboPopupContainerMask(view);
-    updateComboPopupBorderOverlay(view);
 }
 
 class ComboPopupMaskFilter final : public QObject
@@ -856,14 +803,18 @@ QPalette appThemePalette(bool dark, const QPalette& basePalette)
 
 void configureComboBoxPopup(QComboBox *combo, bool dark)
 {
-    if (!combo || !combo->view())
+    if (!combo)
     {
         return;
     }
 
     combo->setProperty("vaporViewComboPopupStyled", true);
 
-    QAbstractItemView *view = combo->view();
+    QAbstractItemView *view = ensureComboPopupView(combo);
+    if (!view)
+    {
+        return;
+    }
     view->setObjectName(QStringLiteral("vaporViewComboPopupView"));
     view->setProperty("vaporViewComboPopupStyled", true);
     view->setProperty("vaporViewComboPopupRoundedMaskEnabled", true);
@@ -885,6 +836,7 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
     const QColor popupText = appThemeColor(AppThemeColor::MenuText, dark);
     const QColor popupHighlight = appThemeColor(AppThemeColor::MenuHover, dark);
     const QColor popupHighlightText = appThemeColor(AppThemeColor::MenuText, dark);
+    const QColor popupBorder = appThemeColor(AppThemeColor::Border, dark);
     const QColor disabledText = appThemeColor(AppThemeColor::MenuDisabledText, dark);
     QPalette popupPalette = view->palette();
     popupPalette.setColor(QPalette::Base, popupBase);
@@ -895,7 +847,7 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
     view->setPalette(popupPalette);
     view->setStyleSheet(QStringLiteral(
         "QAbstractItemView#vaporViewComboPopupView { "
-        "background-color: %1; border: none; border-radius: 10px; "
+        "background-color: %1; border: 1px solid %5; border-radius: 10px; "
         "color: %2; outline: 0px; padding: 12px 0px; "
         "selection-background-color: %3; selection-color: %4; }"
         "QAbstractItemView#vaporViewComboPopupView::item { "
@@ -907,13 +859,14 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
         "QAbstractItemView#vaporViewComboPopupView::item:selected:!active { "
         "background-color: %3; color: %4; }"
         "QAbstractItemView#vaporViewComboPopupView::item:disabled { "
-        "background-color: transparent; color: %5; }"
+        "background-color: transparent; color: %6; }"
         "QAbstractItemView#vaporViewComboPopupView::item:selected:disabled { "
-        "background-color: %3; color: %5; }")
+        "background-color: %3; color: %6; }")
         .arg(popupBase.name(),
              popupText.name(),
              popupHighlight.name(),
              popupHighlightText.name(),
+             popupBorder.name(),
              disabledText.name()));
     applyComboPopupOpaqueBackground(view);
     applyComboPopupRoundedMask(view);

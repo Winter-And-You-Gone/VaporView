@@ -80,6 +80,8 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
             "combo popup view enables rounded masking");
     require(combo->view()->property("cornerRadius").toInt() == 10,
             "combo popup view uses the shared corner radius");
+    require(combo->view()->property("vaporViewComboPopupViewportMargin").toInt() == 1,
+            "combo popup view leaves a one-pixel viewport inset for the QSS border");
     require(!combo->view()->testAttribute(Qt::WA_TranslucentBackground) &&
                 !combo->view()->testAttribute(Qt::WA_NoSystemBackground),
             "combo popup view uses an opaque backing store to avoid transparent edge artifacts");
@@ -89,17 +91,9 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
             "combo popup viewport avoids transparent backing-store attributes");
     require(combo->view()->viewport()->styleSheet().contains(QStringLiteral("background-color:")) &&
                 combo->view()->viewport()->styleSheet().contains(QStringLiteral("border: none")),
-            "combo popup viewport has an explicit filled background without drawing a clipped border");
-    QWidget *borderOverlay =
-        combo->view()->viewport()->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupBorderOverlay"),
-                                                        Qt::FindDirectChildrenOnly);
-    require(borderOverlay != nullptr &&
-                borderOverlay->property("vaporViewComboPopupBorderOverlay").toBool() &&
-                borderOverlay->property("cornerRadius").toInt() == 10 &&
-                borderOverlay->property("borderColor").toString() ==
-                    VaporView::appThemeColorName(VaporView::AppThemeColor::Border,
-                                                 VaporView::isDarkThemeEnabled()),
-            "combo popup draws the gray outer border with a safe child overlay");
+            "combo popup viewport has an explicit filled background without drawing its own border");
+    require(combo->view()->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupBorderOverlay")) == nullptr,
+            "combo popup does not create a redundant child border overlay");
     require(!combo->view()->property("vaporViewComboPopupShadowEnabled").toBool(),
             "combo popup view does not request unsafe external shadow chrome");
     require(!combo->view()->property("floatingPanelChrome").toBool(),
@@ -109,8 +103,10 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
     const QString popupStyle = combo->view()->styleSheet();
     const QString hoverColor = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuHover,
                                                             VaporView::isDarkThemeEnabled());
+    const QString borderColor = VaporView::appThemeColorName(VaporView::AppThemeColor::Border,
+                                                             VaporView::isDarkThemeEnabled());
     require(popupStyle.contains(QStringLiteral("border-radius: 10px")) &&
-                popupStyle.contains(QStringLiteral("border: none")) &&
+                popupStyle.contains(QStringLiteral("border: 1px solid %1").arg(borderColor)) &&
                 !popupStyle.contains(QStringLiteral("border-bottom: 1px solid")) &&
                 popupStyle.contains(QStringLiteral("border-radius: 0px")) &&
                 popupStyle.contains(QStringLiteral("padding: 12px 0px")) &&
@@ -127,6 +123,8 @@ void requireComboPopupFloatingContainer(QComboBox *combo, const char *message)
 
     QAbstractItemView *view = combo->view();
     require(view != nullptr, "combo popup view exists before opening");
+    combo->showPopup();
+    processEventsFor(120);
     QWidget *container = view->window();
     require(container != nullptr, "combo popup has a native popup container");
     require(container->property("vaporViewComboPopupRoundedMaskEnabled").toBool(),
@@ -149,6 +147,10 @@ void requireComboPopupFloatingContainer(QComboBox *combo, const char *message)
     require(container->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupShadowWindow"),
                                            Qt::FindDirectChildrenOnly) == nullptr,
             "combo popup container does not create a transparent custom shadow window");
+    require(view->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupBorderOverlay")) == nullptr,
+            "opened combo popup keeps the gray border in QSS instead of an overlay widget");
+    combo->hidePopup();
+    processEventsFor(40);
 }
 
 void requireComboPopupsStyledIn(QWidget *scope, const char *message)
