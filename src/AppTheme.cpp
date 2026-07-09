@@ -91,6 +91,10 @@ public:
         setAttribute(Qt::WA_TransparentForMouseEvents, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
         setAutoFillBackground(false);
+        if (parent)
+        {
+            parent->installEventFilter(this);
+        }
     }
 
     void setBorderColor(const QColor& color)
@@ -105,6 +109,22 @@ public:
     }
 
 protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (watched == parentWidget())
+        {
+            const QEvent::Type type = event->type();
+            if (type == QEvent::Show || type == QEvent::Resize || type == QEvent::Polish)
+            {
+                setGeometry(parentWidget()->rect());
+                raise();
+                show();
+                update();
+            }
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
     void paintEvent(QPaintEvent *) override
     {
         if (!border_color_.isValid() || width() < 2 || height() < 2)
@@ -132,18 +152,25 @@ void updateComboPopupBorderOverlay(QAbstractItemView *view)
         return;
     }
 
+    QWidget *borderParent = view->window();
+    if (!borderParent)
+    {
+        borderParent = view;
+    }
+
     auto *overlay = static_cast<ComboPopupBorderOverlay *>(
-        view->findChild<QWidget *>(QString::fromLatin1(kComboPopupBorderOverlayName), Qt::FindDirectChildrenOnly));
+        borderParent->findChild<QWidget *>(QString::fromLatin1(kComboPopupBorderOverlayName),
+                                           Qt::FindDirectChildrenOnly));
     if (!overlay)
     {
-        overlay = new ComboPopupBorderOverlay(view);
+        overlay = new ComboPopupBorderOverlay(borderParent);
     }
 
     const bool dark = view->property("vaporViewComboPopupDarkTheme").toBool();
     overlay->setBorderColor(appThemeColor(AppThemeColor::Border, dark));
     overlay->setProperty("vaporViewComboPopupBorderOverlay", true);
     overlay->setProperty("cornerRadius", kComboPopupCornerRadius);
-    overlay->setGeometry(view->rect());
+    overlay->setGeometry(borderParent->rect());
     overlay->raise();
     overlay->show();
 }
@@ -199,6 +226,7 @@ protected:
                 if (auto *view = container->findChild<QAbstractItemView *>(QStringLiteral("vaporViewComboPopupView")))
                 {
                     alignComboPopupContainerToAnchor(container, view);
+                    updateComboPopupBorderOverlay(view);
                 }
             }
         }

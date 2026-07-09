@@ -91,8 +91,8 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
                 combo->view()->viewport()->styleSheet().contains(QStringLiteral("border: none")),
             "combo popup viewport has an explicit filled background without drawing a clipped border");
     QWidget *borderOverlay =
-        combo->view()->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupBorderOverlay"),
-                                            Qt::FindDirectChildrenOnly);
+        combo->view()->window()->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupBorderOverlay"),
+                                                      Qt::FindDirectChildrenOnly);
     require(borderOverlay != nullptr &&
                 borderOverlay->property("vaporViewComboPopupBorderOverlay").toBool() &&
                 borderOverlay->property("cornerRadius").toInt() == 10 &&
