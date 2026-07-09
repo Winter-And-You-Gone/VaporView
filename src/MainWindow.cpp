@@ -9437,6 +9437,10 @@ void MainWindow::configureComboPopupsIn(QWidget *scope) const
         return;
     }
 
+    if (auto *combo = qobject_cast<QComboBox *>(scope))
+    {
+        configureComboPopup(combo);
+    }
     const QList<QComboBox*> combos = scope->findChildren<QComboBox *>();
     for (QComboBox *combo : combos)
     {
@@ -13396,12 +13400,13 @@ void MainWindow::setupDeviceConfigPage()
     constexpr int kDeviceConfigBaudComboWidth = 100;
     constexpr int kDeviceConfigRateComboWidth = 88;
 
-    auto createCombo = [formWidget](int width, bool editable = false) {
+    auto createCombo = [this, formWidget](int width, bool editable = false) {
         auto *combo = new QComboBox(formWidget);
         combo->setEditable(editable);
         combo->setFixedHeight(kMainPageInputHeight);
         combo->setFixedWidth(width);
         combo->setMaxVisibleItems(15);
+        configureComboPopup(combo);
         return combo;
     };
 
@@ -13455,6 +13460,14 @@ void MainWindow::setupDeviceConfigPage()
                device_config_.lidar_rate_lbl, device_config_.lidar_rate_combo, 3);
     addPortRow(device_config_.temperature_lbl, device_config_.temperature_port_combo, device_config_.temperature_baud_combo,
                device_config_.temperature_rate_lbl, device_config_.temperature_rate_combo, 4);
+    if (device_config_.temperature_port_combo)
+    {
+        device_config_.temperature_port_combo->setObjectName(QStringLiteral("deviceTemperaturePortCombo"));
+    }
+    if (device_config_.temperature_baud_combo)
+    {
+        device_config_.temperature_baud_combo->setObjectName(QStringLiteral("deviceTemperatureBaudCombo"));
+    }
 
     auto addDeviceRemoteButtons = [this, formLayout, formWidget](
             int row,
@@ -14271,7 +14284,7 @@ void MainWindow::setupConfigPanel()
     QStringList baudRates = {"9600", "19200", "38400", "57600", "115200", "230400", "460800", "500000", "921600"};
     QStringList ports = getAvailablePorts();
 
-    auto createRateCombo = [config_form_widget](int maxRate = 500) {
+    auto createRateCombo = [this, config_form_widget](int maxRate = 500) {
         auto *combo = new QComboBox(config_form_widget);
         const QList<int> supportedRates = {1, 2, 5, 10, 20, 50, 70, 100, 200, 250, 500, 1000};
         for (int rate : supportedRates)
@@ -14287,6 +14300,7 @@ void MainWindow::setupConfigPanel()
         combo->setFixedHeight(kMainPageInputHeight);
         combo->setFixedWidth(100);
         combo->setValidator(new QIntValidator(1, maxRate, combo));
+        configureComboPopup(combo);
         return combo;
     };
 
@@ -14321,6 +14335,7 @@ void MainWindow::setupConfigPanel()
         portCombo->setMaximumWidth(190);
         portCombo->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         portCombo->setMaxVisibleItems(15);
+        configureComboPopup(portCombo);
 
         int defaultIdx = portCombo->findText(defaultPort);
         if (defaultIdx >= 0)
@@ -14338,6 +14353,7 @@ void MainWindow::setupConfigPanel()
         baudCombo->setCurrentText(defaultBaud);
         baudCombo->setFixedHeight(kMainPageInputHeight);
         baudCombo->setFixedWidth(100);
+        configureComboPopup(baudCombo);
         config_layout->addWidget(baudCombo, row, 2, Qt::AlignVCenter);
 
         rateLbl = new QLabel(config_form_widget);

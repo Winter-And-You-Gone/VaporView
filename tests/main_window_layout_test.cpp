@@ -66,23 +66,80 @@ void require(bool condition, const char *message)
     }
 }
 
+void processEventsFor(int timeoutMs);
+
 void requireComboPopupStyled(QComboBox *combo, const char *message)
 {
     require(combo != nullptr, message);
-    require(combo->property("vaporViewComboPopupStyled").toBool(), message);
-    require(combo->view() != nullptr, message);
-    require(combo->view()->property("vaporViewComboPopupStyled").toBool(), message);
-    require(combo->view()->property("vaporViewComboPopupRoundedMaskEnabled").toBool(), message);
-    require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"), message);
+    require(combo->property("vaporViewComboPopupStyled").toBool(),
+            "combo carries the shared popup style marker");
+    require(combo->view() != nullptr, "combo has a popup view");
+    require(combo->view()->property("vaporViewComboPopupStyled").toBool(),
+            "combo popup view carries the shared style marker");
+    require(combo->view()->property("vaporViewComboPopupRoundedMaskEnabled").toBool(),
+            "combo popup view enables rounded masking");
+    require(combo->view()->property("vaporViewComboPopupShadowEnabled").toBool(),
+            "combo popup view enables shadow chrome");
+    require(combo->view()->property("vaporViewComboPopupShadowMargin").toInt() == 22,
+            "combo popup view uses the shared shadow margin");
+    require(combo->view()->property("floatingPanelChrome").toBool(),
+            "combo popup view uses floating panel chrome");
+    require(combo->view()->property("cornerRadius").toInt() == 10,
+            "combo popup view uses the shared corner radius");
+    require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"),
+            "combo popup view uses the shared object name");
     const QString popupStyle = combo->view()->styleSheet();
     const QString hoverColor = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuHover,
                                                             VaporView::isDarkThemeEnabled());
     require(popupStyle.contains(QStringLiteral("border-radius: 10px")) &&
+                popupStyle.contains(QStringLiteral("border: none")) &&
                 popupStyle.contains(QStringLiteral("border: 0px; border-radius: 0px")) &&
                 popupStyle.contains(QStringLiteral("padding: 12px 0px")) &&
                 popupStyle.contains(QStringLiteral("background-color: %1").arg(hoverColor)) &&
                 !popupStyle.contains(QStringLiteral("padding: 12px 4px")),
-            message);
+            "combo popup stylesheet matches the shared rounded full-width-highlight menu style");
+}
+
+void requireComboPopupFloatingContainer(QComboBox *combo, const char *message)
+{
+    requireComboPopupStyled(combo, message);
+
+    QAbstractItemView *view = combo->view();
+    require(view != nullptr, "combo popup view exists before opening");
+    QWidget *container = view->window();
+    require(container != nullptr && container != view,
+            "combo popup uses a separate container for floating chrome");
+    require(container->property("vaporViewComboPopupShadowEnabled").toBool(),
+            "combo popup container has shadow enabled");
+    require(container->property("floatingPanelChrome").toBool(),
+            "combo popup container uses floating panel chrome");
+    require(container->property("shadowMargin").toInt() == 22,
+            "combo popup container has the shared 22px shadow margin");
+    require(container->property("cornerRadius").toInt() == 10,
+            "combo popup container has the shared 10px corner radius");
+    require(container->testAttribute(Qt::WA_TranslucentBackground),
+            "combo popup container is translucent outside the rounded panel");
+    require(container->testAttribute(Qt::WA_NoSystemBackground),
+            "combo popup container leaves background painting to the shadow host");
+
+    QWidget *shadowHost =
+        container->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupShadowHost"),
+                                        Qt::FindDirectChildrenOnly);
+    require(shadowHost != nullptr,
+            "combo popup container owns a shadow host");
+    require(shadowHost->geometry() == container->rect(),
+            "combo popup shadow host covers the full popup container");
+}
+
+void requireComboPopupsStyledIn(QWidget *scope, const char *message)
+{
+    require(scope != nullptr, message);
+    const QList<QComboBox*> combos = scope->findChildren<QComboBox *>();
+    require(!combos.isEmpty(), message);
+    for (QComboBox *combo : combos)
+    {
+        requireComboPopupStyled(combo, message);
+    }
 }
 
 void requireLabelTextOneOf(const QLabel *label, const QStringList& expected, const char *message);
@@ -1348,6 +1405,8 @@ int main(int argc, char **argv)
     requireMenuPopupStyleUnified(qApp->styleSheet(),
                                  false,
                                  "light popup menus use the shared menu hover and rounded panel style");
+    requireComboPopupsStyledIn(&window,
+                               "all main-window combo boxes use the shared rounded popup menu style");
     const QSize originalWindowSize = window.size();
 
     auto *appLayoutSplitter = window.findChild<QSplitter *>(QStringLiteral("appLayoutSplitter"));
@@ -3207,6 +3266,22 @@ int main(int argc, char **argv)
             "device configuration rate combo is sized for 9999");
     require(devicePortCombo->isEnabled(),
             "device configuration serial combo is enabled in local mode");
+    auto *deviceTemperaturePortCombo =
+        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceTemperaturePortCombo"));
+    auto *deviceTemperatureBaudCombo =
+        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceTemperatureBaudCombo"));
+    require(deviceTemperaturePortCombo != nullptr,
+            "device configuration temperature serial-port combo exists");
+    require(deviceTemperatureBaudCombo != nullptr,
+            "device configuration temperature baud-rate combo exists");
+    deviceConfigScrollArea->ensureWidgetVisible(deviceTemperaturePortCombo, 20, 20);
+    processEventsFor(80);
+    requireComboPopupFloatingContainer(deviceTemperaturePortCombo,
+                                       "device serial-port combo opens with the shared rounded shadow popup");
+    deviceConfigScrollArea->ensureWidgetVisible(deviceTemperatureBaudCombo, 20, 20);
+    processEventsFor(80);
+    requireComboPopupFloatingContainer(deviceTemperatureBaudCombo,
+                                       "device baud-rate combo opens with the shared rounded shadow popup");
     QComboBox *homePortCombo = nullptr;
     for (QComboBox *combo : window.findChildren<QComboBox *>())
     {
