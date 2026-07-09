@@ -52,7 +52,7 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
                                                             VaporView::isDarkThemeEnabled());
     require(popupStyle.contains(QStringLiteral("border-radius: 12px")) &&
                 popupStyle.contains(QStringLiteral("border: 1px solid")) &&
-                popupStyle.contains(QStringLiteral("border-bottom: 1px solid")) &&
+                !popupStyle.contains(QStringLiteral("border-bottom: 1px solid")) &&
                 popupStyle.contains(QStringLiteral("border-radius: 0px")) &&
                 popupStyle.contains(QStringLiteral("padding: 12px 0px")) &&
                 popupStyle.contains(QStringLiteral("padding: 7px 14px")) &&
