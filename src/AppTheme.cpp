@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QEvent>
 #include <QFrame>
+#include <QPainter>
 #include <QPainterPath>
 #include <QRegion>
 #include <QStyle>
@@ -24,6 +25,7 @@ constexpr const char *kComboPopupMaskFilterProperty = "vaporViewComboPopupMaskFi
 constexpr const char *kComboPopupContainerMaskFilterProperty = "vaporViewComboPopupContainerMaskFilterInstalled";
 constexpr const char *kComboPopupOwnerProperty = "vaporViewComboPopupOwner";
 constexpr const char *kComboPopupContainerAligningProperty = "vaporViewComboPopupContainerAligning";
+constexpr const char *kComboPopupBorderOverlayName = "vaporViewComboPopupBorderOverlay";
 
 QColor hexColor(const char *value)
 {
@@ -77,6 +79,73 @@ QWidget *comboPopupAnchorForView(QAbstractItemView *view)
         return nullptr;
     }
     return qobject_cast<QWidget *>(view->property(kComboPopupOwnerProperty).value<QObject *>());
+}
+
+class ComboPopupBorderOverlay final : public QWidget
+{
+public:
+    explicit ComboPopupBorderOverlay(QWidget *parent)
+        : QWidget(parent)
+    {
+        setObjectName(QString::fromLatin1(kComboPopupBorderOverlayName));
+        setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        setAttribute(Qt::WA_NoSystemBackground, true);
+        setAutoFillBackground(false);
+    }
+
+    void setBorderColor(const QColor& color)
+    {
+        if (border_color_ == color)
+        {
+            return;
+        }
+        border_color_ = color;
+        setProperty("borderColor", border_color_.name());
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        if (!border_color_.isValid() || width() < 2 || height() < 2)
+        {
+            return;
+        }
+
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setPen(QPen(border_color_, 1.0));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5),
+                                kComboPopupCornerRadius,
+                                kComboPopupCornerRadius);
+    }
+
+private:
+    QColor border_color_;
+};
+
+void updateComboPopupBorderOverlay(QAbstractItemView *view)
+{
+    if (!view)
+    {
+        return;
+    }
+
+    auto *overlay = static_cast<ComboPopupBorderOverlay *>(
+        view->findChild<QWidget *>(QString::fromLatin1(kComboPopupBorderOverlayName), Qt::FindDirectChildrenOnly));
+    if (!overlay)
+    {
+        overlay = new ComboPopupBorderOverlay(view);
+    }
+
+    const bool dark = view->property("vaporViewComboPopupDarkTheme").toBool();
+    overlay->setBorderColor(appThemeColor(AppThemeColor::Border, dark));
+    overlay->setProperty("vaporViewComboPopupBorderOverlay", true);
+    overlay->setProperty("cornerRadius", kComboPopupCornerRadius);
+    overlay->setGeometry(view->rect());
+    overlay->raise();
+    overlay->show();
 }
 
 void alignComboPopupContainerToAnchor(QWidget *container, QAbstractItemView *view)
@@ -207,6 +276,7 @@ void applyComboPopupRoundedMask(QAbstractItemView *view)
     applyComboPopupOpaqueBackground(view);
     applyRoundedWidgetMask(view, "vaporViewComboPopupRoundedMaskApplied");
     configureComboPopupContainerMask(view);
+    updateComboPopupBorderOverlay(view);
 }
 
 class ComboPopupMaskFilter final : public QObject
@@ -788,7 +858,6 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
     const QColor popupHighlight = appThemeColor(AppThemeColor::MenuHover, dark);
     const QColor popupHighlightText = appThemeColor(AppThemeColor::MenuText, dark);
     const QColor disabledText = appThemeColor(AppThemeColor::MenuDisabledText, dark);
-    const QColor popupBorder = appThemeColor(AppThemeColor::Border, dark);
     QPalette popupPalette = view->palette();
     popupPalette.setColor(QPalette::Base, popupBase);
     popupPalette.setColor(QPalette::Text, popupText);
@@ -798,7 +867,7 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
     view->setPalette(popupPalette);
     view->setStyleSheet(QStringLiteral(
         "QAbstractItemView#vaporViewComboPopupView { "
-        "background-color: %1; border: 1px solid %6; border-radius: 10px; "
+        "background-color: %1; border: none; border-radius: 10px; "
         "color: %2; outline: 0px; padding: 12px 0px; "
         "selection-background-color: %3; selection-color: %4; }"
         "QAbstractItemView#vaporViewComboPopupView::item { "
@@ -817,8 +886,7 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
              popupText.name(),
              popupHighlight.name(),
              popupHighlightText.name(),
-             disabledText.name(),
-             popupBorder.name()));
+             disabledText.name()));
     applyComboPopupOpaqueBackground(view);
     applyComboPopupRoundedMask(view);
 }

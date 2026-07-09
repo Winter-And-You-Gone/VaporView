@@ -649,7 +649,7 @@ QComboBox::down-arrow {
 
 QComboBox QAbstractItemView {
     background-color: @vv-menu-panel;
-    border: 1px solid @vv-border;
+    border: none;
     border-radius: 10px;
     color: @vv-menu-text;
     selection-background-color: @vv-menu-hover;
