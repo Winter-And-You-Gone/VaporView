@@ -19,7 +19,7 @@ namespace
 {
 
 constexpr int kComboPopupCornerRadius = 10;
-constexpr int kComboPopupAnchorGap = 12;
+constexpr int kComboPopupAnchorGap = 0;
 constexpr const char *kComboPopupMaskFilterProperty = "vaporViewComboPopupMaskFilterInstalled";
 constexpr const char *kComboPopupContainerMaskFilterProperty = "vaporViewComboPopupContainerMaskFilterInstalled";
 constexpr const char *kComboPopupOwnerProperty = "vaporViewComboPopupOwner";

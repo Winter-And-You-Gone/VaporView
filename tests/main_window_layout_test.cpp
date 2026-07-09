@@ -120,8 +120,8 @@ void requireComboPopupFloatingContainer(QComboBox *combo, const char *message)
             "combo popup container enables safe rounded masking");
     require(container->property("cornerRadius").toInt() == 10,
             "combo popup container uses the shared corner radius");
-    require(container->property("vaporViewComboPopupAnchorGap").toInt() == 12,
-            "combo popup container keeps a visible gap from its anchor combo box");
+    require(container->property("vaporViewComboPopupAnchorGap").toInt() == 0,
+            "combo popup container does not add extra anchor gap");
     require(container->property("vaporViewComboPopupNativeDropShadowDisabled").toBool(),
             "combo popup container disables native drop shadow for a clean rounded popup");
     require(!container->property("vaporViewComboPopupShadowEnabled").toBool(),
@@ -1383,6 +1383,8 @@ int main(int argc, char **argv)
         require(rememberedSourceModeCombo->itemText(1) == QStringLiteral("天地远程模式") ||
                     rememberedSourceModeCombo->itemText(1) == QStringLiteral("Sky-Ground Remote Mode"),
                 "source mode combo uses the new remote-mode label");
+        require(rememberedSourceModeCombo->property("usesSingleLevelPopupMenu").toBool(),
+                "source mode combo uses the shared single-level popup");
         require(rememberedSourceModeCombo->currentIndex() == 1,
                 "source mode restores the last remote selection on startup");
         rememberedModeWindow.close();
@@ -1826,6 +1828,8 @@ int main(int argc, char **argv)
     const QRect homeConfigLocalRect = homeConfigCard->geometry();
     QComboBox *homeSourceModeCombo = findSourceModeCombo(homeConfigCard);
     require(homeSourceModeCombo != nullptr, "home source mode combo exists");
+    require(homeSourceModeCombo->property("usesSingleLevelPopupMenu").toBool(),
+            "home source mode combo uses the shared single-level popup");
     const SkyTelemetryRowWidgets homeSkyTelemetry = findSkyTelemetryRowWidgets(homeConfigCard);
     require(homeSkyTelemetry.transportCombo != nullptr,
             "home sky telemetry transport combo exists");
@@ -3746,6 +3750,8 @@ int main(int argc, char **argv)
     QComboBox *deviceSourceModeCombo = findSourceModeCombo(deviceConfigPage);
     require(deviceSourceModeCombo != nullptr,
             "device configuration source mode combo exists");
+    require(deviceSourceModeCombo->property("usesSingleLevelPopupMenu").toBool(),
+            "device configuration source mode combo uses the shared single-level popup");
     require(deviceSourceModeCombo->width() <= 160,
             "device configuration source mode combo uses compact width");
     const SkyTelemetryRowWidgets deviceSkyTelemetry = findSkyTelemetryRowWidgets(deviceConfigPage);

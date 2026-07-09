@@ -13403,7 +13403,7 @@ void MainWindow::setupDeviceConfigPage()
 
     device_config_.data_source_mode_lbl = new QLabel(serialTitleBar);
     device_config_.data_source_mode_lbl->setObjectName(QStringLiteral("fieldLabel"));
-    device_config_.data_source_mode_combo = new QComboBox(serialTitleBar);
+    device_config_.data_source_mode_combo = new SingleLevelPopupComboBox(serialTitleBar);
     device_config_.data_source_mode_combo->setFixedHeight(kMainPageInputHeight);
     device_config_.data_source_mode_combo->setFixedWidth(kDeviceConfigSourceModeComboWidth);
     device_config_.data_source_mode_combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
@@ -14486,7 +14486,7 @@ void MainWindow::setupConfigPanel()
 
     data_source_mode_lbl_ = new QLabel(config_form_widget);
     data_source_mode_lbl_->setObjectName("fieldLabel");
-    data_source_mode_combo_ = new QComboBox(config_form_widget);
+    data_source_mode_combo_ = new SingleLevelPopupComboBox(config_form_widget);
     data_source_mode_combo_->addItem(sourceModeDisplayText(false, 0));
     data_source_mode_combo_->addItem(sourceModeDisplayText(false, 1));
     data_source_mode_combo_->setFixedHeight(kMainPageInputHeight);
