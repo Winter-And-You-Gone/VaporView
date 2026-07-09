@@ -78,14 +78,12 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
             "combo popup view carries the shared style marker");
     require(combo->view()->property("vaporViewComboPopupRoundedMaskEnabled").toBool(),
             "combo popup view enables rounded masking");
-    require(combo->view()->property("vaporViewComboPopupShadowEnabled").toBool(),
-            "combo popup view enables shadow chrome");
-    require(combo->view()->property("vaporViewComboPopupShadowMargin").toInt() == 22,
-            "combo popup view uses the shared shadow margin");
-    require(combo->view()->property("floatingPanelChrome").toBool(),
-            "combo popup view uses floating panel chrome");
     require(combo->view()->property("cornerRadius").toInt() == 10,
             "combo popup view uses the shared corner radius");
+    require(!combo->view()->property("vaporViewComboPopupShadowEnabled").toBool(),
+            "combo popup view does not request unsafe external shadow chrome");
+    require(!combo->view()->property("floatingPanelChrome").toBool(),
+            "combo popup view does not use floating panel chrome");
     require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"),
             "combo popup view uses the shared object name");
     const QString popupStyle = combo->view()->styleSheet();
@@ -107,28 +105,16 @@ void requireComboPopupFloatingContainer(QComboBox *combo, const char *message)
     QAbstractItemView *view = combo->view();
     require(view != nullptr, "combo popup view exists before opening");
     QWidget *container = view->window();
-    require(container != nullptr && container != view,
-            "combo popup uses a separate container for floating chrome");
-    require(container->property("vaporViewComboPopupShadowEnabled").toBool(),
-            "combo popup container has shadow enabled");
-    require(container->property("floatingPanelChrome").toBool(),
-            "combo popup container uses floating panel chrome");
-    require(container->property("shadowMargin").toInt() == 22,
-            "combo popup container has the shared 22px shadow margin");
-    require(container->property("cornerRadius").toInt() == 10,
-            "combo popup container has the shared 10px corner radius");
-    require(container->testAttribute(Qt::WA_TranslucentBackground),
-            "combo popup container is translucent outside the rounded panel");
-    require(container->testAttribute(Qt::WA_NoSystemBackground),
-            "combo popup container leaves background painting to the shadow host");
-
-    QWidget *shadowHost =
-        container->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupShadowHost"),
-                                        Qt::FindDirectChildrenOnly);
-    require(shadowHost != nullptr,
-            "combo popup container owns a shadow host");
-    require(shadowHost->geometry() == container->rect(),
-            "combo popup shadow host covers the full popup container");
+    require(container != nullptr, "combo popup has a native popup container");
+    require(!container->property("vaporViewComboPopupShadowEnabled").toBool(),
+            "combo popup container does not request unsafe external shadow chrome");
+    require(!container->property("floatingPanelChrome").toBool(),
+            "combo popup container does not use floating panel chrome");
+    require(container->property("shadowMargin").toInt() == 0,
+            "combo popup container does not reserve an unsafe transparent shadow margin");
+    require(container->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupShadowHost"),
+                                           Qt::FindDirectChildrenOnly) == nullptr,
+            "combo popup container does not create an unsafe shadow host");
 }
 
 void requireComboPopupsStyledIn(QWidget *scope, const char *message)
@@ -1569,7 +1555,7 @@ int main(int argc, char **argv)
         std::abs(rootArrowLabel->geometry().center().y() - titleApplicationRows.first()->rect().center().y());
     require(rootArrowCenterDelta <= 1,
             "title bar application submenu chevron is vertically centered in the menu row");
-    hoverWidget(titleApplicationRows.first(), true, 120);
+    hoverWidget(titleApplicationRows.first(), true, 220);
     auto *titleApplicationSubPanel = window.findChild<QFrame *>(QStringLiteral("titleApplicationSubPanel"));
     requireTitleMenuFloatingPanel(titleApplicationSubPanel,
                                   "title bar application submenu uses the shared floating rounded shadow chrome");
@@ -1603,7 +1589,7 @@ int main(int argc, char **argv)
     }
     require(nestedRootRow != nullptr,
             "title bar application menu exposes a root row with nested commands");
-    hoverWidget(nestedRootRow, true, 120);
+    hoverWidget(nestedRootRow, true, 220);
     const QSize subPanelSizeBeforeNested = titleApplicationSubPanel->size();
     QRect subContentGlobalBefore(titleApplicationSubMenu->mapToGlobal(QPoint(0, 0)),
                                  titleApplicationSubMenu->size());
@@ -1635,7 +1621,7 @@ int main(int argc, char **argv)
     }
     require(nestedCommandRow != nullptr,
             "title bar application submenu exposes a row with tertiary commands");
-    hoverWidget(nestedCommandRow, true, 120);
+    hoverWidget(nestedCommandRow, true, 220);
 
     auto *titleApplicationNestedPanel = window.findChild<QFrame *>(QStringLiteral("titleApplicationNestedPanel"));
     requireTitleMenuFloatingPanel(titleApplicationNestedPanel,
@@ -1669,7 +1655,7 @@ int main(int argc, char **argv)
     const QSize nestedPanelSizeBeforeRepeatedHover = titleApplicationNestedPanel->size();
     const QRect nestedPanelGeometryBeforeRepeatedHover = titleApplicationNestedPanel->geometry();
     QFrame *firstNestedRowBeforeRepeatedHover = nestedRows.isEmpty() ? nullptr : nestedRows.first();
-    hoverWidget(nestedCommandRow, true, 120);
+    hoverWidget(nestedCommandRow, true, 220);
     require(titleApplicationNestedPanel->isVisible(),
             "title bar application nested submenu remains visible while hovering its source row");
     require(titleApplicationNestedPanel->size() == nestedPanelSizeBeforeRepeatedHover &&
@@ -1747,8 +1733,8 @@ int main(int argc, char **argv)
     clickWidget(logFilterFirstRow, 120);
     require(!logFilterMenu->isVisible(),
             "log filter menu closes after selecting a filter row");
-    processEventsFor(260);
-    clickWidget(logFilterButton, 180);
+    processEventsFor(420);
+    clickWidget(logFilterButton, 220);
     logFilterMenu = nullptr;
     for (QWidget *topLevel : QApplication::topLevelWidgets())
     {

@@ -43,10 +43,9 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
     require(combo->view() != nullptr, message);
     require(combo->view()->property("vaporViewComboPopupStyled").toBool(), message);
     require(combo->view()->property("vaporViewComboPopupRoundedMaskEnabled").toBool(), message);
-    require(combo->view()->property("vaporViewComboPopupShadowEnabled").toBool(), message);
-    require(combo->view()->property("vaporViewComboPopupShadowMargin").toInt() == 22, message);
-    require(combo->view()->property("floatingPanelChrome").toBool(), message);
     require(combo->view()->property("cornerRadius").toInt() == 10, message);
+    require(!combo->view()->property("vaporViewComboPopupShadowEnabled").toBool(), message);
+    require(!combo->view()->property("floatingPanelChrome").toBool(), message);
     require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"), message);
     const QString popupStyle = combo->view()->styleSheet();
     const QString hoverColor = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuHover,

@@ -5,18 +5,13 @@
 #include <QComboBox>
 #include <QEvent>
 #include <QFrame>
-#include <QImage>
-#include <QLayout>
-#include <QPainter>
 #include <QPainterPath>
-#include <QPointer>
 #include <QRegion>
 #include <QStyle>
 #include <QVariant>
 #include <QWidget>
 
 #include <algorithm>
-#include <vector>
 
 namespace VaporView
 {
@@ -24,12 +19,7 @@ namespace
 {
 
 constexpr int kComboPopupCornerRadius = 10;
-constexpr int kComboPopupShadowMargin = 22;
 constexpr const char *kComboPopupMaskFilterProperty = "vaporViewComboPopupMaskFilterInstalled";
-constexpr const char *kComboPopupContainerFilterProperty = "vaporViewComboPopupContainerFilterInstalled";
-constexpr const char *kComboPopupContainerAdjustingProperty = "vaporViewComboPopupContainerAdjusting";
-constexpr const char *kComboPopupContainerAdjustedProperty = "vaporViewComboPopupContainerAdjusted";
-constexpr const char *kComboPopupShadowHostName = "vaporViewComboPopupShadowHost";
 
 QColor hexColor(const char *value)
 {
@@ -61,205 +51,6 @@ struct ThemeReplacement
     AppThemeColor color;
 };
 
-QImage comboPopupBoxBlurredAlpha(const QSize& size,
-                                 const QRectF& sourceRect,
-                                 qreal radius,
-                                 int blurRadius,
-                                 int iterations)
-{
-    QImage alpha(size, QImage::Format_ARGB32_Premultiplied);
-    alpha.fill(Qt::transparent);
-    {
-        QPainter maskPainter(&alpha);
-        maskPainter.setRenderHint(QPainter::Antialiasing, true);
-        maskPainter.setPen(Qt::NoPen);
-        maskPainter.setBrush(Qt::black);
-        QPainterPath path;
-        path.addRoundedRect(sourceRect, radius, radius);
-        maskPainter.fillPath(path, Qt::black);
-    }
-
-    const int w = alpha.width();
-    const int h = alpha.height();
-    if (w <= 0 || h <= 0 || blurRadius <= 0)
-    {
-        return alpha;
-    }
-
-    std::vector<uchar> src(static_cast<size_t>(w * h));
-    std::vector<uchar> tmp(src.size());
-    std::vector<uchar> dst(src.size());
-    for (int y = 0; y < h; ++y)
-    {
-        const auto *line = reinterpret_cast<const QRgb *>(alpha.constScanLine(y));
-        for (int x = 0; x < w; ++x)
-        {
-            src[static_cast<size_t>(y * w + x)] = static_cast<uchar>(qAlpha(line[x]));
-        }
-    }
-
-    const int diameter = blurRadius * 2 + 1;
-    for (int pass = 0; pass < iterations; ++pass)
-    {
-        for (int y = 0; y < h; ++y)
-        {
-            int sum = 0;
-            for (int x = -blurRadius; x <= blurRadius; ++x)
-            {
-                const int cx = std::clamp(x, 0, w - 1);
-                sum += src[static_cast<size_t>(y * w + cx)];
-            }
-            for (int x = 0; x < w; ++x)
-            {
-                tmp[static_cast<size_t>(y * w + x)] = static_cast<uchar>(sum / diameter);
-                const int removeX = std::clamp(x - blurRadius, 0, w - 1);
-                const int addX = std::clamp(x + blurRadius + 1, 0, w - 1);
-                sum += src[static_cast<size_t>(y * w + addX)] - src[static_cast<size_t>(y * w + removeX)];
-            }
-        }
-
-        for (int x = 0; x < w; ++x)
-        {
-            int sum = 0;
-            for (int y = -blurRadius; y <= blurRadius; ++y)
-            {
-                const int cy = std::clamp(y, 0, h - 1);
-                sum += tmp[static_cast<size_t>(cy * w + x)];
-            }
-            for (int y = 0; y < h; ++y)
-            {
-                dst[static_cast<size_t>(y * w + x)] = static_cast<uchar>(sum / diameter);
-                const int removeY = std::clamp(y - blurRadius, 0, h - 1);
-                const int addY = std::clamp(y + blurRadius + 1, 0, h - 1);
-                sum += tmp[static_cast<size_t>(addY * w + x)] - tmp[static_cast<size_t>(removeY * w + x)];
-            }
-        }
-        src.swap(dst);
-    }
-
-    QImage blurred(size, QImage::Format_ARGB32_Premultiplied);
-    blurred.fill(Qt::transparent);
-    for (int y = 0; y < h; ++y)
-    {
-        auto *line = reinterpret_cast<QRgb *>(blurred.scanLine(y));
-        for (int x = 0; x < w; ++x)
-        {
-            const int a = src[static_cast<size_t>(y * w + x)];
-            line[x] = qRgba(0, 0, 0, a);
-        }
-    }
-    return blurred;
-}
-
-void drawComboPopupTintedAlphaImage(QPainter& painter,
-                                    const QImage& alpha,
-                                    const QColor& tint,
-                                    int maxAlpha)
-{
-    if (alpha.isNull() || maxAlpha <= 0)
-    {
-        return;
-    }
-
-    QImage tinted(alpha.size(), QImage::Format_ARGB32_Premultiplied);
-    tinted.fill(Qt::transparent);
-    for (int y = 0; y < alpha.height(); ++y)
-    {
-        const auto *srcLine = reinterpret_cast<const QRgb *>(alpha.constScanLine(y));
-        auto *dstLine = reinterpret_cast<QRgb *>(tinted.scanLine(y));
-        for (int x = 0; x < alpha.width(); ++x)
-        {
-            const int a = (qAlpha(srcLine[x]) * maxAlpha) / 255;
-            dstLine[x] = qRgba(tint.red(), tint.green(), tint.blue(), a);
-        }
-    }
-    painter.drawImage(QPoint(0, 0), tinted);
-}
-
-QRect comboPopupPanelRectIn(QWidget *container, const QAbstractItemView *view)
-{
-    if (!container || !view)
-    {
-        return QRect();
-    }
-
-    const QWidget *parentWidget = view->parentWidget();
-    const QPoint topLeft = parentWidget
-        ? parentWidget->mapTo(container, view->geometry().topLeft())
-        : view->pos();
-    return QRect(topLeft, view->size());
-}
-
-class ComboPopupShadowWidget final : public QWidget
-{
-public:
-    explicit ComboPopupShadowWidget(QAbstractItemView *view, QWidget *parent)
-        : QWidget(parent)
-        , view_(view)
-    {
-        setObjectName(QString::fromLatin1(kComboPopupShadowHostName));
-        setAttribute(Qt::WA_TransparentForMouseEvents, true);
-        setAttribute(Qt::WA_NoSystemBackground, true);
-        setAttribute(Qt::WA_TranslucentBackground, true);
-        setAutoFillBackground(false);
-        setFocusPolicy(Qt::NoFocus);
-    }
-
-    void setDark(bool dark)
-    {
-        if (dark_ == dark)
-        {
-            return;
-        }
-        dark_ = dark;
-        update();
-    }
-
-protected:
-    void paintEvent(QPaintEvent *event) override
-    {
-        Q_UNUSED(event);
-        if (!view_)
-        {
-            return;
-        }
-
-        const QRectF panel = comboPopupPanelRectIn(parentWidget(), view_).adjusted(0.0, 0.0, -1.0, -1.0);
-        if (!panel.isValid() || panel.isEmpty())
-        {
-            return;
-        }
-
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.setCompositionMode(QPainter::CompositionMode_Clear);
-        painter.fillRect(rect(), Qt::transparent);
-        painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
-
-        const QColor shadowTint(0, 0, 0);
-        const QImage softShadow = comboPopupBoxBlurredAlpha(size(),
-                                                            panel.adjusted(-1.0, 7.0, 1.0, 10.0),
-                                                            kComboPopupCornerRadius + 2.0,
-                                                            9,
-                                                            3);
-        const QImage contactShadow = comboPopupBoxBlurredAlpha(size(),
-                                                               panel.adjusted(0.0, 1.0, 0.0, 2.0),
-                                                               kComboPopupCornerRadius,
-                                                               4,
-                                                               2);
-        drawComboPopupTintedAlphaImage(painter, softShadow, shadowTint, dark_ ? 82 : 38);
-        drawComboPopupTintedAlphaImage(painter, contactShadow, shadowTint, dark_ ? 48 : 14);
-
-        QPainterPath panelPath;
-        panelPath.addRoundedRect(panel, kComboPopupCornerRadius, kComboPopupCornerRadius);
-        painter.fillPath(panelPath, appThemeColor(AppThemeColor::MenuPanel, dark_));
-    }
-
-private:
-    QPointer<QAbstractItemView> view_;
-    bool dark_ = false;
-};
-
 void applyComboPopupRoundedMask(QAbstractItemView *view)
 {
     if (!view || view->size().isEmpty())
@@ -273,187 +64,6 @@ void applyComboPopupRoundedMask(QAbstractItemView *view)
                         kComboPopupCornerRadius);
     view->setMask(QRegion(path.toFillPolygon().toPolygon()));
     view->setProperty("vaporViewComboPopupRoundedMaskApplied", !view->mask().isEmpty());
-}
-
-QWidget *comboPopupContainerFor(QAbstractItemView *view)
-{
-    if (!view)
-    {
-        return nullptr;
-    }
-    QWidget *container = view->window();
-    if (!container)
-    {
-        container = view;
-    }
-    return container;
-}
-
-void resetComboPopupContainer(QWidget *container)
-{
-    if (!container)
-    {
-        return;
-    }
-    container->setProperty(kComboPopupContainerAdjustedProperty, false);
-    container->setProperty(kComboPopupContainerAdjustingProperty, false);
-    if (QLayout *layout = container->layout())
-    {
-        layout->setContentsMargins(0, 0, 0, 0);
-    }
-    if (auto *shadowWidget = container->findChild<QWidget *>(QString::fromLatin1(kComboPopupShadowHostName),
-                                                             Qt::FindDirectChildrenOnly))
-    {
-        auto *shadow = static_cast<ComboPopupShadowWidget *>(shadowWidget);
-        shadow->hide();
-    }
-}
-
-void syncComboPopupShadow(QAbstractItemView *view, bool dark)
-{
-    QWidget *container = comboPopupContainerFor(view);
-    if (!container || container == view)
-    {
-        return;
-    }
-
-    auto *shadow = static_cast<ComboPopupShadowWidget *>(
-        container->findChild<QWidget *>(QString::fromLatin1(kComboPopupShadowHostName),
-                                        Qt::FindDirectChildrenOnly));
-    if (!shadow)
-    {
-        shadow = new ComboPopupShadowWidget(view, container);
-    }
-    shadow->setDark(dark);
-    shadow->setGeometry(container->rect());
-    shadow->lower();
-    shadow->show();
-    shadow->update();
-}
-
-void configureComboPopupContainer(QAbstractItemView *view, bool dark)
-{
-    QWidget *container = comboPopupContainerFor(view);
-    if (!container || container == view)
-    {
-        return;
-    }
-
-    container->setProperty("vaporViewComboPopupShadowEnabled", true);
-    container->setProperty("vaporViewComboPopupShadowMargin", kComboPopupShadowMargin);
-    container->setProperty("floatingPanelChrome", true);
-    container->setProperty("shadowMargin", kComboPopupShadowMargin);
-    container->setProperty("cornerRadius", kComboPopupCornerRadius);
-    container->setProperty("vaporViewComboPopupContainer", true);
-    container->setAutoFillBackground(false);
-    container->setAttribute(Qt::WA_TranslucentBackground, true);
-    container->setAttribute(Qt::WA_NoSystemBackground, true);
-    if (!container->isVisible())
-    {
-        container->setWindowFlag(Qt::NoDropShadowWindowHint, true);
-    }
-    if (auto *frame = qobject_cast<QFrame *>(container))
-    {
-        frame->setFrameShape(QFrame::NoFrame);
-        frame->setLineWidth(0);
-    }
-    container->setStyleSheet(QStringLiteral(
-        "QWidget[vaporViewComboPopupContainer=\"true\"] { "
-        "background-color: transparent; border: none; }"));
-
-    if (container->property(kComboPopupContainerAdjustingProperty).toBool())
-    {
-        return;
-    }
-    if (!container->property(kComboPopupContainerAdjustedProperty).toBool() && container->isVisible())
-    {
-        container->setProperty(kComboPopupContainerAdjustingProperty, true);
-        const QRect panelGlobal(view->mapToGlobal(QPoint(0, 0)), view->size());
-        if (panelGlobal.isValid() && !panelGlobal.isEmpty())
-        {
-            if (QLayout *layout = container->layout())
-            {
-                layout->setContentsMargins(kComboPopupShadowMargin,
-                                           kComboPopupShadowMargin,
-                                           kComboPopupShadowMargin,
-                                           kComboPopupShadowMargin);
-                layout->setSpacing(0);
-            }
-
-            container->setGeometry(panelGlobal.adjusted(-kComboPopupShadowMargin,
-                                                        -kComboPopupShadowMargin,
-                                                        kComboPopupShadowMargin,
-                                                        kComboPopupShadowMargin));
-            if (view->parentWidget() == container)
-            {
-                view->setGeometry(kComboPopupShadowMargin,
-                                  kComboPopupShadowMargin,
-                                  panelGlobal.width(),
-                                  panelGlobal.height());
-            }
-            if (QLayout *layout = container->layout())
-            {
-                layout->activate();
-            }
-        }
-        container->setProperty(kComboPopupContainerAdjustedProperty, true);
-        container->setProperty(kComboPopupContainerAdjustingProperty, false);
-    }
-
-    syncComboPopupShadow(view, dark);
-    applyComboPopupRoundedMask(view);
-}
-
-class ComboPopupContainerFilter final : public QObject
-{
-public:
-    explicit ComboPopupContainerFilter(QAbstractItemView *view, QObject *parent)
-        : QObject(parent)
-        , view_(view)
-    {
-    }
-
-protected:
-    bool eventFilter(QObject *watched, QEvent *event) override
-    {
-        auto *container = qobject_cast<QWidget *>(watched);
-        if (!container)
-        {
-            return QObject::eventFilter(watched, event);
-        }
-
-        const QEvent::Type type = event->type();
-        if (type == QEvent::Hide)
-        {
-            resetComboPopupContainer(container);
-        }
-        else if (view_ && (type == QEvent::Show ||
-                           type == QEvent::Resize ||
-                           type == QEvent::Move ||
-                           type == QEvent::Polish))
-        {
-            const bool dark = view_->property("vaporViewComboPopupDarkTheme").toBool();
-            configureComboPopupContainer(view_, dark);
-        }
-        return QObject::eventFilter(watched, event);
-    }
-
-private:
-    QPointer<QAbstractItemView> view_;
-};
-
-void ensureComboPopupContainerFilter(QAbstractItemView *view)
-{
-    QWidget *container = comboPopupContainerFor(view);
-    if (!container || container == view)
-    {
-        return;
-    }
-    if (!container->property(kComboPopupContainerFilterProperty).toBool())
-    {
-        container->installEventFilter(new ComboPopupContainerFilter(view, container));
-        container->setProperty(kComboPopupContainerFilterProperty, true);
-    }
 }
 
 class ComboPopupMaskFilter final : public QObject
@@ -470,10 +80,7 @@ protected:
         const QEvent::Type type = event->type();
         if (type == QEvent::Show || type == QEvent::Resize || type == QEvent::Polish)
         {
-            auto *view = qobject_cast<QAbstractItemView *>(watched);
-            const bool dark = view ? view->property("vaporViewComboPopupDarkTheme").toBool() : false;
-            configureComboPopupContainer(view, dark);
-            applyComboPopupRoundedMask(view);
+            applyComboPopupRoundedMask(qobject_cast<QAbstractItemView *>(watched));
         }
         return QObject::eventFilter(watched, event);
     }
@@ -1019,10 +626,6 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
     view->setObjectName(QStringLiteral("vaporViewComboPopupView"));
     view->setProperty("vaporViewComboPopupStyled", true);
     view->setProperty("vaporViewComboPopupRoundedMaskEnabled", true);
-    view->setProperty("vaporViewComboPopupShadowEnabled", true);
-    view->setProperty("vaporViewComboPopupShadowMargin", kComboPopupShadowMargin);
-    view->setProperty("floatingPanelChrome", true);
-    view->setProperty("shadowMargin", kComboPopupShadowMargin);
     view->setProperty("cornerRadius", kComboPopupCornerRadius);
     view->setProperty("vaporViewComboPopupDarkTheme", dark);
     view->setMouseTracking(true);
@@ -1030,11 +633,9 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
     view->setLineWidth(0);
     view->setAutoFillBackground(false);
     view->setAttribute(Qt::WA_StyledBackground, true);
-    view->setAttribute(Qt::WA_TranslucentBackground, true);
     if (QWidget *viewport = view->viewport())
     {
         viewport->setAutoFillBackground(false);
-        viewport->setAttribute(Qt::WA_TranslucentBackground, true);
         viewport->setStyleSheet(QStringLiteral("background: transparent; border: none;"));
     }
     if (!view->property(kComboPopupMaskFilterProperty).toBool())
@@ -1042,7 +643,6 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
         view->installEventFilter(new ComboPopupMaskFilter(view));
         view->setProperty(kComboPopupMaskFilterProperty, true);
     }
-    ensureComboPopupContainerFilter(view);
 
     const QColor popupBase = appThemeColor(AppThemeColor::MenuPanel, dark);
     const QColor popupText = appThemeColor(AppThemeColor::MenuText, dark);
@@ -1079,7 +679,6 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
              popupHighlight.name(),
              popupHighlightText.name(),
              disabledText.name()));
-    configureComboPopupContainer(view, dark);
     applyComboPopupRoundedMask(view);
 }
 

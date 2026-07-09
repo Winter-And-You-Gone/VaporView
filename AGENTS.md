@@ -40,6 +40,12 @@
 - UI/布局验证需要截图时，截图导出代码和截图文件默认只作临时检查；视觉确认后移除临时代码和产物，再进入最终构建、测试、提交。
 - 不要在构建或测试进程仍在后台运行时提交或 push。提交前确认工作区只包含本次任务相关文件，push 前仍按上面的 `build/Release` 规则重新构建。
 
+## Qt Popup Styling Guardrails
+
+- `QComboBox` 的下拉框是 Qt 内部创建的原生 popup 顶层窗口，不能用自绘菜单的方式改它的 `view()->window()` 来做外侧阴影。不要给 combo popup 容器设置 `WA_TranslucentBackground`、`WA_NoSystemBackground`、透明 stylesheet、外扩 geometry、shadow margin 或自定义 shadow host；Windows 下这些透明 backing store 很容易显示成黑色外框/黑块。
+- `QComboBox` 下拉框只做安全样式：`QAbstractItemView` stylesheet、面板圆角、上下留白、整行高亮、必要的 rounded mask。需要外侧柔和阴影时，优先迁移为项目自绘的 `SingleLevelPopupMenu`，不要在原生 combo popup 上硬加阴影。
+- 修改 popup/菜单视觉后，必须用真实 GUI 截图或用户截图确认没有黑边、黑块、直角残留；无头布局测试只能覆盖属性和 stylesheet，不能证明 Windows 透明合成正确。
+
 ## Git Safety
 
 - 不要改写历史，除非用户明确要求。
