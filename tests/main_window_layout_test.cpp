@@ -89,7 +89,7 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
             "combo popup viewport avoids transparent backing-store attributes");
     require(combo->view()->viewport()->styleSheet().contains(QStringLiteral("background-color:")) &&
                 combo->view()->viewport()->styleSheet().contains(QStringLiteral("border: none")),
-            "combo popup viewport has an explicit filled background to avoid edge bleed-through");
+            "combo popup viewport has an explicit filled background without drawing a clipped border");
     require(!combo->view()->property("vaporViewComboPopupShadowEnabled").toBool(),
             "combo popup view does not request unsafe external shadow chrome");
     require(!combo->view()->property("floatingPanelChrome").toBool(),

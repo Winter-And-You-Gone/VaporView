@@ -2578,7 +2578,7 @@ QDoubleSpinBox:disabled {
 }
 QComboBox QAbstractItemView {
     background-color: @vv-menu-panel;
-    border: 1px solid @vv-border;
+    border: 1px solid @vv-border-strong;
     border-radius: 12px;
     color: @vv-menu-text;
     selection-background-color: @vv-menu-hover;
@@ -8536,7 +8536,7 @@ void MainWindow::loadModernStyleSheet()
             "QComboBox:hover { border-color: @vv-border-strong; }"
             "QComboBox:focus { border-color: @vv-primary; border-width: 1px; }"
             "QComboBox:disabled { background-color: @vv-surface-alt; color: @vv-text; }"
-            "QComboBox QAbstractItemView { background-color: @vv-menu-panel; border: 1px solid @vv-border; border-radius: 12px; color: @vv-menu-text; selection-background-color: @vv-menu-hover; selection-color: @vv-menu-text; padding: 12px 0px; outline: none; }"
+            "QComboBox QAbstractItemView { background-color: @vv-menu-panel; border: 1px solid @vv-border-strong; border-radius: 12px; color: @vv-menu-text; selection-background-color: @vv-menu-hover; selection-color: @vv-menu-text; padding: 12px 0px; outline: none; }"
             "QComboBox QAbstractItemView::item { background-color: transparent; color: @vv-menu-text; padding: 7px 14px; min-height: 30px; border: 0px; border-radius: 0px; }"
             "QComboBox QAbstractItemView::item:hover, QComboBox QAbstractItemView::item:selected, QComboBox QAbstractItemView::item:selected:active, QComboBox QAbstractItemView::item:selected:!active { background-color: @vv-menu-hover; color: @vv-menu-text; }"
             "QComboBox QAbstractItemView::item:disabled { background-color: transparent; color: @vv-menu-disabled; }"

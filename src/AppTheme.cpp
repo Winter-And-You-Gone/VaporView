@@ -96,16 +96,8 @@ void alignComboPopupContainerToAnchor(QWidget *container, QAbstractItemView *vie
 
     const bool opensBelow = popupRect.center().y() >= anchorRect.center().y();
     const int desiredTop = anchorRect.bottom() + 1 + kComboPopupAnchorGap;
-    const int desiredBottom = anchorRect.top() - kComboPopupAnchorGap;
-    int targetY = popupRect.y();
-    if (opensBelow && popupRect.top() < desiredTop)
-    {
-        targetY = desiredTop;
-    }
-    else if (!opensBelow && popupRect.bottom() > desiredBottom)
-    {
-        targetY = desiredBottom - popupRect.height() + 1;
-    }
+    const int desiredBottom = anchorRect.top() - 1 - kComboPopupAnchorGap;
+    const int targetY = opensBelow ? desiredTop : desiredBottom - popupRect.height() + 1;
 
     if (targetY == popupRect.y())
     {
@@ -205,7 +197,8 @@ void applyComboPopupOpaqueBackground(QAbstractItemView *view)
     applyOpaqueFill(view->viewport());
     if (QWidget *viewport = view->viewport())
     {
-        viewport->setStyleSheet(QStringLiteral("background-color: %1; border: none;").arg(popupBase.name()));
+        viewport->setStyleSheet(QStringLiteral("background-color: %1; border: none;")
+                                    .arg(popupBase.name()));
     }
 }
 
@@ -795,7 +788,7 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
     const QColor popupHighlight = appThemeColor(AppThemeColor::MenuHover, dark);
     const QColor popupHighlightText = appThemeColor(AppThemeColor::MenuText, dark);
     const QColor disabledText = appThemeColor(AppThemeColor::MenuDisabledText, dark);
-    const QColor popupBorder = appThemeColor(AppThemeColor::Border, dark);
+    const QColor popupBorder = appThemeColor(AppThemeColor::BorderStrong, dark);
 
     QPalette popupPalette = view->palette();
     popupPalette.setColor(QPalette::Base, popupBase);
