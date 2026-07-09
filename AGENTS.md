@@ -43,7 +43,7 @@
 ## Qt Popup Styling Guardrails
 
 - `QComboBox` 的下拉框是 Qt 内部创建的原生 popup 顶层窗口，不能用自绘菜单的方式改它的 `view()->window()` 来做外侧阴影。不要给 combo popup 容器设置 `WA_TranslucentBackground`、`WA_NoSystemBackground`、透明 stylesheet、外扩 geometry、shadow margin 或自定义 shadow host；Windows 下这些透明 backing store 很容易显示成黑色外框/黑块。
-- `QComboBox` 下拉框的原生容器只做安全样式：`QAbstractItemView` stylesheet、面板圆角、上下留白、整行高亮、必要的 rounded mask。需要外侧柔和阴影且暂不迁移到 `SingleLevelPopupMenu` 时，只能使用独立的透明辅助窗口绘制“外圈阴影”，辅助窗口中心必须完全透明，不能绘制白色面板覆盖 popup 内容，也不能改变原生 popup 容器的透明背景、geometry 或 backing store。启用自绘外圈阴影时必须禁用原生 popup window drop shadow，并裁掉靠近触发 `QComboBox` 那一侧的阴影，避免上下边缘出现双层阴影或贴边重叠。
+- `QComboBox` 下拉框的原生容器只做安全样式：`QAbstractItemView` stylesheet、面板圆角、上下留白、整行高亮、必要的 rounded mask。需要外侧柔和阴影且暂不迁移到 `SingleLevelPopupMenu` 时，只能使用独立的透明辅助窗口绘制“外圈阴影”，辅助窗口中心必须完全透明，不能绘制白色面板覆盖 popup 内容，也不能改变原生 popup 容器的透明背景或 backing store。启用自绘外圈阴影时必须禁用原生 popup window drop shadow，让 popup 和触发 `QComboBox` 保持清晰间距，并裁掉顶部/靠触发框侧阴影，只保留侧下方和底部柔影，避免上下边缘出现双层阴影或贴边重叠。
 - 修改 popup/菜单视觉后，必须用真实 GUI 截图或用户截图确认没有黑边、黑块、直角残留；无头布局测试只能覆盖属性和 stylesheet，不能证明 Windows 透明合成正确。
 
 ## Git Safety

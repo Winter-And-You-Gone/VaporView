@@ -21,12 +21,15 @@ namespace
 {
 
 constexpr int kComboPopupCornerRadius = 10;
+constexpr int kComboPopupAnchorGap = 12;
 constexpr int kComboPopupShadowGap = 4;
+constexpr int kComboPopupAnchorShadowClearance = 30;
 constexpr int kComboPopupShadowMargin = 22;
 constexpr const char *kComboPopupMaskFilterProperty = "vaporViewComboPopupMaskFilterInstalled";
 constexpr const char *kComboPopupContainerMaskFilterProperty = "vaporViewComboPopupContainerMaskFilterInstalled";
 constexpr const char *kComboPopupShadowWindowName = "vaporViewComboPopupShadowWindow";
 constexpr const char *kComboPopupOwnerProperty = "vaporViewComboPopupOwner";
+constexpr const char *kComboPopupContainerAligningProperty = "vaporViewComboPopupContainerAligning";
 
 QColor hexColor(const char *value)
 {
@@ -155,24 +158,31 @@ protected:
                                                    kComboPopupShadowGap),
                                 kComboPopupCornerRadius + kComboPopupShadowGap,
                                 kComboPopupCornerRadius + kComboPopupShadowGap);
-        if (anchor_)
+        reserved.addRect(QRectF(0.0,
+                                0.0,
+                                width(),
+                                popupRect.top() + kComboPopupAnchorShadowClearance));
+        if (anchor_ && popup_)
         {
             const QRect anchorGlobal(anchor_->mapToGlobal(QPoint(0, 0)), anchor_->size());
-            const QRectF anchorRect(mapFromGlobal(anchorGlobal.topLeft()), anchorGlobal.size());
-            const bool popupBelowAnchor = anchorRect.bottom() <= popupRect.top() + kComboPopupShadowGap + 2.0
-                && anchorRect.bottom() >= popupRect.top() - kComboPopupShadowMargin;
-            const bool popupAboveAnchor = anchorRect.top() >= popupRect.bottom() - kComboPopupShadowGap - 2.0
-                && anchorRect.top() <= popupRect.bottom() + kComboPopupShadowMargin;
+            const QRect popupGlobal(popup_->mapToGlobal(QPoint(0, 0)), popup_->size());
+            const bool popupBelowAnchor = popupGlobal.top() >= anchorGlobal.bottom() - 1
+                && popupGlobal.top() <= anchorGlobal.bottom() + kComboPopupAnchorGap + kComboPopupShadowMargin;
+            const bool popupAboveAnchor = popupGlobal.bottom() <= anchorGlobal.top() + 1
+                && popupGlobal.bottom() >= anchorGlobal.top() - kComboPopupAnchorGap - kComboPopupShadowMargin;
             if (popupBelowAnchor)
             {
-                reserved.addRect(QRectF(0.0, 0.0, width(), popupRect.top() + kComboPopupShadowGap));
+                reserved.addRect(QRectF(0.0,
+                                        0.0,
+                                        width(),
+                                        popupRect.top() + kComboPopupAnchorShadowClearance));
             }
             if (popupAboveAnchor)
             {
                 reserved.addRect(QRectF(0.0,
-                                        popupRect.bottom() - kComboPopupShadowGap,
+                                        popupRect.bottom() - kComboPopupAnchorShadowClearance,
                                         width(),
-                                        height() - popupRect.bottom() + kComboPopupShadowGap));
+                                        height() - popupRect.bottom() + kComboPopupAnchorShadowClearance));
             }
         }
         painter.setClipPath(clipPath.subtracted(reserved));
@@ -252,6 +262,53 @@ void syncComboPopupShadowWindow(QAbstractItemView *view)
     shadow->syncToPopup();
 }
 
+QWidget *comboPopupAnchorForView(QAbstractItemView *view)
+{
+    if (!view)
+    {
+        return nullptr;
+    }
+    return qobject_cast<QWidget *>(view->property(kComboPopupOwnerProperty).value<QObject *>());
+}
+
+void alignComboPopupContainerToAnchor(QWidget *container, QAbstractItemView *view)
+{
+    QWidget *anchor = comboPopupAnchorForView(view);
+    if (!container || !anchor || !container->isVisible() || container->property(kComboPopupContainerAligningProperty).toBool())
+    {
+        return;
+    }
+
+    const QRect anchorRect(anchor->mapToGlobal(QPoint(0, 0)), anchor->size());
+    QRect popupRect = container->geometry();
+    if (anchorRect.isEmpty() || popupRect.isEmpty())
+    {
+        return;
+    }
+
+    const bool opensBelow = popupRect.center().y() >= anchorRect.center().y();
+    const int desiredTop = anchorRect.bottom() + 1 + kComboPopupAnchorGap;
+    const int desiredBottom = anchorRect.top() - kComboPopupAnchorGap;
+    int targetY = popupRect.y();
+    if (opensBelow && popupRect.top() < desiredTop)
+    {
+        targetY = desiredTop;
+    }
+    else if (!opensBelow && popupRect.bottom() > desiredBottom)
+    {
+        targetY = desiredBottom - popupRect.height() + 1;
+    }
+
+    if (targetY == popupRect.y())
+    {
+        return;
+    }
+
+    container->setProperty(kComboPopupContainerAligningProperty, true);
+    container->move(popupRect.x(), targetY);
+    container->setProperty(kComboPopupContainerAligningProperty, false);
+}
+
 class ComboPopupContainerMaskFilter final : public QObject
 {
 public:
@@ -272,6 +329,7 @@ protected:
             {
                 if (auto *view = container->findChild<QAbstractItemView *>(QStringLiteral("vaporViewComboPopupView")))
                 {
+                    alignComboPopupContainerToAnchor(container, view);
                     syncComboPopupShadowWindow(view);
                 }
             }
@@ -290,6 +348,7 @@ void configureComboPopupContainerMask(QAbstractItemView *view)
 
     container->setProperty("vaporViewComboPopupRoundedMaskEnabled", true);
     container->setProperty("cornerRadius", kComboPopupCornerRadius);
+    container->setProperty("vaporViewComboPopupAnchorGap", kComboPopupAnchorGap);
     container->setProperty("vaporViewComboPopupNativeDropShadowDisabled", true);
     if (!container->isVisible())
     {

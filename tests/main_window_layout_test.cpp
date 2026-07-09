@@ -110,6 +110,8 @@ void requireComboPopupFloatingContainer(QComboBox *combo, const char *message)
             "combo popup container enables safe rounded masking");
     require(container->property("cornerRadius").toInt() == 10,
             "combo popup container uses the shared corner radius");
+    require(container->property("vaporViewComboPopupAnchorGap").toInt() == 12,
+            "combo popup container keeps a visible gap from its anchor combo box");
     require(container->property("vaporViewComboPopupNativeDropShadowDisabled").toBool(),
             "combo popup container disables the native drop shadow before using the shared custom shadow");
     require(!container->property("vaporViewComboPopupShadowEnabled").toBool(),
