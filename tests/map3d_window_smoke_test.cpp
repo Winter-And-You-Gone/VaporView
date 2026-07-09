@@ -42,9 +42,8 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
     require(combo->property("vaporViewComboPopupStyled").toBool(), message);
     require(combo->view() != nullptr, message);
     require(combo->view()->property("vaporViewComboPopupStyled").toBool(), message);
-    require(combo->view()->property("vaporViewComboPopupRoundedMaskEnabled").toBool(), message);
-    require(combo->view()->property("cornerRadius").toInt() == 10, message);
-    require(combo->view()->property("vaporViewComboPopupViewportMargin").toInt() == 1, message);
+    require(!combo->view()->property("vaporViewComboPopupRoundedMaskEnabled").isValid(), message);
+    require(!combo->view()->property("vaporViewComboPopupViewportMargin").isValid(), message);
     require(!combo->view()->property("vaporViewComboPopupShadowEnabled").toBool(), message);
     require(!combo->view()->property("floatingPanelChrome").toBool(), message);
     require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"), message);
@@ -53,10 +52,8 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
     const QString popupStyle = combo->view()->styleSheet();
     const QString hoverColor = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuHover,
                                                             VaporView::isDarkThemeEnabled());
-    const QString borderColor = VaporView::appThemeColorName(VaporView::AppThemeColor::Border,
-                                                             VaporView::isDarkThemeEnabled());
-    require(popupStyle.contains(QStringLiteral("border-radius: 10px")) &&
-                popupStyle.contains(QStringLiteral("border: 1px solid %1").arg(borderColor)) &&
+    require(popupStyle.contains(QStringLiteral("border: none")) &&
+                !popupStyle.contains(QStringLiteral("border: 1px solid")) &&
                 !popupStyle.contains(QStringLiteral("border-bottom: 1px solid")) &&
                 popupStyle.contains(QStringLiteral("border-radius: 0px")) &&
                 popupStyle.contains(QStringLiteral("padding: 12px 0px")) &&

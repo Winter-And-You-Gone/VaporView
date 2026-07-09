@@ -76,12 +76,10 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
     require(combo->view() != nullptr, "combo has a popup view");
     require(combo->view()->property("vaporViewComboPopupStyled").toBool(),
             "combo popup view carries the shared style marker");
-    require(combo->view()->property("vaporViewComboPopupRoundedMaskEnabled").toBool(),
-            "combo popup view enables rounded masking");
-    require(combo->view()->property("cornerRadius").toInt() == 10,
-            "combo popup view uses the shared corner radius");
-    require(combo->view()->property("vaporViewComboPopupViewportMargin").toInt() == 1,
-            "combo popup view leaves a one-pixel viewport inset for the QSS border");
+    require(!combo->view()->property("vaporViewComboPopupRoundedMaskEnabled").isValid(),
+            "combo popup view leaves rounded masking to the outer popup container");
+    require(!combo->view()->property("vaporViewComboPopupViewportMargin").isValid(),
+            "combo popup view does not inset its viewport for an inner border");
     require(!combo->view()->testAttribute(Qt::WA_TranslucentBackground) &&
                 !combo->view()->testAttribute(Qt::WA_NoSystemBackground),
             "combo popup view uses an opaque backing store to avoid transparent edge artifacts");
@@ -103,10 +101,8 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
     const QString popupStyle = combo->view()->styleSheet();
     const QString hoverColor = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuHover,
                                                             VaporView::isDarkThemeEnabled());
-    const QString borderColor = VaporView::appThemeColorName(VaporView::AppThemeColor::Border,
-                                                             VaporView::isDarkThemeEnabled());
-    require(popupStyle.contains(QStringLiteral("border-radius: 10px")) &&
-                popupStyle.contains(QStringLiteral("border: 1px solid %1").arg(borderColor)) &&
+    require(popupStyle.contains(QStringLiteral("border: none")) &&
+                !popupStyle.contains(QStringLiteral("border: 1px solid")) &&
                 !popupStyle.contains(QStringLiteral("border-bottom: 1px solid")) &&
                 popupStyle.contains(QStringLiteral("border-radius: 0px")) &&
                 popupStyle.contains(QStringLiteral("padding: 12px 0px")) &&
@@ -127,10 +123,41 @@ void requireComboPopupFloatingContainer(QComboBox *combo, const char *message)
     processEventsFor(120);
     QWidget *container = view->window();
     require(container != nullptr, "combo popup has a native popup container");
+    require(container->objectName() == QStringLiteral("vaporViewComboPopupContainer"),
+            "combo popup styles the native outer container directly");
     require(container->property("vaporViewComboPopupRoundedMaskEnabled").toBool(),
             "combo popup container enables safe rounded masking");
     require(container->property("cornerRadius").toInt() == 10,
             "combo popup container uses the shared corner radius");
+    require(container->property("vaporViewComboPopupBorderWidth").toInt() == 1,
+            "combo popup container owns the one-pixel border");
+    const QString borderColor = VaporView::appThemeColorName(VaporView::AppThemeColor::Border,
+                                                             VaporView::isDarkThemeEnabled());
+    require(container->styleSheet().contains(QStringLiteral("border: none")) &&
+                container->styleSheet().contains(QStringLiteral("border-radius: 10px")),
+            "combo popup container QSS provides the rounded opaque panel without drawing the border");
+    QWidget *borderLayer = container->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupBorderLayer"),
+                                                          Qt::FindDirectChildrenOnly);
+    require(borderLayer != nullptr,
+            "combo popup container owns a direct child border layer");
+    require(borderLayer->property("vaporViewComboPopupBorderLayer").toBool() &&
+                borderLayer->property("vaporViewComboPopupBorderWidth").toInt() == 1 &&
+                borderLayer->property("cornerRadius").toInt() == 10,
+            "combo popup border layer carries the shared border metadata");
+    require(borderLayer->geometry() == container->rect(),
+            "combo popup border layer covers the full native popup container");
+    require(borderLayer->styleSheet().contains(QStringLiteral("border: 1px solid %1").arg(borderColor)) &&
+                borderLayer->styleSheet().contains(QStringLiteral("border-radius: 10px")),
+            "combo popup border layer QSS draws the complete rounded gray border");
+    require(view->geometry().left() == container->contentsRect().left() &&
+                view->geometry().right() == container->contentsRect().right(),
+            "combo popup view fills the frame contents without an extra white inset");
+    const QRegion containerMask = container->mask();
+    require(containerMask.contains(QPoint(container->width() / 2, 0)) &&
+                containerMask.contains(QPoint(container->width() / 2, container->height() - 1)) &&
+                containerMask.contains(QPoint(0, container->height() / 2)) &&
+                containerMask.contains(QPoint(container->width() - 1, container->height() / 2)),
+            "combo popup rounded mask preserves all four border midpoints");
     require(container->property("vaporViewComboPopupAnchorGap").toInt() == 0,
             "combo popup container does not add extra anchor gap");
     require(container->property("vaporViewComboPopupNativeDropShadowDisabled").toBool(),
