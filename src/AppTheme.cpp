@@ -18,7 +18,7 @@ namespace VaporView
 namespace
 {
 
-constexpr int kComboPopupCornerRadius = 12;
+constexpr int kComboPopupCornerRadius = 10;
 constexpr int kComboPopupAnchorGap = 0;
 constexpr const char *kComboPopupMaskFilterProperty = "vaporViewComboPopupMaskFilterInstalled";
 constexpr const char *kComboPopupContainerMaskFilterProperty = "vaporViewComboPopupContainerMaskFilterInstalled";
@@ -797,7 +797,7 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
     view->setPalette(popupPalette);
     view->setStyleSheet(QStringLiteral(
         "QAbstractItemView#vaporViewComboPopupView { "
-        "background-color: %1; border: none; border-radius: 12px; "
+        "background-color: %1; border: none; border-radius: 10px; "
         "color: %2; outline: 0px; padding: 12px 0px; "
         "selection-background-color: %3; selection-color: %4; }"
         "QAbstractItemView#vaporViewComboPopupView::item { "

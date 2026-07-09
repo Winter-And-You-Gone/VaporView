@@ -78,7 +78,7 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
             "combo popup view carries the shared style marker");
     require(combo->view()->property("vaporViewComboPopupRoundedMaskEnabled").toBool(),
             "combo popup view enables rounded masking");
-    require(combo->view()->property("cornerRadius").toInt() == 12,
+    require(combo->view()->property("cornerRadius").toInt() == 10,
             "combo popup view uses the shared corner radius");
     require(!combo->view()->testAttribute(Qt::WA_TranslucentBackground) &&
                 !combo->view()->testAttribute(Qt::WA_NoSystemBackground),
@@ -99,7 +99,7 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
     const QString popupStyle = combo->view()->styleSheet();
     const QString hoverColor = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuHover,
                                                             VaporView::isDarkThemeEnabled());
-    require(popupStyle.contains(QStringLiteral("border-radius: 12px")) &&
+    require(popupStyle.contains(QStringLiteral("border-radius: 10px")) &&
                 popupStyle.contains(QStringLiteral("border: none")) &&
                 !popupStyle.contains(QStringLiteral("border-bottom: 1px solid")) &&
                 popupStyle.contains(QStringLiteral("border-radius: 0px")) &&
@@ -121,7 +121,7 @@ void requireComboPopupFloatingContainer(QComboBox *combo, const char *message)
     require(container != nullptr, "combo popup has a native popup container");
     require(container->property("vaporViewComboPopupRoundedMaskEnabled").toBool(),
             "combo popup container enables safe rounded masking");
-    require(container->property("cornerRadius").toInt() == 12,
+    require(container->property("cornerRadius").toInt() == 10,
             "combo popup container uses the shared corner radius");
     require(container->property("vaporViewComboPopupAnchorGap").toInt() == 0,
             "combo popup container does not add extra anchor gap");
