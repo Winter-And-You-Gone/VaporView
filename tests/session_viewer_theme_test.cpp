@@ -76,8 +76,8 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
     require(!combo->view()->property("floatingPanelChrome").toBool(), message);
     require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"), message);
     QWidget *borderOverlay =
-        combo->view()->window()->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupBorderOverlay"),
-                                                      Qt::FindDirectChildrenOnly);
+        combo->view()->viewport()->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupBorderOverlay"),
+                                                        Qt::FindDirectChildrenOnly);
     require(borderOverlay != nullptr &&
                 borderOverlay->property("vaporViewComboPopupBorderOverlay").toBool() &&
                 borderOverlay->property("cornerRadius").toInt() == 10,

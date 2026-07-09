@@ -152,7 +152,7 @@ void updateComboPopupBorderOverlay(QAbstractItemView *view)
         return;
     }
 
-    QWidget *borderParent = view->window();
+    QWidget *borderParent = view->viewport();
     if (!borderParent)
     {
         borderParent = view;
