@@ -18,7 +18,7 @@ namespace VaporView
 namespace
 {
 
-constexpr int kComboPopupCornerRadius = 10;
+constexpr int kComboPopupCornerRadius = 12;
 constexpr int kComboPopupAnchorGap = 0;
 constexpr const char *kComboPopupMaskFilterProperty = "vaporViewComboPopupMaskFilterInstalled";
 constexpr const char *kComboPopupContainerMaskFilterProperty = "vaporViewComboPopupContainerMaskFilterInstalled";
@@ -182,7 +182,7 @@ void applyComboPopupOpaqueBackground(QAbstractItemView *view)
     }
 
     const bool dark = view->property("vaporViewComboPopupDarkTheme").toBool();
-    const QColor popupBase = appThemeColor(AppThemeColor::MenuPanel, dark);
+    const QColor popupBase = dark ? appThemeColor(AppThemeColor::MenuPanel, true) : hexColor("#FFFEFA");
 
     auto applyOpaqueFill = [popupBase](QWidget *widget) {
         if (!widget)
@@ -790,11 +790,13 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
         view->setProperty(kComboPopupMaskFilterProperty, true);
     }
 
-    const QColor popupBase = appThemeColor(AppThemeColor::MenuPanel, dark);
+    const QColor popupBase = dark ? appThemeColor(AppThemeColor::MenuPanel, true) : hexColor("#FFFEFA");
     const QColor popupText = appThemeColor(AppThemeColor::MenuText, dark);
     const QColor popupHighlight = appThemeColor(AppThemeColor::MenuHover, dark);
     const QColor popupHighlightText = appThemeColor(AppThemeColor::MenuText, dark);
     const QColor disabledText = appThemeColor(AppThemeColor::MenuDisabledText, dark);
+    const QColor popupBorder = dark ? appThemeColor(AppThemeColor::Border, true) : hexColor("#E8E5DC");
+    const QColor popupSeparator = dark ? appThemeColor(AppThemeColor::Border, true) : hexColor("#F0EDE5");
 
     QPalette popupPalette = view->palette();
     popupPalette.setColor(QPalette::Base, popupBase);
@@ -805,12 +807,12 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
     view->setPalette(popupPalette);
     view->setStyleSheet(QStringLiteral(
         "QAbstractItemView#vaporViewComboPopupView { "
-        "background-color: %1; border: none; border-radius: 10px; "
+        "background-color: %1; border: 1px solid %6; border-radius: 12px; "
         "color: %2; outline: 0px; padding: 12px 0px; "
         "selection-background-color: %3; selection-color: %4; }"
         "QAbstractItemView#vaporViewComboPopupView::item { "
-        "background-color: transparent; border: 0px; border-radius: 0px; "
-        "min-height: 28px; padding: 6px 12px; }"
+        "background-color: transparent; border: 0px; border-bottom: 1px solid %7; border-radius: 0px; "
+        "min-height: 30px; padding: 7px 14px; }"
         "QAbstractItemView#vaporViewComboPopupView::item:hover, "
         "QAbstractItemView#vaporViewComboPopupView::item:selected, "
         "QAbstractItemView#vaporViewComboPopupView::item:selected:active, "
@@ -824,7 +826,9 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
              popupText.name(),
              popupHighlight.name(),
              popupHighlightText.name(),
-             disabledText.name()));
+             disabledText.name(),
+             popupBorder.name(),
+             popupSeparator.name()));
     applyComboPopupOpaqueBackground(view);
     applyComboPopupRoundedMask(view);
 }
