@@ -80,6 +80,16 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
             "combo popup view enables rounded masking");
     require(combo->view()->property("cornerRadius").toInt() == 10,
             "combo popup view uses the shared corner radius");
+    require(!combo->view()->testAttribute(Qt::WA_TranslucentBackground) &&
+                !combo->view()->testAttribute(Qt::WA_NoSystemBackground),
+            "combo popup view uses an opaque backing store to avoid transparent edge artifacts");
+    require(combo->view()->viewport() != nullptr &&
+                !combo->view()->viewport()->testAttribute(Qt::WA_TranslucentBackground) &&
+                !combo->view()->viewport()->testAttribute(Qt::WA_NoSystemBackground),
+            "combo popup viewport avoids transparent backing-store attributes");
+    require(combo->view()->viewport()->styleSheet().contains(QStringLiteral("background-color:")) &&
+                combo->view()->viewport()->styleSheet().contains(QStringLiteral("border: none")),
+            "combo popup viewport has an explicit filled background to avoid edge bleed-through");
     require(!combo->view()->property("vaporViewComboPopupShadowEnabled").toBool(),
             "combo popup view does not request unsafe external shadow chrome");
     require(!combo->view()->property("floatingPanelChrome").toBool(),
@@ -113,7 +123,7 @@ void requireComboPopupFloatingContainer(QComboBox *combo, const char *message)
     require(container->property("vaporViewComboPopupAnchorGap").toInt() == 12,
             "combo popup container keeps a visible gap from its anchor combo box");
     require(container->property("vaporViewComboPopupNativeDropShadowDisabled").toBool(),
-            "combo popup container disables the native drop shadow before using the shared custom shadow");
+            "combo popup container disables native drop shadow for a clean rounded popup");
     require(!container->property("vaporViewComboPopupShadowEnabled").toBool(),
             "combo popup container does not request unsafe external shadow chrome");
     require(!container->property("floatingPanelChrome").toBool(),
@@ -123,6 +133,9 @@ void requireComboPopupFloatingContainer(QComboBox *combo, const char *message)
     require(container->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupShadowHost"),
                                            Qt::FindDirectChildrenOnly) == nullptr,
             "combo popup container does not create an unsafe shadow host");
+    require(container->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupShadowWindow"),
+                                           Qt::FindDirectChildrenOnly) == nullptr,
+            "combo popup container does not create a transparent custom shadow window");
 }
 
 void requireComboPopupsStyledIn(QWidget *scope, const char *message)
@@ -2346,6 +2359,13 @@ int main(int argc, char **argv)
                 addressSpin != nullptr && rs485BaudCombo != nullptr && overtempOutputCombo != nullptr &&
                 commonInternalTemperatureEdit != nullptr && factoryResetButton != nullptr,
             "temperature controller editable controls are discoverable for stale telemetry checks");
+    require(controllerModeCombo->property("usesSingleLevelPopupMenu").toBool() &&
+                modeCombo->property("usesSingleLevelPopupMenu").toBool() &&
+                autoPidCombo->property("usesSingleLevelPopupMenu").toBool() &&
+                overtempOutputCombo->property("usesSingleLevelPopupMenu").toBool(),
+            "temperature fixed-option combos use SingleLevelPopupMenu instead of native combo popups");
+    require(!rs485BaudCombo->property("usesSingleLevelPopupMenu").toBool(),
+            "temperature RS485 baud combo keeps the native combo popup path");
 
     clickWidget(temperatureNavButton, 150);
     activateLayouts(&window);
