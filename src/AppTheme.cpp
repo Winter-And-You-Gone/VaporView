@@ -5,7 +5,9 @@
 #include <QComboBox>
 #include <QEvent>
 #include <QFrame>
+#include <QPainter>
 #include <QPainterPath>
+#include <QPointer>
 #include <QRegion>
 #include <QStyle>
 #include <QVariant>
@@ -19,7 +21,10 @@ namespace
 {
 
 constexpr int kComboPopupCornerRadius = 10;
+constexpr int kComboPopupShadowMargin = 22;
 constexpr const char *kComboPopupMaskFilterProperty = "vaporViewComboPopupMaskFilterInstalled";
+constexpr const char *kComboPopupContainerMaskFilterProperty = "vaporViewComboPopupContainerMaskFilterInstalled";
+constexpr const char *kComboPopupShadowWindowName = "vaporViewComboPopupShadowWindow";
 
 QColor hexColor(const char *value)
 {
@@ -51,19 +56,220 @@ struct ThemeReplacement
     AppThemeColor color;
 };
 
-void applyComboPopupRoundedMask(QAbstractItemView *view)
+void applyRoundedWidgetMask(QWidget *widget, const char *appliedProperty)
 {
-    if (!view || view->size().isEmpty())
+    if (!widget || widget->size().isEmpty())
     {
         return;
     }
 
     QPainterPath path;
-    path.addRoundedRect(QRectF(QPointF(0.0, 0.0), QSizeF(view->size())).adjusted(0.0, 0.0, -1.0, -1.0),
+    path.addRoundedRect(QRectF(QPointF(0.0, 0.0), QSizeF(widget->size())).adjusted(0.0, 0.0, -1.0, -1.0),
                         kComboPopupCornerRadius,
                         kComboPopupCornerRadius);
-    view->setMask(QRegion(path.toFillPolygon().toPolygon()));
-    view->setProperty("vaporViewComboPopupRoundedMaskApplied", !view->mask().isEmpty());
+    widget->setMask(QRegion(path.toFillPolygon().toPolygon()));
+    widget->setProperty(appliedProperty, !widget->mask().isEmpty());
+}
+
+class ComboPopupShadowWindow final : public QWidget
+{
+public:
+    explicit ComboPopupShadowWindow(QWidget *popup, bool dark, QWidget *owner)
+        : QWidget(owner, Qt::ToolTip | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint)
+        , popup_(popup)
+    {
+        setObjectName(QString::fromLatin1(kComboPopupShadowWindowName));
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        setAttribute(Qt::WA_NoSystemBackground, true);
+        setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        setFocusPolicy(Qt::NoFocus);
+        if (owner)
+        {
+            owner->installEventFilter(this);
+            connect(owner, &QObject::destroyed, this, &QObject::deleteLater);
+        }
+        setDark(dark);
+    }
+
+    void setDark(bool dark)
+    {
+        dark_ = dark;
+        update();
+    }
+
+    void syncToPopup()
+    {
+        if (!popup_ || !popup_->isVisible())
+        {
+            hide();
+            return;
+        }
+        const QRect popupRect(popup_->mapToGlobal(QPoint(0, 0)), popup_->size());
+        if (!popupRect.isValid() || popupRect.isEmpty())
+        {
+            hide();
+            return;
+        }
+        setGeometry(popupRect.adjusted(-kComboPopupShadowMargin,
+                                       -kComboPopupShadowMargin,
+                                       kComboPopupShadowMargin,
+                                       kComboPopupShadowMargin));
+        show();
+        popup_->raise();
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        Q_UNUSED(event);
+        const QRectF popupRect(kComboPopupShadowMargin,
+                               kComboPopupShadowMargin,
+                               width() - 2 * kComboPopupShadowMargin,
+                               height() - 2 * kComboPopupShadowMargin);
+        if (!popupRect.isValid() || popupRect.isEmpty())
+        {
+            return;
+        }
+
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+
+        auto drawShadowPass = [&](const QPointF& offset, int maxAlpha, int maxSpread) {
+            for (int spread = maxSpread; spread >= 1; --spread)
+            {
+                const qreal proximity = qreal(maxSpread - spread + 1) / qreal(maxSpread);
+                const int alpha = std::clamp(int(maxAlpha * proximity * proximity), 0, maxAlpha);
+                if (alpha <= 0)
+                {
+                    continue;
+                }
+
+                const QRectF outer = popupRect.translated(offset).adjusted(-spread, -spread, spread, spread);
+                const QRectF inner = popupRect.translated(offset).adjusted(-(spread - 1),
+                                                                           -(spread - 1),
+                                                                           spread - 1,
+                                                                           spread - 1);
+                QPainterPath ring;
+                ring.addRoundedRect(outer,
+                                    kComboPopupCornerRadius + spread,
+                                    kComboPopupCornerRadius + spread);
+                QPainterPath cutout;
+                cutout.addRoundedRect(inner,
+                                      kComboPopupCornerRadius + spread - 1,
+                                      kComboPopupCornerRadius + spread - 1);
+                painter.fillPath(ring.subtracted(cutout), QColor(0, 0, 0, alpha));
+            }
+        };
+
+        drawShadowPass(QPointF(0.0, 3.0), dark_ ? 26 : 18, 18);
+        drawShadowPass(QPointF(0.0, 10.0), dark_ ? 48 : 34, 22);
+
+        painter.setCompositionMode(QPainter::CompositionMode_Clear);
+        QPainterPath clearPath;
+        clearPath.addRoundedRect(popupRect.adjusted(-1.0, -1.0, 1.0, 1.0),
+                                 kComboPopupCornerRadius + 1,
+                                 kComboPopupCornerRadius + 1);
+        painter.fillPath(clearPath, Qt::transparent);
+    }
+
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        Q_UNUSED(watched);
+        const QEvent::Type type = event->type();
+        if (type == QEvent::Hide || type == QEvent::Close)
+        {
+            hide();
+        }
+        else if (type == QEvent::Show || type == QEvent::Resize || type == QEvent::Move || type == QEvent::Polish)
+        {
+            syncToPopup();
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
+private:
+    QPointer<QWidget> popup_;
+    bool dark_ = false;
+};
+
+void syncComboPopupShadowWindow(QAbstractItemView *view)
+{
+    QWidget *container = view ? view->window() : nullptr;
+    if (!container || !container->isVisible())
+    {
+        return;
+    }
+
+    QWidget *shadowWidget = container->findChild<QWidget *>(
+        QString::fromLatin1(kComboPopupShadowWindowName),
+        Qt::FindDirectChildrenOnly);
+    auto *shadow = static_cast<ComboPopupShadowWindow *>(shadowWidget);
+    const bool dark = view->property("vaporViewComboPopupDarkTheme").toBool();
+    if (!shadow)
+    {
+        shadow = new ComboPopupShadowWindow(container, dark, container);
+    }
+    shadow->setDark(dark);
+    shadow->syncToPopup();
+}
+
+class ComboPopupContainerMaskFilter final : public QObject
+{
+public:
+    explicit ComboPopupContainerMaskFilter(QObject *parent)
+        : QObject(parent)
+    {
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        const QEvent::Type type = event->type();
+        if (type == QEvent::Show || type == QEvent::Resize || type == QEvent::Polish)
+        {
+            applyRoundedWidgetMask(qobject_cast<QWidget *>(watched),
+                                   "vaporViewComboPopupContainerRoundedMaskApplied");
+            if (auto *container = qobject_cast<QWidget *>(watched))
+            {
+                if (auto *view = container->findChild<QAbstractItemView *>(QStringLiteral("vaporViewComboPopupView")))
+                {
+                    syncComboPopupShadowWindow(view);
+                }
+            }
+        }
+        return QObject::eventFilter(watched, event);
+    }
+};
+
+void configureComboPopupContainerMask(QAbstractItemView *view)
+{
+    QWidget *container = view ? view->window() : nullptr;
+    if (!container)
+    {
+        return;
+    }
+
+    container->setProperty("vaporViewComboPopupRoundedMaskEnabled", true);
+    container->setProperty("cornerRadius", kComboPopupCornerRadius);
+    if (auto *frame = qobject_cast<QFrame *>(container))
+    {
+        frame->setFrameShape(QFrame::NoFrame);
+        frame->setLineWidth(0);
+    }
+    if (!container->property(kComboPopupContainerMaskFilterProperty).toBool())
+    {
+        container->installEventFilter(new ComboPopupContainerMaskFilter(container));
+        container->setProperty(kComboPopupContainerMaskFilterProperty, true);
+    }
+    applyRoundedWidgetMask(container, "vaporViewComboPopupContainerRoundedMaskApplied");
+    syncComboPopupShadowWindow(view);
+}
+
+void applyComboPopupRoundedMask(QAbstractItemView *view)
+{
+    applyRoundedWidgetMask(view, "vaporViewComboPopupRoundedMaskApplied");
+    configureComboPopupContainerMask(view);
 }
 
 class ComboPopupMaskFilter final : public QObject

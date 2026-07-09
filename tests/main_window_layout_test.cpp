@@ -106,6 +106,10 @@ void requireComboPopupFloatingContainer(QComboBox *combo, const char *message)
     require(view != nullptr, "combo popup view exists before opening");
     QWidget *container = view->window();
     require(container != nullptr, "combo popup has a native popup container");
+    require(container->property("vaporViewComboPopupRoundedMaskEnabled").toBool(),
+            "combo popup container enables safe rounded masking");
+    require(container->property("cornerRadius").toInt() == 10,
+            "combo popup container uses the shared corner radius");
     require(!container->property("vaporViewComboPopupShadowEnabled").toBool(),
             "combo popup container does not request unsafe external shadow chrome");
     require(!container->property("floatingPanelChrome").toBool(),
