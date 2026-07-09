@@ -788,8 +788,6 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
     const QColor popupHighlight = appThemeColor(AppThemeColor::MenuHover, dark);
     const QColor popupHighlightText = appThemeColor(AppThemeColor::MenuText, dark);
     const QColor disabledText = appThemeColor(AppThemeColor::MenuDisabledText, dark);
-    const QColor popupBorder = appThemeColor(AppThemeColor::BorderStrong, dark);
-
     QPalette popupPalette = view->palette();
     popupPalette.setColor(QPalette::Base, popupBase);
     popupPalette.setColor(QPalette::Text, popupText);
@@ -799,7 +797,7 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
     view->setPalette(popupPalette);
     view->setStyleSheet(QStringLiteral(
         "QAbstractItemView#vaporViewComboPopupView { "
-        "background-color: %1; border: 1px solid %6; border-radius: 12px; "
+        "background-color: %1; border: none; border-radius: 12px; "
         "color: %2; outline: 0px; padding: 12px 0px; "
         "selection-background-color: %3; selection-color: %4; }"
         "QAbstractItemView#vaporViewComboPopupView::item { "
@@ -818,8 +816,7 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
              popupText.name(),
              popupHighlight.name(),
              popupHighlightText.name(),
-             disabledText.name(),
-             popupBorder.name()));
+             disabledText.name()));
     applyComboPopupOpaqueBackground(view);
     applyComboPopupRoundedMask(view);
 }

@@ -100,7 +100,7 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
     const QString hoverColor = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuHover,
                                                             VaporView::isDarkThemeEnabled());
     require(popupStyle.contains(QStringLiteral("border-radius: 12px")) &&
-                popupStyle.contains(QStringLiteral("border: 1px solid")) &&
+                popupStyle.contains(QStringLiteral("border: none")) &&
                 !popupStyle.contains(QStringLiteral("border-bottom: 1px solid")) &&
                 popupStyle.contains(QStringLiteral("border-radius: 0px")) &&
                 popupStyle.contains(QStringLiteral("padding: 12px 0px")) &&
