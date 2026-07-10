@@ -198,6 +198,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         src/map3d/MapDataManager.cpp
         src/map3d/Map3DWindow.cpp
         src/map3d/OsgEarthViewWidget.cpp
+        src/map3d/TrackSampling.cpp
         src/map3d/Trajectory3DLayer.cpp
         src/map3d/Aircraft3DLayer.cpp
         src/map3d/AircraftHeading.cpp
@@ -207,6 +208,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         include/map3d/MapDataManager.h
         include/map3d/Map3DWindow.h
         include/map3d/OsgEarthViewWidget.h
+        include/map3d/TrackSampling.h
         include/map3d/Trajectory3DLayer.h
         include/map3d/Aircraft3DLayer.h
         include/map3d/AircraftHeading.h

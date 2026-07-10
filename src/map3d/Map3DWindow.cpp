@@ -556,8 +556,7 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
     replay_timer_->stop();
     if (view_)
     {
-        view_->clearTrack();
-        view_->appendSamples(result.samples);
+        view_->setSamples(result.samples);
     }
     if (headless_view_)
     {
@@ -1061,8 +1060,7 @@ void Map3DWindow::rebuildReplayAt(int index, bool forceStatus)
 
     if (view_)
     {
-        view_->clearTrack();
-        view_->appendSamples(visibleSamples);
+        view_->setSamples(visibleSamples);
     }
     if (headless_view_)
     {

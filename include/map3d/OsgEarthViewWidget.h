@@ -88,6 +88,7 @@ public:
 
     void appendSample(const VaporView::Geo::NavSample& sample);
     void appendSamples(const std::vector<VaporView::Geo::NavSample>& samples);
+    void setSamples(const std::vector<VaporView::Geo::NavSample>& samples);
     void clearTrack();
     bool loadEarthFile(const QString& earthPath);
     bool loadLocal3DTilesPreview(const QString& tilesetPath);
@@ -161,6 +162,7 @@ private:
     Local3DTilesLoadDiagnostics local_3d_tiles_load_diagnostics_;
     AircraftModelDiagnostics aircraft_model_diagnostics_;
     std::vector<VaporView::Geo::NavSample> raw_samples_;
+    bool preserve_full_track_extent_ = false;
     std::unique_ptr<Trajectory3DLayer> trajectory_layer_;
     std::unique_ptr<Aircraft3DLayer> aircraft_layer_;
 };

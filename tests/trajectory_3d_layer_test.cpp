@@ -1,9 +1,11 @@
 #include "map3d/Trajectory3DLayer.h"
+#include "map3d/TrackSampling.h"
 
 #include <osg/Geometry>
 #include <osg/Geode>
 #include <osg/PrimitiveSet>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -179,6 +181,66 @@ int main()
         ((firstVisibleSegment + 1) * longLayer.segmentSize()) - firstVisibleIndex;
     require(static_cast<int>(longBoundaryGeometry->getVertexArray()->getNumElements()) == expectedBoundaryVertices,
             "long layer clips the boundary segment to the visible window");
+
+    constexpr int kCircleSampleCount = 6336;
+    constexpr int kCircleVisibleSamples = 1000;
+    constexpr double kCircleRadiusM = 75.0;
+    constexpr double kTwoPi = 6.28318530717958647692;
+    std::vector<VaporView::Geo::NavSample> circleSamples;
+    circleSamples.reserve(kCircleSampleCount);
+    for (int index = 0; index < kCircleSampleCount; ++index)
+    {
+        VaporView::Geo::NavSample value = sample(index);
+        const double angle =
+            kTwoPi * static_cast<double>(index) / static_cast<double>(kCircleSampleCount - 1);
+        value.nedNM = std::cos(angle) * kCircleRadiusM;
+        value.nedEM = std::sin(angle) * kCircleRadiusM;
+        circleSamples.push_back(value);
+    }
+
+    const std::vector<VaporView::Geo::NavSample> sampledCircle =
+        VaporView::Map3D::uniformlySampleTrack(circleSamples, kCircleVisibleSamples);
+    require(static_cast<int>(sampledCircle.size()) == kCircleVisibleSamples,
+            "full-track sampling respects the visible sample limit");
+    require(sampledCircle.front().recordTimestampUs == circleSamples.front().recordTimestampUs,
+            "full-track sampling preserves the first sample");
+    require(sampledCircle.back().recordTimestampUs == circleSamples.back().recordTimestampUs,
+            "full-track sampling preserves the last sample");
+
+    double minNorth = kCircleRadiusM;
+    double maxNorth = -kCircleRadiusM;
+    double minEast = kCircleRadiusM;
+    double maxEast = -kCircleRadiusM;
+    bool hasNorthEast = false;
+    bool hasNorthWest = false;
+    bool hasSouthEast = false;
+    bool hasSouthWest = false;
+    for (const VaporView::Geo::NavSample& value : sampledCircle)
+    {
+        minNorth = std::min(minNorth, value.nedNM);
+        maxNorth = std::max(maxNorth, value.nedNM);
+        minEast = std::min(minEast, value.nedEM);
+        maxEast = std::max(maxEast, value.nedEM);
+        hasNorthEast = hasNorthEast || (value.nedNM > 0.0 && value.nedEM > 0.0);
+        hasNorthWest = hasNorthWest || (value.nedNM > 0.0 && value.nedEM < 0.0);
+        hasSouthEast = hasSouthEast || (value.nedNM < 0.0 && value.nedEM > 0.0);
+        hasSouthWest = hasSouthWest || (value.nedNM < 0.0 && value.nedEM < 0.0);
+    }
+    require(maxNorth - minNorth > kCircleRadiusM * 1.99,
+            "full-track sampling preserves the circle north-south extent");
+    require(maxEast - minEast > kCircleRadiusM * 1.99,
+            "full-track sampling preserves the circle east-west extent");
+    require(hasNorthEast && hasNorthWest && hasSouthEast && hasSouthWest,
+            "full-track sampling preserves all four circle quadrants");
+
+    VaporView::Map3D::Trajectory3DLayer sampledCircleLayer;
+    sampledCircleLayer.appendSamples(sampledCircle);
+    const VaporView::Map3D::TrajectoryQualityStats sampledCircleStats =
+        sampledCircleLayer.qualityStats();
+    require(sampledCircleStats.lineSamples == kCircleVisibleSamples,
+            "sampled circle remains one usable trajectory");
+    require(sampledCircleStats.jumpSamples == 0,
+            "uniform sampling does not introduce false trajectory jumps");
 
     VaporView::Map3D::Trajectory3DLayer qualityLayer;
     std::vector<VaporView::Geo::NavSample> qualitySamples;
