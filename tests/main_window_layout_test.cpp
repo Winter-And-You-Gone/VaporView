@@ -2655,6 +2655,11 @@ int main(int argc, char **argv)
                 temperatureChannelTopControlsStack->currentIndex() == 0 &&
                 temperatureChannelStack->currentIndex() == 0,
             "temperature channel top bar defaults to channel 1");
+    require(temperaturePanel->minimumWidth() == 0 &&
+                temperaturePanel->sizePolicy().horizontalPolicy() == QSizePolicy::Ignored &&
+                temperatureConfigCard->minimumWidth() == 0 &&
+                temperatureConfigCard->sizePolicy().horizontalPolicy() == QSizePolicy::Ignored,
+            "temperature controller card width follows the available page width instead of the active page size hint");
     const QRect temperatureHeaderRateRect(temperatureStatusRateLabel->mapTo(temperaturePanel, QPoint(0, 0)),
                                           temperatureStatusRateLabel->size());
     const QRect controllerModeLabelRect(controllerModeLabel->mapTo(temperaturePanel, QPoint(0, 0)),
@@ -2808,6 +2813,14 @@ int main(int argc, char **argv)
     require(std::abs(commonOvertempRowRect.top() - commonInternalRowRect.top()) <= 2 &&
                 commonInternalRowRect.bottom() <= temperatureChannelStack->rect().bottom(),
             "temperature common settings remaining fields fit inside the stack without overlap or clipping");
+    const QRect commonCardRectInPanel(temperatureConfigCard->mapTo(temperaturePanel, QPoint(0, 0)),
+                                      temperatureConfigCard->size());
+    const QRect commonPlotRectInPanel(temperatureConfigPlot->mapTo(temperaturePanel, QPoint(0, 0)),
+                                      temperatureConfigPlot->size());
+    require(commonCardRectInPanel.right() <= temperaturePanel->rect().right() - 12 &&
+                std::abs(commonCardRectInPanel.left() - commonPlotRectInPanel.left()) <= 2 &&
+                std::abs(commonCardRectInPanel.right() - commonPlotRectInPanel.right()) <= 2,
+            "temperature common settings keep the controller card right edge visible and aligned with the plot");
     clickWidget(temperatureConfigChannelButton1, 150);
     activateLayouts(&window);
     require(temperatureChannelTopControlsStack->currentIndex() == 0 &&

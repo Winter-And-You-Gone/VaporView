@@ -6699,7 +6699,8 @@ TemperatureControllerPanel::TemperatureControllerPanel(QWidget *parent)
 
 void TemperatureControllerPanel::setupUi()
 {
-    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    setMinimumWidth(0);
+    setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(12, 10, 12, 12);
     layout->setSpacing(10);
@@ -6772,7 +6773,8 @@ void TemperatureControllerPanel::setupUi()
     configCard->setObjectName(QStringLiteral("temperatureConfigCard"));
     configCard->setFrameShape(QFrame::NoFrame);
     configCard->setAttribute(Qt::WA_StyledBackground, true);
-    configCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    configCard->setMinimumWidth(0);
+    configCard->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     auto *configCardLayout = new QVBoxLayout(configCard);
     configCardLayout->setContentsMargins(12, 12, 12, 12);
     configCardLayout->setSpacing(10);
