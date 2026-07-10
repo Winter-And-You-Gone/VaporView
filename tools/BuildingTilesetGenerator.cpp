@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -33,10 +34,19 @@ namespace {
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kEarthSemiMajorM = 6378137.0;
 constexpr double kEarthFlattening = 1.0 / 298.257223563;
+constexpr double kBuildingBasePercentile = 0.5;
+constexpr double kBuildingFoundationPercentile = 0.1;
+constexpr int kBuildingGroundPaddingPixels = 1;
+constexpr double kBuildingFoundationDepthM = 1.0;
 
 struct Point2 {
     double x = 0.0;
     double y = 0.0;
+};
+
+struct BuildingGroundSample {
+    double baseHeightM = 0.0;
+    double foundationBottomHeightM = 0.0;
 };
 
 struct TileSummary {
@@ -45,8 +55,8 @@ struct TileSummary {
     double south = 0.0;
     double east = 0.0;
     double north = 0.0;
-    double baseHeightM = 0.0;
-    double maxHeightM = 0.0;
+    double minimumHeightM = 0.0;
+    double maximumHeightM = 0.0;
     int buildingCount = 0;
 };
 
@@ -273,17 +283,114 @@ double sampleDem(GDALDataset* dataset, double longitudeDeg, double latitudeDeg, 
     {
         return fallbackM;
     }
-    const double noData = dataset->GetRasterBand(1)->GetNoDataValue();
-    if (!std::isfinite(value) || value == noData)
+    int hasNoData = FALSE;
+    const double noData = dataset->GetRasterBand(1)->GetNoDataValue(&hasNoData);
+    if (!std::isfinite(value) || (hasNoData && value == noData))
     {
         return fallbackM;
     }
     return value;
 }
 
+BuildingGroundSample sampleBuildingGround(GDALDataset* dataset,
+                                          const OGRGeometry* geometry,
+                                          double fallbackM)
+{
+    if (!dataset || dataset->GetRasterCount() < 1 || !geometry)
+    {
+        return {fallbackM, fallbackM - kBuildingFoundationDepthM};
+    }
+
+    double transform[6] = {};
+    double inverse[6] = {};
+    if (dataset->GetGeoTransform(transform) != CE_None || !GDALInvGeoTransform(transform, inverse))
+    {
+        return {fallbackM, fallbackM - kBuildingFoundationDepthM};
+    }
+
+    OGREnvelope envelope;
+    geometry->getEnvelope(&envelope);
+    const std::array<std::array<double, 2>, 4> corners{{
+        {envelope.MinX, envelope.MinY},
+        {envelope.MinX, envelope.MaxY},
+        {envelope.MaxX, envelope.MinY},
+        {envelope.MaxX, envelope.MaxY},
+    }};
+
+    double minimumPixel = std::numeric_limits<double>::infinity();
+    double maximumPixel = -std::numeric_limits<double>::infinity();
+    double minimumLine = std::numeric_limits<double>::infinity();
+    double maximumLine = -std::numeric_limits<double>::infinity();
+    for (const auto& corner : corners)
+    {
+        const double pixel = inverse[0] + inverse[1] * corner[0] + inverse[2] * corner[1];
+        const double line = inverse[3] + inverse[4] * corner[0] + inverse[5] * corner[1];
+        minimumPixel = std::min(minimumPixel, pixel);
+        maximumPixel = std::max(maximumPixel, pixel);
+        minimumLine = std::min(minimumLine, line);
+        maximumLine = std::max(maximumLine, line);
+    }
+
+    const int firstPixel = std::max(
+        0, static_cast<int>(std::floor(minimumPixel)) - kBuildingGroundPaddingPixels);
+    const int lastPixel = std::min(
+        dataset->GetRasterXSize() - 1,
+        static_cast<int>(std::floor(maximumPixel)) + kBuildingGroundPaddingPixels);
+    const int firstLine = std::max(
+        0, static_cast<int>(std::floor(minimumLine)) - kBuildingGroundPaddingPixels);
+    const int lastLine = std::min(
+        dataset->GetRasterYSize() - 1,
+        static_cast<int>(std::floor(maximumLine)) + kBuildingGroundPaddingPixels);
+    if (firstPixel > lastPixel || firstLine > lastLine)
+    {
+        return {fallbackM, fallbackM - kBuildingFoundationDepthM};
+    }
+
+    const int width = lastPixel - firstPixel + 1;
+    const int height = lastLine - firstLine + 1;
+    std::vector<float> rasterValues(static_cast<std::size_t>(width * height));
+    GDALRasterBand* band = dataset->GetRasterBand(1);
+    if (!band
+        || band->RasterIO(GF_Read, firstPixel, firstLine, width, height,
+                          rasterValues.data(), width, height, GDT_Float32,
+                          0, 0, nullptr) != CE_None)
+    {
+        return {fallbackM, fallbackM - kBuildingFoundationDepthM};
+    }
+
+    int hasNoData = FALSE;
+    const double noData = band->GetNoDataValue(&hasNoData);
+    std::vector<float> validValues;
+    validValues.reserve(rasterValues.size());
+    for (const float value : rasterValues)
+    {
+        if (std::isfinite(value) && (!hasNoData || value != noData))
+        {
+            validValues.push_back(value);
+        }
+    }
+    if (validValues.empty())
+    {
+        return {fallbackM, fallbackM - kBuildingFoundationDepthM};
+    }
+
+    std::sort(validValues.begin(), validValues.end());
+    const auto percentileValue = [&validValues](double percentile) {
+        const std::size_t index = static_cast<std::size_t>(
+            std::floor(percentile * static_cast<double>(validValues.size() - 1)));
+        return static_cast<double>(validValues[index]);
+    };
+    return {
+        percentileValue(kBuildingBasePercentile),
+        percentileValue(kBuildingFoundationPercentile) - kBuildingFoundationDepthM,
+    };
+}
+
 void appendPolygon(const OGRPolygon* polygon,
                    double centerLongitude,
                    double centerLatitude,
+                   double baseOffsetM,
+                   double foundationBottomOffsetM,
                    double heightM,
                    osg::Vec3Array* vertices,
                    osg::Vec3Array* normals,
@@ -326,13 +433,14 @@ void appendPolygon(const OGRPolygon* polygon,
 
     const osg::Vec4 wallColor(0.58f, 0.61f, 0.65f, 1.0f);
     const osg::Vec4 roofColor(0.76f, 0.78f, 0.81f, 1.0f);
+    const double roofHeightM = baseOffsetM + heightM;
     const auto roofTriangles = triangulate(footprint);
     const unsigned int roofStart = vertices->size();
     for (const Point2& point : footprint)
     {
         vertices->push_back(osg::Vec3(static_cast<float>(point.x),
                                       static_cast<float>(point.y),
-                                      static_cast<float>(heightM)));
+                                      static_cast<float>(roofHeightM)));
         normals->push_back(osg::Vec3(0.0f, 0.0f, 1.0f));
         colors->push_back(roofColor);
     }
@@ -358,10 +466,14 @@ void appendPolygon(const OGRPolygon* polygon,
                                static_cast<float>(-dx / length),
                                0.0f);
         const unsigned int start = vertices->size();
-        vertices->push_back(osg::Vec3(static_cast<float>(a.x), static_cast<float>(a.y), 0.0f));
-        vertices->push_back(osg::Vec3(static_cast<float>(b.x), static_cast<float>(b.y), 0.0f));
-        vertices->push_back(osg::Vec3(static_cast<float>(b.x), static_cast<float>(b.y), static_cast<float>(heightM)));
-        vertices->push_back(osg::Vec3(static_cast<float>(a.x), static_cast<float>(a.y), static_cast<float>(heightM)));
+        vertices->push_back(osg::Vec3(static_cast<float>(a.x), static_cast<float>(a.y),
+                                      static_cast<float>(foundationBottomOffsetM)));
+        vertices->push_back(osg::Vec3(static_cast<float>(b.x), static_cast<float>(b.y),
+                                      static_cast<float>(foundationBottomOffsetM)));
+        vertices->push_back(osg::Vec3(static_cast<float>(b.x), static_cast<float>(b.y),
+                                      static_cast<float>(roofHeightM)));
+        vertices->push_back(osg::Vec3(static_cast<float>(a.x), static_cast<float>(a.y),
+                                      static_cast<float>(roofHeightM)));
         for (int vertex = 0; vertex < 4; ++vertex)
         {
             normals->push_back(normal);
@@ -379,6 +491,8 @@ void appendPolygon(const OGRPolygon* polygon,
 void appendGeometry(const OGRGeometry* geometry,
                     double centerLongitude,
                     double centerLatitude,
+                    double baseOffsetM,
+                    double foundationBottomOffsetM,
                     double heightM,
                     osg::Vec3Array* vertices,
                     osg::Vec3Array* normals,
@@ -392,7 +506,8 @@ void appendGeometry(const OGRGeometry* geometry,
     const OGRwkbGeometryType type = wkbFlatten(geometry->getGeometryType());
     if (type == wkbPolygon)
     {
-        appendPolygon(geometry->toPolygon(), centerLongitude, centerLatitude, heightM,
+        appendPolygon(geometry->toPolygon(), centerLongitude, centerLatitude,
+                      baseOffsetM, foundationBottomOffsetM, heightM,
                       vertices, normals, colors, indices);
     }
     else if (type == wkbMultiPolygon)
@@ -401,7 +516,8 @@ void appendGeometry(const OGRGeometry* geometry,
         for (int i = 0; i < multiPolygon->getNumGeometries(); ++i)
         {
             appendPolygon(multiPolygon->getGeometryRef(i)->toPolygon(),
-                          centerLongitude, centerLatitude, heightM,
+                          centerLongitude, centerLatitude,
+                          baseOffsetM, foundationBottomOffsetM, heightM,
                           vertices, normals, colors, indices);
         }
     }
@@ -565,7 +681,8 @@ int main(int argc, char* argv[])
             osg::ref_ptr<osg::Vec4Array> colors = new osg::Vec4Array;
             osg::ref_ptr<osg::DrawElementsUInt> indices = new osg::DrawElementsUInt(GL_TRIANGLES);
             int buildingCount = 0;
-            double maximumHeightM = 0.0;
+            double minimumHeightM = std::numeric_limits<double>::infinity();
+            double maximumHeightM = -std::numeric_limits<double>::infinity();
 
             layer->SetSpatialFilterRect(tileWest, tileSouth, tileEast, tileNorth);
             layer->ResetReading();
@@ -606,9 +723,18 @@ int main(int argc, char* argv[])
                     heightM = 10.0;
                 }
                 heightM = std::clamp(heightM, 3.0, 300.0);
-                appendGeometry(geometry, centerLongitude, centerLatitude, heightM,
+                const BuildingGroundSample buildingGround =
+                    sampleBuildingGround(dem.get(), geometry, baseHeightM);
+                const double baseOffsetM = buildingGround.baseHeightM - baseHeightM;
+                const double foundationBottomOffsetM =
+                    buildingGround.foundationBottomHeightM - baseHeightM;
+                appendGeometry(geometry, centerLongitude, centerLatitude,
+                               baseOffsetM, foundationBottomOffsetM, heightM,
                                vertices.get(), normals.get(), colors.get(), indices.get());
-                maximumHeightM = std::max(maximumHeightM, heightM);
+                minimumHeightM =
+                    std::min(minimumHeightM, buildingGround.foundationBottomHeightM);
+                maximumHeightM =
+                    std::max(maximumHeightM, buildingGround.baseHeightM + heightM);
                 ++buildingCount;
             }
             layer->SetSpatialFilter(nullptr);
@@ -655,7 +781,7 @@ int main(int argc, char* argv[])
             }
 
             summaries.push_back({relativeUri, tileWest, tileSouth, tileEast, tileNorth,
-                                 baseHeightM, maximumHeightM, buildingCount});
+                                 minimumHeightM, maximumHeightM, buildingCount});
             totalBuildings += buildingCount;
             output << "tile " << row << ',' << column << ": " << buildingCount
                    << " buildings -> " << relativeUri << '\n';
@@ -669,7 +795,7 @@ int main(int argc, char* argv[])
         child.insert(QStringLiteral("boundingVolume"),
                      QJsonObject{{QStringLiteral("region"),
                                   regionArray(summary.west, summary.south, summary.east, summary.north,
-                                              summary.baseHeightM, summary.baseHeightM + summary.maxHeightM)}});
+                                              summary.minimumHeightM, summary.maximumHeightM)}});
         child.insert(QStringLiteral("geometricError"), 0);
         child.insert(QStringLiteral("content"), QJsonObject{{QStringLiteral("uri"), summary.uri}});
         child.insert(QStringLiteral("extras"),
@@ -689,11 +815,14 @@ int main(int argc, char* argv[])
     QJsonObject document;
     document.insert(QStringLiteral("asset"),
                     QJsonObject{{QStringLiteral("version"), QStringLiteral("1.1")},
-                                {QStringLiteral("generator"), QStringLiteral("VaporView building tileset generator")}});
+                                {QStringLiteral("generator"), QStringLiteral("VaporView building tileset generator")},
+                                {QStringLiteral("generatorVersion"), QStringLiteral("1.3")}});
     document.insert(QStringLiteral("geometricError"), 1000.0);
     document.insert(QStringLiteral("root"), root);
     document.insert(QStringLiteral("extras"),
                     QJsonObject{{QStringLiteral("format"), QStringLiteral("vaporview-osg-native-building-tiles")},
+                                {QStringLiteral("groundPlacement"), QStringLiteral("per-building-dem-p50-p10-skirt")},
+                                {QStringLiteral("foundationDepthM"), kBuildingFoundationDepthM},
                                 {QStringLiteral("buildingCount"), totalBuildings},
                                 {QStringLiteral("tileCount"), static_cast<int>(summaries.size())},
                                 {QStringLiteral("clipPath"), clipPath}});
