@@ -1264,6 +1264,22 @@ QComboBox *findSourceModeCombo(QWidget *root)
     return nullptr;
 }
 
+QComboBox *findComboWithData(QWidget *root, const QString& data)
+{
+    if (!root)
+    {
+        return nullptr;
+    }
+    for (QComboBox *combo : root->findChildren<QComboBox *>())
+    {
+        if (combo->findData(data) >= 0)
+        {
+            return combo;
+        }
+    }
+    return nullptr;
+}
+
 int telemetrySectionRightPadding(QFrame *section)
 {
     require(section != nullptr, "home telemetry rate section exists");
@@ -1414,6 +1430,10 @@ int main(int argc, char **argv)
         settings.setValue(QStringLiteral("serial/temperature_baud"), QStringLiteral("38400"));
         settings.setValue(QStringLiteral("rate/temperature"), QStringLiteral("5"));
         settings.setValue(QStringLiteral("source/mode"), QStringLiteral("remote"));
+        settings.setValue(QStringLiteral("sensor/pressure_source"), QStringLiteral("bmp390"));
+        settings.setValue(QStringLiteral("serial/bmp390_baud"), QStringLiteral("57600"));
+        settings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("sht45"));
+        settings.setValue(QStringLiteral("serial/sht45_baud"), QStringLiteral("38400"));
         settings.sync();
     }
 
@@ -1432,6 +1452,24 @@ int main(int argc, char **argv)
                 "source mode combo uses the shared single-level popup");
         require(rememberedSourceModeCombo->currentIndex() == 1,
                 "source mode restores the last remote selection on startup");
+        QComboBox *rememberedPressureSource =
+            findComboWithData(&rememberedModeWindow, QStringLiteral("bmp390"));
+        QComboBox *rememberedHumiditySource =
+            findComboWithData(&rememberedModeWindow, QStringLiteral("sht45"));
+        auto *rememberedPressureBaud =
+            rememberedModeWindow.findChild<QComboBox *>(QStringLiteral("devicePressureBaudCombo"));
+        auto *rememberedHumidityBaud =
+            rememberedModeWindow.findChild<QComboBox *>(QStringLiteral("deviceHumidityBaudCombo"));
+        require(rememberedPressureSource != nullptr &&
+                    rememberedPressureSource->currentData().toString() == QStringLiteral("bmp390") &&
+                    rememberedPressureBaud != nullptr &&
+                    rememberedPressureBaud->currentText() == QStringLiteral("57600"),
+                "pressure source restores the remembered BMP390 baud rate on startup");
+        require(rememberedHumiditySource != nullptr &&
+                    rememberedHumiditySource->currentData().toString() == QStringLiteral("sht45") &&
+                    rememberedHumidityBaud != nullptr &&
+                    rememberedHumidityBaud->currentText() == QStringLiteral("38400"),
+                "humidity source restores the remembered SHT45 baud rate on startup");
         rememberedModeWindow.close();
         processEventsFor(100);
     }
@@ -1439,6 +1477,14 @@ int main(int argc, char **argv)
     {
         QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
         settings.setValue(QStringLiteral("source/mode"), QStringLiteral("local"));
+        settings.setValue(QStringLiteral("sensor/pressure_source"), QStringLiteral("ptb210"));
+        settings.setValue(QStringLiteral("serial/ptb_baud"), QStringLiteral("9600"));
+        settings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("hmp3"));
+        settings.setValue(QStringLiteral("serial/hmp_baud"), QStringLiteral("19200"));
+        settings.remove(QStringLiteral("serial/ptb210_baud"));
+        settings.remove(QStringLiteral("serial/bmp390_baud"));
+        settings.remove(QStringLiteral("serial/hmp3_baud"));
+        settings.remove(QStringLiteral("serial/sht45_baud"));
         settings.sync();
     }
 
@@ -3906,23 +3952,74 @@ int main(int argc, char **argv)
             "device configuration source mode combo uses the shared single-level popup");
     require(deviceSourceModeCombo->width() <= 160,
             "device configuration source mode combo uses compact width");
-    QComboBox *pressureSourceCombo = nullptr;
-    QComboBox *humiditySourceCombo = nullptr;
-    for (QComboBox *combo : deviceConfigPage->findChildren<QComboBox *>())
-    {
-        if (combo->findData(QStringLiteral("bmp390")) >= 0)
-        {
-            pressureSourceCombo = combo;
-        }
-        if (combo->findData(QStringLiteral("sht45")) >= 0)
-        {
-            humiditySourceCombo = combo;
-        }
-    }
+    QComboBox *pressureSourceCombo =
+        findComboWithData(deviceConfigPage, QStringLiteral("bmp390"));
+    QComboBox *humiditySourceCombo =
+        findComboWithData(deviceConfigPage, QStringLiteral("sht45"));
     require(pressureSourceCombo != nullptr && pressureSourceCombo->width() == 88,
             "device pressure source combo matches the compact rate combo width");
     require(humiditySourceCombo != nullptr && humiditySourceCombo->width() == 88,
             "device humidity source combo matches the compact rate combo width");
+    auto *pressureBaudCombo =
+        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("devicePressureBaudCombo"));
+    auto *humidityBaudCombo =
+        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceHumidityBaudCombo"));
+    require(pressureBaudCombo != nullptr &&
+                pressureSourceCombo->currentData().toString() == QStringLiteral("ptb210") &&
+                pressureBaudCombo->currentText() == QStringLiteral("9600"),
+            "PTB210 uses its 9600 default baud when no device-specific value is remembered");
+    require(humidityBaudCombo != nullptr &&
+                humiditySourceCombo->currentData().toString() == QStringLiteral("hmp3") &&
+                humidityBaudCombo->currentText() == QStringLiteral("19200"),
+            "HMP3 uses its 19200 default baud when no device-specific value is remembered");
+
+    pressureSourceCombo->setCurrentIndex(
+        pressureSourceCombo->findData(QStringLiteral("bmp390")));
+    processEventsFor(50);
+    require(pressureBaudCombo->currentText() == QStringLiteral("115200"),
+            "BMP390 uses its 115200 default baud when no value is remembered");
+    pressureBaudCombo->setCurrentText(QStringLiteral("57600"));
+    processEventsFor(50);
+    pressureSourceCombo->setCurrentIndex(
+        pressureSourceCombo->findData(QStringLiteral("ptb210")));
+    processEventsFor(50);
+    require(pressureBaudCombo->currentText() == QStringLiteral("9600"),
+            "switching back to PTB210 restores its remembered baud");
+    pressureBaudCombo->setCurrentText(QStringLiteral("19200"));
+    processEventsFor(50);
+    pressureSourceCombo->setCurrentIndex(
+        pressureSourceCombo->findData(QStringLiteral("bmp390")));
+    processEventsFor(50);
+    require(pressureBaudCombo->currentText() == QStringLiteral("57600"),
+            "switching back to BMP390 restores its separate remembered baud");
+    pressureSourceCombo->setCurrentIndex(
+        pressureSourceCombo->findData(QStringLiteral("ptb210")));
+    pressureBaudCombo->setCurrentText(QStringLiteral("9600"));
+    processEventsFor(50);
+
+    humiditySourceCombo->setCurrentIndex(
+        humiditySourceCombo->findData(QStringLiteral("sht45")));
+    processEventsFor(50);
+    require(humidityBaudCombo->currentText() == QStringLiteral("115200"),
+            "SHT45 uses its 115200 default baud when no value is remembered");
+    humidityBaudCombo->setCurrentText(QStringLiteral("57600"));
+    processEventsFor(50);
+    humiditySourceCombo->setCurrentIndex(
+        humiditySourceCombo->findData(QStringLiteral("hmp3")));
+    processEventsFor(50);
+    require(humidityBaudCombo->currentText() == QStringLiteral("19200"),
+            "switching back to HMP3 restores its remembered baud");
+    humidityBaudCombo->setCurrentText(QStringLiteral("38400"));
+    processEventsFor(50);
+    humiditySourceCombo->setCurrentIndex(
+        humiditySourceCombo->findData(QStringLiteral("sht45")));
+    processEventsFor(50);
+    require(humidityBaudCombo->currentText() == QStringLiteral("57600"),
+            "switching back to SHT45 restores its separate remembered baud");
+    humiditySourceCombo->setCurrentIndex(
+        humiditySourceCombo->findData(QStringLiteral("hmp3")));
+    humidityBaudCombo->setCurrentText(QStringLiteral("19200"));
+    processEventsFor(50);
     const SkyTelemetryRowWidgets deviceSkyTelemetry = findSkyTelemetryRowWidgets(deviceConfigPage);
     require(deviceSkyTelemetry.transportCombo != nullptr,
             "device configuration sky telemetry transport combo exists");
