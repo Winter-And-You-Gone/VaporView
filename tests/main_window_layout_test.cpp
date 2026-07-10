@@ -25,6 +25,8 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QStyle>
+#include <QStyleOptionFrame>
 #include <QPixmap>
 #include <QSplitter>
 #include <QSpinBox>
@@ -2762,6 +2764,20 @@ int main(int argc, char **argv)
                 kiSpin->parentWidget() == pidEditor &&
                 kdSpin->parentWidget() == pidEditor,
             "temperature PID controls are grouped as one right-side editor");
+    auto requirePidTextFits = [](QSpinBox *spin, const char *message) {
+        QLineEdit *lineEdit = spin ? spin->findChild<QLineEdit *>(QString(), Qt::FindDirectChildrenOnly) : nullptr;
+        require(lineEdit != nullptr, message);
+        QStyleOptionFrame lineEditOption;
+        lineEditOption.initFrom(lineEdit);
+        lineEditOption.rect = lineEdit->rect();
+        const QRect textRect = lineEdit->style()->subElementRect(QStyle::SE_LineEditContents,
+                                                                   &lineEditOption,
+                                                                   lineEdit);
+        const int textWidth = lineEdit->fontMetrics().horizontalAdvance(QStringLiteral("100"));
+        require(textRect.width() >= textWidth, message);
+    };
+    requirePidTextFits(kpSpin,
+                       "temperature PID spin boxes leave enough unobscured edit area for a three-digit value");
     requireFieldRowLayout(pidEditor,
                           "temperature PID field uses left label and right grouped value layout");
     const QRect maxOutputRowRect(maxOutputSpin->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
