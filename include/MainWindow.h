@@ -790,8 +790,10 @@ private:
         QComboBox *epsilon_baud_combo = nullptr;
         QComboBox *ptb_port_combo = nullptr;
         QComboBox *ptb_baud_combo = nullptr;
+        QComboBox *ptb_source_combo = nullptr;
         QComboBox *hmp_port_combo = nullptr;
         QComboBox *hmp_baud_combo = nullptr;
+        QComboBox *hmp_source_combo = nullptr;
         QComboBox *lidar_port_combo = nullptr;
         QComboBox *lidar_baud_combo = nullptr;
         QComboBox *temperature_port_combo = nullptr;

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -1186,6 +1187,66 @@ HmpParseResult parseHmpResponse(const uint8_t* buffer,
   return HmpParseResult::None;
 }
 
+}
+
+bool parseEnvironmentSerialLine(const std::string& line, EnvironmentSerialValues& values)
+{
+  static const std::regex temperature_pattern(
+      R"((?:^|[^a-z])(?:t|temperature)\s*[:=]\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)))",
+      std::regex::icase);
+  static const std::regex humidity_pattern(
+      R"((?:humidity|rh)\s*[:=]\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)))",
+      std::regex::icase);
+  static const std::regex pressure_pattern(
+      R"((?:^|[^a-z])(?:p|pressure)\s*[:=]\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)))",
+      std::regex::icase);
+
+  auto parseMatch = [&line](const std::regex& pattern, double& output) {
+    std::smatch match;
+    if (!std::regex_search(line, match, pattern) || match.size() < 2)
+    {
+      return false;
+    }
+    try
+    {
+      output = std::stod(match[1].str());
+      return std::isfinite(output);
+    }
+    catch (const std::exception&)
+    {
+      return false;
+    }
+  };
+
+  bool matched = false;
+  double value = 0.0;
+  if (parseMatch(temperature_pattern, value) && value >= -80.0 && value <= 125.0)
+  {
+    values.has_temperature = true;
+    values.temperature_c = value;
+    matched = true;
+  }
+  if (parseMatch(humidity_pattern, value) && value >= 0.0 && value <= 100.0)
+  {
+    values.has_humidity = true;
+    values.humidity_rh = value;
+    matched = true;
+  }
+  if (parseMatch(pressure_pattern, value))
+  {
+    std::string lower = line;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char ch) {
+      return static_cast<char>(std::tolower(ch));
+    });
+    const double pressure_hpa = lower.find("hpa") != std::string::npos ? value : value / 100.0;
+    if (pressure_hpa >= 250.0 && pressure_hpa <= 1300.0)
+    {
+      values.has_pressure = true;
+      values.pressure_hpa = pressure_hpa;
+      matched = true;
+    }
+  }
+  return matched;
 }
 
 DataCollector::DataCollector()
@@ -2854,8 +2915,26 @@ void PtbCollector::setRawResponseCallback(RawResponseCallback callback)
   raw_response_callback_ = std::move(callback);
 }
 
+void PtbCollector::setProtocol(PressureSensorProtocol protocol)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  protocol_ = protocol;
+}
+
+PressureSensorProtocol PtbCollector::protocol() const
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  return protocol_;
+}
+
 bool PtbCollector::setDeviceSampleRate(int hz)
 {
+  if (protocol() == PressureSensorProtocol::Bmp390Serial)
+  {
+    sample_rate_hz_.store(std::max(1, hz));
+    return true;
+  }
+
   if (hz < 1 || hz > 70)
   {
     log("PTB210: 不支持的采样频率: " + std::to_string(hz) + " Hz（有效范围: 1-70 Hz）");
@@ -2928,13 +3007,52 @@ void PtbCollector::cleanup()
     return;
   }
 
-  serial_.write(PTB_CMD_STOP, std::strlen(PTB_CMD_STOP));
-  sleepMs(50);
+  if (protocol() == PressureSensorProtocol::Ptb210)
+  {
+    serial_.write(PTB_CMD_STOP, std::strlen(PTB_CMD_STOP));
+    sleepMs(50);
+  }
   serial_.flush();
 }
 
 bool PtbCollector::checkDeviceResponse()
 {
+  if (protocol() == PressureSensorProtocol::Bmp390Serial)
+  {
+    char chunk[256];
+    std::string buffer;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1800);
+    serial_.flush();
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+      if (isCancelRequested())
+      {
+        return false;
+      }
+      const ssize_t n = serial_.read(chunk, sizeof(chunk));
+      if (n > 0)
+      {
+        buffer.append(chunk, static_cast<size_t>(n));
+        size_t line_end = std::string::npos;
+        while ((line_end = buffer.find_first_of("\r\n")) != std::string::npos)
+        {
+          const std::string line = buffer.substr(0, line_end);
+          buffer.erase(0, line_end + 1);
+          EnvironmentSerialValues values;
+          if (parseEnvironmentSerialLine(line, values) && values.has_pressure)
+          {
+            return true;
+          }
+        }
+      }
+      else
+      {
+        sleepMs(10);
+      }
+    }
+    return false;
+  }
+
   char response[256];
   constexpr int max_attempts = 5;
   constexpr int total_wait_ms = 500;
@@ -3030,6 +3148,67 @@ bool PtbCollector::checkDeviceResponse()
 
 void PtbCollector::run()
 {
+  if (protocol() == PressureSensorProtocol::Bmp390Serial)
+  {
+    char chunk[256];
+    std::string buffer;
+    buffer.reserve(512);
+    while (running_.load())
+    {
+      const ssize_t n = serial_.read(chunk, sizeof(chunk));
+      if (n <= 0)
+      {
+        sleepMs(5);
+        continue;
+      }
+      buffer.append(chunk, static_cast<size_t>(n));
+      trimUnterminatedLineBuffer(buffer, kPtbLineBufferMaxBytes, kPtbLineBufferKeepBytes);
+      size_t line_end = std::string::npos;
+      while ((line_end = buffer.find_first_of("\r\n")) != std::string::npos)
+      {
+        const std::string raw_line = buffer.substr(0, line_end + 1);
+        const std::string line = buffer.substr(0, line_end);
+        buffer.erase(0, line_end + 1);
+        while (!buffer.empty() && (buffer.front() == '\r' || buffer.front() == '\n'))
+        {
+          buffer.erase(0, 1);
+        }
+
+        EnvironmentSerialValues values;
+        if (!parseEnvironmentSerialLine(line, values) || !values.has_pressure)
+        {
+          continue;
+        }
+
+        DataCallback callback;
+        RawResponseCallback raw_callback;
+        const uint64_t host_timestamp_us = systemTimestampUs();
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          latest_data_.pressure_hpa = values.pressure_hpa;
+          latest_data_.valid = true;
+          latest_data_.timestamp = std::chrono::steady_clock::now();
+          latest_data_.error_message.clear();
+          callback = data_callback_;
+          raw_callback = raw_response_callback_;
+        }
+        recordDataReceived();
+        if (raw_callback)
+        {
+          raw_callback(host_timestamp_us,
+                       reinterpret_cast<const uint8_t*>(raw_line.data()),
+                       raw_line.size());
+        }
+        if (callback && shouldEmitData())
+        {
+          updateLastEmitTime();
+          callback();
+        }
+      }
+    }
+    return;
+  }
+
   char chunk[256];
   std::string buffer;
   buffer.reserve(512);
@@ -3184,6 +3363,18 @@ void HmpCollector::setRawResponseCallback(RawResponseCallback callback)
   raw_response_callback_ = std::move(callback);
 }
 
+void HmpCollector::setProtocol(HumiditySensorProtocol protocol)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  protocol_ = protocol;
+}
+
+HumiditySensorProtocol HmpCollector::protocol() const
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  return protocol_;
+}
+
 bool HmpCollector::initialize()
 {
   serial_.setNonBlocking(true);
@@ -3192,6 +3383,49 @@ bool HmpCollector::initialize()
 
 bool HmpCollector::checkDeviceResponse()
 {
+  if (protocol() == HumiditySensorProtocol::Sht45Serial)
+  {
+    char chunk[256];
+    std::string buffer;
+    bool has_temperature = false;
+    bool has_humidity = false;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1800);
+    serial_.flush();
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+      if (isCancelRequested())
+      {
+        return false;
+      }
+      const ssize_t n = serial_.read(chunk, sizeof(chunk));
+      if (n > 0)
+      {
+        buffer.append(chunk, static_cast<size_t>(n));
+        size_t line_end = std::string::npos;
+        while ((line_end = buffer.find_first_of("\r\n")) != std::string::npos)
+        {
+          const std::string line = buffer.substr(0, line_end);
+          buffer.erase(0, line_end + 1);
+          EnvironmentSerialValues values;
+          if (parseEnvironmentSerialLine(line, values))
+          {
+            has_temperature = has_temperature || values.has_temperature;
+            has_humidity = has_humidity || values.has_humidity;
+            if (has_temperature && has_humidity)
+            {
+              return true;
+            }
+          }
+        }
+      }
+      else
+      {
+        sleepMs(10);
+      }
+    }
+    return false;
+  }
+
   uint8_t request[8];
   uint8_t response[64];
   constexpr uint8_t function_code = 0x03;
@@ -3285,6 +3519,93 @@ float HmpCollector::decodeFloatLE(uint16_t reg0, uint16_t reg1)
 
 void HmpCollector::run()
 {
+  if (protocol() == HumiditySensorProtocol::Sht45Serial)
+  {
+    char chunk[256];
+    std::string buffer;
+    buffer.reserve(512);
+    double pending_temperature = 0.0;
+    double pending_humidity = 0.0;
+    bool has_temperature = false;
+    bool has_humidity = false;
+
+    while (running_.load())
+    {
+      const ssize_t n = serial_.read(chunk, sizeof(chunk));
+      if (n <= 0)
+      {
+        sleepMs(5);
+        continue;
+      }
+      buffer.append(chunk, static_cast<size_t>(n));
+      trimUnterminatedLineBuffer(buffer, kPtbLineBufferMaxBytes, kPtbLineBufferKeepBytes);
+      size_t line_end = std::string::npos;
+      while ((line_end = buffer.find_first_of("\r\n")) != std::string::npos)
+      {
+        const std::string raw_line = buffer.substr(0, line_end + 1);
+        const std::string line = buffer.substr(0, line_end);
+        buffer.erase(0, line_end + 1);
+        while (!buffer.empty() && (buffer.front() == '\r' || buffer.front() == '\n'))
+        {
+          buffer.erase(0, 1);
+        }
+
+        EnvironmentSerialValues values;
+        if (!parseEnvironmentSerialLine(line, values))
+        {
+          continue;
+        }
+        if (values.has_temperature)
+        {
+          pending_temperature = values.temperature_c;
+          has_temperature = true;
+        }
+        if (values.has_humidity)
+        {
+          pending_humidity = values.humidity_rh;
+          has_humidity = true;
+        }
+
+        RawResponseCallback raw_callback;
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          raw_callback = raw_response_callback_;
+        }
+        if (raw_callback)
+        {
+          raw_callback(systemTimestampUs(),
+                       reinterpret_cast<const uint8_t*>(raw_line.data()),
+                       raw_line.size());
+        }
+
+        if (!has_temperature || !has_humidity)
+        {
+          continue;
+        }
+
+        DataCallback callback;
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          latest_data_.temperature = pending_temperature;
+          latest_data_.humidity = pending_humidity;
+          latest_data_.valid = true;
+          latest_data_.timestamp = std::chrono::steady_clock::now();
+          latest_data_.error_message.clear();
+          callback = data_callback_;
+        }
+        recordDataReceived();
+        has_temperature = false;
+        has_humidity = false;
+        if (callback && shouldEmitData())
+        {
+          updateLastEmitTime();
+          callback();
+        }
+      }
+    }
+    return;
+  }
+
   uint8_t request[8];
   uint8_t response[64];
 

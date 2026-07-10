@@ -1,4 +1,5 @@
 #include "TemperatureControllerProtocol.h"
+#include "data_collector.h"
 
 #include <QByteArray>
 
@@ -141,6 +142,35 @@ bool checkRejectsBadFrames()
     return ok;
 }
 
+bool checkEnvironmentSerialExamples()
+{
+    bool ok = true;
+    VaporView::EnvironmentSerialValues bmp;
+    ok &= require(VaporView::parseEnvironmentSerialLine(
+                      "T:25.32 deg C,P:100653.25 Pa", bmp),
+                  "BMP390 example line should parse");
+    ok &= require(bmp.has_temperature && std::fabs(bmp.temperature_c - 25.32) < 0.001,
+                  "BMP390 temperature mismatch");
+    ok &= require(bmp.has_pressure && std::fabs(bmp.pressure_hpa - 1006.5325) < 0.0001,
+                  "BMP390 pressure conversion mismatch");
+
+    VaporView::EnvironmentSerialValues shtTemperature;
+    VaporView::EnvironmentSerialValues shtHumidity;
+    ok &= require(VaporView::parseEnvironmentSerialLine(
+                      "Temperature: 23.75 degrees C", shtTemperature),
+                  "SHT45 temperature line should parse");
+    ok &= require(VaporView::parseEnvironmentSerialLine(
+                      "Humidity: 48.20 % rH", shtHumidity),
+                  "SHT45 humidity line should parse");
+    ok &= require(shtTemperature.has_temperature &&
+                      std::fabs(shtTemperature.temperature_c - 23.75) < 0.001,
+                  "SHT45 temperature mismatch");
+    ok &= require(shtHumidity.has_humidity &&
+                      std::fabs(shtHumidity.humidity_rh - 48.20) < 0.001,
+                  "SHT45 humidity mismatch");
+    return ok;
+}
+
 }  // namespace
 
 int main()
@@ -153,5 +183,6 @@ int main()
     failures += checkChannelAddressOffset() ? 0 : 1;
     failures += checkReadResponseDecoding() ? 0 : 1;
     failures += checkRejectsBadFrames() ? 0 : 1;
+    failures += checkEnvironmentSerialExamples() ? 0 : 1;
     return failures == 0 ? 0 : 1;
 }

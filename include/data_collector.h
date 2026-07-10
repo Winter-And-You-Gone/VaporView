@@ -15,6 +15,30 @@
 namespace VaporView
 {
 
+enum class PressureSensorProtocol
+{
+  Ptb210,
+  Bmp390Serial
+};
+
+enum class HumiditySensorProtocol
+{
+  Hmp3Modbus,
+  Sht45Serial
+};
+
+struct EnvironmentSerialValues
+{
+  bool has_temperature = false;
+  bool has_humidity = false;
+  bool has_pressure = false;
+  double temperature_c = 0.0;
+  double humidity_rh = 0.0;
+  double pressure_hpa = 0.0;
+};
+
+bool parseEnvironmentSerialLine(const std::string& line, EnvironmentSerialValues& values);
+
 enum class LidarProtocol
 {
   Unknown = 0,
@@ -152,6 +176,8 @@ public:
   bool setDeviceSampleRate(int hz) override;
   bool checkDeviceResponse() override;
   void setRawResponseCallback(RawResponseCallback callback);
+  void setProtocol(PressureSensorProtocol protocol);
+  PressureSensorProtocol protocol() const;
 
 protected:
   void run() override;
@@ -161,6 +187,7 @@ protected:
 private:
   PtbData latest_data_;
   RawResponseCallback raw_response_callback_;
+  PressureSensorProtocol protocol_ = PressureSensorProtocol::Ptb210;
   static constexpr const char* PTB_CMD_PRESSURE = ".P\r";
   static constexpr const char* PTB_CMD_CONTINUOUS = ".BP\r";
   static constexpr const char* PTB_CMD_STOP = "\r";
@@ -174,6 +201,8 @@ public:
   HmpData getLatestData();
   bool checkDeviceResponse() override;
   void setRawResponseCallback(RawResponseCallback callback);
+  void setProtocol(HumiditySensorProtocol protocol);
+  HumiditySensorProtocol protocol() const;
 
 protected:
   void run() override;
@@ -182,6 +211,7 @@ protected:
 private:
   HmpData latest_data_;
   RawResponseCallback raw_response_callback_;
+  HumiditySensorProtocol protocol_ = HumiditySensorProtocol::Hmp3Modbus;
 
   static constexpr uint8_t HMP3_SLAVE_ADDR = 240;
   static constexpr uint16_t HMP3_REG_HUMIDITY = 0x0000;

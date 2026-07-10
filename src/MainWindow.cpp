@@ -9804,6 +9804,18 @@ void MainWindow::loadRememberedInputState()
     loadCombo(hmp_rate_combo_, QStringLiteral("rate/hmp"));
     loadCombo(lidar_rate_combo_, QStringLiteral("rate/lidar"));
     loadCombo(temperature_rate_combo_, QStringLiteral("rate/temperature"));
+    if (device_config_.ptb_source_combo)
+    {
+        const int index = device_config_.ptb_source_combo->findData(
+            settings.value(QStringLiteral("sensor/pressure_source"), QStringLiteral("ptb210")).toString());
+        device_config_.ptb_source_combo->setCurrentIndex(index >= 0 ? index : 0);
+    }
+    if (device_config_.hmp_source_combo)
+    {
+        const int index = device_config_.hmp_source_combo->findData(
+            settings.value(QStringLiteral("sensor/humidity_source"), QStringLiteral("hmp3")).toString());
+        device_config_.hmp_source_combo->setCurrentIndex(index >= 0 ? index : 0);
+    }
     if (data_source_mode_combo_)
     {
         const QString value = settings.value(
@@ -9908,6 +9920,14 @@ void MainWindow::saveRememberedInputState() const
     saveCombo(QStringLiteral("rate/hmp"), hmp_rate_combo_);
     saveCombo(QStringLiteral("rate/lidar"), lidar_rate_combo_);
     saveCombo(QStringLiteral("rate/temperature"), temperature_rate_combo_);
+    if (device_config_.ptb_source_combo)
+    {
+        settings.setValue(QStringLiteral("sensor/pressure_source"), device_config_.ptb_source_combo->currentData());
+    }
+    if (device_config_.hmp_source_combo)
+    {
+        settings.setValue(QStringLiteral("sensor/humidity_source"), device_config_.hmp_source_combo->currentData());
+    }
     if (data_source_mode_combo_)
     {
         settings.setValue(QStringLiteral("source/mode"), sourceModeStorageValue(data_source_mode_combo_->currentIndex()));
@@ -9962,6 +9982,8 @@ void MainWindow::bindRememberedInputState()
     bindCombo(hmp_rate_combo_);
     bindCombo(lidar_rate_combo_);
     bindCombo(temperature_rate_combo_);
+    bindCombo(device_config_.ptb_source_combo);
+    bindCombo(device_config_.hmp_source_combo);
     bindCombo(data_source_mode_combo_);
     bindCombo(sky_telemetry_transport_combo_);
     bindCombo(sky_telemetry_port_combo_);
@@ -10017,7 +10039,8 @@ void MainWindow::updateSourceModeUi()
                                           hmp_port_combo_, hmp_baud_combo_, lidar_port_combo_, lidar_baud_combo_,
                                           temperature_port_combo_, temperature_baud_combo_,
                                           epsilon_packet_rates_btn_, ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_,
-                                          temperature_rate_combo_};
+                                          temperature_rate_combo_, device_config_.ptb_source_combo,
+                                          device_config_.hmp_source_combo};
     for (QWidget *widget : localWidgets)
     {
         if (widget)
@@ -13810,6 +13833,35 @@ void MainWindow::setupDeviceConfigPage()
                device_config_.lidar_rate_lbl, device_config_.lidar_rate_combo, 3);
     addPortRow(device_config_.temperature_lbl, device_config_.temperature_port_combo, device_config_.temperature_baud_combo,
                device_config_.temperature_rate_lbl, device_config_.temperature_rate_combo, 4);
+    device_config_.ptb_source_combo = createCombo(124);
+    device_config_.ptb_source_combo->addItem(QStringLiteral("PTB210"), QStringLiteral("ptb210"));
+    device_config_.ptb_source_combo->addItem(QStringLiteral("BMP390"), QStringLiteral("bmp390"));
+    device_config_.ptb_source_combo->setToolTip(is_english_
+        ? QStringLiteral("Pressure source. BMP390 expects the Waveshare example serial output at 115200 8N1.")
+        : QStringLiteral("气压来源。BMP390 使用微雪示例程序通过 115200 8N1 串口输出。"));
+    formLayout->addWidget(device_config_.ptb_source_combo, 1, 5, Qt::AlignVCenter);
+
+    device_config_.hmp_source_combo = createCombo(124);
+    device_config_.hmp_source_combo->addItem(QStringLiteral("HMP3"), QStringLiteral("hmp3"));
+    device_config_.hmp_source_combo->addItem(QStringLiteral("SHT45"), QStringLiteral("sht45"));
+    device_config_.hmp_source_combo->setToolTip(is_english_
+        ? QStringLiteral("Temperature/humidity source. SHT45 expects Adafruit example serial output at 115200 8N1.")
+        : QStringLiteral("温湿度来源。SHT45 使用 Adafruit 示例程序通过 115200 8N1 串口输出。"));
+    formLayout->addWidget(device_config_.hmp_source_combo, 2, 5, Qt::AlignVCenter);
+    connect(device_config_.ptb_source_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        if (device_config_.ptb_source_combo->currentData().toString() == QStringLiteral("bmp390") && ptb_baud_combo_)
+        {
+            ptb_baud_combo_->setCurrentText(QStringLiteral("115200"));
+        }
+        saveRememberedInputState();
+    });
+    connect(device_config_.hmp_source_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        if (device_config_.hmp_source_combo->currentData().toString() == QStringLiteral("sht45") && hmp_baud_combo_)
+        {
+            hmp_baud_combo_->setCurrentText(QStringLiteral("115200"));
+        }
+        saveRememberedInputState();
+    });
     if (device_config_.temperature_port_combo)
     {
         device_config_.temperature_port_combo->setObjectName(QStringLiteral("deviceTemperaturePortCombo"));
@@ -13848,7 +13900,7 @@ void MainWindow::setupDeviceConfigPage()
         layout->addWidget(connectButton);
         layout->addWidget(disconnectButton);
         layout->addWidget(reconnectButton);
-        formLayout->addWidget(buttonsWidget, row, 5, Qt::AlignVCenter | Qt::AlignLeft);
+        formLayout->addWidget(buttonsWidget, row, 6, Qt::AlignVCenter | Qt::AlignLeft);
     };
     addDeviceRemoteButtons(0, device_config_.epsilon_remote_buttons_widget,
                            device_config_.epsilon_remote_connect_btn,
@@ -14330,8 +14382,24 @@ void MainWindow::updateDeviceConfigTexts()
                         kDeviceConfigSkyDeviceButtonMinWidth,
                         kDeviceConfigTopButtonPadding);
     if (device_config_.epsilon_lbl) device_config_.epsilon_lbl->setText(QStringLiteral("EPSILON:"));
-    if (device_config_.ptb_lbl) device_config_.ptb_lbl->setText(QStringLiteral("PTB210:"));
-    if (device_config_.hmp_lbl) device_config_.hmp_lbl->setText(QStringLiteral("HMP3:"));
+    if (device_config_.ptb_lbl) device_config_.ptb_lbl->setText(is_english_ ? QStringLiteral("Pressure:") : QStringLiteral("气压:"));
+    if (device_config_.hmp_lbl) device_config_.hmp_lbl->setText(is_english_ ? QStringLiteral("Temp/RH:") : QStringLiteral("温湿度:"));
+    if (device_config_.ptb_source_combo)
+    {
+        const QVariant sourceData = device_config_.ptb_source_combo->currentData();
+        const QSignalBlocker blocker(device_config_.ptb_source_combo);
+        device_config_.ptb_source_combo->setItemText(0, QStringLiteral("PTB210"));
+        device_config_.ptb_source_combo->setItemText(1, QStringLiteral("BMP390"));
+        device_config_.ptb_source_combo->setCurrentIndex(std::max(0, device_config_.ptb_source_combo->findData(sourceData)));
+    }
+    if (device_config_.hmp_source_combo)
+    {
+        const QVariant sourceData = device_config_.hmp_source_combo->currentData();
+        const QSignalBlocker blocker(device_config_.hmp_source_combo);
+        device_config_.hmp_source_combo->setItemText(0, QStringLiteral("HMP3"));
+        device_config_.hmp_source_combo->setItemText(1, QStringLiteral("SHT45"));
+        device_config_.hmp_source_combo->setCurrentIndex(std::max(0, device_config_.hmp_source_combo->findData(sourceData)));
+    }
     if (device_config_.lidar_lbl) device_config_.lidar_lbl->setText(QStringLiteral("TFA1500-L:"));
     if (device_config_.temperature_lbl) device_config_.temperature_lbl->setText(QStringLiteral("RD105:"));
     if (device_config_.epsilon_rate_lbl) device_config_.epsilon_rate_lbl->setText(QString());
@@ -14505,8 +14573,10 @@ void MainWindow::updateDeviceConfigState()
         device_config_.epsilon_baud_combo,
         device_config_.ptb_port_combo,
         device_config_.ptb_baud_combo,
+        device_config_.ptb_source_combo,
         device_config_.hmp_port_combo,
         device_config_.hmp_baud_combo,
+        device_config_.hmp_source_combo,
         device_config_.lidar_port_combo,
         device_config_.lidar_baud_combo,
         device_config_.temperature_port_combo,
@@ -20569,6 +20639,16 @@ void MainWindow::onConnectClicked()
     const QString epsilonRateText = epsilon_rate_combo_ ? epsilon_rate_combo_->currentText() : QStringLiteral("100");
     const QString ptbRateText = ptb_rate_combo_ ? ptb_rate_combo_->currentText() : QStringLiteral("20");
     const QString hmpRateText = hmp_rate_combo_ ? hmp_rate_combo_->currentText() : QStringLiteral("20");
+    const VaporView::PressureSensorProtocol pressureProtocol =
+        device_config_.ptb_source_combo &&
+            device_config_.ptb_source_combo->currentData().toString() == QStringLiteral("bmp390")
+        ? VaporView::PressureSensorProtocol::Bmp390Serial
+        : VaporView::PressureSensorProtocol::Ptb210;
+    const VaporView::HumiditySensorProtocol humidityProtocol =
+        device_config_.hmp_source_combo &&
+            device_config_.hmp_source_combo->currentData().toString() == QStringLiteral("sht45")
+        ? VaporView::HumiditySensorProtocol::Sht45Serial
+        : VaporView::HumiditySensorProtocol::Hmp3Modbus;
     const QString lidarRateText = lidar_rate_combo_ ? lidar_rate_combo_->currentText() : QStringLiteral("100");
     const QString temperatureRateText = temperature_rate_combo_ ? temperature_rate_combo_->currentText() : QString::number(kDefaultTemperatureSampleRateHz);
     const bool skipEpsilonDeviceRate = isRateUnspecified(epsilonRateText);
@@ -20638,8 +20718,10 @@ void MainWindow::onConnectClicked()
                                       temperatureRate,
                                       skipEpsilonDeviceRate,
                                       skipPtbDeviceRate,
-                                      skipHmpDeviceRate,
-                                      skipLidarDeviceRate,
+                                       skipHmpDeviceRate,
+                                       pressureProtocol,
+                                       humidityProtocol,
+                                       skipLidarDeviceRate,
                                       skipTemperatureDeviceRate,
                                       connectionProgressSteps]() {
         auto postLog = [this](const QString& message) {
@@ -20666,6 +20748,8 @@ void MainWindow::onConnectClicked()
         collectors.epsilon = std::make_shared<VaporView::EpsilonCollector>();
         collectors.ptb = std::make_shared<VaporView::PtbCollector>();
         collectors.hmp = std::make_shared<VaporView::HmpCollector>();
+        collectors.ptb->setProtocol(pressureProtocol);
+        collectors.hmp->setProtocol(humidityProtocol);
         collectors.lidar = std::make_shared<VaporView::LidarCollector>();
         collectors.temperature_controller = std::make_shared<VaporView::TemperatureControllerCollector>();
         setCollectors(collectors);
@@ -20869,8 +20953,11 @@ void MainWindow::onConnectClicked()
                                  return false;
                              }) < 0) return;
 
-        if (connectCollector("PTB", ptbPort, ptbBaudText, collectors.ptb.get(),
-                             VaporView::SerialConfig::E71(ptbBaudText.toInt()),
+        const bool useBmp390 = pressureProtocol == VaporView::PressureSensorProtocol::Bmp390Serial;
+        const QString pressureName = useBmp390 ? QStringLiteral("BMP390") : QStringLiteral("PTB210");
+        if (connectCollector(pressureName, ptbPort, ptbBaudText, collectors.ptb.get(),
+                             useBmp390 ? VaporView::SerialConfig::N81(ptbBaudText.toInt())
+                                       : VaporView::SerialConfig::E71(ptbBaudText.toInt()),
                              [&]() {
                                  collectors.ptb->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onPtbDataReady", Qt::QueuedConnection); });
                                  collectors.ptb->setSampleRate(ptbRate);
@@ -20895,8 +20982,11 @@ void MainWindow::onConnectClicked()
                                  return false;
                              }) < 0) return;
 
-        if (connectCollector("HMP", hmpPort, hmpBaudText, collectors.hmp.get(),
-                             VaporView::SerialConfig::N82(hmpBaudText.toInt()),
+        const bool useSht45 = humidityProtocol == VaporView::HumiditySensorProtocol::Sht45Serial;
+        const QString humidityName = useSht45 ? QStringLiteral("SHT45") : QStringLiteral("HMP3");
+        if (connectCollector(humidityName, hmpPort, hmpBaudText, collectors.hmp.get(),
+                             useSht45 ? VaporView::SerialConfig::N81(hmpBaudText.toInt())
+                                      : VaporView::SerialConfig::N82(hmpBaudText.toInt()),
                              [&]() {
                                  collectors.hmp->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onHmpDataReady", Qt::QueuedConnection); });
                                  collectors.hmp->setSampleRate(hmpRate);
