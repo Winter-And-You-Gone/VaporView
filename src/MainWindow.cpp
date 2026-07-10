@@ -5659,6 +5659,11 @@ public:
         QComboBox::hidePopup();
     }
 
+    void setShowSelectionCheck(bool show)
+    {
+        show_selection_check_ = show;
+    }
+
 private:
     bool itemEnabled(int index) const
     {
@@ -5687,12 +5692,15 @@ private:
             auto *row = new SingleLevelPopupMenuRow(popup_menu_);
             row->setText(itemText(i));
             row->setChecked(i == currentIndex());
-            row->setCheckIcon(checkIcon);
-            row->setCheckIconSize(QSize(16, 16));
+            if (show_selection_check_)
+            {
+                row->setCheckIcon(checkIcon);
+                row->setCheckIconSize(QSize(16, 16));
+            }
             row->setTextAlignment(SingleLevelPopupTextAlignment::Left);
             row->setHorizontalPadding(18, 14);
-            row->setCheckSlotWidth(18);
-            row->setRowSpacing(6);
+            row->setCheckSlotWidth(show_selection_check_ ? 18 : 0);
+            row->setRowSpacing(show_selection_check_ ? 6 : 0);
             row->setRowHeight(40);
             row->setMinimumRowWidth(width());
             row->setEnabled(itemEnabled(i));
@@ -5714,6 +5722,7 @@ private:
     }
 
     SingleLevelPopupMenu *popup_menu_ = nullptr;
+    bool show_selection_check_ = true;
 };
 
 class SourceModeOverviewSwitchButton final : public QPushButton
@@ -6816,7 +6825,9 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     addPidSpin(QStringLiteral("D"), channel.kd_spin);
     addField(0, 1, QStringLiteral("PID"), pidEditor, channel.pid_label_text);
 
-    channel.auto_pid_combo = new SingleLevelPopupComboBox(this);
+    auto *autoPidCombo = new SingleLevelPopupComboBox(this);
+    autoPidCombo->setShowSelectionCheck(false);
+    channel.auto_pid_combo = autoPidCombo;
     channel.auto_pid_combo->setObjectName(QStringLiteral("temperatureAutoPidComboChannel%1").arg(index + 1));
     channel.auto_pid_combo->setFixedWidth(kTemperatureControllerCompactInputWidth);
     channel.auto_pid_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
