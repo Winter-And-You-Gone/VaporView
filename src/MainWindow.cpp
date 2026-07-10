@@ -13933,7 +13933,7 @@ void MainWindow::setupDeviceConfigPage()
                device_config_.lidar_rate_lbl, device_config_.lidar_rate_combo, 3);
     addPortRow(device_config_.temperature_lbl, device_config_.temperature_port_combo, device_config_.temperature_baud_combo,
                device_config_.temperature_rate_lbl, device_config_.temperature_rate_combo, 4);
-    device_config_.ptb_source_combo = createCombo(124);
+    device_config_.ptb_source_combo = createCombo(kDeviceConfigRateComboWidth);
     device_config_.ptb_source_combo->addItem(QStringLiteral("PTB210"), QStringLiteral("ptb210"));
     device_config_.ptb_source_combo->addItem(QStringLiteral("BMP390"), QStringLiteral("bmp390"));
     device_config_.ptb_source_combo->setToolTip(is_english_
@@ -13941,7 +13941,7 @@ void MainWindow::setupDeviceConfigPage()
         : QStringLiteral("气压来源。BMP390 使用微雪示例程序通过 115200 8N1 串口输出。"));
     formLayout->addWidget(device_config_.ptb_source_combo, 1, 5, Qt::AlignVCenter);
 
-    device_config_.hmp_source_combo = createCombo(124);
+    device_config_.hmp_source_combo = createCombo(kDeviceConfigRateComboWidth);
     device_config_.hmp_source_combo->addItem(QStringLiteral("HMP3"), QStringLiteral("hmp3"));
     device_config_.hmp_source_combo->addItem(QStringLiteral("SHT45"), QStringLiteral("sht45"));
     device_config_.hmp_source_combo->setToolTip(is_english_

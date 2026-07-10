@@ -3906,6 +3906,23 @@ int main(int argc, char **argv)
             "device configuration source mode combo uses the shared single-level popup");
     require(deviceSourceModeCombo->width() <= 160,
             "device configuration source mode combo uses compact width");
+    QComboBox *pressureSourceCombo = nullptr;
+    QComboBox *humiditySourceCombo = nullptr;
+    for (QComboBox *combo : deviceConfigPage->findChildren<QComboBox *>())
+    {
+        if (combo->findData(QStringLiteral("bmp390")) >= 0)
+        {
+            pressureSourceCombo = combo;
+        }
+        if (combo->findData(QStringLiteral("sht45")) >= 0)
+        {
+            humiditySourceCombo = combo;
+        }
+    }
+    require(pressureSourceCombo != nullptr && pressureSourceCombo->width() == 88,
+            "device pressure source combo matches the compact rate combo width");
+    require(humiditySourceCombo != nullptr && humiditySourceCombo->width() == 88,
+            "device humidity source combo matches the compact rate combo width");
     const SkyTelemetryRowWidgets deviceSkyTelemetry = findSkyTelemetryRowWidgets(deviceConfigPage);
     require(deviceSkyTelemetry.transportCombo != nullptr,
             "device configuration sky telemetry transport combo exists");
