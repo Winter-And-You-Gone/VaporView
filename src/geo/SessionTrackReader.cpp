@@ -119,6 +119,8 @@ FixQuality parseFixQuality(const QString& value)
     }
     if (normalized.contains(QStringLiteral("fixed")) ||
         normalized.contains(QStringLiteral("rtk fixed")) ||
+        normalized == QStringLiteral("rtk_dual") ||
+        normalized == QStringLiteral("rtk dual") ||
         normalized == QStringLiteral("6") ||
         normalized == QStringLiteral("4"))
     {
@@ -137,6 +139,8 @@ FixQuality parseFixQuality(const QString& value)
         return FixQuality::Dgps;
     }
     if (normalized.contains(QStringLiteral("single")) ||
+        normalized == QStringLiteral("3d") ||
+        normalized == QStringLiteral("3d fix") ||
         normalized.contains(QStringLiteral("fix")) ||
         normalized == QStringLiteral("1") ||
         normalized == QStringLiteral("3"))
@@ -266,7 +270,7 @@ SessionTrackReadResult readSessionTrack(const QString& sessionDir)
     const int hdopCol = findColumn(columns, {"hdop", "epsilon_hdop"});
     const int vdopCol = findColumn(columns, {"vdop", "epsilon_vdop"});
     const int diffAgeCol = findColumn(columns, {"diff_age_s", "epsilon_diff_age_s"});
-    const int fixCol = findColumn(columns, {"fix_quality", "gnss_status", "rtk_status", "gnss_fix_text", "epsilon_gnss_fix_text", "gnss_fix_code", "rtk_fix"});
+    const int fixCol = findColumn(columns, {"fix_quality", "gnss_fix", "gnss_status", "rtk_status", "gnss_fix_text", "epsilon_gnss_fix_text", "gnss_fix_code", "rtk_fix"});
     const int heightReferenceCol = findColumn(columns, {"height_reference", "height_ref", "altitude_reference", "nav_height_reference"});
 
     if (latCol < 0 || lonCol < 0 || heightCol < 0)

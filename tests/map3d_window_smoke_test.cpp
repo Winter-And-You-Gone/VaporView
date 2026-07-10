@@ -74,9 +74,9 @@ void writeSessionTrack(QTemporaryDir& sessionDir)
     require(devicesCsv.open(QIODevice::WriteOnly | QIODevice::Text), "open devices.csv");
 
     QTextStream out(&devicesCsv);
-    out << "record_timestamp_us,device_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,gnss_satellites,hdop,fix_quality\n";
-    out << "1000000,900000,39.9000000,116.3000000,45.0,12,0.9,fixed\n";
-    out << "1050000,950000,39.9000100,116.3000200,46.0,12,0.9,fixed\n";
+    out << "record_timestamp_us,device_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,gnss_satellites,hdop,gnss_fix\n";
+    out << "1000000,900000,39.9000000,116.3000000,45.0,12,0.9,RTK_FIXED\n";
+    out << "1050000,950000,39.9000100,116.3000200,46.0,12,0.9,RTK_FIXED\n";
 }
 
 QLabel* statusLabel(VaporView::Map3D::Map3DWindow& window)
@@ -302,6 +302,8 @@ int main(int argc, char** argv)
                 "programmatic session load persists last session directory");
     }
     require(label->text().contains(QStringLiteral("Points: 2")), "session load appends track samples");
+    require(label->text().contains(QStringLiteral("Q Fixed 2")),
+            "session load recognizes the recorded gnss_fix quality column");
     require(label->text().contains(QStringLiteral("Source Session")), "session load reports session source");
     require(label->text().contains(QStringLiteral("Camera Track auto")),
             "session load automatically focuses the complete track");

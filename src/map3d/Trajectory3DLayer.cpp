@@ -6,6 +6,7 @@
 #include <osg/Geode>
 #include <osg/LineWidth>
 #include <osg/Point>
+#include <osg/StateSet>
 
 #include <algorithm>
 #include <cmath>
@@ -48,14 +49,19 @@ osg::Vec4 qualityColor(const VaporView::Geo::NavSample& sample)
     switch (sample.fixQuality)
     {
     case VaporView::Geo::FixQuality::Fixed:
-        return osg::Vec4(0.1f, 0.85f, 0.25f, 1.0f);
+        return osg::Vec4(0.05f, 1.0f, 0.35f, 1.0f);
     case VaporView::Geo::FixQuality::Float:
-        return osg::Vec4(1.0f, 0.75f, 0.1f, 1.0f);
+        return osg::Vec4(1.0f, 0.82f, 0.05f, 1.0f);
     case VaporView::Geo::FixQuality::Dgps:
-        return osg::Vec4(0.2f, 0.55f, 1.0f, 1.0f);
-    default:
-        return osg::Vec4(0.85f, 0.85f, 0.85f, 1.0f);
+        return osg::Vec4(0.05f, 0.65f, 1.0f, 1.0f);
+    case VaporView::Geo::FixQuality::Single:
+        return osg::Vec4(1.0f, 0.95f, 0.25f, 1.0f);
+    case VaporView::Geo::FixQuality::Unknown:
+        return osg::Vec4(0.05f, 0.95f, 1.0f, 1.0f);
+    case VaporView::Geo::FixQuality::Invalid:
+        break;
     }
+    return osg::Vec4(0.95f, 0.05f, 0.05f, 1.0f);
 }
 
 osg::Vec4 markerColor()
@@ -328,10 +334,19 @@ void Trajectory3DLayer::rebuildSegmentGeometry(TrajectorySegment& segment)
     geometry->setVertexArray(vertices.get());
     geometry->setColorArray(colors.get(), osg::Array::BIND_PER_VERTEX);
 
-    osg::ref_ptr<osg::LineWidth> lineWidth = new osg::LineWidth(2.5f);
-    geometry->getOrCreateStateSet()->setAttributeAndModes(lineWidth.get(), osg::StateAttribute::ON);
+    osg::StateSet* stateSet = geometry->getOrCreateStateSet();
+    osg::ref_ptr<osg::LineWidth> lineWidth = new osg::LineWidth(5.0f);
+    stateSet->setAttributeAndModes(lineWidth.get(), osg::StateAttribute::ON);
     osg::ref_ptr<osg::Point> pointSize = new osg::Point(7.0f);
-    geometry->getOrCreateStateSet()->setAttributeAndModes(pointSize.get(), osg::StateAttribute::ON);
+    stateSet->setAttributeAndModes(pointSize.get(), osg::StateAttribute::ON);
+    stateSet->setMode(GL_LIGHTING,
+                      osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
+    stateSet->setMode(GL_LINE_SMOOTH,
+                      osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
+    stateSet->setMode(GL_BLEND, osg::StateAttribute::ON);
+    stateSet->setMode(GL_DEPTH_TEST,
+                      osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
+    stateSet->setRenderBinDetails(1000, "RenderBin");
 
     segment.geometry = geometry;
 }

@@ -87,6 +87,29 @@ int main()
 
     {
         QTemporaryDir sessionDir;
+        require(sessionDir.isValid(), "temporary recorded GNSS session directory");
+
+        QDir dir(sessionDir.path());
+        require(dir.mkpath(QStringLiteral("sensors")), "create recorded GNSS sensors directory");
+
+        writeCsv(dir.filePath(QStringLiteral("sensors/devices.csv")),
+                 QStringLiteral("record_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,gnss_fix\n"
+                                "4100,30.250000001,120.150000001,31.0,RTK_DUAL\n"
+                                "4200,30.250100001,120.150100001,31.2,3D\n"));
+
+        const VaporView::Geo::SessionTrackReadResult result =
+            VaporView::Geo::readSessionTrack(sessionDir.path());
+
+        require(result.ok, "recorded GNSS devices.csv read ok");
+        require(result.samples.size() == 2, "recorded GNSS rows parsed");
+        require(result.samples.front().fixQuality == VaporView::Geo::FixQuality::Fixed,
+                "RTK_DUAL fix quality parsed as fixed");
+        require(result.samples.back().fixQuality == VaporView::Geo::FixQuality::Single,
+                "3D fix quality parsed as single");
+    }
+
+    {
+        QTemporaryDir sessionDir;
         require(sessionDir.isValid(), "temporary legacy RTK session directory");
 
         QDir dir(sessionDir.path());

@@ -3,7 +3,9 @@
 
 #include <osg/Geometry>
 #include <osg/Geode>
+#include <osg/LineWidth>
 #include <osg/PrimitiveSet>
+#include <osg/StateSet>
 
 #include <algorithm>
 #include <cmath>
@@ -257,6 +259,17 @@ int main()
     require(qualityGeode->getNumDrawables() == 1, "quality trajectory fits in one segment");
     auto* qualityGeometry = dynamic_cast<osg::Geometry*>(qualityGeode->getDrawable(0));
     require(qualityGeometry != nullptr, "quality trajectory drawable is geometry");
+    const osg::StateSet* qualityStateSet = qualityGeometry->getStateSet();
+    require(qualityStateSet != nullptr, "quality trajectory drawable has render state");
+    const auto* qualityLineWidth = dynamic_cast<const osg::LineWidth*>(
+        qualityStateSet->getAttribute(osg::StateAttribute::LINEWIDTH));
+    require(qualityLineWidth != nullptr && nearlyEqual(qualityLineWidth->getWidth(), 5.0),
+            "trajectory uses a high-visibility line width");
+    require((qualityStateSet->getMode(GL_DEPTH_TEST) & osg::StateAttribute::ON) == 0
+                && (qualityStateSet->getMode(GL_DEPTH_TEST) & osg::StateAttribute::OVERRIDE) != 0,
+            "trajectory stays visible over map geometry");
+    require((qualityStateSet->getMode(GL_LINE_SMOOTH) & osg::StateAttribute::ON) != 0,
+            "trajectory enables line smoothing");
     const PrimitiveStats stats = primitiveStats(*qualityGeometry);
     require(stats.lineStrips == 3, "invalid and jump samples split the continuous trajectory line");
     require(stats.lineVertices == 6, "only usable non-jump samples participate in line strips");
