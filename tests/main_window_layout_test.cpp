@@ -2432,11 +2432,15 @@ int main(int argc, char **argv)
     QLabel *internalTemperatureStatusValue = statusLabelAt(1);
     QLabel *errorCodeStatusLabel = statusLabelAt(2);
     QLabel *errorCodeStatusValue = statusLabelAt(3);
+    QLabel *pollingRateStatusLabel = statusLabelAt(4);
+    QLabel *pollingRateStatusValue = statusLabelAt(5);
     require(internalTemperatureStatusLabel != nullptr && internalTemperatureStatusValue != nullptr &&
-                errorCodeStatusLabel != nullptr && errorCodeStatusValue != nullptr,
-            "temperature status labels and values exist in the top status row");
+                errorCodeStatusLabel != nullptr && errorCodeStatusValue != nullptr &&
+                pollingRateStatusLabel != nullptr && pollingRateStatusValue != nullptr,
+            "temperature, error, and polling-rate fields exist in the top status row");
     require((internalTemperatureStatusValue->alignment() & Qt::AlignHorizontal_Mask) == Qt::AlignLeft &&
-                (errorCodeStatusValue->alignment() & Qt::AlignHorizontal_Mask) == Qt::AlignLeft,
+                (errorCodeStatusValue->alignment() & Qt::AlignHorizontal_Mask) == Qt::AlignLeft &&
+                (pollingRateStatusValue->alignment() & Qt::AlignHorizontal_Mask) == Qt::AlignLeft,
             "temperature status values align toward their labels");
     require(internalTemperatureStatusLabel->width() < controllerModeLabel->width() &&
                 errorCodeStatusLabel->width() < controllerModeLabel->width(),
@@ -2446,6 +2450,19 @@ int main(int argc, char **argv)
                 errorCodeStatusValue->x() -
                     (errorCodeStatusLabel->x() + errorCodeStatusLabel->width()) <= 12,
             "temperature and error values stay close to their labels");
+    require(pollingRateStatusLabel->text() == QStringLiteral("轮询频率:") &&
+                pollingRateStatusLabel->property("temperatureControllerRateTitle").toBool() &&
+                pollingRateStatusValue == temperatureStatusRateLabel &&
+                pollingRateStatusValue->property("temperatureControllerRateValue").toBool(),
+            "temperature status row describes the Hz value as polling rate");
+    require(pollingRateStatusLabel->x() -
+                    (errorCodeStatusValue->x() + errorCodeStatusValue->width()) <= 12 &&
+                pollingRateStatusValue->x() -
+                    (pollingRateStatusLabel->x() + pollingRateStatusLabel->width()) <= 12,
+            "polling-rate label and value follow the error code without stretch spacing");
+    require(pollingRateStatusValue->fontMetrics().height() >
+                errorCodeStatusValue->fontMetrics().height(),
+            "temperature polling-rate value and Hz unit use a larger font");
     QLabel *temperatureControllerTitleLabel = nullptr;
     const QList<QLabel*> temperaturePageTitleLabels =
         temperaturePageForLayout->findChildren<QLabel *>(QStringLiteral("sectionTitleLabel"));

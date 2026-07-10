@@ -365,6 +365,7 @@ private:
     QStackedWidget *channel_top_controls_stack_ = nullptr;
     QStackedWidget *channel_stack_ = nullptr;
     TemperatureTrendPlotWidget *temperature_plot_ = nullptr;
+    QLabel *rate_title_lbl_ = nullptr;
     QLabel *rate_label_ = nullptr;
     QLabel *internal_temperature_label_ = nullptr;
     QLabel *error_code_label_ = nullptr;

@@ -378,6 +378,11 @@ QLabel#rateLabel {
     padding: 0px;
 }
 
+TemperatureControllerPanel QLabel#rateLabel[temperatureControllerRateValue="true"] {
+    font-size: 16px;
+    font-weight: 700;
+}
+
 QLabel#fieldLabel {
     color: @vv-text;
     font-size: 14px;

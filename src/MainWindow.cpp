@@ -786,7 +786,6 @@ constexpr int kEpsilonMotionFieldSpacing = 8;
 constexpr int kEpsilonFieldMinimumHeight = 20;
 constexpr int kTemperatureControllerPlotWidth = 260;
 constexpr int kTemperatureControllerPlotMinHeight = 190;
-constexpr int kTemperatureControllerValueWidth = 126;
 constexpr int kTemperatureControllerInputWidth = 112;
 constexpr int kTemperatureControllerWideInputWidth = 138;
 constexpr int kTemperatureControllerTopEnableWidth = 106;
@@ -1105,6 +1104,14 @@ QStringList temperatureControllerCompactStatusLabelWidthCandidates()
         QStringLiteral("Error:"),
         QStringLiteral("自身温度:"),
         QStringLiteral("错误码:")
+    };
+}
+
+QStringList temperatureControllerRateLabelWidthCandidates()
+{
+    return {
+        QStringLiteral("Polling rate:"),
+        QStringLiteral("轮询频率:")
     };
 }
 
@@ -6440,8 +6447,9 @@ void TemperatureControllerPanel::setupUi()
     internal_temperature_label_->setObjectName(QStringLiteral("highlightedValue"));
     internal_temperature_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     internal_temperature_label_->setMinimumHeight(22);
-    internal_temperature_label_->setMinimumWidth(kTemperatureControllerValueWidth);
-    internal_temperature_label_->setMaximumWidth(kTemperatureControllerValueWidth);
+    setFixedNumericLabelWidth(internal_temperature_label_,
+                              {QStringLiteral(" -999.99 °C"), QStringLiteral("     --- °C")},
+                              4);
     error_code_lbl_ = new QLabel(this);
     error_code_lbl_->setObjectName(QStringLiteral("fieldLabel"));
     error_code_lbl_->setMinimumHeight(22);
@@ -6450,8 +6458,14 @@ void TemperatureControllerPanel::setupUi()
     error_code_label_->setObjectName(QStringLiteral("highlightedValue"));
     error_code_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     error_code_label_->setMinimumHeight(22);
-    error_code_label_->setMinimumWidth(kTemperatureControllerValueWidth);
-    error_code_label_->setMaximumWidth(kTemperatureControllerValueWidth);
+    setFixedNumericLabelWidth(error_code_label_,
+                              {QStringLiteral("0xFFFF"), QStringLiteral("---")},
+                              4);
+    rate_title_lbl_ = new QLabel(this);
+    rate_title_lbl_->setObjectName(QStringLiteral("fieldLabel"));
+    rate_title_lbl_->setProperty("temperatureControllerRateTitle", true);
+    rate_title_lbl_->setMinimumHeight(22);
+    setFixedTextLabelWidth(rate_title_lbl_, temperatureControllerRateLabelWidthCandidates(), 4);
     controller_mode_lbl_ = new QLabel(this);
     controller_mode_lbl_->setObjectName(QStringLiteral("fieldLabel"));
     controller_mode_lbl_->setProperty("temperatureControllerModeLabel", true);
@@ -6470,17 +6484,20 @@ void TemperatureControllerPanel::setupUi()
     });
     rate_label_ = new VaporView::VisualTextLabel(this);
     rate_label_->setObjectName(QStringLiteral("rateLabel"));
-    rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    rate_label_->setProperty("temperatureControllerRateValue", true);
+    rate_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     rate_label_->setMinimumHeight(22);
     setFixedNumericLabelWidth(rate_label_, {QStringLiteral("-999.9 Hz"), QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 4);
+    polishNumericLabel(rate_label_);
     statusLayout->addWidget(internal_temperature_lbl_, 0, 0, Qt::AlignVCenter | Qt::AlignLeft);
     statusLayout->addWidget(internal_temperature_label_, 0, 1, Qt::AlignVCenter | Qt::AlignLeft);
     statusLayout->addWidget(error_code_lbl_, 0, 2, Qt::AlignVCenter | Qt::AlignLeft);
     statusLayout->addWidget(error_code_label_, 0, 3, Qt::AlignVCenter | Qt::AlignLeft);
-    statusLayout->addWidget(rate_label_, 0, 5, Qt::AlignVCenter | Qt::AlignRight);
-    statusLayout->addWidget(controller_mode_lbl_, 0, 6, Qt::AlignVCenter | Qt::AlignLeft);
-    statusLayout->addWidget(controller_mode_combo_, 0, 7, Qt::AlignVCenter | Qt::AlignLeft);
-    statusLayout->setColumnStretch(4, 1);
+    statusLayout->addWidget(rate_title_lbl_, 0, 4, Qt::AlignVCenter | Qt::AlignLeft);
+    statusLayout->addWidget(rate_label_, 0, 5, Qt::AlignVCenter | Qt::AlignLeft);
+    statusLayout->addWidget(controller_mode_lbl_, 0, 7, Qt::AlignVCenter | Qt::AlignLeft);
+    statusLayout->addWidget(controller_mode_combo_, 0, 8, Qt::AlignVCenter | Qt::AlignLeft);
+    statusLayout->setColumnStretch(6, 1);
     layout->addLayout(statusLayout);
 
     auto *configCard = new QFrame(this);
@@ -7156,9 +7173,11 @@ void TemperatureControllerPanel::updateChannelTexts()
 {
     if (internal_temperature_lbl_) internal_temperature_lbl_->setText(is_english_ ? QStringLiteral("Internal:") : QStringLiteral("自身温度:"));
     if (error_code_lbl_) error_code_lbl_->setText(is_english_ ? QStringLiteral("Error:") : QStringLiteral("错误码:"));
+    if (rate_title_lbl_) rate_title_lbl_->setText(is_english_ ? QStringLiteral("Polling rate:") : QStringLiteral("轮询频率:"));
     if (controller_mode_lbl_) controller_mode_lbl_->setText(is_english_ ? QStringLiteral("Mode:") : QStringLiteral("温控器模式:"));
     refreshFixedTextLabelWidth(internal_temperature_lbl_);
     refreshFixedTextLabelWidth(error_code_lbl_);
+    refreshFixedTextLabelWidth(rate_title_lbl_);
     refreshFixedTextLabelWidth(controller_mode_lbl_);
     if (controller_mode_combo_)
     {
@@ -8541,6 +8560,7 @@ void MainWindow::loadModernStyleSheet()
             "QWidget#sectionTitleBar QLabel { background-color: transparent; border: none; }"
             "QLabel { color: @vv-text; background-color: transparent; border: none; }"
             "QLabel#rateLabel { color: @vv-text; font-size: 13px; font-weight: bold; font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; margin: 0px; padding: 0px; }"
+            "TemperatureControllerPanel QLabel#rateLabel[temperatureControllerRateValue=\"true\"] { font-size: 16px; font-weight: 700; }"
             "QLabel#fieldLabel { color: @vv-text; font-size: 14px; font-weight: 600; }"
             "QLabel#separatorLabel { color: @vv-text; font-size: 14px; font-weight: bold; }"
             "QLabel#rtkStatusLabel { color: @vv-text; font-weight: bold; }"
