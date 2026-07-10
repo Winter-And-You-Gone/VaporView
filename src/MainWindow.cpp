@@ -1544,20 +1544,36 @@ public:
     explicit TitleBarFeedbackCheckBox(QWidget *parent = nullptr)
         : QCheckBox(parent)
     {
+        setMouseTracking(true);
         setProperty("indicatorCanvasSize", kIndicatorCanvasSize);
         setProperty("indicatorIconSize", kIndicatorIconSize);
         setProperty("indicatorFeedbackColorRole", QStringLiteral("TitleBarHover"));
+        setProperty("indicatorHovered", false);
     }
 
 protected:
+    bool hitButton(const QPoint& pos) const override
+    {
+        return indicatorRect().contains(pos);
+    }
+
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        setIndicatorHovered(indicatorRect().contains(event->position().toPoint()));
+        QCheckBox::mouseMoveEvent(event);
+    }
+
+    void leaveEvent(QEvent *event) override
+    {
+        setIndicatorHovered(false);
+        QCheckBox::leaveEvent(event);
+    }
+
     void paintEvent(QPaintEvent *event) override
     {
         QCheckBox::paintEvent(event);
 
-        QStyleOptionButton option;
-        initStyleOption(&option);
-        const QRect indicatorRect =
-            style()->subElementRect(QStyle::SE_CheckBoxIndicator, &option, this);
+        const QRect indicatorRect = this->indicatorRect();
         if (!indicatorRect.isValid())
         {
             return;
@@ -1569,7 +1585,7 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        if (underMouse() || hasFocus() || isDown())
+        if (indicator_hovered_ || hasFocus() || isDown())
         {
             const bool dark = qApp && qApp->property(kAppDarkThemeProperty).toBool();
             painter.setPen(Qt::NoPen);
@@ -1593,9 +1609,28 @@ protected:
     }
 
 private:
+    QRect indicatorRect() const
+    {
+        QStyleOptionButton option;
+        initStyleOption(&option);
+        return style()->subElementRect(QStyle::SE_CheckBoxIndicator, &option, this);
+    }
+
+    void setIndicatorHovered(bool hovered)
+    {
+        if (indicator_hovered_ == hovered)
+        {
+            return;
+        }
+        indicator_hovered_ = hovered;
+        setProperty("indicatorHovered", indicator_hovered_);
+        update();
+    }
+
     static constexpr int kIndicatorCanvasSize = 34;
     static constexpr int kIndicatorIconSize = 24;
     static constexpr int kIndicatorCornerRadius = 6;
+    bool indicator_hovered_ = false;
 };
 
 QString deviceConfigRemoteActionKey(VaporView::CommandId command)
@@ -14234,7 +14269,7 @@ void MainWindow::setupDeviceConfigPage()
         new TitleBarFeedbackCheckBox(epsilonBodyWidget);
     device_config_.epsilon_packet_custom_check->setObjectName(
         QStringLiteral("epsilonPacketCustomCheck"));
-    device_config_.epsilon_packet_custom_check->setFocusPolicy(Qt::StrongFocus);
+    device_config_.epsilon_packet_custom_check->setFocusPolicy(Qt::TabFocus);
     epsilonBodyLayout->addWidget(device_config_.epsilon_packet_custom_check);
 
     auto *packetGridWidget = new QWidget(epsilonBodyWidget);

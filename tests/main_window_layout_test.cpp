@@ -349,25 +349,47 @@ void activateLayouts(QWidget *widget)
     }
 }
 
-void clickWidget(QWidget *widget, int waitMs = 50)
+void clickWidgetAt(QWidget *widget, const QPoint& localPoint, int waitMs = 50)
 {
     require(widget != nullptr, "click widget exists");
-    const QPoint localCenter = widget->rect().center();
-    const QPoint globalCenter = widget->mapToGlobal(localCenter);
+    const QPoint globalPoint = widget->mapToGlobal(localPoint);
     QMouseEvent press(QEvent::MouseButtonPress,
-                      localCenter,
-                      globalCenter,
+                      localPoint,
+                      globalPoint,
                       Qt::LeftButton,
                       Qt::LeftButton,
                       Qt::NoModifier);
     QCoreApplication::sendEvent(widget, &press);
     QMouseEvent release(QEvent::MouseButtonRelease,
-                        localCenter,
-                        globalCenter,
+                        localPoint,
+                        globalPoint,
                         Qt::LeftButton,
                         Qt::NoButton,
                         Qt::NoModifier);
     QCoreApplication::sendEvent(widget, &release);
+    if (waitMs > 0)
+    {
+        processEventsFor(waitMs);
+    }
+}
+
+void clickWidget(QWidget *widget, int waitMs = 50)
+{
+    require(widget != nullptr, "click widget exists");
+    clickWidgetAt(widget, widget->rect().center(), waitMs);
+}
+
+void moveMouseOverWidgetAt(QWidget *widget, const QPoint& localPoint, int waitMs = 50)
+{
+    require(widget != nullptr, "mouse-move widget exists");
+    const QPoint globalPoint = widget->mapToGlobal(localPoint);
+    QMouseEvent move(QEvent::MouseMove,
+                     localPoint,
+                     globalPoint,
+                     Qt::NoButton,
+                     Qt::NoButton,
+                     Qt::NoModifier);
+    QCoreApplication::sendEvent(widget, &move);
     if (waitMs > 0)
     {
         processEventsFor(waitMs);
@@ -3634,8 +3656,8 @@ int main(int argc, char **argv)
     auto *epsilonPacketCustomCheck =
         epsilonConfigCard->findChild<QCheckBox *>(QStringLiteral("epsilonPacketCustomCheck"));
     require(epsilonPacketCustomCheck != nullptr &&
-                epsilonPacketCustomCheck->focusPolicy() == Qt::StrongFocus,
-            "device EPSILON custom packet-rate checkbox exposes pointer and keyboard focus feedback");
+                epsilonPacketCustomCheck->focusPolicy() == Qt::TabFocus,
+            "device EPSILON custom packet-rate checkbox keeps keyboard focus without retaining mouse-click focus");
     require(epsilonPacketCustomCheck->property("indicatorCanvasSize").toInt() == 34 &&
                 epsilonPacketCustomCheck->property("indicatorIconSize").toInt() == 24 &&
                 epsilonPacketCustomCheck->property("indicatorCanvasSize").toInt() >
@@ -3655,6 +3677,34 @@ int main(int argc, char **argv)
                 appStyleSheet.mid(epsilonCustomCheckStyleIndex, 700).contains(
                     QStringLiteral("background-color: transparent")),
             "device EPSILON custom packet-rate checkbox separates the title-bar hover canvas from its icon");
+    QStyleOptionButton epsilonCheckOption;
+    epsilonCheckOption.initFrom(epsilonPacketCustomCheck);
+    epsilonCheckOption.text = epsilonPacketCustomCheck->text();
+    const QRect epsilonCheckIndicatorRect = epsilonPacketCustomCheck->style()->subElementRect(
+        QStyle::SE_CheckBoxIndicator,
+        &epsilonCheckOption,
+        epsilonPacketCustomCheck);
+    require(epsilonCheckIndicatorRect.isValid(),
+            "device EPSILON custom packet-rate checkbox exposes a valid icon hit area");
+    const QPoint epsilonCheckTextPoint(
+        std::min(epsilonPacketCustomCheck->width() - 1, epsilonCheckIndicatorRect.right() + 24),
+        epsilonCheckIndicatorRect.center().y());
+    const bool epsilonCheckInitiallyChecked = epsilonPacketCustomCheck->isChecked();
+    clickWidgetAt(epsilonPacketCustomCheck, epsilonCheckTextPoint);
+    require(epsilonPacketCustomCheck->isChecked() == epsilonCheckInitiallyChecked,
+            "device EPSILON custom packet-rate checkbox ignores clicks on its descriptive text");
+    clickWidgetAt(epsilonPacketCustomCheck, epsilonCheckIndicatorRect.center());
+    require(epsilonPacketCustomCheck->isChecked() != epsilonCheckInitiallyChecked,
+            "device EPSILON custom packet-rate checkbox toggles from its icon area");
+    moveMouseOverWidgetAt(epsilonPacketCustomCheck, epsilonCheckIndicatorRect.center());
+    require(epsilonPacketCustomCheck->property("indicatorHovered").toBool(),
+            "device EPSILON custom packet-rate checkbox highlights only while its icon is hovered");
+    moveMouseOverWidgetAt(epsilonPacketCustomCheck, epsilonCheckTextPoint);
+    require(!epsilonPacketCustomCheck->property("indicatorHovered").toBool(),
+            "device EPSILON custom packet-rate checkbox clears hover feedback outside the icon area");
+    clickWidgetAt(epsilonPacketCustomCheck, epsilonCheckIndicatorRect.center());
+    require(epsilonPacketCustomCheck->isChecked() == epsilonCheckInitiallyChecked,
+            "device EPSILON custom packet-rate checkbox test restores the original checked state");
     const int epsilonCardStyleIndex = appStyleSheet.indexOf(QStringLiteral("QFrame#epsilonSectionCard"));
     require(epsilonCardStyleIndex >= 0 &&
                 appStyleSheet.mid(epsilonCardStyleIndex, 200).contains(QStringLiteral("border-radius: 8px")),
