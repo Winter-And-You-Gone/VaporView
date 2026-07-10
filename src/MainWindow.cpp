@@ -793,6 +793,7 @@ constexpr int kTemperatureControllerPlotWidth = 260;
 constexpr int kTemperatureControllerPlotMinHeight = 190;
 constexpr int kTemperatureControllerInputWidth = 112;
 constexpr int kTemperatureControllerWideInputWidth = 138;
+constexpr int kTemperatureControllerRs485BaudWidth = 100;
 constexpr int kTemperatureControllerTopEnableWidth = 106;
 constexpr int kTemperatureControllerTopEnableHeight = 34;
 constexpr int kTemperatureControllerTopModeWidth = 132;
@@ -7020,7 +7021,7 @@ QWidget *TemperatureControllerPanel::createCommonTopControlsPage()
 
     common_.rs485_baud_combo = new QComboBox(this);
     common_.rs485_baud_combo->setObjectName(QStringLiteral("temperatureRs485BaudCombo"));
-    common_.rs485_baud_combo->setFixedWidth(kTemperatureControllerWideInputWidth);
+    common_.rs485_baud_combo->setFixedWidth(kTemperatureControllerRs485BaudWidth);
     common_.rs485_baud_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     const QList<int> baudRates = {4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800};
     for (int i = 0; i < baudRates.size(); ++i)

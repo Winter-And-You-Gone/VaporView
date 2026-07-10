@@ -2800,12 +2800,17 @@ int main(int argc, char **argv)
                                      addressSpin->parentWidget()->size());
     const QRect commonBaudRowRect(temperatureChannelSelectorRow->mapFromGlobal(rs485BaudCombo->parentWidget()->mapToGlobal(QPoint(0, 0))),
                                   rs485BaudCombo->parentWidget()->size());
+    const QRect commonBaudComboRectInCard(rs485BaudCombo->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                          rs485BaudCombo->size());
     require(factoryResetRectInSelector.left() > commonButtonRectInSelector.right() &&
                 factoryResetRectInSelector.right() < commonAddressRowRect.left() &&
                 commonAddressRowRect.right() < commonBaudRowRect.left() &&
                 std::abs(factoryResetRectInSelector.center().y() - commonAddressRowRect.center().y()) <= 2 &&
                 std::abs(commonAddressRowRect.center().y() - commonBaudRowRect.center().y()) <= 2,
             "temperature common address and baud controls sit to the right of factory reset");
+    require(rs485BaudCombo->width() <= 100 &&
+                commonBaudComboRectInCard.right() <= temperatureConfigCard->rect().right() - 12,
+            "temperature common RS485 baud combo stays compact and leaves room for its right border");
     const QRect commonOvertempRowRect(overtempOutputCombo->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
                                       overtempOutputCombo->parentWidget()->size());
     const QRect commonInternalRowRect(commonInternalTemperatureEdit->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
