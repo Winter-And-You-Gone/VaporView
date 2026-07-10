@@ -731,11 +731,15 @@ constexpr const char *kTextWidthPaddingProperty = "_vv_text_width_padding";
 constexpr const char *kNumericWidthCandidatesProperty = "_vv_numeric_width_candidates";
 constexpr const char *kNumericWidthPaddingProperty = "_vv_numeric_width_padding";
 constexpr const char *kMainCardMinimumHeightProperty = "_vv_main_card_minimum_height";
+constexpr const char *kDeviceConfigRemoteActionProperty = "deviceConfigRemoteAction";
+constexpr const char *kDeviceConfigRemoteCommandProperty = "deviceConfigRemoteCommand";
+constexpr const char *kDeviceConfigRemoteDeviceProperty = "deviceConfigRemoteDevice";
 constexpr int kMainPageInputHeight = 36;
 constexpr int kMainPageButtonHeight = kMainPageInputHeight;
 constexpr int kDeviceConfigAutoDetectButtonMinWidth = 124;
 constexpr int kDeviceConfigSourceModeComboWidth = 156;
 constexpr int kDeviceConfigSkyDeviceButtonMinWidth = 132;
+constexpr int kDeviceConfigRemoteIconButtonSize = kMainPageButtonHeight;
 constexpr int kDeviceConfigTopButtonPadding = 24;
 constexpr int kHomeDeviceButtonSize = 32;
 constexpr int kHomeDeviceIconSize = 18;
@@ -1531,6 +1535,102 @@ QIcon createLucideIcon(const QString& iconName, const QColor& color)
     addLucideIconPixmaps(icon, svgData, disabledColor, QIcon::Disabled);
     cache.insert(cacheKey, icon);
     return icon;
+}
+
+QString deviceConfigRemoteActionKey(VaporView::CommandId command)
+{
+    switch (command)
+    {
+    case VaporView::CommandId::ConnectDevice:
+        return QStringLiteral("connect");
+    case VaporView::CommandId::DisconnectDevice:
+        return QStringLiteral("disconnect");
+    case VaporView::CommandId::ReconnectDevice:
+        return QStringLiteral("reconnect");
+    default:
+        return QStringLiteral("remote");
+    }
+}
+
+QString deviceConfigRemoteActionText(VaporView::CommandId command, bool english)
+{
+    switch (command)
+    {
+    case VaporView::CommandId::ConnectDevice:
+        return english ? QStringLiteral("Connect") : QStringLiteral("连接");
+    case VaporView::CommandId::DisconnectDevice:
+        return english ? QStringLiteral("Disconnect") : QStringLiteral("断开");
+    case VaporView::CommandId::ReconnectDevice:
+        return english ? QStringLiteral("Reconnect") : QStringLiteral("重连");
+    default:
+        return english ? QStringLiteral("Command") : QStringLiteral("命令");
+    }
+}
+
+QString deviceConfigRemoteIconName(VaporView::CommandId command)
+{
+    switch (command)
+    {
+    case VaporView::CommandId::ConnectDevice:
+        return QStringLiteral("link");
+    case VaporView::CommandId::DisconnectDevice:
+        return QStringLiteral("unlink");
+    case VaporView::CommandId::ReconnectDevice:
+        return QStringLiteral("refresh-cw");
+    default:
+        return QStringLiteral("link");
+    }
+}
+
+QColor deviceConfigRemoteIconColor(VaporView::CommandId command)
+{
+    switch (command)
+    {
+    case VaporView::CommandId::ConnectDevice:
+        return toolbarColor(AppThemeColor::ToolbarGreen);
+    case VaporView::CommandId::DisconnectDevice:
+        return toolbarColor(AppThemeColor::ToolbarRed);
+    case VaporView::CommandId::ReconnectDevice:
+        return toolbarColor(AppThemeColor::ToolbarBlue);
+    default:
+        return toolbarColor(AppThemeColor::ToolbarBlue);
+    }
+}
+
+void applyDeviceConfigRemoteButtonPresentation(QPushButton *button,
+                                               VaporView::CommandId command,
+                                               VaporView::SkyDeviceId device,
+                                               bool english,
+                                               bool applyMetrics)
+{
+    if (!button)
+    {
+        return;
+    }
+
+    if (applyMetrics)
+    {
+        button->setFixedSize(kDeviceConfigRemoteIconButtonSize, kDeviceConfigRemoteIconButtonSize);
+        button->setIconSize(QSize(kDeviceConfigRemoteIconButtonSize - 12,
+                                  kDeviceConfigRemoteIconButtonSize - 12));
+        button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    }
+    button->setObjectName(QStringLiteral("deviceConfigRemoteActionButton"));
+    button->setProperty(kDeviceConfigRemoteActionProperty, deviceConfigRemoteActionKey(command));
+    button->setProperty(kDeviceConfigRemoteCommandProperty, static_cast<int>(command));
+    button->setProperty(kDeviceConfigRemoteDeviceProperty, static_cast<int>(device));
+    button->setText(QString());
+    button->setIcon(createLucideIcon(deviceConfigRemoteIconName(command),
+                                     deviceConfigRemoteIconColor(command)));
+
+    const QString actionText = deviceConfigRemoteActionText(command, english);
+    const QString deviceName = skyDeviceDisplayName(device);
+    const QString tooltip = english
+        ? QStringLiteral("Request Sky to %1 %2").arg(actionText.toLower(), deviceName)
+        : QStringLiteral("请求天空端%1 %2").arg(actionText, deviceName);
+    button->setToolTip(tooltip);
+    button->setStatusTip(tooltip);
+    button->setAccessibleName(tooltip);
 }
 
 QIcon createRotatedLucideIcon(const QString& iconName, const QColor& color, int degrees)
@@ -13883,20 +13983,18 @@ void MainWindow::setupDeviceConfigPage()
         auto *layout = new QHBoxLayout(buttonsWidget);
         layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(2);
-        auto createButton = [this, buttonsWidget, device](const QString& text, VaporView::CommandId command) {
-            auto *button = new QPushButton(text, buttonsWidget);
-            button->setFixedHeight(kMainPageButtonHeight);
+        auto createButton = [this, buttonsWidget, device](VaporView::CommandId command) {
+            auto *button = new QPushButton(buttonsWidget);
             button->setFocusPolicy(Qt::TabFocus);
-            button->setMinimumWidth(0);
-            button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+            applyDeviceConfigRemoteButtonPresentation(button, command, device, is_english_, true);
             connect(button, &QPushButton::clicked, this, [this, command, device]() {
                 sendRemoteDeviceCommand(command, device);
             });
             return button;
         };
-        connectButton = createButton(QStringLiteral("连接"), VaporView::CommandId::ConnectDevice);
-        disconnectButton = createButton(QStringLiteral("断开"), VaporView::CommandId::DisconnectDevice);
-        reconnectButton = createButton(QStringLiteral("重连"), VaporView::CommandId::ReconnectDevice);
+        connectButton = createButton(VaporView::CommandId::ConnectDevice);
+        disconnectButton = createButton(VaporView::CommandId::DisconnectDevice);
+        reconnectButton = createButton(VaporView::CommandId::ReconnectDevice);
         layout->addWidget(connectButton);
         layout->addWidget(disconnectButton);
         layout->addWidget(reconnectButton);
@@ -14489,44 +14587,32 @@ void MainWindow::updateDeviceConfigTexts()
         fitButtonMinimumWidth(device_config_.rtk_config_btn, 100);
     }
 
-    const QString connectText = is_english_ ? "Connect" : "连接";
-    const QString disconnectText = is_english_ ? "Disconnect" : "断开";
-    const QString reconnectText = is_english_ ? "Reconnect" : "重连";
-    for (QPushButton *button : {device_config_.epsilon_remote_connect_btn,
-                                device_config_.ptb_remote_connect_btn,
-                                device_config_.hmp_remote_connect_btn,
-                                device_config_.lidar_remote_connect_btn,
-                                device_config_.temperature_remote_connect_btn})
+    struct DeviceConfigRemoteButtonRef
     {
-        if (button)
-        {
-            button->setText(connectText);
-            fitButtonMinimumWidth(button, 64);
-        }
-    }
-    for (QPushButton *button : {device_config_.epsilon_remote_disconnect_btn,
-                                device_config_.ptb_remote_disconnect_btn,
-                                device_config_.hmp_remote_disconnect_btn,
-                                device_config_.lidar_remote_disconnect_btn,
-                                device_config_.temperature_remote_disconnect_btn})
+        QPushButton *button = nullptr;
+        VaporView::CommandId command = VaporView::CommandId::ConnectDevice;
+        VaporView::SkyDeviceId device = VaporView::SkyDeviceId::Epsilon;
+    };
+    const std::array<DeviceConfigRemoteButtonRef, 15> remoteButtons = {{
+        {device_config_.epsilon_remote_connect_btn, VaporView::CommandId::ConnectDevice, VaporView::SkyDeviceId::Epsilon},
+        {device_config_.epsilon_remote_disconnect_btn, VaporView::CommandId::DisconnectDevice, VaporView::SkyDeviceId::Epsilon},
+        {device_config_.epsilon_remote_reconnect_btn, VaporView::CommandId::ReconnectDevice, VaporView::SkyDeviceId::Epsilon},
+        {device_config_.ptb_remote_connect_btn, VaporView::CommandId::ConnectDevice, VaporView::SkyDeviceId::Ptb},
+        {device_config_.ptb_remote_disconnect_btn, VaporView::CommandId::DisconnectDevice, VaporView::SkyDeviceId::Ptb},
+        {device_config_.ptb_remote_reconnect_btn, VaporView::CommandId::ReconnectDevice, VaporView::SkyDeviceId::Ptb},
+        {device_config_.hmp_remote_connect_btn, VaporView::CommandId::ConnectDevice, VaporView::SkyDeviceId::Hmp},
+        {device_config_.hmp_remote_disconnect_btn, VaporView::CommandId::DisconnectDevice, VaporView::SkyDeviceId::Hmp},
+        {device_config_.hmp_remote_reconnect_btn, VaporView::CommandId::ReconnectDevice, VaporView::SkyDeviceId::Hmp},
+        {device_config_.lidar_remote_connect_btn, VaporView::CommandId::ConnectDevice, VaporView::SkyDeviceId::Lidar},
+        {device_config_.lidar_remote_disconnect_btn, VaporView::CommandId::DisconnectDevice, VaporView::SkyDeviceId::Lidar},
+        {device_config_.lidar_remote_reconnect_btn, VaporView::CommandId::ReconnectDevice, VaporView::SkyDeviceId::Lidar},
+        {device_config_.temperature_remote_connect_btn, VaporView::CommandId::ConnectDevice, VaporView::SkyDeviceId::TemperatureController},
+        {device_config_.temperature_remote_disconnect_btn, VaporView::CommandId::DisconnectDevice, VaporView::SkyDeviceId::TemperatureController},
+        {device_config_.temperature_remote_reconnect_btn, VaporView::CommandId::ReconnectDevice, VaporView::SkyDeviceId::TemperatureController},
+    }};
+    for (const DeviceConfigRemoteButtonRef& item : remoteButtons)
     {
-        if (button)
-        {
-            button->setText(disconnectText);
-            fitButtonMinimumWidth(button, 64);
-        }
-    }
-    for (QPushButton *button : {device_config_.epsilon_remote_reconnect_btn,
-                                device_config_.ptb_remote_reconnect_btn,
-                                device_config_.hmp_remote_reconnect_btn,
-                                device_config_.lidar_remote_reconnect_btn,
-                                device_config_.temperature_remote_reconnect_btn})
-    {
-        if (button)
-        {
-            button->setText(reconnectText);
-            fitButtonMinimumWidth(button, 64);
-        }
+        applyDeviceConfigRemoteButtonPresentation(item.button, item.command, item.device, is_english_, false);
     }
 
     updateDeviceConfigState();

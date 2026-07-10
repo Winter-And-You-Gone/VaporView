@@ -3349,6 +3349,9 @@ int main(int argc, char **argv)
         QStringLiteral("Cancel"),
     };
     int disabledLocalRemoteActionCount = 0;
+    int connectRemoteActionCount = 0;
+    int disconnectRemoteActionCount = 0;
+    int reconnectRemoteActionCount = 0;
     QPushButton *deviceAutoDetectButton = nullptr;
     QPushButton *deviceSkyConfigButton = nullptr;
     for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
@@ -3371,20 +3374,52 @@ int main(int argc, char **argv)
         {
             deviceSkyConfigButton = button;
         }
-        if (button->text() == QStringLiteral("连接") ||
-            button->text() == QStringLiteral("断开") ||
-            button->text() == QStringLiteral("重连") ||
-            button->text() == QStringLiteral("Connect") ||
-            button->text() == QStringLiteral("Disconnect") ||
-            button->text() == QStringLiteral("Reconnect"))
+        const QString remoteAction = button->property("deviceConfigRemoteAction").toString();
+        if (!remoteAction.isEmpty())
         {
+            require(button->objectName() == QStringLiteral("deviceConfigRemoteActionButton"),
+                    "device configuration remote actions expose a stable object name");
+            require(button->text().isEmpty(),
+                    "device configuration remote actions use icon-only visible labels");
+            require(!button->icon().isNull(),
+                    "device configuration remote actions use lucide icons");
+            require(button->iconSize().width() >= 20 && button->iconSize().width() <= 28 &&
+                        button->iconSize().height() >= 20 && button->iconSize().height() <= 28,
+                    "device configuration remote action icons use compact toolbar sizing");
+            require(std::abs(button->width() - button->height()) <= 1 &&
+                        button->width() >= 34 && button->width() <= 40,
+                    "device configuration remote actions are compact square icon buttons");
+            require(!button->toolTip().trimmed().isEmpty() &&
+                        button->accessibleName() == button->toolTip() &&
+                        button->statusTip() == button->toolTip(),
+                    "device configuration icon-only remote actions keep tooltip and accessibility text");
             require(!button->isEnabled(),
                     "device configuration remote actions are visible but disabled in local mode");
+            if (remoteAction == QStringLiteral("connect"))
+            {
+                ++connectRemoteActionCount;
+            }
+            else if (remoteAction == QStringLiteral("disconnect"))
+            {
+                ++disconnectRemoteActionCount;
+            }
+            else if (remoteAction == QStringLiteral("reconnect"))
+            {
+                ++reconnectRemoteActionCount;
+            }
+            else
+            {
+                require(false, "device configuration remote action has a known command marker");
+            }
             ++disabledLocalRemoteActionCount;
         }
     }
-    require(disabledLocalRemoteActionCount >= 15,
+    require(disabledLocalRemoteActionCount == 15,
             "device configuration keeps all remote device actions present in local mode");
+    require(connectRemoteActionCount == 5 &&
+                disconnectRemoteActionCount == 5 &&
+                reconnectRemoteActionCount == 5,
+            "device configuration remote icon actions cover every device command");
     require(deviceAutoDetectButton != nullptr && deviceAutoDetectButton->width() <= 145,
             "device configuration auto-detect button uses compact title-bar width");
     require(deviceSkyConfigButton != nullptr && deviceSkyConfigButton->width() <= 145,
@@ -3506,18 +3541,13 @@ int main(int argc, char **argv)
         {
             continue;
         }
-        if (button->text() != QStringLiteral("连接") &&
-            button->text() != QStringLiteral("断开") &&
-            button->text() != QStringLiteral("重连") &&
-            button->text() != QStringLiteral("Connect") &&
-            button->text() != QStringLiteral("Disconnect") &&
-            button->text() != QStringLiteral("Reconnect"))
+        const QString remoteAction = button->property("deviceConfigRemoteAction").toString();
+        if (remoteAction.isEmpty())
         {
             continue;
         }
         const QRect buttonRect(button->mapTo(deviceConfigPage, QPoint(0, 0)), button->size());
-        if (button->text() == QStringLiteral("重连") ||
-            button->text() == QStringLiteral("Reconnect"))
+        if (remoteAction == QStringLiteral("reconnect"))
         {
             rightmostReconnectButtonRight = std::max(rightmostReconnectButtonRight, buttonRect.right());
         }
