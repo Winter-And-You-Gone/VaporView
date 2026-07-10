@@ -11254,11 +11254,11 @@ void MainWindow::updateTemperatureTitleButtonsState()
 
     const bool hasPort = homeDevicePortSelected(VaporView::SkyDeviceId::TemperatureController);
     const bool connected = homeDeviceConnected(VaporView::SkyDeviceId::TemperatureController);
-    const bool canConnect = hasPort && !connected && connect_btn_ && connect_btn_->isEnabled();
-    const bool canDisconnect = connected && disconnect_btn_ && disconnect_btn_->isEnabled();
-    const bool canReconnect = hasPort && !connection_attempt_in_progress_ &&
-        !port_detection_in_progress_ && !epsilon_reconfigure_in_progress_ &&
-        (canConnect || canDisconnect);
+    const bool localActionIdle = !connection_attempt_in_progress_ &&
+        !port_detection_in_progress_ && !epsilon_reconfigure_in_progress_;
+    const bool canConnect = hasPort && !connected && localActionIdle;
+    const bool canDisconnect = connected && localActionIdle;
+    const bool canReconnect = hasPort && localActionIdle;
     if (temperature_remote_connect_btn_) temperature_remote_connect_btn_->setEnabled(canConnect);
     if (temperature_remote_disconnect_btn_) temperature_remote_disconnect_btn_->setEnabled(canDisconnect);
     if (temperature_remote_reconnect_btn_) temperature_remote_reconnect_btn_->setEnabled(canReconnect);
@@ -11297,37 +11297,229 @@ void MainWindow::handleTemperatureTitleButton(VaporView::CommandId command)
         return;
     }
 
-    if (command == VaporView::CommandId::DisconnectDevice)
+    switch (command)
     {
-        if (disconnect_btn_ && disconnect_btn_->isEnabled())
-        {
-            disconnect_btn_->trigger();
-        }
+    case VaporView::CommandId::ConnectDevice:
+        connectLocalTemperatureController();
+        break;
+    case VaporView::CommandId::DisconnectDevice:
+        disconnectLocalTemperatureController();
+        break;
+    case VaporView::CommandId::ReconnectDevice:
+        reconnectLocalTemperatureController();
+        break;
+    default:
+        break;
+    }
+}
+
+#ifdef VAPORVIEW_MAIN_WINDOW_TESTING
+void MainWindow::testSetLocalTemperatureCommandObserver(std::function<void(VaporView::CommandId)> observer)
+{
+    local_temperature_command_test_observer_ = std::move(observer);
+}
+#endif
+
+void MainWindow::connectLocalTemperatureController()
+{
+#ifdef VAPORVIEW_MAIN_WINDOW_TESTING
+    if (local_temperature_command_test_observer_)
+    {
+        local_temperature_command_test_observer_(VaporView::CommandId::ConnectDevice);
+        return;
+    }
+#endif
+
+    if (isRemoteSkyMode() || connection_attempt_in_progress_ ||
+        port_detection_in_progress_ || epsilon_reconfigure_in_progress_ ||
+        homeDeviceConnected(VaporView::SkyDeviceId::TemperatureController))
+    {
         return;
     }
 
-    if (command == VaporView::CommandId::ReconnectDevice)
+    const QString port = temperature_port_combo_ ? temperature_port_combo_->currentText().trimmed() : QString();
+    const QString selectText = is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("-- 选择 --");
+    if (port.isEmpty() || port == selectText || port.startsWith(QStringLiteral("--")))
     {
-        if (homeDeviceConnected(VaporView::SkyDeviceId::TemperatureController) &&
-            disconnect_btn_ && disconnect_btn_->isEnabled())
-        {
-            disconnect_btn_->trigger();
-            QTimer::singleShot(0, this, [this]() {
-                if (connect_btn_ && connect_btn_->isEnabled())
-                {
-                    connect_btn_->trigger();
-                }
-            });
-            return;
-        }
-        command = VaporView::CommandId::ConnectDevice;
+        log(is_english_ ? "Select the local RD105 serial port first." : "请先选择本地 RD105 串口。");
+        updateTemperatureTitleButtonsState();
+        return;
     }
 
-    if (command == VaporView::CommandId::ConnectDevice &&
-        connect_btn_ && connect_btn_->isEnabled())
+    const QString baudText = temperature_baud_combo_
+        ? temperature_baud_combo_->currentText().trimmed()
+        : QStringLiteral("38400");
+    bool baudOk = false;
+    const int baud = baudText.toInt(&baudOk);
+    if (!baudOk || baud <= 0)
     {
-        connect_btn_->trigger();
+        log(QString(is_english_ ? "Invalid RD105 baud rate: %1" : "RD105 波特率无效：%1").arg(baudText));
+        return;
     }
+
+    if (connection_thread_.joinable())
+    {
+        connection_thread_.join();
+    }
+
+    const bool english = is_english_;
+    const QString rateText = temperature_rate_combo_
+        ? temperature_rate_combo_->currentText()
+        : QString::number(kDefaultTemperatureSampleRateHz);
+    const bool useDefaultRate = isRateUnspecified(rateText);
+    const int rate = effectiveRateOrDefault(rateText,
+                                            kDefaultTemperatureSampleRateHz,
+                                            kMaxTemperatureSampleRateHz);
+    const int slaveAddress = rememberedTemperatureSlaveAddress();
+    temperature_sample_rate_ = rate;
+    connection_attempt_in_progress_ = true;
+    cancel_connection_requested_.store(false);
+    invalidateTemperatureControllerDataUi();
+    startHomeDeviceActionSpinner(VaporView::SkyDeviceId::TemperatureController);
+    showBusyStatusTaskProgress(english ? "Connecting RD105..." : "正在连接 RD105...");
+    updateConnectionStatus(anyCollectorRunning());
+    log(QString(english ? "[RD105] Connecting %1 @ %2..." : "[RD105] 正在连接 %1 @ %2...")
+            .arg(port, baudText));
+
+    connection_thread_ = std::thread([this,
+                                      english,
+                                      port,
+                                      baud,
+                                      baudText,
+                                      rate,
+                                      useDefaultRate,
+                                      slaveAddress]() {
+        auto collector = std::make_shared<VaporView::TemperatureControllerCollector>();
+        collector->setEnglish(english);
+        collector->setSampleRate(rate);
+        collector->setSlaveAddress(static_cast<uint8_t>(slaveAddress));
+        collector->setDataCallback([this]() {
+            QMetaObject::invokeMethod(this, "onTemperatureControllerDataReady", Qt::QueuedConnection);
+        });
+        collector->setLogCallback([this](const std::string& message) {
+            const QString qmessage = QString::fromStdString(message);
+            QMetaObject::invokeMethod(this, [this, qmessage]() { log(qmessage); }, Qt::QueuedConnection);
+        });
+        collector->setCancelCallback([this]() { return cancel_connection_requested_.load(); });
+
+        bool connected = false;
+        const bool opened = collector->start(port.toStdString(), VaporView::SerialConfig::N81(baud));
+        QString resultText;
+        if (!opened)
+        {
+            resultText = QString(english ? "[RD105] Failed to open %1: %2" : "[RD105] 打开 %1 失败：%2")
+                .arg(port, QString::fromStdString(collector->getLastError()));
+        }
+        else if (cancel_connection_requested_.load())
+        {
+            resultText = english ? QStringLiteral("[RD105] Connection canceled.")
+                                 : QStringLiteral("[RD105] 已取消连接。");
+        }
+        else if (!collector->checkDeviceResponse())
+        {
+            resultText = cancel_connection_requested_.load()
+                ? (english ? QStringLiteral("[RD105] Connection canceled.")
+                           : QStringLiteral("[RD105] 已取消连接。"))
+                : (english ? QStringLiteral("[RD105] No response; check power, wiring, address, and baud rate.")
+                           : QStringLiteral("[RD105] 无响应，请检查电源、接线、站号和波特率。"));
+        }
+        else if (!collector->startStreaming())
+        {
+            resultText = english ? QStringLiteral("[RD105] Failed to start polling.")
+                                 : QStringLiteral("[RD105] 启动轮询失败。");
+        }
+        else
+        {
+            std::shared_ptr<VaporView::TemperatureControllerCollector> previousCollector;
+            {
+                std::lock_guard<std::mutex> lock(collector_mutex_);
+                previousCollector = std::move(temperature_controller_collector_);
+                temperature_controller_collector_ = collector;
+            }
+            if (previousCollector)
+            {
+                previousCollector->stop();
+            }
+            connected = true;
+            resultText = QString(english
+                    ? "[RD105] Connected: %1 @ %2, address %3, polling %4 Hz%5"
+                    : "[RD105] 已连接：%1 @ %2，站号 %3，轮询 %4 Hz%5")
+                .arg(port, baudText)
+                .arg(slaveAddress)
+                .arg(rate)
+                .arg(useDefaultRate ? (english ? " (default)" : "（默认）") : QString());
+        }
+
+        if (!connected && opened)
+        {
+            collector->stop();
+        }
+        QMetaObject::invokeMethod(this, [this, connected, resultText]() {
+            log(resultText);
+            connection_attempt_in_progress_ = false;
+            cancel_connection_requested_.store(false);
+            hideStatusTaskProgress();
+            if (!connected)
+            {
+                invalidateTemperatureControllerDataUi();
+            }
+            updateConnectionStatus(anyCollectorRunning());
+            updateTemperatureTitleButtonsState();
+        }, Qt::QueuedConnection);
+    });
+}
+
+void MainWindow::disconnectLocalTemperatureController()
+{
+#ifdef VAPORVIEW_MAIN_WINDOW_TESTING
+    if (local_temperature_command_test_observer_)
+    {
+        local_temperature_command_test_observer_(VaporView::CommandId::DisconnectDevice);
+        return;
+    }
+#endif
+
+    if (isRemoteSkyMode() || connection_attempt_in_progress_)
+    {
+        return;
+    }
+
+    std::shared_ptr<VaporView::TemperatureControllerCollector> collector;
+    {
+        std::lock_guard<std::mutex> lock(collector_mutex_);
+        collector = std::move(temperature_controller_collector_);
+    }
+    if (collector)
+    {
+        log(is_english_ ? "[RD105] Disconnecting local controller..."
+                        : "[RD105] 正在断开本地温控器...");
+        collector->stop();
+        log(is_english_ ? "[RD105] Local controller disconnected."
+                        : "[RD105] 本地温控器已断开。");
+    }
+    invalidateTemperatureControllerDataUi();
+    updateConnectionStatus(anyCollectorRunning());
+    updateTemperatureTitleButtonsState();
+}
+
+void MainWindow::reconnectLocalTemperatureController()
+{
+#ifdef VAPORVIEW_MAIN_WINDOW_TESTING
+    if (local_temperature_command_test_observer_)
+    {
+        local_temperature_command_test_observer_(VaporView::CommandId::ReconnectDevice);
+        return;
+    }
+#endif
+
+    if (isRemoteSkyMode() || connection_attempt_in_progress_ ||
+        port_detection_in_progress_ || epsilon_reconfigure_in_progress_)
+    {
+        return;
+    }
+
+    disconnectLocalTemperatureController();
+    QTimer::singleShot(0, this, [this]() { connectLocalTemperatureController(); });
 }
 
 void MainWindow::sendRemoteDeviceCommand(VaporView::CommandId command, VaporView::SkyDeviceId device)

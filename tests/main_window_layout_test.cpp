@@ -2497,6 +2497,30 @@ int main(int argc, char **argv)
                 !temperatureTitleDisconnectButton->isEnabled() &&
                 temperatureTitleReconnectButton->isEnabled(),
             "temperature controller title-bar connect/reconnect buttons are usable in local serial mode");
+#ifdef VAPORVIEW_MAIN_WINDOW_TESTING
+    std::vector<VaporView::CommandId> temperatureTitleCommands;
+    window.testSetLocalTemperatureCommandObserver([&temperatureTitleCommands](VaporView::CommandId command) {
+        temperatureTitleCommands.push_back(command);
+    });
+    const bool temperatureConnectWasEnabled = temperatureTitleConnectButton->isEnabled();
+    const bool temperatureDisconnectWasEnabled = temperatureTitleDisconnectButton->isEnabled();
+    const bool temperatureReconnectWasEnabled = temperatureTitleReconnectButton->isEnabled();
+    temperatureTitleConnectButton->setEnabled(true);
+    temperatureTitleDisconnectButton->setEnabled(true);
+    temperatureTitleReconnectButton->setEnabled(true);
+    temperatureTitleConnectButton->click();
+    temperatureTitleDisconnectButton->click();
+    temperatureTitleReconnectButton->click();
+    require(temperatureTitleCommands ==
+                std::vector<VaporView::CommandId>{VaporView::CommandId::ConnectDevice,
+                                                  VaporView::CommandId::DisconnectDevice,
+                                                  VaporView::CommandId::ReconnectDevice},
+            "temperature title buttons dispatch only local RD105 device commands");
+    window.testSetLocalTemperatureCommandObserver({});
+    temperatureTitleConnectButton->setEnabled(temperatureConnectWasEnabled);
+    temperatureTitleDisconnectButton->setEnabled(temperatureDisconnectWasEnabled);
+    temperatureTitleReconnectButton->setEnabled(temperatureReconnectWasEnabled);
+#endif
     auto *temperatureConfigCard =
         temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureConfigCard"));
     auto *temperatureChannelTopRow =

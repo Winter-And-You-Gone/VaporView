@@ -40,6 +40,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <limits>
 #include <map>
 #include <memory>
@@ -398,6 +399,10 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
 
+#ifdef VAPORVIEW_MAIN_WINDOW_TESTING
+    void testSetLocalTemperatureCommandObserver(std::function<void(VaporView::CommandId)> observer);
+#endif
+
 #if defined(VAPORVIEW_HAS_OSGEARTH) && defined(VAPORVIEW_MAIN_WINDOW_TESTING)
     int testPendingMap3DSampleCount() const;
     qint64 testLatestPendingMap3DRecordTimestampUs() const;
@@ -720,6 +725,9 @@ private:
     void updateTemperatureControllerTitleText();
     void updateTemperatureTitleButtonsState();
     void handleTemperatureTitleButton(VaporView::CommandId command);
+    void connectLocalTemperatureController();
+    void disconnectLocalTemperatureController();
+    void reconnectLocalTemperatureController();
 #ifdef VAPORVIEW_HAS_OSGEARTH
     void maybeForwardMap3DSample(const VaporView::EpsilonData& epsilonData, quint64 recordTimestampUs);
     void noteMap3DSampleDrop(const QString& source, const QString& reason, quint64 recordTimestampUs = 0);
@@ -1106,6 +1114,7 @@ private:
     VaporView::TelemetryStatus last_remote_recording_status_;
     bool has_last_remote_recording_status_;
     std::atomic<bool> cancel_connection_requested_;
+    std::function<void(VaporView::CommandId)> local_temperature_command_test_observer_;
     std::thread connection_thread_;
     std::thread port_detection_thread_;
     std::thread epsilon_reconfigure_thread_;

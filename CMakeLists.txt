@@ -921,6 +921,9 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
     )
+    target_compile_definitions(main_window_layout_test PRIVATE
+        VAPORVIEW_MAIN_WINDOW_TESTING=1
+    )
     target_link_libraries(main_window_layout_test PRIVATE vaporview_main_window)
     add_dependencies(main_window_layout_test VaporViewRuntimeResources)
     if(VAPORVIEW_ENABLE_OSGEARTH AND WIN32)
