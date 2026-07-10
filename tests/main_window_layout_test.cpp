@@ -1404,6 +1404,7 @@ int main(int argc, char **argv)
     {
         QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
         settings.setValue(QStringLiteral("app_sidebar_width"), 56);
+        settings.setValue(QStringLiteral("font_scale_percent"), 100);
 #ifdef Q_OS_WIN
         settings.setValue(QStringLiteral("serial/temperature_port"), QStringLiteral("COM9"));
 #else
@@ -2539,11 +2540,15 @@ int main(int argc, char **argv)
     const QRect topControlsStackRectInTopRow(temperatureChannelTopControlsStack->mapTo(temperatureChannelTopRow, QPoint(0, 0)),
                                              temperatureChannelTopControlsStack->size());
     const QRect stackRectInCard(temperatureChannelStack->mapTo(temperatureConfigCard, QPoint(0, 0)),
-                                temperatureChannelStack->size());
+                                 temperatureChannelStack->size());
+    const QRect targetSpinRectInTopControlsStack(targetSpin->mapTo(temperatureChannelTopControlsStack, QPoint(0, 0)),
+                                                 targetSpin->size());
     require(topRowRectInCard.bottom() < stackRectInCard.top() &&
                 topRowRectInCard.left() <= stackRectInCard.left() + 1 &&
                 topBarRectInRow.width() < stackRectInCard.width(),
             "temperature channel selector is a compact top bar above the config stack");
+    require(temperatureChannelTopControlsStack->rect().contains(targetSpinRectInTopControlsStack),
+            "temperature target input is fully visible before switching channels");
     require(temperatureConfigChannelButton1->x() < temperatureConfigChannelButton2->x() &&
                 temperatureConfigChannelButton2->x() < temperatureCommonSettingsButton->x() &&
                 std::abs(temperatureConfigChannelButton1->y() - temperatureConfigChannelButton2->y()) <= 1 &&
@@ -4015,6 +4020,51 @@ int main(int argc, char **argv)
         const int cardBottomInDataGroup = card->mapTo(dataGroup, QPoint(0, card->height())).y();
         require(cardBottomInDataGroup <= dataGroup->contentsRect().bottom() + 2,
                 "EPSILON card remains visible after worst-case value wrapping");
+    }
+
+    {
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        settings.setValue(QStringLiteral("font_scale_percent"), 130);
+        settings.sync();
+
+        MainWindow scaledWindow;
+        scaledWindow.resize(1664, 1040);
+        scaledWindow.show();
+        processEventsFor(500);
+        QPushButton *scaledTemperatureNavButton = nullptr;
+        for (QPushButton *button : scaledWindow.findChildren<QPushButton *>())
+        {
+            if (button->accessibleName() == QStringLiteral("温控") ||
+                button->accessibleName() == QStringLiteral("Thermal"))
+            {
+                scaledTemperatureNavButton = button;
+                break;
+            }
+        }
+        require(scaledTemperatureNavButton != nullptr,
+                "scaled temperature sidebar button exists");
+        clickWidget(scaledTemperatureNavButton, 150);
+        activateLayouts(&scaledWindow);
+        auto *scaledTemperaturePanel = scaledWindow.findChild<TemperatureControllerPanel *>();
+        auto *scaledTopControlsStack =
+            scaledTemperaturePanel
+                ? scaledTemperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelTopControlsStack"))
+                : nullptr;
+        auto *scaledTargetSpin =
+            scaledTemperaturePanel
+                ? scaledTemperaturePanel->findChild<QDoubleSpinBox *>(QStringLiteral("temperatureTargetSpinChannel1"))
+                : nullptr;
+        require(scaledTopControlsStack != nullptr && scaledTargetSpin != nullptr,
+                "scaled temperature top controls are discoverable");
+        const QRect scaledTargetRect(scaledTargetSpin->mapTo(scaledTopControlsStack, QPoint(0, 0)),
+                                    scaledTargetSpin->size());
+        require(scaledTargetRect.left() >= scaledTopControlsStack->contentsRect().left() &&
+                    scaledTargetRect.right() <= scaledTopControlsStack->contentsRect().right(),
+                "temperature target input is fully visible on the first scaled opening without switching channels");
+        scaledWindow.close();
+        processEventsFor(100);
+        settings.setValue(QStringLiteral("font_scale_percent"), 100);
+        settings.sync();
     }
 
     window.close();

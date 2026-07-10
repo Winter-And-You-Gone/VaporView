@@ -6934,15 +6934,7 @@ void TemperatureControllerPanel::selectChannel(int index)
     {
         channel_top_controls_stack_->setVisible(true);
         channel_top_controls_stack_->setCurrentIndex(pageIndex < 2 ? channelIndex : 2);
-        if (QWidget *currentTopControls = channel_top_controls_stack_->currentWidget())
-        {
-            const int currentWidth = currentTopControls->sizeHint().width();
-            if (currentWidth > 0)
-            {
-                channel_top_controls_stack_->setFixedWidth(currentWidth);
-            }
-        }
-        channel_top_controls_stack_->updateGeometry();
+        refreshTopControlsLayout();
     }
     if (common_.factory_reset_button)
     {
@@ -6979,6 +6971,37 @@ void TemperatureControllerPanel::selectChannel(int index)
         temperature_plot_->setChannelIndex(channelIndex);
         temperature_plot_->setTargetTemperature(target_temperature_by_channel_[channelIndex]);
         temperature_plot_->setSamples(measured_temperature_history_[channelIndex]);
+    }
+}
+
+void TemperatureControllerPanel::refreshTopControlsLayout()
+{
+    if (!channel_top_controls_stack_)
+    {
+        return;
+    }
+    if (QWidget *currentTopControls = channel_top_controls_stack_->currentWidget())
+    {
+        if (QLayout *currentLayout = currentTopControls->layout())
+        {
+            currentLayout->invalidate();
+            currentLayout->activate();
+        }
+        currentTopControls->updateGeometry();
+        const int currentWidth = currentTopControls->sizeHint().width();
+        if (currentWidth > 0)
+        {
+            channel_top_controls_stack_->setFixedWidth(currentWidth);
+        }
+    }
+    channel_top_controls_stack_->updateGeometry();
+    if (QWidget *parent = channel_top_controls_stack_->parentWidget())
+    {
+        if (QLayout *parentLayout = parent->layout())
+        {
+            parentLayout->invalidate();
+            parentLayout->activate();
+        }
     }
 }
 
@@ -9466,6 +9489,10 @@ void MainWindow::applyStyleConfiguration()
     configureComboPopupsIn(this);
     setWindowsTitleBarDark(this, dark_theme_enabled_);
     applyScaledUiMetrics();
+    if (temperature_controller_panel_)
+    {
+        temperature_controller_panel_->refreshTopControlsLayout();
+    }
     if (rtk_config_dialog_)
     {
         rtk_config_dialog_->setFontScale(font_scale_percent_);

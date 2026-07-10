@@ -274,6 +274,7 @@ public:
     void updateRate(double hz);
     void setEnglish(bool english);
     void setCommandStatus(const QString& text, bool error = false);
+    void refreshTopControlsLayout();
     void setOutputEnabledControl(quint8 channel, bool enabled);
     void markCommandPending(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload);
     void clearCommandPending(VaporView::CommandId command, quint8 channel);
