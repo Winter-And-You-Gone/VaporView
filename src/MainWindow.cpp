@@ -1098,6 +1098,16 @@ QStringList temperatureControllerStatusLabelWidthCandidates()
     };
 }
 
+QStringList temperatureControllerCompactStatusLabelWidthCandidates()
+{
+    return {
+        QStringLiteral("Internal:"),
+        QStringLiteral("Error:"),
+        QStringLiteral("自身温度:"),
+        QStringLiteral("错误码:")
+    };
+}
+
 QString fixedTextField(const QString& text, int width, Qt::Alignment alignment = Qt::AlignRight)
 {
     const int targetWidth = std::max(width, static_cast<int>(text.size()));
@@ -6425,20 +6435,20 @@ void TemperatureControllerPanel::setupUi()
     internal_temperature_lbl_ = new QLabel(this);
     internal_temperature_lbl_->setObjectName(QStringLiteral("fieldLabel"));
     internal_temperature_lbl_->setMinimumHeight(22);
-    setFixedTextLabelWidth(internal_temperature_lbl_, temperatureControllerStatusLabelWidthCandidates(), 4);
+    setFixedTextLabelWidth(internal_temperature_lbl_, temperatureControllerCompactStatusLabelWidthCandidates(), 4);
     internal_temperature_label_ = new QLabel(QStringLiteral("--- °C"), this);
     internal_temperature_label_->setObjectName(QStringLiteral("highlightedValue"));
-    internal_temperature_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    internal_temperature_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     internal_temperature_label_->setMinimumHeight(22);
     internal_temperature_label_->setMinimumWidth(kTemperatureControllerValueWidth);
     internal_temperature_label_->setMaximumWidth(kTemperatureControllerValueWidth);
     error_code_lbl_ = new QLabel(this);
     error_code_lbl_->setObjectName(QStringLiteral("fieldLabel"));
     error_code_lbl_->setMinimumHeight(22);
-    setFixedTextLabelWidth(error_code_lbl_, temperatureControllerStatusLabelWidthCandidates(), 4);
+    setFixedTextLabelWidth(error_code_lbl_, temperatureControllerCompactStatusLabelWidthCandidates(), 4);
     error_code_label_ = new QLabel(QStringLiteral("0x0000"), this);
     error_code_label_->setObjectName(QStringLiteral("highlightedValue"));
-    error_code_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    error_code_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     error_code_label_->setMinimumHeight(22);
     error_code_label_->setMinimumWidth(kTemperatureControllerValueWidth);
     error_code_label_->setMaximumWidth(kTemperatureControllerValueWidth);

@@ -2421,6 +2421,31 @@ int main(int argc, char **argv)
     auto *temperaturePageForLayout = window.findChild<QWidget *>(QStringLiteral("temperaturePage"));
     require(temperaturePageForLayout != nullptr && temperaturePageForLayout->isVisible(),
             "temperature page is visible for controller layout checks");
+    auto *temperatureStatusLayout = qobject_cast<QGridLayout *>(
+        temperaturePanel->layout() ? temperaturePanel->layout()->itemAt(0)->layout() : nullptr);
+    auto statusLabelAt = [temperatureStatusLayout](int column) {
+        return temperatureStatusLayout
+            ? qobject_cast<QLabel *>(temperatureStatusLayout->itemAtPosition(0, column)->widget())
+            : nullptr;
+    };
+    QLabel *internalTemperatureStatusLabel = statusLabelAt(0);
+    QLabel *internalTemperatureStatusValue = statusLabelAt(1);
+    QLabel *errorCodeStatusLabel = statusLabelAt(2);
+    QLabel *errorCodeStatusValue = statusLabelAt(3);
+    require(internalTemperatureStatusLabel != nullptr && internalTemperatureStatusValue != nullptr &&
+                errorCodeStatusLabel != nullptr && errorCodeStatusValue != nullptr,
+            "temperature status labels and values exist in the top status row");
+    require((internalTemperatureStatusValue->alignment() & Qt::AlignHorizontal_Mask) == Qt::AlignLeft &&
+                (errorCodeStatusValue->alignment() & Qt::AlignHorizontal_Mask) == Qt::AlignLeft,
+            "temperature status values align toward their labels");
+    require(internalTemperatureStatusLabel->width() < controllerModeLabel->width() &&
+                errorCodeStatusLabel->width() < controllerModeLabel->width(),
+            "temperature and error labels do not reserve controller-mode label width");
+    require(internalTemperatureStatusValue->x() -
+                    (internalTemperatureStatusLabel->x() + internalTemperatureStatusLabel->width()) <= 12 &&
+                errorCodeStatusValue->x() -
+                    (errorCodeStatusLabel->x() + errorCodeStatusLabel->width()) <= 12,
+            "temperature and error values stay close to their labels");
     QLabel *temperatureControllerTitleLabel = nullptr;
     const QList<QLabel*> temperaturePageTitleLabels =
         temperaturePageForLayout->findChildren<QLabel *>(QStringLiteral("sectionTitleLabel"));
