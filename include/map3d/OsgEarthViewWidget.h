@@ -64,6 +64,10 @@ struct Local3DTilesLoadDiagnostics {
     bool clearedPreviousPreview = false;
     QString failureReason;
     QString nodeDescription;
+    int tileCount = 0;
+    int payloadCount = 0;
+    int loadedPayloadCount = 0;
+    QStringList warnings;
 };
 
 struct AircraftModelDiagnostics {
@@ -137,6 +141,7 @@ private:
     bool initialized_ = false;
     bool shutdown_ = false;
     bool follow_aircraft_ = false;
+    bool use_xihu_initial_view_ = false;
     QSize framebuffer_size_;
     double last_frame_ms_ = 0.0;
     double smoothed_frame_ms_ = 0.0;

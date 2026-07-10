@@ -451,19 +451,22 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     }
     else
     {
-        loadInitialEarthFile();
-        const QString aircraftModelPath =
-            QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
-                .value(QStringLiteral("aircraftModelPath"))
-                .toString();
-        if (!aircraftModelPath.isEmpty() && view_)
-        {
-            const bool loaded = view_->loadAircraftModel(aircraftModelPath);
-            statusBar()->showMessage(loaded
-                                         ? QStringLiteral("已加载飞机模型: %1").arg(aircraftModelPath)
-                                         : QStringLiteral("飞机模型加载失败，已保留内置标记: %1").arg(aircraftModelPath),
-                                     7000);
-        }
+        QTimer::singleShot(0, this, [this]() {
+            loadInitialEarthFile();
+            const QString aircraftModelPath =
+                QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+                    .value(QStringLiteral("aircraftModelPath"))
+                    .toString();
+            if (!aircraftModelPath.isEmpty() && view_)
+            {
+                const bool loaded = view_->loadAircraftModel(aircraftModelPath);
+                statusBar()->showMessage(
+                    loaded
+                        ? QStringLiteral("已加载飞机模型: %1").arg(aircraftModelPath)
+                        : QStringLiteral("飞机模型加载失败，已保留内置标记: %1").arg(aircraftModelPath),
+                    7000);
+            }
+        });
     }
 }
 
@@ -630,6 +633,12 @@ void Map3DWindow::loadInitialEarthFile()
     }
     setMapSelection(activeSelection);
     settings.setValue(QStringLiteral("lastEarthFile"), initialEarthFile);
+    if (activeSelection.diagnostics.real3DLocalReady)
+    {
+        QTimer::singleShot(0, this, [this]() {
+            loadConfiguredLocal3DTiles(true);
+        });
+    }
     updateStatus(nullptr);
     statusBar()->showMessage(QStringLiteral("已自动加载 Earth 文件: %1").arg(initialEarthFile), 5000);
 }
@@ -721,6 +730,11 @@ void Map3DWindow::loadLocalImageryTemplate(const LocalImageryOption& option)
 
 void Map3DWindow::loadLocal3DTilesPreview()
 {
+    loadConfiguredLocal3DTiles(true);
+}
+
+bool Map3DWindow::loadConfiguredLocal3DTiles(bool showStatusMessage)
+{
     const MapDataDiagnostics& diagnostics = map_selection_.diagnostics;
     if (!diagnostics.local3DTilesTilesetValid)
     {
@@ -732,8 +746,11 @@ void Map3DWindow::loadLocal3DTilesPreview()
         {
             diagnostics_text_->setPlainText(diagnosticsText());
         }
-        statusBar()->showMessage(QStringLiteral("本地 3D Tiles 契约无效，请先查看地图诊断。"), 8000);
-        return;
+        if (showStatusMessage)
+        {
+            statusBar()->showMessage(QStringLiteral("本地 3D Tiles 契约无效，请先查看地图诊断。"), 8000);
+        }
+        return false;
     }
 
     const bool loaded = view_ ? view_->loadLocal3DTilesPreview(diagnostics.local3DTilesTilesetPath) : false;
@@ -750,21 +767,28 @@ void Map3DWindow::loadLocal3DTilesPreview()
         {
             clear_local_3d_tiles_action_->setEnabled(false);
         }
-        statusBar()->showMessage(QStringLiteral("本地 3D Tiles 预览加载失败: %1")
-                                     .arg(latest_local_3d_tiles_load_.failureReason.isEmpty()
-                                              ? diagnostics.local3DTilesTilesetPath
-                                              : latest_local_3d_tiles_load_.failureReason),
-                                 9000);
-        return;
+        if (showStatusMessage)
+        {
+            statusBar()->showMessage(QStringLiteral("本地 3D 建筑加载失败: %1")
+                                         .arg(latest_local_3d_tiles_load_.failureReason.isEmpty()
+                                                  ? diagnostics.local3DTilesTilesetPath
+                                                  : latest_local_3d_tiles_load_.failureReason),
+                                     9000);
+        }
+        return false;
     }
 
     if (clear_local_3d_tiles_action_)
     {
         clear_local_3d_tiles_action_->setEnabled(true);
     }
-    statusBar()->showMessage(QStringLiteral("已加载本地 3D Tiles 预览叠加层: %1")
-                                 .arg(diagnostics.local3DTilesTilesetPath),
-                             6000);
+    if (showStatusMessage)
+    {
+        statusBar()->showMessage(QStringLiteral("已加载本地 3D 建筑: %1 个瓦片")
+                                     .arg(latest_local_3d_tiles_load_.loadedPayloadCount),
+                                 6000);
+    }
+    return true;
 }
 
 void Map3DWindow::clearLocal3DTilesPreview()
@@ -860,6 +884,10 @@ void Map3DWindow::reloadBestLocalMap()
     }
 
     setMapSelection(selection);
+    if (selection.diagnostics.real3DLocalReady)
+    {
+        loadConfiguredLocal3DTiles(false);
+    }
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
     settings.setValue(QStringLiteral("lastEarthFile"), selection.earthFile);
     const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
@@ -1157,7 +1185,7 @@ void Map3DWindow::setMapSelection(const MapDataSelection& selection)
         local_3d_tiles_action_->setEnabled(enabled);
         local_3d_tiles_action_->setToolTip(
             enabled
-                ? QStringLiteral("加载本地 3D Tiles 预览叠加层: %1")
+                ? QStringLiteral("加载本地 3D 建筑瓦片: %1")
                       .arg(map_selection_.diagnostics.local3DTilesTilesetPath)
                 : QStringLiteral("本地 3D Tiles 不可用或契约无效；请查看地图诊断"));
         local_3d_tiles_action_->setStatusTip(local_3d_tiles_action_->toolTip());
@@ -1401,7 +1429,10 @@ QString Map3DWindow::diagnosticsText() const
     lines << QStringLiteral("  Local 3D Tiles contract: %1")
                  .arg(diagnostics.local3DTilesAvailable
                           ? (diagnostics.local3DTilesTilesetValid ? QStringLiteral("valid") : QStringLiteral("needs attention"))
-                          : QStringLiteral("not checked"));
+                           : QStringLiteral("not checked"));
+    lines << QStringLiteral("  Real 3D local map: %1")
+                 .arg(diagnostics.real3DLocalReady ? QStringLiteral("ready") : QStringLiteral("not ready"));
+    lines << QStringLiteral("  Real 3D earth: %1").arg(diagnostics.real3DLocalEarthPath);
     lines << QStringLiteral("Current working directory: %1").arg(diagnostics.currentWorkingDirectory.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.currentWorkingDirectory);
     lines << QStringLiteral("Project root: %1").arg(diagnostics.projectRoot.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.projectRoot);
     lines << QStringLiteral("Maps root: %1").arg(diagnostics.mapsRoot.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.mapsRoot);

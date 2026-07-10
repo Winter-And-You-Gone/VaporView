@@ -1,0 +1,26 @@
+{
+  "aoi": "西湖区, 杭州市, 浙江省, 中国",
+  "bbox": [
+    119.9931817,
+    30.0777045,
+    120.1767994,
+    30.357607
+  ],
+  "sources": [
+    {
+      "item_id": "S2B_50RQU_20251218_0_L2A",
+      "mgrs_tile": "50RQU",
+      "datetime": "2025-12-18T02:49:23.562000Z",
+      "cloud_cover": 0.048338,
+      "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/50/R/QU/2025/12/S2B_50RQU_20251218_0_L2A/TCI.tif"
+    },
+    {
+      "item_id": "S2B_51RTP_20260107_0_L2A",
+      "mgrs_tile": "51RTP",
+      "datetime": "2026-01-07T02:49:20.698000Z",
+      "cloud_cover": 1.01641,
+      "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/51/R/TP/2026/1/S2B_51RTP_20260107_0_L2A/TCI.tif"
+    }
+  ],
+  "licence_note": "Sentinel-2 L2A public COG imagery; verify downstream attribution requirements."
+}

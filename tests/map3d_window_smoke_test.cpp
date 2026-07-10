@@ -146,8 +146,13 @@ int main(int argc, char** argv)
     require(localImageryAction->menu() != nullptr, "local imagery action has a menu");
     require(qobject_cast<VaporView::SingleLevelPopupMenu*>(localImageryAction->menu()) != nullptr,
             "local imagery action uses the shared single-level popup menu");
-    require(!localImageryAction->isEnabled(), "local imagery action starts disabled without local imagery VRTs");
-    require(!local3DTilesAction->isEnabled(), "local 3D Tiles action starts disabled without a valid local tileset");
+    bool hasEnabledImageryEntry = false;
+    for (QAction* action : localImageryAction->menu()->actions())
+    {
+        hasEnabledImageryEntry = hasEnabledImageryEntry || action->isEnabled();
+    }
+    require(localImageryAction->isEnabled() == hasEnabledImageryEntry,
+            "local imagery action enabled state follows available local imagery entries");
     require(!clearLocal3DTilesAction->isEnabled(), "clear local 3D Tiles action starts disabled before preview load");
     require(loadAircraftModelAction->isEnabled(), "load aircraft model action exists");
     require(resetAircraftModelAction->isEnabled(), "reset aircraft model action exists");
@@ -156,8 +161,9 @@ int main(int argc, char** argv)
     require(resetAircraftModelAction->toolTip().contains(QStringLiteral("内置")),
             "reset aircraft model action explains built-in fallback");
     require(local3DTilesAction->toolTip().contains(QStringLiteral("地图诊断"))
-                || local3DTilesAction->toolTip().contains(QStringLiteral("3D Tiles")),
-            "local 3D Tiles action explains why it is unavailable");
+                || local3DTilesAction->toolTip().contains(QStringLiteral("3D Tiles"))
+                || local3DTilesAction->toolTip().contains(QStringLiteral("建筑瓦片")),
+            "local 3D Tiles action explains its available or unavailable state");
     require(replaySpeedCombo != nullptr, "replay speed combo exists");
     requireComboPopupStyled(replaySpeedCombo,
                             "map3d replay speed combo uses the shared popup styling helper");
@@ -345,7 +351,7 @@ int main(int argc, char** argv)
             "diagnostics include Copernicus DEM VRT path");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("SRTM VRT:")),
             "diagnostics include SRTM VRT path");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Base map priority: Copernicus DEM > SRTM > Natural Earth > Local grid")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Base map priority: Real 3D local > Copernicus DEM > SRTM > Natural Earth > Local grid")),
             "diagnostics include the base map selection priority");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Selected base mode:")),
             "diagnostics include selected base mode");

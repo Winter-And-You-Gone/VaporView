@@ -184,6 +184,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
     endif()
     find_package(osgEarth CONFIG REQUIRED)
     find_package(OpenSceneGraph REQUIRED COMPONENTS osg osgDB osgGA osgViewer osgUtil)
+    find_package(GDAL CONFIG REQUIRED)
 
     if(TARGET osgEarth::osgEarth)
         set(OSGEARTH_TARGET osgEarth::osgEarth)
@@ -294,6 +295,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         set(vaporview_srtm_earth_file "${CMAKE_SOURCE_DIR}/resources/maps/vaporview_with_srtm.earth")
         set(vaporview_full_local_earth_file "${CMAKE_SOURCE_DIR}/resources/maps/vaporview_full_local.earth")
         set(vaporview_full_local_srtm_earth_file "${CMAKE_SOURCE_DIR}/resources/maps/vaporview_full_local_srtm.earth")
+        set(vaporview_real3d_local_earth_file "${CMAKE_SOURCE_DIR}/resources/maps/vaporview_real3d_local.earth")
         set(vaporview_sentinel2_imagery_earth_file "${CMAKE_SOURCE_DIR}/resources/maps/vaporview_with_sentinel2_imagery.earth")
         set(vaporview_landsat_imagery_earth_file "${CMAKE_SOURCE_DIR}/resources/maps/vaporview_with_landsat_imagery.earth")
         set(vaporview_openaerialmap_imagery_earth_file "${CMAKE_SOURCE_DIR}/resources/maps/vaporview_with_openaerialmap_imagery.earth")
@@ -325,6 +327,9 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_full_local_srtm_earth_file}"
                     "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_full_local_srtm.earth"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${vaporview_real3d_local_earth_file}"
+                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_real3d_local.earth"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_sentinel2_imagery_earth_file}"
                     "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_with_sentinel2_imagery.earth"
@@ -363,6 +368,21 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
                 )
             endfunction()
         endif()
+    endif()
+
+    add_executable(vaporview_building_tileset
+        tools/BuildingTilesetGenerator.cpp
+    )
+    target_include_directories(vaporview_building_tileset PRIVATE
+        ${OPENSCENEGRAPH_INCLUDE_DIRS}
+    )
+    target_link_libraries(vaporview_building_tileset PRIVATE
+        Qt6::Core
+        GDAL::GDAL
+        ${OPENSCENEGRAPH_LIBRARIES}
+    )
+    if(WIN32)
+        vaporview_stage_osgearth_runtime(vaporview_building_tileset)
     endif()
 endif()
 
@@ -1013,6 +1033,42 @@ if(BUILD_TESTING)
         endif()
         add_test(NAME map3d_window_smoke_test COMMAND map3d_window_smoke_test)
 
+        add_executable(map3d_real_data_load_test
+            tests/map3d_real_data_load_test.cpp
+        )
+        target_include_directories(map3d_real_data_load_test PRIVATE
+            ${CMAKE_SOURCE_DIR}/include
+        )
+        target_compile_definitions(map3d_real_data_load_test PRIVATE
+            VAPORVIEW_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        )
+        target_link_libraries(map3d_real_data_load_test PRIVATE vaporview_map3d_osgearth)
+        if(WIN32)
+            vaporview_stage_osgearth_runtime(map3d_real_data_load_test)
+        endif()
+        add_test(NAME map3d_real_data_load_test COMMAND map3d_real_data_load_test)
+        set_tests_properties(map3d_real_data_load_test PROPERTIES
+            SKIP_RETURN_CODE 77
+        )
+
+        add_executable(map3d_real_window_close_test
+            tests/map3d_real_window_close_test.cpp
+        )
+        target_include_directories(map3d_real_window_close_test PRIVATE
+            ${CMAKE_SOURCE_DIR}/include
+        )
+        target_compile_definitions(map3d_real_window_close_test PRIVATE
+            VAPORVIEW_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        )
+        target_link_libraries(map3d_real_window_close_test PRIVATE vaporview_map3d_osgearth)
+        if(WIN32)
+            vaporview_stage_osgearth_runtime(map3d_real_window_close_test)
+        endif()
+        add_test(NAME map3d_real_window_close_test COMMAND map3d_real_window_close_test)
+        set_tests_properties(map3d_real_window_close_test PROPERTIES
+            SKIP_RETURN_CODE 77
+        )
+
         add_executable(main_window_map3d_live_test
             tests/main_window_map3d_live_test.cpp
         )
@@ -1029,6 +1085,27 @@ if(BUILD_TESTING)
             vaporview_stage_osgearth_runtime(main_window_map3d_live_test)
         endif()
         add_test(NAME main_window_map3d_live_test COMMAND main_window_map3d_live_test)
+
+        add_executable(main_window_map3d_real_close_test
+            tests/main_window_map3d_real_close_test.cpp
+        )
+        target_include_directories(main_window_map3d_real_close_test PRIVATE
+            ${CMAKE_SOURCE_DIR}/include
+            ${CMAKE_SOURCE_DIR}/src
+        )
+        target_compile_definitions(main_window_map3d_real_close_test PRIVATE
+            VAPORVIEW_MAIN_WINDOW_TESTING=1
+            VAPORVIEW_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        )
+        target_link_libraries(main_window_map3d_real_close_test PRIVATE vaporview_main_window)
+        add_dependencies(main_window_map3d_real_close_test VaporViewRuntimeResources)
+        if(WIN32)
+            vaporview_stage_osgearth_runtime(main_window_map3d_real_close_test)
+        endif()
+        add_test(NAME main_window_map3d_real_close_test COMMAND main_window_map3d_real_close_test)
+        set_tests_properties(main_window_map3d_real_close_test PROPERTIES
+            SKIP_RETURN_CODE 77
+        )
     endif()
 
     add_executable(vaporview_startup_test

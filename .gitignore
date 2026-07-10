@@ -98,6 +98,7 @@ __pycache__/
 /resources/maps/tiles3d/**/*.cmpt
 /resources/maps/tiles3d/**/*.glb
 /resources/maps/tiles3d/**/*.gltf
+/resources/maps/tiles3d/**/*.osgb
 /resources/maps/models/**/*.osg
 /resources/maps/models/**/*.osgb
 /resources/maps/models/**/*.glb

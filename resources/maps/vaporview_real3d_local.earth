@@ -1,0 +1,49 @@
+<map name="VaporView Xihu Real 3D Local Map">
+    <GDALImage name="Natural Earth II global fallback">
+        <url>natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt</url>
+        <interpolation>bilinear</interpolation>
+    </GDALImage>
+
+    <GDALImage name="Xihu Sentinel-2 local imagery">
+        <url>imagery/sentinel2/sentinel2.vrt</url>
+        <interpolation>bilinear</interpolation>
+    </GDALImage>
+
+    <GDALElevation name="Xihu Copernicus DEM GLO-30">
+        <url>terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt</url>
+        <interpolation>bilinear</interpolation>
+    </GDALElevation>
+
+    <OGRFeatures name="osm-water">
+        <url>osm/water.gpkg</url>
+    </OGRFeatures>
+
+    <OGRFeatures name="osm-roads">
+        <url>osm/roads.gpkg</url>
+    </OGRFeatures>
+
+    <FeatureImage name="OSM water fill" min_level="6">
+        <features>osm-water</features>
+        <styles>
+            <style type="text/css">
+                default {
+                    fill:         #3f86b9;
+                    stroke:       #76b9df;
+                    stroke-width: 1px;
+                }
+            </style>
+        </styles>
+    </FeatureImage>
+
+    <FeatureImage name="OSM roads" min_level="10">
+        <features>osm-roads</features>
+        <styles>
+            <style type="text/css">
+                default {
+                    stroke:       #f6df8f;
+                    stroke-width: 1.5px;
+                }
+            </style>
+        </styles>
+    </FeatureImage>
+</map>

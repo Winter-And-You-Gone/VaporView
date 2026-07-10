@@ -46,6 +46,7 @@ private:
     void openEarthFile();
     void loadLocalImageryTemplate(const VaporView::Map3D::LocalImageryOption& option);
     void loadLocal3DTilesPreview();
+    bool loadConfiguredLocal3DTiles(bool showStatusMessage);
     void clearLocal3DTilesPreview();
     void openAircraftModel();
     void resetAircraftModel();

@@ -99,12 +99,14 @@ int main(int argc, char** argv)
     VaporView::Map3D::MapDataManager builtInManager({root.absolutePath()});
     require(builtInManager.isBuiltInEarthFile(QStringLiteral("resources/maps/vaporview_full_local_srtm.earth")),
             "SRTM full-local earth template should be treated as built in");
+    require(builtInManager.isBuiltInEarthFile(QStringLiteral("resources/maps/vaporview_real3d_local.earth")),
+            "real-3D local earth template should be treated as built in");
     selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::LocalGridOnly, "preview texture alone should not select NaturalEarth");
     require(!selection.diagnostics.naturalEarthAvailable, "preview texture alone should not mark Natural Earth available");
     require(selection.diagnostics.readinessSummary.contains(QStringLiteral("Local grid fallback")),
             "local grid selection should summarize fallback readiness");
-    require(selection.diagnostics.baseMapPriority.contains(QStringLiteral("Copernicus DEM > SRTM > Natural Earth > Local grid")),
+    require(selection.diagnostics.baseMapPriority.contains(QStringLiteral("Real 3D local > Copernicus DEM > SRTM > Natural Earth > Local grid")),
             "diagnostics should state the base map selection priority");
     require(selection.diagnostics.selectedBaseMode == VaporView::Map3D::MapDataMode::LocalGridOnly,
             "local grid selection should report LocalGridOnly as the selected base mode");
@@ -435,6 +437,33 @@ int main(int argc, char** argv)
             "complete Copernicus full local map should report selected full-local earth template");
     require(selection.diagnostics.selectedBaseMode == VaporView::Map3D::MapDataMode::NaturalEarthWithCopernicusDem,
             "complete Copernicus full local map should still report Copernicus DEM as the selected base mode");
+
+    touch(root, QStringLiteral("resources/maps/vaporview_real3d_local.earth"));
+    touch(root, QStringLiteral("resources/maps/tiles3d/local/content/buildings.osgb"));
+    writeFile(root,
+              QStringLiteral("resources/maps/tiles3d/local/tileset.json"),
+              QByteArrayLiteral(R"JSON({
+  "asset": {"version": "1.1"},
+  "geometricError": 1000,
+  "root": {
+    "boundingVolume": {"region": [2.09, 0.52, 2.10, 0.53, 0, 300]},
+    "geometricError": 1000,
+    "children": [
+      {
+        "boundingVolume": {"region": [2.09, 0.52, 2.10, 0.53, 0, 300]},
+        "geometricError": 0,
+        "content": {"uri": "content/buildings.osgb"}
+      }
+    ]
+  }
+})JSON"));
+    selection = select(root);
+    require(selection.diagnostics.real3DLocalReady,
+            "real-3D local map should become ready when imagery, DEM, OSM, earth template, and tileset exist");
+    require(selection.earthFile.endsWith(QStringLiteral("vaporview_real3d_local.earth")),
+            "real-3D local map should outrank the safe full-local earth template");
+    require(selection.diagnostics.readinessSummary.contains(QStringLiteral("Hangzhou Xihu real 3D")),
+            "real-3D local readiness summary should identify the selected map");
 
     QTemporaryDir srtmFullLocalDir;
     require(srtmFullLocalDir.isValid(), "failed to create SRTM full-local temporary directory");

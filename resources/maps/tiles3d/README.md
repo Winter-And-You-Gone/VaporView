@@ -8,7 +8,16 @@ Expected entry point:
 resources/maps/tiles3d/local/tileset.json
 ```
 
-Put the full 3D Tiles dataset under `resources/maps/tiles3d/local/` next to `tileset.json`. Large `tileset.json`, `.b3dm`, `.i3dm`, `.pnts`, `.cmpt`, `.glb`, and `.gltf` files are intentionally ignored by git.
+Put the full 3D Tiles dataset under `resources/maps/tiles3d/local/` next to `tileset.json`. Large `tileset.json`, `.b3dm`, `.i3dm`, `.pnts`, `.cmpt`, `.glb`, `.gltf`, and `.osgb` files are intentionally ignored by git.
+
+For the project-local Hangzhou Xihu workflow, build the generator and run:
+
+```powershell
+cmake --build build/Release --config Release --target vaporview_building_tileset
+python scripts/prepare-real3d-local-data.py --overwrite
+```
+
+The generated `tileset.json` uses the 3D Tiles hierarchy and bounding-volume contract, with OSG-native `.osgb` payloads because the bundled OpenSceneGraph runtime does not include a glTF or Cesium 3D Tiles reader plugin. These payloads remain fully local and are loaded by VaporView's own tileset overlay path.
 
 `MapDataManager` scans this path and reports it in the 3D Map diagnostics. When the local-only contract is valid, the 3D Map `本地 3D Tiles` toolbar action attempts to load the tileset as an independent OSG overlay. Use `清除 3D Tiles` to remove that overlay without reloading the base map or clearing the flight track. Loading success depends on the installed OSG/osgEarth runtime plugin support; failures are reported under `Local 3D Tiles preview load` in the diagnostics panel.
 

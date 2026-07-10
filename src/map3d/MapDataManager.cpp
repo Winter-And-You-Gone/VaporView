@@ -21,6 +21,7 @@ constexpr auto kCopernicusEarthRelative = "resources/maps/vaporview_with_dem.ear
 constexpr auto kSrtmEarthRelative = "resources/maps/vaporview_with_srtm.earth";
 constexpr auto kFullLocalEarthRelative = "resources/maps/vaporview_full_local.earth";
 constexpr auto kFullLocalSrtmEarthRelative = "resources/maps/vaporview_full_local_srtm.earth";
+constexpr auto kReal3DLocalEarthRelative = "resources/maps/vaporview_real3d_local.earth";
 constexpr auto kSentinel2ImageryEarthRelative = "resources/maps/vaporview_with_sentinel2_imagery.earth";
 constexpr auto kLandsatImageryEarthRelative = "resources/maps/vaporview_with_landsat_imagery.earth";
 constexpr auto kOpenAerialMapImageryEarthRelative = "resources/maps/vaporview_with_openaerialmap_imagery.earth";
@@ -591,7 +592,7 @@ void finalizeSelection(MapDataSelection& selection)
 {
     MapDataDiagnostics& diagnostics = selection.diagnostics;
     diagnostics.baseMapPriority =
-        QStringLiteral("Copernicus DEM > SRTM > Natural Earth > Local grid");
+        QStringLiteral("Real 3D local > Copernicus DEM > SRTM > Natural Earth > Local grid");
 
     if (selection.mode == MapDataMode::FullLocalMap)
     {
@@ -631,18 +632,29 @@ void finalizeSelection(MapDataSelection& selection)
         QStringLiteral("Optional local 3D Tiles: %1")
             .arg(diagnostics.local3DTilesAvailable
                      ? (diagnostics.local3DTilesTilesetValid ? QStringLiteral("contract valid") : QStringLiteral("needs attention"))
-                     : QStringLiteral("not configured"))
+                     : QStringLiteral("not configured")),
+        QStringLiteral("Real 3D local map: %1")
+            .arg(diagnostics.real3DLocalReady ? QStringLiteral("ready") : QStringLiteral("not ready"))
     };
 
     diagnostics.readinessNextSteps.clear();
     switch (selection.mode)
     {
     case MapDataMode::FullLocalMap:
-        diagnostics.readinessSummary =
-            QStringLiteral("Ready for full offline local map: Natural Earth, %1 elevation, and safe OSM water/road context are selected.")
-                .arg(diagnostics.selectedElevationSource);
-        diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("OSM buildings and places are prepared for diagnostics, but are not auto-rendered because full-country labels/buildings can stall the 3D map."));
+        if (diagnostics.real3DLocalReady)
+        {
+            diagnostics.readinessSummary =
+                QStringLiteral("Ready for Hangzhou Xihu real 3D: Sentinel-2 imagery, %1 elevation, OSM context, and local building tiles are selected.")
+                    .arg(diagnostics.selectedElevationSource);
+        }
+        else
+        {
+            diagnostics.readinessSummary =
+                QStringLiteral("Ready for full offline local map: Natural Earth, %1 elevation, and safe OSM water/road context are selected.")
+                    .arg(diagnostics.selectedElevationSource);
+            diagnostics.readinessNextSteps.push_back(
+                QStringLiteral("OSM buildings and places are prepared for diagnostics, but are not auto-rendered because full-country labels/buildings can stall the 3D map."));
+        }
         if (!diagnostics.localImageryAvailable)
         {
             diagnostics.readinessNextSteps.push_back(
@@ -733,6 +745,10 @@ int selectionPriority(const MapDataSelection& selection)
     {
         ++priority;
     }
+    if (selection.diagnostics.real3DLocalReady)
+    {
+        priority += 100;
+    }
     return priority;
 }
 
@@ -762,8 +778,7 @@ MapDataSelection MapDataManager::selectBestAvailableMap() const
         {
             best = selection;
             haveSelection = true;
-            if (best.mode == MapDataMode::FullLocalMap
-                && best.diagnostics.selectedBaseMode == MapDataMode::NaturalEarthWithCopernicusDem)
+            if (best.diagnostics.real3DLocalReady)
             {
                 break;
             }
@@ -784,7 +799,8 @@ bool MapDataManager::isBuiltInEarthFile(const QString& earthPath) const
         || fileName == QStringLiteral("vaporview_with_dem.earth")
         || fileName == QStringLiteral("vaporview_with_srtm.earth")
         || fileName == QStringLiteral("vaporview_full_local.earth")
-        || fileName == QStringLiteral("vaporview_full_local_srtm.earth");
+        || fileName == QStringLiteral("vaporview_full_local_srtm.earth")
+        || fileName == QStringLiteral("vaporview_real3d_local.earth");
 }
 
 QString MapDataManager::modeLabel(MapDataMode mode)
@@ -851,6 +867,8 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     const QString srtmEarthPath = absolutePath(root, kSrtmEarthRelative);
     const QString fullLocalEarthPath = absolutePath(root, kFullLocalEarthRelative);
     const QString fullLocalSrtmEarthPath = absolutePath(root, kFullLocalSrtmEarthRelative);
+    const QString real3DLocalEarthPath = absolutePath(root, kReal3DLocalEarthRelative);
+    diagnostics.real3DLocalEarthPath = real3DLocalEarthPath;
     diagnostics.fullLocalEarthPath = fullLocalEarthPath;
     diagnostics.fullLocalSrtmEarthPath = fullLocalSrtmEarthPath;
     diagnostics.sentinel2ImageryEarthPath = absolutePath(root, kSentinel2ImageryEarthRelative);
@@ -909,6 +927,7 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     recordFile(diagnostics, defaultEarthPath);
     recordFile(diagnostics, fullLocalEarthPath);
     recordFile(diagnostics, fullLocalSrtmEarthPath);
+    recordOptionalFile(diagnostics, real3DLocalEarthPath);
     recordOptionalFile(diagnostics, diagnostics.sentinel2ImageryEarthPath);
     recordOptionalFile(diagnostics, diagnostics.landsatImageryEarthPath);
     recordOptionalFile(diagnostics, diagnostics.openAerialMapImageryEarthPath);
@@ -942,6 +961,12 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     diagnostics.localImageryMenuAvailable = diagnostics.localImageryMenuEntryCount > 0;
     diagnostics.local3DTilesAvailable = isFile(diagnostics.local3DTilesTilesetPath);
     collectLocal3DTilesDiagnostics(diagnostics);
+    diagnostics.real3DLocalReady = isFile(real3DLocalEarthPath)
+        && diagnostics.naturalEarthAvailable
+        && diagnostics.copernicusDemAvailable
+        && hasCompleteOsmSet(diagnostics)
+        && isFile(diagnostics.sentinel2ImageryVrtPath)
+        && diagnostics.local3DTilesTilesetValid;
     collectFullLocalBlockers(diagnostics, fullLocalEarthPath, fullLocalSrtmEarthPath);
 
     if (diagnostics.localImageryAvailable)
@@ -963,6 +988,23 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
         fullLocalEarthPath,
         fullLocalSrtmEarthPath,
         diagnostics);
+
+    if (diagnostics.real3DLocalReady)
+    {
+        selection.mode = MapDataMode::FullLocalMap;
+        selection.description =
+            QStringLiteral("Hangzhou Xihu Sentinel-2 imagery, Copernicus DEM, OSM context, and local 3D building tiles.");
+        setEarthFile(selection, real3DLocalEarthPath);
+        diagnostics.selectedDemLayerAvailable = true;
+        diagnostics.selectedOsmLayersAvailable = true;
+        diagnostics.selectedElevationSource = QStringLiteral("Copernicus DEM GLO-30");
+        diagnostics.selectedFullLocalEarthPath = real3DLocalEarthPath;
+        diagnostics.selectedOsmLayerCount = 2;
+        diagnostics.messages.push_back(
+            QStringLiteral("Selected Hangzhou Xihu real-3D local map with Sentinel-2 imagery and local building tiles."));
+        finalizeSelection(selection);
+        return selection;
+    }
 
     if (!selectedFullLocalEarthPath.isEmpty()
         && diagnostics.naturalEarthAvailable
