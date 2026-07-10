@@ -96,6 +96,9 @@ constexpr int kFrameRateLabelRefreshMs = 250;
 constexpr int kProcessBufferMaxFramesPerPass = 32;
 constexpr qint64 kProcessBufferBudgetMs = 8;
 constexpr int kTcpBufferBacklogWarningBytes = 4 * 1024 * 1024;
+constexpr qsizetype kTcpInvalidResyncDisconnectBytes = 4 * 1024 * 1024;
+constexpr qsizetype kTcpBufferMaxBacklogBytes = 2 * kMaxPayloadBytes + 2 * kHeaderSize;
+constexpr qsizetype kTcpBufferResyncKeepBytes = kHeaderSize - 1;
 constexpr qint64 kTcpBufferBacklogWarningIntervalMs = 5000;
 constexpr qint64 kFrameRateWindowMs = 5000;
 constexpr double kMaxReasonableWaveMagnitude = 1.0e6;
@@ -1280,6 +1283,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , last_live_decode_time_ms_(0)
     , last_frame_rate_label_update_ms_(0)
     , last_backlog_warning_ms_(0)
+    , invalid_resync_discarded_bytes_(0)
     , live_display_dirty_(false)
     , process_buffer_pending_(false)
     , payload_order_auto_correct_logged_(false)
@@ -2323,6 +2327,22 @@ void TcpWavePanel::rejectRemotePeakSearchRange(const QString& reason)
         : QStringLiteral("天空端拒绝峰值搜索区间：%1").arg(reason));
 }
 
+#ifdef VAPORVIEW_MAIN_WINDOW_TESTING
+void TcpWavePanel::testFeedSocketBytes(const QByteArray& bytes)
+{
+    buffer_.append(bytes);
+    if (!enforceTcpBufferBacklogLimit())
+    {
+        processBuffer();
+    }
+}
+
+qsizetype TcpWavePanel::testBufferedByteCount() const
+{
+    return buffer_.size();
+}
+#endif
+
 void TcpWavePanel::setupSocket()
 {
     socket_ = new QTcpSocket(this);
@@ -2430,6 +2450,7 @@ void TcpWavePanel::onToggleConnectionClicked()
     frame_count_ = 0;
     last_live_decode_time_ms_ = 0;
     last_backlog_warning_ms_ = 0;
+    invalid_resync_discarded_bytes_ = 0;
     process_buffer_pending_ = false;
     payload_order_auto_correct_logged_ = false;
     frame_arrival_times_ms_.clear();
@@ -2686,6 +2707,10 @@ void TcpWavePanel::onSocketReadyRead()
     }
 
     buffer_.append(socket_->readAll());
+    if (enforceTcpBufferBacklogLimit())
+    {
+        return;
+    }
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     if (buffer_.size() >= kTcpBufferBacklogWarningBytes &&
         (last_backlog_warning_ms_ <= 0 ||
@@ -2832,6 +2857,63 @@ void TcpWavePanel::scheduleDeferredProcessBuffer()
     QTimer::singleShot(0, this, [this]() {
         processBuffer();
     });
+}
+
+bool TcpWavePanel::enforceTcpBufferBacklogLimit()
+{
+    if (buffer_.size() <= kTcpBufferMaxBacklogBytes)
+    {
+        return false;
+    }
+
+    disconnectInvalidTcpStream(QString(is_english_
+        ? "TCP wave receive backlog exceeded %1 bytes; disconnecting from invalid or unsupported stream."
+        : "TCP 波形接收缓冲超过 %1 字节，已断开异常或不支持的数据流。")
+        .arg(static_cast<qlonglong>(kTcpBufferMaxBacklogBytes)));
+    return true;
+}
+
+bool TcpWavePanel::discardInvalidTcpPrefix(qsizetype bytesToDrop)
+{
+    if (bytesToDrop <= 0)
+    {
+        return false;
+    }
+
+    buffer_.remove(0, bytesToDrop);
+    invalid_resync_discarded_bytes_ += bytesToDrop;
+    emit logMessageRequested(QString(is_english_
+        ? "TCP wave resync discarded %1 byte(s) while looking for a valid frame boundary."
+        : "TCP 波形重同步已丢弃 %1 字节，以查找有效帧边界。")
+        .arg(static_cast<qlonglong>(bytesToDrop)));
+
+    if (invalid_resync_discarded_bytes_ >= kTcpInvalidResyncDisconnectBytes)
+    {
+        disconnectInvalidTcpStream(QString(is_english_
+            ? "TCP wave stream did not produce a valid frame boundary after discarding %1 bytes; disconnecting."
+            : "TCP 波形数据流已丢弃 %1 字节仍未找到有效帧边界，已断开连接。")
+            .arg(static_cast<qlonglong>(invalid_resync_discarded_bytes_)));
+        return true;
+    }
+    return false;
+}
+
+void TcpWavePanel::disconnectInvalidTcpStream(const QString& reason)
+{
+    setStatusText(reason);
+    emit logMessageRequested(reason);
+    buffer_.clear();
+    pending_wave1_payload_.clear();
+    resetParserState();
+    parse_mode_ = ParseMode::AutoDetect;
+    header_byte_order_ = HeaderByteOrder::Unknown;
+    invalid_resync_discarded_bytes_ = 0;
+    process_buffer_pending_ = false;
+
+    if (socket_ && socket_->state() != QAbstractSocket::UnconnectedState)
+    {
+        socket_->disconnectFromHost();
+    }
 }
 
 void TcpWavePanel::processBuffer()
@@ -3020,6 +3102,7 @@ bool TcpWavePanel::trySynchronizeLengthPrefixedStream()
         const qint32 candidate = decodeHeaderValue(buffer_.constData(), header_byte_order_);
         if (isValidPayloadSize(candidate))
         {
+            invalid_resync_discarded_bytes_ = 0;
             return true;
         }
     }
@@ -3049,6 +3132,25 @@ bool TcpWavePanel::trySynchronizeLengthPrefixedStream()
             const bool preferredSize = firstPayloadSize == kPreferredPayloadBytes;
             const int secondHeaderOffset = offset + kHeaderSize + firstPayloadSize;
             const bool canValidateSecondHeader = secondHeaderOffset + kHeaderSize <= buffer_.size();
+            if (!canValidateSecondHeader)
+            {
+                if (offset != 0 && !preferredSize)
+                {
+                    continue;
+                }
+                double score = offset == 0 ? 40.0 : 0.0;
+                if (preferredSize)
+                {
+                    score += 10.0;
+                }
+                if (!hasBestCandidate || score > bestCandidate.score)
+                {
+                    bestCandidate = {offset, order, score};
+                    hasBestCandidate = true;
+                }
+                continue;
+            }
+
             const qint32 secondPayloadSize = canValidateSecondHeader
                 ? decodeHeaderValue(buffer_.constData() + secondHeaderOffset, order)
                 : 0;
@@ -3115,6 +3217,7 @@ bool TcpWavePanel::trySynchronizeLengthPrefixedStream()
 
         header_byte_order_ = bestCandidate.order;
         parse_mode_ = ParseMode::LengthPrefixed;
+        invalid_resync_discarded_bytes_ = 0;
         return true;
     }
 
@@ -3126,6 +3229,8 @@ bool TcpWavePanel::trySynchronizeLengthPrefixedStream()
         .arg(hexPreview(buffer_))
         .arg(little)
         .arg(big));
+    const qsizetype bytesToDrop = std::max<qsizetype>(0, buffer_.size() - kTcpBufferResyncKeepBytes);
+    discardInvalidTcpPrefix(bytesToDrop);
     return false;
 }
 

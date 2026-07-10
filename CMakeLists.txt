@@ -812,6 +812,20 @@ if(BUILD_TESTING)
     target_link_libraries(tcp_wave_encoding_test PRIVATE vaporview_sky_core)
     add_test(NAME tcp_wave_encoding_test COMMAND tcp_wave_encoding_test)
 
+    add_executable(tcp_wave_panel_test
+        tests/tcp_wave_panel_test.cpp
+    )
+    target_include_directories(tcp_wave_panel_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_compile_definitions(tcp_wave_panel_test PRIVATE
+        VAPORVIEW_MAIN_WINDOW_TESTING=1
+    )
+    target_link_libraries(tcp_wave_panel_test PRIVATE vaporview_main_window)
+    add_dependencies(tcp_wave_panel_test VaporViewRuntimeResources)
+    add_test(NAME tcp_wave_panel_test COMMAND tcp_wave_panel_test)
+
     add_executable(temperature_controller_protocol_test
         tests/temperature_controller_protocol_test.cpp
     )

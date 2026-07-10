@@ -49,6 +49,10 @@ public:
     void injectRemoteWaveformFeature(const VaporView::WaveformFeature& feature);
     void applyRemotePeakSearchRange(quint32 startIndex, quint32 endIndex);
     void rejectRemotePeakSearchRange(const QString& reason);
+#ifdef VAPORVIEW_MAIN_WINDOW_TESTING
+    void testFeedSocketBytes(const QByteArray& bytes);
+    qsizetype testBufferedByteCount() const;
+#endif
 
     enum class ParseMode
     {
@@ -135,6 +139,9 @@ private:
     void scheduleDeferredProcessBuffer();
     void processBuffer();
     bool trySynchronizeLengthPrefixedStream();
+    bool enforceTcpBufferBacklogLimit();
+    bool discardInvalidTcpPrefix(qsizetype bytesToDrop);
+    void disconnectInvalidTcpStream(const QString& reason);
     bool isValidPayloadSize(qint32 candidate) const;
     qint32 decodeHeaderValue(const char *raw, HeaderByteOrder order) const;
     bool tryConsumeHeader();
@@ -202,6 +209,7 @@ private:
     qint64 last_live_decode_time_ms_;
     qint64 last_frame_rate_label_update_ms_;
     qint64 last_backlog_warning_ms_;
+    qsizetype invalid_resync_discarded_bytes_;
     bool live_display_dirty_;
     bool process_buffer_pending_;
     bool payload_order_auto_correct_logged_;

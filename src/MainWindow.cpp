@@ -82,6 +82,7 @@
 #include <QStackedWidget>
 #include <QStyle>
 #include <QStyleOptionToolButton>
+#include <QTextDocument>
 #include <QThread>
 #include <QToolButton>
 #include <QToolTip>
@@ -128,6 +129,7 @@ namespace
 {
 constexpr int kFloatingMenuShadowMarginPx = 22;
 constexpr int kFloatingMenuCornerRadiusPx = 10;
+constexpr int kMaxLogEntryCount = 5000;
 
 bool isTemperatureCommonCommand(VaporView::CommandId command)
 {
@@ -15274,6 +15276,7 @@ void MainWindow::setupLogPanel()
     log_text_edit_->setAutoFillBackground(false);
     log_text_edit_->viewport()->setAutoFillBackground(false);
     log_text_edit_->setReadOnly(true);
+    log_text_edit_->document()->setMaximumBlockCount(kMaxLogEntryCount);
     log_text_edit_->setMinimumWidth(0);
     log_text_edit_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
     log_layout->addWidget(log_text_edit_);
@@ -16753,6 +16756,10 @@ void MainWindow::log(const QString& message)
     QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
     const QString displayLine = QString("[%1] %2").arg(timestamp, message);
     log_entries_.append(displayLine);
+    if (log_entries_.size() > kMaxLogEntryCount)
+    {
+        log_entries_.remove(0, log_entries_.size() - kMaxLogEntryCount);
+    }
     if (log_text_edit_ && shouldShowLogLine(displayLine))
     {
         log_text_edit_->append(displayLine);

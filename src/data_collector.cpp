@@ -20,6 +20,11 @@ namespace VaporView
 {
 namespace
 {
+constexpr size_t kGnssLineBufferMaxBytes = 64 * 1024;
+constexpr size_t kGnssLineBufferKeepBytes = 1024;
+constexpr size_t kPtbLineBufferMaxBytes = 4096;
+constexpr size_t kPtbLineBufferKeepBytes = 128;
+
 void sleepMs(int ms)
 {
   if (ms > 0)
@@ -42,6 +47,19 @@ double computeRemainingSeconds(const std::chrono::steady_clock::time_point& star
       std::chrono::steady_clock::now() - start_time).count();
   const auto remaining_ms = std::max<int64_t>(0, static_cast<int64_t>(timeout_ms) - elapsed_ms);
   return remaining_ms / 1000.0;
+}
+
+size_t trimUnterminatedLineBuffer(std::string& buffer, size_t maxBytes, size_t keepBytes)
+{
+  if (buffer.size() <= maxBytes)
+  {
+    return 0;
+  }
+
+  const size_t bytesToKeep = std::min(buffer.size(), keepBytes);
+  const size_t bytesToDrop = buffer.size() - bytesToKeep;
+  buffer.erase(0, bytesToDrop);
+  return bytesToDrop;
 }
 
 uint16_t modbusCrc16Local(const uint8_t* data, size_t len)
@@ -1459,6 +1477,7 @@ void GnssCollector::run()
 {
   std::string buffer;
   buffer.reserve(4096);
+  bool line_buffer_limit_logged = false;
   char chunk[1024];
 
   while (running_.load())
@@ -1467,12 +1486,36 @@ void GnssCollector::run()
     if (n > 0)
     {
       buffer.append(chunk, static_cast<size_t>(n));
+      if (buffer.find('\n') == std::string::npos)
+      {
+        const size_t dropped = trimUnterminatedLineBuffer(buffer, kGnssLineBufferMaxBytes, kGnssLineBufferKeepBytes);
+        if (dropped > 0 && !line_buffer_limit_logged)
+        {
+          log(isEnglishLog()
+              ? "GNSS: dropped oversized unterminated line buffer while waiting for newline"
+              : "GNSS：长时间未收到换行，已丢弃过长文本缓冲");
+          line_buffer_limit_logged = true;
+        }
+      }
 
       size_t pos = 0;
       while ((pos = buffer.find('\n')) != std::string::npos)
       {
+        if (pos > kGnssLineBufferMaxBytes)
+        {
+          buffer.erase(0, pos + 1);
+          if (!line_buffer_limit_logged)
+          {
+            log(isEnglishLog()
+                ? "GNSS: dropped oversized text line"
+                : "GNSS：已丢弃超长文本行");
+          }
+          line_buffer_limit_logged = false;
+          continue;
+        }
         std::string line = buffer.substr(0, pos);
         buffer.erase(0, pos + 1);
+        line_buffer_limit_logged = false;
 
         if (!line.empty() && line.back() == '\r')
         {
@@ -2990,6 +3033,7 @@ void PtbCollector::run()
   char chunk[256];
   std::string buffer;
   buffer.reserve(512);
+  bool line_buffer_limit_logged = false;
 
   auto startContinuousOutput = [this]() -> bool {
     serial_.flush();
@@ -3066,13 +3110,37 @@ void PtbCollector::run()
     if (n > 0)
     {
       buffer.append(chunk, static_cast<size_t>(n));
+      if (buffer.find_first_of("\r\n") == std::string::npos)
+      {
+        const size_t dropped = trimUnterminatedLineBuffer(buffer, kPtbLineBufferMaxBytes, kPtbLineBufferKeepBytes);
+        if (dropped > 0 && !line_buffer_limit_logged)
+        {
+          log(isEnglishLog()
+              ? "PTB210: dropped oversized unterminated line buffer while waiting for newline"
+              : "PTB210：长时间未收到换行，已丢弃过长文本缓冲");
+          line_buffer_limit_logged = true;
+        }
+      }
 
       size_t line_end = std::string::npos;
       while ((line_end = buffer.find_first_of("\r\n")) != std::string::npos)
       {
+        if (line_end > kPtbLineBufferMaxBytes)
+        {
+          buffer.erase(0, line_end + 1);
+          if (!line_buffer_limit_logged)
+          {
+            log(isEnglishLog()
+                ? "PTB210: dropped oversized text line"
+                : "PTB210：已丢弃超长文本行");
+          }
+          line_buffer_limit_logged = false;
+          continue;
+        }
         const std::string raw_line = buffer.substr(0, line_end + 1);
         const std::string line = raw_line;
         buffer.erase(0, line_end + 1);
+        line_buffer_limit_logged = false;
         while (!buffer.empty() && (buffer.front() == '\r' || buffer.front() == '\n'))
         {
           buffer.erase(0, 1);

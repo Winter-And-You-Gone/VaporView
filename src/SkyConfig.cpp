@@ -6,6 +6,7 @@
 #include <QSaveFile>
 #include <QtGlobal>
 #include <cmath>
+#include <limits>
 
 namespace VaporView
 {
@@ -41,6 +42,122 @@ bool writeJsonFileAtomically(const QString& filename, const QJsonObject& object,
     return true;
 }
 
+QString jsonTypeName(const QJsonValue& value)
+{
+    switch (value.type())
+    {
+    case QJsonValue::Null:
+        return QStringLiteral("null");
+    case QJsonValue::Bool:
+        return QStringLiteral("boolean");
+    case QJsonValue::Double:
+        return QStringLiteral("number");
+    case QJsonValue::String:
+        return QStringLiteral("string");
+    case QJsonValue::Array:
+        return QStringLiteral("array");
+    case QJsonValue::Object:
+        return QStringLiteral("object");
+    case QJsonValue::Undefined:
+    default:
+        return QStringLiteral("undefined");
+    }
+}
+
+bool failType(const QString& path, const QString& expected, const QJsonValue& value, QString *errorMessage)
+{
+    if (errorMessage)
+    {
+        *errorMessage = QStringLiteral("%1 must be %2, got %3")
+            .arg(path, expected, jsonTypeName(value));
+    }
+    return false;
+}
+
+bool readSectionObject(const QJsonObject& root, const QString& key, QJsonObject& section, QString *errorMessage)
+{
+    if (!root.contains(key))
+    {
+        return false;
+    }
+    const QJsonValue value = root.value(key);
+    if (!value.isObject())
+    {
+        failType(key, QStringLiteral("object"), value, errorMessage);
+        return false;
+    }
+    section = value.toObject();
+    return true;
+}
+
+bool readBoolField(const QJsonObject& object, const QString& section, const QString& key, bool& target, QString *errorMessage)
+{
+    if (!object.contains(key))
+    {
+        return true;
+    }
+    const QJsonValue value = object.value(key);
+    if (!value.isBool())
+    {
+        return failType(section + QLatin1Char('.') + key, QStringLiteral("boolean"), value, errorMessage);
+    }
+    target = value.toBool();
+    return true;
+}
+
+bool readStringField(const QJsonObject& object, const QString& section, const QString& key, QString& target, QString *errorMessage)
+{
+    if (!object.contains(key))
+    {
+        return true;
+    }
+    const QJsonValue value = object.value(key);
+    if (!value.isString())
+    {
+        return failType(section + QLatin1Char('.') + key, QStringLiteral("string"), value, errorMessage);
+    }
+    target = value.toString();
+    return true;
+}
+
+bool readIntField(const QJsonObject& object, const QString& section, const QString& key, int& target, QString *errorMessage)
+{
+    if (!object.contains(key))
+    {
+        return true;
+    }
+    const QJsonValue value = object.value(key);
+    if (!value.isDouble())
+    {
+        return failType(section + QLatin1Char('.') + key, QStringLiteral("integer"), value, errorMessage);
+    }
+    const double numeric = value.toDouble();
+    if (!std::isfinite(numeric) ||
+        std::floor(numeric) != numeric ||
+        numeric < static_cast<double>(std::numeric_limits<int>::min()) ||
+        numeric > static_cast<double>(std::numeric_limits<int>::max()))
+    {
+        return failType(section + QLatin1Char('.') + key, QStringLiteral("integer"), value, errorMessage);
+    }
+    target = static_cast<int>(numeric);
+    return true;
+}
+
+bool readDoubleField(const QJsonObject& object, const QString& section, const QString& key, double& target, QString *errorMessage)
+{
+    if (!object.contains(key))
+    {
+        return true;
+    }
+    const QJsonValue value = object.value(key);
+    if (!value.isDouble() || !std::isfinite(value.toDouble()))
+    {
+        return failType(section + QLatin1Char('.') + key, QStringLiteral("number"), value, errorMessage);
+    }
+    target = value.toDouble();
+    return true;
+}
+
 QJsonObject serialToJson(const SerialDeviceConfig& config)
 {
     QJsonObject object;
@@ -54,11 +171,14 @@ QJsonObject serialToJson(const SerialDeviceConfig& config)
 bool serialFromJson(const QJsonObject& object, SerialDeviceConfig& config, const QString& name, QString *errorMessage)
 {
     SerialDeviceConfig next = config;
-    if (object.contains("enabled")) next.enabled = object.value("enabled").toBool(next.enabled);
-    if (object.contains("port")) next.port = object.value("port").toString(next.port);
-    if (object.contains("baud")) next.baud_rate = object.value("baud").toInt(next.baud_rate);
-    if (object.contains("baud_rate")) next.baud_rate = object.value("baud_rate").toInt(next.baud_rate);
-    if (object.contains("frequency_hz")) next.frequency_hz = object.value("frequency_hz").toDouble(next.frequency_hz);
+    if (!readBoolField(object, name, QStringLiteral("enabled"), next.enabled, errorMessage) ||
+        !readStringField(object, name, QStringLiteral("port"), next.port, errorMessage) ||
+        !readIntField(object, name, QStringLiteral("baud"), next.baud_rate, errorMessage) ||
+        !readIntField(object, name, QStringLiteral("baud_rate"), next.baud_rate, errorMessage) ||
+        !readDoubleField(object, name, QStringLiteral("frequency_hz"), next.frequency_hz, errorMessage))
+    {
+        return false;
+    }
     if (next.enabled && next.port.trimmed().isEmpty())
     {
         if (errorMessage) *errorMessage = QStringLiteral("%1 port is empty").arg(name);
@@ -87,12 +207,16 @@ QJsonObject temperatureControllerToJson(const TemperatureControllerConfig& confi
 bool temperatureControllerFromJson(const QJsonObject& object, TemperatureControllerConfig& config, QString *errorMessage)
 {
     TemperatureControllerConfig next = config;
-    if (object.contains("enabled")) next.enabled = object.value("enabled").toBool(next.enabled);
-    if (object.contains("port")) next.port = object.value("port").toString(next.port);
-    if (object.contains("baud")) next.baud_rate = object.value("baud").toInt(next.baud_rate);
-    if (object.contains("baud_rate")) next.baud_rate = object.value("baud_rate").toInt(next.baud_rate);
-    if (object.contains("frequency_hz")) next.frequency_hz = object.value("frequency_hz").toDouble(next.frequency_hz);
-    if (object.contains("slave_address")) next.slave_address = object.value("slave_address").toInt(next.slave_address);
+    const QString section = QStringLiteral("temperature_controller");
+    if (!readBoolField(object, section, QStringLiteral("enabled"), next.enabled, errorMessage) ||
+        !readStringField(object, section, QStringLiteral("port"), next.port, errorMessage) ||
+        !readIntField(object, section, QStringLiteral("baud"), next.baud_rate, errorMessage) ||
+        !readIntField(object, section, QStringLiteral("baud_rate"), next.baud_rate, errorMessage) ||
+        !readDoubleField(object, section, QStringLiteral("frequency_hz"), next.frequency_hz, errorMessage) ||
+        !readIntField(object, section, QStringLiteral("slave_address"), next.slave_address, errorMessage))
+    {
+        return false;
+    }
     if (next.enabled && next.port.trimmed().isEmpty())
     {
         if (errorMessage) *errorMessage = QStringLiteral("temperature_controller port is empty");
@@ -122,12 +246,16 @@ QJsonObject waveToJson(const WaveTcpConfig& config)
 bool waveFromJson(const QJsonObject& object, WaveTcpConfig& config, QString *errorMessage)
 {
     WaveTcpConfig next = config;
-    if (object.contains("enabled")) next.enabled = object.value("enabled").toBool(next.enabled);
-    if (object.contains("host")) next.host = object.value("host").toString(next.host);
-    if (object.contains("port")) next.port = object.value("port").toInt(next.port);
-    if (object.contains("downsample_ratio")) next.downsample_ratio = object.value("downsample_ratio").toInt(next.downsample_ratio);
-    if (object.contains("peak_search_start_index")) next.peak_search_start_index = object.value("peak_search_start_index").toInt(next.peak_search_start_index);
-    if (object.contains("peak_search_end_index")) next.peak_search_end_index = object.value("peak_search_end_index").toInt(next.peak_search_end_index);
+    const QString section = QStringLiteral("wave_tcp");
+    if (!readBoolField(object, section, QStringLiteral("enabled"), next.enabled, errorMessage) ||
+        !readStringField(object, section, QStringLiteral("host"), next.host, errorMessage) ||
+        !readIntField(object, section, QStringLiteral("port"), next.port, errorMessage) ||
+        !readIntField(object, section, QStringLiteral("downsample_ratio"), next.downsample_ratio, errorMessage) ||
+        !readIntField(object, section, QStringLiteral("peak_search_start_index"), next.peak_search_start_index, errorMessage) ||
+        !readIntField(object, section, QStringLiteral("peak_search_end_index"), next.peak_search_end_index, errorMessage))
+    {
+        return false;
+    }
     if (next.enabled && next.host.trimmed().isEmpty())
     {
         if (errorMessage) *errorMessage = QStringLiteral("wave_tcp host is empty");
@@ -162,11 +290,15 @@ QJsonObject telemetryToJson(const TelemetryRateConfig& config)
 bool telemetryFromJson(const QJsonObject& object, TelemetryRateConfig& config, QString *errorMessage)
 {
     TelemetryRateConfig next = config;
-    if (object.contains("basic_rate_hz")) next.basic_rate_hz = object.value("basic_rate_hz").toDouble(next.basic_rate_hz);
-    if (object.contains("feature_rate_hz")) next.feature_rate_hz = object.value("feature_rate_hz").toDouble(next.feature_rate_hz);
-    if (object.contains("waveform_rate_hz")) next.waveform_rate_hz = object.value("waveform_rate_hz").toDouble(next.waveform_rate_hz);
-    if (object.contains("heartbeat_rate_hz")) next.heartbeat_rate_hz = object.value("heartbeat_rate_hz").toDouble(next.heartbeat_rate_hz);
-    if (object.contains("status_rate_hz")) next.status_rate_hz = object.value("status_rate_hz").toDouble(next.status_rate_hz);
+    const QString section = QStringLiteral("telemetry");
+    if (!readDoubleField(object, section, QStringLiteral("basic_rate_hz"), next.basic_rate_hz, errorMessage) ||
+        !readDoubleField(object, section, QStringLiteral("feature_rate_hz"), next.feature_rate_hz, errorMessage) ||
+        !readDoubleField(object, section, QStringLiteral("waveform_rate_hz"), next.waveform_rate_hz, errorMessage) ||
+        !readDoubleField(object, section, QStringLiteral("heartbeat_rate_hz"), next.heartbeat_rate_hz, errorMessage) ||
+        !readDoubleField(object, section, QStringLiteral("status_rate_hz"), next.status_rate_hz, errorMessage))
+    {
+        return false;
+    }
     if (next.basic_rate_hz <= 0.0 || next.feature_rate_hz <= 0.0 || next.waveform_rate_hz <= 0.0 ||
         next.heartbeat_rate_hz <= 0.0 || next.status_rate_hz <= 0.0)
     {
@@ -286,13 +418,28 @@ bool SkyConfig::saveToFile(const QString& filename, QString *errorMessage) const
 bool SkyConfig::fromJson(const QJsonObject& object, SkyConfig& config, QString *errorMessage)
 {
     SkyConfig next = SkyConfig::defaults();
-    if (object.contains("epsilon") && !serialFromJson(object.value("epsilon").toObject(), next.epsilon, QStringLiteral("epsilon"), errorMessage)) return false;
-    if (object.contains("ptb") && !serialFromJson(object.value("ptb").toObject(), next.ptb, QStringLiteral("ptb"), errorMessage)) return false;
-    if (object.contains("hmp") && !serialFromJson(object.value("hmp").toObject(), next.hmp, QStringLiteral("hmp"), errorMessage)) return false;
-    if (object.contains("lidar") && !serialFromJson(object.value("lidar").toObject(), next.lidar, QStringLiteral("lidar"), errorMessage)) return false;
-    if (object.contains("temperature_controller") && !temperatureControllerFromJson(object.value("temperature_controller").toObject(), next.temperature_controller, errorMessage)) return false;
-    if (object.contains("wave_tcp") && !waveFromJson(object.value("wave_tcp").toObject(), next.wave_tcp, errorMessage)) return false;
-    if (object.contains("telemetry") && !telemetryFromJson(object.value("telemetry").toObject(), next.telemetry, errorMessage)) return false;
+    QJsonObject section;
+    if (object.contains("epsilon") &&
+        (!readSectionObject(object, QStringLiteral("epsilon"), section, errorMessage) ||
+         !serialFromJson(section, next.epsilon, QStringLiteral("epsilon"), errorMessage))) return false;
+    if (object.contains("ptb") &&
+        (!readSectionObject(object, QStringLiteral("ptb"), section, errorMessage) ||
+         !serialFromJson(section, next.ptb, QStringLiteral("ptb"), errorMessage))) return false;
+    if (object.contains("hmp") &&
+        (!readSectionObject(object, QStringLiteral("hmp"), section, errorMessage) ||
+         !serialFromJson(section, next.hmp, QStringLiteral("hmp"), errorMessage))) return false;
+    if (object.contains("lidar") &&
+        (!readSectionObject(object, QStringLiteral("lidar"), section, errorMessage) ||
+         !serialFromJson(section, next.lidar, QStringLiteral("lidar"), errorMessage))) return false;
+    if (object.contains("temperature_controller") &&
+        (!readSectionObject(object, QStringLiteral("temperature_controller"), section, errorMessage) ||
+         !temperatureControllerFromJson(section, next.temperature_controller, errorMessage))) return false;
+    if (object.contains("wave_tcp") &&
+        (!readSectionObject(object, QStringLiteral("wave_tcp"), section, errorMessage) ||
+         !waveFromJson(section, next.wave_tcp, errorMessage))) return false;
+    if (object.contains("telemetry") &&
+        (!readSectionObject(object, QStringLiteral("telemetry"), section, errorMessage) ||
+         !telemetryFromJson(section, next.telemetry, errorMessage))) return false;
     if (!next.validate(errorMessage))
     {
         return false;

@@ -2,6 +2,7 @@
 #include "TelemetryCodec.h"
 
 #include <QCoreApplication>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <cmath>
 #include <cstdlib>
@@ -298,6 +299,36 @@ void testSkyConfigDiff()
     require(parsed.epsilon.baud_rate == 115200, "sky config baud");
 }
 
+void testSkyConfigRejectsInvalidJsonTypes()
+{
+    VaporView::SkyConfig parsed;
+    QString error;
+
+    QJsonObject sectionType = VaporView::SkyConfig::defaults().toJson();
+    sectionType.insert(QStringLiteral("epsilon"), QJsonArray{});
+    require(!VaporView::SkyConfig::fromJson(sectionType, parsed, &error), "sky config rejects non-object section");
+    require(error.contains(QStringLiteral("epsilon")) && error.contains(QStringLiteral("object")),
+            "sky config section type error message");
+
+    QJsonObject badBaud = VaporView::SkyConfig::defaults().toJson();
+    QJsonObject epsilon = badBaud.value(QStringLiteral("epsilon")).toObject();
+    epsilon.insert(QStringLiteral("baud"), QStringLiteral("bad"));
+    badBaud.insert(QStringLiteral("epsilon"), epsilon);
+    error.clear();
+    require(!VaporView::SkyConfig::fromJson(badBaud, parsed, &error), "sky config rejects string baud");
+    require(error.contains(QStringLiteral("epsilon.baud")) && error.contains(QStringLiteral("integer")),
+            "sky config baud type error message");
+
+    QJsonObject badEnabled = VaporView::SkyConfig::defaults().toJson();
+    QJsonObject wave = badEnabled.value(QStringLiteral("wave_tcp")).toObject();
+    wave.insert(QStringLiteral("enabled"), QStringLiteral("true"));
+    badEnabled.insert(QStringLiteral("wave_tcp"), wave);
+    error.clear();
+    require(!VaporView::SkyConfig::fromJson(badEnabled, parsed, &error), "sky config rejects string bool");
+    require(error.contains(QStringLiteral("wave_tcp.enabled")) && error.contains(QStringLiteral("boolean")),
+            "sky config bool type error message");
+}
+
 void testTelemetryStatus()
 {
     VaporView::TelemetryStatus status;
@@ -349,6 +380,7 @@ int main(int argc, char **argv)
     testCommandAndDevicePayload();
     testWaveform();
     testSkyConfigDiff();
+    testSkyConfigRejectsInvalidJsonTypes();
     testTelemetryStatus();
     std::cout << "telemetry_codec_test passed\n";
     return 0;
