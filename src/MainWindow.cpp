@@ -13994,10 +13994,9 @@ void MainWindow::setupDeviceConfigPage()
         };
         connectButton = createButton(VaporView::CommandId::ConnectDevice);
         disconnectButton = createButton(VaporView::CommandId::DisconnectDevice);
-        reconnectButton = createButton(VaporView::CommandId::ReconnectDevice);
+        reconnectButton = nullptr;
         layout->addWidget(connectButton);
         layout->addWidget(disconnectButton);
-        layout->addWidget(reconnectButton);
         formLayout->addWidget(buttonsWidget, row, 6, Qt::AlignVCenter | Qt::AlignLeft);
     };
     addDeviceRemoteButtons(0, device_config_.epsilon_remote_buttons_widget,
@@ -14593,22 +14592,17 @@ void MainWindow::updateDeviceConfigTexts()
         VaporView::CommandId command = VaporView::CommandId::ConnectDevice;
         VaporView::SkyDeviceId device = VaporView::SkyDeviceId::Epsilon;
     };
-    const std::array<DeviceConfigRemoteButtonRef, 15> remoteButtons = {{
+    const std::array<DeviceConfigRemoteButtonRef, 10> remoteButtons = {{
         {device_config_.epsilon_remote_connect_btn, VaporView::CommandId::ConnectDevice, VaporView::SkyDeviceId::Epsilon},
         {device_config_.epsilon_remote_disconnect_btn, VaporView::CommandId::DisconnectDevice, VaporView::SkyDeviceId::Epsilon},
-        {device_config_.epsilon_remote_reconnect_btn, VaporView::CommandId::ReconnectDevice, VaporView::SkyDeviceId::Epsilon},
         {device_config_.ptb_remote_connect_btn, VaporView::CommandId::ConnectDevice, VaporView::SkyDeviceId::Ptb},
         {device_config_.ptb_remote_disconnect_btn, VaporView::CommandId::DisconnectDevice, VaporView::SkyDeviceId::Ptb},
-        {device_config_.ptb_remote_reconnect_btn, VaporView::CommandId::ReconnectDevice, VaporView::SkyDeviceId::Ptb},
         {device_config_.hmp_remote_connect_btn, VaporView::CommandId::ConnectDevice, VaporView::SkyDeviceId::Hmp},
         {device_config_.hmp_remote_disconnect_btn, VaporView::CommandId::DisconnectDevice, VaporView::SkyDeviceId::Hmp},
-        {device_config_.hmp_remote_reconnect_btn, VaporView::CommandId::ReconnectDevice, VaporView::SkyDeviceId::Hmp},
         {device_config_.lidar_remote_connect_btn, VaporView::CommandId::ConnectDevice, VaporView::SkyDeviceId::Lidar},
         {device_config_.lidar_remote_disconnect_btn, VaporView::CommandId::DisconnectDevice, VaporView::SkyDeviceId::Lidar},
-        {device_config_.lidar_remote_reconnect_btn, VaporView::CommandId::ReconnectDevice, VaporView::SkyDeviceId::Lidar},
         {device_config_.temperature_remote_connect_btn, VaporView::CommandId::ConnectDevice, VaporView::SkyDeviceId::TemperatureController},
         {device_config_.temperature_remote_disconnect_btn, VaporView::CommandId::DisconnectDevice, VaporView::SkyDeviceId::TemperatureController},
-        {device_config_.temperature_remote_reconnect_btn, VaporView::CommandId::ReconnectDevice, VaporView::SkyDeviceId::TemperatureController},
     }};
     for (const DeviceConfigRemoteButtonRef& item : remoteButtons)
     {

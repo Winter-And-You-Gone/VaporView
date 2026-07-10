@@ -3351,7 +3351,6 @@ int main(int argc, char **argv)
     int disabledLocalRemoteActionCount = 0;
     int connectRemoteActionCount = 0;
     int disconnectRemoteActionCount = 0;
-    int reconnectRemoteActionCount = 0;
     QPushButton *deviceAutoDetectButton = nullptr;
     QPushButton *deviceSkyConfigButton = nullptr;
     for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
@@ -3403,23 +3402,18 @@ int main(int argc, char **argv)
             {
                 ++disconnectRemoteActionCount;
             }
-            else if (remoteAction == QStringLiteral("reconnect"))
-            {
-                ++reconnectRemoteActionCount;
-            }
             else
             {
-                require(false, "device configuration remote action has a known command marker");
+                require(false, "device configuration remote actions only expose connect and disconnect commands");
             }
             ++disabledLocalRemoteActionCount;
         }
     }
-    require(disabledLocalRemoteActionCount == 15,
+    require(disabledLocalRemoteActionCount == 10,
             "device configuration keeps all remote device actions present in local mode");
     require(connectRemoteActionCount == 5 &&
-                disconnectRemoteActionCount == 5 &&
-                reconnectRemoteActionCount == 5,
-            "device configuration remote icon actions cover every device command");
+                disconnectRemoteActionCount == 5,
+            "device configuration remote icon actions cover connect and disconnect for every device");
     require(deviceAutoDetectButton != nullptr && deviceAutoDetectButton->width() <= 145,
             "device configuration auto-detect button uses compact title-bar width");
     require(deviceSkyConfigButton != nullptr && deviceSkyConfigButton->width() <= 145,
@@ -3534,7 +3528,7 @@ int main(int argc, char **argv)
     const QRect deviceRateRect(deviceRateCombo->mapTo(deviceConfigPage, QPoint(0, 0)),
                                deviceRateCombo->size());
     bool foundRemoteButtonsToRightOfRate = false;
-    int rightmostReconnectButtonRight = -1;
+    int rightmostRemoteButtonRight = -1;
     for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
     {
         if (!button->isVisible())
@@ -3547,10 +3541,9 @@ int main(int argc, char **argv)
             continue;
         }
         const QRect buttonRect(button->mapTo(deviceConfigPage, QPoint(0, 0)), button->size());
-        if (remoteAction == QStringLiteral("reconnect"))
-        {
-            rightmostReconnectButtonRight = std::max(rightmostReconnectButtonRight, buttonRect.right());
-        }
+        require(remoteAction != QStringLiteral("reconnect"),
+                "device configuration omits reconnect remote actions to keep the serial card compact");
+        rightmostRemoteButtonRight = std::max(rightmostRemoteButtonRight, buttonRect.right());
         if (buttonRect.left() > deviceRateRect.right() &&
             std::abs(buttonRect.center().y() - deviceRateRect.center().y()) <= 2)
         {
@@ -3559,9 +3552,9 @@ int main(int argc, char **argv)
     }
     require(foundRemoteButtonsToRightOfRate,
             "device configuration remote actions sit to the right of the rate selector");
-    require(rightmostReconnectButtonRight > 0 &&
-                serialConfigPageRect.right() - rightmostReconnectButtonRight <= 32,
-            "device configuration serial card right edge stays close to the reconnect buttons");
+    require(rightmostRemoteButtonRight > 0 &&
+                serialConfigPageRect.right() - rightmostRemoteButtonRight <= 32,
+            "device configuration serial card right edge stays close to the compact remote buttons");
 
     QFrame *epsilonConfigCard = nullptr;
     for (QFrame *card : deviceConfigPage->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard")))
