@@ -81,6 +81,7 @@
 #include <QSettings>
 #include <QStackedWidget>
 #include <QStyle>
+#include <QStyleOptionButton>
 #include <QStyleOptionToolButton>
 #include <QTextDocument>
 #include <QThread>
@@ -1536,6 +1537,66 @@ QIcon createLucideIcon(const QString& iconName, const QColor& color)
     cache.insert(cacheKey, icon);
     return icon;
 }
+
+class TitleBarFeedbackCheckBox final : public QCheckBox
+{
+public:
+    explicit TitleBarFeedbackCheckBox(QWidget *parent = nullptr)
+        : QCheckBox(parent)
+    {
+        setProperty("indicatorCanvasSize", kIndicatorCanvasSize);
+        setProperty("indicatorIconSize", kIndicatorIconSize);
+        setProperty("indicatorFeedbackColorRole", QStringLiteral("TitleBarHover"));
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        QCheckBox::paintEvent(event);
+
+        QStyleOptionButton option;
+        initStyleOption(&option);
+        const QRect indicatorRect =
+            style()->subElementRect(QStyle::SE_CheckBoxIndicator, &option, this);
+        if (!indicatorRect.isValid())
+        {
+            return;
+        }
+
+        const QPalette::ColorGroup colorGroup = isEnabled()
+            ? (isActiveWindow() ? QPalette::Active : QPalette::Inactive)
+            : QPalette::Disabled;
+
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        if (underMouse() || hasFocus() || isDown())
+        {
+            const bool dark = qApp && qApp->property(kAppDarkThemeProperty).toBool();
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(appThemeColor(AppThemeColor::TitleBarHover, dark));
+            painter.drawRoundedRect(indicatorRect, kIndicatorCornerRadius, kIndicatorCornerRadius);
+        }
+
+        const int iconExtent = std::min({kIndicatorIconSize,
+                                         indicatorRect.width(),
+                                         indicatorRect.height()});
+        QRect iconRect(0, 0, iconExtent, iconExtent);
+        iconRect.moveCenter(indicatorRect.center());
+        const QIcon icon = createLucideIcon(
+            isChecked() ? QStringLiteral("square-check-big") : QStringLiteral("square"),
+            palette().color(colorGroup, QPalette::Text));
+        icon.paint(&painter,
+                   iconRect,
+                   Qt::AlignCenter,
+                   isEnabled() ? QIcon::Normal : QIcon::Disabled,
+                   isChecked() ? QIcon::On : QIcon::Off);
+    }
+
+private:
+    static constexpr int kIndicatorCanvasSize = 34;
+    static constexpr int kIndicatorIconSize = 24;
+    static constexpr int kIndicatorCornerRadius = 6;
+};
 
 QString deviceConfigRemoteActionKey(VaporView::CommandId command)
 {
@@ -14169,10 +14230,11 @@ void MainWindow::setupDeviceConfigPage()
     device_config_.epsilon_config_hint_lbl->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
     epsilonBodyLayout->addWidget(device_config_.epsilon_config_hint_lbl);
 
-    device_config_.epsilon_packet_custom_check = new QCheckBox(epsilonBodyWidget);
+    device_config_.epsilon_packet_custom_check =
+        new TitleBarFeedbackCheckBox(epsilonBodyWidget);
     device_config_.epsilon_packet_custom_check->setObjectName(
         QStringLiteral("epsilonPacketCustomCheck"));
-    device_config_.epsilon_packet_custom_check->setFocusPolicy(Qt::TabFocus);
+    device_config_.epsilon_packet_custom_check->setFocusPolicy(Qt::StrongFocus);
     epsilonBodyLayout->addWidget(device_config_.epsilon_packet_custom_check);
 
     auto *packetGridWidget = new QWidget(epsilonBodyWidget);

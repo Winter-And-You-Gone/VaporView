@@ -1115,11 +1115,21 @@ QCheckBox::indicator:checked {
     image: url(lucide/square-check-big.svg);
 }
 
-QCheckBox#epsilonPacketCustomCheck::indicator:hover,
-QCheckBox#epsilonPacketCustomCheck::indicator:focus,
-QCheckBox#epsilonPacketCustomCheck::indicator:pressed {
-    background-color: @vv-title-hover;
+QCheckBox#epsilonPacketCustomCheck {
+    background-color: transparent;
+}
+
+QCheckBox#epsilonPacketCustomCheck::indicator {
+    width: 34px;
+    height: 34px;
+    border: none;
     border-radius: 6px;
+    background-color: transparent;
+    image: none;
+}
+
+QCheckBox#epsilonPacketCustomCheck::indicator:checked {
+    image: none;
 }
 
 /* 单选按钮 */

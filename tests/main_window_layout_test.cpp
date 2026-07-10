@@ -3634,18 +3634,27 @@ int main(int argc, char **argv)
     auto *epsilonPacketCustomCheck =
         epsilonConfigCard->findChild<QCheckBox *>(QStringLiteral("epsilonPacketCustomCheck"));
     require(epsilonPacketCustomCheck != nullptr &&
-                epsilonPacketCustomCheck->focusPolicy() == Qt::TabFocus,
+                epsilonPacketCustomCheck->focusPolicy() == Qt::StrongFocus,
             "device EPSILON custom packet-rate checkbox exposes pointer and keyboard focus feedback");
+    require(epsilonPacketCustomCheck->property("indicatorCanvasSize").toInt() == 34 &&
+                epsilonPacketCustomCheck->property("indicatorIconSize").toInt() == 24 &&
+                epsilonPacketCustomCheck->property("indicatorCanvasSize").toInt() >
+                    epsilonPacketCustomCheck->property("indicatorIconSize").toInt() &&
+                epsilonPacketCustomCheck->property("indicatorFeedbackColorRole").toString() ==
+                    QStringLiteral("TitleBarHover"),
+            "device EPSILON custom packet-rate checkbox uses the title-bar 34px canvas with a 24px icon");
     const int epsilonCustomCheckStyleIndex = appStyleSheet.indexOf(
-        QStringLiteral("QCheckBox#epsilonPacketCustomCheck::indicator:hover"));
+        QStringLiteral("QCheckBox#epsilonPacketCustomCheck::indicator {"));
     require(epsilonCustomCheckStyleIndex >= 0 &&
-                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 360).contains(
-                    QStringLiteral("QCheckBox#epsilonPacketCustomCheck::indicator:focus")) &&
-                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 360).contains(
-                    QStringLiteral("background-color:")) &&
-                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 360).contains(
-                    QStringLiteral("border-radius: 6px")),
-            "device EPSILON custom packet-rate checkbox reuses the title-bar hover background");
+                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 700).contains(
+                    QStringLiteral("width: 34px")) &&
+                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 700).contains(
+                    QStringLiteral("height: 34px")) &&
+                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 700).contains(
+                    QStringLiteral("image: none")) &&
+                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 700).contains(
+                    QStringLiteral("background-color: transparent")),
+            "device EPSILON custom packet-rate checkbox separates the title-bar hover canvas from its icon");
     const int epsilonCardStyleIndex = appStyleSheet.indexOf(QStringLiteral("QFrame#epsilonSectionCard"));
     require(epsilonCardStyleIndex >= 0 &&
                 appStyleSheet.mid(epsilonCardStyleIndex, 200).contains(QStringLiteral("border-radius: 8px")),
