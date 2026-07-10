@@ -3218,6 +3218,78 @@ void applyComboText(QComboBox *combo, const QString& value)
     }
 }
 
+constexpr char kSensorBaudSourceProperty[] = "sensorBaudSource";
+
+QString sensorBaudSettingsKey(const QString& source)
+{
+    if (source == QStringLiteral("ptb210"))
+    {
+        return QStringLiteral("serial/ptb210_baud");
+    }
+    if (source == QStringLiteral("bmp390"))
+    {
+        return QStringLiteral("serial/bmp390_baud");
+    }
+    if (source == QStringLiteral("hmp3"))
+    {
+        return QStringLiteral("serial/hmp3_baud");
+    }
+    if (source == QStringLiteral("sht45"))
+    {
+        return QStringLiteral("serial/sht45_baud");
+    }
+    return QString();
+}
+
+QString sensorDefaultBaud(const QString& source)
+{
+    if (source == QStringLiteral("ptb210"))
+    {
+        return QStringLiteral("9600");
+    }
+    if (source == QStringLiteral("hmp3"))
+    {
+        return QStringLiteral("19200");
+    }
+    if (source == QStringLiteral("bmp390") || source == QStringLiteral("sht45"))
+    {
+        return QStringLiteral("115200");
+    }
+    return QString();
+}
+
+QString rememberedSensorBaud(const QSettings& settings,
+                             const QString& source,
+                             const QString& legacyKey = QString())
+{
+    const QString key = sensorBaudSettingsKey(source);
+    if (!key.isEmpty() && settings.contains(key))
+    {
+        return settings.value(key).toString();
+    }
+    if (!legacyKey.isEmpty() && settings.contains(legacyKey))
+    {
+        return settings.value(legacyKey).toString();
+    }
+    return sensorDefaultBaud(source);
+}
+
+void saveRememberedSensorBaud(QSettings& settings,
+                              const QString& source,
+                              const QComboBox *baudCombo)
+{
+    const QString key = sensorBaudSettingsKey(source);
+    if (key.isEmpty() || !baudCombo)
+    {
+        return;
+    }
+    const QString baud = baudCombo->currentText().trimmed();
+    if (!baud.isEmpty())
+    {
+        settings.setValue(key, baud);
+    }
+}
+
 QString sourceModeDisplayText(bool english, int index)
 {
     return index == 1
@@ -9893,8 +9965,6 @@ void MainWindow::loadRememberedInputState()
     loadCombo(temperature_port_combo_, QStringLiteral("serial/temperature_port"));
 
     loadCombo(epsilon_baud_combo_, QStringLiteral("serial/epsilon_baud"), QStringLiteral("serial/gnss_baud"));
-    loadCombo(ptb_baud_combo_, QStringLiteral("serial/ptb_baud"));
-    loadCombo(hmp_baud_combo_, QStringLiteral("serial/hmp_baud"));
     loadCombo(lidar_baud_combo_, QStringLiteral("serial/lidar_baud"));
     loadCombo(temperature_baud_combo_, QStringLiteral("serial/temperature_baud"));
 
@@ -9904,18 +9974,34 @@ void MainWindow::loadRememberedInputState()
     loadCombo(hmp_rate_combo_, QStringLiteral("rate/hmp"));
     loadCombo(lidar_rate_combo_, QStringLiteral("rate/lidar"));
     loadCombo(temperature_rate_combo_, QStringLiteral("rate/temperature"));
+    QString pressureSource = QStringLiteral("ptb210");
     if (device_config_.ptb_source_combo)
     {
         const int index = device_config_.ptb_source_combo->findData(
             settings.value(QStringLiteral("sensor/pressure_source"), QStringLiteral("ptb210")).toString());
+        const QSignalBlocker blocker(device_config_.ptb_source_combo);
         device_config_.ptb_source_combo->setCurrentIndex(index >= 0 ? index : 0);
+        pressureSource = device_config_.ptb_source_combo->currentData().toString();
+        device_config_.ptb_source_combo->setProperty(kSensorBaudSourceProperty, pressureSource);
     }
+    QString humiditySource = QStringLiteral("hmp3");
     if (device_config_.hmp_source_combo)
     {
         const int index = device_config_.hmp_source_combo->findData(
             settings.value(QStringLiteral("sensor/humidity_source"), QStringLiteral("hmp3")).toString());
+        const QSignalBlocker blocker(device_config_.hmp_source_combo);
         device_config_.hmp_source_combo->setCurrentIndex(index >= 0 ? index : 0);
+        humiditySource = device_config_.hmp_source_combo->currentData().toString();
+        device_config_.hmp_source_combo->setProperty(kSensorBaudSourceProperty, humiditySource);
     }
+    const QString pressureBaud = rememberedSensorBaud(
+        settings, pressureSource, QStringLiteral("serial/ptb_baud"));
+    applyComboText(ptb_baud_combo_, pressureBaud);
+    applyComboText(device_config_.ptb_baud_combo, pressureBaud);
+    const QString humidityBaud = rememberedSensorBaud(
+        settings, humiditySource, QStringLiteral("serial/hmp_baud"));
+    applyComboText(hmp_baud_combo_, humidityBaud);
+    applyComboText(device_config_.hmp_baud_combo, humidityBaud);
     if (data_source_mode_combo_)
     {
         const QString value = settings.value(
@@ -10013,6 +10099,18 @@ void MainWindow::saveRememberedInputState() const
     saveCombo(QStringLiteral("serial/hmp_baud"), hmp_baud_combo_);
     saveCombo(QStringLiteral("serial/lidar_baud"), lidar_baud_combo_);
     saveCombo(QStringLiteral("serial/temperature_baud"), temperature_baud_combo_);
+    saveRememberedSensorBaud(
+        settings,
+        device_config_.ptb_source_combo
+            ? device_config_.ptb_source_combo->currentData().toString()
+            : QStringLiteral("ptb210"),
+        ptb_baud_combo_ ? ptb_baud_combo_ : device_config_.ptb_baud_combo);
+    saveRememberedSensorBaud(
+        settings,
+        device_config_.hmp_source_combo
+            ? device_config_.hmp_source_combo->currentData().toString()
+            : QStringLiteral("hmp3"),
+        hmp_baud_combo_ ? hmp_baud_combo_ : device_config_.hmp_baud_combo);
 
     saveCombo(QStringLiteral("rate/global"), global_rate_combo_);
     saveCombo(QStringLiteral("rate/epsilon"), epsilon_rate_combo_);
@@ -13933,7 +14031,10 @@ void MainWindow::setupDeviceConfigPage()
                device_config_.lidar_rate_lbl, device_config_.lidar_rate_combo, 3);
     addPortRow(device_config_.temperature_lbl, device_config_.temperature_port_combo, device_config_.temperature_baud_combo,
                device_config_.temperature_rate_lbl, device_config_.temperature_rate_combo, 4);
+    device_config_.ptb_baud_combo->setObjectName(QStringLiteral("devicePressureBaudCombo"));
+    device_config_.hmp_baud_combo->setObjectName(QStringLiteral("deviceHumidityBaudCombo"));
     device_config_.ptb_source_combo = createCombo(kDeviceConfigRateComboWidth);
+    device_config_.ptb_source_combo->setObjectName(QStringLiteral("devicePressureSourceCombo"));
     device_config_.ptb_source_combo->addItem(QStringLiteral("PTB210"), QStringLiteral("ptb210"));
     device_config_.ptb_source_combo->addItem(QStringLiteral("BMP390"), QStringLiteral("bmp390"));
     device_config_.ptb_source_combo->setToolTip(is_english_
@@ -13942,26 +14043,36 @@ void MainWindow::setupDeviceConfigPage()
     formLayout->addWidget(device_config_.ptb_source_combo, 1, 5, Qt::AlignVCenter);
 
     device_config_.hmp_source_combo = createCombo(kDeviceConfigRateComboWidth);
+    device_config_.hmp_source_combo->setObjectName(QStringLiteral("deviceHumiditySourceCombo"));
     device_config_.hmp_source_combo->addItem(QStringLiteral("HMP3"), QStringLiteral("hmp3"));
     device_config_.hmp_source_combo->addItem(QStringLiteral("SHT45"), QStringLiteral("sht45"));
     device_config_.hmp_source_combo->setToolTip(is_english_
         ? QStringLiteral("Temperature/humidity source. SHT45 expects Adafruit example serial output at 115200 8N1.")
         : QStringLiteral("温湿度来源。SHT45 使用 Adafruit 示例程序通过 115200 8N1 串口输出。"));
     formLayout->addWidget(device_config_.hmp_source_combo, 2, 5, Qt::AlignVCenter);
-    connect(device_config_.ptb_source_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
-        if (device_config_.ptb_source_combo->currentData().toString() == QStringLiteral("bmp390") && ptb_baud_combo_)
-        {
-            ptb_baud_combo_->setCurrentText(QStringLiteral("115200"));
-        }
-        saveRememberedInputState();
-    });
-    connect(device_config_.hmp_source_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
-        if (device_config_.hmp_source_combo->currentData().toString() == QStringLiteral("sht45") && hmp_baud_combo_)
-        {
-            hmp_baud_combo_->setCurrentText(QStringLiteral("115200"));
-        }
-        saveRememberedInputState();
-    });
+    auto bindSensorSourceBaud = [this](QComboBox *sourceCombo,
+                                       QComboBox *deviceBaudCombo,
+                                       QComboBox *homeBaudCombo) {
+        sourceCombo->setProperty(kSensorBaudSourceProperty, sourceCombo->currentData().toString());
+        connect(sourceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+                [this, sourceCombo, deviceBaudCombo, homeBaudCombo](int) {
+            QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+            const QString previousSource = sourceCombo->property(kSensorBaudSourceProperty).toString();
+            saveRememberedSensorBaud(
+                settings, previousSource, homeBaudCombo ? homeBaudCombo : deviceBaudCombo);
+
+            const QString currentSource = sourceCombo->currentData().toString();
+            const QString baud = rememberedSensorBaud(settings, currentSource);
+            applyComboText(homeBaudCombo, baud);
+            applyComboText(deviceBaudCombo, baud);
+            sourceCombo->setProperty(kSensorBaudSourceProperty, currentSource);
+            saveRememberedInputState();
+        });
+    };
+    bindSensorSourceBaud(
+        device_config_.ptb_source_combo, device_config_.ptb_baud_combo, ptb_baud_combo_);
+    bindSensorSourceBaud(
+        device_config_.hmp_source_combo, device_config_.hmp_baud_combo, hmp_baud_combo_);
     if (device_config_.temperature_port_combo)
     {
         device_config_.temperature_port_combo->setObjectName(QStringLiteral("deviceTemperaturePortCombo"));
@@ -14059,6 +14170,8 @@ void MainWindow::setupDeviceConfigPage()
     epsilonBodyLayout->addWidget(device_config_.epsilon_config_hint_lbl);
 
     device_config_.epsilon_packet_custom_check = new QCheckBox(epsilonBodyWidget);
+    device_config_.epsilon_packet_custom_check->setObjectName(
+        QStringLiteral("epsilonPacketCustomCheck"));
     device_config_.epsilon_packet_custom_check->setFocusPolicy(Qt::TabFocus);
     epsilonBodyLayout->addWidget(device_config_.epsilon_packet_custom_check);
 
