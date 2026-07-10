@@ -2,7 +2,11 @@
 
 #include <QApplication>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QString>
 
 #include <cstdlib>
@@ -51,6 +55,36 @@ int main(int argc, char** argv)
 
     require(view.loadLocal3DTilesPreview(tilesetPath),
             QStringLiteral("load Hangzhou Xihu building tileset"));
+
+    QFile tilesetFile(tilesetPath);
+    require(tilesetFile.open(QIODevice::ReadOnly),
+            QStringLiteral("open Hangzhou Xihu building tileset index"));
+    const QJsonDocument tilesetDocument = QJsonDocument::fromJson(tilesetFile.readAll());
+    require(tilesetDocument.isObject(),
+            QStringLiteral("building tileset index is valid JSON"));
+    const QJsonObject tileset = tilesetDocument.object();
+    require(tileset.value(QStringLiteral("extras")).toObject()
+                .value(QStringLiteral("groundPlacement")).toString()
+                == QStringLiteral("per-building-dem-p50-p10-skirt"),
+            QStringLiteral("building tileset uses per-building DEM ground placement"));
+
+    int terrainAwareTileCount = 0;
+    const QJsonArray children =
+        tileset.value(QStringLiteral("root")).toObject()
+            .value(QStringLiteral("children")).toArray();
+    for (const QJsonValue& childValue : children)
+    {
+        const QJsonArray region =
+            childValue.toObject()
+                .value(QStringLiteral("boundingVolume")).toObject()
+                .value(QStringLiteral("region")).toArray();
+        if (region.size() >= 6 && region.at(5).toDouble() - region.at(4).toDouble() > 100.0)
+        {
+            ++terrainAwareTileCount;
+        }
+    }
+    require(terrainAwareTileCount > 0,
+            QStringLiteral("building tileset bounding volumes include per-building terrain variation"));
 
     const VaporView::Map3D::Local3DTilesLoadDiagnostics tileDiagnostics =
         view.local3DTilesLoadDiagnostics();
