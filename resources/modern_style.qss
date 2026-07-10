@@ -1115,6 +1115,13 @@ QCheckBox::indicator:checked {
     image: url(lucide/square-check-big.svg);
 }
 
+QCheckBox#epsilonPacketCustomCheck::indicator:hover,
+QCheckBox#epsilonPacketCustomCheck::indicator:focus,
+QCheckBox#epsilonPacketCustomCheck::indicator:pressed {
+    background-color: @vv-title-hover;
+    border-radius: 6px;
+}
+
 /* 单选按钮 */
 QRadioButton {
     color: @vv-text;

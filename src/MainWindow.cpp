@@ -14170,6 +14170,8 @@ void MainWindow::setupDeviceConfigPage()
     epsilonBodyLayout->addWidget(device_config_.epsilon_config_hint_lbl);
 
     device_config_.epsilon_packet_custom_check = new QCheckBox(epsilonBodyWidget);
+    device_config_.epsilon_packet_custom_check->setObjectName(
+        QStringLiteral("epsilonPacketCustomCheck"));
     device_config_.epsilon_packet_custom_check->setFocusPolicy(Qt::TabFocus);
     epsilonBodyLayout->addWidget(device_config_.epsilon_packet_custom_check);
 

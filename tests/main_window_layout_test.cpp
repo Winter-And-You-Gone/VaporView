@@ -7,6 +7,7 @@
 #include <QApplication>
 #include <QAction>
 #include <QColor>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDoubleSpinBox>
@@ -3630,6 +3631,21 @@ int main(int argc, char **argv)
                         QStringList{QStringLiteral("EPSILON 配置"), QStringLiteral("EPSILON Configuration")},
                         QStringLiteral("sliders-vertical"),
                         "device EPSILON configuration card uses the standard icon title bar");
+    auto *epsilonPacketCustomCheck =
+        epsilonConfigCard->findChild<QCheckBox *>(QStringLiteral("epsilonPacketCustomCheck"));
+    require(epsilonPacketCustomCheck != nullptr &&
+                epsilonPacketCustomCheck->focusPolicy() == Qt::TabFocus,
+            "device EPSILON custom packet-rate checkbox exposes pointer and keyboard focus feedback");
+    const int epsilonCustomCheckStyleIndex = appStyleSheet.indexOf(
+        QStringLiteral("QCheckBox#epsilonPacketCustomCheck::indicator:hover"));
+    require(epsilonCustomCheckStyleIndex >= 0 &&
+                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 360).contains(
+                    QStringLiteral("QCheckBox#epsilonPacketCustomCheck::indicator:focus")) &&
+                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 360).contains(
+                    QStringLiteral("background-color:")) &&
+                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 360).contains(
+                    QStringLiteral("border-radius: 6px")),
+            "device EPSILON custom packet-rate checkbox reuses the title-bar hover background");
     const int epsilonCardStyleIndex = appStyleSheet.indexOf(QStringLiteral("QFrame#epsilonSectionCard"));
     require(epsilonCardStyleIndex >= 0 &&
                 appStyleSheet.mid(epsilonCardStyleIndex, 200).contains(QStringLiteral("border-radius: 8px")),
