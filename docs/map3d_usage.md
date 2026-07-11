@@ -43,8 +43,8 @@ Replay slider
 最大可见点数
 加载 Earth 文件
 本地影像
-本地 3D Tiles
-清除 3D Tiles
+本地 OSG 建筑
+清除 OSG 建筑
 加载飞机模型
 内置飞机标记
 重载最佳本地地图
@@ -150,8 +150,8 @@ Click `地图诊断`, or use `View / 视图 -> Map Data Diagnostics / 地图数�
 - Full Local Map blockers, including exact missing DEM, Natural Earth, OSM, or earth template files
 - optional Sentinel-2/Landsat/OpenAerialMap imagery VRTs
 - optional local imagery menu-ready overlay count, which requires both the VRT and matching `.earth` template
-- optional local 3D Tiles `tileset.json`
-- local 3D Tiles contract status, referenced content URIs, missing resources, and non-local URI warnings
+- optional native OSG building tile `tileset.json`
+- native OSG building tile contract status, referenced content URIs, missing resources, and non-local URI warnings
 - OSG plugin path
 - `OSG_LIBRARY_PATH`
 - `OSGEARTH_NOTIFY_LEVEL`
@@ -221,8 +221,8 @@ After building a local imagery VRT, use the `本地影像` menu and select the e
 
 The user is responsible for placing Copernicus DEM, SRTM, OSM, Sentinel-2, Landsat, or OpenAerialMap files under `resources/maps`. VaporView should not download commercial or restricted data sources.
 
-Optional local 3D Tiles can be placed under `resources/maps/tiles3d/local/tileset.json`. The diagnostics panel detects that path and validates the local-only data contract. A healthy dataset should report `Local 3D Tiles contract: valid`; remote, absolute, missing, or malformed content references are listed in the diagnostics panel.
+Optional VaporView native OSG building tiles can be placed under `resources/maps/tiles3d/local/tileset.json`. The diagnostics panel detects that path and validates the local-only data contract. A healthy dataset should report `Native OSG building tiles contract: valid`; remote, absolute, missing, or malformed content references are listed in the diagnostics panel.
 
-When the contract is valid, the `本地 3D Tiles` toolbar action attempts to load the tileset as a local OSG overlay. This preview does not replace the active Natural Earth/DEM/OSM base map and does not affect trajectory or aircraft layers. Use `清除 3D Tiles` to remove the preview overlay while keeping the base map and flight track. If loading fails, check `Local 3D Tiles preview load` in diagnostics; `osgDB::readNodeFile returned null` usually means the installed OSG/osgEarth runtime lacks plugin support for that dataset.
+When the contract is valid, the `本地 OSG 建筑` toolbar action attempts to load the tileset as a local OSG overlay. This preview does not replace the active Natural Earth/DEM/OSM base map and does not affect trajectory or aircraft layers. Use `清除 OSG 建筑` to remove the preview overlay while keeping the base map and flight track. If loading fails, check `Native OSG building tile preview load` in diagnostics; `osgDB::readNodeFile returned null` usually means the installed OSG/osgEarth runtime lacks plugin support for that native payload dataset.
 
-Loading a new local 3D Tiles preview first clears any previous preview overlay. This keeps the diagnostic `Loaded` state aligned with the visible overlay instead of leaving a stale 3D Tiles layer after a failed reload.
+Loading a new native OSG building tile preview first clears any previous preview overlay. This keeps the diagnostic `Loaded` state aligned with the visible overlay instead of leaving a stale building layer after a failed reload.

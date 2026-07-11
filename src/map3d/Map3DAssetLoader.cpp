@@ -250,32 +250,32 @@ Local3DTilesAssetLoadResult loadLocal3DTilesAsset(const QString& tilesetPath)
     const QFileInfo info(tilesetPath);
     if (!info.isFile())
     {
-        diagnostics.failureReason = QStringLiteral("Local 3D Tiles tileset file does not exist.");
+        diagnostics.failureReason = QStringLiteral("Native OSG building tileset file does not exist.");
         return result;
     }
     if (info.size() > kMaximumTilesetJsonBytes)
     {
-        diagnostics.failureReason = QStringLiteral("Local 3D tile index exceeds the 64 MiB safety limit.");
+        diagnostics.failureReason = QStringLiteral("Native OSG building tile index exceeds the 64 MiB safety limit.");
         return result;
     }
     QFile file(info.absoluteFilePath());
     if (!file.open(QIODevice::ReadOnly))
     {
-        diagnostics.failureReason = QStringLiteral("Local 3D Tiles tileset could not be opened: %1").arg(file.errorString());
+        diagnostics.failureReason = QStringLiteral("Native OSG building tileset could not be opened: %1").arg(file.errorString());
         return result;
     }
     QJsonParseError error;
     const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &error);
     if (error.error != QJsonParseError::NoError || !document.isObject())
     {
-        diagnostics.failureReason = QStringLiteral("Local 3D Tiles tileset is not valid JSON: %1").arg(error.errorString());
+        diagnostics.failureReason = QStringLiteral("Native OSG building tileset is not valid JSON: %1").arg(error.errorString());
         return result;
     }
     const QJsonObject tileset = document.object();
     const QJsonObject rootTile = tileset.value(QStringLiteral("root")).toObject();
     if (rootTile.isEmpty())
     {
-        diagnostics.failureReason = QStringLiteral("Local 3D tile index does not contain a root tile object.");
+        diagnostics.failureReason = QStringLiteral("Native OSG building tile index does not contain a root tile object.");
         return result;
     }
     if (tileset.value(QStringLiteral("extras")).toObject().value(QStringLiteral("format")).toString()
@@ -348,7 +348,7 @@ Local3DTilesAssetLoadResult loadLocal3DTilesAsset(const QString& tilesetPath)
     loadTile(rootTile, 0);
     if (traversalExceeded)
     {
-        diagnostics.failureReason = QStringLiteral("Local 3D tile index exceeds the traversal safety limit; previous preview was preserved.");
+        diagnostics.failureReason = QStringLiteral("Native OSG building tile index exceeds the traversal safety limit; previous preview was preserved.");
         return result;
     }
     if (diagnostics.loadedPayloadCount == 0 || diagnostics.failedPayloadCount > 0)

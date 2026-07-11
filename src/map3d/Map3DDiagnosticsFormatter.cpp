@@ -243,9 +243,9 @@ QString formatMap3DDiagnostics(const Map3DDiagnosticsContext& context)
                               QFileInfo(option.earthFilePath).isFile() ? QStringLiteral("found") : QStringLiteral("missing"));
         }
     }
-    lines << QStringLiteral("  Optional local 3D Tiles: %1")
+    lines << QStringLiteral("  Optional native OSG building tiles: %1")
                  .arg(diagnostics.local3DTilesAvailable ? QStringLiteral("available") : QStringLiteral("not configured"));
-    lines << QStringLiteral("  Local 3D Tiles contract: %1")
+    lines << QStringLiteral("  Native OSG building tiles contract: %1")
                  .arg(diagnostics.local3DTilesAvailable
                           ? (diagnostics.local3DTilesTilesetValid ? QStringLiteral("valid") : QStringLiteral("needs attention"))
                            : QStringLiteral("not checked"));
@@ -277,12 +277,12 @@ QString formatMap3DDiagnostics(const Map3DDiagnosticsContext& context)
     lines << QStringLiteral("Sentinel-2 imagery VRT: %1").arg(diagnostics.sentinel2ImageryVrtPath);
     lines << QStringLiteral("Landsat imagery VRT: %1").arg(diagnostics.landsatImageryVrtPath);
     lines << QStringLiteral("OpenAerialMap imagery VRT: %1").arg(diagnostics.openAerialMapImageryVrtPath);
-    lines << QStringLiteral("Local 3D Tiles tileset: %1").arg(diagnostics.local3DTilesTilesetPath);
-    lines << QStringLiteral("Local 3D Tiles valid: %1").arg(diagnostics.local3DTilesTilesetValid ? QStringLiteral("yes") : QStringLiteral("no"));
-    lines << QStringLiteral("Local 3D Tiles referenced resources: %1").arg(diagnostics.local3DTilesResourceCount);
+    lines << QStringLiteral("Native OSG building tileset: %1").arg(diagnostics.local3DTilesTilesetPath);
+    lines << QStringLiteral("Native OSG building tiles valid: %1").arg(diagnostics.local3DTilesTilesetValid ? QStringLiteral("yes") : QStringLiteral("no"));
+    lines << QStringLiteral("Native OSG building tile referenced resources: %1").arg(diagnostics.local3DTilesResourceCount);
     if (!diagnostics.local3DTilesResourceUris.isEmpty())
     {
-        lines << QStringLiteral("Local 3D Tiles resource URIs:");
+        lines << QStringLiteral("Native OSG building tile resource URIs:");
         for (const QString& uri : diagnostics.local3DTilesResourceUris)
         {
             lines << QStringLiteral("  - %1").arg(uri);
@@ -290,7 +290,7 @@ QString formatMap3DDiagnostics(const Map3DDiagnosticsContext& context)
     }
     if (!diagnostics.local3DTilesExternalUris.isEmpty())
     {
-        lines << QStringLiteral("Local 3D Tiles non-local/unsupported URIs:");
+        lines << QStringLiteral("Native OSG building tile non-local/unsupported URIs:");
         for (const QString& uri : diagnostics.local3DTilesExternalUris)
         {
             lines << QStringLiteral("  - %1").arg(uri);
@@ -298,7 +298,7 @@ QString formatMap3DDiagnostics(const Map3DDiagnosticsContext& context)
     }
     if (!diagnostics.local3DTilesMissingResources.isEmpty())
     {
-        lines << QStringLiteral("Local 3D Tiles missing resources:");
+        lines << QStringLiteral("Native OSG building tile missing resources:");
         for (const QString& path : diagnostics.local3DTilesMissingResources)
         {
             lines << QStringLiteral("  - %1").arg(path);
@@ -306,7 +306,7 @@ QString formatMap3DDiagnostics(const Map3DDiagnosticsContext& context)
     }
     if (!diagnostics.local3DTilesDiagnostics.isEmpty())
     {
-        lines << QStringLiteral("Local 3D Tiles diagnostics:");
+        lines << QStringLiteral("Native OSG building tile diagnostics:");
         for (const QString& message : diagnostics.local3DTilesDiagnostics)
         {
             lines << QStringLiteral("  - %1").arg(message);

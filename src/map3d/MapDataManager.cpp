@@ -425,14 +425,14 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
     QFile file(diagnostics.local3DTilesTilesetPath);
     if (QFileInfo(file).size() > kMaximumTilesetJsonBytes)
     {
-        const QString message = QStringLiteral("Local 3D Tiles tileset exceeds the 64 MiB safety limit.");
+        const QString message = QStringLiteral("Native OSG building tileset exceeds the 64 MiB safety limit.");
         diagnostics.local3DTilesDiagnostics.push_back(message);
         diagnostics.warnings.push_back(message);
         return;
     }
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
-        const QString message = QStringLiteral("Local 3D Tiles tileset could not be opened: %1").arg(file.errorString());
+        const QString message = QStringLiteral("Native OSG building tileset could not be opened: %1").arg(file.errorString());
         diagnostics.local3DTilesDiagnostics.push_back(message);
         diagnostics.warnings.push_back(message);
         return;
@@ -442,7 +442,7 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
     const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject())
     {
-        const QString message = QStringLiteral("Local 3D Tiles tileset is not valid JSON: %1").arg(parseError.errorString());
+        const QString message = QStringLiteral("Native OSG building tileset is not valid JSON: %1").arg(parseError.errorString());
         diagnostics.local3DTilesDiagnostics.push_back(message);
         diagnostics.warnings.push_back(message);
         return;
@@ -472,11 +472,11 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
 
     if (!hasAsset)
     {
-        addIssue(QStringLiteral("Local 3D Tiles tileset is missing asset object."));
+        addIssue(QStringLiteral("Native OSG building tileset is missing asset object."));
     }
     else if (!hasAssetVersion)
     {
-        addIssue(QStringLiteral("Local 3D Tiles tileset asset.version is missing."));
+        addIssue(QStringLiteral("Native OSG building tileset asset.version is missing."));
     }
     if (!hasNativePayloadFormat)
     {
@@ -484,15 +484,15 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
     }
     if (!hasRoot)
     {
-        addIssue(QStringLiteral("Local 3D Tiles tileset is missing root tile."));
+        addIssue(QStringLiteral("Native OSG building tileset is missing root tile."));
     }
     if (hasRoot && !hasBoundingVolume)
     {
-        addIssue(QStringLiteral("Local 3D Tiles root tile is missing boundingVolume."));
+        addIssue(QStringLiteral("Native OSG building tileset root tile is missing boundingVolume."));
     }
     if (!hasGeometricError)
     {
-        addIssue(QStringLiteral("Local 3D Tiles tileset/root geometricError is missing."));
+        addIssue(QStringLiteral("Native OSG building tileset/root geometricError is missing."));
     }
 
     QStringList uris;
@@ -504,14 +504,14 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
     }
     if (traversalLimitExceeded)
     {
-        addIssue(QStringLiteral("Local 3D Tiles tileset exceeds the traversal safety limit."));
+        addIssue(QStringLiteral("Native OSG building tileset exceeds the traversal safety limit."));
     }
     uris.removeDuplicates();
     diagnostics.local3DTilesResourceUris = uris;
     diagnostics.local3DTilesResourceCount = uris.size();
     if (uris.isEmpty())
     {
-        addIssue(QStringLiteral("Local 3D Tiles tileset has no content.uri entries yet."));
+        addIssue(QStringLiteral("Native OSG building tileset has no content.uri entries yet."));
     }
 
     const QFileInfo tilesetInfo(diagnostics.local3DTilesTilesetPath);
@@ -522,7 +522,7 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
         const QString resourcePath = stripUriQueryAndFragment(uri);
         if (resourcePath.isEmpty())
         {
-            addIssue(QStringLiteral("Local 3D Tiles contains an empty content URI."));
+            addIssue(QStringLiteral("Native OSG building tileset contains an empty content URI."));
             continue;
         }
         if (hasUriSchemeOrNetworkPath(resourcePath) || QDir::isAbsolutePath(resourcePath))
@@ -553,11 +553,11 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
 
     for (const QString& uri : diagnostics.local3DTilesExternalUris)
     {
-        addIssue(QStringLiteral("Local 3D Tiles content URI is not local/portable: %1").arg(uri));
+        addIssue(QStringLiteral("Native OSG building tile content URI is not local/portable: %1").arg(uri));
     }
     for (const QString& path : diagnostics.local3DTilesMissingResources)
     {
-        addIssue(QStringLiteral("Local 3D Tiles referenced resource is missing: %1").arg(path));
+        addIssue(QStringLiteral("Native OSG building tile referenced resource is missing: %1").arg(path));
     }
 
     diagnostics.local3DTilesTilesetValid = hasAsset
@@ -703,7 +703,7 @@ void finalizeSelection(MapDataSelection& selection)
         QStringLiteral("Optional imagery overlays: %1 (%2/3)")
             .arg(diagnostics.localImageryMenuAvailable ? QStringLiteral("menu ready") : QStringLiteral("not menu ready"))
             .arg(diagnostics.localImageryMenuEntryCount),
-        QStringLiteral("Optional local 3D Tiles: %1")
+        QStringLiteral("Optional native OSG building tiles: %1")
             .arg(diagnostics.local3DTilesAvailable
                      ? (diagnostics.local3DTilesTilesetValid ? QStringLiteral("contract valid") : QStringLiteral("needs attention"))
                      : QStringLiteral("not configured")),
@@ -737,7 +737,7 @@ void finalizeSelection(MapDataSelection& selection)
         if (!diagnostics.local3DTilesAvailable)
         {
             diagnostics.readinessNextSteps.push_back(
-                QStringLiteral("Optional: place a local 3D Tiles dataset under resources/maps/tiles3d/local/ for preview diagnostics."));
+                QStringLiteral("Optional: place a VaporView native OSG building tileset under resources/maps/tiles3d/local/ for preview diagnostics."));
         }
         break;
     case MapDataMode::NaturalEarthWithCopernicusDem:
@@ -1059,8 +1059,8 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     {
         diagnostics.messages.push_back(
             diagnostics.local3DTilesTilesetValid
-                ? QStringLiteral("Optional local 3D Tiles tileset detected and passed local-only contract checks.")
-                : QStringLiteral("Optional local 3D Tiles tileset detected but needs attention before renderer integration."));
+                ? QStringLiteral("Optional native OSG building tileset detected and passed local-only contract checks.")
+                : QStringLiteral("Optional native OSG building tileset detected but needs attention before renderer integration."));
     }
 
     const QString selectedFullLocalEarthPath = fullLocalEarthForAvailableDem(

@@ -120,7 +120,7 @@ The 3D Map diagnostics panel also includes a readiness summary. Read it as the c
 - `Local grid fallback only` means Natural Earth is incomplete; prepare `resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt` and `.tif` first.
 - `Ready for offline visual background only` means Natural Earth is loaded but no Copernicus DEM or SRTM VRT is selected.
 - `Ready for terrain-backed offline map` means Natural Earth plus a DEM VRT is selected; generate the four OSM GeoPackages to unlock `Full local map`.
-- `Ready for full offline local map` means Natural Earth, one DEM source, and all required OSM GeoPackages are selected. Optional imagery overlays and local 3D Tiles may still be absent.
+- `Ready for full offline local map` means Natural Earth, one DEM source, and all required OSM GeoPackages are selected. Optional imagery overlays and native OSG building tiles may still be absent.
 
 ## Local OSM Vector Data
 
@@ -212,9 +212,9 @@ The helper only reads local GeoTIFF files. It does not download imagery and does
 
 `MapDataManager` scans these VRTs and shows them in the 3D Map diagnostics. Optional imagery does not change the automatic base map mode. The diagnostics distinguish VRTs found from menu-ready overlays: a toolbar entry is enabled only when both the VRT and the matching `.earth` template exist. After preparing a VRT, use the 3D Map toolbar `本地影像` menu to load the matching imagery `.earth` template. The templates keep Natural Earth as the offline global background and add one local imagery overlay.
 
-## Optional Local 3D Tiles
+## Optional Native OSG Building Tiles
 
-Local 3D Tiles live under `resources/maps/tiles3d/` for offline 3D content experiments. This path is local-only and does not use Cesium ion.
+VaporView native OSG building tiles live under `resources/maps/tiles3d/` for offline 3D content experiments. This path is local-only and does not use Cesium ion.
 
 Expected entry point:
 
@@ -259,18 +259,18 @@ For SRTM fallback validation, place SRTM GeoTIFF tiles in `resources/maps/terrai
 9. Confirm the mode is `Full local map` and the loaded earth file is `vaporview_full_local.earth` for Copernicus DEM or `vaporview_full_local_srtm.earth` for SRTM-only fallback.
 10. Zoom into the OSM extract area and confirm local water and roads are visible. Building and place GeoPackages should appear in diagnostics as prepared data, but they are not rendered by the safe default template.
 
-## Optional Imagery And 3D Tiles Diagnostics Flow
+## Optional Imagery And Native OSG Building Tile Diagnostics Flow
 
 1. Place local GeoTIFF imagery under one of `resources/maps/imagery/sentinel2/`, `resources/maps/imagery/landsat/`, or `resources/maps/imagery/openaerialmap/`.
 2. Build the matching VRT with `python scripts/prepare-local-imagery.py sentinel2`, `landsat`, or `openaerialmap`.
-3. Optionally place a local 3D Tiles dataset under `resources/maps/tiles3d/local/` with `tileset.json` at the root.
+3. Optionally place a VaporView native OSG building tileset under `resources/maps/tiles3d/local/` with `tileset.json` at the root.
 4. Build and start VaporView with `-DVAPORVIEW_ENABLE_OSGEARTH=ON`.
 5. Open the 3D Map window and click `地图诊断`.
-6. Confirm optional local imagery and optional local 3D Tiles availability are reported. These optional files should not change the selected base map mode.
+6. Confirm optional local imagery and optional native OSG building tile availability are reported. These optional files should not change the selected base map mode.
 7. To view local imagery, click `本地影像` and select the enabled Sentinel-2, Landsat, or OpenAerialMap entry.
-8. For local 3D Tiles, confirm the diagnostics show `Local 3D Tiles contract: valid`, then click `本地 3D Tiles` to attempt a local preview overlay.
-9. If the preview fails, check `Local 3D Tiles preview load` in diagnostics. A failure such as `osgDB::readNodeFile returned null` usually means the current OSG/osgEarth runtime lacks the needed 3D Tiles/plugin support for that dataset.
+8. For native OSG building tiles, confirm the diagnostics show `Native OSG building tiles contract: valid`, then click `本地 OSG 建筑` to attempt a local preview overlay.
+9. If the preview fails, check `Native OSG building tile preview load` in diagnostics. A failure such as `osgDB::readNodeFile returned null` usually means the current OSG/osgEarth runtime lacks the needed native payload plugin support for that dataset.
 
 ## Git Tracking
 
-The `data/` directory ignores large downloaded rasters, DEM tiles, imagery, OSM extracts, GeoPackages, 3D Tiles payloads, and archives. Git tracks only small map templates, VRT metadata, README files, and scripts needed to recreate the local map setup.
+The `data/` directory ignores large downloaded rasters, DEM tiles, imagery, OSM extracts, GeoPackages, native OSG building payloads, and archives. Git tracks only small map templates, VRT metadata, README files, and scripts needed to recreate the local map setup.

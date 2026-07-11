@@ -803,7 +803,7 @@ bool Map3DWindow::loadConfiguredLocal3DTiles(bool showStatusMessage)
         latest_local_3d_tiles_load_ = {};
         latest_local_3d_tiles_load_.requestedPath = diagnostics.local3DTilesTilesetPath;
         latest_local_3d_tiles_load_.failureReason =
-            QStringLiteral("Local OSG building tiles contract is not valid; open Map Data Diagnostics for details.");
+            QStringLiteral("Native OSG building tiles contract is not valid; open Map Data Diagnostics for details.");
         refreshDiagnosticsText();
         if (showStatusMessage)
         {
@@ -1287,9 +1287,9 @@ void Map3DWindow::setMapSelection(const MapDataSelection& selection)
         local_3d_tiles_action_->setEnabled(enabled);
         local_3d_tiles_action_->setToolTip(
             enabled
-                ? QStringLiteral("加载本地 3D 建筑瓦片: %1")
+                ? QStringLiteral("加载本地 OSG 建筑瓦片: %1")
                       .arg(map_selection_.diagnostics.local3DTilesTilesetPath)
-                : QStringLiteral("本地 3D Tiles 不可用或契约无效；请查看地图诊断"));
+                : QStringLiteral("本地 OSG 建筑瓦片不可用或契约无效；请查看地图诊断"));
         local_3d_tiles_action_->setStatusTip(local_3d_tiles_action_->toolTip());
     }
     refreshDiagnosticsText();

@@ -398,10 +398,10 @@ int main(int argc, char** argv)
             "diagnostics include optional local imagery VRT count");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Optional local imagery menu-ready overlays:")),
             "diagnostics include menu-ready optional local imagery count");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Local 3D Tiles contract:")),
-            "diagnostics include local 3D Tiles contract status");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Local 3D Tiles tileset:")),
-            "diagnostics include local 3D Tiles tileset path");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Native OSG building tiles contract:")),
+            "diagnostics include native OSG building tile contract status");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Native OSG building tileset:")),
+            "diagnostics include native OSG building tileset path");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Trajectory quality:")),
             "diagnostics include trajectory quality section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Fixed: 1")),
