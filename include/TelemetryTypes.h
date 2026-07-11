@@ -7,6 +7,8 @@
 #include <QVector>
 #include <QtGlobal>
 
+#include <array>
+
 namespace VaporView
 {
 
@@ -73,6 +75,7 @@ enum class CommandId : quint16
     SetTemperatureRs485Baud = 48,
     SetTemperatureOvertempOutputMode = 49,
     RestoreTemperatureFactoryDefaults = 50,
+    SetTemperatureSensorConfig = 51,
     ShutdownCore = 90,
 };
 
@@ -245,6 +248,15 @@ struct TemperatureControllerCommand
     quint16 device_address = 1;
     quint16 rs485_baud_index = 1;
     quint16 overtemp_output_mode = 1;
+    quint16 sensor_model = 0;
+    quint32 ntc_b = 395000;
+    quint32 ntc_r0 = 10000;
+    quint32 pt_r0 = 1000000;
+    qint32 pt_a = 3908300;
+    qint32 pt_b = -577500;
+    qint32 pt_c = -41830;
+    std::array<qint64, 8> polynomial_mantissas{};
+    std::array<qint16, 8> polynomial_exponents{};
 };
 
 struct DeviceStatusItem

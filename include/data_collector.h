@@ -277,6 +277,16 @@ public:
   bool setDeviceAddress(uint16_t address);
   bool setRs485BaudIndex(uint16_t baud_index);
   bool setOvertempOutputMode(uint16_t mode);
+  bool setSensorConfig(uint8_t channel,
+                       uint16_t sensor_model,
+                       uint32_t ntc_b,
+                       uint32_t ntc_r0,
+                       uint32_t pt_r0,
+                       int32_t pt_a,
+                       int32_t pt_b,
+                       int32_t pt_c,
+                       const std::array<int64_t, 8>& polynomial_mantissas,
+                       const std::array<int16_t, 8>& polynomial_exponents);
   bool restoreFactoryDefaults();
 
 protected:

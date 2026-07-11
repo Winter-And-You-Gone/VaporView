@@ -3925,6 +3925,33 @@ bool TemperatureControllerCollector::readChannel(uint8_t channel, TemperatureCon
   channel_data.output_percent = static_cast<double>(decodeInt64(QVector<uint16_t>(registers.cbegin(), registers.cend()))) / 20000.0;
   if (!readRegisters(channelAddress(channel, Register::OutputCurrent), 1, registers)) return false;
   channel_data.output_current_a = registers[0] / 1000.0;
+  if (!readRegisters(channelAddress(channel, Register::SensorModel), 1, registers)) return false;
+  channel_data.sensor_model = static_cast<int>(decodeUInt16(QVector<uint16_t>(registers.cbegin(), registers.cend())));
+  if (!readRegisters(channelAddress(channel, Register::NtcB), 2, registers)) return false;
+  channel_data.ntc_b = static_cast<int>(decodeUInt32(QVector<uint16_t>(registers.cbegin(), registers.cend())));
+  if (!readRegisters(channelAddress(channel, Register::NtcR0), 2, registers)) return false;
+  channel_data.ntc_r0 = static_cast<int>(decodeUInt32(QVector<uint16_t>(registers.cbegin(), registers.cend())));
+  if (!readRegisters(channelAddress(channel, Register::PtR0), 2, registers)) return false;
+  channel_data.pt_r0 = static_cast<int>(decodeUInt32(QVector<uint16_t>(registers.cbegin(), registers.cend())));
+  if (!readRegisters(channelAddress(channel, Register::PtA), 2, registers)) return false;
+  channel_data.pt_a = static_cast<int>(decodeInt32(QVector<uint16_t>(registers.cbegin(), registers.cend())));
+  if (!readRegisters(channelAddress(channel, Register::PtB), 2, registers)) return false;
+  channel_data.pt_b = static_cast<int>(decodeInt32(QVector<uint16_t>(registers.cbegin(), registers.cend())));
+  if (!readRegisters(channelAddress(channel, Register::PtC), 2, registers)) return false;
+  channel_data.pt_c = static_cast<int>(decodeInt32(QVector<uint16_t>(registers.cbegin(), registers.cend())));
+  for (int i = 0; i < 8; ++i)
+  {
+    const auto mantissaRegister = static_cast<Register>(
+        static_cast<quint16>(Register::PolynomialA0Mantissa) + static_cast<quint16>(i * 5));
+    const auto exponentRegister = static_cast<Register>(
+        static_cast<quint16>(Register::PolynomialA0Exponent) + static_cast<quint16>(i * 5));
+    if (!readRegisters(channelAddress(channel, mantissaRegister), 4, registers)) return false;
+    channel_data.polynomial_mantissas[static_cast<size_t>(i)] =
+        decodeInt64(QVector<uint16_t>(registers.cbegin(), registers.cend()));
+    if (!readRegisters(channelAddress(channel, exponentRegister), 1, registers)) return false;
+    channel_data.polynomial_exponents[static_cast<size_t>(i)] =
+        static_cast<int>(decodeInt16(QVector<uint16_t>(registers.cbegin(), registers.cend())));
+  }
   return true;
 }
 
@@ -4081,6 +4108,71 @@ bool TemperatureControllerCollector::setOvertempOutputMode(uint16_t mode)
   }
   const QVector<uint16_t> values = encodeUInt16(mode);
   return writeAndConfirm(1, static_cast<uint16_t>(Register::OvertempOutputMode), std::vector<uint16_t>(values.cbegin(), values.cend()));
+}
+
+bool TemperatureControllerCollector::setSensorConfig(uint8_t channel,
+                                                     uint16_t sensor_model,
+                                                     uint32_t ntc_b,
+                                                     uint32_t ntc_r0,
+                                                     uint32_t pt_r0,
+                                                     int32_t pt_a,
+                                                     int32_t pt_b,
+                                                     int32_t pt_c,
+                                                     const std::array<int64_t, 8>& polynomial_mantissas,
+                                                     const std::array<int16_t, 8>& polynomial_exponents)
+{
+  using namespace TemperatureControllerProtocol;
+  if (channel < 1 || channel > 2 ||
+      sensor_model > 3 ||
+      ntc_b < 100000 || ntc_b > 5000000 ||
+      ntc_r0 > 9000000 ||
+      pt_r0 > 10000000 ||
+      pt_a < -9000000 || pt_a > 9000000 ||
+      pt_b < -9000000 || pt_b > 9000000 ||
+      pt_c < -90000 || pt_c > 90000)
+  {
+    return false;
+  }
+  for (size_t i = 0; i < polynomial_mantissas.size(); ++i)
+  {
+    if (polynomial_mantissas[i] < -99999999999999LL ||
+        polynomial_mantissas[i] > 99999999999999LL ||
+        polynomial_exponents[i] < -100 ||
+        polynomial_exponents[i] > 100)
+    {
+      return false;
+    }
+  }
+
+  auto writeValue = [this, channel](Register reg, const QVector<uint16_t>& values) {
+    return writeAndConfirm(channel,
+                           channelAddress(channel, reg),
+                           std::vector<uint16_t>(values.cbegin(), values.cend()));
+  };
+
+  if (!writeValue(Register::SensorModel, encodeUInt16(sensor_model)) ||
+      !writeValue(Register::NtcB, encodeUInt32(ntc_b)) ||
+      !writeValue(Register::NtcR0, encodeUInt32(ntc_r0)) ||
+      !writeValue(Register::PtR0, encodeUInt32(pt_r0)) ||
+      !writeValue(Register::PtA, encodeInt32(pt_a)) ||
+      !writeValue(Register::PtB, encodeInt32(pt_b)) ||
+      !writeValue(Register::PtC, encodeInt32(pt_c)))
+  {
+    return false;
+  }
+  for (int i = 0; i < 8; ++i)
+  {
+    const auto mantissaRegister = static_cast<Register>(
+        static_cast<quint16>(Register::PolynomialA0Mantissa) + static_cast<quint16>(i * 5));
+    const auto exponentRegister = static_cast<Register>(
+        static_cast<quint16>(Register::PolynomialA0Exponent) + static_cast<quint16>(i * 5));
+    if (!writeValue(mantissaRegister, encodeInt64(polynomial_mantissas[static_cast<size_t>(i)])) ||
+        !writeValue(exponentRegister, encodeInt16(polynomial_exponents[static_cast<size_t>(i)])))
+    {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool TemperatureControllerCollector::restoreFactoryDefaults()

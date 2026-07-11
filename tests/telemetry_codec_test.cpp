@@ -232,6 +232,17 @@ void testWaveform()
     command.device_address = 9;
     command.rs485_baud_index = 5;
     command.overtemp_output_mode = 1;
+    command.sensor_model = 1;
+    command.ntc_b = 395000;
+    command.ntc_r0 = 10000;
+    command.pt_r0 = 1000000;
+    command.pt_a = 3908300;
+    command.pt_b = -577500;
+    command.pt_c = -41830;
+    command.polynomial_mantissas[0] = 5412000000000LL;
+    command.polynomial_exponents[0] = -1;
+    command.polynomial_mantissas[1] = -2245952000000LL;
+    command.polynomial_exponents[1] = -2;
     VaporView::TemperatureControllerCommand parsedCommand;
     require(VaporView::TelemetryCodec::parseTemperatureControllerCommand(
                 VaporView::TelemetryCodec::serializeTemperatureControllerCommand(command), parsedCommand),
@@ -246,6 +257,20 @@ void testWaveform()
                 parsedCommand.rs485_baud_index == 5 &&
                 parsedCommand.overtemp_output_mode == 1,
             "temperature command common settings values");
+    require(parsedCommand.sensor_model == 1 &&
+                parsedCommand.ntc_b == 395000 &&
+                parsedCommand.ntc_r0 == 10000 &&
+                parsedCommand.pt_r0 == 1000000,
+            "temperature command sensor resistance values");
+    require(parsedCommand.pt_a == 3908300 &&
+                parsedCommand.pt_b == -577500 &&
+                parsedCommand.pt_c == -41830,
+            "temperature command PT coefficient values");
+    require(parsedCommand.polynomial_mantissas[0] == 5412000000000LL &&
+                parsedCommand.polynomial_exponents[0] == -1 &&
+                parsedCommand.polynomial_mantissas[1] == -2245952000000LL &&
+                parsedCommand.polynomial_exponents[1] == -2,
+            "temperature command polynomial values");
 
     VaporView::TemperatureControllerData status;
     status.valid = true;
@@ -262,9 +287,27 @@ void testWaveform()
     status.channels[0].max_output_percent = 70;
     status.channels[0].auto_pid_mode = 1;
     status.channels[0].kp = 100;
+    status.channels[0].sensor_model = 2;
+    status.channels[0].ntc_b = 395000;
+    status.channels[0].ntc_r0 = 10000;
+    status.channels[0].pt_r0 = 1000000;
+    status.channels[0].pt_a = 3908300;
+    status.channels[0].pt_b = -577500;
+    status.channels[0].pt_c = -41830;
+    status.channels[0].polynomial_mantissas[3] = 12345000000000LL;
+    status.channels[0].polynomial_exponents[3] = -4;
     status.channels[1].target_temperature_c = 26.0;
     status.channels[1].output_percent = 12.5;
     status.channels[1].auto_pid_mode = 2;
+    status.channels[1].sensor_model = 3;
+    status.channels[1].ntc_b = 410000;
+    status.channels[1].ntc_r0 = 22000;
+    status.channels[1].pt_r0 = 1000100;
+    status.channels[1].pt_a = 3908301;
+    status.channels[1].pt_b = -577501;
+    status.channels[1].pt_c = -41831;
+    status.channels[1].polynomial_mantissas[7] = -9876500000000LL;
+    status.channels[1].polynomial_exponents[7] = 5;
     VaporView::TemperatureControllerData parsedStatus;
     require(VaporView::TelemetryCodec::parseTemperatureControllerStatus(
                 VaporView::TelemetryCodec::serializeTemperatureControllerStatus(status), parsedStatus),
@@ -279,6 +322,28 @@ void testWaveform()
             "temperature status common settings");
     require(parsedStatus.channels[0].output_enabled && parsedStatus.channels[0].kp == 100 && parsedStatus.channels[0].auto_pid_mode == 1, "temperature status channel one");
     require(std::fabs(parsedStatus.channels[1].output_percent - 12.5) < 0.000001 && parsedStatus.channels[1].auto_pid_mode == 2, "temperature status channel two");
+    require(parsedStatus.channels[0].sensor_model == 2 &&
+                parsedStatus.channels[0].ntc_b == 395000 &&
+                parsedStatus.channels[0].ntc_r0 == 10000 &&
+                parsedStatus.channels[0].pt_r0 == 1000000 &&
+                parsedStatus.channels[0].pt_a == 3908300 &&
+                parsedStatus.channels[0].pt_b == -577500 &&
+                parsedStatus.channels[0].pt_c == -41830,
+            "temperature status channel one sensor config");
+    require(parsedStatus.channels[0].polynomial_mantissas[3] == 12345000000000LL &&
+                parsedStatus.channels[0].polynomial_exponents[3] == -4,
+            "temperature status channel one polynomial config");
+    require(parsedStatus.channels[1].sensor_model == 3 &&
+                parsedStatus.channels[1].ntc_b == 410000 &&
+                parsedStatus.channels[1].ntc_r0 == 22000 &&
+                parsedStatus.channels[1].pt_r0 == 1000100 &&
+                parsedStatus.channels[1].pt_a == 3908301 &&
+                parsedStatus.channels[1].pt_b == -577501 &&
+                parsedStatus.channels[1].pt_c == -41831,
+            "temperature status channel two independent sensor config");
+    require(parsedStatus.channels[1].polynomial_mantissas[7] == -9876500000000LL &&
+                parsedStatus.channels[1].polynomial_exponents[7] == 5,
+            "temperature status channel two polynomial config");
 }
 
 void testSkyConfigDiff()

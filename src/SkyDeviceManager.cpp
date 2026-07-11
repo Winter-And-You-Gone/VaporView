@@ -518,6 +518,27 @@ bool SkyDeviceManager::setTemperatureOvertempOutputMode(quint16 mode, CommandErr
     return ok;
 }
 
+bool SkyDeviceManager::setTemperatureSensorConfig(const TemperatureControllerCommand& command, CommandErrorCode *errorCode)
+{
+    if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        return false;
+    }
+    const bool ok = temperature_controller_->setSensorConfig(command.channel,
+                                                            command.sensor_model,
+                                                            command.ntc_b,
+                                                            command.ntc_r0,
+                                                            command.pt_r0,
+                                                            command.pt_a,
+                                                            command.pt_b,
+                                                            command.pt_c,
+                                                            command.polynomial_mantissas,
+                                                            command.polynomial_exponents);
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    return ok;
+}
+
 bool SkyDeviceManager::restoreTemperatureFactoryDefaults(CommandErrorCode *errorCode)
 {
     if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)

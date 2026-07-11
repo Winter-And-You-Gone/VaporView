@@ -54,6 +54,7 @@ public:
     bool setTemperatureDeviceAddress(quint16 address, CommandErrorCode *errorCode = nullptr);
     bool setTemperatureRs485Baud(quint16 baudIndex, CommandErrorCode *errorCode = nullptr);
     bool setTemperatureOvertempOutputMode(quint16 mode, CommandErrorCode *errorCode = nullptr);
+    bool setTemperatureSensorConfig(const TemperatureControllerCommand& command, CommandErrorCode *errorCode = nullptr);
     bool restoreTemperatureFactoryDefaults(CommandErrorCode *errorCode = nullptr);
 
     EpsilonData latestEpsilon() const;

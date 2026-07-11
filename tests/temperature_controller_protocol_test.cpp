@@ -90,6 +90,21 @@ bool checkChannelAddressOffset()
                   "channel 1 auto PID address mismatch");
     ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(2, VaporView::TemperatureControllerProtocol::Register::AutoPid) == 0x2107,
                   "channel 2 auto PID address mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(1, VaporView::TemperatureControllerProtocol::Register::SensorModel) == 0x1300,
+                  "channel 1 sensor model address mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(2, VaporView::TemperatureControllerProtocol::Register::SensorModel) == 0x2300,
+                  "channel 2 sensor model address mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(1, VaporView::TemperatureControllerProtocol::Register::NtcB) == 0x1301,
+                  "channel 1 NTC B address mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(2, VaporView::TemperatureControllerProtocol::Register::NtcB) == 0x2301,
+                  "channel 2 NTC B address mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(2, VaporView::TemperatureControllerProtocol::Register::PolynomialA0Mantissa) == 0x2315,
+                  "channel 2 A0 mantissa address mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(
+                      2,
+                      static_cast<VaporView::TemperatureControllerProtocol::Register>(
+                          static_cast<quint16>(VaporView::TemperatureControllerProtocol::Register::PolynomialA0Exponent) + 7 * 5)) == 0x233C,
+                  "channel 2 A7 exponent address mismatch");
     ok &= require(static_cast<quint16>(VaporView::TemperatureControllerProtocol::Register::ControllerMode) == 0x0004,
                   "controller mode address mismatch");
     ok &= require(static_cast<quint16>(VaporView::TemperatureControllerProtocol::Register::FactoryReset) == 0x0000,

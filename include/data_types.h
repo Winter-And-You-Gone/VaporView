@@ -222,6 +222,15 @@ struct TemperatureControllerChannelData
   int kp = 0;
   int ki = 0;
   int kd = 0;
+  int sensor_model = 0;
+  int ntc_b = 395000;
+  int ntc_r0 = 10000;
+  int pt_r0 = 1000000;
+  int pt_a = 3908300;
+  int pt_b = -577500;
+  int pt_c = -41830;
+  std::array<int64_t, 8> polynomial_mantissas{};
+  std::array<int, 8> polynomial_exponents{};
 };
 
 struct TemperatureControllerData

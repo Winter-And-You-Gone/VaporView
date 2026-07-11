@@ -69,6 +69,7 @@ void require(bool condition, const char *message)
     }
 }
 
+
 void processEventsFor(int timeoutMs);
 
 void requireComboPopupStyled(QComboBox *combo, const char *message)
@@ -2898,6 +2899,16 @@ int main(int argc, char **argv)
                 temperatureScrollArea->horizontalScrollBar()->maximum() == 0,
             "temperature configuration page fits horizontally without clipping");
 
+    auto *temperatureChannelAdvancedParamsButton =
+        temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureChannelAdvancedParamsButton1"));
+    auto *temperatureChannelSensorConfigButton =
+        temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureChannelSensorConfigButton1"));
+    require(temperatureChannelAdvancedParamsButton != nullptr &&
+                temperatureChannelSensorConfigButton != nullptr,
+            "temperature channel exposes lower common, advanced, and sensor config tabs");
+    clickWidget(temperatureChannelAdvancedParamsButton, 150);
+    activateLayouts(&window);
+
     auto requireFieldRowLayout = [](QWidget *editor, const char *message) {
         require(editor != nullptr && editor->parentWidget() != nullptr, message);
         QWidget *row = editor->parentWidget();
@@ -3012,6 +3023,60 @@ int main(int argc, char **argv)
                                 "temperature common over-temperature output field uses left label and right value layout");
     requireCommonFieldRowLayout(commonInternalTemperatureEdit,
                                 "temperature common internal temperature field uses left label and right value layout");
+
+    clickWidget(temperatureChannelSensorConfigButton, 150);
+    activateLayouts(&window);
+
+    auto *temperatureChannelSubTopBar =
+        temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureChannelSubTopBar"));
+    auto *sensorModelCombo =
+        temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureSensorModelComboChannel1"));
+    auto *ntcR0Spin =
+        temperaturePanel->findChild<QSpinBox *>(QStringLiteral("temperatureNtcR0SpinChannel1"));
+    auto *ntcBSpin =
+        temperaturePanel->findChild<QDoubleSpinBox *>(QStringLiteral("temperatureNtcBSpinChannel1"));
+    auto *ptR0Spin =
+        temperaturePanel->findChild<QDoubleSpinBox *>(QStringLiteral("temperaturePtR0SpinChannel1"));
+    auto *polynomialA0Edit =
+        temperaturePanel->findChild<QLineEdit *>(QStringLiteral("temperaturePolynomialA0EditChannel1"));
+    require(temperatureChannelSubTopBar != nullptr &&
+                sensorModelCombo != nullptr &&
+                ntcR0Spin != nullptr &&
+                ntcBSpin != nullptr &&
+                ptR0Spin != nullptr &&
+                polynomialA0Edit != nullptr,
+            "temperature channel exposes per-channel sensor config controls");
+    require(temperatureChannelSubTopBar->property("temperatureChannelSelector").isValid() == false,
+            "temperature sensor sub-tabs do not reuse the top channel selector identity");
+    require(sensorModelCombo->itemData(0).toInt() == 0 &&
+                sensorModelCombo->itemData(1).toInt() == 1 &&
+                sensorModelCombo->itemData(2).toInt() == 2 &&
+                sensorModelCombo->itemData(3).toInt() == 3,
+            "temperature sensor model combo follows the RD105 document model values");
+    auto requireCompactSensorFieldLayout = [](QWidget *editor, const char *message) {
+        require(editor != nullptr && editor->parentWidget() != nullptr, message);
+        QWidget *row = editor->parentWidget();
+        require(row->objectName() == QStringLiteral("temperatureConfigFieldRow"), message);
+        const QList<QLabel*> labels =
+            row->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
+        require(!labels.isEmpty(), message);
+        const QRect labelRect(labels.first()->mapTo(row, QPoint(0, 0)), labels.first()->size());
+        const QRect editorRect(editor->mapTo(row, QPoint(0, 0)), editor->size());
+        require(labelRect.left() <= 1 &&
+                    labelRect.right() < editorRect.left() &&
+                    editorRect.left() - labelRect.right() <= 6,
+                message);
+    };
+    requireCompactSensorFieldLayout(sensorModelCombo,
+                                    "temperature sensor model field keeps label and input tightly grouped");
+    requireCompactSensorFieldLayout(ntcR0Spin,
+                                    "temperature NTC R0 field keeps label and input tightly grouped");
+    requireCompactSensorFieldLayout(ntcBSpin,
+                                    "temperature NTC B field keeps label and input tightly grouped");
+    requireCompactSensorFieldLayout(ptR0Spin,
+                                    "temperature PT R0 field keeps label and input tightly grouped");
+    requireCompactSensorFieldLayout(polynomialA0Edit,
+                                    "temperature polynomial field keeps label and input tightly grouped");
     require(temperatureChannelSelectorRow->isAncestorOf(factoryResetButton) &&
                 !temperatureChannelStack->isAncestorOf(factoryResetButton),
             "temperature factory reset button lives beside the common settings selector");

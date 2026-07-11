@@ -183,6 +183,7 @@ QString commandIdName(CommandId id)
     case CommandId::SetTemperatureRs485Baud: return QStringLiteral("SetTemperatureRs485Baud");
     case CommandId::SetTemperatureOvertempOutputMode: return QStringLiteral("SetTemperatureOvertempOutputMode");
     case CommandId::RestoreTemperatureFactoryDefaults: return QStringLiteral("RestoreTemperatureFactoryDefaults");
+    case CommandId::SetTemperatureSensorConfig: return QStringLiteral("SetTemperatureSensorConfig");
     case CommandId::ShutdownCore: return QStringLiteral("ShutdownCore");
     }
     return QStringLiteral("UnknownCommand");
@@ -877,7 +878,7 @@ bool TelemetryCodec::parsePeakSearchRange(const QByteArray& payload, PeakSearchR
 QByteArray TelemetryCodec::serializeTemperatureControllerStatus(const TemperatureControllerData& data)
 {
     QByteArray payload;
-    payload.reserve(128);
+    payload.reserve(320);
     payload.append(data.valid ? char(1) : char(0));
     payload.append('\0');
     appendLe<quint16>(payload, data.error_code);
@@ -895,6 +896,18 @@ QByteArray TelemetryCodec::serializeTemperatureControllerStatus(const Temperatur
         appendLe<quint32>(payload, static_cast<quint32>(std::clamp(channel.kp, 0, std::numeric_limits<int>::max())));
         appendLe<quint32>(payload, static_cast<quint32>(std::clamp(channel.ki, 0, std::numeric_limits<int>::max())));
         appendLe<quint32>(payload, static_cast<quint32>(std::clamp(channel.kd, 0, std::numeric_limits<int>::max())));
+        appendLe<quint16>(payload, static_cast<quint16>(std::clamp(channel.sensor_model, 0, 65535)));
+        appendLe<quint32>(payload, static_cast<quint32>(std::clamp(channel.ntc_b, 0, std::numeric_limits<int>::max())));
+        appendLe<quint32>(payload, static_cast<quint32>(std::clamp(channel.ntc_r0, 0, std::numeric_limits<int>::max())));
+        appendLe<quint32>(payload, static_cast<quint32>(std::clamp(channel.pt_r0, 0, std::numeric_limits<int>::max())));
+        appendLe<qint32>(payload, static_cast<qint32>(channel.pt_a));
+        appendLe<qint32>(payload, static_cast<qint32>(channel.pt_b));
+        appendLe<qint32>(payload, static_cast<qint32>(channel.pt_c));
+        for (size_t i = 0; i < channel.polynomial_mantissas.size(); ++i)
+        {
+            appendLe<qint64>(payload, static_cast<qint64>(channel.polynomial_mantissas[i]));
+            appendLe<qint16>(payload, static_cast<qint16>(channel.polynomial_exponents[i]));
+        }
     }
     appendLe<quint16>(payload, static_cast<quint16>(std::clamp(data.controller_mode, 0, 65535)));
     for (const TemperatureControllerChannelData& channel : data.channels)
@@ -952,6 +965,52 @@ bool TelemetryCodec::parseTemperatureControllerStatus(const QByteArray& payload,
         channel.kp = static_cast<int>(std::min<quint32>(kp, static_cast<quint32>(std::numeric_limits<int>::max())));
         channel.ki = static_cast<int>(std::min<quint32>(ki, static_cast<quint32>(std::numeric_limits<int>::max())));
         channel.kd = static_cast<int>(std::min<quint32>(kd, static_cast<quint32>(std::numeric_limits<int>::max())));
+        const qsizetype sensorBlockOffset = offset;
+        quint16 sensorModel = 0;
+        quint32 ntcB = 0;
+        quint32 ntcR0 = 0;
+        quint32 ptR0 = 0;
+        qint32 ptA = 0;
+        qint32 ptB = 0;
+        qint32 ptC = 0;
+        if (readLe(payload, offset, sensorModel) &&
+            readLe(payload, offset, ntcB) &&
+            readLe(payload, offset, ntcR0) &&
+            readLe(payload, offset, ptR0) &&
+            readLe(payload, offset, ptA) &&
+            readLe(payload, offset, ptB) &&
+            readLe(payload, offset, ptC))
+        {
+            channel.sensor_model = sensorModel;
+            channel.ntc_b = static_cast<int>(std::min<quint32>(ntcB, static_cast<quint32>(std::numeric_limits<int>::max())));
+            channel.ntc_r0 = static_cast<int>(std::min<quint32>(ntcR0, static_cast<quint32>(std::numeric_limits<int>::max())));
+            channel.pt_r0 = static_cast<int>(std::min<quint32>(ptR0, static_cast<quint32>(std::numeric_limits<int>::max())));
+            channel.pt_a = ptA;
+            channel.pt_b = ptB;
+            channel.pt_c = ptC;
+            bool polynomialOk = true;
+            for (size_t i = 0; i < channel.polynomial_mantissas.size(); ++i)
+            {
+                qint64 mantissa = 0;
+                qint16 exponent = 0;
+                if (!readLe(payload, offset, mantissa) ||
+                    !readLe(payload, offset, exponent))
+                {
+                    polynomialOk = false;
+                    break;
+                }
+                channel.polynomial_mantissas[i] = mantissa;
+                channel.polynomial_exponents[i] = exponent;
+            }
+            if (!polynomialOk)
+            {
+                offset = sensorBlockOffset;
+            }
+        }
+        else
+        {
+            offset = sensorBlockOffset;
+        }
     }
     quint16 controllerMode = 0;
     if (readLe(payload, offset, controllerMode))
@@ -988,7 +1047,7 @@ bool TelemetryCodec::parseTemperatureControllerStatus(const QByteArray& payload,
 QByteArray TelemetryCodec::serializeTemperatureControllerCommand(const TemperatureControllerCommand& command)
 {
     QByteArray payload;
-    payload.reserve(32);
+    payload.reserve(128);
     payload.append(static_cast<char>(command.channel));
     payload.append(command.output_enabled ? char(1) : char(0));
     appendLe<quint16>(payload, command.output_mode);
@@ -1003,6 +1062,18 @@ QByteArray TelemetryCodec::serializeTemperatureControllerCommand(const Temperatu
     appendLe<quint16>(payload, command.device_address);
     appendLe<quint16>(payload, command.rs485_baud_index);
     appendLe<quint16>(payload, command.overtemp_output_mode);
+    appendLe<quint16>(payload, command.sensor_model);
+    appendLe<quint32>(payload, command.ntc_b);
+    appendLe<quint32>(payload, command.ntc_r0);
+    appendLe<quint32>(payload, command.pt_r0);
+    appendLe<qint32>(payload, command.pt_a);
+    appendLe<qint32>(payload, command.pt_b);
+    appendLe<qint32>(payload, command.pt_c);
+    for (size_t i = 0; i < command.polynomial_mantissas.size(); ++i)
+    {
+        appendLe<qint64>(payload, command.polynomial_mantissas[i]);
+        appendLe<qint16>(payload, command.polynomial_exponents[i]);
+    }
     return payload;
 }
 
@@ -1047,6 +1118,41 @@ bool TelemetryCodec::parseTemperatureControllerCommand(const QByteArray& payload
                     if (readLe(payload, offset, overtempOutputMode))
                     {
                         command.overtemp_output_mode = overtempOutputMode;
+                        quint16 sensorModel = 0;
+                        quint32 ntcB = 0;
+                        quint32 ntcR0 = 0;
+                        quint32 ptR0 = 0;
+                        qint32 ptA = 0;
+                        qint32 ptB = 0;
+                        qint32 ptC = 0;
+                        if (readLe(payload, offset, sensorModel) &&
+                            readLe(payload, offset, ntcB) &&
+                            readLe(payload, offset, ntcR0) &&
+                            readLe(payload, offset, ptR0) &&
+                            readLe(payload, offset, ptA) &&
+                            readLe(payload, offset, ptB) &&
+                            readLe(payload, offset, ptC))
+                        {
+                            command.sensor_model = sensorModel;
+                            command.ntc_b = ntcB;
+                            command.ntc_r0 = ntcR0;
+                            command.pt_r0 = ptR0;
+                            command.pt_a = ptA;
+                            command.pt_b = ptB;
+                            command.pt_c = ptC;
+                            for (size_t i = 0; i < command.polynomial_mantissas.size(); ++i)
+                            {
+                                qint64 mantissa = 0;
+                                qint16 exponent = 0;
+                                if (!readLe(payload, offset, mantissa) ||
+                                    !readLe(payload, offset, exponent))
+                                {
+                                    break;
+                                }
+                                command.polynomial_mantissas[i] = mantissa;
+                                command.polynomial_exponents[i] = exponent;
+                            }
+                        }
                     }
                 }
             }

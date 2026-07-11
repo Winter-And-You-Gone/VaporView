@@ -872,6 +872,11 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
             CommandErrorCode error = CommandErrorCode::Ok;
             return device_manager_.setTemperatureOvertempOutputMode(request.overtemp_output_mode, &error);
         }, false);
+    case CommandId::SetTemperatureSensorConfig:
+        return temperatureCommand([this](const TemperatureControllerCommand& request) {
+            CommandErrorCode error = CommandErrorCode::Ok;
+            return device_manager_.setTemperatureSensorConfig(request, &error);
+        });
     case CommandId::RestoreTemperatureFactoryDefaults:
         return temperatureCommand([this](const TemperatureControllerCommand&) {
             CommandErrorCode error = CommandErrorCode::Ok;

@@ -292,6 +292,7 @@ signals:
     void deviceAddressRequested(quint16 address);
     void rs485BaudRequested(quint16 baudIndex);
     void overtempOutputModeRequested(quint16 mode);
+    void sensorConfigRequested(const VaporView::TemperatureControllerCommand& command);
     void factoryResetRequested();
 
 private:
@@ -303,6 +304,14 @@ private:
         QLabel *max_output_label_text = nullptr;
         QLabel *pid_label_text = nullptr;
         QLabel *auto_pid_label_text = nullptr;
+        QLabel *sensor_model_label_text = nullptr;
+        QLabel *ntc_r0_label_text = nullptr;
+        QLabel *ntc_b_label_text = nullptr;
+        QLabel *pt_r0_label_text = nullptr;
+        QLabel *pt_a_label_text = nullptr;
+        QLabel *pt_b_label_text = nullptr;
+        QLabel *pt_c_label_text = nullptr;
+        std::array<QLabel *, 8> polynomial_label_text{};
         QDoubleSpinBox *target_spin = nullptr;
         QPushButton *enable_switch = nullptr;
         QComboBox *mode_combo = nullptr;
@@ -311,6 +320,19 @@ private:
         QSpinBox *ki_spin = nullptr;
         QSpinBox *kd_spin = nullptr;
         QComboBox *auto_pid_combo = nullptr;
+        QComboBox *sensor_model_combo = nullptr;
+        QSpinBox *ntc_r0_spin = nullptr;
+        QDoubleSpinBox *ntc_b_spin = nullptr;
+        QDoubleSpinBox *pt_r0_spin = nullptr;
+        QDoubleSpinBox *pt_a_spin = nullptr;
+        QDoubleSpinBox *pt_b_spin = nullptr;
+        QDoubleSpinBox *pt_c_spin = nullptr;
+        std::array<QLineEdit *, 8> polynomial_edits{};
+        QFrame *sensor_config_top_bar = nullptr;
+        QPushButton *common_params_button = nullptr;
+        QPushButton *advanced_params_button = nullptr;
+        QPushButton *sensor_config_button = nullptr;
+        QStackedWidget *config_sub_stack = nullptr;
     };
     struct PendingChannelEdits
     {
@@ -326,6 +348,8 @@ private:
         int kd = 0;
         bool auto_pid = false;
         int auto_pid_mode = 0;
+        bool sensor_config = false;
+        VaporView::TemperatureControllerCommand sensor_config_value;
     };
     struct CommonWidgets
     {
@@ -353,8 +377,12 @@ private:
     QWidget *createChannelTopControlsPage(int index);
     QWidget *createCommonTopControlsPage();
     QWidget *createChannelPage(int index);
+    QWidget *createChannelAdvancedParamsPage(int index);
+    QWidget *createChannelSensorConfigPage(int index);
     QWidget *createCommonSettingsPage();
     void selectChannel(int index);
+    void selectChannelSubPage(int channelIndex, int subPageIndex);
+    void emitSensorConfigRequest(int index);
     void updateChannelTexts();
     void updateChannelData(int index, const VaporView::TemperatureControllerChannelData& channel, bool valid);
     int channelIndex(quint8 channel) const;

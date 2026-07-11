@@ -140,7 +140,6 @@ bool isTemperatureCommonCommand(VaporView::CommandId command)
            command == VaporView::CommandId::SetTemperatureOvertempOutputMode ||
            command == VaporView::CommandId::RestoreTemperatureFactoryDefaults;
 }
-
 int temperatureRs485BaudRateForIndex(quint16 index)
 {
     static constexpr std::array<int, 8> kRates = {4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800};
@@ -151,6 +150,62 @@ int rememberedTemperatureSlaveAddress()
 {
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
     return std::clamp(settings.value(QStringLiteral("serial/temperature_slave_address"), 1).toInt(), 1, 247);
+}
+
+QString formatTemperaturePolynomial(qint64 mantissa, int exponent)
+{
+    if (mantissa == 0)
+    {
+        return QStringLiteral("0E+0");
+    }
+    const double coefficient = static_cast<double>(mantissa) / 10000000000000.0;
+    return QStringLiteral("%1E%2%3")
+        .arg(coefficient, 0, 'g', 14)
+        .arg(exponent >= 0 ? QLatin1Char('+') : QLatin1Char('-'))
+        .arg(std::abs(exponent));
+}
+
+bool parseTemperaturePolynomial(const QString& text, qint64& mantissa, qint16& exponent)
+{
+    const QString trimmed = text.trimmed();
+    if (trimmed.isEmpty())
+    {
+        mantissa = 0;
+        exponent = 0;
+        return true;
+    }
+    bool ok = false;
+    const double value = QLocale::c().toDouble(trimmed, &ok);
+    if (!ok || !std::isfinite(value))
+    {
+        return false;
+    }
+    if (qFuzzyIsNull(value))
+    {
+        mantissa = 0;
+        exponent = 0;
+        return true;
+    }
+    int exp = 0;
+    double normalized = value;
+    while (std::abs(normalized) >= 10.0 && exp < 100)
+    {
+        normalized /= 10.0;
+        ++exp;
+    }
+    while (std::abs(normalized) < 1.0 && exp > -100)
+    {
+        normalized *= 10.0;
+        --exp;
+    }
+    const qint64 scaled = qRound64(normalized * 10000000000000.0);
+    if (scaled < -99999999999999LL || scaled > 99999999999999LL || exp < -100 || exp > 100)
+    {
+        return false;
+    }
+    mantissa = scaled;
+    exponent = static_cast<qint16>(exp);
+    return true;
 }
 
 class MenuItemEventFilter : public QObject
@@ -800,12 +855,14 @@ constexpr int kTemperatureControllerTopModeWidth = 132;
 constexpr int kTemperatureControllerTopTargetWidth = 172;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
 constexpr int kTemperatureControllerCompactPidInputWidth = 82;
+constexpr int kTemperatureControllerSensorInputWidth = 126;
+constexpr int kTemperatureControllerPolynomialInputWidth = 112;
 constexpr int kTemperatureControllerMaxOutputLabelWidth = 168;
 constexpr int kTemperatureControllerCompactLabelWidth = 72;
 constexpr int kTemperatureControllerControlLabelWidth = 150;
 constexpr int kTemperatureControllerConfigRowHeight = 38;
 constexpr int kTemperatureControllerTopControlsHeight = 38;
-constexpr int kTemperatureControllerChannelStackHeight = 54;
+constexpr int kTemperatureControllerChannelStackHeight = 156;
 constexpr int kTemperatureControllerCommonStackHeight = kTemperatureControllerChannelStackHeight;
 constexpr int kTemperatureControllerHistoryLimit = 240;
 constexpr int kRemotePacketRateWindowMs = 5000;
@@ -7042,9 +7099,75 @@ QWidget *TemperatureControllerPanel::createCommonTopControlsPage()
 QWidget *TemperatureControllerPanel::createChannelPage(int index)
 {
     QWidget *page = new QWidget(channel_stack_);
+    page->setObjectName(QStringLiteral("temperatureChannelConfigPageChannel%1").arg(index + 1));
     page->setFixedHeight(kTemperatureControllerChannelStackHeight);
-    auto *layout = new QGridLayout(page);
+    auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(16, 8, 16, 8);
+    layout->setSpacing(8);
+
+    ChannelWidgets& channel = channels_[index];
+    channel.sensor_config_top_bar = new QFrame(page);
+    channel.sensor_config_top_bar->setObjectName(QStringLiteral("temperatureChannelSubTopBar"));
+    channel.sensor_config_top_bar->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    auto *barLayout = new QHBoxLayout(channel.sensor_config_top_bar);
+    barLayout->setContentsMargins(4, 4, 4, 4);
+    barLayout->setSpacing(4);
+
+    auto makeTabButton = [this, index, bar = channel.sensor_config_top_bar](const QString& text, int pageIndex) {
+        auto *button = new QPushButton(text, bar);
+        button->setCheckable(true);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setProperty("temperatureChannelSubSelector", true);
+        button->setFixedHeight(30);
+        button->setMinimumWidth(86);
+        connect(button, &QPushButton::clicked, this, [this, index, pageIndex]() {
+            selectChannelSubPage(index, pageIndex);
+        });
+        return button;
+    };
+    channel.common_params_button = makeTabButton(QStringLiteral("常用参数"), 0);
+    channel.advanced_params_button = makeTabButton(QStringLiteral("专业参数"), 1);
+    channel.sensor_config_button = makeTabButton(QStringLiteral("传感器配置"), 2);
+    channel.common_params_button->setObjectName(QStringLiteral("temperatureChannelCommonParamsButton%1").arg(index + 1));
+    channel.advanced_params_button->setObjectName(QStringLiteral("temperatureChannelAdvancedParamsButton%1").arg(index + 1));
+    channel.sensor_config_button->setObjectName(QStringLiteral("temperatureChannelSensorConfigButton%1").arg(index + 1));
+    barLayout->addWidget(channel.common_params_button);
+    barLayout->addWidget(channel.advanced_params_button);
+    barLayout->addWidget(channel.sensor_config_button);
+    layout->addWidget(channel.sensor_config_top_bar, 0, Qt::AlignLeft);
+
+    channel.config_sub_stack = new QStackedWidget(page);
+    channel.config_sub_stack->setObjectName(QStringLiteral("temperatureChannelConfigSubStackChannel%1").arg(index + 1));
+    channel.config_sub_stack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    channel.config_sub_stack->setFixedHeight(kTemperatureControllerChannelStackHeight - 46);
+
+    auto *commonPage = new QWidget(channel.config_sub_stack);
+    commonPage->setObjectName(QStringLiteral("temperatureChannelCommonParamsPageChannel%1").arg(index + 1));
+    auto *commonLayout = new QHBoxLayout(commonPage);
+    commonLayout->setContentsMargins(0, 0, 0, 0);
+    commonLayout->setSpacing(8);
+    auto *commonHint = new QLabel(is_english_
+        ? QStringLiteral("Target, output enable, and output mode are configured in the top row.")
+        : QStringLiteral("目标温度、输出使能、输出模式在上方通道栏设置。"), commonPage);
+    commonHint->setObjectName(QStringLiteral("fieldLabel"));
+    commonHint->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    commonLayout->addWidget(commonHint, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    commonLayout->addStretch(1);
+
+    channel.config_sub_stack->addWidget(commonPage);
+    channel.config_sub_stack->addWidget(createChannelAdvancedParamsPage(index));
+    channel.config_sub_stack->addWidget(createChannelSensorConfigPage(index));
+    layout->addWidget(channel.config_sub_stack, 0);
+    selectChannelSubPage(index, 0);
+    return page;
+}
+
+QWidget *TemperatureControllerPanel::createChannelAdvancedParamsPage(int index)
+{
+    QWidget *page = new QWidget(channels_[index].config_sub_stack);
+    page->setObjectName(QStringLiteral("temperatureChannelAdvancedParamsPageChannel%1").arg(index + 1));
+    auto *layout = new QGridLayout(page);
+    layout->setContentsMargins(0, 0, 0, 0);
     layout->setHorizontalSpacing(16);
     layout->setVerticalSpacing(8);
     layout->setColumnStretch(0, 1);
@@ -7150,6 +7273,113 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     connect(channel.kp_spin, &QSpinBox::editingFinished, this, emitPid);
     connect(channel.ki_spin, &QSpinBox::editingFinished, this, emitPid);
     connect(channel.kd_spin, &QSpinBox::editingFinished, this, emitPid);
+    return page;
+}
+
+QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
+{
+    QWidget *page = new QWidget(channels_[index].config_sub_stack);
+    page->setObjectName(QStringLiteral("temperatureChannelSensorConfigPageChannel%1").arg(index + 1));
+    auto *layout = new QGridLayout(page);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setHorizontalSpacing(12);
+    layout->setVerticalSpacing(6);
+    layout->setColumnStretch(0, 1);
+    layout->setColumnStretch(1, 1);
+    layout->setColumnStretch(2, 1);
+    layout->setColumnStretch(3, 1);
+    ChannelWidgets& channel = channels_[index];
+
+    auto makeFieldLabel = [this](const QString& text) {
+        auto *label = new QLabel(text, this);
+        label->setObjectName(QStringLiteral("fieldLabel"));
+        label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        label->setMinimumHeight(22);
+        label->setFixedWidth(82);
+        return label;
+    };
+    auto addField = [layout, &makeFieldLabel](int row, int column, const QString& labelText, QWidget *editor, QLabel *&label) {
+        label = makeFieldLabel(labelText);
+        editor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        auto *cell = new QWidget();
+        cell->setObjectName(QStringLiteral("temperatureConfigFieldRow"));
+        cell->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        cell->setFixedHeight(kTemperatureControllerConfigRowHeight);
+        auto *cellLayout = new QHBoxLayout(cell);
+        cellLayout->setContentsMargins(0, 0, 0, 0);
+        cellLayout->setSpacing(4);
+        cellLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        cellLayout->addWidget(editor, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        layout->addWidget(cell, row, column, Qt::AlignLeft | Qt::AlignVCenter);
+    };
+    auto makeDouble = [this](const QString& name, double min, double max, int decimals) {
+        auto *spin = new QDoubleSpinBox(this);
+        spin->setObjectName(name);
+        spin->setRange(min, max);
+        spin->setDecimals(decimals);
+        spin->setFixedWidth(kTemperatureControllerSensorInputWidth);
+        spin->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        return spin;
+    };
+
+    auto *sensorCombo = new SingleLevelPopupComboBox(this);
+    sensorCombo->setShowSelectionCheck(false);
+    channel.sensor_model_combo = sensorCombo;
+    channel.sensor_model_combo->setObjectName(QStringLiteral("temperatureSensorModelComboChannel%1").arg(index + 1));
+    channel.sensor_model_combo->setFixedWidth(kTemperatureControllerSensorInputWidth);
+    channel.sensor_model_combo->addItem(QStringLiteral("B-Value"), 0);
+    channel.sensor_model_combo->addItem(QStringLiteral("PT"), 1);
+    channel.sensor_model_combo->addItem(QStringLiteral("S-H"), 2);
+    channel.sensor_model_combo->addItem(QStringLiteral("MF501"), 3);
+    addField(0, 0, QStringLiteral("模型"), channel.sensor_model_combo, channel.sensor_model_label_text);
+
+    channel.ntc_r0_spin = new QSpinBox(this);
+    channel.ntc_r0_spin->setObjectName(QStringLiteral("temperatureNtcR0SpinChannel%1").arg(index + 1));
+    channel.ntc_r0_spin->setRange(0, 9000000);
+    channel.ntc_r0_spin->setFixedWidth(kTemperatureControllerSensorInputWidth);
+    channel.ntc_r0_spin->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    addField(0, 1, QStringLiteral("NTC R0(Ohm)"), channel.ntc_r0_spin, channel.ntc_r0_label_text);
+
+    channel.ntc_b_spin = makeDouble(QStringLiteral("temperatureNtcBSpinChannel%1").arg(index + 1), 1000.0, 50000.0, 2);
+    addField(0, 2, QStringLiteral("NTC B"), channel.ntc_b_spin, channel.ntc_b_label_text);
+
+    channel.pt_r0_spin = makeDouble(QStringLiteral("temperaturePtR0SpinChannel%1").arg(index + 1), 0.0, 10000.0, 3);
+    addField(0, 3, QStringLiteral("PT R0(Ohm)"), channel.pt_r0_spin, channel.pt_r0_label_text);
+
+    channel.pt_a_spin = makeDouble(QStringLiteral("temperaturePtASpinChannel%1").arg(index + 1), -9.0, 9.0, 6);
+    addField(1, 0, QStringLiteral("PT A(E-3)"), channel.pt_a_spin, channel.pt_a_label_text);
+    channel.pt_b_spin = makeDouble(QStringLiteral("temperaturePtBSpinChannel%1").arg(index + 1), -90.0, 90.0, 6);
+    addField(1, 1, QStringLiteral("PT B(E-7)"), channel.pt_b_spin, channel.pt_b_label_text);
+    channel.pt_c_spin = makeDouble(QStringLiteral("temperaturePtCSpinChannel%1").arg(index + 1), -9.0, 9.0, 6);
+    addField(1, 2, QStringLiteral("PT C(E-12)"), channel.pt_c_spin, channel.pt_c_label_text);
+
+    for (int i = 0; i < 8; ++i)
+    {
+        auto *edit = new QLineEdit(this);
+        edit->setObjectName(QStringLiteral("temperaturePolynomialA%1EditChannel%2").arg(i).arg(index + 1));
+        edit->setFixedWidth(kTemperatureControllerPolynomialInputWidth);
+        edit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        edit->setText(QStringLiteral("0E+0"));
+        channel.polynomial_edits[static_cast<size_t>(i)] = edit;
+        addField(2 + (i / 4), i % 4, QStringLiteral("A%1").arg(i), edit, channel.polynomial_label_text[static_cast<size_t>(i)]);
+    }
+
+    const int channelIndex = index;
+    auto emitConfig = [this, channelIndex]() { emitSensorConfigRequest(channelIndex); };
+    connect(channel.sensor_model_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [emitConfig](int) { emitConfig(); });
+    for (QAbstractSpinBox *spin : {static_cast<QAbstractSpinBox *>(channel.ntc_r0_spin),
+                                   static_cast<QAbstractSpinBox *>(channel.ntc_b_spin),
+                                   static_cast<QAbstractSpinBox *>(channel.pt_r0_spin),
+                                   static_cast<QAbstractSpinBox *>(channel.pt_a_spin),
+                                   static_cast<QAbstractSpinBox *>(channel.pt_b_spin),
+                                   static_cast<QAbstractSpinBox *>(channel.pt_c_spin)})
+    {
+        connect(spin, &QAbstractSpinBox::editingFinished, this, emitConfig);
+    }
+    for (QLineEdit *edit : channel.polynomial_edits)
+    {
+        connect(edit, &QLineEdit::editingFinished, this, emitConfig);
+    }
     return page;
 }
 
@@ -7271,6 +7501,81 @@ void TemperatureControllerPanel::selectChannel(int index)
     }
 }
 
+void TemperatureControllerPanel::selectChannelSubPage(int channelIndex, int subPageIndex)
+{
+    if (channelIndex < 0 || channelIndex >= static_cast<int>(channels_.size()))
+    {
+        return;
+    }
+    ChannelWidgets& channel = channels_[channelIndex];
+    const int pageIndex = std::clamp(subPageIndex, 0, 2);
+    if (channel.config_sub_stack)
+    {
+        channel.config_sub_stack->setCurrentIndex(pageIndex);
+    }
+    auto updateButton = [pageIndex](QPushButton *button, int index) {
+        if (!button)
+        {
+            return;
+        }
+        const QSignalBlocker blocker(button);
+        button->setChecked(pageIndex == index);
+        button->style()->unpolish(button);
+        button->style()->polish(button);
+        button->update();
+    };
+    updateButton(channel.common_params_button, 0);
+    updateButton(channel.advanced_params_button, 1);
+    updateButton(channel.sensor_config_button, 2);
+}
+
+void TemperatureControllerPanel::emitSensorConfigRequest(int index)
+{
+    if (index < 0 || index >= static_cast<int>(channels_.size()))
+    {
+        return;
+    }
+    const ChannelWidgets& channel = channels_[index];
+    if (!channel.sensor_model_combo || !channel.ntc_r0_spin || !channel.ntc_b_spin ||
+        !channel.pt_r0_spin || !channel.pt_a_spin || !channel.pt_b_spin || !channel.pt_c_spin)
+    {
+        return;
+    }
+
+    VaporView::TemperatureControllerCommand command;
+    command.channel = static_cast<quint8>(index + 1);
+    command.sensor_model = static_cast<quint16>(channel.sensor_model_combo->currentData().toUInt());
+    command.ntc_r0 = static_cast<quint32>(channel.ntc_r0_spin->value());
+    command.ntc_b = static_cast<quint32>(qRound64(channel.ntc_b_spin->value() * 100.0));
+    command.pt_r0 = static_cast<quint32>(qRound64(channel.pt_r0_spin->value() * 1000.0));
+    command.pt_a = static_cast<qint32>(qRound64(channel.pt_a_spin->value() * 1000000.0));
+    command.pt_b = static_cast<qint32>(qRound64(channel.pt_b_spin->value() * 100000.0));
+    command.pt_c = static_cast<qint32>(qRound64(channel.pt_c_spin->value() * 10000.0));
+    for (size_t i = 0; i < command.polynomial_mantissas.size(); ++i)
+    {
+        QLineEdit *edit = channel.polynomial_edits[i];
+        qint64 mantissa = 0;
+        qint16 exponent = 0;
+        if (edit && !parseTemperaturePolynomial(edit->text(), mantissa, exponent))
+        {
+            edit->setFocus();
+            setCommandStatus(is_english_
+                ? QStringLiteral("Invalid polynomial coefficient. Use scientific notation such as 0E+0.")
+                : QStringLiteral("多项式系数格式无效，请使用类似 0E+0 的科学计数法。"),
+                true);
+            return;
+        }
+        command.polynomial_mantissas[i] = mantissa;
+        command.polynomial_exponents[i] = exponent;
+        if (edit)
+        {
+            const QSignalBlocker blocker(edit);
+            edit->setText(formatTemperaturePolynomial(mantissa, exponent));
+        }
+    }
+    emit sensorConfigRequested(command);
+}
+
 void TemperatureControllerPanel::refreshTopControlsLayout()
 {
     if (!channel_top_controls_stack_)
@@ -7374,6 +7679,13 @@ void TemperatureControllerPanel::markCommandPending(VaporView::CommandId command
             pending->auto_pid_mode = static_cast<int>(payload.auto_pid_mode);
         }
         break;
+    case VaporView::CommandId::SetTemperatureSensorConfig:
+        if (pending)
+        {
+            pending->sensor_config = true;
+            pending->sensor_config_value = payload;
+        }
+        break;
     case VaporView::CommandId::SetTemperatureControllerMode:
         pending_controller_mode_ = true;
         pending_controller_mode_value_ = static_cast<int>(payload.controller_mode);
@@ -7418,6 +7730,9 @@ void TemperatureControllerPanel::clearCommandPending(VaporView::CommandId comman
         break;
     case VaporView::CommandId::SetTemperatureAutoPid:
         if (pending) pending->auto_pid = false;
+        break;
+    case VaporView::CommandId::SetTemperatureSensorConfig:
+        if (pending) pending->sensor_config = false;
         break;
     case VaporView::CommandId::SetTemperatureControllerMode:
         pending_controller_mode_ = false;
@@ -7632,6 +7947,14 @@ void TemperatureControllerPanel::updateChannelData(int index, const VaporView::T
         }
 
         const VaporView::TemperatureControllerCommand& pendingConfig = pending.sensor_config_value;
+        const bool pendingPolynomialMatches =
+            std::equal(channelData.polynomial_mantissas.cbegin(),
+                       channelData.polynomial_mantissas.cend(),
+                       pendingConfig.polynomial_mantissas.cbegin()) &&
+            std::equal(channelData.polynomial_exponents.cbegin(),
+                       channelData.polynomial_exponents.cend(),
+                       pendingConfig.polynomial_exponents.cbegin(),
+                       [](int current, qint16 pending) { return current == static_cast<int>(pending); });
         if (pending.sensor_config &&
             channelData.sensor_model == static_cast<int>(pendingConfig.sensor_model) &&
             channelData.ntc_b == static_cast<int>(pendingConfig.ntc_b) &&
@@ -7639,7 +7962,8 @@ void TemperatureControllerPanel::updateChannelData(int index, const VaporView::T
             channelData.pt_r0 == static_cast<int>(pendingConfig.pt_r0) &&
             channelData.pt_a == pendingConfig.pt_a &&
             channelData.pt_b == pendingConfig.pt_b &&
-            channelData.pt_c == pendingConfig.pt_c)
+            channelData.pt_c == pendingConfig.pt_c &&
+            pendingPolynomialMatches)
         {
             pending.sensor_config = false;
         }
@@ -9035,10 +9359,14 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton#compactTcpStartButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
             "TemperatureControllerPanel QFrame#temperatureConfigCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
             "TemperatureControllerPanel QFrame#temperatureChannelTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
+            "TemperatureControllerPanel QFrame#temperatureChannelSubTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
             "TemperatureControllerPanel QStackedWidget#temperatureChannelStack { background-color: transparent; border: none; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 34px; max-height: 34px; padding: 0px 10px; text-align: center; }"
+            "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 30px; max-height: 30px; padding: 0px 10px; text-align: center; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
+            "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
+            "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "TemperatureControllerPanel QLabel[temperatureOutputEnableTopLabel=\"true\"] { color: @vv-text; font-size: 14px; font-weight: 600; }"
             "TemperatureControllerPanel QPushButton[temperatureOutputEnableSwitch=\"true\"] { background-color: transparent; border: none; padding: 0px; margin: 0px; min-width: 106px; max-width: 106px; min-height: 34px; max-height: 34px; outline: none; }"
             "QToolTip { background-color: rgb(45, 45, 45); color: #FFFFFF; border: 1px solid #474747; border-radius: 13px; padding: 8px 16px; font-size: 16px; }";
@@ -12008,6 +12336,20 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
                 case VaporView::CommandId::SetTemperatureAutoPid:
                     channelData.auto_pid_mode = static_cast<int>(payload.auto_pid_mode);
                     break;
+                case VaporView::CommandId::SetTemperatureSensorConfig:
+                    channelData.sensor_model = static_cast<int>(payload.sensor_model);
+                    channelData.ntc_b = static_cast<int>(payload.ntc_b);
+                    channelData.ntc_r0 = static_cast<int>(payload.ntc_r0);
+                    channelData.pt_r0 = static_cast<int>(payload.pt_r0);
+                    channelData.pt_a = payload.pt_a;
+                    channelData.pt_b = payload.pt_b;
+                    channelData.pt_c = payload.pt_c;
+                    channelData.polynomial_mantissas = payload.polynomial_mantissas;
+                    for (size_t i = 0; i < channelData.polynomial_exponents.size(); ++i)
+                    {
+                        channelData.polynomial_exponents[i] = static_cast<int>(payload.polynomial_exponents[i]);
+                    }
+                    break;
                 default:
                     break;
                 }
@@ -12082,6 +12424,18 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
             break;
         case VaporView::CommandId::SetTemperatureAutoPid:
             ok = collectors.temperature_controller->setAutoPid(channel, payload.auto_pid_mode);
+            break;
+        case VaporView::CommandId::SetTemperatureSensorConfig:
+            ok = collectors.temperature_controller->setSensorConfig(channel,
+                                                                    payload.sensor_model,
+                                                                    payload.ntc_b,
+                                                                    payload.ntc_r0,
+                                                                    payload.pt_r0,
+                                                                    payload.pt_a,
+                                                                    payload.pt_b,
+                                                                    payload.pt_c,
+                                                                    payload.polynomial_mantissas,
+                                                                    payload.polynomial_exponents);
             break;
         case VaporView::CommandId::SetTemperatureControllerMode:
             ok = collectors.temperature_controller->setControllerMode(payload.controller_mode);
@@ -12252,6 +12606,7 @@ bool MainWindow::isTemperatureCommand(VaporView::CommandId command) const
            command == VaporView::CommandId::SetTemperatureMaxOutputPercent ||
            command == VaporView::CommandId::SetTemperaturePid ||
            command == VaporView::CommandId::SetTemperatureAutoPid ||
+           command == VaporView::CommandId::SetTemperatureSensorConfig ||
            command == VaporView::CommandId::SetTemperatureControllerMode ||
            command == VaporView::CommandId::SetTemperatureDeviceAddress ||
            command == VaporView::CommandId::SetTemperatureRs485Baud ||
@@ -12281,6 +12636,9 @@ QString MainWindow::temperatureCommandStatusText(VaporView::CommandId command, q
         break;
     case VaporView::CommandId::SetTemperatureAutoPid:
         action = is_english_ ? QStringLiteral("auto PID") : QStringLiteral("自动 PID");
+        break;
+    case VaporView::CommandId::SetTemperatureSensorConfig:
+        action = is_english_ ? QStringLiteral("sensor config") : QStringLiteral("传感器配置");
         break;
     case VaporView::CommandId::SetTemperatureControllerMode:
         action = is_english_ ? QStringLiteral("controller mode") : QStringLiteral("温控器模式");
@@ -15771,6 +16129,9 @@ void MainWindow::setupDataPanels()
         command.channel = channel;
         command.auto_pid_mode = mode;
         sendTemperatureCommand(VaporView::CommandId::SetTemperatureAutoPid, command);
+    });
+    connect(temperature_controller_panel_, &TemperatureControllerPanel::sensorConfigRequested, this, [this](const VaporView::TemperatureControllerCommand& command) {
+        sendTemperatureCommand(VaporView::CommandId::SetTemperatureSensorConfig, command);
     });
     connect(temperature_controller_panel_, &TemperatureControllerPanel::controllerModeRequested, this, [this](quint16 mode) {
         VaporView::TemperatureControllerCommand command;
