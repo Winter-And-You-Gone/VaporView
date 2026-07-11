@@ -15,7 +15,7 @@ std::vector<VaporView::Geo::NavSample> uniformlySampleTrack(
     }
 
     const std::size_t targetCount =
-        std::min(samples.size(), static_cast<std::size_t>(maxSamples));
+        (std::min)(samples.size(), static_cast<std::size_t>(maxSamples));
     if (targetCount == samples.size())
     {
         return samples;

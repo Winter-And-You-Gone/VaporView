@@ -204,7 +204,7 @@ int sanitizeMaxVisibleSamples(int value)
 
 int firstVisibleIndex(const std::vector<VaporView::Geo::NavSample>& samples, int maxVisibleSamples)
 {
-    return std::max(0, static_cast<int>(samples.size()) - sanitizeMaxVisibleSamples(maxVisibleSamples));
+    return (std::max)(0, static_cast<int>(samples.size()) - sanitizeMaxVisibleSamples(maxVisibleSamples));
 }
 
 bool isVisibleJumpSample(const std::vector<VaporView::Geo::NavSample>& samples, int index)
@@ -1204,7 +1204,7 @@ void Map3DWindow::updateReplayUi()
 int Map3DWindow::replaySliderMaximum() const
 {
     const qint64 durationMs = (replay_.durationUs() + 999) / 1000;
-    return static_cast<int>(std::clamp<qint64>(durationMs, 0, std::numeric_limits<int>::max()));
+    return static_cast<int>(std::clamp<qint64>(durationMs, 0, (std::numeric_limits<int>::max)()));
 }
 
 int Map3DWindow::replaySliderValue() const
@@ -1315,9 +1315,9 @@ QString Map3DWindow::diagnosticsText() const
     const MapDataDiagnostics& diagnostics = map_selection_.diagnostics;
     const Map3DPerformanceStats stats = view_ ? view_->performanceStats() : Map3DPerformanceStats{};
     const int totalSamples = view_ ? stats.totalSamples : headless_sample_count_;
-    const int visibleSamples = view_ ? stats.visibleSamples : std::min(headless_sample_count_, max_visible_samples_);
+    const int visibleSamples = view_ ? stats.visibleSamples : (std::min)(headless_sample_count_, max_visible_samples_);
     const int maxVisibleSamples = view_ ? stats.maxVisibleSamples : max_visible_samples_;
-    const int hiddenSamples = std::max(0, totalSamples - visibleSamples);
+    const int hiddenSamples = (std::max)(0, totalSamples - visibleSamples);
     const TrajectoryQualityStats qualityStats =
         view_ ? stats.qualityStats : qualityStatsForSamples(headless_samples_, max_visible_samples_);
     QStringList lines;
@@ -1432,7 +1432,7 @@ QString Map3DWindow::diagnosticsText() const
     if (replay_.hasSamples())
     {
         lines << QStringLiteral("  Replay position: %1/%2")
-                     .arg(qMax(0, replay_.currentIndex() + 1))
+                     .arg((std::max)(0, replay_.currentIndex() + 1))
                      .arg(replay_.sampleCount());
         lines << QStringLiteral("  Replay speed: %1x").arg(replay_.speed(), 0, 'g', 3);
         lines << QStringLiteral("  Replay time: %1").arg(replayTimeLabel());
@@ -1698,7 +1698,7 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
 
     const Map3DPerformanceStats stats = view_ ? view_->performanceStats() : Map3DPerformanceStats{};
     const int totalSamples = view_ ? stats.totalSamples : headless_sample_count_;
-    const int visibleSamples = view_ ? stats.visibleSamples : std::min(headless_sample_count_, max_visible_samples_);
+    const int visibleSamples = view_ ? stats.visibleSamples : (std::min)(headless_sample_count_, max_visible_samples_);
     const TrajectoryQualityStats qualityStats =
         view_ ? stats.qualityStats : qualityStatsForSamples(headless_samples_, max_visible_samples_);
     QString text = QStringLiteral("Points: %1/%2").arg(visibleSamples).arg(totalSamples);
@@ -1784,7 +1784,7 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
     {
         text += QStringLiteral(" | Replay %1 %2/%3 %4x %5")
                     .arg(replayStateLabel(replay_))
-                    .arg(qMax(0, replay_.currentIndex() + 1))
+                    .arg((std::max)(0, replay_.currentIndex() + 1))
                     .arg(replay_.sampleCount())
                     .arg(replay_.speed(), 0, 'g', 3)
                     .arg(replayTimeLabel());

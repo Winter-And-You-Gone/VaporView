@@ -56,6 +56,13 @@ int main()
     const VaporView::Geo::SessionTrackReadResult result =
         VaporView::Geo::readSessionTrack(sessionDir.path());
     require(result.ok, "session track reader accepts height reference CSV");
+    if (result.samples.size() != 4)
+    {
+        std::cerr << "height-reference rows: total=" << result.totalRows
+                  << " accepted=" << result.samples.size()
+                  << " rejected=" << result.rejectedRows
+                  << " error=" << result.error.toStdString() << '\n';
+    }
     require(result.samples.size() == 4, "four height reference samples parsed");
     require(result.samples[0].heightReference == HeightReference::Wgs84Ellipsoid,
             "WGS84 ellipsoid height reference parsed");

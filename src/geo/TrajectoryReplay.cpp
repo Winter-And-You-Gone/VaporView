@@ -259,7 +259,7 @@ int TrajectoryReplay::intervalMs() const
 
 int TrajectoryReplay::intervalMsForSpeed(double speed)
 {
-    const double sanitized = std::isfinite(speed) ? std::max(0.1, speed) : 1.0;
+    const double sanitized = std::isfinite(speed) ? (std::max)(0.1, speed) : 1.0;
     return std::clamp(static_cast<int>(std::lround(100.0 / sanitized)), 10, 500);
 }
 

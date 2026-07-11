@@ -63,7 +63,6 @@ private:
     void removeOldestSample();
     void adjustQualityStats(int index, int delta);
     int firstVisibleIndex() const;
-    int previousLineSampleIndex(int index) const;
     bool shouldUseAsLineSample(int index) const;
     bool isLineSample(int index) const;
     void rebuildLineSampleFlags();
@@ -74,6 +73,7 @@ private:
     osg::ref_ptr<osg::Geode> geode_;
     std::deque<VaporView::Geo::NavSample> samples_;
     std::deque<char> line_sample_flags_;
+    int last_line_sample_index_ = -1;
     std::vector<TrajectorySegment> segments_;
     TrajectoryQualityStats quality_stats_;
     bool use_world_coordinates_ = false;

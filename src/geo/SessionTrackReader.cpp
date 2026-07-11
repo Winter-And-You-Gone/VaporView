@@ -23,12 +23,12 @@ QStringList parseCsvLine(const QString& line)
     bool inQuotes = false;
     for (int i = 0; i < line.size(); ++i)
     {
-        const QChar ch = line.at(i);
-        if (ch == QLatin1Char('"'))
+        const char16_t ch = line.at(i).unicode();
+        if (ch == u'"')
         {
-            if (inQuotes && i + 1 < line.size() && line.at(i + 1) == QLatin1Char('"'))
+            if (inQuotes && i + 1 < line.size() && line.at(i + 1).unicode() == u'"')
             {
-                current.append(ch);
+                current.append(QChar(ch));
                 ++i;
             }
             else
@@ -36,14 +36,14 @@ QStringList parseCsvLine(const QString& line)
                 inQuotes = !inQuotes;
             }
         }
-        else if (ch == QLatin1Char(',') && !inQuotes)
+        else if (ch == u',' && !inQuotes)
         {
             fields.push_back(current);
             current.clear();
         }
         else
         {
-            current.append(ch);
+            current.append(QChar(ch));
         }
     }
     fields.push_back(current);

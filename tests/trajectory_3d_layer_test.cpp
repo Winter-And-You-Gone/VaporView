@@ -234,10 +234,10 @@ int main()
     bool hasSouthWest = false;
     for (const VaporView::Geo::NavSample& value : sampledCircle)
     {
-        minNorth = std::min(minNorth, value.nedNM);
-        maxNorth = std::max(maxNorth, value.nedNM);
-        minEast = std::min(minEast, value.nedEM);
-        maxEast = std::max(maxEast, value.nedEM);
+        minNorth = (std::min)(minNorth, value.nedNM);
+        maxNorth = (std::max)(maxNorth, value.nedNM);
+        minEast = (std::min)(minEast, value.nedEM);
+        maxEast = (std::max)(maxEast, value.nedEM);
         hasNorthEast = hasNorthEast || (value.nedNM > 0.0 && value.nedEM > 0.0);
         hasNorthWest = hasNorthWest || (value.nedNM > 0.0 && value.nedEM < 0.0);
         hasSouthEast = hasSouthEast || (value.nedNM < 0.0 && value.nedEM > 0.0);
@@ -318,6 +318,23 @@ int main()
     const VaporView::Map3D::TrajectoryQualityStats outlierQualityStats = outlierLayer.qualityStats();
     require(outlierQualityStats.jumpSamples == 1, "only the outlier is counted as a jump");
     require(outlierQualityStats.lineSamples == 4, "normal samples after the outlier remain line samples");
+
+    VaporView::Map3D::Trajectory3DLayer consecutiveOutlierLayer;
+    consecutiveOutlierLayer.appendSample(sample(0));
+    for (int index = 1; index <= 5000; ++index)
+    {
+        VaporView::Geo::NavSample outlier = sample(index);
+        outlier.nedNM += 1000000.0 + static_cast<double>(index) * 1000.0;
+        outlier.nedEM += 1000000.0 + static_cast<double>(index) * 1000.0;
+        consecutiveOutlierLayer.appendSample(outlier);
+    }
+    consecutiveOutlierLayer.appendSample(sample(1));
+    const VaporView::Map3D::TrajectoryQualityStats consecutiveOutlierStats =
+        consecutiveOutlierLayer.qualityStats();
+    require(consecutiveOutlierStats.jumpSamples == 5000,
+            "consecutive outliers are counted without losing the last valid line sample");
+    require(consecutiveOutlierStats.lineSamples == 2,
+            "normal input reconnects after a long consecutive outlier run");
 
     VaporView::Map3D::Trajectory3DLayer worldLayer;
     worldLayer.setUseWorldCoordinates(true);

@@ -330,6 +330,36 @@ int main(int argc, char** argv)
     require(selection.diagnostics.local3DTilesResourceUris.contains(QStringLiteral("content/child-b.b3dm")),
             "nested local 3D Tiles diagnostics should list child contents URL alias");
 
+    QByteArray deeplyNestedTile = QByteArrayLiteral(R"JSON({
+      "boundingVolume": {"region": [0, 0, 0.1, 0.1, 0, 100]},
+      "geometricError": 0,
+      "content": {"uri": "content/building.b3dm"}
+    })JSON");
+    for (int depth = 0; depth < 130; ++depth)
+    {
+        deeplyNestedTile = QByteArrayLiteral(R"JSON({
+          "boundingVolume": {"region": [0, 0, 0.1, 0.1, 0, 100]},
+          "geometricError": 0,
+          "children": [)JSON")
+            + deeplyNestedTile
+            + QByteArrayLiteral("]}");
+    }
+    writeFile(root,
+              QStringLiteral("resources/maps/tiles3d/local/tileset.json"),
+              QByteArrayLiteral(R"JSON({
+                "asset": {"version": "1.1"},
+                "extras": {"format": "vaporview-osg-native-building-tiles"},
+                "geometricError": 500,
+                "root": )JSON")
+                  + deeplyNestedTile
+                  + QByteArrayLiteral("}"));
+    selection = select(root);
+    require(!selection.diagnostics.local3DTilesTilesetValid,
+            "tileset beyond the traversal depth budget must be rejected");
+    require(selection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n'))
+                .contains(QStringLiteral("traversal safety limit")),
+            "tileset traversal budget failure should be diagnosed explicitly");
+
     writeFile(root,
               QStringLiteral("resources/maps/tiles3d/local/tileset.json"),
               QByteArrayLiteral(R"JSON({

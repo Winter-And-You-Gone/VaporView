@@ -38,6 +38,9 @@ constexpr auto kSentinel2ImageryVrtRelative = "resources/maps/imagery/sentinel2/
 constexpr auto kLandsatImageryVrtRelative = "resources/maps/imagery/landsat/landsat.vrt";
 constexpr auto kOpenAerialMapImageryVrtRelative = "resources/maps/imagery/openaerialmap/openaerialmap.vrt";
 constexpr auto kLocal3DTilesTilesetRelative = "resources/maps/tiles3d/local/tileset.json";
+constexpr qint64 kMaximumTilesetJsonBytes = 64LL * 1024LL * 1024LL;
+constexpr int kMaximumTileCount = 100000;
+constexpr int kMaximumTileDepth = 128;
 
 QString absolutePath(const QString& root, const char* relative)
 {
@@ -299,10 +302,43 @@ bool hasUriSchemeOrNetworkPath(const QString& uri)
     return firstSeparator < 0 || colonIndex < firstSeparator;
 }
 
+QString resolvedPathForBoundaryCheck(const QString& path)
+{
+    QString current = QFileInfo(path).absoluteFilePath();
+    QStringList missingSuffix;
+    while (!current.isEmpty())
+    {
+        const QFileInfo info(current);
+        const QString canonical = info.canonicalFilePath();
+        if (!canonical.isEmpty())
+        {
+            QString resolved = canonical;
+            for (auto it = missingSuffix.crbegin(); it != missingSuffix.crend(); ++it)
+            {
+                resolved = QDir(resolved).absoluteFilePath(*it);
+            }
+            return QDir::cleanPath(resolved);
+        }
+
+        const QString name = info.fileName();
+        if (!name.isEmpty())
+        {
+            missingSuffix.push_back(name);
+        }
+        const QString parent = info.absolutePath();
+        if (parent == current)
+        {
+            break;
+        }
+        current = parent;
+    }
+    return QDir::cleanPath(QFileInfo(path).absoluteFilePath());
+}
+
 bool pathStartsWithDirectory(const QString& path, const QString& directory)
 {
-    QString cleanPath = QDir::cleanPath(path).replace(QLatin1Char('\\'), QLatin1Char('/'));
-    QString cleanDirectory = QDir::cleanPath(directory).replace(QLatin1Char('\\'), QLatin1Char('/'));
+    QString cleanPath = resolvedPathForBoundaryCheck(path).replace(QLatin1Char('\\'), QLatin1Char('/'));
+    QString cleanDirectory = resolvedPathForBoundaryCheck(directory).replace(QLatin1Char('\\'), QLatin1Char('/'));
 #ifdef Q_OS_WIN
     cleanPath = cleanPath.toLower();
     cleanDirectory = cleanDirectory.toLower();
@@ -329,8 +365,19 @@ void appendContentUri(const QJsonObject& object, QStringList& uris)
     }
 }
 
-void collectTileContentUris(const QJsonObject& tile, QStringList& uris)
+void collectTileContentUris(const QJsonObject& tile,
+                            int depth,
+                            int& tileCount,
+                            bool& traversalLimitExceeded,
+                            QStringList& uris)
 {
+    if (depth > kMaximumTileDepth || tileCount >= kMaximumTileCount)
+    {
+        traversalLimitExceeded = true;
+        return;
+    }
+    ++tileCount;
+
     const QJsonValue contentValue = tile.value(QStringLiteral("content"));
     if (contentValue.isObject())
     {
@@ -358,7 +405,11 @@ void collectTileContentUris(const QJsonObject& tile, QStringList& uris)
         {
             if (child.isObject())
             {
-                collectTileContentUris(child.toObject(), uris);
+                collectTileContentUris(child.toObject(),
+                                       depth + 1,
+                                       tileCount,
+                                       traversalLimitExceeded,
+                                       uris);
             }
         }
     }
@@ -372,6 +423,13 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
     }
 
     QFile file(diagnostics.local3DTilesTilesetPath);
+    if (QFileInfo(file).size() > kMaximumTilesetJsonBytes)
+    {
+        const QString message = QStringLiteral("Local 3D Tiles tileset exceeds the 64 MiB safety limit.");
+        diagnostics.local3DTilesDiagnostics.push_back(message);
+        diagnostics.warnings.push_back(message);
+        return;
+    }
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
         const QString message = QStringLiteral("Local 3D Tiles tileset could not be opened: %1").arg(file.errorString());
@@ -438,9 +496,15 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
     }
 
     QStringList uris;
+    int tileCount = 0;
+    bool traversalLimitExceeded = false;
     if (hasRoot)
     {
-        collectTileContentUris(rootObject, uris);
+        collectTileContentUris(rootObject, 0, tileCount, traversalLimitExceeded, uris);
+    }
+    if (traversalLimitExceeded)
+    {
+        addIssue(QStringLiteral("Local 3D Tiles tileset exceeds the traversal safety limit."));
     }
     uris.removeDuplicates();
     diagnostics.local3DTilesResourceUris = uris;
@@ -502,6 +566,7 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
         && hasRoot
         && hasBoundingVolume
         && hasGeometricError
+        && !traversalLimitExceeded
         && !uris.isEmpty()
         && diagnostics.local3DTilesExternalUris.isEmpty()
         && diagnostics.local3DTilesMissingResources.isEmpty();

@@ -5,7 +5,7 @@
 namespace VaporView::Geo {
 
 TrajectoryBuffer::TrajectoryBuffer(int maxSamples)
-    : maxSamples_(std::max(0, maxSamples))
+    : maxSamples_((std::max)(0, maxSamples))
 {
 }
 
@@ -61,7 +61,7 @@ int TrajectoryBuffer::size() const
 
 void TrajectoryBuffer::setMaxSamples(int maxSamples)
 {
-    maxSamples_ = std::max(0, maxSamples);
+    maxSamples_ = (std::max)(0, maxSamples);
     trimToLimit();
 }
 

@@ -114,10 +114,10 @@ int toOsgKey(const QKeyEvent* event)
     const QString text = event->text();
     if (text.size() == 1)
     {
-        const QChar character = text.at(0).toLower();
-        if (character.isPrint())
+        const char16_t character = text.at(0).toLower().unicode();
+        if (QChar(character).isPrint())
         {
-            return character.unicode();
+            return character;
         }
     }
     return 0;
@@ -1095,7 +1095,7 @@ bool OsgEarthViewWidget::flyToTrack()
         return false;
     }
 
-    setLookAt(bounds.center(), std::max(300.0, static_cast<double>(bounds.radius()) * 3.0));
+    setLookAt(bounds.center(), (std::max)(300.0, static_cast<double>(bounds.radius()) * 3.0));
     update();
     return true;
 }
@@ -1358,8 +1358,8 @@ void OsgEarthViewWidget::initializeSceneIfNeeded()
     }
 
     const qreal dpr = std::max<qreal>(1.0, devicePixelRatioF());
-    const int framebufferWidth = std::max(1, static_cast<int>(std::lround(width() * dpr)));
-    const int framebufferHeight = std::max(1, static_cast<int>(std::lround(height() * dpr)));
+    const int framebufferWidth = (std::max)(1, static_cast<int>(std::lround(width() * dpr)));
+    const int framebufferHeight = (std::max)(1, static_cast<int>(std::lround(height() * dpr)));
     graphics_window_ = new osgViewer::GraphicsWindowEmbedded(0, 0, framebufferWidth, framebufferHeight);
     if (viewer_->getCamera())
     {
@@ -1449,8 +1449,8 @@ bool OsgEarthViewWidget::loadAircraftModelFile(const QString& modelPath, const Q
 void OsgEarthViewWidget::updateCameraViewport(int w, int h)
 {
     const qreal dpr = std::max<qreal>(1.0, devicePixelRatioF());
-    const int safeWidth = std::max(1, static_cast<int>(std::lround(w * dpr)));
-    const int safeHeight = std::max(1, static_cast<int>(std::lround(h * dpr)));
+    const int safeWidth = (std::max)(1, static_cast<int>(std::lround(w * dpr)));
+    const int safeHeight = (std::max)(1, static_cast<int>(std::lround(h * dpr)));
     framebuffer_size_ = QSize(safeWidth, safeHeight);
 
     if (graphics_window_)
@@ -1601,7 +1601,7 @@ void OsgEarthViewWidget::setLookAt(const osg::Vec3d& center, double distanceM)
         return;
     }
 
-    const double safeDistance = std::max(50.0, distanceM);
+    const double safeDistance = (std::max)(50.0, distanceM);
     if (earth_node_ && map_node_ && center.length2() > 1.0)
     {
         osgEarth::GeoPoint focalPoint;
@@ -1739,34 +1739,37 @@ VaporView::Geo::NavSample OsgEarthViewWidget::toLocalSample(const VaporView::Geo
 
 VaporView::Geo::NavSample OsgEarthViewWidget::toWorldSample(const VaporView::Geo::NavSample& sample)
 {
+    const bool hasRecordedEcef = std::isfinite(sample.ecefXM)
+        && std::isfinite(sample.ecefYM)
+        && std::isfinite(sample.ecefZM);
+    if (hasRecordedEcef)
+    {
+        height_reference_status_ = QStringLiteral("Using recorded ECEF position; no height datum conversion required.");
+        updateWorldOverlayOriginFromSample(sample);
+        return sample;
+    }
+
     if (!sample.hasLlh())
     {
         return sample;
     }
 
-    const bool hasRecordedEcef = std::isfinite(sample.ecefXM)
-        && std::isfinite(sample.ecefYM)
-        && std::isfinite(sample.ecefZM);
-    if (sample.heightReference != VaporView::Geo::HeightReference::Unknown
-        && sample.heightReference != VaporView::Geo::HeightReference::Wgs84Ellipsoid)
+    if (sample.heightReference != VaporView::Geo::HeightReference::Wgs84Ellipsoid)
     {
-        if (hasRecordedEcef)
-        {
-            height_reference_status_ = QStringLiteral("Using recorded ECEF for non-ellipsoid height reference.");
-            updateWorldOverlayOriginFromSample(sample);
-            return sample;
-        }
         height_reference_status_ = QStringLiteral(
-            "Warning: non-ellipsoid height has no recorded ECEF; WGS84 fallback is active.");
+            "Height datum cannot be converted without recorded ECEF; sample omitted from the Earth overlay.");
+        VaporView::Geo::NavSample invalidWorldSample = sample;
+        const double invalid = (std::numeric_limits<double>::quiet_NaN)();
+        invalidWorldSample.latDeg = invalid;
+        invalidWorldSample.lonDeg = invalid;
+        invalidWorldSample.heightM = invalid;
+        invalidWorldSample.nedNM = invalid;
+        invalidWorldSample.nedEM = invalid;
+        invalidWorldSample.nedDM = invalid;
+        return invalidWorldSample;
     }
-    else if (sample.heightReference == VaporView::Geo::HeightReference::Wgs84Ellipsoid)
-    {
-        height_reference_status_ = QStringLiteral("WGS84 ellipsoid height applied.");
-    }
-    else
-    {
-        height_reference_status_ = QStringLiteral("Height reference unspecified; WGS84 fallback applied.");
-    }
+
+    height_reference_status_ = QStringLiteral("WGS84 ellipsoid height applied.");
 
     const osgEarth::SpatialReference* wgs84 = osgEarth::SpatialReference::get("wgs84");
     if (!wgs84)

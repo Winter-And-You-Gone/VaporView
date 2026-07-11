@@ -70,6 +70,31 @@ int main(int argc, char** argv)
     require(earthDiagnostics.foundMapNode,
             QStringLiteral("earth file contains an osgEarth MapNode"));
 
+    VaporView::Geo::NavSample unresolvedMslSample;
+    unresolvedMslSample.latDeg = 30.25;
+    unresolvedMslSample.lonDeg = 120.15;
+    unresolvedMslSample.heightM = 25.0;
+    unresolvedMslSample.heightReference = VaporView::Geo::HeightReference::MeanSeaLevel;
+    unresolvedMslSample.fixQuality = VaporView::Geo::FixQuality::Fixed;
+    view.setSamples({unresolvedMslSample});
+    VaporView::Map3D::Map3DPerformanceStats heightStats = view.performanceStats();
+    require(heightStats.qualityStats.invalidSamples == 1,
+            QStringLiteral("MSL sample without ECEF is omitted instead of treated as ellipsoid height"));
+    require(heightStats.heightReferenceStatus.contains(QStringLiteral("omitted")),
+            QStringLiteral("unresolved height datum is reported explicitly"));
+
+    VaporView::Geo::NavSample recordedEcefSample = unresolvedMslSample;
+    recordedEcefSample.ecefXM = -2764490.0;
+    recordedEcefSample.ecefYM = 4787610.0;
+    recordedEcefSample.ecefZM = 3170380.0;
+    view.setSamples({recordedEcefSample});
+    heightStats = view.performanceStats();
+    require(heightStats.qualityStats.lineSamples == 1,
+            QStringLiteral("recorded ECEF keeps non-ellipsoid samples renderable"));
+    require(heightStats.heightReferenceStatus.contains(QStringLiteral("recorded ECEF")),
+            QStringLiteral("recorded ECEF height handling is reported explicitly"));
+    view.clearTrack();
+
     require(view.loadLocal3DTilesPreview(tilesetPath),
             QStringLiteral("load Hangzhou Xihu building tileset"));
 

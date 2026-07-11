@@ -222,7 +222,6 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
     target_include_directories(vaporview_map3d_osgearth
         PUBLIC
             ${CMAKE_SOURCE_DIR}/include
-        PRIVATE
             ${OPENSCENEGRAPH_INCLUDE_DIRS}
     )
 
@@ -254,7 +253,16 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         )
 
         set(vaporview_osgearth_runtime_commands)
+        set(vaporview_osgearth_runtime_dependencies)
         if(EXISTS "${VAPORVIEW_OSGEARTH_RUNTIME_BIN_DIR}")
+            file(GLOB_RECURSE vaporview_osgearth_runtime_files
+                CONFIGURE_DEPENDS
+                LIST_DIRECTORIES false
+                "${VAPORVIEW_OSGEARTH_RUNTIME_BIN_DIR}/*"
+            )
+            list(APPEND vaporview_osgearth_runtime_dependencies
+                ${vaporview_osgearth_runtime_files}
+            )
             list(APPEND vaporview_osgearth_runtime_commands
                 COMMAND ${CMAKE_COMMAND} -E copy_directory
                     "${VAPORVIEW_OSGEARTH_RUNTIME_BIN_DIR}"
@@ -268,6 +276,14 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
                 "${VAPORVIEW_OSGEARTH_PLUGIN_DIR}/osgPlugins-*"
             )
             foreach(vaporview_osg_plugin_dir IN LISTS vaporview_osg_plugin_dirs)
+                file(GLOB_RECURSE vaporview_osg_plugin_files
+                    CONFIGURE_DEPENDS
+                    LIST_DIRECTORIES false
+                    "${vaporview_osg_plugin_dir}/*"
+                )
+                list(APPEND vaporview_osgearth_runtime_dependencies
+                    ${vaporview_osg_plugin_files}
+                )
                 get_filename_component(vaporview_osg_plugin_name
                     "${vaporview_osg_plugin_dir}"
                     NAME
@@ -282,6 +298,14 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
 
         foreach(vaporview_osgearth_share_dir IN ITEMS gdal proj proj4)
             if(EXISTS "${VAPORVIEW_LOCAL_VCPKG_INSTALLED_DIR}/x64-windows/share/${vaporview_osgearth_share_dir}")
+                file(GLOB_RECURSE vaporview_osgearth_share_files
+                    CONFIGURE_DEPENDS
+                    LIST_DIRECTORIES false
+                    "${VAPORVIEW_LOCAL_VCPKG_INSTALLED_DIR}/x64-windows/share/${vaporview_osgearth_share_dir}/*"
+                )
+                list(APPEND vaporview_osgearth_runtime_dependencies
+                    ${vaporview_osgearth_share_files}
+                )
                 list(APPEND vaporview_osgearth_runtime_commands
                     COMMAND ${CMAKE_COMMAND} -E make_directory
                         "${CMAKE_CURRENT_BINARY_DIR}/share/${vaporview_osgearth_share_dir}"
@@ -310,53 +334,84 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         set(vaporview_natural_earth_raster
             "${CMAKE_SOURCE_DIR}/resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"
         )
-        if(EXISTS "${vaporview_default_earth_file}" AND EXISTS "${vaporview_natural_earth_vrt}" AND EXISTS "${vaporview_natural_earth_raster}")
-            list(APPEND vaporview_osgearth_runtime_commands
-                COMMAND ${CMAKE_COMMAND} -E make_directory
-                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/natural_earth/NE2_50M_SR_W"
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${vaporview_default_earth_file}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_default.earth"
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${vaporview_dem_earth_file}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_with_dem.earth"
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${vaporview_srtm_earth_file}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_with_srtm.earth"
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${vaporview_full_local_earth_file}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_full_local.earth"
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${vaporview_full_local_srtm_earth_file}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_full_local_srtm.earth"
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${vaporview_real3d_local_earth_file}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_real3d_local.earth"
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${vaporview_sentinel2_imagery_earth_file}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_with_sentinel2_imagery.earth"
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${vaporview_landsat_imagery_earth_file}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_with_landsat_imagery.earth"
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${vaporview_openaerialmap_imagery_earth_file}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_with_openaerialmap_imagery.earth"
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${vaporview_natural_earth_vrt}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${vaporview_natural_earth_raster}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${vaporview_natural_earth_texture}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"
-            )
-        endif()
+        set(vaporview_required_map_resources
+            "${vaporview_default_earth_file}"
+            "${vaporview_natural_earth_vrt}"
+            "${vaporview_natural_earth_raster}"
+            "${vaporview_natural_earth_texture}"
+        )
+        foreach(vaporview_required_map_resource IN LISTS vaporview_required_map_resources)
+            if(NOT EXISTS "${vaporview_required_map_resource}")
+                message(FATAL_ERROR
+                    "Required osgEarth map resource is missing: ${vaporview_required_map_resource}"
+                )
+            endif()
+        endforeach()
+        list(APPEND vaporview_osgearth_runtime_dependencies
+            ${vaporview_required_map_resources}
+        )
+        list(APPEND vaporview_osgearth_runtime_commands
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/natural_earth/NE2_50M_SR_W"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${vaporview_default_earth_file}"
+                "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_default.earth"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${vaporview_natural_earth_vrt}"
+                "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${vaporview_natural_earth_raster}"
+                "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${vaporview_natural_earth_texture}"
+                "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"
+        )
+
+        set(vaporview_optional_earth_files
+            "${vaporview_dem_earth_file}"
+            "${vaporview_srtm_earth_file}"
+            "${vaporview_full_local_earth_file}"
+            "${vaporview_full_local_srtm_earth_file}"
+            "${vaporview_real3d_local_earth_file}"
+            "${vaporview_sentinel2_imagery_earth_file}"
+            "${vaporview_landsat_imagery_earth_file}"
+            "${vaporview_openaerialmap_imagery_earth_file}"
+        )
+        foreach(vaporview_optional_earth_file IN LISTS vaporview_optional_earth_files)
+            if(EXISTS "${vaporview_optional_earth_file}")
+                get_filename_component(vaporview_optional_earth_name
+                    "${vaporview_optional_earth_file}"
+                    NAME
+                )
+                list(APPEND vaporview_osgearth_runtime_dependencies
+                    "${vaporview_optional_earth_file}"
+                )
+                list(APPEND vaporview_osgearth_runtime_commands
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${vaporview_optional_earth_file}"
+                        "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/${vaporview_optional_earth_name}"
+                )
+            else()
+                message(STATUS
+                    "Optional osgEarth map resource is unavailable: ${vaporview_optional_earth_file}"
+                )
+            endif()
+        endforeach()
 
         if(vaporview_osgearth_runtime_commands)
-            add_custom_target(VaporViewOsgEarthRuntime
+            set(vaporview_osgearth_runtime_stamp
+                "${CMAKE_CURRENT_BINARY_DIR}/VaporViewOsgEarthRuntime.stamp"
+            )
+            add_custom_command(
+                OUTPUT "${vaporview_osgearth_runtime_stamp}"
                 ${vaporview_osgearth_runtime_commands}
+                COMMAND ${CMAKE_COMMAND} -E touch "${vaporview_osgearth_runtime_stamp}"
+                DEPENDS ${vaporview_osgearth_runtime_dependencies}
                 COMMENT "Synchronizing project-local osgEarth runtime"
+                VERBATIM
+            )
+            add_custom_target(VaporViewOsgEarthRuntime
+                DEPENDS "${vaporview_osgearth_runtime_stamp}"
             )
 
             function(vaporview_stage_osgearth_runtime target_name)

@@ -80,6 +80,7 @@ void Trajectory3DLayer::clear()
 {
     samples_.clear();
     line_sample_flags_.clear();
+    last_line_sample_index_ = -1;
     segments_.clear();
     quality_stats_ = {};
     geode_->removeDrawables(0, geode_->getNumDrawables());
@@ -88,7 +89,13 @@ void Trajectory3DLayer::clear()
 void Trajectory3DLayer::appendSample(const VaporView::Geo::NavSample& sample)
 {
     samples_.push_back(sample);
-    line_sample_flags_.push_back(shouldUseAsLineSample(sampleCount() - 1) ? 1 : 0);
+    const int sampleIndex = sampleCount() - 1;
+    const bool lineSample = shouldUseAsLineSample(sampleIndex);
+    line_sample_flags_.push_back(lineSample ? 1 : 0);
+    if (lineSample)
+    {
+        last_line_sample_index_ = sampleIndex;
+    }
     adjustQualityStats(sampleCount() - 1, 1);
     const bool needsNewSegment = segments_.empty() || segments_.back().sampleCount >= kSegmentSize;
     if (needsNewSegment)
@@ -411,6 +418,10 @@ void Trajectory3DLayer::removeOldestSample()
     adjustQualityStats(0, -1);
     samples_.pop_front();
     line_sample_flags_.pop_front();
+    if (last_line_sample_index_ >= 0)
+    {
+        --last_line_sample_index_;
+    }
     if (segments_.empty())
     {
         return;
@@ -447,18 +458,6 @@ int Trajectory3DLayer::firstVisibleIndex() const
     return (std::max)(0, sampleCount() - visibleSampleCount());
 }
 
-int Trajectory3DLayer::previousLineSampleIndex(int index) const
-{
-    for (int previousIndex = index - 1; previousIndex >= 0; --previousIndex)
-    {
-        if (isLineSample(previousIndex))
-        {
-            return previousIndex;
-        }
-    }
-    return -1;
-}
-
 bool Trajectory3DLayer::shouldUseAsLineSample(int index) const
 {
     const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)];
@@ -467,7 +466,7 @@ bool Trajectory3DLayer::shouldUseAsLineSample(int index) const
         return false;
     }
 
-    const int previousIndex = previousLineSampleIndex(index);
+    const int previousIndex = last_line_sample_index_;
     if (previousIndex < 0)
     {
         return true;
@@ -485,20 +484,20 @@ bool Trajectory3DLayer::isLineSample(int index) const
 void Trajectory3DLayer::rebuildLineSampleFlags()
 {
     line_sample_flags_.clear();
-    int previousLineIndex = -1;
+    last_line_sample_index_ = -1;
     for (int index = 0; index < sampleCount(); ++index)
     {
         const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)];
         bool line = VaporView::Geo::isUsableForDisplay(sample);
-        if (line && previousLineIndex >= 0)
+        if (line && last_line_sample_index_ >= 0)
         {
             line = !VaporView::Geo::isLikelyJump(
-                samples_[static_cast<std::size_t>(previousLineIndex)], sample);
+                samples_[static_cast<std::size_t>(last_line_sample_index_)], sample);
         }
         line_sample_flags_.push_back(line ? 1 : 0);
         if (line)
         {
-            previousLineIndex = index;
+            last_line_sample_index_ = index;
         }
     }
 }
