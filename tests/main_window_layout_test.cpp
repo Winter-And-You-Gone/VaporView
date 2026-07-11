@@ -2834,6 +2834,18 @@ int main(int argc, char **argv)
                                  QStringLiteral("font-weight: 600"),
                                  "temperature channel top bar marks the selected channel without native tab chrome");
     requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("TemperatureControllerPanel QFrame#temperatureChannelSubTopBar {"),
+                                 QStringLiteral("border-radius: 8px"),
+                                 "temperature lower parameter selector uses a rounded segmented bar");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"] {"),
+                                 QStringLiteral("background-color: transparent"),
+                                 "temperature lower parameter selector buttons override the global primary button fill");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"]:checked {"),
+                                 QStringLiteral("font-weight: 600"),
+                                 "temperature lower parameter selector marks the selected page like the top bar");
+    requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton[temperatureOutputEnableSwitch=\"true\"] {"),
                                  QStringLiteral("min-height: 34px"),
                                  "temperature output enable switch uses compact top-row painting");
