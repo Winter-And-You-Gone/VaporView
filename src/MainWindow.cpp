@@ -12696,7 +12696,7 @@ void MainWindow::setupToolBar()
 #ifdef VAPORVIEW_HAS_OSGEARTH
     if (map3d_action_)
     {
-        map3d_action_->setIcon(QIcon(QStringLiteral("resources/lucide/earth.svg")));
+        map3d_action_->setIcon(createLucideIcon(QStringLiteral("earth"), toolbarColor(AppThemeColor::ToolbarBlue)));
     }
     if (map3d_diagnostics_action_)
     {
@@ -16420,7 +16420,7 @@ void MainWindow::updateThemedIcons()
 #ifdef VAPORVIEW_HAS_OSGEARTH
     if (map3d_action_)
     {
-        map3d_action_->setIcon(QIcon(QStringLiteral("resources/lucide/earth.svg")));
+        map3d_action_->setIcon(createLucideIcon(QStringLiteral("earth"), toolbarColor(AppThemeColor::ToolbarBlue)));
     }
     if (map3d_diagnostics_action_)
     {
