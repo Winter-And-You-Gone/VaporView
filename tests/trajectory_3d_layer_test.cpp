@@ -117,29 +117,30 @@ int main()
     require(geode->getNumDrawables() == 3, "geode has one drawable per segment");
 
     layer.setMaxVisibleSamples(5000);
+    require(layer.sampleCount() == 5000, "visible cap releases old retained samples");
     require(layer.visibleSampleCount() == 5000, "visible sample count is capped");
     require(geode->getDrawable(0)->getNodeMask() != 0u, "boundary segment remains visible");
     require(geode->getDrawable(1)->getNodeMask() != 0u, "middle segment remains visible");
-    require(geode->getDrawable(2)->getNodeMask() != 0u, "current segment remains visible");
+    require(geode->getNumDrawables() == 2, "old trajectory drawable is released at the cap");
     auto* boundaryGeometry = dynamic_cast<osg::Geometry*>(geode->getDrawable(0));
     require(boundaryGeometry != nullptr, "boundary segment drawable is geometry");
     require(boundaryGeometry->getVertexArray() != nullptr, "boundary segment has vertex array");
-    require(boundaryGeometry->getVertexArray()->getNumElements() == 96,
-            "boundary segment is clipped to exactly visible samples");
+    require(boundaryGeometry->getVertexArray()->getNumElements() == 4096,
+            "retained boundary segment contains its full sample block");
 
     layer.appendSample(sample(9000));
-    require(layer.sampleCount() == 9001, "appendSample increments total count");
-    require(layer.segmentCount() == 3, "appendSample reuses current segment");
-    require(boundaryGeometry->getVertexArray()->getNumElements() == 95,
-            "boundary segment clipping advances after append");
+    require(layer.sampleCount() == 5000, "appendSample keeps retained sample count bounded");
+    require(layer.segmentCount() == 2, "appendSample reuses current retained segments");
+    require(boundaryGeometry->getVertexArray()->getNumElements() == 4095,
+            "oldest retained segment advances after append");
 
     layer.setMaxVisibleSamples(9000);
-    require(layer.visibleSampleCount() == 9000, "expanded visible sample count is applied");
+    require(layer.visibleSampleCount() == 5000, "expanded cap does not resurrect discarded live samples");
     auto* restoredFirstGeometry = dynamic_cast<osg::Geometry*>(geode->getDrawable(0));
     require(restoredFirstGeometry != nullptr, "restored first segment drawable is geometry");
     require(restoredFirstGeometry->getVertexArray() != nullptr, "restored first segment has vertex array");
-    require(restoredFirstGeometry->getVertexArray()->getNumElements() == 4095,
-            "expanded visibility restores previously clipped segment");
+    require(restoredFirstGeometry->getVertexArray()->getNumElements() == 4096,
+            "expanded cap resegments currently retained geometry without restoring discarded samples");
 
     VaporView::Map3D::Trajectory3DLayer longLayer;
     std::vector<VaporView::Geo::NavSample> longSamples;
@@ -163,26 +164,40 @@ int main()
             "long trajectory has one drawable per segment");
 
     longLayer.setMaxVisibleSamples(10000);
-    require(longLayer.sampleCount() == kLongTrackSampleCount,
-            "long layer max-visible cap does not discard source samples");
+    require(longLayer.sampleCount() == 10000,
+            "long layer discards retained samples outside the live display cap");
     require(longLayer.visibleSampleCount() == 10000,
             "long layer max-visible cap limits rendered samples");
-    require(longGeode->getDrawable(0)->getNodeMask() == 0u,
-            "long layer hides old segments outside the visible window");
-    const int firstVisibleIndex = kLongTrackSampleCount - longLayer.visibleSampleCount();
-    const int firstVisibleSegment = firstVisibleIndex / longLayer.segmentSize();
-    require(visibleDrawableCount(*longGeode) == expectedLongSegments - firstVisibleSegment,
-            "long layer keeps only boundary and current visible segments active");
+    require(longLayer.segmentCount() == 3,
+            "long layer releases old segment drawables outside the retained window");
+    require(visibleDrawableCount(*longGeode) == 3,
+            "all retained long-track segments remain visible");
 
     auto* longBoundaryGeometry =
-        dynamic_cast<osg::Geometry*>(longGeode->getDrawable(static_cast<unsigned int>(firstVisibleSegment)));
+        dynamic_cast<osg::Geometry*>(longGeode->getDrawable(0));
     require(longBoundaryGeometry != nullptr, "long layer boundary segment drawable is geometry");
     require(longBoundaryGeometry->getVertexArray() != nullptr,
             "long layer boundary segment has vertex array");
-    const int expectedBoundaryVertices =
-        ((firstVisibleSegment + 1) * longLayer.segmentSize()) - firstVisibleIndex;
-    require(static_cast<int>(longBoundaryGeometry->getVertexArray()->getNumElements()) == expectedBoundaryVertices,
-            "long layer clips the boundary segment to the visible window");
+    require(static_cast<int>(longBoundaryGeometry->getVertexArray()->getNumElements()) <= longLayer.segmentSize(),
+            "long layer boundary segment stays within the fixed segment budget");
+
+    VaporView::Map3D::Trajectory3DLayer boundaryLayer;
+    std::vector<VaporView::Geo::NavSample> boundarySamples;
+    boundarySamples.reserve(4097);
+    for (int index = 0; index < 4097; ++index)
+    {
+        boundarySamples.push_back(sample(index));
+    }
+    boundaryLayer.appendSamples(boundarySamples);
+    auto* boundaryGeode = dynamic_cast<osg::Geode*>(boundaryLayer.node());
+    require(boundaryGeode != nullptr && boundaryGeode->getNumDrawables() == 2,
+            "4097 samples span two trajectory segments");
+    auto* secondBoundaryGeometry = dynamic_cast<osg::Geometry*>(boundaryGeode->getDrawable(1));
+    require(secondBoundaryGeometry != nullptr,
+            "second trajectory segment is geometry");
+    const PrimitiveStats boundaryStats = primitiveStats(*secondBoundaryGeometry);
+    require(boundaryStats.lineStrips == 1 && boundaryStats.lineVertices == 2,
+            "trajectory segment boundary repeats the previous point to preserve line continuity");
 
     constexpr int kCircleSampleCount = 6336;
     constexpr int kCircleVisibleSamples = 1000;

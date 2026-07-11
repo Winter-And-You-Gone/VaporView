@@ -391,6 +391,10 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
     }
 
     const QJsonObject tileset = document.object();
+    const QString payloadFormat = tileset.value(QStringLiteral("extras")).toObject()
+                                      .value(QStringLiteral("format")).toString();
+    const bool hasNativePayloadFormat =
+        payloadFormat == QStringLiteral("vaporview-osg-native-building-tiles");
     const QJsonValue assetValue = tileset.value(QStringLiteral("asset"));
     const bool hasAsset = assetValue.isObject();
     const bool hasAssetVersion = hasAsset
@@ -415,6 +419,10 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
     else if (!hasAssetVersion)
     {
         addIssue(QStringLiteral("Local 3D Tiles tileset asset.version is missing."));
+    }
+    if (!hasNativePayloadFormat)
+    {
+        addIssue(QStringLiteral("Local building tileset extras.format must be vaporview-osg-native-building-tiles; generic Cesium 3D Tiles payloads are not supported by this loader."));
     }
     if (!hasRoot)
     {
@@ -490,6 +498,7 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
 
     diagnostics.local3DTilesTilesetValid = hasAsset
         && hasAssetVersion
+        && hasNativePayloadFormat
         && hasRoot
         && hasBoundingVolume
         && hasGeometricError
@@ -498,8 +507,8 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
         && diagnostics.local3DTilesMissingResources.isEmpty();
     diagnostics.local3DTilesDiagnostics.push_back(
         diagnostics.local3DTilesTilesetValid
-            ? QStringLiteral("Local 3D Tiles tileset passes local-only contract checks.")
-            : QStringLiteral("Local 3D Tiles tileset needs attention before renderer integration."));
+            ? QStringLiteral("Local OSG building tileset passes the native local-only contract checks.")
+            : QStringLiteral("Local OSG building tileset needs attention before renderer integration."));
 }
 
 QString bestAvailableDemSource(const MapDataDiagnostics& diagnostics)
@@ -847,11 +856,16 @@ QStringList MapDataManager::candidateRoots() const
     }
 
     const QString appDir = QCoreApplication::applicationDirPath();
-    return {
-        QDir::currentPath(),
+    QStringList roots{
         appDir,
         QDir(appDir).absoluteFilePath(QStringLiteral("../.."))
     };
+    if (qEnvironmentVariableIsSet("VAPORVIEW_MAP3D_DEV_SEARCH_PATHS"))
+    {
+        roots.push_back(QDir::currentPath());
+    }
+    roots.removeDuplicates();
+    return roots;
 }
 
 MapDataSelection MapDataManager::evaluateRoot(const QString& root) const

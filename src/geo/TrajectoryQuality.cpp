@@ -28,8 +28,22 @@ bool isUsableForDisplay(const NavSample& sample, const QualityPolicy& policy)
 
 bool isLikelyJump(const NavSample& previous, const NavSample& current, const QualityPolicy& policy)
 {
-    const qint64 previousTimeUs = previous.deviceTimestampUs > 0 ? previous.deviceTimestampUs : previous.recordTimestampUs;
-    const qint64 currentTimeUs = current.deviceTimestampUs > 0 ? current.deviceTimestampUs : current.recordTimestampUs;
+    qint64 previousTimeUs = 0;
+    qint64 currentTimeUs = 0;
+    if (previous.deviceTimestampUs > 0 && current.deviceTimestampUs > 0)
+    {
+        previousTimeUs = previous.deviceTimestampUs;
+        currentTimeUs = current.deviceTimestampUs;
+    }
+    else if (previous.recordTimestampUs > 0 && current.recordTimestampUs > 0)
+    {
+        previousTimeUs = previous.recordTimestampUs;
+        currentTimeUs = current.recordTimestampUs;
+    }
+    else
+    {
+        return false;
+    }
     const qint64 deltaUs = currentTimeUs - previousTimeUs;
     if (deltaUs <= 0)
     {

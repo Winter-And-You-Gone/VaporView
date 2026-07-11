@@ -22,7 +22,8 @@ public:
 
     bool hasPosition() const;
     bool hasCustomModel() const;
-    osg::Node* node() const;
+    osg::Node* node();
+    const osg::Node* node() const;
 
 private:
     void installBuiltInMarker();

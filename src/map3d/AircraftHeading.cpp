@@ -9,13 +9,14 @@ constexpr double kPi = 3.14159265358979323846;
 
 double normalizeHeadingRad(double headingRad)
 {
-    while (headingRad < 0.0)
+    if (!std::isfinite(headingRad))
+    {
+        return 0.0;
+    }
+    headingRad = std::fmod(headingRad, 2.0 * kPi);
+    if (headingRad < 0.0)
     {
         headingRad += 2.0 * kPi;
-    }
-    while (headingRad >= 2.0 * kPi)
-    {
-        headingRad -= 2.0 * kPi;
     }
     return headingRad;
 }
@@ -26,10 +27,7 @@ double aircraftHeadingRad(const VaporView::Geo::NavSample& sample)
 {
     if (sample.hasQuaternion())
     {
-        const double norm = std::sqrt(sample.quatW * sample.quatW
-                                      + sample.quatX * sample.quatX
-                                      + sample.quatY * sample.quatY
-                                      + sample.quatZ * sample.quatZ);
+        const double norm = sample.quaternionNorm();
         const double w = sample.quatW / norm;
         const double x = sample.quatX / norm;
         const double y = sample.quatY / norm;

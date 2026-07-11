@@ -6,6 +6,7 @@
 #include <osg/Math>
 #include <osg/MatrixTransform>
 
+#include <algorithm>
 #include <cmath>
 
 namespace VaporView::Map3D {
@@ -87,32 +88,94 @@ osg::ref_ptr<osg::Geometry> createAircraftOutline()
     return geometry;
 }
 
-osg::Matrix rotationFromSample(const VaporView::Geo::NavSample& sample)
+struct EulerAttitude {
+    double rollRad = 0.0;
+    double pitchRad = 0.0;
+    double yawRad = 0.0;
+};
+
+EulerAttitude attitudeFromSample(const VaporView::Geo::NavSample& sample)
 {
     if (sample.hasQuaternion())
     {
-        const double norm = std::sqrt(sample.quatW * sample.quatW
-                                      + sample.quatX * sample.quatX
-                                      + sample.quatY * sample.quatY
-                                      + sample.quatZ * sample.quatZ);
-        const osg::Quat quat(sample.quatX / norm,
-                             sample.quatY / norm,
-                             sample.quatZ / norm,
-                             sample.quatW / norm);
-        return osg::Matrix::rotate(quat);
+        const double norm = sample.quaternionNorm();
+        const double w = sample.quatW / norm;
+        const double x = sample.quatX / norm;
+        const double y = sample.quatY / norm;
+        const double z = sample.quatZ / norm;
+        EulerAttitude attitude;
+        attitude.rollRad = std::atan2(2.0 * (w * x + y * z),
+                                      1.0 - 2.0 * (x * x + y * y));
+        attitude.pitchRad = std::asin(std::clamp(2.0 * (w * y - z * x), -1.0, 1.0));
+        attitude.yawRad = std::atan2(2.0 * (w * z + x * y),
+                                     1.0 - 2.0 * (y * y + z * z));
+        return attitude;
     }
 
-    if (std::isfinite(sample.yawDeg) || std::isfinite(sample.pitchDeg) || std::isfinite(sample.rollDeg))
-    {
-        const double yaw = std::isfinite(sample.yawDeg) ? osg::DegreesToRadians(sample.yawDeg) : 0.0;
-        const double pitch = std::isfinite(sample.pitchDeg) ? osg::DegreesToRadians(sample.pitchDeg) : 0.0;
-        const double roll = std::isfinite(sample.rollDeg) ? osg::DegreesToRadians(sample.rollDeg) : 0.0;
-        return osg::Matrix::rotate(roll, osg::Vec3d(1.0, 0.0, 0.0),
-                                   pitch, osg::Vec3d(0.0, 1.0, 0.0),
-                                   yaw, osg::Vec3d(0.0, 0.0, 1.0));
-    }
+    EulerAttitude attitude;
+    attitude.rollRad = std::isfinite(sample.rollDeg) ? osg::DegreesToRadians(sample.rollDeg) : 0.0;
+    attitude.pitchRad = std::isfinite(sample.pitchDeg) ? osg::DegreesToRadians(sample.pitchDeg) : 0.0;
+    attitude.yawRad = std::isfinite(sample.yawDeg) ? osg::DegreesToRadians(sample.yawDeg) : 0.0;
+    return attitude;
+}
 
-    return osg::Matrix::identity();
+osg::Matrix basisMatrix(const osg::Vec3d& modelRight,
+                        const osg::Vec3d& modelForward,
+                        const osg::Vec3d& modelUp)
+{
+    return osg::Matrix(modelRight.x(), modelRight.y(), modelRight.z(), 0.0,
+                       modelForward.x(), modelForward.y(), modelForward.z(), 0.0,
+                       modelUp.x(), modelUp.y(), modelUp.z(), 0.0,
+                       0.0, 0.0, 0.0, 1.0);
+}
+
+osg::Vec3d nedVectorToEnu(const osg::Vec3d& vector)
+{
+    return osg::Vec3d(vector.y(), vector.x(), -vector.z());
+}
+
+osg::Matrix modelToEnuRotation(const VaporView::Geo::NavSample& sample)
+{
+    const EulerAttitude attitude = attitudeFromSample(sample);
+    const double cr = std::cos(attitude.rollRad);
+    const double sr = std::sin(attitude.rollRad);
+    const double cp = std::cos(attitude.pitchRad);
+    const double sp = std::sin(attitude.pitchRad);
+    const double cy = std::cos(attitude.yawRad);
+    const double sy = std::sin(attitude.yawRad);
+
+    const osg::Vec3d bodyForwardNed(cp * cy, cp * sy, -sp);
+    const osg::Vec3d bodyRightNed(sr * sp * cy - cr * sy,
+                                  sr * sp * sy + cr * cy,
+                                  sr * cp);
+    const osg::Vec3d bodyDownNed(cr * sp * cy + sr * sy,
+                                 cr * sp * sy - sr * cy,
+                                 cr * cp);
+    return basisMatrix(nedVectorToEnu(bodyRightNed),
+                       nedVectorToEnu(bodyForwardNed),
+                       -nedVectorToEnu(bodyDownNed));
+}
+
+osg::Matrix enuToEcefRotation(double latDeg, double lonDeg)
+{
+    const double latRad = osg::DegreesToRadians(latDeg);
+    const double lonRad = osg::DegreesToRadians(lonDeg);
+    const osg::Vec3d east(-std::sin(lonRad), std::cos(lonRad), 0.0);
+    const osg::Vec3d north(-std::sin(latRad) * std::cos(lonRad),
+                           -std::sin(latRad) * std::sin(lonRad),
+                           std::cos(latRad));
+    const osg::Vec3d up(std::cos(latRad) * std::cos(lonRad),
+                        std::cos(latRad) * std::sin(lonRad),
+                        std::sin(latRad));
+    return basisMatrix(east, north, up);
+}
+
+osg::Matrix rotationFromSample(const VaporView::Geo::NavSample& sample, bool useWorldCoordinates)
+{
+    const osg::Matrix modelToEnu = modelToEnuRotation(sample);
+    return useWorldCoordinates && sample.hasLlh()
+        ? modelToEnu * enuToEcefRotation(sample.latDeg, sample.lonDeg)
+        : modelToEnu;
 }
 
 } // namespace
@@ -148,7 +211,7 @@ void Aircraft3DLayer::updateSample(const VaporView::Geo::NavSample& sample)
         return;
     }
 
-    const osg::Matrix rotation = rotationFromSample(sample);
+    const osg::Matrix rotation = rotationFromSample(sample, use_world_coordinates_);
     transform_->setMatrix(rotation * osg::Matrix::translate(
         samplePosition(sample, use_world_coordinates_, has_world_origin_, world_origin_)));
     has_position_ = true;
@@ -211,7 +274,12 @@ bool Aircraft3DLayer::hasCustomModel() const
     return custom_model_.valid();
 }
 
-osg::Node* Aircraft3DLayer::node() const
+osg::Node* Aircraft3DLayer::node()
+{
+    return transform_.get();
+}
+
+const osg::Node* Aircraft3DLayer::node() const
 {
     return transform_.get();
 }

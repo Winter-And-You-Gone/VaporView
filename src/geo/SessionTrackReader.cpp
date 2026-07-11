@@ -3,6 +3,7 @@
 #include <QtCore/QDir>
 #include <QtCore/QDirIterator>
 #include <QtCore/QFile>
+#include <QtCore/QFileInfo>
 #include <QtCore/QTextStream>
 #include <algorithm>
 #include <cmath>
@@ -190,24 +191,26 @@ HeightReference parseHeightReference(const QString& value)
     return HeightReference::Unknown;
 }
 
-QString locateDevicesCsv(const QString& sessionDir)
+QStringList locateDevicesCsvCandidates(const QString& sessionDir)
 {
     const QDir dir(sessionDir);
     const QString preferred = dir.filePath(QStringLiteral("sensors/devices.csv"));
     if (QFile::exists(preferred))
     {
-        return preferred;
+        return {preferred};
     }
 
     QDirIterator it(sessionDir,
                     QStringList{QStringLiteral("devices.csv")},
                     QDir::Files,
                     QDirIterator::Subdirectories);
+    QStringList matches;
     while (it.hasNext())
     {
-        return it.next();
+        matches.push_back(it.next());
     }
-    return {};
+    matches.sort(Qt::CaseInsensitive);
+    return matches;
 }
 
 } // namespace
@@ -215,10 +218,24 @@ QString locateDevicesCsv(const QString& sessionDir)
 SessionTrackReadResult readSessionTrack(const QString& sessionDir)
 {
     SessionTrackReadResult result;
-    const QString csvPath = locateDevicesCsv(sessionDir);
-    if (csvPath.isEmpty())
+    const QStringList csvCandidates = locateDevicesCsvCandidates(sessionDir);
+    if (csvCandidates.isEmpty())
     {
         result.error = QStringLiteral("devices.csv not found under session directory");
+        return result;
+    }
+    if (csvCandidates.size() > 1)
+    {
+        result.error = QStringLiteral("multiple devices.csv files found under session directory; select a specific session root");
+        return result;
+    }
+    const QString csvPath = csvCandidates.constFirst();
+
+    constexpr qint64 kMaximumCsvBytes = 512LL * 1024LL * 1024LL;
+    if (QFileInfo(csvPath).size() > kMaximumCsvBytes)
+    {
+        result.error = QStringLiteral("devices.csv exceeds the 512 MiB safety limit");
+        result.sourceCsvPath = csvPath;
         return result;
     }
 
@@ -280,12 +297,21 @@ SessionTrackReadResult readSessionTrack(const QString& sessionDir)
         return result;
     }
 
+    constexpr qsizetype kMaximumCsvRows = 2000000;
     while (!in.atEnd())
     {
         const QString line = in.readLine();
         if (line.trimmed().isEmpty())
         {
             continue;
+        }
+        ++result.totalRows;
+        if (result.totalRows > kMaximumCsvRows)
+        {
+            result.error = QStringLiteral("devices.csv exceeds the 2,000,000-row safety limit");
+            result.sourceCsvPath = csvPath;
+            result.samples.clear();
+            return result;
         }
 
         const QStringList fields = parseCsvLine(line);
@@ -317,13 +343,27 @@ SessionTrackReadResult readSessionTrack(const QString& sessionDir)
         sample.diffAgeS = readDouble(fields, diffAgeCol);
         sample.fixQuality = parseFixQuality(fieldAt(fields, fixCol));
         sample.heightReference = parseHeightReference(fieldAt(fields, heightReferenceCol));
+        if (sample.heightReference == HeightReference::Unknown)
+        {
+            sample.heightReference = HeightReference::Wgs84Ellipsoid;
+        }
 
         if (sample.hasLlh())
         {
             result.samples.push_back(sample);
         }
+        else
+        {
+            ++result.rejectedRows;
+        }
     }
 
+    if (result.samples.empty())
+    {
+        result.error = QStringLiteral("devices.csv contains no valid latitude/longitude/height samples");
+        result.sourceCsvPath = csvPath;
+        return result;
+    }
     result.ok = true;
     result.sourceCsvPath = csvPath;
     return result;

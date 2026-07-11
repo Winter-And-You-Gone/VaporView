@@ -6,6 +6,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QEventLoop>
+#include <QFile>
 #include <QFileInfo>
 #include <QSettings>
 #include <QTemporaryDir>
@@ -87,6 +88,39 @@ int main(int argc, char** argv)
     require(tileDiagnostics.loadedPayloadCount == 55,
             QStringLiteral("real window loads all 55 building payloads, got %1")
                 .arg(tileDiagnostics.loadedPayloadCount));
+
+    QTemporaryDir failedLoadDir;
+    require(failedLoadDir.isValid(), QStringLiteral("temporary failed-load directory"));
+    const QString invalidEarthPath = QDir(failedLoadDir.path()).filePath(QStringLiteral("not-an-earth.osg"));
+    QFile invalidEarth(invalidEarthPath);
+    require(invalidEarth.open(QIODevice::WriteOnly | QIODevice::Text),
+            QStringLiteral("create non-MapNode OSG file"));
+    invalidEarth.write("Group { }\n");
+    invalidEarth.close();
+    require(!view->loadEarthFile(invalidEarthPath),
+            QStringLiteral("non-MapNode Earth candidate is rejected"));
+    require(view->hasEarthMap(),
+            QStringLiteral("failed Earth candidate preserves the active Earth scene"));
+
+    const QString incompleteTilesetPath =
+        QDir(failedLoadDir.path()).filePath(QStringLiteral("tileset.json"));
+    QFile incompleteTileset(incompleteTilesetPath);
+    require(incompleteTileset.open(QIODevice::WriteOnly | QIODevice::Text),
+            QStringLiteral("create incomplete native building tileset"));
+    incompleteTileset.write(R"JSON({
+  "asset": {"version": "1.1"},
+  "extras": {"format": "vaporview-osg-native-building-tiles"},
+  "geometricError": 1,
+  "root": {
+    "boundingVolume": {"region": [0, 0, 0.1, 0.1, 0, 10]},
+    "content": {"uri": "missing.osgb"}
+  }
+})JSON");
+    incompleteTileset.close();
+    require(!view->loadLocal3DTilesPreview(incompleteTilesetPath),
+            QStringLiteral("incomplete native building tileset is rejected atomically"));
+    require(view->hasLocal3DTilesPreview(),
+            QStringLiteral("failed building tileset preserves the active building overlay"));
 
     processEventsFor(3000);
     window->close();

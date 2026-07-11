@@ -3,7 +3,9 @@
 #include <QtCore/QString>
 
 #include <cstdlib>
+#include <chrono>
 #include <iostream>
+#include <utility>
 #include <vector>
 
 namespace
@@ -146,6 +148,22 @@ int main()
     require(replay.durationUs() == 200000, "duplicate replay timestamps fall back to synthetic timeline");
     replay.seekElapsedUs(100000);
     require(replay.currentIndex() == 1, "duplicate elapsed seek uses synthetic index timeline");
+
+    std::vector<VaporView::Geo::NavSample> largeTimeline;
+    largeTimeline.reserve(100000);
+    for (int index = 0; index < 100000; ++index)
+    {
+        largeTimeline.push_back(sample(39.9, 116.3, 1000000 + static_cast<qint64>(index) * 1000));
+    }
+    replay.setSamples(std::move(largeTimeline));
+    const auto seekStart = std::chrono::steady_clock::now();
+    for (int index = 0; index < 1000; ++index)
+    {
+        replay.seekElapsedUs(static_cast<qint64>(index) * 99999);
+    }
+    const auto seekElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - seekStart).count();
+    require(seekElapsedMs < 1000, "large timestamp timeline seek remains sublinear");
 
     replay.clear();
     require(!replay.hasSamples(), "clear removes samples");

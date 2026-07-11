@@ -21691,6 +21691,7 @@ VaporView::Geo::NavSample MainWindow::map3DSampleFromEpsilon(const VaporView::Ep
     sample.latDeg = epsilonData.latitude_deg;
     sample.lonDeg = epsilonData.longitude_deg;
     sample.heightM = epsilonData.height_m;
+    sample.heightReference = VaporView::Geo::HeightReference::Wgs84Ellipsoid;
     sample.ecefXM = epsilonData.ecef_x_m;
     sample.ecefYM = epsilonData.ecef_y_m;
     sample.ecefZM = epsilonData.ecef_z_m;

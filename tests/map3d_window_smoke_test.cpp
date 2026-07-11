@@ -9,6 +9,7 @@
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QLabel>
@@ -76,7 +77,23 @@ void writeSessionTrack(QTemporaryDir& sessionDir)
     QTextStream out(&devicesCsv);
     out << "record_timestamp_us,device_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,gnss_satellites,hdop,gnss_fix\n";
     out << "1000000,900000,39.9000000,116.3000000,45.0,12,0.9,RTK_FIXED\n";
-    out << "1050000,950000,39.9000100,116.3000200,46.0,12,0.9,RTK_FIXED\n";
+    out << "2000000,1900000,39.9000100,116.3000200,46.0,12,0.9,RTK_FIXED\n";
+}
+
+bool waitForText(QLabel* label, const QString& text, int timeoutMs)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < timeoutMs)
+    {
+        QCoreApplication::processEvents();
+        if (label && label->text().contains(text))
+        {
+            return true;
+        }
+        QThread::msleep(10);
+    }
+    return label && label->text().contains(text);
 }
 
 QLabel* statusLabel(VaporView::Map3D::Map3DWindow& window)
@@ -242,8 +259,8 @@ int main(int argc, char** argv)
     require(label->text().contains(QStringLiteral("HDOP 0.90")), "status includes latest sample HDOP");
     require(label->text().contains(QStringLiteral("Fix Fixed")),
             "status reports readable GNSS fix quality");
-    require(label->text().contains(QStringLiteral("Height ref unchecked")),
-            "status warns that displayed height reference is unchecked");
+    require(label->text().contains(QStringLiteral("Height ref assumed WGS84")),
+            "status reports the explicit fallback for an unspecified height reference");
     require(label->text().contains(QStringLiteral("Att none")), "status reports absent attitude source");
 
     window.clearTrack();
@@ -310,9 +327,9 @@ int main(int argc, char** argv)
     require(replayAction->isEnabled(), "replay enabled after session load");
     require(replayStopAction->isEnabled(), "replay stop enabled after session load");
     require(replaySlider->isEnabled(), "replay slider enabled after session load");
-    require(replaySlider->maximum() == 50, "replay slider spans session time in milliseconds");
+    require(replaySlider->maximum() == 1000, "replay slider spans session time in milliseconds");
     require(label->text().contains(QStringLiteral("Replay paused 2/2")), "session status includes paused replay position");
-    require(label->text().contains(QStringLiteral("t 0.050/0.050 s")), "session status includes replay time progress");
+    require(label->text().contains(QStringLiteral("t 1.000/1.000 s")), "session status includes replay time progress");
 
     replaySlider->setSliderDown(true);
     replaySlider->setValue(0);
@@ -321,7 +338,7 @@ int main(int argc, char** argv)
     require(label->text().contains(QStringLiteral("Points: 1")), "slider previews replay sample");
     require(label->text().contains(QStringLiteral("Source Replay")), "slider preview reports replay source");
     require(label->text().contains(QStringLiteral("Replay stopped 1/2")), "slider updates replay state and position");
-    require(label->text().contains(QStringLiteral("t 0.000/0.050 s")), "slider updates replay elapsed time");
+    require(label->text().contains(QStringLiteral("t 0.000/1.000 s")), "slider updates replay elapsed time");
 
     diagnosticsAction->trigger();
     QCoreApplication::processEvents();
@@ -331,8 +348,8 @@ int main(int argc, char** argv)
             "diagnostics include track data section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Earth load:")),
             "diagnostics include earth runtime load section");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Local 3D Tiles preview load:")),
-            "diagnostics include local 3D Tiles preview load section");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Local native OSG building load:")),
+            "diagnostics include local native OSG building load section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Cleared previous preview:")),
             "diagnostics report whether a local 3D Tiles load removed an old preview");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Aircraft model:")),
@@ -401,13 +418,13 @@ int main(int argc, char** argv)
             "diagnostics include replay position");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay speed:")),
             "diagnostics include replay speed");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay time: t 0.000/0.050 s")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay time: t 0.000/1.000 s")),
             "diagnostics include replay elapsed time");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Attitude source: none")),
             "diagnostics include attitude source");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Follow aircraft: off")),
             "diagnostics include follow camera state");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Height safety note: height reference unchecked")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Height safety note: vertical reference applied for display")),
             "diagnostics include height reference safety note");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Fix quality: Fixed")),
             "diagnostics include readable GNSS fix quality");
@@ -457,6 +474,8 @@ int main(int argc, char** argv)
     require(replayAction->text() == QStringLiteral("暂停"), "replay action text changes to pause");
     require(label->text().contains(QStringLiteral("Replay playing 1/2")),
             "status reports explicit playing replay state");
+    require(waitForText(label, QStringLiteral("Replay paused 2/2"), 1500),
+            "window replay crosses a sparse one-second sample gap without resetting elapsed time");
 
     replayStopAction->trigger();
     QCoreApplication::processEvents();

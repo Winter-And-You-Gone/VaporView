@@ -84,6 +84,20 @@ int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
 
+    {
+        QTemporaryDir untrustedWorkingDirectory;
+        require(untrustedWorkingDirectory.isValid(), "failed to create untrusted working directory");
+        QDir fakeRoot(untrustedWorkingDirectory.path());
+        touch(fakeRoot, QStringLiteral("resources/maps/vaporview_real3d_local.earth"));
+        const QString previousWorkingDirectory = QDir::currentPath();
+        require(QDir::setCurrent(fakeRoot.absolutePath()), "failed to switch to untrusted working directory");
+        VaporView::Map3D::MapDataManager defaultManager;
+        const auto defaultSelection = defaultManager.selectBestAvailableMap();
+        require(defaultSelection.diagnostics.projectRoot != fakeRoot.absolutePath(),
+                "default map discovery must not trust the process working directory");
+        require(QDir::setCurrent(previousWorkingDirectory), "failed to restore working directory");
+    }
+
     QTemporaryDir tempDir;
     require(tempDir.isValid(), "failed to create temporary directory");
     QDir root(tempDir.path());
@@ -245,6 +259,25 @@ int main(int argc, char** argv)
   }
 })JSON"));
     selection = select(root);
+    require(!selection.diagnostics.local3DTilesTilesetValid,
+            "generic Cesium 3D Tiles contract must not be accepted by the native OSG building loader");
+    require(selection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n'))
+                .contains(QStringLiteral("vaporview-osg-native-building-tiles")),
+            "native building contract mismatch should be diagnosed explicitly");
+
+    writeFile(root,
+              QStringLiteral("resources/maps/tiles3d/local/tileset.json"),
+              QByteArrayLiteral(R"JSON({
+  "asset": {"version": "1.1"},
+  "extras": {"format": "vaporview-osg-native-building-tiles"},
+  "geometricError": 500,
+  "root": {
+    "boundingVolume": {"region": [0, 0, 0.1, 0.1, 0, 100]},
+    "geometricError": 250,
+    "content": {"uri": "content/building.b3dm"}
+  }
+})JSON"));
+    selection = select(root);
     require(selection.diagnostics.local3DTilesAvailable, "valid local 3D Tiles tileset should be detected");
     require(selection.diagnostics.local3DTilesTilesetValid,
             "valid local 3D Tiles tileset should pass local-only contract checks");
@@ -267,6 +300,7 @@ int main(int argc, char** argv)
               QStringLiteral("resources/maps/tiles3d/local/tileset.json"),
               QByteArrayLiteral(R"JSON({
   "asset": {"version": "1.1"},
+  "extras": {"format": "vaporview-osg-native-building-tiles"},
   "geometricError": 500,
   "root": {
     "boundingVolume": {"region": [0, 0, 0.1, 0.1, 0, 100]},
@@ -444,6 +478,7 @@ int main(int argc, char** argv)
               QStringLiteral("resources/maps/tiles3d/local/tileset.json"),
               QByteArrayLiteral(R"JSON({
   "asset": {"version": "1.1"},
+  "extras": {"format": "vaporview-osg-native-building-tiles"},
   "geometricError": 1000,
   "root": {
     "boundingVolume": {"region": [2.09, 0.52, 2.10, 0.53, 0, 300]},

@@ -98,7 +98,7 @@ python scripts/prepare-demo-dem.py --srtm --check
 
 The Copernicus DEM-enabled template is `resources/maps/vaporview_with_dem.earth`. The SRTM fallback template is `resources/maps/vaporview_with_srtm.earth`. Both keep the Natural Earth visual background and add a `GDALElevation` layer for local terrain.
 
-Height reference note: RTK/GNSS samples may report WGS84 ellipsoid height, mean sea level height, EGM2008-related orthometric height, or a local NED height. Copernicus DEM and SRTM elevations are terrain datasets with their own vertical datum assumptions. VaporView currently labels the `NavSample::heightReference` value for display and diagnostics only; it does not perform terrain clearance or AGL safety decisions while the RTK and DEM height references are unchecked.
+Height reference note: EPSILON geodetic height is treated as WGS84 ellipsoid height, matching the device manual. Session samples with an explicit non-ellipsoid reference use their recorded ECEF coordinates when available; otherwise diagnostics report that a WGS84 display fallback is active. Copernicus DEM and SRTM retain their own vertical-datum assumptions, so the 3D view does not make AGL or terrain-clearance safety decisions.
 
 VaporView automatic map selection first chooses the best available terrain/background base, then upgrades that same base to a full-local OSM template when all required OSM GeoPackages are present:
 
@@ -222,9 +222,9 @@ Expected entry point:
 resources/maps/tiles3d/local/tileset.json
 ```
 
-Put the complete local 3D Tiles dataset under `resources/maps/tiles3d/local/`. `MapDataManager` scans the `tileset.json` path and reports it in diagnostics. The 3D Map toolbar exposes a `本地 3D Tiles` preview action when the local-only contract is valid. That action attempts to load the tileset as an independent OSG overlay, without replacing the Natural Earth/DEM/OSM base map and without affecting track or aircraft layers.
+Put the complete VaporView native OSG building dataset under `resources/maps/tiles3d/local/`. `MapDataManager` scans the `tileset.json` path and requires `extras.format` to equal `vaporview-osg-native-building-tiles`. The 3D Map toolbar exposes a `本地 OSG 建筑` action when that local-only contract is valid. It loads the native OSG payloads as an independent overlay, without replacing the Natural Earth/DEM/OSM base map or affecting track and aircraft layers.
 
-Rendering success depends on the installed OSG/osgEarth runtime plugin support for the tileset payloads. If `osgDB::readNodeFile` cannot load the dataset, VaporView keeps the base map running and reports the failure in the diagnostics panel. Treat this as a diagnostic-backed preview entry point, not as a Cesium ion or web-based 3D Tiles pipeline.
+This is not a general Cesium 3D Tiles renderer: tileset transforms, runtime LOD selection, remote URLs, and b3dm/i3dm/pnts decoding are not supported. Rendering depends on the installed OSG/osgEarth runtime plugin support for the native payloads. If any payload cannot be loaded, VaporView preserves the previous building overlay and reports the atomic-load failure in diagnostics.
 
 The diagnostics currently check:
 

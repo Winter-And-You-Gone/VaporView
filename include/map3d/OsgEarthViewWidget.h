@@ -5,6 +5,7 @@
 #include "map3d/Trajectory3DLayer.h"
 
 #include <QOpenGLWidget>
+#include <QMetaObject>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -13,12 +14,15 @@
 #include <osg/Node>
 #include <osg/ref_ptr>
 #include <osgViewer/GraphicsWindow>
+#include <deque>
 #include <memory>
 #include <vector>
 
 class QMouseEvent;
 class QWheelEvent;
 class QKeyEvent;
+class QHideEvent;
+class QShowEvent;
 
 namespace osgViewer {
 class Viewer;
@@ -43,6 +47,7 @@ struct Map3DPerformanceStats {
     double frameMs = 0.0;
     double framesPerSecond = 0.0;
     double trackUpdateMs = 0.0;
+    QString heightReferenceStatus;
 };
 
 struct EarthLoadDiagnostics {
@@ -67,6 +72,7 @@ struct Local3DTilesLoadDiagnostics {
     int tileCount = 0;
     int payloadCount = 0;
     int loadedPayloadCount = 0;
+    int failedPayloadCount = 0;
     QStringList warnings;
 };
 
@@ -111,11 +117,14 @@ public:
     AircraftModelDiagnostics aircraftModelDiagnostics() const;
     QSize framebufferSize() const;
     bool hasEarthMap() const;
+    bool hasLocal3DTilesPreview() const;
 
 protected:
     void initializeGL() override;
     void resizeGL(int w, int h) override;
     void paintGL() override;
+    void showEvent(QShowEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
@@ -137,12 +146,14 @@ private:
     void resetWorldOverlayOrigin();
     void updateWorldOverlayOriginFromSample(const VaporView::Geo::NavSample& sample);
     void setLookAt(const osg::Vec3d& center, double distanceM);
+    void releaseGlObjectsForContextDestruction();
 
     QTimer frameTimer_;
     bool initialized_ = false;
     bool shutdown_ = false;
     bool follow_aircraft_ = false;
     bool use_xihu_initial_view_ = false;
+    QMetaObject::Connection gl_context_destruction_connection_;
     QSize framebuffer_size_;
     double last_frame_ms_ = 0.0;
     double smoothed_frame_ms_ = 0.0;
@@ -161,8 +172,9 @@ private:
     EarthLoadDiagnostics earth_load_diagnostics_;
     Local3DTilesLoadDiagnostics local_3d_tiles_load_diagnostics_;
     AircraftModelDiagnostics aircraft_model_diagnostics_;
-    std::vector<VaporView::Geo::NavSample> raw_samples_;
+    std::deque<VaporView::Geo::NavSample> raw_samples_;
     bool preserve_full_track_extent_ = false;
+    QString height_reference_status_;
     std::unique_ptr<Trajectory3DLayer> trajectory_layer_;
     std::unique_ptr<Aircraft3DLayer> aircraft_layer_;
 };

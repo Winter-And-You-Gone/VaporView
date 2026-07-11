@@ -43,11 +43,16 @@ public:
 
 private:
     static qint64 timestampUsForSample(const NavSample& sample);
+    void rebuildTimelineCache();
     bool hasTimestampTimeline() const;
     qint64 fallbackDurationUs() const;
     qint64 sampleTimestampUs(int index) const;
 
     std::vector<NavSample> samples_;
+    bool has_timestamp_timeline_ = false;
+    qint64 start_timestamp_us_ = 0;
+    qint64 end_timestamp_us_ = 0;
+    qint64 duration_us_ = 0;
     int current_index_ = -1;
     qint64 current_elapsed_us_ = 0;
     double speed_ = 1.0;

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <utility>
 
 namespace VaporView::Geo {
@@ -15,6 +16,10 @@ constexpr qint64 kFallbackReplayStepUs = 100000;
 void TrajectoryReplay::clear()
 {
     samples_.clear();
+    has_timestamp_timeline_ = false;
+    start_timestamp_us_ = 0;
+    end_timestamp_us_ = 0;
+    duration_us_ = 0;
     current_index_ = -1;
     current_elapsed_us_ = 0;
     playing_ = false;
@@ -23,9 +28,10 @@ void TrajectoryReplay::clear()
 void TrajectoryReplay::setSamples(std::vector<NavSample> samples)
 {
     samples_ = std::move(samples);
+    rebuildTimelineCache();
     playing_ = false;
     current_index_ = samples_.empty() ? -1 : static_cast<int>(samples_.size()) - 1;
-    current_elapsed_us_ = samples_.empty() ? 0 : durationUs();
+    current_elapsed_us_ = samples_.empty() ? 0 : duration_us_;
 }
 
 bool TrajectoryReplay::hasSamples() const
@@ -50,7 +56,7 @@ bool TrajectoryReplay::isPlaying() const
 
 qint64 TrajectoryReplay::startTimestampUs() const
 {
-    return samples_.empty() ? 0 : sampleTimestampUs(0);
+    return has_timestamp_timeline_ ? start_timestamp_us_ : 0;
 }
 
 qint64 TrajectoryReplay::endTimestampUs() const
@@ -59,20 +65,12 @@ qint64 TrajectoryReplay::endTimestampUs() const
     {
         return 0;
     }
-    return sampleTimestampUs(static_cast<int>(samples_.size()) - 1);
+    return has_timestamp_timeline_ ? end_timestamp_us_ : fallbackDurationUs();
 }
 
 qint64 TrajectoryReplay::durationUs() const
 {
-    if (samples_.size() < 2)
-    {
-        return 0;
-    }
-    if (!hasTimestampTimeline())
-    {
-        return fallbackDurationUs();
-    }
-    return std::max<qint64>(0, endTimestampUs() - startTimestampUs());
+    return duration_us_;
 }
 
 qint64 TrajectoryReplay::elapsedUs() const
@@ -81,7 +79,7 @@ qint64 TrajectoryReplay::elapsedUs() const
     {
         return 0;
     }
-    return std::clamp<qint64>(current_elapsed_us_, 0, durationUs());
+    return std::clamp<qint64>(current_elapsed_us_, 0, duration_us_);
 }
 
 double TrajectoryReplay::speed() const
@@ -135,8 +133,8 @@ bool TrajectoryReplay::seek(int index)
         return false;
     }
     current_index_ = std::clamp(index, 0, static_cast<int>(samples_.size()) - 1);
-    current_elapsed_us_ = hasTimestampTimeline()
-        ? std::max<qint64>(0, sampleTimestampUs(current_index_) - startTimestampUs())
+    current_elapsed_us_ = has_timestamp_timeline_
+        ? (std::max<qint64>)(0, sampleTimestampUs(current_index_) - start_timestamp_us_)
         : static_cast<qint64>(current_index_) * kFallbackReplayStepUs;
     return true;
 }
@@ -150,9 +148,9 @@ bool TrajectoryReplay::seekElapsedUs(qint64 elapsedUs)
         return false;
     }
 
-    const qint64 targetElapsed = std::clamp<qint64>(elapsedUs, 0, durationUs());
+    const qint64 targetElapsed = std::clamp<qint64>(elapsedUs, 0, duration_us_);
     current_elapsed_us_ = targetElapsed;
-    if (!hasTimestampTimeline())
+    if (!has_timestamp_timeline_)
     {
         const int index = static_cast<int>(
             std::clamp<qint64>(targetElapsed / kFallbackReplayStepUs,
@@ -162,18 +160,17 @@ bool TrajectoryReplay::seekElapsedUs(qint64 elapsedUs)
         return true;
     }
 
-    const qint64 targetTimestamp = startTimestampUs() + targetElapsed;
-    int selectedIndex = 0;
-    for (int index = 0; index < static_cast<int>(samples_.size()); ++index)
-    {
-        if (sampleTimestampUs(index) <= targetTimestamp)
-        {
-            selectedIndex = index;
-            continue;
-        }
-        break;
-    }
-    current_index_ = selectedIndex;
+    const qint64 targetTimestamp = start_timestamp_us_ + targetElapsed;
+    const auto upper = std::upper_bound(
+        samples_.cbegin(),
+        samples_.cend(),
+        targetTimestamp,
+        [](qint64 timestampUs, const NavSample& sample) {
+            return timestampUs < timestampUsForSample(sample);
+        });
+    current_index_ = upper == samples_.cbegin()
+        ? 0
+        : static_cast<int>(std::distance(samples_.cbegin(), upper) - 1);
     return true;
 }
 
@@ -194,8 +191,8 @@ bool TrajectoryReplay::stepForward()
     }
 
     current_index_ = nextIndex;
-    current_elapsed_us_ = hasTimestampTimeline()
-        ? std::max<qint64>(0, sampleTimestampUs(current_index_) - startTimestampUs())
+    current_elapsed_us_ = has_timestamp_timeline_
+        ? (std::max<qint64>)(0, sampleTimestampUs(current_index_) - start_timestamp_us_)
         : static_cast<qint64>(current_index_) * kFallbackReplayStepUs;
     if (current_index_ >= static_cast<int>(samples_.size()) - 1)
     {
@@ -218,7 +215,7 @@ bool TrajectoryReplay::stepByElapsedUs(qint64 deltaUs)
     }
 
     const qint64 targetElapsed = elapsedUs() + std::max<qint64>(0, deltaUs);
-    const qint64 totalDuration = durationUs();
+    const qint64 totalDuration = duration_us_;
     seekElapsedUs(targetElapsed);
 
     if (targetElapsed >= totalDuration || current_index_ >= static_cast<int>(samples_.size()) - 1)
@@ -290,14 +287,23 @@ qint64 TrajectoryReplay::timestampUsForSample(const NavSample& sample)
 
 bool TrajectoryReplay::hasTimestampTimeline() const
 {
+    return has_timestamp_timeline_;
+}
+
+void TrajectoryReplay::rebuildTimelineCache()
+{
+    has_timestamp_timeline_ = false;
+    start_timestamp_us_ = 0;
+    end_timestamp_us_ = 0;
+    duration_us_ = fallbackDurationUs();
     if (samples_.size() < 2)
     {
-        return false;
+        return;
     }
     qint64 previous = timestampUsForSample(samples_.front());
     if (previous <= 0)
     {
-        return false;
+        return;
     }
 
     for (std::size_t index = 1; index < samples_.size(); ++index)
@@ -305,11 +311,14 @@ bool TrajectoryReplay::hasTimestampTimeline() const
         const qint64 current = timestampUsForSample(samples_[index]);
         if (current <= previous)
         {
-            return false;
+            return;
         }
         previous = current;
     }
-    return true;
+    has_timestamp_timeline_ = true;
+    start_timestamp_us_ = timestampUsForSample(samples_.front());
+    end_timestamp_us_ = previous;
+    duration_us_ = (std::max<qint64>)(0, end_timestamp_us_ - start_timestamp_us_);
 }
 
 qint64 TrajectoryReplay::fallbackDurationUs() const
@@ -327,7 +336,7 @@ qint64 TrajectoryReplay::sampleTimestampUs(int index) const
     {
         return 0;
     }
-    if (hasTimestampTimeline())
+    if (has_timestamp_timeline_)
     {
         return timestampUsForSample(samples_[static_cast<std::size_t>(index)]);
     }

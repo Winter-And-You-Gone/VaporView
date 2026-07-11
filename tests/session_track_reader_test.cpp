@@ -47,9 +47,13 @@ int main()
 
         require(result.ok, "readSessionTrack ok");
         require(result.samples.size() == 2, "read two samples");
+        require(result.totalRows == 2, "count all data rows");
+        require(result.rejectedRows == 0, "count no rejected rows");
         require(result.samples.front().recordTimestampUs == 1000, "record timestamp parsed");
         require(result.samples.front().satellites == 12, "satellites parsed");
         require(result.samples.front().fixQuality == VaporView::Geo::FixQuality::Fixed, "fix quality parsed");
+        require(result.samples.front().heightReference == VaporView::Geo::HeightReference::Wgs84Ellipsoid,
+                "VaporView session height defaults to the documented EPSILON WGS84 ellipsoid reference");
     }
 
     {
@@ -70,6 +74,8 @@ int main()
         require(result.ok, "fallback devices.csv read ok");
         require(result.sourceCsvPath.endsWith(QStringLiteral("devices.csv")), "fallback source csv set");
         require(result.samples.size() == 1, "invalid LLH row skipped");
+        require(result.totalRows == 2, "count valid and invalid rows");
+        require(result.rejectedRows == 1, "count invalid LLH row");
         const auto& sample = result.samples.front();
         require(sample.recordTimestampUs == 3000, "host_time_us parsed");
         require(sample.deviceTimestampUs == 2900, "epsilon device timestamp parsed");
@@ -141,6 +147,37 @@ int main()
         require(std::fabs(first.velDMps + 0.3) < 0.000001, "legacy RTK down velocity parsed");
         require(result.samples.back().fixQuality == VaporView::Geo::FixQuality::Float,
                 "legacy numeric RTK float parsed");
+    }
+
+    {
+        QTemporaryDir sessionDir;
+        require(sessionDir.isValid(), "temporary empty-track session directory");
+        QDir dir(sessionDir.path());
+        require(dir.mkpath(QStringLiteral("sensors")), "create empty-track sensors directory");
+        writeCsv(dir.filePath(QStringLiteral("sensors/devices.csv")),
+                 QStringLiteral("record_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m\n"
+                                "1000,,,,\n"));
+
+        const auto result = VaporView::Geo::readSessionTrack(sessionDir.path());
+        require(!result.ok, "zero-valid-sample session is rejected");
+        require(result.samples.empty(), "zero-valid-sample result stays empty");
+        require(result.error.contains(QStringLiteral("no valid")), "zero-valid-sample error is explicit");
+    }
+
+    {
+        QTemporaryDir sessionDir;
+        require(sessionDir.isValid(), "temporary ambiguous session directory");
+        QDir dir(sessionDir.path());
+        require(dir.mkpath(QStringLiteral("first/sensors")), "create first ambiguous sensors directory");
+        require(dir.mkpath(QStringLiteral("second/sensors")), "create second ambiguous sensors directory");
+        const QString csv = QStringLiteral("record_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m\n"
+                                           "1000,30.0,120.0,10.0\n");
+        writeCsv(dir.filePath(QStringLiteral("first/sensors/devices.csv")), csv);
+        writeCsv(dir.filePath(QStringLiteral("second/sensors/devices.csv")), csv);
+
+        const auto result = VaporView::Geo::readSessionTrack(sessionDir.path());
+        require(!result.ok, "ambiguous recursive devices.csv files are rejected");
+        require(result.error.contains(QStringLiteral("multiple devices.csv")), "ambiguity error is explicit");
     }
 
     return 0;

@@ -5,6 +5,7 @@
 #include <osg/Geode>
 #include <osg/Geometry>
 #include <osg/ref_ptr>
+#include <deque>
 #include <vector>
 
 namespace osg {
@@ -43,7 +44,8 @@ public:
     int segmentCount() const;
     int segmentSize() const;
     TrajectoryQualityStats qualityStats() const;
-    osg::Node* node() const;
+    osg::Node* node();
+    const osg::Node* node() const;
 
 private:
     struct TrajectorySegment {
@@ -54,20 +56,26 @@ private:
 
     void rebuildSegments();
     void rebuildSegmentGeometry(TrajectorySegment& segment);
-    void rebuildVisibilityBoundarySegment();
+    bool appendLineSampleGeometry(TrajectorySegment& segment, int sampleIndex);
+    void configureGeometryState(osg::Geometry& geometry);
     void appendSegment();
+    void trimToVisibleLimit();
+    void removeOldestSample();
+    void adjustQualityStats(int index, int delta);
     int firstVisibleIndex() const;
     int previousLineSampleIndex(int index) const;
     bool shouldUseAsLineSample(int index) const;
     bool isLineSample(int index) const;
     void rebuildLineSampleFlags();
+    void rebuildQualityStats();
     bool segmentIsVisible(const TrajectorySegment& segment) const;
     void applySegmentVisibility();
 
     osg::ref_ptr<osg::Geode> geode_;
-    std::vector<VaporView::Geo::NavSample> samples_;
-    std::vector<char> line_sample_flags_;
+    std::deque<VaporView::Geo::NavSample> samples_;
+    std::deque<char> line_sample_flags_;
     std::vector<TrajectorySegment> segments_;
+    TrajectoryQualityStats quality_stats_;
     bool use_world_coordinates_ = false;
     bool has_world_origin_ = false;
     osg::Vec3d world_origin_;

@@ -52,6 +52,40 @@ osg::Vec3d transformedForward(const osg::Matrix& matrix)
     return osg::Vec3d(0.0, 1.0, 0.0) * matrix - transformedOrigin(matrix);
 }
 
+osg::Vec3d transformedRight(const osg::Matrix& matrix)
+{
+    return osg::Vec3d(1.0, 0.0, 0.0) * matrix - transformedOrigin(matrix);
+}
+
+osg::Vec3d transformedUp(const osg::Matrix& matrix)
+{
+    return osg::Vec3d(0.0, 0.0, 1.0) * matrix - transformedOrigin(matrix);
+}
+
+osg::Vec3d localEast(double lonDeg)
+{
+    const double lonRad = osg::DegreesToRadians(lonDeg);
+    return osg::Vec3d(-std::sin(lonRad), std::cos(lonRad), 0.0);
+}
+
+osg::Vec3d localNorth(double latDeg, double lonDeg)
+{
+    const double latRad = osg::DegreesToRadians(latDeg);
+    const double lonRad = osg::DegreesToRadians(lonDeg);
+    return osg::Vec3d(-std::sin(latRad) * std::cos(lonRad),
+                      -std::sin(latRad) * std::sin(lonRad),
+                      std::cos(latRad));
+}
+
+osg::Vec3d localUp(double latDeg, double lonDeg)
+{
+    const double latRad = osg::DegreesToRadians(latDeg);
+    const double lonRad = osg::DegreesToRadians(lonDeg);
+    return osg::Vec3d(std::cos(latRad) * std::cos(lonRad),
+                      std::cos(latRad) * std::sin(lonRad),
+                      std::sin(latRad));
+}
+
 } // namespace
 
 int main()
@@ -95,6 +129,20 @@ int main()
     require(std::abs(yaw90Forward.x()) > 0.9, "yaw 90 rotates visible aircraft nose toward east/west axis");
     require(std::abs(yaw90Forward.y()) < 0.1, "yaw 90 no longer points north");
 
+    VaporView::Geo::NavSample pitchSample = localSample(0.0);
+    pitchSample.pitchDeg = 30.0;
+    layer.updateSample(pitchSample);
+    require(transformedForward(transform->getMatrix()).z() > 0.49,
+            "positive EPSILON pitch raises the model nose");
+
+    VaporView::Geo::NavSample rollSample = localSample(0.0);
+    rollSample.rollDeg = 30.0;
+    layer.updateSample(rollSample);
+    require(transformedRight(transform->getMatrix()).z() < -0.49,
+            "positive EPSILON roll lowers the model right wing around its forward axis");
+    require(transformedForward(transform->getMatrix()).y() > 0.99,
+            "roll rotates around the model forward axis without changing heading");
+
     VaporView::Geo::NavSample quaternionSample = localSample(0.0);
     quaternionSample.quatW = std::cos(osg::DegreesToRadians(45.0));
     quaternionSample.quatX = 0.0;
@@ -118,6 +166,20 @@ int main()
     require(nearlyEqual(worldPosition.x(), 0.0), "world mode uses local offset X");
     require(nearlyEqual(worldPosition.y(), 0.0), "world mode uses local offset Y");
     require(nearlyEqual(worldPosition.z(), 0.0), "world mode uses local offset Z");
+    const osg::Vec3d expectedNorth = localNorth(worldSample.latDeg, worldSample.lonDeg);
+    const osg::Vec3d expectedEast = localEast(worldSample.lonDeg);
+    const osg::Vec3d expectedUp = localUp(worldSample.latDeg, worldSample.lonDeg);
+    require(transformedForward(transform->getMatrix()) * expectedNorth > 0.999,
+            "world yaw zero follows the local ECEF north tangent");
+    require(transformedRight(transform->getMatrix()) * expectedEast > 0.999,
+            "world model right axis follows the local ECEF east tangent");
+    require(transformedUp(transform->getMatrix()) * expectedUp > 0.999,
+            "world model up axis follows the local ECEF surface normal");
+
+    worldSample.yawDeg = 90.0;
+    layer.updateSample(worldSample);
+    require(transformedForward(transform->getMatrix()) * expectedEast > 0.999,
+            "world yaw 90 follows the local ECEF east tangent");
 
     worldSample.ecefXM = 4.0;
     worldSample.ecefYM = 6.0;

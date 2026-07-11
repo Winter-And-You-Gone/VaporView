@@ -18,6 +18,8 @@ class QPlainTextEdit;
 class QSlider;
 class QSpinBox;
 class QTimer;
+class QHideEvent;
+class QShowEvent;
 
 namespace VaporView { class SingleLevelPopupMenu; }
 
@@ -40,6 +42,10 @@ public slots:
     void noteLiveSampleDrop(const QString& source, const QString& reason, qint64 recordTimestampUs = 0);
     void showMapDiagnostics();
 
+protected:
+    void showEvent(QShowEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
+
 private:
     void loadInitialEarthFile();
     void openSessionDirectory();
@@ -61,6 +67,7 @@ private:
     void onReplaySpeedChanged(int index);
     void rebuildReplayAt(int index, bool forceStatus = true);
     void rebuildReplayAtElapsedUs(qint64 elapsedUs);
+    void renderReplayAtCurrentPosition(bool forceStatus = true);
     void setReplayEnabled(bool enabled);
     void updateReplayUi();
     int replaySliderMaximum() const;
@@ -69,6 +76,7 @@ private:
     QString replayTimeLabel() const;
     void setMapSelection(const MapDataSelection& selection);
     QString diagnosticsText() const;
+    void refreshDiagnosticsText(bool force = false);
     int currentTrackSampleCount() const;
     bool autoFocusTrack(const QString& note);
     void setCameraNote(const QString& note);
@@ -104,6 +112,7 @@ private:
     MapDataManager map_data_manager_;
     MapDataSelection map_selection_;
     VaporView::Geo::TrajectoryReplay replay_;
+    int rendered_replay_index_ = -1;
     QString latest_track_source_;
     QString latest_track_note_;
     QString latest_camera_note_;

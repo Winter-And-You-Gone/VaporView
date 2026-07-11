@@ -1,13 +1,16 @@
 #include "map3d/OsgEarthViewWidget.h"
 
 #include <QApplication>
+#include <QDateTime>
 #include <QDir>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
+#include <QThread>
 
 #include <cstdlib>
 #include <iostream>
@@ -21,6 +24,16 @@ void require(bool condition, const QString& message)
     {
         std::cerr << "FAIL: " << message.toStdString() << '\n';
         std::exit(1);
+    }
+}
+
+void processEventsFor(int timeoutMs)
+{
+    const qint64 deadline = QDateTime::currentMSecsSinceEpoch() + timeoutMs;
+    while (QDateTime::currentMSecsSinceEpoch() < deadline)
+    {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        QThread::msleep(5);
     }
 }
 
@@ -43,6 +56,10 @@ int main(int argc, char** argv)
     }
 
     VaporView::Map3D::OsgEarthViewWidget view;
+    view.resize(800, 600);
+    view.show();
+    processEventsFor(250);
+
     require(view.loadEarthFile(earthPath),
             QStringLiteral("load Hangzhou Xihu real-3D earth file"));
 
@@ -101,6 +118,8 @@ int main(int argc, char** argv)
                 .arg(tileDiagnostics.warnings.join(QStringLiteral(" | "))));
 
     view.shutdown();
+    view.close();
+    processEventsFor(250);
     std::cout << "map3d_real_data_load_test passed: 55/55 building tiles loaded\n";
     return 0;
 }

@@ -33,12 +33,15 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHideEvent>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QOpenGLContext>
+#include <QShowEvent>
+#include <QThread>
 #include <QWheelEvent>
 #include <QElapsedTimer>
 
@@ -52,6 +55,13 @@ namespace VaporView::Map3D {
 namespace {
 
 constexpr double kEarthRadiusM = 6378137.0;
+
+void assertGuiThread(const QObject* object, const char* function)
+{
+    Q_ASSERT_X(object && QThread::currentThread() == object->thread(),
+               "OsgEarthViewWidget",
+               function);
+}
 
 unsigned int toOsgMouseButton(Qt::MouseButton button)
 {
@@ -116,12 +126,16 @@ int toOsgKey(const QKeyEvent* event)
 QStringList runtimeRootCandidates()
 {
     const QString appDir = QCoreApplication::applicationDirPath();
-    return {
+    QStringList roots{
         appDir,
-        QDir::currentPath(),
-        QDir(appDir).absoluteFilePath(QStringLiteral("../..")),
-        QDir(QDir::currentPath()).absoluteFilePath(QStringLiteral("."))
+        QDir(appDir).absoluteFilePath(QStringLiteral("../.."))
     };
+    if (qEnvironmentVariableIsSet("VAPORVIEW_MAP3D_DEV_SEARCH_PATHS"))
+    {
+        roots.push_back(QDir::currentPath());
+    }
+    roots.removeDuplicates();
+    return roots;
 }
 
 QString firstExistingDirectory(const QStringList& roots, const QStringList& relatives)
@@ -433,7 +447,6 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent)
             update();
         }
     });
-    frameTimer_.start();
 }
 
 OsgEarthViewWidget::~OsgEarthViewWidget()
@@ -443,12 +456,14 @@ OsgEarthViewWidget::~OsgEarthViewWidget()
 
 void OsgEarthViewWidget::shutdown()
 {
+    assertGuiThread(this, Q_FUNC_INFO);
     frameTimer_.stop();
     if (shutdown_)
     {
         return;
     }
     shutdown_ = true;
+    QObject::disconnect(gl_context_destruction_connection_);
     setUpdatesEnabled(false);
     clearFocus();
 
@@ -498,6 +513,7 @@ void OsgEarthViewWidget::shutdown()
 
 void OsgEarthViewWidget::appendSample(const VaporView::Geo::NavSample& sample)
 {
+    assertGuiThread(this, Q_FUNC_INFO);
     if (shutdown_ || !trajectory_layer_ || !aircraft_layer_)
     {
         return;
@@ -510,6 +526,11 @@ void OsgEarthViewWidget::appendSample(const VaporView::Geo::NavSample& sample)
         rebuildDisplayTrack();
     }
     raw_samples_.push_back(sample);
+    while (!preserve_full_track_extent_
+           && static_cast<int>(raw_samples_.size()) > maxVisibleSamples())
+    {
+        raw_samples_.pop_front();
+    }
     const VaporView::Geo::NavSample displaySample = toDisplaySample(sample);
     trajectory_layer_->appendSample(displaySample);
     aircraft_layer_->updateSample(displaySample);
@@ -520,6 +541,7 @@ void OsgEarthViewWidget::appendSample(const VaporView::Geo::NavSample& sample)
 
 void OsgEarthViewWidget::appendSamples(const std::vector<VaporView::Geo::NavSample>& samples)
 {
+    assertGuiThread(this, Q_FUNC_INFO);
     if (shutdown_ || !trajectory_layer_ || !aircraft_layer_)
     {
         return;
@@ -532,6 +554,11 @@ void OsgEarthViewWidget::appendSamples(const std::vector<VaporView::Geo::NavSamp
         rebuildDisplayTrack();
     }
     raw_samples_.insert(raw_samples_.end(), samples.cbegin(), samples.cend());
+    while (!preserve_full_track_extent_
+           && static_cast<int>(raw_samples_.size()) > maxVisibleSamples())
+    {
+        raw_samples_.pop_front();
+    }
     std::vector<VaporView::Geo::NavSample> displaySamples;
     displaySamples.reserve(samples.size());
     for (const VaporView::Geo::NavSample& sample : samples)
@@ -550,13 +577,14 @@ void OsgEarthViewWidget::appendSamples(const std::vector<VaporView::Geo::NavSamp
 
 void OsgEarthViewWidget::setSamples(const std::vector<VaporView::Geo::NavSample>& samples)
 {
+    assertGuiThread(this, Q_FUNC_INFO);
     if (shutdown_ || !trajectory_layer_ || !aircraft_layer_)
     {
         return;
     }
     QElapsedTimer timer;
     timer.start();
-    raw_samples_ = samples;
+    raw_samples_.assign(samples.cbegin(), samples.cend());
     preserve_full_track_extent_ = true;
     local_frame_ = VaporView::Geo::LocalTangentPlane();
     resetWorldOverlayOrigin();
@@ -567,8 +595,10 @@ void OsgEarthViewWidget::setSamples(const std::vector<VaporView::Geo::NavSample>
 
 void OsgEarthViewWidget::clearTrack()
 {
+    assertGuiThread(this, Q_FUNC_INFO);
     raw_samples_.clear();
     preserve_full_track_extent_ = false;
+    height_reference_status_.clear();
     if (shutdown_ || !trajectory_layer_ || !aircraft_layer_)
     {
         return;
@@ -582,6 +612,7 @@ void OsgEarthViewWidget::clearTrack()
 
 bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
 {
+    assertGuiThread(this, Q_FUNC_INFO);
     earth_load_diagnostics_ = {};
     earth_load_diagnostics_.attempted = true;
     earth_load_diagnostics_.requestedPath = earthPath;
@@ -590,10 +621,9 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
         earth_load_diagnostics_.failureReason = QStringLiteral("3D view is shutting down.");
         return false;
     }
-    use_xihu_initial_view_ =
+    const bool candidateUsesXihuInitialView =
         QFileInfo(earthPath).fileName().compare(QStringLiteral("vaporview_real3d_local.earth"),
-                                                Qt::CaseInsensitive)
-        == 0;
+                                                Qt::CaseInsensitive) == 0;
 
     initializeSceneIfNeeded();
     osg::ref_ptr<osg::Node> earthNode = osgDB::readNodeFile(earthPath.toStdString());
@@ -604,12 +634,14 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
         osg::ref_ptr<osg::Node> texturedEarthNode = createTexturedEarthNode(texturePath);
         if (texturedEarthNode && root_)
         {
+            const bool replacedPreviousNode = earth_node_.valid();
             if (earth_node_)
             {
                 root_->removeChild(earth_node_.get());
             }
             earth_node_ = texturedEarthNode;
             map_node_ = nullptr;
+            use_xihu_initial_view_ = candidateUsesXihuInitialView;
             trajectory_layer_->setUseWorldCoordinates(true);
             aircraft_layer_->setUseWorldCoordinates(true);
             resetWorldOverlayOrigin();
@@ -624,6 +656,10 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
                 QStringLiteral("%1 Using manual Natural Earth textured globe fallback.").arg(readFailure);
             earth_load_diagnostics_.layerSummaries.push_back(
                 QStringLiteral("Manual Natural Earth textured globe fallback (no osgEarth MapNode)."));
+            if (replacedPreviousNode)
+            {
+                earth_load_diagnostics_.layerSummaries.push_back(QStringLiteral("Replaced previous Earth scene."));
+            }
             return true;
         }
 
@@ -635,51 +671,53 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
         earth_load_diagnostics_.failureReason = QStringLiteral("Scene root is not initialized.");
         return false;
     }
+    osgEarth::MapNode* candidateMapNode = osgEarth::MapNode::findMapNode(earthNode.get());
+    earth_load_diagnostics_.foundMapNode = candidateMapNode != nullptr;
+    if (!candidateMapNode)
+    {
+        earth_load_diagnostics_.failureReason = QStringLiteral("Loaded OSG node, but no osgEarth MapNode was found.");
+        earth_load_diagnostics_.layerSummaries.push_back(earth_load_diagnostics_.failureReason);
+        return false;
+    }
+
+    candidateMapNode->openMapLayers();
+    if (candidateMapNode->getMap())
+    {
+        osgEarth::LayerVector layers;
+        candidateMapNode->getMap()->getLayers(layers);
+        earth_load_diagnostics_.layerCount = static_cast<int>(layers.size());
+        for (const osg::ref_ptr<osgEarth::Layer>& layer : layers)
+        {
+            if (!layer)
+            {
+                continue;
+            }
+            const osgEarth::Status& status = layer->getStatus();
+            if (layer->isOpen())
+            {
+                ++earth_load_diagnostics_.openLayerCount;
+            }
+            const QString summary = QStringLiteral("%1 | open=%2 | status=%3")
+                .arg(QString::fromStdString(layer->getName()),
+                     layer->isOpen() ? QStringLiteral("yes") : QStringLiteral("no"),
+                     QString::fromStdString(status.toString()));
+            earth_load_diagnostics_.layerSummaries.push_back(summary);
+            qInfo().noquote()
+                << "osgEarth layer"
+                << QString::fromStdString(layer->getName())
+                << "open=" << layer->isOpen()
+                << "status=" << QString::fromStdString(status.toString());
+        }
+    }
+
     if (earth_node_)
     {
         root_->removeChild(earth_node_.get());
     }
     earth_node_ = earthNode;
-    map_node_ = osgEarth::MapNode::findMapNode(earth_node_.get());
+    map_node_ = candidateMapNode;
+    use_xihu_initial_view_ = candidateUsesXihuInitialView;
     earth_load_diagnostics_.loaded = true;
-    earth_load_diagnostics_.foundMapNode = map_node_ != nullptr;
-    if (map_node_)
-    {
-        map_node_->openMapLayers();
-        if (map_node_->getMap())
-        {
-            osgEarth::LayerVector layers;
-            map_node_->getMap()->getLayers(layers);
-            earth_load_diagnostics_.layerCount = static_cast<int>(layers.size());
-            for (const osg::ref_ptr<osgEarth::Layer>& layer : layers)
-            {
-                if (!layer)
-                {
-                    continue;
-                }
-                const osgEarth::Status& status = layer->getStatus();
-                if (layer->isOpen())
-                {
-                    ++earth_load_diagnostics_.openLayerCount;
-                }
-                const QString summary = QStringLiteral("%1 | open=%2 | status=%3")
-                    .arg(QString::fromStdString(layer->getName()),
-                         layer->isOpen() ? QStringLiteral("yes") : QStringLiteral("no"),
-                         QString::fromStdString(status.toString()));
-                earth_load_diagnostics_.layerSummaries.push_back(summary);
-                qInfo().noquote()
-                    << "osgEarth layer"
-                    << QString::fromStdString(layer->getName())
-                    << "open=" << layer->isOpen()
-                    << "status=" << QString::fromStdString(status.toString());
-            }
-        }
-    }
-    else
-    {
-        earth_load_diagnostics_.failureReason = QStringLiteral("Loaded OSG node, but no osgEarth MapNode was found.");
-        earth_load_diagnostics_.layerSummaries.push_back(earth_load_diagnostics_.failureReason);
-    }
     trajectory_layer_->setUseWorldCoordinates(true);
     aircraft_layer_->setUseWorldCoordinates(true);
     resetWorldOverlayOrigin();
@@ -692,6 +730,7 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
 
 bool OsgEarthViewWidget::loadLocal3DTilesPreview(const QString& tilesetPath)
 {
+    assertGuiThread(this, Q_FUNC_INFO);
     local_3d_tiles_load_diagnostics_ = {};
     local_3d_tiles_load_diagnostics_.attempted = true;
     local_3d_tiles_load_diagnostics_.requestedPath = tilesetPath;
@@ -700,14 +739,19 @@ bool OsgEarthViewWidget::loadLocal3DTilesPreview(const QString& tilesetPath)
         local_3d_tiles_load_diagnostics_.failureReason = QStringLiteral("3D view is shutting down.");
         return false;
     }
-    local_3d_tiles_load_diagnostics_.clearedPreviousPreview = local_3d_tiles_node_.valid();
-    clearLocal3DTilesPreview();
-
     const QFileInfo tilesetInfo(tilesetPath);
     if (!tilesetInfo.isFile())
     {
         local_3d_tiles_load_diagnostics_.failureReason =
             QStringLiteral("Local 3D Tiles tileset file does not exist.");
+        return false;
+    }
+
+    constexpr qint64 kMaximumTilesetJsonBytes = 64LL * 1024LL * 1024LL;
+    if (tilesetInfo.size() > kMaximumTilesetJsonBytes)
+    {
+        local_3d_tiles_load_diagnostics_.failureReason =
+            QStringLiteral("Local 3D tile index exceeds the 64 MiB safety limit.");
         return false;
     }
 
@@ -726,6 +770,20 @@ bool OsgEarthViewWidget::loadLocal3DTilesPreview(const QString& tilesetPath)
             QStringLiteral("Local 3D Tiles tileset is not valid JSON: %1").arg(parseError.errorString());
         return false;
     }
+    if (!document.object().value(QStringLiteral("root")).isObject())
+    {
+        local_3d_tiles_load_diagnostics_.failureReason =
+            QStringLiteral("Local 3D tile index does not contain a root tile object.");
+        return false;
+    }
+    const QString payloadFormat = document.object().value(QStringLiteral("extras")).toObject()
+                                      .value(QStringLiteral("format")).toString();
+    if (payloadFormat != QStringLiteral("vaporview-osg-native-building-tiles"))
+    {
+        local_3d_tiles_load_diagnostics_.failureReason =
+            QStringLiteral("Unsupported building payload contract. This loader accepts only vaporview-osg-native-building-tiles, not generic Cesium 3D Tiles.");
+        return false;
+    }
 
     initializeSceneIfNeeded();
     if (!root_)
@@ -739,7 +797,10 @@ bool OsgEarthViewWidget::loadLocal3DTilesPreview(const QString& tilesetPath)
     tilesRoot->setName("VaporView local building tiles");
     const QString tilesetDirectory = tilesetInfo.absolutePath();
 
-    std::function<void(const QJsonObject&)> loadTile;
+    constexpr int kMaximumTileCount = 100000;
+    constexpr int kMaximumTileDepth = 128;
+    bool traversalLimitExceeded = false;
+    std::function<void(const QJsonObject&, int)> loadTile;
     const auto loadContent = [&](const QJsonObject& content) {
         QString uri = content.value(QStringLiteral("uri")).toString();
         if (uri.isEmpty())
@@ -766,11 +827,23 @@ bool OsgEarthViewWidget::loadLocal3DTilesPreview(const QString& tilesetPath)
         {
             uri = uri.left(cutIndex);
         }
-        const QString payloadPath = QFileInfo(QDir(tilesetDirectory).absoluteFilePath(uri)).absoluteFilePath();
+        const QString normalizedUri = QDir::cleanPath(QDir::fromNativeSeparators(uri));
+        if (QDir::isAbsolutePath(normalizedUri)
+            || normalizedUri == QStringLiteral("..")
+            || normalizedUri.startsWith(QStringLiteral("../"))
+            || uri.contains(QStringLiteral("://")))
+        {
+            ++local_3d_tiles_load_diagnostics_.failedPayloadCount;
+            local_3d_tiles_load_diagnostics_.warnings.push_back(
+                QStringLiteral("Rejected non-local tile payload URI: %1").arg(uri));
+            return;
+        }
+        const QString payloadPath = QFileInfo(QDir(tilesetDirectory).absoluteFilePath(normalizedUri)).absoluteFilePath();
         osg::ref_ptr<osg::Node> payload =
             osgDB::readNodeFile(QDir::fromNativeSeparators(payloadPath).toStdString());
         if (!payload)
         {
+            ++local_3d_tiles_load_diagnostics_.failedPayloadCount;
             local_3d_tiles_load_diagnostics_.warnings.push_back(
                 QStringLiteral("Failed to load local tile payload: %1").arg(payloadPath));
             return;
@@ -778,7 +851,12 @@ bool OsgEarthViewWidget::loadLocal3DTilesPreview(const QString& tilesetPath)
         tilesRoot->addChild(payload.get());
         ++local_3d_tiles_load_diagnostics_.loadedPayloadCount;
     };
-    loadTile = [&](const QJsonObject& tile) {
+    loadTile = [&](const QJsonObject& tile, int depth) {
+        if (depth > kMaximumTileDepth || local_3d_tiles_load_diagnostics_.tileCount >= kMaximumTileCount)
+        {
+            traversalLimitExceeded = true;
+            return;
+        }
         ++local_3d_tiles_load_diagnostics_.tileCount;
         if (tile.value(QStringLiteral("content")).isObject())
         {
@@ -797,22 +875,38 @@ bool OsgEarthViewWidget::loadLocal3DTilesPreview(const QString& tilesetPath)
         {
             if (child.isObject())
             {
-                loadTile(child.toObject());
+                loadTile(child.toObject(), depth + 1);
             }
         }
     };
-    loadTile(document.object().value(QStringLiteral("root")).toObject());
+    loadTile(document.object().value(QStringLiteral("root")).toObject(), 0);
 
-    if (local_3d_tiles_load_diagnostics_.loadedPayloadCount == 0)
+    if (traversalLimitExceeded)
+    {
+        local_3d_tiles_load_diagnostics_.failureReason =
+            QStringLiteral("Local 3D tile index exceeds the traversal safety limit; previous preview was preserved.");
+        return false;
+    }
+
+    if (local_3d_tiles_load_diagnostics_.loadedPayloadCount == 0
+        || local_3d_tiles_load_diagnostics_.failedPayloadCount > 0)
     {
         local_3d_tiles_load_diagnostics_.failureReason =
             local_3d_tiles_load_diagnostics_.warnings.isEmpty()
                 ? QStringLiteral("Local tileset did not contain a loadable payload.")
-                : local_3d_tiles_load_diagnostics_.warnings.constFirst();
+                : QStringLiteral("Local tileset load was incomplete (%1/%2 payloads); previous preview was preserved. %3")
+                      .arg(local_3d_tiles_load_diagnostics_.loadedPayloadCount)
+                      .arg(local_3d_tiles_load_diagnostics_.payloadCount)
+                      .arg(local_3d_tiles_load_diagnostics_.warnings.constFirst());
         return false;
     }
 
     osgEarth::Registry::shaderGenerator().run(tilesRoot.get());
+    local_3d_tiles_load_diagnostics_.clearedPreviousPreview = local_3d_tiles_node_.valid();
+    if (local_3d_tiles_node_)
+    {
+        root_->removeChild(local_3d_tiles_node_.get());
+    }
     local_3d_tiles_node_ = tilesRoot;
     root_->addChild(local_3d_tiles_node_.get());
     local_3d_tiles_load_diagnostics_.loaded = true;
@@ -826,6 +920,7 @@ bool OsgEarthViewWidget::loadLocal3DTilesPreview(const QString& tilesetPath)
 
 void OsgEarthViewWidget::clearLocal3DTilesPreview()
 {
+    assertGuiThread(this, Q_FUNC_INFO);
     if (shutdown_)
     {
         local_3d_tiles_node_ = nullptr;
@@ -855,6 +950,7 @@ AircraftModelDiagnostics OsgEarthViewWidget::aircraftModelDiagnostics() const
 
 bool OsgEarthViewWidget::loadAircraftModel(const QString& modelPath)
 {
+    assertGuiThread(this, Q_FUNC_INFO);
     if (shutdown_)
     {
         aircraft_model_diagnostics_.failureReason = QStringLiteral("3D view is shutting down.");
@@ -890,18 +986,63 @@ void OsgEarthViewWidget::setFollowAircraft(bool enabled)
         return;
     }
 
-    if (!viewer_->getCameraManipulator())
+    if (earth_node_ && map_node_)
     {
-        if (earth_node_ && map_node_)
+        if (!dynamic_cast<osgEarth::EarthManipulator*>(viewer_->getCameraManipulator()))
         {
             viewer_->setCameraManipulator(new osgEarth::EarthManipulator);
         }
-        else
-        {
-            viewer_->setCameraManipulator(new osgGA::TrackballManipulator);
-        }
+    }
+    else if (!dynamic_cast<osgGA::TrackballManipulator*>(viewer_->getCameraManipulator()))
+    {
+        viewer_->setCameraManipulator(new osgGA::TrackballManipulator);
+    }
+    if (enabled && !raw_samples_.empty())
+    {
+        updateFollowCamera(toDisplaySample(raw_samples_.back()));
     }
 }
+
+bool OsgEarthViewWidget::hasLocal3DTilesPreview() const
+{
+    return local_3d_tiles_node_.valid();
+}
+
+namespace {
+
+osgEarth::EarthManipulator* ensureEarthManipulator(osgViewer::Viewer* viewer)
+{
+    if (!viewer)
+    {
+        return nullptr;
+    }
+    auto* manipulator = dynamic_cast<osgEarth::EarthManipulator*>(viewer->getCameraManipulator());
+    if (!manipulator)
+    {
+        osg::ref_ptr<osgEarth::EarthManipulator> replacement = new osgEarth::EarthManipulator;
+        viewer->setCameraManipulator(replacement.get());
+        manipulator = replacement.get();
+    }
+    return manipulator;
+}
+
+osgGA::TrackballManipulator* ensureTrackballManipulator(osgViewer::Viewer* viewer)
+{
+    if (!viewer)
+    {
+        return nullptr;
+    }
+    auto* manipulator = dynamic_cast<osgGA::TrackballManipulator*>(viewer->getCameraManipulator());
+    if (!manipulator)
+    {
+        osg::ref_ptr<osgGA::TrackballManipulator> replacement = new osgGA::TrackballManipulator;
+        viewer->setCameraManipulator(replacement.get());
+        manipulator = replacement.get();
+    }
+    return manipulator;
+}
+
+} // namespace
 
 void OsgEarthViewWidget::setMaxVisibleSamples(int maxVisibleSamples)
 {
@@ -910,6 +1051,13 @@ void OsgEarthViewWidget::setMaxVisibleSamples(int maxVisibleSamples)
         return;
     }
     trajectory_layer_->setMaxVisibleSamples(maxVisibleSamples);
+    if (!preserve_full_track_extent_)
+    {
+        while (static_cast<int>(raw_samples_.size()) > trajectory_layer_->maxVisibleSamples())
+        {
+            raw_samples_.pop_front();
+        }
+    }
     if (preserve_full_track_extent_)
     {
         rebuildDisplayTrack();
@@ -990,6 +1138,7 @@ Map3DPerformanceStats OsgEarthViewWidget::performanceStats() const
     stats.frameMs = smoothed_frame_ms_ > 0.0 ? smoothed_frame_ms_ : last_frame_ms_;
     stats.framesPerSecond = frames_per_second_;
     stats.trackUpdateMs = last_track_update_ms_;
+    stats.heightReferenceStatus = height_reference_status_;
     return stats;
 }
 
@@ -1010,6 +1159,16 @@ void OsgEarthViewWidget::initializeGL()
         return;
     }
     initializeSceneIfNeeded();
+    QObject::disconnect(gl_context_destruction_connection_);
+    if (QOpenGLContext* openGlContext = context())
+    {
+        gl_context_destruction_connection_ =
+            connect(openGlContext,
+                    &QOpenGLContext::aboutToBeDestroyed,
+                    this,
+                    &OsgEarthViewWidget::releaseGlObjectsForContextDestruction,
+                    Qt::DirectConnection);
+    }
 }
 
 void OsgEarthViewWidget::resizeGL(int w, int h)
@@ -1329,18 +1488,29 @@ void OsgEarthViewWidget::updateFollowCamera(const VaporView::Geo::NavSample& sam
         && std::isfinite(sample.ecefZM)
         && sample.hasLlh())
     {
-        const double latRad = sample.latDeg * 3.14159265358979323846 / 180.0;
-        const double lonRad = sample.lonDeg * 3.14159265358979323846 / 180.0;
-        const osg::Vec3d east(-std::sin(lonRad), std::cos(lonRad), 0.0);
-        const osg::Vec3d north(-std::sin(latRad) * std::cos(lonRad),
-                               -std::sin(latRad) * std::sin(lonRad),
-                               std::cos(latRad));
-        const osg::Vec3d up(std::cos(latRad) * std::cos(lonRad),
-                            std::cos(latRad) * std::sin(lonRad),
-                            std::sin(latRad));
-        const osg::Vec3d forward = east * std::sin(yawRad) + north * std::cos(yawRad);
-        const osg::Vec3d eye = center - forward * kFollowDistanceM + up * kFollowHeightM;
-        viewer_->getCamera()->setViewMatrixAsLookAt(eye, center, up);
+        osgEarth::GeoPoint focalPoint;
+        const osgEarth::SpatialReference* wgs84 = osgEarth::SpatialReference::get("wgs84");
+        if (wgs84 && focalPoint.fromWorld(wgs84, center))
+        {
+            osgEarth::EarthManipulator* manipulator = ensureEarthManipulator(viewer_.get());
+            if (manipulator)
+            {
+                const double rangeM = std::hypot(kFollowDistanceM, kFollowHeightM);
+                const double pitchDeg = -std::atan2(kFollowHeightM, kFollowDistanceM)
+                    * 180.0 / 3.14159265358979323846;
+                manipulator->setViewpoint(
+                    osgEarth::Viewpoint("Follow aircraft",
+                                        focalPoint.x(),
+                                        focalPoint.y(),
+                                        focalPoint.z(),
+                                        aircraftHeadingDeg(sample),
+                                        pitchDeg,
+                                        rangeM),
+                    0.0);
+                manipulator->updateCamera(*viewer_->getCamera());
+                return;
+            }
+        }
         return;
     }
 
@@ -1352,7 +1522,37 @@ void OsgEarthViewWidget::updateFollowCamera(const VaporView::Geo::NavSample& sam
     const osg::Vec3d eye(center.x() - std::sin(yawRad) * kFollowDistanceM,
                          center.y() - std::cos(yawRad) * kFollowDistanceM,
                          center.z() + kFollowHeightM);
-    viewer_->getCamera()->setViewMatrixAsLookAt(eye, center, osg::Vec3d(0.0, 0.0, 1.0));
+    osgGA::TrackballManipulator* manipulator = ensureTrackballManipulator(viewer_.get());
+    if (manipulator)
+    {
+        manipulator->setHomePosition(eye, center, osg::Vec3d(0.0, 0.0, 1.0), false);
+        manipulator->home(0.0);
+        manipulator->updateCamera(*viewer_->getCamera());
+    }
+}
+
+void OsgEarthViewWidget::showEvent(QShowEvent* event)
+{
+    QOpenGLWidget::showEvent(event);
+    if (!shutdown_)
+    {
+        frameTimer_.start();
+    }
+}
+
+void OsgEarthViewWidget::hideEvent(QHideEvent* event)
+{
+    frameTimer_.stop();
+    QOpenGLWidget::hideEvent(event);
+}
+
+void OsgEarthViewWidget::releaseGlObjectsForContextDestruction()
+{
+    if (shutdown_ || !root_ || QOpenGLContext::currentContext() != context())
+    {
+        return;
+    }
+    root_->releaseGLObjects(nullptr);
 }
 
 void OsgEarthViewWidget::setInitialEarthView()
@@ -1362,7 +1562,7 @@ void OsgEarthViewWidget::setInitialEarthView()
         return;
     }
 
-    if (earth_node_ && !map_node_)
+    if (!earth_node_ || !map_node_)
     {
         osg::ref_ptr<osgGA::TrackballManipulator> manipulator = new osgGA::TrackballManipulator;
         manipulator->setHomePosition(osg::Vec3d(0.0, -kEarthRadiusM * 3.0, kEarthRadiusM * 1.2),
@@ -1402,37 +1602,48 @@ void OsgEarthViewWidget::setLookAt(const osg::Vec3d& center, double distanceM)
     }
 
     const double safeDistance = std::max(50.0, distanceM);
-    if (earth_node_ && center.length2() > 1.0)
+    if (earth_node_ && map_node_ && center.length2() > 1.0)
     {
-        const osg::Vec3d up = center;
-        osg::Vec3d upUnit = up;
-        upUnit.normalize();
-        osg::Vec3d east(-upUnit.y(), upUnit.x(), 0.0);
-        if (east.length2() < 1.0e-9)
+        osgEarth::GeoPoint focalPoint;
+        const osgEarth::SpatialReference* wgs84 = osgEarth::SpatialReference::get("wgs84");
+        osgEarth::EarthManipulator* manipulator = ensureEarthManipulator(viewer_.get());
+        if (wgs84 && manipulator && focalPoint.fromWorld(wgs84, center))
         {
-            east.set(1.0, 0.0, 0.0);
+            manipulator->setViewpoint(
+                osgEarth::Viewpoint("Map target",
+                                    focalPoint.x(),
+                                    focalPoint.y(),
+                                    focalPoint.z(),
+                                    0.0,
+                                    -35.0,
+                                    safeDistance),
+                0.0);
+            manipulator->updateCamera(*viewer_->getCamera());
+            return;
         }
-        east.normalize();
-        const osg::Vec3d north = upUnit ^ east;
-        const osg::Vec3d eye = center - north * safeDistance + upUnit * (safeDistance * 0.45);
-        viewer_->getCamera()->setViewMatrixAsLookAt(eye, center, upUnit);
-        return;
     }
 
     const osg::Vec3d eye(center.x() - safeDistance,
                          center.y() - safeDistance,
                          center.z() + safeDistance * 0.65);
-    viewer_->getCamera()->setViewMatrixAsLookAt(eye, center, osg::Vec3d(0.0, 0.0, 1.0));
+    osgGA::TrackballManipulator* manipulator = ensureTrackballManipulator(viewer_.get());
+    if (manipulator)
+    {
+        manipulator->setHomePosition(eye, center, osg::Vec3d(0.0, 0.0, 1.0), false);
+        manipulator->home(0.0);
+        manipulator->updateCamera(*viewer_->getCamera());
+    }
 }
 
 void OsgEarthViewWidget::rebuildDisplayTrack()
 {
     trajectory_layer_->clear();
     aircraft_layer_->clear();
+    const std::vector<VaporView::Geo::NavSample> rawSamples(raw_samples_.cbegin(), raw_samples_.cend());
     const std::vector<VaporView::Geo::NavSample> selectedSamples =
         preserve_full_track_extent_
-        ? uniformlySampleTrack(raw_samples_, maxVisibleSamples())
-        : raw_samples_;
+        ? uniformlySampleTrack(rawSamples, maxVisibleSamples())
+        : rawSamples;
     std::vector<VaporView::Geo::NavSample> displaySamples;
     displaySamples.reserve(selectedSamples.size());
     for (const VaporView::Geo::NavSample& sample : selectedSamples)
@@ -1531,6 +1742,30 @@ VaporView::Geo::NavSample OsgEarthViewWidget::toWorldSample(const VaporView::Geo
     if (!sample.hasLlh())
     {
         return sample;
+    }
+
+    const bool hasRecordedEcef = std::isfinite(sample.ecefXM)
+        && std::isfinite(sample.ecefYM)
+        && std::isfinite(sample.ecefZM);
+    if (sample.heightReference != VaporView::Geo::HeightReference::Unknown
+        && sample.heightReference != VaporView::Geo::HeightReference::Wgs84Ellipsoid)
+    {
+        if (hasRecordedEcef)
+        {
+            height_reference_status_ = QStringLiteral("Using recorded ECEF for non-ellipsoid height reference.");
+            updateWorldOverlayOriginFromSample(sample);
+            return sample;
+        }
+        height_reference_status_ = QStringLiteral(
+            "Warning: non-ellipsoid height has no recorded ECEF; WGS84 fallback is active.");
+    }
+    else if (sample.heightReference == VaporView::Geo::HeightReference::Wgs84Ellipsoid)
+    {
+        height_reference_status_ = QStringLiteral("WGS84 ellipsoid height applied.");
+    }
+    else
+    {
+        height_reference_status_ = QStringLiteral("Height reference unspecified; WGS84 fallback applied.");
     }
 
     const osgEarth::SpatialReference* wgs84 = osgEarth::SpatialReference::get("wgs84");

@@ -71,5 +71,27 @@ int main()
     sample.lonDeg = 90.0;
     require(!VaporView::Geo::isLikelyJump(previous, sample), "missing NED does not reject LLH-only samples");
 
+    previous = validSample();
+    previous.deviceTimestampUs = 500000;
+    previous.recordTimestampUs = 1000000;
+    previous.nedNM = 0.0;
+    previous.nedEM = 0.0;
+    previous.nedDM = 0.0;
+    sample = validSample();
+    sample.deviceTimestampUs = 0;
+    sample.recordTimestampUs = 2000000;
+    sample.nedNM = 1.0;
+    sample.nedEM = 0.0;
+    sample.nedDM = 0.0;
+    require(!VaporView::Geo::isLikelyJump(previous, sample),
+            "jump detection falls back to a timestamp domain shared by both samples");
+
+    previous.deviceTimestampUs = 0;
+    previous.recordTimestampUs = 0;
+    sample.deviceTimestampUs = 0;
+    sample.recordTimestampUs = 0;
+    require(!VaporView::Geo::isLikelyJump(previous, sample),
+            "samples without a shared timestamp domain are not rejected as jumps");
+
     return 0;
 }

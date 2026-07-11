@@ -91,8 +91,24 @@ struct NavSample {
         {
             return false;
         }
-        const double norm2 = quatW * quatW + quatX * quatX + quatY * quatY + quatZ * quatZ;
-        return norm2 > 1e-12;
+        const double norm = quaternionNorm();
+        return std::isfinite(norm) && norm > 1e-6;
+    }
+
+    double quaternionNorm() const
+    {
+        const double scale = std::fmax(std::fmax(std::fabs(quatW), std::fabs(quatX)),
+                                       std::fmax(std::fabs(quatY), std::fabs(quatZ)));
+        if (!std::isfinite(scale) || scale <= 0.0)
+        {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+        const double w = quatW / scale;
+        const double x = quatX / scale;
+        const double y = quatY / scale;
+        const double z = quatZ / scale;
+        const double norm = scale * std::sqrt(w * w + x * x + y * y + z * z);
+        return std::isfinite(norm) ? norm : std::numeric_limits<double>::quiet_NaN();
     }
 };
 
