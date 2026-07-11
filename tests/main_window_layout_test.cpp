@@ -2903,11 +2903,24 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureChannelAdvancedParamsButton1"));
     auto *temperatureChannelSensorConfigButton =
         temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureChannelSensorConfigButton1"));
+    auto *temperatureChannelConfigSubStack =
+        temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelConfigSubStackChannel1"));
     require(temperatureChannelAdvancedParamsButton != nullptr &&
-                temperatureChannelSensorConfigButton != nullptr,
+                temperatureChannelSensorConfigButton != nullptr &&
+                temperatureChannelConfigSubStack != nullptr,
             "temperature channel exposes lower common, advanced, and sensor config tabs");
+    require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
+                temperatureChannelConfigSubStack->currentWidget()->objectName() ==
+                    QStringLiteral("temperatureChannelSensorConfigPageChannel1") &&
+                temperatureChannelSensorConfigButton->isChecked(),
+            "temperature channel defaults to the visible sensor config page");
     clickWidget(temperatureChannelAdvancedParamsButton, 150);
     activateLayouts(&window);
+    require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
+                temperatureChannelConfigSubStack->currentWidget()->objectName() ==
+                    QStringLiteral("temperatureChannelAdvancedParamsPageChannel1") &&
+                temperatureChannelAdvancedParamsButton->isChecked(),
+            "temperature lower advanced tab switches away from sensor config");
 
     auto requireFieldRowLayout = [](QWidget *editor, const char *message) {
         require(editor != nullptr && editor->parentWidget() != nullptr, message);
@@ -3026,6 +3039,11 @@ int main(int argc, char **argv)
 
     clickWidget(temperatureChannelSensorConfigButton, 150);
     activateLayouts(&window);
+    require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
+                temperatureChannelConfigSubStack->currentWidget()->objectName() ==
+                    QStringLiteral("temperatureChannelSensorConfigPageChannel1") &&
+                temperatureChannelSensorConfigButton->isChecked(),
+            "temperature sensor config tab switches to the sensor config page");
 
     auto *temperatureChannelSubTopBar =
         temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureChannelSubTopBar"));

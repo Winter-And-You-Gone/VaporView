@@ -7158,7 +7158,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     channel.config_sub_stack->addWidget(createChannelAdvancedParamsPage(index));
     channel.config_sub_stack->addWidget(createChannelSensorConfigPage(index));
     layout->addWidget(channel.config_sub_stack, 0);
-    selectChannelSubPage(index, 0);
+    selectChannelSubPage(index, 2);
     return page;
 }
 
