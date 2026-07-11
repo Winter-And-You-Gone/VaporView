@@ -7160,10 +7160,11 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
     page->setFixedHeight(kTemperatureControllerChannelStackHeight);
     auto *layout = new QGridLayout(page);
     layout->setContentsMargins(16, 8, 16, 8);
-    layout->setHorizontalSpacing(18);
+    layout->setHorizontalSpacing(12);
     layout->setVerticalSpacing(8);
-    layout->setColumnStretch(0, 1);
-    layout->setColumnStretch(1, 1);
+    layout->setColumnStretch(0, 0);
+    layout->setColumnStretch(1, 0);
+    layout->setColumnStretch(2, 1);
 
     auto makeFieldLabel = [this](const QString& text) {
         auto *label = new QLabel(text, this);
@@ -7179,15 +7180,14 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
         editor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         auto *cell = new QWidget();
         cell->setObjectName(QStringLiteral("temperatureCommonFieldRow"));
-        cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        cell->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         cell->setFixedHeight(kTemperatureControllerConfigRowHeight);
         auto *cellLayout = new QHBoxLayout(cell);
         cellLayout->setContentsMargins(0, 0, 0, 0);
-        cellLayout->setSpacing(10);
+        cellLayout->setSpacing(8);
         cellLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
-        cellLayout->addStretch(1);
-        cellLayout->addWidget(editor, 0, Qt::AlignRight | Qt::AlignVCenter);
-        layout->addWidget(cell, row, column);
+        cellLayout->addWidget(editor, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        layout->addWidget(cell, row, column, Qt::AlignLeft | Qt::AlignVCenter);
     };
 
     common_.overtemp_output_combo = new SingleLevelPopupComboBox(this);

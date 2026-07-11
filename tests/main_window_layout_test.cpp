@@ -2816,8 +2816,9 @@ int main(int argc, char **argv)
     const QRect commonInternalRowRect(commonInternalTemperatureEdit->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
                                       commonInternalTemperatureEdit->parentWidget()->size());
     require(std::abs(commonOvertempRowRect.top() - commonInternalRowRect.top()) <= 2 &&
+                commonInternalRowRect.left() - commonOvertempRowRect.right() <= 14 &&
                 commonInternalRowRect.bottom() <= temperatureChannelStack->rect().bottom(),
-            "temperature common settings remaining fields fit inside the stack without overlap or clipping");
+            "temperature common settings fields stay close and fit inside the stack without overlap or clipping");
     const QRect commonCardRectInPanel(temperatureConfigCard->mapTo(temperaturePanel, QPoint(0, 0)),
                                       temperatureConfigCard->size());
     const QRect commonPlotRectInPanel(temperatureConfigPlot->mapTo(temperaturePanel, QPoint(0, 0)),
@@ -3002,6 +3003,7 @@ int main(int argc, char **argv)
         const QRect editorRect(editor->mapTo(row, QPoint(0, 0)), editor->size());
         require(labelRect.left() <= 1 &&
                     labelRect.right() < editorRect.left() &&
+                    editorRect.left() - labelRect.right() <= 10 &&
                     editorRect.right() >= row->rect().right() - 1,
                 message);
     };
