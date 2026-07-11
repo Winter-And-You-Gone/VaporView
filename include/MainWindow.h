@@ -377,6 +377,7 @@ private:
     QWidget *createChannelTopControlsPage(int index);
     QWidget *createCommonTopControlsPage();
     QWidget *createChannelPage(int index);
+    QWidget *createChannelCommonParamsPage(int index);
     QWidget *createChannelAdvancedParamsPage(int index);
     QWidget *createChannelSensorConfigPage(int index);
     QWidget *createCommonSettingsPage();
@@ -391,7 +392,6 @@ private:
     QPushButton *channel_button_1_ = nullptr;
     QPushButton *channel_button_2_ = nullptr;
     QPushButton *common_settings_button_ = nullptr;
-    QLabel *output_enable_top_label_ = nullptr;
     QStackedWidget *channel_top_controls_stack_ = nullptr;
     QStackedWidget *channel_stack_ = nullptr;
     TemperatureTrendPlotWidget *temperature_plot_ = nullptr;
