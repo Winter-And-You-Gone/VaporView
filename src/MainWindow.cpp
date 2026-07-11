@@ -7171,7 +7171,6 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
         label->setObjectName(QStringLiteral("fieldLabel"));
         label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         label->setMinimumHeight(22);
-        label->setFixedWidth(kTemperatureControllerControlLabelWidth);
         return label;
     };
 

@@ -3002,6 +3002,7 @@ int main(int argc, char **argv)
         const QRect labelRect(labels.first()->mapTo(row, QPoint(0, 0)), labels.first()->size());
         const QRect editorRect(editor->mapTo(row, QPoint(0, 0)), editor->size());
         require(labelRect.left() <= 1 &&
+                    labelRect.width() <= labels.first()->sizeHint().width() + 2 &&
                     labelRect.right() < editorRect.left() &&
                     editorRect.left() - labelRect.right() <= 10 &&
                     editorRect.right() >= row->rect().right() - 1,
