@@ -1,5 +1,7 @@
 #include "map3d/Map3DWindow.h"
 
+#include "Map3DDiagnosticsFormatter.h"
+
 #include "AppTheme.h"
 #include "SingleLevelPopupMenu.h"
 #include "geo/SessionTrackReader.h"
@@ -30,6 +32,7 @@
 #include <QWidgetAction>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 
@@ -361,7 +364,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     connect(replay_slider_, &QSlider::valueChanged, this, [this](int value) {
         if (!replay_.isPlaying() && replay_slider_ && replay_slider_->isSliderDown())
         {
-            rebuildReplayAtElapsedUs(replaySliderValueToElapsedUs(value));
+            rebuildReplayAtElapsed(replaySliderValueToElapsed(value));
         }
     });
 
@@ -399,7 +402,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     connect(replay_speed_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &Map3DWindow::onReplaySpeedChanged);
 
     replay_timer_->setTimerType(Qt::PreciseTimer);
-    replay_timer_->setInterval(replay_.intervalMs());
+    replay_timer_->setInterval(static_cast<int>(replay_.interval().count()));
     connect(replay_timer_, &QTimer::timeout, this, &Map3DWindow::onReplayTick);
 
     follow_action_->setChecked(settings.value(QStringLiteral("followAircraft"), false).toBool());
@@ -497,12 +500,15 @@ Map3DWindow::Map3DWindow(QWidget* parent)
                     .toString();
             if (!aircraftModelPath.isEmpty() && view_)
             {
-                const bool loaded = view_->loadAircraftModel(aircraftModelPath);
-                statusBar()->showMessage(
-                    loaded
-                        ? QStringLiteral("已加载飞机模型: %1").arg(aircraftModelPath)
-                        : QStringLiteral("飞机模型加载失败，已保留内置标记: %1").arg(aircraftModelPath),
-                    7000);
+                statusBar()->showMessage(QStringLiteral("正在后台加载飞机模型: %1").arg(aircraftModelPath));
+                view_->loadAircraftModelAsync(aircraftModelPath, [this, aircraftModelPath](bool loaded) {
+                    statusBar()->showMessage(
+                        loaded
+                            ? QStringLiteral("已加载飞机模型: %1").arg(aircraftModelPath)
+                            : QStringLiteral("飞机模型加载失败，已保留当前标记: %1").arg(aircraftModelPath),
+                        7000);
+                    refreshDiagnosticsText();
+                });
             }
         });
     }
@@ -582,7 +588,7 @@ void Map3DWindow::clearTrack()
 
 void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
 {
-    const VaporView::Geo::SessionTrackReadResult result = VaporView::Geo::readSessionTrack(sessionDir);
+    VaporView::Geo::SessionTrackReadResult result = VaporView::Geo::readSessionTrack(sessionDir);
     if (!result.ok)
     {
         QMessageBox::warning(this,
@@ -594,30 +600,33 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
     settings.setValue(QStringLiteral("lastSessionDir"), QFileInfo(sessionDir).absoluteFilePath());
 
+    const QString sourceCsvPath = result.sourceCsvPath;
+    const auto samples = std::make_shared<const std::vector<VaporView::Geo::NavSample>>(
+        std::move(result.samples));
     replay_timer_->stop();
     if (view_)
     {
-        view_->setSamples(result.samples);
+        view_->setSamples(samples);
     }
     if (headless_view_)
     {
-        headless_sample_count_ = static_cast<int>(result.samples.size());
-        headless_samples_ = result.samples;
+        headless_sample_count_ = static_cast<int>(samples->size());
+        headless_samples_ = *samples;
     }
-    replay_.setSamples(result.samples);
+    replay_.setSamples(samples);
     rendered_replay_index_ = -1;
     latest_drop_source_.clear();
     latest_drop_reason_.clear();
     latest_drop_record_timestamp_us_ = 0;
     recordTrackSource(QStringLiteral("Session"),
                       replay_.currentSample(),
-                      result.sourceCsvPath);
+                      sourceCsvPath);
     const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
     updateReplayUi();
     updateStatus(replay_.currentSample());
     statusBar()->showMessage(QStringLiteral("Loaded %1 samples from %2%3")
-                                 .arg(result.samples.size())
-                                 .arg(result.sourceCsvPath,
+                                 .arg(samples->size())
+                                 .arg(sourceCsvPath,
                                       focusedTrack ? QStringLiteral(" (auto-focused track)") : QString()),
                              5000);
 }
@@ -630,60 +639,79 @@ void Map3DWindow::noteLiveSampleDrop(const QString& source, const QString& reaso
     refreshDiagnosticsText();
     updateStatus(nullptr);
 }
-
 void Map3DWindow::loadInitialEarthFile()
 {
-    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
-    const QString lastEarthFile = settings.value(QStringLiteral("lastEarthFile")).toString();
     const MapDataSelection autoSelection = map_data_manager_.selectBestAvailableMap();
+    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    const QString persistedPath = settings.value(QStringLiteral("lastEarthFile")).toString();
     const bool hasPersistedCustomEarth =
-        QFileInfo(lastEarthFile).isFile() && !map_data_manager_.isBuiltInEarthFile(lastEarthFile);
-    QString initialEarthFile = hasPersistedCustomEarth ? lastEarthFile : autoSelection.earthFile;
-
-    if (!QFileInfo(initialEarthFile).isFile())
+        !persistedPath.isEmpty() && !map_data_manager_.isBuiltInEarthFile(persistedPath);
+    const QString initialPath = hasPersistedCustomEarth ? persistedPath : autoSelection.earthFile;
+    if (!view_ || !QFileInfo(initialPath).isFile())
     {
         latest_earth_load_ = {};
-        latest_earth_load_.requestedPath = initialEarthFile;
+        latest_earth_load_.requestedPath = initialPath;
         latest_earth_load_.failureReason = QStringLiteral("Selected earth file does not exist.");
         setMapSelection(autoSelection);
         statusBar()->showMessage(QStringLiteral("未找到默认 Earth 文件，当前显示本地 NED 网格。"), 8000);
         return;
     }
 
-    bool loaded = view_ ? view_->loadEarthFile(initialEarthFile) : false;
-    latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
-    if (!loaded && hasPersistedCustomEarth)
-    {
-        settings.remove(QStringLiteral("lastEarthFile"));
-        initialEarthFile = autoSelection.earthFile;
-        loaded = QFileInfo(initialEarthFile).isFile() && view_ && view_->loadEarthFile(initialEarthFile);
+    statusBar()->showMessage(QStringLiteral("正在后台加载 Earth 文件: %1").arg(initialPath));
+    view_->loadEarthFileAsync(initialPath, [this, autoSelection, initialPath, hasPersistedCustomEarth](bool loaded) {
         latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
-    }
-    if (!loaded)
-    {
-        setMapSelection(autoSelection);
-        statusBar()->showMessage(QStringLiteral("自动加载 Earth 文件失败，当前显示本地 NED 网格: %1").arg(initialEarthFile), 8000);
-        return;
-    }
-
-    const MapDataSelection activeSelection = initialEarthFile == autoSelection.earthFile
-        ? autoSelection
-        : selectionForCustomEarth(autoSelection,
-                                  initialEarthFile,
-                                  QStringLiteral("User-selected custom Earth scene."),
-                                  QStringLiteral("Using user-selected custom earth file."));
-    setMapSelection(activeSelection);
-    settings.setValue(QStringLiteral("lastEarthFile"), initialEarthFile);
-    if (activeSelection.diagnostics.real3DLocalReady)
-    {
-        QTimer::singleShot(0, this, [this]() {
-            loadConfiguredLocal3DTiles(true);
-        });
-    }
-    updateStatus(nullptr);
-    statusBar()->showMessage(QStringLiteral("已自动加载 Earth 文件: %1").arg(initialEarthFile), 5000);
+        if (!loaded && hasPersistedCustomEarth)
+        {
+            QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+                .remove(QStringLiteral("lastEarthFile"));
+            const QString fallbackPath = autoSelection.earthFile;
+            if (view_ && QFileInfo(fallbackPath).isFile())
+            {
+                statusBar()->showMessage(QStringLiteral("自定义 Earth 失败，正在加载自动地图: %1").arg(fallbackPath));
+                view_->loadEarthFileAsync(fallbackPath, [this, autoSelection, fallbackPath](bool fallbackLoaded) {
+                    latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
+                    if (!fallbackLoaded)
+                    {
+                        setMapSelection(autoSelection);
+                        statusBar()->showMessage(QStringLiteral("自动加载 Earth 文件失败，已保留当前场景。"), 8000);
+                        return;
+                    }
+                    setMapSelection(autoSelection);
+                    QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+                        .setValue(QStringLiteral("lastEarthFile"), fallbackPath);
+                    if (autoSelection.diagnostics.real3DLocalReady)
+                    {
+                        loadConfiguredLocal3DTiles(false);
+                    }
+                    updateStatus(nullptr);
+                    statusBar()->showMessage(QStringLiteral("已自动加载 Earth 文件: %1").arg(fallbackPath), 5000);
+                });
+                return;
+            }
+        }
+        if (!loaded)
+        {
+            setMapSelection(autoSelection);
+            statusBar()->showMessage(QStringLiteral("自动加载 Earth 文件失败，已保留当前场景: %1").arg(initialPath), 8000);
+            return;
+        }
+        const MapDataSelection activeSelection = initialPath == autoSelection.earthFile
+            ? autoSelection
+            : selectionForCustomEarth(autoSelection,
+                                      initialPath,
+                                      QStringLiteral("User-selected custom Earth scene."),
+                                      QStringLiteral("Using user-selected custom earth file."));
+        setMapSelection(activeSelection);
+        QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+            .setValue(QStringLiteral("lastEarthFile"), initialPath);
+        if (activeSelection.diagnostics.real3DLocalReady)
+        {
+            loadConfiguredLocal3DTiles(false);
+        }
+        updateStatus(nullptr);
+        statusBar()->showMessage(QStringLiteral("已自动加载 Earth 文件: %1").arg(initialPath), 5000);
+    });
 }
-
 void Map3DWindow::openSessionDirectory()
 {
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
@@ -698,56 +726,42 @@ void Map3DWindow::openSessionDirectory()
     settings.setValue(QStringLiteral("lastSessionDir"), dir);
     loadSessionDirectory(dir);
 }
-
 void Map3DWindow::openEarthFile()
 {
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
-    const QString initial = settings.value(QStringLiteral("lastEarthFile")).toString();
-    const QString file = QFileDialog::getOpenFileName(this,
-                                                      QStringLiteral("加载 Earth 文件"),
-                                                      initial,
-                                                      QStringLiteral("osgEarth (*.earth);;All Files (*)"));
-    if (file.isEmpty())
-    {
-        return;
-    }
-    const bool loaded = view_ ? view_->loadEarthFile(file) : false;
-    latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
-    if (!loaded)
-    {
-        QMessageBox::warning(this,
-                             QStringLiteral("osgEarth"),
-                             QStringLiteral("无法加载 Earth 文件: %1").arg(file));
-        return;
-    }
-    settings.setValue(QStringLiteral("lastEarthFile"), file);
+    const QString file = QFileDialog::getOpenFileName(
+        this, QStringLiteral("加载 Earth 文件"),
+        settings.value(QStringLiteral("lastEarthFile")).toString(),
+        QStringLiteral("osgEarth (*.earth);;All Files (*)"));
+    if (file.isEmpty() || !view_) return;
     const MapDataSelection selection =
-        selectionForCustomEarth(map_data_manager_.selectBestAvailableMap(),
-                                file,
+        selectionForCustomEarth(map_data_manager_.selectBestAvailableMap(), file,
                                 QStringLiteral("User-selected custom Earth scene."),
                                 QStringLiteral("Loaded user-selected earth file."));
-    setMapSelection(selection);
-    const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
-    updateStatus(nullptr);
-    statusBar()->showMessage(QStringLiteral("Loaded earth file: %1%2")
-                                 .arg(file,
-                                      focusedTrack ? QStringLiteral(" (auto-focused track)") : QString()),
-                             5000);
+    statusBar()->showMessage(QStringLiteral("正在后台加载 Earth 文件: %1").arg(file));
+    view_->loadEarthFileAsync(file, [this, file, selection](bool loaded) {
+        latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
+        if (!loaded)
+        {
+            QMessageBox::warning(this, QStringLiteral("osgEarth"),
+                                 QStringLiteral("无法加载 Earth 文件: %1").arg(file));
+            return;
+        }
+        QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+            .setValue(QStringLiteral("lastEarthFile"), file);
+        setMapSelection(selection);
+        const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
+        updateStatus(nullptr);
+        statusBar()->showMessage(QStringLiteral("Loaded earth file: %1%2")
+                                     .arg(file, focusedTrack ? QStringLiteral(" (auto-focused track)") : QString()),
+                                 5000);
+    });
 }
-
 void Map3DWindow::loadLocalImageryTemplate(const LocalImageryOption& option)
 {
-    if (!option.available)
+    if (!option.available || !view_)
     {
         statusBar()->showMessage(QStringLiteral("本地影像不可用: %1").arg(option.label), 5000);
-        return;
-    }
-
-    const bool loaded = view_ ? view_->loadEarthFile(option.earthFilePath) : false;
-    latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
-    if (!loaded && view_)
-    {
-        statusBar()->showMessage(QStringLiteral("加载本地影像失败: %1").arg(option.earthFilePath), 8000);
         return;
     }
 
@@ -756,16 +770,24 @@ void Map3DWindow::loadLocalImageryTemplate(const LocalImageryOption& option)
                                 option.earthFilePath,
                                 QStringLiteral("Natural Earth background with %1 overlay.").arg(option.label),
                                 QStringLiteral("Loaded optional local imagery template: %1").arg(option.label));
-    setMapSelection(selection);
-
-    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
-    settings.setValue(QStringLiteral("lastEarthFile"), option.earthFilePath);
-    const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
-    updateStatus(nullptr);
-    statusBar()->showMessage(QStringLiteral("已加载本地影像: %1%2")
-                                 .arg(option.label,
-                                      focusedTrack ? QStringLiteral(" (已自动定位轨迹)") : QString()),
-                             5000);
+    statusBar()->showMessage(QStringLiteral("正在后台加载本地影像: %1").arg(option.label));
+    view_->loadEarthFileAsync(option.earthFilePath, [this, option, selection](bool loaded) {
+        latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
+        if (!loaded)
+        {
+            statusBar()->showMessage(QStringLiteral("加载本地影像失败: %1").arg(option.earthFilePath), 8000);
+            return;
+        }
+        setMapSelection(selection);
+        QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+            .setValue(QStringLiteral("lastEarthFile"), option.earthFilePath);
+        const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
+        updateStatus(nullptr);
+        statusBar()->showMessage(QStringLiteral("已加载本地影像: %1%2")
+                                     .arg(option.label,
+                                          focusedTrack ? QStringLiteral(" (已自动定位轨迹)") : QString()),
+                                 5000);
+    });
 }
 
 void Map3DWindow::loadLocal3DTilesPreview()
@@ -775,8 +797,8 @@ void Map3DWindow::loadLocal3DTilesPreview()
 
 bool Map3DWindow::loadConfiguredLocal3DTiles(bool showStatusMessage)
 {
-    const MapDataDiagnostics& diagnostics = map_selection_.diagnostics;
-    if (!diagnostics.local3DTilesTilesetValid)
+    const MapDataDiagnostics diagnostics = map_selection_.diagnostics;
+    if (!diagnostics.local3DTilesTilesetValid || !view_)
     {
         latest_local_3d_tiles_load_ = {};
         latest_local_3d_tiles_load_.requestedPath = diagnostics.local3DTilesTilesetPath;
@@ -790,38 +812,35 @@ bool Map3DWindow::loadConfiguredLocal3DTiles(bool showStatusMessage)
         return false;
     }
 
-    const bool loaded = view_ ? view_->loadLocal3DTilesPreview(diagnostics.local3DTilesTilesetPath) : false;
-    latest_local_3d_tiles_load_ = view_ ? view_->local3DTilesLoadDiagnostics() : Local3DTilesLoadDiagnostics{};
-    refreshDiagnosticsText();
-    updateStatus(nullptr);
-
-    if (!loaded)
-    {
-        if (clear_local_3d_tiles_action_)
-        {
-            clear_local_3d_tiles_action_->setEnabled(view_ && view_->hasLocal3DTilesPreview());
-        }
-        if (showStatusMessage)
-        {
-            statusBar()->showMessage(QStringLiteral("本地 3D 建筑加载失败: %1")
-                                         .arg(latest_local_3d_tiles_load_.failureReason.isEmpty()
-                                                  ? diagnostics.local3DTilesTilesetPath
-                                                  : latest_local_3d_tiles_load_.failureReason),
-                                     9000);
-        }
-        return false;
-    }
-
-    if (clear_local_3d_tiles_action_)
-    {
-        clear_local_3d_tiles_action_->setEnabled(true);
-    }
     if (showStatusMessage)
     {
-        statusBar()->showMessage(QStringLiteral("已加载本地 3D 建筑: %1 个瓦片")
-                                     .arg(latest_local_3d_tiles_load_.loadedPayloadCount),
-                                 6000);
+        statusBar()->showMessage(QStringLiteral("正在后台加载本地 3D 建筑..."));
     }
+    view_->loadLocal3DTilesPreviewAsync(
+        diagnostics.local3DTilesTilesetPath,
+        [this, diagnostics, showStatusMessage](bool loaded) {
+            latest_local_3d_tiles_load_ =
+                view_ ? view_->local3DTilesLoadDiagnostics() : Local3DTilesLoadDiagnostics{};
+            refreshDiagnosticsText();
+            updateStatus(nullptr);
+            if (clear_local_3d_tiles_action_)
+            {
+                clear_local_3d_tiles_action_->setEnabled(view_ && view_->hasLocal3DTilesPreview());
+            }
+            if (!showStatusMessage)
+            {
+                return;
+            }
+            statusBar()->showMessage(
+                loaded
+                    ? QStringLiteral("已加载本地 OSG 建筑叠加层: %1 个 payload")
+                          .arg(latest_local_3d_tiles_load_.loadedPayloadCount)
+                    : QStringLiteral("本地 3D 建筑加载失败: %1")
+                          .arg(latest_local_3d_tiles_load_.failureReason.isEmpty()
+                                   ? diagnostics.local3DTilesTilesetPath
+                                   : latest_local_3d_tiles_load_.failureReason),
+                loaded ? 6000 : 9000);
+        });
     return true;
 }
 
@@ -850,25 +869,26 @@ void Map3DWindow::openAircraftModel()
                                                       QStringLiteral("加载飞机模型"),
                                                       initial,
                                                       QStringLiteral("3D Models (*.osgb *.osg *.glb *.gltf);;All Files (*)"));
-    if (file.isEmpty())
+    if (file.isEmpty() || !view_)
     {
         return;
     }
 
-    const bool loaded = view_ ? view_->loadAircraftModel(file) : false;
-    refreshDiagnosticsText();
-    updateStatus(nullptr);
-
-    if (!loaded && view_)
-    {
-        QMessageBox::warning(this,
-                             QStringLiteral("飞机模型"),
-                             QStringLiteral("无法加载飞机模型，已保留内置标记: %1").arg(file));
-        return;
-    }
-
-    settings.setValue(QStringLiteral("aircraftModelPath"), file);
-    statusBar()->showMessage(QStringLiteral("已加载飞机模型: %1").arg(file), 6000);
+    statusBar()->showMessage(QStringLiteral("正在后台加载飞机模型: %1").arg(file));
+    view_->loadAircraftModelAsync(file, [this, file](bool loaded) {
+        refreshDiagnosticsText();
+        updateStatus(nullptr);
+        if (!loaded)
+        {
+            QMessageBox::warning(this,
+                                 QStringLiteral("飞机模型"),
+                                 QStringLiteral("无法加载飞机模型，已保留当前标记: %1").arg(file));
+            return;
+        }
+        QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+            .setValue(QStringLiteral("aircraftModelPath"), file);
+        statusBar()->showMessage(QStringLiteral("已加载飞机模型: %1").arg(file), 6000);
+    });
 }
 
 void Map3DWindow::resetAircraftModel()
@@ -887,7 +907,7 @@ void Map3DWindow::resetAircraftModel()
 void Map3DWindow::reloadBestLocalMap()
 {
     const MapDataSelection selection = map_data_manager_.selectBestAvailableMap();
-    if (!QFileInfo(selection.earthFile).isFile())
+    if (!view_ || !QFileInfo(selection.earthFile).isFile())
     {
         latest_earth_load_ = {};
         latest_earth_load_.requestedPath = selection.earthFile;
@@ -897,28 +917,31 @@ void Map3DWindow::reloadBestLocalMap()
         return;
     }
 
-    const bool loaded = view_ ? view_->loadEarthFile(selection.earthFile) : false;
-    latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
-    if (!loaded && view_)
-    {
+    statusBar()->showMessage(QStringLiteral("正在后台重载最佳本地地图: %1").arg(selection.earthFile));
+    view_->loadEarthFileAsync(selection.earthFile, [this, selection](bool loaded) {
+        latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
+        if (!loaded)
+        {
+            updateStatus(nullptr);
+            statusBar()->showMessage(QStringLiteral("重载最佳本地地图失败，已保留当前地图: %1")
+                                         .arg(selection.earthFile),
+                                     8000);
+            return;
+        }
+        setMapSelection(selection);
+        if (selection.diagnostics.real3DLocalReady)
+        {
+            loadConfiguredLocal3DTiles(false);
+        }
+        QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+            .setValue(QStringLiteral("lastEarthFile"), selection.earthFile);
+        const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
         updateStatus(nullptr);
-        statusBar()->showMessage(QStringLiteral("重载最佳本地地图失败，已保留当前地图: %1").arg(selection.earthFile), 8000);
-        return;
-    }
-
-    setMapSelection(selection);
-    if (selection.diagnostics.real3DLocalReady)
-    {
-        loadConfiguredLocal3DTiles(false);
-    }
-    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
-    settings.setValue(QStringLiteral("lastEarthFile"), selection.earthFile);
-    const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
-    updateStatus(nullptr);
-    statusBar()->showMessage(QStringLiteral("已重载最佳本地地图: %1%2")
-                                 .arg(selection.earthFile,
-                                      focusedTrack ? QStringLiteral(" (已自动定位轨迹)") : QString()),
-                             5000);
+        statusBar()->showMessage(QStringLiteral("已重载最佳本地地图: %1%2")
+                                     .arg(selection.earthFile,
+                                          focusedTrack ? QStringLiteral(" (已自动定位轨迹)") : QString()),
+                                 6000);
+    });
 }
 
 void Map3DWindow::flyToAircraft()
@@ -995,7 +1018,7 @@ void Map3DWindow::toggleReplay()
         replay_.play();
         renderReplayAtCurrentPosition();
         replay_tick_clock_.restart();
-        replay_timer_->start(replay_.intervalMs());
+        replay_timer_->start(static_cast<int>(replay_.interval().count()));
     }
     updateReplayUi();
 }
@@ -1022,10 +1045,10 @@ void Map3DWindow::onReplayTick()
 
     const qint64 elapsedMs = replay_tick_clock_.isValid()
         ? replay_tick_clock_.restart()
-        : static_cast<qint64>(replay_.intervalMs());
-    const qint64 deltaUs = static_cast<qint64>(
-        std::llround(static_cast<double>(elapsedMs) * 1000.0 * replay_.speed()));
-    replay_.stepByElapsedUs(deltaUs);
+        : static_cast<qint64>(replay_.interval().count());
+    const auto delta = VaporView::Geo::TrajectoryReplay::Duration(
+        static_cast<qint64>(std::llround(static_cast<double>(elapsedMs) * 1000.0 * replay_.speed())));
+    replay_.stepBy(delta);
     renderReplayAtCurrentPosition();
     if (!replay_.isPlaying())
     {
@@ -1041,7 +1064,7 @@ void Map3DWindow::onReplaySliderMoved(int value)
     {
         return;
     }
-    rebuildReplayAtElapsedUs(replaySliderValueToElapsedUs(value));
+    rebuildReplayAtElapsed(replaySliderValueToElapsed(value));
     if (replay_.isPlaying())
     {
         replay_tick_clock_.restart();
@@ -1056,7 +1079,7 @@ void Map3DWindow::onReplaySpeedChanged(int index)
         return;
     }
     replay_.setSpeed(VaporView::Geo::TrajectoryReplay::speedFromText(replay_speed_combo_->itemText(index)));
-    replay_timer_->setInterval(replay_.intervalMs());
+    replay_timer_->setInterval(static_cast<int>(replay_.interval().count()));
     if (replay_.isPlaying())
     {
         replay_tick_clock_.restart();
@@ -1083,7 +1106,7 @@ void Map3DWindow::showEvent(QShowEvent* event)
     if (replay_.isPlaying() && replay_timer_ && !replay_timer_->isActive())
     {
         replay_tick_clock_.restart();
-        replay_timer_->start(replay_.intervalMs());
+        replay_timer_->start(static_cast<int>(replay_.interval().count()));
     }
 }
 
@@ -1106,6 +1129,7 @@ void Map3DWindow::renderReplayAtCurrentPosition(bool forceStatus)
 
     const int targetIndex = replay_.currentIndex();
     const std::vector<VaporView::Geo::NavSample>& replaySamples = replay_.samples();
+    const auto replayStorage = replay_.sampleStorage();
     if (targetIndex < 0 || targetIndex >= static_cast<int>(replaySamples.size()))
     {
         return;
@@ -1113,14 +1137,14 @@ void Map3DWindow::renderReplayAtCurrentPosition(bool forceStatus)
 
     if (rendered_replay_index_ < 0 || targetIndex < rendered_replay_index_)
     {
-        const auto end = replaySamples.cbegin() + targetIndex + 1;
-        const std::vector<VaporView::Geo::NavSample> visibleSamples(replaySamples.cbegin(), end);
         if (view_)
         {
-            view_->setSamples(visibleSamples);
+            view_->setSamples(replayStorage, targetIndex + 1);
         }
         if (headless_view_)
         {
+            const auto end = replaySamples.cbegin() + targetIndex + 1;
+            const std::vector<VaporView::Geo::NavSample> visibleSamples(replaySamples.cbegin(), end);
             headless_samples_ = visibleSamples;
             headless_sample_count_ = static_cast<int>(visibleSamples.size());
         }
@@ -1132,7 +1156,7 @@ void Map3DWindow::renderReplayAtCurrentPosition(bool forceStatus)
             const VaporView::Geo::NavSample& sample = replaySamples[static_cast<std::size_t>(index)];
             if (view_)
             {
-                view_->appendSample(sample);
+                view_->appendSampleFromStorage(replayStorage, index);
             }
             if (headless_view_)
             {
@@ -1149,13 +1173,13 @@ void Map3DWindow::renderReplayAtCurrentPosition(bool forceStatus)
     updateStatus(&currentSample, forceStatus);
 }
 
-void Map3DWindow::rebuildReplayAtElapsedUs(qint64 elapsedUs)
+void Map3DWindow::rebuildReplayAtElapsed(VaporView::Geo::TrajectoryReplay::Duration elapsed)
 {
     if (!replay_.hasSamples())
     {
         return;
     }
-    replay_.seekElapsedUs(elapsedUs);
+    replay_.seekElapsed(elapsed);
     renderReplayAtCurrentPosition();
 }
 
@@ -1203,25 +1227,28 @@ void Map3DWindow::updateReplayUi()
 
 int Map3DWindow::replaySliderMaximum() const
 {
-    const qint64 durationMs = (replay_.durationUs() + 999) / 1000;
+    const qint64 durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        replay_.duration() + std::chrono::microseconds(999)).count();
     return static_cast<int>(std::clamp<qint64>(durationMs, 0, (std::numeric_limits<int>::max)()));
 }
 
 int Map3DWindow::replaySliderValue() const
 {
-    const qint64 elapsedMs = (replay_.elapsedUs() + 999) / 1000;
+    const qint64 elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        replay_.elapsed() + std::chrono::microseconds(999)).count();
     return static_cast<int>(std::clamp<qint64>(elapsedMs, 0, replaySliderMaximum()));
 }
 
-qint64 Map3DWindow::replaySliderValueToElapsedUs(int value) const
+VaporView::Geo::TrajectoryReplay::Duration Map3DWindow::replaySliderValueToElapsed(int value) const
 {
-    return static_cast<qint64>(std::clamp(value, 0, replaySliderMaximum())) * 1000;
+    return std::chrono::duration_cast<VaporView::Geo::TrajectoryReplay::Duration>(
+        std::chrono::milliseconds(std::clamp(value, 0, replaySliderMaximum())));
 }
 
 QString Map3DWindow::replayTimeLabel() const
 {
-    const double elapsedS = static_cast<double>(replay_.elapsedUs()) / 1000000.0;
-    const double durationS = static_cast<double>(replay_.durationUs()) / 1000000.0;
+    const double elapsedS = std::chrono::duration<double>(replay_.elapsed()).count();
+    const double durationS = std::chrono::duration<double>(replay_.duration()).count();
     return QStringLiteral("t %1/%2 s").arg(elapsedS, 0, 'f', 3).arg(durationS, 0, 'f', 3);
 }
 
@@ -1309,350 +1336,49 @@ void Map3DWindow::refreshDiagnosticsText(bool force)
         diagnostics_text_->setPlainText(diagnosticsText());
     }
 }
-
 QString Map3DWindow::diagnosticsText() const
 {
-    const MapDataDiagnostics& diagnostics = map_selection_.diagnostics;
     const Map3DPerformanceStats stats = view_ ? view_->performanceStats() : Map3DPerformanceStats{};
-    const int totalSamples = view_ ? stats.totalSamples : headless_sample_count_;
-    const int visibleSamples = view_ ? stats.visibleSamples : (std::min)(headless_sample_count_, max_visible_samples_);
-    const int maxVisibleSamples = view_ ? stats.maxVisibleSamples : max_visible_samples_;
-    const int hiddenSamples = (std::max)(0, totalSamples - visibleSamples);
-    const TrajectoryQualityStats qualityStats =
-        view_ ? stats.qualityStats : qualityStatsForSamples(headless_samples_, max_visible_samples_);
-    QStringList lines;
-    lines << QStringLiteral("Mode: %1 (%2)")
-                 .arg(MapDataManager::modeLabel(map_selection_.mode),
-                      MapDataManager::modeKey(map_selection_.mode));
-    lines << QStringLiteral("Base map priority: %1")
-                 .arg(diagnostics.baseMapPriority.isEmpty()
-                          ? QStringLiteral("Copernicus DEM > SRTM > Natural Earth > Local grid")
-                          : diagnostics.baseMapPriority);
-    lines << QStringLiteral("Selected base mode: %1 (%2)")
-                 .arg(diagnostics.selectedBaseModeLabel.isEmpty()
-                          ? QStringLiteral("<not evaluated>")
-                          : diagnostics.selectedBaseModeLabel,
-                      diagnostics.selectedBaseModeKey.isEmpty()
-                          ? QStringLiteral("<not evaluated>")
-                          : diagnostics.selectedBaseModeKey);
-    lines << QStringLiteral("Selected base earth file: %1")
-                 .arg(diagnostics.selectedBaseEarthFilePath.isEmpty()
-                          ? QStringLiteral("<none>")
-                          : diagnostics.selectedBaseEarthFilePath);
-    if (!map_selection_.description.isEmpty())
+    Map3DDiagnosticsContext context;
+    context.mapSelection = map_selection_;
+    context.earthLoad = latest_earth_load_;
+    context.tilesLoad = latest_local_3d_tiles_load_;
+    context.aircraftModel = view_ ? view_->aircraftModelDiagnostics() : AircraftModelDiagnostics{};
+    context.performance = stats;
+    context.totalSamples = view_ ? stats.totalSamples : headless_sample_count_;
+    context.visibleSamples = view_
+        ? stats.visibleSamples
+        : (std::min)(headless_sample_count_, max_visible_samples_);
+    context.maxVisibleSamples = view_ ? stats.maxVisibleSamples : max_visible_samples_;
+    context.qualityStats = view_
+        ? stats.qualityStats
+        : qualityStatsForSamples(headless_samples_, max_visible_samples_);
+    context.trackSource = latest_track_source_;
+    context.replayState = replayStateLabel(replay_);
+    context.hasReplay = replay_.hasSamples();
+    context.replayIndex = replay_.currentIndex();
+    context.replaySampleCount = replay_.sampleCount();
+    context.replaySpeed = replay_.speed();
+    context.replayTime = replayTimeLabel();
+    context.latestRecordTimestampUs = latest_track_record_timestamp_us_;
+    context.latestDeviceTimestampUs = latest_track_device_timestamp_us_;
+    context.attitudeSource =
+        attitudeSourceLabel(has_latest_status_sample_ ? &latest_status_sample_ : nullptr);
+    context.followAircraft = follow_action_ && follow_action_->isChecked();
+    context.hasLatestLlh = has_latest_status_sample_ && latest_status_sample_.hasLlh();
+    if (context.hasLatestLlh)
     {
-        lines << QStringLiteral("Description: %1").arg(map_selection_.description);
+        context.heightReference = heightReferenceLabel(latest_status_sample_.heightReference);
+        context.fixQuality = fixQualityLabel(latest_status_sample_.fixQuality);
+        context.heightSafetyNote = heightSafetyNote();
     }
-    const QString earthFile = map_selection_.earthFile.isEmpty() ? map_selection_.earthFilePath : map_selection_.earthFile;
-    lines << QStringLiteral("Earth file: %1").arg(earthFile.isEmpty() ? QStringLiteral("<none>") : earthFile);
-    lines << QStringLiteral("Earth load:");
-    lines << QStringLiteral("  Requested path: %1")
-                 .arg(latest_earth_load_.requestedPath.isEmpty() ? QStringLiteral("<none>") : latest_earth_load_.requestedPath);
-    lines << QStringLiteral("  Attempted: %1").arg(latest_earth_load_.attempted ? QStringLiteral("yes") : QStringLiteral("no"));
-    lines << QStringLiteral("  Loaded: %1").arg(latest_earth_load_.loaded ? QStringLiteral("yes") : QStringLiteral("no"));
-    lines << QStringLiteral("  Textured fallback: %1").arg(latest_earth_load_.usedTexturedFallback ? QStringLiteral("yes") : QStringLiteral("no"));
-    lines << QStringLiteral("  MapNode: %1").arg(latest_earth_load_.foundMapNode ? QStringLiteral("yes") : QStringLiteral("no"));
-    lines << QStringLiteral("  Layers: %1/%2 open").arg(latest_earth_load_.openLayerCount).arg(latest_earth_load_.layerCount);
-    if (!latest_earth_load_.failureReason.isEmpty())
-    {
-        lines << QStringLiteral("  Failure/note: %1").arg(latest_earth_load_.failureReason);
-    }
-    if (!latest_earth_load_.layerSummaries.isEmpty())
-    {
-        lines << QStringLiteral("  Layer details:");
-        for (const QString& layerSummary : latest_earth_load_.layerSummaries)
-        {
-            lines << QStringLiteral("    - %1").arg(layerSummary);
-        }
-    }
-    lines << QStringLiteral("Local native OSG building load:");
-    lines << QStringLiteral("  Requested path: %1")
-                 .arg(latest_local_3d_tiles_load_.requestedPath.isEmpty()
-                          ? QStringLiteral("<none>")
-                          : latest_local_3d_tiles_load_.requestedPath);
-    lines << QStringLiteral("  Attempted: %1").arg(latest_local_3d_tiles_load_.attempted ? QStringLiteral("yes") : QStringLiteral("no"));
-    lines << QStringLiteral("  Loaded: %1").arg(latest_local_3d_tiles_load_.loaded ? QStringLiteral("yes") : QStringLiteral("no"));
-    lines << QStringLiteral("  Cleared previous preview: %1")
-                 .arg(latest_local_3d_tiles_load_.clearedPreviousPreview ? QStringLiteral("yes") : QStringLiteral("no"));
-    lines << QStringLiteral("  Payloads: %1/%2 loaded, %3 failed")
-                 .arg(latest_local_3d_tiles_load_.loadedPayloadCount)
-                 .arg(latest_local_3d_tiles_load_.payloadCount)
-                 .arg(latest_local_3d_tiles_load_.failedPayloadCount);
-    if (!latest_local_3d_tiles_load_.nodeDescription.isEmpty())
-    {
-        lines << QStringLiteral("  Node: %1").arg(latest_local_3d_tiles_load_.nodeDescription);
-    }
-    if (!latest_local_3d_tiles_load_.failureReason.isEmpty())
-    {
-        lines << QStringLiteral("  Failure/note: %1").arg(latest_local_3d_tiles_load_.failureReason);
-    }
-    const AircraftModelDiagnostics aircraftModel =
-        view_ ? view_->aircraftModelDiagnostics() : AircraftModelDiagnostics{};
-    lines << QStringLiteral("Aircraft model:");
-    lines << QStringLiteral("  Requested path: %1")
-                 .arg(aircraftModel.requestedPath.isEmpty()
-                          ? QStringLiteral("<none>")
-                          : aircraftModel.requestedPath);
-    lines << QStringLiteral("  Attempted: %1").arg(aircraftModel.attempted ? QStringLiteral("yes") : QStringLiteral("no"));
-    lines << QStringLiteral("  Loaded: %1").arg(aircraftModel.loaded ? QStringLiteral("yes") : QStringLiteral("no"));
-    lines << QStringLiteral("  Built-in marker: %1").arg(aircraftModel.usingBuiltInMarker ? QStringLiteral("yes") : QStringLiteral("no"));
-    if (!aircraftModel.nodeDescription.isEmpty())
-    {
-        lines << QStringLiteral("  Node: %1").arg(aircraftModel.nodeDescription);
-    }
-    if (!aircraftModel.failureReason.isEmpty())
-    {
-        lines << QStringLiteral("  Failure/note: %1").arg(aircraftModel.failureReason);
-    }
-    lines << QStringLiteral("Render performance:");
-    lines << QStringLiteral("  Samples: %1 visible / %2 total / %3 hidden")
-                 .arg(visibleSamples)
-                 .arg(totalSamples)
-                 .arg(hiddenSamples);
-    lines << QStringLiteral("  Max visible samples: %1").arg(maxVisibleSamples);
-    lines << QStringLiteral("  Trajectory segments: %1 x %2 samples")
-                 .arg(stats.segmentCount)
-                 .arg(stats.segmentSize);
-    lines << QStringLiteral("  FPS: %1").arg(stats.framesPerSecond, 0, 'f', 1);
-    lines << QStringLiteral("  Frame ms: %1").arg(stats.frameMs, 0, 'f', 1);
-    lines << QStringLiteral("  Track update ms: %1").arg(stats.trackUpdateMs, 0, 'f', 1);
-    lines << QStringLiteral("Trajectory quality:");
-    lines << QStringLiteral("  Visible line samples: %1").arg(qualityStats.lineSamples);
-    lines << QStringLiteral("  Visible marker samples: %1").arg(qualityStats.markerSamples);
-    lines << QStringLiteral("  Fixed: %1").arg(qualityStats.fixedSamples);
-    lines << QStringLiteral("  Float: %1").arg(qualityStats.floatSamples);
-    lines << QStringLiteral("  DGPS: %1").arg(qualityStats.dgpsSamples);
-    lines << QStringLiteral("  Single: %1").arg(qualityStats.singleSamples);
-    lines << QStringLiteral("  Unknown: %1").arg(qualityStats.unknownSamples);
-    lines << QStringLiteral("  Invalid/unusable: %1").arg(qualityStats.invalidSamples);
-    lines << QStringLiteral("  Jump markers: %1").arg(qualityStats.jumpSamples);
-    lines << QStringLiteral("Track data:");
-    lines << QStringLiteral("  Source: %1").arg(latest_track_source_.isEmpty() ? QStringLiteral("none") : latest_track_source_);
-    lines << QStringLiteral("  Replay state: %1").arg(replayStateLabel(replay_));
-    if (replay_.hasSamples())
-    {
-        lines << QStringLiteral("  Replay position: %1/%2")
-                     .arg((std::max)(0, replay_.currentIndex() + 1))
-                     .arg(replay_.sampleCount());
-        lines << QStringLiteral("  Replay speed: %1x").arg(replay_.speed(), 0, 'g', 3);
-        lines << QStringLiteral("  Replay time: %1").arg(replayTimeLabel());
-    }
-    lines << QStringLiteral("  Latest record timestamp us: %1")
-                 .arg(latest_track_record_timestamp_us_ > 0 ? QString::number(latest_track_record_timestamp_us_) : QStringLiteral("<none>"));
-    lines << QStringLiteral("  Latest device timestamp us: %1")
-                 .arg(latest_track_device_timestamp_us_ > 0 ? QString::number(latest_track_device_timestamp_us_) : QStringLiteral("<none>"));
-    lines << QStringLiteral("  Attitude source: %1")
-                 .arg(attitudeSourceLabel(has_latest_status_sample_ ? &latest_status_sample_ : nullptr));
-    lines << QStringLiteral("  Follow aircraft: %1")
-                 .arg(follow_action_ && follow_action_->isChecked() ? QStringLiteral("on") : QStringLiteral("off"));
-    if (has_latest_status_sample_ && latest_status_sample_.hasLlh())
-    {
-        lines << QStringLiteral("  Height reference: %1")
-                     .arg(heightReferenceLabel(latest_status_sample_.heightReference));
-        lines << QStringLiteral("  Fix quality: %1")
-                     .arg(fixQualityLabel(latest_status_sample_.fixQuality));
-        lines << QStringLiteral("  Height safety note: %1").arg(heightSafetyNote());
-        if (!stats.heightReferenceStatus.isEmpty())
-        {
-            lines << QStringLiteral("  Height conversion: %1").arg(stats.heightReferenceStatus);
-        }
-    }
-    if (!latest_track_note_.isEmpty())
-    {
-        lines << QStringLiteral("  Note: %1").arg(latest_track_note_);
-    }
-    lines << QStringLiteral("  Last drop source: %1").arg(latest_drop_source_.isEmpty() ? QStringLiteral("<none>") : latest_drop_source_);
-    lines << QStringLiteral("  Last drop reason: %1").arg(latest_drop_reason_.isEmpty() ? QStringLiteral("<none>") : latest_drop_reason_);
-    lines << QStringLiteral("  Last drop record timestamp us: %1")
-                 .arg(latest_drop_record_timestamp_us_ > 0 ? QString::number(latest_drop_record_timestamp_us_) : QStringLiteral("<none>"));
-    lines << QStringLiteral("Camera: %1").arg(latest_camera_note_.isEmpty() ? QStringLiteral("<none>") : latest_camera_note_);
-    lines << QStringLiteral("Layer summary:");
-    lines << QStringLiteral("  Readiness: %1")
-                 .arg(diagnostics.readinessSummary.isEmpty() ? QStringLiteral("<not evaluated>") : diagnostics.readinessSummary);
-    if (!diagnostics.readinessChecks.isEmpty())
-    {
-        lines << QStringLiteral("  Readiness checks:");
-        for (const QString& check : diagnostics.readinessChecks)
-        {
-            lines << QStringLiteral("    - %1").arg(check);
-        }
-    }
-    if (!diagnostics.readinessNextSteps.isEmpty())
-    {
-        lines << QStringLiteral("  Next steps:");
-        for (const QString& step : diagnostics.readinessNextSteps)
-        {
-            lines << QStringLiteral("    - %1").arg(step);
-        }
-    }
-    lines << QStringLiteral("  Natural Earth: %1").arg(availabilityLabel(diagnostics.naturalEarthAvailable));
-    lines << QStringLiteral("  Local grid fallback: %1%2")
-                 .arg(diagnostics.localGridFallbackAvailable ? QStringLiteral("available") : QStringLiteral("unavailable"),
-                      diagnostics.localGridFallbackActive ? QStringLiteral(" (active)") : QStringLiteral(" (standby)"));
-    lines << QStringLiteral("  Selected DEM: %1").arg(selectedDemLabel(diagnostics));
-    lines << QStringLiteral("  Copernicus DEM VRT: %1").arg(availabilityLabel(diagnostics.copernicusDemAvailable));
-    lines << QStringLiteral("  SRTM VRT: %1").arg(availabilityLabel(diagnostics.srtmDemAvailable));
-    lines << QStringLiteral("  OSM vectors: %1 (%2/4 files found)")
-                 .arg(diagnostics.osmVectorAvailable ? QStringLiteral("available") : QStringLiteral("missing"))
-                 .arg(diagnostics.osmLayerCount);
-    lines << QStringLiteral("  Selected OSM: %1").arg(selectedOsmLabel(diagnostics));
-    lines << QStringLiteral("  Selected full-local earth: %1")
-                 .arg(diagnostics.selectedFullLocalEarthPath.isEmpty() ? QStringLiteral("<not selected>") : diagnostics.selectedFullLocalEarthPath);
-    lines << QStringLiteral("  Optional local imagery VRTs: %1/3 found").arg(diagnostics.localImageryLayerCount);
-    lines << QStringLiteral("  Optional local imagery menu-ready overlays: %1/3")
-                 .arg(diagnostics.localImageryMenuEntryCount);
-    if (!diagnostics.localImageryOptions.empty())
-    {
-        lines << QStringLiteral("  Local imagery menu:");
-        for (const LocalImageryOption& option : diagnostics.localImageryOptions)
-        {
-            lines << QStringLiteral("    - %1: %2 (VRT: %3, earth: %4)")
-                         .arg(option.label,
-                              option.available ? QStringLiteral("menu ready") : QStringLiteral("missing VRT or earth template"),
-                              QFileInfo(option.vrtPath).isFile() ? QStringLiteral("found") : QStringLiteral("missing"),
-                              QFileInfo(option.earthFilePath).isFile() ? QStringLiteral("found") : QStringLiteral("missing"));
-        }
-    }
-    lines << QStringLiteral("  Optional local 3D Tiles: %1")
-                 .arg(diagnostics.local3DTilesAvailable ? QStringLiteral("available") : QStringLiteral("not configured"));
-    lines << QStringLiteral("  Local 3D Tiles contract: %1")
-                 .arg(diagnostics.local3DTilesAvailable
-                          ? (diagnostics.local3DTilesTilesetValid ? QStringLiteral("valid") : QStringLiteral("needs attention"))
-                           : QStringLiteral("not checked"));
-    lines << QStringLiteral("  Real 3D local map: %1")
-                 .arg(diagnostics.real3DLocalReady ? QStringLiteral("ready") : QStringLiteral("not ready"));
-    lines << QStringLiteral("  Real 3D earth: %1").arg(diagnostics.real3DLocalEarthPath);
-    lines << QStringLiteral("Current working directory: %1").arg(diagnostics.currentWorkingDirectory.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.currentWorkingDirectory);
-    lines << QStringLiteral("Project root: %1").arg(diagnostics.projectRoot.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.projectRoot);
-    lines << QStringLiteral("Maps root: %1").arg(diagnostics.mapsRoot.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.mapsRoot);
-    lines << QStringLiteral("Full local Copernicus earth: %1").arg(diagnostics.fullLocalEarthPath);
-    lines << QStringLiteral("Full local SRTM earth: %1").arg(diagnostics.fullLocalSrtmEarthPath);
-    lines << QStringLiteral("Natural Earth texture: %1").arg(diagnostics.naturalEarthTexturePath);
-    lines << QStringLiteral("Natural Earth VRT: %1").arg(diagnostics.naturalEarthVrtPath);
-    lines << QStringLiteral("Natural Earth raster: %1").arg(diagnostics.naturalEarthRasterPath);
-    lines << QStringLiteral("Copernicus DEM VRT: %1").arg(diagnostics.copernicusDemVrtPath);
-    lines << QStringLiteral("SRTM VRT: %1").arg(diagnostics.srtmDemVrtPath);
-    lines << QStringLiteral("OSM roads: %1").arg(fileAvailabilityLabel(diagnostics.osmRoadsAvailable, diagnostics.osmRoadsPath));
-    lines << QStringLiteral("OSM water: %1").arg(fileAvailabilityLabel(diagnostics.osmWaterAvailable, diagnostics.osmWaterPath));
-    lines << QStringLiteral("OSM buildings: %1").arg(fileAvailabilityLabel(diagnostics.osmBuildingsAvailable, diagnostics.osmBuildingsPath));
-    lines << QStringLiteral("OSM places: %1").arg(fileAvailabilityLabel(diagnostics.osmPlacesAvailable, diagnostics.osmPlacesPath));
-    if (!diagnostics.osmLayerContracts.isEmpty())
-    {
-        lines << QStringLiteral("OSM layer contract:");
-        for (const QString& contract : diagnostics.osmLayerContracts)
-        {
-            lines << QStringLiteral("  - %1").arg(contract);
-        }
-    }
-    lines << QStringLiteral("Sentinel-2 imagery VRT: %1").arg(diagnostics.sentinel2ImageryVrtPath);
-    lines << QStringLiteral("Landsat imagery VRT: %1").arg(diagnostics.landsatImageryVrtPath);
-    lines << QStringLiteral("OpenAerialMap imagery VRT: %1").arg(diagnostics.openAerialMapImageryVrtPath);
-    lines << QStringLiteral("Local 3D Tiles tileset: %1").arg(diagnostics.local3DTilesTilesetPath);
-    lines << QStringLiteral("Local 3D Tiles valid: %1").arg(diagnostics.local3DTilesTilesetValid ? QStringLiteral("yes") : QStringLiteral("no"));
-    lines << QStringLiteral("Local 3D Tiles referenced resources: %1").arg(diagnostics.local3DTilesResourceCount);
-    if (!diagnostics.local3DTilesResourceUris.isEmpty())
-    {
-        lines << QStringLiteral("Local 3D Tiles resource URIs:");
-        for (const QString& uri : diagnostics.local3DTilesResourceUris)
-        {
-            lines << QStringLiteral("  - %1").arg(uri);
-        }
-    }
-    if (!diagnostics.local3DTilesExternalUris.isEmpty())
-    {
-        lines << QStringLiteral("Local 3D Tiles non-local/unsupported URIs:");
-        for (const QString& uri : diagnostics.local3DTilesExternalUris)
-        {
-            lines << QStringLiteral("  - %1").arg(uri);
-        }
-    }
-    if (!diagnostics.local3DTilesMissingResources.isEmpty())
-    {
-        lines << QStringLiteral("Local 3D Tiles missing resources:");
-        for (const QString& path : diagnostics.local3DTilesMissingResources)
-        {
-            lines << QStringLiteral("  - %1").arg(path);
-        }
-    }
-    if (!diagnostics.local3DTilesDiagnostics.isEmpty())
-    {
-        lines << QStringLiteral("Local 3D Tiles diagnostics:");
-        for (const QString& message : diagnostics.local3DTilesDiagnostics)
-        {
-            lines << QStringLiteral("  - %1").arg(message);
-        }
-    }
-    lines << QStringLiteral("OSG plugin path: %1").arg(diagnostics.osgPluginPath.isEmpty() ? QStringLiteral("<not found>") : diagnostics.osgPluginPath);
-    lines << QStringLiteral("OSG_LIBRARY_PATH: %1").arg(diagnostics.osgLibraryPath.isEmpty() ? QStringLiteral("<not set>") : diagnostics.osgLibraryPath);
-    lines << QStringLiteral("OSGEARTH_NOTIFY_LEVEL: %1").arg(diagnostics.osgEarthNotifyLevel.isEmpty() ? QStringLiteral("<not set>") : diagnostics.osgEarthNotifyLevel);
-    lines << QStringLiteral("osgEarth environment:");
-    if (diagnostics.osgEarthEnvironment.isEmpty())
-    {
-        lines << QStringLiteral("  - <none set>");
-    }
-    else
-    {
-        for (const QString& entry : diagnostics.osgEarthEnvironment)
-        {
-            lines << QStringLiteral("  - %1").arg(entry);
-        }
-    }
-    lines << QStringLiteral("GDAL_DATA: %1").arg(diagnostics.gdalDataPath.isEmpty() ? QStringLiteral("<not found>") : diagnostics.gdalDataPath);
-    lines << QStringLiteral("PROJ_DATA: %1").arg(diagnostics.projDataPath.isEmpty() ? QStringLiteral("<not found>") : diagnostics.projDataPath);
-    lines << QStringLiteral("PROJ_LIB: %1").arg(diagnostics.projLibPath.isEmpty() ? QStringLiteral("<not found>") : diagnostics.projLibPath);
-
-    if (!diagnostics.foundFiles.isEmpty())
-    {
-        lines << QString();
-        lines << QStringLiteral("Found files:");
-        for (const QString& path : diagnostics.foundFiles)
-        {
-            lines << QStringLiteral("  - %1").arg(path);
-        }
-    }
-
-    if (!diagnostics.missingFiles.isEmpty())
-    {
-        lines << QString();
-        lines << QStringLiteral("Missing files:");
-        for (const QString& path : diagnostics.missingFiles)
-        {
-            lines << QStringLiteral("  - %1").arg(path);
-        }
-    }
-
-    if (!diagnostics.fullLocalBlockers.isEmpty())
-    {
-        lines << QString();
-        lines << QStringLiteral("Full local map blockers:");
-        for (const QString& blocker : diagnostics.fullLocalBlockers)
-        {
-            lines << QStringLiteral("  - %1").arg(blocker);
-        }
-    }
-
-    if (!diagnostics.warnings.isEmpty())
-    {
-        lines << QString();
-        lines << QStringLiteral("Warnings:");
-        for (const QString& warning : diagnostics.warnings)
-        {
-            lines << QStringLiteral("  - %1").arg(warning);
-        }
-    }
-
-    if (!diagnostics.messages.isEmpty())
-    {
-        lines << QString();
-        lines << QStringLiteral("Diagnostics:");
-        for (const QString& message : diagnostics.messages)
-        {
-            lines << QStringLiteral("  - %1").arg(message);
-        }
-    }
-    return lines.join(QLatin1Char('\n'));
+    context.trackNote = latest_track_note_;
+    context.dropSource = latest_drop_source_;
+    context.dropReason = latest_drop_reason_;
+    context.dropRecordTimestampUs = latest_drop_record_timestamp_us_;
+    context.cameraNote = latest_camera_note_;
+    return formatMap3DDiagnostics(context);
 }
-
 void Map3DWindow::recordTrackSource(const QString& source,
                                     const VaporView::Geo::NavSample* latest,
                                     const QString& note)

@@ -206,7 +206,7 @@ void Aircraft3DLayer::clear()
 
 void Aircraft3DLayer::updateSample(const VaporView::Geo::NavSample& sample)
 {
-    if (!sample.hasLlh() && !sample.hasNed())
+    if (!sample.hasLlh() && !sample.hasNed() && !hasWorldPosition(sample))
     {
         return;
     }

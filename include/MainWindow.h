@@ -34,6 +34,7 @@
 #include <QScrollArea>
 #include <QLineEdit>
 #include <QList>
+#include <QPointer>
 #include <QVector>
 #include <QHash>
 #include <atomic>
@@ -1215,7 +1216,7 @@ private:
     TcpWavePanel *tcp_wave_panel_;
     SessionViewerWindow *session_viewer_window_;
 #ifdef VAPORVIEW_HAS_OSGEARTH
-    VaporView::Map3D::Map3DWindow *map3d_window_;
+    QPointer<VaporView::Map3D::Map3DWindow> map3d_window_;
 #endif
     VaporView::GroundTelemetryService *ground_telemetry_service_;
     VaporView::SkyDeviceConfigDialog *sky_device_config_dialog_;

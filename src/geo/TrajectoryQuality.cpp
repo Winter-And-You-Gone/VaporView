@@ -7,7 +7,7 @@ namespace VaporView::Geo {
 
 bool isUsableForDisplay(const NavSample& sample, const QualityPolicy& policy)
 {
-    if (!sample.hasLlh())
+    if (!sample.hasLlh() && !sample.hasEcef())
     {
         return false;
     }

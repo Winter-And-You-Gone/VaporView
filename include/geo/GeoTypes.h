@@ -2,6 +2,7 @@
 
 #include <QtCore/QString>
 #include <QtGlobal>
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -80,6 +81,16 @@ struct NavSample {
         return std::isfinite(nedNM)
             && std::isfinite(nedEM)
             && std::isfinite(nedDM);
+    }
+
+    bool hasEcef() const
+    {
+        if (!std::isfinite(ecefXM) || !std::isfinite(ecefYM) || !std::isfinite(ecefZM))
+        {
+            return false;
+        }
+        const double scale = (std::max)({std::abs(ecefXM), std::abs(ecefYM), std::abs(ecefZM)});
+        return scale > 1000000.0;
     }
 
     bool hasQuaternion() const

@@ -196,6 +196,9 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
 
     set(MAP3D_SOURCES
         src/map3d/MapDataManager.cpp
+        src/map3d/Map3DAssetLoader.cpp
+        src/map3d/Map3DDiagnosticsFormatter.cpp
+        src/map3d/Map3DRuntime.cpp
         src/map3d/Map3DWindow.cpp
         src/map3d/OsgEarthViewWidget.cpp
         src/map3d/TrackSampling.cpp
@@ -212,6 +215,9 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         include/map3d/Trajectory3DLayer.h
         include/map3d/Aircraft3DLayer.h
         include/map3d/AircraftHeading.h
+        src/map3d/Map3DAssetLoader.h
+        src/map3d/Map3DDiagnosticsFormatter.h
+        src/map3d/Map3DRuntime.h
     )
 
     add_library(vaporview_map3d_osgearth STATIC
@@ -236,6 +242,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
             vaporview_geo_core
             Qt6::Widgets
             Qt6::OpenGLWidgets
+            Qt6::Concurrent
             ${OSGEARTH_TARGET}
             ${OPENSCENEGRAPH_LIBRARIES}
     )

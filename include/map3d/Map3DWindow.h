@@ -66,13 +66,13 @@ private:
     void onReplaySliderMoved(int value);
     void onReplaySpeedChanged(int index);
     void rebuildReplayAt(int index, bool forceStatus = true);
-    void rebuildReplayAtElapsedUs(qint64 elapsedUs);
+    void rebuildReplayAtElapsed(VaporView::Geo::TrajectoryReplay::Duration elapsed);
     void renderReplayAtCurrentPosition(bool forceStatus = true);
     void setReplayEnabled(bool enabled);
     void updateReplayUi();
     int replaySliderMaximum() const;
     int replaySliderValue() const;
-    qint64 replaySliderValueToElapsedUs(int value) const;
+    VaporView::Geo::TrajectoryReplay::Duration replaySliderValueToElapsed(int value) const;
     QString replayTimeLabel() const;
     void setMapSelection(const MapDataSelection& selection);
     QString diagnosticsText() const;

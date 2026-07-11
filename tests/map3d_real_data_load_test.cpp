@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QEventLoop>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -11,9 +12,11 @@
 #include <QJsonObject>
 #include <QString>
 #include <QThread>
+#include <QThreadPool>
 
 #include <cstdlib>
 #include <iostream>
+#include <functional>
 
 namespace
 {
@@ -35,6 +38,18 @@ void processEventsFor(int timeoutMs)
         QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
         QThread::msleep(5);
     }
+}
+
+bool waitUntil(const std::function<bool()>& predicate, int timeoutMs)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (!predicate() && timer.elapsed() < timeoutMs)
+    {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        QThread::msleep(5);
+    }
+    return predicate();
 }
 
 } // namespace
@@ -60,8 +75,18 @@ int main(int argc, char** argv)
     view.show();
     processEventsFor(250);
 
-    require(view.loadEarthFile(earthPath),
-            QStringLiteral("load Hangzhou Xihu real-3D earth file"));
+    bool earthFinished = false;
+    bool earthLoaded = false;
+    QElapsedTimer asyncReturnTimer;
+    asyncReturnTimer.start();
+    view.loadEarthFileAsync(earthPath, [&](bool loaded) {
+        earthLoaded = loaded;
+        earthFinished = true;
+    });
+    require(asyncReturnTimer.elapsed() < 250,
+            QStringLiteral("earth async API returns without blocking the GUI thread"));
+    require(waitUntil([&]() { return earthFinished; }, 30000) && earthLoaded,
+            QStringLiteral("load Hangzhou Xihu real-3D earth file asynchronously"));
 
     const VaporView::Map3D::EarthLoadDiagnostics earthDiagnostics =
         view.earthLoadDiagnostics();
@@ -95,8 +120,17 @@ int main(int argc, char** argv)
             QStringLiteral("recorded ECEF height handling is reported explicitly"));
     view.clearTrack();
 
-    require(view.loadLocal3DTilesPreview(tilesetPath),
-            QStringLiteral("load Hangzhou Xihu building tileset"));
+    bool tilesFinished = false;
+    bool tilesLoaded = false;
+    asyncReturnTimer.restart();
+    view.loadLocal3DTilesPreviewAsync(tilesetPath, [&](bool loaded) {
+        tilesLoaded = loaded;
+        tilesFinished = true;
+    });
+    require(asyncReturnTimer.elapsed() < 250,
+            QStringLiteral("building async API returns without blocking the GUI thread"));
+    require(waitUntil([&]() { return tilesFinished; }, 30000) && tilesLoaded,
+            QStringLiteral("load Hangzhou Xihu building tileset asynchronously"));
 
     QFile tilesetFile(tilesetPath);
     require(tilesetFile.open(QIODevice::ReadOnly),
@@ -141,6 +175,19 @@ int main(int argc, char** argv)
     require(tileDiagnostics.warnings.isEmpty(),
             QStringLiteral("building tiles load without warnings: %1")
                 .arg(tileDiagnostics.warnings.join(QStringLiteral(" | "))));
+
+    bool staleLoadCallbackCalled = false;
+    view.loadLocal3DTilesPreviewAsync(tilesetPath, [&](bool) {
+        staleLoadCallbackCalled = true;
+    });
+    view.clearLocal3DTilesPreview();
+    require(QThreadPool::globalInstance()->waitForDone(30000),
+            QStringLiteral("superseded building load worker finishes"));
+    processEventsFor(100);
+    require(!view.hasLocal3DTilesPreview(),
+            QStringLiteral("clearing buildings invalidates an in-flight async load"));
+    require(!staleLoadCallbackCalled,
+            QStringLiteral("superseded async load does not invoke a stale UI callback"));
 
     view.shutdown();
     view.close();

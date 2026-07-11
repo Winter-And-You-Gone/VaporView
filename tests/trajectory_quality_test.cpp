@@ -37,6 +37,18 @@ int main()
     sample.latDeg = std::numeric_limits<double>::quiet_NaN();
     require(!VaporView::Geo::isUsableForDisplay(sample), "NaN latitude is rejected");
 
+    sample = {};
+    sample.ecefXM = -2764490.0;
+    sample.ecefYM = 4787610.0;
+    sample.ecefZM = 3170380.0;
+    sample.fixQuality = VaporView::Geo::FixQuality::Fixed;
+    require(VaporView::Geo::isUsableForDisplay(sample), "ECEF-only sample is displayable");
+
+    sample.ecefXM = 0.0;
+    sample.ecefYM = 0.0;
+    sample.ecefZM = 0.0;
+    require(!VaporView::Geo::isUsableForDisplay(sample), "zero ECEF vector is rejected");
+
     sample = validSample();
     sample.fixQuality = VaporView::Geo::FixQuality::Invalid;
     require(!VaporView::Geo::isUsableForDisplay(sample), "invalid fix is rejected");

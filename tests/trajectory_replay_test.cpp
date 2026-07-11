@@ -34,6 +34,7 @@ VaporView::Geo::NavSample sample(double lat, double lon, qint64 timestampUs)
 
 int main()
 {
+    using ReplayDuration = VaporView::Geo::TrajectoryReplay::Duration;
     VaporView::Geo::TrajectoryReplay replay;
     require(!replay.hasSamples(), "empty replay has no samples");
     require(replay.currentIndex() == -1, "empty replay has no current index");
@@ -48,19 +49,21 @@ int main()
     replay.setSamples(samples);
 
     require(replay.hasSamples(), "loaded replay has samples");
+    require(replay.sampleStorage() && replay.sampleStorage()->size() == samples.size(),
+            "replay exposes shared immutable sample storage");
     require(replay.sampleCount() == 3, "loaded replay keeps sample count");
     require(replay.currentIndex() == 2, "loaded replay starts at full track");
     require(replay.visibleSamples().size() == 3, "loaded replay shows full track");
     require(replay.startTimestampUs() == 1000000, "replay reports first timestamp");
     require(replay.endTimestampUs() == 1200000, "replay reports last timestamp");
-    require(replay.durationUs() == 200000, "replay reports timestamp duration");
-    require(replay.elapsedUs() == 200000, "full-track replay reports elapsed duration");
+    require(replay.duration() == ReplayDuration(200000), "replay reports timestamp duration");
+    require(replay.elapsed() == ReplayDuration(200000), "full-track replay reports elapsed duration");
 
     replay.play();
     require(replay.isPlaying(), "play starts replay");
     require(replay.currentIndex() == 0, "play rewinds from end");
     require(replay.visibleSamples().size() == 1, "play exposes first sample");
-    require(replay.elapsedUs() == 0, "play starts at zero elapsed time");
+    require(replay.elapsed() == ReplayDuration::zero(), "play starts at zero elapsed time");
 
     require(replay.stepForward(), "first replay step advances");
     require(replay.currentIndex() == 1, "first replay step reaches second sample");
@@ -74,14 +77,14 @@ int main()
     require(replay.currentIndex() == 0, "negative seek clamps to first sample");
     replay.seek(20);
     require(replay.currentIndex() == 2, "large seek clamps to last sample");
-    replay.seekElapsedUs(150000);
+    replay.seekElapsed(ReplayDuration(150000));
     require(replay.currentIndex() == 1, "time seek picks latest sample at or before elapsed timestamp");
     require(replay.visibleSamples().size() == 2, "time seek exposes samples up to elapsed timestamp");
-    replay.seekElapsedUs(200000);
+    replay.seekElapsed(ReplayDuration(200000));
     require(replay.currentIndex() == 2, "time seek reaches final sample at duration");
-    replay.seekElapsedUs(-1);
+    replay.seekElapsed(ReplayDuration(-1));
     require(replay.currentIndex() == 0, "negative elapsed seek clamps to first sample");
-    replay.seekElapsedUs(999999);
+    replay.seekElapsed(ReplayDuration(999999));
     require(replay.currentIndex() == 2, "elapsed seek beyond duration clamps to last sample");
 
     std::vector<VaporView::Geo::NavSample> irregularSamples;
@@ -92,15 +95,15 @@ int main()
     replay.setSamples(irregularSamples);
     replay.play();
     require(replay.currentIndex() == 0, "irregular replay starts at first sample");
-    require(replay.stepByElapsedUs(40000), "elapsed replay accepts sub-sample delta");
+    require(replay.stepBy(ReplayDuration(40000)), "elapsed replay accepts sub-sample delta");
     require(replay.currentIndex() == 0, "elapsed replay keeps current sample before next timestamp");
     require(replay.isPlaying(), "elapsed replay keeps playing before next timestamp");
-    require(replay.stepByElapsedUs(20000), "elapsed replay crosses first irregular timestamp");
+    require(replay.stepBy(ReplayDuration(20000)), "elapsed replay crosses first irregular timestamp");
     require(replay.currentIndex() == 1, "elapsed replay advances to latest sample at elapsed time");
-    require(replay.stepByElapsedUs(300000), "elapsed replay can skip across sparse timestamps");
+    require(replay.stepBy(ReplayDuration(300000)), "elapsed replay can skip across sparse timestamps");
     require(replay.currentIndex() == 2, "elapsed replay selects latest sample at or before sparse timestamp");
     require(replay.isPlaying(), "elapsed replay keeps playing before final timestamp");
-    require(replay.stepByElapsedUs(1000000), "elapsed replay clamps at final timestamp");
+    require(replay.stepBy(ReplayDuration(1000000)), "elapsed replay clamps at final timestamp");
     require(replay.currentIndex() == 3, "elapsed replay reaches final sample");
     require(!replay.isPlaying(), "elapsed replay stops at final sample");
 
@@ -110,7 +113,7 @@ int main()
 
     replay.setSpeed(2.0);
     require(replay.speed() == 2.0, "valid replay speed is stored");
-    require(replay.intervalMs() == 50, "2x replay interval is 50 ms");
+    require(replay.interval() == std::chrono::milliseconds(50), "2x replay interval is 50 ms");
     replay.setSpeed(-1.0);
     require(replay.speed() == 1.0, "invalid replay speed falls back");
     require(VaporView::Geo::TrajectoryReplay::speedFromText(QStringLiteral("5x")) == 5.0,
@@ -123,8 +126,8 @@ int main()
     replay.setSamples(untimedSamples);
     require(replay.startTimestampUs() == 0, "untimed replay synthetic timeline starts at zero");
     require(replay.endTimestampUs() == 200000, "untimed replay synthetic timeline ends at fallback duration");
-    require(replay.durationUs() == 200000, "untimed replay falls back to synthetic 10 Hz timeline");
-    replay.seekElapsedUs(100000);
+    require(replay.duration() == ReplayDuration(200000), "untimed replay falls back to synthetic 10 Hz timeline");
+    replay.seekElapsed(ReplayDuration(100000));
     require(replay.currentIndex() == 1, "untimed elapsed seek uses synthetic timeline");
 
     std::vector<VaporView::Geo::NavSample> outOfOrderSamples;
@@ -134,8 +137,8 @@ int main()
     replay.setSamples(outOfOrderSamples);
     require(replay.startTimestampUs() == 0, "out-of-order replay synthetic timeline starts at zero");
     require(replay.endTimestampUs() == 200000, "out-of-order replay synthetic timeline ends at fallback duration");
-    require(replay.durationUs() == 200000, "out-of-order replay timestamps fall back to synthetic timeline");
-    replay.seekElapsedUs(100000);
+    require(replay.duration() == ReplayDuration(200000), "out-of-order replay timestamps fall back to synthetic timeline");
+    replay.seekElapsed(ReplayDuration(100000));
     require(replay.currentIndex() == 1, "out-of-order elapsed seek uses synthetic index timeline");
 
     std::vector<VaporView::Geo::NavSample> duplicateTimestampSamples;
@@ -145,8 +148,8 @@ int main()
     replay.setSamples(duplicateTimestampSamples);
     require(replay.startTimestampUs() == 0, "duplicate replay synthetic timeline starts at zero");
     require(replay.endTimestampUs() == 200000, "duplicate replay synthetic timeline ends at fallback duration");
-    require(replay.durationUs() == 200000, "duplicate replay timestamps fall back to synthetic timeline");
-    replay.seekElapsedUs(100000);
+    require(replay.duration() == ReplayDuration(200000), "duplicate replay timestamps fall back to synthetic timeline");
+    replay.seekElapsed(ReplayDuration(100000));
     require(replay.currentIndex() == 1, "duplicate elapsed seek uses synthetic index timeline");
 
     std::vector<VaporView::Geo::NavSample> largeTimeline;
@@ -159,7 +162,7 @@ int main()
     const auto seekStart = std::chrono::steady_clock::now();
     for (int index = 0; index < 1000; ++index)
     {
-        replay.seekElapsedUs(static_cast<qint64>(index) * 99999);
+        replay.seekElapsed(ReplayDuration(static_cast<qint64>(index) * 99999));
     }
     const auto seekElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - seekStart).count();

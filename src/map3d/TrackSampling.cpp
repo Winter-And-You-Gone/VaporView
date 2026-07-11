@@ -9,16 +9,25 @@ std::vector<VaporView::Geo::NavSample> uniformlySampleTrack(
     const std::vector<VaporView::Geo::NavSample>& samples,
     int maxSamples)
 {
-    if (samples.empty() || maxSamples <= 0)
+    return uniformlySampleTrack(samples, samples.size(), maxSamples);
+}
+
+std::vector<VaporView::Geo::NavSample> uniformlySampleTrack(
+    const std::vector<VaporView::Geo::NavSample>& samples,
+    std::size_t sourceCount,
+    int maxSamples)
+{
+    sourceCount = (std::min)(sourceCount, samples.size());
+    if (sourceCount == 0 || maxSamples <= 0)
     {
         return {};
     }
 
     const std::size_t targetCount =
-        (std::min)(samples.size(), static_cast<std::size_t>(maxSamples));
-    if (targetCount == samples.size())
+        (std::min)(sourceCount, static_cast<std::size_t>(maxSamples));
+    if (targetCount == sourceCount)
     {
-        return samples;
+        return std::vector<VaporView::Geo::NavSample>(samples.cbegin(), samples.cbegin() + sourceCount);
     }
     if (targetCount == 1)
     {
@@ -27,7 +36,7 @@ std::vector<VaporView::Geo::NavSample> uniformlySampleTrack(
 
     std::vector<VaporView::Geo::NavSample> sampled;
     sampled.reserve(targetCount);
-    const std::size_t lastIndex = samples.size() - 1;
+    const std::size_t lastIndex = sourceCount - 1;
     const std::size_t intervalCount = targetCount - 1;
     for (std::size_t outputIndex = 0; outputIndex < targetCount; ++outputIndex)
     {

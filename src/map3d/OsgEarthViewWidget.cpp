@@ -1,7 +1,10 @@
+
 #include "map3d/OsgEarthViewWidget.h"
 
 #include "map3d/Aircraft3DLayer.h"
 #include "map3d/AircraftHeading.h"
+#include "Map3DAssetLoader.h"
+#include "Map3DRuntime.h"
 #include "map3d/TrackSampling.h"
 #include "map3d/Trajectory3DLayer.h"
 
@@ -12,9 +15,6 @@
 #include <osg/Group>
 #include <osg/Texture2D>
 #include <osg/Viewport>
-#include <osgDB/ReadFile>
-#include <osgDB/Registry>
-#include <osgUtil/Optimizer>
 #include <osgGA/EventQueue>
 #include <osgGA/TrackballManipulator>
 #include <osgViewer/GraphicsWindow>
@@ -31,12 +31,8 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
-#include <QFile>
 #include <QFileInfo>
 #include <QHideEvent>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QOpenGLContext>
@@ -44,6 +40,8 @@
 #include <QThread>
 #include <QWheelEvent>
 #include <QElapsedTimer>
+#include <QFutureWatcher>
+#include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
 #include <cmath>
@@ -122,267 +120,6 @@ int toOsgKey(const QKeyEvent* event)
     }
     return 0;
 }
-
-QStringList runtimeRootCandidates()
-{
-    const QString appDir = QCoreApplication::applicationDirPath();
-    QStringList roots{
-        appDir,
-        QDir(appDir).absoluteFilePath(QStringLiteral("../.."))
-    };
-    if (qEnvironmentVariableIsSet("VAPORVIEW_MAP3D_DEV_SEARCH_PATHS"))
-    {
-        roots.push_back(QDir::currentPath());
-    }
-    roots.removeDuplicates();
-    return roots;
-}
-
-QString firstExistingDirectory(const QStringList& roots, const QStringList& relatives)
-{
-    for (const QString& root : roots)
-    {
-        for (const QString& relative : relatives)
-        {
-            const QString candidate = QDir::cleanPath(QDir(root).absoluteFilePath(relative));
-            if (QFileInfo(candidate).isDir())
-            {
-                return QFileInfo(candidate).absoluteFilePath();
-            }
-        }
-    }
-    return {};
-}
-
-QString firstExistingDirectoryMatching(const QStringList& roots,
-                                       const QStringList& relatives,
-                                       const QString& namePattern)
-{
-    for (const QString& root : roots)
-    {
-        for (const QString& relative : relatives)
-        {
-            QDir directory(QDir::cleanPath(QDir(root).absoluteFilePath(relative)));
-            if (!directory.exists())
-            {
-                continue;
-            }
-
-            const QFileInfoList matches =
-                directory.entryInfoList({namePattern}, QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
-            for (const QFileInfo& match : matches)
-            {
-                if (match.isDir())
-                {
-                    return match.absoluteFilePath();
-                }
-            }
-        }
-    }
-    return {};
-}
-
-QString findOsgPluginDirectory(const QStringList& roots)
-{
-    const QString exact = firstExistingDirectory(roots, {
-        QStringLiteral("osgPlugins-3.6.5"),
-        QStringLiteral("plugins/osgPlugins-3.6.5"),
-        QStringLiteral(".local_deps/vcpkg_installed/x64-windows/plugins/osgPlugins-3.6.5")
-    });
-    if (!exact.isEmpty())
-    {
-        return exact;
-    }
-
-    return firstExistingDirectoryMatching(roots,
-                                          {QStringLiteral("."),
-                                           QStringLiteral("plugins"),
-                                           QStringLiteral(".local_deps/vcpkg_installed/x64-windows/plugins")},
-                                          QStringLiteral("osgPlugins-*"));
-}
-
-QString firstExistingFile(const QStringList& roots, const QStringList& relatives)
-{
-    for (const QString& root : roots)
-    {
-        for (const QString& relative : relatives)
-        {
-            const QString candidate = QDir::cleanPath(QDir(root).absoluteFilePath(relative));
-            if (QFileInfo(candidate).isFile())
-            {
-                return QFileInfo(candidate).absoluteFilePath();
-            }
-        }
-    }
-    return {};
-}
-
-void prependEnvironmentPath(const char* name, const QString& path)
-{
-    if (path.isEmpty())
-    {
-        return;
-    }
-
-    const QByteArray pathBytes = QDir::toNativeSeparators(path).toLocal8Bit();
-    const QByteArray current = qgetenv(name);
-    if (current.isEmpty())
-    {
-        qputenv(name, pathBytes);
-        return;
-    }
-
-    const QList<QByteArray> parts = current.split(';');
-    if (!parts.contains(pathBytes))
-    {
-        qputenv(name, pathBytes + ';' + current);
-    }
-}
-
-void setEnvironmentIfMissing(const char* name, const QString& path)
-{
-    if (!path.isEmpty() && qgetenv(name).isEmpty())
-    {
-        qputenv(name, QDir::toNativeSeparators(path).toLocal8Bit());
-    }
-}
-
-void initializeOsgEarthRuntime()
-{
-    static std::once_flag once;
-    std::call_once(once, [] {
-        const QStringList roots = runtimeRootCandidates();
-        const QString pluginDir = findOsgPluginDirectory(roots);
-        const QString gdalDataDir = firstExistingDirectory(roots, {
-            QStringLiteral("share/gdal"),
-            QStringLiteral(".local_deps/vcpkg_installed/x64-windows/share/gdal")
-        });
-        const QString projDataDir = firstExistingDirectory(roots, {
-            QStringLiteral("share/proj"),
-            QStringLiteral("share/proj4"),
-            QStringLiteral(".local_deps/vcpkg_installed/x64-windows/share/proj"),
-            QStringLiteral(".local_deps/vcpkg_installed/x64-windows/share/proj4")
-        });
-
-        prependEnvironmentPath("OSG_LIBRARY_PATH", pluginDir);
-        setEnvironmentIfMissing("GDAL_DATA", gdalDataDir);
-        setEnvironmentIfMissing("PROJ_LIB", projDataDir);
-        setEnvironmentIfMissing("PROJ_DATA", projDataDir);
-
-        if (!pluginDir.isEmpty())
-        {
-            osgDB::Registry::instance()->getLibraryFilePathList().push_front(pluginDir.toStdString());
-        }
-
-        osgEarth::initialize();
-        qInfo().noquote() << "osgEarth runtime initialized"
-                          << "plugins=" << (pluginDir.isEmpty() ? QStringLiteral("<not found>") : pluginDir)
-                          << "GDAL_DATA=" << QString::fromLocal8Bit(qgetenv("GDAL_DATA"))
-                          << "PROJ_LIB=" << QString::fromLocal8Bit(qgetenv("PROJ_LIB"));
-    });
-}
-
-QString naturalEarthTexturePathForEarthFile(const QString& earthPath)
-{
-    const QFileInfo earthInfo(earthPath);
-    if (earthInfo.fileName() != QStringLiteral("vaporview_default.earth"))
-    {
-        return {};
-    }
-
-    const QString textureRelative = QStringLiteral("natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png");
-    const QString candidate = QDir::cleanPath(earthInfo.dir().absoluteFilePath(textureRelative));
-    if (QFileInfo(candidate).isFile())
-    {
-        return QFileInfo(candidate).absoluteFilePath();
-    }
-
-    for (const QString& root : runtimeRootCandidates())
-    {
-        const QString fallback = QDir::cleanPath(QDir(root).absoluteFilePath(
-            QStringLiteral("resources/maps/%1").arg(textureRelative)));
-        if (QFileInfo(fallback).isFile())
-        {
-            return QFileInfo(fallback).absoluteFilePath();
-        }
-    }
-
-    return {};
-}
-
-osg::Node* createTexturedEarthNode(const QString& texturePath)
-{
-    osg::ref_ptr<osg::Image> image = osgDB::readImageFile(texturePath.toStdString());
-    if (!image)
-    {
-        return nullptr;
-    }
-
-    constexpr int kLatSegments = 64;
-    constexpr int kLonSegments = 128;
-    osg::ref_ptr<osg::Geometry> geometry = new osg::Geometry;
-    osg::ref_ptr<osg::Vec3Array> vertices = new osg::Vec3Array;
-    osg::ref_ptr<osg::Vec3Array> normals = new osg::Vec3Array;
-    osg::ref_ptr<osg::Vec2Array> texCoords = new osg::Vec2Array;
-    vertices->reserve((kLatSegments + 1) * (kLonSegments + 1));
-    normals->reserve(vertices->capacity());
-    texCoords->reserve(vertices->capacity());
-
-    for (int latIndex = 0; latIndex <= kLatSegments; ++latIndex)
-    {
-        const double v = static_cast<double>(latIndex) / static_cast<double>(kLatSegments);
-        const double latRad = osg::PI_2 - v * osg::PI;
-        const double cosLat = std::cos(latRad);
-        const double sinLat = std::sin(latRad);
-        for (int lonIndex = 0; lonIndex <= kLonSegments; ++lonIndex)
-        {
-            const double u = static_cast<double>(lonIndex) / static_cast<double>(kLonSegments);
-            const double lonRad = -osg::PI + u * 2.0 * osg::PI;
-            const osg::Vec3d normal(cosLat * std::cos(lonRad),
-                                    cosLat * std::sin(lonRad),
-                                    sinLat);
-            vertices->push_back(normal * kEarthRadiusM);
-            normals->push_back(normal);
-            texCoords->push_back(osg::Vec2(static_cast<float>(1.0 - u), static_cast<float>(v)));
-        }
-    }
-
-    osg::ref_ptr<osg::DrawElementsUInt> indices = new osg::DrawElementsUInt(GL_TRIANGLES);
-    indices->reserve(kLatSegments * kLonSegments * 6);
-    for (int latIndex = 0; latIndex < kLatSegments; ++latIndex)
-    {
-        for (int lonIndex = 0; lonIndex < kLonSegments; ++lonIndex)
-        {
-            const unsigned int first = static_cast<unsigned int>(latIndex * (kLonSegments + 1) + lonIndex);
-            const unsigned int second = first + static_cast<unsigned int>(kLonSegments + 1);
-            indices->push_back(first);
-            indices->push_back(second);
-            indices->push_back(first + 1);
-            indices->push_back(second);
-            indices->push_back(second + 1);
-            indices->push_back(first + 1);
-        }
-    }
-
-    geometry->setVertexArray(vertices.get());
-    geometry->setNormalArray(normals.get(), osg::Array::BIND_PER_VERTEX);
-    geometry->setTexCoordArray(0, texCoords.get());
-    geometry->addPrimitiveSet(indices.get());
-
-    osg::ref_ptr<osg::Texture2D> texture = new osg::Texture2D(image.get());
-    texture->setResizeNonPowerOfTwoHint(false);
-    texture->setFilter(osg::Texture::MIN_FILTER, osg::Texture::LINEAR);
-    texture->setFilter(osg::Texture::MAG_FILTER, osg::Texture::LINEAR);
-    texture->setWrap(osg::Texture::WRAP_S, osg::Texture::REPEAT);
-    texture->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
-
-    osg::ref_ptr<osg::Geode> geode = new osg::Geode;
-    geode->addDrawable(geometry.get());
-    geode->getOrCreateStateSet()->setTextureAttributeAndModes(0, texture.get(), osg::StateAttribute::ON);
-    geode->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
-    return geode.release();
-}
-
 osg::Node* createLocalGridNode()
 {
     osg::ref_ptr<osg::Geode> geode = new osg::Geode;
@@ -436,7 +173,7 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent)
     , trajectory_layer_(std::make_unique<Trajectory3DLayer>())
     , aircraft_layer_(std::make_unique<Aircraft3DLayer>())
 {
-    initializeOsgEarthRuntime();
+    initializeMap3DRuntime();
     setMinimumSize(640, 420);
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
@@ -463,6 +200,9 @@ void OsgEarthViewWidget::shutdown()
         return;
     }
     shutdown_ = true;
+    ++earth_load_generation_;
+    ++local_3d_tiles_load_generation_;
+    ++aircraft_load_generation_;
     QObject::disconnect(gl_context_destruction_connection_);
     setUpdatesEnabled(false);
     clearFocus();
@@ -498,6 +238,7 @@ void OsgEarthViewWidget::shutdown()
     earth_node_ = nullptr;
     local_3d_tiles_node_ = nullptr;
     overlay_transform_ = nullptr;
+
     map_node_ = nullptr;
     trajectory_layer_.reset();
     aircraft_layer_.reset();
@@ -520,11 +261,7 @@ void OsgEarthViewWidget::appendSample(const VaporView::Geo::NavSample& sample)
     }
     QElapsedTimer timer;
     timer.start();
-    if (preserve_full_track_extent_)
-    {
-        preserve_full_track_extent_ = false;
-        rebuildDisplayTrack();
-    }
+    detachSharedSamplesForLiveAppend();
     raw_samples_.push_back(sample);
     while (!preserve_full_track_extent_
            && static_cast<int>(raw_samples_.size()) > maxVisibleSamples())
@@ -548,10 +285,9 @@ void OsgEarthViewWidget::appendSamples(const std::vector<VaporView::Geo::NavSamp
     }
     QElapsedTimer timer;
     timer.start();
-    if (preserve_full_track_extent_ && !samples.empty())
+    if (!samples.empty())
     {
-        preserve_full_track_extent_ = false;
-        rebuildDisplayTrack();
+        detachSharedSamplesForLiveAppend();
     }
     raw_samples_.insert(raw_samples_.end(), samples.cbegin(), samples.cend());
     while (!preserve_full_track_extent_
@@ -577,6 +313,13 @@ void OsgEarthViewWidget::appendSamples(const std::vector<VaporView::Geo::NavSamp
 
 void OsgEarthViewWidget::setSamples(const std::vector<VaporView::Geo::NavSample>& samples)
 {
+    setSamples(std::make_shared<const std::vector<VaporView::Geo::NavSample>>(samples));
+}
+
+void OsgEarthViewWidget::setSamples(
+    std::shared_ptr<const std::vector<VaporView::Geo::NavSample>> samples,
+    int sampleCount)
+{
     assertGuiThread(this, Q_FUNC_INFO);
     if (shutdown_ || !trajectory_layer_ || !aircraft_layer_)
     {
@@ -584,7 +327,10 @@ void OsgEarthViewWidget::setSamples(const std::vector<VaporView::Geo::NavSample>
     }
     QElapsedTimer timer;
     timer.start();
-    raw_samples_.assign(samples.cbegin(), samples.cend());
+    raw_samples_.clear();
+    shared_samples_ = std::move(samples);
+    const int available = shared_samples_ ? static_cast<int>(shared_samples_->size()) : 0;
+    shared_sample_count_ = sampleCount < 0 ? available : std::clamp(sampleCount, 0, available);
     preserve_full_track_extent_ = true;
     local_frame_ = VaporView::Geo::LocalTangentPlane();
     resetWorldOverlayOrigin();
@@ -593,10 +339,39 @@ void OsgEarthViewWidget::setSamples(const std::vector<VaporView::Geo::NavSample>
     update();
 }
 
+void OsgEarthViewWidget::appendSampleFromStorage(
+    const std::shared_ptr<const std::vector<VaporView::Geo::NavSample>>& samples,
+    int sampleIndex)
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    if (shutdown_ || !samples || sampleIndex < 0
+        || sampleIndex >= static_cast<int>(samples->size()))
+    {
+        return;
+    }
+    if (shared_samples_ != samples || sampleIndex != shared_sample_count_)
+    {
+        setSamples(samples, sampleIndex + 1);
+        return;
+    }
+
+    QElapsedTimer timer;
+    timer.start();
+    ++shared_sample_count_;
+    const VaporView::Geo::NavSample displaySample = toDisplaySample((*samples)[static_cast<std::size_t>(sampleIndex)]);
+    trajectory_layer_->appendSample(displaySample);
+    aircraft_layer_->updateSample(displaySample);
+    updateFollowCamera(displaySample);
+    last_track_update_ms_ = static_cast<double>(timer.nsecsElapsed()) / 1000000.0;
+    update();
+}
+
 void OsgEarthViewWidget::clearTrack()
 {
     assertGuiThread(this, Q_FUNC_INFO);
     raw_samples_.clear();
+    shared_samples_.reset();
+    shared_sample_count_ = 0;
     preserve_full_track_extent_ = false;
     height_reference_status_.clear();
     if (shutdown_ || !trajectory_layer_ || !aircraft_layer_)
@@ -613,111 +388,65 @@ void OsgEarthViewWidget::clearTrack()
 bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
 {
     assertGuiThread(this, Q_FUNC_INFO);
+    ++earth_load_generation_;
+    const Detail::EarthAssetLoadResult result = Detail::loadEarthAsset(earthPath);
+    return applyEarthLoad(result.diagnostics, result.node, result.mapNode, result.useXihuInitialView);
+}
+
+void OsgEarthViewWidget::loadEarthFileAsync(const QString& earthPath,
+                                            std::function<void(bool)> finished)
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    if (shutdown_)
+    {
+        if (finished) finished(false);
+        return;
+    }
+    const quint64 generation = ++earth_load_generation_;
     earth_load_diagnostics_ = {};
     earth_load_diagnostics_.attempted = true;
     earth_load_diagnostics_.requestedPath = earthPath;
-    if (shutdown_)
-    {
-        earth_load_diagnostics_.failureReason = QStringLiteral("3D view is shutting down.");
-        return false;
-    }
-    const bool candidateUsesXihuInitialView =
-        QFileInfo(earthPath).fileName().compare(QStringLiteral("vaporview_real3d_local.earth"),
-                                                Qt::CaseInsensitive) == 0;
+    auto* watcher = new QFutureWatcher<Detail::EarthAssetLoadResult>(this);
+    connect(watcher, &QFutureWatcher<Detail::EarthAssetLoadResult>::finished,
+            this, [this, watcher, generation, finished = std::move(finished)]() mutable {
+        const Detail::EarthAssetLoadResult result = watcher->result();
+        watcher->deleteLater();
+        if (shutdown_ || generation != earth_load_generation_) return;
+        const bool loaded = applyEarthLoad(result.diagnostics,
+                                           result.node,
+                                           result.mapNode,
+                                           result.useXihuInitialView);
+        if (finished) finished(loaded);
+    });
+    watcher->setFuture(QtConcurrent::run([earthPath]() {
+        return Detail::loadEarthAsset(earthPath);
+    }));
+}
 
+bool OsgEarthViewWidget::applyEarthLoad(EarthLoadDiagnostics diagnostics,
+                                        osg::ref_ptr<osg::Node> node,
+                                        osgEarth::MapNode* mapNode,
+                                        bool useXihuInitialView)
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    earth_load_diagnostics_ = std::move(diagnostics);
+    if (shutdown_ || !earth_load_diagnostics_.loaded || !node) return false;
     initializeSceneIfNeeded();
-    osg::ref_ptr<osg::Node> earthNode = osgDB::readNodeFile(earthPath.toStdString());
-    if (!earthNode)
-    {
-        const QString readFailure = QStringLiteral("osgDB::readNodeFile returned null.");
-        const QString texturePath = naturalEarthTexturePathForEarthFile(earthPath);
-        osg::ref_ptr<osg::Node> texturedEarthNode = createTexturedEarthNode(texturePath);
-        if (texturedEarthNode && root_)
-        {
-            const bool replacedPreviousNode = earth_node_.valid();
-            if (earth_node_)
-            {
-                root_->removeChild(earth_node_.get());
-            }
-            earth_node_ = texturedEarthNode;
-            map_node_ = nullptr;
-            use_xihu_initial_view_ = candidateUsesXihuInitialView;
-            trajectory_layer_->setUseWorldCoordinates(true);
-            aircraft_layer_->setUseWorldCoordinates(true);
-            resetWorldOverlayOrigin();
-            root_->insertChild(0, earth_node_.get());
-            setInitialEarthView();
-            rebuildDisplayTrack();
-            update();
-            earth_load_diagnostics_.loaded = true;
-            earth_load_diagnostics_.usedTexturedFallback = true;
-            earth_load_diagnostics_.foundMapNode = false;
-            earth_load_diagnostics_.failureReason =
-                QStringLiteral("%1 Using manual Natural Earth textured globe fallback.").arg(readFailure);
-            earth_load_diagnostics_.layerSummaries.push_back(
-                QStringLiteral("Manual Natural Earth textured globe fallback (no osgEarth MapNode)."));
-            if (replacedPreviousNode)
-            {
-                earth_load_diagnostics_.layerSummaries.push_back(QStringLiteral("Replaced previous Earth scene."));
-            }
-            return true;
-        }
-
-        earth_load_diagnostics_.failureReason = readFailure;
-        return false;
-    }
     if (!root_)
     {
+        earth_load_diagnostics_.loaded = false;
         earth_load_diagnostics_.failureReason = QStringLiteral("Scene root is not initialized.");
         return false;
     }
-    osgEarth::MapNode* candidateMapNode = osgEarth::MapNode::findMapNode(earthNode.get());
-    earth_load_diagnostics_.foundMapNode = candidateMapNode != nullptr;
-    if (!candidateMapNode)
+    const bool replacedPreviousNode = earth_node_.valid();
+    if (earth_node_) root_->removeChild(earth_node_.get());
+    earth_node_ = std::move(node);
+    map_node_ = mapNode;
+    use_xihu_initial_view_ = useXihuInitialView;
+    if (replacedPreviousNode)
     {
-        earth_load_diagnostics_.failureReason = QStringLiteral("Loaded OSG node, but no osgEarth MapNode was found.");
-        earth_load_diagnostics_.layerSummaries.push_back(earth_load_diagnostics_.failureReason);
-        return false;
+        earth_load_diagnostics_.layerSummaries.push_back(QStringLiteral("Replaced previous Earth scene."));
     }
-
-    candidateMapNode->openMapLayers();
-    if (candidateMapNode->getMap())
-    {
-        osgEarth::LayerVector layers;
-        candidateMapNode->getMap()->getLayers(layers);
-        earth_load_diagnostics_.layerCount = static_cast<int>(layers.size());
-        for (const osg::ref_ptr<osgEarth::Layer>& layer : layers)
-        {
-            if (!layer)
-            {
-                continue;
-            }
-            const osgEarth::Status& status = layer->getStatus();
-            if (layer->isOpen())
-            {
-                ++earth_load_diagnostics_.openLayerCount;
-            }
-            const QString summary = QStringLiteral("%1 | open=%2 | status=%3")
-                .arg(QString::fromStdString(layer->getName()),
-                     layer->isOpen() ? QStringLiteral("yes") : QStringLiteral("no"),
-                     QString::fromStdString(status.toString()));
-            earth_load_diagnostics_.layerSummaries.push_back(summary);
-            qInfo().noquote()
-                << "osgEarth layer"
-                << QString::fromStdString(layer->getName())
-                << "open=" << layer->isOpen()
-                << "status=" << QString::fromStdString(status.toString());
-        }
-    }
-
-    if (earth_node_)
-    {
-        root_->removeChild(earth_node_.get());
-    }
-    earth_node_ = earthNode;
-    map_node_ = candidateMapNode;
-    use_xihu_initial_view_ = candidateUsesXihuInitialView;
-    earth_load_diagnostics_.loaded = true;
     trajectory_layer_->setUseWorldCoordinates(true);
     aircraft_layer_->setUseWorldCoordinates(true);
     resetWorldOverlayOrigin();
@@ -731,189 +460,56 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
 bool OsgEarthViewWidget::loadLocal3DTilesPreview(const QString& tilesetPath)
 {
     assertGuiThread(this, Q_FUNC_INFO);
+    ++local_3d_tiles_load_generation_;
+    const Detail::Local3DTilesAssetLoadResult result = Detail::loadLocal3DTilesAsset(tilesetPath);
+    return applyLocal3DTilesLoad(result.diagnostics, result.node);
+}
+
+void OsgEarthViewWidget::loadLocal3DTilesPreviewAsync(
+    const QString& tilesetPath,
+    std::function<void(bool)> finished)
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    if (shutdown_)
+    {
+        if (finished) finished(false);
+        return;
+    }
+    const quint64 generation = ++local_3d_tiles_load_generation_;
     local_3d_tiles_load_diagnostics_ = {};
     local_3d_tiles_load_diagnostics_.attempted = true;
     local_3d_tiles_load_diagnostics_.requestedPath = tilesetPath;
-    if (shutdown_)
-    {
-        local_3d_tiles_load_diagnostics_.failureReason = QStringLiteral("3D view is shutting down.");
-        return false;
-    }
-    const QFileInfo tilesetInfo(tilesetPath);
-    if (!tilesetInfo.isFile())
-    {
-        local_3d_tiles_load_diagnostics_.failureReason =
-            QStringLiteral("Local 3D Tiles tileset file does not exist.");
-        return false;
-    }
+    auto* watcher = new QFutureWatcher<Detail::Local3DTilesAssetLoadResult>(this);
+    connect(watcher, &QFutureWatcher<Detail::Local3DTilesAssetLoadResult>::finished,
+            this, [this, watcher, generation, finished = std::move(finished)]() mutable {
+        const Detail::Local3DTilesAssetLoadResult result = watcher->result();
+        watcher->deleteLater();
+        if (shutdown_ || generation != local_3d_tiles_load_generation_) return;
+        const bool loaded = applyLocal3DTilesLoad(result.diagnostics, result.node);
+        if (finished) finished(loaded);
+    });
+    watcher->setFuture(QtConcurrent::run([tilesetPath]() {
+        return Detail::loadLocal3DTilesAsset(tilesetPath);
+    }));
+}
 
-    constexpr qint64 kMaximumTilesetJsonBytes = 64LL * 1024LL * 1024LL;
-    if (tilesetInfo.size() > kMaximumTilesetJsonBytes)
-    {
-        local_3d_tiles_load_diagnostics_.failureReason =
-            QStringLiteral("Local 3D tile index exceeds the 64 MiB safety limit.");
-        return false;
-    }
-
-    QFile tilesetFile(tilesetInfo.absoluteFilePath());
-    if (!tilesetFile.open(QIODevice::ReadOnly))
-    {
-        local_3d_tiles_load_diagnostics_.failureReason =
-            QStringLiteral("Local 3D Tiles tileset could not be opened: %1").arg(tilesetFile.errorString());
-        return false;
-    }
-    QJsonParseError parseError;
-    const QJsonDocument document = QJsonDocument::fromJson(tilesetFile.readAll(), &parseError);
-    if (parseError.error != QJsonParseError::NoError || !document.isObject())
-    {
-        local_3d_tiles_load_diagnostics_.failureReason =
-            QStringLiteral("Local 3D Tiles tileset is not valid JSON: %1").arg(parseError.errorString());
-        return false;
-    }
-    if (!document.object().value(QStringLiteral("root")).isObject())
-    {
-        local_3d_tiles_load_diagnostics_.failureReason =
-            QStringLiteral("Local 3D tile index does not contain a root tile object.");
-        return false;
-    }
-    const QString payloadFormat = document.object().value(QStringLiteral("extras")).toObject()
-                                      .value(QStringLiteral("format")).toString();
-    if (payloadFormat != QStringLiteral("vaporview-osg-native-building-tiles"))
-    {
-        local_3d_tiles_load_diagnostics_.failureReason =
-            QStringLiteral("Unsupported building payload contract. This loader accepts only vaporview-osg-native-building-tiles, not generic Cesium 3D Tiles.");
-        return false;
-    }
-
+bool OsgEarthViewWidget::applyLocal3DTilesLoad(Local3DTilesLoadDiagnostics diagnostics,
+                                               osg::ref_ptr<osg::Group> node)
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    local_3d_tiles_load_diagnostics_ = std::move(diagnostics);
+    if (shutdown_ || !local_3d_tiles_load_diagnostics_.loaded || !node) return false;
     initializeSceneIfNeeded();
     if (!root_)
     {
-        local_3d_tiles_load_diagnostics_.failureReason =
-            QStringLiteral("Scene root is not initialized.");
+        local_3d_tiles_load_diagnostics_.loaded = false;
+        local_3d_tiles_load_diagnostics_.failureReason = QStringLiteral("Scene root is not initialized.");
         return false;
     }
-
-    osg::ref_ptr<osg::Group> tilesRoot = new osg::Group;
-    tilesRoot->setName("VaporView local building tiles");
-    const QString tilesetDirectory = tilesetInfo.absolutePath();
-
-    constexpr int kMaximumTileCount = 100000;
-    constexpr int kMaximumTileDepth = 128;
-    bool traversalLimitExceeded = false;
-    std::function<void(const QJsonObject&, int)> loadTile;
-    const auto loadContent = [&](const QJsonObject& content) {
-        QString uri = content.value(QStringLiteral("uri")).toString();
-        if (uri.isEmpty())
-        {
-            uri = content.value(QStringLiteral("url")).toString();
-        }
-        if (uri.isEmpty())
-        {
-            return;
-        }
-        ++local_3d_tiles_load_diagnostics_.payloadCount;
-        const int queryIndex = uri.indexOf(QLatin1Char('?'));
-        const int fragmentIndex = uri.indexOf(QLatin1Char('#'));
-        int cutIndex = -1;
-        if (queryIndex >= 0)
-        {
-            cutIndex = queryIndex;
-        }
-        if (fragmentIndex >= 0 && (cutIndex < 0 || fragmentIndex < cutIndex))
-        {
-            cutIndex = fragmentIndex;
-        }
-        if (cutIndex >= 0)
-        {
-            uri = uri.left(cutIndex);
-        }
-        const QString normalizedUri = QDir::cleanPath(QDir::fromNativeSeparators(uri));
-        if (QDir::isAbsolutePath(normalizedUri)
-            || normalizedUri == QStringLiteral("..")
-            || normalizedUri.startsWith(QStringLiteral("../"))
-            || uri.contains(QStringLiteral("://")))
-        {
-            ++local_3d_tiles_load_diagnostics_.failedPayloadCount;
-            local_3d_tiles_load_diagnostics_.warnings.push_back(
-                QStringLiteral("Rejected non-local tile payload URI: %1").arg(uri));
-            return;
-        }
-        const QString payloadPath = QFileInfo(QDir(tilesetDirectory).absoluteFilePath(normalizedUri)).absoluteFilePath();
-        osg::ref_ptr<osg::Node> payload =
-            osgDB::readNodeFile(QDir::fromNativeSeparators(payloadPath).toStdString());
-        if (!payload)
-        {
-            ++local_3d_tiles_load_diagnostics_.failedPayloadCount;
-            local_3d_tiles_load_diagnostics_.warnings.push_back(
-                QStringLiteral("Failed to load local tile payload: %1").arg(payloadPath));
-            return;
-        }
-        tilesRoot->addChild(payload.get());
-        ++local_3d_tiles_load_diagnostics_.loadedPayloadCount;
-    };
-    loadTile = [&](const QJsonObject& tile, int depth) {
-        if (depth > kMaximumTileDepth || local_3d_tiles_load_diagnostics_.tileCount >= kMaximumTileCount)
-        {
-            traversalLimitExceeded = true;
-            return;
-        }
-        ++local_3d_tiles_load_diagnostics_.tileCount;
-        if (tile.value(QStringLiteral("content")).isObject())
-        {
-            loadContent(tile.value(QStringLiteral("content")).toObject());
-        }
-        const QJsonArray contents = tile.value(QStringLiteral("contents")).toArray();
-        for (const QJsonValue& content : contents)
-        {
-            if (content.isObject())
-            {
-                loadContent(content.toObject());
-            }
-        }
-        const QJsonArray children = tile.value(QStringLiteral("children")).toArray();
-        for (const QJsonValue& child : children)
-        {
-            if (child.isObject())
-            {
-                loadTile(child.toObject(), depth + 1);
-            }
-        }
-    };
-    loadTile(document.object().value(QStringLiteral("root")).toObject(), 0);
-
-    if (traversalLimitExceeded)
-    {
-        local_3d_tiles_load_diagnostics_.failureReason =
-            QStringLiteral("Local 3D tile index exceeds the traversal safety limit; previous preview was preserved.");
-        return false;
-    }
-
-    if (local_3d_tiles_load_diagnostics_.loadedPayloadCount == 0
-        || local_3d_tiles_load_diagnostics_.failedPayloadCount > 0)
-    {
-        local_3d_tiles_load_diagnostics_.failureReason =
-            local_3d_tiles_load_diagnostics_.warnings.isEmpty()
-                ? QStringLiteral("Local tileset did not contain a loadable payload.")
-                : QStringLiteral("Local tileset load was incomplete (%1/%2 payloads); previous preview was preserved. %3")
-                      .arg(local_3d_tiles_load_diagnostics_.loadedPayloadCount)
-                      .arg(local_3d_tiles_load_diagnostics_.payloadCount)
-                      .arg(local_3d_tiles_load_diagnostics_.warnings.constFirst());
-        return false;
-    }
-
-    osgEarth::Registry::shaderGenerator().run(tilesRoot.get());
     local_3d_tiles_load_diagnostics_.clearedPreviousPreview = local_3d_tiles_node_.valid();
-    if (local_3d_tiles_node_)
-    {
-        root_->removeChild(local_3d_tiles_node_.get());
-    }
-    local_3d_tiles_node_ = tilesRoot;
+    if (local_3d_tiles_node_) root_->removeChild(local_3d_tiles_node_.get());
+    local_3d_tiles_node_ = std::move(node);
     root_->addChild(local_3d_tiles_node_.get());
-    local_3d_tiles_load_diagnostics_.loaded = true;
-    local_3d_tiles_load_diagnostics_.nodeDescription =
-        QStringLiteral("%1 loaded payloads across %2 tiles")
-            .arg(local_3d_tiles_load_diagnostics_.loadedPayloadCount)
-            .arg(local_3d_tiles_load_diagnostics_.tileCount);
     update();
     return true;
 }
@@ -921,6 +517,7 @@ bool OsgEarthViewWidget::loadLocal3DTilesPreview(const QString& tilesetPath)
 void OsgEarthViewWidget::clearLocal3DTilesPreview()
 {
     assertGuiThread(this, Q_FUNC_INFO);
+    ++local_3d_tiles_load_generation_;
     if (shutdown_)
     {
         local_3d_tiles_node_ = nullptr;
@@ -956,14 +553,26 @@ bool OsgEarthViewWidget::loadAircraftModel(const QString& modelPath)
         aircraft_model_diagnostics_.failureReason = QStringLiteral("3D view is shutting down.");
         return false;
     }
+    ++aircraft_load_generation_;
     initializeSceneIfNeeded();
     return loadAircraftModelFile(modelPath, QStringLiteral("User-selected aircraft model"));
 }
 
+void OsgEarthViewWidget::loadAircraftModelAsync(const QString& modelPath,
+                                                std::function<void(bool)> finished)
+{
+    loadAircraftModelFileAsync(modelPath,
+                               QStringLiteral("User-selected aircraft model"),
+                               std::move(finished));
+}
+
 void OsgEarthViewWidget::resetAircraftModelToBuiltIn()
 {
+    assertGuiThread(this, Q_FUNC_INFO);
+    ++aircraft_load_generation_;
     if (shutdown_)
     {
+
         return;
     }
     initializeSceneIfNeeded();
@@ -997,9 +606,12 @@ void OsgEarthViewWidget::setFollowAircraft(bool enabled)
     {
         viewer_->setCameraManipulator(new osgGA::TrackballManipulator);
     }
-    if (enabled && !raw_samples_.empty())
+    if (enabled)
     {
-        updateFollowCamera(toDisplaySample(raw_samples_.back()));
+        if (const VaporView::Geo::NavSample* latest = latestRawSample())
+        {
+            updateFollowCamera(toDisplaySample(*latest));
+        }
     }
 }
 
@@ -1067,26 +679,38 @@ void OsgEarthViewWidget::setMaxVisibleSamples(int maxVisibleSamples)
 
 bool OsgEarthViewWidget::flyToAircraft()
 {
-    if (shutdown_ || raw_samples_.empty())
+    const VaporView::Geo::NavSample* latest = latestRawSample();
+    if (shutdown_ || !latest)
     {
         return false;
     }
     initializeSceneIfNeeded();
-    setLookAt(samplePosition(toDisplaySample(raw_samples_.back())), 600.0);
+    setLookAt(samplePosition(toDisplaySample(*latest)), 600.0);
     update();
     return true;
 }
 
 bool OsgEarthViewWidget::flyToTrack()
 {
-    if (shutdown_ || raw_samples_.empty())
+    if (shutdown_ || sampleCount() == 0)
     {
         return false;
     }
     initializeSceneIfNeeded();
 
     osg::BoundingSphere bounds;
-    for (const VaporView::Geo::NavSample& sample : raw_samples_)
+    std::vector<VaporView::Geo::NavSample> focusSamples;
+    if (shared_samples_)
+    {
+        focusSamples = uniformlySampleTrack(*shared_samples_,
+                                            static_cast<std::size_t>(shared_sample_count_),
+                                            maxVisibleSamples());
+    }
+    else
+    {
+        focusSamples.assign(raw_samples_.cbegin(), raw_samples_.cend());
+    }
+    for (const VaporView::Geo::NavSample& sample : focusSamples)
     {
         bounds.expandBy(samplePosition(toDisplaySample(sample)));
     }
@@ -1113,7 +737,7 @@ void OsgEarthViewWidget::resetView()
 
 int OsgEarthViewWidget::sampleCount() const
 {
-    return static_cast<int>(raw_samples_.size());
+    return shared_samples_ ? shared_sample_count_ : static_cast<int>(raw_samples_.size());
 }
 
 int OsgEarthViewWidget::visibleSampleCount() const
@@ -1377,71 +1001,64 @@ void OsgEarthViewWidget::initializeSceneIfNeeded()
 
 void OsgEarthViewWidget::loadDefaultAircraftModelIfAvailable()
 {
-    const QString modelPath = firstExistingFile(runtimeRootCandidates(),
+    const QString modelPath = firstExistingMap3DFile(map3DRuntimeRootCandidates(),
                                                 {QStringLiteral("resources/maps/models/aircraft/vaporview_aircraft.osgb"),
                                                  QStringLiteral("resources/maps/models/aircraft/vaporview_aircraft.osg"),
                                                  QStringLiteral("resources/maps/models/aircraft/vaporview_aircraft.glb"),
                                                  QStringLiteral("resources/maps/models/aircraft/vaporview_aircraft.gltf")});
-    loadAircraftModelFile(modelPath, QStringLiteral("Default aircraft model"));
+    loadAircraftModelFileAsync(modelPath, QStringLiteral("Default aircraft model"));
 }
 
-bool OsgEarthViewWidget::loadAircraftModelFile(const QString& modelPath, const QString& fallbackReasonPrefix)
+bool OsgEarthViewWidget::loadAircraftModelFile(const QString& modelPath,
+                                               const QString& fallbackReasonPrefix)
 {
+    const Detail::AircraftAssetLoadResult result =
+        Detail::loadAircraftAsset(modelPath, fallbackReasonPrefix);
+    return applyAircraftModelLoad(result.diagnostics, result.node);
+}
+
+void OsgEarthViewWidget::loadAircraftModelFileAsync(
+    const QString& modelPath,
+    const QString& fallbackReasonPrefix,
+    std::function<void(bool)> finished)
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    if (shutdown_)
+    {
+        if (finished) finished(false);
+        return;
+    }
+    const quint64 generation = ++aircraft_load_generation_;
     aircraft_model_diagnostics_ = {};
-    aircraft_model_diagnostics_.usingBuiltInMarker = true;
+    aircraft_model_diagnostics_.attempted = !modelPath.trimmed().isEmpty();
     aircraft_model_diagnostics_.requestedPath = modelPath;
+    auto* watcher = new QFutureWatcher<Detail::AircraftAssetLoadResult>(this);
+    connect(watcher, &QFutureWatcher<Detail::AircraftAssetLoadResult>::finished,
+            this, [this, watcher, generation, finished = std::move(finished)]() mutable {
+        const Detail::AircraftAssetLoadResult result = watcher->result();
+        watcher->deleteLater();
+        if (shutdown_ || generation != aircraft_load_generation_) return;
+        const bool loaded = applyAircraftModelLoad(result.diagnostics, result.node);
+        if (finished) finished(loaded);
+    });
+    watcher->setFuture(QtConcurrent::run([modelPath, fallbackReasonPrefix]() {
+        return Detail::loadAircraftAsset(modelPath, fallbackReasonPrefix);
+    }));
+}
 
-    if (!aircraft_layer_)
+bool OsgEarthViewWidget::applyAircraftModelLoad(AircraftModelDiagnostics diagnostics,
+                                                osg::ref_ptr<osg::Node> node)
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    if (shutdown_ || !aircraft_layer_) return false;
+    if (!diagnostics.loaded || !node)
     {
-        aircraft_model_diagnostics_.failureReason =
-            QStringLiteral("%1 could not be applied before the aircraft layer was initialized; using built-in marker.")
-                .arg(fallbackReasonPrefix);
+        diagnostics.usingBuiltInMarker = !aircraft_layer_->hasCustomModel();
+        aircraft_model_diagnostics_ = std::move(diagnostics);
         return false;
     }
-
-    const QString trimmedPath = modelPath.trimmed();
-    if (trimmedPath.isEmpty())
-    {
-        aircraft_model_diagnostics_.failureReason =
-            QStringLiteral("%1 not configured; using built-in marker.").arg(fallbackReasonPrefix);
-        aircraft_layer_->clearCustomModel();
-        update();
-        return false;
-    }
-
-    const QFileInfo modelInfo(trimmedPath);
-    if (!modelInfo.isFile())
-    {
-        aircraft_model_diagnostics_.failureReason =
-            QStringLiteral("%1 file does not exist; using built-in marker.").arg(fallbackReasonPrefix);
-        aircraft_layer_->clearCustomModel();
-        update();
-        return false;
-    }
-
-    aircraft_model_diagnostics_.attempted = true;
-    aircraft_model_diagnostics_.requestedPath = modelInfo.absoluteFilePath();
-
-    osg::ref_ptr<osg::Node> modelNode = osgDB::readNodeFile(modelInfo.absoluteFilePath().toStdString());
-    if (!modelNode)
-    {
-        aircraft_model_diagnostics_.failureReason =
-            QStringLiteral("%1 could not be read by osgDB::readNodeFile; using built-in marker.")
-                .arg(fallbackReasonPrefix);
-        aircraft_layer_->clearCustomModel();
-        update();
-        return false;
-    }
-
-    osgUtil::Optimizer optimizer;
-    optimizer.optimize(modelNode.get(), osgUtil::Optimizer::DEFAULT_OPTIMIZATIONS);
-    aircraft_layer_->setCustomModel(modelNode.get());
-    aircraft_model_diagnostics_.loaded = true;
-    aircraft_model_diagnostics_.usingBuiltInMarker = false;
-    aircraft_model_diagnostics_.nodeDescription =
-        QStringLiteral("%1 children, bound radius %2")
-            .arg(modelNode->asGroup() ? modelNode->asGroup()->getNumChildren() : 0)
-            .arg(modelNode->getBound().radius(), 0, 'f', 2);
+    aircraft_layer_->setCustomModel(node.get());
+    aircraft_model_diagnostics_ = std::move(diagnostics);
     update();
     return true;
 }
@@ -1449,6 +1066,7 @@ bool OsgEarthViewWidget::loadAircraftModelFile(const QString& modelPath, const Q
 void OsgEarthViewWidget::updateCameraViewport(int w, int h)
 {
     const qreal dpr = std::max<qreal>(1.0, devicePixelRatioF());
+
     const int safeWidth = (std::max)(1, static_cast<int>(std::lround(w * dpr)));
     const int safeHeight = (std::max)(1, static_cast<int>(std::lround(h * dpr)));
     framebuffer_size_ = QSize(safeWidth, safeHeight);
@@ -1639,11 +1257,17 @@ void OsgEarthViewWidget::rebuildDisplayTrack()
 {
     trajectory_layer_->clear();
     aircraft_layer_->clear();
-    const std::vector<VaporView::Geo::NavSample> rawSamples(raw_samples_.cbegin(), raw_samples_.cend());
-    const std::vector<VaporView::Geo::NavSample> selectedSamples =
-        preserve_full_track_extent_
-        ? uniformlySampleTrack(rawSamples, maxVisibleSamples())
-        : rawSamples;
+    std::vector<VaporView::Geo::NavSample> selectedSamples;
+    if (shared_samples_)
+    {
+        selectedSamples = uniformlySampleTrack(*shared_samples_,
+                                               static_cast<std::size_t>(shared_sample_count_),
+                                               maxVisibleSamples());
+    }
+    else
+    {
+        selectedSamples.assign(raw_samples_.cbegin(), raw_samples_.cend());
+    }
     std::vector<VaporView::Geo::NavSample> displaySamples;
     displaySamples.reserve(selectedSamples.size());
     for (const VaporView::Geo::NavSample& sample : selectedSamples)
@@ -1651,12 +1275,40 @@ void OsgEarthViewWidget::rebuildDisplayTrack()
         displaySamples.push_back(toDisplaySample(sample));
     }
     trajectory_layer_->appendSamples(displaySamples);
-    if (!raw_samples_.empty())
+    if (const VaporView::Geo::NavSample* latest = latestRawSample())
     {
-        const VaporView::Geo::NavSample latestDisplaySample = toDisplaySample(raw_samples_.back());
+        const VaporView::Geo::NavSample latestDisplaySample = toDisplaySample(*latest);
         aircraft_layer_->updateSample(latestDisplaySample);
         updateFollowCamera(latestDisplaySample);
     }
+}
+
+void OsgEarthViewWidget::detachSharedSamplesForLiveAppend()
+{
+    if (!shared_samples_)
+    {
+        preserve_full_track_extent_ = false;
+        return;
+    }
+    const auto end = shared_samples_->cbegin() + shared_sample_count_;
+    raw_samples_.assign(shared_samples_->cbegin(), end);
+    shared_samples_.reset();
+    shared_sample_count_ = 0;
+    preserve_full_track_extent_ = false;
+    while (static_cast<int>(raw_samples_.size()) > maxVisibleSamples())
+    {
+        raw_samples_.pop_front();
+    }
+    rebuildDisplayTrack();
+}
+
+const VaporView::Geo::NavSample* OsgEarthViewWidget::latestRawSample() const
+{
+    if (shared_samples_ && shared_sample_count_ > 0)
+    {
+        return &(*shared_samples_)[static_cast<std::size_t>(shared_sample_count_ - 1)];
+    }
+    return raw_samples_.empty() ? nullptr : &raw_samples_.back();
 }
 
 VaporView::Geo::NavSample OsgEarthViewWidget::toDisplaySample(const VaporView::Geo::NavSample& sample)
@@ -1739,14 +1391,22 @@ VaporView::Geo::NavSample OsgEarthViewWidget::toLocalSample(const VaporView::Geo
 
 VaporView::Geo::NavSample OsgEarthViewWidget::toWorldSample(const VaporView::Geo::NavSample& sample)
 {
-    const bool hasRecordedEcef = std::isfinite(sample.ecefXM)
-        && std::isfinite(sample.ecefYM)
-        && std::isfinite(sample.ecefZM);
+    const bool hasRecordedEcef = sample.hasEcef();
     if (hasRecordedEcef)
     {
         height_reference_status_ = QStringLiteral("Using recorded ECEF position; no height datum conversion required.");
-        updateWorldOverlayOriginFromSample(sample);
-        return sample;
+        VaporView::Geo::NavSample worldSample = sample;
+        if (!worldSample.hasLlh())
+        {
+            const VaporView::Geo::LlhPoint llh = VaporView::Geo::ecefToLlh(
+                {sample.ecefXM, sample.ecefYM, sample.ecefZM});
+            worldSample.latDeg = llh.latDeg;
+            worldSample.lonDeg = llh.lonDeg;
+            worldSample.heightM = llh.heightM;
+            worldSample.heightReference = VaporView::Geo::HeightReference::Wgs84Ellipsoid;
+        }
+        updateWorldOverlayOriginFromSample(worldSample);
+        return worldSample;
     }
 
     if (!sample.hasLlh())

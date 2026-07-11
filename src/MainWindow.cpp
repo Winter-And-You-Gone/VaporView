@@ -7482,6 +7482,9 @@ void TemperatureControllerPanel::updateChannelTexts()
     }
     for (ChannelWidgets& channel : channels_)
     {
+        if (channel.common_params_button) channel.common_params_button->setText(is_english_ ? QStringLiteral("Common") : QStringLiteral("常用参数"));
+        if (channel.advanced_params_button) channel.advanced_params_button->setText(is_english_ ? QStringLiteral("Advanced") : QStringLiteral("专业参数"));
+        if (channel.sensor_config_button) channel.sensor_config_button->setText(is_english_ ? QStringLiteral("Sensor Config") : QStringLiteral("传感器配置"));
         if (channel.target_label_text) channel.target_label_text->setText(is_english_ ? QStringLiteral("Target Temp (°C)") : QStringLiteral("目标温度(°C)"));
         if (channel.enable_label_text) channel.enable_label_text->setText(is_english_ ? QStringLiteral("Output Enable") : QStringLiteral("输出使能"));
         if (channel.mode_label_text) channel.mode_label_text->setText(is_english_ ? QStringLiteral("Output Mode") : QStringLiteral("输出模式"));
@@ -7493,6 +7496,17 @@ void TemperatureControllerPanel::updateChannelTexts()
         setDangerTextPalette(channel.max_output_spin);
         if (channel.pid_label_text) channel.pid_label_text->setText(QStringLiteral("PID"));
         if (channel.auto_pid_label_text) channel.auto_pid_label_text->setText(is_english_ ? QStringLiteral("Auto PID") : QStringLiteral("自动 PID"));
+        if (channel.sensor_model_label_text) channel.sensor_model_label_text->setText(is_english_ ? QStringLiteral("Model") : QStringLiteral("模型"));
+        if (channel.ntc_r0_label_text) channel.ntc_r0_label_text->setText(QStringLiteral("NTC R0(Ohm)"));
+        if (channel.ntc_b_label_text) channel.ntc_b_label_text->setText(QStringLiteral("NTC B"));
+        if (channel.pt_r0_label_text) channel.pt_r0_label_text->setText(QStringLiteral("PT R0(Ohm)"));
+        if (channel.pt_a_label_text) channel.pt_a_label_text->setText(QStringLiteral("PT A(E-3)"));
+        if (channel.pt_b_label_text) channel.pt_b_label_text->setText(QStringLiteral("PT B(E-7)"));
+        if (channel.pt_c_label_text) channel.pt_c_label_text->setText(QStringLiteral("PT C(E-12)"));
+        for (size_t i = 0; i < channel.polynomial_label_text.size(); ++i)
+        {
+            if (channel.polynomial_label_text[i]) channel.polynomial_label_text[i]->setText(QStringLiteral("A%1").arg(i));
+        }
         if (channel.enable_switch)
         {
             auto *enableSwitch = static_cast<TemperatureOverviewSwitchButton *>(channel.enable_switch);
@@ -7515,6 +7529,17 @@ void TemperatureControllerPanel::updateChannelTexts()
             channel.auto_pid_combo->setToolTip(is_english_
                 ? QStringLiteral("RD105 AUTOPID: off, PID auto-tune, or reserved realtime optimization.")
                 : QStringLiteral("RD105 AUTOPID：关闭、PID自整定，或预留的实时优化。"));
+        }
+        if (channel.sensor_model_combo)
+        {
+            const QSignalBlocker blocker(channel.sensor_model_combo);
+            channel.sensor_model_combo->setItemText(0, QStringLiteral("B-Value"));
+            channel.sensor_model_combo->setItemText(1, QStringLiteral("PT"));
+            channel.sensor_model_combo->setItemText(2, QStringLiteral("S-H"));
+            channel.sensor_model_combo->setItemText(3, QStringLiteral("MF501"));
+            channel.sensor_model_combo->setToolTip(is_english_
+                ? QStringLiteral("RD105 POLYOMIAL register: B-value, PT, Steinhart-Hart, or MF501 model.")
+                : QStringLiteral("RD105 POLYOMIAL 寄存器：B 值、PT、Steinhart-Hart 或 MF501 模型。"));
         }
     }
     if (status_label_ && status_label_->text().isEmpty()) setCommandStatus(is_english_ ? QStringLiteral("Writes are confirmed by reading back from RD105.") : QStringLiteral("写入命令会在天空端读回确认后才返回成功。"));
@@ -7604,6 +7629,69 @@ void TemperatureControllerPanel::updateChannelData(int index, const VaporView::T
         if (!pending.pid && !hasEditorFocus(channel.kd_spin))
         {
             channel.kd_spin->setValue(channelData.kd);
+        }
+
+        const VaporView::TemperatureControllerCommand& pendingConfig = pending.sensor_config_value;
+        if (pending.sensor_config &&
+            channelData.sensor_model == static_cast<int>(pendingConfig.sensor_model) &&
+            channelData.ntc_b == static_cast<int>(pendingConfig.ntc_b) &&
+            channelData.ntc_r0 == static_cast<int>(pendingConfig.ntc_r0) &&
+            channelData.pt_r0 == static_cast<int>(pendingConfig.pt_r0) &&
+            channelData.pt_a == pendingConfig.pt_a &&
+            channelData.pt_b == pendingConfig.pt_b &&
+            channelData.pt_c == pendingConfig.pt_c)
+        {
+            pending.sensor_config = false;
+        }
+        if (!pending.sensor_config && channel.sensor_model_combo && !hasEditorFocus(channel.sensor_model_combo))
+        {
+            const QSignalBlocker blocker(channel.sensor_model_combo);
+            const int modelIndex = channel.sensor_model_combo->findData(channelData.sensor_model);
+            channel.sensor_model_combo->setCurrentIndex(modelIndex >= 0 ? modelIndex : 0);
+        }
+        if (!pending.sensor_config && channel.ntc_r0_spin && !hasEditorFocus(channel.ntc_r0_spin))
+        {
+            const QSignalBlocker blocker(channel.ntc_r0_spin);
+            channel.ntc_r0_spin->setValue(std::clamp(channelData.ntc_r0, channel.ntc_r0_spin->minimum(), channel.ntc_r0_spin->maximum()));
+        }
+        if (!pending.sensor_config && channel.ntc_b_spin && !hasEditorFocus(channel.ntc_b_spin))
+        {
+            const QSignalBlocker blocker(channel.ntc_b_spin);
+            channel.ntc_b_spin->setValue(channelData.ntc_b / 100.0);
+        }
+        if (!pending.sensor_config && channel.pt_r0_spin && !hasEditorFocus(channel.pt_r0_spin))
+        {
+            const QSignalBlocker blocker(channel.pt_r0_spin);
+            channel.pt_r0_spin->setValue(channelData.pt_r0 / 1000.0);
+        }
+        if (!pending.sensor_config && channel.pt_a_spin && !hasEditorFocus(channel.pt_a_spin))
+        {
+            const QSignalBlocker blocker(channel.pt_a_spin);
+            channel.pt_a_spin->setValue(channelData.pt_a / 1000000.0);
+        }
+        if (!pending.sensor_config && channel.pt_b_spin && !hasEditorFocus(channel.pt_b_spin))
+        {
+            const QSignalBlocker blocker(channel.pt_b_spin);
+            channel.pt_b_spin->setValue(channelData.pt_b / 100000.0);
+        }
+        if (!pending.sensor_config && channel.pt_c_spin && !hasEditorFocus(channel.pt_c_spin))
+        {
+            const QSignalBlocker blocker(channel.pt_c_spin);
+            channel.pt_c_spin->setValue(channelData.pt_c / 10000.0);
+        }
+        if (!pending.sensor_config)
+        {
+            for (size_t i = 0; i < channel.polynomial_edits.size(); ++i)
+            {
+                QLineEdit *edit = channel.polynomial_edits[i];
+                if (!edit || hasEditorFocus(edit))
+                {
+                    continue;
+                }
+                const QSignalBlocker blocker(edit);
+                edit->setText(formatTemperaturePolynomial(channelData.polynomial_mantissas[i],
+                                                          channelData.polynomial_exponents[i]));
+            }
         }
     }
 }

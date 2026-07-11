@@ -15,6 +15,7 @@
 #include <osg/ref_ptr>
 #include <osgViewer/GraphicsWindow>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -95,11 +96,20 @@ public:
     void appendSample(const VaporView::Geo::NavSample& sample);
     void appendSamples(const std::vector<VaporView::Geo::NavSample>& samples);
     void setSamples(const std::vector<VaporView::Geo::NavSample>& samples);
+    void setSamples(std::shared_ptr<const std::vector<VaporView::Geo::NavSample>> samples,
+                    int sampleCount = -1);
+    void appendSampleFromStorage(
+        const std::shared_ptr<const std::vector<VaporView::Geo::NavSample>>& samples,
+        int sampleIndex);
     void clearTrack();
     bool loadEarthFile(const QString& earthPath);
+    void loadEarthFileAsync(const QString& earthPath, std::function<void(bool)> finished);
     bool loadLocal3DTilesPreview(const QString& tilesetPath);
+    void loadLocal3DTilesPreviewAsync(const QString& tilesetPath,
+                                      std::function<void(bool)> finished);
     void clearLocal3DTilesPreview();
     bool loadAircraftModel(const QString& modelPath);
+    void loadAircraftModelAsync(const QString& modelPath, std::function<void(bool)> finished);
     void resetAircraftModelToBuiltIn();
     void setFollowAircraft(bool enabled);
     void setMaxVisibleSamples(int maxVisibleSamples);
@@ -137,9 +147,22 @@ private:
     void updateCameraViewport(int w, int h);
     void loadDefaultAircraftModelIfAvailable();
     bool loadAircraftModelFile(const QString& modelPath, const QString& fallbackReasonPrefix);
+    void loadAircraftModelFileAsync(const QString& modelPath,
+                                    const QString& fallbackReasonPrefix,
+                                    std::function<void(bool)> finished = {});
+    bool applyEarthLoad(EarthLoadDiagnostics diagnostics,
+                        osg::ref_ptr<osg::Node> node,
+                        osgEarth::MapNode* mapNode,
+                        bool useXihuInitialView);
+    bool applyLocal3DTilesLoad(Local3DTilesLoadDiagnostics diagnostics,
+                               osg::ref_ptr<osg::Group> node);
+    bool applyAircraftModelLoad(AircraftModelDiagnostics diagnostics,
+                                osg::ref_ptr<osg::Node> node);
     void updateFollowCamera(const VaporView::Geo::NavSample& sample);
     void setInitialEarthView();
     void rebuildDisplayTrack();
+    void detachSharedSamplesForLiveAppend();
+    const VaporView::Geo::NavSample* latestRawSample() const;
     VaporView::Geo::NavSample toDisplaySample(const VaporView::Geo::NavSample& sample);
     VaporView::Geo::NavSample toLocalSample(const VaporView::Geo::NavSample& sample);
     VaporView::Geo::NavSample toWorldSample(const VaporView::Geo::NavSample& sample);
@@ -173,10 +196,15 @@ private:
     Local3DTilesLoadDiagnostics local_3d_tiles_load_diagnostics_;
     AircraftModelDiagnostics aircraft_model_diagnostics_;
     std::deque<VaporView::Geo::NavSample> raw_samples_;
+    std::shared_ptr<const std::vector<VaporView::Geo::NavSample>> shared_samples_;
+    int shared_sample_count_ = 0;
     bool preserve_full_track_extent_ = false;
     QString height_reference_status_;
     std::unique_ptr<Trajectory3DLayer> trajectory_layer_;
     std::unique_ptr<Aircraft3DLayer> aircraft_layer_;
+    quint64 earth_load_generation_ = 0;
+    quint64 local_3d_tiles_load_generation_ = 0;
+    quint64 aircraft_load_generation_ = 0;
 };
 
 } // namespace VaporView::Map3D

@@ -202,9 +202,11 @@ int main(int argc, char** argv)
             "hidden 3D map window stops live sample flush timer");
 
     mapWindow->close();
-    processEventsFor(100);
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    processEventsFor(200);
     window.close();
-    processEventsFor(100);
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    processEventsFor(200);
     std::cout << "main_window_map3d_live_test passed\n";
     return 0;
 }
