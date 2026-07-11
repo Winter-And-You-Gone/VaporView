@@ -14,9 +14,7 @@ namespace {
 
 bool hasWorldPosition(const VaporView::Geo::NavSample& sample)
 {
-    return std::isfinite(sample.ecefXM)
-        && std::isfinite(sample.ecefYM)
-        && std::isfinite(sample.ecefZM);
+    return sample.hasEcef();
 }
 
 osg::Vec3d samplePosition(const VaporView::Geo::NavSample& sample,

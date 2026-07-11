@@ -99,6 +99,9 @@ int main(int argc, char** argv)
     unresolvedMslSample.latDeg = 30.25;
     unresolvedMslSample.lonDeg = 120.15;
     unresolvedMslSample.heightM = 25.0;
+    unresolvedMslSample.ecefXM = 0.0;
+    unresolvedMslSample.ecefYM = 0.0;
+    unresolvedMslSample.ecefZM = 0.0;
     unresolvedMslSample.heightReference = VaporView::Geo::HeightReference::MeanSeaLevel;
     unresolvedMslSample.fixQuality = VaporView::Geo::FixQuality::Fixed;
     view.setSamples({unresolvedMslSample});
@@ -107,6 +110,8 @@ int main(int argc, char** argv)
             QStringLiteral("MSL sample without ECEF is omitted instead of treated as ellipsoid height"));
     require(heightStats.heightReferenceStatus.contains(QStringLiteral("omitted")),
             QStringLiteral("unresolved height datum is reported explicitly"));
+    require(view.flyToTrack(),
+            QStringLiteral("Earth fly-to ignores unusable zero ECEF values and keeps a valid map camera target"));
 
     VaporView::Geo::NavSample recordedEcefSample = unresolvedMslSample;
     recordedEcefSample.ecefXM = -2764490.0;

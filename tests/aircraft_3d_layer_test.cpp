@@ -156,11 +156,11 @@ int main()
             "quaternion yaw rotates aircraft nose away from north");
 
     VaporView::Geo::NavSample worldSample = localSample(0.0);
-    worldSample.ecefXM = 1.0;
-    worldSample.ecefYM = 2.0;
-    worldSample.ecefZM = 3.0;
+    worldSample.ecefXM = -2764490.0;
+    worldSample.ecefYM = 4787610.0;
+    worldSample.ecefZM = 3170380.0;
     layer.setUseWorldCoordinates(true);
-    layer.setWorldOrigin(osg::Vec3d(1.0, 2.0, 3.0));
+    layer.setWorldOrigin(osg::Vec3d(worldSample.ecefXM, worldSample.ecefYM, worldSample.ecefZM));
     layer.updateSample(worldSample);
     const osg::Vec3d worldPosition = transformedOrigin(transform->getMatrix());
     require(nearlyEqual(worldPosition.x(), 0.0), "world mode uses local offset X");
@@ -181,9 +181,9 @@ int main()
     require(transformedForward(transform->getMatrix()) * expectedEast > 0.999,
             "world yaw 90 follows the local ECEF east tangent");
 
-    worldSample.ecefXM = 4.0;
-    worldSample.ecefYM = 6.0;
-    worldSample.ecefZM = 8.0;
+    worldSample.ecefXM += 3.0;
+    worldSample.ecefYM += 4.0;
+    worldSample.ecefZM += 5.0;
     layer.updateSample(worldSample);
     const osg::Vec3d offsetWorldPosition = transformedOrigin(transform->getMatrix());
     require(nearlyEqual(offsetWorldPosition.x(), 3.0), "world mode preserves local ECEF X offset");

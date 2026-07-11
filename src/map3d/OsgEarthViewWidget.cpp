@@ -153,9 +153,7 @@ osg::Node* createLocalGridNode()
 
 osg::Vec3d samplePosition(const VaporView::Geo::NavSample& sample)
 {
-    if (std::isfinite(sample.ecefXM)
-        && std::isfinite(sample.ecefYM)
-        && std::isfinite(sample.ecefZM))
+    if (sample.hasEcef())
     {
         return osg::Vec3d(sample.ecefXM, sample.ecefYM, sample.ecefZM);
     }
@@ -164,6 +162,30 @@ osg::Vec3d samplePosition(const VaporView::Geo::NavSample& sample)
         return osg::Vec3d(sample.nedEM, sample.nedNM, -sample.nedDM);
     }
     return osg::Vec3d(sample.lonDeg * 100000.0, sample.latDeg * 100000.0, sample.heightM);
+}
+
+bool sampleWorldFocusPosition(const VaporView::Geo::NavSample& sample, osg::Vec3d& world)
+{
+    if (sample.hasEcef())
+    {
+        world.set(sample.ecefXM, sample.ecefYM, sample.ecefZM);
+        return true;
+    }
+    if (!sample.hasLlh())
+    {
+        return false;
+    }
+
+    const osgEarth::SpatialReference* wgs84 = osgEarth::SpatialReference::get("wgs84");
+    if (!wgs84)
+    {
+        return false;
+    }
+    osgEarth::GeoPoint geo(wgs84, sample.lonDeg, sample.latDeg, sample.heightM, osgEarth::ALTMODE_ABSOLUTE);
+    return geo.toWorld(world)
+        && std::isfinite(world.x())
+        && std::isfinite(world.y())
+        && std::isfinite(world.z());
 }
 
 } // namespace
@@ -685,7 +707,19 @@ bool OsgEarthViewWidget::flyToAircraft()
         return false;
     }
     initializeSceneIfNeeded();
-    setLookAt(samplePosition(toDisplaySample(*latest)), 600.0);
+    osg::Vec3d center;
+    if (earth_node_ && map_node_)
+    {
+        if (!sampleWorldFocusPosition(*latest, center))
+        {
+            return false;
+        }
+        setLookAt(center, 1200.0);
+    }
+    else
+    {
+        setLookAt(samplePosition(toDisplaySample(*latest)), 600.0);
+    }
     update();
     return true;
 }
@@ -710,16 +744,31 @@ bool OsgEarthViewWidget::flyToTrack()
     {
         focusSamples.assign(raw_samples_.cbegin(), raw_samples_.cend());
     }
-    for (const VaporView::Geo::NavSample& sample : focusSamples)
+    if (earth_node_ && map_node_)
     {
-        bounds.expandBy(samplePosition(toDisplaySample(sample)));
+        for (const VaporView::Geo::NavSample& sample : focusSamples)
+        {
+            osg::Vec3d world;
+            if (sampleWorldFocusPosition(sample, world))
+            {
+                bounds.expandBy(world);
+            }
+        }
+    }
+    else
+    {
+        for (const VaporView::Geo::NavSample& sample : focusSamples)
+        {
+            bounds.expandBy(samplePosition(toDisplaySample(sample)));
+        }
     }
     if (!bounds.valid())
     {
         return false;
     }
 
-    setLookAt(bounds.center(), (std::max)(300.0, static_cast<double>(bounds.radius()) * 3.0));
+    const double minimumRangeM = earth_node_ && map_node_ ? 3000.0 : 300.0;
+    setLookAt(bounds.center(), (std::max)(minimumRangeM, static_cast<double>(bounds.radius()) * 3.0));
     update();
     return true;
 }
@@ -1100,11 +1149,7 @@ void OsgEarthViewWidget::updateFollowCamera(const VaporView::Geo::NavSample& sam
     constexpr double kFollowDistanceM = 160.0;
     constexpr double kFollowHeightM = 90.0;
 
-    if (earth_node_
-        && std::isfinite(sample.ecefXM)
-        && std::isfinite(sample.ecefYM)
-        && std::isfinite(sample.ecefZM)
-        && sample.hasLlh())
+    if (earth_node_ && sample.hasEcef() && sample.hasLlh())
     {
         osgEarth::GeoPoint focalPoint;
         const osgEarth::SpatialReference* wgs84 = osgEarth::SpatialReference::get("wgs84");
@@ -1220,8 +1265,12 @@ void OsgEarthViewWidget::setLookAt(const osg::Vec3d& center, double distanceM)
     }
 
     const double safeDistance = (std::max)(50.0, distanceM);
-    if (earth_node_ && map_node_ && center.length2() > 1.0)
+    if (earth_node_ && map_node_)
     {
+        if (!(center.length2() > 1.0))
+        {
+            return;
+        }
         osgEarth::GeoPoint focalPoint;
         const osgEarth::SpatialReference* wgs84 = osgEarth::SpatialReference::get("wgs84");
         osgEarth::EarthManipulator* manipulator = ensureEarthManipulator(viewer_.get());
@@ -1239,6 +1288,7 @@ void OsgEarthViewWidget::setLookAt(const osg::Vec3d& center, double distanceM)
             manipulator->updateCamera(*viewer_->getCamera());
             return;
         }
+        return;
     }
 
     const osg::Vec3d eye(center.x() - safeDistance,
@@ -1340,10 +1390,7 @@ void OsgEarthViewWidget::resetWorldOverlayOrigin()
 
 void OsgEarthViewWidget::updateWorldOverlayOriginFromSample(const VaporView::Geo::NavSample& sample)
 {
-    if (!earth_node_
-        || !std::isfinite(sample.ecefXM)
-        || !std::isfinite(sample.ecefYM)
-        || !std::isfinite(sample.ecefZM))
+    if (!earth_node_ || !sample.hasEcef())
     {
         return;
     }
@@ -1423,6 +1470,9 @@ VaporView::Geo::NavSample OsgEarthViewWidget::toWorldSample(const VaporView::Geo
         invalidWorldSample.latDeg = invalid;
         invalidWorldSample.lonDeg = invalid;
         invalidWorldSample.heightM = invalid;
+        invalidWorldSample.ecefXM = invalid;
+        invalidWorldSample.ecefYM = invalid;
+        invalidWorldSample.ecefZM = invalid;
         invalidWorldSample.nedNM = invalid;
         invalidWorldSample.nedEM = invalid;
         invalidWorldSample.nedDM = invalid;
