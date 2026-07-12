@@ -94,6 +94,9 @@ int main(int argc, char** argv)
             QStringLiteral("earth diagnostics report successful load"));
     require(earthDiagnostics.foundMapNode,
             QStringLiteral("earth file contains an osgEarth MapNode"));
+    require(earthDiagnostics.layerSummaries.join(QStringLiteral(" | "))
+                .contains(QStringLiteral("visible-first screen-space LOD")),
+            QStringLiteral("terrain prioritizes imagery for the visible camera region"));
 
     VaporView::Geo::NavSample unresolvedMslSample;
     unresolvedMslSample.latDeg = 30.25;

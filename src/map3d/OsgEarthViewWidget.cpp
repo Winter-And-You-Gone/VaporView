@@ -76,6 +76,7 @@ void configureHighResolutionTerrain(osgEarth::MapNode* mapNode)
     terrainOptions.setLODMethod(osgEarth::LODMethod::SCREEN_SPACE);
     terrainOptions.setTilePixelSize(kTerrainTilePixelSize);
     terrainOptions.setScreenSpaceError(0.0f);
+    terrainOptions.setProgressive(false);
     terrainOptions.setMorphImagery(false);
     mapNode->setScreenSpaceError(0.0f);
 
@@ -652,7 +653,7 @@ bool OsgEarthViewWidget::applyEarthLoad(EarthLoadDiagnostics diagnostics,
     map_node_ = mapNode;
     configureHighResolutionTerrain(map_node_);
     earth_load_diagnostics_.layerSummaries.push_back(
-        QStringLiteral("Terrain detail: screen-space LOD, 128 px tile threshold."));
+        QStringLiteral("Terrain detail: visible-first screen-space LOD, 128 px tile threshold."));
     use_xihu_initial_view_ = useXihuInitialView;
     if (replacedPreviousNode)
     {
