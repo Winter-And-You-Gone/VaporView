@@ -41,7 +41,7 @@ namespace VaporView::Map3D {
 namespace {
 
 constexpr qint64 kStatusUpdateIntervalMs = 200;
-constexpr double kAutomaticSentinel2ImageryRangeM = 7000.0;
+constexpr double kAutomaticSentinel2ImageryRangeM = 20000.0;
 
 QString heightSafetyNote()
 {
@@ -637,9 +637,20 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
     recordTrackSource(QStringLiteral("Session"),
                       replay_.currentSample(),
                       sourceCsvPath);
+    resetAutomaticSentinel2Imagery();
     const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
     updateReplayUi();
     updateStatus(replay_.currentSample());
+    if (sentinel2_auto_load_timer_ && !isSentinel2ImageryActive())
+    {
+        sentinel2_auto_load_timer_->start();
+        QTimer::singleShot(0, this, [this]() {
+            if (view_)
+            {
+                maybeLoadSentinel2ImageryForRange(view_->earthCameraRangeM());
+            }
+        });
+    }
     statusBar()->showMessage(QStringLiteral("Loaded %1 samples from %2%3")
                                  .arg(samples->size())
                                  .arg(sourceCsvPath,
@@ -880,7 +891,7 @@ void Map3DWindow::maybeLoadSentinel2ImageryForRange(double rangeM)
         {
             sentinel2_auto_load_timer_->stop();
         }
-        updateStatus(nullptr);
+        updateStatus(nullptr, true);
         statusBar()->showMessage(QStringLiteral("已自动加载 Sentinel-2 本地影像，已保留当前视角。"), 5000);
     });
 }
