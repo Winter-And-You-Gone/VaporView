@@ -29,6 +29,8 @@
 #include <osgEarth/Profile>
 #include <osgEarth/Registry>
 #include <osgEarth/SpatialReference>
+#include <osgEarth/TerrainEngineNode>
+#include <osgEarth/TerrainOptions>
 #include <osgEarth/Viewpoint>
 #include <osgEarth/XYZ>
 
@@ -61,6 +63,24 @@ namespace {
 constexpr double kEarthRadiusM = 6378137.0;
 constexpr unsigned kTiandituMaxZoom = 18;
 constexpr const char* kTiandituSatelliteLayerName = "Tianditu Satellite imagery";
+constexpr float kTerrainTilePixelSize = 128.0f;
+
+void configureHighResolutionTerrain(osgEarth::MapNode* mapNode)
+{
+    if (!mapNode) return;
+
+    osgEarth::TerrainOptionsAPI terrainOptions = mapNode->getTerrainOptions();
+    terrainOptions.setLODMethod(osgEarth::LODMethod::SCREEN_SPACE);
+    terrainOptions.setTilePixelSize(kTerrainTilePixelSize);
+    terrainOptions.setScreenSpaceError(0.0f);
+    terrainOptions.setMorphImagery(false);
+    mapNode->setScreenSpaceError(0.0f);
+
+    if (osgEarth::TerrainEngine* terrainEngine = mapNode->getTerrainEngine())
+    {
+        terrainEngine->dirtyTerrainOptions();
+    }
+}
 
 void assertGuiThread(const QObject* object, const char* function)
 {
@@ -623,6 +643,9 @@ bool OsgEarthViewWidget::applyEarthLoad(EarthLoadDiagnostics diagnostics,
     if (earth_node_) root_->removeChild(earth_node_.get());
     earth_node_ = std::move(node);
     map_node_ = mapNode;
+    configureHighResolutionTerrain(map_node_);
+    earth_load_diagnostics_.layerSummaries.push_back(
+        QStringLiteral("Terrain detail: screen-space LOD, 128 px tile threshold."));
     use_xihu_initial_view_ = useXihuInitialView;
     if (replacedPreviousNode)
     {
