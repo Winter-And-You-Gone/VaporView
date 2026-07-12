@@ -1,4 +1,5 @@
 #include "SkySessionRecorder.h"
+#include "geo/CoordinateTransform.h"
 
 #include <QCoreApplication>
 #include <QFile>
@@ -74,9 +75,9 @@ int main(int argc, char *argv[])
     epsilon.latitude_deg = 31.230412345;
     epsilon.longitude_deg = 121.473712345;
     epsilon.height_m = 1200.1234567;
-    epsilon.ecef_x_m = 1000.1234567;
-    epsilon.ecef_y_m = 2000.1234567;
-    epsilon.ecef_z_m = 3000.1234567;
+    epsilon.ecef_x_m = 365504425.008990;
+    epsilon.ecef_y_m = 13374370.950326;
+    epsilon.ecef_z_m = 58160.200631;
     epsilon.ned_n_m = 1.25;
     epsilon.ned_e_m = -2.5;
     epsilon.ned_d_m = 0.75;
@@ -191,9 +192,15 @@ int main(int argc, char *argv[])
     require(deviceCells.at(5) == QStringLiteral("31.230412345"), "latitude csv precision");
     require(deviceCells.at(6) == QStringLiteral("121.473712345"), "longitude csv precision");
     require(deviceCells.at(7) == QStringLiteral("1200.123457"), "height csv precision");
-    require(deviceCells.at(8) == QStringLiteral("1000.123457"), "ecef x csv precision");
-    require(deviceCells.at(9) == QStringLiteral("2000.123457"), "ecef y csv precision");
-    require(deviceCells.at(10) == QStringLiteral("3000.123457"), "ecef z csv precision");
+    VaporView::Geo::EcefPoint expectedEcef;
+    require(VaporView::Geo::deriveEcefFromLlh(epsilon.latitude_deg,
+                                              epsilon.longitude_deg,
+                                              epsilon.height_m,
+                                              expectedEcef),
+            "derive recorder ECEF from LLH");
+    require(deviceCells.at(8) == QString::number(expectedEcef.xM, 'f', 6), "derived ecef x csv precision");
+    require(deviceCells.at(9) == QString::number(expectedEcef.yM, 'f', 6), "derived ecef y csv precision");
+    require(deviceCells.at(10) == QString::number(expectedEcef.zM, 'f', 6), "derived ecef z csv precision");
     require(deviceCells.at(11) == QStringLiteral("1.250000"), "ned n csv value");
     require(deviceCells.at(23) == QStringLiteral("1.250000"), "roll csv value");
     require(deviceCells.at(33) == QStringLiteral("9.100000"), "imu acc x csv value");

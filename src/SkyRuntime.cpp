@@ -1,4 +1,5 @@
 #include "SkyRuntime.h"
+#include "geo/CoordinateTransform.h"
 #include "geo/GeoTypes.h"
 
 #include "SerialTelemetryLink.h"
@@ -32,6 +33,42 @@ bool connectedAndFresh(const DeviceStatusItem& status, quint64 nowUs, quint64 ti
            status.last_data_time_us > 0 &&
            nowUs >= status.last_data_time_us &&
            nowUs - status.last_data_time_us <= timeoutUs;
+}
+
+bool hasUsableEpsilonLlh(const EpsilonData& data)
+{
+    return std::isfinite(data.latitude_deg) &&
+           std::isfinite(data.longitude_deg) &&
+           std::isfinite(data.height_m) &&
+           data.latitude_deg >= -90.0 &&
+           data.latitude_deg <= 90.0 &&
+           data.longitude_deg >= -180.0 &&
+           data.longitude_deg <= 180.0 &&
+           (std::abs(data.latitude_deg) > 1.0e-9 ||
+            std::abs(data.longitude_deg) > 1.0e-9 ||
+            std::abs(data.height_m) > 1.0e-9);
+}
+
+bool resolveEpsilonEcefFromLlh(EpsilonData& data)
+{
+    if (Geo::isPlausibleEcef(data.ecef_x_m, data.ecef_y_m, data.ecef_z_m))
+    {
+        return true;
+    }
+    if (!hasUsableEpsilonLlh(data))
+    {
+        return false;
+    }
+
+    Geo::EcefPoint derived;
+    if (!Geo::deriveEcefFromLlh(data.latitude_deg, data.longitude_deg, data.height_m, derived))
+    {
+        return false;
+    }
+    data.ecef_x_m = derived.xM;
+    data.ecef_y_m = derived.yM;
+    data.ecef_z_m = derived.zM;
+    return true;
 }
 
 CommandAck makeAck(const CommandMessage& command, CommandErrorCode errorCode = CommandErrorCode::Ok)
@@ -480,7 +517,7 @@ void SkyRuntime::onBytesReceived(const QByteArray& bytes)
 void SkyRuntime::sendBasicTelemetry()
 {
     const quint64 nowUs = currentTimestampUs();
-    const EpsilonData epsilon = device_manager_.latestEpsilon();
+    EpsilonData epsilon = device_manager_.latestEpsilon();
     const PtbData ptb = device_manager_.latestPtb();
     const HmpData hmp = device_manager_.latestHmp();
     const LidarData lidar = device_manager_.latestLidar();
@@ -514,7 +551,7 @@ void SkyRuntime::sendBasicTelemetry()
         data.latitude_deg = epsilon.latitude_deg;
         data.longitude_deg = epsilon.longitude_deg;
         data.height_m = epsilon.height_m;
-        if (Geo::isPlausibleEcef(epsilon.ecef_x_m, epsilon.ecef_y_m, epsilon.ecef_z_m))
+        if (resolveEpsilonEcefFromLlh(epsilon))
         {
             data.validity_flags |= BasicHasEcef;
             data.ecef_x_m = epsilon.ecef_x_m;

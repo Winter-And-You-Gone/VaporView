@@ -57,6 +57,8 @@ private:
 
 EcefPoint llhToEcef(const LlhPoint& point);
 LlhPoint ecefToLlh(const EcefPoint& point);
+bool deriveEcefFromLlh(double latDeg, double lonDeg, double heightM, EcefPoint& ecef);
+bool resolveEcefFromLlh(NavSample& sample);
 EnuPoint nedToEnu(const NedPoint& point);
 NedPoint enuToNed(const EnuPoint& point);
 EnuPoint navSampleToEnu(const NavSample& sample, const LocalTangentPlane& localFrame);

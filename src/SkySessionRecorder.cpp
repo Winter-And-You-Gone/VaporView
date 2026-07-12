@@ -1,4 +1,5 @@
 #include "SkySessionRecorder.h"
+#include "geo/CoordinateTransform.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -78,6 +79,42 @@ struct UnifiedRawRecordHeader
     quint64 sequence;
 };
 #pragma pack(pop)
+
+bool hasUsableEpsilonLlh(const EpsilonData& data)
+{
+    return std::isfinite(data.latitude_deg) &&
+           std::isfinite(data.longitude_deg) &&
+           std::isfinite(data.height_m) &&
+           data.latitude_deg >= -90.0 &&
+           data.latitude_deg <= 90.0 &&
+           data.longitude_deg >= -180.0 &&
+           data.longitude_deg <= 180.0 &&
+           (std::abs(data.latitude_deg) > 1.0e-9 ||
+            std::abs(data.longitude_deg) > 1.0e-9 ||
+            std::abs(data.height_m) > 1.0e-9);
+}
+
+bool resolveEpsilonEcefFromLlh(EpsilonData& data)
+{
+    if (Geo::isPlausibleEcef(data.ecef_x_m, data.ecef_y_m, data.ecef_z_m))
+    {
+        return true;
+    }
+    if (!hasUsableEpsilonLlh(data))
+    {
+        return false;
+    }
+
+    Geo::EcefPoint derived;
+    if (!Geo::deriveEcefFromLlh(data.latitude_deg, data.longitude_deg, data.height_m, derived))
+    {
+        return false;
+    }
+    data.ecef_x_m = derived.xM;
+    data.ecef_y_m = derived.yM;
+    data.ecef_z_m = derived.zM;
+    return true;
+}
 
 quint64 nowUs()
 {
@@ -538,8 +575,15 @@ void SkySessionRecorder::recordDeviceSnapshot(quint64 hostTimeUs,
         return std::isfinite(value) ? QString::number(value, 'f', precision) : QString();
     };
 
-    if (hasEpsilon && epsilon.valid)
+    EpsilonData resolvedEpsilon = epsilon;
+    if (hasEpsilon && resolvedEpsilon.valid)
     {
+        resolveEpsilonEcefFromLlh(resolvedEpsilon);
+    }
+
+    if (hasEpsilon && resolvedEpsilon.valid)
+    {
+        const EpsilonData& epsilon = resolvedEpsilon;
         row << QString::number(epsilonHostTimeUs)
             << QString::number(epsilon.device_timestamp_us)
             << QString::number(epsilon.utc_unix_s)

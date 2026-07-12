@@ -14,6 +14,7 @@
 #include "WindowSizing.h"
 #include "data_collector.h"
 #include "data_types.h"
+#include "geo/CoordinateTransform.h"
 #include "serial_probe_utils.h"
 #include <QMenu>
 #include <QAbstractItemView>
@@ -140,6 +141,43 @@ bool isTemperatureCommonCommand(VaporView::CommandId command)
            command == VaporView::CommandId::SetTemperatureOvertempOutputMode ||
            command == VaporView::CommandId::RestoreTemperatureFactoryDefaults;
 }
+
+bool hasUsableEpsilonLlh(const VaporView::EpsilonData& data)
+{
+    return std::isfinite(data.latitude_deg) &&
+           std::isfinite(data.longitude_deg) &&
+           std::isfinite(data.height_m) &&
+           data.latitude_deg >= -90.0 &&
+           data.latitude_deg <= 90.0 &&
+           data.longitude_deg >= -180.0 &&
+           data.longitude_deg <= 180.0 &&
+           (std::abs(data.latitude_deg) > 1.0e-9 ||
+            std::abs(data.longitude_deg) > 1.0e-9 ||
+            std::abs(data.height_m) > 1.0e-9);
+}
+
+bool resolveEpsilonEcefFromLlh(VaporView::EpsilonData& data)
+{
+    if (VaporView::Geo::isPlausibleEcef(data.ecef_x_m, data.ecef_y_m, data.ecef_z_m))
+    {
+        return true;
+    }
+    if (!hasUsableEpsilonLlh(data))
+    {
+        return false;
+    }
+
+    VaporView::Geo::EcefPoint derived;
+    if (!VaporView::Geo::deriveEcefFromLlh(data.latitude_deg, data.longitude_deg, data.height_m, derived))
+    {
+        return false;
+    }
+    data.ecef_x_m = derived.xM;
+    data.ecef_y_m = derived.yM;
+    data.ecef_z_m = derived.zM;
+    return true;
+}
+
 int temperatureRs485BaudRateForIndex(quint16 index)
 {
     static constexpr std::array<int, 8> kRates = {4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800};
@@ -21950,6 +21988,10 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
             current_epsilon_.ecef_y_m = telemetry.ecef_y_m;
             current_epsilon_.ecef_z_m = telemetry.ecef_z_m;
         }
+        if (hasFlag(VaporView::BasicHasPosition))
+        {
+            resolveEpsilonEcefFromLlh(current_epsilon_);
+        }
         current_epsilon_.system_status_bits = telemetry.status_bits;
         current_epsilon_.filter_status_bits = telemetry.filter_status_bits;
         current_epsilon_.update_status_bits = telemetry.update_status_bits;
@@ -22131,6 +22173,7 @@ VaporView::Geo::NavSample MainWindow::map3DSampleFromEpsilon(const VaporView::Ep
         sample.fixQuality = VaporView::Geo::FixQuality::Single;
     }
 
+    VaporView::Geo::resolveEcefFromLlh(sample);
     return sample;
 }
 

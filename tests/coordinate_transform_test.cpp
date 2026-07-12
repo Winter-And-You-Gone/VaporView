@@ -42,6 +42,38 @@ int main()
     requireNear(roundTrip.lonDeg, shanghai.lonDeg, 0.0000001, "LLH round-trip longitude");
     requireNear(roundTrip.heightM, shanghai.heightM, 0.001, "LLH round-trip height");
 
+    VaporView::Geo::NavSample corruptEcefSample;
+    corruptEcefSample.latDeg = 30.136981202;
+    corruptEcefSample.lonDeg = 120.069381752;
+    corruptEcefSample.heightM = 9.605644;
+    corruptEcefSample.heightReference = VaporView::Geo::HeightReference::Wgs84Ellipsoid;
+    corruptEcefSample.ecefXM = 365504425.008990;
+    corruptEcefSample.ecefYM = 13374370.950326;
+    corruptEcefSample.ecefZM = 58160.200631;
+    require(!VaporView::Geo::isPlausibleEcef(corruptEcefSample.ecefXM,
+                                             corruptEcefSample.ecefYM,
+                                             corruptEcefSample.ecefZM),
+            "fixture ECEF is implausible");
+    require(VaporView::Geo::resolveEcefFromLlh(corruptEcefSample),
+            "WGS84 LLH resolves implausible ECEF");
+    VaporView::Geo::EcefPoint expectedDerived;
+    require(VaporView::Geo::deriveEcefFromLlh(corruptEcefSample.latDeg,
+                                              corruptEcefSample.lonDeg,
+                                              corruptEcefSample.heightM,
+                                              expectedDerived),
+            "derive WGS84 ECEF from LLH");
+    requireNear(corruptEcefSample.ecefXM, expectedDerived.xM, 0.001, "derived ECEF X");
+    requireNear(corruptEcefSample.ecefYM, expectedDerived.yM, 0.001, "derived ECEF Y");
+    requireNear(corruptEcefSample.ecefZM, expectedDerived.zM, 0.001, "derived ECEF Z");
+
+    VaporView::Geo::NavSample mslSample = corruptEcefSample;
+    mslSample.heightReference = VaporView::Geo::HeightReference::MeanSeaLevel;
+    mslSample.ecefXM = 0.0;
+    mslSample.ecefYM = 0.0;
+    mslSample.ecefZM = 0.0;
+    require(!VaporView::Geo::resolveEcefFromLlh(mslSample),
+            "non-WGS84 height reference is not converted implicitly");
+
     VaporView::Geo::LocalTangentPlane local(shanghai);
     require(local.isValid(), "valid local tangent plane");
     const VaporView::Geo::EnuPoint originEnu = local.llhToEnu(shanghai);

@@ -1,4 +1,5 @@
 #include "geo/SessionTrackReader.h"
+#include "geo/CoordinateTransform.h"
 
 #include <QtCore/QDir>
 #include <QtCore/QDirIterator>
@@ -350,6 +351,7 @@ SessionTrackReadResult readSessionTrack(const QString& sessionDir)
 
         if (sample.hasLlh())
         {
+            resolveEcefFromLlh(sample);
             result.samples.push_back(sample);
         }
         else

@@ -100,6 +100,35 @@ LlhPoint ecefToLlh(const EcefPoint& point)
     return {latRad * kRadToDeg, lonRad * kRadToDeg, height};
 }
 
+bool deriveEcefFromLlh(double latDeg, double lonDeg, double heightM, EcefPoint& ecef)
+{
+    ecef = llhToEcef({latDeg, lonDeg, heightM});
+    return isPlausibleEcef(ecef.xM, ecef.yM, ecef.zM);
+}
+
+bool resolveEcefFromLlh(NavSample& sample)
+{
+    if (sample.hasEcef())
+    {
+        return true;
+    }
+    if (!sample.hasLlh()
+        || sample.heightReference != HeightReference::Wgs84Ellipsoid)
+    {
+        return false;
+    }
+
+    EcefPoint derived;
+    if (!deriveEcefFromLlh(sample.latDeg, sample.lonDeg, sample.heightM, derived))
+    {
+        return false;
+    }
+    sample.ecefXM = derived.xM;
+    sample.ecefYM = derived.yM;
+    sample.ecefZM = derived.zM;
+    return true;
+}
+
 EnuPoint nedToEnu(const NedPoint& point)
 {
     return {point.eastM, point.northM, -point.downM};

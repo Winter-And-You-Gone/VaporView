@@ -1,4 +1,5 @@
 #include "data_collector.h"
+#include "geo/CoordinateTransform.h"
 #include "geo/GeoTypes.h"
 #include "TemperatureControllerProtocol.h"
 #include "hipnuc_dec.h"
@@ -291,6 +292,28 @@ double readDoubleLE(const uint8_t* data)
 double radToDeg(double radians)
 {
   return radians * kRadToDeg;
+}
+
+bool resolveEpsilonEcefFromLlh(EpsilonData& data, bool hasResolvedLlh)
+{
+  if (VaporView::Geo::isPlausibleEcef(data.ecef_x_m, data.ecef_y_m, data.ecef_z_m))
+  {
+    return true;
+  }
+  if (!hasResolvedLlh)
+  {
+    return false;
+  }
+
+  VaporView::Geo::EcefPoint derived;
+  if (!VaporView::Geo::deriveEcefFromLlh(data.latitude_deg, data.longitude_deg, data.height_m, derived))
+  {
+    return false;
+  }
+  data.ecef_x_m = derived.xM;
+  data.ecef_y_m = derived.yM;
+  data.ecef_z_m = derived.zM;
+  return true;
 }
 
 int64_t daysFromCivil(int year, unsigned month, unsigned day)
@@ -2100,6 +2123,7 @@ void EpsilonCollector::run()
   PacketRateTracker geodeticRateTracker;
   PacketRateTracker ecefRateTracker;
   bool reportedInvalidEcef = false;
+  bool hasResolvedLlh = false;
 
   auto consumeFrame = [this,
                        &havePreviousSerial,
@@ -2113,7 +2137,8 @@ void EpsilonCollector::run()
                        &satelliteRateTracker,
                        &geodeticRateTracker,
                        &ecefRateTracker,
-                       &reportedInvalidEcef](const std::vector<uint8_t>& frame, uint64_t hostTimestampUs) {
+                       &reportedInvalidEcef,
+                       &hasResolvedLlh](const std::vector<uint8_t>& frame, uint64_t hostTimestampUs) {
     if (frame.size() < 8)
     {
       return;
@@ -2244,6 +2269,8 @@ void EpsilonCollector::run()
           latest_data_.latitude_deg = radToDeg(readDoubleLE(payload + 14));
           latest_data_.longitude_deg = radToDeg(readDoubleLE(payload + 22));
           latest_data_.height_m = readDoubleLE(payload + 30);
+          hasResolvedLlh = true;
+          resolveEpsilonEcefFromLlh(latest_data_, hasResolvedLlh);
         }
         if (payloadSize >= 50)
         {
@@ -2328,6 +2355,8 @@ void EpsilonCollector::run()
         latest_data_.height_m = readDoubleLE(payload + 16);
         latest_data_.hacc_m = readFloatLE(payload + 24);
         latest_data_.vacc_m = readFloatLE(payload + 28);
+        hasResolvedLlh = true;
+        resolveEpsilonEcefFromLlh(latest_data_, hasResolvedLlh);
       }
       else if (packetId == kMsgEcefPos && payloadSize >= 24)
       {
@@ -2347,11 +2376,13 @@ void EpsilonCollector::run()
           latest_data_.ecef_x_m = invalid;
           latest_data_.ecef_y_m = invalid;
           latest_data_.ecef_z_m = invalid;
+          resolveEpsilonEcefFromLlh(latest_data_, hasResolvedLlh);
           if (!reportedInvalidEcef)
           {
             std::ostringstream message;
             message << "EPSILON: ignoring implausible ECEF packet ("
-                    << xM << ", " << yM << ", " << zM << ") m";
+                    << xM << ", " << yM << ", " << zM
+                    << ") m; using LLH-derived WGS84 ECEF when available";
             invalidEcefWarning = message.str();
             reportedInvalidEcef = true;
           }
@@ -2398,6 +2429,8 @@ void EpsilonCollector::run()
               latest_data_.latitude_deg = readI32LE(mavlinkData + 8) / 10000000.0;
               latest_data_.longitude_deg = readI32LE(mavlinkData + 12) / 10000000.0;
               latest_data_.height_m = readI32LE(mavlinkData + 16) / 1000.0;
+              hasResolvedLlh = true;
+              resolveEpsilonEcefFromLlh(latest_data_, hasResolvedLlh);
               const uint16_t eph = readU16LE(mavlinkData + 20);
               const uint16_t epv = readU16LE(mavlinkData + 22);
               if (eph != 0xFFFFu)
@@ -2450,6 +2483,8 @@ void EpsilonCollector::run()
               latest_data_.latitude_deg = readI32LE(mavlinkData + 4) / 10000000.0;
               latest_data_.longitude_deg = readI32LE(mavlinkData + 8) / 10000000.0;
               latest_data_.height_m = readI32LE(mavlinkData + 12) / 1000.0;
+              hasResolvedLlh = true;
+              resolveEpsilonEcefFromLlh(latest_data_, hasResolvedLlh);
               latest_data_.vel_n_mps = readI16LE(mavlinkData + 20) / 100.0;
               latest_data_.vel_e_mps = readI16LE(mavlinkData + 22) / 100.0;
               latest_data_.vel_d_mps = readI16LE(mavlinkData + 24) / 100.0;

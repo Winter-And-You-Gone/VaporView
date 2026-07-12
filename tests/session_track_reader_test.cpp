@@ -1,4 +1,5 @@
 #include "geo/SessionTrackReader.h"
+#include "geo/CoordinateTransform.h"
 
 #include <QtCore/QDir>
 #include <QtCore/QFile>
@@ -70,8 +71,15 @@ int main()
         const auto result = VaporView::Geo::readSessionTrack(sessionDir.path());
         require(result.ok, "session with valid LLH and corrupt ECEF remains readable");
         require(result.samples.size() == 1, "invalid-ECEF session keeps LLH sample");
-        require(result.samples.front().hasLlh(), "invalid-ECEF session keeps valid LLH");
-        require(!result.samples.front().hasEcef(), "invalid-ECEF session rejects corrupt recorded ECEF");
+        const auto& sample = result.samples.front();
+        require(sample.hasLlh(), "invalid-ECEF session keeps valid LLH");
+        require(sample.hasEcef(), "invalid-ECEF session uses LLH-derived ECEF");
+        VaporView::Geo::EcefPoint expectedEcef;
+        require(VaporView::Geo::deriveEcefFromLlh(sample.latDeg, sample.lonDeg, sample.heightM, expectedEcef),
+                "derive expected ECEF from LLH");
+        require(std::fabs(sample.ecefXM - expectedEcef.xM) < 0.001, "derived ECEF X replaces corrupt recorded ECEF");
+        require(std::fabs(sample.ecefYM - expectedEcef.yM) < 0.001, "derived ECEF Y replaces corrupt recorded ECEF");
+        require(std::fabs(sample.ecefZM - expectedEcef.zM) < 0.001, "derived ECEF Z replaces corrupt recorded ECEF");
     }
 
     {

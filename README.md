@@ -420,6 +420,13 @@ Qt `SerialPort` 模块当前用于枚举可用串口；实际采集读写使用�
 | `0x5D` | `MSG_ECEF_POS` / ECEF 坐标 |
 | `0xF0` | Main MAVLink Tunnel |
 
+ECEF 使用策略：
+
+- `raw/epsilon.dat` 始终保存设备原始 `0x5D MSG_ECEF_POS` 帧，不改写、不用反算值覆盖；这是排查设备输出和协议问题的第一现场。
+- 程序运行、天空-地面遥测、3D 地图、轨迹重放和新写入的 `sensors/devices.csv` 使用“resolved ECEF”：如果设备 `0x5D` 的 ECEF 落在合理 WGS84 地球半径壳层内，就直接使用设备 ECEF；如果设备 ECEF 明显异常但同一快照有有效 EPSILON LLH，则用 `0x5C MSG_GEODETIC_POS`/系统状态里的经纬高按 WGS84 椭球反算 ECEF。
+- 该 fallback 是当前针对 EPSILON `0x5D` 原始输出异常的保护策略，不代表设备原始 ECEF 已经正常。需要追根因时，应对比 `raw/epsilon.dat` 中的 `0x5D` 原始帧和同时间 `0x5C` LLH 反算结果。
+- LLH 反算只在高度参考为 WGS84 ellipsoid 的样本上隐式启用；非 WGS84 高程参考不会被静默转换成 ECEF。
+
 EPSILON 包频率配置：
 
 - 分组模式下，`0x40`、`0x41`、`0x42`、`0x50` 按 UI 频率下发。
@@ -640,6 +647,8 @@ data/
 - GNSS 状态、卫星数、DOP、精度、差分龄期、heading 状态、EPSILON 状态位
 - EPSILON 有效性和错误信息
 - HMP 温度 / 湿度、PTB 气压、Lidar 距离 / 信号强度 / 有效性
+
+其中 `ecef_x_m`、`ecef_y_m`、`ecef_z_m` 是程序使用的 resolved ECEF 字段：优先为设备可信 `0x5D`，否则为有效 LLH 的 WGS84 反算值。原始设备 `0x5D` 帧只在 `raw/epsilon.dat` 中保真保存。
 
 ### `raw/*.dat`
 
