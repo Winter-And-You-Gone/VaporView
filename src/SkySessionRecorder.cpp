@@ -43,6 +43,8 @@ constexpr const char *kDevicesCsvHeader =
     "body_acc_x_mps2,body_acc_y_mps2,body_acc_z_mps2,"
     "roll_deg,pitch_deg,yaw_deg,"
     "quat_w,quat_x,quat_y,quat_z,"
+    "attitude_source_count,attitude_delta_max_deg,"
+    "attitude_delta_ahrs_euler_deg,attitude_delta_ahrs_quat_deg,attitude_delta_euler_quat_deg,"
     "ang_vel_x_radps,ang_vel_y_radps,ang_vel_z_radps,"
     "imu_acc_x_mps2,imu_acc_y_mps2,imu_acc_z_mps2,"
     "imu_gyr_x_radps,imu_gyr_y_radps,imu_gyr_z_radps,"
@@ -613,6 +615,11 @@ void SkySessionRecorder::recordDeviceSnapshot(quint64 hostTimeUs,
             << QString::number(epsilon.quat_x, 'f', 8)
             << QString::number(epsilon.quat_y, 'f', 8)
             << QString::number(epsilon.quat_z, 'f', 8)
+            << QString::number(epsilon.attitude_source_count)
+            << optionalNumber(epsilon.attitude_delta_max_deg, 6)
+            << optionalNumber(epsilon.attitude_delta_ahrs_euler_deg, 6)
+            << optionalNumber(epsilon.attitude_delta_ahrs_quat_deg, 6)
+            << optionalNumber(epsilon.attitude_delta_euler_quat_deg, 6)
             << QString::number(epsilon.ang_vel_x_radps, 'f', 8)
             << QString::number(epsilon.ang_vel_y_radps, 'f', 8)
             << QString::number(epsilon.ang_vel_z_radps, 'f', 8)
@@ -652,7 +659,7 @@ void SkySessionRecorder::recordDeviceSnapshot(quint64 hostTimeUs,
     }
     else
     {
-        appendEmptyColumns(65);
+        appendEmptyColumns(70);
     }
 
     if (hasHmp && hmp.valid)

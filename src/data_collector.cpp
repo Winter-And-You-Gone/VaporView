@@ -137,11 +137,14 @@ constexpr uint8_t kMsgInsGps = 0x42;
 constexpr uint8_t kMsgSystemState = 0x50;
 constexpr uint8_t kMsgUnixTime = 0x51;
 constexpr uint8_t kMsgFormattedTime = 0x52;
+constexpr uint8_t kMsgStatus = 0x53;
 constexpr uint8_t kMsgRawGnss = 0x59;
 constexpr uint8_t kMsgSatellites = 0x5A;
 constexpr int kTemperatureControllerModbusCommandGapMs = 5;
 constexpr uint8_t kMsgGeodeticPos = 0x5C;
 constexpr uint8_t kMsgEcefPos = 0x5D;
+constexpr uint8_t kMsgEulerOrien = 0x63;
+constexpr uint8_t kMsgQuatOrien = 0x64;
 constexpr uint8_t kMsgMainMavlinkTunnel = 0xF0;
 
 constexpr uint8_t kMavlinkV1Stx = 0xFE;
@@ -294,6 +297,176 @@ double radToDeg(double radians)
   return radians * kRadToDeg;
 }
 
+bool finiteEuler(double rollDeg, double pitchDeg, double yawDeg)
+{
+  return std::isfinite(rollDeg) && std::isfinite(pitchDeg) && std::isfinite(yawDeg);
+}
+
+bool finiteQuaternion(double w, double x, double y, double z)
+{
+  if (!std::isfinite(w) || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z))
+  {
+    return false;
+  }
+  const double norm = std::hypot(std::hypot(w, x), std::hypot(y, z));
+  return std::isfinite(norm) && norm > 1.0e-6;
+}
+
+void quaternionToEulerDeg(double quatW,
+                          double quatX,
+                          double quatY,
+                          double quatZ,
+                          double& rollDeg,
+                          double& pitchDeg,
+                          double& yawDeg)
+{
+  const double norm = std::hypot(std::hypot(quatW, quatX), std::hypot(quatY, quatZ));
+  if (!std::isfinite(norm) || norm <= 1.0e-6)
+  {
+    const double invalid = std::numeric_limits<double>::quiet_NaN();
+    rollDeg = invalid;
+    pitchDeg = invalid;
+    yawDeg = invalid;
+    return;
+  }
+
+  const double w = quatW / norm;
+  const double x = quatX / norm;
+  const double y = quatY / norm;
+  const double z = quatZ / norm;
+  rollDeg = radToDeg(std::atan2(2.0 * (w * x + y * z),
+                                1.0 - 2.0 * (x * x + y * y)));
+  pitchDeg = radToDeg(std::asin(std::clamp(2.0 * (w * y - z * x), -1.0, 1.0)));
+  yawDeg = radToDeg(std::atan2(2.0 * (w * z + x * y),
+                               1.0 - 2.0 * (y * y + z * z)));
+}
+
+double attitudeAngleDeltaDeg(double aDeg, double bDeg)
+{
+  if (!std::isfinite(aDeg) || !std::isfinite(bDeg))
+  {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  double delta = std::fmod(std::abs(aDeg - bDeg), 360.0);
+  if (delta > 180.0)
+  {
+    delta = 360.0 - delta;
+  }
+  return delta;
+}
+
+double attitudeEulerDeltaDeg(double rollA,
+                             double pitchA,
+                             double yawA,
+                             double rollB,
+                             double pitchB,
+                             double yawB)
+{
+  if (!finiteEuler(rollA, pitchA, yawA) || !finiteEuler(rollB, pitchB, yawB))
+  {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return std::max({attitudeAngleDeltaDeg(rollA, rollB),
+                   attitudeAngleDeltaDeg(pitchA, pitchB),
+                   attitudeAngleDeltaDeg(yawA, yawB)});
+}
+
+void updateEpsilonAttitudeState(EpsilonData& data)
+{
+  const double invalid = std::numeric_limits<double>::quiet_NaN();
+
+  const bool hasAhrsEuler = data.ahrs_attitude_valid &&
+      finiteEuler(data.ahrs_roll_deg, data.ahrs_pitch_deg, data.ahrs_yaw_deg);
+  const bool hasAhrsQuat = data.ahrs_attitude_valid &&
+      finiteQuaternion(data.ahrs_quat_w, data.ahrs_quat_x, data.ahrs_quat_y, data.ahrs_quat_z);
+  const bool hasEulerOrien = data.euler_orien_valid &&
+      finiteEuler(data.euler_orien_roll_deg, data.euler_orien_pitch_deg, data.euler_orien_yaw_deg);
+  const bool hasQuatOrien = data.quat_orien_valid &&
+      finiteQuaternion(data.quat_orien_w, data.quat_orien_x, data.quat_orien_y, data.quat_orien_z);
+  const bool hasQuatOrienEuler = data.quat_orien_valid &&
+      finiteEuler(data.quat_orien_roll_deg, data.quat_orien_pitch_deg, data.quat_orien_yaw_deg);
+
+  data.attitude_source_count = 0;
+  if (data.ahrs_attitude_valid) ++data.attitude_source_count;
+  if (data.euler_orien_valid) ++data.attitude_source_count;
+  if (data.quat_orien_valid) ++data.attitude_source_count;
+
+  if (hasQuatOrien)
+  {
+    data.quat_w = data.quat_orien_w;
+    data.quat_x = data.quat_orien_x;
+    data.quat_y = data.quat_orien_y;
+    data.quat_z = data.quat_orien_z;
+  }
+  else if (hasAhrsQuat)
+  {
+    data.quat_w = data.ahrs_quat_w;
+    data.quat_x = data.ahrs_quat_x;
+    data.quat_y = data.ahrs_quat_y;
+    data.quat_z = data.ahrs_quat_z;
+  }
+
+  if (hasEulerOrien)
+  {
+    data.roll_deg = data.euler_orien_roll_deg;
+    data.pitch_deg = data.euler_orien_pitch_deg;
+    data.yaw_deg = data.euler_orien_yaw_deg;
+  }
+  else if (hasAhrsEuler)
+  {
+    data.roll_deg = data.ahrs_roll_deg;
+    data.pitch_deg = data.ahrs_pitch_deg;
+    data.yaw_deg = data.ahrs_yaw_deg;
+  }
+  else if (hasQuatOrienEuler)
+  {
+    data.roll_deg = data.quat_orien_roll_deg;
+    data.pitch_deg = data.quat_orien_pitch_deg;
+    data.yaw_deg = data.quat_orien_yaw_deg;
+  }
+
+  data.attitude_delta_ahrs_euler_deg =
+      hasAhrsEuler && hasEulerOrien
+          ? attitudeEulerDeltaDeg(data.ahrs_roll_deg,
+                                  data.ahrs_pitch_deg,
+                                  data.ahrs_yaw_deg,
+                                  data.euler_orien_roll_deg,
+                                  data.euler_orien_pitch_deg,
+                                  data.euler_orien_yaw_deg)
+          : invalid;
+  data.attitude_delta_ahrs_quat_deg =
+      hasAhrsEuler && hasQuatOrienEuler
+          ? attitudeEulerDeltaDeg(data.ahrs_roll_deg,
+                                  data.ahrs_pitch_deg,
+                                  data.ahrs_yaw_deg,
+                                  data.quat_orien_roll_deg,
+                                  data.quat_orien_pitch_deg,
+                                  data.quat_orien_yaw_deg)
+          : invalid;
+  data.attitude_delta_euler_quat_deg =
+      hasEulerOrien && hasQuatOrienEuler
+          ? attitudeEulerDeltaDeg(data.euler_orien_roll_deg,
+                                  data.euler_orien_pitch_deg,
+                                  data.euler_orien_yaw_deg,
+                                  data.quat_orien_roll_deg,
+                                  data.quat_orien_pitch_deg,
+                                  data.quat_orien_yaw_deg)
+          : invalid;
+
+  data.attitude_delta_max_deg = invalid;
+  for (double delta : {data.attitude_delta_ahrs_euler_deg,
+                      data.attitude_delta_ahrs_quat_deg,
+                      data.attitude_delta_euler_quat_deg})
+  {
+    if (std::isfinite(delta))
+    {
+      data.attitude_delta_max_deg = std::isfinite(data.attitude_delta_max_deg)
+          ? std::max(data.attitude_delta_max_deg, delta)
+          : delta;
+    }
+  }
+}
+
 bool resolveEpsilonEcefFromLlh(EpsilonData& data, bool hasResolvedLlh)
 {
   if (VaporView::Geo::isPlausibleEcef(data.ecef_x_m, data.ecef_y_m, data.ecef_z_m))
@@ -419,10 +592,13 @@ std::map<uint8_t, int> desiredEpsilonPacketRates(int hz)
       {kMsgAhrs, nearestSupportedEpsilonPacketRate(kMsgAhrs, hz)},
       {kMsgInsGps, nearestSupportedEpsilonPacketRate(kMsgInsGps, hz)},
       {kMsgSystemState, nearestSupportedEpsilonPacketRate(kMsgSystemState, hz)},
+      {kMsgStatus, nearestSupportedEpsilonPacketRate(kMsgStatus, navLowRate)},
       {kMsgRawGnss, navLowRate},
       {kMsgSatellites, navLowRate},
       {kMsgGeodeticPos, navLowRate},
       {kMsgEcefPos, navLowRate},
+      {kMsgEulerOrien, nearestSupportedEpsilonPacketRate(kMsgEulerOrien, hz)},
+      {kMsgQuatOrien, nearestSupportedEpsilonPacketRate(kMsgQuatOrien, hz)},
   };
 }
 
@@ -2229,14 +2405,16 @@ void EpsilonCollector::run()
         latest_data_.ang_vel_x_radps = readFloatLE(payload + 0);
         latest_data_.ang_vel_y_radps = readFloatLE(payload + 4);
         latest_data_.ang_vel_z_radps = readFloatLE(payload + 8);
-        latest_data_.roll_deg = radToDeg(readFloatLE(payload + 12));
-        latest_data_.pitch_deg = radToDeg(readFloatLE(payload + 16));
-        latest_data_.yaw_deg = radToDeg(readFloatLE(payload + 20));
-        latest_data_.quat_w = readFloatLE(payload + 24);
-        latest_data_.quat_x = readFloatLE(payload + 28);
-        latest_data_.quat_y = readFloatLE(payload + 32);
-        latest_data_.quat_z = readFloatLE(payload + 36);
+        latest_data_.ahrs_roll_deg = radToDeg(readFloatLE(payload + 12));
+        latest_data_.ahrs_pitch_deg = radToDeg(readFloatLE(payload + 16));
+        latest_data_.ahrs_yaw_deg = radToDeg(readFloatLE(payload + 20));
+        latest_data_.ahrs_quat_w = readFloatLE(payload + 24);
+        latest_data_.ahrs_quat_x = readFloatLE(payload + 28);
+        latest_data_.ahrs_quat_y = readFloatLE(payload + 32);
+        latest_data_.ahrs_quat_z = readFloatLE(payload + 36);
+        latest_data_.ahrs_attitude_valid = true;
         latest_data_.device_timestamp_us = static_cast<uint64_t>(readI64LE(payload + 40));
+        updateEpsilonAttitudeState(latest_data_);
       }
       else if (packetId == kMsgInsGps && payloadSize >= 72)
       {
@@ -2329,6 +2507,13 @@ void EpsilonCollector::run()
           latest_data_.utc_microseconds = utcMicroseconds;
         }
       }
+      else if (packetId == kMsgStatus && payloadSize >= 4)
+      {
+        latest_data_.system_status_bits = readU16LE(payload + 0);
+        latest_data_.filter_status_bits = readU16LE(payload + 2);
+        latest_data_.gnss_fix_code = static_cast<int>((latest_data_.filter_status_bits >> 4) & 0x0F);
+        latest_data_.gnss_fix_text = epsilonGnssFixName(latest_data_.gnss_fix_code);
+      }
       else if (packetId == kMsgRawGnss && payloadSize >= 74)
       {
         latest_data_.utc_unix_s = readU32LE(payload + 0);
@@ -2387,6 +2572,30 @@ void EpsilonCollector::run()
             reportedInvalidEcef = true;
           }
         }
+      }
+      else if (packetId == kMsgEulerOrien && payloadSize >= 12)
+      {
+        latest_data_.euler_orien_roll_deg = radToDeg(readFloatLE(payload + 0));
+        latest_data_.euler_orien_pitch_deg = radToDeg(readFloatLE(payload + 4));
+        latest_data_.euler_orien_yaw_deg = radToDeg(readFloatLE(payload + 8));
+        latest_data_.euler_orien_valid = true;
+        updateEpsilonAttitudeState(latest_data_);
+      }
+      else if (packetId == kMsgQuatOrien && payloadSize >= 16)
+      {
+        latest_data_.quat_orien_w = readFloatLE(payload + 0);
+        latest_data_.quat_orien_x = readFloatLE(payload + 4);
+        latest_data_.quat_orien_y = readFloatLE(payload + 8);
+        latest_data_.quat_orien_z = readFloatLE(payload + 12);
+        quaternionToEulerDeg(latest_data_.quat_orien_w,
+                             latest_data_.quat_orien_x,
+                             latest_data_.quat_orien_y,
+                             latest_data_.quat_orien_z,
+                             latest_data_.quat_orien_roll_deg,
+                             latest_data_.quat_orien_pitch_deg,
+                             latest_data_.quat_orien_yaw_deg);
+        latest_data_.quat_orien_valid = true;
+        updateEpsilonAttitudeState(latest_data_);
       }
       else if (packetId == kMsgMainMavlinkTunnel && payloadSize >= 8)
       {

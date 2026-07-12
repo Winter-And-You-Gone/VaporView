@@ -3589,10 +3589,13 @@ const std::vector<EpsilonPacketConfigOption>& epsilonPacketConfigOptions()
         {0x41, "MSG_AHRS", "AHRS姿态解", "AHRS Attitude", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
         {0x42, "MSG_INSGPS", "INS/GPS融合解", "INS/GPS Navigation", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
         {0x50, "MSG_SYS_STATE", "系统状态", "System State", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x53, "MSG_STATUS", "系统/滤波状态", "System / Filter Status", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
         {0x59, "MSG_RAW_GNSS", "原始GNSS", "Raw GNSS", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
         {0x5A, "MSG_SATELLITE", "卫星汇总", "Satellite Summary", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
         {0x5C, "MSG_GEODETIC_POS", "大地坐标", "Geodetic Position", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
         {0x5D, "MSG_ECEF_POS", "ECEF坐标", "ECEF Position", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x63, "MSG_EULER_ORIEN", "欧拉姿态", "Euler Orientation", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x64, "MSG_QUAT_ORIEN", "四元数姿态", "Quaternion Orientation", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
     };
     return kOptions;
 }
@@ -3628,7 +3631,7 @@ std::map<uint8_t, int> groupedEpsilonPacketRates(int baseRateHz)
     for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
     {
         const int desiredRateHz =
-            (option.packet_id == 0x59 || option.packet_id == 0x5A ||
+            (option.packet_id == 0x53 || option.packet_id == 0x59 || option.packet_id == 0x5A ||
              option.packet_id == 0x5C || option.packet_id == 0x5D)
                 ? lowRateHz
                 : baseRateHz;
@@ -3644,10 +3647,13 @@ std::map<uint8_t, int> defaultEpsilonPacketRates()
         {0x41, 50},
         {0x42, 100},
         {0x50, 100},
+        {0x53, 100},
         {0x59, 10},
         {0x5A, 1},
         {0x5C, 10},
         {0x5D, 10},
+        {0x63, 50},
+        {0x64, 50},
     };
 }
 
@@ -3862,6 +3868,42 @@ public:
                 .arg(b, 0, 'f', decimals)
                 .arg(c, 0, 'f', decimals);
         };
+        auto attitudeSourcesText = [this](int sourceCount) {
+            if (sourceCount <= 0)
+            {
+                return QString();
+            }
+            return is_english_
+                ? QStringLiteral("%1 source(s)").arg(sourceCount)
+                : QStringLiteral("%1 路").arg(sourceCount);
+        };
+        auto attitudeDeltaText = [this](const VaporView::EpsilonData& sample) {
+            if (sample.attitude_source_count < 2 || !std::isfinite(sample.attitude_delta_max_deg))
+            {
+                return QString();
+            }
+
+            const auto formatDelta = [](double value) {
+                return QStringLiteral("%1°").arg(value, 0, 'f', 3);
+            };
+            QStringList parts;
+            if (std::isfinite(sample.attitude_delta_ahrs_euler_deg))
+            {
+                parts << QStringLiteral("41-63 %1").arg(formatDelta(sample.attitude_delta_ahrs_euler_deg));
+            }
+            if (std::isfinite(sample.attitude_delta_ahrs_quat_deg))
+            {
+                parts << QStringLiteral("41-64 %1").arg(formatDelta(sample.attitude_delta_ahrs_quat_deg));
+            }
+            if (std::isfinite(sample.attitude_delta_euler_quat_deg))
+            {
+                parts << QStringLiteral("63-64 %1").arg(formatDelta(sample.attitude_delta_euler_quat_deg));
+            }
+            const QString maxText = formatDelta(sample.attitude_delta_max_deg);
+            return is_english_
+                ? QStringLiteral("max %1 (%2)").arg(maxText, parts.join(QStringLiteral(", ")))
+                : QStringLiteral("最大 %1（%2）").arg(maxText, parts.join(QStringLiteral("， ")));
+        };
         const bool gnss_fix_valid = epsilon_data.gnss_fix_code >= 2;
         const bool utc_valid = epsilon_data.utc_unix_s > 0;
 
@@ -3898,6 +3940,8 @@ public:
                  valueTriple(epsilon_data.imu_gyr_x_radps, epsilon_data.imu_gyr_y_radps, epsilon_data.imu_gyr_z_radps, 4));
         setValue(QStringLiteral("rpy"),
                  valueTriple(epsilon_data.roll_deg, epsilon_data.pitch_deg, epsilon_data.yaw_deg, 2));
+        setValue(QStringLiteral("attitude_sources"), attitudeSourcesText(epsilon_data.attitude_source_count));
+        setValue(QStringLiteral("attitude_delta"), attitudeDeltaText(epsilon_data));
         setValue(QStringLiteral("acc"),
                  gnss_fix_valid && std::isfinite(epsilon_data.hacc_m) && std::isfinite(epsilon_data.vacc_m)
                      ? QStringLiteral("%1m/%2m")
@@ -4571,6 +4615,8 @@ private:
         addField(motionGrid, row++, 0, QStringLiteral("imu_acc"), QStringLiteral("IMU加速度[m/s²][X/Y/Z]:"), QStringLiteral("IMU Accel [m/s²][X/Y/Z]:"), kEpsilonMotionValueColumnWidth);
         addField(motionGrid, row++, 0, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s][X/Y/Z]:"), QStringLiteral("IMU Gyro [rad/s][X/Y/Z]:"), kEpsilonMotionValueColumnWidth);
         addField(motionGrid, row++, 0, QStringLiteral("rpy"), QStringLiteral("姿态角[deg][Roll/Pitch/Yaw]:"), QStringLiteral("Attitude [deg][Roll/Pitch/Yaw]:"), kEpsilonMotionValueColumnWidth);
+        addField(motionGrid, row++, 0, QStringLiteral("attitude_sources"), QStringLiteral("姿态来源[0x41/0x63/0x64]:"), QStringLiteral("Attitude Sources [0x41/0x63/0x64]:"), kEpsilonMotionValueColumnWidth);
+        addField(motionGrid, row++, 0, QStringLiteral("attitude_delta"), QStringLiteral("姿态一致性[最大差值]:"), QStringLiteral("Attitude Consistency [max delta]:"), kEpsilonMotionValueColumnWidth);
 
         updateCardGridLayout(true);
         layout->addLayout(cards_layout_, 0);
@@ -18870,6 +18916,11 @@ void MainWindow::startRecordingWorkers()
                     << QString::number(epsilonSample.quat_x, 'f', 8)
                     << QString::number(epsilonSample.quat_y, 'f', 8)
                     << QString::number(epsilonSample.quat_z, 'f', 8)
+                    << QString::number(epsilonSample.attitude_source_count)
+                    << optionalNumber(epsilonSample.attitude_delta_max_deg, 6)
+                    << optionalNumber(epsilonSample.attitude_delta_ahrs_euler_deg, 6)
+                    << optionalNumber(epsilonSample.attitude_delta_ahrs_quat_deg, 6)
+                    << optionalNumber(epsilonSample.attitude_delta_euler_quat_deg, 6)
                     << QString::number(epsilonSample.ang_vel_x_radps, 'f', 8)
                     << QString::number(epsilonSample.ang_vel_y_radps, 'f', 8)
                     << QString::number(epsilonSample.ang_vel_z_radps, 'f', 8)
@@ -18909,7 +18960,7 @@ void MainWindow::startRecordingWorkers()
             }
             else
             {
-                appendEmptyColumns(65);
+                appendEmptyColumns(70);
             }
 
             if (isFresh(collectors.hmp.get(), hmpSample))
@@ -20126,6 +20177,8 @@ void MainWindow::writeSensorsHeader()
         << "body_acc_x_mps2,body_acc_y_mps2,body_acc_z_mps2,"
         << "roll_deg,pitch_deg,yaw_deg,"
         << "quat_w,quat_x,quat_y,quat_z,"
+        << "attitude_source_count,attitude_delta_max_deg,"
+        << "attitude_delta_ahrs_euler_deg,attitude_delta_ahrs_quat_deg,attitude_delta_euler_quat_deg,"
         << "ang_vel_x_radps,ang_vel_y_radps,ang_vel_z_radps,"
         << "imu_acc_x_mps2,imu_acc_y_mps2,imu_acc_z_mps2,"
         << "imu_gyr_x_radps,imu_gyr_y_radps,imu_gyr_z_radps,"

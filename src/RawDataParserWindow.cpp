@@ -315,10 +315,13 @@ QString epsilonPacketName(quint16 recordType)
     case 0x50: return QStringLiteral("0x50 SYS_STATE");
     case 0x51: return QStringLiteral("0x51 UNIX_TIME");
     case 0x52: return QStringLiteral("0x52 FORMATTED_TIME");
+    case 0x53: return QStringLiteral("0x53 STATUS");
     case 0x59: return QStringLiteral("0x59 RAW_GNSS");
     case 0x5A: return QStringLiteral("0x5A SATELLITES");
     case 0x5C: return QStringLiteral("0x5C GEODETIC_POS");
     case 0x5D: return QStringLiteral("0x5D ECEF_POS");
+    case 0x63: return QStringLiteral("0x63 EULER_ORIEN");
+    case 0x64: return QStringLiteral("0x64 QUAT_ORIEN");
     case 0xF0: return QStringLiteral("0xF0 MAVLink Tunnel");
     default: return QStringLiteral("%1 Unknown").arg(formatHex(recordType));
     }
@@ -2208,6 +2211,11 @@ void decodeEpsilonPayload(RawDecodedRecord& decoded, const QByteArray& payload, 
         addField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("minute"), QString::number(p[12]), QString(), QString(), payloadOffset + 12, 1);
         addField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("second"), QString::number(p[13]), QString(), QString(), payloadOffset + 13, 1);
     }
+    else if (packetId == 0x53 && has(4))
+    {
+        addField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("system_status_bits"), formatHex(readU16LE(p + 0), 4), QString(), QString(), payloadOffset + 0, 2);
+        addField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("filter_status_bits"), formatHex(readU16LE(p + 2), 4), QString(), QString(), payloadOffset + 2, 2);
+    }
     else if (packetId == 0x59 && has(74))
     {
         addField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("utc_unix_s"), QString::number(readU32LE(p + 0)), QString(), QStringLiteral("s"), payloadOffset + 0, 4);
@@ -2237,6 +2245,19 @@ void decodeEpsilonPayload(RawDecodedRecord& decoded, const QByteArray& payload, 
         addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("ecef_x"), readDoubleLE(p + 0), QStringLiteral("m"), payloadOffset + 0, 8);
         addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("ecef_y"), readDoubleLE(p + 8), QStringLiteral("m"), payloadOffset + 8, 8);
         addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("ecef_z"), readDoubleLE(p + 16), QStringLiteral("m"), payloadOffset + 16, 8);
+    }
+    else if (packetId == 0x63 && has(12))
+    {
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("roll"), radToDeg(readFloatLE(p + 0)), QStringLiteral("deg"), payloadOffset + 0, 4);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("pitch"), radToDeg(readFloatLE(p + 4)), QStringLiteral("deg"), payloadOffset + 4, 4);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("yaw"), radToDeg(readFloatLE(p + 8)), QStringLiteral("deg"), payloadOffset + 8, 4);
+    }
+    else if (packetId == 0x64 && has(16))
+    {
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("quat_w"), readFloatLE(p + 0), QString(), payloadOffset + 0, 4);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("quat_x"), readFloatLE(p + 4), QString(), payloadOffset + 4, 4);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("quat_y"), readFloatLE(p + 8), QString(), payloadOffset + 8, 4);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("quat_z"), readFloatLE(p + 12), QString(), payloadOffset + 12, 4);
     }
     else if (packetId == 0xF0)
     {

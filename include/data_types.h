@@ -135,6 +135,36 @@ struct EpsilonData
   double quat_y = 0.0;
   double quat_z = 0.0;
 
+  bool ahrs_attitude_valid = false;
+  bool euler_orien_valid = false;
+  bool quat_orien_valid = false;
+
+  double ahrs_roll_deg = std::numeric_limits<double>::quiet_NaN();
+  double ahrs_pitch_deg = std::numeric_limits<double>::quiet_NaN();
+  double ahrs_yaw_deg = std::numeric_limits<double>::quiet_NaN();
+  double ahrs_quat_w = std::numeric_limits<double>::quiet_NaN();
+  double ahrs_quat_x = std::numeric_limits<double>::quiet_NaN();
+  double ahrs_quat_y = std::numeric_limits<double>::quiet_NaN();
+  double ahrs_quat_z = std::numeric_limits<double>::quiet_NaN();
+
+  double euler_orien_roll_deg = std::numeric_limits<double>::quiet_NaN();
+  double euler_orien_pitch_deg = std::numeric_limits<double>::quiet_NaN();
+  double euler_orien_yaw_deg = std::numeric_limits<double>::quiet_NaN();
+
+  double quat_orien_w = std::numeric_limits<double>::quiet_NaN();
+  double quat_orien_x = std::numeric_limits<double>::quiet_NaN();
+  double quat_orien_y = std::numeric_limits<double>::quiet_NaN();
+  double quat_orien_z = std::numeric_limits<double>::quiet_NaN();
+  double quat_orien_roll_deg = std::numeric_limits<double>::quiet_NaN();
+  double quat_orien_pitch_deg = std::numeric_limits<double>::quiet_NaN();
+  double quat_orien_yaw_deg = std::numeric_limits<double>::quiet_NaN();
+
+  int attitude_source_count = 0;
+  double attitude_delta_max_deg = std::numeric_limits<double>::quiet_NaN();
+  double attitude_delta_ahrs_euler_deg = std::numeric_limits<double>::quiet_NaN();
+  double attitude_delta_ahrs_quat_deg = std::numeric_limits<double>::quiet_NaN();
+  double attitude_delta_euler_quat_deg = std::numeric_limits<double>::quiet_NaN();
+
   double imu_temp_c = std::numeric_limits<double>::quiet_NaN();
   double pressure_pa = std::numeric_limits<double>::quiet_NaN();
   double pressure_temp_c = std::numeric_limits<double>::quiet_NaN();
@@ -169,10 +199,13 @@ struct EpsilonData
   double ahrs_packet_rate_hz = 0.0;
   double insgps_packet_rate_hz = 0.0;
   double sys_state_packet_rate_hz = 0.0;
+  double status_packet_rate_hz = 0.0;
   double raw_gnss_packet_rate_hz = 0.0;
   double satellite_packet_rate_hz = 0.0;
   double geodetic_packet_rate_hz = 0.0;
   double ecef_packet_rate_hz = 0.0;
+  double euler_orien_packet_rate_hz = 0.0;
+  double quat_orien_packet_rate_hz = 0.0;
 
   std::chrono::steady_clock::time_point timestamp{};
   bool valid = false;
