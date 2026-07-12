@@ -63,6 +63,9 @@ namespace {
 constexpr double kEarthRadiusM = 6378137.0;
 constexpr unsigned kTiandituMaxZoom = 18;
 constexpr const char* kTiandituSatelliteLayerName = "Tianditu Satellite imagery";
+constexpr const char* kTiandituBrowserUserAgent =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
 constexpr float kTerrainTilePixelSize = 128.0f;
 
 void configureHighResolutionTerrain(osgEarth::MapNode* mapNode)
@@ -565,7 +568,11 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
 
     osg::ref_ptr<osgEarth::XYZImageLayer> layer = new osgEarth::XYZImageLayer;
     layer->setName(kTiandituSatelliteLayerName);
-    layer->setURL(osgEarth::URI(tiandituSatelliteUrlTemplate(trimmedKey).toStdString()));
+    osgEarth::URIContext tiandituContext;
+    tiandituContext.addHeader("User-Agent", kTiandituBrowserUserAgent);
+    tiandituContext.addHeader("Referer", "https://map.tianditu.gov.cn/");
+    layer->setURL(osgEarth::URI(tiandituSatelliteUrlTemplate(trimmedKey).toStdString(),
+                                tiandituContext));
     layer->setProfile(osgEarth::Profile::create(osgEarth::Profile::SPHERICAL_MERCATOR));
     layer->setFormat("jpg");
     layer->options().minLevel() = 0u;
