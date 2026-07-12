@@ -67,26 +67,79 @@ constexpr const char* kTiandituBrowserUserAgent =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
 constexpr float kTerrainTilePixelSize = 128.0f;
-constexpr double kEarthMaxInteractivePitchDeg = -22.0;
+constexpr double kEarthMaxInteractivePitchDeg = -4.0;
 constexpr double kEarthProjectionNearPlaneM = 1.0;
 constexpr double kEarthProjectionDefaultFarPlaneM = 10000000.0;
 constexpr double kEarthProjectionLocalRangeLimitM = 1000000.0;
 constexpr double kEarthProjectionLocalFarMultiplier = 18.0;
+constexpr double kEarthProjectionLowAngleFarMultiplier = 6.0;
 constexpr double kEarthProjectionLocalMinFarPlaneM = 20000.0;
+constexpr double kEarthProjectionLowAngleMinFarPlaneM = 8000.0;
 constexpr double kEarthProjectionLocalMaxFarPlaneM = 850000.0;
+constexpr double kEarthProjectionLowAngleMaxFarPlaneM = 120000.0;
 constexpr float kEarthSmallFeatureCullPixels = 3.0f;
+constexpr float kEarthLowAngleSmallFeatureCullPixels = 9.0f;
+constexpr float kEarthCullLODScale = 1.0f;
+constexpr float kEarthLowAngleCullLODScale = 2.5f;
+constexpr double kEarthLowAngleStartPitchDeg = -35.0;
 
-double earthProjectionFarPlaneM(double cameraRangeM)
+struct EarthProjectionProfile {
+    double farPlaneM = kEarthProjectionDefaultFarPlaneM;
+    float smallFeatureCullPixels = kEarthSmallFeatureCullPixels;
+    float lodScale = kEarthCullLODScale;
+};
+
+double blend(double lowAngle0, double lowAngle1, double factor)
+{
+    return lowAngle0 + (lowAngle1 - lowAngle0) * factor;
+}
+
+double lowAngleFactor(double pitchDeg)
+{
+    if (!std::isfinite(pitchDeg))
+    {
+        return 0.0;
+    }
+    return std::clamp((pitchDeg - kEarthLowAngleStartPitchDeg)
+                          / (kEarthMaxInteractivePitchDeg - kEarthLowAngleStartPitchDeg),
+                      0.0,
+                      1.0);
+}
+
+EarthProjectionProfile earthProjectionProfile(double cameraRangeM, double pitchDeg)
 {
     if (!std::isfinite(cameraRangeM)
         || cameraRangeM <= 0.0
         || cameraRangeM > kEarthProjectionLocalRangeLimitM)
     {
-        return kEarthProjectionDefaultFarPlaneM;
+        return {};
     }
-    return std::clamp(cameraRangeM * kEarthProjectionLocalFarMultiplier,
-                      kEarthProjectionLocalMinFarPlaneM,
-                      kEarthProjectionLocalMaxFarPlaneM);
+
+    const double lowAngle = lowAngleFactor(pitchDeg);
+    const double farMultiplier =
+        blend(kEarthProjectionLocalFarMultiplier,
+              kEarthProjectionLowAngleFarMultiplier,
+              lowAngle);
+    const double minFarPlaneM =
+        blend(kEarthProjectionLocalMinFarPlaneM,
+              kEarthProjectionLowAngleMinFarPlaneM,
+              lowAngle);
+    const double maxFarPlaneM =
+        blend(kEarthProjectionLocalMaxFarPlaneM,
+              kEarthProjectionLowAngleMaxFarPlaneM,
+              lowAngle);
+
+    EarthProjectionProfile profile;
+    profile.farPlaneM = std::clamp(cameraRangeM * farMultiplier, minFarPlaneM, maxFarPlaneM);
+    profile.smallFeatureCullPixels =
+        static_cast<float>(blend(static_cast<double>(kEarthSmallFeatureCullPixels),
+                                 static_cast<double>(kEarthLowAngleSmallFeatureCullPixels),
+                                 lowAngle));
+    profile.lodScale =
+        static_cast<float>(blend(static_cast<double>(kEarthCullLODScale),
+                                 static_cast<double>(kEarthLowAngleCullLODScale),
+                                 lowAngle));
+    return profile;
 }
 
 void configureEarthManipulator(osgEarth::EarthManipulator* manipulator)
@@ -121,6 +174,27 @@ double currentEarthManipulatorDistance(const osgViewer::Viewer* viewer)
     }
     const double distanceM = manipulator->getDistance();
     return std::isfinite(distanceM) ? distanceM : (std::numeric_limits<double>::quiet_NaN)();
+}
+
+double currentEarthManipulatorPitchDeg(const osgViewer::Viewer* viewer)
+{
+    if (!viewer)
+    {
+        return (std::numeric_limits<double>::quiet_NaN)();
+    }
+    const auto* manipulator =
+        dynamic_cast<const osgEarth::EarthManipulator*>(viewer->getCameraManipulator());
+    if (!manipulator)
+    {
+        return (std::numeric_limits<double>::quiet_NaN)();
+    }
+    const osgEarth::Viewpoint viewpoint = manipulator->getViewpoint();
+    if (!viewpoint.isValid() || !viewpoint.pitch().isSet())
+    {
+        return (std::numeric_limits<double>::quiet_NaN)();
+    }
+    const double pitchDeg = viewpoint.pitch().get().as(osgEarth::Units::DEGREES);
+    return std::isfinite(pitchDeg) ? pitchDeg : (std::numeric_limits<double>::quiet_NaN)();
 }
 
 void configureHighResolutionTerrain(osgEarth::MapNode* mapNode)
@@ -708,7 +782,7 @@ bool OsgEarthViewWidget::applyEarthLoad(EarthLoadDiagnostics diagnostics,
     map_node_ = mapNode;
     configureHighResolutionTerrain(map_node_);
     earth_load_diagnostics_.layerSummaries.push_back(
-        QStringLiteral("Terrain detail: visible-first screen-space LOD, 128 px tile threshold, low-angle pitch guard, dynamic local far clipping."));
+        QStringLiteral("Terrain detail: visible-first screen-space LOD, 128 px tile threshold, low-angle adaptive clipping and LOD."));
     use_xihu_initial_view_ = useXihuInitialView;
     if (replacedPreviousNode)
     {
@@ -1420,17 +1494,22 @@ void OsgEarthViewWidget::updateCameraProjectionForCurrentView()
     const double rangeM = earth_node_ && map_node_
         ? currentEarthManipulatorDistance(viewer_.get())
         : (std::numeric_limits<double>::quiet_NaN)();
-    const double farPlaneM = earthProjectionFarPlaneM(rangeM);
+    const double pitchDeg = earth_node_ && map_node_
+        ? currentEarthManipulatorPitchDeg(viewer_.get())
+        : (std::numeric_limits<double>::quiet_NaN)();
+    const EarthProjectionProfile projectionProfile =
+        earthProjectionProfile(rangeM, pitchDeg);
 
     osg::Camera* camera = viewer_->getCamera();
     camera->setProjectionMatrixAsPerspective(
         30.0,
         static_cast<double>(safeWidth) / static_cast<double>(safeHeight),
         kEarthProjectionNearPlaneM,
-        farPlaneM);
+        projectionProfile.farPlaneM);
     camera->setComputeNearFarMode(osg::CullSettings::DO_NOT_COMPUTE_NEAR_FAR);
     camera->setCullingMode(osg::CullSettings::ENABLE_ALL_CULLING);
-    camera->setSmallFeatureCullingPixelSize(kEarthSmallFeatureCullPixels);
+    camera->setSmallFeatureCullingPixelSize(projectionProfile.smallFeatureCullPixels);
+    camera->setLODScale(projectionProfile.lodScale);
 }
 
 void OsgEarthViewWidget::updateFollowCamera(const VaporView::Geo::NavSample& sample)
