@@ -51,6 +51,19 @@ QAction* findActionByText(QWidget* root, const QStringList& expectedTexts)
     return nullptr;
 }
 
+QWidget* findMap3DWindow()
+{
+    const QWidgetList topLevelWidgets = QApplication::topLevelWidgets();
+    for (QWidget* widget : topLevelWidgets)
+    {
+        if (widget && widget->objectName() == QStringLiteral("map3DWindow"))
+        {
+            return widget;
+        }
+    }
+    return nullptr;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -88,7 +101,7 @@ int main(int argc, char** argv)
     mapAction->trigger();
     processEventsFor(250);
 
-    QWidget* mapWindow = window->findChild<QWidget*>(QStringLiteral("map3DWindow"));
+    QWidget* mapWindow = findMap3DWindow();
     require(mapWindow != nullptr && mapWindow->isVisible(), QStringLiteral("3D map window opens from MainWindow"));
 
     auto* view = mapWindow->findChild<VaporView::Map3D::OsgEarthViewWidget*>(QStringLiteral("map3DView"));

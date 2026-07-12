@@ -89,6 +89,8 @@ private:
     void recordTrackSource(const QString& source,
                            const VaporView::Geo::NavSample* latest,
                            const QString& note = {});
+    void showSelectedTrajectorySample(int sampleIndex, const VaporView::Geo::NavSample& sample);
+    void clearSelectedTrajectorySample();
     void updateStatus(const VaporView::Geo::NavSample* latest = nullptr, bool force = true);
 
     OsgEarthViewWidget* view_ = nullptr;
@@ -128,13 +130,16 @@ private:
     QString latest_drop_source_;
     QString latest_drop_reason_;
     VaporView::Geo::NavSample latest_status_sample_;
+    VaporView::Geo::NavSample selected_track_sample_;
     bool has_latest_status_sample_ = false;
+    bool has_selected_track_sample_ = false;
     bool automatic_sentinel2_imagery_loaded_ = false;
     bool automatic_sentinel2_imagery_loading_ = false;
     bool tianditu_satellite_imagery_loaded_ = false;
     qint64 latest_drop_record_timestamp_us_ = 0;
     qint64 latest_track_record_timestamp_us_ = 0;
     qint64 latest_track_device_timestamp_us_ = 0;
+    int selected_track_sample_index_ = -1;
 };
 
 } // namespace VaporView::Map3D

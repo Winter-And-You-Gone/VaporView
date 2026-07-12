@@ -114,14 +114,15 @@ int main()
 
     auto* geode = dynamic_cast<osg::Geode*>(layer.node());
     require(geode != nullptr, "trajectory node is a geode");
-    require(geode->getNumDrawables() == 3, "geode has one drawable per segment");
+    require(geode->getNumDrawables() == 6, "geode has one line and one sphere drawable per segment");
+    require(layer.sphereMarkerCount() == 9000, "short trajectory renders every sample as a solid sphere marker");
 
     layer.setMaxVisibleSamples(5000);
     require(layer.sampleCount() == 5000, "visible cap releases old retained samples");
     require(layer.visibleSampleCount() == 5000, "visible sample count is capped");
     require(geode->getDrawable(0)->getNodeMask() != 0u, "boundary segment remains visible");
-    require(geode->getDrawable(1)->getNodeMask() != 0u, "middle segment remains visible");
-    require(geode->getNumDrawables() == 2, "old trajectory drawable is released at the cap");
+    require(geode->getDrawable(2)->getNodeMask() != 0u, "second retained segment remains visible");
+    require(geode->getNumDrawables() == 4, "old trajectory drawables are released at the cap");
     auto* boundaryGeometry = dynamic_cast<osg::Geometry*>(geode->getDrawable(0));
     require(boundaryGeometry != nullptr, "boundary segment drawable is geometry");
     require(boundaryGeometry->getVertexArray() != nullptr, "boundary segment has vertex array");
@@ -160,8 +161,10 @@ int main()
 
     auto* longGeode = dynamic_cast<osg::Geode*>(longLayer.node());
     require(longGeode != nullptr, "long trajectory node is a geode");
-    require(static_cast<int>(longGeode->getNumDrawables()) == expectedLongSegments,
-            "long trajectory has one drawable per segment");
+    require(static_cast<int>(longGeode->getNumDrawables()) == expectedLongSegments * 2,
+            "long trajectory has line and sphere drawables per segment");
+    require(longLayer.sphereMarkerCount() > 0 && longLayer.sphereMarkerCount() <= 40000,
+            "long trajectory adaptively caps solid sphere marker count");
 
     longLayer.setMaxVisibleSamples(10000);
     require(longLayer.sampleCount() == 10000,
@@ -170,8 +173,8 @@ int main()
             "long layer max-visible cap limits rendered samples");
     require(longLayer.segmentCount() == 3,
             "long layer releases old segment drawables outside the retained window");
-    require(visibleDrawableCount(*longGeode) == 3,
-            "all retained long-track segments remain visible");
+    require(visibleDrawableCount(*longGeode) == 6,
+            "all retained long-track line and sphere drawables remain visible");
 
     auto* longBoundaryGeometry =
         dynamic_cast<osg::Geometry*>(longGeode->getDrawable(0));
@@ -190,9 +193,9 @@ int main()
     }
     boundaryLayer.appendSamples(boundarySamples);
     auto* boundaryGeode = dynamic_cast<osg::Geode*>(boundaryLayer.node());
-    require(boundaryGeode != nullptr && boundaryGeode->getNumDrawables() == 2,
-            "4097 samples span two trajectory segments");
-    auto* secondBoundaryGeometry = dynamic_cast<osg::Geometry*>(boundaryGeode->getDrawable(1));
+    require(boundaryGeode != nullptr && boundaryGeode->getNumDrawables() == 4,
+            "4097 samples span two trajectory segments with sphere drawables");
+    auto* secondBoundaryGeometry = dynamic_cast<osg::Geometry*>(boundaryGeode->getDrawable(2));
     require(secondBoundaryGeometry != nullptr,
             "second trajectory segment is geometry");
     const PrimitiveStats boundaryStats = primitiveStats(*secondBoundaryGeometry);
@@ -277,7 +280,7 @@ int main()
     qualityLayer.appendSamples(qualitySamples);
     auto* qualityGeode = dynamic_cast<osg::Geode*>(qualityLayer.node());
     require(qualityGeode != nullptr, "quality trajectory node is a geode");
-    require(qualityGeode->getNumDrawables() == 1, "quality trajectory fits in one segment");
+    require(qualityGeode->getNumDrawables() == 2, "quality trajectory fits in one segment with sphere markers");
     auto* qualityGeometry = dynamic_cast<osg::Geometry*>(qualityGeode->getDrawable(0));
     require(qualityGeometry != nullptr, "quality trajectory drawable is geometry");
     const osg::StateSet* qualityStateSet = qualityGeometry->getStateSet();
@@ -314,7 +317,7 @@ int main()
     outlierLayer.appendSamples(outlierSamples);
     auto* outlierGeode = dynamic_cast<osg::Geode*>(outlierLayer.node());
     require(outlierGeode != nullptr, "outlier trajectory node is a geode");
-    require(outlierGeode->getNumDrawables() == 1, "outlier trajectory fits in one segment");
+    require(outlierGeode->getNumDrawables() == 2, "outlier trajectory fits in one segment with sphere markers");
     auto* outlierGeometry = dynamic_cast<osg::Geometry*>(outlierGeode->getDrawable(0));
     require(outlierGeometry != nullptr, "outlier trajectory drawable is geometry");
     const PrimitiveStats outlierStats = primitiveStats(*outlierGeometry);
@@ -358,7 +361,7 @@ int main()
     worldLayer.appendSamples(worldSamples);
     auto* worldGeode = dynamic_cast<osg::Geode*>(worldLayer.node());
     require(worldGeode != nullptr, "world trajectory node is a geode");
-    require(worldGeode->getNumDrawables() == 1, "world trajectory fits in one segment");
+    require(worldGeode->getNumDrawables() == 2, "world trajectory fits in one segment with sphere markers");
     auto* worldGeometry = dynamic_cast<osg::Geometry*>(worldGeode->getDrawable(0));
     require(worldGeometry != nullptr, "world trajectory drawable is geometry");
     auto* worldVertices = dynamic_cast<osg::Vec3dArray*>(worldGeometry->getVertexArray());
@@ -373,6 +376,27 @@ int main()
                 && nearlyEqual((*worldVertices)[1].y(), worldSamples[1].ecefYM - worldSamples[0].ecefYM)
                 && nearlyEqual((*worldVertices)[1].z(), worldSamples[1].ecefZM - worldSamples[0].ecefZM),
             "world trajectory stores small local offsets instead of ECEF-scale vertices");
+
+    VaporView::Map3D::Trajectory3DLayer selectionLayer;
+    selectionLayer.appendSamples({sample(0), sample(1), sample(2)});
+    auto* selectionGeode = dynamic_cast<osg::Geode*>(selectionLayer.node());
+    require(selectionLayer.selectedSampleIndex() == -1, "trajectory starts with no selected sample");
+    require(selectionGeode != nullptr && selectionGeode->getNumDrawables() == 2,
+            "selection test starts with line and sphere drawables");
+    selectionLayer.setSelectedSampleIndex(1);
+    require(selectionLayer.selectedSampleIndex() == 1, "trajectory stores selected sample index");
+    require(selectionGeode->getNumDrawables() == 3,
+            "selected sample adds a highlighted solid sphere drawable");
+    osg::Vec3d selectedPosition;
+    require(selectionLayer.displayPositionForSample(1, selectedPosition)
+                && nearlyEqual(selectedPosition.x(), 0.5)
+                && nearlyEqual(selectedPosition.y(), 1.0)
+                && nearlyEqual(selectedPosition.z(), 10.0),
+            "selected sample display position is available for picking");
+    selectionLayer.setSelectedSampleIndex(-1);
+    require(selectionLayer.selectedSampleIndex() == -1
+                && selectionGeode->getNumDrawables() == 2,
+            "clearing selection removes the highlighted sphere drawable");
 
     layer.clear();
     require(layer.sampleCount() == 0, "clear removes samples");

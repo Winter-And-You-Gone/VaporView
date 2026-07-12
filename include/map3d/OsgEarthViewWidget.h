@@ -6,6 +6,7 @@
 
 #include <QOpenGLWidget>
 #include <QMetaObject>
+#include <QPointF>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -132,6 +133,10 @@ public:
     bool hasLocal3DTilesPreview() const;
     double earthCameraRangeM() const;
 
+signals:
+    void trajectorySampleSelected(int sampleIndex, VaporView::Geo::NavSample sample);
+    void trajectorySampleSelectionCleared();
+
 protected:
     void initializeGL() override;
     void resizeGL(int w, int h) override;
@@ -177,6 +182,7 @@ private:
     void resetWorldOverlayOrigin();
     void updateWorldOverlayOriginFromSample(const VaporView::Geo::NavSample& sample);
     void setLookAt(const osg::Vec3d& center, double distanceM);
+    bool selectTrajectorySampleAt(const QPointF& widgetPosition);
     void releaseGlObjectsForContextDestruction();
 
     QTimer frameTimer_;
@@ -193,6 +199,9 @@ private:
     VaporView::Geo::LocalTangentPlane local_frame_;
     bool has_world_overlay_origin_ = false;
     osg::Vec3d world_overlay_origin_;
+    QPointF mouse_press_position_;
+    bool mouse_press_tracks_selection_ = false;
+    bool mouse_dragged_since_press_ = false;
     std::unique_ptr<osgViewer::Viewer> viewer_;
     osg::ref_ptr<osgViewer::GraphicsWindowEmbedded> graphics_window_;
     osg::ref_ptr<osg::Group> root_;

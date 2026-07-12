@@ -51,6 +51,19 @@ QAction* findActionByText(QWidget* root, const QStringList& expectedTexts)
     return nullptr;
 }
 
+QWidget* findMap3DWindow()
+{
+    const QWidgetList topLevelWidgets = QApplication::topLevelWidgets();
+    for (QWidget* widget : topLevelWidgets)
+    {
+        if (widget && widget->objectName() == QStringLiteral("map3DWindow"))
+        {
+            return widget;
+        }
+    }
+    return nullptr;
+}
+
 VaporView::EpsilonData makeSample(double latitudeDeg)
 {
     VaporView::EpsilonData sample;
@@ -115,7 +128,7 @@ int main(int argc, char** argv)
     mapAction->trigger();
     processEventsFor(100);
 
-    QWidget* mapWindow = window.findChild<QWidget*>(QStringLiteral("map3DWindow"));
+    QWidget* mapWindow = findMap3DWindow();
     require(mapWindow != nullptr && mapWindow->isVisible(), "3D map window opens");
     QLabel* mapStatusLabel = mapWindow->findChild<QLabel*>(QStringLiteral("map3DStatusLabel"));
     require(mapStatusLabel != nullptr, "3D map status label exists");

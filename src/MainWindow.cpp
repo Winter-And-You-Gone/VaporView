@@ -16753,7 +16753,7 @@ void MainWindow::onOpenMap3DWindowClicked()
 {
     if (!map3d_window_)
     {
-        map3d_window_ = new VaporView::Map3D::Map3DWindow(this);
+        map3d_window_ = new VaporView::Map3D::Map3DWindow(nullptr);
         map3d_window_->setAttribute(Qt::WA_QuitOnClose, false);
         connect(map3d_window_, &QObject::destroyed, this, [this]() {
             map3d_window_ = nullptr;

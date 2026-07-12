@@ -6,13 +6,16 @@
 #include "SingleLevelPopupMenu.h"
 #include "geo/SessionTrackReader.h"
 #include "geo/TrajectoryQuality.h"
+#include "Map3DRuntime.h"
 #include "map3d/OsgEarthViewWidget.h"
 
 #include <QAction>
 #include <QCloseEvent>
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHideEvent>
@@ -26,6 +29,7 @@
 #include <QShowEvent>
 #include <QSpinBox>
 #include <QStatusBar>
+#include <QStringList>
 #include <QTimer>
 #include <QToolBar>
 #include <QVBoxLayout>
@@ -161,6 +165,62 @@ QString configuredTiandituKey()
 {
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("TrajectoryViewer"));
     return settings.value(tiandituKeySettingKey()).toString().trimmed();
+}
+
+QString defaultSessionDataDirectory()
+{
+    const QStringList roots = map3DRuntimeRootCandidates();
+    for (const QString& root : roots)
+    {
+        const QString candidate =
+            QDir::cleanPath(QDir(root).absoluteFilePath(QStringLiteral("data")));
+        if (QFileInfo(candidate).isDir())
+        {
+            return QFileInfo(candidate).absoluteFilePath();
+        }
+    }
+    return QDir::cleanPath(
+        QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(QStringLiteral("../../data")));
+}
+
+QString trajectorySampleDetailText(int sampleIndex, const VaporView::Geo::NavSample& sample)
+{
+    QStringList parts;
+    parts << QStringLiteral("Selected #%1").arg(sampleIndex + 1);
+    if (sample.hasLlh())
+    {
+        parts << QStringLiteral("Lat %1").arg(sample.latDeg, 0, 'f', 7)
+              << QStringLiteral("Lon %1").arg(sample.lonDeg, 0, 'f', 7)
+              << QStringLiteral("H %1 m %2")
+                     .arg(sample.heightM, 0, 'f', 2)
+                     .arg(heightReferenceLabel(sample.heightReference));
+    }
+    if (sample.hasEcef())
+    {
+        parts << QStringLiteral("ECEF %1, %2, %3 m")
+                     .arg(sample.ecefXM, 0, 'f', 2)
+                     .arg(sample.ecefYM, 0, 'f', 2)
+                     .arg(sample.ecefZM, 0, 'f', 2);
+    }
+    parts << QStringLiteral("Fix %1").arg(fixQualityLabel(sample.fixQuality));
+    if (sample.satellites > 0)
+    {
+        parts << QStringLiteral("Sats %1").arg(sample.satellites);
+    }
+    if (std::isfinite(sample.hdop))
+    {
+        parts << QStringLiteral("HDOP %1").arg(sample.hdop, 0, 'f', 2);
+    }
+    if (sample.recordTimestampUs > 0)
+    {
+        parts << QStringLiteral("rec %1").arg(sample.recordTimestampUs);
+    }
+    if (sample.deviceTimestampUs > 0)
+    {
+        parts << QStringLiteral("dev %1").arg(sample.deviceTimestampUs);
+    }
+    parts << QStringLiteral("Att %1").arg(attitudeSourceLabel(&sample));
+    return parts.join(QStringLiteral(" | "));
 }
 
 MapDataSelection selectionForCustomEarth(const MapDataSelection& discovered,
@@ -336,6 +396,14 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     {
         view_ = new OsgEarthViewWidget(this);
         view_->setObjectName(QStringLiteral("map3DView"));
+        connect(view_,
+                &OsgEarthViewWidget::trajectorySampleSelected,
+                this,
+                &Map3DWindow::showSelectedTrajectorySample);
+        connect(view_, &OsgEarthViewWidget::trajectorySampleSelectionCleared, this, [this]() {
+            clearSelectedTrajectorySample();
+            updateStatus(nullptr);
+        });
         setCentralWidget(view_);
     }
     status_label_->setObjectName(QStringLiteral("map3DStatusLabel"));
@@ -599,6 +667,7 @@ void Map3DWindow::clearTrack()
     replay_timer_->stop();
     replay_.clear();
     rendered_replay_index_ = -1;
+    clearSelectedTrajectorySample();
     if (view_)
     {
         view_->clearTrack();
@@ -631,6 +700,7 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
     const auto samples = std::make_shared<const std::vector<VaporView::Geo::NavSample>>(
         std::move(result.samples));
     replay_timer_->stop();
+    clearSelectedTrajectorySample();
     if (view_)
     {
         view_->setSamples(samples);
@@ -771,7 +841,11 @@ void Map3DWindow::loadInitialEarthFile()
 void Map3DWindow::openSessionDirectory()
 {
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
-    const QString initial = settings.value(QStringLiteral("lastSessionDir")).toString();
+    QString initial = settings.value(QStringLiteral("lastSessionDir")).toString();
+    if (initial.isEmpty() || !QFileInfo(initial).isDir())
+    {
+        initial = defaultSessionDataDirectory();
+    }
     const QString dir = QFileDialog::getExistingDirectory(this,
                                                           QStringLiteral("选择 Session 目录"),
                                                           initial);
@@ -1621,6 +1695,22 @@ void Map3DWindow::recordTrackSource(const QString& source,
     refreshDiagnosticsText();
 }
 
+void Map3DWindow::showSelectedTrajectorySample(int sampleIndex, const VaporView::Geo::NavSample& sample)
+{
+    selected_track_sample_index_ = sampleIndex;
+    selected_track_sample_ = sample;
+    has_selected_track_sample_ = true;
+    const QString detail = trajectorySampleDetailText(sampleIndex, sample);
+    statusBar()->showMessage(detail, 12000);
+    updateStatus(nullptr);
+}
+
+void Map3DWindow::clearSelectedTrajectorySample()
+{
+    selected_track_sample_index_ = -1;
+    has_selected_track_sample_ = false;
+}
+
 void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool force)
 {
     const VaporView::Geo::NavSample* displayLatest = latest;
@@ -1742,6 +1832,18 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
                     .arg(replay_.sampleCount())
                     .arg(replay_.speed(), 0, 'g', 3)
                     .arg(replayTimeLabel());
+    }
+    if (has_selected_track_sample_)
+    {
+        text += QStringLiteral(" | Selected #%1").arg(selected_track_sample_index_ + 1);
+        if (selected_track_sample_.hasLlh())
+        {
+            text += QStringLiteral(" Lat %1 Lon %2 H %3 m | Fix %4")
+                        .arg(selected_track_sample_.latDeg, 0, 'f', 7)
+                        .arg(selected_track_sample_.lonDeg, 0, 'f', 7)
+                        .arg(selected_track_sample_.heightM, 0, 'f', 2)
+                        .arg(fixQualityLabel(selected_track_sample_.fixQuality));
+        }
     }
     status_label_->setText(text);
 }

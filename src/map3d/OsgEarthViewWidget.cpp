@@ -1232,6 +1232,9 @@ void OsgEarthViewWidget::mousePressEvent(QMouseEvent* event)
     }
     initializeSceneIfNeeded();
     setFocus(Qt::MouseFocusReason);
+    mouse_press_position_ = event->position();
+    mouse_press_tracks_selection_ = event->button() == Qt::LeftButton;
+    mouse_dragged_since_press_ = false;
     const unsigned int button = toOsgMouseButton(event->button());
     if (graphics_window_ && button != 0)
     {
@@ -1255,6 +1258,10 @@ void OsgEarthViewWidget::mouseReleaseEvent(QMouseEvent* event)
         return;
     }
     initializeSceneIfNeeded();
+    const bool canSelectTrajectory =
+        mouse_press_tracks_selection_
+        && event->button() == Qt::LeftButton
+        && !mouse_dragged_since_press_;
     const unsigned int button = toOsgMouseButton(event->button());
     if (graphics_window_ && button != 0)
     {
@@ -1263,10 +1270,18 @@ void OsgEarthViewWidget::mouseReleaseEvent(QMouseEvent* event)
             static_cast<float>(event->position().x() * dpr),
             static_cast<float>(event->position().y() * dpr),
             button);
+        if (canSelectTrajectory)
+        {
+            selectTrajectorySampleAt(event->position());
+        }
+        mouse_press_tracks_selection_ = false;
+        mouse_dragged_since_press_ = false;
         update();
         event->accept();
         return;
     }
+    mouse_press_tracks_selection_ = false;
+    mouse_dragged_since_press_ = false;
     QOpenGLWidget::mouseReleaseEvent(event);
 }
 
@@ -1278,6 +1293,15 @@ void OsgEarthViewWidget::mouseMoveEvent(QMouseEvent* event)
         return;
     }
     initializeSceneIfNeeded();
+    if (mouse_press_tracks_selection_)
+    {
+        const QPointF delta = event->position() - mouse_press_position_;
+        const double distanceSq = delta.x() * delta.x() + delta.y() * delta.y();
+        if (distanceSq > 25.0)
+        {
+            mouse_dragged_since_press_ = true;
+        }
+    }
     if (graphics_window_)
     {
         const qreal dpr = std::max<qreal>(1.0, devicePixelRatioF());
@@ -1677,6 +1701,60 @@ void OsgEarthViewWidget::setLookAt(const osg::Vec3d& center, double distanceM)
         manipulator->home(0.0);
         manipulator->updateCamera(*viewer_->getCamera());
     }
+}
+
+bool OsgEarthViewWidget::selectTrajectorySampleAt(const QPointF& widgetPosition)
+{
+    if (shutdown_ || !trajectory_layer_ || !viewer_ || !viewer_->getCamera())
+    {
+        return false;
+    }
+
+    osg::Camera* camera = viewer_->getCamera();
+    osg::Viewport* viewport = camera->getViewport();
+    if (!viewport)
+    {
+        return false;
+    }
+
+    const qreal dpr = std::max<qreal>(1.0, devicePixelRatioF());
+    const double screenX = widgetPosition.x() * dpr;
+    const double screenYTop = widgetPosition.y() * dpr;
+    const double screenYBottom =
+        static_cast<double>((std::max)(1, framebuffer_size_.height())) - screenYTop;
+    const osg::Matrixd localToWorld =
+        overlay_transform_.valid() ? overlay_transform_->getMatrix() : osg::Matrixd::identity();
+    const osg::Matrixd localToWindow =
+        localToWorld
+        * camera->getViewMatrix()
+        * camera->getProjectionMatrix()
+        * viewport->computeWindowMatrix();
+
+    constexpr double kPickRadiusPx = 16.0;
+    std::optional<TrajectoryPickResult> pick =
+        trajectory_layer_->pickNearestSample(localToWindow,
+                                             screenX,
+                                             screenYBottom,
+                                             kPickRadiusPx * static_cast<double>(dpr));
+    if (!pick)
+    {
+        pick = trajectory_layer_->pickNearestSample(localToWindow,
+                                                    screenX,
+                                                    screenYTop,
+                                                    kPickRadiusPx * static_cast<double>(dpr));
+    }
+    if (!pick)
+    {
+        trajectory_layer_->setSelectedSampleIndex(-1);
+        emit trajectorySampleSelectionCleared();
+        update();
+        return false;
+    }
+
+    trajectory_layer_->setSelectedSampleIndex(pick->sampleIndex);
+    emit trajectorySampleSelected(pick->sampleIndex, pick->sample);
+    update();
+    return true;
 }
 
 void OsgEarthViewWidget::rebuildDisplayTrack()

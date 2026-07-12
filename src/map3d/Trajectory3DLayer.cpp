@@ -6,15 +6,20 @@
 #include <osg/Geode>
 #include <osg/LineWidth>
 #include <osg/Point>
+#include <osg/PrimitiveSet>
 #include <osg/StateSet>
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace VaporView::Map3D {
 namespace {
 
 constexpr int kSegmentSize = 4096;
+constexpr int kMaxSolidSphereMarkers = 40000;
+constexpr double kTrajectorySphereRadiusM = 2.5;
+constexpr double kSelectedTrajectorySphereRadiusM = 8.0;
 
 bool hasWorldPosition(const VaporView::Geo::NavSample& sample)
 {
@@ -67,10 +72,56 @@ osg::Vec4 markerColor()
     return osg::Vec4(0.95f, 0.05f, 0.05f, 1.0f);
 }
 
+osg::Vec4 selectedMarkerColor()
+{
+    return osg::Vec4(1.0f, 0.48f, 0.02f, 1.0f);
+}
+
+bool finiteVec3(const osg::Vec3d& value)
+{
+    return std::isfinite(value.x()) && std::isfinite(value.y()) && std::isfinite(value.z());
+}
+
+void appendOctahedron(osg::Vec3dArray& vertices,
+                      osg::Vec4Array& colors,
+                      osg::DrawElementsUInt& indices,
+                      const osg::Vec3d& center,
+                      double radiusM,
+                      const osg::Vec4& color)
+{
+    const unsigned int base = static_cast<unsigned int>(vertices.size());
+    vertices.push_back(center + osg::Vec3d(radiusM, 0.0, 0.0));
+    vertices.push_back(center + osg::Vec3d(-radiusM, 0.0, 0.0));
+    vertices.push_back(center + osg::Vec3d(0.0, radiusM, 0.0));
+    vertices.push_back(center + osg::Vec3d(0.0, -radiusM, 0.0));
+    vertices.push_back(center + osg::Vec3d(0.0, 0.0, radiusM));
+    vertices.push_back(center + osg::Vec3d(0.0, 0.0, -radiusM));
+    for (int index = 0; index < 6; ++index)
+    {
+        colors.push_back(color);
+    }
+
+    const unsigned int faces[] = {
+        4, 0, 2,
+        4, 2, 1,
+        4, 1, 3,
+        4, 3, 0,
+        5, 2, 0,
+        5, 1, 2,
+        5, 3, 1,
+        5, 0, 3,
+    };
+    for (unsigned int faceIndex : faces)
+    {
+        indices.push_back(base + faceIndex);
+    }
+}
+
 } // namespace
 
 Trajectory3DLayer::Trajectory3DLayer()
     : geode_(new osg::Geode)
+    , selected_marker_geometry_(new osg::Geometry)
 {
 }
 
@@ -79,13 +130,17 @@ void Trajectory3DLayer::clear()
     samples_.clear();
     line_sample_flags_.clear();
     last_line_sample_index_ = -1;
+    selected_sample_index_ = -1;
+    sphere_marker_stride_ = 1;
     segments_.clear();
     quality_stats_ = {};
     geode_->removeDrawables(0, geode_->getNumDrawables());
+    updateSelectedMarkerGeometry();
 }
 
 void Trajectory3DLayer::appendSample(const VaporView::Geo::NavSample& sample)
 {
+    const int previousSphereMarkerStride = sphere_marker_stride_;
     samples_.push_back(sample);
     const int sampleIndex = sampleCount() - 1;
     const bool lineSample = shouldUseAsLineSample(sampleIndex);
@@ -102,11 +157,22 @@ void Trajectory3DLayer::appendSample(const VaporView::Geo::NavSample& sample)
     }
     TrajectorySegment& segment = segments_.back();
     ++segment.sampleCount;
-    if (needsNewSegment || !appendLineSampleGeometry(segment, sampleCount() - 1))
+    const bool lineUpdated = !needsNewSegment && appendLineSampleGeometry(segment, sampleCount() - 1);
+    const bool sphereUpdated =
+        !needsNewSegment
+        && (!shouldRenderSphereMarker(sampleCount() - 1)
+            || appendSphereMarkerGeometry(segment, sampleCount() - 1));
+    if (needsNewSegment || !lineUpdated || !sphereUpdated)
     {
         rebuildSegmentGeometry(segment);
     }
     trimToVisibleLimit();
+    sphere_marker_stride_ = sphereMarkerStride();
+    if (sphere_marker_stride_ != previousSphereMarkerStride)
+    {
+        rebuildSegments();
+        return;
+    }
     applySegmentVisibility();
 }
 
@@ -169,6 +235,7 @@ void Trajectory3DLayer::setMaxVisibleSamples(int maxVisibleSamples)
     }
     max_visible_samples_ = sanitized;
     trimToVisibleLimit();
+    sphere_marker_stride_ = sphereMarkerStride();
     rebuildLineSampleFlags();
     rebuildQualityStats();
     rebuildSegments();
@@ -199,9 +266,98 @@ int Trajectory3DLayer::segmentSize() const
     return kSegmentSize;
 }
 
+int Trajectory3DLayer::sphereMarkerCount() const
+{
+    int count = 0;
+    for (const TrajectorySegment& segment : segments_)
+    {
+        count += segment.sphereMarkerCount;
+    }
+    return count;
+}
+
+int Trajectory3DLayer::selectedSampleIndex() const
+{
+    return selected_sample_index_;
+}
+
 TrajectoryQualityStats Trajectory3DLayer::qualityStats() const
 {
     return quality_stats_;
+}
+
+bool Trajectory3DLayer::displayPositionForSample(int sampleIndex, osg::Vec3d& position) const
+{
+    if (sampleIndex < 0 || sampleIndex >= sampleCount())
+    {
+        return false;
+    }
+    position = samplePosition(samples_[static_cast<std::size_t>(sampleIndex)],
+                              use_world_coordinates_,
+                              has_world_origin_,
+                              world_origin_);
+    return finiteVec3(position);
+}
+
+std::optional<TrajectoryPickResult> Trajectory3DLayer::pickNearestSample(
+    const osg::Matrixd& localToWindow,
+    double screenX,
+    double screenY,
+    double maxDistancePx) const
+{
+    if (samples_.empty() || maxDistancePx <= 0.0)
+    {
+        return std::nullopt;
+    }
+
+    const double maxDistanceSq = maxDistancePx * maxDistancePx;
+    double bestDistanceSq = maxDistanceSq;
+    int bestIndex = -1;
+    const int first = firstVisibleIndex();
+    const int end = sampleCount();
+    for (int index = first; index < end; ++index)
+    {
+        osg::Vec3d localPosition;
+        if (!displayPositionForSample(index, localPosition))
+        {
+            continue;
+        }
+        const osg::Vec3d projected = localPosition * localToWindow;
+        if (!finiteVec3(projected) || projected.z() < 0.0 || projected.z() > 1.0)
+        {
+            continue;
+        }
+        const double dx = projected.x() - screenX;
+        const double dy = projected.y() - screenY;
+        const double distanceSq = dx * dx + dy * dy;
+        if (distanceSq <= bestDistanceSq)
+        {
+            bestDistanceSq = distanceSq;
+            bestIndex = index;
+        }
+    }
+
+    if (bestIndex < 0)
+    {
+        return std::nullopt;
+    }
+
+    TrajectoryPickResult result;
+    result.sampleIndex = bestIndex;
+    result.sample = samples_[static_cast<std::size_t>(bestIndex)];
+    result.screenDistancePx = std::sqrt(bestDistanceSq);
+    return result;
+}
+
+void Trajectory3DLayer::setSelectedSampleIndex(int sampleIndex)
+{
+    const int sanitized = (sampleIndex >= 0 && sampleIndex < sampleCount()) ? sampleIndex : -1;
+    if (selected_sample_index_ == sanitized)
+    {
+        return;
+    }
+    selected_sample_index_ = sanitized;
+    updateSelectedMarkerGeometry();
 }
 
 osg::Node* Trajectory3DLayer::node()
@@ -217,9 +373,11 @@ const osg::Node* Trajectory3DLayer::node() const
 void Trajectory3DLayer::rebuildSegments()
 {
     geode_->removeDrawables(0, geode_->getNumDrawables());
+    sphere_marker_stride_ = sphereMarkerStride();
     if (samples_.empty())
     {
         segments_.clear();
+        updateSelectedMarkerGeometry();
         return;
     }
 
@@ -231,8 +389,10 @@ void Trajectory3DLayer::rebuildSegments()
         segment.sampleCount = (std::min)(kSegmentSize, sampleCount() - firstSample);
         rebuildSegmentGeometry(segment);
         geode_->addDrawable(segment.geometry.get());
+        geode_->addDrawable(segment.sphereGeometry.get());
         segments_.push_back(segment);
     }
+    updateSelectedMarkerGeometry();
     applySegmentVisibility();
 }
 
@@ -323,6 +483,52 @@ void Trajectory3DLayer::rebuildSegmentGeometry(TrajectorySegment& segment)
     configureGeometryState(*geometry);
 
     segment.geometry = geometry;
+
+    osg::ref_ptr<osg::Geometry> sphereGeometry = segment.sphereGeometry;
+    if (!sphereGeometry.valid())
+    {
+        sphereGeometry = new osg::Geometry;
+    }
+    sphereGeometry->removePrimitiveSet(0, sphereGeometry->getNumPrimitiveSets());
+    osg::ref_ptr<osg::Vec3dArray> sphereVertices = new osg::Vec3dArray;
+    osg::ref_ptr<osg::Vec4Array> sphereColors = new osg::Vec4Array;
+    osg::ref_ptr<osg::DrawElementsUInt> sphereIndices =
+        new osg::DrawElementsUInt(osg::PrimitiveSet::TRIANGLES);
+    segment.sphereMarkerCount = 0;
+    for (int index = first; index < end; ++index)
+    {
+        if (!shouldRenderSphereMarker(index))
+        {
+            continue;
+        }
+        const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)];
+        osg::Vec3d position;
+        if (!displayPositionForSample(index, position))
+        {
+            continue;
+        }
+        appendOctahedron(*sphereVertices,
+                         *sphereColors,
+                         *sphereIndices,
+                         position,
+                         kTrajectorySphereRadiusM,
+                         qualityColor(sample));
+        ++segment.sphereMarkerCount;
+    }
+    if (!sphereVertices->empty())
+    {
+        sphereGeometry->setVertexArray(sphereVertices.get());
+        sphereGeometry->setColorArray(sphereColors.get(), osg::Array::BIND_PER_VERTEX);
+        sphereGeometry->addPrimitiveSet(sphereIndices.get());
+    }
+    else
+    {
+        sphereGeometry->setVertexArray(sphereVertices.get());
+        sphereGeometry->setColorArray(sphereColors.get(), osg::Array::BIND_PER_VERTEX);
+    }
+    configureSphereMarkerState(*sphereGeometry);
+    sphereGeometry->dirtyBound();
+    segment.sphereGeometry = sphereGeometry;
 }
 
 bool Trajectory3DLayer::appendLineSampleGeometry(TrajectorySegment& segment, int sampleIndex)
@@ -378,6 +584,51 @@ bool Trajectory3DLayer::appendLineSampleGeometry(TrajectorySegment& segment, int
     return true;
 }
 
+bool Trajectory3DLayer::appendSphereMarkerGeometry(TrajectorySegment& segment, int sampleIndex)
+{
+    if (!segment.sphereGeometry.valid() || !shouldRenderSphereMarker(sampleIndex))
+    {
+        return false;
+    }
+    auto* vertices = dynamic_cast<osg::Vec3dArray*>(segment.sphereGeometry->getVertexArray());
+    auto* colors = dynamic_cast<osg::Vec4Array*>(segment.sphereGeometry->getColorArray());
+    osg::DrawElementsUInt* indices = nullptr;
+    if (segment.sphereGeometry->getNumPrimitiveSets() > 0)
+    {
+        indices = dynamic_cast<osg::DrawElementsUInt*>(segment.sphereGeometry->getPrimitiveSet(0));
+    }
+    if (!vertices || !colors)
+    {
+        return false;
+    }
+    if (!indices)
+    {
+        osg::ref_ptr<osg::DrawElementsUInt> created =
+            new osg::DrawElementsUInt(osg::PrimitiveSet::TRIANGLES);
+        segment.sphereGeometry->addPrimitiveSet(created.get());
+        indices = created.get();
+    }
+
+    osg::Vec3d position;
+    if (!displayPositionForSample(sampleIndex, position))
+    {
+        return false;
+    }
+    const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(sampleIndex)];
+    appendOctahedron(*vertices,
+                     *colors,
+                     *indices,
+                     position,
+                     kTrajectorySphereRadiusM,
+                     qualityColor(sample));
+    ++segment.sphereMarkerCount;
+    vertices->dirty();
+    colors->dirty();
+    indices->dirty();
+    segment.sphereGeometry->dirtyBound();
+    return true;
+}
+
 void Trajectory3DLayer::configureGeometryState(osg::Geometry& geometry)
 {
     osg::StateSet* stateSet = geometry.getOrCreateStateSet();
@@ -397,6 +648,57 @@ void Trajectory3DLayer::configureGeometryState(osg::Geometry& geometry)
     stateSet->setMode(GL_DEPTH_TEST,
                       osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
     stateSet->setRenderBinDetails(1000, "RenderBin");
+}
+
+void Trajectory3DLayer::configureSphereMarkerState(osg::Geometry& geometry)
+{
+    osg::StateSet* stateSet = geometry.getOrCreateStateSet();
+    stateSet->setMode(GL_LIGHTING,
+                      osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
+    stateSet->setMode(GL_BLEND, osg::StateAttribute::ON);
+    stateSet->setMode(GL_DEPTH_TEST,
+                      osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
+    stateSet->setRenderBinDetails(1001, "RenderBin");
+}
+
+void Trajectory3DLayer::updateSelectedMarkerGeometry()
+{
+    if (!selected_marker_geometry_.valid())
+    {
+        selected_marker_geometry_ = new osg::Geometry;
+    }
+
+    selected_marker_geometry_->removePrimitiveSet(0, selected_marker_geometry_->getNumPrimitiveSets());
+    osg::ref_ptr<osg::Vec3dArray> vertices = new osg::Vec3dArray;
+    osg::ref_ptr<osg::Vec4Array> colors = new osg::Vec4Array;
+    osg::ref_ptr<osg::DrawElementsUInt> indices =
+        new osg::DrawElementsUInt(osg::PrimitiveSet::TRIANGLES);
+
+    osg::Vec3d position;
+    if (displayPositionForSample(selected_sample_index_, position))
+    {
+        appendOctahedron(*vertices,
+                         *colors,
+                         *indices,
+                         position,
+                         kSelectedTrajectorySphereRadiusM,
+                         selectedMarkerColor());
+        selected_marker_geometry_->setVertexArray(vertices.get());
+        selected_marker_geometry_->setColorArray(colors.get(), osg::Array::BIND_PER_VERTEX);
+        selected_marker_geometry_->addPrimitiveSet(indices.get());
+        configureSphereMarkerState(*selected_marker_geometry_);
+        if (geode_->getDrawableIndex(selected_marker_geometry_.get()) == geode_->getNumDrawables())
+        {
+            geode_->addDrawable(selected_marker_geometry_.get());
+        }
+    }
+    else
+    {
+        selected_marker_geometry_->setVertexArray(vertices.get());
+        selected_marker_geometry_->setColorArray(colors.get(), osg::Array::BIND_PER_VERTEX);
+        geode_->removeDrawable(selected_marker_geometry_.get());
+    }
+    selected_marker_geometry_->dirtyBound();
 }
 
 void Trajectory3DLayer::trimToVisibleLimit()
@@ -420,8 +722,17 @@ void Trajectory3DLayer::removeOldestSample()
     {
         --last_line_sample_index_;
     }
+    if (selected_sample_index_ == 0)
+    {
+        selected_sample_index_ = -1;
+    }
+    else if (selected_sample_index_ > 0)
+    {
+        --selected_sample_index_;
+    }
     if (segments_.empty())
     {
+        updateSelectedMarkerGeometry();
         return;
     }
 
@@ -433,12 +744,14 @@ void Trajectory3DLayer::removeOldestSample()
     if (segments_.front().sampleCount <= 0)
     {
         geode_->removeDrawable(segments_.front().geometry.get());
+        geode_->removeDrawable(segments_.front().sphereGeometry.get());
         segments_.erase(segments_.begin());
     }
     else
     {
         rebuildSegmentGeometry(segments_.front());
     }
+    updateSelectedMarkerGeometry();
 }
 
 void Trajectory3DLayer::appendSegment()
@@ -447,13 +760,25 @@ void Trajectory3DLayer::appendSegment()
     segment.firstSampleIndex = sampleCount() - 1;
     segment.sampleCount = 0;
     segment.geometry = new osg::Geometry;
+    segment.sphereGeometry = new osg::Geometry;
     geode_->addDrawable(segment.geometry.get());
+    geode_->addDrawable(segment.sphereGeometry.get());
     segments_.push_back(segment);
 }
 
 int Trajectory3DLayer::firstVisibleIndex() const
 {
     return (std::max)(0, sampleCount() - visibleSampleCount());
+}
+
+int Trajectory3DLayer::sphereMarkerStride() const
+{
+    const int visible = visibleSampleCount();
+    if (visible <= kMaxSolidSphereMarkers)
+    {
+        return 1;
+    }
+    return (std::max)(1, (visible + kMaxSolidSphereMarkers - 1) / kMaxSolidSphereMarkers);
 }
 
 bool Trajectory3DLayer::shouldUseAsLineSample(int index) const
@@ -477,6 +802,22 @@ bool Trajectory3DLayer::isLineSample(int index) const
     return index >= 0
         && index < static_cast<int>(line_sample_flags_.size())
         && line_sample_flags_[static_cast<std::size_t>(index)] != 0;
+}
+
+bool Trajectory3DLayer::shouldRenderSphereMarker(int index) const
+{
+    if (index < firstVisibleIndex() || index >= sampleCount())
+    {
+        return false;
+    }
+    if (index == selected_sample_index_
+        || index == firstVisibleIndex()
+        || !isLineSample(index))
+    {
+        return true;
+    }
+    const int stride = (std::max)(1, sphere_marker_stride_);
+    return ((index - firstVisibleIndex()) % stride) == 0;
 }
 
 void Trajectory3DLayer::rebuildLineSampleFlags()
@@ -561,11 +902,15 @@ void Trajectory3DLayer::applySegmentVisibility()
 {
     for (TrajectorySegment& segment : segments_)
     {
-        if (!segment.geometry.valid())
+        const unsigned int mask = segmentIsVisible(segment) ? ~0u : 0u;
+        if (segment.geometry.valid())
         {
-            continue;
+            segment.geometry->setNodeMask(mask);
         }
-        segment.geometry->setNodeMask(segmentIsVisible(segment) ? ~0u : 0u);
+        if (segment.sphereGeometry.valid())
+        {
+            segment.sphereGeometry->setNodeMask(mask);
+        }
     }
 }
 
