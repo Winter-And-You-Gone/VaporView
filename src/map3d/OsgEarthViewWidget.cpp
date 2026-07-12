@@ -20,13 +20,17 @@
 #include <osgViewer/GraphicsWindow>
 #include <osgViewer/Viewer>
 #include <osgEarth/EarthManipulator>
+#include <osgEarth/ElevationLayer>
 #include <osgEarth/GeoData>
 #include <osgEarth/GLUtils>
+#include <osgEarth/Layer>
 #include <osgEarth/MapNode>
 #include <osgEarth/Map>
+#include <osgEarth/Profile>
 #include <osgEarth/Registry>
 #include <osgEarth/SpatialReference>
 #include <osgEarth/Viewpoint>
+#include <osgEarth/XYZ>
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -41,6 +45,7 @@
 #include <QWheelEvent>
 #include <QElapsedTimer>
 #include <QFutureWatcher>
+#include <QUrl>
 #include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
@@ -54,6 +59,8 @@ namespace VaporView::Map3D {
 namespace {
 
 constexpr double kEarthRadiusM = 6378137.0;
+constexpr unsigned kTiandituMaxZoom = 18;
+constexpr const char* kTiandituSatelliteLayerName = "Tianditu Satellite imagery";
 
 void assertGuiThread(const QObject* object, const char* function)
 {
@@ -227,6 +234,54 @@ bool restoreEarthViewpoint(osgViewer::Viewer* viewer, const osgEarth::Viewpoint&
     manipulator->setViewpoint(viewpoint, 0.0);
     manipulator->updateCamera(*viewer->getCamera());
     return true;
+}
+
+QString tiandituSatelliteUrlTemplate(const QString& key)
+{
+    const QString encodedKey = QString::fromLatin1(QUrl::toPercentEncoding(key.trimmed()));
+    return QStringLiteral(
+        "https://t[01234567].tianditu.gov.cn/img_w/wmts"
+        "?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0"
+        "&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles"
+        "&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=%1")
+        .arg(encodedKey);
+}
+
+void removeLayerByName(osgEarth::Map* map, const char* layerName)
+{
+    if (!map || !layerName)
+    {
+        return;
+    }
+
+    while (true)
+    {
+        osg::ref_ptr<osgEarth::Layer> existing = map->getLayerByName(layerName);
+        if (!existing)
+        {
+            return;
+        }
+        map->removeLayer(existing.get());
+    }
+}
+
+unsigned tiandituSatelliteInsertIndex(osgEarth::Map* map)
+{
+    if (!map)
+    {
+        return 0;
+    }
+
+    osgEarth::LayerVector layers;
+    map->getLayers(layers);
+    for (unsigned index = 0; index < layers.size(); ++index)
+    {
+        if (dynamic_cast<osgEarth::ElevationLayer*>(layers[index].get()))
+        {
+            return index;
+        }
+    }
+    return static_cast<unsigned>(layers.size());
 }
 
 } // namespace
@@ -466,6 +521,52 @@ void OsgEarthViewWidget::loadEarthFilePreservingViewAsync(const QString& earthPa
                                                           std::function<void(bool)> finished)
 {
     loadEarthFileAsync(earthPath, true, std::move(finished));
+}
+
+bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    if (shutdown_ || !map_node_ || !map_node_->getMap())
+    {
+        return false;
+    }
+
+    osgEarth::Map* map = map_node_->getMap();
+    removeLayerByName(map, kTiandituSatelliteLayerName);
+
+    const QString trimmedKey = key.trimmed();
+    if (trimmedKey.isEmpty())
+    {
+        earth_load_diagnostics_.layerSummaries.push_back(
+            QStringLiteral("Tianditu Satellite imagery not applied: no key configured."));
+        update();
+        return false;
+    }
+
+    osg::ref_ptr<osgEarth::XYZImageLayer> layer = new osgEarth::XYZImageLayer;
+    layer->setName(kTiandituSatelliteLayerName);
+    layer->setURL(osgEarth::URI(tiandituSatelliteUrlTemplate(trimmedKey).toStdString()));
+    layer->setProfile(osgEarth::Profile::create(osgEarth::Profile::SPHERICAL_MERCATOR));
+    layer->setFormat("jpg");
+    layer->options().minLevel() = 0u;
+    layer->options().maxLevel() = kTiandituMaxZoom;
+
+    const unsigned insertIndex = tiandituSatelliteInsertIndex(map);
+    map->insertLayer(layer.get(), insertIndex);
+    earth_load_diagnostics_.layerSummaries.push_back(
+        QStringLiteral("Tianditu Satellite imagery added at layer index %1%2.")
+            .arg(insertIndex)
+            .arg(layer->isOpen()
+                     ? QString()
+                     : QStringLiteral("; pending open status=%1")
+                           .arg(QString::fromStdString(layer->getStatus().toString()))));
+    ++earth_load_diagnostics_.layerCount;
+    if (layer->isOpen())
+    {
+        ++earth_load_diagnostics_.openLayerCount;
+    }
+    update();
+    return true;
 }
 
 void OsgEarthViewWidget::loadEarthFileAsync(const QString& earthPath,

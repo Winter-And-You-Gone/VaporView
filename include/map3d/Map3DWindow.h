@@ -56,6 +56,7 @@ private:
     void loadLocal3DTilesPreview();
     bool loadConfiguredLocal3DTiles(bool showStatusMessage);
     void clearLocal3DTilesPreview();
+    bool applyConfiguredTiandituSatelliteImagery(bool showStatusMessage);
     void openAircraftModel();
     void resetAircraftModel();
     void reloadBestLocalMap();
@@ -130,6 +131,7 @@ private:
     bool has_latest_status_sample_ = false;
     bool automatic_sentinel2_imagery_loaded_ = false;
     bool automatic_sentinel2_imagery_loading_ = false;
+    bool tianditu_satellite_imagery_loaded_ = false;
     qint64 latest_drop_record_timestamp_us_ = 0;
     qint64 latest_track_record_timestamp_us_ = 0;
     qint64 latest_track_device_timestamp_us_ = 0;

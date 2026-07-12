@@ -152,6 +152,17 @@ QString imageryOptionLabel(const LocalImageryOption& option)
              option.available ? QStringLiteral("available") : QStringLiteral("missing VRT/template"));
 }
 
+QString tiandituKeySettingKey()
+{
+    return QStringLiteral("map/tianditu_key");
+}
+
+QString configuredTiandituKey()
+{
+    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("TrajectoryViewer"));
+    return settings.value(tiandituKeySettingKey()).toString().trimmed();
+}
+
 MapDataSelection selectionForCustomEarth(const MapDataSelection& discovered,
                                          const QString& earthFile,
                                          const QString& description,
@@ -639,9 +650,12 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
                       sourceCsvPath);
     resetAutomaticSentinel2Imagery();
     const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
+    applyConfiguredTiandituSatelliteImagery(false);
     updateReplayUi();
     updateStatus(replay_.currentSample());
-    if (sentinel2_auto_load_timer_ && !isSentinel2ImageryActive())
+    if (sentinel2_auto_load_timer_
+        && !tianditu_satellite_imagery_loaded_
+        && !isSentinel2ImageryActive())
     {
         sentinel2_auto_load_timer_->start();
         QTimer::singleShot(0, this, [this]() {
@@ -710,7 +724,10 @@ void Map3DWindow::loadInitialEarthFile()
                     {
                         loadConfiguredLocal3DTiles(false);
                     }
-                    if (sentinel2_auto_load_timer_ && !isSentinel2ImageryActive())
+                    applyConfiguredTiandituSatelliteImagery(false);
+                    if (sentinel2_auto_load_timer_
+                        && !tianditu_satellite_imagery_loaded_
+                        && !isSentinel2ImageryActive())
                     {
                         sentinel2_auto_load_timer_->start();
                     }
@@ -740,7 +757,10 @@ void Map3DWindow::loadInitialEarthFile()
         {
             loadConfiguredLocal3DTiles(false);
         }
-        if (sentinel2_auto_load_timer_ && !isSentinel2ImageryActive())
+        applyConfiguredTiandituSatelliteImagery(false);
+        if (sentinel2_auto_load_timer_
+            && !tianditu_satellite_imagery_loaded_
+            && !isSentinel2ImageryActive())
         {
             sentinel2_auto_load_timer_->start();
         }
@@ -787,7 +807,10 @@ void Map3DWindow::openEarthFile()
             .setValue(QStringLiteral("lastEarthFile"), file);
         setMapSelection(selection);
         resetAutomaticSentinel2Imagery();
-        if (sentinel2_auto_load_timer_ && !isSentinel2ImageryActive())
+        applyConfiguredTiandituSatelliteImagery(false);
+        if (sentinel2_auto_load_timer_
+            && !tianditu_satellite_imagery_loaded_
+            && !isSentinel2ImageryActive())
         {
             sentinel2_auto_load_timer_->start();
         }
@@ -823,7 +846,10 @@ void Map3DWindow::loadLocalImageryTemplate(const LocalImageryOption& option)
         resetAutomaticSentinel2Imagery();
         QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
             .setValue(QStringLiteral("lastEarthFile"), option.earthFilePath);
-        if (sentinel2_auto_load_timer_ && !isSentinel2ImageryActive())
+        applyConfiguredTiandituSatelliteImagery(false);
+        if (sentinel2_auto_load_timer_
+            && !tianditu_satellite_imagery_loaded_
+            && !isSentinel2ImageryActive())
         {
             sentinel2_auto_load_timer_->start();
         }
@@ -841,6 +867,7 @@ void Map3DWindow::maybeLoadSentinel2ImageryForRange(double rangeM)
     if (!view_
         || automatic_sentinel2_imagery_loaded_
         || automatic_sentinel2_imagery_loading_
+        || tianditu_satellite_imagery_loaded_
         || !std::isfinite(rangeM)
         || rangeM > kAutomaticSentinel2ImageryRangeM
         || isSentinel2ImageryActive())
@@ -917,6 +944,49 @@ bool Map3DWindow::isSentinel2ImageryActive() const
 void Map3DWindow::loadLocal3DTilesPreview()
 {
     loadConfiguredLocal3DTiles(true);
+}
+
+bool Map3DWindow::applyConfiguredTiandituSatelliteImagery(bool showStatusMessage)
+{
+    const bool hadTiandituLayer = tianditu_satellite_imagery_loaded_;
+    tianditu_satellite_imagery_loaded_ = false;
+    if (!view_ || !view_->hasEarthMap())
+    {
+        return false;
+    }
+
+    const QString key = configuredTiandituKey();
+    if (key.isEmpty())
+    {
+        if (hadTiandituLayer)
+        {
+            view_->applyTiandituSatelliteImagery(QString());
+            latest_earth_load_ = view_->earthLoadDiagnostics();
+            updateStatus(nullptr, true);
+        }
+        if (showStatusMessage)
+        {
+            statusBar()->showMessage(QStringLiteral("未配置天地图 Key，3D 地图保留本地离线影像。"), 6000);
+        }
+        return false;
+    }
+
+    tianditu_satellite_imagery_loaded_ = view_->applyTiandituSatelliteImagery(key);
+    latest_earth_load_ = view_->earthLoadDiagnostics();
+    if (tianditu_satellite_imagery_loaded_ && sentinel2_auto_load_timer_)
+    {
+        sentinel2_auto_load_timer_->stop();
+    }
+    if (showStatusMessage)
+    {
+        statusBar()->showMessage(
+            tianditu_satellite_imagery_loaded_
+                ? QStringLiteral("已加载天地图卫星影像。")
+                : QStringLiteral("天地图卫星影像加载失败，已保留当前本地影像。"),
+            6000);
+    }
+    updateStatus(nullptr, true);
+    return tianditu_satellite_imagery_loaded_;
 }
 
 bool Map3DWindow::loadConfiguredLocal3DTiles(bool showStatusMessage)
@@ -1058,7 +1128,10 @@ void Map3DWindow::reloadBestLocalMap()
         {
             loadConfiguredLocal3DTiles(false);
         }
-        if (sentinel2_auto_load_timer_ && !isSentinel2ImageryActive())
+        applyConfiguredTiandituSatelliteImagery(false);
+        if (sentinel2_auto_load_timer_
+            && !tianditu_satellite_imagery_loaded_
+            && !isSentinel2ImageryActive())
         {
             sentinel2_auto_load_timer_->start();
         }
@@ -1244,6 +1317,7 @@ void Map3DWindow::showEvent(QShowEvent* event)
     if (sentinel2_auto_load_timer_
         && view_
         && view_->hasEarthMap()
+        && !tianditu_satellite_imagery_loaded_
         && !isSentinel2ImageryActive()
         && !sentinel2_auto_load_timer_->isActive())
     {
@@ -1614,6 +1688,10 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
                     .arg(MapDataManager::modeLabel(map_selection_.mode))
                     .arg(framebufferSize.width())
                     .arg(framebufferSize.height());
+        if (tianditu_satellite_imagery_loaded_)
+        {
+            text += QStringLiteral(" | Imagery 天地图卫星");
+        }
         text += QStringLiteral(" | DEM %1 | OSM %2")
                     .arg(selectedDemLabel(map_selection_.diagnostics),
                          selectedOsmLabel(map_selection_.diagnostics));

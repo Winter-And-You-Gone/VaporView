@@ -105,6 +105,7 @@ public:
     bool loadEarthFile(const QString& earthPath);
     void loadEarthFileAsync(const QString& earthPath, std::function<void(bool)> finished);
     void loadEarthFilePreservingViewAsync(const QString& earthPath, std::function<void(bool)> finished);
+    bool applyTiandituSatelliteImagery(const QString& key);
     bool loadLocal3DTilesPreview(const QString& tilesetPath);
     void loadLocal3DTilesPreviewAsync(const QString& tilesetPath,
                                       std::function<void(bool)> finished);
