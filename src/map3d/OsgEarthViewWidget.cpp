@@ -767,8 +767,8 @@ bool OsgEarthViewWidget::flyToTrack()
         return false;
     }
 
-    const double minimumRangeM = earth_node_ && map_node_ ? 3000.0 : 300.0;
-    setLookAt(bounds.center(), (std::max)(minimumRangeM, static_cast<double>(bounds.radius()) * 3.0));
+    setLookAt(bounds.center(),
+              trackFocusRangeM(static_cast<double>(bounds.radius()), earth_node_ && map_node_));
     update();
     return true;
 }

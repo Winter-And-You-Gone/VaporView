@@ -249,6 +249,12 @@ int main()
             "full-track sampling preserves the circle east-west extent");
     require(hasNorthEast && hasNorthWest && hasSouthEast && hasSouthWest,
             "full-track sampling preserves all four circle quadrants");
+    require(nearlyEqual(VaporView::Map3D::trackFocusRangeM(500.0, true), 6000.0),
+            "Earth track focus keeps enough range for local imagery to remain visible");
+    require(nearlyEqual(VaporView::Map3D::trackFocusRangeM(500.0, false), 1500.0),
+            "local track focus still fits the sampled track extent");
+    require(nearlyEqual(VaporView::Map3D::trackFocusRangeM(2500.0, true), 7500.0),
+            "large Earth tracks expand beyond the minimum focus range");
 
     VaporView::Map3D::Trajectory3DLayer sampledCircleLayer;
     sampledCircleLayer.appendSamples(sampledCircle);

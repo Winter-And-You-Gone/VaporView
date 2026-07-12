@@ -46,4 +46,10 @@ std::vector<VaporView::Geo::NavSample> uniformlySampleTrack(
     return sampled;
 }
 
+double trackFocusRangeM(double trackRadiusM, bool earthMap)
+{
+    const double minimumRangeM = earthMap ? 6000.0 : 300.0;
+    return (std::max)(minimumRangeM, trackRadiusM * 3.0);
+}
+
 } // namespace VaporView::Map3D
