@@ -67,6 +67,61 @@ constexpr const char* kTiandituBrowserUserAgent =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
 constexpr float kTerrainTilePixelSize = 128.0f;
+constexpr double kEarthMaxInteractivePitchDeg = -22.0;
+constexpr double kEarthProjectionNearPlaneM = 1.0;
+constexpr double kEarthProjectionDefaultFarPlaneM = 10000000.0;
+constexpr double kEarthProjectionLocalRangeLimitM = 1000000.0;
+constexpr double kEarthProjectionLocalFarMultiplier = 18.0;
+constexpr double kEarthProjectionLocalMinFarPlaneM = 20000.0;
+constexpr double kEarthProjectionLocalMaxFarPlaneM = 850000.0;
+constexpr float kEarthSmallFeatureCullPixels = 3.0f;
+
+double earthProjectionFarPlaneM(double cameraRangeM)
+{
+    if (!std::isfinite(cameraRangeM)
+        || cameraRangeM <= 0.0
+        || cameraRangeM > kEarthProjectionLocalRangeLimitM)
+    {
+        return kEarthProjectionDefaultFarPlaneM;
+    }
+    return std::clamp(cameraRangeM * kEarthProjectionLocalFarMultiplier,
+                      kEarthProjectionLocalMinFarPlaneM,
+                      kEarthProjectionLocalMaxFarPlaneM);
+}
+
+void configureEarthManipulator(osgEarth::EarthManipulator* manipulator)
+{
+    if (!manipulator)
+    {
+        return;
+    }
+    osgEarth::EarthManipulator::Settings* settings = manipulator->getSettings();
+    if (!settings)
+    {
+        return;
+    }
+
+    settings->setMinMaxPitch(-90.0, kEarthMaxInteractivePitchDeg);
+    settings->setMinMaxDistance(50.0, 20000000.0);
+    settings->setTerrainAvoidanceEnabled(true);
+    settings->setTerrainAvoidanceMinimumDistance(25.0);
+}
+
+double currentEarthManipulatorDistance(const osgViewer::Viewer* viewer)
+{
+    if (!viewer)
+    {
+        return (std::numeric_limits<double>::quiet_NaN)();
+    }
+    const auto* manipulator =
+        dynamic_cast<const osgEarth::EarthManipulator*>(viewer->getCameraManipulator());
+    if (!manipulator)
+    {
+        return (std::numeric_limits<double>::quiet_NaN)();
+    }
+    const double distanceM = manipulator->getDistance();
+    return std::isfinite(distanceM) ? distanceM : (std::numeric_limits<double>::quiet_NaN)();
+}
 
 void configureHighResolutionTerrain(osgEarth::MapNode* mapNode)
 {
@@ -653,7 +708,7 @@ bool OsgEarthViewWidget::applyEarthLoad(EarthLoadDiagnostics diagnostics,
     map_node_ = mapNode;
     configureHighResolutionTerrain(map_node_);
     earth_load_diagnostics_.layerSummaries.push_back(
-        QStringLiteral("Terrain detail: visible-first screen-space LOD, 128 px tile threshold."));
+        QStringLiteral("Terrain detail: visible-first screen-space LOD, 128 px tile threshold, low-angle pitch guard, dynamic local far clipping."));
     use_xihu_initial_view_ = useXihuInitialView;
     if (replacedPreviousNode)
     {
@@ -814,10 +869,15 @@ void OsgEarthViewWidget::setFollowAircraft(bool enabled)
 
     if (earth_node_ && map_node_)
     {
-        if (!dynamic_cast<osgEarth::EarthManipulator*>(viewer_->getCameraManipulator()))
+        auto* manipulator =
+            dynamic_cast<osgEarth::EarthManipulator*>(viewer_->getCameraManipulator());
+        if (!manipulator)
         {
-            viewer_->setCameraManipulator(new osgEarth::EarthManipulator);
+            osg::ref_ptr<osgEarth::EarthManipulator> replacement = new osgEarth::EarthManipulator;
+            viewer_->setCameraManipulator(replacement.get());
+            manipulator = replacement.get();
         }
+        configureEarthManipulator(manipulator);
     }
     else if (!dynamic_cast<osgGA::TrackballManipulator*>(viewer_->getCameraManipulator()))
     {
@@ -870,6 +930,7 @@ osgEarth::EarthManipulator* ensureEarthManipulator(osgViewer::Viewer* viewer)
         viewer->setCameraManipulator(replacement.get());
         manipulator = replacement.get();
     }
+    configureEarthManipulator(manipulator);
     return manipulator;
 }
 
@@ -1078,6 +1139,7 @@ void OsgEarthViewWidget::paintGL()
     {
         QElapsedTimer timer;
         timer.start();
+        updateCameraProjectionForCurrentView();
         viewer_->frame();
         last_frame_ms_ = static_cast<double>(timer.nsecsElapsed()) / 1000000.0;
         smoothed_frame_ms_ = smoothed_frame_ms_ <= 0.0
@@ -1342,12 +1404,33 @@ void OsgEarthViewWidget::updateCameraViewport(int w, int h)
     if (viewer_ && viewer_->getCamera())
     {
         viewer_->getCamera()->setViewport(new osg::Viewport(0, 0, safeWidth, safeHeight));
-        viewer_->getCamera()->setProjectionMatrixAsPerspective(
-            30.0,
-            static_cast<double>(safeWidth) / static_cast<double>(safeHeight),
-            1.0,
-            10000000.0);
+        updateCameraProjectionForCurrentView();
     }
+}
+
+void OsgEarthViewWidget::updateCameraProjectionForCurrentView()
+{
+    if (!viewer_ || !viewer_->getCamera())
+    {
+        return;
+    }
+
+    const int safeWidth = (std::max)(1, framebuffer_size_.width());
+    const int safeHeight = (std::max)(1, framebuffer_size_.height());
+    const double rangeM = earth_node_ && map_node_
+        ? currentEarthManipulatorDistance(viewer_.get())
+        : (std::numeric_limits<double>::quiet_NaN)();
+    const double farPlaneM = earthProjectionFarPlaneM(rangeM);
+
+    osg::Camera* camera = viewer_->getCamera();
+    camera->setProjectionMatrixAsPerspective(
+        30.0,
+        static_cast<double>(safeWidth) / static_cast<double>(safeHeight),
+        kEarthProjectionNearPlaneM,
+        farPlaneM);
+    camera->setComputeNearFarMode(osg::CullSettings::DO_NOT_COMPUTE_NEAR_FAR);
+    camera->setCullingMode(osg::CullSettings::ENABLE_ALL_CULLING);
+    camera->setSmallFeatureCullingPixelSize(kEarthSmallFeatureCullPixels);
 }
 
 void OsgEarthViewWidget::updateFollowCamera(const VaporView::Geo::NavSample& sample)
@@ -1458,6 +1541,7 @@ void OsgEarthViewWidget::setInitialEarthView()
     }
 
     osg::ref_ptr<osgEarth::EarthManipulator> manipulator = new osgEarth::EarthManipulator;
+    configureEarthManipulator(manipulator.get());
     viewer_->setCameraManipulator(manipulator.get());
     const osgEarth::Viewpoint initialView =
         use_xihu_initial_view_

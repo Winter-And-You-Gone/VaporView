@@ -148,6 +148,7 @@ protected:
 private:
     void initializeSceneIfNeeded();
     void updateCameraViewport(int w, int h);
+    void updateCameraProjectionForCurrentView();
     void loadDefaultAircraftModelIfAvailable();
     void loadEarthFileAsync(const QString& earthPath,
                             bool preserveCurrentEarthView,

@@ -97,6 +97,9 @@ int main(int argc, char** argv)
     require(earthDiagnostics.layerSummaries.join(QStringLiteral(" | "))
                 .contains(QStringLiteral("visible-first screen-space LOD")),
             QStringLiteral("terrain prioritizes imagery for the visible camera region"));
+    require(earthDiagnostics.layerSummaries.join(QStringLiteral(" | "))
+                .contains(QStringLiteral("low-angle pitch guard")),
+            QStringLiteral("earth camera avoids near-horizontal views that overdraw distant terrain"));
 
     VaporView::Geo::NavSample unresolvedMslSample;
     unresolvedMslSample.latDeg = 30.25;
