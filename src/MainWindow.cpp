@@ -18774,6 +18774,9 @@ void MainWindow::startRecordingWorkers()
             auto appendBool = [&row](bool value) {
                 row << csvBool(value);
             };
+            auto optionalNumber = [](double value, int precision) {
+                return std::isfinite(value) ? QString::number(value, 'f', precision) : QString();
+            };
             auto isFresh = [tickTime](auto* collector, const auto& sample) {
                 if (!collector || sample.timestamp == std::chrono::steady_clock::time_point{})
                 {
@@ -18795,9 +18798,9 @@ void MainWindow::startRecordingWorkers()
                     << QString::number(epsilonSample.latitude_deg, 'f', 9)
                     << QString::number(epsilonSample.longitude_deg, 'f', 9)
                     << QString::number(epsilonSample.height_m, 'f', 6)
-                    << QString::number(epsilonSample.ecef_x_m, 'f', 6)
-                    << QString::number(epsilonSample.ecef_y_m, 'f', 6)
-                    << QString::number(epsilonSample.ecef_z_m, 'f', 6)
+                    << optionalNumber(epsilonSample.ecef_x_m, 6)
+                    << optionalNumber(epsilonSample.ecef_y_m, 6)
+                    << optionalNumber(epsilonSample.ecef_z_m, 6)
                     << QString::number(epsilonSample.ned_n_m, 'f', 6)
                     << QString::number(epsilonSample.ned_e_m, 'f', 6)
                     << QString::number(epsilonSample.ned_d_m, 'f', 6)

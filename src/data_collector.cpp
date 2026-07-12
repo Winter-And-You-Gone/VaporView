@@ -1,4 +1,5 @@
 #include "data_collector.h"
+#include "geo/GeoTypes.h"
 #include "TemperatureControllerProtocol.h"
 #include "hipnuc_dec.h"
 #include "pvtsln_data.hpp"
@@ -2098,6 +2099,7 @@ void EpsilonCollector::run()
   PacketRateTracker satelliteRateTracker;
   PacketRateTracker geodeticRateTracker;
   PacketRateTracker ecefRateTracker;
+  bool reportedInvalidEcef = false;
 
   auto consumeFrame = [this,
                        &havePreviousSerial,
@@ -2110,7 +2112,8 @@ void EpsilonCollector::run()
                        &rawGnssRateTracker,
                        &satelliteRateTracker,
                        &geodeticRateTracker,
-                       &ecefRateTracker](const std::vector<uint8_t>& frame, uint64_t hostTimestampUs) {
+                       &ecefRateTracker,
+                       &reportedInvalidEcef](const std::vector<uint8_t>& frame, uint64_t hostTimestampUs) {
     if (frame.size() < 8)
     {
       return;
@@ -2169,6 +2172,7 @@ void EpsilonCollector::run()
 
     DataCallback callback;
     RawFrameCallback rawCallback;
+    std::string invalidEcefWarning;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       latest_data_.last_packet_id = packetId;
@@ -2327,9 +2331,31 @@ void EpsilonCollector::run()
       }
       else if (packetId == kMsgEcefPos && payloadSize >= 24)
       {
-        latest_data_.ecef_x_m = readDoubleLE(payload + 0);
-        latest_data_.ecef_y_m = readDoubleLE(payload + 8);
-        latest_data_.ecef_z_m = readDoubleLE(payload + 16);
+        const double xM = readDoubleLE(payload + 0);
+        const double yM = readDoubleLE(payload + 8);
+        const double zM = readDoubleLE(payload + 16);
+        if (VaporView::Geo::isPlausibleEcef(xM, yM, zM))
+        {
+          latest_data_.ecef_x_m = xM;
+          latest_data_.ecef_y_m = yM;
+          latest_data_.ecef_z_m = zM;
+          reportedInvalidEcef = false;
+        }
+        else
+        {
+          const double invalid = std::numeric_limits<double>::quiet_NaN();
+          latest_data_.ecef_x_m = invalid;
+          latest_data_.ecef_y_m = invalid;
+          latest_data_.ecef_z_m = invalid;
+          if (!reportedInvalidEcef)
+          {
+            std::ostringstream message;
+            message << "EPSILON: ignoring implausible ECEF packet ("
+                    << xM << ", " << yM << ", " << zM << ") m";
+            invalidEcefWarning = message.str();
+            reportedInvalidEcef = true;
+          }
+        }
       }
       else if (packetId == kMsgMainMavlinkTunnel && payloadSize >= 8)
       {
@@ -2555,6 +2581,11 @@ void EpsilonCollector::run()
 
       callback = data_callback_;
       rawCallback = raw_frame_callback_;
+    }
+
+    if (!invalidEcefWarning.empty())
+    {
+      log(invalidEcefWarning);
     }
 
     if (rawCallback)

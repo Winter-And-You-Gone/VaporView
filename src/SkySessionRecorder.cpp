@@ -534,6 +534,9 @@ void SkySessionRecorder::recordDeviceSnapshot(quint64 hostTimeUs,
             row << QString();
         }
     };
+    auto optionalNumber = [](double value, int precision) {
+        return std::isfinite(value) ? QString::number(value, 'f', precision) : QString();
+    };
 
     if (hasEpsilon && epsilon.valid)
     {
@@ -544,9 +547,9 @@ void SkySessionRecorder::recordDeviceSnapshot(quint64 hostTimeUs,
             << QString::number(epsilon.latitude_deg, 'f', 9)
             << QString::number(epsilon.longitude_deg, 'f', 9)
             << QString::number(epsilon.height_m, 'f', 6)
-            << QString::number(epsilon.ecef_x_m, 'f', 6)
-            << QString::number(epsilon.ecef_y_m, 'f', 6)
-            << QString::number(epsilon.ecef_z_m, 'f', 6)
+            << optionalNumber(epsilon.ecef_x_m, 6)
+            << optionalNumber(epsilon.ecef_y_m, 6)
+            << optionalNumber(epsilon.ecef_z_m, 6)
             << QString::number(epsilon.ned_n_m, 'f', 6)
             << QString::number(epsilon.ned_e_m, 'f', 6)
             << QString::number(epsilon.ned_d_m, 'f', 6)

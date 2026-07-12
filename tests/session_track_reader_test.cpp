@@ -58,6 +58,24 @@ int main()
 
     {
         QTemporaryDir sessionDir;
+        require(sessionDir.isValid(), "temporary invalid-ECEF session directory");
+
+        QDir dir(sessionDir.path());
+        require(dir.mkpath(QStringLiteral("sensors")), "create invalid-ECEF sensors directory");
+
+        writeCsv(dir.filePath(QStringLiteral("sensors/devices.csv")),
+                 QStringLiteral("record_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,ecef_x_m,ecef_y_m,ecef_z_m,gnss_fix\n"
+                                "1000,30.136981202,120.069381752,9.605644,365504425.008990,13374370.950326,58160.200631,RTK_DUAL\n"));
+
+        const auto result = VaporView::Geo::readSessionTrack(sessionDir.path());
+        require(result.ok, "session with valid LLH and corrupt ECEF remains readable");
+        require(result.samples.size() == 1, "invalid-ECEF session keeps LLH sample");
+        require(result.samples.front().hasLlh(), "invalid-ECEF session keeps valid LLH");
+        require(!result.samples.front().hasEcef(), "invalid-ECEF session rejects corrupt recorded ECEF");
+    }
+
+    {
+        QTemporaryDir sessionDir;
         require(sessionDir.isValid(), "temporary epsilon session directory");
 
         QDir dir(sessionDir.path());

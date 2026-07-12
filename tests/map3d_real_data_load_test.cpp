@@ -123,6 +123,26 @@ int main(int argc, char** argv)
             QStringLiteral("recorded ECEF keeps non-ellipsoid samples renderable"));
     require(heightStats.heightReferenceStatus.contains(QStringLiteral("recorded ECEF")),
             QStringLiteral("recorded ECEF height handling is reported explicitly"));
+
+    VaporView::Geo::NavSample corruptRecordedEcefSample;
+    corruptRecordedEcefSample.latDeg = 30.136981202;
+    corruptRecordedEcefSample.lonDeg = 120.069381752;
+    corruptRecordedEcefSample.heightM = 9.605644;
+    corruptRecordedEcefSample.ecefXM = 365504425.008990;
+    corruptRecordedEcefSample.ecefYM = 13374370.950326;
+    corruptRecordedEcefSample.ecefZM = 58160.200631;
+    corruptRecordedEcefSample.heightReference = VaporView::Geo::HeightReference::Wgs84Ellipsoid;
+    corruptRecordedEcefSample.fixQuality = VaporView::Geo::FixQuality::Fixed;
+    require(!corruptRecordedEcefSample.hasEcef(),
+            QStringLiteral("session ECEF far outside the WGS84 shell is rejected"));
+    view.setSamples({corruptRecordedEcefSample});
+    heightStats = view.performanceStats();
+    require(heightStats.qualityStats.lineSamples == 1,
+            QStringLiteral("valid LLH remains renderable when recorded ECEF is corrupt"));
+    require(heightStats.heightReferenceStatus.contains(QStringLiteral("WGS84 ellipsoid")),
+            QStringLiteral("corrupt recorded ECEF falls back to WGS84 LLH conversion"));
+    require(view.flyToTrack(),
+            QStringLiteral("track focus uses LLH instead of corrupt recorded ECEF"));
     view.clearTrack();
 
     bool tilesFinished = false;

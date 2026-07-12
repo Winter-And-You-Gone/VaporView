@@ -1,4 +1,5 @@
 #include "SkyRuntime.h"
+#include "geo/GeoTypes.h"
 
 #include "SerialTelemetryLink.h"
 #include "TcpTelemetryLink.h"
@@ -508,14 +509,18 @@ void SkyRuntime::sendBasicTelemetry()
 
     if (hasEpsilon)
     {
-        data.validity_flags |= BasicHasEpsilonTime | BasicHasPosition | BasicHasEcef;
+        data.validity_flags |= BasicHasEpsilonTime | BasicHasPosition;
         data.epsilon_time_us = epsilon.device_timestamp_us;
         data.latitude_deg = epsilon.latitude_deg;
         data.longitude_deg = epsilon.longitude_deg;
         data.height_m = epsilon.height_m;
-        data.ecef_x_m = epsilon.ecef_x_m;
-        data.ecef_y_m = epsilon.ecef_y_m;
-        data.ecef_z_m = epsilon.ecef_z_m;
+        if (Geo::isPlausibleEcef(epsilon.ecef_x_m, epsilon.ecef_y_m, epsilon.ecef_z_m))
+        {
+            data.validity_flags |= BasicHasEcef;
+            data.ecef_x_m = epsilon.ecef_x_m;
+            data.ecef_y_m = epsilon.ecef_y_m;
+            data.ecef_z_m = epsilon.ecef_z_m;
+        }
         data.status_bits = epsilon.system_status_bits;
         data.filter_status_bits = epsilon.filter_status_bits;
         data.update_status_bits = epsilon.update_status_bits;

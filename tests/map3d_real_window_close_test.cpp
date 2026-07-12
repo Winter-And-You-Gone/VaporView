@@ -122,7 +122,36 @@ int main(int argc, char** argv)
     require(view->hasLocal3DTilesPreview(),
             QStringLiteral("failed building tileset preserves the active building overlay"));
 
-    processEventsFor(3000);
+    QTemporaryDir sessionDir;
+    require(sessionDir.isValid(), QStringLiteral("temporary corrupt-ECEF session directory"));
+    require(QDir(sessionDir.path()).mkpath(QStringLiteral("sensors")),
+            QStringLiteral("create corrupt-ECEF session sensors directory"));
+    QFile devicesCsv(QDir(sessionDir.path()).filePath(QStringLiteral("sensors/devices.csv")));
+    require(devicesCsv.open(QIODevice::WriteOnly | QIODevice::Text),
+            QStringLiteral("create corrupt-ECEF session CSV"));
+    devicesCsv.write(
+        "record_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,ecef_x_m,ecef_y_m,ecef_z_m,gnss_fix\n"
+        "1000,30.136981202,120.069381752,9.605644,365504425.008990,13374370.950326,58160.200631,RTK_DUAL\n");
+    devicesCsv.close();
+
+    window->loadSessionDirectory(sessionDir.path());
+    processEventsFor(250);
+    require(view->sampleCount() == 1,
+            QStringLiteral("real window loads corrupt-ECEF session through LLH fallback"));
+    require(view->hasEarthMap(),
+            QStringLiteral("loading corrupt-ECEF session preserves the Earth map"));
+    require(view->flyToTrack(),
+            QStringLiteral("corrupt-ECEF session focuses with LLH before close"));
+
+    window->close();
+    processEventsFor(250);
+    require(!window->isVisible(), QStringLiteral("real map window closes after session load"));
+    window->show();
+    processEventsFor(250);
+    require(window->isVisible() && view->hasEarthMap() && view->sampleCount() == 1,
+            QStringLiteral("reopened real map window keeps the Earth map and session track"));
+    require(view->flyToTrack(),
+            QStringLiteral("reopened corrupt-ECEF session still focuses with LLH"));
     window->close();
     processEventsFor(250);
     delete window;

@@ -2,11 +2,26 @@
 
 #include <QtCore/QString>
 #include <QtGlobal>
-#include <algorithm>
 #include <cmath>
 #include <limits>
 
 namespace VaporView::Geo {
+
+inline bool isPlausibleEcef(double xM, double yM, double zM)
+{
+    if (!std::isfinite(xM) || !std::isfinite(yM) || !std::isfinite(zM))
+    {
+        return false;
+    }
+
+    // VaporView tracks surface and airborne navigation. Accept a generous
+    // shell around the WGS84 ellipsoid while rejecting zero-filled fields and
+    // corrupted device packets that place the camera far away from Earth.
+    constexpr double kMinimumRadiusM = 5'000'000.0;
+    constexpr double kMaximumRadiusM = 8'000'000.0;
+    const double radiusM = std::hypot(xM, yM, zM);
+    return radiusM >= kMinimumRadiusM && radiusM <= kMaximumRadiusM;
+}
 
 enum class FixQuality {
     Unknown = 0,
@@ -85,12 +100,7 @@ struct NavSample {
 
     bool hasEcef() const
     {
-        if (!std::isfinite(ecefXM) || !std::isfinite(ecefYM) || !std::isfinite(ecefZM))
-        {
-            return false;
-        }
-        const double scale = (std::max)({std::abs(ecefXM), std::abs(ecefYM), std::abs(ecefZM)});
-        return scale > 1000000.0;
+        return isPlausibleEcef(ecefXM, ecefYM, ecefZM);
     }
 
     bool hasQuaternion() const

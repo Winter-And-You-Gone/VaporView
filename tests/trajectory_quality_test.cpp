@@ -49,6 +49,13 @@ int main()
     sample.ecefZM = 0.0;
     require(!VaporView::Geo::isUsableForDisplay(sample), "zero ECEF vector is rejected");
 
+    sample = {};
+    sample.ecefXM = 365504425.008990;
+    sample.ecefYM = 13374370.950326;
+    sample.ecefZM = 58160.200631;
+    sample.fixQuality = VaporView::Geo::FixQuality::Fixed;
+    require(!sample.hasEcef(), "out-of-range recorded ECEF is rejected");
+
     sample = validSample();
     sample.fixQuality = VaporView::Geo::FixQuality::Invalid;
     require(!VaporView::Geo::isUsableForDisplay(sample), "invalid fix is rejected");
