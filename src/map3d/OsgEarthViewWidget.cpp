@@ -48,6 +48,7 @@
 #include <functional>
 #include <limits>
 #include <mutex>
+#include <optional>
 
 namespace VaporView::Map3D {
 namespace {
@@ -186,6 +187,46 @@ bool sampleWorldFocusPosition(const VaporView::Geo::NavSample& sample, osg::Vec3
         && std::isfinite(world.x())
         && std::isfinite(world.y())
         && std::isfinite(world.z());
+}
+
+std::optional<osgEarth::Viewpoint> currentEarthViewpoint(osgViewer::Viewer* viewer)
+{
+    if (!viewer)
+    {
+        return std::nullopt;
+    }
+
+    const auto* manipulator =
+        dynamic_cast<const osgEarth::EarthManipulator*>(viewer->getCameraManipulator());
+    if (!manipulator)
+    {
+        return std::nullopt;
+    }
+
+    osgEarth::Viewpoint viewpoint = manipulator->getViewpoint();
+    if (!viewpoint.isValid() || viewpoint.nodeIsSet())
+    {
+        return std::nullopt;
+    }
+    return viewpoint;
+}
+
+bool restoreEarthViewpoint(osgViewer::Viewer* viewer, const osgEarth::Viewpoint& viewpoint)
+{
+    if (!viewer || !viewer->getCamera() || !viewpoint.isValid())
+    {
+        return false;
+    }
+
+    auto* manipulator =
+        dynamic_cast<osgEarth::EarthManipulator*>(viewer->getCameraManipulator());
+    if (!manipulator)
+    {
+        return false;
+    }
+    manipulator->setViewpoint(viewpoint, 0.0);
+    manipulator->updateCamera(*viewer->getCamera());
+    return true;
 }
 
 } // namespace
@@ -412,10 +453,23 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
     assertGuiThread(this, Q_FUNC_INFO);
     ++earth_load_generation_;
     const Detail::EarthAssetLoadResult result = Detail::loadEarthAsset(earthPath);
-    return applyEarthLoad(result.diagnostics, result.node, result.mapNode, result.useXihuInitialView);
+    return applyEarthLoad(result.diagnostics, result.node, result.mapNode, result.useXihuInitialView, false);
 }
 
 void OsgEarthViewWidget::loadEarthFileAsync(const QString& earthPath,
+                                            std::function<void(bool)> finished)
+{
+    loadEarthFileAsync(earthPath, false, std::move(finished));
+}
+
+void OsgEarthViewWidget::loadEarthFilePreservingViewAsync(const QString& earthPath,
+                                                          std::function<void(bool)> finished)
+{
+    loadEarthFileAsync(earthPath, true, std::move(finished));
+}
+
+void OsgEarthViewWidget::loadEarthFileAsync(const QString& earthPath,
+                                            bool preserveCurrentEarthView,
                                             std::function<void(bool)> finished)
 {
     assertGuiThread(this, Q_FUNC_INFO);
@@ -430,14 +484,15 @@ void OsgEarthViewWidget::loadEarthFileAsync(const QString& earthPath,
     earth_load_diagnostics_.requestedPath = earthPath;
     auto* watcher = new QFutureWatcher<Detail::EarthAssetLoadResult>(this);
     connect(watcher, &QFutureWatcher<Detail::EarthAssetLoadResult>::finished,
-            this, [this, watcher, generation, finished = std::move(finished)]() mutable {
+            this, [this, watcher, generation, preserveCurrentEarthView, finished = std::move(finished)]() mutable {
         const Detail::EarthAssetLoadResult result = watcher->result();
         watcher->deleteLater();
         if (shutdown_ || generation != earth_load_generation_) return;
         const bool loaded = applyEarthLoad(result.diagnostics,
                                            result.node,
                                            result.mapNode,
-                                           result.useXihuInitialView);
+                                           result.useXihuInitialView,
+                                           preserveCurrentEarthView);
         if (finished) finished(loaded);
     });
     watcher->setFuture(QtConcurrent::run([earthPath]() {
@@ -448,7 +503,8 @@ void OsgEarthViewWidget::loadEarthFileAsync(const QString& earthPath,
 bool OsgEarthViewWidget::applyEarthLoad(EarthLoadDiagnostics diagnostics,
                                         osg::ref_ptr<osg::Node> node,
                                         osgEarth::MapNode* mapNode,
-                                        bool useXihuInitialView)
+                                        bool useXihuInitialView,
+                                        bool preserveCurrentEarthView)
 {
     assertGuiThread(this, Q_FUNC_INFO);
     earth_load_diagnostics_ = std::move(diagnostics);
@@ -460,6 +516,8 @@ bool OsgEarthViewWidget::applyEarthLoad(EarthLoadDiagnostics diagnostics,
         earth_load_diagnostics_.failureReason = QStringLiteral("Scene root is not initialized.");
         return false;
     }
+    const std::optional<osgEarth::Viewpoint> previousViewpoint =
+        preserveCurrentEarthView ? currentEarthViewpoint(viewer_.get()) : std::nullopt;
     const bool replacedPreviousNode = earth_node_.valid();
     if (earth_node_) root_->removeChild(earth_node_.get());
     earth_node_ = std::move(node);
@@ -474,6 +532,11 @@ bool OsgEarthViewWidget::applyEarthLoad(EarthLoadDiagnostics diagnostics,
     resetWorldOverlayOrigin();
     root_->insertChild(0, earth_node_.get());
     setInitialEarthView();
+    if (previousViewpoint && restoreEarthViewpoint(viewer_.get(), *previousViewpoint))
+    {
+        earth_load_diagnostics_.layerSummaries.push_back(
+            QStringLiteral("Preserved previous Earth camera viewpoint."));
+    }
     rebuildDisplayTrack();
     update();
     return true;
@@ -640,6 +703,24 @@ void OsgEarthViewWidget::setFollowAircraft(bool enabled)
 bool OsgEarthViewWidget::hasLocal3DTilesPreview() const
 {
     return local_3d_tiles_node_.valid();
+}
+
+double OsgEarthViewWidget::earthCameraRangeM() const
+{
+    if (!viewer_ || !earth_node_ || !map_node_)
+    {
+        return (std::numeric_limits<double>::quiet_NaN)();
+    }
+
+    const auto* manipulator =
+        dynamic_cast<const osgEarth::EarthManipulator*>(viewer_->getCameraManipulator());
+    if (!manipulator)
+    {
+        return (std::numeric_limits<double>::quiet_NaN)();
+    }
+
+    const double rangeM = manipulator->getDistance();
+    return std::isfinite(rangeM) ? rangeM : (std::numeric_limits<double>::quiet_NaN)();
 }
 
 namespace {

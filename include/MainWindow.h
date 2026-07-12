@@ -52,6 +52,7 @@
 class RtkConfigDialog;
 class QFile;
 class QEvent;
+class QCloseEvent;
 class QResizeEvent;
 class QSplitter;
 class QToolButton;
@@ -447,6 +448,7 @@ protected:
 #ifdef Q_OS_WIN
     bool nativeEvent(const QByteArray& eventType, void *message, qintptr *result) override;
 #endif
+    void closeEvent(QCloseEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void changeEvent(QEvent *event) override;
 

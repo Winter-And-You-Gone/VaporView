@@ -18,6 +18,7 @@ class QPlainTextEdit;
 class QSlider;
 class QSpinBox;
 class QTimer;
+class QCloseEvent;
 class QHideEvent;
 class QShowEvent;
 
@@ -43,6 +44,7 @@ public slots:
     void showMapDiagnostics();
 
 protected:
+    void closeEvent(QCloseEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void hideEvent(QHideEvent* event) override;
 
@@ -57,6 +59,9 @@ private:
     void openAircraftModel();
     void resetAircraftModel();
     void reloadBestLocalMap();
+    void maybeLoadSentinel2ImageryForRange(double rangeM);
+    void resetAutomaticSentinel2Imagery();
+    bool isSentinel2ImageryActive() const;
     void flyToAircraft();
     void flyToTrack();
     void resetView();
@@ -105,6 +110,7 @@ private:
     QComboBox* replay_speed_combo_ = nullptr;
     QSpinBox* max_visible_samples_spin_ = nullptr;
     QTimer* replay_timer_ = nullptr;
+    QTimer* sentinel2_auto_load_timer_ = nullptr;
     QElapsedTimer replay_tick_clock_;
     QElapsedTimer status_update_clock_;
     QDialog* diagnostics_dialog_ = nullptr;
@@ -122,6 +128,8 @@ private:
     QString latest_drop_reason_;
     VaporView::Geo::NavSample latest_status_sample_;
     bool has_latest_status_sample_ = false;
+    bool automatic_sentinel2_imagery_loaded_ = false;
+    bool automatic_sentinel2_imagery_loading_ = false;
     qint64 latest_drop_record_timestamp_us_ = 0;
     qint64 latest_track_record_timestamp_us_ = 0;
     qint64 latest_track_device_timestamp_us_ = 0;

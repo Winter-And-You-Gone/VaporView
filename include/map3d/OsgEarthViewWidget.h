@@ -104,6 +104,7 @@ public:
     void clearTrack();
     bool loadEarthFile(const QString& earthPath);
     void loadEarthFileAsync(const QString& earthPath, std::function<void(bool)> finished);
+    void loadEarthFilePreservingViewAsync(const QString& earthPath, std::function<void(bool)> finished);
     bool loadLocal3DTilesPreview(const QString& tilesetPath);
     void loadLocal3DTilesPreviewAsync(const QString& tilesetPath,
                                       std::function<void(bool)> finished);
@@ -128,6 +129,7 @@ public:
     QSize framebufferSize() const;
     bool hasEarthMap() const;
     bool hasLocal3DTilesPreview() const;
+    double earthCameraRangeM() const;
 
 protected:
     void initializeGL() override;
@@ -146,6 +148,9 @@ private:
     void initializeSceneIfNeeded();
     void updateCameraViewport(int w, int h);
     void loadDefaultAircraftModelIfAvailable();
+    void loadEarthFileAsync(const QString& earthPath,
+                            bool preserveCurrentEarthView,
+                            std::function<void(bool)> finished);
     bool loadAircraftModelFile(const QString& modelPath, const QString& fallbackReasonPrefix);
     void loadAircraftModelFileAsync(const QString& modelPath,
                                     const QString& fallbackReasonPrefix,
@@ -153,7 +158,8 @@ private:
     bool applyEarthLoad(EarthLoadDiagnostics diagnostics,
                         osg::ref_ptr<osg::Node> node,
                         osgEarth::MapNode* mapNode,
-                        bool useXihuInitialView);
+                        bool useXihuInitialView,
+                        bool preserveCurrentEarthView);
     bool applyLocal3DTilesLoad(Local3DTilesLoadDiagnostics diagnostics,
                                osg::ref_ptr<osg::Group> node);
     bool applyAircraftModelLoad(AircraftModelDiagnostics diagnostics,

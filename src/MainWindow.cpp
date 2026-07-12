@@ -23,6 +23,7 @@
 #include <QAction>
 #include <QButtonGroup>
 #include <QCheckBox>
+#include <QCloseEvent>
 #include <QCursor>
 #include <QDateTimeEdit>
 #include <QDialog>
@@ -8845,6 +8846,17 @@ void MainWindow::syncMainHoverStateFromCursor()
                                  kSidebarHoverProperty,
                                  widgetContainsGlobalCursor(button, cursorPos));
     }
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    if (map3d_window_)
+    {
+        map3d_window_->close();
+    }
+#endif
+    QMainWindow::closeEvent(event);
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)

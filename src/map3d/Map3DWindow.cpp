@@ -9,6 +9,7 @@
 #include "map3d/OsgEarthViewWidget.h"
 
 #include <QAction>
+#include <QCloseEvent>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -40,6 +41,7 @@ namespace VaporView::Map3D {
 namespace {
 
 constexpr qint64 kStatusUpdateIntervalMs = 200;
+constexpr double kAutomaticSentinel2ImageryRangeM = 7000.0;
 
 QString heightSafetyNote()
 {
@@ -305,6 +307,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     : QMainWindow(parent)
     , status_label_(new QLabel(this))
     , replay_timer_(new QTimer(this))
+    , sentinel2_auto_load_timer_(new QTimer(this))
     , latest_track_source_(QStringLiteral("none"))
 {
     setObjectName(QStringLiteral("map3DWindow"));
@@ -404,6 +407,15 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     replay_timer_->setTimerType(Qt::PreciseTimer);
     replay_timer_->setInterval(static_cast<int>(replay_.interval().count()));
     connect(replay_timer_, &QTimer::timeout, this, &Map3DWindow::onReplayTick);
+
+    sentinel2_auto_load_timer_->setTimerType(Qt::CoarseTimer);
+    sentinel2_auto_load_timer_->setInterval(300);
+    connect(sentinel2_auto_load_timer_, &QTimer::timeout, this, [this]() {
+        if (view_)
+        {
+            maybeLoadSentinel2ImageryForRange(view_->earthCameraRangeM());
+        }
+    });
 
     follow_action_->setChecked(settings.value(QStringLiteral("followAircraft"), false).toBool());
     if (view_)
@@ -516,6 +528,10 @@ Map3DWindow::Map3DWindow(QWidget* parent)
 
 Map3DWindow::~Map3DWindow()
 {
+    if (sentinel2_auto_load_timer_)
+    {
+        sentinel2_auto_load_timer_->stop();
+    }
     if (view_)
     {
         view_->shutdown();
@@ -683,6 +699,10 @@ void Map3DWindow::loadInitialEarthFile()
                     {
                         loadConfiguredLocal3DTiles(false);
                     }
+                    if (sentinel2_auto_load_timer_ && !isSentinel2ImageryActive())
+                    {
+                        sentinel2_auto_load_timer_->start();
+                    }
                     updateStatus(nullptr);
                     statusBar()->showMessage(QStringLiteral("已自动加载 Earth 文件: %1").arg(fallbackPath), 5000);
                 });
@@ -702,11 +722,16 @@ void Map3DWindow::loadInitialEarthFile()
                                       QStringLiteral("User-selected custom Earth scene."),
                                       QStringLiteral("Using user-selected custom earth file."));
         setMapSelection(activeSelection);
+        resetAutomaticSentinel2Imagery();
         QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
             .setValue(QStringLiteral("lastEarthFile"), initialPath);
         if (activeSelection.diagnostics.real3DLocalReady)
         {
             loadConfiguredLocal3DTiles(false);
+        }
+        if (sentinel2_auto_load_timer_ && !isSentinel2ImageryActive())
+        {
+            sentinel2_auto_load_timer_->start();
         }
         updateStatus(nullptr);
         statusBar()->showMessage(QStringLiteral("已自动加载 Earth 文件: %1").arg(initialPath), 5000);
@@ -750,6 +775,11 @@ void Map3DWindow::openEarthFile()
         QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
             .setValue(QStringLiteral("lastEarthFile"), file);
         setMapSelection(selection);
+        resetAutomaticSentinel2Imagery();
+        if (sentinel2_auto_load_timer_ && !isSentinel2ImageryActive())
+        {
+            sentinel2_auto_load_timer_->start();
+        }
         const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
         updateStatus(nullptr);
         statusBar()->showMessage(QStringLiteral("Loaded earth file: %1%2")
@@ -779,8 +809,13 @@ void Map3DWindow::loadLocalImageryTemplate(const LocalImageryOption& option)
             return;
         }
         setMapSelection(selection);
+        resetAutomaticSentinel2Imagery();
         QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
             .setValue(QStringLiteral("lastEarthFile"), option.earthFilePath);
+        if (sentinel2_auto_load_timer_ && !isSentinel2ImageryActive())
+        {
+            sentinel2_auto_load_timer_->start();
+        }
         const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
         updateStatus(nullptr);
         statusBar()->showMessage(QStringLiteral("已加载本地影像: %1%2")
@@ -788,6 +823,84 @@ void Map3DWindow::loadLocalImageryTemplate(const LocalImageryOption& option)
                                           focusedTrack ? QStringLiteral(" (已自动定位轨迹)") : QString()),
                                  5000);
     });
+}
+
+void Map3DWindow::maybeLoadSentinel2ImageryForRange(double rangeM)
+{
+    if (!view_
+        || automatic_sentinel2_imagery_loaded_
+        || automatic_sentinel2_imagery_loading_
+        || !std::isfinite(rangeM)
+        || rangeM > kAutomaticSentinel2ImageryRangeM
+        || isSentinel2ImageryActive())
+    {
+        return;
+    }
+
+    const MapDataSelection bestSelection = map_data_manager_.selectBestAvailableMap();
+    if (bestSelection.diagnostics.localImageryOptions.empty())
+    {
+        return;
+    }
+
+    const auto optionIt = std::find_if(bestSelection.diagnostics.localImageryOptions.cbegin(),
+                                       bestSelection.diagnostics.localImageryOptions.cend(),
+                                       [](const LocalImageryOption& option) {
+        return option.key == QStringLiteral("sentinel2") && option.available;
+    });
+    if (optionIt == bestSelection.diagnostics.localImageryOptions.cend())
+    {
+        return;
+    }
+    const LocalImageryOption option = *optionIt;
+
+    automatic_sentinel2_imagery_loading_ = true;
+    const MapDataSelection selection =
+        selectionForCustomEarth(bestSelection,
+                                option.earthFilePath,
+                                QStringLiteral("Natural Earth background with %1 overlay.").arg(option.label),
+                                QStringLiteral("Automatically loaded local imagery template after zoom: %1")
+                                    .arg(option.label));
+    statusBar()->showMessage(QStringLiteral("放大到近景，正在自动加载 Sentinel-2 本地影像..."));
+    view_->loadEarthFilePreservingViewAsync(option.earthFilePath, [this, option, selection](bool loaded) {
+        automatic_sentinel2_imagery_loading_ = false;
+        latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
+        if (!loaded)
+        {
+            if (sentinel2_auto_load_timer_)
+            {
+                sentinel2_auto_load_timer_->stop();
+            }
+            statusBar()->showMessage(QStringLiteral("自动加载 Sentinel-2 本地影像失败: %1").arg(option.earthFilePath), 8000);
+            return;
+        }
+        automatic_sentinel2_imagery_loaded_ = true;
+        setMapSelection(selection);
+        if (sentinel2_auto_load_timer_)
+        {
+            sentinel2_auto_load_timer_->stop();
+        }
+        updateStatus(nullptr);
+        statusBar()->showMessage(QStringLiteral("已自动加载 Sentinel-2 本地影像，已保留当前视角。"), 5000);
+    });
+}
+
+void Map3DWindow::resetAutomaticSentinel2Imagery()
+{
+    automatic_sentinel2_imagery_loaded_ = false;
+    automatic_sentinel2_imagery_loading_ = false;
+}
+
+bool Map3DWindow::isSentinel2ImageryActive() const
+{
+    const QString earthPath = !map_selection_.earthFilePath.isEmpty()
+        ? map_selection_.earthFilePath
+        : map_selection_.earthFile;
+    const QString fileName = QFileInfo(earthPath).fileName();
+    return fileName.compare(QStringLiteral("vaporview_with_sentinel2_imagery.earth"),
+                            Qt::CaseInsensitive) == 0
+        || fileName.compare(QStringLiteral("vaporview_real3d_local.earth"),
+                            Qt::CaseInsensitive) == 0;
 }
 
 void Map3DWindow::loadLocal3DTilesPreview()
@@ -929,9 +1042,14 @@ void Map3DWindow::reloadBestLocalMap()
             return;
         }
         setMapSelection(selection);
+        resetAutomaticSentinel2Imagery();
         if (selection.diagnostics.real3DLocalReady)
         {
             loadConfiguredLocal3DTiles(false);
+        }
+        if (sentinel2_auto_load_timer_ && !isSentinel2ImageryActive())
+        {
+            sentinel2_auto_load_timer_->start();
         }
         QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
             .setValue(QStringLiteral("lastEarthFile"), selection.earthFile);
@@ -1100,9 +1218,26 @@ void Map3DWindow::rebuildReplayAt(int index, bool forceStatus)
     renderReplayAtCurrentPosition(forceStatus);
 }
 
+void Map3DWindow::closeEvent(QCloseEvent* event)
+{
+    if (sentinel2_auto_load_timer_)
+    {
+        sentinel2_auto_load_timer_->stop();
+    }
+    QMainWindow::closeEvent(event);
+}
+
 void Map3DWindow::showEvent(QShowEvent* event)
 {
     QMainWindow::showEvent(event);
+    if (sentinel2_auto_load_timer_
+        && view_
+        && view_->hasEarthMap()
+        && !isSentinel2ImageryActive()
+        && !sentinel2_auto_load_timer_->isActive())
+    {
+        sentinel2_auto_load_timer_->start();
+    }
     if (replay_.isPlaying() && replay_timer_ && !replay_timer_->isActive())
     {
         replay_tick_clock_.restart();
@@ -1112,6 +1247,10 @@ void Map3DWindow::showEvent(QShowEvent* event)
 
 void Map3DWindow::hideEvent(QHideEvent* event)
 {
+    if (sentinel2_auto_load_timer_)
+    {
+        sentinel2_auto_load_timer_->stop();
+    }
     if (replay_timer_)
     {
         replay_timer_->stop();
