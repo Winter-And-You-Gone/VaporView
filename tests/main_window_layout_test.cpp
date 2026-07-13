@@ -3130,11 +3130,11 @@ int main(int argc, char **argv)
     require(ntcR0Edit->width() <= 82 &&
                 ntcBEdit->width() <= 82 &&
                 ptR0Edit->width() <= 82 &&
-                ptAEdit->width() <= 82 &&
-                ptBEdit->width() <= 82 &&
-                ptCEdit->width() <= 82 &&
+                ptAEdit->width() == 104 &&
+                ptBEdit->width() == 104 &&
+                ptCEdit->width() == 104 &&
                 polynomialA0Edit->width() <= 62,
-            "temperature sensor config text inputs are narrowed for short RD105 values");
+            "temperature PT coefficient inputs show full precision while the other RD105 fields stay compact");
     auto *sensorConfigGrid = qobject_cast<QGridLayout *>(temperatureChannelConfigSubStack->currentWidget()->layout());
     auto requireSensorGridPosition = [sensorConfigGrid](QWidget *editor, int row, int column, const char *message) {
         require(sensorConfigGrid != nullptr && editor != nullptr && editor->parentWidget() != nullptr, message);
@@ -3147,10 +3147,12 @@ int main(int argc, char **argv)
     requireSensorGridPosition(ptBEdit, 0, 3, "temperature sensor grid places PT B at row 1 column 4");
     requireSensorGridPosition(ptCEdit, 0, 4, "temperature sensor grid places PT C at row 1 column 5");
     requireSensorGridPosition(ntcBEdit, 1, 0, "temperature sensor grid places NTC B at row 2 column 1");
+    std::array<QLineEdit *, 8> polynomialEdits{};
     for (int coefficient = 0; coefficient < 8; ++coefficient)
     {
         auto *edit = temperaturePanel->findChild<QLineEdit *>(
             QStringLiteral("temperaturePolynomialA%1EditChannel1").arg(coefficient));
+        polynomialEdits[static_cast<size_t>(coefficient)] = edit;
         require(edit != nullptr && edit->width() <= 62,
                 "temperature polynomial inputs all use the compact width");
         requireSensorGridPosition(edit,
@@ -3158,6 +3160,36 @@ int main(int argc, char **argv)
                                   1 + coefficient % 4,
                                   "temperature polynomial input follows the requested 2x4 grid");
     }
+    auto fieldLeftInSensorPage = [temperatureChannelConfigSubStack](QWidget *editor) {
+        return editor->parentWidget()->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)).x();
+    };
+    auto inputLeftInSensorPage = [temperatureChannelConfigSubStack](QWidget *editor) {
+        return editor->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)).x();
+    };
+    auto requireSensorColumnAlignment = [&fieldLeftInSensorPage, &inputLeftInSensorPage](
+                                            const QList<QWidget *>& fields,
+                                            const char *message) {
+        require(!fields.isEmpty() && fields.first() != nullptr, message);
+        const int fieldLeft = fieldLeftInSensorPage(fields.first());
+        const int inputLeft = inputLeftInSensorPage(fields.first());
+        for (QWidget *field : fields)
+        {
+            require(field != nullptr &&
+                        fieldLeftInSensorPage(field) == fieldLeft &&
+                        inputLeftInSensorPage(field) == inputLeft,
+                    message);
+        }
+    };
+    requireSensorColumnAlignment({ntcR0Edit, ntcBEdit},
+                                 "temperature sensor column 1 aligns labels and inputs");
+    requireSensorColumnAlignment({ptR0Edit, polynomialEdits[0], polynomialEdits[4]},
+                                 "temperature sensor column 2 aligns labels and inputs");
+    requireSensorColumnAlignment({ptAEdit, polynomialEdits[1], polynomialEdits[5]},
+                                 "temperature sensor column 3 aligns labels and inputs");
+    requireSensorColumnAlignment({ptBEdit, polynomialEdits[2], polynomialEdits[6]},
+                                 "temperature sensor column 4 aligns labels and inputs");
+    requireSensorColumnAlignment({ptCEdit, polynomialEdits[3], polynomialEdits[7]},
+                                 "temperature sensor column 5 aligns labels and inputs");
     require(sensorConfigGrid != nullptr && sensorConfigGrid->itemAtPosition(2, 0) == nullptr,
             "temperature sensor grid leaves row 3 column 1 empty");
     auto *polynomialA7Edit = temperaturePanel->findChild<QLineEdit *>(

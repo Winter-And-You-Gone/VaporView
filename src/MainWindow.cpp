@@ -906,6 +906,7 @@ constexpr int kTemperatureControllerTopTargetWidth = 172;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
 constexpr int kTemperatureControllerCompactPidInputWidth = 82;
 constexpr int kTemperatureControllerSensorInputWidth = 82;
+constexpr int kTemperatureControllerPtCoefficientInputWidth = 104;
 constexpr int kTemperatureControllerPolynomialInputWidth = 62;
 constexpr int kTemperatureControllerSensorFieldSpacing = 2;
 constexpr int kTemperatureControllerMaxOutputLabelWidth = 168;
@@ -7433,6 +7434,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
     layout->setVerticalSpacing(4);
     layout->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     ChannelWidgets& channel = channels_[index];
+    std::array<QList<QLabel *>, 5> fieldLabelsByColumn;
 
     auto makeFieldLabel = [this](const QString& text) {
         auto *label = new QLabel(text, this);
@@ -7441,8 +7443,9 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         label->setMinimumHeight(22);
         return label;
     };
-    auto addField = [layout, &makeFieldLabel](int row, int column, const QString& labelText, QWidget *editor, QLabel *&label) {
+    auto addField = [layout, &makeFieldLabel, &fieldLabelsByColumn](int row, int column, const QString& labelText, QWidget *editor, QLabel *&label) {
         label = makeFieldLabel(labelText);
+        fieldLabelsByColumn.at(static_cast<size_t>(column)).append(label);
         editor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         auto *cell = new QWidget();
         cell->setObjectName(QStringLiteral("temperatureConfigFieldRow"));
@@ -7503,19 +7506,19 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
                                         -9.0,
                                         9.0,
                                         6,
-                                        kTemperatureControllerSensorInputWidth);
+                                        kTemperatureControllerPtCoefficientInputWidth);
     addField(0, 2, QStringLiteral("PT A(E-3)"), channel.pt_a_edit, channel.pt_a_label_text);
     channel.pt_b_edit = makeDecimalEdit(QStringLiteral("temperaturePtBEditChannel%1").arg(index + 1),
                                         -90.0,
                                         90.0,
                                         6,
-                                        kTemperatureControllerSensorInputWidth);
+                                        kTemperatureControllerPtCoefficientInputWidth);
     addField(0, 3, QStringLiteral("PT B(E-7)"), channel.pt_b_edit, channel.pt_b_label_text);
     channel.pt_c_edit = makeDecimalEdit(QStringLiteral("temperaturePtCEditChannel%1").arg(index + 1),
                                         -9.0,
                                         9.0,
                                         6,
-                                        kTemperatureControllerSensorInputWidth);
+                                        kTemperatureControllerPtCoefficientInputWidth);
     addField(0, 4, QStringLiteral("PT C(E-12)"), channel.pt_c_edit, channel.pt_c_label_text);
 
     for (int i = 0; i < 8; ++i)
@@ -7527,6 +7530,19 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         edit->setText(QStringLiteral("0E+0"));
         channel.polynomial_edits[static_cast<size_t>(i)] = edit;
         addField(1 + (i / 4), 1 + (i % 4), QStringLiteral("A%1").arg(i), edit, channel.polynomial_label_text[static_cast<size_t>(i)]);
+    }
+
+    for (const QList<QLabel *>& labels : fieldLabelsByColumn)
+    {
+        int columnLabelWidth = 0;
+        for (const QLabel *label : labels)
+        {
+            columnLabelWidth = std::max(columnLabelWidth, label->sizeHint().width());
+        }
+        for (QLabel *label : labels)
+        {
+            label->setFixedWidth(columnLabelWidth);
+        }
     }
 
     const int channelIndex = index;
