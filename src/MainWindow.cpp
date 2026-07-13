@@ -905,9 +905,9 @@ constexpr int kTemperatureControllerTopModeWidth = 132;
 constexpr int kTemperatureControllerTopTargetWidth = 172;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
 constexpr int kTemperatureControllerCompactPidInputWidth = 82;
-constexpr int kTemperatureControllerSensorInputWidth = 102;
-constexpr int kTemperatureControllerPolynomialInputWidth = 72;
-constexpr int kTemperatureControllerSensorFieldSpacing = 3;
+constexpr int kTemperatureControllerSensorInputWidth = 82;
+constexpr int kTemperatureControllerPolynomialInputWidth = 62;
+constexpr int kTemperatureControllerSensorFieldSpacing = 2;
 constexpr int kTemperatureControllerMaxOutputLabelWidth = 168;
 constexpr int kTemperatureControllerCompactLabelWidth = 72;
 constexpr int kTemperatureControllerControlLabelWidth = 150;
@@ -7404,12 +7404,9 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
     page->setObjectName(QStringLiteral("temperatureChannelSensorConfigPageChannel%1").arg(index + 1));
     auto *layout = new QGridLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setHorizontalSpacing(8);
+    layout->setHorizontalSpacing(6);
     layout->setVerticalSpacing(4);
-    layout->setColumnStretch(0, 1);
-    layout->setColumnStretch(1, 1);
-    layout->setColumnStretch(2, 1);
-    layout->setColumnStretch(3, 1);
+    layout->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     ChannelWidgets& channel = channels_[index];
 
     auto makeFieldLabel = [this](const QString& text) {
@@ -7459,7 +7456,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
                                           9000000,
                                           kTemperatureControllerSensorInputWidth);
     channel.ntc_r0_edit->setText(QStringLiteral("0"));
-    addField(0, 0, QStringLiteral("NTC R0(Ohm)"), channel.ntc_r0_edit, channel.ntc_r0_label_text);
+    addField(0, 0, QStringLiteral("NTC R0"), channel.ntc_r0_edit, channel.ntc_r0_label_text);
 
     channel.ntc_b_edit = makeDecimalEdit(QStringLiteral("temperatureNtcBEditChannel%1").arg(index + 1),
                                          1000.0,
@@ -7467,7 +7464,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
                                          2,
                                          kTemperatureControllerSensorInputWidth);
     channel.ntc_b_edit->setText(QStringLiteral("1000.00"));
-    addField(0, 1, QStringLiteral("NTC B"), channel.ntc_b_edit, channel.ntc_b_label_text);
+    addField(1, 0, QStringLiteral("NTC B"), channel.ntc_b_edit, channel.ntc_b_label_text);
 
     channel.pt_r0_edit = makeDecimalEdit(QStringLiteral("temperaturePtR0EditChannel%1").arg(index + 1),
                                          0.0,
@@ -7475,26 +7472,26 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
                                          3,
                                          kTemperatureControllerSensorInputWidth);
     channel.pt_r0_edit->setText(QStringLiteral("0.000"));
-    addField(0, 2, QStringLiteral("PT R0(Ohm)"), channel.pt_r0_edit, channel.pt_r0_label_text);
+    addField(0, 1, QStringLiteral("PT R0"), channel.pt_r0_edit, channel.pt_r0_label_text);
 
     channel.pt_a_edit = makeDecimalEdit(QStringLiteral("temperaturePtAEditChannel%1").arg(index + 1),
                                         -9.0,
                                         9.0,
                                         6,
                                         kTemperatureControllerSensorInputWidth);
-    addField(1, 0, QStringLiteral("PT A(E-3)"), channel.pt_a_edit, channel.pt_a_label_text);
+    addField(0, 2, QStringLiteral("PT A"), channel.pt_a_edit, channel.pt_a_label_text);
     channel.pt_b_edit = makeDecimalEdit(QStringLiteral("temperaturePtBEditChannel%1").arg(index + 1),
                                         -90.0,
                                         90.0,
                                         6,
                                         kTemperatureControllerSensorInputWidth);
-    addField(1, 1, QStringLiteral("PT B(E-7)"), channel.pt_b_edit, channel.pt_b_label_text);
+    addField(0, 3, QStringLiteral("PT B"), channel.pt_b_edit, channel.pt_b_label_text);
     channel.pt_c_edit = makeDecimalEdit(QStringLiteral("temperaturePtCEditChannel%1").arg(index + 1),
                                         -9.0,
                                         9.0,
                                         6,
                                         kTemperatureControllerSensorInputWidth);
-    addField(1, 2, QStringLiteral("PT C(E-12)"), channel.pt_c_edit, channel.pt_c_label_text);
+    addField(0, 4, QStringLiteral("PT C"), channel.pt_c_edit, channel.pt_c_label_text);
 
     for (int i = 0; i < 8; ++i)
     {
@@ -7504,7 +7501,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         edit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         edit->setText(QStringLiteral("0E+0"));
         channel.polynomial_edits[static_cast<size_t>(i)] = edit;
-        addField(2 + (i / 4), i % 4, QStringLiteral("A%1").arg(i), edit, channel.polynomial_label_text[static_cast<size_t>(i)]);
+        addField(1 + (i / 4), 1 + (i % 4), QStringLiteral("A%1").arg(i), edit, channel.polynomial_label_text[static_cast<size_t>(i)]);
     }
 
     const int channelIndex = index;
@@ -8027,12 +8024,12 @@ void TemperatureControllerPanel::updateChannelTexts()
         if (channel.pid_label_text) channel.pid_label_text->setText(QStringLiteral("PID"));
         if (channel.auto_pid_label_text) channel.auto_pid_label_text->setText(is_english_ ? QStringLiteral("Auto PID") : QStringLiteral("自动 PID"));
         if (channel.sensor_model_label_text) channel.sensor_model_label_text->setText(is_english_ ? QStringLiteral("Model") : QStringLiteral("模型"));
-        if (channel.ntc_r0_label_text) channel.ntc_r0_label_text->setText(QStringLiteral("NTC R0(Ohm)"));
+        if (channel.ntc_r0_label_text) channel.ntc_r0_label_text->setText(QStringLiteral("NTC R0"));
         if (channel.ntc_b_label_text) channel.ntc_b_label_text->setText(QStringLiteral("NTC B"));
-        if (channel.pt_r0_label_text) channel.pt_r0_label_text->setText(QStringLiteral("PT R0(Ohm)"));
-        if (channel.pt_a_label_text) channel.pt_a_label_text->setText(QStringLiteral("PT A(E-3)"));
-        if (channel.pt_b_label_text) channel.pt_b_label_text->setText(QStringLiteral("PT B(E-7)"));
-        if (channel.pt_c_label_text) channel.pt_c_label_text->setText(QStringLiteral("PT C(E-12)"));
+        if (channel.pt_r0_label_text) channel.pt_r0_label_text->setText(QStringLiteral("PT R0"));
+        if (channel.pt_a_label_text) channel.pt_a_label_text->setText(QStringLiteral("PT A"));
+        if (channel.pt_b_label_text) channel.pt_b_label_text->setText(QStringLiteral("PT B"));
+        if (channel.pt_c_label_text) channel.pt_c_label_text->setText(QStringLiteral("PT C"));
         for (size_t i = 0; i < channel.polynomial_label_text.size(); ++i)
         {
             if (channel.polynomial_label_text[i]) channel.polynomial_label_text[i]->setText(QStringLiteral("A%1").arg(i));

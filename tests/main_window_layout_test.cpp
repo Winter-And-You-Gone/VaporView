@@ -3059,12 +3059,21 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QLineEdit *>(QStringLiteral("temperatureNtcBEditChannel1"));
     auto *ptR0Edit =
         temperaturePanel->findChild<QLineEdit *>(QStringLiteral("temperaturePtR0EditChannel1"));
+    auto *ptAEdit =
+        temperaturePanel->findChild<QLineEdit *>(QStringLiteral("temperaturePtAEditChannel1"));
+    auto *ptBEdit =
+        temperaturePanel->findChild<QLineEdit *>(QStringLiteral("temperaturePtBEditChannel1"));
+    auto *ptCEdit =
+        temperaturePanel->findChild<QLineEdit *>(QStringLiteral("temperaturePtCEditChannel1"));
     auto *polynomialA0Edit =
         temperaturePanel->findChild<QLineEdit *>(QStringLiteral("temperaturePolynomialA0EditChannel1"));
     require(temperatureChannelSubTopBar != nullptr &&
                 ntcR0Edit != nullptr &&
                 ntcBEdit != nullptr &&
                 ptR0Edit != nullptr &&
+                ptAEdit != nullptr &&
+                ptBEdit != nullptr &&
+                ptCEdit != nullptr &&
                 polynomialA0Edit != nullptr,
             "temperature channel exposes per-channel sensor config controls");
     require(temperatureChannelSubTopBar->property("temperatureChannelSelector").isValid() == false,
@@ -3098,11 +3107,39 @@ int main(int argc, char **argv)
                                     "temperature PT R0 field keeps label and input tightly grouped");
     requireCompactSensorFieldLayout(polynomialA0Edit,
                                     "temperature polynomial field keeps label and input tightly grouped");
-    require(ntcR0Edit->width() <= 102 &&
-                ntcBEdit->width() <= 102 &&
-                ptR0Edit->width() <= 102 &&
-                polynomialA0Edit->width() <= 72,
+    require(ntcR0Edit->width() <= 82 &&
+                ntcBEdit->width() <= 82 &&
+                ptR0Edit->width() <= 82 &&
+                ptAEdit->width() <= 82 &&
+                ptBEdit->width() <= 82 &&
+                ptCEdit->width() <= 82 &&
+                polynomialA0Edit->width() <= 62,
             "temperature sensor config text inputs are narrowed for short RD105 values");
+    auto *sensorConfigGrid = qobject_cast<QGridLayout *>(temperatureChannelConfigSubStack->currentWidget()->layout());
+    auto requireSensorGridPosition = [sensorConfigGrid](QWidget *editor, int row, int column, const char *message) {
+        require(sensorConfigGrid != nullptr && editor != nullptr && editor->parentWidget() != nullptr, message);
+        QLayoutItem *item = sensorConfigGrid->itemAtPosition(row, column);
+        require(item != nullptr && item->widget() == editor->parentWidget(), message);
+    };
+    requireSensorGridPosition(ntcR0Edit, 0, 0, "temperature sensor grid places NTC R0 at row 1 column 1");
+    requireSensorGridPosition(ptR0Edit, 0, 1, "temperature sensor grid places PT R0 at row 1 column 2");
+    requireSensorGridPosition(ptAEdit, 0, 2, "temperature sensor grid places PT A at row 1 column 3");
+    requireSensorGridPosition(ptBEdit, 0, 3, "temperature sensor grid places PT B at row 1 column 4");
+    requireSensorGridPosition(ptCEdit, 0, 4, "temperature sensor grid places PT C at row 1 column 5");
+    requireSensorGridPosition(ntcBEdit, 1, 0, "temperature sensor grid places NTC B at row 2 column 1");
+    for (int coefficient = 0; coefficient < 8; ++coefficient)
+    {
+        auto *edit = temperaturePanel->findChild<QLineEdit *>(
+            QStringLiteral("temperaturePolynomialA%1EditChannel1").arg(coefficient));
+        require(edit != nullptr && edit->width() <= 62,
+                "temperature polynomial inputs all use the compact width");
+        requireSensorGridPosition(edit,
+                                  1 + coefficient / 4,
+                                  1 + coefficient % 4,
+                                  "temperature polynomial input follows the requested 2x4 grid");
+    }
+    require(sensorConfigGrid != nullptr && sensorConfigGrid->itemAtPosition(2, 0) == nullptr,
+            "temperature sensor grid leaves row 3 column 1 empty");
     require(temperatureChannelSelectorRow->isAncestorOf(factoryResetButton) &&
                 !temperatureChannelStack->isAncestorOf(factoryResetButton),
             "temperature factory reset button lives beside the common settings selector");
