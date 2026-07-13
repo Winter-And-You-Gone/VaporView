@@ -7016,7 +7016,7 @@ void TemperatureControllerPanel::setupUi()
     common_.factory_reset_button->setFixedSize(142, 34);
     common_.factory_reset_button->setIconSize(QSize(18, 18));
     common_.factory_reset_button->setIcon(createLucideIcon(QStringLiteral("refresh-cw"),
-                                                           appThemeColor(AppThemeColor::Danger, VaporView::isDarkThemeEnabled())));
+                                                           appThemeColor(AppThemeColor::ToolbarRed, VaporView::isDarkThemeEnabled())));
     common_.factory_reset_button->setVisible(false);
     connect(common_.factory_reset_button, &QPushButton::clicked, this, [this]() {
         emit factoryResetRequested();
@@ -8123,7 +8123,7 @@ void TemperatureControllerPanel::updateChannelTexts()
     {
         common_.factory_reset_button->setText(is_english_ ? QStringLiteral("Factory Reset") : QStringLiteral("恢复出厂设置"));
         common_.factory_reset_button->setIcon(createLucideIcon(QStringLiteral("refresh-cw"),
-                                                               appThemeColor(AppThemeColor::Danger, VaporView::isDarkThemeEnabled())));
+                                                               appThemeColor(AppThemeColor::ToolbarRed, VaporView::isDarkThemeEnabled())));
     }
     if (common_.overtemp_output_combo)
     {
@@ -9737,8 +9737,8 @@ QString temperatureControllerConfigStyleSheet()
         "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
         "TemperatureControllerPanel QPushButton[temperatureOutputEnableSwitch=\"true\"] { background-color: transparent; border: none; padding: 0px; margin: 0px; min-width: 106px; max-width: 106px; min-height: 34px; max-height: 34px; outline: none; }"
-        "TemperatureControllerPanel QPushButton#temperatureFactoryResetButton { background-color: transparent; border: 1px solid @vv-danger; border-radius: 8px; color: @vv-danger; font-size: 14px; font-weight: 600; padding: 0px 12px; text-align: center; }"
-        "TemperatureControllerPanel QPushButton#temperatureFactoryResetButton:hover { background-color: rgba(220, 38, 38, 0.08); }"
+        "TemperatureControllerPanel QPushButton#temperatureFactoryResetButton { background-color: transparent; border: 1px solid @vv-toolbar-red; border-radius: 8px; color: @vv-toolbar-red; font-size: 14px; font-weight: 600; padding: 0px 12px; text-align: center; }"
+        "TemperatureControllerPanel QPushButton#temperatureFactoryResetButton:hover { background-color: rgba(210, 74, 48, 0.10); }"
         "TemperatureControllerPanel QLabel#fieldLabel[temperatureMaxOutputWarning=\"true\"] { color: @vv-danger; }"
         "TemperatureControllerPanel QSpinBox[temperatureMaxOutputWarning=\"true\"] { color: @vv-danger; }");
 }

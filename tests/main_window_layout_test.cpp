@@ -2901,8 +2901,8 @@ int main(int argc, char **argv)
                                  "sidebar buttons suppress native dotted focus outlines");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton#temperatureFactoryResetButton {"),
-                                 VaporView::appThemeColorName(VaporView::AppThemeColor::Danger, false),
-                                 "temperature factory reset button is styled as a standalone danger action");
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::ToolbarRed, false),
+                                 "temperature factory reset button uses the vivid red toolbar token");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QLabel#fieldLabel[temperatureMaxOutputWarning=\"true\"] {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::Danger, false),
