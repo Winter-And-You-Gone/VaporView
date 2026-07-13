@@ -3138,9 +3138,9 @@ int main(int argc, char **argv)
     };
     require(sensorLabelHasTrailingPadding(sensorFieldLabel(ntcR0Edit), 16) &&
                 sensorLabelHasTrailingPadding(sensorFieldLabel(ptR0Edit), 16) &&
-                sensorLabelHasTrailingPadding(sensorFieldLabel(ptAEdit), 6) &&
-                sensorLabelHasTrailingPadding(sensorFieldLabel(ptBEdit), 6) &&
-                sensorLabelHasTrailingPadding(sensorFieldLabel(ptCEdit), 6),
+                sensorLabelHasTrailingPadding(sensorFieldLabel(ptAEdit), 16) &&
+                sensorLabelHasTrailingPadding(sensorFieldLabel(ptBEdit), 16) &&
+                sensorLabelHasTrailingPadding(sensorFieldLabel(ptCEdit), 16),
             "temperature sensor labels reserve enough trailing width to render closing parentheses");
     require(ntcR0Edit->width() <= 82 &&
                 ntcBEdit->width() <= 82 &&
@@ -3231,6 +3231,11 @@ int main(int argc, char **argv)
                 sensorConfigGrid->columnStretch(5) == 1 &&
                 sensorConfigGrid->columnStretch(7) == 1,
             "temperature sensor grid uses four adaptive spacer columns");
+    const QMargins temperatureChannelPageMargins =
+        temperatureChannelStack->currentWidget()->layout()->contentsMargins();
+    require(temperatureChannelPageMargins.left() == 0 &&
+                temperatureChannelPageMargins.right() == 0,
+            "temperature channel page releases horizontal margins for the five sensor columns");
     require(sensorConfigGrid != nullptr && sensorConfigGrid->itemAtPosition(2, 0) == nullptr,
             "temperature sensor grid leaves row 3 column 1 empty");
     auto *polynomialA7Edit = temperaturePanel->findChild<QLineEdit *>(

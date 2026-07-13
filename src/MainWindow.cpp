@@ -909,8 +909,7 @@ constexpr int kTemperatureControllerSensorInputWidth = 82;
 constexpr int kTemperatureControllerPtCoefficientInputWidth = 104;
 constexpr int kTemperatureControllerPolynomialInputWidth = 62;
 constexpr int kTemperatureControllerSensorFieldSpacing = 6;
-constexpr int kTemperatureControllerSensorLabelPadding = 6;
-constexpr int kTemperatureControllerLongSensorLabelPadding = 16;
+constexpr int kTemperatureControllerSensorLabelPadding = 16;
 constexpr int kTemperatureControllerMaxOutputLabelWidth = 168;
 constexpr int kTemperatureControllerCompactLabelWidth = 72;
 constexpr int kTemperatureControllerControlLabelWidth = 150;
@@ -7259,7 +7258,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     page->setObjectName(QStringLiteral("temperatureChannelConfigPageChannel%1").arg(index + 1));
     page->setFixedHeight(kTemperatureControllerChannelStackHeight);
     auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(16, 8, 16, 8);
+    layout->setContentsMargins(0, 8, 0, 8);
     layout->setSpacing(0);
 
     ChannelWidgets& channel = channels_[index];
@@ -7552,12 +7551,9 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
                 columnLabelWidth,
                 label->fontMetrics().boundingRect(label->text()).width());
         }
-        const int labelPadding = column < 2
-            ? kTemperatureControllerLongSensorLabelPadding
-            : kTemperatureControllerSensorLabelPadding;
         for (QLabel *label : labels)
         {
-            label->setFixedWidth(columnLabelWidth + labelPadding);
+            label->setFixedWidth(columnLabelWidth + kTemperatureControllerSensorLabelPadding);
         }
 
         const QList<QWidget *>& editors = fieldEditorsByColumn[column];
