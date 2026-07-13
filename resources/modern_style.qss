@@ -1316,6 +1316,16 @@ QToolButton#homeDeviceActionButton:hover {
     border-color: @vv-border-strong;
 }
 
+QToolButton#homeDeviceActionButton[deviceConfigAction="true"] {
+    background-color: transparent;
+    border: none;
+}
+
+QToolButton#homeDeviceActionButton[deviceConfigAction="true"]:hover {
+    background-color: @vv-primary-subtle;
+    border: none;
+}
+
 /* 状态指示器 */
 QLabel#statusIndicator {
     padding: 4px 12px;

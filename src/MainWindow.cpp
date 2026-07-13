@@ -846,7 +846,6 @@ constexpr int kMainPageButtonHeight = kMainPageInputHeight;
 constexpr int kDeviceConfigAutoDetectButtonMinWidth = 124;
 constexpr int kDeviceConfigSourceModeComboWidth = 156;
 constexpr int kDeviceConfigSkyDeviceButtonMinWidth = 132;
-constexpr int kDeviceConfigRemoteIconButtonSize = kMainPageButtonHeight;
 constexpr int kDeviceConfigTopButtonPadding = 24;
 constexpr int kHomeDeviceButtonSize = 32;
 constexpr int kHomeDeviceIconSize = 18;
@@ -1803,7 +1802,7 @@ QColor deviceConfigRemoteIconColor(VaporView::CommandId command)
     }
 }
 
-void applyDeviceConfigRemoteButtonPresentation(QPushButton *button,
+void applyDeviceConfigRemoteButtonPresentation(QToolButton *button,
                                                VaporView::CommandId command,
                                                VaporView::SkyDeviceId device,
                                                bool english,
@@ -1816,12 +1815,14 @@ void applyDeviceConfigRemoteButtonPresentation(QPushButton *button,
 
     if (applyMetrics)
     {
-        button->setFixedSize(kDeviceConfigRemoteIconButtonSize, kDeviceConfigRemoteIconButtonSize);
-        button->setIconSize(QSize(kDeviceConfigRemoteIconButtonSize - 12,
-                                  kDeviceConfigRemoteIconButtonSize - 12));
+        button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        button->setIconSize(QSize(kHomeDeviceIconSize, kHomeDeviceIconSize));
+        button->setFixedSize(kHomeDeviceButtonSize, kHomeDeviceButtonSize);
         button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        button->setAutoRaise(true);
     }
-    button->setObjectName(QStringLiteral("deviceConfigRemoteActionButton"));
+    button->setObjectName(QStringLiteral("homeDeviceActionButton"));
+    button->setProperty("deviceConfigAction", true);
     button->setProperty(kDeviceConfigRemoteActionProperty, deviceConfigRemoteActionKey(command));
     button->setProperty(kDeviceConfigRemoteCommandProperty, static_cast<int>(command));
     button->setProperty(kDeviceConfigRemoteDeviceProperty, static_cast<int>(device));
@@ -3158,6 +3159,14 @@ QToolButton#homeDeviceActionButton[state="connected"] {
 QToolButton#homeDeviceActionButton:hover {
     background-color: @vv-primary-subtle;
     border-color: @vv-border-strong;
+}
+QToolButton#homeDeviceActionButton[deviceConfigAction="true"] {
+    background-color: transparent;
+    border: none;
+}
+QToolButton#homeDeviceActionButton[deviceConfigAction="true"]:hover {
+    background-color: @vv-primary-subtle;
+    border: none;
 }
 QLabel#statusIndicator[status="connected"] {
     background-color: @vv-success-bg;
@@ -12946,7 +12955,7 @@ void MainWindow::updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, Vap
 
 void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId device)
 {
-    QPushButton *button = nullptr;
+    QToolButton *button = nullptr;
     switch (device)
     {
     case VaporView::SkyDeviceId::Epsilon:
@@ -12976,11 +12985,19 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
     const VaporView::DeviceState state = homeDeviceActionState(device);
     const bool connected = state == VaporView::DeviceState::Connected;
     const bool busy = state == VaporView::DeviceState::Connecting ||
-        state == VaporView::DeviceState::Reconnecting;
+        state == VaporView::DeviceState::Reconnecting ||
+        homeDeviceActionSpinnerActive(device, QDateTime::currentMSecsSinceEpoch());
     const VaporView::CommandId command = connected
         ? VaporView::CommandId::DisconnectDevice
         : VaporView::CommandId::ConnectDevice;
     applyDeviceConfigRemoteButtonPresentation(button, command, device, is_english_, false);
+    if (busy)
+    {
+        button->setIcon(createRotatedLucideIcon(QStringLiteral("link"),
+                                                toolbarColor(AppThemeColor::HomeDeviceSuccess),
+                                                (home_device_action_spinner_step_ * 360) /
+                                                    kHomeDeviceActionSpinnerFrames));
+    }
     const bool remoteMode = isRemoteSkyMode();
     const bool linkOpen = ground_telemetry_service_ && ground_telemetry_service_->isOpen();
     const bool enabled = state == VaporView::DeviceState::Disabled || busy
@@ -14917,21 +14934,21 @@ void MainWindow::setupDeviceConfigPage()
     auto addDeviceRemoteButton = [this, formLayout, formWidget](
             int row,
             QWidget *&buttonsWidget,
-            QPushButton *&actionButton,
+            QToolButton *&actionButton,
             VaporView::SkyDeviceId device) {
         buttonsWidget = new QWidget(formWidget);
         buttonsWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         auto *layout = new QHBoxLayout(buttonsWidget);
         layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(2);
-        actionButton = new QPushButton(buttonsWidget);
+        actionButton = new QToolButton(buttonsWidget);
         actionButton->setFocusPolicy(Qt::TabFocus);
         applyDeviceConfigRemoteButtonPresentation(actionButton,
                                                   VaporView::CommandId::ConnectDevice,
                                                   device,
                                                   is_english_,
                                                   true);
-        connect(actionButton, &QPushButton::clicked, this, [this, device]() {
+        connect(actionButton, &QToolButton::clicked, this, [this, device]() {
             triggerHomeDeviceAction(device);
         });
         layout->addWidget(actionButton);
@@ -20953,9 +20970,16 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
     updateButton(home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
     updateButton(home_temperature_action_btn_, VaporView::SkyDeviceId::TemperatureController);
     updateButton(home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
+    updateButton(device_config_.epsilon_remote_action_btn, VaporView::SkyDeviceId::Epsilon);
+    updateButton(device_config_.ptb_remote_action_btn, VaporView::SkyDeviceId::Ptb);
+    updateButton(device_config_.hmp_remote_action_btn, VaporView::SkyDeviceId::Hmp);
+    updateButton(device_config_.lidar_remote_action_btn, VaporView::SkyDeviceId::Lidar);
+    updateButton(device_config_.temperature_remote_action_btn,
+                 VaporView::SkyDeviceId::TemperatureController);
     if (needsFullRefresh)
     {
         updateHomeDeviceStatusCapsules();
+        updateDeviceConfigState();
         return;
     }
     if (!anySpinnerActive && home_device_action_spinner_timer_)

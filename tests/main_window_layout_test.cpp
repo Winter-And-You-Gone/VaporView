@@ -3526,7 +3526,7 @@ int main(int argc, char **argv)
     int localDeviceActionCount = 0;
     int connectRemoteActionCount = 0;
     int disconnectRemoteActionCount = 0;
-    QPushButton *temperatureDeviceActionButton = nullptr;
+    QToolButton *temperatureDeviceActionButton = nullptr;
     QPushButton *deviceAutoDetectButton = nullptr;
     QPushButton *deviceSkyConfigButton = nullptr;
     for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
@@ -3549,21 +3549,26 @@ int main(int argc, char **argv)
         {
             deviceSkyConfigButton = button;
         }
+    }
+    for (QToolButton *button : deviceConfigPage->findChildren<QToolButton *>())
+    {
         const QString remoteAction = button->property("deviceConfigRemoteAction").toString();
         if (!remoteAction.isEmpty())
         {
-            require(button->objectName() == QStringLiteral("deviceConfigRemoteActionButton"),
-                    "device configuration remote actions expose a stable object name");
+            require(button->objectName() == QStringLiteral("homeDeviceActionButton") &&
+                        button->property("deviceConfigAction").toBool(),
+                    "device configuration actions reuse the home device button style");
+            require(button->autoRaise(),
+                    "device configuration actions use flat tool buttons without a persistent background");
             require(button->text().isEmpty(),
                     "device configuration remote actions use icon-only visible labels");
             require(!button->icon().isNull(),
                     "device configuration remote actions use lucide icons");
-            require(button->iconSize().width() >= 20 && button->iconSize().width() <= 28 &&
-                        button->iconSize().height() >= 20 && button->iconSize().height() <= 28,
-                    "device configuration remote action icons use compact toolbar sizing");
+            require(button->iconSize() == QSize(18, 18),
+                    "device configuration actions reuse the home device icon size");
             require(std::abs(button->width() - button->height()) <= 1 &&
-                        button->width() >= 34 && button->width() <= 40,
-                    "device configuration remote actions are compact square icon buttons");
+                        button->width() == 32,
+                    "device configuration actions reuse the home device button size");
             require(!button->toolTip().trimmed().isEmpty() &&
                         button->accessibleName() == button->toolTip() &&
                         button->statusTip() == button->toolTip(),
@@ -3723,7 +3728,7 @@ int main(int argc, char **argv)
                                deviceRateCombo->size());
     bool foundRemoteButtonsToRightOfRate = false;
     int rightmostRemoteButtonRight = -1;
-    for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
+    for (QToolButton *button : deviceConfigPage->findChildren<QToolButton *>())
     {
         if (!button->isVisible())
         {

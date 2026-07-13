@@ -837,15 +837,15 @@ private:
         QComboBox *hmp_rate_combo = nullptr;
         QComboBox *lidar_rate_combo = nullptr;
         QComboBox *temperature_rate_combo = nullptr;
-        QPushButton *epsilon_remote_action_btn = nullptr;
+        QToolButton *epsilon_remote_action_btn = nullptr;
         QWidget *epsilon_remote_buttons_widget = nullptr;
-        QPushButton *ptb_remote_action_btn = nullptr;
+        QToolButton *ptb_remote_action_btn = nullptr;
         QWidget *ptb_remote_buttons_widget = nullptr;
-        QPushButton *hmp_remote_action_btn = nullptr;
+        QToolButton *hmp_remote_action_btn = nullptr;
         QWidget *hmp_remote_buttons_widget = nullptr;
-        QPushButton *lidar_remote_action_btn = nullptr;
+        QToolButton *lidar_remote_action_btn = nullptr;
         QWidget *lidar_remote_buttons_widget = nullptr;
-        QPushButton *temperature_remote_action_btn = nullptr;
+        QToolButton *temperature_remote_action_btn = nullptr;
         QWidget *temperature_remote_buttons_widget = nullptr;
     };
 
