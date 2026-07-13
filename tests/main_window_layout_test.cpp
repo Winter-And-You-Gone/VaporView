@@ -3160,6 +3160,25 @@ int main(int argc, char **argv)
     }
     require(sensorConfigGrid != nullptr && sensorConfigGrid->itemAtPosition(2, 0) == nullptr,
             "temperature sensor grid leaves row 3 column 1 empty");
+    auto *polynomialA7Edit = temperaturePanel->findChild<QLineEdit *>(
+        QStringLiteral("temperaturePolynomialA7EditChannel1"));
+    QWidget *sensorLastRow = polynomialA7Edit ? polynomialA7Edit->parentWidget() : nullptr;
+    const QRect sensorFirstRowRect(ntcR0Edit->parentWidget()->mapTo(
+                                       temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
+                                   ntcR0Edit->parentWidget()->size());
+    const QRect sensorLastRowRect = sensorLastRow
+        ? QRect(sensorLastRow->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
+                sensorLastRow->size())
+        : QRect();
+    const int sensorPageUnusedHeight = sensorFirstRowRect.top() +
+        (temperatureChannelConfigSubStack->currentWidget()->height() - 1 - sensorLastRowRect.bottom());
+    require(polynomialA7Edit != nullptr &&
+                temperatureChannelStack->height() == 190 &&
+                temperatureConfigCard->height() <= 280 &&
+                sensorFirstRowRect.top() >= 0 &&
+                sensorLastRowRect.bottom() < temperatureChannelConfigSubStack->currentWidget()->height() &&
+                sensorPageUnusedHeight <= 10,
+            "temperature card height follows the three-row sensor configuration page without clipping or excess space");
     require(temperatureChannelSelectorRow->isAncestorOf(factoryResetButton) &&
                 !temperatureChannelStack->isAncestorOf(factoryResetButton),
             "temperature factory reset button lives beside the common settings selector");
