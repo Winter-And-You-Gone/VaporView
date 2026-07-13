@@ -12372,8 +12372,8 @@ void MainWindow::connectLocalTemperatureController()
             resultText = cancel_connection_requested_.load()
                 ? (english ? QStringLiteral("[RD105] Connection canceled.")
                            : QStringLiteral("[RD105] 已取消连接。"))
-                : (english ? QStringLiteral("[RD105] No response; check power, wiring, address, and baud rate.")
-                           : QStringLiteral("[RD105] 无响应，请检查电源、接线、站号和波特率。"));
+                : (english ? QStringLiteral("[RD105] Initialization failed; see the preceding log for details.")
+                           : QStringLiteral("[RD105] 初始化失败，请查看上方日志。"));
         }
         else if (!collector->startStreaming())
         {
@@ -21907,7 +21907,15 @@ void MainWindow::onConnectClicked()
             if (!collector->checkDeviceResponse())
             {
                 if (abortIfRequested()) return -1;
-                postLog(QString(english ? "[%1] Device not responding! Check power and cables." : "[%1] 设备无响应！请检查电源和连接线。").arg(tag));
+                if (tag == QStringLiteral("RD105"))
+                {
+                    postLog(english ? QStringLiteral("[RD105] Initialization failed; see the preceding log for details.")
+                                    : QStringLiteral("[RD105] 初始化失败，请查看上方日志。"));
+                }
+                else
+                {
+                    postLog(QString(english ? "[%1] Device not responding! Check power and cables." : "[%1] 设备无响应！请检查电源和连接线。").arg(tag));
+                }
                 collector->stop();
                 return 0;
             }

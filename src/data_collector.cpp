@@ -4010,6 +4010,8 @@ uint8_t TemperatureControllerCollector::slaveAddress() const
 
 bool TemperatureControllerCollector::initialize()
 {
+  channel_count_ = 1;
+  polynomial_exponents_supported_ = true;
   serial_.setNonBlocking(true);
   return true;
 }
@@ -4131,6 +4133,48 @@ bool TemperatureControllerCollector::readRegistersUnlocked(uint16_t address, uin
   return true;
 }
 
+bool TemperatureControllerCollector::queryAscii(const std::string& command, std::string& response, int wait_ms)
+{
+  std::lock_guard<std::mutex> lock(modbus_mutex_);
+  response.clear();
+  sleepMs(kTemperatureControllerModbusCommandGapMs);
+  serial_.flush();
+  if (serial_.write(command.data(), command.size()) != static_cast<ssize_t>(command.size()))
+  {
+    return false;
+  }
+
+  const auto start = std::chrono::steady_clock::now();
+  auto last_data = start;
+  uint8_t chunk[256];
+  while (std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::steady_clock::now() - start).count() < wait_ms)
+  {
+    const ssize_t read_bytes = serial_.read(chunk, sizeof(chunk));
+    if (read_bytes > 0)
+    {
+      response.append(reinterpret_cast<const char*>(chunk), static_cast<size_t>(read_bytes));
+      last_data = std::chrono::steady_clock::now();
+    }
+    else
+    {
+      const auto quiet_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - last_data).count();
+      if (!response.empty() && quiet_ms >= 80)
+      {
+        break;
+      }
+      sleepMs(10);
+    }
+  }
+
+  if (!response.empty())
+  {
+    publishRawFrame(std::vector<uint8_t>(response.cbegin(), response.cend()));
+  }
+  return !response.empty();
+}
+
 bool TemperatureControllerCollector::writeRegisters(uint16_t address, const std::vector<uint16_t>& registers, int wait_ms)
 {
   std::lock_guard<std::mutex> lock(modbus_mutex_);
@@ -4223,9 +4267,18 @@ bool TemperatureControllerCollector::readChannel(uint8_t channel, TemperatureCon
     if (!readRegisters(channelAddress(channel, mantissaRegister), 4, registers)) return false;
     channel_data.polynomial_mantissas[static_cast<size_t>(i)] =
         decodeInt64(QVector<uint16_t>(registers.cbegin(), registers.cend()));
-    if (!readRegisters(channelAddress(channel, exponentRegister), 1, registers)) return false;
-    channel_data.polynomial_exponents[static_cast<size_t>(i)] =
-        static_cast<int>(decodeInt16(QVector<uint16_t>(registers.cbegin(), registers.cend())));
+    if (polynomial_exponents_supported_)
+    {
+      if (readRegisters(channelAddress(channel, exponentRegister), 1, registers))
+      {
+        channel_data.polynomial_exponents[static_cast<size_t>(i)] =
+            static_cast<int>(decodeInt16(QVector<uint16_t>(registers.cbegin(), registers.cend())));
+      }
+      else
+      {
+        polynomial_exponents_supported_ = false;
+      }
+    }
   }
   return true;
 }
@@ -4257,60 +4310,85 @@ bool TemperatureControllerCollector::readSnapshot(TemperatureControllerData& sam
 
 bool TemperatureControllerCollector::checkDeviceResponse()
 {
-  using namespace TemperatureControllerProtocol;
-  std::vector<uint16_t> registers;
   log(isEnglishLog() ? "Serial port opened. Communicating with the temperature controller; please wait."
                      : "打开串口成功，正在通讯温控器，请稍等");
 
-  auto readWithRetry = [this, &registers](Register reg) {
+  auto queryWithRetry = [this](const std::string& command, std::string& response) {
     for (int attempt = 0; attempt < 3 && !isCancelRequested(); ++attempt)
     {
-      if (readRegisters(static_cast<uint16_t>(reg), 1, registers, 300))
+      if (queryAscii(command, response))
       {
         return true;
       }
     }
     return false;
   };
+  auto decimalValue = [](const std::string& response, const std::string& key, std::string& value) {
+    const size_t key_pos = response.find(key);
+    if (key_pos == std::string::npos)
+    {
+      return false;
+    }
+    const size_t value_pos = key_pos + key.size();
+    size_t value_end = value_pos;
+    while (value_end < response.size() && response[value_end] >= '0' && response[value_end] <= '9')
+    {
+      ++value_end;
+    }
+    if (value_end == value_pos)
+    {
+      return false;
+    }
+    value = response.substr(value_pos, value_end - value_pos);
+    return true;
+  };
 
-  if (!readWithRetry(Register::DeviceModel))
+  std::string response;
+  std::string model_name;
+  if (!queryWithRetry("TEC=?@", response) || !decimalValue(response, "TEC=", model_name))
   {
     log(isEnglishLog() ? "Failed to read the temperature controller model."
                        : "温控器型号读取失败。");
     return false;
   }
-  const uint16_t model = registers[0];
-  const std::string model_name = deviceModelName(model).toStdString();
   log(isEnglishLog() ? "Temperature controller model: " + model_name
                      : "当前温控器型号为" + model_name);
 
-  if (!readWithRetry(Register::FirmwareVersion))
+  std::string firmware_version;
+  if (!queryWithRetry("FPV=?@", response) || !decimalValue(response, "FPV=", firmware_version))
   {
     log(isEnglishLog() ? "Failed to read the temperature controller firmware version."
                        : "温控器版本号读取失败。");
     return false;
   }
-  const uint16_t firmware_version = registers[0];
-  log(isEnglishLog() ? "Temperature controller firmware version: " + std::to_string(firmware_version)
-                     : "当前温控器版本号为" + std::to_string(firmware_version));
+  log(isEnglishLog() ? "Temperature controller firmware version: " + firmware_version
+                     : "当前温控器版本号为" + firmware_version);
 
   log(isEnglishLog() ? "Reading parameters..." : "参数读取中...");
-  channel_count_ = 1;
-  if (readRegisters(channelAddress(2, Register::TargetTemperature), 2, registers, 150))
-  {
-    channel_count_ = 2;
-  }
-
-  TemperatureControllerData sample;
-  if (isCancelRequested() || !readSnapshot(sample))
+  if (!queryWithRetry("INQUIRE=1@", response))
   {
     log(isEnglishLog() ? "Failed to read temperature controller parameters."
                        : "参数读取失败。");
     return false;
   }
+  channel_count_ = response.find("TC2:TG=") == std::string::npos ? 1 : 2;
+  static constexpr const char *kRequiredParameters[] = {
+      "TC1:TG=", "TC1:LIMITED=", "TC1:MODE=", "TC1:ENABLE=", "TC1:KP=",
+      "TC1:KI=", "TC1:KD=", "TC1:RP=", "TC1:BX=", "TC1:PT1000RP=",
+      "TC1:CHRATIO=", "TC1:SPEED=", "TC1:STEADYIOB=", "TC1:OVERTEMPUP=",
+      "TC1:OVERTEMPLOWER=", "TC1:FDEADV=", "TC1:BDEADV=", "TC1:NTCRP=",
+      "TC1:PTRP=", "TC1:PTA=", "TC1:PTB=", "TC1:PTC=", "TC1:PIDPOL=",
+  };
+  const bool complete = std::all_of(std::begin(kRequiredParameters),
+                                    std::end(kRequiredParameters),
+                                    [&response](const char *parameter) {
+                                      return response.find(parameter) != std::string::npos;
+                                    });
+  if (isCancelRequested() || !complete)
   {
-    std::lock_guard<std::mutex> lock(mutex_);
-    latest_data_ = sample;
+    log(isEnglishLog() ? "Failed to read temperature controller parameters."
+                       : "参数读取失败。");
+    return false;
   }
   log(isEnglishLog() ? "Parameter reading complete." : "参数读取完成。");
   return true;

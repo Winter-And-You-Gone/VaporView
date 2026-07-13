@@ -298,12 +298,14 @@ private:
   RawFrameCallback raw_frame_callback_;
   uint8_t slave_address_ = 1;
   int channel_count_ = 1;
+  bool polynomial_exponents_supported_ = true;
   std::mutex modbus_mutex_;
 
   bool readSnapshot(TemperatureControllerData& sample);
   bool readChannel(uint8_t channel, TemperatureControllerChannelData& channel_data);
   bool readRegisters(uint16_t address, uint16_t count, std::vector<uint16_t>& registers, int wait_ms = 200);
   bool readRegistersUnlocked(uint16_t address, uint16_t count, std::vector<uint16_t>& registers, int wait_ms);
+  bool queryAscii(const std::string& command, std::string& response, int wait_ms = 1200);
   bool writeRegisters(uint16_t address, const std::vector<uint16_t>& registers, int wait_ms = 200);
   bool writeRegistersUnlocked(uint16_t address, const std::vector<uint16_t>& registers, int wait_ms);
   bool writeAndConfirm(uint8_t channel, uint16_t address, const std::vector<uint16_t>& registers);
