@@ -322,6 +322,8 @@ private:
         QSpinBox *ki_spin = nullptr;
         QSpinBox *kd_spin = nullptr;
         QComboBox *auto_pid_combo = nullptr;
+        QWidget *common_top_controls = nullptr;
+        QWidget *sensor_model_field = nullptr;
         QWidget *sensor_model_selector = nullptr;
         QButtonGroup *sensor_model_group = nullptr;
         std::array<QRadioButton *, 4> sensor_model_radios{};
