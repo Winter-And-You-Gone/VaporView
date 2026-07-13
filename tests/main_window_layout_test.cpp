@@ -2736,13 +2736,13 @@ int main(int argc, char **argv)
                 temperatureChannelTopControlsStack->isAncestorOf(enableSwitch2) &&
                 !temperatureChannelTopBar->isAncestorOf(enableSwitch) &&
                 !temperatureChannelTopBar->isAncestorOf(enableSwitch2) &&
-                !temperatureChannelStack->isAncestorOf(modeCombo) &&
-                !temperatureChannelStack->isAncestorOf(targetSpin) &&
-                temperatureChannelTopControlsStack->isAncestorOf(modeCombo) &&
-                temperatureChannelTopControlsStack->isAncestorOf(targetSpin) &&
+                temperatureChannelStack->isAncestorOf(modeCombo) &&
+                temperatureChannelStack->isAncestorOf(targetSpin) &&
+                !temperatureChannelTopControlsStack->isAncestorOf(modeCombo) &&
+                !temperatureChannelTopControlsStack->isAncestorOf(targetSpin) &&
                 !temperatureChannelTopBar->isAncestorOf(modeCombo) &&
                 !temperatureChannelTopBar->isAncestorOf(targetSpin),
-            "temperature output enable, mode, and target sit beside the top channel selector");
+            "temperature output enable stays beside the selector while mode and target move into common parameters");
     const QRect topCommonRect(temperatureCommonSettingsButton->mapTo(temperatureChannelTopRow, QPoint(0, 0)),
                               temperatureCommonSettingsButton->size());
     require(topCommonRect.right() < stackRectInCard.right(),
@@ -2956,6 +2956,10 @@ int main(int argc, char **argv)
                     editorRect.left() - labelRect.right() <= 10,
                 message);
     };
+    requireCompactChannelFieldLayout(modeCombo,
+                                     "temperature output mode field lives in the lower common-params page");
+    requireCompactChannelFieldLayout(targetSpin,
+                                     "temperature target temperature field lives in the lower common-params page");
     requireCompactChannelFieldLayout(maxOutputSpin,
                                      "temperature max output field lives in the lower common-params page");
     requireCompactChannelFieldLayout(autoPidCombo,
@@ -2983,18 +2987,28 @@ int main(int argc, char **argv)
                        "temperature PID spin boxes leave enough unobscured edit area for a three-digit value");
     requireCompactChannelFieldLayout(pidEditor,
                                      "temperature PID field lives in the lower common-params page");
+    const QRect modeRowRect(modeCombo->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
+                            modeCombo->parentWidget()->size());
+    const QRect targetRowRect(targetSpin->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
+                              targetSpin->parentWidget()->size());
     const QRect maxOutputRowRect(maxOutputSpin->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
                                  maxOutputSpin->parentWidget()->size());
     const QRect pidRowRect(pidEditor->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
                            pidEditor->parentWidget()->size());
     const QRect autoPidRowRect(autoPidCombo->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
                                autoPidCombo->parentWidget()->size());
-    require(std::abs(maxOutputRowRect.top() - pidRowRect.top()) <= 2 &&
+    require(std::abs(modeRowRect.top() - targetRowRect.top()) <= 2 &&
+                std::abs(targetRowRect.top() - maxOutputRowRect.top()) <= 2 &&
+                modeRowRect.right() < targetRowRect.left() &&
+                targetRowRect.right() < maxOutputRowRect.left(),
+            "temperature lower common tab lays output mode, target, and max output on the first row");
+    require(pidRowRect.top() > maxOutputRowRect.bottom() &&
                 std::abs(pidRowRect.top() - autoPidRowRect.top()) <= 2 &&
-                maxOutputRowRect.right() < pidRowRect.left() &&
                 pidRowRect.right() < autoPidRowRect.left(),
-            "temperature lower common tab lays max output, PID, and auto PID on one row");
-    require(maxOutputRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
+            "temperature lower common tab lays PID and auto PID on the second row");
+    require(modeRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
+                targetRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
+                maxOutputRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
                 pidRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
                 autoPidRowRect.bottom() <= temperatureChannelStack->rect().bottom(),
             "temperature channel fields fit inside the stack without clipping");
@@ -3021,15 +3035,13 @@ int main(int argc, char **argv)
         require(row->objectName() == QStringLiteral("temperatureTopBarField"), message);
         require(temperatureChannelTopControlsStack->isAncestorOf(row), message);
     };
-    require(temperatureChannelTopControlsStack->isAncestorOf(modeCombo) &&
-                temperatureChannelTopControlsStack->isAncestorOf(targetSpin),
-            "temperature output mode and target temperature are in the top controls");
+    require(!temperatureChannelTopControlsStack->isAncestorOf(modeCombo) &&
+                !temperatureChannelTopControlsStack->isAncestorOf(targetSpin) &&
+                temperatureChannelStack->isAncestorOf(modeCombo) &&
+                temperatureChannelStack->isAncestorOf(targetSpin),
+            "temperature output mode and target temperature live in the lower common-params page");
     requireTopBarFieldLayout(enableSwitch,
                              "temperature output enable switch lives beside the channel selectors");
-    requireTopBarFieldLayout(modeCombo,
-                             "temperature output mode lives beside the channel selectors");
-    requireTopBarFieldLayout(targetSpin,
-                             "temperature target temperature lives beside the channel selectors");
     requireTopBarFieldLayout(sensorModelSelector1,
                              "temperature sensor model radio selector lives in the channel top row");
     requireTopBarFieldLayout(addressSpin,
