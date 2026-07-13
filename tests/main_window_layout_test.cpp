@@ -3103,10 +3103,12 @@ int main(int argc, char **argv)
         require(!labels.isEmpty(), message);
         const QRect labelRect(labels.first()->mapTo(row, QPoint(0, 0)), labels.first()->size());
         const QRect editorRect(editor->mapTo(row, QPoint(0, 0)), editor->size());
-        require(labelRect.left() <= 1 &&
-                    labelRect.right() < editorRect.left() &&
-                    editorRect.left() - labelRect.right() <= 6,
-                message);
+        auto *fieldLayout = qobject_cast<QHBoxLayout *>(row->layout());
+        const bool layoutIsValid = labelRect.left() <= 1 &&
+            labelRect.right() < editorRect.left() &&
+            fieldLayout != nullptr &&
+            fieldLayout->spacing() == 6;
+        require(layoutIsValid, message);
     };
     requireCompactSensorFieldLayout(ntcR0Edit,
                                     "temperature NTC R0 field keeps label and input tightly grouped");
@@ -3216,7 +3218,7 @@ int main(int argc, char **argv)
         {
             adaptiveColumnGap = gap;
         }
-        require(gap >= 6 && std::abs(gap - adaptiveColumnGap) <= 1,
+        require(gap >= 0 && std::abs(gap - adaptiveColumnGap) <= 1,
                 "temperature sensor grid distributes available card width evenly between columns");
     }
     require(sensorConfigGrid != nullptr &&

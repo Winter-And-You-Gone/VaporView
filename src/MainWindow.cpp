@@ -908,7 +908,7 @@ constexpr int kTemperatureControllerCompactPidInputWidth = 82;
 constexpr int kTemperatureControllerSensorInputWidth = 82;
 constexpr int kTemperatureControllerPtCoefficientInputWidth = 104;
 constexpr int kTemperatureControllerPolynomialInputWidth = 62;
-constexpr int kTemperatureControllerSensorFieldSpacing = 2;
+constexpr int kTemperatureControllerSensorFieldSpacing = 6;
 constexpr int kTemperatureControllerSensorLabelPadding = 6;
 constexpr int kTemperatureControllerMaxOutputLabelWidth = 168;
 constexpr int kTemperatureControllerCompactLabelWidth = 72;
@@ -7436,7 +7436,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
     layout->setAlignment(Qt::AlignVCenter);
     for (int spacerColumn = 1; spacerColumn < 8; spacerColumn += 2)
     {
-        layout->setColumnMinimumWidth(spacerColumn, 6);
+        layout->setColumnMinimumWidth(spacerColumn, 0);
         layout->setColumnStretch(spacerColumn, 1);
     }
     ChannelWidgets& channel = channels_[index];
