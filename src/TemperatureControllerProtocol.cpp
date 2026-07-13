@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <iterator>
 #include <limits>
 
 namespace VaporView
@@ -351,6 +352,21 @@ qint32 temperatureCelsiusToRaw(double celsius)
 double rawToTemperatureCelsius(qint32 raw)
 {
     return static_cast<double>(raw) / kTemperatureScale;
+}
+
+QString deviceModelName(quint16 modelCode)
+{
+    static constexpr const char *kModelNames[] = {
+        "", "103", "207L", "207", "215L", "215", "215Pro", "107L", "107",
+        "115L", "115", "115Pro", "100L", "100", "100Pro", "403L", "403",
+        "403Pro", "415L", "415", "603L", "603", "615L", "615", "615Pro",
+        "803L", "803", "815L", "815", "815Pro", "203L", "203",
+    };
+    if (modelCode > 0 && modelCode < std::size(kModelNames))
+    {
+        return QString::fromLatin1(kModelNames[modelCode]);
+    }
+    return QString::number(modelCode);
 }
 
 QString frameStatusText(FrameStatus status)

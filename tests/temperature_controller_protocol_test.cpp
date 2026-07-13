@@ -115,6 +115,16 @@ bool checkChannelAddressOffset()
                   "RS485 baud register mismatch");
     ok &= require(static_cast<quint16>(VaporView::TemperatureControllerProtocol::Register::OvertempOutputMode) == 0x000B,
                   "over-temperature output mode register mismatch");
+    ok &= require(static_cast<quint16>(VaporView::TemperatureControllerProtocol::Register::DeviceModel) == 0x0001,
+                  "device model register mismatch");
+    ok &= require(static_cast<quint16>(VaporView::TemperatureControllerProtocol::Register::FirmwareVersion) == 0x000C,
+                  "firmware version register mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::deviceModelName(1) == QStringLiteral("103"),
+                  "device model 1 name mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::deviceModelName(31) == QStringLiteral("203"),
+                  "device model 31 name mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::deviceModelName(99) == QStringLiteral("99"),
+                  "unknown device model name mismatch");
     return ok;
 }
 

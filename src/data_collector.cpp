@@ -4235,7 +4235,7 @@ bool TemperatureControllerCollector::readSnapshot(TemperatureControllerData& sam
   using namespace TemperatureControllerProtocol;
   sample = TemperatureControllerData{};
   if (!readChannel(1, sample.channels[0])) return false;
-  if (!readChannel(2, sample.channels[1])) return false;
+  if (channel_count_ > 1 && !readChannel(2, sample.channels[1])) return false;
   std::vector<uint16_t> registers;
   if (!readRegisters(static_cast<uint16_t>(Register::DeviceAddress), 1, registers)) return false;
   sample.device_address = static_cast<int>(registers[0]);
@@ -4257,17 +4257,63 @@ bool TemperatureControllerCollector::readSnapshot(TemperatureControllerData& sam
 
 bool TemperatureControllerCollector::checkDeviceResponse()
 {
+  using namespace TemperatureControllerProtocol;
   std::vector<uint16_t> registers;
-  for (int attempt = 0; attempt < 3; ++attempt)
-  {
-    const auto attempt_start = std::chrono::steady_clock::now();
-    log(formatDetectionProgress("等待RD105温控器返回", attempt + 1, 3, computeRemainingSeconds(attempt_start, 300)));
-    if (readRegisters(static_cast<uint16_t>(TemperatureControllerProtocol::Register::InternalTemperature), 1, registers, 300))
+  log(isEnglishLog() ? "Serial port opened. Communicating with the temperature controller; please wait."
+                     : "打开串口成功，正在通讯温控器，请稍等");
+
+  auto readWithRetry = [this, &registers](Register reg) {
+    for (int attempt = 0; attempt < 3 && !isCancelRequested(); ++attempt)
     {
-      return true;
+      if (readRegisters(static_cast<uint16_t>(reg), 1, registers, 300))
+      {
+        return true;
+      }
     }
+    return false;
+  };
+
+  if (!readWithRetry(Register::DeviceModel))
+  {
+    log(isEnglishLog() ? "Failed to read the temperature controller model."
+                       : "温控器型号读取失败。");
+    return false;
   }
-  return false;
+  const uint16_t model = registers[0];
+  const std::string model_name = deviceModelName(model).toStdString();
+  log(isEnglishLog() ? "Temperature controller model: " + model_name
+                     : "当前温控器型号为" + model_name);
+
+  if (!readWithRetry(Register::FirmwareVersion))
+  {
+    log(isEnglishLog() ? "Failed to read the temperature controller firmware version."
+                       : "温控器版本号读取失败。");
+    return false;
+  }
+  const uint16_t firmware_version = registers[0];
+  log(isEnglishLog() ? "Temperature controller firmware version: " + std::to_string(firmware_version)
+                     : "当前温控器版本号为" + std::to_string(firmware_version));
+
+  log(isEnglishLog() ? "Reading parameters..." : "参数读取中...");
+  channel_count_ = 1;
+  if (readRegisters(channelAddress(2, Register::TargetTemperature), 2, registers, 150))
+  {
+    channel_count_ = 2;
+  }
+
+  TemperatureControllerData sample;
+  if (isCancelRequested() || !readSnapshot(sample))
+  {
+    log(isEnglishLog() ? "Failed to read temperature controller parameters."
+                       : "参数读取失败。");
+    return false;
+  }
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    latest_data_ = sample;
+  }
+  log(isEnglishLog() ? "Parameter reading complete." : "参数读取完成。");
+  return true;
 }
 
 bool TemperatureControllerCollector::setTargetTemperature(uint8_t channel, double celsius)

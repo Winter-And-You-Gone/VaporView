@@ -103,6 +103,7 @@ qint64 decodeInt64(const QVector<quint16>& registers, int offset = 0);
 quint64 decodeUInt64(const QVector<quint16>& registers, int offset = 0);
 qint32 temperatureCelsiusToRaw(double celsius);
 double rawToTemperatureCelsius(qint32 raw);
+QString deviceModelName(quint16 modelCode);
 QString frameStatusText(FrameStatus status);
 
 }  // namespace TemperatureControllerProtocol

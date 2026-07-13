@@ -297,6 +297,7 @@ private:
   TemperatureControllerData latest_data_;
   RawFrameCallback raw_frame_callback_;
   uint8_t slave_address_ = 1;
+  int channel_count_ = 1;
   std::mutex modbus_mutex_;
 
   bool readSnapshot(TemperatureControllerData& sample);
