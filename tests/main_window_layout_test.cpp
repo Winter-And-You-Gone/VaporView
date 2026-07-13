@@ -2462,6 +2462,8 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QSpinBox *>(QStringLiteral("temperaturePidKdSpinChannel1"));
     auto *autoPidCombo =
         temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureAutoPidComboChannel1"));
+    auto *pidHeading =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePidHeadingChannel1"));
     auto *addressSpin =
         temperaturePanel->findChild<QSpinBox *>(QStringLiteral("temperatureDeviceAddressSpin"));
     auto *rs485BaudCombo =
@@ -2486,6 +2488,7 @@ int main(int argc, char **argv)
                 targetSpin != nullptr && enableSwitch != nullptr && enableSwitch2 != nullptr && modeCombo != nullptr &&
                 maxOutputSpin != nullptr && kpSpin != nullptr && kiSpin != nullptr &&
                 kdSpin != nullptr && autoPidCombo != nullptr &&
+                pidHeading != nullptr &&
                 addressSpin != nullptr && rs485BaudCombo != nullptr && overtempOutputCombo != nullptr &&
                 commonInternalTemperatureEdit != nullptr && factoryResetButton != nullptr &&
                 sensorModelSelector1 != nullptr && sensorModelBValueRadio != nullptr &&
@@ -2962,15 +2965,19 @@ int main(int argc, char **argv)
                                      "temperature target temperature field lives in the lower common-params page");
     requireCompactChannelFieldLayout(maxOutputSpin,
                                      "temperature max output field lives in the lower common-params page");
+    requireCompactChannelFieldLayout(kpSpin,
+                                     "temperature PID P field lives in the lower common-params page");
+    requireCompactChannelFieldLayout(kiSpin,
+                                     "temperature PID I field lives in the lower common-params page");
+    requireCompactChannelFieldLayout(kdSpin,
+                                     "temperature PID D field lives in the lower common-params page");
     requireCompactChannelFieldLayout(autoPidCombo,
                                      "temperature auto PID field lives in the lower common-params page");
-    auto *pidEditor =
-        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePidEditorChannel1"));
-    require(pidEditor != nullptr &&
-                kpSpin->parentWidget() == pidEditor &&
-                kiSpin->parentWidget() == pidEditor &&
-                kdSpin->parentWidget() == pidEditor,
-            "temperature PID controls are grouped as one right-side editor");
+    require(pidHeading->objectName() == QStringLiteral("temperaturePidHeadingChannel1") &&
+                kpSpin->parentWidget() != kiSpin->parentWidget() &&
+                kiSpin->parentWidget() != kdSpin->parentWidget() &&
+                kpSpin->parentWidget() != kdSpin->parentWidget(),
+            "temperature PID P, I, and D controls are independent field cells");
     auto requirePidTextFits = [](QSpinBox *spin, const char *message) {
         QLineEdit *lineEdit = spin ? spin->findChild<QLineEdit *>(QString(), Qt::FindDirectChildrenOnly) : nullptr;
         require(lineEdit != nullptr, message);
@@ -2985,31 +2992,63 @@ int main(int argc, char **argv)
     };
     requirePidTextFits(kpSpin,
                        "temperature PID spin boxes leave enough unobscured edit area for a three-digit value");
-    requireCompactChannelFieldLayout(pidEditor,
-                                     "temperature PID field lives in the lower common-params page");
+    requirePidTextFits(kiSpin,
+                       "temperature PID spin boxes leave enough unobscured edit area for a three-digit value");
+    requirePidTextFits(kdSpin,
+                       "temperature PID spin boxes leave enough unobscured edit area for a three-digit value");
     const QRect modeRowRect(modeCombo->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
                             modeCombo->parentWidget()->size());
     const QRect targetRowRect(targetSpin->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
                               targetSpin->parentWidget()->size());
     const QRect maxOutputRowRect(maxOutputSpin->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
                                  maxOutputSpin->parentWidget()->size());
-    const QRect pidRowRect(pidEditor->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
-                           pidEditor->parentWidget()->size());
+    const QRect pidHeadingRect(pidHeading->mapTo(temperatureChannelStack, QPoint(0, 0)),
+                               pidHeading->size());
+    const QRect kpRowRect(kpSpin->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
+                          kpSpin->parentWidget()->size());
+    const QRect kiRowRect(kiSpin->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
+                          kiSpin->parentWidget()->size());
+    const QRect kdRowRect(kdSpin->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
+                          kdSpin->parentWidget()->size());
     const QRect autoPidRowRect(autoPidCombo->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
                                autoPidCombo->parentWidget()->size());
+    auto requireEvenHorizontalGaps = [](const QList<QRect>& rects, int tolerance, const char *message) {
+        require(rects.size() >= 2, message);
+        const int referenceGap = rects.at(1).left() - rects.at(0).right() - 1;
+        for (int i = 1; i < rects.size(); ++i)
+        {
+            const int gap = rects.at(i).left() - rects.at(i - 1).right() - 1;
+            require(gap >= 0 && std::abs(gap - referenceGap) <= tolerance, message);
+        }
+    };
     require(std::abs(modeRowRect.top() - targetRowRect.top()) <= 2 &&
                 std::abs(targetRowRect.top() - maxOutputRowRect.top()) <= 2 &&
                 modeRowRect.right() < targetRowRect.left() &&
                 targetRowRect.right() < maxOutputRowRect.left(),
             "temperature lower common tab lays output mode, target, and max output on the first row");
-    require(pidRowRect.top() > maxOutputRowRect.bottom() &&
-                std::abs(pidRowRect.top() - autoPidRowRect.top()) <= 2 &&
-                pidRowRect.right() < autoPidRowRect.left(),
-            "temperature lower common tab lays PID and auto PID on the second row");
+    requireEvenHorizontalGaps({modeRowRect, targetRowRect, maxOutputRowRect},
+                              2,
+                              "temperature lower common tab distributes first-row field gaps evenly");
+    require(pidHeadingRect.top() > maxOutputRowRect.bottom() &&
+                std::abs(pidHeadingRect.top() - kpRowRect.top()) <= 2 &&
+                std::abs(kpRowRect.top() - kiRowRect.top()) <= 2 &&
+                std::abs(kiRowRect.top() - kdRowRect.top()) <= 2 &&
+                std::abs(kdRowRect.top() - autoPidRowRect.top()) <= 2 &&
+                pidHeadingRect.right() < kpRowRect.left() &&
+                kpRowRect.right() < kiRowRect.left() &&
+                kiRowRect.right() < kdRowRect.left() &&
+                kdRowRect.right() < autoPidRowRect.left(),
+            "temperature lower common tab lays PID, P, I, D, and auto PID on the second row");
+    requireEvenHorizontalGaps({pidHeadingRect, kpRowRect, kiRowRect, kdRowRect, autoPidRowRect},
+                              2,
+                              "temperature lower common tab distributes second-row field gaps evenly");
     require(modeRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
                 targetRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
                 maxOutputRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
-                pidRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
+                pidHeadingRect.bottom() <= temperatureChannelStack->rect().bottom() &&
+                kpRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
+                kiRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
+                kdRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
                 autoPidRowRect.bottom() <= temperatureChannelStack->rect().bottom(),
             "temperature channel fields fit inside the stack without clipping");
     require(maxOutputSpin->property("temperatureMaxOutputWarning").toBool(),
