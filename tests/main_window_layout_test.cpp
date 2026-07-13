@@ -3107,6 +3107,17 @@ int main(int argc, char **argv)
                                     "temperature PT R0 field keeps label and input tightly grouped");
     requireCompactSensorFieldLayout(polynomialA0Edit,
                                     "temperature polynomial field keeps label and input tightly grouped");
+    auto sensorFieldLabel = [](QWidget *editor) -> QLabel * {
+        return editor && editor->parentWidget()
+            ? editor->parentWidget()->findChild<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly)
+            : nullptr;
+    };
+    require(sensorFieldLabel(ntcR0Edit) && sensorFieldLabel(ntcR0Edit)->text() == QStringLiteral("NTC R0(Ohm)") &&
+                sensorFieldLabel(ptR0Edit) && sensorFieldLabel(ptR0Edit)->text() == QStringLiteral("PT R0(Ohm)") &&
+                sensorFieldLabel(ptAEdit) && sensorFieldLabel(ptAEdit)->text() == QStringLiteral("PT A(E-3)") &&
+                sensorFieldLabel(ptBEdit) && sensorFieldLabel(ptBEdit)->text() == QStringLiteral("PT B(E-7)") &&
+                sensorFieldLabel(ptCEdit) && sensorFieldLabel(ptCEdit)->text() == QStringLiteral("PT C(E-12)"),
+            "temperature compact sensor fields retain their unit and exponent annotations");
     require(ntcR0Edit->width() <= 82 &&
                 ntcBEdit->width() <= 82 &&
                 ptR0Edit->width() <= 82 &&
