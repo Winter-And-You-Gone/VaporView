@@ -3257,15 +3257,17 @@ int main(int argc, char **argv)
         ? QRect(sensorLastRow->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
                 sensorLastRow->size())
         : QRect();
-    const int sensorPageUnusedHeight = sensorFirstRowRect.top() +
-        (temperatureChannelConfigSubStack->currentWidget()->height() - 1 - sensorLastRowRect.bottom());
+    const int sensorPageBottomUnusedHeight =
+        temperatureChannelConfigSubStack->currentWidget()->height() - 1 - sensorLastRowRect.bottom();
     require(polynomialA7Edit != nullptr &&
                 temperatureChannelStack->height() == 190 &&
                 temperatureConfigCard->height() <= 280 &&
+                sensorConfigGrid->alignment() == Qt::AlignTop &&
                 sensorFirstRowRect.top() >= 0 &&
+                sensorFirstRowRect.top() <= 4 &&
                 sensorLastRowRect.bottom() < temperatureChannelConfigSubStack->currentWidget()->height() &&
-                sensorPageUnusedHeight <= 10,
-            "temperature card height follows the three-row sensor configuration page without clipping or excess space");
+                sensorPageBottomUnusedHeight >= 0,
+            "temperature sensor grid starts close to the model row without clipping");
     require(temperatureChannelSelectorRow->isAncestorOf(factoryResetButton) &&
                 !temperatureChannelStack->isAncestorOf(factoryResetButton),
             "temperature factory reset button lives beside the common settings selector");

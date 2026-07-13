@@ -7433,7 +7433,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setHorizontalSpacing(0);
     layout->setVerticalSpacing(4);
-    layout->setAlignment(Qt::AlignVCenter);
+    layout->setAlignment(Qt::AlignTop);
     for (int spacerColumn = 1; spacerColumn < 8; spacerColumn += 2)
     {
         layout->setColumnMinimumWidth(spacerColumn, 0);
