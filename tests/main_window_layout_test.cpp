@@ -24,6 +24,7 @@
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QStyle>
@@ -2471,12 +2472,22 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QLineEdit *>(QStringLiteral("temperatureCommonInternalTemperatureEdit"));
     auto *factoryResetButton =
         temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureFactoryResetButton"));
+    auto *sensorModelSelector1 =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureSensorModelSelectorChannel1"));
+    auto *sensorModelBValueRadio =
+        temperaturePanel->findChild<QRadioButton *>(QStringLiteral("temperatureSensorModelBValueRadioChannel1"));
+    auto *sensorModelPtRadio =
+        temperaturePanel->findChild<QRadioButton *>(QStringLiteral("temperatureSensorModelPtRadioChannel1"));
+    auto *sensorModelShRadio =
+        temperaturePanel->findChild<QRadioButton *>(QStringLiteral("temperatureSensorModelShRadioChannel1"));
     require(controllerModeCombo != nullptr && controllerModeLabel != nullptr && temperatureStatusRateLabel != nullptr &&
                 targetSpin != nullptr && enableSwitch != nullptr && enableSwitch2 != nullptr && modeCombo != nullptr &&
                 maxOutputSpin != nullptr && kpSpin != nullptr && kiSpin != nullptr &&
                 kdSpin != nullptr && autoPidCombo != nullptr &&
                 addressSpin != nullptr && rs485BaudCombo != nullptr && overtempOutputCombo != nullptr &&
-                commonInternalTemperatureEdit != nullptr && factoryResetButton != nullptr,
+                commonInternalTemperatureEdit != nullptr && factoryResetButton != nullptr &&
+                sensorModelSelector1 != nullptr && sensorModelBValueRadio != nullptr &&
+                sensorModelPtRadio != nullptr && sensorModelShRadio != nullptr,
             "temperature controller editable controls are discoverable for stale telemetry checks");
     require(controllerModeCombo->property("usesSingleLevelPopupMenu").toBool() &&
                 modeCombo->property("usesSingleLevelPopupMenu").toBool() &&
@@ -2684,8 +2695,12 @@ int main(int argc, char **argv)
                 topRowRectInCard.left() <= stackRectInCard.left() + 1 &&
                 topBarRectInRow.width() < stackRectInCard.width(),
             "temperature channel selector is a compact top bar above the config stack");
-    require(!temperatureChannelTopControlsStack->isVisible(),
-            "temperature channel pages keep channel controls in the lower parameter tabs");
+    require(temperatureChannelTopControlsStack->isVisible() &&
+                temperatureChannelTopControlsStack->isAncestorOf(sensorModelSelector1) &&
+                sensorModelBValueRadio->isChecked() &&
+                !sensorModelPtRadio->isChecked() &&
+                !sensorModelShRadio->isChecked(),
+            "temperature channel pages show the sensor model radio selector in the top row");
     require(temperatureConfigChannelButton1->x() < temperatureConfigChannelButton2->x() &&
                 temperatureConfigChannelButton2->x() < temperatureCommonSettingsButton->x() &&
                 std::abs(temperatureConfigChannelButton1->y() - temperatureConfigChannelButton2->y()) <= 1 &&
@@ -2733,7 +2748,7 @@ int main(int argc, char **argv)
     clickWidget(temperatureConfigChannelButton2, 150);
     activateLayouts(&window);
     require(temperatureChannelTopControlsStack->currentIndex() == 1 &&
-                !temperatureChannelTopControlsStack->isVisible() &&
+                temperatureChannelTopControlsStack->isVisible() &&
                 temperatureChannelStack->currentIndex() == 1 &&
                 std::abs(temperatureChannelStack->height() - channel1StackHeight) <= 1 &&
                 std::abs(temperatureChannelTopRow->height() - channel1TopRowHeight) <= 1 &&
@@ -2794,7 +2809,7 @@ int main(int argc, char **argv)
     clickWidget(temperatureConfigChannelButton1, 150);
     activateLayouts(&window);
     require(temperatureChannelTopControlsStack->currentIndex() == 0 &&
-                !temperatureChannelTopControlsStack->isVisible() &&
+                temperatureChannelTopControlsStack->isVisible() &&
                 temperatureChannelStack->currentIndex() == 0 &&
                 std::abs(temperatureChannelStack->height() - channel1StackHeight) <= 1 &&
                 std::abs(temperatureChannelTopRow->height() - channel1TopRowHeight) <= 1 &&
@@ -2994,6 +3009,8 @@ int main(int argc, char **argv)
     require(!temperatureChannelTopControlsStack->isAncestorOf(modeCombo) &&
                 !temperatureChannelTopControlsStack->isAncestorOf(targetSpin),
             "temperature channel mode and target are no longer in the top controls stack");
+    requireTopBarFieldLayout(sensorModelSelector1,
+                             "temperature sensor model radio selector lives in the channel top row");
     requireTopBarFieldLayout(addressSpin,
                              "temperature common RS485 address field remains in the common top row");
     requireTopBarFieldLayout(rs485BaudCombo,
@@ -3030,30 +3047,29 @@ int main(int argc, char **argv)
 
     auto *temperatureChannelSubTopBar =
         temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureChannelSubTopBar"));
-    auto *sensorModelCombo =
-        temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureSensorModelComboChannel1"));
-    auto *ntcR0Spin =
-        temperaturePanel->findChild<QSpinBox *>(QStringLiteral("temperatureNtcR0SpinChannel1"));
-    auto *ntcBSpin =
-        temperaturePanel->findChild<QDoubleSpinBox *>(QStringLiteral("temperatureNtcBSpinChannel1"));
-    auto *ptR0Spin =
-        temperaturePanel->findChild<QDoubleSpinBox *>(QStringLiteral("temperaturePtR0SpinChannel1"));
+    auto *ntcR0Edit =
+        temperaturePanel->findChild<QLineEdit *>(QStringLiteral("temperatureNtcR0EditChannel1"));
+    auto *ntcBEdit =
+        temperaturePanel->findChild<QLineEdit *>(QStringLiteral("temperatureNtcBEditChannel1"));
+    auto *ptR0Edit =
+        temperaturePanel->findChild<QLineEdit *>(QStringLiteral("temperaturePtR0EditChannel1"));
     auto *polynomialA0Edit =
         temperaturePanel->findChild<QLineEdit *>(QStringLiteral("temperaturePolynomialA0EditChannel1"));
     require(temperatureChannelSubTopBar != nullptr &&
-                sensorModelCombo != nullptr &&
-                ntcR0Spin != nullptr &&
-                ntcBSpin != nullptr &&
-                ptR0Spin != nullptr &&
+                ntcR0Edit != nullptr &&
+                ntcBEdit != nullptr &&
+                ptR0Edit != nullptr &&
                 polynomialA0Edit != nullptr,
             "temperature channel exposes per-channel sensor config controls");
     require(temperatureChannelSubTopBar->property("temperatureChannelSelector").isValid() == false,
             "temperature sensor sub-tabs do not reuse the top channel selector identity");
-    require(sensorModelCombo->itemData(0).toInt() == 0 &&
-                sensorModelCombo->itemData(1).toInt() == 1 &&
-                sensorModelCombo->itemData(2).toInt() == 2 &&
-                sensorModelCombo->itemData(3).toInt() == 3,
-            "temperature sensor model combo follows the RD105 document model values");
+    require(temperatureChannelSelectorRow->isAncestorOf(sensorModelSelector1) &&
+                !temperatureChannelConfigSubStack->currentWidget()->isAncestorOf(sensorModelSelector1),
+            "temperature sensor model radio selector lives beside the top channel selectors");
+    require(temperatureChannelConfigSubStack->currentWidget()->findChildren<QComboBox *>().isEmpty() &&
+                temperatureChannelConfigSubStack->currentWidget()->findChildren<QSpinBox *>().isEmpty() &&
+                temperatureChannelConfigSubStack->currentWidget()->findChildren<QDoubleSpinBox *>().isEmpty(),
+            "temperature sensor config page uses text inputs instead of dropdowns or spin boxes");
     auto requireCompactSensorFieldLayout = [](QWidget *editor, const char *message) {
         require(editor != nullptr && editor->parentWidget() != nullptr, message);
         QWidget *row = editor->parentWidget();
@@ -3068,16 +3084,19 @@ int main(int argc, char **argv)
                     editorRect.left() - labelRect.right() <= 6,
                 message);
     };
-    requireCompactSensorFieldLayout(sensorModelCombo,
-                                    "temperature sensor model field keeps label and input tightly grouped");
-    requireCompactSensorFieldLayout(ntcR0Spin,
+    requireCompactSensorFieldLayout(ntcR0Edit,
                                     "temperature NTC R0 field keeps label and input tightly grouped");
-    requireCompactSensorFieldLayout(ntcBSpin,
+    requireCompactSensorFieldLayout(ntcBEdit,
                                     "temperature NTC B field keeps label and input tightly grouped");
-    requireCompactSensorFieldLayout(ptR0Spin,
+    requireCompactSensorFieldLayout(ptR0Edit,
                                     "temperature PT R0 field keeps label and input tightly grouped");
     requireCompactSensorFieldLayout(polynomialA0Edit,
                                     "temperature polynomial field keeps label and input tightly grouped");
+    require(ntcR0Edit->width() <= 102 &&
+                ntcBEdit->width() <= 102 &&
+                ptR0Edit->width() <= 102 &&
+                polynomialA0Edit->width() <= 72,
+            "temperature sensor config text inputs are narrowed for short RD105 values");
     require(temperatureChannelSelectorRow->isAncestorOf(factoryResetButton) &&
                 !temperatureChannelStack->isAncestorOf(factoryResetButton),
             "temperature factory reset button lives beside the common settings selector");

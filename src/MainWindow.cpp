@@ -28,6 +28,7 @@
 #include <QDateTimeEdit>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDoubleValidator>
 #include <QEvent>
 #include <QFormLayout>
 #include <QMessageBox>
@@ -76,6 +77,7 @@
 #include <QPaintEvent>
 #include <QPolygonF>
 #include <QPixmap>
+#include <QRadioButton>
 #include <QRegion>
 #include <QSvgRenderer>
 #include <QSet>
@@ -245,6 +247,16 @@ bool parseTemperaturePolynomial(const QString& text, qint64& mantissa, qint16& e
     mantissa = scaled;
     exponent = static_cast<qint16>(exp);
     return true;
+}
+
+QString formatTemperatureSensorDecimal(qint64 scaledValue, double scale, int decimals)
+{
+    return QLocale::c().toString(static_cast<double>(scaledValue) / scale, 'f', decimals);
+}
+
+QString formatTemperatureSensorDouble(double value, int decimals)
+{
+    return QLocale::c().toString(value, 'f', decimals);
 }
 
 class MenuItemEventFilter : public QObject
@@ -894,8 +906,9 @@ constexpr int kTemperatureControllerTopModeWidth = 132;
 constexpr int kTemperatureControllerTopTargetWidth = 172;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
 constexpr int kTemperatureControllerCompactPidInputWidth = 82;
-constexpr int kTemperatureControllerSensorInputWidth = 126;
-constexpr int kTemperatureControllerPolynomialInputWidth = 112;
+constexpr int kTemperatureControllerSensorInputWidth = 102;
+constexpr int kTemperatureControllerPolynomialInputWidth = 72;
+constexpr int kTemperatureControllerSensorFieldSpacing = 3;
 constexpr int kTemperatureControllerMaxOutputLabelWidth = 168;
 constexpr int kTemperatureControllerCompactLabelWidth = 72;
 constexpr int kTemperatureControllerControlLabelWidth = 150;
@@ -7032,11 +7045,76 @@ void TemperatureControllerPanel::setupUi()
 
 QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
 {
-    Q_UNUSED(index);
     QWidget *page = new QWidget(channel_top_controls_stack_);
     page->setObjectName(QStringLiteral("temperatureChannelTopControlsPageChannel%1").arg(index + 1));
     page->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     page->setFixedHeight(kTemperatureControllerTopControlsHeight);
+    auto *layout = new QHBoxLayout(page);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(12);
+
+    auto *field = new QWidget(page);
+    field->setObjectName(QStringLiteral("temperatureTopBarField"));
+    field->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    field->setFixedHeight(kTemperatureControllerTopControlsHeight);
+    auto *fieldLayout = new QHBoxLayout(field);
+    fieldLayout->setContentsMargins(0, 0, 0, 0);
+    fieldLayout->setSpacing(8);
+
+    ChannelWidgets& channel = channels_[index];
+    channel.sensor_model_label_text = new QLabel(QStringLiteral("模型"), field);
+    channel.sensor_model_label_text->setObjectName(QStringLiteral("fieldLabel"));
+    channel.sensor_model_label_text->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    channel.sensor_model_label_text->setMinimumHeight(22);
+    channel.sensor_model_label_text->setFixedWidth(40);
+    fieldLayout->addWidget(channel.sensor_model_label_text, 0, Qt::AlignLeft | Qt::AlignVCenter);
+
+    channel.sensor_model_selector = new QWidget(field);
+    channel.sensor_model_selector->setObjectName(QStringLiteral("temperatureSensorModelSelectorChannel%1").arg(index + 1));
+    channel.sensor_model_selector->setProperty("temperatureSensorModelSelector", true);
+    channel.sensor_model_selector->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    auto *selectorLayout = new QHBoxLayout(channel.sensor_model_selector);
+    selectorLayout->setContentsMargins(0, 0, 0, 0);
+    selectorLayout->setSpacing(16);
+
+    channel.sensor_model_group = new QButtonGroup(page);
+    channel.sensor_model_group->setExclusive(true);
+    const std::array<QString, 3> labels = {
+        QStringLiteral("B-Value"),
+        QStringLiteral("PT"),
+        QStringLiteral("S-H"),
+    };
+    const std::array<QString, 3> objectSuffixes = {
+        QStringLiteral("BValue"),
+        QStringLiteral("Pt"),
+        QStringLiteral("Sh"),
+    };
+    for (int i = 0; i < static_cast<int>(labels.size()); ++i)
+    {
+        auto *radio = new QRadioButton(labels[static_cast<size_t>(i)], channel.sensor_model_selector);
+        radio->setObjectName(QStringLiteral("temperatureSensorModel%1RadioChannel%2")
+                                 .arg(objectSuffixes[static_cast<size_t>(i)])
+                                 .arg(index + 1));
+        radio->setProperty("temperatureSensorModelOption", true);
+        radio->setCursor(Qt::PointingHandCursor);
+        channel.sensor_model_group->addButton(radio, i);
+        channel.sensor_model_radios[static_cast<size_t>(i)] = radio;
+        selectorLayout->addWidget(radio, 0, Qt::AlignVCenter);
+    }
+    if (auto *firstRadio = channel.sensor_model_group->button(0))
+    {
+        firstRadio->setChecked(true);
+    }
+    fieldLayout->addWidget(channel.sensor_model_selector, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    layout->addWidget(field, 0, Qt::AlignVCenter);
+
+    const int channelIndex = index;
+    connect(channel.sensor_model_group, &QButtonGroup::idToggled, this, [this, channelIndex](int, bool checked) {
+        if (checked)
+        {
+            emitSensorConfigRequest(channelIndex);
+        }
+    });
     return page;
 }
 
@@ -7315,8 +7393,8 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
     page->setObjectName(QStringLiteral("temperatureChannelSensorConfigPageChannel%1").arg(index + 1));
     auto *layout = new QGridLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setHorizontalSpacing(12);
-    layout->setVerticalSpacing(6);
+    layout->setHorizontalSpacing(8);
+    layout->setVerticalSpacing(4);
     layout->setColumnStretch(0, 1);
     layout->setColumnStretch(1, 1);
     layout->setColumnStretch(2, 1);
@@ -7328,7 +7406,6 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         label->setObjectName(QStringLiteral("fieldLabel"));
         label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         label->setMinimumHeight(22);
-        label->setFixedWidth(82);
         return label;
     };
     auto addField = [layout, &makeFieldLabel](int row, int column, const QString& labelText, QWidget *editor, QLabel *&label) {
@@ -7340,51 +7417,73 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         cell->setFixedHeight(kTemperatureControllerConfigRowHeight);
         auto *cellLayout = new QHBoxLayout(cell);
         cellLayout->setContentsMargins(0, 0, 0, 0);
-        cellLayout->setSpacing(4);
+        cellLayout->setSpacing(kTemperatureControllerSensorFieldSpacing);
         cellLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
         cellLayout->addWidget(editor, 0, Qt::AlignLeft | Qt::AlignVCenter);
         layout->addWidget(cell, row, column, Qt::AlignLeft | Qt::AlignVCenter);
     };
-    auto makeDouble = [this](const QString& name, double min, double max, int decimals) {
-        auto *spin = new QDoubleSpinBox(this);
-        spin->setObjectName(name);
-        spin->setRange(min, max);
-        spin->setDecimals(decimals);
-        spin->setFixedWidth(kTemperatureControllerSensorInputWidth);
-        spin->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        return spin;
+    auto makeIntegerEdit = [this](const QString& name, int min, int max, int width) {
+        auto *edit = new QLineEdit(this);
+        edit->setObjectName(name);
+        edit->setFixedWidth(width);
+        edit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        edit->setValidator(new QIntValidator(min, max, edit));
+        return edit;
+    };
+    auto makeDecimalEdit = [this](const QString& name, double min, double max, int decimals, int width) {
+        auto *edit = new QLineEdit(this);
+        edit->setObjectName(name);
+        edit->setFixedWidth(width);
+        edit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        auto *validator = new QDoubleValidator(min, max, decimals, edit);
+        validator->setNotation(QDoubleValidator::StandardNotation);
+        validator->setLocale(QLocale::c());
+        edit->setValidator(validator);
+        edit->setText(formatTemperatureSensorDouble(0.0, decimals));
+        return edit;
     };
 
-    auto *sensorCombo = new SingleLevelPopupComboBox(this);
-    sensorCombo->setShowSelectionCheck(false);
-    channel.sensor_model_combo = sensorCombo;
-    channel.sensor_model_combo->setObjectName(QStringLiteral("temperatureSensorModelComboChannel%1").arg(index + 1));
-    channel.sensor_model_combo->setFixedWidth(kTemperatureControllerSensorInputWidth);
-    channel.sensor_model_combo->addItem(QStringLiteral("B-Value"), 0);
-    channel.sensor_model_combo->addItem(QStringLiteral("PT"), 1);
-    channel.sensor_model_combo->addItem(QStringLiteral("S-H"), 2);
-    channel.sensor_model_combo->addItem(QStringLiteral("MF501"), 3);
-    addField(0, 0, QStringLiteral("模型"), channel.sensor_model_combo, channel.sensor_model_label_text);
+    channel.ntc_r0_edit = makeIntegerEdit(QStringLiteral("temperatureNtcR0EditChannel%1").arg(index + 1),
+                                          0,
+                                          9000000,
+                                          kTemperatureControllerSensorInputWidth);
+    channel.ntc_r0_edit->setText(QStringLiteral("0"));
+    addField(0, 0, QStringLiteral("NTC R0(Ohm)"), channel.ntc_r0_edit, channel.ntc_r0_label_text);
 
-    channel.ntc_r0_spin = new QSpinBox(this);
-    channel.ntc_r0_spin->setObjectName(QStringLiteral("temperatureNtcR0SpinChannel%1").arg(index + 1));
-    channel.ntc_r0_spin->setRange(0, 9000000);
-    channel.ntc_r0_spin->setFixedWidth(kTemperatureControllerSensorInputWidth);
-    channel.ntc_r0_spin->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    addField(0, 1, QStringLiteral("NTC R0(Ohm)"), channel.ntc_r0_spin, channel.ntc_r0_label_text);
+    channel.ntc_b_edit = makeDecimalEdit(QStringLiteral("temperatureNtcBEditChannel%1").arg(index + 1),
+                                         1000.0,
+                                         50000.0,
+                                         2,
+                                         kTemperatureControllerSensorInputWidth);
+    channel.ntc_b_edit->setText(QStringLiteral("1000.00"));
+    addField(0, 1, QStringLiteral("NTC B"), channel.ntc_b_edit, channel.ntc_b_label_text);
 
-    channel.ntc_b_spin = makeDouble(QStringLiteral("temperatureNtcBSpinChannel%1").arg(index + 1), 1000.0, 50000.0, 2);
-    addField(0, 2, QStringLiteral("NTC B"), channel.ntc_b_spin, channel.ntc_b_label_text);
+    channel.pt_r0_edit = makeDecimalEdit(QStringLiteral("temperaturePtR0EditChannel%1").arg(index + 1),
+                                         0.0,
+                                         10000.0,
+                                         3,
+                                         kTemperatureControllerSensorInputWidth);
+    channel.pt_r0_edit->setText(QStringLiteral("0.000"));
+    addField(0, 2, QStringLiteral("PT R0(Ohm)"), channel.pt_r0_edit, channel.pt_r0_label_text);
 
-    channel.pt_r0_spin = makeDouble(QStringLiteral("temperaturePtR0SpinChannel%1").arg(index + 1), 0.0, 10000.0, 3);
-    addField(0, 3, QStringLiteral("PT R0(Ohm)"), channel.pt_r0_spin, channel.pt_r0_label_text);
-
-    channel.pt_a_spin = makeDouble(QStringLiteral("temperaturePtASpinChannel%1").arg(index + 1), -9.0, 9.0, 6);
-    addField(1, 0, QStringLiteral("PT A(E-3)"), channel.pt_a_spin, channel.pt_a_label_text);
-    channel.pt_b_spin = makeDouble(QStringLiteral("temperaturePtBSpinChannel%1").arg(index + 1), -90.0, 90.0, 6);
-    addField(1, 1, QStringLiteral("PT B(E-7)"), channel.pt_b_spin, channel.pt_b_label_text);
-    channel.pt_c_spin = makeDouble(QStringLiteral("temperaturePtCSpinChannel%1").arg(index + 1), -9.0, 9.0, 6);
-    addField(1, 2, QStringLiteral("PT C(E-12)"), channel.pt_c_spin, channel.pt_c_label_text);
+    channel.pt_a_edit = makeDecimalEdit(QStringLiteral("temperaturePtAEditChannel%1").arg(index + 1),
+                                        -9.0,
+                                        9.0,
+                                        6,
+                                        kTemperatureControllerSensorInputWidth);
+    addField(1, 0, QStringLiteral("PT A(E-3)"), channel.pt_a_edit, channel.pt_a_label_text);
+    channel.pt_b_edit = makeDecimalEdit(QStringLiteral("temperaturePtBEditChannel%1").arg(index + 1),
+                                        -90.0,
+                                        90.0,
+                                        6,
+                                        kTemperatureControllerSensorInputWidth);
+    addField(1, 1, QStringLiteral("PT B(E-7)"), channel.pt_b_edit, channel.pt_b_label_text);
+    channel.pt_c_edit = makeDecimalEdit(QStringLiteral("temperaturePtCEditChannel%1").arg(index + 1),
+                                        -9.0,
+                                        9.0,
+                                        6,
+                                        kTemperatureControllerSensorInputWidth);
+    addField(1, 2, QStringLiteral("PT C(E-12)"), channel.pt_c_edit, channel.pt_c_label_text);
 
     for (int i = 0; i < 8; ++i)
     {
@@ -7399,15 +7498,14 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
 
     const int channelIndex = index;
     auto emitConfig = [this, channelIndex]() { emitSensorConfigRequest(channelIndex); };
-    connect(channel.sensor_model_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [emitConfig](int) { emitConfig(); });
-    for (QAbstractSpinBox *spin : {static_cast<QAbstractSpinBox *>(channel.ntc_r0_spin),
-                                   static_cast<QAbstractSpinBox *>(channel.ntc_b_spin),
-                                   static_cast<QAbstractSpinBox *>(channel.pt_r0_spin),
-                                   static_cast<QAbstractSpinBox *>(channel.pt_a_spin),
-                                   static_cast<QAbstractSpinBox *>(channel.pt_b_spin),
-                                   static_cast<QAbstractSpinBox *>(channel.pt_c_spin)})
+    for (QLineEdit *edit : {channel.ntc_r0_edit,
+                            channel.ntc_b_edit,
+                            channel.pt_r0_edit,
+                            channel.pt_a_edit,
+                            channel.pt_b_edit,
+                            channel.pt_c_edit})
     {
-        connect(spin, &QAbstractSpinBox::editingFinished, this, emitConfig);
+        connect(edit, &QLineEdit::editingFinished, this, emitConfig);
     }
     for (QLineEdit *edit : channel.polynomial_edits)
     {
@@ -7492,7 +7590,7 @@ void TemperatureControllerPanel::selectChannel(int index)
     }
     if (channel_top_controls_stack_)
     {
-        channel_top_controls_stack_->setVisible(pageIndex == 2);
+        channel_top_controls_stack_->setVisible(true);
         channel_top_controls_stack_->setCurrentIndex(pageIndex < 2 ? channelIndex : 2);
         refreshTopControlsLayout();
     }
@@ -7558,21 +7656,94 @@ void TemperatureControllerPanel::emitSensorConfigRequest(int index)
         return;
     }
     const ChannelWidgets& channel = channels_[index];
-    if (!channel.sensor_model_combo || !channel.ntc_r0_spin || !channel.ntc_b_spin ||
-        !channel.pt_r0_spin || !channel.pt_a_spin || !channel.pt_b_spin || !channel.pt_c_spin)
+    if (!channel.sensor_model_group || !channel.ntc_r0_edit || !channel.ntc_b_edit ||
+        !channel.pt_r0_edit || !channel.pt_a_edit || !channel.pt_b_edit || !channel.pt_c_edit)
+    {
+        return;
+    }
+
+    auto failField = [this](QLineEdit *edit, const QString& label, const QString& minText, const QString& maxText) {
+        if (edit)
+        {
+            edit->setFocus();
+            edit->selectAll();
+        }
+        setCommandStatus(is_english_
+            ? QStringLiteral("%1 must be between %2 and %3.").arg(label, minText, maxText)
+            : QStringLiteral("%1 取值范围应为 %2 到 %3。").arg(label, minText, maxText),
+            true);
+    };
+    auto parseIntegerField = [failField](QLineEdit *edit,
+                                         const QString& label,
+                                         qint64 min,
+                                         qint64 max,
+                                         qint64& output) {
+        bool ok = false;
+        const qint64 value = QLocale::c().toLongLong(edit ? edit->text().trimmed() : QString(), &ok);
+        if (!ok || value < min || value > max)
+        {
+            failField(edit, label, QString::number(min), QString::number(max));
+            return false;
+        }
+        output = value;
+        if (edit)
+        {
+            const QSignalBlocker blocker(edit);
+            edit->setText(QString::number(value));
+        }
+        return true;
+    };
+    auto parseDecimalField = [failField](QLineEdit *edit,
+                                         const QString& label,
+                                         double min,
+                                         double max,
+                                         int decimals,
+                                         double scale,
+                                         qint64& output) {
+        bool ok = false;
+        const double value = QLocale::c().toDouble(edit ? edit->text().trimmed() : QString(), &ok);
+        if (!ok || !std::isfinite(value) || value < min || value > max)
+        {
+            failField(edit,
+                      label,
+                      formatTemperatureSensorDouble(min, decimals),
+                      formatTemperatureSensorDouble(max, decimals));
+            return false;
+        }
+        output = qRound64(value * scale);
+        if (edit)
+        {
+            const QSignalBlocker blocker(edit);
+            edit->setText(formatTemperatureSensorDecimal(output, scale, decimals));
+        }
+        return true;
+    };
+
+    qint64 ntcR0 = 0;
+    qint64 ntcB = 0;
+    qint64 ptR0 = 0;
+    qint64 ptA = 0;
+    qint64 ptB = 0;
+    qint64 ptC = 0;
+    if (!parseIntegerField(channel.ntc_r0_edit, QStringLiteral("NTC R0(Ohm)"), 0, 9000000, ntcR0) ||
+        !parseDecimalField(channel.ntc_b_edit, QStringLiteral("NTC B"), 1000.0, 50000.0, 2, 100.0, ntcB) ||
+        !parseDecimalField(channel.pt_r0_edit, QStringLiteral("PT R0(Ohm)"), 0.0, 10000.0, 3, 1000.0, ptR0) ||
+        !parseDecimalField(channel.pt_a_edit, QStringLiteral("PT A(E-3)"), -9.0, 9.0, 6, 1000000.0, ptA) ||
+        !parseDecimalField(channel.pt_b_edit, QStringLiteral("PT B(E-7)"), -90.0, 90.0, 6, 100000.0, ptB) ||
+        !parseDecimalField(channel.pt_c_edit, QStringLiteral("PT C(E-12)"), -9.0, 9.0, 6, 10000.0, ptC))
     {
         return;
     }
 
     VaporView::TemperatureControllerCommand command;
     command.channel = static_cast<quint8>(index + 1);
-    command.sensor_model = static_cast<quint16>(channel.sensor_model_combo->currentData().toUInt());
-    command.ntc_r0 = static_cast<quint32>(channel.ntc_r0_spin->value());
-    command.ntc_b = static_cast<quint32>(qRound64(channel.ntc_b_spin->value() * 100.0));
-    command.pt_r0 = static_cast<quint32>(qRound64(channel.pt_r0_spin->value() * 1000.0));
-    command.pt_a = static_cast<qint32>(qRound64(channel.pt_a_spin->value() * 1000000.0));
-    command.pt_b = static_cast<qint32>(qRound64(channel.pt_b_spin->value() * 100000.0));
-    command.pt_c = static_cast<qint32>(qRound64(channel.pt_c_spin->value() * 10000.0));
+    command.sensor_model = static_cast<quint16>(std::max(0, channel.sensor_model_group->checkedId()));
+    command.ntc_r0 = static_cast<quint32>(ntcR0);
+    command.ntc_b = static_cast<quint32>(ntcB);
+    command.pt_r0 = static_cast<quint32>(ptR0);
+    command.pt_a = static_cast<qint32>(ptA);
+    command.pt_b = static_cast<qint32>(ptB);
+    command.pt_c = static_cast<qint32>(ptC);
     for (size_t i = 0; i < command.polynomial_mantissas.size(); ++i)
     {
         QLineEdit *edit = channel.polynomial_edits[i];
@@ -7866,16 +8037,28 @@ void TemperatureControllerPanel::updateChannelTexts()
                 ? QStringLiteral("RD105 AUTOPID: off, PID auto-tune, or reserved realtime optimization.")
                 : QStringLiteral("RD105 AUTOPID：关闭、PID自整定，或预留的实时优化。"));
         }
-        if (channel.sensor_model_combo)
+        if (channel.sensor_model_group)
         {
-            const QSignalBlocker blocker(channel.sensor_model_combo);
-            channel.sensor_model_combo->setItemText(0, QStringLiteral("B-Value"));
-            channel.sensor_model_combo->setItemText(1, QStringLiteral("PT"));
-            channel.sensor_model_combo->setItemText(2, QStringLiteral("S-H"));
-            channel.sensor_model_combo->setItemText(3, QStringLiteral("MF501"));
-            channel.sensor_model_combo->setToolTip(is_english_
-                ? QStringLiteral("RD105 POLYOMIAL register: B-value, PT, Steinhart-Hart, or MF501 model.")
-                : QStringLiteral("RD105 POLYOMIAL 寄存器：B 值、PT、Steinhart-Hart 或 MF501 模型。"));
+            const std::array<QString, 3> labels = {
+                QStringLiteral("B-Value"),
+                QStringLiteral("PT"),
+                QStringLiteral("S-H"),
+            };
+            const QString tooltip = is_english_
+                ? QStringLiteral("RD105 POLYOMIAL register: B-value, PT, or Steinhart-Hart model.")
+                : QStringLiteral("RD105 POLYOMIAL 寄存器：B 值、PT 或 Steinhart-Hart 模型。");
+            if (channel.sensor_model_selector)
+            {
+                channel.sensor_model_selector->setToolTip(tooltip);
+            }
+            for (int i = 0; i < static_cast<int>(labels.size()); ++i)
+            {
+                if (auto *radio = channel.sensor_model_radios[static_cast<size_t>(i)])
+                {
+                    radio->setText(labels[static_cast<size_t>(i)]);
+                    radio->setToolTip(tooltip);
+                }
+            }
         }
     }
     if (status_label_ && status_label_->text().isEmpty()) setCommandStatus(is_english_ ? QStringLiteral("Writes are confirmed by reading back from RD105.") : QStringLiteral("写入命令会在天空端读回确认后才返回成功。"));
@@ -7988,41 +8171,31 @@ void TemperatureControllerPanel::updateChannelData(int index, const VaporView::T
         {
             pending.sensor_config = false;
         }
-        if (!pending.sensor_config && channel.sensor_model_combo && !hasEditorFocus(channel.sensor_model_combo))
+        if (!pending.sensor_config && channel.sensor_model_group && channel.sensor_model_selector &&
+            !hasEditorFocus(channel.sensor_model_selector))
         {
-            const QSignalBlocker blocker(channel.sensor_model_combo);
-            const int modelIndex = channel.sensor_model_combo->findData(channelData.sensor_model);
-            channel.sensor_model_combo->setCurrentIndex(modelIndex >= 0 ? modelIndex : 0);
+            if (auto *button = channel.sensor_model_group->button(channelData.sensor_model))
+            {
+                const QSignalBlocker blocker(channel.sensor_model_group);
+                button->setChecked(true);
+            }
         }
-        if (!pending.sensor_config && channel.ntc_r0_spin && !hasEditorFocus(channel.ntc_r0_spin))
+        auto updateSensorEdit = [&hasEditorFocus](QLineEdit *edit, const QString& text) {
+            if (!edit || hasEditorFocus(edit))
+            {
+                return;
+            }
+            const QSignalBlocker blocker(edit);
+            edit->setText(text);
+        };
+        if (!pending.sensor_config)
         {
-            const QSignalBlocker blocker(channel.ntc_r0_spin);
-            channel.ntc_r0_spin->setValue(std::clamp(channelData.ntc_r0, channel.ntc_r0_spin->minimum(), channel.ntc_r0_spin->maximum()));
-        }
-        if (!pending.sensor_config && channel.ntc_b_spin && !hasEditorFocus(channel.ntc_b_spin))
-        {
-            const QSignalBlocker blocker(channel.ntc_b_spin);
-            channel.ntc_b_spin->setValue(channelData.ntc_b / 100.0);
-        }
-        if (!pending.sensor_config && channel.pt_r0_spin && !hasEditorFocus(channel.pt_r0_spin))
-        {
-            const QSignalBlocker blocker(channel.pt_r0_spin);
-            channel.pt_r0_spin->setValue(channelData.pt_r0 / 1000.0);
-        }
-        if (!pending.sensor_config && channel.pt_a_spin && !hasEditorFocus(channel.pt_a_spin))
-        {
-            const QSignalBlocker blocker(channel.pt_a_spin);
-            channel.pt_a_spin->setValue(channelData.pt_a / 1000000.0);
-        }
-        if (!pending.sensor_config && channel.pt_b_spin && !hasEditorFocus(channel.pt_b_spin))
-        {
-            const QSignalBlocker blocker(channel.pt_b_spin);
-            channel.pt_b_spin->setValue(channelData.pt_b / 100000.0);
-        }
-        if (!pending.sensor_config && channel.pt_c_spin && !hasEditorFocus(channel.pt_c_spin))
-        {
-            const QSignalBlocker blocker(channel.pt_c_spin);
-            channel.pt_c_spin->setValue(channelData.pt_c / 10000.0);
+            updateSensorEdit(channel.ntc_r0_edit, QString::number(std::clamp(channelData.ntc_r0, 0, 9000000)));
+            updateSensorEdit(channel.ntc_b_edit, formatTemperatureSensorDecimal(channelData.ntc_b, 100.0, 2));
+            updateSensorEdit(channel.pt_r0_edit, formatTemperatureSensorDecimal(channelData.pt_r0, 1000.0, 3));
+            updateSensorEdit(channel.pt_a_edit, formatTemperatureSensorDecimal(channelData.pt_a, 1000000.0, 6));
+            updateSensorEdit(channel.pt_b_edit, formatTemperatureSensorDecimal(channelData.pt_b, 100000.0, 6));
+            updateSensorEdit(channel.pt_c_edit, formatTemperatureSensorDecimal(channelData.pt_c, 10000.0, 6));
         }
         if (!pending.sensor_config)
         {
