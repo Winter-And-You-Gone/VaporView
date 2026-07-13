@@ -3127,6 +3127,16 @@ int main(int argc, char **argv)
                 sensorFieldLabel(ptBEdit) && sensorFieldLabel(ptBEdit)->text() == QStringLiteral("PT B(E-7)") &&
                 sensorFieldLabel(ptCEdit) && sensorFieldLabel(ptCEdit)->text() == QStringLiteral("PT C(E-12)"),
             "temperature compact sensor fields retain their unit and exponent annotations");
+    auto sensorLabelHasTrailingPadding = [](QLabel *label) {
+        return label != nullptr &&
+            label->width() >= label->fontMetrics().horizontalAdvance(label->text()) + 6;
+    };
+    require(sensorLabelHasTrailingPadding(sensorFieldLabel(ntcR0Edit)) &&
+                sensorLabelHasTrailingPadding(sensorFieldLabel(ptR0Edit)) &&
+                sensorLabelHasTrailingPadding(sensorFieldLabel(ptAEdit)) &&
+                sensorLabelHasTrailingPadding(sensorFieldLabel(ptBEdit)) &&
+                sensorLabelHasTrailingPadding(sensorFieldLabel(ptCEdit)),
+            "temperature sensor labels reserve enough trailing width to render closing parentheses");
     require(ntcR0Edit->width() <= 82 &&
                 ntcBEdit->width() <= 82 &&
                 ptR0Edit->width() <= 82 &&

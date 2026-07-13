@@ -909,6 +909,7 @@ constexpr int kTemperatureControllerSensorInputWidth = 82;
 constexpr int kTemperatureControllerPtCoefficientInputWidth = 104;
 constexpr int kTemperatureControllerPolynomialInputWidth = 62;
 constexpr int kTemperatureControllerSensorFieldSpacing = 2;
+constexpr int kTemperatureControllerSensorLabelPadding = 6;
 constexpr int kTemperatureControllerMaxOutputLabelWidth = 168;
 constexpr int kTemperatureControllerCompactLabelWidth = 72;
 constexpr int kTemperatureControllerControlLabelWidth = 150;
@@ -7549,7 +7550,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         }
         for (QLabel *label : labels)
         {
-            label->setFixedWidth(columnLabelWidth);
+            label->setFixedWidth(columnLabelWidth + kTemperatureControllerSensorLabelPadding);
         }
 
         const QList<QWidget *>& editors = fieldEditorsByColumn[column];
