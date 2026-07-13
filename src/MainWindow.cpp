@@ -6944,7 +6944,7 @@ void TemperatureControllerPanel::setupUi()
     configCard->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     auto *configCardLayout = new QVBoxLayout(configCard);
     configCardLayout->setContentsMargins(12, 12, 12, 12);
-    configCardLayout->setSpacing(10);
+    configCardLayout->setSpacing(4);
 
     auto *channelTopRow = new QWidget(configCard);
     channelTopRow->setObjectName(QStringLiteral("temperatureChannelTopRow"));
@@ -7258,8 +7258,9 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     page->setObjectName(QStringLiteral("temperatureChannelConfigPageChannel%1").arg(index + 1));
     page->setFixedHeight(kTemperatureControllerChannelStackHeight);
     auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(0, 8, 0, 8);
+    layout->setContentsMargins(0, 0, 0, 8);
     layout->setSpacing(0);
+    layout->setAlignment(Qt::AlignTop);
 
     ChannelWidgets& channel = channels_[index];
     channel.sensor_config_top_bar = new QFrame(page);

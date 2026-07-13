@@ -3253,18 +3253,26 @@ int main(int argc, char **argv)
     const QRect sensorFirstRowRect(ntcR0Edit->parentWidget()->mapTo(
                                        temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
                                    ntcR0Edit->parentWidget()->size());
+    const QRect sensorModelFieldRectInCard(sensorModelSelector1->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                           sensorModelSelector1->parentWidget()->size());
+    const QRect sensorFirstRowRectInCard(ntcR0Edit->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                         ntcR0Edit->parentWidget()->size());
     const QRect sensorLastRowRect = sensorLastRow
         ? QRect(sensorLastRow->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
                 sensorLastRow->size())
         : QRect();
     const int sensorPageBottomUnusedHeight =
         temperatureChannelConfigSubStack->currentWidget()->height() - 1 - sensorLastRowRect.bottom();
+    const int sensorModelToFirstRowGap =
+        sensorFirstRowRectInCard.top() - sensorModelFieldRectInCard.bottom() - 1;
     require(polynomialA7Edit != nullptr &&
                 temperatureChannelStack->height() == 190 &&
                 temperatureConfigCard->height() <= 280 &&
                 sensorConfigGrid->alignment() == Qt::AlignTop &&
                 sensorFirstRowRect.top() >= 0 &&
                 sensorFirstRowRect.top() <= 4 &&
+                sensorModelToFirstRowGap >= 0 &&
+                sensorModelToFirstRowGap <= 12 &&
                 sensorLastRowRect.bottom() < temperatureChannelConfigSubStack->currentWidget()->height() &&
                 sensorPageBottomUnusedHeight >= 0,
             "temperature sensor grid starts close to the model row without clipping");
