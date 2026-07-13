@@ -3104,10 +3104,13 @@ int main(int argc, char **argv)
         const QRect labelRect(labels.first()->mapTo(row, QPoint(0, 0)), labels.first()->size());
         const QRect editorRect(editor->mapTo(row, QPoint(0, 0)), editor->size());
         auto *fieldLayout = qobject_cast<QHBoxLayout *>(row->layout());
+        const int requiredRowWidth = labels.first()->width() + editor->width() + 6;
         const bool layoutIsValid = labelRect.left() <= 1 &&
             labelRect.right() < editorRect.left() &&
             fieldLayout != nullptr &&
-            fieldLayout->spacing() == 6;
+            fieldLayout->spacing() == 6 &&
+            row->minimumWidth() == requiredRowWidth &&
+            row->maximumWidth() == requiredRowWidth;
         require(layoutIsValid, message);
     };
     requireCompactSensorFieldLayout(ntcR0Edit,

@@ -7563,6 +7563,13 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         {
             editor->setFixedWidth(columnEditorWidth);
         }
+        for (qsizetype fieldIndex = 0; fieldIndex < editors.size(); ++fieldIndex)
+        {
+            QWidget *fieldCell = editors.at(fieldIndex)->parentWidget();
+            const int fieldCellWidth = labels.at(fieldIndex)->width() +
+                kTemperatureControllerSensorFieldSpacing + columnEditorWidth;
+            fieldCell->setFixedWidth(fieldCellWidth);
+        }
     }
 
     const int channelIndex = index;
