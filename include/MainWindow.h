@@ -756,6 +756,7 @@ private:
     QPushButton *createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device);
     void setRemoteDeviceButtonsEnabled(bool enabled);
     void updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, VaporView::DeviceState state);
+    void updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId device, VaporView::DeviceState state);
     void updateTemperatureControllerTitleText();
     void updateTemperatureTitleButtonsState();
     void handleTemperatureTitleButton(VaporView::CommandId command);
@@ -836,25 +837,15 @@ private:
         QComboBox *hmp_rate_combo = nullptr;
         QComboBox *lidar_rate_combo = nullptr;
         QComboBox *temperature_rate_combo = nullptr;
-        QPushButton *epsilon_remote_connect_btn = nullptr;
-        QPushButton *epsilon_remote_disconnect_btn = nullptr;
-        QPushButton *epsilon_remote_reconnect_btn = nullptr;
+        QPushButton *epsilon_remote_action_btn = nullptr;
         QWidget *epsilon_remote_buttons_widget = nullptr;
-        QPushButton *ptb_remote_connect_btn = nullptr;
-        QPushButton *ptb_remote_disconnect_btn = nullptr;
-        QPushButton *ptb_remote_reconnect_btn = nullptr;
+        QPushButton *ptb_remote_action_btn = nullptr;
         QWidget *ptb_remote_buttons_widget = nullptr;
-        QPushButton *hmp_remote_connect_btn = nullptr;
-        QPushButton *hmp_remote_disconnect_btn = nullptr;
-        QPushButton *hmp_remote_reconnect_btn = nullptr;
+        QPushButton *hmp_remote_action_btn = nullptr;
         QWidget *hmp_remote_buttons_widget = nullptr;
-        QPushButton *lidar_remote_connect_btn = nullptr;
-        QPushButton *lidar_remote_disconnect_btn = nullptr;
-        QPushButton *lidar_remote_reconnect_btn = nullptr;
+        QPushButton *lidar_remote_action_btn = nullptr;
         QWidget *lidar_remote_buttons_widget = nullptr;
-        QPushButton *temperature_remote_connect_btn = nullptr;
-        QPushButton *temperature_remote_disconnect_btn = nullptr;
-        QPushButton *temperature_remote_reconnect_btn = nullptr;
+        QPushButton *temperature_remote_action_btn = nullptr;
         QWidget *temperature_remote_buttons_widget = nullptr;
     };
 

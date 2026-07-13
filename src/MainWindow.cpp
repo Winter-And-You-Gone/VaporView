@@ -12939,7 +12939,49 @@ void MainWindow::updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, Vap
     if (connectButton) connectButton->setToolTip(QStringLiteral("请求天空端连接 %1（当前：%2）").arg(skyDeviceDisplayName(device), stateText));
     if (disconnectButton) disconnectButton->setToolTip(QStringLiteral("请求天空端断开 %1（当前：%2）").arg(skyDeviceDisplayName(device), stateText));
     if (reconnectButton) reconnectButton->setToolTip(QStringLiteral("请求天空端重连 %1（当前：%2）").arg(skyDeviceDisplayName(device), stateText));
+    updateDeviceConfigRemoteActionButton(device, state);
     updateHomeDeviceStatusCapsules();
+}
+
+void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId device, VaporView::DeviceState state)
+{
+    QPushButton *button = nullptr;
+    switch (device)
+    {
+    case VaporView::SkyDeviceId::Epsilon:
+        button = device_config_.epsilon_remote_action_btn;
+        break;
+    case VaporView::SkyDeviceId::Ptb:
+        button = device_config_.ptb_remote_action_btn;
+        break;
+    case VaporView::SkyDeviceId::Hmp:
+        button = device_config_.hmp_remote_action_btn;
+        break;
+    case VaporView::SkyDeviceId::Lidar:
+        button = device_config_.lidar_remote_action_btn;
+        break;
+    case VaporView::SkyDeviceId::TemperatureController:
+        button = device_config_.temperature_remote_action_btn;
+        break;
+    case VaporView::SkyDeviceId::WaveTcp:
+    case VaporView::SkyDeviceId::All:
+        return;
+    }
+    if (!button)
+    {
+        return;
+    }
+
+    const bool connected = state == VaporView::DeviceState::Connected;
+    const bool busy = state == VaporView::DeviceState::Connecting ||
+        state == VaporView::DeviceState::Reconnecting;
+    const VaporView::CommandId command = connected
+        ? VaporView::CommandId::DisconnectDevice
+        : VaporView::CommandId::ConnectDevice;
+    applyDeviceConfigRemoteButtonPresentation(button, command, device, is_english_, false);
+    button->setEnabled(isRemoteSkyMode() &&
+                       ground_telemetry_service_ && ground_telemetry_service_->isOpen() &&
+                       !busy);
 }
 
 void MainWindow::setImuFormatSelection(const QString& format)
@@ -14833,58 +14875,48 @@ void MainWindow::setupDeviceConfigPage()
         device_config_.temperature_baud_combo->setObjectName(QStringLiteral("deviceTemperatureBaudCombo"));
     }
 
-    auto addDeviceRemoteButtons = [this, formLayout, formWidget](
+    auto addDeviceRemoteButton = [this, formLayout, formWidget](
             int row,
             QWidget *&buttonsWidget,
-            QPushButton *&connectButton,
-            QPushButton *&disconnectButton,
-            QPushButton *&reconnectButton,
+            QPushButton *&actionButton,
             VaporView::SkyDeviceId device) {
         buttonsWidget = new QWidget(formWidget);
         buttonsWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         auto *layout = new QHBoxLayout(buttonsWidget);
         layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(2);
-        auto createButton = [this, buttonsWidget, device](VaporView::CommandId command) {
-            auto *button = new QPushButton(buttonsWidget);
-            button->setFocusPolicy(Qt::TabFocus);
-            applyDeviceConfigRemoteButtonPresentation(button, command, device, is_english_, true);
-            connect(button, &QPushButton::clicked, this, [this, command, device]() {
-                sendRemoteDeviceCommand(command, device);
-            });
-            return button;
-        };
-        connectButton = createButton(VaporView::CommandId::ConnectDevice);
-        disconnectButton = createButton(VaporView::CommandId::DisconnectDevice);
-        reconnectButton = nullptr;
-        layout->addWidget(connectButton);
-        layout->addWidget(disconnectButton);
+        actionButton = new QPushButton(buttonsWidget);
+        actionButton->setFocusPolicy(Qt::TabFocus);
+        applyDeviceConfigRemoteButtonPresentation(actionButton,
+                                                  VaporView::CommandId::ConnectDevice,
+                                                  device,
+                                                  is_english_,
+                                                  true);
+        connect(actionButton, &QPushButton::clicked, this, [this, device]() {
+            const bool connected = remote_device_states_.value(
+                device, VaporView::DeviceState::Disconnected) == VaporView::DeviceState::Connected;
+            sendRemoteDeviceCommand(connected
+                                        ? VaporView::CommandId::DisconnectDevice
+                                        : VaporView::CommandId::ConnectDevice,
+                                    device);
+        });
+        layout->addWidget(actionButton);
         formLayout->addWidget(buttonsWidget, row, 6, Qt::AlignVCenter | Qt::AlignLeft);
     };
-    addDeviceRemoteButtons(0, device_config_.epsilon_remote_buttons_widget,
-                           device_config_.epsilon_remote_connect_btn,
-                           device_config_.epsilon_remote_disconnect_btn,
-                           device_config_.epsilon_remote_reconnect_btn,
+    addDeviceRemoteButton(0, device_config_.epsilon_remote_buttons_widget,
+                           device_config_.epsilon_remote_action_btn,
                            VaporView::SkyDeviceId::Epsilon);
-    addDeviceRemoteButtons(1, device_config_.ptb_remote_buttons_widget,
-                           device_config_.ptb_remote_connect_btn,
-                           device_config_.ptb_remote_disconnect_btn,
-                           device_config_.ptb_remote_reconnect_btn,
+    addDeviceRemoteButton(1, device_config_.ptb_remote_buttons_widget,
+                           device_config_.ptb_remote_action_btn,
                            VaporView::SkyDeviceId::Ptb);
-    addDeviceRemoteButtons(2, device_config_.hmp_remote_buttons_widget,
-                           device_config_.hmp_remote_connect_btn,
-                           device_config_.hmp_remote_disconnect_btn,
-                           device_config_.hmp_remote_reconnect_btn,
+    addDeviceRemoteButton(2, device_config_.hmp_remote_buttons_widget,
+                           device_config_.hmp_remote_action_btn,
                            VaporView::SkyDeviceId::Hmp);
-    addDeviceRemoteButtons(3, device_config_.lidar_remote_buttons_widget,
-                           device_config_.lidar_remote_connect_btn,
-                           device_config_.lidar_remote_disconnect_btn,
-                           device_config_.lidar_remote_reconnect_btn,
+    addDeviceRemoteButton(3, device_config_.lidar_remote_buttons_widget,
+                           device_config_.lidar_remote_action_btn,
                            VaporView::SkyDeviceId::Lidar);
-    addDeviceRemoteButtons(4, device_config_.temperature_remote_buttons_widget,
-                           device_config_.temperature_remote_connect_btn,
-                           device_config_.temperature_remote_disconnect_btn,
-                           device_config_.temperature_remote_reconnect_btn,
+    addDeviceRemoteButton(4, device_config_.temperature_remote_buttons_widget,
+                           device_config_.temperature_remote_action_btn,
                            VaporView::SkyDeviceId::TemperatureController);
 
     device_config_.epsilon_config_card = new QFrame(content);
@@ -15451,27 +15483,15 @@ void MainWindow::updateDeviceConfigTexts()
         fitButtonMinimumWidth(device_config_.rtk_config_btn, 100);
     }
 
-    struct DeviceConfigRemoteButtonRef
+    for (VaporView::SkyDeviceId device : {VaporView::SkyDeviceId::Epsilon,
+                                          VaporView::SkyDeviceId::Ptb,
+                                          VaporView::SkyDeviceId::Hmp,
+                                          VaporView::SkyDeviceId::Lidar,
+                                          VaporView::SkyDeviceId::TemperatureController})
     {
-        QPushButton *button = nullptr;
-        VaporView::CommandId command = VaporView::CommandId::ConnectDevice;
-        VaporView::SkyDeviceId device = VaporView::SkyDeviceId::Epsilon;
-    };
-    const std::array<DeviceConfigRemoteButtonRef, 10> remoteButtons = {{
-        {device_config_.epsilon_remote_connect_btn, VaporView::CommandId::ConnectDevice, VaporView::SkyDeviceId::Epsilon},
-        {device_config_.epsilon_remote_disconnect_btn, VaporView::CommandId::DisconnectDevice, VaporView::SkyDeviceId::Epsilon},
-        {device_config_.ptb_remote_connect_btn, VaporView::CommandId::ConnectDevice, VaporView::SkyDeviceId::Ptb},
-        {device_config_.ptb_remote_disconnect_btn, VaporView::CommandId::DisconnectDevice, VaporView::SkyDeviceId::Ptb},
-        {device_config_.hmp_remote_connect_btn, VaporView::CommandId::ConnectDevice, VaporView::SkyDeviceId::Hmp},
-        {device_config_.hmp_remote_disconnect_btn, VaporView::CommandId::DisconnectDevice, VaporView::SkyDeviceId::Hmp},
-        {device_config_.lidar_remote_connect_btn, VaporView::CommandId::ConnectDevice, VaporView::SkyDeviceId::Lidar},
-        {device_config_.lidar_remote_disconnect_btn, VaporView::CommandId::DisconnectDevice, VaporView::SkyDeviceId::Lidar},
-        {device_config_.temperature_remote_connect_btn, VaporView::CommandId::ConnectDevice, VaporView::SkyDeviceId::TemperatureController},
-        {device_config_.temperature_remote_disconnect_btn, VaporView::CommandId::DisconnectDevice, VaporView::SkyDeviceId::TemperatureController},
-    }};
-    for (const DeviceConfigRemoteButtonRef& item : remoteButtons)
-    {
-        applyDeviceConfigRemoteButtonPresentation(item.button, item.command, item.device, is_english_, false);
+        updateDeviceConfigRemoteActionButton(
+            device,
+            remote_device_states_.value(device, VaporView::DeviceState::Disconnected));
     }
 
     updateDeviceConfigState();
@@ -15489,7 +15509,6 @@ void MainWindow::updateDeviceConfigState()
     const bool localInputsEnabled = !remote && !is_connected_ &&
         !connection_attempt_in_progress_ && !port_detection_in_progress_ && !epsilon_reconfigure_in_progress_;
     const bool remoteInputsEnabled = remote && !is_connected_ && !connection_attempt_in_progress_;
-    const bool remoteCommandEnabled = remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen();
     const bool epsilonConfigEnabled = !remote && !connection_attempt_in_progress_ &&
         !port_detection_in_progress_ && !epsilon_reconfigure_in_progress_;
 
@@ -15569,26 +15588,15 @@ void MainWindow::updateDeviceConfigState()
             widget->setVisible(true);
         }
     }
-    for (QPushButton *button : {device_config_.epsilon_remote_connect_btn,
-                                device_config_.epsilon_remote_disconnect_btn,
-                                device_config_.epsilon_remote_reconnect_btn,
-                                device_config_.ptb_remote_connect_btn,
-                                device_config_.ptb_remote_disconnect_btn,
-                                device_config_.ptb_remote_reconnect_btn,
-                                device_config_.hmp_remote_connect_btn,
-                                device_config_.hmp_remote_disconnect_btn,
-                                device_config_.hmp_remote_reconnect_btn,
-                                device_config_.lidar_remote_connect_btn,
-                                device_config_.lidar_remote_disconnect_btn,
-                                device_config_.lidar_remote_reconnect_btn,
-                                device_config_.temperature_remote_connect_btn,
-                                device_config_.temperature_remote_disconnect_btn,
-                                device_config_.temperature_remote_reconnect_btn})
+    for (VaporView::SkyDeviceId device : {VaporView::SkyDeviceId::Epsilon,
+                                          VaporView::SkyDeviceId::Ptb,
+                                          VaporView::SkyDeviceId::Hmp,
+                                          VaporView::SkyDeviceId::Lidar,
+                                          VaporView::SkyDeviceId::TemperatureController})
     {
-        if (button)
-        {
-            button->setEnabled(remoteCommandEnabled);
-        }
+        updateDeviceConfigRemoteActionButton(
+            device,
+            remote_device_states_.value(device, VaporView::DeviceState::Disconnected));
     }
 }
 

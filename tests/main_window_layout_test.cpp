@@ -3526,6 +3526,7 @@ int main(int argc, char **argv)
     int disabledLocalRemoteActionCount = 0;
     int connectRemoteActionCount = 0;
     int disconnectRemoteActionCount = 0;
+    QPushButton *epsilonRemoteActionButton = nullptr;
     QPushButton *deviceAutoDetectButton = nullptr;
     QPushButton *deviceSkyConfigButton = nullptr;
     for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
@@ -3581,14 +3582,20 @@ int main(int argc, char **argv)
             {
                 require(false, "device configuration remote actions only expose connect and disconnect commands");
             }
+            if (button->property("deviceConfigRemoteDevice").toInt() ==
+                static_cast<int>(VaporView::SkyDeviceId::Epsilon))
+            {
+                epsilonRemoteActionButton = button;
+            }
             ++disabledLocalRemoteActionCount;
         }
     }
-    require(disabledLocalRemoteActionCount == 10,
-            "device configuration keeps all remote device actions present in local mode");
-    require(connectRemoteActionCount == 5 &&
-                disconnectRemoteActionCount == 5,
-            "device configuration remote icon actions cover connect and disconnect for every device");
+    require(disabledLocalRemoteActionCount == 5,
+            "device configuration keeps one remote device action per serial device in local mode");
+    require(connectRemoteActionCount == 5 && disconnectRemoteActionCount == 0,
+            "device configuration shows one connect action for every disconnected device");
+    require(epsilonRemoteActionButton != nullptr,
+            "device configuration exposes the EPSILON connection action button");
     require(deviceAutoDetectButton != nullptr && deviceAutoDetectButton->width() <= 145,
             "device configuration auto-detect button uses compact title-bar width");
     require(deviceSkyConfigButton != nullptr && deviceSkyConfigButton->width() <= 145,
