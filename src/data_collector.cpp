@@ -4316,7 +4316,8 @@ bool TemperatureControllerCollector::checkDeviceResponse()
   auto queryWithRetry = [this](const std::string& command, std::string& response) {
     for (int attempt = 0; attempt < 3 && !isCancelRequested(); ++attempt)
     {
-      if (queryAscii(command, response))
+      const int wait_ms = command == "INQUIRE=1@" ? 3000 : 1200;
+      if (queryAscii(command, response, wait_ms))
       {
         return true;
       }
