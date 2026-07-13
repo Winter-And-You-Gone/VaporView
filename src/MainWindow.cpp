@@ -7110,6 +7110,17 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
     connect(channel.mode_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.mode_combo](int) {
         emit outputModeRequested(channelNumber, static_cast<quint16>(combo->currentData().toUInt()));
     });
+
+    channel.target_spin = new QDoubleSpinBox(channel.common_top_controls);
+    channel.target_spin->setObjectName(QStringLiteral("temperatureTargetSpinChannel%1").arg(index + 1));
+    channel.target_spin->setRange(-40.0, 100.0);
+    channel.target_spin->setDecimals(5);
+    channel.target_spin->setSuffix(QStringLiteral(" °C"));
+    channel.target_spin->setFixedWidth(kTemperatureControllerTopTargetWidth);
+    addCommonTopField(QStringLiteral("目标温度(°C)"), channel.target_spin, channel.target_label_text);
+    connect(channel.target_spin, &QDoubleSpinBox::editingFinished, this, [this, channelNumber, spin = channel.target_spin]() {
+        emit targetTemperatureRequested(channelNumber, spin->value());
+    });
     layout->addWidget(channel.common_top_controls, 0, Qt::AlignVCenter);
 
     channel.sensor_model_field = new QWidget(page);
@@ -7342,17 +7353,6 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
         setDangerTextPalette(channel.max_output_label_text);
     }
 
-    channel.target_spin = new QDoubleSpinBox(this);
-    channel.target_spin->setObjectName(QStringLiteral("temperatureTargetSpinChannel%1").arg(index + 1));
-    channel.target_spin->setRange(-40.0, 100.0);
-    channel.target_spin->setDecimals(5);
-    channel.target_spin->setSuffix(QStringLiteral(" °C"));
-    channel.target_spin->setFixedWidth(kTemperatureControllerTopTargetWidth);
-    addField(0, 2, QStringLiteral("目标温度(°C)"), channel.target_spin, channel.target_label_text);
-    connect(channel.target_spin, &QDoubleSpinBox::editingFinished, this, [this, channelNumber, spin = channel.target_spin]() {
-        emit targetTemperatureRequested(channelNumber, spin->value());
-    });
-
     channel.kp_spin = new QSpinBox(this);
     channel.ki_spin = new QSpinBox(this);
     channel.kd_spin = new QSpinBox(this);
@@ -7393,7 +7393,7 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
     channel.auto_pid_combo->addItem(QStringLiteral("关闭"), 0);
     channel.auto_pid_combo->addItem(QStringLiteral("PID自整定"), 1);
     channel.auto_pid_combo->addItem(QStringLiteral("实时优化(预留)"), 2);
-    addField(0, 3, QStringLiteral("自动 PID"), channel.auto_pid_combo, channel.auto_pid_label_text);
+    addField(0, 2, QStringLiteral("自动 PID"), channel.auto_pid_combo, channel.auto_pid_label_text);
     connect(channel.auto_pid_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.auto_pid_combo](int) {
         emit autoPidRequested(channelNumber, static_cast<quint16>(combo->currentData().toUInt()));
     });
