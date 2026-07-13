@@ -1157,6 +1157,26 @@ QRadioButton::indicator:checked {
     border-width: 6px;
 }
 
+QRadioButton[temperatureSensorModelOption="true"]::indicator {
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 0px;
+    background-color: transparent;
+    image: url(lucide/square.svg);
+}
+
+QRadioButton[temperatureSensorModelOption="true"]::indicator:hover {
+    border: none;
+    background-color: transparent;
+}
+
+QRadioButton[temperatureSensorModelOption="true"]::indicator:checked {
+    border: none;
+    background-color: transparent;
+    image: url(lucide/square-check-big.svg);
+}
+
 /* 自定义面板样式 */
 GnssPanel, ImuPanel, PtbPanel, HmpPanel, LidarPanel, TemperatureControllerPanel {
     background-color: transparent;

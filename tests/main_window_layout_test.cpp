@@ -2491,6 +2491,15 @@ int main(int argc, char **argv)
                 sensorModelSelector1 != nullptr && sensorModelBValueRadio != nullptr &&
                 sensorModelPtRadio != nullptr && sensorModelShRadio != nullptr && sensorModelMf501Radio != nullptr,
             "temperature controller editable controls are discoverable for stale telemetry checks");
+    require(sensorModelBValueRadio->property("temperatureSensorModelOption").toBool() &&
+                sensorModelPtRadio->property("temperatureSensorModelOption").toBool() &&
+                sensorModelShRadio->property("temperatureSensorModelOption").toBool() &&
+                sensorModelMf501Radio->property("temperatureSensorModelOption").toBool() &&
+                qApp->styleSheet().contains(
+                    QStringLiteral("QRadioButton[temperatureSensorModelOption=\"true\"]::indicator")) &&
+                qApp->styleSheet().contains(
+                    QStringLiteral("QRadioButton[temperatureSensorModelOption=\"true\"]::indicator:checked")),
+            "temperature sensor model options use square and square-check-big indicator styling");
     require(controllerModeCombo->property("usesSingleLevelPopupMenu").toBool() &&
                 modeCombo->property("usesSingleLevelPopupMenu").toBool() &&
                 autoPidCombo->property("usesSingleLevelPopupMenu").toBool() &&
