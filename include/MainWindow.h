@@ -324,7 +324,7 @@ private:
         QComboBox *auto_pid_combo = nullptr;
         QWidget *sensor_model_selector = nullptr;
         QButtonGroup *sensor_model_group = nullptr;
-        std::array<QRadioButton *, 3> sensor_model_radios{};
+        std::array<QRadioButton *, 4> sensor_model_radios{};
         QLineEdit *ntc_r0_edit = nullptr;
         QLineEdit *ntc_b_edit = nullptr;
         QLineEdit *pt_r0_edit = nullptr;

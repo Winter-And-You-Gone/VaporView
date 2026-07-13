@@ -7088,15 +7088,17 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
 
     channel.sensor_model_group = new QButtonGroup(page);
     channel.sensor_model_group->setExclusive(true);
-    const std::array<QString, 3> labels = {
+    const std::array<QString, 4> labels = {
         QStringLiteral("B-Value"),
         QStringLiteral("PT"),
         QStringLiteral("S-H"),
+        QStringLiteral("MF501"),
     };
-    const std::array<QString, 3> objectSuffixes = {
+    const std::array<QString, 4> objectSuffixes = {
         QStringLiteral("BValue"),
         QStringLiteral("Pt"),
         QStringLiteral("Sh"),
+        QStringLiteral("Mf501"),
     };
     for (int i = 0; i < static_cast<int>(labels.size()); ++i)
     {
@@ -7599,8 +7601,11 @@ void TemperatureControllerPanel::selectChannel(int index)
     }
     if (channel_top_controls_stack_)
     {
-        channel_top_controls_stack_->setVisible(true);
         channel_top_controls_stack_->setCurrentIndex(pageIndex < 2 ? channelIndex : 2);
+        const bool showTopControls = pageIndex == 2 ||
+            (channels_[channelIndex].config_sub_stack &&
+             channels_[channelIndex].config_sub_stack->currentIndex() == 2);
+        channel_top_controls_stack_->setVisible(showTopControls);
         refreshTopControlsLayout();
     }
     if (common_.factory_reset_button)
@@ -7641,6 +7646,15 @@ void TemperatureControllerPanel::selectChannelSubPage(int channelIndex, int subP
     if (channel.config_sub_stack)
     {
         channel.config_sub_stack->setCurrentIndex(pageIndex);
+    }
+    if (channel_top_controls_stack_ && selected_config_page_index_ == channelIndex)
+    {
+        channel_top_controls_stack_->setVisible(pageIndex == 2);
+        if (pageIndex == 2)
+        {
+            channel_top_controls_stack_->setCurrentIndex(channelIndex);
+            refreshTopControlsLayout();
+        }
     }
     auto updateButton = [pageIndex](QPushButton *button, int index) {
         if (!button)
@@ -8048,14 +8062,15 @@ void TemperatureControllerPanel::updateChannelTexts()
         }
         if (channel.sensor_model_group)
         {
-            const std::array<QString, 3> labels = {
+            const std::array<QString, 4> labels = {
                 QStringLiteral("B-Value"),
                 QStringLiteral("PT"),
                 QStringLiteral("S-H"),
+                QStringLiteral("MF501"),
             };
             const QString tooltip = is_english_
-                ? QStringLiteral("RD105 POLYOMIAL register: B-value, PT, or Steinhart-Hart model.")
-                : QStringLiteral("RD105 POLYOMIAL 寄存器：B 值、PT 或 Steinhart-Hart 模型。");
+                ? QStringLiteral("RD105 POLYOMIAL register: B-value, PT, Steinhart-Hart, or MF501 model.")
+                : QStringLiteral("RD105 POLYOMIAL 寄存器：B 值、PT、Steinhart-Hart 或 MF501 模型。");
             if (channel.sensor_model_selector)
             {
                 channel.sensor_model_selector->setToolTip(tooltip);
