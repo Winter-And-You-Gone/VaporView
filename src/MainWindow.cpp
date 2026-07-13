@@ -5999,11 +5999,17 @@ protected:
         const QRectF offRect(switchContentRect.left(), switchContentRect.top(), segmentWidth, switchContentRect.height());
         const QRectF onRect(switchContentRect.left() + segmentWidth, switchContentRect.top(), segmentWidth, switchContentRect.height());
         const bool offSelected = thumb_position_ < 0.5;
+        auto drawSegmentText = [&painter](const QRectF& textRect, const QString& text) {
+            const QRectF textBounds = QFontMetricsF(painter.font()).tightBoundingRect(text);
+            const QPointF baseline(textRect.center().x() - textBounds.center().x(),
+                                   textRect.center().y() - textBounds.center().y());
+            painter.drawText(baseline, text);
+        };
         painter.setFont(segmentFont);
         painter.setPen(offSelected ? selectedText : inactiveText);
-        painter.drawText(offRect, Qt::AlignCenter, offText());
+        drawSegmentText(offRect, offText());
         painter.setPen(offSelected ? inactiveText : selectedText);
-        painter.drawText(onRect, Qt::AlignCenter, onText());
+        drawSegmentText(onRect, onText());
 
         if (hasFocus())
         {
