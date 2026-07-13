@@ -3523,10 +3523,10 @@ int main(int argc, char **argv)
         QStringLiteral("Refresh"),
         QStringLiteral("Cancel"),
     };
-    int disabledLocalRemoteActionCount = 0;
+    int localDeviceActionCount = 0;
     int connectRemoteActionCount = 0;
     int disconnectRemoteActionCount = 0;
-    QPushButton *epsilonRemoteActionButton = nullptr;
+    QPushButton *temperatureDeviceActionButton = nullptr;
     QPushButton *deviceAutoDetectButton = nullptr;
     QPushButton *deviceSkyConfigButton = nullptr;
     for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
@@ -3568,8 +3568,9 @@ int main(int argc, char **argv)
                         button->accessibleName() == button->toolTip() &&
                         button->statusTip() == button->toolTip(),
                     "device configuration icon-only remote actions keep tooltip and accessibility text");
-            require(!button->isEnabled(),
-                    "device configuration remote actions are visible but disabled in local mode");
+            require(button->toolTip().contains(QStringLiteral("本地串口设备")) ||
+                        button->toolTip().contains(QStringLiteral("local serial device")),
+                    "device configuration actions identify the local serial mode");
             if (remoteAction == QStringLiteral("connect"))
             {
                 ++connectRemoteActionCount;
@@ -3583,19 +3584,19 @@ int main(int argc, char **argv)
                 require(false, "device configuration remote actions only expose connect and disconnect commands");
             }
             if (button->property("deviceConfigRemoteDevice").toInt() ==
-                static_cast<int>(VaporView::SkyDeviceId::Epsilon))
+                static_cast<int>(VaporView::SkyDeviceId::TemperatureController))
             {
-                epsilonRemoteActionButton = button;
+                temperatureDeviceActionButton = button;
             }
-            ++disabledLocalRemoteActionCount;
+            ++localDeviceActionCount;
         }
     }
-    require(disabledLocalRemoteActionCount == 5,
-            "device configuration keeps one remote device action per serial device in local mode");
+    require(localDeviceActionCount == 5,
+            "device configuration keeps one local action per serial device");
     require(connectRemoteActionCount == 5 && disconnectRemoteActionCount == 0,
             "device configuration shows one connect action for every disconnected device");
-    require(epsilonRemoteActionButton != nullptr,
-            "device configuration exposes the EPSILON connection action button");
+    require(temperatureDeviceActionButton != nullptr,
+            "device configuration exposes the RD105 connection action button");
     require(deviceAutoDetectButton != nullptr && deviceAutoDetectButton->width() <= 145,
             "device configuration auto-detect button uses compact title-bar width");
     require(deviceSkyConfigButton != nullptr && deviceSkyConfigButton->width() <= 145,
@@ -3624,6 +3625,17 @@ int main(int argc, char **argv)
             "device configuration rate combo is sized for 9999");
     require(devicePortCombo->isEnabled(),
             "device configuration serial combo is enabled in local mode");
+    const QString originalDevicePort = devicePortCombo->currentText();
+    devicePortCombo->setEditText(QStringLiteral("-- 选择 --"));
+    processEventsFor(20);
+    require(!temperatureDeviceActionButton->isEnabled(),
+            "device configuration disables the local action when its serial port is cleared");
+    devicePortCombo->setEditText(QStringLiteral("COM99"));
+    processEventsFor(20);
+    require(temperatureDeviceActionButton->isEnabled(),
+            "device configuration immediately enables the local action after selecting a serial port");
+    devicePortCombo->setEditText(originalDevicePort);
+    processEventsFor(20);
     auto *deviceTemperaturePortCombo =
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceTemperaturePortCombo"));
     auto *deviceTemperatureBaudCombo =

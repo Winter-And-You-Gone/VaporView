@@ -10880,6 +10880,7 @@ void MainWindow::bindRememberedInputState()
         connect(combo, &QComboBox::currentTextChanged, this, [this](const QString&) {
             saveRememberedInputState();
             updateHomeDeviceStatusCapsules();
+            updateDeviceConfigState();
             updateTemperatureControllerTitleText();
             updateTemperatureTitleButtonsState();
         });
@@ -12939,11 +12940,11 @@ void MainWindow::updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, Vap
     if (connectButton) connectButton->setToolTip(QStringLiteral("请求天空端连接 %1（当前：%2）").arg(skyDeviceDisplayName(device), stateText));
     if (disconnectButton) disconnectButton->setToolTip(QStringLiteral("请求天空端断开 %1（当前：%2）").arg(skyDeviceDisplayName(device), stateText));
     if (reconnectButton) reconnectButton->setToolTip(QStringLiteral("请求天空端重连 %1（当前：%2）").arg(skyDeviceDisplayName(device), stateText));
-    updateDeviceConfigRemoteActionButton(device, state);
+    updateDeviceConfigRemoteActionButton(device);
     updateHomeDeviceStatusCapsules();
 }
 
-void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId device, VaporView::DeviceState state)
+void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId device)
 {
     QPushButton *button = nullptr;
     switch (device)
@@ -12972,6 +12973,7 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
         return;
     }
 
+    const VaporView::DeviceState state = homeDeviceActionState(device);
     const bool connected = state == VaporView::DeviceState::Connected;
     const bool busy = state == VaporView::DeviceState::Connecting ||
         state == VaporView::DeviceState::Reconnecting;
@@ -12979,9 +12981,45 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
         ? VaporView::CommandId::DisconnectDevice
         : VaporView::CommandId::ConnectDevice;
     applyDeviceConfigRemoteButtonPresentation(button, command, device, is_english_, false);
-    button->setEnabled(isRemoteSkyMode() &&
-                       ground_telemetry_service_ && ground_telemetry_service_->isOpen() &&
-                       !busy);
+    const bool remoteMode = isRemoteSkyMode();
+    const bool linkOpen = ground_telemetry_service_ && ground_telemetry_service_->isOpen();
+    const bool enabled = state == VaporView::DeviceState::Disabled || busy
+        ? false
+        : remoteMode
+            ? linkOpen
+            : ((connected && disconnect_btn_ && disconnect_btn_->isEnabled()) ||
+               (!connected && connect_btn_ && connect_btn_->isEnabled()));
+    button->setEnabled(enabled);
+
+    const QString actionText = busy
+        ? (is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中"))
+        : connected
+            ? (is_english_ ? QStringLiteral("Disconnect") : QStringLiteral("断开"))
+            : state == VaporView::DeviceState::Disabled
+                ? (remoteMode
+                    ? (is_english_ ? QStringLiteral("Connect telemetry first") : QStringLiteral("请先连接数传"))
+                    : (is_english_ ? QStringLiteral("Select port first") : QStringLiteral("请先选择串口")))
+                : (is_english_ ? QStringLiteral("Connect") : QStringLiteral("连接"));
+    const QString deviceName = homeDeviceDisplayName(device, is_english_);
+    const QString modeHint = remoteMode
+        ? (is_english_ ? QStringLiteral("remote Sky device") : QStringLiteral("天空端设备"))
+        : (is_english_ ? QStringLiteral("local serial device") : QStringLiteral("本地串口设备"));
+    const QString tooltip = is_english_
+        ? QStringLiteral("%1 %2 (%3)").arg(actionText, deviceName, modeHint)
+        : QStringLiteral("%1%2（%3）").arg(actionText, deviceName, modeHint);
+    button->setToolTip(tooltip);
+    button->setStatusTip(tooltip);
+    button->setAccessibleName(tooltip);
+    button->setProperty("connected", connected);
+    button->setProperty("state", busy
+        ? QStringLiteral("connecting")
+        : state == VaporView::DeviceState::Disabled
+            ? QStringLiteral("disabled")
+            : connected
+                ? QStringLiteral("connected")
+                : QStringLiteral("disconnected"));
+    button->style()->unpolish(button);
+    button->style()->polish(button);
 }
 
 void MainWindow::setImuFormatSelection(const QString& format)
@@ -14894,12 +14932,7 @@ void MainWindow::setupDeviceConfigPage()
                                                   is_english_,
                                                   true);
         connect(actionButton, &QPushButton::clicked, this, [this, device]() {
-            const bool connected = remote_device_states_.value(
-                device, VaporView::DeviceState::Disconnected) == VaporView::DeviceState::Connected;
-            sendRemoteDeviceCommand(connected
-                                        ? VaporView::CommandId::DisconnectDevice
-                                        : VaporView::CommandId::ConnectDevice,
-                                    device);
+            triggerHomeDeviceAction(device);
         });
         layout->addWidget(actionButton);
         formLayout->addWidget(buttonsWidget, row, 6, Qt::AlignVCenter | Qt::AlignLeft);
@@ -15490,9 +15523,7 @@ void MainWindow::updateDeviceConfigTexts()
                                           VaporView::SkyDeviceId::Lidar,
                                           VaporView::SkyDeviceId::TemperatureController})
     {
-        updateDeviceConfigRemoteActionButton(
-            device,
-            remote_device_states_.value(device, VaporView::DeviceState::Disconnected));
+        updateDeviceConfigRemoteActionButton(device);
     }
 
     updateDeviceConfigState();
@@ -15595,9 +15626,7 @@ void MainWindow::updateDeviceConfigState()
                                           VaporView::SkyDeviceId::Lidar,
                                           VaporView::SkyDeviceId::TemperatureController})
     {
-        updateDeviceConfigRemoteActionButton(
-            device,
-            remote_device_states_.value(device, VaporView::DeviceState::Disconnected));
+        updateDeviceConfigRemoteActionButton(device);
     }
 }
 

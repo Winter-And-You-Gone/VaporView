@@ -756,7 +756,7 @@ private:
     QPushButton *createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device);
     void setRemoteDeviceButtonsEnabled(bool enabled);
     void updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, VaporView::DeviceState state);
-    void updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId device, VaporView::DeviceState state);
+    void updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId device);
     void updateTemperatureControllerTitleText();
     void updateTemperatureTitleButtonsState();
     void handleTemperatureTitleButton(VaporView::CommandId command);
