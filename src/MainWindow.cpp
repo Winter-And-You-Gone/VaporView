@@ -7430,11 +7430,17 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
     page->setObjectName(QStringLiteral("temperatureChannelSensorConfigPageChannel%1").arg(index + 1));
     auto *layout = new QGridLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setHorizontalSpacing(6);
+    layout->setHorizontalSpacing(0);
     layout->setVerticalSpacing(4);
-    layout->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    layout->setAlignment(Qt::AlignVCenter);
+    for (int spacerColumn = 1; spacerColumn < 8; spacerColumn += 2)
+    {
+        layout->setColumnMinimumWidth(spacerColumn, 6);
+        layout->setColumnStretch(spacerColumn, 1);
+    }
     ChannelWidgets& channel = channels_[index];
     std::array<QList<QLabel *>, 5> fieldLabelsByColumn;
+    std::array<QList<QWidget *>, 5> fieldEditorsByColumn;
 
     auto makeFieldLabel = [this](const QString& text) {
         auto *label = new QLabel(text, this);
@@ -7443,9 +7449,10 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         label->setMinimumHeight(22);
         return label;
     };
-    auto addField = [layout, &makeFieldLabel, &fieldLabelsByColumn](int row, int column, const QString& labelText, QWidget *editor, QLabel *&label) {
+    auto addField = [layout, &makeFieldLabel, &fieldLabelsByColumn, &fieldEditorsByColumn](int row, int column, const QString& labelText, QWidget *editor, QLabel *&label) {
         label = makeFieldLabel(labelText);
         fieldLabelsByColumn.at(static_cast<size_t>(column)).append(label);
+        fieldEditorsByColumn.at(static_cast<size_t>(column)).append(editor);
         editor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         auto *cell = new QWidget();
         cell->setObjectName(QStringLiteral("temperatureConfigFieldRow"));
@@ -7456,7 +7463,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         cellLayout->setSpacing(kTemperatureControllerSensorFieldSpacing);
         cellLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
         cellLayout->addWidget(editor, 0, Qt::AlignLeft | Qt::AlignVCenter);
-        layout->addWidget(cell, row, column, Qt::AlignLeft | Qt::AlignVCenter);
+        layout->addWidget(cell, row, column * 2, Qt::AlignLeft | Qt::AlignVCenter);
     };
     auto makeIntegerEdit = [this](const QString& name, int min, int max, int width) {
         auto *edit = new QLineEdit(this);
@@ -7532,8 +7539,9 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         addField(1 + (i / 4), 1 + (i % 4), QStringLiteral("A%1").arg(i), edit, channel.polynomial_label_text[static_cast<size_t>(i)]);
     }
 
-    for (const QList<QLabel *>& labels : fieldLabelsByColumn)
+    for (size_t column = 0; column < fieldLabelsByColumn.size(); ++column)
     {
+        const QList<QLabel *>& labels = fieldLabelsByColumn[column];
         int columnLabelWidth = 0;
         for (const QLabel *label : labels)
         {
@@ -7542,6 +7550,17 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         for (QLabel *label : labels)
         {
             label->setFixedWidth(columnLabelWidth);
+        }
+
+        const QList<QWidget *>& editors = fieldEditorsByColumn[column];
+        int columnEditorWidth = 0;
+        for (const QWidget *editor : editors)
+        {
+            columnEditorWidth = std::max(columnEditorWidth, editor->width());
+        }
+        for (QWidget *editor : editors)
+        {
+            editor->setFixedWidth(columnEditorWidth);
         }
     }
 

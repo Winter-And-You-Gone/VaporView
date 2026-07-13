@@ -3132,13 +3132,12 @@ int main(int argc, char **argv)
                 ptR0Edit->width() <= 82 &&
                 ptAEdit->width() == 104 &&
                 ptBEdit->width() == 104 &&
-                ptCEdit->width() == 104 &&
-                polynomialA0Edit->width() <= 62,
+                ptCEdit->width() == 104,
             "temperature PT coefficient inputs show full precision while the other RD105 fields stay compact");
     auto *sensorConfigGrid = qobject_cast<QGridLayout *>(temperatureChannelConfigSubStack->currentWidget()->layout());
     auto requireSensorGridPosition = [sensorConfigGrid](QWidget *editor, int row, int column, const char *message) {
         require(sensorConfigGrid != nullptr && editor != nullptr && editor->parentWidget() != nullptr, message);
-        QLayoutItem *item = sensorConfigGrid->itemAtPosition(row, column);
+        QLayoutItem *item = sensorConfigGrid->itemAtPosition(row, column * 2);
         require(item != nullptr && item->widget() == editor->parentWidget(), message);
     };
     requireSensorGridPosition(ntcR0Edit, 0, 0, "temperature sensor grid places NTC R0 at row 1 column 1");
@@ -3153,8 +3152,8 @@ int main(int argc, char **argv)
         auto *edit = temperaturePanel->findChild<QLineEdit *>(
             QStringLiteral("temperaturePolynomialA%1EditChannel1").arg(coefficient));
         polynomialEdits[static_cast<size_t>(coefficient)] = edit;
-        require(edit != nullptr && edit->width() <= 62,
-                "temperature polynomial inputs all use the compact width");
+        require(edit != nullptr,
+                "temperature polynomial inputs all exist");
         requireSensorGridPosition(edit,
                                   1 + coefficient / 4,
                                   1 + coefficient % 4,
@@ -3176,7 +3175,8 @@ int main(int argc, char **argv)
         {
             require(field != nullptr &&
                         fieldLeftInSensorPage(field) == fieldLeft &&
-                        inputLeftInSensorPage(field) == inputLeft,
+                        inputLeftInSensorPage(field) == inputLeft &&
+                        field->width() == fields.first()->width(),
                     message);
         }
     };
@@ -3190,6 +3190,32 @@ int main(int argc, char **argv)
                                  "temperature sensor column 4 aligns labels and inputs");
     requireSensorColumnAlignment({ptCEdit, polynomialEdits[3], polynomialEdits[7]},
                                  "temperature sensor column 5 aligns labels and inputs");
+    const std::array<QWidget *, 5> firstRowFields{
+        ntcR0Edit, ptR0Edit, ptAEdit, ptBEdit, ptCEdit};
+    int adaptiveColumnGap = -1;
+    for (size_t column = 1; column < firstRowFields.size(); ++column)
+    {
+        QWidget *previousCell = firstRowFields[column - 1]->parentWidget();
+        QWidget *currentCell = firstRowFields[column]->parentWidget();
+        const QRect previousRect(previousCell->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
+                                 previousCell->size());
+        const QRect currentRect(currentCell->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
+                                currentCell->size());
+        const int gap = currentRect.left() - previousRect.right() - 1;
+        if (adaptiveColumnGap < 0)
+        {
+            adaptiveColumnGap = gap;
+        }
+        require(gap >= 6 && std::abs(gap - adaptiveColumnGap) <= 1,
+                "temperature sensor grid distributes available card width evenly between columns");
+    }
+    require(sensorConfigGrid != nullptr &&
+                sensorConfigGrid->horizontalSpacing() == 0 &&
+                sensorConfigGrid->columnStretch(1) == 1 &&
+                sensorConfigGrid->columnStretch(3) == 1 &&
+                sensorConfigGrid->columnStretch(5) == 1 &&
+                sensorConfigGrid->columnStretch(7) == 1,
+            "temperature sensor grid uses four adaptive spacer columns");
     require(sensorConfigGrid != nullptr && sensorConfigGrid->itemAtPosition(2, 0) == nullptr,
             "temperature sensor grid leaves row 3 column 1 empty");
     auto *polynomialA7Edit = temperaturePanel->findChild<QLineEdit *>(
