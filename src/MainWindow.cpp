@@ -5933,13 +5933,9 @@ protected:
         const bool dark = VaporView::isDarkThemeEnabled();
         const bool checked = isChecked();
         const bool enabled = isEnabled();
-        const QColor activeStateFill = checked
-            ? appThemeColor(AppThemeColor::HomeDeviceSuccess, dark)
-            : appThemeColor(AppThemeColor::HomeDeviceDanger, dark);
-        const QColor inactiveStateFill = dark
-            ? appThemeColor(AppThemeColor::SurfaceAlt, dark)
-            : activeStateFill;
-        const QColor stateFill = checked ? activeStateFill : inactiveStateFill;
+        const QColor stateFill = checked
+            ? appThemeColor(AppThemeColor::ToolbarGreen, dark)
+            : appThemeColor(AppThemeColor::ToolbarRed, dark);
         const QColor border = appThemeColor(AppThemeColor::Border, dark);
         const QColor fill = appThemeColor(AppThemeColor::Surface, dark);
         const QColor switchFill = enabled
@@ -5952,10 +5948,10 @@ protected:
             ? appThemeColor(AppThemeColor::Surface, dark)
             : appThemeColor(AppThemeColor::SurfaceAlt, dark);
         const QColor selectedText = enabled
-            ? (checked || !dark ? activeStateFill : appThemeColor(AppThemeColor::TextStrong, dark))
+            ? stateFill
             : text;
         const QColor inactiveText = enabled
-            ? (checked || !dark ? appThemeColor(AppThemeColor::White, dark) : appThemeColor(AppThemeColor::TextMuted, dark))
+            ? appThemeColor(AppThemeColor::White, dark)
             : appThemeColor(AppThemeColor::TextMuted, dark);
 
         QPainter painter(this);
