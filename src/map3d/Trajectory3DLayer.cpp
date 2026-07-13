@@ -18,8 +18,8 @@ namespace {
 
 constexpr int kSegmentSize = 4096;
 constexpr int kMaxSolidSphereMarkers = 40000;
-constexpr double kTrajectorySphereRadiusM = 2.5;
-constexpr double kSelectedTrajectorySphereRadiusM = 8.0;
+constexpr double kTrajectorySphereRadiusM = 0.5;
+constexpr double kSelectedTrajectorySphereRadiusM = 1.0;
 
 bool hasWorldPosition(const VaporView::Geo::NavSample& sample)
 {
@@ -82,34 +82,32 @@ bool finiteVec3(const osg::Vec3d& value)
     return std::isfinite(value.x()) && std::isfinite(value.y()) && std::isfinite(value.z());
 }
 
-void appendOctahedron(osg::Vec3dArray& vertices,
-                      osg::Vec4Array& colors,
-                      osg::DrawElementsUInt& indices,
-                      const osg::Vec3d& center,
-                      double radiusM,
-                      const osg::Vec4& color)
+void appendIcosahedron(osg::Vec3dArray& vertices,
+                       osg::Vec4Array& colors,
+                       osg::DrawElementsUInt& indices,
+                       const osg::Vec3d& center,
+                       double radiusM,
+                       const osg::Vec4& color)
 {
+    constexpr double kPhi = 1.6180339887498948482;
+    const double scale = radiusM / std::sqrt(1.0 + kPhi * kPhi);
     const unsigned int base = static_cast<unsigned int>(vertices.size());
-    vertices.push_back(center + osg::Vec3d(radiusM, 0.0, 0.0));
-    vertices.push_back(center + osg::Vec3d(-radiusM, 0.0, 0.0));
-    vertices.push_back(center + osg::Vec3d(0.0, radiusM, 0.0));
-    vertices.push_back(center + osg::Vec3d(0.0, -radiusM, 0.0));
-    vertices.push_back(center + osg::Vec3d(0.0, 0.0, radiusM));
-    vertices.push_back(center + osg::Vec3d(0.0, 0.0, -radiusM));
-    for (int index = 0; index < 6; ++index)
+    const osg::Vec3d unitVertices[] = {
+        {-1.0, kPhi, 0.0}, {1.0, kPhi, 0.0}, {-1.0, -kPhi, 0.0}, {1.0, -kPhi, 0.0},
+        {0.0, -1.0, kPhi}, {0.0, 1.0, kPhi}, {0.0, -1.0, -kPhi}, {0.0, 1.0, -kPhi},
+        {kPhi, 0.0, -1.0}, {kPhi, 0.0, 1.0}, {-kPhi, 0.0, -1.0}, {-kPhi, 0.0, 1.0},
+    };
+    for (const osg::Vec3d& vertex : unitVertices)
     {
+        vertices.push_back(center + vertex * scale);
         colors.push_back(color);
     }
 
     const unsigned int faces[] = {
-        4, 0, 2,
-        4, 2, 1,
-        4, 1, 3,
-        4, 3, 0,
-        5, 2, 0,
-        5, 1, 2,
-        5, 3, 1,
-        5, 0, 3,
+        0, 11, 5, 0, 5, 1, 0, 1, 7, 0, 7, 10, 0, 10, 11,
+        1, 5, 9, 5, 11, 4, 11, 10, 2, 10, 7, 6, 7, 1, 8,
+        3, 9, 4, 3, 4, 2, 3, 2, 6, 3, 6, 8, 3, 8, 9,
+        4, 9, 5, 2, 4, 11, 6, 2, 10, 8, 6, 7, 9, 8, 1,
     };
     for (unsigned int faceIndex : faces)
     {
@@ -507,12 +505,12 @@ void Trajectory3DLayer::rebuildSegmentGeometry(TrajectorySegment& segment)
         {
             continue;
         }
-        appendOctahedron(*sphereVertices,
-                         *sphereColors,
-                         *sphereIndices,
-                         position,
-                         kTrajectorySphereRadiusM,
-                         qualityColor(sample));
+        appendIcosahedron(*sphereVertices,
+                          *sphereColors,
+                          *sphereIndices,
+                          position,
+                          kTrajectorySphereRadiusM,
+                          qualityColor(sample));
         ++segment.sphereMarkerCount;
     }
     if (!sphereVertices->empty())
@@ -615,12 +613,12 @@ bool Trajectory3DLayer::appendSphereMarkerGeometry(TrajectorySegment& segment, i
         return false;
     }
     const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(sampleIndex)];
-    appendOctahedron(*vertices,
-                     *colors,
-                     *indices,
-                     position,
-                     kTrajectorySphereRadiusM,
-                     qualityColor(sample));
+    appendIcosahedron(*vertices,
+                      *colors,
+                      *indices,
+                      position,
+                      kTrajectorySphereRadiusM,
+                      qualityColor(sample));
     ++segment.sphereMarkerCount;
     vertices->dirty();
     colors->dirty();
@@ -677,12 +675,12 @@ void Trajectory3DLayer::updateSelectedMarkerGeometry()
     osg::Vec3d position;
     if (displayPositionForSample(selected_sample_index_, position))
     {
-        appendOctahedron(*vertices,
-                         *colors,
-                         *indices,
-                         position,
-                         kSelectedTrajectorySphereRadiusM,
-                         selectedMarkerColor());
+        appendIcosahedron(*vertices,
+                          *colors,
+                          *indices,
+                          position,
+                          kSelectedTrajectorySphereRadiusM,
+                          selectedMarkerColor());
         selected_marker_geometry_->setVertexArray(vertices.get());
         selected_marker_geometry_->setColorArray(colors.get(), osg::Array::BIND_PER_VERTEX);
         selected_marker_geometry_->addPrimitiveSet(indices.get());

@@ -169,18 +169,7 @@ QString configuredTiandituKey()
 
 QString defaultSessionDataDirectory()
 {
-    const QStringList roots = map3DRuntimeRootCandidates();
-    for (const QString& root : roots)
-    {
-        const QString candidate =
-            QDir::cleanPath(QDir(root).absoluteFilePath(QStringLiteral("data")));
-        if (QFileInfo(candidate).isDir())
-        {
-            return QFileInfo(candidate).absoluteFilePath();
-        }
-    }
-    return QDir::cleanPath(
-        QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(QStringLiteral("../../data")));
+    return map3DProjectDataDirectory();
 }
 
 QString trajectorySampleDetailText(int sampleIndex, const VaporView::Geo::NavSample& sample)

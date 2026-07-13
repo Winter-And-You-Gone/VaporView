@@ -116,6 +116,18 @@ int main()
     require(geode != nullptr, "trajectory node is a geode");
     require(geode->getNumDrawables() == 6, "geode has one line and one sphere drawable per segment");
     require(layer.sphereMarkerCount() == 9000, "short trajectory renders every sample as a solid sphere marker");
+    auto* firstSphereGeometry = dynamic_cast<osg::Geometry*>(geode->getDrawable(1));
+    require(firstSphereGeometry != nullptr && firstSphereGeometry->getVertexArray() != nullptr,
+            "trajectory sphere marker geometry exists");
+    require(firstSphereGeometry->getVertexArray()->getNumElements() == 4096 * 12,
+            "trajectory markers use rounded icosahedron balls instead of six-vertex octahedrons");
+    const auto* firstSphereVertices =
+        dynamic_cast<const osg::Vec3dArray*>(firstSphereGeometry->getVertexArray());
+    require(firstSphereVertices != nullptr
+                && nearlyEqual((firstSphereVertices->front() - osg::Vec3d(0.0, 0.0, 10.0)).length(),
+                               0.5,
+                               1.0e-9),
+            "trajectory ball radius is reduced to half a metre");
 
     layer.setMaxVisibleSamples(5000);
     require(layer.sampleCount() == 5000, "visible cap releases old retained samples");

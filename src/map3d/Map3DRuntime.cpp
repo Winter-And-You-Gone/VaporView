@@ -89,6 +89,12 @@ QStringList map3DRuntimeRootCandidates()
     return roots;
 }
 
+QString map3DProjectDataDirectory()
+{
+    return QDir::cleanPath(
+        QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(QStringLiteral("../../data")));
+}
+
 QString firstExistingMap3DFile(const QStringList& roots, const QStringList& relatives)
 {
     for (const QString& root : roots)

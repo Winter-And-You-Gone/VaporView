@@ -1,6 +1,7 @@
 #include "AppTheme.h"
 #include "geo/GeoTypes.h"
 #include "map3d/Map3DWindow.h"
+#include "map3d/Map3DRuntime.h"
 #include "SingleLevelPopupMenu.h"
 
 #include <QAbstractItemView>
@@ -124,6 +125,14 @@ int main(int argc, char** argv)
     require(settingsDir.isValid(), "temporary settings directory is valid");
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
     QSettings::setDefaultFormat(QSettings::IniFormat);
+
+    const QString expectedProjectData = QDir::cleanPath(
+        QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(QStringLiteral("../../data")));
+    require(VaporView::Map3D::map3DProjectDataDirectory() == expectedProjectData,
+            "session chooser defaults to the project-root data directory");
+    require(VaporView::Map3D::map3DProjectDataDirectory()
+                != QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(QStringLiteral("data")),
+            "session chooser does not default to the release data directory");
 
     VaporView::Map3D::Map3DWindow window;
     QCoreApplication::processEvents();
