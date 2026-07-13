@@ -4144,10 +4144,10 @@ int main(int argc, char **argv)
         findComboWithData(deviceConfigPage, QStringLiteral("bmp390"));
     QComboBox *humiditySourceCombo =
         findComboWithData(deviceConfigPage, QStringLiteral("sht45"));
-    require(pressureSourceCombo != nullptr && pressureSourceCombo->width() == 88,
-            "device pressure source combo matches the compact rate combo width");
-    require(humiditySourceCombo != nullptr && humiditySourceCombo->width() == 88,
-            "device humidity source combo matches the compact rate combo width");
+    require(pressureSourceCombo != nullptr && pressureSourceCombo->width() == 108,
+            "device pressure source combo fully shows the BMP390 option");
+    require(humiditySourceCombo != nullptr && humiditySourceCombo->width() == 108,
+            "device source combos keep a consistent widened column");
     auto *pressureBaudCombo =
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("devicePressureBaudCombo"));
     auto *humidityBaudCombo =

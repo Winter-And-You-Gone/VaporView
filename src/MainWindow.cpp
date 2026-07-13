@@ -14763,6 +14763,7 @@ void MainWindow::setupDeviceConfigPage()
     constexpr int kDeviceConfigPortComboWidth = 108;
     constexpr int kDeviceConfigBaudComboWidth = 100;
     constexpr int kDeviceConfigRateComboWidth = 88;
+    constexpr int kDeviceConfigSourceComboWidth = 108;
 
     auto createCombo = [this, formWidget](int width, bool editable = false) {
         auto *combo = new QComboBox(formWidget);
@@ -14826,7 +14827,7 @@ void MainWindow::setupDeviceConfigPage()
                device_config_.temperature_rate_lbl, device_config_.temperature_rate_combo, 4);
     device_config_.ptb_baud_combo->setObjectName(QStringLiteral("devicePressureBaudCombo"));
     device_config_.hmp_baud_combo->setObjectName(QStringLiteral("deviceHumidityBaudCombo"));
-    device_config_.ptb_source_combo = createCombo(kDeviceConfigRateComboWidth);
+    device_config_.ptb_source_combo = createCombo(kDeviceConfigSourceComboWidth);
     device_config_.ptb_source_combo->setObjectName(QStringLiteral("devicePressureSourceCombo"));
     device_config_.ptb_source_combo->addItem(QStringLiteral("PTB210"), QStringLiteral("ptb210"));
     device_config_.ptb_source_combo->addItem(QStringLiteral("BMP390"), QStringLiteral("bmp390"));
@@ -14835,7 +14836,7 @@ void MainWindow::setupDeviceConfigPage()
         : QStringLiteral("气压来源。BMP390 使用微雪示例程序通过 115200 8N1 串口输出。"));
     formLayout->addWidget(device_config_.ptb_source_combo, 1, 5, Qt::AlignVCenter);
 
-    device_config_.hmp_source_combo = createCombo(kDeviceConfigRateComboWidth);
+    device_config_.hmp_source_combo = createCombo(kDeviceConfigSourceComboWidth);
     device_config_.hmp_source_combo->setObjectName(QStringLiteral("deviceHumiditySourceCombo"));
     device_config_.hmp_source_combo->addItem(QStringLiteral("HMP3"), QStringLiteral("hmp3"));
     device_config_.hmp_source_combo->addItem(QStringLiteral("SHT45"), QStringLiteral("sht45"));
