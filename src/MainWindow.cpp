@@ -5933,9 +5933,13 @@ protected:
         const bool dark = VaporView::isDarkThemeEnabled();
         const bool checked = isChecked();
         const bool enabled = isEnabled();
-        const QColor stateFill = checked
+        const QColor activeStateFill = checked
             ? appThemeColor(AppThemeColor::HomeDeviceSuccess, dark)
             : appThemeColor(AppThemeColor::HomeDeviceDanger, dark);
+        const QColor inactiveStateFill = dark
+            ? appThemeColor(AppThemeColor::SurfaceAlt, dark)
+            : activeStateFill;
+        const QColor stateFill = checked ? activeStateFill : inactiveStateFill;
         const QColor border = appThemeColor(AppThemeColor::Border, dark);
         const QColor fill = appThemeColor(AppThemeColor::Surface, dark);
         const QColor switchFill = enabled
@@ -5948,10 +5952,10 @@ protected:
             ? appThemeColor(AppThemeColor::Surface, dark)
             : appThemeColor(AppThemeColor::SurfaceAlt, dark);
         const QColor selectedText = enabled
-            ? stateFill
+            ? (checked || !dark ? activeStateFill : appThemeColor(AppThemeColor::TextStrong, dark))
             : text;
         const QColor inactiveText = enabled
-            ? appThemeColor(AppThemeColor::White, dark)
+            ? (checked || !dark ? appThemeColor(AppThemeColor::White, dark) : appThemeColor(AppThemeColor::TextMuted, dark))
             : appThemeColor(AppThemeColor::TextMuted, dark);
 
         QPainter painter(this);
@@ -6975,6 +6979,7 @@ void TemperatureControllerPanel::setupUi()
         button->setProperty("temperatureChannelSelector", true);
         button->setCheckable(true);
         button->setCursor(Qt::PointingHandCursor);
+        button->setFocusPolicy(Qt::TabFocus);
         button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         button->setFixedSize(72, 34);
         button->setText(index == 0 ? QStringLiteral("通道1") : QStringLiteral("通道2"));
@@ -6990,6 +6995,7 @@ void TemperatureControllerPanel::setupUi()
     common_settings_button_->setProperty("temperatureChannelSelector", true);
     common_settings_button_->setCheckable(true);
     common_settings_button_->setCursor(Qt::PointingHandCursor);
+    common_settings_button_->setFocusPolicy(Qt::TabFocus);
     common_settings_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     common_settings_button_->setFixedSize(88, 34);
     common_settings_button_->setText(QStringLiteral("通用设置"));
@@ -7250,6 +7256,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
         auto *button = new QPushButton(text, bar);
         button->setCheckable(true);
         button->setCursor(Qt::PointingHandCursor);
+        button->setFocusPolicy(Qt::TabFocus);
         button->setProperty("temperatureChannelSubSelector", true);
         button->setFixedHeight(30);
         button->setMinimumWidth(86);
@@ -9702,8 +9709,8 @@ void MainWindow::loadModernStyleSheet()
             "TemperatureControllerPanel QFrame#temperatureChannelTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
             "TemperatureControllerPanel QFrame#temperatureChannelSubTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
             "TemperatureControllerPanel QStackedWidget#temperatureChannelStack { background-color: transparent; border: none; }"
-            "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 34px; max-height: 34px; padding: 0px 10px; text-align: center; }"
-            "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 30px; max-height: 30px; padding: 0px 10px; text-align: center; }"
+            "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 34px; max-height: 34px; padding: 0px 10px; text-align: center; outline: none; }"
+            "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 30px; max-height: 30px; padding: 0px 10px; text-align: center; outline: none; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
@@ -9721,8 +9728,8 @@ QString temperatureControllerConfigStyleSheet()
         "TemperatureControllerPanel QFrame#temperatureChannelTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
         "TemperatureControllerPanel QFrame#temperatureChannelSubTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
         "TemperatureControllerPanel QStackedWidget#temperatureChannelStack { background-color: transparent; border: none; }"
-        "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 34px; max-height: 34px; padding: 0px 10px; text-align: center; }"
-        "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 30px; max-height: 30px; padding: 0px 10px; text-align: center; }"
+        "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 34px; max-height: 34px; padding: 0px 10px; text-align: center; outline: none; }"
+        "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 30px; max-height: 30px; padding: 0px 10px; text-align: center; outline: none; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"

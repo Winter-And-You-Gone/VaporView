@@ -2678,12 +2678,15 @@ int main(int argc, char **argv)
     require(temperatureConfigChannelButton1->isCheckable() &&
                 temperatureConfigChannelButton2->isCheckable() &&
                 temperatureCommonSettingsButton->isCheckable() &&
+                temperatureConfigChannelButton1->focusPolicy() == Qt::TabFocus &&
+                temperatureConfigChannelButton2->focusPolicy() == Qt::TabFocus &&
+                temperatureCommonSettingsButton->focusPolicy() == Qt::TabFocus &&
                 temperatureConfigChannelButton1->isChecked() &&
                 !temperatureConfigChannelButton2->isChecked() &&
                 !temperatureCommonSettingsButton->isChecked() &&
                 temperatureChannelTopControlsStack->currentIndex() == 0 &&
                 temperatureChannelStack->currentIndex() == 0,
-            "temperature channel top bar defaults to channel 1");
+            "temperature channel top bar defaults to channel 1 without mouse-click focus frames");
     require(temperaturePanel->minimumWidth() == 0 &&
                 temperaturePanel->sizePolicy().horizontalPolicy() == QSizePolicy::Ignored &&
                 temperatureConfigCard->minimumWidth() == 0 &&
@@ -2865,6 +2868,10 @@ int main(int argc, char **argv)
                                  QStringLiteral("background-color: transparent"),
                                  "temperature channel top bar buttons override the global primary button fill");
     requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] {"),
+                                 QStringLiteral("outline: none"),
+                                 "temperature channel top bar buttons suppress native dotted focus outlines");
+    requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked {"),
                                  QStringLiteral("font-weight: 600"),
                                  "temperature channel top bar marks the selected channel without native tab chrome");
@@ -2876,6 +2883,10 @@ int main(int argc, char **argv)
                                  QStringLiteral("TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"] {"),
                                  QStringLiteral("background-color: transparent"),
                                  "temperature lower parameter selector buttons override the global primary button fill");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"] {"),
+                                 QStringLiteral("outline: none"),
+                                 "temperature lower parameter selector buttons suppress native dotted focus outlines");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"]:checked {"),
                                  QStringLiteral("font-weight: 600"),
@@ -2921,6 +2932,10 @@ int main(int argc, char **argv)
                 temperatureChannelSensorConfigButton != nullptr &&
                 temperatureChannelConfigSubStack != nullptr,
             "temperature channel exposes lower common, advanced, and sensor config tabs");
+    require(temperatureChannelCommonParamsButton->focusPolicy() == Qt::TabFocus &&
+                temperatureChannelAdvancedParamsButton->focusPolicy() == Qt::TabFocus &&
+                temperatureChannelSensorConfigButton->focusPolicy() == Qt::TabFocus,
+            "temperature lower parameter tabs keep keyboard tab focus without mouse-click focus frames");
     require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
                 temperatureChannelConfigSubStack->currentWidget()->objectName() ==
                     QStringLiteral("temperatureChannelCommonParamsPageChannel1") &&
