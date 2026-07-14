@@ -2849,12 +2849,12 @@ int main(int argc, char **argv)
                               temperatureCommonSettingsButton->size());
     require(topCommonRect.right() < stackRectInCard.right(),
             "temperature common settings selector stays inside the compact top bar");
-    require(temperatureChannelSelectorRow->isAncestorOf(factoryResetButton) &&
-                !temperatureChannelStack->isAncestorOf(factoryResetButton) &&
+    require(temperatureChannelStack->isAncestorOf(factoryResetButton) &&
+                !temperatureChannelSelectorRow->isAncestorOf(factoryResetButton) &&
                 !temperatureChannelTopBar->isAncestorOf(factoryResetButton) &&
                 !factoryResetButton->isVisible() &&
                 !factoryResetButton->icon().isNull(),
-            "temperature factory reset button sits beside common settings and starts hidden");
+            "temperature factory reset button belongs to the common settings page and starts hidden");
     require(enableSwitch->height() == 34 &&
                 enableSwitch->width() == 106 &&
                 enableSwitch2->height() == 34 &&
@@ -2879,44 +2879,51 @@ int main(int argc, char **argv)
     clickWidget(temperatureCommonSettingsButton, 150);
     activateLayouts(&window);
     const int commonStackHeight = temperatureChannelStack->height();
-    require(temperatureChannelTopControlsStack->isVisible() &&
-                temperatureChannelTopControlsStack->currentIndex() == 2 &&
+    require(!temperatureChannelTopControlsStack->isVisible() &&
                 temperatureChannelStack->currentIndex() == 2 &&
-                std::abs(commonStackHeight - channel1StackHeight) <= 1 &&
+                commonStackHeight == 126 &&
+                commonStackHeight < channel1StackHeight &&
                 std::abs(temperatureChannelTopRow->height() - channel1TopRowHeight) <= 1 &&
-                std::abs(temperatureConfigCard->height() - channel1ConfigCardHeight) <= 1 &&
+                temperatureConfigCard->height() < channel1ConfigCardHeight &&
                 factoryResetButton->isVisible() &&
                 !temperatureConfigChannelButton1->isChecked() &&
                 !temperatureConfigChannelButton2->isChecked() &&
                 temperatureCommonSettingsButton->isChecked(),
-            "temperature top bar switches to a common settings page with common top controls visible");
-    const QRect commonButtonRectInSelector(temperatureCommonSettingsButton->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
-                                           temperatureCommonSettingsButton->size());
-    const QRect factoryResetRectInSelector(factoryResetButton->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
-                                           factoryResetButton->size());
-    const QRect commonAddressRowRect(temperatureChannelSelectorRow->mapFromGlobal(addressSpin->parentWidget()->mapToGlobal(QPoint(0, 0))),
+            "temperature top bar switches to a compact three-row common settings page");
+    const QRect selectorBarRectInCard(temperatureChannelTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                      temperatureChannelTopBar->size());
+    const QRect commonAddressRowRect(addressSpin->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                      addressSpin->parentWidget()->size());
-    const QRect commonBaudRowRect(temperatureChannelSelectorRow->mapFromGlobal(rs485BaudCombo->parentWidget()->mapToGlobal(QPoint(0, 0))),
+    const QRect commonBaudRowRect(rs485BaudCombo->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                   rs485BaudCombo->parentWidget()->size());
+    const QRect commonOvertempRowRect(overtempOutputCombo->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                      overtempOutputCombo->parentWidget()->size());
+    const QRect commonInternalRowRect(commonInternalTemperatureEdit->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                      commonInternalTemperatureEdit->parentWidget()->size());
+    const QRect factoryResetRectInCard(factoryResetButton->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                       factoryResetButton->size());
     const QRect commonBaudComboRectInCard(rs485BaudCombo->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                           rs485BaudCombo->size());
-    require(factoryResetRectInSelector.left() > commonButtonRectInSelector.right() &&
-                factoryResetRectInSelector.right() < commonAddressRowRect.left() &&
+    require(commonAddressRowRect.top() > selectorBarRectInCard.bottom() &&
                 commonAddressRowRect.right() < commonBaudRowRect.left() &&
-                std::abs(factoryResetRectInSelector.center().y() - commonAddressRowRect.center().y()) <= 2 &&
-                std::abs(commonAddressRowRect.center().y() - commonBaudRowRect.center().y()) <= 2,
-            "temperature common address and baud controls sit to the right of factory reset");
+                std::abs(commonAddressRowRect.center().y() - commonBaudRowRect.center().y()) <= 2 &&
+                commonOvertempRowRect.top() > commonAddressRowRect.bottom() &&
+                commonOvertempRowRect.right() < commonInternalRowRect.left() &&
+                std::abs(commonOvertempRowRect.center().y() - commonInternalRowRect.center().y()) <= 2 &&
+                factoryResetRectInCard.top() > commonOvertempRowRect.bottom() &&
+                std::abs(commonAddressRowRect.left() - commonOvertempRowRect.left()) <= 2 &&
+                std::abs(commonOvertempRowRect.left() - factoryResetRectInCard.left()) <= 2,
+            "temperature common settings follow selector, RS485, values, and factory-reset rows");
     require(rs485BaudCombo->width() <= 100 &&
                 commonBaudComboRectInCard.right() <= temperatureConfigCard->rect().right() - 12,
             "temperature common RS485 baud combo stays compact and leaves room for its right border");
-    const QRect commonOvertempRowRect(overtempOutputCombo->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
-                                      overtempOutputCombo->parentWidget()->size());
-    const QRect commonInternalRowRect(commonInternalTemperatureEdit->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
-                                      commonInternalTemperatureEdit->parentWidget()->size());
-    require(std::abs(commonOvertempRowRect.top() - commonInternalRowRect.top()) <= 2 &&
-                commonInternalRowRect.left() - commonOvertempRowRect.right() <= 14 &&
-                commonInternalRowRect.bottom() <= temperatureChannelStack->rect().bottom(),
-            "temperature common settings fields stay close and fit inside the stack without overlap or clipping");
+    const QList<QLabel*> overtempLabels =
+        overtempOutputCombo->parentWidget()->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
+    require(!overtempLabels.isEmpty() &&
+                overtempLabels.first()->property("temperatureOvertempWarning").toBool() &&
+                overtempLabels.first()->palette().color(QPalette::WindowText) ==
+                    VaporView::appThemeColor(VaporView::AppThemeColor::Danger, false),
+            "temperature over-temperature output label is rendered in danger red");
     const QRect commonCardRectInPanel(temperatureConfigCard->mapTo(temperaturePanel, QPoint(0, 0)),
                                       temperatureConfigCard->size());
     const QRect commonPlotRectInPanel(temperatureConfigPlot->mapTo(temperaturePanel, QPoint(0, 0)),
@@ -3206,10 +3213,15 @@ int main(int argc, char **argv)
                              "temperature output enable switch lives beside the channel selectors");
     requireTopBarFieldLayout(sensorModelSelector1,
                              "temperature sensor model radio selector lives in the channel top row");
-    requireTopBarFieldLayout(addressSpin,
-                             "temperature common RS485 address field remains in the common top row");
-    requireTopBarFieldLayout(rs485BaudCombo,
-                             "temperature common RS485 baud field remains in the common top row");
+    require(addressSpin->parentWidget() != nullptr &&
+                rs485BaudCombo->parentWidget() != nullptr &&
+                addressSpin->parentWidget()->objectName() == QStringLiteral("temperatureTopBarField") &&
+                rs485BaudCombo->parentWidget()->objectName() == QStringLiteral("temperatureTopBarField") &&
+                temperatureChannelStack->isAncestorOf(addressSpin) &&
+                temperatureChannelStack->isAncestorOf(rs485BaudCombo) &&
+                !temperatureChannelTopControlsStack->isAncestorOf(addressSpin) &&
+                !temperatureChannelTopControlsStack->isAncestorOf(rs485BaudCombo),
+            "temperature common RS485 fields live on the second common-settings row");
     auto requireCommonFieldRowLayout = [temperatureChannelStack](QWidget *editor, const char *message) {
         require(editor != nullptr && editor->parentWidget() != nullptr, message);
         QWidget *row = editor->parentWidget();
@@ -3448,9 +3460,9 @@ int main(int argc, char **argv)
                 sensorLastRowRect.bottom() < temperatureChannelConfigSubStack->currentWidget()->height() &&
                 sensorPageBottomUnusedHeight >= 0,
             "temperature sensor grid starts close to the model row without clipping");
-    require(temperatureChannelSelectorRow->isAncestorOf(factoryResetButton) &&
-                !temperatureChannelStack->isAncestorOf(factoryResetButton),
-            "temperature factory reset button lives beside the common settings selector");
+    require(temperatureChannelStack->isAncestorOf(factoryResetButton) &&
+                !temperatureChannelSelectorRow->isAncestorOf(factoryResetButton),
+            "temperature factory reset button lives on the last common-settings row");
     if (checkedSidebarButton && !checkedSidebarButton->isChecked())
     {
         clickWidget(checkedSidebarButton, 150);

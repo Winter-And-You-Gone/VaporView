@@ -920,7 +920,7 @@ constexpr int kTemperatureControllerTopControlsHeight = 38;
 constexpr int kTemperatureControllerChannelConfigSubStackHeight = 128;
 constexpr int kTemperatureControllerChannelStackHeight =
     kTemperatureControllerChannelConfigSubStackHeight + 38;
-constexpr int kTemperatureControllerCommonStackHeight = kTemperatureControllerChannelStackHeight;
+constexpr int kTemperatureControllerCommonStackHeight = 126;
 constexpr int kTemperatureControllerHistoryLimit = 240;
 constexpr int kRemotePacketRateWindowMs = 5000;
 constexpr qint64 kTcpRecordingStatusRefreshMs = 500;
@@ -7084,27 +7084,12 @@ void TemperatureControllerPanel::setupUi()
     channelTopBarLayout->addWidget(common_settings_button_);
     channelSelectorRowLayout->addWidget(channel_top_bar_, 0, Qt::AlignVCenter);
 
-    common_.factory_reset_button = new QPushButton(QStringLiteral("恢复出厂设置"), channelSelectorRow);
-    common_.factory_reset_button->setObjectName(QStringLiteral("temperatureFactoryResetButton"));
-    common_.factory_reset_button->setCursor(Qt::PointingHandCursor);
-    common_.factory_reset_button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    common_.factory_reset_button->setFixedSize(142, 34);
-    common_.factory_reset_button->setIconSize(QSize(18, 18));
-    common_.factory_reset_button->setIcon(createLucideIcon(QStringLiteral("refresh-cw"),
-                                                           appThemeColor(AppThemeColor::ToolbarRed, VaporView::isDarkThemeEnabled())));
-    common_.factory_reset_button->setVisible(false);
-    connect(common_.factory_reset_button, &QPushButton::clicked, this, [this]() {
-        emit factoryResetRequested();
-    });
-    channelSelectorRowLayout->addWidget(common_.factory_reset_button, 0, Qt::AlignVCenter);
-
     channel_top_controls_stack_ = new QStackedWidget(channelSelectorRow);
     channel_top_controls_stack_->setObjectName(QStringLiteral("temperatureChannelTopControlsStack"));
     channel_top_controls_stack_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     channel_top_controls_stack_->setFixedHeight(kTemperatureControllerTopControlsHeight);
     channel_top_controls_stack_->addWidget(createChannelTopControlsPage(0));
     channel_top_controls_stack_->addWidget(createChannelTopControlsPage(1));
-    channel_top_controls_stack_->addWidget(createCommonTopControlsPage());
     channelSelectorRowLayout->addWidget(channel_top_controls_stack_, 0, Qt::AlignVCenter);
     channelTopRowLayout->addWidget(channelSelectorRow, 0, Qt::AlignLeft);
     configCardLayout->addWidget(channelTopRow, 0, Qt::AlignLeft);
@@ -7252,9 +7237,9 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
     return page;
 }
 
-QWidget *TemperatureControllerPanel::createCommonTopControlsPage()
+QWidget *TemperatureControllerPanel::createCommonTopControlsPage(QWidget *parent)
 {
-    QWidget *page = new QWidget(channel_top_controls_stack_);
+    QWidget *page = new QWidget(parent);
     page->setObjectName(QStringLiteral("temperatureChannelTopControlsPageCommon"));
     page->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     page->setFixedHeight(kTemperatureControllerTopControlsHeight);
@@ -7705,14 +7690,22 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
 {
     QWidget *page = new QWidget(channel_stack_);
     page->setObjectName(QStringLiteral("temperatureCommonSettingsPage"));
-    page->setFixedHeight(kTemperatureControllerChannelStackHeight);
-    auto *layout = new QGridLayout(page);
-    layout->setContentsMargins(16, 8, 16, 8);
-    layout->setHorizontalSpacing(12);
-    layout->setVerticalSpacing(8);
-    layout->setColumnStretch(0, 0);
-    layout->setColumnStretch(1, 0);
-    layout->setColumnStretch(2, 1);
+    page->setFixedHeight(kTemperatureControllerCommonStackHeight);
+    auto *layout = new QVBoxLayout(page);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(8);
+    layout->setAlignment(Qt::AlignTop);
+
+    QWidget *connectionRow = createCommonTopControlsPage(page);
+    layout->addWidget(connectionRow, 0, Qt::AlignLeft);
+
+    auto *settingsRow = new QWidget(page);
+    settingsRow->setObjectName(QStringLiteral("temperatureCommonSettingsValuesRow"));
+    settingsRow->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    settingsRow->setFixedHeight(kTemperatureControllerConfigRowHeight);
+    auto *settingsRowLayout = new QHBoxLayout(settingsRow);
+    settingsRowLayout->setContentsMargins(0, 0, 0, 0);
+    settingsRowLayout->setSpacing(12);
 
     auto makeFieldLabel = [this](const QString& text) {
         auto *label = new QLabel(text, this);
@@ -7722,10 +7715,10 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
         return label;
     };
 
-    auto addField = [layout, &makeFieldLabel](int row, int column, const QString& labelText, QWidget *editor, QLabel *&label) {
+    auto addField = [settingsRowLayout, &makeFieldLabel](const QString& labelText, QWidget *editor, QLabel *&label) {
         label = makeFieldLabel(labelText);
         editor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        auto *cell = new QWidget();
+        auto *cell = new QWidget(settingsRowLayout->parentWidget());
         cell->setObjectName(QStringLiteral("temperatureCommonFieldRow"));
         cell->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         cell->setFixedHeight(kTemperatureControllerConfigRowHeight);
@@ -7734,7 +7727,7 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
         cellLayout->setSpacing(8);
         cellLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
         cellLayout->addWidget(editor, 0, Qt::AlignLeft | Qt::AlignVCenter);
-        layout->addWidget(cell, row, column, Qt::AlignLeft | Qt::AlignVCenter);
+        settingsRowLayout->addWidget(cell, 0, Qt::AlignVCenter);
     };
 
     common_.overtemp_output_combo = new SingleLevelPopupComboBox(this);
@@ -7743,14 +7736,30 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
     common_.overtemp_output_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     common_.overtemp_output_combo->addItem(QStringLiteral("继续输出"), 0);
     common_.overtemp_output_combo->addItem(QStringLiteral("关闭输出"), 1);
-    addField(0, 0, QStringLiteral("过温输出模式"), common_.overtemp_output_combo, common_.overtemp_output_label_text);
+    addField(QStringLiteral("过温输出模式"), common_.overtemp_output_combo, common_.overtemp_output_label_text);
+    common_.overtemp_output_label_text->setProperty("temperatureOvertempWarning", true);
 
     common_.internal_temperature_edit = new QLineEdit(this);
     common_.internal_temperature_edit->setObjectName(QStringLiteral("temperatureCommonInternalTemperatureEdit"));
     common_.internal_temperature_edit->setReadOnly(true);
     common_.internal_temperature_edit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     common_.internal_temperature_edit->setFixedWidth(kTemperatureControllerInputWidth);
-    addField(0, 1, QStringLiteral("温控器自身温度(°C)"), common_.internal_temperature_edit, common_.internal_temperature_label_text);
+    addField(QStringLiteral("温控器自身温度(°C)"), common_.internal_temperature_edit, common_.internal_temperature_label_text);
+
+    layout->addWidget(settingsRow, 0, Qt::AlignLeft);
+
+    common_.factory_reset_button = new QPushButton(QStringLiteral("恢复出厂设置"), page);
+    common_.factory_reset_button->setObjectName(QStringLiteral("temperatureFactoryResetButton"));
+    common_.factory_reset_button->setCursor(Qt::PointingHandCursor);
+    common_.factory_reset_button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    common_.factory_reset_button->setFixedSize(142, 34);
+    common_.factory_reset_button->setIconSize(QSize(18, 18));
+    common_.factory_reset_button->setIcon(createLucideIcon(QStringLiteral("refresh-cw"),
+                                                           appThemeColor(AppThemeColor::ToolbarRed, VaporView::isDarkThemeEnabled())));
+    connect(common_.factory_reset_button, &QPushButton::clicked, this, [this]() {
+        emit factoryResetRequested();
+    });
+    layout->addWidget(common_.factory_reset_button, 0, Qt::AlignLeft);
 
     connect(common_.overtemp_output_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
         emit overtempOutputModeRequested(static_cast<quint16>(common_.overtemp_output_combo->currentData().toUInt()));
@@ -7777,7 +7786,10 @@ void TemperatureControllerPanel::selectChannel(int index)
     }
     if (channel_top_controls_stack_)
     {
-        channel_top_controls_stack_->setCurrentIndex(pageIndex < 2 ? channelIndex : 2);
+        if (pageIndex < 2)
+        {
+            channel_top_controls_stack_->setCurrentIndex(channelIndex);
+        }
         const int subPageIndex = channels_[channelIndex].config_sub_stack
             ? channels_[channelIndex].config_sub_stack->currentIndex()
             : 0;
@@ -7792,13 +7804,9 @@ void TemperatureControllerPanel::selectChannel(int index)
                 channels_[channelIndex].sensor_model_field->setVisible(subPageIndex == 2);
             }
         }
-        const bool showTopControls = pageIndex == 2 || subPageIndex != 1;
+        const bool showTopControls = pageIndex < 2 && subPageIndex != 1;
         channel_top_controls_stack_->setVisible(showTopControls);
         refreshTopControlsLayout();
-    }
-    if (common_.factory_reset_button)
-    {
-        common_.factory_reset_button->setVisible(pageIndex == 2);
     }
     auto updateButton = [pageIndex](QPushButton *button, int buttonIndex) {
         if (!button)
@@ -9833,6 +9841,7 @@ QString temperatureControllerConfigStyleSheet()
         "TemperatureControllerPanel QPushButton[temperatureOutputEnableSwitch=\"true\"] { background-color: transparent; border: none; padding: 0px; margin: 0px; min-width: 106px; max-width: 106px; min-height: 34px; max-height: 34px; outline: none; }"
         "TemperatureControllerPanel QPushButton#temperatureFactoryResetButton { background-color: transparent; border: 1px solid @vv-toolbar-red; border-radius: 8px; color: @vv-toolbar-red; font-size: 14px; font-weight: 600; padding: 0px 12px; text-align: center; }"
         "TemperatureControllerPanel QPushButton#temperatureFactoryResetButton:hover { background-color: rgba(210, 74, 48, 0.10); }"
+        "TemperatureControllerPanel QLabel#fieldLabel[temperatureOvertempWarning=\"true\"] { color: @vv-danger; }"
         "TemperatureControllerPanel QLabel#fieldLabel[temperatureMaxOutputWarning=\"true\"] { color: @vv-danger; }"
         "TemperatureControllerPanel QSpinBox[temperatureMaxOutputWarning=\"true\"] { color: @vv-danger; }");
 }

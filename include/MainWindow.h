@@ -381,7 +381,7 @@ private:
 
     void setupUi();
     QWidget *createChannelTopControlsPage(int index);
-    QWidget *createCommonTopControlsPage();
+    QWidget *createCommonTopControlsPage(QWidget *parent);
     QWidget *createChannelPage(int index);
     QWidget *createChannelCommonParamsPage(int index);
     QWidget *createChannelAdvancedParamsPage(int index);
