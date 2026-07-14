@@ -381,6 +381,32 @@ void clickWidget(QWidget *widget, int waitMs = 50)
     clickWidgetAt(widget, widget->rect().center(), waitMs);
 }
 
+void doubleClickWidget(QWidget *widget, int waitMs = 50)
+{
+    require(widget != nullptr, "double-click widget exists");
+    const QPoint localPoint = widget->rect().center();
+    const QPoint globalPoint = widget->mapToGlobal(localPoint);
+    clickWidgetAt(widget, localPoint, 0);
+    QMouseEvent doubleClick(QEvent::MouseButtonDblClick,
+                            localPoint,
+                            globalPoint,
+                            Qt::LeftButton,
+                            Qt::LeftButton,
+                            Qt::NoModifier);
+    QCoreApplication::sendEvent(widget, &doubleClick);
+    QMouseEvent release(QEvent::MouseButtonRelease,
+                        localPoint,
+                        globalPoint,
+                        Qt::LeftButton,
+                        Qt::NoButton,
+                        Qt::NoModifier);
+    QCoreApplication::sendEvent(widget, &release);
+    if (waitMs > 0)
+    {
+        processEventsFor(waitMs);
+    }
+}
+
 void moveMouseOverWidgetAt(QWidget *widget, const QPoint& localPoint, int waitMs = 50)
 {
     require(widget != nullptr, "mouse-move widget exists");
@@ -1626,6 +1652,11 @@ int main(int argc, char **argv)
             "custom title logo hover shows collapse sidebar icon");
     require(customLogo->property("titleBarHover").toBool(),
             "custom title logo hover background is active");
+    doubleClickWidget(customLogo);
+    require(appSidebar->width() >= 44,
+            "custom title logo double-click applies both sidebar toggles");
+    require(customLogo->property("_vv_logo_state").toString() == QStringLiteral("close-sidebar"),
+            "custom title logo returns to the collapse icon after a double-click");
     clickWidget(customLogo);
     require(appSidebar->width() <= 1,
             "custom title logo click collapses left sidebar");

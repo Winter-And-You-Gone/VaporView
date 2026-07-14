@@ -9360,6 +9360,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             auto *mouseEvent = static_cast<QMouseEvent *>(event);
             if (mouseEvent->button() == Qt::LeftButton)
             {
+                toggleAppSidebarFromLogo();
                 return true;
             }
         }
