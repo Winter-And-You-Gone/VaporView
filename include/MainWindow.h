@@ -413,6 +413,7 @@ private:
     void selectChannelSubPage(int channelIndex, int subPageIndex);
     bool eventFilter(QObject *watched, QEvent *event) override;
     void alignSensorTopPolynomialFields(int channelIndex);
+    void updateChannelStackMinimumHeight();
     void emitSensorConfigRequest(int index);
     void updateChannelTexts();
     void updateChannelData(int index, const VaporView::TemperatureControllerChannelData& channel, bool valid);

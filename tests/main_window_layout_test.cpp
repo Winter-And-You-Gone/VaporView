@@ -3068,10 +3068,11 @@ int main(int argc, char **argv)
         temperatureChannelSubTopBar->size());
     const int subTopBarBottomGap =
         temperatureChannelStack->currentWidget()->rect().bottom() - subTopBarRectInChannelPage.bottom();
-    require(temperatureChannelStack->height() == 122 &&
-                temperatureChannelConfigSubStack->height() == 84 &&
+    require(temperatureChannelStack->height() >= temperatureChannelStack->currentWidget()->sizeHint().height() &&
+                temperatureChannelConfigSubStack->height() >=
+                    temperatureChannelConfigSubStack->currentWidget()->sizeHint().height() &&
                 subTopBarBottomGap == 0,
-            "temperature lower parameter tabs use two content rows without extra bottom margin");
+            "temperature lower parameter tabs reserve enough height for their tallest content page");
     clickWidget(temperatureChannelAdvancedParamsButton, 150);
     activateLayouts(&window);
     auto *overtempUpperSpin = temperaturePanel->findChild<QDoubleSpinBox *>(
@@ -3536,6 +3537,10 @@ int main(int argc, char **argv)
                 "temperature polynomial A4-A7 fields stay vertically aligned with the navigation bar");
         require(std::abs(lowerInputRect.left() - upperInputRect.left()) <= 2,
                 "temperature polynomial A4-A7 inputs align with A0-A3 by column");
+        require(field->height() >= polynomialEdits[static_cast<size_t>(coefficient)]->sizeHint().height() &&
+                    lowerInputRect.top() >= fieldRect.top() &&
+                    lowerInputRect.bottom() <= fieldRect.bottom(),
+                "temperature polynomial A4-A7 inputs are not clipped by their lower-row field containers");
         require(polynomialEdits[static_cast<size_t>(coefficient)]->width() > 100,
                 "temperature polynomial A4-A7 inputs remain wide enough to show their values");
         previousTopFieldRight = fieldRect.right();
@@ -3629,18 +3634,26 @@ int main(int argc, char **argv)
         temperatureChannelConfigSubStack->currentWidget()->height() - 1 - sensorLastRowRect.bottom();
     const int sensorModelToFirstRowGap =
         sensorFirstRowRectInCard.top() - sensorModelFieldRectInCard.bottom() - 1;
+    const QRect sensorLastTopInputRectInCard(
+        polynomialEdits[7]->mapTo(temperatureConfigCard, QPoint(0, 0)),
+        polynomialEdits[7]->size());
+    const QRect sensorLastTopFieldRectInCard(
+        polynomialEdits[7]->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
+        polynomialEdits[7]->parentWidget()->size());
     require(polynomialEdits[7] != nullptr &&
-                temperatureChannelStack->height() == 122 &&
-                temperatureConfigCard->height() <= 236 &&
+                temperatureChannelStack->height() >= temperatureChannelStack->currentWidget()->sizeHint().height() &&
+                temperatureConfigCard->height() >= temperatureConfigCard->sizeHint().height() &&
                 sensorConfigGrid->alignment() == Qt::AlignTop &&
                 sensorFirstRowRect.top() >= 0 &&
                 sensorFirstRowRect.top() <= 4 &&
                 sensorModelToFirstRowGap >= 0 &&
                 sensorModelToFirstRowGap <= 12 &&
                 sensorLastRowRect.bottom() < temperatureChannelConfigSubStack->currentWidget()->height() &&
+                sensorLastTopInputRectInCard.bottom() <= sensorLastTopFieldRectInCard.bottom() &&
+                sensorLastTopInputRectInCard.bottom() <= temperatureConfigCard->contentsRect().bottom() &&
                 sensorPageBottomUnusedHeight >= 0 &&
                 sensorPageBottomUnusedHeight <= 4,
-            "temperature sensor grid uses two rows without a blank third row or clipping");
+            "temperature sensor config uses the tallest page height and keeps the bottom input row visible");
     require(temperatureChannelStack->isAncestorOf(factoryResetButton) &&
                 !temperatureChannelSelectorRow->isAncestorOf(factoryResetButton),
             "temperature factory reset button lives on the last common-settings row");
