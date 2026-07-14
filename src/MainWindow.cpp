@@ -907,6 +907,7 @@ constexpr int kTemperatureControllerTopModeWidth = 132;
 constexpr int kTemperatureControllerTopTargetWidth = 172;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
 constexpr int kTemperatureControllerCompactPidInputWidth = 82;
+constexpr int kTemperatureControllerAdvancedInputWidth = 128;
 constexpr int kTemperatureControllerSensorInputWidth = 82;
 constexpr int kTemperatureControllerPtCoefficientInputWidth = 104;
 constexpr int kTemperatureControllerPolynomialInputWidth = 62;
@@ -7512,59 +7513,41 @@ QWidget *TemperatureControllerPanel::createChannelAdvancedParamsPage(int index)
 {
     QWidget *page = new QWidget(channels_[index].config_sub_stack);
     page->setObjectName(QStringLiteral("temperatureChannelAdvancedParamsPageChannel%1").arg(index + 1));
-    auto *layout = new QVBoxLayout(page);
+    auto *layout = new QGridLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(8);
+    layout->setHorizontalSpacing(6);
+    layout->setVerticalSpacing(8);
     layout->setAlignment(Qt::AlignVCenter);
+    layout->setColumnStretch(2, 1);
+    layout->setColumnStretch(5, 1);
+    layout->setRowMinimumHeight(0, kTemperatureControllerConfigRowHeight);
+    layout->setRowMinimumHeight(1, kTemperatureControllerConfigRowHeight);
     ChannelWidgets& channel = channels_[index];
 
-    auto makeRow = [page, layout]() {
-        auto *row = new QWidget(page);
-        row->setObjectName(QStringLiteral("temperatureAdvancedParamsRow"));
-        row->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        row->setFixedHeight(kTemperatureControllerConfigRowHeight);
-        auto *rowLayout = new QHBoxLayout(row);
-        rowLayout->setContentsMargins(0, 0, 0, 0);
-        rowLayout->setSpacing(0);
-        layout->addWidget(row, 0, Qt::AlignVCenter);
-        return rowLayout;
-    };
-    auto makeField = [this](const QString& labelText, QWidget *editor, QLabel *&label) {
-        label = new QLabel(labelText, this);
+    auto addField = [page, layout](int row,
+                                   int fieldColumn,
+                                   const QString& labelText,
+                                   QWidget *editor,
+                                   QLabel *&label) {
+        label = new QLabel(labelText, page);
         label->setObjectName(QStringLiteral("fieldLabel"));
         label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         label->setMinimumHeight(22);
         editor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        auto *cell = new QWidget();
-        cell->setObjectName(QStringLiteral("temperatureConfigFieldRow"));
-        cell->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        cell->setFixedHeight(kTemperatureControllerConfigRowHeight);
-        auto *cellLayout = new QHBoxLayout(cell);
-        cellLayout->setContentsMargins(0, 0, 0, 0);
-        cellLayout->setSpacing(6);
-        cellLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
-        cellLayout->addWidget(editor, 0, Qt::AlignLeft | Qt::AlignVCenter);
-        return cell;
-    };
-    auto addField = [](QHBoxLayout *row, QWidget *field) {
-        if (row->count() > 0)
-        {
-            row->addStretch(1);
-        }
-        row->addWidget(field, 0, Qt::AlignVCenter);
+        const int labelColumn = fieldColumn * 3;
+        layout->addWidget(label, row, labelColumn, Qt::AlignLeft | Qt::AlignVCenter);
+        layout->addWidget(editor, row, labelColumn + 1, Qt::AlignLeft | Qt::AlignVCenter);
     };
 
     const quint8 channelNumber = static_cast<quint8>(index + 1);
-    auto *firstRow = makeRow();
-    auto *secondRow = makeRow();
 
     channel.overtemp_upper_spin = new QDoubleSpinBox(page);
     channel.overtemp_upper_spin->setObjectName(QStringLiteral("temperatureOvertempUpperSpinChannel%1").arg(index + 1));
     channel.overtemp_upper_spin->setRange(-3000.0, 5000.0);
     channel.overtemp_upper_spin->setDecimals(5);
     channel.overtemp_upper_spin->setSingleStep(0.00001);
-    channel.overtemp_upper_spin->setFixedWidth(128);
-    addField(firstRow, makeField(QStringLiteral("高温报警值(°C)"), channel.overtemp_upper_spin, channel.overtemp_upper_label_text));
+    channel.overtemp_upper_spin->setFixedWidth(kTemperatureControllerAdvancedInputWidth);
+    addField(0, 0, QStringLiteral("高温报警值(°C)"), channel.overtemp_upper_spin, channel.overtemp_upper_label_text);
     setDangerTextPalette(channel.overtemp_upper_label_text);
 
     channel.overtemp_lower_spin = new QDoubleSpinBox(page);
@@ -7572,33 +7555,32 @@ QWidget *TemperatureControllerPanel::createChannelAdvancedParamsPage(int index)
     channel.overtemp_lower_spin->setRange(-3000.0, 5000.0);
     channel.overtemp_lower_spin->setDecimals(5);
     channel.overtemp_lower_spin->setSingleStep(0.00001);
-    channel.overtemp_lower_spin->setFixedWidth(128);
-    addField(firstRow, makeField(QStringLiteral("低温报警值(°C)"), channel.overtemp_lower_spin, channel.overtemp_lower_label_text));
+    channel.overtemp_lower_spin->setFixedWidth(kTemperatureControllerAdvancedInputWidth);
+    addField(0, 1, QStringLiteral("低温报警值(°C)"), channel.overtemp_lower_spin, channel.overtemp_lower_label_text);
     setDangerTextPalette(channel.overtemp_lower_label_text);
-    firstRow->addStretch(1);
 
     channel.temperature_slope_spin = new QDoubleSpinBox(page);
     channel.temperature_slope_spin->setObjectName(QStringLiteral("temperatureSlopeSpinChannel%1").arg(index + 1));
     channel.temperature_slope_spin->setRange(0.0, 10.0);
     channel.temperature_slope_spin->setDecimals(3);
     channel.temperature_slope_spin->setSingleStep(0.001);
-    channel.temperature_slope_spin->setFixedWidth(kTemperatureControllerCompactInputWidth);
-    addField(secondRow, makeField(QStringLiteral("温度变化速率(°C/s)"), channel.temperature_slope_spin, channel.temperature_slope_label_text));
+    channel.temperature_slope_spin->setFixedWidth(kTemperatureControllerAdvancedInputWidth);
+    addField(1, 0, QStringLiteral("温度变化速率(°C/s)"), channel.temperature_slope_spin, channel.temperature_slope_label_text);
 
     channel.startup_delay_spin = new QSpinBox(page);
     channel.startup_delay_spin->setObjectName(QStringLiteral("temperatureStartupDelaySpinChannel%1").arg(index + 1));
     channel.startup_delay_spin->setRange(3, 180);
     channel.startup_delay_spin->setSuffix(QStringLiteral(" s"));
-    channel.startup_delay_spin->setFixedWidth(kTemperatureControllerCompactInputWidth);
-    addField(secondRow, makeField(QStringLiteral("开机输出延时(s)"), channel.startup_delay_spin, channel.startup_delay_label_text));
+    channel.startup_delay_spin->setFixedWidth(kTemperatureControllerAdvancedInputWidth);
+    addField(1, 1, QStringLiteral("开机输出延时(s)"), channel.startup_delay_spin, channel.startup_delay_label_text);
 
     channel.sensor_resistance_edit = new QLineEdit(page);
     channel.sensor_resistance_edit->setObjectName(QStringLiteral("temperatureSensorResistanceEditChannel%1").arg(index + 1));
     channel.sensor_resistance_edit->setReadOnly(true);
     channel.sensor_resistance_edit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    channel.sensor_resistance_edit->setFixedWidth(128);
+    channel.sensor_resistance_edit->setFixedWidth(kTemperatureControllerAdvancedInputWidth);
     channel.sensor_resistance_edit->setText(QStringLiteral("---"));
-    addField(secondRow, makeField(QStringLiteral("传感器电阻(Ω)"), channel.sensor_resistance_edit, channel.sensor_resistance_label_text));
+    addField(1, 2, QStringLiteral("传感器电阻(Ω)"), channel.sensor_resistance_edit, channel.sensor_resistance_label_text);
 
     connect(channel.overtemp_upper_spin, &QDoubleSpinBox::editingFinished, this, [this, channelNumber, spin = channel.overtemp_upper_spin]() {
         emit overtempUpperRequested(channelNumber, spin->value());

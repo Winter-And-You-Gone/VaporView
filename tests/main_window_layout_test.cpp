@@ -3102,15 +3102,35 @@ int main(int argc, char **argv)
                 startupDelaySpin->value() == 15 &&
                 sensorResistanceEdit->text() == QStringLiteral("11948.492300"),
             "temperature professional controls show values received from the RD105 status frame");
-    require(overtempUpperSpin->parentWidget()->parentWidget() ==
-                overtempLowerSpin->parentWidget()->parentWidget() &&
-                temperatureSlopeSpin->parentWidget()->parentWidget() ==
-                startupDelaySpin->parentWidget()->parentWidget() &&
-                startupDelaySpin->parentWidget()->parentWidget() ==
-                sensorResistanceEdit->parentWidget()->parentWidget() &&
-                overtempUpperSpin->parentWidget()->parentWidget() !=
-                temperatureSlopeSpin->parentWidget()->parentWidget(),
+    QWidget *advancedParamsPage = temperatureChannelConfigSubStack->currentWidget();
+    auto *advancedParamsGrid = qobject_cast<QGridLayout *>(advancedParamsPage->layout());
+    require(advancedParamsGrid != nullptr &&
+                advancedParamsGrid->itemAtPosition(0, 1) != nullptr &&
+                advancedParamsGrid->itemAtPosition(0, 1)->widget() == overtempUpperSpin &&
+                advancedParamsGrid->itemAtPosition(0, 4) != nullptr &&
+                advancedParamsGrid->itemAtPosition(0, 4)->widget() == overtempLowerSpin &&
+                advancedParamsGrid->itemAtPosition(1, 1) != nullptr &&
+                advancedParamsGrid->itemAtPosition(1, 1)->widget() == temperatureSlopeSpin &&
+                advancedParamsGrid->itemAtPosition(1, 4) != nullptr &&
+                advancedParamsGrid->itemAtPosition(1, 4)->widget() == startupDelaySpin &&
+                advancedParamsGrid->itemAtPosition(1, 7) != nullptr &&
+                advancedParamsGrid->itemAtPosition(1, 7)->widget() == sensorResistanceEdit,
             "temperature professional parameters use two fields on row one and three fields on row two");
+    const QRect overtempUpperRect(overtempUpperSpin->mapTo(advancedParamsPage, QPoint(0, 0)), overtempUpperSpin->size());
+    const QRect overtempLowerRect(overtempLowerSpin->mapTo(advancedParamsPage, QPoint(0, 0)), overtempLowerSpin->size());
+    const QRect temperatureSlopeRect(temperatureSlopeSpin->mapTo(advancedParamsPage, QPoint(0, 0)), temperatureSlopeSpin->size());
+    const QRect startupDelayRect(startupDelaySpin->mapTo(advancedParamsPage, QPoint(0, 0)), startupDelaySpin->size());
+    const QRect sensorResistanceRect(sensorResistanceEdit->mapTo(advancedParamsPage, QPoint(0, 0)), sensorResistanceEdit->size());
+    require(overtempUpperRect.left() == temperatureSlopeRect.left() &&
+                overtempLowerRect.left() == startupDelayRect.left() &&
+                overtempUpperRect.width() == overtempLowerRect.width() &&
+                overtempUpperRect.width() == temperatureSlopeRect.width() &&
+                overtempUpperRect.width() == startupDelayRect.width() &&
+                overtempUpperRect.width() == sensorResistanceRect.width() &&
+                overtempUpperRect.top() == overtempLowerRect.top() &&
+                temperatureSlopeRect.top() == startupDelayRect.top() &&
+                temperatureSlopeRect.top() == sensorResistanceRect.top(),
+            "temperature professional input fields align by column and use one shared width");
     clickWidget(temperatureChannelCommonParamsButton, 150);
     activateLayouts(&window);
     require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
