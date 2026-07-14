@@ -4031,25 +4031,35 @@ int main(int argc, char **argv)
                 serialConfigPageRect.right() - rightmostRemoteButtonRight <= 32,
             "device configuration serial card right edge stays close to the compact remote buttons");
 
+    auto *epsilonPacketCustomCheck =
+        deviceConfigPage->findChild<QCheckBox *>(QStringLiteral("epsilonPacketCustomCheck"));
+    require(epsilonPacketCustomCheck != nullptr,
+            "device configuration page exposes the EPSILON custom packet-rate checkbox");
     QFrame *epsilonConfigCard = nullptr;
-    for (QFrame *card : deviceConfigPage->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard")))
+    for (QWidget *ancestor = epsilonPacketCustomCheck; ancestor; ancestor = ancestor->parentWidget())
     {
-        const QList<QComboBox*> packetCombos = card->findChildren<QComboBox *>();
-        int packetRateComboCount = 0;
-        for (QComboBox *combo : packetCombos)
-        {
-            if (combo->property("epsilonPacketId").isValid())
-            {
-                ++packetRateComboCount;
-            }
-        }
-        if (packetRateComboCount == 8)
+        auto *card = qobject_cast<QFrame *>(ancestor);
+        if (card && card->objectName() == QStringLiteral("epsilonSectionCard"))
         {
             epsilonConfigCard = card;
             break;
         }
     }
-    require(epsilonConfigCard != nullptr, "device configuration page embeds all EPSILON packet-rate controls");
+    require(epsilonConfigCard != nullptr,
+            "device configuration page embeds the EPSILON packet-rate card");
+    QList<uint> packetRateIds;
+    for (QComboBox *combo : epsilonConfigCard->findChildren<QComboBox *>())
+    {
+        if (combo->property("epsilonPacketId").isValid())
+        {
+            packetRateIds.append(combo->property("epsilonPacketId").toUInt());
+        }
+    }
+    std::sort(packetRateIds.begin(), packetRateIds.end());
+    const QList<uint> expectedPacketRateIds = {
+        0x40, 0x41, 0x42, 0x50, 0x53, 0x59, 0x5A, 0x5C, 0x5D, 0x63, 0x64};
+    require(packetRateIds == expectedPacketRateIds,
+            "device EPSILON configuration card exposes all 11 packet-rate controls");
     require(epsilonConfigCard->isVisible(), "device EPSILON configuration card is visible in local mode");
     require(epsilonConfigCard->parentWidget() == serialConfigCard->parentWidget(),
             "device EPSILON configuration card is a sibling of the serial configuration card");
@@ -4059,8 +4069,6 @@ int main(int argc, char **argv)
                         QStringList{QStringLiteral("EPSILON 配置"), QStringLiteral("EPSILON Configuration")},
                         QStringLiteral("sliders-vertical"),
                         "device EPSILON configuration card uses the standard icon title bar");
-    auto *epsilonPacketCustomCheck =
-        epsilonConfigCard->findChild<QCheckBox *>(QStringLiteral("epsilonPacketCustomCheck"));
     require(epsilonPacketCustomCheck != nullptr &&
                 epsilonPacketCustomCheck->focusPolicy() == Qt::TabFocus,
             "device EPSILON custom packet-rate checkbox keeps keyboard focus without retaining mouse-click focus");
