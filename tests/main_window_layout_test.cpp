@@ -3497,28 +3497,47 @@ int main(int argc, char **argv)
     const QRect polynomialFieldsRectInSubPageRow(
         temperatureSensorTopPolynomialFields->mapTo(temperatureChannelSubPageRow, QPoint(0, 0)),
         temperatureSensorTopPolynomialFields->size());
+    const QRect subTopBarRectInSubPageRow(
+        temperatureChannelSubTopBar->mapTo(temperatureChannelSubPageRow, QPoint(0, 0)),
+        temperatureChannelSubTopBar->size());
+    const QRect topBarRectInSelectorRow(
+        temperatureChannelTopBar->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
+        temperatureChannelTopBar->size());
+    const QRect topControlsRectInSelectorRow(
+        temperatureChannelTopControlsStack->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
+        temperatureChannelTopControlsStack->size());
+    const int topNavigationGap =
+        topControlsRectInSelectorRow.left() - topBarRectInSelectorRow.right() - 1;
+    const int lowerNavigationGap =
+        polynomialFieldsRectInSubPageRow.left() - subTopBarRectInSubPageRow.right() - 1;
+    require(std::abs(temperatureChannelSubTopBar->width() - temperatureChannelTopBar->width()) <= 10 &&
+                lowerNavigationGap == topNavigationGap,
+            "temperature lower navigation matches the upper navigation width and following gap");
     require(polynomialFieldsRectInSubPageRow.left() > sensorConfigButtonRectInSubPageRow.right() &&
                 std::abs(polynomialFieldsRectInSubPageRow.right() -
                          temperatureChannelSubPageRow->rect().right()) <= 1,
             "temperature polynomial A4-A7 group fills the row to the right of the navigation bar");
     int previousTopFieldRight = sensorConfigButtonRectInSubPageRow.right();
-    int topFieldWidth = -1;
-    int topInputWidth = -1;
     for (int coefficient = 4; coefficient < 8; ++coefficient)
     {
         QWidget *field = polynomialEdits[static_cast<size_t>(coefficient)]->parentWidget();
         const QRect fieldRect(field->mapTo(temperatureChannelSubPageRow, QPoint(0, 0)), field->size());
-        if (topFieldWidth < 0)
-        {
-            topFieldWidth = fieldRect.width();
-            topInputWidth = polynomialEdits[static_cast<size_t>(coefficient)]->width();
-        }
-        require(fieldRect.left() > previousTopFieldRight &&
-                    std::abs(fieldRect.center().y() - sensorConfigButtonRectInSubPageRow.center().y()) <= 2 &&
-                    std::abs(fieldRect.width() - topFieldWidth) <= 1 &&
-                    std::abs(polynomialEdits[static_cast<size_t>(coefficient)]->width() - topInputWidth) <= 1 &&
-                    polynomialEdits[static_cast<size_t>(coefficient)]->width() > 100,
-                "temperature polynomial A4-A7 fields are enlarged and evenly fill the row beside the tabs");
+        const QRect upperInputRect(
+            temperatureChannelSubPageRow->mapFromGlobal(
+                polynomialEdits[static_cast<size_t>(coefficient - 4)]->mapToGlobal(QPoint(0, 0))),
+            polynomialEdits[static_cast<size_t>(coefficient - 4)]->size());
+        const QRect lowerInputRect(
+            temperatureChannelSubPageRow->mapFromGlobal(
+                polynomialEdits[static_cast<size_t>(coefficient)]->mapToGlobal(QPoint(0, 0))),
+            polynomialEdits[static_cast<size_t>(coefficient)]->size());
+        require(fieldRect.left() > previousTopFieldRight,
+                "temperature polynomial A4-A7 fields remain ordered without overlap");
+        require(std::abs(fieldRect.center().y() - sensorConfigButtonRectInSubPageRow.center().y()) <= 2,
+                "temperature polynomial A4-A7 fields stay vertically aligned with the navigation bar");
+        require(std::abs(lowerInputRect.left() - upperInputRect.left()) <= 2,
+                "temperature polynomial A4-A7 inputs align with A0-A3 by column");
+        require(polynomialEdits[static_cast<size_t>(coefficient)]->width() > 100,
+                "temperature polynomial A4-A7 inputs remain wide enough to show their values");
         previousTopFieldRight = fieldRect.right();
     }
     clickWidget(temperatureChannelCommonParamsButton, 100);

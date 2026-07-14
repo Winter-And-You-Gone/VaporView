@@ -6947,6 +6947,93 @@ TemperatureControllerPanel::TemperatureControllerPanel(QWidget *parent)
     setupUi();
 }
 
+bool TemperatureControllerPanel::eventFilter(QObject *watched, QEvent *event)
+{
+    const QVariant channelProperty = watched->property("temperatureSensorPolynomialChannel");
+    if (channelProperty.isValid() &&
+        (event->type() == QEvent::Show || event->type() == QEvent::Resize))
+    {
+        alignSensorTopPolynomialFields(channelProperty.toInt());
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
+void TemperatureControllerPanel::alignSensorTopPolynomialFields(int channelIndex)
+{
+    if (channelIndex < 0 || channelIndex >= static_cast<int>(channels_.size()))
+    {
+        return;
+    }
+    ChannelWidgets& channel = channels_[channelIndex];
+    QWidget *subPageRow = channel.sensor_config_top_bar
+        ? channel.sensor_config_top_bar->parentWidget()
+        : nullptr;
+    QWidget *fieldsGroup = subPageRow
+        ? subPageRow->findChild<QWidget *>(
+              QStringLiteral("temperatureSensorTopPolynomialFieldsChannel%1").arg(channelIndex + 1),
+              Qt::FindDirectChildrenOnly)
+        : nullptr;
+    auto *fieldsLayout = fieldsGroup
+        ? qobject_cast<QHBoxLayout *>(fieldsGroup->layout())
+        : nullptr;
+    if (!fieldsGroup || !fieldsLayout || fieldsGroup->width() <= 0)
+    {
+        return;
+    }
+
+    std::array<int, 4> targetInputLefts{};
+    for (int column = 0; column < 4; ++column)
+    {
+        QLineEdit *sourceEdit = channel.polynomial_edits[static_cast<size_t>(column)];
+        if (!sourceEdit)
+        {
+            return;
+        }
+        targetInputLefts[static_cast<size_t>(column)] =
+            fieldsGroup->mapFromGlobal(sourceEdit->mapToGlobal(QPoint(0, 0))).x();
+        if (column > 0 &&
+            targetInputLefts[static_cast<size_t>(column)] <=
+                targetInputLefts[static_cast<size_t>(column - 1)])
+        {
+            return;
+        }
+    }
+
+    constexpr int fieldSpacing = 4;
+    const int labelWidth = std::max(0, targetInputLefts.front() - fieldSpacing);
+    const int inputOffset = labelWidth + fieldSpacing;
+
+    std::array<int, 4> fieldStarts{};
+    for (int column = 1; column < 4; ++column)
+    {
+        fieldStarts[static_cast<size_t>(column)] =
+            targetInputLefts[static_cast<size_t>(column)] - targetInputLefts.front();
+    }
+    for (int column = 0; column < 4; ++column)
+    {
+        QLabel *label = channel.polynomial_label_text[static_cast<size_t>(column + 4)];
+        QLineEdit *edit = channel.polynomial_edits[static_cast<size_t>(column + 4)];
+        QWidget *field = edit ? edit->parentWidget() : nullptr;
+        auto *fieldLayout = field ? qobject_cast<QHBoxLayout *>(field->layout()) : nullptr;
+        if (!label || !edit || !field || !fieldLayout)
+        {
+            return;
+        }
+        label->setFixedWidth(labelWidth);
+        fieldLayout->setContentsMargins(0, 0, 0, 0);
+        fieldLayout->setSpacing(fieldSpacing);
+        const int nextFieldStart = column < 3
+            ? fieldStarts[static_cast<size_t>(column + 1)]
+            : fieldsGroup->width();
+        field->setFixedWidth(std::max(inputOffset + edit->minimumWidth(),
+                                      nextFieldStart - fieldStarts[static_cast<size_t>(column)] -
+                                          (column < 3 ? fieldsLayout->spacing() : 0)));
+    }
+    fieldsLayout->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    fieldsLayout->invalidate();
+    fieldsLayout->activate();
+}
+
 void TemperatureControllerPanel::setupUi()
 {
     setMinimumWidth(0);
@@ -7323,7 +7410,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
         button->setFocusPolicy(Qt::TabFocus);
         button->setProperty("temperatureChannelSubSelector", true);
         button->setFixedHeight(30);
-        button->setMinimumWidth(86);
+        button->setFixedWidth(pageIndex == 2 ? 88 : 72);
         connect(button, &QPushButton::clicked, this, [this, index, pageIndex]() {
             selectChannelSubPage(index, pageIndex);
         });
@@ -7344,13 +7431,15 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     subPageRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *subPageRowLayout = new QHBoxLayout(subPageRow);
     subPageRowLayout->setContentsMargins(0, 0, 0, 0);
-    subPageRowLayout->setSpacing(8);
+    subPageRowLayout->setSpacing(12);
     subPageRowLayout->addWidget(channel.sensor_config_top_bar, 0, Qt::AlignLeft | Qt::AlignVCenter);
 
     auto *sensorTopPolynomialFields = new QWidget(subPageRow);
     sensorTopPolynomialFields->setObjectName(
         QStringLiteral("temperatureSensorTopPolynomialFieldsChannel%1").arg(index + 1));
+    sensorTopPolynomialFields->setProperty("temperatureSensorPolynomialChannel", index);
     sensorTopPolynomialFields->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    sensorTopPolynomialFields->installEventFilter(this);
     auto *sensorTopPolynomialLayout = new QHBoxLayout(sensorTopPolynomialFields);
     sensorTopPolynomialLayout->setContentsMargins(0, 0, 0, 0);
     sensorTopPolynomialLayout->setSpacing(4);
@@ -7757,7 +7846,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         fieldLayout->setContentsMargins(2, 0, 2, 0);
         fieldLayout->setSpacing(4);
         fieldLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
-        fieldLayout->addWidget(edit, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        fieldLayout->addWidget(edit, 1, Qt::AlignVCenter);
         if (sensorTopPolynomialLayout)
         {
             sensorTopPolynomialLayout->addWidget(field, 1, Qt::AlignVCenter);
@@ -8000,6 +8089,12 @@ void TemperatureControllerPanel::selectChannelSubPage(int channelIndex, int subP
         if (sensorTopPolynomialFields)
         {
             sensorTopPolynomialFields->setVisible(pageIndex == 2);
+            if (pageIndex == 2)
+            {
+                QTimer::singleShot(0, this, [this, index]() {
+                    alignSensorTopPolynomialFields(index);
+                });
+            }
         }
         updateButton(channel.common_params_button, 0);
         updateButton(channel.advanced_params_button, 1);
