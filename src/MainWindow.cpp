@@ -6981,34 +6981,21 @@ void TemperatureControllerPanel::alignSensorTopPolynomialFields(int channelIndex
         return;
     }
 
-    std::array<int, 4> targetInputLefts{};
+    constexpr int fieldSpacing = 4;
+    int labelWidth = 0;
     for (int column = 0; column < 4; ++column)
     {
-        QLineEdit *sourceEdit = channel.polynomial_edits[static_cast<size_t>(column)];
-        if (!sourceEdit)
+        QLabel *label = channel.polynomial_label_text[static_cast<size_t>(column + 4)];
+        if (!label)
         {
             return;
         }
-        targetInputLefts[static_cast<size_t>(column)] =
-            fieldsGroup->mapFromGlobal(sourceEdit->mapToGlobal(QPoint(0, 0))).x();
-        if (column > 0 &&
-            targetInputLefts[static_cast<size_t>(column)] <=
-                targetInputLefts[static_cast<size_t>(column - 1)])
-        {
-            return;
-        }
+        label->ensurePolished();
+        labelWidth = std::max(labelWidth, label->fontMetrics().boundingRect(label->text()).width() + 4);
     }
-
-    constexpr int fieldSpacing = 4;
-    const int labelWidth = std::max(0, targetInputLefts.front() - fieldSpacing);
-    const int inputOffset = labelWidth + fieldSpacing;
-
-    std::array<int, 4> fieldStarts{};
-    for (int column = 1; column < 4; ++column)
-    {
-        fieldStarts[static_cast<size_t>(column)] =
-            targetInputLefts[static_cast<size_t>(column)] - targetInputLefts.front();
-    }
+    const int fieldWidth = std::max(1,
+                                    (fieldsGroup->width() -
+                                     fieldsLayout->spacing() * 3) / 4);
     for (int column = 0; column < 4; ++column)
     {
         QLabel *label = channel.polynomial_label_text[static_cast<size_t>(column + 4)];
@@ -7022,12 +7009,7 @@ void TemperatureControllerPanel::alignSensorTopPolynomialFields(int channelIndex
         label->setFixedWidth(labelWidth);
         fieldLayout->setContentsMargins(0, 0, 0, 0);
         fieldLayout->setSpacing(fieldSpacing);
-        const int nextFieldStart = column < 3
-            ? fieldStarts[static_cast<size_t>(column + 1)]
-            : fieldsGroup->width();
-        field->setFixedWidth(std::max(inputOffset + edit->minimumWidth(),
-                                      nextFieldStart - fieldStarts[static_cast<size_t>(column)] -
-                                          (column < 3 ? fieldsLayout->spacing() : 0)));
+        field->setFixedWidth(fieldWidth);
     }
     fieldsLayout->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     fieldsLayout->invalidate();
@@ -7424,6 +7406,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     barLayout->addWidget(channel.common_params_button);
     barLayout->addWidget(channel.advanced_params_button);
     barLayout->addWidget(channel.sensor_config_button);
+    channel.sensor_config_top_bar->setMinimumWidth(channel.sensor_config_top_bar->sizeHint().width());
 
     auto *subPageRow = new QWidget(page);
     subPageRow->setObjectName(QStringLiteral("temperatureChannelSubPageRowChannel%1").arg(index + 1));

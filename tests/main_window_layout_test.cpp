@@ -3512,31 +3512,36 @@ int main(int argc, char **argv)
     const int lowerNavigationGap =
         polynomialFieldsRectInSubPageRow.left() - subTopBarRectInSubPageRow.right() - 1;
     require(std::abs(temperatureChannelSubTopBar->width() - temperatureChannelTopBar->width()) <= 10 &&
+                temperatureChannelSubTopBar->width() >= temperatureChannelSubTopBar->sizeHint().width() &&
                 lowerNavigationGap == topNavigationGap,
-            "temperature lower navigation matches the upper navigation width and following gap");
+            "temperature lower navigation keeps its full width before the A4-A7 fields");
     require(polynomialFieldsRectInSubPageRow.left() > sensorConfigButtonRectInSubPageRow.right() &&
                 std::abs(polynomialFieldsRectInSubPageRow.right() -
                          temperatureChannelSubPageRow->rect().right()) <= 1,
             "temperature polynomial A4-A7 group fills the row to the right of the navigation bar");
     int previousTopFieldRight = sensorConfigButtonRectInSubPageRow.right();
+    int topFieldWidth = -1;
+    int topInputWidth = -1;
     for (int coefficient = 4; coefficient < 8; ++coefficient)
     {
         QWidget *field = polynomialEdits[static_cast<size_t>(coefficient)]->parentWidget();
         const QRect fieldRect(field->mapTo(temperatureChannelSubPageRow, QPoint(0, 0)), field->size());
-        const QRect upperInputRect(
-            temperatureChannelSubPageRow->mapFromGlobal(
-                polynomialEdits[static_cast<size_t>(coefficient - 4)]->mapToGlobal(QPoint(0, 0))),
-            polynomialEdits[static_cast<size_t>(coefficient - 4)]->size());
         const QRect lowerInputRect(
             temperatureChannelSubPageRow->mapFromGlobal(
                 polynomialEdits[static_cast<size_t>(coefficient)]->mapToGlobal(QPoint(0, 0))),
             polynomialEdits[static_cast<size_t>(coefficient)]->size());
+        if (topFieldWidth < 0)
+        {
+            topFieldWidth = fieldRect.width();
+            topInputWidth = lowerInputRect.width();
+        }
         require(fieldRect.left() > previousTopFieldRight,
                 "temperature polynomial A4-A7 fields remain ordered without overlap");
         require(std::abs(fieldRect.center().y() - sensorConfigButtonRectInSubPageRow.center().y()) <= 2,
                 "temperature polynomial A4-A7 fields stay vertically aligned with the navigation bar");
-        require(std::abs(lowerInputRect.left() - upperInputRect.left()) <= 2,
-                "temperature polynomial A4-A7 inputs align with A0-A3 by column");
+        require(std::abs(fieldRect.width() - topFieldWidth) <= 1 &&
+                    std::abs(lowerInputRect.width() - topInputWidth) <= 1,
+                "temperature polynomial A4-A7 fields and inputs share the right-side width equally");
         require(field->height() >= polynomialEdits[static_cast<size_t>(coefficient)]->sizeHint().height() &&
                     lowerInputRect.top() >= fieldRect.top() &&
                     lowerInputRect.bottom() <= fieldRect.bottom(),
