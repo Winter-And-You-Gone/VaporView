@@ -3036,11 +3036,14 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelConfigSubStackChannel1"));
     auto *temperatureChannelSubTopBar =
         qobject_cast<QFrame *>(temperatureChannelCommonParamsButton->parentWidget());
+    auto *temperatureSensorTopPolynomialFields = temperaturePanel->findChild<QWidget *>(
+        QStringLiteral("temperatureSensorTopPolynomialFieldsChannel1"));
     require(temperatureChannelCommonParamsButton != nullptr &&
                 temperatureChannelAdvancedParamsButton != nullptr &&
                 temperatureChannelSensorConfigButton != nullptr &&
                 temperatureChannelConfigSubStack != nullptr &&
-                temperatureChannelSubTopBar != nullptr,
+                temperatureChannelSubTopBar != nullptr &&
+                temperatureSensorTopPolynomialFields != nullptr,
             "temperature channel exposes lower common, advanced, and sensor config tabs");
     require(temperatureChannelCommonParamsButton->focusPolicy() == Qt::TabFocus &&
                 temperatureChannelAdvancedParamsButton->focusPolicy() == Qt::TabFocus &&
@@ -3438,25 +3441,30 @@ int main(int argc, char **argv)
         }
         else
         {
-            require(temperatureChannelSubTopBar->isAncestorOf(edit) &&
+            require(temperatureSensorTopPolynomialFields->isAncestorOf(edit) &&
+                        !temperatureChannelSubTopBar->isAncestorOf(edit) &&
                         edit->parentWidget() != nullptr &&
                         edit->parentWidget()->objectName() ==
                             QStringLiteral("temperatureSensorTopPolynomialA%1FieldChannel1").arg(coefficient) &&
                         edit->parentWidget()->isVisible(),
-                    "temperature polynomial A4-A7 inputs live in the visible sensor navigation row");
+                    "temperature polynomial A4-A7 inputs live beside but outside the sensor navigation bar");
         }
     }
-    const QRect sensorConfigButtonRectInSubTopBar(
-        temperatureChannelSensorConfigButton->mapTo(temperatureChannelSubTopBar, QPoint(0, 0)),
+    QWidget *temperatureChannelSubPageRow = temperatureChannelSubTopBar->parentWidget();
+    require(temperatureChannelSubPageRow != nullptr &&
+                temperatureSensorTopPolynomialFields->parentWidget() == temperatureChannelSubPageRow,
+            "temperature sensor navigation and A4-A7 fields share an outer row");
+    const QRect sensorConfigButtonRectInSubPageRow(
+        temperatureChannelSensorConfigButton->mapTo(temperatureChannelSubPageRow, QPoint(0, 0)),
         temperatureChannelSensorConfigButton->size());
-    int previousTopFieldRight = sensorConfigButtonRectInSubTopBar.right();
+    int previousTopFieldRight = sensorConfigButtonRectInSubPageRow.right();
     for (int coefficient = 4; coefficient < 8; ++coefficient)
     {
         QWidget *field = polynomialEdits[static_cast<size_t>(coefficient)]->parentWidget();
-        const QRect fieldRect(field->mapTo(temperatureChannelSubTopBar, QPoint(0, 0)), field->size());
+        const QRect fieldRect(field->mapTo(temperatureChannelSubPageRow, QPoint(0, 0)), field->size());
         require(fieldRect.left() > previousTopFieldRight &&
-                    std::abs(fieldRect.center().y() - sensorConfigButtonRectInSubTopBar.center().y()) <= 2,
-                "temperature polynomial A4-A7 fields follow the sensor tab on the same row");
+                    std::abs(fieldRect.center().y() - sensorConfigButtonRectInSubPageRow.center().y()) <= 2,
+                "temperature polynomial A4-A7 fields sit to the right of the navigation bar on the same row");
         previousTopFieldRight = fieldRect.right();
     }
     clickWidget(temperatureChannelCommonParamsButton, 100);
