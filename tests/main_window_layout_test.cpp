@@ -2963,10 +2963,13 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureChannelCommonParamsButton1"));
     auto *temperatureChannelConfigSubStack =
         temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelConfigSubStackChannel1"));
+    auto *temperatureChannelSubTopBar =
+        qobject_cast<QFrame *>(temperatureChannelCommonParamsButton->parentWidget());
     require(temperatureChannelCommonParamsButton != nullptr &&
                 temperatureChannelAdvancedParamsButton != nullptr &&
                 temperatureChannelSensorConfigButton != nullptr &&
-                temperatureChannelConfigSubStack != nullptr,
+                temperatureChannelConfigSubStack != nullptr &&
+                temperatureChannelSubTopBar != nullptr,
             "temperature channel exposes lower common, advanced, and sensor config tabs");
     require(temperatureChannelCommonParamsButton->focusPolicy() == Qt::TabFocus &&
                 temperatureChannelAdvancedParamsButton->focusPolicy() == Qt::TabFocus &&
@@ -2977,6 +2980,16 @@ int main(int argc, char **argv)
                     QStringLiteral("temperatureChannelCommonParamsPageChannel1") &&
                 temperatureChannelCommonParamsButton->isChecked(),
             "temperature channel defaults to the lower common-params page");
+    const QRect subTopBarRectInChannelPage(
+        temperatureChannelSubTopBar->mapTo(temperatureChannelStack->currentWidget(), QPoint(0, 0)),
+        temperatureChannelSubTopBar->size());
+    const int subTopBarBottomGap =
+        temperatureChannelStack->currentWidget()->rect().bottom() - subTopBarRectInChannelPage.bottom();
+    require(temperatureChannelStack->height() == 174 &&
+                temperatureChannelConfigSubStack->height() == 128 &&
+                subTopBarBottomGap >= 0 &&
+                subTopBarBottomGap <= 8,
+            "temperature lower parameter tabs leave only the intended compact bottom margin");
     clickWidget(temperatureChannelAdvancedParamsButton, 150);
     activateLayouts(&window);
     require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
@@ -3171,8 +3184,6 @@ int main(int argc, char **argv)
                 sensorModelSelector1->parentWidget()->isVisible(),
             "temperature sensor config tab switches to the sensor config page");
 
-    auto *temperatureChannelSubTopBar =
-        temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureChannelSubTopBar"));
     auto *ntcR0Edit =
         temperaturePanel->findChild<QLineEdit *>(QStringLiteral("temperatureNtcR0EditChannel1"));
     auto *ntcBEdit =
@@ -3368,7 +3379,7 @@ int main(int argc, char **argv)
     const int sensorModelToFirstRowGap =
         sensorFirstRowRectInCard.top() - sensorModelFieldRectInCard.bottom() - 1;
     require(polynomialA7Edit != nullptr &&
-                temperatureChannelStack->height() == 190 &&
+                temperatureChannelStack->height() == 174 &&
                 temperatureConfigCard->height() <= 280 &&
                 sensorConfigGrid->alignment() == Qt::AlignTop &&
                 sensorFirstRowRect.top() >= 0 &&

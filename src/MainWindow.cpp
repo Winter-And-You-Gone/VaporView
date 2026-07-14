@@ -915,7 +915,9 @@ constexpr int kTemperatureControllerCompactLabelWidth = 72;
 constexpr int kTemperatureControllerControlLabelWidth = 150;
 constexpr int kTemperatureControllerConfigRowHeight = 38;
 constexpr int kTemperatureControllerTopControlsHeight = 38;
-constexpr int kTemperatureControllerChannelStackHeight = 190;
+constexpr int kTemperatureControllerChannelConfigSubStackHeight = 128;
+constexpr int kTemperatureControllerChannelStackHeight =
+    kTemperatureControllerChannelConfigSubStackHeight + 38 + 8;
 constexpr int kTemperatureControllerCommonStackHeight = kTemperatureControllerChannelStackHeight;
 constexpr int kTemperatureControllerHistoryLimit = 240;
 constexpr int kRemotePacketRateWindowMs = 5000;
@@ -7280,7 +7282,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     channel.config_sub_stack = new QStackedWidget(page);
     channel.config_sub_stack->setObjectName(QStringLiteral("temperatureChannelConfigSubStackChannel%1").arg(index + 1));
     channel.config_sub_stack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    channel.config_sub_stack->setFixedHeight(kTemperatureControllerChannelStackHeight - 62);
+    channel.config_sub_stack->setFixedHeight(kTemperatureControllerChannelConfigSubStackHeight);
 
     channel.config_sub_stack->addWidget(createChannelCommonParamsPage(index));
     channel.config_sub_stack->addWidget(createChannelAdvancedParamsPage(index));
