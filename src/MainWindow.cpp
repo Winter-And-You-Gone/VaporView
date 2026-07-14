@@ -63,6 +63,7 @@
 #include <QApplication>
 #include <QGuiApplication>
 #include <QHelpEvent>
+#include <QHoverEvent>
 #include <QLayout>
 #include <QIntValidator>
 #include <QSerialPortInfo>
@@ -86,6 +87,7 @@
 #include <QStackedWidget>
 #include <QStyle>
 #include <QStyleOptionButton>
+#include <QStyleOptionSpinBox>
 #include <QStyleOptionToolButton>
 #include <QTextDocument>
 #include <QThread>
@@ -1587,6 +1589,71 @@ QString findResourceFile(const QString& relativePath)
     }
     return QString();
 }
+
+class SpinBoxArrowHoverFilter final : public QObject
+{
+public:
+    using QObject::QObject;
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        auto *spin = qobject_cast<QAbstractSpinBox *>(watched);
+        if (!spin)
+        {
+            return QObject::eventFilter(watched, event);
+        }
+
+        if (event->type() == QEvent::HoverMove)
+        {
+            updateHoverPart(spin, static_cast<QHoverEvent *>(event)->position().toPoint());
+        }
+        else if (event->type() == QEvent::MouseMove)
+        {
+            updateHoverPart(spin, static_cast<QMouseEvent *>(event)->position().toPoint());
+        }
+        else if (event->type() == QEvent::Leave || event->type() == QEvent::HoverLeave)
+        {
+            setHoverPart(spin, QString());
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    static void updateHoverPart(QAbstractSpinBox *spin, const QPoint& position)
+    {
+        QStyleOptionSpinBox option;
+        option.initFrom(spin);
+        option.subControls = QStyle::SC_All;
+        option.buttonSymbols = spin->buttonSymbols();
+        option.frame = spin->hasFrame();
+        const QRect upRect = spin->style()->subControlRect(QStyle::CC_SpinBox,
+                                                           &option,
+                                                           QStyle::SC_SpinBoxUp,
+                                                           spin);
+        const QRect downRect = spin->style()->subControlRect(QStyle::CC_SpinBox,
+                                                             &option,
+                                                             QStyle::SC_SpinBoxDown,
+                                                             spin);
+        setHoverPart(spin, upRect.contains(position)
+                               ? QStringLiteral("up")
+                               : downRect.contains(position)
+                                   ? QStringLiteral("down")
+                                   : QString());
+    }
+
+    static void setHoverPart(QAbstractSpinBox *spin, const QString& part)
+    {
+        if (spin->property("spinArrowHover").toString() == part)
+        {
+            return;
+        }
+        spin->setProperty("spinArrowHover", part);
+        spin->style()->unpolish(spin);
+        spin->style()->polish(spin);
+        spin->update();
+    }
+};
 
 QPixmap renderLucidePixmap(const QByteArray& svgData, const QColor& color, qreal devicePixelRatio)
 {
@@ -3185,6 +3252,12 @@ QLabel#statusIndicator[status="warning"] {
     color: @vv-warning;
 }
 )") + QStringLiteral(R"(
+QAbstractSpinBox[spinArrowHover="up"]::up-arrow {
+    image: url(lucide/chevron-up-primary-dark.svg);
+}
+QAbstractSpinBox[spinArrowHover="down"]::down-arrow {
+    image: url(lucide/chevron-down-primary-dark.svg);
+}
 QMenu {
     background-color: @vv-menu-panel;
     border: 1px solid @vv-border;
@@ -9514,9 +9587,17 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void *message, qintptr
 
 void MainWindow::loadModernStyleSheet()
 {
+    if (!qApp->property("spinArrowHoverFilterInstalled").toBool())
+    {
+        qApp->installEventFilter(new SpinBoxArrowHoverFilter(qApp));
+        qApp->setProperty("spinArrowHoverFilterInstalled", true);
+    }
+
     const QDir appDir(QCoreApplication::applicationDirPath());
     const QString chevronDownIconPath = findResourceFile(QStringLiteral("resources/lucide/chevron-down.svg")).replace('\\', '/');
+    const QString chevronDownPrimaryIconPath = findResourceFile(QStringLiteral("resources/lucide/chevron-down-primary.svg")).replace('\\', '/');
     const QString chevronUpIconPath = findResourceFile(QStringLiteral("resources/lucide/chevron-up.svg")).replace('\\', '/');
+    const QString chevronUpPrimaryIconPath = findResourceFile(QStringLiteral("resources/lucide/chevron-up-primary.svg")).replace('\\', '/');
     const QStringList styleCandidates = {
         appDir.filePath("resources/modern_style.qss"),
         appDir.filePath("../resources/modern_style.qss"),
@@ -9658,10 +9739,12 @@ void MainWindow::loadModernStyleSheet()
             "QSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { width: 20px; border: none; background-color: transparent; subcontrol-origin: border; }"
             "QSpinBox::up-button, QDoubleSpinBox::up-button { subcontrol-position: top right; border-top-right-radius: 6px; }"
             "QSpinBox::down-button, QDoubleSpinBox::down-button { subcontrol-position: bottom right; border-bottom-right-radius: 6px; }"
-            "QSpinBox::up-button:hover, QSpinBox::down-button:hover, QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover { background-color: @vv-surface-alt; }"
+            "QAbstractSpinBox::up-button:hover, QAbstractSpinBox::down-button:hover, QAbstractSpinBox::up-button:pressed, QAbstractSpinBox::down-button:pressed { background-color: transparent; }"
             "QAbstractSpinBox::up-arrow, QAbstractSpinBox::down-arrow { width: 12px; height: 12px; margin-right: 6px; }"
             "QAbstractSpinBox::up-arrow { image: url(lucide/chevron-up.svg); }"
             "QAbstractSpinBox::down-arrow { image: url(lucide/chevron-down.svg); }"
+            "QAbstractSpinBox[spinArrowHover=\"up\"]::up-arrow { image: url(lucide/chevron-up-primary.svg); width: 14px; height: 14px; margin-right: 5px; }"
+            "QAbstractSpinBox[spinArrowHover=\"down\"]::down-arrow { image: url(lucide/chevron-down-primary.svg); width: 14px; height: 14px; margin-right: 5px; }"
             "QTextEdit { background-color: @vv-surface; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 10px; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; }"
             "QTextEdit#logTextEdit { background-color: transparent; border: none; border-radius: 0px; }"
             "QWidget#logTextViewport { background-color: transparent; border: none; }"
@@ -9729,7 +9812,9 @@ void MainWindow::loadModernStyleSheet()
     }
 
     base_style_sheet_.replace("url(lucide/chevron-down.svg)", QString("url(%1)").arg(chevronDownIconPath));
+    base_style_sheet_.replace("url(lucide/chevron-down-primary.svg)", QString("url(%1)").arg(chevronDownPrimaryIconPath));
     base_style_sheet_.replace("url(lucide/chevron-up.svg)", QString("url(%1)").arg(chevronUpIconPath));
+    base_style_sheet_.replace("url(lucide/chevron-up-primary.svg)", QString("url(%1)").arg(chevronUpPrimaryIconPath));
 }
 
 QString temperatureControllerConfigStyleSheet()
@@ -9755,6 +9840,15 @@ QString temperatureControllerConfigStyleSheet()
 QString MainWindow::themedStyleSheet() const
 {
     const QString baseStyle = applyAppThemeTokens(base_style_sheet_, false);
+    QString darkStyle = applyAppThemeTokens(darkThemeStyleSheet(), true);
+    const QString chevronDownPrimaryDarkIconPath = findResourceFile(
+        QStringLiteral("resources/lucide/chevron-down-primary-dark.svg")).replace('\\', '/');
+    const QString chevronUpPrimaryDarkIconPath = findResourceFile(
+        QStringLiteral("resources/lucide/chevron-up-primary-dark.svg")).replace('\\', '/');
+    darkStyle.replace("url(lucide/chevron-down-primary-dark.svg)",
+                      QString("url(%1)").arg(chevronDownPrimaryDarkIconPath));
+    darkStyle.replace("url(lucide/chevron-up-primary-dark.svg)",
+                      QString("url(%1)").arg(chevronUpPrimaryDarkIconPath));
     const QString mainCardsScrollBarStyle =
         applyAppThemeTokens(mainCardsScrollBarBackgroundStyleSheet(dark_theme_enabled_),
                             dark_theme_enabled_);
@@ -9762,7 +9856,7 @@ QString MainWindow::themedStyleSheet() const
         applyAppThemeTokens(rtkConfigCardStyleSheet(), dark_theme_enabled_);
     return dark_theme_enabled_
         ? baseStyle +
-              applyAppThemeTokens(darkThemeStyleSheet(), true) +
+              darkStyle +
               applyAppThemeTokens(darkOverviewStyleSheet(), true) +
               mainCardsScrollBarStyle +
               rtkConfigCardStyle +
@@ -20041,14 +20135,11 @@ void MainWindow::onScheduledRecordingClicked()
                                              is_english_ ? QStringLiteral("Mode:") : QStringLiteral("模式:"),
                                              modeCombo));
 
-    auto makeScheduledSpinStyle = [this]() {
-        const QString hoverColor = appThemeColorName(AppThemeColor::Border, dark_theme_enabled_);
-        const QString pressedColor = appThemeColorName(AppThemeColor::PopupHighlightPressed, dark_theme_enabled_);
+    auto makeScheduledSpinStyle = []() {
         return QStringLiteral(
-            "QSpinBox::up-button:hover, QSpinBox::down-button:hover, QDateTimeEdit::up-button:hover, QDateTimeEdit::down-button:hover { background-color: %1; }"
-            "QSpinBox::up-button:pressed, QSpinBox::down-button:pressed, QDateTimeEdit::up-button:pressed, QDateTimeEdit::down-button:pressed { background-color: %2; }"
-            "QSpinBox::up-button:disabled, QSpinBox::down-button:disabled, QDateTimeEdit::up-button:disabled, QDateTimeEdit::down-button:disabled { background-color: transparent; }")
-                .arg(hoverColor, pressedColor);
+            "QSpinBox::up-button:hover, QSpinBox::down-button:hover, QDateTimeEdit::up-button:hover, QDateTimeEdit::down-button:hover, "
+            "QSpinBox::up-button:pressed, QSpinBox::down-button:pressed, QDateTimeEdit::up-button:pressed, QDateTimeEdit::down-button:pressed, "
+            "QSpinBox::up-button:disabled, QSpinBox::down-button:disabled, QDateTimeEdit::up-button:disabled, QDateTimeEdit::down-button:disabled { background-color: transparent; }");
     };
     const QString scheduledSpinStyle = makeScheduledSpinStyle();
     auto createDurationInput = [this, scheduledSpinStyle](QWidget *parent, QSpinBox *&hours, QSpinBox *&minutes, QSpinBox *&seconds) {

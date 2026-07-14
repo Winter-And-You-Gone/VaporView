@@ -601,8 +601,12 @@ set(LUCIDE_RESOURCES
     resources/lucide/audio-waveform.svg
     resources/lucide/check.svg
     resources/lucide/chevron-down.svg
+    resources/lucide/chevron-down-primary-dark.svg
+    resources/lucide/chevron-down-primary.svg
     resources/lucide/chevron-right.svg
     resources/lucide/chevron-up.svg
+    resources/lucide/chevron-up-primary-dark.svg
+    resources/lucide/chevron-up-primary.svg
     resources/lucide/circle-x.svg
     resources/lucide/copy.svg
     resources/lucide/earth.svg

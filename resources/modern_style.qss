@@ -1050,11 +1050,11 @@ QDoubleSpinBox::down-button {
     border-bottom-right-radius: 6px;
 }
 
-QSpinBox::up-button:hover,
-QSpinBox::down-button:hover,
-QDoubleSpinBox::up-button:hover,
-QDoubleSpinBox::down-button:hover {
-    background-color: @vv-surface-alt;
+QAbstractSpinBox::up-button:hover,
+QAbstractSpinBox::down-button:hover,
+QAbstractSpinBox::up-button:pressed,
+QAbstractSpinBox::down-button:pressed {
+    background-color: transparent;
 }
 
 QAbstractSpinBox::up-arrow,
@@ -1070,6 +1070,20 @@ QAbstractSpinBox::up-arrow {
 
 QAbstractSpinBox::down-arrow {
     image: url(lucide/chevron-down.svg);
+}
+
+QAbstractSpinBox[spinArrowHover="up"]::up-arrow {
+    image: url(lucide/chevron-up-primary.svg);
+    width: 14px;
+    height: 14px;
+    margin-right: 5px;
+}
+
+QAbstractSpinBox[spinArrowHover="down"]::down-arrow {
+    image: url(lucide/chevron-down-primary.svg);
+    width: 14px;
+    height: 14px;
+    margin-right: 5px;
 }
 
 /* 进度条 */

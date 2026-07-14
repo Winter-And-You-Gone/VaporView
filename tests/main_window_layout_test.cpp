@@ -15,6 +15,7 @@
 #include <QFontMetrics>
 #include <QFrame>
 #include <QGroupBox>
+#include <QHoverEvent>
 #include <QIcon>
 #include <QImage>
 #include <QLabel>
@@ -29,6 +30,7 @@
 #include <QScrollBar>
 #include <QStyle>
 #include <QStyleOptionFrame>
+#include <QStyleOptionSpinBox>
 #include <QPixmap>
 #include <QSplitter>
 #include <QSpinBox>
@@ -422,6 +424,53 @@ void moveMouseOverWidgetAt(QWidget *widget, const QPoint& localPoint, int waitMs
     {
         processEventsFor(waitMs);
     }
+}
+
+void requireSpinArrowHoverUsesPrimary(bool dark, const char *message)
+{
+    QSpinBox spin;
+    spin.setRange(0, 10);
+    spin.setValue(5);
+    spin.resize(90, 34);
+    spin.show();
+    processEventsFor(80);
+
+    QStyleOptionSpinBox option;
+    option.initFrom(&spin);
+    option.subControls = QStyle::SC_All;
+    option.stepEnabled = QAbstractSpinBox::StepUpEnabled | QAbstractSpinBox::StepDownEnabled;
+    const QRect upButtonRect = spin.style()->subControlRect(QStyle::CC_SpinBox,
+                                                            &option,
+                                                            QStyle::SC_SpinBoxUp,
+                                                            &spin);
+    require(!upButtonRect.isEmpty(), message);
+    moveMouseOverWidgetAt(&spin, upButtonRect.center(), 80);
+    QHoverEvent hoverMove(QEvent::HoverMove,
+                          QPointF(upButtonRect.center()),
+                          QPointF(-1, -1));
+    QCoreApplication::sendEvent(&spin, &hoverMove);
+    processEventsFor(80);
+    require(spin.property("spinArrowHover").toString() == QStringLiteral("up"),
+            "spin hover filter tracks the upper step button");
+
+    const QImage image = spin.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    const QColor expected = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
+    int primaryPixelCount = 0;
+    for (int y = 0; y < image.height() / 2; ++y)
+    {
+        for (int x = image.width() / 2; x < image.width(); ++x)
+        {
+            const QColor pixel = image.pixelColor(x, y);
+            if (pixel.alpha() >= 16 &&
+                std::abs(pixel.red() - expected.red()) <= 16 &&
+                std::abs(pixel.green() - expected.green()) <= 16 &&
+                std::abs(pixel.blue() - expected.blue()) <= 16)
+            {
+                ++primaryPixelCount;
+            }
+        }
+    }
+    require(primaryPixelCount >= 1, message);
 }
 
 void hoverWidget(QWidget *widget, bool hovered, int waitMs = 50)
@@ -1555,9 +1604,15 @@ int main(int argc, char **argv)
             "checkbox indicators use lucide square and square-check-big icons");
     require(qApp->styleSheet().contains(QStringLiteral("chevron-up.svg")) &&
                 qApp->styleSheet().contains(QStringLiteral("chevron-down.svg")) &&
+                qApp->styleSheet().contains(QStringLiteral("chevron-up-primary.svg")) &&
+                qApp->styleSheet().contains(QStringLiteral("chevron-down-primary.svg")) &&
                 qApp->styleSheet().contains(QStringLiteral("QAbstractSpinBox::up-arrow")) &&
-                qApp->styleSheet().contains(QStringLiteral("QComboBox::down-arrow")),
-            "spin and combo input arrows use lucide chevron icons");
+                qApp->styleSheet().contains(QStringLiteral("QAbstractSpinBox[spinArrowHover=\"up\"]::up-arrow")) &&
+                qApp->styleSheet().contains(QStringLiteral("QComboBox::down-arrow")) &&
+                qApp->styleSheet().contains(QStringLiteral("background-color: transparent")),
+            "spin arrows use enlarged primary lucide hover icons without button backgrounds");
+    requireSpinArrowHoverUsesPrimary(false,
+                                     "light theme spin arrow hover renders the primary lucide icon");
     requireMenuPopupStyleUnified(qApp->styleSheet(),
                                  false,
                                  "light popup menus use the shared menu hover and rounded panel style");
@@ -2333,6 +2388,11 @@ int main(int argc, char **argv)
     require(qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
             "main window is in dark theme for overview style checks");
     const QString darkOverviewStyleSheet = qApp->styleSheet();
+    require(darkOverviewStyleSheet.contains(QStringLiteral("chevron-up-primary-dark.svg")) &&
+                darkOverviewStyleSheet.contains(QStringLiteral("chevron-down-primary-dark.svg")),
+            "dark theme spin arrow hover icons use dark theme primary lucide assets");
+    requireSpinArrowHoverUsesPrimary(true,
+                                     "dark theme spin arrow hover renders the primary lucide icon");
     requireMenuPopupStyleUnified(darkOverviewStyleSheet,
                                  true,
                                  "dark popup menus use the shared menu hover and rounded panel style");
