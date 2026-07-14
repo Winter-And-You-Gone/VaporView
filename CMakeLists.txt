@@ -602,6 +602,7 @@ set(LUCIDE_RESOURCES
     resources/lucide/check.svg
     resources/lucide/chevron-down.svg
     resources/lucide/chevron-right.svg
+    resources/lucide/chevron-up.svg
     resources/lucide/circle-x.svg
     resources/lucide/copy.svg
     resources/lucide/earth.svg

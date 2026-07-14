@@ -9513,6 +9513,8 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void *message, qintptr
 void MainWindow::loadModernStyleSheet()
 {
     const QDir appDir(QCoreApplication::applicationDirPath());
+    const QString chevronDownIconPath = findResourceFile(QStringLiteral("resources/lucide/chevron-down.svg")).replace('\\', '/');
+    const QString chevronUpIconPath = findResourceFile(QStringLiteral("resources/lucide/chevron-up.svg")).replace('\\', '/');
     const QStringList styleCandidates = {
         appDir.filePath("resources/modern_style.qss"),
         appDir.filePath("../resources/modern_style.qss"),
@@ -9635,6 +9637,8 @@ void MainWindow::loadModernStyleSheet()
             "QComboBox:hover { border-color: @vv-border-strong; }"
             "QComboBox:focus { border-color: @vv-primary; border-width: 1px; }"
             "QComboBox:disabled { background-color: @vv-surface-alt; color: @vv-text; }"
+            "QComboBox::drop-down { border: none; width: 20px; border-top-right-radius: 4px; border-bottom-right-radius: 4px; }"
+            "QComboBox::down-arrow { image: url(lucide/chevron-down.svg); width: 12px; height: 12px; margin-right: 6px; }"
             "QComboBox QAbstractItemView { background-color: @vv-menu-panel; border: none; border-radius: 10px; color: @vv-menu-text; selection-background-color: @vv-menu-hover; selection-color: @vv-menu-text; padding: 12px 0px; outline: none; }"
             "QComboBox QAbstractItemView::item { background-color: transparent; color: @vv-menu-text; padding: 7px 14px; min-height: 30px; border: 0px; border-radius: 0px; }"
             "QComboBox QAbstractItemView::item:hover, QComboBox QAbstractItemView::item:selected, QComboBox QAbstractItemView::item:selected:active, QComboBox QAbstractItemView::item:selected:!active { background-color: @vv-menu-hover; color: @vv-menu-text; }"
@@ -9653,9 +9657,9 @@ void MainWindow::loadModernStyleSheet()
             "QSpinBox::up-button, QDoubleSpinBox::up-button { subcontrol-position: top right; border-top-right-radius: 6px; }"
             "QSpinBox::down-button, QDoubleSpinBox::down-button { subcontrol-position: bottom right; border-bottom-right-radius: 6px; }"
             "QSpinBox::up-button:hover, QSpinBox::down-button:hover, QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover { background-color: @vv-surface-alt; }"
-            "QSpinBox::up-arrow, QSpinBox::down-arrow, QDoubleSpinBox::up-arrow, QDoubleSpinBox::down-arrow { width: 0px; height: 0px; margin-right: 6px; border-left: 4px solid transparent; border-right: 4px solid transparent; }"
-            "QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { border-bottom: 5px solid @vv-control-arrow; }"
-            "QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { border-top: 5px solid @vv-control-arrow; }"
+            "QAbstractSpinBox::up-arrow, QAbstractSpinBox::down-arrow { width: 12px; height: 12px; margin-right: 6px; }"
+            "QAbstractSpinBox::up-arrow { image: url(lucide/chevron-up.svg); }"
+            "QAbstractSpinBox::down-arrow { image: url(lucide/chevron-down.svg); }"
             "QTextEdit { background-color: @vv-surface; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 10px; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; }"
             "QTextEdit#logTextEdit { background-color: transparent; border: none; border-radius: 0px; }"
             "QWidget#logTextViewport { background-color: transparent; border: none; }"
@@ -9722,6 +9726,8 @@ void MainWindow::loadModernStyleSheet()
             "QToolTip { background-color: rgb(45, 45, 45); color: #FFFFFF; border: 1px solid #474747; border-radius: 13px; padding: 8px 16px; font-size: 16px; }";
     }
 
+    base_style_sheet_.replace("url(lucide/chevron-down.svg)", QString("url(%1)").arg(chevronDownIconPath));
+    base_style_sheet_.replace("url(lucide/chevron-up.svg)", QString("url(%1)").arg(chevronUpIconPath));
 }
 
 QString temperatureControllerConfigStyleSheet()

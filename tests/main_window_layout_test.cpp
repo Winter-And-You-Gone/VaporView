@@ -1553,6 +1553,11 @@ int main(int argc, char **argv)
                 qApp->styleSheet().contains(QStringLiteral("square-check-big.svg")) &&
                 !qApp->styleSheet().contains(QStringLiteral("lucide/check.svg")),
             "checkbox indicators use lucide square and square-check-big icons");
+    require(qApp->styleSheet().contains(QStringLiteral("chevron-up.svg")) &&
+                qApp->styleSheet().contains(QStringLiteral("chevron-down.svg")) &&
+                qApp->styleSheet().contains(QStringLiteral("QAbstractSpinBox::up-arrow")) &&
+                qApp->styleSheet().contains(QStringLiteral("QComboBox::down-arrow")),
+            "spin and combo input arrows use lucide chevron icons");
     requireMenuPopupStyleUnified(qApp->styleSheet(),
                                  false,
                                  "light popup menus use the shared menu hover and rounded panel style");
