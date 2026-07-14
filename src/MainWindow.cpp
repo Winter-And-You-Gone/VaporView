@@ -917,7 +917,7 @@ constexpr int kTemperatureControllerConfigRowHeight = 38;
 constexpr int kTemperatureControllerTopControlsHeight = 38;
 constexpr int kTemperatureControllerChannelConfigSubStackHeight = 128;
 constexpr int kTemperatureControllerChannelStackHeight =
-    kTemperatureControllerChannelConfigSubStackHeight + 38 + 8;
+    kTemperatureControllerChannelConfigSubStackHeight + 38;
 constexpr int kTemperatureControllerCommonStackHeight = kTemperatureControllerChannelStackHeight;
 constexpr int kTemperatureControllerHistoryLimit = 240;
 constexpr int kRemotePacketRateWindowMs = 5000;
@@ -7244,7 +7244,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     page->setObjectName(QStringLiteral("temperatureChannelConfigPageChannel%1").arg(index + 1));
     page->setFixedHeight(kTemperatureControllerChannelStackHeight);
     auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 8);
+    layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
     layout->setAlignment(Qt::AlignTop);
 

@@ -2985,11 +2985,10 @@ int main(int argc, char **argv)
         temperatureChannelSubTopBar->size());
     const int subTopBarBottomGap =
         temperatureChannelStack->currentWidget()->rect().bottom() - subTopBarRectInChannelPage.bottom();
-    require(temperatureChannelStack->height() == 174 &&
+    require(temperatureChannelStack->height() == 166 &&
                 temperatureChannelConfigSubStack->height() == 128 &&
-                subTopBarBottomGap >= 0 &&
-                subTopBarBottomGap <= 8,
-            "temperature lower parameter tabs leave only the intended compact bottom margin");
+                subTopBarBottomGap == 0,
+            "temperature lower parameter tabs add no extra bottom margin inside the card");
     clickWidget(temperatureChannelAdvancedParamsButton, 150);
     activateLayouts(&window);
     require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
@@ -3379,7 +3378,7 @@ int main(int argc, char **argv)
     const int sensorModelToFirstRowGap =
         sensorFirstRowRectInCard.top() - sensorModelFieldRectInCard.bottom() - 1;
     require(polynomialA7Edit != nullptr &&
-                temperatureChannelStack->height() == 174 &&
+                temperatureChannelStack->height() == 166 &&
                 temperatureConfigCard->height() <= 280 &&
                 sensorConfigGrid->alignment() == Qt::AlignTop &&
                 sensorFirstRowRect.top() >= 0 &&
