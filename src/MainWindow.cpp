@@ -7920,10 +7920,12 @@ void TemperatureControllerPanel::selectChannel(int index)
         if (pageIndex < 2)
         {
             channel_top_controls_stack_->setCurrentIndex(channelIndex);
+            if (channels_[channelIndex].config_sub_stack)
+            {
+                channels_[channelIndex].config_sub_stack->setCurrentIndex(selected_channel_sub_page_index_);
+            }
         }
-        const int subPageIndex = channels_[channelIndex].config_sub_stack
-            ? channels_[channelIndex].config_sub_stack->currentIndex()
-            : 0;
+        const int subPageIndex = std::clamp(selected_channel_sub_page_index_, 0, 2);
         if (pageIndex < 2)
         {
             if (channels_[channelIndex].common_top_controls)
@@ -7968,40 +7970,8 @@ void TemperatureControllerPanel::selectChannelSubPage(int channelIndex, int subP
     {
         return;
     }
-    ChannelWidgets& channel = channels_[channelIndex];
     const int pageIndex = std::clamp(subPageIndex, 0, 2);
-    if (channel.config_sub_stack)
-    {
-        channel.config_sub_stack->setCurrentIndex(pageIndex);
-    }
-    QWidget *sensorTopPolynomialFields = nullptr;
-    if (channel.sensor_config_top_bar && channel.sensor_config_top_bar->parentWidget())
-    {
-        sensorTopPolynomialFields = channel.sensor_config_top_bar->parentWidget()->findChild<QWidget *>(
-            QStringLiteral("temperatureSensorTopPolynomialFieldsChannel%1").arg(channelIndex + 1),
-            Qt::FindDirectChildrenOnly);
-    }
-    if (sensorTopPolynomialFields)
-    {
-        sensorTopPolynomialFields->setVisible(pageIndex == 2);
-    }
-    if (channel_top_controls_stack_ && selected_config_page_index_ == channelIndex)
-    {
-        if (channel.common_top_controls)
-        {
-            channel.common_top_controls->setVisible(pageIndex == 0);
-        }
-        if (channel.sensor_model_field)
-        {
-            channel.sensor_model_field->setVisible(pageIndex == 2);
-        }
-        channel_top_controls_stack_->setVisible(pageIndex != 1);
-        if (pageIndex != 1)
-        {
-            channel_top_controls_stack_->setCurrentIndex(channelIndex);
-            refreshTopControlsLayout();
-        }
-    }
+    selected_channel_sub_page_index_ = pageIndex;
     auto updateButton = [pageIndex](QPushButton *button, int index) {
         if (!button)
         {
@@ -8013,9 +7983,48 @@ void TemperatureControllerPanel::selectChannelSubPage(int channelIndex, int subP
         button->style()->polish(button);
         button->update();
     };
-    updateButton(channel.common_params_button, 0);
-    updateButton(channel.advanced_params_button, 1);
-    updateButton(channel.sensor_config_button, 2);
+    for (int index = 0; index < static_cast<int>(channels_.size()); ++index)
+    {
+        ChannelWidgets& channel = channels_[index];
+        if (channel.config_sub_stack)
+        {
+            channel.config_sub_stack->setCurrentIndex(pageIndex);
+        }
+        QWidget *sensorTopPolynomialFields = nullptr;
+        if (channel.sensor_config_top_bar && channel.sensor_config_top_bar->parentWidget())
+        {
+            sensorTopPolynomialFields = channel.sensor_config_top_bar->parentWidget()->findChild<QWidget *>(
+                QStringLiteral("temperatureSensorTopPolynomialFieldsChannel%1").arg(index + 1),
+                Qt::FindDirectChildrenOnly);
+        }
+        if (sensorTopPolynomialFields)
+        {
+            sensorTopPolynomialFields->setVisible(pageIndex == 2);
+        }
+        updateButton(channel.common_params_button, 0);
+        updateButton(channel.advanced_params_button, 1);
+        updateButton(channel.sensor_config_button, 2);
+    }
+
+    const int selectedChannelIndex = std::clamp(selected_channel_index_, 0, 1);
+    ChannelWidgets& selectedChannel = channels_[selectedChannelIndex];
+    if (channel_top_controls_stack_ && selected_config_page_index_ < 2)
+    {
+        if (selectedChannel.common_top_controls)
+        {
+            selectedChannel.common_top_controls->setVisible(pageIndex == 0);
+        }
+        if (selectedChannel.sensor_model_field)
+        {
+            selectedChannel.sensor_model_field->setVisible(pageIndex == 2);
+        }
+        channel_top_controls_stack_->setVisible(pageIndex != 1);
+        if (pageIndex != 1)
+        {
+            channel_top_controls_stack_->setCurrentIndex(selectedChannelIndex);
+            refreshTopControlsLayout();
+        }
+    }
 }
 
 void TemperatureControllerPanel::emitSensorConfigRequest(int index)

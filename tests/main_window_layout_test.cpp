@@ -3034,6 +3034,12 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureChannelCommonParamsButton1"));
     auto *temperatureChannelConfigSubStack =
         temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelConfigSubStackChannel1"));
+    auto *temperatureChannelAdvancedParamsButton2 =
+        temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureChannelAdvancedParamsButton2"));
+    auto *temperatureChannelCommonParamsButton2 =
+        temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureChannelCommonParamsButton2"));
+    auto *temperatureChannelConfigSubStack2 =
+        temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelConfigSubStackChannel2"));
     auto *temperatureChannelSubTopBar =
         qobject_cast<QFrame *>(temperatureChannelCommonParamsButton->parentWidget());
     auto *temperatureSensorTopPolynomialFields = temperaturePanel->findChild<QWidget *>(
@@ -3042,6 +3048,9 @@ int main(int argc, char **argv)
                 temperatureChannelAdvancedParamsButton != nullptr &&
                 temperatureChannelSensorConfigButton != nullptr &&
                 temperatureChannelConfigSubStack != nullptr &&
+                temperatureChannelAdvancedParamsButton2 != nullptr &&
+                temperatureChannelCommonParamsButton2 != nullptr &&
+                temperatureChannelConfigSubStack2 != nullptr &&
                 temperatureChannelSubTopBar != nullptr &&
                 temperatureSensorTopPolynomialFields != nullptr,
             "temperature channel exposes lower common, advanced, and sensor config tabs");
@@ -3313,6 +3322,34 @@ int main(int argc, char **argv)
                                 "temperature common over-temperature output field uses left label and right value layout");
     requireCommonFieldRowLayout(commonInternalTemperatureEdit,
                                 "temperature common internal temperature field uses left label and right value layout");
+
+    clickWidget(temperatureChannelCommonParamsButton, 150);
+    clickWidget(temperatureConfigChannelButton2, 150);
+    activateLayouts(&window);
+    require(temperatureChannelConfigSubStack2->currentWidget() != nullptr &&
+                temperatureChannelConfigSubStack2->currentWidget()->objectName() ==
+                    QStringLiteral("temperatureChannelCommonParamsPageChannel2") &&
+                temperatureChannelCommonParamsButton2->isChecked() &&
+                temperatureConfigChannelButton2->isChecked(),
+            "switching channels preserves the globally selected lower common-params page");
+    clickWidget(temperatureChannelAdvancedParamsButton2, 150);
+    activateLayouts(&window);
+    require(temperatureChannelConfigSubStack2->currentWidget() != nullptr &&
+                temperatureChannelConfigSubStack2->currentWidget()->objectName() ==
+                    QStringLiteral("temperatureChannelAdvancedParamsPageChannel2") &&
+                temperatureChannelAdvancedParamsButton2->isChecked() &&
+                temperatureConfigChannelButton2->isChecked(),
+            "switching the lower page does not change the selected top channel");
+    clickWidget(temperatureConfigChannelButton1, 150);
+    activateLayouts(&window);
+    require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
+                temperatureChannelConfigSubStack->currentWidget()->objectName() ==
+                    QStringLiteral("temperatureChannelAdvancedParamsPageChannel1") &&
+                temperatureChannelAdvancedParamsButton->isChecked() &&
+                temperatureChannelConfigSubStack2->currentIndex() ==
+                    temperatureChannelConfigSubStack->currentIndex() &&
+                temperatureConfigChannelButton1->isChecked(),
+            "switching back to channel 1 keeps the globally selected lower advanced-params page");
 
     clickWidget(temperatureChannelSensorConfigButton, 150);
     activateLayouts(&window);

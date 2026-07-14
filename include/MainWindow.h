@@ -445,6 +445,7 @@ private:
     int pending_controller_mode_value_ = 0;
     int selected_channel_index_ = 0;
     int selected_config_page_index_ = 0;
+    int selected_channel_sub_page_index_ = 0;
     bool is_english_ = false;
 };
 
