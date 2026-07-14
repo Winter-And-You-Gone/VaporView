@@ -3361,11 +3361,45 @@ int main(int argc, char **argv)
         polynomialEdits[static_cast<size_t>(coefficient)] = edit;
         require(edit != nullptr,
                 "temperature polynomial inputs all exist");
-        requireSensorGridPosition(edit,
-                                  1 + coefficient / 4,
-                                  1 + coefficient % 4,
-                                  "temperature polynomial input follows the requested 2x4 grid");
+        if (coefficient < 4)
+        {
+            requireSensorGridPosition(edit,
+                                      1,
+                                      1 + coefficient,
+                                      "temperature polynomial A0-A3 inputs stay on the second sensor grid row");
+        }
+        else
+        {
+            require(temperatureChannelSubTopBar->isAncestorOf(edit) &&
+                        edit->parentWidget() != nullptr &&
+                        edit->parentWidget()->objectName() ==
+                            QStringLiteral("temperatureSensorTopPolynomialA%1FieldChannel1").arg(coefficient) &&
+                        edit->parentWidget()->isVisible(),
+                    "temperature polynomial A4-A7 inputs live in the visible sensor navigation row");
+        }
     }
+    const QRect sensorConfigButtonRectInSubTopBar(
+        temperatureChannelSensorConfigButton->mapTo(temperatureChannelSubTopBar, QPoint(0, 0)),
+        temperatureChannelSensorConfigButton->size());
+    int previousTopFieldRight = sensorConfigButtonRectInSubTopBar.right();
+    for (int coefficient = 4; coefficient < 8; ++coefficient)
+    {
+        QWidget *field = polynomialEdits[static_cast<size_t>(coefficient)]->parentWidget();
+        const QRect fieldRect(field->mapTo(temperatureChannelSubTopBar, QPoint(0, 0)), field->size());
+        require(fieldRect.left() > previousTopFieldRight &&
+                    std::abs(fieldRect.center().y() - sensorConfigButtonRectInSubTopBar.center().y()) <= 2,
+                "temperature polynomial A4-A7 fields follow the sensor tab on the same row");
+        previousTopFieldRight = fieldRect.right();
+    }
+    clickWidget(temperatureChannelCommonParamsButton, 100);
+    activateLayouts(&window);
+    for (int coefficient = 4; coefficient < 8; ++coefficient)
+    {
+        require(!polynomialEdits[static_cast<size_t>(coefficient)]->parentWidget()->isVisible(),
+                "temperature top polynomial fields hide outside the sensor config tab");
+    }
+    clickWidget(temperatureChannelSensorConfigButton, 100);
+    activateLayouts(&window);
     auto fieldLeftInSensorPage = [temperatureChannelConfigSubStack](QWidget *editor) {
         return editor->parentWidget()->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)).x();
     };
@@ -3389,13 +3423,13 @@ int main(int argc, char **argv)
     };
     requireSensorColumnAlignment({ntcR0Edit, ntcBEdit},
                                  "temperature sensor column 1 aligns labels and inputs");
-    requireSensorColumnAlignment({ptR0Edit, polynomialEdits[0], polynomialEdits[4]},
+    requireSensorColumnAlignment({ptR0Edit, polynomialEdits[0]},
                                  "temperature sensor column 2 aligns labels and inputs");
-    requireSensorColumnAlignment({ptAEdit, polynomialEdits[1], polynomialEdits[5]},
+    requireSensorColumnAlignment({ptAEdit, polynomialEdits[1]},
                                  "temperature sensor column 3 aligns labels and inputs");
-    requireSensorColumnAlignment({ptBEdit, polynomialEdits[2], polynomialEdits[6]},
+    requireSensorColumnAlignment({ptBEdit, polynomialEdits[2]},
                                  "temperature sensor column 4 aligns labels and inputs");
-    requireSensorColumnAlignment({ptCEdit, polynomialEdits[3], polynomialEdits[7]},
+    requireSensorColumnAlignment({ptCEdit, polynomialEdits[3]},
                                  "temperature sensor column 5 aligns labels and inputs");
     const std::array<QWidget *, 5> firstRowFields{
         ntcR0Edit, ptR0Edit, ptAEdit, ptBEdit, ptCEdit};
@@ -3430,9 +3464,7 @@ int main(int argc, char **argv)
             "temperature channel page releases horizontal margins for the five sensor columns");
     require(sensorConfigGrid != nullptr && sensorConfigGrid->itemAtPosition(2, 0) == nullptr,
             "temperature sensor grid leaves row 3 column 1 empty");
-    auto *polynomialA7Edit = temperaturePanel->findChild<QLineEdit *>(
-        QStringLiteral("temperaturePolynomialA7EditChannel1"));
-    QWidget *sensorLastRow = polynomialA7Edit ? polynomialA7Edit->parentWidget() : nullptr;
+    QWidget *sensorLastRow = polynomialEdits[3] ? polynomialEdits[3]->parentWidget() : nullptr;
     const QRect sensorFirstRowRect(ntcR0Edit->parentWidget()->mapTo(
                                        temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
                                    ntcR0Edit->parentWidget()->size());
@@ -3448,7 +3480,7 @@ int main(int argc, char **argv)
         temperatureChannelConfigSubStack->currentWidget()->height() - 1 - sensorLastRowRect.bottom();
     const int sensorModelToFirstRowGap =
         sensorFirstRowRectInCard.top() - sensorModelFieldRectInCard.bottom() - 1;
-    require(polynomialA7Edit != nullptr &&
+    require(polynomialEdits[7] != nullptr &&
                 temperatureChannelStack->height() == 166 &&
                 temperatureConfigCard->height() <= 280 &&
                 sensorConfigGrid->alignment() == Qt::AlignTop &&

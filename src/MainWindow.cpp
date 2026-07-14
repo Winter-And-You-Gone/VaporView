@@ -7533,6 +7533,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         layout->setColumnStretch(spacerColumn, 1);
     }
     ChannelWidgets& channel = channels_[index];
+    auto *sensorTopBarLayout = qobject_cast<QHBoxLayout *>(channel.sensor_config_top_bar->layout());
     std::array<QList<QLabel *>, 5> fieldLabelsByColumn;
     std::array<QList<QWidget *>, 5> fieldEditorsByColumn;
 
@@ -7630,7 +7631,32 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         edit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         edit->setText(QStringLiteral("0E+0"));
         channel.polynomial_edits[static_cast<size_t>(i)] = edit;
-        addField(1 + (i / 4), 1 + (i % 4), QStringLiteral("A%1").arg(i), edit, channel.polynomial_label_text[static_cast<size_t>(i)]);
+        if (i < 4)
+        {
+            addField(1,
+                     1 + i,
+                     QStringLiteral("A%1").arg(i),
+                     edit,
+                     channel.polynomial_label_text[static_cast<size_t>(i)]);
+            continue;
+        }
+
+        QLabel *&label = channel.polynomial_label_text[static_cast<size_t>(i)];
+        label = makeFieldLabel(QStringLiteral("A%1").arg(i));
+        auto *field = new QWidget(channel.sensor_config_top_bar);
+        field->setObjectName(QStringLiteral("temperatureSensorTopPolynomialA%1FieldChannel%2")
+                                 .arg(i)
+                                 .arg(index + 1));
+        field->setProperty("temperatureSensorTopPolynomial", true);
+        field->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        field->setFixedHeight(30);
+        auto *fieldLayout = new QHBoxLayout(field);
+        fieldLayout->setContentsMargins(2, 0, 2, 0);
+        fieldLayout->setSpacing(4);
+        fieldLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        fieldLayout->addWidget(edit, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        sensorTopBarLayout->addWidget(field, 0, Qt::AlignVCenter);
+        field->setVisible(false);
     }
 
     for (size_t column = 0; column < fieldLabelsByColumn.size(); ++column)
@@ -7842,6 +7868,17 @@ void TemperatureControllerPanel::selectChannelSubPage(int channelIndex, int subP
     if (channel.config_sub_stack)
     {
         channel.config_sub_stack->setCurrentIndex(pageIndex);
+    }
+    const QList<QWidget *> sensorTopPolynomialFields =
+        channel.sensor_config_top_bar
+            ? channel.sensor_config_top_bar->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly)
+            : QList<QWidget *>();
+    for (QWidget *field : sensorTopPolynomialFields)
+    {
+        if (field->property("temperatureSensorTopPolynomial").toBool())
+        {
+            field->setVisible(pageIndex == 2);
+        }
     }
     if (channel_top_controls_stack_ && selected_config_page_index_ == channelIndex)
     {
