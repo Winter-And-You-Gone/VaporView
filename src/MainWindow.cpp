@@ -920,7 +920,7 @@ constexpr int kTemperatureControllerTopControlsHeight = 38;
 constexpr int kTemperatureControllerChannelConfigSubStackHeight = 128;
 constexpr int kTemperatureControllerChannelStackHeight =
     kTemperatureControllerChannelConfigSubStackHeight + 38;
-constexpr int kTemperatureControllerCommonStackHeight = 126;
+constexpr int kTemperatureControllerCommonStackHeight = kTemperatureControllerChannelStackHeight;
 constexpr int kTemperatureControllerHistoryLimit = 240;
 constexpr int kRemotePacketRateWindowMs = 5000;
 constexpr qint64 kTcpRecordingStatusRefreshMs = 500;

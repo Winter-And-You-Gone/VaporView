@@ -2881,10 +2881,9 @@ int main(int argc, char **argv)
     const int commonStackHeight = temperatureChannelStack->height();
     require(!temperatureChannelTopControlsStack->isVisible() &&
                 temperatureChannelStack->currentIndex() == 2 &&
-                commonStackHeight == 126 &&
-                commonStackHeight < channel1StackHeight &&
+                std::abs(commonStackHeight - channel1StackHeight) <= 1 &&
                 std::abs(temperatureChannelTopRow->height() - channel1TopRowHeight) <= 1 &&
-                temperatureConfigCard->height() < channel1ConfigCardHeight &&
+                std::abs(temperatureConfigCard->height() - channel1ConfigCardHeight) <= 1 &&
                 factoryResetButton->isVisible() &&
                 !temperatureConfigChannelButton1->isChecked() &&
                 !temperatureConfigChannelButton2->isChecked() &&
