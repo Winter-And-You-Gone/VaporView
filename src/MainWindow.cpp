@@ -918,7 +918,8 @@ constexpr int kTemperatureControllerCompactLabelWidth = 72;
 constexpr int kTemperatureControllerControlLabelWidth = 150;
 constexpr int kTemperatureControllerConfigRowHeight = 38;
 constexpr int kTemperatureControllerTopControlsHeight = 38;
-constexpr int kTemperatureControllerChannelConfigSubStackHeight = 128;
+constexpr int kTemperatureControllerChannelConfigSubStackHeight =
+    kTemperatureControllerConfigRowHeight * 2 + 8;
 constexpr int kTemperatureControllerChannelStackHeight =
     kTemperatureControllerChannelConfigSubStackHeight + 38;
 constexpr int kTemperatureControllerCommonStackHeight = kTemperatureControllerChannelStackHeight;
@@ -7345,17 +7346,16 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     subPageRowLayout->setContentsMargins(0, 0, 0, 0);
     subPageRowLayout->setSpacing(8);
     subPageRowLayout->addWidget(channel.sensor_config_top_bar, 0, Qt::AlignLeft | Qt::AlignVCenter);
-    subPageRowLayout->addStretch(1);
 
     auto *sensorTopPolynomialFields = new QWidget(subPageRow);
     sensorTopPolynomialFields->setObjectName(
         QStringLiteral("temperatureSensorTopPolynomialFieldsChannel%1").arg(index + 1));
-    sensorTopPolynomialFields->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    sensorTopPolynomialFields->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *sensorTopPolynomialLayout = new QHBoxLayout(sensorTopPolynomialFields);
     sensorTopPolynomialLayout->setContentsMargins(0, 0, 0, 0);
     sensorTopPolynomialLayout->setSpacing(4);
     sensorTopPolynomialFields->setVisible(false);
-    subPageRowLayout->addWidget(sensorTopPolynomialFields, 0, Qt::AlignRight | Qt::AlignVCenter);
+    subPageRowLayout->addWidget(sensorTopPolynomialFields, 1, Qt::AlignVCenter);
 
     channel.config_sub_stack = new QStackedWidget(page);
     channel.config_sub_stack->setObjectName(QStringLiteral("temperatureChannelConfigSubStackChannel%1").arg(index + 1));
@@ -7729,12 +7729,12 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
     {
         auto *edit = new QLineEdit(this);
         edit->setObjectName(QStringLiteral("temperaturePolynomialA%1EditChannel%2").arg(i).arg(index + 1));
-        edit->setFixedWidth(kTemperatureControllerPolynomialInputWidth);
         edit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         edit->setText(QStringLiteral("0E+0"));
         channel.polynomial_edits[static_cast<size_t>(i)] = edit;
         if (i < 4)
         {
+            edit->setFixedWidth(kTemperatureControllerPolynomialInputWidth);
             addField(1,
                      1 + i,
                      QStringLiteral("A%1").arg(i),
@@ -7745,11 +7745,13 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
 
         QLabel *&label = channel.polynomial_label_text[static_cast<size_t>(i)];
         label = makeFieldLabel(QStringLiteral("A%1").arg(i));
+        edit->setMinimumWidth(kTemperatureControllerPolynomialInputWidth);
+        edit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         auto *field = new QWidget(sensorTopPolynomialFields);
         field->setObjectName(QStringLiteral("temperatureSensorTopPolynomialA%1FieldChannel%2")
                                  .arg(i)
                                  .arg(index + 1));
-        field->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        field->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         field->setFixedHeight(30);
         auto *fieldLayout = new QHBoxLayout(field);
         fieldLayout->setContentsMargins(2, 0, 2, 0);
@@ -7758,7 +7760,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         fieldLayout->addWidget(edit, 0, Qt::AlignLeft | Qt::AlignVCenter);
         if (sensorTopPolynomialLayout)
         {
-            sensorTopPolynomialLayout->addWidget(field, 0, Qt::AlignVCenter);
+            sensorTopPolynomialLayout->addWidget(field, 1, Qt::AlignVCenter);
         }
     }
 

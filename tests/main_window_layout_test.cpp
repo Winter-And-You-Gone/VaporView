@@ -3059,10 +3059,10 @@ int main(int argc, char **argv)
         temperatureChannelSubTopBar->size());
     const int subTopBarBottomGap =
         temperatureChannelStack->currentWidget()->rect().bottom() - subTopBarRectInChannelPage.bottom();
-    require(temperatureChannelStack->height() == 166 &&
-                temperatureChannelConfigSubStack->height() == 128 &&
+    require(temperatureChannelStack->height() == 122 &&
+                temperatureChannelConfigSubStack->height() == 84 &&
                 subTopBarBottomGap == 0,
-            "temperature lower parameter tabs add no extra bottom margin inside the card");
+            "temperature lower parameter tabs use two content rows without extra bottom margin");
     clickWidget(temperatureChannelAdvancedParamsButton, 150);
     activateLayouts(&window);
     auto *overtempUpperSpin = temperaturePanel->findChild<QDoubleSpinBox *>(
@@ -3457,14 +3457,31 @@ int main(int argc, char **argv)
     const QRect sensorConfigButtonRectInSubPageRow(
         temperatureChannelSensorConfigButton->mapTo(temperatureChannelSubPageRow, QPoint(0, 0)),
         temperatureChannelSensorConfigButton->size());
+    const QRect polynomialFieldsRectInSubPageRow(
+        temperatureSensorTopPolynomialFields->mapTo(temperatureChannelSubPageRow, QPoint(0, 0)),
+        temperatureSensorTopPolynomialFields->size());
+    require(polynomialFieldsRectInSubPageRow.left() > sensorConfigButtonRectInSubPageRow.right() &&
+                std::abs(polynomialFieldsRectInSubPageRow.right() -
+                         temperatureChannelSubPageRow->rect().right()) <= 1,
+            "temperature polynomial A4-A7 group fills the row to the right of the navigation bar");
     int previousTopFieldRight = sensorConfigButtonRectInSubPageRow.right();
+    int topFieldWidth = -1;
+    int topInputWidth = -1;
     for (int coefficient = 4; coefficient < 8; ++coefficient)
     {
         QWidget *field = polynomialEdits[static_cast<size_t>(coefficient)]->parentWidget();
         const QRect fieldRect(field->mapTo(temperatureChannelSubPageRow, QPoint(0, 0)), field->size());
+        if (topFieldWidth < 0)
+        {
+            topFieldWidth = fieldRect.width();
+            topInputWidth = polynomialEdits[static_cast<size_t>(coefficient)]->width();
+        }
         require(fieldRect.left() > previousTopFieldRight &&
-                    std::abs(fieldRect.center().y() - sensorConfigButtonRectInSubPageRow.center().y()) <= 2,
-                "temperature polynomial A4-A7 fields sit to the right of the navigation bar on the same row");
+                    std::abs(fieldRect.center().y() - sensorConfigButtonRectInSubPageRow.center().y()) <= 2 &&
+                    std::abs(fieldRect.width() - topFieldWidth) <= 1 &&
+                    std::abs(polynomialEdits[static_cast<size_t>(coefficient)]->width() - topInputWidth) <= 1 &&
+                    polynomialEdits[static_cast<size_t>(coefficient)]->width() > 100,
+                "temperature polynomial A4-A7 fields are enlarged and evenly fill the row beside the tabs");
         previousTopFieldRight = fieldRect.right();
     }
     clickWidget(temperatureChannelCommonParamsButton, 100);
@@ -3538,8 +3555,8 @@ int main(int argc, char **argv)
     require(temperatureChannelPageMargins.left() == 0 &&
                 temperatureChannelPageMargins.right() == 0,
             "temperature channel page releases horizontal margins for the five sensor columns");
-    require(sensorConfigGrid != nullptr && sensorConfigGrid->itemAtPosition(2, 0) == nullptr,
-            "temperature sensor grid leaves row 3 column 1 empty");
+    require(sensorConfigGrid != nullptr && sensorConfigGrid->rowCount() == 2,
+            "temperature sensor grid contains exactly two parameter rows");
     QWidget *sensorLastRow = polynomialEdits[3] ? polynomialEdits[3]->parentWidget() : nullptr;
     const QRect sensorFirstRowRect(ntcR0Edit->parentWidget()->mapTo(
                                        temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
@@ -3557,16 +3574,17 @@ int main(int argc, char **argv)
     const int sensorModelToFirstRowGap =
         sensorFirstRowRectInCard.top() - sensorModelFieldRectInCard.bottom() - 1;
     require(polynomialEdits[7] != nullptr &&
-                temperatureChannelStack->height() == 166 &&
-                temperatureConfigCard->height() <= 280 &&
+                temperatureChannelStack->height() == 122 &&
+                temperatureConfigCard->height() <= 236 &&
                 sensorConfigGrid->alignment() == Qt::AlignTop &&
                 sensorFirstRowRect.top() >= 0 &&
                 sensorFirstRowRect.top() <= 4 &&
                 sensorModelToFirstRowGap >= 0 &&
                 sensorModelToFirstRowGap <= 12 &&
                 sensorLastRowRect.bottom() < temperatureChannelConfigSubStack->currentWidget()->height() &&
-                sensorPageBottomUnusedHeight >= 0,
-            "temperature sensor grid starts close to the model row without clipping");
+                sensorPageBottomUnusedHeight >= 0 &&
+                sensorPageBottomUnusedHeight <= 4,
+            "temperature sensor grid uses two rows without a blank third row or clipping");
     require(temperatureChannelStack->isAncestorOf(factoryResetButton) &&
                 !temperatureChannelSelectorRow->isAncestorOf(factoryResetButton),
             "temperature factory reset button lives on the last common-settings row");
