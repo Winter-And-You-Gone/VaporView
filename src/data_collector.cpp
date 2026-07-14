@@ -4232,8 +4232,12 @@ bool TemperatureControllerCollector::readChannel(uint8_t channel, TemperatureCon
   channel_data.output_mode = registers[0];
   if (!readRegisters(channelAddress(channel, Register::AutoPid), 1, registers)) return false;
   channel_data.auto_pid_mode = static_cast<int>(registers[0]);
+  if (!readRegisters(channelAddress(channel, Register::TemperatureSlope), 1, registers)) return false;
+  channel_data.temperature_slope_c_per_s = static_cast<double>(decodeUInt16(QVector<uint16_t>(registers.cbegin(), registers.cend()))) / 1000.0;
   if (!readRegisters(channelAddress(channel, Register::MaxOutputPercent), 1, registers)) return false;
   channel_data.max_output_percent = static_cast<int>(registers[0]);
+  if (!readRegisters(channelAddress(channel, Register::StartupDelay), 1, registers)) return false;
+  channel_data.startup_delay_s = static_cast<int>(decodeUInt16(QVector<uint16_t>(registers.cbegin(), registers.cend())));
   if (!readRegisters(channelAddress(channel, Register::Kp), 2, registers)) return false;
   channel_data.kp = static_cast<int>(decodeUInt32(QVector<uint16_t>(registers.cbegin(), registers.cend())));
   if (!readRegisters(channelAddress(channel, Register::Ki), 2, registers)) return false;
@@ -4244,6 +4248,8 @@ bool TemperatureControllerCollector::readChannel(uint8_t channel, TemperatureCon
   channel_data.output_percent = static_cast<double>(decodeInt64(QVector<uint16_t>(registers.cbegin(), registers.cend()))) / 20000.0;
   if (!readRegisters(channelAddress(channel, Register::OutputCurrent), 1, registers)) return false;
   channel_data.output_current_a = registers[0] / 1000.0;
+  if (!readRegisters(channelAddress(channel, Register::Resistor), 4, registers)) return false;
+  channel_data.sensor_resistance_ohm = static_cast<double>(decodeUInt64(QVector<uint16_t>(registers.cbegin(), registers.cend()))) / 1000000.0;
   if (!readRegisters(channelAddress(channel, Register::SensorModel), 1, registers)) return false;
   channel_data.sensor_model = static_cast<int>(decodeUInt16(QVector<uint16_t>(registers.cbegin(), registers.cend())));
   if (!readRegisters(channelAddress(channel, Register::NtcB), 2, registers)) return false;
@@ -4258,6 +4264,10 @@ bool TemperatureControllerCollector::readChannel(uint8_t channel, TemperatureCon
   channel_data.pt_b = static_cast<int>(decodeInt32(QVector<uint16_t>(registers.cbegin(), registers.cend())));
   if (!readRegisters(channelAddress(channel, Register::PtC), 2, registers)) return false;
   channel_data.pt_c = static_cast<int>(decodeInt32(QVector<uint16_t>(registers.cbegin(), registers.cend())));
+  if (!readRegisters(channelAddress(channel, Register::OvertempUpper), 2, registers)) return false;
+  channel_data.overtemp_upper_c = rawToTemperatureCelsius(decodeInt32(QVector<uint16_t>(registers.cbegin(), registers.cend())));
+  if (!readRegisters(channelAddress(channel, Register::OvertempLower), 2, registers)) return false;
+  channel_data.overtemp_lower_c = rawToTemperatureCelsius(decodeInt32(QVector<uint16_t>(registers.cbegin(), registers.cend())));
   for (int i = 0; i < 8; ++i)
   {
     const auto mantissaRegister = static_cast<Register>(
@@ -4451,6 +4461,50 @@ bool TemperatureControllerCollector::setAutoPid(uint8_t channel, uint16_t mode)
   }
   const QVector<uint16_t> values = encodeUInt16(mode);
   return writeAndConfirm(channel, channelAddress(channel, Register::AutoPid), std::vector<uint16_t>(values.cbegin(), values.cend()));
+}
+
+bool TemperatureControllerCollector::setOvertempUpper(uint8_t channel, double celsius)
+{
+  using namespace TemperatureControllerProtocol;
+  if (!std::isfinite(celsius) || celsius < -3000.0 || celsius > 5000.0)
+  {
+    return false;
+  }
+  const QVector<uint16_t> values = encodeInt32(overtempCelsiusToRaw(celsius));
+  return writeAndConfirm(channel, channelAddress(channel, Register::OvertempUpper), std::vector<uint16_t>(values.cbegin(), values.cend()));
+}
+
+bool TemperatureControllerCollector::setOvertempLower(uint8_t channel, double celsius)
+{
+  using namespace TemperatureControllerProtocol;
+  if (!std::isfinite(celsius) || celsius < -3000.0 || celsius > 5000.0)
+  {
+    return false;
+  }
+  const QVector<uint16_t> values = encodeInt32(overtempCelsiusToRaw(celsius));
+  return writeAndConfirm(channel, channelAddress(channel, Register::OvertempLower), std::vector<uint16_t>(values.cbegin(), values.cend()));
+}
+
+bool TemperatureControllerCollector::setTemperatureSlope(uint8_t channel, double celsius_per_second)
+{
+  using namespace TemperatureControllerProtocol;
+  if (!std::isfinite(celsius_per_second) || celsius_per_second < 0.0 || celsius_per_second > 10.0)
+  {
+    return false;
+  }
+  const QVector<uint16_t> values = encodeUInt16(static_cast<quint16>(qRound(celsius_per_second * 1000.0)));
+  return writeAndConfirm(channel, channelAddress(channel, Register::TemperatureSlope), std::vector<uint16_t>(values.cbegin(), values.cend()));
+}
+
+bool TemperatureControllerCollector::setStartupDelay(uint8_t channel, uint16_t seconds)
+{
+  using namespace TemperatureControllerProtocol;
+  if (seconds < 3 || seconds > 180)
+  {
+    return false;
+  }
+  const QVector<uint16_t> values = encodeUInt16(seconds);
+  return writeAndConfirm(channel, channelAddress(channel, Register::StartupDelay), std::vector<uint16_t>(values.cbegin(), values.cend()));
 }
 
 bool TemperatureControllerCollector::setControllerMode(uint16_t mode)

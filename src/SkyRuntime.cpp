@@ -894,6 +894,26 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
             CommandErrorCode error = CommandErrorCode::Ok;
             return device_manager_.setTemperatureAutoPid(request.channel, request.auto_pid_mode, &error);
         });
+    case CommandId::SetTemperatureOvertempUpper:
+        return temperatureCommand([this](const TemperatureControllerCommand& request) {
+            CommandErrorCode error = CommandErrorCode::Ok;
+            return device_manager_.setTemperatureOvertempUpper(request.channel, request.overtemp_upper_c, &error);
+        });
+    case CommandId::SetTemperatureOvertempLower:
+        return temperatureCommand([this](const TemperatureControllerCommand& request) {
+            CommandErrorCode error = CommandErrorCode::Ok;
+            return device_manager_.setTemperatureOvertempLower(request.channel, request.overtemp_lower_c, &error);
+        });
+    case CommandId::SetTemperatureSlope:
+        return temperatureCommand([this](const TemperatureControllerCommand& request) {
+            CommandErrorCode error = CommandErrorCode::Ok;
+            return device_manager_.setTemperatureSlope(request.channel, request.temperature_slope_c_per_s, &error);
+        });
+    case CommandId::SetTemperatureStartupDelay:
+        return temperatureCommand([this](const TemperatureControllerCommand& request) {
+            CommandErrorCode error = CommandErrorCode::Ok;
+            return device_manager_.setTemperatureStartupDelay(request.channel, request.startup_delay_s, &error);
+        });
     case CommandId::SetTemperatureControllerMode:
         return temperatureCommand([this](const TemperatureControllerCommand& request) {
             CommandErrorCode error = CommandErrorCode::Ok;

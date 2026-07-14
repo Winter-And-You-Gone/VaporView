@@ -349,6 +349,19 @@ qint32 temperatureCelsiusToRaw(double celsius)
     return static_cast<qint32>(clamped);
 }
 
+qint32 overtempCelsiusToRaw(double celsius)
+{
+    if (!std::isfinite(celsius))
+    {
+        return 0;
+    }
+    const double scaled = std::round(celsius * kTemperatureScale);
+    const double clamped = std::clamp(scaled,
+                                      static_cast<double>(std::numeric_limits<qint32>::min()),
+                                      static_cast<double>(std::numeric_limits<qint32>::max()));
+    return static_cast<qint32>(clamped);
+}
+
 double rawToTemperatureCelsius(qint32 raw)
 {
     return static_cast<double>(raw) / kTemperatureScale;

@@ -40,6 +40,8 @@ void testProtocolEnumValues()
     require(static_cast<quint16>(VaporView::CommandId::SetTemperatureRs485Baud) == 48, "CommandId SetTemperatureRs485Baud value");
     require(static_cast<quint16>(VaporView::CommandId::SetTemperatureOvertempOutputMode) == 49, "CommandId SetTemperatureOvertempOutputMode value");
     require(static_cast<quint16>(VaporView::CommandId::RestoreTemperatureFactoryDefaults) == 50, "CommandId RestoreTemperatureFactoryDefaults value");
+    require(static_cast<quint16>(VaporView::CommandId::SetTemperatureOvertempUpper) == 52, "CommandId SetTemperatureOvertempUpper value");
+    require(static_cast<quint16>(VaporView::CommandId::SetTemperatureStartupDelay) == 55, "CommandId SetTemperatureStartupDelay value");
     require(static_cast<quint16>(VaporView::CommandId::ShutdownCore) == 90, "CommandId ShutdownCore value");
 }
 
@@ -232,6 +234,10 @@ void testWaveform()
     command.device_address = 9;
     command.rs485_baud_index = 5;
     command.overtemp_output_mode = 1;
+    command.overtemp_upper_c = 499.12345;
+    command.overtemp_lower_c = -40.54321;
+    command.temperature_slope_c_per_s = 1.234;
+    command.startup_delay_s = 15;
     command.sensor_model = 1;
     command.ntc_b = 395000;
     command.ntc_r0 = 10000;
@@ -257,6 +263,11 @@ void testWaveform()
                 parsedCommand.rs485_baud_index == 5 &&
                 parsedCommand.overtemp_output_mode == 1,
             "temperature command common settings values");
+    require(std::fabs(parsedCommand.overtemp_upper_c - 499.12345) < 0.000001 &&
+                std::fabs(parsedCommand.overtemp_lower_c + 40.54321) < 0.000001 &&
+                std::fabs(parsedCommand.temperature_slope_c_per_s - 1.234) < 0.000001 &&
+                parsedCommand.startup_delay_s == 15,
+            "temperature command professional parameter values");
     require(parsedCommand.sensor_model == 1 &&
                 parsedCommand.ntc_b == 395000 &&
                 parsedCommand.ntc_r0 == 10000 &&
@@ -286,6 +297,11 @@ void testWaveform()
     status.channels[0].output_mode = 1;
     status.channels[0].max_output_percent = 70;
     status.channels[0].auto_pid_mode = 1;
+    status.channels[0].overtemp_upper_c = 500.0;
+    status.channels[0].overtemp_lower_c = -35.0;
+    status.channels[0].temperature_slope_c_per_s = 0.125;
+    status.channels[0].startup_delay_s = 12;
+    status.channels[0].sensor_resistance_ohm = 11948.4923;
     status.channels[0].kp = 100;
     status.channels[0].sensor_model = 2;
     status.channels[0].ntc_b = 395000;
@@ -321,6 +337,12 @@ void testWaveform()
                 parsedStatus.overtemp_output_mode == 1,
             "temperature status common settings");
     require(parsedStatus.channels[0].output_enabled && parsedStatus.channels[0].kp == 100 && parsedStatus.channels[0].auto_pid_mode == 1, "temperature status channel one");
+    require(std::fabs(parsedStatus.channels[0].overtemp_upper_c - 500.0) < 0.000001 &&
+                std::fabs(parsedStatus.channels[0].overtemp_lower_c + 35.0) < 0.000001 &&
+                std::fabs(parsedStatus.channels[0].temperature_slope_c_per_s - 0.125) < 0.000001 &&
+                parsedStatus.channels[0].startup_delay_s == 12 &&
+                std::fabs(parsedStatus.channels[0].sensor_resistance_ohm - 11948.4923) < 0.000001,
+            "temperature status channel one professional parameters");
     require(std::fabs(parsedStatus.channels[1].output_percent - 12.5) < 0.000001 && parsedStatus.channels[1].auto_pid_mode == 2, "temperature status channel two");
     require(parsedStatus.channels[0].sensor_model == 2 &&
                 parsedStatus.channels[0].ntc_b == 395000 &&

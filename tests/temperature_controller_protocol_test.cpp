@@ -74,6 +74,10 @@ bool checkTemperatureScaling()
                   "low temperature clamp mismatch");
     ok &= require(VaporView::TemperatureControllerProtocol::temperatureCelsiusToRaw(2000.0) == 100000000,
                   "high temperature clamp mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::overtempCelsiusToRaw(-3000.0) == -300000000,
+                  "low temperature alarm scaling mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::overtempCelsiusToRaw(5000.0) == 500000000,
+                  "high temperature alarm scaling mismatch");
     return ok;
 }
 
@@ -90,6 +94,12 @@ bool checkChannelAddressOffset()
                   "channel 1 auto PID address mismatch");
     ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(2, VaporView::TemperatureControllerProtocol::Register::AutoPid) == 0x2107,
                   "channel 2 auto PID address mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(1, VaporView::TemperatureControllerProtocol::Register::Resistor) == 0x1004,
+                  "channel 1 sensor resistance address mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(2, VaporView::TemperatureControllerProtocol::Register::TemperatureSlope) == 0x2108,
+                  "channel 2 temperature slope address mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(2, VaporView::TemperatureControllerProtocol::Register::StartupDelay) == 0x210F,
+                  "channel 2 startup delay address mismatch");
     ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(1, VaporView::TemperatureControllerProtocol::Register::SensorModel) == 0x1300,
                   "channel 1 sensor model address mismatch");
     ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(2, VaporView::TemperatureControllerProtocol::Register::SensorModel) == 0x2300,
@@ -100,6 +110,10 @@ bool checkChannelAddressOffset()
                   "channel 2 NTC B address mismatch");
     ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(2, VaporView::TemperatureControllerProtocol::Register::PolynomialA0Mantissa) == 0x2315,
                   "channel 2 A0 mantissa address mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(1, VaporView::TemperatureControllerProtocol::Register::OvertempUpper) == 0x133D,
+                  "channel 1 high temperature alarm address mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(2, VaporView::TemperatureControllerProtocol::Register::OvertempLower) == 0x233F,
+                  "channel 2 low temperature alarm address mismatch");
     ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(
                       2,
                       static_cast<VaporView::TemperatureControllerProtocol::Register>(

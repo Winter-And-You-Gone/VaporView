@@ -28,6 +28,7 @@ enum class Register : quint16
     AutoPid = 0x1107,
     TemperatureSlope = 0x1108,
     MaxOutputPercent = 0x110E,
+    StartupDelay = 0x110F,
     PowerMode = 0x1110,
     OutputCurrent = 0x1111,
     MaxOutputCurrent = 0x1112,
@@ -45,6 +46,8 @@ enum class Register : quint16
     PtReference = 0x1311,
     PolynomialA0Mantissa = 0x1315,
     PolynomialA0Exponent = 0x1319,
+    OvertempUpper = 0x133D,
+    OvertempLower = 0x133F,
     ControllerMode = 0x0004,
     InternalTemperature = 0x0003,
     ErrorCode = 0x0007,
@@ -102,6 +105,7 @@ quint32 decodeUInt32(const QVector<quint16>& registers, int offset = 0);
 qint64 decodeInt64(const QVector<quint16>& registers, int offset = 0);
 quint64 decodeUInt64(const QVector<quint16>& registers, int offset = 0);
 qint32 temperatureCelsiusToRaw(double celsius);
+qint32 overtempCelsiusToRaw(double celsius);
 double rawToTemperatureCelsius(qint32 raw);
 QString deviceModelName(quint16 modelCode);
 QString frameStatusText(FrameStatus status);

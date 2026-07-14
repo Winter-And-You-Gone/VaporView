@@ -252,6 +252,11 @@ struct TemperatureControllerChannelData
   bool output_enabled = false;
   int max_output_percent = 0;
   int auto_pid_mode = 0;
+  double overtemp_upper_c = std::numeric_limits<double>::quiet_NaN();
+  double overtemp_lower_c = std::numeric_limits<double>::quiet_NaN();
+  double temperature_slope_c_per_s = std::numeric_limits<double>::quiet_NaN();
+  int startup_delay_s = 3;
+  double sensor_resistance_ohm = std::numeric_limits<double>::quiet_NaN();
   int kp = 0;
   int ki = 0;
   int kd = 0;

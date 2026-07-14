@@ -462,6 +462,54 @@ bool SkyDeviceManager::setTemperatureAutoPid(quint8 channel, quint16 mode, Comma
     return ok;
 }
 
+bool SkyDeviceManager::setTemperatureOvertempUpper(quint8 channel, double celsius, CommandErrorCode *errorCode)
+{
+    if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        return false;
+    }
+    const bool ok = temperature_controller_->setOvertempUpper(channel, celsius);
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    return ok;
+}
+
+bool SkyDeviceManager::setTemperatureOvertempLower(quint8 channel, double celsius, CommandErrorCode *errorCode)
+{
+    if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        return false;
+    }
+    const bool ok = temperature_controller_->setOvertempLower(channel, celsius);
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    return ok;
+}
+
+bool SkyDeviceManager::setTemperatureSlope(quint8 channel, double celsiusPerSecond, CommandErrorCode *errorCode)
+{
+    if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        return false;
+    }
+    const bool ok = temperature_controller_->setTemperatureSlope(channel, celsiusPerSecond);
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    return ok;
+}
+
+bool SkyDeviceManager::setTemperatureStartupDelay(quint8 channel, quint16 seconds, CommandErrorCode *errorCode)
+{
+    if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        return false;
+    }
+    const bool ok = temperature_controller_->setStartupDelay(channel, seconds);
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    return ok;
+}
+
 bool SkyDeviceManager::setTemperatureControllerMode(quint16 mode, CommandErrorCode *errorCode)
 {
     if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)

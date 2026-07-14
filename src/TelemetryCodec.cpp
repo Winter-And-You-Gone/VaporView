@@ -184,6 +184,10 @@ QString commandIdName(CommandId id)
     case CommandId::SetTemperatureOvertempOutputMode: return QStringLiteral("SetTemperatureOvertempOutputMode");
     case CommandId::RestoreTemperatureFactoryDefaults: return QStringLiteral("RestoreTemperatureFactoryDefaults");
     case CommandId::SetTemperatureSensorConfig: return QStringLiteral("SetTemperatureSensorConfig");
+    case CommandId::SetTemperatureOvertempUpper: return QStringLiteral("SetTemperatureOvertempUpper");
+    case CommandId::SetTemperatureOvertempLower: return QStringLiteral("SetTemperatureOvertempLower");
+    case CommandId::SetTemperatureSlope: return QStringLiteral("SetTemperatureSlope");
+    case CommandId::SetTemperatureStartupDelay: return QStringLiteral("SetTemperatureStartupDelay");
     case CommandId::ShutdownCore: return QStringLiteral("ShutdownCore");
     }
     return QStringLiteral("UnknownCommand");
@@ -917,6 +921,14 @@ QByteArray TelemetryCodec::serializeTemperatureControllerStatus(const Temperatur
     appendLe<quint16>(payload, static_cast<quint16>(std::clamp(data.device_address, 0, 65535)));
     appendLe<quint16>(payload, static_cast<quint16>(std::clamp(data.rs485_baud_index, 0, 65535)));
     appendLe<quint16>(payload, static_cast<quint16>(std::clamp(data.overtemp_output_mode, 0, 65535)));
+    for (const TemperatureControllerChannelData& channel : data.channels)
+    {
+        appendDoubleLe(payload, channel.overtemp_upper_c);
+        appendDoubleLe(payload, channel.overtemp_lower_c);
+        appendDoubleLe(payload, channel.temperature_slope_c_per_s);
+        appendLe<quint16>(payload, static_cast<quint16>(std::clamp(channel.startup_delay_s, 0, 65535)));
+        appendDoubleLe(payload, channel.sensor_resistance_ohm);
+    }
     return payload;
 }
 
@@ -1041,6 +1053,19 @@ bool TelemetryCodec::parseTemperatureControllerStatus(const QByteArray& payload,
             }
         }
     }
+    for (TemperatureControllerChannelData& channel : data.channels)
+    {
+        quint16 startupDelay = 0;
+        if (!readDoubleLe(payload, offset, channel.overtemp_upper_c) ||
+            !readDoubleLe(payload, offset, channel.overtemp_lower_c) ||
+            !readDoubleLe(payload, offset, channel.temperature_slope_c_per_s) ||
+            !readLe(payload, offset, startupDelay) ||
+            !readDoubleLe(payload, offset, channel.sensor_resistance_ohm))
+        {
+            break;
+        }
+        channel.startup_delay_s = startupDelay;
+    }
     return true;
 }
 
@@ -1074,6 +1099,10 @@ QByteArray TelemetryCodec::serializeTemperatureControllerCommand(const Temperatu
         appendLe<qint64>(payload, command.polynomial_mantissas[i]);
         appendLe<qint16>(payload, command.polynomial_exponents[i]);
     }
+    appendDoubleLe(payload, command.overtemp_upper_c);
+    appendDoubleLe(payload, command.overtemp_lower_c);
+    appendDoubleLe(payload, command.temperature_slope_c_per_s);
+    appendLe<quint16>(payload, command.startup_delay_s);
     return payload;
 }
 
@@ -1151,6 +1180,14 @@ bool TelemetryCodec::parseTemperatureControllerCommand(const QByteArray& payload
                                 }
                                 command.polynomial_mantissas[i] = mantissa;
                                 command.polynomial_exponents[i] = exponent;
+                            }
+                            quint16 startupDelay = 0;
+                            if (readDoubleLe(payload, offset, command.overtemp_upper_c) &&
+                                readDoubleLe(payload, offset, command.overtemp_lower_c) &&
+                                readDoubleLe(payload, offset, command.temperature_slope_c_per_s) &&
+                                readLe(payload, offset, startupDelay))
+                            {
+                                command.startup_delay_s = startupDelay;
                             }
                         }
                     }

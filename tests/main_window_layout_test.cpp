@@ -2480,6 +2480,11 @@ int main(int argc, char **argv)
     validTemperatureData.channels[0].ki = 20;
     validTemperatureData.channels[0].kd = 30;
     validTemperatureData.channels[0].auto_pid_mode = 0;
+    validTemperatureData.channels[0].overtemp_upper_c = 500.12345;
+    validTemperatureData.channels[0].overtemp_lower_c = -40.54321;
+    validTemperatureData.channels[0].temperature_slope_c_per_s = 1.234;
+    validTemperatureData.channels[0].startup_delay_s = 15;
+    validTemperatureData.channels[0].sensor_resistance_ohm = 11948.4923;
     validTemperatureData.internal_temperature_c = 25.0;
     validTemperatureData.controller_mode = 0;
     validTemperatureData.device_address = 2;
@@ -3057,12 +3062,55 @@ int main(int argc, char **argv)
             "temperature lower parameter tabs add no extra bottom margin inside the card");
     clickWidget(temperatureChannelAdvancedParamsButton, 150);
     activateLayouts(&window);
+    auto *overtempUpperSpin = temperaturePanel->findChild<QDoubleSpinBox *>(
+        QStringLiteral("temperatureOvertempUpperSpinChannel1"));
+    auto *overtempLowerSpin = temperaturePanel->findChild<QDoubleSpinBox *>(
+        QStringLiteral("temperatureOvertempLowerSpinChannel1"));
+    auto *temperatureSlopeSpin = temperaturePanel->findChild<QDoubleSpinBox *>(
+        QStringLiteral("temperatureSlopeSpinChannel1"));
+    auto *startupDelaySpin = temperaturePanel->findChild<QSpinBox *>(
+        QStringLiteral("temperatureStartupDelaySpinChannel1"));
+    auto *sensorResistanceEdit = temperaturePanel->findChild<QLineEdit *>(
+        QStringLiteral("temperatureSensorResistanceEditChannel1"));
     require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
                 temperatureChannelConfigSubStack->currentWidget()->objectName() ==
                     QStringLiteral("temperatureChannelAdvancedParamsPageChannel1") &&
                 temperatureChannelAdvancedParamsButton->isChecked() &&
-                !temperatureChannelTopControlsStack->isVisible(),
-            "temperature lower advanced tab switches to the reserved empty page");
+                !temperatureChannelTopControlsStack->isVisible() &&
+                overtempUpperSpin != nullptr &&
+                overtempLowerSpin != nullptr &&
+                temperatureSlopeSpin != nullptr &&
+                startupDelaySpin != nullptr &&
+                sensorResistanceEdit != nullptr,
+            "temperature lower advanced tab exposes all RD105 professional parameters");
+    require(overtempUpperSpin->minimum() == -3000.0 &&
+                overtempUpperSpin->maximum() == 5000.0 &&
+                overtempUpperSpin->decimals() == 5 &&
+                overtempLowerSpin->minimum() == -3000.0 &&
+                overtempLowerSpin->maximum() == 5000.0 &&
+                overtempLowerSpin->decimals() == 5 &&
+                temperatureSlopeSpin->minimum() == 0.0 &&
+                temperatureSlopeSpin->maximum() == 10.0 &&
+                temperatureSlopeSpin->decimals() == 3 &&
+                startupDelaySpin->minimum() == 3 &&
+                startupDelaySpin->maximum() == 180 &&
+                sensorResistanceEdit->isReadOnly(),
+            "temperature professional controls follow the RD105 manual ranges and read-only resistance rule");
+    require(std::abs(overtempUpperSpin->value() - 500.12345) < 0.00001 &&
+                std::abs(overtempLowerSpin->value() + 40.54321) < 0.00001 &&
+                std::abs(temperatureSlopeSpin->value() - 1.234) < 0.001 &&
+                startupDelaySpin->value() == 15 &&
+                sensorResistanceEdit->text() == QStringLiteral("11948.492300"),
+            "temperature professional controls show values received from the RD105 status frame");
+    require(overtempUpperSpin->parentWidget()->parentWidget() ==
+                overtempLowerSpin->parentWidget()->parentWidget() &&
+                temperatureSlopeSpin->parentWidget()->parentWidget() ==
+                startupDelaySpin->parentWidget()->parentWidget() &&
+                startupDelaySpin->parentWidget()->parentWidget() ==
+                sensorResistanceEdit->parentWidget()->parentWidget() &&
+                overtempUpperSpin->parentWidget()->parentWidget() !=
+                temperatureSlopeSpin->parentWidget()->parentWidget(),
+            "temperature professional parameters use two fields on row one and three fields on row two");
     clickWidget(temperatureChannelCommonParamsButton, 150);
     activateLayouts(&window);
     require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&

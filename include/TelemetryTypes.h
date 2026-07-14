@@ -76,6 +76,10 @@ enum class CommandId : quint16
     SetTemperatureOvertempOutputMode = 49,
     RestoreTemperatureFactoryDefaults = 50,
     SetTemperatureSensorConfig = 51,
+    SetTemperatureOvertempUpper = 52,
+    SetTemperatureOvertempLower = 53,
+    SetTemperatureSlope = 54,
+    SetTemperatureStartupDelay = 55,
     ShutdownCore = 90,
 };
 
@@ -248,6 +252,10 @@ struct TemperatureControllerCommand
     quint16 device_address = 1;
     quint16 rs485_baud_index = 1;
     quint16 overtemp_output_mode = 1;
+    double overtemp_upper_c = 5000.0;
+    double overtemp_lower_c = -3000.0;
+    double temperature_slope_c_per_s = 0.0;
+    quint16 startup_delay_s = 3;
     quint16 sensor_model = 0;
     quint32 ntc_b = 395000;
     quint32 ntc_r0 = 10000;

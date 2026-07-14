@@ -50,6 +50,10 @@ public:
     bool setTemperatureMaxOutputPercent(quint8 channel, quint16 percent, CommandErrorCode *errorCode = nullptr);
     bool setTemperaturePid(quint8 channel, quint32 kp, quint32 ki, quint32 kd, CommandErrorCode *errorCode = nullptr);
     bool setTemperatureAutoPid(quint8 channel, quint16 mode, CommandErrorCode *errorCode = nullptr);
+    bool setTemperatureOvertempUpper(quint8 channel, double celsius, CommandErrorCode *errorCode = nullptr);
+    bool setTemperatureOvertempLower(quint8 channel, double celsius, CommandErrorCode *errorCode = nullptr);
+    bool setTemperatureSlope(quint8 channel, double celsiusPerSecond, CommandErrorCode *errorCode = nullptr);
+    bool setTemperatureStartupDelay(quint8 channel, quint16 seconds, CommandErrorCode *errorCode = nullptr);
     bool setTemperatureControllerMode(quint16 mode, CommandErrorCode *errorCode = nullptr);
     bool setTemperatureDeviceAddress(quint16 address, CommandErrorCode *errorCode = nullptr);
     bool setTemperatureRs485Baud(quint16 baudIndex, CommandErrorCode *errorCode = nullptr);

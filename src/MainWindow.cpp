@@ -7514,7 +7514,104 @@ QWidget *TemperatureControllerPanel::createChannelAdvancedParamsPage(int index)
     page->setObjectName(QStringLiteral("temperatureChannelAdvancedParamsPageChannel%1").arg(index + 1));
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->addStretch(1);
+    layout->setSpacing(8);
+    layout->setAlignment(Qt::AlignVCenter);
+    ChannelWidgets& channel = channels_[index];
+
+    auto makeRow = [page, layout]() {
+        auto *row = new QWidget(page);
+        row->setObjectName(QStringLiteral("temperatureAdvancedParamsRow"));
+        row->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        row->setFixedHeight(kTemperatureControllerConfigRowHeight);
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        rowLayout->setSpacing(0);
+        layout->addWidget(row, 0, Qt::AlignVCenter);
+        return rowLayout;
+    };
+    auto makeField = [this](const QString& labelText, QWidget *editor, QLabel *&label) {
+        label = new QLabel(labelText, this);
+        label->setObjectName(QStringLiteral("fieldLabel"));
+        label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        label->setMinimumHeight(22);
+        editor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        auto *cell = new QWidget();
+        cell->setObjectName(QStringLiteral("temperatureConfigFieldRow"));
+        cell->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        cell->setFixedHeight(kTemperatureControllerConfigRowHeight);
+        auto *cellLayout = new QHBoxLayout(cell);
+        cellLayout->setContentsMargins(0, 0, 0, 0);
+        cellLayout->setSpacing(6);
+        cellLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        cellLayout->addWidget(editor, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        return cell;
+    };
+    auto addField = [](QHBoxLayout *row, QWidget *field) {
+        if (row->count() > 0)
+        {
+            row->addStretch(1);
+        }
+        row->addWidget(field, 0, Qt::AlignVCenter);
+    };
+
+    const quint8 channelNumber = static_cast<quint8>(index + 1);
+    auto *firstRow = makeRow();
+    auto *secondRow = makeRow();
+
+    channel.overtemp_upper_spin = new QDoubleSpinBox(page);
+    channel.overtemp_upper_spin->setObjectName(QStringLiteral("temperatureOvertempUpperSpinChannel%1").arg(index + 1));
+    channel.overtemp_upper_spin->setRange(-3000.0, 5000.0);
+    channel.overtemp_upper_spin->setDecimals(5);
+    channel.overtemp_upper_spin->setSingleStep(0.00001);
+    channel.overtemp_upper_spin->setFixedWidth(128);
+    addField(firstRow, makeField(QStringLiteral("高温报警值(°C)"), channel.overtemp_upper_spin, channel.overtemp_upper_label_text));
+    setDangerTextPalette(channel.overtemp_upper_label_text);
+
+    channel.overtemp_lower_spin = new QDoubleSpinBox(page);
+    channel.overtemp_lower_spin->setObjectName(QStringLiteral("temperatureOvertempLowerSpinChannel%1").arg(index + 1));
+    channel.overtemp_lower_spin->setRange(-3000.0, 5000.0);
+    channel.overtemp_lower_spin->setDecimals(5);
+    channel.overtemp_lower_spin->setSingleStep(0.00001);
+    channel.overtemp_lower_spin->setFixedWidth(128);
+    addField(firstRow, makeField(QStringLiteral("低温报警值(°C)"), channel.overtemp_lower_spin, channel.overtemp_lower_label_text));
+    setDangerTextPalette(channel.overtemp_lower_label_text);
+    firstRow->addStretch(1);
+
+    channel.temperature_slope_spin = new QDoubleSpinBox(page);
+    channel.temperature_slope_spin->setObjectName(QStringLiteral("temperatureSlopeSpinChannel%1").arg(index + 1));
+    channel.temperature_slope_spin->setRange(0.0, 10.0);
+    channel.temperature_slope_spin->setDecimals(3);
+    channel.temperature_slope_spin->setSingleStep(0.001);
+    channel.temperature_slope_spin->setFixedWidth(kTemperatureControllerCompactInputWidth);
+    addField(secondRow, makeField(QStringLiteral("温度变化速率(°C/s)"), channel.temperature_slope_spin, channel.temperature_slope_label_text));
+
+    channel.startup_delay_spin = new QSpinBox(page);
+    channel.startup_delay_spin->setObjectName(QStringLiteral("temperatureStartupDelaySpinChannel%1").arg(index + 1));
+    channel.startup_delay_spin->setRange(3, 180);
+    channel.startup_delay_spin->setSuffix(QStringLiteral(" s"));
+    channel.startup_delay_spin->setFixedWidth(kTemperatureControllerCompactInputWidth);
+    addField(secondRow, makeField(QStringLiteral("开机输出延时(s)"), channel.startup_delay_spin, channel.startup_delay_label_text));
+
+    channel.sensor_resistance_edit = new QLineEdit(page);
+    channel.sensor_resistance_edit->setObjectName(QStringLiteral("temperatureSensorResistanceEditChannel%1").arg(index + 1));
+    channel.sensor_resistance_edit->setReadOnly(true);
+    channel.sensor_resistance_edit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    channel.sensor_resistance_edit->setFixedWidth(128);
+    channel.sensor_resistance_edit->setText(QStringLiteral("---"));
+    addField(secondRow, makeField(QStringLiteral("传感器电阻(Ω)"), channel.sensor_resistance_edit, channel.sensor_resistance_label_text));
+
+    connect(channel.overtemp_upper_spin, &QDoubleSpinBox::editingFinished, this, [this, channelNumber, spin = channel.overtemp_upper_spin]() {
+        emit overtempUpperRequested(channelNumber, spin->value());
+    });
+    connect(channel.overtemp_lower_spin, &QDoubleSpinBox::editingFinished, this, [this, channelNumber, spin = channel.overtemp_lower_spin]() {
+        emit overtempLowerRequested(channelNumber, spin->value());
+    });
+    connect(channel.temperature_slope_spin, &QDoubleSpinBox::editingFinished, this, [this, channelNumber, spin = channel.temperature_slope_spin]() {
+        emit temperatureSlopeRequested(channelNumber, spin->value());
+    });
+    connect(channel.startup_delay_spin, &QSpinBox::editingFinished, this, [this, channelNumber, spin = channel.startup_delay_spin]() {
+        emit startupDelayRequested(channelNumber, static_cast<quint16>(spin->value()));
+    });
     return page;
 }
 
@@ -8136,6 +8233,34 @@ void TemperatureControllerPanel::markCommandPending(VaporView::CommandId command
             pending->auto_pid_mode = static_cast<int>(payload.auto_pid_mode);
         }
         break;
+    case VaporView::CommandId::SetTemperatureOvertempUpper:
+        if (pending)
+        {
+            pending->overtemp_upper = true;
+            pending->overtemp_upper_c = payload.overtemp_upper_c;
+        }
+        break;
+    case VaporView::CommandId::SetTemperatureOvertempLower:
+        if (pending)
+        {
+            pending->overtemp_lower = true;
+            pending->overtemp_lower_c = payload.overtemp_lower_c;
+        }
+        break;
+    case VaporView::CommandId::SetTemperatureSlope:
+        if (pending)
+        {
+            pending->temperature_slope = true;
+            pending->temperature_slope_c_per_s = payload.temperature_slope_c_per_s;
+        }
+        break;
+    case VaporView::CommandId::SetTemperatureStartupDelay:
+        if (pending)
+        {
+            pending->startup_delay = true;
+            pending->startup_delay_s = static_cast<int>(payload.startup_delay_s);
+        }
+        break;
     case VaporView::CommandId::SetTemperatureSensorConfig:
         if (pending)
         {
@@ -8187,6 +8312,18 @@ void TemperatureControllerPanel::clearCommandPending(VaporView::CommandId comman
         break;
     case VaporView::CommandId::SetTemperatureAutoPid:
         if (pending) pending->auto_pid = false;
+        break;
+    case VaporView::CommandId::SetTemperatureOvertempUpper:
+        if (pending) pending->overtemp_upper = false;
+        break;
+    case VaporView::CommandId::SetTemperatureOvertempLower:
+        if (pending) pending->overtemp_lower = false;
+        break;
+    case VaporView::CommandId::SetTemperatureSlope:
+        if (pending) pending->temperature_slope = false;
+        break;
+    case VaporView::CommandId::SetTemperatureStartupDelay:
+        if (pending) pending->startup_delay = false;
         break;
     case VaporView::CommandId::SetTemperatureSensorConfig:
         if (pending) pending->sensor_config = false;
@@ -8267,6 +8404,19 @@ void TemperatureControllerPanel::updateChannelTexts()
         setDangerTextPalette(channel.max_output_spin);
         if (channel.pid_label_text) channel.pid_label_text->setText(QStringLiteral("PID"));
         if (channel.auto_pid_label_text) channel.auto_pid_label_text->setText(is_english_ ? QStringLiteral("Auto PID") : QStringLiteral("自动 PID"));
+        if (channel.overtemp_upper_label_text)
+        {
+            channel.overtemp_upper_label_text->setText(is_english_ ? QStringLiteral("High Temp Alarm (°C)") : QStringLiteral("高温报警值(°C)"));
+            setDangerTextPalette(channel.overtemp_upper_label_text);
+        }
+        if (channel.overtemp_lower_label_text)
+        {
+            channel.overtemp_lower_label_text->setText(is_english_ ? QStringLiteral("Low Temp Alarm (°C)") : QStringLiteral("低温报警值(°C)"));
+            setDangerTextPalette(channel.overtemp_lower_label_text);
+        }
+        if (channel.temperature_slope_label_text) channel.temperature_slope_label_text->setText(is_english_ ? QStringLiteral("Temperature Rate (°C/s)") : QStringLiteral("温度变化速率(°C/s)"));
+        if (channel.startup_delay_label_text) channel.startup_delay_label_text->setText(is_english_ ? QStringLiteral("Startup Output Delay (s)") : QStringLiteral("开机输出延时(s)"));
+        if (channel.sensor_resistance_label_text) channel.sensor_resistance_label_text->setText(is_english_ ? QStringLiteral("Sensor Resistance (Ω)") : QStringLiteral("传感器电阻(Ω)"));
         if (channel.sensor_model_label_text) channel.sensor_model_label_text->setText(is_english_ ? QStringLiteral("Model") : QStringLiteral("模型"));
         if (channel.ntc_r0_label_text) channel.ntc_r0_label_text->setText(QStringLiteral("NTC R0(Ohm)"));
         if (channel.ntc_b_label_text) channel.ntc_b_label_text->setText(QStringLiteral("NTC B"));
@@ -8346,6 +8496,10 @@ void TemperatureControllerPanel::updateChannelData(int index, const VaporView::T
         const QSignalBlocker kpBlocker(channel.kp_spin);
         const QSignalBlocker kiBlocker(channel.ki_spin);
         const QSignalBlocker kdBlocker(channel.kd_spin);
+        const QSignalBlocker overtempUpperBlocker(channel.overtemp_upper_spin);
+        const QSignalBlocker overtempLowerBlocker(channel.overtemp_lower_spin);
+        const QSignalBlocker temperatureSlopeBlocker(channel.temperature_slope_spin);
+        const QSignalBlocker startupDelayBlocker(channel.startup_delay_spin);
 
         if (pending.target_temperature &&
             std::isfinite(channelData.target_temperature_c) &&
@@ -8384,6 +8538,53 @@ void TemperatureControllerPanel::updateChannelData(int index, const VaporView::T
         {
             const int autoPidIndex = channel.auto_pid_combo->findData(channelData.auto_pid_mode);
             channel.auto_pid_combo->setCurrentIndex(autoPidIndex >= 0 ? autoPidIndex : 0);
+        }
+
+        if (pending.overtemp_upper && std::isfinite(channelData.overtemp_upper_c) &&
+            std::abs(channelData.overtemp_upper_c - pending.overtemp_upper_c) < 0.00001)
+        {
+            pending.overtemp_upper = false;
+        }
+        if (!pending.overtemp_upper && std::isfinite(channelData.overtemp_upper_c) &&
+            !hasEditorFocus(channel.overtemp_upper_spin))
+        {
+            channel.overtemp_upper_spin->setValue(channelData.overtemp_upper_c);
+        }
+        if (pending.overtemp_lower && std::isfinite(channelData.overtemp_lower_c) &&
+            std::abs(channelData.overtemp_lower_c - pending.overtemp_lower_c) < 0.00001)
+        {
+            pending.overtemp_lower = false;
+        }
+        if (!pending.overtemp_lower && std::isfinite(channelData.overtemp_lower_c) &&
+            !hasEditorFocus(channel.overtemp_lower_spin))
+        {
+            channel.overtemp_lower_spin->setValue(channelData.overtemp_lower_c);
+        }
+        if (pending.temperature_slope && std::isfinite(channelData.temperature_slope_c_per_s) &&
+            std::abs(channelData.temperature_slope_c_per_s - pending.temperature_slope_c_per_s) < 0.001)
+        {
+            pending.temperature_slope = false;
+        }
+        if (!pending.temperature_slope && std::isfinite(channelData.temperature_slope_c_per_s) &&
+            !hasEditorFocus(channel.temperature_slope_spin))
+        {
+            channel.temperature_slope_spin->setValue(channelData.temperature_slope_c_per_s);
+        }
+        if (pending.startup_delay && channelData.startup_delay_s == pending.startup_delay_s)
+        {
+            pending.startup_delay = false;
+        }
+        if (!pending.startup_delay && !hasEditorFocus(channel.startup_delay_spin))
+        {
+            channel.startup_delay_spin->setValue(std::clamp(channelData.startup_delay_s,
+                                                            channel.startup_delay_spin->minimum(),
+                                                            channel.startup_delay_spin->maximum()));
+        }
+        if (channel.sensor_resistance_edit)
+        {
+            channel.sensor_resistance_edit->setText(std::isfinite(channelData.sensor_resistance_ohm)
+                ? QString::number(channelData.sensor_resistance_ohm, 'f', 6)
+                : QStringLiteral("---"));
         }
 
         if (pending.max_output_percent && channelData.max_output_percent == pending.max_output_percent_value)
@@ -12838,6 +13039,18 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
                 case VaporView::CommandId::SetTemperatureAutoPid:
                     channelData.auto_pid_mode = static_cast<int>(payload.auto_pid_mode);
                     break;
+                case VaporView::CommandId::SetTemperatureOvertempUpper:
+                    channelData.overtemp_upper_c = payload.overtemp_upper_c;
+                    break;
+                case VaporView::CommandId::SetTemperatureOvertempLower:
+                    channelData.overtemp_lower_c = payload.overtemp_lower_c;
+                    break;
+                case VaporView::CommandId::SetTemperatureSlope:
+                    channelData.temperature_slope_c_per_s = payload.temperature_slope_c_per_s;
+                    break;
+                case VaporView::CommandId::SetTemperatureStartupDelay:
+                    channelData.startup_delay_s = static_cast<int>(payload.startup_delay_s);
+                    break;
                 case VaporView::CommandId::SetTemperatureSensorConfig:
                     channelData.sensor_model = static_cast<int>(payload.sensor_model);
                     channelData.ntc_b = static_cast<int>(payload.ntc_b);
@@ -12926,6 +13139,18 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
             break;
         case VaporView::CommandId::SetTemperatureAutoPid:
             ok = collectors.temperature_controller->setAutoPid(channel, payload.auto_pid_mode);
+            break;
+        case VaporView::CommandId::SetTemperatureOvertempUpper:
+            ok = collectors.temperature_controller->setOvertempUpper(channel, payload.overtemp_upper_c);
+            break;
+        case VaporView::CommandId::SetTemperatureOvertempLower:
+            ok = collectors.temperature_controller->setOvertempLower(channel, payload.overtemp_lower_c);
+            break;
+        case VaporView::CommandId::SetTemperatureSlope:
+            ok = collectors.temperature_controller->setTemperatureSlope(channel, payload.temperature_slope_c_per_s);
+            break;
+        case VaporView::CommandId::SetTemperatureStartupDelay:
+            ok = collectors.temperature_controller->setStartupDelay(channel, payload.startup_delay_s);
             break;
         case VaporView::CommandId::SetTemperatureSensorConfig:
             ok = collectors.temperature_controller->setSensorConfig(channel,
@@ -13108,6 +13333,10 @@ bool MainWindow::isTemperatureCommand(VaporView::CommandId command) const
            command == VaporView::CommandId::SetTemperatureMaxOutputPercent ||
            command == VaporView::CommandId::SetTemperaturePid ||
            command == VaporView::CommandId::SetTemperatureAutoPid ||
+           command == VaporView::CommandId::SetTemperatureOvertempUpper ||
+           command == VaporView::CommandId::SetTemperatureOvertempLower ||
+           command == VaporView::CommandId::SetTemperatureSlope ||
+           command == VaporView::CommandId::SetTemperatureStartupDelay ||
            command == VaporView::CommandId::SetTemperatureSensorConfig ||
            command == VaporView::CommandId::SetTemperatureControllerMode ||
            command == VaporView::CommandId::SetTemperatureDeviceAddress ||
@@ -13138,6 +13367,18 @@ QString MainWindow::temperatureCommandStatusText(VaporView::CommandId command, q
         break;
     case VaporView::CommandId::SetTemperatureAutoPid:
         action = is_english_ ? QStringLiteral("auto PID") : QStringLiteral("自动 PID");
+        break;
+    case VaporView::CommandId::SetTemperatureOvertempUpper:
+        action = is_english_ ? QStringLiteral("high temperature alarm") : QStringLiteral("高温报警");
+        break;
+    case VaporView::CommandId::SetTemperatureOvertempLower:
+        action = is_english_ ? QStringLiteral("low temperature alarm") : QStringLiteral("低温报警");
+        break;
+    case VaporView::CommandId::SetTemperatureSlope:
+        action = is_english_ ? QStringLiteral("temperature rate") : QStringLiteral("温度变化速率");
+        break;
+    case VaporView::CommandId::SetTemperatureStartupDelay:
+        action = is_english_ ? QStringLiteral("startup output delay") : QStringLiteral("开机输出延时");
         break;
     case VaporView::CommandId::SetTemperatureSensorConfig:
         action = is_english_ ? QStringLiteral("sensor config") : QStringLiteral("传感器配置");
@@ -16676,6 +16917,30 @@ void MainWindow::setupDataPanels()
         command.channel = channel;
         command.auto_pid_mode = mode;
         sendTemperatureCommand(VaporView::CommandId::SetTemperatureAutoPid, command);
+    });
+    connect(temperature_controller_panel_, &TemperatureControllerPanel::overtempUpperRequested, this, [this](quint8 channel, double celsius) {
+        VaporView::TemperatureControllerCommand command;
+        command.channel = channel;
+        command.overtemp_upper_c = celsius;
+        sendTemperatureCommand(VaporView::CommandId::SetTemperatureOvertempUpper, command);
+    });
+    connect(temperature_controller_panel_, &TemperatureControllerPanel::overtempLowerRequested, this, [this](quint8 channel, double celsius) {
+        VaporView::TemperatureControllerCommand command;
+        command.channel = channel;
+        command.overtemp_lower_c = celsius;
+        sendTemperatureCommand(VaporView::CommandId::SetTemperatureOvertempLower, command);
+    });
+    connect(temperature_controller_panel_, &TemperatureControllerPanel::temperatureSlopeRequested, this, [this](quint8 channel, double celsiusPerSecond) {
+        VaporView::TemperatureControllerCommand command;
+        command.channel = channel;
+        command.temperature_slope_c_per_s = celsiusPerSecond;
+        sendTemperatureCommand(VaporView::CommandId::SetTemperatureSlope, command);
+    });
+    connect(temperature_controller_panel_, &TemperatureControllerPanel::startupDelayRequested, this, [this](quint8 channel, quint16 seconds) {
+        VaporView::TemperatureControllerCommand command;
+        command.channel = channel;
+        command.startup_delay_s = seconds;
+        sendTemperatureCommand(VaporView::CommandId::SetTemperatureStartupDelay, command);
     });
     connect(temperature_controller_panel_, &TemperatureControllerPanel::sensorConfigRequested, this, [this](const VaporView::TemperatureControllerCommand& command) {
         sendTemperatureCommand(VaporView::CommandId::SetTemperatureSensorConfig, command);

@@ -273,6 +273,10 @@ public:
   bool setMaxOutputPercent(uint8_t channel, uint16_t percent);
   bool setPid(uint8_t channel, uint32_t kp, uint32_t ki, uint32_t kd);
   bool setAutoPid(uint8_t channel, uint16_t mode);
+  bool setOvertempUpper(uint8_t channel, double celsius);
+  bool setOvertempLower(uint8_t channel, double celsius);
+  bool setTemperatureSlope(uint8_t channel, double celsius_per_second);
+  bool setStartupDelay(uint8_t channel, uint16_t seconds);
   bool setControllerMode(uint16_t mode);
   bool setDeviceAddress(uint16_t address);
   bool setRs485BaudIndex(uint16_t baud_index);
