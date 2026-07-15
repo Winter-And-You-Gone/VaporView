@@ -357,7 +357,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-windows-msvc2022.ps1 -A
 powershell -ExecutionPolicy Bypass -File .\scripts\build-windows-msvc2022.ps1 -Action Test
 ```
 
-如果只需要构建桌面程序，可以使用 `-Action BuildApp`，它仍使用 `build/Release`，但不会编译全部测试目标。测试标签、focused 命令、osgEarth ON/OFF 顺序和 CI 范围见 [`docs/testing.md`](docs/testing.md)。
+如果只需要构建桌面程序，可以使用 `-Action BuildApp`，它仍使用 `build/Release`，但不会编译全部测试目标。测试标签、focused 命令和 osgEarth ON/OFF 顺序见 [`docs/testing.md`](docs/testing.md)。
 
 离线开源底图可使用 Natural Earth 公共领域数据。运行 `powershell -ExecutionPolicy Bypass -File scripts/download-natural-earth-map.ps1` 会下载 Natural Earth II 1:50m 栅格并生成 `data/maps/vaporview_default.earth`；详见 `docs/map_data.md`。
 

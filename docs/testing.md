@@ -87,11 +87,3 @@ ctest --test-dir build/Release -C Release -L real-data --output-on-failure
 ## 视觉验收
 
 布局测试只能验证几何、属性、stylesheet 和交互契约。Popup 阴影、透明合成、黑边和真实字体渲染仍需在 Windows 桌面上启动 `VaporView.exe` 并用真实截图确认。
-
-## CI
-
-`.github/workflows/windows-tests.yml` 在 Windows + MSVC + Qt 6.10.1 环境运行：
-
-- Pull request：运行 `fast` 标签。
-- 推送到 `main` 或手工触发：运行默认 OFF 构建的完整 CTest。
-- osgEarth 和本地真实三维数据测试仍在具备依赖的本机 `build/Release` 中执行。
