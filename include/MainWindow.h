@@ -308,7 +308,6 @@ private:
         QLabel *enable_label_text = nullptr;
         QLabel *mode_label_text = nullptr;
         QLabel *max_output_label_text = nullptr;
-        QLabel *pid_label_text = nullptr;
         QLabel *auto_pid_label_text = nullptr;
         QLabel *overtemp_upper_label_text = nullptr;
         QLabel *overtemp_lower_label_text = nullptr;
