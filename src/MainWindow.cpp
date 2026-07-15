@@ -919,17 +919,20 @@ constexpr int kTemperatureControllerCompactLabelWidth = 72;
 constexpr int kTemperatureControllerControlLabelWidth = 150;
 constexpr int kTemperatureControllerConfigRowHeight = 38;
 constexpr int kTemperatureControllerTopControlsHeight = 38;
+constexpr int kTemperatureControllerRowSpacing = 8;
 constexpr int kTemperatureControllerChannelConfigSubStackHeight =
-    kTemperatureControllerConfigRowHeight * 2 + 8;
+    kTemperatureControllerConfigRowHeight * 2 + kTemperatureControllerRowSpacing;
 constexpr int kTemperatureControllerChannelStackHeight =
-    kTemperatureControllerChannelConfigSubStackHeight + 38;
+    kTemperatureControllerChannelConfigSubStackHeight +
+    kTemperatureControllerRowSpacing +
+    kTemperatureControllerConfigRowHeight;
 constexpr int kTemperatureControllerCommonStackHeight = kTemperatureControllerChannelStackHeight;
 
 void configureTemperatureControllerTwoRowGrid(QGridLayout *layout, int horizontalSpacing)
 {
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setHorizontalSpacing(horizontalSpacing);
-    layout->setVerticalSpacing(8);
+    layout->setVerticalSpacing(kTemperatureControllerRowSpacing);
     layout->setAlignment(Qt::AlignTop);
     layout->setRowMinimumHeight(0, kTemperatureControllerConfigRowHeight);
     layout->setRowMinimumHeight(1, kTemperatureControllerConfigRowHeight);
@@ -7108,7 +7111,7 @@ void TemperatureControllerPanel::setupUi()
     configCard->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     auto *configCardLayout = new QVBoxLayout(configCard);
     configCardLayout->setContentsMargins(12, 12, 12, 12);
-    configCardLayout->setSpacing(4);
+    configCardLayout->setSpacing(kTemperatureControllerRowSpacing);
 
     auto *channelTopRow = new QWidget(configCard);
     channelTopRow->setObjectName(QStringLiteral("temperatureChannelTopRow"));
@@ -7343,7 +7346,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     page->setObjectName(QStringLiteral("temperatureChannelConfigPageChannel%1").arg(index + 1));
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(0);
+    layout->setSpacing(kTemperatureControllerRowSpacing);
     layout->setAlignment(Qt::AlignTop);
 
     ChannelWidgets& channel = channels_[index];

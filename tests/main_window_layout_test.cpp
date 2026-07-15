@@ -3116,6 +3116,16 @@ int main(int argc, char **argv)
                 temperatureChannelConfigSubStack->maximumHeight() == sharedContentHeight &&
                 temperatureChannelConfigSubStack->height() == sharedContentHeight,
             "temperature channel keeps top navigation, two content rows, and bottom navigation as four stable rows");
+    auto *temperatureConfigCardLayout = qobject_cast<QVBoxLayout *>(temperatureConfigCard->layout());
+    auto *temperatureChannelPageLayout =
+        qobject_cast<QVBoxLayout *>(temperatureChannelStack->currentWidget()->layout());
+    const int sharedRowSpacing = channelContentGrids[0]->verticalSpacing();
+    require(sharedRowSpacing > 0 &&
+                temperatureConfigCardLayout != nullptr &&
+                temperatureConfigCardLayout->spacing() == sharedRowSpacing &&
+                temperatureChannelPageLayout != nullptr &&
+                temperatureChannelPageLayout->spacing() == sharedRowSpacing,
+            "temperature four-row layout uses one shared gap above, within, and below the content rows");
     require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
                 temperatureChannelConfigSubStack->currentWidget()->objectName() ==
                     QStringLiteral("temperatureChannelCommonParamsPageChannel1") &&
@@ -3675,38 +3685,34 @@ int main(int argc, char **argv)
     const QRect sensorFirstRowRect(ntcR0Edit->parentWidget()->mapTo(
                                        temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
                                    ntcR0Edit->parentWidget()->size());
-    const QRect sensorModelFieldRectInCard(sensorModelSelector1->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
-                                           sensorModelSelector1->parentWidget()->size());
-    const QRect sensorFirstRowRectInCard(ntcR0Edit->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
-                                         ntcR0Edit->parentWidget()->size());
     const QRect sensorLastRowRect = sensorLastRow
         ? QRect(sensorLastRow->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
                 sensorLastRow->size())
         : QRect();
     const int sensorPageBottomUnusedHeight =
         temperatureChannelConfigSubStack->currentWidget()->height() - 1 - sensorLastRowRect.bottom();
-    const int sensorModelToFirstRowGap =
-        sensorFirstRowRectInCard.top() - sensorModelFieldRectInCard.bottom() - 1;
     const QRect sensorLastTopInputRectInCard(
         polynomialEdits[7]->mapTo(temperatureConfigCard, QPoint(0, 0)),
         polynomialEdits[7]->size());
     const QRect sensorLastTopFieldRectInCard(
         polynomialEdits[7]->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
         polynomialEdits[7]->parentWidget()->size());
-    require(polynomialEdits[7] != nullptr &&
-                temperatureChannelStack->height() >= temperatureChannelStack->currentWidget()->sizeHint().height() &&
-                temperatureConfigCard->height() >= temperatureConfigCard->sizeHint().height() &&
-                sensorConfigGrid->alignment() == Qt::AlignTop &&
+    require(polynomialEdits[7] != nullptr,
+            "temperature sensor config exposes the final polynomial input");
+    require(temperatureChannelStack->height() >= temperatureChannelStack->currentWidget()->sizeHint().height() &&
+                temperatureConfigCard->height() >= temperatureConfigCard->sizeHint().height(),
+            "temperature four-row card reserves enough total height");
+    require(sensorConfigGrid->alignment() == Qt::AlignTop &&
                 sensorFirstRowRect.top() >= 0 &&
-                sensorFirstRowRect.top() <= 4 &&
-                sensorModelToFirstRowGap >= 0 &&
-                sensorModelToFirstRowGap <= 12 &&
-                sensorLastRowRect.bottom() < temperatureChannelConfigSubStack->currentWidget()->height() &&
-                sensorLastTopInputRectInCard.bottom() <= sensorLastTopFieldRectInCard.bottom() &&
-                sensorLastTopInputRectInCard.bottom() <= temperatureConfigCard->contentsRect().bottom() &&
+                sensorFirstRowRect.top() <= 4,
+            "temperature sensor content starts at the shared first content row");
+    require(sensorLastRowRect.bottom() < temperatureChannelConfigSubStack->currentWidget()->height() &&
                 sensorPageBottomUnusedHeight >= 0 &&
                 sensorPageBottomUnusedHeight <= 4,
-            "temperature sensor config fills the shared two-row content height and keeps the bottom input row visible");
+            "temperature sensor second content row fills the shared content height");
+    require(sensorLastTopInputRectInCard.bottom() <= sensorLastTopFieldRectInCard.bottom() &&
+                sensorLastTopInputRectInCard.bottom() <= temperatureConfigCard->contentsRect().bottom(),
+            "temperature sensor polynomial inputs remain inside their row and card");
     require(temperatureChannelStack->isAncestorOf(factoryResetButton) &&
                 !temperatureChannelSelectorRow->isAncestorOf(factoryResetButton),
             "temperature factory reset button lives on the last common-settings row");
