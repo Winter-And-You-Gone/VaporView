@@ -2731,6 +2731,8 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureChannelCommonTopControlsChannel1"));
     auto *temperatureChannelStack =
         temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelStack"));
+    auto *temperatureCommonSettingsPage =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureCommonSettingsPage"));
     auto *temperatureConfigChannelButton1 =
         temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureChannelSelectorButton1"));
     auto *temperatureConfigChannelButton2 =
@@ -2755,6 +2757,7 @@ int main(int argc, char **argv)
                 temperatureChannelTopControlsStack != nullptr &&
                 temperatureChannelCommonTopControls1 != nullptr &&
                 temperatureChannelStack != nullptr &&
+                temperatureCommonSettingsPage != nullptr &&
                 temperatureConfigChannelButton1 != nullptr &&
                 temperatureConfigChannelButton2 != nullptr &&
                 temperatureCommonSettingsButton != nullptr &&
@@ -2893,7 +2896,22 @@ int main(int argc, char **argv)
                 !temperatureConfigChannelButton1->isChecked() &&
                 !temperatureConfigChannelButton2->isChecked() &&
                 temperatureCommonSettingsButton->isChecked(),
-            "temperature top bar switches to a compact three-row common settings page");
+            "temperature top bar switches to a compact three-column common settings page");
+    auto *commonSettingsGrid = qobject_cast<QGridLayout *>(temperatureCommonSettingsPage->layout());
+    require(commonSettingsGrid != nullptr &&
+                commonSettingsGrid->columnCount() >= 3 &&
+                commonSettingsGrid->columnStretch(2) > 0 &&
+                commonSettingsGrid->itemAtPosition(0, 0) != nullptr &&
+                commonSettingsGrid->itemAtPosition(0, 0)->widget() == addressSpin->parentWidget() &&
+                commonSettingsGrid->itemAtPosition(0, 1) != nullptr &&
+                commonSettingsGrid->itemAtPosition(0, 1)->widget() == rs485BaudCombo->parentWidget() &&
+                commonSettingsGrid->itemAtPosition(1, 0) != nullptr &&
+                commonSettingsGrid->itemAtPosition(1, 0)->widget() == overtempOutputCombo->parentWidget() &&
+                commonSettingsGrid->itemAtPosition(1, 1) != nullptr &&
+                commonSettingsGrid->itemAtPosition(1, 1)->widget() == commonInternalTemperatureEdit->parentWidget() &&
+                commonSettingsGrid->itemAtPosition(2, 0) != nullptr &&
+                commonSettingsGrid->itemAtPosition(2, 0)->widget() == factoryResetButton,
+            "temperature common settings use a three-column grid with the third column left empty");
     const QRect selectorBarRectInCard(temperatureChannelTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                       temperatureChannelTopBar->size());
     const QRect commonAddressRowRect(addressSpin->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
@@ -2908,6 +2926,12 @@ int main(int argc, char **argv)
                                        factoryResetButton->size());
     const QRect commonBaudComboRectInCard(rs485BaudCombo->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                           rs485BaudCombo->size());
+    const QRect commonAddressInputRectInCard(addressSpin->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                             addressSpin->size());
+    const QRect commonOvertempInputRectInCard(overtempOutputCombo->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                              overtempOutputCombo->size());
+    const QRect commonInternalInputRectInCard(commonInternalTemperatureEdit->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                              commonInternalTemperatureEdit->size());
     require(commonAddressRowRect.top() > selectorBarRectInCard.bottom() &&
                 commonAddressRowRect.right() < commonBaudRowRect.left() &&
                 std::abs(commonAddressRowRect.center().y() - commonBaudRowRect.center().y()) <= 2 &&
@@ -2918,6 +2942,9 @@ int main(int argc, char **argv)
                 std::abs(commonAddressRowRect.left() - commonOvertempRowRect.left()) <= 2 &&
                 std::abs(commonOvertempRowRect.left() - factoryResetRectInCard.left()) <= 2,
             "temperature common settings follow selector, RS485, values, and factory-reset rows");
+    require(std::abs(commonAddressInputRectInCard.left() - commonOvertempInputRectInCard.left()) <= 1 &&
+                std::abs(commonBaudComboRectInCard.left() - commonInternalInputRectInCard.left()) <= 1,
+            "temperature common settings align field editors within each data column");
     require(rs485BaudCombo->width() <= 100 &&
                 commonBaudComboRectInCard.right() <= temperatureConfigCard->rect().right() - 12,
             "temperature common RS485 baud combo stays compact and leaves room for its right border");
@@ -3305,13 +3332,13 @@ int main(int argc, char **argv)
                              "temperature sensor model radio selector lives in the channel top row");
     require(addressSpin->parentWidget() != nullptr &&
                 rs485BaudCombo->parentWidget() != nullptr &&
-                addressSpin->parentWidget()->objectName() == QStringLiteral("temperatureTopBarField") &&
-                rs485BaudCombo->parentWidget()->objectName() == QStringLiteral("temperatureTopBarField") &&
+                addressSpin->parentWidget()->objectName() == QStringLiteral("temperatureCommonFieldRow") &&
+                rs485BaudCombo->parentWidget()->objectName() == QStringLiteral("temperatureCommonFieldRow") &&
                 temperatureChannelStack->isAncestorOf(addressSpin) &&
                 temperatureChannelStack->isAncestorOf(rs485BaudCombo) &&
                 !temperatureChannelTopControlsStack->isAncestorOf(addressSpin) &&
                 !temperatureChannelTopControlsStack->isAncestorOf(rs485BaudCombo),
-            "temperature common RS485 fields live on the second common-settings row");
+            "temperature common RS485 fields live in the common-settings grid");
     auto requireCommonFieldRowLayout = [temperatureChannelStack](QWidget *editor, const char *message) {
         require(editor != nullptr && editor->parentWidget() != nullptr, message);
         QWidget *row = editor->parentWidget();
@@ -3323,12 +3350,16 @@ int main(int argc, char **argv)
         const QRect labelRect(labels.first()->mapTo(row, QPoint(0, 0)), labels.first()->size());
         const QRect editorRect(editor->mapTo(row, QPoint(0, 0)), editor->size());
         require(labelRect.left() <= 1 &&
-                    labelRect.width() <= labels.first()->sizeHint().width() + 2 &&
+                    labelRect.width() >= labels.first()->fontMetrics().horizontalAdvance(labels.first()->text()) &&
                     labelRect.right() < editorRect.left() &&
                     editorRect.left() - labelRect.right() <= 10 &&
                     editorRect.right() >= row->rect().right() - 1,
                 message);
     };
+    requireCommonFieldRowLayout(addressSpin,
+                                "temperature common address field uses aligned left label and right value layout");
+    requireCommonFieldRowLayout(rs485BaudCombo,
+                                "temperature common baud field uses aligned left label and right value layout");
     requireCommonFieldRowLayout(overtempOutputCombo,
                                 "temperature common over-temperature output field uses left label and right value layout");
     requireCommonFieldRowLayout(commonInternalTemperatureEdit,
