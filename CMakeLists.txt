@@ -1054,7 +1054,14 @@ if(BUILD_TESTING)
     if(VAPORVIEW_ENABLE_OSGEARTH AND WIN32)
         vaporview_stage_osgearth_runtime(session_viewer_theme_test)
     endif()
-    add_test(NAME session_viewer_theme_test COMMAND session_viewer_theme_test)
+    add_test(NAME session_viewer_io_test
+        COMMAND session_viewer_theme_test --group io)
+    add_test(NAME session_viewer_window_state_test
+        COMMAND session_viewer_theme_test --group window-state)
+    add_test(NAME session_viewer_trajectory_test
+        COMMAND session_viewer_theme_test --group trajectory)
+    add_test(NAME session_viewer_theme_test
+        COMMAND session_viewer_theme_test --group theme)
 
     if(VAPORVIEW_ENABLE_OSGEARTH)
         add_executable(map_data_manager_test
@@ -1217,6 +1224,9 @@ if(BUILD_TESTING)
 
     set(VAPORVIEW_SLOW_UI_TESTS
         main_window_layout_test
+        session_viewer_io_test
+        session_viewer_window_state_test
+        session_viewer_trajectory_test
         session_viewer_theme_test
     )
     set_tests_properties(${VAPORVIEW_SLOW_UI_TESTS} PROPERTIES TIMEOUT 120)
@@ -1232,10 +1242,18 @@ if(BUILD_TESTING)
     )
     set_property(TEST
         main_window_layout_test
+        session_viewer_io_test
+        session_viewer_window_state_test
+        session_viewer_trajectory_test
         session_viewer_theme_test
         vaporview_startup_test
         APPEND PROPERTY LABELS ui
     )
+    set_property(TEST main_window_layout_test APPEND PROPERTY LABELS main-window layout)
+    set_property(TEST session_viewer_io_test APPEND PROPERTY LABELS session-viewer io)
+    set_property(TEST session_viewer_window_state_test APPEND PROPERTY LABELS session-viewer window-state)
+    set_property(TEST session_viewer_trajectory_test APPEND PROPERTY LABELS session-viewer trajectory)
+    set_property(TEST session_viewer_theme_test APPEND PROPERTY LABELS session-viewer theme)
 
     if(VAPORVIEW_ENABLE_OSGEARTH)
         set(VAPORVIEW_FAST_3D_UNIT_TESTS

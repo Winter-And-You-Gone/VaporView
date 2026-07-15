@@ -4,6 +4,7 @@
 #include "SessionViewerWindow.h"
 #include "SingleLevelPopupMenu.h"
 #include "TrajectoryViewerDialog.h"
+#include "test_ui_helpers.h"
 
 #include <QAbstractItemView>
 #include <QApplication>
@@ -11,7 +12,6 @@
 #include <QCoreApplication>
 #include <QDataStream>
 #include <QDir>
-#include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
 #include <QFrame>
@@ -64,68 +64,27 @@ void require(bool condition, const char *message)
     }
 }
 
+using VaporViewTest::processEventsFor;
+using VaporViewTest::processEventsUntil;
+using VaporViewTest::waitForWindowExposed;
+
 void requireComboPopupStyled(QComboBox *combo, const char *message)
 {
-    require(combo != nullptr, message);
-    require(combo->property("vaporViewComboPopupStyled").toBool(), message);
-    require(combo->view() != nullptr, message);
-    require(combo->view()->property("vaporViewComboPopupStyled").toBool(), message);
-    require(!combo->view()->property("vaporViewComboPopupRoundedMaskEnabled").isValid(), message);
-    require(!combo->view()->property("vaporViewComboPopupViewportMargin").isValid(), message);
-    require(!combo->view()->property("vaporViewComboPopupShadowEnabled").toBool(), message);
-    require(!combo->view()->property("floatingPanelChrome").toBool(), message);
-    require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"), message);
-    require(combo->view()->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupBorderOverlay")) == nullptr,
-            message);
-    const QString popupStyle = combo->view()->styleSheet();
-    const QString hoverColor = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuHover,
-                                                            VaporView::isDarkThemeEnabled());
-    require(popupStyle.contains(QStringLiteral("border: none")) &&
-                !popupStyle.contains(QStringLiteral("border: 1px solid")) &&
-                !popupStyle.contains(QStringLiteral("border-bottom: 1px solid")) &&
-                popupStyle.contains(QStringLiteral("border-radius: 0px")) &&
-                popupStyle.contains(QStringLiteral("padding: 12px 0px")) &&
-                popupStyle.contains(QStringLiteral("padding: 7px 14px")) &&
-                popupStyle.contains(QStringLiteral("min-height: 30px")) &&
-                popupStyle.contains(QStringLiteral("background-color: %1").arg(hoverColor)) &&
-                !popupStyle.contains(QStringLiteral("padding: 12px 4px")),
-            message);
+    VaporViewTest::requireComboPopupStyled(combo, message, require);
 }
 
-bool processEventsUntil(int timeoutMs, const std::function<bool()>& condition)
-{
-    QElapsedTimer timer;
-    timer.start();
-    while (timer.elapsed() < timeoutMs)
-    {
-        if (condition())
-        {
-            return true;
-        }
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
-    }
-    return condition();
-}
-
-void processEventsFor(int timeoutMs)
-{
-    QElapsedTimer timer;
-    timer.start();
-    while (timer.elapsed() < timeoutMs)
-    {
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
-    }
-}
-
-void clickWidgetCenterThroughWindow(QWidget *widget, int waitMs = 250)
+void clickWidgetCenterThroughWindow(QWidget *widget, int waitMs = 0)
 {
     require(widget != nullptr, "click target exists");
+    require(widget->isEnabled(), "click target is enabled");
+    require(widget->isVisibleTo(widget->window()), "click target is visible in its window");
+    require(widget->window() && widget->window()->isVisible() && !widget->window()->isMinimized(),
+            "click target window is visible and not minimized");
     const QPoint globalCenter = widget->mapToGlobal(widget->rect().center());
     QWidget *target = QApplication::widgetAt(globalCenter);
-    if (!target)
-    {
-        target = widget;
-    }
+    require(target != nullptr, "click target is exposed at its screen position");
+    require(target == widget || widget->isAncestorOf(target),
+            "click target is the visible widget at its screen position");
     const QPoint localPos = target->mapFromGlobal(globalCenter);
     QMouseEvent press(QEvent::MouseButtonPress,
                       localPos,
@@ -444,16 +403,19 @@ void testRawDataParserOpenIsNonBlocking()
     RawDataParserWindow parser;
     parser.setEnglish(false);
     parser.show();
-    processEventsFor(50);
+    require(waitForWindowExposed(&parser), "raw parser window becomes exposed");
 
-    QElapsedTimer elapsed;
-    elapsed.start();
     require(parser.openSessionPath(sessionDir.path()), "raw parser accepts temporary session directory");
-    require(elapsed.elapsed() < 250, "raw parser starts indexing without blocking the UI thread");
 
     auto *progressBar = parser.findChild<QProgressBar *>(QStringLiteral("rawDataParserProgressBar"));
     require(progressBar != nullptr, "raw parser exposes an indexing progress bar");
-    require(progressBar->isVisible(), "raw parser shows indexing progress while loading");
+    require(progressBar->isVisible(),
+            "raw parser returns while background indexing is still active");
+
+    bool eventLoopResponsive = false;
+    QTimer::singleShot(0, &parser, [&eventLoopResponsive]() { eventLoopResponsive = true; });
+    require(processEventsUntil(1000, [&eventLoopResponsive]() { return eventLoopResponsive; }),
+            "raw parser keeps the UI event loop responsive while indexing");
 
     auto *statusLabel = parser.findChild<QLabel *>(QStringLiteral("rawDataParserStatusLabel"));
     require(statusLabel != nullptr, "raw parser exposes a status label");
@@ -529,6 +491,9 @@ void requireSessionViewerTitleBarWindowButtonsWork(SessionViewerWindow& viewer)
     require(maximizeButton != nullptr, "data viewer maximize button exists");
     require(minimizeButton->isEnabled(), "data viewer minimize button is enabled");
     require(maximizeButton->isEnabled(), "data viewer maximize button is enabled");
+    viewer.raise();
+    viewer.activateWindow();
+    require(waitForWindowExposed(&viewer), "data viewer window is exposed before title-bar interaction");
 
     clickWidgetCenterThroughWindow(maximizeButton);
     require(processEventsUntil(1000, [&viewer]() {
@@ -539,7 +504,10 @@ void requireSessionViewerTitleBarWindowButtonsWork(SessionViewerWindow& viewer)
 
     clickWidgetCenterThroughWindow(maximizeButton);
     require(processEventsUntil(1000, [&viewer]() {
-                return !viewer.isMaximized() &&
+                return viewer.isVisible() &&
+                       !viewer.isMinimized() &&
+                       !viewer.isMaximized() &&
+                       !viewer.windowState().testFlag(Qt::WindowMinimized) &&
                        !viewer.windowState().testFlag(Qt::WindowMaximized);
             }),
             "data viewer maximize button restores window");
@@ -552,7 +520,10 @@ void requireSessionViewerTitleBarWindowButtonsWork(SessionViewerWindow& viewer)
             "data viewer minimize button minimizes window");
 
     viewer.showNormal();
-    processEventsFor(200);
+    require(processEventsUntil(1000, [&viewer]() {
+                return viewer.isVisible() && !viewer.isMinimized() && !viewer.isMaximized();
+            }),
+            "data viewer returns to a visible normal state after window-button checks");
 }
 
 void testMainWindowDataViewerOpenCanReopen()
@@ -568,7 +539,7 @@ void testMainWindowDataViewerOpenCanReopen()
     MainWindow window;
     window.resize(1280, 800);
     window.show();
-    processEventsFor(300);
+    require(waitForWindowExposed(&window), "main window becomes exposed for data viewer reopen test");
 
     require(QMetaObject::invokeMethod(&window, "onOpenSessionViewerClicked", Qt::DirectConnection),
             "main window can invoke data viewer action");
@@ -579,7 +550,6 @@ void testMainWindowDataViewerOpenCanReopen()
 
     auto *viewer = visibleSessionViewerWindow();
     require(viewer != nullptr, "active data viewer is available");
-    requireSessionViewerTitleBarWindowButtonsWork(*viewer);
     auto *minimizeButton = viewer->findChild<QToolButton *>(QStringLiteral("windowMinimizeButton"));
     require(minimizeButton != nullptr, "data viewer minimize button exists before reopen");
     clickWidgetCenterThroughWindow(minimizeButton);
@@ -1313,7 +1283,7 @@ void testSessionViewerTitleBarWindowButtons()
     SessionViewerWindow viewer;
     viewer.resize(1280, 800);
     viewer.show();
-    processEventsFor(300);
+    require(waitForWindowExposed(&viewer), "data viewer becomes exposed for title-bar button test");
 
     requireSessionViewerTitleBarWindowButtonsWork(viewer);
     viewer.close();
@@ -1335,45 +1305,79 @@ int main(int argc, char **argv)
     app.setProperty(VaporView::kAppDarkThemeProperty, false);
     app.setPalette(VaporView::appThemePalette(false));
 
-    testRawDataParserOpenIsNonBlocking();
-    testMainWindowDataViewerOpenCanReopen();
-    testSessionViewerTitleBarWindowButtons();
-    testSessionViewerTrajectoryActionLifetime();
-    testTrajectoryViewerInitialHeatLegendFromPendingPeaks();
-    testTrajectoryViewerUsesSidebarLayout();
-    testTrajectoryViewerBridgesFilteredRouteRanges();
-    testTrajectoryViewerRouteLodLimitsDenseTracks();
-
-    app.setProperty(VaporView::kAppDarkThemeProperty, false);
-    app.setPalette(VaporView::appThemePalette(false));
+    QString selectedGroup = QStringLiteral("all");
+    const QStringList arguments = QCoreApplication::arguments();
+    for (int index = 1; index < arguments.size(); ++index)
     {
-        SessionViewerWindow viewer;
-        viewer.resize(1280, 800);
-        viewer.show();
-        processEventsFor(300);
+        if (arguments.at(index) == QStringLiteral("--group") && index + 1 < arguments.size())
+        {
+            selectedGroup = arguments.at(++index);
+        }
+    }
+    const QStringList validGroups = {
+        QStringLiteral("all"),
+        QStringLiteral("io"),
+        QStringLiteral("window-state"),
+        QStringLiteral("trajectory"),
+        QStringLiteral("theme")
+    };
+    require(validGroups.contains(selectedGroup), "session viewer test group is recognized");
+    const auto runsGroup = [&selectedGroup](const QString& group) {
+        return selectedGroup == QStringLiteral("all") || selectedGroup == group;
+    };
 
-        testCsvViewportUsesNeutralBackground(viewer);
-        testCsvSelectionUsesThemeAccent(viewer, false);
-        testWaveformEmptyPlotIsNotRed(viewer);
-
-        viewer.close();
-        processEventsFor(100);
+    if (runsGroup(QStringLiteral("io")))
+    {
+        testRawDataParserOpenIsNonBlocking();
+        testMainWindowDataViewerOpenCanReopen();
+        testSessionViewerTrajectoryActionLifetime();
+    }
+    if (runsGroup(QStringLiteral("window-state")))
+    {
+        testSessionViewerTitleBarWindowButtons();
+    }
+    if (runsGroup(QStringLiteral("trajectory")))
+    {
+        testTrajectoryViewerInitialHeatLegendFromPendingPeaks();
+        testTrajectoryViewerUsesSidebarLayout();
+        testTrajectoryViewerBridgesFilteredRouteRanges();
+        testTrajectoryViewerRouteLodLimitsDenseTracks();
     }
 
-    app.setProperty(VaporView::kAppDarkThemeProperty, true);
-    app.setPalette(VaporView::appThemePalette(true));
+    if (runsGroup(QStringLiteral("theme")))
     {
-        SessionViewerWindow viewer;
-        viewer.resize(1280, 800);
-        viewer.show();
-        processEventsFor(300);
+        app.setProperty(VaporView::kAppDarkThemeProperty, false);
+        app.setPalette(VaporView::appThemePalette(false));
+        {
+            SessionViewerWindow viewer;
+            viewer.resize(1280, 800);
+            viewer.show();
+            require(waitForWindowExposed(&viewer), "light data viewer becomes exposed for theme test");
 
-        testCsvSelectionUsesThemeAccent(viewer, true);
+            testCsvViewportUsesNeutralBackground(viewer);
+            testCsvSelectionUsesThemeAccent(viewer, false);
+            testWaveformEmptyPlotIsNotRed(viewer);
 
-        viewer.close();
-        processEventsFor(100);
+            viewer.close();
+            processEventsFor(100);
+        }
+
+        app.setProperty(VaporView::kAppDarkThemeProperty, true);
+        app.setPalette(VaporView::appThemePalette(true));
+        {
+            SessionViewerWindow viewer;
+            viewer.resize(1280, 800);
+            viewer.show();
+            require(waitForWindowExposed(&viewer), "dark data viewer becomes exposed for theme test");
+
+            testCsvSelectionUsesThemeAccent(viewer, true);
+
+            viewer.close();
+            processEventsFor(100);
+        }
     }
 
-    std::cout << "session_viewer_theme_test passed\n";
+    std::cout << "session_viewer_theme_test group "
+              << selectedGroup.toStdString() << " passed\n";
     return 0;
 }

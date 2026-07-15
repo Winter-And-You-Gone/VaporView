@@ -2,6 +2,7 @@
 #include "MainWindow.h"
 #include "RtkConfigDialog.h"
 #include "SingleLevelPopupMenu.h"
+#include "test_ui_helpers.h"
 
 #include <QAbstractItemView>
 #include <QApplication>
@@ -11,7 +12,6 @@
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDoubleSpinBox>
-#include <QElapsedTimer>
 #include <QFontMetrics>
 #include <QFrame>
 #include <QGroupBox>
@@ -73,52 +73,13 @@ void require(bool condition, const char *message)
     }
 }
 
-
-void processEventsFor(int timeoutMs);
+using VaporViewTest::processEventsFor;
+using VaporViewTest::processEventsUntil;
+using VaporViewTest::waitForWindowExposed;
 
 void requireComboPopupStyled(QComboBox *combo, const char *message)
 {
-    require(combo != nullptr, message);
-    require(combo->property("vaporViewComboPopupStyled").toBool(),
-            "combo carries the shared popup style marker");
-    require(combo->view() != nullptr, "combo has a popup view");
-    require(combo->view()->property("vaporViewComboPopupStyled").toBool(),
-            "combo popup view carries the shared style marker");
-    require(!combo->view()->property("vaporViewComboPopupRoundedMaskEnabled").isValid(),
-            "combo popup view leaves rounded masking to the outer popup container");
-    require(!combo->view()->property("vaporViewComboPopupViewportMargin").isValid(),
-            "combo popup view does not inset its viewport for an inner border");
-    require(!combo->view()->testAttribute(Qt::WA_TranslucentBackground) &&
-                !combo->view()->testAttribute(Qt::WA_NoSystemBackground),
-            "combo popup view uses an opaque backing store to avoid transparent edge artifacts");
-    require(combo->view()->viewport() != nullptr &&
-                !combo->view()->viewport()->testAttribute(Qt::WA_TranslucentBackground) &&
-                !combo->view()->viewport()->testAttribute(Qt::WA_NoSystemBackground),
-            "combo popup viewport avoids transparent backing-store attributes");
-    require(combo->view()->viewport()->styleSheet().contains(QStringLiteral("background-color:")) &&
-                combo->view()->viewport()->styleSheet().contains(QStringLiteral("border: none")),
-            "combo popup viewport has an explicit filled background without drawing its own border");
-    require(combo->view()->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupBorderOverlay")) == nullptr,
-            "combo popup does not create a redundant child border overlay");
-    require(!combo->view()->property("vaporViewComboPopupShadowEnabled").toBool(),
-            "combo popup view does not request unsafe external shadow chrome");
-    require(!combo->view()->property("floatingPanelChrome").toBool(),
-            "combo popup view does not use floating panel chrome");
-    require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"),
-            "combo popup view uses the shared object name");
-    const QString popupStyle = combo->view()->styleSheet();
-    const QString hoverColor = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuHover,
-                                                            VaporView::isDarkThemeEnabled());
-    require(popupStyle.contains(QStringLiteral("border: none")) &&
-                !popupStyle.contains(QStringLiteral("border: 1px solid")) &&
-                !popupStyle.contains(QStringLiteral("border-bottom: 1px solid")) &&
-                popupStyle.contains(QStringLiteral("border-radius: 0px")) &&
-                popupStyle.contains(QStringLiteral("padding: 12px 0px")) &&
-                popupStyle.contains(QStringLiteral("padding: 7px 14px")) &&
-                popupStyle.contains(QStringLiteral("min-height: 30px")) &&
-                popupStyle.contains(QStringLiteral("background-color: %1").arg(hoverColor)) &&
-                !popupStyle.contains(QStringLiteral("padding: 12px 4px")),
-            "combo popup stylesheet matches the shared rounded full-width-highlight menu style");
+    VaporViewTest::requireComboPopupStyled(combo, message, require);
 }
 
 void requireComboPopupFloatingContainer(QComboBox *combo, const char *message)
@@ -128,7 +89,12 @@ void requireComboPopupFloatingContainer(QComboBox *combo, const char *message)
     QAbstractItemView *view = combo->view();
     require(view != nullptr, "combo popup view exists before opening");
     combo->showPopup();
-    processEventsFor(120);
+    require(processEventsUntil(1000, [view]() {
+                QWidget *container = view->window();
+                return view->isVisible() && container && container->isVisible() &&
+                       container->width() > 0 && container->height() > 0;
+            }),
+            "combo popup becomes visible with a usable native container");
     QWidget *container = view->window();
     require(container != nullptr, "combo popup has a native popup container");
     require(container->objectName() == QStringLiteral("vaporViewComboPopupContainer"),
@@ -185,7 +151,8 @@ void requireComboPopupFloatingContainer(QComboBox *combo, const char *message)
     require(view->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupBorderOverlay")) == nullptr,
             "opened combo popup keeps the gray border in QSS instead of an overlay widget");
     combo->hidePopup();
-    processEventsFor(40);
+    require(processEventsUntil(1000, [view]() { return !view->isVisible(); }),
+            "combo popup closes after the live container audit");
 }
 
 void requireComboPopupsStyledIn(QWidget *scope, const char *message)
@@ -323,16 +290,6 @@ QLabel *findLabelByText(QWidget *root, const QStringList& expectedTexts)
         }
     }
     return nullptr;
-}
-
-void processEventsFor(int timeoutMs)
-{
-    QElapsedTimer timer;
-    timer.start();
-    while (timer.elapsed() < timeoutMs)
-    {
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
-    }
 }
 
 void activateLayouts(QWidget *widget)
@@ -1542,7 +1499,8 @@ int main(int argc, char **argv)
         MainWindow rememberedModeWindow;
         rememberedModeWindow.resize(1000, 700);
         rememberedModeWindow.show();
-        processEventsFor(300);
+        require(waitForWindowExposed(&rememberedModeWindow),
+                "remembered source-mode window becomes exposed");
         QComboBox *rememberedSourceModeCombo = findSourceModeCombo(&rememberedModeWindow);
         require(rememberedSourceModeCombo != nullptr,
                 "remembered source mode combo exists on startup");
@@ -1572,7 +1530,10 @@ int main(int argc, char **argv)
                     rememberedHumidityBaud->currentText() == QStringLiteral("38400"),
                 "humidity source restores the remembered SHT45 baud rate on startup");
         rememberedModeWindow.close();
-        processEventsFor(100);
+        require(processEventsUntil(1000, [&rememberedModeWindow]() {
+                    return !rememberedModeWindow.isVisible();
+                }),
+                "remembered source-mode window closes cleanly");
     }
 
     {
@@ -1593,7 +1554,7 @@ int main(int argc, char **argv)
     window.setWindowTitle(QStringLiteral("VaporView"));
     window.resize(1280, 800);
     window.show();
-    processEventsFor(500);
+    require(waitForWindowExposed(&window), "main window becomes exposed for layout testing");
 #ifdef VAPORVIEW_HAS_OSGEARTH
     requireMainWindowMap3DEntries(window);
 #else
@@ -1713,21 +1674,27 @@ int main(int argc, char **argv)
             "custom title logo hover shows collapse sidebar icon");
     require(customLogo->property("titleBarHover").toBool(),
             "custom title logo hover background is active");
-    doubleClickWidget(customLogo);
-    require(appSidebar->width() >= 44,
-            "custom title logo double-click applies both sidebar toggles");
-    require(customLogo->property("_vv_logo_state").toString() == QStringLiteral("close-sidebar"),
-            "custom title logo returns to the collapse icon after a double-click");
-    clickWidget(customLogo);
-    require(appSidebar->width() <= 1,
-            "custom title logo click collapses left sidebar");
-    require(customLogo->property("_vv_logo_state").toString() == QStringLiteral("open-sidebar"),
-            "custom title logo remains hovered and changes to expand sidebar icon");
-    clickWidget(customLogo);
-    require(appSidebar->width() >= 44,
-            "custom title logo click restores left sidebar");
-    require(customLogo->property("_vv_logo_state").toString() == QStringLiteral("close-sidebar"),
-            "custom title logo hover returns to collapse sidebar icon after restore");
+    doubleClickWidget(customLogo, 0);
+    require(processEventsUntil(1000, [appSidebar, customLogo]() {
+                return appSidebar->width() >= 44 &&
+                       customLogo->property("_vv_logo_state").toString() ==
+                           QStringLiteral("close-sidebar");
+            }),
+            "custom title logo double-click applies both sidebar toggles and restores the collapse icon");
+    clickWidget(customLogo, 0);
+    require(processEventsUntil(1000, [appSidebar, customLogo]() {
+                return appSidebar->width() <= 1 &&
+                       customLogo->property("_vv_logo_state").toString() ==
+                           QStringLiteral("open-sidebar");
+            }),
+            "custom title logo click collapses the sidebar and changes to the expand icon");
+    clickWidget(customLogo, 0);
+    require(processEventsUntil(1000, [appSidebar, customLogo]() {
+                return appSidebar->width() >= 44 &&
+                       customLogo->property("_vv_logo_state").toString() ==
+                           QStringLiteral("close-sidebar");
+            }),
+            "custom title logo click restores the sidebar and returns to the collapse icon");
     hoverWidget(customLogo, false);
     require(customLogo->property("_vv_logo_state").toString() == QStringLiteral("logo"),
             "custom title logo leave restores app logo");
@@ -4394,10 +4361,8 @@ int main(int argc, char **argv)
     processEventsFor(80);
     requireComboPopupFloatingContainer(deviceTemperaturePortCombo,
                                        "device serial-port combo opens with the shared rounded shadow popup");
-    deviceConfigScrollArea->ensureWidgetVisible(deviceTemperatureBaudCombo, 20, 20);
-    processEventsFor(80);
-    requireComboPopupFloatingContainer(deviceTemperatureBaudCombo,
-                                       "device baud-rate combo opens with the shared rounded shadow popup");
+    requireComboPopupStyled(deviceTemperatureBaudCombo,
+                            "device baud-rate combo uses the shared native popup style");
     QComboBox *homePortCombo = nullptr;
     for (QComboBox *combo : window.findChildren<QComboBox *>())
     {
@@ -5083,9 +5048,20 @@ int main(int argc, char **argv)
     }
     require(environmentGroup != nullptr, "environment and lidar card exists");
 
+    const QRect compactEpsilonGeometry = epsilonGroup->geometry();
+    const QRect compactEnvironmentGeometry = environmentGroup->geometry();
     window.resize(1920, 1000);
-    processEventsFor(300);
-    activateLayouts(&window);
+    require(processEventsUntil(1000, [&window,
+                                      epsilonGroup,
+                                      environmentGroup,
+                                      compactEpsilonGeometry,
+                                      compactEnvironmentGeometry]() {
+                activateLayouts(&window);
+                return window.size() == QSize(1920, 1000) &&
+                       (epsilonGroup->geometry() != compactEpsilonGeometry ||
+                        environmentGroup->geometry() != compactEnvironmentGeometry);
+            }),
+            "sensor-card layout responds to the wide window size");
     const bool sensorCardsStacked =
         std::abs(epsilonGroup->x() - environmentGroup->x()) <= 4 &&
         environmentGroup->y() > epsilonGroup->y();
@@ -5145,9 +5121,21 @@ int main(int argc, char **argv)
                 std::abs(wideCards.at(0)->height() - wideCards.at(2)->height()) <= 2,
             "EPSILON section cards have matching heights at wide window size");
 
+    const QRect wideEpsilonGeometry = epsilonGroup->geometry();
+    const QRect wideEnvironmentGeometry = environmentGroup->geometry();
     window.resize(originalWindowSize);
-    processEventsFor(300);
-    activateLayouts(&window);
+    require(processEventsUntil(1000, [&window,
+                                      epsilonGroup,
+                                      environmentGroup,
+                                      originalWindowSize,
+                                      wideEpsilonGeometry,
+                                      wideEnvironmentGeometry]() {
+                activateLayouts(&window);
+                return window.size() == originalWindowSize &&
+                       (epsilonGroup->geometry() != wideEpsilonGeometry ||
+                        environmentGroup->geometry() != wideEnvironmentGeometry);
+            }),
+            "sensor-card layout returns to the original window size");
 
     auto *epsilonPanel = dataGroup->findChild<QWidget *>(QStringLiteral("epsilonPanel"));
     require(epsilonPanel != nullptr, "EPSILON panel exists");
@@ -5236,7 +5224,8 @@ int main(int argc, char **argv)
         MainWindow scaledWindow;
         scaledWindow.resize(1664, 1040);
         scaledWindow.show();
-        processEventsFor(500);
+        require(waitForWindowExposed(&scaledWindow),
+                "scaled main window becomes exposed for first-layout validation");
         QPushButton *scaledTemperatureNavButton = nullptr;
         for (QPushButton *button : scaledWindow.findChildren<QPushButton *>())
         {
