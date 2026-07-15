@@ -2,10 +2,12 @@
 #include "AppTheme.h"
 #include "CustomTitleBar.h"
 #ifdef VAPORVIEW_HAS_OSGEARTH
-#include "map3d/Map3DWindow.h"
+#include "ground/map/Map3DController.h"
 #endif
+#include "ground/devices/RemoteTelemetryDecoder.h"
+#include "ground/session/RecordingSessionLayout.h"
 #include "RtkConfigDialog.h"
-#include "SessionViewerWindow.h"
+#include "ground/session/SessionViewerWindow.h"
 #include "SkyDeviceConfigDialog.h"
 #include "SingleLevelPopupMenu.h"
 #include "TcpWaveEncoding.h"
@@ -14,7 +16,6 @@
 #include "WindowSizing.h"
 #include "data_collector.h"
 #include "data_types.h"
-#include "geo/CoordinateTransform.h"
 #include "serial_probe_utils.h"
 #include <QMenu>
 #include <QAbstractItemView>
@@ -146,42 +147,6 @@ bool isTemperatureCommonCommand(VaporView::CommandId command)
            command == VaporView::CommandId::SetTemperatureRs485Baud ||
            command == VaporView::CommandId::SetTemperatureOvertempOutputMode ||
            command == VaporView::CommandId::RestoreTemperatureFactoryDefaults;
-}
-
-bool hasUsableEpsilonLlh(const VaporView::EpsilonData& data)
-{
-    return std::isfinite(data.latitude_deg) &&
-           std::isfinite(data.longitude_deg) &&
-           std::isfinite(data.height_m) &&
-           data.latitude_deg >= -90.0 &&
-           data.latitude_deg <= 90.0 &&
-           data.longitude_deg >= -180.0 &&
-           data.longitude_deg <= 180.0 &&
-           (std::abs(data.latitude_deg) > 1.0e-9 ||
-            std::abs(data.longitude_deg) > 1.0e-9 ||
-            std::abs(data.height_m) > 1.0e-9);
-}
-
-bool resolveEpsilonEcefFromLlh(VaporView::EpsilonData& data)
-{
-    if (VaporView::Geo::isPlausibleEcef(data.ecef_x_m, data.ecef_y_m, data.ecef_z_m))
-    {
-        return true;
-    }
-    if (!hasUsableEpsilonLlh(data))
-    {
-        return false;
-    }
-
-    VaporView::Geo::EcefPoint derived;
-    if (!VaporView::Geo::deriveEcefFromLlh(data.latitude_deg, data.longitude_deg, data.height_m, derived))
-    {
-        return false;
-    }
-    data.ecef_x_m = derived.xM;
-    data.ecef_y_m = derived.yM;
-    data.ecef_z_m = derived.zM;
-    return true;
 }
 
 int temperatureRs485BaudRateForIndex(quint16 index)
@@ -1285,24 +1250,6 @@ QString compactDecimalWithUnit(double value, int decimals, const QString& unit)
     return unit.isEmpty()
         ? number
         : QStringLiteral("%1 %2").arg(number, unit);
-}
-
-std::string epsilonGnssFixTextForCode(int fix_code)
-{
-    switch (fix_code)
-    {
-    case 0: return "NO_GPS";
-    case 1: return "NO_FIX";
-    case 2: return "2D";
-    case 3: return "3D";
-    case 4: return "DGPS";
-    case 5: return "RTK_FLOAT";
-    case 6: return "RTK_FIXED";
-    case 7: return "STATIC";
-    case 8: return "PPP";
-    case 9: return "RTK_DUAL";
-    default: return "UNKNOWN";
-    }
 }
 
 class MainCardResizeHandle : public QWidget
@@ -9402,8 +9349,7 @@ MainWindow::MainWindow(QWidget *parent)
     , remote_recording_state_(0)
     , remote_last_status_ms_(0)
 #ifdef VAPORVIEW_HAS_OSGEARTH
-    , map3d_flush_timer_(new QTimer(this))
-    , pending_map3d_samples_()
+    , map3d_controller_(std::make_unique<VaporView::Ground::Map3DController>())
 #endif
     , has_last_remote_recording_status_(false)
     , cancel_connection_requested_(false)
@@ -9492,9 +9438,6 @@ MainWindow::MainWindow(QWidget *parent)
     , rtk_service_running_(false)
     , tcp_wave_panel_(nullptr)
     , session_viewer_window_(nullptr)
-#ifdef VAPORVIEW_HAS_OSGEARTH
-    , map3d_window_(nullptr)
-#endif
     , ground_telemetry_service_(nullptr)
     , sky_device_config_dialog_(nullptr)
 {
@@ -9504,12 +9447,6 @@ MainWindow::MainWindow(QWidget *parent)
                    Qt::WindowMaximizeButtonHint |
                    Qt::WindowCloseButtonHint);
     setProperty(kMainWindowProperty, true);
-
-#ifdef VAPORVIEW_HAS_OSGEARTH
-    map3d_flush_timer_->setInterval(50);
-    map3d_flush_timer_->setTimerType(Qt::CoarseTimer);
-    connect(map3d_flush_timer_, &QTimer::timeout, this, &MainWindow::flushMap3DSamples);
-#endif
 
     const double currentPointSize = qApp->font().pointSizeF();
     base_font_point_size_ = currentPointSize > 0.0 ? currentPointSize : 10.0;
@@ -9761,15 +9698,9 @@ MainWindow::~MainWindow()
         session_viewer_window_ = nullptr;
     }
 #ifdef VAPORVIEW_HAS_OSGEARTH
-    pending_map3d_samples_.clear();
-    if (map3d_flush_timer_)
+    if (map3d_controller_)
     {
-        map3d_flush_timer_->stop();
-    }
-    if (map3d_window_)
-    {
-        delete map3d_window_;
-        map3d_window_ = nullptr;
+        map3d_controller_->close();
     }
 #endif
 
@@ -9864,9 +9795,9 @@ void MainWindow::syncMainHoverStateFromCursor()
 void MainWindow::closeEvent(QCloseEvent *event)
 {
 #ifdef VAPORVIEW_HAS_OSGEARTH
-    if (map3d_window_)
+    if (map3d_controller_)
     {
-        map3d_window_->close();
+        map3d_controller_->close();
     }
 #endif
     QMainWindow::closeEvent(event);
@@ -17948,31 +17879,17 @@ void MainWindow::onOpenSessionViewerClicked()
 #ifdef VAPORVIEW_HAS_OSGEARTH
 void MainWindow::onOpenMap3DWindowClicked()
 {
-    if (!map3d_window_)
+    if (map3d_controller_)
     {
-        map3d_window_ = new VaporView::Map3D::Map3DWindow(nullptr);
-        map3d_window_->setAttribute(Qt::WA_QuitOnClose, false);
-        connect(map3d_window_, &QObject::destroyed, this, [this]() {
-            map3d_window_ = nullptr;
-            pending_map3d_samples_.clear();
-            if (map3d_flush_timer_)
-            {
-                map3d_flush_timer_->stop();
-            }
-        });
+        map3d_controller_->open();
     }
-
-    map3d_window_->show();
-    map3d_window_->raise();
-    map3d_window_->activateWindow();
 }
 
 void MainWindow::onOpenMap3DDiagnosticsClicked()
 {
-    onOpenMap3DWindowClicked();
-    if (map3d_window_)
+    if (map3d_controller_)
     {
-        map3d_window_->showMapDiagnostics();
+        map3d_controller_->showDiagnostics();
     }
 }
 #else
@@ -19500,45 +19417,26 @@ QString MainWindow::locateRepositoryRoot() const
 
 bool MainWindow::prepareRecordingSessionLayout(const QString& recordsPath, const QString& sessionName)
 {
-    QDir recordsDir(recordsPath);
-    if (!recordsDir.exists() && !recordsDir.mkpath("."))
+    const auto layout = VaporView::Ground::Session::createRecordingSessionLayout(recordsPath, sessionName);
+    if (!layout)
     {
         return false;
     }
 
-    QString finalSessionName = sessionName;
-    QString finalSessionDirectory = recordsDir.filePath(finalSessionName);
-    int suffix = 1;
-    while (QFileInfo::exists(finalSessionDirectory))
-    {
-        finalSessionName = QString("%1_%2").arg(sessionName).arg(suffix++);
-        finalSessionDirectory = recordsDir.filePath(finalSessionName);
-    }
-
-    QDir sessionDir(finalSessionDirectory);
-    if (!recordsDir.mkpath(finalSessionName) ||
-        !sessionDir.mkpath("sensors") ||
-        !sessionDir.mkpath("raw") ||
-        !sessionDir.mkpath("logs") ||
-        !sessionDir.mkpath("config"))
-    {
-        return false;
-    }
-
-    session_name_ = finalSessionName;
-    session_directory_ = QDir::fromNativeSeparators(finalSessionDirectory);
-    sensors_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("sensors/devices.csv"));
-    raw_epsilon_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/epsilon.dat"));
-    raw_ptb_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/ptb.dat"));
-    raw_hmp_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/hmp.dat"));
-    raw_lidar_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/lidar.dat"));
-    raw_tcp_wave_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/tcp_wave.dat"));
-    raw_tcp_wave_peak_index_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/tcp_wave_peaks.csv"));
-    raw_dat_doc_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw_dat_format.md"));
-    session_metadata_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("session.json"));
-    event_log_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("logs/event_log.csv"));
-    error_log_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("logs/error_log.txt"));
-    device_config_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("config/device_config.json"));
+    session_name_ = layout->sessionName;
+    session_directory_ = layout->sessionDirectory;
+    sensors_filename_ = layout->sensorsFilename;
+    raw_epsilon_filename_ = layout->rawEpsilonFilename;
+    raw_ptb_filename_ = layout->rawPtbFilename;
+    raw_hmp_filename_ = layout->rawHmpFilename;
+    raw_lidar_filename_ = layout->rawLidarFilename;
+    raw_tcp_wave_filename_ = layout->rawTcpWaveFilename;
+    raw_tcp_wave_peak_index_filename_ = layout->rawTcpWavePeakIndexFilename;
+    raw_dat_doc_filename_ = layout->rawDatDocumentFilename;
+    session_metadata_filename_ = layout->sessionMetadataFilename;
+    event_log_filename_ = layout->eventLogFilename;
+    error_log_filename_ = layout->errorLogFilename;
+    device_config_filename_ = layout->deviceConfigFilename;
     return true;
 }
 
@@ -23219,113 +23117,19 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
         return (telemetry.validity_flags & flag) != 0;
     };
 
-    current_epsilon_ = VaporView::EpsilonData();
-    const double unknown = std::numeric_limits<double>::quiet_NaN();
-    current_epsilon_.vel_n_mps = unknown;
-    current_epsilon_.vel_e_mps = unknown;
-    current_epsilon_.vel_d_mps = unknown;
-    current_epsilon_.imu_acc_x_mps2 = unknown;
-    current_epsilon_.imu_acc_y_mps2 = unknown;
-    current_epsilon_.imu_acc_z_mps2 = unknown;
-    current_epsilon_.imu_gyr_x_radps = unknown;
-    current_epsilon_.imu_gyr_y_radps = unknown;
-    current_epsilon_.imu_gyr_z_radps = unknown;
-    current_epsilon_.roll_deg = unknown;
-    current_epsilon_.pitch_deg = unknown;
-    current_epsilon_.yaw_deg = unknown;
-    current_epsilon_.hacc_m = unknown;
-    current_epsilon_.vacc_m = unknown;
-    if (hasFlag(VaporView::BasicHasEpsilonTime) ||
-        hasFlag(VaporView::BasicHasPosition) ||
-        hasFlag(VaporView::BasicHasEcef))
+    const VaporView::Ground::RemoteEpsilonTelemetry remoteEpsilon =
+        VaporView::Ground::decodeRemoteEpsilonTelemetry(telemetry, now);
+    current_epsilon_ = remoteEpsilon.data;
+    if (remoteEpsilon.available)
     {
-        current_epsilon_.valid = true;
-        current_epsilon_.timestamp = now;
-        current_epsilon_.device_timestamp_us = telemetry.epsilon_time_us;
-        current_epsilon_.utc_unix_s = telemetry.host_time_us / 1000000ULL;
-        current_epsilon_.utc_microseconds = static_cast<quint32>(telemetry.host_time_us % 1000000ULL);
-        int gnssFixCode = static_cast<int>(telemetry.gnss_fix_code);
-        if (gnssFixCode == 0 && telemetry.filter_status_bits != 0)
-        {
-            gnssFixCode = static_cast<int>((telemetry.filter_status_bits >> 4) & 0x0F);
-        }
-        current_epsilon_.gnss_fix_code = gnssFixCode;
-        current_epsilon_.gnss_fix_text = epsilonGnssFixTextForCode(gnssFixCode);
-        if (hasFlag(VaporView::BasicHasPosition))
-        {
-            current_epsilon_.latitude_deg = telemetry.latitude_deg;
-            current_epsilon_.longitude_deg = telemetry.longitude_deg;
-            current_epsilon_.height_m = telemetry.height_m;
-        }
-        if (hasFlag(VaporView::BasicHasEcef))
-        {
-            current_epsilon_.ecef_x_m = telemetry.ecef_x_m;
-            current_epsilon_.ecef_y_m = telemetry.ecef_y_m;
-            current_epsilon_.ecef_z_m = telemetry.ecef_z_m;
-        }
-        if (hasFlag(VaporView::BasicHasPosition))
-        {
-            resolveEpsilonEcefFromLlh(current_epsilon_);
-        }
-        current_epsilon_.system_status_bits = telemetry.status_bits;
-        current_epsilon_.filter_status_bits = telemetry.filter_status_bits;
-        current_epsilon_.update_status_bits = telemetry.update_status_bits;
-        if (hasFlag(VaporView::BasicHasGnssQuality))
-        {
-            current_epsilon_.gnss_satellites = telemetry.gnss_satellites;
-            current_epsilon_.hdop = telemetry.hdop;
-            current_epsilon_.vdop = telemetry.vdop;
-            current_epsilon_.hacc_m = telemetry.hacc_m;
-            current_epsilon_.vacc_m = telemetry.vacc_m;
-            current_epsilon_.heading_valid = telemetry.heading_valid;
-        }
-        if (hasFlag(VaporView::BasicHasNedVelocity))
-        {
-            current_epsilon_.vel_n_mps = telemetry.vel_n_mps;
-            current_epsilon_.vel_e_mps = telemetry.vel_e_mps;
-            current_epsilon_.vel_d_mps = telemetry.vel_d_mps;
-        }
-        if (hasFlag(VaporView::BasicHasImu))
-        {
-            current_epsilon_.imu_acc_x_mps2 = telemetry.imu_acc_x_mps2;
-            current_epsilon_.imu_acc_y_mps2 = telemetry.imu_acc_y_mps2;
-            current_epsilon_.imu_acc_z_mps2 = telemetry.imu_acc_z_mps2;
-            current_epsilon_.imu_gyr_x_radps = telemetry.imu_gyr_x_radps;
-            current_epsilon_.imu_gyr_y_radps = telemetry.imu_gyr_y_radps;
-            current_epsilon_.imu_gyr_z_radps = telemetry.imu_gyr_z_radps;
-        }
-        if (hasFlag(VaporView::BasicHasAttitude))
-        {
-            current_epsilon_.roll_deg = telemetry.roll_deg;
-            current_epsilon_.pitch_deg = telemetry.pitch_deg;
-            current_epsilon_.yaw_deg = telemetry.yaw_deg;
-        }
-        if (hasFlag(VaporView::BasicHasEpsilonDiagnostics))
-        {
-            current_epsilon_.raw_frame_count = telemetry.raw_frame_count;
-            current_epsilon_.dropped_frame_count = telemetry.dropped_frame_count;
-            current_epsilon_.imu_packet_rate_hz = telemetry.imu_packet_rate_hz;
-            current_epsilon_.ahrs_packet_rate_hz = telemetry.ahrs_packet_rate_hz;
-            current_epsilon_.insgps_packet_rate_hz = telemetry.insgps_packet_rate_hz;
-            current_epsilon_.sys_state_packet_rate_hz = telemetry.sys_state_packet_rate_hz;
-            current_epsilon_.raw_gnss_packet_rate_hz = telemetry.raw_gnss_packet_rate_hz;
-            current_epsilon_.satellite_packet_rate_hz = telemetry.satellite_packet_rate_hz;
-            current_epsilon_.geodetic_packet_rate_hz = telemetry.geodetic_packet_rate_hz;
-            current_epsilon_.ecef_packet_rate_hz = telemetry.ecef_packet_rate_hz;
-        }
         remote_last_data_ms_.insert(VaporView::SkyDeviceId::Epsilon, nowMs);
 #ifdef VAPORVIEW_HAS_OSGEARTH
-        if (hasFlag(VaporView::BasicHasPosition))
+        if (remoteEpsilon.hasPosition)
         {
             maybeForwardMap3DSample(current_epsilon_, telemetry.host_time_us);
         }
         else
         {
-            pending_map3d_samples_.clear();
-            if (map3d_flush_timer_)
-            {
-                map3d_flush_timer_->stop();
-            }
             noteMap3DSampleDrop(QStringLiteral("Remote"),
                                 QStringLiteral("missing BasicHasPosition"),
                                 telemetry.host_time_us);
@@ -23388,182 +23192,41 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
 }
 
 #ifdef VAPORVIEW_HAS_OSGEARTH
-VaporView::Geo::NavSample MainWindow::map3DSampleFromEpsilon(const VaporView::EpsilonData& epsilonData,
-                                                             quint64 recordTimestampUs) const
-{
-    VaporView::Geo::NavSample sample;
-    sample.recordTimestampUs = static_cast<qint64>(recordTimestampUs);
-    sample.deviceTimestampUs = static_cast<qint64>(epsilonData.device_timestamp_us);
-    sample.latDeg = epsilonData.latitude_deg;
-    sample.lonDeg = epsilonData.longitude_deg;
-    sample.heightM = epsilonData.height_m;
-    sample.heightReference = VaporView::Geo::HeightReference::Wgs84Ellipsoid;
-    sample.ecefXM = epsilonData.ecef_x_m;
-    sample.ecefYM = epsilonData.ecef_y_m;
-    sample.ecefZM = epsilonData.ecef_z_m;
-    if (std::isfinite(epsilonData.ned_n_m) &&
-        std::isfinite(epsilonData.ned_e_m) &&
-        std::isfinite(epsilonData.ned_d_m) &&
-        (std::abs(epsilonData.ned_n_m) > 1e-6 ||
-         std::abs(epsilonData.ned_e_m) > 1e-6 ||
-         std::abs(epsilonData.ned_d_m) > 1e-6))
-    {
-        sample.nedNM = epsilonData.ned_n_m;
-        sample.nedEM = epsilonData.ned_e_m;
-        sample.nedDM = epsilonData.ned_d_m;
-    }
-    sample.velNMps = epsilonData.vel_n_mps;
-    sample.velEMps = epsilonData.vel_e_mps;
-    sample.velDMps = epsilonData.vel_d_mps;
-    sample.rollDeg = epsilonData.roll_deg;
-    sample.pitchDeg = epsilonData.pitch_deg;
-    sample.yawDeg = epsilonData.yaw_deg;
-    sample.quatW = epsilonData.quat_w;
-    sample.quatX = epsilonData.quat_x;
-    sample.quatY = epsilonData.quat_y;
-    sample.quatZ = epsilonData.quat_z;
-    sample.satellites = epsilonData.gnss_satellites;
-    sample.hdop = epsilonData.hdop;
-    sample.vdop = epsilonData.vdop;
-    sample.diffAgeS = epsilonData.diff_age_s;
-
-    if (epsilonData.gnss_fix_code <= 0)
-    {
-        sample.fixQuality = VaporView::Geo::FixQuality::Invalid;
-    }
-    else if (epsilonData.gnss_fix_code >= 6)
-    {
-        sample.fixQuality = VaporView::Geo::FixQuality::Fixed;
-    }
-    else if (epsilonData.gnss_fix_code == 5)
-    {
-        sample.fixQuality = VaporView::Geo::FixQuality::Float;
-    }
-    else if (epsilonData.gnss_fix_code == 2)
-    {
-        sample.fixQuality = VaporView::Geo::FixQuality::Dgps;
-    }
-    else
-    {
-        sample.fixQuality = VaporView::Geo::FixQuality::Single;
-    }
-
-    VaporView::Geo::resolveEcefFromLlh(sample);
-    return sample;
-}
-
 void MainWindow::maybeForwardMap3DSample(const VaporView::EpsilonData& epsilonData, quint64 recordTimestampUs)
 {
-    if (!map3d_window_ || !map3d_window_->isVisible())
+    if (map3d_controller_)
     {
-        pending_map3d_samples_.clear();
-        if (map3d_flush_timer_)
-        {
-            map3d_flush_timer_->stop();
-        }
-        return;
-    }
-
-    if (!epsilonData.valid)
-    {
-        pending_map3d_samples_.clear();
-        if (map3d_flush_timer_)
-        {
-            map3d_flush_timer_->stop();
-        }
-        noteMap3DSampleDrop(QStringLiteral("Live"),
-                            QStringLiteral("epsilon invalid"),
-                            recordTimestampUs);
-        return;
-    }
-
-    const VaporView::Geo::NavSample sample = map3DSampleFromEpsilon(epsilonData, recordTimestampUs);
-    if (!sample.hasLlh())
-    {
-        pending_map3d_samples_.clear();
-        if (map3d_flush_timer_)
-        {
-            map3d_flush_timer_->stop();
-        }
-        noteMap3DSampleDrop(QStringLiteral("Live"),
-                            QStringLiteral("missing LLH"),
-                            recordTimestampUs);
-        return;
-    }
-    last_map3d_drop_reason_.clear();
-    if (pending_map3d_samples_.empty())
-    {
-        pending_map3d_samples_.push_back(sample);
-    }
-    else
-    {
-        pending_map3d_samples_.back() = sample;
-    }
-    if (map3d_flush_timer_ && !map3d_flush_timer_->isActive())
-    {
-        map3d_flush_timer_->start();
+        map3d_controller_->forwardEpsilonSample(epsilonData, recordTimestampUs);
     }
 }
 
 void MainWindow::noteMap3DSampleDrop(const QString& source, const QString& reason, quint64 recordTimestampUs)
 {
-    last_map3d_drop_reason_ = reason;
-    if (map3d_window_ && map3d_window_->isVisible())
+    if (map3d_controller_)
     {
-        map3d_window_->noteLiveSampleDrop(source, reason, static_cast<qint64>(recordTimestampUs));
-    }
-}
-
-void MainWindow::flushMap3DSamples()
-{
-    if (!map3d_window_ || !map3d_window_->isVisible())
-    {
-        pending_map3d_samples_.clear();
-        if (map3d_flush_timer_)
-        {
-            map3d_flush_timer_->stop();
-        }
-        return;
-    }
-
-    if (pending_map3d_samples_.empty())
-    {
-        if (map3d_flush_timer_)
-        {
-            map3d_flush_timer_->stop();
-        }
-        return;
-    }
-
-    std::vector<VaporView::Geo::NavSample> samples;
-    samples.swap(pending_map3d_samples_);
-    map3d_window_->appendSamples(samples);
-
-    if (map3d_flush_timer_ && pending_map3d_samples_.empty())
-    {
-        map3d_flush_timer_->stop();
+        map3d_controller_->noteDrop(source, reason, recordTimestampUs);
     }
 }
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
 int MainWindow::testPendingMap3DSampleCount() const
 {
-    return static_cast<int>(pending_map3d_samples_.size());
+    return map3d_controller_ ? map3d_controller_->pendingSampleCount() : 0;
 }
 
 qint64 MainWindow::testLatestPendingMap3DRecordTimestampUs() const
 {
-    return pending_map3d_samples_.empty() ? -1 : pending_map3d_samples_.back().recordTimestampUs;
+    return map3d_controller_ ? map3d_controller_->latestPendingRecordTimestampUs() : -1;
 }
 
 bool MainWindow::testMap3DFlushTimerActive() const
 {
-    return map3d_flush_timer_ && map3d_flush_timer_->isActive();
+    return map3d_controller_ && map3d_controller_->flushTimerActive();
 }
 
 QString MainWindow::testLastMap3DDropReason() const
 {
-    return last_map3d_drop_reason_;
+    return map3d_controller_ ? map3d_controller_->lastDropReason() : QString();
 }
 
 void MainWindow::testMaybeForwardMap3DSampleForMap3D(const VaporView::EpsilonData& epsilonData,

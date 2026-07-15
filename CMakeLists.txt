@@ -132,6 +132,8 @@ target_link_libraries(vaporview_protocol PUBLIC
     Qt6::Core
 )
 
+add_subdirectory(src/shared)
+
 add_library(vaporview_app_theme STATIC
     src/AppTheme.cpp
     src/SingleLevelPopupMenu.cpp
@@ -457,7 +459,6 @@ set(SKY_CORE_SOURCES
     src/SerialTelemetryLink.cpp
     src/TcpTelemetryLink.cpp
     src/SkyLocalIpcServer.cpp
-    src/TcpWaveEncoding.cpp
     src/TemperatureControllerProtocol.cpp
     src/serial_port.cpp
     src/data_collector.cpp
@@ -497,6 +498,7 @@ target_include_directories(vaporview_sky_core PUBLIC
 target_link_libraries(vaporview_sky_core PUBLIC
     vaporview_geo_core
     vaporview_protocol
+    vaporview_wave_encoding
     Qt6::Core
     Qt6::SerialPort
     Qt6::Network
@@ -539,24 +541,20 @@ target_link_libraries(vaporview_sky_tui PUBLIC
     Qt6::Widgets
 )
 
+add_subdirectory(src/ground)
+
 set(NAV_WINDOW_SOURCES
     src/MainWindow.cpp
-    src/GroundTelemetryService.cpp
-    src/SkyDeviceConfigDialog.cpp
     src/TcpWavePanel.cpp
     src/RawDataParserWindow.cpp
-    src/SessionViewerWindow.cpp
-    src/SessionTimeFormat.cpp
+    src/ground/session/SessionViewerWindow.cpp
     src/TrajectoryViewerDialog.cpp
     src/RtkConfigDialog.cpp
     src/RtkStreamService.cpp
-    src/CustomTitleBar.cpp
-    src/WindowSizing.cpp
 )
 
 set(NAV_SOURCES
     src/main.cpp
-    ${NAV_WINDOW_SOURCES}
 )
 
 set(NAV_HEADERS
@@ -567,14 +565,15 @@ set(NAV_HEADERS
     include/SkyDeviceConfigDialog.h
     include/TcpWavePanel.h
     include/RawDataParserWindow.h
-    include/SessionViewerWindow.h
-    include/SessionTimeFormat.h
+    src/ground/session/SessionViewerWindow.h
     include/TrajectoryViewerDialog.h
     include/RtkConfigDialog.h
     include/RtkStreamService.h
     include/CustomTitleBar.h
     include/VisualTextLabel.h
     include/WindowSizing.h
+    include/ground/SessionData.h
+    src/ground/widgets/TelemetryPanels.h
 )
 
 set(SKY_TUI_SOURCES
@@ -712,6 +711,7 @@ target_include_directories(vaporview_main_window PUBLIC
 
 target_link_libraries(VaporView PRIVATE
     ${QT_LIBRARIES}
+    vaporview_main_window
     vaporview_app_theme
     vaporview_geo_core
     vaporview_sky_core
@@ -723,13 +723,20 @@ target_link_libraries(vaporview_main_window PUBLIC
     vaporview_app_theme
     vaporview_geo_core
     vaporview_sky_core
+    vaporview_ground_ui_support
     rtklib_strsvr
+)
+
+target_link_libraries(vaporview_main_window PRIVATE
+    vaporview_ground_device_core
+    vaporview_ground_session_core
 )
 
 if(VAPORVIEW_ENABLE_OSGEARTH)
     target_link_libraries(VaporView PRIVATE vaporview_map3d_osgearth)
     target_compile_definitions(VaporView PRIVATE VAPORVIEW_HAS_OSGEARTH=1)
     target_link_libraries(vaporview_main_window PUBLIC vaporview_map3d_osgearth)
+    target_link_libraries(vaporview_main_window PRIVATE vaporview_ground_map)
     target_compile_definitions(vaporview_main_window PUBLIC VAPORVIEW_HAS_OSGEARTH=1)
     if(WIN32)
         vaporview_stage_osgearth_runtime(VaporView)
@@ -948,10 +955,6 @@ if(BUILD_TESTING)
 
     add_executable(sky_device_config_dialog_test
         tests/sky_device_config_dialog_test.cpp
-        src/SkyDeviceConfigDialog.cpp
-        src/CustomTitleBar.cpp
-        src/WindowSizing.cpp
-        src/GroundTelemetryService.cpp
         include/SkyDeviceConfigDialog.h
         include/GroundTelemetryService.h
     )
@@ -960,14 +963,8 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/src
     )
     target_link_libraries(sky_device_config_dialog_test PRIVATE
-        vaporview_app_theme
-        vaporview_sky_core
-        Qt6::Widgets
-        Qt6::Svg
+        vaporview_ground_ui_support
     )
-    if(WIN32)
-        target_link_libraries(sky_device_config_dialog_test PRIVATE dwmapi)
-    endif()
     add_test(NAME sky_device_config_dialog_test COMMAND sky_device_config_dialog_test)
 
     add_executable(sky_session_recorder_test
@@ -999,13 +996,25 @@ if(BUILD_TESTING)
 
     add_executable(session_time_format_test
         tests/session_time_format_test.cpp
-        src/SessionTimeFormat.cpp
     )
-    target_include_directories(session_time_format_test PRIVATE
-        ${CMAKE_SOURCE_DIR}/include
-    )
-    target_link_libraries(session_time_format_test PRIVATE Qt6::Core)
+    target_link_libraries(session_time_format_test PRIVATE vaporview_ground_session_core)
     add_test(NAME session_time_format_test COMMAND session_time_format_test)
+
+    add_executable(session_core_test
+        tests/session_core_test.cpp
+    )
+    target_link_libraries(session_core_test PRIVATE vaporview_ground_session_core)
+    add_test(NAME session_core_test COMMAND session_core_test)
+
+    add_executable(remote_telemetry_decoder_test
+        tests/remote_telemetry_decoder_test.cpp
+    )
+    target_include_directories(remote_telemetry_decoder_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(remote_telemetry_decoder_test PRIVATE vaporview_ground_device_core)
+    add_test(NAME remote_telemetry_decoder_test COMMAND remote_telemetry_decoder_test)
 
     add_executable(main_window_layout_test
         tests/main_window_layout_test.cpp
@@ -1209,6 +1218,7 @@ if(BUILD_TESTING)
         sky_local_ipc_client_test
         visual_text_label_test
         session_time_format_test
+        remote_telemetry_decoder_test
     )
     set_tests_properties(${VAPORVIEW_FAST_UNIT_TESTS} PROPERTIES TIMEOUT 30)
     set_property(TEST ${VAPORVIEW_FAST_UNIT_TESTS} PROPERTY LABELS fast unit)
@@ -1433,10 +1443,6 @@ if(BUILD_PYTHON_BINDINGS)
 
     pybind11_add_module(VaporView_bindings
         ${PYTHON_BINDINGS_ENTRY}
-        src/serial_port.cpp
-        src/data_collector.cpp
-        ${UM982_DRIVER_DIR}/pvtsln_parser.cpp
-        ${HIPNUC_DRIVER_DIR}/hipnuc_dec.c
     )
 
     target_include_directories(VaporView_bindings PRIVATE
@@ -1450,6 +1456,7 @@ if(BUILD_PYTHON_BINDINGS)
     endif()
 
     target_link_libraries(VaporView_bindings PRIVATE
+        vaporview_sky_core
         Threads::Threads
     )
 endif()

@@ -474,6 +474,7 @@ void OsgEarthViewWidget::shutdown()
     ++earth_load_generation_;
     ++local_3d_tiles_load_generation_;
     ++aircraft_load_generation_;
+    cancelAsyncWatchers();
     QObject::disconnect(gl_context_destruction_connection_);
     setUpdatesEnabled(false);
     clearFocus();
@@ -520,6 +521,36 @@ void OsgEarthViewWidget::shutdown()
     if (madeCurrent)
     {
         doneCurrent();
+    }
+}
+
+void OsgEarthViewWidget::registerAsyncWatcher(QFutureWatcherBase* watcher)
+{
+    if (watcher)
+    {
+        async_watchers_.insert(watcher);
+    }
+}
+
+void OsgEarthViewWidget::unregisterAsyncWatcher(QFutureWatcherBase* watcher)
+{
+    async_watchers_.remove(watcher);
+}
+
+void OsgEarthViewWidget::cancelAsyncWatchers()
+{
+    const QSet<QFutureWatcherBase*> watchers = async_watchers_;
+    async_watchers_.clear();
+    for (QFutureWatcherBase* watcher : watchers)
+    {
+        if (!watcher)
+        {
+            continue;
+        }
+        QObject::disconnect(watcher, nullptr, this, nullptr);
+        watcher->cancel();
+        watcher->waitForFinished();
+        delete watcher;
     }
 }
 
@@ -741,9 +772,11 @@ void OsgEarthViewWidget::loadEarthFileAsync(const QString& earthPath,
     earth_load_diagnostics_.attempted = true;
     earth_load_diagnostics_.requestedPath = earthPath;
     auto* watcher = new QFutureWatcher<Detail::EarthAssetLoadResult>(this);
+    registerAsyncWatcher(watcher);
     connect(watcher, &QFutureWatcher<Detail::EarthAssetLoadResult>::finished,
             this, [this, watcher, generation, preserveCurrentEarthView, finished = std::move(finished)]() mutable {
         const Detail::EarthAssetLoadResult result = watcher->result();
+        unregisterAsyncWatcher(watcher);
         watcher->deleteLater();
         if (shutdown_ || generation != earth_load_generation_) return;
         const bool loaded = applyEarthLoad(result.diagnostics,
@@ -826,9 +859,11 @@ void OsgEarthViewWidget::loadLocal3DTilesPreviewAsync(
     local_3d_tiles_load_diagnostics_.attempted = true;
     local_3d_tiles_load_diagnostics_.requestedPath = tilesetPath;
     auto* watcher = new QFutureWatcher<Detail::Local3DTilesAssetLoadResult>(this);
+    registerAsyncWatcher(watcher);
     connect(watcher, &QFutureWatcher<Detail::Local3DTilesAssetLoadResult>::finished,
             this, [this, watcher, generation, finished = std::move(finished)]() mutable {
         const Detail::Local3DTilesAssetLoadResult result = watcher->result();
+        unregisterAsyncWatcher(watcher);
         watcher->deleteLater();
         if (shutdown_ || generation != local_3d_tiles_load_generation_) return;
         const bool loaded = applyLocal3DTilesLoad(result.diagnostics, result.node);
@@ -1455,9 +1490,11 @@ void OsgEarthViewWidget::loadAircraftModelFileAsync(
     aircraft_model_diagnostics_.attempted = !modelPath.trimmed().isEmpty();
     aircraft_model_diagnostics_.requestedPath = modelPath;
     auto* watcher = new QFutureWatcher<Detail::AircraftAssetLoadResult>(this);
+    registerAsyncWatcher(watcher);
     connect(watcher, &QFutureWatcher<Detail::AircraftAssetLoadResult>::finished,
             this, [this, watcher, generation, finished = std::move(finished)]() mutable {
         const Detail::AircraftAssetLoadResult result = watcher->result();
+        unregisterAsyncWatcher(watcher);
         watcher->deleteLater();
         if (shutdown_ || generation != aircraft_load_generation_) return;
         const bool loaded = applyAircraftModelLoad(result.diagnostics, result.node);

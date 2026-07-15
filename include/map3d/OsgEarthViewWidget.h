@@ -7,6 +7,7 @@
 #include <QOpenGLWidget>
 #include <QMetaObject>
 #include <QPointF>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -25,6 +26,7 @@ class QWheelEvent;
 class QKeyEvent;
 class QHideEvent;
 class QShowEvent;
+class QFutureWatcherBase;
 
 namespace osgViewer {
 class Viewer;
@@ -151,6 +153,9 @@ protected:
     void keyReleaseEvent(QKeyEvent* event) override;
 
 private:
+    void registerAsyncWatcher(QFutureWatcherBase* watcher);
+    void unregisterAsyncWatcher(QFutureWatcherBase* watcher);
+    void cancelAsyncWatchers();
     void initializeSceneIfNeeded();
     void updateCameraViewport(int w, int h);
     void updateCameraProjectionForCurrentView();
@@ -222,6 +227,7 @@ private:
     quint64 earth_load_generation_ = 0;
     quint64 local_3d_tiles_load_generation_ = 0;
     quint64 aircraft_load_generation_ = 0;
+    QSet<QFutureWatcherBase*> async_watchers_;
 };
 
 } // namespace VaporView::Map3D

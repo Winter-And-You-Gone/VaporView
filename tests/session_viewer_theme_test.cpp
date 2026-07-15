@@ -1,7 +1,7 @@
 #include "AppTheme.h"
 #include "MainWindow.h"
 #include "RawDataParserWindow.h"
-#include "SessionViewerWindow.h"
+#include "ground/session/SessionViewerWindow.h"
 #include "SingleLevelPopupMenu.h"
 #include "TrajectoryViewerDialog.h"
 #include "test_ui_helpers.h"

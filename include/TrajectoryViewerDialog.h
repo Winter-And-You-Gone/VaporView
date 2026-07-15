@@ -1,7 +1,7 @@
 #ifndef VaporView_TRAJECTORY_VIEWER_DIALOG_H_
 #define VaporView_TRAJECTORY_VIEWER_DIALOG_H_
 
-#include "SessionViewerWindow.h"
+#include "ground/SessionData.h"
 
 #include <QDialog>
 #include <QVector>

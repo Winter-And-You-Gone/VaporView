@@ -1,0 +1,27 @@
+add_library(vaporview_ground_session_core STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/RecordingSessionLayout.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/RecordingSessionLayout.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionCsv.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionCsv.h
+    ${CMAKE_SOURCE_DIR}/include/ground/SessionData.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionIndex.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionIndex.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionLoader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionLoader.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionPlaybackController.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionPlaybackController.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionTimeFormat.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionTimeFormat.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionWaveformRepository.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionWaveformRepository.h
+)
+
+target_include_directories(vaporview_ground_session_core PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(vaporview_ground_session_core PUBLIC
+    vaporview_wave_encoding
+    Qt6::Core
+)
