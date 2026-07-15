@@ -3279,6 +3279,9 @@ QAbstractSpinBox[spinArrowHover="up"]::up-arrow {
 QAbstractSpinBox[spinArrowHover="down"]::down-arrow {
     image: url(lucide/chevron-down-primary-dark.svg);
 }
+QComboBox#temperatureTitlePortCombo::down-arrow {
+    image: url(lucide/chevron-down-primary-dark.svg);
+}
 QMenu {
     background-color: @vv-menu-panel;
     border: 1px solid @vv-border;
@@ -9227,6 +9230,7 @@ MainWindow::MainWindow(QWidget *parent)
     , env_hmp_status_icon_(nullptr)
     , temperature_overview_inline_title_lbl_(nullptr)
     , temperature_controller_inline_title_lbl_(nullptr)
+    , temperature_title_port_combo_(nullptr)
     , temperature_overview_panel_(nullptr)
     , config_inline_title_lbl_(nullptr)
     , global_rate_lbl_(nullptr)
@@ -12905,10 +12909,56 @@ void MainWindow::updateTemperatureControllerTitleText()
     const QString portDisplay = hasPort
         ? portText
         : (is_english_ ? QStringLiteral("No serial port") : QStringLiteral("未选择串口"));
-    temperature_controller_inline_title_lbl_->setText(QStringLiteral("%1 · %2").arg(base, portDisplay));
-    temperature_controller_inline_title_lbl_->setToolTip(is_english_
-        ? QStringLiteral("Selected RD105 serial port: %1").arg(portDisplay)
-        : QStringLiteral("当前 RD105 串口：%1").arg(portDisplay));
+    temperature_controller_inline_title_lbl_->setText(
+        temperature_title_port_combo_ ? QStringLiteral("%1 ·").arg(base) : base);
+    temperature_controller_inline_title_lbl_->setToolTip(QString());
+
+    if (!temperature_title_port_combo_)
+    {
+        return;
+    }
+
+    QStringList availablePorts;
+    if (temperature_port_combo_)
+    {
+        for (int index = 0; index < temperature_port_combo_->count(); ++index)
+        {
+            const QString candidate = temperature_port_combo_->itemText(index).trimmed();
+            if (!candidate.isEmpty() && !candidate.startsWith(QStringLiteral("--")) &&
+                !availablePorts.contains(candidate))
+            {
+                availablePorts.append(candidate);
+            }
+        }
+    }
+    if (hasPort && !availablePorts.contains(portText))
+    {
+        availablePorts.append(portText);
+    }
+
+    const QSignalBlocker blocker(temperature_title_port_combo_);
+    temperature_title_port_combo_->clear();
+    if (!hasPort)
+    {
+        temperature_title_port_combo_->addItem(portDisplay, QString());
+    }
+    for (const QString& port : availablePorts)
+    {
+        temperature_title_port_combo_->addItem(port, port);
+    }
+    const int selectedIndex = hasPort
+        ? temperature_title_port_combo_->findData(portText)
+        : 0;
+    temperature_title_port_combo_->setCurrentIndex(selectedIndex >= 0 ? selectedIndex : 0);
+    temperature_title_port_combo_->setEnabled(
+        temperature_port_combo_ && temperature_port_combo_->isEnabled() && !availablePorts.isEmpty());
+    const QString portToolTip = is_english_
+        ? QStringLiteral("RD105 serial port: %1. Click to choose another port.").arg(portDisplay)
+        : QStringLiteral("当前 RD105 串口：%1。点击可选择其他串口。").arg(portDisplay);
+    temperature_title_port_combo_->setToolTip(portToolTip);
+    temperature_title_port_combo_->setStatusTip(portToolTip);
+    temperature_title_port_combo_->setAccessibleName(portToolTip);
+    temperature_title_port_combo_->updateGeometry();
 }
 
 void MainWindow::updateTemperatureTitleButtonsState()
@@ -17082,9 +17132,47 @@ void MainWindow::setupDataPanels()
                                                                          QStringLiteral("thermometer"),
                                                                          kMainPageButtonHeight,
                                                                          &temperatureTitleCluster);
-    temperatureTitleCluster->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    temperature_controller_inline_title_lbl_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    temperatureTitleLayout->addWidget(temperatureTitleCluster, 1, Qt::AlignVCenter | Qt::AlignLeft);
+    temperatureTitleCluster->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    temperature_controller_inline_title_lbl_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    temperatureTitleLayout->addWidget(temperatureTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
+
+    auto *temperatureTitlePortCombo = new SingleLevelPopupComboBox(temperatureTitleBar);
+    temperature_title_port_combo_ = temperatureTitlePortCombo;
+    temperature_title_port_combo_->setObjectName(QStringLiteral("temperatureTitlePortCombo"));
+    temperature_title_port_combo_->setEditable(false);
+    temperature_title_port_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    temperature_title_port_combo_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    temperature_title_port_combo_->setFixedHeight(kMainPageButtonHeight);
+    temperature_title_port_combo_->setMinimumWidth(88);
+    temperature_title_port_combo_->setMaximumWidth(220);
+    temperature_title_port_combo_->setCursor(Qt::PointingHandCursor);
+    temperature_title_port_combo_->setFocusPolicy(Qt::TabFocus);
+    connect(temperature_title_port_combo_,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this,
+            [this](int index) {
+                if (!temperature_port_combo_ || !temperature_title_port_combo_ || index < 0)
+                {
+                    return;
+                }
+                const QString selectedPort = temperature_title_port_combo_->itemData(index).toString().trimmed();
+                if (selectedPort.isEmpty() || temperature_port_combo_->currentText().trimmed() == selectedPort)
+                {
+                    return;
+                }
+                const int sourceIndex = temperature_port_combo_->findText(selectedPort);
+                if (sourceIndex >= 0)
+                {
+                    temperature_port_combo_->setCurrentIndex(sourceIndex);
+                }
+                else
+                {
+                    temperature_port_combo_->setEditText(selectedPort);
+                }
+            });
+    temperatureTitleLayout->addWidget(temperature_title_port_combo_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    temperatureTitleLayout->addStretch(1);
+    updateTemperatureControllerTitleText();
     temperature_remote_buttons_widget_ = new QWidget(temperatureTitleBar);
     temperature_remote_buttons_widget_->setObjectName(QStringLiteral("temperatureTitleButtons"));
     auto *temperatureRemoteLayout = new QHBoxLayout(temperature_remote_buttons_widget_);
@@ -21340,6 +21428,7 @@ void MainWindow::updateConnectionStatus(bool connected)
     if (hmp_port_combo_) hmp_port_combo_->setEnabled(inputsEnabled);
     if (lidar_port_combo_) lidar_port_combo_->setEnabled(inputsEnabled);
     if (temperature_port_combo_) temperature_port_combo_->setEnabled(inputsEnabled);
+    updateTemperatureControllerTitleText();
     if (epsilon_baud_combo_) epsilon_baud_combo_->setEnabled(inputsEnabled);
     if (ptb_baud_combo_) ptb_baud_combo_->setEnabled(inputsEnabled);
     if (hmp_baud_combo_) hmp_baud_combo_->setEnabled(inputsEnabled);

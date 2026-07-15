@@ -1046,6 +1046,7 @@ private:
     QLabel *env_hmp_status_icon_;
     QLabel *temperature_overview_inline_title_lbl_;
     QLabel *temperature_controller_inline_title_lbl_;
+    QComboBox *temperature_title_port_combo_;
     TemperatureControllerOverviewPanel *temperature_overview_panel_;
     QLabel *config_inline_title_lbl_;
     QLabel *global_rate_lbl_;

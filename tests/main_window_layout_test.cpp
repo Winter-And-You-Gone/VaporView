@@ -2672,10 +2672,46 @@ int main(int argc, char **argv)
 #else
     const QString expectedTemperaturePortText = QStringLiteral("/dev/ttyRD105");
 #endif
+    auto *temperatureTitlePortCombo =
+        temperaturePageForLayout->findChild<QComboBox *>(QStringLiteral("temperatureTitlePortCombo"));
     require(temperatureControllerTitleLabel != nullptr &&
-                temperatureControllerTitleLabel->text().contains(expectedTemperaturePortText) &&
+                !temperatureControllerTitleLabel->text().contains(expectedTemperaturePortText) &&
                 !temperatureControllerTitleLabel->text().contains(QStringLiteral("RD105温控器")),
-            "temperature controller title names the laser driver board and shows the selected serial port");
+            "temperature controller title keeps the laser driver board name separate from the serial selector");
+    require(temperatureTitlePortCombo != nullptr &&
+                temperatureTitlePortCombo->currentText() == expectedTemperaturePortText &&
+                !temperatureTitlePortCombo->isEditable() &&
+                temperatureTitlePortCombo->property("usesSingleLevelPopupMenu").toBool() &&
+                temperatureTitlePortCombo->cursor().shape() == Qt::PointingHandCursor &&
+                temperatureTitlePortCombo->focusPolicy() == Qt::TabFocus,
+            "temperature controller title exposes the selected serial port as a clickable keyboard-accessible selector");
+    const bool temperatureTitlePortDark =
+        qApp->property(VaporView::kAppDarkThemeProperty).toBool();
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QComboBox#temperatureTitlePortCombo:hover {"),
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover,
+                                                              temperatureTitlePortDark),
+                                 "temperature title serial selector changes its background on hover");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QComboBox#temperatureTitlePortCombo::down-arrow {"),
+                                 temperatureTitlePortDark
+                                     ? QStringLiteral("chevron-down-primary-dark.svg")
+                                     : QStringLiteral("chevron-down-primary.svg"),
+                                 "temperature title serial selector shows a right-side lucide chevron-down icon");
+    auto *temperatureTitlePortMenu =
+        temperatureTitlePortCombo->findChild<VaporView::SingleLevelPopupMenu *>(
+            QStringLiteral("singleLevelComboPopupMenu"));
+    require(temperatureTitlePortMenu != nullptr,
+            "temperature title serial selector owns the shared single-level popup menu");
+    temperatureTitlePortCombo->showPopup();
+    processEventsFor(120);
+    require(temperatureTitlePortMenu->isVisible() &&
+                temperatureTitlePortMenu->rows().size() == temperatureTitlePortCombo->count() &&
+                !temperatureTitlePortMenu->rows().isEmpty() &&
+                temperatureTitlePortMenu->rows().first()->text() == temperatureTitlePortCombo->itemText(0),
+            "temperature title serial selector opens the shared popup with its current port choices");
+    temperatureTitlePortCombo->hidePopup();
+    processEventsFor(40);
     auto *temperatureTitleConnectButton =
         temperaturePageForLayout->findChild<QPushButton *>(QStringLiteral("temperatureTitleConnectButton"));
     auto *temperatureTitleDisconnectButton =
@@ -4319,6 +4355,10 @@ int main(int argc, char **argv)
     }
     require(homePortCombo != nullptr,
             "home serial combo matching the device configuration combo exists");
+    if (homePortCombo->findText(expectedTemperaturePortText) < 0)
+    {
+        homePortCombo->addItem(expectedTemperaturePortText);
+    }
     const QString syntheticPort = QStringLiteral("COM123");
     if (homePortCombo->findText(syntheticPort) < 0)
     {
@@ -4338,6 +4378,26 @@ int main(int argc, char **argv)
             "device configuration serial combo can select an existing serial item");
     require(homePortCombo->currentText() == syntheticPort,
             "device configuration serial selection mirrors back to the home combo");
+    require(temperatureTitlePortCombo->currentText() == syntheticPort,
+            "temperature title serial selector follows the canonical RD105 port selection");
+    const int originalTitlePortIndex = temperatureTitlePortCombo->findText(expectedTemperaturePortText);
+    require(originalTitlePortIndex >= 0,
+            "temperature title serial selector retains the original RD105 port option");
+    temperatureTitlePortCombo->setCurrentIndex(originalTitlePortIndex);
+    processEventsFor(50);
+    activateLayouts(&window);
+    require(homePortCombo->currentText() == expectedTemperaturePortText &&
+                deviceTemperaturePortCombo->currentText() == expectedTemperaturePortText,
+            "temperature title serial selection writes back to home and device configuration controls");
+    const int syntheticTitlePortIndex = temperatureTitlePortCombo->findText(syntheticPort);
+    require(syntheticTitlePortIndex >= 0,
+            "temperature title serial selector retains refreshed synthetic port options");
+    temperatureTitlePortCombo->setCurrentIndex(syntheticTitlePortIndex);
+    processEventsFor(50);
+    activateLayouts(&window);
+    require(homePortCombo->currentText() == syntheticPort &&
+                deviceTemperaturePortCombo->currentText() == syntheticPort,
+            "temperature title serial selector can restore the refreshed RD105 port");
 
     QGroupBox *serialConfigCard = nullptr;
     for (QWidget *ancestor = devicePortCombo ? devicePortCombo->parentWidget() : nullptr;

@@ -589,6 +589,47 @@ QWidget#environmentSectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTit
     padding: 0px;
 }
 
+QComboBox#temperatureTitlePortCombo {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    color: @vv-text-title;
+    font-size: 14px;
+    font-weight: 700;
+    min-height: 28px;
+    max-height: 28px;
+    padding: 1px 28px 1px 8px;
+}
+
+QComboBox#temperatureTitlePortCombo:hover {
+    background-color: @vv-title-hover;
+    border: none;
+}
+
+QComboBox#temperatureTitlePortCombo:focus,
+QComboBox#temperatureTitlePortCombo:on {
+    background-color: @vv-title-hover;
+    border: none;
+}
+
+QComboBox#temperatureTitlePortCombo:disabled {
+    background-color: transparent;
+    border: none;
+    color: @vv-text-muted;
+}
+
+QComboBox#temperatureTitlePortCombo::drop-down {
+    border: none;
+    width: 24px;
+}
+
+QComboBox#temperatureTitlePortCombo::down-arrow {
+    image: url(lucide/chevron-down-primary.svg);
+    width: 14px;
+    height: 14px;
+    margin-right: 6px;
+}
+
 QLabel#valueLabel {
     color: @vv-primary;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
