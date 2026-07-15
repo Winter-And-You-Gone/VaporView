@@ -7238,6 +7238,23 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
         emit outputEnabledRequested(channelNumber, !static_cast<TemperatureOverviewSwitchButton *>(enableSwitch)->switchChecked());
     });
     addCommonTopField(QStringLiteral("输出使能"), channel.enable_switch, channel.enable_label_text);
+
+    auto *autoPidCombo = new SingleLevelPopupComboBox(channel.common_top_controls);
+    autoPidCombo->setShowSelectionCheck(false);
+    channel.auto_pid_combo = autoPidCombo;
+    channel.auto_pid_combo->setObjectName(QStringLiteral("temperatureAutoPidComboChannel%1").arg(index + 1));
+    channel.auto_pid_combo->setFixedWidth(kTemperatureControllerCompactInputWidth);
+    channel.auto_pid_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    channel.auto_pid_combo->addItem(QStringLiteral("关闭"), 0);
+    channel.auto_pid_combo->addItem(QStringLiteral("PID自整定"), 1);
+    channel.auto_pid_combo->addItem(QStringLiteral("实时优化(预留)"), 2);
+    addCommonTopField(QStringLiteral("自动 PID"), channel.auto_pid_combo, channel.auto_pid_label_text);
+    connect(channel.auto_pid_combo,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this,
+            [this, channelNumber, combo = channel.auto_pid_combo](int) {
+                emit autoPidRequested(channelNumber, static_cast<quint16>(combo->currentData().toUInt()));
+            });
     layout->addWidget(channel.common_top_controls, 0, Qt::AlignVCenter);
 
     channel.sensor_model_field = new QWidget(page);
@@ -7384,14 +7401,22 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     barLayout->setContentsMargins(4, 4, 4, 4);
     barLayout->setSpacing(4);
 
-    auto makeTabButton = [this, index, bar = channel.sensor_config_top_bar](const QString& text, int pageIndex) {
+    auto fitSubTabButtonWidth = [](QPushButton *button) {
+        if (!button)
+        {
+            return;
+        }
+        button->ensurePolished();
+        button->setFixedWidth(std::max(88, button->fontMetrics().horizontalAdvance(button->text()) + 40));
+    };
+    auto makeTabButton = [this, index, bar = channel.sensor_config_top_bar, fitSubTabButtonWidth](const QString& text, int pageIndex) {
         auto *button = new QPushButton(text, bar);
         button->setCheckable(true);
         button->setCursor(Qt::PointingHandCursor);
         button->setFocusPolicy(Qt::TabFocus);
         button->setProperty("temperatureChannelSubSelector", true);
         button->setFixedHeight(30);
-        button->setFixedWidth(pageIndex == 2 ? 88 : 72);
+        fitSubTabButtonWidth(button);
         connect(button, &QPushButton::clicked, this, [this, index, pageIndex]() {
             selectChannelSubPage(index, pageIndex);
         });
@@ -7505,46 +7530,8 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
     };
 
     const quint8 channelNumber = static_cast<quint8>(index + 1);
-    auto *firstRowLayout = makeRow();
-    auto *secondRowLayout = makeRow();
-
-    channel.mode_combo = new SingleLevelPopupComboBox(page);
-    channel.mode_combo->setObjectName(QStringLiteral("temperatureOutputModeComboChannel%1").arg(index + 1));
-    channel.mode_combo->setFixedWidth(kTemperatureControllerTopModeWidth);
-    channel.mode_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
-    channel.mode_combo->addItem(QStringLiteral("制冷和加热"), 0);
-    channel.mode_combo->addItem(QStringLiteral("制冷"), 1);
-    channel.mode_combo->addItem(QStringLiteral("加热"), 2);
-    channel.mode_combo->addItem(QStringLiteral("关闭"), 3);
-    addSpacedField(firstRowLayout, makeField(QStringLiteral("输出模式"), channel.mode_combo, channel.mode_label_text));
-    connect(channel.mode_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.mode_combo](int) {
-        emit outputModeRequested(channelNumber, static_cast<quint16>(combo->currentData().toUInt()));
-    });
-
-    channel.target_spin = new QDoubleSpinBox(page);
-    channel.target_spin->setObjectName(QStringLiteral("temperatureTargetSpinChannel%1").arg(index + 1));
-    channel.target_spin->setRange(-40.0, 100.0);
-    channel.target_spin->setDecimals(5);
-    channel.target_spin->setSuffix(QStringLiteral(" °C"));
-    channel.target_spin->setFixedWidth(kTemperatureControllerTopTargetWidth);
-    addSpacedField(firstRowLayout, makeField(QStringLiteral("目标温度(°C)"), channel.target_spin, channel.target_label_text));
-    connect(channel.target_spin, &QDoubleSpinBox::editingFinished, this, [this, channelNumber, spin = channel.target_spin]() {
-        emit targetTemperatureRequested(channelNumber, spin->value());
-    });
-
-    channel.max_output_spin = new QSpinBox(this);
-    channel.max_output_spin->setObjectName(QStringLiteral("temperatureMaxOutputSpinChannel%1").arg(index + 1));
-    setWidgetBooleanProperty(channel.max_output_spin, "temperatureMaxOutputWarning", true);
-    setDangerTextPalette(channel.max_output_spin);
-    channel.max_output_spin->setRange(0, 90);
-    channel.max_output_spin->setSuffix(QStringLiteral(" %"));
-    channel.max_output_spin->setFixedWidth(kTemperatureControllerCompactInputWidth);
-    addSpacedField(firstRowLayout, makeField(QStringLiteral("最大输出电压百分比(%)"), channel.max_output_spin, channel.max_output_label_text));
-    if (channel.max_output_label_text)
-    {
-        setWidgetBooleanProperty(channel.max_output_label_text, "temperatureMaxOutputWarning", true);
-        setDangerTextPalette(channel.max_output_label_text);
-    }
+    auto *pidRowLayout = makeRow();
+    auto *outputRowLayout = makeRow();
 
     channel.kp_spin = new QSpinBox(this);
     channel.ki_spin = new QSpinBox(this);
@@ -7558,30 +7545,55 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
         spin->setFixedWidth(kTemperatureControllerCompactPidInputWidth);
         spin->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     }
-    addSpacedField(secondRowLayout,
+    addSpacedField(pidRowLayout,
                    makeStandaloneLabelField(QStringLiteral("PID"),
                                             QStringLiteral("temperaturePidHeadingChannel%1").arg(index + 1),
                                             channel.pid_label_text));
     QLabel *kpLabelText = nullptr;
     QLabel *kiLabelText = nullptr;
     QLabel *kdLabelText = nullptr;
-    addSpacedField(secondRowLayout, makeField(QStringLiteral("P"), channel.kp_spin, kpLabelText));
-    addSpacedField(secondRowLayout, makeField(QStringLiteral("I"), channel.ki_spin, kiLabelText));
-    addSpacedField(secondRowLayout, makeField(QStringLiteral("D"), channel.kd_spin, kdLabelText));
+    addSpacedField(pidRowLayout, makeField(QStringLiteral("P"), channel.kp_spin, kpLabelText));
+    addSpacedField(pidRowLayout, makeField(QStringLiteral("I"), channel.ki_spin, kiLabelText));
+    addSpacedField(pidRowLayout, makeField(QStringLiteral("D"), channel.kd_spin, kdLabelText));
 
-    auto *autoPidCombo = new SingleLevelPopupComboBox(this);
-    autoPidCombo->setShowSelectionCheck(false);
-    channel.auto_pid_combo = autoPidCombo;
-    channel.auto_pid_combo->setObjectName(QStringLiteral("temperatureAutoPidComboChannel%1").arg(index + 1));
-    channel.auto_pid_combo->setFixedWidth(kTemperatureControllerCompactInputWidth);
-    channel.auto_pid_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
-    channel.auto_pid_combo->addItem(QStringLiteral("关闭"), 0);
-    channel.auto_pid_combo->addItem(QStringLiteral("PID自整定"), 1);
-    channel.auto_pid_combo->addItem(QStringLiteral("实时优化(预留)"), 2);
-    addSpacedField(secondRowLayout, makeField(QStringLiteral("自动 PID"), channel.auto_pid_combo, channel.auto_pid_label_text));
-    connect(channel.auto_pid_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.auto_pid_combo](int) {
-        emit autoPidRequested(channelNumber, static_cast<quint16>(combo->currentData().toUInt()));
+    channel.mode_combo = new SingleLevelPopupComboBox(page);
+    channel.mode_combo->setObjectName(QStringLiteral("temperatureOutputModeComboChannel%1").arg(index + 1));
+    channel.mode_combo->setFixedWidth(kTemperatureControllerTopModeWidth);
+    channel.mode_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    channel.mode_combo->addItem(QStringLiteral("制冷和加热"), 0);
+    channel.mode_combo->addItem(QStringLiteral("制冷"), 1);
+    channel.mode_combo->addItem(QStringLiteral("加热"), 2);
+    channel.mode_combo->addItem(QStringLiteral("关闭"), 3);
+    addSpacedField(outputRowLayout, makeField(QStringLiteral("输出模式"), channel.mode_combo, channel.mode_label_text));
+    connect(channel.mode_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.mode_combo](int) {
+        emit outputModeRequested(channelNumber, static_cast<quint16>(combo->currentData().toUInt()));
     });
+
+    channel.target_spin = new QDoubleSpinBox(page);
+    channel.target_spin->setObjectName(QStringLiteral("temperatureTargetSpinChannel%1").arg(index + 1));
+    channel.target_spin->setRange(-40.0, 100.0);
+    channel.target_spin->setDecimals(5);
+    channel.target_spin->setSuffix(QStringLiteral(" °C"));
+    channel.target_spin->setFixedWidth(kTemperatureControllerTopTargetWidth);
+    addSpacedField(outputRowLayout, makeField(QStringLiteral("目标温度(°C)"), channel.target_spin, channel.target_label_text));
+    connect(channel.target_spin, &QDoubleSpinBox::editingFinished, this, [this, channelNumber, spin = channel.target_spin]() {
+        emit targetTemperatureRequested(channelNumber, spin->value());
+    });
+
+    channel.max_output_spin = new QSpinBox(this);
+    channel.max_output_spin->setObjectName(QStringLiteral("temperatureMaxOutputSpinChannel%1").arg(index + 1));
+    setWidgetBooleanProperty(channel.max_output_spin, "temperatureMaxOutputWarning", true);
+    setDangerTextPalette(channel.max_output_spin);
+    channel.max_output_spin->setRange(0, 90);
+    channel.max_output_spin->setSuffix(QStringLiteral(" %"));
+    channel.max_output_spin->setFixedWidth(kTemperatureControllerCompactInputWidth);
+    addSpacedField(outputRowLayout, makeField(QStringLiteral("最大输出电压百分比(%)"), channel.max_output_spin, channel.max_output_label_text));
+    if (channel.max_output_label_text)
+    {
+        setWidgetBooleanProperty(channel.max_output_label_text, "temperatureMaxOutputWarning", true);
+        setDangerTextPalette(channel.max_output_label_text);
+    }
+
     connect(channel.max_output_spin, &QSpinBox::editingFinished, this, [this, channelNumber, spin = channel.max_output_spin]() {
         emit maxOutputPercentRequested(channelNumber, static_cast<quint16>(spin->value()));
     });
@@ -7595,6 +7607,13 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
     connect(channel.kp_spin, &QSpinBox::editingFinished, this, emitPid);
     connect(channel.ki_spin, &QSpinBox::editingFinished, this, emitPid);
     connect(channel.kd_spin, &QSpinBox::editingFinished, this, emitPid);
+    QWidget::setTabOrder(channel.auto_pid_combo, channel.kp_spin);
+    QWidget::setTabOrder(channel.kp_spin, channel.ki_spin);
+    QWidget::setTabOrder(channel.ki_spin, channel.kd_spin);
+    QWidget::setTabOrder(channel.kd_spin, channel.mode_combo);
+    QWidget::setTabOrder(channel.mode_combo, channel.target_spin);
+    QWidget::setTabOrder(channel.target_spin, channel.max_output_spin);
+    QWidget::setTabOrder(channel.max_output_spin, channel.common_params_button);
     return page;
 }
 
@@ -8571,9 +8590,39 @@ void TemperatureControllerPanel::updateChannelTexts()
     }
     for (ChannelWidgets& channel : channels_)
     {
-        if (channel.common_params_button) channel.common_params_button->setText(is_english_ ? QStringLiteral("Common") : QStringLiteral("常用参数"));
-        if (channel.advanced_params_button) channel.advanced_params_button->setText(is_english_ ? QStringLiteral("Advanced") : QStringLiteral("专业参数"));
-        if (channel.sensor_config_button) channel.sensor_config_button->setText(is_english_ ? QStringLiteral("Sensor Config") : QStringLiteral("传感器配置"));
+        auto fitSubTabButtonWidth = [](QPushButton *button) {
+            if (!button)
+            {
+                return;
+            }
+            button->ensurePolished();
+            button->setFixedWidth(std::max(88, button->fontMetrics().horizontalAdvance(button->text()) + 40));
+        };
+        if (channel.common_params_button)
+        {
+            channel.common_params_button->setText(is_english_ ? QStringLiteral("Common") : QStringLiteral("常用参数"));
+            fitSubTabButtonWidth(channel.common_params_button);
+        }
+        if (channel.advanced_params_button)
+        {
+            channel.advanced_params_button->setText(is_english_ ? QStringLiteral("Advanced") : QStringLiteral("专业参数"));
+            fitSubTabButtonWidth(channel.advanced_params_button);
+        }
+        if (channel.sensor_config_button)
+        {
+            channel.sensor_config_button->setText(is_english_ ? QStringLiteral("Sensor Config") : QStringLiteral("传感器配置"));
+            fitSubTabButtonWidth(channel.sensor_config_button);
+        }
+        if (channel.sensor_config_top_bar)
+        {
+            channel.sensor_config_top_bar->setMinimumWidth(0);
+            if (QLayout *layout = channel.sensor_config_top_bar->layout())
+            {
+                layout->invalidate();
+                layout->activate();
+            }
+            channel.sensor_config_top_bar->setMinimumWidth(channel.sensor_config_top_bar->sizeHint().width());
+        }
         if (channel.target_label_text) channel.target_label_text->setText(is_english_ ? QStringLiteral("Target Temp (°C)") : QStringLiteral("目标温度(°C)"));
         if (channel.enable_label_text) channel.enable_label_text->setText(is_english_ ? QStringLiteral("Output Enable") : QStringLiteral("输出使能"));
         if (channel.mode_label_text) channel.mode_label_text->setText(is_english_ ? QStringLiteral("Output Mode") : QStringLiteral("输出模式"));

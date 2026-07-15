@@ -3058,6 +3058,14 @@ int main(int argc, char **argv)
                 temperatureChannelAdvancedParamsButton->focusPolicy() == Qt::TabFocus &&
                 temperatureChannelSensorConfigButton->focusPolicy() == Qt::TabFocus,
             "temperature lower parameter tabs keep keyboard tab focus without mouse-click focus frames");
+    auto lowerTabHasTextPadding = [](QPushButton *button) {
+        return button != nullptr &&
+            button->width() >= button->fontMetrics().horizontalAdvance(button->text()) + 32;
+    };
+    require(lowerTabHasTextPadding(temperatureChannelCommonParamsButton) &&
+                lowerTabHasTextPadding(temperatureChannelAdvancedParamsButton) &&
+                lowerTabHasTextPadding(temperatureChannelSensorConfigButton),
+            "temperature lower parameter tabs reserve horizontal padding for their full labels");
     require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
                 temperatureChannelConfigSubStack->currentWidget()->objectName() ==
                     QStringLiteral("temperatureChannelCommonParamsPageChannel1") &&
@@ -3181,8 +3189,6 @@ int main(int argc, char **argv)
                                      "temperature PID I field lives in the lower common-params page");
     requireCompactChannelFieldLayout(kdSpin,
                                      "temperature PID D field lives in the lower common-params page");
-    requireCompactChannelFieldLayout(autoPidCombo,
-                                     "temperature auto PID field lives in the lower common-params page");
     require(pidHeading->objectName() == QStringLiteral("temperaturePidHeadingChannel1") &&
                 kpSpin->parentWidget() != kiSpin->parentWidget() &&
                 kiSpin->parentWidget() != kdSpin->parentWidget() &&
@@ -3219,9 +3225,7 @@ int main(int argc, char **argv)
     const QRect kiRowRect(kiSpin->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
                           kiSpin->parentWidget()->size());
     const QRect kdRowRect(kdSpin->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
-                          kdSpin->parentWidget()->size());
-    const QRect autoPidRowRect(autoPidCombo->parentWidget()->mapTo(temperatureChannelStack, QPoint(0, 0)),
-                               autoPidCombo->parentWidget()->size());
+                           kdSpin->parentWidget()->size());
     auto requireEvenHorizontalGaps = [](const QList<QRect>& rects, int tolerance, const char *message) {
         require(rects.size() >= 2, message);
         const int referenceGap = rects.at(1).left() - rects.at(0).right() - 1;
@@ -3231,35 +3235,32 @@ int main(int argc, char **argv)
             require(gap >= 0 && std::abs(gap - referenceGap) <= tolerance, message);
         }
     };
-    require(std::abs(modeRowRect.top() - targetRowRect.top()) <= 2 &&
+    require(std::abs(pidHeadingRect.top() - kpRowRect.top()) <= 2 &&
+                std::abs(kpRowRect.top() - kiRowRect.top()) <= 2 &&
+                std::abs(kiRowRect.top() - kdRowRect.top()) <= 2 &&
+                pidHeadingRect.right() < kpRowRect.left() &&
+                kpRowRect.right() < kiRowRect.left() &&
+                kiRowRect.right() < kdRowRect.left(),
+            "temperature lower common tab lays PID, P, I, and D on the first row");
+    requireEvenHorizontalGaps({pidHeadingRect, kpRowRect, kiRowRect, kdRowRect},
+                              2,
+                              "temperature lower common tab distributes PID-row field gaps evenly");
+    require(modeRowRect.top() > kdRowRect.bottom() &&
+                std::abs(modeRowRect.top() - targetRowRect.top()) <= 2 &&
                 std::abs(targetRowRect.top() - maxOutputRowRect.top()) <= 2 &&
                 modeRowRect.right() < targetRowRect.left() &&
                 targetRowRect.right() < maxOutputRowRect.left(),
-            "temperature lower common tab lays output mode, target, and max output on the first row");
+            "temperature lower common tab lays output mode, target, and max output on the second row");
     requireEvenHorizontalGaps({modeRowRect, targetRowRect, maxOutputRowRect},
                               2,
-                              "temperature lower common tab distributes first-row field gaps evenly");
-    require(pidHeadingRect.top() > maxOutputRowRect.bottom() &&
-                std::abs(pidHeadingRect.top() - kpRowRect.top()) <= 2 &&
-                std::abs(kpRowRect.top() - kiRowRect.top()) <= 2 &&
-                std::abs(kiRowRect.top() - kdRowRect.top()) <= 2 &&
-                std::abs(kdRowRect.top() - autoPidRowRect.top()) <= 2 &&
-                pidHeadingRect.right() < kpRowRect.left() &&
-                kpRowRect.right() < kiRowRect.left() &&
-                kiRowRect.right() < kdRowRect.left() &&
-                kdRowRect.right() < autoPidRowRect.left(),
-            "temperature lower common tab lays PID, P, I, D, and auto PID on the second row");
-    requireEvenHorizontalGaps({pidHeadingRect, kpRowRect, kiRowRect, kdRowRect, autoPidRowRect},
-                              2,
-                              "temperature lower common tab distributes second-row field gaps evenly");
+                              "temperature lower common tab distributes output-row field gaps evenly");
     require(modeRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
                 targetRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
                 maxOutputRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
                 pidHeadingRect.bottom() <= temperatureChannelStack->rect().bottom() &&
                 kpRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
                 kiRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
-                kdRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
-                autoPidRowRect.bottom() <= temperatureChannelStack->rect().bottom(),
+                kdRowRect.bottom() <= temperatureChannelStack->rect().bottom(),
             "temperature channel fields fit inside the stack without clipping");
     require(maxOutputSpin->property("temperatureMaxOutputWarning").toBool(),
             "temperature max output value carries warning styling");
@@ -3290,7 +3291,16 @@ int main(int argc, char **argv)
                 temperatureChannelStack->isAncestorOf(targetSpin),
             "temperature output mode and target temperature live in the lower common-params page");
     requireTopBarFieldLayout(enableSwitch,
-                             "temperature output enable switch lives beside the channel selectors");
+                              "temperature output enable switch lives beside the channel selectors");
+    requireTopBarFieldLayout(autoPidCombo,
+                             "temperature auto PID field lives beside the output enable switch");
+    const QRect enableFieldRect(enableSwitch->parentWidget()->mapTo(temperatureChannelTopControlsStack, QPoint(0, 0)),
+                                enableSwitch->parentWidget()->size());
+    const QRect autoPidFieldRect(autoPidCombo->parentWidget()->mapTo(temperatureChannelTopControlsStack, QPoint(0, 0)),
+                                 autoPidCombo->parentWidget()->size());
+    require(std::abs(enableFieldRect.top() - autoPidFieldRect.top()) <= 2 &&
+                enableFieldRect.right() < autoPidFieldRect.left(),
+            "temperature output enable and auto PID share the channel selector top row");
     requireTopBarFieldLayout(sensorModelSelector1,
                              "temperature sensor model radio selector lives in the channel top row");
     require(addressSpin->parentWidget() != nullptr &&
@@ -3511,8 +3521,7 @@ int main(int argc, char **argv)
         topControlsRectInSelectorRow.left() - topBarRectInSelectorRow.right() - 1;
     const int lowerNavigationGap =
         polynomialFieldsRectInSubPageRow.left() - subTopBarRectInSubPageRow.right() - 1;
-    require(std::abs(temperatureChannelSubTopBar->width() - temperatureChannelTopBar->width()) <= 10 &&
-                temperatureChannelSubTopBar->width() >= temperatureChannelSubTopBar->sizeHint().width() &&
+    require(temperatureChannelSubTopBar->width() >= temperatureChannelSubTopBar->sizeHint().width() &&
                 lowerNavigationGap == topNavigationGap,
             "temperature lower navigation keeps its full width before the A4-A7 fields");
     require(polynomialFieldsRectInSubPageRow.left() > sensorConfigButtonRectInSubPageRow.right() &&
