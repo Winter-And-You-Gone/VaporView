@@ -3090,6 +3090,32 @@ int main(int argc, char **argv)
                 lowerTabHasTextPadding(temperatureChannelAdvancedParamsButton) &&
                 lowerTabHasTextPadding(temperatureChannelSensorConfigButton),
             "temperature lower parameter tabs reserve horizontal padding for their full labels");
+    std::array<QGridLayout *, 3> channelContentGrids{};
+    for (int pageIndex = 0; pageIndex < temperatureChannelConfigSubStack->count(); ++pageIndex)
+    {
+        channelContentGrids[static_cast<size_t>(pageIndex)] =
+            qobject_cast<QGridLayout *>(temperatureChannelConfigSubStack->widget(pageIndex)->layout());
+    }
+    require(channelContentGrids[0] != nullptr &&
+                channelContentGrids[1] != nullptr &&
+                channelContentGrids[2] != nullptr,
+            "temperature channel sub-pages share grid-based two-row content controls");
+    const int sharedContentHeight = channelContentGrids[0]->rowMinimumHeight(0) +
+        channelContentGrids[0]->verticalSpacing() +
+        channelContentGrids[0]->rowMinimumHeight(1);
+    for (QGridLayout *contentGrid : channelContentGrids)
+    {
+        require(contentGrid->rowCount() == 2 &&
+                    contentGrid->alignment() == Qt::AlignTop &&
+                    contentGrid->verticalSpacing() == 8 &&
+                    contentGrid->rowMinimumHeight(0) == contentGrid->rowMinimumHeight(1) &&
+                    contentGrid->rowMinimumHeight(0) > 0,
+                "temperature channel sub-pages use the shared two-row layout contract");
+    }
+    require(temperatureChannelConfigSubStack->minimumHeight() == sharedContentHeight &&
+                temperatureChannelConfigSubStack->maximumHeight() == sharedContentHeight &&
+                temperatureChannelConfigSubStack->height() == sharedContentHeight,
+            "temperature channel keeps top navigation, two content rows, and bottom navigation as four stable rows");
     require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
                 temperatureChannelConfigSubStack->currentWidget()->objectName() ==
                     QStringLiteral("temperatureChannelCommonParamsPageChannel1") &&
@@ -3632,6 +3658,7 @@ int main(int argc, char **argv)
     }
     require(sensorConfigGrid != nullptr &&
                 sensorConfigGrid->horizontalSpacing() == 0 &&
+                sensorConfigGrid->verticalSpacing() == 8 &&
                 sensorConfigGrid->columnStretch(1) == 1 &&
                 sensorConfigGrid->columnStretch(3) == 1 &&
                 sensorConfigGrid->columnStretch(5) == 1 &&
@@ -3679,7 +3706,7 @@ int main(int argc, char **argv)
                 sensorLastTopInputRectInCard.bottom() <= temperatureConfigCard->contentsRect().bottom() &&
                 sensorPageBottomUnusedHeight >= 0 &&
                 sensorPageBottomUnusedHeight <= 4,
-            "temperature sensor config uses the tallest page height and keeps the bottom input row visible");
+            "temperature sensor config fills the shared two-row content height and keeps the bottom input row visible");
     require(temperatureChannelStack->isAncestorOf(factoryResetButton) &&
                 !temperatureChannelSelectorRow->isAncestorOf(factoryResetButton),
             "temperature factory reset button lives on the last common-settings row");
