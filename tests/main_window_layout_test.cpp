@@ -2725,11 +2725,19 @@ int main(int argc, char **argv)
             "temperature title serial selector owns the shared single-level popup menu");
     temperatureTitlePortCombo->showPopup();
     processEventsFor(120);
+    const QList<VaporView::SingleLevelPopupMenuRow *> temperatureTitlePortRows =
+        temperatureTitlePortMenu->rows();
     require(temperatureTitlePortMenu->isVisible() &&
-                temperatureTitlePortMenu->rows().size() == temperatureTitlePortCombo->count() &&
-                !temperatureTitlePortMenu->rows().isEmpty() &&
-                temperatureTitlePortMenu->rows().first()->text() == temperatureTitlePortCombo->itemText(0),
-            "temperature title serial selector opens the shared popup with its current port choices");
+                temperatureTitlePortRows.size() == temperatureTitlePortCombo->count() &&
+                !temperatureTitlePortRows.isEmpty() &&
+                temperatureTitlePortRows.first()->text() == temperatureTitlePortCombo->itemText(0) &&
+                std::all_of(temperatureTitlePortRows.cbegin(),
+                            temperatureTitlePortRows.cend(),
+                            [](VaporView::SingleLevelPopupMenuRow *row) {
+                                return row && !row->property("hasCheckIcon").toBool() &&
+                                    row->checkLabel() && row->checkLabel()->width() == 0;
+                            }),
+            "temperature title serial selector opens its current port choices without a redundant check slot");
     temperatureTitlePortCombo->hidePopup();
     processEventsFor(40);
     auto *temperatureTitleConnectButton =
@@ -4451,8 +4459,10 @@ int main(int argc, char **argv)
     }
     require(syntheticPortRow != nullptr &&
                 syntheticPortRow->width() >=
-                    syntheticPortRow->textLabel()->fontMetrics().horizontalAdvance(syntheticPort) + 56,
-            "temperature title serial popup expands to keep longer port options unclipped");
+                    syntheticPortRow->textLabel()->fontMetrics().horizontalAdvance(syntheticPort) + 32 &&
+                !syntheticPortRow->property("hasCheckIcon").toBool() &&
+                syntheticPortRow->checkLabel()->width() == 0,
+            "temperature title serial popup keeps longer port options unclipped without a selection-check slot");
     temperatureTitlePortCombo->hidePopup();
     processEventsFor(40);
     const int originalTitlePortIndex = temperatureTitlePortCombo->findText(expectedTemperaturePortText);

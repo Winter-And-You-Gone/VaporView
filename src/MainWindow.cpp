@@ -17221,6 +17221,7 @@ void MainWindow::setupDataPanels()
     temperature_title_port_combo_ = temperatureTitlePortCombo;
     temperature_title_port_combo_->setObjectName(QStringLiteral("temperatureTitlePortCombo"));
     temperature_title_port_combo_->setEditable(false);
+    temperatureTitlePortCombo->setShowSelectionCheck(false);
     temperatureTitlePortCombo->setPopupFitContents(true);
     temperature_title_port_combo_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     temperature_title_port_combo_->setFixedHeight(kMainPageButtonHeight);
