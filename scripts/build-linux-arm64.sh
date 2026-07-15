@@ -40,6 +40,10 @@ case "${action}" in
     cmake "${cmake_args[@]}"
     cmake --build --preset "${preset_name}"
     ;;
+  app)
+    cmake "${cmake_args[@]}"
+    cmake --build --preset "${preset_name}-app-only"
+    ;;
   rebuild)
     rm -rf "${build_dir}"
     cmake "${cmake_args[@]}"
@@ -50,8 +54,13 @@ case "${action}" in
     cmake --build --preset "${preset_name}"
     ctest --preset "${preset_name}"
     ;;
+  test-fast)
+    cmake "${cmake_args[@]}"
+    cmake --build --preset "${preset_name}"
+    ctest --preset "${preset_name}-fast"
+    ;;
   *)
-    echo "Usage: $0 [configure|build|rebuild|test|clean]" >&2
+    echo "Usage: $0 [configure|build|app|rebuild|test|test-fast|clean]" >&2
     exit 2
     ;;
 esac

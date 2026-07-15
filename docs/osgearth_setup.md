@@ -134,18 +134,21 @@ The current implementation embeds OSG through `QOpenGLWidget` and `GraphicsWindo
 
 ## Verification
 
-With osgEarth enabled:
+Keep the shared `build/Release` tree in the order below. Start with the default OFF build, then finish with osgEarth ON so the final executable is ready for live 3D inspection. Run these commands from an initialized VS/MSVC Developer environment.
+
+With osgEarth disabled, only confirm the default application build:
 
 ```powershell
-cmd /s /c '"F:\VisualStudio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 && cmake -S . -B build/Release -DVAPORVIEW_ENABLE_OSGEARTH=ON'
-cmd /s /c '"F:\VisualStudio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 && cmake --build build/Release --config Release'
-cmd /s /c '"F:\VisualStudio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 && ctest --test-dir build/Release --output-on-failure'
+cmake --preset windows-msvc2022-x64-release -DVAPORVIEW_ENABLE_OSGEARTH=OFF
+cmake --build --preset windows-msvc2022-x64-release-app-only
 ```
 
-With osgEarth disabled:
+Then enable osgEarth, build the test targets, and run the 3D regression group:
 
 ```powershell
-cmd /s /c '"F:\VisualStudio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 && cmake -S . -B build/Release -DVAPORVIEW_ENABLE_OSGEARTH=OFF'
-cmd /s /c '"F:\VisualStudio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 && cmake --build build/Release --config Release'
-cmd /s /c '"F:\VisualStudio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 && ctest --test-dir build/Release --output-on-failure'
+cmake --preset windows-msvc2022-x64-release -DVAPORVIEW_ENABLE_OSGEARTH=ON
+cmake --build --preset windows-msvc2022-x64-release
+ctest --test-dir build/Release -C Release -L 3d --output-on-failure
 ```
+
+Run the full CTest suite as well when the change affects shared libraries, CMake/link structure, public data formats, or release readiness. See `docs/testing.md` for the focused test groups and timeout policy.

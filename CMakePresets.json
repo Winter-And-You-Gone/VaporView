@@ -48,8 +48,22 @@
       "configurePreset": "windows-msvc2022-x64-release"
     },
     {
+      "name": "windows-msvc2022-x64-release-app-only",
+      "configurePreset": "windows-msvc2022-x64-release",
+      "targets": [
+        "VaporView"
+      ]
+    },
+    {
       "name": "linux-arm64-gcc-release",
       "configurePreset": "linux-arm64-gcc-release"
+    },
+    {
+      "name": "linux-arm64-gcc-release-app-only",
+      "configurePreset": "linux-arm64-gcc-release",
+      "targets": [
+        "VaporView"
+      ]
     }
   ],
   "testPresets": [
@@ -58,6 +72,24 @@
       "configurePreset": "windows-msvc2022-x64-release",
       "output": {
         "outputOnFailure": true
+      },
+      "execution": {
+        "timeout": 180,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-msvc2022-x64-release-fast",
+      "inherits": "windows-msvc2022-x64-release",
+      "displayName": "Windows x64 Release fast tests",
+      "filter": {
+        "include": {
+          "label": "fast"
+        }
+      },
+      "execution": {
+        "timeout": 90,
+        "noTestsAction": "error"
       }
     },
     {
@@ -65,6 +97,24 @@
       "configurePreset": "linux-arm64-gcc-release",
       "output": {
         "outputOnFailure": true
+      },
+      "execution": {
+        "timeout": 180,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-arm64-gcc-release-fast",
+      "inherits": "linux-arm64-gcc-release",
+      "displayName": "Linux ARM64 Release fast tests",
+      "filter": {
+        "include": {
+          "label": "fast"
+        }
+      },
+      "execution": {
+        "timeout": 90,
+        "noTestsAction": "error"
       }
     }
   ]

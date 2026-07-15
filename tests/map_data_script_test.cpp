@@ -136,7 +136,7 @@ int main()
     if (python.isEmpty())
     {
         std::cout << "SKIP: python interpreter was not found on PATH\n";
-        return 0;
+        return 77;
     }
 
     const QDir sourceRoot(QString::fromLocal8Bit(VAPORVIEW_SOURCE_DIR));

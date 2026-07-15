@@ -343,6 +343,22 @@ cmake --build build/Release --config Release --target VaporView
 
 如果缺少 osgEarth，开启该选项会在 CMake configure 阶段报错；保持默认 `OFF` 时项目应照常构建。该模块只链接到 `VaporView` 主程序，用于打开 3D Map 窗口、加载 session 轨迹和后续叠加 `.earth` 本地地图数据。
 
+## 测试
+
+常规修改优先运行快速测试：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-windows-msvc2022.ps1 -Action TestFast
+```
+
+大范围改动或发布前运行完整测试：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-windows-msvc2022.ps1 -Action Test
+```
+
+如果只需要构建桌面程序，可以使用 `-Action BuildApp`，它仍使用 `build/Release`，但不会编译全部测试目标。测试标签、focused 命令、osgEarth ON/OFF 顺序和 CI 范围见 [`docs/testing.md`](docs/testing.md)。
+
 离线开源底图可使用 Natural Earth 公共领域数据。运行 `powershell -ExecutionPolicy Bypass -File scripts/download-natural-earth-map.ps1` 会下载 Natural Earth II 1:50m 栅格并生成 `data/maps/vaporview_default.earth`；详见 `docs/map_data.md`。
 
 构建后主程序位置：

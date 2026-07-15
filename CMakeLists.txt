@@ -892,6 +892,9 @@ if(BUILD_TESTING)
     )
     target_link_libraries(map_data_script_test PRIVATE Qt6::Core)
     add_test(NAME map_data_script_test COMMAND map_data_script_test)
+    set_tests_properties(map_data_script_test PROPERTIES
+        SKIP_RETURN_CODE 77
+    )
 
     add_executable(tcp_wave_encoding_test
         tests/tcp_wave_encoding_test.cpp
@@ -1183,6 +1186,84 @@ if(BUILD_TESTING)
     )
     target_link_libraries(vaporview_startup_test PRIVATE Qt6::Core)
     add_test(NAME vaporview_startup_test COMMAND vaporview_startup_test)
+
+    set(VAPORVIEW_FAST_UNIT_TESTS
+        trajectory_buffer_test
+        trajectory_quality_test
+        trajectory_replay_test
+        session_track_reader_test
+        coordinate_transform_test
+        height_reference_test
+        tcp_wave_encoding_test
+        temperature_controller_protocol_test
+        telemetry_codec_test
+        telemetry_tcp_link_test
+        sky_session_recorder_test
+        sky_local_ipc_client_test
+        visual_text_label_test
+        session_time_format_test
+    )
+    set_tests_properties(${VAPORVIEW_FAST_UNIT_TESTS} PROPERTIES TIMEOUT 30)
+    set_property(TEST ${VAPORVIEW_FAST_UNIT_TESTS} PROPERTY LABELS fast unit)
+
+    set(VAPORVIEW_FAST_INTEGRATION_TESTS
+        map_data_script_test
+        tcp_wave_panel_test
+        sky_device_config_dialog_test
+        vaporview_startup_test
+    )
+    set_tests_properties(${VAPORVIEW_FAST_INTEGRATION_TESTS} PROPERTIES TIMEOUT 60)
+    set_property(TEST ${VAPORVIEW_FAST_INTEGRATION_TESTS} PROPERTY LABELS fast integration)
+
+    set(VAPORVIEW_SLOW_UI_TESTS
+        main_window_layout_test
+        session_viewer_theme_test
+    )
+    set_tests_properties(${VAPORVIEW_SLOW_UI_TESTS} PROPERTIES TIMEOUT 120)
+    set_property(TEST ${VAPORVIEW_SLOW_UI_TESTS} PROPERTY LABELS integration slow ui)
+
+    set_property(TEST map_data_script_test APPEND PROPERTY LABELS script)
+    set_property(TEST tcp_wave_encoding_test tcp_wave_panel_test APPEND PROPERTY LABELS tcp-wave)
+    set_property(TEST
+        temperature_controller_protocol_test
+        telemetry_codec_test
+        telemetry_tcp_link_test
+        APPEND PROPERTY LABELS protocol
+    )
+    set_property(TEST
+        main_window_layout_test
+        session_viewer_theme_test
+        vaporview_startup_test
+        APPEND PROPERTY LABELS ui
+    )
+
+    if(VAPORVIEW_ENABLE_OSGEARTH)
+        set(VAPORVIEW_FAST_3D_UNIT_TESTS
+            map_data_manager_test
+            trajectory_3d_layer_test
+            aircraft_3d_layer_test
+            aircraft_heading_test
+        )
+        set_tests_properties(${VAPORVIEW_FAST_3D_UNIT_TESTS} PROPERTIES TIMEOUT 60)
+        set_property(TEST ${VAPORVIEW_FAST_3D_UNIT_TESTS} PROPERTY LABELS 3d fast unit)
+
+        set(VAPORVIEW_FAST_3D_INTEGRATION_TESTS
+            map3d_window_smoke_test
+        )
+        set_tests_properties(${VAPORVIEW_FAST_3D_INTEGRATION_TESTS} PROPERTIES TIMEOUT 90)
+        set_property(TEST ${VAPORVIEW_FAST_3D_INTEGRATION_TESTS} PROPERTY LABELS 3d fast integration ui)
+
+        set_tests_properties(main_window_map3d_live_test PROPERTIES TIMEOUT 90)
+        set_property(TEST main_window_map3d_live_test PROPERTY LABELS 3d integration slow ui)
+
+        set(VAPORVIEW_REAL_3D_TESTS
+            map3d_real_data_load_test
+            map3d_real_window_close_test
+            main_window_map3d_real_close_test
+        )
+        set_tests_properties(${VAPORVIEW_REAL_3D_TESTS} PROPERTIES TIMEOUT 180)
+        set_property(TEST ${VAPORVIEW_REAL_3D_TESTS} PROPERTY LABELS 3d real-data slow ui)
+    endif()
 endif()
 
 if(WIN32 AND QT_WINDEPLOYQT_EXECUTABLE)

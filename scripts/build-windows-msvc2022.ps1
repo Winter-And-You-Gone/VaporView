@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("Configure", "Build", "Rebuild", "Test", "Clean")]
+    [ValidateSet("Configure", "Build", "BuildApp", "Rebuild", "Test", "TestFast", "Clean")]
     [string]$Action = "Build",
     [string]$QtPrefix = $env:VAPORVIEW_QT_MSVC_PREFIX,
     [string]$VisualStudioInstall = $env:VAPORVIEW_VS2022_INSTALL,
@@ -144,7 +144,9 @@ function Invoke-VaporViewVsCommand {
 
 $configureCommand = "`"$cmakeExe`" --preset $presetName -DCMAKE_PREFIX_PATH=`"$QtPrefix`" -DCMAKE_MAKE_PROGRAM=`"$ninjaExe`""
 $buildCommand = "`"$cmakeExe`" --build --preset $presetName"
+$buildAppCommand = "`"$cmakeExe`" --build --preset $presetName-app-only"
 $testCommand = "`"$cmakeExe`" --build --preset $presetName && ctest --preset $presetName"
+$fastTestCommand = "`"$cmakeExe`" --build --preset $presetName && ctest --preset $presetName-fast"
 
 switch ($Action) {
     "Clean" {
@@ -158,6 +160,9 @@ switch ($Action) {
     "Build" {
         Invoke-VaporViewVsCommand "$configureCommand && $buildCommand"
     }
+    "BuildApp" {
+        Invoke-VaporViewVsCommand "$configureCommand && $buildAppCommand"
+    }
     "Rebuild" {
         if (Test-Path $buildDir) {
             Remove-Item -LiteralPath $buildDir -Recurse -Force
@@ -166,5 +171,8 @@ switch ($Action) {
     }
     "Test" {
         Invoke-VaporViewVsCommand "$configureCommand && $testCommand"
+    }
+    "TestFast" {
+        Invoke-VaporViewVsCommand "$configureCommand && $fastTestCommand"
     }
 }
