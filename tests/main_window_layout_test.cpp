@@ -2829,9 +2829,9 @@ int main(int argc, char **argv)
                 temperatureConfigChannelButton2->x() < temperatureCommonSettingsButton->x() &&
                 std::abs(temperatureConfigChannelButton1->y() - temperatureConfigChannelButton2->y()) <= 1 &&
                 std::abs(temperatureConfigChannelButton2->y() - temperatureCommonSettingsButton->y()) <= 1 &&
-                temperatureConfigChannelButton1->height() == 34 &&
-                temperatureConfigChannelButton2->height() == 34 &&
-                temperatureCommonSettingsButton->height() == 34,
+                temperatureConfigChannelButton1->height() == 30 &&
+                temperatureConfigChannelButton2->height() == 30 &&
+                temperatureCommonSettingsButton->height() == 30,
             "temperature channel top bar arranges compact channel buttons horizontally");
     require(temperaturePanel->findChild<QLabel *>(QStringLiteral("temperatureOutputEnableTopLabel")) == nullptr,
             "temperature output enable no longer has a separate top-row label");
@@ -3126,6 +3126,10 @@ int main(int argc, char **argv)
                 temperatureChannelPageLayout != nullptr &&
                 temperatureChannelPageLayout->spacing() == sharedRowSpacing,
             "temperature four-row layout uses one shared gap above, within, and below the content rows");
+    require(temperatureChannelTopBar->height() == temperatureChannelSubTopBar->height() &&
+                temperatureChannelTopBar->height() == channelContentGrids[0]->rowMinimumHeight(0) &&
+                temperatureConfigChannelButton1->height() == temperatureChannelCommonParamsButton->height(),
+            "temperature four-row layout keeps both navigation bars and content rows at one shared height");
     require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
                 temperatureChannelConfigSubStack->currentWidget()->objectName() ==
                     QStringLiteral("temperatureChannelCommonParamsPageChannel1") &&

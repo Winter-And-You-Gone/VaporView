@@ -919,6 +919,10 @@ constexpr int kTemperatureControllerCompactLabelWidth = 72;
 constexpr int kTemperatureControllerControlLabelWidth = 150;
 constexpr int kTemperatureControllerConfigRowHeight = 38;
 constexpr int kTemperatureControllerTopControlsHeight = 38;
+constexpr int kTemperatureControllerNavigationButtonHeight = 30;
+constexpr int kTemperatureControllerNavigationHorizontalMargin = 4;
+constexpr int kTemperatureControllerNavigationVerticalMargin = 3;
+constexpr int kTemperatureControllerNavigationSpacing = 4;
 constexpr int kTemperatureControllerRowSpacing = 8;
 constexpr int kTemperatureControllerChannelConfigSubStackHeight =
     kTemperatureControllerConfigRowHeight * 2 + kTemperatureControllerRowSpacing;
@@ -7133,8 +7137,11 @@ void TemperatureControllerPanel::setupUi()
     channel_top_bar_->setAttribute(Qt::WA_StyledBackground, true);
     channel_top_bar_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     auto *channelTopBarLayout = new QHBoxLayout(channel_top_bar_);
-    channelTopBarLayout->setContentsMargins(6, 6, 6, 6);
-    channelTopBarLayout->setSpacing(6);
+    channelTopBarLayout->setContentsMargins(kTemperatureControllerNavigationHorizontalMargin,
+                                            kTemperatureControllerNavigationVerticalMargin,
+                                            kTemperatureControllerNavigationHorizontalMargin,
+                                            kTemperatureControllerNavigationVerticalMargin);
+    channelTopBarLayout->setSpacing(kTemperatureControllerNavigationSpacing);
 
     auto createChannelButton = [this](int index) {
         auto *button = new QPushButton(this);
@@ -7144,7 +7151,7 @@ void TemperatureControllerPanel::setupUi()
         button->setCursor(Qt::PointingHandCursor);
         button->setFocusPolicy(Qt::TabFocus);
         button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        button->setFixedSize(72, 34);
+        button->setFixedSize(72, kTemperatureControllerNavigationButtonHeight);
         button->setText(index == 0 ? QStringLiteral("通道1") : QStringLiteral("通道2"));
         connect(button, &QPushButton::clicked, this, [this, index]() {
             selectChannel(index);
@@ -7160,7 +7167,7 @@ void TemperatureControllerPanel::setupUi()
     common_settings_button_->setCursor(Qt::PointingHandCursor);
     common_settings_button_->setFocusPolicy(Qt::TabFocus);
     common_settings_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    common_settings_button_->setFixedSize(88, 34);
+    common_settings_button_->setFixedSize(88, kTemperatureControllerNavigationButtonHeight);
     common_settings_button_->setText(QStringLiteral("通用设置"));
     connect(common_settings_button_, &QPushButton::clicked, this, [this]() {
         selectChannel(2);
@@ -7354,8 +7361,11 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     channel.sensor_config_top_bar->setObjectName(QStringLiteral("temperatureChannelSubTopBar"));
     channel.sensor_config_top_bar->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     auto *barLayout = new QHBoxLayout(channel.sensor_config_top_bar);
-    barLayout->setContentsMargins(4, 4, 4, 4);
-    barLayout->setSpacing(4);
+    barLayout->setContentsMargins(kTemperatureControllerNavigationHorizontalMargin,
+                                  kTemperatureControllerNavigationVerticalMargin,
+                                  kTemperatureControllerNavigationHorizontalMargin,
+                                  kTemperatureControllerNavigationVerticalMargin);
+    barLayout->setSpacing(kTemperatureControllerNavigationSpacing);
 
     auto fitSubTabButtonWidth = [](QPushButton *button) {
         if (!button)
@@ -7371,7 +7381,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
         button->setCursor(Qt::PointingHandCursor);
         button->setFocusPolicy(Qt::TabFocus);
         button->setProperty("temperatureChannelSubSelector", true);
-        button->setFixedHeight(30);
+        button->setFixedHeight(kTemperatureControllerNavigationButtonHeight);
         fitSubTabButtonWidth(button);
         connect(button, &QPushButton::clicked, this, [this, index, pageIndex]() {
             selectChannelSubPage(index, pageIndex);
@@ -10223,7 +10233,7 @@ void MainWindow::loadModernStyleSheet()
             "TemperatureControllerPanel QFrame#temperatureChannelTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
             "TemperatureControllerPanel QFrame#temperatureChannelSubTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
             "TemperatureControllerPanel QStackedWidget#temperatureChannelStack { background-color: transparent; border: none; }"
-            "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 34px; max-height: 34px; padding: 0px 10px; text-align: center; outline: none; }"
+            "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 30px; max-height: 30px; padding: 0px 10px; text-align: center; outline: none; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 30px; max-height: 30px; padding: 0px 10px; text-align: center; outline: none; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
@@ -10246,7 +10256,7 @@ QString temperatureControllerConfigStyleSheet()
         "TemperatureControllerPanel QFrame#temperatureChannelTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
         "TemperatureControllerPanel QFrame#temperatureChannelSubTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
         "TemperatureControllerPanel QStackedWidget#temperatureChannelStack { background-color: transparent; border: none; }"
-        "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 34px; max-height: 34px; padding: 0px 10px; text-align: center; outline: none; }"
+        "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 30px; max-height: 30px; padding: 0px 10px; text-align: center; outline: none; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 30px; max-height: 30px; padding: 0px 10px; text-align: center; outline: none; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
