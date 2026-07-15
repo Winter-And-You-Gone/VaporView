@@ -2894,6 +2894,9 @@ int main(int argc, char **argv)
                 !temperatureConfigChannelButton2->isChecked() &&
                 temperatureCommonSettingsButton->isChecked(),
             "temperature top bar switches to a compact three-column common settings page");
+    require(std::abs(temperatureChannelTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)).x() -
+                     temperatureChannelStack->mapTo(temperatureConfigCard, QPoint(0, 0)).x()) <= 1,
+            "temperature top navigation stays left aligned on the common settings page");
     auto *commonSettingsGrid = qobject_cast<QGridLayout *>(temperatureCommonSettingsPage->layout());
     require(commonSettingsGrid != nullptr &&
                 commonSettingsGrid->columnCount() >= 3 &&
@@ -3168,6 +3171,9 @@ int main(int argc, char **argv)
                 startupDelaySpin != nullptr &&
                 sensorResistanceEdit != nullptr,
             "temperature lower advanced tab exposes all RD105 professional parameters");
+    require(std::abs(temperatureChannelTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)).x() -
+                     temperatureChannelStack->mapTo(temperatureConfigCard, QPoint(0, 0)).x()) <= 1,
+            "temperature top navigation stays left aligned on the professional parameters page");
     require(overtempUpperSpin->minimum() == -3000.0 &&
                 overtempUpperSpin->maximum() == 5000.0 &&
                 overtempUpperSpin->decimals() == 5 &&

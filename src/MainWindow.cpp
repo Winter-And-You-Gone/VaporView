@@ -7222,7 +7222,7 @@ void TemperatureControllerPanel::setupUi()
     channelTopBarLayout->addWidget(channel_button_1_);
     channelTopBarLayout->addWidget(channel_button_2_);
     channelTopBarLayout->addWidget(common_settings_button_);
-    channelSelectorRowLayout->addWidget(channel_top_bar_, 0, Qt::AlignVCenter);
+    channelSelectorRowLayout->addWidget(channel_top_bar_, 0, Qt::AlignLeft | Qt::AlignVCenter);
 
     channel_top_controls_stack_ = new QStackedWidget(channelSelectorRow);
     channel_top_controls_stack_->setObjectName(QStringLiteral("temperatureChannelTopControlsStack"));
