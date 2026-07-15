@@ -336,6 +336,10 @@ private:
         QSpinBox *startup_delay_spin = nullptr;
         QLineEdit *sensor_resistance_edit = nullptr;
         QWidget *common_top_controls = nullptr;
+        QWidget *common_top_leading_spacer = nullptr;
+        QWidget *common_top_middle_spacer = nullptr;
+        QWidget *enable_field = nullptr;
+        QWidget *auto_pid_field = nullptr;
         QWidget *sensor_model_field = nullptr;
         QWidget *sensor_model_selector = nullptr;
         QButtonGroup *sensor_model_group = nullptr;
@@ -411,6 +415,7 @@ private:
     void selectChannelSubPage(int channelIndex, int subPageIndex);
     bool eventFilter(QObject *watched, QEvent *event) override;
     void alignSensorTopPolynomialFields(int channelIndex);
+    void alignChannelTopControlFields(int channelIndex);
     void updateChannelStackMinimumHeight();
     void emitSensorConfigRequest(int index);
     void updateChannelTexts();

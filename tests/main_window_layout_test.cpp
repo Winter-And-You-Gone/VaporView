@@ -3349,6 +3349,25 @@ int main(int argc, char **argv)
     require(std::abs(enableFieldRect.top() - autoPidFieldRect.top()) <= 2 &&
                 enableFieldRect.right() < autoPidFieldRect.left(),
             "temperature output enable and auto PID share the channel selector top row");
+    QLayoutItem *secondColumnLabelItem = commonParamsGrid->itemAtPosition(0, 3);
+    QLayoutItem *thirdColumnLabelItem = commonParamsGrid->itemAtPosition(0, 6);
+    QWidget *secondColumnLabel = secondColumnLabelItem ? secondColumnLabelItem->widget() : nullptr;
+    QWidget *thirdColumnLabel = thirdColumnLabelItem ? thirdColumnLabelItem->widget() : nullptr;
+    require(secondColumnLabel != nullptr && thirdColumnLabel != nullptr,
+            "temperature common parameters expose second and third column anchors");
+    const QRect enableFieldRectInCard(
+        enableSwitch->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
+        enableSwitch->parentWidget()->size());
+    const QRect autoPidFieldRectInCard(
+        autoPidCombo->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
+        autoPidCombo->parentWidget()->size());
+    const QRect secondColumnRectInCard(secondColumnLabel->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                       secondColumnLabel->size());
+    const QRect thirdColumnRectInCard(thirdColumnLabel->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                      thirdColumnLabel->size());
+    require(std::abs(enableFieldRectInCard.left() - secondColumnRectInCard.left()) <= 1 &&
+                std::abs(autoPidFieldRectInCard.left() - thirdColumnRectInCard.left()) <= 1,
+            "temperature output enable and auto PID align with the second and third parameter columns");
     requireTopBarFieldLayout(sensorModelSelector1,
                              "temperature sensor model radio selector lives in the channel top row");
     require(addressSpin->parentWidget() != nullptr &&
