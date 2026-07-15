@@ -416,6 +416,7 @@ private:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void alignSensorTopPolynomialFields(int channelIndex);
     void alignChannelTopControlFields(int channelIndex);
+    void alignCommonSettingsColumns(int channelIndex);
     void updateChannelStackMinimumHeight();
     void emitSensorConfigRequest(int index);
     void updateChannelTexts();

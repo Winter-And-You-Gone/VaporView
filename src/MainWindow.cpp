@@ -899,6 +899,9 @@ constexpr int kEpsilonMotionFieldSpacing = 8;
 constexpr int kEpsilonFieldMinimumHeight = 20;
 constexpr int kTemperatureControllerPlotWidth = 260;
 constexpr int kTemperatureControllerPlotMinHeight = 190;
+constexpr int kTemperatureTitlePortChromeWidth = 38;
+constexpr int kTemperatureTitlePortMinimumWidth = 64;
+constexpr int kTemperatureTitlePortMaximumWidth = 220;
 constexpr int kTemperatureControllerInputWidth = 112;
 constexpr int kTemperatureControllerWideInputWidth = 138;
 constexpr int kTemperatureControllerRs485BaudWidth = 100;
@@ -6203,7 +6206,6 @@ public:
     void showPopup() override
     {
         rebuildPopupRows();
-        popup_menu_->setPanelContentWidth(width());
         popup_menu_->popupFrom(this);
     }
 
@@ -6219,6 +6221,11 @@ public:
     void setShowSelectionCheck(bool show)
     {
         show_selection_check_ = show;
+    }
+
+    void setPopupFitContents(bool fit)
+    {
+        popup_fit_contents_ = fit;
     }
 
 private:
@@ -6240,7 +6247,6 @@ private:
         }
 
         popup_menu_->clear();
-        popup_menu_->setPanelContentWidth(width());
         const QIcon checkIcon = createLucideIcon(QStringLiteral("check"),
                                                  appThemeColor(AppThemeColor::MenuCheckText,
                                                                VaporView::isDarkThemeEnabled()));
@@ -6276,10 +6282,20 @@ private:
             });
         }
         popup_menu_->refreshTheme();
+        int popupContentWidth = width();
+        if (popup_fit_contents_)
+        {
+            for (SingleLevelPopupMenuRow *row : popup_menu_->rows())
+            {
+                popupContentWidth = std::max(popupContentWidth, row->sizeHint().width());
+            }
+        }
+        popup_menu_->setPanelContentWidth(popupContentWidth);
     }
 
     SingleLevelPopupMenu *popup_menu_ = nullptr;
     bool show_selection_check_ = true;
+    bool popup_fit_contents_ = false;
 };
 
 class SourceModeOverviewSwitchButton final : public QPushButton
@@ -6981,7 +6997,9 @@ bool TemperatureControllerPanel::eventFilter(QObject *watched, QEvent *event)
         (event->type() == QEvent::Show || event->type() == QEvent::Resize))
     {
         QTimer::singleShot(0, this, [this]() {
-            alignChannelTopControlFields(std::clamp(selected_channel_index_, 0, 1));
+            const int channelIndex = std::clamp(selected_channel_index_, 0, 1);
+            alignChannelTopControlFields(channelIndex);
+            alignCommonSettingsColumns(channelIndex);
         });
     }
     return QWidget::eventFilter(watched, event);
@@ -7081,6 +7099,61 @@ void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
         layout->invalidate();
         layout->activate();
     }
+}
+
+void TemperatureControllerPanel::alignCommonSettingsColumns(int channelIndex)
+{
+    if (!channel_stack_ || channelIndex < 0 ||
+        channelIndex >= static_cast<int>(channels_.size()))
+    {
+        return;
+    }
+
+    QWidget *commonSettingsPage = channel_stack_->count() > 2
+        ? channel_stack_->widget(2)
+        : nullptr;
+    QWidget *channelCommonPage = channels_[channelIndex].config_sub_stack &&
+            channels_[channelIndex].config_sub_stack->count() > 0
+        ? channels_[channelIndex].config_sub_stack->widget(0)
+        : nullptr;
+    auto *commonSettingsGrid = commonSettingsPage
+        ? qobject_cast<QGridLayout *>(commonSettingsPage->layout())
+        : nullptr;
+    auto *channelCommonGrid = channelCommonPage
+        ? qobject_cast<QGridLayout *>(channelCommonPage->layout())
+        : nullptr;
+    QLayoutItem *secondColumnItem = channelCommonGrid
+        ? channelCommonGrid->itemAtPosition(0, 3)
+        : nullptr;
+    QWidget *secondColumnLabel = secondColumnItem ? secondColumnItem->widget() : nullptr;
+    if (!commonSettingsPage || !commonSettingsGrid || !channelCommonGrid || !secondColumnLabel)
+    {
+        return;
+    }
+
+    channelCommonGrid->invalidate();
+    channelCommonGrid->activate();
+    commonSettingsGrid->invalidate();
+    commonSettingsGrid->activate();
+
+    int firstColumnWidth = commonSettingsGrid->cellRect(0, 0).width();
+    for (int row = 0; row < 3; ++row)
+    {
+        QLayoutItem *item = commonSettingsGrid->itemAtPosition(row, 0);
+        if (item && item->widget())
+        {
+            firstColumnWidth = std::max(firstColumnWidth, item->widget()->sizeHint().width());
+        }
+    }
+    const int commonPageOriginX = channel_stack_->mapFromGlobal(
+        commonSettingsPage->mapToGlobal(QPoint(0, 0))).x();
+    const int targetSecondColumnX = channel_stack_->mapFromGlobal(
+        secondColumnLabel->mapToGlobal(QPoint(0, 0))).x() - commonPageOriginX;
+    commonSettingsGrid->setColumnMinimumWidth(
+        1,
+        std::max(0, targetSecondColumnX - firstColumnWidth));
+    commonSettingsGrid->invalidate();
+    commonSettingsGrid->activate();
 }
 
 void TemperatureControllerPanel::setupUi()
@@ -7905,10 +7978,11 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
     page->setMinimumHeight(kTemperatureControllerCommonStackHeight);
     auto *layout = new QGridLayout(page);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setHorizontalSpacing(24);
+    layout->setHorizontalSpacing(0);
     layout->setVerticalSpacing(8);
     layout->setAlignment(Qt::AlignTop);
-    layout->setColumnStretch(2, 1);
+    layout->setColumnMinimumWidth(1, 0);
+    layout->setColumnStretch(3, 1);
     layout->setRowMinimumHeight(0, kTemperatureControllerConfigRowHeight);
     layout->setRowMinimumHeight(1, kTemperatureControllerConfigRowHeight);
     layout->setRowMinimumHeight(2, kTemperatureControllerConfigRowHeight);
@@ -7995,14 +8069,9 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
     alignLabelColumn({common_.rs485_baud_label_text, common_.internal_temperature_label_text});
 
     layout->addWidget(addressField, 0, 0, Qt::AlignLeft | Qt::AlignVCenter);
-    layout->addWidget(rs485BaudField, 0, 1, Qt::AlignLeft | Qt::AlignVCenter);
+    layout->addWidget(rs485BaudField, 0, 2, Qt::AlignLeft | Qt::AlignVCenter);
     layout->addWidget(overtempOutputField, 1, 0, Qt::AlignLeft | Qt::AlignVCenter);
-    layout->addWidget(internalTemperatureField, 1, 1, Qt::AlignLeft | Qt::AlignVCenter);
-    layout->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum),
-                    0,
-                    2,
-                    3,
-                    1);
+    layout->addWidget(internalTemperatureField, 1, 2, Qt::AlignLeft | Qt::AlignVCenter);
 
     common_.factory_reset_button = new QPushButton(QStringLiteral("恢复出厂设置"), page);
     common_.factory_reset_button->setObjectName(QStringLiteral("temperatureFactoryResetButton"));
@@ -8380,7 +8449,9 @@ void TemperatureControllerPanel::refreshTopControlsLayout()
             parentLayout->activate();
         }
     }
-    alignChannelTopControlFields(std::clamp(selected_channel_index_, 0, 1));
+    const int channelIndex = std::clamp(selected_channel_index_, 0, 1);
+    alignChannelTopControlFields(channelIndex);
+    alignCommonSettingsColumns(channelIndex);
 }
 
 void TemperatureControllerPanel::updateRate(double hz)
@@ -8729,7 +8800,9 @@ void TemperatureControllerPanel::updateChannelTexts()
     }
     if (status_label_ && status_label_->text().isEmpty()) setCommandStatus(is_english_ ? QStringLiteral("Writes are confirmed by reading back from RD105.") : QStringLiteral("写入命令会在天空端读回确认后才返回成功。"));
     QTimer::singleShot(0, this, [this]() {
-        alignChannelTopControlFields(std::clamp(selected_channel_index_, 0, 1));
+        const int channelIndex = std::clamp(selected_channel_index_, 0, 1);
+        alignChannelTopControlFields(channelIndex);
+        alignCommonSettingsColumns(channelIndex);
     });
 }
 
@@ -11162,6 +11235,7 @@ void MainWindow::applyStyleConfiguration()
     configureComboPopupsIn(this);
     setWindowsTitleBarDark(this, dark_theme_enabled_);
     applyScaledUiMetrics();
+    updateTemperatureControllerTitleText();
     if (temperature_controller_panel_)
     {
         temperature_controller_panel_->refreshTopControlsLayout();
@@ -12952,6 +13026,13 @@ void MainWindow::updateTemperatureControllerTitleText()
     temperature_title_port_combo_->setCurrentIndex(selectedIndex >= 0 ? selectedIndex : 0);
     temperature_title_port_combo_->setEnabled(
         temperature_port_combo_ && temperature_port_combo_->isEnabled() && !availablePorts.isEmpty());
+    temperature_title_port_combo_->ensurePolished();
+    const int titlePortWidth = std::clamp(
+        temperature_title_port_combo_->fontMetrics().horizontalAdvance(portDisplay) +
+            scalePixels(kTemperatureTitlePortChromeWidth),
+        scalePixels(kTemperatureTitlePortMinimumWidth),
+        scalePixels(kTemperatureTitlePortMaximumWidth));
+    temperature_title_port_combo_->setFixedWidth(titlePortWidth);
     const QString portToolTip = is_english_
         ? QStringLiteral("RD105 serial port: %1. Click to choose another port.").arg(portDisplay)
         : QStringLiteral("当前 RD105 串口：%1。点击可选择其他串口。").arg(portDisplay);
@@ -17140,11 +17221,9 @@ void MainWindow::setupDataPanels()
     temperature_title_port_combo_ = temperatureTitlePortCombo;
     temperature_title_port_combo_->setObjectName(QStringLiteral("temperatureTitlePortCombo"));
     temperature_title_port_combo_->setEditable(false);
-    temperature_title_port_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
-    temperature_title_port_combo_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    temperatureTitlePortCombo->setPopupFitContents(true);
+    temperature_title_port_combo_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     temperature_title_port_combo_->setFixedHeight(kMainPageButtonHeight);
-    temperature_title_port_combo_->setMinimumWidth(88);
-    temperature_title_port_combo_->setMaximumWidth(220);
     temperature_title_port_combo_->setCursor(Qt::PointingHandCursor);
     temperature_title_port_combo_->setFocusPolicy(Qt::TabFocus);
     connect(temperature_title_port_combo_,

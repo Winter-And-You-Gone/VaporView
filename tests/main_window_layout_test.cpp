@@ -29,6 +29,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QStyle>
+#include <QStyleOptionComboBox>
 #include <QStyleOptionFrame>
 #include <QStyleOptionSpinBox>
 #include <QPixmap>
@@ -2685,6 +2686,25 @@ int main(int argc, char **argv)
                 temperatureTitlePortCombo->cursor().shape() == Qt::PointingHandCursor &&
                 temperatureTitlePortCombo->focusPolicy() == Qt::TabFocus,
             "temperature controller title exposes the selected serial port as a clickable keyboard-accessible selector");
+    auto titlePortTextToArrowGap = [](QComboBox *combo) {
+        QStyleOptionComboBox option;
+        option.initFrom(combo);
+        option.currentText = combo->currentText();
+        option.editable = combo->isEditable();
+        const QRect textRect = combo->style()->subControlRect(
+            QStyle::CC_ComboBox, &option, QStyle::SC_ComboBoxEditField, combo);
+        const QRect arrowRect = combo->style()->subControlRect(
+            QStyle::CC_ComboBox, &option, QStyle::SC_ComboBoxArrow, combo);
+        return arrowRect.left() -
+            (textRect.left() + combo->fontMetrics().horizontalAdvance(combo->currentText()));
+    };
+    const int initialTitlePortChromeWidth = temperatureTitlePortCombo->width() -
+        temperatureTitlePortCombo->fontMetrics().horizontalAdvance(temperatureTitlePortCombo->currentText());
+    const int titlePortCharacterWidth = std::max(
+        1, temperatureTitlePortCombo->fontMetrics().horizontalAdvance(QStringLiteral("0")));
+    require(titlePortTextToArrowGap(temperatureTitlePortCombo) >= 0 &&
+                titlePortTextToArrowGap(temperatureTitlePortCombo) <= titlePortCharacterWidth + 2,
+            "temperature title serial selector keeps about one character between the port and chevron");
     const bool temperatureTitlePortDark =
         qApp->property(VaporView::kAppDarkThemeProperty).toBool();
     requireLastStyleRuleContains(qApp->styleSheet(),
@@ -2935,19 +2955,32 @@ int main(int argc, char **argv)
             "temperature top navigation stays left aligned on the common settings page");
     auto *commonSettingsGrid = qobject_cast<QGridLayout *>(temperatureCommonSettingsPage->layout());
     require(commonSettingsGrid != nullptr &&
-                commonSettingsGrid->columnCount() >= 3 &&
-                commonSettingsGrid->columnStretch(2) > 0 &&
+                commonSettingsGrid->columnCount() >= 4 &&
+                commonSettingsGrid->columnStretch(3) > 0 &&
                 commonSettingsGrid->itemAtPosition(0, 0) != nullptr &&
                 commonSettingsGrid->itemAtPosition(0, 0)->widget() == addressSpin->parentWidget() &&
-                commonSettingsGrid->itemAtPosition(0, 1) != nullptr &&
-                commonSettingsGrid->itemAtPosition(0, 1)->widget() == rs485BaudCombo->parentWidget() &&
+                commonSettingsGrid->itemAtPosition(0, 2) != nullptr &&
+                commonSettingsGrid->itemAtPosition(0, 2)->widget() == rs485BaudCombo->parentWidget() &&
                 commonSettingsGrid->itemAtPosition(1, 0) != nullptr &&
                 commonSettingsGrid->itemAtPosition(1, 0)->widget() == overtempOutputCombo->parentWidget() &&
-                commonSettingsGrid->itemAtPosition(1, 1) != nullptr &&
-                commonSettingsGrid->itemAtPosition(1, 1)->widget() == commonInternalTemperatureEdit->parentWidget() &&
+                commonSettingsGrid->itemAtPosition(1, 2) != nullptr &&
+                commonSettingsGrid->itemAtPosition(1, 2)->widget() == commonInternalTemperatureEdit->parentWidget() &&
                 commonSettingsGrid->itemAtPosition(2, 0) != nullptr &&
                 commonSettingsGrid->itemAtPosition(2, 0)->widget() == factoryResetButton,
-            "temperature common settings use a three-column grid with the third column left empty");
+            "temperature common settings reserve a shared anchor before the second data column");
+    auto *selectedChannelCommonParamsPage = temperaturePanel->findChild<QWidget *>(
+        QStringLiteral("temperatureChannelCommonParamsPageChannel2"));
+    auto *selectedChannelCommonParamsGrid = selectedChannelCommonParamsPage
+        ? qobject_cast<QGridLayout *>(selectedChannelCommonParamsPage->layout())
+        : nullptr;
+    QLayoutItem *selectedSecondColumnItem = selectedChannelCommonParamsGrid
+        ? selectedChannelCommonParamsGrid->itemAtPosition(0, 3)
+        : nullptr;
+    QWidget *selectedSecondColumnLabel = selectedSecondColumnItem
+        ? selectedSecondColumnItem->widget()
+        : nullptr;
+    require(selectedSecondColumnLabel != nullptr,
+            "temperature channel common parameters expose the shared second-column anchor");
     const QRect selectorBarRectInCard(temperatureChannelTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                       temperatureChannelTopBar->size());
     const QRect commonAddressRowRect(addressSpin->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
@@ -2981,9 +3014,28 @@ int main(int argc, char **argv)
     require(std::abs(commonAddressInputRectInCard.left() - commonOvertempInputRectInCard.left()) <= 1 &&
                 std::abs(commonBaudComboRectInCard.left() - commonInternalInputRectInCard.left()) <= 1,
             "temperature common settings align field editors within each data column");
+    const QRect selectedSecondColumnRectInCard(
+        selectedSecondColumnLabel->mapTo(temperatureConfigCard, QPoint(0, 0)),
+        selectedSecondColumnLabel->size());
+    require(std::abs(commonBaudRowRect.left() - selectedSecondColumnRectInCard.left()) <= 1 &&
+                std::abs(commonInternalRowRect.left() - selectedSecondColumnRectInCard.left()) <= 1,
+            "temperature common settings align their second column with channel parameter pages");
     require(rs485BaudCombo->width() <= 100 &&
                 commonBaudComboRectInCard.right() <= temperatureConfigCard->rect().right() - 12,
             "temperature common RS485 baud combo stays compact and leaves room for its right border");
+    auto *overtempOutputMenu = overtempOutputCombo->findChild<VaporView::SingleLevelPopupMenu *>(
+        QStringLiteral("singleLevelComboPopupMenu"));
+    require(overtempOutputMenu != nullptr,
+            "temperature over-temperature selector owns the shared popup menu");
+    overtempOutputCombo->showPopup();
+    processEventsFor(120);
+    const int overtempPopupShadowMargin = overtempOutputMenu->property("shadowMargin").toInt();
+    require(overtempOutputMenu->isVisible() &&
+                overtempOutputMenu->width() - overtempPopupShadowMargin * 2 ==
+                    overtempOutputCombo->width(),
+            "default single-level combo popups remain the same width as their trigger");
+    overtempOutputCombo->hidePopup();
+    processEventsFor(40);
     const QList<QLabel*> overtempLabels =
         overtempOutputCombo->parentWidget()->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
     require(!overtempLabels.isEmpty() &&
@@ -4380,6 +4432,29 @@ int main(int argc, char **argv)
             "device configuration serial selection mirrors back to the home combo");
     require(temperatureTitlePortCombo->currentText() == syntheticPort,
             "temperature title serial selector follows the canonical RD105 port selection");
+    require(std::abs((temperatureTitlePortCombo->width() -
+                      temperatureTitlePortCombo->fontMetrics().horizontalAdvance(syntheticPort)) -
+                     initialTitlePortChromeWidth) <= 1 &&
+                titlePortTextToArrowGap(temperatureTitlePortCombo) >= 0 &&
+                titlePortTextToArrowGap(temperatureTitlePortCombo) <= titlePortCharacterWidth + 2,
+            "temperature title serial selector stays compact for a longer COM port name");
+    temperatureTitlePortCombo->showPopup();
+    processEventsFor(120);
+    VaporView::SingleLevelPopupMenuRow *syntheticPortRow = nullptr;
+    for (VaporView::SingleLevelPopupMenuRow *row : temperatureTitlePortMenu->rows())
+    {
+        if (row && row->text() == syntheticPort)
+        {
+            syntheticPortRow = row;
+            break;
+        }
+    }
+    require(syntheticPortRow != nullptr &&
+                syntheticPortRow->width() >=
+                    syntheticPortRow->textLabel()->fontMetrics().horizontalAdvance(syntheticPort) + 56,
+            "temperature title serial popup expands to keep longer port options unclipped");
+    temperatureTitlePortCombo->hidePopup();
+    processEventsFor(40);
     const int originalTitlePortIndex = temperatureTitlePortCombo->findText(expectedTemperaturePortText);
     require(originalTitlePortIndex >= 0,
             "temperature title serial selector retains the original RD105 port option");
