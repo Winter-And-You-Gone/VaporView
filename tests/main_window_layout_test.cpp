@@ -5306,6 +5306,46 @@ int main(int argc, char **argv)
         require(scaledTargetRect.left() >= scaledCommonParamsStack->contentsRect().left() &&
                     scaledTargetRect.right() <= scaledCommonParamsStack->contentsRect().right(),
                 "temperature target input is fully visible in the lower common controls on the first scaled opening");
+        auto *scaledCommonSettingsButton =
+            scaledTemperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureCommonSettingsButton"));
+        auto *scaledAddressSpin =
+            scaledTemperaturePanel->findChild<QSpinBox *>(QStringLiteral("temperatureDeviceAddressSpin"));
+        auto *scaledBaudCombo =
+            scaledTemperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureRs485BaudCombo"));
+        auto *scaledOvertempCombo =
+            scaledTemperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureOvertempOutputModeCombo"));
+        auto *scaledInternalTemperatureEdit =
+            scaledTemperaturePanel->findChild<QLineEdit *>(
+                QStringLiteral("temperatureCommonInternalTemperatureEdit"));
+        require(scaledCommonSettingsButton != nullptr &&
+                    scaledAddressSpin != nullptr &&
+                    scaledBaudCombo != nullptr &&
+                    scaledOvertempCombo != nullptr &&
+                    scaledInternalTemperatureEdit != nullptr,
+                "scaled temperature common settings controls exist");
+        clickWidget(scaledCommonSettingsButton, 150);
+        activateLayouts(&scaledWindow);
+        for (QWidget *editor : {static_cast<QWidget *>(scaledAddressSpin),
+                                static_cast<QWidget *>(scaledBaudCombo),
+                                static_cast<QWidget *>(scaledOvertempCombo),
+                                static_cast<QWidget *>(scaledInternalTemperatureEdit)})
+        {
+            QWidget *row = editor->parentWidget();
+            const QList<QLabel *> labels = row
+                ? row->findChildren<QLabel *>(QStringLiteral("fieldLabel"),
+                                              Qt::FindDirectChildrenOnly)
+                : QList<QLabel *>();
+            require(!labels.isEmpty(),
+                    "scaled temperature common field has a visible label");
+            QLabel *label = labels.first();
+            const QFontMetrics metrics = label->fontMetrics();
+            const int textWidth = std::max(metrics.horizontalAdvance(label->text()),
+                                           metrics.boundingRect(label->text()).width());
+            const QRect labelRect(label->mapTo(row, QPoint(0, 0)), label->size());
+            const QRect editorRect(editor->mapTo(row, QPoint(0, 0)), editor->size());
+            require(label->width() >= textWidth + 12 && labelRect.right() < editorRect.left(),
+                    "scaled temperature common label keeps its last character clear of the editor");
+        }
         scaledWindow.close();
         processEventsFor(100);
         settings.setValue(QStringLiteral("font_scale_percent"), 100);

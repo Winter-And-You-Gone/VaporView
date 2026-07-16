@@ -96,6 +96,30 @@ constexpr const char *kTextWidthPaddingProperty = "_vv_text_width_padding";
 constexpr const char *kNumericWidthCandidatesProperty = "_vv_numeric_width_candidates";
 constexpr const char *kNumericWidthPaddingProperty = "_vv_numeric_width_padding";
 
+void alignTemperatureCommonLabelColumn(std::initializer_list<QLabel *> labels)
+{
+    int width = 0;
+    for (QLabel *label : labels)
+    {
+        if (!label)
+        {
+            continue;
+        }
+        label->ensurePolished();
+        const QFontMetrics metrics = label->fontMetrics();
+        const int textWidth = std::max(metrics.horizontalAdvance(label->text()),
+                                       metrics.boundingRect(label->text()).width());
+        width = std::max(width, textWidth + kTemperatureControllerCommonLabelPadding);
+    }
+    for (QLabel *label : labels)
+    {
+        if (label)
+        {
+            label->setFixedWidth(width);
+        }
+    }
+}
+
 void configureTemperatureControllerTwoRowGrid(QGridLayout *layout, int horizontalSpacing)
 {
     layout->setContentsMargins(0, 0, 0, 0);
@@ -1864,6 +1888,11 @@ void TemperatureControllerPanel::alignCommonSettingsColumns(int channelIndex)
         return;
     }
 
+    alignTemperatureCommonLabelColumn(
+        {common_.address_label_text, common_.overtemp_output_label_text});
+    alignTemperatureCommonLabelColumn(
+        {common_.rs485_baud_label_text, common_.internal_temperature_label_text});
+
     constexpr const char *kSecondColumnAnchorProperty =
         "temperatureCommonSettingsSecondColumnAnchorX";
     bool hasSecondColumnAnchor = false;
@@ -2765,27 +2794,6 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
         return cell;
     };
 
-    auto alignLabelColumn = [](std::initializer_list<QLabel *> labels) {
-        int width = 0;
-        for (QLabel *label : labels)
-        {
-            if (label)
-            {
-                label->ensurePolished();
-                width = std::max(width,
-                                 std::max(label->sizeHint().width(),
-                                          label->fontMetrics().horizontalAdvance(label->text()) +
-                                              kTemperatureControllerCommonLabelPadding));
-            }
-        }
-        for (QLabel *label : labels)
-        {
-            if (label)
-            {
-                label->setFixedWidth(width);
-            }
-        }
-    };
     auto alignEditorColumn = [](std::initializer_list<QWidget *> editors) {
         int width = 0;
         for (QWidget *editor : editors)
@@ -2842,8 +2850,10 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
     QWidget *internalTemperatureField =
         makeField(QStringLiteral("温控器自身温度(°C)"), common_.internal_temperature_edit, common_.internal_temperature_label_text);
 
-    alignLabelColumn({common_.address_label_text, common_.overtemp_output_label_text});
-    alignLabelColumn({common_.rs485_baud_label_text, common_.internal_temperature_label_text});
+    alignTemperatureCommonLabelColumn(
+        {common_.address_label_text, common_.overtemp_output_label_text});
+    alignTemperatureCommonLabelColumn(
+        {common_.rs485_baud_label_text, common_.internal_temperature_label_text});
     alignEditorColumn({common_.address_spin, common_.overtemp_output_combo});
     alignEditorColumn({common_.rs485_baud_combo, common_.internal_temperature_edit});
 
