@@ -569,9 +569,9 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::ControlArrow:
         return hexColor(dark ? kBrandMidGray : kClaudeLightTextMuted);
     case AppThemeColor::ScrollbarHandle:
-        return hexColor(dark ? kAppDarkBorderStrong : kClaudeLightBorderStrong);
+        return hexColor("#E2E2E2");
     case AppThemeColor::ScrollbarHandleHover:
-        return hexColor(dark ? "#5A5A5A" : "#94938D");
+        return hexColor("#57595A");
     case AppThemeColor::TitleBarHover:
         return hexColor(dark ? kAppDarkAlt : kClaudeLightSubtle);
     case AppThemeColor::CloseHover:

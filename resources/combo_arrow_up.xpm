@@ -2,7 +2,7 @@
 static char *combo_arrow_up_xpm[] = {
 "12 8 2 1",
 " 	c None",
-".	c #757575",
+".	c #D9D9DA",
 "            ",
 "            ",
 "     ..     ",

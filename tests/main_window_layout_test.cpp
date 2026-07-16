@@ -3122,6 +3122,37 @@ int main(int argc, char **argv)
                                      .arg(VaporView::appThemeColorName(
                                          VaporView::AppThemeColor::TitleBarHover, false)),
                                  "sidebar button hover uses the same neutral highlight as title-bar icons");
+    require(VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandle, false) ==
+                    QColor(226, 226, 226) &&
+                VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandle, true) ==
+                    QColor(226, 226, 226) &&
+                VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandleHover, false) ==
+                    QColor(87, 89, 90) &&
+                VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandleHover, true) ==
+                    QColor(87, 89, 90),
+            "scrollbar handles use the requested default and highlighted colors in both themes");
+    for (const QString& arrowFile : {QStringLiteral("combo_arrow_up.xpm"),
+                                     QStringLiteral("combo_arrow_down.xpm")})
+    {
+        const QImage arrowImage(
+            QCoreApplication::applicationDirPath() + QStringLiteral("/resources/") + arrowFile);
+        require(!arrowImage.isNull(), "scrollbar arrow image can be loaded");
+        bool hasVisiblePixel = false;
+        for (int y = 0; y < arrowImage.height(); ++y)
+        {
+            for (int x = 0; x < arrowImage.width(); ++x)
+            {
+                const QColor pixel = arrowImage.pixelColor(x, y);
+                if (pixel.alpha() > 0)
+                {
+                    hasVisiblePixel = true;
+                    require(pixel == QColor(217, 217, 218),
+                            "scrollbar arrow triangle uses the requested color");
+                }
+            }
+        }
+        require(hasVisiblePixel, "scrollbar arrow image contains a visible triangle");
+    }
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton#temperatureFactoryResetButton {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::ToolbarRed, false),
