@@ -2395,6 +2395,12 @@ int main(int argc, char **argv)
                                  QStringLiteral("QToolButton#temperatureOverviewChannelButton[available=\"false\"] {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
                                  "dark theme overrides unavailable temperature channel selector background");
+    requireLastStyleRuleContains(darkOverviewStyleSheet,
+                                 QStringLiteral("QPushButton#appSidebarButton:hover,"),
+                                 QStringLiteral("background-color: %1")
+                                     .arg(VaporView::appThemeColorName(
+                                         VaporView::AppThemeColor::TitleBarHover, true)),
+                                 "dark sidebar hover uses the same neutral highlight as title-bar icons");
     for (QFrame *pill : deviceOverviewCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")))
     {
         require(pill->height() >= minHomeTelemetryPillHeight,
@@ -3110,6 +3116,12 @@ int main(int argc, char **argv)
                                  QStringLiteral("QPushButton#appSidebarButton {"),
                                  QStringLiteral("outline: none"),
                                  "sidebar buttons suppress native dotted focus outlines");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QPushButton#appSidebarButton:hover,"),
+                                 QStringLiteral("background-color: %1")
+                                     .arg(VaporView::appThemeColorName(
+                                         VaporView::AppThemeColor::TitleBarHover, false)),
+                                 "sidebar button hover uses the same neutral highlight as title-bar icons");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton#temperatureFactoryResetButton {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::ToolbarRed, false),
