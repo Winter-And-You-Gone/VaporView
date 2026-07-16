@@ -2632,8 +2632,8 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
 
         QLabel *&label = channel.polynomial_label_text[static_cast<size_t>(i)];
         label = makeFieldLabel(QStringLiteral("A%1").arg(i));
-        edit->setMinimumWidth(kTemperatureControllerPolynomialInputWidth);
-        edit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        edit->setFixedWidth(kTemperatureControllerPtCoefficientInputWidth);
+        edit->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         auto *field = new QWidget(sensorTopPolynomialFields);
         field->setObjectName(QStringLiteral("temperatureSensorTopPolynomialA%1FieldChannel%2")
                                  .arg(i)
@@ -2646,7 +2646,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         fieldLayout->setContentsMargins(2, 0, 2, 0);
         fieldLayout->setSpacing(4);
         fieldLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
-        fieldLayout->addWidget(edit, 1, Qt::AlignVCenter);
+        fieldLayout->addWidget(edit, 0, Qt::AlignLeft | Qt::AlignVCenter);
         if (sensorTopPolynomialLayout)
         {
             sensorTopPolynomialLayout->addWidget(field, 1, Qt::AlignVCenter);

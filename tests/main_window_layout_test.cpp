@@ -3703,13 +3703,16 @@ int main(int argc, char **argv)
                 "temperature polynomial A4-A7 fields stay vertically aligned with the navigation bar");
         require(std::abs(fieldRect.width() - topFieldWidth) <= 1 &&
                     std::abs(lowerInputRect.width() - topInputWidth) <= 1,
-                "temperature polynomial A4-A7 fields and inputs share the right-side width equally");
+                "temperature polynomial A4-A7 fields keep equal spacing and equal input widths");
         require(field->height() >= polynomialEdits[static_cast<size_t>(coefficient)]->sizeHint().height() &&
                     lowerInputRect.top() >= fieldRect.top() &&
                     lowerInputRect.bottom() <= fieldRect.bottom(),
                 "temperature polynomial A4-A7 inputs are not clipped by their lower-row field containers");
-        require(polynomialEdits[static_cast<size_t>(coefficient)]->width() > 100,
-                "temperature polynomial A4-A7 inputs remain wide enough to show their values");
+        require(polynomialEdits[static_cast<size_t>(coefficient)]->width() ==
+                    polynomialEdits[1]->width() &&
+                    polynomialEdits[static_cast<size_t>(coefficient)]->sizePolicy().horizontalPolicy() ==
+                        QSizePolicy::Fixed,
+                "temperature polynomial A4-A7 inputs match the fixed A1-A3 width");
         previousTopFieldRight = fieldRect.right();
     }
     clickWidget(temperatureChannelCommonParamsButton, 100);
