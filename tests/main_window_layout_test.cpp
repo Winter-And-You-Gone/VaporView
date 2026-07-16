@@ -2036,6 +2036,18 @@ int main(int argc, char **argv)
         window.findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule"));
     require(homeDeviceCapsules.size() == 6,
             "home device overview includes six status capsules");
+    const QList<QToolButton*> homeDeviceActionButtons =
+        window.findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton"));
+    require(homeDeviceActionButtons.size() >= 6,
+            "home device overview includes six connection action buttons");
+    for (QToolButton *button : homeDeviceActionButtons)
+    {
+        if (!button->property("deviceConfigAction").toBool())
+        {
+            require(button->focusPolicy() == Qt::TabFocus,
+                    "home device connection actions do not take focus on mouse click");
+        }
+    }
     bool hasTemperatureHomeCapsule = false;
     for (QLabel *capsule : homeDeviceCapsules)
     {

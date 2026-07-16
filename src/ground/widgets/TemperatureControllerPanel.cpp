@@ -1,6 +1,7 @@
 #include "ground/widgets/TemperatureControllerWidgets.h"
 
 #include "shared/theme/AppTheme.h"
+#include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "ground/widgets/VisualTextLabel.h"
 #include "ground/widgets/TelemetryPanels.h"
@@ -47,6 +48,7 @@
 
 using VaporView::AppThemeColor;
 using VaporView::appThemeColor;
+using VaporView::SingleLevelPopupComboBox;
 using VaporView::SingleLevelPopupMenu;
 using VaporView::SingleLevelPopupMenuRow;
 using VaporView::SingleLevelPopupTextAlignment;
@@ -420,6 +422,19 @@ QIcon createLucideIcon(const QString& iconName, const QColor& color)
     addLucideIconPixmaps(icon, svgData, disabledColor, QIcon::Disabled);
     cache.insert(cacheKey, icon);
     return icon;
+}
+
+void configureSingleLevelComboCheckIcon(SingleLevelPopupComboBox *combo)
+{
+    if (!combo)
+    {
+        return;
+    }
+    combo->setSelectionCheckIconProvider([]() {
+        return createLucideIcon(QStringLiteral("check"),
+                                appThemeColor(AppThemeColor::MenuCheckText,
+                                              VaporView::isDarkThemeEnabled()));
+    });
 }
 
 void setDangerTextPalette(QWidget *widget)
@@ -1013,114 +1028,6 @@ private:
     qreal thumb_jelly_ = 0.0;
     int thumb_direction_ = 1;
     QVariantAnimation *thumb_animation_ = nullptr;
-};
-
-class SingleLevelPopupComboBox final : public QComboBox
-{
-public:
-    explicit SingleLevelPopupComboBox(QWidget *parent = nullptr)
-        : QComboBox(parent)
-        , popup_menu_(new SingleLevelPopupMenu(this))
-    {
-        popup_menu_->setObjectName(QStringLiteral("singleLevelComboPopupMenu"));
-        popup_menu_->setCornerRadius(10);
-        popup_menu_->setPanelPadding(12);
-        setProperty("usesSingleLevelPopupMenu", true);
-    }
-
-    void showPopup() override
-    {
-        rebuildPopupRows();
-        popup_menu_->popupFrom(this);
-    }
-
-    void hidePopup() override
-    {
-        if (popup_menu_)
-        {
-            popup_menu_->hide();
-        }
-        QComboBox::hidePopup();
-    }
-
-    void setShowSelectionCheck(bool show)
-    {
-        show_selection_check_ = show;
-    }
-
-    void setPopupFitContents(bool fit)
-    {
-        popup_fit_contents_ = fit;
-    }
-
-private:
-    bool itemEnabled(int index) const
-    {
-        if (!model())
-        {
-            return true;
-        }
-        const QModelIndex modelIndex = model()->index(index, modelColumn(), rootModelIndex());
-        return !modelIndex.isValid() || (modelIndex.flags() & Qt::ItemIsEnabled);
-    }
-
-    void rebuildPopupRows()
-    {
-        if (!popup_menu_)
-        {
-            return;
-        }
-
-        popup_menu_->clear();
-        const QIcon checkIcon = createLucideIcon(QStringLiteral("check"),
-                                                 appThemeColor(AppThemeColor::MenuCheckText,
-                                                               VaporView::isDarkThemeEnabled()));
-        for (int i = 0; i < count(); ++i)
-        {
-            auto *row = new SingleLevelPopupMenuRow(popup_menu_);
-            row->setText(itemText(i));
-            row->setChecked(i == currentIndex());
-            if (show_selection_check_)
-            {
-                row->setCheckIcon(checkIcon);
-                row->setCheckIconSize(QSize(16, 16));
-            }
-            row->setTextAlignment(SingleLevelPopupTextAlignment::Left);
-            row->setHorizontalPadding(18, 14);
-            row->setCheckSlotWidth(show_selection_check_ ? 18 : 0);
-            row->setRowSpacing(show_selection_check_ ? 6 : 0);
-            row->setRowHeight(40);
-            row->setMinimumRowWidth(width());
-            row->setEnabled(itemEnabled(i));
-            QWidgetAction *action = popup_menu_->addRow(row);
-            if (!action)
-            {
-                continue;
-            }
-            action->setData(i);
-            action->setEnabled(row->isEnabled());
-            connect(action, &QAction::triggered, this, [this, i]() {
-                if (i >= 0 && i < count())
-                {
-                    setCurrentIndex(i);
-                }
-            });
-        }
-        popup_menu_->refreshTheme();
-        int popupContentWidth = width();
-        if (popup_fit_contents_)
-        {
-            for (SingleLevelPopupMenuRow *row : popup_menu_->rows())
-            {
-                popupContentWidth = std::max(popupContentWidth, row->sizeHint().width());
-            }
-        }
-        popup_menu_->setPanelContentWidth(popupContentWidth);
-    }
-
-    SingleLevelPopupMenu *popup_menu_ = nullptr;
-    bool show_selection_check_ = true;
-    bool popup_fit_contents_ = false;
 };
 
 class SourceModeOverviewSwitchButtonImpl final : public SourceModeOverviewSwitchButton
@@ -2025,6 +1932,7 @@ void TemperatureControllerPanel::setupUi()
     controller_mode_lbl_->setMinimumHeight(22);
     setFixedTextLabelWidth(controller_mode_lbl_, temperatureControllerStatusLabelWidthCandidates(), 4);
     controller_mode_combo_ = new SingleLevelPopupComboBox(this);
+    configureSingleLevelComboCheckIcon(static_cast<SingleLevelPopupComboBox *>(controller_mode_combo_));
     controller_mode_combo_->setObjectName(QStringLiteral("temperatureControllerModeCombo"));
     controller_mode_combo_->setFixedWidth(206);
     controller_mode_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
@@ -2226,6 +2134,7 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
     commonLayout->addWidget(channel.common_top_middle_spacer, 0, Qt::AlignVCenter);
 
     auto *autoPidCombo = new SingleLevelPopupComboBox(channel.common_top_controls);
+    configureSingleLevelComboCheckIcon(autoPidCombo);
     autoPidCombo->setShowSelectionCheck(false);
     channel.auto_pid_combo = autoPidCombo;
     channel.auto_pid_combo->setObjectName(QStringLiteral("temperatureAutoPidComboChannel%1").arg(index + 1));
@@ -2438,6 +2347,7 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
     kdLabelText = makeFieldLabel(QStringLiteral("D"));
 
     channel.mode_combo = new SingleLevelPopupComboBox(page);
+    configureSingleLevelComboCheckIcon(static_cast<SingleLevelPopupComboBox *>(channel.mode_combo));
     channel.mode_combo->setObjectName(QStringLiteral("temperatureOutputModeComboChannel%1").arg(index + 1));
     channel.mode_combo->setFixedWidth(kTemperatureControllerTopModeWidth);
     channel.mode_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
@@ -2873,6 +2783,7 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
         makeField(QStringLiteral("设置485串口波特率"), common_.rs485_baud_combo, common_.rs485_baud_label_text);
 
     common_.overtemp_output_combo = new SingleLevelPopupComboBox(this);
+    configureSingleLevelComboCheckIcon(static_cast<SingleLevelPopupComboBox *>(common_.overtemp_output_combo));
     common_.overtemp_output_combo->setObjectName(QStringLiteral("temperatureOvertempOutputModeCombo"));
     common_.overtemp_output_combo->setFixedWidth(kTemperatureControllerWideInputWidth);
     common_.overtemp_output_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
@@ -3974,9 +3885,10 @@ QComboBox *createSingleLevelPopupComboBox(QWidget *parent,
                                           bool showSelectionCheck,
                                           bool popupFitContents)
 {
-    auto *combo = new ::SingleLevelPopupComboBox(parent);
+    auto *combo = new SingleLevelPopupComboBox(parent);
     combo->setShowSelectionCheck(showSelectionCheck);
     combo->setPopupFitContents(popupFitContents);
+    configureSingleLevelComboCheckIcon(combo);
     return combo;
 }
 

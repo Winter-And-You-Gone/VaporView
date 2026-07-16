@@ -1,6 +1,7 @@
 #include "shared/theme/AppTheme.h"
 #include "TrajectoryViewerDialog.h"
 #include "ground/widgets/CustomTitleBar.h"
+#include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 
 #include <QApplication>
@@ -71,6 +72,7 @@ using VaporView::appThemeColorName;
 using VaporView::configureComboBoxPopup;
 using VaporView::isDarkThemeEnabled;
 using VaporView::isDarkThemePalette;
+using VaporView::SingleLevelPopupComboBox;
 using VaporView::SingleLevelPopupMenu;
 using VaporView::SingleLevelPopupMenuRow;
 using VaporView::SingleLevelPopupTextAlignment;
@@ -2949,7 +2951,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , show_points_button_(new QPushButton(this))
     , export_button_(new QPushButton(this))
     , copy_point_button_(new QPushButton(this))
-    , map_source_combo_(new QComboBox(this))
+    , map_source_combo_(new SingleLevelPopupComboBox(this))
     , tianditu_key_edit_(new QLineEdit(this))
     , tianditu_key_button_(new QToolButton(this))
     , tianditu_key_menu_(new QMenu(this))
@@ -3174,7 +3176,9 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     map_source_combo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     map_source_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     map_source_combo_->setToolTip(is_english_ ? QStringLiteral("Map source") : QStringLiteral("底图来源"));
-    configureComboBoxPopup(map_source_combo_, isDarkThemeEnabled());
+    static_cast<SingleLevelPopupComboBox *>(map_source_combo_)->setSelectionCheckIconProvider([]() {
+        return createMenuCheckIcon(isDarkThemeEnabled());
+    });
 
     heat_palette_button_->setObjectName(QStringLiteral("trajectoryHeatPaletteButton"));
     heat_palette_button_->setToolButtonStyle(Qt::ToolButtonIconOnly);

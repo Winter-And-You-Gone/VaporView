@@ -1,6 +1,7 @@
 #include "shared/theme/AppTheme.h"
 #include "ground/wave/RawDataParserWindow.h"
 #include "ground/session/SessionViewerWindow.h"
+#include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "ground/trajectory/TrajectoryViewerDialog.h"
 #include "test_ui_helpers.h"
@@ -687,8 +688,33 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(mapPanel != nullptr, "trajectory viewer map panel exists");
     require(map != nullptr, "trajectory viewer map exists");
     require(mapSourceCombo != nullptr, "trajectory viewer map source control exists");
-    requireComboPopupStyled(mapSourceCombo,
-                            "trajectory map source combo uses the shared popup styling helper");
+    require(mapSourceCombo->property("usesSingleLevelPopupMenu").toBool(),
+            "trajectory map source combo uses the stable single-level popup");
+    auto *mapSourceMenu = mapSourceCombo->findChild<VaporView::SingleLevelPopupMenu *>(
+        QStringLiteral("singleLevelComboPopupMenu"));
+    require(mapSourceMenu != nullptr, "trajectory map source combo owns its single-level popup");
+    mapSourceCombo->showPopup();
+    require(processEventsUntil(1000, [mapSourceMenu]() {
+                return mapSourceMenu->isVisible() && mapSourceMenu->rows().size() == 3;
+            }),
+            "trajectory map source popup opens with all three rows");
+    const QList<VaporView::SingleLevelPopupMenuRow *> mapSourceRows = mapSourceMenu->rows();
+    require(mapSourceRows.size() == 3, "trajectory map source popup keeps one row per provider");
+    for (int i = 0; i < mapSourceRows.size(); ++i)
+    {
+        require(mapSourceRows[i]->height() == 40,
+                "trajectory map source popup rows keep a stable height");
+        if (i > 0)
+        {
+            const QRect previousRect(mapSourceRows[i - 1]->mapTo(mapSourceMenu, QPoint(0, 0)),
+                                     mapSourceRows[i - 1]->size());
+            const QRect currentRect(mapSourceRows[i]->mapTo(mapSourceMenu, QPoint(0, 0)),
+                                    mapSourceRows[i]->size());
+            require(!previousRect.intersects(currentRect) && previousRect.bottom() < currentRect.top(),
+                    "trajectory map source popup rows never overlap");
+        }
+    }
+    mapSourceCombo->hidePopup();
     require(heatLegendCard != nullptr, "trajectory viewer floating heat legend card exists");
     require(mapToolsCard != nullptr, "trajectory viewer floating map tools card exists");
     require(pointDetailCard != nullptr, "trajectory viewer floating point detail card exists");

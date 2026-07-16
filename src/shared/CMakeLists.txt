@@ -26,8 +26,10 @@ target_link_libraries(vaporview_protocol PUBLIC
 
 add_library(vaporview_app_theme STATIC
     ${CMAKE_SOURCE_DIR}/src/shared/theme/AppTheme.cpp
+    ${CMAKE_SOURCE_DIR}/src/shared/theme/SingleLevelPopupComboBox.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/theme/SingleLevelPopupMenu.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/theme/AppTheme.h
+    ${CMAKE_SOURCE_DIR}/src/shared/theme/SingleLevelPopupComboBox.h
     ${CMAKE_SOURCE_DIR}/src/shared/theme/SingleLevelPopupMenu.h
 )
 

@@ -2754,7 +2754,7 @@ void MainWindow::setupConfigPanel()
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
         button->setIconSize(QSize(kHomeDeviceIconSize, kHomeDeviceIconSize));
         button->setFixedSize(kHomeDeviceButtonSize, kHomeDeviceButtonSize);
-        button->setFocusPolicy(Qt::StrongFocus);
+        button->setFocusPolicy(Qt::TabFocus);
         connect(button, &QToolButton::clicked, this, [this, device]() {
             triggerHomeDeviceAction(device);
         });
