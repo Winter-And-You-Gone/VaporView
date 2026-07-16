@@ -1,7 +1,8 @@
-#include "AppTheme.h"
-#include "MainWindow.h"
-#include "RtkConfigDialog.h"
-#include "SingleLevelPopupMenu.h"
+#include "shared/theme/AppTheme.h"
+#include "ground/main/MainWindow.h"
+#include "ground/rtk/RtkConfigDialog.h"
+#include "ground/widgets/TelemetryPanels.h"
+#include "shared/theme/SingleLevelPopupMenu.h"
 #include "test_ui_helpers.h"
 
 #include <QAbstractItemView>

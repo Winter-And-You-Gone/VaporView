@@ -1,0 +1,1054 @@
+#include "ground/main/GroundMainWindowImplementation.h"
+#include "ground/devices/DeviceRatePolicy.h"
+
+void MainWindow::updateConnectionStatus(bool connected)
+{
+    state_->is_connected_ = connected;
+    const bool uiBusy = state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_;
+    const bool inputsEnabled = !connected && !uiBusy;
+
+    state_->connect_btn_->setEnabled(inputsEnabled);
+    state_->cancel_connect_btn_->setEnabled(state_->connection_attempt_in_progress_);
+    state_->disconnect_btn_->setEnabled(connected && !state_->connection_attempt_in_progress_ && !state_->epsilon_reconfigure_in_progress_);
+    state_->refresh_ports_btn_->setEnabled(inputsEnabled);
+    if (state_->epsilon_reconfigure_action_)
+    {
+        state_->epsilon_reconfigure_action_->setEnabled(!uiBusy);
+    }
+    if (state_->epsilon_rtcm_port_action_)
+    {
+        state_->epsilon_rtcm_port_action_->setEnabled(!uiBusy);
+    }
+    if (state_->epsilon_packet_rates_action_)
+    {
+        state_->epsilon_packet_rates_action_->setEnabled(!uiBusy);
+    }
+    if (state_->auto_detect_ports_btn_)
+    {
+        state_->auto_detect_ports_btn_->setEnabled(!connected && !state_->connection_attempt_in_progress_ && !state_->epsilon_reconfigure_in_progress_);
+        state_->auto_detect_ports_btn_->setText(state_->port_detection_in_progress_
+            ? (state_->is_english_ ? "Cancel Auto Detect" : "取消自动识别")
+            : (state_->is_english_ ? "Auto Detect Ports" : "自动识别串口"));
+        state_->auto_detect_ports_btn_->setToolTip(state_->port_detection_in_progress_
+            ? (state_->is_english_ ? "Stop the current serial-port detection task." : "停止当前串口自动识别任务。")
+            : (state_->is_english_ ? "Probe available serial ports and automatically assign detected devices."
+                           : "扫描可用串口，并将识别出的设备自动填入对应端口。"));
+    }
+
+    if (state_->epsilon_port_combo_) state_->epsilon_port_combo_->setEnabled(inputsEnabled);
+    if (state_->ptb_port_combo_) state_->ptb_port_combo_->setEnabled(inputsEnabled);
+    if (state_->hmp_port_combo_) state_->hmp_port_combo_->setEnabled(inputsEnabled);
+    if (state_->lidar_port_combo_) state_->lidar_port_combo_->setEnabled(inputsEnabled);
+    if (state_->temperature_port_combo_) state_->temperature_port_combo_->setEnabled(inputsEnabled);
+    updateTemperatureControllerTitleText();
+    if (state_->epsilon_baud_combo_) state_->epsilon_baud_combo_->setEnabled(inputsEnabled);
+    if (state_->ptb_baud_combo_) state_->ptb_baud_combo_->setEnabled(inputsEnabled);
+    if (state_->hmp_baud_combo_) state_->hmp_baud_combo_->setEnabled(inputsEnabled);
+    if (state_->lidar_baud_combo_) state_->lidar_baud_combo_->setEnabled(inputsEnabled);
+    if (state_->temperature_baud_combo_) state_->temperature_baud_combo_->setEnabled(inputsEnabled);
+    for (QPushButton* button : {state_->imu_apply_btn_, state_->imu_hi91_btn_, state_->imu_hi92_btn_, state_->imu_baud_115200_btn_, state_->imu_baud_921600_btn_,
+                                state_->imu_rate_100_btn_, state_->imu_rate_200_btn_, state_->imu_rate_500_btn_, state_->imu_rate_1000_btn_})
+    {
+        if (button)
+        {
+            button->setEnabled(!state_->connection_attempt_in_progress_ && !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_);
+        }
+    }
+
+    if (state_->port_detection_in_progress_)
+    {
+        state_->status_label_->setText(state_->is_english_ ? "Detecting Ports..." : "正在识别串口...");
+        state_->status_label_->setProperty("status", "connecting");
+    }
+    else if (state_->epsilon_reconfigure_in_progress_)
+    {
+        state_->status_label_->setText(state_->is_english_ ? "Reconfiguring EPSILON..." : "正在重配 EPSILON...");
+        state_->status_label_->setProperty("status", "connecting");
+    }
+    else if (state_->connection_attempt_in_progress_)
+    {
+        state_->status_label_->setText(state_->is_english_ ? "Connecting..." : "正在连接...");
+        state_->status_label_->setProperty("status", "connecting");
+    }
+    else if (connected)
+    {
+        state_->status_label_->setText(state_->is_english_ ? "Connected" : "已连接");
+        state_->status_label_->setProperty("status", "connected");
+    }
+    else
+    {
+        state_->status_label_->setText(state_->is_english_ ? "Disconnected" : "未连接");
+        state_->status_label_->setProperty("status", "disconnected");
+    }
+    state_->status_label_->style()->unpolish(state_->status_label_);
+    state_->status_label_->style()->polish(state_->status_label_);
+    updateSourceModeUi();
+    updateRecordingActionStates();
+    updateHomeDeviceStatusCapsules();
+    updateDeviceConfigState();
+}
+
+bool MainWindow::homeDeviceConnected(VaporView::SkyDeviceId device) const
+{
+    if (isRemoteSkyMode())
+    {
+        return state_->remote_sky_controller_->deviceState(device) == VaporView::DeviceState::Connected;
+    }
+
+    const CollectorSnapshot collectors = snapshotCollectors();
+    switch (device)
+    {
+    case VaporView::SkyDeviceId::Epsilon:
+        return collectors.epsilon && collectors.epsilon->isRunning();
+    case VaporView::SkyDeviceId::Ptb:
+        return collectors.ptb && collectors.ptb->isRunning();
+    case VaporView::SkyDeviceId::Hmp:
+        return collectors.hmp && collectors.hmp->isRunning();
+    case VaporView::SkyDeviceId::Lidar:
+        return collectors.lidar && collectors.lidar->isRunning();
+    case VaporView::SkyDeviceId::TemperatureController:
+        return collectors.temperature_controller && collectors.temperature_controller->isRunning();
+    case VaporView::SkyDeviceId::WaveTcp:
+        return state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnected();
+    case VaporView::SkyDeviceId::All:
+        return false;
+    }
+    return false;
+}
+
+bool MainWindow::homeDevicePortSelected(VaporView::SkyDeviceId device) const
+{
+    if (device == VaporView::SkyDeviceId::WaveTcp)
+    {
+        return state_->tcp_wave_panel_ != nullptr;
+    }
+
+    auto portSelected = [](const QComboBox *combo) {
+        if (!combo)
+        {
+            return false;
+        }
+        const QString text = combo->currentText().trimmed();
+        return !text.isEmpty() && !text.startsWith(QStringLiteral("--"));
+    };
+
+    switch (device)
+    {
+    case VaporView::SkyDeviceId::Epsilon:
+        return portSelected(state_->epsilon_port_combo_);
+    case VaporView::SkyDeviceId::Ptb:
+        return portSelected(state_->ptb_port_combo_);
+    case VaporView::SkyDeviceId::Hmp:
+        return portSelected(state_->hmp_port_combo_);
+    case VaporView::SkyDeviceId::Lidar:
+        return portSelected(state_->lidar_port_combo_);
+    case VaporView::SkyDeviceId::TemperatureController:
+        return portSelected(state_->temperature_port_combo_);
+    case VaporView::SkyDeviceId::All:
+    case VaporView::SkyDeviceId::WaveTcp:
+        return false;
+    }
+    return false;
+}
+
+VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId device) const
+{
+    if (isRemoteSkyMode())
+    {
+        if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
+        {
+            return VaporView::DeviceState::Disabled;
+        }
+        if (device == VaporView::SkyDeviceId::WaveTcp && state_->remote_wave_stream_enable_pending_)
+        {
+            return VaporView::DeviceState::Connecting;
+        }
+        const VaporView::DeviceState state = state_->remote_sky_controller_->deviceState(device);
+        return state == VaporView::DeviceState::Reconnecting ? VaporView::DeviceState::Connecting : state;
+    }
+
+    if (device == VaporView::SkyDeviceId::WaveTcp)
+    {
+        if (!state_->tcp_wave_panel_)
+        {
+            return VaporView::DeviceState::Disabled;
+        }
+        if (state_->tcp_wave_panel_->isConnecting())
+        {
+            return VaporView::DeviceState::Connecting;
+        }
+        return state_->tcp_wave_panel_->isConnected() ? VaporView::DeviceState::Connected : VaporView::DeviceState::Disconnected;
+    }
+
+    if (homeDeviceConnected(device))
+    {
+        return VaporView::DeviceState::Connected;
+    }
+    if (!homeDevicePortSelected(device))
+    {
+        return VaporView::DeviceState::Disabled;
+    }
+    if (state_->connection_attempt_in_progress_)
+    {
+        return VaporView::DeviceState::Connecting;
+    }
+    return VaporView::DeviceState::Disconnected;
+}
+
+void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
+{
+    const VaporView::DeviceState state = homeDeviceActionState(device);
+    if (state == VaporView::DeviceState::Disabled ||
+        state == VaporView::DeviceState::Connecting ||
+        state == VaporView::DeviceState::Reconnecting)
+    {
+        return;
+    }
+    const bool connected = state == VaporView::DeviceState::Connected;
+    const bool connectRequested = !connected;
+    if (isRemoteSkyMode())
+    {
+        if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
+        {
+            return;
+        }
+        if (connectRequested)
+        {
+            startHomeDeviceActionSpinner(device);
+        }
+        if (device == VaporView::SkyDeviceId::WaveTcp)
+        {
+            requestRemoteWaveTcpConnection(connectRequested);
+            return;
+        }
+        sendRemoteDeviceCommand(connectRequested ? VaporView::CommandId::ConnectDevice : VaporView::CommandId::DisconnectDevice,
+                                device);
+        state_->remote_sky_controller_->setDeviceState(
+            device,
+            connectRequested ? VaporView::DeviceState::Connecting : VaporView::DeviceState::Disconnected);
+        updateRemoteDeviceButtonText(device, state_->remote_sky_controller_->deviceState(device));
+        updateHomeDeviceStatusCapsules();
+        return;
+    }
+
+    if (device == VaporView::SkyDeviceId::WaveTcp)
+    {
+        if (state_->tcp_wave_panel_)
+        {
+            if (connectRequested)
+            {
+                startHomeDeviceActionSpinner(device);
+            }
+            state_->tcp_wave_panel_->toggleConnection();
+            updateHomeDeviceStatusCapsules();
+        }
+        return;
+    }
+
+    QAction *action = connected ? state_->disconnect_btn_ : state_->connect_btn_;
+    if (action && action->isEnabled())
+    {
+        if (connectRequested)
+        {
+            for (VaporView::SkyDeviceId candidate : {VaporView::SkyDeviceId::Epsilon,
+                                                     VaporView::SkyDeviceId::Ptb,
+                                                     VaporView::SkyDeviceId::Hmp,
+                                                     VaporView::SkyDeviceId::Lidar,
+                                                     VaporView::SkyDeviceId::TemperatureController})
+            {
+                if (homeDevicePortSelected(candidate) && !homeDeviceConnected(candidate))
+                {
+                    startHomeDeviceActionSpinner(candidate);
+                }
+            }
+        }
+        action->trigger();
+    }
+}
+
+void MainWindow::startHomeDeviceActionSpinner(VaporView::SkyDeviceId device)
+{
+    const qint64 untilMs = QDateTime::currentMSecsSinceEpoch() + kHomeDeviceActionSpinnerMinimumMs;
+    const qint64 currentUntilMs = state_->home_device_action_spinner_until_ms_.value(device, 0);
+    state_->home_device_action_spinner_until_ms_.insert(device, std::max(currentUntilMs, untilMs));
+    if (state_->home_device_action_spinner_timer_ && !state_->home_device_action_spinner_timer_->isActive())
+    {
+        state_->home_device_action_spinner_timer_->start();
+    }
+}
+
+bool MainWindow::homeDeviceActionSpinnerActive(VaporView::SkyDeviceId device, qint64 nowMs) const
+{
+    return state_->home_device_action_spinner_until_ms_.value(device, 0) > nowMs;
+}
+
+void MainWindow::updateHomeDeviceStatusCapsules()
+{
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    bool anySpinnerActive = false;
+    auto updateCapsule = [this, &anySpinnerActive, nowMs](QLabel *label, QToolButton *button, VaporView::SkyDeviceId device) {
+        if (!label)
+        {
+            return;
+        }
+        const qint64 spinnerUntilMs = state_->home_device_action_spinner_until_ms_.value(device, 0);
+        if (spinnerUntilMs > 0 && spinnerUntilMs <= nowMs)
+        {
+            state_->home_device_action_spinner_until_ms_.remove(device);
+        }
+        const VaporView::DeviceState state = homeDeviceActionState(device);
+        const bool connected = state == VaporView::DeviceState::Connected;
+        const bool connecting = state == VaporView::DeviceState::Connecting || state == VaporView::DeviceState::Reconnecting;
+        const bool spinnerActive = connecting || homeDeviceActionSpinnerActive(device, nowMs);
+        if (spinnerActive)
+        {
+            anySpinnerActive = true;
+        }
+        const QString stateKey = connected
+            ? QStringLiteral("connected")
+            : connecting
+                ? QStringLiteral("connecting")
+                : state == VaporView::DeviceState::Disabled
+                    ? QStringLiteral("disabled")
+                    : QStringLiteral("disconnected");
+        const QString stateText = connected
+            ? (state_->is_english_ ? QStringLiteral("Connected") : QStringLiteral("已连接"))
+            : connecting
+                ? (state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中"))
+                : state == VaporView::DeviceState::Disabled
+                    ? (state_->is_english_ ? QStringLiteral("Not ready") : QStringLiteral("未就绪"))
+                    : (state_->is_english_ ? QStringLiteral("Ready to connect") : QStringLiteral("可以连接"));
+        const QString deviceName = homeDeviceDisplayName(device, state_->is_english_);
+        label->setText(QStringLiteral("• %1").arg(deviceName));
+        label->setProperty("connected", connected);
+        label->setProperty("state", stateKey);
+        label->setToolTip(state_->is_english_
+            ? QStringLiteral("%1 status: %2").arg(deviceName, stateText)
+            : QStringLiteral("%1状态：%2").arg(deviceName, stateText));
+        label->style()->unpolish(label);
+        label->style()->polish(label);
+
+        if (!button)
+        {
+            return;
+        }
+        const bool remoteMode = isRemoteSkyMode();
+        const bool linkOpen = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
+        const bool enabled = state == VaporView::DeviceState::Disabled || spinnerActive
+            ? false
+            : remoteMode
+                ? linkOpen
+                : (device == VaporView::SkyDeviceId::WaveTcp
+                    ? state_->tcp_wave_panel_ != nullptr
+                    : ((connected && state_->disconnect_btn_ && state_->disconnect_btn_->isEnabled()) ||
+                       (!connected && state_->connect_btn_ && state_->connect_btn_->isEnabled())));
+        const QString actionText = [&]() {
+            if (spinnerActive)
+            {
+                return state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中");
+            }
+            if (connected)
+            {
+                return state_->is_english_ ? QStringLiteral("Disconnect") : QStringLiteral("断开");
+            }
+            if (state == VaporView::DeviceState::Disabled)
+            {
+                if (remoteMode)
+                {
+                    return state_->is_english_ ? QStringLiteral("Connect telemetry first") : QStringLiteral("请先连接数传");
+                }
+                if (device == VaporView::SkyDeviceId::WaveTcp)
+                {
+                    return state_->is_english_ ? QStringLiteral("TCP wave panel unavailable") : QStringLiteral("TCP 波形面板未就绪");
+                }
+                return state_->is_english_ ? QStringLiteral("Select port first") : QStringLiteral("请先选择串口");
+            }
+            return state_->is_english_ ? QStringLiteral("Connect") : QStringLiteral("连接");
+        }();
+        QString modeHint;
+        if (remoteMode)
+        {
+            modeHint = state_->is_english_ ? QStringLiteral("remote Sky device") : QStringLiteral("天空端设备");
+        }
+        else if (device == VaporView::SkyDeviceId::WaveTcp)
+        {
+            modeHint = state_->is_english_ ? QStringLiteral("local TCP wave source") : QStringLiteral("本地 TCP 波形源");
+        }
+        else
+        {
+            modeHint = state_->is_english_ ? QStringLiteral("local serial devices") : QStringLiteral("本地串口设备");
+        }
+        button->setEnabled(enabled);
+        if (spinnerActive)
+        {
+            button->setIcon(createRotatedLucideIcon(QStringLiteral("link"),
+                                                    toolbarColor(AppThemeColor::HomeDeviceSuccess),
+                                                    (state_->home_device_action_spinner_step_ * 360) / kHomeDeviceActionSpinnerFrames));
+        }
+        else
+        {
+            const QString iconName = connected ? QStringLiteral("unlink") : QStringLiteral("link");
+            const QColor iconColor = connected
+                ? toolbarColor(AppThemeColor::HomeDeviceDanger)
+                : state == VaporView::DeviceState::Disabled
+                    ? toolbarColor(AppThemeColor::ToolbarDisabled)
+                    : toolbarColor(AppThemeColor::HomeDeviceSuccess);
+            button->setIcon(createLucideIcon(iconName, iconColor));
+        }
+        button->setToolTip(state_->is_english_
+            ? QStringLiteral("%1 %2 (%3)").arg(actionText, deviceName, modeHint)
+            : QStringLiteral("%1%2（%3）").arg(actionText, deviceName, modeHint));
+        button->setStatusTip(button->toolTip());
+        button->setAccessibleName(button->toolTip());
+        button->setProperty("connected", connected);
+        button->setProperty("state", spinnerActive ? QStringLiteral("connecting") : stateKey);
+        button->style()->unpolish(button);
+        button->style()->polish(button);
+    };
+
+    updateCapsule(state_->home_epsilon_status_lbl_, state_->home_epsilon_action_btn_, VaporView::SkyDeviceId::Epsilon);
+    updateCapsule(state_->home_ptb_status_lbl_, state_->home_ptb_action_btn_, VaporView::SkyDeviceId::Ptb);
+    updateCapsule(state_->home_hmp_status_lbl_, state_->home_hmp_action_btn_, VaporView::SkyDeviceId::Hmp);
+    updateCapsule(state_->home_lidar_status_lbl_, state_->home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
+    updateCapsule(state_->home_temperature_status_lbl_, state_->home_temperature_action_btn_, VaporView::SkyDeviceId::TemperatureController);
+    updateCapsule(state_->home_wave_status_lbl_, state_->home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
+    if (state_->home_device_action_spinner_timer_)
+    {
+        if (anySpinnerActive)
+        {
+            if (!state_->home_device_action_spinner_timer_->isActive())
+            {
+                state_->home_device_action_spinner_timer_->start();
+            }
+        }
+        else
+        {
+            state_->home_device_action_spinner_timer_->stop();
+            state_->home_device_action_spinner_step_ = 0;
+        }
+    }
+}
+
+void MainWindow::updateHomeDeviceActionSpinnerIcons()
+{
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    bool anySpinnerActive = false;
+    bool needsFullRefresh = false;
+    auto updateButton = [this, nowMs, &anySpinnerActive, &needsFullRefresh](QToolButton *button, VaporView::SkyDeviceId device) {
+        if (!button)
+        {
+            return;
+        }
+
+        const qint64 spinnerUntilMs = state_->home_device_action_spinner_until_ms_.value(device, 0);
+        if (spinnerUntilMs > 0 && spinnerUntilMs <= nowMs)
+        {
+            state_->home_device_action_spinner_until_ms_.remove(device);
+            needsFullRefresh = true;
+        }
+        const VaporView::DeviceState state = homeDeviceActionState(device);
+        const bool spinnerActive =
+            state == VaporView::DeviceState::Connecting ||
+            state == VaporView::DeviceState::Reconnecting ||
+            homeDeviceActionSpinnerActive(device, nowMs);
+        if (!spinnerActive)
+        {
+            return;
+        }
+
+        anySpinnerActive = true;
+        button->setIcon(createRotatedLucideIcon(QStringLiteral("link"),
+                                                toolbarColor(AppThemeColor::HomeDeviceSuccess),
+                                                (state_->home_device_action_spinner_step_ * 360) / kHomeDeviceActionSpinnerFrames));
+        button->update();
+    };
+
+    updateButton(state_->home_epsilon_action_btn_, VaporView::SkyDeviceId::Epsilon);
+    updateButton(state_->home_ptb_action_btn_, VaporView::SkyDeviceId::Ptb);
+    updateButton(state_->home_hmp_action_btn_, VaporView::SkyDeviceId::Hmp);
+    updateButton(state_->home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
+    updateButton(state_->home_temperature_action_btn_, VaporView::SkyDeviceId::TemperatureController);
+    updateButton(state_->home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
+    updateButton(state_->device_config_.epsilon_remote_action_btn, VaporView::SkyDeviceId::Epsilon);
+    updateButton(state_->device_config_.ptb_remote_action_btn, VaporView::SkyDeviceId::Ptb);
+    updateButton(state_->device_config_.hmp_remote_action_btn, VaporView::SkyDeviceId::Hmp);
+    updateButton(state_->device_config_.lidar_remote_action_btn, VaporView::SkyDeviceId::Lidar);
+    updateButton(state_->device_config_.temperature_remote_action_btn,
+                 VaporView::SkyDeviceId::TemperatureController);
+    if (needsFullRefresh)
+    {
+        updateHomeDeviceStatusCapsules();
+        updateDeviceConfigState();
+        return;
+    }
+    if (!anySpinnerActive && state_->home_device_action_spinner_timer_)
+    {
+        state_->home_device_action_spinner_timer_->stop();
+        state_->home_device_action_spinner_step_ = 0;
+    }
+}
+
+bool MainWindow::anyCollectorRunning() const
+{
+    return state_->local_connection_controller_ && state_->local_connection_controller_->anyCollectorRunning();
+}
+
+CollectorSnapshot MainWindow::snapshotCollectors() const
+{
+    return state_->local_connection_controller_
+        ? state_->local_connection_controller_->snapshotCollectors()
+        : CollectorSnapshot{};
+}
+
+void MainWindow::invalidateTemperatureControllerDataUi()
+{
+    state_->current_temperature_controller_ = VaporView::TemperatureControllerData();
+    if (state_->device_panel_coordinator_)
+    {
+        state_->device_panel_coordinator_->updateTemperatureRate(0.0);
+        state_->device_panel_coordinator_->updateTemperatureData(state_->current_temperature_controller_);
+    }
+}
+
+void MainWindow::stopAllCollectors()
+{
+    if (state_->local_connection_controller_)
+    {
+        state_->local_connection_controller_->disconnect();
+    }
+}
+
+void MainWindow::finishConnectionAttempt(bool connected)
+{
+    state_->connection_attempt_in_progress_ = false;
+    state_->cancel_connection_requested_.store(false);
+    if (!connected && state_->recording_service_->isSessionOpen())
+    {
+        stopRecording(true);
+    }
+    hideStatusTaskProgress();
+    updateConnectionStatus(connected);
+}
+
+void MainWindow::onRefreshPortsClicked()
+{
+    QStringList ports = getAvailablePorts();
+
+    auto updateCombo = [this, &ports](QComboBox* combo) {
+        if (!combo)
+        {
+            return;
+        }
+        QString current = combo->currentText();
+        combo->clear();
+        combo->addItem(state_->is_english_ ? "-- Select --" : "-- 选择 --");
+        combo->addItems(ports);
+        int idx = combo->findText(current);
+        if (idx >= 0)
+        {
+            combo->setCurrentIndex(idx);
+        }
+        else
+        {
+            combo->setEditText(current);
+        }
+    };
+
+    updateCombo(state_->epsilon_port_combo_);
+    updateCombo(state_->ptb_port_combo_);
+    updateCombo(state_->hmp_port_combo_);
+    updateCombo(state_->lidar_port_combo_);
+    updateCombo(state_->temperature_port_combo_);
+    syncDeviceConfigPageFromHome();
+    updateTemperatureControllerTitleText();
+    updateTemperatureTitleButtonsState();
+
+    log(QString(state_->is_english_ ? "Ports refreshed: %1 serial ports"
+                            : "端口已刷新: %1 个串口")
+            .arg(ports.size()));
+}
+
+void MainWindow::onAutoDetectPortsClicked()
+{
+    if (state_->port_detection_in_progress_)
+    {
+        state_->cancel_connection_requested_.store(true);
+        log(state_->is_english_ ? "Cancel requested, stopping automatic serial-port detection..." : "已请求取消，正在停止自动识别串口...");
+        showBusyStatusTaskProgress(state_->is_english_ ? "Canceling port detection..." : "正在取消串口识别...");
+        updateConnectionStatus(state_->is_connected_);
+        QApplication::processEvents(QEventLoop::AllEvents);
+        return;
+    }
+
+    if (state_->is_connected_ || state_->connection_attempt_in_progress_)
+    {
+        return;
+    }
+
+    if (state_->port_detection_thread_.joinable())
+    {
+        state_->port_detection_thread_.join();
+    }
+
+    onRefreshPortsClicked();
+    state_->port_detection_in_progress_ = true;
+    state_->cancel_connection_requested_.store(false);
+    updateConnectionStatus(state_->is_connected_);
+    log(state_->is_english_ ? "Starting automatic serial-port detection..." : "开始自动识别串口...");
+    showBusyStatusTaskProgress(state_->is_english_ ? "Detecting Ports..." : "正在识别串口...");
+
+    const QString selectedEpsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
+    const QString selectedPtbPort = state_->ptb_port_combo_ ? state_->ptb_port_combo_->currentText().trimmed() : QString();
+    const QString selectedHmpPort = state_->hmp_port_combo_ ? state_->hmp_port_combo_->currentText().trimmed() : QString();
+    const QString selectedLidarPort = state_->lidar_port_combo_ ? state_->lidar_port_combo_->currentText().trimmed() : QString();
+    const QString selectedTemperaturePort = state_->temperature_port_combo_ ? state_->temperature_port_combo_->currentText().trimmed() : QString();
+    const QString selectedEpsilonBaud = state_->epsilon_baud_combo_ ? state_->epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
+    const QString selectedPtbBaud = state_->ptb_baud_combo_ ? state_->ptb_baud_combo_->currentText().trimmed() : QStringLiteral("9600");
+    const QString selectedHmpBaud = state_->hmp_baud_combo_ ? state_->hmp_baud_combo_->currentText().trimmed() : QStringLiteral("19200");
+    const QString selectedLidarBaud = state_->lidar_baud_combo_ ? state_->lidar_baud_combo_->currentText().trimmed() : QStringLiteral("500000");
+    const QString selectedTemperatureBaud = state_->temperature_baud_combo_ ? state_->temperature_baud_combo_->currentText().trimmed() : QStringLiteral("38400");
+    const bool english = state_->is_english_;
+
+    VaporView::Ground::Devices::SerialPortDetectionRequest request;
+    request.english = english;
+    request.epsilon = {selectedEpsilonPort, selectedEpsilonBaud};
+    request.ptb = {selectedPtbPort, selectedPtbBaud};
+    request.hmp = {selectedHmpPort, selectedHmpBaud};
+    request.lidar = {selectedLidarPort, selectedLidarBaud};
+    request.temperatureController = {selectedTemperaturePort, selectedTemperatureBaud};
+    request.temperatureSlaveAddress = rememberedTemperatureSlaveAddress();
+
+    state_->port_detection_thread_ = std::thread([this, request = std::move(request)]() mutable {
+        request.availablePorts =
+            VaporView::Ground::Devices::SerialPortDetectionService::availablePorts();
+        const auto outcome =
+            VaporView::Ground::Devices::SerialPortDetectionService::detect(
+                request,
+                [this]() { return state_->cancel_connection_requested_.load(); },
+                [this](const QString& message) {
+                    QMetaObject::invokeMethod(this, [this, message]() { log(message); },
+                                              Qt::QueuedConnection);
+                });
+        QMetaObject::invokeMethod(this, [this, detections = outcome.detections]() {
+            const QString selectText = state_->is_english_ ? "-- Select --" : "-- 选择 --";
+            auto applySelection = [&selectText](QComboBox *combo, const QString& value) {
+                if (!combo)
+                {
+                    return;
+                }
+                const int index = combo->findText(value);
+                if (index >= 0)
+                {
+                    combo->setCurrentIndex(index);
+                }
+                else if (!value.isEmpty() && value != selectText)
+                {
+                    combo->setEditText(value);
+                }
+            };
+            auto normalizePort = [&selectText](const QString& value) {
+                return (value.isEmpty() || value == selectText) ? selectText : value;
+            };
+
+            QHash<QString, QComboBox *> portCombos{
+                {QStringLiteral("epsilon"), state_->epsilon_port_combo_},
+                {QStringLiteral("ptb"), state_->ptb_port_combo_},
+                {QStringLiteral("hmp"), state_->hmp_port_combo_},
+                {QStringLiteral("lidar"), state_->lidar_port_combo_},
+                {QStringLiteral("temperature"), state_->temperature_port_combo_},
+            };
+            QHash<QString, QComboBox *> baudCombos{
+                {QStringLiteral("epsilon"), state_->epsilon_baud_combo_},
+                {QStringLiteral("ptb"), state_->ptb_baud_combo_},
+                {QStringLiteral("hmp"), state_->hmp_baud_combo_},
+                {QStringLiteral("lidar"), state_->lidar_baud_combo_},
+                {QStringLiteral("temperature"), state_->temperature_baud_combo_},
+            };
+            QHash<QString, QString> detectedPorts;
+            QHash<QString, QString> detectedBauds;
+            QSet<QString> detectedKeys;
+            QSet<QString> detectedPortNames;
+            for (const auto& detection : detections)
+            {
+                const QString port = normalizePort(detection.port);
+                if (port == selectText || !portCombos.contains(detection.deviceKey))
+                {
+                    continue;
+                }
+                detectedPorts[detection.deviceKey] = port;
+                detectedBauds[detection.deviceKey] = detection.baud;
+                detectedKeys.insert(detection.deviceKey);
+                detectedPortNames.insert(port);
+            }
+            for (auto it = portCombos.cbegin(); it != portCombos.cend(); ++it)
+            {
+                const QString current = normalizePort(it.value() ? it.value()->currentText() : QString());
+                if (!detectedKeys.contains(it.key()) && detectedPortNames.contains(current))
+                {
+                    applySelection(it.value(), selectText);
+                }
+            }
+            for (const auto& detection : detections)
+            {
+                const QString port = detectedPorts.value(detection.deviceKey);
+                if (port.isEmpty())
+                {
+                    continue;
+                }
+                applySelection(portCombos.value(detection.deviceKey), port);
+                if (QComboBox *baud = baudCombos.value(detection.deviceKey, nullptr))
+                {
+                    baud->setCurrentText(detectedBauds.value(detection.deviceKey));
+                }
+            }
+
+            state_->port_detection_in_progress_ = false;
+            state_->cancel_connection_requested_.store(false);
+            hideStatusTaskProgress();
+            updateConnectionStatus(state_->is_connected_);
+        }, Qt::QueuedConnection);
+    });
+}
+void MainWindow::onConnectClicked()
+{
+    if (isRemoteSkyMode())
+    {
+        clearRemoteSkyDataUi();
+        const bool tcpTelemetry = isRemoteSkyTcpMode();
+        bool opened = false;
+        QString openedText;
+        if (tcpTelemetry)
+        {
+            const QString host = state_->sky_telemetry_tcp_host_edit_ ? state_->sky_telemetry_tcp_host_edit_->text().trimmed() : QString();
+            const int tcpPort = state_->sky_telemetry_tcp_port_spin_ ? state_->sky_telemetry_tcp_port_spin_->value() : 39100;
+            if (host.isEmpty())
+            {
+                log(state_->is_english_ ? "Enter the Sky telemetry IP first" : "请先输入天空端数传 IP");
+                return;
+            }
+            openedText = QStringLiteral("%1:%2").arg(host).arg(tcpPort);
+            log(QString(state_->is_english_ ? "Connecting Sky telemetry TCP: %1" : "正在连接天空端 TCP 数传：%1").arg(openedText));
+            opened = state_->remote_sky_controller_ && state_->remote_sky_controller_->openTcp(host, static_cast<quint16>(tcpPort));
+        }
+        else
+        {
+            const QString port = state_->sky_telemetry_port_combo_ ? state_->sky_telemetry_port_combo_->currentText().trimmed() : QString();
+            const int baud = state_->sky_telemetry_baud_combo_ ? state_->sky_telemetry_baud_combo_->currentText().toInt() : 921600;
+            if (port.isEmpty())
+            {
+                log(state_->is_english_ ? "Select the Sky telemetry port first" : "请先选择天空端数传串口");
+                return;
+            }
+            openedText = QStringLiteral("%1 @ %2").arg(port).arg(baud);
+            log(QString(state_->is_english_ ? "Opening Sky telemetry serial port: %1" : "正在打开天空端数传串口：%1").arg(openedText));
+            opened = state_->remote_sky_controller_ && state_->remote_sky_controller_->open(port, baud);
+        }
+        if (opened)
+        {
+            updateConnectionStatus(true);
+            state_->remote_sky_controller_->sendCommand(VaporView::CommandId::DisableWaveformStreaming);
+            state_->remote_sky_controller_->sendCommand(VaporView::CommandId::RequestStatus);
+            state_->status_label_->setText(state_->is_english_ ? "Telemetry link open, waiting for Sky handshake" : "数传链路已打开，等待天空端握手");
+            state_->status_label_->setProperty("status", "connecting");
+            state_->status_label_->style()->unpolish(state_->status_label_);
+            state_->status_label_->style()->polish(state_->status_label_);
+            log(QString(state_->is_english_ ? "Telemetry link opened (%1); waiting for Sky handshake..." : "数传链路已打开（%1），正在等待天空端握手...").arg(openedText));
+        }
+        else
+        {
+            updateConnectionStatus(false);
+            log(state_->is_english_ ? "Failed to open Remote Sky telemetry link" : "打开天空端数传链路失败");
+        }
+        return;
+    }
+
+    state_->connection_attempt_in_progress_ = true;
+    state_->cancel_connection_requested_.store(false);
+    updateConnectionStatus(false);
+
+    log(state_->is_english_ ? "Connecting..." : "正在连接...");
+
+    state_->current_epsilon_ = VaporView::EpsilonData();
+    state_->current_gnss_ = VaporView::GnssData();
+    state_->current_imu_ = VaporView::ImuData();
+    state_->current_ptb_ = VaporView::PtbData();
+    state_->current_hmp_ = VaporView::HmpData();
+    state_->current_lidar_ = VaporView::LidarData();
+    state_->current_temperature_controller_ = VaporView::TemperatureControllerData();
+
+    if (state_->device_panel_coordinator_)
+    {
+        state_->device_panel_coordinator_->updateAllData(
+            state_->current_epsilon_, state_->current_gnss_, 0,
+            state_->current_imu_, 0, state_->current_ptb_, state_->current_hmp_,
+            state_->current_lidar_, state_->current_temperature_controller_);
+        state_->device_panel_coordinator_->clearRates();
+    }
+    updateEnvironmentStatusIcons(false, false, false);
+
+    const bool english = state_->is_english_;
+    const QString selectText = english ? "-- Select --" : "-- 选择 --";
+    const QString epsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
+    const QString ptbPort = state_->ptb_port_combo_->currentText();
+    const QString hmpPort = state_->hmp_port_combo_->currentText();
+    const QString lidarPort = state_->lidar_port_combo_->currentText();
+    const QString temperaturePort = state_->temperature_port_combo_ ? state_->temperature_port_combo_->currentText() : QString();
+    const QString epsilonBaudText = state_->epsilon_baud_combo_ ? state_->epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
+    const QString ptbBaudText = state_->ptb_baud_combo_->currentText();
+    const QString hmpBaudText = state_->hmp_baud_combo_->currentText();
+    const QString lidarBaudText = state_->lidar_baud_combo_->currentText();
+    const QString temperatureBaudText = state_->temperature_baud_combo_ ? state_->temperature_baud_combo_->currentText().trimmed() : QStringLiteral("38400");
+    const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
+    const QString ptbRateText = state_->ptb_rate_combo_ ? state_->ptb_rate_combo_->currentText() : QStringLiteral("20");
+    const QString hmpRateText = state_->hmp_rate_combo_ ? state_->hmp_rate_combo_->currentText() : QStringLiteral("20");
+    const VaporView::PressureSensorProtocol pressureProtocol =
+        state_->device_config_.ptb_source_combo &&
+            state_->device_config_.ptb_source_combo->currentData().toString() == QStringLiteral("bmp390")
+        ? VaporView::PressureSensorProtocol::Bmp390Serial
+        : VaporView::PressureSensorProtocol::Ptb210;
+    const VaporView::HumiditySensorProtocol humidityProtocol =
+        state_->device_config_.hmp_source_combo &&
+            state_->device_config_.hmp_source_combo->currentData().toString() == QStringLiteral("sht45")
+        ? VaporView::HumiditySensorProtocol::Sht45Serial
+        : VaporView::HumiditySensorProtocol::Hmp3Modbus;
+    const QString lidarRateText = state_->lidar_rate_combo_ ? state_->lidar_rate_combo_->currentText() : QStringLiteral("100");
+    const QString temperatureRateText = state_->temperature_rate_combo_ ? state_->temperature_rate_combo_->currentText() : QString::number(kDefaultTemperatureSampleRateHz);
+    const bool skipEpsilonDeviceRate = isRateUnspecified(epsilonRateText);
+    const bool skipPtbDeviceRate = isRateUnspecified(ptbRateText);
+    const bool skipHmpDeviceRate = isRateUnspecified(hmpRateText);
+    const bool skipLidarDeviceRate = isRateUnspecified(lidarRateText);
+    const bool skipTemperatureDeviceRate = isRateUnspecified(temperatureRateText);
+    const int epsilonRate = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
+    const int ptbRate = clampPtbSampleRate(effectiveRateOrDefault(ptbRateText, kDefaultPtbSampleRateHz, kPtbMaxSampleRateHz));
+    const int hmpRate = effectiveRateOrDefault(hmpRateText, kDefaultHmpSampleRateHz);
+    const int lidarRate = effectiveRateOrDefault(lidarRateText, kDefaultLidarSampleRateHz, 100);
+    const int temperatureRate = effectiveRateOrDefault(temperatureRateText, kDefaultTemperatureSampleRateHz, kMaxTemperatureSampleRateHz);
+    QSettings settings("VaporView", "MainWindow");
+    bool epsilonUsesCustomPacketRates = false;
+    const std::map<uint8_t, int> epsilonDesiredPacketRates =
+        effectiveEpsilonPacketRates(settings, epsilonRate, &epsilonUsesCustomPacketRates);
+    const int epsilonCallbackRate = epsilonPacketCallbackRate(epsilonDesiredPacketRates, epsilonRate);
+    const QString epsilonDesiredPacketSignature = epsilonPacketRatesSignature(epsilonDesiredPacketRates);
+    const QString epsilonDesiredPacketSummary = epsilonPacketRatesSummary(epsilonDesiredPacketRates);
+    const bool epsilonConfigLikelyMatches =
+        !epsilonPort.isEmpty() &&
+        epsilonPort != selectText &&
+        settings.value("epsilon_last_config_apply_version").toInt() ==
+            VaporView::Ground::EpsilonConfigurationService::PacketConfigurationVersion &&
+        settings.value("epsilon_last_config_port").toString() == epsilonPort &&
+        settings.value("epsilon_last_config_baud").toString() == epsilonBaudText &&
+        settings.value("epsilon_last_config_signature").toString() == epsilonDesiredPacketSignature;
+    const int selectedDeviceCount =
+        ((epsilonPort != selectText && !epsilonPort.isEmpty()) ? 1 : 0) +
+        ((ptbPort != selectText && !ptbPort.isEmpty()) ? 1 : 0) +
+        ((hmpPort != selectText && !hmpPort.isEmpty()) ? 1 : 0) +
+        ((lidarPort != selectText && !lidarPort.isEmpty()) ? 1 : 0) +
+        ((temperaturePort != selectText && !temperaturePort.isEmpty()) ? 1 : 0);
+    state_->epsilon_sample_rate_ = epsilonRate;
+    state_->ptb_sample_rate_ = ptbRate;
+    state_->hmp_sample_rate_ = hmpRate;
+    state_->lidar_sample_rate_ = lidarRate;
+    state_->temperature_sample_rate_ = temperatureRate;
+
+    stopAllCollectors();
+
+    VaporView::Ground::Devices::LocalConnectionRequest request;
+    request.english = english;
+    request.selectText = selectText;
+    request.epsilon = {epsilonPort, epsilonBaudText, epsilonCallbackRate, skipEpsilonDeviceRate};
+    request.ptb = {ptbPort, ptbBaudText, ptbRate, skipPtbDeviceRate};
+    request.hmp = {hmpPort, hmpBaudText, hmpRate, skipHmpDeviceRate};
+    request.lidar = {lidarPort, lidarBaudText, lidarRate, skipLidarDeviceRate};
+    request.temperatureController = {
+        temperaturePort,
+        temperatureBaudText,
+        temperatureRate,
+        skipTemperatureDeviceRate
+    };
+    request.pressureProtocol = pressureProtocol;
+    request.humidityProtocol = humidityProtocol;
+    request.temperatureSlaveAddress = rememberedTemperatureSlaveAddress();
+    request.epsilonPacketRates = epsilonDesiredPacketRates;
+    request.epsilonConfiguredRateHz = epsilonRate;
+    request.epsilonPacketRateSignature = epsilonDesiredPacketSignature;
+    request.epsilonPacketRateSummary = epsilonDesiredPacketSummary;
+    request.epsilonUsesCustomPacketRates = epsilonUsesCustomPacketRates;
+    request.epsilonConfigLikelyMatches = epsilonConfigLikelyMatches;
+    request.progressMaximum = std::max(1, selectedDeviceCount * 4 + 1);
+
+    showStatusTaskProgress(state_->is_english_ ? "Connecting devices..." : "正在连接设备...",
+                           0,
+                           request.progressMaximum);
+    if (!state_->local_connection_controller_->connectAsync(std::move(request)))
+    {
+        state_->connection_attempt_in_progress_ = false;
+        hideStatusTaskProgress();
+        log(state_->is_english_ ? "A device connection attempt is already running."
+                        : "已有设备连接流程正在进行。");
+        updateConnectionStatus(anyCollectorRunning());
+    }
+}
+void MainWindow::onDisconnectClicked()
+{
+    if (isRemoteSkyMode())
+    {
+        log(state_->is_english_ ? "Disconnecting Remote Sky telemetry..." : "正在断开天空端数传...");
+        if (state_->remote_sky_controller_)
+        {
+            state_->remote_sky_controller_->close();
+        }
+        state_->remote_recording_state_ = 0;
+        clearRemoteSkyDataUi();
+        updateConnectionStatus(false);
+        log(state_->is_english_ ? "Remote Sky disconnected" : "天空端数传已断开");
+        return;
+    }
+
+    log(state_->is_english_ ? "Disconnecting..." : "正在断开...");
+
+    stopRecording(true);
+    stopAllCollectors();
+    invalidateTemperatureControllerDataUi();
+    finishConnectionAttempt(false);
+    log(state_->is_english_ ? "Disconnected" : "已断开");
+}
+
+void MainWindow::onCancelConnectClicked()
+{
+    if (!state_->connection_attempt_in_progress_)
+    {
+        return;
+    }
+
+    state_->cancel_connection_requested_.store(true);
+    state_->local_connection_controller_->requestCancel();
+    log(state_->is_english_ ? "Cancel requested, stopping connection attempt..." : "已请求取消，正在停止连接流程...");
+    QApplication::processEvents(QEventLoop::AllEvents);
+}
+
+void MainWindow::onGnssDataReady()
+{
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.gnss)
+    {
+        state_->current_gnss_ = collectors.gnss->getLatestData();
+    }
+}
+
+void MainWindow::onEpsilonDataReady()
+{
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.epsilon)
+    {
+        state_->current_epsilon_ = collectors.epsilon->getLatestData();
+    }
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    maybeForwardMap3DSample(
+        state_->current_epsilon_,
+        VaporView::Ground::Session::GroundRecordingService::currentTimestampUs());
+#endif
+}
+
+void MainWindow::onImuDataReady()
+{
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.imu)
+    {
+        state_->current_imu_ = collectors.imu->getLatestData();
+    }
+}
+
+void MainWindow::onPtbDataReady()
+{
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.ptb)
+    {
+        state_->current_ptb_ = collectors.ptb->getLatestData();
+    }
+}
+
+void MainWindow::onHmpDataReady()
+{
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.hmp)
+    {
+        state_->current_hmp_ = collectors.hmp->getLatestData();
+    }
+}
+
+void MainWindow::onLidarDataReady()
+{
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.lidar)
+    {
+        state_->current_lidar_ = collectors.lidar->getLatestData();
+    }
+}
+
+void MainWindow::onTemperatureControllerDataReady()
+{
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.temperature_controller)
+    {
+        const VaporView::TemperatureControllerData latest = collectors.temperature_controller->getLatestData();
+        if (latest.timestamp < state_->current_temperature_controller_.timestamp)
+        {
+            return;
+        }
+        state_->current_temperature_controller_ = latest;
+    }
+}
+
+void MainWindow::onRefreshTimer()
+{
+    if (isRemoteSkyMode())
+    {
+        refreshRemoteSkyDataUi();
+        return;
+    }
+
+    const CollectorSnapshot collectors = snapshotCollectors();
+
+    if (state_->device_panel_coordinator_)
+    {
+        state_->device_panel_coordinator_->updateEnvironmentData(
+            state_->current_epsilon_, state_->current_ptb_, state_->current_hmp_, state_->current_lidar_);
+    }
+    updateEnvironmentStatusIcons(state_->current_lidar_.valid, state_->current_ptb_.valid, state_->current_hmp_.valid);
+
+    DevicePanelRates panelRates;
+    if (collectors.ptb)
+    {
+        panelRates.ptbHz = collectors.ptb->getActualRate();
+    }
+    if (collectors.hmp)
+    {
+        panelRates.hmpHz = collectors.hmp->getActualRate();
+    }
+    if (collectors.lidar)
+    {
+        panelRates.lidarHz = collectors.lidar->getActualRate();
+    }
+    if (collectors.epsilon)
+    {
+        panelRates.epsilonHz = collectors.epsilon->getActualRate();
+    }
+    if (collectors.gnss)
+    {
+        panelRates.gnssHz = collectors.gnss->getActualRate();
+    }
+    if (collectors.imu)
+    {
+        panelRates.imuHz = collectors.imu->getActualRate();
+    }
+    if (collectors.temperature_controller)
+    {
+        panelRates.temperatureHz = collectors.temperature_controller->getActualRate();
+    }
+    if (state_->device_panel_coordinator_)
+    {
+        state_->device_panel_coordinator_->updateRates(panelRates);
+        state_->device_panel_coordinator_->updateTemperatureData(state_->current_temperature_controller_);
+    }
+    updateHomeDeviceStatusCapsules();
+}

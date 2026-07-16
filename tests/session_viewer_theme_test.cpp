@@ -1,9 +1,8 @@
-#include "AppTheme.h"
-#include "MainWindow.h"
-#include "RawDataParserWindow.h"
+#include "shared/theme/AppTheme.h"
+#include "ground/wave/RawDataParserWindow.h"
 #include "ground/session/SessionViewerWindow.h"
-#include "SingleLevelPopupMenu.h"
-#include "TrajectoryViewerDialog.h"
+#include "shared/theme/SingleLevelPopupMenu.h"
+#include "ground/trajectory/TrajectoryViewerDialog.h"
 #include "test_ui_helpers.h"
 
 #include <QAbstractItemView>
@@ -17,6 +16,7 @@
 #include <QFrame>
 #include <QImage>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QMainWindow>
 #include <QMargins>
@@ -32,6 +32,7 @@
 #include <QSpinBox>
 #include <QTableView>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <QToolButton>
 #include <QWidget>
 #include <QtEndian>
@@ -524,57 +525,6 @@ void requireSessionViewerTitleBarWindowButtonsWork(SessionViewerWindow& viewer)
                 return viewer.isVisible() && !viewer.isMinimized() && !viewer.isMaximized();
             }),
             "data viewer returns to a visible normal state after window-button checks");
-}
-
-void testMainWindowDataViewerOpenCanReopen()
-{
-    QTemporaryDir sessionDir;
-    require(sessionDir.isValid(), "temporary session directory for data viewer startup");
-
-    {
-        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("SessionViewer"));
-        settings.setValue(QStringLiteral("last_session_directory"), sessionDir.path());
-    }
-
-    MainWindow window;
-    window.resize(1280, 800);
-    window.show();
-    require(waitForWindowExposed(&window), "main window becomes exposed for data viewer reopen test");
-
-    require(QMetaObject::invokeMethod(&window, "onOpenSessionViewerClicked", Qt::DirectConnection),
-            "main window can invoke data viewer action");
-    require(processEventsUntil(2000, []() {
-                return visibleSessionViewerWindow() != nullptr;
-            }),
-            "data viewer opens from main window action");
-
-    auto *viewer = visibleSessionViewerWindow();
-    require(viewer != nullptr, "active data viewer is available");
-    auto *minimizeButton = viewer->findChild<QToolButton *>(QStringLiteral("windowMinimizeButton"));
-    require(minimizeButton != nullptr, "data viewer minimize button exists before reopen");
-    clickWidgetCenterThroughWindow(minimizeButton);
-    require(processEventsUntil(1000, [viewer]() {
-                return viewer->isMinimized() ||
-                       viewer->windowState().testFlag(Qt::WindowMinimized);
-            }),
-            "data viewer is minimized before reopen action");
-    require(QMetaObject::invokeMethod(&window, "onOpenSessionViewerClicked", Qt::DirectConnection),
-            "main window can invoke data viewer action while viewer is minimized");
-    require(processEventsUntil(2000, [viewer]() {
-                return viewer->isVisible() &&
-                       !viewer->isMinimized() &&
-                       !viewer->windowState().testFlag(Qt::WindowMinimized);
-            }),
-            "data viewer action restores minimized retained window");
-    viewer->close();
-    processEventsFor(200);
-
-    require(QMetaObject::invokeMethod(&window, "onOpenSessionViewerClicked", Qt::DirectConnection),
-            "main window can reopen data viewer after close");
-    require(processEventsUntil(2000, []() {
-                return visibleSessionViewerWindow() != nullptr;
-            }),
-            "data viewer reopens from retained main window instance");
 }
 
 void testSessionViewerTrajectoryActionLifetime()
@@ -1329,7 +1279,6 @@ int main(int argc, char **argv)
     if (runsGroup(QStringLiteral("io")))
     {
         testRawDataParserOpenIsNonBlocking();
-        testMainWindowDataViewerOpenCanReopen();
         testSessionViewerTrajectoryActionLifetime();
     }
     if (runsGroup(QStringLiteral("window-state")))

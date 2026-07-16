@@ -1,4 +1,4 @@
-#include "TcpWavePanel.h"
+#include "ground/wave/TcpWavePanel.h"
 
 #include <QApplication>
 #include <QByteArray>

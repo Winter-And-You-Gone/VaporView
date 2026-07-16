@@ -28,11 +28,17 @@ template <typename T> class QFutureWatcher;
 class QResizeEvent;
 class QShowEvent;
 class RawDataParserWindow;
-class SessionCsvTableModel;
 class TrajectoryViewerDialog;
 namespace VaporView::Ground
 {
 class SessionPlaybackController;
+}
+namespace VaporView::Ground::SessionUi
+{
+class SessionCsvTableModel;
+class SessionWavePlotWidget;
+class SessionPeakPlotWidget;
+class SingleSeriesTrendPlotWidget;
 }
 
 class SessionViewerWindow : public QMainWindow
@@ -161,23 +167,23 @@ private:
     QLabel *frame_total_label_;
     QLabel *frame_info_label_;
     QLabel *waveform_plot_title_;
-    QWidget *waveform_plot_;
+    VaporView::Ground::SessionUi::SessionWavePlotWidget *waveform_plot_;
     QLabel *waveform_peak_plot_title_;
     QPushButton *waveform_frame_filter_btn_;
     QPushButton *waveform_peak_filter_btn_;
     QPushButton *waveform_peak_mode_btn_;
-    QWidget *waveform_peak_plot_;
+    VaporView::Ground::SessionUi::SessionPeakPlotWidget *waveform_peak_plot_;
     QLabel *temperature_plot_title_;
-    QWidget *temperature_plot_;
+    VaporView::Ground::SessionUi::SingleSeriesTrendPlotWidget *temperature_plot_;
     QLabel *humidity_plot_title_;
-    QWidget *humidity_plot_;
+    VaporView::Ground::SessionUi::SingleSeriesTrendPlotWidget *humidity_plot_;
     QLabel *pressure_plot_title_;
-    QWidget *pressure_plot_;
+    VaporView::Ground::SessionUi::SingleSeriesTrendPlotWidget *pressure_plot_;
     QLabel *environment_info_label_;
     QGroupBox *csv_group_;
     QLabel *csv_info_label_;
     QTableView *csv_table_;
-    SessionCsvTableModel *csv_model_;
+    VaporView::Ground::SessionUi::SessionCsvTableModel *csv_model_;
 
     QString session_directory_;
     QString metadata_filename_;

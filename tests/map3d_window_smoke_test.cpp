@@ -1,8 +1,8 @@
-#include "AppTheme.h"
+#include "shared/theme/AppTheme.h"
 #include "geo/GeoTypes.h"
 #include "map3d/Map3DWindow.h"
 #include "map3d/Map3DRuntime.h"
-#include "SingleLevelPopupMenu.h"
+#include "shared/theme/SingleLevelPopupMenu.h"
 
 #include <QAbstractItemView>
 #include <QAction>

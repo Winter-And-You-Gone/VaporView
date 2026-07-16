@@ -1,6 +1,6 @@
 #pragma once
 
-#include "AppTheme.h"
+#include "shared/theme/AppTheme.h"
 
 #include <QAbstractItemView>
 #include <QComboBox>

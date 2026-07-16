@@ -10,9 +10,12 @@ if(TARGET vaporview_map3d_osgearth)
     )
 
     target_link_libraries(vaporview_ground_map PUBLIC
+        Qt6::Core
+    )
+
+    target_link_libraries(vaporview_ground_map PRIVATE
         vaporview_map3d_osgearth
         vaporview_geo_core
-        Qt6::Core
         Qt6::Widgets
     )
 endif()

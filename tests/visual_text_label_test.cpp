@@ -1,4 +1,4 @@
-#include "VisualTextLabel.h"
+#include "ground/widgets/VisualTextLabel.h"
 
 #include <QApplication>
 #include <QFont>

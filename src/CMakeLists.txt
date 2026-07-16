@@ -1,0 +1,7 @@
+add_subdirectory(rtk)
+add_subdirectory(shared)
+add_subdirectory(geo)
+add_subdirectory(map3d)
+add_subdirectory(sky)
+add_subdirectory(ground)
+add_subdirectory(app)

@@ -1,5 +1,5 @@
-#include "SkyDeviceConfigDialog.h"
-#include "WindowSizing.h"
+#include "ground/widgets/SkyDeviceConfigDialog.h"
+#include "ground/widgets/WindowSizing.h"
 
 #include <QApplication>
 #include <QCoreApplication>

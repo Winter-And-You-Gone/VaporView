@@ -1,0 +1,676 @@
+#include "ground/main/GroundMainWindowImplementation.h"
+#include "ground/devices/DeviceRatePolicy.h"
+
+bool MainWindow::applyEpsilonMainAntennaLeverArm(double xM, double yM, double zM, QString *errorMessage)
+{
+    auto fail = [errorMessage](const QString& message) {
+        if (errorMessage)
+        {
+            *errorMessage = message;
+        }
+        return false;
+    };
+
+    if (state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_)
+    {
+        return fail(state_->is_english_
+            ? QStringLiteral("EPSILON is busy. Wait for the current connection or configuration task to finish.")
+            : QStringLiteral("EPSILON 当前正忙，请等待连接或配置任务结束后再试。"));
+    }
+
+    if (state_->recording_service_->isActive())
+    {
+        return fail(state_->is_english_
+            ? QStringLiteral("Stop recording before configuring the EPSILON main antenna lever arm.")
+            : QStringLiteral("请先结束记录，再配置 EPSILON 主天线杆臂。"));
+    }
+
+    const QString epsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
+    if (epsilonPort.isEmpty() || epsilonPort.startsWith(QStringLiteral("--")))
+    {
+        return fail(state_->is_english_
+            ? QStringLiteral("Select the EPSILON main serial port first.")
+            : QStringLiteral("请先选择 EPSILON 主串口。"));
+    }
+
+    const QString epsilonBaudText = state_->epsilon_baud_combo_ ? state_->epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
+    bool baudOk = false;
+    const int epsilonBaud = epsilonBaudText.toInt(&baudOk);
+    if (!baudOk || epsilonBaud <= 0)
+    {
+        return fail(QString(state_->is_english_ ? "Invalid EPSILON baud rate: %1" : "EPSILON 波特率无效: %1").arg(epsilonBaudText));
+    }
+
+    const bool english = state_->is_english_;
+    const QString values = QStringLiteral("X=%1 m, Y=%2 m, Z=%3 m")
+        .arg(QString::number(xM, 'f', 4),
+             QString::number(yM, 'f', 4),
+             QString::number(zM, 'f', 4));
+    const std::shared_ptr<VaporView::EpsilonCollector> liveCollector = snapshotCollectors().epsilon;
+    const bool shouldRestartCollector = liveCollector && liveCollector->isRunning();
+
+    state_->epsilon_reconfigure_in_progress_ = true;
+    showBusyStatusTaskProgress(english ? "Configuring EPSILON Lever Arm..." : "正在配置 EPSILON 主天线杆臂...");
+    updateConnectionStatus(state_->is_connected_);
+    QApplication::processEvents();
+
+    log(QString(english
+                    ? "[EPSILON] Applying main antenna lever arm on %1 @ %2: %3"
+                    : "[EPSILON] 正在通过主串口 %1 @ %2 下发主天线杆臂：%3")
+            .arg(epsilonPort, epsilonBaudText, values));
+
+    VaporView::Ground::EpsilonDeviceOperation operation;
+    operation.port = epsilonPort;
+    operation.baud = epsilonBaud;
+    operation.baud_text = epsilonBaudText;
+    operation.english = english;
+    operation.live_collector = liveCollector;
+    operation.restart_live_stream = shouldRestartCollector;
+
+    const auto serviceLog = [this](const QString& message) {
+        if (QThread::currentThread() == thread())
+        {
+            log(message);
+            return;
+        }
+        QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
+    };
+    const VaporView::Ground::EpsilonConfigurationResult result =
+        VaporView::Ground::EpsilonConfigurationService::applyMainAntennaLeverArm(
+            operation, xM, yM, zM, serviceLog);
+
+    state_->epsilon_reconfigure_in_progress_ = false;
+    hideStatusTaskProgress();
+    updateConnectionStatus(anyCollectorRunning());
+    QApplication::processEvents();
+
+    return result.succeeded() ? true : fail(result.error_message);
+}
+
+void MainWindow::syncRtkConfigPageState()
+{
+    if (!state_->rtk_config_dialog_)
+    {
+        return;
+    }
+
+    state_->rtk_config_dialog_->setEpsilonDataProvider([this]() {
+        const CollectorSnapshot collectors = snapshotCollectors();
+        return collectors.epsilon ? collectors.epsilon->getLatestData() : state_->current_epsilon_;
+    });
+    state_->rtk_config_dialog_->setEpsilonMainAntennaLeverArmApplier([this](double x, double y, double z, QString *errorMessage) {
+        return applyEpsilonMainAntennaLeverArm(x, y, z, errorMessage);
+    });
+    {
+        const QString epsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
+        const QString epsilonBaud = state_->epsilon_baud_combo_ ? state_->epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
+        state_->rtk_config_dialog_->setEpsilonMainPortAndBaud(epsilonPort, epsilonBaud);
+    }
+    {
+        QSettings settings("VaporView", "MainWindow");
+        const QString preferredOutputPort = settings.value("epsilon_rtcm_forward_port").toString().trimmed();
+        const QString preferredBaud = settings.value("epsilon_rtcm_forward_baud", "115200").toString().trimmed();
+        if (!preferredOutputPort.isEmpty())
+        {
+            state_->rtk_config_dialog_->setPreferredOutputPortAndBaud(preferredOutputPort, preferredBaud);
+        }
+    }
+    state_->rtk_config_dialog_->setFontScale(state_->font_scale_percent_);
+    state_->rtk_config_dialog_->setEnglish(state_->is_english_);
+}
+
+void MainWindow::onRtkConfigClicked()
+{
+    syncRtkConfigPageState();
+    if (state_->main_page_stack_ && state_->rtk_config_dialog_ && state_->main_page_stack_->indexOf(state_->rtk_config_dialog_) >= 0)
+    {
+        state_->main_page_stack_->setCurrentWidget(state_->rtk_config_dialog_);
+    }
+    if (state_->rtk_config_nav_btn_)
+    {
+        state_->rtk_config_nav_btn_->setChecked(true);
+    }
+    updateSidebarNavIcons();
+    updateCustomTitleBarTexts();
+}
+
+void MainWindow::onConfigureEpsilonRtcmPortClicked()
+{
+    if (state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_)
+    {
+        return;
+    }
+
+    if (state_->recording_service_->isActive())
+    {
+        log(state_->is_english_ ? "Stop recording before configuring the EPSILON RTCM port."
+                        : "请先结束记录，再配置 EPSILON RTCM 串口。");
+        return;
+    }
+
+    const QString selectText = state_->is_english_ ? "-- Select --" : "-- 选择 --";
+    const QString epsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
+    if (epsilonPort.isEmpty() || epsilonPort == selectText)
+    {
+        log(state_->is_english_ ? "Select the EPSILON main serial port first."
+                        : "请先选择 EPSILON 主串口。");
+        return;
+    }
+
+    const QString epsilonBaudText = state_->epsilon_baud_combo_ ? state_->epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
+    bool epsilonBaudOk = false;
+    const int epsilonBaud = epsilonBaudText.toInt(&epsilonBaudOk);
+    if (!epsilonBaudOk || epsilonBaud <= 0)
+    {
+        log(QString(state_->is_english_ ? "Invalid EPSILON baud rate: %1" : "EPSILON 波特率无效: %1").arg(epsilonBaudText));
+        return;
+    }
+
+    QSettings settings("VaporView", "MainWindow");
+    const QStringList availablePorts = getAvailablePorts();
+
+    QDialog dialog(this);
+    dialog.setModal(true);
+    dialog.setWindowTitle(state_->is_english_ ? "Configure EPSILON RTCM Port" : "配置 EPSILON RTCM 串口");
+
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *hintLabel = new QLabel(
+        state_->is_english_
+            ? QStringLiteral("This configures EPSILON communication port 2 as an RTCM input port, saves the output-forwarding serial port on this PC, and prepares the RTK dialog to stream RTCM continuously into EPSILON.")
+            : QStringLiteral("这个功能会把 EPSILON 的第二通信串口配置为 RTCM 输入口，同时保存本机用于转发 RTCM 的串口与波特率，并为后续 RTK 配置对话框做好预填。"),
+        &dialog);
+    hintLabel->setWordWrap(true);
+    layout->addWidget(hintLabel);
+
+    auto *formLayout = new QFormLayout();
+    formLayout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    layout->addLayout(formLayout);
+
+    auto *mainPortValue = new QLabel(QStringLiteral("%1 @ %2").arg(epsilonPort, epsilonBaudText), &dialog);
+    formLayout->addRow(state_->is_english_ ? "EPSILON Main Port:" : "EPSILON 主串口：", mainPortValue);
+
+    auto *deviceRtcmPortValue = new QLabel(state_->is_english_ ? "COMM2 (RTCM)" : "串口2（RTCM）", &dialog);
+    formLayout->addRow(state_->is_english_ ? "Device RTCM Port:" : "设备 RTCM 串口：", deviceRtcmPortValue);
+
+    auto *forwardPortCombo = new QComboBox(&dialog);
+    forwardPortCombo->setEditable(true);
+    forwardPortCombo->addItem(selectText);
+    forwardPortCombo->addItems(availablePorts);
+    configureComboPopup(forwardPortCombo);
+    const QString savedForwardPort = settings.value("epsilon_rtcm_forward_port").toString().trimmed();
+    if (!savedForwardPort.isEmpty())
+    {
+        forwardPortCombo->setCurrentText(savedForwardPort);
+    }
+    formLayout->addRow(state_->is_english_ ? "PC RTCM Forward Port:" : "本机 RTCM 转发串口：", forwardPortCombo);
+
+    auto *forwardBaudCombo = new QComboBox(&dialog);
+    forwardBaudCombo->addItems({QStringLiteral("115200"),
+                                QStringLiteral("230400"),
+                                QStringLiteral("460800"),
+                                QStringLiteral("921600")});
+    forwardBaudCombo->setCurrentText(settings.value("epsilon_rtcm_forward_baud", "115200").toString());
+    configureComboPopup(forwardBaudCombo);
+    formLayout->addRow(state_->is_english_ ? "RTCM Port Baud:" : "RTCM 串口波特率：", forwardBaudCombo);
+
+    auto *openRtkConfigCheck = new QCheckBox(
+        state_->is_english_ ? "Open RTK Config after success" : "成功后打开 RTK 配置",
+        &dialog);
+    openRtkConfigCheck->setChecked(true);
+    layout->addWidget(openRtkConfigCheck);
+
+    auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttonBox);
+
+    VaporView::installCustomTitleBar(&dialog, false);
+    if (dialog.exec() != QDialog::Accepted)
+    {
+        return;
+    }
+
+    const QString forwardPort = forwardPortCombo->currentText().trimmed();
+    if (forwardPort.isEmpty() || forwardPort == selectText)
+    {
+        log(state_->is_english_ ? "Select the PC serial port that is wired to EPSILON port 2."
+                        : "请选择连接到 EPSILON 第二串口的本机串口。");
+        return;
+    }
+
+    bool forwardBaudOk = false;
+    const QString forwardBaudText = forwardBaudCombo->currentText().trimmed();
+    const int forwardBaud = forwardBaudText.toInt(&forwardBaudOk);
+    if (!forwardBaudOk || forwardBaud <= 0)
+    {
+        log(QString(state_->is_english_ ? "Invalid RTCM forwarding baud rate: %1" : "RTCM 转发波特率无效: %1").arg(forwardBaudText));
+        return;
+    }
+
+    if (state_->epsilon_reconfigure_thread_.joinable())
+    {
+        state_->epsilon_reconfigure_thread_.join();
+    }
+
+    const std::shared_ptr<VaporView::EpsilonCollector> liveCollector = snapshotCollectors().epsilon;
+    const bool shouldRestartCollector = liveCollector && liveCollector->isRunning();
+    const bool shouldOpenRtkDialog = openRtkConfigCheck->isChecked();
+    const bool english = state_->is_english_;
+
+    state_->epsilon_reconfigure_in_progress_ = true;
+    showBusyStatusTaskProgress(english ? "Configuring EPSILON RTCM Port..." : "正在配置 EPSILON RTCM 串口...");
+    updateConnectionStatus(state_->is_connected_);
+    log(QString(english
+                    ? "[EPSILON] Configuring communication port 2 as RTCM: main %1 @ %2, RTCM forward port %3 @ %4"
+                    : "[EPSILON] 正在把第二通信串口配置为 RTCM：主串口 %1 @ %2，RTCM 转发串口 %3 @ %4")
+            .arg(epsilonPort, epsilonBaudText, forwardPort, forwardBaudText));
+
+    state_->epsilon_reconfigure_thread_ = std::thread([this,
+                                               english,
+                                               epsilonPort,
+                                               epsilonBaud,
+                                               epsilonBaudText,
+                                               forwardPort,
+                                               forwardBaud,
+                                               forwardBaudText,
+                                               liveCollector,
+                                               shouldRestartCollector,
+                                               shouldOpenRtkDialog]() {
+        auto postLog = [this](const QString& message) {
+            QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
+        };
+        auto finishOnUi = [this](bool openRtkDialog) {
+            QMetaObject::invokeMethod(this, [this, openRtkDialog]() {
+                state_->epsilon_reconfigure_in_progress_ = false;
+                hideStatusTaskProgress();
+                updateConnectionStatus(anyCollectorRunning());
+                if (openRtkDialog)
+                {
+                    onRtkConfigClicked();
+                }
+            }, Qt::QueuedConnection);
+        };
+
+        VaporView::Ground::EpsilonDeviceOperation operation;
+        operation.port = epsilonPort;
+        operation.baud = epsilonBaud;
+        operation.baud_text = epsilonBaudText;
+        operation.english = english;
+        operation.live_collector = liveCollector;
+        operation.restart_live_stream = shouldRestartCollector;
+
+        const VaporView::Ground::EpsilonConfigurationResult result =
+            VaporView::Ground::EpsilonConfigurationService::configureRtcmPort(
+                operation,
+                forwardPort,
+                forwardBaud,
+                forwardBaudText,
+                postLog);
+        finishOnUi(result.succeeded() && shouldOpenRtkDialog);
+    });
+}
+
+void MainWindow::onConfigureEpsilonPacketRatesClicked()
+{
+    if (state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_)
+    {
+        return;
+    }
+
+    const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
+    const int groupedRateHz = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
+    QSettings settings("VaporView", "MainWindow");
+    const bool customEnabled = settings.value("epsilon_custom_packet_rates_enabled", false).toBool();
+    const std::map<uint8_t, int> defaultRates = defaultEpsilonPacketRates();
+    const std::map<uint8_t, int> groupedRates = groupedEpsilonPacketRates(groupedRateHz);
+    const std::map<uint8_t, int> initialRates = customEnabled
+        ? loadCustomEpsilonPacketRates(settings, groupedRateHz)
+        : groupedRates;
+
+    QDialog dialog(this);
+    dialog.setObjectName(QStringLiteral("epsilonPacketRatesDialog"));
+    dialog.setModal(true);
+    dialog.setWindowTitle(state_->is_english_ ? "EPSILON Packet Rates" : "EPSILON 包频率设置");
+    dialog.setStyleSheet(applyAppThemeTokens(QStringLiteral(
+        "QDialog#epsilonPacketRatesDialog,"
+        "QDialog#epsilonPacketRatesDialog QWidget#epsilonPacketRatesContent,"
+        "QDialog#epsilonPacketRatesDialog QWidget#epsilonPacketRatesCell { background-color: @vv-surface; }"
+        "QDialog#epsilonPacketRatesDialog QLabel,"
+        "QDialog#epsilonPacketRatesDialog QCheckBox { background-color: transparent; }"),
+        state_->dark_theme_enabled_));
+
+    auto *layout = new QVBoxLayout(&dialog);
+    layout->setSpacing(10);
+
+    auto *hintLabel = new QLabel(
+        state_->is_english_
+            ? QStringLiteral("Configured from the local EPSILON ground-station profile. The recommended default profile prioritizes stable time and 3D navigation output. Rate limits are reflected by each selector's available options. If any packet differs from the grouped profile, the custom profile will be enabled automatically when you save.")
+            : QStringLiteral("配置范围来自本地 EPSILON 官方地面站配置。推荐默认配置优先保证稳定的时间与三维导航输出。频率上限由各选择框的可选项体现。只要任一数据包偏离分组模式，保存时就会自动启用自定义配置。"),
+        &dialog);
+    hintLabel->setWordWrap(true);
+    hintLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    layout->addWidget(hintLabel);
+
+    auto *enableCustomCheck = new QCheckBox(
+        state_->is_english_
+            ? QStringLiteral("Use custom EPSILON packet rates for future connect/reconfigure operations")
+            : QStringLiteral("后续连接和重配时使用这组自定义 EPSILON 包频率"),
+        &dialog);
+    enableCustomCheck->setChecked(customEnabled);
+    layout->addWidget(enableCustomCheck);
+
+    auto *formWidget = new QWidget(&dialog);
+    formWidget->setObjectName(QStringLiteral("epsilonPacketRatesContent"));
+    formWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    auto *formLayout = new QGridLayout(formWidget);
+    formLayout->setContentsMargins(0, 0, 0, 0);
+    formLayout->setHorizontalSpacing(16);
+    formLayout->setVerticalSpacing(10);
+    formLayout->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    layout->addWidget(formWidget, 0, Qt::AlignLeft);
+
+    auto packetRateText = [this](int rateHz) {
+        return epsilonPacketRateDisplayText(rateHz, state_->is_english_);
+    };
+    int packetRateComboWidth = 0;
+    {
+        QComboBox comboProbe(&dialog);
+        const QFontMetrics comboMetrics(comboProbe.font());
+        for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
+        {
+            for (int rateHz : option.supported_rates_hz)
+            {
+                packetRateComboWidth = std::max(packetRateComboWidth,
+                                               comboMetrics.horizontalAdvance(packetRateText(rateHz)));
+            }
+        }
+    }
+    packetRateComboWidth = std::max(128, packetRateComboWidth + 64);
+    const QFontMetrics rowLabelMetrics(hintLabel->font());
+
+    constexpr int kPacketRateDialogColumnCount = 3;
+    std::map<uint8_t, QComboBox*> packetCombos;
+    int packetIndex = 0;
+    for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
+    {
+        const QString rowLabelText = epsilonPacketDialogRowLabel(option, state_->is_english_);
+        const int cellWidth = std::max(packetRateComboWidth, rowLabelMetrics.horizontalAdvance(rowLabelText) + 8);
+        auto *cell = new QWidget(formWidget);
+        cell->setObjectName(QStringLiteral("epsilonPacketRatesCell"));
+        cell->setFixedWidth(cellWidth);
+        auto *cellLayout = new QVBoxLayout(cell);
+        cellLayout->setContentsMargins(0, 0, 0, 0);
+        cellLayout->setSpacing(4);
+
+        auto *label = new QLabel(rowLabelText, cell);
+        label->setWordWrap(false);
+        label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+        cellLayout->addWidget(label);
+
+        auto *combo = new QComboBox(cell);
+        combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+        combo->setFixedWidth(packetRateComboWidth);
+        combo->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        for (int rateHz : option.supported_rates_hz)
+        {
+            combo->addItem(packetRateText(rateHz), rateHz);
+        }
+        configureComboPopup(combo);
+        const int initialRateHz = initialRates.count(option.packet_id) ? initialRates.at(option.packet_id) : groupedRates.at(option.packet_id);
+        const int comboIndex = combo->findData(initialRateHz);
+        if (comboIndex >= 0)
+        {
+            combo->setCurrentIndex(comboIndex);
+        }
+        packetCombos[option.packet_id] = combo;
+        cellLayout->addWidget(combo, 0, Qt::AlignLeft);
+        const int row = packetIndex / kPacketRateDialogColumnCount;
+        const int column = packetIndex % kPacketRateDialogColumnCount;
+        formLayout->addWidget(cell, row, column, Qt::AlignTop);
+        ++packetIndex;
+    }
+
+    auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    QPushButton *recommendedDefaultsButton = buttonBox->addButton(
+        state_->is_english_ ? QStringLiteral("Use Recommended Defaults") : QStringLiteral("恢复推荐默认值"),
+        QDialogButtonBox::ResetRole);
+    connect(recommendedDefaultsButton, &QPushButton::clicked, &dialog, [&packetCombos, defaultRates, enableCustomCheck]() {
+        enableCustomCheck->setChecked(true);
+        for (const auto& entry : packetCombos)
+        {
+            const auto it = defaultRates.find(entry.first);
+            if (it == defaultRates.end())
+            {
+                continue;
+            }
+            QComboBox *combo = entry.second;
+            const int index = combo ? combo->findData(it->second) : -1;
+            if (combo && index >= 0)
+            {
+                combo->setCurrentIndex(index);
+            }
+        }
+    });
+    QPushButton *groupedDefaultsButton = buttonBox->addButton(
+        state_->is_english_ ? QStringLiteral("Use Grouped Profile") : QStringLiteral("切换到分组模式"),
+        QDialogButtonBox::ActionRole);
+    connect(groupedDefaultsButton, &QPushButton::clicked, &dialog, [&packetCombos, groupedRates, enableCustomCheck]() {
+        enableCustomCheck->setChecked(false);
+        for (const auto& entry : packetCombos)
+        {
+            const auto it = groupedRates.find(entry.first);
+            if (it == groupedRates.end())
+            {
+                continue;
+            }
+            QComboBox *combo = entry.second;
+            const int index = combo ? combo->findData(it->second) : -1;
+            if (combo && index >= 0)
+            {
+                combo->setCurrentIndex(index);
+            }
+        }
+    });
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttonBox);
+
+    VaporView::installCustomTitleBar(&dialog, false);
+    if (QLayout *dialogLayout = dialog.layout())
+    {
+        dialogLayout->invalidate();
+    }
+    const QSize targetMinimumSize(state_->is_english_ ? QSize(700, 360) : QSize(720, 360));
+    const QSize preferredSize = dialog.sizeHint().expandedTo(targetMinimumSize);
+    const QSize targetSize = VaporView::defaultWindowSizeWithinScreenFraction(
+        this,
+        preferredSize,
+        0.85,
+        targetMinimumSize);
+    dialog.setMinimumSize(targetSize);
+    dialog.resize(targetSize);
+    VaporView::centerWindowOnScreen(&dialog, this);
+    if (dialog.exec() != QDialog::Accepted)
+    {
+        return;
+    }
+
+    std::map<uint8_t, int> savedPacketRates;
+    for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
+    {
+        QComboBox *combo = packetCombos[option.packet_id];
+        const int rateHz = combo ? combo->currentData().toInt() : groupedRates.at(option.packet_id);
+        savedPacketRates[option.packet_id] = rateHz;
+        settings.setValue(epsilonPacketRateSettingsKey(option.packet_id), rateHz);
+    }
+    bool hasCustomOverrides = false;
+    for (const auto& entry : savedPacketRates)
+    {
+        const auto groupedIt = groupedRates.find(entry.first);
+        if (groupedIt != groupedRates.end() && groupedIt->second != entry.second)
+        {
+            hasCustomOverrides = true;
+            break;
+        }
+    }
+    const bool effectiveCustomEnabled = enableCustomCheck->isChecked() || hasCustomOverrides;
+    settings.setValue("epsilon_custom_packet_rates_enabled", effectiveCustomEnabled);
+    settings.setValue("epsilon_custom_packet_rates_user_saved", effectiveCustomEnabled);
+    settings.remove("epsilon_last_config_signature");
+    settings.remove("epsilon_last_config_apply_version");
+
+    if (hasCustomOverrides && !enableCustomCheck->isChecked())
+    {
+        log(state_->is_english_
+                ? "[EPSILON] Packet-rate overrides detected, so the custom packet-rate profile has been enabled automatically."
+                : "[EPSILON] 检测到包频率已偏离分组模式，已自动启用自定义包频率配置。");
+    }
+
+    if (effectiveCustomEnabled)
+    {
+        log(QString(state_->is_english_
+                        ? ((savedPacketRates == defaultRates)
+                               ? "[EPSILON] Recommended default packet-rate profile saved: %1"
+                               : "[EPSILON] Custom packet-rate profile saved: %1")
+                        : ((savedPacketRates == defaultRates)
+                               ? "[EPSILON] 已保存推荐默认包频率配置: %1"
+                               : "[EPSILON] 已保存自定义包频率配置: %1"))
+                .arg(epsilonPacketRatesSummary(savedPacketRates)));
+    }
+    else
+    {
+        log(QString(state_->is_english_
+                        ? "[EPSILON] Custom packet-rate profile disabled. The grouped %1 Hz profile will be used."
+                        : "[EPSILON] 已关闭自定义包频率，后续将使用分组 %1 Hz 配置。")
+                .arg(groupedRateHz));
+    }
+
+    const QString selectText = state_->is_english_ ? "-- Select --" : "-- 选择 --";
+    const QString epsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
+    if (!state_->recording_service_->isActive() &&
+        !epsilonPort.isEmpty() &&
+        epsilonPort != selectText &&
+        !isRateUnspecified(epsilonRateText))
+    {
+        log(state_->is_english_
+                ? "[EPSILON] Applying the saved packet-rate profile now..."
+                : "[EPSILON] 正在应用刚保存的包频率配置...");
+        onReconfigureEpsilonClicked();
+    }
+    else
+    {
+        log(state_->is_english_
+                ? "[EPSILON] Packet-rate profile saved. It will be used on the next connect/reconfigure."
+                : "[EPSILON] 包频率配置已保存，将在下次连接或重配时生效。");
+    }
+    syncDeviceConfigEpsilonPanelFromSettings();
+}
+
+void MainWindow::onReconfigureEpsilonClicked()
+{
+    if (state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_)
+    {
+        return;
+    }
+
+    if (state_->recording_service_->isActive())
+    {
+        log(state_->is_english_ ? "Stop recording before reconfiguring EPSILON output."
+                        : "请先结束记录，再重新配置 EPSILON 输出。");
+        return;
+    }
+
+    const QString selectText = state_->is_english_ ? "-- Select --" : "-- 选择 --";
+    const QString epsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
+    if (epsilonPort.isEmpty() || epsilonPort == selectText)
+    {
+        log(state_->is_english_ ? "Select an EPSILON serial port first." : "请先选择 EPSILON 串口。");
+        return;
+    }
+
+    const QString epsilonBaudText = state_->epsilon_baud_combo_ ? state_->epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
+    bool baudOk = false;
+    const int epsilonBaud = epsilonBaudText.toInt(&baudOk);
+    if (!baudOk || epsilonBaud <= 0)
+    {
+        log(QString(state_->is_english_ ? "Invalid EPSILON baud rate: %1" : "EPSILON 波特率无效: %1").arg(epsilonBaudText));
+        return;
+    }
+
+    const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
+    if (isRateUnspecified(epsilonRateText))
+    {
+        log(state_->is_english_
+            ? "[EPSILON] Output-rate command is disabled because the EPSILON rate is set to No Set."
+            : "[EPSILON] EPSILON 频率为“不设定”，已跳过输出频率下发。");
+        return;
+    }
+
+    const int epsilonRate = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
+    state_->epsilon_sample_rate_ = epsilonRate;
+    QSettings settings("VaporView", "MainWindow");
+    bool usingCustomPacketProfile = false;
+    const std::map<uint8_t, int> desiredPacketRates = effectiveEpsilonPacketRates(settings, epsilonRate, &usingCustomPacketProfile);
+    const int epsilonCallbackRate = epsilonPacketCallbackRate(desiredPacketRates, epsilonRate);
+    const QString desiredPacketRateSignature = epsilonPacketRatesSignature(desiredPacketRates);
+    const QString desiredPacketRateSummary = epsilonPacketRatesSummary(desiredPacketRates);
+
+    if (state_->epsilon_reconfigure_thread_.joinable())
+    {
+        state_->epsilon_reconfigure_thread_.join();
+    }
+
+    const std::shared_ptr<VaporView::EpsilonCollector> liveCollector = snapshotCollectors().epsilon;
+    const bool shouldRestartCollector = liveCollector && liveCollector->isRunning();
+    const bool english = state_->is_english_;
+
+    state_->epsilon_reconfigure_in_progress_ = true;
+    showBusyStatusTaskProgress(english ? "Reconfiguring EPSILON..." : "正在重配 EPSILON...");
+    updateConnectionStatus(state_->is_connected_);
+    log(QString(english ? "[EPSILON] Starting manual output reconfiguration: %1 @ %2, %3 profile (%4)"
+                        : "[EPSILON] 开始手动重配输出: %1 @ %2，使用%3配置（%4）")
+            .arg(epsilonPort, epsilonBaudText)
+            .arg(usingCustomPacketProfile ? (english ? "custom packet-rate" : "自定义包频率")
+                                          : (english ? "grouped output-rate" : "分组输出频率"))
+            .arg(desiredPacketRateSummary));
+
+    state_->epsilon_reconfigure_thread_ = std::thread([this,
+                                               english,
+                                               epsilonPort,
+                                               epsilonBaud,
+                                               epsilonBaudText,
+                                               epsilonRate,
+                                               epsilonCallbackRate,
+                                               desiredPacketRates,
+                                               desiredPacketRateSignature,
+                                               liveCollector,
+                                               shouldRestartCollector]() {
+        auto postLog = [this](const QString& message) {
+            QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
+        };
+        auto finishOnUi = [this]() {
+            QMetaObject::invokeMethod(this, [this]() {
+                state_->epsilon_reconfigure_in_progress_ = false;
+                hideStatusTaskProgress();
+                updateConnectionStatus(anyCollectorRunning());
+            }, Qt::QueuedConnection);
+        };
+
+        VaporView::Ground::EpsilonDeviceOperation operation;
+        operation.port = epsilonPort;
+        operation.baud = epsilonBaud;
+        operation.baud_text = epsilonBaudText;
+        operation.english = english;
+        operation.live_collector = liveCollector;
+        operation.restart_live_stream = shouldRestartCollector;
+
+        VaporView::Ground::EpsilonConfigurationService::configurePacketRates(
+            operation,
+            epsilonRate,
+            epsilonCallbackRate,
+            desiredPacketRates,
+            desiredPacketRateSignature,
+            postLog);
+        finishOnUi();
+    });
+}

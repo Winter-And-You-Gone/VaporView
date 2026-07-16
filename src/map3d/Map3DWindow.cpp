@@ -2,8 +2,8 @@
 
 #include "Map3DDiagnosticsFormatter.h"
 
-#include "AppTheme.h"
-#include "SingleLevelPopupMenu.h"
+#include "shared/theme/AppTheme.h"
+#include "shared/theme/SingleLevelPopupMenu.h"
 #include "geo/SessionTrackReader.h"
 #include "geo/TrajectoryQuality.h"
 #include "Map3DRuntime.h"

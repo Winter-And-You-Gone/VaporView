@@ -1,4 +1,4 @@
-#include "MainWindow.h"
+#include "ground/main/MainWindow.h"
 #include "map3d/OsgEarthViewWidget.h"
 
 #include <QAction>
