@@ -75,6 +75,7 @@ constexpr int kTemperatureControllerPtCoefficientInputWidth = 104;
 constexpr int kTemperatureControllerPolynomialInputWidth = 62;
 constexpr int kTemperatureControllerSensorFieldSpacing = 6;
 constexpr int kTemperatureControllerSensorLabelPadding = 16;
+constexpr int kTemperatureControllerCommonLabelPadding = 12;
 constexpr int kTemperatureControllerConfigRowHeight = 38;
 constexpr int kTemperatureControllerTopControlsHeight = 38;
 constexpr int kTemperatureControllerNavigationButtonHeight = 30;
@@ -2770,7 +2771,11 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
         {
             if (label)
             {
-                width = std::max(width, label->sizeHint().width());
+                label->ensurePolished();
+                width = std::max(width,
+                                 std::max(label->sizeHint().width(),
+                                          label->fontMetrics().horizontalAdvance(label->text()) +
+                                              kTemperatureControllerCommonLabelPadding));
             }
         }
         for (QLabel *label : labels)
@@ -2778,6 +2783,23 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
             if (label)
             {
                 label->setFixedWidth(width);
+            }
+        }
+    };
+    auto alignEditorColumn = [](std::initializer_list<QWidget *> editors) {
+        int width = 0;
+        for (QWidget *editor : editors)
+        {
+            if (editor)
+            {
+                width = std::max(width, editor->width());
+            }
+        }
+        for (QWidget *editor : editors)
+        {
+            if (editor)
+            {
+                editor->setFixedWidth(width);
             }
         }
     };
@@ -2822,6 +2844,8 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
 
     alignLabelColumn({common_.address_label_text, common_.overtemp_output_label_text});
     alignLabelColumn({common_.rs485_baud_label_text, common_.internal_temperature_label_text});
+    alignEditorColumn({common_.address_spin, common_.overtemp_output_combo});
+    alignEditorColumn({common_.rs485_baud_combo, common_.internal_temperature_edit});
 
     layout->addWidget(addressField, 0, 0, Qt::AlignLeft | Qt::AlignVCenter);
     layout->addWidget(rs485BaudField, 0, 2, Qt::AlignLeft | Qt::AlignVCenter);

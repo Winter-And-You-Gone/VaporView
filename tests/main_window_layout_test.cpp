@@ -3000,17 +3000,18 @@ int main(int argc, char **argv)
                 std::abs(commonOvertempRowRect.left() - factoryResetRectInCard.left()) <= 2,
             "temperature common settings follow selector, RS485, values, and factory-reset rows");
     require(std::abs(commonAddressInputRectInCard.left() - commonOvertempInputRectInCard.left()) <= 1 &&
-                std::abs(commonBaudComboRectInCard.left() - commonInternalInputRectInCard.left()) <= 1,
-            "temperature common settings align field editors within each data column");
+                std::abs(commonBaudComboRectInCard.left() - commonInternalInputRectInCard.left()) <= 1 &&
+                addressSpin->width() == overtempOutputCombo->width() &&
+                rs485BaudCombo->width() == commonInternalTemperatureEdit->width(),
+            "temperature common settings align equal-width field editors within each data column");
     const QRect selectedSecondColumnRectInCard(
         selectedSecondColumnLabel->mapTo(temperatureConfigCard, QPoint(0, 0)),
         selectedSecondColumnLabel->size());
     require(std::abs(commonBaudRowRect.left() - selectedSecondColumnRectInCard.left()) <= 1 &&
                 std::abs(commonInternalRowRect.left() - selectedSecondColumnRectInCard.left()) <= 1,
             "temperature common settings align their second column with channel parameter pages");
-    require(rs485BaudCombo->width() <= 100 &&
-                commonBaudComboRectInCard.right() <= temperatureConfigCard->rect().right() - 12,
-            "temperature common RS485 baud combo stays compact and leaves room for its right border");
+    require(commonBaudComboRectInCard.right() <= temperatureConfigCard->rect().right() - 12,
+            "temperature common RS485 baud combo leaves room for its right border");
     auto *overtempOutputMenu = overtempOutputCombo->findChild<VaporView::SingleLevelPopupMenu *>(
         QStringLiteral("singleLevelComboPopupMenu"));
     require(overtempOutputMenu != nullptr,
@@ -3472,7 +3473,8 @@ int main(int argc, char **argv)
         const QRect labelRect(labels.first()->mapTo(row, QPoint(0, 0)), labels.first()->size());
         const QRect editorRect(editor->mapTo(row, QPoint(0, 0)), editor->size());
         require(labelRect.left() <= 1 &&
-                    labelRect.width() >= labels.first()->fontMetrics().horizontalAdvance(labels.first()->text()) &&
+                    labelRect.width() >=
+                        labels.first()->fontMetrics().horizontalAdvance(labels.first()->text()) + 12 &&
                     labelRect.right() < editorRect.left() &&
                     editorRect.left() - labelRect.right() <= 10 &&
                     editorRect.right() >= row->rect().right() - 1,
