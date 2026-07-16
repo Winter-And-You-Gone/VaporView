@@ -1,57 +1,27 @@
-#include "shared/theme/AppTheme.h"
 #include "SessionViewerWindow.h"
-#include "ground/session/SessionViewerWidgets.h"
+#include "ground/session/SessionMapCoordinator.h"
+#include "ground/session/SessionViewerPages.h"
 #include "ground/widgets/CustomTitleBar.h"
-#include "ground/widgets/RangeSelectionAxisWidget.h"
 #include "ground/wave/RawDataParserWindow.h"
 #include "SessionTimeFormat.h"
-#include "ground/trajectory/TrajectoryViewerDialog.h"
 #include "ground/widgets/WindowSizing.h"
 #include "ground/session/SessionLoader.h"
 #include "ground/session/SessionIndex.h"
 #include "ground/session/SessionPlaybackController.h"
-#include "ground/session/SessionTimelineModel.h"
 #include "ground/session/SessionWaveformRepository.h"
 
-#include <QByteArray>
-#include <QComboBox>
-#include <QCoreApplication>
-#include <QDateTime>
-#include <QDialog>
-#include <QDialogButtonBox>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QEvent>
-#include <QEventLoop>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QFormLayout>
 #include <QFutureWatcher>
-#include <QFontMetrics>
-#include <QGridLayout>
-#include <QGroupBox>
-#include <QHBoxLayout>
-#include <QHeaderView>
-#include <QHash>
-#include <QLabel>
-#include <QLineEdit>
 #include <QMessageBox>
-#include <QPalette>
-#include <QProgressBar>
-#include <QProgressDialog>
-#include <QPushButton>
 #include <QScrollArea>
-#include <QResizeEvent>
 #include <QSettings>
-#include <QShowEvent>
-#include <QSignalBlocker>
-#include <QSlider>
-#include <QSpinBox>
 #include <QSplitter>
-#include <QTableView>
 #include <QVBoxLayout>
 #include <QWidget>
-#include <QTimeZone>
 #include <QtConcurrent/QtConcurrentRun>
 #include <algorithm>
 #include <atomic>
@@ -59,8 +29,6 @@
 #include <limits>
 #include <utility>
 
-using VaporView::AppThemeColor;
-using VaporView::appThemeColor;
 using namespace VaporView::Ground::SessionUi;
 
 namespace
@@ -81,19 +49,6 @@ qint64 monotonicMilliseconds()
     return timer.elapsed();
 }
 
-QString fixedTextField(const QString& text, int width, Qt::Alignment alignment = Qt::AlignRight)
-{
-    const int targetWidth = std::max(width, static_cast<int>(text.size()));
-    return alignment == Qt::AlignLeft
-        ? text.leftJustified(targetWidth, QLatin1Char(' '))
-        : text.rightJustified(targetWidth, QLatin1Char(' '));
-}
-
-QString fixedIntegerField(qulonglong value, int width)
-{
-    return fixedTextField(QString::number(value), width);
-}
-
 int rangedProgressPercent(quint64 done, quint64 total, int startPercent, int endPercent)
 {
     if (total == 0)
@@ -103,37 +58,6 @@ int rangedProgressPercent(quint64 done, quint64 total, int startPercent, int end
     const double ratio = std::clamp(static_cast<double>(done) / static_cast<double>(total), 0.0, 1.0);
     const int value = startPercent + static_cast<int>(std::lround(ratio * (endPercent - startPercent)));
     return std::clamp(value, 0, 100);
-}
-
-QString fixedDecimalField(double value, int decimals, int width)
-{
-    if (!std::isfinite(value))
-    {
-        return fixedTextField(QStringLiteral("---"), width);
-    }
-    return fixedTextField(QString::number(value, 'f', decimals), width);
-}
-
-QString fixedSignedTextField(const QString& text, int width)
-{
-    QString displayText = text;
-    if (!displayText.isEmpty() &&
-        displayText.at(0) != QLatin1Char('-') &&
-        displayText.at(0) != QLatin1Char('+'))
-    {
-        displayText.prepend(QLatin1Char(' '));
-    }
-    const int targetWidth = std::max(width, static_cast<int>(displayText.size()));
-    return displayText.leftJustified(targetWidth, QLatin1Char(' '));
-}
-
-QString fixedSignedDecimalField(double value, int decimals, int width)
-{
-    if (!std::isfinite(value))
-    {
-        return fixedSignedTextField(QStringLiteral("---"), width);
-    }
-    return fixedSignedTextField(QString::number(value, 'f', decimals), width);
 }
 
 float waveformPeakValue(const QVector<float>& samples, int searchStartIndex, int searchEndIndex)
@@ -151,104 +75,18 @@ bool isFullFramePeakSearch(int searchStartIndex, int searchEndIndex)
         searchEndIndex);
 }
 
-QString formatTimestampUs(quint64 timestampUs)
-{
-    if (timestampUs == 0)
-    {
-        return QObject::tr("N/A");
-    }
-
-    const qint64 millis = static_cast<qint64>(timestampUs / 1000ULL);
-    const int micros = static_cast<int>(timestampUs % 1000000ULL);
-    return QStringLiteral("%1.%2")
-        .arg(QDateTime::fromMSecsSinceEpoch(millis, QTimeZone::UTC)
-                 .toLocalTime()
-                 .toString("yyyy-MM-dd HH:mm:ss"))
-        .arg(micros, 6, 10, QChar('0'));
 }
-
-QString formatSignedDeltaMs(qint64 deltaUs)
-{
-    const double deltaMs = static_cast<double>(deltaUs) / 1000.0;
-    return QStringLiteral("%1%2 ms")
-        .arg(deltaMs >= 0.0 ? QStringLiteral("+") : QString())
-        .arg(QString::number(deltaMs, 'f', 3));
-}
-
-QString formatOptionalSeriesValueFixed(
-    double value,
-    int decimals,
-    int width,
-    const QString& unit = QString())
-{
-    const QString number = fixedDecimalField(value, decimals, width);
-    return unit.isEmpty() ? number : QStringLiteral("%1 %2").arg(number, unit);
-}
-
-}
-
-
-
-
 
 SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     : QMainWindow(parent)
-    , central_widget_(nullptr)
-    , session_path_edit_(nullptr)
-    , choose_session_btn_(nullptr)
-    , reload_btn_(nullptr)
-    , trajectory_view_btn_(nullptr)
-    , raw_data_parser_btn_(nullptr)
-    , clear_view_btn_(nullptr)
-    , status_label_(nullptr)
-    , loading_dialog_(nullptr)
-    , loading_dialog_label_(nullptr)
-    , loading_dialog_progress_bar_(nullptr)
-    , loading_dialog_progress_percent_(0)
-    , summary_group_(nullptr)
-    , summary_layout_(nullptr)
-    , session_name_title_(nullptr)
-    , session_name_value_(nullptr)
-    , start_time_title_(nullptr)
-    , start_time_value_(nullptr)
-    , end_time_title_(nullptr)
-    , end_time_value_(nullptr)
-    , duration_title_(nullptr)
-    , duration_value_(nullptr)
-    , sensor_export_rate_title_(nullptr)
-    , sensor_export_rate_value_(nullptr)
-    , sensor_rows_title_(nullptr)
-    , sensor_rows_value_(nullptr)
-    , waveform_export_rate_title_(nullptr)
-    , waveform_export_rate_value_(nullptr)
-    , waveform_files_title_(nullptr)
-    , waveform_files_value_(nullptr)
-    , waveform_frames_title_(nullptr)
-    , waveform_frames_value_(nullptr)
-    , waveform_group_(nullptr)
-    , frame_title_(nullptr)
-    , frame_slider_(nullptr)
-    , frame_spin_(nullptr)
-    , frame_total_label_(nullptr)
-    , frame_info_label_(nullptr)
-    , waveform_plot_title_(nullptr)
-    , waveform_plot_(nullptr)
-    , waveform_peak_plot_title_(nullptr)
-    , waveform_frame_filter_btn_(nullptr)
-    , waveform_peak_filter_btn_(nullptr)
-    , waveform_peak_mode_btn_(nullptr)
-    , waveform_peak_plot_(nullptr)
-    , temperature_plot_title_(nullptr)
-    , temperature_plot_(nullptr)
-    , humidity_plot_title_(nullptr)
-    , humidity_plot_(nullptr)
-    , pressure_plot_title_(nullptr)
-    , pressure_plot_(nullptr)
-    , environment_info_label_(nullptr)
-    , csv_group_(nullptr)
-    , csv_info_label_(nullptr)
-    , csv_table_(nullptr)
-    , csv_model_(nullptr)
+    , overview_page_(nullptr)
+    , waveform_page_(nullptr)
+    , device_data_page_(nullptr)
+    , loading_dialog_()
+    , map_coordinator_(new VaporView::Ground::SessionMapCoordinator(this))
+    , trajectory_controller_()
+    , playback_controller_(new VaporView::Ground::SessionPlaybackController(this))
+    , raw_data_parser_window_(nullptr)
     , session_directory_()
     , metadata_filename_()
     , sensors_csv_filename_()
@@ -265,11 +103,8 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , temperature_values_()
     , humidity_values_()
     , pressure_values_()
-    , rtk_track_points_()
-    , rtk_track_stats_()
     , waveform_timestamps_us_()
     , waveform_catalog_()
-    , playback_controller_(new VaporView::Ground::SessionPlaybackController(this))
     , current_waveform_frame_samples_()
     , waveform_peak_raw_values_()
     , waveform_peak_values_()
@@ -284,10 +119,6 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , peak_series_request_id_(0)
     , peak_series_watcher_(nullptr)
     , peak_series_cancel_flag_(nullptr)
-    , highlighted_csv_rows_()
-    , primary_highlighted_csv_row_(-1)
-    , trajectory_viewer_dialog_(nullptr)
-    , raw_data_parser_window_(nullptr)
     , points_per_frame_(50000)
     , sensor_export_rate_hz_(10)
     , waveform_export_rate_hz_(10)
@@ -306,11 +137,18 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
             return;
         }
         updating_frame_controls_ = true;
-        frame_slider_->setValue(frameIndex + 1);
-        frame_spin_->setValue(frameIndex + 1);
+        waveform_page_->setFrameValueSilently(frameIndex + 1);
         updating_frame_controls_ = false;
         loadWaveformFrame(static_cast<quint64>(frameIndex));
     });
+    connect(map_coordinator_,
+            &VaporView::Ground::SessionMapCoordinator::trackPointActivated,
+            this,
+            &SessionViewerWindow::focusTrajectoryPoint);
+    connect(map_coordinator_,
+            &VaporView::Ground::SessionMapCoordinator::peakSettingsChangeRequested,
+            this,
+            &SessionViewerWindow::applyPeakSettingsFromTrajectory);
     VaporView::installCustomTitleBar(this);
     resize(kSessionViewerDefaultWidth, kSessionViewerDefaultHeight);
     setEnglish(false);
@@ -339,7 +177,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
         peak_search_end_index_ = peak_search_start_index_ + 1;
     }
     default_data_directory_ = QDir::fromNativeSeparators(settings.value("default_data_directory").toString());
-    updatePeakFilterButtonText();
+    updateWaveformActionTexts();
     const QString lastSession = settings.value("last_session_directory").toString();
     if (!lastSession.isEmpty())
     {
@@ -350,13 +188,6 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
 SessionViewerWindow::~SessionViewerWindow()
 {
     cancelBackgroundWaveformPeakSeries(false);
-    if (trajectory_viewer_dialog_)
-    {
-        trajectory_viewer_dialog_->close();
-        trajectory_viewer_dialog_->disconnect(this);
-        delete trajectory_viewer_dialog_;
-        trajectory_viewer_dialog_ = nullptr;
-    }
     if (raw_data_parser_window_)
     {
         delete raw_data_parser_window_;
@@ -366,15 +197,15 @@ SessionViewerWindow::~SessionViewerWindow()
 
 void SessionViewerWindow::setupUi()
 {
-    setObjectName("sessionViewerWindow");
+    setObjectName(QStringLiteral("sessionViewerWindow"));
     setAttribute(Qt::WA_StyledBackground, true);
     setAutoFillBackground(true);
 
     auto *scrollArea = new QScrollArea(this);
-    scrollArea->setObjectName("sessionViewerScrollArea");
+    scrollArea->setObjectName(QStringLiteral("sessionViewerScrollArea"));
     scrollArea->setAttribute(Qt::WA_StyledBackground, true);
     scrollArea->setAutoFillBackground(true);
-    scrollArea->viewport()->setObjectName("sessionViewerViewport");
+    scrollArea->viewport()->setObjectName(QStringLiteral("sessionViewerViewport"));
     scrollArea->viewport()->setAttribute(Qt::WA_StyledBackground, true);
     scrollArea->viewport()->setAutoFillBackground(true);
     scrollArea->setWidgetResizable(true);
@@ -382,353 +213,65 @@ void SessionViewerWindow::setupUi()
     scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     setCentralWidget(scrollArea);
 
-    central_widget_ = new QWidget(scrollArea);
-    central_widget_->setObjectName("sessionViewerCentralWidget");
-    central_widget_->setAttribute(Qt::WA_StyledBackground, true);
-    central_widget_->setAutoFillBackground(true);
-    scrollArea->setWidget(central_widget_);
+    auto *content = new QWidget(scrollArea);
+    content->setObjectName(QStringLiteral("sessionViewerCentralWidget"));
+    content->setAttribute(Qt::WA_StyledBackground, true);
+    content->setAutoFillBackground(true);
+    scrollArea->setWidget(content);
 
-    auto *mainLayout = new QVBoxLayout(central_widget_);
-    mainLayout->setContentsMargins(8, 8, 8, 8);
-    mainLayout->setSpacing(8);
+    auto *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(8, 8, 8, 8);
+    layout->setSpacing(8);
+    auto *splitter = new QSplitter(Qt::Vertical, content);
+    splitter->setObjectName(QStringLiteral("sessionViewerContentSplitter"));
+    splitter->setAttribute(Qt::WA_StyledBackground, true);
+    splitter->setAutoFillBackground(true);
 
-    auto *controlLayout = new QGridLayout();
-    controlLayout->setHorizontalSpacing(8);
-    controlLayout->setVerticalSpacing(4);
-
-    auto *pathTitle = new QLabel(central_widget_);
-    pathTitle->setObjectName("fieldLabel");
-    pathTitle->setText(tr("Session:"));
-    controlLayout->addWidget(pathTitle, 0, 0);
-
-    session_path_edit_ = new QLineEdit(central_widget_);
-    session_path_edit_->setReadOnly(true);
-    controlLayout->addWidget(session_path_edit_, 0, 1);
-
-    choose_session_btn_ = new QPushButton(central_widget_);
-    connect(choose_session_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onChooseSessionClicked);
-    controlLayout->addWidget(choose_session_btn_, 0, 2);
-
-    reload_btn_ = new QPushButton(central_widget_);
-    connect(reload_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onReloadClicked);
-    controlLayout->addWidget(reload_btn_, 0, 3);
-
-    trajectory_view_btn_ = new QPushButton(central_widget_);
-    trajectory_view_btn_->setEnabled(false);
-    connect(trajectory_view_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onViewTrajectoryClicked);
-    controlLayout->addWidget(trajectory_view_btn_, 0, 4);
-
-    raw_data_parser_btn_ = new QPushButton(central_widget_);
-    connect(raw_data_parser_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onRawDataParserClicked);
-    controlLayout->addWidget(raw_data_parser_btn_, 0, 5);
-
-    clear_view_btn_ = new QPushButton(central_widget_);
-    connect(clear_view_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onClearViewClicked);
-    controlLayout->addWidget(clear_view_btn_, 0, 6);
-
-    status_label_ = new QLabel(central_widget_);
-    status_label_->setWordWrap(true);
-    status_label_->setFocusPolicy(Qt::StrongFocus);
-    controlLayout->addWidget(status_label_, 1, 0, 1, 7);
-
-    mainLayout->addLayout(controlLayout);
-
-    auto *summaryWaveSplitter = new QSplitter(Qt::Vertical, central_widget_);
-    summaryWaveSplitter->setObjectName("sessionViewerContentSplitter");
-    summaryWaveSplitter->setAttribute(Qt::WA_StyledBackground, true);
-    summaryWaveSplitter->setAutoFillBackground(true);
-
-    auto *upperWidget = new QWidget(summaryWaveSplitter);
-    upperWidget->setObjectName("sessionViewerContentPane");
+    auto *upperWidget = new QWidget(splitter);
+    upperWidget->setObjectName(QStringLiteral("sessionViewerContentPane"));
     upperWidget->setAttribute(Qt::WA_StyledBackground, true);
     upperWidget->setAutoFillBackground(true);
     auto *upperLayout = new QVBoxLayout(upperWidget);
     upperLayout->setContentsMargins(0, 0, 0, 0);
     upperLayout->setSpacing(8);
 
-    summary_group_ = new QGroupBox(upperWidget);
-    summary_group_->setObjectName("sensorGroupBox");
-    summary_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    summary_layout_ = new QGridLayout(summary_group_);
-    summary_layout_->setContentsMargins(8, 28, 8, 8);
-    summary_layout_->setHorizontalSpacing(8);
-    summary_layout_->setVerticalSpacing(4);
+    overview_page_ = new SessionOverviewWidget(upperWidget);
+    waveform_page_ = new SessionWaveformWidget(upperWidget);
+    device_data_page_ = new SessionDeviceDataWidget(splitter);
+    loading_dialog_ = std::make_unique<SessionLoadingDialog>(this);
+    upperLayout->addWidget(overview_page_);
+    upperLayout->addWidget(waveform_page_, 1);
+    splitter->addWidget(upperWidget);
+    splitter->addWidget(device_data_page_);
+    splitter->setStretchFactor(0, 2);
+    splitter->setStretchFactor(1, 3);
+    layout->addWidget(splitter, 1);
 
-    auto createSummaryRow = [this](QLabel*& title, QLabel*& value) {
-        title = new QLabel(summary_group_);
-        title->setObjectName("fieldLabel");
-        title->setMinimumWidth(64);
-        title->setMaximumWidth(156);
-        title->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-        value = new QLabel("---", summary_group_);
-        value->setObjectName("valueLabel");
-        value->setMinimumWidth(120);
-        value->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        value->setWordWrap(false);
-    };
-
-    createSummaryRow(session_name_title_, session_name_value_);
-    createSummaryRow(start_time_title_, start_time_value_);
-    createSummaryRow(end_time_title_, end_time_value_);
-    createSummaryRow(duration_title_, duration_value_);
-    createSummaryRow(sensor_export_rate_title_, sensor_export_rate_value_);
-    createSummaryRow(sensor_rows_title_, sensor_rows_value_);
-    createSummaryRow(waveform_export_rate_title_, waveform_export_rate_value_);
-    createSummaryRow(waveform_files_title_, waveform_files_value_);
-    createSummaryRow(waveform_frames_title_, waveform_frames_value_);
-    upperLayout->addWidget(summary_group_);
-
-    waveform_group_ = new QGroupBox(upperWidget);
-    waveform_group_->setObjectName("sensorGroupBox");
-    auto *waveformLayout = new QVBoxLayout(waveform_group_);
-    waveformLayout->setContentsMargins(10, 30, 10, 10);
-    waveformLayout->setSpacing(6);
-
-    auto *frameLayout = new QGridLayout();
-    frameLayout->setHorizontalSpacing(8);
-    frameLayout->setVerticalSpacing(4);
-
-    frame_title_ = new QLabel(waveform_group_);
-    frame_title_->setObjectName("fieldLabel");
-    frameLayout->addWidget(frame_title_, 0, 0);
-
-    frame_slider_ = new QSlider(Qt::Horizontal, waveform_group_);
-    frame_slider_->setEnabled(false);
-    frame_slider_->setTracking(false);
-    connect(frame_slider_, &QSlider::sliderMoved, this, &SessionViewerWindow::onFrameSliderMoved);
-    connect(frame_slider_, &QSlider::valueChanged, this, &SessionViewerWindow::onFrameSliderChanged);
-    frameLayout->addWidget(frame_slider_, 0, 1);
-
-    frame_spin_ = new QSpinBox(waveform_group_);
-    frame_spin_->setRange(0, 0);
-    frame_spin_->setEnabled(false);
-    connect(frame_spin_, &QSpinBox::valueChanged, this, &SessionViewerWindow::onFrameSpinChanged);
-    frameLayout->addWidget(frame_spin_, 0, 2);
-
-    frame_total_label_ = new QLabel("---", waveform_group_);
-    frame_total_label_->setFont(numericFontFrom(frame_total_label_->font()));
-    frame_total_label_->setFixedWidth(QFontMetrics(frame_total_label_->font()).horizontalAdvance(QStringLiteral("/ 999999999")) + 8);
-    frameLayout->addWidget(frame_total_label_, 0, 3);
-
-    frame_info_label_ = new QLabel(waveform_group_);
-    frame_info_label_->setFont(numericFontFrom(frame_info_label_->font()));
-    frame_info_label_->setWordWrap(true);
-    frameLayout->addWidget(frame_info_label_, 1, 0, 1, 4);
-
-    waveformLayout->addLayout(frameLayout);
-
-    waveform_plot_title_ = new QLabel(waveform_group_);
-    waveform_plot_title_->setObjectName("fieldLabel");
-    waveformLayout->addWidget(waveform_plot_title_);
-
-    waveform_plot_ = createSessionWavePlotWidget(waveform_group_);
-    waveform_plot_->setObjectName(QStringLiteral("sessionViewerWaveformPlot"));
-    waveformLayout->addWidget(waveform_plot_, 1);
-
-    auto *peakHeaderLayout = new QHBoxLayout();
-    peakHeaderLayout->setContentsMargins(0, 0, 0, 0);
-    peakHeaderLayout->setSpacing(8);
-    waveform_peak_plot_title_ = new QLabel(waveform_group_);
-    waveform_peak_plot_title_->setObjectName("fieldLabel");
-    peakHeaderLayout->addWidget(waveform_peak_plot_title_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    auto *waveformPeakRangeAxis = new RangeSelectionAxisWidget(waveform_group_);
-    waveformPeakRangeAxis->setCompactMode(true);
-    waveformPeakRangeAxis->setMinimumWidth(240);
-    peakHeaderLayout->addWidget(waveformPeakRangeAxis, 1, Qt::AlignVCenter);
-    waveform_frame_filter_btn_ = new QPushButton(waveform_group_);
-    peakHeaderLayout->addWidget(waveform_frame_filter_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
-    waveform_peak_filter_btn_ = new QPushButton(waveform_group_);
-    peakHeaderLayout->addWidget(waveform_peak_filter_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
-    waveform_peak_mode_btn_ = new QPushButton(waveform_group_);
-    peakHeaderLayout->addWidget(waveform_peak_mode_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
-    waveformLayout->addLayout(peakHeaderLayout);
-
-    waveform_peak_plot_ = createSessionPeakPlotWidget(waveform_group_);
-    waveform_peak_plot_->setObjectName(QStringLiteral("sessionViewerPeakPlot"));
-    waveform_peak_plot_->setPlotMode(
-        waveform_peak_scatter_mode_ ? SessionPeakPlotWidget::PlotMode::Scatter : SessionPeakPlotWidget::PlotMode::Polyline);
-    connect(waveform_frame_filter_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onToggleWaveformFrameFilterClicked);
-    connect(waveform_peak_filter_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onConfigurePeakFilterClicked);
-    connect(waveform_peak_mode_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onTogglePeakPlotModeClicked);
-    waveformLayout->addWidget(waveform_peak_plot_, 1);
-
-    temperature_plot_title_ = new QLabel(waveform_group_);
-    temperature_plot_title_->setObjectName("fieldLabel");
-    waveformLayout->addWidget(temperature_plot_title_);
-    temperature_plot_ = createSingleSeriesTrendPlotWidget(appThemeColor(AppThemeColor::PlotSeriesTemperature, false),
-        is_english_ ? "No temperature series" : "没有温度趋势数据",
-        QStringLiteral("°C"),
-        waveform_group_);
-    temperature_plot_->setObjectName(QStringLiteral("sessionViewerTemperaturePlot"));
-    temperature_plot_->setPlotMode(
-        waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
-    waveformLayout->addWidget(temperature_plot_);
-
-    humidity_plot_title_ = new QLabel(waveform_group_);
-    humidity_plot_title_->setObjectName("fieldLabel");
-    waveformLayout->addWidget(humidity_plot_title_);
-    humidity_plot_ = createSingleSeriesTrendPlotWidget(appThemeColor(AppThemeColor::PlotSeriesHumidity, false),
-        is_english_ ? "No humidity series" : "没有湿度趋势数据",
-        QStringLiteral("%RH"),
-        waveform_group_);
-    humidity_plot_->setObjectName(QStringLiteral("sessionViewerHumidityPlot"));
-    humidity_plot_->setPlotMode(
-        waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
-    waveformLayout->addWidget(humidity_plot_);
-
-    pressure_plot_title_ = new QLabel(waveform_group_);
-    pressure_plot_title_->setObjectName("fieldLabel");
-    waveformLayout->addWidget(pressure_plot_title_);
-    pressure_plot_ = createSingleSeriesTrendPlotWidget(appThemeColor(AppThemeColor::PlotSeriesPressure, false),
-        is_english_ ? "No pressure series" : "没有气压趋势数据",
-        QStringLiteral("hPa"),
-        waveform_group_);
-    pressure_plot_->setObjectName(QStringLiteral("sessionViewerPressurePlot"));
-    pressure_plot_->setPlotMode(
-        waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
-    waveformLayout->addWidget(pressure_plot_);
-
-    environment_info_label_ = new QLabel(waveform_group_);
-    environment_info_label_->setFont(numericFontFrom(environment_info_label_->font()));
-    environment_info_label_->setWordWrap(true);
-    environment_info_label_->setObjectName("fieldLabel");
-    waveformLayout->addWidget(environment_info_label_);
-
-    waveform_peak_plot_->setViewChangedCallback(
-        [this, waveformPeakRangeAxis](int totalCount, int startIndex, int visibleCount) {
-            if (waveformPeakRangeAxis)
-            {
-                waveformPeakRangeAxis->setRange(totalCount, startIndex, visibleCount);
-            }
-            syncEnvironmentRangeToWaveformRange(startIndex, visibleCount);
-        });
-    waveformPeakRangeAxis->setRangeChangedCallback([this](int startIndex, int visibleCount) {
-        waveform_peak_plot_->setViewRange(startIndex, visibleCount);
-    });
-    upperLayout->addWidget(waveform_group_, 1);
-
-    summaryWaveSplitter->addWidget(upperWidget);
-
-    csv_group_ = new QGroupBox(summaryWaveSplitter);
-    csv_group_->setObjectName("sensorGroupBox");
-    auto *csvLayout = new QVBoxLayout(csv_group_);
-    csvLayout->setContentsMargins(10, 30, 10, 10);
-    csvLayout->setSpacing(6);
-
-    csv_info_label_ = new QLabel(csv_group_);
-    csv_info_label_->setWordWrap(true);
-    csvLayout->addWidget(csv_info_label_);
-
-    csv_model_ = createSessionCsvTableModel(this);
-    csv_table_ = new QTableView(csv_group_);
-    csv_table_->setObjectName(QStringLiteral("sessionViewerCsvTable"));
-    csv_table_->viewport()->setObjectName(QStringLiteral("sessionViewerCsvViewport"));
-    csv_table_->setModel(csv_model_);
-    csv_table_->setAlternatingRowColors(false);
-    csv_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
-    csv_table_->setSelectionMode(QAbstractItemView::SingleSelection);
-    csv_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    csv_table_->setWordWrap(false);
-    csv_table_->horizontalHeader()->setSectionsMovable(true);
-    csv_table_->horizontalHeader()->setDefaultSectionSize(140);
-    csv_table_->verticalHeader()->setVisible(false);
-    applyCsvTableTheme();
-    csvLayout->addWidget(csv_table_, 1);
-
-    summaryWaveSplitter->addWidget(csv_group_);
-    summaryWaveSplitter->setStretchFactor(0, 2);
-    summaryWaveSplitter->setStretchFactor(1, 3);
-
-    mainLayout->addWidget(summaryWaveSplitter, 1);
+    connect(overview_page_, &SessionOverviewWidget::chooseSessionRequested,
+            this, &SessionViewerWindow::onChooseSessionClicked);
+    connect(overview_page_, &SessionOverviewWidget::reloadRequested,
+            this, &SessionViewerWindow::onReloadClicked);
+    connect(overview_page_, &SessionOverviewWidget::trajectoryRequested,
+            this, &SessionViewerWindow::onViewTrajectoryClicked);
+    connect(overview_page_, &SessionOverviewWidget::rawDataParserRequested,
+            this, &SessionViewerWindow::onRawDataParserClicked);
+    connect(overview_page_, &SessionOverviewWidget::clearRequested,
+            this, &SessionViewerWindow::onClearViewClicked);
+    connect(waveform_page_, &SessionWaveformWidget::frameSliderMoved,
+            this, &SessionViewerWindow::onFrameSliderMoved);
+    connect(waveform_page_, &SessionWaveformWidget::frameSliderChanged,
+            this, &SessionViewerWindow::onFrameSliderChanged);
+    connect(waveform_page_, &SessionWaveformWidget::frameSpinChanged,
+            this, &SessionViewerWindow::onFrameSpinChanged);
+    connect(waveform_page_, &SessionWaveformWidget::frameFilterRequested,
+            this, &SessionViewerWindow::onToggleWaveformFrameFilterClicked);
+    connect(waveform_page_, &SessionWaveformWidget::peakFilterRequested,
+            this, &SessionViewerWindow::onConfigurePeakFilterClicked);
+    connect(waveform_page_, &SessionWaveformWidget::plotModeRequested,
+            this, &SessionViewerWindow::onTogglePeakPlotModeClicked);
+    connect(waveform_page_, &SessionWaveformWidget::visibleRangeChanged,
+            this, &SessionViewerWindow::syncEnvironmentRangeToWaveformRange);
 }
-
-void SessionViewerWindow::applyCsvTableTheme()
-{
-    if (!csv_table_)
-    {
-        return;
-    }
-
-    const SessionTableTheme theme = sessionTableThemeFor(this);
-
-    QPalette tablePalette = csv_table_->palette();
-    tablePalette.setColor(QPalette::Base, theme.background);
-    tablePalette.setColor(QPalette::AlternateBase, theme.background);
-    tablePalette.setColor(QPalette::Text, theme.text);
-    tablePalette.setColor(QPalette::WindowText, theme.text);
-    tablePalette.setColor(QPalette::Window, theme.background);
-    tablePalette.setColor(QPalette::Highlight, theme.selectedBackground);
-    tablePalette.setColor(QPalette::HighlightedText, theme.selectedText);
-    csv_table_->setPalette(tablePalette);
-    csv_table_->viewport()->setPalette(tablePalette);
-    csv_table_->viewport()->setBackgroundRole(QPalette::Base);
-    csv_table_->viewport()->setAutoFillBackground(true);
-    csv_table_->horizontalHeader()->setPalette(tablePalette);
-
-    csv_table_->setStyleSheet(QStringLiteral(
-        "QTableView {"
-        " background-color: %1;"
-        " alternate-background-color: %1;"
-        " border: 1px solid %3;"
-        " color: %2;"
-        " gridline-color: %3;"
-        " selection-background-color: %6;"
-        " selection-color: %7;"
-        "}"
-        "QWidget#sessionViewerCsvViewport { background-color: %1; }"
-        "QTableView::item { color: %2; }"
-        "QTableView::item:selected { background-color: %6; color: %7; }"
-        "QTableView::item:selected:active { background-color: %6; color: %7; }"
-        "QTableView::item:selected:!active { background-color: %6; color: %7; }"
-        "QHeaderView::section {"
-        " background-color: %4;"
-        " color: %5;"
-        " border: 0px;"
-        " border-right: 1px solid %3;"
-        " border-bottom: 1px solid %3;"
-        " padding: 4px 8px;"
-        "}"
-        "QTableCornerButton::section {"
-        " background-color: %4;"
-        " border: 0px;"
-        " border-right: 1px solid %3;"
-        " border-bottom: 1px solid %3;"
-        "}")
-        .arg(theme.background.name(),
-             theme.text.name(),
-             theme.grid.name(),
-             theme.headerBackground.name(),
-             theme.headerText.name(),
-             theme.selectedBackground.name(),
-             theme.selectedText.name()));
-}
-
-void SessionViewerWindow::refreshCsvItemTheme()
-{
-    if (!csv_table_ || !csv_model_)
-    {
-        return;
-    }
-
-    csv_model_->setTheme(sessionTableThemeFor(this));
-    csv_table_->viewport()->update();
-}
-
-void SessionViewerWindow::updateCsvDisplayHeaders()
-{
-    if (!csv_model_)
-    {
-        return;
-    }
-
-    QStringList displayHeaders;
-    displayHeaders.reserve(csv_headers_.size() + 2);
-    displayHeaders << (is_english_ ? QStringLiteral("No.") : QStringLiteral("序号"));
-    displayHeaders << (is_english_ ? QStringLiteral("Delta") : QStringLiteral("时间误差"));
-    displayHeaders << csv_headers_;
-    csv_model_->setHeaders(displayHeaders);
-}
-
 void SessionViewerWindow::setEnglish(bool english)
 {
     is_english_ = english;
@@ -742,9 +285,8 @@ void SessionViewerWindow::changeEvent(QEvent *event)
                   event->type() == QEvent::ApplicationPaletteChange ||
                   event->type() == QEvent::StyleChange))
     {
-        applyCsvTableTheme();
-        refreshCsvItemTheme();
-        updateSessionLoadingDialogTheme();
+        device_data_page_->applyTheme();
+        loading_dialog_->applyTheme();
     }
 }
 
@@ -759,60 +301,22 @@ void SessionViewerWindow::setDefaultDataDirectory(const QString& directory)
     }
 }
 
-void SessionViewerWindow::resizeEvent(QResizeEvent *event)
-{
-    QMainWindow::resizeEvent(event);
-    relayoutSummaryFields();
-}
-
-void SessionViewerWindow::showEvent(QShowEvent *event)
-{
-    QMainWindow::showEvent(event);
-    relayoutSummaryFields();
-}
-
 void SessionViewerWindow::updateTexts()
 {
-    setWindowTitle(is_english_ ? "Data Viewer" : "数据查看器");
-    choose_session_btn_->setText(is_english_ ? "Open Data..." : "打开数据...");
-    reload_btn_->setText(is_english_ ? "Reload" : "重新加载");
-    trajectory_view_btn_->setText(is_english_ ? "View Trajectory" : "轨迹查看");
-    raw_data_parser_btn_->setText(is_english_ ? "Raw Data Parser..." : "原始数据解析...");
-    clear_view_btn_->setText(is_english_ ? "Clear Page" : "清空页面");
-    summary_group_->setTitle(is_english_ ? "Data Summary" : "数据概览");
-    waveform_group_->setTitle(is_english_ ? "Normalized Second Harmonic" : "归一化二次谐波");
-    waveform_plot_title_->setText(is_english_ ? "Current Frame Waveform" : "当前帧波形");
-    waveform_peak_plot_title_->setText(is_english_ ? "Peak Value of Each Frame" : "每帧峰值");
-    if (waveform_peak_plot_)
-    {
-        waveform_peak_plot_->setEnglish(is_english_);
-    }
-    temperature_plot_title_->setText(is_english_ ? "Temperature  °C" : "温度  ℃");
-    humidity_plot_title_->setText(is_english_ ? "Humidity  %RH" : "湿度  %RH");
-    pressure_plot_title_->setText(is_english_ ? "Pressure  hPa" : "气压  hPa");
-    updateWaveformFrameFilterButtonText();
-    updatePeakPlotModeButtonText();
-    updatePeakFilterButtonText();
-    csv_group_->setTitle(is_english_ ? "Sensors CSV" : "传感器 CSV");
-    session_name_title_->setText(is_english_ ? "Session:" : "会话:");
-    start_time_title_->setText(is_english_ ? "Start:" : "开始时间:");
-    end_time_title_->setText(is_english_ ? "End:" : "结束时间:");
-    duration_title_->setText(is_english_ ? "Duration:" : "记录时间:");
-    sensor_export_rate_title_->setText(is_english_ ? "CSV Rate:" : "设备CSV文件记录频率:");
-    sensor_rows_title_->setText(is_english_ ? "Sensor Rows:" : "传感器行数:");
-    waveform_export_rate_title_->setText(is_english_ ? "Wave Rate:" : "波形记录频率:");
-    waveform_files_title_->setText(is_english_ ? "Wave Files:" : "波形文件数:");
-    waveform_frames_title_->setText(is_english_ ? "Wave Frames:" : "波形帧数:");
-    frame_title_->setText(is_english_ ? "Frame:" : "帧:");
-    updateCsvDisplayHeaders();
+    setWindowTitle(is_english_ ? QStringLiteral("Data Viewer") : QStringLiteral("数据查看器"));
+    overview_page_->setEnglish(is_english_);
+    waveform_page_->setEnglish(is_english_);
+    device_data_page_->setEnglish(is_english_);
+    updateWaveformActionTexts();
 
     if (session_directory_.isEmpty())
     {
-        setStatusText(is_english_ ? "Choose a session directory to inspect recorded CSV and waveform files."
-                                  : "请选择一个 session 目录来查看录制的 CSV 和波形文件。");
-        csv_info_label_->setText(is_english_ ? "No CSV loaded" : "尚未加载 CSV");
-        frame_info_label_->setText(is_english_ ? "No waveform frame loaded" : "尚未加载波形帧");
-        environment_info_label_->setText(is_english_ ? "No environmental series loaded" : "尚未加载环境趋势数据");
+        setStatusText(is_english_
+            ? QStringLiteral("Choose a session directory to inspect recorded CSV and waveform files.")
+            : QStringLiteral("请选择一个 session 目录来查看录制的 CSV 和波形文件。"));
+        device_data_page_->setInfoText(is_english_ ? QStringLiteral("No CSV loaded") : QStringLiteral("尚未加载 CSV"));
+        waveform_page_->setFrameInfoText(is_english_ ? QStringLiteral("No waveform frame loaded") : QStringLiteral("尚未加载波形帧"));
+        waveform_page_->setEnvironmentInfoText(is_english_ ? QStringLiteral("No environmental series loaded") : QStringLiteral("尚未加载环境趋势数据"));
     }
     else
     {
@@ -820,38 +324,26 @@ void SessionViewerWindow::updateTexts()
         updateWaveformControls();
     }
 
-    if (trajectory_viewer_dialog_)
-    {
-        trajectory_viewer_dialog_->setEnglish(is_english_);
-    }
+    map_coordinator_->setEnglish(is_english_);
     if (raw_data_parser_window_)
     {
         raw_data_parser_window_->setEnglish(is_english_);
     }
 }
 
-void SessionViewerWindow::updateWaveformFrameFilterButtonText()
+void SessionViewerWindow::updateWaveformActionTexts()
 {
-    if (!waveform_frame_filter_btn_)
-    {
-        return;
-    }
-
-    waveform_frame_filter_btn_->setText(waveform_show_filtered_frame_
-        ? (is_english_ ? "Show Full Frame" : "显示完整波形")
-        : (is_english_ ? "Show Filtered Frame" : "显示过滤波形"));
-}
-
-void SessionViewerWindow::updatePeakPlotModeButtonText()
-{
-    if (!waveform_peak_mode_btn_)
-    {
-        return;
-    }
-
-    waveform_peak_mode_btn_->setText(waveform_peak_scatter_mode_
-        ? (is_english_ ? "Show Polyline" : "切换到折线图")
-        : (is_english_ ? "Show Scatter" : "切换到散点图"));
+    const QString frameFilterText = waveform_show_filtered_frame_
+        ? (is_english_ ? QStringLiteral("Show Full Frame") : QStringLiteral("显示完整波形"))
+        : (is_english_ ? QStringLiteral("Show Filtered Frame") : QStringLiteral("显示过滤波形"));
+    const QString plotModeText = waveform_peak_scatter_mode_
+        ? (is_english_ ? QStringLiteral("Show Polyline") : QStringLiteral("切换到折线图"))
+        : (is_english_ ? QStringLiteral("Show Scatter") : QStringLiteral("切换到散点图"));
+    const QString peakFilterText = QStringLiteral("%1:%2 / %3")
+        .arg(is_english_ ? QStringLiteral("Peak") : QStringLiteral("峰值"))
+        .arg(peakSearchRangeText())
+        .arg(peakFilterModeText(peak_filter_settings_.mode));
+    waveform_page_->setActionTexts(frameFilterText, peakFilterText, plotModeText);
 }
 
 QString SessionViewerWindow::peakFilterModeText(PeakFilterMode mode) const
@@ -859,7 +351,7 @@ QString SessionViewerWindow::peakFilterModeText(PeakFilterMode mode) const
     switch (mode)
     {
     case PeakFilterMode::IqrOutlier:
-        return is_english_ ? QStringLiteral("IQR") : QStringLiteral("IQR");
+        return QStringLiteral("IQR");
     case PeakFilterMode::KeepRange:
         return is_english_ ? QStringLiteral("Keep Range") : QStringLiteral("保留区间");
     case PeakFilterMode::ExcludeRange:
@@ -878,27 +370,9 @@ QString SessionViewerWindow::peakSearchRangeText() const
     return QStringLiteral("%1-%2").arg(peak_search_start_index_).arg(searchEndText);
 }
 
-void SessionViewerWindow::updatePeakFilterButtonText()
-{
-    if (!waveform_peak_filter_btn_)
-    {
-        return;
-    }
-
-    waveform_peak_filter_btn_->setText(QStringLiteral("%1:%2 / %3")
-        .arg(is_english_ ? QStringLiteral("Peak") : QStringLiteral("峰值"))
-        .arg(peakSearchRangeText())
-        .arg(peakFilterModeText(peak_filter_settings_.mode)));
-}
-
 void SessionViewerWindow::syncPeakSettingsToTrajectoryViewer()
 {
-    if (!trajectory_viewer_dialog_)
-    {
-        return;
-    }
-
-    trajectory_viewer_dialog_->setPeakSettings(
+    map_coordinator_->setPeakSettings(
         peak_search_start_index_,
         peak_search_end_index_,
         static_cast<int>(peak_filter_settings_.mode),
@@ -950,7 +424,7 @@ bool SessionViewerWindow::applyPeakSettings(int searchStartIndex,
     settings.setValue("peak_search/start_index", peak_search_start_index_);
     settings.setValue("peak_search/end_index", peak_search_end_index_);
 
-    updatePeakFilterButtonText();
+    updateWaveformActionTexts();
     syncPeakSettingsToTrajectoryViewer();
     beginSessionLoading(peakSearchChanged ? recalculatingText : filteringText);
     if (peakSearchChanged &&
@@ -996,258 +470,44 @@ void SessionViewerWindow::applyPeakSettingsFromTrajectory(int searchStartIndex,
     }
 }
 
-void SessionViewerWindow::relayoutSummaryFields()
-{
-    if (!summary_layout_ || !summary_group_)
-    {
-        return;
-    }
-
-    while (summary_layout_->count() > 0)
-    {
-        delete summary_layout_->takeAt(0);
-    }
-
-    const QVector<QPair<QLabel*, QLabel*>> longFields = {
-        {session_name_title_, session_name_value_},
-        {start_time_title_, start_time_value_},
-        {end_time_title_, end_time_value_},
-    };
-
-    const QVector<QPair<QLabel*, QLabel*>> shortFields = {
-        {duration_title_, duration_value_},
-        {sensor_export_rate_title_, sensor_export_rate_value_},
-        {sensor_rows_title_, sensor_rows_value_},
-        {waveform_export_rate_title_, waveform_export_rate_value_},
-        {waveform_files_title_, waveform_files_value_},
-        {waveform_frames_title_, waveform_frames_value_},
-    };
-
-    const int availableWidth = std::max({240, summary_group_->width(), summary_group_->contentsRect().width()});
-    const int maxPairColumns = 6;
-    for (int column = 0; column < maxPairColumns * 2; ++column)
-    {
-        summary_layout_->setColumnStretch(column, 0);
-        summary_layout_->setColumnMinimumWidth(column, 0);
-    }
-
-    auto addFieldPair = [this](const QPair<QLabel*, QLabel*>& field, int row, int pairColumn) {
-        summary_layout_->addWidget(field.first, row, pairColumn * 2);
-        summary_layout_->addWidget(field.second, row, pairColumn * 2 + 1);
-        summary_layout_->setColumnStretch(pairColumn * 2 + 1, 1);
-    };
-
-    if (availableWidth >= 1720)
-    {
-        for (int index = 0; index < longFields.size(); ++index)
-        {
-            addFieldPair(longFields.at(index), 0, index);
-        }
-        for (int index = 0; index < shortFields.size(); ++index)
-        {
-            addFieldPair(shortFields.at(index), 1, index);
-        }
-        return;
-    }
-
-    if (availableWidth >= 1280)
-    {
-        for (int index = 0; index < longFields.size(); ++index)
-        {
-            addFieldPair(longFields.at(index), 0, index);
-        }
-        for (int index = 0; index < shortFields.size(); ++index)
-        {
-            addFieldPair(shortFields.at(index), 1 + index / 3, index % 3);
-        }
-        return;
-    }
-
-    if (availableWidth >= 980)
-    {
-        for (int index = 0; index < longFields.size(); ++index)
-        {
-            addFieldPair(longFields.at(index), 0, index);
-        }
-        for (int index = 0; index < shortFields.size(); ++index)
-        {
-            addFieldPair(shortFields.at(index), 1 + index / 2, index % 2);
-        }
-        return;
-    }
-
-    const QVector<QPair<QLabel*, QLabel*>> allFields = longFields + shortFields;
-    const int pairColumns = availableWidth >= 640 ? 2 : 1;
-    for (int index = 0; index < allFields.size(); ++index)
-    {
-        addFieldPair(allFields.at(index), index / pairColumns, index % pairColumns);
-    }
-}
-
 void SessionViewerWindow::setStatusText(const QString& text)
 {
-    if (status_label_)
-    {
-        status_label_->setText(text);
-    }
+    overview_page_->setStatusText(text);
 }
 
 void SessionViewerWindow::setSessionLoadingControlsEnabled(bool enabled)
 {
-    if (choose_session_btn_) choose_session_btn_->setEnabled(enabled);
-    if (reload_btn_) reload_btn_->setEnabled(enabled);
-    if (raw_data_parser_btn_) raw_data_parser_btn_->setEnabled(enabled);
-    if (clear_view_btn_) clear_view_btn_->setEnabled(enabled);
-    if (waveform_frame_filter_btn_) waveform_frame_filter_btn_->setEnabled(enabled);
-    if (waveform_peak_filter_btn_) waveform_peak_filter_btn_->setEnabled(enabled);
-    if (waveform_peak_mode_btn_) waveform_peak_mode_btn_->setEnabled(enabled);
-    if (trajectory_view_btn_) trajectory_view_btn_->setEnabled(enabled && !rtk_track_points_.isEmpty());
+    overview_page_->setControlsEnabled(enabled);
+    overview_page_->setTrajectoryAvailable(trajectory_controller_.hasTrack());
+    waveform_page_->setControlsEnabled(enabled);
     if (enabled)
     {
         updateWaveformControls();
     }
 }
 
-void SessionViewerWindow::updateSessionLoadingDialogTheme()
-{
-    if (!loading_dialog_)
-    {
-        return;
-    }
-
-    const QPalette sourcePalette = palette();
-    QColor windowColor = sourcePalette.color(QPalette::Window);
-    if (!windowColor.isValid() || windowColor.alpha() == 0)
-    {
-        windowColor = sourcePalette.color(QPalette::Base);
-    }
-    const bool dark = windowColor.lightness() < 128;
-    const QColor panelColor = appThemeColor(dark ? AppThemeColor::Window : AppThemeColor::Surface, dark);
-    const QColor fieldColor = appThemeColor(AppThemeColor::FieldBackground, dark);
-    const QColor borderColor = appThemeColor(AppThemeColor::FieldBorder, dark);
-    const QColor textColor = appThemeColor(AppThemeColor::TextStrong, dark);
-    const QColor chunkColor = appThemeColor(AppThemeColor::ProgressChunk, dark);
-
-    QPalette loadingPalette = loading_dialog_->palette();
-    loadingPalette.setColor(QPalette::Window, panelColor);
-    loadingPalette.setColor(QPalette::Base, panelColor);
-    loadingPalette.setColor(QPalette::Text, textColor);
-    loadingPalette.setColor(QPalette::WindowText, textColor);
-    loading_dialog_->setPalette(loadingPalette);
-
-    if (QWidget *content = loading_dialog_->findChild<QWidget *>(QStringLiteral("customTitleBarContent")))
-    {
-        content->setAutoFillBackground(true);
-        content->setPalette(loadingPalette);
-        if (auto *layout = qobject_cast<QVBoxLayout *>(content->layout()))
-        {
-            layout->setContentsMargins(22, 18, 22, 18);
-            layout->setSpacing(14);
-        }
-    }
-
-    loading_dialog_->setStyleSheet(QStringLiteral(
-        "QProgressDialog, QWidget#customTitleBarContent { background-color: %1; color: %2; }"
-        "QWidget#customTitleBarContent QLabel { background-color: transparent; color: %2; font-size: 14px; }"
-        "QWidget#customTitleBarContent QProgressBar { background-color: %3; border: 1px solid %4; border-radius: 4px; min-height: 10px; text-align: center; color: %2; }"
-        "QWidget#customTitleBarContent QProgressBar::chunk { background-color: %5; border-radius: 3px; }")
-        .arg(panelColor.name(), textColor.name(), fieldColor.name(), borderColor.name(), chunkColor.name()));
-}
-
 void SessionViewerWindow::beginSessionLoading(const QString& text)
 {
     session_loading_ = true;
-    if (status_label_)
-    {
-        // Keep QScrollArea from following focus down to the CSV table when buttons are disabled.
-        status_label_->setFocus(Qt::OtherFocusReason);
-    }
+    overview_page_->focusStatus();
     setSessionLoadingControlsEnabled(false);
-
-    if (!loading_dialog_)
-    {
-        loading_dialog_ = new QProgressDialog(this);
-        loading_dialog_->setWindowModality(Qt::NonModal);
-        loading_dialog_->setModal(false);
-        loading_dialog_->setCancelButton(nullptr);
-        loading_dialog_->setMinimumDuration(0);
-        loading_dialog_->setAutoClose(false);
-        loading_dialog_->setAutoReset(false);
-        loading_dialog_->setRange(0, 100);
-        loading_dialog_->setMinimumWidth(360);
-        loading_dialog_->setAttribute(Qt::WA_StyledBackground, true);
-        loading_dialog_->setAutoFillBackground(true);
-        VaporView::installCustomTitleBar(loading_dialog_, false);
-        if (QWidget *content = loading_dialog_->findChild<QWidget *>(QStringLiteral("customTitleBarContent")))
-        {
-            auto *layout = qobject_cast<QVBoxLayout *>(content->layout());
-            if (!layout)
-            {
-                layout = new QVBoxLayout(content);
-            }
-            loading_dialog_label_ = new QLabel(content);
-            loading_dialog_label_->setAlignment(Qt::AlignCenter);
-            loading_dialog_label_->setWordWrap(true);
-            loading_dialog_progress_bar_ = new QProgressBar(content);
-            loading_dialog_progress_bar_->setRange(0, 100);
-            loading_dialog_progress_bar_->setValue(0);
-            loading_dialog_progress_bar_->setFormat(QStringLiteral("%p%"));
-            loading_dialog_progress_bar_->setTextVisible(true);
-            loading_dialog_progress_bar_->setMinimumHeight(14);
-            layout->addWidget(loading_dialog_label_);
-            layout->addWidget(loading_dialog_progress_bar_);
-        }
-    }
-
-    loading_dialog_->setWindowTitle(is_english_ ? "Loading Data" : "正在加载数据");
-    loading_dialog_progress_percent_ = 0;
-    updateSessionLoadingDialogTheme();
-    updateSessionLoadingProgress(text, 0);
-    loading_dialog_->show();
-    loading_dialog_->raise();
-    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-}
-
-void SessionViewerWindow::updateSessionLoadingText(const QString& text)
-{
     setStatusText(text);
-    if (!session_loading_ || !loading_dialog_)
-    {
-        return;
-    }
-
-    loading_dialog_->setLabelText(text);
-    loading_dialog_->setValue(loading_dialog_progress_percent_);
-    if (loading_dialog_label_)
-    {
-        loading_dialog_label_->setText(text);
-    }
-    if (loading_dialog_progress_bar_)
-    {
-        loading_dialog_progress_bar_->setVisible(true);
-        loading_dialog_progress_bar_->setRange(0, 100);
-        loading_dialog_progress_bar_->setValue(loading_dialog_progress_percent_);
-    }
-    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+    loading_dialog_->begin(text, is_english_);
 }
 
 void SessionViewerWindow::updateSessionLoadingProgress(const QString& text, int percent)
 {
-    loading_dialog_progress_percent_ = std::clamp(percent, 0, 100);
-    updateSessionLoadingText(text);
+    setStatusText(text);
+    if (session_loading_)
+    {
+        loading_dialog_->update(text, percent);
+    }
 }
 
 void SessionViewerWindow::finishSessionLoading()
 {
-    if (loading_dialog_)
-    {
-        updateSessionLoadingProgress(status_label_ ? status_label_->text() : QString(), 100);
-    }
+    loading_dialog_->finish(overview_page_->statusText());
     session_loading_ = false;
-    if (loading_dialog_)
-    {
-        loading_dialog_->hide();
-    }
     setSessionLoadingControlsEnabled(true);
 }
 
@@ -1269,8 +529,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     temperature_values_.clear();
     humidity_values_.clear();
     pressure_values_.clear();
-    rtk_track_points_.clear();
-    rtk_track_stats_ = RtkTrackStats();
+    trajectory_controller_.clear();
     waveform_timestamps_us_.clear();
     waveform_catalog_ = {};
     playback_controller_->clear();
@@ -1284,37 +543,20 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     waveform_export_rate_hz_ = 10;
     waveform_export_mode_ = QStringLiteral("fixed_rate");
 
-    if (csv_model_)
-    {
-        csv_model_->clear();
-    }
-    highlighted_csv_rows_.clear();
-    primary_highlighted_csv_row_ = -1;
-    waveform_plot_->setSamples({});
-    waveform_peak_plot_->setPeakValues({});
-    waveform_peak_plot_->setCurrentFrame(-1);
-    temperature_plot_->setValues({});
-    temperature_plot_->setCurrentIndex(-1);
-    humidity_plot_->setValues({});
-    humidity_plot_->setCurrentIndex(-1);
-    pressure_plot_->setValues({});
-    pressure_plot_->setCurrentIndex(-1);
-    trajectory_view_btn_->setEnabled(false);
-    if (trajectory_viewer_dialog_)
-    {
-        trajectory_viewer_dialog_->setTrackStats(rtk_track_stats_);
-        trajectory_viewer_dialog_->setTrackPoints({});
-    }
-    frame_info_label_->setText(is_english_ ? "No waveform frame loaded" : "尚未加载波形帧");
-    csv_info_label_->setText(is_english_ ? "No CSV loaded" : "尚未加载 CSV");
-    environment_info_label_->setText(is_english_ ? "No environmental series loaded" : "尚未加载环境趋势数据");
+    device_data_page_->clear();
+    waveform_page_->clear();
+    overview_page_->setTrajectoryAvailable(false);
+    map_coordinator_->updateTrack({}, trajectory_controller_.trackStats());
+    waveform_page_->setFrameInfoText(is_english_ ? QStringLiteral("No waveform frame loaded") : QStringLiteral("尚未加载波形帧"));
+    device_data_page_->setInfoText(is_english_ ? QStringLiteral("No CSV loaded") : QStringLiteral("尚未加载 CSV"));
+    waveform_page_->setEnvironmentInfoText(is_english_ ? QStringLiteral("No environmental series loaded") : QStringLiteral("尚未加载环境趋势数据"));
     updateSummaryLabels();
     updateWaveformControls();
-    if (clearPathEdit && session_path_edit_)
+    if (clearPathEdit)
     {
-        session_path_edit_->clear();
+        overview_page_->clearSessionPath();
     }
-    setStatusText(is_english_ ? "The current page has been cleared." : "当前页面内容已清空。");
+    setStatusText(is_english_ ? QStringLiteral("The current page has been cleared.") : QStringLiteral("当前页面内容已清空。"));
 }
 
 void SessionViewerWindow::restoreLastSessionPath(const QString& path)
@@ -1327,49 +569,12 @@ void SessionViewerWindow::restoreLastSessionPath(const QString& path)
 
     clearLoadedData(false);
     session_directory_ = sessionDirectory;
-    if (session_path_edit_)
-    {
-        session_path_edit_->setText(session_directory_);
-    }
+    overview_page_->setSessionPath(session_directory_);
     setStatusText(is_english_
         ? "Restored the last session path only. Click Reload to load its CSV and waveform files."
         : "已恢复上次会话路径，尚未读取大文件；点击“重新加载”后再加载 CSV 和波形数据。");
 }
 
-QString SessionViewerWindow::formatMeasuredRateText(const QVector<quint64>& timestampsUs, int metadataRateHz, const QString& metadataMode) const
-{
-    const double measuredRateHz = VaporView::Ground::Session::measuredRateHz(timestampsUs);
-    if (measuredRateHz > 0.0)
-    {
-        return QStringLiteral("%1 Hz").arg(QString::number(measuredRateHz, 'f', measuredRateHz >= 10.0 ? 2 : 3));
-    }
-
-    int validCount = 0;
-    for (quint64 timestampUs : timestampsUs)
-    {
-        if (timestampUs != 0)
-        {
-            ++validCount;
-        }
-    }
-
-    if (validCount == 1)
-    {
-        return is_english_ ? QStringLiteral("Single frame") : QStringLiteral("仅 1 条数据");
-    }
-
-    if (metadataMode == QStringLiteral("per_frame"))
-    {
-        return is_english_ ? QStringLiteral("Per-frame") : QStringLiteral("逐帧导出");
-    }
-
-    if (metadataRateHz > 0)
-    {
-        return QStringLiteral("%1 Hz").arg(metadataRateHz);
-    }
-
-    return QStringLiteral("---");
-}
 
 QString SessionViewerWindow::resolveSessionDirectory(const QString& path) const
 {
@@ -1441,10 +646,7 @@ void SessionViewerWindow::onReloadClicked()
             return;
         }
         session_directory_ = lastSessionDirectory;
-        if (session_path_edit_)
-        {
-            session_path_edit_->setText(session_directory_);
-        }
+        overview_page_->setSessionPath(session_directory_);
     }
 
     loadSessionDirectory(session_directory_);
@@ -1457,57 +659,35 @@ void SessionViewerWindow::onClearViewClicked()
     if (!previousSessionDirectory.isEmpty())
     {
         session_directory_ = previousSessionDirectory;
-        if (session_path_edit_)
-        {
-            session_path_edit_->setText(session_directory_);
-        }
+        overview_page_->setSessionPath(session_directory_);
     }
 }
 
 void SessionViewerWindow::onViewTrajectoryClicked()
 {
-    if (rtk_track_points_.isEmpty())
+    if (!trajectory_controller_.hasTrack())
     {
         QMessageBox::information(this,
-            is_english_ ? "RTK Trajectory" : "RTK轨迹",
-            is_english_ ? "No valid RTK latitude/longitude samples were found in the current session."
-                        : "当前会话中没有找到有效的 RTK 经纬度轨迹点。");
+            is_english_ ? QStringLiteral("RTK Trajectory") : QStringLiteral("RTK轨迹"),
+            is_english_ ? QStringLiteral("No valid RTK latitude/longitude samples were found in the current session.")
+                        : QStringLiteral("当前会话中没有找到有效的 RTK 经纬度轨迹点。"));
         return;
     }
 
     if (!ensureTrajectoryPeakValuesReady())
     {
         QMessageBox::warning(this,
-            is_english_ ? "RTK Trajectory" : "RTK轨迹",
-            is_english_ ? "Failed to prepare waveform peak values for the trajectory viewer."
-                        : "无法为轨迹查看器准备波形峰值。");
+            is_english_ ? QStringLiteral("RTK Trajectory") : QStringLiteral("RTK轨迹"),
+            is_english_ ? QStringLiteral("Failed to prepare waveform peak values for the trajectory viewer.")
+                        : QStringLiteral("无法为轨迹查看器准备波形峰值。"));
         return;
     }
 
-    if (!trajectory_viewer_dialog_)
-    {
-        trajectory_viewer_dialog_ = new TrajectoryViewerDialog(this);
-        trajectory_viewer_dialog_->setAttribute(Qt::WA_QuitOnClose, false);
-        trajectory_viewer_dialog_->setAttribute(Qt::WA_DeleteOnClose, false);
-        connect(trajectory_viewer_dialog_, &QObject::destroyed, this, [this]() {
-            trajectory_viewer_dialog_ = nullptr;
-        });
-        connect(trajectory_viewer_dialog_, &TrajectoryViewerDialog::peakSettingsChangeRequested,
-                this, &SessionViewerWindow::applyPeakSettingsFromTrajectory);
-    }
-
-    trajectory_viewer_dialog_->setEnglish(is_english_);
-    trajectory_viewer_dialog_->setTrackLabel(QStringLiteral("RTK trajectory"), QStringLiteral("RTK轨迹"));
     syncPeakSettingsToTrajectoryViewer();
-    trajectory_viewer_dialog_->setTrackStats(rtk_track_stats_);
-    trajectory_viewer_dialog_->setTrackPoints(rtk_track_points_);
-    connect(trajectory_viewer_dialog_, &TrajectoryViewerDialog::trackPointActivated,
-            this, &SessionViewerWindow::focusTrajectoryPoint,
-            Qt::UniqueConnection);
-    VaporView::centerWindowOnScreen(trajectory_viewer_dialog_, this);
-    trajectory_viewer_dialog_->show();
-    trajectory_viewer_dialog_->raise();
-    trajectory_viewer_dialog_->activateWindow();
+    map_coordinator_->showTrajectory(
+        this,
+        trajectory_controller_.trackPoints(),
+        trajectory_controller_.trackStats());
 }
 
 bool SessionViewerWindow::ensureTrajectoryPeakValuesReady()
@@ -1624,34 +804,26 @@ bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
     recordStageTiming(is_english_ ? QStringLiteral("Peak series") : QStringLiteral("峰值序列"));
 
     updateSessionLoadingProgress(is_english_ ? "Updating viewer..." : "正在更新显示...", 98);
-    session_path_edit_->setText(session_directory_);
+    overview_page_->setSessionPath(session_directory_);
     updateSummaryLabels();
     updateWaveformControls();
 
     if (total_waveform_frames_ > 0)
     {
-        {
-            const QSignalBlocker sliderBlocker(frame_slider_);
-            const QSignalBlocker spinBlocker(frame_spin_);
-            frame_slider_->setValue(1);
-            frame_spin_->setValue(1);
-        }
+        waveform_page_->setFrameValueSilently(1);
         loadWaveformFrame(0, false);
     }
     else
     {
-        waveform_plot_->setSamples({});
-        frame_info_label_->setText(is_english_ ? "No waveform frame file was found in this session."
-                                               : "这个会话里没有找到波形帧文件。");
+        waveform_page_->setWaveformSamples({});
+        waveform_page_->setFrameInfoText(is_english_ ? "No waveform frame file was found in this session."
+                                                      : "这个会话里没有找到波形帧文件。");
     }
 
     recordStageTiming(is_english_ ? QStringLiteral("Viewer refresh") : QStringLiteral("界面刷新"));
     const QString summary = timingSummary();
     setProperty("_vvSessionLoadTimingSummary", summary);
-    if (status_label_)
-    {
-        status_label_->setToolTip(summary);
-    }
+    overview_page_->setStatusToolTip(summary);
     setStatusText(QString(is_english_ ? "Loaded session: %1" : "已加载会话: %1").arg(session_directory_));
     finishSessionLoading();
     return true;
@@ -1693,19 +865,13 @@ bool SessionViewerWindow::loadSessionMetadata(const QString& sessionDirectory)
 
 bool SessionViewerWindow::loadSensorsCsv()
 {
-    if (csv_model_)
-    {
-        csv_model_->clear();
-    }
-    highlighted_csv_rows_.clear();
-    primary_highlighted_csv_row_ = -1;
+    device_data_page_->clear();
     csv_headers_.clear();
     csv_timestamps_us_.clear();
     temperature_values_.clear();
     humidity_values_.clear();
     pressure_values_.clear();
-    rtk_track_points_.clear();
-    rtk_track_stats_ = RtkTrackStats();
+    trajectory_controller_.clear();
 
     VaporView::Ground::SessionMetadata metadata;
     metadata.sensorsCsvFilename = sensors_csv_filename_;
@@ -1734,14 +900,16 @@ bool SessionViewerWindow::loadSensorsCsv()
         setStatusText(QString(is_english_ ? "Failed to open sensors CSV: %1"
                                           : "打开传感器 CSV 失败: %1")
                           .arg(sensors_csv_filename_));
-        csv_info_label_->setText(is_english_
-            ? "The session metadata is valid, but sensors/devices.csv could not be opened."
-            : "session 元数据是有效的，但 sensors/devices.csv 无法打开。");
+        device_data_page_->setInfoText(is_english_
+            ? QStringLiteral("The session metadata is valid, but sensors/devices.csv could not be opened.")
+            : QStringLiteral("session 元数据是有效的，但 sensors/devices.csv 无法打开。"));
         return true;
     }
     if (result.data.headers.isEmpty())
     {
-        csv_info_label_->setText(is_english_ ? "devices.csv is empty." : "devices.csv 为空。");
+        device_data_page_->setInfoText(is_english_
+            ? QStringLiteral("devices.csv is empty.")
+            : QStringLiteral("devices.csv 为空。"));
         return true;
     }
 
@@ -1759,44 +927,35 @@ bool SessionViewerWindow::loadSensorsCsv()
     temperature_values_ = std::move(sensorData.temperature_values);
     humidity_values_ = std::move(sensorData.humidity_values);
     pressure_values_ = std::move(sensorData.pressure_values);
-    rtk_track_points_ = std::move(sensorData.track_points);
-    rtk_track_stats_ = sensorData.track_stats;
+    trajectory_controller_.setTrackData(
+        std::move(sensorData.track_points),
+        sensorData.track_stats);
 
-    QStringList displayHeaders;
-    displayHeaders.reserve(csv_headers_.size() + 2);
-    displayHeaders << (is_english_ ? "No." : "序号");
-    displayHeaders << (is_english_ ? "Delta" : "时间误差");
-    displayHeaders << csv_headers_;
     total_sensor_rows_ = static_cast<quint64>(sensorData.rows.size());
-    csv_model_->setRows(displayHeaders, std::move(sensorData.rows));
-    csv_model_->setTheme(sessionTableThemeFor(this));
-    csv_table_->setColumnWidth(0, 48);
-    csv_table_->setColumnWidth(1, 96);
-    csv_info_label_->setText(QString(is_english_
+    device_data_page_->setRows(csv_headers_, std::move(sensorData.rows));
+    device_data_page_->setInfoText(QString(is_english_
         ? "Loaded %1 CSV rows from %2"
         : "已从 %2 加载 %1 行 CSV")
         .arg(total_sensor_rows_)
         .arg(QDir::toNativeSeparators(sensors_csv_filename_)));
 
-    temperature_plot_->setValues(temperature_values_);
-    temperature_plot_->setCurrentIndex(-1);
-    humidity_plot_->setValues(humidity_values_);
-    humidity_plot_->setCurrentIndex(-1);
-    pressure_plot_->setValues(pressure_values_);
-    pressure_plot_->setCurrentIndex(-1);
+    waveform_page_->setEnvironmentSeries(
+        temperature_values_,
+        humidity_values_,
+        pressure_values_);
     const bool hasEnvironmentSeries =
         std::any_of(temperature_values_.cbegin(), temperature_values_.cend(), [](double value) { return std::isfinite(value); }) ||
         std::any_of(humidity_values_.cbegin(), humidity_values_.cend(), [](double value) { return std::isfinite(value); }) ||
         std::any_of(pressure_values_.cbegin(), pressure_values_.cend(), [](double value) { return std::isfinite(value); });
     updateRtkTrackPeakValues();
-    trajectory_view_btn_->setEnabled(!rtk_track_points_.isEmpty());
-    environment_info_label_->setText(hasEnvironmentSeries
+    overview_page_->setTrajectoryAvailable(trajectory_controller_.hasTrack());
+    waveform_page_->setEnvironmentInfoText(hasEnvironmentSeries
         ? (is_english_
-            ? "Loaded temperature, humidity, and pressure trend series."
-            : "已加载温度、湿度和气压趋势。")
+            ? QStringLiteral("Loaded temperature, humidity, and pressure trend series.")
+            : QStringLiteral("已加载温度、湿度和气压趋势。"))
         : (is_english_
-            ? "No temperature, humidity, or pressure columns were found in this CSV."
-            : "这个 CSV 中没有找到温度、湿度或气压列。"));
+            ? QStringLiteral("No temperature, humidity, or pressure columns were found in this CSV.")
+            : QStringLiteral("这个 CSV 中没有找到温度、湿度或气压列。")));
     return true;
 }
 
@@ -1856,14 +1015,11 @@ void SessionViewerWindow::applyPeakFilter(int startPercent, int endPercent)
     waveform_peak_values_ = VaporView::Ground::SessionWaveformRepository::applyPeakFilter(
         waveform_peak_raw_values_,
         peak_filter_settings_);
-    if (waveform_peak_plot_)
-    {
-        waveform_peak_plot_->setPeakValues(waveform_peak_values_);
-    }
+    waveform_page_->setPeakValues(waveform_peak_values_);
     updateRtkTrackPeakValues();
-    if (frame_spin_ && frame_spin_->value() > 0)
+    if (waveform_page_->frameValue() > 0)
     {
-        loadWaveformFrame(static_cast<quint64>(frame_spin_->value() - 1));
+        loadWaveformFrame(static_cast<quint64>(waveform_page_->frameValue() - 1));
     }
     if (session_loading_)
     {
@@ -1877,8 +1033,8 @@ bool SessionViewerWindow::loadWaveformPeakSeries(bool allowBackground)
     waveform_peak_raw_values_.clear();
     waveform_peak_values_.clear();
     waveform_timestamps_us_.clear();
-    waveform_peak_plot_->setPeakValues({});
-    waveform_peak_plot_->setCurrentFrame(-1);
+    waveform_page_->setPeakValues({});
+    waveform_page_->setCurrentPeakFrame(-1);
 
     if (waveform_catalog_.isEmpty())
     {
@@ -2018,54 +1174,44 @@ void SessionViewerWindow::cancelBackgroundWaveformPeakSeries(bool waitForFinishe
 void SessionViewerWindow::updateSummaryLabels()
 {
     const bool hasSession = !session_name_.isEmpty() || !metadata_filename_.isEmpty();
-    session_name_value_->setText(session_name_.isEmpty() ? QStringLiteral("---") : session_name_);
-    start_time_value_->setText(VaporView::formatSessionMetadataTimeBeijing(start_time_utc_));
-    end_time_value_->setText(VaporView::formatSessionMetadataTimeBeijing(end_time_utc_));
-    duration_value_->setText(hasSession ? VaporView::formatSessionDurationText(start_time_utc_, end_time_utc_, is_english_) : QStringLiteral("---"));
-    sensor_export_rate_value_->setText(hasSession
-        ? formatMeasuredRateText(csv_timestamps_us_, sensor_export_rate_hz_, QStringLiteral("fixed_rate"))
-        : QStringLiteral("---"));
-    sensor_rows_value_->setText(hasSession ? QString::number(total_sensor_rows_) : QStringLiteral("---"));
-    waveform_export_rate_value_->setText(hasSession
-        ? formatMeasuredRateText(waveform_timestamps_us_, waveform_export_rate_hz_, waveform_export_mode_)
-        : QStringLiteral("---"));
-    const int waveformFileCount = waveform_catalog_.sourceFileCount();
-    waveform_files_value_->setText(hasSession ? QString::number(waveformFileCount) : QStringLiteral("---"));
-    waveform_frames_value_->setText(hasSession ? QString::number(total_waveform_frames_) : QStringLiteral("---"));
+    SessionOverviewSummary summary;
+    summary.sessionName = session_name_.isEmpty() ? QStringLiteral("---") : session_name_;
+    summary.startTime = VaporView::formatSessionMetadataTimeBeijing(start_time_utc_);
+    summary.endTime = VaporView::formatSessionMetadataTimeBeijing(end_time_utc_);
+    summary.duration = hasSession
+        ? VaporView::formatSessionDurationText(start_time_utc_, end_time_utc_, is_english_)
+        : QStringLiteral("---");
+    summary.sensorRate = hasSession
+        ? formatSessionMeasuredRateText(csv_timestamps_us_, sensor_export_rate_hz_, QStringLiteral("fixed_rate"), is_english_)
+        : QStringLiteral("---");
+    summary.sensorRows = hasSession ? QString::number(total_sensor_rows_) : QStringLiteral("---");
+    summary.waveformRate = hasSession
+        ? formatSessionMeasuredRateText(waveform_timestamps_us_, waveform_export_rate_hz_, waveform_export_mode_, is_english_)
+        : QStringLiteral("---");
+    summary.waveformFiles = hasSession
+        ? QString::number(waveform_catalog_.sourceFileCount())
+        : QStringLiteral("---");
+    summary.waveformFrames = hasSession
+        ? QString::number(total_waveform_frames_)
+        : QStringLiteral("---");
+    overview_page_->setSummary(summary);
 }
 
 void SessionViewerWindow::updateWaveformControls()
 {
     const bool hasFrames = total_waveform_frames_ > 0 && !waveform_catalog_.isEmpty();
-    const QSignalBlocker sliderBlocker(frame_slider_);
-    const QSignalBlocker spinBlocker(frame_spin_);
-    frame_slider_->setEnabled(hasFrames);
-    frame_spin_->setEnabled(hasFrames);
+    waveform_page_->configureFrames(hasFrames ? total_waveform_frames_ : 0);
     if (hasFrames)
     {
-        const int maxFrame = static_cast<int>(std::min<quint64>(total_waveform_frames_, static_cast<quint64>(std::numeric_limits<int>::max())));
-        playback_controller_->setTimeline(maxFrame, waveform_timestamps_us_);
-        frame_slider_->setRange(1, maxFrame);
-        frame_spin_->setRange(1, maxFrame);
-        if (frame_spin_->value() < 1 || frame_spin_->value() > maxFrame)
-        {
-            frame_spin_->setValue(1);
-            frame_slider_->setValue(1);
-        }
+        const int maximum = static_cast<int>(std::min<quint64>(
+            total_waveform_frames_,
+            static_cast<quint64>(std::numeric_limits<int>::max())));
+        playback_controller_->setTimeline(maximum, waveform_timestamps_us_);
     }
     else
     {
         playback_controller_->clear();
-        frame_slider_->setRange(0, 0);
-        frame_spin_->setRange(0, 0);
-        frame_slider_->setValue(0);
-        frame_spin_->setValue(0);
     }
-
-    const int totalDigits = std::max(1, static_cast<int>(QString::number(std::max<quint64>(total_waveform_frames_, 1ULL)).size()));
-    frame_total_label_->setText(hasFrames
-        ? QStringLiteral("/ %1").arg(fixedIntegerField(total_waveform_frames_, totalDigits))
-        : QStringLiteral("/ %1").arg(fixedIntegerField(0, totalDigits)));
 }
 
 void SessionViewerWindow::onFrameSliderMoved(int value)
@@ -2076,7 +1222,7 @@ void SessionViewerWindow::onFrameSliderMoved(int value)
     }
 
     updating_frame_controls_ = true;
-    frame_spin_->setValue(value);
+    waveform_page_->setFrameValueSilently(value);
     updating_frame_controls_ = false;
 
     if (value > 0)
@@ -2093,7 +1239,7 @@ void SessionViewerWindow::onFrameSliderChanged(int value)
     }
 
     updating_frame_controls_ = true;
-    frame_spin_->setValue(value);
+    waveform_page_->setFrameValueSilently(value);
     updating_frame_controls_ = false;
     if (value > 0)
     {
@@ -2109,7 +1255,7 @@ void SessionViewerWindow::onFrameSpinChanged(int value)
     }
 
     updating_frame_controls_ = true;
-    frame_slider_->setValue(value);
+    waveform_page_->setFrameValueSilently(value);
     updating_frame_controls_ = false;
     if (value > 0)
     {
@@ -2140,9 +1286,9 @@ QVector<float> SessionViewerWindow::visibleWaveformSamples(const QVector<float>&
 void SessionViewerWindow::onToggleWaveformFrameFilterClicked()
 {
     waveform_show_filtered_frame_ = !waveform_show_filtered_frame_;
-    updateWaveformFrameFilterButtonText();
+    updateWaveformActionTexts();
     int firstSampleIndex = 0;
-    waveform_plot_->setSamples(
+    waveform_page_->setWaveformSamples(
         visibleWaveformSamples(current_waveform_frame_samples_, firstSampleIndex),
         firstSampleIndex);
 }
@@ -2153,155 +1299,35 @@ void SessionViewerWindow::onTogglePeakPlotModeClicked()
         ? (is_english_ ? "Switching to polyline plots..." : "正在切换到折线图...")
         : (is_english_ ? "Switching to scatter plots..." : "正在切换到散点图..."));
     waveform_peak_scatter_mode_ = !waveform_peak_scatter_mode_;
-    updatePeakPlotModeButtonText();
-    waveform_peak_plot_->setPlotMode(
-        waveform_peak_scatter_mode_ ? SessionPeakPlotWidget::PlotMode::Scatter : SessionPeakPlotWidget::PlotMode::Polyline);
-    temperature_plot_->setPlotMode(
-        waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
-    humidity_plot_->setPlotMode(
-        waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
-    pressure_plot_->setPlotMode(
-        waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
+    updateWaveformActionTexts();
+    waveform_page_->setPlotMode(waveform_peak_scatter_mode_);
     updateSessionLoadingProgress(is_english_ ? "Refreshing plots..." : "正在刷新图表...", 80);
-    waveform_peak_plot_->repaint();
-    temperature_plot_->repaint();
-    humidity_plot_->repaint();
-    pressure_plot_->repaint();
+    waveform_page_->repaintPlots();
     finishSessionLoading();
 }
 
 void SessionViewerWindow::onConfigurePeakFilterClicked()
 {
-    QDialog dialog(this);
-    dialog.setWindowTitle(is_english_ ? QStringLiteral("Peak Settings") : QStringLiteral("峰值设置"));
-    VaporView::installCustomTitleBar(&dialog, false);
-
-    QWidget *content = dialog.findChild<QWidget *>(QStringLiteral("customTitleBarContent"));
-    if (!content)
-    {
-        content = &dialog;
-    }
-    auto *layout = qobject_cast<QVBoxLayout *>(content->layout());
-    if (!layout)
-    {
-        layout = new QVBoxLayout(content);
-    }
-    layout->setContentsMargins(22, 18, 22, 18);
-    layout->setSpacing(14);
-
-    auto *formWidget = new QWidget(content);
-    auto *formLayout = new QGridLayout(formWidget);
-    formLayout->setContentsMargins(0, 0, 0, 0);
-    formLayout->setHorizontalSpacing(14);
-    formLayout->setVerticalSpacing(10);
-    const int labelColumnWidth = is_english_ ? 104 : 86;
-    const int inputColumnWidth = 240;
-    auto addFormRow = [formWidget, formLayout, labelColumnWidth](int row, const QString& labelText, QWidget *editor) {
-        auto *label = new QLabel(labelText, formWidget);
-        label->setMinimumWidth(labelColumnWidth);
-        label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        editor->setMinimumHeight(34);
-        formLayout->addWidget(label, row, 0, Qt::AlignRight | Qt::AlignVCenter);
-        formLayout->addWidget(editor, row, 1);
-    };
-
-    auto *searchStartSpin = new QSpinBox(formWidget);
-    searchStartSpin->setRange(0, 10000000);
-    searchStartSpin->setSingleStep(1000);
-    searchStartSpin->setValue(peak_search_start_index_);
-    searchStartSpin->setMinimumWidth(inputColumnWidth);
-    addFormRow(0, is_english_ ? QStringLiteral("Search Start") : QStringLiteral("搜索起点"), searchStartSpin);
-
-    auto *searchEndSpin = new QSpinBox(formWidget);
-    searchEndSpin->setRange(0, 10000000);
-    searchEndSpin->setSingleStep(1000);
-    searchEndSpin->setSpecialValueText(is_english_ ? QStringLiteral("Full Frame") : QStringLiteral("整帧"));
-    searchEndSpin->setValue(std::max(0, peak_search_end_index_));
-    searchEndSpin->setMinimumWidth(inputColumnWidth);
-    addFormRow(1, is_english_ ? QStringLiteral("Search End") : QStringLiteral("搜索终点"), searchEndSpin);
-
-    auto *modeCombo = new QComboBox(formWidget);
-    modeCombo->addItem(is_english_ ? QStringLiteral("Off") : QStringLiteral("关闭"), static_cast<int>(PeakFilterMode::None));
-    modeCombo->addItem(is_english_ ? QStringLiteral("IQR Outlier Filter") : QStringLiteral("IQR 异常值过滤"), static_cast<int>(PeakFilterMode::IqrOutlier));
-    modeCombo->addItem(is_english_ ? QStringLiteral("Keep Range") : QStringLiteral("保留区间"), static_cast<int>(PeakFilterMode::KeepRange));
-    modeCombo->addItem(is_english_ ? QStringLiteral("Exclude Range") : QStringLiteral("排除区间"), static_cast<int>(PeakFilterMode::ExcludeRange));
-    modeCombo->setCurrentIndex(std::max(0, modeCombo->findData(static_cast<int>(peak_filter_settings_.mode))));
-    modeCombo->setMinimumWidth(inputColumnWidth);
-    VaporView::configureComboBoxPopup(modeCombo, VaporView::isDarkThemeEnabled());
-    addFormRow(2, is_english_ ? QStringLiteral("Method") : QStringLiteral("方式"), modeCombo);
-
-    auto *minEdit = new QLineEdit(QString::number(peak_filter_settings_.minValue, 'f', 6), formWidget);
-    auto *maxEdit = new QLineEdit(QString::number(peak_filter_settings_.maxValue, 'f', 6), formWidget);
-    minEdit->setMinimumWidth(inputColumnWidth);
-    maxEdit->setMinimumWidth(inputColumnWidth);
-    addFormRow(3, is_english_ ? QStringLiteral("Range Min") : QStringLiteral("区间最小值"), minEdit);
-    addFormRow(4, is_english_ ? QStringLiteral("Range Max") : QStringLiteral("区间最大值"), maxEdit);
-    formLayout->setColumnMinimumWidth(0, labelColumnWidth);
-    formLayout->setColumnMinimumWidth(1, inputColumnWidth);
-    formLayout->setColumnStretch(1, 1);
-    layout->addWidget(formWidget);
-
-    auto *hintLabel = new QLabel(
-        is_english_
-            ? QStringLiteral("Peak search uses sample indexes [start, end). Search End = Full Frame uses all remaining samples. IQR removes statistical outliers. Keep Range keeps only values inside [min, max]. Exclude Range removes values inside [min, max]. If no peak remains after filtering, the plot shows no valid values.")
-            : QStringLiteral("峰值搜索使用采样点下标 [起点, 终点)。搜索终点为“整帧”时表示一直搜索到本帧末尾。IQR 会过滤统计异常值。保留区间只保留 [最小值, 最大值] 内的峰值。排除区间会过滤 [最小值, 最大值] 内的峰值。过滤后没有峰值时，趋势图显示无有效值。"),
-        content);
-    hintLabel->setWordWrap(true);
-    hintLabel->setMinimumWidth(labelColumnWidth + inputColumnWidth + formLayout->horizontalSpacing());
-    hintLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
-    layout->addWidget(hintLabel);
-
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, content);
-    if (QPushButton *okButton = buttons->button(QDialogButtonBox::Ok))
-    {
-        okButton->setText(is_english_ ? QStringLiteral("OK") : QStringLiteral("确定"));
-    }
-    if (QPushButton *cancelButton = buttons->button(QDialogButtonBox::Cancel))
-    {
-        cancelButton->setText(is_english_ ? QStringLiteral("Cancel") : QStringLiteral("取消"));
-    }
-    layout->addWidget(buttons);
-    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-
-    dialog.setMinimumSize(is_english_ ? QSize(520, 430) : QSize(500, 420));
-    dialog.resize(dialog.minimumSize());
-    if (dialog.exec() != QDialog::Accepted)
-    {
-        return;
-    }
-
-    bool minOk = false;
-    bool maxOk = false;
-    const double minValue = minEdit->text().trimmed().toDouble(&minOk);
-    const double maxValue = maxEdit->text().trimmed().toDouble(&maxOk);
-    const int searchStart = searchStartSpin->value();
-    const int searchEnd = searchEndSpin->value();
-    const PeakFilterMode mode = static_cast<PeakFilterMode>(modeCombo->currentData().toInt());
-    if (searchEnd > 0 && searchEnd <= searchStart)
-    {
-        QMessageBox::warning(
+    SessionPeakSettingsInput input;
+    if (!editSessionPeakSettings(
             this,
-            is_english_ ? QStringLiteral("Peak Settings") : QStringLiteral("峰值设置"),
-            is_english_ ? QStringLiteral("Search End must be greater than Search Start, or set to Full Frame.") : QStringLiteral("搜索终点必须大于搜索起点，或者设置为整帧。"));
-        return;
-    }
-    if ((mode == PeakFilterMode::KeepRange || mode == PeakFilterMode::ExcludeRange) && (!minOk || !maxOk))
+            is_english_,
+            peak_search_start_index_,
+            peak_search_end_index_,
+            peak_filter_settings_,
+            input))
     {
-        QMessageBox::warning(
-            this,
-            is_english_ ? QStringLiteral("Peak Settings") : QStringLiteral("峰值设置"),
-            is_english_ ? QStringLiteral("Please enter valid numeric range values.") : QStringLiteral("请输入有效的数值区间。"));
         return;
     }
 
-    applyPeakSettings(searchStart,
-        searchEnd,
-        mode,
-        minValue,
-        maxValue,
-        minOk,
-        maxOk,
+    applyPeakSettings(
+        input.searchStartIndex,
+        input.searchEndIndex,
+        input.filter.mode,
+        input.filter.minValue,
+        input.filter.maxValue,
+        input.hasMinValue,
+        input.hasMaxValue,
         is_english_ ? QStringLiteral("Recalculating waveform peak series...") : QStringLiteral("正在重新计算波形峰值序列..."),
         is_english_ ? QStringLiteral("Applying peak filter...") : QStringLiteral("正在应用峰值过滤..."));
 }
@@ -2337,19 +1363,12 @@ bool SessionViewerWindow::previewWaveformFrame(quint64 frameIndex)
 
     current_waveform_frame_samples_ = samples;
     int firstSampleIndex = 0;
-    waveform_plot_->setSamples(visibleWaveformSamples(samples, firstSampleIndex), firstSampleIndex);
-    waveform_peak_plot_->setCurrentFrame(static_cast<int>(frameIndex));
+    waveform_page_->setWaveformSamples(visibleWaveformSamples(samples, firstSampleIndex), firstSampleIndex);
+    waveform_page_->setCurrentPeakFrame(static_cast<int>(frameIndex));
     const int previewCsvRow = timestampUs == 0 ? -1 : findClosestCsvRow(timestampUs);
-    temperature_plot_->setCurrentIndex(previewCsvRow);
-    humidity_plot_->setCurrentIndex(previewCsvRow);
-    pressure_plot_->setCurrentIndex(previewCsvRow);
+    waveform_page_->setEnvironmentCurrentIndex(previewCsvRow, is_english_);
     previewClosestSensorRow(timestampUs);
-    const int frameDigits = std::max(1, static_cast<int>(QString::number(total_waveform_frames_).size()));
-    frame_info_label_->setText(QString(is_english_
-        ? "Previewing frame %1 / %2. Release the slider to sync CSV and details."
-        : "正在预览第 %1 / %2 帧。松开滑块后同步 CSV 和详细信息。")
-        .arg(fixedIntegerField(frameIndex + 1, frameDigits))
-        .arg(fixedIntegerField(total_waveform_frames_, frameDigits)));
+    waveform_page_->setFramePreviewInfo(frameIndex, total_waveform_frames_, is_english_);
     return true;
 }
 
@@ -2364,8 +1383,8 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex, bool scrollToCsv
 
     current_waveform_frame_samples_ = samples;
     int firstSampleIndex = 0;
-    waveform_plot_->setSamples(visibleWaveformSamples(samples, firstSampleIndex), firstSampleIndex);
-    waveform_peak_plot_->setCurrentFrame(static_cast<int>(frameIndex));
+    waveform_page_->setWaveformSamples(visibleWaveformSamples(samples, firstSampleIndex), firstSampleIndex);
+    waveform_page_->setCurrentPeakFrame(static_cast<int>(frameIndex));
 
     const auto minMax = std::minmax_element(samples.cbegin(), samples.cend());
     const float rawPeakValue = frameIndex < static_cast<quint64>(waveform_peak_raw_values_.size())
@@ -2374,28 +1393,20 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex, bool scrollToCsv
     const float filteredPeakValue = frameIndex < static_cast<quint64>(waveform_peak_values_.size())
         ? waveform_peak_values_.at(static_cast<int>(frameIndex))
         : rawPeakValue;
-    const QString frameTime = formatTimestampUs(timestampUs);
     const QString csvMatchText = highlightClosestSensorRow(timestampUs, scrollToCsvRow);
     const QString sourceFilename = waveform_catalog_.sourceFilename(frameIndex);
-    const QString waveformExportText = (waveform_export_mode_ == QStringLiteral("per_frame") || waveform_export_rate_hz_ <= 0)
-        ? (is_english_ ? QStringLiteral("per-frame export") : QStringLiteral("逐帧导出"))
-        : QString(is_english_ ? "%1 Hz export" : "%1 Hz 导出").arg(fixedDecimalField(waveform_export_rate_hz_, 2, 8));
-    const QString peakText = std::isfinite(filteredPeakValue)
-        ? fixedSignedDecimalField(filteredPeakValue, 6, 14)
-        : fixedTextField(is_english_ ? QStringLiteral("No valid value") : QStringLiteral("无有效值"), 14, Qt::AlignLeft);
-    const int frameDigits = std::max(1, static_cast<int>(QString::number(total_waveform_frames_).size()));
-    frame_info_label_->setText(QString(is_english_
-        ? "Frame %1 / %2 | %3 | %4 | min=%5 max=%6 peak=%7 | %8"
-        : "第 %1 / %2 帧 | %3 | %4 | min=%5 max=%6 峰值=%7 | %8")
-        .arg(fixedIntegerField(frameIndex + 1, frameDigits))
-        .arg(fixedIntegerField(total_waveform_frames_, frameDigits))
-        .arg(frameTime)
-        .arg(waveformExportText)
-        .arg(fixedSignedDecimalField(*minMax.first, 6, 14))
-        .arg(fixedSignedDecimalField(*minMax.second, 6, 14))
-        .arg(peakText)
-        .arg(QFileInfo(sourceFilename).fileName())
-        + (csvMatchText.isEmpty() ? QString() : QStringLiteral(" | ") + csvMatchText));
+    waveform_page_->setFrameDetails(
+        frameIndex,
+        total_waveform_frames_,
+        timestampUs,
+        waveform_export_mode_,
+        waveform_export_rate_hz_,
+        *minMax.first,
+        *minMax.second,
+        filteredPeakValue,
+        sourceFilename,
+        csvMatchText,
+        is_english_);
     return true;
 }
 
@@ -2406,90 +1417,57 @@ int SessionViewerWindow::findClosestCsvRow(quint64 timestampUs) const
 
 void SessionViewerWindow::updateRtkTrackPeakValues()
 {
-    VaporView::Ground::Session::SessionTimelineModel::attachWaveformPeaks(
-        rtk_track_points_,
+    trajectory_controller_.attachWaveformPeaks(
         waveform_timestamps_us_,
         waveform_peak_values_);
-
-    if (trajectory_viewer_dialog_)
-    {
-        trajectory_viewer_dialog_->setTrackStats(rtk_track_stats_);
-        trajectory_viewer_dialog_->setTrackPoints(rtk_track_points_);
-    }
+    map_coordinator_->updateTrack(
+        trajectory_controller_.trackPoints(),
+        trajectory_controller_.trackStats());
 }
+
 void SessionViewerWindow::focusTrajectoryPoint(int trackPointIndex)
 {
-    if (trackPointIndex < 0 || trackPointIndex >= rtk_track_points_.size())
+    const VaporView::Ground::SessionTrajectoryFocus focus =
+        trajectory_controller_.focusForPoint(trackPointIndex);
+    if (!focus.valid)
     {
         return;
     }
 
-    const RtkTrackPoint& point = rtk_track_points_.at(trackPointIndex);
-    if (point.has_waveform_match && point.waveform_frame_index >= 0)
+    if (focus.waveformFrameIndex >= 0)
     {
-        const int frameValue = point.waveform_frame_index + 1;
-        const bool frameInRange = frame_spin_ &&
-            frameValue >= frame_spin_->minimum() &&
-            frameValue <= frame_spin_->maximum();
-        if (frameInRange)
+        const int frameValue = focus.waveformFrameIndex + 1;
+        if (waveform_page_->frameValueInRange(frameValue))
         {
-            const QSignalBlocker spinBlocker(frame_spin_);
-            const QSignalBlocker sliderBlocker(frame_slider_);
-            frame_spin_->setValue(frameValue);
-            frame_slider_->setValue(frameValue);
+            waveform_page_->setFrameValueSilently(frameValue);
         }
-        loadWaveformFrame(static_cast<quint64>(point.waveform_frame_index));
+        loadWaveformFrame(static_cast<quint64>(focus.waveformFrameIndex));
     }
-    else if (point.timestamp_us > 0)
+    else if (focus.timestampUs > 0)
     {
-        highlightClosestSensorRow(point.timestamp_us, true);
+        highlightClosestSensorRow(focus.timestampUs, true);
     }
 
     setStatusText(QString(is_english_
         ? "Focused trajectory point #%1 at CSV row %2."
         : "已定位轨迹点 #%1，对应 CSV 第 %2 行。")
         .arg(trackPointIndex + 1)
-        .arg(point.csv_row >= 0 ? point.csv_row + 1 : 0));
+        .arg(focus.csvRow >= 0 ? focus.csvRow + 1 : 0));
 }
 
-void SessionViewerWindow::syncEnvironmentRangeToWaveformRange(int startFrameIndex, int visibleFrameCount)
+void SessionViewerWindow::syncEnvironmentRangeToWaveformRange(
+    int startFrameIndex,
+    int visibleFrameCount)
 {
-    if (!temperature_plot_ || !humidity_plot_ || !pressure_plot_)
-    {
-        return;
-    }
-
-    if (csv_timestamps_us_.isEmpty())
-    {
-        temperature_plot_->setViewRange(0, 0);
-        humidity_plot_->setViewRange(0, 0);
-        pressure_plot_->setViewRange(0, 0);
-        return;
-    }
-
-    if (waveform_timestamps_us_.isEmpty() || visibleFrameCount <= 0)
-    {
-        temperature_plot_->setViewRange(0, 0);
-        humidity_plot_->setViewRange(0, 0);
-        pressure_plot_->setViewRange(0, 0);
-        return;
-    }
-
-    const int totalFrames = static_cast<int>(waveform_timestamps_us_.size());
-    const int clampedStart = std::clamp(startFrameIndex, 0, std::max(0, totalFrames - 1));
-    const int clampedEnd = std::clamp(clampedStart + visibleFrameCount - 1, clampedStart, totalFrames - 1);
-    const int startCsvRow = findClosestCsvRow(waveform_timestamps_us_.at(clampedStart));
-    const int endCsvRow = findClosestCsvRow(waveform_timestamps_us_.at(clampedEnd));
-    if (startCsvRow < 0 || endCsvRow < 0)
-    {
-        return;
-    }
-
-    const int csvStart = std::min(startCsvRow, endCsvRow);
-    const int csvCount = std::max(1, std::abs(endCsvRow - startCsvRow) + 1);
-    temperature_plot_->setViewRange(csvStart, csvCount);
-    humidity_plot_->setViewRange(csvStart, csvCount);
-    pressure_plot_->setViewRange(csvStart, csvCount);
+    const VaporView::Ground::SessionTimelineRange range =
+        trajectory_controller_.sensorRangeForWaveformRange(
+            csv_timestamps_us_,
+            waveform_timestamps_us_,
+            startFrameIndex,
+            visibleFrameCount);
+    waveform_page_->setEnvironmentRange(
+        range.valid ? range.startIndex : 0,
+        range.valid ? range.count : 0);
 }
 
 void SessionViewerWindow::previewClosestSensorRow(quint64 timestampUs)
@@ -2497,112 +1475,15 @@ void SessionViewerWindow::previewClosestSensorRow(quint64 timestampUs)
     highlightClosestSensorRow(timestampUs, false);
 }
 
-QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs, bool scrollToCsvRow)
+QString SessionViewerWindow::highlightClosestSensorRow(
+    quint64 timestampUs,
+    bool scrollToCsvRow)
 {
-    if (csv_timestamps_us_.isEmpty() || !csv_model_ || csv_model_->rowCount() == 0)
-    {
-        primary_highlighted_csv_row_ = -1;
-        if (csv_model_)
-        {
-            csv_model_->setHighlightedRows({}, -1, {});
-        }
-        return QString();
-    }
-
-    const auto it = std::lower_bound(csv_timestamps_us_.cbegin(), csv_timestamps_us_.cend(), timestampUs);
-    QVector<int> rowsToHighlight;
-    rowsToHighlight.reserve(2);
-    if (it == csv_timestamps_us_.cbegin())
-    {
-        rowsToHighlight.push_back(0);
-        if (csv_timestamps_us_.size() > 1)
-        {
-            rowsToHighlight.push_back(1);
-        }
-    }
-    else if (it == csv_timestamps_us_.cend())
-    {
-        if (csv_timestamps_us_.size() > 1)
-        {
-            rowsToHighlight.push_back(csv_timestamps_us_.size() - 2);
-        }
-        rowsToHighlight.push_back(csv_timestamps_us_.size() - 1);
-    }
-    else
-    {
-        const int lowerIndex = static_cast<int>(it - csv_timestamps_us_.cbegin());
-        rowsToHighlight.push_back(lowerIndex - 1);
-        rowsToHighlight.push_back(lowerIndex);
-    }
-
-    std::sort(rowsToHighlight.begin(), rowsToHighlight.end());
-    rowsToHighlight.erase(std::unique(rowsToHighlight.begin(), rowsToHighlight.end()), rowsToHighlight.end());
-
-    int primaryRow = rowsToHighlight.isEmpty() ? -1 : rowsToHighlight.first();
-    qint64 primaryAbsDelta = std::numeric_limits<qint64>::max();
-    for (int row : rowsToHighlight)
-    {
-        if (row < 0 || row >= csv_timestamps_us_.size())
-        {
-            continue;
-        }
-        const qint64 deltaUs = static_cast<qint64>(csv_timestamps_us_.at(row)) - static_cast<qint64>(timestampUs);
-        const qint64 absDeltaUs = std::llabs(deltaUs);
-        if (absDeltaUs < primaryAbsDelta)
-        {
-            primaryAbsDelta = absDeltaUs;
-            primaryRow = row;
-        }
-    }
-    primary_highlighted_csv_row_ = primaryRow;
-
-    QStringList matchParts;
-    QHash<int, QString> deltaTextByRow;
-    for (int row : rowsToHighlight)
-    {
-        const qint64 deltaUs = static_cast<qint64>(csv_timestamps_us_.at(row)) - static_cast<qint64>(timestampUs);
-        deltaTextByRow.insert(row, formatSignedDeltaMs(deltaUs));
-        const QString rowText = fixedIntegerField(row + 1, 8);
-        const QString deltaText = fixedTextField(formatSignedDeltaMs(deltaUs), 12);
-        matchParts.append(is_english_
-            ? QString("CSV row %1 (%2)").arg(rowText, deltaText)
-            : QString("CSV 第%1行（%2）").arg(rowText, deltaText));
-    }
-
-    highlighted_csv_rows_ = rowsToHighlight;
-    csv_model_->setHighlightedRows(highlighted_csv_rows_, primary_highlighted_csv_row_, deltaTextByRow);
-    if (primaryRow >= 0)
-    {
-        temperature_plot_->setCurrentIndex(primaryRow);
-        humidity_plot_->setCurrentIndex(primaryRow);
-        pressure_plot_->setCurrentIndex(primaryRow);
-        if (scrollToCsvRow)
-        {
-            const int topVisibleRow = rowsToHighlight.isEmpty() ? primaryRow : rowsToHighlight.first();
-            if (topVisibleRow >= 0 && topVisibleRow < csv_model_->rowCount())
-            {
-                csv_table_->scrollTo(csv_model_->index(topVisibleRow, 0), QAbstractItemView::PositionAtTop);
-            }
-        }
-    }
-    else
-    {
-        temperature_plot_->setCurrentIndex(-1);
-        humidity_plot_->setCurrentIndex(-1);
-        pressure_plot_->setCurrentIndex(-1);
-    }
-    csv_table_->viewport()->update();
-
-    if (primaryRow >= 0)
-    {
-        environment_info_label_->setText(QString(is_english_
-            ? "Red: temperature %1, blue: humidity %2, green: pressure %3 (CSV row %4)."
-            : "红色: 温度 %1，蓝色: 湿度 %2，绿色: 气压 %3（CSV 第%4行）。")
-            .arg(formatOptionalSeriesValueFixed(primaryRow < temperature_values_.size() ? temperature_values_.at(primaryRow) : std::numeric_limits<double>::quiet_NaN(), 2, 8, QStringLiteral("°C")))
-            .arg(formatOptionalSeriesValueFixed(primaryRow < humidity_values_.size() ? humidity_values_.at(primaryRow) : std::numeric_limits<double>::quiet_NaN(), 2, 8, QStringLiteral("%RH")))
-            .arg(formatOptionalSeriesValueFixed(primaryRow < pressure_values_.size() ? pressure_values_.at(primaryRow) : std::numeric_limits<double>::quiet_NaN(), 2, 9, QStringLiteral("hPa")))
-            .arg(fixedIntegerField(primaryRow + 1, 8)));
-    }
-
-    return matchParts.join(is_english_ ? " | " : " | ");
+    const SessionCsvHighlightResult result =
+        device_data_page_->highlightTimestamp(
+            csv_timestamps_us_,
+            timestampUs,
+            scrollToCsvRow);
+    waveform_page_->setEnvironmentCurrentIndex(result.primaryRow, is_english_);
+    return result.description;
 }

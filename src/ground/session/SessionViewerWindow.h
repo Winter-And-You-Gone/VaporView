@@ -1,6 +1,9 @@
 #ifndef VaporView_SESSION_VIEWER_WINDOW_H_
 #define VaporView_SESSION_VIEWER_WINDOW_H_
 
+#include "ground/session/SessionTrajectoryController.h"
+#include "ground/session/SessionWaveformRepository.h"
+
 #include <QMainWindow>
 #include <QStringList>
 #include <QVector>
@@ -8,37 +11,22 @@
 #include <atomic>
 #include <memory>
 
-#include "ground/SessionData.h"
-#include "ground/session/SessionWaveformRepository.h"
-
-class QGroupBox;
-class QLabel;
-class QLineEdit;
-class QProgressBar;
-class QProgressDialog;
-class QPushButton;
-class QScrollArea;
-class QSlider;
-class QSpinBox;
-class QTableView;
-class QWidget;
-class QGridLayout;
 class QEvent;
 template <typename T> class QFutureWatcher;
-class QResizeEvent;
-class QShowEvent;
 class RawDataParserWindow;
-class TrajectoryViewerDialog;
+
 namespace VaporView::Ground
 {
+class SessionMapCoordinator;
 class SessionPlaybackController;
 }
+
 namespace VaporView::Ground::SessionUi
 {
-class SessionCsvTableModel;
-class SessionWavePlotWidget;
-class SessionPeakPlotWidget;
-class SingleSeriesTrendPlotWidget;
+class SessionDeviceDataWidget;
+class SessionLoadingDialog;
+class SessionOverviewWidget;
+class SessionWaveformWidget;
 }
 
 class SessionViewerWindow : public QMainWindow
@@ -54,8 +42,6 @@ public:
 
 protected:
     void changeEvent(QEvent *event) override;
-    void resizeEvent(QResizeEvent *event) override;
-    void showEvent(QShowEvent *event) override;
 
 private slots:
     void onChooseSessionClicked();
@@ -76,22 +62,15 @@ private:
     void setupUi();
     void updateTexts();
     void updateSummaryLabels();
-    void relayoutSummaryFields();
     void updateWaveformControls();
-    void updateCsvDisplayHeaders();
-    void applyCsvTableTheme();
-    void refreshCsvItemTheme();
     void setStatusText(const QString& text);
     void beginSessionLoading(const QString& text);
-    void updateSessionLoadingText(const QString& text);
     void updateSessionLoadingProgress(const QString& text, int percent);
     void finishSessionLoading();
     void setSessionLoadingControlsEnabled(bool enabled);
-    void updateSessionLoadingDialogTheme();
     void clearLoadedData(bool clearPathEdit = true);
     void restoreLastSessionPath(const QString& path);
     QString resolveSessionDirectory(const QString& path) const;
-    QString formatMeasuredRateText(const QVector<quint64>& timestampsUs, int metadataRateHz, const QString& metadataMode) const;
     bool loadSessionDirectory(QString sessionDirectory);
     bool loadSessionMetadata(const QString& sessionDirectory);
     bool loadSensorsCsv();
@@ -110,9 +89,7 @@ private:
     void syncEnvironmentRangeToWaveformRange(int startFrameIndex, int visibleFrameCount);
     void previewClosestSensorRow(quint64 timestampUs);
     QString highlightClosestSensorRow(quint64 timestampUs, bool scrollToCsvRow = true);
-    void updateWaveformFrameFilterButtonText();
-    void updatePeakPlotModeButtonText();
-    void updatePeakFilterButtonText();
+    void updateWaveformActionTexts();
     QString peakFilterModeText(PeakFilterMode mode) const;
     QString peakSearchRangeText() const;
     void syncPeakSettingsToTrajectoryViewer();
@@ -125,65 +102,21 @@ private:
                            bool hasMaxValue,
                            const QString& recalculatingText,
                            const QString& filteringText);
-    void applyPeakSettingsFromTrajectory(int searchStartIndex, int searchEndIndex, int filterMode, double minValue, double maxValue);
+    void applyPeakSettingsFromTrajectory(int searchStartIndex,
+                                         int searchEndIndex,
+                                         int filterMode,
+                                         double minValue,
+                                         double maxValue);
     QVector<float> visibleWaveformSamples(const QVector<float>& samples, int& firstSampleIndex) const;
 
-    QWidget *central_widget_;
-    QLineEdit *session_path_edit_;
-    QPushButton *choose_session_btn_;
-    QPushButton *reload_btn_;
-    QPushButton *trajectory_view_btn_;
-    QPushButton *raw_data_parser_btn_;
-    QPushButton *clear_view_btn_;
-    QLabel *status_label_;
-    QProgressDialog *loading_dialog_;
-    QLabel *loading_dialog_label_;
-    QProgressBar *loading_dialog_progress_bar_;
-    int loading_dialog_progress_percent_;
-    QGroupBox *summary_group_;
-    QGridLayout *summary_layout_;
-    QLabel *session_name_title_;
-    QLabel *session_name_value_;
-    QLabel *start_time_title_;
-    QLabel *start_time_value_;
-    QLabel *end_time_title_;
-    QLabel *end_time_value_;
-    QLabel *duration_title_;
-    QLabel *duration_value_;
-    QLabel *sensor_export_rate_title_;
-    QLabel *sensor_export_rate_value_;
-    QLabel *sensor_rows_title_;
-    QLabel *sensor_rows_value_;
-    QLabel *waveform_export_rate_title_;
-    QLabel *waveform_export_rate_value_;
-    QLabel *waveform_files_title_;
-    QLabel *waveform_files_value_;
-    QLabel *waveform_frames_title_;
-    QLabel *waveform_frames_value_;
-    QGroupBox *waveform_group_;
-    QLabel *frame_title_;
-    QSlider *frame_slider_;
-    QSpinBox *frame_spin_;
-    QLabel *frame_total_label_;
-    QLabel *frame_info_label_;
-    QLabel *waveform_plot_title_;
-    VaporView::Ground::SessionUi::SessionWavePlotWidget *waveform_plot_;
-    QLabel *waveform_peak_plot_title_;
-    QPushButton *waveform_frame_filter_btn_;
-    QPushButton *waveform_peak_filter_btn_;
-    QPushButton *waveform_peak_mode_btn_;
-    VaporView::Ground::SessionUi::SessionPeakPlotWidget *waveform_peak_plot_;
-    QLabel *temperature_plot_title_;
-    VaporView::Ground::SessionUi::SingleSeriesTrendPlotWidget *temperature_plot_;
-    QLabel *humidity_plot_title_;
-    VaporView::Ground::SessionUi::SingleSeriesTrendPlotWidget *humidity_plot_;
-    QLabel *pressure_plot_title_;
-    VaporView::Ground::SessionUi::SingleSeriesTrendPlotWidget *pressure_plot_;
-    QLabel *environment_info_label_;
-    QGroupBox *csv_group_;
-    QLabel *csv_info_label_;
-    QTableView *csv_table_;
-    VaporView::Ground::SessionUi::SessionCsvTableModel *csv_model_;
+    VaporView::Ground::SessionUi::SessionOverviewWidget *overview_page_;
+    VaporView::Ground::SessionUi::SessionWaveformWidget *waveform_page_;
+    VaporView::Ground::SessionUi::SessionDeviceDataWidget *device_data_page_;
+    std::unique_ptr<VaporView::Ground::SessionUi::SessionLoadingDialog> loading_dialog_;
+    VaporView::Ground::SessionMapCoordinator *map_coordinator_;
+    VaporView::Ground::SessionTrajectoryController trajectory_controller_;
+    VaporView::Ground::SessionPlaybackController *playback_controller_;
+    RawDataParserWindow *raw_data_parser_window_;
 
     QString session_directory_;
     QString metadata_filename_;
@@ -201,11 +134,8 @@ private:
     QVector<double> temperature_values_;
     QVector<double> humidity_values_;
     QVector<double> pressure_values_;
-    QVector<RtkTrackPoint> rtk_track_points_;
-    RtkTrackStats rtk_track_stats_;
     QVector<quint64> waveform_timestamps_us_;
     VaporView::Ground::SessionWaveformCatalog waveform_catalog_;
-    VaporView::Ground::SessionPlaybackController *playback_controller_;
     QVector<float> current_waveform_frame_samples_;
     QVector<float> waveform_peak_raw_values_;
     QVector<float> waveform_peak_values_;
@@ -220,10 +150,6 @@ private:
     quint64 peak_series_request_id_;
     QFutureWatcher<VaporView::Ground::SessionWaveformPeakSeriesResult> *peak_series_watcher_;
     std::shared_ptr<std::atomic_bool> peak_series_cancel_flag_;
-    QVector<int> highlighted_csv_rows_;
-    int primary_highlighted_csv_row_;
-    TrajectoryViewerDialog *trajectory_viewer_dialog_;
-    RawDataParserWindow *raw_data_parser_window_;
     int points_per_frame_;
     int sensor_export_rate_hz_;
     int waveform_export_rate_hz_;

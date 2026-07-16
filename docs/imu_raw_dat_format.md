@@ -101,7 +101,9 @@ struct ImuRawFileHeader
 };
 ```
 
-当前实现位于 [MainWindow.cpp](C:/WorkSpace/NAV/VaporView/src/MainWindow.cpp)。
+该段描述的是已停止写入的旧格式。当前活动记录实现位于
+[`GroundRecordingService.cpp`](../src/ground/session/GroundRecordingService.cpp)，新会话统一 raw 格式见
+[`raw_dat_format.md`](raw_dat_format.md)。
 
 字段说明：
 - `magic`：固定为 ASCII `"VVIMURAW"`，用于快速识别文件类型

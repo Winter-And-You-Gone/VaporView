@@ -179,63 +179,30 @@ H300 网桥使用说明：
 VaporView/
 ├── CMakeLists.txt
 ├── CMakePresets.json
-├── README.md
-├── design/
-│   ├── vaporview_icon_concept.svg
-│   └── vaporview_icon_minimal.svg
-├── docs/
-│   ├── epsilon_raw_dat_format.md
-│   ├── imu_raw_dat_format.md
-│   └── raw_dat_format.md
-├── include/
-│   ├── MainWindow.h
-│   ├── RangeSelectionAxisWidget.h
-│   ├── RtkConfigDialog.h
-│   ├── RtkStreamService.h
-│   ├── SessionViewerWindow.h
-│   ├── TcpWavePanel.h
-│   ├── TrajectoryViewerDialog.h
-│   ├── compiler_compat.h
-│   ├── data_collector.h
-│   ├── data_types.h
-│   ├── serial_port.h
-│   └── serial_probe_utils.h
-├── python/
-│   ├── __init__.py
-│   ├── config_manager.py
-│   ├── data_exporter.py
-│   └── file_logger.py
-├── resources/
-│   ├── combo_arrow_down.xpm
-│   ├── combo_arrow_up.xpm
-│   ├── lucide/
-│   ├── VaproViewLOGO/
-│   └── modern_style.qss
-├── scripts/
-│   ├── build-linux-arm64.sh
-│   ├── build-windows-msvc2022.ps1
-│   ├── epsilon_raw_route.py
-│   ├── epsilon_raw_route_readme.md
-│   ├── mock_tcp_waveform_sender.py
-│   └── recover_epsilon_main.ps1
+├── cmake/          模块化构建配置
+├── docs/           协议、架构、测试和使用文档
+├── include/        稳定公共数据与协议接口
+├── resources/      样式、图标和运行时资源
+├── scripts/        Windows/Linux 构建与诊断脚本
 ├── src/
-│   ├── MainWindow.cpp
-│   ├── RtkConfigDialog.cpp
-│   ├── RtkStreamService.cpp
-│   ├── SessionViewerWindow.cpp
-│   ├── TcpWavePanel.cpp
-│   ├── TrajectoryViewerDialog.cpp
-│   ├── data_collector.cpp
-│   ├── main.cpp
-│   └── serial_port.cpp
-├── third_party/
-│   ├── hipnuc_driver/
-│   ├── rtklib/
-│   └── um982_driver/
-└── tools/
-    ├── epsilon_serial_probe.py
-    └── epsilon_serial_probe.ps1
+│   ├── app/        地面端、天空端和 TUI 程序入口
+│   ├── ground/     地面端界面与业务协调
+│   │   ├── main/       地面端主窗口
+│   │   ├── session/    会话加载、查看、播放和导出
+│   │   ├── devices/    地面端设备协调
+│   │   ├── trajectory/ 轨迹地图界面
+│   │   └── widgets/    地面端复用控件
+│   ├── sky/        天空端核心、设备、IPC 和 TUI
+│   ├── shared/     共享协议、配置、主题和会话格式
+│   ├── geo/        地理计算
+│   ├── map3d/      可选三维地图
+│   └── rtk/        RTKLIB 封装
+├── tests/          自动化测试
+├── third_party/    随仓库构建的第三方依赖
+└── tools/          串口与数据诊断工具
 ```
+
+完整 target 边界、依赖方向和模块职责见 [docs/architecture.md](docs/architecture.md)。
 
 说明：
 
@@ -378,8 +345,9 @@ Linux:   build/Release/VaporViewSky
 
 ### 入口与主窗口
 
-- `src/main.cpp` 创建 `QApplication`，设置应用名 `VaporView`、版本 `1.0.1` 和组织名 `VaporView`。
-- `src/MainWindow.cpp` 负责菜单栏、工具栏、状态栏、设备配置区、实时数据区、TCP 波形区、日志区、记录会话和全局设置。
+- `src/app/ground_main.cpp` 创建地面端 `QApplication`，设置应用名 `VaporView`、版本 `1.0.1` 和组织名 `VaporView`。
+- `src/ground/main/` 是地面端主窗口的唯一活动实现，负责组合页面与各业务协调模块。
+- `src/ground/session/` 负责会话加载、查看、播放、导出、轨迹和地图协调。
 - `resources/modern_style.qss`、`resources/combo_arrow_down.xpm`、`resources/combo_arrow_up.xpm`、`resources/lucide/` 和 `resources/VaproViewLOGO/` 会在构建后复制到构建目录下的 `resources/`。
 
 ### 串口层
@@ -692,7 +660,7 @@ data/
 
 ## 数据查看器与轨迹查看器
 
-`src/SessionViewerWindow.cpp` 实现数据查看器：
+`src/ground/session/` 实现数据查看器；`SessionViewerWindow` 只组合页面和协调会话级工作流：
 
 - 可选择 session 目录或 `session.json`。
 - 读取 `session.json` 中的相对路径。
@@ -704,7 +672,7 @@ data/
 - 波形峰值图、温度图、湿度图和气压图支持散点 / 折线模式切换。
 - 根据波形时间戳高亮最接近的 CSV 行。
 
-`src/TrajectoryViewerDialog.cpp` 实现轨迹查看器：
+`src/ground/trajectory/TrajectoryViewerDialog.cpp` 实现轨迹查看器界面：
 
 - 数据来源为会话 CSV 中的 RTK / EPSILON 坐标字段。
 - 可把最接近时间的波形峰值关联到轨迹点。

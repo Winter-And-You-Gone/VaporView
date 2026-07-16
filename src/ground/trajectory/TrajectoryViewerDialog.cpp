@@ -1,5 +1,6 @@
 #include "shared/theme/AppTheme.h"
 #include "TrajectoryViewerDialog.h"
+#include "ground/session/SessionExportService.h"
 #include "ground/widgets/CustomTitleBar.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
@@ -42,9 +43,7 @@
 #include <QSlider>
 #include <QSpinBox>
 #include <QStandardPaths>
-#include <QStringConverter>
 #include <QSvgRenderer>
-#include <QTextStream>
 #include <QTimer>
 #include <QToolButton>
 #include <QTimeZone>
@@ -743,16 +742,6 @@ QString trajectoryInfoTable(const QString& title,
 QString pointIndexText(int index)
 {
     return index >= 0 ? QStringLiteral("#%1").arg(index + 1) : QStringLiteral("--");
-}
-
-QString csvCell(QString value)
-{
-    value.replace('"', QStringLiteral("\"\""));
-    if (value.contains(',') || value.contains('"') || value.contains('\n') || value.contains('\r'))
-    {
-        return QStringLiteral("\"%1\"").arg(value);
-    }
-    return value;
 }
 
 QString mapAttributionText(TileProvider provider, bool english)
@@ -3972,37 +3961,14 @@ void TrajectoryViewerDialog::exportTrackCsv()
         return;
     }
 
-    QFile file(filename);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+    const VaporView::Ground::SessionExportResult result =
+        VaporView::Ground::SessionExportService::exportTrajectoryCsv(filename, track_points_);
+    if (!result.success)
     {
         setMapFooterStatus(QString(is_english_
             ? "Failed to export trajectory CSV: %1"
-            : "导出轨迹 CSV 失败：%1").arg(file.errorString()));
+            : "导出轨迹 CSV 失败：%1").arg(result.error));
         return;
-    }
-
-    QTextStream stream(&file);
-    stream.setEncoding(QStringConverter::Utf8);
-    stream << "index,csv_row,timestamp_utc,timestamp_us,latitude,longitude,height_m,cumulative_distance_m,segment_distance_m,speed_mps,gnss_fix,peak_value,waveform_frame,waveform_timestamp_us,waveform_delta_ms\n";
-    for (int index = 0; index < track_points_.size(); ++index)
-    {
-        const RtkTrackPoint& point = track_points_.at(index);
-        stream << index + 1 << ','
-               << (point.csv_row >= 0 ? point.csv_row + 1 : 0) << ','
-               << csvCell(formatTimestampUs(point.timestamp_us)) << ','
-               << point.timestamp_us << ','
-               << QString::number(point.latitude, 'f', 8) << ','
-               << QString::number(point.longitude, 'f', 8) << ','
-               << (point.has_height ? QString::number(point.height_m, 'f', 3) : QString()) << ','
-               << QString::number(point.cumulative_distance_m, 'f', 3) << ','
-               << QString::number(point.segment_distance_m, 'f', 3) << ','
-               << (point.has_speed ? QString::number(point.speed_mps, 'f', 4) : QString()) << ','
-               << csvCell(point.gnss_fix) << ','
-               << (point.has_peak_value ? QString::number(point.peak_value, 'f', 6) : QString()) << ','
-               << (point.waveform_frame_index >= 0 ? QString::number(point.waveform_frame_index + 1) : QString()) << ','
-               << (point.has_waveform_match ? QString::number(point.waveform_timestamp_us) : QString()) << ','
-               << (point.has_waveform_match ? QString::number(static_cast<double>(point.waveform_delta_us) / 1000.0, 'f', 3) : QString())
-               << '\n';
     }
     setMapFooterStatus(QString(is_english_
         ? "Trajectory CSV exported: %1"

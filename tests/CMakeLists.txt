@@ -180,6 +180,26 @@ add_executable(session_timeline_model_test
 target_link_libraries(session_timeline_model_test PRIVATE vaporview_ground_session_core)
 add_test(NAME session_timeline_model_test COMMAND session_timeline_model_test)
 
+add_executable(session_export_trajectory_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/session_export_trajectory_test.cpp
+)
+target_link_libraries(session_export_trajectory_test PRIVATE vaporview_ground_session_core)
+add_test(NAME session_export_trajectory_test COMMAND session_export_trajectory_test)
+
+add_executable(session_viewer_components_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/session_viewer_components_test.cpp
+)
+target_include_directories(session_viewer_components_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(session_viewer_components_test PRIVATE
+    vaporview_ground_session_ui
+    vaporview_ground_trajectory
+)
+add_dependencies(session_viewer_components_test VaporViewRuntimeResources)
+add_test(NAME session_viewer_components_test COMMAND session_viewer_components_test)
+
 add_executable(ground_recording_service_test
     ${CMAKE_CURRENT_SOURCE_DIR}/ground_recording_service_test.cpp
 )
@@ -451,6 +471,7 @@ set(VAPORVIEW_FAST_UNIT_TESTS
     device_rate_policy_test
     temperature_command_state_test
     session_timeline_model_test
+    session_export_trajectory_test
     ground_recording_service_test
     recording_schedule_controller_test
     remote_telemetry_decoder_test
@@ -479,6 +500,7 @@ set(VAPORVIEW_SLOW_UI_TESTS
     session_viewer_window_state_test
     session_viewer_trajectory_test
     session_viewer_theme_test
+    session_viewer_components_test
 )
 set_tests_properties(${VAPORVIEW_SLOW_UI_TESTS} PROPERTIES
     TIMEOUT 120
@@ -501,6 +523,7 @@ set_property(TEST
     session_viewer_window_state_test
     session_viewer_trajectory_test
     session_viewer_theme_test
+    session_viewer_components_test
     vaporview_startup_test
     APPEND PROPERTY LABELS ui
 )
@@ -510,6 +533,8 @@ set_property(TEST session_viewer_io_test APPEND PROPERTY LABELS session-viewer i
 set_property(TEST session_viewer_window_state_test APPEND PROPERTY LABELS session-viewer window-state)
 set_property(TEST session_viewer_trajectory_test APPEND PROPERTY LABELS session-viewer trajectory)
 set_property(TEST session_viewer_theme_test APPEND PROPERTY LABELS session-viewer theme)
+set_property(TEST session_export_trajectory_test APPEND PROPERTY LABELS session-viewer export trajectory)
+set_property(TEST session_viewer_components_test APPEND PROPERTY LABELS session-viewer components map)
 
 if(VAPORVIEW_ENABLE_OSGEARTH)
     set(VAPORVIEW_FAST_3D_UNIT_TESTS

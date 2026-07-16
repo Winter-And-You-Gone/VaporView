@@ -7,6 +7,8 @@ add_library(vaporview_ground_session_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/RecordingScheduleController.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionCsv.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionCsv.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionExportService.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionExportService.h
     ${CMAKE_SOURCE_DIR}/include/ground/SessionData.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionIndex.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionIndex.h
@@ -18,6 +20,8 @@ add_library(vaporview_ground_session_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionTimeFormat.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionTimelineModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionTimelineModel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionTrajectoryController.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionTrajectoryController.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionWaveformRepository.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionWaveformRepository.h
 )
@@ -34,6 +38,10 @@ target_link_libraries(vaporview_ground_session_core PUBLIC
 )
 
 add_library(vaporview_ground_session_ui STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionMapCoordinator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionMapCoordinator.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionViewerPages.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionViewerPages.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionViewerWindow.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionViewerWindow.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionViewerWidgets.cpp

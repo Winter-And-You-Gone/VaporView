@@ -198,7 +198,9 @@ flowchart LR
   Files --> Loader["SessionLoader / SessionCsv"]
   Loader --> Index["SessionIndex / SessionWaveformRepository"]
   Index --> Playback["SessionPlaybackController / SessionTimelineModel"]
-  Playback --> View["SessionViewerWindow + SessionViewerWidgets"]
+  Playback --> Controller["SessionTrajectoryController"]
+  Controller --> View["SessionViewerWindow + SessionViewerPages"]
+  View --> Map["SessionMapCoordinator"]
 ```
 
 Session file parsing and export, indexing, waveform lookup, time formatting,
@@ -278,8 +280,15 @@ responsibilities are separate and directly testable:
 - play/pause/seek/speed: `SessionPlaybackController`;
 - slider/time bounds: `SessionTimelineModel`;
 - time conversion/formatting: `SessionTimeFormat`;
-- recording/export path compatibility: `RecordingSessionLayout` and
-  `SessionCsv`;
+- recording path compatibility: `RecordingSessionLayout` and `SessionCsv`;
+- trajectory CSV writing: `SessionExportService`;
+- trajectory state, peak attachment, and timeline mapping:
+  `SessionTrajectoryController`;
+- trajectory map dialog lifecycle and signal forwarding:
+  `SessionMapCoordinator`;
+- overview, waveform, and sensor CSV page composition:
+  `SessionOverviewWidget`, `SessionWaveformWidget`, and
+  `SessionDeviceDataWidget` in `SessionViewerPages`;
 - reusable table/plot view implementation: `SessionViewerWidgets`.
 
 Tests for these core types link `vaporview_ground_session_core`; the theme and

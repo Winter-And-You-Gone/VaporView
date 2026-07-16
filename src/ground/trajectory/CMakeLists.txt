@@ -14,6 +14,7 @@ target_link_libraries(vaporview_ground_trajectory PUBLIC
 
 target_link_libraries(vaporview_ground_trajectory PRIVATE
     vaporview_app_theme
+    vaporview_ground_session_core
     vaporview_ground_ui_support
     vaporview_geo_core
     Qt6::Core
