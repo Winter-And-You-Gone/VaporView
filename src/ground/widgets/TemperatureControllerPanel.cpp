@@ -1844,9 +1844,9 @@ void TemperatureControllerPanel::alignCommonSettingsColumns(int channelIndex)
     QWidget *commonSettingsPage = channel_stack_->count() > 2
         ? channel_stack_->widget(2)
         : nullptr;
-    QWidget *channelCommonPage = channels_[channelIndex].config_sub_stack &&
-            channels_[channelIndex].config_sub_stack->count() > 0
-        ? channels_[channelIndex].config_sub_stack->widget(0)
+    QStackedWidget *channelSubStack = channels_[channelIndex].config_sub_stack;
+    QWidget *channelCommonPage = channelSubStack && channelSubStack->count() > 0
+        ? channelSubStack->widget(0)
         : nullptr;
     auto *commonSettingsGrid = commonSettingsPage
         ? qobject_cast<QGridLayout *>(commonSettingsPage->layout())
@@ -1858,13 +1858,33 @@ void TemperatureControllerPanel::alignCommonSettingsColumns(int channelIndex)
         ? channelCommonGrid->itemAtPosition(0, 3)
         : nullptr;
     QWidget *secondColumnLabel = secondColumnItem ? secondColumnItem->widget() : nullptr;
-    if (!commonSettingsPage || !commonSettingsGrid || !channelCommonGrid || !secondColumnLabel)
+    if (!commonSettingsPage || !commonSettingsGrid)
     {
         return;
     }
 
-    channelCommonGrid->invalidate();
-    channelCommonGrid->activate();
+    constexpr const char *kSecondColumnAnchorProperty =
+        "temperatureCommonSettingsSecondColumnAnchorX";
+    bool hasSecondColumnAnchor = false;
+    int secondColumnAnchorX = commonSettingsPage->property(kSecondColumnAnchorProperty)
+        .toInt(&hasSecondColumnAnchor);
+    const bool channelCommonPageIsCurrent =
+        channel_stack_->currentIndex() == channelIndex &&
+        channelSubStack && channelSubStack->currentIndex() == 0;
+    if (channelCommonPageIsCurrent && channelCommonGrid && secondColumnLabel)
+    {
+        channelCommonGrid->invalidate();
+        channelCommonGrid->activate();
+        secondColumnAnchorX = channel_stack_->mapFromGlobal(
+            secondColumnLabel->mapToGlobal(QPoint(0, 0))).x();
+        commonSettingsPage->setProperty(kSecondColumnAnchorProperty, secondColumnAnchorX);
+        hasSecondColumnAnchor = true;
+    }
+    if (!hasSecondColumnAnchor || secondColumnAnchorX < 0)
+    {
+        return;
+    }
+
     commonSettingsGrid->invalidate();
     commonSettingsGrid->activate();
 
@@ -1879,8 +1899,7 @@ void TemperatureControllerPanel::alignCommonSettingsColumns(int channelIndex)
     }
     const int commonPageOriginX = channel_stack_->mapFromGlobal(
         commonSettingsPage->mapToGlobal(QPoint(0, 0))).x();
-    const int targetSecondColumnX = channel_stack_->mapFromGlobal(
-        secondColumnLabel->mapToGlobal(QPoint(0, 0))).x() - commonPageOriginX;
+    const int targetSecondColumnX = secondColumnAnchorX - commonPageOriginX;
     commonSettingsGrid->setColumnMinimumWidth(
         1,
         std::max(0, targetSecondColumnX - firstColumnWidth));

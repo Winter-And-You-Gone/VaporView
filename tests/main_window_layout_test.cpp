@@ -3715,6 +3715,34 @@ int main(int argc, char **argv)
                 "temperature polynomial A4-A7 inputs match the fixed A1-A3 width");
         previousTopFieldRight = fieldRect.right();
     }
+    clickWidget(temperatureConfigChannelButton2, 100);
+    activateLayouts(&window);
+    require(temperatureChannelConfigSubStack2->currentWidget() != nullptr &&
+                temperatureChannelConfigSubStack2->currentWidget()->objectName() ==
+                    QStringLiteral("temperatureChannelSensorConfigPageChannel2"),
+            "switching to channel 2 preserves the sensor-config subpage");
+    selectedChannelCommonParamsPage->resize(420, selectedChannelCommonParamsPage->height());
+    selectedChannelCommonParamsGrid->invalidate();
+    selectedChannelCommonParamsGrid->activate();
+    clickWidget(temperatureCommonSettingsButton, 150);
+    activateLayouts(&window);
+    const QRect commonBaudRowAfterChannel2Sensor(
+        rs485BaudCombo->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
+        rs485BaudCombo->parentWidget()->size());
+    const QRect commonInternalRowAfterChannel2Sensor(
+        commonInternalTemperatureEdit->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
+        commonInternalTemperatureEdit->parentWidget()->size());
+    require(std::abs(commonBaudRowAfterChannel2Sensor.left() - commonBaudRowRect.left()) <= 1 &&
+                std::abs(commonInternalRowAfterChannel2Sensor.left() - commonInternalRowRect.left()) <= 1 &&
+                commonBaudRowAfterChannel2Sensor.left() > commonAddressRowRect.right() &&
+                commonInternalRowAfterChannel2Sensor.left() > commonOvertempRowRect.right(),
+            "channel 2 sensor config switches to the same non-overlapping common-settings layout");
+    clickWidget(temperatureConfigChannelButton1, 100);
+    activateLayouts(&window);
+    require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
+                temperatureChannelConfigSubStack->currentWidget()->objectName() ==
+                    QStringLiteral("temperatureChannelSensorConfigPageChannel1"),
+            "switching back to channel 1 restores the sensor-config subpage");
     clickWidget(temperatureChannelCommonParamsButton, 100);
     activateLayouts(&window);
     for (int coefficient = 4; coefficient < 8; ++coefficient)
