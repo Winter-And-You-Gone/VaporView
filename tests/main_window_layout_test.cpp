@@ -13,6 +13,7 @@
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDoubleSpinBox>
+#include <QDialog>
 #include <QFontMetrics>
 #include <QFrame>
 #include <QGroupBox>
@@ -72,6 +73,119 @@ void require(bool condition, const char *message)
         std::cerr << "FAIL: " << message << '\n';
         std::exit(1);
     }
+}
+
+QAction *findAboutAction(MainWindow *window)
+{
+    if (!window)
+    {
+        return nullptr;
+    }
+
+    for (QAction *action : window->findChildren<QAction *>())
+    {
+        if (action && (action->text() == QStringLiteral("关于(&A)") ||
+                       action->text() == QStringLiteral("&About")))
+        {
+            return action;
+        }
+    }
+    return nullptr;
+}
+
+void requireAboutDialogLayout(MainWindow *window,
+                              QAction *aboutAction,
+                              bool english,
+                              const QString& expectedVersion)
+{
+    require(window != nullptr && aboutAction != nullptr,
+            "about dialog test has a window and action");
+
+    bool inspected = false;
+    QTimer::singleShot(0, window, [&]() {
+        auto *dialog = window->findChild<QDialog *>(QStringLiteral("aboutDialog"));
+        require(dialog != nullptr && dialog->isVisible(),
+                "about action opens the custom about dialog");
+        require(dialog->windowTitle() == (english ? QStringLiteral("About VaporView")
+                                                  : QStringLiteral("关于 VaporView")),
+                "about dialog title follows the interface language");
+        require(dialog->isModal(), "about dialog is modal");
+
+        auto *body = dialog->findChild<QWidget *>(QStringLiteral("aboutDialogBody"));
+        auto *footer = dialog->findChild<QWidget *>(QStringLiteral("aboutDialogFooter"));
+        auto *logo = dialog->findChild<QLabel *>(QStringLiteral("aboutDialogLogo"));
+        auto *productName = dialog->findChild<QLabel *>(QStringLiteral("aboutDialogProductNameLabel"));
+        auto *description = dialog->findChild<QLabel *>(QStringLiteral("aboutDialogDescriptionLabel"));
+        auto *framework = dialog->findChild<QLabel *>(QStringLiteral("aboutDialogFrameworkLabel"));
+        auto *version = dialog->findChild<QLabel *>(QStringLiteral("aboutDialogVersionLabel"));
+        auto *supportedDevices = dialog->findChild<QLabel *>(QStringLiteral("aboutDialogSupportedDevicesLabel"));
+        auto *copyright = dialog->findChild<QLabel *>(QStringLiteral("aboutDialogCopyrightLabel"));
+        auto *okButton = dialog->findChild<QPushButton *>(QStringLiteral("aboutDialogOkButton"));
+        require(body != nullptr && footer != nullptr && logo != nullptr && productName != nullptr &&
+                    description != nullptr && framework != nullptr && version != nullptr &&
+                    supportedDevices != nullptr && copyright != nullptr && okButton != nullptr,
+                "about dialog exposes the complete reference layout");
+        require(!logo->pixmap().isNull() && logo->width() == logo->height(),
+                "about dialog renders the square VaporView logo");
+        require(productName->text() == QStringLiteral("VaporView") &&
+                    productName->font().pointSizeF() > description->font().pointSizeF(),
+                "about dialog gives the product name the strongest text hierarchy");
+        require(description->text() ==
+                    (english
+                         ? QStringLiteral("Integrated Navigation and Environmental Monitoring System")
+                         : QStringLiteral("组合导航与环境监控系统")),
+                "about dialog describes the product in the active language");
+        require(framework->text() == (english ? QStringLiteral("Built with Qt 6")
+                                                   : QStringLiteral("基于 Qt 6 构建")),
+                "about dialog identifies the Qt 6 foundation");
+        require(version->text() == (english
+                                         ? QStringLiteral("Version %1").arg(expectedVersion)
+                                         : QStringLiteral("版本 %1").arg(expectedVersion)),
+                "about dialog uses the runtime application version with a stable fallback");
+        require(supportedDevices->text().contains(QStringLiteral("EPSILON")) &&
+                    supportedDevices->text().contains(QStringLiteral("RD105")),
+                "about dialog keeps the supported hardware summary concise");
+        require(copyright->text() == QStringLiteral("© 2026 VaporView"),
+                "about dialog shows the product copyright");
+        require(okButton->text() == (english ? QStringLiteral("OK") : QStringLiteral("确定")) &&
+                    okButton->isDefault() && okButton->width() == 124,
+                "about dialog has a stable right-aligned default confirmation button");
+        require(okButton->mapTo(footer, QPoint(0, 0)).x() > footer->width() / 2,
+                "about dialog confirmation button stays on the right side of the footer");
+        require(footer->styleSheet().isEmpty() &&
+                    dialog->styleSheet().contains(QStringLiteral("QWidget#aboutDialogFooter")) &&
+                    dialog->styleSheet().contains(QStringLiteral("border-top: 1px solid")),
+                "about dialog footer is a separately styled action band");
+
+        QToolButton *languageButton = nullptr;
+        QToolButton *themeButton = nullptr;
+        for (QToolButton *button : dialog->findChildren<QToolButton *>())
+        {
+            if (button->accessibleName() == QStringLiteral("titleLanguageButton"))
+            {
+                languageButton = button;
+            }
+            else if (button->accessibleName() == QStringLiteral("titleThemeButton"))
+            {
+                themeButton = button;
+            }
+        }
+        auto *separator = dialog->findChild<QFrame *>(QStringLiteral("titleBarSeparator"));
+        auto *closeButton = dialog->findChild<QToolButton *>(QStringLiteral("windowCloseButton"));
+        require(languageButton != nullptr && themeButton != nullptr &&
+                    !languageButton->isVisible() && !themeButton->isVisible() &&
+                    separator != nullptr && !separator->isVisible(),
+                "about title bar hides unrelated language and theme controls");
+        require(closeButton != nullptr && closeButton->isVisible() &&
+                    closeButton->focusPolicy() == Qt::TabFocus,
+                "about title bar retains an accessible close control");
+
+        inspected = true;
+        dialog->accept();
+    });
+
+    aboutAction->trigger();
+    require(inspected, "about dialog layout was inspected before closing");
 }
 
 using VaporViewTest::processEventsFor;
@@ -1549,6 +1663,41 @@ int main(int argc, char **argv)
         settings.remove(QStringLiteral("serial/hmp3_baud"));
         settings.remove(QStringLiteral("serial/sht45_baud"));
         settings.sync();
+    }
+
+    {
+        MainWindow aboutWindow;
+        aboutWindow.setWindowTitle(QStringLiteral("VaporView"));
+        aboutWindow.resize(900, 650);
+        aboutWindow.show();
+        require(waitForWindowExposed(&aboutWindow),
+                "dedicated window becomes exposed for about dialog testing");
+
+        QAction *aboutAction = findAboutAction(&aboutWindow);
+        require(aboutAction != nullptr, "help menu exposes the about action");
+        const QString originalApplicationVersion = app.applicationVersion();
+        app.setApplicationVersion(QStringLiteral("9.8.7-test"));
+        requireAboutDialogLayout(&aboutWindow, aboutAction, false, QStringLiteral("9.8.7-test"));
+        require(QMetaObject::invokeMethod(&aboutWindow, "onSwitchLanguage", Qt::DirectConnection),
+                "main window switches to English for about dialog coverage");
+        require(processEventsUntil(1000, [aboutAction]() {
+                    return aboutAction->text() == QStringLiteral("&About");
+                }),
+                "about action updates to English");
+        app.setApplicationVersion(QString());
+        requireAboutDialogLayout(&aboutWindow, aboutAction, true, QStringLiteral("1.0.1"));
+        require(QMetaObject::invokeMethod(&aboutWindow, "onSwitchLanguage", Qt::DirectConnection),
+                "main window switches back to Chinese after about dialog coverage");
+        require(processEventsUntil(1000, [aboutAction]() {
+                    return aboutAction->text() == QStringLiteral("关于(&A)");
+                }),
+                "about action returns to Chinese");
+        app.setApplicationVersion(originalApplicationVersion);
+        aboutWindow.close();
+        require(processEventsUntil(1000, [&aboutWindow]() {
+                    return !aboutWindow.isVisible();
+                }),
+                "dedicated about dialog test window closes cleanly");
     }
 
     MainWindow window;

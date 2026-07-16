@@ -1,6 +1,12 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
 
+#include <QCoreApplication>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QPushButton>
+#include <QVBoxLayout>
+
 void MainWindow::setEnglish(bool english)
 {
     auto setNativeMenuTitle = [this](QMenu *menu, const QString& title) {
@@ -408,27 +414,182 @@ void MainWindow::onSwitchLanguage()
 }
 void MainWindow::showAboutDialog()
 {
-    const QString title = state_->is_english_ ? QStringLiteral("About VaporView") : QStringLiteral("关于 VaporView");
-    const QString text = state_->is_english_
-        ? QStringLiteral(
-              "VaporView Application\n\n"
-              "Version 1.0.1\n\n"
-              "Integrated navigation and environment monitoring system.\n\n"
-              "Supported devices:\n"
-              "- EPSILON Integrated Navigation (FDILink)\n"
-              "- PTB210 Barometer\n"
-              "- HMP3 Temperature/Humidity Sensor\n"
-              "- TFA1500-L Laser Rangefinder")
-        : QStringLiteral(
-              "VaporView 应用程序\n\n"
-              "版本 1.0.1\n\n"
-              "组合导航与环境监控系统。\n\n"
-              "支持的设备:\n"
-              "- EPSILON 组合导航一体机 (FDILink)\n"
-              "- PTB210 气压计\n"
-              "- HMP3 温湿度传感器\n"
-              "- TFA1500-L 激光测距模块");
-    QMessageBox::about(this, title, text);
+    const bool english = state_->is_english_;
+    const bool dark = state_->dark_theme_enabled_;
+    const QString title = english ? QStringLiteral("About VaporView") : QStringLiteral("关于 VaporView");
+    const QString applicationVersion = QCoreApplication::applicationVersion().trimmed().isEmpty()
+        ? QStringLiteral("1.0.1")
+        : QCoreApplication::applicationVersion().trimmed();
+
+    QDialog dialog(this);
+    dialog.setObjectName(QStringLiteral("aboutDialog"));
+    dialog.setWindowTitle(title);
+    dialog.setWindowModality(Qt::WindowModal);
+    dialog.setMinimumSize(560, 520);
+
+    auto *rootLayout = new QVBoxLayout(&dialog);
+    rootLayout->setContentsMargins(0, 0, 0, 0);
+    rootLayout->setSpacing(0);
+
+    auto *body = new QWidget(&dialog);
+    body->setObjectName(QStringLiteral("aboutDialogBody"));
+    auto *bodyLayout = new QVBoxLayout(body);
+    bodyLayout->setContentsMargins(48, 24, 48, 24);
+    bodyLayout->setSpacing(0);
+    bodyLayout->addStretch(1);
+
+    auto *logoLabel = new QLabel(body);
+    logoLabel->setObjectName(QStringLiteral("aboutDialogLogo"));
+    logoLabel->setAccessibleName(english ? QStringLiteral("VaporView logo") : QStringLiteral("VaporView 标志"));
+    logoLabel->setFixedSize(108, 108);
+    logoLabel->setAlignment(Qt::AlignCenter);
+    logoLabel->setPixmap(renderVaporViewLogo(dark, 104, logoLabel->devicePixelRatioF()));
+    bodyLayout->addWidget(logoLabel, 0, Qt::AlignHCenter);
+    bodyLayout->addSpacing(18);
+
+    auto *productNameLabel = new QLabel(QStringLiteral("VaporView"), body);
+    productNameLabel->setObjectName(QStringLiteral("aboutDialogProductNameLabel"));
+    productNameLabel->setAlignment(Qt::AlignCenter);
+    QFont productNameFont = productNameLabel->font();
+    const qreal basePointSize = productNameFont.pointSizeF() > 0.0 ? productNameFont.pointSizeF() : 10.0;
+    productNameFont.setPointSizeF(std::max<qreal>(20.0, basePointSize * 1.9));
+    productNameFont.setWeight(QFont::DemiBold);
+    productNameLabel->setFont(productNameFont);
+    bodyLayout->addWidget(productNameLabel);
+    bodyLayout->addSpacing(18);
+
+    auto createCenteredLabel = [body](const QString& objectName, const QString& text) {
+        auto *label = new QLabel(text, body);
+        label->setObjectName(objectName);
+        label->setAlignment(Qt::AlignCenter);
+        label->setWordWrap(true);
+        label->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        return label;
+    };
+
+    QLabel *descriptionLabel = createCenteredLabel(
+        QStringLiteral("aboutDialogDescriptionLabel"),
+        english
+            ? QStringLiteral("Integrated Navigation and Environmental Monitoring System")
+            : QStringLiteral("组合导航与环境监控系统"));
+    QFont descriptionFont = descriptionLabel->font();
+    descriptionFont.setPointSizeF(std::max<qreal>(11.0, basePointSize * 1.12));
+    descriptionFont.setWeight(QFont::Medium);
+    descriptionLabel->setFont(descriptionFont);
+    bodyLayout->addWidget(descriptionLabel);
+    bodyLayout->addSpacing(10);
+
+    bodyLayout->addWidget(createCenteredLabel(
+        QStringLiteral("aboutDialogFrameworkLabel"),
+        english ? QStringLiteral("Built with Qt 6") : QStringLiteral("基于 Qt 6 构建")));
+    bodyLayout->addSpacing(2);
+    bodyLayout->addWidget(createCenteredLabel(
+        QStringLiteral("aboutDialogVersionLabel"),
+        english
+            ? QStringLiteral("Version %1").arg(applicationVersion)
+            : QStringLiteral("版本 %1").arg(applicationVersion)));
+    bodyLayout->addSpacing(20);
+    bodyLayout->addWidget(createCenteredLabel(
+        QStringLiteral("aboutDialogSupportedDevicesLabel"),
+        english
+            ? QStringLiteral("Supports EPSILON, PTB210, HMP3, TFA1500-L, and RD105")
+            : QStringLiteral("支持 EPSILON、PTB210、HMP3、TFA1500-L 与 RD105")));
+    bodyLayout->addSpacing(20);
+    bodyLayout->addWidget(createCenteredLabel(
+        QStringLiteral("aboutDialogCopyrightLabel"),
+        QStringLiteral("© 2026 VaporView")));
+    bodyLayout->addStretch(1);
+    rootLayout->addWidget(body, 1);
+
+    auto *footer = new QWidget(&dialog);
+    footer->setObjectName(QStringLiteral("aboutDialogFooter"));
+    footer->setMinimumHeight(82);
+    auto *footerLayout = new QHBoxLayout(footer);
+    footerLayout->setContentsMargins(24, 18, 28, 18);
+    footerLayout->setSpacing(0);
+    footerLayout->addStretch(1);
+
+    auto *okButton = new QPushButton(english ? QStringLiteral("OK") : QStringLiteral("确定"), footer);
+    okButton->setObjectName(QStringLiteral("aboutDialogOkButton"));
+    okButton->setFixedSize(124, 40);
+    okButton->setDefault(true);
+    okButton->setAutoDefault(true);
+    QObject::connect(okButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+    footerLayout->addWidget(okButton, 0, Qt::AlignRight | Qt::AlignVCenter);
+    rootLayout->addWidget(footer);
+
+    VaporView::installCustomTitleBar(&dialog, false);
+    if (QLabel *titleLogo = dialog.findChild<QLabel *>(QStringLiteral("customTitleLogo")))
+    {
+        titleLogo->setFixedSize(36, 36);
+        titleLogo->setPixmap(renderVaporViewLogo(dark, 30, titleLogo->devicePixelRatioF()));
+    }
+    for (QToolButton *button : dialog.findChildren<QToolButton *>())
+    {
+        if (button->accessibleName() == QStringLiteral("titleLanguageButton") ||
+            button->accessibleName() == QStringLiteral("titleThemeButton"))
+        {
+            button->hide();
+        }
+        else if (button->objectName() == QStringLiteral("windowCloseButton"))
+        {
+            button->setAccessibleName(english ? QStringLiteral("Close") : QStringLiteral("关闭"));
+            button->setFocusPolicy(Qt::TabFocus);
+        }
+    }
+    for (QFrame *separator : dialog.findChildren<QFrame *>(QStringLiteral("titleBarSeparator")))
+    {
+        separator->hide();
+    }
+
+    dialog.setStyleSheet(applyAppThemeTokens(
+        customTitleBarStyleSheet(dark) + QStringLiteral(R"(
+QDialog#aboutDialog,
+QDialog#aboutDialog QWidget#customTitleBarContent,
+QWidget#aboutDialogBody {
+    background-color: @vv-surface;
+    color: @vv-text;
+}
+QDialog#aboutDialog QLabel {
+    background-color: transparent;
+    border: none;
+}
+QLabel#aboutDialogProductNameLabel {
+    color: @vv-text-strong;
+}
+QLabel#aboutDialogDescriptionLabel,
+QLabel#aboutDialogFrameworkLabel,
+QLabel#aboutDialogVersionLabel,
+QLabel#aboutDialogSupportedDevicesLabel {
+    color: @vv-text-secondary;
+}
+QLabel#aboutDialogCopyrightLabel {
+    color: @vv-text-muted;
+}
+QWidget#aboutDialogFooter {
+    background-color: @vv-surface-alt;
+    border-top: 1px solid @vv-border;
+}
+QPushButton#aboutDialogOkButton {
+    background-color: @vv-surface-raised;
+    color: @vv-text-strong;
+    border: 1px solid @vv-border-strong;
+    border-radius: 6px;
+    padding: 0px 18px;
+}
+QPushButton#aboutDialogOkButton:hover {
+    background-color: @vv-surface-subtle;
+}
+QPushButton#aboutDialogOkButton:pressed {
+    background-color: @vv-surface-sunken;
+}
+QPushButton#aboutDialogOkButton:focus {
+    border: 2px solid @vv-focus;
+}
+)"), dark));
+
+    dialog.resize(dialog.sizeHint().expandedTo(QSize(620, 560)));
+    dialog.exec();
 }
 
 void MainWindow::updateThemeAction()
