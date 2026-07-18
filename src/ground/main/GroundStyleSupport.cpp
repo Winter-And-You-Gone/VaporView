@@ -467,7 +467,7 @@ QPushButton#appSidebarButton[_vv_sidebar_compact="true"] {
 QPushButton#appSidebarButton:hover,
 QPushButton#appSidebarButton[_vv_hover="true"] {
     background-color: @vv-title-hover;
-    color: @vv-primary;
+    color: @vv-text;
 }
 QPushButton#appSidebarButton:checked {
     background-color: @vv-primary;

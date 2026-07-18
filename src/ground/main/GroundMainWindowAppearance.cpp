@@ -57,7 +57,7 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton#appSidebarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-weight: 600; min-height: 34px; max-height: 34px; padding: 6px 8px; text-align: left; outline: none; }"
             "QPushButton#appSidebarButton:focus { outline: none; }"
             "QPushButton#appSidebarButton[_vv_sidebar_compact=\"true\"] { min-width: 42px; max-width: 42px; min-height: 42px; max-height: 42px; padding: 0px; text-align: center; outline: none; }"
-            "QPushButton#appSidebarButton:hover, QPushButton#appSidebarButton[_vv_hover=\"true\"] { background-color: @vv-title-hover; color: @vv-primary; }"
+            "QPushButton#appSidebarButton:hover, QPushButton#appSidebarButton[_vv_hover=\"true\"] { background-color: @vv-title-hover; color: @vv-text; }"
             "QPushButton#appSidebarButton:checked { background-color: @vv-primary; border-color: @vv-primary; color: @vv-white; }"
             "QPushButton#dangerButton { background-color: @vv-danger; border: 1px solid @vv-danger; border-radius: 6px; color: @vv-white; font-weight: 700; padding: 6px 14px; }"
             "QMenuBar { background-color: @vv-surface; border-bottom: 1px solid @vv-border; padding: 4px 8px; }"

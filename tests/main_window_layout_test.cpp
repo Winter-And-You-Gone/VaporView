@@ -2671,6 +2671,12 @@ int main(int argc, char **argv)
                                      .arg(VaporView::appThemeColorName(
                                          VaporView::AppThemeColor::TitleBarHover, true)),
                                  "dark sidebar hover uses the same neutral highlight as title-bar icons");
+    requireLastStyleRuleContains(darkOverviewStyleSheet,
+                                 QStringLiteral("QPushButton#appSidebarButton:hover,"),
+                                 QStringLiteral("color: %1")
+                                     .arg(VaporView::appThemeColorName(
+                                         VaporView::AppThemeColor::Text, true)),
+                                 "dark sidebar hover preserves the normal text color");
     for (QFrame *pill : deviceOverviewCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")))
     {
         require(pill->height() >= minHomeTelemetryPillHeight,
@@ -3392,6 +3398,12 @@ int main(int argc, char **argv)
                                      .arg(VaporView::appThemeColorName(
                                          VaporView::AppThemeColor::TitleBarHover, false)),
                                  "sidebar button hover uses the same neutral highlight as title-bar icons");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QPushButton#appSidebarButton:hover,"),
+                                 QStringLiteral("color: %1")
+                                     .arg(VaporView::appThemeColorName(
+                                         VaporView::AppThemeColor::Text, false)),
+                                 "sidebar button hover preserves the normal text color");
     require(VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandle, false) ==
                     QColor(226, 226, 226) &&
                 VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandle, true) ==
