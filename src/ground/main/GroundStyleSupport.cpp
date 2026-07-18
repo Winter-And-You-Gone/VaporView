@@ -953,6 +953,22 @@ QLabel#statusIndicator[status="warning"] {
     color: @vv-warning;
 }
 )") + QStringLiteral(R"(
+QWidget#tcpWaveCardOutline {
+    background-color: transparent;
+    border: 1px solid @vv-border;
+    border-radius: 8px;
+}
+QFrame#appSidebar {
+    background-color: @vv-surface;
+    border-left: none;
+    border-top: 1px solid @vv-border;
+    border-right: 1px solid @vv-border;
+    border-bottom: 1px solid @vv-border;
+    border-top-left-radius: 0px;
+    border-top-right-radius: 8px;
+    border-bottom-left-radius: 0px;
+    border-bottom-right-radius: 8px;
+}
 QAbstractSpinBox[spinArrowHover="up"]::up-arrow {
     image: url(lucide/chevron-up-primary-dark.svg);
 }

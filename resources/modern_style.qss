@@ -154,8 +154,21 @@ QGroupBox#sensorGroupBox {
     padding: 0px 0px 0px 0px;
 }
 
+QWidget#tcpWaveCardOutline {
+    background-color: transparent;
+    border: 1px solid @vv-border;
+    border-radius: 8px;
+}
+
 QFrame#appSidebar {
+    border-left: none;
+    border-top: 1px solid @vv-border;
     border-right: 1px solid @vv-border;
+    border-bottom: 1px solid @vv-border;
+    border-top-left-radius: 0px;
+    border-top-right-radius: 8px;
+    border-bottom-left-radius: 0px;
+    border-bottom-right-radius: 8px;
     background-color: @vv-surface;
 }
 

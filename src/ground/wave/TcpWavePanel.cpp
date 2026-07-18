@@ -109,6 +109,50 @@ constexpr int kRemoteStatusRangeWidth = 15;
 constexpr int kRemoteStatusIndexWidth = 6;
 constexpr const char *kTooltipAnchorRectProperty = "_vv_tooltip_anchor_rect";
 
+class TcpWaveCardOutline final : public QWidget
+{
+public:
+    explicit TcpWaveCardOutline(QGroupBox *card)
+        : QWidget(card)
+    {
+        setObjectName(QStringLiteral("tcpWaveCardOutline"));
+        setProperty("tcpWaveCardOutline", true);
+        setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        setAttribute(Qt::WA_StyledBackground, true);
+        setAutoFillBackground(false);
+        setFocusPolicy(Qt::NoFocus);
+
+        card->installEventFilter(this);
+        syncGeometry();
+        show();
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (watched == parentWidget() && event->type() == QEvent::Resize)
+        {
+            syncGeometry();
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
+private:
+    void syncGeometry()
+    {
+        setGeometry(parentWidget()->rect());
+        raise();
+    }
+};
+
+void installTcpWaveCardOutline(QGroupBox *card)
+{
+    if (card)
+    {
+        new TcpWaveCardOutline(card);
+    }
+}
+
 QString hexPreview(const QByteArray& data, int limit = 12)
 {
     const int count = std::min(limit, static_cast<int>(data.size()));
@@ -1528,6 +1572,7 @@ void TcpWavePanel::setupUi()
     wave1Layout->addWidget(wave1HeaderBar);
     wave1_plot_ = new WavePlotWidget(appThemeColor(AppThemeColor::PlotSeriesWaveBlue, false), this);
     wave1Layout->addWidget(wave1_plot_, 1);
+    installTcpWaveCardOutline(wave1_group_);
     plots_layout_->addWidget(wave1_group_, 1);
 
     wave4_group_ = new QGroupBox(this);
@@ -1558,6 +1603,7 @@ void TcpWavePanel::setupUi()
     wave4Layout->addWidget(wave4HeaderBar);
     wave4_plot_ = new WavePlotWidget(appThemeColor(AppThemeColor::PlotSeriesWaveOrange, false), this);
     wave4Layout->addWidget(wave4_plot_, 1);
+    installTcpWaveCardOutline(wave4_group_);
     plots_layout_->addWidget(wave4_group_, 1);
 
     mainLayout->addLayout(plots_layout_, 1);
@@ -1612,6 +1658,7 @@ void TcpWavePanel::setupUi()
     peak_plot_ = new PeakTrendPlotWidget(this);
     peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);
     peakLayout->addWidget(peak_plot_);
+    installTcpWaveCardOutline(peak_group_);
     mainLayout->addWidget(peak_group_, 0);
 
     connect(host_edit_, &QLineEdit::textChanged, this, [this](const QString&) {

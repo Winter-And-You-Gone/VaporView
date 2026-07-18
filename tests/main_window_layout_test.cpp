@@ -1322,6 +1322,26 @@ void requireLastStyleRuleContains(const QString& styleSheet,
     require(rule.contains(expected), message);
 }
 
+void requireSidebarThreeSidedCardStyle(const QString& styleSheet,
+                                       bool dark,
+                                       const char *message)
+{
+    const QString borderColor =
+        VaporView::appThemeColorName(VaporView::AppThemeColor::Border, dark);
+    const QString selector = QStringLiteral("QFrame#appSidebar {");
+    requireLastStyleRuleContains(styleSheet, selector, QStringLiteral("border-left: none"), message);
+    requireLastStyleRuleContains(styleSheet, selector,
+                                 QStringLiteral("border-top: 1px solid %1").arg(borderColor), message);
+    requireLastStyleRuleContains(styleSheet, selector,
+                                 QStringLiteral("border-right: 1px solid %1").arg(borderColor), message);
+    requireLastStyleRuleContains(styleSheet, selector,
+                                 QStringLiteral("border-bottom: 1px solid %1").arg(borderColor), message);
+    requireLastStyleRuleContains(styleSheet, selector, QStringLiteral("border-top-left-radius: 0px"), message);
+    requireLastStyleRuleContains(styleSheet, selector, QStringLiteral("border-top-right-radius: 8px"), message);
+    requireLastStyleRuleContains(styleSheet, selector, QStringLiteral("border-bottom-left-radius: 0px"), message);
+    requireLastStyleRuleContains(styleSheet, selector, QStringLiteral("border-bottom-right-radius: 8px"), message);
+}
+
 void requireMenuPopupStyleUnified(const QString& styleSheet, bool dark, const char *message)
 {
     const QString hoverColor = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuHover, dark);
@@ -1833,6 +1853,8 @@ int main(int argc, char **argv)
 
     auto *appSidebar = window.findChild<QWidget *>(QStringLiteral("appSidebar"));
     require(appSidebar != nullptr, "app sidebar exists");
+    requireSidebarThreeSidedCardStyle(qApp->styleSheet(), false,
+                                      "light sidebar uses top, right, and bottom borders with right-side corners");
     QPushButton *checkedSidebarButton = nullptr;
     const QList<QPushButton*> sidebarButtons =
         window.findChildren<QPushButton *>(QStringLiteral("appSidebarButton"));
@@ -2595,6 +2617,14 @@ int main(int argc, char **argv)
     requireMenuPopupStyleUnified(darkOverviewStyleSheet,
                                  true,
                                  "dark popup menus use the shared menu hover and rounded panel style");
+    requireSidebarThreeSidedCardStyle(darkOverviewStyleSheet, true,
+                                      "dark sidebar keeps the three-sided card border and right-side corners");
+    requireLastStyleRuleContains(darkOverviewStyleSheet,
+                                 QStringLiteral("QWidget#tcpWaveCardOutline {"),
+                                 QStringLiteral("border: 1px solid %1")
+                                     .arg(VaporView::appThemeColorName(
+                                         VaporView::AppThemeColor::Border, true)),
+                                 "dark TCP wave subcard outline uses the shared border color");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QFrame#homeTelemetrySummaryPill {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::FieldBackground, true),
@@ -4341,6 +4371,23 @@ int main(int argc, char **argv)
     auto *peakTrendGroup = groupForSectionTitle(peakTrendTitle);
     require(rawWaveGroup != nullptr && harmonicWaveGroup != nullptr && peakTrendGroup != nullptr,
             "TCP wave subcards can be identified before display-mode changes");
+    for (QGroupBox *group : {rawWaveGroup, harmonicWaveGroup, peakTrendGroup})
+    {
+        auto *outline = group->findChild<QWidget *>(QStringLiteral("tcpWaveCardOutline"),
+                                                   Qt::FindDirectChildrenOnly);
+        require(outline != nullptr && outline->property("tcpWaveCardOutline").toBool(),
+                "each TCP wave subcard owns a dedicated outline layer");
+        require(outline->geometry() == group->rect(),
+                "each TCP wave subcard outline covers all four card edges");
+        require(outline->testAttribute(Qt::WA_TransparentForMouseEvents),
+                "TCP wave subcard outline does not intercept plot interaction");
+    }
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QWidget#tcpWaveCardOutline {"),
+                                 QStringLiteral("border: 1px solid %1")
+                                     .arg(VaporView::appThemeColorName(
+                                         VaporView::AppThemeColor::Border, false)),
+                                 "light TCP wave subcard outline uses the shared border color");
     auto visibleSingleLevelMenu = [](const QStringList& titles) -> VaporView::SingleLevelPopupMenu * {
         for (QWidget *topLevel : QApplication::topLevelWidgets())
         {
