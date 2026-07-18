@@ -1738,8 +1738,16 @@ int main(int argc, char **argv)
     require(window.centralWidget() != nullptr, "central widget exists");
     require(window.findChild<QStatusBar *>() == nullptr,
             "main window does not create a bottom status bar");
-    require(appLayoutSplitter->geometry().bottom() >= window.centralWidget()->contentsRect().bottom() - 1,
-            "main content reaches the bottom edge without a gap");
+    const QMargins mainContentMargins = window.centralWidget()->layout()->contentsMargins();
+    const int mainContentTopGap =
+        appLayoutSplitter->geometry().top() - window.centralWidget()->contentsRect().top();
+    const int mainContentBottomGap =
+        window.centralWidget()->contentsRect().bottom() - appLayoutSplitter->geometry().bottom();
+    require(mainContentMargins.top() > 0 &&
+                mainContentMargins.bottom() == mainContentMargins.top() &&
+                std::abs(mainContentTopGap - mainContentMargins.top()) <= 1 &&
+                std::abs(mainContentBottomGap - mainContentMargins.bottom()) <= 1,
+            "main cards stay inside matching top and bottom safe margins");
     auto *mainPageStackForScroll = window.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
     require(mainPageStackForScroll != nullptr, "main page stack exists for home scroll check");
     auto *homeScrollArea = qobject_cast<QScrollArea *>(mainPageStackForScroll->currentWidget());
