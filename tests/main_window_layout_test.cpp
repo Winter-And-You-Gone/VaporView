@@ -1322,24 +1322,16 @@ void requireLastStyleRuleContains(const QString& styleSheet,
     require(rule.contains(expected), message);
 }
 
-void requireSidebarThreeSidedCardStyle(const QString& styleSheet,
-                                       bool dark,
-                                       const char *message)
+void requireSidebarCardStyle(const QString& styleSheet,
+                             bool dark,
+                             const char *message)
 {
     const QString borderColor =
         VaporView::appThemeColorName(VaporView::AppThemeColor::Border, dark);
     const QString selector = QStringLiteral("QFrame#appSidebar {");
-    requireLastStyleRuleContains(styleSheet, selector, QStringLiteral("border-left: none"), message);
     requireLastStyleRuleContains(styleSheet, selector,
-                                 QStringLiteral("border-top: 1px solid %1").arg(borderColor), message);
-    requireLastStyleRuleContains(styleSheet, selector,
-                                 QStringLiteral("border-right: 1px solid %1").arg(borderColor), message);
-    requireLastStyleRuleContains(styleSheet, selector,
-                                 QStringLiteral("border-bottom: 1px solid %1").arg(borderColor), message);
-    requireLastStyleRuleContains(styleSheet, selector, QStringLiteral("border-top-left-radius: 0px"), message);
-    requireLastStyleRuleContains(styleSheet, selector, QStringLiteral("border-top-right-radius: 8px"), message);
-    requireLastStyleRuleContains(styleSheet, selector, QStringLiteral("border-bottom-left-radius: 0px"), message);
-    requireLastStyleRuleContains(styleSheet, selector, QStringLiteral("border-bottom-right-radius: 8px"), message);
+                                 QStringLiteral("border: 1px solid %1").arg(borderColor), message);
+    requireLastStyleRuleContains(styleSheet, selector, QStringLiteral("border-radius: 8px"), message);
 }
 
 void requireMenuPopupStyleUnified(const QString& styleSheet, bool dark, const char *message)
@@ -1853,8 +1845,31 @@ int main(int argc, char **argv)
 
     auto *appSidebar = window.findChild<QWidget *>(QStringLiteral("appSidebar"));
     require(appSidebar != nullptr, "app sidebar exists");
-    requireSidebarThreeSidedCardStyle(qApp->styleSheet(), false,
-                                      "light sidebar uses top, right, and bottom borders with right-side corners");
+    requireSidebarCardStyle(qApp->styleSheet(), false,
+                            "light sidebar uses a complete rounded card border");
+    auto *recordingStatusCard =
+        window.findChild<QFrame *>(QStringLiteral("recordingStatusCard"));
+    auto *logPanelFrame =
+        window.findChild<QFrame *>(QStringLiteral("logPanelFrame"));
+    require(recordingStatusCard != nullptr && logPanelFrame != nullptr,
+            "right-side recording and log cards exist for outer-margin checks");
+    auto widgetRectInCentral = [&window](QWidget *widget) {
+        return QRect(widget->mapTo(window.centralWidget(), QPoint(0, 0)), widget->size());
+    };
+    const QRect centralRect = window.centralWidget()->contentsRect();
+    const QRect sidebarRect = widgetRectInCentral(appSidebar);
+    const QRect recordingCardRect = widgetRectInCentral(recordingStatusCard);
+    const QRect logCardRect = widgetRectInCentral(logPanelFrame);
+    const int sidebarLeftGap = sidebarRect.left() - centralRect.left();
+    const int sidebarBottomGap = centralRect.bottom() - sidebarRect.bottom();
+    const int recordingRightGap = centralRect.right() - recordingCardRect.right();
+    const int logRightGap = centralRect.right() - logCardRect.right();
+    require(sidebarLeftGap > 0 &&
+                std::abs(sidebarLeftGap - sidebarBottomGap) <= 1,
+            "sidebar left border uses the same outer margin as its bottom border");
+    require(std::abs(recordingRightGap - sidebarBottomGap) <= 1 &&
+                std::abs(logRightGap - sidebarBottomGap) <= 1,
+            "recording status and log cards use the same right margin as the shared bottom margin");
     QPushButton *checkedSidebarButton = nullptr;
     const QList<QPushButton*> sidebarButtons =
         window.findChildren<QPushButton *>(QStringLiteral("appSidebarButton"));
@@ -1891,10 +1906,17 @@ int main(int argc, char **argv)
     require(temperatureNavButton != nullptr, "temperature sidebar button exists");
     require(temperatureNavButton->property("_vv_sidebar_icon_name").toString() == QStringLiteral("thermometer"),
             "temperature sidebar button uses the home overview thermometer icon");
-    const int visualLeftPadding =
-        appSidebar->mapTo(&window, QPoint(0, 0)).x() + checkedSidebarButton->x();
+    const int visualLeftPadding = checkedSidebarButton->x();
     const int visualRightPadding =
         appSidebar->width() - checkedSidebarButton->x() - checkedSidebarButton->width();
+    if (std::abs(visualLeftPadding - visualRightPadding) > 1)
+    {
+        std::cerr << "Sidebar visual padding: left=" << visualLeftPadding
+                  << " right=" << visualRightPadding
+                  << " buttonX=" << checkedSidebarButton->x()
+                  << " sidebarWidth=" << appSidebar->width()
+                  << " buttonWidth=" << checkedSidebarButton->width() << '\n';
+    }
     require(std::abs(visualLeftPadding - visualRightPadding) <= 1,
             "compact sidebar button has balanced visible left and right padding");
     auto *customLogo = window.findChild<QLabel *>(QStringLiteral("customTitleLogo"));
@@ -2617,8 +2639,8 @@ int main(int argc, char **argv)
     requireMenuPopupStyleUnified(darkOverviewStyleSheet,
                                  true,
                                  "dark popup menus use the shared menu hover and rounded panel style");
-    requireSidebarThreeSidedCardStyle(darkOverviewStyleSheet, true,
-                                      "dark sidebar keeps the three-sided card border and right-side corners");
+    requireSidebarCardStyle(darkOverviewStyleSheet, true,
+                            "dark sidebar keeps the complete rounded card border");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QWidget#tcpWaveCardOutline {"),
                                  QStringLiteral("border: 1px solid %1")

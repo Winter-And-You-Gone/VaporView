@@ -314,7 +314,7 @@ void MainWindow::setupCustomTitleBar()
     state_->custom_title_bar_->installEventFilter(this);
 
     auto *titleLayout = new QHBoxLayout(state_->custom_title_bar_);
-    titleLayout->setContentsMargins(kAppSidebarVisualPadding, 0, 8, 0);
+    titleLayout->setContentsMargins(kAppSidebarVisualPadding * 2, 0, 8, 0);
     titleLayout->setSpacing(6);
 
     state_->custom_logo_label_ = new QLabel(state_->custom_title_bar_);
@@ -1226,7 +1226,7 @@ void MainWindow::setupCentralWidget()
     state_->app_sidebar_->setMinimumWidth(0);
     state_->app_sidebar_->setMaximumWidth(QWIDGETSIZE_MAX);
     auto *sidebarLayout = new QVBoxLayout(state_->app_sidebar_);
-    sidebarLayout->setContentsMargins(0,
+    sidebarLayout->setContentsMargins(kAppSidebarVisualPadding,
                                       kAppSidebarTopBottomPadding,
                                       kAppSidebarVisualPadding,
                                       kAppSidebarTopBottomPadding);

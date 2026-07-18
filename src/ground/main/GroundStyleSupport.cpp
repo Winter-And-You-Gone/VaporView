@@ -960,14 +960,8 @@ QWidget#tcpWaveCardOutline {
 }
 QFrame#appSidebar {
     background-color: @vv-surface;
-    border-left: none;
-    border-top: 1px solid @vv-border;
-    border-right: 1px solid @vv-border;
-    border-bottom: 1px solid @vv-border;
-    border-top-left-radius: 0px;
-    border-top-right-radius: 8px;
-    border-bottom-left-radius: 0px;
-    border-bottom-right-radius: 8px;
+    border: 1px solid @vv-border;
+    border-radius: 8px;
 }
 QAbstractSpinBox[spinArrowHover="up"]::up-arrow {
     image: url(lucide/chevron-up-primary-dark.svg);
