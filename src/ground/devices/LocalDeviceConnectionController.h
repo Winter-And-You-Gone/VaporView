@@ -51,7 +51,6 @@ struct LocalConnectionRequest
     QString epsilonPacketRateSummary;
     bool epsilonUsesCustomPacketRates = false;
     bool epsilonConfigLikelyMatches = false;
-    int progressMaximum = 1;
 };
 
 struct LocalTemperatureConnectionRequest
@@ -68,7 +67,6 @@ struct LocalTemperatureConnectionRequest
 struct LocalConnectionCallbacks
 {
     std::function<void(const QString&)> log;
-    std::function<void(const QString&, int, int)> progress;
     std::function<void(bool)> finished;
     std::function<void(LocalDeviceKind)> dataReady;
     std::function<void(quint64, quint8, quint8, const void *, size_t)> rawEpsilonFrame;

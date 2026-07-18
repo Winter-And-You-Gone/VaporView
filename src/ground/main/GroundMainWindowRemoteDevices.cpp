@@ -1096,23 +1096,6 @@ void MainWindow::refreshRemoteSkyDataUi()
     const double basicRate = state_->remote_sky_controller_->statusFresh(nowMs)
         ? state_->remote_status_.telemetry_basic_rate_hz
         : 0.0;
-    if (state_->status_label_ && state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen())
-    {
-        if (state_->remote_sky_controller_->lastStatusMs() <= 0)
-        {
-            state_->status_label_->setText(state_->is_english_ ? "Remote Sky connected, waiting for status" : "天空端数传已连接，等待状态");
-            state_->status_label_->setProperty("status", "connecting");
-            state_->status_label_->style()->unpolish(state_->status_label_);
-            state_->status_label_->style()->polish(state_->status_label_);
-        }
-        else if (!state_->remote_sky_controller_->statusFresh(nowMs))
-        {
-            state_->status_label_->setText(state_->is_english_ ? "Remote Sky status timeout" : "天空端状态超时");
-            state_->status_label_->setProperty("status", "disconnected");
-            state_->status_label_->style()->unpolish(state_->status_label_);
-            state_->status_label_->style()->polish(state_->status_label_);
-        }
-    }
     if (state_->device_panel_coordinator_)
     {
         DevicePanelRates panelRates;
@@ -1425,7 +1408,6 @@ void MainWindow::connectLocalTemperatureController()
     state_->cancel_connection_requested_.store(false);
     invalidateTemperatureControllerDataUi();
     startHomeDeviceActionSpinner(VaporView::SkyDeviceId::TemperatureController);
-    showBusyStatusTaskProgress(english ? "Connecting RD105..." : "正在连接 RD105...");
     updateConnectionStatus(anyCollectorRunning());
     log(QString(english ? "[RD105] Connecting %1 @ %2..." : "[RD105] 正在连接 %1 @ %2...")
             .arg(port, baudText));
@@ -1445,7 +1427,6 @@ void MainWindow::connectLocalTemperatureController()
                 log(resultText);
                 state_->connection_attempt_in_progress_ = false;
                 state_->cancel_connection_requested_.store(false);
-                hideStatusTaskProgress();
                 if (!connected)
                 {
                     invalidateTemperatureControllerDataUi();
@@ -1457,7 +1438,6 @@ void MainWindow::connectLocalTemperatureController()
     if (!started)
     {
         state_->connection_attempt_in_progress_ = false;
-        hideStatusTaskProgress();
         updateTemperatureTitleButtonsState();
         log(english
             ? QStringLiteral("Another local connection operation is already running.")

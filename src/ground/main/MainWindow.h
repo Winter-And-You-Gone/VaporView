@@ -12,7 +12,6 @@
 #include <QHBoxLayout>
 #include <QWidget>
 #include <QMenuBar>
-#include <QStatusBar>
 #include <QToolBar>
 #include <QTextEdit>
 #include <QGroupBox>
@@ -20,7 +19,6 @@
 #include <QComboBox>
 #include <QDateTime>
 #include <QPushButton>
-#include <QProgressBar>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 #include <QStackedWidget>
@@ -172,7 +170,6 @@ private:
     void setupMenuBar();
     void setupToolBar();
     void setupCustomTitleBar();
-    void setupStatusBar();
     void setupCentralWidget();
     void setupConfigPanel();
     void setupDeviceConfigPage();
@@ -183,11 +180,6 @@ private:
     void loadModernStyleSheet();
     void log(const QString& message);
     void updateRecordingStatusLabel();
-    void showStatusTaskProgress(const QString& label, int value, int maximum);
-    void showBusyStatusTaskProgress(const QString& label);
-    void hideStatusTaskProgress();
-    void startStatusTaskSpinner();
-    void stopStatusTaskSpinner();
     void updateLogFilterAction();
     void renderLogView();
     bool shouldShowLogLine(const QString& line) const;

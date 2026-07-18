@@ -286,14 +286,6 @@ private:
         }
     }
 
-    void postProgress(const QString& label, int value, int maximum) const
-    {
-        if (callbacks.progress)
-        {
-            callbacks.progress(label, value, maximum);
-        }
-    }
-
     void finish(bool connected)
     {
         inProgress.store(false);
@@ -478,7 +470,6 @@ private:
 
         int totalDevices = 0;
         int connectedDevices = 0;
-        int progressStep = 0;
         auto cancelAttempt = [&]() {
             registry.stopAll();
             postLog(useEnglish ? QStringLiteral("Connection canceled")
@@ -505,18 +496,10 @@ private:
             }
 
             ++totalDevices;
-            postProgress(useEnglish ? QStringLiteral("Connecting %1...").arg(tag)
-                                    : QStringLiteral("正在连接 %1...").arg(tag),
-                         ++progressStep,
-                         request.progressMaximum);
             postLog(QString(useEnglish ? "[%1] Checking port: %2" : "[%1] 检查端口: %2")
                         .arg(tag, settings.port));
             if (abortIfRequested()) return -1;
 
-            postProgress(useEnglish ? QStringLiteral("Opening %1...").arg(tag)
-                                    : QStringLiteral("正在打开 %1...").arg(tag),
-                         ++progressStep,
-                         request.progressMaximum);
             postLog(QString(useEnglish ? "[%1] Port selected, connecting..." : "[%1] 已选择端口，正在连接...").arg(tag));
             if (abortIfRequested()) return -1;
 
@@ -527,10 +510,6 @@ private:
                 return 0;
             }
 
-            postProgress(useEnglish ? QStringLiteral("Checking %1 response...").arg(tag)
-                                    : QStringLiteral("正在检测 %1 响应...").arg(tag),
-                         ++progressStep,
-                         request.progressMaximum);
             postLog(QString(useEnglish ? "[%1] Serial port opened, checking device response..."
                                        : "[%1] 串口已打开，正在检测设备响应...").arg(tag));
             if (abortIfRequested()) return -1;
@@ -554,10 +533,6 @@ private:
                 return 0;
             }
 
-            postProgress(useEnglish ? QStringLiteral("Starting %1 stream...").arg(tag)
-                                    : QStringLiteral("正在启动 %1 数据流...").arg(tag),
-                         ++progressStep,
-                         request.progressMaximum);
             postLog(QString(useEnglish
                 ? "[%1] Device responding, connected: %2 @ %3 baud"
                 : "[%1] 设备响应正常，连接成功: %2 @ %3 波特率")
@@ -742,10 +717,6 @@ private:
             return false;
         }) < 0) return;
 
-        postProgress(useEnglish ? QStringLiteral("Finalizing connection...")
-                                : QStringLiteral("正在完成连接..."),
-                     request.progressMaximum,
-                     request.progressMaximum);
         postLog(QString(useEnglish
             ? "========== Connection Summary: %1/%2 devices connected =========="
             : "========== 连接摘要: %1/%2 设备已连接 ==========")

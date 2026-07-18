@@ -38,6 +38,7 @@
 #include <QSplitter>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QStatusBar>
 #include <QSettings>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -1735,8 +1736,10 @@ int main(int argc, char **argv)
     auto *appLayoutSplitter = window.findChild<QSplitter *>(QStringLiteral("appLayoutSplitter"));
     require(appLayoutSplitter != nullptr, "app layout splitter exists");
     require(window.centralWidget() != nullptr, "central widget exists");
+    require(window.findChild<QStatusBar *>() == nullptr,
+            "main window does not create a bottom status bar");
     require(appLayoutSplitter->geometry().bottom() >= window.centralWidget()->contentsRect().bottom() - 1,
-            "main content reaches the status bar without a bottom gap");
+            "main content reaches the bottom edge without a gap");
     auto *mainPageStackForScroll = window.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
     require(mainPageStackForScroll != nullptr, "main page stack exists for home scroll check");
     auto *homeScrollArea = qobject_cast<QScrollArea *>(mainPageStackForScroll->currentWidget());
@@ -4518,7 +4521,7 @@ int main(int argc, char **argv)
             require(!button->toolTip().trimmed().isEmpty() &&
                         button->accessibleName() == button->toolTip() &&
                         button->statusTip().isEmpty(),
-                    "device configuration icon-only remote actions keep tooltip and accessibility text without duplicating them in the status bar");
+                    "device configuration icon-only remote actions keep tooltip and accessibility text without redundant status-tip text");
             require(button->toolTip().contains(QStringLiteral("本地串口设备")) ||
                         button->toolTip().contains(QStringLiteral("local serial device")),
                     "device configuration actions identify the local serial mode");

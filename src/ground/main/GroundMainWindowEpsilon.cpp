@@ -50,7 +50,6 @@ bool MainWindow::applyEpsilonMainAntennaLeverArm(double xM, double yM, double zM
     const bool shouldRestartCollector = liveCollector && liveCollector->isRunning();
 
     state_->epsilon_reconfigure_in_progress_ = true;
-    showBusyStatusTaskProgress(english ? "Configuring EPSILON Lever Arm..." : "正在配置 EPSILON 主天线杆臂...");
     updateConnectionStatus(state_->is_connected_);
     QApplication::processEvents();
 
@@ -80,7 +79,6 @@ bool MainWindow::applyEpsilonMainAntennaLeverArm(double xM, double yM, double zM
             operation, xM, yM, zM, serviceLog);
 
     state_->epsilon_reconfigure_in_progress_ = false;
-    hideStatusTaskProgress();
     updateConnectionStatus(anyCollectorRunning());
     QApplication::processEvents();
 
@@ -258,7 +256,6 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     const bool english = state_->is_english_;
 
     state_->epsilon_reconfigure_in_progress_ = true;
-    showBusyStatusTaskProgress(english ? "Configuring EPSILON RTCM Port..." : "正在配置 EPSILON RTCM 串口...");
     updateConnectionStatus(state_->is_connected_);
     log(QString(english
                     ? "[EPSILON] Configuring communication port 2 as RTCM: main %1 @ %2, RTCM forward port %3 @ %4"
@@ -282,7 +279,6 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         auto finishOnUi = [this](bool openRtkDialog) {
             QMetaObject::invokeMethod(this, [this, openRtkDialog]() {
                 state_->epsilon_reconfigure_in_progress_ = false;
-                hideStatusTaskProgress();
                 updateConnectionStatus(anyCollectorRunning());
                 if (openRtkDialog)
                 {
@@ -625,7 +621,6 @@ void MainWindow::onReconfigureEpsilonClicked()
     const bool english = state_->is_english_;
 
     state_->epsilon_reconfigure_in_progress_ = true;
-    showBusyStatusTaskProgress(english ? "Reconfiguring EPSILON..." : "正在重配 EPSILON...");
     updateConnectionStatus(state_->is_connected_);
     log(QString(english ? "[EPSILON] Starting manual output reconfiguration: %1 @ %2, %3 profile (%4)"
                         : "[EPSILON] 开始手动重配输出: %1 @ %2，使用%3配置（%4）")
@@ -651,7 +646,6 @@ void MainWindow::onReconfigureEpsilonClicked()
         auto finishOnUi = [this]() {
             QMetaObject::invokeMethod(this, [this]() {
                 state_->epsilon_reconfigure_in_progress_ = false;
-                hideStatusTaskProgress();
                 updateConnectionStatus(anyCollectorRunning());
             }, Qt::QueuedConnection);
         };

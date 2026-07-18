@@ -135,10 +135,6 @@ struct MainWindowState
     QTextEdit *log_text_edit_;
     QToolButton *log_filter_btn_;
     QToolButton *log_clear_btn_;
-    QLabel *status_label_;
-    QProgressBar *status_task_progress_bar_;
-    QLabel *status_task_spinner_label_;
-    QTimer *status_task_spinner_timer_;
     QFrame *recording_status_card_;
     QLabel *recording_status_title_lbl_;
     QLabel *recording_status_label_;
@@ -409,7 +405,6 @@ struct MainWindowState
     int recording_export_rate_hz_;
     int imu_recording_rate_hz_;
     int waveform_recording_rate_hz_;
-    int status_task_spinner_index_;
     int home_device_action_spinner_step_;
     QVector<QString> log_entries_;
     QString recording_directory_;

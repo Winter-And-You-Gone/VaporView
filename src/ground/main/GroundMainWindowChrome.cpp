@@ -96,8 +96,6 @@ void MainWindow::setEnglish(bool english)
     updateRtkConfigIcon();
     state_->session_viewer_action_->setToolTip(english ? "Data viewer" : "数据查看器");
 
-    state_->status_label_->setText(english ? "Ready" : "就绪");
-
     state_->config_group_->setTitle(QString());
     state_->data_group_->setTitle(QString());
     state_->tcp_wave_group_->setTitle(QString());
@@ -305,9 +303,6 @@ void MainWindow::setEnglish(bool english)
 
 void MainWindow::onOpenSessionViewerClicked()
 {
-    showBusyStatusTaskProgress(state_->is_english_ ? "Opening Data Viewer..." : "正在打开数据查看器...");
-    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-
     if (!state_->session_viewer_window_)
     {
         state_->session_viewer_window_ = new SessionViewerWindow();
@@ -350,7 +345,6 @@ void MainWindow::onOpenSessionViewerClicked()
     }
     state_->session_viewer_window_->raise();
     state_->session_viewer_window_->activateWindow();
-    hideStatusTaskProgress();
 }
 
 #ifdef VAPORVIEW_HAS_OSGEARTH

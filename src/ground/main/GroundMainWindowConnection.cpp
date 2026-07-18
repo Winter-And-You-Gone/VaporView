@@ -55,33 +55,6 @@ void MainWindow::updateConnectionStatus(bool connected)
         }
     }
 
-    if (state_->port_detection_in_progress_)
-    {
-        state_->status_label_->setText(state_->is_english_ ? "Detecting Ports..." : "正在识别串口...");
-        state_->status_label_->setProperty("status", "connecting");
-    }
-    else if (state_->epsilon_reconfigure_in_progress_)
-    {
-        state_->status_label_->setText(state_->is_english_ ? "Reconfiguring EPSILON..." : "正在重配 EPSILON...");
-        state_->status_label_->setProperty("status", "connecting");
-    }
-    else if (state_->connection_attempt_in_progress_)
-    {
-        state_->status_label_->setText(state_->is_english_ ? "Connecting..." : "正在连接...");
-        state_->status_label_->setProperty("status", "connecting");
-    }
-    else if (connected)
-    {
-        state_->status_label_->setText(state_->is_english_ ? "Connected" : "已连接");
-        state_->status_label_->setProperty("status", "connected");
-    }
-    else
-    {
-        state_->status_label_->setText(state_->is_english_ ? "Disconnected" : "未连接");
-        state_->status_label_->setProperty("status", "disconnected");
-    }
-    state_->status_label_->style()->unpolish(state_->status_label_);
-    state_->status_label_->style()->polish(state_->status_label_);
     updateSourceModeUi();
     updateRecordingActionStates();
     updateHomeDeviceStatusCapsules();
@@ -525,7 +498,6 @@ void MainWindow::finishConnectionAttempt(bool connected)
     {
         stopRecording(true);
     }
-    hideStatusTaskProgress();
     updateConnectionStatus(connected);
 }
 
@@ -573,7 +545,6 @@ void MainWindow::onAutoDetectPortsClicked()
     {
         state_->cancel_connection_requested_.store(true);
         log(state_->is_english_ ? "Cancel requested, stopping automatic serial-port detection..." : "已请求取消，正在停止自动识别串口...");
-        showBusyStatusTaskProgress(state_->is_english_ ? "Canceling port detection..." : "正在取消串口识别...");
         updateConnectionStatus(state_->is_connected_);
         QApplication::processEvents(QEventLoop::AllEvents);
         return;
@@ -594,8 +565,6 @@ void MainWindow::onAutoDetectPortsClicked()
     state_->cancel_connection_requested_.store(false);
     updateConnectionStatus(state_->is_connected_);
     log(state_->is_english_ ? "Starting automatic serial-port detection..." : "开始自动识别串口...");
-    showBusyStatusTaskProgress(state_->is_english_ ? "Detecting Ports..." : "正在识别串口...");
-
     const QString selectedEpsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
     const QString selectedPtbPort = state_->ptb_port_combo_ ? state_->ptb_port_combo_->currentText().trimmed() : QString();
     const QString selectedHmpPort = state_->hmp_port_combo_ ? state_->hmp_port_combo_->currentText().trimmed() : QString();
@@ -703,7 +672,6 @@ void MainWindow::onAutoDetectPortsClicked()
 
             state_->port_detection_in_progress_ = false;
             state_->cancel_connection_requested_.store(false);
-            hideStatusTaskProgress();
             updateConnectionStatus(state_->is_connected_);
         }, Qt::QueuedConnection);
     });
@@ -747,10 +715,6 @@ void MainWindow::onConnectClicked()
             updateConnectionStatus(true);
             state_->remote_sky_controller_->sendCommand(VaporView::CommandId::DisableWaveformStreaming);
             state_->remote_sky_controller_->sendCommand(VaporView::CommandId::RequestStatus);
-            state_->status_label_->setText(state_->is_english_ ? "Telemetry link open, waiting for Sky handshake" : "数传链路已打开，等待天空端握手");
-            state_->status_label_->setProperty("status", "connecting");
-            state_->status_label_->style()->unpolish(state_->status_label_);
-            state_->status_label_->style()->polish(state_->status_label_);
             log(QString(state_->is_english_ ? "Telemetry link opened (%1); waiting for Sky handshake..." : "数传链路已打开（%1），正在等待天空端握手...").arg(openedText));
         }
         else
@@ -837,12 +801,6 @@ void MainWindow::onConnectClicked()
         settings.value("epsilon_last_config_port").toString() == epsilonPort &&
         settings.value("epsilon_last_config_baud").toString() == epsilonBaudText &&
         settings.value("epsilon_last_config_signature").toString() == epsilonDesiredPacketSignature;
-    const int selectedDeviceCount =
-        ((epsilonPort != selectText && !epsilonPort.isEmpty()) ? 1 : 0) +
-        ((ptbPort != selectText && !ptbPort.isEmpty()) ? 1 : 0) +
-        ((hmpPort != selectText && !hmpPort.isEmpty()) ? 1 : 0) +
-        ((lidarPort != selectText && !lidarPort.isEmpty()) ? 1 : 0) +
-        ((temperaturePort != selectText && !temperaturePort.isEmpty()) ? 1 : 0);
     state_->epsilon_sample_rate_ = epsilonRate;
     state_->ptb_sample_rate_ = ptbRate;
     state_->hmp_sample_rate_ = hmpRate;
@@ -873,15 +831,9 @@ void MainWindow::onConnectClicked()
     request.epsilonPacketRateSummary = epsilonDesiredPacketSummary;
     request.epsilonUsesCustomPacketRates = epsilonUsesCustomPacketRates;
     request.epsilonConfigLikelyMatches = epsilonConfigLikelyMatches;
-    request.progressMaximum = std::max(1, selectedDeviceCount * 4 + 1);
-
-    showStatusTaskProgress(state_->is_english_ ? "Connecting devices..." : "正在连接设备...",
-                           0,
-                           request.progressMaximum);
     if (!state_->local_connection_controller_->connectAsync(std::move(request)))
     {
         state_->connection_attempt_in_progress_ = false;
-        hideStatusTaskProgress();
         log(state_->is_english_ ? "A device connection attempt is already running."
                         : "已有设备连接流程正在进行。");
         updateConnectionStatus(anyCollectorRunning());

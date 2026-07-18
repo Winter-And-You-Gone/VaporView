@@ -220,10 +220,6 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
         state_->remote_sky_controller_->sendCommand(VaporView::CommandId::EnableWaveformStreaming);
     }
     refreshRemoteSkyDataUi();
-    state_->status_label_->setText(QString(state_->is_english_ ? "Remote Sky Online | %1" : "天空端在线 | %1").arg(status.session_name));
-    state_->status_label_->setProperty("status", "connected");
-    state_->status_label_->style()->unpolish(state_->status_label_);
-    state_->status_label_->style()->polish(state_->status_label_);
     updateRecordingStatusLabel();
     updateSourceModeUi();
 }

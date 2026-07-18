@@ -135,11 +135,6 @@ MainWindow::MainWindow(QWidget *parent)
     connectionCallbacks.log = [this](const QString& message) {
         QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
     };
-    connectionCallbacks.progress = [this](const QString& label, int value, int maximum) {
-        QMetaObject::invokeMethod(this, [this, label, value, maximum]() {
-            showStatusTaskProgress(label, value, maximum);
-        }, Qt::QueuedConnection);
-    };
     connectionCallbacks.finished = [this](bool connected) {
         QMetaObject::invokeMethod(this, [this, connected]() {
             finishConnectionAttempt(connected);
@@ -210,7 +205,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     setupMenuBar();
     setupToolBar();
-    setupStatusBar();
     state_->remote_sky_controller_ = std::make_unique<VaporView::Ground::Devices::RemoteSkyController>();
     setupCentralWidget();
     setupWindowBorderFrames();
@@ -234,14 +228,6 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onRemoteCommandAckReceived);
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::commandTimedOut,
             this, [this](VaporView::CommandId commandId, quint16 commandSeq) {
-        if (isRemoteSkyMode() && commandId == VaporView::CommandId::RequestStatus &&
-            !state_->remote_sky_online_ && state_->status_label_)
-        {
-            state_->status_label_->setText(state_->is_english_ ? "Sky handshake timed out" : "天空端握手超时");
-            state_->status_label_->setProperty("status", "disconnected");
-            state_->status_label_->style()->unpolish(state_->status_label_);
-            state_->status_label_->style()->polish(state_->status_label_);
-        }
         if (commandId == VaporView::CommandId::SetPeakSearchRange)
         {
             state_->remote_peak_search_commands_.remove(commandSeq);

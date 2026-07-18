@@ -148,7 +148,7 @@ H300 网桥使用说明：
 - 电脑和天空端设备需要手动配置到同一网段的静态 IP，例如天空端 `192.168.1.2`、地面端 `192.168.1.5`。H300 不负责替应用层自动分配 VaporView 的 TCP 端点。
 - 串口数传仍可用，但 H300 模块 TTL 串口固定 `115200 bps`。如果通过 H300 TTL 串口做兼容链路，需要同时把天空端和地面端串口遥测波特率改为 `115200`。
 
-天空-地面接收模式下，地面端工具栏的“开始记录 / 暂停记录 / 结束记录”会通过数传下发到天空端。天空端收到开始记录命令后在普通模式同一个默认 `data/` 目录下创建 `session_yyyy-MM-dd_HH-mm-ss`，并把 EPSILON、PTB、HMP、Lidar 和 TCP 波形的原始数据写入统一 `raw/*.dat`；天空端状态包会同步回传记录状态、时长、遥测行数和各 raw 文件记录条数，地面端状态栏实时显示这些关键计数。
+天空-地面接收模式下，地面端工具栏的“开始记录 / 暂停记录 / 结束记录”会通过数传下发到天空端。天空端收到开始记录命令后在普通模式同一个默认 `data/` 目录下创建 `session_yyyy-MM-dd_HH-mm-ss`，并把 EPSILON、PTB、HMP、Lidar 和 TCP 波形的原始数据写入统一 `raw/*.dat`；天空端状态包会同步回传记录状态、时长、遥测行数和各 raw 文件记录条数，地面端右侧记录状态卡实时显示这些关键计数。
 
 本文档只描述当前仓库中可以直接从代码、构建脚本和随仓库文档确认的内容。对应代码入口主要是：
 
@@ -551,7 +551,7 @@ RTK 功能由 `src/RtkConfigDialog.cpp` 和 `src/RtkStreamService.cpp` 实现。
 - 天空端记录目录位于普通模式同一个默认 `data/` 目录下，目录名同样为 `session_yyyy-MM-dd_HH-mm-ss`。
 - 天空端会写入 `session.json` 和 `sensors/devices.csv`，因此数据查看器可按普通 session 打开天空-地面接收模式记录目录。
 - 天空端 raw 记录使用同一套统一 DAT 格式：`raw/epsilon.dat`、`raw/ptb.dat`、`raw/hmp.dat`、`raw/lidar.dat`、`raw/tcp_wave.dat`。
-- 地面端通过天空端 `TelemetryStatus` 实时显示记录状态、记录时长、遥测行数、raw 总条数和 TCP 波形 raw 条数；状态栏 tooltip 会列出各设备 raw 计数。
+- 地面端通过天空端 `TelemetryStatus` 实时显示记录状态、记录时长、遥测行数、raw 总条数和 TCP 波形 raw 条数；记录状态卡的 tooltip 会列出各设备 raw 计数。
 
 默认记录根目录：
 
