@@ -31,6 +31,7 @@
 ## Long-Running Build/Test Hygiene
 
 - 如果仓库根目录存在未跟踪的 `LOCAL_PITFALLS.md`，开始构建、测试、GUI 验证或排查环境问题前先读取它；该文件用于记录本机专属路径、代理、工具链位置、历史失败症状和规避命令，不应提交到 Git。
+- 每次准备执行 VaporView GUI 验证（包括启动应用、窗口截图、`QWidget::grab()` 或真实交互检查）前，都必须重新读取 `LOCAL_PITFALLS.md`；不能因为本轮任务开始时或较早阶段已经读取过就跳过。重新读取后必须按其中记录选择验证路径，已知不兼容的接口不得抱着“先试一次”的想法再次调用。
 - Windows/MSVC 下执行 `cmake --build`、`ctest` 或任何依赖 MSVC 编译器的验证前，必须先进入 VS/MSVC Developer 环境；不要直接在普通 PowerShell/Codex shell 里跑 Release 构建：即使能找到 `cl.exe`，也可能缺少标准库 `INCLUDE/LIB` 环境，典型失败是 Qt 头间接包含 `<utility>`、`<type_traits>` 等标准库头时出现 `fatal error C1083`。本机专属的 VS 安装路径、代理端口、工具链位置等不要写进本文件，记录到未跟踪的 `LOCAL_PITFALLS.md`。
 - 对可能超过 30 秒或输出很大的命令，尤其是 `cmake --build`、`ctest`、GUI 布局测试和部署步骤，优先分段执行：先构建目标或相关测试，再跑完整构建/完整测试，不要把所有步骤塞进一条很长的链式命令。
 - 避免把 MSVC include trace、部署日志等海量输出直接刷到对话里。长构建可以把 stdout/stderr 写入 `build/Release` 下唯一命名的临时日志，只摘录 `warning`、`error`、`FAIL`、`ninja:`、测试摘要等关键行；任务结束前删除这些临时日志，除非用户明确需要保留。
