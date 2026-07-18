@@ -1,6 +1,112 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
 
+#include <QLinearGradient>
+
+namespace
+{
+
+constexpr int kMainContentBottomFadeHeight = 36;
+
+class ScrollAreaBottomFadeOverlay final : public QWidget
+{
+public:
+    explicit ScrollAreaBottomFadeOverlay(QScrollArea *scrollArea)
+        : QWidget(scrollArea->viewport())
+        , vertical_scroll_bar_(scrollArea->verticalScrollBar())
+    {
+        setObjectName(QStringLiteral("mainContentBottomFade"));
+        setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        setAttribute(Qt::WA_NoSystemBackground, true);
+        setAutoFillBackground(false);
+        setFocusPolicy(Qt::NoFocus);
+
+        parentWidget()->installEventFilter(this);
+        connect(vertical_scroll_bar_, &QScrollBar::rangeChanged,
+                this, [this]() { syncVisibility(); });
+        connect(vertical_scroll_bar_, &QScrollBar::valueChanged,
+                this, [this]() { syncVisibility(); });
+
+        syncGeometry();
+        syncVisibility();
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (watched == parentWidget() && event->type() == QEvent::Resize)
+        {
+            syncGeometry();
+            syncVisibility();
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
+    void paintEvent(QPaintEvent *event) override
+    {
+        Q_UNUSED(event);
+
+        const bool dark = VaporView::isDarkThemeEnabled();
+        QColor transparentSurface = appThemeColor(AppThemeColor::Surface, dark);
+        QColor softShadow = appThemeColor(AppThemeColor::SurfaceSunken, dark);
+        QColor middleFog = transparentSurface;
+        QColor denseFog = transparentSurface;
+        QColor bottomFog = transparentSurface;
+        transparentSurface.setAlpha(0);
+        softShadow.setAlpha(dark ? 40 : 24);
+        middleFog.setAlpha(dark ? 112 : 96);
+        denseFog.setAlpha(dark ? 218 : 204);
+        bottomFog.setAlpha(248);
+
+        QLinearGradient fogGradient(0.0, 0.0, 0.0, static_cast<qreal>(height()));
+        fogGradient.setColorAt(0.0, transparentSurface);
+        fogGradient.setColorAt(0.18, softShadow);
+        fogGradient.setColorAt(0.48, middleFog);
+        fogGradient.setColorAt(0.78, denseFog);
+        fogGradient.setColorAt(1.0, bottomFog);
+
+        QPainter painter(this);
+        painter.fillRect(rect(), fogGradient);
+    }
+
+private:
+    void syncGeometry()
+    {
+        QWidget *viewport = parentWidget();
+        const int fadeHeight = std::min(kMainContentBottomFadeHeight, viewport->height());
+        setGeometry(0,
+                    std::max(0, viewport->height() - fadeHeight),
+                    viewport->width(),
+                    fadeHeight);
+        raise();
+    }
+
+    void syncVisibility()
+    {
+        const bool contentContinuesBelow =
+            vertical_scroll_bar_->maximum() > vertical_scroll_bar_->minimum() &&
+            vertical_scroll_bar_->value() < vertical_scroll_bar_->maximum();
+        setVisible(contentContinuesBelow);
+        if (contentContinuesBelow)
+        {
+            raise();
+        }
+    }
+
+    QScrollBar *vertical_scroll_bar_;
+};
+
+void installScrollAreaBottomFade(QScrollArea *scrollArea)
+{
+    if (!scrollArea || !scrollArea->viewport())
+    {
+        return;
+    }
+    new ScrollAreaBottomFadeOverlay(scrollArea);
+}
+
+}  // namespace
+
 void MainWindow::setupMenuBar()
 {
     state_->data_menu_ = menuBar()->addMenu("");
@@ -1108,6 +1214,7 @@ void MainWindow::setupCentralWidget()
     state_->main_cards_scroll_area_->setMinimumWidth(0);
     state_->main_cards_scroll_area_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
     state_->main_cards_scroll_area_->setWidget(left_widget);
+    installScrollAreaBottomFade(state_->main_cards_scroll_area_);
 
     setupLogPanel();
 
@@ -1256,11 +1363,14 @@ void MainWindow::setupCentralWidget()
     temperatureContentLayout->addWidget(state_->temperature_controller_group_, 0);
     temperatureContentLayout->addStretch(1);
     temperatureScrollArea->setWidget(temperatureContent);
+    installScrollAreaBottomFade(temperatureScrollArea);
     temperaturePageLayout->addWidget(temperatureScrollArea, 1);
     state_->main_page_stack_->addWidget(state_->temperature_page_);
 
     state_->rtk_config_dialog_ = new RtkConfigDialog(state_->main_page_stack_, true);
     state_->rtk_config_dialog_->setAttribute(Qt::WA_QuitOnClose, false);
+    installScrollAreaBottomFade(
+        state_->rtk_config_dialog_->findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea")));
     connect(state_->rtk_config_dialog_, &RtkConfigDialog::rtkRunningChanged, this, [this](bool running) {
         state_->rtk_service_running_ = running;
         updateRtkConfigIcon();
@@ -1796,6 +1906,7 @@ void MainWindow::setupDeviceConfigPage()
     contentLayout->addStretch(1);
 
     scrollArea->setWidget(content);
+    installScrollAreaBottomFade(scrollArea);
     pageLayout->addWidget(scrollArea, 1);
     state_->main_page_stack_->addWidget(state_->device_config_.page);
 

@@ -1744,6 +1744,64 @@ int main(int argc, char **argv)
     require(mainPageStackForScroll != nullptr, "main page stack exists for home scroll check");
     auto *homeScrollArea = qobject_cast<QScrollArea *>(mainPageStackForScroll->currentWidget());
     require(homeScrollArea != nullptr, "home scroll area exists");
+    const QList<QScrollArea*> mainContentScrollAreas =
+        mainPageStackForScroll->findChildren<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
+    require(mainContentScrollAreas.size() >= 3,
+            "main pages expose their scroll areas for bottom-fade coverage");
+    for (QScrollArea *scrollArea : mainContentScrollAreas)
+    {
+        auto *bottomFade = scrollArea->viewport()->findChild<QWidget *>(
+            QStringLiteral("mainContentBottomFade"), Qt::FindDirectChildrenOnly);
+        require(bottomFade != nullptr,
+                "each main scroll area owns the shared bottom fade");
+        require(bottomFade->testAttribute(Qt::WA_TransparentForMouseEvents) &&
+                    bottomFade->focusPolicy() == Qt::NoFocus,
+                "bottom fades do not intercept pointer or keyboard input");
+    }
+    auto *rtkScrollArea =
+        mainPageStackForScroll->findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea"));
+    require(rtkScrollArea != nullptr &&
+                rtkScrollArea->viewport()->findChild<QWidget *>(
+                    QStringLiteral("mainContentBottomFade"), Qt::FindDirectChildrenOnly) != nullptr,
+            "embedded RTK page also owns the bottom fade");
+
+    auto *homeBottomFade = homeScrollArea->viewport()->findChild<QWidget *>(
+        QStringLiteral("mainContentBottomFade"), Qt::FindDirectChildrenOnly);
+    require(homeBottomFade != nullptr, "home bottom fade exists");
+    QWidget *homeScrollContent = homeScrollArea->widget();
+    require(homeScrollContent != nullptr, "home scroll content exists for bottom-fade behavior");
+    const int originalContentMinimumHeight = homeScrollContent->minimumHeight();
+    const int originalScrollValue = homeScrollArea->verticalScrollBar()->value();
+    const bool forcedScrollableHeight = homeScrollArea->verticalScrollBar()->maximum() == 0;
+    if (forcedScrollableHeight)
+    {
+        homeScrollContent->setMinimumHeight(
+            std::max(originalContentMinimumHeight,
+                     homeScrollArea->viewport()->height() + 200));
+        require(processEventsUntil(1000, [homeScrollArea]() {
+                    return homeScrollArea->verticalScrollBar()->maximum() > 0;
+                }),
+                "home page can expose scrollable content for bottom-fade behavior");
+    }
+    homeScrollArea->verticalScrollBar()->setValue(homeScrollArea->verticalScrollBar()->minimum());
+    require(processEventsUntil(500, [homeBottomFade]() {
+                return homeBottomFade->isVisible();
+            }),
+            "bottom fade appears while more content remains below");
+    require(homeBottomFade->geometry().bottom() == homeScrollArea->viewport()->rect().bottom() &&
+                homeBottomFade->width() == homeScrollArea->viewport()->width(),
+            "bottom fade stays flush with the scroll viewport edge");
+    homeScrollArea->verticalScrollBar()->setValue(homeScrollArea->verticalScrollBar()->maximum());
+    require(processEventsUntil(500, [homeBottomFade]() {
+                return homeBottomFade->isHidden();
+            }),
+            "bottom fade disappears at the end of the page");
+    if (forcedScrollableHeight)
+    {
+        homeScrollContent->setMinimumHeight(originalContentMinimumHeight);
+    }
+    homeScrollArea->verticalScrollBar()->setValue(originalScrollValue);
+    processEventsFor(50);
     processEventsFor(250);
     if (homeScrollArea->horizontalScrollBar()->maximum() != 0)
     {
