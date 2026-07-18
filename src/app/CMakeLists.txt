@@ -41,6 +41,7 @@ set(LUCIDE_RESOURCES
     ${CMAKE_SOURCE_DIR}/resources/lucide/funnel.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/key.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/languages.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/layers-3.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/link.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/list-filter.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/maximize.svg

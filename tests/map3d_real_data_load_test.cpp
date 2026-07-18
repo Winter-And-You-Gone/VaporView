@@ -100,6 +100,22 @@ int main(int argc, char** argv)
     require(earthDiagnostics.layerSummaries.join(QStringLiteral(" | "))
                 .contains(QStringLiteral("low-angle adaptive clipping and LOD")),
             QStringLiteral("earth camera keeps near-horizontal views responsive with adaptive distance/detail limits"));
+    require(view.layerAvailable(VaporView::Map3D::Map3DLayer::BaseMap),
+            QStringLiteral("real scene exposes the base geography layer"));
+    require(view.layerAvailable(VaporView::Map3D::Map3DLayer::SatelliteImagery),
+            QStringLiteral("real scene exposes the satellite imagery layer"));
+    require(view.layerAvailable(VaporView::Map3D::Map3DLayer::DigitalElevation),
+            QStringLiteral("real scene exposes the DEM terrain layer"));
+    require(view.layerAvailable(VaporView::Map3D::Map3DLayer::Hydrography),
+            QStringLiteral("real scene exposes the hydrography layer"));
+    require(view.layerAvailable(VaporView::Map3D::Map3DLayer::RoadNetwork),
+            QStringLiteral("real scene exposes the road network layer"));
+    view.setLayerVisible(VaporView::Map3D::Map3DLayer::Hydrography, false);
+    require(!view.layerVisible(VaporView::Map3D::Map3DLayer::Hydrography),
+            QStringLiteral("hydrography visibility can be disabled independently"));
+    view.setLayerVisible(VaporView::Map3D::Map3DLayer::Hydrography, true);
+    require(view.layerVisible(VaporView::Map3D::Map3DLayer::Hydrography),
+            QStringLiteral("hydrography visibility can be restored independently"));
 
     VaporView::Geo::NavSample unresolvedMslSample;
     unresolvedMslSample.latDeg = 30.25;
@@ -206,6 +222,12 @@ int main(int argc, char** argv)
     require(tileDiagnostics.warnings.isEmpty(),
             QStringLiteral("building tiles load without warnings: %1")
                 .arg(tileDiagnostics.warnings.join(QStringLiteral(" | "))));
+    require(view.layerAvailable(VaporView::Map3D::Map3DLayer::Buildings3D),
+            QStringLiteral("loaded native OSG buildings are exposed as a 3D building layer"));
+    view.setLayerVisible(VaporView::Map3D::Map3DLayer::Buildings3D, false);
+    require(!view.layerVisible(VaporView::Map3D::Map3DLayer::Buildings3D),
+            QStringLiteral("3D building visibility can be disabled independently"));
+    view.setLayerVisible(VaporView::Map3D::Map3DLayer::Buildings3D, true);
 
     bool staleLoadCallbackCalled = false;
     view.loadLocal3DTilesPreviewAsync(tilesetPath, [&](bool) {

@@ -18,9 +18,12 @@
 #include <QSettings>
 #include <QSlider>
 #include <QSpinBox>
+#include <QStringList>
 #include <QTemporaryDir>
 #include <QTextStream>
 #include <QThread>
+#include <QToolButton>
+#include <QWidgetAction>
 
 #include <cstdlib>
 #include <iostream>
@@ -148,6 +151,7 @@ int main(int argc, char** argv)
     QAction* flyToTrackAction = actionByName(window, QStringLiteral("map3DFlyToTrackAction"));
     QAction* resetViewAction = actionByName(window, QStringLiteral("map3DResetViewAction"));
     QAction* diagnosticsAction = actionByName(window, QStringLiteral("map3DDiagnosticsAction"));
+    QAction* layersAction = actionByName(window, QStringLiteral("map3DLayersAction"));
     QAction* localImageryAction = actionByName(window, QStringLiteral("map3DLocalImageryAction"));
     QAction* local3DTilesAction = actionByName(window, QStringLiteral("map3DLocal3DTilesAction"));
     QAction* clearLocal3DTilesAction = actionByName(window, QStringLiteral("map3DClearLocal3DTilesAction"));
@@ -169,6 +173,58 @@ int main(int argc, char** argv)
     require(flyToTrackAction->isEnabled(), "fly to track action exists");
     require(resetViewAction->isEnabled(), "reset view action exists");
     require(diagnosticsAction->isEnabled(), "diagnostics action exists");
+    require(!layersAction->icon().isNull(), "layers action uses a visible layers icon");
+    require(layersAction->toolTip() == QStringLiteral("地图图层"),
+            "layers action has a concise accessible label");
+    auto* layersButton = window.findChild<QToolButton*>(QStringLiteral("map3DLayersButton"));
+    require(layersButton != nullptr
+                && layersButton->popupMode() == QToolButton::InstantPopup
+                && layersButton->toolButtonStyle() == Qt::ToolButtonIconOnly,
+            "clicking the layers icon opens the layer menu directly");
+    require(layersButton->accessibleName() == QStringLiteral("地图图层"),
+            "layers icon has an accessibility name");
+    auto* layersMenu = qobject_cast<VaporView::SingleLevelPopupMenu*>(layersAction->menu());
+    require(layersMenu != nullptr, "layers action uses the shared single-level popup menu");
+    require(layersMenu->objectName() == QStringLiteral("map3DLayersMenu"),
+            "layers menu has a stable object name");
+    const QStringList expectedLayerLabels = {
+        QStringLiteral("基础地理底图"),
+        QStringLiteral("卫星遥感影像"),
+        QStringLiteral("数字高程模型（DEM）"),
+        QStringLiteral("水系"),
+        QStringLiteral("道路网络"),
+        QStringLiteral("三维建筑模型"),
+        QStringLiteral("飞行任务要素（轨迹与飞行器）")
+    };
+    require(layersMenu->actions().size() == expectedLayerLabels.size(),
+            "layers menu exposes the seven professional map layer groups");
+    for (int index = 0; index < expectedLayerLabels.size(); ++index)
+    {
+        QAction* layerAction = layersMenu->actions().at(index);
+        auto* widgetAction = qobject_cast<QWidgetAction*>(layerAction);
+        auto* row = widgetAction
+            ? qobject_cast<VaporView::SingleLevelPopupMenuRow*>(widgetAction->defaultWidget())
+            : nullptr;
+        require(layerAction->text() == expectedLayerLabels.at(index),
+                "layer action uses the expected professional name");
+        require(layerAction->isCheckable() && layerAction->isChecked(),
+                "layer action starts visible and is independently checkable");
+        require(row && row->isChecked() && !row->closeOnClick(),
+                "layer row mirrors its check state and keeps the menu open for multi-selection");
+    }
+    QAction* satelliteLayerAction =
+        actionByName(window, QStringLiteral("map3DLayer_satelliteImagery"));
+    satelliteLayerAction->trigger();
+    QCoreApplication::processEvents();
+    {
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+        require(!settings.value(QStringLiteral("layers/satelliteImageryVisible"), true).toBool(),
+                "satellite layer visibility is persisted when hidden");
+    }
+    satelliteLayerAction->trigger();
+    QCoreApplication::processEvents();
+    require(satelliteLayerAction->isChecked(),
+            "satellite layer can be restored without closing the layer menu");
     require(localImageryAction->menu() != nullptr, "local imagery action has a menu");
     require(qobject_cast<VaporView::SingleLevelPopupMenu*>(localImageryAction->menu()) != nullptr,
             "local imagery action uses the shared single-level popup menu");

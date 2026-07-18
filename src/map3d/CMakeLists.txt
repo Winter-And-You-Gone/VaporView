@@ -1,5 +1,5 @@
 if(VAPORVIEW_ENABLE_OSGEARTH)
-    find_package(Qt6 COMPONENTS OpenGLWidgets REQUIRED)
+    find_package(Qt6 COMPONENTS OpenGLWidgets Svg REQUIRED)
     if(EXISTS "${VAPORVIEW_LOCAL_VCPKG_INSTALLED_DIR}/x64-windows")
         list(PREPEND CMAKE_PREFIX_PATH "${VAPORVIEW_LOCAL_VCPKG_INSTALLED_DIR}/x64-windows")
     endif()
@@ -63,6 +63,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
             vaporview_geo_core
             Qt6::Widgets
             Qt6::OpenGLWidgets
+            Qt6::Svg
             Qt6::Concurrent
             ${OSGEARTH_TARGET}
             ${OPENSCENEGRAPH_LIBRARIES}

@@ -17,6 +17,7 @@
 #include <osg/ref_ptr>
 #include <osgViewer/GraphicsWindow>
 #include <deque>
+#include <array>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -37,6 +38,21 @@ class MapNode;
 }
 
 namespace VaporView::Map3D {
+
+enum class Map3DLayer
+{
+    BaseMap,
+    SatelliteImagery,
+    DigitalElevation,
+    Hydrography,
+    RoadNetwork,
+    Buildings3D,
+    FlightElements,
+    Count
+};
+
+inline constexpr std::size_t kMap3DLayerCount =
+    static_cast<std::size_t>(Map3DLayer::Count);
 
 class Aircraft3DLayer;
 class Trajectory3DLayer;
@@ -116,6 +132,7 @@ public:
     bool loadAircraftModel(const QString& modelPath);
     void loadAircraftModelAsync(const QString& modelPath, std::function<void(bool)> finished);
     void resetAircraftModelToBuiltIn();
+    void setLayerVisible(Map3DLayer layer, bool visible);
     void setFollowAircraft(bool enabled);
     void setMaxVisibleSamples(int maxVisibleSamples);
     bool flyToAircraft();
@@ -133,6 +150,8 @@ public:
     QSize framebufferSize() const;
     bool hasEarthMap() const;
     bool hasLocal3DTilesPreview() const;
+    bool layerVisible(Map3DLayer layer) const;
+    bool layerAvailable(Map3DLayer layer) const;
     double earthCameraRangeM() const;
 
 signals:
@@ -186,6 +205,8 @@ private:
     VaporView::Geo::NavSample toWorldSample(const VaporView::Geo::NavSample& sample);
     void resetWorldOverlayOrigin();
     void updateWorldOverlayOriginFromSample(const VaporView::Geo::NavSample& sample);
+    void applyLayerVisibility(Map3DLayer layer);
+    void applyAllLayerVisibility();
     void setLookAt(const osg::Vec3d& center, double distanceM);
     bool selectTrajectorySampleAt(const QPointF& widgetPosition);
     void releaseGlObjectsForContextDestruction();
@@ -224,6 +245,7 @@ private:
     QString height_reference_status_;
     std::unique_ptr<Trajectory3DLayer> trajectory_layer_;
     std::unique_ptr<Aircraft3DLayer> aircraft_layer_;
+    std::array<bool, kMap3DLayerCount> layer_visibility_{};
     quint64 earth_load_generation_ = 0;
     quint64 local_3d_tiles_load_generation_ = 0;
     quint64 aircraft_load_generation_ = 0;

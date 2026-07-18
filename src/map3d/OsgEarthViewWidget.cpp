@@ -23,6 +23,7 @@
 #include <osgEarth/ElevationLayer>
 #include <osgEarth/GeoData>
 #include <osgEarth/GLUtils>
+#include <osgEarth/ImageLayer>
 #include <osgEarth/Layer>
 #include <osgEarth/MapNode>
 #include <osgEarth/Map>
@@ -31,6 +32,7 @@
 #include <osgEarth/SpatialReference>
 #include <osgEarth/TerrainEngineNode>
 #include <osgEarth/TerrainOptions>
+#include <osgEarth/VisibleLayer>
 #include <osgEarth/Viewpoint>
 #include <osgEarth/XYZ>
 
@@ -437,6 +439,47 @@ unsigned tiandituSatelliteInsertIndex(osgEarth::Map* map)
     return static_cast<unsigned>(layers.size());
 }
 
+std::size_t layerIndex(Map3DLayer layer)
+{
+    return static_cast<std::size_t>(layer);
+}
+
+Map3DLayer mapLayerCategory(const osgEarth::Layer* layer)
+{
+    if (!layer)
+    {
+        return Map3DLayer::Count;
+    }
+
+    const QString name = QString::fromStdString(layer->getName()).toLower();
+    if (dynamic_cast<const osgEarth::ElevationLayer*>(layer))
+    {
+        return Map3DLayer::DigitalElevation;
+    }
+    if (name.contains(QStringLiteral("water"))
+        || name.contains(QStringLiteral("hydro")))
+    {
+        return Map3DLayer::Hydrography;
+    }
+    if (name.contains(QStringLiteral("road"))
+        || name.contains(QStringLiteral("transport")))
+    {
+        return Map3DLayer::RoadNetwork;
+    }
+    if (dynamic_cast<const osgEarth::ImageLayer*>(layer))
+    {
+        if (name.contains(QStringLiteral("satellite"))
+            || name.contains(QStringLiteral("sentinel"))
+            || name.contains(QStringLiteral("landsat"))
+            || name.contains(QStringLiteral("aerial")))
+        {
+            return Map3DLayer::SatelliteImagery;
+        }
+        return Map3DLayer::BaseMap;
+    }
+    return Map3DLayer::Count;
+}
+
 } // namespace
 
 OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent)
@@ -444,6 +487,7 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent)
     , trajectory_layer_(std::make_unique<Trajectory3DLayer>())
     , aircraft_layer_(std::make_unique<Aircraft3DLayer>())
 {
+    layer_visibility_.fill(true);
     initializeMap3DRuntime();
     setMinimumSize(640, 420);
     setFocusPolicy(Qt::StrongFocus);
@@ -753,6 +797,7 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
     {
         ++earth_load_diagnostics_.openLayerCount;
     }
+    applyLayerVisibility(Map3DLayer::SatelliteImagery);
     update();
     return true;
 }
@@ -825,6 +870,7 @@ bool OsgEarthViewWidget::applyEarthLoad(EarthLoadDiagnostics diagnostics,
     aircraft_layer_->setUseWorldCoordinates(true);
     resetWorldOverlayOrigin();
     root_->insertChild(0, earth_node_.get());
+    applyAllLayerVisibility();
     setInitialEarthView();
     if (previousViewpoint && restoreEarthViewpoint(viewer_.get(), *previousViewpoint))
     {
@@ -891,6 +937,7 @@ bool OsgEarthViewWidget::applyLocal3DTilesLoad(Local3DTilesLoadDiagnostics diagn
     if (local_3d_tiles_node_) root_->removeChild(local_3d_tiles_node_.get());
     local_3d_tiles_node_ = std::move(node);
     root_->addChild(local_3d_tiles_node_.get());
+    applyLayerVisibility(Map3DLayer::Buildings3D);
     update();
     return true;
 }
@@ -966,6 +1013,92 @@ void OsgEarthViewWidget::resetAircraftModelToBuiltIn()
         aircraft_layer_->clearCustomModel();
     }
     update();
+}
+
+void OsgEarthViewWidget::setLayerVisible(Map3DLayer layer, bool visible)
+{
+    const std::size_t index = layerIndex(layer);
+    if (index >= layer_visibility_.size())
+    {
+        return;
+    }
+    layer_visibility_[index] = visible;
+    applyLayerVisibility(layer);
+}
+
+bool OsgEarthViewWidget::layerVisible(Map3DLayer layer) const
+{
+    const std::size_t index = layerIndex(layer);
+    return index < layer_visibility_.size() && layer_visibility_[index];
+}
+
+bool OsgEarthViewWidget::layerAvailable(Map3DLayer layer) const
+{
+    if (layer == Map3DLayer::Buildings3D)
+    {
+        return local_3d_tiles_node_.valid();
+    }
+    if (layer == Map3DLayer::FlightElements)
+    {
+        return trajectory_layer_ && aircraft_layer_;
+    }
+    if (!map_node_ || !map_node_->getMap())
+    {
+        return false;
+    }
+
+    osgEarth::LayerVector layers;
+    map_node_->getMap()->getLayers(layers);
+    return std::any_of(layers.cbegin(), layers.cend(), [layer](const osg::ref_ptr<osgEarth::Layer>& candidate) {
+        return dynamic_cast<osgEarth::VisibleLayer*>(candidate.get())
+            && mapLayerCategory(candidate.get()) == layer;
+    });
+}
+
+void OsgEarthViewWidget::applyLayerVisibility(Map3DLayer layer)
+{
+    const bool visible = layerVisible(layer);
+    if (layer == Map3DLayer::Buildings3D)
+    {
+        if (local_3d_tiles_node_)
+        {
+            local_3d_tiles_node_->setNodeMask(visible ? ~0u : 0u);
+        }
+    }
+    else if (layer == Map3DLayer::FlightElements)
+    {
+        const osg::Node::NodeMask mask = visible ? ~0u : 0u;
+        if (trajectory_layer_ && trajectory_layer_->node())
+        {
+            trajectory_layer_->node()->setNodeMask(mask);
+        }
+        if (aircraft_layer_ && aircraft_layer_->node())
+        {
+            aircraft_layer_->node()->setNodeMask(mask);
+        }
+    }
+    else if (map_node_ && map_node_->getMap())
+    {
+        osgEarth::LayerVector layers;
+        map_node_->getMap()->getLayers(layers);
+        for (const osg::ref_ptr<osgEarth::Layer>& candidate : layers)
+        {
+            auto* visibleLayer = dynamic_cast<osgEarth::VisibleLayer*>(candidate.get());
+            if (visibleLayer && mapLayerCategory(candidate.get()) == layer)
+            {
+                visibleLayer->setVisible(visible);
+            }
+        }
+    }
+    update();
+}
+
+void OsgEarthViewWidget::applyAllLayerVisibility()
+{
+    for (std::size_t index = 0; index < layer_visibility_.size(); ++index)
+    {
+        applyLayerVisibility(static_cast<Map3DLayer>(index));
+    }
 }
 
 void OsgEarthViewWidget::setFollowAircraft(bool enabled)
@@ -1742,7 +1875,11 @@ void OsgEarthViewWidget::setLookAt(const osg::Vec3d& center, double distanceM)
 
 bool OsgEarthViewWidget::selectTrajectorySampleAt(const QPointF& widgetPosition)
 {
-    if (shutdown_ || !trajectory_layer_ || !viewer_ || !viewer_->getCamera())
+    if (shutdown_
+        || !layerVisible(Map3DLayer::FlightElements)
+        || !trajectory_layer_
+        || !viewer_
+        || !viewer_->getCamera())
     {
         return false;
     }

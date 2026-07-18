@@ -8,6 +8,7 @@
 #include <QElapsedTimer>
 #include <QMainWindow>
 #include <QString>
+#include <array>
 #include <vector>
 
 class QAction;
@@ -19,10 +20,15 @@ class QSlider;
 class QSpinBox;
 class QTimer;
 class QCloseEvent;
+class QEvent;
 class QHideEvent;
 class QShowEvent;
+class QToolBar;
 
-namespace VaporView { class SingleLevelPopupMenu; }
+namespace VaporView {
+class SingleLevelPopupMenu;
+class SingleLevelPopupMenuRow;
+}
 
 namespace VaporView::Map3D {
 
@@ -45,6 +51,7 @@ public slots:
 
 protected:
     void closeEvent(QCloseEvent* event) override;
+    void changeEvent(QEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void hideEvent(QHideEvent* event) override;
 
@@ -63,6 +70,11 @@ private:
     void maybeLoadSentinel2ImageryForRange(double rangeM);
     void resetAutomaticSentinel2Imagery();
     bool isSentinel2ImageryActive() const;
+    void createLayerMenu(QToolBar* toolbar);
+    void setLayerVisible(Map3DLayer layer, bool visible, bool announce);
+    bool layerVisible(Map3DLayer layer) const;
+    void refreshLayerMenuTheme();
+    void refreshLayerMenuAvailability();
     void flyToAircraft();
     void flyToTrack();
     void resetView();
@@ -101,12 +113,17 @@ private:
     QAction* follow_action_ = nullptr;
     QLabel* status_label_ = nullptr;
     QAction* diagnostics_action_ = nullptr;
+    QAction* layers_action_ = nullptr;
     QAction* local_imagery_action_ = nullptr;
     QAction* local_3d_tiles_action_ = nullptr;
     QAction* clear_local_3d_tiles_action_ = nullptr;
     QAction* load_aircraft_model_action_ = nullptr;
     QAction* reset_aircraft_model_action_ = nullptr;
     VaporView::SingleLevelPopupMenu* local_imagery_menu_ = nullptr;
+    VaporView::SingleLevelPopupMenu* layers_menu_ = nullptr;
+    std::array<QAction*, kMap3DLayerCount> layer_actions_{};
+    std::array<VaporView::SingleLevelPopupMenuRow*, kMap3DLayerCount> layer_rows_{};
+    std::array<bool, kMap3DLayerCount> layer_visibility_{};
     QAction* replay_action_ = nullptr;
     QAction* replay_stop_action_ = nullptr;
     QSlider* replay_slider_ = nullptr;
