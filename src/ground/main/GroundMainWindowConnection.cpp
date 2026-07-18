@@ -398,7 +398,6 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         button->setToolTip(state_->is_english_
             ? QStringLiteral("%1 %2 (%3)").arg(actionText, deviceName, modeHint)
             : QStringLiteral("%1%2（%3）").arg(actionText, deviceName, modeHint));
-        button->setStatusTip(button->toolTip());
         button->setAccessibleName(button->toolTip());
         button->setProperty("connected", connected);
         button->setProperty("state", spinnerActive ? QStringLiteral("connecting") : stateKey);

@@ -1273,7 +1273,6 @@ void MainWindow::updateTemperatureControllerTitleText()
         ? QStringLiteral("RD105 serial port: %1. Click to choose another port.").arg(portDisplay)
         : QStringLiteral("当前 RD105 串口：%1。点击可选择其他串口。").arg(portDisplay);
     state_->temperature_title_port_combo_->setToolTip(portToolTip);
-    state_->temperature_title_port_combo_->setStatusTip(portToolTip);
     state_->temperature_title_port_combo_->setAccessibleName(portToolTip);
     state_->temperature_title_port_combo_->updateGeometry();
 }
@@ -1950,7 +1949,6 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
         ? QStringLiteral("%1 %2 (%3)").arg(actionText, deviceName, modeHint)
         : QStringLiteral("%1%2（%3）").arg(actionText, deviceName, modeHint);
     button->setToolTip(tooltip);
-    button->setStatusTip(tooltip);
     button->setAccessibleName(tooltip);
     button->setProperty("connected", connected);
     button->setProperty("state", busy

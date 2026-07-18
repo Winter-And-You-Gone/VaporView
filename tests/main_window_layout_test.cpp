@@ -4517,8 +4517,8 @@ int main(int argc, char **argv)
                     "device configuration actions reuse the home device button size");
             require(!button->toolTip().trimmed().isEmpty() &&
                         button->accessibleName() == button->toolTip() &&
-                        button->statusTip() == button->toolTip(),
-                    "device configuration icon-only remote actions keep tooltip and accessibility text");
+                        button->statusTip().isEmpty(),
+                    "device configuration icon-only remote actions keep tooltip and accessibility text without duplicating them in the status bar");
             require(button->toolTip().contains(QStringLiteral("本地串口设备")) ||
                         button->toolTip().contains(QStringLiteral("local serial device")),
                     "device configuration actions identify the local serial mode");

@@ -407,7 +407,6 @@ void MainWindow::updateAppSidebarButtonTexts()
         }
         button->setText(compact ? QString() : label);
         button->setToolTip(label);
-        button->setStatusTip(label);
         button->setAccessibleName(label);
         button->setProperty(kSidebarCompactProperty, compact);
         if (compact)
@@ -620,7 +619,6 @@ void MainWindow::updateCustomLogoTooltip()
         ? (state_->is_english_ ? QStringLiteral("Show left sidebar") : QStringLiteral("展开左侧栏"))
         : (state_->is_english_ ? QStringLiteral("Hide left sidebar") : QStringLiteral("收起左侧栏"));
     state_->custom_logo_label_->setToolTip(tooltip);
-    state_->custom_logo_label_->setStatusTip(tooltip);
     state_->custom_logo_label_->setAccessibleName(tooltip);
 }
 
@@ -706,7 +704,6 @@ void MainWindow::updateLogSidePanelToggleButton()
     state_->log_side_panel_toggle_btn_->setToolTip(state_->log_side_panel_collapsed_
         ? (state_->is_english_ ? QStringLiteral("Show right panel") : QStringLiteral("展开右侧栏"))
         : (state_->is_english_ ? QStringLiteral("Hide right panel") : QStringLiteral("收起右侧栏")));
-    state_->log_side_panel_toggle_btn_->setStatusTip(state_->log_side_panel_toggle_btn_->toolTip());
 }
 
 void MainWindow::applyScaledUiMetrics()

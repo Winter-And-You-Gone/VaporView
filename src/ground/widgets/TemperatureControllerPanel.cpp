@@ -1010,7 +1010,6 @@ private:
             .arg(outputLabelText(), isChecked() ? onText() : offText());
         setText(text);
         setToolTip(text);
-        setStatusTip(text);
         setAccessibleName(text);
     }
 
@@ -1242,7 +1241,6 @@ private:
             : QStringLiteral("数据源：%1").arg(isChecked() ? remoteText() : localText());
         setText(text);
         setToolTip(text);
-        setStatusTip(text);
         setAccessibleName(text);
     }
 

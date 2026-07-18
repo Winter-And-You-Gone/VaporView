@@ -529,7 +529,6 @@ void applyDeviceConfigRemoteButtonPresentation(QToolButton *button,
         ? QStringLiteral("Request Sky to %1 %2").arg(actionText.toLower(), deviceName)
         : QStringLiteral("请求天空端%1 %2").arg(actionText, deviceName);
     button->setToolTip(tooltip);
-    button->setStatusTip(tooltip);
     button->setAccessibleName(tooltip);
 }
 

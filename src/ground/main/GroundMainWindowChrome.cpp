@@ -47,13 +47,11 @@ void MainWindow::setEnglish(bool english)
     {
         state_->map3d_action_->setText(english ? "3D Map..." : "三维地图...");
         state_->map3d_action_->setToolTip(english ? "Open 3D map" : "打开三维地图");
-        state_->map3d_action_->setStatusTip(state_->map3d_action_->toolTip());
     }
     if (state_->map3d_diagnostics_action_)
     {
         state_->map3d_diagnostics_action_->setText(english ? "Map Data Diagnostics..." : "地图数据诊断...");
         state_->map3d_diagnostics_action_->setToolTip(english ? "Open 3D map data diagnostics" : "打开三维地图数据诊断");
-        state_->map3d_diagnostics_action_->setStatusTip(state_->map3d_diagnostics_action_->toolTip());
     }
 #endif
     state_->exit_action_->setText(english ? "E&xit" : "退出(&X)");
@@ -69,7 +67,6 @@ void MainWindow::setEnglish(bool english)
     setNativeMenuTitle(state_->language_menu_, english ? QStringLiteral("&Language") : QStringLiteral("语言(&L)"));
     state_->lang_action_->setText(english ? "Switch to Chinese" : "切换到英文");
     state_->lang_action_->setToolTip(english ? "Switch to Chinese" : "切换到英文");
-    state_->lang_action_->setStatusTip(english ? "Switch interface language" : "切换界面语言");
     updateThemeAction();
     updateCustomTitleBarTexts();
     discardTitleApplicationMenuPanel();
@@ -79,34 +76,25 @@ void MainWindow::setEnglish(bool english)
 
     state_->refresh_ports_btn_->setText(english ? "Refresh" : "刷新");
     state_->refresh_ports_btn_->setToolTip(english ? "Refresh ports" : "刷新串口");
-    state_->refresh_ports_btn_->setStatusTip(state_->refresh_ports_btn_->toolTip());
     state_->connect_btn_->setText(english ? "Connect" : "连接");
     state_->connect_btn_->setToolTip(english ? "Connect" : "连接");
-    state_->connect_btn_->setStatusTip(state_->connect_btn_->toolTip());
     state_->cancel_connect_btn_->setText(english ? "Cancel" : "取消");
     state_->cancel_connect_btn_->setToolTip(english ? "Cancel connection" : "取消连接");
-    state_->cancel_connect_btn_->setStatusTip(state_->cancel_connect_btn_->toolTip());
     state_->disconnect_btn_->setText(english ? "Disconnect" : "断开");
     state_->disconnect_btn_->setToolTip(english ? "Disconnect" : "断开连接");
-    state_->disconnect_btn_->setStatusTip(state_->disconnect_btn_->toolTip());
     updateScheduledRecordingAction();
     state_->start_recording_btn_->setText(english ? "Start Recording" : "开始记录");
     state_->start_recording_btn_->setToolTip(english ? "Start recording" : "开始记录");
-    state_->start_recording_btn_->setStatusTip(state_->start_recording_btn_->toolTip());
     state_->pause_recording_btn_->setText(english ? "Pause Recording" : "暂停记录");
     state_->pause_recording_btn_->setToolTip(english ? "Pause recording" : "暂停记录");
-    state_->pause_recording_btn_->setStatusTip(state_->pause_recording_btn_->toolTip());
     state_->stop_recording_btn_->setText(english ? "Stop Recording" : "结束记录");
     state_->stop_recording_btn_->setToolTip(english ? "Stop recording" : "结束记录");
-    state_->stop_recording_btn_->setStatusTip(state_->stop_recording_btn_->toolTip());
     state_->clear_log_action_->setText(english ? "Clear Log" : "清空日志");
     state_->clear_log_action_->setToolTip(english ? "Clear Log" : "清空日志");
-    state_->clear_log_action_->setStatusTip(english ? "Clear Log" : "清空日志");
     updateLogFilterAction();
     state_->rtk_config_action_->setText(english ? "RTK Config" : "RTK配置");
     updateRtkConfigIcon();
     state_->session_viewer_action_->setToolTip(english ? "Data viewer" : "数据查看器");
-    state_->session_viewer_action_->setStatusTip(state_->session_viewer_action_->toolTip());
 
     state_->status_label_->setText(english ? "Ready" : "就绪");
 
@@ -607,7 +595,6 @@ void MainWindow::updateThemeAction()
     state_->theme_toggle_action_->setToolTip(targetLight
         ? (state_->is_english_ ? "Switch to light theme" : "切换到亮色模式")
         : (state_->is_english_ ? "Switch to dark theme" : "切换到暗色模式"));
-    state_->theme_toggle_action_->setStatusTip(state_->theme_toggle_action_->toolTip());
 }
 
 void MainWindow::updateThemedIcons()
@@ -689,17 +676,15 @@ void MainWindow::updateRtkConfigIcon()
     const QString stateText = state_->rtk_service_running_
         ? (state_->is_english_ ? QStringLiteral("running") : QStringLiteral("运行中"))
         : (state_->is_english_ ? QStringLiteral("stopped") : QStringLiteral("未启动"));
-    const QString statusTip = QStringLiteral("%1 (%2)").arg(baseText, stateText);
+    const QString toolTip = QStringLiteral("%1 (%2)").arg(baseText, stateText);
     if (state_->rtk_config_action_)
     {
         state_->rtk_config_action_->setIcon(createRtkSatelliteIcon(state_->rtk_service_running_));
-        state_->rtk_config_action_->setToolTip(statusTip);
-        state_->rtk_config_action_->setStatusTip(statusTip);
+        state_->rtk_config_action_->setToolTip(toolTip);
     }
     if (state_->rtk_config_nav_btn_)
     {
-        state_->rtk_config_nav_btn_->setToolTip(statusTip);
-        state_->rtk_config_nav_btn_->setStatusTip(statusTip);
+        state_->rtk_config_nav_btn_->setToolTip(toolTip);
     }
 }
 
@@ -768,24 +753,20 @@ void MainWindow::updateCustomTitleBarTexts()
     if (state_->title_menu_btn_)
     {
         state_->title_menu_btn_->setToolTip(state_->is_english_ ? "Menu" : "菜单");
-        state_->title_menu_btn_->setStatusTip(state_->title_menu_btn_->toolTip());
     }
     updateCustomLogoTooltip();
     if (state_->title_language_btn_)
     {
         state_->title_language_btn_->setToolTip(state_->is_english_ ? "Switch to Chinese" : "切换到英文");
-        state_->title_language_btn_->setStatusTip(state_->is_english_ ? "Switch interface language" : "切换界面语言");
     }
     updateLogSidePanelToggleButton();
     if (state_->window_minimize_btn_)
     {
         state_->window_minimize_btn_->setToolTip(state_->is_english_ ? "Minimize" : "最小化");
-        state_->window_minimize_btn_->setStatusTip(state_->window_minimize_btn_->toolTip());
     }
     if (state_->window_close_btn_)
     {
         state_->window_close_btn_->setToolTip(state_->is_english_ ? "Close" : "关闭");
-        state_->window_close_btn_->setStatusTip(state_->window_close_btn_->toolTip());
     }
     updateWindowControlButtons();
 }
@@ -888,7 +869,6 @@ void MainWindow::updateWindowControlButtons()
     state_->window_maximize_btn_->setToolTip(shouldRestore
         ? (state_->is_english_ ? "Restore" : "还原")
         : (state_->is_english_ ? "Maximize" : "最大化"));
-    state_->window_maximize_btn_->setStatusTip(state_->window_maximize_btn_->toolTip());
 }
 
 void MainWindow::toggleWindowMaximized()

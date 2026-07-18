@@ -176,7 +176,6 @@ void MainWindow::updateLogFilterAction()
         const QString detail = state_->is_english_ ? englishDetail : chineseDetail;
         action->setText(text);
         action->setToolTip(detail);
-        action->setStatusTip(action->toolTip());
 
         auto *widgetAction = qobject_cast<QWidgetAction *>(action);
         auto *row = widgetAction ? qobject_cast<SingleLevelPopupMenuRow *>(widgetAction->defaultWidget()) : nullptr;
@@ -196,7 +195,6 @@ void MainWindow::updateLogFilterAction()
         row->setTextFixedWidth(filterTextWidth);
         row->setText(text);
         row->setToolTip(detail);
-        row->setStatusTip(detail);
         row->setCheckIcon(checkIcon);
         row->setChecked(enabled);
         row->refreshTheme();
@@ -239,7 +237,6 @@ void MainWindow::updateLogFilterAction()
         state_->log_filter_btn_->setIcon(createLogFilterIcon());
         state_->log_filter_btn_->setToolTip(state_->is_english_ ? QStringLiteral("Log filters")
                                                 : QStringLiteral("日志过滤"));
-        state_->log_filter_btn_->setStatusTip(state_->log_filter_btn_->toolTip());
     }
 }
 
@@ -552,7 +549,6 @@ void MainWindow::updateScheduledRecordingAction()
         active ? state_->recording_schedule_controller_->summary(state_->is_english_)
                : (state_->is_english_ ? QStringLiteral("Configure scheduled recording")
                               : QStringLiteral("配置定时记录")));
-    state_->scheduled_recording_action_->setStatusTip(state_->scheduled_recording_action_->toolTip());
     state_->scheduled_recording_action_->setCheckable(false);
     state_->scheduled_recording_action_->setChecked(false);
 }

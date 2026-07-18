@@ -303,7 +303,6 @@ QToolButton *MainWindow::createTitleBarActionButton(QAction *action, QWidget *pa
         button->setCheckable(action->isCheckable());
         button->setChecked(action->isChecked());
         button->setToolTip(action->toolTip());
-        button->setStatusTip(action->statusTip());
         button->setWhatsThis(action->whatsThis());
         button->setProperty(kTooltipShortcutProperty, shortcutTextFromAction(action));
     };
@@ -1272,7 +1271,6 @@ void MainWindow::setupCentralWidget()
         button->setIconSize(QSize(kAppSidebarFullIconSize, kAppSidebarFullIconSize));
         button->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         button->setToolTip(text);
-        button->setStatusTip(text);
         button->setAccessibleName(text);
         sidebarLayout->addWidget(button);
         return button;
