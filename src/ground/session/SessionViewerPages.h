@@ -209,6 +209,7 @@ public:
 
 private:
     void updateDisplayHeaders();
+    void updateMinimumTableHeight();
 
     QLabel *csv_info_label_;
     QTableView *csv_table_;

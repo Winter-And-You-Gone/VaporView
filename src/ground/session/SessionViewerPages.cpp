@@ -31,6 +31,7 @@
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
+#include <QStyle>
 #include <QTableView>
 #include <QTimeZone>
 #include <QVBoxLayout>
@@ -47,6 +48,8 @@ using VaporView::appThemeColor;
 
 namespace
 {
+
+constexpr int kMinimumVisibleCsvRows = 5;
 
 QString fixedTextField(const QString& text, int width, Qt::Alignment alignment = Qt::AlignRight)
 {
@@ -768,7 +771,17 @@ void SessionDeviceDataWidget::applyTheme()
              theme.headerBackground.name(), theme.headerText.name(),
              theme.selectedBackground.name(), theme.selectedText.name()));
     csv_model_->setTheme(theme);
+    updateMinimumTableHeight();
     csv_table_->viewport()->update();
+}
+
+void SessionDeviceDataWidget::updateMinimumTableHeight()
+{
+    const int minimumTableHeight = csv_table_->horizontalHeader()->sizeHint().height()
+        + csv_table_->verticalHeader()->defaultSectionSize() * kMinimumVisibleCsvRows
+        + csv_table_->style()->pixelMetric(QStyle::PM_ScrollBarExtent, nullptr, csv_table_)
+        + csv_table_->frameWidth() * 2;
+    csv_table_->setMinimumHeight(minimumTableHeight);
 }
 
 SessionCsvHighlightResult SessionDeviceDataWidget::highlightTimestamp(

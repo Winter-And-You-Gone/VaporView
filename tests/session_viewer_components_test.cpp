@@ -1,11 +1,14 @@
 #include "ground/session/SessionMapCoordinator.h"
 #include "ground/session/SessionViewerPages.h"
+#include "ground/session/SessionViewerWindow.h"
 #include "ground/trajectory/TrajectoryViewerDialog.h"
 
 #include <QApplication>
 #include <QCoreApplication>
+#include <QHeaderView>
 #include <QProgressDialog>
 #include <QPushButton>
+#include <QSplitter>
 #include <QTableView>
 #include <QTemporaryDir>
 
@@ -80,10 +83,20 @@ void testPages()
                         {QStringLiteral("2000"), QStringLiteral("b")}});
     auto *table = deviceData.findChild<QTableView *>(QStringLiteral("sessionViewerCsvTable"));
     require(table && table->model()->rowCount() == 2, "device data page owns its virtual CSV table");
+    deviceData.resize(960, deviceData.minimumSizeHint().height());
+    deviceData.show();
+    QCoreApplication::processEvents();
+    require(table->viewport()->height() >= table->verticalHeader()->defaultSectionSize() * 5,
+            "device data page keeps at least five CSV rows visible");
     const SessionCsvHighlightResult highlight = deviceData.highlightTimestamp({1000, 2000}, 1700, true);
     require(highlight.primaryRow == 1, "device data page selects the closest timestamp row");
     require(highlight.description.contains(QStringLiteral("CSV row")),
             "device data page reports highlighted row timing");
+
+    SessionViewerWindow viewer;
+    auto *splitter = viewer.findChild<QSplitter *>(QStringLiteral("sessionViewerContentSplitter"));
+    require(splitter && !splitter->childrenCollapsible(),
+            "session viewer keeps both content panes non-collapsible");
 }
 
 void testMapCoordinator()

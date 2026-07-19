@@ -226,6 +226,7 @@ void SessionViewerWindow::setupUi()
     splitter->setObjectName(QStringLiteral("sessionViewerContentSplitter"));
     splitter->setAttribute(Qt::WA_StyledBackground, true);
     splitter->setAutoFillBackground(true);
+    splitter->setChildrenCollapsible(false);
 
     auto *upperWidget = new QWidget(splitter);
     upperWidget->setObjectName(QStringLiteral("sessionViewerContentPane"));
