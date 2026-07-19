@@ -2,6 +2,7 @@
 #include "shared/theme/AppTheme.h"
 #include "ground/widgets/CustomTitleBar.h"
 #include "ground/widgets/LabelTextSelection.h"
+#include "ground/widgets/VisualTextLabel.h"
 #include "ground/widgets/WindowSizing.h"
 
 #include <QDialogButtonBox>
@@ -210,7 +211,7 @@ QWidget *createCardBody(QGroupBox *group, const QString& title, QWidget *titleAc
     titleLayout->setContentsMargins(12, 0, 12, 0);
     titleLayout->setSpacing(0);
 
-    auto *titleLabel = new QLabel(title, titleBar);
+    auto *titleLabel = new VaporView::VisualTextLabel(title, titleBar);
     titleLabel->setObjectName(QStringLiteral("skyConfigGroupTitleLabel"));
     VaporView::configureSelectableLabel(titleLabel);
     titleLayout->addWidget(titleLabel);

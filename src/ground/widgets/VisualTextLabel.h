@@ -8,6 +8,8 @@
 #include <QPalette>
 #include <QPoint>
 #include <QRect>
+#include <QMouseEvent>
+#include <algorithm>
 
 namespace VaporView
 {
@@ -57,9 +59,27 @@ public:
     }
 
 protected:
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        QLabel::mousePressEvent(event);
+        update();
+    }
+
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        QLabel::mouseMoveEvent(event);
+        update();
+    }
+
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        QLabel::mouseReleaseEvent(event);
+        update();
+    }
+
     void paintEvent(QPaintEvent *event) override
     {
-        if (textFormat() != Qt::PlainText || wordWrap() || hasSelectedText())
+        if (textFormat() != Qt::PlainText || wordWrap())
         {
             QLabel::paintEvent(event);
             return;
@@ -86,6 +106,34 @@ protected:
         const QRect textBounds = metrics.tightBoundingRect(value);
         const QPoint origin = textOriginForVisualAlignment(area, textBounds, alignment());
         painter.drawText(origin, value);
+
+        const int start = selectionStart();
+        if (start < 0 || !hasSelectedText())
+        {
+            return;
+        }
+
+        const int end = std::min(value.size(), start + selectedText().size());
+        if (end <= start)
+        {
+            return;
+        }
+
+        const int selectionLeft = origin.x() + metrics.horizontalAdvance(value.left(start));
+        const int selectionRight = origin.x() + metrics.horizontalAdvance(value.left(end));
+        const QRect selectionRect(selectionLeft,
+                                  origin.y() - metrics.ascent(),
+                                  std::max(1, selectionRight - selectionLeft),
+                                  metrics.height());
+        const QPalette::ColorGroup selectionGroup = isEnabled()
+            ? (hasFocus() ? QPalette::Active : QPalette::Inactive)
+            : QPalette::Disabled;
+        painter.fillRect(selectionRect, palette().brush(selectionGroup, QPalette::Highlight));
+        painter.save();
+        painter.setClipRect(selectionRect, Qt::IntersectClip);
+        painter.setPen(palette().color(selectionGroup, QPalette::HighlightedText));
+        painter.drawText(origin, value);
+        painter.restore();
     }
 
 private:

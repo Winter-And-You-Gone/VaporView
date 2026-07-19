@@ -3,6 +3,7 @@
 #include "ground/session/SessionExportService.h"
 #include "ground/widgets/CustomTitleBar.h"
 #include "ground/widgets/LabelTextSelection.h"
+#include "ground/widgets/VisualTextLabel.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 
@@ -2895,17 +2896,17 @@ private:
 TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     : QDialog(parent)
     , summary_label_(new QLabel(this))
-    , sidebar_title_label_(new QLabel(this))
+    , sidebar_title_label_(new VaporView::VisualTextLabel(this))
     , sidebar_icon_label_(new QLabel(this))
     , detail_label_(new QLabel(this))
     , filter_card_(new QFrame(this))
-    , filter_title_label_(new QLabel(this))
+    , filter_title_label_(new VaporView::VisualTextLabel(this))
     , filter_empty_label_(new QLabel(this))
     , filter_list_widget_(new QWidget(this))
     , filter_list_layout_(nullptr)
     , filter_row_labels_()
     , peak_card_(new QFrame(this))
-    , peak_title_label_(new QLabel(this))
+    , peak_title_label_(new VaporView::VisualTextLabel(this))
     , peak_search_start_label_(new QLabel(this))
     , peak_search_end_label_(new QLabel(this))
     , peak_filter_mode_label_(new QLabel(this))

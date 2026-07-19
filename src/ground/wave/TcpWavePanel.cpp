@@ -639,14 +639,14 @@ protected:
             event->accept();
             return;
         }
-        QLabel::mousePressEvent(event);
+        VaporView::VisualTextLabel::mousePressEvent(event);
     }
 
     void mouseMoveEvent(QMouseEvent *event) override
     {
         refreshTooltipAnchor();
         setIconHovered(inline_icon_visible_ && iconRect().contains(event->position().toPoint()));
-        QLabel::mouseMoveEvent(event);
+        VaporView::VisualTextLabel::mouseMoveEvent(event);
     }
 
     void leaveEvent(QEvent *event) override

@@ -383,6 +383,26 @@ void requireCardTitleMouseSelectionAndCopy(QLabel *titleLabel, const char *messa
     require(titleLabel->hasSelectedText(), message);
     require(QApplication::focusWidget() == titleLabel, message);
 
+    titleLabel->repaint();
+    processEventsFor(20);
+    const QImage selectedImage = titleLabel->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    const QColor highlight = titleLabel->palette().color(QPalette::Active, QPalette::Highlight);
+    int highlightPixelCount = 0;
+    for (int y = 0; y < selectedImage.height(); ++y)
+    {
+        for (int x = 0; x < selectedImage.width(); ++x)
+        {
+            const QColor pixel = selectedImage.pixelColor(x, y);
+            if (std::abs(pixel.red() - highlight.red()) <= 8 &&
+                std::abs(pixel.green() - highlight.green()) <= 8 &&
+                std::abs(pixel.blue() - highlight.blue()) <= 8)
+            {
+                ++highlightPixelCount;
+            }
+        }
+    }
+    require(highlightPixelCount > 0, message);
+
     QKeyEvent copyPress(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier);
     QCoreApplication::sendEvent(titleLabel, &copyPress);
     QKeyEvent copyRelease(QEvent::KeyRelease, Qt::Key_C, Qt::ControlModifier);
