@@ -133,7 +133,7 @@ function Invoke-VaporViewVsCommand {
 
     Push-Location $repoRoot
     try {
-        & cmd.exe /d /s /c "`"$devCmd`" -arch=x64 -host_arch=x64 >nul && $Command"
+        & cmd.exe /d /s /c "chcp 65001 >nul && `"$devCmd`" -arch=x64 -host_arch=x64 >nul && $Command"
         if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
         }
