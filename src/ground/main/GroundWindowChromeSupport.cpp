@@ -1,5 +1,6 @@
 #include "ground/main/GroundMainWindowSupport.h"
 #include "ground/widgets/VisualTextLabel.h"
+#include "ground/widgets/LabelTextSelection.h"
 
 #include <QAbstractButton>
 #include <QAction>
@@ -1002,7 +1003,7 @@ QLabel *createSectionTitleCluster(QWidget *parent,
 
     auto *titleLabel = new VaporView::VisualTextLabel(cluster);
     titleLabel->setObjectName(QStringLiteral("sectionTitleLabel"));
-    titleLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    VaporView::configureSelectableLabel(titleLabel);
     titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     titleLabel->setMargin(0);
     titleLabel->setContentsMargins(0, 0, 0, 0);

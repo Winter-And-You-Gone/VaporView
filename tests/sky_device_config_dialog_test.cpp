@@ -194,7 +194,8 @@ int main(int argc, char **argv)
         auto *titleLabel = group->findChild<QLabel *>(QStringLiteral("skyConfigGroupTitleLabel"));
         if (titleLabel)
         {
-            require(titleLabel->textInteractionFlags().testFlag(Qt::TextSelectableByMouse),
+            require(titleLabel->textInteractionFlags().testFlag(Qt::TextSelectableByMouse) &&
+                        titleLabel->textInteractionFlags().testFlag(Qt::TextSelectableByKeyboard),
                     "sky-device card title is selectable and copyable");
         }
         const QString title = titleLabel ? titleLabel->text() : QString();

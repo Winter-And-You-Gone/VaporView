@@ -2,6 +2,7 @@
 #include "RtkConfigDialog.h"
 #include "ground/widgets/CustomTitleBar.h"
 #include "ground/widgets/VisualTextLabel.h"
+#include "ground/widgets/LabelTextSelection.h"
 #include "ground/widgets/WindowSizing.h"
 #include <QApplication>
 #include <QVBoxLayout>
@@ -198,7 +199,7 @@ QLabel *createSectionTitleCluster(QWidget *parent,
 
     auto *titleLabel = new VaporView::VisualTextLabel(cluster);
     titleLabel->setObjectName(QStringLiteral("sectionTitleLabel"));
-    titleLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    VaporView::configureSelectableLabel(titleLabel);
     titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     titleLabel->setMargin(0);
     titleLabel->setContentsMargins(0, 0, 0, 0);

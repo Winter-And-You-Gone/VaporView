@@ -1,6 +1,7 @@
 #include "ground/widgets/SkyDeviceConfigDialog.h"
 #include "shared/theme/AppTheme.h"
 #include "ground/widgets/CustomTitleBar.h"
+#include "ground/widgets/LabelTextSelection.h"
 #include "ground/widgets/WindowSizing.h"
 
 #include <QDialogButtonBox>
@@ -211,7 +212,7 @@ QWidget *createCardBody(QGroupBox *group, const QString& title, QWidget *titleAc
 
     auto *titleLabel = new QLabel(title, titleBar);
     titleLabel->setObjectName(QStringLiteral("skyConfigGroupTitleLabel"));
-    titleLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    VaporView::configureSelectableLabel(titleLabel);
     titleLayout->addWidget(titleLabel);
     titleLayout->addStretch();
     if (titleAction)

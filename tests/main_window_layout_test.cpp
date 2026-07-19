@@ -10,6 +10,7 @@
 #include <QAction>
 #include <QColor>
 #include <QCheckBox>
+#include <QClipboard>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDoubleSpinBox>
@@ -21,6 +22,7 @@
 #include <QIcon>
 #include <QImage>
 #include <QLabel>
+#include <QKeyEvent>
 #include <QLayout>
 #include <QLineEdit>
 #include <QMetaObject>
@@ -325,11 +327,68 @@ void requireSelectableCardTitle(QLabel *titleLabel, const char *message)
     const Qt::TextInteractionFlags flags = titleLabel->textInteractionFlags();
     QWidget *cluster = titleLabel->parentWidget();
     require(flags.testFlag(Qt::TextSelectableByMouse), message);
+    require(flags.testFlag(Qt::TextSelectableByKeyboard), message);
     require(!titleLabel->testAttribute(Qt::WA_TransparentForMouseEvents), message);
     if (cluster && cluster->objectName() == QStringLiteral("sectionTitleCluster"))
     {
         require(!cluster->testAttribute(Qt::WA_TransparentForMouseEvents), message);
     }
+}
+
+void requireCardTitleMouseSelectionAndCopy(QLabel *titleLabel, const char *message)
+{
+    require(titleLabel != nullptr, message);
+    require(titleLabel->isVisibleTo(titleLabel->window()), message);
+    require(titleLabel->text().size() >= 2, message);
+
+    const QRect contentRect = titleLabel->contentsRect();
+    const int textWidth = titleLabel->fontMetrics().horizontalAdvance(titleLabel->text());
+    const QPoint start(contentRect.left() + 2, contentRect.center().y());
+    const QPoint end(std::min(contentRect.right() - 2,
+                              contentRect.left() + std::max(8, textWidth - 2)),
+                     contentRect.center().y());
+    require(end.x() > start.x(), message);
+
+    const QPoint globalStart = titleLabel->mapToGlobal(start);
+    const QPoint globalEnd = titleLabel->mapToGlobal(end);
+    require(QApplication::widgetAt(globalStart) == titleLabel, message);
+    require(QApplication::widgetAt(globalEnd) == titleLabel, message);
+
+    titleLabel->setSelection(0, 0);
+    qApp->clipboard()->setText(QStringLiteral("card-title-copy-sentinel"));
+
+    QMouseEvent press(QEvent::MouseButtonPress,
+                      start,
+                      globalStart,
+                      Qt::LeftButton,
+                      Qt::LeftButton,
+                      Qt::NoModifier);
+    QCoreApplication::sendEvent(titleLabel, &press);
+    QMouseEvent move(QEvent::MouseMove,
+                     end,
+                     globalEnd,
+                     Qt::NoButton,
+                     Qt::LeftButton,
+                     Qt::NoModifier);
+    QCoreApplication::sendEvent(titleLabel, &move);
+    QMouseEvent release(QEvent::MouseButtonRelease,
+                        end,
+                        globalEnd,
+                        Qt::LeftButton,
+                        Qt::NoButton,
+                        Qt::NoModifier);
+    QCoreApplication::sendEvent(titleLabel, &release);
+    processEventsFor(50);
+
+    require(titleLabel->hasSelectedText(), message);
+    require(QApplication::focusWidget() == titleLabel, message);
+
+    QKeyEvent copyPress(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier);
+    QCoreApplication::sendEvent(titleLabel, &copyPress);
+    QKeyEvent copyRelease(QEvent::KeyRelease, Qt::Key_C, Qt::ControlModifier);
+    QCoreApplication::sendEvent(titleLabel, &copyRelease);
+    processEventsFor(20);
+    require(qApp->clipboard()->text() == titleLabel->selectedText(), message);
 }
 
 void requireCardTitleBar(QWidget *card,
@@ -2250,6 +2309,18 @@ int main(int argc, char **argv)
         requireSelectableCardTitle(titleLabel,
                                    "all main-window card titles are selectable and copyable");
     }
+    QLabel *visibleCardTitle = nullptr;
+    for (QLabel *titleLabel : cardTitleLabels)
+    {
+        if (titleLabel->isVisibleTo(&window) && titleLabel->text().size() >= 2)
+        {
+            visibleCardTitle = titleLabel;
+            break;
+        }
+    }
+    requireCardTitleMouseSelectionAndCopy(
+        visibleCardTitle,
+        "a visible main-window card title supports real mouse selection and Ctrl+C");
 
     auto *homeOverviewSplitter = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
     require(homeOverviewSplitter != nullptr, "home overview splitter exists");

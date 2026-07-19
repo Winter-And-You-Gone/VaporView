@@ -641,7 +641,8 @@ void testTrajectoryViewerUsesSidebarLayout()
     for (QLabel *titleLabel : {sidebarTitle, filterTitle, peakTitle})
     {
         require(titleLabel != nullptr &&
-                    titleLabel->textInteractionFlags().testFlag(Qt::TextSelectableByMouse),
+                    titleLabel->textInteractionFlags().testFlag(Qt::TextSelectableByMouse) &&
+                    titleLabel->textInteractionFlags().testFlag(Qt::TextSelectableByKeyboard),
                 "trajectory card titles are selectable and copyable");
     }
     auto *peakApplyButton = dialog.findChild<QPushButton *>(QStringLiteral("trajectoryPeakApplyButton"));
