@@ -1003,7 +1003,7 @@ QLabel *createSectionTitleCluster(QWidget *parent,
 
     auto *titleLabel = new VaporView::VisualTextLabel(cluster);
     titleLabel->setObjectName(QStringLiteral("sectionTitleLabel"));
-    VaporView::configureSelectableLabel(titleLabel);
+    VaporView::configureSelectableCardTitle(titleLabel);
     titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     titleLabel->setMargin(0);
     titleLabel->setContentsMargins(0, 0, 0, 0);

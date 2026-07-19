@@ -3000,7 +3000,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     sidebar_icon_label_->setAlignment(Qt::AlignCenter);
     sidebarTitleLayout->addWidget(sidebar_icon_label_, 0, Qt::AlignVCenter);
     sidebar_title_label_->setObjectName(QStringLiteral("sectionTitleLabel"));
-    VaporView::configureSelectableLabel(sidebar_title_label_);
+    VaporView::configureSelectableCardTitle(sidebar_title_label_);
     sidebar_title_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     sidebarTitleLayout->addWidget(sidebar_title_label_, 1, Qt::AlignVCenter);
     sidebarCardLayout->addWidget(sidebarTitleBar);
@@ -3045,7 +3045,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     peakCardLayout->setContentsMargins(10, 8, 10, 10);
     peakCardLayout->setSpacing(7);
     peak_title_label_->setObjectName(QStringLiteral("trajectoryPeakTitle"));
-    VaporView::configureSelectableLabel(peak_title_label_);
+    VaporView::configureSelectableCardTitle(peak_title_label_);
     peakCardLayout->addWidget(peak_title_label_);
     auto *peakGridLayout = new QGridLayout();
     peakGridLayout->setContentsMargins(0, 0, 0, 0);
@@ -3106,7 +3106,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     filterCardLayout->setContentsMargins(10, 8, 10, 10);
     filterCardLayout->setSpacing(7);
     filter_title_label_->setObjectName(QStringLiteral("trajectoryFilterTitle"));
-    VaporView::configureSelectableLabel(filter_title_label_);
+    VaporView::configureSelectableCardTitle(filter_title_label_);
     filterCardLayout->addWidget(filter_title_label_);
     filter_empty_label_->setObjectName(QStringLiteral("trajectoryFilterEmptyLabel"));
     filter_empty_label_->setWordWrap(true);

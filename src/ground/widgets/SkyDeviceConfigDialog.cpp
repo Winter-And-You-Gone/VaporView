@@ -213,7 +213,7 @@ QWidget *createCardBody(QGroupBox *group, const QString& title, QWidget *titleAc
 
     auto *titleLabel = new VaporView::VisualTextLabel(title, titleBar);
     titleLabel->setObjectName(QStringLiteral("skyConfigGroupTitleLabel"));
-    VaporView::configureSelectableLabel(titleLabel);
+    VaporView::configureSelectableCardTitle(titleLabel);
     titleLayout->addWidget(titleLabel);
     titleLayout->addStretch();
     if (titleAction)

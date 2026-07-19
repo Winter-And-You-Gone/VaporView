@@ -9,10 +9,10 @@
 namespace VaporView
 {
 
-class SelectableLabelFocusFilter final : public QObject
+class SelectableCardTitleEventFilter final : public QObject
 {
 public:
-    explicit SelectableLabelFocusFilter(QLabel *label)
+    explicit SelectableCardTitleEventFilter(QLabel *label)
         : QObject(label)
     {
     }
@@ -21,6 +21,11 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override
     {
         auto *label = qobject_cast<QLabel *>(watched);
+        if (label && event->type() == QEvent::ContextMenu)
+        {
+            event->accept();
+            return true;
+        }
         if (label && event->type() == QEvent::MouseButtonPress)
         {
             const auto *mouseEvent = static_cast<QMouseEvent *>(event);
@@ -33,7 +38,7 @@ protected:
     }
 };
 
-inline void configureSelectableLabel(QLabel *label)
+inline void configureSelectableCardTitle(QLabel *label)
 {
     if (!label)
     {
@@ -42,7 +47,7 @@ inline void configureSelectableLabel(QLabel *label)
 
     label->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
     label->setFocusPolicy(Qt::ClickFocus);
-    label->installEventFilter(new SelectableLabelFocusFilter(label));
+    label->installEventFilter(new SelectableCardTitleEventFilter(label));
 }
 
 }  // namespace VaporView

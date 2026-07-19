@@ -12,6 +12,7 @@
 #include <QCheckBox>
 #include <QClipboard>
 #include <QComboBox>
+#include <QContextMenuEvent>
 #include <QCoreApplication>
 #include <QDoubleSpinBox>
 #include <QDialog>
@@ -409,6 +410,27 @@ void requireCardTitleMouseSelectionAndCopy(QLabel *titleLabel, const char *messa
     QCoreApplication::sendEvent(titleLabel, &copyRelease);
     processEventsFor(20);
     require(qApp->clipboard()->text() == titleLabel->selectedText(), message);
+
+    bool contextMenuShown = false;
+    QTimer::singleShot(0, qApp, [&contextMenuShown]() {
+        for (QWidget *topLevel : QApplication::topLevelWidgets())
+        {
+            auto *menu = qobject_cast<QMenu *>(topLevel);
+            if (menu && menu->isVisible())
+            {
+                contextMenuShown = true;
+                menu->hide();
+            }
+        }
+    });
+    const QPoint contextPosition = titleLabel->rect().center();
+    QContextMenuEvent contextEvent(QContextMenuEvent::Mouse,
+                                   contextPosition,
+                                   titleLabel->mapToGlobal(contextPosition));
+    contextEvent.ignore();
+    QCoreApplication::sendEvent(titleLabel, &contextEvent);
+    processEventsFor(20);
+    require(contextEvent.isAccepted() && !contextMenuShown, message);
 }
 
 void requireCardTitleBar(QWidget *card,
