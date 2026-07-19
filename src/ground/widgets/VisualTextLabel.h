@@ -31,6 +31,12 @@ public:
         initialize();
     }
 
+    void setCustomMouseSelectionEnabled(bool enabled)
+    {
+        custom_mouse_selection_enabled_ = enabled;
+        setCursor(enabled ? Qt::IBeamCursor : Qt::ArrowCursor);
+    }
+
     static QPoint textOriginForVisualAlignment(const QRect& area,
                                                const QRect& textBounds,
                                                Qt::Alignment alignment)
@@ -63,18 +69,23 @@ public:
 protected:
     void mousePressEvent(QMouseEvent *event) override
     {
-        if (event->button() == Qt::LeftButton && mouseSelectionEnabled())
+        if (beginMouseSelection(event))
         {
-            mouse_selection_anchor_ = cursorPositionForX(event->position().x());
-            mouse_selection_active_ = true;
-            setFocus(Qt::MouseFocusReason);
-            setSelection(mouse_selection_anchor_, 0);
-            event->accept();
-            update();
             return;
         }
 
         QLabel::mousePressEvent(event);
+        update();
+    }
+
+    void mouseDoubleClickEvent(QMouseEvent *event) override
+    {
+        if (beginMouseSelection(event))
+        {
+            return;
+        }
+
+        QLabel::mouseDoubleClickEvent(event);
         update();
     }
 
@@ -166,9 +177,26 @@ protected:
     }
 
 private:
+    bool beginMouseSelection(QMouseEvent *event)
+    {
+        if (event->button() != Qt::LeftButton || !mouseSelectionEnabled())
+        {
+            return false;
+        }
+
+        mouse_selection_anchor_ = cursorPositionForX(event->position().x());
+        mouse_selection_active_ = true;
+        setFocus(Qt::MouseFocusReason);
+        setSelection(mouse_selection_anchor_, 0);
+        event->accept();
+        update();
+        return true;
+    }
+
     bool mouseSelectionEnabled() const
     {
-        return textInteractionFlags().testFlag(Qt::TextSelectableByMouse) &&
+        return (custom_mouse_selection_enabled_ ||
+                textInteractionFlags().testFlag(Qt::TextSelectableByMouse)) &&
             textFormat() == Qt::PlainText && !wordWrap();
     }
 
@@ -221,6 +249,7 @@ private:
 
     int mouse_selection_anchor_ = 0;
     bool mouse_selection_active_ = false;
+    bool custom_mouse_selection_enabled_ = false;
 };
 
 }  // namespace VaporView

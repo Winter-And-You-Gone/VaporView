@@ -2,6 +2,7 @@
 #include "ground/main/MainWindow.h"
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/widgets/TelemetryPanels.h"
+#include "ground/widgets/VisualTextLabel.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "test_ui_helpers.h"
 
@@ -327,7 +328,14 @@ void requireSelectableCardTitle(QLabel *titleLabel, const char *message)
     require(titleLabel != nullptr, message);
     const Qt::TextInteractionFlags flags = titleLabel->textInteractionFlags();
     QWidget *cluster = titleLabel->parentWidget();
-    require(flags.testFlag(Qt::TextSelectableByMouse), message);
+    if (dynamic_cast<VaporView::VisualTextLabel *>(titleLabel))
+    {
+        require(!flags.testFlag(Qt::TextSelectableByMouse), message);
+    }
+    else
+    {
+        require(flags.testFlag(Qt::TextSelectableByMouse), message);
+    }
     require(flags.testFlag(Qt::TextSelectableByKeyboard), message);
     require(!titleLabel->testAttribute(Qt::WA_TransparentForMouseEvents), message);
     if (cluster && cluster->objectName() == QStringLiteral("sectionTitleCluster"))

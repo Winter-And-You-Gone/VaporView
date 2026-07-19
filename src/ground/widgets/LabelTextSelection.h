@@ -1,6 +1,8 @@
 #ifndef VAPORVIEW_LABEL_TEXT_SELECTION_H_
 #define VAPORVIEW_LABEL_TEXT_SELECTION_H_
 
+#include "ground/widgets/VisualTextLabel.h"
+
 #include <QEvent>
 #include <QLabel>
 #include <QMouseEvent>
@@ -45,7 +47,15 @@ inline void configureSelectableCardTitle(QLabel *label)
         return;
     }
 
-    label->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+    if (auto *visualLabel = dynamic_cast<VisualTextLabel *>(label))
+    {
+        visualLabel->setCustomMouseSelectionEnabled(true);
+        label->setTextInteractionFlags(Qt::TextSelectableByKeyboard);
+    }
+    else
+    {
+        label->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+    }
     label->setFocusPolicy(Qt::ClickFocus);
     label->installEventFilter(new SelectableCardTitleEventFilter(label));
 }

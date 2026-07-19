@@ -108,17 +108,22 @@ void testSelectableTextPaintsSelection()
             "selectable visual label paints the title selection highlight");
 }
 
-void dragSelection(VaporView::VisualTextLabel& label, const QPoint& start, const QPoint& end)
+void dragSelection(VaporView::VisualTextLabel& label,
+                   const QPoint& start,
+                   const QPoint& end,
+                   QEvent::Type pressType = QEvent::MouseButtonPress)
 {
     const QPoint globalStart = label.mapToGlobal(start);
     const QPoint globalEnd = label.mapToGlobal(end);
-    QMouseEvent press(QEvent::MouseButtonPress,
+    QMouseEvent press(pressType,
                       start,
                       globalStart,
                       Qt::LeftButton,
                       Qt::LeftButton,
                       Qt::NoModifier);
     QApplication::sendEvent(&label, &press);
+    require(label.selectedText().isEmpty(),
+            "a new drag press immediately clears the previous title selection");
     QMouseEvent move(QEvent::MouseMove,
                      end,
                      globalEnd,
@@ -138,7 +143,7 @@ void dragSelection(VaporView::VisualTextLabel& label, const QPoint& start, const
 
 void testRepeatedMouseSelectionRemainsResponsive()
 {
-    const QString text = QStringLiteral("卡片标题文");
+    const QString text = QStringLiteral("Card title text");
     VaporView::VisualTextLabel label(text);
     QFont font = label.font();
     font.setPointSize(18);
@@ -146,6 +151,10 @@ void testRepeatedMouseSelectionRemainsResponsive()
     label.resize(220, 48);
     label.setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     VaporView::configureSelectableCardTitle(&label);
+    require(!label.textInteractionFlags().testFlag(Qt::TextSelectableByMouse),
+            "card titles disable QLabel's native selected-text dragging");
+    require(label.textInteractionFlags().testFlag(Qt::TextSelectableByKeyboard),
+            "card titles retain keyboard selection and copy support");
     label.show();
     QApplication::processEvents();
 
@@ -163,20 +172,22 @@ void testRepeatedMouseSelectionRemainsResponsive()
         int start;
         int end;
         int y;
+        QEvent::Type pressType;
     };
     const DragCase cases[] = {
-        {0, 5, centerY},
-        {1, 4, centerY},
-        {4, 1, centerY},
-        {2, 3, centerY},
-        {5, 0, centerY},
+        {0, 5, centerY, QEvent::MouseButtonPress},
+        {1, 4, centerY, QEvent::MouseButtonDblClick},
+        {4, 1, centerY, QEvent::MouseButtonPress},
+        {2, 3, centerY, QEvent::MouseButtonDblClick},
+        {5, 0, centerY, QEvent::MouseButtonPress},
     };
 
     for (const DragCase& drag : cases)
     {
         dragSelection(label,
                       pointAtCursor(drag.start, drag.y),
-                      pointAtCursor(drag.end, drag.y));
+                      pointAtCursor(drag.end, drag.y),
+                      drag.pressType);
         const int selectionStart = std::min(drag.start, drag.end);
         const int selectionLength = std::abs(drag.end - drag.start);
         require(label.selectionStart() == selectionStart,
