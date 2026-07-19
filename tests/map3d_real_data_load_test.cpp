@@ -10,6 +10,9 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeyEvent>
+#include <QLabel>
+#include <QMouseEvent>
 #include <QString>
 #include <QThread>
 #include <QThreadPool>
@@ -145,6 +148,53 @@ int main(int argc, char** argv)
             QStringLiteral("recorded ECEF keeps non-ellipsoid samples renderable"));
     require(heightStats.heightReferenceStatus.contains(QStringLiteral("recorded ECEF")),
             QStringLiteral("recorded ECEF height handling is reported explicitly"));
+    require(view.flyToTrack(),
+            QStringLiteral("selected-point smoke test centers the recorded ECEF sample"));
+    processEventsFor(250);
+    bool sampleSelected = false;
+    bool selectionCleared = false;
+    QObject::connect(&view,
+                     &VaporView::Map3D::OsgEarthViewWidget::trajectorySampleSelected,
+                     &view,
+                     [&](int sampleIndex, const VaporView::Geo::NavSample&) {
+                         sampleSelected = sampleIndex == 0;
+                     });
+    QObject::connect(&view,
+                     &VaporView::Map3D::OsgEarthViewWidget::trajectorySampleSelectionCleared,
+                     &view,
+                     [&]() { selectionCleared = true; });
+    const QPointF viewCenter(view.rect().center());
+    const QPointF globalCenter(view.mapToGlobal(viewCenter.toPoint()));
+    QMouseEvent pressEvent(QEvent::MouseButtonPress,
+                           viewCenter,
+                           globalCenter,
+                           Qt::LeftButton,
+                           Qt::LeftButton,
+                           Qt::NoModifier);
+    QCoreApplication::sendEvent(&view, &pressEvent);
+    QMouseEvent releaseEvent(QEvent::MouseButtonRelease,
+                             viewCenter,
+                             globalCenter,
+                             Qt::LeftButton,
+                             Qt::NoButton,
+                             Qt::NoModifier);
+    QCoreApplication::sendEvent(&view, &releaseEvent);
+    processEventsFor(100);
+    require(sampleSelected,
+            QStringLiteral("clicking the centered trajectory point selects the sample"));
+    QWidget* infoCard = view.findChild<QWidget*>(QStringLiteral("map3DTrajectoryInfoCard"));
+    QLabel* infoDetails = view.findChild<QLabel*>(QStringLiteral("map3DTrajectoryInfoDetails"));
+    require(infoCard && !infoCard->isHidden(),
+            QStringLiteral("selected trajectory point opens its map information card"));
+    require(infoCard->property("billboardMode").toString() == QStringLiteral("screen-space"),
+            QStringLiteral("trajectory information card stays camera-facing in screen space"));
+    require(infoDetails && infoDetails->text().contains(QStringLiteral("30.2500000")),
+            QStringLiteral("trajectory information card includes detailed sample coordinates"));
+    QKeyEvent escapeEvent(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QCoreApplication::sendEvent(&view, &escapeEvent);
+    processEventsFor(50);
+    require(selectionCleared && infoCard->isHidden(),
+            QStringLiteral("Escape clears the selected point and closes its information card"));
 
     VaporView::Geo::NavSample corruptRecordedEcefSample;
     corruptRecordedEcefSample.latDeg = 30.136981202;

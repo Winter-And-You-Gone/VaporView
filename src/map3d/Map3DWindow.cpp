@@ -300,6 +300,14 @@ QString configuredTiandituKey()
     return settings.value(tiandituKeySettingKey()).toString().trimmed();
 }
 
+QSettings map3DSettings()
+{
+    return QSettings(QSettings::defaultFormat(),
+                     QSettings::UserScope,
+                     QStringLiteral("VaporView"),
+                     QStringLiteral("Map3D"));
+}
+
 QString defaultSessionDataDirectory()
 {
     return map3DProjectDataDirectory();
@@ -586,7 +594,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     follow_action_ = toolbar->addAction(QStringLiteral("跟随飞机"));
     follow_action_->setObjectName(QStringLiteral("map3DFollowAction"));
     follow_action_->setCheckable(true);
-    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    QSettings settings = map3DSettings();
     max_visible_samples_ = sanitizeMaxVisibleSamples(settings.value(QStringLiteral("maxVisibleSamples"), 200000).toInt());
 
     max_visible_samples_spin_ = new QSpinBox(toolbar);
@@ -605,7 +613,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         {
             view_->setMaxVisibleSamples(max_visible_samples_);
         }
-        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+        QSettings settings = map3DSettings();
         settings.setValue(QStringLiteral("maxVisibleSamples"), max_visible_samples_);
         updateStatus(nullptr);
     });
@@ -640,7 +648,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         {
             view_->setFollowAircraft(enabled);
         }
-        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+        QSettings settings = map3DSettings();
         settings.setValue(QStringLiteral("followAircraft"), enabled);
         setCameraNote(enabled ? QStringLiteral("Follow aircraft") : QStringLiteral("Manual/free camera"));
         updateStatus(nullptr);
@@ -721,7 +729,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         QTimer::singleShot(0, this, [this]() {
             loadInitialEarthFile();
             const QString aircraftModelPath =
-                QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+                map3DSettings()
                     .value(QStringLiteral("aircraftModelPath"))
                     .toString();
             if (!aircraftModelPath.isEmpty() && view_)
@@ -778,7 +786,7 @@ void Map3DWindow::createLayerMenu(QToolBar* toolbar)
         button->setPopupMode(QToolButton::InstantPopup);
     }
 
-    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    QSettings settings = map3DSettings();
     for (std::size_t index = 0; index < kMap3DLayerCount; ++index)
     {
         const auto layer = static_cast<Map3DLayer>(index);
@@ -840,7 +848,7 @@ void Map3DWindow::setLayerVisible(Map3DLayer layer, bool visible, bool announce)
         view_->setLayerVisible(layer, visible);
     }
 
-    QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+    map3DSettings()
         .setValue(layerSettingKey(layer), visible);
 
     if (layer == Map3DLayer::SatelliteImagery)
@@ -1039,7 +1047,7 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
         return;
     }
 
-    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    QSettings settings = map3DSettings();
     settings.setValue(QStringLiteral("lastSessionDir"), QFileInfo(sessionDir).absoluteFilePath());
 
     const QString sourceCsvPath = result.sourceCsvPath;
@@ -1099,7 +1107,7 @@ void Map3DWindow::noteLiveSampleDrop(const QString& source, const QString& reaso
 void Map3DWindow::loadInitialEarthFile()
 {
     const MapDataSelection autoSelection = map_data_manager_.selectBestAvailableMap();
-    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    QSettings settings = map3DSettings();
     const QString persistedPath = settings.value(QStringLiteral("lastEarthFile")).toString();
     const bool hasPersistedCustomEarth =
         !persistedPath.isEmpty() && !map_data_manager_.isBuiltInEarthFile(persistedPath);
@@ -1119,7 +1127,7 @@ void Map3DWindow::loadInitialEarthFile()
         latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
         if (!loaded && hasPersistedCustomEarth)
         {
-            QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+            map3DSettings()
                 .remove(QStringLiteral("lastEarthFile"));
             const QString fallbackPath = autoSelection.earthFile;
             if (view_ && QFileInfo(fallbackPath).isFile())
@@ -1134,7 +1142,7 @@ void Map3DWindow::loadInitialEarthFile()
                         return;
                     }
                     setMapSelection(autoSelection);
-                    QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+                    map3DSettings()
                         .setValue(QStringLiteral("lastEarthFile"), fallbackPath);
                     if (autoSelection.diagnostics.real3DLocalReady)
                     {
@@ -1167,7 +1175,7 @@ void Map3DWindow::loadInitialEarthFile()
                                       QStringLiteral("Using user-selected custom earth file."));
         setMapSelection(activeSelection);
         resetAutomaticSentinel2Imagery();
-        QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+        map3DSettings()
             .setValue(QStringLiteral("lastEarthFile"), initialPath);
         if (activeSelection.diagnostics.real3DLocalReady)
         {
@@ -1186,7 +1194,7 @@ void Map3DWindow::loadInitialEarthFile()
 }
 void Map3DWindow::openSessionDirectory()
 {
-    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    QSettings settings = map3DSettings();
     QString initial = settings.value(QStringLiteral("lastSessionDir")).toString();
     if (initial.isEmpty() || !QFileInfo(initial).isDir())
     {
@@ -1204,7 +1212,7 @@ void Map3DWindow::openSessionDirectory()
 }
 void Map3DWindow::openEarthFile()
 {
-    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    QSettings settings = map3DSettings();
     const QString file = QFileDialog::getOpenFileName(
         this, QStringLiteral("加载 Earth 文件"),
         settings.value(QStringLiteral("lastEarthFile")).toString(),
@@ -1223,7 +1231,7 @@ void Map3DWindow::openEarthFile()
                                  QStringLiteral("无法加载 Earth 文件: %1").arg(file));
             return;
         }
-        QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+        map3DSettings()
             .setValue(QStringLiteral("lastEarthFile"), file);
         setMapSelection(selection);
         resetAutomaticSentinel2Imagery();
@@ -1264,7 +1272,7 @@ void Map3DWindow::loadLocalImageryTemplate(const LocalImageryOption& option)
         }
         setMapSelection(selection);
         resetAutomaticSentinel2Imagery();
-        QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+        map3DSettings()
             .setValue(QStringLiteral("lastEarthFile"), option.earthFilePath);
         applyConfiguredTiandituSatelliteImagery(false);
         if (sentinel2_auto_load_timer_
@@ -1495,7 +1503,7 @@ void Map3DWindow::clearLocal3DTilesPreview()
 
 void Map3DWindow::openAircraftModel()
 {
-    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    QSettings settings = map3DSettings();
     const QString initial = settings.value(QStringLiteral("aircraftModelPath")).toString();
     const QString file = QFileDialog::getOpenFileName(this,
                                                       QStringLiteral("加载飞机模型"),
@@ -1517,7 +1525,7 @@ void Map3DWindow::openAircraftModel()
                                  QStringLiteral("无法加载飞机模型，已保留当前标记: %1").arg(file));
             return;
         }
-        QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+        map3DSettings()
             .setValue(QStringLiteral("aircraftModelPath"), file);
         statusBar()->showMessage(QStringLiteral("已加载飞机模型: %1").arg(file), 6000);
     });
@@ -1525,7 +1533,7 @@ void Map3DWindow::openAircraftModel()
 
 void Map3DWindow::resetAircraftModel()
 {
-    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    QSettings settings = map3DSettings();
     settings.remove(QStringLiteral("aircraftModelPath"));
     if (view_)
     {
@@ -1573,7 +1581,7 @@ void Map3DWindow::reloadBestLocalMap()
         {
             sentinel2_auto_load_timer_->start();
         }
-        QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+        map3DSettings()
             .setValue(QStringLiteral("lastEarthFile"), selection.earthFile);
         const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
         updateStatus(nullptr);
@@ -1724,7 +1732,7 @@ void Map3DWindow::onReplaySpeedChanged(int index)
     {
         replay_tick_clock_.restart();
     }
-    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    QSettings settings = map3DSettings();
     settings.setValue(QStringLiteral("replaySpeed"), replay_.speed());
     refreshDiagnosticsText();
     updateStatus(nullptr);

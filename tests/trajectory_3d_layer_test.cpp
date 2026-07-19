@@ -119,8 +119,8 @@ int main()
     auto* firstSphereGeometry = dynamic_cast<osg::Geometry*>(geode->getDrawable(1));
     require(firstSphereGeometry != nullptr && firstSphereGeometry->getVertexArray() != nullptr,
             "trajectory sphere marker geometry exists");
-    require(firstSphereGeometry->getVertexArray()->getNumElements() == 4096 * 12,
-            "trajectory markers use rounded icosahedron balls instead of six-vertex octahedrons");
+    require(firstSphereGeometry->getVertexArray()->getNumElements() == 4096 * 42,
+            "trajectory markers use one-subdivision icospheres instead of faceted polyhedrons");
     const auto* firstSphereVertices =
         dynamic_cast<const osg::Vec3dArray*>(firstSphereGeometry->getVertexArray());
     require(firstSphereVertices != nullptr
@@ -175,8 +175,8 @@ int main()
     require(longGeode != nullptr, "long trajectory node is a geode");
     require(static_cast<int>(longGeode->getNumDrawables()) == expectedLongSegments * 2,
             "long trajectory has line and sphere drawables per segment");
-    require(longLayer.sphereMarkerCount() > 0 && longLayer.sphereMarkerCount() <= 40000,
-            "long trajectory adaptively caps solid sphere marker count");
+    require(longLayer.sphereMarkerCount() > 0 && longLayer.sphereMarkerCount() <= 12000,
+            "long trajectory caps smoother sphere markers to preserve the geometry budget");
 
     longLayer.setMaxVisibleSamples(10000);
     require(longLayer.sampleCount() == 10000,
@@ -399,12 +399,24 @@ int main()
     require(selectionLayer.selectedSampleIndex() == 1, "trajectory stores selected sample index");
     require(selectionGeode->getNumDrawables() == 3,
             "selected sample adds a highlighted solid sphere drawable");
+    auto* selectedSphereGeometry = dynamic_cast<osg::Geometry*>(selectionGeode->getDrawable(2));
+    require(selectedSphereGeometry != nullptr
+                && selectedSphereGeometry->getVertexArray() != nullptr
+                && selectedSphereGeometry->getVertexArray()->getNumElements() == 42,
+            "selected sample uses the same smooth icosphere mesh");
+    const auto* selectedSphereVertices =
+        dynamic_cast<const osg::Vec3dArray*>(selectedSphereGeometry->getVertexArray());
     osg::Vec3d selectedPosition;
     require(selectionLayer.displayPositionForSample(1, selectedPosition)
                 && nearlyEqual(selectedPosition.x(), 0.5)
                 && nearlyEqual(selectedPosition.y(), 1.0)
                 && nearlyEqual(selectedPosition.z(), 10.0),
             "selected sample display position is available for picking");
+    require(selectedSphereVertices != nullptr
+                && nearlyEqual((selectedSphereVertices->front() - selectedPosition).length(),
+                               1.0,
+                               1.0e-9),
+            "selected sphere keeps a one-metre highlight radius");
     selectionLayer.setSelectedSampleIndex(-1);
     require(selectionLayer.selectedSampleIndex() == -1
                 && selectionGeode->getNumDrawables() == 2,

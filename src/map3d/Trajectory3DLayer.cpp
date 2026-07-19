@@ -11,13 +11,17 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <limits>
+#include <map>
+#include <utility>
+#include <vector>
 
 namespace VaporView::Map3D {
 namespace {
 
 constexpr int kSegmentSize = 4096;
-constexpr int kMaxSolidSphereMarkers = 40000;
+constexpr int kMaxSolidSphereMarkers = 12000;
 constexpr double kTrajectorySphereRadiusM = 0.5;
 constexpr double kSelectedTrajectorySphereRadiusM = 1.0;
 
@@ -82,36 +86,88 @@ bool finiteVec3(const osg::Vec3d& value)
     return std::isfinite(value.x()) && std::isfinite(value.y()) && std::isfinite(value.z());
 }
 
-void appendIcosahedron(osg::Vec3dArray& vertices,
-                       osg::Vec4Array& colors,
-                       osg::DrawElementsUInt& indices,
-                       const osg::Vec3d& center,
-                       double radiusM,
-                       const osg::Vec4& color)
+struct UnitIcosphereMesh {
+    std::vector<osg::Vec3d> vertices;
+    std::vector<unsigned int> indices;
+};
+
+UnitIcosphereMesh unitIcosphereMesh()
 {
     constexpr double kPhi = 1.6180339887498948482;
-    const double scale = radiusM / std::sqrt(1.0 + kPhi * kPhi);
-    const unsigned int base = static_cast<unsigned int>(vertices.size());
-    const osg::Vec3d unitVertices[] = {
+    UnitIcosphereMesh mesh;
+    mesh.vertices = {
         {-1.0, kPhi, 0.0}, {1.0, kPhi, 0.0}, {-1.0, -kPhi, 0.0}, {1.0, -kPhi, 0.0},
         {0.0, -1.0, kPhi}, {0.0, 1.0, kPhi}, {0.0, -1.0, -kPhi}, {0.0, 1.0, -kPhi},
         {kPhi, 0.0, -1.0}, {kPhi, 0.0, 1.0}, {-kPhi, 0.0, -1.0}, {-kPhi, 0.0, 1.0},
     };
-    for (const osg::Vec3d& vertex : unitVertices)
+    for (osg::Vec3d& vertex : mesh.vertices)
     {
-        vertices.push_back(center + vertex * scale);
-        colors.push_back(color);
+        vertex.normalize();
     }
 
-    const unsigned int faces[] = {
+    const std::vector<unsigned int> faces = {
         0, 11, 5, 0, 5, 1, 0, 1, 7, 0, 7, 10, 0, 10, 11,
         1, 5, 9, 5, 11, 4, 11, 10, 2, 10, 7, 6, 7, 1, 8,
         3, 9, 4, 3, 4, 2, 3, 2, 6, 3, 6, 8, 3, 8, 9,
         4, 9, 5, 2, 4, 11, 6, 2, 10, 8, 6, 7, 9, 8, 1,
     };
-    for (unsigned int faceIndex : faces)
+
+    std::map<std::pair<unsigned int, unsigned int>, unsigned int> midpointIndices;
+    auto midpointIndex = [&](unsigned int first, unsigned int second) {
+        const auto edge = (std::minmax)(first, second);
+        const auto key = std::make_pair(edge.first, edge.second);
+        const auto existing = midpointIndices.find(key);
+        if (existing != midpointIndices.end())
+        {
+            return existing->second;
+        }
+        osg::Vec3d midpoint = mesh.vertices[first] + mesh.vertices[second];
+        midpoint.normalize();
+        const unsigned int index = static_cast<unsigned int>(mesh.vertices.size());
+        mesh.vertices.push_back(midpoint);
+        midpointIndices.emplace(key, index);
+        return index;
+    };
+
+    mesh.indices.reserve(faces.size() * 4);
+    for (std::size_t face = 0; face < faces.size(); face += 3)
     {
-        indices.push_back(base + faceIndex);
+        const unsigned int a = faces[face];
+        const unsigned int b = faces[face + 1];
+        const unsigned int c = faces[face + 2];
+        const unsigned int ab = midpointIndex(a, b);
+        const unsigned int bc = midpointIndex(b, c);
+        const unsigned int ca = midpointIndex(c, a);
+        const unsigned int subdividedFaces[] = {
+            a, ab, ca,
+            b, bc, ab,
+            c, ca, bc,
+            ab, bc, ca,
+        };
+        mesh.indices.insert(mesh.indices.end(),
+                            std::begin(subdividedFaces),
+                            std::end(subdividedFaces));
+    }
+    return mesh;
+}
+
+void appendIcosphere(osg::Vec3dArray& vertices,
+                     osg::Vec4Array& colors,
+                     osg::DrawElementsUInt& indices,
+                     const osg::Vec3d& center,
+                     double radiusM,
+                     const osg::Vec4& color)
+{
+    static const UnitIcosphereMesh mesh = unitIcosphereMesh();
+    const unsigned int base = static_cast<unsigned int>(vertices.size());
+    for (const osg::Vec3d& vertex : mesh.vertices)
+    {
+        vertices.push_back(center + vertex * radiusM);
+        colors.push_back(color);
+    }
+    for (unsigned int index : mesh.indices)
+    {
+        indices.push_back(base + index);
     }
 }
 
@@ -505,12 +561,12 @@ void Trajectory3DLayer::rebuildSegmentGeometry(TrajectorySegment& segment)
         {
             continue;
         }
-        appendIcosahedron(*sphereVertices,
-                          *sphereColors,
-                          *sphereIndices,
-                          position,
-                          kTrajectorySphereRadiusM,
-                          qualityColor(sample));
+        appendIcosphere(*sphereVertices,
+                        *sphereColors,
+                        *sphereIndices,
+                        position,
+                        kTrajectorySphereRadiusM,
+                        qualityColor(sample));
         ++segment.sphereMarkerCount;
     }
     if (!sphereVertices->empty())
@@ -613,12 +669,12 @@ bool Trajectory3DLayer::appendSphereMarkerGeometry(TrajectorySegment& segment, i
         return false;
     }
     const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(sampleIndex)];
-    appendIcosahedron(*vertices,
-                      *colors,
-                      *indices,
-                      position,
-                      kTrajectorySphereRadiusM,
-                      qualityColor(sample));
+    appendIcosphere(*vertices,
+                    *colors,
+                    *indices,
+                    position,
+                    kTrajectorySphereRadiusM,
+                    qualityColor(sample));
     ++segment.sphereMarkerCount;
     vertices->dirty();
     colors->dirty();
@@ -675,12 +731,12 @@ void Trajectory3DLayer::updateSelectedMarkerGeometry()
     osg::Vec3d position;
     if (displayPositionForSample(selected_sample_index_, position))
     {
-        appendIcosahedron(*vertices,
-                          *colors,
-                          *indices,
-                          position,
-                          kSelectedTrajectorySphereRadiusM,
-                          selectedMarkerColor());
+        appendIcosphere(*vertices,
+                        *colors,
+                        *indices,
+                        position,
+                        kSelectedTrajectorySphereRadiusM,
+                        selectedMarkerColor());
         selected_marker_geometry_->setVertexArray(vertices.get());
         selected_marker_geometry_->setColorArray(colors.get(), osg::Array::BIND_PER_VERTEX);
         selected_marker_geometry_->addPrimitiveSet(indices.get());

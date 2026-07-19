@@ -209,6 +209,9 @@ private:
     void applyAllLayerVisibility();
     void setLookAt(const osg::Vec3d& center, double distanceM);
     bool selectTrajectorySampleAt(const QPointF& widgetPosition);
+    void clearTrajectorySampleSelection();
+    void showTrajectoryInfoCard(int sampleIndex, const VaporView::Geo::NavSample& sample);
+    void updateTrajectoryInfoCardPosition();
     void releaseGlObjectsForContextDestruction();
 
     QTimer frameTimer_;
@@ -228,6 +231,7 @@ private:
     QPointF mouse_press_position_;
     bool mouse_press_tracks_selection_ = false;
     bool mouse_dragged_since_press_ = false;
+    QWidget* trajectory_info_card_ = nullptr;
     std::unique_ptr<osgViewer::Viewer> viewer_;
     osg::ref_ptr<osgViewer::GraphicsWindowEmbedded> graphics_window_;
     osg::ref_ptr<osg::Group> root_;

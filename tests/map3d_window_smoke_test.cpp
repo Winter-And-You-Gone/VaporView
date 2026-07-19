@@ -114,20 +114,28 @@ QAction* actionByName(VaporView::Map3D::Map3DWindow& window, const QString& obje
     return action;
 }
 
+QSettings map3DTestSettings()
+{
+    return QSettings(QSettings::defaultFormat(),
+                     QSettings::UserScope,
+                     QStringLiteral("VaporView"),
+                     QStringLiteral("Map3D"));
+}
+
 } // namespace
 
 int main(int argc, char** argv)
 {
     qputenv("VAPORVIEW_MAP3D_HEADLESS_TEST", "1");
 
+    QTemporaryDir settingsDir;
+    require(settingsDir.isValid(), "temporary settings directory is valid");
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
+
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("VaporViewTest"));
     QCoreApplication::setApplicationName(QStringLiteral("map3d_window_smoke_test"));
-
-    QTemporaryDir settingsDir;
-    require(settingsDir.isValid(), "temporary settings directory is valid");
-    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
-    QSettings::setDefaultFormat(QSettings::IniFormat);
 
     const QString expectedProjectData = QDir::cleanPath(
         QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(QStringLiteral("../../data")));
@@ -217,7 +225,7 @@ int main(int argc, char** argv)
     satelliteLayerAction->trigger();
     QCoreApplication::processEvents();
     {
-        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+        QSettings settings = map3DTestSettings();
         require(!settings.value(QStringLiteral("layers/satelliteImageryVisible"), true).toBool(),
                 "satellite layer visibility is persisted when hidden");
     }
@@ -260,7 +268,7 @@ int main(int argc, char** argv)
 
     maxVisibleSamplesSpin->setValue(1000);
     {
-        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+        QSettings settings = map3DTestSettings();
         require(settings.value(QStringLiteral("maxVisibleSamples")).toInt() == 1000,
                 "max visible sample setting is persisted");
     }
@@ -268,7 +276,7 @@ int main(int argc, char** argv)
     followAction->setChecked(true);
     QCoreApplication::processEvents();
     {
-        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+        QSettings settings = map3DTestSettings();
         require(settings.value(QStringLiteral("followAircraft")).toBool(),
                 "follow aircraft setting is persisted");
     }
@@ -378,7 +386,7 @@ int main(int argc, char** argv)
     window.loadSessionDirectory(sessionDir.path());
     QCoreApplication::processEvents();
     {
-        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+        QSettings settings = map3DTestSettings();
         require(settings.value(QStringLiteral("lastSessionDir")).toString()
                     == QFileInfo(sessionDir.path()).absoluteFilePath(),
                 "programmatic session load persists last session directory");
@@ -528,7 +536,7 @@ int main(int argc, char** argv)
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay speed: 2x")),
             "diagnostics refresh when replay speed changes");
     {
-        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+        QSettings settings = map3DTestSettings();
         require(settings.value(QStringLiteral("replaySpeed")).toDouble() == 2.0,
                 "replay speed setting is persisted");
     }

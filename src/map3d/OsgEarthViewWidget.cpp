@@ -7,6 +7,7 @@
 #include "Map3DRuntime.h"
 #include "map3d/TrackSampling.h"
 #include "map3d/Trajectory3DLayer.h"
+#include "shared/theme/AppTheme.h"
 
 #include <osg/Camera>
 #include <osg/BoundingSphere>
@@ -37,15 +38,21 @@
 #include <osgEarth/XYZ>
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
+#include <QFrame>
 #include <QHideEvent>
+#include <QHBoxLayout>
 #include <QKeyEvent>
+#include <QLabel>
+#include <QLocale>
 #include <QMouseEvent>
 #include <QOpenGLContext>
 #include <QShowEvent>
 #include <QThread>
+#include <QVBoxLayout>
 #include <QWheelEvent>
 #include <QElapsedTimer>
 #include <QFutureWatcher>
@@ -84,6 +91,257 @@ constexpr float kEarthLowAngleSmallFeatureCullPixels = 9.0f;
 constexpr float kEarthCullLODScale = 1.0f;
 constexpr float kEarthLowAngleCullLODScale = 2.5f;
 constexpr double kEarthLowAngleStartPitchDeg = -35.0;
+constexpr int kTrajectoryInfoCardWidth = 380;
+constexpr int kTrajectoryInfoCardScreenMargin = 8;
+
+QString trajectoryFixQualityLabel(VaporView::Geo::FixQuality quality)
+{
+    switch (quality)
+    {
+    case VaporView::Geo::FixQuality::Fixed:
+        return QStringLiteral("RTK 固定解");
+    case VaporView::Geo::FixQuality::Float:
+        return QStringLiteral("RTK 浮点解");
+    case VaporView::Geo::FixQuality::Dgps:
+        return QStringLiteral("差分定位");
+    case VaporView::Geo::FixQuality::Single:
+        return QStringLiteral("单点定位");
+    case VaporView::Geo::FixQuality::Invalid:
+        return QStringLiteral("无效定位");
+    case VaporView::Geo::FixQuality::Unknown:
+        break;
+    }
+    return QStringLiteral("定位质量未知");
+}
+
+VaporView::AppThemeColor trajectoryFixQualityColor(VaporView::Geo::FixQuality quality)
+{
+    switch (quality)
+    {
+    case VaporView::Geo::FixQuality::Fixed:
+        return VaporView::AppThemeColor::Success;
+    case VaporView::Geo::FixQuality::Float:
+        return VaporView::AppThemeColor::Warning;
+    case VaporView::Geo::FixQuality::Dgps:
+        return VaporView::AppThemeColor::Primary;
+    case VaporView::Geo::FixQuality::Single:
+        return VaporView::AppThemeColor::ToolbarAmber;
+    case VaporView::Geo::FixQuality::Invalid:
+        return VaporView::AppThemeColor::Danger;
+    case VaporView::Geo::FixQuality::Unknown:
+        break;
+    }
+    return VaporView::AppThemeColor::TextMuted;
+}
+
+QString trajectoryHeightReferenceLabel(VaporView::Geo::HeightReference reference)
+{
+    switch (reference)
+    {
+    case VaporView::Geo::HeightReference::Wgs84Ellipsoid:
+        return QStringLiteral("WGS84 椭球高");
+    case VaporView::Geo::HeightReference::MeanSeaLevel:
+        return QStringLiteral("平均海平面");
+    case VaporView::Geo::HeightReference::Egm2008:
+        return QStringLiteral("EGM2008");
+    case VaporView::Geo::HeightReference::LocalNed:
+        return QStringLiteral("局部 NED");
+    case VaporView::Geo::HeightReference::Unknown:
+        break;
+    }
+    return QStringLiteral("高程基准未知");
+}
+
+class TrajectorySampleInfoCard final : public QFrame {
+public:
+    explicit TrajectorySampleInfoCard(QWidget* parent)
+        : QFrame(parent)
+    {
+        setObjectName(QStringLiteral("map3DTrajectoryInfoCard"));
+        setAccessibleName(QStringLiteral("轨迹点详细信息"));
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setAttribute(Qt::WA_ShowWithoutActivating);
+        setProperty("billboardMode", QStringLiteral("screen-space"));
+        setFrameShape(QFrame::NoFrame);
+        setMinimumWidth(kTrajectoryInfoCardWidth);
+        setMaximumWidth(kTrajectoryInfoCardWidth);
+
+        layout_ = new QVBoxLayout(this);
+        layout_->setSpacing(10);
+        layout_->setContentsMargins(16, 14, 16, 14);
+
+        auto* headerLayout = new QHBoxLayout;
+        headerLayout->setContentsMargins(0, 0, 0, 0);
+        headerLayout->setSpacing(10);
+        title_label_ = new QLabel(this);
+        title_label_->setObjectName(QStringLiteral("map3DTrajectoryInfoTitle"));
+        QFont titleFont = title_label_->font();
+        titleFont.setWeight(QFont::DemiBold);
+        if (titleFont.pointSizeF() > 0.0)
+        {
+            titleFont.setPointSizeF(titleFont.pointSizeF() + 1.0);
+        }
+        title_label_->setFont(titleFont);
+        quality_label_ = new QLabel(this);
+        quality_label_->setObjectName(QStringLiteral("map3DTrajectoryInfoQuality"));
+        quality_label_->setAlignment(Qt::AlignCenter);
+        headerLayout->addWidget(title_label_);
+        headerLayout->addStretch(1);
+        headerLayout->addWidget(quality_label_);
+        layout_->addLayout(headerLayout);
+
+        details_label_ = new QLabel(this);
+        details_label_->setObjectName(QStringLiteral("map3DTrajectoryInfoDetails"));
+        details_label_->setTextFormat(Qt::RichText);
+        details_label_->setWordWrap(true);
+        details_label_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+        layout_->addWidget(details_label_);
+        applyTheme(VaporView::Geo::FixQuality::Unknown);
+        hide();
+    }
+
+    void setSample(int sampleIndex, const VaporView::Geo::NavSample& sample)
+    {
+        const QLocale locale;
+        title_label_->setText(QStringLiteral("轨迹点 #%1").arg(sampleIndex + 1));
+        quality_label_->setText(trajectoryFixQualityLabel(sample.fixQuality));
+
+        QString recordTime = QStringLiteral("--");
+        if (sample.recordTimestampUs > 0)
+        {
+            const qint64 timestampMs = sample.recordTimestampUs / 1000;
+            const QDateTime localTime = QDateTime::fromMSecsSinceEpoch(timestampMs).toLocalTime();
+            recordTime =
+                QStringLiteral("%1.%2")
+                    .arg(locale.toString(localTime, QLocale::ShortFormat))
+                    .arg(timestampMs % 1000, 3, 10, QChar('0'));
+        }
+
+        const QString position = sample.hasLlh()
+            ? QStringLiteral("%1°, %2°")
+                  .arg(locale.toString(sample.latDeg, 'f', 7),
+                       locale.toString(sample.lonDeg, 'f', 7))
+            : QStringLiteral("--");
+        const QString height = sample.hasLlh()
+            ? QStringLiteral("%1 m · %2")
+                  .arg(locale.toString(sample.heightM, 'f', 2),
+                       trajectoryHeightReferenceLabel(sample.heightReference))
+            : QStringLiteral("--");
+
+        const QString satellites = sample.satellites > 0
+            ? locale.toString(sample.satellites)
+            : QStringLiteral("--");
+        const QString hdop = std::isfinite(sample.hdop)
+            ? locale.toString(sample.hdop, 'f', 2)
+            : QStringLiteral("--");
+        const QString vdop = std::isfinite(sample.vdop)
+            ? locale.toString(sample.vdop, 'f', 2)
+            : QStringLiteral("--");
+        const QString precision =
+            QStringLiteral("卫星 %1 · HDOP %2 · VDOP %3").arg(satellites, hdop, vdop);
+
+        QString velocity = QStringLiteral("--");
+        if (std::isfinite(sample.velNMps)
+            && std::isfinite(sample.velEMps)
+            && std::isfinite(sample.velDMps))
+        {
+            const double speedMps = std::hypot(sample.velNMps, sample.velEMps, sample.velDMps);
+            velocity = QStringLiteral("%1 m/s").arg(locale.toString(speedMps, 'f', 2));
+        }
+
+        QString attitude = QStringLiteral("--");
+        if (std::isfinite(sample.rollDeg)
+            && std::isfinite(sample.pitchDeg)
+            && std::isfinite(sample.yawDeg))
+        {
+            attitude =
+                QStringLiteral("横滚 %1° · 俯仰 %2° · 航向 %3°")
+                    .arg(locale.toString(sample.rollDeg, 'f', 2),
+                         locale.toString(sample.pitchDeg, 'f', 2),
+                         locale.toString(sample.yawDeg, 'f', 2));
+        }
+
+        const QString ecef = sample.hasEcef()
+            ? QStringLiteral("%1, %2, %3 m")
+                  .arg(locale.toString(sample.ecefXM, 'f', 2),
+                       locale.toString(sample.ecefYM, 'f', 2),
+                       locale.toString(sample.ecefZM, 'f', 2))
+            : QStringLiteral("--");
+
+        applyTheme(sample.fixQuality);
+        const QColor secondary = VaporView::appThemeColor(
+            VaporView::AppThemeColor::TextSecondary,
+            VaporView::isDarkThemeEnabled());
+        const auto row = [&](const QString& label, const QString& value) {
+            return QStringLiteral(
+                "<tr><td style=\"color:%1;padding-right:14px;vertical-align:top;\">%2</td>"
+                "<td style=\"vertical-align:top;\">%3</td></tr>")
+                .arg(secondary.name(QColor::HexRgb), label.toHtmlEscaped(), value.toHtmlEscaped());
+        };
+        details_label_->setText(
+            QStringLiteral("<table cellspacing=\"0\" cellpadding=\"2\">%1</table>")
+                .arg(row(QStringLiteral("记录时间"), recordTime)
+                     + row(QStringLiteral("经纬度"), position)
+                     + row(QStringLiteral("高程"), height)
+                     + row(QStringLiteral("定位精度"), precision)
+                     + row(QStringLiteral("三维速度"), velocity)
+                     + row(QStringLiteral("姿态"), attitude)
+                     + row(QStringLiteral("ECEF"), ecef)));
+        layout_->activate();
+        resize(kTrajectoryInfoCardWidth, layout_->sizeHint().height());
+        setAccessibleDescription(
+            QStringLiteral("%1，%2，%3")
+                .arg(title_label_->text(), position, quality_label_->text()));
+    }
+
+    void placeAt(const QPointF& anchor, const QSize& viewportSize)
+    {
+        const int maxX = (std::max)(kTrajectoryInfoCardScreenMargin,
+                                    viewportSize.width() - width() - kTrajectoryInfoCardScreenMargin);
+        const int x = std::clamp(qRound(anchor.x() - static_cast<qreal>(width()) / 2.0),
+                                 kTrajectoryInfoCardScreenMargin,
+                                 maxX);
+        constexpr int kAnchorGap = 18;
+        int y = qRound(anchor.y()) - height() - kAnchorGap;
+        if (y < kTrajectoryInfoCardScreenMargin)
+        {
+            y = qRound(anchor.y()) + kAnchorGap;
+        }
+        y = std::clamp(y,
+                       kTrajectoryInfoCardScreenMargin,
+                       (std::max)(kTrajectoryInfoCardScreenMargin,
+                                  viewportSize.height() - height() - kTrajectoryInfoCardScreenMargin));
+        move(x, y);
+        raise();
+    }
+
+private:
+    void applyTheme(VaporView::Geo::FixQuality quality)
+    {
+        const bool dark = VaporView::isDarkThemeEnabled();
+        const QColor text = VaporView::appThemeColor(VaporView::AppThemeColor::Text, dark);
+        const QColor surface = VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceRaised, dark);
+        const QColor border = VaporView::appThemeColor(VaporView::AppThemeColor::BorderStrong, dark);
+        const QColor accent = VaporView::appThemeColor(trajectoryFixQualityColor(quality), dark);
+        setStyleSheet(
+            QStringLiteral(
+                "QFrame#map3DTrajectoryInfoCard { background-color: %1; border: 1px solid %2; "
+                "border-radius: 10px; }"
+                "QFrame#map3DTrajectoryInfoCard QLabel { color: %3; background: transparent; border: none; }")
+                .arg(surface.name(QColor::HexRgb),
+                     border.name(QColor::HexRgb),
+                     text.name(QColor::HexRgb)));
+        quality_label_->setStyleSheet(
+            QStringLiteral("QLabel { color: %1; background: transparent; border: 1px solid %1; "
+                           "border-radius: 9px; padding: 2px 8px; }")
+                .arg(accent.name(QColor::HexRgb)));
+    }
+
+    QVBoxLayout* layout_ = nullptr;
+    QLabel* title_label_ = nullptr;
+    QLabel* quality_label_ = nullptr;
+    QLabel* details_label_ = nullptr;
+};
 
 struct EarthProjectionProfile {
     double farPlaneM = kEarthProjectionDefaultFarPlaneM;
@@ -492,6 +750,7 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent)
     setMinimumSize(640, 420);
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
+    trajectory_info_card_ = new TrajectorySampleInfoCard(this);
     frameTimer_.setInterval(33);
     connect(&frameTimer_, &QTimer::timeout, this, [this]() {
         if (!shutdown_)
@@ -515,6 +774,10 @@ void OsgEarthViewWidget::shutdown()
         return;
     }
     shutdown_ = true;
+    if (trajectory_info_card_)
+    {
+        trajectory_info_card_->hide();
+    }
     ++earth_load_generation_;
     ++local_3d_tiles_load_generation_;
     ++aircraft_load_generation_;
@@ -724,6 +987,7 @@ void OsgEarthViewWidget::clearTrack()
     {
         return;
     }
+    clearTrajectorySampleSelection();
     trajectory_layer_->clear();
     aircraft_layer_->clear();
     local_frame_ = VaporView::Geo::LocalTangentPlane();
@@ -1023,6 +1287,10 @@ void OsgEarthViewWidget::setLayerVisible(Map3DLayer layer, bool visible)
         return;
     }
     layer_visibility_[index] = visible;
+    if (layer == Map3DLayer::FlightElements && !visible)
+    {
+        clearTrajectorySampleSelection();
+    }
     applyLayerVisibility(layer);
 }
 
@@ -1383,6 +1651,7 @@ void OsgEarthViewWidget::paintGL()
         timer.start();
         updateCameraProjectionForCurrentView();
         viewer_->frame();
+        updateTrajectoryInfoCardPosition();
         last_frame_ms_ = static_cast<double>(timer.nsecsElapsed()) / 1000000.0;
         smoothed_frame_ms_ = smoothed_frame_ms_ <= 0.0
             ? last_frame_ms_
@@ -1513,6 +1782,15 @@ void OsgEarthViewWidget::keyPressEvent(QKeyEvent* event)
         return;
     }
     initializeSceneIfNeeded();
+    if (event->key() == Qt::Key_Escape
+        && trajectory_layer_
+        && trajectory_layer_->selectedSampleIndex() >= 0)
+    {
+        clearTrajectorySampleSelection();
+        update();
+        event->accept();
+        return;
+    }
     const int key = toOsgKey(event);
     if (graphics_window_ && key != 0)
     {
@@ -1919,20 +2197,119 @@ bool OsgEarthViewWidget::selectTrajectorySampleAt(const QPointF& widgetPosition)
     }
     if (!pick)
     {
-        trajectory_layer_->setSelectedSampleIndex(-1);
-        emit trajectorySampleSelectionCleared();
+        clearTrajectorySampleSelection();
         update();
         return false;
     }
 
     trajectory_layer_->setSelectedSampleIndex(pick->sampleIndex);
+    showTrajectoryInfoCard(pick->sampleIndex, pick->sample);
     emit trajectorySampleSelected(pick->sampleIndex, pick->sample);
     update();
     return true;
 }
 
+void OsgEarthViewWidget::clearTrajectorySampleSelection()
+{
+    const bool hadSelection = trajectory_layer_
+        && trajectory_layer_->selectedSampleIndex() >= 0;
+    if (trajectory_layer_)
+    {
+        trajectory_layer_->setSelectedSampleIndex(-1);
+    }
+    if (trajectory_info_card_)
+    {
+        trajectory_info_card_->hide();
+    }
+    if (hadSelection)
+    {
+        emit trajectorySampleSelectionCleared();
+    }
+}
+
+void OsgEarthViewWidget::showTrajectoryInfoCard(
+    int sampleIndex,
+    const VaporView::Geo::NavSample& sample)
+{
+    auto* card = static_cast<TrajectorySampleInfoCard*>(trajectory_info_card_);
+    if (!card)
+    {
+        return;
+    }
+    card->setSample(sampleIndex, sample);
+    updateTrajectoryInfoCardPosition();
+}
+
+void OsgEarthViewWidget::updateTrajectoryInfoCardPosition()
+{
+    auto* card = static_cast<TrajectorySampleInfoCard*>(trajectory_info_card_);
+    if (!card
+        || shutdown_
+        || !layerVisible(Map3DLayer::FlightElements)
+        || !trajectory_layer_
+        || trajectory_layer_->selectedSampleIndex() < 0
+        || !viewer_
+        || !viewer_->getCamera())
+    {
+        if (card)
+        {
+            card->hide();
+        }
+        return;
+    }
+
+    osg::Vec3d localPosition;
+    if (!trajectory_layer_->displayPositionForSample(
+            trajectory_layer_->selectedSampleIndex(), localPosition))
+    {
+        card->hide();
+        return;
+    }
+
+    osg::Camera* camera = viewer_->getCamera();
+    osg::Viewport* viewport = camera->getViewport();
+    if (!viewport)
+    {
+        card->hide();
+        return;
+    }
+    const osg::Matrixd localToWorld = overlay_transform_.valid()
+        ? overlay_transform_->getMatrix()
+        : osg::Matrixd::identity();
+    const osg::Matrixd localToWindow =
+        localToWorld
+        * camera->getViewMatrix()
+        * camera->getProjectionMatrix()
+        * viewport->computeWindowMatrix();
+    const osg::Vec3d projected = localPosition * localToWindow;
+    if (!std::isfinite(projected.x())
+        || !std::isfinite(projected.y())
+        || !std::isfinite(projected.z())
+        || projected.z() < 0.0
+        || projected.z() > 1.0)
+    {
+        card->hide();
+        return;
+    }
+
+    const qreal dpr = std::max<qreal>(1.0, devicePixelRatioF());
+    const QPointF anchor(projected.x() / dpr,
+                         (static_cast<double>(framebuffer_size_.height()) - projected.y()) / dpr);
+    if (anchor.x() < 0.0
+        || anchor.x() > width()
+        || anchor.y() < 0.0
+        || anchor.y() > height())
+    {
+        card->hide();
+        return;
+    }
+    card->placeAt(anchor, size());
+    card->show();
+}
+
 void OsgEarthViewWidget::rebuildDisplayTrack()
 {
+    clearTrajectorySampleSelection();
     trajectory_layer_->clear();
     aircraft_layer_->clear();
     std::vector<VaporView::Geo::NavSample> selectedSamples;
