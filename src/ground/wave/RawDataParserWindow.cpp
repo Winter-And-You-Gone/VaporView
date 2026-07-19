@@ -2118,6 +2118,15 @@ void decodeEpsilonPayload(RawDecodedRecord& decoded, const QByteArray& payload, 
     addField(decoded, QStringLiteral("CRC"), QStringLiteral("crc16"), formatHex(crc16, 4), crc16Ok ? QStringLiteral("OK") : QStringLiteral("BAD"), QString(), 5, 2, QString(), !crc16Ok);
     addField(decoded, QStringLiteral("FDILink Header"), QStringLiteral("tail"), sizeOk ? formatHex(static_cast<unsigned char>(payload.at(payload.size() - 1))) : QStringLiteral("---"), tailOk ? QStringLiteral("OK") : QStringLiteral("BAD"), QString(), sizeOk ? payload.size() - 1 : -1, sizeOk ? 1 : 0, QStringLiteral("0xFD"), !tailOk);
 
+    if (!sizeOk)
+    {
+        decoded.status = english ? QStringLiteral("Invalid") : QStringLiteral("无效");
+        decoded.summary = english
+            ? QStringLiteral("Frame size mismatch: expected %1 bytes, got %2").arg(expectedFrameSize).arg(payload.size())
+            : QStringLiteral("帧长度不匹配：应为 %1 字节，实际 %2 字节").arg(expectedFrameSize).arg(payload.size());
+        return;
+    }
+
     const uint8_t* p = bytes + 7;
     const int payloadOffset = 7;
     const auto has = [payloadSize](int count) {

@@ -87,7 +87,9 @@ public:
             collectors.epsilon->setSampleRate(configuration.epsilonCallbackRateHz);
             if (configuration.applyEpsilonDeviceRate)
             {
-                collectors.epsilon->setOutputPacketRates(configuration.epsilonPacketRates);
+                result.epsilonDeviceRateAttempted = true;
+                result.epsilonDeviceRateSucceeded =
+                    collectors.epsilon->setOutputPacketRates(configuration.epsilonPacketRates);
             }
         }
         if (collectors.ptb && collectors.ptb->isRunning())
@@ -119,21 +121,24 @@ public:
         return result;
     }
 
-    void setEpsilonSampleRate(
+    LocalSampleRateApplyResult setEpsilonSampleRate(
         int callbackRateHz,
         const std::map<uint8_t, int>& packetRates,
         bool applyDeviceRate)
     {
+        LocalSampleRateApplyResult result;
         const auto collector = registry.snapshot().epsilon;
         if (!collector)
         {
-            return;
+            return result;
         }
         collector->setSampleRate(callbackRateHz);
         if (collector->isRunning() && applyDeviceRate)
         {
-            collector->setOutputPacketRates(packetRates);
+            result.epsilonDeviceRateAttempted = true;
+            result.epsilonDeviceRateSucceeded = collector->setOutputPacketRates(packetRates);
         }
+        return result;
     }
 
     LocalSampleRateApplyResult setPtbSampleRate(int rateHz, bool applyDeviceRate)
@@ -808,12 +813,12 @@ LocalSampleRateApplyResult LocalDeviceConnectionController::applyRunningSampleRa
     return impl_->applyRunningSampleRates(configuration);
 }
 
-void LocalDeviceConnectionController::setEpsilonSampleRate(
+LocalSampleRateApplyResult LocalDeviceConnectionController::setEpsilonSampleRate(
     int callbackRateHz,
     const std::map<uint8_t, int>& packetRates,
     bool applyDeviceRate)
 {
-    impl_->setEpsilonSampleRate(callbackRateHz, packetRates, applyDeviceRate);
+    return impl_->setEpsilonSampleRate(callbackRateHz, packetRates, applyDeviceRate);
 }
 
 LocalSampleRateApplyResult LocalDeviceConnectionController::setPtbSampleRate(

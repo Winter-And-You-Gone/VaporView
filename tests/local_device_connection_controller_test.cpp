@@ -66,6 +66,16 @@ int main()
 
     controller.disconnect();
 
+    LocalSampleRateConfiguration rateConfiguration;
+    const LocalSampleRateApplyResult allRateResult =
+        controller.applyRunningSampleRates(rateConfiguration);
+    require(!allRateResult.epsilonDeviceRateAttempted,
+            "epsilon device rate is not reported as attempted without a running collector");
+    const LocalSampleRateApplyResult epsilonRateResult =
+        controller.setEpsilonSampleRate(100, {{0x40u, 100}}, true);
+    require(!epsilonRateResult.epsilonDeviceRateAttempted,
+            "single epsilon rate change is not reported as applied without a running collector");
+
     LocalTemperatureConnectionRequest temperatureRequest;
     temperatureRequest.english = true;
     temperatureRequest.port = QStringLiteral("__invalid_vaporview_port__");

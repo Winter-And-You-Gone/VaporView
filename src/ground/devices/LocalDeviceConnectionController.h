@@ -90,6 +90,8 @@ struct LocalSampleRateConfiguration
 
 struct LocalSampleRateApplyResult
 {
+    bool epsilonDeviceRateAttempted = false;
+    bool epsilonDeviceRateSucceeded = true;
     bool ptbDeviceRateAttempted = false;
     bool ptbDeviceRateSucceeded = true;
 };
@@ -131,7 +133,7 @@ public:
     CollectorSet snapshotCollectors() const;
     LocalSampleRateApplyResult applyRunningSampleRates(
         const LocalSampleRateConfiguration& configuration);
-    void setEpsilonSampleRate(
+    LocalSampleRateApplyResult setEpsilonSampleRate(
         int callbackRateHz,
         const std::map<uint8_t, int>& packetRates,
         bool applyDeviceRate);

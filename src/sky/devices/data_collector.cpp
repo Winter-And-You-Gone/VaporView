@@ -1928,7 +1928,7 @@ bool EpsilonCollector::checkDeviceResponse()
     log(english
             ? "EPSILON: device responds to commands, but no navigation frame was restored yet"
             : "EPSILON：设备可响应命令，但导航数据流尚未恢复");
-    return true;
+    return false;
   }
 
   log(std::string(english ? "EPSILON: detected FDILink frame " : "EPSILON：检测到 FDILink 数据包 ") +
@@ -1962,18 +1962,6 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
             : "EPSILON：没有可用于配置的数据包频率");
     return false;
   }
-  if (!serial_.isOpen())
-  {
-    log(english ? "EPSILON: serial port is not open" : "EPSILON：串口未打开");
-    return false;
-  }
-  if (running_.load())
-  {
-    log(english
-            ? "EPSILON: stop the live stream before applying packet-rate changes; use the EPSILON reconfigure action"
-            : "EPSILON：修改数据包频率前请先停止实时数据流，或使用 EPSILON 重配功能");
-    return false;
-  }
   for (const auto& entry : packetRates)
   {
     if (!isSupportedEpsilonPacketRate(entry.first, entry.second))
@@ -1987,6 +1975,55 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
       log(oss.str());
       return false;
     }
+  }
+
+  if (running_.load())
+  {
+    const std::string portName = port_name_;
+    const SerialConfig serialConfig = serial_config_;
+    log(english
+            ? "EPSILON: temporarily stopping the live stream to apply packet-rate changes"
+            : "EPSILON：为修改数据包频率临时停止实时数据流");
+    stop();
+    if (!start(portName, serialConfig))
+    {
+      log(english
+              ? "EPSILON: failed to reopen the serial port for packet-rate configuration"
+              : "EPSILON：为配置数据包频率重新打开串口失败");
+      return false;
+    }
+
+    const bool configured = setOutputPacketRates(packetRates, forceApply);
+    if (!serial_.isOpen() && !start(portName, serialConfig))
+    {
+      log(english
+              ? "EPSILON: packet-rate attempt finished, but the serial port could not be reopened"
+              : "EPSILON：数据包频率配置尝试已结束，但串口无法重新打开");
+      return false;
+    }
+    if (!checkDeviceResponse() || !startStreaming())
+    {
+      log(english
+              ? "EPSILON: packet-rate attempt finished, but the live navigation stream could not be restored"
+              : "EPSILON：数据包频率配置尝试已结束，但实时导航流未能恢复");
+      stop();
+      return false;
+    }
+
+    log(configured
+            ? (english
+                   ? "EPSILON: packet rates applied and live navigation stream restored"
+                   : "EPSILON：数据包频率已应用，实时导航流已恢复")
+            : (english
+                   ? "EPSILON: packet-rate configuration failed; the previous live navigation stream was restored"
+                   : "EPSILON：数据包频率配置失败，原实时导航流已恢复"));
+    return configured;
+  }
+
+  if (!serial_.isOpen())
+  {
+    log(english ? "EPSILON: serial port is not open" : "EPSILON：串口未打开");
+    return false;
   }
 
   const EpsilonLogFn logFn = [this](const std::string& message) { log(message); };
@@ -2080,15 +2117,15 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
             ? "EPSILON: output configuration already matches requested packet rates"
             : "EPSILON：当前输出配置已匹配目标数据包频率");
     sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fdeconfig\r\n", kConfigCommandWaitMs);
-    waitForEpsilonNavigationStreamRestore(serial_,
-                                          logFn,
-                                          3000,
-                                          english
-                                              ? "EPSILON: returned to navigation mode with FDILink frame %u"
-                                              : "EPSILON：已返回导航模式，检测到 FDILink 数据包 %u",
-                                          english
-                                              ? "EPSILON: configuration query completed, but navigation stream is still silent"
-                                              : "EPSILON：配置查询已完成，但导航数据流仍无输出");
+    return waitForEpsilonNavigationStreamRestore(serial_,
+                                                 logFn,
+                                                 3000,
+                                                 english
+                                                     ? "EPSILON: returned to navigation mode with FDILink frame %u"
+                                                     : "EPSILON：已返回导航模式，检测到 FDILink 数据包 %u",
+                                                 english
+                                                     ? "EPSILON: configuration query completed, but navigation stream is still silent"
+                                                     : "EPSILON：配置查询已完成，但导航数据流仍无输出");
   }
   return true;
 }

@@ -998,7 +998,7 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
         });
         if (!epsilon_->start(config.port.toStdString(), SerialConfig::N81(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!epsilon_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
-        epsilon_->setDeviceSampleRate(static_cast<int>(config.frequency_hz));
+        if (!epsilon_->setDeviceSampleRate(static_cast<int>(config.frequency_hz))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!epsilon_->startStreaming()) return fail(CommandErrorCode::DeviceConnectFailed);
         break;
     case SkyDeviceId::Ptb:

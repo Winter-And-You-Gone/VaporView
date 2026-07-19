@@ -28,7 +28,7 @@ struct EpsilonDeviceOperation
 struct EpsilonConfigurationResult
 {
     bool command_succeeded = false;
-    bool live_stream_restarted = true;
+    bool live_stream_restarted = false;
     QString error_message;
 
     bool succeeded() const

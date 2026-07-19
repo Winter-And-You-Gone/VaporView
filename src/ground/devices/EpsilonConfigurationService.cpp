@@ -4,6 +4,8 @@
 
 #include <QSettings>
 
+#include <utility>
+
 namespace VaporView::Ground
 {
 namespace
@@ -33,6 +35,51 @@ std::shared_ptr<VaporView::EpsilonCollector> prepareCollector(
     return collector;
 }
 
+EpsilonConfigurationResult finishOperation(
+    const EpsilonDeviceOperation& operation,
+    const std::shared_ptr<VaporView::EpsilonCollector>& collector,
+    EpsilonConfigurationResult result,
+    const EpsilonConfigurationService::LogCallback& log)
+{
+    if (!operation.restart_live_stream)
+    {
+        collector->stop();
+        result.live_stream_restarted = true;
+        return result;
+    }
+
+    const bool english = operation.english;
+    collector->stop();
+    const bool reopened = collector->start(
+        operation.port.toStdString(),
+        VaporView::SerialConfig::N81(operation.baud));
+    const bool responding = reopened && collector->checkDeviceResponse();
+    const bool streaming = responding && collector->startStreaming();
+    result.live_stream_restarted = streaming;
+
+    if (streaming)
+    {
+        emitLog(log, result.command_succeeded
+            ? (english
+                   ? QStringLiteral("[EPSILON] Configuration completed and the live navigation stream was restored.")
+                   : QStringLiteral("[EPSILON] 配置已完成，实时导航流已恢复。"))
+            : (english
+                   ? QStringLiteral("[EPSILON] Configuration failed, but the previous live navigation stream was restored.")
+                   : QStringLiteral("[EPSILON] 配置失败，但原实时导航流已恢复。")));
+        return result;
+    }
+
+    collector->stop();
+    const QString recoveryError = english
+        ? QStringLiteral("The EPSILON live navigation stream could not be restored. Reconnect EPSILON manually.")
+        : QStringLiteral("EPSILON 实时导航流未能恢复，请手动重新连接 EPSILON。");
+    result.error_message = result.error_message.isEmpty()
+        ? recoveryError
+        : QStringLiteral("%1 %2").arg(result.error_message, recoveryError);
+    emitLog(log, QStringLiteral("[EPSILON] %1").arg(recoveryError));
+    return result;
+}
+
 } // namespace
 
 EpsilonConfigurationResult EpsilonConfigurationService::applyMainAntennaLeverArm(
@@ -43,6 +90,7 @@ EpsilonConfigurationResult EpsilonConfigurationService::applyMainAntennaLeverArm
     const LogCallback& log)
 {
     EpsilonConfigurationResult result;
+    result.live_stream_restarted = !operation.restart_live_stream;
     const bool english = operation.english;
     const std::shared_ptr<VaporView::EpsilonCollector> collector = prepareCollector(operation, log);
 
@@ -75,50 +123,13 @@ EpsilonConfigurationResult EpsilonConfigurationService::applyMainAntennaLeverArm
         result.command_succeeded = true;
     }
 
-    if (operation.restart_live_stream)
-    {
-        if (!collector->startStreaming())
-        {
-            result.live_stream_restarted = false;
-            emitLog(log, english
-                ? QStringLiteral("[EPSILON] Main antenna lever-arm command finished, but failed to restart the live navigation stream.")
-                : QStringLiteral("[EPSILON] 主天线杆臂命令已结束，但重新启动实时导航流失败。"));
-            collector->stop();
-        }
-        else
-        {
-            emitLog(log, QString(english
-                    ? "[EPSILON] Main antenna lever arm applied and live stream restarted on %1."
-                    : "[EPSILON] 主天线杆臂已下发，并已在 %1 上恢复实时数据流。")
-                .arg(operation.port));
-        }
-    }
-    else
-    {
-        collector->stop();
-        if (result.command_succeeded)
-        {
-            emitLog(log, QString(english
-                    ? "[EPSILON] Main antenna lever arm applied on %1."
-                    : "[EPSILON] 已在 %1 上完成主天线杆臂配置。")
-                .arg(operation.port));
-        }
-    }
-
     if (!result.command_succeeded && result.error_message.isEmpty())
     {
         result.error_message = english
             ? QStringLiteral("Failed to apply EPSILON main antenna lever arm.")
             : QStringLiteral("EPSILON 主天线杆臂下发失败。");
     }
-    else if (result.command_succeeded && !result.live_stream_restarted)
-    {
-        result.error_message = english
-            ? QStringLiteral("The lever arm was sent, but the EPSILON live stream could not be restarted. Reconnect EPSILON manually.")
-            : QStringLiteral("杆臂已下发，但 EPSILON 实时数据流未能恢复。请手动重新连接 EPSILON。");
-    }
-
-    return result;
+    return finishOperation(operation, collector, std::move(result), log);
 }
 
 EpsilonConfigurationResult EpsilonConfigurationService::configureRtcmPort(
@@ -129,6 +140,7 @@ EpsilonConfigurationResult EpsilonConfigurationService::configureRtcmPort(
     const LogCallback& log)
 {
     EpsilonConfigurationResult result;
+    result.live_stream_restarted = !operation.restart_live_stream;
     const bool english = operation.english;
     const std::shared_ptr<VaporView::EpsilonCollector> collector = prepareCollector(operation, log);
 
@@ -147,7 +159,7 @@ EpsilonConfigurationResult EpsilonConfigurationService::configureRtcmPort(
                 : "[EPSILON] 打开 %1 进行 RTCM 串口配置失败: %2")
             .arg(operation.port, QString::fromStdString(collector->getLastError()));
         emitLog(log, result.error_message);
-        return result;
+        return finishOperation(operation, collector, std::move(result), log);
     }
 
     if (!collector->configureRtcmPort(2, forward_baud))
@@ -157,8 +169,7 @@ EpsilonConfigurationResult EpsilonConfigurationService::configureRtcmPort(
                 : "[EPSILON] 在 %1 @ %2 上把第二通信串口配置为 RTCM 失败。")
             .arg(operation.port, operation.baud_text);
         emitLog(log, result.error_message);
-        collector->stop();
-        return result;
+        return finishOperation(operation, collector, std::move(result), log);
     }
 
     result.command_succeeded = true;
@@ -171,36 +182,11 @@ EpsilonConfigurationResult EpsilonConfigurationService::configureRtcmPort(
         rtk_settings.setValue(QStringLiteral("baudrate"), forward_baud_text);
     }
 
-    if (operation.restart_live_stream)
-    {
-        if (!collector->startStreaming())
-        {
-            result.live_stream_restarted = false;
-            result.error_message = english
-                ? QStringLiteral("EPSILON RTCM port was configured, but the live navigation stream could not be restarted.")
-                : QStringLiteral("EPSILON RTCM 串口已配置，但实时导航流未能恢复。");
-            emitLog(log, english
-                ? QStringLiteral("[EPSILON] RTCM-port configuration succeeded, but failed to restart the live navigation stream.")
-                : QStringLiteral("[EPSILON] RTCM 串口配置已完成，但重新启动实时导航流失败。"));
-            collector->stop();
-            return result;
-        }
-
-        emitLog(log, QString(english
-                ? "[EPSILON] RTCM port is ready. EPSILON live stream restarted on %1, and RTK forwarding is prefilled for %2 @ %3."
-                : "[EPSILON] RTCM 串口已就绪，已在 %1 上恢复 EPSILON 实时数据流，并为 %2 @ %3 预填 RTK 转发配置。")
-            .arg(operation.port, forward_port, forward_baud_text));
-    }
-    else
-    {
-        collector->stop();
-        emitLog(log, QString(english
-                ? "[EPSILON] RTCM port is ready on %1. RTK forwarding is prefilled for %2 @ %3."
-                : "[EPSILON] 已在 %1 上完成 RTCM 串口配置，并为 %2 @ %3 预填 RTK 转发配置。")
-            .arg(operation.port, forward_port, forward_baud_text));
-    }
-
-    return result;
+    emitLog(log, QString(english
+            ? "[EPSILON] RTCM port is ready on %1. RTK forwarding is prefilled for %2 @ %3."
+            : "[EPSILON] 已在 %1 上完成 RTCM 串口配置，并为 %2 @ %3 预填 RTK 转发配置。")
+        .arg(operation.port, forward_port, forward_baud_text));
+    return finishOperation(operation, collector, std::move(result), log);
 }
 
 EpsilonConfigurationResult EpsilonConfigurationService::configurePacketRates(
@@ -212,6 +198,7 @@ EpsilonConfigurationResult EpsilonConfigurationService::configurePacketRates(
     const LogCallback& log)
 {
     EpsilonConfigurationResult result;
+    result.live_stream_restarted = !operation.restart_live_stream;
     const bool english = operation.english;
     const std::shared_ptr<VaporView::EpsilonCollector> collector = prepareCollector(operation, log);
     collector->setSampleRate(callback_rate_hz);
@@ -231,7 +218,7 @@ EpsilonConfigurationResult EpsilonConfigurationService::configurePacketRates(
                 : "[EPSILON] 打开 %1 进行手动重配失败: %2")
             .arg(operation.port, QString::fromStdString(collector->getLastError()));
         emitLog(log, result.error_message);
-        return result;
+        return finishOperation(operation, collector, std::move(result), log);
     }
 
     if (!collector->setOutputPacketRates(packet_rates, true))
@@ -241,8 +228,7 @@ EpsilonConfigurationResult EpsilonConfigurationService::configurePacketRates(
                 : "[EPSILON] 在 %1 @ %2 上执行手动重配失败。")
             .arg(operation.port, operation.baud_text);
         emitLog(log, result.error_message);
-        collector->stop();
-        return result;
+        return finishOperation(operation, collector, std::move(result), log);
     }
 
     result.command_succeeded = true;
@@ -255,36 +241,11 @@ EpsilonConfigurationResult EpsilonConfigurationService::configurePacketRates(
         settings.setValue(QStringLiteral("epsilon_last_config_apply_version"), PacketConfigurationVersion);
     }
 
-    if (operation.restart_live_stream)
-    {
-        if (!collector->startStreaming())
-        {
-            result.live_stream_restarted = false;
-            result.error_message = english
-                ? QStringLiteral("EPSILON was reconfigured, but the live navigation stream could not be restarted.")
-                : QStringLiteral("EPSILON 已重配，但实时导航流未能恢复。");
-            emitLog(log, english
-                ? QStringLiteral("[EPSILON] Reconfiguration succeeded, but failed to restart the live navigation stream.")
-                : QStringLiteral("[EPSILON] 重配已完成，但重新启动实时导航流失败。"));
-            collector->stop();
-            return result;
-        }
-
-        emitLog(log, QString(english
-                ? "[EPSILON] Manual reconfiguration completed and live stream restarted on %1."
-                : "[EPSILON] 手动重配完成，已在 %1 上恢复实时数据流。")
-            .arg(operation.port));
-    }
-    else
-    {
-        collector->stop();
-        emitLog(log, QString(english
-                ? "[EPSILON] Manual reconfiguration completed on %1. You can connect normally now."
-                : "[EPSILON] 已在 %1 上完成手动重配，现在可以正常连接。")
-            .arg(operation.port));
-    }
-
-    return result;
+    emitLog(log, QString(english
+            ? "[EPSILON] Manual reconfiguration completed on %1."
+            : "[EPSILON] 已在 %1 上完成手动重配。")
+        .arg(operation.port));
+    return finishOperation(operation, collector, std::move(result), log);
 }
 
 } // namespace VaporView::Ground

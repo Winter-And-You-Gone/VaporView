@@ -404,7 +404,7 @@ public:
         return sensorsFile && sensorsFile->isOpen();
     }
 
-    bool recordRaw(QFile *file,
+    bool recordRaw(std::unique_ptr<QFile>& file,
                    std::atomic<quint64>& recordCount,
                    quint16 sourceId,
                    quint16 recordType,
@@ -565,7 +565,7 @@ private:
         return true;
     }
 
-    bool writeRawRecord(QFile *file,
+    bool writeRawRecord(std::unique_ptr<QFile>& file,
                         std::atomic<quint64>& recordCount,
                         quint16 sourceId,
                         quint16 recordType,
@@ -574,14 +574,15 @@ private:
                         const void *data,
                         size_t size)
     {
-        if (!file || !file->isOpen() || (size > 0 && !data) ||
+        if ((size > 0 && !data) ||
             size > static_cast<size_t>(std::numeric_limits<quint32>::max()))
         {
             return false;
         }
 
         std::lock_guard<std::mutex> lock(filesMutex);
-        if (!file->isOpen())
+        QFile *rawFile = file.get();
+        if (!rawFile || !rawFile->isOpen())
         {
             return false;
         }
@@ -596,12 +597,12 @@ private:
         header.recordType = qToLittleEndian(recordType);
         header.flags = qToLittleEndian(flags);
         header.sequence = qToLittleEndian(sequence);
-        if (file->write(reinterpret_cast<const char *>(&header), sizeof(header)) !=
+        if (rawFile->write(reinterpret_cast<const char *>(&header), sizeof(header)) !=
             static_cast<qint64>(sizeof(header)))
         {
             return false;
         }
-        if (size > 0 && file->write(reinterpret_cast<const char *>(data), static_cast<qint64>(size)) !=
+        if (size > 0 && rawFile->write(reinterpret_cast<const char *>(data), static_cast<qint64>(size)) !=
             static_cast<qint64>(size))
         {
             return false;
@@ -699,7 +700,7 @@ private:
                     tcpQueueBytes -= static_cast<quint64>(record.payload.size());
                 }
 
-                if (writeRawRecord(rawTcpWaveFile.get(),
+                if (writeRawRecord(rawTcpWaveFile,
                                    rawTcpWaveRecordCount,
                                    kRawSourceTcpWave,
                                    kRawRecordTypeGeneric,
@@ -924,6 +925,7 @@ private:
 
     void resetFiles()
     {
+        std::lock_guard<std::mutex> lock(filesMutex);
         sensorsFile.reset();
         rawEpsilonFile.reset();
         rawPtbFile.reset();
@@ -1059,7 +1061,7 @@ bool GroundRecordingService::recordRawEpsilonFrame(quint64 hostTimestampUs,
                                                    const void *data,
                                                    size_t size)
 {
-    return impl_->recordRaw(impl_->rawEpsilonFile.get(),
+    return impl_->recordRaw(impl_->rawEpsilonFile,
                             impl_->rawEpsilonRecordCount,
                             kRawSourceEpsilon,
                             packetId,
@@ -1073,7 +1075,7 @@ bool GroundRecordingService::recordRawPtbResponse(quint64 hostTimestampUs,
                                                   const void *data,
                                                   size_t size)
 {
-    return impl_->recordRaw(impl_->rawPtbFile.get(),
+    return impl_->recordRaw(impl_->rawPtbFile,
                             impl_->rawPtbRecordCount,
                             kRawSourcePtb,
                             kRawRecordTypeGeneric,
@@ -1087,7 +1089,7 @@ bool GroundRecordingService::recordRawHmpResponse(quint64 hostTimestampUs,
                                                   const void *data,
                                                   size_t size)
 {
-    return impl_->recordRaw(impl_->rawHmpFile.get(),
+    return impl_->recordRaw(impl_->rawHmpFile,
                             impl_->rawHmpRecordCount,
                             kRawSourceHmp,
                             0x03u,
@@ -1102,7 +1104,7 @@ bool GroundRecordingService::recordRawLidarFrame(quint64 hostTimestampUs,
                                                  const void *data,
                                                  size_t size)
 {
-    return impl_->recordRaw(impl_->rawLidarFile.get(),
+    return impl_->recordRaw(impl_->rawLidarFile,
                             impl_->rawLidarRecordCount,
                             kRawSourceLidar,
                             protocol,

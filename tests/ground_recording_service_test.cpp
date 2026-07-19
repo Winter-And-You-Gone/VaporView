@@ -9,6 +9,7 @@
 #include <QtEndian>
 
 #include <chrono>
+#include <atomic>
 #include <cstring>
 #include <cstdlib>
 #include <iostream>
@@ -126,6 +127,42 @@ int main(int argc, char **argv)
     QFile rawFile(QDir(sessionDirectory).filePath(QStringLiteral("raw/epsilon.dat")));
     require(rawFile.open(QIODevice::ReadOnly), "open raw epsilon file");
     require(rawFile.read(8) == QByteArrayLiteral("VVRAWDAT"), "raw DAT magic");
+
+    QTemporaryDir concurrentDirectory;
+    require(concurrentDirectory.isValid(), "concurrent recording temporary directory");
+    VaporView::Ground::Session::GroundRecordingService concurrentRecorder;
+    VaporView::Ground::Session::GroundRecordingOptions concurrentOptions = options;
+    concurrentOptions.baseDirectory = concurrentDirectory.path();
+    require(concurrentRecorder.start(concurrentOptions, &startError, &errorMessage),
+            "start concurrent raw recording");
+
+    std::atomic<bool> keepWriting{true};
+    std::thread rawWriter([&]() {
+        quint64 timestampUs = 2'000'000;
+        while (keepWriting.load(std::memory_order_relaxed))
+        {
+            concurrentRecorder.recordRawEpsilonFrame(
+                timestampUs++,
+                0x40,
+                0,
+                rawFrame.constData(),
+                static_cast<size_t>(rawFrame.size()));
+            std::this_thread::yield();
+        }
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    const auto concurrentSummary = concurrentRecorder.stop();
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    keepWriting.store(false, std::memory_order_relaxed);
+    rawWriter.join();
+    require(concurrentSummary.hadOpenSession, "concurrent stop reports open session");
+    require(!concurrentRecorder.recordRawEpsilonFrame(
+                3'000'000,
+                0x40,
+                0,
+                rawFrame.constData(),
+                static_cast<size_t>(rawFrame.size())),
+            "raw writes are rejected after concurrent stop");
 
     std::cout << "ground_recording_service_test passed\n";
     return 0;

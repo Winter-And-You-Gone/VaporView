@@ -35,6 +35,7 @@
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QToolButton>
+#include <QTreeWidget>
 #include <QWidget>
 #include <QtEndian>
 #include <algorithm>
@@ -247,6 +248,26 @@ void writeUnifiedRawFile(const QString& path, int recordCount)
     }
 }
 
+void writeUnifiedRawPayloadFile(const QString& path, quint16 recordType, const QByteArray& payload)
+{
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly), "temporary raw payload file can be written");
+
+    QDataStream stream(&file);
+    stream.setByteOrder(QDataStream::LittleEndian);
+    stream.writeRawData(kTestRawMagic, sizeof(kTestRawMagic));
+    stream << quint32(2) << quint32(kTestRawHeaderSize) << quint16(kTestRawSourceEpsilon) << quint16(0);
+    stream << quint32(kTestRawRecordMarker)
+           << quint32(kTestRawRecordHeaderSize)
+           << quint64(1'700'000'000'000'000ULL)
+           << quint32(payload.size())
+           << quint16(kTestRawSourceEpsilon)
+           << recordType
+           << quint32(0)
+           << quint64(0);
+    stream.writeRawData(payload.constData(), payload.size());
+}
+
 QByteArray floatPayload(std::initializer_list<float> values)
 {
     QByteArray payload;
@@ -427,6 +448,52 @@ void testRawDataParserOpenIsNonBlocking()
                        text.contains(QStringLiteral("Indexed 300000"));
             }),
             "raw parser background indexing completes");
+
+    parser.close();
+    processEventsFor(100);
+}
+
+void testRawDataParserRejectsTruncatedFdilinkFrame()
+{
+    QTemporaryDir sessionDir;
+    require(sessionDir.isValid(), "temporary malformed raw parser session directory");
+    QDir dir(sessionDir.path());
+    require(dir.mkpath(QStringLiteral("raw")), "temporary malformed raw directory can be created");
+
+    const QByteArray truncatedFrame = QByteArray::fromHex("fc40ff00000000fd");
+    writeUnifiedRawPayloadFile(
+        dir.filePath(QStringLiteral("raw/epsilon.dat")),
+        0x40,
+        truncatedFrame);
+
+    RawDataParserWindow parser;
+    parser.setEnglish(true);
+    parser.show();
+    require(waitForWindowExposed(&parser), "malformed raw parser window becomes exposed");
+    require(parser.openSessionPath(sessionDir.path()), "raw parser accepts malformed-frame session directory");
+
+    auto *detailTree = parser.findChild<QTreeWidget *>();
+    require(detailTree != nullptr, "malformed raw parser exposes a detail tree");
+    require(processEventsUntil(5000, [detailTree]() {
+                return detailTree->topLevelItemCount() >= 2;
+            }),
+            "truncated FDILink frame header diagnostics are displayed");
+
+    bool foundDeclaredPayloadSize = false;
+    bool foundPayloadFields = false;
+    for (int groupIndex = 0; groupIndex < detailTree->topLevelItemCount(); ++groupIndex)
+    {
+        const QTreeWidgetItem *group = detailTree->topLevelItem(groupIndex);
+        foundPayloadFields = foundPayloadFields || group->text(0) == QStringLiteral("Payload Fields");
+        for (int fieldIndex = 0; fieldIndex < group->childCount(); ++fieldIndex)
+        {
+            const QTreeWidgetItem *field = group->child(fieldIndex);
+            foundDeclaredPayloadSize = foundDeclaredPayloadSize ||
+                (field->text(0) == QStringLiteral("payload_size") && field->text(1) == QStringLiteral("255"));
+        }
+    }
+    require(foundDeclaredPayloadSize, "truncated FDILink frame reports its declared payload size");
+    require(!foundPayloadFields, "truncated FDILink frame stops before payload-field decoding");
 
     parser.close();
     processEventsFor(100);
@@ -1312,6 +1379,7 @@ int main(int argc, char **argv)
     if (runsGroup(QStringLiteral("io")))
     {
         testRawDataParserOpenIsNonBlocking();
+        testRawDataParserRejectsTruncatedFdilinkFrame();
         testSessionViewerTrajectoryActionLifetime();
     }
     if (runsGroup(QStringLiteral("window-state")))

@@ -51,14 +51,30 @@ void MainWindow::onGlobalRateChanged(const QString& text)
     configuration.temperatureRateHz = state_->temperature_sample_rate_;
     const LocalSampleRateApplyResult rateResult =
         state_->local_connection_controller_->applyRunningSampleRates(configuration);
-    if (rateResult.ptbDeviceRateAttempted && !rateResult.ptbDeviceRateSucceeded)
+    const bool epsilonDeviceRateFailed =
+        rateResult.epsilonDeviceRateAttempted && !rateResult.epsilonDeviceRateSucceeded;
+    const bool ptbDeviceRateFailed =
+        rateResult.ptbDeviceRateAttempted && !rateResult.ptbDeviceRateSucceeded;
+    if (epsilonDeviceRateFailed)
+    {
+        log(state_->is_english_
+            ? "EPSILON output-rate command failed; the live stream recovery result is shown above."
+            : "EPSILON 输出频率下发失败；实时数据流恢复结果请查看上方日志。");
+    }
+    if (ptbDeviceRateFailed)
     {
         log(QString(state_->is_english_
             ? "PTB sample rate command failed for %1 Hz"
             : "PTB采样频率命令下发失败：%1 Hz").arg(state_->ptb_sample_rate_));
     }
 
-    if (epsilonUsesCustomPacketRates)
+    if (epsilonDeviceRateFailed || ptbDeviceRateFailed)
+    {
+        log(state_->is_english_
+            ? "Host-side rates were updated, but one or more device output-rate commands failed."
+            : "主机侧频率已更新，但一个或多个设备输出频率命令失败。");
+    }
+    else if (epsilonUsesCustomPacketRates)
     {
         log(QString(state_->is_english_
                         ? "All rates set to %1 Hz; EPSILON keeps the saved custom packet-rate profile."
@@ -98,7 +114,8 @@ void MainWindow::onGnssRateChanged(const QString& text)
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
         effectiveEpsilonPacketRates(settings, state_->epsilon_sample_rate_, &epsilonUsesCustomPacketRates);
     const int epsilonCallbackRate = epsilonPacketCallbackRate(epsilonDesiredPacketRates, state_->epsilon_sample_rate_);
-    state_->local_connection_controller_->setEpsilonSampleRate(
+    const LocalSampleRateApplyResult rateResult =
+        state_->local_connection_controller_->setEpsilonSampleRate(
         epsilonCallbackRate,
         epsilonDesiredPacketRates,
         !skipDeviceRate);
@@ -107,6 +124,18 @@ void MainWindow::onGnssRateChanged(const QString& text)
         log(state_->is_english_
             ? "EPSILON output-rate command disabled; using the current device output."
             : "已禁用 EPSILON 输出频率下发，使用设备当前输出。");
+    }
+    else if (rateResult.epsilonDeviceRateAttempted && !rateResult.epsilonDeviceRateSucceeded)
+    {
+        log(state_->is_english_
+            ? "EPSILON output-rate command failed; the live stream recovery result is shown above."
+            : "EPSILON 输出频率下发失败；实时数据流恢复结果请查看上方日志。");
+    }
+    else if (!rateResult.epsilonDeviceRateAttempted)
+    {
+        log(state_->is_english_
+            ? "EPSILON output rate saved for the next connection."
+            : "EPSILON 输出频率已保存，将在下次连接时应用。");
     }
     else if (epsilonUsesCustomPacketRates)
     {
@@ -256,7 +285,17 @@ void MainWindow::applyAllSampleRates()
     configuration.temperatureRateHz = temperatureRate;
     const LocalSampleRateApplyResult rateResult =
         state_->local_connection_controller_->applyRunningSampleRates(configuration);
-    if (rateResult.ptbDeviceRateAttempted && !rateResult.ptbDeviceRateSucceeded)
+    const bool epsilonDeviceRateFailed =
+        rateResult.epsilonDeviceRateAttempted && !rateResult.epsilonDeviceRateSucceeded;
+    const bool ptbDeviceRateFailed =
+        rateResult.ptbDeviceRateAttempted && !rateResult.ptbDeviceRateSucceeded;
+    if (epsilonDeviceRateFailed)
+    {
+        log(state_->is_english_
+            ? "EPSILON output-rate command failed; the live stream recovery result is shown above."
+            : "EPSILON 输出频率下发失败；实时数据流恢复结果请查看上方日志。");
+    }
+    if (ptbDeviceRateFailed)
     {
         log(QString(state_->is_english_
             ? "PTB sample rate command failed for %1 Hz"
@@ -288,7 +327,16 @@ void MainWindow::applyAllSampleRates()
     state_->lidar_sample_rate_ = lidarRate;
     state_->temperature_sample_rate_ = temperatureRate;
 
-    log(QString(state_->is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
+    if (epsilonDeviceRateFailed || ptbDeviceRateFailed)
+    {
+        log(state_->is_english_
+            ? "Host-side rates were updated, but one or more device output-rate commands failed."
+            : "主机侧频率已更新，但一个或多个设备输出频率命令失败。");
+    }
+    else
+    {
+        log(QString(state_->is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
+    }
     if (skipEpsilonDeviceRate || skipPtbDeviceRate || skipHmpDeviceRate || skipLidarDeviceRate || skipTemperatureDeviceRate)
     {
         log(state_->is_english_
