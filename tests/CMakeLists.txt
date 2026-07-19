@@ -154,6 +154,33 @@ add_executable(device_rate_policy_test
 target_link_libraries(device_rate_policy_test PRIVATE vaporview_ground_device_policy)
 add_test(NAME device_rate_policy_test COMMAND device_rate_policy_test)
 
+add_executable(rtk_serial_topology_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/rtk_serial_topology_test.cpp
+)
+target_link_libraries(rtk_serial_topology_test PRIVATE vaporview_ground_rtk)
+add_test(NAME rtk_serial_topology_test COMMAND rtk_serial_topology_test)
+
+add_executable(rtk_config_dialog_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/rtk_config_dialog_test.cpp
+)
+target_link_libraries(rtk_config_dialog_test PRIVATE vaporview_ground_rtk)
+add_test(NAME rtk_config_dialog_test COMMAND rtk_config_dialog_test)
+set_tests_properties(rtk_config_dialog_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=windows")
+
+add_executable(bounded_lru_cache_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/bounded_lru_cache_test.cpp
+)
+target_include_directories(bounded_lru_cache_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(bounded_lru_cache_test PRIVATE Qt6::Core)
+add_test(NAME bounded_lru_cache_test COMMAND bounded_lru_cache_test)
+
+add_executable(bounded_byte_queue_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/bounded_byte_queue_test.cpp
+)
+target_include_directories(bounded_byte_queue_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(bounded_byte_queue_test PRIVATE Qt6::Core)
+add_test(NAME bounded_byte_queue_test COMMAND bounded_byte_queue_test)
+
 add_executable(temperature_command_state_test
     ${CMAKE_CURRENT_SOURCE_DIR}/temperature_command_state_test.cpp
 )
@@ -161,6 +188,12 @@ target_link_libraries(temperature_command_state_test PRIVATE
     vaporview_ground_temperature_command_state
 )
 add_test(NAME temperature_command_state_test COMMAND temperature_command_state_test)
+
+add_executable(epsilon_protocol_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/epsilon_protocol_test.cpp
+)
+target_link_libraries(epsilon_protocol_test PRIVATE vaporview_sky_core vaporview_geo_core)
+add_test(NAME epsilon_protocol_test COMMAND epsilon_protocol_test)
 
 add_executable(device_panel_coordinator_test
     ${CMAKE_CURRENT_SOURCE_DIR}/device_panel_coordinator_test.cpp
@@ -469,7 +502,12 @@ set(VAPORVIEW_FAST_UNIT_TESTS
     visual_text_label_test
     session_time_format_test
     device_rate_policy_test
+    rtk_serial_topology_test
+    rtk_config_dialog_test
+    bounded_lru_cache_test
+    bounded_byte_queue_test
     temperature_command_state_test
+    epsilon_protocol_test
     session_timeline_model_test
     session_export_trajectory_test
     ground_recording_service_test
@@ -513,6 +551,7 @@ set_property(TEST tcp_wave_encoding_test tcp_wave_panel_test APPEND PROPERTY LAB
 set_property(TEST device_panel_coordinator_test APPEND PROPERTY LABELS ground-widgets)
 set_property(TEST
     temperature_controller_protocol_test
+    epsilon_protocol_test
     telemetry_codec_test
     telemetry_tcp_link_test
     APPEND PROPERTY LABELS protocol

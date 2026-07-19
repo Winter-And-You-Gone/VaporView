@@ -1,4 +1,5 @@
 #include "data_collector.h"
+#include "EpsilonProtocol.h"
 #include "geo/CoordinateTransform.h"
 #include "geo/GeoTypes.h"
 #include "TemperatureControllerProtocol.h"
@@ -130,6 +131,7 @@ constexpr uint8_t kFdilinkFrameHead = 0xFC;
 constexpr uint8_t kFdilinkFrameTail = 0xFD;
 constexpr double kRadToDeg = 57.295779513082320876798154814105;
 constexpr int kEpsilonDefaultBaud = 921600;
+constexpr auto kEpsilonAttitudeSourceTimeout = std::chrono::seconds(3);
 
 constexpr uint8_t kMsgImu = 0x40;
 constexpr uint8_t kMsgAhrs = 0x41;
@@ -371,9 +373,24 @@ double attitudeEulerDeltaDeg(double rollA,
                    attitudeAngleDeltaDeg(yawA, yawB)});
 }
 
-void updateEpsilonAttitudeState(EpsilonData& data)
+void updateEpsilonAttitudeState(
+    EpsilonData& data,
+    std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now())
 {
   const double invalid = std::numeric_limits<double>::quiet_NaN();
+
+  auto expireSource = [now](bool& valid, const std::chrono::steady_clock::time_point& timestamp) {
+    if (valid &&
+        (timestamp.time_since_epoch().count() == 0 ||
+         now - timestamp > kEpsilonAttitudeSourceTimeout))
+    {
+      valid = false;
+    }
+  };
+  expireSource(data.ahrs_attitude_valid, data.ahrs_attitude_timestamp);
+  expireSource(data.euler_orien_valid, data.euler_orien_timestamp);
+  expireSource(data.quat_orien_valid, data.quat_orien_timestamp);
+  expireSource(data.system_state_attitude_valid, data.system_state_attitude_timestamp);
 
   const bool hasAhrsEuler = data.ahrs_attitude_valid &&
       finiteEuler(data.ahrs_roll_deg, data.ahrs_pitch_deg, data.ahrs_yaw_deg);
@@ -391,6 +408,10 @@ void updateEpsilonAttitudeState(EpsilonData& data)
   if (data.euler_orien_valid) ++data.attitude_source_count;
   if (data.quat_orien_valid) ++data.attitude_source_count;
 
+  data.quat_w = invalid;
+  data.quat_x = invalid;
+  data.quat_y = invalid;
+  data.quat_z = invalid;
   if (hasQuatOrien)
   {
     data.quat_w = data.quat_orien_w;
@@ -406,6 +427,9 @@ void updateEpsilonAttitudeState(EpsilonData& data)
     data.quat_z = data.ahrs_quat_z;
   }
 
+  data.roll_deg = invalid;
+  data.pitch_deg = invalid;
+  data.yaw_deg = invalid;
   if (hasEulerOrien)
   {
     data.roll_deg = data.euler_orien_roll_deg;
@@ -423,6 +447,15 @@ void updateEpsilonAttitudeState(EpsilonData& data)
     data.roll_deg = data.quat_orien_roll_deg;
     data.pitch_deg = data.quat_orien_pitch_deg;
     data.yaw_deg = data.quat_orien_yaw_deg;
+  }
+  else if (data.system_state_attitude_valid &&
+           finiteEuler(data.system_state_roll_deg,
+                       data.system_state_pitch_deg,
+                       data.system_state_yaw_deg))
+  {
+    data.roll_deg = data.system_state_roll_deg;
+    data.pitch_deg = data.system_state_pitch_deg;
+    data.yaw_deg = data.system_state_yaw_deg;
   }
 
   data.attitude_delta_ahrs_euler_deg =
@@ -1449,6 +1482,99 @@ bool parseEnvironmentSerialLine(const std::string& line, EnvironmentSerialValues
   return matched;
 }
 
+namespace EpsilonProtocol
+{
+
+bool decodeCorePacket(EpsilonData& data,
+                      std::uint8_t packetId,
+                      const std::uint8_t *payload,
+                      std::size_t payloadSize)
+{
+  if (!payload)
+  {
+    return false;
+  }
+
+  if (packetId == kMsgImu && payloadSize >= 56)
+  {
+    data.imu_gyr_x_radps = readFloatLE(payload + 0);
+    data.imu_gyr_y_radps = readFloatLE(payload + 4);
+    data.imu_gyr_z_radps = readFloatLE(payload + 8);
+    data.imu_acc_x_mps2 = readFloatLE(payload + 12);
+    data.imu_acc_y_mps2 = readFloatLE(payload + 16);
+    data.imu_acc_z_mps2 = readFloatLE(payload + 20);
+    data.mag_x_mg = readFloatLE(payload + 24);
+    data.mag_y_mg = readFloatLE(payload + 28);
+    data.mag_z_mg = readFloatLE(payload + 32);
+    data.imu_temp_c = readFloatLE(payload + 36);
+    data.pressure_pa = readFloatLE(payload + 40);
+    data.pressure_temp_c = readFloatLE(payload + 44);
+    data.device_timestamp_us = static_cast<std::uint64_t>(readI64LE(payload + 48));
+    return true;
+  }
+
+  if (packetId == kMsgInsGps && payloadSize >= 72)
+  {
+    data.body_vel_x_mps = readFloatLE(payload + 0);
+    data.body_vel_y_mps = readFloatLE(payload + 4);
+    data.body_vel_z_mps = readFloatLE(payload + 8);
+    data.body_acc_x_mps2 = readFloatLE(payload + 12);
+    data.body_acc_y_mps2 = readFloatLE(payload + 16);
+    data.body_acc_z_mps2 = readFloatLE(payload + 20);
+    data.ned_n_m = readFloatLE(payload + 24);
+    data.ned_e_m = readFloatLE(payload + 28);
+    data.ned_d_m = readFloatLE(payload + 32);
+    data.vel_n_mps = readFloatLE(payload + 36);
+    data.vel_e_mps = readFloatLE(payload + 40);
+    data.vel_d_mps = readFloatLE(payload + 44);
+    data.ned_acc_n_mps2 = readFloatLE(payload + 48);
+    data.ned_acc_e_mps2 = readFloatLE(payload + 52);
+    data.ned_acc_d_mps2 = readFloatLE(payload + 56);
+    data.pressure_altitude_m = readFloatLE(payload + 60);
+    data.device_timestamp_us = static_cast<std::uint64_t>(readI64LE(payload + 64));
+    return true;
+  }
+
+  if (packetId == kMsgRawGnss && payloadSize >= 74)
+  {
+    data.utc_unix_s = readU32LE(payload + 0);
+    data.utc_microseconds = readU32LE(payload + 4);
+    data.latitude_deg = radToDeg(readDoubleLE(payload + 8));
+    data.longitude_deg = radToDeg(readDoubleLE(payload + 16));
+    data.height_m = readDoubleLE(payload + 24);
+    data.vel_n_mps = readFloatLE(payload + 32);
+    data.vel_e_mps = readFloatLE(payload + 36);
+    data.vel_d_mps = readFloatLE(payload + 40);
+    data.lat_std_m = readFloatLE(payload + 44);
+    data.lon_std_m = readFloatLE(payload + 48);
+    data.height_std_m = readFloatLE(payload + 52);
+    data.gnss_course_deg = readFloatLE(payload + 56);
+    data.geoid_separation_m = readFloatLE(payload + 60);
+    data.diff_age_s = readFloatLE(payload + 64);
+    const std::uint16_t rawGnssStatus = readU16LE(payload + 72);
+    data.gnss_fix_code = static_cast<int>(rawGnssStatus & 0x0Fu);
+    data.gnss_fix_text = epsilonGnssFixName(data.gnss_fix_code);
+    data.gnss_velocity_valid = ((rawGnssStatus >> 4) & 0x01u) != 0;
+    data.gnss_time_valid = ((rawGnssStatus >> 5) & 0x01u) != 0;
+    data.external_gnss = ((rawGnssStatus >> 6) & 0x01u) != 0;
+    data.gnss_tilt_valid = ((rawGnssStatus >> 7) & 0x01u) != 0;
+    data.heading_valid = ((rawGnssStatus >> 8) & 0x01u) != 0;
+    data.floating_ambiguity_heading = ((rawGnssStatus >> 9) & 0x01u) != 0;
+    resolveEpsilonEcefFromLlh(data, true);
+    return true;
+  }
+
+  return false;
+}
+
+void resolveAttitudeState(EpsilonData& data,
+                          std::chrono::steady_clock::time_point now)
+{
+  updateEpsilonAttitudeState(data, now);
+}
+
+}  // namespace EpsilonProtocol
+
 DataCollector::DataCollector()
 {
 }
@@ -2302,6 +2428,10 @@ bool EpsilonCollector::configureMainAntennaLeverArm(double xM, double yM, double
 
 void EpsilonCollector::run()
 {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    latest_data_ = EpsilonData();
+  }
   std::vector<uint8_t> buffer;
   buffer.reserve(8192);
   uint8_t chunk[1024];
@@ -2413,29 +2543,24 @@ void EpsilonCollector::run()
     std::string invalidEcefWarning;
     {
       std::lock_guard<std::mutex> lock(mutex_);
+      const auto frameTimestamp = std::chrono::steady_clock::now();
       latest_data_.last_packet_id = packetId;
       latest_data_.last_serial_number = serialNumber;
       latest_data_.raw_frame_count += 1;
       latest_data_.dropped_frame_count = droppedFrames;
-      latest_data_.timestamp = std::chrono::steady_clock::now();
+      latest_data_.timestamp = frameTimestamp;
       latest_data_.valid = true;
       latest_data_.error_message.clear();
+      updateEpsilonAttitudeState(latest_data_, frameTimestamp);
 
-      if (packetId == kMsgImu && payloadSize >= 56)
+      const bool decodedCorePacket = EpsilonProtocol::decodeCorePacket(
+          latest_data_, packetId, payload, payloadSize);
+      if (decodedCorePacket)
       {
-        latest_data_.imu_gyr_x_radps = readFloatLE(payload + 0);
-        latest_data_.imu_gyr_y_radps = readFloatLE(payload + 4);
-        latest_data_.imu_gyr_z_radps = readFloatLE(payload + 8);
-        latest_data_.imu_acc_x_mps2 = readFloatLE(payload + 12);
-        latest_data_.imu_acc_y_mps2 = readFloatLE(payload + 16);
-        latest_data_.imu_acc_z_mps2 = readFloatLE(payload + 20);
-        latest_data_.mag_x_mg = readFloatLE(payload + 24);
-        latest_data_.mag_y_mg = readFloatLE(payload + 28);
-        latest_data_.mag_z_mg = readFloatLE(payload + 32);
-        latest_data_.imu_temp_c = std::numeric_limits<double>::quiet_NaN();
-        latest_data_.pressure_pa = std::numeric_limits<double>::quiet_NaN();
-        latest_data_.pressure_temp_c = std::numeric_limits<double>::quiet_NaN();
-        latest_data_.device_timestamp_us = static_cast<uint64_t>(readI64LE(payload + 48));
+        if (packetId == kMsgRawGnss)
+        {
+          hasResolvedLlh = true;
+        }
       }
       else if (packetId == kMsgAhrs && payloadSize >= 48)
       {
@@ -2450,25 +2575,9 @@ void EpsilonCollector::run()
         latest_data_.ahrs_quat_y = readFloatLE(payload + 32);
         latest_data_.ahrs_quat_z = readFloatLE(payload + 36);
         latest_data_.ahrs_attitude_valid = true;
+        latest_data_.ahrs_attitude_timestamp = frameTimestamp;
         latest_data_.device_timestamp_us = static_cast<uint64_t>(readI64LE(payload + 40));
-        updateEpsilonAttitudeState(latest_data_);
-      }
-      else if (packetId == kMsgInsGps && payloadSize >= 72)
-      {
-        latest_data_.body_vel_x_mps = readFloatLE(payload + 0);
-        latest_data_.body_vel_y_mps = readFloatLE(payload + 4);
-        latest_data_.body_vel_z_mps = readFloatLE(payload + 8);
-        latest_data_.body_acc_x_mps2 = readFloatLE(payload + 12);
-        latest_data_.body_acc_y_mps2 = readFloatLE(payload + 16);
-        latest_data_.body_acc_z_mps2 = readFloatLE(payload + 20);
-        latest_data_.ned_n_m = readFloatLE(payload + 24);
-        latest_data_.ned_e_m = readFloatLE(payload + 28);
-        latest_data_.ned_d_m = readFloatLE(payload + 32);
-        latest_data_.vel_n_mps = readFloatLE(payload + 36);
-        latest_data_.vel_e_mps = readFloatLE(payload + 40);
-        latest_data_.vel_d_mps = readFloatLE(payload + 44);
-        latest_data_.pressure_altitude_m = std::numeric_limits<double>::quiet_NaN();
-        latest_data_.device_timestamp_us = static_cast<uint64_t>(readI64LE(payload + 64));
+        updateEpsilonAttitudeState(latest_data_, frameTimestamp);
       }
       else if (packetId == kMsgSystemState && payloadSize >= 14)
       {
@@ -2501,9 +2610,12 @@ void EpsilonCollector::run()
         }
         if (payloadSize >= 78)
         {
-          latest_data_.roll_deg = radToDeg(readFloatLE(payload + 66));
-          latest_data_.pitch_deg = radToDeg(readFloatLE(payload + 70));
-          latest_data_.yaw_deg = radToDeg(readFloatLE(payload + 74));
+          latest_data_.system_state_roll_deg = radToDeg(readFloatLE(payload + 66));
+          latest_data_.system_state_pitch_deg = radToDeg(readFloatLE(payload + 70));
+          latest_data_.system_state_yaw_deg = radToDeg(readFloatLE(payload + 74));
+          latest_data_.system_state_attitude_valid = true;
+          latest_data_.system_state_attitude_timestamp = frameTimestamp;
+          updateEpsilonAttitudeState(latest_data_, frameTimestamp);
         }
         if (payloadSize >= 90)
         {
@@ -2550,19 +2662,6 @@ void EpsilonCollector::run()
         latest_data_.filter_status_bits = readU16LE(payload + 2);
         latest_data_.gnss_fix_code = static_cast<int>((latest_data_.filter_status_bits >> 4) & 0x0F);
         latest_data_.gnss_fix_text = epsilonGnssFixName(latest_data_.gnss_fix_code);
-      }
-      else if (packetId == kMsgRawGnss && payloadSize >= 74)
-      {
-        latest_data_.utc_unix_s = readU32LE(payload + 0);
-        latest_data_.utc_microseconds = readU32LE(payload + 4);
-        latest_data_.lat_std_m = readFloatLE(payload + 44);
-        latest_data_.lon_std_m = readFloatLE(payload + 48);
-        latest_data_.height_std_m = readFloatLE(payload + 52);
-        latest_data_.diff_age_s = readFloatLE(payload + 64);
-        const uint16_t rawGnssStatus = readU16LE(payload + 72);
-        latest_data_.gnss_fix_code = static_cast<int>(rawGnssStatus & 0x0Fu);
-        latest_data_.gnss_fix_text = epsilonGnssFixName(latest_data_.gnss_fix_code);
-        latest_data_.heading_valid = ((rawGnssStatus >> 8) & 0x01u) != 0;
       }
       else if (packetId == kMsgSatellites && payloadSize >= 9)
       {
@@ -2616,7 +2715,8 @@ void EpsilonCollector::run()
         latest_data_.euler_orien_pitch_deg = radToDeg(readFloatLE(payload + 4));
         latest_data_.euler_orien_yaw_deg = radToDeg(readFloatLE(payload + 8));
         latest_data_.euler_orien_valid = true;
-        updateEpsilonAttitudeState(latest_data_);
+        latest_data_.euler_orien_timestamp = frameTimestamp;
+        updateEpsilonAttitudeState(latest_data_, frameTimestamp);
       }
       else if (packetId == kMsgQuatOrien && payloadSize >= 16)
       {
@@ -2632,7 +2732,8 @@ void EpsilonCollector::run()
                              latest_data_.quat_orien_pitch_deg,
                              latest_data_.quat_orien_yaw_deg);
         latest_data_.quat_orien_valid = true;
-        updateEpsilonAttitudeState(latest_data_);
+        latest_data_.quat_orien_timestamp = frameTimestamp;
+        updateEpsilonAttitudeState(latest_data_, frameTimestamp);
       }
       else if (packetId == kMsgMainMavlinkTunnel && payloadSize >= 8)
       {

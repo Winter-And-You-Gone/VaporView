@@ -127,6 +127,24 @@ MainWindow::MainWindow(QWidget *parent)
                     : "警告：TCP 原始记录队列已满，已丢弃 %1 帧。")
                         .arg(value));
                 break;
+            case Warning::DeviceRawQueueBacklog:
+                log(QString(state_->is_english_
+                    ? "Device raw recording queue backlog is %1 MiB. Disk writes may be slower than the serial streams."
+                    : "设备原始记录队列积压 %1 MiB，磁盘写入可能慢于串口数据流。")
+                        .arg(value));
+                break;
+            case Warning::DeviceRawQueueFull:
+                log(QString(state_->is_english_
+                    ? "Device raw recording queue is full (%1 MiB). Dropping incoming raw frames to keep collectors responsive."
+                    : "设备原始记录队列已满（%1 MiB）。为保持采集线程响应，正在丢弃新到原始帧。")
+                        .arg(value));
+                break;
+            case Warning::DeviceRawFramesDropped:
+                log(QString(state_->is_english_
+                    ? "Warning: dropped %1 device raw frames because the recording queue was full."
+                    : "警告：设备原始记录队列已满，已丢弃 %1 帧。")
+                        .arg(value));
+                break;
             }
         }, Qt::QueuedConnection);
     });
@@ -141,7 +159,13 @@ MainWindow::MainWindow(QWidget *parent)
         }, Qt::QueuedConnection);
     };
     connectionCallbacks.dataReady = [this](VaporView::Ground::Devices::LocalDeviceKind device) {
-        QMetaObject::invokeMethod(this, [this, device]() {
+        const quint32 bit = 1u << static_cast<unsigned>(device);
+        if ((local_data_update_pending_mask_.fetch_or(bit, std::memory_order_acq_rel) & bit) != 0)
+        {
+            return;
+        }
+        QMetaObject::invokeMethod(this, [this, device, bit]() {
+            local_data_update_pending_mask_.fetch_and(~bit, std::memory_order_acq_rel);
             using Device = VaporView::Ground::Devices::LocalDeviceKind;
             switch (device)
             {

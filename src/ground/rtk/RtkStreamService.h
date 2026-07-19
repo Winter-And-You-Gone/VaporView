@@ -55,6 +55,8 @@ struct RtkStreamStats
     QString message;
 };
 
+bool serialPortNamesReferToSamePort(const QString& first, const QString& second);
+
 class RtkStreamService
 {
 public:

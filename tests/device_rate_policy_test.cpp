@@ -39,6 +39,25 @@ int main()
     require(grouped.at(0x53) == 20, "status EPSILON packet uses low-rate group");
     require(epsilonPacketCallbackRate(grouped, 10) == 100,
             "callback rate follows fastest configured packet");
+    const EpsilonSerialBandwidth groupedBandwidth = epsilonSerialBandwidth(grouped);
+    require(groupedBandwidth.required_bits_per_second == 390600,
+            "grouped 100 Hz profile includes FDILink and 8N1 overhead");
+    require(groupedBandwidth.fits(), "grouped 100 Hz profile fits 921600 baud with headroom");
+
+    const EpsilonSerialBandwidth defaultBandwidth = epsilonSerialBandwidth(defaultEpsilonPacketRates());
+    require(defaultBandwidth.required_bits_per_second == 427570,
+            "recommended profile bandwidth matches documented packet sizes");
+    require(defaultBandwidth.fits(), "recommended profile fits 921600 baud with headroom");
+
+    std::map<uint8_t, int> maximumRates;
+    for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
+    {
+        maximumRates[option.packet_id] = option.supported_rates_hz.back();
+    }
+    const EpsilonSerialBandwidth maximumBandwidth = epsilonSerialBandwidth(maximumRates);
+    require(maximumBandwidth.required_bits_per_second == 3005000,
+            "maximum selectable profile bandwidth is calculated correctly");
+    require(!maximumBandwidth.fits(), "maximum selectable profile is rejected at 921600 baud");
 
     QTemporaryDir temporaryDir;
     require(temporaryDir.isValid(), "temporary settings directory created");

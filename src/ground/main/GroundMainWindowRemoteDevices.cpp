@@ -970,6 +970,13 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
     const std::map<uint8_t, int> groupedRates = groupedEpsilonPacketRates(groupedRateHz);
     const std::map<uint8_t, int> defaultRates = defaultEpsilonPacketRates();
     const std::map<uint8_t, int> savedPacketRates = deviceConfigEpsilonPacketRates();
+    const QString epsilonBaudText = state_->epsilon_baud_combo_
+        ? state_->epsilon_baud_combo_->currentText().trimmed()
+        : QStringLiteral("921600");
+    if (!validateEpsilonPacketBandwidth(savedPacketRates, epsilonBaudText, true))
+    {
+        return;
+    }
 
     QSettings settings("VaporView", "MainWindow");
     for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())

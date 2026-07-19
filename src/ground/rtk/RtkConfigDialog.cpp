@@ -1042,7 +1042,10 @@ void RtkConfigDialog::joinBackgroundTasks()
 
 bool RtkConfigDialog::isBackgroundTaskRunning() const
 {
-    return fetch_mountpoints_in_progress_.load() || port_detection_in_progress_.load() || test_in_progress_.load();
+    return fetch_mountpoints_in_progress_.load() ||
+        port_detection_in_progress_.load() ||
+        test_in_progress_.load() ||
+        lever_arm_apply_in_progress_;
 }
 
 QVBoxLayout *RtkConfigDialog::createCardLayout(QGroupBox *group,
@@ -1966,12 +1969,14 @@ void RtkConfigDialog::setEpsilonDataProvider(std::function<VaporView::EpsilonDat
     epsilon_data_provider_ = std::move(provider);
 }
 
-void RtkConfigDialog::setEpsilonMainAntennaLeverArmApplier(std::function<bool(double, double, double, QString*)> applier)
+void RtkConfigDialog::setEpsilonMainAntennaLeverArmApplier(EpsilonLeverArmApplier applier)
 {
     epsilon_main_antenna_lever_arm_applier_ = std::move(applier);
 }
 
-bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config, QString *description) const
+bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config,
+                                           QString *description,
+                                           QString *validationError) const
 {
     const QString server = server_edit_->text().trimmed();
     const QString port = port_edit_->text().trimmed();
@@ -1990,6 +1995,22 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config, QString *des
 
     if (server.isEmpty() || mountpoint.isEmpty() || outputPort.isEmpty())
     {
+        if (validationError)
+        {
+            *validationError = textFor("Please fill in server, mountpoint and output port.",
+                                       "请填写服务器、挂载点和输出串口。");
+        }
+        return false;
+    }
+
+    if (serialPortNamesReferToSamePort(outputPort, epsilon_main_port_))
+    {
+        if (validationError)
+        {
+            *validationError = textFor(
+                "The RTCM forwarding port must differ from the EPSILON main port. The main port reads real GNSS/FDILink data for NTRIP GGA, while a separate PC serial port must write RTCM to EPSILON COMM2.",
+                "RTCM 转发串口不能与 EPSILON 主串口相同。主串口用于读取真实 GNSS/FDILink 数据并生成 NTRIP GGA，另一条本机串口必须连接 EPSILON COMM2 写入 RTCM。");
+        }
         return false;
     }
 
@@ -2070,6 +2091,8 @@ void RtkConfigDialog::updateButtonStates()
             ? textFor("Status: Fetching mountpoints", "状态: 正在获取挂载点")
             : port_detection_in_progress_.load()
                 ? textFor("Status: Detecting serial ports", "状态: 正在识别串口")
+            : lever_arm_apply_in_progress_
+                ? textFor("Status: Applying EPSILON lever arm", "状态: 正在下发 EPSILON 杆臂")
             : textFor("Status: Running no-signal RTK test", "状态: 正在执行无信号 RTK 测试");
         setServiceStatus(busyText, QStringLiteral("timer"), AppThemeColor::Warning);
     }
@@ -2719,30 +2742,52 @@ void RtkConfigDialog::onApplyMainAntennaLeverArmClicked()
     appendLog(textFor("Applying EPSILON main antenna lever arm via %1: %2",
                       "正在通过 %1 下发 EPSILON 主天线杆臂: %2").arg(target, values));
 
-    errorMessage.clear();
-    if (!epsilon_main_antenna_lever_arm_applier_(x, y, z, &errorMessage))
-    {
-        QMessageBox::warning(
-            this,
-            textFor("Command Failed", "命令发送失败"),
-            errorMessage.isEmpty()
-                ? textFor("Failed to apply EPSILON main antenna lever arm.",
-                          "EPSILON 主天线杆臂下发失败。")
-                : errorMessage);
-        return;
-    }
+    lever_arm_apply_in_progress_ = true;
+    updateButtonStates();
 
-    saveSettings();
-    appendLog(textFor("EPSILON main antenna lever arm updated: %1",
-                      "EPSILON 主天线杆臂已更新: %1").arg(values));
-    QMessageBox::information(
-        this,
-        textFor("Lever Arm Updated", "杆臂已更新"),
-        textFor("EPSILON has been sent: #fantearm %1 %2 %3",
-                "已向 EPSILON 下发: #fantearm %1 %2 %3")
-            .arg(QString::number(x, 'f', 4),
-                 QString::number(y, 'f', 4),
-                 QString::number(z, 'f', 4)));
+    QPointer<RtkConfigDialog> self(this);
+    epsilon_main_antenna_lever_arm_applier_(
+        x,
+        y,
+        z,
+        [self, x, y, z, values](bool succeeded, const QString& resultError) {
+            if (!self)
+            {
+                return;
+            }
+            QMetaObject::invokeMethod(self.data(), [self, x, y, z, values, succeeded, resultError]() {
+                if (!self)
+                {
+                    return;
+                }
+
+                self->lever_arm_apply_in_progress_ = false;
+                self->updateButtonStates();
+                if (!succeeded)
+                {
+                    QMessageBox::warning(
+                        self.data(),
+                        self->textFor("Command Failed", "命令发送失败"),
+                        resultError.isEmpty()
+                            ? self->textFor("Failed to apply EPSILON main antenna lever arm.",
+                                            "EPSILON 主天线杆臂下发失败。")
+                            : resultError);
+                    return;
+                }
+
+                self->saveSettings();
+                self->appendLog(self->textFor("EPSILON main antenna lever arm updated: %1",
+                                              "EPSILON 主天线杆臂已更新: %1").arg(values));
+                QMessageBox::information(
+                    self.data(),
+                    self->textFor("Lever Arm Updated", "杆臂已更新"),
+                    self->textFor("EPSILON has been sent: #fantearm %1 %2 %3",
+                                  "已向 EPSILON 下发: #fantearm %1 %2 %3")
+                        .arg(QString::number(x, 'f', 4),
+                             QString::number(y, 'f', 4),
+                             QString::number(z, 'f', 4)));
+            }, Qt::QueuedConnection);
+        });
 }
 
 void RtkConfigDialog::processGgaBuffer()
@@ -3212,9 +3257,10 @@ void RtkConfigDialog::onStartClicked()
 {
     RtkStreamConfig config;
     QString description;
-    if (!buildRtkStreamConfig(&config, &description))
+    QString validationError;
+    if (!buildRtkStreamConfig(&config, &description, &validationError))
     {
-        QMessageBox::warning(this, textFor("Error", "错误"), textFor("Please fill in server, mountpoint and output port.", "请填写服务器、挂载点和输出串口。"));
+        QMessageBox::warning(this, textFor("Error", "错误"), validationError);
         return;
     }
 
@@ -3286,9 +3332,10 @@ void RtkConfigDialog::onTestClicked()
 
     RtkStreamConfig config;
     QString description;
-    if (!buildRtkStreamConfig(&config, &description))
+    QString validationError;
+    if (!buildRtkStreamConfig(&config, &description, &validationError))
     {
-        QMessageBox::warning(this, textFor("Error", "错误"), textFor("Please fill in server, mountpoint and output port.", "请填写服务器、挂载点和输出串口。"));
+        QMessageBox::warning(this, textFor("Error", "错误"), validationError);
         return;
     }
 

@@ -25,6 +25,7 @@ set(SKY_CORE_HEADERS
     ${CMAKE_SOURCE_DIR}/include/serial_port.h
     ${CMAKE_SOURCE_DIR}/include/data_types.h
     ${CMAKE_SOURCE_DIR}/include/data_collector.h
+    ${CMAKE_SOURCE_DIR}/include/EpsilonProtocol.h
     ${UM982_DRIVER_DIR}/pvtsln_data.hpp
     ${HIPNUC_DRIVER_DIR}/hipnuc_dec.h
 )

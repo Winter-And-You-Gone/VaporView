@@ -110,6 +110,10 @@ struct EpsilonData
   double body_acc_y_mps2 = 0.0;
   double body_acc_z_mps2 = 0.0;
 
+  double ned_acc_n_mps2 = 0.0;
+  double ned_acc_e_mps2 = 0.0;
+  double ned_acc_d_mps2 = 0.0;
+
   double imu_acc_x_mps2 = 0.0;
   double imu_acc_y_mps2 = 0.0;
   double imu_acc_z_mps2 = 0.0;
@@ -138,6 +142,12 @@ struct EpsilonData
   bool ahrs_attitude_valid = false;
   bool euler_orien_valid = false;
   bool quat_orien_valid = false;
+  bool system_state_attitude_valid = false;
+
+  std::chrono::steady_clock::time_point ahrs_attitude_timestamp{};
+  std::chrono::steady_clock::time_point euler_orien_timestamp{};
+  std::chrono::steady_clock::time_point quat_orien_timestamp{};
+  std::chrono::steady_clock::time_point system_state_attitude_timestamp{};
 
   double ahrs_roll_deg = std::numeric_limits<double>::quiet_NaN();
   double ahrs_pitch_deg = std::numeric_limits<double>::quiet_NaN();
@@ -159,6 +169,10 @@ struct EpsilonData
   double quat_orien_pitch_deg = std::numeric_limits<double>::quiet_NaN();
   double quat_orien_yaw_deg = std::numeric_limits<double>::quiet_NaN();
 
+  double system_state_roll_deg = std::numeric_limits<double>::quiet_NaN();
+  double system_state_pitch_deg = std::numeric_limits<double>::quiet_NaN();
+  double system_state_yaw_deg = std::numeric_limits<double>::quiet_NaN();
+
   int attitude_source_count = 0;
   double attitude_delta_max_deg = std::numeric_limits<double>::quiet_NaN();
   double attitude_delta_ahrs_euler_deg = std::numeric_limits<double>::quiet_NaN();
@@ -178,6 +192,13 @@ struct EpsilonData
   double lon_std_m = 0.0;
   double height_std_m = 0.0;
   double diff_age_s = 0.0;
+  double gnss_course_deg = std::numeric_limits<double>::quiet_NaN();
+  double geoid_separation_m = std::numeric_limits<double>::quiet_NaN();
+  bool gnss_velocity_valid = false;
+  bool gnss_time_valid = false;
+  bool external_gnss = false;
+  bool gnss_tilt_valid = false;
+  bool floating_ambiguity_heading = false;
 
   uint64_t device_timestamp_us = 0;
   uint64_t utc_unix_s = 0;

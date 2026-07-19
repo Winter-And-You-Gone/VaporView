@@ -185,7 +185,11 @@ private:
     bool shouldShowLogLine(const QString& line) const;
     void rebuildRecordingRateMenu();
     void setRecordingExportRateHz(int rate, bool should_log = true);
-    bool applyEpsilonMainAntennaLeverArm(double x_m, double y_m, double z_m, QString *error_message);
+    void applyEpsilonMainAntennaLeverArm(
+        double x_m,
+        double y_m,
+        double z_m,
+        std::function<void(bool, const QString&)> completion);
     void setImuRecordingRateHz(int rate, bool should_log = true);
     void setWaveformRecordingRateHz(int rate, bool should_log = true);
     QString defaultRecordingDirectory() const;
@@ -303,6 +307,9 @@ private:
     void updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bool hmpValid);
     void syncDeviceConfigEpsilonPanelFromSettings();
     void setDeviceConfigEpsilonPacketRates(const std::map<uint8_t, int>& packetRates);
+    bool validateEpsilonPacketBandwidth(const std::map<uint8_t, int>& packetRates,
+                                        const QString& baudText,
+                                        bool showWarning);
     std::map<uint8_t, int> deviceConfigEpsilonPacketRates() const;
     void saveDeviceConfigEpsilonPacketRates(bool applyAfterSave);
     void sendRemoteDeviceCommand(VaporView::CommandId command, VaporView::SkyDeviceId device);
@@ -328,6 +335,7 @@ private:
     bool isTemperatureCommand(VaporView::CommandId command) const;
     QString temperatureCommandStatusText(VaporView::CommandId command, quint8 channel, bool pending, const QString& detail = QString()) const;
 
+    std::atomic<quint32> local_data_update_pending_mask_{0};
     std::unique_ptr<VaporView::Ground::Main::MainWindowState> state_;
 };
 

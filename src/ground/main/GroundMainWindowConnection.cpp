@@ -790,6 +790,15 @@ void MainWindow::onConnectClicked()
     bool epsilonUsesCustomPacketRates = false;
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
         effectiveEpsilonPacketRates(settings, epsilonRate, &epsilonUsesCustomPacketRates);
+    if (!skipEpsilonDeviceRate &&
+        !epsilonPort.isEmpty() &&
+        epsilonPort != selectText &&
+        !validateEpsilonPacketBandwidth(epsilonDesiredPacketRates, epsilonBaudText, true))
+    {
+        state_->connection_attempt_in_progress_ = false;
+        updateConnectionStatus(anyCollectorRunning());
+        return;
+    }
     const int epsilonCallbackRate = epsilonPacketCallbackRate(epsilonDesiredPacketRates, epsilonRate);
     const QString epsilonDesiredPacketSignature = epsilonPacketRatesSignature(epsilonDesiredPacketRates);
     const QString epsilonDesiredPacketSummary = epsilonPacketRatesSummary(epsilonDesiredPacketRates);

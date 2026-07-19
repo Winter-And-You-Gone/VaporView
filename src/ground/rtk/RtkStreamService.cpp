@@ -20,6 +20,26 @@
 
 extern "C" int strsvrpeek(strsvr_t *svr, uint8_t *buff, int nmax);
 
+bool serialPortNamesReferToSamePort(const QString& first, const QString& second)
+{
+    auto normalize = [](QString value) {
+        value = value.trimmed();
+        value.replace(QLatin1Char('/'), QLatin1Char('\\'));
+        if (value.startsWith(QStringLiteral("\\\\.\\")) ||
+            value.startsWith(QStringLiteral("\\\\?\\")))
+        {
+            value.remove(0, 4);
+        }
+        return value;
+    };
+
+    const QString normalizedFirst = normalize(first);
+    const QString normalizedSecond = normalize(second);
+    return !normalizedFirst.isEmpty() &&
+        !normalizedSecond.isEmpty() &&
+        normalizedFirst.compare(normalizedSecond, Qt::CaseInsensitive) == 0;
+}
+
 namespace
 {
 constexpr int kRtcmPeekChunkSize = 4096;

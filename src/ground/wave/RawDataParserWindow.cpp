@@ -1,5 +1,6 @@
 #include "shared/theme/AppTheme.h"
 #include "RawDataParserWindow.h"
+#include "BoundedLruCache.h"
 #include "ground/widgets/CustomTitleBar.h"
 #include "TcpWaveEncoding.h"
 
@@ -31,6 +32,7 @@
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QSaveFile>
+#include <QSharedPointer>
 #include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QSplitter>
@@ -63,6 +65,8 @@ using VaporView::isDarkThemeEnabled;
 
 namespace
 {
+constexpr int kDecodeCacheCapacity = 256;
+
 void applyRawDataProgressDialogStyle(QProgressDialog *dialog)
 {
     if (!dialog)
@@ -837,7 +841,8 @@ struct RawDataParserWindow::Impl
     QVector<RawRecordIndex> records;
     QVector<int> visible_rows;
     QVector<RawFileSummary> file_summaries;
-    QHash<QString, RawDecodedRecord> decode_cache;
+    BoundedLruCache<QString, RawDecodedRecord> decode_cache{kDecodeCacheCapacity};
+    mutable QHash<QString, QSharedPointer<QFile>> payload_files;
     QByteArray current_payload;
     QVector<QPair<int, int>> current_hex_positions;
     QFutureWatcher<RawScanResult> *scan_watcher = nullptr;
@@ -1139,6 +1144,7 @@ void RawDataParserWindow::Impl::setupUi()
 
 void RawDataParserWindow::Impl::shutdown()
 {
+    payload_files.clear();
     if (scan_progress_timer)
     {
         scan_progress_timer->stop();
@@ -1235,6 +1241,7 @@ void RawDataParserWindow::Impl::scanSession()
     visible_rows.clear();
     file_summaries.clear();
     decode_cache.clear();
+    payload_files.clear();
     current_payload.clear();
     current_hex_positions.clear();
     detail_tree->clear();
@@ -1314,6 +1321,7 @@ void RawDataParserWindow::Impl::finishScanSession()
     file_summaries = std::move(result.file_summaries);
     visible_rows.clear();
     decode_cache.clear();
+    payload_files.clear();
     current_payload.clear();
     current_hex_positions.clear();
 
@@ -1476,24 +1484,34 @@ QString RawDataParserWindow::Impl::cacheKey(const RawRecordIndex& record) const
 
 QByteArray RawDataParserWindow::Impl::readPayload(const RawRecordIndex& record) const
 {
-    QFile file(record.filename);
-    if (!file.open(QIODevice::ReadOnly) || !file.seek(static_cast<qint64>(record.payload_offset)))
+    QSharedPointer<QFile> file = payload_files.value(record.filename);
+    if (!file)
+    {
+        file = QSharedPointer<QFile>::create(record.filename);
+        if (!file->open(QIODevice::ReadOnly))
+        {
+            return QByteArray();
+        }
+        payload_files.insert(record.filename, file);
+    }
+
+    if (!file->seek(static_cast<qint64>(record.payload_offset)))
     {
         return QByteArray();
     }
-    return file.read(static_cast<qint64>(record.payload_size));
+    return file->read(static_cast<qint64>(record.payload_size));
 }
 
 RawDecodedRecord RawDataParserWindow::Impl::decodeRecord(const RawRecordIndex& record)
 {
     const QString key = cacheKey(record);
-    const auto cached = decode_cache.constFind(key);
-    if (cached != decode_cache.constEnd())
+    RawDecodedRecord decoded;
+    if (decode_cache.find(key, &decoded))
     {
-        return cached.value();
+        return decoded;
     }
     const QByteArray payload = readPayload(record);
-    RawDecodedRecord decoded = decodeRawRecord(record, payload, english);
+    decoded = decodeRawRecord(record, payload, english);
     decode_cache.insert(key, decoded);
     return decoded;
 }
@@ -2036,7 +2054,27 @@ void RawDataParserWindow::Impl::exportDecodedJson()
     VaporView::installCustomTitleBar(&progress, false);
     applyRawDataProgressDialogStyle(&progress);
 
-    QJsonArray recordArray;
+    QSaveFile file(filename);
+    if (!file.open(QIODevice::WriteOnly))
+    {
+        QMessageBox::warning(owner, owner->windowTitle(), english ? QStringLiteral("Failed to open export file.") : QStringLiteral("无法打开导出文件。"));
+        return;
+    }
+
+    QJsonArray sessionValue;
+    sessionValue.push_back(QDir::toNativeSeparators(session_directory));
+    QByteArray encodedSession = QJsonDocument(sessionValue).toJson(QJsonDocument::Compact);
+    encodedSession = encodedSession.mid(1, encodedSession.size() - 2);
+    const QByteArray header = QByteArrayLiteral("{\n  \"session\": ") + encodedSession +
+        QByteArrayLiteral(",\n  \"filtered_record_count\": ") + QByteArray::number(visible_rows.size()) +
+        QByteArrayLiteral(",\n  \"records\": [\n");
+    if (file.write(header) != header.size())
+    {
+        file.cancelWriting();
+        QMessageBox::warning(owner, owner->windowTitle(), english ? QStringLiteral("Failed to write JSON file.") : QStringLiteral("写入 JSON 文件失败。"));
+        return;
+    }
+
     for (int row = 0; row < visible_rows.size(); ++row)
     {
         if (row % 100 == 0)
@@ -2045,26 +2083,31 @@ void RawDataParserWindow::Impl::exportDecodedJson()
             QApplication::processEvents();
             if (progress.wasCanceled())
             {
+                file.cancelWriting();
                 return;
             }
         }
         const RawRecordIndex& record = records.at(visible_rows.at(row));
-        recordArray.push_back(decodedRecordToJson(record, decodeRecord(record)));
+        const QByteArray prefix = row == 0 ? QByteArrayLiteral("    ") : QByteArrayLiteral(",\n    ");
+        const QByteArray encodedRecord = QJsonDocument(
+            decodedRecordToJson(record, decodeRecord(record))).toJson(QJsonDocument::Compact);
+        if (file.write(prefix) != prefix.size() ||
+            file.write(encodedRecord) != encodedRecord.size())
+        {
+            file.cancelWriting();
+            QMessageBox::warning(owner, owner->windowTitle(), english ? QStringLiteral("Failed to write JSON file.") : QStringLiteral("写入 JSON 文件失败。"));
+            return;
+        }
     }
     progress.setValue(visible_rows.size());
 
-    QJsonObject root;
-    root["session"] = QDir::toNativeSeparators(session_directory);
-    root["filtered_record_count"] = visible_rows.size();
-    root["records"] = recordArray;
-
-    QSaveFile file(filename);
-    if (!file.open(QIODevice::WriteOnly))
+    const QByteArray footer = QByteArrayLiteral("\n  ]\n}\n");
+    if (file.write(footer) != footer.size())
     {
-        QMessageBox::warning(owner, owner->windowTitle(), english ? QStringLiteral("Failed to open export file.") : QStringLiteral("无法打开导出文件。"));
+        file.cancelWriting();
+        QMessageBox::warning(owner, owner->windowTitle(), english ? QStringLiteral("Failed to write JSON file.") : QStringLiteral("写入 JSON 文件失败。"));
         return;
     }
-    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     if (!file.commit())
     {
         QMessageBox::warning(owner, owner->windowTitle(), english ? QStringLiteral("Failed to save decoded JSON file.") : QStringLiteral("保存解析 JSON 文件失败。"));
@@ -2144,6 +2187,9 @@ void decodeEpsilonPayload(RawDecodedRecord& decoded, const QByteArray& payload, 
         addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("mag_x"), readFloatLE(p + 24), QStringLiteral("mG"), payloadOffset + 24, 4);
         addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("mag_y"), readFloatLE(p + 28), QStringLiteral("mG"), payloadOffset + 28, 4);
         addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("mag_z"), readFloatLE(p + 32), QStringLiteral("mG"), payloadOffset + 32, 4);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("imu_temperature"), readFloatLE(p + 36), QStringLiteral("deg C"), payloadOffset + 36, 4);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("pressure"), readFloatLE(p + 40), QStringLiteral("Pa"), payloadOffset + 40, 4);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("pressure_temperature"), readFloatLE(p + 44), QStringLiteral("deg C"), payloadOffset + 44, 4);
         addField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("device_timestamp_us"), QString::number(readI64LE(p + 48)), QString(), QStringLiteral("us"), payloadOffset + 48, 8);
     }
     else if (packetId == 0x41 && has(48))
@@ -2174,6 +2220,10 @@ void decodeEpsilonPayload(RawDecodedRecord& decoded, const QByteArray& payload, 
         addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("vel_n"), readFloatLE(p + 36), QStringLiteral("m/s"), payloadOffset + 36, 4);
         addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("vel_e"), readFloatLE(p + 40), QStringLiteral("m/s"), payloadOffset + 40, 4);
         addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("vel_d"), readFloatLE(p + 44), QStringLiteral("m/s"), payloadOffset + 44, 4);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("acc_n"), readFloatLE(p + 48), QStringLiteral("m/s^2"), payloadOffset + 48, 4);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("acc_e"), readFloatLE(p + 52), QStringLiteral("m/s^2"), payloadOffset + 52, 4);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("acc_d"), readFloatLE(p + 56), QStringLiteral("m/s^2"), payloadOffset + 56, 4);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("pressure_altitude"), readFloatLE(p + 60), QStringLiteral("m"), payloadOffset + 60, 4);
         addField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("device_timestamp_us"), QString::number(readI64LE(p + 64)), QString(), QStringLiteral("us"), payloadOffset + 64, 8);
     }
     else if (packetId == 0x50 && has(14))
@@ -2229,10 +2279,19 @@ void decodeEpsilonPayload(RawDecodedRecord& decoded, const QByteArray& payload, 
     {
         addField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("utc_unix_s"), QString::number(readU32LE(p + 0)), QString(), QStringLiteral("s"), payloadOffset + 0, 4);
         addField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("utc_microseconds"), QString::number(readU32LE(p + 4)), QString(), QStringLiteral("us"), payloadOffset + 4, 4);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("latitude"), radToDeg(readDoubleLE(p + 8)), QStringLiteral("deg"), payloadOffset + 8, 8, 8);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("longitude"), radToDeg(readDoubleLE(p + 16)), QStringLiteral("deg"), payloadOffset + 16, 8, 8);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("height"), readDoubleLE(p + 24), QStringLiteral("m"), payloadOffset + 24, 8);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("vel_n"), readFloatLE(p + 32), QStringLiteral("m/s"), payloadOffset + 32, 4);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("vel_e"), readFloatLE(p + 36), QStringLiteral("m/s"), payloadOffset + 36, 4);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("vel_d"), readFloatLE(p + 40), QStringLiteral("m/s"), payloadOffset + 40, 4);
         addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("lat_std"), readFloatLE(p + 44), QStringLiteral("m"), payloadOffset + 44, 4);
         addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("lon_std"), readFloatLE(p + 48), QStringLiteral("m"), payloadOffset + 48, 4);
         addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("height_std"), readFloatLE(p + 52), QStringLiteral("m"), payloadOffset + 52, 4);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("course"), readFloatLE(p + 56), QStringLiteral("deg"), payloadOffset + 56, 4);
+        addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("geoid_separation"), readFloatLE(p + 60), QStringLiteral("m"), payloadOffset + 60, 4);
         addNumericField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("diff_age"), readFloatLE(p + 64), QStringLiteral("s"), payloadOffset + 64, 4);
+        addField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("reserved4"), formatHex(readU32LE(p + 68), 8), QString(), QString(), payloadOffset + 68, 4);
         addField(decoded, QStringLiteral("Payload Fields"), QStringLiteral("raw_gnss_status"), formatHex(readU16LE(p + 72), 4), QString(), QString(), payloadOffset + 72, 2);
     }
     else if (packetId == 0x5A && has(9))

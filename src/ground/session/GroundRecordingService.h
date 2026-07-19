@@ -90,7 +90,10 @@ enum class GroundRecordingWarning
     MetadataUpdateFailed,
     TcpQueueBacklog,
     TcpQueueFull,
-    TcpFramesDropped
+    TcpFramesDropped,
+    DeviceRawQueueBacklog,
+    DeviceRawQueueFull,
+    DeviceRawFramesDropped
 };
 
 class GroundRecordingService final

@@ -40,17 +40,17 @@ int clampPtbSampleRate(int hz)
 const std::vector<EpsilonPacketConfigOption>& epsilonPacketConfigOptions()
 {
     static const std::vector<EpsilonPacketConfigOption> kOptions = {
-        {0x40, "MSG_IMU", "IMU原始数据", "IMU Raw Data", {0, 1, 2, 5, 10, 20, 50, 100, 200, 250, 500, 1000}},
-        {0x41, "MSG_AHRS", "AHRS姿态解", "AHRS Attitude", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
-        {0x42, "MSG_INSGPS", "INS/GPS融合解", "INS/GPS Navigation", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
-        {0x50, "MSG_SYS_STATE", "系统状态", "System State", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
-        {0x53, "MSG_STATUS", "系统/滤波状态", "System / Filter Status", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
-        {0x59, "MSG_RAW_GNSS", "原始GNSS", "Raw GNSS", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
-        {0x5A, "MSG_SATELLITE", "卫星汇总", "Satellite Summary", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
-        {0x5C, "MSG_GEODETIC_POS", "大地坐标", "Geodetic Position", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
-        {0x5D, "MSG_ECEF_POS", "ECEF坐标", "ECEF Position", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
-        {0x63, "MSG_EULER_ORIEN", "欧拉姿态", "Euler Orientation", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
-        {0x64, "MSG_QUAT_ORIEN", "四元数姿态", "Quaternion Orientation", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x40, "MSG_IMU", "IMU原始数据", "IMU Raw Data", 56, {0, 1, 2, 5, 10, 20, 50, 100, 200, 250, 500, 1000}},
+        {0x41, "MSG_AHRS", "AHRS姿态解", "AHRS Attitude", 48, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x42, "MSG_INSGPS", "INS/GPS融合解", "INS/GPS Navigation", 72, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x50, "MSG_SYS_STATE", "系统状态", "System State", 102, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x53, "MSG_STATUS", "系统/滤波状态", "System / Filter Status", 4, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x59, "MSG_RAW_GNSS", "原始GNSS", "Raw GNSS", 74, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x5A, "MSG_SATELLITE", "卫星汇总", "Satellite Summary", 9, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x5C, "MSG_GEODETIC_POS", "大地坐标", "Geodetic Position", 32, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x5D, "MSG_ECEF_POS", "ECEF坐标", "ECEF Position", 24, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x63, "MSG_EULER_ORIEN", "欧拉姿态", "Euler Orientation", 12, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x64, "MSG_QUAT_ORIEN", "四元数姿态", "Quaternion Orientation", 16, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
     };
     return kOptions;
 }
@@ -186,6 +186,32 @@ int epsilonPacketCallbackRate(const std::map<uint8_t, int>& packetRates, int fal
         maxRateHz = std::max(maxRateHz, entry.second);
     }
     return maxRateHz > 0 ? maxRateHz : fallbackRateHz;
+}
+
+EpsilonSerialBandwidth epsilonSerialBandwidth(
+    const std::map<uint8_t, int>& packetRates,
+    int baudRate)
+{
+    EpsilonSerialBandwidth result;
+    result.baud_rate = baudRate;
+    result.limit_bits_per_second = baudRate > 0
+        ? static_cast<qint64>(baudRate) * kEpsilonSerialUtilizationLimitPercent / 100
+        : 0;
+
+    for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
+    {
+        const auto rateIt = packetRates.find(option.packet_id);
+        if (rateIt == packetRates.end() || rateIt->second <= 0)
+        {
+            continue;
+        }
+        constexpr qint64 kFdilinkFrameOverheadBytes = 8;
+        constexpr qint64 kSerialBitsPerByte8N1 = 10;
+        result.required_bits_per_second +=
+            static_cast<qint64>(option.payload_size_bytes + kFdilinkFrameOverheadBytes) *
+            kSerialBitsPerByte8N1 * rateIt->second;
+    }
+    return result;
 }
 
 QString epsilonPacketDialogRowLabel(const EpsilonPacketConfigOption& option, bool english)

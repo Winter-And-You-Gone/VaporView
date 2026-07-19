@@ -1,36 +1,77 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
 
-bool MainWindow::applyEpsilonMainAntennaLeverArm(double xM, double yM, double zM, QString *errorMessage)
+bool MainWindow::validateEpsilonPacketBandwidth(
+    const std::map<uint8_t, int>& packetRates,
+    const QString& baudText,
+    bool showWarning)
 {
-    auto fail = [errorMessage](const QString& message) {
-        if (errorMessage)
+    bool baudOk = false;
+    const int baudRate = baudText.trimmed().toInt(&baudOk);
+    const EpsilonSerialBandwidth bandwidth = epsilonSerialBandwidth(
+        packetRates,
+        baudOk ? baudRate : 0);
+    if (bandwidth.fits())
+    {
+        return true;
+    }
+
+    const QString message = state_->is_english_
+        ? QStringLiteral("The selected EPSILON packet rates require about %1 kbit/s, which exceeds the %2 kbit/s safe limit for %3 baud (80% utilization). Reduce packet rates or use a higher main-port baud rate.")
+              .arg(QString::number(bandwidth.required_bits_per_second / 1000.0, 'f', 2),
+                   QString::number(bandwidth.limit_bits_per_second / 1000.0, 'f', 2),
+                   baudText)
+        : QStringLiteral("当前 EPSILON 包频率约需 %1 kbit/s，超过 %3 波特率按 80% 利用率计算的 %2 kbit/s 安全上限。请降低包频率或提高主串口波特率。")
+              .arg(QString::number(bandwidth.required_bits_per_second / 1000.0, 'f', 2),
+                   QString::number(bandwidth.limit_bits_per_second / 1000.0, 'f', 2),
+                   baudText);
+    log(QStringLiteral("[EPSILON] %1").arg(message));
+    if (showWarning)
+    {
+        QMessageBox::warning(this,
+                             state_->is_english_ ? QStringLiteral("Packet Rates Exceed Serial Bandwidth")
+                                                 : QStringLiteral("包频率超过串口带宽"),
+                             message);
+    }
+    return false;
+}
+
+void MainWindow::applyEpsilonMainAntennaLeverArm(
+    double xM,
+    double yM,
+    double zM,
+    std::function<void(bool, const QString&)> completion)
+{
+    auto fail = [&completion](const QString& message) {
+        if (completion)
         {
-            *errorMessage = message;
+            completion(false, message);
         }
-        return false;
     };
 
     if (state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_)
     {
-        return fail(state_->is_english_
+        fail(state_->is_english_
             ? QStringLiteral("EPSILON is busy. Wait for the current connection or configuration task to finish.")
             : QStringLiteral("EPSILON 当前正忙，请等待连接或配置任务结束后再试。"));
+        return;
     }
 
     if (state_->recording_service_->isActive())
     {
-        return fail(state_->is_english_
+        fail(state_->is_english_
             ? QStringLiteral("Stop recording before configuring the EPSILON main antenna lever arm.")
             : QStringLiteral("请先结束记录，再配置 EPSILON 主天线杆臂。"));
+        return;
     }
 
     const QString epsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
     if (epsilonPort.isEmpty() || epsilonPort.startsWith(QStringLiteral("--")))
     {
-        return fail(state_->is_english_
+        fail(state_->is_english_
             ? QStringLiteral("Select the EPSILON main serial port first.")
             : QStringLiteral("请先选择 EPSILON 主串口。"));
+        return;
     }
 
     const QString epsilonBaudText = state_->epsilon_baud_combo_ ? state_->epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
@@ -38,7 +79,8 @@ bool MainWindow::applyEpsilonMainAntennaLeverArm(double xM, double yM, double zM
     const int epsilonBaud = epsilonBaudText.toInt(&baudOk);
     if (!baudOk || epsilonBaud <= 0)
     {
-        return fail(QString(state_->is_english_ ? "Invalid EPSILON baud rate: %1" : "EPSILON 波特率无效: %1").arg(epsilonBaudText));
+        fail(QString(state_->is_english_ ? "Invalid EPSILON baud rate: %1" : "EPSILON 波特率无效: %1").arg(epsilonBaudText));
+        return;
     }
 
     const bool english = state_->is_english_;
@@ -51,38 +93,53 @@ bool MainWindow::applyEpsilonMainAntennaLeverArm(double xM, double yM, double zM
 
     state_->epsilon_reconfigure_in_progress_ = true;
     updateConnectionStatus(state_->is_connected_);
-    QApplication::processEvents();
 
     log(QString(english
                     ? "[EPSILON] Applying main antenna lever arm on %1 @ %2: %3"
                     : "[EPSILON] 正在通过主串口 %1 @ %2 下发主天线杆臂：%3")
             .arg(epsilonPort, epsilonBaudText, values));
 
-    VaporView::Ground::EpsilonDeviceOperation operation;
-    operation.port = epsilonPort;
-    operation.baud = epsilonBaud;
-    operation.baud_text = epsilonBaudText;
-    operation.english = english;
-    operation.live_collector = liveCollector;
-    operation.restart_live_stream = shouldRestartCollector;
+    if (state_->epsilon_reconfigure_thread_.joinable())
+    {
+        state_->epsilon_reconfigure_thread_.join();
+    }
 
-    const auto serviceLog = [this](const QString& message) {
-        if (QThread::currentThread() == thread())
-        {
-            log(message);
-            return;
-        }
-        QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
-    };
-    const VaporView::Ground::EpsilonConfigurationResult result =
-        VaporView::Ground::EpsilonConfigurationService::applyMainAntennaLeverArm(
-            operation, xM, yM, zM, serviceLog);
+    state_->epsilon_reconfigure_thread_ = std::thread([
+        this,
+        xM,
+        yM,
+        zM,
+        epsilonPort,
+        epsilonBaud,
+        epsilonBaudText,
+        english,
+        liveCollector,
+        shouldRestartCollector,
+        completion = std::move(completion)]() mutable {
+        VaporView::Ground::EpsilonDeviceOperation operation;
+        operation.port = epsilonPort;
+        operation.baud = epsilonBaud;
+        operation.baud_text = epsilonBaudText;
+        operation.english = english;
+        operation.live_collector = liveCollector;
+        operation.restart_live_stream = shouldRestartCollector;
 
-    state_->epsilon_reconfigure_in_progress_ = false;
-    updateConnectionStatus(anyCollectorRunning());
-    QApplication::processEvents();
+        const auto serviceLog = [this](const QString& message) {
+            QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
+        };
+        const VaporView::Ground::EpsilonConfigurationResult result =
+            VaporView::Ground::EpsilonConfigurationService::applyMainAntennaLeverArm(
+                operation, xM, yM, zM, serviceLog);
 
-    return result.succeeded() ? true : fail(result.error_message);
+        QMetaObject::invokeMethod(this, [this, result, completion = std::move(completion)]() mutable {
+            state_->epsilon_reconfigure_in_progress_ = false;
+            updateConnectionStatus(anyCollectorRunning());
+            if (completion)
+            {
+                completion(result.succeeded(), result.error_message);
+            }
+        }, Qt::QueuedConnection);
+    });
 }
 
 void MainWindow::syncRtkConfigPageState()
@@ -96,8 +153,12 @@ void MainWindow::syncRtkConfigPageState()
         const CollectorSnapshot collectors = snapshotCollectors();
         return collectors.epsilon ? collectors.epsilon->getLatestData() : state_->current_epsilon_;
     });
-    state_->rtk_config_dialog_->setEpsilonMainAntennaLeverArmApplier([this](double x, double y, double z, QString *errorMessage) {
-        return applyEpsilonMainAntennaLeverArm(x, y, z, errorMessage);
+    state_->rtk_config_dialog_->setEpsilonMainAntennaLeverArmApplier([this](
+        double x,
+        double y,
+        double z,
+        RtkConfigDialog::EpsilonLeverArmCompletion completion) {
+        applyEpsilonMainAntennaLeverArm(x, y, z, std::move(completion));
     });
     {
         const QString epsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
@@ -233,6 +294,18 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     {
         log(state_->is_english_ ? "Select the PC serial port that is wired to EPSILON port 2."
                         : "请选择连接到 EPSILON 第二串口的本机串口。");
+        return;
+    }
+
+    if (serialPortNamesReferToSamePort(forwardPort, epsilonPort))
+    {
+        const QString message = state_->is_english_
+            ? QStringLiteral("The RTCM forwarding port must differ from the EPSILON main port. The main port reads real GNSS/FDILink data for NTRIP GGA; connect another PC serial port to EPSILON COMM2 for RTCM input.")
+            : QStringLiteral("RTCM 转发串口不能与 EPSILON 主串口相同。主串口用于读取真实 GNSS/FDILink 数据并生成 NTRIP GGA；请用另一条本机串口连接 EPSILON COMM2 写入 RTCM。");
+        log(message);
+        QMessageBox::warning(this,
+                             state_->is_english_ ? QStringLiteral("Serial Port Conflict") : QStringLiteral("串口冲突"),
+                             message);
         return;
     }
 
@@ -497,7 +570,17 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
         QComboBox *combo = packetCombos[option.packet_id];
         const int rateHz = combo ? combo->currentData().toInt() : groupedRates.at(option.packet_id);
         savedPacketRates[option.packet_id] = rateHz;
-        settings.setValue(epsilonPacketRateSettingsKey(option.packet_id), rateHz);
+    }
+    const QString epsilonBaudText = state_->epsilon_baud_combo_
+        ? state_->epsilon_baud_combo_->currentText().trimmed()
+        : QStringLiteral("921600");
+    if (!validateEpsilonPacketBandwidth(savedPacketRates, epsilonBaudText, true))
+    {
+        return;
+    }
+    for (const auto& entry : savedPacketRates)
+    {
+        settings.setValue(epsilonPacketRateSettingsKey(entry.first), entry.second);
     }
     bool hasCustomOverrides = false;
     for (const auto& entry : savedPacketRates)
@@ -607,6 +690,10 @@ void MainWindow::onReconfigureEpsilonClicked()
     QSettings settings("VaporView", "MainWindow");
     bool usingCustomPacketProfile = false;
     const std::map<uint8_t, int> desiredPacketRates = effectiveEpsilonPacketRates(settings, epsilonRate, &usingCustomPacketProfile);
+    if (!validateEpsilonPacketBandwidth(desiredPacketRates, epsilonBaudText, true))
+    {
+        return;
+    }
     const int epsilonCallbackRate = epsilonPacketCallbackRate(desiredPacketRates, epsilonRate);
     const QString desiredPacketRateSignature = epsilonPacketRatesSignature(desiredPacketRates);
     const QString desiredPacketRateSummary = epsilonPacketRatesSummary(desiredPacketRates);

@@ -2,6 +2,7 @@
 
 #include "ground/session/RecordingSessionLayout.h"
 #include "shared/session/SessionSensorCsv.h"
+#include "shared/concurrency/BoundedByteQueue.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -44,6 +45,9 @@ constexpr qint64 kTcpRecordingStatusRefreshMs = 500;
 constexpr quint64 kTcpRawRecordQueueWarningBytes = 32ULL * 1024ULL * 1024ULL;
 constexpr quint64 kTcpRawRecordQueueMaxBytes = 256ULL * 1024ULL * 1024ULL;
 constexpr qint64 kTcpRawRecordQueueWarningIntervalMs = 5000;
+constexpr quint64 kDeviceRawRecordQueueWarningBytes = 2ULL * 1024ULL * 1024ULL;
+constexpr quint64 kDeviceRawRecordQueueMaxBytes = 8ULL * 1024ULL * 1024ULL;
+constexpr qint64 kDeviceRawRecordQueueWarningIntervalMs = 5000;
 constexpr const char *kTcpWavePeakIndexCsvHeader =
     "host_time_us,peak_value,peak_index,point_count,search_start_index,search_end_index\n";
 
@@ -73,6 +77,15 @@ struct UnifiedRawRecordHeader
 struct TcpRawRecord
 {
     quint64 timestampUs = 0;
+    quint32 flags = 0;
+    QByteArray payload;
+};
+
+struct DeviceRawRecord
+{
+    quint64 timestampUs = 0;
+    quint16 sourceId = 0;
+    quint16 recordType = 0;
     quint32 flags = 0;
     QByteArray payload;
 };
@@ -413,18 +426,54 @@ public:
                    const void *data,
                    size_t size)
     {
-        if (!workerRunning.load())
+        Q_UNUSED(file);
+        Q_UNUSED(recordCount);
+        if (!workerRunning.load() ||
+            size > static_cast<size_t>(std::numeric_limits<int>::max()) ||
+            size > static_cast<size_t>(std::numeric_limits<quint32>::max()) ||
+            (size > 0 && !data))
         {
             return false;
         }
-        return writeRawRecord(file,
-                              recordCount,
-                              sourceId,
-                              recordType,
-                              flags,
-                              timestampUs,
-                              data,
-                              size);
+
+        DeviceRawRecord record;
+        record.timestampUs = timestampUs;
+        record.sourceId = sourceId;
+        record.recordType = recordType;
+        record.flags = flags;
+        if (size > 0)
+        {
+            record.payload = QByteArray(reinterpret_cast<const char *>(data), static_cast<int>(size));
+        }
+
+        const auto result = deviceRawQueue.push(std::move(record), static_cast<quint64>(size));
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        if (result.status == VaporView::BoundedByteQueue<DeviceRawRecord>::PushStatus::Full)
+        {
+            qint64 lastWarningMs = lastDeviceQueueWarningMs.load();
+            if ((lastWarningMs <= 0 ||
+                 nowMs - lastWarningMs >= kDeviceRawRecordQueueWarningIntervalMs) &&
+                lastDeviceQueueWarningMs.compare_exchange_strong(lastWarningMs, nowMs))
+            {
+                warn(GroundRecordingWarning::DeviceRawQueueFull,
+                     result.queuedBytes / (1024ULL * 1024ULL));
+            }
+            return false;
+        }
+        if (result.status != VaporView::BoundedByteQueue<DeviceRawRecord>::PushStatus::Enqueued)
+        {
+            return false;
+        }
+        qint64 lastWarningMs = lastDeviceQueueWarningMs.load();
+        if (result.queuedBytes >= kDeviceRawRecordQueueWarningBytes &&
+            (lastWarningMs <= 0 ||
+             nowMs - lastWarningMs >= kDeviceRawRecordQueueWarningIntervalMs) &&
+            lastDeviceQueueWarningMs.compare_exchange_strong(lastWarningMs, nowMs))
+        {
+            warn(GroundRecordingWarning::DeviceRawQueueBacklog,
+                 result.queuedBytes / (1024ULL * 1024ULL));
+        }
+        return true;
     }
 
     bool enqueueTcpRawRecord(TcpRawRecord record)
@@ -619,6 +668,7 @@ private:
         }
         paused.store(false);
         startTcpWorker();
+        startDeviceRawWorker();
         QFile *file = sensorsFile.get();
         workerRunning.store(true);
         sensorThread = std::thread([this, file]() {
@@ -668,7 +718,72 @@ private:
         {
             sensorThread.join();
         }
+        stopDeviceRawWorker();
         stopTcpWorker();
+    }
+
+    void startDeviceRawWorker()
+    {
+        stopDeviceRawWorker();
+        lastDeviceQueueWarningMs.store(0);
+        deviceRawQueue.reset(true);
+        deviceRawThread = std::thread([this]() {
+            DeviceRawRecord record;
+            while (deviceRawQueue.waitPop(&record))
+            {
+                std::unique_ptr<QFile> *file = nullptr;
+                std::atomic<quint64> *recordCount = nullptr;
+                switch (record.sourceId)
+                {
+                case kRawSourceEpsilon:
+                    file = &rawEpsilonFile;
+                    recordCount = &rawEpsilonRecordCount;
+                    break;
+                case kRawSourcePtb:
+                    file = &rawPtbFile;
+                    recordCount = &rawPtbRecordCount;
+                    break;
+                case kRawSourceHmp:
+                    file = &rawHmpFile;
+                    recordCount = &rawHmpRecordCount;
+                    break;
+                case kRawSourceLidar:
+                    file = &rawLidarFile;
+                    recordCount = &rawLidarRecordCount;
+                    break;
+                default:
+                    break;
+                }
+
+                if (file && recordCount)
+                {
+                    writeRawRecord(*file,
+                                   *recordCount,
+                                   record.sourceId,
+                                   record.recordType,
+                                   record.flags,
+                                   record.timestampUs,
+                                   record.payload.constData(),
+                                   static_cast<size_t>(record.payload.size()));
+                }
+            }
+        });
+    }
+
+    void stopDeviceRawWorker()
+    {
+        deviceRawQueue.close();
+        if (deviceRawThread.joinable())
+        {
+            deviceRawThread.join();
+        }
+        const quint64 dropped = deviceRawQueue.droppedRecords();
+        deviceRawQueue.reset(false);
+        lastDeviceQueueWarningMs.store(0);
+        if (dropped > 0)
+        {
+            warn(GroundRecordingWarning::DeviceRawFramesDropped, dropped);
+        }
     }
 
     void startTcpWorker()
@@ -985,6 +1100,10 @@ public:
     std::atomic<quint64> rawLidarRecordCount{0};
     std::atomic<quint64> rawTcpWaveRecordCount{0};
     std::atomic<qint64> lastTcpStatusUpdateMs{0};
+
+    std::thread deviceRawThread;
+    VaporView::BoundedByteQueue<DeviceRawRecord> deviceRawQueue{kDeviceRawRecordQueueMaxBytes};
+    std::atomic<qint64> lastDeviceQueueWarningMs{0};
 
     std::thread tcpThread;
     std::mutex tcpQueueMutex;

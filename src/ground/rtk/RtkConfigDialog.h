@@ -47,7 +47,9 @@ public:
     void setPreferredOutputPortAndBaud(const QString& portName, const QString& baudText);
     void setEpsilonMainPortAndBaud(const QString& portName, const QString& baudText);
     void setEpsilonDataProvider(std::function<VaporView::EpsilonData()> provider);
-    void setEpsilonMainAntennaLeverArmApplier(std::function<bool(double, double, double, QString*)> applier);
+    using EpsilonLeverArmCompletion = std::function<void(bool, const QString&)>;
+    using EpsilonLeverArmApplier = std::function<void(double, double, double, EpsilonLeverArmCompletion)>;
+    void setEpsilonMainAntennaLeverArmApplier(EpsilonLeverArmApplier applier);
 
 signals:
     void rtkRunningChanged(bool running);
@@ -74,7 +76,9 @@ private:
     void setupUi();
     void loadSettings();
     void saveSettings();
-    bool buildRtkStreamConfig(RtkStreamConfig *config, QString *description = nullptr) const;
+    bool buildRtkStreamConfig(RtkStreamConfig *config,
+                              QString *description = nullptr,
+                              QString *validationError = nullptr) const;
     void updateButtonStates();
     QStringList getAvailablePorts() const;
     QString textFor(const QString& english, const QString& chinese) const;
@@ -190,7 +194,7 @@ private:
     bool is_english_;
     int font_scale_percent_;
     std::function<VaporView::EpsilonData()> epsilon_data_provider_;
-    std::function<bool(double, double, double, QString*)> epsilon_main_antenna_lever_arm_applier_;
+    EpsilonLeverArmApplier epsilon_main_antenna_lever_arm_applier_;
     QString epsilon_main_port_;
     int epsilon_main_baudrate_;
     QSize base_dialog_size_;
@@ -214,6 +218,7 @@ private:
     std::atomic<bool> fetch_mountpoints_in_progress_{false};
     std::atomic<bool> port_detection_in_progress_{false};
     std::atomic<bool> test_in_progress_{false};
+    bool lever_arm_apply_in_progress_ = false;
     std::atomic<bool> shutdown_requested_{false};
     std::thread fetch_mountpoints_thread_;
     std::thread port_detection_thread_;

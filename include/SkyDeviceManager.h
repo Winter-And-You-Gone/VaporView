@@ -9,7 +9,13 @@
 #include <QObject>
 #include <QTcpSocket>
 #include <QTimer>
+#include <atomic>
+#include <cstdint>
+#include <deque>
 #include <memory>
+#include <mutex>
+
+#include "shared/concurrency/BoundedByteQueue.h"
 
 namespace VaporView
 {
@@ -112,6 +118,18 @@ private:
     void handleHmpData(const HmpData& data);
     void handleLidarData(const LidarData& data);
     void handleTemperatureControllerData(const TemperatureControllerData& data);
+    struct PendingRawEvent
+    {
+        SkyDeviceId deviceId = SkyDeviceId::All;
+        const void *collectorIdentity = nullptr;
+        quint64 timestampUs = 0;
+        quint16 metadata = 0;
+        quint8 serialNumber = 0;
+        QByteArray payload;
+    };
+    void enqueueRawEvent(PendingRawEvent event);
+    void drainRawEvents();
+    void scheduleRawEventDrain();
     void recordWaveTcpFrameTime(quint64 timestampUs);
     void invalidateDeviceData(SkyDeviceId id);
 
@@ -149,6 +167,10 @@ private:
     QVector<float> latest_raw_waveform_;
     QVector<float> latest_waveform_;
     WaveformFeature latest_feature_;
+
+    BoundedByteQueue<PendingRawEvent> pending_raw_events_{4ULL * 1024ULL * 1024ULL, 2048};
+    std::atomic<bool> raw_event_drain_scheduled_{false};
+    quint64 raw_event_drops_reported_ = 0;
 };
 
 }  // namespace VaporView
