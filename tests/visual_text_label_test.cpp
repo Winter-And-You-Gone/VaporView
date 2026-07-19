@@ -1,9 +1,12 @@
+#include "ground/widgets/LabelTextSelection.h"
 #include "ground/widgets/VisualTextLabel.h"
 
 #include <QApplication>
+#include <QContextMenuEvent>
 #include <QFont>
 #include <QFontMetrics>
 #include <QImage>
+#include <QMouseEvent>
 #include <QPalette>
 #include <cstdlib>
 #include <iostream>
@@ -105,6 +108,95 @@ void testSelectableTextPaintsSelection()
             "selectable visual label paints the title selection highlight");
 }
 
+void dragSelection(VaporView::VisualTextLabel& label, const QPoint& start, const QPoint& end)
+{
+    const QPoint globalStart = label.mapToGlobal(start);
+    const QPoint globalEnd = label.mapToGlobal(end);
+    QMouseEvent press(QEvent::MouseButtonPress,
+                      start,
+                      globalStart,
+                      Qt::LeftButton,
+                      Qt::LeftButton,
+                      Qt::NoModifier);
+    QApplication::sendEvent(&label, &press);
+    QMouseEvent move(QEvent::MouseMove,
+                     end,
+                     globalEnd,
+                     Qt::NoButton,
+                     Qt::LeftButton,
+                     Qt::NoModifier);
+    QApplication::sendEvent(&label, &move);
+    QMouseEvent release(QEvent::MouseButtonRelease,
+                        end,
+                        globalEnd,
+                        Qt::LeftButton,
+                        Qt::NoButton,
+                        Qt::NoModifier);
+    QApplication::sendEvent(&label, &release);
+    QApplication::processEvents();
+}
+
+void testRepeatedMouseSelectionRemainsResponsive()
+{
+    const QString text = QStringLiteral("卡片标题文");
+    VaporView::VisualTextLabel label(text);
+    QFont font = label.font();
+    font.setPointSize(18);
+    label.setFont(font);
+    label.resize(220, 48);
+    label.setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    VaporView::configureSelectableCardTitle(&label);
+    label.show();
+    QApplication::processEvents();
+
+    const QFontMetrics metrics(label.font());
+    const QRect textBounds = metrics.tightBoundingRect(text);
+    const QPoint origin = VaporView::VisualTextLabel::textOriginForVisualAlignment(
+        label.contentsRect(), textBounds, label.alignment());
+    const auto pointAtCursor = [&](int cursor, int y) {
+        return QPoint(origin.x() + metrics.horizontalAdvance(text.left(cursor)), y);
+    };
+    const int centerY = textBounds.translated(origin).center().y();
+
+    struct DragCase
+    {
+        int start;
+        int end;
+        int y;
+    };
+    const DragCase cases[] = {
+        {0, 5, centerY},
+        {1, 4, centerY},
+        {4, 1, centerY},
+        {2, 3, centerY},
+        {5, 0, centerY},
+    };
+
+    for (const DragCase& drag : cases)
+    {
+        dragSelection(label,
+                      pointAtCursor(drag.start, drag.y),
+                      pointAtCursor(drag.end, drag.y));
+        const int selectionStart = std::min(drag.start, drag.end);
+        const int selectionLength = std::abs(drag.end - drag.start);
+        require(label.selectionStart() == selectionStart,
+                "repeated drag starts a fresh selection at the pointer anchor");
+        require(label.selectedText() == text.mid(selectionStart, selectionLength),
+                "repeated drag selects the intended characters");
+        require(QApplication::focusWidget() == &label,
+                "repeated drag keeps keyboard focus on the selected title");
+    }
+
+    const QPoint contextPosition = label.rect().center();
+    QContextMenuEvent contextEvent(QContextMenuEvent::Mouse,
+                                   contextPosition,
+                                   label.mapToGlobal(contextPosition));
+    contextEvent.ignore();
+    QApplication::sendEvent(&label, &contextEvent);
+    require(contextEvent.isAccepted(),
+            "selectable title suppresses the standard copy context menu");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -114,6 +206,7 @@ int main(int argc, char **argv)
     testHorizontalAlignment();
     testVerticalAlignment();
     testSelectableTextPaintsSelection();
+    testRepeatedMouseSelectionRemainsResponsive();
     std::cout << "visual_text_label_test passed\n";
     return 0;
 }

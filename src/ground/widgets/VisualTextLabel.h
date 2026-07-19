@@ -3,13 +3,15 @@
 
 #include <QFontMetrics>
 #include <QLabel>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
 #include <QPalette>
 #include <QPoint>
 #include <QRect>
-#include <QMouseEvent>
+#include <QTextLayout>
 #include <algorithm>
+#include <cstdlib>
 
 namespace VaporView
 {
@@ -61,18 +63,45 @@ public:
 protected:
     void mousePressEvent(QMouseEvent *event) override
     {
+        if (event->button() == Qt::LeftButton && mouseSelectionEnabled())
+        {
+            mouse_selection_anchor_ = cursorPositionForX(event->position().x());
+            mouse_selection_active_ = true;
+            setFocus(Qt::MouseFocusReason);
+            setSelection(mouse_selection_anchor_, 0);
+            event->accept();
+            update();
+            return;
+        }
+
         QLabel::mousePressEvent(event);
         update();
     }
 
     void mouseMoveEvent(QMouseEvent *event) override
     {
+        if (mouse_selection_active_ && event->buttons().testFlag(Qt::LeftButton))
+        {
+            updateMouseSelection(event->position().x());
+            event->accept();
+            return;
+        }
+
+        mouse_selection_active_ = false;
         QLabel::mouseMoveEvent(event);
         update();
     }
 
     void mouseReleaseEvent(QMouseEvent *event) override
     {
+        if (mouse_selection_active_ && event->button() == Qt::LeftButton)
+        {
+            updateMouseSelection(event->position().x());
+            mouse_selection_active_ = false;
+            event->accept();
+            return;
+        }
+
         QLabel::mouseReleaseEvent(event);
         update();
     }
@@ -137,11 +166,61 @@ protected:
     }
 
 private:
+    bool mouseSelectionEnabled() const
+    {
+        return textInteractionFlags().testFlag(Qt::TextSelectableByMouse) &&
+            textFormat() == Qt::PlainText && !wordWrap();
+    }
+
+    int cursorPositionForX(qreal x) const
+    {
+        const QString value = text();
+        if (value.isEmpty())
+        {
+            return 0;
+        }
+
+        const QFontMetrics metrics(font());
+        const QPoint origin = textOriginForVisualAlignment(
+            contentsRect(), metrics.tightBoundingRect(value), alignment());
+        const qreal relativeX = x - origin.x();
+        if (relativeX <= 0)
+        {
+            return 0;
+        }
+
+        QTextLayout layout(value, font());
+        QTextOption option;
+        option.setWrapMode(QTextOption::NoWrap);
+        layout.setTextOption(option);
+        layout.beginLayout();
+        QTextLine line = layout.createLine();
+        line.setLineWidth(std::max(contentsRect().width(), metrics.horizontalAdvance(value) + 1));
+        layout.endLayout();
+        if (!line.isValid() || relativeX >= line.naturalTextWidth())
+        {
+            return value.size();
+        }
+        return line.xToCursor(relativeX, QTextLine::CursorBetweenCharacters);
+    }
+
+    void updateMouseSelection(qreal x)
+    {
+        const int cursor = cursorPositionForX(x);
+        const int start = std::min(mouse_selection_anchor_, cursor);
+        setSelection(start, std::abs(cursor - mouse_selection_anchor_));
+        setFocus(Qt::MouseFocusReason);
+        update();
+    }
+
     void initialize()
     {
         setTextFormat(Qt::PlainText);
         setWordWrap(false);
     }
+
+    int mouse_selection_anchor_ = 0;
+    bool mouse_selection_active_ = false;
 };
 
 }  // namespace VaporView

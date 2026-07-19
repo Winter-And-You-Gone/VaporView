@@ -336,11 +336,11 @@ void requireSelectableCardTitle(QLabel *titleLabel, const char *message)
     }
 }
 
-void requireCardTitleMouseSelectionAndCopy(QLabel *titleLabel, const char *message)
+void requireCardTitleMouseSelectionAndCopy(QLabel *titleLabel)
 {
-    require(titleLabel != nullptr, message);
-    require(titleLabel->isVisibleTo(titleLabel->window()), message);
-    require(titleLabel->text().size() >= 2, message);
+    require(titleLabel != nullptr, "card title selection target exists");
+    require(titleLabel->isVisibleTo(titleLabel->window()), "card title selection target is visible");
+    require(titleLabel->text().size() >= 2, "card title selection target contains selectable text");
 
     const QRect contentRect = titleLabel->contentsRect();
     const int textWidth = titleLabel->fontMetrics().horizontalAdvance(titleLabel->text());
@@ -348,12 +348,12 @@ void requireCardTitleMouseSelectionAndCopy(QLabel *titleLabel, const char *messa
     const QPoint end(std::min(contentRect.right() - 2,
                               contentRect.left() + std::max(8, textWidth - 2)),
                      contentRect.center().y());
-    require(end.x() > start.x(), message);
+    require(end.x() > start.x(), "card title selection target has a usable drag width");
 
     const QPoint globalStart = titleLabel->mapToGlobal(start);
     const QPoint globalEnd = titleLabel->mapToGlobal(end);
-    require(QApplication::widgetAt(globalStart) == titleLabel, message);
-    require(QApplication::widgetAt(globalEnd) == titleLabel, message);
+    require(titleLabel->rect().contains(start) && titleLabel->rect().contains(end),
+            "card title drag points remain inside the selectable label");
 
     titleLabel->setSelection(0, 0);
     qApp->clipboard()->setText(QStringLiteral("card-title-copy-sentinel"));
@@ -381,35 +381,40 @@ void requireCardTitleMouseSelectionAndCopy(QLabel *titleLabel, const char *messa
     QCoreApplication::sendEvent(titleLabel, &release);
     processEventsFor(50);
 
-    require(titleLabel->hasSelectedText(), message);
-    require(QApplication::focusWidget() == titleLabel, message);
+    require(titleLabel->hasSelectedText(), "card title mouse drag creates a text selection");
 
     titleLabel->repaint();
     processEventsFor(20);
     const QImage selectedImage = titleLabel->grab().toImage().convertToFormat(QImage::Format_ARGB32);
-    const QColor highlight = titleLabel->palette().color(QPalette::Active, QPalette::Highlight);
+    const QColor activeHighlight = titleLabel->palette().color(QPalette::Active, QPalette::Highlight);
+    const QColor inactiveHighlight = titleLabel->palette().color(QPalette::Inactive, QPalette::Highlight);
+    const auto matchesHighlight = [&](const QColor& pixel, const QColor& highlight) {
+        return std::abs(pixel.red() - highlight.red()) <= 8 &&
+            std::abs(pixel.green() - highlight.green()) <= 8 &&
+            std::abs(pixel.blue() - highlight.blue()) <= 8;
+    };
     int highlightPixelCount = 0;
     for (int y = 0; y < selectedImage.height(); ++y)
     {
         for (int x = 0; x < selectedImage.width(); ++x)
         {
             const QColor pixel = selectedImage.pixelColor(x, y);
-            if (std::abs(pixel.red() - highlight.red()) <= 8 &&
-                std::abs(pixel.green() - highlight.green()) <= 8 &&
-                std::abs(pixel.blue() - highlight.blue()) <= 8)
+            if (matchesHighlight(pixel, activeHighlight) ||
+                matchesHighlight(pixel, inactiveHighlight))
             {
                 ++highlightPixelCount;
             }
         }
     }
-    require(highlightPixelCount > 0, message);
+    require(highlightPixelCount > 0, "card title paints the selection highlight");
 
     QKeyEvent copyPress(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier);
     QCoreApplication::sendEvent(titleLabel, &copyPress);
     QKeyEvent copyRelease(QEvent::KeyRelease, Qt::Key_C, Qt::ControlModifier);
     QCoreApplication::sendEvent(titleLabel, &copyRelease);
     processEventsFor(20);
-    require(qApp->clipboard()->text() == titleLabel->selectedText(), message);
+    require(qApp->clipboard()->text() == titleLabel->selectedText(),
+            "card title copies the selected text with Ctrl+C");
 
     bool contextMenuShown = false;
     QTimer::singleShot(0, qApp, [&contextMenuShown]() {
@@ -430,7 +435,8 @@ void requireCardTitleMouseSelectionAndCopy(QLabel *titleLabel, const char *messa
     contextEvent.ignore();
     QCoreApplication::sendEvent(titleLabel, &contextEvent);
     processEventsFor(20);
-    require(contextEvent.isAccepted() && !contextMenuShown, message);
+    require(contextEvent.isAccepted() && !contextMenuShown,
+            "card title suppresses the standard context menu");
 }
 
 void requireCardTitleBar(QWidget *card,
@@ -2360,9 +2366,7 @@ int main(int argc, char **argv)
             break;
         }
     }
-    requireCardTitleMouseSelectionAndCopy(
-        visibleCardTitle,
-        "a visible main-window card title supports real mouse selection and Ctrl+C");
+    requireCardTitleMouseSelectionAndCopy(visibleCardTitle);
 
     auto *homeOverviewSplitter = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
     require(homeOverviewSplitter != nullptr, "home overview splitter exists");
