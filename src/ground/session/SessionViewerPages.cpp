@@ -704,8 +704,11 @@ SessionDeviceDataWidget::SessionDeviceDataWidget(QWidget *parent)
     csv_table_->setSelectionMode(QAbstractItemView::SingleSelection);
     csv_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     csv_table_->setWordWrap(false);
-    csv_table_->horizontalHeader()->setSectionsMovable(true);
-    csv_table_->horizontalHeader()->setDefaultSectionSize(140);
+    auto *csvHeader = csv_table_->horizontalHeader();
+    csvHeader->setSectionsMovable(true);
+    csvHeader->setSectionResizeMode(QHeaderView::Interactive);
+    csvHeader->setResizeContentsPrecision(-1);
+    csvHeader->setDefaultSectionSize(140);
     csv_table_->verticalHeader()->setVisible(false);
     layout->addWidget(csv_table_, 1);
     setEnglish(false);
@@ -734,8 +737,7 @@ void SessionDeviceDataWidget::setRows(const QStringList& headers, QVector<QStrin
     displayHeaders << headers;
     csv_model_->setRows(displayHeaders, std::move(rows));
     csv_model_->setTheme(sessionTableThemeFor(this));
-    csv_table_->setColumnWidth(0, 48);
-    csv_table_->setColumnWidth(1, 96);
+    csv_table_->resizeColumnsToContents();
 }
 
 void SessionDeviceDataWidget::clear()
@@ -853,6 +855,7 @@ void SessionDeviceDataWidget::updateDisplayHeaders()
     displayHeaders << (is_english_ ? QStringLiteral("Delta") : QStringLiteral("时间误差"));
     displayHeaders << csv_headers_;
     csv_model_->setHeaders(displayHeaders);
+    csv_table_->resizeColumnsToContents();
 }
 
 bool editSessionPeakSettings(

@@ -82,24 +82,34 @@ void testPages()
     deviceData.setEnglish(true);
     QVector<quint64> timestamps;
     QVector<QStringList> rows;
-    timestamps.reserve(100);
-    rows.reserve(100);
-    for (int index = 0; index < 100; ++index)
+    const QString headerDrivenColumn =
+        QStringLiteral("timestamp_with_an_intentionally_wide_header_us");
+    const QString valueDrivenText =
+        QStringLiteral("the widest CSV value must determine this column's default width");
+    timestamps.reserve(1100);
+    rows.reserve(1100);
+    for (int index = 0; index < 1100; ++index)
     {
         const quint64 timestamp = static_cast<quint64>(index + 1) * 1000;
         timestamps.push_back(timestamp);
-        rows.push_back({QString::number(timestamp), QStringLiteral("row %1").arg(index + 1)});
+        rows.push_back({QString::number(timestamp),
+                        index == 1099 ? valueDrivenText : QStringLiteral("row %1").arg(index + 1)});
     }
     deviceData.setRows(
-        {QStringLiteral("timestamp_us"), QStringLiteral("note")},
+        {headerDrivenColumn, QStringLiteral("note")},
         std::move(rows));
     auto *table = deviceData.findChild<QTableView *>(QStringLiteral("sessionViewerCsvTable"));
-    require(table && table->model()->rowCount() == 100, "device data page owns its virtual CSV table");
+    require(table && table->model()->rowCount() == 1100, "device data page owns its virtual CSV table");
     deviceData.resize(960, deviceData.minimumSizeHint().height());
     deviceData.show();
     QCoreApplication::processEvents();
     require(table->viewport()->height() >= table->verticalHeader()->defaultSectionSize() * 5,
             "device data page keeps at least five CSV rows visible");
+    require(table->columnWidth(2) >=
+                table->horizontalHeader()->fontMetrics().horizontalAdvance(headerDrivenColumn),
+            "device data page sizes a CSV column from its widest header");
+    require(table->columnWidth(3) >= table->fontMetrics().horizontalAdvance(valueDrivenText),
+            "device data page sizes a CSV column from its widest value");
     const SessionCsvHighlightResult highlight = deviceData.highlightTimestamp(timestamps, 1700, true);
     require(highlight.primaryRow == 1, "device data page selects the closest timestamp row");
     require(highlight.description.contains(QStringLiteral("CSV row")),
