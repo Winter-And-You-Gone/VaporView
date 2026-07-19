@@ -443,6 +443,7 @@ QWidget *createSectionTitleCluster(QWidget *parent,
     layout->addWidget(iconLabel, 0, Qt::AlignVCenter);
 
     titleLabel->setParent(cluster);
+    titleLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     titleLabel->setMargin(0);
     titleLabel->setContentsMargins(0, 0, 0, 0);
@@ -1556,6 +1557,7 @@ void TcpWavePanel::setupUi()
     wave1HeaderLayout->setSpacing(8);
     wave1_title_label_ = new VaporView::VisualTextLabel(this);
     wave1_title_label_->setObjectName("sectionTitleLabel");
+    wave1_title_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     wave1_title_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     wave1_title_label_->setMargin(0);
     wave1_title_label_->setContentsMargins(0, 0, 0, 0);
@@ -1587,6 +1589,7 @@ void TcpWavePanel::setupUi()
     wave4HeaderLayout->setSpacing(8);
     wave4_title_label_ = new VaporView::VisualTextLabel(this);
     wave4_title_label_->setObjectName("sectionTitleLabel");
+    wave4_title_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     wave4_title_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     wave4_title_label_->setMargin(0);
     wave4_title_label_->setContentsMargins(0, 0, 0, 0);
@@ -1622,6 +1625,7 @@ void TcpWavePanel::setupUi()
     peakHeaderLayout->setSpacing(6);
     peak_title_label_ = new VaporView::VisualTextLabel(this);
     peak_title_label_->setObjectName("sectionTitleLabel");
+    peak_title_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     peak_title_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     peak_title_label_->setMargin(0);
     peak_title_label_->setContentsMargins(0, 0, 0, 0);

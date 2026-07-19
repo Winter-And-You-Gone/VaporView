@@ -211,6 +211,7 @@ QWidget *createCardBody(QGroupBox *group, const QString& title, QWidget *titleAc
 
     auto *titleLabel = new QLabel(title, titleBar);
     titleLabel->setObjectName(QStringLiteral("skyConfigGroupTitleLabel"));
+    titleLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     titleLayout->addWidget(titleLabel);
     titleLayout->addStretch();
     if (titleAction)

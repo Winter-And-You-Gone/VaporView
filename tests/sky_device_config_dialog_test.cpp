@@ -192,6 +192,11 @@ int main(int argc, char **argv)
     for (QGroupBox *group : groups)
     {
         auto *titleLabel = group->findChild<QLabel *>(QStringLiteral("skyConfigGroupTitleLabel"));
+        if (titleLabel)
+        {
+            require(titleLabel->textInteractionFlags().testFlag(Qt::TextSelectableByMouse),
+                    "sky-device card title is selectable and copyable");
+        }
         const QString title = titleLabel ? titleLabel->text() : QString();
         if (title == QStringLiteral("EPSILON")) epsilonGroup = group;
         if (title == QStringLiteral("PTB210")) ptbGroup = group;

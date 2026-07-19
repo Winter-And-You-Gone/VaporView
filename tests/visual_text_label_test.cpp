@@ -3,6 +3,8 @@
 #include <QApplication>
 #include <QFont>
 #include <QFontMetrics>
+#include <QImage>
+#include <QPalette>
 #include <cstdlib>
 #include <iostream>
 
@@ -68,6 +70,41 @@ void testVerticalAlignment()
     require(bottom.bottom() == area.bottom(), "bottom alignment");
 }
 
+void testSelectableTextPaintsSelection()
+{
+    VaporView::VisualTextLabel label(QStringLiteral("卡片标题"));
+    label.resize(180, 40);
+    label.setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    label.setTextInteractionFlags(Qt::TextSelectableByMouse);
+
+    QPalette palette = label.palette();
+    palette.setColor(QPalette::Highlight, QColor(255, 0, 255));
+    palette.setColor(QPalette::HighlightedText, QColor(255, 255, 255));
+    label.setPalette(palette);
+    label.setSelection(0, 2);
+    label.show();
+    QApplication::processEvents();
+
+    require(label.selectedText() == QStringLiteral("卡片"),
+            "selectable visual label exposes the selected title text");
+    const QImage image = label.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    bool selectionHighlightPainted = false;
+    for (int y = 0; y < image.height() && !selectionHighlightPainted; ++y)
+    {
+        for (int x = 0; x < image.width(); ++x)
+        {
+            const QColor pixel = image.pixelColor(x, y);
+            if (pixel.red() > 200 && pixel.green() < 80 && pixel.blue() > 200)
+            {
+                selectionHighlightPainted = true;
+                break;
+            }
+        }
+    }
+    require(selectionHighlightPainted,
+            "selectable visual label paints the title selection highlight");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -76,6 +113,7 @@ int main(int argc, char **argv)
     testVisualCentering();
     testHorizontalAlignment();
     testVerticalAlignment();
+    testSelectableTextPaintsSelection();
     std::cout << "visual_text_label_test passed\n";
     return 0;
 }

@@ -319,6 +319,19 @@ void requireColorNear(const QColor& actual, const QColor& expected, int toleranc
             message);
 }
 
+void requireSelectableCardTitle(QLabel *titleLabel, const char *message)
+{
+    require(titleLabel != nullptr, message);
+    const Qt::TextInteractionFlags flags = titleLabel->textInteractionFlags();
+    QWidget *cluster = titleLabel->parentWidget();
+    require(flags.testFlag(Qt::TextSelectableByMouse), message);
+    require(!titleLabel->testAttribute(Qt::WA_TransparentForMouseEvents), message);
+    if (cluster && cluster->objectName() == QStringLiteral("sectionTitleCluster"))
+    {
+        require(!cluster->testAttribute(Qt::WA_TransparentForMouseEvents), message);
+    }
+}
+
 void requireCardTitleBar(QWidget *card,
                          const QStringList& expectedTitles,
                          const QString& expectedIconName,
@@ -326,6 +339,7 @@ void requireCardTitleBar(QWidget *card,
 {
     require(card != nullptr, message);
     QWidget *matchedTitleBar = nullptr;
+    QLabel *matchedTitleLabel = nullptr;
     const QList<QWidget*> titleBars = card->findChildren<QWidget *>(QStringLiteral("sectionTitleBar"));
     for (QWidget *titleBar : titleBars)
     {
@@ -336,6 +350,7 @@ void requireCardTitleBar(QWidget *card,
             if (expectedTitles.contains(titleLabel->text()))
             {
                 titleMatched = true;
+                matchedTitleLabel = titleLabel;
                 break;
             }
         }
@@ -362,6 +377,8 @@ void requireCardTitleBar(QWidget *card,
     }
 
     require(matchedTitleBar != nullptr, message);
+    requireSelectableCardTitle(matchedTitleLabel,
+                               "card title text is selectable and copyable");
     require(matchedTitleBar->height() >= 36 && matchedTitleBar->height() <= 44,
             "device configuration card title bar uses the standard compact height");
     require(matchedTitleBar->y() <= 2,
@@ -2225,6 +2242,14 @@ int main(int argc, char **argv)
     require(!checkedSidebarButton->property("_vv_hover").toBool(),
             "sidebar button hover property is cleared by leave");
     requireRtkSidebarPage(window, customTitleLabel);
+    const QList<QLabel*> cardTitleLabels =
+        window.findChildren<QLabel *>(QStringLiteral("sectionTitleLabel"));
+    require(!cardTitleLabels.isEmpty(), "main window exposes card title labels");
+    for (QLabel *titleLabel : cardTitleLabels)
+    {
+        requireSelectableCardTitle(titleLabel,
+                                   "all main-window card titles are selectable and copyable");
+    }
 
     auto *homeOverviewSplitter = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
     require(homeOverviewSplitter != nullptr, "home overview splitter exists");

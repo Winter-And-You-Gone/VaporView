@@ -983,7 +983,6 @@ QLabel *createSectionTitleCluster(QWidget *parent,
 {
     auto *cluster = new QWidget(parent);
     cluster->setObjectName(QStringLiteral("sectionTitleCluster"));
-    cluster->setAttribute(Qt::WA_TransparentForMouseEvents, true);
     cluster->setFixedHeight(titleHeight);
     cluster->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 
@@ -997,11 +996,13 @@ QLabel *createSectionTitleCluster(QWidget *parent,
     iconLabel->setAlignment(Qt::AlignCenter);
     iconLabel->setFixedSize(kSectionTitleIconBoxSize, titleHeight);
     iconLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    iconLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
     updateSectionTitleIcon(iconLabel, VaporView::isDarkThemeEnabled());
     layout->addWidget(iconLabel, 0, Qt::AlignVCenter);
 
     auto *titleLabel = new VaporView::VisualTextLabel(cluster);
     titleLabel->setObjectName(QStringLiteral("sectionTitleLabel"));
+    titleLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     titleLabel->setMargin(0);
     titleLabel->setContentsMargins(0, 0, 0, 0);

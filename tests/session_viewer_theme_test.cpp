@@ -638,6 +638,12 @@ void testTrajectoryViewerUsesSidebarLayout()
     auto *peakFilterModeCombo = dialog.findChild<QComboBox *>(QStringLiteral("trajectoryPeakFilterModeCombo"));
     auto *peakFilterMinEdit = dialog.findChild<QLineEdit *>(QStringLiteral("trajectoryPeakFilterMinEdit"));
     auto *peakFilterMaxEdit = dialog.findChild<QLineEdit *>(QStringLiteral("trajectoryPeakFilterMaxEdit"));
+    for (QLabel *titleLabel : {sidebarTitle, filterTitle, peakTitle})
+    {
+        require(titleLabel != nullptr &&
+                    titleLabel->textInteractionFlags().testFlag(Qt::TextSelectableByMouse),
+                "trajectory card titles are selectable and copyable");
+    }
     auto *peakApplyButton = dialog.findChild<QPushButton *>(QStringLiteral("trajectoryPeakApplyButton"));
     const auto pointDetailActionButtons = dialog.findChildren<QToolButton *>(QStringLiteral("trajectoryPointDetailActionButton"));
     QToolButton *filterCurrentButton = nullptr;

@@ -59,7 +59,7 @@ public:
 protected:
     void paintEvent(QPaintEvent *event) override
     {
-        if (textFormat() != Qt::PlainText || wordWrap())
+        if (textFormat() != Qt::PlainText || wordWrap() || hasSelectedText())
         {
             QLabel::paintEvent(event);
             return;
