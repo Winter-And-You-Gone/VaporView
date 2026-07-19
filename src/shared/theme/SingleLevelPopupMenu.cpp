@@ -29,6 +29,89 @@ namespace VaporView
 namespace
 {
 constexpr int kMenuShadowMargin = 22;
+constexpr int kPopupBoundaryMargin = 8;
+
+QWidget *popupHostWindow(const QWidget *popup, QWidget *anchor)
+{
+    QWidget *hostCandidate = anchor;
+    if (!hostCandidate && popup)
+    {
+        hostCandidate = popup->parentWidget();
+    }
+    QWidget *hostWindow = hostCandidate ? hostCandidate->window() : nullptr;
+    return hostWindow && hostWindow != popup ? hostWindow : nullptr;
+}
+
+QRect popupAvailableGeometry(const QWidget *popup, QWidget *anchor)
+{
+    const QPoint referencePoint = anchor
+        ? anchor->mapToGlobal(anchor->rect().center())
+        : popup ? popup->geometry().center() : QPoint();
+    QScreen *screen = QGuiApplication::screenAt(referencePoint);
+    QRect available = screen
+        ? screen->availableGeometry().adjusted(kPopupBoundaryMargin,
+                                               kPopupBoundaryMargin,
+                                               -kPopupBoundaryMargin,
+                                               -kPopupBoundaryMargin)
+        : QRect();
+
+    if (QWidget *hostWindow = popupHostWindow(popup, anchor))
+    {
+        const QRect hostAvailable(
+            hostWindow->mapToGlobal(hostWindow->rect().topLeft()),
+            hostWindow->rect().size());
+        const QRect insetHostAvailable = hostAvailable.adjusted(kPopupBoundaryMargin,
+                                                                 kPopupBoundaryMargin,
+                                                                 -kPopupBoundaryMargin,
+                                                                 -kPopupBoundaryMargin);
+        if (available.isValid())
+        {
+            const QRect sharedAvailable = available.intersected(insetHostAvailable);
+            if (sharedAvailable.isValid())
+            {
+                available = sharedAvailable;
+            }
+        }
+        else
+        {
+            available = insetHostAvailable;
+        }
+    }
+    return available;
+}
+
+QPoint constrainedPopupTopLeft(const QWidget *popup,
+                               QWidget *anchor,
+                               const QPoint& desiredTopLeft,
+                               const QSize& popupSize)
+{
+    const QRect available = popupAvailableGeometry(popup, anchor);
+    if (!available.isValid() || !popupSize.isValid())
+    {
+        return desiredTopLeft;
+    }
+
+    return QPoint(
+        std::clamp(desiredTopLeft.x(),
+                   available.left(),
+                   std::max(available.left(), available.right() - popupSize.width() + 1)),
+        std::clamp(desiredTopLeft.y(),
+                   available.top(),
+                   std::max(available.top(), available.bottom() - popupSize.height() + 1)));
+}
+
+void constrainPopupToHostWindow(QWidget *popup)
+{
+    if (!popup)
+    {
+        return;
+    }
+    const QPoint constrained = constrainedPopupTopLeft(popup, nullptr, popup->pos(), popup->size());
+    if (constrained != popup->pos())
+    {
+        popup->move(constrained);
+    }
+}
 
 QImage boxBlurredAlpha(const QSize& size,
                        const QRectF& sourceRect,
@@ -583,33 +666,21 @@ void SingleLevelPopupMenu::popupFrom(QWidget *anchor, SingleLevelPopupAnchor anc
         popupTopLeft = anchor->mapToGlobal(QPoint(anchor->width() - popupSize.width() + margin,
                                                  anchor->height() - margin));
     }
-    if (QScreen *screen = QGuiApplication::screenAt(anchorRect.center()))
+    const QRect available = popupAvailableGeometry(this, anchor);
+    if (available.isValid())
     {
-        const QRect available = screen->availableGeometry().adjusted(8, 8, -8, -8);
-        QRect hostAvailable;
-        if (QWidget *hostWindow = anchor->window())
-        {
-            hostAvailable = QRect(hostWindow->mapToGlobal(QPoint(0, 0)), hostWindow->size()).adjusted(8, 8, -8, -8);
-        }
-        const bool exceedsScreenBottom = popupTopLeft.y() + popupSize.height() > available.bottom() + 1;
-        const bool exceedsHostBottom = hostAvailable.isValid() &&
-                                       popupTopLeft.y() + popupSize.height() > hostAvailable.bottom() + 1;
-        if (exceedsScreenBottom || exceedsHostBottom)
+        const bool exceedsBottom = popupTopLeft.y() + popupSize.height() > available.bottom() + 1;
+        if (exceedsBottom)
         {
             const int upwardTop = anchorRect.top() - popupSize.height() + margin;
-            if (!hostAvailable.isValid() || upwardTop >= hostAvailable.top())
+            if (upwardTop >= available.top())
             {
                 popupTopLeft.setY(upwardTop);
             }
         }
-        popupTopLeft.setX(std::clamp(popupTopLeft.x(),
-                                     available.left(),
-                                     std::max(available.left(), available.right() - popupSize.width() + 1)));
-        popupTopLeft.setY(std::clamp(popupTopLeft.y(),
-                                     available.top(),
-                                     std::max(available.top(), available.bottom() - popupSize.height() + 1)));
     }
     popupTopLeft += offset;
+    popupTopLeft = constrainedPopupTopLeft(this, anchor, popupTopLeft, popupSize);
     popup(popupTopLeft);
     move(popupTopLeft);
     applyRoundedMask();
@@ -693,9 +764,11 @@ void SingleLevelPopupMenu::showEvent(QShowEvent *event)
     refreshTheme();
     syncRowWidths();
     applyRoundedMask();
+    constrainPopupToHostWindow(this);
     QTimer::singleShot(0, this, [this]() {
         syncRowWidths();
         applyRoundedMask();
+        constrainPopupToHostWindow(this);
     });
 }
 

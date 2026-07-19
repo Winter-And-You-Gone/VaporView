@@ -220,6 +220,18 @@ int main(int argc, char** argv)
         require(row && row->isChecked() && !row->closeOnClick(),
                 "layer row mirrors its check state and keeps the menu open for multi-selection");
     }
+
+    window.resize(760, 520);
+    window.show();
+    QCoreApplication::processEvents();
+    const QRect windowClientRect(window.mapToGlobal(window.rect().topLeft()), window.rect().size());
+    const QRect expectedPopupBounds = windowClientRect.adjusted(8, 8, -8, -8);
+    layersMenu->popup(QPoint(windowClientRect.right() - 2, windowClientRect.bottom() - 2));
+    QCoreApplication::processEvents();
+    require(expectedPopupBounds.contains(layersMenu->geometry()),
+            "layers menu stays inside the 3D map window in compact window mode");
+    layersMenu->hide();
+
     QAction* satelliteLayerAction =
         actionByName(window, QStringLiteral("map3DLayer_satelliteImagery"));
     satelliteLayerAction->trigger();
