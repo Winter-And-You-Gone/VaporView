@@ -1473,7 +1473,7 @@ void SessionViewerWindow::syncEnvironmentRangeToWaveformRange(
 
 void SessionViewerWindow::previewClosestSensorRow(quint64 timestampUs)
 {
-    highlightClosestSensorRow(timestampUs, false);
+    highlightClosestSensorRow(timestampUs, true);
 }
 
 QString SessionViewerWindow::highlightClosestSensorRow(

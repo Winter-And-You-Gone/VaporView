@@ -834,9 +834,11 @@ SessionCsvHighlightResult SessionDeviceDataWidget::highlightTimestamp(
             : QStringLiteral("CSV 第%1行（%2）").arg(fixedIntegerField(row + 1, 8), fixedTextField(deltaText, 12)));
     }
     csv_model_->setHighlightedRows(rows, result.primaryRow, deltaTextByRow);
-    if (scrollToRow && !rows.isEmpty())
+    if (scrollToRow && result.primaryRow >= 0)
     {
-        csv_table_->scrollTo(csv_model_->index(rows.first(), 0), QAbstractItemView::PositionAtTop);
+        csv_table_->scrollTo(
+            csv_model_->index(result.primaryRow, 0),
+            QAbstractItemView::PositionAtCenter);
     }
     csv_table_->viewport()->update();
     result.description = descriptions.join(QStringLiteral(" | "));

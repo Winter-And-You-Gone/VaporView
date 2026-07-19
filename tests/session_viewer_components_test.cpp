@@ -8,12 +8,14 @@
 #include <QHeaderView>
 #include <QProgressDialog>
 #include <QPushButton>
+#include <QScrollBar>
 #include <QSplitter>
 #include <QTableView>
 #include <QTemporaryDir>
 
 #include <cstdlib>
 #include <iostream>
+#include <utility>
 
 namespace
 {
@@ -78,20 +80,44 @@ void testPages()
 
     SessionDeviceDataWidget deviceData;
     deviceData.setEnglish(true);
-    deviceData.setRows({QStringLiteral("timestamp_us"), QStringLiteral("note")},
-                       {{QStringLiteral("1000"), QStringLiteral("a")},
-                        {QStringLiteral("2000"), QStringLiteral("b")}});
+    QVector<quint64> timestamps;
+    QVector<QStringList> rows;
+    timestamps.reserve(100);
+    rows.reserve(100);
+    for (int index = 0; index < 100; ++index)
+    {
+        const quint64 timestamp = static_cast<quint64>(index + 1) * 1000;
+        timestamps.push_back(timestamp);
+        rows.push_back({QString::number(timestamp), QStringLiteral("row %1").arg(index + 1)});
+    }
+    deviceData.setRows(
+        {QStringLiteral("timestamp_us"), QStringLiteral("note")},
+        std::move(rows));
     auto *table = deviceData.findChild<QTableView *>(QStringLiteral("sessionViewerCsvTable"));
-    require(table && table->model()->rowCount() == 2, "device data page owns its virtual CSV table");
+    require(table && table->model()->rowCount() == 100, "device data page owns its virtual CSV table");
     deviceData.resize(960, deviceData.minimumSizeHint().height());
     deviceData.show();
     QCoreApplication::processEvents();
     require(table->viewport()->height() >= table->verticalHeader()->defaultSectionSize() * 5,
             "device data page keeps at least five CSV rows visible");
-    const SessionCsvHighlightResult highlight = deviceData.highlightTimestamp({1000, 2000}, 1700, true);
+    const SessionCsvHighlightResult highlight = deviceData.highlightTimestamp(timestamps, 1700, true);
     require(highlight.primaryRow == 1, "device data page selects the closest timestamp row");
     require(highlight.description.contains(QStringLiteral("CSV row")),
             "device data page reports highlighted row timing");
+
+    const SessionCsvHighlightResult distantHighlight =
+        deviceData.highlightTimestamp(timestamps, 90'400, true);
+    QCoreApplication::processEvents();
+    const QModelIndex distantIndex = table->model()->index(distantHighlight.primaryRow, 0);
+    const QRect distantRect = table->visualRect(distantIndex);
+    require(table->verticalScrollBar()->value() > 0 &&
+                table->viewport()->rect().intersects(distantRect),
+            "device data page scrolls the primary CSV match into view");
+    const int followedScrollValue = table->verticalScrollBar()->value();
+    deviceData.highlightTimestamp(timestamps, 10'000, false);
+    QCoreApplication::processEvents();
+    require(table->verticalScrollBar()->value() == followedScrollValue,
+            "device data page preserves CSV scroll position when following is disabled");
 
     SessionViewerWindow viewer;
     auto *splitter = viewer.findChild<QSplitter *>(QStringLiteral("sessionViewerContentSplitter"));
