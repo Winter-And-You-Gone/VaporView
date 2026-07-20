@@ -125,6 +125,7 @@ private:
     QString waveform_index_filename_;
     QString waveform_peak_index_filename_;
     QString raw_tcp_wave_filename_;
+    QString session_load_warning_;
     QString default_data_directory_;
     QString session_name_;
     QString start_time_utc_;

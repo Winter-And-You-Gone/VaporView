@@ -775,6 +775,7 @@ bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
 
     const QString normalized = QDir::fromNativeSeparators(sessionDirectory);
     session_directory_ = normalized;
+    session_load_warning_.clear();
     updateSessionLoadingProgress(is_english_ ? "Reading session metadata..." : "正在读取会话元数据...", 3);
     if (!loadSessionMetadata(normalized))
     {
@@ -824,8 +825,19 @@ bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
     recordStageTiming(is_english_ ? QStringLiteral("Viewer refresh") : QStringLiteral("界面刷新"));
     const QString summary = timingSummary();
     setProperty("_vvSessionLoadTimingSummary", summary);
-    overview_page_->setStatusToolTip(summary);
-    setStatusText(QString(is_english_ ? "Loaded session: %1" : "已加载会话: %1").arg(session_directory_));
+    QString statusText = QString(is_english_ ? "Loaded session: %1" : "已加载会话: %1").arg(session_directory_);
+    QString statusToolTip = summary;
+    if (!session_load_warning_.isEmpty())
+    {
+        statusText += is_english_
+            ? QStringLiteral(" — Warning: %1").arg(session_load_warning_)
+            : QStringLiteral(" —— 警告：%1").arg(session_load_warning_);
+        statusToolTip = statusToolTip.isEmpty()
+            ? session_load_warning_
+            : QStringLiteral("%1\n%2").arg(statusToolTip, session_load_warning_);
+    }
+    overview_page_->setStatusToolTip(statusToolTip);
+    setStatusText(statusText);
     finishSessionLoading();
     return true;
 }
@@ -992,6 +1004,7 @@ bool SessionViewerWindow::loadWaveformSegments()
         return false;
     }
 
+    session_load_warning_ = result.warning;
     waveform_catalog_ = std::move(result.catalog);
     total_waveform_frames_ = waveform_catalog_.frameCount;
     points_per_frame_ = waveform_catalog_.pointsPerFrame;

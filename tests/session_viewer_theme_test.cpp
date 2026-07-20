@@ -500,6 +500,45 @@ void testRawDataParserRejectsTruncatedFdilinkFrame()
     processEventsFor(100);
 }
 
+void testSessionViewerShowsRecoveredWaveformCatalogWarning()
+{
+    QTemporaryDir sessionDir;
+    require(sessionDir.isValid(), "temporary recovered waveform warning session directory");
+    writeTrajectorySessionWithRawTcpPeaks(sessionDir.path());
+
+    const QString rawPath = QDir(sessionDir.path()).filePath(QStringLiteral("raw/tcp_wave.dat"));
+    QFile rawFile(rawPath);
+    require(rawFile.exists(), "temporary raw tcp wave file exists before truncation");
+    require(rawFile.open(QIODevice::ReadWrite), "temporary raw tcp wave file can be reopened for truncation");
+    const qint64 originalSize = rawFile.size();
+    require(originalSize > 2, "temporary raw tcp wave file is large enough to truncate");
+    require(rawFile.resize(originalSize - 2), "temporary raw tcp wave file can be truncated at EOF");
+    rawFile.close();
+
+    SessionViewerWindow viewer;
+    viewer.setEnglish(true);
+    viewer.resize(1280, 800);
+    viewer.show();
+    processEventsFor(50);
+
+    require(viewer.openSessionPath(sessionDir.path()), "session viewer loads session with recovered raw tcp wave tail");
+    processEventsFor(100);
+
+    auto *statusLabel = viewer.findChild<QLabel *>(QStringLiteral("sessionViewerStatusLabel"));
+    require(statusLabel != nullptr, "session viewer exposes a status label");
+    const QString statusText = statusLabel->text();
+    const QString statusToolTip = statusLabel->toolTip();
+    const bool warningVisible =
+        statusText.contains(QStringLiteral("Truncated final raw DAT record")) ||
+        statusToolTip.contains(QStringLiteral("Truncated final raw DAT record"));
+    require(warningVisible, "session waveform recovery warning remains visible in the session viewer UI");
+    require(statusText.contains(QStringLiteral("Warning")) || statusToolTip.contains(QStringLiteral("Truncated final raw DAT record")),
+            "session viewer labels recovered waveform catalog as a warning");
+
+    viewer.close();
+    processEventsFor(100);
+}
+
 void testCsvViewportUsesNeutralBackground(SessionViewerWindow& viewer)
 {
     auto *table = viewer.findChild<QTableView *>(QStringLiteral("sessionViewerCsvTable"));
@@ -1381,6 +1420,7 @@ int main(int argc, char **argv)
     {
         testRawDataParserOpenIsNonBlocking();
         testRawDataParserRejectsTruncatedFdilinkFrame();
+        testSessionViewerShowsRecoveredWaveformCatalogWarning();
         testSessionViewerTrajectoryActionLifetime();
     }
     if (runsGroup(QStringLiteral("window-state")))

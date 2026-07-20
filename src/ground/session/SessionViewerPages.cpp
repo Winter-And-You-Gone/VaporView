@@ -178,6 +178,7 @@ SessionOverviewWidget::SessionOverviewWidget(QWidget *parent)
     controlLayout->addWidget(trajectory_view_btn_, 0, 4);
     controlLayout->addWidget(raw_data_parser_btn_, 0, 5);
     controlLayout->addWidget(clear_view_btn_, 0, 6);
+    status_label_->setObjectName(QStringLiteral("sessionViewerStatusLabel"));
     status_label_->setWordWrap(true);
     status_label_->setFocusPolicy(Qt::StrongFocus);
     controlLayout->addWidget(status_label_, 1, 0, 1, 7);
