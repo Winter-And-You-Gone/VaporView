@@ -35,6 +35,7 @@ QString formatSessionMeasuredRateText(const QVector<quint64>& timestampsUs,
 struct SessionOverviewSummary
 {
     QString sessionName;
+    QString recordingOrigin;
     QString startTime;
     QString endTime;
     QString duration;
@@ -86,6 +87,8 @@ private:
     QGridLayout *summary_layout_;
     QLabel *session_name_title_;
     QLabel *session_name_value_;
+    QLabel *recording_origin_title_;
+    QLabel *recording_origin_value_;
     QLabel *start_time_title_;
     QLabel *start_time_value_;
     QLabel *end_time_title_;

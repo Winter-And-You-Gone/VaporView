@@ -6,6 +6,7 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QHeaderView>
+#include <QLabel>
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QScrollBar>
@@ -41,6 +42,18 @@ QPushButton *buttonWithText(QWidget& widget, const QString& text)
     return nullptr;
 }
 
+QLabel *labelWithText(QWidget& widget, const QString& text)
+{
+    for (QLabel *label : widget.findChildren<QLabel *>())
+    {
+        if (label->text() == text)
+        {
+            return label;
+        }
+    }
+    return nullptr;
+}
+
 void testPages()
 {
     using namespace VaporView::Ground::SessionUi;
@@ -64,6 +77,13 @@ void testPages()
     overview.setControlsEnabled(false);
     require(!chooseButton->isEnabled() && !trajectoryButton->isEnabled(),
             "overview loading state disables commands");
+    SessionOverviewSummary summary;
+    summary.sessionName = QStringLiteral("test-session");
+    summary.recordingOrigin = QStringLiteral("Sky");
+    overview.setSummary(summary);
+    require(labelWithText(overview, QStringLiteral("Origin:")) != nullptr &&
+                labelWithText(overview, QStringLiteral("Sky")) != nullptr,
+            "overview summary displays the recording origin");
 
     SessionWaveformWidget waveform;
     require(waveform.findChild<QWidget *>(QStringLiteral("sessionViewerWaveformPlot")) != nullptr,

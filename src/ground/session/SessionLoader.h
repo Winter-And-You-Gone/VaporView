@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ground/SessionData.h"
+#include "shared/session/RecordingOrigin.h"
 
 #include <QString>
 #include <QtGlobal>
@@ -14,6 +15,7 @@ struct SessionMetadata
 {
     QString sessionDirectory;
     QString metadataFilename;
+    VaporView::Session::RecordingOrigin recordingOrigin = VaporView::Session::RecordingOrigin::Ground;
     QString sessionName;
     QString startTimeUtc;
     QString endTimeUtc;

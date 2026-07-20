@@ -1,5 +1,7 @@
 #include "ground/session/SessionLoader.h"
 #include "ground/session/SessionCsv.h"
+#include "shared/session/SessionManifest.h"
+#include "shared/session/SessionPackageLayout.h"
 
 #include <QDir>
 #include <QFile>
@@ -32,6 +34,20 @@ double haversineDistanceMeters(double lat1Deg, double lon1Deg, double lat2Deg, d
         std::sqrt(value),
         std::sqrt(std::max(0.0, 1.0 - value)));
     return kEarthRadiusM * angle;
+}
+
+QString nestedPathOrFallback(const QJsonObject& paths,
+                             const QString& primaryKey,
+                             const QString& legacyKey,
+                             const QString& fallback)
+{
+    const QString primary = paths.value(primaryKey).toString();
+    if (!primary.trimmed().isEmpty())
+    {
+        return primary;
+    }
+    const QString legacy = paths.value(legacyKey).toString();
+    return legacy.trimmed().isEmpty() ? fallback : legacy;
 }
 
 }  // namespace
@@ -86,6 +102,17 @@ SessionMetadataLoadResult SessionLoader::loadMetadata(const QString& sessionDire
     }
 
     const QJsonObject root = document.object();
+    const VaporView::Session::SessionManifestParseResult manifestResult =
+        VaporView::Session::sessionManifestFromJson(root);
+    if (!manifestResult.success)
+    {
+        result.error = QStringLiteral("Invalid session manifest %1: %2")
+                           .arg(metadataPath, manifestResult.error);
+        return result;
+    }
+    const VaporView::Session::SessionManifest& manifest = manifestResult.manifest;
+    const VaporView::Session::SessionPackageLayout& standardLayout =
+        VaporView::Session::standardSessionPackageLayout();
     const QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
     const QJsonObject rawFiles = root.value(QStringLiteral("raw_files")).toObject();
     const QJsonObject tcpWaveRaw = rawFiles.value(QStringLiteral("tcp_wave")).toObject();
@@ -93,30 +120,35 @@ SessionMetadataLoadResult SessionLoader::loadMetadata(const QString& sessionDire
     SessionMetadata& metadata = result.metadata;
     metadata.sessionDirectory = normalizedDirectory;
     metadata.metadataFilename = metadataPath;
-    metadata.sessionName = root.value(QStringLiteral("session_name"))
-                               .toString(QFileInfo(normalizedDirectory).fileName());
-    metadata.startTimeUtc = root.value(QStringLiteral("start_time_utc")).toString();
-    metadata.endTimeUtc = root.value(QStringLiteral("end_time_utc")).toString();
-    metadata.sensorRows = root.value(QStringLiteral("sensor_rows")).toVariant().toULongLong();
-    metadata.waveformFrames = root.value(QStringLiteral("waveform_frames")).toVariant().toULongLong();
-    metadata.waveformPointsPerFrame = root.value(QStringLiteral("waveform_points_per_frame")).toInt(50000);
-    metadata.sensorExportRateHz = root.value(QStringLiteral("sensor_export_rate_hz")).toInt(10);
-    metadata.waveformExportRateHz = root.value(QStringLiteral("waveform_export_rate_hz")).toInt(10);
-    metadata.waveformExportMode = root.value(QStringLiteral("waveform_export_mode"))
-                                      .toString(metadata.waveformExportRateHz > 0
-                                                    ? QStringLiteral("fixed_rate")
-                                                    : QStringLiteral("per_frame"));
+    metadata.recordingOrigin = manifest.recordingOrigin;
+    metadata.sessionName = manifest.sessionName.isEmpty()
+        ? QFileInfo(normalizedDirectory).fileName()
+        : manifest.sessionName;
+    metadata.startTimeUtc = manifest.startTimeUtc;
+    metadata.endTimeUtc = manifest.endTimeUtc;
+    metadata.sensorRows = manifest.counts.sensorRows;
+    metadata.waveformFrames = manifest.counts.waveformFrames;
+    metadata.waveformPointsPerFrame = manifest.waveformPointsPerFrame;
+    metadata.sensorExportRateHz = manifest.sensorExportRateHz;
+    metadata.waveformExportRateHz = manifest.waveformExportRateHz;
+    metadata.waveformExportMode = manifest.waveformExportMode;
 
     const QString csvRelativePath = paths.value(QStringLiteral("devices_csv"))
-                                        .toString(QStringLiteral("sensors/devices.csv"));
+                                        .toString(standardLayout.devicesCsvPath);
     const QString waveformRelativePath = paths.value(QStringLiteral("waveform_directory"))
                                              .toString(QStringLiteral("waveform"));
     const QString waveformIndexRelativePath = paths.value(QStringLiteral("waveform_index"))
                                                   .toString(QStringLiteral("waveform_index.csv"));
-    const QString waveformPeakIndexRelativePath = paths.value(QStringLiteral("waveform_peak_index"))
-                                                      .toString(QStringLiteral("raw/tcp_wave_peaks.csv"));
-    const QString rawTcpWaveRelativePath = tcpWaveRaw.value(QStringLiteral("path"))
-                                               .toString(QStringLiteral("raw/tcp_wave.dat"));
+    const QString waveformPeakIndexRelativePath = nestedPathOrFallback(
+        paths,
+        QStringLiteral("tcp_wave_peaks_csv"),
+        QStringLiteral("waveform_peak_index"),
+        standardLayout.tcpWavePeaksCsvPath);
+    QString rawTcpWaveRelativePath = tcpWaveRaw.value(QStringLiteral("path")).toString();
+    if (rawTcpWaveRelativePath.trimmed().isEmpty())
+    {
+        rawTcpWaveRelativePath = paths.value(QStringLiteral("tcp_wave_raw")).toString(standardLayout.tcpWaveRawPath);
+    }
 
     const QDir sessionDir(normalizedDirectory);
     metadata.sensorsCsvFilename = sessionDir.filePath(csvRelativePath);

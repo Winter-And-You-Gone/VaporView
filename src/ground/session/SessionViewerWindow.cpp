@@ -89,6 +89,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , raw_data_parser_window_(nullptr)
     , session_directory_()
     , metadata_filename_()
+    , recording_origin_(VaporView::Session::RecordingOrigin::Ground)
     , sensors_csv_filename_()
     , waveform_directory_()
     , waveform_index_filename_()
@@ -517,6 +518,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     cancelBackgroundWaveformPeakSeries(false);
     session_directory_.clear();
     metadata_filename_.clear();
+    recording_origin_ = VaporView::Session::RecordingOrigin::Ground;
     sensors_csv_filename_.clear();
     waveform_directory_.clear();
     waveform_index_filename_.clear();
@@ -859,6 +861,7 @@ bool SessionViewerWindow::loadSessionMetadata(const QString& sessionDirectory)
 
     const VaporView::Ground::SessionMetadata& metadata = result.metadata;
     metadata_filename_ = metadata.metadataFilename;
+    recording_origin_ = metadata.recordingOrigin;
     session_name_ = metadata.sessionName;
     start_time_utc_ = metadata.startTimeUtc;
     end_time_utc_ = metadata.endTimeUtc;
@@ -1190,6 +1193,9 @@ void SessionViewerWindow::updateSummaryLabels()
     const bool hasSession = !session_name_.isEmpty() || !metadata_filename_.isEmpty();
     SessionOverviewSummary summary;
     summary.sessionName = session_name_.isEmpty() ? QStringLiteral("---") : session_name_;
+    summary.recordingOrigin = hasSession
+        ? VaporView::Session::recordingOriginDisplayText(recording_origin_, is_english_)
+        : QStringLiteral("---");
     summary.startTime = VaporView::formatSessionMetadataTimeBeijing(start_time_utc_);
     summary.endTime = VaporView::formatSessionMetadataTimeBeijing(end_time_utc_);
     summary.duration = hasSession

@@ -202,6 +202,7 @@ SessionOverviewWidget::SessionOverviewWidget(QWidget *parent)
         value->setWordWrap(false);
     };
     createSummaryRow(session_name_title_, session_name_value_);
+    createSummaryRow(recording_origin_title_, recording_origin_value_);
     createSummaryRow(start_time_title_, start_time_value_);
     createSummaryRow(end_time_title_, end_time_value_);
     createSummaryRow(duration_title_, duration_value_);
@@ -231,6 +232,7 @@ void SessionOverviewWidget::setEnglish(bool english)
     clear_view_btn_->setText(english ? QStringLiteral("Clear Page") : QStringLiteral("清空页面"));
     summary_group_->setTitle(english ? QStringLiteral("Data Summary") : QStringLiteral("数据概览"));
     session_name_title_->setText(english ? QStringLiteral("Session:") : QStringLiteral("会话:"));
+    recording_origin_title_->setText(english ? QStringLiteral("Origin:") : QStringLiteral("记录来源:"));
     start_time_title_->setText(english ? QStringLiteral("Start:") : QStringLiteral("开始时间:"));
     end_time_title_->setText(english ? QStringLiteral("End:") : QStringLiteral("结束时间:"));
     duration_title_->setText(english ? QStringLiteral("Duration:") : QStringLiteral("记录时间:"));
@@ -291,6 +293,7 @@ void SessionOverviewWidget::setTrajectoryAvailable(bool available)
 void SessionOverviewWidget::setSummary(const SessionOverviewSummary& summary)
 {
     session_name_value_->setText(summary.sessionName);
+    recording_origin_value_->setText(summary.recordingOrigin);
     start_time_value_->setText(summary.startTime);
     end_time_value_->setText(summary.endTime);
     duration_value_->setText(summary.duration);
@@ -310,6 +313,7 @@ void SessionOverviewWidget::relayoutSummaryFields()
 
     const QVector<QPair<QLabel*, QLabel*>> longFields = {
         {session_name_title_, session_name_value_},
+        {recording_origin_title_, recording_origin_value_},
         {start_time_title_, start_time_value_},
         {end_time_title_, end_time_value_},
     };

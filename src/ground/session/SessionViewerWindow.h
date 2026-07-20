@@ -3,6 +3,7 @@
 
 #include "ground/session/SessionTrajectoryController.h"
 #include "ground/session/SessionWaveformRepository.h"
+#include "shared/session/RecordingOrigin.h"
 
 #include <QMainWindow>
 #include <QStringList>
@@ -120,6 +121,7 @@ private:
 
     QString session_directory_;
     QString metadata_filename_;
+    VaporView::Session::RecordingOrigin recording_origin_;
     QString sensors_csv_filename_;
     QString waveform_directory_;
     QString waveform_index_filename_;

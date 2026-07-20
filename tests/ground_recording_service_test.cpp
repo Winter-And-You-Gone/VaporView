@@ -135,12 +135,31 @@ int main(int argc, char **argv)
     const QJsonDocument metadata = QJsonDocument::fromJson(metadataFile.readAll());
     require(metadata.isObject(), "session metadata object");
     const QJsonObject root = metadata.object();
+    require(root.value(QStringLiteral("recording_origin")).toString() == QStringLiteral("ground"),
+            "metadata recording origin");
+    require(!root.contains(QStringLiteral("mode")), "new ground metadata omits legacy mode");
     require(!root.value(QStringLiteral("end_time_utc")).toString().isEmpty(),
             "session end timestamp");
+    const QJsonObject counts = root.value(QStringLiteral("counts")).toObject();
+    require(counts.value(QStringLiteral("sensor_rows")).toString().toULongLong() >= 2,
+            "metadata sensor row count");
     require(root.value(QStringLiteral("raw_files")).toObject()
                 .value(QStringLiteral("epsilon")).toObject()
-                .value(QStringLiteral("record_count")).toString() == QStringLiteral("1"),
+                .value(QStringLiteral("records")).toString() == QStringLiteral("1"),
             "metadata raw epsilon count");
+    const QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
+    require(paths.value(QStringLiteral("devices_csv")).toString() == QStringLiteral("sensors/devices.csv"),
+            "metadata devices path");
+    require(paths.value(QStringLiteral("temperature_controller_csv")).toString()
+                == QStringLiteral("sensors/rd105_temperature_controller.csv"),
+            "metadata temperature controller path");
+    require(paths.value(QStringLiteral("waveform_features_csv")).toString()
+                == QStringLiteral("sensors/waveform_features.csv"),
+            "metadata waveform features path");
+    require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/rd105_temperature_controller.csv"))),
+            "temperature controller csv exists");
+    require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/waveform_features.csv"))),
+            "waveform features csv exists");
 
     QFile rawFile(QDir(sessionDirectory).filePath(QStringLiteral("raw/epsilon.dat")));
     require(rawFile.open(QIODevice::ReadOnly), "open raw epsilon file");

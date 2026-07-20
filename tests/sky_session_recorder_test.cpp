@@ -145,7 +145,7 @@ int main(int argc, char *argv[])
     require(QFileInfo::exists(sessionDir), "session directory");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/session.json")), "session metadata");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/devices.csv")), "devices csv");
-    require(QFileInfo::exists(sessionDir + QStringLiteral("/waveform_features.csv")), "waveform features csv");
+    require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/waveform_features.csv")), "waveform features csv");
     require(!QFileInfo::exists(sessionDir + QStringLiteral("/waveform_index.csv")), "no waveform index csv");
     require(!QFileInfo::exists(sessionDir + QStringLiteral("/waveforms")), "no waveform bin directory");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/epsilon.dat")), "epsilon raw dat");
@@ -209,7 +209,7 @@ int main(int argc, char *argv[])
     require(deviceCells.at(74) == QStringLiteral("120.125000"), "lidar csv precision");
     require(deviceCells.at(75) == QStringLiteral("180"), "lidar strength csv value");
 
-    QFile featuresFile(sessionDir + QStringLiteral("/waveform_features.csv"));
+    QFile featuresFile(sessionDir + QStringLiteral("/sensors/waveform_features.csv"));
     require(featuresFile.open(QIODevice::ReadOnly | QIODevice::Text), "open waveform features csv");
     const QStringList featureLines = QString::fromUtf8(featuresFile.readAll()).trimmed().split('\n');
     require(featureLines.size() == 2, "waveform features csv row count");
@@ -243,19 +243,25 @@ int main(int argc, char *argv[])
     const QJsonDocument metadata = QJsonDocument::fromJson(metadataFile.readAll());
     require(metadata.isObject(), "metadata object");
     const QJsonObject root = metadata.object();
+    require(root.value(QStringLiteral("recording_origin")).toString() == QStringLiteral("sky"),
+            "metadata recording origin");
+    require(!root.contains(QStringLiteral("mode")), "new sky metadata omits legacy mode");
     require(root.value(QStringLiteral("waveform_export_mode")).toString() == QStringLiteral("per_frame"),
             "per-frame waveform export mode");
     require(root.value(QStringLiteral("waveform_points_per_frame")).toInt() == 4,
             "waveform points per frame");
-    require(root.value(QStringLiteral("waveform_frames")).toString().toULongLong() == 1,
+    const QJsonObject counts = root.value(QStringLiteral("counts")).toObject();
+    require(counts.value(QStringLiteral("waveform_frames")).toString().toULongLong() == 1,
             "waveform frame count");
+    require(counts.value(QStringLiteral("waveform_feature_rows")).toString().toULongLong() == 1,
+            "waveform feature row count");
     require(root.value(QStringLiteral("waveform_file_count")).toString().toULongLong() == 1,
             "waveform file count");
     const QJsonObject rawFiles = root.value(QStringLiteral("raw_files")).toObject();
-    require(rawFiles.value(QStringLiteral("tcp_wave")).toObject().value(QStringLiteral("record_count")).toString().toULongLong() == 1,
+    require(rawFiles.value(QStringLiteral("tcp_wave")).toObject().value(QStringLiteral("records")).toString().toULongLong() == 1,
             "tcp wave raw record count");
     const QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
-    require(paths.value(QStringLiteral("waveform_peak_index")).toString() == QStringLiteral("raw/tcp_wave_peaks.csv"),
+    require(paths.value(QStringLiteral("tcp_wave_peaks_csv")).toString() == QStringLiteral("raw/tcp_wave_peaks.csv"),
             "metadata waveform peak index path");
 
     QFile rawFile(sessionDir + QStringLiteral("/raw/tcp_wave.dat"));

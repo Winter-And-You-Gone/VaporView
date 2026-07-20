@@ -1,9 +1,22 @@
 #include "shared/session/SessionSensorCsv.h"
+#include "shared/session/RecordingOrigin.h"
+#include "shared/session/SessionManifest.h"
+#include "shared/session/SessionPackageInitializer.h"
+#include "shared/session/SessionPackageLayout.h"
 #include "shared/session/UnifiedRawDat.h"
 
 #include <QBuffer>
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QDir>
+#include <QDirIterator>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QSet>
+#include <QTemporaryDir>
 #include <QtEndian>
 
 #include <cstdlib>
@@ -22,6 +35,116 @@ void require(bool condition, const char *message)
         std::cerr << "FAIL: " << message << '\n';
         std::exit(1);
     }
+}
+
+QSet<QString> relativeEntries(const QString& rootPath, QDir::Filters filters)
+{
+    QSet<QString> entries;
+    QDir root(rootPath);
+    QDirIterator iterator(rootPath,
+                          filters | QDir::NoDotAndDotDot,
+                          QDirIterator::Subdirectories);
+    while (iterator.hasNext())
+    {
+        iterator.next();
+        entries.insert(QDir::fromNativeSeparators(root.relativeFilePath(iterator.filePath())));
+    }
+    return entries;
+}
+
+QByteArray readFileBytes(const QString& filename)
+{
+    QFile file(filename);
+    require(file.open(QIODevice::ReadOnly), "file opens for reading");
+    return file.readAll();
+}
+
+QByteArray withoutUtf8Bom(QByteArray bytes)
+{
+    const QByteArray bom = QByteArray::fromHex("efbbbf");
+    if (bytes.startsWith(bom))
+    {
+        bytes.remove(0, bom.size());
+    }
+    return bytes;
+}
+
+QByteArray firstTextLine(QByteArray bytes)
+{
+    bytes = withoutUtf8Bom(std::move(bytes));
+    const qsizetype newline = bytes.indexOf('\n');
+    QByteArray line = newline >= 0 ? bytes.left(newline) : bytes;
+    if (line.endsWith('\r'))
+    {
+        line.chop(1);
+    }
+    return line;
+}
+
+QByteArray headerLine(QString header)
+{
+    QByteArray bytes = header.toUtf8();
+    if (bytes.endsWith('\n'))
+    {
+        bytes.chop(1);
+    }
+    if (bytes.endsWith('\r'))
+    {
+        bytes.chop(1);
+    }
+    return bytes;
+}
+
+QJsonObject readJsonObject(const QString& filename)
+{
+    const QJsonDocument document = QJsonDocument::fromJson(readFileBytes(filename));
+    require(document.isObject(), "json document is an object");
+    return document.object();
+}
+
+void requireSameKeySet(const QJsonObject& left, const QJsonObject& right, const char *message)
+{
+    QStringList leftKeys = left.keys();
+    QStringList rightKeys = right.keys();
+    leftKeys.sort();
+    rightKeys.sort();
+    require(leftKeys == rightKeys, message);
+}
+
+void requireSameJsonTypes(const QJsonValue& left, const QJsonValue& right, const QString& path)
+{
+    require(left.type() == right.type(), path.toUtf8().constData());
+    if (left.isObject())
+    {
+        const QJsonObject leftObject = left.toObject();
+        const QJsonObject rightObject = right.toObject();
+        requireSameKeySet(leftObject, rightObject, path.toUtf8().constData());
+        for (const QString& key : leftObject.keys())
+        {
+            requireSameJsonTypes(leftObject.value(key),
+                                 rightObject.value(key),
+                                 path + QLatin1Char('.') + key);
+        }
+    }
+}
+
+VaporView::Session::SessionPackageInitResult initializeTestPackage(
+    const QString& outputDirectory,
+    VaporView::Session::RecordingOrigin origin)
+{
+    VaporView::Session::SessionPackageInitOptions options;
+    options.origin = origin;
+    options.sessionName = QStringLiteral("session_format_test");
+    options.outputDirectory = outputDirectory;
+    options.softwareVersion = QStringLiteral("test");
+    options.startTimeUtc = QStringLiteral("2026-07-20T00:00:00.000Z");
+    options.startTimeUs = 123456789u;
+    options.sensorExportRateHz = 50;
+    options.otherDevicesExportRateHz = 10;
+    options.waveformExportRateHz = 0;
+    options.waveformPointsPerFrame = 50000;
+    options.initialDeviceConfig.insert(QStringLiteral("schema"), QStringLiteral("test"));
+    return VaporView::Session::initializeSessionPackage(options);
 }
 
 template <typename T>
@@ -327,6 +450,196 @@ void testSensorCsvCompatibility()
             "devices.csv escaping is unchanged");
 }
 
+void testSessionPackageInitializerCreatesIdenticalGroundAndSkyPackages()
+{
+    using namespace VaporView::Session;
+
+    QTemporaryDir groundRoot;
+    QTemporaryDir skyRoot;
+    require(groundRoot.isValid() && skyRoot.isValid(), "temporary package roots");
+
+    const SessionPackageInitResult ground =
+        initializeTestPackage(groundRoot.path(), RecordingOrigin::Ground);
+    const SessionPackageInitResult sky =
+        initializeTestPackage(skyRoot.path(), RecordingOrigin::Sky);
+    require(ground.success && sky.success, "ground and sky package initialization succeeds");
+
+    const QSet<QString> groundDirectories =
+        relativeEntries(ground.sessionDirectory, QDir::Dirs);
+    const QSet<QString> skyDirectories =
+        relativeEntries(sky.sessionDirectory, QDir::Dirs);
+    QSet<QString> expectedDirectories;
+    for (const QString& path : standardSessionDirectories())
+    {
+        expectedDirectories.insert(path);
+    }
+    require(groundDirectories == expectedDirectories, "ground standard directory set");
+    require(skyDirectories == expectedDirectories, "sky standard directory set");
+    require(groundDirectories == skyDirectories, "ground and sky directory sets match");
+
+    const QSet<QString> groundFiles =
+        relativeEntries(ground.sessionDirectory, QDir::Files);
+    const QSet<QString> skyFiles =
+        relativeEntries(sky.sessionDirectory, QDir::Files);
+    QSet<QString> expectedFiles;
+    for (const QString& path : standardSessionFiles())
+    {
+        expectedFiles.insert(path);
+    }
+    require(groundFiles == expectedFiles, "ground standard file set");
+    require(skyFiles == expectedFiles, "sky standard file set");
+    require(groundFiles == skyFiles, "ground and sky file sets match");
+
+    const SessionPackageLayout& layout = standardSessionPackageLayout();
+    require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.devicesCsvPath)))
+                == headerLine(VaporView::SessionSensorCsv::header()),
+            "standard devices.csv header exists");
+    require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.temperatureControllerCsvPath)))
+                == headerLine(temperatureControllerCsvHeader()),
+            "standard temperature controller header exists");
+    require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.waveformFeaturesCsvPath)))
+                == headerLine(waveformFeaturesCsvHeader()),
+            "standard waveform features header exists");
+    require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.tcpWavePeaksCsvPath)))
+                == headerLine(tcpWavePeaksCsvHeader()),
+            "standard tcp wave peaks header exists");
+    require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.eventLogPath)))
+                == headerLine(eventLogCsvHeader()),
+            "standard event log header exists");
+    require(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.errorLogPath)).isEmpty(),
+            "standard error log starts empty");
+    require(readJsonObject(sessionPackageFilePath(ground.sessionDirectory, layout.deviceConfigPath))
+                .value(QStringLiteral("schema")).toString() == QStringLiteral("test"),
+            "standard device config is valid json");
+    require(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.rawFormatDocumentPath))
+                .contains("built-in VaporView unified RAW DAT format"),
+            "raw_dat_format.md is generated from built-in text");
+
+    for (const RawFileDefinition& definition : standardRawFileDefinitions())
+    {
+        const QString groundRawPath = sessionPackageFilePath(ground.sessionDirectory, definition.relativePath);
+        const QString skyRawPath = sessionPackageFilePath(sky.sessionDirectory, definition.relativePath);
+        require(readFileBytes(groundRawPath) == readFileBytes(skyRawPath),
+                "ground and sky empty raw header bytes match");
+
+        QFile rawFile(groundRawPath);
+        require(rawFile.open(QIODevice::ReadOnly), "standard raw file opens");
+        RawScanOptions options;
+        options.expectedSourceId = definition.sourceId;
+        const RawScanResult scanResult = scan(rawFile, options);
+        require(scanResult.success() && scanResult.records.isEmpty(),
+                "standard zero-record raw file scans");
+        require(scanResult.fileHeader.sourceId == definition.sourceId,
+                "standard raw file source id matches definition");
+    }
+}
+
+void testSessionManifestSchemaAndOriginCompatibility()
+{
+    using namespace VaporView::Session;
+
+    QTemporaryDir groundRoot;
+    QTemporaryDir skyRoot;
+    require(groundRoot.isValid() && skyRoot.isValid(), "temporary manifest roots");
+    const SessionPackageInitResult ground =
+        initializeTestPackage(groundRoot.path(), RecordingOrigin::Ground);
+    const SessionPackageInitResult sky =
+        initializeTestPackage(skyRoot.path(), RecordingOrigin::Sky);
+    require(ground.success && sky.success, "manifest packages initialize");
+
+    const SessionPackageLayout& layout = standardSessionPackageLayout();
+    const QJsonObject groundJson =
+        readJsonObject(sessionPackageFilePath(ground.sessionDirectory, layout.manifestPath));
+    const QJsonObject skyJson =
+        readJsonObject(sessionPackageFilePath(sky.sessionDirectory, layout.manifestPath));
+    requireSameKeySet(groundJson, skyJson, "manifest top-level key sets match");
+    requireSameKeySet(groundJson.value(QStringLiteral("capture")).toObject(),
+                      skyJson.value(QStringLiteral("capture")).toObject(),
+                      "manifest capture key sets match");
+    requireSameKeySet(groundJson.value(QStringLiteral("counts")).toObject(),
+                      skyJson.value(QStringLiteral("counts")).toObject(),
+                      "manifest counts key sets match");
+    requireSameKeySet(groundJson.value(QStringLiteral("paths")).toObject(),
+                      skyJson.value(QStringLiteral("paths")).toObject(),
+                      "manifest paths key sets match");
+    requireSameKeySet(groundJson.value(QStringLiteral("raw_files")).toObject(),
+                      skyJson.value(QStringLiteral("raw_files")).toObject(),
+                      "manifest raw_files key sets match");
+    requireSameJsonTypes(QJsonValue(groundJson), QJsonValue(skyJson), QStringLiteral("manifest"));
+    for (const QString& key : groundJson.keys())
+    {
+        if (key == QStringLiteral("recording_origin"))
+        {
+            continue;
+        }
+        require(groundJson.value(key) == skyJson.value(key),
+                "manifest values differ only by recording_origin");
+    }
+
+    require(groundJson.value(QStringLiteral("recording_origin")).toString() == QStringLiteral("ground"),
+            "ground manifest origin");
+    require(skyJson.value(QStringLiteral("recording_origin")).toString() == QStringLiteral("sky"),
+            "sky manifest origin");
+    require(!groundJson.contains(QStringLiteral("mode")) && !skyJson.contains(QStringLiteral("mode")),
+            "new manifests do not write legacy mode");
+
+    const QJsonObject capture = groundJson.value(QStringLiteral("capture")).toObject();
+    require(capture.value(QStringLiteral("telemetry_transport")).isNull() &&
+                capture.value(QStringLiteral("telemetry_endpoint")).isNull() &&
+                capture.value(QStringLiteral("telemetry_port")).isNull() &&
+                capture.value(QStringLiteral("telemetry_baud")).isNull(),
+            "empty capture fields are explicit nulls");
+    const QJsonObject counts = groundJson.value(QStringLiteral("counts")).toObject();
+    require(counts.value(QStringLiteral("sensor_rows")).toString() == QStringLiteral("0") &&
+                counts.value(QStringLiteral("temperature_controller_rows")).toString() == QStringLiteral("0") &&
+                counts.value(QStringLiteral("waveform_frames")).toString() == QStringLiteral("0") &&
+                counts.value(QStringLiteral("waveform_feature_rows")).toString() == QStringLiteral("0") &&
+                counts.value(QStringLiteral("event_rows")).toString() == QStringLiteral("0") &&
+                counts.value(QStringLiteral("error_rows")).toString() == QStringLiteral("0"),
+            "zero counts remain present as strings");
+    const QJsonObject rawFiles = groundJson.value(QStringLiteral("raw_files")).toObject();
+    for (const RawFileDefinition& definition : standardRawFileDefinitions())
+    {
+        const QJsonObject raw = rawFiles.value(definition.key).toObject();
+        require(raw.value(QStringLiteral("path")).toString() == definition.relativePath,
+                "raw file manifest path matches layout");
+        require(raw.value(QStringLiteral("source_id")).toInt() == definition.sourceId,
+                "raw file manifest source id matches layout");
+        require(raw.value(QStringLiteral("format_version")).toInt() == kCurrentFormatVersion,
+                "raw file manifest format version matches current format");
+        require(raw.value(QStringLiteral("records")).toString() == QStringLiteral("0"),
+                "raw file zero records remain present as strings");
+    }
+
+    const auto groundOrigin = recordingOriginFromString(QStringLiteral("ground"));
+    const auto skyOrigin = recordingOriginFromString(QStringLiteral("sky"));
+    require(groundOrigin.has_value() && *groundOrigin == RecordingOrigin::Ground,
+            "recording origin parses ground");
+    require(skyOrigin.has_value() && *skyOrigin == RecordingOrigin::Sky,
+            "recording origin parses sky");
+    require(!recordingOriginFromString(QStringLiteral("air")).has_value(),
+            "invalid recording origin is rejected");
+
+    QJsonObject legacySky;
+    legacySky.insert(QStringLiteral("mode"), QStringLiteral("sky"));
+    const SessionManifestParseResult legacySkyResult = sessionManifestFromJson(legacySky);
+    require(legacySkyResult.success &&
+                legacySkyResult.manifest.recordingOrigin == RecordingOrigin::Sky,
+            "legacy mode=sky parses as sky");
+
+    QJsonObject legacyGround;
+    legacyGround.insert(QStringLiteral("session_name"), QStringLiteral("legacy_ground"));
+    const SessionManifestParseResult legacyGroundResult = sessionManifestFromJson(legacyGround);
+    require(legacyGroundResult.success &&
+                legacyGroundResult.manifest.recordingOrigin == RecordingOrigin::Ground,
+            "missing origin parses as legacy ground");
+
+    QJsonObject invalidOrigin;
+    invalidOrigin.insert(QStringLiteral("recording_origin"), QStringLiteral("air"));
+    require(!sessionManifestFromJson(invalidOrigin).success,
+            "invalid manifest recording_origin fails parsing");
+}
+
 }  // namespace
 
 int main(int argc, char *argv[])
@@ -338,6 +651,8 @@ int main(int argc, char *argv[])
     testTruncatedTailRecovery();
     testCorruptionRemainsFatal();
     testSensorCsvCompatibility();
+    testSessionPackageInitializerCreatesIdenticalGroundAndSkyPackages();
+    testSessionManifestSchemaAndOriginCompatibility();
     std::cout << "session_format_test passed\n";
     return 0;
 }

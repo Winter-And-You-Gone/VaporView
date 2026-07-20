@@ -193,8 +193,10 @@ profile sequence, direct-port configuration, and restart behavior.
 ```mermaid
 flowchart LR
   Samples["device samples and raw frames"] --> GRS["GroundRecordingService"]
-  GRS --> Layout["RecordingSessionLayout"]
-  Layout --> Files["compatible session files"]
+  Sky["SkySessionRecorder"] --> Init["SessionPackageInitializer"]
+  GRS --> Init
+  Init --> Layout["SessionPackageLayout + SessionManifest"]
+  Layout --> Files["unified Ground/Sky session package"]
   Files --> Loader["SessionLoader / SessionCsv"]
   Loader --> Index["SessionIndex / SessionWaveformRepository"]
   Index --> Playback["SessionPlaybackController / SessionTimelineModel"]
@@ -206,8 +208,10 @@ flowchart LR
 Session file parsing and export, indexing, waveform lookup, time formatting,
 playback state, and timeline bounds are independent of QWidget. The viewer
 owns layout, user gestures, table/plot presentation, and delegates core work.
-Historical paths and CSV/raw formats remain centralized in
-`RecordingSessionLayout`, `SessionCsv`, and `vaporview_session_format`.
+The standard Ground/Sky session package is centralized in
+`SessionPackageLayout`, `SessionPackageInitializer`, `SessionManifest`, and
+`vaporview_session_format`. Historical loading remains tolerant of old root
+counters, legacy `mode=sky`, and old waveform path keys.
 
 ### RTK, trajectory, waveform, and map boundaries
 
@@ -262,7 +266,8 @@ Behavior moved out of the window includes:
 - RD105 confirmed-state mapping: `TemperatureCommandState`;
 - per-panel telemetry/rate fan-out: `DevicePanelCoordinator`;
 - recording files and scheduling: `GroundRecordingService`,
-  `RecordingSessionLayout`, and `RecordingScheduleController`;
+  shared session package helpers, `RecordingSessionLayout`, and
+  `RecordingScheduleController`;
 - map lifecycle: `Map3DController`.
 
 `GroundMainWindowState` is private implementation storage, not a service or a
@@ -280,7 +285,9 @@ responsibilities are separate and directly testable:
 - play/pause/seek/speed: `SessionPlaybackController`;
 - slider/time bounds: `SessionTimelineModel`;
 - time conversion/formatting: `SessionTimeFormat`;
-- recording path compatibility: `RecordingSessionLayout` and `SessionCsv`;
+- recording path and manifest compatibility: `SessionLoader`,
+  `SessionPackageLayout`, `SessionManifest`, `RecordingSessionLayout`, and
+  `SessionCsv`;
 - trajectory CSV writing: `SessionExportService`;
 - trajectory state, peak attachment, and timeline mapping:
   `SessionTrajectoryController`;

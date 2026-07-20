@@ -1,5 +1,8 @@
 #include "SkySessionRecorder.h"
 #include "geo/CoordinateTransform.h"
+#include "shared/session/SessionManifest.h"
+#include "shared/session/SessionPackageInitializer.h"
+#include "shared/session/SessionPackageLayout.h"
 #include "shared/session/SessionSensorCsv.h"
 #include "shared/session/UnifiedRawDat.h"
 
@@ -22,9 +25,6 @@ namespace VaporView
 {
 namespace
 {
-constexpr const char *kTcpWavePeakIndexCsvHeader =
-    "host_time_us,peak_value,peak_index,point_count,search_start_index,search_end_index\n";
-
 bool hasUsableEpsilonLlh(const EpsilonData& data)
 {
     return std::isfinite(data.latitude_deg) &&
@@ -188,6 +188,40 @@ QString peakValueCsvText(float value)
         : QString();
 }
 
+QString applicationSoftwareVersion()
+{
+    return QCoreApplication::applicationVersion().isEmpty()
+        ? QStringLiteral("dev")
+        : QCoreApplication::applicationVersion();
+}
+
+QJsonObject skyDeviceConfigJson(const QString& telemetryTransport,
+                                const QString& telemetryEndpoint,
+                                const QString& telemetryPort,
+                                int telemetryBaud)
+{
+    QJsonObject root;
+    root.insert(QStringLiteral("recording_origin"), QStringLiteral("sky"));
+    root.insert(QStringLiteral("epsilon_schema_version"), 1);
+    root.insert(QStringLiteral("raw_export_mode"), QStringLiteral("unified_raw_dat"));
+    root.insert(QStringLiteral("raw_dat_format_version"), static_cast<int>(SessionRawDat::kCurrentFormatVersion));
+    QJsonObject telemetry;
+    telemetry.insert(QStringLiteral("transport"), telemetryTransport.isEmpty()
+        ? QJsonValue(QJsonValue::Null)
+        : QJsonValue(telemetryTransport));
+    telemetry.insert(QStringLiteral("endpoint"), telemetryEndpoint.isEmpty()
+        ? QJsonValue(QJsonValue::Null)
+        : QJsonValue(telemetryEndpoint));
+    telemetry.insert(QStringLiteral("port"), telemetryPort.isEmpty()
+        ? QJsonValue(QJsonValue::Null)
+        : QJsonValue(telemetryPort));
+    telemetry.insert(QStringLiteral("baud"), telemetryBaud > 0
+        ? QJsonValue(telemetryBaud)
+        : QJsonValue(QJsonValue::Null));
+    root.insert(QStringLiteral("telemetry"), telemetry);
+    return root;
+}
+
 }  // namespace
 
 bool SkySessionRecorder::start(const QString& baseDirectory,
@@ -223,54 +257,57 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     closeFiles();
 
     const QString baseSessionName = QStringLiteral("session_%1").arg(timestampForSessionName());
+    session_start_time_utc_ = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    telemetry_port_ = telemetryPort;
+    telemetry_baud_ = telemetryBaud;
+    telemetry_transport_ = telemetryTransport.trimmed().isEmpty() ? QStringLiteral("serial") : telemetryTransport.trimmed();
+    telemetry_endpoint_ = telemetryEndpoint.trimmed().isEmpty() ? telemetryPort : telemetryEndpoint.trimmed();
+    recording_start_time_us_ = nowUs();
 
-    QDir recordsDir(baseDirectory);
-    if (!recordsDir.exists() && !recordsDir.mkpath(QStringLiteral(".")))
+    VaporView::Session::SessionPackageInitOptions initOptions;
+    initOptions.origin = VaporView::Session::RecordingOrigin::Sky;
+    initOptions.sessionName = baseSessionName;
+    initOptions.outputDirectory = baseDirectory;
+    initOptions.softwareVersion = applicationSoftwareVersion();
+    initOptions.startTimeUtc = session_start_time_utc_;
+    initOptions.startTimeUs = recording_start_time_us_;
+    initOptions.sensorExportRateHz = 0;
+    initOptions.otherDevicesExportRateHz = 0;
+    initOptions.waveformExportRateHz = 0;
+    initOptions.waveformPointsPerFrame = 0;
+    initOptions.capture.telemetryTransport = telemetry_transport_;
+    initOptions.capture.telemetryEndpoint = telemetry_endpoint_;
+    initOptions.capture.telemetryPort = telemetry_port_;
+    initOptions.capture.telemetryBaud = telemetry_baud_ > 0 ? QString::number(telemetry_baud_) : QString();
+    initOptions.initialDeviceConfig = skyDeviceConfigJson(telemetry_transport_,
+                                                          telemetry_endpoint_,
+                                                          telemetry_port_,
+                                                          telemetry_baud_);
+
+    const VaporView::Session::SessionPackageInitResult initResult =
+        VaporView::Session::initializeSessionPackage(initOptions);
+    if (!initResult.success)
     {
-        if (errorMessage) *errorMessage = QStringLiteral("cannot create recording directory");
+        if (errorMessage) *errorMessage = initResult.error;
         return false;
     }
 
-    QString finalSessionName = baseSessionName;
-    QString finalSessionDirectory = recordsDir.filePath(finalSessionName);
-    int suffix = 1;
-    while (QFileInfo::exists(finalSessionDirectory))
-    {
-        finalSessionName = QStringLiteral("%1_%2").arg(baseSessionName).arg(suffix++);
-        finalSessionDirectory = recordsDir.filePath(finalSessionName);
-    }
-
-    session_name_ = finalSessionName;
-    if (!recordsDir.mkpath(session_name_))
-    {
-        if (errorMessage) *errorMessage = QStringLiteral("cannot create session directory");
-        return false;
-    }
-
-    session_directory_ = finalSessionDirectory;
-    QDir sessionDir(session_directory_);
-    if (!sessionDir.mkpath(QStringLiteral("raw")) ||
-        !sessionDir.mkpath(QStringLiteral("sensors")) ||
-        !sessionDir.mkpath(QStringLiteral("logs")) ||
-        !sessionDir.mkpath(QStringLiteral("config")))
-    {
-        if (errorMessage) *errorMessage = QStringLiteral("cannot create session subdirectories");
-        return false;
-    }
-
-    session_metadata_filename_ = sessionDir.filePath(QStringLiteral("session.json"));
-    sensors_filename_ = sessionDir.filePath(QStringLiteral("sensors/devices.csv"));
-    feature_filename_ = sessionDir.filePath(QStringLiteral("waveform_features.csv"));
-    temperature_controller_filename_ = sessionDir.filePath(QStringLiteral("sensors/rd105_temperature_controller.csv"));
+    session_name_ = initResult.sessionName;
+    session_directory_ = initResult.sessionDirectory;
+    const VaporView::Session::SessionPackageLayout& packageLayout = initResult.layout;
+    session_metadata_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.manifestPath);
+    sensors_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.devicesCsvPath);
+    feature_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.waveformFeaturesCsvPath);
+    temperature_controller_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.temperatureControllerCsvPath);
     basic_record_file_.setFileName(sensors_filename_);
     feature_record_file_.setFileName(feature_filename_);
     temperature_controller_record_file_.setFileName(temperature_controller_filename_);
-    raw_epsilon_filename_ = sessionDir.filePath(QStringLiteral("raw/epsilon.dat"));
-    raw_ptb_filename_ = sessionDir.filePath(QStringLiteral("raw/ptb.dat"));
-    raw_hmp_filename_ = sessionDir.filePath(QStringLiteral("raw/hmp.dat"));
-    raw_lidar_filename_ = sessionDir.filePath(QStringLiteral("raw/lidar.dat"));
-    raw_tcp_wave_filename_ = sessionDir.filePath(QStringLiteral("raw/tcp_wave.dat"));
-    raw_tcp_wave_peak_index_filename_ = sessionDir.filePath(QStringLiteral("raw/tcp_wave_peaks.csv"));
+    raw_epsilon_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.epsilonRawPath);
+    raw_ptb_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.ptbRawPath);
+    raw_hmp_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.hmpRawPath);
+    raw_lidar_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.lidarRawPath);
+    raw_tcp_wave_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.tcpWaveRawPath);
+    raw_tcp_wave_peak_index_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.tcpWavePeaksCsvPath);
     raw_tcp_wave_peak_index_file_.setFileName(raw_tcp_wave_peak_index_filename_);
 
     if (!basic_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
@@ -292,23 +329,15 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     basicOut << SessionSensorCsv::header();
 
     QTextStream featureOut(&feature_record_file_);
-    featureOut << "host_time_us,epsilon_time_us,original_point_count,search_start_index,search_end_index,channel_id,peak,mean,rms,peak_index,peak_x,min_value,max_value,quality_flags\n";
+    featureOut << VaporView::Session::waveformFeaturesCsvHeader();
 
     QTextStream temperatureOut(&temperature_controller_record_file_);
-    temperatureOut << "host_time_us,valid,internal_temperature_c,error_code,"
-                      "ch1_target_c,ch1_measured_c,ch1_output_percent,ch1_output_current_a,ch1_enabled,ch1_mode,ch1_max_output_percent,ch1_kp,ch1_ki,ch1_kd,"
-                      "ch2_target_c,ch2_measured_c,ch2_output_percent,ch2_output_current_a,ch2_enabled,ch2_mode,ch2_max_output_percent,ch2_kp,ch2_ki,ch2_kd\n";
+    temperatureOut << VaporView::Session::temperatureControllerCsvHeader();
 
     QTextStream peakIndexOut(&raw_tcp_wave_peak_index_file_);
-    peakIndexOut << kTcpWavePeakIndexCsvHeader;
+    peakIndexOut << VaporView::Session::tcpWavePeaksCsvHeader();
     peakIndexOut.flush();
 
-    session_start_time_utc_ = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
-    telemetry_port_ = telemetryPort;
-    telemetry_baud_ = telemetryBaud;
-    telemetry_transport_ = telemetryTransport.trimmed().isEmpty() ? QStringLiteral("serial") : telemetryTransport.trimmed();
-    telemetry_endpoint_ = telemetryEndpoint.trimmed().isEmpty() ? telemetryPort : telemetryEndpoint.trimmed();
-    recording_start_time_us_ = nowUs();
     recording_elapsed_ms_ = 0;
     telemetry_row_count_ = 0;
     waveform_feature_count_ = 0;
@@ -802,68 +831,45 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
         return false;
     }
 
-    QDir sessionDir(session_directory_);
-    QJsonObject root;
-    root.insert(QStringLiteral("mode"), QStringLiteral("sky"));
-    root.insert(QStringLiteral("session_name"), session_name_);
-    root.insert(QStringLiteral("start_time_utc"), session_start_time_utc_);
-    root.insert(QStringLiteral("start_time_us"), QString::number(recording_start_time_us_));
-    root.insert(QStringLiteral("end_time_utc"), endTimeUtc);
-    root.insert(QStringLiteral("elapsed_ms"), QString::number(recordingElapsedMs()));
-    root.insert(QStringLiteral("software_version"), QCoreApplication::applicationVersion().isEmpty()
-        ? QStringLiteral("dev")
-        : QCoreApplication::applicationVersion());
-    root.insert(QStringLiteral("telemetry_port"), telemetry_port_);
-    root.insert(QStringLiteral("telemetry_baud"), telemetry_baud_);
-    root.insert(QStringLiteral("telemetry_transport"), telemetry_transport_);
-    root.insert(QStringLiteral("telemetry_endpoint"), telemetry_endpoint_);
-    root.insert(QStringLiteral("epsilon_schema_version"), QStringLiteral("epsilon.v1"));
-    root.insert(QStringLiteral("waveform_points_per_frame"),
-                static_cast<int>(std::min<quint64>(waveform_points_per_frame_,
-                                                   static_cast<quint64>(std::numeric_limits<int>::max()))));
-    root.insert(QStringLiteral("sensor_export_rate_hz"), 0);
-    root.insert(QStringLiteral("other_devices_export_rate_hz"), 0);
-    root.insert(QStringLiteral("raw_export_mode"), QStringLiteral("unified_raw_dat"));
-    root.insert(QStringLiteral("raw_dat_format_version"), static_cast<int>(SessionRawDat::kCurrentFormatVersion));
-    root.insert(QStringLiteral("waveform_export_rate_hz"), 0);
-    root.insert(QStringLiteral("waveform_export_mode"), QStringLiteral("per_frame"));
-    root.insert(QStringLiteral("waveform_value_type"), QStringLiteral("float32"));
-    root.insert(QStringLiteral("waveform_timestamp_type"), QStringLiteral("uint64"));
-    root.insert(QStringLiteral("timestamp_unit"), QStringLiteral("microseconds"));
-    root.insert(QStringLiteral("sensor_rows"), QString::number(telemetry_row_count_));
-    root.insert(QStringLiteral("temperature_controller_rows"), QString::number(temperature_controller_count_));
-    root.insert(QStringLiteral("waveform_features"), QString::number(waveform_feature_count_));
-    root.insert(QStringLiteral("waveform_frames"), QString::number(raw_tcp_wave_record_count_));
-    root.insert(QStringLiteral("waveform_file_count"), QString::number(waveform_file_count_));
-
-    QJsonObject rawFiles;
-    auto addRawFile = [&rawFiles, &sessionDir](const QString& name,
-                                               const QString& filename,
-                                               quint16 sourceId,
-                                               quint64 recordCount) {
-        QJsonObject raw;
-        raw.insert(QStringLiteral("path"), sessionDir.relativeFilePath(filename));
-        raw.insert(QStringLiteral("source_id"), static_cast<int>(sourceId));
-        raw.insert(QStringLiteral("format_version"), static_cast<int>(SessionRawDat::kCurrentFormatVersion));
-        raw.insert(QStringLiteral("record_count"), QString::number(recordCount));
-        rawFiles.insert(name, raw);
-    };
-    addRawFile(QStringLiteral("epsilon"), raw_epsilon_filename_, SessionRawDat::kSourceEpsilon, raw_epsilon_record_count_);
-    addRawFile(QStringLiteral("ptb"), raw_ptb_filename_, SessionRawDat::kSourcePtb, raw_ptb_record_count_);
-    addRawFile(QStringLiteral("hmp"), raw_hmp_filename_, SessionRawDat::kSourceHmp, raw_hmp_record_count_);
-    addRawFile(QStringLiteral("lidar"), raw_lidar_filename_, SessionRawDat::kSourceLidar, raw_lidar_record_count_);
-    addRawFile(QStringLiteral("tcp_wave"), raw_tcp_wave_filename_, SessionRawDat::kSourceTcpWave, raw_tcp_wave_record_count_);
-    root.insert(QStringLiteral("raw_files"), rawFiles);
-
-    QJsonObject paths;
-    paths.insert(QStringLiteral("raw_directory"), QStringLiteral("raw"));
-    paths.insert(QStringLiteral("devices_csv"), sessionDir.relativeFilePath(sensors_filename_));
-    paths.insert(QStringLiteral("temperature_controller_csv"), sessionDir.relativeFilePath(temperature_controller_filename_));
-    paths.insert(QStringLiteral("waveform_features"), sessionDir.relativeFilePath(feature_filename_));
-    paths.insert(QStringLiteral("waveform_peak_index"), sessionDir.relativeFilePath(raw_tcp_wave_peak_index_filename_));
-    root.insert(QStringLiteral("paths"), paths);
-
-    return writeJsonFileAtomically(session_metadata_filename_, root, errorMessage);
+    const quint64 endTimeUs = endTimeUtc.isEmpty() ? 0 : nowUs();
+    VaporView::Session::SessionManifest manifest;
+    manifest.recordingOrigin = VaporView::Session::RecordingOrigin::Sky;
+    manifest.sessionName = session_name_;
+    manifest.state = endTimeUtc.isEmpty()
+        ? VaporView::Session::SessionState::Recording
+        : VaporView::Session::SessionState::Complete;
+    manifest.startTimeUtc = session_start_time_utc_;
+    manifest.endTimeUtc = endTimeUtc;
+    manifest.startTimeUs = recording_start_time_us_;
+    manifest.endTimeUs = endTimeUs;
+    manifest.elapsedMs = recordingElapsedMs();
+    manifest.softwareVersion = applicationSoftwareVersion();
+    manifest.rawDatFormatVersion = static_cast<int>(SessionRawDat::kCurrentFormatVersion);
+    manifest.sensorExportRateHz = 0;
+    manifest.otherDevicesExportRateHz = 0;
+    manifest.waveformExportRateHz = 0;
+    manifest.waveformPointsPerFrame = static_cast<int>(std::min<quint64>(
+        waveform_points_per_frame_,
+        static_cast<quint64>(std::numeric_limits<int>::max())));
+    manifest.waveformFileCount = waveform_file_count_;
+    manifest.capture.telemetryTransport = telemetry_transport_;
+    manifest.capture.telemetryEndpoint = telemetry_endpoint_;
+    manifest.capture.telemetryPort = telemetry_port_;
+    manifest.capture.telemetryBaud = telemetry_baud_ > 0 ? QString::number(telemetry_baud_) : QString();
+    manifest.counts.sensorRows = telemetry_row_count_;
+    manifest.counts.temperatureControllerRows = temperature_controller_count_;
+    manifest.counts.waveformFrames = raw_tcp_wave_record_count_;
+    manifest.counts.waveformFeatureRows = waveform_feature_count_;
+    manifest.counts.eventRows = 0;
+    manifest.counts.errorRows = 0;
+    manifest.rawRecords.epsilon = raw_epsilon_record_count_;
+    manifest.rawRecords.ptb = raw_ptb_record_count_;
+    manifest.rawRecords.hmp = raw_hmp_record_count_;
+    manifest.rawRecords.lidar = raw_lidar_record_count_;
+    manifest.rawRecords.tcpWave = raw_tcp_wave_record_count_;
+    return VaporView::Session::writeSessionManifestAtomically(session_metadata_filename_,
+                                                              manifest,
+                                                              errorMessage);
 }
 
 void SkySessionRecorder::closeFiles()

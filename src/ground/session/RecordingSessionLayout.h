@@ -12,6 +12,8 @@ struct RecordingSessionLayout
     QString sessionName;
     QString sessionDirectory;
     QString sensorsFilename;
+    QString temperatureControllerFilename;
+    QString waveformFeaturesFilename;
     QString rawEpsilonFilename;
     QString rawPtbFilename;
     QString rawHmpFilename;

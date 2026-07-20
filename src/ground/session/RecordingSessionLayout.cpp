@@ -1,5 +1,7 @@
 #include "ground/session/RecordingSessionLayout.h"
 
+#include "shared/session/SessionPackageLayout.h"
+
 #include <QDir>
 #include <QFileInfo>
 
@@ -26,32 +28,38 @@ std::optional<RecordingSessionLayout> createRecordingSessionLayout(
     }
 
     QDir sessionDir(finalSessionDirectory);
-    if (!recordsDir.mkpath(finalSessionName) ||
-        !sessionDir.mkpath(QStringLiteral("sensors")) ||
-        !sessionDir.mkpath(QStringLiteral("raw")) ||
-        !sessionDir.mkpath(QStringLiteral("logs")) ||
-        !sessionDir.mkpath(QStringLiteral("config")))
+    if (!recordsDir.mkpath(finalSessionName))
     {
         return std::nullopt;
     }
+    for (const QString& relativeDirectory : VaporView::Session::standardSessionDirectories())
+    {
+        if (!sessionDir.mkpath(relativeDirectory))
+        {
+            return std::nullopt;
+        }
+    }
+
+    const VaporView::Session::SessionPackageLayout& packageLayout =
+        VaporView::Session::standardSessionPackageLayout();
 
     RecordingSessionLayout layout;
     layout.sessionName = finalSessionName;
     layout.sessionDirectory = QDir::fromNativeSeparators(finalSessionDirectory);
-    layout.sensorsFilename = QDir::fromNativeSeparators(sessionDir.filePath(QStringLiteral("sensors/devices.csv")));
-    layout.rawEpsilonFilename = QDir::fromNativeSeparators(sessionDir.filePath(QStringLiteral("raw/epsilon.dat")));
-    layout.rawPtbFilename = QDir::fromNativeSeparators(sessionDir.filePath(QStringLiteral("raw/ptb.dat")));
-    layout.rawHmpFilename = QDir::fromNativeSeparators(sessionDir.filePath(QStringLiteral("raw/hmp.dat")));
-    layout.rawLidarFilename = QDir::fromNativeSeparators(sessionDir.filePath(QStringLiteral("raw/lidar.dat")));
-    layout.rawTcpWaveFilename = QDir::fromNativeSeparators(sessionDir.filePath(QStringLiteral("raw/tcp_wave.dat")));
-    layout.rawTcpWavePeakIndexFilename =
-        QDir::fromNativeSeparators(sessionDir.filePath(QStringLiteral("raw/tcp_wave_peaks.csv")));
-    layout.rawDatDocumentFilename = QDir::fromNativeSeparators(sessionDir.filePath(QStringLiteral("raw_dat_format.md")));
-    layout.sessionMetadataFilename = QDir::fromNativeSeparators(sessionDir.filePath(QStringLiteral("session.json")));
-    layout.eventLogFilename = QDir::fromNativeSeparators(sessionDir.filePath(QStringLiteral("logs/event_log.csv")));
-    layout.errorLogFilename = QDir::fromNativeSeparators(sessionDir.filePath(QStringLiteral("logs/error_log.txt")));
-    layout.deviceConfigFilename =
-        QDir::fromNativeSeparators(sessionDir.filePath(QStringLiteral("config/device_config.json")));
+    layout.sensorsFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.devicesCsvPath);
+    layout.temperatureControllerFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.temperatureControllerCsvPath);
+    layout.waveformFeaturesFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.waveformFeaturesCsvPath);
+    layout.rawEpsilonFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.epsilonRawPath);
+    layout.rawPtbFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.ptbRawPath);
+    layout.rawHmpFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.hmpRawPath);
+    layout.rawLidarFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.lidarRawPath);
+    layout.rawTcpWaveFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.tcpWaveRawPath);
+    layout.rawTcpWavePeakIndexFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.tcpWavePeaksCsvPath);
+    layout.rawDatDocumentFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.rawFormatDocumentPath);
+    layout.sessionMetadataFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.manifestPath);
+    layout.eventLogFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.eventLogPath);
+    layout.errorLogFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.errorLogPath);
+    layout.deviceConfigFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.deviceConfigPath);
     return layout;
 }
 

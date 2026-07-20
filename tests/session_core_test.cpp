@@ -194,6 +194,8 @@ void testSessionMetadataLoading()
     require(result.success, "valid session metadata loads without a widget");
     require(result.metadata.sessionName == QStringLiteral("legacy-compatible"),
             "session name is preserved");
+    require(result.metadata.recordingOrigin == VaporView::Session::RecordingOrigin::Ground,
+            "legacy session without origin defaults to ground");
     require(result.metadata.sensorRows == 42 && result.metadata.waveformFrames == 7,
             "session counters are preserved");
     require(result.metadata.waveformExportMode == QStringLiteral("per_frame"),
@@ -202,6 +204,101 @@ void testSessionMetadataLoading()
             "custom sensor path is resolved relative to the session");
     require(result.metadata.rawTcpWaveFilename.endsWith(QStringLiteral("raw/tcp_wave.dat")),
             "missing raw path keeps the historical default");
+
+    QTemporaryDir skySessionDir;
+    require(skySessionDir.isValid(), "temporary sky session directory is available");
+    QFile skyMetadataFile(skySessionDir.filePath(QStringLiteral("session.json")));
+    require(skyMetadataFile.open(QIODevice::WriteOnly | QIODevice::Truncate),
+            "sky session metadata fixture opens");
+    skyMetadataFile.write(R"json({
+        "session_format": "vaporview.session",
+        "session_format_version": 1,
+        "recording_origin": "sky",
+        "session_name": "new-sky",
+        "state": "complete",
+        "start_time_utc": "2026-07-16T00:00:00Z",
+        "start_time_us": "1000",
+        "end_time_utc": "2026-07-16T00:00:01Z",
+        "end_time_us": "2000",
+        "elapsed_ms": "1000",
+        "software_version": "test",
+        "timestamp_unit": "microseconds",
+        "raw_dat_format_version": 2,
+        "epsilon_schema_version": 1,
+        "sensor_export_rate_hz": 25,
+        "other_devices_export_rate_hz": 25,
+        "raw_export_mode": "unified_raw_dat",
+        "waveform_export_rate_hz": 0,
+        "waveform_export_mode": "per_frame",
+        "waveform_value_type": "float32",
+        "waveform_timestamp_type": "uint64",
+        "waveform_points_per_frame": 50000,
+        "waveform_file_count": "1",
+        "capture": {
+            "telemetry_transport": null,
+            "telemetry_endpoint": null,
+            "telemetry_port": null,
+            "telemetry_baud": null
+        },
+        "counts": {
+            "sensor_rows": "11",
+            "temperature_controller_rows": "0",
+            "waveform_frames": "3",
+            "waveform_feature_rows": "0",
+            "event_rows": "0",
+            "error_rows": "0"
+        },
+        "paths": {
+            "devices_csv": "sensors/devices.csv",
+            "temperature_controller_csv": "sensors/rd105_temperature_controller.csv",
+            "waveform_features_csv": "sensors/waveform_features.csv",
+            "epsilon_raw": "raw/epsilon.dat",
+            "ptb_raw": "raw/ptb.dat",
+            "hmp_raw": "raw/hmp.dat",
+            "lidar_raw": "raw/lidar.dat",
+            "tcp_wave_raw": "raw/tcp_wave.dat",
+            "tcp_wave_peaks_csv": "raw/tcp_wave_peaks.csv",
+            "event_log": "logs/event_log.csv",
+            "error_log": "logs/error_log.txt",
+            "device_config": "config/device_config.json",
+            "raw_format_document": "raw_dat_format.md"
+        },
+        "raw_files": {
+            "epsilon": {"path": "raw/epsilon.dat", "source_id": 1, "format_version": 2, "records": "0"},
+            "ptb": {"path": "raw/ptb.dat", "source_id": 2, "format_version": 2, "records": "0"},
+            "hmp": {"path": "raw/hmp.dat", "source_id": 3, "format_version": 2, "records": "0"},
+            "lidar": {"path": "raw/lidar.dat", "source_id": 4, "format_version": 2, "records": "0"},
+            "tcp_wave": {"path": "raw/tcp_wave.dat", "source_id": 5, "format_version": 2, "records": "3"}
+        }
+    })json");
+    skyMetadataFile.close();
+
+    const VaporView::Ground::SessionMetadataLoadResult skyResult =
+        VaporView::Ground::SessionLoader::loadMetadata(skySessionDir.path());
+    require(skyResult.success, "new shared session metadata loads without a widget");
+    require(skyResult.metadata.recordingOrigin == VaporView::Session::RecordingOrigin::Sky,
+            "new recording_origin is exposed by the loader");
+    require(skyResult.metadata.sensorRows == 11 && skyResult.metadata.waveformFrames == 3,
+            "new nested session counters are exposed by the loader");
+    require(skyResult.metadata.waveformPeakIndexFilename.endsWith(QStringLiteral("raw/tcp_wave_peaks.csv")),
+            "new tcp wave peaks path is resolved by the loader");
+
+    QTemporaryDir legacySkyDir;
+    require(legacySkyDir.isValid(), "temporary legacy sky session directory is available");
+    QFile legacySkyMetadataFile(legacySkyDir.filePath(QStringLiteral("session.json")));
+    require(legacySkyMetadataFile.open(QIODevice::WriteOnly | QIODevice::Truncate),
+            "legacy sky metadata fixture opens");
+    legacySkyMetadataFile.write(R"json({
+        "mode": "sky",
+        "session_name": "legacy-sky",
+        "sensor_rows": "1"
+    })json");
+    legacySkyMetadataFile.close();
+    const VaporView::Ground::SessionMetadataLoadResult legacySkyResult =
+        VaporView::Ground::SessionLoader::loadMetadata(legacySkyDir.path());
+    require(legacySkyResult.success &&
+                legacySkyResult.metadata.recordingOrigin == VaporView::Session::RecordingOrigin::Sky,
+            "legacy mode=sky is exposed by the loader");
 
     QFile invalidFile(sessionDir.filePath(QStringLiteral("invalid.txt")));
     require(invalidFile.open(QIODevice::WriteOnly), "invalid path fixture opens");

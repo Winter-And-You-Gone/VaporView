@@ -549,8 +549,9 @@ RTK 功能由 `src/RtkConfigDialog.cpp` 和 `src/RtkStreamService.cpp` 实现。
 
 - 地面端发送 `StartRecording`、`PauseRecording`、`StopRecording` 命令，不在地面端创建本地 session。
 - 天空端记录目录位于普通模式同一个默认 `data/` 目录下，目录名同样为 `session_yyyy-MM-dd_HH-mm-ss`。
-- 天空端会写入 `session.json` 和 `sensors/devices.csv`，因此数据查看器可按普通 session 打开天空-地面接收模式记录目录。
-- 天空端 raw 记录使用同一套统一 DAT 格式：`raw/epsilon.dat`、`raw/ptb.dat`、`raw/hmp.dat`、`raw/lidar.dat`、`raw/tcp_wave.dat`。
+- 天空端和地面端使用同一套 session package；数据查看器可按普通 session 打开天空-地面接收模式记录目录。
+- 两端都会创建相同的 CSV、RAW DAT、日志、配置和格式文档文件；没有对应数据的文件仍保留合法表头或零记录 RAW DAT 头。
+- `session.json` 只通过 `recording_origin` 区分 `ground` / `sky`，不再为新记录写入 legacy `mode` 字段。
 - 地面端通过天空端 `TelemetryStatus` 实时显示记录状态、记录时长、遥测行数、raw 总条数和 TCP 波形 raw 条数；记录状态卡的 tooltip 会列出各设备 raw 计数。
 
 默认记录根目录：
@@ -567,14 +568,17 @@ data/
 └── session_yyyy-MM-dd_HH-mm-ss/
     ├── session.json
     ├── raw_dat_format.md
+    ├── sensors/
+    │   ├── devices.csv
+    │   ├── rd105_temperature_controller.csv
+    │   └── waveform_features.csv
     ├── raw/
     │   ├── epsilon.dat
     │   ├── ptb.dat
     │   ├── hmp.dat
     │   ├── lidar.dat
-    │   └── tcp_wave.dat
-    ├── sensors/
-    │   └── devices.csv
+    │   ├── tcp_wave.dat
+    │   └── tcp_wave_peaks.csv
     ├── logs/
     │   ├── event_log.csv
     │   └── error_log.txt
@@ -591,29 +595,12 @@ data/
 | PTB / HMP / Lidar 原始响应 | 保存有效原始响应或完整协议帧到统一 raw DAT |
 | CSV 摘要 | `1/2/5/10/20/50/100/200 Hz` |
 
-`session.json` 当前字段包括：
-
-- `session_name`
-- `start_time_utc`
-- `start_time_us`
-- `end_time_utc`
-- `software_version`
-- `epsilon_schema_version`
-- `waveform_points_per_frame`
-- `sensor_export_rate_hz`
-- `other_devices_export_rate_hz`
-- `raw_export_mode`
-- `raw_dat_format_version`
-- `waveform_export_rate_hz`
-- `waveform_export_mode`
-- `waveform_value_type`
-- `waveform_timestamp_type`
-- `timestamp_unit`
-- `sensor_rows`
-- `waveform_frames`
-- `waveform_file_count`
-- `raw_files`
-- `paths`
+`session.json` 当前使用统一 manifest schema。顶层包含
+`session_format`、`session_format_version`、`recording_origin`、时间、
+导出参数、`capture`、`counts`、`paths` 和 `raw_files` 等字段。
+`counts` 和 `raw_files.*.records` 使用字符串计数；不适用的 capture
+字段保留为 `null`。完整 schema 与历史兼容规则见
+[docs/session_format.md](docs/session_format.md)。
 
 `device_config.json` 当前记录：
 
