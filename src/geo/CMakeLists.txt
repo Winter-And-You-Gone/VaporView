@@ -26,4 +26,5 @@ target_include_directories(vaporview_geo_core PUBLIC
 
 target_link_libraries(vaporview_geo_core PUBLIC
     Qt6::Core
+    vaporview_session_format
 )

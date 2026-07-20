@@ -3,6 +3,7 @@
 #include "BoundedLruCache.h"
 #include "ground/widgets/CustomTitleBar.h"
 #include "shared/session/UnifiedRawDat.h"
+#include "shared/session/SessionPathResolver.h"
 #include "TcpWaveEncoding.h"
 
 #include <QAbstractTableModel>
@@ -458,21 +459,23 @@ RawScanResult scanRawSession(const QString& sessionDirectory,
     RawScanResult result;
     result.session_directory = sessionDirectory;
 
-    const QDir rawDir(QDir(sessionDirectory).filePath(QStringLiteral("raw")));
-    const QVector<QPair<QString, quint16>> files = {
-        {QStringLiteral("epsilon.dat"), VaporView::SessionRawDat::kSourceEpsilon},
-        {QStringLiteral("ptb.dat"), VaporView::SessionRawDat::kSourcePtb},
-        {QStringLiteral("hmp.dat"), VaporView::SessionRawDat::kSourceHmp},
-        {QStringLiteral("lidar.dat"), VaporView::SessionRawDat::kSourceLidar},
-        {QStringLiteral("tcp_wave.dat"), VaporView::SessionRawDat::kSourceTcpWave},
-    };
+    const VaporView::Session::SessionPathContext pathContext =
+        VaporView::Session::loadSessionPathContext(sessionDirectory);
+    QVector<QPair<QString, quint16>> files;
+    for (const VaporView::Session::RawFileDefinition& definition :
+         VaporView::Session::standardRawFileDefinitions())
+    {
+        const VaporView::Session::SessionPathResolution resolved =
+            VaporView::Session::resolveSessionPath(pathContext, definition.kind);
+        files.push_back({resolved.absolutePath, definition.sourceId});
+    }
 
     if (progress)
     {
         qint64 totalBytes = 0;
         for (const auto& file : files)
         {
-            const QFileInfo info(rawDir.filePath(file.first));
+            const QFileInfo info(file.first);
             if (info.exists())
             {
                 totalBytes += info.size();
@@ -491,7 +494,7 @@ RawScanResult scanRawSession(const QString& sessionDirectory,
         {
             break;
         }
-        scanRawFileIndex(rawDir.filePath(files.at(i).first), files.at(i).second, english, result, progress);
+        scanRawFileIndex(files.at(i).first, files.at(i).second, english, result, progress);
         if (progress)
         {
             progress->completed_files.store(i + 1, std::memory_order_relaxed);

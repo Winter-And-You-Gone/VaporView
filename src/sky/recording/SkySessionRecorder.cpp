@@ -236,29 +236,29 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     session_directory_ = initResult.sessionDirectory;
     const VaporView::Session::SessionPackageLayout& packageLayout = initResult.layout;
     session_metadata_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.manifestPath);
-    sensors_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.devicesCsvPath);
+    sensor_summary_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.sensorSummaryCsvPath);
     feature_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.waveformFeaturesCsvPath);
     temperature_controller_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.temperatureControllerCsvPath);
-    basic_record_file_.setFileName(sensors_filename_);
+    basic_record_file_.setFileName(sensor_summary_filename_);
     feature_record_file_.setFileName(feature_filename_);
     temperature_controller_record_file_.setFileName(temperature_controller_filename_);
-    raw_epsilon_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.epsilonRawPath);
-    raw_ptb_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.ptbRawPath);
-    raw_hmp_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.hmpRawPath);
-    raw_lidar_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.lidarRawPath);
-    raw_tcp_wave_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.tcpWaveRawPath);
-    raw_tcp_wave_peak_index_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.tcpWavePeaksCsvPath);
-    raw_tcp_wave_peak_index_file_.setFileName(raw_tcp_wave_peak_index_filename_);
+    navigation_raw_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.navigationRawPath);
+    pressure_raw_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.pressureRawPath);
+    temperature_humidity_raw_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.temperatureHumidityRawPath);
+    distance_raw_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.distanceRawPath);
+    waveform_raw_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.waveformRawPath);
+    waveform_peaks_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.waveformPeaksCsvPath);
+    waveform_peaks_file_.setFileName(waveform_peaks_filename_);
 
     if (!basic_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !feature_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !temperature_controller_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
-        !raw_tcp_wave_peak_index_file_.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
-        !openRawDatFile(raw_epsilon_file_, raw_epsilon_filename_, SessionRawDat::kSourceEpsilon, errorMessage) ||
-        !openRawDatFile(raw_ptb_file_, raw_ptb_filename_, SessionRawDat::kSourcePtb, errorMessage) ||
-        !openRawDatFile(raw_hmp_file_, raw_hmp_filename_, SessionRawDat::kSourceHmp, errorMessage) ||
-        !openRawDatFile(raw_lidar_file_, raw_lidar_filename_, SessionRawDat::kSourceLidar, errorMessage) ||
-        !openRawDatFile(raw_tcp_wave_file_, raw_tcp_wave_filename_, SessionRawDat::kSourceTcpWave, errorMessage))
+        !waveform_peaks_file_.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
+        !openRawDatFile(navigation_raw_file_, navigation_raw_filename_, SessionRawDat::kSourceEpsilon, errorMessage) ||
+        !openRawDatFile(pressure_raw_file_, pressure_raw_filename_, SessionRawDat::kSourcePtb, errorMessage) ||
+        !openRawDatFile(temperature_humidity_raw_file_, temperature_humidity_raw_filename_, SessionRawDat::kSourceHmp, errorMessage) ||
+        !openRawDatFile(distance_raw_file_, distance_raw_filename_, SessionRawDat::kSourceLidar, errorMessage) ||
+        !openRawDatFile(waveform_raw_file_, waveform_raw_filename_, SessionRawDat::kSourceTcpWave, errorMessage))
     {
         if (errorMessage && errorMessage->isEmpty()) *errorMessage = QStringLiteral("cannot open session files");
         closeFiles();
@@ -274,7 +274,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     QTextStream temperatureOut(&temperature_controller_record_file_);
     temperatureOut << VaporView::Session::temperatureControllerCsvHeader();
 
-    QTextStream peakIndexOut(&raw_tcp_wave_peak_index_file_);
+    QTextStream peakIndexOut(&waveform_peaks_file_);
     peakIndexOut << VaporView::Session::tcpWavePeaksCsvHeader();
     peakIndexOut.flush();
 
@@ -590,7 +590,7 @@ void SkySessionRecorder::recordRawEpsilonFrame(quint64 hostTimeUs,
                                                quint8 serialNumber,
                                                const QByteArray& frame)
 {
-    writeRawRecord(raw_epsilon_file_,
+    writeRawRecord(navigation_raw_file_,
                    raw_epsilon_record_count_,
                    SessionRawDat::kSourceEpsilon,
                    packetId,
@@ -602,7 +602,7 @@ void SkySessionRecorder::recordRawEpsilonFrame(quint64 hostTimeUs,
 
 void SkySessionRecorder::recordRawPtbResponse(quint64 hostTimeUs, const QByteArray& response)
 {
-    writeRawRecord(raw_ptb_file_,
+    writeRawRecord(pressure_raw_file_,
                    raw_ptb_record_count_,
                    SessionRawDat::kSourcePtb,
                    SessionRawDat::kRecordTypePtbResponse,
@@ -614,7 +614,7 @@ void SkySessionRecorder::recordRawPtbResponse(quint64 hostTimeUs, const QByteArr
 
 void SkySessionRecorder::recordRawHmpResponse(quint64 hostTimeUs, const QByteArray& response)
 {
-    writeRawRecord(raw_hmp_file_,
+    writeRawRecord(temperature_humidity_raw_file_,
                    raw_hmp_record_count_,
                    SessionRawDat::kSourceHmp,
                    SessionRawDat::kRecordTypeHmpModbusResponse,
@@ -626,7 +626,7 @@ void SkySessionRecorder::recordRawHmpResponse(quint64 hostTimeUs, const QByteArr
 
 void SkySessionRecorder::recordRawLidarFrame(quint64 hostTimeUs, quint16 protocol, const QByteArray& frame)
 {
-    writeRawRecord(raw_lidar_file_,
+    writeRawRecord(distance_raw_file_,
                    raw_lidar_record_count_,
                    SessionRawDat::kSourceLidar,
                    protocol,
@@ -722,7 +722,7 @@ bool SkySessionRecorder::writeRawTcpWavePayload(quint64 hostTimeUs,
         return false;
     }
 
-    if (!writeRawRecord(raw_tcp_wave_file_,
+    if (!writeRawRecord(waveform_raw_file_,
                         raw_tcp_wave_record_count_,
                         SessionRawDat::kSourceTcpWave,
                         SessionRawDat::kRecordTypeTcpWavePayload,
@@ -750,12 +750,12 @@ void SkySessionRecorder::appendTcpWavePeakIndexLine(quint64 hostTimeUs,
     const TcpWavePeakSummary summary = summarizeTcpWavePeakSamples(harmonicPayload, floatEncoding);
 
     std::lock_guard<std::mutex> lock(files_mutex_);
-    if (!raw_tcp_wave_peak_index_file_.isOpen())
+    if (!waveform_peaks_file_.isOpen())
     {
         return;
     }
 
-    QTextStream out(&raw_tcp_wave_peak_index_file_);
+    QTextStream out(&waveform_peaks_file_);
     out << hostTimeUs << ','
         << peakValueCsvText(summary.value) << ','
         << summary.index << ','
@@ -818,12 +818,12 @@ void SkySessionRecorder::closeFiles()
     for (QFile *file : {&basic_record_file_,
                         &feature_record_file_,
                         &temperature_controller_record_file_,
-                        &raw_epsilon_file_,
-                        &raw_ptb_file_,
-                        &raw_hmp_file_,
-                        &raw_lidar_file_,
-                        &raw_tcp_wave_file_,
-                        &raw_tcp_wave_peak_index_file_})
+                        &navigation_raw_file_,
+                        &pressure_raw_file_,
+                        &temperature_humidity_raw_file_,
+                        &distance_raw_file_,
+                        &waveform_raw_file_,
+                        &waveform_peaks_file_})
     {
         if (file->isOpen())
         {

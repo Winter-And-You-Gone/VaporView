@@ -2,11 +2,11 @@
 #include "ground/session/SessionCsv.h"
 #include "shared/session/SessionManifest.h"
 #include "shared/session/SessionPackageLayout.h"
+#include "shared/session/SessionPathResolver.h"
 
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QJsonDocument>
 #include <QJsonObject>
 #include <QStringConverter>
 #include <QTextStream>
@@ -34,20 +34,6 @@ double haversineDistanceMeters(double lat1Deg, double lon1Deg, double lat2Deg, d
         std::sqrt(value),
         std::sqrt(std::max(0.0, 1.0 - value)));
     return kEarthRadiusM * angle;
-}
-
-QString nestedPathOrFallback(const QJsonObject& paths,
-                             const QString& primaryKey,
-                             const QString& legacyKey,
-                             const QString& fallback)
-{
-    const QString primary = paths.value(primaryKey).toString();
-    if (!primary.trimmed().isEmpty())
-    {
-        return primary;
-    }
-    const QString legacy = paths.value(legacyKey).toString();
-    return legacy.trimmed().isEmpty() ? fallback : legacy;
 }
 
 }  // namespace
@@ -84,38 +70,32 @@ SessionMetadataLoadResult SessionLoader::loadMetadata(const QString& sessionDire
         return result;
     }
 
+    const VaporView::Session::SessionPathContext pathContext =
+        VaporView::Session::loadSessionPathContext(normalizedDirectory);
     const QString metadataPath = QDir(normalizedDirectory).filePath(QStringLiteral("session.json"));
-    QFile file(metadataPath);
-    if (!file.open(QIODevice::ReadOnly))
+    if (!pathContext.manifestError.isEmpty())
     {
-        result.error = QStringLiteral("Failed to open %1").arg(metadataPath);
+        result.error = pathContext.manifestError;
         return result;
     }
 
-    QJsonParseError parseError;
-    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
-    if (!document.isObject())
+    VaporView::Session::SessionManifest manifest;
+    if (pathContext.manifestPresent)
     {
-        result.error = QStringLiteral("Invalid session metadata %1: %2")
-                           .arg(metadataPath, parseError.errorString());
-        return result;
+        const VaporView::Session::SessionManifestParseResult manifestResult =
+            VaporView::Session::sessionManifestFromJson(pathContext.manifest);
+        if (!manifestResult.success)
+        {
+            result.error = QStringLiteral("Invalid session manifest %1: %2")
+                               .arg(metadataPath, manifestResult.error);
+            return result;
+        }
+        manifest = manifestResult.manifest;
     }
-
-    const QJsonObject root = document.object();
-    const VaporView::Session::SessionManifestParseResult manifestResult =
-        VaporView::Session::sessionManifestFromJson(root);
-    if (!manifestResult.success)
+    else
     {
-        result.error = QStringLiteral("Invalid session manifest %1: %2")
-                           .arg(metadataPath, manifestResult.error);
-        return result;
+        result.warning = QStringLiteral("session.json is missing; using compatibility path defaults.");
     }
-    const VaporView::Session::SessionManifest& manifest = manifestResult.manifest;
-    const VaporView::Session::SessionPackageLayout& standardLayout =
-        VaporView::Session::standardSessionPackageLayout();
-    const QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
-    const QJsonObject rawFiles = root.value(QStringLiteral("raw_files")).toObject();
-    const QJsonObject tcpWaveRaw = rawFiles.value(QStringLiteral("tcp_wave")).toObject();
 
     SessionMetadata& metadata = result.metadata;
     metadata.sessionDirectory = normalizedDirectory;
@@ -133,29 +113,34 @@ SessionMetadataLoadResult SessionLoader::loadMetadata(const QString& sessionDire
     metadata.waveformExportRateHz = manifest.waveformExportRateHz;
     metadata.waveformExportMode = manifest.waveformExportMode;
 
-    const QString csvRelativePath = paths.value(QStringLiteral("devices_csv"))
-                                        .toString(standardLayout.devicesCsvPath);
-    const QString waveformRelativePath = paths.value(QStringLiteral("waveform_directory"))
+    const QJsonObject& paths = pathContext.manifest;
+    const QJsonObject pathObject = paths.value(QStringLiteral("paths")).toObject();
+    const auto appendWarning = [&result](const QString& warning) {
+        if (warning.trimmed().isEmpty()) return;
+        if (!result.warning.isEmpty()) result.warning += QLatin1Char(' ');
+        result.warning += warning;
+    };
+    const auto sensorSummary = VaporView::Session::resolveSessionPath(
+        pathContext, VaporView::Session::SessionFileKind::SensorSummaryCsv);
+    const auto waveformPeaks = VaporView::Session::resolveSessionPath(
+        pathContext, VaporView::Session::SessionFileKind::WaveformPeaksCsv);
+    const auto waveformRaw = VaporView::Session::resolveSessionPath(
+        pathContext, VaporView::Session::SessionFileKind::WaveformRaw);
+    appendWarning(sensorSummary.warning);
+    appendWarning(waveformPeaks.warning);
+    appendWarning(waveformRaw.warning);
+
+    const QString waveformRelativePath = pathObject.value(QStringLiteral("waveform_directory"))
                                              .toString(QStringLiteral("waveform"));
-    const QString waveformIndexRelativePath = paths.value(QStringLiteral("waveform_index"))
+    const QString waveformIndexRelativePath = pathObject.value(QStringLiteral("waveform_index"))
                                                   .toString(QStringLiteral("waveform_index.csv"));
-    const QString waveformPeakIndexRelativePath = nestedPathOrFallback(
-        paths,
-        QStringLiteral("tcp_wave_peaks_csv"),
-        QStringLiteral("waveform_peak_index"),
-        standardLayout.tcpWavePeaksCsvPath);
-    QString rawTcpWaveRelativePath = tcpWaveRaw.value(QStringLiteral("path")).toString();
-    if (rawTcpWaveRelativePath.trimmed().isEmpty())
-    {
-        rawTcpWaveRelativePath = paths.value(QStringLiteral("tcp_wave_raw")).toString(standardLayout.tcpWaveRawPath);
-    }
 
     const QDir sessionDir(normalizedDirectory);
-    metadata.sensorsCsvFilename = sessionDir.filePath(csvRelativePath);
+    metadata.sensorSummaryCsvFilename = sensorSummary.absolutePath;
     metadata.waveformDirectory = sessionDir.filePath(waveformRelativePath);
     metadata.waveformIndexFilename = sessionDir.filePath(waveformIndexRelativePath);
-    metadata.waveformPeakIndexFilename = sessionDir.filePath(waveformPeakIndexRelativePath);
-    metadata.rawTcpWaveFilename = sessionDir.filePath(rawTcpWaveRelativePath);
+    metadata.waveformPeaksCsvFilename = waveformPeaks.absolutePath;
+    metadata.waveformRawFilename = waveformRaw.absolutePath;
     result.success = true;
     return result;
 }
@@ -168,11 +153,11 @@ SessionSensorLoadResult SessionLoader::loadSensors(
 
     SessionSensorLoadResult result;
     result.success = true;
-    QFile file(metadata.sensorsCsvFilename);
+    QFile file(metadata.sensorSummaryCsvFilename);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
         result.warning = QStringLiteral("Failed to open sensors CSV: %1")
-                             .arg(metadata.sensorsCsvFilename);
+                             .arg(metadata.sensorSummaryCsvFilename);
         return result;
     }
 
@@ -182,7 +167,7 @@ SessionSensorLoadResult SessionLoader::loadSensors(
     if (stream.atEnd())
     {
         result.warning = QStringLiteral("Sensors CSV is empty: %1")
-                             .arg(metadata.sensorsCsvFilename);
+                             .arg(metadata.sensorSummaryCsvFilename);
         return result;
     }
 

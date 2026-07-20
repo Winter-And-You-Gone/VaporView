@@ -9,6 +9,8 @@ add_library(vaporview_session_format STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionPackageInitializer.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionPackageLayout.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionPackageLayout.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionPathResolver.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionPathResolver.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionSensorCsv.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionSensorCsv.h
     ${CMAKE_CURRENT_SOURCE_DIR}/UnifiedRawDat.cpp

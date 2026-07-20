@@ -38,7 +38,7 @@ int main()
         QDir dir(sessionDir.path());
         require(dir.mkpath(QStringLiteral("sensors")), "create sensors directory");
 
-        writeCsv(dir.filePath(QStringLiteral("sensors/devices.csv")),
+        writeCsv(dir.filePath(QStringLiteral("sensors/sensor_summary.csv")),
                  QStringLiteral("record_timestamp_us,device_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,gnss_satellites,hdop,fix_quality\n"
                                 "1000,900,31.230400001,121.473700001,18.2,12,0.7,fixed\n"
                                 "2000,1900,31.230500001,121.473800001,18.4,11,0.8,float\n"));
@@ -64,7 +64,7 @@ int main()
         QDir dir(sessionDir.path());
         require(dir.mkpath(QStringLiteral("sensors")), "create invalid-ECEF sensors directory");
 
-        writeCsv(dir.filePath(QStringLiteral("sensors/devices.csv")),
+        writeCsv(dir.filePath(QStringLiteral("sensors/sensor_summary.csv")),
                  QStringLiteral("record_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,ecef_x_m,ecef_y_m,ecef_z_m,gnss_fix\n"
                                 "1000,30.136981202,120.069381752,9.605644,365504425.008990,13374370.950326,58160.200631,RTK_DUAL\n"));
 
@@ -132,7 +132,7 @@ int main()
         const VaporView::Geo::SessionTrackReadResult result =
             VaporView::Geo::readSessionTrack(sessionDir.path());
 
-        require(result.ok, "recorded GNSS devices.csv read ok");
+        require(result.ok, "recorded GNSS sensor summary read ok");
         require(result.samples.size() == 2, "recorded GNSS rows parsed");
         require(result.samples.front().fixQuality == VaporView::Geo::FixQuality::Fixed,
                 "RTK_DUAL fix quality parsed as fixed");
@@ -203,7 +203,23 @@ int main()
 
         const auto result = VaporView::Geo::readSessionTrack(sessionDir.path());
         require(!result.ok, "ambiguous recursive devices.csv files are rejected");
-        require(result.error.contains(QStringLiteral("multiple devices.csv")), "ambiguity error is explicit");
+        require(result.error.contains(QStringLiteral("multiple sensor summary CSV")), "ambiguity error is explicit");
+    }
+
+    {
+        QTemporaryDir sessionDir;
+        require(sessionDir.isValid(), "temporary dual-path track session directory");
+        QDir dir(sessionDir.path());
+        require(dir.mkpath(QStringLiteral("sensors")), "create dual-path sensors directory");
+        const QString csv = QStringLiteral("record_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m\n"
+                                           "1000,30.0,120.0,10.0\n");
+        writeCsv(dir.filePath(QStringLiteral("sensors/devices.csv")), csv);
+        writeCsv(dir.filePath(QStringLiteral("sensors/sensor_summary.csv")), csv);
+
+        const auto result = VaporView::Geo::readSessionTrack(sessionDir.path());
+        require(result.ok && result.sourceCsvPath.endsWith(QStringLiteral("sensor_summary.csv")),
+                "semantic track CSV wins over the legacy file");
+        require(!result.warning.isEmpty(), "dual-path track selection reports a warning");
     }
 
     return 0;

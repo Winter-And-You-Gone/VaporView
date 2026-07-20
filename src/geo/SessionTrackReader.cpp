@@ -1,4 +1,6 @@
 #include "geo/SessionTrackReader.h"
+
+#include "shared/session/SessionPathResolver.h"
 #include "geo/CoordinateTransform.h"
 
 #include <QtCore/QDir>
@@ -192,26 +194,30 @@ HeightReference parseHeightReference(const QString& value)
     return HeightReference::Unknown;
 }
 
-QStringList locateDevicesCsvCandidates(const QString& sessionDir)
+QStringList locateTrackCsvCandidates(const QString& sessionDir)
 {
-    const QDir dir(sessionDir);
-    const QString preferred = dir.filePath(QStringLiteral("sensors/devices.csv"));
-    if (QFile::exists(preferred))
-    {
-        return {preferred};
-    }
-
     QDirIterator it(sessionDir,
-                    QStringList{QStringLiteral("devices.csv")},
+                    QStringList{QStringLiteral("sensor_summary.csv"), QStringLiteral("devices.csv")},
                     QDir::Files,
                     QDirIterator::Subdirectories);
-    QStringList matches;
+    QStringList preferredMatches;
+    QStringList legacyMatches;
     while (it.hasNext())
     {
-        matches.push_back(it.next());
+        const QString path = it.next();
+        if (QFileInfo(path).fileName().compare(
+                QStringLiteral("sensor_summary.csv"), Qt::CaseInsensitive) == 0)
+        {
+            preferredMatches.push_back(path);
+        }
+        else
+        {
+            legacyMatches.push_back(path);
+        }
     }
-    matches.sort(Qt::CaseInsensitive);
-    return matches;
+    preferredMatches.sort(Qt::CaseInsensitive);
+    legacyMatches.sort(Qt::CaseInsensitive);
+    return preferredMatches.isEmpty() ? legacyMatches : preferredMatches;
 }
 
 } // namespace
@@ -219,23 +225,43 @@ QStringList locateDevicesCsvCandidates(const QString& sessionDir)
 SessionTrackReadResult readSessionTrack(const QString& sessionDir)
 {
     SessionTrackReadResult result;
-    const QStringList csvCandidates = locateDevicesCsvCandidates(sessionDir);
-    if (csvCandidates.isEmpty())
+    const VaporView::Session::SessionPathContext pathContext =
+        VaporView::Session::loadSessionPathContext(sessionDir);
+    if (!pathContext.manifestError.isEmpty())
     {
-        result.error = QStringLiteral("devices.csv not found under session directory");
+        result.error = pathContext.manifestError;
         return result;
     }
-    if (csvCandidates.size() > 1)
+
+    const VaporView::Session::SessionPathResolution resolved =
+        VaporView::Session::resolveSessionPath(
+            pathContext,
+            VaporView::Session::SessionFileKind::SensorSummaryCsv);
+    QString csvPath = resolved.exists ? resolved.absolutePath : QString();
+    result.warning = resolved.warning;
+    if (csvPath.isEmpty() && !resolved.manifestDeclared)
     {
-        result.error = QStringLiteral("multiple devices.csv files found under session directory; select a specific session root");
+        const QStringList csvCandidates = locateTrackCsvCandidates(sessionDir);
+        if (csvCandidates.size() == 1)
+        {
+            csvPath = csvCandidates.constFirst();
+        }
+        else if (csvCandidates.size() > 1)
+        {
+            result.error = QStringLiteral("multiple sensor summary CSV files found under session directory");
+            return result;
+        }
+    }
+    if (csvPath.isEmpty())
+    {
+        result.error = QStringLiteral("sensor_summary.csv not found under session directory");
         return result;
     }
-    const QString csvPath = csvCandidates.constFirst();
 
     constexpr qint64 kMaximumCsvBytes = 512LL * 1024LL * 1024LL;
     if (QFileInfo(csvPath).size() > kMaximumCsvBytes)
     {
-        result.error = QStringLiteral("devices.csv exceeds the 512 MiB safety limit");
+        result.error = QStringLiteral("sensor_summary.csv exceeds the 512 MiB safety limit");
         result.sourceCsvPath = csvPath;
         return result;
     }
@@ -251,7 +277,7 @@ SessionTrackReadResult readSessionTrack(const QString& sessionDir)
     QTextStream in(&file);
     if (in.atEnd())
     {
-        result.error = QStringLiteral("devices.csv is empty");
+        result.error = QStringLiteral("sensor_summary.csv is empty");
         result.sourceCsvPath = csvPath;
         return result;
     }
@@ -309,7 +335,7 @@ SessionTrackReadResult readSessionTrack(const QString& sessionDir)
         ++result.totalRows;
         if (result.totalRows > kMaximumCsvRows)
         {
-            result.error = QStringLiteral("devices.csv exceeds the 2,000,000-row safety limit");
+            result.error = QStringLiteral("sensor_summary.csv exceeds the 2,000,000-row safety limit");
             result.sourceCsvPath = csvPath;
             result.samples.clear();
             return result;
@@ -362,7 +388,7 @@ SessionTrackReadResult readSessionTrack(const QString& sessionDir)
 
     if (result.samples.empty())
     {
-        result.error = QStringLiteral("devices.csv contains no valid latitude/longitude/height samples");
+            result.error = QStringLiteral("sensor_summary.csv contains no valid latitude/longitude/height samples");
         result.sourceCsvPath = csvPath;
         return result;
     }

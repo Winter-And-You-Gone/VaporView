@@ -134,17 +134,17 @@ SessionPackageInitResult initializeSessionPackage(const SessionPackageInitOption
     deviceConfig.telemetry = result.manifest.capture;
 
     QString error;
-    if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.devicesCsvPath),
+    if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.sensorSummaryCsvPath),
                        SessionSensorCsv::header(),
                        &error))
     {
-        return fail(QStringLiteral("cannot create devices.csv: %1").arg(error));
+        return fail(QStringLiteral("cannot create sensor_summary.csv: %1").arg(error));
     }
     if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.temperatureControllerCsvPath),
                        temperatureControllerCsvHeader(),
                        &error))
     {
-        return fail(QStringLiteral("cannot create rd105_temperature_controller.csv: %1").arg(error));
+        return fail(QStringLiteral("cannot create temperature_controller.csv: %1").arg(error));
     }
     if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.waveformFeaturesCsvPath),
                        waveformFeaturesCsvHeader(),
@@ -152,11 +152,11 @@ SessionPackageInitResult initializeSessionPackage(const SessionPackageInitOption
     {
         return fail(QStringLiteral("cannot create waveform_features.csv: %1").arg(error));
     }
-    if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.tcpWavePeaksCsvPath),
+    if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.waveformPeaksCsvPath),
                        tcpWavePeaksCsvHeader(),
                        &error))
     {
-        return fail(QStringLiteral("cannot create tcp_wave_peaks.csv: %1").arg(error));
+        return fail(QStringLiteral("cannot create waveform_peaks.csv: %1").arg(error));
     }
     if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.eventLogPath),
                        eventLogCsvHeader(),

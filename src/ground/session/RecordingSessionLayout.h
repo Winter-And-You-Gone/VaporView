@@ -11,15 +11,15 @@ struct RecordingSessionLayout
 {
     QString sessionName;
     QString sessionDirectory;
-    QString sensorsFilename;
+    QString sensorSummaryFilename;
     QString temperatureControllerFilename;
     QString waveformFeaturesFilename;
-    QString rawEpsilonFilename;
-    QString rawPtbFilename;
-    QString rawHmpFilename;
-    QString rawLidarFilename;
-    QString rawTcpWaveFilename;
-    QString rawTcpWavePeakIndexFilename;
+    QString navigationRawFilename;
+    QString pressureRawFilename;
+    QString temperatureHumidityRawFilename;
+    QString distanceRawFilename;
+    QString waveformRawFilename;
+    QString waveformPeaksFilename;
     QString rawDatDocumentFilename;
     QString sessionMetadataFilename;
     QString eventLogFilename;

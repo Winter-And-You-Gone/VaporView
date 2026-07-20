@@ -11,15 +11,15 @@ const SessionPackageLayout& standardSessionPackageLayout()
 {
     static const SessionPackageLayout layout{
         QStringLiteral("session.json"),
-        QStringLiteral("sensors/devices.csv"),
-        QStringLiteral("sensors/rd105_temperature_controller.csv"),
+        QStringLiteral("sensors/sensor_summary.csv"),
+        QStringLiteral("sensors/temperature_controller.csv"),
         QStringLiteral("sensors/waveform_features.csv"),
-        QStringLiteral("raw/epsilon.dat"),
-        QStringLiteral("raw/ptb.dat"),
-        QStringLiteral("raw/hmp.dat"),
-        QStringLiteral("raw/lidar.dat"),
-        QStringLiteral("raw/tcp_wave.dat"),
-        QStringLiteral("raw/tcp_wave_peaks.csv"),
+        QStringLiteral("raw/navigation.dat"),
+        QStringLiteral("raw/pressure.dat"),
+        QStringLiteral("raw/temperature_humidity.dat"),
+        QStringLiteral("raw/distance.dat"),
+        QStringLiteral("raw/waveform.dat"),
+        QStringLiteral("raw/waveform_peaks.csv"),
         QStringLiteral("logs/event_log.csv"),
         QStringLiteral("logs/error_log.txt"),
         QStringLiteral("config/device_config.json"),
@@ -44,15 +44,15 @@ QStringList standardSessionFiles()
     return {
         layout.manifestPath,
         layout.rawFormatDocumentPath,
-        layout.devicesCsvPath,
+        layout.sensorSummaryCsvPath,
         layout.temperatureControllerCsvPath,
         layout.waveformFeaturesCsvPath,
-        layout.epsilonRawPath,
-        layout.ptbRawPath,
-        layout.hmpRawPath,
-        layout.lidarRawPath,
-        layout.tcpWaveRawPath,
-        layout.tcpWavePeaksCsvPath,
+        layout.navigationRawPath,
+        layout.pressureRawPath,
+        layout.temperatureHumidityRawPath,
+        layout.distanceRawPath,
+        layout.waveformRawPath,
+        layout.waveformPeaksCsvPath,
         layout.eventLogPath,
         layout.errorLogPath,
         layout.deviceConfigPath
@@ -63,12 +63,63 @@ QVector<RawFileDefinition> standardRawFileDefinitions()
 {
     const SessionPackageLayout& layout = standardSessionPackageLayout();
     return {
-        {QStringLiteral("epsilon"), layout.epsilonRawPath, SessionRawDat::kSourceEpsilon},
-        {QStringLiteral("ptb"), layout.ptbRawPath, SessionRawDat::kSourcePtb},
-        {QStringLiteral("hmp"), layout.hmpRawPath, SessionRawDat::kSourceHmp},
-        {QStringLiteral("lidar"), layout.lidarRawPath, SessionRawDat::kSourceLidar},
-        {QStringLiteral("tcp_wave"), layout.tcpWaveRawPath, SessionRawDat::kSourceTcpWave}
+        {QStringLiteral("navigation"), layout.navigationRawPath,
+         SessionFileKind::NavigationRaw, SessionRawDat::kSourceEpsilon},
+        {QStringLiteral("pressure"), layout.pressureRawPath,
+         SessionFileKind::PressureRaw, SessionRawDat::kSourcePtb},
+        {QStringLiteral("temperature_humidity"), layout.temperatureHumidityRawPath,
+         SessionFileKind::TemperatureHumidityRaw, SessionRawDat::kSourceHmp},
+        {QStringLiteral("distance"), layout.distanceRawPath,
+         SessionFileKind::DistanceRaw, SessionRawDat::kSourceLidar},
+        {QStringLiteral("waveform"), layout.waveformRawPath,
+         SessionFileKind::WaveformRaw, SessionRawDat::kSourceTcpWave}
     };
+}
+
+const SessionPathAliases& sessionPathAliases(SessionFileKind kind)
+{
+    const SessionPackageLayout& layout = standardSessionPackageLayout();
+    static const QVector<SessionPathAliases> aliases{
+        {layout.sensorSummaryCsvPath,
+         {QStringLiteral("sensors/devices.csv")},
+         {QStringLiteral("sensor_summary_csv"), QStringLiteral("devices_csv")},
+         {}},
+        {layout.temperatureControllerCsvPath,
+         {QStringLiteral("sensors/rd105_temperature_controller.csv")},
+         {QStringLiteral("temperature_controller_csv")},
+         {}},
+        {layout.waveformFeaturesCsvPath,
+         {},
+         {QStringLiteral("waveform_features_csv")},
+         {}},
+        {layout.navigationRawPath,
+         {QStringLiteral("raw/epsilon.dat")},
+         {QStringLiteral("navigation_raw"), QStringLiteral("epsilon_raw")},
+         {QStringLiteral("navigation"), QStringLiteral("epsilon")}},
+        {layout.pressureRawPath,
+         {QStringLiteral("raw/ptb.dat")},
+         {QStringLiteral("pressure_raw"), QStringLiteral("ptb_raw")},
+         {QStringLiteral("pressure"), QStringLiteral("ptb")}},
+        {layout.temperatureHumidityRawPath,
+         {QStringLiteral("raw/hmp.dat")},
+         {QStringLiteral("temperature_humidity_raw"), QStringLiteral("hmp_raw")},
+         {QStringLiteral("temperature_humidity"), QStringLiteral("hmp")}},
+        {layout.distanceRawPath,
+         {QStringLiteral("raw/lidar.dat")},
+         {QStringLiteral("distance_raw"), QStringLiteral("lidar_raw")},
+         {QStringLiteral("distance"), QStringLiteral("lidar")}},
+        {layout.waveformRawPath,
+         {QStringLiteral("raw/tcp_wave.dat")},
+         {QStringLiteral("waveform_raw"), QStringLiteral("tcp_wave_raw")},
+         {QStringLiteral("waveform"), QStringLiteral("tcp_wave")}},
+        {layout.waveformPeaksCsvPath,
+         {QStringLiteral("raw/tcp_wave_peaks.csv")},
+         {QStringLiteral("waveform_peaks_csv"),
+          QStringLiteral("tcp_wave_peaks_csv"),
+          QStringLiteral("waveform_peak_index")},
+         {}}
+    };
+    return aliases.at(static_cast<int>(kind));
 }
 
 QString sessionPackageFilePath(const QString& sessionDirectory, const QString& relativePath)
@@ -113,7 +164,8 @@ QString rawDatFormatDocumentText()
         "- File header size: 20 bytes\n"
         "- Record header size: 36 bytes\n"
         "- Timestamp unit: microseconds\n"
-        "- Standard sources: epsilon=1, ptb=2, hmp=3, lidar=4, tcp_wave=5\n\n"
+        "- Standard sources: navigation=1, pressure=2, temperature_humidity=3, distance=4, waveform=5\n"
+        "  (the historical source ID values are unchanged)\n\n"
         "Zero-record files still contain a valid file header for their source. "
         "The byte layout, source IDs, record types and flags are defined by "
         "VaporView::SessionRawDat and are shared by ground and sky recordings.\n");

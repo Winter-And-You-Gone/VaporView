@@ -1,8 +1,8 @@
 # VaporView Unified Raw DAT Format
 
-本文档说明 `session_*/raw/*.dat` 的统一原始数据记录格式。该格式只保存设备返回的原始帧或原始响应字节，不保存解析后的字段；解析摘要仍在 `sensors/devices.csv` 中。
+本文档说明 `session_*/raw/*.dat` 的统一原始数据记录格式。该格式只保存设备返回的原始帧或原始响应字节，不保存解析后的字段；解析摘要仍在 `sensors/sensor_summary.csv` 中。
 
-地面端和天空端共用 `src/shared/session/UnifiedRawDat.*` 中的 raw DAT 常量、header 编解码和记录读写逻辑；`sensors/devices.csv` 的表头、字段顺序、转义和行格式化共用 `src/shared/session/SessionSensorCsv.*`。生产代码不再分别维护 raw magic、record marker、format version、source ID 或 CSV schema。
+地面端和天空端共用 `src/shared/session/UnifiedRawDat.*` 中的 raw DAT 常量、header 编解码和记录读写逻辑；`sensors/sensor_summary.csv` 的表头、字段顺序、转义和行格式化共用 `src/shared/session/SessionSensorCsv.*`。文件名描述数据类型，设备型号保存在 session metadata 中。生产代码不再分别维护 raw magic、record marker、format version、source ID 或 CSV schema。
 
 ## 文件位置
 
@@ -10,13 +10,13 @@
 
 | 文件 | source_id | payload 内容 |
 | --- | ---: | --- |
-| `raw/epsilon.dat` | 1 | 已校验通过的完整 EPSILON FDILink 帧 |
-| `raw/ptb.dat` | 2 | PTB210 有效压力响应原始行字节，包含行结束符 |
-| `raw/hmp.dat` | 3 | HMP3 完整 Modbus 数据响应帧 |
-| `raw/lidar.dat` | 4 | 已识别协议且校验通过的完整测距帧 |
-| `raw/tcp_wave.dat` | 5 | TCP 原始信号 payload 和二次谐波 payload |
+| `raw/navigation.dat` | 1 | 组合导航、GNSS、INS、姿态和位置原始帧 |
+| `raw/pressure.dat` | 2 | 气压传感器有效压力响应原始行字节，包含行结束符 |
+| `raw/temperature_humidity.dat` | 3 | 温湿度传感器完整 Modbus 数据响应帧 |
+| `raw/distance.dat` | 4 | 已识别协议且校验通过的完整测距帧 |
+| `raw/waveform.dat` | 5 | TCP 原始信号 payload 和二次谐波 payload |
 
-新记录会话只写这些统一 raw DAT 文件，不再额外生成旧版 `sensors/epsilon_raw.dat` 或 `waveform/*.dat`。数据查看器仍保留对旧会话 `waveform/*.dat` 的读取兼容。缺少统一 raw magic 的历史波形文件仍按旧格式回退读取；带有合法统一 raw magic 但版本不受支持的文件会被明确拒绝，不会回退为旧格式。
+新记录会话只写这些统一 raw DAT 文件，不再额外生成旧型号文件名或 `waveform/*.dat`。数据查看器仍保留对旧会话 `raw/epsilon.dat`、`raw/tcp_wave.dat` 和 `waveform/*.dat` 的读取兼容。缺少统一 raw magic 的历史波形文件仍按旧格式回退读取；带有合法统一 raw magic 但版本不受支持的文件会被明确拒绝，不会回退为旧格式。
 
 ## 字节序
 
@@ -65,7 +65,7 @@
 
 ## TCP 波形 payload
 
-`raw/tcp_wave.dat` 的每条 payload 由下面几段顺序拼接：
+`raw/waveform.dat` 的每条 payload 由下面几段顺序拼接：
 
 | 偏移 | 类型 | 字段 |
 | ---: | --- | --- |
@@ -91,3 +91,9 @@
 ## 与 CSV 对齐
 
 CSV 中的 `record_timestamp_us` 和 raw DAT 记录头中的 `host_timestamp_us` 使用同一主机 UTC 微秒时间基准，可用于离线对齐。CSV 保留解析后的摘要字段，raw DAT 保留原始帧字节。CSV schema、缺失字段表示、时间戳/浮点格式和 CSV 转义规则来自 `SessionSensorCsv`，因此地面端和天空端生成相同的列名、列顺序、单位和公共格式。
+
+历史路径兼容映射为：`raw/epsilon.dat` -> `raw/navigation.dat`、
+`raw/ptb.dat` -> `raw/pressure.dat`、`raw/hmp.dat` ->
+`raw/temperature_humidity.dat`、`raw/lidar.dat` -> `raw/distance.dat`、
+`raw/tcp_wave.dat` -> `raw/waveform.dat`。Reader 优先使用 manifest
+声明的路径，其次使用新默认路径，最后回退到旧路径；该回退不会重命名或修改历史文件。

@@ -82,8 +82,8 @@ lists and target-specific dependencies are owned by module CMake files under
 | --- | --- | --- |
 | `vaporview_protocol` | Telemetry codec, link contract, and sky configuration | Qt Core |
 | `vaporview_wave_encoding` | TCP waveform byte encoding | Qt Core |
-| `vaporview_session_format` | Shared session sensor CSV format | Qt Core |
-| `vaporview_geo_core` | Coordinates, track quality, buffers, and replay | Qt Core |
+| `vaporview_session_format` | Shared session layout, manifest, path compatibility, RAW DAT, and CSV format | Qt Core |
+| `vaporview_geo_core` | Coordinates, track quality, buffers, replay, and session track loading | Qt Core; session format |
 | `vaporview_app_theme` | Shared Qt theme and popup UI | Qt Widgets |
 
 ### Sky targets
@@ -196,7 +196,8 @@ flowchart LR
   Sky["SkySessionRecorder"] --> Init["SessionPackageInitializer"]
   GRS --> Init
   Init --> Layout["SessionPackageLayout + SessionManifest + SessionDeviceConfig"]
-  Layout --> Files["unified Ground/Sky session package"]
+  Layout --> Resolver["SessionPathResolver"]
+  Resolver --> Files["semantic Ground/Sky session package"]
   Files --> Loader["SessionLoader / SessionCsv"]
   Loader --> Index["SessionIndex / SessionWaveformRepository"]
   Index --> Playback["SessionPlaybackController / SessionTimelineModel"]
@@ -210,9 +211,12 @@ playback state, and timeline bounds are independent of QWidget. The viewer
 owns layout, user gestures, table/plot presentation, and delegates core work.
 The standard Ground/Sky session package is centralized in
 `SessionPackageLayout`, `SessionPackageInitializer`, `SessionManifest`,
-`SessionDeviceConfig`, and `vaporview_session_format`. Historical loading
-remains tolerant of old root counters, legacy `mode=sky`, and old waveform path
-keys.
+`SessionDeviceConfig`, `SessionPathResolver`, and `vaporview_session_format`.
+New file names describe data semantics (`navigation.dat`, `pressure.dat`,
+`sensor_summary.csv`, and so on); hardware models remain metadata. Historical
+loading resolves an explicit manifest path first, then the semantic default,
+then the old device-named path. It remains tolerant of old root counters,
+legacy `mode=sky`, and old path/raw-file keys without modifying old sessions.
 
 ### RTK, trajectory, waveform, and map boundaries
 

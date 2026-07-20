@@ -213,6 +213,12 @@ add_executable(session_format_test
 target_link_libraries(session_format_test PRIVATE vaporview_session_format)
 add_test(NAME session_format_test COMMAND session_format_test)
 
+add_executable(session_path_resolver_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/session_path_resolver_test.cpp
+)
+target_link_libraries(session_path_resolver_test PRIVATE vaporview_session_format)
+add_test(NAME session_path_resolver_test COMMAND session_path_resolver_test)
+
 add_executable(session_timeline_model_test
     ${CMAKE_CURRENT_SOURCE_DIR}/session_timeline_model_test.cpp
 )
@@ -515,6 +521,7 @@ set(VAPORVIEW_FAST_UNIT_TESTS
     temperature_command_state_test
     epsilon_protocol_test
     session_format_test
+    session_path_resolver_test
     session_timeline_model_test
     session_export_trajectory_test
     ground_recording_service_test

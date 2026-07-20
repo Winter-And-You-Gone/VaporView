@@ -451,12 +451,12 @@ SessionWaveformCatalogResult SessionWaveformRepository::loadCatalog(
     const ProgressCallback& progress)
 {
     SessionWaveformCatalogResult result;
-    result.catalog.waveformPeakIndexFilename = metadata.waveformPeakIndexFilename;
-    result.catalog.rawTcpWaveFilename = metadata.rawTcpWaveFilename;
+    result.catalog.waveformPeaksCsvFilename = metadata.waveformPeaksCsvFilename;
+    result.catalog.waveformRawFilename = metadata.waveformRawFilename;
     result.catalog.pointsPerFrame = metadata.waveformPointsPerFrame;
 
     const UnifiedRawCatalogResult rawResult = loadUnifiedRawCatalog(
-        metadata.rawTcpWaveFilename,
+        metadata.waveformRawFilename,
         result.catalog,
         progress);
     if (rawResult.status == UnifiedRawCatalogStatus::Loaded)
@@ -611,17 +611,17 @@ SessionWaveformPeakSeriesResult SessionWaveformRepository::loadCachedPeakSeries(
     const SessionWaveformCatalog& catalog)
 {
     SessionWaveformPeakSeriesResult result;
-    if (catalog.waveformPeakIndexFilename.isEmpty() ||
-        !QFileInfo::exists(catalog.waveformPeakIndexFilename))
+    if (catalog.waveformPeaksCsvFilename.isEmpty() ||
+        !QFileInfo::exists(catalog.waveformPeaksCsvFilename))
     {
         result.error = QStringLiteral("Waveform peak index is unavailable");
         return result;
     }
-    QFile file(catalog.waveformPeakIndexFilename);
+    QFile file(catalog.waveformPeaksCsvFilename);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
         result.error = QStringLiteral("Failed to open waveform peak index: %1")
-                           .arg(catalog.waveformPeakIndexFilename);
+                           .arg(catalog.waveformPeaksCsvFilename);
         return result;
     }
     QTextStream stream(&file);
@@ -707,17 +707,17 @@ bool SessionWaveformRepository::writeCachedPeakSeries(
     const QVector<quint64>& timestampsUs,
     const QVector<float>& peakValues)
 {
-    if (catalog.waveformPeakIndexFilename.isEmpty() || timestampsUs.isEmpty() ||
+    if (catalog.waveformPeaksCsvFilename.isEmpty() || timestampsUs.isEmpty() ||
         timestampsUs.size() != peakValues.size())
     {
         return false;
     }
-    const QFileInfo info(catalog.waveformPeakIndexFilename);
+    const QFileInfo info(catalog.waveformPeaksCsvFilename);
     if (!QDir().mkpath(info.absolutePath()))
     {
         return false;
     }
-    QSaveFile file(catalog.waveformPeakIndexFilename);
+    QSaveFile file(catalog.waveformPeaksCsvFilename);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         return false;

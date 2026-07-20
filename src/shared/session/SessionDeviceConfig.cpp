@@ -53,7 +53,7 @@ QJsonObject sessionDeviceConfigToJson(const SessionDeviceConfig& config)
     waveform.insert(QStringLiteral("timestamp_type"), config.waveformTimestampType);
 
     QJsonObject rawDat;
-    rawDat.insert(QStringLiteral("directory"), layout.epsilonRawPath.section(QLatin1Char('/'), 0, 0));
+    rawDat.insert(QStringLiteral("directory"), layout.navigationRawPath.section(QLatin1Char('/'), 0, 0));
     rawDat.insert(QStringLiteral("format_doc"), layout.rawFormatDocumentPath);
     rawDat.insert(QStringLiteral("mode"), QStringLiteral("per_verified_raw_frame_or_response"));
 

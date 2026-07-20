@@ -10,6 +10,7 @@ namespace VaporView::Geo {
 struct SessionTrackReadResult {
     bool ok = false;
     QString error;
+    QString warning;
     QString sourceCsvPath;
     qsizetype totalRows = 0;
     qsizetype rejectedRows = 0;

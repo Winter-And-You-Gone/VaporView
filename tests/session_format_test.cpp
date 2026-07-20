@@ -494,9 +494,24 @@ void testSessionPackageInitializerCreatesIdenticalGroundAndSkyPackages()
     require(groundFiles == expectedFiles, "ground standard file set");
     require(skyFiles == expectedFiles, "sky standard file set");
     require(groundFiles == skyFiles, "ground and sky file sets match");
+    const QStringList legacyStandardFiles = {
+        QStringLiteral("sensors/devices.csv"),
+        QStringLiteral("sensors/rd105_temperature_controller.csv"),
+        QStringLiteral("raw/epsilon.dat"),
+        QStringLiteral("raw/ptb.dat"),
+        QStringLiteral("raw/hmp.dat"),
+        QStringLiteral("raw/lidar.dat"),
+        QStringLiteral("raw/tcp_wave.dat"),
+        QStringLiteral("raw/tcp_wave_peaks.csv")
+    };
+    for (const QString& legacyPath : legacyStandardFiles)
+    {
+        require(!groundFiles.contains(legacyPath) && !skyFiles.contains(legacyPath),
+                "new packages do not create legacy file names");
+    }
 
     const SessionPackageLayout& layout = standardSessionPackageLayout();
-    require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.devicesCsvPath)))
+    require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.sensorSummaryCsvPath)))
                 == headerLine(VaporView::SessionSensorCsv::header()),
             "standard devices.csv header exists");
     require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.temperatureControllerCsvPath)))
@@ -505,7 +520,7 @@ void testSessionPackageInitializerCreatesIdenticalGroundAndSkyPackages()
     require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.waveformFeaturesCsvPath)))
                 == headerLine(waveformFeaturesCsvHeader()),
             "standard waveform features header exists");
-    require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.tcpWavePeaksCsvPath)))
+    require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.waveformPeaksCsvPath)))
                 == headerLine(tcpWavePeaksCsvHeader()),
             "standard tcp wave peaks header exists");
     require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.eventLogPath)))
@@ -600,6 +615,21 @@ void testSessionManifestSchemaAndOriginCompatibility()
     requireSameKeySet(groundJson.value(QStringLiteral("raw_files")).toObject(),
                       skyJson.value(QStringLiteral("raw_files")).toObject(),
                       "manifest raw_files key sets match");
+    require(groundJson.value(QStringLiteral("paths")).toObject().keys() == QStringList{
+                QStringLiteral("device_config"),
+                QStringLiteral("distance_raw"),
+                QStringLiteral("error_log"),
+                QStringLiteral("event_log"),
+                QStringLiteral("navigation_raw"),
+                QStringLiteral("pressure_raw"),
+                QStringLiteral("raw_format_document"),
+                QStringLiteral("sensor_summary_csv"),
+                QStringLiteral("temperature_controller_csv"),
+                QStringLiteral("temperature_humidity_raw"),
+                QStringLiteral("waveform_features_csv"),
+                QStringLiteral("waveform_peaks_csv"),
+                QStringLiteral("waveform_raw")},
+            "new manifest writes semantic path keys");
     requireSameJsonTypes(QJsonValue(groundJson), QJsonValue(skyJson), QStringLiteral("manifest"));
     for (const QString& key : groundJson.keys())
     {

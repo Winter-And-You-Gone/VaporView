@@ -19,11 +19,11 @@ struct SessionMetadata
     QString sessionName;
     QString startTimeUtc;
     QString endTimeUtc;
-    QString sensorsCsvFilename;
+    QString sensorSummaryCsvFilename;
     QString waveformDirectory;
     QString waveformIndexFilename;
-    QString waveformPeakIndexFilename;
-    QString rawTcpWaveFilename;
+    QString waveformPeaksCsvFilename;
+    QString waveformRawFilename;
     quint64 sensorRows = 0;
     quint64 waveformFrames = 0;
     int waveformPointsPerFrame = 50000;
@@ -36,6 +36,7 @@ struct SessionMetadataLoadResult
 {
     bool success = false;
     QString error;
+    QString warning;
     SessionMetadata metadata;
 };
 

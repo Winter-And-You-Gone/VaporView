@@ -52,8 +52,8 @@ struct SessionIndexedWaveformFrame
 
 struct SessionWaveformCatalog
 {
-    QString waveformPeakIndexFilename;
-    QString rawTcpWaveFilename;
+    QString waveformPeaksCsvFilename;
+    QString waveformRawFilename;
     QVector<SessionWaveformSegment> legacySegments;
     QVector<SessionRawTcpWaveFrame> rawTcpFrames;
     QVector<SessionIndexedWaveformFrame> indexedFrames;

@@ -54,7 +54,9 @@ Replay slider
 地图诊断
 ```
 
-`打开 Session` loads a recorded session directory and reads `sensors/devices.csv`.
+`打开 Session` loads a recorded session directory and reads
+`sensors/sensor_summary.csv`; historical `sensors/devices.csv` sessions remain
+compatible through the shared path resolver.
 The reader supports both newer `nav_*`/`epsilon_*` columns and older RTK/IMU session columns such as `rtk_lat`, `rtk_lon`, `rtk_alt`, `rtk_fix`, `rtk_sat`, `rtk_heading`, `rtk_pitch`, `rtk_vel_*`, and `imu_roll`/`imu_yaw`.
 When quaternion columns (`quat_w`, `quat_x`, `quat_y`, `quat_z`, including `epsilon_quat_*` aliases) are available, the aircraft marker and follow camera use them for attitude/heading before falling back to roll/pitch/yaw.
 

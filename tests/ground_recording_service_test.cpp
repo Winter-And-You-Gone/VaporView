@@ -109,11 +109,11 @@ int main(int argc, char **argv)
     require(!recorder.isSessionOpen(), "session closed after stop");
     require(summary.sensorRows >= 2, "stop summary rows");
 
-    QFile devicesFile(QDir(sessionDirectory).filePath(QStringLiteral("sensors/devices.csv")));
-    require(devicesFile.open(QIODevice::ReadOnly), "open devices.csv");
+    QFile devicesFile(QDir(sessionDirectory).filePath(QStringLiteral("sensors/sensor_summary.csv")));
+    require(devicesFile.open(QIODevice::ReadOnly), "open sensor_summary.csv");
     const QByteArray devicesCsv = devicesFile.readAll();
-    require(devicesCsv.contains("record_timestamp_us"), "devices.csv header");
-    require(devicesCsv.contains("30.250000000"), "devices.csv sample");
+    require(devicesCsv.contains("record_timestamp_us"), "sensor summary header");
+    require(devicesCsv.contains("30.250000000"), "sensor summary sample");
     QByteArray devicesWithoutBom = devicesCsv;
     const QByteArray utf8Bom = QByteArray::fromHex("efbbbf");
     if (devicesWithoutBom.startsWith(utf8Bom))
@@ -129,7 +129,7 @@ int main(int argc, char **argv)
     QByteArray expectedDevicesHeader = VaporView::SessionSensorCsv::header().toUtf8();
     expectedDevicesHeader.chop(1);
     require(headerEnd > 0 && actualDevicesHeader == expectedDevicesHeader,
-            "ground devices.csv uses shared header exactly");
+            "ground sensor summary uses shared header exactly");
 
     QFile metadataFile(QDir(sessionDirectory).filePath(QStringLiteral("session.json")));
     require(metadataFile.open(QIODevice::ReadOnly), "open session metadata");
@@ -145,19 +145,19 @@ int main(int argc, char **argv)
     require(counts.value(QStringLiteral("sensor_rows")).toString().toULongLong() >= 2,
             "metadata sensor row count");
     require(root.value(QStringLiteral("raw_files")).toObject()
-                .value(QStringLiteral("epsilon")).toObject()
+                 .value(QStringLiteral("navigation")).toObject()
                 .value(QStringLiteral("records")).toString() == QStringLiteral("1"),
             "metadata raw epsilon count");
     const QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
-    require(paths.value(QStringLiteral("devices_csv")).toString() == QStringLiteral("sensors/devices.csv"),
-            "metadata devices path");
+    require(paths.value(QStringLiteral("sensor_summary_csv")).toString() == QStringLiteral("sensors/sensor_summary.csv"),
+            "metadata sensor summary path");
     require(paths.value(QStringLiteral("temperature_controller_csv")).toString()
-                == QStringLiteral("sensors/rd105_temperature_controller.csv"),
+                == QStringLiteral("sensors/temperature_controller.csv"),
             "metadata temperature controller path");
     require(paths.value(QStringLiteral("waveform_features_csv")).toString()
                 == QStringLiteral("sensors/waveform_features.csv"),
             "metadata waveform features path");
-    require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/rd105_temperature_controller.csv"))),
+    require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/temperature_controller.csv"))),
             "temperature controller csv exists");
     require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/waveform_features.csv"))),
             "waveform features csv exists");
@@ -199,14 +199,14 @@ int main(int argc, char **argv)
                 .value(QStringLiteral("port")).isNull(),
             "ground device config missing rd105 port is null");
 
-    QFile rawFile(QDir(sessionDirectory).filePath(QStringLiteral("raw/epsilon.dat")));
-    require(rawFile.open(QIODevice::ReadOnly), "open raw epsilon file");
+    QFile rawFile(QDir(sessionDirectory).filePath(QStringLiteral("raw/navigation.dat")));
+    require(rawFile.open(QIODevice::ReadOnly), "open navigation raw file");
     VaporView::SessionRawDat::RawScanOptions scanOptions;
     scanOptions.expectedSourceId = VaporView::SessionRawDat::kSourceEpsilon;
     const VaporView::SessionRawDat::RawScanResult rawResult =
         VaporView::SessionRawDat::scan(rawFile, scanOptions);
     require(rawResult.success() && rawResult.records.size() == 1,
-            "shared reader scans ground epsilon raw DAT");
+            "shared reader scans ground navigation raw DAT");
     require(rawResult.fileHeader.version == VaporView::SessionRawDat::kCurrentFormatVersion,
             "ground writer uses shared current raw version");
 

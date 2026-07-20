@@ -169,7 +169,7 @@ H300 网桥使用说明：
 - TCP 波形监视，默认连接 `127.0.0.1:8888`，显示原始信号、归一化二次谐波和峰值趋势。
 - RTK NTRIP 配置对话框，基于内置 RTKLIB `strsvr` 把 NTRIP 输入转发到串口或 TCP Client 输出。
 - 会话记录：手动开始、暂停、结束，按配置写入 `session_*` 目录。
-- 数据查看器：读取已记录的 `session.json`、`devices.csv` 和 `raw/tcp_wave.dat`，同时兼容旧会话的 `waveform/*.dat`，显示波形、峰值、温湿度、气压和关联 CSV 行。
+- 数据查看器：读取已记录的 `session.json`、`sensors/sensor_summary.csv` 和 `raw/waveform.dat`，同时兼容旧会话的设备命名路径与 `waveform/*.dat`，显示波形、峰值、温湿度、气压和关联 CSV 行。
 - 轨迹查看器：从会话 CSV 中提取 RTK 轨迹点，支持 OpenStreetMap、天地图矢量和天地图卫星底图；天地图底图需要用户提供 Key。
 - 诊断脚本：EPSILON 串口探测、EPSILON 主口恢复、TCP 波形模拟发送。
 
@@ -386,7 +386,7 @@ Qt `SerialPort` 模块当前用于枚举可用串口；实际采集读写使用�
 - 串口探测优先读取有效 `FDILink` 帧；如果未检测到导航流，会尝试 `#fconfig`、`#fmsg`、`#fdeconfig` 命令模式握手并恢复导航流。
 - UI 分组采样率只提供 `20`、`50`、`100`、`200 Hz`。
 - 设备命令使用 `#fconfig`、`#fmsg`、`#fsave`、`#freboot`、`#fdeconfig`、`#fparam`、`#fantearm`。
-- 记录侧只把校验通过的完整 `FDILink` 原始帧写入统一 raw 文件 `raw/epsilon.dat`。
+- 记录侧只把校验通过的完整 `FDILink` 原始帧写入语义化 raw 文件 `raw/navigation.dat`。
 
 当前解析和频率统计覆盖的 EPSILON 报文：
 
@@ -412,13 +412,13 @@ Qt `SerialPort` 模块当前用于枚举可用串口；实际采集读写使用�
 - `0x41`、`0x63`、`0x64` 都是姿态相关输出，但不是三组独立观测；它们更适合做一致性校验和缺包补位。
 - 3D 飞机模型优先使用四元数（`0x41` 或 `0x64`），没有四元数时回退到欧拉角（`0x41`、`0x63`）。
 - `0x53` 只是状态包，不参与姿态计算。
-- 记录到 `devices.csv` 的姿态对比字段包括来源数和三组两两最大差值，方便回看 session 时快速判断一致性。
+- 记录到 `sensor_summary.csv` 的姿态对比字段包括来源数和三组两两最大差值，方便回看 session 时快速判断一致性。
 
 ECEF 使用策略：
 
-- `raw/epsilon.dat` 始终保存设备原始 `0x5D MSG_ECEF_POS` 帧，不改写、不用反算值覆盖；这是排查设备输出和协议问题的第一现场。
-- 程序运行、天空-地面遥测、3D 地图、轨迹重放和新写入的 `sensors/devices.csv` 使用“resolved ECEF”：如果设备 `0x5D` 的 ECEF 落在合理 WGS84 地球半径壳层内，就直接使用设备 ECEF；如果设备 ECEF 明显异常但同一快照有有效 EPSILON LLH，则用 `0x5C MSG_GEODETIC_POS`/系统状态里的经纬高按 WGS84 椭球反算 ECEF。
-- 该 fallback 是当前针对 EPSILON `0x5D` 原始输出异常的保护策略，不代表设备原始 ECEF 已经正常。需要追根因时，应对比 `raw/epsilon.dat` 中的 `0x5D` 原始帧和同时间 `0x5C` LLH 反算结果。
+- `raw/navigation.dat` 始终保存设备原始 `0x5D MSG_ECEF_POS` 帧，不改写、不用反算值覆盖；这是排查设备输出和协议问题的第一现场。
+- 程序运行、天空-地面遥测、3D 地图、轨迹重放和新写入的 `sensors/sensor_summary.csv` 使用“resolved ECEF”：如果设备 `0x5D` 的 ECEF 落在合理 WGS84 地球半径壳层内，就直接使用设备 ECEF；如果设备 ECEF 明显异常但同一快照有有效 EPSILON LLH，则用 `0x5C MSG_GEODETIC_POS`/系统状态里的经纬高按 WGS84 椭球反算 ECEF。
+- 该 fallback 是当前针对 EPSILON `0x5D` 原始输出异常的保护策略，不代表设备原始 ECEF 已经正常。需要追根因时，应对比 `raw/navigation.dat` 中的 `0x5D` 原始帧和同时间 `0x5C` LLH 反算结果。
 - LLH 反算只在高度参考为 WGS84 ellipsoid 的样本上隐式启用；非 WGS84 高程参考不会被静默转换成 ECEF。
 
 EPSILON 包频率配置：
@@ -569,16 +569,16 @@ data/
     ├── session.json
     ├── raw_dat_format.md
     ├── sensors/
-    │   ├── devices.csv
-    │   ├── rd105_temperature_controller.csv
+    │   ├── sensor_summary.csv
+    │   ├── temperature_controller.csv
     │   └── waveform_features.csv
     ├── raw/
-    │   ├── epsilon.dat
-    │   ├── ptb.dat
-    │   ├── hmp.dat
-    │   ├── lidar.dat
-    │   ├── tcp_wave.dat
-    │   └── tcp_wave_peaks.csv
+    │   ├── navigation.dat
+    │   ├── pressure.dat
+    │   ├── temperature_humidity.dat
+    │   ├── distance.dat
+    │   ├── waveform.dat
+    │   └── waveform_peaks.csv
     ├── logs/
     │   ├── event_log.csv
     │   └── error_log.txt
@@ -590,9 +590,9 @@ data/
 
 | 分类 | 当前行为 |
 | --- | --- |
-| TCP 波形 raw | 每组完整 TCP 原始信号 + 二次谐波 payload 写入 `raw/tcp_wave.dat` |
-| EPSILON 原始帧 | 固定保存完整已校验 `FDILink` 帧到 `raw/epsilon.dat` |
-| PTB / HMP / Lidar 原始响应 | 保存有效原始响应或完整协议帧到统一 raw DAT |
+| TCP 波形 raw | 每组完整 TCP 原始信号 + 二次谐波 payload 写入 `raw/waveform.dat` |
+| 组合导航原始帧 | 固定保存完整已校验 `FDILink` 帧到 `raw/navigation.dat` |
+| 气压 / 温湿度 / 距离原始响应 | 保存有效原始响应或完整协议帧到语义化 raw DAT |
 | CSV 摘要 | `1/2/5/10/20/50/100/200 Hz` |
 
 `session.json` 当前使用统一 manifest schema。顶层包含
@@ -601,6 +601,16 @@ data/
 `counts` 和 `raw_files.*.records` 使用字符串计数；不适用的 capture
 字段保留为 `null`。完整 schema 与历史兼容规则见
 [docs/session_format.md](docs/session_format.md)。
+
+会话文件名按数据语义命名，而不是按设备型号命名。标准路径为
+`navigation.dat`、`pressure.dat`、`temperature_humidity.dat`、`distance.dat`、
+`waveform.dat`、`waveform_peaks.csv`、`sensor_summary.csv` 和
+`temperature_controller.csv`；具体设备型号、厂家和端口保存在
+`session.json` 或 `config/device_config.json`。Reader 兼容历史路径：
+`epsilon.dat`、`ptb.dat`、`hmp.dat`、`lidar.dat`、`tcp_wave.dat`、
+`tcp_wave_peaks.csv`、`devices.csv` 和
+`rd105_temperature_controller.csv`。解析顺序是 manifest 显式路径、新默认
+路径、旧路径；历史会话不会被自动迁移或修改。
 
 `device_config.json` 由共享 `SessionDeviceConfig` schema 生成。Ground 和 Sky
 使用完全相同的顶层及嵌套 key：
@@ -613,9 +623,9 @@ data/
 
 ## 数据文件格式
 
-### `sensors/devices.csv`
+### `sensors/sensor_summary.csv`
 
-`devices.csv` 由独立记录线程按“其余设备”记录频率写入。每行是记录时刻的最新设备快照。
+`sensor_summary.csv` 由独立记录线程按“其余设备”记录频率写入。每行是记录时刻的最新设备快照。
 
 当前表头字段包括：
 
@@ -631,7 +641,7 @@ data/
 - EPSILON 有效性和错误信息
 - HMP 温度 / 湿度、PTB 气压、Lidar 距离 / 信号强度 / 有效性
 
-其中 `ecef_x_m`、`ecef_y_m`、`ecef_z_m` 是程序使用的 resolved ECEF 字段：优先为设备可信 `0x5D`，否则为有效 LLH 的 WGS84 反算值。原始设备 `0x5D` 帧只在 `raw/epsilon.dat` 中保真保存。
+其中 `ecef_x_m`、`ecef_y_m`、`ecef_z_m` 是程序使用的 resolved ECEF 字段：优先为设备可信 `0x5D`，否则为有效 LLH 的 WGS84 反算值。原始设备 `0x5D` 帧只在 `raw/navigation.dat` 中保真保存。
 
 ### `raw/*.dat`
 
@@ -639,13 +649,13 @@ data/
 
 当前写入逻辑：
 
-- `raw/epsilon.dat`：完整已校验 EPSILON `FDILink` 帧。
-- `raw/ptb.dat`：PTB210 有效压力响应原始行字节。
-- `raw/hmp.dat`：HMP3 完整 Modbus 数据响应帧。
-- `raw/lidar.dat`：已识别协议且校验通过的完整测距帧。
-- `raw/tcp_wave.dat`：每组 TCP 原始信号 payload 和二次谐波 payload。
+- `raw/navigation.dat`：完整已校验 EPSILON `FDILink` 帧。
+- `raw/pressure.dat`：有效压力响应原始行字节。
+- `raw/temperature_humidity.dat`：完整温湿度 Modbus 数据响应帧。
+- `raw/distance.dat`：已识别协议且校验通过的完整测距帧。
+- `raw/waveform.dat`：每组 TCP 原始信号 payload 和二次谐波 payload。
 
-新会话不再生成旧版 `sensors/epsilon_raw.dat` 或 `waveform/*.dat`。数据查看器仍保留旧 `waveform/*.dat` 的读取兼容。
+新会话不再生成旧型号路径或 `waveform/*.dat`。数据查看器仍保留旧 `raw/epsilon.dat`、`raw/tcp_wave.dat`、`sensors/devices.csv` 和 `waveform/*.dat` 的读取兼容。
 
 ## 数据查看器与轨迹查看器
 
@@ -653,8 +663,8 @@ data/
 
 - 可选择 session 目录或 `session.json`。
 - 读取 `session.json` 中的相对路径。
-- 读取 `sensors/devices.csv` 并显示表格。
-- 优先读取 `raw/tcp_wave.dat`；旧会话没有该文件时，回退扫描 `waveform/*.dat`。
+- 读取 `sensors/sensor_summary.csv` 并显示表格。
+- 优先读取 `raw/waveform.dat`；旧会话没有该文件时，回退读取 `raw/tcp_wave.dat` 或扫描 `waveform/*.dat`。
 - 支持帧滑块和数字框定位。
 - 对每帧波形计算峰值，默认峰值搜索区间为 `[10000, 50000)`。
 - 峰值过滤支持无过滤、IQR 离群过滤、保留范围、排除范围。

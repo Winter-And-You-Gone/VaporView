@@ -94,7 +94,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , waveform_directory_()
     , waveform_index_filename_()
     , waveform_peak_index_filename_()
-    , raw_tcp_wave_filename_()
+    , waveform_raw_filename_()
     , default_data_directory_()
     , session_name_()
     , start_time_utc_()
@@ -523,7 +523,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     waveform_directory_.clear();
     waveform_index_filename_.clear();
     waveform_peak_index_filename_.clear();
-    raw_tcp_wave_filename_.clear();
+    waveform_raw_filename_.clear();
     session_name_.clear();
     start_time_utc_.clear();
     end_time_utc_.clear();
@@ -871,11 +871,11 @@ bool SessionViewerWindow::loadSessionMetadata(const QString& sessionDirectory)
     sensor_export_rate_hz_ = metadata.sensorExportRateHz;
     waveform_export_rate_hz_ = metadata.waveformExportRateHz;
     waveform_export_mode_ = metadata.waveformExportMode;
-    sensors_csv_filename_ = metadata.sensorsCsvFilename;
+    sensors_csv_filename_ = metadata.sensorSummaryCsvFilename;
     waveform_directory_ = metadata.waveformDirectory;
     waveform_index_filename_ = metadata.waveformIndexFilename;
-    waveform_peak_index_filename_ = metadata.waveformPeakIndexFilename;
-    raw_tcp_wave_filename_ = metadata.rawTcpWaveFilename;
+    waveform_peak_index_filename_ = metadata.waveformPeaksCsvFilename;
+    waveform_raw_filename_ = metadata.waveformRawFilename;
     return true;
 }
 
@@ -890,7 +890,7 @@ bool SessionViewerWindow::loadSensorsCsv()
     trajectory_controller_.clear();
 
     VaporView::Ground::SessionMetadata metadata;
-    metadata.sensorsCsvFilename = sensors_csv_filename_;
+    metadata.sensorSummaryCsvFilename = sensors_csv_filename_;
     metadata.sensorRows = total_sensor_rows_;
     VaporView::Ground::SessionSensorLoadResult result =
         VaporView::Ground::SessionLoader::loadSensors(
@@ -917,15 +917,15 @@ bool SessionViewerWindow::loadSensorsCsv()
                                           : "打开传感器 CSV 失败: %1")
                           .arg(sensors_csv_filename_));
         device_data_page_->setInfoText(is_english_
-            ? QStringLiteral("The session metadata is valid, but sensors/devices.csv could not be opened.")
-            : QStringLiteral("session 元数据是有效的，但 sensors/devices.csv 无法打开。"));
+            ? QStringLiteral("The session metadata is valid, but sensors/sensor_summary.csv could not be opened.")
+            : QStringLiteral("session 元数据是有效的，但 sensors/sensor_summary.csv 无法打开。"));
         return true;
     }
     if (result.data.headers.isEmpty())
     {
         device_data_page_->setInfoText(is_english_
-            ? QStringLiteral("devices.csv is empty.")
-            : QStringLiteral("devices.csv 为空。"));
+            ? QStringLiteral("sensor_summary.csv is empty.")
+            : QStringLiteral("sensor_summary.csv 为空。"));
         return true;
     }
 
@@ -981,8 +981,8 @@ bool SessionViewerWindow::loadWaveformSegments()
     metadata.sessionDirectory = session_directory_;
     metadata.waveformDirectory = waveform_directory_;
     metadata.waveformIndexFilename = waveform_index_filename_;
-    metadata.waveformPeakIndexFilename = waveform_peak_index_filename_;
-    metadata.rawTcpWaveFilename = raw_tcp_wave_filename_;
+    metadata.waveformPeaksCsvFilename = waveform_peak_index_filename_;
+    metadata.waveformRawFilename = waveform_raw_filename_;
     metadata.waveformPointsPerFrame = points_per_frame_;
 
     VaporView::Ground::SessionWaveformCatalogResult result =
@@ -1012,7 +1012,7 @@ bool SessionViewerWindow::loadWaveformSegments()
     total_waveform_frames_ = waveform_catalog_.frameCount;
     points_per_frame_ = waveform_catalog_.pointsPerFrame;
     if (waveform_catalog_.isEmpty() &&
-        !QFileInfo::exists(raw_tcp_wave_filename_) &&
+        !QFileInfo::exists(waveform_raw_filename_) &&
         !QFileInfo::exists(waveform_directory_))
     {
         setStatusText(is_english_

@@ -168,15 +168,15 @@ RecordingSessionLayout groundLayoutFromPackage(const VaporView::Session::Session
     RecordingSessionLayout layout;
     layout.sessionName = init.sessionName;
     layout.sessionDirectory = init.sessionDirectory;
-    layout.sensorsFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.devicesCsvPath);
+    layout.sensorSummaryFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.sensorSummaryCsvPath);
     layout.temperatureControllerFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.temperatureControllerCsvPath);
     layout.waveformFeaturesFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.waveformFeaturesCsvPath);
-    layout.rawEpsilonFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.epsilonRawPath);
-    layout.rawPtbFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.ptbRawPath);
-    layout.rawHmpFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.hmpRawPath);
-    layout.rawLidarFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.lidarRawPath);
-    layout.rawTcpWaveFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.tcpWaveRawPath);
-    layout.rawTcpWavePeakIndexFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.tcpWavePeaksCsvPath);
+    layout.navigationRawFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.navigationRawPath);
+    layout.pressureRawFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.pressureRawPath);
+    layout.temperatureHumidityRawFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.temperatureHumidityRawPath);
+    layout.distanceRawFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.distanceRawPath);
+    layout.waveformRawFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.waveformRawPath);
+    layout.waveformPeaksFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.waveformPeaksCsvPath);
     layout.rawDatDocumentFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.rawFormatDocumentPath);
     layout.sessionMetadataFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.manifestPath);
     layout.eventLogFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.eventLogPath);
@@ -256,23 +256,23 @@ public:
         }
         layout = groundLayoutFromPackage(initResult);
 
-        sensorsFile = std::make_unique<QFile>(layout.sensorsFilename);
+        sensorSummaryFile = std::make_unique<QFile>(layout.sensorSummaryFilename);
         temperatureControllerFile = std::make_unique<QFile>(layout.temperatureControllerFilename);
         waveformFeaturesFile = std::make_unique<QFile>(layout.waveformFeaturesFilename);
         eventLogFile = std::make_unique<QFile>(layout.eventLogFilename);
         errorLogFile = std::make_unique<QFile>(layout.errorLogFilename);
-        rawTcpWavePeakIndexFile = std::make_unique<QFile>(layout.rawTcpWavePeakIndexFilename);
-        if (!sensorsFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
+        waveformPeaksFile = std::make_unique<QFile>(layout.waveformPeaksFilename);
+        if (!sensorSummaryFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
             !temperatureControllerFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
             !waveformFeaturesFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
             !eventLogFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
             !errorLogFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
-            !rawTcpWavePeakIndexFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
-            !openRawFile(rawEpsilonFile, layout.rawEpsilonFilename, SessionRawDat::kSourceEpsilon) ||
-            !openRawFile(rawPtbFile, layout.rawPtbFilename, SessionRawDat::kSourcePtb) ||
-            !openRawFile(rawHmpFile, layout.rawHmpFilename, SessionRawDat::kSourceHmp) ||
-            !openRawFile(rawLidarFile, layout.rawLidarFilename, SessionRawDat::kSourceLidar) ||
-            !openRawFile(rawTcpWaveFile, layout.rawTcpWaveFilename, SessionRawDat::kSourceTcpWave))
+            !waveformPeaksFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
+            !openRawFile(navigationRawFile, layout.navigationRawFilename, SessionRawDat::kSourceEpsilon) ||
+            !openRawFile(pressureRawFile, layout.pressureRawFilename, SessionRawDat::kSourcePtb) ||
+            !openRawFile(temperatureHumidityRawFile, layout.temperatureHumidityRawFilename, SessionRawDat::kSourceHmp) ||
+            !openRawFile(distanceRawFile, layout.distanceRawFilename, SessionRawDat::kSourceLidar) ||
+            !openRawFile(waveformRawFile, layout.waveformRawFilename, SessionRawDat::kSourceTcpWave))
         {
             if (startError) *startError = GroundRecordingStartError::OpenSessionFiles;
             if (errorMessage) *errorMessage = QStringLiteral("failed to open session files");
@@ -290,13 +290,13 @@ public:
             out.flush();
         }
         {
-            QTextStream out(rawTcpWavePeakIndexFile.get());
+            QTextStream out(waveformPeaksFile.get());
             out.setEncoding(QStringConverter::Utf8);
             out << VaporView::Session::tcpWavePeaksCsvHeader();
             out.flush();
         }
         {
-            QTextStream out(sensorsFile.get());
+            QTextStream out(sensorSummaryFile.get());
             out.setEncoding(QStringConverter::Utf8);
             out << SessionSensorCsv::header();
             out.flush();
@@ -406,7 +406,7 @@ public:
     bool isSessionOpen() const
     {
         std::lock_guard<std::mutex> lock(filesMutex);
-        return sensorsFile && sensorsFile->isOpen();
+        return sensorSummaryFile && sensorSummaryFile->isOpen();
     }
 
     bool recordRaw(std::unique_ptr<QFile>& file,
@@ -651,7 +651,7 @@ private:
         paused.store(false);
         startTcpWorker();
         startDeviceRawWorker();
-        QFile *file = sensorsFile.get();
+        QFile *file = sensorSummaryFile.get();
         workerRunning.store(true);
         sensorThread = std::thread([this, file]() {
             const auto period = std::chrono::microseconds(1'000'000 / options.exportRateHz);
@@ -718,19 +718,19 @@ private:
                 switch (record.sourceId)
                 {
                 case SessionRawDat::kSourceEpsilon:
-                    file = &rawEpsilonFile;
+                    file = &navigationRawFile;
                     recordCount = &rawEpsilonRecordCount;
                     break;
                 case SessionRawDat::kSourcePtb:
-                    file = &rawPtbFile;
+                    file = &pressureRawFile;
                     recordCount = &rawPtbRecordCount;
                     break;
                 case SessionRawDat::kSourceHmp:
-                    file = &rawHmpFile;
+                    file = &temperatureHumidityRawFile;
                     recordCount = &rawHmpRecordCount;
                     break;
                 case SessionRawDat::kSourceLidar:
-                    file = &rawLidarFile;
+                    file = &distanceRawFile;
                     recordCount = &rawLidarRecordCount;
                     break;
                 default:
@@ -797,7 +797,7 @@ private:
                     tcpQueueBytes -= static_cast<quint64>(record.payload.size());
                 }
 
-                if (writeRawRecord(rawTcpWaveFile,
+                if (writeRawRecord(waveformRawFile,
                                    rawTcpWaveRecordCount,
                                    SessionRawDat::kSourceTcpWave,
                                    SessionRawDat::kRecordTypeTcpWavePayload,
@@ -852,11 +852,11 @@ private:
     {
         const TcpWavePeakSummary summary = summarizeTcpWavePeakRecordPayload(record.payload, record.flags);
         std::lock_guard<std::mutex> lock(filesMutex);
-        if (!rawTcpWavePeakIndexFile || !rawTcpWavePeakIndexFile->isOpen())
+        if (!waveformPeaksFile || !waveformPeaksFile->isOpen())
         {
             return;
         }
-        QTextStream out(rawTcpWavePeakIndexFile.get());
+            QTextStream out(waveformPeaksFile.get());
         out.setEncoding(QStringConverter::Utf8);
         out << record.timestampUs << ','
             << peakValueCsvText(summary.value) << ','
@@ -918,13 +918,13 @@ private:
     void closeFiles()
     {
         std::lock_guard<std::mutex> lock(filesMutex);
-        for (QFile *file : {rawEpsilonFile.get(),
-                            rawPtbFile.get(),
-                            rawHmpFile.get(),
-                            rawLidarFile.get(),
-                            rawTcpWaveFile.get(),
-                            rawTcpWavePeakIndexFile.get(),
-                            sensorsFile.get(),
+        for (QFile *file : {navigationRawFile.get(),
+                            pressureRawFile.get(),
+                            temperatureHumidityRawFile.get(),
+                            distanceRawFile.get(),
+                            waveformRawFile.get(),
+                            waveformPeaksFile.get(),
+                            sensorSummaryFile.get(),
                             temperatureControllerFile.get(),
                             waveformFeaturesFile.get(),
                             eventLogFile.get(),
@@ -941,15 +941,15 @@ private:
     void resetFiles()
     {
         std::lock_guard<std::mutex> lock(filesMutex);
-        sensorsFile.reset();
+        sensorSummaryFile.reset();
         temperatureControllerFile.reset();
         waveformFeaturesFile.reset();
-        rawEpsilonFile.reset();
-        rawPtbFile.reset();
-        rawHmpFile.reset();
-        rawLidarFile.reset();
-        rawTcpWaveFile.reset();
-        rawTcpWavePeakIndexFile.reset();
+        navigationRawFile.reset();
+        pressureRawFile.reset();
+        temperatureHumidityRawFile.reset();
+        distanceRawFile.reset();
+        waveformRawFile.reset();
+        waveformPeaksFile.reset();
         eventLogFile.reset();
         errorLogFile.reset();
     }
@@ -981,13 +981,13 @@ public:
     QString sessionStartTimeUtc;
     quint64 sessionStartTimeUs = 0;
 
-    std::unique_ptr<QFile> sensorsFile;
-    std::unique_ptr<QFile> rawEpsilonFile;
-    std::unique_ptr<QFile> rawPtbFile;
-    std::unique_ptr<QFile> rawHmpFile;
-    std::unique_ptr<QFile> rawLidarFile;
-    std::unique_ptr<QFile> rawTcpWaveFile;
-    std::unique_ptr<QFile> rawTcpWavePeakIndexFile;
+    std::unique_ptr<QFile> sensorSummaryFile;
+    std::unique_ptr<QFile> navigationRawFile;
+    std::unique_ptr<QFile> pressureRawFile;
+    std::unique_ptr<QFile> temperatureHumidityRawFile;
+    std::unique_ptr<QFile> distanceRawFile;
+    std::unique_ptr<QFile> waveformRawFile;
+    std::unique_ptr<QFile> waveformPeaksFile;
     std::unique_ptr<QFile> temperatureControllerFile;
     std::unique_ptr<QFile> waveformFeaturesFile;
     std::unique_ptr<QFile> eventLogFile;
@@ -1088,7 +1088,7 @@ bool GroundRecordingService::recordRawEpsilonFrame(quint64 hostTimestampUs,
                                                    const void *data,
                                                    size_t size)
 {
-    return impl_->recordRaw(impl_->rawEpsilonFile,
+    return impl_->recordRaw(impl_->navigationRawFile,
                             impl_->rawEpsilonRecordCount,
                             SessionRawDat::kSourceEpsilon,
                             packetId,
@@ -1102,7 +1102,7 @@ bool GroundRecordingService::recordRawPtbResponse(quint64 hostTimestampUs,
                                                   const void *data,
                                                   size_t size)
 {
-    return impl_->recordRaw(impl_->rawPtbFile,
+    return impl_->recordRaw(impl_->pressureRawFile,
                             impl_->rawPtbRecordCount,
                             SessionRawDat::kSourcePtb,
                             SessionRawDat::kRecordTypePtbResponse,
@@ -1116,7 +1116,7 @@ bool GroundRecordingService::recordRawHmpResponse(quint64 hostTimestampUs,
                                                   const void *data,
                                                   size_t size)
 {
-    return impl_->recordRaw(impl_->rawHmpFile,
+    return impl_->recordRaw(impl_->temperatureHumidityRawFile,
                             impl_->rawHmpRecordCount,
                             SessionRawDat::kSourceHmp,
                             SessionRawDat::kRecordTypeHmpModbusResponse,
@@ -1131,7 +1131,7 @@ bool GroundRecordingService::recordRawLidarFrame(quint64 hostTimestampUs,
                                                  const void *data,
                                                  size_t size)
 {
-    return impl_->recordRaw(impl_->rawLidarFile,
+    return impl_->recordRaw(impl_->distanceRawFile,
                             impl_->rawLidarRecordCount,
                             SessionRawDat::kSourceLidar,
                             protocol,

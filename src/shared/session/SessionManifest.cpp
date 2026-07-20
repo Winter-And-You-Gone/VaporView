@@ -75,15 +75,15 @@ QJsonObject pathsToJson()
 {
     const SessionPackageLayout& layout = standardSessionPackageLayout();
     QJsonObject object;
-    object.insert(QStringLiteral("devices_csv"), layout.devicesCsvPath);
+    object.insert(QStringLiteral("sensor_summary_csv"), layout.sensorSummaryCsvPath);
     object.insert(QStringLiteral("temperature_controller_csv"), layout.temperatureControllerCsvPath);
     object.insert(QStringLiteral("waveform_features_csv"), layout.waveformFeaturesCsvPath);
-    object.insert(QStringLiteral("epsilon_raw"), layout.epsilonRawPath);
-    object.insert(QStringLiteral("ptb_raw"), layout.ptbRawPath);
-    object.insert(QStringLiteral("hmp_raw"), layout.hmpRawPath);
-    object.insert(QStringLiteral("lidar_raw"), layout.lidarRawPath);
-    object.insert(QStringLiteral("tcp_wave_raw"), layout.tcpWaveRawPath);
-    object.insert(QStringLiteral("tcp_wave_peaks_csv"), layout.tcpWavePeaksCsvPath);
+    object.insert(QStringLiteral("navigation_raw"), layout.navigationRawPath);
+    object.insert(QStringLiteral("pressure_raw"), layout.pressureRawPath);
+    object.insert(QStringLiteral("temperature_humidity_raw"), layout.temperatureHumidityRawPath);
+    object.insert(QStringLiteral("distance_raw"), layout.distanceRawPath);
+    object.insert(QStringLiteral("waveform_raw"), layout.waveformRawPath);
+    object.insert(QStringLiteral("waveform_peaks_csv"), layout.waveformPeaksCsvPath);
     object.insert(QStringLiteral("event_log"), layout.eventLogPath);
     object.insert(QStringLiteral("error_log"), layout.errorLogPath);
     object.insert(QStringLiteral("device_config"), layout.deviceConfigPath);
@@ -93,21 +93,45 @@ QJsonObject pathsToJson()
 
 quint64 rawRecordCountForKey(const RawFileRecordCounts& counts, const QString& key)
 {
-    if (key == QLatin1String("epsilon")) return counts.epsilon;
-    if (key == QLatin1String("ptb")) return counts.ptb;
-    if (key == QLatin1String("hmp")) return counts.hmp;
-    if (key == QLatin1String("lidar")) return counts.lidar;
-    if (key == QLatin1String("tcp_wave")) return counts.tcpWave;
+    if (key == QLatin1String("navigation")) return counts.epsilon;
+    if (key == QLatin1String("pressure")) return counts.ptb;
+    if (key == QLatin1String("temperature_humidity")) return counts.hmp;
+    if (key == QLatin1String("distance")) return counts.lidar;
+    if (key == QLatin1String("waveform")) return counts.tcpWave;
     return 0;
 }
 
 void setRawRecordCountForKey(RawFileRecordCounts& counts, const QString& key, quint64 value)
 {
-    if (key == QLatin1String("epsilon")) counts.epsilon = value;
-    else if (key == QLatin1String("ptb")) counts.ptb = value;
-    else if (key == QLatin1String("hmp")) counts.hmp = value;
-    else if (key == QLatin1String("lidar")) counts.lidar = value;
-    else if (key == QLatin1String("tcp_wave")) counts.tcpWave = value;
+    if (key == QLatin1String("navigation") || key == QLatin1String("epsilon")) counts.epsilon = value;
+    else if (key == QLatin1String("pressure") || key == QLatin1String("ptb")) counts.ptb = value;
+    else if (key == QLatin1String("temperature_humidity") || key == QLatin1String("hmp")) counts.hmp = value;
+    else if (key == QLatin1String("distance") || key == QLatin1String("lidar")) counts.lidar = value;
+    else if (key == QLatin1String("waveform") || key == QLatin1String("tcp_wave")) counts.tcpWave = value;
+}
+
+QJsonObject rawFileObjectCompat(const QJsonObject& rawFiles,
+                                const RawFileDefinition& definition)
+{
+    QJsonObject raw = rawFiles.value(definition.key).toObject();
+    if (!raw.isEmpty())
+    {
+        return raw;
+    }
+    const SessionPathAliases& aliases = sessionPathAliases(definition.kind);
+    for (const QString& legacyKey : aliases.manifestRawFileKeys)
+    {
+        if (legacyKey == definition.key)
+        {
+            continue;
+        }
+        raw = rawFiles.value(legacyKey).toObject();
+        if (!raw.isEmpty())
+        {
+            return raw;
+        }
+    }
+    return {};
 }
 
 QJsonObject rawFilesToJson(const RawFileRecordCounts& counts, int rawDatFormatVersion)
@@ -292,7 +316,7 @@ SessionManifestParseResult sessionManifestFromJson(const QJsonObject& json)
     const QJsonObject rawFiles = json.value(QStringLiteral("raw_files")).toObject();
     for (const RawFileDefinition& definition : standardRawFileDefinitions())
     {
-        const QJsonObject raw = rawFiles.value(definition.key).toObject();
+        const QJsonObject raw = rawFileObjectCompat(rawFiles, definition);
         const quint64 count = raw.contains(QStringLiteral("records"))
             ? unsignedFromJson(raw.value(QStringLiteral("records")))
             : unsignedFromJson(raw.value(QStringLiteral("record_count")));

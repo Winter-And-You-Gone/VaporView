@@ -145,23 +145,23 @@ int main(int argc, char *argv[])
     const QString sessionDir = recorder.sessionDirectory();
     require(QFileInfo::exists(sessionDir), "session directory");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/session.json")), "session metadata");
-    require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/devices.csv")), "devices csv");
+    require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/sensor_summary.csv")), "sensor summary csv");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/waveform_features.csv")), "waveform features csv");
     require(!QFileInfo::exists(sessionDir + QStringLiteral("/waveform_index.csv")), "no waveform index csv");
     require(!QFileInfo::exists(sessionDir + QStringLiteral("/waveforms")), "no waveform bin directory");
-    require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/epsilon.dat")), "epsilon raw dat");
-    require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/tcp_wave.dat")), "tcp wave raw dat");
-    require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/tcp_wave_peaks.csv")), "tcp wave peak index csv");
+    require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/navigation.dat")), "navigation raw dat");
+    require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/waveform.dat")), "waveform raw dat");
+    require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/waveform_peaks.csv")), "waveform peaks csv");
 
     recorder.stop();
     require(!recorder.isRecording(), "recorder stopped");
 
-    QFile devicesFile(sessionDir + QStringLiteral("/sensors/devices.csv"));
-    require(devicesFile.open(QIODevice::ReadOnly | QIODevice::Text), "open devices csv");
+    QFile devicesFile(sessionDir + QStringLiteral("/sensors/sensor_summary.csv"));
+    require(devicesFile.open(QIODevice::ReadOnly | QIODevice::Text), "open sensor summary csv");
     const QStringList deviceLines = QString::fromUtf8(devicesFile.readAll()).trimmed().split('\n');
     require(deviceLines.size() == 2, "devices csv row count");
     require(deviceLines.at(0) + QLatin1Char('\n') == VaporView::SessionSensorCsv::header(),
-            "sky devices csv uses shared header exactly");
+            "sky sensor summary uses shared header exactly");
     const QStringList deviceHeaders = deviceLines.at(0).split(',');
     require(deviceHeaders.size() == 77, "devices csv header column count");
     require(deviceHeaders.contains(QStringLiteral("gnss_satellites")), "devices csv has satellites");
@@ -222,8 +222,8 @@ int main(int argc, char *argv[])
     require(featureCells.at(11) == QStringLiteral("-0.750000"), "feature min csv precision");
     require(featureCells.at(12) == QStringLiteral("1.250000"), "feature max csv precision");
 
-    QFile peakIndexFile(sessionDir + QStringLiteral("/raw/tcp_wave_peaks.csv"));
-    require(peakIndexFile.open(QIODevice::ReadOnly | QIODevice::Text), "open tcp wave peak index csv");
+    QFile peakIndexFile(sessionDir + QStringLiteral("/raw/waveform_peaks.csv"));
+    require(peakIndexFile.open(QIODevice::ReadOnly | QIODevice::Text), "open waveform peaks csv");
     const QStringList peakIndexLines = QString::fromUtf8(peakIndexFile.readAll()).trimmed().split('\n');
     require(peakIndexLines.size() == 2, "tcp wave peak index row count");
     const QStringList peakIndexHeaders = peakIndexLines.at(0).split(',');
@@ -259,11 +259,11 @@ int main(int argc, char *argv[])
     require(root.value(QStringLiteral("waveform_file_count")).toString().toULongLong() == 1,
             "waveform file count");
     const QJsonObject rawFiles = root.value(QStringLiteral("raw_files")).toObject();
-    require(rawFiles.value(QStringLiteral("tcp_wave")).toObject().value(QStringLiteral("records")).toString().toULongLong() == 1,
-            "tcp wave raw record count");
+    require(rawFiles.value(QStringLiteral("waveform")).toObject().value(QStringLiteral("records")).toString().toULongLong() == 1,
+            "waveform raw record count");
     const QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
-    require(paths.value(QStringLiteral("tcp_wave_peaks_csv")).toString() == QStringLiteral("raw/tcp_wave_peaks.csv"),
-            "metadata waveform peak index path");
+    require(paths.value(QStringLiteral("waveform_peaks_csv")).toString() == QStringLiteral("raw/waveform_peaks.csv"),
+            "metadata waveform peaks path");
 
     QFile deviceConfigFile(sessionDir + QStringLiteral("/config/device_config.json"));
     require(deviceConfigFile.open(QIODevice::ReadOnly), "open sky device config");
@@ -309,8 +309,8 @@ int main(int argc, char *argv[])
                 waveformConfig.value(QStringLiteral("port")).isNull(),
             "sky unavailable waveform endpoint is explicit null");
 
-    QFile rawFile(sessionDir + QStringLiteral("/raw/tcp_wave.dat"));
-    require(rawFile.open(QIODevice::ReadOnly), "open tcp wave raw dat");
+    QFile rawFile(sessionDir + QStringLiteral("/raw/waveform.dat"));
+    require(rawFile.open(QIODevice::ReadOnly), "open waveform raw dat");
     VaporView::SessionRawDat::RawScanOptions scanOptions;
     scanOptions.expectedSourceId = VaporView::SessionRawDat::kSourceTcpWave;
     const VaporView::SessionRawDat::RawScanResult rawResult =

@@ -18,16 +18,16 @@ session_yyyy-MM-dd_HH-mm-ss/
 ├── session.json
 ├── raw_dat_format.md
 ├── sensors/
-│   ├── devices.csv
-│   ├── rd105_temperature_controller.csv
+│   ├── sensor_summary.csv
+│   ├── temperature_controller.csv
 │   └── waveform_features.csv
 ├── raw/
-│   ├── epsilon.dat
-│   ├── ptb.dat
-│   ├── hmp.dat
-│   ├── lidar.dat
-│   ├── tcp_wave.dat
-│   └── tcp_wave_peaks.csv
+│   ├── navigation.dat
+│   ├── pressure.dat
+│   ├── temperature_humidity.dat
+│   ├── distance.dat
+│   ├── waveform.dat
+│   └── waveform_peaks.csv
 ├── logs/
 │   ├── event_log.csv
 │   └── error_log.txt
@@ -35,18 +35,21 @@ session_yyyy-MM-dd_HH-mm-ss/
     └── device_config.json
 ```
 
-All paths are relative to the session root and are defined by
-`SessionPackageLayout`. Ground and Sky both create every standard file even
-when the recorder has no data for that stream.
+File names describe the data semantics, not the current device model or
+transport. Device models, ports, and serial details remain in
+`session.json`/`device_config.json`. All paths are relative to the session root
+and are defined by `SessionPackageLayout`. Ground and Sky both create every
+standard file even when the recorder has no data for that stream.
 
 ## Empty file rules
 
-- `sensors/devices.csv` uses the shared `SessionSensorCsv` header.
-- `sensors/rd105_temperature_controller.csv`,
-  `sensors/waveform_features.csv`, `raw/tcp_wave_peaks.csv`, and
+- `sensors/sensor_summary.csv` uses the shared `SessionSensorCsv` header.
+- `sensors/temperature_controller.csv`,
+  `sensors/waveform_features.csv`, `raw/waveform_peaks.csv`, and
   `logs/event_log.csv` are created with their standard headers.
-- `raw/epsilon.dat`, `raw/ptb.dat`, `raw/hmp.dat`, `raw/lidar.dat`, and
-  `raw/tcp_wave.dat` are created as valid zero-record unified RAW DAT files.
+- `raw/navigation.dat`, `raw/pressure.dat`, `raw/temperature_humidity.dat`,
+  `raw/distance.dat`, and `raw/waveform.dat` are created as valid zero-record
+  unified RAW DAT files.
 - `config/device_config.json` uses the shared device configuration schema
   described below.
 - `logs/error_log.txt` is created and may be empty.
@@ -92,17 +95,18 @@ When capture values do not apply, the keys remain present and the values are
 
 `paths` always contains every standard relative path:
 
-- `devices_csv`
+- `sensor_summary_csv`
 - `temperature_controller_csv`
 - `waveform_features_csv`
-- `epsilon_raw`, `ptb_raw`, `hmp_raw`, `lidar_raw`, `tcp_wave_raw`
-- `tcp_wave_peaks_csv`
+- `navigation_raw`, `pressure_raw`, `temperature_humidity_raw`,
+  `distance_raw`, `waveform_raw`
+- `waveform_peaks_csv`
 - `event_log`, `error_log`
 - `device_config`
 - `raw_format_document`
 
-`raw_files` always contains `epsilon`, `ptb`, `hmp`, `lidar`, and
-`tcp_wave`. Each entry contains:
+`raw_files` always contains `navigation`, `pressure`, `temperature_humidity`,
+`distance`, and `waveform`. Each entry contains:
 
 - `path`
 - `source_id`
@@ -140,8 +144,27 @@ Readers are strict for new `recording_origin` values and accept only
 - legacy root counters such as `sensor_rows` and `waveform_frames` remain
   readable;
 - legacy raw counters named `record_count` remain readable;
-- legacy path keys such as `waveform_peak_index` remain readable;
+- legacy path keys and raw-file keys remain readable;
+- readers resolve an explicit manifest path first, then the semantic default,
+  then the historical device-named path. When no manifest path is declared and
+  both files exist, the semantic file wins and a diagnostic warning is returned;
 - old sessions are not required to contain the new standard empty files.
+
+The historical path mapping is:
+
+| Semantic standard path | Historical path |
+| --- | --- |
+| `raw/navigation.dat` | `raw/epsilon.dat` |
+| `raw/pressure.dat` | `raw/ptb.dat` |
+| `raw/temperature_humidity.dat` | `raw/hmp.dat` |
+| `raw/distance.dat` | `raw/lidar.dat` |
+| `raw/waveform.dat` | `raw/tcp_wave.dat` |
+| `raw/waveform_peaks.csv` | `raw/tcp_wave_peaks.csv` |
+| `sensors/sensor_summary.csv` | `sensors/devices.csv` |
+| `sensors/temperature_controller.csv` | `sensors/rd105_temperature_controller.csv` |
+
+New writers never create the historical names, and historical sessions are
+read in place without renaming, copying, or modifying their files.
 
 The viewer displays the parsed recording origin in the session overview.
 

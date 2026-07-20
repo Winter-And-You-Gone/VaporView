@@ -200,10 +200,10 @@ void testSessionMetadataLoading()
             "session counters are preserved");
     require(result.metadata.waveformExportMode == QStringLiteral("per_frame"),
             "missing export mode keeps the historical rate-based default");
-    require(result.metadata.sensorsCsvFilename.endsWith(QStringLiteral("custom/devices.csv")),
+    require(result.metadata.sensorSummaryCsvFilename.endsWith(QStringLiteral("custom/devices.csv")),
             "custom sensor path is resolved relative to the session");
-    require(result.metadata.rawTcpWaveFilename.endsWith(QStringLiteral("raw/tcp_wave.dat")),
-            "missing raw path keeps the historical default");
+    require(result.metadata.waveformRawFilename.endsWith(QStringLiteral("raw/waveform.dat")),
+            "missing raw path uses the semantic default");
 
     QTemporaryDir skySessionDir;
     require(skySessionDir.isValid(), "temporary sky session directory is available");
@@ -280,7 +280,7 @@ void testSessionMetadataLoading()
             "new recording_origin is exposed by the loader");
     require(skyResult.metadata.sensorRows == 11 && skyResult.metadata.waveformFrames == 3,
             "new nested session counters are exposed by the loader");
-    require(skyResult.metadata.waveformPeakIndexFilename.endsWith(QStringLiteral("raw/tcp_wave_peaks.csv")),
+    require(skyResult.metadata.waveformPeaksCsvFilename.endsWith(QStringLiteral("raw/tcp_wave_peaks.csv")),
             "new tcp wave peaks path is resolved by the loader");
 
     QTemporaryDir legacySkyDir;
@@ -317,21 +317,54 @@ void testRecordingSessionLayout()
     require(first.has_value(), "first recording session layout is created");
     require(first->sessionName == QStringLiteral("session"),
             "first recording session keeps the requested name");
-    require(QFileInfo::exists(first->sensorsFilename) == false,
+    require(QFileInfo::exists(first->sensorSummaryFilename) == false,
             "recording layout creates directories without opening data files");
     require(QDir(first->sessionDirectory).exists(QStringLiteral("sensors")) &&
                 QDir(first->sessionDirectory).exists(QStringLiteral("raw")) &&
                 QDir(first->sessionDirectory).exists(QStringLiteral("logs")) &&
                 QDir(first->sessionDirectory).exists(QStringLiteral("config")),
             "recording layout creates all compatible subdirectories");
-    require(first->rawTcpWavePeakIndexFilename.endsWith(
-                QStringLiteral("raw/tcp_wave_peaks.csv")),
+    require(first->waveformPeaksFilename.endsWith(
+                QStringLiteral("raw/waveform_peaks.csv")),
             "recording layout preserves the raw waveform peak index path");
 
     const auto second = VaporView::Ground::Session::createRecordingSessionLayout(
         recordsDir.path(), QStringLiteral("session"));
     require(second.has_value() && second->sessionName == QStringLiteral("session_1"),
             "existing recording session names receive a deterministic suffix");
+}
+
+void testManifestlessAndDualPathSessionCompatibility()
+{
+    QTemporaryDir sessionDir;
+    require(sessionDir.isValid(), "manifestless compatibility session is available");
+    require(QDir(sessionDir.path()).mkpath(QStringLiteral("sensors")) &&
+                QDir(sessionDir.path()).mkpath(QStringLiteral("raw")),
+            "manifestless compatibility directories are created");
+
+    const QString legacySummary = sessionDir.filePath(QStringLiteral("sensors/devices.csv"));
+    const QString legacyWaveform = sessionDir.filePath(QStringLiteral("raw/tcp_wave.dat"));
+    writeBytes(legacySummary, QByteArrayLiteral("legacy summary"));
+    writeBytes(legacyWaveform, unifiedTcpWaveBytes(2, 0));
+
+    auto result = VaporView::Ground::SessionLoader::loadMetadata(sessionDir.path());
+    require(result.success && result.metadata.sensorSummaryCsvFilename.endsWith(
+                QStringLiteral("sensors/devices.csv")) &&
+                result.metadata.waveformRawFilename.endsWith(QStringLiteral("raw/tcp_wave.dat")),
+            "manifestless legacy session resolves old standard paths");
+    require(!result.warning.isEmpty(), "manifestless session emits a compatibility warning");
+
+    const QString preferredSummary = sessionDir.filePath(QStringLiteral("sensors/sensor_summary.csv"));
+    const QString preferredWaveform = sessionDir.filePath(QStringLiteral("raw/waveform.dat"));
+    writeBytes(preferredSummary, QByteArrayLiteral("preferred summary"));
+    writeBytes(preferredWaveform, unifiedTcpWaveBytes(2, 0));
+    result = VaporView::Ground::SessionLoader::loadMetadata(sessionDir.path());
+    require(result.success && result.metadata.sensorSummaryCsvFilename.endsWith(
+                QStringLiteral("sensors/sensor_summary.csv")) &&
+                result.metadata.waveformRawFilename.endsWith(QStringLiteral("raw/waveform.dat")),
+            "manifestless session prefers semantic paths when both files exist");
+    require(result.warning.contains(QStringLiteral("preferred session file")),
+            "dual-path manifestless session reports the selected semantic files");
 }
 
 void testSensorCsvLoadingAndTrackFiltering()
@@ -355,7 +388,7 @@ void testSensorCsvLoadingAndTrackFiltering()
     csvFile.close();
 
     VaporView::Ground::SessionMetadata metadata;
-    metadata.sensorsCsvFilename = csvPath;
+    metadata.sensorSummaryCsvFilename = csvPath;
     metadata.sensorRows = 4;
     const VaporView::Ground::SessionSensorLoadResult result =
         VaporView::Ground::SessionLoader::loadSensors(metadata);
@@ -405,7 +438,7 @@ void testLegacyWaveformCatalogAndPeakCache()
     VaporView::Ground::SessionMetadata metadata;
     metadata.sessionDirectory = sessionDir.path();
     metadata.waveformDirectory = sessionDir.filePath(QStringLiteral("waveform"));
-    metadata.waveformPeakIndexFilename = sessionDir.filePath(QStringLiteral("raw/tcp_wave_peaks.csv"));
+    metadata.waveformPeaksCsvFilename = sessionDir.filePath(QStringLiteral("raw/tcp_wave_peaks.csv"));
     metadata.waveformPointsPerFrame = 3;
     const auto catalogResult = VaporView::Ground::SessionWaveformRepository::loadCatalog(metadata);
     require(catalogResult.success && catalogResult.catalog.frameCount == 2,
@@ -507,7 +540,7 @@ void testUnifiedRawWaveformCatalog()
 
     VaporView::Ground::SessionMetadata metadata;
     metadata.sessionDirectory = sessionDir.path();
-    metadata.rawTcpWaveFilename = rawFile.fileName();
+    metadata.waveformRawFilename = rawFile.fileName();
     metadata.waveformPointsPerFrame = 0;
     const auto catalogResult = VaporView::Ground::SessionWaveformRepository::loadCatalog(metadata);
     require(catalogResult.success && catalogResult.catalog.rawTcpFrames.size() == 1,
@@ -540,7 +573,7 @@ void testUnifiedRawValidationRecoveryAndLegacyFallback()
 
     VaporView::Ground::SessionMetadata metadata;
     metadata.sessionDirectory = sessionDir.path();
-    metadata.rawTcpWaveFilename = rawPath;
+    metadata.waveformRawFilename = rawPath;
     metadata.waveformDirectory = sessionDir.filePath(QStringLiteral("waveform"));
     metadata.waveformPointsPerFrame = 1;
 
@@ -602,6 +635,7 @@ int main(int argc, char *argv[])
     testMeasuredRateIgnoresMissingSamples();
     testPlaybackStateAndBoundaries();
     testSessionMetadataLoading();
+    testManifestlessAndDualPathSessionCompatibility();
     testRecordingSessionLayout();
     testSensorCsvLoadingAndTrackFiltering();
     testLegacyWaveformCatalogAndPeakCache();
