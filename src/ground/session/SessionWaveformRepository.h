@@ -69,6 +69,7 @@ struct SessionWaveformCatalogResult
 {
     bool success = false;
     QString error;
+    QString warning;
     SessionWaveformCatalog catalog;
 };
 

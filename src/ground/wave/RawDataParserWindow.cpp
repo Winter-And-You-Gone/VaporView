@@ -2,6 +2,7 @@
 #include "RawDataParserWindow.h"
 #include "BoundedLruCache.h"
 #include "ground/widgets/CustomTitleBar.h"
+#include "shared/session/UnifiedRawDat.h"
 #include "TcpWaveEncoding.h"
 
 #include <QAbstractTableModel>
@@ -47,7 +48,6 @@
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QStringConverter>
-#include <QtEndian>
 #include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
@@ -146,14 +146,6 @@ void applyRawDataInlineProgressStyle(QWidget *panel, QLabel *label, QProgressBar
              chunkColor.name()));
 }
 
-constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
-constexpr quint32 kUnifiedRawRecordMarker = 0x44525756u;
-constexpr quint16 kRawSourceEpsilon = 1u;
-constexpr quint16 kRawSourcePtb = 2u;
-constexpr quint16 kRawSourceHmp = 3u;
-constexpr quint16 kRawSourceLidar = 4u;
-constexpr quint16 kRawSourceTcpWave = 5u;
-constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
 constexpr int kMaxHexBytes = 16 * 1024;
 constexpr int kRawDataParserDefaultWidth = 1280;
 constexpr int kRawDataParserDefaultHeight = 800;
@@ -161,29 +153,6 @@ constexpr int kFloatBytes = 4;
 constexpr uint8_t kFdilinkFrameHead = 0xFC;
 constexpr uint8_t kFdilinkFrameTail = 0xFD;
 constexpr uint8_t kHmpSlaveAddress = 240;
-
-#pragma pack(push, 1)
-struct UnifiedRawFileHeader
-{
-    char magic[8];
-    quint32 version;
-    quint32 header_size;
-    quint16 source_id;
-    quint16 reserved;
-};
-
-struct UnifiedRawRecordHeader
-{
-    quint32 marker;
-    quint32 header_size;
-    quint64 host_timestamp_us;
-    quint32 payload_size;
-    quint16 source_id;
-    quint16 record_type;
-    quint32 flags;
-    quint64 sequence;
-};
-#pragma pack(pop)
 
 struct RawRecordIndex
 {
@@ -294,15 +263,15 @@ QString sourceName(quint16 sourceId, bool english)
 {
     switch (sourceId)
     {
-    case kRawSourceEpsilon:
+    case VaporView::SessionRawDat::kSourceEpsilon:
         return english ? QStringLiteral("EPSILON") : QStringLiteral("EPSILON组合导航");
-    case kRawSourcePtb:
+    case VaporView::SessionRawDat::kSourcePtb:
         return english ? QStringLiteral("PTB210") : QStringLiteral("PTB210气压计");
-    case kRawSourceHmp:
+    case VaporView::SessionRawDat::kSourceHmp:
         return english ? QStringLiteral("HMP3") : QStringLiteral("HMP3温湿度");
-    case kRawSourceLidar:
+    case VaporView::SessionRawDat::kSourceLidar:
         return english ? QStringLiteral("Lidar") : QStringLiteral("激光测距");
-    case kRawSourceTcpWave:
+    case VaporView::SessionRawDat::kSourceTcpWave:
         return english ? QStringLiteral("TCP Wave") : QStringLiteral("TCP波形");
     default:
         return QStringLiteral("source %1").arg(sourceId);
@@ -347,15 +316,15 @@ QString recordTypeName(quint16 sourceId, quint16 recordType, bool english)
 {
     switch (sourceId)
     {
-    case kRawSourceEpsilon:
+    case VaporView::SessionRawDat::kSourceEpsilon:
         return epsilonPacketName(recordType);
-    case kRawSourcePtb:
+    case VaporView::SessionRawDat::kSourcePtb:
         return QStringLiteral("PTB response");
-    case kRawSourceHmp:
+    case VaporView::SessionRawDat::kSourceHmp:
         return QStringLiteral("Modbus function %1").arg(formatHex(recordType));
-    case kRawSourceLidar:
+    case VaporView::SessionRawDat::kSourceLidar:
         return lidarProtocolName(recordType, english);
-    case kRawSourceTcpWave:
+    case VaporView::SessionRawDat::kSourceTcpWave:
         return QStringLiteral("TCP wave payload");
     default:
         return QStringLiteral("record_type %1").arg(recordType);
@@ -406,106 +375,76 @@ void scanRawFileIndex(const QString& filename,
         return;
     }
 
-    UnifiedRawFileHeader fileHeader{};
-    if (file.read(reinterpret_cast<char*>(&fileHeader), sizeof(fileHeader)) != static_cast<qint64>(sizeof(fileHeader)) ||
-        std::memcmp(fileHeader.magic, kUnifiedRawMagic, sizeof(fileHeader.magic)) != 0)
+    VaporView::SessionRawDat::RawScanOptions scanOptions;
+    scanOptions.expectedSourceId = expectedSourceId;
+    scanOptions.isCancelled = isCancelled;
+    scanOptions.progress = [progress, progressBase](quint64 completed, quint64) {
+        if (progress)
+        {
+            progress->scanned_bytes.store(
+                progressBase + static_cast<qint64>(completed),
+                std::memory_order_relaxed);
+        }
+    };
+    const VaporView::SessionRawDat::RawScanResult scanResult =
+        VaporView::SessionRawDat::scan(file, scanOptions);
+    if (scanResult.status == VaporView::SessionRawDat::RawReadStatus::Cancelled)
     {
-        summary.status = english ? QStringLiteral("Invalid header") : QStringLiteral("文件头无效");
+        summary.status = english ? QStringLiteral("Canceled") : QStringLiteral("已取消");
+        result.file_summaries.push_back(summary);
+        finishFileProgress();
+        return;
+    }
+    if (!scanResult.success())
+    {
+        summary.status = scanResult.error;
         result.file_summaries.push_back(summary);
         finishFileProgress();
         return;
     }
 
-    const quint32 fileHeaderSize = qFromLittleEndian(fileHeader.header_size);
-    const quint16 sourceId = qFromLittleEndian(fileHeader.source_id);
-    if (fileHeaderSize < sizeof(UnifiedRawFileHeader) || !file.seek(fileHeaderSize))
+    if (scanResult.recovered())
     {
-        summary.status = english ? QStringLiteral("Invalid header size") : QStringLiteral("文件头长度无效");
-        result.file_summaries.push_back(summary);
-        finishFileProgress();
-        return;
-    }
-    if (sourceId != expectedSourceId)
-    {
-        summary.status = (english
-            ? QStringLiteral("Unexpected source %1")
-            : QStringLiteral("数据源不匹配 %1")).arg(sourceId);
+        summary.status = english
+            ? QStringLiteral("Recovered: %1").arg(scanResult.warning)
+            : QStringLiteral("已恢复尾部截断：保留 %1 条完整记录；最后有效偏移 %2")
+                  .arg(scanResult.records.size())
+                  .arg(scanResult.lastValidOffset);
     }
     else
     {
-        summary.status = english ? QStringLiteral("OK") : QStringLiteral("正常");
+        summary.status = scanResult.warning.isEmpty()
+            ? (english ? QStringLiteral("OK") : QStringLiteral("正常"))
+            : (english
+                ? QStringLiteral("OK (warning: %1)").arg(scanResult.warning)
+                : QStringLiteral("正常（警告：%1）").arg(scanResult.warning));
     }
 
-    while (!file.atEnd())
+    summary.record_count = static_cast<quint64>(scanResult.records.size());
+    for (const VaporView::SessionRawDat::RawRecordIndex& rawRecord : scanResult.records)
     {
-        if (isCancelled())
-        {
-            summary.status = english ? QStringLiteral("Canceled") : QStringLiteral("已取消");
-            result.file_summaries.push_back(summary);
-            finishFileProgress();
-            return;
-        }
-
-        const qint64 recordOffset = file.pos();
-        UnifiedRawRecordHeader header{};
-        const qint64 headerBytes = file.read(reinterpret_cast<char*>(&header), sizeof(header));
-        if (headerBytes == 0)
-        {
-            break;
-        }
-        if (headerBytes != static_cast<qint64>(sizeof(header)))
-        {
-            summary.status = english ? QStringLiteral("Incomplete record header") : QStringLiteral("记录头不完整");
-            break;
-        }
-
-        const quint32 marker = qFromLittleEndian(header.marker);
-        const quint32 recordHeaderSize = qFromLittleEndian(header.header_size);
-        const quint32 payloadSize = qFromLittleEndian(header.payload_size);
-        if (marker != kUnifiedRawRecordMarker || recordHeaderSize < sizeof(UnifiedRawRecordHeader))
-        {
-            summary.status = english ? QStringLiteral("Invalid record marker") : QStringLiteral("记录标记无效");
-            break;
-        }
-
-        const qint64 payloadOffset = recordOffset + static_cast<qint64>(recordHeaderSize);
-        const qint64 nextRecord = payloadOffset + static_cast<qint64>(payloadSize);
-        if (nextRecord > file.size())
-        {
-            summary.status = english ? QStringLiteral("Incomplete payload") : QStringLiteral("payload 不完整");
-            break;
-        }
-
         RawRecordIndex record;
         record.filename = filename;
-        record.source_id = qFromLittleEndian(header.source_id);
-        record.record_type = qFromLittleEndian(header.record_type);
-        record.flags = qFromLittleEndian(header.flags);
-        record.sequence = qFromLittleEndian(header.sequence);
-        record.host_timestamp_us = qFromLittleEndian(header.host_timestamp_us);
-        record.payload_size = payloadSize;
-        record.record_offset = static_cast<quint64>(recordOffset);
-        record.payload_offset = static_cast<quint64>(payloadOffset);
+        record.source_id = rawRecord.header.sourceId;
+        record.record_type = rawRecord.header.recordType;
+        record.flags = rawRecord.header.flags;
+        record.sequence = rawRecord.header.sequence;
+        record.host_timestamp_us = rawRecord.header.hostTimestampUs;
+        record.payload_size = rawRecord.header.payloadSize;
+        record.record_offset = rawRecord.recordOffset;
+        record.payload_offset = rawRecord.payloadOffset;
         record.device_name = sourceName(record.source_id, english);
         result.records.push_back(record);
 
-        ++summary.record_count;
-        if (progress && (summary.record_count % 512ULL == 0ULL))
-        {
-            const qint64 scannedInFile = std::min(file.pos(), summary.file_size);
-            progress->scanned_bytes.store(progressBase + scannedInFile, std::memory_order_relaxed);
-            progress->indexed_records.store(result.records.size(), std::memory_order_relaxed);
-        }
         if (summary.first_timestamp_us == 0)
         {
             summary.first_timestamp_us = record.host_timestamp_us;
         }
         summary.last_timestamp_us = record.host_timestamp_us;
-
-        if (!file.seek(nextRecord))
-        {
-            break;
-        }
+    }
+    if (progress)
+    {
+        progress->indexed_records.store(result.records.size(), std::memory_order_relaxed);
     }
 
     result.file_summaries.push_back(summary);
@@ -521,11 +460,11 @@ RawScanResult scanRawSession(const QString& sessionDirectory,
 
     const QDir rawDir(QDir(sessionDirectory).filePath(QStringLiteral("raw")));
     const QVector<QPair<QString, quint16>> files = {
-        {QStringLiteral("epsilon.dat"), kRawSourceEpsilon},
-        {QStringLiteral("ptb.dat"), kRawSourcePtb},
-        {QStringLiteral("hmp.dat"), kRawSourceHmp},
-        {QStringLiteral("lidar.dat"), kRawSourceLidar},
-        {QStringLiteral("tcp_wave.dat"), kRawSourceTcpWave},
+        {QStringLiteral("epsilon.dat"), VaporView::SessionRawDat::kSourceEpsilon},
+        {QStringLiteral("ptb.dat"), VaporView::SessionRawDat::kSourcePtb},
+        {QStringLiteral("hmp.dat"), VaporView::SessionRawDat::kSourceHmp},
+        {QStringLiteral("lidar.dat"), VaporView::SessionRawDat::kSourceLidar},
+        {QStringLiteral("tcp_wave.dat"), VaporView::SessionRawDat::kSourceTcpWave},
     };
 
     if (progress)
@@ -1435,7 +1374,11 @@ void RawDataParserWindow::Impl::refreshDeviceFilter()
     const QSignalBlocker blocker(device_combo);
     device_combo->clear();
     device_combo->addItem(english ? QStringLiteral("All devices") : QStringLiteral("全部设备"), 0);
-    for (quint16 sourceId : {kRawSourceEpsilon, kRawSourcePtb, kRawSourceHmp, kRawSourceLidar, kRawSourceTcpWave})
+    for (quint16 sourceId : {VaporView::SessionRawDat::kSourceEpsilon,
+                             VaporView::SessionRawDat::kSourcePtb,
+                             VaporView::SessionRawDat::kSourceHmp,
+                             VaporView::SessionRawDat::kSourceLidar,
+                             VaporView::SessionRawDat::kSourceTcpWave})
     {
         device_combo->addItem(sourceName(sourceId, english), sourceId);
     }
@@ -2499,35 +2442,41 @@ void decodeTcpWavePayload(RawDecodedRecord& decoded, const QByteArray& payload, 
         decoded.summary = english ? QStringLiteral("Too short") : QStringLiteral("长度过短");
         return;
     }
-    const auto bytes = reinterpret_cast<const uint8_t*>(payload.constData());
-    const quint32 rawSize = readU32LE(bytes);
-    const quint32 harmonicSize = readU32LE(bytes + 4);
-    const quint64 required = 8ULL + rawSize + harmonicSize;
-    const bool sizeOk = required <= static_cast<quint64>(payload.size());
-    addField(decoded, QStringLiteral("TCP Wave"), QStringLiteral("raw_signal_payload_size"), QString::number(rawSize), QString(), QStringLiteral("bytes"), 0, 4, QString(), !sizeOk);
-    addField(decoded, QStringLiteral("TCP Wave"), QStringLiteral("harmonic_payload_size"), QString::number(harmonicSize), QString(), QStringLiteral("bytes"), 4, 4, QString(), !sizeOk);
+    VaporView::SessionRawDat::TcpWavePayloadLayout layout;
+    QString layoutError;
+    const bool sizeOk = VaporView::SessionRawDat::parseTcpWavePayloadLayout(
+        QByteArrayView(payload).first(std::min(
+            payload.size(),
+            static_cast<qsizetype>(VaporView::SessionRawDat::kTcpWavePayloadPrefixSize))),
+        static_cast<quint32>(payload.size()),
+        &layout,
+        &layoutError);
+    const quint32 rawSize = layout.rawSignalSize;
+    const quint32 harmonicSize = layout.harmonicSize;
+    addField(decoded, QStringLiteral("TCP Wave"), QStringLiteral("raw_signal_payload_size"), QString::number(rawSize), QString(), QStringLiteral("bytes"), 0, 4, layoutError, !sizeOk);
+    addField(decoded, QStringLiteral("TCP Wave"), QStringLiteral("harmonic_payload_size"), QString::number(harmonicSize), QString(), QStringLiteral("bytes"), 4, 4, layoutError, !sizeOk);
     const VaporView::TcpFloatEncoding encoding = VaporView::tcpFloatEncodingFromRawDatFlags(flags);
     addField(decoded, QStringLiteral("TCP Wave"), QStringLiteral("float_encoding"), formatHex((flags & VaporView::kTcpWaveFloatEncodingFlagMask) >> VaporView::kTcpWaveFloatEncodingFlagShift), VaporView::tcpFloatEncodingLabel(english, encoding), QString(), -1, 0);
     if (sizeOk && harmonicSize > 0 && harmonicSize % kFloatBytes == 0)
     {
-        const QByteArray harmonic = payload.mid(static_cast<int>(8 + rawSize), static_cast<int>(harmonicSize));
+        const QByteArray harmonic = payload.mid(static_cast<int>(layout.harmonicOffset), static_cast<int>(harmonicSize));
         const VaporView::TcpFloatEncoding effectiveEncoding = encoding == VaporView::TcpFloatEncoding::Unknown
             ? VaporView::autoDetectTcpFloatEncoding(harmonic)
             : encoding;
         const QVector<float> samples = VaporView::decodeTcpFloatPayload(harmonic, effectiveEncoding);
         auto minMax = std::minmax_element(samples.cbegin(), samples.cend());
-        addField(decoded, QStringLiteral("Harmonic Payload"), QStringLiteral("sample_count"), QString::number(samples.size()), QString(), QStringLiteral("float32"), static_cast<int>(8 + rawSize), static_cast<int>(harmonicSize));
+        addField(decoded, QStringLiteral("Harmonic Payload"), QStringLiteral("sample_count"), QString::number(samples.size()), QString(), QStringLiteral("float32"), static_cast<int>(layout.harmonicOffset), static_cast<int>(harmonicSize));
         if (minMax.first != samples.cend())
         {
-            addNumericField(decoded, QStringLiteral("Harmonic Payload"), QStringLiteral("min"), *minMax.first, QString(), static_cast<int>(8 + rawSize), static_cast<int>(harmonicSize));
-            addNumericField(decoded, QStringLiteral("Harmonic Payload"), QStringLiteral("max"), *minMax.second, QString(), static_cast<int>(8 + rawSize), static_cast<int>(harmonicSize));
+            addNumericField(decoded, QStringLiteral("Harmonic Payload"), QStringLiteral("min"), *minMax.first, QString(), static_cast<int>(layout.harmonicOffset), static_cast<int>(harmonicSize));
+            addNumericField(decoded, QStringLiteral("Harmonic Payload"), QStringLiteral("max"), *minMax.second, QString(), static_cast<int>(layout.harmonicOffset), static_cast<int>(harmonicSize));
         }
         QStringList preview;
         for (int i = 0; i < std::min<int>(static_cast<int>(samples.size()), 8); ++i)
         {
             preview << QString::number(samples.at(i), 'g', 7);
         }
-        addField(decoded, QStringLiteral("Harmonic Payload"), QStringLiteral("first_samples"), preview.join(QStringLiteral(", ")), QString(), QString(), static_cast<int>(8 + rawSize), std::min<int>(static_cast<int>(harmonicSize), 32));
+        addField(decoded, QStringLiteral("Harmonic Payload"), QStringLiteral("first_samples"), preview.join(QStringLiteral(", ")), QString(), QString(), static_cast<int>(layout.harmonicOffset), std::min<int>(static_cast<int>(harmonicSize), 32));
         decoded.summary = QStringLiteral("raw=%1 bytes, harmonic=%2 samples").arg(rawSize).arg(samples.size());
     }
     decoded.status = decoded.ok ? (english ? QStringLiteral("OK") : QStringLiteral("正常")) : (english ? QStringLiteral("Issue") : QStringLiteral("异常"));
@@ -2554,19 +2503,19 @@ RawDecodedRecord decodeRawRecord(const RawRecordIndex& record, const QByteArray&
 
     switch (record.source_id)
     {
-    case kRawSourceEpsilon:
+    case VaporView::SessionRawDat::kSourceEpsilon:
         decodeEpsilonPayload(decoded, payload, english);
         break;
-    case kRawSourcePtb:
+    case VaporView::SessionRawDat::kSourcePtb:
         decodePtbPayload(decoded, payload, english);
         break;
-    case kRawSourceHmp:
+    case VaporView::SessionRawDat::kSourceHmp:
         decodeHmpPayload(decoded, payload, english);
         break;
-    case kRawSourceLidar:
+    case VaporView::SessionRawDat::kSourceLidar:
         decodeLidarPayload(decoded, payload, record.record_type, english);
         break;
-    case kRawSourceTcpWave:
+    case VaporView::SessionRawDat::kSourceTcpWave:
         decodeTcpWavePayload(decoded, payload, record.flags, english);
         break;
     default:

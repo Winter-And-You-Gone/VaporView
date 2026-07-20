@@ -1,5 +1,7 @@
 #include "SkySessionRecorder.h"
 #include "geo/CoordinateTransform.h"
+#include "shared/session/SessionSensorCsv.h"
+#include "shared/session/UnifiedRawDat.h"
 
 #include <QCoreApplication>
 #include <QFile>
@@ -8,8 +10,6 @@
 #include <QJsonObject>
 #include <QStringList>
 #include <QTemporaryDir>
-#include <QtEndian>
-#include <cstring>
 #include <iostream>
 
 namespace
@@ -23,33 +23,6 @@ void require(bool condition, const char *message)
     }
 }
 
-constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
-constexpr quint32 kUnifiedRawRecordMarker = 0x44525756u;
-constexpr quint16 kRawSourceTcpWave = 5u;
-constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
-
-#pragma pack(push, 1)
-struct UnifiedRawFileHeader
-{
-    char magic[8];
-    quint32 version;
-    quint32 header_size;
-    quint16 source_id;
-    quint16 reserved;
-};
-
-struct UnifiedRawRecordHeader
-{
-    quint32 marker;
-    quint32 header_size;
-    quint64 host_timestamp_us;
-    quint32 payload_size;
-    quint16 source_id;
-    quint16 record_type;
-    quint32 flags;
-    quint64 sequence;
-};
-#pragma pack(pop)
 }
 
 int main(int argc, char *argv[])
@@ -186,6 +159,8 @@ int main(int argc, char *argv[])
     require(devicesFile.open(QIODevice::ReadOnly | QIODevice::Text), "open devices csv");
     const QStringList deviceLines = QString::fromUtf8(devicesFile.readAll()).trimmed().split('\n');
     require(deviceLines.size() == 2, "devices csv row count");
+    require(deviceLines.at(0) + QLatin1Char('\n') == VaporView::SessionSensorCsv::header(),
+            "sky devices csv uses shared header exactly");
     const QStringList deviceHeaders = deviceLines.at(0).split(',');
     require(deviceHeaders.size() == 77, "devices csv header column count");
     require(deviceHeaders.contains(QStringLiteral("gnss_satellites")), "devices csv has satellites");
@@ -285,28 +260,32 @@ int main(int argc, char *argv[])
 
     QFile rawFile(sessionDir + QStringLiteral("/raw/tcp_wave.dat"));
     require(rawFile.open(QIODevice::ReadOnly), "open tcp wave raw dat");
-    UnifiedRawFileHeader fileHeader{};
-    require(rawFile.read(reinterpret_cast<char*>(&fileHeader), sizeof(fileHeader)) == static_cast<qint64>(sizeof(fileHeader)),
-            "read tcp wave file header");
-    require(std::memcmp(fileHeader.magic, kUnifiedRawMagic, sizeof(fileHeader.magic)) == 0,
-            "tcp wave magic");
-    require(qFromLittleEndian(fileHeader.source_id) == kRawSourceTcpWave, "tcp wave source id");
-    UnifiedRawRecordHeader recordHeader{};
-    require(rawFile.read(reinterpret_cast<char*>(&recordHeader), sizeof(recordHeader)) == static_cast<qint64>(sizeof(recordHeader)),
-            "read tcp wave record header");
-    require(qFromLittleEndian(recordHeader.marker) == kUnifiedRawRecordMarker, "tcp wave record marker");
-    require(qFromLittleEndian(recordHeader.host_timestamp_us) == 1000, "tcp wave record timestamp");
-    require(qFromLittleEndian(recordHeader.source_id) == kRawSourceTcpWave, "tcp wave record source id");
-    require((qFromLittleEndian(recordHeader.flags) & kRawTcpWaveCombinedPayloadFlag) != 0, "tcp wave combined payload flag");
+    VaporView::SessionRawDat::RawScanOptions scanOptions;
+    scanOptions.expectedSourceId = VaporView::SessionRawDat::kSourceTcpWave;
+    const VaporView::SessionRawDat::RawScanResult rawResult =
+        VaporView::SessionRawDat::scan(rawFile, scanOptions);
+    require(rawResult.success() && rawResult.records.size() == 1,
+            "shared reader scans sky tcp wave raw dat");
+    require(rawResult.fileHeader.version == VaporView::SessionRawDat::kCurrentFormatVersion,
+            "sky writer uses shared current raw version");
+    const VaporView::SessionRawDat::RawRecordIndex& rawRecord = rawResult.records.first();
+    require(rawRecord.header.hostTimestampUs == 1000, "tcp wave record timestamp");
+    require(rawRecord.header.sourceId == VaporView::SessionRawDat::kSourceTcpWave,
+            "tcp wave record source id");
+    require((rawRecord.header.flags & VaporView::SessionRawDat::kTcpWaveCombinedPayloadFlag) != 0,
+            "tcp wave combined payload flag");
+    require(rawFile.seek(static_cast<qint64>(rawRecord.payloadOffset)),
+            "seek shared tcp wave payload offset");
 
-    quint32 rawSizeLe = 0;
-    quint32 harmonicSizeLe = 0;
-    require(rawFile.read(reinterpret_cast<char*>(&rawSizeLe), sizeof(rawSizeLe)) == static_cast<qint64>(sizeof(rawSizeLe)),
-            "read raw payload size");
-    require(rawFile.read(reinterpret_cast<char*>(&harmonicSizeLe), sizeof(harmonicSizeLe)) == static_cast<qint64>(sizeof(harmonicSizeLe)),
-            "read harmonic payload size");
-    require(qFromLittleEndian(rawSizeLe) == 2 * sizeof(float), "raw signal payload byte count");
-    require(qFromLittleEndian(harmonicSizeLe) == 4 * sizeof(float), "harmonic payload byte count");
+    const QByteArray payloadPrefix = rawFile.read(VaporView::SessionRawDat::kTcpWavePayloadPrefixSize);
+    VaporView::SessionRawDat::TcpWavePayloadLayout payloadLayout;
+    require(VaporView::SessionRawDat::parseTcpWavePayloadLayout(
+                payloadPrefix,
+                rawRecord.header.payloadSize,
+                &payloadLayout),
+            "shared tcp wave payload layout parses");
+    require(payloadLayout.rawSignalSize == 2 * sizeof(float), "raw signal payload byte count");
+    require(payloadLayout.harmonicSize == 4 * sizeof(float), "harmonic payload byte count");
     const QByteArray rawPayload = rawFile.read(2 * static_cast<qint64>(sizeof(float)));
     const QVector<float> decodedRaw = VaporView::decodeTcpFloatPayload(rawPayload, VaporView::TcpFloatEncoding::LittleEndian);
     require(decodedRaw.size() == 2, "decoded raw sample count");

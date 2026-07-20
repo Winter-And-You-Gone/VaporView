@@ -2,6 +2,7 @@
 
 #include "ground/session/RecordingSessionLayout.h"
 #include "shared/session/SessionSensorCsv.h"
+#include "shared/session/UnifiedRawDat.h"
 #include "shared/concurrency/BoundedByteQueue.h"
 
 #include <QCoreApplication>
@@ -13,13 +14,11 @@
 #include <QJsonObject>
 #include <QSaveFile>
 #include <QTextStream>
-#include <QtEndian>
 
 #include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <condition_variable>
-#include <cstring>
 #include <deque>
 #include <limits>
 #include <mutex>
@@ -31,16 +30,6 @@ namespace VaporView::Ground::Session
 namespace
 {
 
-constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
-constexpr quint32 kUnifiedRawFormatVersion = 2u;
-constexpr quint32 kUnifiedRawRecordMarker = 0x44525756u;
-constexpr quint16 kRawSourceEpsilon = 1u;
-constexpr quint16 kRawSourcePtb = 2u;
-constexpr quint16 kRawSourceHmp = 3u;
-constexpr quint16 kRawSourceLidar = 4u;
-constexpr quint16 kRawSourceTcpWave = 5u;
-constexpr quint16 kRawRecordTypeGeneric = 1u;
-constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
 constexpr qint64 kTcpRecordingStatusRefreshMs = 500;
 constexpr quint64 kTcpRawRecordQueueWarningBytes = 32ULL * 1024ULL * 1024ULL;
 constexpr quint64 kTcpRawRecordQueueMaxBytes = 256ULL * 1024ULL * 1024ULL;
@@ -50,29 +39,6 @@ constexpr quint64 kDeviceRawRecordQueueMaxBytes = 8ULL * 1024ULL * 1024ULL;
 constexpr qint64 kDeviceRawRecordQueueWarningIntervalMs = 5000;
 constexpr const char *kTcpWavePeakIndexCsvHeader =
     "host_time_us,peak_value,peak_index,point_count,search_start_index,search_end_index\n";
-
-#pragma pack(push, 1)
-struct UnifiedRawFileHeader
-{
-    char magic[8];
-    quint32 version;
-    quint32 headerSize;
-    quint16 sourceId;
-    quint16 reserved;
-};
-
-struct UnifiedRawRecordHeader
-{
-    quint32 marker;
-    quint32 headerSize;
-    quint64 hostTimestampUs;
-    quint32 payloadSize;
-    quint16 sourceId;
-    quint16 recordType;
-    quint32 flags;
-    quint64 sequence;
-};
-#pragma pack(pop)
 
 struct TcpRawRecord
 {
@@ -180,31 +146,22 @@ TcpWavePeakSummary summarizeTcpWavePeakSamples(const char *samples,
 
 TcpWavePeakSummary summarizeTcpWavePeakRecordPayload(const QByteArray& payload, quint32 flags)
 {
-    if (payload.size() < static_cast<qsizetype>(sizeof(quint32) * 2))
-    {
-        return {};
-    }
-
-    quint32 rawSizeLe = 0;
-    quint32 harmonicSizeLe = 0;
-    const char *cursor = payload.constData();
-    std::memcpy(&rawSizeLe, cursor, sizeof(rawSizeLe));
-    cursor += sizeof(rawSizeLe);
-    std::memcpy(&harmonicSizeLe, cursor, sizeof(harmonicSizeLe));
-
-    const quint32 rawSize = qFromLittleEndian(rawSizeLe);
-    const quint32 harmonicSize = qFromLittleEndian(harmonicSizeLe);
-    const quint64 requiredBytes = static_cast<quint64>(sizeof(quint32) * 2) + rawSize + harmonicSize;
-    if (requiredBytes > static_cast<quint64>(payload.size()) ||
-        harmonicSize == 0 ||
-        harmonicSize % static_cast<quint32>(sizeof(float)) != 0)
+    SessionRawDat::TcpWavePayloadLayout layout;
+    if (!SessionRawDat::parseTcpWavePayloadLayout(
+            QByteArrayView(payload).first(std::min(
+                payload.size(),
+                static_cast<qsizetype>(SessionRawDat::kTcpWavePayloadPrefixSize))),
+            static_cast<quint32>(payload.size()),
+            &layout) ||
+        layout.harmonicSize == 0 ||
+        layout.harmonicSize % static_cast<quint32>(sizeof(float)) != 0)
     {
         return {};
     }
 
     return summarizeTcpWavePeakSamples(
-        payload.constData() + sizeof(quint32) * 2 + rawSize,
-        static_cast<qsizetype>(harmonicSize),
+        payload.constData() + layout.harmonicOffset,
+        static_cast<qsizetype>(layout.harmonicSize),
         tcpFloatEncodingFromRawDatFlags(flags));
 }
 
@@ -276,11 +233,11 @@ public:
             !eventLogFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
             !errorLogFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
             !rawTcpWavePeakIndexFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
-            !openRawFile(rawEpsilonFile, layout.rawEpsilonFilename, kRawSourceEpsilon) ||
-            !openRawFile(rawPtbFile, layout.rawPtbFilename, kRawSourcePtb) ||
-            !openRawFile(rawHmpFile, layout.rawHmpFilename, kRawSourceHmp) ||
-            !openRawFile(rawLidarFile, layout.rawLidarFilename, kRawSourceLidar) ||
-            !openRawFile(rawTcpWaveFile, layout.rawTcpWaveFilename, kRawSourceTcpWave))
+            !openRawFile(rawEpsilonFile, layout.rawEpsilonFilename, SessionRawDat::kSourceEpsilon) ||
+            !openRawFile(rawPtbFile, layout.rawPtbFilename, SessionRawDat::kSourcePtb) ||
+            !openRawFile(rawHmpFile, layout.rawHmpFilename, SessionRawDat::kSourceHmp) ||
+            !openRawFile(rawLidarFile, layout.rawLidarFilename, SessionRawDat::kSourceLidar) ||
+            !openRawFile(rawTcpWaveFile, layout.rawTcpWaveFilename, SessionRawDat::kSourceTcpWave))
         {
             if (startError) *startError = GroundRecordingStartError::OpenSessionFiles;
             if (errorMessage) *errorMessage = QStringLiteral("failed to open session files");
@@ -598,13 +555,8 @@ private:
             return false;
         }
 
-        UnifiedRawFileHeader header{};
-        std::memcpy(header.magic, kUnifiedRawMagic, sizeof(header.magic));
-        header.version = qToLittleEndian(kUnifiedRawFormatVersion);
-        header.headerSize = qToLittleEndian(static_cast<quint32>(sizeof(UnifiedRawFileHeader)));
-        header.sourceId = qToLittleEndian(sourceId);
-        if (file->write(reinterpret_cast<const char *>(&header), sizeof(header)) !=
-            static_cast<qint64>(sizeof(header)))
+        QString error;
+        if (!SessionRawDat::writeFileHeader(*file, sourceId, &error))
         {
             file->close();
             file.reset();
@@ -623,8 +575,7 @@ private:
                         const void *data,
                         size_t size)
     {
-        if ((size > 0 && !data) ||
-            size > static_cast<size_t>(std::numeric_limits<quint32>::max()))
+        if ((size > 0 && !data) || size > SessionRawDat::kMaxPayloadSize)
         {
             return false;
         }
@@ -637,22 +588,16 @@ private:
         }
 
         const quint64 sequence = recordCount.load(std::memory_order_relaxed);
-        UnifiedRawRecordHeader header{};
-        header.marker = qToLittleEndian(kUnifiedRawRecordMarker);
-        header.headerSize = qToLittleEndian(static_cast<quint32>(sizeof(UnifiedRawRecordHeader)));
-        header.hostTimestampUs = qToLittleEndian(timestampUs);
-        header.payloadSize = qToLittleEndian(static_cast<quint32>(size));
-        header.sourceId = qToLittleEndian(sourceId);
-        header.recordType = qToLittleEndian(recordType);
-        header.flags = qToLittleEndian(flags);
-        header.sequence = qToLittleEndian(sequence);
-        if (rawFile->write(reinterpret_cast<const char *>(&header), sizeof(header)) !=
-            static_cast<qint64>(sizeof(header)))
-        {
-            return false;
-        }
-        if (size > 0 && rawFile->write(reinterpret_cast<const char *>(data), static_cast<qint64>(size)) !=
-            static_cast<qint64>(size))
+        SessionRawDat::RawRecordHeader header;
+        header.hostTimestampUs = timestampUs;
+        header.sourceId = sourceId;
+        header.recordType = recordType;
+        header.flags = flags;
+        header.sequence = sequence;
+        const QByteArrayView payload = size > 0
+            ? QByteArrayView(static_cast<const char *>(data), static_cast<qsizetype>(size))
+            : QByteArrayView();
+        if (!SessionRawDat::writeRecord(*rawFile, header, payload))
         {
             return false;
         }
@@ -735,19 +680,19 @@ private:
                 std::atomic<quint64> *recordCount = nullptr;
                 switch (record.sourceId)
                 {
-                case kRawSourceEpsilon:
+                case SessionRawDat::kSourceEpsilon:
                     file = &rawEpsilonFile;
                     recordCount = &rawEpsilonRecordCount;
                     break;
-                case kRawSourcePtb:
+                case SessionRawDat::kSourcePtb:
                     file = &rawPtbFile;
                     recordCount = &rawPtbRecordCount;
                     break;
-                case kRawSourceHmp:
+                case SessionRawDat::kSourceHmp:
                     file = &rawHmpFile;
                     recordCount = &rawHmpRecordCount;
                     break;
-                case kRawSourceLidar:
+                case SessionRawDat::kSourceLidar:
                     file = &rawLidarFile;
                     recordCount = &rawLidarRecordCount;
                     break;
@@ -817,8 +762,8 @@ private:
 
                 if (writeRawRecord(rawTcpWaveFile,
                                    rawTcpWaveRecordCount,
-                                   kRawSourceTcpWave,
-                                   kRawRecordTypeGeneric,
+                                   SessionRawDat::kSourceTcpWave,
+                                   SessionRawDat::kRecordTypeTcpWavePayload,
                                    record.flags,
                                    record.timestampUs,
                                    record.payload.constData(),
@@ -935,7 +880,7 @@ private:
         root[QStringLiteral("sensor_export_rate_hz")] = options.exportRateHz;
         root[QStringLiteral("other_devices_export_rate_hz")] = options.exportRateHz;
         root[QStringLiteral("raw_export_mode")] = QStringLiteral("unified_raw_dat");
-        root[QStringLiteral("raw_dat_format_version")] = static_cast<int>(kUnifiedRawFormatVersion);
+        root[QStringLiteral("raw_dat_format_version")] = static_cast<int>(SessionRawDat::kCurrentFormatVersion);
         root[QStringLiteral("waveform_export_rate_hz")] = 0;
         root[QStringLiteral("waveform_export_mode")] = QStringLiteral("per_frame");
         root[QStringLiteral("waveform_value_type")] = QStringLiteral("float32");
@@ -953,15 +898,15 @@ private:
             QJsonObject raw;
             raw[QStringLiteral("path")] = sessionDir.relativeFilePath(filename);
             raw[QStringLiteral("source_id")] = static_cast<int>(sourceId);
-            raw[QStringLiteral("format_version")] = static_cast<int>(kUnifiedRawFormatVersion);
+            raw[QStringLiteral("format_version")] = static_cast<int>(SessionRawDat::kCurrentFormatVersion);
             raw[QStringLiteral("record_count")] = QString::number(recordCount);
             rawFiles[name] = raw;
         };
-        addRawFile(QStringLiteral("epsilon"), layout.rawEpsilonFilename, kRawSourceEpsilon, rawEpsilonRecordCount.load());
-        addRawFile(QStringLiteral("ptb"), layout.rawPtbFilename, kRawSourcePtb, rawPtbRecordCount.load());
-        addRawFile(QStringLiteral("hmp"), layout.rawHmpFilename, kRawSourceHmp, rawHmpRecordCount.load());
-        addRawFile(QStringLiteral("lidar"), layout.rawLidarFilename, kRawSourceLidar, rawLidarRecordCount.load());
-        addRawFile(QStringLiteral("tcp_wave"), layout.rawTcpWaveFilename, kRawSourceTcpWave, rawTcpWaveRecordCount.load());
+        addRawFile(QStringLiteral("epsilon"), layout.rawEpsilonFilename, SessionRawDat::kSourceEpsilon, rawEpsilonRecordCount.load());
+        addRawFile(QStringLiteral("ptb"), layout.rawPtbFilename, SessionRawDat::kSourcePtb, rawPtbRecordCount.load());
+        addRawFile(QStringLiteral("hmp"), layout.rawHmpFilename, SessionRawDat::kSourceHmp, rawHmpRecordCount.load());
+        addRawFile(QStringLiteral("lidar"), layout.rawLidarFilename, SessionRawDat::kSourceLidar, rawLidarRecordCount.load());
+        addRawFile(QStringLiteral("tcp_wave"), layout.rawTcpWaveFilename, SessionRawDat::kSourceTcpWave, rawTcpWaveRecordCount.load());
         root[QStringLiteral("raw_files")] = rawFiles;
 
         QJsonObject paths;
@@ -986,7 +931,7 @@ private:
         root[QStringLiteral("sensor_export_rate_hz")] = options.exportRateHz;
         root[QStringLiteral("other_devices_export_rate_hz")] = options.exportRateHz;
         root[QStringLiteral("raw_export_mode")] = QStringLiteral("unified_raw_dat");
-        root[QStringLiteral("raw_dat_format_version")] = static_cast<int>(kUnifiedRawFormatVersion);
+        root[QStringLiteral("raw_dat_format_version")] = static_cast<int>(SessionRawDat::kCurrentFormatVersion);
         root[QStringLiteral("waveform_export_rate_hz")] = 0;
         root[QStringLiteral("waveform_export_mode")] = QStringLiteral("per_frame");
 
@@ -1182,7 +1127,7 @@ bool GroundRecordingService::recordRawEpsilonFrame(quint64 hostTimestampUs,
 {
     return impl_->recordRaw(impl_->rawEpsilonFile,
                             impl_->rawEpsilonRecordCount,
-                            kRawSourceEpsilon,
+                            SessionRawDat::kSourceEpsilon,
                             packetId,
                             serialNumber,
                             hostTimestampUs,
@@ -1196,8 +1141,8 @@ bool GroundRecordingService::recordRawPtbResponse(quint64 hostTimestampUs,
 {
     return impl_->recordRaw(impl_->rawPtbFile,
                             impl_->rawPtbRecordCount,
-                            kRawSourcePtb,
-                            kRawRecordTypeGeneric,
+                            SessionRawDat::kSourcePtb,
+                            SessionRawDat::kRecordTypePtbResponse,
                             0,
                             hostTimestampUs,
                             data,
@@ -1210,8 +1155,8 @@ bool GroundRecordingService::recordRawHmpResponse(quint64 hostTimestampUs,
 {
     return impl_->recordRaw(impl_->rawHmpFile,
                             impl_->rawHmpRecordCount,
-                            kRawSourceHmp,
-                            0x03u,
+                            SessionRawDat::kSourceHmp,
+                            SessionRawDat::kRecordTypeHmpModbusResponse,
                             0,
                             hostTimestampUs,
                             data,
@@ -1225,7 +1170,7 @@ bool GroundRecordingService::recordRawLidarFrame(quint64 hostTimestampUs,
 {
     return impl_->recordRaw(impl_->rawLidarFile,
                             impl_->rawLidarRecordCount,
-                            kRawSourceLidar,
+                            SessionRawDat::kSourceLidar,
                             protocol,
                             0,
                             hostTimestampUs,
@@ -1246,28 +1191,14 @@ bool GroundRecordingService::recordTcpWaveFrame(quint64 hostTimestampUs,
     }
 
     QByteArray payload;
-    payload.resize(static_cast<qsizetype>(sizeof(quint32) * 2) +
-                   rawSignalPayload.size() + harmonicPayload.size());
-    char *cursor = payload.data();
-    const quint32 rawSize = qToLittleEndian(static_cast<quint32>(rawSignalPayload.size()));
-    const quint32 harmonicSize = qToLittleEndian(static_cast<quint32>(harmonicPayload.size()));
-    std::memcpy(cursor, &rawSize, sizeof(rawSize));
-    cursor += sizeof(rawSize);
-    std::memcpy(cursor, &harmonicSize, sizeof(harmonicSize));
-    cursor += sizeof(harmonicSize);
-    if (!rawSignalPayload.isEmpty())
+    if (!SessionRawDat::encodeTcpWavePayload(rawSignalPayload, harmonicPayload, &payload))
     {
-        std::memcpy(cursor, rawSignalPayload.constData(), static_cast<size_t>(rawSignalPayload.size()));
-        cursor += rawSignalPayload.size();
-    }
-    if (!harmonicPayload.isEmpty())
-    {
-        std::memcpy(cursor, harmonicPayload.constData(), static_cast<size_t>(harmonicPayload.size()));
+        return false;
     }
 
     TcpRawRecord record;
     record.timestampUs = hostTimestampUs;
-    record.flags = kRawTcpWaveCombinedPayloadFlag | tcpFloatEncodingToRawDatFlags(floatEncoding);
+    record.flags = SessionRawDat::kTcpWaveCombinedPayloadFlag | tcpFloatEncodingToRawDatFlags(floatEncoding);
     record.payload = std::move(payload);
     return impl_->enqueueTcpRawRecord(std::move(record));
 }

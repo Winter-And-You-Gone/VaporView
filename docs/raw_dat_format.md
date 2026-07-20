@@ -2,6 +2,8 @@
 
 本文档说明 `session_*/raw/*.dat` 的统一原始数据记录格式。该格式只保存设备返回的原始帧或原始响应字节，不保存解析后的字段；解析摘要仍在 `sensors/devices.csv` 中。
 
+地面端和天空端共用 `src/shared/session/UnifiedRawDat.*` 中的 raw DAT 常量、header 编解码和记录读写逻辑；`sensors/devices.csv` 的表头、字段顺序、转义和行格式化共用 `src/shared/session/SessionSensorCsv.*`。生产代码不再分别维护 raw magic、record marker、format version、source ID 或 CSV schema。
+
 ## 文件位置
 
 每个记录会话会创建 `raw/` 目录，并写入以下文件：
@@ -14,11 +16,13 @@
 | `raw/lidar.dat` | 4 | 已识别协议且校验通过的完整测距帧 |
 | `raw/tcp_wave.dat` | 5 | TCP 原始信号 payload 和二次谐波 payload |
 
-新记录会话只写这些统一 raw DAT 文件，不再额外生成旧版 `sensors/epsilon_raw.dat` 或 `waveform/*.dat`。数据查看器仍保留对旧会话 `waveform/*.dat` 的读取兼容。
+新记录会话只写这些统一 raw DAT 文件，不再额外生成旧版 `sensors/epsilon_raw.dat` 或 `waveform/*.dat`。数据查看器仍保留对旧会话 `waveform/*.dat` 的读取兼容。缺少统一 raw magic 的历史波形文件仍按旧格式回退读取；带有合法统一 raw magic 但版本不受支持的文件会被明确拒绝，不会回退为旧格式。
 
 ## 字节序
 
 除 `magic` 和 payload 外，所有多字节整数字段均为 little-endian。payload 保持设备或 TCP 流的原始字节顺序。
+
+共享写入器逐字段生成 little-endian 字节，不依赖 C++ 结构体的内存布局或 padding。
 
 ## 文件头
 
@@ -31,6 +35,8 @@
 | 12 | uint32 | header_size | 当前文件头大小，当前为 `20` |
 | 16 | uint16 | source_id | 数据源编号 |
 | 18 | uint16 | reserved | 保留，当前为 `0` |
+
+当前支持读取的 format version 为 `1` 和 `2`，新写入文件使用 `2`。读取器会在校验 `magic` 后、扫描任何记录前显式校验 `version`；不支持的版本会返回包含实际版本和支持版本列表的错误，例如 `Unsupported raw DAT format version 3; supported versions: 1, 2`。文件头截断、非法 `header_size`、未知 `source_id` 或非零 `reserved` 都是格式错误。
 
 ## 记录头
 
@@ -46,6 +52,8 @@
 | 22 | uint16 | record_type | 源内记录类型 |
 | 24 | uint32 | flags | 附加标志 |
 | 28 | uint64 | sequence | 当前文件内从 0 开始递增的记录序号 |
+
+完整记录定义为：记录头可完整读取、`marker = 0x44525756`、`header_size` 在允许范围内、`source_id` 与文件头一致、`record_type` 对该 source 有效、`payload_size` 不超过共享上限且 payload 字节全部存在。当前 payload 上限为 256 MiB，用于避免按损坏或恶意长度进行无界内存分配。序号不连续会作为警告报告，但不会丢弃本身有效的记录。
 
 ## record_type 与 flags
 
@@ -68,6 +76,18 @@
 
 这两个子 payload 是 TCP 帧长度头之后的原始负载，不包含 4 字节长度头；浮点字节序保持接收时的原始编码。`version=2` 的新记录通过记录头 `flags` bits8-9 保存该编码；旧 `version=1` 文件没有编码元数据，Session Viewer 会按 payload 内容自动探测后再回放。
 
+## 读取与恢复策略
+
+读取器只对物理文件末尾的未完成记录做非破坏性恢复：
+
+- 文件头已经完整且合法；
+- 文件末尾剩余字节不足一条完整 record header；
+- 或 record header 完整，但文件在该记录声明的 payload 写完前结束。
+
+恢复时，读取器忽略最后一条不完整记录，返回此前所有完整记录，并通过恢复状态、警告文本和 `lastValidOffset` 向调用方报告结果。恢复不会修改、截断或重写原始 `.dat` 文件，也不会把不完整 payload 暴露给上层。
+
+以下情况仍会失败，不会被静默恢复：文件头不完整、magic 错误、不支持版本、非法 header size、非法 marker、source ID 不匹配、record type 无效、payload size 超过上限、TCP 子 payload 长度不一致、文件中部损坏或任何真实 I/O 错误。这样可以区分“最后一条记录写到一半”和“文件中部格式已经损坏”。
+
 ## 与 CSV 对齐
 
-CSV 中的 `record_timestamp_us` 和 raw DAT 记录头中的 `host_timestamp_us` 使用同一主机 UTC 微秒时间基准，可用于离线对齐。CSV 保留解析后的摘要字段，raw DAT 保留原始帧字节。
+CSV 中的 `record_timestamp_us` 和 raw DAT 记录头中的 `host_timestamp_us` 使用同一主机 UTC 微秒时间基准，可用于离线对齐。CSV 保留解析后的摘要字段，raw DAT 保留原始帧字节。CSV schema、缺失字段表示、时间戳/浮点格式和 CSV 转义规则来自 `SessionSensorCsv`，因此地面端和天空端生成相同的列名、列顺序、单位和公共格式。

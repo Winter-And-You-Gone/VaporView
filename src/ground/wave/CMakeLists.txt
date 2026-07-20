@@ -24,6 +24,7 @@ target_link_libraries(vaporview_ground_wave PRIVATE
     vaporview_app_theme
     vaporview_ground_ui_support
     vaporview_protocol
+    vaporview_session_format
     vaporview_wave_encoding
     Qt6::Concurrent
     Qt6::Network

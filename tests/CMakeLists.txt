@@ -207,6 +207,12 @@ add_executable(session_core_test
 target_link_libraries(session_core_test PRIVATE vaporview_ground_session_core)
 add_test(NAME session_core_test COMMAND session_core_test)
 
+add_executable(session_format_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/session_format_test.cpp
+)
+target_link_libraries(session_format_test PRIVATE vaporview_session_format)
+add_test(NAME session_format_test COMMAND session_format_test)
+
 add_executable(session_timeline_model_test
     ${CMAKE_CURRENT_SOURCE_DIR}/session_timeline_model_test.cpp
 )
@@ -508,6 +514,7 @@ set(VAPORVIEW_FAST_UNIT_TESTS
     bounded_byte_queue_test
     temperature_command_state_test
     epsilon_protocol_test
+    session_format_test
     session_timeline_model_test
     session_export_trajectory_test
     ground_recording_service_test

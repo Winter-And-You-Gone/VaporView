@@ -1,4 +1,6 @@
 #include "ground/session/GroundRecordingService.h"
+#include "shared/session/SessionSensorCsv.h"
+#include "shared/session/UnifiedRawDat.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -111,6 +113,22 @@ int main(int argc, char **argv)
     const QByteArray devicesCsv = devicesFile.readAll();
     require(devicesCsv.contains("record_timestamp_us"), "devices.csv header");
     require(devicesCsv.contains("30.250000000"), "devices.csv sample");
+    QByteArray devicesWithoutBom = devicesCsv;
+    const QByteArray utf8Bom = QByteArray::fromHex("efbbbf");
+    if (devicesWithoutBom.startsWith(utf8Bom))
+    {
+        devicesWithoutBom.remove(0, utf8Bom.size());
+    }
+    const qsizetype headerEnd = devicesWithoutBom.indexOf('\n');
+    QByteArray actualDevicesHeader = devicesWithoutBom.left(headerEnd);
+    if (actualDevicesHeader.endsWith('\r'))
+    {
+        actualDevicesHeader.chop(1);
+    }
+    QByteArray expectedDevicesHeader = VaporView::SessionSensorCsv::header().toUtf8();
+    expectedDevicesHeader.chop(1);
+    require(headerEnd > 0 && actualDevicesHeader == expectedDevicesHeader,
+            "ground devices.csv uses shared header exactly");
 
     QFile metadataFile(QDir(sessionDirectory).filePath(QStringLiteral("session.json")));
     require(metadataFile.open(QIODevice::ReadOnly), "open session metadata");
@@ -126,7 +144,14 @@ int main(int argc, char **argv)
 
     QFile rawFile(QDir(sessionDirectory).filePath(QStringLiteral("raw/epsilon.dat")));
     require(rawFile.open(QIODevice::ReadOnly), "open raw epsilon file");
-    require(rawFile.read(8) == QByteArrayLiteral("VVRAWDAT"), "raw DAT magic");
+    VaporView::SessionRawDat::RawScanOptions scanOptions;
+    scanOptions.expectedSourceId = VaporView::SessionRawDat::kSourceEpsilon;
+    const VaporView::SessionRawDat::RawScanResult rawResult =
+        VaporView::SessionRawDat::scan(rawFile, scanOptions);
+    require(rawResult.success() && rawResult.records.size() == 1,
+            "shared reader scans ground epsilon raw DAT");
+    require(rawResult.fileHeader.version == VaporView::SessionRawDat::kCurrentFormatVersion,
+            "ground writer uses shared current raw version");
 
     QTemporaryDir concurrentDirectory;
     require(concurrentDirectory.isValid(), "concurrent recording temporary directory");

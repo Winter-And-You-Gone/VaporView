@@ -1,6 +1,7 @@
 #include "ground/session/SessionWaveformRepository.h"
 
 #include "ground/session/SessionCsv.h"
+#include "shared/session/UnifiedRawDat.h"
 
 #include <QByteArray>
 #include <QDir>
@@ -30,34 +31,6 @@ using VaporView::Ground::SessionCsv::parseCsvLine;
 constexpr quint64 kTimestampBytes = sizeof(quint64);
 constexpr quint64 kFloatBytes = sizeof(float);
 constexpr qsizetype kPeakPayloadChunkBytes = 32 * 1024 * 1024;
-constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
-constexpr quint32 kUnifiedRawRecordMarker = 0x44525756u;
-constexpr quint16 kRawSourceTcpWave = 5u;
-constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
-
-#pragma pack(push, 1)
-struct UnifiedRawFileHeader
-{
-    char magic[8];
-    quint32 version;
-    quint32 headerSize;
-    quint16 sourceId;
-    quint16 reserved;
-};
-
-struct UnifiedRawRecordHeader
-{
-    quint32 marker;
-    quint32 headerSize;
-    quint64 hostTimestampUs;
-    quint32 payloadSize;
-    quint16 sourceId;
-    quint16 recordType;
-    quint32 flags;
-    quint64 sequence;
-};
-#pragma pack(pop)
-
 struct PeakPayload
 {
     quint64 timestampUs = 0;
@@ -209,126 +182,116 @@ double percentile(QVector<double> values, double fraction)
     return values.at(lower) * (1.0 - ratio) + values.at(upper) * ratio;
 }
 
-bool loadUnifiedRawCatalog(const QString& filename,
-                           VaporView::Ground::SessionWaveformCatalog& catalog,
-                           QString& error,
-                           const VaporView::Ground::SessionWaveformRepository::ProgressCallback& progress)
+enum class UnifiedRawCatalogStatus
 {
+    Missing,
+    NotUnified,
+    Loaded,
+    Error
+};
+
+struct UnifiedRawCatalogResult
+{
+    UnifiedRawCatalogStatus status = UnifiedRawCatalogStatus::Missing;
+    QString error;
+    QString warning;
+};
+
+UnifiedRawCatalogResult loadUnifiedRawCatalog(
+    const QString& filename,
+    VaporView::Ground::SessionWaveformCatalog& catalog,
+    const VaporView::Ground::SessionWaveformRepository::ProgressCallback& progress)
+{
+    UnifiedRawCatalogResult result;
     if (filename.isEmpty() || !QFileInfo::exists(filename))
     {
-        return true;
+        return result;
     }
     QFile file(filename);
     if (!file.open(QIODevice::ReadOnly))
     {
-        error = QStringLiteral("Failed to open raw TCP wave file: %1").arg(filename);
-        return false;
+        result.status = UnifiedRawCatalogStatus::Error;
+        result.error = QStringLiteral("Failed to open raw TCP wave file: %1").arg(filename);
+        return result;
     }
 
-    UnifiedRawFileHeader fileHeader{};
-    if (file.read(reinterpret_cast<char*>(&fileHeader), sizeof(fileHeader)) !=
-            static_cast<qint64>(sizeof(fileHeader)) ||
-        std::memcmp(fileHeader.magic, kUnifiedRawMagic, sizeof(fileHeader.magic)) != 0)
+    VaporView::SessionRawDat::RawScanOptions scanOptions;
+    scanOptions.expectedSourceId = VaporView::SessionRawDat::kSourceTcpWave;
+    scanOptions.progress = progress;
+    const VaporView::SessionRawDat::RawScanResult scanResult =
+        VaporView::SessionRawDat::scan(file, scanOptions);
+    if (scanResult.status == VaporView::SessionRawDat::RawReadStatus::NotUnifiedFormat)
     {
-        error = QStringLiteral("Invalid raw TCP wave DAT header: %1").arg(filename);
-        return false;
+        result.status = UnifiedRawCatalogStatus::NotUnified;
+        result.error = QStringLiteral("Raw TCP wave file is not unified raw DAT: %1").arg(filename);
+        return result;
     }
-
-    const quint32 fileHeaderSize = qFromLittleEndian(fileHeader.headerSize);
-    const quint16 sourceId = qFromLittleEndian(fileHeader.sourceId);
-    if (fileHeaderSize < sizeof(UnifiedRawFileHeader) || sourceId != kRawSourceTcpWave)
+    if (!scanResult.success())
     {
-        error = QStringLiteral("Unexpected raw TCP wave DAT source: %1").arg(filename);
-        return false;
+        result.status = UnifiedRawCatalogStatus::Error;
+        result.error = QStringLiteral("%1: %2").arg(scanResult.error, filename);
+        return result;
     }
-    if (fileHeaderSize > sizeof(UnifiedRawFileHeader) && !file.seek(fileHeaderSize))
+    result.status = UnifiedRawCatalogStatus::Loaded;
+    result.warning = scanResult.warning;
+
+    for (const VaporView::SessionRawDat::RawRecordIndex& record : scanResult.records)
     {
-        error = QStringLiteral("Invalid raw TCP wave DAT header size: %1").arg(filename);
-        return false;
-    }
-
-    while (!file.atEnd())
-    {
-        const qint64 recordStart = file.pos();
-        UnifiedRawRecordHeader recordHeader{};
-        const qint64 headerBytes = file.read(
-            reinterpret_cast<char*>(&recordHeader),
-            sizeof(recordHeader));
-        if (headerBytes == 0)
+        const auto& header = record.header;
+        if ((header.flags & VaporView::SessionRawDat::kTcpWaveCombinedPayloadFlag) != 0 &&
+            header.payloadSize >= sizeof(quint32) * 2)
         {
-            break;
-        }
-        if (headerBytes != static_cast<qint64>(sizeof(recordHeader)))
-        {
-            error = QStringLiteral("Incomplete raw TCP wave record header: %1").arg(filename);
-            return false;
-        }
-
-        const quint32 marker = qFromLittleEndian(recordHeader.marker);
-        const quint32 recordHeaderSize = qFromLittleEndian(recordHeader.headerSize);
-        const quint64 timestampUs = qFromLittleEndian(recordHeader.hostTimestampUs);
-        const quint32 payloadSize = qFromLittleEndian(recordHeader.payloadSize);
-        const quint16 recordSourceId = qFromLittleEndian(recordHeader.sourceId);
-        const quint32 flags = qFromLittleEndian(recordHeader.flags);
-        if (marker != kUnifiedRawRecordMarker || recordHeaderSize < sizeof(UnifiedRawRecordHeader))
-        {
-            error = QStringLiteral("Invalid raw TCP wave record marker: %1").arg(filename);
-            return false;
-        }
-
-        const qint64 payloadOffset = recordStart + static_cast<qint64>(recordHeaderSize);
-        const qint64 nextRecord = payloadOffset + static_cast<qint64>(payloadSize);
-        if (payloadOffset < 0 || nextRecord < payloadOffset || nextRecord > file.size() ||
-            !file.seek(payloadOffset))
-        {
-            error = QStringLiteral("Invalid raw TCP wave record size: %1").arg(filename);
-            return false;
-        }
-
-        if (recordSourceId == kRawSourceTcpWave &&
-            (flags & kRawTcpWaveCombinedPayloadFlag) != 0 &&
-            payloadSize >= sizeof(quint32) * 2)
-        {
-            quint32 rawSignalSizeLe = 0;
-            quint32 harmonicSizeLe = 0;
-            if (file.read(reinterpret_cast<char*>(&rawSignalSizeLe), sizeof(rawSignalSizeLe)) !=
-                    static_cast<qint64>(sizeof(rawSignalSizeLe)) ||
-                file.read(reinterpret_cast<char*>(&harmonicSizeLe), sizeof(harmonicSizeLe)) !=
-                    static_cast<qint64>(sizeof(harmonicSizeLe)))
+            if (record.payloadOffset > static_cast<quint64>(std::numeric_limits<qint64>::max()) ||
+                !file.seek(static_cast<qint64>(record.payloadOffset)))
             {
-                error = QStringLiteral("Incomplete raw TCP wave size header: %1").arg(filename);
-                return false;
+                result.status = UnifiedRawCatalogStatus::Error;
+                result.error = QStringLiteral("Failed to seek raw TCP wave payload: %1").arg(filename);
+                return result;
             }
-            const quint32 rawSignalSize = qFromLittleEndian(rawSignalSizeLe);
-            const quint32 harmonicSize = qFromLittleEndian(harmonicSizeLe);
-            const quint64 requiredSize = sizeof(quint32) * 2ULL + rawSignalSize + harmonicSize;
-            if (requiredSize <= payloadSize && harmonicSize > 0 && harmonicSize % kFloatBytes == 0)
+            const QByteArray prefix = file.read(VaporView::SessionRawDat::kTcpWavePayloadPrefixSize);
+            VaporView::SessionRawDat::TcpWavePayloadLayout layout;
+            QString layoutError;
+            if (!VaporView::SessionRawDat::parseTcpWavePayloadLayout(
+                    prefix,
+                    header.payloadSize,
+                    &layout,
+                    &layoutError))
+            {
+                result.status = UnifiedRawCatalogStatus::Error;
+                result.error = QStringLiteral("Invalid raw TCP wave sub-payload sizes at offset %1: %2 (%3)")
+                                   .arg(record.recordOffset)
+                                   .arg(filename)
+                                   .arg(layoutError);
+                return result;
+            }
+            if (layout.harmonicSize > 0 && layout.harmonicSize % kFloatBytes != 0)
+            {
+                result.status = UnifiedRawCatalogStatus::Error;
+                result.error = QStringLiteral("Invalid raw TCP wave harmonic payload size %1 at offset %2: %3")
+                                   .arg(layout.harmonicSize)
+                                   .arg(record.recordOffset)
+                                   .arg(filename);
+                return result;
+            }
+            if (layout.harmonicSize > 0)
             {
                 VaporView::Ground::SessionRawTcpWaveFrame frame;
                 frame.filename = filename;
-                frame.harmonicPayloadOffset =
-                    static_cast<quint64>(payloadOffset) + sizeof(quint32) * 2ULL + rawSignalSize;
-                frame.harmonicPayloadSize = harmonicSize;
-                frame.timestampUs = timestampUs;
-                frame.floatEncoding = VaporView::tcpFloatEncodingFromRawDatFlags(flags);
+                frame.harmonicPayloadOffset = record.payloadOffset + layout.harmonicOffset;
+                frame.harmonicPayloadSize = layout.harmonicSize;
+                frame.timestampUs = header.hostTimestampUs;
+                frame.floatEncoding = scanResult.fileHeader.version == 1u
+                    ? VaporView::TcpFloatEncoding::Unknown
+                    : VaporView::tcpFloatEncodingFromRawDatFlags(header.flags);
                 catalog.rawTcpFrames.push_back(std::move(frame));
                 if (catalog.pointsPerFrame <= 0)
                 {
-                    catalog.pointsPerFrame = static_cast<int>(harmonicSize / kFloatBytes);
+                    catalog.pointsPerFrame = static_cast<int>(layout.harmonicSize / kFloatBytes);
                 }
             }
         }
-        if (!file.seek(nextRecord))
-        {
-            error = QStringLiteral("Failed to seek raw TCP wave record: %1").arg(filename);
-            return false;
-        }
-        if (progress && catalog.rawTcpFrames.size() % 2000 == 0)
-        {
-            progress(static_cast<quint64>(nextRecord), static_cast<quint64>(file.size()));
-        }
     }
-    return true;
+    return result;
 }
 
 bool loadIndexedCatalog(const VaporView::Ground::SessionMetadata& metadata,
@@ -492,16 +455,20 @@ SessionWaveformCatalogResult SessionWaveformRepository::loadCatalog(
     result.catalog.rawTcpWaveFilename = metadata.rawTcpWaveFilename;
     result.catalog.pointsPerFrame = metadata.waveformPointsPerFrame;
 
-    QString rawError;
-    if (loadUnifiedRawCatalog(
-            metadata.rawTcpWaveFilename,
-            result.catalog,
-            rawError,
-            progress) &&
-        !result.catalog.rawTcpFrames.isEmpty())
+    const UnifiedRawCatalogResult rawResult = loadUnifiedRawCatalog(
+        metadata.rawTcpWaveFilename,
+        result.catalog,
+        progress);
+    if (rawResult.status == UnifiedRawCatalogStatus::Loaded)
     {
         result.catalog.frameCount = static_cast<quint64>(result.catalog.rawTcpFrames.size());
         result.success = true;
+        result.warning = rawResult.warning;
+        return result;
+    }
+    if (rawResult.status == UnifiedRawCatalogStatus::Error)
+    {
+        result.error = rawResult.error;
         return result;
     }
     result.catalog.rawTcpFrames.clear();
@@ -528,9 +495,10 @@ SessionWaveformCatalogResult SessionWaveformRepository::loadCatalog(
         result.error = indexError;
         return result;
     }
-    if (!rawError.isEmpty() && !QFileInfo::exists(metadata.waveformDirectory))
+    if (rawResult.status == UnifiedRawCatalogStatus::NotUnified &&
+        !QFileInfo::exists(metadata.waveformDirectory))
     {
-        result.error = rawError;
+        result.error = rawResult.error;
         return result;
     }
     result.success = true;

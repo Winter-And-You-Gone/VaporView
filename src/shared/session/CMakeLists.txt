@@ -1,6 +1,8 @@
 add_library(vaporview_session_format STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionSensorCsv.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionSensorCsv.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/UnifiedRawDat.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UnifiedRawDat.h
 )
 
 target_include_directories(vaporview_session_format PUBLIC

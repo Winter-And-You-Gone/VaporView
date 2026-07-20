@@ -1,6 +1,7 @@
 #include "shared/theme/AppTheme.h"
 #include "ground/wave/RawDataParserWindow.h"
 #include "ground/session/SessionViewerWindow.h"
+#include "shared/session/UnifiedRawDat.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "ground/trajectory/TrajectoryViewerDialog.h"
@@ -312,7 +313,7 @@ void writeMinimalRawTcpWaveFile(const QString& path, const QVector<quint64>& tim
                << timestampsUs.at(index)
                << payloadSize
                << quint16(kTestRawSourceTcpWave)
-               << quint16(0)
+               << quint16(VaporView::SessionRawDat::kRecordTypeTcpWavePayload)
                << quint32(kTestRawTcpWaveCombinedPayloadFlag)
                << quint64(index)
                << rawSize

@@ -1,5 +1,7 @@
 #include "SkySessionRecorder.h"
 #include "geo/CoordinateTransform.h"
+#include "shared/session/SessionSensorCsv.h"
+#include "shared/session/UnifiedRawDat.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -20,67 +22,8 @@ namespace VaporView
 {
 namespace
 {
-constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
-constexpr quint32 kUnifiedRawFormatVersion = 2u;
-constexpr quint32 kUnifiedRawRecordMarker = 0x44525756u;
-constexpr quint16 kRawSourceEpsilon = 1u;
-constexpr quint16 kRawSourcePtb = 2u;
-constexpr quint16 kRawSourceHmp = 3u;
-constexpr quint16 kRawSourceLidar = 4u;
-constexpr quint16 kRawSourceTcpWave = 5u;
-constexpr quint16 kRawRecordTypeGeneric = 1u;
-constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
 constexpr const char *kTcpWavePeakIndexCsvHeader =
     "host_time_us,peak_value,peak_index,point_count,search_start_index,search_end_index\n";
-constexpr const char *kDevicesCsvHeader =
-    "record_timestamp_us,"
-    "epsilon_host_timestamp_us,epsilon_device_timestamp_us,epsilon_utc_unix_s,epsilon_utc_microseconds,"
-    "nav_lat_deg,nav_lon_deg,nav_height_m,"
-    "ecef_x_m,ecef_y_m,ecef_z_m,"
-    "ned_n_m,ned_e_m,ned_d_m,"
-    "vel_n_mps,vel_e_mps,vel_d_mps,"
-    "body_vel_x_mps,body_vel_y_mps,body_vel_z_mps,"
-    "body_acc_x_mps2,body_acc_y_mps2,body_acc_z_mps2,"
-    "roll_deg,pitch_deg,yaw_deg,"
-    "quat_w,quat_x,quat_y,quat_z,"
-    "attitude_source_count,attitude_delta_max_deg,"
-    "attitude_delta_ahrs_euler_deg,attitude_delta_ahrs_quat_deg,attitude_delta_euler_quat_deg,"
-    "ang_vel_x_radps,ang_vel_y_radps,ang_vel_z_radps,"
-    "imu_acc_x_mps2,imu_acc_y_mps2,imu_acc_z_mps2,"
-    "imu_gyr_x_radps,imu_gyr_y_radps,imu_gyr_z_radps,"
-    "mag_x_mg,mag_y_mg,mag_z_mg,"
-    "gnss_fix,gnss_satellites,hdop,vdop,hacc_m,vacc_m,"
-    "lat_std_m,lon_std_m,height_std_m,diff_age_s,"
-    "heading_valid,system_status_bits,filter_status_bits,update_status_bits,"
-    "epsilon_imu_packet_rate_hz,epsilon_ahrs_packet_rate_hz,"
-    "epsilon_insgps_packet_rate_hz,epsilon_sys_state_packet_rate_hz,"
-    "epsilon_raw_gnss_packet_rate_hz,epsilon_satellite_packet_rate_hz,"
-    "epsilon_geodetic_packet_rate_hz,epsilon_ecef_packet_rate_hz,"
-    "epsilon_valid,epsilon_error_message,"
-    "hmp_temperature_c,hmp_humidity_rh,ptb_pressure_hpa,lidar_distance_m,lidar_signal_strength,lidar_valid\n";
-
-#pragma pack(push, 1)
-struct UnifiedRawFileHeader
-{
-    char magic[8];
-    quint32 version;
-    quint32 header_size;
-    quint16 source_id;
-    quint16 reserved;
-};
-
-struct UnifiedRawRecordHeader
-{
-    quint32 marker;
-    quint32 header_size;
-    quint64 host_timestamp_us;
-    quint32 payload_size;
-    quint16 source_id;
-    quint16 record_type;
-    quint32 flags;
-    quint64 sequence;
-};
-#pragma pack(pop)
 
 bool hasUsableEpsilonLlh(const EpsilonData& data)
 {
@@ -334,11 +277,11 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
         !feature_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !temperature_controller_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !raw_tcp_wave_peak_index_file_.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
-        !openRawDatFile(raw_epsilon_file_, raw_epsilon_filename_, kRawSourceEpsilon, errorMessage) ||
-        !openRawDatFile(raw_ptb_file_, raw_ptb_filename_, kRawSourcePtb, errorMessage) ||
-        !openRawDatFile(raw_hmp_file_, raw_hmp_filename_, kRawSourceHmp, errorMessage) ||
-        !openRawDatFile(raw_lidar_file_, raw_lidar_filename_, kRawSourceLidar, errorMessage) ||
-        !openRawDatFile(raw_tcp_wave_file_, raw_tcp_wave_filename_, kRawSourceTcpWave, errorMessage))
+        !openRawDatFile(raw_epsilon_file_, raw_epsilon_filename_, SessionRawDat::kSourceEpsilon, errorMessage) ||
+        !openRawDatFile(raw_ptb_file_, raw_ptb_filename_, SessionRawDat::kSourcePtb, errorMessage) ||
+        !openRawDatFile(raw_hmp_file_, raw_hmp_filename_, SessionRawDat::kSourceHmp, errorMessage) ||
+        !openRawDatFile(raw_lidar_file_, raw_lidar_filename_, SessionRawDat::kSourceLidar, errorMessage) ||
+        !openRawDatFile(raw_tcp_wave_file_, raw_tcp_wave_filename_, SessionRawDat::kSourceTcpWave, errorMessage))
     {
         if (errorMessage && errorMessage->isEmpty()) *errorMessage = QStringLiteral("cannot open session files");
         closeFiles();
@@ -346,7 +289,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     }
 
     QTextStream basicOut(&basic_record_file_);
-    basicOut << kDevicesCsvHeader;
+    basicOut << SessionSensorCsv::header();
 
     QTextStream featureOut(&feature_record_file_);
     featureOut << "host_time_us,epsilon_time_us,original_point_count,search_start_index,search_end_index,channel_id,peak,mean,rms,peak_index,peak_x,min_value,max_value,quality_flags\n";
@@ -563,145 +506,24 @@ void SkySessionRecorder::recordDeviceSnapshot(quint64 hostTimeUs,
         return;
     }
 
-    QStringList row;
-    row.reserve(64);
-    row << QString::number(hostTimeUs);
-
-    auto appendEmptyColumns = [&row](int count) {
-        for (int i = 0; i < count; ++i)
-        {
-            row << QString();
-        }
-    };
-    auto optionalNumber = [](double value, int precision) {
-        return std::isfinite(value) ? QString::number(value, 'f', precision) : QString();
-    };
-
     EpsilonData resolvedEpsilon = epsilon;
     if (hasEpsilon && resolvedEpsilon.valid)
     {
         resolveEpsilonEcefFromLlh(resolvedEpsilon);
     }
 
-    if (hasEpsilon && resolvedEpsilon.valid)
-    {
-        const EpsilonData& epsilon = resolvedEpsilon;
-        row << QString::number(epsilonHostTimeUs)
-            << QString::number(epsilon.device_timestamp_us)
-            << QString::number(epsilon.utc_unix_s)
-            << QString::number(epsilon.utc_microseconds)
-            << QString::number(epsilon.latitude_deg, 'f', 9)
-            << QString::number(epsilon.longitude_deg, 'f', 9)
-            << QString::number(epsilon.height_m, 'f', 6)
-            << optionalNumber(epsilon.ecef_x_m, 6)
-            << optionalNumber(epsilon.ecef_y_m, 6)
-            << optionalNumber(epsilon.ecef_z_m, 6)
-            << QString::number(epsilon.ned_n_m, 'f', 6)
-            << QString::number(epsilon.ned_e_m, 'f', 6)
-            << QString::number(epsilon.ned_d_m, 'f', 6)
-            << QString::number(epsilon.vel_n_mps, 'f', 6)
-            << QString::number(epsilon.vel_e_mps, 'f', 6)
-            << QString::number(epsilon.vel_d_mps, 'f', 6)
-            << QString::number(epsilon.body_vel_x_mps, 'f', 6)
-            << QString::number(epsilon.body_vel_y_mps, 'f', 6)
-            << QString::number(epsilon.body_vel_z_mps, 'f', 6)
-            << QString::number(epsilon.body_acc_x_mps2, 'f', 6)
-            << QString::number(epsilon.body_acc_y_mps2, 'f', 6)
-            << QString::number(epsilon.body_acc_z_mps2, 'f', 6)
-            << QString::number(epsilon.roll_deg, 'f', 6)
-            << QString::number(epsilon.pitch_deg, 'f', 6)
-            << QString::number(epsilon.yaw_deg, 'f', 6)
-            << QString::number(epsilon.quat_w, 'f', 8)
-            << QString::number(epsilon.quat_x, 'f', 8)
-            << QString::number(epsilon.quat_y, 'f', 8)
-            << QString::number(epsilon.quat_z, 'f', 8)
-            << QString::number(epsilon.attitude_source_count)
-            << optionalNumber(epsilon.attitude_delta_max_deg, 6)
-            << optionalNumber(epsilon.attitude_delta_ahrs_euler_deg, 6)
-            << optionalNumber(epsilon.attitude_delta_ahrs_quat_deg, 6)
-            << optionalNumber(epsilon.attitude_delta_euler_quat_deg, 6)
-            << QString::number(epsilon.ang_vel_x_radps, 'f', 8)
-            << QString::number(epsilon.ang_vel_y_radps, 'f', 8)
-            << QString::number(epsilon.ang_vel_z_radps, 'f', 8)
-            << QString::number(epsilon.imu_acc_x_mps2, 'f', 6)
-            << QString::number(epsilon.imu_acc_y_mps2, 'f', 6)
-            << QString::number(epsilon.imu_acc_z_mps2, 'f', 6)
-            << QString::number(epsilon.imu_gyr_x_radps, 'f', 8)
-            << QString::number(epsilon.imu_gyr_y_radps, 'f', 8)
-            << QString::number(epsilon.imu_gyr_z_radps, 'f', 8)
-            << QString::number(epsilon.mag_x_mg, 'f', 6)
-            << QString::number(epsilon.mag_y_mg, 'f', 6)
-            << QString::number(epsilon.mag_z_mg, 'f', 6)
-            << QString::fromStdString(epsilon.gnss_fix_text)
-            << QString::number(epsilon.gnss_satellites)
-            << QString::number(epsilon.hdop, 'f', 4)
-            << QString::number(epsilon.vdop, 'f', 4)
-            << QString::number(epsilon.hacc_m, 'f', 4)
-            << QString::number(epsilon.vacc_m, 'f', 4)
-            << QString::number(epsilon.lat_std_m, 'f', 4)
-            << QString::number(epsilon.lon_std_m, 'f', 4)
-            << QString::number(epsilon.height_std_m, 'f', 4)
-            << (std::isfinite(epsilon.diff_age_s) ? QString::number(epsilon.diff_age_s, 'f', 4) : QString())
-            << boolText(epsilon.heading_valid)
-            << QString::number(epsilon.system_status_bits)
-            << QString::number(epsilon.filter_status_bits)
-            << QString::number(epsilon.update_status_bits)
-            << QString::number(epsilon.imu_packet_rate_hz, 'f', 4)
-            << QString::number(epsilon.ahrs_packet_rate_hz, 'f', 4)
-            << QString::number(epsilon.insgps_packet_rate_hz, 'f', 4)
-            << QString::number(epsilon.sys_state_packet_rate_hz, 'f', 4)
-            << QString::number(epsilon.raw_gnss_packet_rate_hz, 'f', 4)
-            << QString::number(epsilon.satellite_packet_rate_hz, 'f', 4)
-            << QString::number(epsilon.geodetic_packet_rate_hz, 'f', 4)
-            << QString::number(epsilon.ecef_packet_rate_hz, 'f', 4)
-            << boolText(true)
-            << QString::fromStdString(epsilon.error_message);
-    }
-    else
-    {
-        appendEmptyColumns(70);
-    }
-
-    if (hasHmp && hmp.valid)
-    {
-        row << QString::number(hmp.temperature, 'f', 6)
-            << QString::number(hmp.humidity, 'f', 6);
-    }
-    else
-    {
-        appendEmptyColumns(2);
-    }
-
-    if (hasPtb && ptb.valid)
-    {
-        row << QString::number(ptb.pressure_hpa, 'f', 6);
-    }
-    else
-    {
-        appendEmptyColumns(1);
-    }
-
-    if (hasLidar && lidar.valid)
-    {
-        row << QString::number(lidar.distance_m, 'f', 6)
-            << QString::number(lidar.signal_strength)
-            << boolText(lidar.valid);
-    }
-    else
-    {
-        appendEmptyColumns(3);
-    }
-
     QTextStream out(&basic_record_file_);
-    for (int i = 0; i < row.size(); ++i)
-    {
-        if (i > 0)
-        {
-            out << ',';
-        }
-        out << csvEscape(row.at(i));
-    }
-    out << '\n';
+    out << SessionSensorCsv::formatRow(
+        hostTimeUs,
+        epsilonHostTimeUs,
+        resolvedEpsilon,
+        hasEpsilon && resolvedEpsilon.valid,
+        ptb,
+        hasPtb && ptb.valid,
+        hmp,
+        hasHmp && hmp.valid,
+        lidar,
+        hasLidar && lidar.valid);
     ++telemetry_row_count_;
 }
 
@@ -801,7 +623,7 @@ void SkySessionRecorder::recordRawEpsilonFrame(quint64 hostTimeUs,
 {
     writeRawRecord(raw_epsilon_file_,
                    raw_epsilon_record_count_,
-                   kRawSourceEpsilon,
+                   SessionRawDat::kSourceEpsilon,
                    packetId,
                    serialNumber,
                    hostTimeUs,
@@ -813,8 +635,8 @@ void SkySessionRecorder::recordRawPtbResponse(quint64 hostTimeUs, const QByteArr
 {
     writeRawRecord(raw_ptb_file_,
                    raw_ptb_record_count_,
-                   kRawSourcePtb,
-                   kRawRecordTypeGeneric,
+                   SessionRawDat::kSourcePtb,
+                   SessionRawDat::kRecordTypePtbResponse,
                    0u,
                    hostTimeUs,
                    response.constData(),
@@ -825,8 +647,8 @@ void SkySessionRecorder::recordRawHmpResponse(quint64 hostTimeUs, const QByteArr
 {
     writeRawRecord(raw_hmp_file_,
                    raw_hmp_record_count_,
-                   kRawSourceHmp,
-                   0x03u,
+                   SessionRawDat::kSourceHmp,
+                   SessionRawDat::kRecordTypeHmpModbusResponse,
                    0u,
                    hostTimeUs,
                    response.constData(),
@@ -837,7 +659,7 @@ void SkySessionRecorder::recordRawLidarFrame(quint64 hostTimeUs, quint16 protoco
 {
     writeRawRecord(raw_lidar_file_,
                    raw_lidar_record_count_,
-                   kRawSourceLidar,
+                   SessionRawDat::kSourceLidar,
                    protocol,
                    0u,
                    hostTimeUs,
@@ -865,16 +687,8 @@ bool SkySessionRecorder::openRawDatFile(QFile& file, const QString& filename, qu
         return false;
     }
 
-    UnifiedRawFileHeader header{};
-    std::memcpy(header.magic, kUnifiedRawMagic, sizeof(header.magic));
-    header.version = qToLittleEndian(kUnifiedRawFormatVersion);
-    header.header_size = qToLittleEndian(static_cast<quint32>(sizeof(UnifiedRawFileHeader)));
-    header.source_id = qToLittleEndian(sourceId);
-    header.reserved = 0;
-
-    if (file.write(reinterpret_cast<const char*>(&header), sizeof(header)) != static_cast<qint64>(sizeof(header)))
+    if (!SessionRawDat::writeFileHeader(file, sourceId, errorMessage))
     {
-        if (errorMessage) *errorMessage = QStringLiteral("cannot write raw DAT header: %1").arg(filename);
         file.close();
         return false;
     }
@@ -892,7 +706,7 @@ bool SkySessionRecorder::writeRawRecord(QFile& file,
                                         qsizetype payloadSize)
 {
     if (!isRecording() || !file.isOpen() || (payloadSize > 0 && !payload) ||
-        payloadSize > static_cast<qsizetype>(std::numeric_limits<quint32>::max()))
+        payloadSize > static_cast<qsizetype>(SessionRawDat::kMaxPayloadSize))
     {
         return false;
     }
@@ -904,22 +718,16 @@ bool SkySessionRecorder::writeRawRecord(QFile& file,
     }
 
     const quint64 sequence = recordCount;
-    UnifiedRawRecordHeader header{};
-    header.marker = qToLittleEndian(kUnifiedRawRecordMarker);
-    header.header_size = qToLittleEndian(static_cast<quint32>(sizeof(UnifiedRawRecordHeader)));
-    header.host_timestamp_us = qToLittleEndian(hostTimeUs);
-    header.payload_size = qToLittleEndian(static_cast<quint32>(payloadSize));
-    header.source_id = qToLittleEndian(sourceId);
-    header.record_type = qToLittleEndian(recordType);
-    header.flags = qToLittleEndian(flags);
-    header.sequence = qToLittleEndian(sequence);
-
-    if (file.write(reinterpret_cast<const char*>(&header), sizeof(header)) != static_cast<qint64>(sizeof(header)))
-    {
-        return false;
-    }
-    if (payloadSize > 0 &&
-        file.write(reinterpret_cast<const char*>(payload), payloadSize) != payloadSize)
+    SessionRawDat::RawRecordHeader header;
+    header.hostTimestampUs = hostTimeUs;
+    header.sourceId = sourceId;
+    header.recordType = recordType;
+    header.flags = flags;
+    header.sequence = sequence;
+    const QByteArrayView payloadView = payloadSize > 0
+        ? QByteArrayView(static_cast<const char *>(payload), payloadSize)
+        : QByteArrayView();
+    if (!SessionRawDat::writeRecord(file, header, payloadView))
     {
         return false;
     }
@@ -940,29 +748,16 @@ bool SkySessionRecorder::writeRawTcpWavePayload(quint64 hostTimeUs,
     }
 
     QByteArray payload;
-    payload.resize(static_cast<int>(sizeof(quint32) * 2 + rawPayload.size() + harmonicPayload.size()));
-    char *cursor = payload.data();
-    const quint32 rawSize = qToLittleEndian(static_cast<quint32>(rawPayload.size()));
-    const quint32 harmonicSize = qToLittleEndian(static_cast<quint32>(harmonicPayload.size()));
-    std::memcpy(cursor, &rawSize, sizeof(rawSize));
-    cursor += sizeof(rawSize);
-    std::memcpy(cursor, &harmonicSize, sizeof(harmonicSize));
-    cursor += sizeof(harmonicSize);
-    if (!rawPayload.isEmpty())
+    if (!SessionRawDat::encodeTcpWavePayload(rawPayload, harmonicPayload, &payload))
     {
-        std::memcpy(cursor, rawPayload.constData(), rawPayload.size());
-        cursor += rawPayload.size();
-    }
-    if (!harmonicPayload.isEmpty())
-    {
-        std::memcpy(cursor, harmonicPayload.constData(), harmonicPayload.size());
+        return false;
     }
 
     if (!writeRawRecord(raw_tcp_wave_file_,
                         raw_tcp_wave_record_count_,
-                        kRawSourceTcpWave,
-                        kRawRecordTypeGeneric,
-                        kRawTcpWaveCombinedPayloadFlag | tcpFloatEncodingToRawDatFlags(floatEncoding),
+                        SessionRawDat::kSourceTcpWave,
+                        SessionRawDat::kRecordTypeTcpWavePayload,
+                        SessionRawDat::kTcpWaveCombinedPayloadFlag | tcpFloatEncodingToRawDatFlags(floatEncoding),
                         hostTimeUs,
                         payload.constData(),
                         payload.size()))
@@ -1029,7 +824,7 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
     root.insert(QStringLiteral("sensor_export_rate_hz"), 0);
     root.insert(QStringLiteral("other_devices_export_rate_hz"), 0);
     root.insert(QStringLiteral("raw_export_mode"), QStringLiteral("unified_raw_dat"));
-    root.insert(QStringLiteral("raw_dat_format_version"), static_cast<int>(kUnifiedRawFormatVersion));
+    root.insert(QStringLiteral("raw_dat_format_version"), static_cast<int>(SessionRawDat::kCurrentFormatVersion));
     root.insert(QStringLiteral("waveform_export_rate_hz"), 0);
     root.insert(QStringLiteral("waveform_export_mode"), QStringLiteral("per_frame"));
     root.insert(QStringLiteral("waveform_value_type"), QStringLiteral("float32"));
@@ -1049,15 +844,15 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
         QJsonObject raw;
         raw.insert(QStringLiteral("path"), sessionDir.relativeFilePath(filename));
         raw.insert(QStringLiteral("source_id"), static_cast<int>(sourceId));
-        raw.insert(QStringLiteral("format_version"), static_cast<int>(kUnifiedRawFormatVersion));
+        raw.insert(QStringLiteral("format_version"), static_cast<int>(SessionRawDat::kCurrentFormatVersion));
         raw.insert(QStringLiteral("record_count"), QString::number(recordCount));
         rawFiles.insert(name, raw);
     };
-    addRawFile(QStringLiteral("epsilon"), raw_epsilon_filename_, kRawSourceEpsilon, raw_epsilon_record_count_);
-    addRawFile(QStringLiteral("ptb"), raw_ptb_filename_, kRawSourcePtb, raw_ptb_record_count_);
-    addRawFile(QStringLiteral("hmp"), raw_hmp_filename_, kRawSourceHmp, raw_hmp_record_count_);
-    addRawFile(QStringLiteral("lidar"), raw_lidar_filename_, kRawSourceLidar, raw_lidar_record_count_);
-    addRawFile(QStringLiteral("tcp_wave"), raw_tcp_wave_filename_, kRawSourceTcpWave, raw_tcp_wave_record_count_);
+    addRawFile(QStringLiteral("epsilon"), raw_epsilon_filename_, SessionRawDat::kSourceEpsilon, raw_epsilon_record_count_);
+    addRawFile(QStringLiteral("ptb"), raw_ptb_filename_, SessionRawDat::kSourcePtb, raw_ptb_record_count_);
+    addRawFile(QStringLiteral("hmp"), raw_hmp_filename_, SessionRawDat::kSourceHmp, raw_hmp_record_count_);
+    addRawFile(QStringLiteral("lidar"), raw_lidar_filename_, SessionRawDat::kSourceLidar, raw_lidar_record_count_);
+    addRawFile(QStringLiteral("tcp_wave"), raw_tcp_wave_filename_, SessionRawDat::kSourceTcpWave, raw_tcp_wave_record_count_);
     root.insert(QStringLiteral("raw_files"), rawFiles);
 
     QJsonObject paths;

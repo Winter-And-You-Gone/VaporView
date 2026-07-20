@@ -45,6 +45,7 @@ target_include_directories(vaporview_sky_core PUBLIC
 target_link_libraries(vaporview_sky_core PUBLIC
     vaporview_geo_core
     vaporview_protocol
+    vaporview_session_format
     vaporview_wave_encoding
     Qt6::Core
     Qt6::SerialPort

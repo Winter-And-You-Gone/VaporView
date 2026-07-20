@@ -57,6 +57,45 @@ QByteArray floatPayload(std::initializer_list<float> values)
     return payload;
 }
 
+QByteArray unifiedTcpWaveBytes(quint32 version, int recordCount)
+{
+    QByteArray fileBytes("VVRAWDAT", 8);
+    appendLittleEndian(fileBytes, version);
+    appendLittleEndian<quint32>(fileBytes, 20);
+    appendLittleEndian<quint16>(fileBytes, 5);
+    appendLittleEndian<quint16>(fileBytes, 0);
+
+    const QByteArray rawSignal = floatPayload({99.0f});
+    const QByteArray harmonic = floatPayload({1.5f, 2.5f, 3.5f});
+    const quint32 payloadSize = static_cast<quint32>(8 + rawSignal.size() + harmonic.size());
+    for (int index = 0; index < recordCount; ++index)
+    {
+        appendLittleEndian<quint32>(fileBytes, 0x44525756u);
+        appendLittleEndian<quint32>(fileBytes, 36);
+        appendLittleEndian<quint64>(fileBytes, 4000000u + static_cast<quint64>(index));
+        appendLittleEndian(fileBytes, payloadSize);
+        appendLittleEndian<quint16>(fileBytes, 5);
+        appendLittleEndian<quint16>(fileBytes, 1);
+        appendLittleEndian<quint32>(
+            fileBytes,
+            0x00000001u |
+                VaporView::tcpFloatEncodingToRawDatFlags(VaporView::TcpFloatEncoding::LittleEndian));
+        appendLittleEndian<quint64>(fileBytes, static_cast<quint64>(index));
+        appendLittleEndian<quint32>(fileBytes, static_cast<quint32>(rawSignal.size()));
+        appendLittleEndian<quint32>(fileBytes, static_cast<quint32>(harmonic.size()));
+        fileBytes.append(rawSignal);
+        fileBytes.append(harmonic);
+    }
+    return fileBytes;
+}
+
+void writeBytes(const QString& filename, const QByteArray& bytes)
+{
+    QFile file(filename);
+    require(file.open(QIODevice::WriteOnly | QIODevice::Truncate), "binary fixture opens");
+    require(file.write(bytes) == bytes.size(), "binary fixture is written");
+}
+
 void testTimestampIndexBoundaries()
 {
     const QVector<quint64> timestamps{100, 200, 400};
@@ -362,30 +401,7 @@ void testUnifiedRawWaveformCatalog()
     require(QDir(sessionDir.path()).mkpath(QStringLiteral("raw")),
             "unified raw waveform directory is created");
 
-    QByteArray fileBytes("VVRAWDAT", 8);
-    appendLittleEndian<quint32>(fileBytes, 1);
-    appendLittleEndian<quint32>(fileBytes, 20);
-    appendLittleEndian<quint16>(fileBytes, 5);
-    appendLittleEndian<quint16>(fileBytes, 0);
-
-    const QByteArray rawSignal = floatPayload({99.0f});
-    const QByteArray harmonic = floatPayload({1.5f, 2.5f, 3.5f});
-    const quint32 payloadSize = static_cast<quint32>(8 + rawSignal.size() + harmonic.size());
-    appendLittleEndian<quint32>(fileBytes, 0x44525756u);
-    appendLittleEndian<quint32>(fileBytes, 36);
-    appendLittleEndian<quint64>(fileBytes, 4000000);
-    appendLittleEndian<quint32>(fileBytes, payloadSize);
-    appendLittleEndian<quint16>(fileBytes, 5);
-    appendLittleEndian<quint16>(fileBytes, 0);
-    appendLittleEndian<quint32>(
-        fileBytes,
-        0x00000001u |
-            VaporView::tcpFloatEncodingToRawDatFlags(VaporView::TcpFloatEncoding::LittleEndian));
-    appendLittleEndian<quint64>(fileBytes, 1);
-    appendLittleEndian<quint32>(fileBytes, static_cast<quint32>(rawSignal.size()));
-    appendLittleEndian<quint32>(fileBytes, static_cast<quint32>(harmonic.size()));
-    fileBytes.append(rawSignal);
-    fileBytes.append(harmonic);
+    const QByteArray fileBytes = unifiedTcpWaveBytes(1u, 1);
 
     QFile rawFile(sessionDir.filePath(QStringLiteral("raw/tcp_wave.dat")));
     require(rawFile.open(QIODevice::WriteOnly), "unified raw waveform fixture opens");
@@ -409,6 +425,76 @@ void testUnifiedRawWaveformCatalog()
             "unified raw repository reads only the harmonic payload");
 }
 
+void testUnifiedRawValidationRecoveryAndLegacyFallback()
+{
+    QTemporaryDir sessionDir;
+    require(sessionDir.isValid(), "temporary raw validation session is available");
+    require(QDir(sessionDir.path()).mkpath(QStringLiteral("raw")),
+            "raw validation directory is created");
+    require(QDir(sessionDir.path()).mkpath(QStringLiteral("waveform")),
+            "legacy fallback directory is created");
+
+    const QString rawPath = sessionDir.filePath(QStringLiteral("raw/tcp_wave.dat"));
+    const QString legacyPath = sessionDir.filePath(QStringLiteral("waveform/segment_000.dat"));
+    QByteArray legacyFrame;
+    appendLittleEndian<quint64>(legacyFrame, 1234u);
+    legacyFrame.append(floatPayload({7.0f}));
+    writeBytes(legacyPath, legacyFrame);
+
+    VaporView::Ground::SessionMetadata metadata;
+    metadata.sessionDirectory = sessionDir.path();
+    metadata.rawTcpWaveFilename = rawPath;
+    metadata.waveformDirectory = sessionDir.filePath(QStringLiteral("waveform"));
+    metadata.waveformPointsPerFrame = 1;
+
+    writeBytes(rawPath, unifiedTcpWaveBytes(3u, 1));
+    auto result = VaporView::Ground::SessionWaveformRepository::loadCatalog(metadata);
+    require(!result.success && result.error.contains(QStringLiteral("version 3")) &&
+                result.error.contains(QStringLiteral("1, 2")),
+            "unknown unified raw version is not allowed to fall back to legacy waveform data");
+
+    writeBytes(rawPath, unifiedTcpWaveBytes(0u, 1));
+    result = VaporView::Ground::SessionWaveformRepository::loadCatalog(metadata);
+    require(!result.success && result.error.contains(QStringLiteral("version 0")),
+            "raw version zero is rejected explicitly");
+
+    QByteArray nonUnified(20, '\0');
+    nonUnified.replace(0, 8, QByteArrayLiteral("OLDFORMT"));
+    writeBytes(rawPath, nonUnified);
+    result = VaporView::Ground::SessionWaveformRepository::loadCatalog(metadata);
+    require(result.success && result.catalog.legacySegments.size() == 1,
+            "file without unified magic retains the historical waveform fallback");
+
+    writeBytes(rawPath, unifiedTcpWaveBytes(2u, 0).left(12));
+    result = VaporView::Ground::SessionWaveformRepository::loadCatalog(metadata);
+    require(!result.success && result.error.contains(QStringLiteral("Truncated raw DAT file header")),
+            "truncated unified file header is fatal and does not use legacy fallback");
+
+    QByteArray truncatedPayload = unifiedTcpWaveBytes(2u, 2);
+    truncatedPayload.chop(2);
+    writeBytes(rawPath, truncatedPayload);
+    result = VaporView::Ground::SessionWaveformRepository::loadCatalog(metadata);
+    require(result.success && result.catalog.rawTcpFrames.size() == 1 && !result.warning.isEmpty(),
+            "truncated final raw payload preserves complete frames and reports recovery");
+
+    QByteArray truncatedHeader = unifiedTcpWaveBytes(2u, 1);
+    truncatedHeader.append(unifiedTcpWaveBytes(2u, 1).mid(20, 10));
+    writeBytes(rawPath, truncatedHeader);
+    result = VaporView::Ground::SessionWaveformRepository::loadCatalog(metadata);
+    require(result.success && result.catalog.rawTcpFrames.size() == 1 &&
+                result.warning.contains(QStringLiteral("header")),
+            "truncated final raw record header preserves complete frames and reports recovery");
+
+    QByteArray corruptMiddle = unifiedTcpWaveBytes(2u, 2);
+    const qsizetype secondRecordOffset = 20 + 36 + 24;
+    const quint32 invalidMarker = qToLittleEndian<quint32>(0x12345678u);
+    std::memcpy(corruptMiddle.data() + secondRecordOffset, &invalidMarker, sizeof(invalidMarker));
+    writeBytes(rawPath, corruptMiddle);
+    result = VaporView::Ground::SessionWaveformRepository::loadCatalog(metadata);
+    require(!result.success && result.error.contains(QStringLiteral("record marker")),
+            "middle raw record corruption remains fatal");
+}
+
 }  // namespace
 
 int main(int argc, char *argv[])
@@ -424,6 +510,7 @@ int main(int argc, char *argv[])
     testLegacyWaveformCatalogAndPeakCache();
     testIndexedWaveformCatalog();
     testUnifiedRawWaveformCatalog();
+    testUnifiedRawValidationRecoveryAndLegacyFallback();
 
     std::cout << "session_core_test passed\n";
     return 0;
