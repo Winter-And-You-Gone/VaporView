@@ -707,7 +707,7 @@ SessionDeviceDataWidget::SessionDeviceDataWidget(QWidget *parent)
     auto *csvHeader = csv_table_->horizontalHeader();
     csvHeader->setSectionsMovable(true);
     csvHeader->setSectionResizeMode(QHeaderView::Interactive);
-    csvHeader->setResizeContentsPrecision(-1);
+    csvHeader->setResizeContentsPrecision(2);
     csvHeader->setDefaultSectionSize(140);
     csv_table_->verticalHeader()->setVisible(false);
     layout->addWidget(csv_table_, 1);
