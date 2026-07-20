@@ -1,5 +1,6 @@
 #include "SkySessionRecorder.h"
 #include "geo/CoordinateTransform.h"
+#include "shared/session/SessionDeviceConfig.h"
 #include "shared/session/SessionSensorCsv.h"
 #include "shared/session/UnifiedRawDat.h"
 
@@ -263,6 +264,50 @@ int main(int argc, char *argv[])
     const QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
     require(paths.value(QStringLiteral("tcp_wave_peaks_csv")).toString() == QStringLiteral("raw/tcp_wave_peaks.csv"),
             "metadata waveform peak index path");
+
+    QFile deviceConfigFile(sessionDir + QStringLiteral("/config/device_config.json"));
+    require(deviceConfigFile.open(QIODevice::ReadOnly), "open sky device config");
+    const QJsonDocument deviceConfigDocument = QJsonDocument::fromJson(deviceConfigFile.readAll());
+    require(deviceConfigDocument.isObject(), "sky device config object");
+    const QJsonObject deviceConfig = deviceConfigDocument.object();
+    const QJsonObject expectedDeviceConfigSchema =
+        VaporView::Session::sessionDeviceConfigToJson(VaporView::Session::SessionDeviceConfig{});
+    require(deviceConfig.keys() == expectedDeviceConfigSchema.keys(),
+            "sky device config uses shared top-level schema");
+    require(deviceConfig.value(QStringLiteral("recording_origin")).toString()
+                == QStringLiteral("sky"),
+            "sky device config origin");
+    require(deviceConfig.value(QStringLiteral("epsilon_schema_version")).isDouble(),
+            "sky device config epsilon schema version is numeric");
+    const QJsonObject deviceTelemetry = deviceConfig.value(QStringLiteral("telemetry")).toObject();
+    require(deviceTelemetry.keys()
+                == expectedDeviceConfigSchema.value(QStringLiteral("telemetry")).toObject().keys(),
+            "sky device config telemetry schema");
+    require(deviceTelemetry.value(QStringLiteral("transport")).toString()
+                == QStringLiteral("serial") &&
+                deviceTelemetry.value(QStringLiteral("endpoint")).toString()
+                == QStringLiteral("COM50") &&
+                deviceTelemetry.value(QStringLiteral("port")).toString()
+                == QStringLiteral("COM50") &&
+                deviceTelemetry.value(QStringLiteral("baud")).toString()
+                == QStringLiteral("921600"),
+            "sky device config telemetry values");
+    const QJsonObject deviceSensors = deviceConfig.value(QStringLiteral("sensors")).toObject();
+    require(deviceSensors.keys()
+                == expectedDeviceConfigSchema.value(QStringLiteral("sensors")).toObject().keys(),
+            "sky device config sensor schema");
+    for (const QString& sensorKey : deviceSensors.keys())
+    {
+        const QJsonObject sensor = deviceSensors.value(sensorKey).toObject();
+        require(sensor.value(QStringLiteral("port")).isNull() &&
+                    sensor.value(QStringLiteral("baud")).isNull() &&
+                    sensor.value(QStringLiteral("rate_hz")).isNull(),
+                "sky unavailable sensor settings are explicit nulls");
+    }
+    const QJsonObject waveformConfig = deviceConfig.value(QStringLiteral("waveform")).toObject();
+    require(waveformConfig.value(QStringLiteral("host")).isNull() &&
+                waveformConfig.value(QStringLiteral("port")).isNull(),
+            "sky unavailable waveform endpoint is explicit null");
 
     QFile rawFile(sessionDir + QStringLiteral("/raw/tcp_wave.dat"));
     require(rawFile.open(QIODevice::ReadOnly), "open tcp wave raw dat");

@@ -1,8 +1,8 @@
 # VaporView session package format
 
 New Ground and Sky recordings use the same session package layout, file set,
-CSV schemas, RAW DAT format, and `session.json` schema. The only structural
-difference between the two origins is the explicit manifest field:
+CSV schemas, RAW DAT format, `session.json` schema, and `device_config.json`
+schema. The origin value is explicit in both JSON metadata files:
 
 - `"recording_origin": "ground"`
 - `"recording_origin": "sky"`
@@ -47,7 +47,8 @@ when the recorder has no data for that stream.
   `logs/event_log.csv` are created with their standard headers.
 - `raw/epsilon.dat`, `raw/ptb.dat`, `raw/hmp.dat`, `raw/lidar.dat`, and
   `raw/tcp_wave.dat` are created as valid zero-record unified RAW DAT files.
-- `config/device_config.json` is always valid JSON.
+- `config/device_config.json` uses the shared device configuration schema
+  described below.
 - `logs/error_log.txt` is created and may be empty.
 - `raw_dat_format.md` is generated from built-in shared text so session
   creation does not depend on a source-tree-relative documentation file.
@@ -118,6 +119,8 @@ stream has no records.
 - `RecordingOrigin` defines and serializes `ground` / `sky`.
 - `SessionPackageLayout` is the single production source of standard relative
   paths and shared CSV headers.
+- `SessionDeviceConfig` serializes and atomically writes the unified device
+  configuration snapshot.
 - `SessionManifest` serializes, parses, validates, and atomically writes the
   unified manifest.
 - `SessionPackageInitializer` creates the standard directory tree, all empty
@@ -141,3 +144,26 @@ Readers are strict for new `recording_origin` values and accept only
 - old sessions are not required to contain the new standard empty files.
 
 The viewer displays the parsed recording origin in the session overview.
+
+## Device configuration schema
+
+`config/device_config.json` is serialized by the shared `SessionDeviceConfig`
+model. Ground and Sky therefore write the same top-level and nested key sets and
+the same JSON types for populated values. It contains:
+
+- `device_config_format` (`"vaporview.device_config"`) and
+  `device_config_format_version` (`1`)
+- `recording_origin`, `recording_directory`, and `session_directory`
+- numeric schema, export-rate, and RAW DAT format versions
+- `telemetry` with `transport`, `endpoint`, `port`, and `baud`
+- `waveform` with endpoint, frame, point, and scalar encoding settings
+- `raw_dat` with the shared RAW directory, format document, and write mode
+- `sensors` with `epsilon`, `ptb`, `hmp`, `lidar`, and `rd105`; each entry
+  always contains `port`, `baud`, and `rate_hz`
+
+Connections or device settings that do not apply to a recorder remain present
+as JSON `null`. For example, Sky recordings preserve all five sensor entries
+even when their per-device serial settings are unavailable. Common values such
+as the session directories, origin, export rates, capture connection, and
+format versions are filled by `SessionPackageInitializer`, so an endpoint
+cannot omit or change those schema fields while creating a package.

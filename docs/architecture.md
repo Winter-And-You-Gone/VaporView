@@ -195,7 +195,7 @@ flowchart LR
   Samples["device samples and raw frames"] --> GRS["GroundRecordingService"]
   Sky["SkySessionRecorder"] --> Init["SessionPackageInitializer"]
   GRS --> Init
-  Init --> Layout["SessionPackageLayout + SessionManifest"]
+  Init --> Layout["SessionPackageLayout + SessionManifest + SessionDeviceConfig"]
   Layout --> Files["unified Ground/Sky session package"]
   Files --> Loader["SessionLoader / SessionCsv"]
   Loader --> Index["SessionIndex / SessionWaveformRepository"]
@@ -209,9 +209,10 @@ Session file parsing and export, indexing, waveform lookup, time formatting,
 playback state, and timeline bounds are independent of QWidget. The viewer
 owns layout, user gestures, table/plot presentation, and delegates core work.
 The standard Ground/Sky session package is centralized in
-`SessionPackageLayout`, `SessionPackageInitializer`, `SessionManifest`, and
-`vaporview_session_format`. Historical loading remains tolerant of old root
-counters, legacy `mode=sky`, and old waveform path keys.
+`SessionPackageLayout`, `SessionPackageInitializer`, `SessionManifest`,
+`SessionDeviceConfig`, and `vaporview_session_format`. Historical loading
+remains tolerant of old root counters, legacy `mode=sky`, and old waveform path
+keys.
 
 ### RTK, trajectory, waveform, and map boundaries
 

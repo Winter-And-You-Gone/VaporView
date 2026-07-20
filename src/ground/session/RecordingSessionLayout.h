@@ -24,7 +24,6 @@ struct RecordingSessionLayout
     QString sessionMetadataFilename;
     QString eventLogFilename;
     QString errorLogFilename;
-    QString deviceConfigFilename;
 };
 
 std::optional<RecordingSessionLayout> createRecordingSessionLayout(

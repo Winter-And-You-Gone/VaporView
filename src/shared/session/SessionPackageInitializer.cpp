@@ -1,12 +1,12 @@
 #include "shared/session/SessionPackageInitializer.h"
 
+#include "shared/session/SessionDeviceConfig.h"
 #include "shared/session/SessionSensorCsv.h"
 #include "shared/session/UnifiedRawDat.h"
 
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QJsonDocument>
 #include <QStringConverter>
 #include <QTextStream>
 
@@ -28,23 +28,6 @@ bool writeTextFile(const QString& filename, const QString& text, QString *error)
     stream << text;
     stream.flush();
     if (file.error() != QFileDevice::NoError)
-    {
-        if (error) *error = file.errorString();
-        return false;
-    }
-    return true;
-}
-
-bool writeJsonFile(const QString& filename, const QJsonObject& object, QString *error)
-{
-    QFile file(filename);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
-    {
-        if (error) *error = file.errorString();
-        return false;
-    }
-    const QByteArray payload = QJsonDocument(object).toJson(QJsonDocument::Indented);
-    if (file.write(payload) != payload.size())
     {
         if (error) *error = file.errorString();
         return false;
@@ -133,6 +116,23 @@ SessionPackageInitResult initializeSessionPackage(const SessionPackageInitOption
         }
     }
 
+    result.manifest = makeInitialManifest(options, finalSessionName);
+    SessionDeviceConfig deviceConfig = options.deviceConfig;
+    deviceConfig.recordingOrigin = options.origin;
+    deviceConfig.recordingDirectory = QDir::fromNativeSeparators(options.outputDirectory);
+    deviceConfig.sessionDirectory = normalizedSessionDirectory;
+    deviceConfig.epsilonSchemaVersion = result.manifest.epsilonSchemaVersion;
+    deviceConfig.sensorExportRateHz = result.manifest.sensorExportRateHz;
+    deviceConfig.otherDevicesExportRateHz = result.manifest.otherDevicesExportRateHz;
+    deviceConfig.rawExportMode = result.manifest.rawExportMode;
+    deviceConfig.rawDatFormatVersion = result.manifest.rawDatFormatVersion;
+    deviceConfig.waveformExportRateHz = result.manifest.waveformExportRateHz;
+    deviceConfig.waveformExportMode = result.manifest.waveformExportMode;
+    deviceConfig.waveformValueType = result.manifest.waveformValueType;
+    deviceConfig.waveformTimestampType = result.manifest.waveformTimestampType;
+    deviceConfig.waveformPointsPerFrame = result.manifest.waveformPointsPerFrame;
+    deviceConfig.telemetry = result.manifest.capture;
+
     QString error;
     if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.devicesCsvPath),
                        SessionSensorCsv::header(),
@@ -170,9 +170,10 @@ SessionPackageInitResult initializeSessionPackage(const SessionPackageInitOption
     {
         return fail(QStringLiteral("cannot create error_log.txt: %1").arg(error));
     }
-    if (!writeJsonFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.deviceConfigPath),
-                       options.initialDeviceConfig,
-                       &error))
+    if (!writeSessionDeviceConfigAtomically(
+            sessionPackageFilePath(normalizedSessionDirectory, result.layout.deviceConfigPath),
+            deviceConfig,
+            &error))
     {
         return fail(QStringLiteral("cannot create device_config.json: %1").arg(error));
     }
@@ -193,7 +194,6 @@ SessionPackageInitResult initializeSessionPackage(const SessionPackageInitOption
         }
     }
 
-    result.manifest = makeInitialManifest(options, finalSessionName);
     if (!writeSessionManifestAtomically(sessionPackageFilePath(normalizedSessionDirectory, result.layout.manifestPath),
                                         result.manifest,
                                         &error))

@@ -10,9 +10,6 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QSaveFile>
 #include <QStringList>
 #include <QTextStream>
 #include <QtEndian>
@@ -69,31 +66,6 @@ quint64 nowUs()
 QString timestampForSessionName()
 {
     return QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
-}
-
-bool writeJsonFileAtomically(const QString& filename, const QJsonObject& object, QString *errorMessage)
-{
-    QSaveFile file(filename);
-    if (!file.open(QIODevice::WriteOnly))
-    {
-        if (errorMessage) *errorMessage = file.errorString();
-        return false;
-    }
-
-    const QByteArray payload = QJsonDocument(object).toJson(QJsonDocument::Indented);
-    if (file.write(payload) != payload.size())
-    {
-        if (errorMessage) *errorMessage = file.errorString();
-        return false;
-    }
-
-    if (!file.commit())
-    {
-        if (errorMessage) *errorMessage = file.errorString();
-        return false;
-    }
-
-    return true;
 }
 
 QString boolText(bool value)
@@ -195,33 +167,6 @@ QString applicationSoftwareVersion()
         : QCoreApplication::applicationVersion();
 }
 
-QJsonObject skyDeviceConfigJson(const QString& telemetryTransport,
-                                const QString& telemetryEndpoint,
-                                const QString& telemetryPort,
-                                int telemetryBaud)
-{
-    QJsonObject root;
-    root.insert(QStringLiteral("recording_origin"), QStringLiteral("sky"));
-    root.insert(QStringLiteral("epsilon_schema_version"), 1);
-    root.insert(QStringLiteral("raw_export_mode"), QStringLiteral("unified_raw_dat"));
-    root.insert(QStringLiteral("raw_dat_format_version"), static_cast<int>(SessionRawDat::kCurrentFormatVersion));
-    QJsonObject telemetry;
-    telemetry.insert(QStringLiteral("transport"), telemetryTransport.isEmpty()
-        ? QJsonValue(QJsonValue::Null)
-        : QJsonValue(telemetryTransport));
-    telemetry.insert(QStringLiteral("endpoint"), telemetryEndpoint.isEmpty()
-        ? QJsonValue(QJsonValue::Null)
-        : QJsonValue(telemetryEndpoint));
-    telemetry.insert(QStringLiteral("port"), telemetryPort.isEmpty()
-        ? QJsonValue(QJsonValue::Null)
-        : QJsonValue(telemetryPort));
-    telemetry.insert(QStringLiteral("baud"), telemetryBaud > 0
-        ? QJsonValue(telemetryBaud)
-        : QJsonValue(QJsonValue::Null));
-    root.insert(QStringLiteral("telemetry"), telemetry);
-    return root;
-}
-
 }  // namespace
 
 bool SkySessionRecorder::start(const QString& baseDirectory,
@@ -279,11 +224,6 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     initOptions.capture.telemetryEndpoint = telemetry_endpoint_;
     initOptions.capture.telemetryPort = telemetry_port_;
     initOptions.capture.telemetryBaud = telemetry_baud_ > 0 ? QString::number(telemetry_baud_) : QString();
-    initOptions.initialDeviceConfig = skyDeviceConfigJson(telemetry_transport_,
-                                                          telemetry_endpoint_,
-                                                          telemetry_port_,
-                                                          telemetry_baud_);
-
     const VaporView::Session::SessionPackageInitResult initResult =
         VaporView::Session::initializeSessionPackage(initOptions);
     if (!initResult.success)

@@ -1,6 +1,7 @@
 #include "ground/session/GroundRecordingService.h"
 
 #include "ground/session/RecordingSessionLayout.h"
+#include "shared/session/SessionDeviceConfig.h"
 #include "shared/session/SessionManifest.h"
 #include "shared/session/SessionPackageInitializer.h"
 #include "shared/session/SessionPackageLayout.h"
@@ -13,9 +14,6 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QSaveFile>
 #include <QTextStream>
 
 #include <algorithm>
@@ -71,31 +69,6 @@ QString timestampUtc()
 QString sessionDirectoryTimestamp()
 {
     return QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
-}
-
-bool writeJsonFileAtomically(const QString& filename,
-                             const QJsonObject& object,
-                             QString *errorMessage)
-{
-    QSaveFile file(filename);
-    if (!file.open(QIODevice::WriteOnly))
-    {
-        if (errorMessage) *errorMessage = file.errorString();
-        return false;
-    }
-
-    const QByteArray payload = QJsonDocument(object).toJson(QJsonDocument::Indented);
-    if (file.write(payload) != payload.size())
-    {
-        if (errorMessage) *errorMessage = file.errorString();
-        return false;
-    }
-    if (!file.commit())
-    {
-        if (errorMessage) *errorMessage = file.errorString();
-        return false;
-    }
-    return true;
 }
 
 TcpWavePeakSummary summarizeTcpWavePeakSamples(const char *samples,
@@ -172,13 +145,14 @@ QString peakValueCsvText(float value)
         : QString();
 }
 
-QJsonObject serialConfigJson(const GroundRecordingSerialConfig& config)
+VaporView::Session::DeviceConnectionConfig sessionDeviceConnectionConfig(
+    const GroundRecordingSerialConfig& config)
 {
-    QJsonObject object;
-    object[QStringLiteral("port")] = config.port;
-    object[QStringLiteral("baud")] = config.baud;
-    object[QStringLiteral("rate_hz")] = config.rateHz;
-    return object;
+    VaporView::Session::DeviceConnectionConfig result;
+    result.port = config.port;
+    result.baud = config.baud;
+    result.rateHz = config.rateHz;
+    return result;
 }
 
 QString applicationSoftwareVersion()
@@ -186,46 +160,6 @@ QString applicationSoftwareVersion()
     return QCoreApplication::applicationVersion().isEmpty()
         ? QStringLiteral("dev")
         : QCoreApplication::applicationVersion();
-}
-
-QJsonObject groundDeviceConfigJson(const GroundRecordingOptions& options,
-                                   const QString& sessionDirectory)
-{
-    QJsonObject root;
-    root[QStringLiteral("recording_directory")] = options.baseDirectory;
-    root[QStringLiteral("session_directory")] = sessionDirectory;
-    root[QStringLiteral("epsilon_schema_version")] = QStringLiteral("epsilon.v1");
-    root[QStringLiteral("sensor_export_rate_hz")] = options.exportRateHz;
-    root[QStringLiteral("other_devices_export_rate_hz")] = options.exportRateHz;
-    root[QStringLiteral("raw_export_mode")] = QStringLiteral("unified_raw_dat");
-    root[QStringLiteral("raw_dat_format_version")] = static_cast<int>(SessionRawDat::kCurrentFormatVersion);
-    root[QStringLiteral("waveform_export_rate_hz")] = 0;
-    root[QStringLiteral("waveform_export_mode")] = QStringLiteral("per_frame");
-
-    QJsonObject waveform;
-    waveform[QStringLiteral("host")] = options.deviceConfig.waveformHost;
-    waveform[QStringLiteral("port")] = options.deviceConfig.waveformPort;
-    waveform[QStringLiteral("frame_rate_hz")] = 0;
-    waveform[QStringLiteral("frame_rate_mode")] = QStringLiteral("per_frame");
-    waveform[QStringLiteral("points_per_frame")] = 50000;
-    waveform[QStringLiteral("value_type")] = QStringLiteral("float32");
-    waveform[QStringLiteral("timestamp_type")] = QStringLiteral("uint64");
-    root[QStringLiteral("waveform")] = waveform;
-
-    QJsonObject raw;
-    raw[QStringLiteral("directory")] = VaporView::Session::standardSessionPackageLayout().epsilonRawPath.section(QLatin1Char('/'), 0, 0);
-    raw[QStringLiteral("format_doc")] = VaporView::Session::standardSessionPackageLayout().rawFormatDocumentPath;
-    raw[QStringLiteral("mode")] = QStringLiteral("per_verified_raw_frame_or_response");
-    root[QStringLiteral("raw_dat")] = raw;
-
-    QJsonObject sensors;
-    sensors[QStringLiteral("epsilon")] = serialConfigJson(options.deviceConfig.epsilon);
-    sensors[QStringLiteral("ptb")] = serialConfigJson(options.deviceConfig.ptb);
-    sensors[QStringLiteral("hmp")] = serialConfigJson(options.deviceConfig.hmp);
-    sensors[QStringLiteral("lidar")] = serialConfigJson(options.deviceConfig.lidar);
-    sensors[QStringLiteral("rd105")] = serialConfigJson(options.deviceConfig.temperatureController);
-    root[QStringLiteral("sensors")] = sensors;
-    return root;
 }
 
 RecordingSessionLayout groundLayoutFromPackage(const VaporView::Session::SessionPackageInitResult& init)
@@ -247,7 +181,6 @@ RecordingSessionLayout groundLayoutFromPackage(const VaporView::Session::Session
     layout.sessionMetadataFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.manifestPath);
     layout.eventLogFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.eventLogPath);
     layout.errorLogFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.errorLogPath);
-    layout.deviceConfigFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.deviceConfigPath);
     return layout;
 }
 
@@ -304,7 +237,14 @@ public:
         initOptions.capture.telemetryTransport = QStringLiteral("tcp_wave");
         initOptions.capture.telemetryEndpoint = options.deviceConfig.waveformHost;
         initOptions.capture.telemetryPort = QString::number(options.deviceConfig.waveformPort);
-        initOptions.initialDeviceConfig = groundDeviceConfigJson(options, QString());
+        initOptions.deviceConfig.waveformHost = options.deviceConfig.waveformHost;
+        initOptions.deviceConfig.waveformPort = options.deviceConfig.waveformPort;
+        initOptions.deviceConfig.epsilon = sessionDeviceConnectionConfig(options.deviceConfig.epsilon);
+        initOptions.deviceConfig.ptb = sessionDeviceConnectionConfig(options.deviceConfig.ptb);
+        initOptions.deviceConfig.hmp = sessionDeviceConnectionConfig(options.deviceConfig.hmp);
+        initOptions.deviceConfig.lidar = sessionDeviceConnectionConfig(options.deviceConfig.lidar);
+        initOptions.deviceConfig.temperatureController =
+            sessionDeviceConnectionConfig(options.deviceConfig.temperatureController);
 
         const VaporView::Session::SessionPackageInitResult initResult =
             VaporView::Session::initializeSessionPackage(initOptions);
@@ -315,11 +255,6 @@ public:
             return false;
         }
         layout = groundLayoutFromPackage(initResult);
-
-        if (!writeDeviceConfigSnapshot())
-        {
-            warn(GroundRecordingWarning::DeviceConfigSnapshotFailed, 0);
-        }
 
         sensorsFile = std::make_unique<QFile>(layout.sensorsFilename);
         temperatureControllerFile = std::make_unique<QFile>(layout.temperatureControllerFilename);
@@ -978,13 +913,6 @@ private:
         return VaporView::Session::writeSessionManifestAtomically(layout.sessionMetadataFilename,
                                                                   manifest,
                                                                   errorMessage);
-    }
-
-    bool writeDeviceConfigSnapshot() const
-    {
-        return writeJsonFileAtomically(layout.deviceConfigFilename,
-                                       groundDeviceConfigJson(options, layout.sessionDirectory),
-                                       nullptr);
     }
 
     void closeFiles()

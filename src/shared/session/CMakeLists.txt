@@ -1,6 +1,8 @@
 add_library(vaporview_session_format STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/RecordingOrigin.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/RecordingOrigin.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionDeviceConfig.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionDeviceConfig.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionManifest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionManifest.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionPackageInitializer.cpp

@@ -1,4 +1,5 @@
 #include "ground/session/GroundRecordingService.h"
+#include "shared/session/SessionDeviceConfig.h"
 #include "shared/session/SessionSensorCsv.h"
 #include "shared/session/UnifiedRawDat.h"
 
@@ -160,6 +161,43 @@ int main(int argc, char **argv)
             "temperature controller csv exists");
     require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/waveform_features.csv"))),
             "waveform features csv exists");
+
+    QFile deviceConfigFile(QDir(sessionDirectory).filePath(QStringLiteral("config/device_config.json")));
+    require(deviceConfigFile.open(QIODevice::ReadOnly), "open ground device config");
+    const QJsonDocument deviceConfigDocument = QJsonDocument::fromJson(deviceConfigFile.readAll());
+    require(deviceConfigDocument.isObject(), "ground device config object");
+    const QJsonObject deviceConfig = deviceConfigDocument.object();
+    const QJsonObject expectedDeviceConfigSchema =
+        VaporView::Session::sessionDeviceConfigToJson(VaporView::Session::SessionDeviceConfig{});
+    require(deviceConfig.keys() == expectedDeviceConfigSchema.keys(),
+            "ground device config uses shared top-level schema");
+    require(deviceConfig.value(QStringLiteral("recording_origin")).toString()
+                == QStringLiteral("ground"),
+            "ground device config origin");
+    require(deviceConfig.value(QStringLiteral("epsilon_schema_version")).isDouble(),
+            "ground device config epsilon schema version is numeric");
+    const QJsonObject deviceTelemetry = deviceConfig.value(QStringLiteral("telemetry")).toObject();
+    require(deviceTelemetry.keys()
+                == expectedDeviceConfigSchema.value(QStringLiteral("telemetry")).toObject().keys(),
+            "ground device config telemetry schema");
+    require(deviceTelemetry.value(QStringLiteral("transport")).toString()
+                == QStringLiteral("tcp_wave") &&
+                deviceTelemetry.value(QStringLiteral("endpoint")).toString()
+                == QStringLiteral("192.0.2.5") &&
+                deviceTelemetry.value(QStringLiteral("port")).toString()
+                == QStringLiteral("9000") &&
+                deviceTelemetry.value(QStringLiteral("baud")).isNull(),
+            "ground device config telemetry values");
+    const QJsonObject deviceSensors = deviceConfig.value(QStringLiteral("sensors")).toObject();
+    require(deviceSensors.keys()
+                == expectedDeviceConfigSchema.value(QStringLiteral("sensors")).toObject().keys(),
+            "ground device config sensor schema");
+    require(deviceSensors.value(QStringLiteral("epsilon")).toObject()
+                .value(QStringLiteral("port")).toString() == QStringLiteral("COM7"),
+            "ground device config epsilon port");
+    require(deviceSensors.value(QStringLiteral("rd105")).toObject()
+                .value(QStringLiteral("port")).isNull(),
+            "ground device config missing rd105 port is null");
 
     QFile rawFile(QDir(sessionDirectory).filePath(QStringLiteral("raw/epsilon.dat")));
     require(rawFile.open(QIODevice::ReadOnly), "open raw epsilon file");

@@ -1,5 +1,6 @@
 #include "shared/session/SessionSensorCsv.h"
 #include "shared/session/RecordingOrigin.h"
+#include "shared/session/SessionDeviceConfig.h"
 #include "shared/session/SessionManifest.h"
 #include "shared/session/SessionPackageInitializer.h"
 #include "shared/session/SessionPackageLayout.h"
@@ -143,7 +144,11 @@ VaporView::Session::SessionPackageInitResult initializeTestPackage(
     options.otherDevicesExportRateHz = 10;
     options.waveformExportRateHz = 0;
     options.waveformPointsPerFrame = 50000;
-    options.initialDeviceConfig.insert(QStringLiteral("schema"), QStringLiteral("test"));
+    options.deviceConfig.waveformHost = QStringLiteral("127.0.0.1");
+    options.deviceConfig.waveformPort = 8888;
+    options.deviceConfig.epsilon.port = QStringLiteral("COM7");
+    options.deviceConfig.epsilon.baud = QStringLiteral("921600");
+    options.deviceConfig.epsilon.rateHz = QStringLiteral("50");
     return VaporView::Session::initializeSessionPackage(options);
 }
 
@@ -508,9 +513,39 @@ void testSessionPackageInitializerCreatesIdenticalGroundAndSkyPackages()
             "standard event log header exists");
     require(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.errorLogPath)).isEmpty(),
             "standard error log starts empty");
-    require(readJsonObject(sessionPackageFilePath(ground.sessionDirectory, layout.deviceConfigPath))
-                .value(QStringLiteral("schema")).toString() == QStringLiteral("test"),
-            "standard device config is valid json");
+    const QJsonObject groundDeviceConfig =
+        readJsonObject(sessionPackageFilePath(ground.sessionDirectory, layout.deviceConfigPath));
+    const QJsonObject skyDeviceConfig =
+        readJsonObject(sessionPackageFilePath(sky.sessionDirectory, layout.deviceConfigPath));
+    requireSameKeySet(groundDeviceConfig, skyDeviceConfig,
+                      "ground and sky device config top-level key sets match");
+    requireSameJsonTypes(QJsonValue(groundDeviceConfig), QJsonValue(skyDeviceConfig),
+                         QStringLiteral("device_config"));
+    require(groundDeviceConfig.value(QStringLiteral("device_config_format")).toString()
+                == QStringLiteral("vaporview.device_config") &&
+                groundDeviceConfig.value(QStringLiteral("device_config_format_version")).toInt() == 1,
+            "standard device config identifies its schema");
+    require(groundDeviceConfig.value(QStringLiteral("recording_origin")).toString()
+                == QStringLiteral("ground") &&
+                skyDeviceConfig.value(QStringLiteral("recording_origin")).toString()
+                == QStringLiteral("sky"),
+            "device config records ground and sky origins");
+    require(groundDeviceConfig.value(QStringLiteral("epsilon_schema_version")).isDouble() &&
+                skyDeviceConfig.value(QStringLiteral("epsilon_schema_version")).isDouble(),
+            "device config epsilon schema version type matches");
+    const QJsonObject groundTelemetry = groundDeviceConfig.value(QStringLiteral("telemetry")).toObject();
+    require(groundTelemetry.value(QStringLiteral("transport")).isNull() &&
+                groundTelemetry.value(QStringLiteral("endpoint")).isNull() &&
+                groundTelemetry.value(QStringLiteral("port")).isNull() &&
+                groundTelemetry.value(QStringLiteral("baud")).isNull(),
+            "device config unused telemetry fields are explicit nulls");
+    const QJsonObject groundSensors = groundDeviceConfig.value(QStringLiteral("sensors")).toObject();
+    require(groundSensors.value(QStringLiteral("epsilon")).toObject()
+                .value(QStringLiteral("port")).toString() == QStringLiteral("COM7"),
+            "device config keeps populated sensor settings");
+    require(groundSensors.value(QStringLiteral("rd105")).toObject()
+                .value(QStringLiteral("port")).isNull(),
+            "device config unused sensor settings are explicit nulls");
     require(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.rawFormatDocumentPath))
                 .contains("built-in VaporView unified RAW DAT format"),
             "raw_dat_format.md is generated from built-in text");

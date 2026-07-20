@@ -59,7 +59,6 @@ std::optional<RecordingSessionLayout> createRecordingSessionLayout(
     layout.sessionMetadataFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.manifestPath);
     layout.eventLogFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.eventLogPath);
     layout.errorLogFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.errorLogPath);
-    layout.deviceConfigFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.deviceConfigPath);
     return layout;
 }
 

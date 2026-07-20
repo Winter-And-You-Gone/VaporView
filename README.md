@@ -602,12 +602,14 @@ data/
 字段保留为 `null`。完整 schema 与历史兼容规则见
 [docs/session_format.md](docs/session_format.md)。
 
-`device_config.json` 当前记录：
+`device_config.json` 由共享 `SessionDeviceConfig` schema 生成。Ground 和 Sky
+使用完全相同的顶层及嵌套 key：
 
-- 当前记录目录和 session 目录
-- 设备记录频率
-- 波形主机、端口、记录模式、分文件分钟数、每帧点数和值类型
-- EPSILON、PTB、HMP、Lidar 的串口、波特率和 UI 频率文本
+- 格式版本、`recording_origin`、当前记录目录和 session 目录
+- 遥测 transport / endpoint / port / baud；不适用项保留为 `null`
+- 波形主机、端口、记录模式、每帧点数和值类型
+- EPSILON、PTB、HMP、Lidar、RD105 的串口、波特率和频率文本；天空端无法提供的
+  逐设备配置保留为 `null`
 
 ## 数据文件格式
 

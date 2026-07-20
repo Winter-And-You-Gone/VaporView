@@ -1,8 +1,8 @@
 #pragma once
 
+#include "shared/session/SessionDeviceConfig.h"
 #include "shared/session/SessionManifest.h"
 
-#include <QJsonObject>
 #include <QString>
 
 namespace VaporView::Session
@@ -21,7 +21,7 @@ struct SessionPackageInitOptions
     int waveformExportRateHz = 0;
     int waveformPointsPerFrame = 50000;
     CaptureMetadata capture;
-    QJsonObject initialDeviceConfig;
+    SessionDeviceConfig deviceConfig;
 };
 
 struct SessionPackageInitResult
