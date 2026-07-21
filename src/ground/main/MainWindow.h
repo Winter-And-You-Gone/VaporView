@@ -182,7 +182,6 @@ private:
     void setLocalSerialPortComboText(QComboBox *combo, const QString& text);
     QString localSerialPortComboValue(const QComboBox *combo) const;
     QString localSerialPortItemValue(const QComboBox *combo, int index) const;
-    QString localSerialPortHistoryText(const QString& port) const;
     QString normalizedLocalSerialPortText(const QString& text) const;
     void beginManualLocalSerialPortEntry(QComboBox *combo);
     void finishManualLocalSerialPortEntry(QComboBox *combo, bool accept);

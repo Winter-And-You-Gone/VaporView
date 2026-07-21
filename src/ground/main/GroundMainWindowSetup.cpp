@@ -2,11 +2,84 @@
 #include "ground/devices/DeviceRatePolicy.h"
 
 #include <QLinearGradient>
+#include <QStyledItemDelegate>
 
 namespace
 {
 
 constexpr int kMainContentBottomFadeHeight = 36;
+constexpr int kLocalSerialPortHistoryBadgeWidth = 18;
+constexpr int kLocalSerialPortHistoryBadgeGap = 8;
+
+class LocalSerialPortPopupDelegate final : public QStyledItemDelegate
+{
+public:
+    explicit LocalSerialPortPopupDelegate(QObject *parent = nullptr)
+        : QStyledItemDelegate(parent)
+    {
+        setProperty("vaporViewLocalSerialHistoryDelegate", true);
+    }
+
+    QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override
+    {
+        QSize size = QStyledItemDelegate::sizeHint(option, index);
+        if (index.data(VaporView::Ground::MainSupport::kLocalSerialPortHistoryItemRole).toBool())
+        {
+            size.rwidth() += kLocalSerialPortHistoryBadgeWidth + kLocalSerialPortHistoryBadgeGap;
+        }
+        return size;
+    }
+
+    void paint(QPainter *painter,
+               const QStyleOptionViewItem& option,
+               const QModelIndex& index) const override
+    {
+        const bool isHistory = index.data(
+            VaporView::Ground::MainSupport::kLocalSerialPortHistoryItemRole).toBool();
+        if (!isHistory)
+        {
+            QStyledItemDelegate::paint(painter, option, index);
+            return;
+        }
+
+        const bool dark = VaporView::isDarkThemeEnabled();
+        const bool highlighted = option.state.testFlag(QStyle::State_Selected) ||
+                                 option.state.testFlag(QStyle::State_MouseOver);
+        if (highlighted)
+        {
+            painter->fillRect(
+                option.rect,
+                VaporView::appThemeColor(VaporView::AppThemeColor::MenuHover, dark));
+        }
+
+        QStyleOptionViewItem textOption(option);
+        textOption.rect.adjust(kLocalSerialPortHistoryBadgeWidth + kLocalSerialPortHistoryBadgeGap,
+                               0,
+                               0,
+                               0);
+        textOption.state &= ~(QStyle::State_Selected | QStyle::State_MouseOver);
+        QStyledItemDelegate::paint(painter, textOption, index);
+
+        const int badgeHeight = qMin(30, qMax(20, option.rect.height() - 8));
+        const QRect badgeRect(option.rect.left() + 12,
+                              option.rect.center().y() - badgeHeight / 2,
+                              kLocalSerialPortHistoryBadgeWidth,
+                              badgeHeight);
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing, true);
+        painter->setPen(VaporView::appThemeColor(VaporView::AppThemeColor::FieldBorder, dark));
+        painter->setBrush(VaporView::appThemeColor(VaporView::AppThemeColor::DisabledFill, dark));
+        painter->drawRoundedRect(badgeRect, 9, 9);
+
+        QFont badgeFont(option.font);
+        badgeFont.setPointSizeF(qMax<qreal>(7.0, badgeFont.pointSizeF() * 0.72));
+        badgeFont.setWeight(QFont::Medium);
+        painter->setFont(badgeFont);
+        painter->setPen(VaporView::appThemeColor(VaporView::AppThemeColor::MenuMetaText, dark));
+        painter->drawText(badgeRect, Qt::AlignCenter, QStringLiteral("历\n史"));
+        painter->restore();
+    }
+};
 
 class ScrollAreaBottomFadeOverlay final : public QWidget
 {
@@ -2116,6 +2189,10 @@ void MainWindow::syncDeviceConfigPageFromHome()
         for (int i = 0; i < source->count(); ++i)
         {
             target->addItem(source->itemIcon(i), source->itemText(i), source->itemData(i));
+            target->setItemData(
+                i,
+                source->itemData(i, kLocalSerialPortHistoryItemRole),
+                kLocalSerialPortHistoryItemRole);
         }
         const QVariant currentData = currentIndex >= 0 ? source->itemData(currentIndex) : QVariant();
         int targetIndex = currentData.isValid() ? target->findData(currentData) : -1;
@@ -2452,13 +2529,6 @@ QString MainWindow::normalizedLocalSerialPortText(const QString& text) const
     return trimmed;
 }
 
-QString MainWindow::localSerialPortHistoryText(const QString& port) const
-{
-    return state_->is_english_
-        ? QStringLiteral("History: %1").arg(port)
-        : QStringLiteral("历史：%1").arg(port);
-}
-
 bool MainWindow::isLocalSerialPortManualOptionText(const QString& text) const
 {
     const QString trimmed = text.trimmed();
@@ -2520,6 +2590,15 @@ void MainWindow::installLocalSerialPortComboBehavior(QComboBox *combo)
     combo->setInsertPolicy(QComboBox::NoInsert);
     combo->setEditable(false);
 
+    if (QAbstractItemView *view = combo->view())
+    {
+        QAbstractItemDelegate *delegate = view->itemDelegate();
+        if (!delegate || !delegate->property("vaporViewLocalSerialHistoryDelegate").toBool())
+        {
+            view->setItemDelegate(new LocalSerialPortPopupDelegate(view));
+        }
+    }
+
     if (combo->property(kLocalSerialPortManualHandlerProperty).toBool())
     {
         return;
@@ -2579,7 +2658,9 @@ void MainWindow::refreshLocalSerialPortComboOptions(QComboBox *combo,
     }
     if (previousIsRealPort && combo->findData(previousText) < 0 && combo->findText(previousText) < 0)
     {
-        combo->addItem(localSerialPortHistoryText(previousText), previousText);
+        const int historyIndex = combo->count();
+        combo->addItem(previousText, previousText);
+        combo->setItemData(historyIndex, true, kLocalSerialPortHistoryItemRole);
     }
     combo->addItem(manualLocalSerialPortOptionText(), QString::fromLatin1(kLocalSerialPortManualOptionData));
 

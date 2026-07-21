@@ -1,5 +1,6 @@
 #include "shared/theme/AppTheme.h"
 #include "ground/main/MainWindow.h"
+#include "ground/main/GroundMainWindowSupport.h"
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/widgets/TelemetryPanels.h"
 #include "ground/widgets/VisualTextLabel.h"
@@ -309,18 +310,6 @@ QString localSerialPortValue(QComboBox *combo)
     return text;
 }
 
-bool localSerialPortDisplaysHistory(QComboBox *combo, const QString& expectedPort)
-{
-    if (!combo)
-    {
-        return false;
-    }
-    const QString text = combo->currentText().trimmed();
-    return (text == QStringLiteral("历史：%1").arg(expectedPort) ||
-            text == QStringLiteral("History: %1").arg(expectedPort)) &&
-           localSerialPortValue(combo) == expectedPort;
-}
-
 void requireLocalSerialPortComboReady(QComboBox *combo, const char *message)
 {
     require(combo != nullptr, message);
@@ -329,6 +318,10 @@ void requireLocalSerialPortComboReady(QComboBox *combo, const char *message)
                 combo->findText(QStringLiteral("Manual Add...")) >= 0,
             message);
     require(combo->findData(QStringLiteral("__vv_manual_serial_port__")) >= 0,
+            message);
+    require(combo->view() != nullptr &&
+                combo->view()->itemDelegate() != nullptr &&
+                combo->view()->itemDelegate()->property("vaporViewLocalSerialHistoryDelegate").toBool(),
             message);
 }
 
@@ -1856,9 +1849,8 @@ int main(int argc, char **argv)
         require(rememberedTemperaturePort != nullptr &&
                     localSerialPortValue(rememberedTemperaturePort) == rememberedTemperaturePortText,
                 "remembered RD105 serial port restores as the actual local port value");
-        require(rememberedTemperaturePort->currentText() == rememberedTemperaturePortText ||
-                    localSerialPortDisplaysHistory(rememberedTemperaturePort, rememberedTemperaturePortText),
-                "remembered RD105 serial port displays directly when detected or as a history option");
+        require(rememberedTemperaturePort->currentText() == rememberedTemperaturePortText,
+                "remembered RD105 serial port keeps the compact actual port label");
         rememberedModeWindow.close();
         require(processEventsUntil(1000, [&rememberedModeWindow]() {
                     return !rememberedModeWindow.isVisible();

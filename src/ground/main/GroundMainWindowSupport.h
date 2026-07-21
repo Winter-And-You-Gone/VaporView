@@ -64,6 +64,7 @@ inline constexpr const char *kLocalSerialPortManualHandlerProperty = "_vv_local_
 inline constexpr const char *kLocalSerialPortManualEntryProperty = "_vv_local_serial_manual_entry";
 inline constexpr const char *kLocalSerialPortManualPreviousTextProperty = "_vv_local_serial_manual_previous_text";
 inline constexpr const char *kLocalSerialPortManualOptionData = "__vv_manual_serial_port__";
+inline constexpr int kLocalSerialPortHistoryItemRole = Qt::UserRole + 1;
 inline constexpr int kMainPageInputHeight = 36;
 inline constexpr int kMainPageButtonHeight = kMainPageInputHeight;
 inline constexpr int kDeviceConfigAutoDetectButtonMinWidth = 124;
