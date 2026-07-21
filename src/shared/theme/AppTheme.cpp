@@ -66,21 +66,10 @@ void applyRoundedWidgetMask(QWidget *widget, const char *appliedProperty)
     }
 
     QPainterPath path;
-    path.addRoundedRect(QRectF(QPointF(0.0, 0.0), QSizeF(widget->size())),
+    path.addRoundedRect(QRectF(widget->rect()),
                         kComboPopupCornerRadius,
                         kComboPopupCornerRadius);
-    QRegion roundedMask(path.toFillPolygon().toPolygon());
-    const int edgeInset = (std::min)(kComboPopupCornerRadius,
-                                     (std::min)(widget->width() / 2, widget->height() / 2));
-    roundedMask |= QRegion(edgeInset,
-                           0,
-                           (std::max)(0, widget->width() - 2 * edgeInset),
-                           widget->height());
-    roundedMask |= QRegion(0,
-                           edgeInset,
-                           widget->width(),
-                           (std::max)(0, widget->height() - 2 * edgeInset));
-    widget->setMask(roundedMask);
+    widget->setMask(QRegion(path.toFillPolygon().toPolygon()));
     widget->setProperty(appliedProperty, !widget->mask().isEmpty());
 }
 

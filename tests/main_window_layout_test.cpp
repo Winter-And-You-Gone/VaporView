@@ -2856,6 +2856,18 @@ int main(int argc, char **argv)
     require(darkOverviewStyleSheet.contains(QStringLiteral("chevron-up-primary-dark.svg")) &&
                 darkOverviewStyleSheet.contains(QStringLiteral("chevron-down-primary-dark.svg")),
             "dark theme spin arrow hover icons use dark theme primary lucide assets");
+    requireLastStyleRuleContains(darkOverviewStyleSheet,
+                                 QStringLiteral("QComboBox::down-arrow {"),
+                                 QStringLiteral("chevron-down-primary-dark.svg"),
+                                 "dark theme combo chevron-down uses the orange primary asset");
+    requireLastStyleRuleContains(darkOverviewStyleSheet,
+                                 QStringLiteral("QAbstractSpinBox::up-arrow {"),
+                                 QStringLiteral("chevron-up-primary-dark.svg"),
+                                 "dark theme spin chevron-up uses the orange primary asset");
+    requireLastStyleRuleContains(darkOverviewStyleSheet,
+                                 QStringLiteral("QAbstractSpinBox::down-arrow {"),
+                                 QStringLiteral("chevron-down-primary-dark.svg"),
+                                 "dark theme spin chevron-down uses the orange primary asset");
     requireSpinArrowHoverUsesPrimary(true,
                                      "dark theme spin arrow hover renders the primary lucide icon");
     requireMenuPopupStyleUnified(darkOverviewStyleSheet,

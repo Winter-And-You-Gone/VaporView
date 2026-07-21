@@ -963,6 +963,15 @@ QFrame#appSidebar {
     border: 1px solid @vv-border;
     border-radius: 8px;
 }
+QComboBox::down-arrow {
+    image: url(lucide/chevron-down-primary-dark.svg);
+}
+QAbstractSpinBox::up-arrow {
+    image: url(lucide/chevron-up-primary-dark.svg);
+}
+QAbstractSpinBox::down-arrow {
+    image: url(lucide/chevron-down-primary-dark.svg);
+}
 QAbstractSpinBox[spinArrowHover="up"]::up-arrow {
     image: url(lucide/chevron-up-primary-dark.svg);
 }
