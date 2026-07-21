@@ -856,7 +856,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         state_->device_config_.data_telemetry_summary_card->setVisible(true);
         renderSummarySection(state_->device_config_.data_telemetry_summary_card,
                              state_->device_config_.data_telemetry_rate_summary_layout,
-                             state_->is_english_ ? QStringLiteral("Data stream rates") : QStringLiteral("数据流频率"),
+                             state_->is_english_ ? QStringLiteral("Data stream rates") : QStringLiteral("数据频率"),
                              sections.rateItems,
                              2,
                              2,

@@ -5331,7 +5331,7 @@ int main(int argc, char **argv)
                b->mapTo(b->parentWidget(), QPoint(0, 0)).y();
     });
     const QVector<QStringList> expectedTelemetrySubCardTitles = {
-        {QStringLiteral("数据流频率"), QStringLiteral("Data stream rates")},
+        {QStringLiteral("数据频率"), QStringLiteral("Data stream rates")},
         {QStringLiteral("链路速率"), QStringLiteral("Link rate")},
         {QStringLiteral("数据"), QStringLiteral("Data")},
     };
