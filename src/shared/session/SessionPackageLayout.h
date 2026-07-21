@@ -65,7 +65,7 @@ QString sessionPackageFilePath(const QString& sessionDirectory, const QString& r
 
 QString waveformFeaturesCsvHeader();
 QString temperatureControllerCsvHeader();
-QString tcpWavePeaksCsvHeader();
+QString waveformPeaksCsvHeader();
 QString eventLogCsvHeader();
 QString rawDatFormatDocumentText();
 

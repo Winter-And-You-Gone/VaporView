@@ -116,28 +116,28 @@ QString supportedFormatVersionsText()
 
 bool isKnownSourceId(quint16 sourceId)
 {
-    return sourceId >= kSourceEpsilon && sourceId <= kSourceTcpWave;
+    return sourceId >= kSourceNavigation && sourceId <= kSourceWaveform;
 }
 
 bool isValidRecordType(quint16 sourceId, quint16 recordType)
 {
     switch (static_cast<RawSourceId>(sourceId))
     {
-    case RawSourceId::Epsilon:
+    case RawSourceId::Navigation:
         return recordType > 0u && recordType <= std::numeric_limits<quint8>::max();
-    case RawSourceId::Ptb:
-        return recordType == kRecordTypePtbResponse;
-    case RawSourceId::Hmp:
-        return recordType == kRecordTypeHmpModbusResponse;
-    case RawSourceId::Lidar:
+    case RawSourceId::Pressure:
+        return recordType == kRecordTypePressureResponse;
+    case RawSourceId::TemperatureHumidity:
+        return recordType == kRecordTypeTemperatureHumidityModbusResponse;
+    case RawSourceId::Distance:
         return recordType >= 1u && recordType <= 5u;
-    case RawSourceId::TcpWave:
-        return recordType == kRecordTypeTcpWavePayload;
+    case RawSourceId::Waveform:
+        return recordType == kRecordTypeWaveformPayload;
     }
     return false;
 }
 
-bool encodeTcpWavePayload(QByteArrayView rawSignal,
+bool encodeWaveformPayload(QByteArrayView rawSignal,
                           QByteArrayView harmonic,
                           QByteArray *payload,
                           QString *error)
@@ -154,7 +154,7 @@ bool encodeTcpWavePayload(QByteArrayView rawSignal,
         setError(error, QStringLiteral("Raw DAT TCP wave sub-payload exceeds uint32 size"));
         return false;
     }
-    const quint64 totalSize = kTcpWavePayloadPrefixSize +
+    const quint64 totalSize = kWaveformPayloadPrefixSize +
         static_cast<quint64>(rawSignal.size()) + static_cast<quint64>(harmonic.size());
     if (totalSize > kMaxPayloadSize)
     {
@@ -175,9 +175,9 @@ bool encodeTcpWavePayload(QByteArrayView rawSignal,
     return true;
 }
 
-bool parseTcpWavePayloadLayout(QByteArrayView sizePrefix,
+bool parseWaveformPayloadLayout(QByteArrayView sizePrefix,
                                quint32 totalPayloadSize,
-                               TcpWavePayloadLayout *layout,
+                               WaveformPayloadLayout *layout,
                                QString *error)
 {
     if (!layout)
@@ -185,19 +185,19 @@ bool parseTcpWavePayloadLayout(QByteArrayView sizePrefix,
         setError(error, QStringLiteral("Raw DAT TCP wave payload layout output is null"));
         return false;
     }
-    if (sizePrefix.size() < static_cast<qsizetype>(kTcpWavePayloadPrefixSize))
+    if (sizePrefix.size() < static_cast<qsizetype>(kWaveformPayloadPrefixSize))
     {
         setError(error,
                  QStringLiteral("Raw DAT TCP wave payload prefix is truncated: %1 bytes available, %2 required")
                      .arg(sizePrefix.size())
-                     .arg(kTcpWavePayloadPrefixSize));
+                     .arg(kWaveformPayloadPrefixSize));
         return false;
     }
 
-    TcpWavePayloadLayout decoded;
+    WaveformPayloadLayout decoded;
     decoded.rawSignalSize = readLittleEndian<quint32>(sizePrefix.data());
     decoded.harmonicSize = readLittleEndian<quint32>(sizePrefix.data() + sizeof(quint32));
-    const quint64 requiredSize = kTcpWavePayloadPrefixSize +
+    const quint64 requiredSize = kWaveformPayloadPrefixSize +
         static_cast<quint64>(decoded.rawSignalSize) + decoded.harmonicSize;
     if (requiredSize != totalPayloadSize)
     {
@@ -261,14 +261,14 @@ bool writeRecord(QIODevice& device,
                      .arg(kMaxPayloadSize));
         return false;
     }
-    if (header.sourceId == kSourceTcpWave &&
-        (header.flags & kTcpWaveCombinedPayloadFlag) != 0)
+    if (header.sourceId == kSourceWaveform &&
+        (header.flags & kWaveformCombinedPayloadFlag) != 0)
     {
-        TcpWavePayloadLayout layout;
+        WaveformPayloadLayout layout;
         const qsizetype prefixSize = std::min(
             payload.size(),
-            static_cast<qsizetype>(kTcpWavePayloadPrefixSize));
-        if (!parseTcpWavePayloadLayout(payload.first(prefixSize),
+            static_cast<qsizetype>(kWaveformPayloadPrefixSize));
+        if (!parseWaveformPayloadLayout(payload.first(prefixSize),
                                        static_cast<quint32>(payload.size()),
                                        &layout,
                                        error))
@@ -511,8 +511,8 @@ RawScanResult scan(QIODevice& device, const RawScanOptions& options)
             return result;
         }
         const quint64 nextRecord = payloadOffset + header.payloadSize;
-        if (header.sourceId == kSourceTcpWave &&
-            (header.flags & kTcpWaveCombinedPayloadFlag) != 0)
+        if (header.sourceId == kSourceWaveform &&
+            (header.flags & kWaveformCombinedPayloadFlag) != 0)
         {
             if (!device.seek(static_cast<qint64>(payloadOffset)))
             {
@@ -522,10 +522,10 @@ RawScanResult scan(QIODevice& device, const RawScanOptions& options)
                                    .arg(device.errorString());
                 return result;
             }
-            const QByteArray prefix = device.read(std::min(header.payloadSize, kTcpWavePayloadPrefixSize));
-            TcpWavePayloadLayout layout;
+            const QByteArray prefix = device.read(std::min(header.payloadSize, kWaveformPayloadPrefixSize));
+            WaveformPayloadLayout layout;
             QString layoutError;
-            if (!parseTcpWavePayloadLayout(prefix, header.payloadSize, &layout, &layoutError))
+            if (!parseWaveformPayloadLayout(prefix, header.payloadSize, &layout, &layoutError))
             {
                 result.status = RawReadStatus::CorruptRecord;
                 result.error = QStringLiteral("Invalid raw DAT TCP wave payload at offset %1: %2")

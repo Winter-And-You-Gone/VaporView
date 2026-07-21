@@ -313,7 +313,7 @@ void writeMinimalRawTcpWaveFile(const QString& path, const QVector<quint64>& tim
                << timestampsUs.at(index)
                << payloadSize
                << quint16(kTestRawSourceTcpWave)
-               << quint16(VaporView::SessionRawDat::kRecordTypeTcpWavePayload)
+               << quint16(VaporView::SessionRawDat::kRecordTypeWaveformPayload)
                << quint32(kTestRawTcpWaveCombinedPayloadFlag)
                << quint64(index)
                << rawSize

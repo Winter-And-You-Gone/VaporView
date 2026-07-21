@@ -100,8 +100,8 @@ int main(int argc, char **argv)
 
     const auto beforeStop = recorder.status();
     require(beforeStop.sensorRows >= 2, "sensor rows written");
-    require(beforeStop.rawEpsilonRecords == 1, "raw epsilon count");
-    require(beforeStop.rawTcpWaveRecords == 1, "raw TCP wave count");
+    require(beforeStop.rawNavigationRecords == 1, "raw epsilon count");
+    require(beforeStop.rawWaveformRecords == 1, "raw TCP wave count");
     const QString sessionDirectory = beforeStop.sessionDirectory;
 
     const auto summary = recorder.stop();
@@ -202,7 +202,7 @@ int main(int argc, char **argv)
     QFile rawFile(QDir(sessionDirectory).filePath(QStringLiteral("raw/navigation.dat")));
     require(rawFile.open(QIODevice::ReadOnly), "open navigation raw file");
     VaporView::SessionRawDat::RawScanOptions scanOptions;
-    scanOptions.expectedSourceId = VaporView::SessionRawDat::kSourceEpsilon;
+    scanOptions.expectedSourceId = VaporView::SessionRawDat::kSourceNavigation;
     const VaporView::SessionRawDat::RawScanResult rawResult =
         VaporView::SessionRawDat::scan(rawFile, scanOptions);
     require(rawResult.success() && rawResult.records.size() == 1,

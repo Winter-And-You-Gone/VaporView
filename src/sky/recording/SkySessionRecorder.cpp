@@ -254,11 +254,11 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
         !feature_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !temperature_controller_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !waveform_peaks_file_.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
-        !openRawDatFile(navigation_raw_file_, navigation_raw_filename_, SessionRawDat::kSourceEpsilon, errorMessage) ||
-        !openRawDatFile(pressure_raw_file_, pressure_raw_filename_, SessionRawDat::kSourcePtb, errorMessage) ||
-        !openRawDatFile(temperature_humidity_raw_file_, temperature_humidity_raw_filename_, SessionRawDat::kSourceHmp, errorMessage) ||
-        !openRawDatFile(distance_raw_file_, distance_raw_filename_, SessionRawDat::kSourceLidar, errorMessage) ||
-        !openRawDatFile(waveform_raw_file_, waveform_raw_filename_, SessionRawDat::kSourceTcpWave, errorMessage))
+        !openRawDatFile(navigation_raw_file_, navigation_raw_filename_, SessionRawDat::kSourceNavigation, errorMessage) ||
+        !openRawDatFile(pressure_raw_file_, pressure_raw_filename_, SessionRawDat::kSourcePressure, errorMessage) ||
+        !openRawDatFile(temperature_humidity_raw_file_, temperature_humidity_raw_filename_, SessionRawDat::kSourceTemperatureHumidity, errorMessage) ||
+        !openRawDatFile(distance_raw_file_, distance_raw_filename_, SessionRawDat::kSourceDistance, errorMessage) ||
+        !openRawDatFile(waveform_raw_file_, waveform_raw_filename_, SessionRawDat::kSourceWaveform, errorMessage))
     {
         if (errorMessage && errorMessage->isEmpty()) *errorMessage = QStringLiteral("cannot open session files");
         closeFiles();
@@ -275,7 +275,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     temperatureOut << VaporView::Session::temperatureControllerCsvHeader();
 
     QTextStream peakIndexOut(&waveform_peaks_file_);
-    peakIndexOut << VaporView::Session::tcpWavePeaksCsvHeader();
+    peakIndexOut << VaporView::Session::waveformPeaksCsvHeader();
     peakIndexOut.flush();
 
     recording_elapsed_ms_ = 0;
@@ -284,12 +284,12 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     temperature_controller_count_ = 0;
     waveform_file_count_ = 0;
     waveform_points_per_frame_ = 0;
-    raw_epsilon_record_count_ = 0;
-    raw_ptb_record_count_ = 0;
-    raw_hmp_record_count_ = 0;
-    raw_lidar_record_count_ = 0;
-    raw_tcp_wave_record_count_ = 0;
-    native_raw_tcp_wave_record_count_ = 0;
+    raw_navigation_record_count_ = 0;
+    raw_pressure_record_count_ = 0;
+    raw_temperature_humidity_record_count_ = 0;
+    raw_distance_record_count_ = 0;
+    raw_waveform_record_count_ = 0;
+    native_raw_waveform_record_count_ = 0;
     recording_state_ = 1;
     if (!writeSessionMetadata(QString(), errorMessage))
     {
@@ -380,32 +380,32 @@ quint64 SkySessionRecorder::temperatureControllerRecordCount() const
 
 quint64 SkySessionRecorder::waveformSnapshotRecordCount() const
 {
-    return raw_tcp_wave_record_count_;
+    return raw_waveform_record_count_;
 }
 
-quint64 SkySessionRecorder::rawEpsilonRecordCount() const
+quint64 SkySessionRecorder::rawNavigationRecordCount() const
 {
-    return raw_epsilon_record_count_;
+    return raw_navigation_record_count_;
 }
 
-quint64 SkySessionRecorder::rawPtbRecordCount() const
+quint64 SkySessionRecorder::rawPressureRecordCount() const
 {
-    return raw_ptb_record_count_;
+    return raw_pressure_record_count_;
 }
 
-quint64 SkySessionRecorder::rawHmpRecordCount() const
+quint64 SkySessionRecorder::rawTemperatureHumidityRecordCount() const
 {
-    return raw_hmp_record_count_;
+    return raw_temperature_humidity_record_count_;
 }
 
-quint64 SkySessionRecorder::rawLidarRecordCount() const
+quint64 SkySessionRecorder::rawDistanceRecordCount() const
 {
-    return raw_lidar_record_count_;
+    return raw_distance_record_count_;
 }
 
-quint64 SkySessionRecorder::rawTcpWaveRecordCount() const
+quint64 SkySessionRecorder::rawWaveformRecordCount() const
 {
-    return raw_tcp_wave_record_count_;
+    return raw_waveform_record_count_;
 }
 
 void SkySessionRecorder::recordBasicTelemetry(const TelemetryBasic& data)
@@ -566,7 +566,7 @@ void SkySessionRecorder::recordWaveformSnapshot(quint64 hostTimeUs,
                                                 const QVector<float>& harmonicSamples)
 {
     Q_UNUSED(epsilonTimeUs);
-    if (!isRecording() || (rawSamples.isEmpty() && harmonicSamples.isEmpty()) || native_raw_tcp_wave_record_count_ > 0)
+    if (!isRecording() || (rawSamples.isEmpty() && harmonicSamples.isEmpty()) || native_raw_waveform_record_count_ > 0)
     {
         return;
     }
@@ -591,8 +591,8 @@ void SkySessionRecorder::recordRawEpsilonFrame(quint64 hostTimeUs,
                                                const QByteArray& frame)
 {
     writeRawRecord(navigation_raw_file_,
-                   raw_epsilon_record_count_,
-                   SessionRawDat::kSourceEpsilon,
+                   raw_navigation_record_count_,
+                   SessionRawDat::kSourceNavigation,
                    packetId,
                    serialNumber,
                    hostTimeUs,
@@ -603,9 +603,9 @@ void SkySessionRecorder::recordRawEpsilonFrame(quint64 hostTimeUs,
 void SkySessionRecorder::recordRawPtbResponse(quint64 hostTimeUs, const QByteArray& response)
 {
     writeRawRecord(pressure_raw_file_,
-                   raw_ptb_record_count_,
-                   SessionRawDat::kSourcePtb,
-                   SessionRawDat::kRecordTypePtbResponse,
+                   raw_pressure_record_count_,
+                   SessionRawDat::kSourcePressure,
+                   SessionRawDat::kRecordTypePressureResponse,
                    0u,
                    hostTimeUs,
                    response.constData(),
@@ -615,9 +615,9 @@ void SkySessionRecorder::recordRawPtbResponse(quint64 hostTimeUs, const QByteArr
 void SkySessionRecorder::recordRawHmpResponse(quint64 hostTimeUs, const QByteArray& response)
 {
     writeRawRecord(temperature_humidity_raw_file_,
-                   raw_hmp_record_count_,
-                   SessionRawDat::kSourceHmp,
-                   SessionRawDat::kRecordTypeHmpModbusResponse,
+                   raw_temperature_humidity_record_count_,
+                   SessionRawDat::kSourceTemperatureHumidity,
+                   SessionRawDat::kRecordTypeTemperatureHumidityModbusResponse,
                    0u,
                    hostTimeUs,
                    response.constData(),
@@ -627,8 +627,8 @@ void SkySessionRecorder::recordRawHmpResponse(quint64 hostTimeUs, const QByteArr
 void SkySessionRecorder::recordRawLidarFrame(quint64 hostTimeUs, quint16 protocol, const QByteArray& frame)
 {
     writeRawRecord(distance_raw_file_,
-                   raw_lidar_record_count_,
-                   SessionRawDat::kSourceLidar,
+                   raw_distance_record_count_,
+                   SessionRawDat::kSourceDistance,
                    protocol,
                    0u,
                    hostTimeUs,
@@ -643,7 +643,7 @@ void SkySessionRecorder::recordRawTcpWaveFrame(quint64 hostTimeUs,
 {
     if (writeRawTcpWavePayload(hostTimeUs, rawPayload, harmonicPayload, floatEncoding))
     {
-        ++native_raw_tcp_wave_record_count_;
+        ++native_raw_waveform_record_count_;
     }
 }
 
@@ -717,16 +717,16 @@ bool SkySessionRecorder::writeRawTcpWavePayload(quint64 hostTimeUs,
     }
 
     QByteArray payload;
-    if (!SessionRawDat::encodeTcpWavePayload(rawPayload, harmonicPayload, &payload))
+    if (!SessionRawDat::encodeWaveformPayload(rawPayload, harmonicPayload, &payload))
     {
         return false;
     }
 
     if (!writeRawRecord(waveform_raw_file_,
-                        raw_tcp_wave_record_count_,
-                        SessionRawDat::kSourceTcpWave,
-                        SessionRawDat::kRecordTypeTcpWavePayload,
-                        SessionRawDat::kTcpWaveCombinedPayloadFlag | tcpFloatEncodingToRawDatFlags(floatEncoding),
+                        raw_waveform_record_count_,
+                        SessionRawDat::kSourceWaveform,
+                        SessionRawDat::kRecordTypeWaveformPayload,
+                        SessionRawDat::kWaveformCombinedPayloadFlag | tcpFloatEncodingToRawDatFlags(floatEncoding),
                         hostTimeUs,
                         payload.constData(),
                         payload.size()))
@@ -798,15 +798,15 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
     manifest.capture.telemetryBaud = telemetry_baud_ > 0 ? QString::number(telemetry_baud_) : QString();
     manifest.counts.sensorRows = telemetry_row_count_;
     manifest.counts.temperatureControllerRows = temperature_controller_count_;
-    manifest.counts.waveformFrames = raw_tcp_wave_record_count_;
+    manifest.counts.waveformFrames = raw_waveform_record_count_;
     manifest.counts.waveformFeatureRows = waveform_feature_count_;
     manifest.counts.eventRows = 0;
     manifest.counts.errorRows = 0;
-    manifest.rawRecords.epsilon = raw_epsilon_record_count_;
-    manifest.rawRecords.ptb = raw_ptb_record_count_;
-    manifest.rawRecords.hmp = raw_hmp_record_count_;
-    manifest.rawRecords.lidar = raw_lidar_record_count_;
-    manifest.rawRecords.tcpWave = raw_tcp_wave_record_count_;
+    manifest.rawRecords.navigation = raw_navigation_record_count_;
+    manifest.rawRecords.pressure = raw_pressure_record_count_;
+    manifest.rawRecords.temperatureHumidity = raw_temperature_humidity_record_count_;
+    manifest.rawRecords.distance = raw_distance_record_count_;
+    manifest.rawRecords.waveform = raw_waveform_record_count_;
     return VaporView::Session::writeSessionManifestAtomically(session_metadata_filename_,
                                                               manifest,
                                                               errorMessage);

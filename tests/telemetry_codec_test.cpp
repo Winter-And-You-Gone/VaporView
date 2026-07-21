@@ -433,11 +433,11 @@ void testTelemetryStatus()
     status.telemetry_record_count = 12;
     status.waveform_feature_record_count = 3;
     status.waveform_snapshot_record_count = 4;
-    status.raw_epsilon_record_count = 100;
-    status.raw_ptb_record_count = 20;
-    status.raw_hmp_record_count = 30;
-    status.raw_lidar_record_count = 40;
-    status.raw_tcp_wave_record_count = 50;
+    status.raw_navigation_record_count = 100;
+    status.raw_pressure_record_count = 20;
+    status.raw_temperature_humidity_record_count = 30;
+    status.raw_distance_record_count = 40;
+    status.raw_waveform_record_count = 50;
     VaporView::DeviceStatusItem wave;
     wave.device_id = VaporView::SkyDeviceId::WaveTcp;
     wave.state = VaporView::DeviceState::Connected;
@@ -452,8 +452,8 @@ void testTelemetryStatus()
     require(std::fabs(parsed.wave_tcp_actual_rate_hz - status.wave_tcp_actual_rate_hz) < 0.001f,
             "status wave tcp actual rate");
     require(parsed.recording_elapsed_ms == status.recording_elapsed_ms, "status recording elapsed");
-    require(parsed.raw_epsilon_record_count == status.raw_epsilon_record_count, "status raw epsilon count");
-    require(parsed.raw_tcp_wave_record_count == status.raw_tcp_wave_record_count, "status raw tcp wave count");
+    require(parsed.raw_navigation_record_count == status.raw_navigation_record_count, "status raw epsilon count");
+    require(parsed.raw_waveform_record_count == status.raw_waveform_record_count, "status raw tcp wave count");
 }
 
 }  // namespace

@@ -153,7 +153,7 @@ SessionPackageInitResult initializeSessionPackage(const SessionPackageInitOption
         return fail(QStringLiteral("cannot create waveform_features.csv: %1").arg(error));
     }
     if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.waveformPeaksCsvPath),
-                       tcpWavePeaksCsvHeader(),
+                       waveformPeaksCsvHeader(),
                        &error))
     {
         return fail(QStringLiteral("cannot create waveform_peaks.csv: %1").arg(error));

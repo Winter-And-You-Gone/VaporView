@@ -41,11 +41,11 @@ public:
     quint64 waveformFeatureRecordCount() const;
     quint64 waveformSnapshotRecordCount() const;
     quint64 temperatureControllerRecordCount() const;
-    quint64 rawEpsilonRecordCount() const;
-    quint64 rawPtbRecordCount() const;
-    quint64 rawHmpRecordCount() const;
-    quint64 rawLidarRecordCount() const;
-    quint64 rawTcpWaveRecordCount() const;
+    quint64 rawNavigationRecordCount() const;
+    quint64 rawPressureRecordCount() const;
+    quint64 rawTemperatureHumidityRecordCount() const;
+    quint64 rawDistanceRecordCount() const;
+    quint64 rawWaveformRecordCount() const;
 
     void recordBasicTelemetry(const TelemetryBasic& data);
     void recordDeviceSnapshot(quint64 hostTimeUs,
@@ -131,12 +131,12 @@ private:
     quint64 temperature_controller_count_ = 0;
     quint64 waveform_file_count_ = 0;
     quint64 waveform_points_per_frame_ = 0;
-    quint64 raw_epsilon_record_count_ = 0;
-    quint64 raw_ptb_record_count_ = 0;
-    quint64 raw_hmp_record_count_ = 0;
-    quint64 raw_lidar_record_count_ = 0;
-    quint64 raw_tcp_wave_record_count_ = 0;
-    quint64 native_raw_tcp_wave_record_count_ = 0;
+    quint64 raw_navigation_record_count_ = 0;
+    quint64 raw_pressure_record_count_ = 0;
+    quint64 raw_temperature_humidity_record_count_ = 0;
+    quint64 raw_distance_record_count_ = 0;
+    quint64 raw_waveform_record_count_ = 0;
+    quint64 native_raw_waveform_record_count_ = 0;
 };
 
 }  // namespace VaporView

@@ -312,7 +312,7 @@ int main(int argc, char *argv[])
     QFile rawFile(sessionDir + QStringLiteral("/raw/waveform.dat"));
     require(rawFile.open(QIODevice::ReadOnly), "open waveform raw dat");
     VaporView::SessionRawDat::RawScanOptions scanOptions;
-    scanOptions.expectedSourceId = VaporView::SessionRawDat::kSourceTcpWave;
+    scanOptions.expectedSourceId = VaporView::SessionRawDat::kSourceWaveform;
     const VaporView::SessionRawDat::RawScanResult rawResult =
         VaporView::SessionRawDat::scan(rawFile, scanOptions);
     require(rawResult.success() && rawResult.records.size() == 1,
@@ -321,16 +321,16 @@ int main(int argc, char *argv[])
             "sky writer uses shared current raw version");
     const VaporView::SessionRawDat::RawRecordIndex& rawRecord = rawResult.records.first();
     require(rawRecord.header.hostTimestampUs == 1000, "tcp wave record timestamp");
-    require(rawRecord.header.sourceId == VaporView::SessionRawDat::kSourceTcpWave,
+    require(rawRecord.header.sourceId == VaporView::SessionRawDat::kSourceWaveform,
             "tcp wave record source id");
-    require((rawRecord.header.flags & VaporView::SessionRawDat::kTcpWaveCombinedPayloadFlag) != 0,
+    require((rawRecord.header.flags & VaporView::SessionRawDat::kWaveformCombinedPayloadFlag) != 0,
             "tcp wave combined payload flag");
     require(rawFile.seek(static_cast<qint64>(rawRecord.payloadOffset)),
             "seek shared tcp wave payload offset");
 
-    const QByteArray payloadPrefix = rawFile.read(VaporView::SessionRawDat::kTcpWavePayloadPrefixSize);
-    VaporView::SessionRawDat::TcpWavePayloadLayout payloadLayout;
-    require(VaporView::SessionRawDat::parseTcpWavePayloadLayout(
+    const QByteArray payloadPrefix = rawFile.read(VaporView::SessionRawDat::kWaveformPayloadPrefixSize);
+    VaporView::SessionRawDat::WaveformPayloadLayout payloadLayout;
+    require(VaporView::SessionRawDat::parseWaveformPayloadLayout(
                 payloadPrefix,
                 rawRecord.header.payloadSize,
                 &payloadLayout),

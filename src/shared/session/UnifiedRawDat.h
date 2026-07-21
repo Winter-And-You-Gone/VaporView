@@ -25,23 +25,23 @@ inline constexpr quint32 kMaxPayloadSize = 256u * 1024u * 1024u;
 
 enum class RawSourceId : quint16
 {
-    Epsilon = 1u,
-    Ptb = 2u,
-    Hmp = 3u,
-    Lidar = 4u,
-    TcpWave = 5u
+    Navigation = 1u,
+    Pressure = 2u,
+    TemperatureHumidity = 3u,
+    Distance = 4u,
+    Waveform = 5u
 };
 
-inline constexpr quint16 kSourceEpsilon = static_cast<quint16>(RawSourceId::Epsilon);
-inline constexpr quint16 kSourcePtb = static_cast<quint16>(RawSourceId::Ptb);
-inline constexpr quint16 kSourceHmp = static_cast<quint16>(RawSourceId::Hmp);
-inline constexpr quint16 kSourceLidar = static_cast<quint16>(RawSourceId::Lidar);
-inline constexpr quint16 kSourceTcpWave = static_cast<quint16>(RawSourceId::TcpWave);
-inline constexpr quint16 kRecordTypePtbResponse = 1u;
-inline constexpr quint16 kRecordTypeHmpModbusResponse = 0x03u;
-inline constexpr quint16 kRecordTypeTcpWavePayload = 1u;
-inline constexpr quint32 kTcpWaveCombinedPayloadFlag = 0x00000001u;
-inline constexpr quint32 kTcpWavePayloadPrefixSize = sizeof(quint32) * 2u;
+inline constexpr quint16 kSourceNavigation = static_cast<quint16>(RawSourceId::Navigation);
+inline constexpr quint16 kSourcePressure = static_cast<quint16>(RawSourceId::Pressure);
+inline constexpr quint16 kSourceTemperatureHumidity = static_cast<quint16>(RawSourceId::TemperatureHumidity);
+inline constexpr quint16 kSourceDistance = static_cast<quint16>(RawSourceId::Distance);
+inline constexpr quint16 kSourceWaveform = static_cast<quint16>(RawSourceId::Waveform);
+inline constexpr quint16 kRecordTypePressureResponse = 1u;
+inline constexpr quint16 kRecordTypeTemperatureHumidityModbusResponse = 0x03u;
+inline constexpr quint16 kRecordTypeWaveformPayload = 1u;
+inline constexpr quint32 kWaveformCombinedPayloadFlag = 0x00000001u;
+inline constexpr quint32 kWaveformPayloadPrefixSize = sizeof(quint32) * 2u;
 
 struct RawFileHeader
 {
@@ -68,12 +68,12 @@ struct RawRecordIndex
     quint64 payloadOffset = 0;
 };
 
-struct TcpWavePayloadLayout
+struct WaveformPayloadLayout
 {
     quint32 rawSignalSize = 0;
     quint32 harmonicSize = 0;
-    quint32 rawSignalOffset = kTcpWavePayloadPrefixSize;
-    quint32 harmonicOffset = kTcpWavePayloadPrefixSize;
+    quint32 rawSignalOffset = kWaveformPayloadPrefixSize;
+    quint32 harmonicOffset = kWaveformPayloadPrefixSize;
 };
 
 enum class RawReadStatus
@@ -113,13 +113,13 @@ QString supportedFormatVersionsText();
 bool isKnownSourceId(quint16 sourceId);
 bool isValidRecordType(quint16 sourceId, quint16 recordType);
 
-bool encodeTcpWavePayload(QByteArrayView rawSignal,
+bool encodeWaveformPayload(QByteArrayView rawSignal,
                           QByteArrayView harmonic,
                           QByteArray *payload,
                           QString *error = nullptr);
-bool parseTcpWavePayloadLayout(QByteArrayView sizePrefix,
+bool parseWaveformPayloadLayout(QByteArrayView sizePrefix,
                                quint32 totalPayloadSize,
-                               TcpWavePayloadLayout *layout,
+                               WaveformPayloadLayout *layout,
                                QString *error = nullptr);
 
 bool writeFileHeader(QIODevice& device, quint16 sourceId, QString *error = nullptr);

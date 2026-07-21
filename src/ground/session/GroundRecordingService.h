@@ -60,11 +60,11 @@ struct GroundRecordingStatus
     QString sessionDirectory;
     qint64 sensorRows = 0;
     qint64 waveformFrames = 0;
-    quint64 rawEpsilonRecords = 0;
-    quint64 rawPtbRecords = 0;
-    quint64 rawHmpRecords = 0;
-    quint64 rawLidarRecords = 0;
-    quint64 rawTcpWaveRecords = 0;
+    quint64 rawNavigationRecords = 0;
+    quint64 rawPressureRecords = 0;
+    quint64 rawTemperatureHumidityRecords = 0;
+    quint64 rawDistanceRecords = 0;
+    quint64 rawWaveformRecords = 0;
 };
 
 struct GroundRecordingStopSummary

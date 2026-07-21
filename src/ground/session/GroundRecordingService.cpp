@@ -119,11 +119,11 @@ TcpWavePeakSummary summarizeTcpWavePeakSamples(const char *samples,
 
 TcpWavePeakSummary summarizeTcpWavePeakRecordPayload(const QByteArray& payload, quint32 flags)
 {
-    SessionRawDat::TcpWavePayloadLayout layout;
-    if (!SessionRawDat::parseTcpWavePayloadLayout(
+    SessionRawDat::WaveformPayloadLayout layout;
+    if (!SessionRawDat::parseWaveformPayloadLayout(
             QByteArrayView(payload).first(std::min(
                 payload.size(),
-                static_cast<qsizetype>(SessionRawDat::kTcpWavePayloadPrefixSize))),
+                static_cast<qsizetype>(SessionRawDat::kWaveformPayloadPrefixSize))),
             static_cast<quint32>(payload.size()),
             &layout) ||
         layout.harmonicSize == 0 ||
@@ -268,11 +268,11 @@ public:
             !eventLogFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
             !errorLogFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
             !waveformPeaksFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
-            !openRawFile(navigationRawFile, layout.navigationRawFilename, SessionRawDat::kSourceEpsilon) ||
-            !openRawFile(pressureRawFile, layout.pressureRawFilename, SessionRawDat::kSourcePtb) ||
-            !openRawFile(temperatureHumidityRawFile, layout.temperatureHumidityRawFilename, SessionRawDat::kSourceHmp) ||
-            !openRawFile(distanceRawFile, layout.distanceRawFilename, SessionRawDat::kSourceLidar) ||
-            !openRawFile(waveformRawFile, layout.waveformRawFilename, SessionRawDat::kSourceTcpWave))
+            !openRawFile(navigationRawFile, layout.navigationRawFilename, SessionRawDat::kSourceNavigation) ||
+            !openRawFile(pressureRawFile, layout.pressureRawFilename, SessionRawDat::kSourcePressure) ||
+            !openRawFile(temperatureHumidityRawFile, layout.temperatureHumidityRawFilename, SessionRawDat::kSourceTemperatureHumidity) ||
+            !openRawFile(distanceRawFile, layout.distanceRawFilename, SessionRawDat::kSourceDistance) ||
+            !openRawFile(waveformRawFile, layout.waveformRawFilename, SessionRawDat::kSourceWaveform))
         {
             if (startError) *startError = GroundRecordingStartError::OpenSessionFiles;
             if (errorMessage) *errorMessage = QStringLiteral("failed to open session files");
@@ -292,7 +292,7 @@ public:
         {
             QTextStream out(waveformPeaksFile.get());
             out.setEncoding(QStringConverter::Utf8);
-            out << VaporView::Session::tcpWavePeaksCsvHeader();
+            out << VaporView::Session::waveformPeaksCsvHeader();
             out.flush();
         }
         {
@@ -395,11 +395,11 @@ public:
         result.sessionDirectory = layout.sessionDirectory;
         result.sensorRows = sensorRows.load();
         result.waveformFrames = waveformFrames.load();
-        result.rawEpsilonRecords = rawEpsilonRecordCount.load();
-        result.rawPtbRecords = rawPtbRecordCount.load();
-        result.rawHmpRecords = rawHmpRecordCount.load();
-        result.rawLidarRecords = rawLidarRecordCount.load();
-        result.rawTcpWaveRecords = rawTcpWaveRecordCount.load();
+        result.rawNavigationRecords = rawNavigationRecordCount.load();
+        result.rawPressureRecords = rawPressureRecordCount.load();
+        result.rawTemperatureHumidityRecords = rawTemperatureHumidityRecordCount.load();
+        result.rawDistanceRecords = rawDistanceRecordCount.load();
+        result.rawWaveformRecords = rawWaveformRecordCount.load();
         return result;
     }
 
@@ -717,21 +717,21 @@ private:
                 std::atomic<quint64> *recordCount = nullptr;
                 switch (record.sourceId)
                 {
-                case SessionRawDat::kSourceEpsilon:
+                case SessionRawDat::kSourceNavigation:
                     file = &navigationRawFile;
-                    recordCount = &rawEpsilonRecordCount;
+                    recordCount = &rawNavigationRecordCount;
                     break;
-                case SessionRawDat::kSourcePtb:
+                case SessionRawDat::kSourcePressure:
                     file = &pressureRawFile;
-                    recordCount = &rawPtbRecordCount;
+                    recordCount = &rawPressureRecordCount;
                     break;
-                case SessionRawDat::kSourceHmp:
+                case SessionRawDat::kSourceTemperatureHumidity:
                     file = &temperatureHumidityRawFile;
-                    recordCount = &rawHmpRecordCount;
+                    recordCount = &rawTemperatureHumidityRecordCount;
                     break;
-                case SessionRawDat::kSourceLidar:
+                case SessionRawDat::kSourceDistance:
                     file = &distanceRawFile;
-                    recordCount = &rawLidarRecordCount;
+                    recordCount = &rawDistanceRecordCount;
                     break;
                 default:
                     break;
@@ -798,9 +798,9 @@ private:
                 }
 
                 if (writeRawRecord(waveformRawFile,
-                                   rawTcpWaveRecordCount,
-                                   SessionRawDat::kSourceTcpWave,
-                                   SessionRawDat::kRecordTypeTcpWavePayload,
+                                   rawWaveformRecordCount,
+                                   SessionRawDat::kSourceWaveform,
+                                   SessionRawDat::kRecordTypeWaveformPayload,
                                    record.flags,
                                    record.timestampUs,
                                    record.payload.constData(),
@@ -905,11 +905,11 @@ private:
         manifest.counts.waveformFeatureRows = 0;
         manifest.counts.eventRows = eventRows.load();
         manifest.counts.errorRows = errorRows.load();
-        manifest.rawRecords.epsilon = rawEpsilonRecordCount.load();
-        manifest.rawRecords.ptb = rawPtbRecordCount.load();
-        manifest.rawRecords.hmp = rawHmpRecordCount.load();
-        manifest.rawRecords.lidar = rawLidarRecordCount.load();
-        manifest.rawRecords.tcpWave = rawTcpWaveRecordCount.load();
+        manifest.rawRecords.navigation = rawNavigationRecordCount.load();
+        manifest.rawRecords.pressure = rawPressureRecordCount.load();
+        manifest.rawRecords.temperatureHumidity = rawTemperatureHumidityRecordCount.load();
+        manifest.rawRecords.distance = rawDistanceRecordCount.load();
+        manifest.rawRecords.waveform = rawWaveformRecordCount.load();
         return VaporView::Session::writeSessionManifestAtomically(layout.sessionMetadataFilename,
                                                                   manifest,
                                                                   errorMessage);
@@ -959,11 +959,11 @@ private:
         sensorRows.store(0);
         waveformFrames.store(0);
         waveformFileCount.store(0);
-        rawEpsilonRecordCount.store(0);
-        rawPtbRecordCount.store(0);
-        rawHmpRecordCount.store(0);
-        rawLidarRecordCount.store(0);
-        rawTcpWaveRecordCount.store(0);
+        rawNavigationRecordCount.store(0);
+        rawPressureRecordCount.store(0);
+        rawTemperatureHumidityRecordCount.store(0);
+        rawDistanceRecordCount.store(0);
+        rawWaveformRecordCount.store(0);
         eventRows.store(0);
         errorRows.store(0);
         lastTcpStatusUpdateMs.store(0);
@@ -1000,11 +1000,11 @@ public:
     std::atomic<qint64> sensorRows{0};
     std::atomic<qint64> waveformFrames{0};
     std::atomic<qint64> waveformFileCount{0};
-    std::atomic<quint64> rawEpsilonRecordCount{0};
-    std::atomic<quint64> rawPtbRecordCount{0};
-    std::atomic<quint64> rawHmpRecordCount{0};
-    std::atomic<quint64> rawLidarRecordCount{0};
-    std::atomic<quint64> rawTcpWaveRecordCount{0};
+    std::atomic<quint64> rawNavigationRecordCount{0};
+    std::atomic<quint64> rawPressureRecordCount{0};
+    std::atomic<quint64> rawTemperatureHumidityRecordCount{0};
+    std::atomic<quint64> rawDistanceRecordCount{0};
+    std::atomic<quint64> rawWaveformRecordCount{0};
     std::atomic<quint64> eventRows{0};
     std::atomic<quint64> errorRows{0};
     std::atomic<qint64> lastTcpStatusUpdateMs{0};
@@ -1089,8 +1089,8 @@ bool GroundRecordingService::recordRawEpsilonFrame(quint64 hostTimestampUs,
                                                    size_t size)
 {
     return impl_->recordRaw(impl_->navigationRawFile,
-                            impl_->rawEpsilonRecordCount,
-                            SessionRawDat::kSourceEpsilon,
+                            impl_->rawNavigationRecordCount,
+                            SessionRawDat::kSourceNavigation,
                             packetId,
                             serialNumber,
                             hostTimestampUs,
@@ -1103,9 +1103,9 @@ bool GroundRecordingService::recordRawPtbResponse(quint64 hostTimestampUs,
                                                   size_t size)
 {
     return impl_->recordRaw(impl_->pressureRawFile,
-                            impl_->rawPtbRecordCount,
-                            SessionRawDat::kSourcePtb,
-                            SessionRawDat::kRecordTypePtbResponse,
+                            impl_->rawPressureRecordCount,
+                            SessionRawDat::kSourcePressure,
+                            SessionRawDat::kRecordTypePressureResponse,
                             0,
                             hostTimestampUs,
                             data,
@@ -1117,9 +1117,9 @@ bool GroundRecordingService::recordRawHmpResponse(quint64 hostTimestampUs,
                                                   size_t size)
 {
     return impl_->recordRaw(impl_->temperatureHumidityRawFile,
-                            impl_->rawHmpRecordCount,
-                            SessionRawDat::kSourceHmp,
-                            SessionRawDat::kRecordTypeHmpModbusResponse,
+                            impl_->rawTemperatureHumidityRecordCount,
+                            SessionRawDat::kSourceTemperatureHumidity,
+                            SessionRawDat::kRecordTypeTemperatureHumidityModbusResponse,
                             0,
                             hostTimestampUs,
                             data,
@@ -1132,8 +1132,8 @@ bool GroundRecordingService::recordRawLidarFrame(quint64 hostTimestampUs,
                                                  size_t size)
 {
     return impl_->recordRaw(impl_->distanceRawFile,
-                            impl_->rawLidarRecordCount,
-                            SessionRawDat::kSourceLidar,
+                            impl_->rawDistanceRecordCount,
+                            SessionRawDat::kSourceDistance,
                             protocol,
                             0,
                             hostTimestampUs,
@@ -1154,14 +1154,14 @@ bool GroundRecordingService::recordTcpWaveFrame(quint64 hostTimestampUs,
     }
 
     QByteArray payload;
-    if (!SessionRawDat::encodeTcpWavePayload(rawSignalPayload, harmonicPayload, &payload))
+    if (!SessionRawDat::encodeWaveformPayload(rawSignalPayload, harmonicPayload, &payload))
     {
         return false;
     }
 
     TcpRawRecord record;
     record.timestampUs = hostTimestampUs;
-    record.flags = SessionRawDat::kTcpWaveCombinedPayloadFlag | tcpFloatEncodingToRawDatFlags(floatEncoding);
+    record.flags = SessionRawDat::kWaveformCombinedPayloadFlag | tcpFloatEncodingToRawDatFlags(floatEncoding);
     record.payload = std::move(payload);
     return impl_->enqueueTcpRawRecord(std::move(record));
 }

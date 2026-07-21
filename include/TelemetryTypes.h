@@ -298,11 +298,11 @@ struct TelemetryStatus
     quint64 telemetry_record_count = 0;
     quint64 waveform_feature_record_count = 0;
     quint64 waveform_snapshot_record_count = 0;
-    quint64 raw_epsilon_record_count = 0;
-    quint64 raw_ptb_record_count = 0;
-    quint64 raw_hmp_record_count = 0;
-    quint64 raw_lidar_record_count = 0;
-    quint64 raw_tcp_wave_record_count = 0;
+    quint64 raw_navigation_record_count = 0;
+    quint64 raw_pressure_record_count = 0;
+    quint64 raw_temperature_humidity_record_count = 0;
+    quint64 raw_distance_record_count = 0;
+    quint64 raw_waveform_record_count = 0;
 };
 
 struct CommandMessage

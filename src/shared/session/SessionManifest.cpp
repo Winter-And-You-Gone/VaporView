@@ -93,21 +93,21 @@ QJsonObject pathsToJson()
 
 quint64 rawRecordCountForKey(const RawFileRecordCounts& counts, const QString& key)
 {
-    if (key == QLatin1String("navigation")) return counts.epsilon;
-    if (key == QLatin1String("pressure")) return counts.ptb;
-    if (key == QLatin1String("temperature_humidity")) return counts.hmp;
-    if (key == QLatin1String("distance")) return counts.lidar;
-    if (key == QLatin1String("waveform")) return counts.tcpWave;
+    if (key == QLatin1String("navigation")) return counts.navigation;
+    if (key == QLatin1String("pressure")) return counts.pressure;
+    if (key == QLatin1String("temperature_humidity")) return counts.temperatureHumidity;
+    if (key == QLatin1String("distance")) return counts.distance;
+    if (key == QLatin1String("waveform")) return counts.waveform;
     return 0;
 }
 
 void setRawRecordCountForKey(RawFileRecordCounts& counts, const QString& key, quint64 value)
 {
-    if (key == QLatin1String("navigation") || key == QLatin1String("epsilon")) counts.epsilon = value;
-    else if (key == QLatin1String("pressure") || key == QLatin1String("ptb")) counts.ptb = value;
-    else if (key == QLatin1String("temperature_humidity") || key == QLatin1String("hmp")) counts.hmp = value;
-    else if (key == QLatin1String("distance") || key == QLatin1String("lidar")) counts.lidar = value;
-    else if (key == QLatin1String("waveform") || key == QLatin1String("tcp_wave")) counts.tcpWave = value;
+    if (key == QLatin1String("navigation") || key == QLatin1String("epsilon")) counts.navigation = value;
+    else if (key == QLatin1String("pressure") || key == QLatin1String("ptb")) counts.pressure = value;
+    else if (key == QLatin1String("temperature_humidity") || key == QLatin1String("hmp")) counts.temperatureHumidity = value;
+    else if (key == QLatin1String("distance") || key == QLatin1String("lidar")) counts.distance = value;
+    else if (key == QLatin1String("waveform") || key == QLatin1String("tcp_wave")) counts.waveform = value;
 }
 
 QJsonObject rawFileObjectCompat(const QJsonObject& rawFiles,

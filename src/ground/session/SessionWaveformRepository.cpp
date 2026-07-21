@@ -216,7 +216,7 @@ UnifiedRawCatalogResult loadUnifiedRawCatalog(
     }
 
     VaporView::SessionRawDat::RawScanOptions scanOptions;
-    scanOptions.expectedSourceId = VaporView::SessionRawDat::kSourceTcpWave;
+    scanOptions.expectedSourceId = VaporView::SessionRawDat::kSourceWaveform;
     scanOptions.progress = progress;
     const VaporView::SessionRawDat::RawScanResult scanResult =
         VaporView::SessionRawDat::scan(file, scanOptions);
@@ -238,7 +238,7 @@ UnifiedRawCatalogResult loadUnifiedRawCatalog(
     for (const VaporView::SessionRawDat::RawRecordIndex& record : scanResult.records)
     {
         const auto& header = record.header;
-        if ((header.flags & VaporView::SessionRawDat::kTcpWaveCombinedPayloadFlag) != 0 &&
+        if ((header.flags & VaporView::SessionRawDat::kWaveformCombinedPayloadFlag) != 0 &&
             header.payloadSize >= sizeof(quint32) * 2)
         {
             if (record.payloadOffset > static_cast<quint64>(std::numeric_limits<qint64>::max()) ||
@@ -248,10 +248,10 @@ UnifiedRawCatalogResult loadUnifiedRawCatalog(
                 result.error = QStringLiteral("Failed to seek raw TCP wave payload: %1").arg(filename);
                 return result;
             }
-            const QByteArray prefix = file.read(VaporView::SessionRawDat::kTcpWavePayloadPrefixSize);
-            VaporView::SessionRawDat::TcpWavePayloadLayout layout;
+            const QByteArray prefix = file.read(VaporView::SessionRawDat::kWaveformPayloadPrefixSize);
+            VaporView::SessionRawDat::WaveformPayloadLayout layout;
             QString layoutError;
-            if (!VaporView::SessionRawDat::parseTcpWavePayloadLayout(
+            if (!VaporView::SessionRawDat::parseWaveformPayloadLayout(
                     prefix,
                     header.payloadSize,
                     &layout,

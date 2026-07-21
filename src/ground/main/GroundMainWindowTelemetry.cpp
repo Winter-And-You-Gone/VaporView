@@ -161,11 +161,11 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
     }
     state_->remote_status_ = status;
     const quint64 rawTotal =
-        status.raw_epsilon_record_count +
-        status.raw_ptb_record_count +
-        status.raw_hmp_record_count +
-        status.raw_lidar_record_count +
-        status.raw_tcp_wave_record_count;
+        status.raw_navigation_record_count +
+        status.raw_pressure_record_count +
+        status.raw_temperature_humidity_record_count +
+        status.raw_distance_record_count +
+        status.raw_waveform_record_count;
     if (!status.session_name.isEmpty() ||
         status.telemetry_record_count > 0 ||
         status.waveform_feature_record_count > 0 ||

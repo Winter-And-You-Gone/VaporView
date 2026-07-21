@@ -410,11 +410,11 @@ TelemetryStatus SkyRuntime::currentStatus() const
     status.telemetry_record_count = session_recorder_.telemetryRecordCount();
     status.waveform_feature_record_count = session_recorder_.waveformFeatureRecordCount() + session_recorder_.temperatureControllerRecordCount();
     status.waveform_snapshot_record_count = session_recorder_.waveformSnapshotRecordCount();
-    status.raw_epsilon_record_count = session_recorder_.rawEpsilonRecordCount();
-    status.raw_ptb_record_count = session_recorder_.rawPtbRecordCount();
-    status.raw_hmp_record_count = session_recorder_.rawHmpRecordCount();
-    status.raw_lidar_record_count = session_recorder_.rawLidarRecordCount();
-    status.raw_tcp_wave_record_count = session_recorder_.rawTcpWaveRecordCount();
+    status.raw_navigation_record_count = session_recorder_.rawNavigationRecordCount();
+    status.raw_pressure_record_count = session_recorder_.rawPressureRecordCount();
+    status.raw_temperature_humidity_record_count = session_recorder_.rawTemperatureHumidityRecordCount();
+    status.raw_distance_record_count = session_recorder_.rawDistanceRecordCount();
+    status.raw_waveform_record_count = session_recorder_.rawWaveformRecordCount();
     return status;
 }
 

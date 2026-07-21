@@ -264,15 +264,15 @@ QString sourceName(quint16 sourceId, bool english)
 {
     switch (sourceId)
     {
-    case VaporView::SessionRawDat::kSourceEpsilon:
+    case VaporView::SessionRawDat::kSourceNavigation:
         return english ? QStringLiteral("EPSILON") : QStringLiteral("EPSILON组合导航");
-    case VaporView::SessionRawDat::kSourcePtb:
+    case VaporView::SessionRawDat::kSourcePressure:
         return english ? QStringLiteral("PTB210") : QStringLiteral("PTB210气压计");
-    case VaporView::SessionRawDat::kSourceHmp:
+    case VaporView::SessionRawDat::kSourceTemperatureHumidity:
         return english ? QStringLiteral("HMP3") : QStringLiteral("HMP3温湿度");
-    case VaporView::SessionRawDat::kSourceLidar:
+    case VaporView::SessionRawDat::kSourceDistance:
         return english ? QStringLiteral("Lidar") : QStringLiteral("激光测距");
-    case VaporView::SessionRawDat::kSourceTcpWave:
+    case VaporView::SessionRawDat::kSourceWaveform:
         return english ? QStringLiteral("TCP Wave") : QStringLiteral("TCP波形");
     default:
         return QStringLiteral("source %1").arg(sourceId);
@@ -317,15 +317,15 @@ QString recordTypeName(quint16 sourceId, quint16 recordType, bool english)
 {
     switch (sourceId)
     {
-    case VaporView::SessionRawDat::kSourceEpsilon:
+    case VaporView::SessionRawDat::kSourceNavigation:
         return epsilonPacketName(recordType);
-    case VaporView::SessionRawDat::kSourcePtb:
+    case VaporView::SessionRawDat::kSourcePressure:
         return QStringLiteral("PTB response");
-    case VaporView::SessionRawDat::kSourceHmp:
+    case VaporView::SessionRawDat::kSourceTemperatureHumidity:
         return QStringLiteral("Modbus function %1").arg(formatHex(recordType));
-    case VaporView::SessionRawDat::kSourceLidar:
+    case VaporView::SessionRawDat::kSourceDistance:
         return lidarProtocolName(recordType, english);
-    case VaporView::SessionRawDat::kSourceTcpWave:
+    case VaporView::SessionRawDat::kSourceWaveform:
         return QStringLiteral("TCP wave payload");
     default:
         return QStringLiteral("record_type %1").arg(recordType);
@@ -1377,11 +1377,11 @@ void RawDataParserWindow::Impl::refreshDeviceFilter()
     const QSignalBlocker blocker(device_combo);
     device_combo->clear();
     device_combo->addItem(english ? QStringLiteral("All devices") : QStringLiteral("全部设备"), 0);
-    for (quint16 sourceId : {VaporView::SessionRawDat::kSourceEpsilon,
-                             VaporView::SessionRawDat::kSourcePtb,
-                             VaporView::SessionRawDat::kSourceHmp,
-                             VaporView::SessionRawDat::kSourceLidar,
-                             VaporView::SessionRawDat::kSourceTcpWave})
+    for (quint16 sourceId : {VaporView::SessionRawDat::kSourceNavigation,
+                             VaporView::SessionRawDat::kSourcePressure,
+                             VaporView::SessionRawDat::kSourceTemperatureHumidity,
+                             VaporView::SessionRawDat::kSourceDistance,
+                             VaporView::SessionRawDat::kSourceWaveform})
     {
         device_combo->addItem(sourceName(sourceId, english), sourceId);
     }
@@ -2445,12 +2445,12 @@ void decodeTcpWavePayload(RawDecodedRecord& decoded, const QByteArray& payload, 
         decoded.summary = english ? QStringLiteral("Too short") : QStringLiteral("长度过短");
         return;
     }
-    VaporView::SessionRawDat::TcpWavePayloadLayout layout;
+    VaporView::SessionRawDat::WaveformPayloadLayout layout;
     QString layoutError;
-    const bool sizeOk = VaporView::SessionRawDat::parseTcpWavePayloadLayout(
+    const bool sizeOk = VaporView::SessionRawDat::parseWaveformPayloadLayout(
         QByteArrayView(payload).first(std::min(
             payload.size(),
-            static_cast<qsizetype>(VaporView::SessionRawDat::kTcpWavePayloadPrefixSize))),
+            static_cast<qsizetype>(VaporView::SessionRawDat::kWaveformPayloadPrefixSize))),
         static_cast<quint32>(payload.size()),
         &layout,
         &layoutError);
@@ -2506,19 +2506,19 @@ RawDecodedRecord decodeRawRecord(const RawRecordIndex& record, const QByteArray&
 
     switch (record.source_id)
     {
-    case VaporView::SessionRawDat::kSourceEpsilon:
+    case VaporView::SessionRawDat::kSourceNavigation:
         decodeEpsilonPayload(decoded, payload, english);
         break;
-    case VaporView::SessionRawDat::kSourcePtb:
+    case VaporView::SessionRawDat::kSourcePressure:
         decodePtbPayload(decoded, payload, english);
         break;
-    case VaporView::SessionRawDat::kSourceHmp:
+    case VaporView::SessionRawDat::kSourceTemperatureHumidity:
         decodeHmpPayload(decoded, payload, english);
         break;
-    case VaporView::SessionRawDat::kSourceLidar:
+    case VaporView::SessionRawDat::kSourceDistance:
         decodeLidarPayload(decoded, payload, record.record_type, english);
         break;
-    case VaporView::SessionRawDat::kSourceTcpWave:
+    case VaporView::SessionRawDat::kSourceWaveform:
         decodeTcpWavePayload(decoded, payload, record.flags, english);
         break;
     default:

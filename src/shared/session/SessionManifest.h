@@ -40,11 +40,11 @@ struct SessionRecordCounts
 
 struct RawFileRecordCounts
 {
-    quint64 epsilon = 0;
-    quint64 ptb = 0;
-    quint64 hmp = 0;
-    quint64 lidar = 0;
-    quint64 tcpWave = 0;
+    quint64 navigation = 0;
+    quint64 pressure = 0;
+    quint64 temperatureHumidity = 0;
+    quint64 distance = 0;
+    quint64 waveform = 0;
 };
 
 struct SessionManifest

@@ -64,15 +64,15 @@ QVector<RawFileDefinition> standardRawFileDefinitions()
     const SessionPackageLayout& layout = standardSessionPackageLayout();
     return {
         {QStringLiteral("navigation"), layout.navigationRawPath,
-         SessionFileKind::NavigationRaw, SessionRawDat::kSourceEpsilon},
+         SessionFileKind::NavigationRaw, SessionRawDat::kSourceNavigation},
         {QStringLiteral("pressure"), layout.pressureRawPath,
-         SessionFileKind::PressureRaw, SessionRawDat::kSourcePtb},
+         SessionFileKind::PressureRaw, SessionRawDat::kSourcePressure},
         {QStringLiteral("temperature_humidity"), layout.temperatureHumidityRawPath,
-         SessionFileKind::TemperatureHumidityRaw, SessionRawDat::kSourceHmp},
+         SessionFileKind::TemperatureHumidityRaw, SessionRawDat::kSourceTemperatureHumidity},
         {QStringLiteral("distance"), layout.distanceRawPath,
-         SessionFileKind::DistanceRaw, SessionRawDat::kSourceLidar},
+         SessionFileKind::DistanceRaw, SessionRawDat::kSourceDistance},
         {QStringLiteral("waveform"), layout.waveformRawPath,
-         SessionFileKind::WaveformRaw, SessionRawDat::kSourceTcpWave}
+         SessionFileKind::WaveformRaw, SessionRawDat::kSourceWaveform}
     };
 }
 
@@ -144,7 +144,7 @@ QString temperatureControllerCsvHeader()
         "ch2_mode,ch2_max_output_percent,ch2_kp,ch2_ki,ch2_kd\n");
 }
 
-QString tcpWavePeaksCsvHeader()
+QString waveformPeaksCsvHeader()
 {
     return QStringLiteral("host_time_us,peak_value,peak_index,point_count,search_start_index,search_end_index\n");
 }

@@ -165,13 +165,13 @@ QByteArray makeRawFile(int recordCount = 1, const QByteArray& payload = QByteArr
     QBuffer buffer(&bytes);
     require(buffer.open(QIODevice::WriteOnly), "raw DAT fixture buffer opens");
     QString error;
-    require(writeFileHeader(buffer, kSourceTcpWave, &error), "raw DAT file header writes");
+    require(writeFileHeader(buffer, kSourceWaveform, &error), "raw DAT file header writes");
     for (int index = 0; index < recordCount; ++index)
     {
         RawRecordHeader header;
         header.hostTimestampUs = 1000u + static_cast<quint64>(index);
-        header.sourceId = kSourceTcpWave;
-        header.recordType = kRecordTypeTcpWavePayload;
+        header.sourceId = kSourceWaveform;
+        header.recordType = kRecordTypeWaveformPayload;
         header.flags = 0u;
         header.sequence = static_cast<quint64>(index);
         require(writeRecord(buffer, header, payload, &error), "raw DAT record writes");
@@ -179,7 +179,7 @@ QByteArray makeRawFile(int recordCount = 1, const QByteArray& payload = QByteArr
     return bytes;
 }
 
-RawScanResult scanBytes(QByteArray bytes, quint16 expectedSourceId = kSourceTcpWave)
+RawScanResult scanBytes(QByteArray bytes, quint16 expectedSourceId = kSourceWaveform)
 {
     QBuffer buffer(&bytes);
     require(buffer.open(QIODevice::ReadOnly), "raw DAT scan buffer opens");
@@ -196,19 +196,19 @@ void testFormatConstantsAndGoldenBytes()
     require(kRecordMarker == 0x44525756u, "raw DAT record marker is unchanged");
     require(kFileHeaderSize == 20u, "raw DAT file header size is unchanged");
     require(kRecordHeaderSize == 36u, "raw DAT record header size is unchanged");
-    require(kSourceEpsilon == 1u && kSourcePtb == 2u && kSourceHmp == 3u &&
-                kSourceLidar == 4u && kSourceTcpWave == 5u,
+    require(kSourceNavigation == 1u && kSourcePressure == 2u && kSourceTemperatureHumidity == 3u &&
+                kSourceDistance == 4u && kSourceWaveform == 5u,
             "raw DAT source IDs are unchanged");
 
     QByteArray bytes;
     QBuffer buffer(&bytes);
     require(buffer.open(QIODevice::WriteOnly), "golden raw DAT buffer opens");
     QString error;
-    require(writeFileHeader(buffer, kSourceTcpWave, &error), "golden raw DAT file header writes");
+    require(writeFileHeader(buffer, kSourceWaveform, &error), "golden raw DAT file header writes");
     RawRecordHeader header;
     header.hostTimestampUs = 0x0102030405060708ULL;
-    header.sourceId = kSourceTcpWave;
-    header.recordType = kRecordTypeTcpWavePayload;
+    header.sourceId = kSourceWaveform;
+    header.recordType = kRecordTypeWaveformPayload;
     header.flags = 0x11223344u;
     header.sequence = 0x1112131415161718ULL;
     require(writeRecord(buffer, header, QByteArray::fromHex("aabb"), &error),
@@ -274,7 +274,7 @@ void testTcpWavePayloadCodec()
 {
     QByteArray payload;
     QString error;
-    require(encodeTcpWavePayload(QByteArray::fromHex("0102"),
+    require(encodeWaveformPayload(QByteArray::fromHex("0102"),
                                  QByteArray::fromHex("03040506"),
                                  &payload,
                                  &error),
@@ -282,8 +282,8 @@ void testTcpWavePayloadCodec()
     require(payload == QByteArray::fromHex("0200000004000000010203040506"),
             "shared TCP wave payload encoder preserves exact little-endian bytes");
 
-    TcpWavePayloadLayout layout;
-    require(parseTcpWavePayloadLayout(payload.first(kTcpWavePayloadPrefixSize),
+    WaveformPayloadLayout layout;
+    require(parseWaveformPayloadLayout(payload.first(kWaveformPayloadPrefixSize),
                                       static_cast<quint32>(payload.size()),
                                       &layout,
                                       &error),
@@ -295,12 +295,12 @@ void testTcpWavePayloadCodec()
     QByteArray fileBytes;
     QBuffer buffer(&fileBytes);
     require(buffer.open(QIODevice::WriteOnly), "combined TCP wave raw DAT buffer opens");
-    require(writeFileHeader(buffer, kSourceTcpWave, &error),
+    require(writeFileHeader(buffer, kSourceWaveform, &error),
             "combined TCP wave raw DAT header writes");
     RawRecordHeader header;
-    header.sourceId = kSourceTcpWave;
-    header.recordType = kRecordTypeTcpWavePayload;
-    header.flags = kTcpWaveCombinedPayloadFlag;
+    header.sourceId = kSourceWaveform;
+    header.recordType = kRecordTypeWaveformPayload;
+    header.flags = kWaveformCombinedPayloadFlag;
     require(writeRecord(buffer, header, payload, &error),
             "combined TCP wave raw DAT record writes");
     require(scanBytes(fileBytes).success(),
@@ -385,13 +385,13 @@ void testCorruptionRemainsFatal()
                 result.error.contains(QStringLiteral("exceeds limit")),
             "oversized payload is rejected before allocation");
 
-    require(scanBytes(makeRawFile(), kSourceEpsilon).status == RawReadStatus::InvalidHeader,
+    require(scanBytes(makeRawFile(), kSourceNavigation).status == RawReadStatus::InvalidHeader,
             "file source mismatch is rejected");
 
     QByteArray recordSourceMismatch = makeRawFile();
     writeLittleEndianAt<quint16>(recordSourceMismatch,
                                  kFileHeaderSize + 20u,
-                                 kSourceEpsilon);
+                                 kSourceNavigation);
     require(scanBytes(recordSourceMismatch).status == RawReadStatus::CorruptRecord,
             "record source mismatch is rejected");
 
@@ -521,7 +521,7 @@ void testSessionPackageInitializerCreatesIdenticalGroundAndSkyPackages()
                 == headerLine(waveformFeaturesCsvHeader()),
             "standard waveform features header exists");
     require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.waveformPeaksCsvPath)))
-                == headerLine(tcpWavePeaksCsvHeader()),
+                == headerLine(waveformPeaksCsvHeader()),
             "standard tcp wave peaks header exists");
     require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.eventLogPath)))
                 == headerLine(eventLogCsvHeader()),

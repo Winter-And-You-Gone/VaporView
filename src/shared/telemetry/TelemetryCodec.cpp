@@ -682,11 +682,11 @@ QByteArray TelemetryCodec::serializeTelemetryStatus(const TelemetryStatus& statu
     appendLe<quint64>(payload, status.telemetry_record_count);
     appendLe<quint64>(payload, status.waveform_feature_record_count);
     appendLe<quint64>(payload, status.waveform_snapshot_record_count);
-    appendLe<quint64>(payload, status.raw_epsilon_record_count);
-    appendLe<quint64>(payload, status.raw_ptb_record_count);
-    appendLe<quint64>(payload, status.raw_hmp_record_count);
-    appendLe<quint64>(payload, status.raw_lidar_record_count);
-    appendLe<quint64>(payload, status.raw_tcp_wave_record_count);
+    appendLe<quint64>(payload, status.raw_navigation_record_count);
+    appendLe<quint64>(payload, status.raw_pressure_record_count);
+    appendLe<quint64>(payload, status.raw_temperature_humidity_record_count);
+    appendLe<quint64>(payload, status.raw_distance_record_count);
+    appendLe<quint64>(payload, status.raw_waveform_record_count);
     return payload;
 }
 
@@ -757,11 +757,11 @@ bool TelemetryCodec::parseTelemetryStatus(const QByteArray& payload, TelemetrySt
            readOptionalU64(status.telemetry_record_count) &&
            readOptionalU64(status.waveform_feature_record_count) &&
            readOptionalU64(status.waveform_snapshot_record_count) &&
-           readOptionalU64(status.raw_epsilon_record_count) &&
-           readOptionalU64(status.raw_ptb_record_count) &&
-           readOptionalU64(status.raw_hmp_record_count) &&
-           readOptionalU64(status.raw_lidar_record_count) &&
-           readOptionalU64(status.raw_tcp_wave_record_count);
+           readOptionalU64(status.raw_navigation_record_count) &&
+           readOptionalU64(status.raw_pressure_record_count) &&
+           readOptionalU64(status.raw_temperature_humidity_record_count) &&
+           readOptionalU64(status.raw_distance_record_count) &&
+           readOptionalU64(status.raw_waveform_record_count);
 }
 
 QByteArray TelemetryCodec::serializeCommand(const CommandMessage& command)
