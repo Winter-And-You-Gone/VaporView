@@ -1329,7 +1329,7 @@ void MainWindow::loadRememberedInputState()
 {
     QSettings settings("VaporView", "MainWindow");
 
-    auto loadCombo = [&settings](QComboBox *combo, const QString& key, const QString& fallbackKey = QString()) {
+    auto loadCombo = [this, &settings](QComboBox *combo, const QString& key, const QString& fallbackKey = QString()) {
         if (!combo)
         {
             return;
@@ -1339,7 +1339,19 @@ void MainWindow::loadRememberedInputState()
         {
             fallback = settings.value(fallbackKey, fallback);
         }
-        applyComboText(combo, settings.value(key, fallback).toString());
+        const QString value = settings.value(key, fallback).toString();
+        if (combo->property(kLocalSerialPortComboProperty).toBool())
+        {
+            if (value.trimmed().isEmpty())
+            {
+                combo->setCurrentIndex(0);
+            }
+            refreshLocalSerialPortComboOptions(combo, getAvailablePorts(), value);
+        }
+        else
+        {
+            applyComboText(combo, value);
+        }
     };
 
     loadCombo(state_->epsilon_port_combo_, QStringLiteral("serial/epsilon_port"), QStringLiteral("serial/gnss_port"));
@@ -1465,10 +1477,19 @@ void MainWindow::saveRememberedInputState() const
 {
     QSettings settings("VaporView", "MainWindow");
 
-    auto saveCombo = [&settings](const QString& key, QComboBox *combo) {
+    auto saveCombo = [this, &settings](const QString& key, QComboBox *combo) {
         if (combo)
         {
-            settings.setValue(key, combo->currentText());
+            if (combo->property(kLocalSerialPortComboProperty).toBool())
+            {
+                if (combo->property(kLocalSerialPortManualEntryProperty).toBool())
+                {
+                    return;
+                }
+                settings.setValue(key, localSerialPortComboValue(combo));
+                return;
+            }
+            settings.setValue(key, combo->currentText().trimmed());
         }
     };
 

@@ -1562,7 +1562,8 @@ void MainWindow::setupDeviceConfigPage()
         label->setFixedWidth(76);
         formLayout->addWidget(label, row, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
-        portCombo = createCombo(kDeviceConfigPortComboWidth, true);
+        portCombo = createCombo(kDeviceConfigPortComboWidth);
+        installLocalSerialPortComboBehavior(portCombo);
         portCombo->setMinimumContentsLength(6);
         portCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         formLayout->addWidget(portCombo, row, 1, Qt::AlignVCenter);
@@ -1601,6 +1602,22 @@ void MainWindow::setupDeviceConfigPage()
                state_->device_config_.temperature_rate_lbl, state_->device_config_.temperature_rate_combo, 4);
     state_->device_config_.ptb_baud_combo->setObjectName(QStringLiteral("devicePressureBaudCombo"));
     state_->device_config_.hmp_baud_combo->setObjectName(QStringLiteral("deviceHumidityBaudCombo"));
+    if (state_->device_config_.epsilon_port_combo)
+    {
+        state_->device_config_.epsilon_port_combo->setObjectName(QStringLiteral("deviceEpsilonPortCombo"));
+    }
+    if (state_->device_config_.ptb_port_combo)
+    {
+        state_->device_config_.ptb_port_combo->setObjectName(QStringLiteral("devicePressurePortCombo"));
+    }
+    if (state_->device_config_.hmp_port_combo)
+    {
+        state_->device_config_.hmp_port_combo->setObjectName(QStringLiteral("deviceHumidityPortCombo"));
+    }
+    if (state_->device_config_.lidar_port_combo)
+    {
+        state_->device_config_.lidar_port_combo->setObjectName(QStringLiteral("deviceLidarPortCombo"));
+    }
     state_->device_config_.ptb_source_combo = createCombo(kDeviceConfigSourceComboWidth);
     state_->device_config_.ptb_source_combo->setObjectName(QStringLiteral("devicePressureSourceCombo"));
     state_->device_config_.ptb_source_combo->addItem(QStringLiteral("PTB210"), QStringLiteral("ptb210"));
@@ -1931,9 +1948,21 @@ void MainWindow::setupDeviceConfigPage()
         {
             return;
         }
-        connect(deviceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [deviceCombo, homeCombo](int index) {
+        connect(deviceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, deviceCombo, homeCombo](int index) {
             if (!homeCombo || index < 0 || index >= deviceCombo->count())
             {
+                return;
+            }
+            if (deviceCombo->property(kLocalSerialPortComboProperty).toBool() &&
+                isLocalSerialPortManualOption(deviceCombo, index))
+            {
+                return;
+            }
+            if (deviceCombo->property(kLocalSerialPortComboProperty).toBool())
+            {
+                setLocalSerialPortComboText(
+                    homeCombo,
+                    localSerialPortItemValue(deviceCombo, index));
                 return;
             }
             const QVariant itemData = deviceCombo->itemData(index);
@@ -1945,9 +1974,19 @@ void MainWindow::setupDeviceConfigPage()
                 homeCombo->setCurrentIndex(targetIndex);
             }
         });
-        connect(deviceCombo, &QComboBox::currentTextChanged, this, [deviceCombo, homeCombo](const QString& text) {
+        connect(deviceCombo, &QComboBox::currentTextChanged, this, [this, deviceCombo, homeCombo](const QString& text) {
             if (!homeCombo || homeCombo->currentText() == text)
             {
+                return;
+            }
+            if (deviceCombo->property(kLocalSerialPortComboProperty).toBool())
+            {
+                if (deviceCombo->property(kLocalSerialPortManualEntryProperty).toBool() ||
+                    isLocalSerialPortManualOptionText(text))
+                {
+                    return;
+                }
+                setLocalSerialPortComboText(homeCombo, text);
                 return;
             }
             const int index = homeCombo->findText(text);
@@ -1961,6 +2000,10 @@ void MainWindow::setupDeviceConfigPage()
             }
         });
         connect(homeCombo, &QComboBox::currentTextChanged, this, [this, deviceCombo, homeCombo, comboItemsMatch]() {
+            if (homeCombo && homeCombo->property(kLocalSerialPortManualEntryProperty).toBool())
+            {
+                return;
+            }
             if (deviceCombo &&
                 homeCombo &&
                 deviceCombo->isEditable() == homeCombo->isEditable() &&
@@ -2054,15 +2097,21 @@ void MainWindow::syncDeviceConfigPageFromHome()
         return;
     }
 
-    auto copyCombo = [](QComboBox *source, QComboBox *target) {
+    auto copyCombo = [this](QComboBox *source, QComboBox *target) {
         if (!source || !target)
         {
             return;
         }
+        const bool localSerial = source->property(kLocalSerialPortComboProperty).toBool() ||
+                                 target->property(kLocalSerialPortComboProperty).toBool();
         const QSignalBlocker blocker(target);
         const QString currentText = source->currentText();
         const int currentIndex = source->currentIndex();
-        target->setEditable(source->isEditable());
+        if (localSerial)
+        {
+            installLocalSerialPortComboBehavior(target);
+        }
+        target->setEditable(localSerial ? false : source->isEditable());
         target->clear();
         for (int i = 0; i < source->count(); ++i)
         {
@@ -2077,6 +2126,10 @@ void MainWindow::syncDeviceConfigPageFromHome()
         if (targetIndex >= 0)
         {
             target->setCurrentIndex(targetIndex);
+        }
+        else if (localSerial)
+        {
+            setLocalSerialPortComboText(target, currentText);
         }
         else if (target->isEditable())
         {
@@ -2134,6 +2187,7 @@ void MainWindow::updateDeviceConfigTexts()
         return;
     }
 
+    refreshLocalSerialPortManualOptionTexts();
     if (state_->device_config_.serial_title_lbl) state_->device_config_.serial_title_lbl->setText(state_->is_english_ ? "Serial Port Configuration" : "串口配置");
     if (state_->device_config_.data_source_mode_lbl) state_->device_config_.data_source_mode_lbl->setText(state_->is_english_ ? "Source:" : "数据源:");
     if (state_->device_config_.sky_telemetry_transport_lbl) state_->device_config_.sky_telemetry_transport_lbl->setText(state_->is_english_ ? "Link:" : "链路:");
@@ -2372,6 +2426,355 @@ QStringList MainWindow::getAvailablePorts()
     return VaporView::Ground::Devices::SerialPortDetectionService::availablePorts();
 }
 
+QString MainWindow::manualLocalSerialPortOptionText() const
+{
+    return state_->is_english_ ? QStringLiteral("Manual Add...") : QStringLiteral("手动添加...");
+}
+
+QString MainWindow::normalizedLocalSerialPortText(const QString& text) const
+{
+    QString trimmed = text.trimmed();
+    const QString zhHistoryPrefix = QStringLiteral("历史：");
+    const QString zhAsciiHistoryPrefix = QStringLiteral("历史:");
+    const QString englishHistoryPrefix = QStringLiteral("History:");
+    if (trimmed.startsWith(zhHistoryPrefix))
+    {
+        trimmed = trimmed.mid(zhHistoryPrefix.size()).trimmed();
+    }
+    else if (trimmed.startsWith(zhAsciiHistoryPrefix))
+    {
+        trimmed = trimmed.mid(zhAsciiHistoryPrefix.size()).trimmed();
+    }
+    else if (trimmed.startsWith(englishHistoryPrefix, Qt::CaseInsensitive))
+    {
+        trimmed = trimmed.mid(englishHistoryPrefix.size()).trimmed();
+    }
+    return trimmed;
+}
+
+QString MainWindow::localSerialPortHistoryText(const QString& port) const
+{
+    return state_->is_english_
+        ? QStringLiteral("History: %1").arg(port)
+        : QStringLiteral("历史：%1").arg(port);
+}
+
+bool MainWindow::isLocalSerialPortManualOptionText(const QString& text) const
+{
+    const QString trimmed = text.trimmed();
+    return trimmed == QStringLiteral("Manual Add...") ||
+           trimmed == QStringLiteral("手动添加...");
+}
+
+bool MainWindow::isLocalSerialPortManualOption(const QComboBox *combo, int index) const
+{
+    if (!combo || index < 0 || index >= combo->count())
+    {
+        return false;
+    }
+    return combo->itemData(index).toString() == QString::fromLatin1(kLocalSerialPortManualOptionData) ||
+           isLocalSerialPortManualOptionText(combo->itemText(index));
+}
+
+QString MainWindow::localSerialPortItemValue(const QComboBox *combo, int index) const
+{
+    if (!combo || index < 0 || index >= combo->count())
+    {
+        return QString();
+    }
+
+    const QString itemDataText = combo->itemData(index).toString().trimmed();
+    if (!itemDataText.isEmpty() &&
+        itemDataText != QString::fromLatin1(kLocalSerialPortManualOptionData))
+    {
+        return itemDataText;
+    }
+
+    const QString text = normalizedLocalSerialPortText(combo->itemText(index));
+    if (text.isEmpty() ||
+        text.startsWith(QStringLiteral("--")) ||
+        isLocalSerialPortManualOptionText(text))
+    {
+        return QString();
+    }
+    return text;
+}
+
+QString MainWindow::localSerialPortComboValue(const QComboBox *combo) const
+{
+    if (!combo || combo->property(kLocalSerialPortManualEntryProperty).toBool())
+    {
+        return QString();
+    }
+    return localSerialPortItemValue(combo, combo->currentIndex());
+}
+
+void MainWindow::installLocalSerialPortComboBehavior(QComboBox *combo)
+{
+    if (!combo)
+    {
+        return;
+    }
+
+    combo->setProperty(kLocalSerialPortComboProperty, true);
+    combo->setInsertPolicy(QComboBox::NoInsert);
+    combo->setEditable(false);
+
+    if (combo->property(kLocalSerialPortManualHandlerProperty).toBool())
+    {
+        return;
+    }
+
+    combo->setProperty(kLocalSerialPortManualHandlerProperty, true);
+    const auto beginManualEntryIfSelected = [this, combo](int index) {
+        if (isLocalSerialPortManualOption(combo, index))
+        {
+            beginManualLocalSerialPortEntry(combo);
+            return;
+        }
+        combo->setProperty(
+            kLocalSerialPortManualPreviousTextProperty,
+            localSerialPortItemValue(combo, index));
+    };
+    connect(combo,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this,
+            beginManualEntryIfSelected);
+    connect(combo,
+            QOverload<int>::of(&QComboBox::activated),
+            this,
+            beginManualEntryIfSelected);
+}
+
+void MainWindow::refreshLocalSerialPortComboOptions(QComboBox *combo,
+                                                    const QStringList& ports,
+                                                    const QString& preferredText)
+{
+    if (!combo)
+    {
+        return;
+    }
+
+    const QString preferredValue = normalizedLocalSerialPortText(preferredText);
+    const QString previousText = preferredValue.isEmpty()
+        ? localSerialPortComboValue(combo)
+        : preferredValue;
+    const bool previousIsRealPort =
+        !previousText.isEmpty() &&
+        !previousText.startsWith(QStringLiteral("--")) &&
+        !isLocalSerialPortManualOptionText(previousText);
+
+    installLocalSerialPortComboBehavior(combo);
+    const QSignalBlocker blocker(combo);
+    combo->setEditable(false);
+    combo->clear();
+    combo->addItem(state_->is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("-- 选择 --"));
+    for (const QString& port : ports)
+    {
+        const QString trimmed = port.trimmed();
+        if (!trimmed.isEmpty() && combo->findText(trimmed) < 0)
+        {
+            combo->addItem(trimmed, trimmed);
+        }
+    }
+    if (previousIsRealPort && combo->findData(previousText) < 0 && combo->findText(previousText) < 0)
+    {
+        combo->addItem(localSerialPortHistoryText(previousText), previousText);
+    }
+    combo->addItem(manualLocalSerialPortOptionText(), QString::fromLatin1(kLocalSerialPortManualOptionData));
+
+    int selectedIndex = previousIsRealPort ? combo->findData(previousText) : 0;
+    if (selectedIndex < 0 && previousIsRealPort)
+    {
+        selectedIndex = combo->findText(previousText);
+    }
+    combo->setCurrentIndex(selectedIndex >= 0 ? selectedIndex : 0);
+    combo->setProperty(
+        kLocalSerialPortManualPreviousTextProperty,
+        previousIsRealPort ? previousText : QString());
+}
+
+void MainWindow::setLocalSerialPortComboText(QComboBox *combo, const QString& text)
+{
+    if (!combo)
+    {
+        return;
+    }
+
+    installLocalSerialPortComboBehavior(combo);
+    combo->setEditable(false);
+
+    const QString trimmed = normalizedLocalSerialPortText(text);
+    if (trimmed.isEmpty() ||
+        trimmed.startsWith(QStringLiteral("--")) ||
+        isLocalSerialPortManualOptionText(trimmed))
+    {
+        combo->setCurrentIndex(0);
+        return;
+    }
+
+    int index = combo->findData(trimmed);
+    if (index < 0)
+    {
+        index = combo->findText(trimmed);
+    }
+    if (index < 0)
+    {
+        const int manualIndex = combo->findData(QString::fromLatin1(kLocalSerialPortManualOptionData));
+        const int insertIndex = manualIndex >= 0 ? manualIndex : combo->count();
+        combo->insertItem(insertIndex, trimmed, trimmed);
+        index = combo->findText(trimmed);
+    }
+    const int selectedIndex = index >= 0 ? index : 0;
+    combo->setCurrentIndex(selectedIndex);
+    combo->setProperty(
+        kLocalSerialPortManualPreviousTextProperty,
+        localSerialPortItemValue(combo, selectedIndex));
+}
+
+void MainWindow::beginManualLocalSerialPortEntry(QComboBox *combo)
+{
+    if (!combo || !combo->property(kLocalSerialPortComboProperty).toBool() ||
+        combo->property(kLocalSerialPortManualEntryProperty).toBool())
+    {
+        return;
+    }
+
+    QString previousText = combo->property(kLocalSerialPortManualPreviousTextProperty).toString();
+    if (previousText.isEmpty())
+    {
+        previousText = combo->currentText().trimmed();
+    }
+    if (isLocalSerialPortManualOptionText(previousText))
+    {
+        previousText.clear();
+    }
+    combo->setProperty(kLocalSerialPortManualPreviousTextProperty, previousText);
+    combo->setProperty(kLocalSerialPortManualEntryProperty, true);
+    combo->setEditable(true);
+    combo->setInsertPolicy(QComboBox::NoInsert);
+    if (QLineEdit *edit = combo->lineEdit())
+    {
+        edit->setProperty(kLocalSerialPortManualEntryProperty, true);
+        edit->setPlaceholderText(state_->is_english_
+            ? QStringLiteral("Enter serial port...")
+            : QStringLiteral("输入串口名..."));
+        edit->installEventFilter(this);
+        edit->clear();
+        edit->setFocus(Qt::OtherFocusReason);
+    }
+}
+
+void MainWindow::finishManualLocalSerialPortEntry(QComboBox *combo, bool accept)
+{
+    if (!combo || !combo->property(kLocalSerialPortManualEntryProperty).toBool())
+    {
+        return;
+    }
+
+    const QString previousText = combo->property(kLocalSerialPortManualPreviousTextProperty).toString();
+    const QString enteredText = combo->lineEdit() ? combo->lineEdit()->text().trimmed() : combo->currentText().trimmed();
+    combo->setProperty(kLocalSerialPortManualEntryProperty, false);
+    combo->setProperty(kLocalSerialPortManualPreviousTextProperty, QString());
+    combo->setEditable(false);
+
+    const bool validManualText =
+        accept &&
+        !enteredText.isEmpty() &&
+        !enteredText.startsWith(QStringLiteral("--")) &&
+        !isLocalSerialPortManualOptionText(enteredText);
+    setLocalSerialPortComboText(combo, validManualText ? enteredText : previousText);
+
+    saveRememberedInputState();
+    updateHomeDeviceStatusCapsules();
+    updateDeviceConfigState();
+    updateTemperatureControllerTitleText();
+    updateTemperatureTitleButtonsState();
+    combo->setEditable(false);
+    combo->setProperty(kLocalSerialPortManualEntryProperty, false);
+    if (QLineEdit *edit = combo->lineEdit())
+    {
+        edit->setProperty(kLocalSerialPortManualEntryProperty, false);
+        edit->removeEventFilter(this);
+    }
+}
+
+bool MainWindow::handleLocalSerialPortManualEntryEvent(QObject *watched, QEvent *event)
+{
+    auto *edit = qobject_cast<QLineEdit *>(watched);
+    if (!edit || !edit->property(kLocalSerialPortManualEntryProperty).toBool())
+    {
+        return false;
+    }
+
+    auto *combo = qobject_cast<QComboBox *>(edit->parentWidget());
+    if (!combo || !combo->property(kLocalSerialPortManualEntryProperty).toBool())
+    {
+        return false;
+    }
+
+    if (event->type() == QEvent::KeyPress)
+    {
+        auto *keyEvent = static_cast<QKeyEvent *>(event);
+        if (keyEvent->key() == Qt::Key_Return || keyEvent->key() == Qt::Key_Enter)
+        {
+            finishManualLocalSerialPortEntry(combo, true);
+            return true;
+        }
+        if (keyEvent->key() == Qt::Key_Escape)
+        {
+            finishManualLocalSerialPortEntry(combo, false);
+            return true;
+        }
+    }
+    else if (event->type() == QEvent::FocusOut)
+    {
+        QTimer::singleShot(0, this, [this, combo]() {
+            finishManualLocalSerialPortEntry(combo, true);
+        });
+    }
+    return false;
+}
+
+void MainWindow::refreshLocalSerialPortManualOptionTexts()
+{
+    for (QComboBox *combo : {state_->epsilon_port_combo_,
+                             state_->ptb_port_combo_,
+                             state_->hmp_port_combo_,
+                             state_->lidar_port_combo_,
+                             state_->temperature_port_combo_,
+                             state_->device_config_.epsilon_port_combo,
+                             state_->device_config_.ptb_port_combo,
+                             state_->device_config_.hmp_port_combo,
+                             state_->device_config_.lidar_port_combo,
+                             state_->device_config_.temperature_port_combo})
+    {
+        if (!combo || !combo->property(kLocalSerialPortComboProperty).toBool())
+        {
+            continue;
+        }
+        const QSignalBlocker blocker(combo);
+        int selectIndex = combo->findText(QStringLiteral("-- Select --"));
+        if (selectIndex < 0)
+        {
+            selectIndex = combo->findText(QStringLiteral("-- 选择 --"));
+        }
+        if (selectIndex >= 0)
+        {
+            combo->setItemText(selectIndex, state_->is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("-- 选择 --"));
+        }
+        const int manualIndex = combo->findData(QString::fromLatin1(kLocalSerialPortManualOptionData));
+        if (manualIndex >= 0)
+        {
+            combo->setItemText(manualIndex, manualLocalSerialPortOptionText());
+        }
+        else
+        {
+            combo->addItem(manualLocalSerialPortOptionText(), QString::fromLatin1(kLocalSerialPortManualOptionData));
+        }
+    }
+}
+
 void MainWindow::setupConfigPanel()
 {
     state_->config_group_ = new QGroupBox(this);
@@ -2451,9 +2854,6 @@ void MainWindow::setupConfigPanel()
         config_layout->addWidget(lbl, row, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
         portCombo = new QComboBox(config_form_widget);
-        portCombo->addItem(state_->is_english_ ? "-- Select --" : "-- 选择 --");
-        portCombo->addItems(ports);
-        portCombo->setEditable(true);
         portCombo->setMinimumContentsLength(10);
         portCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         portCombo->setFixedHeight(kMainPageInputHeight);
@@ -2462,16 +2862,7 @@ void MainWindow::setupConfigPanel()
         portCombo->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         portCombo->setMaxVisibleItems(15);
         configureComboPopup(portCombo);
-
-        int defaultIdx = portCombo->findText(defaultPort);
-        if (defaultIdx >= 0)
-        {
-            portCombo->setCurrentIndex(defaultIdx);
-        }
-        else
-        {
-            portCombo->setEditText(defaultPort);
-        }
+        refreshLocalSerialPortComboOptions(portCombo, ports, defaultPort);
         config_layout->addWidget(portCombo, row, 1, Qt::AlignVCenter);
 
         baudCombo = new QComboBox(config_form_widget);
@@ -2621,6 +3012,10 @@ void MainWindow::setupConfigPanel()
     createPortRow(state_->lidar_lbl_, state_->lidar_port_combo_, state_->lidar_baud_combo_, state_->lidar_rate_lbl_, state_->lidar_rate_combo_, "/dev/ttyLidar", "500000", row++, 100);
     createPortRow(state_->temperature_lbl_, state_->temperature_port_combo_, state_->temperature_baud_combo_, state_->temperature_rate_lbl_, state_->temperature_rate_combo_, "/dev/ttyRD105", "38400", row++, kMaxTemperatureSampleRateHz);
 #endif
+    if (state_->epsilon_port_combo_) state_->epsilon_port_combo_->setObjectName(QStringLiteral("epsilonPortCombo"));
+    if (state_->ptb_port_combo_) state_->ptb_port_combo_->setObjectName(QStringLiteral("pressurePortCombo"));
+    if (state_->hmp_port_combo_) state_->hmp_port_combo_->setObjectName(QStringLiteral("humidityPortCombo"));
+    if (state_->lidar_port_combo_) state_->lidar_port_combo_->setObjectName(QStringLiteral("lidarPortCombo"));
     if (state_->temperature_port_combo_) state_->temperature_port_combo_->setObjectName(QStringLiteral("temperaturePortCombo"));
     if (state_->temperature_baud_combo_) state_->temperature_baud_combo_->setObjectName(QStringLiteral("temperatureBaudCombo"));
     if (state_->temperature_rate_combo_) state_->temperature_rate_combo_->setObjectName(QStringLiteral("temperatureRateCombo"));
@@ -3033,18 +3428,18 @@ void MainWindow::setupDataPanels()
                     return;
                 }
                 const QString selectedPort = state_->temperature_title_port_combo_->itemData(index).toString().trimmed();
-                if (selectedPort.isEmpty() || state_->temperature_port_combo_->currentText().trimmed() == selectedPort)
+                if (selectedPort.isEmpty() || localSerialPortComboValue(state_->temperature_port_combo_) == selectedPort)
                 {
                     return;
                 }
-                const int sourceIndex = state_->temperature_port_combo_->findText(selectedPort);
+                const int sourceIndex = state_->temperature_port_combo_->findData(selectedPort);
                 if (sourceIndex >= 0)
                 {
                     state_->temperature_port_combo_->setCurrentIndex(sourceIndex);
                 }
                 else
                 {
-                    state_->temperature_port_combo_->setEditText(selectedPort);
+                    setLocalSerialPortComboText(state_->temperature_port_combo_, selectedPort);
                 }
             });
     temperatureTitleLayout->addWidget(state_->temperature_title_port_combo_, 0, Qt::AlignVCenter | Qt::AlignLeft);

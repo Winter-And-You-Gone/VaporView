@@ -1035,7 +1035,7 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
     }
 
     const QString selectText = state_->is_english_ ? "-- Select --" : "-- 选择 --";
-    const QString epsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
+    const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
     if (applyAfterSave &&
         !state_->recording_service_->isActive() &&
         !epsilonPort.isEmpty() &&
@@ -1199,9 +1199,7 @@ void MainWindow::updateTemperatureControllerTitleText()
         return;
     }
 
-    const QString portText = state_->temperature_port_combo_
-        ? state_->temperature_port_combo_->currentText().trimmed()
-        : QString();
+    const QString portText = localSerialPortComboValue(state_->temperature_port_combo_);
     const bool hasPort = !portText.isEmpty() && !portText.startsWith(QStringLiteral("--"));
     const QString base = state_->is_english_
         ? QStringLiteral("RD105 Laser Driver Board Temperature Controller")
@@ -1223,9 +1221,8 @@ void MainWindow::updateTemperatureControllerTitleText()
     {
         for (int index = 0; index < state_->temperature_port_combo_->count(); ++index)
         {
-            const QString candidate = state_->temperature_port_combo_->itemText(index).trimmed();
-            if (!candidate.isEmpty() && !candidate.startsWith(QStringLiteral("--")) &&
-                !availablePorts.contains(candidate))
+            const QString candidate = localSerialPortItemValue(state_->temperature_port_combo_, index);
+            if (!candidate.isEmpty() && !availablePorts.contains(candidate))
             {
                 availablePorts.append(candidate);
             }
@@ -1307,9 +1304,7 @@ void MainWindow::updateTemperatureTitleButtonsState()
     if (state_->temperature_remote_disconnect_btn_) state_->temperature_remote_disconnect_btn_->setEnabled(canDisconnect);
     if (state_->temperature_remote_reconnect_btn_) state_->temperature_remote_reconnect_btn_->setEnabled(canReconnect);
 
-    const QString portText = state_->temperature_port_combo_
-        ? state_->temperature_port_combo_->currentText().trimmed()
-        : QString();
+    const QString portText = localSerialPortComboValue(state_->temperature_port_combo_);
     const QString portDisplay = hasPort
         ? portText
         : (state_->is_english_ ? QStringLiteral("No serial port selected") : QStringLiteral("未选择串口"));
@@ -1381,7 +1376,7 @@ void MainWindow::connectLocalTemperatureController()
         return;
     }
 
-    const QString port = state_->temperature_port_combo_ ? state_->temperature_port_combo_->currentText().trimmed() : QString();
+    const QString port = localSerialPortComboValue(state_->temperature_port_combo_);
     const QString selectText = state_->is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("-- 选择 --");
     if (port.isEmpty() || port == selectText || port.startsWith(QStringLiteral("--")))
     {

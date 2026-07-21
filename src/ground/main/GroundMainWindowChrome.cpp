@@ -142,6 +142,7 @@ void MainWindow::setEnglish(bool english)
             : (english ? "Probe available serial ports and automatically assign detected devices."
                        : "扫描可用串口，并将识别出的设备自动填入对应端口。"));
     }
+    refreshLocalSerialPortManualOptionTexts();
     if (state_->log_inline_title_lbl_)
     {
         state_->log_inline_title_lbl_->setText(english ? "Log" : "日志");

@@ -19,6 +19,7 @@
 #include <QDialog>
 #include <QFontMetrics>
 #include <QFrame>
+#include <QFocusEvent>
 #include <QGroupBox>
 #include <QHoverEvent>
 #include <QIcon>
@@ -273,6 +274,62 @@ void requireComboPopupFloatingContainer(QComboBox *combo, const char *message)
     combo->hidePopup();
     require(processEventsUntil(1000, [view]() { return !view->isVisible(); }),
             "combo popup closes after the live container audit");
+}
+
+QString localSerialPortValue(QComboBox *combo)
+{
+    if (!combo)
+    {
+        return QString();
+    }
+    const QString data = combo->currentData().toString().trimmed();
+    if (!data.isEmpty() && data != QStringLiteral("__vv_manual_serial_port__"))
+    {
+        return data;
+    }
+    QString text = combo->currentText().trimmed();
+    if (text.startsWith(QStringLiteral("历史：")))
+    {
+        text = text.mid(QStringLiteral("历史：").size()).trimmed();
+    }
+    else if (text.startsWith(QStringLiteral("历史:")))
+    {
+        text = text.mid(QStringLiteral("历史:").size()).trimmed();
+    }
+    else if (text.startsWith(QStringLiteral("History:"), Qt::CaseInsensitive))
+    {
+        text = text.mid(QStringLiteral("History:").size()).trimmed();
+    }
+    if (text.startsWith(QStringLiteral("--")) ||
+        text == QStringLiteral("手动添加...") ||
+        text == QStringLiteral("Manual Add..."))
+    {
+        return QString();
+    }
+    return text;
+}
+
+bool localSerialPortDisplaysHistory(QComboBox *combo, const QString& expectedPort)
+{
+    if (!combo)
+    {
+        return false;
+    }
+    const QString text = combo->currentText().trimmed();
+    return (text == QStringLiteral("历史：%1").arg(expectedPort) ||
+            text == QStringLiteral("History: %1").arg(expectedPort)) &&
+           localSerialPortValue(combo) == expectedPort;
+}
+
+void requireLocalSerialPortComboReady(QComboBox *combo, const char *message)
+{
+    require(combo != nullptr, message);
+    require(!combo->isEditable(), message);
+    require(combo->findText(QStringLiteral("手动添加...")) >= 0 ||
+                combo->findText(QStringLiteral("Manual Add...")) >= 0,
+            message);
+    require(combo->findData(QStringLiteral("__vv_manual_serial_port__")) >= 0,
+            message);
 }
 
 void requireComboPopupsStyledIn(QWidget *scope, const char *message)
@@ -1789,6 +1846,19 @@ int main(int argc, char **argv)
                     rememberedHumidityBaud != nullptr &&
                     rememberedHumidityBaud->currentText() == QStringLiteral("38400"),
                 "humidity source restores the remembered SHT45 baud rate on startup");
+        auto *rememberedTemperaturePort =
+            rememberedModeWindow.findChild<QComboBox *>(QStringLiteral("temperaturePortCombo"));
+#ifdef Q_OS_WIN
+        const QString rememberedTemperaturePortText = QStringLiteral("COM9");
+#else
+        const QString rememberedTemperaturePortText = QStringLiteral("/dev/ttyRD105");
+#endif
+        require(rememberedTemperaturePort != nullptr &&
+                    localSerialPortValue(rememberedTemperaturePort) == rememberedTemperaturePortText,
+                "remembered RD105 serial port restores as the actual local port value");
+        require(rememberedTemperaturePort->currentText() == rememberedTemperaturePortText ||
+                    localSerialPortDisplaysHistory(rememberedTemperaturePort, rememberedTemperaturePortText),
+                "remembered RD105 serial port displays directly when detected or as a history option");
         rememberedModeWindow.close();
         require(processEventsUntil(1000, [&rememberedModeWindow]() {
                     return !rememberedModeWindow.isVisible();
@@ -2477,6 +2547,16 @@ int main(int argc, char **argv)
     auto *temperatureRateCombo = window.findChild<QComboBox *>(QStringLiteral("temperatureRateCombo"));
     require(temperaturePortCombo != nullptr && temperatureBaudCombo != nullptr && temperatureRateCombo != nullptr,
             "RD105 serial controls exist in device configuration");
+    const QList<QPair<QString, const char *>> homeLocalSerialCombos = {
+        {QStringLiteral("epsilonPortCombo"), "EPSILON local serial port combo uses select-plus-manual behavior"},
+        {QStringLiteral("pressurePortCombo"), "PTB local serial port combo uses select-plus-manual behavior"},
+        {QStringLiteral("humidityPortCombo"), "HMP local serial port combo uses select-plus-manual behavior"},
+        {QStringLiteral("lidarPortCombo"), "Lidar local serial port combo uses select-plus-manual behavior"},
+        {QStringLiteral("temperaturePortCombo"), "RD105 local serial port combo uses select-plus-manual behavior"}};
+    for (const auto& comboSpec : homeLocalSerialCombos)
+    {
+        requireLocalSerialPortComboReady(window.findChild<QComboBox *>(comboSpec.first), comboSpec.second);
+    }
     requireComboPopupStyled(temperaturePortCombo,
                             "temperature port combo uses the shared popup styling helper");
     requireComboPopupStyled(temperatureBaudCombo,
@@ -2484,11 +2564,11 @@ int main(int argc, char **argv)
     requireComboPopupStyled(temperatureRateCombo,
                             "temperature rate combo uses the shared popup styling helper");
 #ifdef Q_OS_WIN
-    require(temperaturePortCombo->currentText() == QStringLiteral("COM9"),
-            "RD105 local serial port defaults to COM9");
+    require(localSerialPortValue(temperaturePortCombo) == QStringLiteral("COM9"),
+            "RD105 local serial port defaults to COM9 as its actual port value");
 #else
-    require(temperaturePortCombo->currentText() == QStringLiteral("/dev/ttyRD105"),
-            "RD105 local serial port defaults to /dev/ttyRD105");
+    require(localSerialPortValue(temperaturePortCombo) == QStringLiteral("/dev/ttyRD105"),
+            "RD105 local serial port defaults to /dev/ttyRD105 as its actual port value");
 #endif
     require(temperatureBaudCombo->currentText() == QStringLiteral("38400"),
             "RD105 local serial baud defaults to protocol-supported 38400");
@@ -4853,7 +4933,8 @@ int main(int argc, char **argv)
     require(deviceSkyConfigButton != nullptr && deviceSkyConfigButton->width() <= 145,
             "device configuration sky-device button uses compact title-bar width");
 
-    QComboBox *devicePortCombo = nullptr;
+    QComboBox *devicePortCombo =
+        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceTemperaturePortCombo"));
     QComboBox *deviceRateCombo = nullptr;
     for (QComboBox *combo : deviceConfigPage->findChildren<QComboBox *>())
     {
@@ -4861,31 +4942,103 @@ int main(int argc, char **argv)
         {
             continue;
         }
-        if (combo->currentText() == QStringLiteral("COM9"))
-        {
-            devicePortCombo = combo;
-        }
-        else if (combo->currentText() == QStringLiteral("5"))
+        if (combo->currentText() == QStringLiteral("5"))
         {
             deviceRateCombo = combo;
         }
     }
     require(devicePortCombo != nullptr && devicePortCombo->width() <= 112,
             "device configuration serial combo is sized for COM999");
+    const QList<QPair<QString, const char *>> deviceLocalSerialCombos = {
+        {QStringLiteral("deviceEpsilonPortCombo"), "device EPSILON local serial combo uses select-plus-manual behavior"},
+        {QStringLiteral("devicePressurePortCombo"), "device PTB local serial combo uses select-plus-manual behavior"},
+        {QStringLiteral("deviceHumidityPortCombo"), "device HMP local serial combo uses select-plus-manual behavior"},
+        {QStringLiteral("deviceLidarPortCombo"), "device Lidar local serial combo uses select-plus-manual behavior"},
+        {QStringLiteral("deviceTemperaturePortCombo"), "device RD105 local serial combo uses select-plus-manual behavior"}};
+    for (const auto& comboSpec : deviceLocalSerialCombos)
+    {
+        requireLocalSerialPortComboReady(deviceConfigPage->findChild<QComboBox *>(comboSpec.first), comboSpec.second);
+    }
+    const int manualAddIndex = devicePortCombo->findText(QStringLiteral("手动添加..."));
+    require(manualAddIndex >= 0,
+            "device configuration local serial combo exposes the manual-add option");
     require(deviceRateCombo != nullptr && deviceRateCombo->width() <= 92,
             "device configuration rate combo is sized for 9999");
     require(devicePortCombo->isEnabled(),
             "device configuration serial combo is enabled in local mode");
-    const QString originalDevicePort = devicePortCombo->currentText();
-    devicePortCombo->setEditText(QStringLiteral("-- 选择 --"));
+    const QString originalDevicePort = localSerialPortValue(devicePortCombo);
+    devicePortCombo->setCurrentIndex(0);
     processEventsFor(20);
     require(!temperatureDeviceActionButton->isEnabled(),
             "device configuration disables the local action when its serial port is cleared");
-    devicePortCombo->setEditText(QStringLiteral("COM99"));
+    devicePortCombo->setCurrentIndex(manualAddIndex);
     processEventsFor(20);
+    require(devicePortCombo->isEditable() && devicePortCombo->lineEdit() != nullptr,
+            "device configuration local serial combo becomes editable only after manual-add is selected");
+    devicePortCombo->lineEdit()->setText(QStringLiteral("COM99"));
+    QKeyEvent acceptManualPort(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(devicePortCombo->lineEdit(), &acceptManualPort);
+    processEventsFor(20);
+    require(!devicePortCombo->isEditable() &&
+                localSerialPortValue(devicePortCombo) == QStringLiteral("COM99"),
+            "device configuration manual serial entry is accepted and returns to select-only mode");
     require(temperatureDeviceActionButton->isEnabled(),
             "device configuration immediately enables the local action after selecting a serial port");
-    devicePortCombo->setEditText(originalDevicePort);
+    int originalDevicePortIndex = devicePortCombo->findData(originalDevicePort);
+    if (originalDevicePortIndex < 0)
+    {
+        originalDevicePortIndex = devicePortCombo->findText(originalDevicePort);
+    }
+    devicePortCombo->setCurrentIndex(originalDevicePortIndex);
+    processEventsFor(20);
+    devicePortCombo->setCurrentIndex(devicePortCombo->findData(QStringLiteral("__vv_manual_serial_port__")));
+    QMetaObject::invokeMethod(
+        devicePortCombo,
+        "activated",
+        Qt::DirectConnection,
+        Q_ARG(int, devicePortCombo->currentIndex()));
+    processEventsFor(20);
+    devicePortCombo->lineEdit()->setText(QString());
+    QKeyEvent rejectEmptyManualPort(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(devicePortCombo->lineEdit(), &rejectEmptyManualPort);
+    processEventsFor(20);
+    require(!devicePortCombo->isEditable() &&
+                localSerialPortValue(devicePortCombo) == originalDevicePort,
+            "empty manual serial entry cancels and restores the previous local port");
+    devicePortCombo->setCurrentIndex(devicePortCombo->findData(QStringLiteral("__vv_manual_serial_port__")));
+    QMetaObject::invokeMethod(
+        devicePortCombo,
+        "activated",
+        Qt::DirectConnection,
+        Q_ARG(int, devicePortCombo->currentIndex()));
+    processEventsFor(20);
+    devicePortCombo->lineEdit()->setText(QStringLiteral("COM100"));
+    QKeyEvent escapeManualPort(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QApplication::sendEvent(devicePortCombo->lineEdit(), &escapeManualPort);
+    processEventsFor(20);
+    require(!devicePortCombo->isEditable() &&
+                localSerialPortValue(devicePortCombo) == originalDevicePort,
+            "Esc cancels manual serial entry and restores the previous local port");
+    devicePortCombo->setCurrentIndex(devicePortCombo->findData(QStringLiteral("__vv_manual_serial_port__")));
+    QMetaObject::invokeMethod(
+        devicePortCombo,
+        "activated",
+        Qt::DirectConnection,
+        Q_ARG(int, devicePortCombo->currentIndex()));
+    processEventsFor(20);
+    devicePortCombo->lineEdit()->setText(QStringLiteral("/dev/ttyUSB0"));
+    QFocusEvent manualFocusOut(QEvent::FocusOut, Qt::OtherFocusReason);
+    QApplication::sendEvent(devicePortCombo->lineEdit(), &manualFocusOut);
+    processEventsFor(60);
+    require(!devicePortCombo->isEditable() &&
+                localSerialPortValue(devicePortCombo) == QStringLiteral("/dev/ttyUSB0"),
+            "manual serial entry accepts Linux-style paths on focus loss");
+    originalDevicePortIndex = devicePortCombo->findData(originalDevicePort);
+    if (originalDevicePortIndex < 0)
+    {
+        originalDevicePortIndex = devicePortCombo->findText(originalDevicePort);
+    }
+    devicePortCombo->setCurrentIndex(originalDevicePortIndex);
     processEventsFor(20);
     auto *deviceTemperaturePortCombo =
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceTemperaturePortCombo"));
@@ -4901,31 +5054,17 @@ int main(int argc, char **argv)
                                        "device serial-port combo opens with the shared rounded shadow popup");
     requireComboPopupStyled(deviceTemperatureBaudCombo,
                             "device baud-rate combo uses the shared native popup style");
-    QComboBox *homePortCombo = nullptr;
-    for (QComboBox *combo : window.findChildren<QComboBox *>())
-    {
-        if (!combo->isEditable() ||
-            combo == devicePortCombo ||
-            deviceConfigPage->isAncestorOf(combo))
-        {
-            continue;
-        }
-        if (combo->currentText() == QStringLiteral("COM9"))
-        {
-            homePortCombo = combo;
-            break;
-        }
-    }
+    QComboBox *homePortCombo = temperaturePortCombo;
     require(homePortCombo != nullptr,
             "home serial combo matching the device configuration combo exists");
     if (homePortCombo->findText(expectedTemperaturePortText) < 0)
     {
-        homePortCombo->addItem(expectedTemperaturePortText);
+        homePortCombo->addItem(expectedTemperaturePortText, expectedTemperaturePortText);
     }
     const QString syntheticPort = QStringLiteral("COM123");
     if (homePortCombo->findText(syntheticPort) < 0)
     {
-        homePortCombo->addItem(syntheticPort);
+        homePortCombo->addItem(syntheticPort, syntheticPort);
     }
     homePortCombo->setCurrentIndex(homePortCombo->findText(syntheticPort));
     processEventsFor(50);
@@ -4937,9 +5076,9 @@ int main(int argc, char **argv)
     processEventsFor(50);
     activateLayouts(&window);
     require(devicePortCombo->currentIndex() == deviceSyntheticPortIndex &&
-                devicePortCombo->currentText() == syntheticPort,
+                localSerialPortValue(devicePortCombo) == syntheticPort,
             "device configuration serial combo can select an existing serial item");
-    require(homePortCombo->currentText() == syntheticPort,
+    require(localSerialPortValue(homePortCombo) == syntheticPort,
             "device configuration serial selection mirrors back to the home combo");
     require(temperatureTitlePortCombo->currentText() == syntheticPort,
             "temperature title serial selector follows the canonical RD105 port selection");
@@ -4974,8 +5113,8 @@ int main(int argc, char **argv)
     temperatureTitlePortCombo->setCurrentIndex(originalTitlePortIndex);
     processEventsFor(50);
     activateLayouts(&window);
-    require(homePortCombo->currentText() == expectedTemperaturePortText &&
-                deviceTemperaturePortCombo->currentText() == expectedTemperaturePortText,
+    require(localSerialPortValue(homePortCombo) == expectedTemperaturePortText &&
+                localSerialPortValue(deviceTemperaturePortCombo) == expectedTemperaturePortText,
             "temperature title serial selection writes back to home and device configuration controls");
     const int syntheticTitlePortIndex = temperatureTitlePortCombo->findText(syntheticPort);
     require(syntheticTitlePortIndex >= 0,
@@ -4983,8 +5122,8 @@ int main(int argc, char **argv)
     temperatureTitlePortCombo->setCurrentIndex(syntheticTitlePortIndex);
     processEventsFor(50);
     activateLayouts(&window);
-    require(homePortCombo->currentText() == syntheticPort &&
-                deviceTemperaturePortCombo->currentText() == syntheticPort,
+    require(localSerialPortValue(homePortCombo) == syntheticPort &&
+                localSerialPortValue(deviceTemperaturePortCombo) == syntheticPort,
             "temperature title serial selector can restore the refreshed RD105 port");
 
     QGroupBox *serialConfigCard = nullptr;

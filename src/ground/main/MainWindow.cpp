@@ -453,6 +453,11 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     }
 
     const QEvent::Type eventType = event->type();
+    if (handleLocalSerialPortManualEntryEvent(watched, event))
+    {
+        return true;
+    }
+
     if (eventType == QEvent::ApplicationActivate ||
         eventType == QEvent::WindowActivate ||
         eventType == QEvent::ActivationChange)

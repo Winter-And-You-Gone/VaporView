@@ -96,13 +96,15 @@ bool MainWindow::homeDevicePortSelected(VaporView::SkyDeviceId device) const
         return state_->tcp_wave_panel_ != nullptr;
     }
 
-    auto portSelected = [](const QComboBox *combo) {
+    auto portSelected = [this](const QComboBox *combo) {
         if (!combo)
         {
             return false;
         }
-        const QString text = combo->currentText().trimmed();
-        return !text.isEmpty() && !text.startsWith(QStringLiteral("--"));
+        const QString text = localSerialPortComboValue(combo);
+        return !combo->property(kLocalSerialPortManualEntryProperty).toBool() &&
+               !text.isEmpty() &&
+               !text.startsWith(QStringLiteral("--"));
     };
 
     switch (device)
@@ -510,19 +512,7 @@ void MainWindow::onRefreshPortsClicked()
         {
             return;
         }
-        QString current = combo->currentText();
-        combo->clear();
-        combo->addItem(state_->is_english_ ? "-- Select --" : "-- 选择 --");
-        combo->addItems(ports);
-        int idx = combo->findText(current);
-        if (idx >= 0)
-        {
-            combo->setCurrentIndex(idx);
-        }
-        else
-        {
-            combo->setEditText(current);
-        }
+        refreshLocalSerialPortComboOptions(combo, ports, localSerialPortComboValue(combo));
     };
 
     updateCombo(state_->epsilon_port_combo_);
@@ -565,11 +555,11 @@ void MainWindow::onAutoDetectPortsClicked()
     state_->cancel_connection_requested_.store(false);
     updateConnectionStatus(state_->is_connected_);
     log(state_->is_english_ ? "Starting automatic serial-port detection..." : "开始自动识别串口...");
-    const QString selectedEpsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
-    const QString selectedPtbPort = state_->ptb_port_combo_ ? state_->ptb_port_combo_->currentText().trimmed() : QString();
-    const QString selectedHmpPort = state_->hmp_port_combo_ ? state_->hmp_port_combo_->currentText().trimmed() : QString();
-    const QString selectedLidarPort = state_->lidar_port_combo_ ? state_->lidar_port_combo_->currentText().trimmed() : QString();
-    const QString selectedTemperaturePort = state_->temperature_port_combo_ ? state_->temperature_port_combo_->currentText().trimmed() : QString();
+    const QString selectedEpsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
+    const QString selectedPtbPort = localSerialPortComboValue(state_->ptb_port_combo_);
+    const QString selectedHmpPort = localSerialPortComboValue(state_->hmp_port_combo_);
+    const QString selectedLidarPort = localSerialPortComboValue(state_->lidar_port_combo_);
+    const QString selectedTemperaturePort = localSerialPortComboValue(state_->temperature_port_combo_);
     const QString selectedEpsilonBaud = state_->epsilon_baud_combo_ ? state_->epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
     const QString selectedPtbBaud = state_->ptb_baud_combo_ ? state_->ptb_baud_combo_->currentText().trimmed() : QStringLiteral("9600");
     const QString selectedHmpBaud = state_->hmp_baud_combo_ ? state_->hmp_baud_combo_->currentText().trimmed() : QStringLiteral("19200");
@@ -599,20 +589,12 @@ void MainWindow::onAutoDetectPortsClicked()
                 });
         QMetaObject::invokeMethod(this, [this, detections = outcome.detections]() {
             const QString selectText = state_->is_english_ ? "-- Select --" : "-- 选择 --";
-            auto applySelection = [&selectText](QComboBox *combo, const QString& value) {
+            auto applySelection = [this, &selectText](QComboBox *combo, const QString& value) {
                 if (!combo)
                 {
                     return;
                 }
-                const int index = combo->findText(value);
-                if (index >= 0)
-                {
-                    combo->setCurrentIndex(index);
-                }
-                else if (!value.isEmpty() && value != selectText)
-                {
-                    combo->setEditText(value);
-                }
+                setLocalSerialPortComboText(combo, value == selectText ? QString() : value);
             };
             auto normalizePort = [&selectText](const QString& value) {
                 return (value.isEmpty() || value == selectText) ? selectText : value;
@@ -751,11 +733,11 @@ void MainWindow::onConnectClicked()
 
     const bool english = state_->is_english_;
     const QString selectText = english ? "-- Select --" : "-- 选择 --";
-    const QString epsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
-    const QString ptbPort = state_->ptb_port_combo_->currentText();
-    const QString hmpPort = state_->hmp_port_combo_->currentText();
-    const QString lidarPort = state_->lidar_port_combo_->currentText();
-    const QString temperaturePort = state_->temperature_port_combo_ ? state_->temperature_port_combo_->currentText() : QString();
+    const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
+    const QString ptbPort = localSerialPortComboValue(state_->ptb_port_combo_);
+    const QString hmpPort = localSerialPortComboValue(state_->hmp_port_combo_);
+    const QString lidarPort = localSerialPortComboValue(state_->lidar_port_combo_);
+    const QString temperaturePort = localSerialPortComboValue(state_->temperature_port_combo_);
     const QString epsilonBaudText = state_->epsilon_baud_combo_ ? state_->epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
     const QString ptbBaudText = state_->ptb_baud_combo_->currentText();
     const QString hmpBaudText = state_->hmp_baud_combo_->currentText();

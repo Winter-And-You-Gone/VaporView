@@ -65,7 +65,7 @@ void MainWindow::applyEpsilonMainAntennaLeverArm(
         return;
     }
 
-    const QString epsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
+    const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
     if (epsilonPort.isEmpty() || epsilonPort.startsWith(QStringLiteral("--")))
     {
         fail(state_->is_english_
@@ -161,7 +161,7 @@ void MainWindow::syncRtkConfigPageState()
         applyEpsilonMainAntennaLeverArm(x, y, z, std::move(completion));
     });
     {
-        const QString epsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
+        const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
         const QString epsilonBaud = state_->epsilon_baud_combo_ ? state_->epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
         state_->rtk_config_dialog_->setEpsilonMainPortAndBaud(epsilonPort, epsilonBaud);
     }
@@ -208,7 +208,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     }
 
     const QString selectText = state_->is_english_ ? "-- Select --" : "-- 选择 --";
-    const QString epsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
+    const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
     if (epsilonPort.isEmpty() || epsilonPort == selectText)
     {
         log(state_->is_english_ ? "Select the EPSILON main serial port first."
@@ -625,7 +625,7 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     }
 
     const QString selectText = state_->is_english_ ? "-- Select --" : "-- 选择 --";
-    const QString epsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
+    const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
     if (!state_->recording_service_->isActive() &&
         !epsilonPort.isEmpty() &&
         epsilonPort != selectText &&
@@ -660,7 +660,7 @@ void MainWindow::onReconfigureEpsilonClicked()
     }
 
     const QString selectText = state_->is_english_ ? "-- Select --" : "-- 选择 --";
-    const QString epsilonPort = state_->epsilon_port_combo_ ? state_->epsilon_port_combo_->currentText().trimmed() : QString();
+    const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
     if (epsilonPort.isEmpty() || epsilonPort == selectText)
     {
         log(state_->is_english_ ? "Select an EPSILON serial port first." : "请先选择 EPSILON 串口。");
