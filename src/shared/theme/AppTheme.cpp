@@ -548,7 +548,7 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::PrimarySubtlePressed:
         return hexColor(dark ? "#5A3024" : kLightPrimarySubtlePressed);
     case AppThemeColor::Focus:
-        return hexColor(kBrandBlue);
+        return hexColor(dark ? kBrandOrange : kBrandBlue);
     case AppThemeColor::Link:
         return hexColor(kBrandBlue);
     case AppThemeColor::TooltipBackground:

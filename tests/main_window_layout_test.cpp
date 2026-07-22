@@ -808,6 +808,29 @@ void requireComboArrowUsesDarkIdleAndPrimaryHighlight(const char *message)
             "dark theme combo highlight stays in the right arrow slot");
 }
 
+void requireComboDarkFocusBorderUsesPrimary(const char *message)
+{
+    QComboBox combo;
+    combo.addItem(QStringLiteral("19200"));
+    combo.resize(120, 36);
+    combo.show();
+    combo.clearFocus();
+    processEventsFor(80);
+
+    combo.setFocus(Qt::TabFocusReason);
+    processEventsFor(80);
+    require(combo.hasFocus(), message);
+
+    const QImage focusedImage = combo.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    const int borderBandHeight = qMax(1, qRound(2.0 * focusedImage.devicePixelRatio()));
+    const QRect topBorderBand(0, 0, focusedImage.width(), borderBandHeight);
+    require(countPixelsNearColor(
+                focusedImage,
+                topBorderBand,
+                VaporView::appThemeColor(VaporView::AppThemeColor::Primary, true)) >= 1,
+            message);
+}
+
 void hoverWidget(QWidget *widget, bool hovered, int waitMs = 50)
 {
     require(widget != nullptr, "hover widget exists");
@@ -2931,6 +2954,9 @@ int main(int argc, char **argv)
     }
     require(qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
             "main window is in dark theme for overview style checks");
+    require(VaporView::appThemeColor(VaporView::AppThemeColor::Focus, true) ==
+                VaporView::appThemeColor(VaporView::AppThemeColor::Primary, true),
+            "dark theme focus token uses the orange primary color");
     const QString darkOverviewStyleSheet = qApp->styleSheet();
     require(darkOverviewStyleSheet.contains(QStringLiteral("chevron-up-dark.svg")) &&
                 darkOverviewStyleSheet.contains(QStringLiteral("chevron-down-dark.svg")) &&
@@ -2957,6 +2983,8 @@ int main(int argc, char **argv)
                                      "dark theme spin arrow hover renders the primary lucide icon");
     requireComboArrowUsesDarkIdleAndPrimaryHighlight(
         "dark theme combo arrow renders white at idle and orange when highlighted");
+    requireComboDarkFocusBorderUsesPrimary(
+        "dark theme combo focus border renders with the orange primary color");
     requireMenuPopupStyleUnified(darkOverviewStyleSheet,
                                  true,
                                  "dark popup menus use the shared menu hover and rounded panel style");
