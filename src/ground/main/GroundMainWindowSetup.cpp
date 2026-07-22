@@ -35,8 +35,7 @@ public:
         const bool isHistory = index.data(
             VaporView::Ground::MainSupport::kLocalSerialPortHistoryItemRole).toBool();
         const bool dark = VaporView::isDarkThemeEnabled();
-        const bool highlighted = option.state.testFlag(QStyle::State_Selected) ||
-                                 option.state.testFlag(QStyle::State_MouseOver);
+        const bool highlighted = option.state.testFlag(QStyle::State_MouseOver);
         if (highlighted)
         {
             painter->fillRect(
