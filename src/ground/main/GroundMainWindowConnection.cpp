@@ -520,6 +520,7 @@ void MainWindow::onRefreshPortsClicked()
     updateCombo(state_->hmp_port_combo_);
     updateCombo(state_->lidar_port_combo_);
     updateCombo(state_->temperature_port_combo_);
+    updateCombo(state_->sky_telemetry_port_combo_);
     syncDeviceConfigPageFromHome();
     updateTemperatureControllerTitleText();
     updateTemperatureTitleButtonsState();

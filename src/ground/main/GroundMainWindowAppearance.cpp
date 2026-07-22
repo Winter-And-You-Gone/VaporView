@@ -1451,7 +1451,7 @@ void MainWindow::loadRememberedInputState()
     const int portIndex = args.indexOf(QStringLiteral("--telemetry-port"));
     if (portIndex >= 0 && portIndex + 1 < args.size() && state_->sky_telemetry_port_combo_)
     {
-        state_->sky_telemetry_port_combo_->setEditText(args.at(portIndex + 1));
+        setLocalSerialPortComboText(state_->sky_telemetry_port_combo_, args.at(portIndex + 1));
     }
     const int baudIndex = args.indexOf(QStringLiteral("--telemetry-baud"));
     if (baudIndex >= 0 && baudIndex + 1 < args.size() && state_->sky_telemetry_baud_combo_)

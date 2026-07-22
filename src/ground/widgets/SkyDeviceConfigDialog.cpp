@@ -18,6 +18,7 @@
 #include <QIcon>
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QKeyEvent>
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
@@ -55,6 +56,10 @@ constexpr int kDialogPreferredWidth = 980;
 constexpr int kDialogMinimumWidth = 640;
 constexpr int kDialogMinimumHeight = 420;
 constexpr const char *kModeSwitchCurrentIndexProperty = "currentIndex";
+constexpr const char *kSerialPortComboHandlerProperty = "_vv_sky_serial_manual_handler";
+constexpr const char *kSerialPortManualEntryProperty = "_vv_sky_serial_manual_entry";
+constexpr const char *kSerialPortPreviousValueProperty = "_vv_sky_serial_previous_value";
+constexpr const char *kSerialPortManualOptionData = "__vv_manual_serial_port__";
 QLabel *addLabeledRow(QFormLayout *layout, const QString& text, QWidget *widget)
 {
     auto *label = new QLabel(text);
@@ -156,19 +161,6 @@ void polishConfigField(QWidget *widget)
     widget->setMaximumWidth(width);
     widget->setMinimumHeight(kFieldHeight);
     widget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-}
-
-void applyComboText(QComboBox *combo, const QString& value)
-{
-    const int index = combo->findText(value);
-    if (index >= 0)
-    {
-        combo->setCurrentIndex(index);
-    }
-    else
-    {
-        combo->setCurrentText(value);
-    }
 }
 
 void setupFormLayout(QFormLayout *layout)
@@ -529,6 +521,7 @@ void SkyDeviceConfigDialog::setEnglish(bool english)
 {
     is_english_ = english;
     updateTexts();
+    refreshSerialPortOptionTexts();
 }
 
 void SkyDeviceConfigDialog::setFontScale(int percent)
@@ -640,6 +633,43 @@ void SkyDeviceConfigDialog::onApplyResultReceived(const QJsonObject& result)
     {
         raw_status_label_->setToolTip(QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Indented)));
     }
+}
+
+bool SkyDeviceConfigDialog::eventFilter(QObject *watched, QEvent *event)
+{
+    auto *edit = qobject_cast<QLineEdit *>(watched);
+    if (!edit || !edit->property(kSerialPortManualEntryProperty).toBool())
+    {
+        return QDialog::eventFilter(watched, event);
+    }
+
+    auto *combo = qobject_cast<QComboBox *>(edit->parentWidget());
+    if (!combo || !combo->property(kSerialPortManualEntryProperty).toBool())
+    {
+        return QDialog::eventFilter(watched, event);
+    }
+
+    if (event->type() == QEvent::KeyPress)
+    {
+        auto *keyEvent = static_cast<QKeyEvent *>(event);
+        if (keyEvent->key() == Qt::Key_Return || keyEvent->key() == Qt::Key_Enter)
+        {
+            finishManualSerialPortEntry(combo, true);
+            return true;
+        }
+        if (keyEvent->key() == Qt::Key_Escape)
+        {
+            finishManualSerialPortEntry(combo, false);
+            return true;
+        }
+    }
+    else if (event->type() == QEvent::FocusOut)
+    {
+        QTimer::singleShot(0, this, [this, combo]() {
+            finishManualSerialPortEntry(combo, true);
+        });
+    }
+    return QDialog::eventFilter(watched, event);
 }
 
 void SkyDeviceConfigDialog::changeEvent(QEvent *event)
@@ -826,9 +856,8 @@ SkyDeviceConfigDialog::SerialRow SkyDeviceConfigDialog::createSerialRow(const QS
 void SkyDeviceConfigDialog::createSerialFields(QFormLayout *layout, SerialRow& row)
 {
     row.port = new QComboBox(this);
-    row.port->setEditable(true);
-    row.port->setInsertPolicy(QComboBox::NoInsert);
     VaporView::configureComboBoxPopup(row.port, VaporView::isDarkThemeEnabled());
+    refreshSerialPortComboOptions(row.port, QStringList());
     row.baud = new QSpinBox(this);
     row.baud->setRange(1200, 4000000);
     row.frequency = new QDoubleSpinBox(this);
@@ -851,7 +880,7 @@ void SkyDeviceConfigDialog::setConfig(const SkyConfig& config)
     setSerialRow(lidar_, config.lidar);
     temperature_controller_.enabled->setChecked(config.temperature_controller.enabled);
     updateEnableButton(temperature_controller_.enabled);
-    applyComboText(temperature_controller_.port, config.temperature_controller.port);
+    setSerialPortComboValue(temperature_controller_.port, config.temperature_controller.port);
     temperature_controller_.baud->setValue(config.temperature_controller.baud_rate);
     temperature_controller_.frequency->setValue(config.temperature_controller.frequency_hz);
     temperature_controller_slave_address_->setValue(config.temperature_controller.slave_address);
@@ -897,7 +926,7 @@ void SkyDeviceConfigDialog::setSerialRow(const SerialRow& row, const SerialDevic
 {
     row.enabled->setChecked(config.enabled);
     updateEnableButton(row.enabled);
-    applyComboText(row.port, config.port);
+    setSerialPortComboValue(row.port, config.port);
     row.baud->setValue(config.baud_rate);
     row.frequency->setValue(config.frequency_hz);
 }
@@ -906,7 +935,7 @@ SerialDeviceConfig SkyDeviceConfigDialog::serialConfigFromRow(const SerialRow& r
 {
     SerialDeviceConfig config;
     config.enabled = row.enabled->isChecked();
-    config.port = row.port->currentText().trimmed();
+    config.port = serialPortComboValue(row.port);
     config.baud_rate = row.baud->value();
     config.frequency_hz = row.frequency->value();
     return config;
@@ -976,24 +1005,232 @@ void SkyDeviceConfigDialog::refreshSerialPortOptions()
     ports.removeDuplicates();
     ports.sort(Qt::CaseInsensitive);
 
-    auto refreshCombo = [&ports](QComboBox *combo) {
-        if (!combo)
+    for (QComboBox *combo : {epsilon_.port,
+                             ptb_.port,
+                             hmp_.port,
+                             lidar_.port,
+                             temperature_controller_.port})
+    {
+        refreshSerialPortComboOptions(combo, ports, serialPortComboValue(combo));
+    }
+}
+
+void SkyDeviceConfigDialog::installSerialPortComboBehavior(QComboBox *combo)
+{
+    if (!combo)
+    {
+        return;
+    }
+
+    combo->setInsertPolicy(QComboBox::NoInsert);
+    combo->setEditable(false);
+    if (combo->property(kSerialPortComboHandlerProperty).toBool())
+    {
+        return;
+    }
+
+    combo->setProperty(kSerialPortComboHandlerProperty, true);
+    const auto beginManualEntryIfSelected = [this, combo](int index) {
+        if (isManualSerialPortOption(combo, index))
         {
+            beginManualSerialPortEntry(combo);
             return;
         }
-        const QString current = combo->currentText();
-        combo->blockSignals(true);
-        combo->clear();
-        combo->addItems(ports);
-        combo->setCurrentText(current);
-        combo->blockSignals(false);
+        combo->setProperty(kSerialPortPreviousValueProperty, serialPortComboValue(combo));
     };
+    connect(combo,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this,
+            beginManualEntryIfSelected);
+    connect(combo,
+            QOverload<int>::of(&QComboBox::activated),
+            this,
+            beginManualEntryIfSelected);
+}
 
-    refreshCombo(epsilon_.port);
-    refreshCombo(ptb_.port);
-    refreshCombo(hmp_.port);
-    refreshCombo(lidar_.port);
-    refreshCombo(temperature_controller_.port);
+void SkyDeviceConfigDialog::refreshSerialPortComboOptions(QComboBox *combo,
+                                                           const QStringList& ports,
+                                                           const QString& preferredText)
+{
+    if (!combo)
+    {
+        return;
+    }
+    if (combo->property(kSerialPortManualEntryProperty).toBool())
+    {
+        finishManualSerialPortEntry(combo, true);
+    }
+
+    QString selectedValue = preferredText.trimmed();
+    if (selectedValue.isEmpty())
+    {
+        selectedValue = serialPortComboValue(combo);
+    }
+    if (selectedValue.startsWith(QStringLiteral("--")) ||
+        selectedValue == QStringLiteral("手动添加...") ||
+        selectedValue == QStringLiteral("Manual Add..."))
+    {
+        selectedValue.clear();
+    }
+
+    installSerialPortComboBehavior(combo);
+    const QSignalBlocker blocker(combo);
+    combo->clear();
+    combo->addItem(is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("-- 选择 --"));
+    for (const QString& port : ports)
+    {
+        const QString trimmed = port.trimmed();
+        if (!trimmed.isEmpty() && combo->findData(trimmed) < 0)
+        {
+            combo->addItem(trimmed, trimmed);
+        }
+    }
+    if (!selectedValue.isEmpty() && combo->findData(selectedValue) < 0)
+    {
+        combo->addItem(selectedValue, selectedValue);
+    }
+    combo->addItem(serialPortManualOptionText(), QString::fromLatin1(kSerialPortManualOptionData));
+
+    const int selectedIndex = selectedValue.isEmpty() ? 0 : combo->findData(selectedValue);
+    combo->setCurrentIndex(selectedIndex >= 0 ? selectedIndex : 0);
+    combo->setProperty(kSerialPortPreviousValueProperty, selectedValue);
+}
+
+void SkyDeviceConfigDialog::setSerialPortComboValue(QComboBox *combo, const QString& value)
+{
+    if (!combo)
+    {
+        return;
+    }
+
+    installSerialPortComboBehavior(combo);
+    QString normalized = value.trimmed();
+    if (normalized.startsWith(QStringLiteral("--")) ||
+        normalized == QStringLiteral("手动添加...") ||
+        normalized == QStringLiteral("Manual Add..."))
+    {
+        normalized.clear();
+    }
+
+    const QSignalBlocker blocker(combo);
+    int index = normalized.isEmpty() ? 0 : combo->findData(normalized);
+    if (index < 0 && !normalized.isEmpty())
+    {
+        const int manualIndex = combo->findData(QString::fromLatin1(kSerialPortManualOptionData));
+        const int insertIndex = manualIndex >= 0 ? manualIndex : combo->count();
+        combo->insertItem(insertIndex, normalized, normalized);
+        index = combo->findData(normalized);
+    }
+    combo->setCurrentIndex(index >= 0 ? index : 0);
+    combo->setProperty(kSerialPortPreviousValueProperty, normalized);
+}
+
+QString SkyDeviceConfigDialog::serialPortComboValue(const QComboBox *combo) const
+{
+    if (!combo || combo->property(kSerialPortManualEntryProperty).toBool())
+    {
+        return QString();
+    }
+
+    const QString value = combo->currentData().toString().trimmed();
+    if (value.isEmpty() || value == QString::fromLatin1(kSerialPortManualOptionData))
+    {
+        return QString();
+    }
+    return value;
+}
+
+QString SkyDeviceConfigDialog::serialPortManualOptionText() const
+{
+    return is_english_ ? QStringLiteral("Manual Add...") : QStringLiteral("手动添加...");
+}
+
+void SkyDeviceConfigDialog::beginManualSerialPortEntry(QComboBox *combo)
+{
+    if (!combo || combo->property(kSerialPortManualEntryProperty).toBool())
+    {
+        return;
+    }
+
+    combo->setProperty(kSerialPortManualEntryProperty, true);
+    combo->setEditable(true);
+    combo->setInsertPolicy(QComboBox::NoInsert);
+    if (QLineEdit *edit = combo->lineEdit())
+    {
+        edit->setProperty(kSerialPortManualEntryProperty, true);
+        edit->setPlaceholderText(is_english_
+                                     ? QStringLiteral("Enter serial port...")
+                                     : QStringLiteral("输入串口名..."));
+        edit->installEventFilter(this);
+        edit->clear();
+        edit->setFocus(Qt::OtherFocusReason);
+    }
+}
+
+void SkyDeviceConfigDialog::finishManualSerialPortEntry(QComboBox *combo, bool accept)
+{
+    if (!combo || !combo->property(kSerialPortManualEntryProperty).toBool())
+    {
+        return;
+    }
+
+    const QString previousValue = combo->property(kSerialPortPreviousValueProperty).toString();
+    QLineEdit *edit = combo->lineEdit();
+    const QString enteredValue = edit ? edit->text().trimmed() : QString();
+    if (edit)
+    {
+        edit->setProperty(kSerialPortManualEntryProperty, false);
+        edit->removeEventFilter(this);
+    }
+    combo->setProperty(kSerialPortManualEntryProperty, false);
+    combo->setEditable(false);
+
+    const bool valid = accept &&
+                       !enteredValue.isEmpty() &&
+                       !enteredValue.startsWith(QStringLiteral("--")) &&
+                       enteredValue != QStringLiteral("手动添加...") &&
+                       enteredValue != QStringLiteral("Manual Add...");
+    setSerialPortComboValue(combo, valid ? enteredValue : previousValue);
+    updateConfigPreview();
+}
+
+bool SkyDeviceConfigDialog::isManualSerialPortOption(const QComboBox *combo, int index) const
+{
+    return combo &&
+           index >= 0 &&
+           index < combo->count() &&
+           combo->itemData(index).toString() == QString::fromLatin1(kSerialPortManualOptionData);
+}
+
+void SkyDeviceConfigDialog::refreshSerialPortOptionTexts()
+{
+    for (QComboBox *combo : {epsilon_.port,
+                             ptb_.port,
+                             hmp_.port,
+                             lidar_.port,
+                             temperature_controller_.port})
+    {
+        if (!combo)
+        {
+            continue;
+        }
+        const QSignalBlocker blocker(combo);
+        if (combo->count() > 0 && combo->itemData(0).toString().isEmpty())
+        {
+            combo->setItemText(0, is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("-- 选择 --"));
+        }
+        const int manualIndex = combo->findData(QString::fromLatin1(kSerialPortManualOptionData));
+        if (manualIndex >= 0)
+        {
+            combo->setItemText(manualIndex, serialPortManualOptionText());
+        }
+        if (combo->property(kSerialPortManualEntryProperty).toBool() && combo->lineEdit())
+        {
+            combo->lineEdit()->setPlaceholderText(is_english_
+                                                      ? QStringLiteral("Enter serial port...")
+                                                      : QStringLiteral("输入串口名..."));
+        }
+    }
 }
 
 void SkyDeviceConfigDialog::updateEnableButton(QPushButton *button)

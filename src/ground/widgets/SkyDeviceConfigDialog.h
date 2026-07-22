@@ -15,6 +15,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QStringList>
 
 class QEvent;
 class QStackedWidget;
@@ -43,6 +44,7 @@ private slots:
     void onApplyResultReceived(const QJsonObject& result);
 
 protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
     void changeEvent(QEvent *event) override;
 
 private:
@@ -73,6 +75,17 @@ private:
     SerialDeviceConfig serialConfigFromRow(const SerialRow& row) const;
     void updateTexts();
     void refreshSerialPortOptions();
+    void installSerialPortComboBehavior(QComboBox *combo);
+    void refreshSerialPortComboOptions(QComboBox *combo,
+                                       const QStringList& ports,
+                                       const QString& preferredText = QString());
+    void setSerialPortComboValue(QComboBox *combo, const QString& value);
+    QString serialPortComboValue(const QComboBox *combo) const;
+    QString serialPortManualOptionText() const;
+    void beginManualSerialPortEntry(QComboBox *combo);
+    void finishManualSerialPortEntry(QComboBox *combo, bool accept);
+    bool isManualSerialPortOption(const QComboBox *combo, int index) const;
+    void refreshSerialPortOptionTexts();
     void updateEnableButton(QPushButton *button);
     void updateConfigPreview();
     bool setConfigMode(ConfigMode mode);

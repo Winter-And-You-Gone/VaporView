@@ -1601,7 +1601,8 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.sky_telemetry_port_lbl = new QLabel(skyTelemetryRow);
     state_->device_config_.sky_telemetry_port_lbl->setObjectName(QStringLiteral("fieldLabel"));
     state_->device_config_.sky_telemetry_port_combo = new QComboBox(skyTelemetryRow);
-    state_->device_config_.sky_telemetry_port_combo->setEditable(true);
+    state_->device_config_.sky_telemetry_port_combo->setObjectName(QStringLiteral("deviceSkyTelemetryPortCombo"));
+    installLocalSerialPortComboBehavior(state_->device_config_.sky_telemetry_port_combo);
     state_->device_config_.sky_telemetry_port_combo->setFixedHeight(kMainPageInputHeight);
     state_->device_config_.sky_telemetry_port_combo->setFixedWidth(108);
 
@@ -2856,7 +2857,9 @@ void MainWindow::refreshLocalSerialPortManualOptionTexts()
                              state_->device_config_.ptb_port_combo,
                              state_->device_config_.hmp_port_combo,
                              state_->device_config_.lidar_port_combo,
-                             state_->device_config_.temperature_port_combo})
+                             state_->device_config_.temperature_port_combo,
+                             state_->sky_telemetry_port_combo_,
+                             state_->device_config_.sky_telemetry_port_combo})
     {
         if (!combo || !combo->property(kLocalSerialPortComboProperty).toBool())
         {
@@ -3074,15 +3077,15 @@ void MainWindow::setupConfigPanel()
     state_->sky_telemetry_port_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
     state_->sky_telemetry_port_lbl_->setObjectName("fieldLabel");
     state_->sky_telemetry_port_combo_ = new QComboBox(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_port_combo_->addItems(ports);
-    state_->sky_telemetry_port_combo_->setEditable(true);
+    state_->sky_telemetry_port_combo_->setObjectName(QStringLiteral("skyTelemetryPortCombo"));
     state_->sky_telemetry_port_combo_->setFixedHeight(kMainPageInputHeight);
     state_->sky_telemetry_port_combo_->setMinimumWidth(160);
 #ifdef _WIN32
-    state_->sky_telemetry_port_combo_->setEditText(QStringLiteral("COM11"));
+    refreshLocalSerialPortComboOptions(state_->sky_telemetry_port_combo_, ports, QStringLiteral("COM11"));
 #else
-    state_->sky_telemetry_port_combo_->setEditText(QStringLiteral("/tmp/vapor_ground"));
+    refreshLocalSerialPortComboOptions(state_->sky_telemetry_port_combo_, ports, QStringLiteral("/tmp/vapor_ground"));
 #endif
+    configureComboPopup(state_->sky_telemetry_port_combo_);
     state_->sky_telemetry_baud_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
     state_->sky_telemetry_baud_lbl_->setObjectName("fieldLabel");
     state_->sky_telemetry_baud_combo_ = new QComboBox(state_->sky_telemetry_row_widget_);

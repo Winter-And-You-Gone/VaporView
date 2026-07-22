@@ -1469,7 +1469,7 @@ SkyTelemetryRowWidgets findSkyTelemetryRowWidgets(QWidget *scope)
         {
             continue;
         }
-        if (combo->isEditable())
+        if (combo->findData(QStringLiteral("__vv_manual_serial_port__")) >= 0)
         {
             widgets.serialPortCombo = combo;
         }
@@ -5095,6 +5095,7 @@ int main(int argc, char **argv)
     require(devicePortCombo != nullptr && devicePortCombo->width() <= 112,
             "device configuration serial combo is sized for COM999");
     const QList<QPair<QString, const char *>> deviceLocalSerialCombos = {
+        {QStringLiteral("deviceSkyTelemetryPortCombo"), "device sky telemetry serial combo uses select-plus-manual behavior"},
         {QStringLiteral("deviceEpsilonPortCombo"), "device EPSILON local serial combo uses select-plus-manual behavior"},
         {QStringLiteral("devicePressurePortCombo"), "device PTB local serial combo uses select-plus-manual behavior"},
         {QStringLiteral("deviceHumidityPortCombo"), "device HMP local serial combo uses select-plus-manual behavior"},
@@ -5104,6 +5105,9 @@ int main(int argc, char **argv)
     {
         requireLocalSerialPortComboReady(deviceConfigPage->findChild<QComboBox *>(comboSpec.first), comboSpec.second);
     }
+    requireLocalSerialPortComboReady(
+        window.findChild<QComboBox *>(QStringLiteral("skyTelemetryPortCombo")),
+        "home sky telemetry serial combo uses select-plus-manual behavior");
     const int manualAddIndex = devicePortCombo->findText(QStringLiteral("手动添加..."));
     require(manualAddIndex >= 0,
             "device configuration local serial combo exposes the manual-add option");

@@ -252,15 +252,9 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     formLayout->addRow(state_->is_english_ ? "Device RTCM Port:" : "设备 RTCM 串口：", deviceRtcmPortValue);
 
     auto *forwardPortCombo = new QComboBox(&dialog);
-    forwardPortCombo->setEditable(true);
-    forwardPortCombo->addItem(selectText);
-    forwardPortCombo->addItems(availablePorts);
-    configureComboPopup(forwardPortCombo);
     const QString savedForwardPort = settings.value("epsilon_rtcm_forward_port").toString().trimmed();
-    if (!savedForwardPort.isEmpty())
-    {
-        forwardPortCombo->setCurrentText(savedForwardPort);
-    }
+    refreshLocalSerialPortComboOptions(forwardPortCombo, availablePorts, savedForwardPort);
+    configureComboPopup(forwardPortCombo);
     formLayout->addRow(state_->is_english_ ? "PC RTCM Forward Port:" : "本机 RTCM 转发串口：", forwardPortCombo);
 
     auto *forwardBaudCombo = new QComboBox(&dialog);
@@ -289,8 +283,8 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         return;
     }
 
-    const QString forwardPort = forwardPortCombo->currentText().trimmed();
-    if (forwardPort.isEmpty() || forwardPort == selectText)
+    const QString forwardPort = localSerialPortComboValue(forwardPortCombo);
+    if (forwardPort.isEmpty())
     {
         log(state_->is_english_ ? "Select the PC serial port that is wired to EPSILON port 2."
                         : "请选择连接到 EPSILON 第二串口的本机串口。");

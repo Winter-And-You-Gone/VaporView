@@ -1,11 +1,16 @@
 #include "ground/widgets/SkyDeviceConfigDialog.h"
+#include "ground/widgets/VisualTextLabel.h"
 #include "ground/widgets/WindowSizing.h"
 
 #include <QApplication>
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QFocusEvent>
 #include <QGroupBox>
+#include <QKeyEvent>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QStackedWidget>
@@ -194,7 +199,11 @@ int main(int argc, char **argv)
         auto *titleLabel = group->findChild<QLabel *>(QStringLiteral("skyConfigGroupTitleLabel"));
         if (titleLabel)
         {
-            require(titleLabel->textInteractionFlags().testFlag(Qt::TextSelectableByMouse) &&
+            const bool usesCustomMouseSelection =
+                dynamic_cast<VaporView::VisualTextLabel *>(titleLabel) != nullptr &&
+                titleLabel->cursor().shape() == Qt::IBeamCursor;
+            require((titleLabel->textInteractionFlags().testFlag(Qt::TextSelectableByMouse) ||
+                        usesCustomMouseSelection) &&
                         titleLabel->textInteractionFlags().testFlag(Qt::TextSelectableByKeyboard),
                     "sky-device card title is selectable and copyable");
         }
@@ -255,6 +264,70 @@ int main(int argc, char **argv)
             "telemetry right column rows are vertical");
     require(featureRateLabel->x() > basicRateLabel->x(),
             "telemetry right column is beside left column");
+
+    const QList<QComboBox*> serialPortCombos = dialog.findChildren<QComboBox *>();
+    require(serialPortCombos.size() == 5, "five sky-device serial port combos exist");
+    for (QComboBox *combo : serialPortCombos)
+    {
+        require(!combo->isEditable(), "sky-device serial port combo is select-only by default");
+        require(combo->findText(QStringLiteral("手动添加...")) >= 0,
+                "sky-device serial port combo exposes manual add");
+        require(combo->findData(QStringLiteral("__vv_manual_serial_port__")) >= 0,
+                "sky-device serial port combo marks the manual option");
+    }
+
+    QComboBox *manualPortCombo = serialPortCombos.front();
+    const QString originalPort = manualPortCombo->currentData().toString();
+    require(!originalPort.isEmpty(), "sky-device serial port combo preserves its configured port");
+    const int manualPortIndex = manualPortCombo->findData(QStringLiteral("__vv_manual_serial_port__"));
+    manualPortCombo->setCurrentIndex(manualPortIndex);
+    processEventsFor(20);
+    require(manualPortCombo->isEditable() && manualPortCombo->lineEdit(),
+            "manual add temporarily enables sky-device serial input");
+    require(manualPortCombo->lineEdit()->placeholderText() == QStringLiteral("输入串口名..."),
+            "manual sky-device serial input has a clear placeholder");
+    manualPortCombo->lineEdit()->setText(QStringLiteral("COM77"));
+    QKeyEvent acceptManualPort(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(manualPortCombo->lineEdit(), &acceptManualPort);
+    processEventsFor(20);
+    require(!manualPortCombo->isEditable() &&
+                manualPortCombo->currentData().toString() == QStringLiteral("COM77"),
+            "Enter accepts a sky-device manual serial port and restores select-only mode");
+
+    manualPortCombo->setCurrentIndex(manualPortCombo->findData(QStringLiteral("__vv_manual_serial_port__")));
+    processEventsFor(20);
+    manualPortCombo->lineEdit()->clear();
+    QKeyEvent rejectEmptyManualPort(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(manualPortCombo->lineEdit(), &rejectEmptyManualPort);
+    processEventsFor(20);
+    require(!manualPortCombo->isEditable() &&
+                manualPortCombo->currentData().toString() == QStringLiteral("COM77"),
+            "empty sky-device manual serial input restores the previous port");
+
+    manualPortCombo->setCurrentIndex(manualPortCombo->findData(QStringLiteral("__vv_manual_serial_port__")));
+    processEventsFor(20);
+    manualPortCombo->lineEdit()->setText(QStringLiteral("COM78"));
+    QKeyEvent cancelManualPort(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QApplication::sendEvent(manualPortCombo->lineEdit(), &cancelManualPort);
+    processEventsFor(20);
+    require(!manualPortCombo->isEditable() &&
+                manualPortCombo->currentData().toString() == QStringLiteral("COM77"),
+            "Esc cancels sky-device manual serial input and restores the previous port");
+
+    manualPortCombo->setCurrentIndex(manualPortCombo->findData(QStringLiteral("__vv_manual_serial_port__")));
+    processEventsFor(20);
+    manualPortCombo->lineEdit()->setText(QStringLiteral("/dev/ttyUSB0"));
+    QFocusEvent acceptManualPortOnBlur(QEvent::FocusOut, Qt::OtherFocusReason);
+    QApplication::sendEvent(manualPortCombo->lineEdit(), &acceptManualPortOnBlur);
+    processEventsFor(60);
+    require(!manualPortCombo->isEditable() &&
+                manualPortCombo->currentData().toString() == QStringLiteral("/dev/ttyUSB0"),
+            "focus loss accepts a Linux-style sky-device serial path");
+
+    dialog.setEnglish(true);
+    require(manualPortCombo->findText(QStringLiteral("Manual Add...")) >= 0,
+            "sky-device manual option follows the dialog language");
+    dialog.setEnglish(false);
 
     auto *stack = dialog.findChild<QStackedWidget *>();
     require(stack != nullptr, "mode stack exists");
