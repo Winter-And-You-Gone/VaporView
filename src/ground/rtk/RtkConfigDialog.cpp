@@ -59,7 +59,6 @@
 using VaporView::AppThemeColor;
 using VaporView::appThemeColor;
 using VaporView::appThemeColorName;
-using VaporView::appThemeRgba;
 using VaporView::configureComboBoxPopup;
 using VaporView::isDarkThemeEnabled;
 using VaporView::isDarkThemePalette;
@@ -1734,9 +1733,9 @@ void RtkConfigDialog::applyScaledUiMetrics()
             QStringLiteral("help-circle"),
             appThemeColor(AppThemeColor::Primary, darkTheme)));
         main_antenna_lever_help_btn_->setStyleSheet(
-            QString("QToolButton { background: transparent; border: none; border-radius: 0px; padding: 0px; }"
-                    "QToolButton:hover, QToolButton:pressed { background: %1; }")
-                .arg(appThemeColorName(AppThemeColor::SurfaceSubtle, darkTheme)));
+            QString("QToolButton { background-color: transparent; border: none; border-radius: 6px; padding: 0px; }"
+                    "QToolButton:hover, QToolButton:pressed { background-color: %1; }")
+                .arg(appThemeColorName(AppThemeColor::TitleBarHover, darkTheme)));
     }
     for (QLineEdit *edit : {main_antenna_lever_x_edit_, main_antenna_lever_y_edit_, main_antenna_lever_z_edit_})
     {
@@ -2680,6 +2679,7 @@ void RtkConfigDialog::onMainAntennaLeverHelpClicked()
     main_antenna_lever_help_popup_->setCornerRadius(scalePixels(10));
     main_antenna_lever_help_popup_->setPanelPadding(scalePixels(12));
     main_antenna_lever_help_popup_->setShadowMargin(scalePixels(40));
+    main_antenna_lever_help_popup_->setBottomShadowMargin(scalePixels(50));
     main_antenna_lever_help_popup_->setPanelContentWidth(scalePixels(456));
     main_antenna_lever_help_popup_label_->setStyleSheet(QStringLiteral(
         "QLabel#rtkLeverHelpPopupText {"

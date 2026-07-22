@@ -1320,17 +1320,18 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                      VaporView::appThemeColor(VaporView::AppThemeColor::Primary, false),
                      6,
                      "RTK lever-arm help icon uses the light theme primary color");
-    require(leverHelpButton->styleSheet().contains(QStringLiteral("border-radius: 0px")) &&
+    require(leverHelpButton->styleSheet().contains(QStringLiteral("border-radius: 6px")) &&
                 leverHelpButton->styleSheet().contains(QStringLiteral("QToolButton:pressed")) &&
                 leverHelpButton->styleSheet().contains(
-                    VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceSubtle, false)),
-            "RTK lever-arm help uses a square gray hover and pressed background");
+                    VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover, false)),
+            "RTK lever-arm help uses the title-bar rounded gray hover and pressed background");
     clickWidget(leverHelpButton, 100);
     auto *leverHelpPopup = dialog->findChild<VaporView::SingleLevelPopupMenu *>(QStringLiteral("rtkLeverHelpPopup"));
     require(leverHelpPopup != nullptr && leverHelpPopup->isVisible(),
             "RTK lever-arm help opens a menu-like popup");
     require(leverHelpPopup->property("floatingPanelChrome").toBool() &&
                 leverHelpPopup->property("shadowMargin").toInt() == 40 &&
+                leverHelpPopup->property("shadowBottomMargin").toInt() == 50 &&
                 leverHelpPopup->testAttribute(Qt::WA_TranslucentBackground) &&
                 leverHelpPopup->styleSheet().contains(QStringLiteral("background-color: transparent; border: none")),
             "RTK lever-arm help uses the shared rounded shadow popup chrome");
@@ -1373,8 +1374,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                      6,
                      "RTK lever-arm help icon uses the dark theme primary color");
     require(leverHelpButton->styleSheet().contains(
-                VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceSubtle, true)),
-            "RTK lever-arm help keeps a gray hover and pressed background in dark theme");
+                VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover, true)),
+            "RTK lever-arm help keeps the title-bar gray hover and pressed background in dark theme");
     require(outputPortLabel->width() >= outputPortLabel->fontMetrics().horizontalAdvance(outputPortLabel->text()) + 4,
             "RTK RTCM output port label has enough width after switching to dark theme");
     require(rtkScrollArea->horizontalScrollBar()->maximum() == 0 &&
@@ -2516,8 +2517,9 @@ int main(int argc, char **argv)
             "log filter menu uses the shared 12px popup vertical padding");
     require(logFilterMenu->property("floatingPanelChrome").toBool(),
             "log filter menu uses floating popup chrome");
-    require(logFilterMenu->property("shadowMargin").toInt() == 22,
-            "log filter menu preserves floating popup shadow margin");
+    require(logFilterMenu->property("shadowMargin").toInt() == 22 &&
+                logFilterMenu->property("shadowBottomMargin").toInt() == 50,
+            "log filter menu preserves its horizontal and extended bottom popup shadow margins");
     require(logFilterMenu->styleSheet().contains(QStringLiteral("background-color: transparent; border: none; border-radius: 10px; padding: 12px 0px")),
             "log filter menu stylesheet reflects the shared 10px radius and 12px padding");
     for (VaporView::SingleLevelPopupMenuRow *row : logFilterMenu->rows())
@@ -2782,8 +2784,9 @@ int main(int argc, char **argv)
             "temperature overview channel menu uses the shared single-level popup chrome");
     const int temperatureChannelShadowMargin = temperatureChannelPopup->property("shadowMargin").toInt();
     require(temperatureChannelShadowMargin == 22 &&
+                temperatureChannelPopup->property("shadowBottomMargin").toInt() == 50 &&
                 temperatureChannelPopup->property("floatingPanelChrome").toBool(),
-            "temperature overview channel menu uses the unified floating popup margins");
+            "temperature overview channel menu uses the unified horizontal and extended bottom popup margins");
     require(temperatureChannelButton->menu()->minimumWidth() == temperatureChannelButton->width() + temperatureChannelShadowMargin * 2 &&
                 temperatureChannelButton->menu()->maximumWidth() == temperatureChannelButton->width() + temperatureChannelShadowMargin * 2,
             "temperature overview channel menu reserves shadow space outside the capsule width");
@@ -3712,9 +3715,12 @@ int main(int argc, char **argv)
     processEventsFor(120);
     const int overtempPopupShadowMargin = overtempOutputMenu->property("shadowMargin").toInt();
     require(overtempOutputMenu->isVisible() &&
+                overtempPopupShadowMargin == 22 &&
+                overtempOutputMenu->property("shadowBottomMargin").toInt() == 50 &&
+                overtempOutputMenu->contentsMargins().bottom() == 50 &&
                 overtempOutputMenu->width() - overtempPopupShadowMargin * 2 ==
                     overtempOutputCombo->width(),
-            "default single-level combo popups remain the same width as their trigger");
+            "default single-level combo popups preserve 50px bottom shadow space without widening the trigger");
     overtempOutputCombo->hidePopup();
     processEventsFor(40);
     const QList<QLabel*> overtempLabels =
@@ -4864,8 +4870,9 @@ int main(int argc, char **argv)
                 "TCP wave display menu uses the unified 12px vertical padding");
         require(menu->property("floatingPanelChrome").toBool(),
                 "TCP wave display menu uses floating single-level popup chrome");
-        require(menu->property("shadowMargin").toInt() == 22,
-                "TCP wave display menu reserves the shared floating popup shadow margin");
+        require(menu->property("shadowMargin").toInt() == 22 &&
+                    menu->property("shadowBottomMargin").toInt() == 50,
+                "TCP wave display menu reserves the shared horizontal and extended bottom popup shadow margins");
         require(menu->styleSheet().contains(QStringLiteral("background-color: transparent; border: none; border-radius: 10px; padding: 12px 0px")),
                 "TCP wave display menu applies the unified floating popup stylesheet");
         QLabel *rowLabel = findLabelByText(menu, labels);

@@ -111,6 +111,7 @@ public:
     void setPanelPadding(int padding);
     int panelPadding() const;
     void setShadowMargin(int margin);
+    void setBottomShadowMargin(int margin);
     void setPanelContentWidth(int width);
     void refreshTheme();
     void popupFrom(QWidget *anchor,
@@ -125,8 +126,10 @@ protected:
 
 private:
     static constexpr int kDefaultShadowMargin = 22;
+    static constexpr int kDefaultBottomShadowMargin = 50;
 
     int shadowMargin() const;
+    int bottomShadowMargin() const;
     QRect panelRect() const;
     QSize maskSize() const;
     void syncRowWidths();
@@ -135,6 +138,7 @@ private:
     int corner_radius_ = 10;
     int panel_padding_ = 12;
     int shadow_margin_ = kDefaultShadowMargin;
+    int bottom_shadow_margin_ = kDefaultBottomShadowMargin;
 };
 
 }

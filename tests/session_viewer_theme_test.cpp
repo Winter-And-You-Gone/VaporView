@@ -960,6 +960,7 @@ void testTrajectoryViewerUsesSidebarLayout()
                 heatPaletteMenu->panelPadding() == 12 &&
                 heatPaletteMenu->property("floatingPanelChrome").toBool() &&
                 heatPaletteMenu->property("shadowMargin").toInt() == 22 &&
+                heatPaletteMenu->property("shadowBottomMargin").toInt() == 50 &&
                 heatPaletteMenu->styleSheet().contains(QStringLiteral("background-color: transparent; border: none; border-radius: 10px; padding: 12px 0px")),
             "heat palette menu uses the macOS-style floating single-level popup chrome");
     require(heatPaletteMenu->actions().size() == 3, "heat palette menu exposes the curated vivid ramps");

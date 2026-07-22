@@ -606,9 +606,21 @@ void SingleLevelPopupMenu::setShadowMargin(int margin)
     updateGeometry();
 }
 
+void SingleLevelPopupMenu::setBottomShadowMargin(int margin)
+{
+    bottom_shadow_margin_ = std::max(0, margin);
+    refreshTheme();
+    updateGeometry();
+}
+
 int SingleLevelPopupMenu::shadowMargin() const
 {
     return panel_padding_ >= 8 ? shadow_margin_ : 0;
+}
+
+int SingleLevelPopupMenu::bottomShadowMargin() const
+{
+    return panel_padding_ >= 8 ? bottom_shadow_margin_ : 0;
 }
 
 void SingleLevelPopupMenu::setPanelContentWidth(int width)
@@ -631,9 +643,11 @@ void SingleLevelPopupMenu::refreshTheme()
     setAttribute(Qt::WA_StyledBackground, !floatingPanel);
     setAutoFillBackground(false);
     const int margin = shadowMargin();
-    setContentsMargins(margin, margin, margin, margin);
+    const int bottomMargin = bottomShadowMargin();
+    setContentsMargins(margin, margin, margin, bottomMargin);
     setProperty("floatingPanelChrome", floatingPanel);
     setProperty("shadowMargin", margin);
+    setProperty("shadowBottomMargin", bottomMargin);
 
     const QString panelRule = floatingPanel
         ? QStringLiteral("background-color: transparent; border: none; border-radius: %1px; padding: %2px %3px;")
@@ -673,6 +687,7 @@ void SingleLevelPopupMenu::popupFrom(QWidget *anchor, SingleLevelPopupAnchor anc
     const QSize popupSize = sizeHint();
     const QRect anchorRect(anchor->mapToGlobal(QPoint(0, 0)), anchor->size());
     const int margin = shadowMargin();
+    const int bottomMargin = bottomShadowMargin();
     QPoint popupTopLeft = anchor->mapToGlobal(QPoint(-margin, anchor->height() - margin));
     if (anchorEdge == SingleLevelPopupAnchor::Right)
     {
@@ -685,7 +700,7 @@ void SingleLevelPopupMenu::popupFrom(QWidget *anchor, SingleLevelPopupAnchor anc
         const bool exceedsBottom = popupTopLeft.y() + popupSize.height() > available.bottom() + 1;
         if (exceedsBottom)
         {
-            const int upwardTop = anchorRect.top() - popupSize.height() + margin;
+            const int upwardTop = anchorRect.top() - popupSize.height() + bottomMargin;
             if (upwardTop >= available.top())
             {
                 popupTopLeft.setY(upwardTop);
@@ -701,7 +716,7 @@ void SingleLevelPopupMenu::popupFrom(QWidget *anchor, SingleLevelPopupAnchor anc
 
 void SingleLevelPopupMenu::applyRoundedMask()
 {
-    if (shadowMargin() > 0)
+    if (shadowMargin() > 0 || bottomShadowMargin() > 0)
     {
         clearMask();
         setProperty("roundedMaskApplied", false);
@@ -724,7 +739,7 @@ void SingleLevelPopupMenu::applyRoundedMask()
 
 void SingleLevelPopupMenu::paintEvent(QPaintEvent *event)
 {
-    if (shadowMargin() <= 0)
+    if (shadowMargin() <= 0 && bottomShadowMargin() <= 0)
     {
         QMenu::paintEvent(event);
         return;
@@ -745,18 +760,18 @@ void SingleLevelPopupMenu::paintEvent(QPaintEvent *event)
 
     const bool dark = isDarkThemeEnabled();
     const QColor shadowTint = QColor(0, 0, 0);
-    const bool extendedBottomShadow = shadowMargin() > kDefaultShadowMargin;
+    const bool extendedBottomShadow = bottomShadowMargin() > shadowMargin();
     const QImage softShadow = boxBlurredAlpha(size(),
                                               panel.adjusted(-1.0, 7.0, 1.0, 0.0),
                                               corner_radius_ + 2.0,
                                               extendedBottomShadow ? 7 : 9,
-                                              extendedBottomShadow ? 11 : 9,
+                                              extendedBottomShadow ? 14 : 9,
                                               3);
     const QImage contactShadow = boxBlurredAlpha(size(),
                                                  panel.adjusted(0.0, 1.0, 0.0, 0.0),
                                                  corner_radius_,
                                                  extendedBottomShadow ? 3 : 4,
-                                                 extendedBottomShadow ? 5 : 4,
+                                                 extendedBottomShadow ? 7 : 4,
                                                  2);
     drawTintedAlphaImage(painter, softShadow, shadowTint, dark ? 82 : 38);
     drawTintedAlphaImage(painter, contactShadow, shadowTint, dark ? 48 : 14);
@@ -791,7 +806,7 @@ void SingleLevelPopupMenu::showEvent(QShowEvent *event)
 QRect SingleLevelPopupMenu::panelRect() const
 {
     const int margin = shadowMargin();
-    return rect().adjusted(margin, margin, -margin, -margin);
+    return rect().adjusted(margin, margin, -margin, -bottomShadowMargin());
 }
 
 QSize SingleLevelPopupMenu::maskSize() const

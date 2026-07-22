@@ -1,5 +1,6 @@
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/widgets/SerialPortComboSupport.h"
+#include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 
 #include <QApplication>
@@ -73,6 +74,13 @@ int main(int argc, char **argv)
     auto *applyButton = dialog.findChild<QPushButton *>(QStringLiteral("rtkApplyLeverArmButton"));
     auto *leverHelpButton = dialog.findChild<QToolButton *>(QStringLiteral("rtkLeverHelpButton"));
     require(xEdit && yEdit && zEdit && applyButton && leverHelpButton, "lever-arm controls exist");
+    const QString leverHelpButtonStyle = leverHelpButton->styleSheet();
+    require(leverHelpButtonStyle.contains(QStringLiteral("border-radius: 6px")) &&
+                leverHelpButtonStyle.contains(QStringLiteral("QToolButton:hover, QToolButton:pressed")) &&
+                leverHelpButtonStyle.contains(VaporView::appThemeColorName(
+                    VaporView::AppThemeColor::TitleBarHover,
+                    VaporView::isDarkThemePalette(app.palette()))),
+            "lever-arm help uses the title-bar gray hover and pressed background");
 
     leverHelpButton->click();
     QApplication::processEvents();
@@ -80,6 +88,8 @@ int main(int argc, char **argv)
     require(leverHelpPopup && leverHelpPopup->isVisible() &&
                 leverHelpPopup->property("floatingPanelChrome").toBool() &&
                 leverHelpPopup->property("shadowMargin").toInt() == 40 &&
+                leverHelpPopup->property("shadowBottomMargin").toInt() == 50 &&
+                leverHelpPopup->contentsMargins().bottom() == 50 &&
                 leverHelpPopup->testAttribute(Qt::WA_TranslucentBackground),
             "lever-arm help uses the shared rounded shadow popup");
     auto *leverHelpText = leverHelpPopup->findChild<QLabel *>(QStringLiteral("rtkLeverHelpPopupText"));
