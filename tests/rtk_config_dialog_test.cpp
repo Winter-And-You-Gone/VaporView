@@ -1,14 +1,17 @@
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/widgets/SerialPortComboSupport.h"
+#include "shared/theme/SingleLevelPopupMenu.h"
 
 #include <QApplication>
 #include <QComboBox>
+#include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QToolButton>
 
 #include <cstdlib>
 #include <functional>
@@ -49,6 +52,8 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
 
     RtkConfigDialog dialog(nullptr, false);
+    dialog.show();
+    QApplication::processEvents();
     auto *outputPortCombo = dialog.findChild<QComboBox *>(QStringLiteral("rtkOutputPortCombo"));
     require(outputPortCombo != nullptr, "RTK output-port combo exists");
     require(outputPortCombo->findText(QStringLiteral("__missing_serial_port__")) < 0 &&
@@ -66,7 +71,21 @@ int main(int argc, char **argv)
     auto *yEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkLeverYEdit"));
     auto *zEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkLeverZEdit"));
     auto *applyButton = dialog.findChild<QPushButton *>(QStringLiteral("rtkApplyLeverArmButton"));
-    require(xEdit && yEdit && zEdit && applyButton, "lever-arm controls exist");
+    auto *leverHelpButton = dialog.findChild<QToolButton *>(QStringLiteral("rtkLeverHelpButton"));
+    require(xEdit && yEdit && zEdit && applyButton && leverHelpButton, "lever-arm controls exist");
+
+    leverHelpButton->click();
+    QApplication::processEvents();
+    auto *leverHelpPopup = dialog.findChild<VaporView::SingleLevelPopupMenu *>(QStringLiteral("rtkLeverHelpPopup"));
+    require(leverHelpPopup && leverHelpPopup->isVisible() &&
+                leverHelpPopup->property("floatingPanelChrome").toBool() &&
+                leverHelpPopup->property("shadowMargin").toInt() == 22 &&
+                leverHelpPopup->testAttribute(Qt::WA_TranslucentBackground),
+            "lever-arm help uses the shared rounded shadow popup");
+    auto *leverHelpText = leverHelpPopup->findChild<QLabel *>(QStringLiteral("rtkLeverHelpPopupText"));
+    require(leverHelpText && leverHelpText->mapTo(leverHelpPopup, QPoint()).x() >= 30,
+            "lever-arm help keeps the text inset from the shadowed panel edge");
+    leverHelpPopup->hide();
 
     xEdit->setText(QStringLiteral("1.25"));
     yEdit->setText(QStringLiteral("-0.50"));

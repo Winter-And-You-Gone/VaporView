@@ -31,6 +31,8 @@
 class QCloseEvent;
 class QEvent;
 
+namespace VaporView { class SingleLevelPopupMenu; }
+
 class RtkConfigDialog : public QDialog
 {
     Q_OBJECT
@@ -179,7 +181,7 @@ private:
     QPushButton *auto_detect_ports_btn_;
     QPushButton *fetch_mountpoints_btn_;
     QToolButton *main_antenna_lever_help_btn_;
-    QWidget *main_antenna_lever_help_popup_;
+    VaporView::SingleLevelPopupMenu *main_antenna_lever_help_popup_;
     QLabel *main_antenna_lever_help_popup_label_;
     QPushButton *apply_main_antenna_lever_btn_;
     QPushButton *clear_log_btn_;

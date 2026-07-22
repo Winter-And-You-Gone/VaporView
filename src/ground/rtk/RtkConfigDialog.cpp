@@ -1,4 +1,5 @@
 #include "shared/theme/AppTheme.h"
+#include "shared/theme/SingleLevelPopupMenu.h"
 #include "RtkConfigDialog.h"
 #include "ground/widgets/CustomTitleBar.h"
 #include "ground/widgets/VisualTextLabel.h"
@@ -48,6 +49,7 @@
 #include <QToolButton>
 #include <QUrl>
 #include <QUrlQuery>
+#include <QWidgetAction>
 #include <algorithm>
 #include <cmath>
 #include <utility>
@@ -2656,54 +2658,51 @@ void RtkConfigDialog::onMainAntennaLeverHelpClicked()
         return;
     }
 
-    const bool dark = isDarkThemeEnabled();
     if (!main_antenna_lever_help_popup_)
     {
-        auto *popup = new QFrame(this, Qt::Popup | Qt::FramelessWindowHint);
+        auto *popup = new VaporView::SingleLevelPopupMenu(this);
         popup->setObjectName(QStringLiteral("rtkLeverHelpPopup"));
-        popup->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        auto *popupLayout = new QVBoxLayout(popup);
-        popupLayout->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(8));
-        popupLayout->setSpacing(0);
 
-        main_antenna_lever_help_popup_label_ = new QLabel(popup);
+        auto *content = new QWidget(popup);
+        auto *contentLayout = new QVBoxLayout(content);
+        contentLayout->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(8));
+        contentLayout->setSpacing(0);
+        main_antenna_lever_help_popup_label_ = new QLabel(content);
         main_antenna_lever_help_popup_label_->setObjectName(QStringLiteral("rtkLeverHelpPopupText"));
         main_antenna_lever_help_popup_label_->setWordWrap(true);
         main_antenna_lever_help_popup_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        popupLayout->addWidget(main_antenna_lever_help_popup_label_);
+        contentLayout->addWidget(main_antenna_lever_help_popup_label_);
+        auto *contentAction = new QWidgetAction(popup);
+        contentAction->setDefaultWidget(content);
+        popup->addAction(contentAction);
         main_antenna_lever_help_popup_ = popup;
     }
 
-    main_antenna_lever_help_popup_->setStyleSheet(QStringLiteral(
-        "QFrame#rtkLeverHelpPopup {"
-        " background: %1;"
-        " border: 1px solid %2;"
-        " border-radius: %3px;"
-        "}"
+    main_antenna_lever_help_popup_->setCornerRadius(scalePixels(10));
+    main_antenna_lever_help_popup_->setPanelPadding(scalePixels(12));
+    main_antenna_lever_help_popup_->setPanelContentWidth(scalePixels(456));
+    main_antenna_lever_help_popup_label_->setStyleSheet(QStringLiteral(
         "QLabel#rtkLeverHelpPopupText {"
-        " color: %4;"
+        " color: %1;"
         " background: transparent;"
         " border: none;"
         " padding: 0px;"
         "}")
-        .arg(appThemeColorName(AppThemeColor::Surface, dark),
-             appThemeColorName(AppThemeColor::BorderStrong, dark))
-        .arg(scalePixels(6))
-        .arg(appThemeColorName(AppThemeColor::Text, dark)));
+        .arg(appThemeColorName(AppThemeColor::Text, isDarkThemeEnabled())));
 
-    if (main_antenna_lever_help_popup_label_)
+    main_antenna_lever_help_popup_label_->setText(mainAntennaLeverArmHelpText());
+    main_antenna_lever_help_popup_label_->setMinimumWidth(scalePixels(320));
+    main_antenna_lever_help_popup_label_->setMaximumWidth(scalePixels(440));
+
+    if (main_antenna_lever_help_btn_)
     {
-        main_antenna_lever_help_popup_label_->setText(mainAntennaLeverArmHelpText());
-        main_antenna_lever_help_popup_label_->setMinimumWidth(scalePixels(320));
-        main_antenna_lever_help_popup_label_->setMaximumWidth(scalePixels(440));
+        main_antenna_lever_help_popup_->popupFrom(
+            main_antenna_lever_help_btn_, VaporView::SingleLevelPopupAnchor::Left, QPoint(0, scalePixels(4)));
     }
-
-    const QPoint popupPos = main_antenna_lever_help_btn_
-        ? main_antenna_lever_help_btn_->mapToGlobal(QPoint(0, main_antenna_lever_help_btn_->height() + scalePixels(4)))
-        : mapToGlobal(rect().center());
-    main_antenna_lever_help_popup_->adjustSize();
-    main_antenna_lever_help_popup_->move(popupPos);
-    main_antenna_lever_help_popup_->show();
+    else
+    {
+        main_antenna_lever_help_popup_->popup(mapToGlobal(rect().center()));
+    }
 }
 
 bool RtkConfigDialog::parseMainAntennaLeverArm(double *x, double *y, double *z, QString *errorMessage) const

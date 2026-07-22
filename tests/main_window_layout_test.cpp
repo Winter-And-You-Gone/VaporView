@@ -1321,9 +1321,14 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                      6,
                      "RTK lever-arm help icon uses the light theme primary color");
     clickWidget(leverHelpButton, 100);
-    auto *leverHelpPopup = dialog->findChild<QFrame *>(QStringLiteral("rtkLeverHelpPopup"));
+    auto *leverHelpPopup = dialog->findChild<VaporView::SingleLevelPopupMenu *>(QStringLiteral("rtkLeverHelpPopup"));
     require(leverHelpPopup != nullptr && leverHelpPopup->isVisible(),
             "RTK lever-arm help opens a menu-like popup");
+    require(leverHelpPopup->property("floatingPanelChrome").toBool() &&
+                leverHelpPopup->property("shadowMargin").toInt() == 22 &&
+                leverHelpPopup->testAttribute(Qt::WA_TranslucentBackground) &&
+                leverHelpPopup->styleSheet().contains(QStringLiteral("background-color: transparent; border: none")),
+            "RTK lever-arm help uses the shared rounded shadow popup chrome");
     auto *leverHelpText = leverHelpPopup->findChild<QLabel *>(QStringLiteral("rtkLeverHelpPopupText"));
     require(leverHelpText != nullptr &&
                 (leverHelpText->text().contains(QStringLiteral("主天线杆臂")) ||
