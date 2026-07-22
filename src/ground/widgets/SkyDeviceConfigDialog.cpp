@@ -1186,7 +1186,7 @@ void SkyDeviceConfigDialog::beginManualSerialPortEntry(QComboBox *combo)
         edit->setProperty(kSerialPortManualEntryProperty, true);
         edit->setPlaceholderText(is_english_
                                      ? QStringLiteral("Enter serial port...")
-                                     : QStringLiteral("输入串口名..."));
+                                     : QStringLiteral("输入串口..."));
         edit->installEventFilter(this);
         edit->clear();
         edit->setFocus(Qt::OtherFocusReason);
@@ -1258,7 +1258,7 @@ void SkyDeviceConfigDialog::refreshSerialPortOptionTexts()
         {
             combo->lineEdit()->setPlaceholderText(is_english_
                                                       ? QStringLiteral("Enter serial port...")
-                                                      : QStringLiteral("输入串口名..."));
+                                                      : QStringLiteral("输入串口..."));
         }
     }
 }

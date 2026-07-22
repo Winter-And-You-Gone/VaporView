@@ -294,8 +294,8 @@ int main(int argc, char **argv)
     processEventsFor(20);
     require(manualPortCombo->isEditable() && manualPortCombo->lineEdit(),
             "manual add temporarily enables sky-device serial input");
-    require(manualPortCombo->lineEdit()->placeholderText() == QStringLiteral("输入串口名..."),
-            "manual sky-device serial input has a clear placeholder");
+    require(manualPortCombo->lineEdit()->placeholderText() == QStringLiteral("输入串口..."),
+            "manual sky-device serial input uses the shortened Chinese placeholder");
     manualPortCombo->lineEdit()->setText(QStringLiteral("COM77"));
     QKeyEvent acceptManualPort(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
     QApplication::sendEvent(manualPortCombo->lineEdit(), &acceptManualPort);

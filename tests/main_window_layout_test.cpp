@@ -5147,6 +5147,8 @@ int main(int argc, char **argv)
     processEventsFor(20);
     require(devicePortCombo->isEditable() && devicePortCombo->lineEdit() != nullptr,
             "device configuration local serial combo becomes editable only after manual-add is selected");
+    require(devicePortCombo->lineEdit()->placeholderText() == QStringLiteral("输入串口..."),
+            "local manual serial input uses the shortened Chinese placeholder");
     devicePortCombo->lineEdit()->setText(QStringLiteral("COM99"));
     QKeyEvent acceptManualPort(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
     QApplication::sendEvent(devicePortCombo->lineEdit(), &acceptManualPort);
