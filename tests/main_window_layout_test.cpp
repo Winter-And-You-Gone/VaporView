@@ -1325,7 +1325,7 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(leverHelpPopup != nullptr && leverHelpPopup->isVisible(),
             "RTK lever-arm help opens a menu-like popup");
     require(leverHelpPopup->property("floatingPanelChrome").toBool() &&
-                leverHelpPopup->property("shadowMargin").toInt() == 22 &&
+                leverHelpPopup->property("shadowMargin").toInt() == 40 &&
                 leverHelpPopup->testAttribute(Qt::WA_TranslucentBackground) &&
                 leverHelpPopup->styleSheet().contains(QStringLiteral("background-color: transparent; border: none")),
             "RTK lever-arm help uses the shared rounded shadow popup chrome");

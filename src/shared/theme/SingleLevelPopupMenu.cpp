@@ -28,7 +28,6 @@ namespace VaporView
 {
 namespace
 {
-constexpr int kMenuShadowMargin = 22;
 constexpr int kPopupBoundaryMargin = 8;
 
 QWidget *popupHostWindow(const QWidget *popup, QWidget *anchor)
@@ -598,6 +597,18 @@ int SingleLevelPopupMenu::panelPadding() const
     return panel_padding_;
 }
 
+void SingleLevelPopupMenu::setShadowMargin(int margin)
+{
+    shadow_margin_ = std::max(0, margin);
+    refreshTheme();
+    updateGeometry();
+}
+
+int SingleLevelPopupMenu::shadowMargin() const
+{
+    return panel_padding_ >= 8 ? shadow_margin_ : 0;
+}
+
 void SingleLevelPopupMenu::setPanelContentWidth(int width)
 {
     setFixedWidth(std::max(1, width) + shadowMargin() * 2);
@@ -733,12 +744,12 @@ void SingleLevelPopupMenu::paintEvent(QPaintEvent *event)
     const bool dark = isDarkThemeEnabled();
     const QColor shadowTint = QColor(0, 0, 0);
     const QImage softShadow = boxBlurredAlpha(size(),
-                                              panel.adjusted(-1.0, 7.0, 1.0, 10.0),
+                                              panel.adjusted(-1.0, 7.0, 1.0, 0.0),
                                               corner_radius_ + 2.0,
                                               9,
                                               3);
     const QImage contactShadow = boxBlurredAlpha(size(),
-                                                 panel.adjusted(0.0, 1.0, 0.0, 2.0),
+                                                 panel.adjusted(0.0, 1.0, 0.0, 0.0),
                                                  corner_radius_,
                                                  4,
                                                  2);
@@ -770,11 +781,6 @@ void SingleLevelPopupMenu::showEvent(QShowEvent *event)
         applyRoundedMask();
         constrainPopupToHostWindow(this);
     });
-}
-
-int SingleLevelPopupMenu::shadowMargin() const
-{
-    return panel_padding_ >= 8 ? kMenuShadowMargin : 0;
 }
 
 QRect SingleLevelPopupMenu::panelRect() const

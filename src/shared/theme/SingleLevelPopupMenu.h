@@ -110,6 +110,7 @@ public:
     int cornerRadius() const;
     void setPanelPadding(int padding);
     int panelPadding() const;
+    void setShadowMargin(int margin);
     void setPanelContentWidth(int width);
     void refreshTheme();
     void popupFrom(QWidget *anchor,
@@ -131,6 +132,7 @@ private:
 
     int corner_radius_ = 10;
     int panel_padding_ = 12;
+    int shadow_margin_ = 22;
 };
 
 }

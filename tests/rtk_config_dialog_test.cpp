@@ -79,7 +79,7 @@ int main(int argc, char **argv)
     auto *leverHelpPopup = dialog.findChild<VaporView::SingleLevelPopupMenu *>(QStringLiteral("rtkLeverHelpPopup"));
     require(leverHelpPopup && leverHelpPopup->isVisible() &&
                 leverHelpPopup->property("floatingPanelChrome").toBool() &&
-                leverHelpPopup->property("shadowMargin").toInt() == 22 &&
+                leverHelpPopup->property("shadowMargin").toInt() == 40 &&
                 leverHelpPopup->testAttribute(Qt::WA_TranslucentBackground),
             "lever-arm help uses the shared rounded shadow popup");
     auto *leverHelpText = leverHelpPopup->findChild<QLabel *>(QStringLiteral("rtkLeverHelpPopupText"));

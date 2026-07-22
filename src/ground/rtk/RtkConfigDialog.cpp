@@ -2680,6 +2680,7 @@ void RtkConfigDialog::onMainAntennaLeverHelpClicked()
 
     main_antenna_lever_help_popup_->setCornerRadius(scalePixels(10));
     main_antenna_lever_help_popup_->setPanelPadding(scalePixels(12));
+    main_antenna_lever_help_popup_->setShadowMargin(scalePixels(40));
     main_antenna_lever_help_popup_->setPanelContentWidth(scalePixels(456));
     main_antenna_lever_help_popup_label_->setStyleSheet(QStringLiteral(
         "QLabel#rtkLeverHelpPopupText {"
