@@ -1840,7 +1840,8 @@ void requireMainWindowMap3DEntries(MainWindow& window)
             toolTip == QStringLiteral("Open 3D map data diagnostics");
     }
     require(foundMapTitleButton, "title bar exposes the 3D map action");
-    require(foundDiagnosticsTitleButton, "title bar exposes the map data diagnostics action");
+    require(!foundDiagnosticsTitleButton,
+            "title bar omits the troubleshooting-only map data diagnostics action");
 }
 
 #else

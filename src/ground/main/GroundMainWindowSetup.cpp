@@ -446,7 +446,6 @@ void MainWindow::setupCustomTitleBar()
     titleLayout->addWidget(createTitleBarActionButton(state_->session_viewer_action_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
 #ifdef VAPORVIEW_HAS_OSGEARTH
     titleLayout->addWidget(createTitleBarActionButton(state_->map3d_action_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
-    titleLayout->addWidget(createTitleBarActionButton(state_->map3d_diagnostics_action_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
 #endif
     addTitleBarSeparator(titleLayout);
     state_->title_language_btn_ = createTitleBarIconButton(QStringLiteral("titleBarButton"), state_->custom_title_bar_);
