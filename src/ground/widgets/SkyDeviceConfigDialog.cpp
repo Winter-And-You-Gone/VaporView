@@ -1043,7 +1043,18 @@ void SkyDeviceConfigDialog::installSerialPortComboBehavior(QComboBox *combo)
 
     combo->setProperty(kSerialPortComboHandlerProperty, true);
     const auto beginManualEntryIfSelected = [this, combo](int index) {
-        if (isManualSerialPortOption(combo, index))
+        const bool manualOption = isManualSerialPortOption(combo, index);
+        if (combo->property(kSerialPortManualEntryProperty).toBool() && !manualOption)
+        {
+            if (QLineEdit *edit = combo->lineEdit())
+            {
+                edit->setProperty(kSerialPortManualEntryProperty, false);
+                edit->removeEventFilter(this);
+            }
+            combo->setProperty(kSerialPortManualEntryProperty, false);
+            combo->setEditable(false);
+        }
+        if (manualOption)
         {
             beginManualSerialPortEntry(combo);
             return;
@@ -1080,7 +1091,7 @@ void SkyDeviceConfigDialog::refreshSerialPortComboOptions(QComboBox *combo,
     }
     if (selectedValue.startsWith(QStringLiteral("--")) ||
         selectedValue == QStringLiteral("手动添加") ||
-        selectedValue == QStringLiteral("Manual Add"))
+        selectedValue == QStringLiteral("Add Port"))
     {
         selectedValue.clear();
     }
@@ -1121,7 +1132,7 @@ void SkyDeviceConfigDialog::setSerialPortComboValue(QComboBox *combo, const QStr
     QString normalized = value.trimmed();
     if (normalized.startsWith(QStringLiteral("--")) ||
         normalized == QStringLiteral("手动添加") ||
-        normalized == QStringLiteral("Manual Add"))
+        normalized == QStringLiteral("Add Port"))
     {
         normalized.clear();
     }
@@ -1157,7 +1168,7 @@ QString SkyDeviceConfigDialog::serialPortComboValue(const QComboBox *combo) cons
 
 QString SkyDeviceConfigDialog::serialPortManualOptionText() const
 {
-    return is_english_ ? QStringLiteral("Manual Add") : QStringLiteral("手动添加");
+    return is_english_ ? QStringLiteral("Add Port") : QStringLiteral("手动添加");
 }
 
 void SkyDeviceConfigDialog::beginManualSerialPortEntry(QComboBox *combo)
@@ -1204,7 +1215,7 @@ void SkyDeviceConfigDialog::finishManualSerialPortEntry(QComboBox *combo, bool a
                        !enteredValue.isEmpty() &&
                        !enteredValue.startsWith(QStringLiteral("--")) &&
                        enteredValue != QStringLiteral("手动添加") &&
-                       enteredValue != QStringLiteral("Manual Add");
+                       enteredValue != QStringLiteral("Add Port");
     if (valid)
     {
         VaporView::rememberSerialPort(enteredValue);

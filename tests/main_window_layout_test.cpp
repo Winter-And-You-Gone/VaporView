@@ -304,7 +304,7 @@ QString localSerialPortValue(QComboBox *combo)
     if (text == QStringLiteral("未选择") ||
         text.startsWith(QStringLiteral("--")) ||
         text == QStringLiteral("手动添加") ||
-        text == QStringLiteral("Manual Add"))
+        text == QStringLiteral("Add Port"))
     {
         return QString();
     }
@@ -316,7 +316,7 @@ void requireLocalSerialPortComboReady(QComboBox *combo, const char *message)
     require(combo != nullptr, message);
     require(!combo->isEditable(), message);
     require(combo->findText(QStringLiteral("手动添加")) >= 0 ||
-                combo->findText(QStringLiteral("Manual Add")) >= 0,
+                combo->findText(QStringLiteral("Add Port")) >= 0,
             message);
     require(combo->findData(QStringLiteral("__vv_manual_serial_port__")) >= 0,
             message);
@@ -5142,7 +5142,8 @@ int main(int argc, char **argv)
     processEventsFor(20);
     require(!temperatureDeviceActionButton->isEnabled(),
             "device configuration disables the local action when its serial port is cleared");
-    devicePortCombo->setCurrentIndex(manualAddIndex);
+    devicePortCombo->setCurrentIndex(
+        devicePortCombo->findData(QStringLiteral("__vv_manual_serial_port__")));
     processEventsFor(20);
     require(devicePortCombo->isEditable() && devicePortCombo->lineEdit() != nullptr,
             "device configuration local serial combo becomes editable only after manual-add is selected");
@@ -5155,6 +5156,24 @@ int main(int argc, char **argv)
             "device configuration manual serial entry is accepted and returns to select-only mode");
     require(temperatureDeviceActionButton->isEnabled(),
             "device configuration immediately enables the local action after selecting a serial port");
+    devicePortCombo->setCurrentIndex(
+        devicePortCombo->findData(QStringLiteral("__vv_manual_serial_port__")));
+    processEventsFor(20);
+    devicePortCombo->setCurrentIndex(0);
+    processEventsFor(20);
+    require(!devicePortCombo->isEditable() && localSerialPortValue(devicePortCombo).isEmpty(),
+            "selecting unselected while entering a local serial port restores select-only mode");
+    devicePortCombo->setCurrentIndex(
+        devicePortCombo->findData(QStringLiteral("__vv_manual_serial_port__")));
+    processEventsFor(20);
+    require(devicePortCombo->isEditable() && devicePortCombo->lineEdit() != nullptr,
+            "local serial manual entry can restart after selecting unselected");
+    devicePortCombo->lineEdit()->setText(QStringLiteral("COM101"));
+    QApplication::sendEvent(devicePortCombo->lineEdit(), &acceptManualPort);
+    processEventsFor(20);
+    require(!devicePortCombo->isEditable() &&
+                localSerialPortValue(devicePortCombo) == QStringLiteral("COM101"),
+            "restarted local serial manual entry accepts the new port");
     int originalDevicePortIndex = devicePortCombo->findData(originalDevicePort);
     if (originalDevicePortIndex < 0)
     {

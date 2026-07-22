@@ -310,6 +310,25 @@ int main(int argc, char **argv)
 
     manualPortCombo->setCurrentIndex(manualPortCombo->findData(QStringLiteral("__vv_manual_serial_port__")));
     processEventsFor(20);
+    manualPortCombo->setCurrentIndex(0);
+    processEventsFor(20);
+    require(!manualPortCombo->isEditable() && manualPortCombo->currentData().toString().isEmpty(),
+            "selecting unselected while entering a sky-device serial port restores select-only mode");
+    manualPortCombo->setCurrentIndex(manualPortCombo->findData(QStringLiteral("__vv_manual_serial_port__")));
+    processEventsFor(20);
+    require(manualPortCombo->isEditable() && manualPortCombo->lineEdit(),
+            "sky-device serial manual entry can restart after selecting unselected");
+    manualPortCombo->lineEdit()->setText(QStringLiteral("COM101"));
+    QApplication::sendEvent(manualPortCombo->lineEdit(), &acceptManualPort);
+    processEventsFor(20);
+    require(!manualPortCombo->isEditable() &&
+                manualPortCombo->currentData().toString() == QStringLiteral("COM101"),
+            "restarted sky-device serial manual entry accepts the new port");
+    manualPortCombo->setCurrentIndex(manualPortCombo->findData(QStringLiteral("COM77")));
+    processEventsFor(20);
+
+    manualPortCombo->setCurrentIndex(manualPortCombo->findData(QStringLiteral("__vv_manual_serial_port__")));
+    processEventsFor(20);
     manualPortCombo->lineEdit()->clear();
     QKeyEvent rejectEmptyManualPort(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
     QApplication::sendEvent(manualPortCombo->lineEdit(), &rejectEmptyManualPort);
@@ -339,7 +358,7 @@ int main(int argc, char **argv)
             "focus loss accepts a Linux-style sky-device serial path");
 
     dialog.setEnglish(true);
-    require(manualPortCombo->findText(QStringLiteral("Manual Add")) >= 0,
+    require(manualPortCombo->findText(QStringLiteral("Add Port")) >= 0,
             "sky-device manual option follows the dialog language");
     dialog.setEnglish(false);
 

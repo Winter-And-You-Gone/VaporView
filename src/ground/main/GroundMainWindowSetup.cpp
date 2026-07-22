@@ -2443,7 +2443,7 @@ QStringList MainWindow::getAvailablePorts()
 
 QString MainWindow::manualLocalSerialPortOptionText() const
 {
-    return state_->is_english_ ? QStringLiteral("Manual Add") : QStringLiteral("手动添加");
+    return state_->is_english_ ? QStringLiteral("Add Port") : QStringLiteral("手动添加");
 }
 
 QString MainWindow::normalizedLocalSerialPortText(const QString& text) const
@@ -2470,7 +2470,7 @@ QString MainWindow::normalizedLocalSerialPortText(const QString& text) const
 bool MainWindow::isLocalSerialPortManualOptionText(const QString& text) const
 {
     const QString trimmed = text.trimmed();
-    return trimmed == QStringLiteral("Manual Add") ||
+    return trimmed == QStringLiteral("Add Port") ||
            trimmed == QStringLiteral("手动添加");
 }
 
@@ -2537,7 +2537,18 @@ void MainWindow::installLocalSerialPortComboBehavior(QComboBox *combo)
 
     combo->setProperty(kLocalSerialPortManualHandlerProperty, true);
     const auto beginManualEntryIfSelected = [this, combo](int index) {
-        if (isLocalSerialPortManualOption(combo, index))
+        const bool manualOption = isLocalSerialPortManualOption(combo, index);
+        if (combo->property(kLocalSerialPortManualEntryProperty).toBool() && !manualOption)
+        {
+            if (QLineEdit *edit = combo->lineEdit())
+            {
+                edit->setProperty(kLocalSerialPortManualEntryProperty, false);
+                edit->removeEventFilter(this);
+            }
+            combo->setProperty(kLocalSerialPortManualEntryProperty, false);
+            combo->setEditable(false);
+        }
+        if (manualOption)
         {
             beginManualLocalSerialPortEntry(combo);
             return;
