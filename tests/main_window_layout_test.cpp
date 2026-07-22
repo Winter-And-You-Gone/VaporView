@@ -1912,7 +1912,9 @@ int main(int argc, char **argv)
         QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
         settings.setValue(QStringLiteral("app_sidebar_width"), 56);
         settings.setValue(QStringLiteral("font_scale_percent"), 100);
-        settings.setValue(QStringLiteral("serial/temperature_port"), QStringLiteral("__missing_serial_port__"));
+        settings.setValue(QStringLiteral("serial/temperature_port"), QStringLiteral(""));
+        QSettings(QStringLiteral("VaporView"), QStringLiteral("SerialPortHistory"))
+            .setValue(QStringLiteral("ports"), QStringList{QStringLiteral("COM123")});
         settings.setValue(QStringLiteral("dark_theme_enabled"), false);
         settings.setValue(QStringLiteral("serial/temperature_baud"), QStringLiteral("38400"));
         settings.setValue(QStringLiteral("rate/temperature"), QStringLiteral("5"));
@@ -1960,11 +1962,16 @@ int main(int argc, char **argv)
                 "humidity source restores the remembered SHT45 baud rate on startup");
         auto *rememberedTemperaturePort =
             rememberedModeWindow.findChild<QComboBox *>(QStringLiteral("temperaturePortCombo"));
-        const QString untrustedTemperaturePortText = QStringLiteral("__missing_serial_port__");
+        const QString staleHistoryPortText = QStringLiteral("COM123");
         require(rememberedTemperaturePort != nullptr &&
-                    rememberedTemperaturePort->findText(untrustedTemperaturePortText) < 0 &&
+                    rememberedTemperaturePort->findText(staleHistoryPortText) < 0 &&
                     localSerialPortValue(rememberedTemperaturePort).isEmpty(),
-                "unavailable saved serial text is ignored unless it is explicit history");
+                "an unselected serial port does not automatically restore a historical port");
+        auto *rememberedTemperatureTitlePort =
+            rememberedModeWindow.findChild<QComboBox *>(QStringLiteral("temperatureTitlePortCombo"));
+        require(rememberedTemperatureTitlePort != nullptr &&
+                    rememberedTemperatureTitlePort->currentData().toString().isEmpty(),
+                "the RD105 title selector stays unselected when no serial port is saved");
         rememberedModeWindow.close();
         require(processEventsUntil(1000, [&rememberedModeWindow]() {
                     return !rememberedModeWindow.isVisible();

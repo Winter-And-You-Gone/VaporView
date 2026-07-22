@@ -2565,10 +2565,11 @@ void MainWindow::refreshLocalSerialPortComboOptions(QComboBox *combo,
         return;
     }
 
+    const bool hasExplicitPreferredText = !preferredText.isNull();
     const QString preferredValue = normalizedLocalSerialPortText(preferredText);
-    const QString previousText = preferredValue.isEmpty()
-        ? localSerialPortComboValue(combo)
-        : preferredValue;
+    const QString previousText = hasExplicitPreferredText
+        ? preferredValue
+        : localSerialPortComboValue(combo);
     const bool previousIsRealPort =
         !previousText.isEmpty() &&
         !previousText.startsWith(QStringLiteral("--")) &&

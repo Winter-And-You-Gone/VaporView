@@ -1351,11 +1351,10 @@ void MainWindow::loadRememberedInputState()
         const QString value = settings.value(key, fallback).toString();
         if (combo->property(kLocalSerialPortComboProperty).toBool())
         {
-            if (value.trimmed().isEmpty())
-            {
-                combo->setCurrentIndex(0);
-            }
-            refreshLocalSerialPortComboOptions(combo, getAvailablePorts(), value);
+            refreshLocalSerialPortComboOptions(
+                combo,
+                getAvailablePorts(),
+                value.trimmed().isEmpty() ? QStringLiteral("") : value);
         }
         else
         {
