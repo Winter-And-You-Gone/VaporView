@@ -124,6 +124,8 @@ protected:
     void showEvent(QShowEvent *event) override;
 
 private:
+    static constexpr int kDefaultShadowMargin = 22;
+
     int shadowMargin() const;
     QRect panelRect() const;
     QSize maskSize() const;
@@ -132,7 +134,7 @@ private:
 
     int corner_radius_ = 10;
     int panel_padding_ = 12;
-    int shadow_margin_ = 22;
+    int shadow_margin_ = kDefaultShadowMargin;
 };
 
 }

@@ -1320,6 +1320,11 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                      VaporView::appThemeColor(VaporView::AppThemeColor::Primary, false),
                      6,
                      "RTK lever-arm help icon uses the light theme primary color");
+    require(leverHelpButton->styleSheet().contains(QStringLiteral("border-radius: 0px")) &&
+                leverHelpButton->styleSheet().contains(QStringLiteral("QToolButton:pressed")) &&
+                leverHelpButton->styleSheet().contains(
+                    VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceSubtle, false)),
+            "RTK lever-arm help uses a square gray hover and pressed background");
     clickWidget(leverHelpButton, 100);
     auto *leverHelpPopup = dialog->findChild<VaporView::SingleLevelPopupMenu *>(QStringLiteral("rtkLeverHelpPopup"));
     require(leverHelpPopup != nullptr && leverHelpPopup->isVisible(),
@@ -1367,6 +1372,9 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                      VaporView::appThemeColor(VaporView::AppThemeColor::Primary, true),
                      6,
                      "RTK lever-arm help icon uses the dark theme primary color");
+    require(leverHelpButton->styleSheet().contains(
+                VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceSubtle, true)),
+            "RTK lever-arm help keeps a gray hover and pressed background in dark theme");
     require(outputPortLabel->width() >= outputPortLabel->fontMetrics().horizontalAdvance(outputPortLabel->text()) + 4,
             "RTK RTCM output port label has enough width after switching to dark theme");
     require(rtkScrollArea->horizontalScrollBar()->maximum() == 0 &&

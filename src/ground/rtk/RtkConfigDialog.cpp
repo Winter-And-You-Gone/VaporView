@@ -1734,10 +1734,9 @@ void RtkConfigDialog::applyScaledUiMetrics()
             QStringLiteral("help-circle"),
             appThemeColor(AppThemeColor::Primary, darkTheme)));
         main_antenna_lever_help_btn_->setStyleSheet(
-            QString("QToolButton { background: transparent; border: none; border-radius: %1px; padding: 0px; }"
-                    "QToolButton:hover { background: %2; }")
-                .arg(helpSize / 2)
-                .arg(appThemeRgba(AppThemeColor::Primary, darkTheme, darkTheme ? 0.16 : 0.10)));
+            QString("QToolButton { background: transparent; border: none; border-radius: 0px; padding: 0px; }"
+                    "QToolButton:hover, QToolButton:pressed { background: %1; }")
+                .arg(appThemeColorName(AppThemeColor::SurfaceSubtle, darkTheme)));
     }
     for (QLineEdit *edit : {main_antenna_lever_x_edit_, main_antenna_lever_y_edit_, main_antenna_lever_z_edit_})
     {

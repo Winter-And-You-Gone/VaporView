@@ -115,7 +115,8 @@ void constrainPopupToHostWindow(QWidget *popup)
 QImage boxBlurredAlpha(const QSize& size,
                        const QRectF& sourceRect,
                        qreal radius,
-                       int blurRadius,
+                       int horizontalBlurRadius,
+                       int verticalBlurRadius,
                        int iterations)
 {
     QImage alpha(size, QImage::Format_ARGB32_Premultiplied);
@@ -132,7 +133,7 @@ QImage boxBlurredAlpha(const QSize& size,
 
     const int w = alpha.width();
     const int h = alpha.height();
-    if (w <= 0 || h <= 0 || blurRadius <= 0)
+    if (w <= 0 || h <= 0 || horizontalBlurRadius <= 0 || verticalBlurRadius <= 0)
     {
         return alpha;
     }
@@ -149,22 +150,23 @@ QImage boxBlurredAlpha(const QSize& size,
         }
     }
 
-    const int diameter = blurRadius * 2 + 1;
+    const int horizontalDiameter = horizontalBlurRadius * 2 + 1;
+    const int verticalDiameter = verticalBlurRadius * 2 + 1;
     for (int pass = 0; pass < iterations; ++pass)
     {
         for (int y = 0; y < h; ++y)
         {
             int sum = 0;
-            for (int x = -blurRadius; x <= blurRadius; ++x)
+            for (int x = -horizontalBlurRadius; x <= horizontalBlurRadius; ++x)
             {
                 const int cx = std::clamp(x, 0, w - 1);
                 sum += src[static_cast<size_t>(y * w + cx)];
             }
             for (int x = 0; x < w; ++x)
             {
-                tmp[static_cast<size_t>(y * w + x)] = static_cast<uchar>(sum / diameter);
-                const int removeX = std::clamp(x - blurRadius, 0, w - 1);
-                const int addX = std::clamp(x + blurRadius + 1, 0, w - 1);
+                tmp[static_cast<size_t>(y * w + x)] = static_cast<uchar>(sum / horizontalDiameter);
+                const int removeX = std::clamp(x - horizontalBlurRadius, 0, w - 1);
+                const int addX = std::clamp(x + horizontalBlurRadius + 1, 0, w - 1);
                 sum += src[static_cast<size_t>(y * w + addX)] - src[static_cast<size_t>(y * w + removeX)];
             }
         }
@@ -172,16 +174,16 @@ QImage boxBlurredAlpha(const QSize& size,
         for (int x = 0; x < w; ++x)
         {
             int sum = 0;
-            for (int y = -blurRadius; y <= blurRadius; ++y)
+            for (int y = -verticalBlurRadius; y <= verticalBlurRadius; ++y)
             {
                 const int cy = std::clamp(y, 0, h - 1);
                 sum += tmp[static_cast<size_t>(cy * w + x)];
             }
             for (int y = 0; y < h; ++y)
             {
-                dst[static_cast<size_t>(y * w + x)] = static_cast<uchar>(sum / diameter);
-                const int removeY = std::clamp(y - blurRadius, 0, h - 1);
-                const int addY = std::clamp(y + blurRadius + 1, 0, h - 1);
+                dst[static_cast<size_t>(y * w + x)] = static_cast<uchar>(sum / verticalDiameter);
+                const int removeY = std::clamp(y - verticalBlurRadius, 0, h - 1);
+                const int addY = std::clamp(y + verticalBlurRadius + 1, 0, h - 1);
                 sum += tmp[static_cast<size_t>(addY * w + x)] - tmp[static_cast<size_t>(removeY * w + x)];
             }
         }
@@ -743,15 +745,18 @@ void SingleLevelPopupMenu::paintEvent(QPaintEvent *event)
 
     const bool dark = isDarkThemeEnabled();
     const QColor shadowTint = QColor(0, 0, 0);
+    const bool extendedBottomShadow = shadowMargin() > kDefaultShadowMargin;
     const QImage softShadow = boxBlurredAlpha(size(),
                                               panel.adjusted(-1.0, 7.0, 1.0, 0.0),
                                               corner_radius_ + 2.0,
-                                              9,
+                                              extendedBottomShadow ? 7 : 9,
+                                              extendedBottomShadow ? 11 : 9,
                                               3);
     const QImage contactShadow = boxBlurredAlpha(size(),
                                                  panel.adjusted(0.0, 1.0, 0.0, 0.0),
                                                  corner_radius_,
-                                                 4,
+                                                 extendedBottomShadow ? 3 : 4,
+                                                 extendedBottomShadow ? 5 : 4,
                                                  2);
     drawTintedAlphaImage(painter, softShadow, shadowTint, dark ? 82 : 38);
     drawTintedAlphaImage(painter, contactShadow, shadowTint, dark ? 48 : 14);
