@@ -363,7 +363,7 @@ int main(int argc, char **argv)
     manualPortCombo->setCurrentIndex(manualPortCombo->findData(QStringLiteral("__vv_manual_serial_port__")));
     processEventsFor(20);
     require(manualPortCombo->isEditable() && manualPortCombo->lineEdit() &&
-                manualPortCombo->lineEdit()->placeholderText() == QStringLiteral("Port..."),
+                manualPortCombo->lineEdit()->placeholderText() == QStringLiteral("Enter..."),
             "manual sky-device serial input uses the compact English placeholder");
     QApplication::sendEvent(manualPortCombo->lineEdit(), &cancelManualPort);
     processEventsFor(20);
