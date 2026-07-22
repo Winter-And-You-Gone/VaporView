@@ -280,7 +280,7 @@ int main(int argc, char **argv)
         require(!combo->isEditable(), "sky-device serial port combo is select-only by default");
         require(combo->itemText(0) == QStringLiteral("未选择"),
                 "sky-device serial port combo uses the Chinese unselected placeholder");
-        require(combo->findText(QStringLiteral("手动添加...")) >= 0,
+        require(combo->findText(QStringLiteral("手动添加")) >= 0,
                 "sky-device serial port combo exposes manual add");
         require(combo->findData(QStringLiteral("__vv_manual_serial_port__")) >= 0,
                 "sky-device serial port combo marks the manual option");
@@ -339,7 +339,7 @@ int main(int argc, char **argv)
             "focus loss accepts a Linux-style sky-device serial path");
 
     dialog.setEnglish(true);
-    require(manualPortCombo->findText(QStringLiteral("Manual Add...")) >= 0,
+    require(manualPortCombo->findText(QStringLiteral("Manual Add")) >= 0,
             "sky-device manual option follows the dialog language");
     dialog.setEnglish(false);
 

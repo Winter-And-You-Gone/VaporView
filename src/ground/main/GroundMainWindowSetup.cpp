@@ -2443,7 +2443,7 @@ QStringList MainWindow::getAvailablePorts()
 
 QString MainWindow::manualLocalSerialPortOptionText() const
 {
-    return state_->is_english_ ? QStringLiteral("Manual Add...") : QStringLiteral("手动添加...");
+    return state_->is_english_ ? QStringLiteral("Manual Add") : QStringLiteral("手动添加");
 }
 
 QString MainWindow::normalizedLocalSerialPortText(const QString& text) const
@@ -2470,8 +2470,8 @@ QString MainWindow::normalizedLocalSerialPortText(const QString& text) const
 bool MainWindow::isLocalSerialPortManualOptionText(const QString& text) const
 {
     const QString trimmed = text.trimmed();
-    return trimmed == QStringLiteral("Manual Add...") ||
-           trimmed == QStringLiteral("手动添加...");
+    return trimmed == QStringLiteral("Manual Add") ||
+           trimmed == QStringLiteral("手动添加");
 }
 
 bool MainWindow::isLocalSerialPortManualOption(const QComboBox *combo, int index) const

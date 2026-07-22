@@ -303,8 +303,8 @@ QString localSerialPortValue(QComboBox *combo)
     }
     if (text == QStringLiteral("未选择") ||
         text.startsWith(QStringLiteral("--")) ||
-        text == QStringLiteral("手动添加...") ||
-        text == QStringLiteral("Manual Add..."))
+        text == QStringLiteral("手动添加") ||
+        text == QStringLiteral("Manual Add"))
     {
         return QString();
     }
@@ -315,8 +315,8 @@ void requireLocalSerialPortComboReady(QComboBox *combo, const char *message)
 {
     require(combo != nullptr, message);
     require(!combo->isEditable(), message);
-    require(combo->findText(QStringLiteral("手动添加...")) >= 0 ||
-                combo->findText(QStringLiteral("Manual Add...")) >= 0,
+    require(combo->findText(QStringLiteral("手动添加")) >= 0 ||
+                combo->findText(QStringLiteral("Manual Add")) >= 0,
             message);
     require(combo->findData(QStringLiteral("__vv_manual_serial_port__")) >= 0,
             message);
@@ -5130,7 +5130,7 @@ int main(int argc, char **argv)
     requireLocalSerialPortComboReady(
         window.findChild<QComboBox *>(QStringLiteral("skyTelemetryPortCombo")),
         "home sky telemetry serial combo uses select-plus-manual behavior");
-    const int manualAddIndex = devicePortCombo->findText(QStringLiteral("手动添加..."));
+    const int manualAddIndex = devicePortCombo->findText(QStringLiteral("手动添加"));
     require(manualAddIndex >= 0,
             "device configuration local serial combo exposes the manual-add option");
     require(deviceRateCombo != nullptr && deviceRateCombo->width() <= 92,
