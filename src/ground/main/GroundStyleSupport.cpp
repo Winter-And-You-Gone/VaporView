@@ -966,8 +966,8 @@ QFrame#appSidebar {
 QComboBox::down-arrow {
     image: url(lucide/chevron-down-dark.svg);
 }
-QComboBox:hover::down-arrow,
-QComboBox:focus::down-arrow,
+QComboBox::down-arrow:hover,
+QComboBox::down-arrow:focus,
 QComboBox::down-arrow:on {
     image: url(lucide/chevron-down-primary-dark.svg);
 }
@@ -986,8 +986,8 @@ QAbstractSpinBox[spinArrowHover="down"]::down-arrow {
 QComboBox#temperatureTitlePortCombo::down-arrow {
     image: url(lucide/chevron-down-dark.svg);
 }
-QComboBox#temperatureTitlePortCombo:hover::down-arrow,
-QComboBox#temperatureTitlePortCombo:focus::down-arrow,
+QComboBox#temperatureTitlePortCombo::down-arrow:hover,
+QComboBox#temperatureTitlePortCombo::down-arrow:focus,
 QComboBox#temperatureTitlePortCombo::down-arrow:on {
     image: url(lucide/chevron-down-primary-dark.svg);
 }
