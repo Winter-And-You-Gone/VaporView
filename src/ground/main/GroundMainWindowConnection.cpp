@@ -590,7 +590,7 @@ void MainWindow::onAutoDetectPortsClicked()
                                               Qt::QueuedConnection);
                 });
         QMetaObject::invokeMethod(this, [this, detections = outcome.detections]() {
-            const QString selectText = state_->is_english_ ? "-- Select --" : "-- 选择 --";
+            const QString selectText = state_->is_english_ ? "-- Select --" : "未选择";
             auto applySelection = [this, &selectText](QComboBox *combo, const QString& value) {
                 if (!combo)
                 {
@@ -687,7 +687,7 @@ void MainWindow::onConnectClicked()
         }
         else
         {
-            const QString port = state_->sky_telemetry_port_combo_ ? state_->sky_telemetry_port_combo_->currentText().trimmed() : QString();
+            const QString port = localSerialPortComboValue(state_->sky_telemetry_port_combo_);
             const int baud = state_->sky_telemetry_baud_combo_ ? state_->sky_telemetry_baud_combo_->currentText().toInt() : 921600;
             if (port.isEmpty())
             {
@@ -738,7 +738,7 @@ void MainWindow::onConnectClicked()
     updateEnvironmentStatusIcons(false, false, false);
 
     const bool english = state_->is_english_;
-    const QString selectText = english ? "-- Select --" : "-- 选择 --";
+    const QString selectText = english ? "-- Select --" : "未选择";
     const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
     const QString ptbPort = localSerialPortComboValue(state_->ptb_port_combo_);
     const QString hmpPort = localSerialPortComboValue(state_->hmp_port_combo_);

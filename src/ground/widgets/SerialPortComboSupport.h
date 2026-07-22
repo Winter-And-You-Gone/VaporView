@@ -59,7 +59,9 @@ inline bool isRememberedSerialPort(const QString& port)
 inline void rememberSerialPort(const QString& port)
 {
     const QString normalized = port.trimmed();
-    if (normalized.isEmpty() || normalized.startsWith(QStringLiteral("--")))
+    if (normalized.isEmpty() ||
+        normalized == QStringLiteral("未选择") ||
+        normalized.startsWith(QStringLiteral("--")))
     {
         return;
     }

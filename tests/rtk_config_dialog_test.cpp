@@ -48,12 +48,12 @@ int main(int argc, char **argv)
     }
     QApplication app(argc, argv);
 
-    RtkConfigDialog dialog(nullptr, true);
+    RtkConfigDialog dialog(nullptr, false);
     auto *outputPortCombo = dialog.findChild<QComboBox *>(QStringLiteral("rtkOutputPortCombo"));
     require(outputPortCombo != nullptr, "RTK output-port combo exists");
     require(outputPortCombo->findText(QStringLiteral("__missing_serial_port__")) < 0 &&
-                outputPortCombo->currentText() != QStringLiteral("__missing_serial_port__"),
-            "unavailable legacy RTK output port is not offered as history");
+                outputPortCombo->currentText() == QStringLiteral("未选择"),
+            "unavailable legacy RTK output port shows the Chinese unselected placeholder");
     dialog.setPreferredOutputPortAndBaud(QStringLiteral("COM77"), QStringLiteral("115200"));
     const int rememberedPortIndex = outputPortCombo->findText(QStringLiteral("COM77"));
     require(rememberedPortIndex >= 0 &&

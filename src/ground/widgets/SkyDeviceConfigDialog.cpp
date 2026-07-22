@@ -1088,7 +1088,7 @@ void SkyDeviceConfigDialog::refreshSerialPortComboOptions(QComboBox *combo,
     installSerialPortComboBehavior(combo);
     const QSignalBlocker blocker(combo);
     combo->clear();
-    combo->addItem(is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("-- 选择 --"));
+    combo->addItem(is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("未选择"));
     for (const QString& port : ports)
     {
         const QString trimmed = port.trimmed();
@@ -1236,7 +1236,7 @@ void SkyDeviceConfigDialog::refreshSerialPortOptionTexts()
         const QSignalBlocker blocker(combo);
         if (combo->count() > 0 && combo->itemData(0).toString().isEmpty())
         {
-            combo->setItemText(0, is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("-- 选择 --"));
+            combo->setItemText(0, is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("未选择"));
         }
         const int manualIndex = combo->findData(QString::fromLatin1(kSerialPortManualOptionData));
         if (manualIndex >= 0)

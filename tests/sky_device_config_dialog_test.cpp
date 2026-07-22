@@ -278,6 +278,8 @@ int main(int argc, char **argv)
     for (QComboBox *combo : serialPortCombos)
     {
         require(!combo->isEditable(), "sky-device serial port combo is select-only by default");
+        require(combo->itemText(0) == QStringLiteral("未选择"),
+                "sky-device serial port combo uses the Chinese unselected placeholder");
         require(combo->findText(QStringLiteral("手动添加...")) >= 0,
                 "sky-device serial port combo exposes manual add");
         require(combo->findData(QStringLiteral("__vv_manual_serial_port__")) >= 0,

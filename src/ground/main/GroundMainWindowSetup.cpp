@@ -2464,7 +2464,7 @@ QString MainWindow::normalizedLocalSerialPortText(const QString& text) const
     {
         trimmed = trimmed.mid(englishHistoryPrefix.size()).trimmed();
     }
-    return trimmed;
+    return trimmed == QStringLiteral("未选择") ? QString() : trimmed;
 }
 
 bool MainWindow::isLocalSerialPortManualOptionText(const QString& text) const
@@ -2583,7 +2583,7 @@ void MainWindow::refreshLocalSerialPortComboOptions(QComboBox *combo,
     const QSignalBlocker blocker(combo);
     combo->setEditable(false);
     combo->clear();
-    combo->addItem(state_->is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("-- 选择 --"));
+    combo->addItem(state_->is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("未选择"));
     for (const QString& port : ports)
     {
         const QString trimmed = port.trimmed();
@@ -2809,11 +2809,11 @@ void MainWindow::refreshLocalSerialPortManualOptionTexts()
         int selectIndex = combo->findText(QStringLiteral("-- Select --"));
         if (selectIndex < 0)
         {
-            selectIndex = combo->findText(QStringLiteral("-- 选择 --"));
+            selectIndex = combo->findText(QStringLiteral("未选择"));
         }
         if (selectIndex >= 0)
         {
-            combo->setItemText(selectIndex, state_->is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("-- 选择 --"));
+            combo->setItemText(selectIndex, state_->is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("未选择"));
         }
         const int manualIndex = combo->findData(QString::fromLatin1(kLocalSerialPortManualOptionData));
         if (manualIndex >= 0)

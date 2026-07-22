@@ -301,7 +301,8 @@ QString localSerialPortValue(QComboBox *combo)
     {
         text = text.mid(QStringLiteral("History:").size()).trimmed();
     }
-    if (text.startsWith(QStringLiteral("--")) ||
+    if (text == QStringLiteral("未选择") ||
+        text.startsWith(QStringLiteral("--")) ||
         text == QStringLiteral("手动添加...") ||
         text == QStringLiteral("Manual Add..."))
     {
@@ -1965,8 +1966,9 @@ int main(int argc, char **argv)
         const QString staleHistoryPortText = QStringLiteral("COM123");
         require(rememberedTemperaturePort != nullptr &&
                     rememberedTemperaturePort->findText(staleHistoryPortText) < 0 &&
+                    rememberedTemperaturePort->currentText() == QStringLiteral("未选择") &&
                     localSerialPortValue(rememberedTemperaturePort).isEmpty(),
-                "an unselected serial port does not automatically restore a historical port");
+                "an unselected serial port displays the Chinese placeholder and does not restore history");
         auto *rememberedTemperatureTitlePort =
             rememberedModeWindow.findChild<QComboBox *>(QStringLiteral("temperatureTitlePortCombo"));
         require(rememberedTemperatureTitlePort != nullptr &&

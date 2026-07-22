@@ -207,7 +207,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         return;
     }
 
-    const QString selectText = state_->is_english_ ? "-- Select --" : "-- 选择 --";
+    const QString selectText = state_->is_english_ ? "-- Select --" : "未选择";
     const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
     if (epsilonPort.isEmpty() || epsilonPort == selectText)
     {
@@ -618,7 +618,7 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
                 .arg(groupedRateHz));
     }
 
-    const QString selectText = state_->is_english_ ? "-- Select --" : "-- 选择 --";
+    const QString selectText = state_->is_english_ ? "-- Select --" : "未选择";
     const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
     if (!state_->recording_service_->isActive() &&
         !epsilonPort.isEmpty() &&
@@ -653,7 +653,7 @@ void MainWindow::onReconfigureEpsilonClicked()
         return;
     }
 
-    const QString selectText = state_->is_english_ ? "-- Select --" : "-- 选择 --";
+    const QString selectText = state_->is_english_ ? "-- Select --" : "未选择";
     const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
     if (epsilonPort.isEmpty() || epsilonPort == selectText)
     {

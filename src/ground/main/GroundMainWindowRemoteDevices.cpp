@@ -1034,7 +1034,7 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
                 .arg(groupedRateHz));
     }
 
-    const QString selectText = state_->is_english_ ? "-- Select --" : "-- 选择 --";
+    const QString selectText = state_->is_english_ ? "-- Select --" : "未选择";
     const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
     if (applyAfterSave &&
         !state_->recording_service_->isActive() &&
@@ -1377,7 +1377,7 @@ void MainWindow::connectLocalTemperatureController()
     }
 
     const QString port = localSerialPortComboValue(state_->temperature_port_combo_);
-    const QString selectText = state_->is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("-- 选择 --");
+    const QString selectText = state_->is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("未选择");
     if (port.isEmpty() || port == selectText || port.startsWith(QStringLiteral("--")))
     {
         log(state_->is_english_ ? "Select the local RD105 serial port first." : "请先选择本地 RD105 串口。");
@@ -1967,7 +1967,7 @@ bool MainWindow::applyImuDeviceProfile(const QString& requestedFormat, int reque
         return false;
     }
 
-    const QString selectText = state_->is_english_ ? "-- Select --" : "-- 选择 --";
+    const QString selectText = state_->is_english_ ? "-- Select --" : "未选择";
     const QString port = state_->imu_port_combo_ ? state_->imu_port_combo_->currentText().trimmed() : QString();
     if (port.isEmpty() || port == selectText)
     {

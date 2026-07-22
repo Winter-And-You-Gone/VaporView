@@ -364,7 +364,9 @@ QString selectedSerialPortText(const QComboBox *combo)
         return QString();
     }
     const QString text = combo->currentText().trimmed();
-    return text.startsWith(QStringLiteral("--")) ? QString() : text;
+    return text == QStringLiteral("未选择") || text.startsWith(QStringLiteral("--"))
+        ? QString()
+        : text;
 }
 
 bool isUsableEpsilonNmeaPosition(const VaporView::EpsilonData &data)
@@ -3031,7 +3033,7 @@ void RtkConfigDialog::refreshPortCombos()
     {
         const QSignalBlocker blocker(output_port_combo_);
         output_port_combo_->clear();
-        output_port_combo_->addItem(textFor("-- Select --", "-- 选择 --"));
+        output_port_combo_->addItem(textFor("-- Select --", "未选择"));
         for (const QString& port : ports)
         {
             output_port_combo_->addItem(port, port);

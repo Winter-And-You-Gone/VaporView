@@ -459,9 +459,9 @@ bool MainWindow::startRecordingSession()
         ? state_->tcp_wave_panel_->host()
         : QStringLiteral("127.0.0.1");
     options.deviceConfig.waveformPort = state_->tcp_wave_panel_ ? state_->tcp_wave_panel_->port() : 8888;
-    auto serialConfig = [](QComboBox *port, QComboBox *baud, QComboBox *rate) {
+    auto serialConfig = [this](QComboBox *port, QComboBox *baud, QComboBox *rate) {
         VaporView::Ground::Session::GroundRecordingSerialConfig config;
-        config.port = port ? port->currentText() : QString();
+        config.port = localSerialPortComboValue(port);
         config.baud = baud ? baud->currentText() : QString();
         config.rateHz = rate ? rate->currentText() : QString();
         return config;
