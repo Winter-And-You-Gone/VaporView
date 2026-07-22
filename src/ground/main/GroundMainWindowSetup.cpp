@@ -10,7 +10,7 @@ namespace
 constexpr int kMainContentBottomFadeHeight = 36;
 constexpr int kLocalSerialPortHistoryBadgeWidth = 18;
 constexpr int kLocalSerialPortHistoryBadgeGap = 0;
-constexpr int kLocalSerialPortHistoryBadgeLeftInset = 17;
+constexpr int kLocalSerialPortHistoryBadgeLeftInset = 9;
 
 class LocalSerialPortPopupDelegate final : public QStyledItemDelegate
 {
