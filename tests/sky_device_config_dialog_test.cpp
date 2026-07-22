@@ -360,6 +360,13 @@ int main(int argc, char **argv)
     dialog.setEnglish(true);
     require(manualPortCombo->findText(QStringLiteral("Add Port")) >= 0,
             "sky-device manual option follows the dialog language");
+    manualPortCombo->setCurrentIndex(manualPortCombo->findData(QStringLiteral("__vv_manual_serial_port__")));
+    processEventsFor(20);
+    require(manualPortCombo->isEditable() && manualPortCombo->lineEdit() &&
+                manualPortCombo->lineEdit()->placeholderText() == QStringLiteral("Port..."),
+            "manual sky-device serial input uses the compact English placeholder");
+    QApplication::sendEvent(manualPortCombo->lineEdit(), &cancelManualPort);
+    processEventsFor(20);
     dialog.setEnglish(false);
 
     auto *stack = dialog.findChild<QStackedWidget *>();

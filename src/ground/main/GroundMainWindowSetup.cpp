@@ -2714,7 +2714,7 @@ void MainWindow::beginManualLocalSerialPortEntry(QComboBox *combo)
     {
         edit->setProperty(kLocalSerialPortManualEntryProperty, true);
         edit->setPlaceholderText(state_->is_english_
-            ? QStringLiteral("Enter serial port...")
+            ? QStringLiteral("Port...")
             : QStringLiteral("输入串口..."));
         edit->installEventFilter(this);
         edit->clear();
