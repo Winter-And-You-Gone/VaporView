@@ -238,7 +238,8 @@ void MainWindow::setupMenuBar()
     connect(state_->map3d_diagnostics_action_, &QAction::triggered, this, &MainWindow::onOpenMap3DDiagnosticsClicked);
 
     state_->view_menu_->addAction(state_->map3d_action_);
-    state_->view_menu_->addAction(state_->map3d_diagnostics_action_);
+    state_->developer_menu_ = menuBar()->addMenu("");
+    state_->developer_menu_->addAction(state_->map3d_diagnostics_action_);
 #endif
 
     state_->exit_action_ = new QAction(this);
@@ -727,6 +728,15 @@ void MainWindow::createTitleApplicationMenuPanel()
     };
 
     TitleMenuSection developerSection{state_->is_english_ ? QStringLiteral("Developer") : QStringLiteral("开发者"), {}};
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    developerSection.commands.push_back(
+        {state_->is_english_ ? QStringLiteral("Map Data Diagnostics...") : QStringLiteral("地图数据诊断..."),
+         QString(),
+         true,
+         false,
+         false,
+         [this]() { onOpenMap3DDiagnosticsClicked(); }});
+#endif
     developerSection.commands.push_back(
         {state_->is_english_ ? QStringLiteral("TCP wave: record every raw frame") : QStringLiteral("TCP波形：记录完整原始帧"),
          QString(),

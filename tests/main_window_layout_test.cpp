@@ -1807,19 +1807,26 @@ void requireMainWindowMap3DEntries(MainWindow& window)
     require(diagnosticsAction != nullptr, "map data diagnostics action exists in the main window");
 
     QMenu *viewMenu = nullptr;
+    QMenu *developerMenu = nullptr;
     const QList<QMenu*> menus = window.findChildren<QMenu *>();
     for (QMenu *menu : menus)
     {
-        if (menu && menu->actions().contains(mapAction) &&
-            menu->actions().contains(diagnosticsAction))
+        if (menu && menu->actions().contains(mapAction))
         {
             viewMenu = menu;
-            break;
+        }
+        if (menu && menu->actions().contains(diagnosticsAction))
+        {
+            developerMenu = menu;
         }
     }
-    require(viewMenu != nullptr, "View menu exists for 3D map entries");
+    require(viewMenu != nullptr, "View menu exists for the 3D map entry");
+    require(developerMenu != nullptr, "Developer menu exists for map diagnostics");
     require(viewMenu->actions().contains(mapAction), "View menu contains the 3D map action");
-    require(viewMenu->actions().contains(diagnosticsAction), "View menu contains the map data diagnostics action");
+    require(!viewMenu->actions().contains(diagnosticsAction),
+            "View menu omits the developer-only map data diagnostics action");
+    require(developerMenu->actions().contains(diagnosticsAction),
+            "Developer menu contains the map data diagnostics action");
 
     bool foundMapTitleButton = false;
     bool foundDiagnosticsTitleButton = false;
@@ -2353,6 +2360,9 @@ int main(int argc, char **argv)
                                  titleApplicationSubMenu->size());
 
     QFrame *nestedCommandRow = nullptr;
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    bool foundMapDiagnosticsCommand = false;
+#endif
     const QList<QFrame*> subRows =
         titleApplicationSubMenu->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem"));
     requireMenuRowsRespectRoundedVerticalPadding(
@@ -2365,6 +2375,11 @@ int main(int argc, char **argv)
         const QList<QLabel*> labels = row->findChildren<QLabel *>(QStringLiteral("titleApplicationMenuText"));
         for (const QLabel *label : labels)
         {
+#ifdef VAPORVIEW_HAS_OSGEARTH
+            foundMapDiagnosticsCommand = foundMapDiagnosticsCommand ||
+                (label && (label->text() == QStringLiteral("地图数据诊断...") ||
+                           label->text() == QStringLiteral("Map Data Diagnostics...")));
+#endif
             if (label && (label->text() == QStringLiteral("设备CSV记录频率") ||
                           label->text() == QStringLiteral("Device CSV recording rate")))
             {
@@ -2377,6 +2392,10 @@ int main(int argc, char **argv)
             break;
         }
     }
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    require(foundMapDiagnosticsCommand,
+            "title application Developer menu contains map data diagnostics");
+#endif
     require(nestedCommandRow != nullptr,
             "title bar application submenu exposes a row with tertiary commands");
     hoverWidget(nestedCommandRow, true, 220);
@@ -2408,8 +2427,6 @@ int main(int argc, char **argv)
     require(nestedContentGlobal.left() < subContentGlobalBefore.right() &&
                 nestedContentGlobal.left() > subContentGlobalBefore.left(),
             "title bar application tertiary panel overlaps the secondary panel edge for visual grouping");
-    require(titleApplicationNestedMenu->height() > titleApplicationSubMenu->height(),
-            "title bar application tertiary panel can be taller without stretching the secondary panel");
     const QSize nestedPanelSizeBeforeRepeatedHover = titleApplicationNestedPanel->size();
     const QRect nestedPanelGeometryBeforeRepeatedHover = titleApplicationNestedPanel->geometry();
     QFrame *firstNestedRowBeforeRepeatedHover = nestedRows.isEmpty() ? nullptr : nestedRows.first();

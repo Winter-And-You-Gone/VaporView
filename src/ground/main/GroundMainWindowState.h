@@ -190,6 +190,7 @@ struct MainWindowState
     QMenu *data_menu_;
     QMenu *devices_menu_;
     QMenu *view_menu_;
+    QMenu *developer_menu_;
     QMenu *font_menu_;
     QMenu *language_menu_;
     QMenu *help_menu_;
