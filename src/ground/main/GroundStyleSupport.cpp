@@ -964,13 +964,18 @@ QFrame#appSidebar {
     border-radius: 8px;
 }
 QComboBox::down-arrow {
+    image: url(lucide/chevron-down-dark.svg);
+}
+QComboBox:hover::down-arrow,
+QComboBox:focus::down-arrow,
+QComboBox::down-arrow:on {
     image: url(lucide/chevron-down-primary-dark.svg);
 }
 QAbstractSpinBox::up-arrow {
-    image: url(lucide/chevron-up-primary-dark.svg);
+    image: url(lucide/chevron-up-dark.svg);
 }
 QAbstractSpinBox::down-arrow {
-    image: url(lucide/chevron-down-primary-dark.svg);
+    image: url(lucide/chevron-down-dark.svg);
 }
 QAbstractSpinBox[spinArrowHover="up"]::up-arrow {
     image: url(lucide/chevron-up-primary-dark.svg);
@@ -979,6 +984,11 @@ QAbstractSpinBox[spinArrowHover="down"]::down-arrow {
     image: url(lucide/chevron-down-primary-dark.svg);
 }
 QComboBox#temperatureTitlePortCombo::down-arrow {
+    image: url(lucide/chevron-down-dark.svg);
+}
+QComboBox#temperatureTitlePortCombo:hover::down-arrow,
+QComboBox#temperatureTitlePortCombo:focus::down-arrow,
+QComboBox#temperatureTitlePortCombo::down-arrow:on {
     image: url(lucide/chevron-down-primary-dark.svg);
 }
 QMenu {

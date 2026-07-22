@@ -682,6 +682,30 @@ void moveMouseOverWidgetAt(QWidget *widget, const QPoint& localPoint, int waitMs
     }
 }
 
+int countPixelsNearColor(const QImage& image,
+                         const QRect& area,
+                         const QColor& expected,
+                         int tolerance = 16)
+{
+    const QRect boundedArea = area.intersected(image.rect());
+    int count = 0;
+    for (int y = boundedArea.top(); y <= boundedArea.bottom(); ++y)
+    {
+        for (int x = boundedArea.left(); x <= boundedArea.right(); ++x)
+        {
+            const QColor pixel = image.pixelColor(x, y);
+            if (pixel.alpha() >= 16 &&
+                std::abs(pixel.red() - expected.red()) <= tolerance &&
+                std::abs(pixel.green() - expected.green()) <= tolerance &&
+                std::abs(pixel.blue() - expected.blue()) <= tolerance)
+            {
+                ++count;
+            }
+        }
+    }
+    return count;
+}
+
 void requireSpinArrowHoverUsesPrimary(bool dark, const char *message)
 {
     QSpinBox spin;
@@ -690,6 +714,20 @@ void requireSpinArrowHoverUsesPrimary(bool dark, const char *message)
     spin.resize(90, 34);
     spin.show();
     processEventsFor(80);
+
+    if (dark)
+    {
+        const QImage baseImage = spin.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+        const QRect arrowArea(baseImage.width() / 2,
+                              0,
+                              baseImage.width() - baseImage.width() / 2,
+                              baseImage.height());
+        require(countPixelsNearColor(
+                    baseImage,
+                    arrowArea,
+                    VaporView::appThemeColor(VaporView::AppThemeColor::Text, true)) >= 1,
+                "dark theme spin arrows render white before hover");
+    }
 
     QStyleOptionSpinBox option;
     option.initFrom(&spin);
@@ -711,22 +749,57 @@ void requireSpinArrowHoverUsesPrimary(bool dark, const char *message)
 
     const QImage image = spin.grab().toImage().convertToFormat(QImage::Format_ARGB32);
     const QColor expected = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
-    int primaryPixelCount = 0;
-    for (int y = 0; y < image.height() / 2; ++y)
-    {
-        for (int x = image.width() / 2; x < image.width(); ++x)
-        {
-            const QColor pixel = image.pixelColor(x, y);
-            if (pixel.alpha() >= 16 &&
-                std::abs(pixel.red() - expected.red()) <= 16 &&
-                std::abs(pixel.green() - expected.green()) <= 16 &&
-                std::abs(pixel.blue() - expected.blue()) <= 16)
-            {
-                ++primaryPixelCount;
-            }
-        }
-    }
+    const int primaryPixelCount = countPixelsNearColor(
+        image,
+        QRect(image.width() / 2,
+              0,
+              image.width() - image.width() / 2,
+              image.height() / 2),
+        expected);
     require(primaryPixelCount >= 1, message);
+}
+
+void requireComboArrowUsesDarkIdleAndPrimaryHighlight(const char *message)
+{
+    QComboBox combo;
+    combo.addItem(QStringLiteral("COM9"));
+    combo.resize(120, 36);
+    combo.show();
+    processEventsFor(80);
+
+    const QImage idleImage = combo.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    const QRect idleArrowArea(idleImage.width() / 2,
+                              0,
+                              idleImage.width() - idleImage.width() / 2,
+                              idleImage.height());
+    require(countPixelsNearColor(
+                idleImage,
+                idleArrowArea,
+                VaporView::appThemeColor(VaporView::AppThemeColor::Text, true)) >= 1,
+            message);
+
+    QStyleOptionComboBox option;
+    option.initFrom(&combo);
+    option.currentText = combo.currentText();
+    const QRect arrowRect = combo.style()->subControlRect(QStyle::CC_ComboBox,
+                                                          &option,
+                                                          QStyle::SC_ComboBoxArrow,
+                                                          &combo);
+    require(!arrowRect.isEmpty(), message);
+    QEvent enter(QEvent::Enter);
+    QCoreApplication::sendEvent(&combo, &enter);
+    moveMouseOverWidgetAt(&combo, arrowRect.center(), 80);
+
+    const QImage highlightedImage = combo.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    const QRect highlightedArrowArea(highlightedImage.width() / 2,
+                                     0,
+                                     highlightedImage.width() - highlightedImage.width() / 2,
+                                     highlightedImage.height());
+    require(countPixelsNearColor(
+                highlightedImage,
+                highlightedArrowArea,
+                VaporView::appThemeColor(VaporView::AppThemeColor::Primary, true)) >= 1,
+            message);
 }
 
 void hoverWidget(QWidget *widget, bool hovered, int waitMs = 50)
@@ -2853,23 +2926,31 @@ int main(int argc, char **argv)
     require(qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
             "main window is in dark theme for overview style checks");
     const QString darkOverviewStyleSheet = qApp->styleSheet();
-    require(darkOverviewStyleSheet.contains(QStringLiteral("chevron-up-primary-dark.svg")) &&
+    require(darkOverviewStyleSheet.contains(QStringLiteral("chevron-up-dark.svg")) &&
+                darkOverviewStyleSheet.contains(QStringLiteral("chevron-down-dark.svg")) &&
+                darkOverviewStyleSheet.contains(QStringLiteral("chevron-up-primary-dark.svg")) &&
                 darkOverviewStyleSheet.contains(QStringLiteral("chevron-down-primary-dark.svg")),
-            "dark theme spin arrow hover icons use dark theme primary lucide assets");
+            "dark theme arrow styles include white idle and orange highlighted assets");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QComboBox::down-arrow {"),
+                                 QStringLiteral("chevron-down-dark.svg"),
+                                 "dark theme combo chevron-down uses the white idle asset");
+    requireLastStyleRuleContains(darkOverviewStyleSheet,
+                                 QStringLiteral("QComboBox:hover::down-arrow,"),
                                  QStringLiteral("chevron-down-primary-dark.svg"),
-                                 "dark theme combo chevron-down uses the orange primary asset");
+                                 "dark theme highlighted combo chevron-down uses the orange primary asset");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QAbstractSpinBox::up-arrow {"),
-                                 QStringLiteral("chevron-up-primary-dark.svg"),
-                                 "dark theme spin chevron-up uses the orange primary asset");
+                                 QStringLiteral("chevron-up-dark.svg"),
+                                 "dark theme spin chevron-up uses the white idle asset");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QAbstractSpinBox::down-arrow {"),
-                                 QStringLiteral("chevron-down-primary-dark.svg"),
-                                 "dark theme spin chevron-down uses the orange primary asset");
+                                 QStringLiteral("chevron-down-dark.svg"),
+                                 "dark theme spin chevron-down uses the white idle asset");
     requireSpinArrowHoverUsesPrimary(true,
                                      "dark theme spin arrow hover renders the primary lucide icon");
+    requireComboArrowUsesDarkIdleAndPrimaryHighlight(
+        "dark theme combo arrow renders white at idle and orange when highlighted");
     requireMenuPopupStyleUnified(darkOverviewStyleSheet,
                                  true,
                                  "dark popup menus use the shared menu hover and rounded panel style");
@@ -3211,9 +3292,17 @@ int main(int argc, char **argv)
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QComboBox#temperatureTitlePortCombo::down-arrow {"),
                                  temperatureTitlePortDark
-                                     ? QStringLiteral("chevron-down-primary-dark.svg")
+                                     ? QStringLiteral("chevron-down-dark.svg")
                                      : QStringLiteral("chevron-down-primary.svg"),
-                                 "temperature title serial selector shows a right-side lucide chevron-down icon");
+                                 "temperature title serial selector shows the theme idle chevron-down icon");
+    if (temperatureTitlePortDark)
+    {
+        requireLastStyleRuleContains(
+            qApp->styleSheet(),
+            QStringLiteral("QComboBox#temperatureTitlePortCombo:hover::down-arrow,"),
+            QStringLiteral("chevron-down-primary-dark.svg"),
+            "dark temperature title serial selector highlights its chevron in orange");
+    }
     auto *temperatureTitlePortMenu =
         temperatureTitlePortCombo->findChild<VaporView::SingleLevelPopupMenu *>(
             QStringLiteral("singleLevelComboPopupMenu"));

@@ -26,10 +26,12 @@ set(LUCIDE_RESOURCES
     ${CMAKE_SOURCE_DIR}/resources/lucide/audio-waveform.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/check.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-down.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-down-dark.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-down-primary-dark.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-down-primary.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-right.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-up.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-up-dark.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-up-primary-dark.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-up-primary.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/circle-x.svg

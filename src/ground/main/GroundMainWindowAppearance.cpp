@@ -258,12 +258,20 @@ QString MainWindow::themedStyleSheet() const
 {
     const QString baseStyle = applyAppThemeTokens(state_->base_style_sheet_, false);
     QString darkStyle = applyAppThemeTokens(darkThemeStyleSheet(), true);
+    const QString chevronDownDarkIconPath = findResourceFile(
+        QStringLiteral("resources/lucide/chevron-down-dark.svg")).replace('\\', '/');
     const QString chevronDownPrimaryDarkIconPath = findResourceFile(
         QStringLiteral("resources/lucide/chevron-down-primary-dark.svg")).replace('\\', '/');
+    const QString chevronUpDarkIconPath = findResourceFile(
+        QStringLiteral("resources/lucide/chevron-up-dark.svg")).replace('\\', '/');
     const QString chevronUpPrimaryDarkIconPath = findResourceFile(
         QStringLiteral("resources/lucide/chevron-up-primary-dark.svg")).replace('\\', '/');
+    darkStyle.replace("url(lucide/chevron-down-dark.svg)",
+                      QString("url(%1)").arg(chevronDownDarkIconPath));
     darkStyle.replace("url(lucide/chevron-down-primary-dark.svg)",
                       QString("url(%1)").arg(chevronDownPrimaryDarkIconPath));
+    darkStyle.replace("url(lucide/chevron-up-dark.svg)",
+                      QString("url(%1)").arg(chevronUpDarkIconPath));
     darkStyle.replace("url(lucide/chevron-up-primary-dark.svg)",
                       QString("url(%1)").arg(chevronUpPrimaryDarkIconPath));
     const QString mainCardsScrollBarStyle =
