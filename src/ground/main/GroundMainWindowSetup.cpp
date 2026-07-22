@@ -9,7 +9,8 @@ namespace
 
 constexpr int kMainContentBottomFadeHeight = 36;
 constexpr int kLocalSerialPortHistoryBadgeWidth = 18;
-constexpr int kLocalSerialPortHistoryBadgeGap = 8;
+constexpr int kLocalSerialPortHistoryBadgeGap = 0;
+constexpr int kLocalSerialPortHistoryBadgeLeftInset = 17;
 
 class LocalSerialPortPopupDelegate final : public QStyledItemDelegate
 {
@@ -23,10 +24,7 @@ public:
     QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override
     {
         QSize size = QStyledItemDelegate::sizeHint(option, index);
-        if (index.data(VaporView::Ground::MainSupport::kLocalSerialPortHistoryItemRole).toBool())
-        {
-            size.rwidth() += kLocalSerialPortHistoryBadgeWidth + kLocalSerialPortHistoryBadgeGap;
-        }
+        size.rwidth() += kLocalSerialPortHistoryBadgeWidth + kLocalSerialPortHistoryBadgeGap;
         return size;
     }
 
@@ -36,12 +34,6 @@ public:
     {
         const bool isHistory = index.data(
             VaporView::Ground::MainSupport::kLocalSerialPortHistoryItemRole).toBool();
-        if (!isHistory)
-        {
-            QStyledItemDelegate::paint(painter, option, index);
-            return;
-        }
-
         const bool dark = VaporView::isDarkThemeEnabled();
         const bool highlighted = option.state.testFlag(QStyle::State_Selected) ||
                                  option.state.testFlag(QStyle::State_MouseOver);
@@ -60,8 +52,13 @@ public:
         textOption.state &= ~(QStyle::State_Selected | QStyle::State_MouseOver);
         QStyledItemDelegate::paint(painter, textOption, index);
 
+        if (!isHistory)
+        {
+            return;
+        }
+
         const int badgeHeight = qMin(30, qMax(20, option.rect.height() - 8));
-        const QRect badgeRect(option.rect.left() + 12,
+        const QRect badgeRect(option.rect.left() + kLocalSerialPortHistoryBadgeLeftInset,
                               option.rect.center().y() - badgeHeight / 2,
                               kLocalSerialPortHistoryBadgeWidth,
                               badgeHeight);
