@@ -764,8 +764,13 @@ void requireComboArrowUsesDarkIdleAndPrimaryHighlight(const char *message)
     QComboBox combo;
     combo.addItem(QStringLiteral("COM9"));
     combo.resize(120, 36);
+    combo.setFocusPolicy(Qt::NoFocus);
     combo.show();
     processEventsFor(80);
+    combo.clearFocus();
+    QEvent leave(QEvent::Leave);
+    QCoreApplication::sendEvent(&combo, &leave);
+    combo.setAttribute(Qt::WA_UnderMouse, false);
 
     QStyleOptionComboBox option;
     option.initFrom(&combo);
@@ -789,11 +794,12 @@ void requireComboArrowUsesDarkIdleAndPrimaryHighlight(const char *message)
     const int idleContentHighlightPixels = countPixelsNearColor(
         idleImage, contentPixelArea, highlightColor);
     require(idleArrowPixels >= 1,
-            message);
+            "dark theme combo arrow renders white while idle");
     require(idleContentHighlightPixels == 0,
             "dark theme combo does not draw a second highlighted arrow in its content area");
 
     QEvent enter(QEvent::Enter);
+    combo.setAttribute(Qt::WA_UnderMouse, true);
     QCoreApplication::sendEvent(&combo, &enter);
     moveMouseOverWidgetAt(&combo, arrowRect.center(), 80);
 
@@ -803,7 +809,7 @@ void requireComboArrowUsesDarkIdleAndPrimaryHighlight(const char *message)
     const int highlightedContentPixels = countPixelsNearColor(
         highlightedImage, contentPixelArea, highlightColor);
     require(highlightedArrowPixels >= 1,
-            message);
+            "dark theme combo arrow renders orange while highlighted");
     require(highlightedContentPixels == 0,
             "dark theme combo highlight stays in the right arrow slot");
 }
@@ -834,19 +840,26 @@ void requireComboDarkFocusBorderUsesPrimary(const char *message)
 void hoverWidget(QWidget *widget, bool hovered, int waitMs = 50)
 {
     require(widget != nullptr, "hover widget exists");
-    if (hovered)
+    const auto sendHoverEvent = [widget, hovered]()
     {
-        QEvent enter(QEvent::Enter);
-        QCoreApplication::sendEvent(widget, &enter);
-    }
-    else
-    {
-        QEvent leave(QEvent::Leave);
-        QCoreApplication::sendEvent(widget, &leave);
-    }
+        if (hovered)
+        {
+            QEvent enter(QEvent::Enter);
+            QCoreApplication::sendEvent(widget, &enter);
+        }
+        else
+        {
+            QEvent leave(QEvent::Leave);
+            QCoreApplication::sendEvent(widget, &leave);
+        }
+    };
+
+    sendHoverEvent();
     if (waitMs > 0)
     {
         processEventsFor(waitMs);
+        // Keep synthetic hover checks independent of the physical cursor position.
+        sendHoverEvent();
     }
 }
 
@@ -1899,11 +1912,7 @@ int main(int argc, char **argv)
         QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
         settings.setValue(QStringLiteral("app_sidebar_width"), 56);
         settings.setValue(QStringLiteral("font_scale_percent"), 100);
-#ifdef Q_OS_WIN
-        settings.setValue(QStringLiteral("serial/temperature_port"), QStringLiteral("COM9"));
-#else
-        settings.setValue(QStringLiteral("serial/temperature_port"), QStringLiteral("/dev/ttyRD105"));
-#endif
+        settings.setValue(QStringLiteral("serial/temperature_port"), QStringLiteral("__missing_serial_port__"));
         settings.setValue(QStringLiteral("dark_theme_enabled"), false);
         settings.setValue(QStringLiteral("serial/temperature_baud"), QStringLiteral("38400"));
         settings.setValue(QStringLiteral("rate/temperature"), QStringLiteral("5"));
@@ -1951,16 +1960,11 @@ int main(int argc, char **argv)
                 "humidity source restores the remembered SHT45 baud rate on startup");
         auto *rememberedTemperaturePort =
             rememberedModeWindow.findChild<QComboBox *>(QStringLiteral("temperaturePortCombo"));
-#ifdef Q_OS_WIN
-        const QString rememberedTemperaturePortText = QStringLiteral("COM9");
-#else
-        const QString rememberedTemperaturePortText = QStringLiteral("/dev/ttyRD105");
-#endif
+        const QString untrustedTemperaturePortText = QStringLiteral("__missing_serial_port__");
         require(rememberedTemperaturePort != nullptr &&
-                    localSerialPortValue(rememberedTemperaturePort) == rememberedTemperaturePortText,
-                "remembered RD105 serial port restores as the actual local port value");
-        require(rememberedTemperaturePort->currentText() == rememberedTemperaturePortText,
-                "remembered RD105 serial port keeps the compact actual port label");
+                    rememberedTemperaturePort->findText(untrustedTemperaturePortText) < 0 &&
+                    localSerialPortValue(rememberedTemperaturePort).isEmpty(),
+                "unavailable saved serial text is ignored unless it is explicit history");
         rememberedModeWindow.close();
         require(processEventsUntil(1000, [&rememberedModeWindow]() {
                     return !rememberedModeWindow.isVisible();
@@ -1975,6 +1979,15 @@ int main(int argc, char **argv)
         settings.setValue(QStringLiteral("serial/ptb_baud"), QStringLiteral("9600"));
         settings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("hmp3"));
         settings.setValue(QStringLiteral("serial/hmp_baud"), QStringLiteral("19200"));
+#ifdef Q_OS_WIN
+        settings.setValue(QStringLiteral("serial/temperature_port"), QStringLiteral("COM9"));
+        QSettings(QStringLiteral("VaporView"), QStringLiteral("SerialPortHistory"))
+            .setValue(QStringLiteral("ports"), QStringList{QStringLiteral("COM9")});
+#else
+        settings.setValue(QStringLiteral("serial/temperature_port"), QStringLiteral("/dev/ttyRD105"));
+        QSettings(QStringLiteral("VaporView"), QStringLiteral("SerialPortHistory"))
+            .setValue(QStringLiteral("ports"), QStringList{QStringLiteral("/dev/ttyRD105")});
+#endif
         settings.remove(QStringLiteral("serial/ptb210_baud"));
         settings.remove(QStringLiteral("serial/bmp390_baud"));
         settings.remove(QStringLiteral("serial/hmp3_baud"));
@@ -2677,10 +2690,10 @@ int main(int argc, char **argv)
                             "temperature rate combo uses the shared popup styling helper");
 #ifdef Q_OS_WIN
     require(localSerialPortValue(temperaturePortCombo) == QStringLiteral("COM9"),
-            "RD105 local serial port defaults to COM9 as its actual port value");
+            "RD105 local serial port restores remembered COM9 as its actual port value");
 #else
     require(localSerialPortValue(temperaturePortCombo) == QStringLiteral("/dev/ttyRD105"),
-            "RD105 local serial port defaults to /dev/ttyRD105 as its actual port value");
+            "RD105 local serial port restores remembered /dev/ttyRD105 as its actual port value");
 #endif
     require(temperatureBaudCombo->currentText() == QStringLiteral("38400"),
             "RD105 local serial baud defaults to protocol-supported 38400");

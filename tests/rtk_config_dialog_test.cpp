@@ -1,9 +1,13 @@
 #include "ground/rtk/RtkConfigDialog.h"
+#include "ground/widgets/SerialPortComboSupport.h"
 
 #include <QApplication>
+#include <QComboBox>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QSettings>
+#include <QTemporaryDir>
 #include <QTimer>
 
 #include <cstdlib>
@@ -24,6 +28,16 @@ void require(bool condition, const char *message)
 
 int main(int argc, char **argv)
 {
+    QTemporaryDir settingsDir;
+    require(settingsDir.isValid(), "temporary settings directory");
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
+
+    QSettings(QStringLiteral("VaporView"), QStringLiteral("RtkConfig"))
+        .setValue(QStringLiteral("output_port"), QStringLiteral("__missing_serial_port__"));
+    QSettings(QStringLiteral("VaporView"), QStringLiteral("SerialPortHistory"))
+        .setValue(QStringLiteral("ports"), QStringList{QStringLiteral("COM77")});
+
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
     {
 #ifdef Q_OS_WIN
@@ -35,6 +49,19 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
 
     RtkConfigDialog dialog(nullptr, true);
+    auto *outputPortCombo = dialog.findChild<QComboBox *>(QStringLiteral("rtkOutputPortCombo"));
+    require(outputPortCombo != nullptr, "RTK output-port combo exists");
+    require(outputPortCombo->findText(QStringLiteral("__missing_serial_port__")) < 0 &&
+                outputPortCombo->currentText() != QStringLiteral("__missing_serial_port__"),
+            "unavailable legacy RTK output port is not offered as history");
+    dialog.setPreferredOutputPortAndBaud(QStringLiteral("COM77"), QStringLiteral("115200"));
+    const int rememberedPortIndex = outputPortCombo->findText(QStringLiteral("COM77"));
+    require(rememberedPortIndex >= 0 &&
+                outputPortCombo->currentIndex() == rememberedPortIndex &&
+                outputPortCombo->itemData(
+                    rememberedPortIndex,
+                    VaporView::kSerialPortHistoryItemRole).toBool(),
+            "explicit RTK serial history is retained and marked as history");
     auto *xEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkLeverXEdit"));
     auto *yEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkLeverYEdit"));
     auto *zEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkLeverZEdit"));

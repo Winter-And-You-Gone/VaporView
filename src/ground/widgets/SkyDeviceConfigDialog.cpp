@@ -2,6 +2,7 @@
 #include "shared/theme/AppTheme.h"
 #include "ground/widgets/CustomTitleBar.h"
 #include "ground/widgets/LabelTextSelection.h"
+#include "ground/widgets/SerialPortComboSupport.h"
 #include "ground/widgets/VisualTextLabel.h"
 #include "ground/widgets/WindowSizing.h"
 
@@ -511,7 +512,17 @@ SkyDeviceConfigDialog::SkyDeviceConfigDialog(GroundTelemetryService *service, QW
         connect(service_, &GroundTelemetryService::skyConfigReceived, this, &SkyDeviceConfigDialog::onSkyConfigReceived);
         connect(service_, &GroundTelemetryService::skyConfigApplyResultReceived, this, &SkyDeviceConfigDialog::onApplyResultReceived);
     }
-    setConfig(SkyConfig::defaults());
+    SkyConfig initialConfig = SkyConfig::defaults();
+    initialConfig.epsilon.port.clear();
+    initialConfig.epsilon.enabled = false;
+    initialConfig.ptb.port.clear();
+    initialConfig.ptb.enabled = false;
+    initialConfig.hmp.port.clear();
+    initialConfig.hmp.enabled = false;
+    initialConfig.lidar.port.clear();
+    initialConfig.lidar.enabled = false;
+    initialConfig.temperature_controller.port.clear();
+    setConfig(initialConfig);
     setEnglish(false);
     refreshSerialPortOptions();
     applyDynamicMetrics();
@@ -857,6 +868,7 @@ void SkyDeviceConfigDialog::createSerialFields(QFormLayout *layout, SerialRow& r
 {
     row.port = new QComboBox(this);
     VaporView::configureComboBoxPopup(row.port, VaporView::isDarkThemeEnabled());
+    VaporView::installSerialPortPopupDelegate(row.port);
     refreshSerialPortComboOptions(row.port, QStringList());
     row.baud = new QSpinBox(this);
     row.baud->setRange(1200, 4000000);
@@ -1087,7 +1099,9 @@ void SkyDeviceConfigDialog::refreshSerialPortComboOptions(QComboBox *combo,
     }
     if (!selectedValue.isEmpty() && combo->findData(selectedValue) < 0)
     {
+        const int historyIndex = combo->count();
         combo->addItem(selectedValue, selectedValue);
+        combo->setItemData(historyIndex, true, VaporView::kSerialPortHistoryItemRole);
     }
     combo->addItem(serialPortManualOptionText(), QString::fromLatin1(kSerialPortManualOptionData));
 
@@ -1119,6 +1133,7 @@ void SkyDeviceConfigDialog::setSerialPortComboValue(QComboBox *combo, const QStr
         const int manualIndex = combo->findData(QString::fromLatin1(kSerialPortManualOptionData));
         const int insertIndex = manualIndex >= 0 ? manualIndex : combo->count();
         combo->insertItem(insertIndex, normalized, normalized);
+        combo->setItemData(insertIndex, true, VaporView::kSerialPortHistoryItemRole);
         index = combo->findData(normalized);
     }
     combo->setCurrentIndex(index >= 0 ? index : 0);
@@ -1190,6 +1205,10 @@ void SkyDeviceConfigDialog::finishManualSerialPortEntry(QComboBox *combo, bool a
                        !enteredValue.startsWith(QStringLiteral("--")) &&
                        enteredValue != QStringLiteral("手动添加...") &&
                        enteredValue != QStringLiteral("Manual Add...");
+    if (valid)
+    {
+        VaporView::rememberSerialPort(enteredValue);
+    }
     setSerialPortComboValue(combo, valid ? enteredValue : previousValue);
     updateConfigPreview();
 }

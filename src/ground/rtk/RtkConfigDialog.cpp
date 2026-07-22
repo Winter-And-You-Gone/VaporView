@@ -3,6 +3,7 @@
 #include "ground/widgets/CustomTitleBar.h"
 #include "ground/widgets/VisualTextLabel.h"
 #include "ground/widgets/LabelTextSelection.h"
+#include "ground/widgets/SerialPortComboSupport.h"
 #include "ground/widgets/WindowSizing.h"
 #include <QApplication>
 #include <QVBoxLayout>
@@ -354,6 +355,16 @@ int comboIntValue(const QComboBox *combo, int defaultValue)
     bool ok = false;
     const int value = combo->currentText().toInt(&ok);
     return ok ? value : defaultValue;
+}
+
+QString selectedSerialPortText(const QComboBox *combo)
+{
+    if (!combo)
+    {
+        return QString();
+    }
+    const QString text = combo->currentText().trimmed();
+    return text.startsWith(QStringLiteral("--")) ? QString() : text;
 }
 
 bool isUsableEpsilonNmeaPosition(const VaporView::EpsilonData &data)
@@ -1224,6 +1235,7 @@ void RtkConfigDialog::setupUi()
     output_port_combo_->setObjectName(QStringLiteral("rtkOutputPortCombo"));
     output_port_combo_->setEditable(true);
     configureComboBoxPopup(output_port_combo_, isDarkThemeEnabled());
+    VaporView::installSerialPortPopupDelegate(output_port_combo_);
     firstOutputRow.second->addWidget(output_port_combo_);
 
     baudrate_label_ = createFieldLabel();
@@ -1347,6 +1359,7 @@ void RtkConfigDialog::setupUi()
     gga_port_combo_->setObjectName(QStringLiteral("rtkGgaPortCombo"));
     gga_port_combo_->setEditable(true);
     configureComboBoxPopup(gga_port_combo_, isDarkThemeEnabled());
+    VaporView::installSerialPortPopupDelegate(gga_port_combo_);
     gga_header_layout_->addWidget(gga_port_combo_, 0, 1);
 
     gga_toggle_btn_ = new QPushButton(this);
@@ -1910,12 +1923,7 @@ void RtkConfigDialog::loadSettings()
     main_antenna_lever_x_edit_->setText(settings.value("main_antenna_lever_x_m", "").toString());
     main_antenna_lever_y_edit_->setText(settings.value("main_antenna_lever_y_m", "").toString());
     main_antenna_lever_z_edit_->setText(settings.value("main_antenna_lever_z_m", "").toString());
-    refreshPortCombos();
-#ifdef _WIN32
-    output_port_combo_->setCurrentText(settings.value("output_port", "COM1").toString());
-#else
-    output_port_combo_->setCurrentText(settings.value("output_port", "/dev/ttyS0").toString());
-#endif
+    setPreferredOutputPortAndBaud(settings.value("output_port").toString(), QString());
     applySavedGgaSource(settings.value("gga_source", settings.value("gga_port", QString::fromLatin1(kEpsilonMainGgaSourceKey))).toString());
     baudrate_combo_->setCurrentText(settings.value("baudrate", "115200").toString());
     timeout_combo_->setCurrentText(settings.value("timeout", "5000").toString());
@@ -1935,9 +1943,13 @@ void RtkConfigDialog::saveSettings()
     settings.setValue("main_antenna_lever_x_m", main_antenna_lever_x_edit_->text());
     settings.setValue("main_antenna_lever_y_m", main_antenna_lever_y_edit_->text());
     settings.setValue("main_antenna_lever_z_m", main_antenna_lever_z_edit_->text());
-    settings.setValue("output_port", output_port_combo_->currentText());
+    const QString savedOutputPort = selectedSerialPortText(output_port_combo_);
+    VaporView::rememberSerialPort(savedOutputPort);
+    settings.setValue("output_port", savedOutputPort);
     settings.setValue("gga_source", savedGgaSourceValue());
-    settings.setValue("gga_port", isMainGgaSourceSelected() ? QString() : ggaPortName());
+    const QString savedGgaPort = isMainGgaSourceSelected() ? QString() : ggaPortName();
+    VaporView::rememberSerialPort(savedGgaPort);
+    settings.setValue("gga_port", savedGgaPort);
     settings.setValue("baudrate", baudrate_combo_->currentText());
     settings.setValue("timeout", timeout_combo_->currentText());
     settings.setValue("reconnect", reconnect_combo_->currentText());
@@ -1946,9 +1958,28 @@ void RtkConfigDialog::saveSettings()
 void RtkConfigDialog::setPreferredOutputPortAndBaud(const QString& portName, const QString& baudText)
 {
     refreshPortCombos();
-    if (!portName.trimmed().isEmpty() && output_port_combo_)
+    if (output_port_combo_)
     {
-        output_port_combo_->setCurrentText(portName.trimmed());
+        const QString preferredPort = portName.trimmed();
+        int preferredIndex = -1;
+        for (int index = 0; index < output_port_combo_->count(); ++index)
+        {
+            if (VaporView::serialPortNamesMatch(output_port_combo_->itemText(index), preferredPort))
+            {
+                preferredIndex = index;
+                break;
+            }
+        }
+        if (preferredIndex < 0 && VaporView::isRememberedSerialPort(preferredPort))
+        {
+            preferredIndex = output_port_combo_->count();
+            output_port_combo_->addItem(preferredPort, preferredPort);
+            output_port_combo_->setItemData(
+                preferredIndex,
+                true,
+                VaporView::kSerialPortHistoryItemRole);
+        }
+        output_port_combo_->setCurrentIndex(preferredIndex >= 0 ? preferredIndex : 0);
     }
     if (!baudText.trimmed().isEmpty() && baudrate_combo_)
     {
@@ -1983,7 +2014,7 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config,
     const QString username = username_edit_->text().trimmed();
     const QString password = password_edit_->text();
     const QString mountpoint = mountpoint_combo_->currentText().trimmed();
-    const QString outputPort = output_port_combo_->currentText().trimmed();
+    const QString outputPort = selectedSerialPortText(output_port_combo_);
     bool baudrateOk = false;
     const int baudrate = baudrate_combo_->currentText().toInt(&baudrateOk);
     const int timeout = comboIntValue(timeout_combo_, 5000);
@@ -2220,7 +2251,29 @@ void RtkConfigDialog::applySavedGgaSource(const QString& source)
         return;
     }
 
-    gga_port_combo_->setCurrentText(trimmed);
+    int portIndex = -1;
+    for (int index = 0; index < gga_port_combo_->count(); ++index)
+    {
+        if (VaporView::serialPortNamesMatch(gga_port_combo_->itemText(index), trimmed))
+        {
+            portIndex = index;
+            break;
+        }
+    }
+    if (portIndex < 0 && VaporView::isRememberedSerialPort(trimmed))
+    {
+        portIndex = gga_port_combo_->count();
+        gga_port_combo_->addItem(trimmed, trimmed);
+        gga_port_combo_->setItemData(
+            portIndex,
+            true,
+            VaporView::kSerialPortHistoryItemRole);
+    }
+    if (portIndex < 0)
+    {
+        portIndex = gga_port_combo_->findData(QString::fromLatin1(kEpsilonMainGgaSourceKey));
+    }
+    gga_port_combo_->setCurrentIndex(portIndex >= 0 ? portIndex : 0);
     if (QLineEdit *edit = gga_port_combo_->lineEdit())
     {
         edit->setCursorPosition(0);
@@ -2232,14 +2285,10 @@ QString RtkConfigDialog::ggaPortName() const
 {
     if (!gga_port_combo_)
     {
-#ifdef _WIN32
-        return QStringLiteral("COM1");
-#else
-        return QStringLiteral("/dev/ttyS0");
-#endif
+        return QString();
     }
 
-    return gga_port_combo_->currentText().trimmed();
+    return selectedSerialPortText(gga_port_combo_);
 }
 
 int RtkConfigDialog::currentGgaBaudrate() const
@@ -2498,7 +2547,7 @@ void RtkConfigDialog::onGgaToggleClicked()
 
 bool RtkConfigDialog::sendReceiverCommands(const QStringList& commands, QString *errorMessage)
 {
-    const QString outputPort = output_port_combo_ ? output_port_combo_->currentText().trimmed() : QString();
+    const QString outputPort = selectedSerialPortText(output_port_combo_);
     if (outputPort.isEmpty())
     {
         if (errorMessage)
@@ -2975,18 +3024,38 @@ void RtkConfigDialog::onGgaPollTimer()
 void RtkConfigDialog::refreshPortCombos()
 {
     const QStringList ports = getAvailablePorts();
-    const QString currentOutput = output_port_combo_ ? output_port_combo_->currentText().trimmed() : QString();
-    const QString currentGga = gga_port_combo_ ? gga_port_combo_->currentText().trimmed() : QString();
+    const QString currentOutput = selectedSerialPortText(output_port_combo_);
+    const QString currentGga = isMainGgaSourceSelected() ? QString() : ggaPortName();
 
     if (output_port_combo_)
     {
         const QSignalBlocker blocker(output_port_combo_);
         output_port_combo_->clear();
-        output_port_combo_->addItems(ports);
-        if (!currentOutput.isEmpty())
+        output_port_combo_->addItem(textFor("-- Select --", "-- 选择 --"));
+        for (const QString& port : ports)
         {
-            output_port_combo_->setCurrentText(currentOutput);
+            output_port_combo_->addItem(port, port);
         }
+
+        int selectedIndex = -1;
+        for (int index = 1; index < output_port_combo_->count(); ++index)
+        {
+            if (VaporView::serialPortNamesMatch(output_port_combo_->itemText(index), currentOutput))
+            {
+                selectedIndex = index;
+                break;
+            }
+        }
+        if (selectedIndex < 0 && VaporView::isRememberedSerialPort(currentOutput))
+        {
+            selectedIndex = output_port_combo_->count();
+            output_port_combo_->addItem(currentOutput, currentOutput);
+            output_port_combo_->setItemData(
+                selectedIndex,
+                true,
+                VaporView::kSerialPortHistoryItemRole);
+        }
+        output_port_combo_->setCurrentIndex(selectedIndex >= 0 ? selectedIndex : 0);
     }
 
     if (gga_port_combo_)
@@ -2995,7 +3064,10 @@ void RtkConfigDialog::refreshPortCombos()
         gga_port_combo_->clear();
         gga_port_combo_->addItem(mainGgaSourceLabel(), QString::fromLatin1(kEpsilonMainGgaSourceKey));
         gga_port_combo_->insertSeparator(gga_port_combo_->count());
-        gga_port_combo_->addItems(ports);
+        for (const QString& port : ports)
+        {
+            gga_port_combo_->addItem(port, port);
+        }
         applySavedGgaSource(currentGga);
     }
 }
@@ -3132,17 +3204,11 @@ void RtkConfigDialog::applyDetectedOutputAndGgaPort(const QString& portName, con
         return;
     }
 
-    if (output_port_combo_)
-    {
-        output_port_combo_->setCurrentText(portName);
-    }
+    VaporView::rememberSerialPort(portName);
+    setPreferredOutputPortAndBaud(portName, baudText);
     if (gga_port_combo_)
     {
         applySavedGgaSource(QString::fromLatin1(kEpsilonMainGgaSourceKey));
-    }
-    if (!baudText.isEmpty() && baudrate_combo_)
-    {
-        baudrate_combo_->setCurrentText(baudText);
     }
 
     const QString appliedBaud = !baudText.isEmpty() && baudrate_combo_

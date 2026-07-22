@@ -1,5 +1,6 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
+#include "ground/widgets/SerialPortComboSupport.h"
 
 void MainWindow::updateConnectionStatus(bool connected)
 {
@@ -594,6 +595,10 @@ void MainWindow::onAutoDetectPortsClicked()
                 if (!combo)
                 {
                     return;
+                }
+                if (value != selectText)
+                {
+                    VaporView::rememberSerialPort(value);
                 }
                 setLocalSerialPortComboText(combo, value == selectText ? QString() : value);
             };

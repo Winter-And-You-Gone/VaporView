@@ -1,4 +1,5 @@
 #include "ground/widgets/SkyDeviceConfigDialog.h"
+#include "ground/widgets/SerialPortComboSupport.h"
 #include "ground/widgets/VisualTextLabel.h"
 #include "ground/widgets/WindowSizing.h"
 
@@ -13,7 +14,9 @@
 #include <QLineEdit>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QSettings>
 #include <QStackedWidget>
+#include <QTemporaryDir>
 #include <QToolButton>
 #include <QWidget>
 #include <algorithm>
@@ -119,6 +122,11 @@ void requireTitleBarHoverStillWorks(VaporView::SkyDeviceConfigDialog& dialog)
 
 int main(int argc, char **argv)
 {
+    QTemporaryDir settingsDir;
+    require(settingsDir.isValid(), "temporary settings directory");
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
+
     QApplication app(argc, argv);
 
     VaporView::SkyDeviceConfigDialog dialog(nullptr);
@@ -274,11 +282,11 @@ int main(int argc, char **argv)
                 "sky-device serial port combo exposes manual add");
         require(combo->findData(QStringLiteral("__vv_manual_serial_port__")) >= 0,
                 "sky-device serial port combo marks the manual option");
+        require(combo->currentData().toString().isEmpty(),
+                "sky-device serial port combo does not preselect a synthetic default port");
     }
 
     QComboBox *manualPortCombo = serialPortCombos.front();
-    const QString originalPort = manualPortCombo->currentData().toString();
-    require(!originalPort.isEmpty(), "sky-device serial port combo preserves its configured port");
     const int manualPortIndex = manualPortCombo->findData(QStringLiteral("__vv_manual_serial_port__"));
     manualPortCombo->setCurrentIndex(manualPortIndex);
     processEventsFor(20);
@@ -293,6 +301,10 @@ int main(int argc, char **argv)
     require(!manualPortCombo->isEditable() &&
                 manualPortCombo->currentData().toString() == QStringLiteral("COM77"),
             "Enter accepts a sky-device manual serial port and restores select-only mode");
+    require(manualPortCombo->itemData(
+                manualPortCombo->findData(QStringLiteral("COM77")),
+                VaporView::kSerialPortHistoryItemRole).toBool(),
+            "manually confirmed sky-device serial port is marked as history");
 
     manualPortCombo->setCurrentIndex(manualPortCombo->findData(QStringLiteral("__vv_manual_serial_port__")));
     processEventsFor(20);

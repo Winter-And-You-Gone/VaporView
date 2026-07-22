@@ -1,104 +1,13 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
+#include "ground/widgets/SerialPortComboSupport.h"
 
 #include <QLinearGradient>
-#include <QStyledItemDelegate>
 
 namespace
 {
 
 constexpr int kMainContentBottomFadeHeight = 36;
-constexpr int kLocalSerialPortHistoryBadgeWidth = 18;
-constexpr int kLocalSerialPortHistoryBadgeGap = 4;
-constexpr int kLocalSerialPortHistoryBadgeLeftInset = 4;
-constexpr int kLocalSerialPortHistoryTextOpticalCorrection = 1;
-
-class LocalSerialPortPopupDelegate final : public QStyledItemDelegate
-{
-public:
-    explicit LocalSerialPortPopupDelegate(QObject *parent = nullptr)
-        : QStyledItemDelegate(parent)
-    {
-        setProperty("vaporViewLocalSerialHistoryDelegate", true);
-    }
-
-    QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override
-    {
-        QSize size = QStyledItemDelegate::sizeHint(option, index);
-        size.rwidth() += kLocalSerialPortHistoryBadgeWidth + kLocalSerialPortHistoryBadgeGap;
-        return size;
-    }
-
-    void paint(QPainter *painter,
-               const QStyleOptionViewItem& option,
-               const QModelIndex& index) const override
-    {
-        const bool isHistory = index.data(
-            VaporView::Ground::MainSupport::kLocalSerialPortHistoryItemRole).toBool();
-        const bool dark = VaporView::isDarkThemeEnabled();
-        const bool highlighted = option.state.testFlag(QStyle::State_MouseOver);
-        if (highlighted)
-        {
-            painter->fillRect(
-                option.rect,
-                VaporView::appThemeColor(VaporView::AppThemeColor::MenuHover, dark));
-        }
-
-        QStyleOptionViewItem textOption(option);
-        initStyleOption(&textOption, index);
-        const int desiredTextLeft = option.rect.left() +
-                                     kLocalSerialPortHistoryBadgeLeftInset +
-                                     kLocalSerialPortHistoryBadgeWidth +
-                                     kLocalSerialPortHistoryBadgeGap;
-        const QString displayText = index.data(Qt::DisplayRole).toString();
-        const int textBearing = QFontMetrics(textOption.font).boundingRect(displayText).left();
-        QStyle *style = option.widget ? option.widget->style() : nullptr;
-        const QRect defaultTextRect = style
-                                          ? style->subElementRect(
-                                                QStyle::SE_ItemViewItemText,
-                                                &textOption,
-                                                option.widget)
-                                          : QRect();
-        if (defaultTextRect.isValid())
-        {
-            const int focusFrameMargin = style->pixelMetric(
-                QStyle::PM_FocusFrameHMargin,
-                &textOption,
-                option.widget);
-            textOption.rect.translate(
-                desiredTextLeft -
-                    (defaultTextRect.left() + focusFrameMargin + textBearing +
-                     kLocalSerialPortHistoryTextOpticalCorrection),
-                0);
-        }
-        textOption.state &= ~(QStyle::State_Selected | QStyle::State_MouseOver);
-        QStyledItemDelegate::paint(painter, textOption, index);
-
-        if (!isHistory)
-        {
-            return;
-        }
-
-        const int badgeHeight = option.rect.height();
-        const QRect badgeRect(option.rect.left() + kLocalSerialPortHistoryBadgeLeftInset,
-                              option.rect.center().y() - badgeHeight / 2,
-                              kLocalSerialPortHistoryBadgeWidth,
-                              badgeHeight);
-        painter->save();
-        painter->setRenderHint(QPainter::Antialiasing, true);
-        painter->setPen(VaporView::appThemeColor(VaporView::AppThemeColor::FieldBorder, dark));
-        painter->setBrush(VaporView::appThemeColor(VaporView::AppThemeColor::DisabledFill, dark));
-        painter->drawRoundedRect(badgeRect, 9, 9);
-
-        QFont badgeFont(option.font);
-        badgeFont.setPointSizeF(qMax<qreal>(7.0, badgeFont.pointSizeF() * 0.72));
-        badgeFont.setWeight(QFont::Medium);
-        painter->setFont(badgeFont);
-        painter->setPen(VaporView::appThemeColor(VaporView::AppThemeColor::MenuMetaText, dark));
-        painter->drawText(badgeRect, Qt::AlignCenter, QStringLiteral("历\n史"));
-        painter->restore();
-    }
-};
 
 class ScrollAreaBottomFadeOverlay final : public QWidget
 {
@@ -2619,14 +2528,7 @@ void MainWindow::installLocalSerialPortComboBehavior(QComboBox *combo)
     combo->setInsertPolicy(QComboBox::NoInsert);
     combo->setEditable(false);
 
-    if (QAbstractItemView *view = combo->view())
-    {
-        QAbstractItemDelegate *delegate = view->itemDelegate();
-        if (!delegate || !delegate->property("vaporViewLocalSerialHistoryDelegate").toBool())
-        {
-            view->setItemDelegate(new LocalSerialPortPopupDelegate(view));
-        }
-    }
+    VaporView::installSerialPortPopupDelegate(combo);
 
     if (combo->property(kLocalSerialPortManualHandlerProperty).toBool())
     {
@@ -2671,6 +2573,10 @@ void MainWindow::refreshLocalSerialPortComboOptions(QComboBox *combo,
         !previousText.isEmpty() &&
         !previousText.startsWith(QStringLiteral("--")) &&
         !isLocalSerialPortManualOptionText(previousText);
+    const bool previousIsAvailable = VaporView::serialPortListContains(ports, previousText);
+    const bool previousIsHistory = VaporView::isRememberedSerialPort(previousText);
+    const bool shouldKeepPrevious =
+        previousIsRealPort && (previousIsAvailable || previousIsHistory);
 
     installLocalSerialPortComboBehavior(combo);
     const QSignalBlocker blocker(combo);
@@ -2685,23 +2591,31 @@ void MainWindow::refreshLocalSerialPortComboOptions(QComboBox *combo,
             combo->addItem(trimmed, trimmed);
         }
     }
-    if (previousIsRealPort && combo->findData(previousText) < 0 && combo->findText(previousText) < 0)
+    int selectedIndex = 0;
+    if (shouldKeepPrevious)
+    {
+        for (int index = 1; index < combo->count(); ++index)
+        {
+            if (VaporView::serialPortNamesMatch(combo->itemData(index).toString(), previousText))
+            {
+                selectedIndex = index;
+                break;
+            }
+        }
+    }
+    if (shouldKeepPrevious && selectedIndex == 0)
     {
         const int historyIndex = combo->count();
         combo->addItem(previousText, previousText);
         combo->setItemData(historyIndex, true, kLocalSerialPortHistoryItemRole);
+        selectedIndex = historyIndex;
     }
     combo->addItem(manualLocalSerialPortOptionText(), QString::fromLatin1(kLocalSerialPortManualOptionData));
 
-    int selectedIndex = previousIsRealPort ? combo->findData(previousText) : 0;
-    if (selectedIndex < 0 && previousIsRealPort)
-    {
-        selectedIndex = combo->findText(previousText);
-    }
     combo->setCurrentIndex(selectedIndex >= 0 ? selectedIndex : 0);
     combo->setProperty(
         kLocalSerialPortManualPreviousTextProperty,
-        previousIsRealPort ? previousText : QString());
+        shouldKeepPrevious ? previousText : QString());
 }
 
 void MainWindow::setLocalSerialPortComboText(QComboBox *combo, const QString& text)
@@ -2730,10 +2644,31 @@ void MainWindow::setLocalSerialPortComboText(QComboBox *combo, const QString& te
     }
     if (index < 0)
     {
-        const int manualIndex = combo->findData(QString::fromLatin1(kLocalSerialPortManualOptionData));
-        const int insertIndex = manualIndex >= 0 ? manualIndex : combo->count();
-        combo->insertItem(insertIndex, trimmed, trimmed);
-        index = combo->findText(trimmed);
+        for (int candidateIndex = 1; candidateIndex < combo->count(); ++candidateIndex)
+        {
+            if (VaporView::serialPortNamesMatch(
+                    localSerialPortItemValue(combo, candidateIndex),
+                    trimmed))
+            {
+                index = candidateIndex;
+                break;
+            }
+        }
+    }
+    if (index < 0)
+    {
+        const bool isAvailable = VaporView::serialPortListContains(getAvailablePorts(), trimmed);
+        const bool isHistory = VaporView::isRememberedSerialPort(trimmed);
+        if (isAvailable || isHistory)
+        {
+            const int manualIndex = combo->findData(QString::fromLatin1(kLocalSerialPortManualOptionData));
+            index = manualIndex >= 0 ? manualIndex : combo->count();
+            combo->insertItem(index, trimmed, trimmed);
+            if (!isAvailable && isHistory)
+            {
+                combo->setItemData(index, true, kLocalSerialPortHistoryItemRole);
+            }
+        }
     }
     const int selectedIndex = index >= 0 ? index : 0;
     combo->setCurrentIndex(selectedIndex);
@@ -2793,6 +2728,10 @@ void MainWindow::finishManualLocalSerialPortEntry(QComboBox *combo, bool accept)
         !enteredText.isEmpty() &&
         !enteredText.startsWith(QStringLiteral("--")) &&
         !isLocalSerialPortManualOptionText(enteredText);
+    if (validManualText)
+    {
+        VaporView::rememberSerialPort(enteredText);
+    }
     setLocalSerialPortComboText(combo, validManualText ? enteredText : previousText);
 
     saveRememberedInputState();
@@ -2958,7 +2897,7 @@ void MainWindow::setupConfigPanel()
         combo->setValidator(nullptr);
     };
 
-    auto createPortRow = [this, config_form_widget, config_layout, &baudRates, &ports, &createRateCombo](QLabel*& lbl, QComboBox*& portCombo, QComboBox*& baudCombo, QLabel*& rateLbl, QComboBox*& rateCombo, const QString& defaultPort, const QString& defaultBaud, int row, int maxRate = 500) {
+    auto createPortRow = [this, config_form_widget, config_layout, &baudRates, &ports, &createRateCombo](QLabel*& lbl, QComboBox*& portCombo, QComboBox*& baudCombo, QLabel*& rateLbl, QComboBox*& rateCombo, const QString& defaultBaud, int row, int maxRate = 500) {
         lbl = new QLabel(config_form_widget);
         lbl->setObjectName("fieldLabel");
         lbl->setFixedHeight(kMainPageInputHeight);
@@ -2974,7 +2913,7 @@ void MainWindow::setupConfigPanel()
         portCombo->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         portCombo->setMaxVisibleItems(15);
         configureComboPopup(portCombo);
-        refreshLocalSerialPortComboOptions(portCombo, ports, defaultPort);
+        refreshLocalSerialPortComboOptions(portCombo, ports);
         config_layout->addWidget(portCombo, row, 1, Qt::AlignVCenter);
 
         baudCombo = new QComboBox(config_form_widget);
@@ -3080,11 +3019,7 @@ void MainWindow::setupConfigPanel()
     state_->sky_telemetry_port_combo_->setObjectName(QStringLiteral("skyTelemetryPortCombo"));
     state_->sky_telemetry_port_combo_->setFixedHeight(kMainPageInputHeight);
     state_->sky_telemetry_port_combo_->setMinimumWidth(160);
-#ifdef _WIN32
-    refreshLocalSerialPortComboOptions(state_->sky_telemetry_port_combo_, ports, QStringLiteral("COM11"));
-#else
-    refreshLocalSerialPortComboOptions(state_->sky_telemetry_port_combo_, ports, QStringLiteral("/tmp/vapor_ground"));
-#endif
+    refreshLocalSerialPortComboOptions(state_->sky_telemetry_port_combo_, ports);
     configureComboPopup(state_->sky_telemetry_port_combo_);
     state_->sky_telemetry_baud_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
     state_->sky_telemetry_baud_lbl_->setObjectName("fieldLabel");
@@ -3111,19 +3046,11 @@ void MainWindow::setupConfigPanel()
 
     int row = 0;
 
-#ifdef _WIN32
-    createPortRow(state_->epsilon_lbl_, state_->epsilon_port_combo_, state_->epsilon_baud_combo_, state_->epsilon_rate_lbl_, state_->epsilon_rate_combo_, "COM3", "921600", row++, 200);
-    createPortRow(state_->ptb_lbl_, state_->ptb_port_combo_, state_->ptb_baud_combo_, state_->ptb_rate_lbl_, state_->ptb_rate_combo_, "COM5", "9600", row++, kPtbMaxSampleRateHz);
-    createPortRow(state_->hmp_lbl_, state_->hmp_port_combo_, state_->hmp_baud_combo_, state_->hmp_rate_lbl_, state_->hmp_rate_combo_, "COM6", "19200", row++);
-    createPortRow(state_->lidar_lbl_, state_->lidar_port_combo_, state_->lidar_baud_combo_, state_->lidar_rate_lbl_, state_->lidar_rate_combo_, "COM7", "500000", row++, 100);
-    createPortRow(state_->temperature_lbl_, state_->temperature_port_combo_, state_->temperature_baud_combo_, state_->temperature_rate_lbl_, state_->temperature_rate_combo_, "COM9", "38400", row++, kMaxTemperatureSampleRateHz);
-#else
-    createPortRow(state_->epsilon_lbl_, state_->epsilon_port_combo_, state_->epsilon_baud_combo_, state_->epsilon_rate_lbl_, state_->epsilon_rate_combo_, "/dev/ttyEPSILON", "921600", row++, 200);
-    createPortRow(state_->ptb_lbl_, state_->ptb_port_combo_, state_->ptb_baud_combo_, state_->ptb_rate_lbl_, state_->ptb_rate_combo_, "/dev/ttyBARO", "9600", row++, kPtbMaxSampleRateHz);
-    createPortRow(state_->hmp_lbl_, state_->hmp_port_combo_, state_->hmp_baud_combo_, state_->hmp_rate_lbl_, state_->hmp_rate_combo_, "/dev/ttyHMP", "19200", row++);
-    createPortRow(state_->lidar_lbl_, state_->lidar_port_combo_, state_->lidar_baud_combo_, state_->lidar_rate_lbl_, state_->lidar_rate_combo_, "/dev/ttyLidar", "500000", row++, 100);
-    createPortRow(state_->temperature_lbl_, state_->temperature_port_combo_, state_->temperature_baud_combo_, state_->temperature_rate_lbl_, state_->temperature_rate_combo_, "/dev/ttyRD105", "38400", row++, kMaxTemperatureSampleRateHz);
-#endif
+    createPortRow(state_->epsilon_lbl_, state_->epsilon_port_combo_, state_->epsilon_baud_combo_, state_->epsilon_rate_lbl_, state_->epsilon_rate_combo_, "921600", row++, 200);
+    createPortRow(state_->ptb_lbl_, state_->ptb_port_combo_, state_->ptb_baud_combo_, state_->ptb_rate_lbl_, state_->ptb_rate_combo_, "9600", row++, kPtbMaxSampleRateHz);
+    createPortRow(state_->hmp_lbl_, state_->hmp_port_combo_, state_->hmp_baud_combo_, state_->hmp_rate_lbl_, state_->hmp_rate_combo_, "19200", row++);
+    createPortRow(state_->lidar_lbl_, state_->lidar_port_combo_, state_->lidar_baud_combo_, state_->lidar_rate_lbl_, state_->lidar_rate_combo_, "500000", row++, 100);
+    createPortRow(state_->temperature_lbl_, state_->temperature_port_combo_, state_->temperature_baud_combo_, state_->temperature_rate_lbl_, state_->temperature_rate_combo_, "38400", row++, kMaxTemperatureSampleRateHz);
     if (state_->epsilon_port_combo_) state_->epsilon_port_combo_->setObjectName(QStringLiteral("epsilonPortCombo"));
     if (state_->ptb_port_combo_) state_->ptb_port_combo_->setObjectName(QStringLiteral("pressurePortCombo"));
     if (state_->hmp_port_combo_) state_->hmp_port_combo_->setObjectName(QStringLiteral("humidityPortCombo"));

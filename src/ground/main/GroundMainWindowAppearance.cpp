@@ -1,4 +1,5 @@
 #include "ground/main/GroundMainWindowImplementation.h"
+#include "ground/widgets/SerialPortComboSupport.h"
 
 void MainWindow::loadModernStyleSheet()
 {
@@ -1451,7 +1452,9 @@ void MainWindow::loadRememberedInputState()
     const int portIndex = args.indexOf(QStringLiteral("--telemetry-port"));
     if (portIndex >= 0 && portIndex + 1 < args.size() && state_->sky_telemetry_port_combo_)
     {
-        setLocalSerialPortComboText(state_->sky_telemetry_port_combo_, args.at(portIndex + 1));
+        const QString port = args.at(portIndex + 1).trimmed();
+        VaporView::rememberSerialPort(port);
+        setLocalSerialPortComboText(state_->sky_telemetry_port_combo_, port);
     }
     const int baudIndex = args.indexOf(QStringLiteral("--telemetry-baud"));
     if (baudIndex >= 0 && baudIndex + 1 < args.size() && state_->sky_telemetry_baud_combo_)
@@ -1494,7 +1497,9 @@ void MainWindow::saveRememberedInputState() const
                 {
                     return;
                 }
-                settings.setValue(key, localSerialPortComboValue(combo));
+                const QString port = localSerialPortComboValue(combo);
+                VaporView::rememberSerialPort(port);
+                settings.setValue(key, port);
                 return;
             }
             settings.setValue(key, combo->currentText().trimmed());
