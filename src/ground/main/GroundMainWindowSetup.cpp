@@ -9,8 +9,8 @@ namespace
 
 constexpr int kMainContentBottomFadeHeight = 36;
 constexpr int kLocalSerialPortHistoryBadgeWidth = 18;
-constexpr int kLocalSerialPortHistoryBadgeGap = 0;
-constexpr int kLocalSerialPortHistoryBadgeLeftInset = 9;
+constexpr int kLocalSerialPortHistoryBadgeGap = 4;
+constexpr int kLocalSerialPortHistoryBadgeLeftInset = 4;
 
 class LocalSerialPortPopupDelegate final : public QStyledItemDelegate
 {
@@ -56,7 +56,7 @@ public:
             return;
         }
 
-        const int badgeHeight = qMin(30, qMax(20, option.rect.height() - 8));
+        const int badgeHeight = option.rect.height();
         const QRect badgeRect(option.rect.left() + kLocalSerialPortHistoryBadgeLeftInset,
                               option.rect.center().y() - badgeHeight / 2,
                               kLocalSerialPortHistoryBadgeWidth,
