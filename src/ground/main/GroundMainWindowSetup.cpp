@@ -11,6 +11,7 @@ constexpr int kMainContentBottomFadeHeight = 36;
 constexpr int kLocalSerialPortHistoryBadgeWidth = 18;
 constexpr int kLocalSerialPortHistoryBadgeGap = 4;
 constexpr int kLocalSerialPortHistoryBadgeLeftInset = 4;
+constexpr int kLocalSerialPortHistoryTextOpticalCorrection = 1;
 
 class LocalSerialPortPopupDelegate final : public QStyledItemDelegate
 {
@@ -44,10 +45,32 @@ public:
         }
 
         QStyleOptionViewItem textOption(option);
-        textOption.rect.adjust(kLocalSerialPortHistoryBadgeWidth + kLocalSerialPortHistoryBadgeGap,
-                               0,
-                               0,
-                               0);
+        initStyleOption(&textOption, index);
+        const int desiredTextLeft = option.rect.left() +
+                                     kLocalSerialPortHistoryBadgeLeftInset +
+                                     kLocalSerialPortHistoryBadgeWidth +
+                                     kLocalSerialPortHistoryBadgeGap;
+        const QString displayText = index.data(Qt::DisplayRole).toString();
+        const int textBearing = QFontMetrics(textOption.font).boundingRect(displayText).left();
+        QStyle *style = option.widget ? option.widget->style() : nullptr;
+        const QRect defaultTextRect = style
+                                          ? style->subElementRect(
+                                                QStyle::SE_ItemViewItemText,
+                                                &textOption,
+                                                option.widget)
+                                          : QRect();
+        if (defaultTextRect.isValid())
+        {
+            const int focusFrameMargin = style->pixelMetric(
+                QStyle::PM_FocusFrameHMargin,
+                &textOption,
+                option.widget);
+            textOption.rect.translate(
+                desiredTextLeft -
+                    (defaultTextRect.left() + focusFrameMargin + textBearing +
+                     kLocalSerialPortHistoryTextOpticalCorrection),
+                0);
+        }
         textOption.state &= ~(QStyle::State_Selected | QStyle::State_MouseOver);
         QStyledItemDelegate::paint(painter, textOption, index);
 
