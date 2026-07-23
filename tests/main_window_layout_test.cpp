@@ -1063,12 +1063,19 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                                       QStringLiteral("RTCM Output Configuration")});
     require(ntripCard != nullptr && rtcmCard != nullptr,
             "RTK NTRIP and RTCM cards exist for compact width checks");
+    constexpr int kExpectedPageHorizontalMargin = 12;
     auto widgetRectInCentralForRtk = [&window](QWidget *widget) {
         return QRect(widget->mapTo(window.centralWidget(), QPoint(0, 0)), widget->size());
     };
     require(std::abs(widgetRectInCentralForRtk(ntripCard).left() -
-                     widgetRectInCentralForRtk(pageStack).left()) <= 1,
-            "RTK page aligns its first card with the main page content left edge");
+                     (widgetRectInCentralForRtk(pageStack).left() + kExpectedPageHorizontalMargin)) <= 1,
+            "RTK page keeps the shared 12px left margin");
+    auto *rtkContent = dialog->findChild<QWidget *>(QStringLiteral("rtkConfigContent"));
+    require(rtkContent != nullptr && rtkContent->layout() != nullptr,
+            "RTK embedded content exposes its page layout");
+    require(rtkContent->layout()->contentsMargins() ==
+                QMargins(kExpectedPageHorizontalMargin, 8, kExpectedPageHorizontalMargin, 8),
+            "RTK embedded page uses the shared 12px horizontal margins");
     auto *ggaCard = findCardByTitle(dialog,
                                     {QStringLiteral("GGA 监视"),
                                      QStringLiteral("GGA Monitor")});
@@ -2134,6 +2141,7 @@ int main(int argc, char **argv)
     auto *homeBottomFade = homeScrollArea->viewport()->findChild<QWidget *>(
         QStringLiteral("mainContentBottomFade"), Qt::FindDirectChildrenOnly);
     require(homeBottomFade != nullptr, "home bottom fade exists");
+    constexpr int kExpectedPageHorizontalMargin = 12;
     QWidget *homeScrollContent = homeScrollArea->widget();
     require(homeScrollContent != nullptr, "home scroll content exists for bottom-fade behavior");
     const int originalContentMinimumHeight = homeScrollContent->minimumHeight();
@@ -2154,8 +2162,8 @@ int main(int argc, char **argv)
                 return homeBottomFade->isVisible();
             }),
             "bottom fade appears while more content remains below");
-    require(homeScrollArea->verticalScrollBar()->width() == 8,
-            "home card scrollbar reserves the same 8px gap as the left navigation handle");
+    require(homeScrollArea->verticalScrollBar()->width() == kExpectedPageHorizontalMargin,
+            "home card scrollbar reserves the shared 12px right margin");
     require(homeBottomFade->geometry().bottom() == homeScrollArea->viewport()->rect().bottom() &&
                 homeBottomFade->width() == homeScrollArea->viewport()->width(),
             "bottom fade stays flush with the scroll viewport edge");
@@ -2204,6 +2212,9 @@ int main(int argc, char **argv)
     auto widgetRectInCentral = [&window](QWidget *widget) {
         return QRect(widget->mapTo(window.centralWidget(), QPoint(0, 0)), widget->size());
     };
+    auto rightEdge = [](const QRect& rect) {
+        return rect.left() + rect.width();
+    };
     auto sensorGroupAncestor = [](QWidget *widget) -> QWidget * {
         for (QWidget *ancestor = widget; ancestor != nullptr; ancestor = ancestor->parentWidget())
         {
@@ -2227,8 +2238,12 @@ int main(int argc, char **argv)
         qobject_cast<QGroupBox *>(homeOverviewSplitterForPageSpacing->widget(0));
     require(homePrimaryCardForPageSpacing != nullptr,
             "home primary card exists for page spacing baseline");
+    const QRect mainPageStackCentralRect = widgetRectInCentral(mainPageStackForScroll);
     const int homePrimaryCardLeft =
         widgetRectInCentral(homePrimaryCardForPageSpacing).left();
+    require(std::abs(homePrimaryCardLeft -
+                     (mainPageStackCentralRect.left() + kExpectedPageHorizontalMargin)) <= 1,
+            "home page keeps the shared 12px left margin");
     const int sidebarLeftGap = sidebarRect.left() - centralRect.left();
     const int sidebarBottomGap = centralRect.bottom() - sidebarRect.bottom();
     const int recordingRightGap = centralRect.right() - recordingCardRect.right();
@@ -5042,6 +5057,16 @@ int main(int argc, char **argv)
             "temperature controller card can be identified from the controller panel");
     require(std::abs(widgetRectInCentral(temperatureControllerCard).left() - homePrimaryCardLeft) <= 1,
             "temperature page aligns its first card with the home page card left edge");
+    auto *temperatureScrollAreaForSpacing =
+        temperaturePage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
+    require(temperatureScrollAreaForSpacing != nullptr,
+            "temperature page scroll area exists for horizontal margin checks");
+    const QRect temperatureScrollRect = widgetRectInCentral(temperatureScrollAreaForSpacing);
+    require(std::abs(temperatureScrollRect.left() -
+                     (mainPageStackCentralRect.left() + kExpectedPageHorizontalMargin)) <= 1 &&
+                std::abs((rightEdge(mainPageStackCentralRect) - rightEdge(temperatureScrollRect)) -
+                         kExpectedPageHorizontalMargin) <= 1,
+            "temperature page uses the shared 12px horizontal margins");
     requireLabelTextOneOf(customTitleLabel,
                           {QStringLiteral("温控"), QStringLiteral("Thermal")},
                           "custom title bar follows the selected temperature page");
@@ -5060,6 +5085,12 @@ int main(int argc, char **argv)
     auto *deviceConfigScrollArea =
         deviceConfigPage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
     require(deviceConfigScrollArea != nullptr, "device configuration scroll area exists");
+    const QRect deviceConfigScrollRect = widgetRectInCentral(deviceConfigScrollArea);
+    require(std::abs(deviceConfigScrollRect.left() -
+                     (mainPageStackCentralRect.left() + kExpectedPageHorizontalMargin)) <= 1 &&
+                std::abs((rightEdge(mainPageStackCentralRect) - rightEdge(deviceConfigScrollRect)) -
+                         kExpectedPageHorizontalMargin) <= 1,
+            "device configuration page uses the shared 12px horizontal margins");
     require(deviceConfigScrollArea->horizontalScrollBar() != nullptr &&
                 deviceConfigScrollArea->horizontalScrollBar()->maximum() == 0,
             "device configuration page fits horizontally at default window size");
