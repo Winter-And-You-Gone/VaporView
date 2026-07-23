@@ -1149,7 +1149,7 @@ void RtkConfigDialog::setupUi()
 
     main_layout_ = new QVBoxLayout(contentWidget);
     main_layout_->setSpacing(8);
-    main_layout_->setContentsMargins(12, 12, 12, 12);
+    main_layout_->setContentsMargins(embedded_ ? 0 : 12, 12, 12, 12);
     main_layout_->setAlignment(Qt::AlignTop);
 
     auto configureFieldLabel = [](QLabel *label) {
@@ -1613,7 +1613,10 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (main_layout_)
     {
         main_layout_->setSpacing(scalePixels(6));
-        main_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(8));
+        main_layout_->setContentsMargins(embedded_ ? 0 : scalePixels(8),
+                                         scalePixels(8),
+                                         scalePixels(8),
+                                         scalePixels(8));
         main_layout_->setAlignment(Qt::AlignTop);
     }
 

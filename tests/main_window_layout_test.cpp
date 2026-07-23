@@ -1063,6 +1063,12 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                                       QStringLiteral("RTCM Output Configuration")});
     require(ntripCard != nullptr && rtcmCard != nullptr,
             "RTK NTRIP and RTCM cards exist for compact width checks");
+    auto widgetRectInCentralForRtk = [&window](QWidget *widget) {
+        return QRect(widget->mapTo(window.centralWidget(), QPoint(0, 0)), widget->size());
+    };
+    require(std::abs(widgetRectInCentralForRtk(ntripCard).left() -
+                     widgetRectInCentralForRtk(pageStack).left()) <= 1,
+            "RTK page aligns its first card with the main page content left edge");
     auto *ggaCard = findCardByTitle(dialog,
                                     {QStringLiteral("GGA 监视"),
                                      QStringLiteral("GGA Monitor")});
