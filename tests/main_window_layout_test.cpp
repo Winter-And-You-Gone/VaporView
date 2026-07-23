@@ -2196,10 +2196,31 @@ int main(int argc, char **argv)
     auto widgetRectInCentral = [&window](QWidget *widget) {
         return QRect(widget->mapTo(window.centralWidget(), QPoint(0, 0)), widget->size());
     };
+    auto sensorGroupAncestor = [](QWidget *widget) -> QWidget * {
+        for (QWidget *ancestor = widget; ancestor != nullptr; ancestor = ancestor->parentWidget())
+        {
+            if (ancestor->objectName() == QStringLiteral("sensorGroupBox"))
+            {
+                return ancestor;
+            }
+        }
+        return nullptr;
+    };
     const QRect centralRect = window.centralWidget()->contentsRect();
     const QRect sidebarRect = widgetRectInCentral(appSidebar);
     const QRect recordingCardRect = widgetRectInCentral(recordingStatusCard);
     const QRect logCardRect = widgetRectInCentral(logPanelFrame);
+    auto *homeOverviewSplitterForPageSpacing =
+        window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
+    require(homeOverviewSplitterForPageSpacing != nullptr &&
+                homeOverviewSplitterForPageSpacing->count() >= 1,
+            "home overview splitter exists for page spacing baseline");
+    auto *homePrimaryCardForPageSpacing =
+        qobject_cast<QGroupBox *>(homeOverviewSplitterForPageSpacing->widget(0));
+    require(homePrimaryCardForPageSpacing != nullptr,
+            "home primary card exists for page spacing baseline");
+    const int homePrimaryCardLeft =
+        widgetRectInCentral(homePrimaryCardForPageSpacing).left();
     const int sidebarLeftGap = sidebarRect.left() - centralRect.left();
     const int sidebarBottomGap = centralRect.bottom() - sidebarRect.bottom();
     const int recordingRightGap = centralRect.right() - recordingCardRect.right();
@@ -5008,6 +5029,11 @@ int main(int argc, char **argv)
     auto *temperaturePage = window.findChild<QWidget *>(QStringLiteral("temperaturePage"));
     require(temperaturePage != nullptr && temperaturePage->isVisible(),
             "temperature page can be opened");
+    QWidget *temperatureControllerCard = sensorGroupAncestor(temperaturePanel);
+    require(temperatureControllerCard != nullptr,
+            "temperature controller card can be identified from the controller panel");
+    require(std::abs(widgetRectInCentral(temperatureControllerCard).left() - homePrimaryCardLeft) <= 1,
+            "temperature page aligns its first card with the home page card left edge");
     requireLabelTextOneOf(customTitleLabel,
                           {QStringLiteral("温控"), QStringLiteral("Thermal")},
                           "custom title bar follows the selected temperature page");
@@ -5338,24 +5364,15 @@ int main(int argc, char **argv)
                 localSerialPortValue(deviceTemperaturePortCombo) == syntheticPort,
             "temperature title serial selector can restore the refreshed RD105 port");
 
-    QGroupBox *serialConfigCard = nullptr;
-    for (QWidget *ancestor = devicePortCombo ? devicePortCombo->parentWidget() : nullptr;
-         ancestor != nullptr;
-         ancestor = ancestor->parentWidget())
-    {
-        if (auto *group = qobject_cast<QGroupBox *>(ancestor);
-            group && group->objectName() == QStringLiteral("sensorGroupBox"))
-        {
-            serialConfigCard = group;
-            break;
-        }
-    }
+    QGroupBox *serialConfigCard = qobject_cast<QGroupBox *>(sensorGroupAncestor(devicePortCombo));
     require(serialConfigCard != nullptr,
             "device configuration serial card can be identified from the serial controls");
     require(serialConfigCard->sizePolicy().horizontalPolicy() == QSizePolicy::Maximum,
             "device configuration serial card width follows its contents");
     const QRect serialConfigPageRect(serialConfigCard->mapTo(deviceConfigPage, QPoint(0, 0)),
                                      serialConfigCard->size());
+    require(std::abs(widgetRectInCentral(serialConfigCard).left() - homePrimaryCardLeft) <= 1,
+            "device configuration page aligns its first card with the home page card left edge");
     require(serialConfigCard->width() <= serialConfigCard->sizeHint().width() + 4,
             "device configuration serial card does not expand to fill the whole row");
     requireCardTitleBar(serialConfigCard,

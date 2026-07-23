@@ -1358,7 +1358,7 @@ void MainWindow::setupCentralWidget()
     state_->temperature_page_ = new QWidget(this);
     state_->temperature_page_->setObjectName(QStringLiteral("temperaturePage"));
     auto *temperaturePageLayout = new QVBoxLayout(state_->temperature_page_);
-    temperaturePageLayout->setContentsMargins(8, 0, 8, 8);
+    temperaturePageLayout->setContentsMargins(0, 0, 8, 8);
     temperaturePageLayout->setSpacing(8);
     auto *temperatureScrollArea = new QScrollArea(state_->temperature_page_);
     temperatureScrollArea->setObjectName(QStringLiteral("mainCardsScrollArea"));
@@ -1411,7 +1411,7 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.page = new QWidget(this);
     state_->device_config_.page->setObjectName(QStringLiteral("deviceConfigPage"));
     auto *pageLayout = new QVBoxLayout(state_->device_config_.page);
-    pageLayout->setContentsMargins(8, 0, 8, 8);
+    pageLayout->setContentsMargins(0, 0, 8, 8);
     pageLayout->setSpacing(8);
 
     auto *scrollArea = new QScrollArea(state_->device_config_.page);
