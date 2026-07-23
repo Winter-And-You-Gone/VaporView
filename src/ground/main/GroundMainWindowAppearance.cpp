@@ -835,6 +835,17 @@ void MainWindow::updateResponsiveHomeLayout()
     const bool compact = shouldUseCompactHomeLayout();
     const bool layoutChanged = state_->compact_home_layout_ != compact;
     state_->compact_home_layout_ = compact;
+    const bool homeOverviewDragging = state_->home_overview_splitter_ &&
+        state_->home_overview_splitter_->property(kMainCardResizeDraggingProperty).toBool();
+    const bool dataCardUserSized = state_->data_group_ &&
+        state_->data_group_->property(kMainCardUserResizedHeightProperty).toBool();
+    const bool dataCardDragging = state_->data_group_ &&
+        state_->data_group_->property(kMainCardResizeDraggingProperty).toBool();
+    const bool preserveDataCardHeight = (dataCardUserSized || dataCardDragging) && !layoutChanged;
+    if (!layoutChanged && (homeOverviewDragging || dataCardDragging))
+    {
+        return;
+    }
 
     const QBoxLayout::Direction direction = compact ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight;
     if (state_->sensor_layout_->direction() != direction)
@@ -966,7 +977,14 @@ void MainWindow::updateResponsiveHomeLayout()
     clearFixedHeight(state_->epsilon_group_);
     clearFixedHeight(state_->env_group_);
     clearFixedHeight(state_->sensor_row_widget_);
-    clearFixedHeight(state_->data_group_);
+    if (!preserveDataCardHeight)
+    {
+        clearFixedHeight(state_->data_group_);
+        if (state_->data_group_)
+        {
+            state_->data_group_->setProperty(kMainCardUserResizedHeightProperty, false);
+        }
+    }
     if (state_->sensor_layout_)
     {
         state_->sensor_layout_->invalidate();
@@ -1008,9 +1026,12 @@ void MainWindow::updateResponsiveHomeLayout()
         state_->sensor_row_widget_->setMinimumHeight(targetHeight);
         state_->data_group_->setProperty(kMainCardMinimumHeightProperty, targetHeight);
         state_->data_group_->setMinimumHeight(targetHeight);
-        if (layoutChanged || state_->data_group_->height() < targetHeight)
+        if (layoutChanged || !preserveDataCardHeight || state_->data_group_->height() < targetHeight)
         {
-            state_->data_group_->setFixedHeight(targetHeight);
+            const int dataCardHeight = preserveDataCardHeight
+                ? std::max(state_->data_group_->height(), targetHeight)
+                : targetHeight;
+            state_->data_group_->setFixedHeight(dataCardHeight);
         }
     }
 

@@ -361,8 +361,7 @@ void MainWindow::updateConfigCardHeightForSourceMode()
     }
 
     state_->config_group_->setProperty(kMainCardMinimumHeightProperty, minimumHeight);
-    const int stableConfigMinimumHeight = std::max(state_->config_group_->height(), minimumHeight);
-    state_->config_group_->setMinimumHeight(stableConfigMinimumHeight);
+    state_->config_group_->setMinimumHeight(minimumHeight);
     if (state_->temperature_overview_group_)
     {
         const int temperatureMinimumHeight = std::max(state_->temperature_overview_group_->minimumSizeHint().height(),
@@ -374,17 +373,16 @@ void MainWindow::updateConfigCardHeightForSourceMode()
     if (state_->home_overview_splitter_)
     {
         state_->home_overview_splitter_->setProperty(kMainCardMinimumHeightProperty, minimumHeight);
-        const int stableSplitterMinimumHeight = std::max(state_->home_overview_splitter_->height(), minimumHeight);
-        state_->home_overview_splitter_->setMinimumHeight(stableSplitterMinimumHeight);
-        if (state_->home_overview_splitter_->height() < stableSplitterMinimumHeight)
+        state_->home_overview_splitter_->setMinimumHeight(minimumHeight);
+        if (state_->home_overview_splitter_->height() < minimumHeight)
         {
-            state_->home_overview_splitter_->setFixedHeight(stableSplitterMinimumHeight);
+            state_->home_overview_splitter_->setFixedHeight(minimumHeight);
         }
         return;
     }
-    if (state_->config_group_->height() < stableConfigMinimumHeight)
+    if (state_->config_group_->height() < minimumHeight)
     {
-        state_->config_group_->setFixedHeight(stableConfigMinimumHeight);
+        state_->config_group_->setFixedHeight(minimumHeight);
     }
 }
 

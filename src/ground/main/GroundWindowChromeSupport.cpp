@@ -613,6 +613,7 @@ protected:
         dragging_ = true;
         drag_start_y_ = event->globalPosition().toPoint().y();
         target_start_height_ = target_card_->height();
+        target_card_->setProperty(kMainCardResizeDraggingProperty, true);
         setProperty("dragging", true);
         refreshStyle();
         event->accept();
@@ -629,9 +630,19 @@ protected:
         const int deltaY = event->globalPosition().toPoint().y() - drag_start_y_;
         bool ok = false;
         const int propertyMinimum = target_card_->property(kMainCardMinimumHeightProperty).toInt(&ok);
-        const int effectiveMinimum = ok ? std::max(minimum_target_height_, propertyMinimum) : minimum_target_height_;
+        int effectiveMinimum = minimum_target_height_;
+        if (ok)
+        {
+            effectiveMinimum = std::max(effectiveMinimum, propertyMinimum);
+        }
+        effectiveMinimum = std::max(effectiveMinimum, target_card_->minimumSizeHint().height());
         const int nextHeight = std::max(effectiveMinimum, target_start_height_ + deltaY);
-        target_card_->setFixedHeight(nextHeight);
+        if (target_card_->height() != nextHeight)
+        {
+            target_card_->setFixedHeight(nextHeight);
+            target_card_->setProperty(kMainCardUserResizedHeightProperty, true);
+            target_card_->updateGeometry();
+        }
         event->accept();
     }
 
@@ -640,6 +651,11 @@ protected:
         if (event->button() == Qt::LeftButton && dragging_)
         {
             dragging_ = false;
+            if (target_card_)
+            {
+                target_card_->setProperty(kMainCardResizeDraggingProperty, false);
+                target_card_->updateGeometry();
+            }
             setProperty("dragging", false);
             refreshStyle();
             event->accept();

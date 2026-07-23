@@ -640,6 +640,50 @@ void clickWidget(QWidget *widget, int waitMs = 50)
     clickWidgetAt(widget, widget->rect().center(), waitMs);
 }
 
+void dragWidgetVertically(QWidget *widget, const std::vector<int>& offsets, int waitMs = 50)
+{
+    require(widget != nullptr, "vertical drag widget exists");
+    require(!offsets.empty(), "vertical drag offsets are provided");
+    const QPoint start = widget->rect().center();
+    const QPoint globalStart = widget->mapToGlobal(start);
+    QMouseEvent press(QEvent::MouseButtonPress,
+                      start,
+                      globalStart,
+                      Qt::LeftButton,
+                      Qt::LeftButton,
+                      Qt::NoModifier);
+    QCoreApplication::sendEvent(widget, &press);
+    for (const int offset : offsets)
+    {
+        const QPoint localPoint = start + QPoint(0, offset);
+        const QPoint globalPoint = globalStart + QPoint(0, offset);
+        QMouseEvent move(QEvent::MouseMove,
+                         localPoint,
+                         globalPoint,
+                         Qt::NoButton,
+                         Qt::LeftButton,
+                         Qt::NoModifier);
+        QCoreApplication::sendEvent(widget, &move);
+        if (waitMs > 0)
+        {
+            processEventsFor(waitMs);
+        }
+    }
+    const QPoint end = start + QPoint(0, offsets.back());
+    const QPoint globalEnd = globalStart + QPoint(0, offsets.back());
+    QMouseEvent release(QEvent::MouseButtonRelease,
+                        end,
+                        globalEnd,
+                        Qt::LeftButton,
+                        Qt::NoButton,
+                        Qt::NoModifier);
+    QCoreApplication::sendEvent(widget, &release);
+    if (waitMs > 0)
+    {
+        processEventsFor(waitMs);
+    }
+}
+
 void doubleClickWidget(QWidget *widget, int waitMs = 50)
 {
     require(widget != nullptr, "double-click widget exists");
@@ -2811,15 +2855,93 @@ int main(int argc, char **argv)
 
     auto *homeConfigCard = deviceOverviewCard;
     require(homeConfigCard != nullptr, "home configuration card exists");
-    const QRect homeConfigLocalRect = homeConfigCard->geometry();
     QComboBox *homeSourceModeCombo = findSourceModeCombo(homeConfigCard);
     require(homeSourceModeCombo != nullptr, "home source mode combo exists");
     require(homeSourceModeCombo->property("usesSingleLevelPopupMenu").toBool(),
             "home source mode combo uses the shared single-level popup");
+    QWidget *homeOverviewResizeHandle = nullptr;
+    int closestOverviewHandleDistance = std::numeric_limits<int>::max();
+    const QRect overviewResizeBaselineRect = widgetRectInCentral(homeOverviewSplitter);
+    const QList<QWidget*> mainCardResizeHandles =
+        window.findChildren<QWidget *>(QStringLiteral("mainCardResizeHandle"));
+    for (QWidget *resizeHandle : mainCardResizeHandles)
+    {
+        if (!resizeHandle->isVisibleTo(&window))
+        {
+            continue;
+        }
+        const QRect handleRect = widgetRectInCentral(resizeHandle);
+        const int distanceBelowOverview = handleRect.top() - bottomEdge(overviewResizeBaselineRect);
+        if (distanceBelowOverview >= 0 && distanceBelowOverview < closestOverviewHandleDistance)
+        {
+            closestOverviewHandleDistance = distanceBelowOverview;
+            homeOverviewResizeHandle = resizeHandle;
+        }
+    }
+    require(homeOverviewResizeHandle != nullptr,
+            "home overview vertical resize handle exists");
+    const int overviewHeightBeforeDrag = homeOverviewSplitter->height();
+    dragWidgetVertically(homeOverviewResizeHandle, {64}, 40);
+    activateLayouts(&window);
+    const int overviewHeightAfterExpand = homeOverviewSplitter->height();
+    require(overviewHeightAfterExpand >= overviewHeightBeforeDrag + 48,
+            "home overview resize handle can expand the temperature overview row");
+    const int temperatureBottomBeforeIncrementalShrink =
+        bottomEdge(widgetRectInCentral(temperatureOverviewCard));
+    const QPoint shrinkStart = homeOverviewResizeHandle->rect().center();
+    const QPoint shrinkGlobalStart = homeOverviewResizeHandle->mapToGlobal(shrinkStart);
+    QMouseEvent shrinkPress(QEvent::MouseButtonPress,
+                            shrinkStart,
+                            shrinkGlobalStart,
+                            Qt::LeftButton,
+                            Qt::LeftButton,
+                            Qt::NoModifier);
+    QCoreApplication::sendEvent(homeOverviewResizeHandle, &shrinkPress);
+    int previousTemperatureBottom = temperatureBottomBeforeIncrementalShrink;
+    for (const int offset : {-8, -16, -24})
+    {
+        const QPoint localPoint = shrinkStart + QPoint(0, offset);
+        const QPoint globalPoint = shrinkGlobalStart + QPoint(0, offset);
+        QMouseEvent shrinkMove(QEvent::MouseMove,
+                               localPoint,
+                               globalPoint,
+                               Qt::NoButton,
+                               Qt::LeftButton,
+                               Qt::NoModifier);
+        QCoreApplication::sendEvent(homeOverviewResizeHandle, &shrinkMove);
+        processEventsFor(40);
+        activateLayouts(&window);
+        const int nextTemperatureBottom = bottomEdge(widgetRectInCentral(temperatureOverviewCard));
+        require(nextTemperatureBottom <= previousTemperatureBottom + 1,
+                "temperature overview lower edge does not bounce downward while dragging upward");
+        previousTemperatureBottom = nextTemperatureBottom;
+    }
+    const QPoint shrinkEnd = shrinkStart + QPoint(0, -24);
+    const QPoint shrinkGlobalEnd = shrinkGlobalStart + QPoint(0, -24);
+    QMouseEvent shrinkRelease(QEvent::MouseButtonRelease,
+                              shrinkEnd,
+                              shrinkGlobalEnd,
+                              Qt::LeftButton,
+                              Qt::NoButton,
+                              Qt::NoModifier);
+    QCoreApplication::sendEvent(homeOverviewResizeHandle, &shrinkRelease);
+    processEventsFor(40);
+    activateLayouts(&window);
+    require(homeOverviewSplitter->height() <= overviewHeightAfterExpand - 16,
+            "home overview resize handle can shrink the expanded temperature overview row");
+    homeSourceModeCombo->setCurrentIndex(1);
+    processEventsFor(120);
+    activateLayouts(&window);
+    homeSourceModeCombo->setCurrentIndex(0);
+    processEventsFor(120);
+    activateLayouts(&window);
+    require(homeOverviewSplitter->minimumHeight() <= homeOverviewSplitter->minimumSizeHint().height() + 2,
+            "home overview source-mode relayout keeps the splitter minimum height content-based");
     const SkyTelemetryRowWidgets homeSkyTelemetry = findSkyTelemetryRowWidgets(homeConfigCard);
     require(homeSkyTelemetry.transportCombo != nullptr,
             "home sky telemetry transport combo exists");
     requireSkyTelemetryTransportLabels(homeSkyTelemetry, false);
+    const QRect homeConfigLocalRect = homeConfigCard->geometry();
     homeSourceModeCombo->setCurrentIndex(1);
     processEventsFor(150);
     activateLayouts(&window);
