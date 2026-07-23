@@ -1727,7 +1727,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     {
         const int helpSize = scalePixels(kRtkInputHeight);
         main_antenna_lever_help_btn_->setFixedSize(helpSize, helpSize);
-        const int iconSize = std::max(16, helpSize - scalePixels(6));
+        const int iconSize = scalePixels(24);
         main_antenna_lever_help_btn_->setIconSize(QSize(iconSize, iconSize));
         main_antenna_lever_help_btn_->setIcon(createLucideIcon(
             QStringLiteral("help-circle"),

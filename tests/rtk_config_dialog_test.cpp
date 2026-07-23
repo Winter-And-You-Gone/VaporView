@@ -74,6 +74,8 @@ int main(int argc, char **argv)
     auto *applyButton = dialog.findChild<QPushButton *>(QStringLiteral("rtkApplyLeverArmButton"));
     auto *leverHelpButton = dialog.findChild<QToolButton *>(QStringLiteral("rtkLeverHelpButton"));
     require(xEdit && yEdit && zEdit && applyButton && leverHelpButton, "lever-arm controls exist");
+    require(leverHelpButton->iconSize() == QSize(24, 24),
+            "lever-arm help icon matches the standard title-bar icon size");
     const QString leverHelpButtonStyle = leverHelpButton->styleSheet();
     require(leverHelpButtonStyle.contains(QStringLiteral("border-radius: 6px")) &&
                 leverHelpButtonStyle.contains(QStringLiteral("QToolButton:hover, QToolButton:pressed")) &&
