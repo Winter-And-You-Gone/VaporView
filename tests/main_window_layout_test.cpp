@@ -2154,6 +2154,8 @@ int main(int argc, char **argv)
                 return homeBottomFade->isVisible();
             }),
             "bottom fade appears while more content remains below");
+    require(homeScrollArea->verticalScrollBar()->width() == 8,
+            "home card scrollbar reserves the same 8px gap as the left navigation handle");
     require(homeBottomFade->geometry().bottom() == homeScrollArea->viewport()->rect().bottom() &&
                 homeBottomFade->width() == homeScrollArea->viewport()->width(),
             "bottom fade stays flush with the scroll viewport edge");

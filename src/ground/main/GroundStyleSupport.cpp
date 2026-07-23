@@ -1097,6 +1097,9 @@ QString mainCardsScrollBarBackgroundStyleSheet(bool dark)
 {
     const QString background = dark ? QStringLiteral("@vv-window") : QStringLiteral("@vv-surface");
     return QStringLiteral(
+        "QScrollArea#mainCardsScrollArea QScrollBar:vertical { width: 8px; }"
+        "QScrollArea#mainCardsScrollArea QScrollBar::up-arrow:vertical, "
+        "QScrollArea#mainCardsScrollArea QScrollBar::down-arrow:vertical { width: 8px; height: 8px; }"
         "QScrollArea#mainCardsScrollArea QScrollBar:vertical, "
         "QScrollArea#mainCardsScrollArea QScrollBar:horizontal, "
         "QScrollArea#mainCardsScrollArea QScrollBar::add-page:vertical, "

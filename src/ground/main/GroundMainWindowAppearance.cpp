@@ -182,6 +182,8 @@ void MainWindow::loadModernStyleSheet()
             "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background-color: @vv-surface-sunken; border-radius: 6px; }"
             "QScrollBar::add-page:horizontal:hover, QScrollBar::sub-page:horizontal:hover, QScrollBar::add-page:horizontal:pressed, QScrollBar::sub-page:horizontal:pressed { background-color: @vv-surface-sunken; }"
             "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0px; background-color: @vv-surface-sunken; }"
+            "QScrollArea#mainCardsScrollArea QScrollBar:vertical { width: 8px; }"
+            "QScrollArea#mainCardsScrollArea QScrollBar::up-arrow:vertical, QScrollArea#mainCardsScrollArea QScrollBar::down-arrow:vertical { width: 8px; height: 8px; }"
             "QScrollArea#mainCardsScrollArea QScrollBar:vertical, QScrollArea#mainCardsScrollArea QScrollBar:horizontal, QScrollArea#mainCardsScrollArea QScrollBar::add-page:vertical, QScrollArea#mainCardsScrollArea QScrollBar::sub-page:vertical, QScrollArea#mainCardsScrollArea QScrollBar::add-page:horizontal, QScrollArea#mainCardsScrollArea QScrollBar::sub-page:horizontal, QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical, QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical, QScrollArea#mainCardsScrollArea QScrollBar::add-line:horizontal, QScrollArea#mainCardsScrollArea QScrollBar::sub-line:horizontal { background-color: @vv-surface; }"
             "QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, QScrollArea#mainCardsScrollArea QScrollBar::handle:horizontal { border: 2px solid @vv-surface; }"
             "QSplitter::handle { background-color: transparent; }"
