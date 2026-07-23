@@ -826,7 +826,7 @@ QSplitter#appLayoutSplitter::handle:horizontal:pressed {
     background-color: @vv-window;
 }
 QSplitter#homeOverviewSplitter::handle:horizontal {
-    width: 8px;
+    width: 12px;
     background-color: @vv-window;
 }
 QSplitter#homeOverviewSplitter::handle:horizontal:hover {

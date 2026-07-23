@@ -76,6 +76,8 @@ constexpr int kRtkDefaultDialogHeight = 640;
 constexpr int kRtkMinimumDialogWidth = 640;
 constexpr int kRtkMinimumDialogHeight = 420;
 constexpr int kRtkInputHeight = 32;
+constexpr int kEmbeddedTopLevelCardGap = 12;
+constexpr int kEmbeddedTopLevelCardChromeInset = 4;
 constexpr const char *kEpsilonMainGgaSourceKey = "__epsilon_main__";
 constexpr const char *kSectionTitleIconNameProperty = "_vv_section_title_icon_name";
 constexpr int kSectionTitleIconBoxSize = 26;
@@ -1148,7 +1150,7 @@ void RtkConfigDialog::setupUi()
     scrollArea->setWidget(contentWidget);
 
     main_layout_ = new QVBoxLayout(contentWidget);
-    main_layout_->setSpacing(8);
+    main_layout_->setSpacing(kEmbeddedTopLevelCardGap);
     main_layout_->setContentsMargins(12, 12, 12, 12);
     main_layout_->setAlignment(Qt::AlignTop);
 
@@ -1406,7 +1408,7 @@ void RtkConfigDialog::setupUi()
     topRowWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto *topRowLayout = new QHBoxLayout(topRowWidget);
     topRowLayout->setContentsMargins(0, 0, 0, 0);
-    topRowLayout->setSpacing(8);
+    topRowLayout->setSpacing(kEmbeddedTopLevelCardGap);
     topRowLayout->setAlignment(Qt::AlignTop);
     topRowLayout->addWidget(config_group_, 0, Qt::AlignTop | Qt::AlignLeft);
     topRowLayout->addWidget(gga_group_, 1);
@@ -1437,7 +1439,7 @@ void RtkConfigDialog::setupUi()
     rtcmLogRowWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto *rtcmLogRowLayout = new QHBoxLayout(rtcmLogRowWidget);
     rtcmLogRowLayout->setContentsMargins(0, 0, 0, 0);
-    rtcmLogRowLayout->setSpacing(8);
+    rtcmLogRowLayout->setSpacing(kEmbeddedTopLevelCardGap);
     rtcmLogRowLayout->setAlignment(Qt::AlignTop);
     rtcmLogRowLayout->addWidget(output_group_, 0, Qt::AlignTop | Qt::AlignLeft);
     rtcmLogRowLayout->addWidget(log_group_, 1, Qt::AlignTop);
@@ -1612,11 +1614,11 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     if (main_layout_)
     {
-        main_layout_->setSpacing(scalePixels(6));
-        main_layout_->setContentsMargins(embedded_ ? scalePixels(4) : scalePixels(8),
-                                         scalePixels(8),
-                                         embedded_ ? scalePixels(12) : scalePixels(8),
-                                         scalePixels(8));
+        main_layout_->setSpacing(scalePixels(embedded_ ? kEmbeddedTopLevelCardGap : 6));
+        main_layout_->setContentsMargins(embedded_ ? scalePixels(kEmbeddedTopLevelCardChromeInset) : scalePixels(8),
+                                         embedded_ ? scalePixels(kEmbeddedTopLevelCardChromeInset) : scalePixels(8),
+                                         embedded_ ? scalePixels(kEmbeddedTopLevelCardGap) : scalePixels(8),
+                                         embedded_ ? scalePixels(kEmbeddedTopLevelCardChromeInset) : scalePixels(8));
         main_layout_->setAlignment(Qt::AlignTop);
     }
 

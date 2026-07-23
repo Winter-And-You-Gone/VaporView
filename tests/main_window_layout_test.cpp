@@ -1065,18 +1065,34 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
             "RTK NTRIP and RTCM cards exist for compact width checks");
     constexpr int kExpectedPageLeftInset = 4;
     constexpr int kExpectedPageRightGap = 12;
+    constexpr int kExpectedPageChromeInset = 4;
+    constexpr int kExpectedTopLevelCardGap = 12;
     auto widgetRectInCentralForRtk = [&window](QWidget *widget) {
         return QRect(widget->mapTo(window.centralWidget(), QPoint(0, 0)), widget->size());
+    };
+    auto rightEdgeForRtk = [](const QRect& rect) {
+        return rect.left() + rect.width();
+    };
+    auto bottomEdgeForRtk = [](const QRect& rect) {
+        return rect.top() + rect.height();
     };
     require(std::abs(widgetRectInCentralForRtk(ntripCard).left() -
                      (widgetRectInCentralForRtk(pageStack).left() + kExpectedPageLeftInset)) <= 1,
             "RTK page keeps the compact left inset that balances the sidebar splitter");
+    require(std::abs(widgetRectInCentralForRtk(ntripCard).top() -
+                     (widgetRectInCentralForRtk(pageStack).top() + kExpectedPageChromeInset)) <= 1,
+            "RTK page keeps the compact top inset that balances the app chrome");
     auto *rtkContent = dialog->findChild<QWidget *>(QStringLiteral("rtkConfigContent"));
     require(rtkContent != nullptr && rtkContent->layout() != nullptr,
             "RTK embedded content exposes its page layout");
     require(rtkContent->layout()->contentsMargins() ==
-                QMargins(kExpectedPageLeftInset, 8, kExpectedPageRightGap, 8),
-            "RTK embedded page keeps the balanced left inset and 12px right gap");
+                QMargins(kExpectedPageLeftInset,
+                         kExpectedPageChromeInset,
+                         kExpectedPageRightGap,
+                         kExpectedPageChromeInset),
+            "RTK embedded page keeps balanced chrome insets and a 12px right gap");
+    require(rtkContent->layout()->spacing() == kExpectedTopLevelCardGap,
+            "RTK embedded page uses 12px between top-level card rows");
     auto *ggaCard = findCardByTitle(dialog,
                                     {QStringLiteral("GGA 监视"),
                                      QStringLiteral("GGA Monitor")});
@@ -1088,6 +1104,25 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                                         QStringLiteral("Service Actions")});
     require(ggaCard != nullptr && logCard != nullptr && actionCard != nullptr,
             "RTK GGA, log, and service action cards exist for compact stacking checks");
+    const QRect ntripCardRect = widgetRectInCentralForRtk(ntripCard);
+    const QRect ggaCardRect = widgetRectInCentralForRtk(ggaCard);
+    const QRect rtcmCardRect = widgetRectInCentralForRtk(rtcmCard);
+    const QRect logCardRect = widgetRectInCentralForRtk(logCard);
+    const QRect actionCardRect = widgetRectInCentralForRtk(actionCard);
+    require(std::abs((ggaCardRect.left() - rightEdgeForRtk(ntripCardRect)) -
+                     kExpectedTopLevelCardGap) <= 1,
+            "RTK top row cards keep a 12px horizontal gap");
+    require(std::abs((rtcmCardRect.top() -
+                      std::max(bottomEdgeForRtk(ntripCardRect), bottomEdgeForRtk(ggaCardRect))) -
+                     kExpectedTopLevelCardGap) <= 1,
+            "RTK second row starts 12px below the top row");
+    require(std::abs((logCardRect.left() - rightEdgeForRtk(rtcmCardRect)) -
+                     kExpectedTopLevelCardGap) <= 1,
+            "RTK RTCM and log cards keep a 12px horizontal gap");
+    require(std::abs((actionCardRect.top() -
+                      std::max(bottomEdgeForRtk(rtcmCardRect), bottomEdgeForRtk(logCardRect))) -
+                     kExpectedTopLevelCardGap) <= 1,
+            "RTK service action card starts 12px below the RTCM/log row");
     require(ntripCard->width() <= ntripCard->sizeHint().width() + 4 &&
                 ntripCard->width() <= 760,
             "RTK NTRIP card width hugs its compact form contents");
@@ -2144,6 +2179,8 @@ int main(int argc, char **argv)
     require(homeBottomFade != nullptr, "home bottom fade exists");
     constexpr int kExpectedPageLeftInset = 4;
     constexpr int kExpectedPageRightGap = 12;
+    constexpr int kExpectedPageChromeInset = 4;
+    constexpr int kExpectedTopLevelCardGap = 12;
     QWidget *homeScrollContent = homeScrollArea->widget();
     require(homeScrollContent != nullptr, "home scroll content exists for bottom-fade behavior");
     const int originalContentMinimumHeight = homeScrollContent->minimumHeight();
@@ -2217,6 +2254,9 @@ int main(int argc, char **argv)
     auto rightEdge = [](const QRect& rect) {
         return rect.left() + rect.width();
     };
+    auto bottomEdge = [](const QRect& rect) {
+        return rect.top() + rect.height();
+    };
     auto sensorGroupAncestor = [](QWidget *widget) -> QWidget * {
         for (QWidget *ancestor = widget; ancestor != nullptr; ancestor = ancestor->parentWidget())
         {
@@ -2238,14 +2278,27 @@ int main(int argc, char **argv)
             "home overview splitter exists for page spacing baseline");
     auto *homePrimaryCardForPageSpacing =
         qobject_cast<QGroupBox *>(homeOverviewSplitterForPageSpacing->widget(0));
+    auto *homeTemperatureCardForPageSpacing =
+        qobject_cast<QGroupBox *>(homeOverviewSplitterForPageSpacing->widget(1));
     require(homePrimaryCardForPageSpacing != nullptr,
             "home primary card exists for page spacing baseline");
+    require(homeTemperatureCardForPageSpacing != nullptr,
+            "home temperature overview card exists for page spacing baseline");
     const QRect mainPageStackCentralRect = widgetRectInCentral(mainPageStackForScroll);
+    const QRect homeOverviewSplitterRect = widgetRectInCentral(homeOverviewSplitterForPageSpacing);
+    const QRect homePrimaryCardRect = widgetRectInCentral(homePrimaryCardForPageSpacing);
+    const QRect homeTemperatureCardRect = widgetRectInCentral(homeTemperatureCardForPageSpacing);
     const int homePrimaryCardLeft =
-        widgetRectInCentral(homePrimaryCardForPageSpacing).left();
+        homePrimaryCardRect.left();
     require(std::abs(homePrimaryCardLeft -
                      (mainPageStackCentralRect.left() + kExpectedPageLeftInset)) <= 1,
             "home page keeps the compact left inset that balances the sidebar splitter");
+    require(std::abs((homePrimaryCardRect.top() - mainPageStackCentralRect.top()) -
+                     kExpectedPageChromeInset) <= 1,
+            "home page keeps the compact top inset that balances the app chrome");
+    require(std::abs((homeTemperatureCardRect.left() - rightEdge(homePrimaryCardRect)) -
+                     kExpectedTopLevelCardGap) <= 1,
+            "home overview cards keep a 12px horizontal gap");
     const int sidebarLeftGap = sidebarRect.left() - centralRect.left();
     const int sidebarBottomGap = centralRect.bottom() - sidebarRect.bottom();
     const int recordingRightGap = centralRect.right() - recordingCardRect.right();
@@ -2259,12 +2312,71 @@ int main(int argc, char **argv)
                 homeRightVisualGap > 0 &&
                 std::abs(homeLeftVisualGap - homeRightVisualGap) <= 1,
             "home page visible left gap matches the right gap next to the side panel");
+    auto *homeDataGroupForSpacing =
+        window.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer"));
+    require(homeDataGroupForSpacing != nullptr, "home sensor row container exists for top-level spacing checks");
+    auto *homeEpsilonCardForSpacing =
+        homeDataGroupForSpacing->findChild<QGroupBox *>(QStringLiteral("sensorGroupBox"));
+    QGroupBox *homeEnvironmentCardForSpacing = nullptr;
+    const QList<QGroupBox*> homeSensorCardsForSpacing =
+        homeDataGroupForSpacing->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox"));
+    for (QGroupBox *card : homeSensorCardsForSpacing)
+    {
+        if (card != homeEpsilonCardForSpacing &&
+            card->findChildren<QLabel *>(QStringLiteral("envStatusIcon")).size() == 3)
+        {
+            homeEnvironmentCardForSpacing = card;
+            break;
+        }
+    }
+    require(homeEpsilonCardForSpacing != nullptr &&
+                homeEnvironmentCardForSpacing != nullptr,
+            "home EPSILON and environment top-level cards exist for spacing checks");
+    auto *tcpWaveDisplayButtonForSpacing =
+        window.findChild<QToolButton *>(QStringLiteral("tcpWaveDisplayButton"));
+    QWidget *tcpWaveTitleBarForSpacing =
+        tcpWaveDisplayButtonForSpacing ? tcpWaveDisplayButtonForSpacing->parentWidget() : nullptr;
+    QWidget *tcpWavePanelForSpacing =
+        tcpWaveTitleBarForSpacing ? tcpWaveTitleBarForSpacing->parentWidget() : nullptr;
+    QWidget *tcpWaveCardForSpacing =
+        tcpWavePanelForSpacing ? tcpWavePanelForSpacing->parentWidget() : nullptr;
+    require(tcpWaveCardForSpacing != nullptr,
+            "home TCP wave top-level card exists for spacing checks");
+    const QRect epsilonCardRect = widgetRectInCentral(homeEpsilonCardForSpacing);
+    const QRect environmentCardRect = widgetRectInCentral(homeEnvironmentCardForSpacing);
+    const QRect homeTcpWaveCardRect = widgetRectInCentral(tcpWaveCardForSpacing);
+    require(std::abs((std::min(epsilonCardRect.top(), environmentCardRect.top()) -
+                      bottomEdge(homeOverviewSplitterRect)) -
+                     kExpectedTopLevelCardGap) <= 1,
+            "home sensor row starts 12px below the overview row");
+    if (std::abs(epsilonCardRect.top() - environmentCardRect.top()) <= 1)
+    {
+        require(std::abs((environmentCardRect.left() - rightEdge(epsilonCardRect)) -
+                         kExpectedTopLevelCardGap) <= 1,
+                "home EPSILON and environment cards keep a 12px horizontal gap");
+    }
+    else
+    {
+        require(std::abs((environmentCardRect.top() - bottomEdge(epsilonCardRect)) -
+                         kExpectedTopLevelCardGap) <= 1,
+                "home EPSILON and environment cards keep a 12px vertical gap");
+    }
+    require(std::abs((homeTcpWaveCardRect.top() -
+                      std::max(bottomEdge(epsilonCardRect), bottomEdge(environmentCardRect))) -
+                     kExpectedTopLevelCardGap) <= 1,
+            "home TCP wave card starts 12px below the sensor cards");
+    require(std::abs((recordingCardRect.top() - centralRect.top()) -
+                     kExpectedTopLevelCardGap) <= 1,
+            "recording status card keeps a 12px top gap to the window background");
+    require(std::abs((logCardRect.top() - bottomEdge(recordingCardRect)) -
+                     kExpectedTopLevelCardGap) <= 1,
+            "right-side log card starts 12px below recording status");
     require(sidebarLeftGap > 0 &&
                 std::abs(sidebarLeftGap - sidebarBottomGap) <= 1,
             "sidebar left border uses the same outer margin as its bottom border");
-    require(std::abs(recordingRightGap - sidebarBottomGap) <= 1 &&
-                std::abs(logRightGap - sidebarBottomGap) <= 1,
-            "recording status and log cards use the same right margin as the shared bottom margin");
+    require(std::abs(recordingRightGap - kExpectedTopLevelCardGap) <= 1 &&
+                std::abs(logRightGap - kExpectedTopLevelCardGap) <= 1,
+            "recording status and log cards use a 12px right gap to the window background");
     QPushButton *checkedSidebarButton = nullptr;
     const QList<QPushButton*> sidebarButtons =
         window.findChildren<QPushButton *>(QStringLiteral("appSidebarButton"));
@@ -5002,8 +5114,10 @@ int main(int argc, char **argv)
     int previousCardBottom = previousHomeCardBottom(tcpWaveCardRect);
     require(previousCardBottom != std::numeric_limits<int>::min(),
             "TCP wave card has a visible card above it on the home page");
-    require(tcpWaveCardRect.top() - previousCardBottom <= 8,
-            "collapsed TCP wave card stays tight against the card above it");
+    constexpr int kExpectedResizeHandleSpacerGap = 9;
+    require(std::abs((tcpWaveCardRect.top() - previousCardBottom - 1) -
+                     kExpectedResizeHandleSpacerGap) <= 1,
+            "collapsed TCP wave card keeps the resize-handle-adjusted 12px gap to the card above it");
     clickWaveDisplayMenuRow({QStringLiteral("显示原始信号"), QStringLiteral("Show Raw Signal")},
                             "TCP wave display menu can re-enable only the raw-signal row");
     if (QMenu *menu = visibleWaveDisplayMenu())
@@ -5019,8 +5133,9 @@ int main(int argc, char **argv)
     previousCardBottom = previousHomeCardBottom(tcpWaveCardRect);
     require(previousCardBottom != std::numeric_limits<int>::min(),
             "raw-only TCP wave card still has a visible card above it on the home page");
-    require(tcpWaveCardRect.top() - previousCardBottom <= 8,
-            "raw-only TCP wave card stays tight against the card above it");
+    require(std::abs((tcpWaveCardRect.top() - previousCardBottom - 1) -
+                     kExpectedResizeHandleSpacerGap) <= 1,
+            "raw-only TCP wave card keeps the resize-handle-adjusted 12px gap to the card above it");
     require(tcpWaveCard->height() <= tcpWaveTitleBar->height() + rawWaveGroup->minimumSizeHint().height() + 24,
             "raw-only TCP wave card does not reserve hidden plot height");
     clickWaveDisplayMenuRow({QStringLiteral("全部显示"), QStringLiteral("Show All")},
@@ -5075,9 +5190,11 @@ int main(int argc, char **argv)
     const QRect temperatureScrollRect = widgetRectInCentral(temperatureScrollAreaForSpacing);
     require(std::abs(temperatureScrollRect.left() -
                      (mainPageStackCentralRect.left() + kExpectedPageLeftInset)) <= 1 &&
+                std::abs(temperatureScrollRect.top() -
+                         (mainPageStackCentralRect.top() + kExpectedPageChromeInset)) <= 1 &&
                 std::abs((rightEdge(mainPageStackCentralRect) - rightEdge(temperatureScrollRect)) -
                          kExpectedPageRightGap) <= 1,
-            "temperature page keeps the balanced left inset and 12px right gap");
+            "temperature page keeps balanced chrome insets and a 12px right gap");
     requireLabelTextOneOf(customTitleLabel,
                           {QStringLiteral("温控"), QStringLiteral("Thermal")},
                           "custom title bar follows the selected temperature page");
@@ -5099,9 +5216,11 @@ int main(int argc, char **argv)
     const QRect deviceConfigScrollRect = widgetRectInCentral(deviceConfigScrollArea);
     require(std::abs(deviceConfigScrollRect.left() -
                      (mainPageStackCentralRect.left() + kExpectedPageLeftInset)) <= 1 &&
+                std::abs(deviceConfigScrollRect.top() -
+                         (mainPageStackCentralRect.top() + kExpectedPageChromeInset)) <= 1 &&
                 std::abs((rightEdge(mainPageStackCentralRect) - rightEdge(deviceConfigScrollRect)) -
                          kExpectedPageRightGap) <= 1,
-            "device configuration page keeps the balanced left inset and 12px right gap");
+            "device configuration page keeps balanced chrome insets and a 12px right gap");
     require(deviceConfigScrollArea->horizontalScrollBar() != nullptr &&
                 deviceConfigScrollArea->horizontalScrollBar()->maximum() == 0,
             "device configuration page fits horizontally at default window size");

@@ -189,7 +189,7 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter#appLayoutSplitter::handle:horizontal:hover { background-color: transparent; }"
             "QSplitter#appLayoutSplitter::handle:horizontal:pressed { background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal { width: 1px; background-color: transparent; }"
-            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 8px; background-color: @vv-surface; }"
+            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 12px; background-color: @vv-surface; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
             "QWidget#mainCardResizeHandle { min-height: 3px; max-height: 3px; background-color: transparent; }"
@@ -205,7 +205,7 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter#mainContentSplitter::handle:horizontal { width: 1px; background-color: @vv-border; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
-            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 8px; background-color: @vv-surface; }"
+            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 12px; background-color: @vv-surface; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
             "QPushButton { background-color: @vv-primary; color: @vv-white; border: none; border-radius: 6px; padding: 4px 16px; font-size: 15px; font-weight: 500; min-height: 28px; max-height: 28px; }"
@@ -841,7 +841,7 @@ void MainWindow::updateResponsiveHomeLayout()
     {
         state_->sensor_layout_->setDirection(direction);
     }
-    state_->sensor_layout_->setSpacing(compact ? 4 : 2);
+    state_->sensor_layout_->setSpacing(kTopLevelCardGap);
 
     if (state_->epsilon_panel_)
     {

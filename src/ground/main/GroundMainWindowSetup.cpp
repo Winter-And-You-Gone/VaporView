@@ -1205,9 +1205,12 @@ void MainWindow::setupCentralWidget()
     left_widget->setAutoFillBackground(true);
     state_->main_layout_ = new QVBoxLayout(left_widget);
     state_->main_layout_->setSpacing(0);
-    // The app/sidebar splitter contributes 8px on the left; keep the visible
-    // card gap aligned with the 12px right-side gap by using a 4px page inset.
-    state_->main_layout_->setContentsMargins(4, 0, 0, 0);
+    // The surrounding chrome contributes 8px on the left/top/bottom. Add a 4px
+    // page inset so top-level cards land on a visible 12px rhythm.
+    state_->main_layout_->setContentsMargins(kTopLevelCardChromeInset,
+                                             kTopLevelCardChromeInset,
+                                             0,
+                                             kTopLevelCardChromeInset);
 
     setupConfigPanel();
     setupDataPanels();
@@ -1360,8 +1363,11 @@ void MainWindow::setupCentralWidget()
     state_->temperature_page_ = new QWidget(this);
     state_->temperature_page_->setObjectName(QStringLiteral("temperaturePage"));
     auto *temperaturePageLayout = new QVBoxLayout(state_->temperature_page_);
-    temperaturePageLayout->setContentsMargins(4, 0, 12, 8);
-    temperaturePageLayout->setSpacing(8);
+    temperaturePageLayout->setContentsMargins(kTopLevelCardChromeInset,
+                                              kTopLevelCardChromeInset,
+                                              kTopLevelCardGap,
+                                              kTopLevelCardChromeInset);
+    temperaturePageLayout->setSpacing(kTopLevelCardGap);
     auto *temperatureScrollArea = new QScrollArea(state_->temperature_page_);
     temperatureScrollArea->setObjectName(QStringLiteral("mainCardsScrollArea"));
     temperatureScrollArea->setWidgetResizable(true);
@@ -1371,7 +1377,7 @@ void MainWindow::setupCentralWidget()
     auto *temperatureContent = new QWidget(temperatureScrollArea);
     auto *temperatureContentLayout = new QVBoxLayout(temperatureContent);
     temperatureContentLayout->setContentsMargins(0, 0, 0, 0);
-    temperatureContentLayout->setSpacing(8);
+    temperatureContentLayout->setSpacing(kTopLevelCardGap);
     temperatureContentLayout->addWidget(state_->temperature_controller_group_, 0);
     temperatureContentLayout->addStretch(1);
     temperatureScrollArea->setWidget(temperatureContent);
@@ -1413,8 +1419,11 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.page = new QWidget(this);
     state_->device_config_.page->setObjectName(QStringLiteral("deviceConfigPage"));
     auto *pageLayout = new QVBoxLayout(state_->device_config_.page);
-    pageLayout->setContentsMargins(4, 0, 12, 8);
-    pageLayout->setSpacing(8);
+    pageLayout->setContentsMargins(kTopLevelCardChromeInset,
+                                   kTopLevelCardChromeInset,
+                                   kTopLevelCardGap,
+                                   kTopLevelCardChromeInset);
+    pageLayout->setSpacing(kTopLevelCardGap);
 
     auto *scrollArea = new QScrollArea(state_->device_config_.page);
     scrollArea->setObjectName(QStringLiteral("mainCardsScrollArea"));
@@ -1426,10 +1435,10 @@ void MainWindow::setupDeviceConfigPage()
     auto *content = new QWidget(scrollArea);
     auto *contentLayout = new QVBoxLayout(content);
     contentLayout->setContentsMargins(0, 0, 0, 0);
-    contentLayout->setSpacing(8);
+    contentLayout->setSpacing(kTopLevelCardGap);
     auto *topRowLayout = new QHBoxLayout;
     topRowLayout->setContentsMargins(0, 0, 0, 0);
-    topRowLayout->setSpacing(8);
+    topRowLayout->setSpacing(kTopLevelCardGap);
     topRowLayout->setAlignment(Qt::AlignTop);
 
     auto createCard = [](QWidget *parent) {
@@ -3247,7 +3256,7 @@ void MainWindow::setupDataPanels()
     state_->sensor_row_widget_ = new QWidget(state_->data_group_);
     state_->sensor_layout_ = new QHBoxLayout(state_->sensor_row_widget_);
     state_->sensor_layout_->setContentsMargins(0, 0, 0, 0);
-    state_->sensor_layout_->setSpacing(2);
+    state_->sensor_layout_->setSpacing(kTopLevelCardGap);
 
     state_->epsilon_group_ = new QGroupBox(this);
     state_->epsilon_group_->setObjectName("sensorGroupBox");
@@ -3436,10 +3445,12 @@ void MainWindow::setupDataPanels()
     state_->main_layout_->addWidget(state_->home_overview_splitter_, 0);
     state_->main_layout_->addWidget(
         createMainCardResizeHandle(state_->home_overview_splitter_, kConfigCardMinHeight, this), 0);
+    state_->main_layout_->addSpacing(kTopLevelCardSpacerAfterResizeHandle);
     state_->main_layout_->addWidget(state_->data_group_, 0);
     updateConfigCardHeightForSourceMode();
 
     state_->main_layout_->addWidget(createMainCardResizeHandle(state_->data_group_, dataCardMinHeight, this), 0);
+    state_->main_layout_->addSpacing(kTopLevelCardSpacerAfterResizeHandle);
 
     state_->temperature_controller_group_ = new QGroupBox(this);
     state_->temperature_controller_group_->setObjectName("sensorGroupBox");
@@ -3701,8 +3712,11 @@ void MainWindow::setupLogPanel()
     state_->log_side_panel_->installEventFilter(this);
     state_->log_side_panel_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     auto *logSideLayout = new QVBoxLayout(state_->log_side_panel_);
-    logSideLayout->setContentsMargins(0, 0, 0, 0);
-    logSideLayout->setSpacing(8);
+    logSideLayout->setContentsMargins(0,
+                                      kTopLevelCardChromeInset,
+                                      kTopLevelCardChromeInset,
+                                      kTopLevelCardChromeInset);
+    logSideLayout->setSpacing(kTopLevelCardGap);
 
     state_->recording_status_card_ = new QFrame(state_->log_side_panel_);
     state_->recording_status_card_->setObjectName(QStringLiteral("recordingStatusCard"));
