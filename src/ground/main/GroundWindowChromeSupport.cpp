@@ -25,6 +25,7 @@
 #include <QScreen>
 #include <QStyle>
 #include <QStyleOptionButton>
+#include <QTimer>
 #include <QToolButton>
 #include <QToolTip>
 #include <QVBoxLayout>
@@ -581,13 +582,18 @@ bool showAppTooltip(QObject *watched, QEvent *event, bool dark)
 class MainCardResizeHandle : public QWidget
 {
 public:
-    MainCardResizeHandle(QWidget *targetCard, int minimumTargetHeight, QWidget *parent = nullptr)
+    MainCardResizeHandle(QWidget *targetCard,
+                         int minimumTargetHeight,
+                         QWidget *parent,
+                         std::function<void()> resizeFinished)
         : QWidget(parent)
         , target_card_(targetCard)
         , minimum_target_height_(minimumTargetHeight)
         , drag_start_y_(0)
         , target_start_height_(0)
+        , drag_minimum_height_(minimumTargetHeight)
         , dragging_(false)
+        , resize_finished_(std::move(resizeFinished))
     {
         setObjectName(QStringLiteral("mainCardResizeHandle"));
         setAttribute(Qt::WA_Hover, true);
@@ -613,9 +619,14 @@ protected:
         dragging_ = true;
         drag_start_y_ = event->globalPosition().toPoint().y();
         target_start_height_ = target_card_->height();
+        drag_minimum_height_ = effectiveMinimumHeight();
         target_card_->setProperty(kMainCardResizeDraggingProperty, true);
         setProperty("dragging", true);
         refreshStyle();
+        if (QWidget::mouseGrabber() != this)
+        {
+            grabMouse();
+        }
         event->accept();
     }
 
@@ -627,22 +638,7 @@ protected:
             return;
         }
 
-        const int deltaY = event->globalPosition().toPoint().y() - drag_start_y_;
-        bool ok = false;
-        const int propertyMinimum = target_card_->property(kMainCardMinimumHeightProperty).toInt(&ok);
-        int effectiveMinimum = minimum_target_height_;
-        if (ok)
-        {
-            effectiveMinimum = std::max(effectiveMinimum, propertyMinimum);
-        }
-        effectiveMinimum = std::max(effectiveMinimum, target_card_->minimumSizeHint().height());
-        const int nextHeight = std::max(effectiveMinimum, target_start_height_ + deltaY);
-        if (target_card_->height() != nextHeight)
-        {
-            target_card_->setFixedHeight(nextHeight);
-            target_card_->setProperty(kMainCardUserResizedHeightProperty, true);
-            target_card_->updateGeometry();
-        }
+        applyHeightForGlobalY(event->globalPosition().toPoint().y(), drag_minimum_height_);
         event->accept();
     }
 
@@ -650,14 +646,10 @@ protected:
     {
         if (event->button() == Qt::LeftButton && dragging_)
         {
-            dragging_ = false;
-            if (target_card_)
-            {
-                target_card_->setProperty(kMainCardResizeDraggingProperty, false);
-                target_card_->updateGeometry();
-            }
-            setProperty("dragging", false);
-            refreshStyle();
+            const int finalGlobalY = event->globalPosition().toPoint().y();
+            const int finalMinimumHeight = effectiveMinimumHeight();
+            finishDragging();
+            applyHeightForGlobalY(finalGlobalY, finalMinimumHeight);
             event->accept();
             return;
         }
@@ -666,6 +658,67 @@ protected:
     }
 
 private:
+    int effectiveMinimumHeight() const
+    {
+        int effectiveMinimum = minimum_target_height_;
+        if (!target_card_)
+        {
+            return effectiveMinimum;
+        }
+
+        bool ok = false;
+        const int propertyMinimum = target_card_->property(kMainCardMinimumHeightProperty).toInt(&ok);
+        if (ok)
+        {
+            effectiveMinimum = std::max(effectiveMinimum, propertyMinimum);
+        }
+        return std::max(effectiveMinimum, target_card_->minimumSizeHint().height());
+    }
+
+    void applyHeightForGlobalY(int globalY, int effectiveMinimum)
+    {
+        if (!target_card_)
+        {
+            return;
+        }
+
+        const int deltaY = globalY - drag_start_y_;
+        const int nextHeight = std::max(effectiveMinimum, target_start_height_ + deltaY);
+        if (target_card_->height() == nextHeight)
+        {
+            return;
+        }
+
+        target_card_->setProperty(kMainCardUserResizedHeightProperty, true);
+        target_card_->setFixedHeight(nextHeight);
+        target_card_->updateGeometry();
+    }
+
+    void finishDragging()
+    {
+        if (!dragging_)
+        {
+            return;
+        }
+
+        dragging_ = false;
+        if (target_card_)
+        {
+            target_card_->setProperty(kMainCardResizeDraggingProperty, false);
+            target_card_->updateGeometry();
+        }
+        setProperty("dragging", false);
+        refreshStyle();
+        if (QWidget::mouseGrabber() == this)
+        {
+            releaseMouse();
+        }
+        if (resize_finished_)
+        {
+            QTimer::singleShot(0, this, resize_finished_);
+        }
+    }
+
     void refreshStyle()
     {
         style()->unpolish(this);
@@ -677,7 +730,9 @@ private:
     int minimum_target_height_;
     int drag_start_y_;
     int target_start_height_;
+    int drag_minimum_height_;
     bool dragging_;
+    std::function<void()> resize_finished_;
 };
 
 class ShrinkablePanel : public QWidget
@@ -1093,9 +1148,12 @@ QWidget *createAppSidebarFrame(QWidget *parent)
     return new AppSidebarFrame(parent);
 }
 
-QWidget *createMainCardResizeHandle(QWidget *target, int minimumHeight, QWidget *parent)
+QWidget *createMainCardResizeHandle(QWidget *target,
+                                    int minimumHeight,
+                                    QWidget *parent,
+                                    std::function<void()> resizeFinished)
 {
-    return new MainCardResizeHandle(target, minimumHeight, parent);
+    return new MainCardResizeHandle(target, minimumHeight, parent, std::move(resizeFinished));
 }
 
 QWidget *createShrinkablePanel(QWidget *parent)

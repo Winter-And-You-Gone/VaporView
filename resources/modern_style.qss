@@ -942,6 +942,20 @@ QSplitter#homeOverviewSplitter::handle:horizontal:pressed {
     background-color: @vv-resize-pressed;
 }
 
+QWidget#mainCardResizeHandle {
+    min-height: 3px;
+    max-height: 3px;
+    background-color: transparent;
+}
+
+QWidget#mainCardResizeHandle:hover {
+    background-color: @vv-resize-hover;
+}
+
+QWidget#mainCardResizeHandle[dragging="true"] {
+    background-color: @vv-resize-pressed;
+}
+
 /* 工具提示 */
 QToolTip {
     background-color: @vv-tooltip-bg;

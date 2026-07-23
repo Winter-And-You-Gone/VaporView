@@ -235,6 +235,7 @@ private:
     void updateResponsiveHomeLayout();
     void queueResponsiveHomeLayoutRefresh();
     bool shouldUseCompactHomeLayout() const;
+    bool mainCardResizeInProgress() const;
     void updateThemeAction();
     void updateThemedIcons();
     void updateRtkConfigIcon();

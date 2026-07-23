@@ -48,10 +48,12 @@
 #include <QSettings>
 #include <QStringList>
 #include <QTemporaryDir>
+#include <QTest>
 #include <QTextOption>
 #include <QTimer>
 #include <QToolButton>
 #include <QWidget>
+#include <QWindow>
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
@@ -640,48 +642,38 @@ void clickWidget(QWidget *widget, int waitMs = 50)
     clickWidgetAt(widget, widget->rect().center(), waitMs);
 }
 
-void dragWidgetVertically(QWidget *widget, const std::vector<int>& offsets, int waitMs = 50)
+void dragWidgetVertically(QWindow *inputWindow,
+                          QWidget *widget,
+                          const std::vector<int>& offsets,
+                          int waitMs = 50)
 {
+    require(inputWindow != nullptr, "vertical drag input window exists");
     require(widget != nullptr, "vertical drag widget exists");
     require(!offsets.empty(), "vertical drag offsets are provided");
     const QPoint start = widget->rect().center();
-    const QPoint globalStart = widget->mapToGlobal(start);
-    QMouseEvent press(QEvent::MouseButtonPress,
-                      start,
-                      globalStart,
-                      Qt::LeftButton,
-                      Qt::LeftButton,
-                      Qt::NoModifier);
-    QCoreApplication::sendEvent(widget, &press);
+    const QPoint startInWindow = inputWindow->mapFromGlobal(widget->mapToGlobal(start));
+    QTest::mousePress(inputWindow, Qt::LeftButton, Qt::NoModifier, startInWindow, 1);
+    require(QWidget::mouseGrabber() == widget,
+            "vertical resize handle owns the mouse grab");
     for (const int offset : offsets)
     {
-        const QPoint localPoint = start + QPoint(0, offset);
-        const QPoint globalPoint = globalStart + QPoint(0, offset);
-        QMouseEvent move(QEvent::MouseMove,
-                         localPoint,
-                         globalPoint,
-                         Qt::NoButton,
-                         Qt::LeftButton,
-                         Qt::NoModifier);
-        QCoreApplication::sendEvent(widget, &move);
+        QTest::mouseMove(inputWindow, startInWindow + QPoint(0, offset), 1);
         if (waitMs > 0)
         {
             processEventsFor(waitMs);
         }
     }
-    const QPoint end = start + QPoint(0, offsets.back());
-    const QPoint globalEnd = globalStart + QPoint(0, offsets.back());
-    QMouseEvent release(QEvent::MouseButtonRelease,
-                        end,
-                        globalEnd,
+    QTest::mouseRelease(inputWindow,
                         Qt::LeftButton,
-                        Qt::NoButton,
-                        Qt::NoModifier);
-    QCoreApplication::sendEvent(widget, &release);
+                        Qt::NoModifier,
+                        startInWindow + QPoint(0, offsets.back()),
+                        1);
     if (waitMs > 0)
     {
         processEventsFor(waitMs);
     }
+    require(QWidget::mouseGrabber() != widget,
+            "vertical resize handle releases the mouse grab");
 }
 
 void doubleClickWidget(QWidget *widget, int waitMs = 50)
@@ -2860,8 +2852,13 @@ int main(int argc, char **argv)
     require(homeSourceModeCombo->property("usesSingleLevelPopupMenu").toBool(),
             "home source mode combo uses the shared single-level popup");
     QWidget *homeOverviewResizeHandle = nullptr;
+    QWidget *homeDataResizeHandle = nullptr;
     int closestOverviewHandleDistance = std::numeric_limits<int>::max();
+    int closestDataHandleDistance = std::numeric_limits<int>::max();
     const QRect overviewResizeBaselineRect = widgetRectInCentral(homeOverviewSplitter);
+    auto *homeDataCard = window.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer"));
+    require(homeDataCard != nullptr, "home data card exists for resize testing");
+    const QRect dataResizeBaselineRect = widgetRectInCentral(homeDataCard);
     const QList<QWidget*> mainCardResizeHandles =
         window.findChildren<QWidget *>(QStringLiteral("mainCardResizeHandle"));
     for (QWidget *resizeHandle : mainCardResizeHandles)
@@ -2870,6 +2867,14 @@ int main(int argc, char **argv)
         {
             continue;
         }
+        require(resizeHandle->minimumHeight() ==
+                    VaporView::Ground::MainSupport::kMainCardResizeHandleHeight &&
+                    resizeHandle->maximumHeight() ==
+                    VaporView::Ground::MainSupport::kMainCardResizeHandleHeight &&
+                    resizeHandle->height() ==
+                    VaporView::Ground::MainSupport::kMainCardResizeHandleHeight &&
+                    resizeHandle->sizePolicy().verticalPolicy() == QSizePolicy::Fixed,
+                "main card resize handles remain three pixels high after light-dark-light theme changes");
         const QRect handleRect = widgetRectInCentral(resizeHandle);
         const int distanceBelowOverview = handleRect.top() - bottomEdge(overviewResizeBaselineRect);
         if (distanceBelowOverview >= 0 && distanceBelowOverview < closestOverviewHandleDistance)
@@ -2877,11 +2882,25 @@ int main(int argc, char **argv)
             closestOverviewHandleDistance = distanceBelowOverview;
             homeOverviewResizeHandle = resizeHandle;
         }
+        const int distanceBelowData = handleRect.top() - bottomEdge(dataResizeBaselineRect);
+        if (distanceBelowData >= 0 && distanceBelowData < closestDataHandleDistance)
+        {
+            closestDataHandleDistance = distanceBelowData;
+            homeDataResizeHandle = resizeHandle;
+        }
     }
     require(homeOverviewResizeHandle != nullptr,
             "home overview vertical resize handle exists");
+    require(homeDataResizeHandle != nullptr && homeDataResizeHandle != homeOverviewResizeHandle,
+            "home data-card vertical resize handle exists");
+    QWindow *mainInputWindow = window.windowHandle();
+    require(mainInputWindow != nullptr,
+            "main window exposes a native input window for resize testing");
+    homeSourceModeCombo->setCurrentIndex(1);
+    processEventsFor(150);
+    activateLayouts(&window);
     const int overviewHeightBeforeDrag = homeOverviewSplitter->height();
-    dragWidgetVertically(homeOverviewResizeHandle, {64}, 40);
+    dragWidgetVertically(mainInputWindow, homeOverviewResizeHandle, {64}, 40);
     activateLayouts(&window);
     const int overviewHeightAfterExpand = homeOverviewSplitter->height();
     require(overviewHeightAfterExpand >= overviewHeightBeforeDrag + 48,
@@ -2889,53 +2908,84 @@ int main(int argc, char **argv)
     const int temperatureBottomBeforeIncrementalShrink =
         bottomEdge(widgetRectInCentral(temperatureOverviewCard));
     const QPoint shrinkStart = homeOverviewResizeHandle->rect().center();
-    const QPoint shrinkGlobalStart = homeOverviewResizeHandle->mapToGlobal(shrinkStart);
-    QMouseEvent shrinkPress(QEvent::MouseButtonPress,
-                            shrinkStart,
-                            shrinkGlobalStart,
-                            Qt::LeftButton,
-                            Qt::LeftButton,
-                            Qt::NoModifier);
-    QCoreApplication::sendEvent(homeOverviewResizeHandle, &shrinkPress);
+    const QPoint shrinkStartInWindow =
+        mainInputWindow->mapFromGlobal(homeOverviewResizeHandle->mapToGlobal(shrinkStart));
+    QTest::mousePress(mainInputWindow,
+                      Qt::LeftButton,
+                      Qt::NoModifier,
+                      shrinkStartInWindow,
+                      1);
+    require(QWidget::mouseGrabber() == homeOverviewResizeHandle,
+            "home overview resize handle keeps mouse events outside its three-pixel row");
     int previousTemperatureBottom = temperatureBottomBeforeIncrementalShrink;
-    for (const int offset : {-8, -16, -24})
+    for (int offset = -1; offset >= -48; --offset)
     {
-        const QPoint localPoint = shrinkStart + QPoint(0, offset);
-        const QPoint globalPoint = shrinkGlobalStart + QPoint(0, offset);
-        QMouseEvent shrinkMove(QEvent::MouseMove,
-                               localPoint,
-                               globalPoint,
-                               Qt::NoButton,
-                               Qt::LeftButton,
-                               Qt::NoModifier);
-        QCoreApplication::sendEvent(homeOverviewResizeHandle, &shrinkMove);
-        processEventsFor(40);
-        activateLayouts(&window);
+        QTest::mouseMove(mainInputWindow, shrinkStartInWindow + QPoint(0, offset), 1);
+        processEventsFor(5);
         const int nextTemperatureBottom = bottomEdge(widgetRectInCentral(temperatureOverviewCard));
         require(nextTemperatureBottom <= previousTemperatureBottom + 1,
-                "temperature overview lower edge does not bounce downward while dragging upward");
+                "remote summary refresh cannot bounce the temperature overview edge downward while dragging upward");
         previousTemperatureBottom = nextTemperatureBottom;
     }
-    const QPoint shrinkEnd = shrinkStart + QPoint(0, -24);
-    const QPoint shrinkGlobalEnd = shrinkGlobalStart + QPoint(0, -24);
-    QMouseEvent shrinkRelease(QEvent::MouseButtonRelease,
-                              shrinkEnd,
-                              shrinkGlobalEnd,
-                              Qt::LeftButton,
-                              Qt::NoButton,
-                              Qt::NoModifier);
-    QCoreApplication::sendEvent(homeOverviewResizeHandle, &shrinkRelease);
+    QTest::mouseRelease(mainInputWindow,
+                        Qt::LeftButton,
+                        Qt::NoModifier,
+                        shrinkStartInWindow + QPoint(0, -48),
+                        1);
     processEventsFor(40);
+    require(QWidget::mouseGrabber() != homeOverviewResizeHandle,
+            "home overview resize handle releases its mouse grab after shrinking");
     activateLayouts(&window);
-    require(homeOverviewSplitter->height() <= overviewHeightAfterExpand - 16,
+    require(homeOverviewSplitter->height() <= overviewHeightAfterExpand - 32,
             "home overview resize handle can shrink the expanded temperature overview row");
-    homeSourceModeCombo->setCurrentIndex(1);
-    processEventsFor(120);
+
+    const int dataHeightBeforeDrag = homeDataCard->height();
+    dragWidgetVertically(mainInputWindow, homeDataResizeHandle, {64}, 40);
     activateLayouts(&window);
+    const int dataHeightAfterExpand = homeDataCard->height();
+    require(dataHeightAfterExpand >= dataHeightBeforeDrag + 48,
+            "home data-card resize handle can expand the sensor row");
+    const QPoint dataShrinkStart = homeDataResizeHandle->rect().center();
+    const QPoint dataShrinkStartInWindow =
+        mainInputWindow->mapFromGlobal(homeDataResizeHandle->mapToGlobal(dataShrinkStart));
+    QTest::mousePress(mainInputWindow,
+                      Qt::LeftButton,
+                      Qt::NoModifier,
+                      dataShrinkStartInWindow,
+                      1);
+    require(QWidget::mouseGrabber() == homeDataResizeHandle,
+            "home data-card resize handle keeps mouse events outside its three-pixel row");
+    const int stableDataTop = widgetRectInCentral(homeDataCard).top();
+    int previousDataBottom = bottomEdge(widgetRectInCentral(homeDataCard));
+    for (int offset = -1; offset >= -48; --offset)
+    {
+        QTest::mouseMove(mainInputWindow, dataShrinkStartInWindow + QPoint(0, offset), 1);
+        processEventsFor(5);
+        const QRect nextDataRect = widgetRectInCentral(homeDataCard);
+        require(std::abs(nextDataRect.top() - stableDataTop) <= 1,
+                "remote summary refresh cannot move the data card while its lower edge is dragged");
+        require(bottomEdge(nextDataRect) <= previousDataBottom + 1,
+                "remote summary refresh cannot bounce the data-card edge downward while dragging upward");
+        previousDataBottom = bottomEdge(nextDataRect);
+    }
+    QTest::mouseRelease(mainInputWindow,
+                        Qt::LeftButton,
+                        Qt::NoModifier,
+                        dataShrinkStartInWindow + QPoint(0, -48),
+                        1);
+    processEventsFor(40);
+    require(QWidget::mouseGrabber() != homeDataResizeHandle,
+            "home data-card resize handle releases its mouse grab after shrinking");
+    activateLayouts(&window);
+    require(homeDataCard->height() <= dataHeightAfterExpand - 32,
+            "home data-card resize handle can shrink the expanded sensor row");
+
     homeSourceModeCombo->setCurrentIndex(0);
     processEventsFor(120);
     activateLayouts(&window);
-    require(homeOverviewSplitter->minimumHeight() <= homeOverviewSplitter->minimumSizeHint().height() + 2,
+    require(homeOverviewSplitter->property(
+                VaporView::Ground::MainSupport::kMainCardMinimumHeightProperty).toInt() <=
+                homeOverviewSplitter->minimumSizeHint().height() + 2,
             "home overview source-mode relayout keeps the splitter minimum height content-based");
     const SkyTelemetryRowWidgets homeSkyTelemetry = findSkyTelemetryRowWidgets(homeConfigCard);
     require(homeSkyTelemetry.transportCombo != nullptr,
@@ -5248,7 +5298,8 @@ int main(int argc, char **argv)
     int previousCardBottom = previousHomeCardBottom(tcpWaveCardRect);
     require(previousCardBottom != std::numeric_limits<int>::min(),
             "TCP wave card has a visible card above it on the home page");
-    constexpr int kExpectedResizeHandleSpacerGap = 9;
+    constexpr int kExpectedResizeHandleSpacerGap =
+        VaporView::Ground::MainSupport::kTopLevelCardGap;
     require(std::abs((tcpWaveCardRect.top() - previousCardBottom - 1) -
                      kExpectedResizeHandleSpacerGap) <= 1,
             "collapsed TCP wave card keeps the resize-handle-adjusted 12px gap to the card above it");

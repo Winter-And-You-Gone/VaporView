@@ -293,6 +293,10 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
     {
         return;
     }
+    if (mainCardResizeInProgress())
+    {
+        return;
+    }
 
     const int contentMinimumWidth = homeDeviceOverviewContentMinimumWidth();
     state_->config_group_->setMinimumWidth(contentMinimumWidth);
@@ -327,6 +331,10 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
 void MainWindow::updateConfigCardHeightForSourceMode()
 {
     if (!state_->config_group_)
+    {
+        return;
+    }
+    if (mainCardResizeInProgress())
     {
         return;
     }
@@ -372,7 +380,15 @@ void MainWindow::updateConfigCardHeightForSourceMode()
     }
     if (state_->home_overview_splitter_)
     {
+        const bool preserveUserHeight =
+            state_->home_overview_splitter_->property(kMainCardUserResizedHeightProperty).toBool();
+        const int userHeight = state_->home_overview_splitter_->height();
         state_->home_overview_splitter_->setProperty(kMainCardMinimumHeightProperty, minimumHeight);
+        if (preserveUserHeight)
+        {
+            state_->home_overview_splitter_->setFixedHeight(std::max(userHeight, minimumHeight));
+            return;
+        }
         state_->home_overview_splitter_->setMinimumHeight(minimumHeight);
         if (state_->home_overview_splitter_->height() < minimumHeight)
         {
@@ -599,6 +615,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     {
         return;
     }
+    const bool updateHomeSummary = !mainCardResizeInProgress();
     const RemoteTelemetrySummarySections sections = remoteTelemetrySummarySections();
     auto clearLayout = [](QLayout *layout) {
         if (!layout)
@@ -819,7 +836,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             section->updateGeometry();
         }
     };
-    if (state_->data_telemetry_summary_card_)
+    if (state_->data_telemetry_summary_card_ && updateHomeSummary)
     {
         state_->data_telemetry_summary_card_->setVisible(true);
         renderSummarySection(state_->data_telemetry_summary_card_,
@@ -881,7 +898,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         }
         state_->device_config_.data_telemetry_summary_card->updateGeometry();
     }
-    if (state_->home_overview_splitter_)
+    if (state_->home_overview_splitter_ && updateHomeSummary)
     {
         updateConfigCardHeightForSourceMode();
     }

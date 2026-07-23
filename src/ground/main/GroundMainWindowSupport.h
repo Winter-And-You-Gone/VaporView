@@ -197,7 +197,10 @@ QFrame *createFloatingTitleMenuPanel(QWidget *parent);
 QRect floatingMenuContentRect(QWidget *panel);
 void setFloatingMenuContentFixedSize(QWidget *panel, const QSize& size);
 QWidget *createAppSidebarFrame(QWidget *parent);
-QWidget *createMainCardResizeHandle(QWidget *target, int minimumHeight, QWidget *parent);
+QWidget *createMainCardResizeHandle(QWidget *target,
+                                    int minimumHeight,
+                                    QWidget *parent,
+                                    std::function<void()> resizeFinished = {});
 QWidget *createShrinkablePanel(QWidget *parent);
 QWidget *createWindowResizeHandle(Qt::Edges edges, QWidget *parent);
 QCheckBox *createTitleBarFeedbackCheckBox(QWidget *parent);
