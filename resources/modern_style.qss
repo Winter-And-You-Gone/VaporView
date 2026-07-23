@@ -918,7 +918,7 @@ QSplitter#appLayoutSplitter::handle:horizontal:pressed {
 
 QSplitter#mainContentSplitter::handle:horizontal {
     width: 8px;
-    background-color: @vv-surface-sunken;
+    background-color: transparent;
 }
 
 QSplitter#mainContentSplitter::handle:horizontal:hover {

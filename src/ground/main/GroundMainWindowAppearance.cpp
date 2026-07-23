@@ -202,7 +202,7 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter#appLayoutSplitter::handle:horizontal { width: 8px; background-color: @vv-window; }"
             "QSplitter#appLayoutSplitter::handle:horizontal:hover { background-color: @vv-window; }"
             "QSplitter#appLayoutSplitter::handle:horizontal:pressed { background-color: @vv-window; }"
-            "QSplitter#mainContentSplitter::handle:horizontal { width: 1px; background-color: @vv-border; }"
+            "QSplitter#mainContentSplitter::handle:horizontal { width: 1px; background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal { width: 12px; background-color: @vv-surface; }"

@@ -811,9 +811,11 @@ QScrollBar::sub-line:horizontal {
     width: 0px;
     background-color: @vv-surface-sunken;
 }
-QSplitter::handle,
+QSplitter::handle {
+    background-color: @vv-surface;
+}
 QSplitter#mainContentSplitter::handle:horizontal {
-    background-color: @vv-window;
+    background-color: transparent;
 }
 QSplitter#appLayoutSplitter::handle:horizontal {
     width: 8px;

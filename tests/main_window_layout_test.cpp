@@ -2130,6 +2130,18 @@ int main(int argc, char **argv)
     requireMenuPopupStyleUnified(qApp->styleSheet(),
                                  false,
                                  "light popup menus use the shared menu hover and rounded panel style");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QSplitter#mainContentSplitter::handle:horizontal {"),
+                                 QStringLiteral("background-color: transparent"),
+                                 "main content splitter handle is invisible until hovered");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QSplitter#mainContentSplitter::handle:horizontal:hover {"),
+                                 VaporView::appThemeRgba(VaporView::AppThemeColor::Primary, false, 0.18),
+                                 "main content splitter keeps a resize hover cue");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QSplitter#mainContentSplitter::handle:horizontal:pressed {"),
+                                 VaporView::appThemeRgba(VaporView::AppThemeColor::Primary, false, 0.28),
+                                 "main content splitter keeps a resize pressed cue");
     requireComboPopupsStyledIn(&window,
                                "all main-window combo boxes use the shared rounded popup menu style");
     const QSize originalWindowSize = window.size();
