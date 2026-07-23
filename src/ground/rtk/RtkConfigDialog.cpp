@@ -1613,7 +1613,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (main_layout_)
     {
         main_layout_->setSpacing(scalePixels(6));
-        main_layout_->setContentsMargins(embedded_ ? scalePixels(12) : scalePixels(8),
+        main_layout_->setContentsMargins(embedded_ ? scalePixels(4) : scalePixels(8),
                                          scalePixels(8),
                                          embedded_ ? scalePixels(12) : scalePixels(8),
                                          scalePixels(8));

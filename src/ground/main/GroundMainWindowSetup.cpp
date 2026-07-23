@@ -1205,7 +1205,9 @@ void MainWindow::setupCentralWidget()
     left_widget->setAutoFillBackground(true);
     state_->main_layout_ = new QVBoxLayout(left_widget);
     state_->main_layout_->setSpacing(0);
-    state_->main_layout_->setContentsMargins(12, 0, 0, 0);
+    // The app/sidebar splitter contributes 8px on the left; keep the visible
+    // card gap aligned with the 12px right-side gap by using a 4px page inset.
+    state_->main_layout_->setContentsMargins(4, 0, 0, 0);
 
     setupConfigPanel();
     setupDataPanels();
@@ -1358,7 +1360,7 @@ void MainWindow::setupCentralWidget()
     state_->temperature_page_ = new QWidget(this);
     state_->temperature_page_->setObjectName(QStringLiteral("temperaturePage"));
     auto *temperaturePageLayout = new QVBoxLayout(state_->temperature_page_);
-    temperaturePageLayout->setContentsMargins(12, 0, 12, 8);
+    temperaturePageLayout->setContentsMargins(4, 0, 12, 8);
     temperaturePageLayout->setSpacing(8);
     auto *temperatureScrollArea = new QScrollArea(state_->temperature_page_);
     temperatureScrollArea->setObjectName(QStringLiteral("mainCardsScrollArea"));
@@ -1411,7 +1413,7 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.page = new QWidget(this);
     state_->device_config_.page->setObjectName(QStringLiteral("deviceConfigPage"));
     auto *pageLayout = new QVBoxLayout(state_->device_config_.page);
-    pageLayout->setContentsMargins(12, 0, 12, 8);
+    pageLayout->setContentsMargins(4, 0, 12, 8);
     pageLayout->setSpacing(8);
 
     auto *scrollArea = new QScrollArea(state_->device_config_.page);
