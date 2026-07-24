@@ -2298,6 +2298,10 @@ int main(int argc, char **argv)
                                  QStringLiteral("background-color: transparent"),
                                  "main content splitter handle is invisible until hovered");
     requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QSplitter#mainContentSplitter::handle:horizontal {"),
+                                 QStringLiteral("width: 0px"),
+                                 "main content splitter does not add a visual card gutter");
+    requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QSplitter#mainContentSplitter::handle:horizontal:hover {"),
                                  VaporView::appThemeRgba(VaporView::AppThemeColor::Primary, false, 0.18),
                                  "main content splitter keeps a resize hover cue");
@@ -2311,6 +2315,14 @@ int main(int argc, char **argv)
 
     auto *appLayoutSplitter = window.findChild<QSplitter *>(QStringLiteral("appLayoutSplitter"));
     require(appLayoutSplitter != nullptr, "app layout splitter exists");
+    auto *mainContentSplitter =
+        window.findChild<QSplitter *>(QStringLiteral("mainContentSplitter"));
+    require(mainContentSplitter != nullptr, "main content splitter exists");
+    require(appLayoutSplitter->handleWidth() ==
+                VaporView::Ground::MainSupport::kSidePanelSplitterVisualWidth &&
+                mainContentSplitter->handleWidth() ==
+                    VaporView::Ground::MainSupport::kSidePanelSplitterVisualWidth,
+            "side-panel splitters do not contribute extra visible card spacing");
     require(window.centralWidget() != nullptr, "central widget exists");
     require(window.findChild<QStatusBar *>() == nullptr,
             "main window does not create a bottom status bar");
@@ -2483,8 +2495,16 @@ int main(int argc, char **argv)
     require(std::abs(homePrimaryCardLeft -
                      (mainPageStackCentralRect.left() + kExpectedPageLeftInset)) <= 1,
             "home page keeps the compact left inset that balances the sidebar splitter");
-    require(std::abs((homePrimaryCardRect.top() - mainPageStackCentralRect.top()) -
-                     kExpectedPageTopInset) <= 1,
+    const int homeTopVisualGap =
+        homePrimaryCardRect.top() - mainPageStackCentralRect.top();
+    if (std::abs(homeTopVisualGap - kExpectedPageTopInset) > 1)
+    {
+        std::cerr << "Home top gap: actual=" << homeTopVisualGap
+                  << " expected=" << kExpectedPageTopInset
+                  << " cardTop=" << homePrimaryCardRect.top()
+                  << " stackTop=" << mainPageStackCentralRect.top() << '\n';
+    }
+    require(std::abs(homeTopVisualGap - kExpectedPageTopInset) <= 1,
             "home page keeps the compact top inset that balances the app chrome");
     require(std::abs((homeTemperatureCardRect.left() - rightEdge(homePrimaryCardRect)) -
                      kExpectedTopLevelCardGap) <= 1,
@@ -2498,19 +2518,16 @@ int main(int argc, char **argv)
               homeScrollArea->viewport()->size());
     const int homeLeftVisualGap = homePrimaryCardLeft - rightEdge(sidebarRect);
     const int homeRightVisualGap = recordingCardRect.left() - rightEdge(homeViewportRect);
-    if (!(homeLeftVisualGap >= kExpectedPageLeftInset &&
-          homeRightVisualGap >= kExpectedPageLeftInset &&
-          std::abs(homeLeftVisualGap - homeRightVisualGap) <= 6))
+    if (!(std::abs(homeLeftVisualGap - kExpectedTopLevelCardGap) <= 1 &&
+          std::abs(homeRightVisualGap - kExpectedTopLevelCardGap) <= 1))
     {
         std::cerr << "Home visual gaps: left=" << homeLeftVisualGap
                   << " right=" << homeRightVisualGap
-                  << " cardInset=" << kExpectedPageLeftInset
                   << " topLevelGap=" << kExpectedTopLevelCardGap << '\n';
     }
-    require(homeLeftVisualGap >= kExpectedPageLeftInset &&
-                homeRightVisualGap >= kExpectedPageLeftInset &&
-                std::abs(homeLeftVisualGap - homeRightVisualGap) <= 6,
-            "home page keeps balanced shadow-safe gaps beside both side panels");
+    require(std::abs(homeLeftVisualGap - kExpectedTopLevelCardGap) <= 1 &&
+                std::abs(homeRightVisualGap - kExpectedTopLevelCardGap) <= 1,
+            "home cards keep exact 12px visible gaps beside both side panels");
     auto *homeDataGroupForSpacing =
         window.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer"));
     require(homeDataGroupForSpacing != nullptr, "home sensor row container exists for top-level spacing checks");

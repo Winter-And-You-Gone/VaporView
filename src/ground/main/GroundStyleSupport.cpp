@@ -815,10 +815,11 @@ QSplitter::handle {
     background-color: @vv-surface;
 }
 QSplitter#mainContentSplitter::handle:horizontal {
+    width: 0px;
     background-color: transparent;
 }
 QSplitter#appLayoutSplitter::handle:horizontal {
-    width: 8px;
+    width: 0px;
     background-color: @vv-window;
 }
 QSplitter#appLayoutSplitter::handle:horizontal:hover {

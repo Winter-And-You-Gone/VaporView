@@ -904,7 +904,7 @@ QSplitter::handle:hover {
 }
 
 QSplitter#appLayoutSplitter::handle:horizontal {
-    width: 8px;
+    width: 0px;
     background-color: transparent;
 }
 
@@ -917,7 +917,7 @@ QSplitter#appLayoutSplitter::handle:horizontal:pressed {
 }
 
 QSplitter#mainContentSplitter::handle:horizontal {
-    width: 8px;
+    width: 0px;
     background-color: transparent;
 }
 

@@ -1284,7 +1284,9 @@ void MainWindow::setupCentralWidget()
     state_->app_layout_splitter_->setAttribute(Qt::WA_StyledBackground, true);
     state_->app_layout_splitter_->setAutoFillBackground(true);
     state_->app_layout_splitter_->setChildrenCollapsible(true);
-    state_->app_layout_splitter_->setHandleWidth(8);
+    // A zero-width QSplitter handle still keeps Qt's overlapping drag target,
+    // while avoiding a second visual gutter beside the 12px card inset.
+    state_->app_layout_splitter_->setHandleWidth(kSidePanelSplitterVisualWidth);
     state_->app_layout_splitter_->addWidget(state_->app_sidebar_);
 
     state_->main_content_splitter_ = new QSplitter(Qt::Horizontal, state_->central_widget_);
@@ -1294,7 +1296,7 @@ void MainWindow::setupCentralWidget()
     state_->main_content_splitter_->setChildrenCollapsible(true);
     state_->main_content_splitter_->setCollapsible(0, true);
     state_->main_content_splitter_->setCollapsible(1, true);
-    state_->main_content_splitter_->setHandleWidth(1);
+    state_->main_content_splitter_->setHandleWidth(kSidePanelSplitterVisualWidth);
     state_->main_content_splitter_->addWidget(state_->main_page_stack_);
     state_->main_content_splitter_->addWidget(state_->log_side_panel_);
     if (QSplitterHandle *handle = state_->main_content_splitter_->handle(1))
@@ -3721,7 +3723,9 @@ void MainWindow::setupLogPanel()
     state_->log_side_panel_->installEventFilter(this);
     state_->log_side_panel_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     auto *logSideLayout = new QVBoxLayout(state_->log_side_panel_);
-    logSideLayout->setContentsMargins(kTopLevelCardChromeInset,
+    // The adjacent main-page scrollbar already supplies the 12px visible
+    // gutter. Do not add another left inset between the two card regions.
+    logSideLayout->setContentsMargins(0,
                                       kTopLevelCardChromeInset,
                                       kTopLevelCardChromeInset,
                                       kTopLevelCardChromeInset);
