@@ -828,7 +828,7 @@ QSplitter#appLayoutSplitter::handle:horizontal:pressed {
     background-color: @vv-window;
 }
 QSplitter#homeOverviewSplitter::handle:horizontal {
-    width: 12px;
+    width: 20px;
     background-color: @vv-window;
 }
 QSplitter#homeOverviewSplitter::handle:horizontal:hover {
@@ -1014,6 +1014,30 @@ QMenu::item:selected {
 QMenu::item:disabled {
     background-color: transparent;
     color: @vv-menu-disabled;
+}
+QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"],
+QFrame#epsilonSectionCard[vaporViewTopLevelCard="true"],
+QFrame#recordingStatusCard[vaporViewTopLevelCard="true"],
+QFrame#logPanelFrame[vaporViewTopLevelCard="true"],
+QFrame[vaporViewTopLevelCard="true"] {
+    background-color: @vv-surface-raised;
+    border: 1px solid @vv-border;
+    border-radius: 12px;
+}
+QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
+QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > QWidget#environmentSectionTitleBar,
+QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > TcpWavePanel > QWidget#sectionTitleBar,
+QFrame#epsilonSectionCard[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
+QFrame#recordingStatusCard[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
+QFrame#logPanelFrame[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar {
+    background-color: @vv-surface-raised;
+    border-top-left-radius: 11px;
+    border-top-right-radius: 11px;
+}
+QFrame#recordingStatusCard[vaporViewTopLevelCard="true"] > QWidget#recordingStatusBody {
+    background-color: @vv-surface-raised;
+    border-bottom-left-radius: 11px;
+    border-bottom-right-radius: 11px;
 }
 )");
 }

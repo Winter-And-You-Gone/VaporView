@@ -1205,11 +1205,11 @@ void MainWindow::setupCentralWidget()
     left_widget->setAutoFillBackground(true);
     state_->main_layout_ = new QVBoxLayout(left_widget);
     state_->main_layout_->setSpacing(0);
-    // The surrounding chrome contributes 8px on the left/top/bottom. Add a 4px
-    // page inset so top-level cards land on a visible 12px rhythm.
+    // The surrounding chrome and this 12px page inset leave the visible soft
+    // shadow tail intact without narrowing the existing card content layout.
     state_->main_layout_->setContentsMargins(kTopLevelCardChromeInset,
                                              kTopLevelCardChromeInset,
-                                             0,
+                                             kTopLevelCardChromeInset,
                                              kTopLevelCardChromeInset);
 
     setupConfigPanel();
@@ -1363,10 +1363,7 @@ void MainWindow::setupCentralWidget()
     state_->temperature_page_ = new QWidget(this);
     state_->temperature_page_->setObjectName(QStringLiteral("temperaturePage"));
     auto *temperaturePageLayout = new QVBoxLayout(state_->temperature_page_);
-    temperaturePageLayout->setContentsMargins(kTopLevelCardChromeInset,
-                                              kTopLevelCardChromeInset,
-                                              kTopLevelCardGap,
-                                              kTopLevelCardChromeInset);
+    temperaturePageLayout->setContentsMargins(0, 0, 0, 0);
     temperaturePageLayout->setSpacing(kTopLevelCardGap);
     auto *temperatureScrollArea = new QScrollArea(state_->temperature_page_);
     temperatureScrollArea->setObjectName(QStringLiteral("mainCardsScrollArea"));
@@ -1376,7 +1373,10 @@ void MainWindow::setupCentralWidget()
     temperatureScrollArea->setFrameShape(QFrame::NoFrame);
     auto *temperatureContent = new QWidget(temperatureScrollArea);
     auto *temperatureContentLayout = new QVBoxLayout(temperatureContent);
-    temperatureContentLayout->setContentsMargins(0, 0, 0, 0);
+    temperatureContentLayout->setContentsMargins(kTopLevelCardChromeInset,
+                                                 kTopLevelCardChromeInset,
+                                                 kTopLevelCardChromeInset,
+                                                 kTopLevelCardChromeInset);
     temperatureContentLayout->setSpacing(kTopLevelCardGap);
     temperatureContentLayout->addWidget(state_->temperature_controller_group_, 0);
     temperatureContentLayout->addStretch(1);
@@ -1419,10 +1419,7 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.page = new QWidget(this);
     state_->device_config_.page->setObjectName(QStringLiteral("deviceConfigPage"));
     auto *pageLayout = new QVBoxLayout(state_->device_config_.page);
-    pageLayout->setContentsMargins(kTopLevelCardChromeInset,
-                                   kTopLevelCardChromeInset,
-                                   kTopLevelCardGap,
-                                   kTopLevelCardChromeInset);
+    pageLayout->setContentsMargins(0, 0, 0, 0);
     pageLayout->setSpacing(kTopLevelCardGap);
 
     auto *scrollArea = new QScrollArea(state_->device_config_.page);
@@ -1434,7 +1431,10 @@ void MainWindow::setupDeviceConfigPage()
 
     auto *content = new QWidget(scrollArea);
     auto *contentLayout = new QVBoxLayout(content);
-    contentLayout->setContentsMargins(0, 0, 0, 0);
+    contentLayout->setContentsMargins(kTopLevelCardChromeInset,
+                                      kTopLevelCardChromeInset,
+                                      kTopLevelCardChromeInset,
+                                      kTopLevelCardChromeInset);
     contentLayout->setSpacing(kTopLevelCardGap);
     auto *topRowLayout = new QHBoxLayout;
     topRowLayout->setContentsMargins(0, 0, 0, 0);
@@ -1444,6 +1444,7 @@ void MainWindow::setupDeviceConfigPage()
     auto createCard = [](QWidget *parent) {
         auto *card = new QGroupBox(parent);
         card->setObjectName(QStringLiteral("sensorGroupBox"));
+        configureTopLevelCard(card);
         card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         auto *layout = new QVBoxLayout(card);
         layout->setContentsMargins(1, 0, 1, 1);
@@ -1730,6 +1731,7 @@ void MainWindow::setupDeviceConfigPage()
 
     state_->device_config_.epsilon_config_card = new QFrame(content);
     state_->device_config_.epsilon_config_card->setObjectName(QStringLiteral("epsilonSectionCard"));
+    configureTopLevelCard(state_->device_config_.epsilon_config_card);
     state_->device_config_.epsilon_config_card->setMinimumWidth(520);
     state_->device_config_.epsilon_config_card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     auto *epsilonConfigLayout = new QVBoxLayout(state_->device_config_.epsilon_config_card);
@@ -1899,6 +1901,7 @@ void MainWindow::setupDeviceConfigPage()
 
     state_->device_config_.data_telemetry_summary_card = new QFrame(content);
     state_->device_config_.data_telemetry_summary_card->setObjectName(QStringLiteral("epsilonSectionCard"));
+    configureTopLevelCard(state_->device_config_.data_telemetry_summary_card);
     state_->device_config_.data_telemetry_summary_card->setMinimumWidth(0);
     state_->device_config_.data_telemetry_summary_card->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
     auto *summaryLayout = new QVBoxLayout(state_->device_config_.data_telemetry_summary_card);
@@ -2853,6 +2856,7 @@ void MainWindow::setupConfigPanel()
 {
     state_->config_group_ = new QGroupBox(this);
     state_->config_group_->setObjectName("sensorGroupBox");
+    configureTopLevelCard(state_->config_group_);
     state_->config_group_->setMinimumWidth(kHomeOverviewDeviceMinWidth);
     state_->config_group_->setMinimumHeight(kConfigCardMinHeight);
     state_->config_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -3260,6 +3264,7 @@ void MainWindow::setupDataPanels()
 
     state_->epsilon_group_ = new QGroupBox(this);
     state_->epsilon_group_->setObjectName("sensorGroupBox");
+    configureTopLevelCard(state_->epsilon_group_);
     state_->epsilon_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     auto *epsilon_layout = new QVBoxLayout(state_->epsilon_group_);
     epsilon_layout->setContentsMargins(1, 0, 1, 1);
@@ -3304,6 +3309,7 @@ void MainWindow::setupDataPanels()
 
     auto *env_group = new QGroupBox(this);
     env_group->setObjectName("sensorGroupBox");
+    configureTopLevelCard(env_group);
     env_group->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     auto *env_layout = new QVBoxLayout(env_group);
     env_layout->setContentsMargins(1, 0, 1, 1);
@@ -3373,6 +3379,7 @@ void MainWindow::setupDataPanels()
 
     state_->temperature_overview_group_ = new QGroupBox(this);
     state_->temperature_overview_group_->setObjectName("sensorGroupBox");
+    configureTopLevelCard(state_->temperature_overview_group_);
     state_->temperature_overview_group_->setMinimumWidth(kHomeOverviewTemperatureMinWidth);
     state_->temperature_overview_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto *temperatureOverviewLayout = new QVBoxLayout(state_->temperature_overview_group_);
@@ -3454,6 +3461,7 @@ void MainWindow::setupDataPanels()
 
     state_->temperature_controller_group_ = new QGroupBox(this);
     state_->temperature_controller_group_->setObjectName("sensorGroupBox");
+    configureTopLevelCard(state_->temperature_controller_group_);
     state_->temperature_controller_group_->setMinimumWidth(0);
     state_->temperature_controller_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     auto *temperatureLayout = new QVBoxLayout(state_->temperature_controller_group_);
@@ -3673,6 +3681,7 @@ void MainWindow::setupDataPanels()
 
     state_->tcp_wave_group_ = new QGroupBox(this);
     state_->tcp_wave_group_->setObjectName("sensorGroupBox");
+    configureTopLevelCard(state_->tcp_wave_group_);
     state_->tcp_wave_group_->setMinimumHeight(kTcpWaveCardMinHeight);
     state_->tcp_wave_group_->setFixedHeight(kTcpWaveCardMinHeight);
     state_->tcp_wave_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -3712,7 +3721,7 @@ void MainWindow::setupLogPanel()
     state_->log_side_panel_->installEventFilter(this);
     state_->log_side_panel_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     auto *logSideLayout = new QVBoxLayout(state_->log_side_panel_);
-    logSideLayout->setContentsMargins(0,
+    logSideLayout->setContentsMargins(kTopLevelCardChromeInset,
                                       kTopLevelCardChromeInset,
                                       kTopLevelCardChromeInset,
                                       kTopLevelCardChromeInset);
@@ -3720,6 +3729,7 @@ void MainWindow::setupLogPanel()
 
     state_->recording_status_card_ = new QFrame(state_->log_side_panel_);
     state_->recording_status_card_->setObjectName(QStringLiteral("recordingStatusCard"));
+    configureTopLevelCard(state_->recording_status_card_);
     state_->recording_status_card_->setFrameShape(QFrame::NoFrame);
     state_->recording_status_card_->setAttribute(Qt::WA_StyledBackground, true);
     state_->recording_status_card_->setAutoFillBackground(true);
@@ -3766,6 +3776,7 @@ void MainWindow::setupLogPanel()
 
     state_->log_group_ = new QFrame(state_->log_side_panel_);
     state_->log_group_->setObjectName("logPanelFrame");
+    configureTopLevelCard(state_->log_group_);
     state_->log_group_->setFrameShape(QFrame::NoFrame);
     state_->log_group_->setAttribute(Qt::WA_StyledBackground, true);
     state_->log_group_->setAutoFillBackground(true);

@@ -28,9 +28,11 @@ add_library(vaporview_app_theme STATIC
     ${CMAKE_SOURCE_DIR}/src/shared/theme/AppTheme.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/theme/SingleLevelPopupComboBox.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/theme/SingleLevelPopupMenu.cpp
+    ${CMAKE_SOURCE_DIR}/src/shared/theme/TopLevelCardStyle.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/theme/AppTheme.h
     ${CMAKE_SOURCE_DIR}/src/shared/theme/SingleLevelPopupComboBox.h
     ${CMAKE_SOURCE_DIR}/src/shared/theme/SingleLevelPopupMenu.h
+    ${CMAKE_SOURCE_DIR}/src/shared/theme/TopLevelCardStyle.h
 )
 
 target_include_directories(vaporview_app_theme PUBLIC

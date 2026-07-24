@@ -1,6 +1,7 @@
 #pragma once
 
 #include "shared/theme/AppTheme.h"
+#include "shared/theme/TopLevelCardStyle.h"
 #include "TelemetryTypes.h"
 #include "data_types.h"
 
@@ -94,7 +95,7 @@ inline constexpr int kConfigCardMinHeight =
     kMainPageTitleBarHeight + kMainPageButtonHeight + kConfigHomeBodyBottomPadding + kConfigCardBottomPadding;
 inline constexpr int kHomeOverviewDeviceMinWidth = 568;
 inline constexpr int kHomeOverviewTemperatureMinWidth = 380;
-inline constexpr int kHomeOverviewSplitterHandleWidth = 12;
+inline constexpr int kHomeOverviewSplitterHandleWidth = 20;
 inline constexpr const char *kHomeOverviewSplitterInitializedProperty = "_vv_home_overview_splitter_initialized";
 inline constexpr int kSensorNavigationStretch = 4;
 inline constexpr int kSensorEnvironmentStretch = 1;
@@ -109,8 +110,8 @@ inline constexpr int kAppSidebarCompactButtonSize = 44;
 inline constexpr int kAppSidebarFullIconSize = 20;
 inline constexpr int kAppSidebarCompactIconSize = 32;
 inline constexpr int kMainCardResizeHandleHeight = 3;
-inline constexpr int kTopLevelCardGap = 12;
-inline constexpr int kTopLevelCardChromeInset = kTopLevelCardGap - kAppSidebarVisualPadding;
+inline constexpr int kTopLevelCardGap = 20;
+inline constexpr int kTopLevelCardChromeInset = 12;
 inline constexpr int kTopLevelCardSpacerAfterResizeHandle = kTopLevelCardGap - kMainCardResizeHandleHeight;
 inline constexpr const char *kMainCardUserResizedHeightProperty = "_vv_main_card_user_resized_height";
 inline constexpr const char *kMainCardResizeDraggingProperty = "_vv_main_card_resize_dragging";

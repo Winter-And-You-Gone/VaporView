@@ -1,5 +1,6 @@
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
+#include "shared/theme/TopLevelCardStyle.h"
 #include "RtkConfigDialog.h"
 #include "ground/widgets/CustomTitleBar.h"
 #include "ground/widgets/VisualTextLabel.h"
@@ -60,8 +61,10 @@ using VaporView::AppThemeColor;
 using VaporView::appThemeColor;
 using VaporView::appThemeColorName;
 using VaporView::configureComboBoxPopup;
+using VaporView::configureTopLevelCard;
 using VaporView::isDarkThemeEnabled;
 using VaporView::isDarkThemePalette;
+using VaporView::updateTopLevelCardShadows;
 
 namespace
 {
@@ -76,8 +79,8 @@ constexpr int kRtkDefaultDialogHeight = 640;
 constexpr int kRtkMinimumDialogWidth = 640;
 constexpr int kRtkMinimumDialogHeight = 420;
 constexpr int kRtkInputHeight = 32;
-constexpr int kEmbeddedTopLevelCardGap = 12;
-constexpr int kEmbeddedTopLevelCardChromeInset = 4;
+constexpr int kEmbeddedTopLevelCardGap = 20;
+constexpr int kEmbeddedTopLevelCardChromeInset = 12;
 constexpr const char *kEpsilonMainGgaSourceKey = "__epsilon_main__";
 constexpr const char *kSectionTitleIconNameProperty = "_vv_section_title_icon_name";
 constexpr int kSectionTitleIconBoxSize = 26;
@@ -1071,6 +1074,7 @@ QVBoxLayout *RtkConfigDialog::createCardLayout(QGroupBox *group,
 {
     group->setTitle(QString());
     group->setObjectName(QStringLiteral("sensorGroupBox"));
+    configureTopLevelCard(group);
     group->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 
     auto *cardLayout = new QVBoxLayout(group);
@@ -1151,7 +1155,10 @@ void RtkConfigDialog::setupUi()
 
     main_layout_ = new QVBoxLayout(contentWidget);
     main_layout_->setSpacing(kEmbeddedTopLevelCardGap);
-    main_layout_->setContentsMargins(12, 12, 12, 12);
+    main_layout_->setContentsMargins(kEmbeddedTopLevelCardChromeInset,
+                                     kEmbeddedTopLevelCardChromeInset,
+                                     kEmbeddedTopLevelCardChromeInset,
+                                     kEmbeddedTopLevelCardChromeInset);
     main_layout_->setAlignment(Qt::AlignTop);
 
     auto configureFieldLabel = [](QLabel *label) {
@@ -1614,11 +1621,11 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     if (main_layout_)
     {
-        main_layout_->setSpacing(scalePixels(embedded_ ? kEmbeddedTopLevelCardGap : 6));
-        main_layout_->setContentsMargins(embedded_ ? scalePixels(kEmbeddedTopLevelCardChromeInset) : scalePixels(8),
-                                         embedded_ ? scalePixels(kEmbeddedTopLevelCardChromeInset) : scalePixels(8),
-                                         embedded_ ? scalePixels(kEmbeddedTopLevelCardGap) : scalePixels(8),
-                                         embedded_ ? scalePixels(kEmbeddedTopLevelCardChromeInset) : scalePixels(8));
+        main_layout_->setSpacing(scalePixels(kEmbeddedTopLevelCardGap));
+        main_layout_->setContentsMargins(scalePixels(kEmbeddedTopLevelCardChromeInset),
+                                         scalePixels(kEmbeddedTopLevelCardChromeInset),
+                                         scalePixels(kEmbeddedTopLevelCardChromeInset),
+                                         scalePixels(kEmbeddedTopLevelCardChromeInset));
         main_layout_->setAlignment(Qt::AlignTop);
     }
 
@@ -1895,6 +1902,7 @@ void RtkConfigDialog::setFontScale(int percent)
     if (font_scale_percent_ == percent)
     {
         applyScaledUiMetrics();
+        updateTopLevelCardShadows(this, font_scale_percent_ / 100.0);
         if (!embedded_ && !isMaximized() && !isFullScreen())
         {
             targetSize = targetSize.expandedTo(minimumSize());
@@ -1908,6 +1916,7 @@ void RtkConfigDialog::setFontScale(int percent)
 
     font_scale_percent_ = percent;
     applyScaledUiMetrics();
+    updateTopLevelCardShadows(this, font_scale_percent_ / 100.0);
     if (!embedded_ && !isMaximized() && !isFullScreen())
     {
         targetSize = targetSize.expandedTo(minimumSize());

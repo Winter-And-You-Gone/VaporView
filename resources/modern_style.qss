@@ -930,7 +930,7 @@ QSplitter#mainContentSplitter::handle:horizontal:pressed {
 }
 
 QSplitter#homeOverviewSplitter::handle:horizontal {
-    width: 8px;
+    width: 20px;
     background-color: @vv-surface;
 }
 
@@ -1439,5 +1439,33 @@ QFrame#card {
 QFrame#separator {
     background-color: @vv-border;
     max-height: 1px;
+}
+
+/* 一级卡片：外层是页面背景，阴影由 TopLevelCardStyle 统一提供。 */
+QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"],
+QFrame#epsilonSectionCard[vaporViewTopLevelCard="true"],
+QFrame#recordingStatusCard[vaporViewTopLevelCard="true"],
+QFrame#logPanelFrame[vaporViewTopLevelCard="true"],
+QFrame[vaporViewTopLevelCard="true"] {
+    background-color: @vv-surface-raised;
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    border-radius: 12px;
+}
+
+QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
+QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > QWidget#environmentSectionTitleBar,
+QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > TcpWavePanel > QWidget#sectionTitleBar,
+QFrame#epsilonSectionCard[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
+QFrame#recordingStatusCard[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
+QFrame#logPanelFrame[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar {
+    background-color: @vv-surface-raised;
+    border-top-left-radius: 11px;
+    border-top-right-radius: 11px;
+}
+
+QFrame#recordingStatusCard[vaporViewTopLevelCard="true"] > QWidget#recordingStatusBody {
+    background-color: @vv-surface-raised;
+    border-bottom-left-radius: 11px;
+    border-bottom-right-radius: 11px;
 }
 

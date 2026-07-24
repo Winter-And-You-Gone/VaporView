@@ -189,7 +189,7 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter#appLayoutSplitter::handle:horizontal:hover { background-color: transparent; }"
             "QSplitter#appLayoutSplitter::handle:horizontal:pressed { background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal { width: 1px; background-color: transparent; }"
-            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 12px; background-color: @vv-surface; }"
+            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 20px; background-color: @vv-surface; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
             "QWidget#mainCardResizeHandle { min-height: 3px; max-height: 3px; background-color: transparent; }"
@@ -205,7 +205,7 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter#mainContentSplitter::handle:horizontal { width: 1px; background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
-            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 12px; background-color: @vv-surface; }"
+            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 20px; background-color: @vv-surface; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
             "QPushButton { background-color: @vv-primary; color: @vv-white; border: none; border-radius: 6px; padding: 4px 16px; font-size: 15px; font-weight: 500; min-height: 28px; max-height: 28px; }"
@@ -225,7 +225,10 @@ void MainWindow::loadModernStyleSheet()
             "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "TemperatureControllerPanel QPushButton[temperatureOutputEnableSwitch=\"true\"] { background-color: transparent; border: none; padding: 0px; margin: 0px; min-width: 106px; max-width: 106px; min-height: 34px; max-height: 34px; outline: none; }"
-            "QToolTip { background-color: rgb(45, 45, 45); color: #FFFFFF; border: 1px solid #474747; border-radius: 13px; padding: 8px 16px; font-size: 16px; }";
+            "QToolTip { background-color: rgb(45, 45, 45); color: #FFFFFF; border: 1px solid #474747; border-radius: 13px; padding: 8px 16px; font-size: 16px; }"
+            "QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"], QFrame#epsilonSectionCard[vaporViewTopLevelCard=\"true\"], QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"], QFrame#logPanelFrame[vaporViewTopLevelCard=\"true\"], QFrame[vaporViewTopLevelCard=\"true\"] { background-color: @vv-surface-raised; border: 1px solid rgba(0, 0, 0, 0.04); border-radius: 12px; }"
+            "QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > QWidget#environmentSectionTitleBar, QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > TcpWavePanel > QWidget#sectionTitleBar, QFrame#epsilonSectionCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QFrame#logPanelFrame[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar { background-color: @vv-surface-raised; border-top-left-radius: 11px; border-top-right-radius: 11px; }"
+            "QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"] > QWidget#recordingStatusBody { background-color: @vv-surface-raised; border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }";
     }
 
     state_->base_style_sheet_.replace("url(lucide/chevron-down.svg)", QString("url(%1)").arg(chevronDownIconPath));
@@ -1094,6 +1097,7 @@ void MainWindow::applyStyleConfiguration()
     qApp->setPalette(appThemePalette(state_->dark_theme_enabled_));
     qApp->setFont(appFont);
     qApp->setStyleSheet(scaledStyleSheet(themedStyleSheet()));
+    updateTopLevelCardShadows(this, state_->font_scale_percent_ / 100.0);
     configureComboPopupsIn(this);
     setWindowsTitleBarDark(this, state_->dark_theme_enabled_);
     applyScaledUiMetrics();

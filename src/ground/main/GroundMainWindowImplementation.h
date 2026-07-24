@@ -3,6 +3,7 @@
 #include "ground/main/MainWindow.h"
 #include "ground/main/GroundMainWindowState.h"
 #include "shared/theme/AppTheme.h"
+#include "shared/theme/TopLevelCardStyle.h"
 #include "ground/widgets/CustomTitleBar.h"
 #ifdef VAPORVIEW_HAS_OSGEARTH
 #include "ground/map/Map3DController.h"
@@ -143,7 +144,9 @@ using VaporView::appThemePalette;
 using VaporView::appThemeRgba;
 using VaporView::applyAppThemeTokens;
 using VaporView::configureComboBoxPopup;
+using VaporView::configureTopLevelCard;
 using VaporView::kAppDarkThemeProperty;
+using VaporView::updateTopLevelCardShadows;
 using VaporView::SingleLevelPopupAnchor;
 using VaporView::SingleLevelPopupMenu;
 using VaporView::SingleLevelPopupMenuRow;
