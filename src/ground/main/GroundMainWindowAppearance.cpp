@@ -189,7 +189,7 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter#appLayoutSplitter::handle:horizontal:hover { background-color: transparent; }"
             "QSplitter#appLayoutSplitter::handle:horizontal:pressed { background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal { width: 0px; background-color: transparent; }"
-            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 20px; background-color: @vv-surface; }"
+            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 12px; background-color: @vv-surface; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
             "QWidget#mainCardResizeHandle { min-height: 3px; max-height: 3px; background-color: transparent; }"
@@ -205,7 +205,7 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter#mainContentSplitter::handle:horizontal { width: 0px; background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
-            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 20px; background-color: @vv-surface; }"
+            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 12px; background-color: @vv-surface; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
             "QPushButton { background-color: @vv-primary; color: @vv-white; border: none; border-radius: 6px; padding: 4px 16px; font-size: 15px; font-weight: 500; min-height: 28px; max-height: 28px; }"
@@ -877,28 +877,34 @@ void MainWindow::updateResponsiveHomeLayout()
     if (state_->main_cards_scroll_area_ && state_->main_cards_scroll_area_->widget() && state_->main_cards_scroll_area_->viewport())
     {
         updateHomeDeviceOverviewMinimumWidth();
+        QLayout *contentLayout = state_->main_cards_scroll_area_->widget()->layout();
+        const QMargins contentMargins = contentLayout ? contentLayout->contentsMargins() : QMargins();
         const int viewportWidth = std::max(0, state_->main_cards_scroll_area_->viewport()->width());
+        const int viewportContentWidth =
+            std::max(0, viewportWidth - contentMargins.left() - contentMargins.right());
         const int overviewMinimumWidth = state_->home_overview_splitter_ && state_->config_group_ && state_->temperature_overview_group_
             ? state_->config_group_->minimumWidth() + state_->temperature_overview_group_->minimumWidth() + state_->home_overview_splitter_->handleWidth()
             : (state_->config_group_ ? state_->config_group_->minimumWidth() : 0);
-        const bool widthConstrained = viewportWidth > 0 && viewportWidth < overviewMinimumWidth;
-        const int contentWidth = widthConstrained ? overviewMinimumWidth : viewportWidth;
+        const bool widthConstrained = overviewMinimumWidth > 0 && viewportWidth > 0 &&
+            viewportContentWidth < overviewMinimumWidth;
+        const int contentMinimumWidth = overviewMinimumWidth + contentMargins.left() + contentMargins.right();
+        const int contentWidth = widthConstrained ? contentMinimumWidth : viewportWidth;
+        const int overviewWidth = widthConstrained ? overviewMinimumWidth : viewportContentWidth;
         state_->main_cards_scroll_area_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
         state_->main_cards_scroll_area_->widget()->setSizePolicy(widthConstrained ? QSizePolicy::Preferred : QSizePolicy::Ignored,
                                                          QSizePolicy::Preferred);
-        state_->main_cards_scroll_area_->widget()->setMinimumWidth(widthConstrained ? overviewMinimumWidth : 0);
+        state_->main_cards_scroll_area_->widget()->setMinimumWidth(widthConstrained ? contentMinimumWidth : 0);
         state_->main_cards_scroll_area_->widget()->setMaximumWidth(widthConstrained ? QWIDGETSIZE_MAX : viewportWidth);
         state_->main_cards_scroll_area_->widget()->resize(contentWidth, state_->main_cards_scroll_area_->widget()->height());
         if (state_->home_overview_splitter_)
         {
-            const int overviewWidth = widthConstrained ? overviewMinimumWidth : viewportWidth;
             state_->home_overview_splitter_->setMinimumWidth(overviewWidth);
             state_->home_overview_splitter_->setMaximumWidth(overviewWidth);
         }
-        if (QLayout *leftLayout = state_->main_cards_scroll_area_->widget()->layout())
+        if (contentLayout)
         {
-            leftLayout->invalidate();
-            leftLayout->activate();
+            contentLayout->invalidate();
+            contentLayout->activate();
         }
         updateHomeDeviceOverviewMinimumWidth();
         if (state_->home_overview_splitter_ && state_->config_group_ && state_->temperature_overview_group_)
@@ -908,7 +914,8 @@ void MainWindow::updateResponsiveHomeLayout()
             const int leftMinimum = state_->config_group_->minimumWidth();
             const int rightMinimum = state_->temperature_overview_group_->minimumWidth();
             const bool invalidSizes = sizes.size() < 2 || (sizes.at(0) + sizes.at(1)) <= 0;
-            const int totalWidth = contentWidth > 0 ? contentWidth : std::max(overviewMinimumWidth, state_->home_overview_splitter_->width());
+            const int totalWidth =
+                overviewWidth > 0 ? overviewWidth : std::max(overviewMinimumWidth, state_->home_overview_splitter_->width());
             const int availableWidth = std::max(0, totalWidth - state_->home_overview_splitter_->handleWidth());
             const bool sizeTooNarrow = sizes.size() >= 2 && availableWidth >= leftMinimum + rightMinimum &&
                 (sizes.at(0) < leftMinimum || sizes.at(1) < rightMinimum);

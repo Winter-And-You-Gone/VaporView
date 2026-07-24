@@ -112,6 +112,8 @@ inline constexpr int kAppSidebarCompactIconSize = 32;
 inline constexpr int kMainCardResizeHandleHeight = 3;
 inline constexpr int kTopLevelCardGap = 12;
 inline constexpr int kTopLevelCardChromeInset = 12;
+inline constexpr int kTopLevelCardOuterVerticalInset =
+    kTopLevelCardGap - kAppSidebarVisualPadding;
 inline constexpr int kSidePanelSplitterVisualWidth = 0;
 inline constexpr int kTopLevelCardSpacerAfterResizeHandle = kTopLevelCardGap - kMainCardResizeHandleHeight;
 inline constexpr const char *kMainCardUserResizedHeightProperty = "_vv_main_card_user_resized_height";

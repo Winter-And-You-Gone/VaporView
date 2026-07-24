@@ -930,7 +930,7 @@ QSplitter#mainContentSplitter::handle:horizontal:pressed {
 }
 
 QSplitter#homeOverviewSplitter::handle:horizontal {
-    width: 20px;
+    width: 12px;
     background-color: @vv-surface;
 }
 

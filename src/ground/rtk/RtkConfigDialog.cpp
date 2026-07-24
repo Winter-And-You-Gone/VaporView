@@ -81,6 +81,7 @@ constexpr int kRtkMinimumDialogHeight = 420;
 constexpr int kRtkInputHeight = 32;
 constexpr int kEmbeddedTopLevelCardGap = 12;
 constexpr int kEmbeddedTopLevelCardChromeInset = 12;
+constexpr int kEmbeddedTopLevelCardOuterVerticalInset = 4;
 constexpr const char *kEpsilonMainGgaSourceKey = "__epsilon_main__";
 constexpr const char *kSectionTitleIconNameProperty = "_vv_section_title_icon_name";
 constexpr int kSectionTitleIconBoxSize = 26;
@@ -1156,9 +1157,11 @@ void RtkConfigDialog::setupUi()
     main_layout_ = new QVBoxLayout(contentWidget);
     main_layout_->setSpacing(kEmbeddedTopLevelCardGap);
     main_layout_->setContentsMargins(kEmbeddedTopLevelCardChromeInset,
+                                     embedded_ ? kEmbeddedTopLevelCardOuterVerticalInset
+                                               : kEmbeddedTopLevelCardChromeInset,
                                      kEmbeddedTopLevelCardChromeInset,
-                                     kEmbeddedTopLevelCardChromeInset,
-                                     kEmbeddedTopLevelCardChromeInset);
+                                     embedded_ ? kEmbeddedTopLevelCardOuterVerticalInset
+                                               : kEmbeddedTopLevelCardChromeInset);
     main_layout_->setAlignment(Qt::AlignTop);
 
     auto configureFieldLabel = [](QLabel *label) {
@@ -1623,9 +1626,13 @@ void RtkConfigDialog::applyScaledUiMetrics()
     {
         main_layout_->setSpacing(scalePixels(kEmbeddedTopLevelCardGap));
         main_layout_->setContentsMargins(scalePixels(kEmbeddedTopLevelCardChromeInset),
+                                         scalePixels(embedded_
+                                             ? kEmbeddedTopLevelCardOuterVerticalInset
+                                             : kEmbeddedTopLevelCardChromeInset),
                                          scalePixels(kEmbeddedTopLevelCardChromeInset),
-                                         scalePixels(kEmbeddedTopLevelCardChromeInset),
-                                         scalePixels(kEmbeddedTopLevelCardChromeInset));
+                                         scalePixels(embedded_
+                                             ? kEmbeddedTopLevelCardOuterVerticalInset
+                                             : kEmbeddedTopLevelCardChromeInset));
         main_layout_->setAlignment(Qt::AlignTop);
     }
 

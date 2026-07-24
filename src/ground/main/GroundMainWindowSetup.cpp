@@ -1205,12 +1205,12 @@ void MainWindow::setupCentralWidget()
     left_widget->setAutoFillBackground(true);
     state_->main_layout_ = new QVBoxLayout(left_widget);
     state_->main_layout_->setSpacing(0);
-    // The surrounding chrome and this 12px page inset leave the visible soft
-    // shadow tail intact without narrowing the existing card content layout.
+    // The surrounding chrome contributes 8px vertically, so the inner 4px
+    // inset keeps the visible titlebar-to-card and bottom gaps at 12px.
     state_->main_layout_->setContentsMargins(kTopLevelCardChromeInset,
+                                             kTopLevelCardOuterVerticalInset,
                                              kTopLevelCardChromeInset,
-                                             kTopLevelCardChromeInset,
-                                             kTopLevelCardChromeInset);
+                                             kTopLevelCardOuterVerticalInset);
 
     setupConfigPanel();
     setupDataPanels();
@@ -1376,9 +1376,9 @@ void MainWindow::setupCentralWidget()
     auto *temperatureContent = new QWidget(temperatureScrollArea);
     auto *temperatureContentLayout = new QVBoxLayout(temperatureContent);
     temperatureContentLayout->setContentsMargins(kTopLevelCardChromeInset,
+                                                 kTopLevelCardOuterVerticalInset,
                                                  kTopLevelCardChromeInset,
-                                                 kTopLevelCardChromeInset,
-                                                 kTopLevelCardChromeInset);
+                                                 kTopLevelCardOuterVerticalInset);
     temperatureContentLayout->setSpacing(kTopLevelCardGap);
     temperatureContentLayout->addWidget(state_->temperature_controller_group_, 0);
     temperatureContentLayout->addStretch(1);
@@ -1434,9 +1434,9 @@ void MainWindow::setupDeviceConfigPage()
     auto *content = new QWidget(scrollArea);
     auto *contentLayout = new QVBoxLayout(content);
     contentLayout->setContentsMargins(kTopLevelCardChromeInset,
+                                      kTopLevelCardOuterVerticalInset,
                                       kTopLevelCardChromeInset,
-                                      kTopLevelCardChromeInset,
-                                      kTopLevelCardChromeInset);
+                                      kTopLevelCardOuterVerticalInset);
     contentLayout->setSpacing(kTopLevelCardGap);
     auto *topRowLayout = new QHBoxLayout;
     topRowLayout->setContentsMargins(0, 0, 0, 0);
@@ -3726,9 +3726,9 @@ void MainWindow::setupLogPanel()
     // The adjacent main-page scrollbar already supplies the 12px visible
     // gutter. Do not add another left inset between the two card regions.
     logSideLayout->setContentsMargins(0,
+                                      kTopLevelCardOuterVerticalInset,
                                       kTopLevelCardChromeInset,
-                                      kTopLevelCardChromeInset,
-                                      kTopLevelCardChromeInset);
+                                      kTopLevelCardOuterVerticalInset);
     logSideLayout->setSpacing(kTopLevelCardGap);
 
     state_->recording_status_card_ = new QFrame(state_->log_side_panel_);

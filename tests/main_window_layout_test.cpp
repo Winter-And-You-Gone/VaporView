@@ -1223,7 +1223,7 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
         VaporView::Ground::MainSupport::kTopLevelCardChromeInset;
     constexpr int kExpectedPageRightGap = 12;
     constexpr int kExpectedPageChromeInset =
-        VaporView::Ground::MainSupport::kTopLevelCardChromeInset;
+        VaporView::Ground::MainSupport::kTopLevelCardOuterVerticalInset;
     constexpr int kExpectedTopLevelCardGap =
         VaporView::Ground::MainSupport::kTopLevelCardGap;
     require(kExpectedTopLevelCardGap == 12,
@@ -1253,7 +1253,7 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                          kExpectedPageChromeInset,
                          kExpectedPageRightGap,
                          kExpectedPageChromeInset),
-            "RTK embedded page reserves balanced shadow-safe chrome insets");
+            "RTK embedded page reserves horizontal shadow inset and visible 12px vertical chrome");
     require(rtkContent->layout()->spacing() == kExpectedTopLevelCardGap,
             "RTK embedded page uses the shared top-level card gap");
     auto *ggaCard = findCardByTitle(dialog,
@@ -2309,6 +2309,10 @@ int main(int argc, char **argv)
                                  QStringLiteral("QSplitter#mainContentSplitter::handle:horizontal:pressed {"),
                                  VaporView::appThemeRgba(VaporView::AppThemeColor::Primary, false, 0.28),
                                  "main content splitter keeps a resize pressed cue");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QSplitter#homeOverviewSplitter::handle:horizontal {"),
+                                 QStringLiteral("width: 12px"),
+                                 "home overview splitter keeps the requested 12px card gap");
     requireComboPopupsStyledIn(&window,
                                "all main-window combo boxes use the shared rounded popup menu style");
     const QSize originalWindowSize = window.size();
@@ -2368,8 +2372,10 @@ int main(int argc, char **argv)
         VaporView::Ground::MainSupport::kTopLevelCardChromeInset;
     constexpr int kExpectedPageRightGap = 12;
     constexpr int kExpectedPageTopInset =
-        VaporView::Ground::MainSupport::kTopLevelCardChromeInset;
+        VaporView::Ground::MainSupport::kTopLevelCardOuterVerticalInset;
     constexpr int kExpectedTopLevelCardGap =
+        VaporView::Ground::MainSupport::kTopLevelCardGap;
+    constexpr int kExpectedVisibleOuterGap =
         VaporView::Ground::MainSupport::kTopLevelCardGap;
     QWidget *homeScrollContent = homeScrollArea->widget();
     require(homeScrollContent != nullptr, "home scroll content exists for bottom-fade behavior");
@@ -2505,7 +2511,10 @@ int main(int argc, char **argv)
                   << " stackTop=" << mainPageStackCentralRect.top() << '\n';
     }
     require(std::abs(homeTopVisualGap - kExpectedPageTopInset) <= 1,
-            "home page keeps the compact top inset that balances the app chrome");
+            "home page keeps the compact inner top inset that balances the app chrome");
+    require(std::abs((homePrimaryCardRect.top() - centralRect.top()) -
+                     kExpectedVisibleOuterGap) <= 1,
+            "home first-row cards sit 12px below the titlebar content edge");
     require(std::abs((homeTemperatureCardRect.left() - rightEdge(homePrimaryCardRect)) -
                      kExpectedTopLevelCardGap) <= 1,
             "home overview cards keep the shared shadow-safe horizontal gap");
@@ -2516,6 +2525,8 @@ int main(int argc, char **argv)
     const QRect homeViewportRect =
         QRect(homeScrollArea->viewport()->mapTo(window.centralWidget(), QPoint(0, 0)),
               homeScrollArea->viewport()->size());
+    require(rightEdge(homeTemperatureCardRect) <= rightEdge(homeViewportRect) + 1,
+            "home temperature overview card stays fully inside the scroll viewport");
     const int homeLeftVisualGap = homePrimaryCardLeft - rightEdge(sidebarRect);
     const int homeRightVisualGap = recordingCardRect.left() - rightEdge(homeViewportRect);
     if (!(std::abs(homeLeftVisualGap - kExpectedTopLevelCardGap) <= 1 &&
@@ -2592,6 +2603,8 @@ int main(int argc, char **argv)
             "home TCP wave card keeps the shared vertical gap");
     const int expectedCardOuterTopGap =
         mainContentMargins.top() + kExpectedPageTopInset;
+    const int expectedCardOuterBottomGap =
+        mainContentMargins.bottom() + kExpectedPageTopInset;
     const int expectedCardOuterRightGap =
         mainContentMargins.right() + kExpectedPageLeftInset;
     require(std::abs((recordingCardRect.top() - centralRect.top()) -
@@ -2600,6 +2613,9 @@ int main(int argc, char **argv)
     require(std::abs((logCardRect.top() - bottomEdge(recordingCardRect)) -
                      kExpectedTopLevelCardGap) <= 1,
             "right-side log card keeps the shared vertical gap");
+    require(std::abs((centralRect.bottom() - logCardRect.bottom()) -
+                     expectedCardOuterBottomGap) <= 1,
+            "right-side log card keeps the visible 12px bottom gap");
     require(sidebarLeftGap > 0 &&
                 std::abs(sidebarLeftGap - sidebarBottomGap) <= 1,
             "sidebar left border uses the same outer margin as its bottom border");
@@ -5609,6 +5625,9 @@ int main(int argc, char **argv)
             "temperature controller card can be identified from the controller panel");
     require(std::abs(widgetRectInCentral(temperatureControllerCard).left() - homePrimaryCardLeft) <= 1,
             "temperature page aligns its first card with the home page card left edge");
+    require(std::abs(widgetRectInCentral(temperatureControllerCard).top() -
+                     homePrimaryCardRect.top()) <= 1,
+            "temperature page aligns its first card with the home page 12px top gap");
     auto *temperatureScrollAreaForSpacing =
         temperaturePage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
     require(temperatureScrollAreaForSpacing != nullptr,
@@ -5644,6 +5663,12 @@ int main(int argc, char **argv)
     require(deviceConfigScrollArea->horizontalScrollBar() != nullptr &&
                 deviceConfigScrollArea->horizontalScrollBar()->maximum() == 0,
             "device configuration page fits horizontally at default window size");
+    auto *deviceFirstCard =
+        deviceConfigPage->findChild<QGroupBox *>(QStringLiteral("sensorGroupBox"));
+    require(deviceFirstCard != nullptr &&
+                std::abs(widgetRectInCentral(deviceFirstCard).top() -
+                         homePrimaryCardRect.top()) <= 1,
+            "device configuration page aligns its first card with the home page 12px top gap");
 
     const QStringList removedDevicePageActions = {
         QStringLiteral("刷新"),
