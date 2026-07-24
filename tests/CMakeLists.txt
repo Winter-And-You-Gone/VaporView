@@ -291,8 +291,6 @@ add_executable(serial_port_detection_service_test
 target_link_libraries(serial_port_detection_service_test PRIVATE vaporview_ground_device_core)
 add_test(NAME serial_port_detection_service_test COMMAND serial_port_detection_service_test)
 
-find_package(Qt6 COMPONENTS Test REQUIRED)
-
 add_executable(main_window_layout_test
     ${CMAKE_CURRENT_SOURCE_DIR}/main_window_layout_test.cpp
 )
@@ -303,15 +301,12 @@ target_include_directories(main_window_layout_test PRIVATE
 target_compile_definitions(main_window_layout_test PRIVATE
     VAPORVIEW_MAIN_WINDOW_TESTING=1
 )
-target_link_libraries(main_window_layout_test PRIVATE vaporview_main_window Qt6::Test)
+target_link_libraries(main_window_layout_test PRIVATE vaporview_main_window)
 add_dependencies(main_window_layout_test VaporViewRuntimeResources)
 if(VAPORVIEW_ENABLE_OSGEARTH AND WIN32)
     vaporview_stage_osgearth_runtime(main_window_layout_test)
 endif()
 add_custom_command(TARGET main_window_layout_test POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:Qt6::Test>
-        $<TARGET_FILE_DIR:main_window_layout_test>
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:main_window_layout_test>/resources
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/resources/modern_style.qss

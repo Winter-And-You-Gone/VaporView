@@ -3444,27 +3444,12 @@ void MainWindow::setupDataPanels()
     state_->home_overview_splitter_->setSizes({state_->config_group_->minimumWidth(), kHomeOverviewTemperatureMinWidth});
     state_->main_layout_->addWidget(state_->home_overview_splitter_, 0);
     state_->main_layout_->addWidget(
-        createMainCardResizeHandle(state_->home_overview_splitter_,
-                                   kConfigCardMinHeight,
-                                   this,
-                                   [this]() {
-                                       updateRemoteTelemetrySummaryLabel();
-                                       updateResponsiveHomeLayout();
-                                   }),
-        0);
+        createMainCardResizeHandle(state_->home_overview_splitter_, kConfigCardMinHeight, this), 0);
     state_->main_layout_->addSpacing(kTopLevelCardSpacerAfterResizeHandle);
     state_->main_layout_->addWidget(state_->data_group_, 0);
     updateConfigCardHeightForSourceMode();
 
-    state_->main_layout_->addWidget(
-        createMainCardResizeHandle(state_->data_group_,
-                                   dataCardMinHeight,
-                                   this,
-                                   [this]() {
-                                       updateRemoteTelemetrySummaryLabel();
-                                       updateResponsiveHomeLayout();
-                                   }),
-        0);
+    state_->main_layout_->addWidget(createMainCardResizeHandle(state_->data_group_, dataCardMinHeight, this), 0);
     state_->main_layout_->addSpacing(kTopLevelCardSpacerAfterResizeHandle);
 
     state_->temperature_controller_group_ = new QGroupBox(this);

@@ -112,7 +112,6 @@ inline constexpr int kMainCardResizeHandleHeight = 3;
 inline constexpr int kTopLevelCardGap = 12;
 inline constexpr int kTopLevelCardChromeInset = kTopLevelCardGap - kAppSidebarVisualPadding;
 inline constexpr int kTopLevelCardSpacerAfterResizeHandle = kTopLevelCardGap - kMainCardResizeHandleHeight;
-inline constexpr const char *kMainCardResizeDraggingProperty = "_vv_main_card_resize_dragging";
 inline constexpr const char *kMainCardUserResizedHeightProperty = "_vv_main_card_user_resized_height";
 inline constexpr int kEnvStatusIconSize = 18;
 inline constexpr int kEpsilonSideTitleWidth = 24;
@@ -197,10 +196,7 @@ QFrame *createFloatingTitleMenuPanel(QWidget *parent);
 QRect floatingMenuContentRect(QWidget *panel);
 void setFloatingMenuContentFixedSize(QWidget *panel, const QSize& size);
 QWidget *createAppSidebarFrame(QWidget *parent);
-QWidget *createMainCardResizeHandle(QWidget *target,
-                                    int minimumHeight,
-                                    QWidget *parent,
-                                    std::function<void()> resizeFinished = {});
+QWidget *createMainCardResizeHandle(QWidget *target, int minimumHeight, QWidget *parent);
 QWidget *createShrinkablePanel(QWidget *parent);
 QWidget *createWindowResizeHandle(Qt::Edges edges, QWidget *parent);
 QCheckBox *createTitleBarFeedbackCheckBox(QWidget *parent);

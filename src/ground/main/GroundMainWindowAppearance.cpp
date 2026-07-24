@@ -825,14 +825,6 @@ bool MainWindow::shouldUseCompactHomeLayout() const
            (viewportWidth > 0 && viewportWidth <= kCompactHomeViewportWidth);
 }
 
-bool MainWindow::mainCardResizeInProgress() const
-{
-    return (state_->home_overview_splitter_ &&
-            state_->home_overview_splitter_->property(kMainCardResizeDraggingProperty).toBool()) ||
-           (state_->data_group_ &&
-            state_->data_group_->property(kMainCardResizeDraggingProperty).toBool());
-}
-
 void MainWindow::updateResponsiveHomeLayout()
 {
     if (!state_->sensor_layout_ || !state_->sensor_row_widget_ || !state_->data_group_)
@@ -840,17 +832,17 @@ void MainWindow::updateResponsiveHomeLayout()
         return;
     }
 
-    if (mainCardResizeInProgress())
-    {
-        return;
-    }
-
     const bool compact = shouldUseCompactHomeLayout();
     const bool layoutChanged = state_->compact_home_layout_ != compact;
     state_->compact_home_layout_ = compact;
-    const bool dataCardUserSized = state_->data_group_ &&
+    const int currentDataCardHeight = state_->data_group_->height();
+    const bool preserveDataCardHeight =
+        !layoutChanged &&
         state_->data_group_->property(kMainCardUserResizedHeightProperty).toBool();
-    const bool preserveDataCardHeight = dataCardUserSized && !layoutChanged;
+    if (layoutChanged)
+    {
+        state_->data_group_->setProperty(kMainCardUserResizedHeightProperty, false);
+    }
 
     const QBoxLayout::Direction direction = compact ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight;
     if (state_->sensor_layout_->direction() != direction)
@@ -982,14 +974,7 @@ void MainWindow::updateResponsiveHomeLayout()
     clearFixedHeight(state_->epsilon_group_);
     clearFixedHeight(state_->env_group_);
     clearFixedHeight(state_->sensor_row_widget_);
-    if (!preserveDataCardHeight)
-    {
-        clearFixedHeight(state_->data_group_);
-        if (state_->data_group_)
-        {
-            state_->data_group_->setProperty(kMainCardUserResizedHeightProperty, false);
-        }
-    }
+    clearFixedHeight(state_->data_group_);
     if (state_->sensor_layout_)
     {
         state_->sensor_layout_->invalidate();
@@ -1029,17 +1014,12 @@ void MainWindow::updateResponsiveHomeLayout()
             }
         }
         state_->sensor_row_widget_->setMinimumHeight(targetHeight);
-        const int currentDataCardHeight = state_->data_group_->height();
         state_->data_group_->setProperty(kMainCardMinimumHeightProperty, targetHeight);
         state_->data_group_->setMinimumHeight(targetHeight);
-        if (preserveDataCardHeight)
-        {
-            state_->data_group_->setFixedHeight(std::max(currentDataCardHeight, targetHeight));
-        }
-        else
-        {
-            state_->data_group_->setFixedHeight(targetHeight);
-        }
+        const int dataCardHeight = preserveDataCardHeight
+            ? std::max(currentDataCardHeight, targetHeight)
+            : targetHeight;
+        state_->data_group_->setFixedHeight(dataCardHeight);
     }
 
     if (state_->log_side_panel_)
