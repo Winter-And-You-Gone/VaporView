@@ -2313,6 +2313,16 @@ int main(int argc, char **argv)
                                  QStringLiteral("QSplitter#homeOverviewSplitter::handle:horizontal {"),
                                  QStringLiteral("width: 12px"),
                                  "home overview splitter keeps the requested 12px card gap");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QDialog#rtkConfigDialog QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] {"),
+        QStringLiteral("border-radius: 12px"),
+        "RTK embedded cards use the same 12px top-level radius as their shadow clip");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QDialog#rtkConfigDialog QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar {"),
+        QStringLiteral("border-top-left-radius: 11px"),
+        "RTK embedded card title bars do not expose black corner arcs");
     requireComboPopupsStyledIn(&window,
                                "all main-window combo boxes use the shared rounded popup menu style");
     const QSize originalWindowSize = window.size();
@@ -2529,6 +2539,8 @@ int main(int argc, char **argv)
             "home temperature overview card stays fully inside the scroll viewport");
     const int homeLeftVisualGap = homePrimaryCardLeft - rightEdge(sidebarRect);
     const int homeRightVisualGap = recordingCardRect.left() - rightEdge(homeViewportRect);
+    const int homeTemperatureToRecordingGap =
+        recordingCardRect.left() - rightEdge(homeTemperatureCardRect);
     if (!(std::abs(homeLeftVisualGap - kExpectedTopLevelCardGap) <= 1 &&
           std::abs(homeRightVisualGap - kExpectedTopLevelCardGap) <= 1))
     {
@@ -2539,6 +2551,8 @@ int main(int argc, char **argv)
     require(std::abs(homeLeftVisualGap - kExpectedTopLevelCardGap) <= 1 &&
                 std::abs(homeRightVisualGap - kExpectedTopLevelCardGap) <= 1,
             "home cards keep exact 12px visible gaps beside both side panels");
+    require(std::abs(homeTemperatureToRecordingGap - kExpectedTopLevelCardGap) <= 1,
+            "home temperature overview and recording status cards keep an exact 12px visual gap including the scrollbar");
     auto *homeDataGroupForSpacing =
         window.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer"));
     require(homeDataGroupForSpacing != nullptr, "home sensor row container exists for top-level spacing checks");

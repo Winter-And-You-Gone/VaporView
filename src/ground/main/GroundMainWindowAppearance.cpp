@@ -878,7 +878,22 @@ void MainWindow::updateResponsiveHomeLayout()
     {
         updateHomeDeviceOverviewMinimumWidth();
         QLayout *contentLayout = state_->main_cards_scroll_area_->widget()->layout();
-        const QMargins contentMargins = contentLayout ? contentLayout->contentsMargins() : QMargins();
+        QMargins contentMargins = contentLayout ? contentLayout->contentsMargins() : QMargins();
+        if (contentLayout)
+        {
+            const QScrollBar *verticalScrollBar = state_->main_cards_scroll_area_->verticalScrollBar();
+            const int visibleScrollBarWidth =
+                verticalScrollBar && verticalScrollBar->isVisible() &&
+                    verticalScrollBar->maximum() > verticalScrollBar->minimum()
+                ? verticalScrollBar->width()
+                : 0;
+            const int targetRightMargin = std::max(0, contentMargins.left() - visibleScrollBarWidth);
+            if (contentMargins.right() != targetRightMargin)
+            {
+                contentMargins.setRight(targetRightMargin);
+                contentLayout->setContentsMargins(contentMargins);
+            }
+        }
         const int viewportWidth = std::max(0, state_->main_cards_scroll_area_->viewport()->width());
         const int viewportContentWidth =
             std::max(0, viewportWidth - contentMargins.left() - contentMargins.right());
