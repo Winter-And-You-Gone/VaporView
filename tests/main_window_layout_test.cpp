@@ -16,6 +16,7 @@
 #include <QComboBox>
 #include <QContextMenuEvent>
 #include <QCoreApplication>
+#include <QCursor>
 #include <QDoubleSpinBox>
 #include <QDialog>
 #include <QFontMetrics>
@@ -82,6 +83,45 @@ void require(bool condition, const char *message)
         std::exit(1);
     }
 }
+
+class ResizeHeightRecorder final : public QObject
+{
+public:
+    explicit ResizeHeightRecorder(QWidget *target)
+        : target_(target)
+    {
+    }
+
+    void reset()
+    {
+        observed_heights_.clear();
+    }
+
+    bool observedHeightDifferentFrom(int expectedHeight) const
+    {
+        return std::any_of(
+            observed_heights_.cbegin(),
+            observed_heights_.cend(),
+            [expectedHeight](int height) {
+                return height != expectedHeight;
+            });
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (watched == target_ && event->type() == QEvent::Resize)
+        {
+            observed_heights_.append(
+                static_cast<QResizeEvent *>(event)->size().height());
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    QWidget *target_;
+    QVector<int> observed_heights_;
+};
 
 QAction *findAboutAction(MainWindow *window)
 {
@@ -655,6 +695,7 @@ VerticalDragContext beginVerticalDrag(QWidget *widget)
     context.widget = widget;
     context.localStart = widget->rect().center();
     context.globalStart = widget->mapToGlobal(context.localStart);
+    QCursor::setPos(context.globalStart);
     QMouseEvent press(QEvent::MouseButtonPress,
                       context.localStart,
                       context.globalStart,
@@ -667,6 +708,7 @@ VerticalDragContext beginVerticalDrag(QWidget *widget)
 
 void moveVerticalDrag(const VerticalDragContext& context, int offset)
 {
+    QCursor::setPos(context.globalStart + QPoint(0, offset));
     QMouseEvent move(QEvent::MouseMove,
                      context.localStart + QPoint(0, offset),
                      context.globalStart + QPoint(0, offset),
@@ -678,6 +720,7 @@ void moveVerticalDrag(const VerticalDragContext& context, int offset)
 
 void endVerticalDrag(const VerticalDragContext& context, int offset)
 {
+    QCursor::setPos(context.globalStart + QPoint(0, offset));
     QMouseEvent release(QEvent::MouseButtonRelease,
                         context.localStart + QPoint(0, offset),
                         context.globalStart + QPoint(0, offset),
@@ -685,6 +728,20 @@ void endVerticalDrag(const VerticalDragContext& context, int offset)
                         Qt::NoButton,
                         Qt::NoModifier);
     QCoreApplication::sendEvent(context.widget, &release);
+}
+
+void moveVerticalDragWithStaleEventPosition(const VerticalDragContext& context,
+                                            int cursorOffset,
+                                            int eventOffset)
+{
+    QCursor::setPos(context.globalStart + QPoint(0, cursorOffset));
+    QMouseEvent move(QEvent::MouseMove,
+                     context.localStart + QPoint(0, eventOffset),
+                     context.globalStart + QPoint(0, eventOffset),
+                     Qt::NoButton,
+                     Qt::LeftButton,
+                     Qt::NoModifier);
+    QCoreApplication::sendEvent(context.widget, &move);
 }
 
 void doubleClickWidget(QWidget *widget, int waitMs = 50)
@@ -2926,6 +2983,19 @@ int main(int argc, char **argv)
     for (int offset = -1; offset >= -48; --offset)
     {
         moveVerticalDrag(overviewShrinkDrag, offset);
+        if (offset == -16)
+        {
+            const int bottomBeforeStaleEvent =
+                bottomEdge(widgetRectInCentral(temperatureOverviewCard));
+            moveVerticalDragWithStaleEventPosition(
+                overviewShrinkDrag,
+                offset,
+                0);
+            const int bottomAfterStaleEvent =
+                bottomEdge(widgetRectInCentral(temperatureOverviewCard));
+            require(bottomAfterStaleEvent <= bottomBeforeStaleEvent + 1,
+                    "a stale event coordinate cannot bounce the temperature overview edge downward");
+        }
         if (offset % 4 == 0)
         {
             dragTelemetryStatus.telemetry_basic_rate_hz += 1.0;
@@ -2947,6 +3017,42 @@ int main(int argc, char **argv)
     activateLayouts(&window);
     require(homeOverviewSplitter->height() <= overviewHeightAfterExpand - 32,
             "home overview resize handle can shrink the expanded temperature overview row");
+    const VerticalDragContext overviewClampDrag =
+        beginVerticalDrag(homeOverviewResizeHandle);
+    moveVerticalDrag(overviewClampDrag, -256);
+    const int dragLockedOverviewHeight = homeOverviewSplitter->height();
+    require(deviceOverviewCard->minimumHeight() == dragLockedOverviewHeight &&
+                deviceOverviewCard->maximumHeight() == dragLockedOverviewHeight,
+            "overview drag locks the device overview child-card height");
+    require(temperatureOverviewCard->minimumHeight() == dragLockedOverviewHeight &&
+                temperatureOverviewCard->maximumHeight() == dragLockedOverviewHeight,
+            "overview drag locks the temperature overview child-card height");
+    QEvent overviewLayoutRequest(QEvent::LayoutRequest);
+    QCoreApplication::sendEvent(homeOverviewSplitter, &overviewLayoutRequest);
+    processEventsFor(20);
+    require(homeOverviewSplitter->height() == dragLockedOverviewHeight &&
+                homeOverviewSplitter->minimumHeight() == dragLockedOverviewHeight &&
+                homeOverviewSplitter->maximumHeight() == dragLockedOverviewHeight,
+            "splitter layout requests cannot release the overview drag height");
+    endVerticalDrag(overviewClampDrag, -256);
+    processEventsFor(40);
+    activateLayouts(&window);
+    const int clampedOverviewHeight = homeOverviewSplitter->height();
+    ResizeHeightRecorder overviewRefreshRecorder(homeOverviewSplitter);
+    homeOverviewSplitter->installEventFilter(&overviewRefreshRecorder);
+    overviewRefreshRecorder.reset();
+    dragTelemetryStatus.telemetry_basic_rate_hz += 1.0;
+    require(QMetaObject::invokeMethod(
+                &window,
+                "onRemoteTelemetryStatusUpdated",
+                Qt::DirectConnection,
+                Q_ARG(VaporView::TelemetryStatus, dragTelemetryStatus)),
+            "remote telemetry refresh can run at the overview minimum height");
+    processEventsFor(20);
+    require(!overviewRefreshRecorder.observedHeightDifferentFrom(
+                clampedOverviewHeight),
+            "remote telemetry refresh cannot transiently release the overview fixed height");
+    homeOverviewSplitter->removeEventFilter(&overviewRefreshRecorder);
     homeSourceModeCombo->setCurrentIndex(0);
     processEventsFor(120);
     activateLayouts(&window);
@@ -2964,13 +3070,21 @@ int main(int argc, char **argv)
     const VerticalDragContext dataShrinkDrag = beginVerticalDrag(homeDataResizeHandle);
     const int stableDataTop = widgetRectInCentral(homeDataCard).top();
     int previousDataBottom = bottomEdge(widgetRectInCentral(homeDataCard));
+    ResizeHeightRecorder dataRefreshRecorder(homeDataCard);
+    homeDataCard->installEventFilter(&dataRefreshRecorder);
     for (int offset = -1; offset >= -48; --offset)
     {
         moveVerticalDrag(dataShrinkDrag, offset);
         if (offset % 4 == 0)
         {
+            const int dataHeightBeforeResponsiveRefresh =
+                homeDataCard->height();
+            dataRefreshRecorder.reset();
             QResizeEvent responsiveRefresh(window.size(), window.size());
             QCoreApplication::sendEvent(&window, &responsiveRefresh);
+            require(!dataRefreshRecorder.observedHeightDifferentFrom(
+                        dataHeightBeforeResponsiveRefresh),
+                    "responsive refresh cannot transiently release the data-card fixed height");
         }
         processEventsFor(5);
         const QRect nextDataRect = widgetRectInCentral(homeDataCard);
@@ -2981,6 +3095,7 @@ int main(int argc, char **argv)
         previousDataBottom = bottomEdge(nextDataRect);
     }
     endVerticalDrag(dataShrinkDrag, -48);
+    homeDataCard->removeEventFilter(&dataRefreshRecorder);
     processEventsFor(40);
     activateLayouts(&window);
     require(homeDataCard->height() <= dataHeightAfterExpand - 32,

@@ -113,6 +113,7 @@ inline constexpr int kTopLevelCardGap = 12;
 inline constexpr int kTopLevelCardChromeInset = kTopLevelCardGap - kAppSidebarVisualPadding;
 inline constexpr int kTopLevelCardSpacerAfterResizeHandle = kTopLevelCardGap - kMainCardResizeHandleHeight;
 inline constexpr const char *kMainCardUserResizedHeightProperty = "_vv_main_card_user_resized_height";
+inline constexpr const char *kMainCardResizeDraggingProperty = "_vv_main_card_resize_dragging";
 inline constexpr int kEnvStatusIconSize = 18;
 inline constexpr int kEpsilonSideTitleWidth = 24;
 inline constexpr int kEpsilonTitleColumnWidth = 90;

@@ -23,6 +23,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScreen>
+#include <QSplitter>
 #include <QStyle>
 #include <QStyleOptionButton>
 #include <QToolButton>
@@ -611,8 +612,11 @@ protected:
         }
 
         dragging_ = true;
-        drag_start_y_ = event->globalPosition().toPoint().y();
+        drag_start_y_ = QCursor::pos().y();
         target_start_height_ = target_card_->height();
+        target_height_ = target_start_height_;
+        target_card_->setProperty(kMainCardResizeDraggingProperty, true);
+        applyTargetHeight();
         setProperty("dragging", true);
         refreshStyle();
         event->accept();
@@ -626,13 +630,17 @@ protected:
             return;
         }
 
-        const int deltaY = event->globalPosition().toPoint().y() - drag_start_y_;
+        const int deltaY = QCursor::pos().y() - drag_start_y_;
         bool ok = false;
         const int propertyMinimum = target_card_->property(kMainCardMinimumHeightProperty).toInt(&ok);
         const int effectiveMinimum = ok ? std::max(minimum_target_height_, propertyMinimum) : minimum_target_height_;
         const int nextHeight = std::max(effectiveMinimum, target_start_height_ + deltaY);
-        target_card_->setProperty(kMainCardUserResizedHeightProperty, true);
-        target_card_->setFixedHeight(nextHeight);
+        if (target_height_ != nextHeight)
+        {
+            target_card_->setProperty(kMainCardUserResizedHeightProperty, true);
+            target_height_ = nextHeight;
+        }
+        applyTargetHeight();
         event->accept();
     }
 
@@ -640,7 +648,12 @@ protected:
     {
         if (event->button() == Qt::LeftButton && dragging_)
         {
+            applyTargetHeight();
             dragging_ = false;
+            if (target_card_)
+            {
+                target_card_->setProperty(kMainCardResizeDraggingProperty, false);
+            }
             setProperty("dragging", false);
             refreshStyle();
             event->accept();
@@ -651,6 +664,33 @@ protected:
     }
 
 private:
+    void applyTargetHeight()
+    {
+        if (!target_card_ || target_height_ <= 0)
+        {
+            return;
+        }
+
+        if (auto *splitter = qobject_cast<QSplitter *>(target_card_))
+        {
+            for (int index = 0; index < splitter->count(); ++index)
+            {
+                QWidget *card = splitter->widget(index);
+                if (card &&
+                    (card->minimumHeight() != target_height_ ||
+                     card->maximumHeight() != target_height_))
+                {
+                    card->setFixedHeight(target_height_);
+                }
+            }
+        }
+        if (target_card_->minimumHeight() != target_height_ ||
+            target_card_->maximumHeight() != target_height_)
+        {
+            target_card_->setFixedHeight(target_height_);
+        }
+    }
+
     void refreshStyle()
     {
         style()->unpolish(this);
@@ -662,6 +702,7 @@ private:
     int minimum_target_height_;
     int drag_start_y_;
     int target_start_height_;
+    int target_height_ = 0;
     bool dragging_;
 };
 

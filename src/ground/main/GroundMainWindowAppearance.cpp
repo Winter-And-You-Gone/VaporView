@@ -836,9 +836,12 @@ void MainWindow::updateResponsiveHomeLayout()
     const bool layoutChanged = state_->compact_home_layout_ != compact;
     state_->compact_home_layout_ = compact;
     const int currentDataCardHeight = state_->data_group_->height();
+    const bool dataCardDragging =
+        state_->data_group_->property(kMainCardResizeDraggingProperty).toBool();
     const bool preserveDataCardHeight =
         !layoutChanged &&
-        state_->data_group_->property(kMainCardUserResizedHeightProperty).toBool();
+        (dataCardDragging ||
+         state_->data_group_->property(kMainCardUserResizedHeightProperty).toBool());
     if (layoutChanged)
     {
         state_->data_group_->setProperty(kMainCardUserResizedHeightProperty, false);
@@ -974,7 +977,10 @@ void MainWindow::updateResponsiveHomeLayout()
     clearFixedHeight(state_->epsilon_group_);
     clearFixedHeight(state_->env_group_);
     clearFixedHeight(state_->sensor_row_widget_);
-    clearFixedHeight(state_->data_group_);
+    if (!preserveDataCardHeight)
+    {
+        clearFixedHeight(state_->data_group_);
+    }
     if (state_->sensor_layout_)
     {
         state_->sensor_layout_->invalidate();

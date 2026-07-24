@@ -373,15 +373,26 @@ void MainWindow::updateConfigCardHeightForSourceMode()
     if (state_->home_overview_splitter_)
     {
         const int currentHeight = state_->home_overview_splitter_->height();
-        state_->home_overview_splitter_->setMinimumHeight(0);
-        state_->home_overview_splitter_->setMaximumHeight(QWIDGETSIZE_MAX);
-        const int contentMinimumHeight = std::max(
-            minimumHeight,
-            state_->home_overview_splitter_->minimumSizeHint().height());
+        const int contentMinimumHeight = minimumHeight;
         state_->home_overview_splitter_->setProperty(kMainCardMinimumHeightProperty,
                                                      contentMinimumHeight);
-        state_->home_overview_splitter_->setFixedHeight(
-            std::max(currentHeight, contentMinimumHeight));
+        const int targetHeight = std::max(currentHeight, contentMinimumHeight);
+        if (state_->config_group_->minimumHeight() != targetHeight ||
+            state_->config_group_->maximumHeight() != targetHeight)
+        {
+            state_->config_group_->setFixedHeight(targetHeight);
+        }
+        if (state_->temperature_overview_group_ &&
+            (state_->temperature_overview_group_->minimumHeight() != targetHeight ||
+             state_->temperature_overview_group_->maximumHeight() != targetHeight))
+        {
+            state_->temperature_overview_group_->setFixedHeight(targetHeight);
+        }
+        if (state_->home_overview_splitter_->minimumHeight() != targetHeight ||
+            state_->home_overview_splitter_->maximumHeight() != targetHeight)
+        {
+            state_->home_overview_splitter_->setFixedHeight(targetHeight);
+        }
         return;
     }
     if (state_->config_group_->height() < minimumHeight)
