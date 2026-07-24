@@ -8,7 +8,7 @@ namespace VaporView
 {
 
 inline constexpr const char *kTopLevelCardProperty = "vaporViewTopLevelCard";
-inline constexpr const char *kTopLevelCardShadowEffectName = "vaporViewTopLevelCardShadow";
+inline constexpr const char *kTopLevelCardShadowLayerName = "vaporViewTopLevelCardShadowLayer";
 inline constexpr int kTopLevelCardCornerRadius = 12;
 inline constexpr qreal kTopLevelCardShadowBlurRadius = 22.0;
 inline constexpr qreal kTopLevelCardShadowOffsetY = 6.0;

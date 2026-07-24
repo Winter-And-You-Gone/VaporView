@@ -9,6 +9,7 @@
 #include "test_ui_helpers.h"
 
 #include <QAbstractItemView>
+#include <QAbstractScrollArea>
 #include <QApplication>
 #include <QAction>
 #include <QColor>
@@ -23,7 +24,6 @@
 #include <QFontMetrics>
 #include <QFrame>
 #include <QFocusEvent>
-#include <QGraphicsDropShadowEffect>
 #include <QGroupBox>
 #include <QHoverEvent>
 #include <QIcon>
@@ -90,18 +90,44 @@ void requireTopLevelCardElevation(QWidget *card, qreal expectedScale, const char
 {
     require(card != nullptr, message);
     require(card->property(VaporView::kTopLevelCardProperty).toBool(), message);
+    require(card->graphicsEffect() == nullptr, message);
 
-    auto *shadow = qobject_cast<QGraphicsDropShadowEffect *>(card->graphicsEffect());
-    require(shadow != nullptr &&
-                shadow->objectName() ==
-                    QString::fromLatin1(VaporView::kTopLevelCardShadowEffectName),
+    QWidget *shadowHost = card;
+    for (QWidget *ancestor = card; ancestor && ancestor != card->window();
+         ancestor = ancestor->parentWidget())
+    {
+        shadowHost = ancestor;
+        auto *scrollArea =
+            qobject_cast<QAbstractScrollArea *>(ancestor->parentWidget());
+        if (scrollArea && scrollArea->viewport() == ancestor)
+        {
+            shadowHost = ancestor;
+            break;
+        }
+    }
+
+    QWidget *shadowLayer = shadowHost->findChild<QWidget *>(
+        QString::fromLatin1(VaporView::kTopLevelCardShadowLayerName),
+        Qt::FindDirectChildrenOnly);
+    require(shadowLayer != nullptr &&
+                shadowLayer->testAttribute(Qt::WA_TransparentForMouseEvents) &&
+                shadowLayer->focusPolicy() == Qt::NoFocus,
             message);
-    require(std::abs(shadow->blurRadius() -
+    require(std::abs(shadowLayer
+                         ->property("vaporViewTopLevelCardShadowBlurRadius")
+                         .toDouble() -
                      VaporView::kTopLevelCardShadowBlurRadius * expectedScale) <= 0.1 &&
-                std::abs(shadow->offset().x()) <= 0.1 &&
-                std::abs(shadow->offset().y() -
+                std::abs(shadowLayer
+                             ->property("vaporViewTopLevelCardShadowOffsetY")
+                             .toDouble() -
                          VaporView::kTopLevelCardShadowOffsetY * expectedScale) <= 0.1 &&
-                shadow->color() == QColor(0, 0, 0, VaporView::kTopLevelCardShadowAlpha),
+                shadowLayer
+                        ->property("vaporViewTopLevelCardShadowColor")
+                        .value<QColor>() ==
+                    QColor(0, 0, 0, VaporView::kTopLevelCardShadowAlpha) &&
+                shadowLayer
+                        ->property("vaporViewTopLevelCardShadowCardCount")
+                        .toInt() > 0,
             message);
 }
 
@@ -529,6 +555,10 @@ void requireCardTitleMouseSelectionAndCopy(QLabel *titleLabel)
     }
     require(highlightPixelCount > 0, "card title paints the selection highlight");
 
+    QApplication::setActiveWindow(titleLabel->window());
+    titleLabel->setFocus(Qt::MouseFocusReason);
+    require(titleLabel->hasFocus(),
+            "selected card title accepts keyboard focus before copying");
     QKeyEvent copyPress(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier);
     QCoreApplication::sendEvent(titleLabel, &copyPress);
     QKeyEvent copyRelease(QEvent::KeyRelease, Qt::Key_C, Qt::ControlModifier);
@@ -1196,6 +1226,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
         VaporView::Ground::MainSupport::kTopLevelCardChromeInset;
     constexpr int kExpectedTopLevelCardGap =
         VaporView::Ground::MainSupport::kTopLevelCardGap;
+    require(kExpectedTopLevelCardGap == 12,
+            "top-level cards keep the requested 12px spacing rhythm");
     auto widgetRectInCentralForRtk = [&window](QWidget *widget) {
         return QRect(widget->mapTo(window.centralWidget(), QPoint(0, 0)), widget->size());
     };
@@ -2541,18 +2573,22 @@ int main(int argc, char **argv)
                       std::max(bottomEdge(epsilonCardRect), bottomEdge(environmentCardRect))) -
                      kExpectedTopLevelCardGap) <= 1,
             "home TCP wave card keeps the shared vertical gap");
+    const int expectedCardOuterTopGap =
+        mainContentMargins.top() + kExpectedPageTopInset;
+    const int expectedCardOuterRightGap =
+        mainContentMargins.right() + kExpectedPageLeftInset;
     require(std::abs((recordingCardRect.top() - centralRect.top()) -
-                     kExpectedTopLevelCardGap) <= 1,
-            "recording status card keeps the shared top gap to the window background");
+                     expectedCardOuterTopGap) <= 1,
+            "recording status card keeps the app safe margin plus card shadow inset");
     require(std::abs((logCardRect.top() - bottomEdge(recordingCardRect)) -
                      kExpectedTopLevelCardGap) <= 1,
             "right-side log card keeps the shared vertical gap");
     require(sidebarLeftGap > 0 &&
                 std::abs(sidebarLeftGap - sidebarBottomGap) <= 1,
             "sidebar left border uses the same outer margin as its bottom border");
-    require(std::abs(recordingRightGap - kExpectedTopLevelCardGap) <= 1 &&
-                std::abs(logRightGap - kExpectedTopLevelCardGap) <= 1,
-            "recording status and log cards reserve the shared right shadow gap");
+    require(std::abs(recordingRightGap - expectedCardOuterRightGap) <= 1 &&
+                std::abs(logRightGap - expectedCardOuterRightGap) <= 1,
+            "recording status and log cards keep the safe margin plus right shadow inset");
     QPushButton *checkedSidebarButton = nullptr;
     const QList<QPushButton*> sidebarButtons =
         window.findChildren<QPushButton *>(QStringLiteral("appSidebarButton"));
@@ -3066,9 +3102,7 @@ int main(int argc, char **argv)
                         Q_ARG(VaporView::TelemetryStatus, dragTelemetryStatus)),
                     "remote telemetry refresh can be injected during card resizing");
         }
-        // Drop-shadow effects add an off-screen paint pass. Let queued layout
-        // and paint work settle before checking the drag-lock geometry.
-        processEventsFor(15);
+        processEventsFor(5);
         const int nextTemperatureBottom = bottomEdge(widgetRectInCentral(temperatureOverviewCard));
         if (nextTemperatureBottom > previousTemperatureBottom + 1)
         {
@@ -3155,8 +3189,7 @@ int main(int argc, char **argv)
                         dataHeightBeforeResponsiveRefresh),
                     "responsive refresh cannot transiently release the data-card fixed height");
         }
-        // Keep the drag assertion deterministic with the card shadow paint pass.
-        processEventsFor(15);
+        processEventsFor(5);
         const QRect nextDataRect = widgetRectInCentral(homeDataCard);
         require(std::abs(nextDataRect.top() - stableDataTop) <= 1,
                 "responsive refresh cannot move the data card while its lower edge is dragged");
