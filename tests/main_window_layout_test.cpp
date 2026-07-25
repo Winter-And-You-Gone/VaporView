@@ -101,7 +101,7 @@ void requireTopLevelCardElevation(QWidget *card, qreal expectedScale, const char
             qobject_cast<QAbstractScrollArea *>(ancestor->parentWidget());
         if (scrollArea && scrollArea->viewport() == ancestor)
         {
-            shadowHost = ancestor;
+            shadowHost = scrollArea;
             break;
         }
     }
@@ -2354,6 +2354,12 @@ int main(int argc, char **argv)
     require(mainPageStackForScroll != nullptr, "main page stack exists for home scroll check");
     auto *homeScrollArea = qobject_cast<QScrollArea *>(mainPageStackForScroll->currentWidget());
     require(homeScrollArea != nullptr, "home scroll area exists");
+    QWidget *homeScrollShadowLayer = homeScrollArea->findChild<QWidget *>(
+        QString::fromLatin1(VaporView::kTopLevelCardShadowLayerName),
+        Qt::FindDirectChildrenOnly);
+    require(homeScrollShadowLayer != nullptr &&
+                homeScrollShadowLayer->parentWidget() == homeScrollArea,
+            "home scroll card shadows are hosted by the scroll area, not clipped by the viewport");
     const QList<QScrollArea*> mainContentScrollAreas =
         mainPageStackForScroll->findChildren<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
     require(mainContentScrollAreas.size() >= 3,
@@ -2409,6 +2415,10 @@ int main(int argc, char **argv)
             "bottom fade appears while more content remains below");
     require(homeScrollArea->verticalScrollBar()->width() == kExpectedPageRightGap,
             "home card scrollbar reserves the shared 12px right margin");
+    require(homeScrollShadowLayer->width() >=
+                homeScrollArea->viewport()->width() +
+                    homeScrollArea->verticalScrollBar()->width(),
+            "home scroll card shadow layer covers the scrollbar gutter");
     require(homeBottomFade->geometry().bottom() == homeScrollArea->viewport()->rect().bottom() &&
                 homeBottomFade->width() == homeScrollArea->viewport()->width(),
             "bottom fade stays flush with the scroll viewport edge");

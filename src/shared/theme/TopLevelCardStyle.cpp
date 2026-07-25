@@ -7,6 +7,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPointer>
+#include <QScrollBar>
 #include <QSet>
 #include <QWidget>
 
@@ -216,9 +217,20 @@ private:
     void raiseAboveContent()
     {
         raise();
-        if (QWidget *bottomFade = parentWidget()->findChild<QWidget *>(
-                QStringLiteral("mainContentBottomFade"),
-                Qt::FindDirectChildrenOnly))
+        if (auto *scrollArea = qobject_cast<QAbstractScrollArea *>(parentWidget()))
+        {
+            if (QScrollBar *verticalScrollBar = scrollArea->verticalScrollBar())
+            {
+                verticalScrollBar->raise();
+            }
+            if (QScrollBar *horizontalScrollBar = scrollArea->horizontalScrollBar())
+            {
+                horizontalScrollBar->raise();
+            }
+        }
+        else if (QWidget *bottomFade = parentWidget()->findChild<QWidget *>(
+                     QStringLiteral("mainContentBottomFade"),
+                     Qt::FindDirectChildrenOnly))
         {
             bottomFade->raise();
         }
@@ -240,7 +252,7 @@ QWidget *shadowHostForCard(QWidget *card, QWidget *window)
             qobject_cast<QAbstractScrollArea *>(ancestor->parentWidget());
         if (scrollArea && scrollArea->viewport() == ancestor)
         {
-            return ancestor;
+            return scrollArea;
         }
     }
     return windowContent;
