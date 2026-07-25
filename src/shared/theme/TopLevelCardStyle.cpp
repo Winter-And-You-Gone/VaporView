@@ -32,6 +32,8 @@ inline constexpr const char *kShadowCardCountProperty =
     "vaporViewTopLevelCardShadowCardCount";
 inline constexpr const char *kShadowAllowsTransparentScrollBarTrackProperty =
     "vaporViewTopLevelCardShadowAllowsTransparentScrollBarTrack";
+inline constexpr const char *kShadowKeepsScrollBarsAboveProperty =
+    "vaporViewTopLevelCardShadowKeepsScrollBarsAbove";
 
 class TopLevelCardShadowLayer final : public QWidget
 {
@@ -95,6 +97,8 @@ public:
                     QColor(0, 0, 0, kTopLevelCardShadowAlpha));
         setProperty(kShadowCardCountProperty, cards_.size());
         setProperty(kShadowAllowsTransparentScrollBarTrackProperty,
+                    qobject_cast<QAbstractScrollArea *>(parentWidget()) != nullptr);
+        setProperty(kShadowKeepsScrollBarsAboveProperty,
                     qobject_cast<QAbstractScrollArea *>(parentWidget()) != nullptr);
 
         setGeometry(parentWidget()->rect());
@@ -242,7 +246,22 @@ private:
     void raiseAboveContent()
     {
         raise();
-        if (!qobject_cast<QAbstractScrollArea *>(parentWidget()))
+        if (auto *scrollArea = qobject_cast<QAbstractScrollArea *>(parentWidget()))
+        {
+            if (QScrollBar *verticalScrollBar = scrollArea->verticalScrollBar())
+            {
+                verticalScrollBar->raise();
+            }
+            if (QScrollBar *horizontalScrollBar = scrollArea->horizontalScrollBar())
+            {
+                horizontalScrollBar->raise();
+            }
+            if (QWidget *cornerWidget = scrollArea->cornerWidget())
+            {
+                cornerWidget->raise();
+            }
+        }
+        else
         {
             if (QWidget *bottomFade = parentWidget()->findChild<QWidget *>(
                     QStringLiteral("mainContentBottomFade"),
