@@ -2,6 +2,7 @@
 
 #include "geo/CoordinateTransform.h"
 #include "geo/GeoTypes.h"
+#include "geo/TrajectoryHeatmap.h"
 #include "map3d/Trajectory3DLayer.h"
 
 #include <QOpenGLWidget>
@@ -113,12 +114,20 @@ public:
     ~OsgEarthViewWidget() override;
 
     void appendSample(const VaporView::Geo::NavSample& sample);
+    void appendSample(const VaporView::Geo::TrajectoryRenderSample& sample);
     void appendSamples(const std::vector<VaporView::Geo::NavSample>& samples);
+    void appendSamples(const std::vector<VaporView::Geo::TrajectoryRenderSample>& samples);
     void setSamples(const std::vector<VaporView::Geo::NavSample>& samples);
+    void setSamples(const std::vector<VaporView::Geo::TrajectoryRenderSample>& samples);
     void setSamples(std::shared_ptr<const std::vector<VaporView::Geo::NavSample>> samples,
+                    int sampleCount = -1);
+    void setSamples(std::shared_ptr<const std::vector<VaporView::Geo::TrajectoryRenderSample>> samples,
                     int sampleCount = -1);
     void appendSampleFromStorage(
         const std::shared_ptr<const std::vector<VaporView::Geo::NavSample>>& samples,
+        int sampleIndex);
+    void appendSampleFromStorage(
+        const std::shared_ptr<const std::vector<VaporView::Geo::TrajectoryRenderSample>>& samples,
         int sampleIndex);
     void clearTrack();
     bool loadEarthFile(const QString& earthPath);
@@ -135,6 +144,19 @@ public:
     void setLayerVisible(Map3DLayer layer, bool visible);
     void setFollowAircraft(bool enabled);
     void setMaxVisibleSamples(int maxVisibleSamples);
+    void setHeatMetric(VaporView::Geo::HeatMetric metric);
+    VaporView::Geo::HeatMetric heatMetric() const;
+    void setHeatPalette(VaporView::Geo::HeatPalette palette);
+    VaporView::Geo::HeatPalette heatPalette() const;
+    VaporView::Geo::HeatRange heatRange() const;
+    void setTrackLineVisible(bool visible);
+    bool trackLineVisible() const;
+    void setTrackPointsVisible(bool visible);
+    bool trackPointsVisible() const;
+    void setTrackLineWidth(float width);
+    float trackLineWidth() const;
+    void setTrackPointSize(float size);
+    float trackPointSize() const;
     bool flyToAircraft();
     bool flyToTrack();
     void resetView();
@@ -200,6 +222,8 @@ private:
     void rebuildDisplayTrack();
     void detachSharedSamplesForLiveAppend();
     const VaporView::Geo::NavSample* latestRawSample() const;
+    VaporView::Geo::TrajectoryRenderSample toDisplaySample(
+        const VaporView::Geo::TrajectoryRenderSample& sample);
     VaporView::Geo::NavSample toDisplaySample(const VaporView::Geo::NavSample& sample);
     VaporView::Geo::NavSample toLocalSample(const VaporView::Geo::NavSample& sample);
     VaporView::Geo::NavSample toWorldSample(const VaporView::Geo::NavSample& sample);
@@ -242,8 +266,9 @@ private:
     EarthLoadDiagnostics earth_load_diagnostics_;
     Local3DTilesLoadDiagnostics local_3d_tiles_load_diagnostics_;
     AircraftModelDiagnostics aircraft_model_diagnostics_;
-    std::deque<VaporView::Geo::NavSample> raw_samples_;
-    std::shared_ptr<const std::vector<VaporView::Geo::NavSample>> shared_samples_;
+    std::deque<VaporView::Geo::TrajectoryRenderSample> raw_samples_;
+    std::shared_ptr<const std::vector<VaporView::Geo::TrajectoryRenderSample>> shared_samples_;
+    std::shared_ptr<const std::vector<VaporView::Geo::NavSample>> shared_nav_samples_;
     int shared_sample_count_ = 0;
     bool preserve_full_track_extent_ = false;
     QString height_reference_status_;

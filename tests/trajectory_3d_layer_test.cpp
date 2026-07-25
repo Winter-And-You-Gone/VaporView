@@ -1,9 +1,11 @@
+#include "geo/TrajectoryHeatmap.h"
 #include "map3d/Trajectory3DLayer.h"
 #include "map3d/TrackSampling.h"
 
 #include <osg/Geometry>
 #include <osg/Geode>
 #include <osg/LineWidth>
+#include <osg/Point>
 #include <osg/PrimitiveSet>
 #include <osg/StateSet>
 
@@ -11,6 +13,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <vector>
 
 namespace
@@ -41,7 +44,18 @@ VaporView::Geo::NavSample sample(int index)
     return value;
 }
 
+VaporView::Geo::TrajectoryRenderSample heatSample(int index,
+                                                  std::optional<double> peak = std::nullopt)
+{
+    VaporView::Geo::TrajectoryRenderSample value;
+    value.navigation = sample(index);
+    value.heat.peak = peak;
+    return value;
+}
+
 struct PrimitiveStats {
+    int lineSegments = 0;
+    int lineSegmentVertices = 0;
     int lineStrips = 0;
     int lineVertices = 0;
     int pointSets = 0;
@@ -59,7 +73,12 @@ PrimitiveStats primitiveStats(const osg::Geometry& geometry)
         {
             continue;
         }
-        if (primitive->getMode() == osg::PrimitiveSet::LINE_STRIP)
+        if (primitive->getMode() == osg::PrimitiveSet::LINES)
+        {
+            ++stats.lineSegments;
+            stats.lineSegmentVertices += static_cast<int>(drawArrays->getCount());
+        }
+        else if (primitive->getMode() == osg::PrimitiveSet::LINE_STRIP)
         {
             ++stats.lineStrips;
             stats.lineVertices += static_cast<int>(drawArrays->getCount());
@@ -309,8 +328,13 @@ int main()
     const PrimitiveStats stats = primitiveStats(*qualityGeometry);
     require(stats.lineStrips == 3, "invalid and jump samples split the continuous trajectory line");
     require(stats.lineVertices == 6, "only usable non-jump samples participate in line strips");
-    require(stats.pointSets == 1, "invalid and jump samples share one red point marker primitive");
-    require(stats.pointVertices == 2, "invalid and jump samples are rendered as two point markers");
+    require(stats.pointSets == 0 && stats.pointVertices == 0,
+            "legacy quality line geometry keeps point markers in a separate drawable");
+    auto* qualityMarkerGeometry = dynamic_cast<osg::Geometry*>(qualityGeode->getDrawable(1));
+    require(qualityMarkerGeometry != nullptr
+                && qualityMarkerGeometry->getVertexArray() != nullptr
+                && qualityMarkerGeometry->getVertexArray()->getNumElements() == 8 * 42,
+            "legacy quality marker geometry renders all visible samples as smooth spheres");
     const VaporView::Map3D::TrajectoryQualityStats qualityStats = qualityLayer.qualityStats();
     require(qualityStats.fixedSamples == 6, "quality stats count fixed line samples");
     require(qualityStats.invalidSamples == 1, "quality stats count invalid marker samples");
@@ -335,10 +359,102 @@ int main()
     const PrimitiveStats outlierStats = primitiveStats(*outlierGeometry);
     require(outlierStats.lineStrips == 2, "single outlier splits the line into two runs");
     require(outlierStats.lineVertices == 4, "samples after an outlier reconnect from the last valid track point");
-    require(outlierStats.pointVertices == 1, "only the outlier is rendered as a red marker");
+    require(outlierStats.pointVertices == 0, "outlier markers are kept in the marker drawable");
+    auto* outlierMarkerGeometry = dynamic_cast<osg::Geometry*>(outlierGeode->getDrawable(1));
+    require(outlierMarkerGeometry != nullptr
+                && outlierMarkerGeometry->getVertexArray() != nullptr
+                && outlierMarkerGeometry->getVertexArray()->getNumElements() == 5 * 42,
+            "outlier marker geometry still renders every visible short-track sample");
     const VaporView::Map3D::TrajectoryQualityStats outlierQualityStats = outlierLayer.qualityStats();
     require(outlierQualityStats.jumpSamples == 1, "only the outlier is counted as a jump");
     require(outlierQualityStats.lineSamples == 4, "normal samples after the outlier remain line samples");
+
+    VaporView::Map3D::Trajectory3DLayer heatLayer;
+    std::vector<VaporView::Geo::TrajectoryRenderSample> heatSamples = {
+        heatSample(0, 1.0),
+        heatSample(1),
+        heatSample(2, 3.0),
+    };
+    heatSamples[0].heat.temperatureC = 10.0;
+    heatSamples[1].heat.temperatureC = 20.0;
+    heatSamples[2].heat.temperatureC = 30.0;
+    heatLayer.appendSamples(heatSamples);
+    auto* heatGeode = dynamic_cast<osg::Geode*>(heatLayer.node());
+    require(heatGeode != nullptr && heatGeode->getNumDrawables() == 2,
+            "heat trajectory creates separate line and point drawables");
+    auto* heatLineGeometry = dynamic_cast<osg::Geometry*>(heatGeode->getDrawable(0));
+    auto* heatPointGeometry = dynamic_cast<osg::Geometry*>(heatGeode->getDrawable(1));
+    require(heatLineGeometry != nullptr && heatPointGeometry != nullptr,
+            "heat trajectory line and point drawables are geometries");
+    const PrimitiveStats heatLineStats = primitiveStats(*heatLineGeometry);
+    const PrimitiveStats heatPointStats = primitiveStats(*heatPointGeometry);
+    require(heatLineStats.lineSegments == 1 && heatLineStats.lineSegmentVertices == 4,
+            "heat trajectory uses two-endpoint GL_LINES segments");
+    require(heatPointStats.pointSets == 1 && heatPointStats.pointVertices == 3,
+            "heat trajectory renders every visible sample as a GL_POINTS vertex");
+    const auto* heatLineColors =
+        dynamic_cast<const osg::Vec4Array*>(heatLineGeometry->getColorArray());
+    const auto* heatPointColors =
+        dynamic_cast<const osg::Vec4Array*>(heatPointGeometry->getColorArray());
+    require(heatLineColors != nullptr && heatLineColors->size() == 4
+                && heatPointColors != nullptr && heatPointColors->size() == 3,
+            "heat line and point color counts match their vertex counts");
+    const VaporView::Geo::HeatRange peakRange = heatLayer.heatRange();
+    require(peakRange.valid && peakRange.validCount == 2
+                && nearlyEqual(peakRange.minimum, 1.0)
+                && nearlyEqual(peakRange.maximum, 3.0),
+            "heat range ignores missing values");
+    const VaporView::Geo::HeatColor neutral = VaporView::Geo::neutralHeatColor();
+    require(nearlyEqual((*heatPointColors)[1].r(), neutral.r)
+                && nearlyEqual((*heatPointColors)[1].g(), neutral.g)
+                && nearlyEqual((*heatPointColors)[1].b(), neutral.b),
+            "missing heat values use the neutral fallback color");
+    const osg::Vec4 candyColor = (*heatPointColors)[0];
+    heatLayer.setHeatMetric(VaporView::Geo::HeatMetric::Temperature);
+    require(heatLayer.heatRange().validCount == 3
+                && nearlyEqual(heatLayer.heatRange().minimum, 10.0)
+                && nearlyEqual(heatLayer.heatRange().maximum, 30.0),
+            "switching heat metrics recomputes the range");
+    heatLayer.setHeatPalette(VaporView::Geo::HeatPalette::BlueRedFast);
+    heatPointGeometry = dynamic_cast<osg::Geometry*>(heatGeode->getDrawable(1));
+    const auto* switchedPointColors =
+        heatPointGeometry
+            ? dynamic_cast<const osg::Vec4Array*>(heatPointGeometry->getColorArray())
+            : nullptr;
+    require(switchedPointColors != nullptr
+                && (!nearlyEqual((*switchedPointColors)[0].r(), candyColor.r(), 1.0e-5)
+                    || !nearlyEqual((*switchedPointColors)[0].g(), candyColor.g(), 1.0e-5)
+                    || !nearlyEqual((*switchedPointColors)[0].b(), candyColor.b(), 1.0e-5)),
+            "switching heat palette updates point colors");
+
+    heatLayer.setTrackLineVisible(false);
+    require(heatGeode->getDrawable(0)->getNodeMask() == 0u
+                && heatGeode->getDrawable(1)->getNodeMask() != 0u,
+            "hiding heat lines keeps heat points visible");
+    heatLayer.setTrackLineVisible(true);
+    heatLayer.setTrackPointsVisible(false);
+    require(heatGeode->getDrawable(0)->getNodeMask() != 0u
+                && heatGeode->getDrawable(1)->getNodeMask() == 0u,
+            "hiding heat points keeps heat lines visible");
+    heatLayer.setTrackLineWidth(9.0f);
+    heatLineGeometry = dynamic_cast<osg::Geometry*>(heatGeode->getDrawable(0));
+    const auto* heatLineWidth = heatLineGeometry
+        ? dynamic_cast<const osg::LineWidth*>(
+              heatLineGeometry->getStateSet()->getAttribute(osg::StateAttribute::LINEWIDTH))
+        : nullptr;
+    require(heatLineWidth != nullptr && nearlyEqual(heatLineWidth->getWidth(), 9.0),
+            "heat line width is configurable");
+    heatLayer.setTrackPointSize(11.0f);
+    heatPointGeometry = dynamic_cast<osg::Geometry*>(heatGeode->getDrawable(1));
+    const auto* heatPointSize = heatPointGeometry
+        ? dynamic_cast<const osg::Point*>(
+              heatPointGeometry->getStateSet()->getAttribute(osg::StateAttribute::POINT))
+        : nullptr;
+    require(heatPointSize != nullptr && nearlyEqual(heatPointSize->getSize(), 11.0),
+            "heat point size is configurable");
+    heatLayer.clear();
+    require(heatLayer.sampleCount() == 0 && heatGeode->getNumDrawables() == 0,
+            "clearing heat trajectory removes line and point geometry");
 
     VaporView::Map3D::Trajectory3DLayer consecutiveOutlierLayer;
     consecutiveOutlierLayer.appendSample(sample(0));

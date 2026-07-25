@@ -166,8 +166,17 @@ int main(int argc, char** argv)
     QAction* loadAircraftModelAction = actionByName(window, QStringLiteral("map3DLoadAircraftModelAction"));
     QAction* resetAircraftModelAction = actionByName(window, QStringLiteral("map3DResetAircraftModelAction"));
     auto* replaySpeedCombo = window.findChild<QComboBox*>(QStringLiteral("map3DReplaySpeedCombo"));
+    auto* heatMetricCombo = window.findChild<QComboBox*>(QStringLiteral("map3DHeatMetricCombo"));
+    auto* heatPaletteCombo = window.findChild<QComboBox*>(QStringLiteral("map3DHeatPaletteCombo"));
     auto* replaySlider = window.findChild<QSlider*>(QStringLiteral("map3DReplaySlider"));
     auto* maxVisibleSamplesSpin = window.findChild<QSpinBox*>(QStringLiteral("map3DMaxVisibleSamplesSpin"));
+    auto* trackLineWidthSpin = window.findChild<QSpinBox*>(QStringLiteral("map3DTrackLineWidthSpin"));
+    auto* trackPointSizeSpin = window.findChild<QSpinBox*>(QStringLiteral("map3DTrackPointSizeSpin"));
+    auto* heatLegendLabel = window.findChild<QLabel*>(QStringLiteral("map3DHeatLegendLabel"));
+    QAction* trackLineVisibleAction =
+        actionByName(window, QStringLiteral("map3DTrackLineVisibleAction"));
+    QAction* trackPointsVisibleAction =
+        actionByName(window, QStringLiteral("map3DTrackPointsVisibleAction"));
     QWidget* mapView = window.findChild<QWidget*>(QStringLiteral("map3DView"));
     auto* osgView = window.findChild<VaporView::Map3D::OsgEarthViewWidget*>();
     require(mapView != nullptr, "embedded map view exists");
@@ -269,6 +278,27 @@ int main(int argc, char** argv)
     require(replaySpeedCombo != nullptr, "replay speed combo exists");
     requireComboPopupStyled(replaySpeedCombo,
                             "map3d replay speed combo uses the shared popup styling helper");
+    require(heatMetricCombo != nullptr && heatMetricCombo->count() == 4,
+            "heat metric combo exposes peak, humidity, temperature and pressure");
+    require(heatPaletteCombo != nullptr && heatPaletteCombo->count() == 3
+                && heatPaletteCombo->itemText(2) == QStringLiteral("SpectralReverse"),
+            "heat palette combo exposes the three shared palette names");
+    requireComboPopupStyled(heatMetricCombo,
+                            "heat metric combo uses the shared popup styling helper");
+    requireComboPopupStyled(heatPaletteCombo,
+                            "heat palette combo uses the shared popup styling helper");
+    require(trackLineVisibleAction->isCheckable() && trackLineVisibleAction->isChecked(),
+            "track line visibility action starts enabled");
+    require(trackPointsVisibleAction->isCheckable() && trackPointsVisibleAction->isChecked(),
+            "track point visibility action starts enabled");
+    require(trackLineWidthSpin != nullptr && trackLineWidthSpin->value() == 5,
+            "track line width control starts at the default");
+    require(trackPointSizeSpin != nullptr && trackPointSizeSpin->value() == 7,
+            "track point size control starts at the default");
+    require(heatLegendLabel != nullptr
+                && heatLegendLabel->text().contains(QStringLiteral("峰值"))
+                && heatLegendLabel->text().contains(QStringLiteral("无有效数据")),
+            "heat legend reports no valid data instead of a fake zero range");
     require(replaySlider != nullptr, "replay slider exists");
     require(maxVisibleSamplesSpin != nullptr, "max visible samples spin box exists");
     require(followAction->isCheckable(), "follow aircraft action is checkable");
@@ -277,6 +307,31 @@ int main(int argc, char** argv)
     require(!replayAction->isEnabled(), "replay disabled before session load");
     require(!replayStopAction->isEnabled(), "replay stop disabled before session load");
     require(!replaySlider->isEnabled(), "replay slider disabled before session load");
+
+    heatMetricCombo->setCurrentText(QStringLiteral("温度"));
+    heatPaletteCombo->setCurrentText(QStringLiteral("BlueRedFast"));
+    trackLineVisibleAction->setChecked(false);
+    trackPointsVisibleAction->setChecked(false);
+    trackLineWidthSpin->setValue(9);
+    trackPointSizeSpin->setValue(11);
+    QCoreApplication::processEvents();
+    {
+        QSettings settings = map3DTestSettings();
+        require(settings.value(QStringLiteral("heatMetric")).toInt() == 2,
+                "heat metric setting is persisted");
+        require(settings.value(QStringLiteral("heatPalette")).toInt() == 1,
+                "heat palette setting is persisted");
+        require(!settings.value(QStringLiteral("trackLineVisible"), true).toBool(),
+                "track line visibility setting is persisted");
+        require(!settings.value(QStringLiteral("trackPointsVisible"), true).toBool(),
+                "track point visibility setting is persisted");
+        require(settings.value(QStringLiteral("trackLineWidth")).toInt() == 9,
+                "track line width setting is persisted");
+        require(settings.value(QStringLiteral("trackPointSize")).toInt() == 11,
+                "track point size setting is persisted");
+    }
+    require(heatLegendLabel->text().contains(QStringLiteral("温度")),
+            "heat legend follows the selected metric");
 
     maxVisibleSamplesSpin->setValue(1000);
     {

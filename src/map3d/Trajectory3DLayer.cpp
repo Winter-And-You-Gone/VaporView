@@ -1,6 +1,7 @@
 #include "map3d/Trajectory3DLayer.h"
 
 #include "geo/TrajectoryQuality.h"
+#include "geo/TrajectoryHeatmap.h"
 
 #include <osg/Geometry>
 #include <osg/Geode>
@@ -22,6 +23,8 @@ namespace {
 
 constexpr int kSegmentSize = 4096;
 constexpr int kMaxSolidSphereMarkers = 12000;
+constexpr int kIcosphereVertexCount = 42;
+constexpr int kIcosphereIndexCount = 240;
 constexpr double kTrajectorySphereRadiusM = 0.5;
 constexpr double kSelectedTrajectorySphereRadiusM = 1.0;
 
@@ -74,6 +77,19 @@ osg::Vec4 qualityColor(const VaporView::Geo::NavSample& sample)
 osg::Vec4 markerColor()
 {
     return osg::Vec4(0.95f, 0.05f, 0.05f, 1.0f);
+}
+
+osg::Vec4 heatColorToVec4(const VaporView::Geo::HeatColor& color)
+{
+    return osg::Vec4(color.r, color.g, color.b, color.a);
+}
+
+VaporView::Geo::TrajectoryRenderSample renderSampleFromNavSample(
+    const VaporView::Geo::NavSample& sample)
+{
+    VaporView::Geo::TrajectoryRenderSample renderSample;
+    renderSample.navigation = sample;
+    return renderSample;
 }
 
 osg::Vec4 selectedMarkerColor()
@@ -188,13 +204,31 @@ void Trajectory3DLayer::clear()
     sphere_marker_stride_ = 1;
     segments_.clear();
     quality_stats_ = {};
+    heat_rendering_enabled_ = false;
+    heat_range_override_.reset();
     geode_->removeDrawables(0, geode_->getNumDrawables());
     updateSelectedMarkerGeometry();
 }
 
 void Trajectory3DLayer::appendSample(const VaporView::Geo::NavSample& sample)
 {
+    appendRenderSample(renderSampleFromNavSample(sample), false);
+}
+
+void Trajectory3DLayer::appendSample(const VaporView::Geo::TrajectoryRenderSample& sample)
+{
+    appendRenderSample(sample, true);
+}
+
+void Trajectory3DLayer::appendRenderSample(const VaporView::Geo::TrajectoryRenderSample& sample,
+                                           bool enableHeatRendering)
+{
     const int previousSphereMarkerStride = sphere_marker_stride_;
+    const bool wasHeatRenderingEnabled = heat_rendering_enabled_;
+    if (enableHeatRendering)
+    {
+        heat_rendering_enabled_ = true;
+    }
     samples_.push_back(sample);
     const int sampleIndex = sampleCount() - 1;
     const bool lineSample = shouldUseAsLineSample(sampleIndex);
@@ -211,14 +245,32 @@ void Trajectory3DLayer::appendSample(const VaporView::Geo::NavSample& sample)
     }
     TrajectorySegment& segment = segments_.back();
     ++segment.sampleCount;
-    const bool lineUpdated = !needsNewSegment && appendLineSampleGeometry(segment, sampleCount() - 1);
-    const bool sphereUpdated =
-        !needsNewSegment
-        && (!shouldRenderSphereMarker(sampleCount() - 1)
-            || appendSphereMarkerGeometry(segment, sampleCount() - 1));
-    if (needsNewSegment || !lineUpdated || !sphereUpdated)
+    if (heat_rendering_enabled_)
     {
-        rebuildSegmentGeometry(segment);
+        trimToVisibleLimit();
+        sphere_marker_stride_ = sphereMarkerStride();
+        if (!wasHeatRenderingEnabled || enableHeatRendering)
+        {
+            rebuildSegments();
+            return;
+        }
+        const VaporView::Geo::HeatRange heatRange = resolvedHeatRange();
+        rebuildSegmentGeometry(segment, heatRange);
+    }
+    else
+    {
+        const int sampleIndex = sampleCount() - 1;
+        const bool lineUpdated =
+            !needsNewSegment && appendLineSampleGeometry(segment, sampleIndex);
+        const bool sphereUpdated =
+            !needsNewSegment
+            && (!shouldRenderSphereMarker(sampleIndex)
+                || appendSphereMarkerGeometry(segment, sampleIndex));
+        if (needsNewSegment || !lineUpdated || !sphereUpdated)
+        {
+            const VaporView::Geo::HeatRange heatRange = resolvedHeatRange();
+            rebuildSegmentGeometry(segment, heatRange);
+        }
     }
     trimToVisibleLimit();
     sphere_marker_stride_ = sphereMarkerStride();
@@ -232,14 +284,55 @@ void Trajectory3DLayer::appendSample(const VaporView::Geo::NavSample& sample)
 
 void Trajectory3DLayer::appendSamples(const std::vector<VaporView::Geo::NavSample>& samples)
 {
+    std::vector<VaporView::Geo::TrajectoryRenderSample> renderSamples;
+    renderSamples.reserve(samples.size());
+    for (const VaporView::Geo::NavSample& sample : samples)
+    {
+        renderSamples.push_back(renderSampleFromNavSample(sample));
+    }
+    appendRenderSamples(renderSamples, false);
+}
+
+void Trajectory3DLayer::appendSamples(
+    const std::vector<VaporView::Geo::TrajectoryRenderSample>& samples)
+{
+    appendRenderSamples(samples, true);
+}
+
+void Trajectory3DLayer::appendRenderSamples(
+    const std::vector<VaporView::Geo::TrajectoryRenderSample>& samples,
+    bool enableHeatRendering)
+{
     if (samples.empty())
     {
         return;
     }
-    for (const VaporView::Geo::NavSample& sample : samples)
+    if (enableHeatRendering)
     {
-        appendSample(sample);
+        heat_rendering_enabled_ = true;
     }
+    for (const VaporView::Geo::TrajectoryRenderSample& sample : samples)
+    {
+        samples_.push_back(sample);
+        const int sampleIndex = sampleCount() - 1;
+        const bool lineSample = shouldUseAsLineSample(sampleIndex);
+        line_sample_flags_.push_back(lineSample ? 1 : 0);
+        if (lineSample)
+        {
+            last_line_sample_index_ = sampleIndex;
+        }
+        adjustQualityStats(sampleIndex, 1);
+        const bool needsNewSegment = segments_.empty()
+            || segments_.back().sampleCount >= kSegmentSize;
+        if (needsNewSegment)
+        {
+            appendSegment();
+        }
+        ++segments_.back().sampleCount;
+    }
+    trimToVisibleLimit();
+    sphere_marker_stride_ = sphereMarkerStride();
+    rebuildSegments();
 }
 
 void Trajectory3DLayer::setUseWorldCoordinates(bool enabled)
@@ -295,6 +388,119 @@ void Trajectory3DLayer::setMaxVisibleSamples(int maxVisibleSamples)
     rebuildSegments();
 }
 
+void Trajectory3DLayer::setHeatMetric(VaporView::Geo::HeatMetric metric)
+{
+    if (heat_metric_ == metric)
+    {
+        return;
+    }
+    heat_metric_ = metric;
+    rebuildSegments();
+}
+
+VaporView::Geo::HeatMetric Trajectory3DLayer::heatMetric() const
+{
+    return heat_metric_;
+}
+
+void Trajectory3DLayer::setHeatPalette(VaporView::Geo::HeatPalette palette)
+{
+    if (heat_palette_ == palette)
+    {
+        return;
+    }
+    heat_palette_ = palette;
+    rebuildSegments();
+}
+
+VaporView::Geo::HeatPalette Trajectory3DLayer::heatPalette() const
+{
+    return heat_palette_;
+}
+
+void Trajectory3DLayer::setHeatRange(const VaporView::Geo::HeatRange& range)
+{
+    heat_range_override_ = range;
+    rebuildSegments();
+}
+
+void Trajectory3DLayer::clearHeatRangeOverride()
+{
+    if (!heat_range_override_.has_value())
+    {
+        return;
+    }
+    heat_range_override_.reset();
+    rebuildSegments();
+}
+
+VaporView::Geo::HeatRange Trajectory3DLayer::heatRange() const
+{
+    return resolvedHeatRange();
+}
+
+void Trajectory3DLayer::setTrackLineVisible(bool visible)
+{
+    if (track_line_visible_ == visible)
+    {
+        return;
+    }
+    track_line_visible_ = visible;
+    applySegmentVisibility();
+}
+
+bool Trajectory3DLayer::trackLineVisible() const
+{
+    return track_line_visible_;
+}
+
+void Trajectory3DLayer::setTrackPointsVisible(bool visible)
+{
+    if (track_points_visible_ == visible)
+    {
+        return;
+    }
+    track_points_visible_ = visible;
+    applySegmentVisibility();
+}
+
+bool Trajectory3DLayer::trackPointsVisible() const
+{
+    return track_points_visible_;
+}
+
+void Trajectory3DLayer::setTrackLineWidth(float width)
+{
+    const float sanitized = std::clamp(width, 1.0f, 20.0f);
+    if (std::abs(track_line_width_ - sanitized) <= 0.001f)
+    {
+        return;
+    }
+    track_line_width_ = sanitized;
+    rebuildSegments();
+}
+
+float Trajectory3DLayer::trackLineWidth() const
+{
+    return track_line_width_;
+}
+
+void Trajectory3DLayer::setTrackPointSize(float size)
+{
+    const float sanitized = std::clamp(size, 1.0f, 32.0f);
+    if (std::abs(track_point_size_ - sanitized) <= 0.001f)
+    {
+        return;
+    }
+    track_point_size_ = sanitized;
+    rebuildSegments();
+}
+
+float Trajectory3DLayer::trackPointSize() const
+{
+    return track_point_size_;
+}
+
 int Trajectory3DLayer::sampleCount() const
 {
     return static_cast<int>(samples_.size());
@@ -346,7 +552,7 @@ bool Trajectory3DLayer::displayPositionForSample(int sampleIndex, osg::Vec3d& po
     {
         return false;
     }
-    position = samplePosition(samples_[static_cast<std::size_t>(sampleIndex)],
+    position = samplePosition(samples_[static_cast<std::size_t>(sampleIndex)].navigation,
                               use_world_coordinates_,
                               has_world_origin_,
                               world_origin_);
@@ -398,7 +604,7 @@ std::optional<TrajectoryPickResult> Trajectory3DLayer::pickNearestSample(
 
     TrajectoryPickResult result;
     result.sampleIndex = bestIndex;
-    result.sample = samples_[static_cast<std::size_t>(bestIndex)];
+    result.sample = samples_[static_cast<std::size_t>(bestIndex)].navigation;
     result.screenDistancePx = std::sqrt(bestDistanceSq);
     return result;
 }
@@ -436,12 +642,13 @@ void Trajectory3DLayer::rebuildSegments()
     }
 
     segments_.clear();
+    const VaporView::Geo::HeatRange heatRange = resolvedHeatRange();
     for (int firstSample = 0; firstSample < sampleCount(); firstSample += kSegmentSize)
     {
         TrajectorySegment segment;
         segment.firstSampleIndex = firstSample;
         segment.sampleCount = (std::min)(kSegmentSize, sampleCount() - firstSample);
-        rebuildSegmentGeometry(segment);
+        rebuildSegmentGeometry(segment, heatRange);
         geode_->addDrawable(segment.geometry.get());
         geode_->addDrawable(segment.sphereGeometry.get());
         segments_.push_back(segment);
@@ -450,7 +657,9 @@ void Trajectory3DLayer::rebuildSegments()
     applySegmentVisibility();
 }
 
-void Trajectory3DLayer::rebuildSegmentGeometry(TrajectorySegment& segment)
+void Trajectory3DLayer::rebuildSegmentGeometry(
+    TrajectorySegment& segment,
+    const VaporView::Geo::HeatRange& heatRange)
 {
     osg::ref_ptr<osg::Geometry> geometry = segment.geometry;
     if (!geometry.valid())
@@ -461,81 +670,133 @@ void Trajectory3DLayer::rebuildSegmentGeometry(TrajectorySegment& segment)
 
     osg::ref_ptr<osg::Vec3dArray> vertices = new osg::Vec3dArray;
     osg::ref_ptr<osg::Vec4Array> colors = new osg::Vec4Array;
-    std::vector<osg::Vec3d> markerPositions;
     const int first = (std::max)(segment.firstSampleIndex, firstVisibleIndex());
     const int end = (std::min)(sampleCount(), segment.firstSampleIndex + segment.sampleCount);
     const int vertexCount = (std::max)(0, end - first);
-    vertices->reserve(static_cast<std::size_t>(vertexCount));
-    colors->reserve(static_cast<std::size_t>(vertexCount));
+    vertices->reserve(static_cast<std::size_t>(heat_rendering_enabled_ ? vertexCount * 2 : vertexCount));
+    colors->reserve(vertices->capacity());
 
-    int runStartVertex = -1;
-    int runVertexCount = 0;
-    auto flushLineRun = [&]() {
-        if (runVertexCount >= 2)
-        {
-            geometry->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::LINE_STRIP,
-                                                          runStartVertex,
-                                                          static_cast<GLsizei>(runVertexCount)));
-        }
-        runStartVertex = -1;
-        runVertexCount = 0;
+    auto heatColorForIndex = [&](int index) {
+        const VaporView::Geo::TrajectoryRenderSample& sample = samples_[static_cast<std::size_t>(index)];
+        return heatColorToVec4(VaporView::Geo::heatColorForValue(
+            VaporView::Geo::metricValue(sample, heat_metric_),
+            heatRange,
+            heat_palette_));
     };
 
-    if (first == segment.firstSampleIndex
-        && first > 0
-        && isLineSample(first - 1)
-        && isLineSample(first))
+    if (heat_rendering_enabled_)
     {
-        const VaporView::Geo::NavSample& previous = samples_[static_cast<std::size_t>(first - 1)];
-        vertices->push_back(samplePosition(previous,
-                                           use_world_coordinates_,
-                                           has_world_origin_,
-                                           world_origin_));
-        colors->push_back(qualityColor(previous));
-        runStartVertex = 0;
-        runVertexCount = 1;
-    }
-
-    for (int index = first; index < end; ++index)
-    {
-        const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)];
-        const osg::Vec3d position =
-            samplePosition(sample, use_world_coordinates_, has_world_origin_, world_origin_);
-        if (isLineSample(index))
+        const int segmentStartVertex = static_cast<int>(vertices->size());
+        int lineStart = first + 1;
+        if (first == segment.firstSampleIndex
+            && first > 0
+            && first > firstVisibleIndex())
         {
-            if (runStartVertex < 0)
+            lineStart = first;
+        }
+        for (int index = lineStart; index < end; ++index)
+        {
+            if (!isLineSample(index) || !isLineSample(index - 1))
             {
-                runStartVertex = static_cast<int>(vertices->size());
+                continue;
             }
-            vertices->push_back(position);
-            colors->push_back(qualityColor(sample));
-            ++runVertexCount;
-            continue;
+            osg::Vec3d previousPosition;
+            osg::Vec3d currentPosition;
+            if (!displayPositionForSample(index - 1, previousPosition)
+                || !displayPositionForSample(index, currentPosition))
+            {
+                continue;
+            }
+            const std::optional<double> previousValue =
+                VaporView::Geo::metricValue(samples_[static_cast<std::size_t>(index - 1)], heat_metric_);
+            const std::optional<double> currentValue =
+                VaporView::Geo::metricValue(samples_[static_cast<std::size_t>(index)], heat_metric_);
+            osg::Vec4 previousColor = heatColorToVec4(VaporView::Geo::neutralHeatColor());
+            osg::Vec4 currentColor = previousColor;
+            if (previousValue.has_value() && currentValue.has_value())
+            {
+                previousColor = heatColorForIndex(index - 1);
+                currentColor = heatColorForIndex(index);
+            }
+            else if (previousValue.has_value())
+            {
+                previousColor = heatColorForIndex(index - 1);
+                currentColor = previousColor;
+            }
+            else if (currentValue.has_value())
+            {
+                currentColor = heatColorForIndex(index);
+                previousColor = currentColor;
+            }
+            vertices->push_back(previousPosition);
+            colors->push_back(previousColor);
+            vertices->push_back(currentPosition);
+            colors->push_back(currentColor);
         }
-
-        flushLineRun();
-        markerPositions.push_back(position);
-    }
-    flushLineRun();
-
-    if (!markerPositions.empty())
-    {
-        const int markerStartVertex = static_cast<int>(vertices->size());
-        for (const osg::Vec3d& position : markerPositions)
+        const int heatLineVertexCount = static_cast<int>(vertices->size()) - segmentStartVertex;
+        if (heatLineVertexCount >= 2)
         {
-            vertices->push_back(position);
-            colors->push_back(markerColor());
+            geometry->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::LINES,
+                                                          segmentStartVertex,
+                                                          static_cast<GLsizei>(heatLineVertexCount)));
         }
-        geometry->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::POINTS,
-                                                      markerStartVertex,
-                                                      static_cast<GLsizei>(markerPositions.size())));
+    }
+    else
+    {
+        int runStartVertex = -1;
+        int runVertexCount = 0;
+        auto flushLineRun = [&]() {
+            if (runVertexCount >= 2)
+            {
+                geometry->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::LINE_STRIP,
+                                                              runStartVertex,
+                                                              static_cast<GLsizei>(runVertexCount)));
+            }
+            runStartVertex = -1;
+            runVertexCount = 0;
+        };
+
+        if (first == segment.firstSampleIndex
+            && first > 0
+            && isLineSample(first - 1)
+            && isLineSample(first))
+        {
+            const VaporView::Geo::NavSample& previous = samples_[static_cast<std::size_t>(first - 1)].navigation;
+            vertices->push_back(samplePosition(previous,
+                                               use_world_coordinates_,
+                                               has_world_origin_,
+                                               world_origin_));
+            colors->push_back(qualityColor(previous));
+            runStartVertex = 0;
+            runVertexCount = 1;
+        }
+
+        for (int index = first; index < end; ++index)
+        {
+            const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)].navigation;
+            const osg::Vec3d position =
+                samplePosition(sample, use_world_coordinates_, has_world_origin_, world_origin_);
+            if (isLineSample(index))
+            {
+                if (runStartVertex < 0)
+                {
+                    runStartVertex = static_cast<int>(vertices->size());
+                }
+                vertices->push_back(position);
+                colors->push_back(qualityColor(sample));
+                ++runVertexCount;
+                continue;
+            }
+
+            flushLineRun();
+        }
+        flushLineRun();
     }
 
     geometry->setVertexArray(vertices.get());
     geometry->setColorArray(colors.get(), osg::Array::BIND_PER_VERTEX);
-
     configureGeometryState(*geometry);
-
+    geometry->dirtyBound();
     segment.geometry = geometry;
 
     osg::ref_ptr<osg::Geometry> sphereGeometry = segment.sphereGeometry;
@@ -544,41 +805,72 @@ void Trajectory3DLayer::rebuildSegmentGeometry(TrajectorySegment& segment)
         sphereGeometry = new osg::Geometry;
     }
     sphereGeometry->removePrimitiveSet(0, sphereGeometry->getNumPrimitiveSets());
-    osg::ref_ptr<osg::Vec3dArray> sphereVertices = new osg::Vec3dArray;
-    osg::ref_ptr<osg::Vec4Array> sphereColors = new osg::Vec4Array;
+    osg::ref_ptr<osg::Vec3dArray> pointVertices = new osg::Vec3dArray;
+    osg::ref_ptr<osg::Vec4Array> pointColors = new osg::Vec4Array;
     osg::ref_ptr<osg::DrawElementsUInt> sphereIndices =
         new osg::DrawElementsUInt(osg::PrimitiveSet::TRIANGLES);
+    if (!heat_rendering_enabled_)
+    {
+        std::size_t markerCount = 0;
+        for (int index = first; index < end; ++index)
+        {
+            if (shouldRenderSphereMarker(index))
+            {
+                ++markerCount;
+            }
+        }
+        pointVertices->reserve(markerCount * kIcosphereVertexCount);
+        pointColors->reserve(markerCount * kIcosphereVertexCount);
+        sphereIndices->reserve(markerCount * kIcosphereIndexCount);
+    }
+    else
+    {
+        pointVertices->reserve(static_cast<std::size_t>(vertexCount));
+        pointColors->reserve(static_cast<std::size_t>(vertexCount));
+    }
     segment.sphereMarkerCount = 0;
     for (int index = first; index < end; ++index)
     {
-        if (!shouldRenderSphereMarker(index))
+        if (!heat_rendering_enabled_ && !shouldRenderSphereMarker(index))
         {
             continue;
         }
-        const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)];
         osg::Vec3d position;
         if (!displayPositionForSample(index, position))
         {
             continue;
         }
-        appendIcosphere(*sphereVertices,
-                        *sphereColors,
-                        *sphereIndices,
-                        position,
-                        kTrajectorySphereRadiusM,
-                        qualityColor(sample));
+        if (heat_rendering_enabled_)
+        {
+            pointVertices->push_back(position);
+            pointColors->push_back(heatColorForIndex(index));
+        }
+        else
+        {
+            const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)].navigation;
+            appendIcosphere(*pointVertices,
+                            *pointColors,
+                            *sphereIndices,
+                            position,
+                            kTrajectorySphereRadiusM,
+                            qualityColor(sample));
+        }
         ++segment.sphereMarkerCount;
     }
-    if (!sphereVertices->empty())
+    sphereGeometry->setVertexArray(pointVertices.get());
+    sphereGeometry->setColorArray(pointColors.get(), osg::Array::BIND_PER_VERTEX);
+    if (!pointVertices->empty())
     {
-        sphereGeometry->setVertexArray(sphereVertices.get());
-        sphereGeometry->setColorArray(sphereColors.get(), osg::Array::BIND_PER_VERTEX);
-        sphereGeometry->addPrimitiveSet(sphereIndices.get());
-    }
-    else
-    {
-        sphereGeometry->setVertexArray(sphereVertices.get());
-        sphereGeometry->setColorArray(sphereColors.get(), osg::Array::BIND_PER_VERTEX);
+        if (heat_rendering_enabled_)
+        {
+            sphereGeometry->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::POINTS,
+                                                                0,
+                                                                static_cast<GLsizei>(pointVertices->size())));
+        }
+        else if (!sphereIndices->empty())
+        {
+            sphereGeometry->addPrimitiveSet(sphereIndices.get());
+        }
     }
     configureSphereMarkerState(*sphereGeometry);
     sphereGeometry->dirtyBound();
@@ -610,7 +902,7 @@ bool Trajectory3DLayer::appendLineSampleGeometry(TrajectorySegment& segment, int
         }
     }
 
-    const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(sampleIndex)];
+    const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(sampleIndex)].navigation;
     vertices->push_back(samplePosition(sample,
                                        use_world_coordinates_,
                                        has_world_origin_,
@@ -668,7 +960,7 @@ bool Trajectory3DLayer::appendSphereMarkerGeometry(TrajectorySegment& segment, i
     {
         return false;
     }
-    const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(sampleIndex)];
+    const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(sampleIndex)].navigation;
     appendIcosphere(*vertices,
                     *colors,
                     *indices,
@@ -686,14 +978,8 @@ bool Trajectory3DLayer::appendSphereMarkerGeometry(TrajectorySegment& segment, i
 void Trajectory3DLayer::configureGeometryState(osg::Geometry& geometry)
 {
     osg::StateSet* stateSet = geometry.getOrCreateStateSet();
-    if (stateSet->getAttribute(osg::StateAttribute::LINEWIDTH))
-    {
-        return;
-    }
-    osg::ref_ptr<osg::LineWidth> lineWidth = new osg::LineWidth(5.0f);
+    osg::ref_ptr<osg::LineWidth> lineWidth = new osg::LineWidth(track_line_width_);
     stateSet->setAttributeAndModes(lineWidth.get(), osg::StateAttribute::ON);
-    osg::ref_ptr<osg::Point> pointSize = new osg::Point(7.0f);
-    stateSet->setAttributeAndModes(pointSize.get(), osg::StateAttribute::ON);
     stateSet->setMode(GL_LIGHTING,
                       osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
     stateSet->setMode(GL_LINE_SMOOTH,
@@ -707,6 +993,8 @@ void Trajectory3DLayer::configureGeometryState(osg::Geometry& geometry)
 void Trajectory3DLayer::configureSphereMarkerState(osg::Geometry& geometry)
 {
     osg::StateSet* stateSet = geometry.getOrCreateStateSet();
+    osg::ref_ptr<osg::Point> pointSize = new osg::Point(track_point_size_);
+    stateSet->setAttributeAndModes(pointSize.get(), osg::StateAttribute::ON);
     stateSet->setMode(GL_LIGHTING,
                       osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
     stateSet->setMode(GL_BLEND, osg::StateAttribute::ON);
@@ -803,7 +1091,8 @@ void Trajectory3DLayer::removeOldestSample()
     }
     else
     {
-        rebuildSegmentGeometry(segments_.front());
+        const VaporView::Geo::HeatRange heatRange = resolvedHeatRange();
+        rebuildSegmentGeometry(segments_.front(), heatRange);
     }
     updateSelectedMarkerGeometry();
 }
@@ -837,7 +1126,7 @@ int Trajectory3DLayer::sphereMarkerStride() const
 
 bool Trajectory3DLayer::shouldUseAsLineSample(int index) const
 {
-    const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)];
+    const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)].navigation;
     if (!VaporView::Geo::isUsableForDisplay(sample))
     {
         return false;
@@ -848,7 +1137,7 @@ bool Trajectory3DLayer::shouldUseAsLineSample(int index) const
     {
         return true;
     }
-    return !VaporView::Geo::isLikelyJump(samples_[static_cast<std::size_t>(previousIndex)], sample);
+    return !VaporView::Geo::isLikelyJump(samples_[static_cast<std::size_t>(previousIndex)].navigation, sample);
 }
 
 bool Trajectory3DLayer::isLineSample(int index) const
@@ -880,12 +1169,12 @@ void Trajectory3DLayer::rebuildLineSampleFlags()
     last_line_sample_index_ = -1;
     for (int index = 0; index < sampleCount(); ++index)
     {
-        const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)];
+        const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)].navigation;
         bool line = VaporView::Geo::isUsableForDisplay(sample);
         if (line && last_line_sample_index_ >= 0)
         {
             line = !VaporView::Geo::isLikelyJump(
-                samples_[static_cast<std::size_t>(last_line_sample_index_)], sample);
+                samples_[static_cast<std::size_t>(last_line_sample_index_)].navigation, sample);
         }
         line_sample_flags_.push_back(line ? 1 : 0);
         if (line)
@@ -906,7 +1195,7 @@ void Trajectory3DLayer::rebuildQualityStats()
 
 void Trajectory3DLayer::adjustQualityStats(int index, int delta)
 {
-    const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)];
+    const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)].navigation;
     const bool usable = VaporView::Geo::isUsableForDisplay(sample);
     const bool line = isLineSample(index);
     if (!usable)
@@ -956,16 +1245,33 @@ void Trajectory3DLayer::applySegmentVisibility()
 {
     for (TrajectorySegment& segment : segments_)
     {
-        const unsigned int mask = segmentIsVisible(segment) ? ~0u : 0u;
+        const bool visible = segmentIsVisible(segment);
         if (segment.geometry.valid())
         {
-            segment.geometry->setNodeMask(mask);
+            segment.geometry->setNodeMask(visible && track_line_visible_ ? ~0u : 0u);
         }
         if (segment.sphereGeometry.valid())
         {
-            segment.sphereGeometry->setNodeMask(mask);
+            segment.sphereGeometry->setNodeMask(visible && track_points_visible_ ? ~0u : 0u);
         }
     }
+}
+
+VaporView::Geo::HeatRange Trajectory3DLayer::resolvedHeatRange() const
+{
+    if (heat_range_override_.has_value())
+    {
+        return heat_range_override_.value();
+    }
+    VaporView::Geo::HeatRange range;
+    for (const VaporView::Geo::TrajectoryRenderSample& sample : samples_)
+    {
+        VaporView::Geo::accumulateHeatRange(
+            range,
+            sample.heat,
+            heat_metric_);
+    }
+    return range;
 }
 
 } // namespace VaporView::Map3D

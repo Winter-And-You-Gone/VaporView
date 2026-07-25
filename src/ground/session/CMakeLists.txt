@@ -1,3 +1,4 @@
+if(NOT TARGET vaporview_ground_session_core)
 add_library(vaporview_ground_session_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/GroundRecordingService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/GroundRecordingService.h
@@ -20,6 +21,8 @@ add_library(vaporview_ground_session_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionTimeFormat.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionTimelineModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionTimelineModel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionTrajectoryRenderLoader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionTrajectoryRenderLoader.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionTrajectoryController.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionTrajectoryController.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionWaveformRepository.cpp
@@ -32,11 +35,19 @@ target_include_directories(vaporview_ground_session_core PUBLIC
 )
 
 target_link_libraries(vaporview_ground_session_core PUBLIC
+    vaporview_geo_core
     vaporview_session_format
     vaporview_wave_encoding
     Qt6::Core
 )
 
+endif()
+
+if(VAPORVIEW_SESSION_CORE_ONLY)
+    return()
+endif()
+
+if(NOT TARGET vaporview_ground_session_ui)
 add_library(vaporview_ground_session_ui STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionMapCoordinator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionMapCoordinator.h
@@ -65,3 +76,5 @@ target_link_libraries(vaporview_ground_session_ui PRIVATE
     vaporview_ground_wave
     Qt6::Concurrent
 )
+
+endif()

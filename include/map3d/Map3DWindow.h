@@ -1,6 +1,7 @@
 #pragma once
 
 #include "geo/GeoTypes.h"
+#include "geo/TrajectoryHeatmap.h"
 #include "geo/TrajectoryReplay.h"
 #include "map3d/MapDataManager.h"
 #include "map3d/OsgEarthViewWidget.h"
@@ -9,6 +10,7 @@
 #include <QMainWindow>
 #include <QString>
 #include <array>
+#include <memory>
 #include <vector>
 
 class QAction;
@@ -75,6 +77,8 @@ private:
     bool layerVisible(Map3DLayer layer) const;
     void refreshLayerMenuTheme();
     void refreshLayerMenuAvailability();
+    void applyHeatControlsToView();
+    void updateHeatLegend();
     void flyToAircraft();
     void flyToTrack();
     void resetView();
@@ -109,10 +113,16 @@ private:
     QWidget* headless_view_ = nullptr;
     int headless_sample_count_ = 0;
     std::vector<VaporView::Geo::NavSample> headless_samples_;
+    std::vector<VaporView::Geo::TrajectoryRenderSample> headless_render_samples_;
     int max_visible_samples_ = 200000;
+    VaporView::Geo::HeatMetric heat_metric_ = VaporView::Geo::HeatMetric::Peak;
+    VaporView::Geo::HeatPalette heat_palette_ = VaporView::Geo::HeatPalette::Candy;
     QAction* follow_action_ = nullptr;
     QLabel* status_label_ = nullptr;
+    QLabel* heat_legend_label_ = nullptr;
     QAction* diagnostics_action_ = nullptr;
+    QAction* track_line_visible_action_ = nullptr;
+    QAction* track_points_visible_action_ = nullptr;
     QAction* layers_action_ = nullptr;
     QAction* local_imagery_action_ = nullptr;
     QAction* local_3d_tiles_action_ = nullptr;
@@ -128,7 +138,11 @@ private:
     QAction* replay_stop_action_ = nullptr;
     QSlider* replay_slider_ = nullptr;
     QComboBox* replay_speed_combo_ = nullptr;
+    QComboBox* heat_metric_combo_ = nullptr;
+    QComboBox* heat_palette_combo_ = nullptr;
     QSpinBox* max_visible_samples_spin_ = nullptr;
+    QSpinBox* track_line_width_spin_ = nullptr;
+    QSpinBox* track_point_size_spin_ = nullptr;
     QTimer* replay_timer_ = nullptr;
     QTimer* sentinel2_auto_load_timer_ = nullptr;
     QElapsedTimer replay_tick_clock_;
@@ -138,6 +152,7 @@ private:
     MapDataManager map_data_manager_;
     MapDataSelection map_selection_;
     VaporView::Geo::TrajectoryReplay replay_;
+    std::shared_ptr<const std::vector<VaporView::Geo::TrajectoryRenderSample>> replay_render_storage_;
     int rendered_replay_index_ = -1;
     QString latest_track_source_;
     QString latest_track_note_;

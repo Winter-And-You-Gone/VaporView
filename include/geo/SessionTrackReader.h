@@ -15,6 +15,7 @@ struct SessionTrackReadResult {
     qsizetype totalRows = 0;
     qsizetype rejectedRows = 0;
     std::vector<NavSample> samples;
+    std::vector<qsizetype> sourceCsvRows;
 };
 
 SessionTrackReadResult readSessionTrack(const QString& sessionDir);

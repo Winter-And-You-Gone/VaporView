@@ -1,6 +1,7 @@
 #include "shared/theme/AppTheme.h"
 #include "TrajectoryViewerDialog.h"
 #include "ground/session/SessionExportService.h"
+#include "geo/TrajectoryHeatmap.h"
 #include "ground/widgets/CustomTitleBar.h"
 #include "ground/widgets/LabelTextSelection.h"
 #include "ground/widgets/VisualTextLabel.h"
@@ -116,22 +117,11 @@ enum class TileProvider
     TianDiTuSatellite
 };
 
-enum class HeatPalette
-{
-    Candy,
-    BlueRedFast,
-    SpectralReverse
-};
+using HeatPalette = VaporView::Geo::HeatPalette;
 
 constexpr int kHeatPaletteCount = 3;
 
-enum class HeatMetric
-{
-    Peak,
-    Humidity,
-    Temperature,
-    Pressure
-};
+using HeatMetric = VaporView::Geo::HeatMetric;
 
 QString tileProviderSettingKey()
 {
@@ -237,20 +227,6 @@ HeatPalette heatPaletteFromComboIndex(int index)
     }
 }
 
-QString heatPaletteName(HeatPalette palette, bool english)
-{
-    switch (palette)
-    {
-    case HeatPalette::BlueRedFast:
-        return english ? QStringLiteral("Fast blue-red") : QStringLiteral("蓝红急变");
-    case HeatPalette::SpectralReverse:
-        return english ? QStringLiteral("Spectral") : QStringLiteral("Spectral");
-    case HeatPalette::Candy:
-    default:
-        return english ? QStringLiteral("Candy") : QStringLiteral("糖果");
-    }
-}
-
 int heatMetricComboIndex(HeatMetric metric)
 {
     switch (metric)
@@ -280,38 +256,6 @@ HeatMetric heatMetricFromComboIndex(int index)
     case 0:
     default:
         return HeatMetric::Peak;
-    }
-}
-
-QString heatMetricName(HeatMetric metric, bool english)
-{
-    switch (metric)
-    {
-    case HeatMetric::Humidity:
-        return english ? QStringLiteral("Humidity") : QStringLiteral("湿度");
-    case HeatMetric::Temperature:
-        return english ? QStringLiteral("Temperature") : QStringLiteral("温度");
-    case HeatMetric::Pressure:
-        return english ? QStringLiteral("Pressure") : QStringLiteral("气压");
-    case HeatMetric::Peak:
-    default:
-        return english ? QStringLiteral("Peak") : QStringLiteral("峰值");
-    }
-}
-
-QString heatMetricUnit(HeatMetric metric)
-{
-    switch (metric)
-    {
-    case HeatMetric::Humidity:
-        return QStringLiteral("%RH");
-    case HeatMetric::Temperature:
-        return QStringLiteral("°C");
-    case HeatMetric::Pressure:
-        return QStringLiteral("hPa");
-    case HeatMetric::Peak:
-    default:
-        return QString();
     }
 }
 
@@ -470,74 +414,11 @@ QColor defaultTrackColor()
     return appThemeColor(AppThemeColor::TrackDefault, false);
 }
 
-QColor interpolateColor(const QColor& first, const QColor& second, double ratio)
-{
-    const double clampedRatio = std::clamp(ratio, 0.0, 1.0);
-    return QColor(
-        static_cast<int>(std::lround(first.red() + (second.red() - first.red()) * clampedRatio)),
-        static_cast<int>(std::lround(first.green() + (second.green() - first.green()) * clampedRatio)),
-        static_cast<int>(std::lround(first.blue() + (second.blue() - first.blue()) * clampedRatio)));
-}
-
 QColor heatmapColorAt(double normalized, HeatPalette palette)
 {
-    static const std::array<std::pair<double, QColor>, 6> candy = {{
-        {0.00, QColor(QStringLiteral("#0057FF"))},
-        {0.20, QColor(QStringLiteral("#00F0FF"))},
-        {0.40, QColor(QStringLiteral("#44FF00"))},
-        {0.60, QColor(QStringLiteral("#FFF500"))},
-        {0.80, QColor(QStringLiteral("#FF7A00"))},
-        {1.00, QColor(QStringLiteral("#FF00B8"))}
-    }};
-    static const std::array<std::pair<double, QColor>, 9> blueRedFast = {{
-        {0.00, QColor(QStringLiteral("#001BFF"))},
-        {0.18, QColor(QStringLiteral("#006CFF"))},
-        {0.34, QColor(QStringLiteral("#00C8FF"))},
-        {0.46, QColor(QStringLiteral("#00F0B8"))},
-        {0.50, QColor(QStringLiteral("#42FF38"))},
-        {0.54, QColor(QStringLiteral("#DFFF00"))},
-        {0.66, QColor(QStringLiteral("#FFC000"))},
-        {0.82, QColor(QStringLiteral("#FF4A00"))},
-        {1.00, QColor(QStringLiteral("#D60000"))}
-    }};
-    static const std::array<std::pair<double, QColor>, 10> spectralReverse = {{
-        {0.00, QColor(QStringLiteral("#5E4FA2"))},
-        {0.11, QColor(QStringLiteral("#3288BD"))},
-        {0.22, QColor(QStringLiteral("#66C2A5"))},
-        {0.33, QColor(QStringLiteral("#ABDDA4"))},
-        {0.44, QColor(QStringLiteral("#E6F598"))},
-        {0.55, QColor(QStringLiteral("#FEE08B"))},
-        {0.66, QColor(QStringLiteral("#FDAE61"))},
-        {0.77, QColor(QStringLiteral("#F46D43"))},
-        {0.88, QColor(QStringLiteral("#D53E4F"))},
-        {1.00, QColor(QStringLiteral("#9E0142"))}
-    }};
-
-    const double clamped = std::clamp(normalized, 0.0, 1.0);
-    const auto colorAtStop = [clamped](const auto& stops) {
-        for (size_t index = 1; index < stops.size(); ++index)
-        {
-            const auto& previous = stops[index - 1];
-            const auto& current = stops[index];
-            if (clamped <= current.first)
-            {
-                const double localRatio = (clamped - previous.first) / std::max(1e-6, current.first - previous.first);
-                return interpolateColor(previous.second, current.second, localRatio);
-            }
-        }
-        return stops.back().second;
-    };
-
-    switch (palette)
-    {
-    case HeatPalette::BlueRedFast:
-        return colorAtStop(blueRedFast);
-    case HeatPalette::SpectralReverse:
-        return colorAtStop(spectralReverse);
-    case HeatPalette::Candy:
-    default:
-        return colorAtStop(candy);
-    }
+    const VaporView::Geo::HeatColor color =
+        VaporView::Geo::heatPaletteColor(normalized, palette);
+    return QColor::fromRgbF(color.r, color.g, color.b, color.a);
 }
 
 QColor heatmapColorAt(double normalized)
@@ -547,62 +428,53 @@ QColor heatmapColorAt(double normalized)
 
 QColor trackHeatColor(double value, double minValue, double maxValue, HeatPalette palette)
 {
-    const double totalRange = maxValue - minValue;
-    if (!(totalRange > 1e-6))
-    {
-        return heatmapColorAt(0.5, palette);
-    }
-
-    const double normalized = std::clamp((value - minValue) / totalRange, 0.0, 1.0);
-    return heatmapColorAt(normalized, palette);
+    VaporView::Geo::HeatRange range;
+    range.valid = true;
+    range.minimum = minValue;
+    range.maximum = maxValue;
+    range.validCount = 1;
+    const VaporView::Geo::HeatColor color =
+        VaporView::Geo::heatColorForValue(value, range, palette);
+    return QColor::fromRgbF(color.r, color.g, color.b, color.a);
 }
 
 QColor trackHeatColor(double value, double minValue, double maxValue)
 {
-    const double totalRange = maxValue - minValue;
-    if (!(totalRange > 1e-6))
-    {
-        return heatmapColorAt(0.5);
-    }
+    return trackHeatColor(value, minValue, maxValue, HeatPalette::Candy);
+}
 
-    const double normalized = std::clamp((value - minValue) / totalRange, 0.0, 1.0);
-    return heatmapColorAt(normalized);
+VaporView::Geo::TrajectoryHeatValues heatValuesForPoint(const RtkTrackPoint& point)
+{
+    VaporView::Geo::TrajectoryHeatValues values;
+    if (point.has_peak_value && std::isfinite(point.peak_value))
+    {
+        values.peak = static_cast<double>(point.peak_value);
+    }
+    if (point.has_humidity && std::isfinite(point.humidity_rh))
+    {
+        values.humidityRh = point.humidity_rh;
+    }
+    if (point.has_temperature && std::isfinite(point.temperature_c))
+    {
+        values.temperatureC = point.temperature_c;
+    }
+    if (point.has_pressure && std::isfinite(point.pressure_hpa))
+    {
+        values.pressureHpa = point.pressure_hpa;
+    }
+    return values;
 }
 
 bool heatMetricValueForPoint(const RtkTrackPoint& point, HeatMetric metric, double& value)
 {
-    switch (metric)
+    const std::optional<double> selected =
+        VaporView::Geo::metricValue(heatValuesForPoint(point), metric);
+    if (!selected.has_value())
     {
-    case HeatMetric::Humidity:
-        if (point.has_humidity && std::isfinite(point.humidity_rh))
-        {
-            value = point.humidity_rh;
-            return true;
-        }
-        return false;
-    case HeatMetric::Temperature:
-        if (point.has_temperature && std::isfinite(point.temperature_c))
-        {
-            value = point.temperature_c;
-            return true;
-        }
-        return false;
-    case HeatMetric::Pressure:
-        if (point.has_pressure && std::isfinite(point.pressure_hpa))
-        {
-            value = point.pressure_hpa;
-            return true;
-        }
-        return false;
-    case HeatMetric::Peak:
-    default:
-        if (point.has_peak_value && std::isfinite(point.peak_value))
-        {
-            value = point.peak_value;
-            return true;
-        }
         return false;
     }
+    value = selected.value();
+    return true;
 }
 
 QString formatHeatMetricValue(double value, HeatMetric metric)
@@ -611,7 +483,7 @@ QString formatHeatMetricValue(double value, HeatMetric metric)
     {
         return QStringLiteral("--");
     }
-    const QString unit = heatMetricUnit(metric);
+    const QString unit = VaporView::Geo::heatMetricUnit(metric);
     if (unit.isEmpty())
     {
         return QString::number(value, 'f', 6);
@@ -1338,9 +1210,7 @@ private:
     void rebuildHeatMetricRange()
     {
         has_heat_metric_range_ = false;
-        min_heat_metric_ = std::numeric_limits<double>::max();
-        max_heat_metric_ = std::numeric_limits<double>::lowest();
-        heat_metric_count_ = 0;
+        VaporView::Geo::HeatRange range;
         for (int index = 0; index < track_points_.size(); ++index)
         {
             if (!isTrackIndexVisibleByFilter(index))
@@ -1349,16 +1219,15 @@ private:
             }
 
             const RtkTrackPoint& point = track_points_.at(index);
-            double value = 0.0;
-            if (!heatMetricValueForPoint(point, heat_metric_, value))
-            {
-                continue;
-            }
-            has_heat_metric_range_ = true;
-            ++heat_metric_count_;
-            min_heat_metric_ = std::min(min_heat_metric_, value);
-            max_heat_metric_ = std::max(max_heat_metric_, value);
+            VaporView::Geo::accumulateHeatRange(
+                range,
+                heatValuesForPoint(point),
+                heat_metric_);
         }
+        has_heat_metric_range_ = range.valid;
+        min_heat_metric_ = range.minimum;
+        max_heat_metric_ = range.maximum;
+        heat_metric_count_ = static_cast<int>(range.validCount);
     }
 
     void abortActiveTileReplies()
@@ -4327,7 +4196,7 @@ void TrajectoryViewerDialog::updateHeatMetricCombo()
     {
         const HeatMetric metric = heatMetricFromComboIndex(index);
         auto *row = new SingleLevelPopupMenuRow(heat_metric_menu_);
-        row->setText(heatMetricName(metric, is_english_));
+        row->setText(VaporView::Geo::heatMetricName(metric, is_english_));
         row->setTextAlignment(SingleLevelPopupTextAlignment::Left);
         row->setHorizontalPadding(18, 14);
         row->setRowSpacing(6);
@@ -4342,7 +4211,7 @@ void TrajectoryViewerDialog::updateHeatMetricCombo()
         action->setCheckable(true);
         action->setChecked(metric == currentMetric);
     }
-    heat_metric_button_->setText(heatMetricName(currentMetric, is_english_));
+    heat_metric_button_->setText(VaporView::Geo::heatMetricName(currentMetric, is_english_));
     heat_metric_button_->setToolTip(is_english_
         ? QStringLiteral("Choose the trajectory color metric.")
         : QStringLiteral("选择轨迹着色指标。"));
@@ -4499,7 +4368,7 @@ void TrajectoryViewerDialog::updateTexts()
         for (int index = 0; index < kHeatPaletteCount; ++index)
         {
             auto *row = new SingleLevelPopupMenuRow(heat_palette_menu_);
-            row->setText(heatPaletteName(heatPaletteFromComboIndex(index), is_english_));
+            row->setText(VaporView::Geo::heatPaletteName(heatPaletteFromComboIndex(index), is_english_));
             row->setTextAlignment(SingleLevelPopupTextAlignment::Left);
             row->setHorizontalPadding(18, 14);
             row->setRowSpacing(6);

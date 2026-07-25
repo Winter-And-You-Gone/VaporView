@@ -94,6 +94,26 @@ constexpr double kEarthLowAngleStartPitchDeg = -35.0;
 constexpr int kTrajectoryInfoCardWidth = 380;
 constexpr int kTrajectoryInfoCardScreenMargin = 8;
 
+VaporView::Geo::TrajectoryRenderSample renderSampleFromNavSample(
+    const VaporView::Geo::NavSample& sample)
+{
+    VaporView::Geo::TrajectoryRenderSample renderSample;
+    renderSample.navigation = sample;
+    return renderSample;
+}
+
+std::vector<VaporView::Geo::TrajectoryRenderSample> renderSamplesFromNavSamples(
+    const std::vector<VaporView::Geo::NavSample>& samples)
+{
+    std::vector<VaporView::Geo::TrajectoryRenderSample> renderSamples;
+    renderSamples.reserve(samples.size());
+    for (const VaporView::Geo::NavSample& sample : samples)
+    {
+        renderSamples.push_back(renderSampleFromNavSample(sample));
+    }
+    return renderSamples;
+}
+
 QString trajectoryFixQualityLabel(VaporView::Geo::FixQuality quality)
 {
     switch (quality)
@@ -863,6 +883,11 @@ void OsgEarthViewWidget::cancelAsyncWatchers()
 
 void OsgEarthViewWidget::appendSample(const VaporView::Geo::NavSample& sample)
 {
+    appendSample(renderSampleFromNavSample(sample));
+}
+
+void OsgEarthViewWidget::appendSample(const VaporView::Geo::TrajectoryRenderSample& sample)
+{
     assertGuiThread(this, Q_FUNC_INFO);
     if (shutdown_ || !trajectory_layer_ || !aircraft_layer_)
     {
@@ -877,15 +902,21 @@ void OsgEarthViewWidget::appendSample(const VaporView::Geo::NavSample& sample)
     {
         raw_samples_.pop_front();
     }
-    const VaporView::Geo::NavSample displaySample = toDisplaySample(sample);
+    const VaporView::Geo::TrajectoryRenderSample displaySample = toDisplaySample(sample);
     trajectory_layer_->appendSample(displaySample);
-    aircraft_layer_->updateSample(displaySample);
-    updateFollowCamera(displaySample);
+    aircraft_layer_->updateSample(displaySample.navigation);
+    updateFollowCamera(displaySample.navigation);
     last_track_update_ms_ = static_cast<double>(timer.nsecsElapsed()) / 1000000.0;
     update();
 }
 
 void OsgEarthViewWidget::appendSamples(const std::vector<VaporView::Geo::NavSample>& samples)
+{
+    appendSamples(renderSamplesFromNavSamples(samples));
+}
+
+void OsgEarthViewWidget::appendSamples(
+    const std::vector<VaporView::Geo::TrajectoryRenderSample>& samples)
 {
     assertGuiThread(this, Q_FUNC_INFO);
     if (shutdown_ || !trajectory_layer_ || !aircraft_layer_)
@@ -904,17 +935,17 @@ void OsgEarthViewWidget::appendSamples(const std::vector<VaporView::Geo::NavSamp
     {
         raw_samples_.pop_front();
     }
-    std::vector<VaporView::Geo::NavSample> displaySamples;
+    std::vector<VaporView::Geo::TrajectoryRenderSample> displaySamples;
     displaySamples.reserve(samples.size());
-    for (const VaporView::Geo::NavSample& sample : samples)
+    for (const VaporView::Geo::TrajectoryRenderSample& sample : samples)
     {
         displaySamples.push_back(toDisplaySample(sample));
     }
     trajectory_layer_->appendSamples(displaySamples);
     if (!displaySamples.empty())
     {
-        aircraft_layer_->updateSample(displaySamples.back());
-        updateFollowCamera(displaySamples.back());
+        aircraft_layer_->updateSample(displaySamples.back().navigation);
+        updateFollowCamera(displaySamples.back().navigation);
     }
     last_track_update_ms_ = static_cast<double>(timer.nsecsElapsed()) / 1000000.0;
     update();
@@ -922,11 +953,33 @@ void OsgEarthViewWidget::appendSamples(const std::vector<VaporView::Geo::NavSamp
 
 void OsgEarthViewWidget::setSamples(const std::vector<VaporView::Geo::NavSample>& samples)
 {
-    setSamples(std::make_shared<const std::vector<VaporView::Geo::NavSample>>(samples));
+    setSamples(renderSamplesFromNavSamples(samples));
+}
+
+void OsgEarthViewWidget::setSamples(
+    const std::vector<VaporView::Geo::TrajectoryRenderSample>& samples)
+{
+    setSamples(std::make_shared<const std::vector<VaporView::Geo::TrajectoryRenderSample>>(samples));
 }
 
 void OsgEarthViewWidget::setSamples(
     std::shared_ptr<const std::vector<VaporView::Geo::NavSample>> samples,
+    int sampleCount)
+{
+    std::shared_ptr<std::vector<VaporView::Geo::TrajectoryRenderSample>> renderSamples =
+        std::make_shared<std::vector<VaporView::Geo::TrajectoryRenderSample>>();
+    if (samples)
+    {
+        *renderSamples = renderSamplesFromNavSamples(*samples);
+    }
+    setSamples(std::const_pointer_cast<const std::vector<VaporView::Geo::TrajectoryRenderSample>>(
+                   renderSamples),
+               sampleCount);
+    shared_nav_samples_ = samples;
+}
+
+void OsgEarthViewWidget::setSamples(
+    std::shared_ptr<const std::vector<VaporView::Geo::TrajectoryRenderSample>> samples,
     int sampleCount)
 {
     assertGuiThread(this, Q_FUNC_INFO);
@@ -938,6 +991,7 @@ void OsgEarthViewWidget::setSamples(
     timer.start();
     raw_samples_.clear();
     shared_samples_ = std::move(samples);
+    shared_nav_samples_.reset();
     const int available = shared_samples_ ? static_cast<int>(shared_samples_->size()) : 0;
     shared_sample_count_ = sampleCount < 0 ? available : std::clamp(sampleCount, 0, available);
     preserve_full_track_extent_ = true;
@@ -958,6 +1012,34 @@ void OsgEarthViewWidget::appendSampleFromStorage(
     {
         return;
     }
+    if (shared_nav_samples_ != samples || sampleIndex != shared_sample_count_)
+    {
+        setSamples(samples, sampleIndex + 1);
+        return;
+    }
+
+    QElapsedTimer timer;
+    timer.start();
+    ++shared_sample_count_;
+    const VaporView::Geo::TrajectoryRenderSample displaySample =
+        toDisplaySample(renderSampleFromNavSample((*samples)[static_cast<std::size_t>(sampleIndex)]));
+    trajectory_layer_->appendSample(displaySample);
+    aircraft_layer_->updateSample(displaySample.navigation);
+    updateFollowCamera(displaySample.navigation);
+    last_track_update_ms_ = static_cast<double>(timer.nsecsElapsed()) / 1000000.0;
+    update();
+}
+
+void OsgEarthViewWidget::appendSampleFromStorage(
+    const std::shared_ptr<const std::vector<VaporView::Geo::TrajectoryRenderSample>>& samples,
+    int sampleIndex)
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    if (shutdown_ || !samples || sampleIndex < 0
+        || sampleIndex >= static_cast<int>(samples->size()))
+    {
+        return;
+    }
     if (shared_samples_ != samples || sampleIndex != shared_sample_count_)
     {
         setSamples(samples, sampleIndex + 1);
@@ -967,10 +1049,11 @@ void OsgEarthViewWidget::appendSampleFromStorage(
     QElapsedTimer timer;
     timer.start();
     ++shared_sample_count_;
-    const VaporView::Geo::NavSample displaySample = toDisplaySample((*samples)[static_cast<std::size_t>(sampleIndex)]);
+    const VaporView::Geo::TrajectoryRenderSample displaySample =
+        toDisplaySample((*samples)[static_cast<std::size_t>(sampleIndex)]);
     trajectory_layer_->appendSample(displaySample);
-    aircraft_layer_->updateSample(displaySample);
-    updateFollowCamera(displaySample);
+    aircraft_layer_->updateSample(displaySample.navigation);
+    updateFollowCamera(displaySample.navigation);
     last_track_update_ms_ = static_cast<double>(timer.nsecsElapsed()) / 1000000.0;
     update();
 }
@@ -980,6 +1063,7 @@ void OsgEarthViewWidget::clearTrack()
     assertGuiThread(this, Q_FUNC_INFO);
     raw_samples_.clear();
     shared_samples_.reset();
+    shared_nav_samples_.reset();
     shared_sample_count_ = 0;
     preserve_full_track_extent_ = false;
     height_reference_status_.clear();
@@ -1483,6 +1567,101 @@ void OsgEarthViewWidget::setMaxVisibleSamples(int maxVisibleSamples)
     update();
 }
 
+void OsgEarthViewWidget::setHeatMetric(VaporView::Geo::HeatMetric metric)
+{
+    if (!trajectory_layer_)
+    {
+        return;
+    }
+    trajectory_layer_->setHeatMetric(metric);
+    update();
+}
+
+VaporView::Geo::HeatMetric OsgEarthViewWidget::heatMetric() const
+{
+    return trajectory_layer_ ? trajectory_layer_->heatMetric() : VaporView::Geo::HeatMetric::Peak;
+}
+
+void OsgEarthViewWidget::setHeatPalette(VaporView::Geo::HeatPalette palette)
+{
+    if (!trajectory_layer_)
+    {
+        return;
+    }
+    trajectory_layer_->setHeatPalette(palette);
+    update();
+}
+
+VaporView::Geo::HeatPalette OsgEarthViewWidget::heatPalette() const
+{
+    return trajectory_layer_ ? trajectory_layer_->heatPalette() : VaporView::Geo::HeatPalette::Candy;
+}
+
+VaporView::Geo::HeatRange OsgEarthViewWidget::heatRange() const
+{
+    return trajectory_layer_ ? trajectory_layer_->heatRange() : VaporView::Geo::HeatRange{};
+}
+
+void OsgEarthViewWidget::setTrackLineVisible(bool visible)
+{
+    if (!trajectory_layer_)
+    {
+        return;
+    }
+    trajectory_layer_->setTrackLineVisible(visible);
+    update();
+}
+
+bool OsgEarthViewWidget::trackLineVisible() const
+{
+    return trajectory_layer_ ? trajectory_layer_->trackLineVisible() : true;
+}
+
+void OsgEarthViewWidget::setTrackPointsVisible(bool visible)
+{
+    if (!trajectory_layer_)
+    {
+        return;
+    }
+    trajectory_layer_->setTrackPointsVisible(visible);
+    update();
+}
+
+bool OsgEarthViewWidget::trackPointsVisible() const
+{
+    return trajectory_layer_ ? trajectory_layer_->trackPointsVisible() : true;
+}
+
+void OsgEarthViewWidget::setTrackLineWidth(float width)
+{
+    if (!trajectory_layer_)
+    {
+        return;
+    }
+    trajectory_layer_->setTrackLineWidth(width);
+    update();
+}
+
+float OsgEarthViewWidget::trackLineWidth() const
+{
+    return trajectory_layer_ ? trajectory_layer_->trackLineWidth() : 5.0f;
+}
+
+void OsgEarthViewWidget::setTrackPointSize(float size)
+{
+    if (!trajectory_layer_)
+    {
+        return;
+    }
+    trajectory_layer_->setTrackPointSize(size);
+    update();
+}
+
+float OsgEarthViewWidget::trackPointSize() const
+{
+    return trajectory_layer_ ? trajectory_layer_->trackPointSize() : 7.0f;
+}
+
 bool OsgEarthViewWidget::flyToAircraft()
 {
     const VaporView::Geo::NavSample* latest = latestRawSample();
@@ -1517,7 +1696,7 @@ bool OsgEarthViewWidget::flyToTrack()
     initializeSceneIfNeeded();
 
     osg::BoundingSphere bounds;
-    std::vector<VaporView::Geo::NavSample> focusSamples;
+    std::vector<VaporView::Geo::TrajectoryRenderSample> focusSamples;
     if (shared_samples_)
     {
         focusSamples = uniformlySampleTrack(*shared_samples_,
@@ -1530,10 +1709,10 @@ bool OsgEarthViewWidget::flyToTrack()
     }
     if (earth_node_ && map_node_)
     {
-        for (const VaporView::Geo::NavSample& sample : focusSamples)
+        for (const VaporView::Geo::TrajectoryRenderSample& sample : focusSamples)
         {
             osg::Vec3d world;
-            if (sampleWorldFocusPosition(sample, world))
+            if (sampleWorldFocusPosition(sample.navigation, world))
             {
                 bounds.expandBy(world);
             }
@@ -1541,9 +1720,9 @@ bool OsgEarthViewWidget::flyToTrack()
     }
     else
     {
-        for (const VaporView::Geo::NavSample& sample : focusSamples)
+        for (const VaporView::Geo::TrajectoryRenderSample& sample : focusSamples)
         {
-            bounds.expandBy(samplePosition(toDisplaySample(sample)));
+            bounds.expandBy(samplePosition(toDisplaySample(sample.navigation)));
         }
     }
     if (!bounds.valid())
@@ -2312,7 +2491,7 @@ void OsgEarthViewWidget::rebuildDisplayTrack()
     clearTrajectorySampleSelection();
     trajectory_layer_->clear();
     aircraft_layer_->clear();
-    std::vector<VaporView::Geo::NavSample> selectedSamples;
+    std::vector<VaporView::Geo::TrajectoryRenderSample> selectedSamples;
     if (shared_samples_)
     {
         selectedSamples = uniformlySampleTrack(*shared_samples_,
@@ -2323,9 +2502,9 @@ void OsgEarthViewWidget::rebuildDisplayTrack()
     {
         selectedSamples.assign(raw_samples_.cbegin(), raw_samples_.cend());
     }
-    std::vector<VaporView::Geo::NavSample> displaySamples;
+    std::vector<VaporView::Geo::TrajectoryRenderSample> displaySamples;
     displaySamples.reserve(selectedSamples.size());
-    for (const VaporView::Geo::NavSample& sample : selectedSamples)
+    for (const VaporView::Geo::TrajectoryRenderSample& sample : selectedSamples)
     {
         displaySamples.push_back(toDisplaySample(sample));
     }
@@ -2348,6 +2527,7 @@ void OsgEarthViewWidget::detachSharedSamplesForLiveAppend()
     const auto end = shared_samples_->cbegin() + shared_sample_count_;
     raw_samples_.assign(shared_samples_->cbegin(), end);
     shared_samples_.reset();
+    shared_nav_samples_.reset();
     shared_sample_count_ = 0;
     preserve_full_track_extent_ = false;
     while (static_cast<int>(raw_samples_.size()) > maxVisibleSamples())
@@ -2361,9 +2541,17 @@ const VaporView::Geo::NavSample* OsgEarthViewWidget::latestRawSample() const
 {
     if (shared_samples_ && shared_sample_count_ > 0)
     {
-        return &(*shared_samples_)[static_cast<std::size_t>(shared_sample_count_ - 1)];
+        return &(*shared_samples_)[static_cast<std::size_t>(shared_sample_count_ - 1)].navigation;
     }
-    return raw_samples_.empty() ? nullptr : &raw_samples_.back();
+    return raw_samples_.empty() ? nullptr : &raw_samples_.back().navigation;
+}
+
+VaporView::Geo::TrajectoryRenderSample OsgEarthViewWidget::toDisplaySample(
+    const VaporView::Geo::TrajectoryRenderSample& sample)
+{
+    VaporView::Geo::TrajectoryRenderSample displaySample = sample;
+    displaySample.navigation = toDisplaySample(sample.navigation);
+    return displaySample;
 }
 
 VaporView::Geo::NavSample OsgEarthViewWidget::toDisplaySample(const VaporView::Geo::NavSample& sample)

@@ -338,6 +338,7 @@ SessionTrackReadResult readSessionTrack(const QString& sessionDir)
             result.error = QStringLiteral("sensor_summary.csv exceeds the 2,000,000-row safety limit");
             result.sourceCsvPath = csvPath;
             result.samples.clear();
+            result.sourceCsvRows.clear();
             return result;
         }
 
@@ -379,6 +380,7 @@ SessionTrackReadResult readSessionTrack(const QString& sessionDir)
         {
             resolveEcefFromLlh(sample);
             result.samples.push_back(sample);
+            result.sourceCsvRows.push_back(result.totalRows - 1);
         }
         else
         {

@@ -4,16 +4,11 @@
 #include <cstddef>
 
 namespace VaporView::Map3D {
+namespace {
 
-std::vector<VaporView::Geo::NavSample> uniformlySampleTrack(
-    const std::vector<VaporView::Geo::NavSample>& samples,
-    int maxSamples)
-{
-    return uniformlySampleTrack(samples, samples.size(), maxSamples);
-}
-
-std::vector<VaporView::Geo::NavSample> uniformlySampleTrack(
-    const std::vector<VaporView::Geo::NavSample>& samples,
+template <typename Sample>
+std::vector<Sample> uniformlySampleTrackImpl(
+    const std::vector<Sample>& samples,
     std::size_t sourceCount,
     int maxSamples)
 {
@@ -27,14 +22,14 @@ std::vector<VaporView::Geo::NavSample> uniformlySampleTrack(
         (std::min)(sourceCount, static_cast<std::size_t>(maxSamples));
     if (targetCount == sourceCount)
     {
-        return std::vector<VaporView::Geo::NavSample>(samples.cbegin(), samples.cbegin() + sourceCount);
+        return std::vector<Sample>(samples.cbegin(), samples.cbegin() + sourceCount);
     }
     if (targetCount == 1)
     {
         return {samples.back()};
     }
 
-    std::vector<VaporView::Geo::NavSample> sampled;
+    std::vector<Sample> sampled;
     sampled.reserve(targetCount);
     const std::size_t lastIndex = sourceCount - 1;
     const std::size_t intervalCount = targetCount - 1;
@@ -44,6 +39,38 @@ std::vector<VaporView::Geo::NavSample> uniformlySampleTrack(
         sampled.push_back(samples[sourceIndex]);
     }
     return sampled;
+}
+
+} // namespace
+
+std::vector<VaporView::Geo::NavSample> uniformlySampleTrack(
+    const std::vector<VaporView::Geo::NavSample>& samples,
+    int maxSamples)
+{
+    return uniformlySampleTrack(samples, samples.size(), maxSamples);
+}
+
+std::vector<VaporView::Geo::NavSample> uniformlySampleTrack(
+    const std::vector<VaporView::Geo::NavSample>& samples,
+    std::size_t sourceCount,
+    int maxSamples)
+{
+    return uniformlySampleTrackImpl(samples, sourceCount, maxSamples);
+}
+
+std::vector<VaporView::Geo::TrajectoryRenderSample> uniformlySampleTrack(
+    const std::vector<VaporView::Geo::TrajectoryRenderSample>& samples,
+    int maxSamples)
+{
+    return uniformlySampleTrack(samples, samples.size(), maxSamples);
+}
+
+std::vector<VaporView::Geo::TrajectoryRenderSample> uniformlySampleTrack(
+    const std::vector<VaporView::Geo::TrajectoryRenderSample>& samples,
+    std::size_t sourceCount,
+    int maxSamples)
+{
+    return uniformlySampleTrackImpl(samples, sourceCount, maxSamples);
 }
 
 double trackFocusRangeM(double trackRadiusM, bool earthMap)

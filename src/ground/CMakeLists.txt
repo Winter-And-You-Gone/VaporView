@@ -1,4 +1,3 @@
-add_subdirectory(session)
 add_subdirectory(devices)
 add_subdirectory(widgets)
 add_subdirectory(main)
@@ -39,6 +38,7 @@ endif()
 add_subdirectory(rtk)
 add_subdirectory(trajectory)
 add_subdirectory(wave)
+add_subdirectory(session)
 
 set(NAV_WINDOW_SOURCES
     ${CMAKE_SOURCE_DIR}/src/ground/main/MainWindow.cpp

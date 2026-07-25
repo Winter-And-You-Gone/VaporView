@@ -61,6 +61,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         PUBLIC
             vaporview_app_theme
             vaporview_geo_core
+            vaporview_ground_session_core
             Qt6::Widgets
             Qt6::OpenGLWidgets
             Qt6::Svg

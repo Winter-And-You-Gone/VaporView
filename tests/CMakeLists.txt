@@ -15,6 +15,13 @@ add_executable(trajectory_quality_test
 target_link_libraries(trajectory_quality_test PRIVATE vaporview_geo_core)
 add_test(NAME trajectory_quality_test COMMAND trajectory_quality_test)
 
+
+add_executable(trajectory_heatmap_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/trajectory_heatmap_test.cpp
+)
+target_link_libraries(trajectory_heatmap_test PRIVATE vaporview_geo_core)
+add_test(NAME trajectory_heatmap_test COMMAND trajectory_heatmap_test)
+
 add_executable(trajectory_replay_test
     ${CMAKE_CURRENT_SOURCE_DIR}/trajectory_replay_test.cpp
 )
@@ -501,6 +508,7 @@ add_test(NAME vaporview_startup_test COMMAND vaporview_startup_test)
 set(VAPORVIEW_FAST_UNIT_TESTS
     trajectory_buffer_test
     trajectory_quality_test
+    trajectory_heatmap_test
     trajectory_replay_test
     session_track_reader_test
     coordinate_transform_test

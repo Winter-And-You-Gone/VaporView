@@ -4,6 +4,7 @@
 #include "ground/session/SessionPlaybackController.h"
 #include "ground/session/RecordingSessionLayout.h"
 #include "ground/session/SessionWaveformRepository.h"
+#include "ground/session/SessionTrajectoryRenderLoader.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -418,6 +419,57 @@ void testSensorCsvLoadingAndTrackFiltering()
             "CSV parser preserves commas and escaped quotes");
 }
 
+void testSessionTrajectoryRenderLoaderUsesCsvRowAlignment()
+{
+    QTemporaryDir sessionDir;
+    require(sessionDir.isValid(), "temporary render-loader session directory is available");
+    require(QDir(sessionDir.path()).mkpath(QStringLiteral("sensors")),
+            "render-loader sensors directory is created");
+
+    QFile metadataFile(sessionDir.filePath(QStringLiteral("session.json")));
+    require(metadataFile.open(QIODevice::WriteOnly | QIODevice::Truncate),
+            "render-loader metadata fixture opens");
+    metadataFile.write(R"json({
+        "session_name": "render-loader-alignment",
+        "sensor_rows": 3,
+        "paths": {"devices_csv": "sensors/devices.csv"}
+    })json");
+    metadataFile.close();
+
+    QFile csvFile(sessionDir.filePath(QStringLiteral("sensors/devices.csv")));
+    require(csvFile.open(QIODevice::WriteOnly | QIODevice::Truncate),
+            "render-loader devices CSV fixture opens");
+    csvFile.write(
+        "record_timestamp_us,device_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,"
+        "epsilon_valid,gnss_fix,hmp_temperature_c,hmp_humidity_rh,ptb_pressure_hpa\n"
+        "1000000,900000,30.0000000,120.0000000,10,false,FIXED,99.0,10.0,900.0\n"
+        "2000000,1900000,30.0000100,120.0000100,11,true,FIXED,21.5,48.0,1001.2\n"
+        "3000000,2900000,30.0000200,120.0000200,12,true,FIXED,21.6,48.5,1001.3\n");
+    csvFile.close();
+
+    const auto result =
+        VaporView::Ground::Session::SessionTrajectoryRenderLoader::loadSessionDirectory(
+            sessionDir.path());
+    require(result.success, "render-loader session loads");
+    require(result.samples.size() == 2 && result.sourceCsvRows.size() == 2,
+            "render-loader follows 2D accepted track points");
+    require(result.sourceCsvRows[0] == 1 && result.sourceCsvRows[1] == 2,
+            "render-loader keeps explicit CSV row mapping after rejected rows");
+    require(std::abs(result.samples[0].navigation.latDeg - 30.0000100) < 1.0e-9,
+            "render-loader navigation sample is looked up by CSV row");
+    require(result.samples[0].heat.temperatureC.has_value()
+                && std::abs(result.samples[0].heat.temperatureC.value() - 21.5) < 1.0e-9,
+            "render-loader temperature is not shifted by rejected rows");
+    require(result.samples[0].heat.humidityRh.has_value()
+                && std::abs(result.samples[0].heat.humidityRh.value() - 48.0) < 1.0e-9,
+            "render-loader humidity is not shifted by rejected rows");
+    require(result.samples[0].heat.pressureHpa.has_value()
+                && std::abs(result.samples[0].heat.pressureHpa.value() - 1001.2) < 1.0e-9,
+            "render-loader pressure is not shifted by rejected rows");
+    require(!result.samples[0].heat.peak.has_value(),
+            "render-loader leaves missing legacy peak data empty");
+}
+
 void testLegacyWaveformCatalogAndPeakCache()
 {
     QTemporaryDir sessionDir;
@@ -638,6 +690,7 @@ int main(int argc, char *argv[])
     testManifestlessAndDualPathSessionCompatibility();
     testRecordingSessionLayout();
     testSensorCsvLoadingAndTrackFiltering();
+    testSessionTrajectoryRenderLoaderUsesCsvRowAlignment();
     testLegacyWaveformCatalogAndPeakCache();
     testIndexedWaveformCatalog();
     testUnifiedRawWaveformCatalog();

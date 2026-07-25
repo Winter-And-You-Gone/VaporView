@@ -2,9 +2,9 @@
 
 #include "Map3DDiagnosticsFormatter.h"
 
+#include "ground/session/SessionTrajectoryRenderLoader.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
-#include "geo/SessionTrackReader.h"
 #include "geo/TrajectoryQuality.h"
 #include "Map3DRuntime.h"
 #include "map3d/OsgEarthViewWidget.h"
@@ -243,6 +243,98 @@ QString layerDescription(Map3DLayer layer)
         break;
     }
     return {};
+}
+
+int heatMetricComboIndex(VaporView::Geo::HeatMetric metric)
+{
+    switch (metric)
+    {
+    case VaporView::Geo::HeatMetric::Humidity:
+        return 1;
+    case VaporView::Geo::HeatMetric::Temperature:
+        return 2;
+    case VaporView::Geo::HeatMetric::Pressure:
+        return 3;
+    case VaporView::Geo::HeatMetric::Peak:
+    default:
+        return 0;
+    }
+}
+
+VaporView::Geo::HeatMetric heatMetricFromComboIndex(int index)
+{
+    switch (index)
+    {
+    case 1:
+        return VaporView::Geo::HeatMetric::Humidity;
+    case 2:
+        return VaporView::Geo::HeatMetric::Temperature;
+    case 3:
+        return VaporView::Geo::HeatMetric::Pressure;
+    case 0:
+    default:
+        return VaporView::Geo::HeatMetric::Peak;
+    }
+}
+
+int heatPaletteComboIndex(VaporView::Geo::HeatPalette palette)
+{
+    switch (palette)
+    {
+    case VaporView::Geo::HeatPalette::BlueRedFast:
+        return 1;
+    case VaporView::Geo::HeatPalette::SpectralReverse:
+        return 2;
+    case VaporView::Geo::HeatPalette::Candy:
+    default:
+        return 0;
+    }
+}
+
+VaporView::Geo::HeatPalette heatPaletteFromComboIndex(int index)
+{
+    switch (index)
+    {
+    case 1:
+        return VaporView::Geo::HeatPalette::BlueRedFast;
+    case 2:
+        return VaporView::Geo::HeatPalette::SpectralReverse;
+    case 0:
+    default:
+        return VaporView::Geo::HeatPalette::Candy;
+    }
+}
+
+QString heatLegendText(VaporView::Geo::HeatMetric metric,
+                       const VaporView::Geo::HeatRange& range)
+{
+    const QString metricName = VaporView::Geo::heatMetricName(metric, false);
+    const QString unit = VaporView::Geo::heatMetricUnit(metric);
+    if (!range.valid || range.validCount == 0)
+    {
+        return QStringLiteral("%1: -- · 无有效数据").arg(metricName);
+    }
+    const double middle = (range.minimum + range.maximum) * 0.5;
+    const auto formatValue = [&](double value) {
+        const QString number = unit.isEmpty()
+            ? QString::number(value, 'f', 6)
+            : QString::number(value, 'f', 2);
+        return unit.isEmpty() ? number : QStringLiteral("%1 %2").arg(number, unit);
+    };
+    return QStringLiteral("%1: %2 / %3 / %4 · n=%5")
+        .arg(metricName,
+             formatValue(range.minimum),
+             formatValue(middle),
+             formatValue(range.maximum))
+        .arg(range.validCount);
+}
+
+VaporView::Geo::TrajectoryRenderSample renderSampleFromNavSample(
+    const VaporView::Geo::NavSample& sample)
+{
+    VaporView::Geo::TrajectoryRenderSample renderSample;
+    renderSample.navigation = sample;
+    return renderSample;
 }
 
 QPixmap renderMap3DIconPixmap(const QByteArray& svgData, const QColor& color, qreal devicePixelRatio)
@@ -596,6 +688,16 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     follow_action_->setCheckable(true);
     QSettings settings = map3DSettings();
     max_visible_samples_ = sanitizeMaxVisibleSamples(settings.value(QStringLiteral("maxVisibleSamples"), 200000).toInt());
+    heat_metric_ = heatMetricFromComboIndex(settings.value(QStringLiteral("heatMetric"), 0).toInt());
+    heat_palette_ = heatPaletteFromComboIndex(settings.value(QStringLiteral("heatPalette"), 0).toInt());
+    const bool trackLineVisible =
+        settings.value(QStringLiteral("trackLineVisible"), true).toBool();
+    const bool trackPointsVisible =
+        settings.value(QStringLiteral("trackPointsVisible"), true).toBool();
+    const int trackLineWidth =
+        std::clamp(settings.value(QStringLiteral("trackLineWidth"), 5).toInt(), 1, 20);
+    const int trackPointSize =
+        std::clamp(settings.value(QStringLiteral("trackPointSize"), 7).toInt(), 1, 32);
 
     max_visible_samples_spin_ = new QSpinBox(toolbar);
     max_visible_samples_spin_->setObjectName(QStringLiteral("map3DMaxVisibleSamplesSpin"));
@@ -617,6 +719,102 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         settings.setValue(QStringLiteral("maxVisibleSamples"), max_visible_samples_);
         updateStatus(nullptr);
     });
+
+    heat_metric_combo_ = new QComboBox(toolbar);
+    heat_metric_combo_->setObjectName(QStringLiteral("map3DHeatMetricCombo"));
+    heat_metric_combo_->addItems({VaporView::Geo::heatMetricName(VaporView::Geo::HeatMetric::Peak, false),
+                                  VaporView::Geo::heatMetricName(VaporView::Geo::HeatMetric::Humidity, false),
+                                  VaporView::Geo::heatMetricName(VaporView::Geo::HeatMetric::Temperature, false),
+                                  VaporView::Geo::heatMetricName(VaporView::Geo::HeatMetric::Pressure, false)});
+    heat_metric_combo_->setCurrentIndex(heatMetricComboIndex(heat_metric_));
+    heat_metric_combo_->setToolTip(QStringLiteral("3D 轨迹热力指标"));
+    VaporView::configureComboBoxPopup(heat_metric_combo_, VaporView::isDarkThemeEnabled());
+    toolbar->addWidget(heat_metric_combo_);
+    connect(heat_metric_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+        heat_metric_ = heatMetricFromComboIndex(index);
+        applyHeatControlsToView();
+        map3DSettings().setValue(QStringLiteral("heatMetric"), index);
+        updateHeatLegend();
+        updateStatus(nullptr);
+    });
+
+    heat_palette_combo_ = new QComboBox(toolbar);
+    heat_palette_combo_->setObjectName(QStringLiteral("map3DHeatPaletteCombo"));
+    heat_palette_combo_->addItems({QStringLiteral("Candy"),
+                                   QStringLiteral("BlueRedFast"),
+                                   QStringLiteral("SpectralReverse")});
+    heat_palette_combo_->setCurrentIndex(heatPaletteComboIndex(heat_palette_));
+    heat_palette_combo_->setToolTip(QStringLiteral("3D 轨迹热力调色板"));
+    VaporView::configureComboBoxPopup(heat_palette_combo_, VaporView::isDarkThemeEnabled());
+    toolbar->addWidget(heat_palette_combo_);
+    connect(heat_palette_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+        heat_palette_ = heatPaletteFromComboIndex(index);
+        applyHeatControlsToView();
+        map3DSettings().setValue(QStringLiteral("heatPalette"), index);
+        updateHeatLegend();
+        updateStatus(nullptr);
+    });
+
+    track_line_visible_action_ = toolbar->addAction(QStringLiteral("轨迹线"));
+    track_line_visible_action_->setObjectName(QStringLiteral("map3DTrackLineVisibleAction"));
+    track_line_visible_action_->setCheckable(true);
+    track_line_visible_action_->setChecked(trackLineVisible);
+    connect(track_line_visible_action_, &QAction::toggled, this, [this](bool visible) {
+        if (view_)
+        {
+            view_->setTrackLineVisible(visible);
+        }
+        map3DSettings().setValue(QStringLiteral("trackLineVisible"), visible);
+        updateStatus(nullptr);
+    });
+
+    track_points_visible_action_ = toolbar->addAction(QStringLiteral("轨迹点"));
+    track_points_visible_action_->setObjectName(QStringLiteral("map3DTrackPointsVisibleAction"));
+    track_points_visible_action_->setCheckable(true);
+    track_points_visible_action_->setChecked(trackPointsVisible);
+    connect(track_points_visible_action_, &QAction::toggled, this, [this](bool visible) {
+        if (view_)
+        {
+            view_->setTrackPointsVisible(visible);
+        }
+        map3DSettings().setValue(QStringLiteral("trackPointsVisible"), visible);
+        updateStatus(nullptr);
+    });
+
+    track_line_width_spin_ = new QSpinBox(toolbar);
+    track_line_width_spin_->setObjectName(QStringLiteral("map3DTrackLineWidthSpin"));
+    track_line_width_spin_->setRange(1, 20);
+    track_line_width_spin_->setValue(trackLineWidth);
+    track_line_width_spin_->setPrefix(QStringLiteral("线宽 "));
+    track_line_width_spin_->setSuffix(QStringLiteral(" px"));
+    toolbar->addWidget(track_line_width_spin_);
+    connect(track_line_width_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        if (view_)
+        {
+            view_->setTrackLineWidth(static_cast<float>(value));
+        }
+        map3DSettings().setValue(QStringLiteral("trackLineWidth"), value);
+    });
+
+    track_point_size_spin_ = new QSpinBox(toolbar);
+    track_point_size_spin_->setObjectName(QStringLiteral("map3DTrackPointSizeSpin"));
+    track_point_size_spin_->setRange(1, 32);
+    track_point_size_spin_->setValue(trackPointSize);
+    track_point_size_spin_->setPrefix(QStringLiteral("点 "));
+    track_point_size_spin_->setSuffix(QStringLiteral(" px"));
+    toolbar->addWidget(track_point_size_spin_);
+    connect(track_point_size_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        if (view_)
+        {
+            view_->setTrackPointSize(static_cast<float>(value));
+        }
+        map3DSettings().setValue(QStringLiteral("trackPointSize"), value);
+    });
+
+    heat_legend_label_ = new QLabel(toolbar);
+    heat_legend_label_->setObjectName(QStringLiteral("map3DHeatLegendLabel"));
+    heat_legend_label_->setMinimumWidth(260);
+    toolbar->addWidget(heat_legend_label_);
 
     replay_.setSpeed(settings.value(QStringLiteral("replaySpeed"), 1.0).toDouble());
     const QString replaySpeedText = QStringLiteral("%1x").arg(replay_.speed(), 0, 'g', 3);
@@ -642,6 +840,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     {
         view_->setFollowAircraft(follow_action_->isChecked());
         view_->setMaxVisibleSamples(max_visible_samples_);
+        applyHeatControlsToView();
     }
     connect(follow_action_, &QAction::toggled, this, [this](bool enabled) {
         if (view_)
@@ -717,6 +916,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
 
     statusBar()->addPermanentWidget(status_label_, 1);
     updateReplayUi();
+    updateHeatLegend();
     updateStatus(nullptr);
     if (isMap3DHeadlessTest())
     {
@@ -971,6 +1171,44 @@ void Map3DWindow::refreshLayerMenuAvailability()
     }
 }
 
+void Map3DWindow::applyHeatControlsToView()
+{
+    if (!view_)
+    {
+        return;
+    }
+    view_->setHeatMetric(heat_metric_);
+    view_->setHeatPalette(heat_palette_);
+    if (track_line_visible_action_)
+    {
+        view_->setTrackLineVisible(track_line_visible_action_->isChecked());
+    }
+    if (track_points_visible_action_)
+    {
+        view_->setTrackPointsVisible(track_points_visible_action_->isChecked());
+    }
+    if (track_line_width_spin_)
+    {
+        view_->setTrackLineWidth(static_cast<float>(track_line_width_spin_->value()));
+    }
+    if (track_point_size_spin_)
+    {
+        view_->setTrackPointSize(static_cast<float>(track_point_size_spin_->value()));
+    }
+}
+
+void Map3DWindow::updateHeatLegend()
+{
+    if (!heat_legend_label_)
+    {
+        return;
+    }
+    const VaporView::Geo::HeatRange range = view_
+        ? view_->heatRange()
+        : VaporView::Geo::calculateHeatRange(headless_render_samples_, heat_metric_);
+    heat_legend_label_->setText(heatLegendText(heat_metric_, range));
+}
+
 void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
 {
     if (replay_.isPlaying())
@@ -978,6 +1216,7 @@ void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
         stopReplay();
     }
     replay_.clear();
+    replay_render_storage_.reset();
     rendered_replay_index_ = -1;
     if (view_)
     {
@@ -987,9 +1226,11 @@ void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
     {
         ++headless_sample_count_;
         headless_samples_.push_back(sample);
+        headless_render_samples_.push_back(renderSampleFromNavSample(sample));
     }
     recordTrackSource(QStringLiteral("Live"), &sample);
     updateReplayUi();
+    updateHeatLegend();
     updateStatus(&sample, false);
 }
 
@@ -1000,6 +1241,7 @@ void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& sa
         stopReplay();
     }
     replay_.clear();
+    replay_render_storage_.reset();
     rendered_replay_index_ = -1;
     if (view_)
     {
@@ -1009,10 +1251,16 @@ void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& sa
     {
         headless_sample_count_ += static_cast<int>(samples.size());
         headless_samples_.insert(headless_samples_.end(), samples.cbegin(), samples.cend());
+        headless_render_samples_.reserve(headless_render_samples_.size() + samples.size());
+        for (const VaporView::Geo::NavSample& sample : samples)
+        {
+            headless_render_samples_.push_back(renderSampleFromNavSample(sample));
+        }
     }
     recordTrackSource(QStringLiteral("Live"), samples.empty() ? nullptr : &samples.back(),
                       samples.empty() ? QStringLiteral("empty live batch") : QString());
     updateReplayUi();
+    updateHeatLegend();
     updateStatus(samples.empty() ? nullptr : &samples.back(), false);
 }
 
@@ -1020,6 +1268,7 @@ void Map3DWindow::clearTrack()
 {
     replay_timer_->stop();
     replay_.clear();
+    replay_render_storage_.reset();
     rendered_replay_index_ = -1;
     clearSelectedTrajectorySample();
     if (view_)
@@ -1030,16 +1279,19 @@ void Map3DWindow::clearTrack()
     {
         headless_sample_count_ = 0;
         headless_samples_.clear();
+        headless_render_samples_.clear();
     }
     recordTrackSource(QStringLiteral("none"), nullptr, QStringLiteral("track cleared"));
     updateReplayUi();
+    updateHeatLegend();
     updateStatus(nullptr);
 }
 
 void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
 {
-    VaporView::Geo::SessionTrackReadResult result = VaporView::Geo::readSessionTrack(sessionDir);
-    if (!result.ok)
+    VaporView::Ground::Session::SessionTrajectoryRenderLoadResult result =
+        VaporView::Ground::Session::SessionTrajectoryRenderLoader::loadSessionDirectory(sessionDir);
+    if (!result.success)
     {
         QMessageBox::warning(this,
                              QStringLiteral("Session Track"),
@@ -1051,28 +1303,46 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
     settings.setValue(QStringLiteral("lastSessionDir"), QFileInfo(sessionDir).absoluteFilePath());
 
     const QString sourceCsvPath = result.sourceCsvPath;
+    std::vector<VaporView::Geo::NavSample> replaySamples;
+    replaySamples.reserve(result.samples.size());
+    for (const VaporView::Geo::TrajectoryRenderSample& sample : result.samples)
+    {
+        replaySamples.push_back(sample.navigation);
+    }
+    const auto renderSamples =
+        std::make_shared<const std::vector<VaporView::Geo::TrajectoryRenderSample>>(
+            std::move(result.samples));
     const auto samples = std::make_shared<const std::vector<VaporView::Geo::NavSample>>(
-        std::move(result.samples));
+        std::move(replaySamples));
+    const QString trackNote = result.warning.isEmpty()
+        ? sourceCsvPath
+        : QStringLiteral("%1 | %2").arg(sourceCsvPath, result.warning);
+    const QString loadWarning = result.warning;
+
     replay_timer_->stop();
     clearSelectedTrajectorySample();
     if (view_)
     {
-        view_->setSamples(samples);
+        view_->setSamples(renderSamples);
     }
     if (headless_view_)
     {
         headless_sample_count_ = static_cast<int>(samples->size());
         headless_samples_ = *samples;
+        headless_render_samples_ = *renderSamples;
     }
     replay_.setSamples(samples);
+    replay_render_storage_ = renderSamples;
     rendered_replay_index_ = -1;
     latest_drop_source_.clear();
     latest_drop_reason_.clear();
     latest_drop_record_timestamp_us_ = 0;
     recordTrackSource(QStringLiteral("Session"),
                       replay_.currentSample(),
-                      sourceCsvPath);
+                      trackNote);
     resetAutomaticSentinel2Imagery();
+    applyHeatControlsToView();
+    updateHeatLegend();
     const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
     applyConfiguredTiandituSatelliteImagery(false);
     updateReplayUi();
@@ -1089,10 +1359,14 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
             }
         });
     }
-    statusBar()->showMessage(QStringLiteral("Loaded %1 samples from %2%3")
+    const QString warningSuffix = loadWarning.isEmpty()
+        ? QString()
+        : QStringLiteral("；%1").arg(loadWarning);
+    statusBar()->showMessage(QStringLiteral("Loaded %1 samples from %2%3%4")
                                  .arg(samples->size())
                                  .arg(sourceCsvPath,
-                                      focusedTrack ? QStringLiteral(" (auto-focused track)") : QString()),
+                                      focusedTrack ? QStringLiteral(" (auto-focused track)") : QString(),
+                                      warningSuffix),
                              5000);
 }
 
@@ -1823,7 +2097,14 @@ void Map3DWindow::renderReplayAtCurrentPosition(bool forceStatus)
     {
         if (view_)
         {
-            view_->setSamples(replayStorage, targetIndex + 1);
+            if (replay_render_storage_)
+            {
+                view_->setSamples(replay_render_storage_, targetIndex + 1);
+            }
+            else
+            {
+                view_->setSamples(replayStorage, targetIndex + 1);
+            }
         }
         if (headless_view_)
         {
@@ -1831,6 +2112,20 @@ void Map3DWindow::renderReplayAtCurrentPosition(bool forceStatus)
             const std::vector<VaporView::Geo::NavSample> visibleSamples(replaySamples.cbegin(), end);
             headless_samples_ = visibleSamples;
             headless_sample_count_ = static_cast<int>(visibleSamples.size());
+            if (replay_render_storage_)
+            {
+                headless_render_samples_.assign(replay_render_storage_->cbegin(),
+                                                replay_render_storage_->cbegin() + targetIndex + 1);
+            }
+            else
+            {
+                headless_render_samples_.clear();
+                headless_render_samples_.reserve(visibleSamples.size());
+                for (const VaporView::Geo::NavSample& sample : visibleSamples)
+                {
+                    headless_render_samples_.push_back(renderSampleFromNavSample(sample));
+                }
+            }
         }
     }
     else if (targetIndex > rendered_replay_index_)
@@ -1840,11 +2135,27 @@ void Map3DWindow::renderReplayAtCurrentPosition(bool forceStatus)
             const VaporView::Geo::NavSample& sample = replaySamples[static_cast<std::size_t>(index)];
             if (view_)
             {
-                view_->appendSampleFromStorage(replayStorage, index);
+                if (replay_render_storage_)
+                {
+                    view_->appendSampleFromStorage(replay_render_storage_, index);
+                }
+                else
+                {
+                    view_->appendSampleFromStorage(replayStorage, index);
+                }
             }
             if (headless_view_)
             {
                 headless_samples_.push_back(sample);
+                if (replay_render_storage_)
+                {
+                    headless_render_samples_.push_back(
+                        (*replay_render_storage_)[static_cast<std::size_t>(index)]);
+                }
+                else
+                {
+                    headless_render_samples_.push_back(renderSampleFromNavSample(sample));
+                }
                 headless_sample_count_ = static_cast<int>(headless_samples_.size());
             }
         }
@@ -1854,6 +2165,7 @@ void Map3DWindow::renderReplayAtCurrentPosition(bool forceStatus)
     const VaporView::Geo::NavSample& currentSample = replaySamples[static_cast<std::size_t>(targetIndex)];
     recordTrackSource(QStringLiteral("Replay"),
                       &currentSample);
+    updateHeatLegend();
     updateStatus(&currentSample, forceStatus);
 }
 
@@ -2132,6 +2444,10 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
     if (visibleSamples > 0)
     {
         text += QStringLiteral(" | Q %1").arg(qualityStatsSummary(qualityStats));
+    }
+    if (heat_legend_label_)
+    {
+        text += QStringLiteral(" | Heat %1").arg(heat_legend_label_->text());
     }
     text += QStringLiteral(" | Source %1").arg(latest_track_source_.isEmpty() ? QStringLiteral("none") : latest_track_source_);
     if (!latest_camera_note_.isEmpty())
