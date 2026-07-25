@@ -1120,9 +1120,8 @@ QPushButton#temperatureOverviewOutputSwitch {
 )");
 }
 
-QString mainCardsScrollBarBackgroundStyleSheet(bool dark)
+QString mainCardsScrollBarBackgroundStyleSheet(bool)
 {
-    const QString background = dark ? QStringLiteral("@vv-window") : QStringLiteral("@vv-surface");
     return QStringLiteral(
         "QScrollArea#mainCardsScrollArea QScrollBar:vertical, "
         "QScrollArea#mainCardsScrollArea QScrollBar:horizontal, "
@@ -1134,11 +1133,10 @@ QString mainCardsScrollBarBackgroundStyleSheet(bool dark)
         "QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical, "
         "QScrollArea#mainCardsScrollArea QScrollBar::add-line:horizontal, "
         "QScrollArea#mainCardsScrollArea QScrollBar::sub-line:horizontal { "
-        "background-color: %1; }"
+        "background-color: transparent; }"
         "QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, "
         "QScrollArea#mainCardsScrollArea QScrollBar::handle:horizontal { "
-        "border: 2px solid %1; }")
-        .arg(background);
+        "border: 2px solid transparent; }");
 }
 
 QString mainCardsTopLevelCardStyleSheet()

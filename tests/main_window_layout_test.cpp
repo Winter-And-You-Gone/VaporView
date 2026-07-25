@@ -2315,6 +2315,16 @@ int main(int argc, char **argv)
                                  "home overview splitter keeps the requested 12px card gap");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
+        QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical, "),
+        QStringLiteral("background-color: transparent"),
+        "main card scrollbar track stays transparent so card shadows remain visible");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, "),
+        QStringLiteral("border: 2px solid transparent"),
+        "main card scrollbar handle does not paint an opaque strip over card shadows");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
         QStringLiteral("QDialog#rtkConfigDialog QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] {"),
         QStringLiteral("border-radius: 12px"),
         "RTK embedded cards use the same 12px top-level radius as their shadow clip");

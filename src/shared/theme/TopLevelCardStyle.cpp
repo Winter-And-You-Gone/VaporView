@@ -9,6 +9,8 @@
 #include <QPointer>
 #include <QScrollBar>
 #include <QSet>
+#include <QStyle>
+#include <QStyleOptionSlider>
 #include <QWidget>
 
 #include <algorithm>
@@ -55,6 +57,11 @@ public:
         }
         observedObjects_.clear();
         observedObjects_.insert(parentWidget());
+        if (auto *scrollArea = qobject_cast<QAbstractScrollArea *>(parentWidget()))
+        {
+            observeScrollBar(scrollArea->verticalScrollBar());
+            observeScrollBar(scrollArea->horizontalScrollBar());
+        }
 
         cards_.clear();
         for (QWidget *card : cards)
@@ -110,6 +117,10 @@ protected:
             if (watched == parentWidget())
             {
                 setGeometry(parentWidget()->rect());
+            }
+            if (!cards_.isEmpty())
+            {
+                raiseAboveContent();
             }
             update();
             break;
@@ -181,6 +192,13 @@ protected:
         QPainterPath shadowClip;
         shadowClip.addRect(QRectF(rect()));
         shadowClip = shadowClip.subtracted(cardSurfaces);
+        if (auto *scrollArea = qobject_cast<QAbstractScrollArea *>(host))
+        {
+            QPainterPath scrollbarSliderClip;
+            addScrollBarSliderClip(scrollArea->verticalScrollBar(), scrollbarSliderClip);
+            addScrollBarSliderClip(scrollArea->horizontalScrollBar(), scrollbarSliderClip);
+            shadowClip = shadowClip.subtracted(scrollbarSliderClip);
+        }
         painter.setClipPath(shadowClip);
 
         for (int spread = spreadCount; spread >= 1; --spread)
@@ -217,23 +235,65 @@ private:
     void raiseAboveContent()
     {
         raise();
-        if (auto *scrollArea = qobject_cast<QAbstractScrollArea *>(parentWidget()))
+        if (!qobject_cast<QAbstractScrollArea *>(parentWidget()))
         {
-            if (QScrollBar *verticalScrollBar = scrollArea->verticalScrollBar())
+            if (QWidget *bottomFade = parentWidget()->findChild<QWidget *>(
+                    QStringLiteral("mainContentBottomFade"),
+                    Qt::FindDirectChildrenOnly))
             {
-                verticalScrollBar->raise();
-            }
-            if (QScrollBar *horizontalScrollBar = scrollArea->horizontalScrollBar())
-            {
-                horizontalScrollBar->raise();
+                bottomFade->raise();
             }
         }
-        else if (QWidget *bottomFade = parentWidget()->findChild<QWidget *>(
-                     QStringLiteral("mainContentBottomFade"),
-                     Qt::FindDirectChildrenOnly))
+    }
+
+    void observeScrollBar(QScrollBar *scrollBar)
+    {
+        if (scrollBar && !observedObjects_.contains(scrollBar))
         {
-            bottomFade->raise();
+            observedObjects_.insert(scrollBar);
+            scrollBar->installEventFilter(this);
         }
+    }
+
+    void addScrollBarSliderClip(QScrollBar *scrollBar, QPainterPath& clip) const
+    {
+        if (!scrollBar ||
+            !scrollBar->isVisible() ||
+            scrollBar->maximum() <= scrollBar->minimum() ||
+            !parentWidget())
+        {
+            return;
+        }
+
+        QStyleOptionSlider option;
+        option.initFrom(scrollBar);
+        option.orientation = scrollBar->orientation();
+        option.minimum = scrollBar->minimum();
+        option.maximum = scrollBar->maximum();
+        option.sliderPosition = scrollBar->sliderPosition();
+        option.sliderValue = scrollBar->value();
+        option.singleStep = scrollBar->singleStep();
+        option.pageStep = scrollBar->pageStep();
+        option.upsideDown = scrollBar->invertedAppearance();
+        if (scrollBar->orientation() == Qt::Horizontal)
+        {
+            option.state |= QStyle::State_Horizontal;
+        }
+
+        const QRect sliderRect =
+            scrollBar->style()->subControlRect(QStyle::CC_ScrollBar,
+                                               &option,
+                                               QStyle::SC_ScrollBarSlider,
+                                               scrollBar);
+        if (!sliderRect.isValid())
+        {
+            return;
+        }
+
+        const QRectF hostSliderRect(
+            scrollBar->mapTo(parentWidget(), sliderRect.topLeft()),
+            sliderRect.size());
+        clip.addRect(hostSliderRect.adjusted(-1.0, -1.0, 1.0, 1.0));
     }
 
     QList<QPointer<QWidget>> cards_;
