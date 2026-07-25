@@ -2315,24 +2315,27 @@ int main(int argc, char **argv)
                                  "home overview splitter keeps the requested 12px card gap");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
-        QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical, "),
+        QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical {"),
         QStringLiteral("background-color: transparent"),
         "main card scrollbar track stays visually transparent");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
-        QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical, "),
-        QStringLiteral("margin: 0px"),
-        "main card scrollbar track does not reserve flashing line-button margins");
+        QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical {"),
+        QStringLiteral("margin: 14px 0px 14px 0px"),
+        "main card scrollbar track keeps the shared arrow-button margins");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical, "),
-        QStringLiteral("height: 0px"),
-        "main card scrollbar line buttons stay collapsed");
+        QStringLiteral("height: 14px"),
+        "main card scrollbar line buttons remain visible for arrow indicators");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
-        QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::up-arrow:vertical, "),
-        QStringLiteral("image: none"),
-        "main card scrollbar arrows stay hidden");
+        QStringLiteral("QScrollBar::up-arrow:vertical {"),
+        QStringLiteral("image: url("),
+        "main card scrollbar keeps the shared up-arrow indicator");
+    require(!qApp->styleSheet().contains(
+                QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::up-arrow:vertical")),
+            "main card scrollbar does not hide the shared arrow indicators");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, "),
@@ -2445,13 +2448,9 @@ int main(int argc, char **argv)
                     homeScrollArea->verticalScrollBar()->width(),
             "home scroll card shadow layer covers the scroll area canvas");
     require(homeScrollShadowLayer
-                ->property("vaporViewTopLevelCardShadowClipsScrollBarGutter")
+                ->property("vaporViewTopLevelCardShadowAllowsTransparentScrollBarTrack")
                 .toBool(),
-            "home scroll card shadow painting clips the scrollbar gutter to avoid track flicker");
-    require(homeScrollShadowLayer
-                ->property("vaporViewTopLevelCardShadowDrawsStableScrollBarEdge")
-                .toBool(),
-            "home scroll card shadow painting restores a stable edge shadow outside the transparent scrollbar track");
+            "home scroll card shadow painting passes through the transparent scrollbar track");
     require(homeBottomFade->geometry().bottom() == homeScrollArea->viewport()->rect().bottom() &&
                 homeBottomFade->width() == homeScrollArea->viewport()->width(),
             "bottom fade stays flush with the scroll viewport edge");

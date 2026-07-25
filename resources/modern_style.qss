@@ -862,7 +862,11 @@ QScrollBar::sub-line:horizontal {
     background-color: @vv-surface-sunken;
 }
 
-QScrollArea#mainCardsScrollArea QScrollBar:vertical,
+QScrollArea#mainCardsScrollArea QScrollBar:vertical {
+    background-color: transparent;
+    margin: 14px 0px 14px 0px;
+}
+
 QScrollArea#mainCardsScrollArea QScrollBar:horizontal {
     background-color: transparent;
     margin: 0px;
@@ -876,22 +880,25 @@ QScrollArea#mainCardsScrollArea QScrollBar::sub-page:horizontal {
 }
 
 QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical,
-QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical,
+QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical {
+    background-color: transparent;
+    border: none;
+    height: 14px;
+    subcontrol-origin: margin;
+}
+
+QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical:hover,
+QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical:hover,
+QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical:pressed,
+QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical:pressed {
+    background-color: transparent;
+}
+
 QScrollArea#mainCardsScrollArea QScrollBar::add-line:horizontal,
 QScrollArea#mainCardsScrollArea QScrollBar::sub-line:horizontal {
     background-color: transparent;
     border: none;
     width: 0px;
-    height: 0px;
-}
-
-QScrollArea#mainCardsScrollArea QScrollBar::up-arrow:vertical,
-QScrollArea#mainCardsScrollArea QScrollBar::down-arrow:vertical,
-QScrollArea#mainCardsScrollArea QScrollBar::left-arrow:horizontal,
-QScrollArea#mainCardsScrollArea QScrollBar::right-arrow:horizontal {
-    image: none;
-    width: 0px;
-    height: 0px;
 }
 
 QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical,

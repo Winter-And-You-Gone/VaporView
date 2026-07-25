@@ -4,12 +4,13 @@
 #include <QColor>
 #include <QEvent>
 #include <QHash>
-#include <QLinearGradient>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPointer>
 #include <QScrollBar>
 #include <QSet>
+#include <QStyle>
+#include <QStyleOptionSlider>
 #include <QWidget>
 
 #include <algorithm>
@@ -29,10 +30,8 @@ inline constexpr const char *kShadowColorProperty =
     "vaporViewTopLevelCardShadowColor";
 inline constexpr const char *kShadowCardCountProperty =
     "vaporViewTopLevelCardShadowCardCount";
-inline constexpr const char *kShadowClipsScrollBarGutterProperty =
-    "vaporViewTopLevelCardShadowClipsScrollBarGutter";
-inline constexpr const char *kShadowDrawsStableScrollBarEdgeProperty =
-    "vaporViewTopLevelCardShadowDrawsStableScrollBarEdge";
+inline constexpr const char *kShadowAllowsTransparentScrollBarTrackProperty =
+    "vaporViewTopLevelCardShadowAllowsTransparentScrollBarTrack";
 
 class TopLevelCardShadowLayer final : public QWidget
 {
@@ -95,9 +94,7 @@ public:
         setProperty(kShadowColorProperty,
                     QColor(0, 0, 0, kTopLevelCardShadowAlpha));
         setProperty(kShadowCardCountProperty, cards_.size());
-        setProperty(kShadowClipsScrollBarGutterProperty,
-                    qobject_cast<QAbstractScrollArea *>(parentWidget()) != nullptr);
-        setProperty(kShadowDrawsStableScrollBarEdgeProperty,
+        setProperty(kShadowAllowsTransparentScrollBarTrackProperty,
                     qobject_cast<QAbstractScrollArea *>(parentWidget()) != nullptr);
 
         setGeometry(parentWidget()->rect());
@@ -201,10 +198,10 @@ protected:
         shadowClip = shadowClip.subtracted(cardSurfaces);
         if (auto *scrollArea = qobject_cast<QAbstractScrollArea *>(host))
         {
-            QPainterPath scrollbarGutterClip;
-            addScrollBarGutterClip(scrollArea->verticalScrollBar(), scrollbarGutterClip);
-            addScrollBarGutterClip(scrollArea->horizontalScrollBar(), scrollbarGutterClip);
-            shadowClip = shadowClip.subtracted(scrollbarGutterClip);
+            QPainterPath scrollBarControlClip;
+            addScrollBarControlClip(scrollArea->verticalScrollBar(), scrollBarControlClip);
+            addScrollBarControlClip(scrollArea->horizontalScrollBar(), scrollBarControlClip);
+            shadowClip = shadowClip.subtracted(scrollBarControlClip);
         }
         painter.save();
         painter.setClipPath(shadowClip);
@@ -239,28 +236,13 @@ protected:
         }
         painter.restore();
 
-        if (auto *scrollArea = qobject_cast<QAbstractScrollArea *>(host))
-        {
-            drawStableScrollBarEdgeShadow(scrollArea, painter);
-        }
     }
 
 private:
     void raiseAboveContent()
     {
         raise();
-        if (auto *scrollArea = qobject_cast<QAbstractScrollArea *>(parentWidget()))
-        {
-            if (QScrollBar *verticalScrollBar = scrollArea->verticalScrollBar())
-            {
-                verticalScrollBar->raise();
-            }
-            if (QScrollBar *horizontalScrollBar = scrollArea->horizontalScrollBar())
-            {
-                horizontalScrollBar->raise();
-            }
-        }
-        else
+        if (!qobject_cast<QAbstractScrollArea *>(parentWidget()))
         {
             if (QWidget *bottomFade = parentWidget()->findChild<QWidget *>(
                     QStringLiteral("mainContentBottomFade"),
@@ -268,77 +250,6 @@ private:
             {
                 bottomFade->raise();
             }
-        }
-    }
-
-    void drawStableScrollBarEdgeShadow(QAbstractScrollArea *scrollArea,
-                                       QPainter& painter) const
-    {
-        drawStableScrollBarEdgeShadow(scrollArea->verticalScrollBar(), painter);
-        drawStableScrollBarEdgeShadow(scrollArea->horizontalScrollBar(), painter);
-    }
-
-    void drawStableScrollBarEdgeShadow(QScrollBar *scrollBar,
-                                       QPainter& painter) const
-    {
-        if (!scrollBar ||
-            !scrollBar->isVisible() ||
-            scrollBar->width() <= 0 ||
-            scrollBar->height() <= 0 ||
-            !parentWidget())
-        {
-            return;
-        }
-
-        const QRectF hostScrollBarRect(
-            scrollBar->mapTo(parentWidget(), QPoint(0, 0)),
-            scrollBar->size());
-        if (!hostScrollBarRect.intersects(QRectF(rect())))
-        {
-            return;
-        }
-
-        if (scrollBar->orientation() == Qt::Horizontal)
-        {
-            const qreal height =
-                std::min<qreal>(hostScrollBarRect.height() + 1.0,
-                                std::max<qreal>(6.0, 8.0 * uiScale_));
-            const QRectF fadeRect(hostScrollBarRect.left(),
-                                  hostScrollBarRect.top() - height,
-                                  hostScrollBarRect.width(),
-                                  height);
-            QLinearGradient gradient(fadeRect.left(),
-                                     fadeRect.top(),
-                                     fadeRect.left(),
-                                     fadeRect.bottom());
-            gradient.setColorAt(0.0, QColor(0, 0, 0, 0));
-            gradient.setColorAt(0.58, QColor(0, 0, 0, 7));
-            gradient.setColorAt(1.0, QColor(0, 0, 0, 16));
-            painter.save();
-            painter.setClipRect(fadeRect.adjusted(-1.0, -1.0, 1.0, 1.0));
-            painter.fillRect(fadeRect, gradient);
-            painter.restore();
-        }
-        else
-        {
-            const qreal width =
-                std::min<qreal>(hostScrollBarRect.width() + 1.0,
-                                std::max<qreal>(7.0, 9.0 * uiScale_));
-            const QRectF fadeRect(hostScrollBarRect.left() - width,
-                                  hostScrollBarRect.top(),
-                                  width,
-                                  hostScrollBarRect.height());
-            QLinearGradient gradient(fadeRect.left(),
-                                     fadeRect.top(),
-                                     fadeRect.right(),
-                                     fadeRect.top());
-            gradient.setColorAt(0.0, QColor(0, 0, 0, 0));
-            gradient.setColorAt(0.58, QColor(0, 0, 0, 8));
-            gradient.setColorAt(1.0, QColor(0, 0, 0, 18));
-            painter.save();
-            painter.setClipRect(fadeRect.adjusted(-1.0, -1.0, 1.0, 1.0));
-            painter.fillRect(fadeRect, gradient);
-            painter.restore();
         }
     }
 
@@ -351,10 +262,11 @@ private:
         }
     }
 
-    void addScrollBarGutterClip(QScrollBar *scrollBar, QPainterPath& clip) const
+    void addScrollBarControlClip(QScrollBar *scrollBar, QPainterPath& clip) const
     {
         if (!scrollBar ||
             !scrollBar->isVisible() ||
+            scrollBar->maximum() <= scrollBar->minimum() ||
             scrollBar->width() <= 0 ||
             scrollBar->height() <= 0 ||
             !parentWidget())
@@ -362,16 +274,42 @@ private:
             return;
         }
 
-        const QRectF hostScrollBarRect(
-            scrollBar->mapTo(parentWidget(), QPoint(0, 0)),
-            scrollBar->size());
+        QStyleOptionSlider option;
+        option.initFrom(scrollBar);
+        option.orientation = scrollBar->orientation();
+        option.minimum = scrollBar->minimum();
+        option.maximum = scrollBar->maximum();
+        option.sliderPosition = scrollBar->sliderPosition();
+        option.sliderValue = scrollBar->value();
+        option.singleStep = scrollBar->singleStep();
+        option.pageStep = scrollBar->pageStep();
+        option.upsideDown = scrollBar->invertedAppearance();
         if (scrollBar->orientation() == Qt::Horizontal)
         {
-            clip.addRect(hostScrollBarRect.adjusted(0.0, 0.0, 0.0, 1.0));
+            option.state |= QStyle::State_Horizontal;
         }
-        else
+
+        const QList<QStyle::SubControl> controls = {
+            QStyle::SC_ScrollBarSubLine,
+            QStyle::SC_ScrollBarAddLine,
+            QStyle::SC_ScrollBarSlider,
+        };
+        for (QStyle::SubControl control : controls)
         {
-            clip.addRect(hostScrollBarRect.adjusted(0.0, 0.0, 1.0, 0.0));
+            const QRect controlRect =
+                scrollBar->style()->subControlRect(QStyle::CC_ScrollBar,
+                                                   &option,
+                                                   control,
+                                                   scrollBar);
+            if (!controlRect.isValid() || controlRect.isEmpty())
+            {
+                continue;
+            }
+
+            const QRectF hostControlRect(
+                scrollBar->mapTo(parentWidget(), controlRect.topLeft()),
+                controlRect.size());
+            clip.addRect(hostControlRect.adjusted(-1.0, -1.0, 1.0, 1.0));
         }
     }
 
