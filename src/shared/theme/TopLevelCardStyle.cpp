@@ -32,8 +32,10 @@ inline constexpr const char *kShadowCardCountProperty =
     "vaporViewTopLevelCardShadowCardCount";
 inline constexpr const char *kShadowAllowsTransparentScrollBarTrackProperty =
     "vaporViewTopLevelCardShadowAllowsTransparentScrollBarTrack";
-inline constexpr const char *kShadowKeepsScrollBarsAboveProperty =
-    "vaporViewTopLevelCardShadowKeepsScrollBarsAbove";
+inline constexpr const char *kShadowPaintsOverTransparentScrollBarTrackProperty =
+    "vaporViewTopLevelCardShadowPaintsOverTransparentScrollBarTrack";
+inline constexpr const char *kShadowClipsScrollBarControlsProperty =
+    "vaporViewTopLevelCardShadowClipsScrollBarControls";
 
 class TopLevelCardShadowLayer final : public QWidget
 {
@@ -98,7 +100,9 @@ public:
         setProperty(kShadowCardCountProperty, cards_.size());
         setProperty(kShadowAllowsTransparentScrollBarTrackProperty,
                     qobject_cast<QAbstractScrollArea *>(parentWidget()) != nullptr);
-        setProperty(kShadowKeepsScrollBarsAboveProperty,
+        setProperty(kShadowPaintsOverTransparentScrollBarTrackProperty,
+                    qobject_cast<QAbstractScrollArea *>(parentWidget()) != nullptr);
+        setProperty(kShadowClipsScrollBarControlsProperty,
                     qobject_cast<QAbstractScrollArea *>(parentWidget()) != nullptr);
 
         setGeometry(parentWidget()->rect());
@@ -122,6 +126,7 @@ protected:
         case QEvent::LayoutRequest:
         case QEvent::ParentChange:
         case QEvent::StyleChange:
+        case QEvent::ZOrderChange:
             if (watched == parentWidget())
             {
                 setGeometry(parentWidget()->rect());
@@ -248,27 +253,23 @@ private:
         raise();
         if (auto *scrollArea = qobject_cast<QAbstractScrollArea *>(parentWidget()))
         {
-            if (QScrollBar *verticalScrollBar = scrollArea->verticalScrollBar())
-            {
-                verticalScrollBar->raise();
-            }
-            if (QScrollBar *horizontalScrollBar = scrollArea->horizontalScrollBar())
-            {
-                horizontalScrollBar->raise();
-            }
-            if (QWidget *cornerWidget = scrollArea->cornerWidget())
-            {
-                cornerWidget->raise();
-            }
+            // The main card scrollbars use a transparent track so card shadows
+            // can remain visible behind that gutter. Keeping the whole
+            // QScrollBar widget above this layer lets the transparent widget
+            // erase the shadow on some repaints, which causes the edge flicker
+            // seen while telemetry/layout refreshes run. Keep this
+            // mouse-transparent layer above the scrollbars instead; paintEvent()
+            // clips out the actual scrollbar controls so the handle/arrows stay
+            // visible and interactive.
+            Q_UNUSED(scrollArea);
+            return;
         }
-        else
+
+        if (QWidget *bottomFade = parentWidget()->findChild<QWidget *>(
+                QStringLiteral("mainContentBottomFade"),
+                Qt::FindDirectChildrenOnly))
         {
-            if (QWidget *bottomFade = parentWidget()->findChild<QWidget *>(
-                    QStringLiteral("mainContentBottomFade"),
-                    Qt::FindDirectChildrenOnly))
-            {
-                bottomFade->raise();
-            }
+            bottomFade->raise();
         }
     }
 

@@ -1,7 +1,11 @@
 #ifndef VaporView_VISUAL_TEXT_LABEL_H_
 #define VaporView_VISUAL_TEXT_LABEL_H_
 
+#include <QClipboard>
 #include <QFontMetrics>
+#include <QGuiApplication>
+#include <QKeyEvent>
+#include <QKeySequence>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
@@ -114,6 +118,22 @@ protected:
         }
 
         QLabel::mouseReleaseEvent(event);
+        update();
+    }
+
+    void keyPressEvent(QKeyEvent *event) override
+    {
+        if (event && event->matches(QKeySequence::Copy) && hasSelectedText())
+        {
+            if (QClipboard *clipboard = QGuiApplication::clipboard())
+            {
+                clipboard->setText(selectedText());
+                event->accept();
+                return;
+            }
+        }
+
+        QLabel::keyPressEvent(event);
         update();
     }
 

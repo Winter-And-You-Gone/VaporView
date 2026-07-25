@@ -2452,9 +2452,13 @@ int main(int argc, char **argv)
                 .toBool(),
             "home scroll card shadow painting passes through the transparent scrollbar track");
     require(homeScrollShadowLayer
-                ->property("vaporViewTopLevelCardShadowKeepsScrollBarsAbove")
+                ->property("vaporViewTopLevelCardShadowPaintsOverTransparentScrollBarTrack")
                 .toBool(),
-            "home scroll card shadow layer stays below scrollbar controls to avoid track repaint flicker");
+            "home scroll card shadow layer paints above the transparent scrollbar track");
+    require(homeScrollShadowLayer
+                ->property("vaporViewTopLevelCardShadowClipsScrollBarControls")
+                .toBool(),
+            "home scroll card shadow layer clips the scrollbar handle and arrow controls");
     require(homeBottomFade->geometry().bottom() == homeScrollArea->viewport()->rect().bottom() &&
                 homeBottomFade->width() == homeScrollArea->viewport()->width(),
             "bottom fade stays flush with the scroll viewport edge");
