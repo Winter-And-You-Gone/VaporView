@@ -2620,7 +2620,7 @@ int main(int argc, char **argv)
     const int expectedCardOuterBottomGap =
         mainContentMargins.bottom() + kExpectedPageTopInset;
     const int expectedCardOuterRightGap =
-        mainContentMargins.right() + kExpectedPageLeftInset;
+        mainContentMargins.right();
     require(std::abs((recordingCardRect.top() - centralRect.top()) -
                      expectedCardOuterTopGap) <= 1,
             "recording status card keeps the app safe margin plus card shadow inset");
@@ -2635,7 +2635,7 @@ int main(int argc, char **argv)
             "sidebar left border uses the same outer margin as its bottom border");
     require(std::abs(recordingRightGap - expectedCardOuterRightGap) <= 1 &&
                 std::abs(logRightGap - expectedCardOuterRightGap) <= 1,
-            "recording status and log cards keep the safe margin plus right shadow inset");
+            "recording status and log cards keep the 8px right safe margin");
     QPushButton *checkedSidebarButton = nullptr;
     const QList<QPushButton*> sidebarButtons =
         window.findChildren<QPushButton *>(QStringLiteral("appSidebarButton"));

@@ -3727,7 +3727,7 @@ void MainWindow::setupLogPanel()
     // gutter. Do not add another left inset between the two card regions.
     logSideLayout->setContentsMargins(0,
                                       kTopLevelCardOuterVerticalInset,
-                                      kTopLevelCardChromeInset,
+                                      0,
                                       kTopLevelCardOuterVerticalInset);
     logSideLayout->setSpacing(kTopLevelCardGap);
 
