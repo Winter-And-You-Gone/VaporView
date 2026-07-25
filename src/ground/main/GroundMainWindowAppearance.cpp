@@ -182,11 +182,11 @@ void MainWindow::loadModernStyleSheet()
             "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background-color: @vv-surface-sunken; border-radius: 6px; }"
             "QScrollBar::add-page:horizontal:hover, QScrollBar::sub-page:horizontal:hover, QScrollBar::add-page:horizontal:pressed, QScrollBar::sub-page:horizontal:pressed { background-color: @vv-surface-sunken; }"
             "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0px; background-color: @vv-surface-sunken; }"
-            "QScrollArea#mainCardsScrollArea QScrollBar:vertical { background-color: transparent; margin: 14px 0px 14px 0px; } QScrollArea#mainCardsScrollArea QScrollBar:horizontal { background-color: transparent; margin: 0px; }"
-            "QScrollArea#mainCardsScrollArea QScrollBar::add-page:vertical, QScrollArea#mainCardsScrollArea QScrollBar::sub-page:vertical, QScrollArea#mainCardsScrollArea QScrollBar::add-page:horizontal, QScrollArea#mainCardsScrollArea QScrollBar::sub-page:horizontal { background-color: transparent; }"
-            "QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical, QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical { background-color: transparent; border: none; height: 14px; subcontrol-origin: margin; } QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical:hover, QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical:hover, QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical:pressed, QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical:pressed { background-color: transparent; } QScrollArea#mainCardsScrollArea QScrollBar::add-line:horizontal, QScrollArea#mainCardsScrollArea QScrollBar::sub-line:horizontal { background-color: transparent; border: none; width: 0px; }"
+            "QScrollArea#mainCardsScrollArea QScrollBar:vertical { background-color: @vv-surface; margin: 14px 0px 14px 0px; } QScrollArea#mainCardsScrollArea QScrollBar:horizontal { background-color: @vv-surface; margin: 0px; }"
+            "QScrollArea#mainCardsScrollArea QScrollBar::add-page:vertical, QScrollArea#mainCardsScrollArea QScrollBar::sub-page:vertical, QScrollArea#mainCardsScrollArea QScrollBar::add-page:horizontal, QScrollArea#mainCardsScrollArea QScrollBar::sub-page:horizontal { background-color: @vv-surface; }"
+            "QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical, QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical { background-color: @vv-surface; border: none; height: 14px; subcontrol-origin: margin; } QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical:hover, QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical:hover, QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical:pressed, QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical:pressed { background-color: @vv-surface; } QScrollArea#mainCardsScrollArea QScrollBar::add-line:horizontal, QScrollArea#mainCardsScrollArea QScrollBar::sub-line:horizontal { background-color: @vv-surface; border: none; width: 0px; }"
             ""
-            "QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, QScrollArea#mainCardsScrollArea QScrollBar::handle:horizontal { border: 2px solid transparent; }"
+            "QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, QScrollArea#mainCardsScrollArea QScrollBar::handle:horizontal { border: 2px solid @vv-surface; }"
             "QSplitter::handle { background-color: transparent; }"
             "QSplitter#appLayoutSplitter::handle:horizontal { width: 0px; background-color: transparent; }"
             "QSplitter#appLayoutSplitter::handle:horizontal:hover { background-color: transparent; }"
@@ -887,15 +887,14 @@ void MainWindow::updateResponsiveHomeLayout()
         QMargins contentMargins = contentLayout ? contentLayout->contentsMargins() : QMargins();
         if (contentLayout)
         {
-            const QScrollBar *verticalScrollBar = state_->main_cards_scroll_area_->verticalScrollBar();
-            const bool reservesVerticalScrollBar =
-                verticalScrollBar &&
-                (state_->main_cards_scroll_area_->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn ||
-                 verticalScrollBar->isVisible());
-            const int reservedScrollBarWidth = reservesVerticalScrollBar
-                ? std::max(verticalScrollBar->width(), verticalScrollBar->sizeHint().width())
-                : 0;
-            const int targetRightMargin = std::max(0, contentMargins.left() - reservedScrollBarWidth);
+            const qreal shadowScale = std::max<qreal>(
+                0.5,
+                state_->font_scale_percent_ / 100.0);
+            const int shadowSafeRightInset = std::max(
+                contentMargins.left(),
+                static_cast<int>(std::ceil(
+                    VaporView::kTopLevelCardShadowBlurRadius * shadowScale * 0.6)) + 1);
+            const int targetRightMargin = shadowSafeRightInset;
             if (contentMargins.right() != targetRightMargin)
             {
                 contentMargins.setRight(targetRightMargin);

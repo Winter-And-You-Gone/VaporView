@@ -9,8 +9,6 @@
 #include <QPointer>
 #include <QScrollBar>
 #include <QSet>
-#include <QStyle>
-#include <QStyleOptionSlider>
 #include <QWidget>
 
 #include <algorithm>
@@ -30,12 +28,10 @@ inline constexpr const char *kShadowColorProperty =
     "vaporViewTopLevelCardShadowColor";
 inline constexpr const char *kShadowCardCountProperty =
     "vaporViewTopLevelCardShadowCardCount";
-inline constexpr const char *kShadowAllowsTransparentScrollBarTrackProperty =
-    "vaporViewTopLevelCardShadowAllowsTransparentScrollBarTrack";
-inline constexpr const char *kShadowPaintsOverTransparentScrollBarTrackProperty =
-    "vaporViewTopLevelCardShadowPaintsOverTransparentScrollBarTrack";
-inline constexpr const char *kShadowClipsScrollBarControlsProperty =
-    "vaporViewTopLevelCardShadowClipsScrollBarControls";
+inline constexpr const char *kShadowUsesOpaqueScrollBarTrackProperty =
+    "vaporViewTopLevelCardShadowUsesOpaqueScrollBarTrack";
+inline constexpr const char *kShadowClipsScrollBarTrackProperty =
+    "vaporViewTopLevelCardShadowClipsScrollBarTrack";
 
 class TopLevelCardShadowLayer final : public QWidget
 {
@@ -63,11 +59,6 @@ public:
         }
         observedObjects_.clear();
         observedObjects_.insert(parentWidget());
-        if (auto *scrollArea = qobject_cast<QAbstractScrollArea *>(parentWidget()))
-        {
-            observeScrollBar(scrollArea->verticalScrollBar());
-            observeScrollBar(scrollArea->horizontalScrollBar());
-        }
 
         cards_.clear();
         for (QWidget *card : cards)
@@ -98,11 +89,9 @@ public:
         setProperty(kShadowColorProperty,
                     QColor(0, 0, 0, kTopLevelCardShadowAlpha));
         setProperty(kShadowCardCountProperty, cards_.size());
-        setProperty(kShadowAllowsTransparentScrollBarTrackProperty,
+        setProperty(kShadowUsesOpaqueScrollBarTrackProperty,
                     qobject_cast<QAbstractScrollArea *>(parentWidget()) != nullptr);
-        setProperty(kShadowPaintsOverTransparentScrollBarTrackProperty,
-                    qobject_cast<QAbstractScrollArea *>(parentWidget()) != nullptr);
-        setProperty(kShadowClipsScrollBarControlsProperty,
+        setProperty(kShadowClipsScrollBarTrackProperty,
                     qobject_cast<QAbstractScrollArea *>(parentWidget()) != nullptr);
 
         setGeometry(parentWidget()->rect());
@@ -126,7 +115,6 @@ protected:
         case QEvent::LayoutRequest:
         case QEvent::ParentChange:
         case QEvent::StyleChange:
-        case QEvent::ZOrderChange:
             if (watched == parentWidget())
             {
                 setGeometry(parentWidget()->rect());
@@ -207,10 +195,10 @@ protected:
         shadowClip = shadowClip.subtracted(cardSurfaces);
         if (auto *scrollArea = qobject_cast<QAbstractScrollArea *>(host))
         {
-            QPainterPath scrollBarControlClip;
-            addScrollBarControlClip(scrollArea->verticalScrollBar(), scrollBarControlClip);
-            addScrollBarControlClip(scrollArea->horizontalScrollBar(), scrollBarControlClip);
-            shadowClip = shadowClip.subtracted(scrollBarControlClip);
+            QPainterPath scrollBarTrackClip;
+            addScrollBarTrackClip(scrollArea->verticalScrollBar(), scrollBarTrackClip);
+            addScrollBarTrackClip(scrollArea->horizontalScrollBar(), scrollBarTrackClip);
+            shadowClip = shadowClip.subtracted(scrollBarTrackClip);
         }
         painter.save();
         painter.setClipPath(shadowClip);
@@ -253,14 +241,10 @@ private:
         raise();
         if (auto *scrollArea = qobject_cast<QAbstractScrollArea *>(parentWidget()))
         {
-            // The main card scrollbars use a transparent track so card shadows
-            // can remain visible behind that gutter. Keeping the whole
-            // QScrollBar widget above this layer lets the transparent widget
-            // erase the shadow on some repaints, which causes the edge flicker
-            // seen while telemetry/layout refreshes run. Keep this
-            // mouse-transparent layer above the scrollbars instead; paintEvent()
-            // clips out the actual scrollbar controls so the handle/arrows stay
-            // visible and interactive.
+            // The native scrollbars use an opaque, fixed background. Keep the
+            // shadow layer above the content and out of the scrollbar rect;
+            // repeatedly raising the native widgets during layout updates
+            // causes Windows backing-store z-order flicker.
             Q_UNUSED(scrollArea);
             return;
         }
@@ -273,20 +257,10 @@ private:
         }
     }
 
-    void observeScrollBar(QScrollBar *scrollBar)
-    {
-        if (scrollBar && !observedObjects_.contains(scrollBar))
-        {
-            observedObjects_.insert(scrollBar);
-            scrollBar->installEventFilter(this);
-        }
-    }
-
-    void addScrollBarControlClip(QScrollBar *scrollBar, QPainterPath& clip) const
+    void addScrollBarTrackClip(QScrollBar *scrollBar, QPainterPath& clip) const
     {
         if (!scrollBar ||
             !scrollBar->isVisible() ||
-            scrollBar->maximum() <= scrollBar->minimum() ||
             scrollBar->width() <= 0 ||
             scrollBar->height() <= 0 ||
             !parentWidget())
@@ -294,43 +268,9 @@ private:
             return;
         }
 
-        QStyleOptionSlider option;
-        option.initFrom(scrollBar);
-        option.orientation = scrollBar->orientation();
-        option.minimum = scrollBar->minimum();
-        option.maximum = scrollBar->maximum();
-        option.sliderPosition = scrollBar->sliderPosition();
-        option.sliderValue = scrollBar->value();
-        option.singleStep = scrollBar->singleStep();
-        option.pageStep = scrollBar->pageStep();
-        option.upsideDown = scrollBar->invertedAppearance();
-        if (scrollBar->orientation() == Qt::Horizontal)
-        {
-            option.state |= QStyle::State_Horizontal;
-        }
-
-        const QList<QStyle::SubControl> controls = {
-            QStyle::SC_ScrollBarSubLine,
-            QStyle::SC_ScrollBarAddLine,
-            QStyle::SC_ScrollBarSlider,
-        };
-        for (QStyle::SubControl control : controls)
-        {
-            const QRect controlRect =
-                scrollBar->style()->subControlRect(QStyle::CC_ScrollBar,
-                                                   &option,
-                                                   control,
-                                                   scrollBar);
-            if (!controlRect.isValid() || controlRect.isEmpty())
-            {
-                continue;
-            }
-
-            const QRectF hostControlRect(
-                scrollBar->mapTo(parentWidget(), controlRect.topLeft()),
-                controlRect.size());
-            clip.addRect(hostControlRect.adjusted(-1.0, -1.0, 1.0, 1.0));
-        }
+        const QRectF hostTrackRect(scrollBar->mapTo(parentWidget(), QPoint(0, 0)),
+                                   scrollBar->size());
+        clip.addRect(hostTrackRect.adjusted(-1.0, -1.0, 1.0, 1.0));
     }
 
     QList<QPointer<QWidget>> cards_;

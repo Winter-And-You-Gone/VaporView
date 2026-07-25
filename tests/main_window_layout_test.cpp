@@ -57,6 +57,7 @@
 #include <QToolButton>
 #include <QWidget>
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
@@ -2316,8 +2317,9 @@ int main(int argc, char **argv)
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical {"),
-        QStringLiteral("background-color: transparent"),
-        "main card scrollbar track stays visually transparent");
+        QStringLiteral("background-color: ") +
+            VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, false),
+        "main card scrollbar track uses an opaque surface plane");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical {"),
@@ -2339,8 +2341,9 @@ int main(int argc, char **argv)
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, "),
-        QStringLiteral("border: 2px solid transparent"),
-        "main card scrollbar handle does not paint an opaque strip over card shadows");
+        QStringLiteral("border: 2px solid ") +
+            VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, false),
+        "main card scrollbar handle stays inside the opaque surface plane");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QDialog#rtkConfigDialog QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] {"),
@@ -2423,6 +2426,9 @@ int main(int argc, char **argv)
         VaporView::Ground::MainSupport::kTopLevelCardGap;
     constexpr int kExpectedVisibleOuterGap =
         VaporView::Ground::MainSupport::kTopLevelCardGap;
+    const int kExpectedHomeShadowSafeRightInset = std::max(
+        kExpectedPageLeftInset,
+        static_cast<int>(std::ceil(VaporView::kTopLevelCardShadowBlurRadius * 0.6)) + 1);
     QWidget *homeScrollContent = homeScrollArea->widget();
     require(homeScrollContent != nullptr, "home scroll content exists for bottom-fade behavior");
     const int originalContentMinimumHeight = homeScrollContent->minimumHeight();
@@ -2450,17 +2456,13 @@ int main(int argc, char **argv)
                     homeScrollArea->verticalScrollBar()->width(),
             "home scroll card shadow layer covers the scroll area canvas");
     require(homeScrollShadowLayer
-                ->property("vaporViewTopLevelCardShadowAllowsTransparentScrollBarTrack")
+                ->property("vaporViewTopLevelCardShadowUsesOpaqueScrollBarTrack")
                 .toBool(),
-            "home scroll card shadow painting passes through the transparent scrollbar track");
+            "home scroll card shadow layer uses an opaque scrollbar track outside the shadow area");
     require(homeScrollShadowLayer
-                ->property("vaporViewTopLevelCardShadowPaintsOverTransparentScrollBarTrack")
+                ->property("vaporViewTopLevelCardShadowClipsScrollBarTrack")
                 .toBool(),
-            "home scroll card shadow layer paints above the transparent scrollbar track");
-    require(homeScrollShadowLayer
-                ->property("vaporViewTopLevelCardShadowClipsScrollBarControls")
-                .toBool(),
-            "home scroll card shadow layer clips the scrollbar handle and arrow controls");
+            "home scroll card shadow layer clips the full scrollbar track");
     require(homeBottomFade->geometry().bottom() == homeScrollArea->viewport()->rect().bottom() &&
                 homeBottomFade->width() == homeScrollArea->viewport()->width(),
             "bottom fade stays flush with the scroll viewport edge");
@@ -2479,13 +2481,8 @@ int main(int argc, char **argv)
     if (QLayout *homeContentLayout = homeScrollContent->layout())
     {
         const QMargins homeContentMargins = homeContentLayout->contentsMargins();
-        const QScrollBar *homeVerticalScrollBar = homeScrollArea->verticalScrollBar();
-        const int stableScrollBarWidth = homeVerticalScrollBar
-            ? std::max(homeVerticalScrollBar->width(), homeVerticalScrollBar->sizeHint().width())
-            : 0;
-        require(homeContentMargins.right() ==
-                    std::max(0, homeContentMargins.left() - stableScrollBarWidth),
-                "home card right inset is derived from the stable scrollbar gutter, not scrollbar range");
+        require(homeContentMargins.right() == kExpectedHomeShadowSafeRightInset,
+                "home card right inset keeps the card shadow physically separated from the scrollbar track");
     }
     if (homeScrollArea->horizontalScrollBar()->maximum() != 0)
     {
@@ -2614,8 +2611,9 @@ int main(int argc, char **argv)
     require(std::abs(homeLeftVisualGap - kExpectedTopLevelCardGap) <= 1 &&
                 std::abs(homeRightVisualGap - kExpectedTopLevelCardGap) <= 1,
             "home cards keep exact 12px visible gaps beside both side panels");
-    require(std::abs(homeTemperatureToRecordingGap - kExpectedTopLevelCardGap) <= 1,
-            "home temperature overview and recording status cards keep an exact 12px visual gap including the scrollbar");
+    require(std::abs(homeTemperatureToRecordingGap -
+                     (kExpectedTopLevelCardGap + kExpectedHomeShadowSafeRightInset)) <= 1,
+            "home temperature overview and recording status cards keep a shadow-safe gap before the scrollbar");
     auto *homeDataGroupForSpacing =
         window.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer"));
     require(homeDataGroupForSpacing != nullptr, "home sensor row container exists for top-level spacing checks");

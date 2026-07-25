@@ -3,7 +3,11 @@
 
 #include "ground/widgets/VisualTextLabel.h"
 
+#include <QClipboard>
 #include <QEvent>
+#include <QGuiApplication>
+#include <QKeyEvent>
+#include <QKeySequence>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QObject>
@@ -27,6 +31,19 @@ protected:
         {
             event->accept();
             return true;
+        }
+        if (label && event->type() == QEvent::KeyPress)
+        {
+            auto *keyEvent = static_cast<QKeyEvent *>(event);
+            if (keyEvent->matches(QKeySequence::Copy) && label->hasSelectedText())
+            {
+                if (QClipboard *clipboard = QGuiApplication::clipboard())
+                {
+                    clipboard->setText(label->selectedText());
+                    event->accept();
+                    return true;
+                }
+            }
         }
         if (label && event->type() == QEvent::MouseButtonPress)
         {
