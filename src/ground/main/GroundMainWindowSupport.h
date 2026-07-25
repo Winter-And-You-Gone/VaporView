@@ -304,6 +304,7 @@ void setWindowsTitleBarDark(QWidget *window, bool dark);
 QString darkThemeStyleSheet();
 QString darkOverviewStyleSheet();
 QString mainCardsScrollBarBackgroundStyleSheet(bool dark);
+QString mainCardsTopLevelCardStyleSheet();
 QString rtkConfigCardStyleSheet();
 
 QString imuFrameTypeName(ImuFrameType type);

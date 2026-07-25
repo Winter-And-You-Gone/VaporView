@@ -1452,6 +1452,14 @@ QFrame[vaporViewTopLevelCard="true"] {
     border-radius: 12px;
 }
 
+QScrollArea#mainCardsScrollArea QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"],
+QScrollArea#mainCardsScrollArea QFrame#epsilonSectionCard[vaporViewTopLevelCard="true"],
+QScrollArea#mainCardsScrollArea QFrame#recordingStatusCard[vaporViewTopLevelCard="true"],
+QScrollArea#mainCardsScrollArea QFrame#logPanelFrame[vaporViewTopLevelCard="true"],
+QScrollArea#mainCardsScrollArea QFrame[vaporViewTopLevelCard="true"] {
+    border-color: transparent;
+}
+
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > QWidget#environmentSectionTitleBar,
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > TcpWavePanel > QWidget#sectionTitleBar,

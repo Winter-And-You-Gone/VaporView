@@ -1141,6 +1141,17 @@ QString mainCardsScrollBarBackgroundStyleSheet(bool dark)
         .arg(background);
 }
 
+QString mainCardsTopLevelCardStyleSheet()
+{
+    return QStringLiteral(
+        "QScrollArea#mainCardsScrollArea QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"], "
+        "QScrollArea#mainCardsScrollArea QFrame#epsilonSectionCard[vaporViewTopLevelCard=\"true\"], "
+        "QScrollArea#mainCardsScrollArea QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"], "
+        "QScrollArea#mainCardsScrollArea QFrame#logPanelFrame[vaporViewTopLevelCard=\"true\"], "
+        "QScrollArea#mainCardsScrollArea QFrame[vaporViewTopLevelCard=\"true\"] { "
+        "border-color: transparent; }");
+}
+
 QString rtkConfigCardStyleSheet()
 {
     return QStringLiteral(

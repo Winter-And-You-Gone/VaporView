@@ -281,6 +281,7 @@ QString MainWindow::themedStyleSheet() const
     const QString mainCardsScrollBarStyle =
         applyAppThemeTokens(mainCardsScrollBarBackgroundStyleSheet(state_->dark_theme_enabled_),
                             state_->dark_theme_enabled_);
+    const QString mainCardsTopLevelCardStyle = mainCardsTopLevelCardStyleSheet();
     const QString rtkConfigCardStyle =
         applyAppThemeTokens(rtkConfigCardStyleSheet(), state_->dark_theme_enabled_);
     return state_->dark_theme_enabled_
@@ -288,11 +289,13 @@ QString MainWindow::themedStyleSheet() const
               darkStyle +
               applyAppThemeTokens(darkOverviewStyleSheet(), true) +
               mainCardsScrollBarStyle +
+              mainCardsTopLevelCardStyle +
               rtkConfigCardStyle +
               applyAppThemeTokens(customTitleBarStyleSheet(true), true) +
               applyAppThemeTokens(temperatureControllerConfigStyleSheet(), true)
         : baseStyle +
               mainCardsScrollBarStyle +
+              mainCardsTopLevelCardStyle +
               rtkConfigCardStyle +
               applyAppThemeTokens(customTitleBarStyleSheet(false), false) +
               applyAppThemeTokens(temperatureControllerConfigStyleSheet(), false);
