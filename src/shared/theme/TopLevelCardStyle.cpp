@@ -4,6 +4,7 @@
 #include <QColor>
 #include <QEvent>
 #include <QHash>
+#include <QLinearGradient>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPointer>
@@ -30,6 +31,8 @@ inline constexpr const char *kShadowCardCountProperty =
     "vaporViewTopLevelCardShadowCardCount";
 inline constexpr const char *kShadowClipsScrollBarGutterProperty =
     "vaporViewTopLevelCardShadowClipsScrollBarGutter";
+inline constexpr const char *kShadowDrawsStableScrollBarGutterProperty =
+    "vaporViewTopLevelCardShadowDrawsStableScrollBarGutter";
 
 class TopLevelCardShadowLayer final : public QWidget
 {
@@ -93,6 +96,8 @@ public:
                     QColor(0, 0, 0, kTopLevelCardShadowAlpha));
         setProperty(kShadowCardCountProperty, cards_.size());
         setProperty(kShadowClipsScrollBarGutterProperty,
+                    qobject_cast<QAbstractScrollArea *>(parentWidget()) != nullptr);
+        setProperty(kShadowDrawsStableScrollBarGutterProperty,
                     qobject_cast<QAbstractScrollArea *>(parentWidget()) != nullptr);
 
         setGeometry(parentWidget()->rect());
@@ -201,6 +206,7 @@ protected:
             addScrollBarGutterClip(scrollArea->horizontalScrollBar(), scrollbarGutterClip);
             shadowClip = shadowClip.subtracted(scrollbarGutterClip);
         }
+        painter.save();
         painter.setClipPath(shadowClip);
 
         for (int spread = spreadCount; spread >= 1; --spread)
@@ -231,13 +237,30 @@ protected:
             painter.fillPath(shadowPath,
                              QColor(0, 0, 0, layerAlpha));
         }
+        painter.restore();
+
+        if (auto *scrollArea = qobject_cast<QAbstractScrollArea *>(host))
+        {
+            drawStableScrollBarGutterShadow(scrollArea, painter);
+        }
     }
 
 private:
     void raiseAboveContent()
     {
         raise();
-        if (!qobject_cast<QAbstractScrollArea *>(parentWidget()))
+        if (auto *scrollArea = qobject_cast<QAbstractScrollArea *>(parentWidget()))
+        {
+            if (QScrollBar *verticalScrollBar = scrollArea->verticalScrollBar())
+            {
+                verticalScrollBar->raise();
+            }
+            if (QScrollBar *horizontalScrollBar = scrollArea->horizontalScrollBar())
+            {
+                horizontalScrollBar->raise();
+            }
+        }
+        else
         {
             if (QWidget *bottomFade = parentWidget()->findChild<QWidget *>(
                     QStringLiteral("mainContentBottomFade"),
@@ -246,6 +269,74 @@ private:
                 bottomFade->raise();
             }
         }
+    }
+
+    void drawStableScrollBarGutterShadow(QAbstractScrollArea *scrollArea,
+                                         QPainter& painter) const
+    {
+        drawStableScrollBarGutterShadow(scrollArea->verticalScrollBar(), painter);
+        drawStableScrollBarGutterShadow(scrollArea->horizontalScrollBar(), painter);
+    }
+
+    void drawStableScrollBarGutterShadow(QScrollBar *scrollBar,
+                                         QPainter& painter) const
+    {
+        if (!scrollBar ||
+            !scrollBar->isVisible() ||
+            scrollBar->width() <= 0 ||
+            scrollBar->height() <= 0 ||
+            !parentWidget())
+        {
+            return;
+        }
+
+        const QRectF hostScrollBarRect(
+            scrollBar->mapTo(parentWidget(), QPoint(0, 0)),
+            scrollBar->size());
+        if (!hostScrollBarRect.intersects(QRectF(rect())))
+        {
+            return;
+        }
+
+        painter.save();
+        painter.setClipRect(hostScrollBarRect.adjusted(-1.0, -1.0, 1.0, 1.0));
+        if (scrollBar->orientation() == Qt::Horizontal)
+        {
+            const qreal height =
+                std::min<qreal>(hostScrollBarRect.height() + 1.0,
+                                std::max<qreal>(6.0, 8.0 * uiScale_));
+            const QRectF fadeRect(hostScrollBarRect.left(),
+                                  hostScrollBarRect.top() - 1.0,
+                                  hostScrollBarRect.width(),
+                                  height);
+            QLinearGradient gradient(fadeRect.left(),
+                                     fadeRect.top(),
+                                     fadeRect.left(),
+                                     fadeRect.bottom());
+            gradient.setColorAt(0.0, QColor(0, 0, 0, 16));
+            gradient.setColorAt(0.45, QColor(0, 0, 0, 7));
+            gradient.setColorAt(1.0, QColor(0, 0, 0, 0));
+            painter.fillRect(fadeRect, gradient);
+        }
+        else
+        {
+            const qreal width =
+                std::min<qreal>(hostScrollBarRect.width() + 1.0,
+                                std::max<qreal>(7.0, 9.0 * uiScale_));
+            const QRectF fadeRect(hostScrollBarRect.left() - 1.0,
+                                  hostScrollBarRect.top(),
+                                  width,
+                                  hostScrollBarRect.height());
+            QLinearGradient gradient(fadeRect.left(),
+                                     fadeRect.top(),
+                                     fadeRect.right(),
+                                     fadeRect.top());
+            gradient.setColorAt(0.0, QColor(0, 0, 0, 18));
+            gradient.setColorAt(0.42, QColor(0, 0, 0, 8));
+            gradient.setColorAt(1.0, QColor(0, 0, 0, 0));
+            painter.fillRect(fadeRect, gradient);
+        }
+        painter.restore();
     }
 
     void observeScrollBar(QScrollBar *scrollBar)
