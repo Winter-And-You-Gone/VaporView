@@ -863,16 +863,35 @@ QScrollBar::sub-line:horizontal {
 }
 
 QScrollArea#mainCardsScrollArea QScrollBar:vertical,
-QScrollArea#mainCardsScrollArea QScrollBar:horizontal,
+QScrollArea#mainCardsScrollArea QScrollBar:horizontal {
+    background-color: transparent;
+    margin: 0px;
+}
+
 QScrollArea#mainCardsScrollArea QScrollBar::add-page:vertical,
 QScrollArea#mainCardsScrollArea QScrollBar::sub-page:vertical,
 QScrollArea#mainCardsScrollArea QScrollBar::add-page:horizontal,
-QScrollArea#mainCardsScrollArea QScrollBar::sub-page:horizontal,
+QScrollArea#mainCardsScrollArea QScrollBar::sub-page:horizontal {
+    background-color: transparent;
+}
+
 QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical,
 QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical,
 QScrollArea#mainCardsScrollArea QScrollBar::add-line:horizontal,
 QScrollArea#mainCardsScrollArea QScrollBar::sub-line:horizontal {
     background-color: transparent;
+    border: none;
+    width: 0px;
+    height: 0px;
+}
+
+QScrollArea#mainCardsScrollArea QScrollBar::up-arrow:vertical,
+QScrollArea#mainCardsScrollArea QScrollBar::down-arrow:vertical,
+QScrollArea#mainCardsScrollArea QScrollBar::left-arrow:horizontal,
+QScrollArea#mainCardsScrollArea QScrollBar::right-arrow:horizontal {
+    image: none;
+    width: 0px;
+    height: 0px;
 }
 
 QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical,

@@ -9,8 +9,6 @@
 #include <QPointer>
 #include <QScrollBar>
 #include <QSet>
-#include <QStyle>
-#include <QStyleOptionSlider>
 #include <QWidget>
 
 #include <algorithm>
@@ -30,6 +28,8 @@ inline constexpr const char *kShadowColorProperty =
     "vaporViewTopLevelCardShadowColor";
 inline constexpr const char *kShadowCardCountProperty =
     "vaporViewTopLevelCardShadowCardCount";
+inline constexpr const char *kShadowClipsScrollBarGutterProperty =
+    "vaporViewTopLevelCardShadowClipsScrollBarGutter";
 
 class TopLevelCardShadowLayer final : public QWidget
 {
@@ -92,6 +92,8 @@ public:
         setProperty(kShadowColorProperty,
                     QColor(0, 0, 0, kTopLevelCardShadowAlpha));
         setProperty(kShadowCardCountProperty, cards_.size());
+        setProperty(kShadowClipsScrollBarGutterProperty,
+                    qobject_cast<QAbstractScrollArea *>(parentWidget()) != nullptr);
 
         setGeometry(parentWidget()->rect());
         setVisible(!cards_.isEmpty());
@@ -194,10 +196,10 @@ protected:
         shadowClip = shadowClip.subtracted(cardSurfaces);
         if (auto *scrollArea = qobject_cast<QAbstractScrollArea *>(host))
         {
-            QPainterPath scrollbarSliderClip;
-            addScrollBarSliderClip(scrollArea->verticalScrollBar(), scrollbarSliderClip);
-            addScrollBarSliderClip(scrollArea->horizontalScrollBar(), scrollbarSliderClip);
-            shadowClip = shadowClip.subtracted(scrollbarSliderClip);
+            QPainterPath scrollbarGutterClip;
+            addScrollBarGutterClip(scrollArea->verticalScrollBar(), scrollbarGutterClip);
+            addScrollBarGutterClip(scrollArea->horizontalScrollBar(), scrollbarGutterClip);
+            shadowClip = shadowClip.subtracted(scrollbarGutterClip);
         }
         painter.setClipPath(shadowClip);
 
@@ -255,45 +257,28 @@ private:
         }
     }
 
-    void addScrollBarSliderClip(QScrollBar *scrollBar, QPainterPath& clip) const
+    void addScrollBarGutterClip(QScrollBar *scrollBar, QPainterPath& clip) const
     {
         if (!scrollBar ||
             !scrollBar->isVisible() ||
-            scrollBar->maximum() <= scrollBar->minimum() ||
+            scrollBar->width() <= 0 ||
+            scrollBar->height() <= 0 ||
             !parentWidget())
         {
             return;
         }
 
-        QStyleOptionSlider option;
-        option.initFrom(scrollBar);
-        option.orientation = scrollBar->orientation();
-        option.minimum = scrollBar->minimum();
-        option.maximum = scrollBar->maximum();
-        option.sliderPosition = scrollBar->sliderPosition();
-        option.sliderValue = scrollBar->value();
-        option.singleStep = scrollBar->singleStep();
-        option.pageStep = scrollBar->pageStep();
-        option.upsideDown = scrollBar->invertedAppearance();
+        const QRectF hostScrollBarRect(
+            scrollBar->mapTo(parentWidget(), QPoint(0, 0)),
+            scrollBar->size());
         if (scrollBar->orientation() == Qt::Horizontal)
         {
-            option.state |= QStyle::State_Horizontal;
+            clip.addRect(hostScrollBarRect.adjusted(0.0, 0.0, 0.0, 1.0));
         }
-
-        const QRect sliderRect =
-            scrollBar->style()->subControlRect(QStyle::CC_ScrollBar,
-                                               &option,
-                                               QStyle::SC_ScrollBarSlider,
-                                               scrollBar);
-        if (!sliderRect.isValid())
+        else
         {
-            return;
+            clip.addRect(hostScrollBarRect.adjusted(0.0, 0.0, 1.0, 0.0));
         }
-
-        const QRectF hostSliderRect(
-            scrollBar->mapTo(parentWidget(), sliderRect.topLeft()),
-            sliderRect.size());
-        clip.addRect(hostSliderRect.adjusted(-1.0, -1.0, 1.0, 1.0));
     }
 
     QList<QPointer<QWidget>> cards_;

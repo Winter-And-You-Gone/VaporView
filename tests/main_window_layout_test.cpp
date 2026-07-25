@@ -2317,7 +2317,22 @@ int main(int argc, char **argv)
         qApp->styleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical, "),
         QStringLiteral("background-color: transparent"),
-        "main card scrollbar track stays transparent so card shadows remain visible");
+        "main card scrollbar track stays visually transparent");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical, "),
+        QStringLiteral("margin: 0px"),
+        "main card scrollbar track does not reserve flashing line-button margins");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical, "),
+        QStringLiteral("height: 0px"),
+        "main card scrollbar line buttons stay collapsed");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::up-arrow:vertical, "),
+        QStringLiteral("image: none"),
+        "main card scrollbar arrows stay hidden");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, "),
@@ -2428,7 +2443,11 @@ int main(int argc, char **argv)
     require(homeScrollShadowLayer->width() >=
                 homeScrollArea->viewport()->width() +
                     homeScrollArea->verticalScrollBar()->width(),
-            "home scroll card shadow layer covers the scrollbar gutter");
+            "home scroll card shadow layer covers the scroll area canvas");
+    require(homeScrollShadowLayer
+                ->property("vaporViewTopLevelCardShadowClipsScrollBarGutter")
+                .toBool(),
+            "home scroll card shadow painting clips the scrollbar gutter to avoid track flicker");
     require(homeBottomFade->geometry().bottom() == homeScrollArea->viewport()->rect().bottom() &&
                 homeBottomFade->width() == homeScrollArea->viewport()->width(),
             "bottom fade stays flush with the scroll viewport edge");
