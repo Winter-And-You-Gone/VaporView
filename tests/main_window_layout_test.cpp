@@ -2382,6 +2382,8 @@ int main(int argc, char **argv)
     require(mainPageStackForScroll != nullptr, "main page stack exists for home scroll check");
     auto *homeScrollArea = qobject_cast<QScrollArea *>(mainPageStackForScroll->currentWidget());
     require(homeScrollArea != nullptr, "home scroll area exists");
+    require(homeScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
+            "home scroll area keeps a stable vertical gutter to prevent card edge flicker");
     QWidget *homeScrollShadowLayer = homeScrollArea->findChild<QWidget *>(
         QString::fromLatin1(VaporView::kTopLevelCardShadowLayerName),
         Qt::FindDirectChildrenOnly);
@@ -2474,6 +2476,17 @@ int main(int argc, char **argv)
     homeScrollArea->verticalScrollBar()->setValue(originalScrollValue);
     processEventsFor(50);
     processEventsFor(250);
+    if (QLayout *homeContentLayout = homeScrollContent->layout())
+    {
+        const QMargins homeContentMargins = homeContentLayout->contentsMargins();
+        const QScrollBar *homeVerticalScrollBar = homeScrollArea->verticalScrollBar();
+        const int stableScrollBarWidth = homeVerticalScrollBar
+            ? std::max(homeVerticalScrollBar->width(), homeVerticalScrollBar->sizeHint().width())
+            : 0;
+        require(homeContentMargins.right() ==
+                    std::max(0, homeContentMargins.left() - stableScrollBarWidth),
+                "home card right inset is derived from the stable scrollbar gutter, not scrollbar range");
+    }
     if (homeScrollArea->horizontalScrollBar()->maximum() != 0)
     {
         auto *homeContent = homeScrollArea->widget();

@@ -1224,7 +1224,9 @@ void MainWindow::setupCentralWidget()
     state_->main_cards_scroll_area_->viewport()->setAutoFillBackground(true);
     state_->main_cards_scroll_area_->setWidgetResizable(true);
     state_->main_cards_scroll_area_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    state_->main_cards_scroll_area_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    // Keep the home page viewport width stable: the top-level card shadow gutter
+    // must not depend on the vertical scrollbar range toggling around zero.
+    state_->main_cards_scroll_area_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
     state_->main_cards_scroll_area_->setFrameShape(QFrame::NoFrame);
     state_->main_cards_scroll_area_->setMinimumWidth(0);
     state_->main_cards_scroll_area_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);

@@ -888,12 +888,14 @@ void MainWindow::updateResponsiveHomeLayout()
         if (contentLayout)
         {
             const QScrollBar *verticalScrollBar = state_->main_cards_scroll_area_->verticalScrollBar();
-            const int visibleScrollBarWidth =
-                verticalScrollBar && verticalScrollBar->isVisible() &&
-                    verticalScrollBar->maximum() > verticalScrollBar->minimum()
-                ? verticalScrollBar->width()
+            const bool reservesVerticalScrollBar =
+                verticalScrollBar &&
+                (state_->main_cards_scroll_area_->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn ||
+                 verticalScrollBar->isVisible());
+            const int reservedScrollBarWidth = reservesVerticalScrollBar
+                ? std::max(verticalScrollBar->width(), verticalScrollBar->sizeHint().width())
                 : 0;
-            const int targetRightMargin = std::max(0, contentMargins.left() - visibleScrollBarWidth);
+            const int targetRightMargin = std::max(0, contentMargins.left() - reservedScrollBarWidth);
             if (contentMargins.right() != targetRightMargin)
             {
                 contentMargins.setRight(targetRightMargin);
