@@ -2449,9 +2449,9 @@ int main(int argc, char **argv)
                 .toBool(),
             "home scroll card shadow painting clips the scrollbar gutter to avoid track flicker");
     require(homeScrollShadowLayer
-                ->property("vaporViewTopLevelCardShadowDrawsStableScrollBarGutter")
+                ->property("vaporViewTopLevelCardShadowDrawsStableScrollBarEdge")
                 .toBool(),
-            "home scroll card shadow painting restores a stable scrollbar-edge shadow");
+            "home scroll card shadow painting restores a stable edge shadow outside the transparent scrollbar track");
     require(homeBottomFade->geometry().bottom() == homeScrollArea->viewport()->rect().bottom() &&
                 homeBottomFade->width() == homeScrollArea->viewport()->width(),
             "bottom fade stays flush with the scroll viewport edge");
