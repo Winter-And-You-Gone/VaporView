@@ -152,6 +152,10 @@ public:
             connect(vertical_scroll_bar_, &QScrollBar::rangeChanged,
                     this, [this](int, int) { scheduleSync(); });
         }
+        // Establish the hidden-scrollbar rail before the page can be shown.
+        // Waiting for the queued pass leaves stretchable cards one rail wider
+        // for the first frame, which is visible as a right-edge flash.
+        sync();
         scheduleSync();
     }
 

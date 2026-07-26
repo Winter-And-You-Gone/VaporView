@@ -92,6 +92,9 @@ constexpr int kEmbeddedMainContentRightCardInset =
          ? 1
          : 0) +
     1;
+constexpr int kEmbeddedMainContentVerticalScrollBarWidth = 8;
+constexpr int kEmbeddedMainContentRightInsetWithHiddenScrollBar =
+    kEmbeddedMainContentRightCardInset + kEmbeddedMainContentVerticalScrollBarWidth;
 constexpr const char *kEpsilonMainGgaSourceKey = "__epsilon_main__";
 constexpr const char *kSectionTitleIconNameProperty = "_vv_section_title_icon_name";
 constexpr int kSectionTitleIconBoxSize = 26;
@@ -1170,7 +1173,7 @@ void RtkConfigDialog::setupUi()
                                                : kEmbeddedTopLevelCardChromeInset,
                                      embedded_ ? kEmbeddedTopLevelCardOuterVerticalInset
                                                : kEmbeddedTopLevelCardChromeInset,
-                                     embedded_ ? kEmbeddedMainContentRightCardInset
+                                     embedded_ ? kEmbeddedMainContentRightInsetWithHiddenScrollBar
                                                : kEmbeddedTopLevelCardChromeInset,
                                      embedded_ ? kEmbeddedTopLevelCardOuterVerticalInset
                                                : kEmbeddedTopLevelCardChromeInset);
@@ -1644,7 +1647,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
                                              ? kEmbeddedTopLevelCardOuterVerticalInset
                                              : kEmbeddedTopLevelCardChromeInset),
                                          scalePixels(embedded_
-                                             ? kEmbeddedMainContentRightCardInset
+                                             ? kEmbeddedMainContentRightInsetWithHiddenScrollBar
                                              : kEmbeddedTopLevelCardChromeInset),
                                          scalePixels(embedded_
                                              ? kEmbeddedTopLevelCardOuterVerticalInset

@@ -170,6 +170,45 @@ private:
     QVector<int> observed_heights_;
 };
 
+class ResizeWidthRecorder final : public QObject
+{
+public:
+    explicit ResizeWidthRecorder(QWidget *target)
+        : target_(target)
+    {
+    }
+
+    void reset()
+    {
+        observed_widths_.clear();
+    }
+
+    bool observedWidthDifferentFrom(int expectedWidth) const
+    {
+        return std::any_of(
+            observed_widths_.cbegin(),
+            observed_widths_.cend(),
+            [expectedWidth](int width) {
+                return width != expectedWidth;
+            });
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (watched == target_ && event->type() == QEvent::Resize)
+        {
+            observed_widths_.append(
+                static_cast<QResizeEvent *>(event)->size().width());
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    QWidget *target_;
+    QVector<int> observed_widths_;
+};
+
 QAction *findAboutAction(MainWindow *window)
 {
     if (!window)
@@ -1133,13 +1172,40 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     const QSize iconSize(32, 32);
     const qint64 stoppedIconKey = rtkButton->icon().pixmap(iconSize).cacheKey();
 
-    clickWidget(rtkButton);
-    processEventsFor(150);
     auto *pageStack = window.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
     require(pageStack != nullptr, "main page stack exists");
+    auto *preDialog = window.findChild<RtkConfigDialog *>();
+    require(preDialog != nullptr, "embedded RTK dialog exists before sidebar click");
+    auto *preGgaCard = findCardByTitle(preDialog,
+                                       {QStringLiteral("GGA 监视"),
+                                        QStringLiteral("GGA Monitor")});
+    auto *preLogCard = findCardByTitle(preDialog,
+                                       {QStringLiteral("RTK 服务日志"),
+                                        QStringLiteral("RTK Service Log")});
+    require(preGgaCard != nullptr && preLogCard != nullptr,
+            "RTK cards exist before sidebar click for resize sampling");
+    ResizeWidthRecorder ggaResizeRecorder(preGgaCard);
+    ResizeWidthRecorder logResizeRecorder(preLogCard);
+    preGgaCard->installEventFilter(&ggaResizeRecorder);
+    preLogCard->installEventFilter(&logResizeRecorder);
+    ggaResizeRecorder.reset();
+    logResizeRecorder.reset();
+    clickWidget(rtkButton, 0);
+    processEventsFor(150);
     auto *dialog = qobject_cast<RtkConfigDialog *>(pageStack->currentWidget());
     require(dialog != nullptr, "RTK config opens as an embedded sidebar page");
     require(dialog->isVisible(), "embedded RTK config page is visible after sidebar click");
+    auto *initialGgaCard = findCardByTitle(dialog,
+                                           {QStringLiteral("GGA 监视"),
+                                            QStringLiteral("GGA Monitor")});
+    auto *initialLogCard = findCardByTitle(dialog,
+                                           {QStringLiteral("RTK 服务日志"),
+                                            QStringLiteral("RTK Service Log")});
+    require(initialGgaCard != nullptr && initialLogCard != nullptr,
+            "RTK GGA and log cards are visible after sidebar click");
+    require(!ggaResizeRecorder.observedWidthDifferentFrom(initialGgaCard->width()) &&
+                !logResizeRecorder.observedWidthDifferentFrom(initialLogCard->width()),
+            "RTK GGA and service log cards keep a stable first-frame width");
     activateLayouts(dialog);
     processEventsFor(100);
     requireLabelTextOneOf(customTitleLabel,
