@@ -21,6 +21,8 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         ${CMAKE_SOURCE_DIR}/src/map3d/Map3DDiagnosticsFormatter.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/Map3DRuntime.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/Map3DWindow.cpp
+        ${CMAKE_SOURCE_DIR}/src/map3d/MapResourceDialog.cpp
+        ${CMAKE_SOURCE_DIR}/src/map3d/MapResourceManager.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/OsgEarthViewWidget.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/TrackSampling.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/Trajectory3DLayer.cpp
@@ -31,6 +33,8 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
     set(MAP3D_HEADERS
         ${CMAKE_SOURCE_DIR}/include/map3d/MapDataManager.h
         ${CMAKE_SOURCE_DIR}/include/map3d/Map3DWindow.h
+        ${CMAKE_SOURCE_DIR}/include/map3d/MapResourceDialog.h
+        ${CMAKE_SOURCE_DIR}/include/map3d/MapResourceManager.h
         ${CMAKE_SOURCE_DIR}/include/map3d/OsgEarthViewWidget.h
         ${CMAKE_SOURCE_DIR}/include/map3d/TrackSampling.h
         ${CMAKE_SOURCE_DIR}/include/map3d/Trajectory3DLayer.h
@@ -64,6 +68,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
             vaporview_ground_session_core
             Qt6::Widgets
             Qt6::OpenGLWidgets
+            Qt6::Network
             Qt6::Svg
             Qt6::Concurrent
             ${OSGEARTH_TARGET}

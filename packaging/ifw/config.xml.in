@@ -1,0 +1,14 @@
+<Installer>
+    <Name>VaporView</Name>
+    <Version>@VAPORVIEW_VERSION@</Version>
+    <Title>VaporView Setup</Title>
+    <Publisher>VaporView</Publisher>
+    <ProductUrl>https://vaporview.example.invalid</ProductUrl>
+    <WizardStyle>Modern</WizardStyle>
+    <TargetDir>@VAPORVIEW_TARGET_DIR@</TargetDir>
+    <StartMenuDir>VaporView</StartMenuDir>
+    <MaintenanceToolName>VaporViewMaintenanceTool</MaintenanceToolName>
+    <MaintenanceToolIniFile>VaporViewMaintenanceTool.ini</MaintenanceToolIniFile>
+    <ControlScript>control.qs</ControlScript>
+    @VAPORVIEW_REMOTE_REPOSITORIES@
+</Installer>

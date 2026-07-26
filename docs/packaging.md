@@ -1,0 +1,46 @@
+# VaporView packaging
+
+## Windows IFW package
+
+The Windows package is built as an osgEarth-enabled x64 Release from
+`build/Release` and then copied into a clean staging directory. The staging
+directory is the only input to Qt Installer Framework; it must not be replaced
+with the whole build tree because that tree also contains tests, generated
+files, local session data, and optional map datasets.
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File scripts\package-ifw-windows.ps1 `
+  -IfwBin F:\Qt\QtIFW\4.8.1\bin `
+  -RepositoryUrl https://updates.example.invalid/vaporview/stable
+```
+
+The installer defaults to `C:\VaporView` but keeps the target-directory page
+visible so a field deployment can choose another machine-wide path. The four
+Windows executables are embedded with `requireAdministrator`; Linux builds do
+not use this manifest.
+
+The package contains Qt and the osgEarth/OSG/GDAL/PROJ runtime, but does not
+contain `resources/maps`. The signed vendor driver installers, when available,
+belong under the package `drivers/` folder and are not executed automatically.
+
+## Map resource manifest
+
+`packaging/map-resources/manifest.example.json` documents the manifest shape.
+The application accepts an HTTP or HTTPS manifest URL from the Map 3D resource
+dialog or from `VAPORVIEW_MAP_MANIFEST_URL`.
+
+Each resource has an id, display name, version, required files, and a list of
+files. Every file is downloaded to a temporary `.part` path, checked for size
+and SHA-256, and atomically moved into the platform map root only after
+validation succeeds. Unsafe absolute paths and `..` traversal are rejected.
+
+Windows stores downloaded resources under the installation root. Linux stores
+them under the user's Qt application-data directory, while `MapDataManager`
+searches both the installation and user-data roots.
+
+## Linux
+
+The `linux-x64-gcc-release` preset and `scripts/package-ifw-linux.sh` are the
+first Linux packaging path. Linux does not run the application as root; the
+IFW installer may target `/opt/VaporView` with administrator privileges, while
+map downloads use the user-data map root.

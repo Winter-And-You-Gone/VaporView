@@ -40,6 +40,24 @@
         "CMAKE_CXX_COMPILER": "g++",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
+    },
+    {
+      "name": "linux-x64-gcc-release",
+      "displayName": "Linux x64 Release (GCC + Qt 6)",
+      "description": "Build natively on Linux x64 with GCC/G++, Qt 6, CMake, and Ninja.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/Release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -61,6 +79,17 @@
     {
       "name": "linux-arm64-gcc-release-app-only",
       "configurePreset": "linux-arm64-gcc-release",
+      "targets": [
+        "VaporView"
+      ]
+    },
+    {
+      "name": "linux-x64-gcc-release",
+      "configurePreset": "linux-x64-gcc-release"
+    },
+    {
+      "name": "linux-x64-gcc-release-app-only",
+      "configurePreset": "linux-x64-gcc-release",
       "targets": [
         "VaporView"
       ]
@@ -107,6 +136,31 @@
       "name": "linux-arm64-gcc-release-fast",
       "inherits": "linux-arm64-gcc-release",
       "displayName": "Linux ARM64 Release fast tests",
+      "filter": {
+        "include": {
+          "label": "fast"
+        }
+      },
+      "execution": {
+        "timeout": 90,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-x64-gcc-release",
+      "configurePreset": "linux-x64-gcc-release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "timeout": 180,
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-x64-gcc-release-fast",
+      "inherits": "linux-x64-gcc-release",
+      "displayName": "Linux x64 Release fast tests",
       "filter": {
         "include": {
           "label": "fast"

@@ -170,6 +170,14 @@ add_dependencies(VaporViewSkyTui VaporViewSkyCore)
 add_dependencies(VaporViewSky VaporViewSkyTui)
 add_dependencies(VaporView VaporViewSky)
 
+if(WIN32)
+    foreach(vaporview_app_target IN ITEMS VaporView VaporViewSky VaporViewSkyCore VaporViewSkyTui)
+        target_link_options(${vaporview_app_target} PRIVATE
+            "/MANIFESTUAC:level='requireAdministrator' uiAccess='false'"
+        )
+    endforeach()
+endif()
+
 add_custom_target(VaporViewRuntimeResources ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/resources
     COMMAND ${CMAKE_COMMAND} -E copy_if_different

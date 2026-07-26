@@ -1,6 +1,7 @@
 param(
     [ValidateSet("Configure", "Build", "BuildApp", "Rebuild", "Test", "TestFast", "Clean")]
     [string]$Action = "Build",
+    [switch]$EnableOsgEarth,
     [string]$QtPrefix = $env:VAPORVIEW_QT_MSVC_PREFIX,
     [string]$VisualStudioInstall = $env:VAPORVIEW_VS2022_INSTALL,
     [string]$CMakeExe = $env:VAPORVIEW_CMAKE_EXE,
@@ -142,7 +143,8 @@ function Invoke-VaporViewVsCommand {
     }
 }
 
-$configureCommand = "`"$cmakeExe`" --preset $presetName -DCMAKE_PREFIX_PATH=`"$QtPrefix`" -DCMAKE_MAKE_PROGRAM=`"$ninjaExe`""
+$osgEarthArgument = if ($EnableOsgEarth) { " -DVAPORVIEW_ENABLE_OSGEARTH=ON" } else { "" }
+$configureCommand = "`"$cmakeExe`" --preset $presetName -DCMAKE_PREFIX_PATH=`"$QtPrefix`" -DCMAKE_MAKE_PROGRAM=`"$ninjaExe`"$osgEarthArgument"
 $buildCommand = "`"$cmakeExe`" --build --preset $presetName"
 $buildAppCommand = "`"$cmakeExe`" --build --preset $presetName-app-only"
 $testCommand = "`"$cmakeExe`" --build --preset $presetName && ctest --preset $presetName"

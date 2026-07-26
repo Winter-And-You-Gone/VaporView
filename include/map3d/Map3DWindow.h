@@ -35,6 +35,8 @@ class SingleLevelPopupMenuRow;
 namespace VaporView::Map3D {
 
 class OsgEarthViewWidget;
+class MapResourceDialog;
+class MapResourceManager;
 
 class Map3DWindow final : public QMainWindow {
     Q_OBJECT
@@ -50,6 +52,7 @@ public slots:
     void loadSessionDirectory(const QString& sessionDir);
     void noteLiveSampleDrop(const QString& source, const QString& reason, qint64 recordTimestampUs = 0);
     void showMapDiagnostics();
+    void showMapResources();
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -121,6 +124,7 @@ private:
     QLabel* status_label_ = nullptr;
     QLabel* heat_legend_label_ = nullptr;
     QAction* diagnostics_action_ = nullptr;
+    QAction* map_resources_action_ = nullptr;
     QAction* track_line_visible_action_ = nullptr;
     QAction* track_points_visible_action_ = nullptr;
     QAction* layers_action_ = nullptr;
@@ -149,6 +153,8 @@ private:
     QElapsedTimer status_update_clock_;
     QDialog* diagnostics_dialog_ = nullptr;
     QPlainTextEdit* diagnostics_text_ = nullptr;
+    MapResourceManager* map_resource_manager_ = nullptr;
+    MapResourceDialog* map_resource_dialog_ = nullptr;
     MapDataManager map_data_manager_;
     MapDataSelection map_selection_;
     VaporView::Geo::TrajectoryReplay replay_;

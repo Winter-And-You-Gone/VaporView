@@ -30,6 +30,19 @@ Selection order:
 
 No map mode should require network access. Missing files should fall back to the next available local mode.
 
+## Map Resources
+
+Use the `地图资源` toolbar action to enter an HTTP/HTTPS manifest URL, read the
+available map packages, download a selected package, and remove it later. Each
+file is written to a temporary path and checked against its declared size and
+SHA-256 before it replaces an existing file. A failed or corrupt download is
+rolled back and does not become an available map.
+
+Windows stores downloaded maps below the installation directory. Linux stores
+them below the user's Qt application-data directory. After a successful
+download, the dialog asks the 3D window to rescan local map roots; without a
+package the existing local-grid fallback remains available.
+
 ## Toolbar
 
 ```text
@@ -52,6 +65,7 @@ Replay slider
 飞到轨迹
 重置视角
 地图诊断
+地图资源
 ```
 
 `打开 Session` loads a recorded session directory and reads

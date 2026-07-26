@@ -8,6 +8,8 @@
 #include "geo/TrajectoryQuality.h"
 #include "Map3DRuntime.h"
 #include "map3d/OsgEarthViewWidget.h"
+#include "map3d/MapResourceDialog.h"
+#include "map3d/MapResourceManager.h"
 
 #include <QAction>
 #include <QCloseEvent>
@@ -913,6 +915,26 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     diagnostics_action_ = toolbar->addAction(QStringLiteral("地图诊断"));
     diagnostics_action_->setObjectName(QStringLiteral("map3DDiagnosticsAction"));
     connect(diagnostics_action_, &QAction::triggered, this, &Map3DWindow::showMapDiagnostics);
+
+    map_resources_action_ = toolbar->addAction(QStringLiteral("地图资源"));
+    map_resources_action_->setObjectName(QStringLiteral("map3DMapResourcesAction"));
+    map_resources_action_->setToolTip(QStringLiteral("读取、下载和校验 3D 地图资源"));
+    map_resources_action_->setStatusTip(map_resources_action_->toolTip());
+    map_resource_manager_ = new MapResourceManager(this);
+    map_resource_dialog_ = new MapResourceDialog(map_resource_manager_, this);
+    connect(map_resources_action_, &QAction::triggered, this, &Map3DWindow::showMapResources);
+    connect(map_resource_dialog_, &MapResourceDialog::resourcesChanged, this, [this]() {
+        const MapDataSelection selection = map_data_manager_.selectBestAvailableMap();
+        setMapSelection(selection);
+        if (view_ && selection.hasEarthFile())
+        {
+            reloadBestLocalMap();
+        }
+        else
+        {
+            updateStatus(nullptr);
+        }
+    });
 
     statusBar()->addPermanentWidget(status_label_, 1);
     updateReplayUi();
@@ -1919,6 +1941,17 @@ void Map3DWindow::showMapDiagnostics()
     diagnostics_dialog_->show();
     diagnostics_dialog_->raise();
     diagnostics_dialog_->activateWindow();
+}
+
+void Map3DWindow::showMapResources()
+{
+    if (!map_resource_dialog_)
+    {
+        return;
+    }
+    map_resource_dialog_->show();
+    map_resource_dialog_->raise();
+    map_resource_dialog_->activateWindow();
 }
 
 void Map3DWindow::toggleReplay()

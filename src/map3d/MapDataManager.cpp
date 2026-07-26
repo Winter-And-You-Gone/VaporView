@@ -1,4 +1,5 @@
 #include "map3d/MapDataManager.h"
+#include "Map3DRuntime.h"
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
@@ -773,7 +774,9 @@ void finalizeSelection(MapDataSelection& selection)
         diagnostics.readinessSummary =
             QStringLiteral("Local grid fallback only: no complete offline Natural Earth dataset is available.");
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("Run scripts/download-natural-earth-map.ps1 to prepare the offline Natural Earth background."));
+            QStringLiteral("Open 地图资源 to read an HTTP manifest and download the Natural Earth background."));
+        diagnostics.readinessNextSteps.push_back(
+            QStringLiteral("For developer/offline preparation, scripts/download-natural-earth-map.ps1 remains available."));
         diagnostics.readinessNextSteps.push_back(
             QStringLiteral("Command: powershell -ExecutionPolicy Bypass -File scripts/download-natural-earth-map.ps1"));
         diagnostics.readinessNextSteps.push_back(
@@ -925,6 +928,11 @@ QStringList MapDataManager::candidateRoots() const
         appDir,
         QDir(appDir).absoluteFilePath(QStringLiteral("../.."))
     };
+    const QString downloadedMapRoot = map3DDownloadedMapRoot();
+    if (!downloadedMapRoot.isEmpty())
+    {
+        roots.push_back(downloadedMapRoot);
+    }
     if (qEnvironmentVariableIsSet("VAPORVIEW_MAP3D_DEV_SEARCH_PATHS"))
     {
         roots.push_back(QDir::currentPath());

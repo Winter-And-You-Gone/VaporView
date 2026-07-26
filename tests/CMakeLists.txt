@@ -381,6 +381,27 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
     target_link_libraries(map_data_manager_test PRIVATE vaporview_map3d_osgearth)
     add_test(NAME map_data_manager_test COMMAND map_data_manager_test)
 
+    add_executable(map_resource_manifest_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/map_resource_manifest_test.cpp
+    )
+    target_include_directories(map_resource_manifest_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
+    target_link_libraries(map_resource_manifest_test PRIVATE vaporview_map3d_osgearth)
+    add_test(NAME map_resource_manifest_test COMMAND map_resource_manifest_test)
+
+    add_executable(map_resource_download_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/map_resource_download_test.cpp
+    )
+    target_include_directories(map_resource_download_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
+    target_link_libraries(map_resource_download_test PRIVATE
+        vaporview_map3d_osgearth
+        Qt6::Network
+    )
+    add_test(NAME map_resource_download_test COMMAND map_resource_download_test)
+
     add_executable(trajectory_3d_layer_test
         ${CMAKE_CURRENT_SOURCE_DIR}/trajectory_3d_layer_test.cpp
     )
@@ -600,6 +621,8 @@ set_property(TEST session_viewer_components_test APPEND PROPERTY LABELS session-
 if(VAPORVIEW_ENABLE_OSGEARTH)
     set(VAPORVIEW_FAST_3D_UNIT_TESTS
         map_data_manager_test
+        map_resource_manifest_test
+        map_resource_download_test
         trajectory_3d_layer_test
         aircraft_3d_layer_test
         aircraft_heading_test

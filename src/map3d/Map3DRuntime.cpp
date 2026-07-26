@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QStandardPaths>
 #include <QProcessEnvironment>
 
 #include <osgDB/Registry>
@@ -87,6 +88,16 @@ QStringList map3DRuntimeRootCandidates()
     }
     roots.removeDuplicates();
     return roots;
+}
+
+QString map3DDownloadedMapRoot()
+{
+#ifdef Q_OS_WIN
+    return QCoreApplication::applicationDirPath();
+#else
+    const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    return appData.isEmpty() ? QCoreApplication::applicationDirPath() : appData;
+#endif
 }
 
 QString map3DProjectDataDirectory()

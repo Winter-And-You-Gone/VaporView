@@ -1,0 +1,44 @@
+{
+  "schema": "vaporview.map-resources",
+  "schemaVersion": 1,
+  "resources": [
+    {
+      "id": "natural-earth",
+      "displayName": "Natural Earth 1:50m",
+      "version": "1.0.0",
+      "sizeBytes": 177900636,
+      "requiredFiles": [
+        "resources/maps/vaporview_default.earth",
+        "resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt",
+        "resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif",
+        "resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"
+      ],
+      "files": [
+        {
+          "relativePath": "resources/maps/vaporview_default.earth",
+          "url": "https://download.example.invalid/vaporview/maps/natural-earth/v1/vaporview_default.earth",
+          "sizeBytes": 398,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "relativePath": "resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt",
+          "url": "https://download.example.invalid/vaporview/maps/natural-earth/v1/NE2_50M_SR_W.vrt",
+          "sizeBytes": 1917,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "relativePath": "resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif",
+          "url": "https://download.example.invalid/vaporview/maps/natural-earth/v1/NE2_50M_SR_W.tif",
+          "sizeBytes": 175041488,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "relativePath": "resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png",
+          "url": "https://download.example.invalid/vaporview/maps/natural-earth/v1/NE2_50M_SR_W_2048.png",
+          "sizeBytes": 2856833,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+<Package>
+    <Name>com.vaporview.core</Name>
+    <DisplayName>VaporView</DisplayName>
+    <Description>VaporView desktop, Sky and 3D runtime.</Description>
+    <Version>@VAPORVIEW_VERSION@</Version>
+    <ReleaseDate>@VAPORVIEW_RELEASE_DATE@</ReleaseDate>
+    <Default>true</Default>
+    <Essential>true</Essential>
+    <ForcedInstallation>true</ForcedInstallation>
+    <Licenses>
+        <License name="GPLv3" file="license.txt" />
+    </Licenses>
+    <Script>installscript.qs</Script>
+</Package>
