@@ -12,6 +12,7 @@ inline constexpr const char *kTopLevelCardShadowLayerName = "vaporViewTopLevelCa
 inline constexpr int kTopLevelCardCornerRadius = 12;
 inline constexpr qreal kTopLevelCardShadowBlurRadius = 6.0;
 inline constexpr qreal kTopLevelCardShadowOffsetY = 2.0;
+inline constexpr qreal kTopLevelCardShadowVerticalSpreadExtra = 2.0;
 inline constexpr int kTopLevelCardShadowAlpha = 18;
 
 void configureTopLevelCard(QWidget *card);

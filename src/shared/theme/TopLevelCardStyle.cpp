@@ -180,6 +180,8 @@ protected:
         const qreal blurRadius = kTopLevelCardShadowBlurRadius * uiScale_;
         const qreal offsetY = kTopLevelCardShadowOffsetY * uiScale_;
         const int spreadCount = std::max(1, static_cast<int>(std::ceil(blurRadius * 0.6)));
+        const qreal verticalSpreadExtra =
+            kTopLevelCardShadowVerticalSpreadExtra * uiScale_;
 
         qreal weightSum = 0.0;
         for (int spread = spreadCount; spread >= 1; --spread)
@@ -218,10 +220,11 @@ protected:
             shadowPath.setFillRule(Qt::WindingFill);
             for (const CardPaintInfo& card : std::as_const(visibleCards))
             {
+                const qreal verticalSpread = spread + verticalSpreadExtra;
                 QRectF shadowRect = card.rect.adjusted(-spread,
-                                                       -spread,
+                                                       -verticalSpread,
                                                        spread,
-                                                       spread);
+                                                       verticalSpread);
                 shadowRect.translate(0.0, offsetY);
                 shadowPath.addRoundedRect(
                     shadowRect,
