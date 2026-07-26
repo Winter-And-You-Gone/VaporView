@@ -763,8 +763,8 @@ QScrollBar::handle:vertical {
     background-color: @vv-scrollbar-handle;
     min-height: 30px;
     border-radius: 6px;
-    border: 2px solid @vv-surface-sunken;
-    margin: 0px;
+    border: none;
+    margin: 0px 2px 0px 2px;
 }
 
 QScrollBar::handle:vertical:hover {
@@ -835,8 +835,8 @@ QScrollBar::handle:horizontal {
     background-color: @vv-scrollbar-handle;
     min-width: 30px;
     border-radius: 6px;
-    border: 2px solid @vv-surface-sunken;
-    margin: 0px;
+    border: none;
+    margin: 2px 0px 2px 0px;
 }
 
 QScrollBar::handle:horizontal:hover {
@@ -903,7 +903,7 @@ QScrollArea#mainCardsScrollArea QScrollBar::sub-line:horizontal {
 
 QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical,
 QScrollArea#mainCardsScrollArea QScrollBar::handle:horizontal {
-    border: 2px solid @vv-surface;
+    border: none;
 }
 
 /* 滚动区域 */

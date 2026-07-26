@@ -2341,9 +2341,8 @@ int main(int argc, char **argv)
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, "),
-        QStringLiteral("border: 2px solid ") +
-            VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, false),
-        "main card scrollbar handle stays inside the opaque surface plane");
+        QStringLiteral("border: none"),
+        "main card scrollbar handle keeps its 8px visible width with margins instead of border paint");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QDialog#rtkConfigDialog QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] {"),

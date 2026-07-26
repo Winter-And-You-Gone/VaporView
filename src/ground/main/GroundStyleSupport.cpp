@@ -738,8 +738,8 @@ QScrollBar::handle:vertical {
     background-color: @vv-scrollbar-handle;
     min-height: 30px;
     border-radius: 6px;
-    border: 2px solid @vv-surface-sunken;
-    margin: 0px;
+    border: none;
+    margin: 0px 2px 0px 2px;
 }
 QScrollBar::handle:vertical:hover {
     background-color: @vv-scrollbar-handle-hover;
@@ -789,8 +789,8 @@ QScrollBar::handle:horizontal {
     background-color: @vv-scrollbar-handle;
     min-width: 30px;
     border-radius: 6px;
-    border: 2px solid @vv-surface-sunken;
-    margin: 0px;
+    border: none;
+    margin: 2px 0px 2px 0px;
 }
 QScrollBar::handle:horizontal:hover {
     background-color: @vv-scrollbar-handle-hover;
@@ -1145,7 +1145,7 @@ QString mainCardsScrollBarBackgroundStyleSheet(bool)
         "background-color: @vv-surface; border: none; width: 0px; }"
         "QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, "
         "QScrollArea#mainCardsScrollArea QScrollBar::handle:horizontal { "
-        "border: 2px solid @vv-surface; }");
+        "border: none; }");
 }
 
 QString mainCardsTopLevelCardStyleSheet()
