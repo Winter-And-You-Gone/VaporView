@@ -612,7 +612,7 @@ protected:
         }
 
         dragging_ = true;
-        drag_start_y_ = QCursor::pos().y();
+        drag_start_y_ = dragCursorY();
         target_start_height_ = target_card_->height();
         target_height_ = target_start_height_;
         target_card_->setProperty(kMainCardResizeDraggingProperty, true);
@@ -630,7 +630,7 @@ protected:
             return;
         }
 
-        const int deltaY = QCursor::pos().y() - drag_start_y_;
+        const int deltaY = dragCursorY() - drag_start_y_;
         bool ok = false;
         const int propertyMinimum = target_card_->property(kMainCardMinimumHeightProperty).toInt(&ok);
         const int effectiveMinimum = ok ? std::max(minimum_target_height_, propertyMinimum) : minimum_target_height_;
@@ -664,6 +664,12 @@ protected:
     }
 
 private:
+    int dragCursorY() const
+    {
+        const QVariant testCursorY = property(kMainCardResizeTestCursorYProperty);
+        return testCursorY.isValid() ? testCursorY.toInt() : QCursor::pos().y();
+    }
+
     void applyTargetHeight()
     {
         if (!target_card_ || target_height_ <= 0)

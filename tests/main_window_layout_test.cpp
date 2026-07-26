@@ -18,7 +18,6 @@
 #include <QComboBox>
 #include <QContextMenuEvent>
 #include <QCoreApplication>
-#include <QCursor>
 #include <QDoubleSpinBox>
 #include <QDialog>
 #include <QFontMetrics>
@@ -747,7 +746,9 @@ VerticalDragContext beginVerticalDrag(QWidget *widget)
     context.widget = widget;
     context.localStart = widget->rect().center();
     context.globalStart = widget->mapToGlobal(context.localStart);
-    QCursor::setPos(context.globalStart);
+    context.widget->setProperty(
+        VaporView::Ground::MainSupport::kMainCardResizeTestCursorYProperty,
+        context.globalStart.y());
     QMouseEvent press(QEvent::MouseButtonPress,
                       context.localStart,
                       context.globalStart,
@@ -760,7 +761,9 @@ VerticalDragContext beginVerticalDrag(QWidget *widget)
 
 void moveVerticalDrag(const VerticalDragContext& context, int offset)
 {
-    QCursor::setPos(context.globalStart + QPoint(0, offset));
+    context.widget->setProperty(
+        VaporView::Ground::MainSupport::kMainCardResizeTestCursorYProperty,
+        context.globalStart.y() + offset);
     QMouseEvent move(QEvent::MouseMove,
                      context.localStart + QPoint(0, offset),
                      context.globalStart + QPoint(0, offset),
@@ -772,7 +775,9 @@ void moveVerticalDrag(const VerticalDragContext& context, int offset)
 
 void endVerticalDrag(const VerticalDragContext& context, int offset)
 {
-    QCursor::setPos(context.globalStart + QPoint(0, offset));
+    context.widget->setProperty(
+        VaporView::Ground::MainSupport::kMainCardResizeTestCursorYProperty,
+        context.globalStart.y() + offset);
     QMouseEvent release(QEvent::MouseButtonRelease,
                         context.localStart + QPoint(0, offset),
                         context.globalStart + QPoint(0, offset),
@@ -780,13 +785,18 @@ void endVerticalDrag(const VerticalDragContext& context, int offset)
                         Qt::NoButton,
                         Qt::NoModifier);
     QCoreApplication::sendEvent(context.widget, &release);
+    context.widget->setProperty(
+        VaporView::Ground::MainSupport::kMainCardResizeTestCursorYProperty,
+        QVariant());
 }
 
 void moveVerticalDragWithStaleEventPosition(const VerticalDragContext& context,
                                             int cursorOffset,
                                             int eventOffset)
 {
-    QCursor::setPos(context.globalStart + QPoint(0, cursorOffset));
+    context.widget->setProperty(
+        VaporView::Ground::MainSupport::kMainCardResizeTestCursorYProperty,
+        context.globalStart.y() + cursorOffset);
     QMouseEvent move(QEvent::MouseMove,
                      context.localStart + QPoint(0, eventOffset),
                      context.globalStart + QPoint(0, eventOffset),
