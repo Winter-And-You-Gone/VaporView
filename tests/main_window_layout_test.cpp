@@ -2348,8 +2348,8 @@ int main(int argc, char **argv)
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QScrollBar::up-arrow:vertical {"),
-        QStringLiteral("width: 12px"),
-        "main card scrollbar arrow artwork keeps its original visual width");
+        QStringLiteral("width: 8px"),
+        "main card scrollbar arrow artwork matches the 8px rail width");
     require(!qApp->styleSheet().contains(
                 QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::up-arrow:vertical")),
             "main card scrollbar does not hide the shared arrow indicators");
