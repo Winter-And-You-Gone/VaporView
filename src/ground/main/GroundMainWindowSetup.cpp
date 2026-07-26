@@ -1361,6 +1361,7 @@ void MainWindow::setupCentralWidget()
 
     state_->app_sidebar_ = createAppSidebarFrame(state_->central_widget_);
     state_->app_sidebar_->setObjectName(QStringLiteral("appSidebar"));
+    configureTopLevelCard(state_->app_sidebar_);
     state_->app_sidebar_->setAttribute(Qt::WA_StyledBackground, true);
     state_->app_sidebar_->setAutoFillBackground(true);
     state_->app_sidebar_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);

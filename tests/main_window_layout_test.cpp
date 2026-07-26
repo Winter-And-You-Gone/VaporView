@@ -2627,6 +2627,9 @@ int main(int argc, char **argv)
 
     auto *appSidebar = window.findChild<QWidget *>(QStringLiteral("appSidebar"));
     require(appSidebar != nullptr, "app sidebar exists");
+    requireTopLevelCardElevation(appSidebar,
+                                 1.0,
+                                 "app sidebar uses the shared soft elevation");
     requireSidebarCardStyle(qApp->styleSheet(), false,
                             "light sidebar uses a complete rounded card border");
     auto *recordingStatusCard =
