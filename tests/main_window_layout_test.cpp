@@ -3284,6 +3284,12 @@ int main(int argc, char **argv)
             "home overview vertical resize handle exists");
     require(homeDataResizeHandle != nullptr && homeDataResizeHandle != homeOverviewResizeHandle,
             "home data-card vertical resize handle exists");
+    auto *homeOverviewResizeGap = window.findChild<QWidget *>(QStringLiteral("homeOverviewResizeGap"));
+    require(homeOverviewResizeGap != nullptr,
+            "home overview resize handle has a dedicated blank gap target");
+    require(homeOverviewResizeGap->height() ==
+                VaporView::Ground::MainSupport::kTopLevelCardSpacerAfterResizeHandle,
+            "home overview blank gap keeps the shared 9px baseline spacing");
     homeSourceModeCombo->setCurrentIndex(1);
     processEventsFor(150);
     activateLayouts(&window);
@@ -3298,6 +3304,9 @@ int main(int argc, char **argv)
     processEventsFor(80);
     activateLayouts(&window);
     const int overviewHeightBeforeDrag = homeOverviewSplitter->height();
+    const int deviceOverviewHeightBeforeDrag = deviceOverviewCard->height();
+    const int temperatureOverviewHeightBeforeDrag = temperatureOverviewCard->height();
+    const int overviewGapBeforeDrag = homeOverviewResizeGap->height();
     const VerticalDragContext overviewExpandDrag =
         beginVerticalDrag(homeOverviewResizeHandle);
     moveVerticalDrag(overviewExpandDrag, 64);
@@ -3305,12 +3314,18 @@ int main(int argc, char **argv)
     processEventsFor(40);
     activateLayouts(&window);
     const int overviewHeightAfterExpand = homeOverviewSplitter->height();
-    require(overviewHeightAfterExpand >= overviewHeightBeforeDrag + 48,
-            "home overview resize handle can expand the temperature overview row");
+    const int overviewGapAfterExpand = homeOverviewResizeGap->height();
+    require(overviewHeightAfterExpand == overviewHeightBeforeDrag &&
+                deviceOverviewCard->height() == deviceOverviewHeightBeforeDrag &&
+                temperatureOverviewCard->height() == temperatureOverviewHeightBeforeDrag,
+            "home overview resize handle leaves both overview card heights unchanged");
+    require(overviewGapAfterExpand >= overviewGapBeforeDrag + 48,
+            "home overview resize handle expands the blank gap below the overview cards");
 
     const VerticalDragContext overviewShrinkDrag =
         beginVerticalDrag(homeOverviewResizeHandle);
     int previousTemperatureBottom = bottomEdge(widgetRectInCentral(temperatureOverviewCard));
+    int previousOverviewGap = homeOverviewResizeGap->height();
     for (int offset = -1; offset >= -48; --offset)
     {
         moveVerticalDrag(overviewShrinkDrag, offset);
@@ -3339,6 +3354,7 @@ int main(int argc, char **argv)
         }
         processEventsFor(5);
         const int nextTemperatureBottom = bottomEdge(widgetRectInCentral(temperatureOverviewCard));
+        const int nextOverviewGap = homeOverviewResizeGap->height();
         if (nextTemperatureBottom > previousTemperatureBottom + 1)
         {
             std::cerr << "Temperature overview drag bounce: previous="
@@ -3348,30 +3364,40 @@ int main(int argc, char **argv)
         }
         require(nextTemperatureBottom <= previousTemperatureBottom + 1,
                 "remote telemetry refresh cannot bounce the temperature overview edge downward while dragging upward");
+        require(homeOverviewSplitter->height() == overviewHeightBeforeDrag &&
+                    deviceOverviewCard->height() == deviceOverviewHeightBeforeDrag &&
+                    temperatureOverviewCard->height() == temperatureOverviewHeightBeforeDrag &&
+                    nextOverviewGap <= previousOverviewGap + 1,
+                "overview gap resizing does not change the overview card heights");
         previousTemperatureBottom = nextTemperatureBottom;
+        previousOverviewGap = nextOverviewGap;
     }
     endVerticalDrag(overviewShrinkDrag, -48);
     processEventsFor(40);
     activateLayouts(&window);
-    require(homeOverviewSplitter->height() <= overviewHeightAfterExpand - 32,
-            "home overview resize handle can shrink the expanded temperature overview row");
+    require(homeOverviewResizeGap->height() >= overviewGapBeforeDrag &&
+                homeOverviewResizeGap->height() <= overviewGapAfterExpand - 32 &&
+                homeOverviewSplitter->height() == overviewHeightBeforeDrag &&
+                deviceOverviewCard->height() == deviceOverviewHeightBeforeDrag &&
+                temperatureOverviewCard->height() == temperatureOverviewHeightBeforeDrag,
+            "home overview resize handle can shrink the blank gap without resizing either card");
     const VerticalDragContext overviewClampDrag =
         beginVerticalDrag(homeOverviewResizeHandle);
     moveVerticalDrag(overviewClampDrag, -256);
     const int dragLockedOverviewHeight = homeOverviewSplitter->height();
-    require(deviceOverviewCard->minimumHeight() == dragLockedOverviewHeight &&
-                deviceOverviewCard->maximumHeight() == dragLockedOverviewHeight,
-            "overview drag locks the device overview child-card height");
-    require(temperatureOverviewCard->minimumHeight() == dragLockedOverviewHeight &&
-                temperatureOverviewCard->maximumHeight() == dragLockedOverviewHeight,
-            "overview drag locks the temperature overview child-card height");
+            require(homeOverviewResizeGap->height() == overviewGapBeforeDrag &&
+                dragLockedOverviewHeight == overviewHeightBeforeDrag &&
+                deviceOverviewCard->height() == deviceOverviewHeightBeforeDrag &&
+                temperatureOverviewCard->height() == temperatureOverviewHeightBeforeDrag,
+            "overview gap clamps at its minimum without changing either overview card");
     QEvent overviewLayoutRequest(QEvent::LayoutRequest);
-    QCoreApplication::sendEvent(homeOverviewSplitter, &overviewLayoutRequest);
+    QCoreApplication::sendEvent(homeOverviewResizeGap, &overviewLayoutRequest);
     processEventsFor(20);
-    require(homeOverviewSplitter->height() == dragLockedOverviewHeight &&
-                homeOverviewSplitter->minimumHeight() == dragLockedOverviewHeight &&
-                homeOverviewSplitter->maximumHeight() == dragLockedOverviewHeight,
-            "splitter layout requests cannot release the overview drag height");
+    require(homeOverviewResizeGap->height() == overviewGapBeforeDrag &&
+                homeOverviewSplitter->height() == dragLockedOverviewHeight &&
+                deviceOverviewCard->height() == deviceOverviewHeightBeforeDrag &&
+                temperatureOverviewCard->height() == temperatureOverviewHeightBeforeDrag,
+            "layout requests cannot release the overview gap or resize its cards");
     endVerticalDrag(overviewClampDrag, -256);
     processEventsFor(40);
     activateLayouts(&window);

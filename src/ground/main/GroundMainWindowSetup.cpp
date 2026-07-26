@@ -3593,9 +3593,17 @@ void MainWindow::setupDataPanels()
     state_->home_overview_splitter_->setStretchFactor(1, 1);
     state_->home_overview_splitter_->setSizes({state_->config_group_->minimumWidth(), kHomeOverviewTemperatureMinWidth});
     state_->main_layout_->addWidget(state_->home_overview_splitter_, 0);
+    auto *homeOverviewResizeGap = new QWidget(this);
+    homeOverviewResizeGap->setObjectName(QStringLiteral("homeOverviewResizeGap"));
+    homeOverviewResizeGap->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    homeOverviewResizeGap->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    homeOverviewResizeGap->setFixedHeight(kTopLevelCardSpacerAfterResizeHandle);
     state_->main_layout_->addWidget(
-        createMainCardResizeHandle(state_->home_overview_splitter_, kConfigCardMinHeight, this), 0);
-    state_->main_layout_->addSpacing(kTopLevelCardSpacerAfterResizeHandle);
+        createMainCardResizeHandle(homeOverviewResizeGap,
+                                   kTopLevelCardSpacerAfterResizeHandle,
+                                   this),
+        0);
+    state_->main_layout_->addWidget(homeOverviewResizeGap, 0);
     state_->main_layout_->addWidget(state_->data_group_, 0);
     updateConfigCardHeightForSourceMode();
 
