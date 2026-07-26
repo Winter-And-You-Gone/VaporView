@@ -1208,11 +1208,12 @@ void MainWindow::setupCentralWidget()
     left_widget->setAutoFillBackground(true);
     state_->main_layout_ = new QVBoxLayout(left_widget);
     state_->main_layout_->setSpacing(0);
-    // The bottom fade itself reserves the extra shadow-safe gap below.
+    // Keep 8px of physical room below the main cards so their bottom shadows
+    // remain visible instead of being clipped by the scroll viewport edge.
     state_->main_layout_->setContentsMargins(kTopLevelCardChromeInset,
                                              kTopLevelCardOuterVerticalInset,
                                              kTopLevelCardChromeInset,
-                                             kTopLevelCardOuterVerticalInset);
+                                             kMainContentBottomShadowSafeInset);
 
     setupConfigPanel();
     setupDataPanels();
@@ -1382,7 +1383,7 @@ void MainWindow::setupCentralWidget()
     temperatureContentLayout->setContentsMargins(kTopLevelCardChromeInset,
                                                  kTopLevelCardOuterVerticalInset,
                                                  kTopLevelCardChromeInset,
-                                                 kTopLevelCardOuterVerticalInset);
+                                                 kMainContentBottomShadowSafeInset);
     temperatureContentLayout->setSpacing(kTopLevelCardGap);
     temperatureContentLayout->addWidget(state_->temperature_controller_group_, 0);
     temperatureContentLayout->addStretch(1);
@@ -1440,7 +1441,7 @@ void MainWindow::setupDeviceConfigPage()
     contentLayout->setContentsMargins(kTopLevelCardChromeInset,
                                       kTopLevelCardOuterVerticalInset,
                                       kTopLevelCardChromeInset,
-                                      kTopLevelCardOuterVerticalInset);
+                                      kMainContentBottomShadowSafeInset);
     contentLayout->setSpacing(kTopLevelCardGap);
     auto *topRowLayout = new QHBoxLayout;
     topRowLayout->setContentsMargins(0, 0, 0, 0);

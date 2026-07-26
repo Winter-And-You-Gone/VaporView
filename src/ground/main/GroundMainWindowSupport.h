@@ -115,6 +115,8 @@ inline constexpr int kTopLevelCardChromeInset = 12;
 inline constexpr int kTopLevelCardOuterVerticalInset =
     kTopLevelCardGap - kAppSidebarVisualPadding;
 inline constexpr int kMainContentBottomShadowGap = 8;
+inline constexpr int kMainContentBottomShadowSafeInset =
+    kMainContentBottomShadowGap;
 inline constexpr int kSidePanelSplitterVisualWidth = 0;
 inline constexpr int kTopLevelCardSpacerAfterResizeHandle = kTopLevelCardGap - kMainCardResizeHandleHeight;
 inline constexpr const char *kMainCardUserResizedHeightProperty = "_vv_main_card_user_resized_height";

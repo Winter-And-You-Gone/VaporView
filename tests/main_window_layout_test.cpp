@@ -2509,8 +2509,8 @@ int main(int argc, char **argv)
         require(homeContentMargins.right() == kExpectedHomeShadowSafeRightInset,
                 "home card right inset keeps the card shadow physically separated from the scrollbar track");
         require(homeContentMargins.bottom() ==
-                    VaporView::Ground::MainSupport::kTopLevelCardOuterVerticalInset,
-                "home card content keeps its original bottom layout inset");
+                    VaporView::Ground::MainSupport::kMainContentBottomShadowSafeInset,
+                "home card content leaves 8px of physical room below the bottom card shadow");
     }
     if (homeScrollArea->horizontalScrollBar()->maximum() != 0)
     {
