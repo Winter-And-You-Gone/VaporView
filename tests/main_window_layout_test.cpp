@@ -2486,9 +2486,11 @@ int main(int argc, char **argv)
                 ->property("vaporViewTopLevelCardShadowClipsScrollBarTrack")
                 .toBool(),
             "home scroll card shadow layer clips the full scrollbar track");
-    require(homeBottomFade->geometry().bottom() == homeScrollArea->viewport()->rect().bottom() &&
+    require(homeBottomFade->geometry().bottom() ==
+                    homeScrollArea->viewport()->rect().bottom() -
+                        VaporView::Ground::MainSupport::kMainContentBottomShadowGap &&
                 homeBottomFade->width() == homeScrollArea->viewport()->width(),
-            "bottom fade stays flush with the scroll viewport edge");
+            "bottom fade leaves an 8px shadow-safe gap below the scroll viewport");
     homeScrollArea->verticalScrollBar()->setValue(homeScrollArea->verticalScrollBar()->maximum());
     require(processEventsUntil(500, [homeBottomFade]() {
                 return homeBottomFade->isHidden();
@@ -2506,6 +2508,9 @@ int main(int argc, char **argv)
         const QMargins homeContentMargins = homeContentLayout->contentsMargins();
         require(homeContentMargins.right() == kExpectedHomeShadowSafeRightInset,
                 "home card right inset keeps the card shadow physically separated from the scrollbar track");
+        require(homeContentMargins.bottom() ==
+                    VaporView::Ground::MainSupport::kTopLevelCardOuterVerticalInset,
+                "home card content keeps its original bottom layout inset");
     }
     if (homeScrollArea->horizontalScrollBar()->maximum() != 0)
     {

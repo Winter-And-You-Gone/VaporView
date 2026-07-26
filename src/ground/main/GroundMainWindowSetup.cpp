@@ -74,9 +74,12 @@ private:
     void syncGeometry()
     {
         QWidget *viewport = parentWidget();
-        const int fadeHeight = std::min(kMainContentBottomFadeHeight, viewport->height());
+        const int bottomGap = std::min(kMainContentBottomShadowGap, viewport->height());
+        const int fadeHeight = std::min(
+            kMainContentBottomFadeHeight,
+            std::max(0, viewport->height() - bottomGap));
         setGeometry(0,
-                    std::max(0, viewport->height() - fadeHeight),
+                    std::max(0, viewport->height() - bottomGap - fadeHeight),
                     viewport->width(),
                     fadeHeight);
         raise();
@@ -1205,8 +1208,7 @@ void MainWindow::setupCentralWidget()
     left_widget->setAutoFillBackground(true);
     state_->main_layout_ = new QVBoxLayout(left_widget);
     state_->main_layout_->setSpacing(0);
-    // The surrounding chrome contributes 8px vertically, so the inner 4px
-    // inset keeps the visible titlebar-to-card and bottom gaps at 12px.
+    // The bottom fade itself reserves the extra shadow-safe gap below.
     state_->main_layout_->setContentsMargins(kTopLevelCardChromeInset,
                                              kTopLevelCardOuterVerticalInset,
                                              kTopLevelCardChromeInset,
