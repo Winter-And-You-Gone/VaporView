@@ -729,17 +729,17 @@ TemperatureControllerPanel QFrame#temperatureChannelTopBar {
 }
 QScrollBar:vertical {
     background-color: @vv-surface-sunken;
-    width: 12px;
+    width: 8px;
     border: none;
-    border-radius: 6px;
+    border-radius: 4px;
     margin: 14px 0px 14px 0px;
 }
 QScrollBar::handle:vertical {
     background-color: @vv-scrollbar-handle;
     min-height: 30px;
-    border-radius: 6px;
+    border-radius: 4px;
     border: none;
-    margin: 0px 2px 0px 2px;
+    margin: 0px;
 }
 QScrollBar::handle:vertical:hover {
     background-color: @vv-scrollbar-handle-hover;
@@ -747,7 +747,7 @@ QScrollBar::handle:vertical:hover {
 QScrollBar::add-page:vertical,
 QScrollBar::sub-page:vertical {
     background-color: @vv-surface-sunken;
-    border-radius: 6px;
+    border-radius: 4px;
 }
 QScrollBar::add-page:vertical:hover,
 QScrollBar::sub-page:vertical:hover,
@@ -763,13 +763,13 @@ QScrollBar::sub-line:vertical {
     subcontrol-origin: margin;
 }
 QScrollBar::sub-line:vertical {
-    border-top-left-radius: 6px;
-    border-top-right-radius: 6px;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
     subcontrol-position: top;
 }
 QScrollBar::add-line:vertical {
-    border-bottom-left-radius: 6px;
-    border-bottom-right-radius: 6px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
     subcontrol-position: bottom;
 }
 QScrollBar::add-line:vertical:hover,
@@ -780,17 +780,17 @@ QScrollBar::sub-line:vertical:pressed {
 }
 QScrollBar:horizontal {
     background-color: @vv-surface-sunken;
-    height: 12px;
+    height: 8px;
     border: none;
-    border-radius: 6px;
+    border-radius: 4px;
     margin: 0px;
 }
 QScrollBar::handle:horizontal {
     background-color: @vv-scrollbar-handle;
     min-width: 30px;
-    border-radius: 6px;
+    border-radius: 4px;
     border: none;
-    margin: 2px 0px 2px 0px;
+    margin: 0px;
 }
 QScrollBar::handle:horizontal:hover {
     background-color: @vv-scrollbar-handle-hover;
@@ -798,7 +798,7 @@ QScrollBar::handle:horizontal:hover {
 QScrollBar::add-page:horizontal,
 QScrollBar::sub-page:horizontal {
     background-color: @vv-surface-sunken;
-    border-radius: 6px;
+    border-radius: 4px;
 }
 QScrollBar::add-page:horizontal:hover,
 QScrollBar::sub-page:horizontal:hover,
@@ -1124,9 +1124,9 @@ QString mainCardsScrollBarBackgroundStyleSheet(bool)
 {
     return QStringLiteral(
         "QScrollArea#mainCardsScrollArea QScrollBar:vertical { "
-        "background-color: @vv-surface; margin: 14px 0px 14px 0px; }"
+        "background-color: @vv-surface; width: 8px; border-radius: 4px; margin: 14px 0px 14px 0px; }"
         "QScrollArea#mainCardsScrollArea QScrollBar:horizontal { "
-        "background-color: @vv-surface; margin: 0px; }"
+        "background-color: @vv-surface; height: 8px; border-radius: 4px; margin: 0px; }"
         "QScrollArea#mainCardsScrollArea QScrollBar::add-page:vertical, "
         "QScrollArea#mainCardsScrollArea QScrollBar::sub-page:vertical, "
         "QScrollArea#mainCardsScrollArea QScrollBar::add-page:horizontal, "
@@ -1145,7 +1145,7 @@ QString mainCardsScrollBarBackgroundStyleSheet(bool)
         "background-color: @vv-surface; border: none; width: 0px; }"
         "QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, "
         "QScrollArea#mainCardsScrollArea QScrollBar::handle:horizontal { "
-        "border: none; }");
+        "border: none; border-radius: 4px; margin: 0px; }");
 }
 
 QString mainCardsTopLevelCardStyleSheet()

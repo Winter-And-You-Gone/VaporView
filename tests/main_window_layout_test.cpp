@@ -2323,6 +2323,16 @@ int main(int argc, char **argv)
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical {"),
+        QStringLiteral("width: 8px"),
+        "main card scrollbar track is an actual 8px rail, not a 12px rail with inset paint");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical {"),
+        QStringLiteral("border-radius: 4px"),
+        "main card scrollbar track keeps proportional rounded ends at 8px width");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical {"),
         QStringLiteral("margin: 14px 0px 14px 0px"),
         "main card scrollbar track keeps the shared arrow-button margins");
     requireLastStyleRuleContains(
@@ -2342,7 +2352,17 @@ int main(int argc, char **argv)
         qApp->styleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, "),
         QStringLiteral("border: none"),
-        "main card scrollbar handle keeps its 8px visible width with margins instead of border paint");
+        "main card scrollbar handle has no border paint");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, "),
+        QStringLiteral("border-radius: 4px"),
+        "main card scrollbar handle keeps rounded ends at the 8px track width");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, "),
+        QStringLiteral("margin: 0px"),
+        "main card scrollbar handle fills the 8px rail without using margins as fake gutters");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QDialog#rtkConfigDialog QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] {"),
@@ -2418,7 +2438,7 @@ int main(int argc, char **argv)
     require(homeBottomFade != nullptr, "home bottom fade exists");
     constexpr int kExpectedPageLeftInset =
         VaporView::Ground::MainSupport::kTopLevelCardChromeInset;
-    constexpr int kExpectedPageRightGap = 12;
+    constexpr int kExpectedScrollBarWidth = 8;
     constexpr int kExpectedPageTopInset =
         VaporView::Ground::MainSupport::kTopLevelCardOuterVerticalInset;
     constexpr int kExpectedTopLevelCardGap =
@@ -2448,8 +2468,8 @@ int main(int argc, char **argv)
                 return homeBottomFade->isVisible();
             }),
             "bottom fade appears while more content remains below");
-    require(homeScrollArea->verticalScrollBar()->width() == kExpectedPageRightGap,
-            "home card scrollbar reserves the shared 12px right margin");
+    require(homeScrollArea->verticalScrollBar()->width() == kExpectedScrollBarWidth,
+            "home card scrollbar reserves an actual 8px track");
     require(homeScrollShadowLayer->width() >=
                 homeScrollArea->viewport()->width() +
                     homeScrollArea->verticalScrollBar()->width(),
@@ -2601,18 +2621,19 @@ int main(int argc, char **argv)
     const int homeTemperatureToRecordingGap =
         recordingCardRect.left() - rightEdge(homeTemperatureCardRect);
     if (!(std::abs(homeLeftVisualGap - kExpectedTopLevelCardGap) <= 1 &&
-          std::abs(homeRightVisualGap - kExpectedTopLevelCardGap) <= 1))
+          std::abs(homeRightVisualGap - kExpectedScrollBarWidth) <= 1))
     {
         std::cerr << "Home visual gaps: left=" << homeLeftVisualGap
                   << " right=" << homeRightVisualGap
-                  << " topLevelGap=" << kExpectedTopLevelCardGap << '\n';
+                  << " topLevelGap=" << kExpectedTopLevelCardGap
+                  << " scrollBarWidth=" << kExpectedScrollBarWidth << '\n';
     }
     require(std::abs(homeLeftVisualGap - kExpectedTopLevelCardGap) <= 1 &&
-                std::abs(homeRightVisualGap - kExpectedTopLevelCardGap) <= 1,
-            "home cards keep exact 12px visible gaps beside both side panels");
+                std::abs(homeRightVisualGap - kExpectedScrollBarWidth) <= 1,
+            "home cards keep the 12px left card gap and the 8px right scrollbar rail");
     require(std::abs(homeTemperatureToRecordingGap -
-                     (kExpectedTopLevelCardGap + kExpectedHomeShadowSafeRightInset)) <= 1,
-            "home temperature overview and recording status cards keep a shadow-safe gap before the scrollbar");
+                     (kExpectedHomeShadowSafeRightInset + kExpectedScrollBarWidth)) <= 1,
+            "home temperature overview and recording status cards keep shadow-safe spacing plus the 8px scrollbar rail");
     auto *homeDataGroupForSpacing =
         window.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer"));
     require(homeDataGroupForSpacing != nullptr, "home sensor row container exists for top-level spacing checks");
