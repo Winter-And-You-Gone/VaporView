@@ -3728,9 +3728,9 @@ void MainWindow::setupLogPanel()
     state_->log_side_panel_->installEventFilter(this);
     state_->log_side_panel_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     auto *logSideLayout = new QVBoxLayout(state_->log_side_panel_);
-    // The adjacent main-page scrollbar already supplies the 12px visible
-    // gutter. Do not add another left inset between the two card regions.
-    logSideLayout->setContentsMargins(0,
+    // Match the main page's shadow-safe inset on the right side of the
+    // scrollbar so both adjacent top-level card shadows have room to breathe.
+    logSideLayout->setContentsMargins(kTopLevelCardShadowSafeInset,
                                       kTopLevelCardOuterVerticalInset,
                                       0,
                                       kTopLevelCardOuterVerticalInset);

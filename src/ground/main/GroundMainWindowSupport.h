@@ -114,6 +114,15 @@ inline constexpr int kTopLevelCardGap = 12;
 inline constexpr int kTopLevelCardChromeInset = 12;
 inline constexpr int kTopLevelCardOuterVerticalInset =
     kTopLevelCardGap - kAppSidebarVisualPadding;
+inline constexpr qreal kTopLevelCardShadowSafeInsetRaw =
+    kTopLevelCardShadowBlurRadius * 0.6;
+inline constexpr int kTopLevelCardShadowSafeInset =
+    static_cast<int>(kTopLevelCardShadowSafeInsetRaw) +
+    (kTopLevelCardShadowSafeInsetRaw >
+             static_cast<int>(kTopLevelCardShadowSafeInsetRaw)
+         ? 1
+         : 0) +
+    1;
 inline constexpr int kMainContentBottomShadowGap = 8;
 inline constexpr int kMainContentBottomShadowSafeInset =
     kMainContentBottomShadowGap;

@@ -2450,8 +2450,8 @@ int main(int argc, char **argv)
         VaporView::Ground::MainSupport::kTopLevelCardGap;
     constexpr int kExpectedVisibleOuterGap =
         VaporView::Ground::MainSupport::kTopLevelCardGap;
-    const int kExpectedHomeShadowSafeRightInset =
-        static_cast<int>(std::ceil(VaporView::kTopLevelCardShadowBlurRadius * 0.6)) + 1;
+    constexpr int kExpectedHomeShadowSafeRightInset =
+        VaporView::Ground::MainSupport::kTopLevelCardShadowSafeInset;
     QWidget *homeScrollContent = homeScrollArea->widget();
     require(homeScrollContent != nullptr, "home scroll content exists for bottom-fade behavior");
     const int originalContentMinimumHeight = homeScrollContent->minimumHeight();
@@ -2629,20 +2629,25 @@ int main(int argc, char **argv)
     const int homeRightVisualGap = recordingCardRect.left() - rightEdge(homeViewportRect);
     const int homeTemperatureToRecordingGap =
         recordingCardRect.left() - rightEdge(homeTemperatureCardRect);
+    const int kExpectedRightSideScrollBarToCardGap =
+        kExpectedScrollBarWidth + kExpectedHomeShadowSafeRightInset;
     if (!(std::abs(homeLeftVisualGap - kExpectedTopLevelCardGap) <= 1 &&
-          std::abs(homeRightVisualGap - kExpectedScrollBarWidth) <= 1))
+          std::abs(homeRightVisualGap - kExpectedRightSideScrollBarToCardGap) <= 1))
     {
         std::cerr << "Home visual gaps: left=" << homeLeftVisualGap
                   << " right=" << homeRightVisualGap
                   << " topLevelGap=" << kExpectedTopLevelCardGap
-                  << " scrollBarWidth=" << kExpectedScrollBarWidth << '\n';
+                  << " scrollBarWidth=" << kExpectedScrollBarWidth
+                  << " shadowInset=" << kExpectedHomeShadowSafeRightInset << '\n';
     }
     require(std::abs(homeLeftVisualGap - kExpectedTopLevelCardGap) <= 1 &&
-                std::abs(homeRightVisualGap - kExpectedScrollBarWidth) <= 1,
-            "home cards keep the 12px left card gap and the 8px right scrollbar rail");
+                std::abs(homeRightVisualGap - kExpectedRightSideScrollBarToCardGap) <= 1,
+            "home cards keep the 12px left card gap and the 8px scrollbar plus 5px right shadow inset");
     require(std::abs(homeTemperatureToRecordingGap -
-                     (kExpectedHomeShadowSafeRightInset + kExpectedScrollBarWidth)) <= 1,
-            "home temperature overview and recording status cards keep shadow-safe spacing plus the 8px scrollbar rail");
+                     (kExpectedHomeShadowSafeRightInset +
+                      kExpectedScrollBarWidth +
+                      kExpectedHomeShadowSafeRightInset)) <= 1,
+            "home temperature overview and recording status cards keep symmetric shadow-safe spacing around the 8px scrollbar rail");
     auto *homeDataGroupForSpacing =
         window.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer"));
     require(homeDataGroupForSpacing != nullptr, "home sensor row container exists for top-level spacing checks");
