@@ -1141,8 +1141,9 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                 rtkScrollArea->horizontalScrollBar()->maximum() == 0,
             "RTK config page avoids a horizontal scrollbar at the default window size");
     require(rtkScrollArea->verticalScrollBar() != nullptr &&
-                rtkScrollArea->verticalScrollBar()->maximum() == 0,
-            "RTK config page avoids a vertical scrollbar at the default window size");
+                rtkScrollArea->verticalScrollBar()->maximum() == 0 &&
+                !rtkScrollArea->verticalScrollBar()->isVisible(),
+            "RTK config page hides its unused vertical scrollbar at the default window size");
     const std::vector<std::pair<QString, int>> compactCombos = {
         {QStringLiteral("rtkMountpointCombo"), 135},
         {QStringLiteral("rtkOutputPortCombo"), 100},
@@ -1224,6 +1225,10 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
         VaporView::Ground::MainSupport::kMainContentLeftCardInset;
     constexpr int kExpectedPageRightGap =
         VaporView::Ground::MainSupport::kMainContentRightCardInset;
+    constexpr int kExpectedVerticalScrollBarWidth =
+        VaporView::Ground::MainSupport::kMainContentVerticalScrollBarWidth;
+    constexpr int kExpectedPageRightInsetWithoutScrollBar =
+        kExpectedPageRightGap + kExpectedVerticalScrollBarWidth;
     constexpr int kExpectedPageChromeInset =
         VaporView::Ground::MainSupport::kTopLevelCardOuterVerticalInset;
     constexpr int kExpectedTopLevelCardGap =
@@ -1250,14 +1255,14 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     auto *rtkContent = dialog->findChild<QWidget *>(QStringLiteral("rtkConfigContent"));
     require(rtkContent != nullptr && rtkContent->layout() != nullptr,
             "RTK embedded content exposes its page layout");
-    require(rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
-            "RTK embedded page keeps the shared 8px right scrollbar rail");
+    require(rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAsNeeded,
+            "RTK embedded page only shows its scrollbar when content needs it");
     require(rtkContent->layout()->contentsMargins() ==
                 QMargins(kExpectedPageLeftInset,
                          kExpectedPageChromeInset,
-                         kExpectedPageRightGap,
+                         kExpectedPageRightInsetWithoutScrollBar,
                          kExpectedPageChromeInset),
-            "RTK embedded page reserves horizontal shadow inset and visible 12px vertical chrome");
+            "RTK embedded page reserves the hidden-scrollbar width in its right card inset");
     require(rtkContent->layout()->spacing() == kExpectedTopLevelCardGap,
             "RTK embedded page uses the shared top-level card gap");
     auto *ggaCard = findCardByTitle(dialog,
@@ -2430,8 +2435,10 @@ int main(int argc, char **argv)
             QStringLiteral("mainContentBottomFade"), Qt::FindDirectChildrenOnly);
         require(bottomFade != nullptr,
                 "each main scroll area owns the shared bottom fade");
-        require(scrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
-                "each main content page keeps the shared 8px right scrollbar rail");
+        const Qt::ScrollBarPolicy expectedVerticalScrollBarPolicy =
+            scrollArea == homeScrollArea ? Qt::ScrollBarAlwaysOn : Qt::ScrollBarAsNeeded;
+        require(scrollArea->verticalScrollBarPolicy() == expectedVerticalScrollBarPolicy,
+                "only the scrollable home page keeps a permanently visible scrollbar rail");
         require(bottomFade->testAttribute(Qt::WA_TransparentForMouseEvents) &&
                     bottomFade->focusPolicy() == Qt::NoFocus,
                 "bottom fades do not intercept pointer or keyboard input");
@@ -2448,7 +2455,8 @@ int main(int argc, char **argv)
     require(homeBottomFade != nullptr, "home bottom fade exists");
     constexpr int kExpectedPageLeftInset =
         VaporView::Ground::MainSupport::kMainContentLeftCardInset;
-    constexpr int kExpectedScrollBarWidth = 8;
+    constexpr int kExpectedScrollBarWidth =
+        VaporView::Ground::MainSupport::kMainContentVerticalScrollBarWidth;
     constexpr int kExpectedPageTopInset =
         VaporView::Ground::MainSupport::kTopLevelCardOuterVerticalInset;
     constexpr int kExpectedTopLevelCardGap =
@@ -2459,6 +2467,8 @@ int main(int argc, char **argv)
         VaporView::Ground::MainSupport::kTopLevelCardGap;
     constexpr int kExpectedHomeShadowSafeRightInset =
         VaporView::Ground::MainSupport::kTopLevelCardShadowSafeInset;
+    constexpr int kExpectedNoScrollPageRightInset =
+        kExpectedHomeShadowSafeRightInset + kExpectedScrollBarWidth;
     QWidget *homeScrollContent = homeScrollArea->widget();
     require(homeScrollContent != nullptr, "home scroll content exists for bottom-fade behavior");
     const int originalContentMinimumHeight = homeScrollContent->minimumHeight();
@@ -5748,6 +5758,10 @@ int main(int argc, char **argv)
         temperaturePage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
     require(temperatureScrollAreaForSpacing != nullptr,
             "temperature page scroll area exists for horizontal margin checks");
+    require(temperatureScrollAreaForSpacing->verticalScrollBarPolicy() == Qt::ScrollBarAsNeeded &&
+                temperatureScrollAreaForSpacing->verticalScrollBar()->maximum() == 0 &&
+                !temperatureScrollAreaForSpacing->verticalScrollBar()->isVisible(),
+            "temperature page hides its unused vertical scrollbar");
     const QRect temperatureScrollRect = widgetRectInCentral(temperatureScrollAreaForSpacing);
     require(std::abs(temperatureScrollRect.left() - mainPageStackCentralRect.left()) <= 1 &&
                 std::abs(temperatureScrollRect.top() - mainPageStackCentralRect.top()) <= 1 &&
@@ -5758,12 +5772,11 @@ int main(int argc, char **argv)
                 temperatureScrollAreaForSpacing->widget()->layout()->contentsMargins() ==
                     QMargins(kExpectedPageLeftInset,
                              kExpectedPageTopInset,
-                             kExpectedHomeShadowSafeRightInset,
+                             kExpectedNoScrollPageRightInset,
                              VaporView::Ground::MainSupport::kMainContentBottomShadowSafeInset),
-            "temperature page uses the shared 18px left and 5px right card insets");
+            "temperature page keeps the 18px right-side gap while its scrollbar is hidden");
     const int kExpectedMainCardToRightSidebarGap =
-        kExpectedHomeShadowSafeRightInset +
-        kExpectedScrollBarWidth +
+        kExpectedNoScrollPageRightInset +
         kExpectedHomeShadowSafeRightInset;
     require(std::abs((recordingCardRect.left() -
                       rightEdge(widgetRectInCentral(temperatureControllerCard))) -
@@ -5787,6 +5800,10 @@ int main(int argc, char **argv)
     auto *deviceConfigScrollArea =
         deviceConfigPage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
     require(deviceConfigScrollArea != nullptr, "device configuration scroll area exists");
+    require(deviceConfigScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAsNeeded &&
+                deviceConfigScrollArea->verticalScrollBar()->maximum() == 0 &&
+                !deviceConfigScrollArea->verticalScrollBar()->isVisible(),
+            "device configuration page hides its unused vertical scrollbar");
     const QRect deviceConfigScrollRect = widgetRectInCentral(deviceConfigScrollArea);
     require(std::abs(deviceConfigScrollRect.left() - mainPageStackCentralRect.left()) <= 1 &&
                 std::abs(deviceConfigScrollRect.top() - mainPageStackCentralRect.top()) <= 1 &&
@@ -5797,9 +5814,9 @@ int main(int argc, char **argv)
                 deviceConfigScrollArea->widget()->layout()->contentsMargins() ==
                     QMargins(kExpectedPageLeftInset,
                              kExpectedPageTopInset,
-                             kExpectedHomeShadowSafeRightInset,
+                             kExpectedNoScrollPageRightInset,
                              VaporView::Ground::MainSupport::kMainContentBottomShadowSafeInset),
-            "device configuration page uses the shared 18px left and 5px right card insets");
+            "device configuration page keeps the 18px right-side gap while its scrollbar is hidden");
     require(deviceConfigScrollArea->horizontalScrollBar() != nullptr &&
                 deviceConfigScrollArea->horizontalScrollBar()->maximum() == 0,
             "device configuration page fits horizontally at default window size");

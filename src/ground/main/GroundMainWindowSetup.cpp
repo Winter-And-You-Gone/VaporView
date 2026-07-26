@@ -2,12 +2,29 @@
 #include "ground/devices/DeviceRatePolicy.h"
 #include "ground/widgets/SerialPortComboSupport.h"
 
+#include <QEvent>
+#include <QLayout>
 #include <QLinearGradient>
+#include <QPointer>
+#include <QScrollBar>
+#include <QTimer>
+#include <algorithm>
+#include <cmath>
+#include <functional>
+#include <utility>
 
 namespace
 {
 
 constexpr int kMainContentBottomFadeHeight = 36;
+
+int topLevelCardShadowSafeRightInset(int fontScalePercent)
+{
+    const qreal shadowScale = std::max<qreal>(0.5, fontScalePercent / 100.0);
+    return static_cast<int>(std::ceil(
+               VaporView::kTopLevelCardShadowBlurRadius * shadowScale * 0.6)) +
+           1;
+}
 
 class ScrollAreaBottomFadeOverlay final : public QWidget
 {
@@ -107,6 +124,106 @@ void installScrollAreaBottomFade(QScrollArea *scrollArea)
         return;
     }
     new ScrollAreaBottomFadeOverlay(scrollArea);
+}
+
+class ScrollAreaRightInsetSynchronizer final : public QObject
+{
+public:
+    ScrollAreaRightInsetSynchronizer(QScrollArea *scrollArea,
+                                     QLayout *contentLayout,
+                                     std::function<int()> scrollBarRightInset)
+        : QObject(scrollArea)
+        , scroll_area_(scrollArea)
+        , content_widget_(scrollArea ? scrollArea->widget() : nullptr)
+        , content_layout_(contentLayout)
+        , vertical_scroll_bar_(scrollArea ? scrollArea->verticalScrollBar() : nullptr)
+        , scroll_bar_right_inset_(std::move(scrollBarRightInset))
+    {
+        if (scroll_area_)
+        {
+            scroll_area_->installEventFilter(this);
+        }
+        if (content_widget_)
+        {
+            content_widget_->installEventFilter(this);
+        }
+        if (vertical_scroll_bar_)
+        {
+            connect(vertical_scroll_bar_, &QScrollBar::rangeChanged,
+                    this, [this](int, int) { scheduleSync(); });
+        }
+        scheduleSync();
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if ((watched == scroll_area_ || watched == content_widget_) &&
+            (event->type() == QEvent::Resize ||
+             event->type() == QEvent::LayoutRequest ||
+             event->type() == QEvent::Show ||
+             event->type() == QEvent::FontChange ||
+             event->type() == QEvent::StyleChange))
+        {
+            scheduleSync();
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    void scheduleSync()
+    {
+        if (sync_pending_)
+        {
+            return;
+        }
+
+        sync_pending_ = true;
+        QTimer::singleShot(0, this, [this]() {
+            sync_pending_ = false;
+            sync();
+        });
+    }
+
+    void sync()
+    {
+        if (!content_layout_ || !vertical_scroll_bar_ || !scroll_bar_right_inset_)
+        {
+            return;
+        }
+
+        const bool needsVerticalScrollBar =
+            vertical_scroll_bar_->maximum() > vertical_scroll_bar_->minimum();
+        const int targetRightInset = std::max(0, scroll_bar_right_inset_()) +
+            (needsVerticalScrollBar ? 0 : kMainContentVerticalScrollBarWidth);
+        QMargins margins = content_layout_->contentsMargins();
+        if (margins.right() != targetRightInset)
+        {
+            margins.setRight(targetRightInset);
+            content_layout_->setContentsMargins(margins);
+        }
+    }
+
+    QPointer<QScrollArea> scroll_area_;
+    QPointer<QWidget> content_widget_;
+    QPointer<QLayout> content_layout_;
+    QPointer<QScrollBar> vertical_scroll_bar_;
+    std::function<int()> scroll_bar_right_inset_;
+    bool sync_pending_ = false;
+};
+
+void installScrollAreaRightInsetSynchronizer(QScrollArea *scrollArea,
+                                             QLayout *contentLayout,
+                                             std::function<int()> scrollBarRightInset)
+{
+    if (!scrollArea || !contentLayout || !scrollBarRightInset)
+    {
+        return;
+    }
+
+    new ScrollAreaRightInsetSynchronizer(scrollArea,
+                                         contentLayout,
+                                         std::move(scrollBarRightInset));
 }
 
 }  // namespace
@@ -1376,7 +1493,7 @@ void MainWindow::setupCentralWidget()
     temperatureScrollArea->setObjectName(QStringLiteral("mainCardsScrollArea"));
     temperatureScrollArea->setWidgetResizable(true);
     temperatureScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    temperatureScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    temperatureScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     temperatureScrollArea->setFrameShape(QFrame::NoFrame);
     auto *temperatureContent = new QWidget(temperatureScrollArea);
     auto *temperatureContentLayout = new QVBoxLayout(temperatureContent);
@@ -1389,13 +1506,24 @@ void MainWindow::setupCentralWidget()
     temperatureContentLayout->addStretch(1);
     temperatureScrollArea->setWidget(temperatureContent);
     installScrollAreaBottomFade(temperatureScrollArea);
+    installScrollAreaRightInsetSynchronizer(
+        temperatureScrollArea,
+        temperatureContentLayout,
+        [this]() { return topLevelCardShadowSafeRightInset(state_->font_scale_percent_); });
     temperaturePageLayout->addWidget(temperatureScrollArea, 1);
     state_->main_page_stack_->addWidget(state_->temperature_page_);
 
     state_->rtk_config_dialog_ = new RtkConfigDialog(state_->main_page_stack_, true);
     state_->rtk_config_dialog_->setAttribute(Qt::WA_QuitOnClose, false);
-    installScrollAreaBottomFade(
-        state_->rtk_config_dialog_->findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea")));
+    auto *rtkScrollArea =
+        state_->rtk_config_dialog_->findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea"));
+    installScrollAreaBottomFade(rtkScrollArea);
+    auto *rtkContent =
+        state_->rtk_config_dialog_->findChild<QWidget *>(QStringLiteral("rtkConfigContent"));
+    installScrollAreaRightInsetSynchronizer(
+        rtkScrollArea,
+        rtkContent ? rtkContent->layout() : nullptr,
+        [this]() { return topLevelCardShadowSafeRightInset(state_->font_scale_percent_); });
     connect(state_->rtk_config_dialog_, &RtkConfigDialog::rtkRunningChanged, this, [this](bool running) {
         state_->rtk_service_running_ = running;
         updateRtkConfigIcon();
@@ -1433,7 +1561,7 @@ void MainWindow::setupDeviceConfigPage()
     scrollArea->setObjectName(QStringLiteral("mainCardsScrollArea"));
     scrollArea->setWidgetResizable(true);
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     scrollArea->setFrameShape(QFrame::NoFrame);
 
     auto *content = new QWidget(scrollArea);
@@ -1956,6 +2084,10 @@ void MainWindow::setupDeviceConfigPage()
 
     scrollArea->setWidget(content);
     installScrollAreaBottomFade(scrollArea);
+    installScrollAreaRightInsetSynchronizer(
+        scrollArea,
+        contentLayout,
+        [this]() { return topLevelCardShadowSafeRightInset(state_->font_scale_percent_); });
     pageLayout->addWidget(scrollArea, 1);
     state_->main_page_stack_->addWidget(state_->device_config_.page);
 

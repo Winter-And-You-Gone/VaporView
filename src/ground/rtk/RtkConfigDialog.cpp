@@ -1157,7 +1157,7 @@ void RtkConfigDialog::setupUi()
     scrollArea->setWidgetResizable(true);
     scrollArea->setFrameShape(QFrame::NoFrame);
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    scrollArea->setVerticalScrollBarPolicy(embedded_ ? Qt::ScrollBarAlwaysOn : Qt::ScrollBarAsNeeded);
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     outerLayout->addWidget(scrollArea);
 
     auto *contentWidget = new QWidget(scrollArea);

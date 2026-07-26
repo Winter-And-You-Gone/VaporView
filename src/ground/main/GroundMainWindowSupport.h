@@ -124,6 +124,7 @@ inline constexpr int kTopLevelCardShadowSafeInset =
          : 0) +
     1;
 inline constexpr int kMainContentSidebarCardGap = 18;
+inline constexpr int kMainContentVerticalScrollBarWidth = 8;
 inline constexpr int kMainContentLeftCardInset = kMainContentSidebarCardGap;
 inline constexpr int kMainContentRightCardInset = kTopLevelCardShadowSafeInset;
 inline constexpr int kMainContentRightSidebarInset = kTopLevelCardShadowSafeInset;
