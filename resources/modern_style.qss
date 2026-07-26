@@ -813,13 +813,13 @@ QScrollBar::sub-line:vertical:pressed {
 
 QScrollBar::up-arrow:vertical {
     image: url(combo_arrow_up.xpm);
-    width: 8px;
+    width: 12px;
     height: 8px;
 }
 
 QScrollBar::down-arrow:vertical {
     image: url(combo_arrow_down.xpm);
-    width: 8px;
+    width: 12px;
     height: 8px;
 }
 

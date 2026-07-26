@@ -174,8 +174,8 @@ void MainWindow::loadModernStyleSheet()
             "QScrollBar::sub-line:vertical { border-top-left-radius: 4px; border-top-right-radius: 4px; subcontrol-position: top; }"
             "QScrollBar::add-line:vertical { border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; subcontrol-position: bottom; }"
             "QScrollBar::add-line:vertical:hover, QScrollBar::sub-line:vertical:hover, QScrollBar::add-line:vertical:pressed, QScrollBar::sub-line:vertical:pressed { background-color: @vv-surface-sunken; }"
-            "QScrollBar::up-arrow:vertical { image: url(combo_arrow_up.xpm); width: 8px; height: 8px; }"
-            "QScrollBar::down-arrow:vertical { image: url(combo_arrow_down.xpm); width: 8px; height: 8px; }"
+            "QScrollBar::up-arrow:vertical { image: url(combo_arrow_up.xpm); width: 12px; height: 8px; }"
+            "QScrollBar::down-arrow:vertical { image: url(combo_arrow_down.xpm); width: 12px; height: 8px; }"
             "QScrollBar:horizontal { background-color: @vv-surface-sunken; height: 8px; border: none; border-radius: 4px; }"
             "QScrollBar::handle:horizontal { background-color: @vv-scrollbar-handle; min-width: 30px; border-radius: 4px; border: none; margin: 0px; }"
             "QScrollBar::handle:horizontal:hover { background-color: @vv-scrollbar-handle-hover; }"
@@ -890,10 +890,9 @@ void MainWindow::updateResponsiveHomeLayout()
             const qreal shadowScale = std::max<qreal>(
                 0.5,
                 state_->font_scale_percent_ / 100.0);
-            const int shadowSafeRightInset = std::max(
-                contentMargins.left(),
+            const int shadowSafeRightInset =
                 static_cast<int>(std::ceil(
-                    VaporView::kTopLevelCardShadowBlurRadius * shadowScale * 0.6)) + 1);
+                    VaporView::kTopLevelCardShadowBlurRadius * shadowScale * 0.6)) + 1;
             const int targetRightMargin = shadowSafeRightInset;
             if (contentMargins.right() != targetRightMargin)
             {

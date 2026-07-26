@@ -2345,6 +2345,11 @@ int main(int argc, char **argv)
         QStringLiteral("QScrollBar::up-arrow:vertical {"),
         QStringLiteral("image: url("),
         "main card scrollbar keeps the shared up-arrow indicator");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QScrollBar::up-arrow:vertical {"),
+        QStringLiteral("width: 12px"),
+        "main card scrollbar arrow artwork keeps its original visual width");
     require(!qApp->styleSheet().contains(
                 QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::up-arrow:vertical")),
             "main card scrollbar does not hide the shared arrow indicators");
@@ -2445,9 +2450,8 @@ int main(int argc, char **argv)
         VaporView::Ground::MainSupport::kTopLevelCardGap;
     constexpr int kExpectedVisibleOuterGap =
         VaporView::Ground::MainSupport::kTopLevelCardGap;
-    const int kExpectedHomeShadowSafeRightInset = std::max(
-        kExpectedPageLeftInset,
-        static_cast<int>(std::ceil(VaporView::kTopLevelCardShadowBlurRadius * 0.6)) + 1);
+    const int kExpectedHomeShadowSafeRightInset =
+        static_cast<int>(std::ceil(VaporView::kTopLevelCardShadowBlurRadius * 0.6)) + 1;
     QWidget *homeScrollContent = homeScrollArea->widget();
     require(homeScrollContent != nullptr, "home scroll content exists for bottom-fade behavior");
     const int originalContentMinimumHeight = homeScrollContent->minimumHeight();
@@ -6951,3 +6955,4 @@ int main(int argc, char **argv)
     std::cout << "main_window_layout_test passed\n";
     return 0;
 }
+
