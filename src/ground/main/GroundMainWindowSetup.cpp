@@ -1210,9 +1210,9 @@ void MainWindow::setupCentralWidget()
     state_->main_layout_->setSpacing(0);
     // Keep 8px of physical room below the main cards so their bottom shadows
     // remain visible instead of being clipped by the scroll viewport edge.
-    state_->main_layout_->setContentsMargins(kTopLevelCardChromeInset,
+    state_->main_layout_->setContentsMargins(kMainContentLeftCardInset,
                                              kTopLevelCardOuterVerticalInset,
-                                             kTopLevelCardChromeInset,
+                                             kMainContentRightCardInset,
                                              kMainContentBottomShadowSafeInset);
 
     setupConfigPanel();
@@ -1376,13 +1376,13 @@ void MainWindow::setupCentralWidget()
     temperatureScrollArea->setObjectName(QStringLiteral("mainCardsScrollArea"));
     temperatureScrollArea->setWidgetResizable(true);
     temperatureScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    temperatureScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    temperatureScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
     temperatureScrollArea->setFrameShape(QFrame::NoFrame);
     auto *temperatureContent = new QWidget(temperatureScrollArea);
     auto *temperatureContentLayout = new QVBoxLayout(temperatureContent);
-    temperatureContentLayout->setContentsMargins(kTopLevelCardChromeInset,
+    temperatureContentLayout->setContentsMargins(kMainContentLeftCardInset,
                                                  kTopLevelCardOuterVerticalInset,
-                                                 kTopLevelCardChromeInset,
+                                                 kMainContentRightCardInset,
                                                  kMainContentBottomShadowSafeInset);
     temperatureContentLayout->setSpacing(kTopLevelCardGap);
     temperatureContentLayout->addWidget(state_->temperature_controller_group_, 0);
@@ -1433,14 +1433,14 @@ void MainWindow::setupDeviceConfigPage()
     scrollArea->setObjectName(QStringLiteral("mainCardsScrollArea"));
     scrollArea->setWidgetResizable(true);
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
     scrollArea->setFrameShape(QFrame::NoFrame);
 
     auto *content = new QWidget(scrollArea);
     auto *contentLayout = new QVBoxLayout(content);
-    contentLayout->setContentsMargins(kTopLevelCardChromeInset,
+    contentLayout->setContentsMargins(kMainContentLeftCardInset,
                                       kTopLevelCardOuterVerticalInset,
-                                      kTopLevelCardChromeInset,
+                                      kMainContentRightCardInset,
                                       kMainContentBottomShadowSafeInset);
     contentLayout->setSpacing(kTopLevelCardGap);
     auto *topRowLayout = new QHBoxLayout;
@@ -3730,7 +3730,7 @@ void MainWindow::setupLogPanel()
     auto *logSideLayout = new QVBoxLayout(state_->log_side_panel_);
     // Match the main page's shadow-safe inset on the right side of the
     // scrollbar so both adjacent top-level card shadows have room to breathe.
-    logSideLayout->setContentsMargins(kTopLevelCardShadowSafeInset,
+    logSideLayout->setContentsMargins(kMainContentRightSidebarInset,
                                       kTopLevelCardOuterVerticalInset,
                                       0,
                                       kTopLevelCardOuterVerticalInset);

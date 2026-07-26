@@ -82,6 +82,16 @@ constexpr int kRtkInputHeight = 32;
 constexpr int kEmbeddedTopLevelCardGap = 12;
 constexpr int kEmbeddedTopLevelCardChromeInset = 12;
 constexpr int kEmbeddedTopLevelCardOuterVerticalInset = 4;
+constexpr int kEmbeddedMainContentLeftCardInset = 18;
+constexpr qreal kEmbeddedTopLevelCardShadowSafeInsetRaw =
+    VaporView::kTopLevelCardShadowBlurRadius * 0.6;
+constexpr int kEmbeddedMainContentRightCardInset =
+    static_cast<int>(kEmbeddedTopLevelCardShadowSafeInsetRaw) +
+    (kEmbeddedTopLevelCardShadowSafeInsetRaw >
+             static_cast<int>(kEmbeddedTopLevelCardShadowSafeInsetRaw)
+         ? 1
+         : 0) +
+    1;
 constexpr const char *kEpsilonMainGgaSourceKey = "__epsilon_main__";
 constexpr const char *kSectionTitleIconNameProperty = "_vv_section_title_icon_name";
 constexpr int kSectionTitleIconBoxSize = 26;
@@ -1147,7 +1157,7 @@ void RtkConfigDialog::setupUi()
     scrollArea->setWidgetResizable(true);
     scrollArea->setFrameShape(QFrame::NoFrame);
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollArea->setVerticalScrollBarPolicy(embedded_ ? Qt::ScrollBarAlwaysOn : Qt::ScrollBarAsNeeded);
     outerLayout->addWidget(scrollArea);
 
     auto *contentWidget = new QWidget(scrollArea);
@@ -1156,10 +1166,12 @@ void RtkConfigDialog::setupUi()
 
     main_layout_ = new QVBoxLayout(contentWidget);
     main_layout_->setSpacing(kEmbeddedTopLevelCardGap);
-    main_layout_->setContentsMargins(kEmbeddedTopLevelCardChromeInset,
+    main_layout_->setContentsMargins(embedded_ ? kEmbeddedMainContentLeftCardInset
+                                               : kEmbeddedTopLevelCardChromeInset,
                                      embedded_ ? kEmbeddedTopLevelCardOuterVerticalInset
                                                : kEmbeddedTopLevelCardChromeInset,
-                                     kEmbeddedTopLevelCardChromeInset,
+                                     embedded_ ? kEmbeddedMainContentRightCardInset
+                                               : kEmbeddedTopLevelCardChromeInset,
                                      embedded_ ? kEmbeddedTopLevelCardOuterVerticalInset
                                                : kEmbeddedTopLevelCardChromeInset);
     main_layout_->setAlignment(Qt::AlignTop);
@@ -1625,11 +1637,15 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (main_layout_)
     {
         main_layout_->setSpacing(scalePixels(kEmbeddedTopLevelCardGap));
-        main_layout_->setContentsMargins(scalePixels(kEmbeddedTopLevelCardChromeInset),
+        main_layout_->setContentsMargins(scalePixels(embedded_
+                                             ? kEmbeddedMainContentLeftCardInset
+                                             : kEmbeddedTopLevelCardChromeInset),
                                          scalePixels(embedded_
                                              ? kEmbeddedTopLevelCardOuterVerticalInset
                                              : kEmbeddedTopLevelCardChromeInset),
-                                         scalePixels(kEmbeddedTopLevelCardChromeInset),
+                                         scalePixels(embedded_
+                                             ? kEmbeddedMainContentRightCardInset
+                                             : kEmbeddedTopLevelCardChromeInset),
                                          scalePixels(embedded_
                                              ? kEmbeddedTopLevelCardOuterVerticalInset
                                              : kEmbeddedTopLevelCardChromeInset));

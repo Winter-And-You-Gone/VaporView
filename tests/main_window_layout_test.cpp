@@ -1221,8 +1221,9 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(ntripCard != nullptr && rtcmCard != nullptr,
             "RTK NTRIP and RTCM cards exist for compact width checks");
     constexpr int kExpectedPageLeftInset =
-        VaporView::Ground::MainSupport::kTopLevelCardChromeInset;
-    constexpr int kExpectedPageRightGap = 12;
+        VaporView::Ground::MainSupport::kMainContentLeftCardInset;
+    constexpr int kExpectedPageRightGap =
+        VaporView::Ground::MainSupport::kMainContentRightCardInset;
     constexpr int kExpectedPageChromeInset =
         VaporView::Ground::MainSupport::kTopLevelCardOuterVerticalInset;
     constexpr int kExpectedTopLevelCardGap =
@@ -1241,7 +1242,7 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(std::abs(widgetRectInCentralForRtk(ntripCard).left() -
                      (widgetRectInCentralForRtk(pageStack).left() +
                       kExpectedPageLeftInset)) <= 1,
-            "RTK page keeps the compact left inset that balances the sidebar splitter");
+            "RTK page keeps the shared 18px sidebar-to-card gap");
     require(std::abs(widgetRectInCentralForRtk(ntripCard).top() -
                      (widgetRectInCentralForRtk(pageStack).top() +
                       kExpectedPageChromeInset)) <= 1,
@@ -1249,6 +1250,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     auto *rtkContent = dialog->findChild<QWidget *>(QStringLiteral("rtkConfigContent"));
     require(rtkContent != nullptr && rtkContent->layout() != nullptr,
             "RTK embedded content exposes its page layout");
+    require(rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
+            "RTK embedded page keeps the shared 8px right scrollbar rail");
     require(rtkContent->layout()->contentsMargins() ==
                 QMargins(kExpectedPageLeftInset,
                          kExpectedPageChromeInset,
@@ -2427,6 +2430,8 @@ int main(int argc, char **argv)
             QStringLiteral("mainContentBottomFade"), Qt::FindDirectChildrenOnly);
         require(bottomFade != nullptr,
                 "each main scroll area owns the shared bottom fade");
+        require(scrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
+                "each main content page keeps the shared 8px right scrollbar rail");
         require(bottomFade->testAttribute(Qt::WA_TransparentForMouseEvents) &&
                     bottomFade->focusPolicy() == Qt::NoFocus,
                 "bottom fades do not intercept pointer or keyboard input");
@@ -2442,12 +2447,14 @@ int main(int argc, char **argv)
         QStringLiteral("mainContentBottomFade"), Qt::FindDirectChildrenOnly);
     require(homeBottomFade != nullptr, "home bottom fade exists");
     constexpr int kExpectedPageLeftInset =
-        VaporView::Ground::MainSupport::kTopLevelCardChromeInset;
+        VaporView::Ground::MainSupport::kMainContentLeftCardInset;
     constexpr int kExpectedScrollBarWidth = 8;
     constexpr int kExpectedPageTopInset =
         VaporView::Ground::MainSupport::kTopLevelCardOuterVerticalInset;
     constexpr int kExpectedTopLevelCardGap =
         VaporView::Ground::MainSupport::kTopLevelCardGap;
+    constexpr int kExpectedSidebarToMainCardGap =
+        VaporView::Ground::MainSupport::kMainContentSidebarCardGap;
     constexpr int kExpectedVisibleOuterGap =
         VaporView::Ground::MainSupport::kTopLevelCardGap;
     constexpr int kExpectedHomeShadowSafeRightInset =
@@ -2598,7 +2605,7 @@ int main(int argc, char **argv)
         homePrimaryCardRect.left();
     require(std::abs(homePrimaryCardLeft -
                      (mainPageStackCentralRect.left() + kExpectedPageLeftInset)) <= 1,
-            "home page keeps the compact left inset that balances the sidebar splitter");
+            "home page keeps the shared 18px sidebar-to-card gap");
     const int homeTopVisualGap =
         homePrimaryCardRect.top() - mainPageStackCentralRect.top();
     if (std::abs(homeTopVisualGap - kExpectedPageTopInset) > 1)
@@ -2631,18 +2638,18 @@ int main(int argc, char **argv)
         recordingCardRect.left() - rightEdge(homeTemperatureCardRect);
     const int kExpectedRightSideScrollBarToCardGap =
         kExpectedScrollBarWidth + kExpectedHomeShadowSafeRightInset;
-    if (!(std::abs(homeLeftVisualGap - kExpectedTopLevelCardGap) <= 1 &&
+    if (!(std::abs(homeLeftVisualGap - kExpectedSidebarToMainCardGap) <= 1 &&
           std::abs(homeRightVisualGap - kExpectedRightSideScrollBarToCardGap) <= 1))
     {
         std::cerr << "Home visual gaps: left=" << homeLeftVisualGap
                   << " right=" << homeRightVisualGap
-                  << " topLevelGap=" << kExpectedTopLevelCardGap
+                  << " sidebarToMainGap=" << kExpectedSidebarToMainCardGap
                   << " scrollBarWidth=" << kExpectedScrollBarWidth
                   << " shadowInset=" << kExpectedHomeShadowSafeRightInset << '\n';
     }
-    require(std::abs(homeLeftVisualGap - kExpectedTopLevelCardGap) <= 1 &&
+    require(std::abs(homeLeftVisualGap - kExpectedSidebarToMainCardGap) <= 1 &&
                 std::abs(homeRightVisualGap - kExpectedRightSideScrollBarToCardGap) <= 1,
-            "home cards keep the 12px left card gap and the 8px scrollbar plus 5px right shadow inset");
+            "home cards keep the 18px left sidebar gap and the 8px scrollbar plus 5px right shadow inset");
     require(std::abs(homeTemperatureToRecordingGap -
                      (kExpectedHomeShadowSafeRightInset +
                       kExpectedScrollBarWidth +
@@ -5746,6 +5753,22 @@ int main(int argc, char **argv)
                 std::abs(temperatureScrollRect.top() - mainPageStackCentralRect.top()) <= 1 &&
                 std::abs(rightEdge(mainPageStackCentralRect) - rightEdge(temperatureScrollRect)) <= 1,
             "temperature scroll viewport fills the page while content reserves the card shadow inset");
+    require(temperatureScrollAreaForSpacing->widget() != nullptr &&
+                temperatureScrollAreaForSpacing->widget()->layout() != nullptr &&
+                temperatureScrollAreaForSpacing->widget()->layout()->contentsMargins() ==
+                    QMargins(kExpectedPageLeftInset,
+                             kExpectedPageTopInset,
+                             kExpectedHomeShadowSafeRightInset,
+                             VaporView::Ground::MainSupport::kMainContentBottomShadowSafeInset),
+            "temperature page uses the shared 18px left and 5px right card insets");
+    const int kExpectedMainCardToRightSidebarGap =
+        kExpectedHomeShadowSafeRightInset +
+        kExpectedScrollBarWidth +
+        kExpectedHomeShadowSafeRightInset;
+    require(std::abs((recordingCardRect.left() -
+                      rightEdge(widgetRectInCentral(temperatureControllerCard))) -
+                     kExpectedMainCardToRightSidebarGap) <= 1,
+            "temperature page keeps the shared 18px card-to-right-sidebar gap");
     requireLabelTextOneOf(customTitleLabel,
                           {QStringLiteral("温控"), QStringLiteral("Thermal")},
                           "custom title bar follows the selected temperature page");
@@ -5769,6 +5792,14 @@ int main(int argc, char **argv)
                 std::abs(deviceConfigScrollRect.top() - mainPageStackCentralRect.top()) <= 1 &&
                 std::abs(rightEdge(mainPageStackCentralRect) - rightEdge(deviceConfigScrollRect)) <= 1,
             "device configuration scroll viewport fills the page while content reserves the card shadow inset");
+    require(deviceConfigScrollArea->widget() != nullptr &&
+                deviceConfigScrollArea->widget()->layout() != nullptr &&
+                deviceConfigScrollArea->widget()->layout()->contentsMargins() ==
+                    QMargins(kExpectedPageLeftInset,
+                             kExpectedPageTopInset,
+                             kExpectedHomeShadowSafeRightInset,
+                             VaporView::Ground::MainSupport::kMainContentBottomShadowSafeInset),
+            "device configuration page uses the shared 18px left and 5px right card insets");
     require(deviceConfigScrollArea->horizontalScrollBar() != nullptr &&
                 deviceConfigScrollArea->horizontalScrollBar()->maximum() == 0,
             "device configuration page fits horizontally at default window size");
