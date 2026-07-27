@@ -6,15 +6,30 @@ function vaporViewDefaultTargetDirectory(text) {
     }
 
     var normalized = String(text).replace(/\//g, "\\");
-    if (normalized.length === 2 && normalized.charAt(1) === ":") {
-        return normalized + "\\VaporView";
+    if (normalized.length === 0) {
+        return text;
     }
-    if (normalized.length === 3 &&
-        normalized.charAt(1) === ":" &&
-        normalized.charAt(2) === "\\") {
-        return normalized.substr(0, 2) + "\\VaporView";
+
+    var trimmed = normalized;
+    while (trimmed.length > 3 && trimmed.charAt(trimmed.length - 1) === "\\") {
+        trimmed = trimmed.substr(0, trimmed.length - 1);
     }
-    return text;
+
+    var separator = trimmed.lastIndexOf("\\");
+    var leaf = separator >= 0 ? trimmed.substr(separator + 1) : trimmed;
+    if (/^(VaporView|VaproView)$/i.test(leaf)) {
+        return text;
+    }
+
+    if (trimmed.length === 2 && trimmed.charAt(1) === ":") {
+        return trimmed + "\\VaporView";
+    }
+    if (trimmed.length === 3 &&
+        trimmed.charAt(1) === ":" &&
+        trimmed.charAt(2) === "\\") {
+        return trimmed.substr(0, 2) + "\\VaporView";
+    }
+    return trimmed + "\\VaporView";
 }
 
 function Controller() {
