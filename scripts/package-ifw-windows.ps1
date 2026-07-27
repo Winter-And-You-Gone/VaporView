@@ -6,6 +6,7 @@ param(
     [string]$VisualStudioInstall = $env:VAPORVIEW_VS2022_INSTALL,
     [string]$CMakeExe = $env:VAPORVIEW_CMAKE_EXE,
     [string]$NinjaExe = $env:VAPORVIEW_NINJA_EXE,
+    [string]$EditBin = $env:VAPORVIEW_EDITBIN,
     [switch]$SkipBuild,
     [switch]$NoRepository
 )
@@ -73,6 +74,45 @@ function Invoke-Checked {
     }
 }
 
+function Resolve-EditBin {
+    param([string]$RequestedPath, [string]$VisualStudioRoot)
+
+    if (-not [string]::IsNullOrWhiteSpace($RequestedPath)) {
+        return Resolve-RequiredFile $RequestedPath "editbin.exe"
+    }
+
+    $command = Get-Command editbin.exe -ErrorAction SilentlyContinue
+    if ($command) {
+        return (Resolve-Path -LiteralPath $command.Source).Path
+    }
+
+    $candidateRoots = @()
+    if (-not [string]::IsNullOrWhiteSpace($VisualStudioRoot)) {
+        $candidateRoots += (Join-Path $VisualStudioRoot "VC\Tools\MSVC")
+    }
+    $candidateRoots += @(
+        "F:\VisualStudio\2022\BuildTools\VC\Tools\MSVC",
+        "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC",
+        "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC"
+    )
+
+    foreach ($root in ($candidateRoots | Select-Object -Unique)) {
+        if (-not (Test-Path -LiteralPath $root -PathType Container)) {
+            continue
+        }
+        $candidate = Get-ChildItem -LiteralPath $root -Directory |
+            Sort-Object Name -Descending |
+            ForEach-Object { Join-Path $_.FullName "bin\Hostx64\x64\editbin.exe" } |
+            Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+            Select-Object -First 1
+        if ($candidate) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    throw "editbin.exe was not found. Pass -EditBin with the Visual Studio editbin.exe path."
+}
+
 if (-not $SkipBuild) {
     $buildScript = Join-Path $repoRoot "scripts\build-windows-msvc2022.ps1"
     $buildArgs = @("-ExecutionPolicy", "Bypass", "-File", $buildScript, "-Action", "Build", "-EnableOsgEarth")
@@ -101,6 +141,7 @@ if ([string]::IsNullOrWhiteSpace($IfwBin)) {
 $IfwBin = Resolve-RequiredDirectory $IfwBin "Qt Installer Framework bin directory"
 $binaryCreator = Resolve-RequiredFile (Join-Path $IfwBin "binarycreator.exe") "binarycreator.exe"
 $repoGenerator = Resolve-RequiredFile (Join-Path $IfwBin "repogen.exe") "repogen.exe"
+$editBin = Resolve-EditBin $EditBin $VisualStudioInstall
 
 $cmakeText = Get-Content -LiteralPath (Join-Path $repoRoot "CMakeLists.txt") -Raw
 if ($cmakeText -notmatch 'project\(VaporView VERSION ([0-9]+\.[0-9]+\.[0-9]+)') {
@@ -183,7 +224,11 @@ $packageMeta = Join-Path $packageRoot "meta"
 $packageData = Join-Path $packageRoot "data"
 New-Item -ItemType Directory -Force -Path $packageMeta, $packageData | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\packages\com.vaporview.core\meta\installscript.qs") -Destination $packageMeta -Force
-Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") -Destination (Join-Path $packageMeta "license.txt") -Force
+Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\packages\com.vaporview.core\meta\shortcutselection.ui") -Destination $packageMeta -Force
+$licenseEnglish = Get-Content -LiteralPath (Join-Path $repoRoot "LICENSE") -Raw
+$licenseChineseHeader = Get-Content -LiteralPath (Join-Path $repoRoot "packaging\ifw\license-zh-header.txt") -Raw
+Set-Content -LiteralPath (Join-Path $packageMeta "license.txt") -Value ($licenseChineseHeader + [Environment]::NewLine + $licenseEnglish) -Encoding UTF8
+Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") -Destination (Join-Path $packageMeta "license_en.txt") -Force
 $packageXml = (Get-Content -LiteralPath (Join-Path $repoRoot "packaging\ifw\packages\com.vaporview.core\meta\package.xml.in") -Raw)
 $packageXml = $packageXml.Replace("@VAPORVIEW_VERSION@", $version).Replace("@VAPORVIEW_RELEASE_DATE@", $releaseDate)
 Set-Content -LiteralPath (Join-Path $packageMeta "package.xml") -Value $packageXml -Encoding UTF8
@@ -198,12 +243,15 @@ $configXml = (Get-Content -LiteralPath (Join-Path $repoRoot "packaging\ifw\confi
 $configXml = $configXml.Replace("@VAPORVIEW_VERSION@", $version).Replace("@VAPORVIEW_TARGET_DIR@", "C:\VaporView").Replace("@VAPORVIEW_REMOTE_REPOSITORIES@", $remoteRepositories)
 Set-Content -LiteralPath (Join-Path $workDir "config.xml") -Value $configXml -Encoding UTF8
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\control.qs") -Destination $workDir -Force
+Copy-Item -LiteralPath (Join-Path $repoRoot "resources\VaproViewLOGO\VaporViewLOGO_black.ico") -Destination (Join-Path $workDir "VaporViewInstallerIcon.ico") -Force
+Copy-Item -LiteralPath (Join-Path $repoRoot "resources\VaproViewLOGO\VaporViewLOGO_black_icon.png") -Destination (Join-Path $workDir "VaporViewInstallerIcon.png") -Force
 
 $installerPath = Join-Path $outputDir ("VaporView-$version-win64-setup.exe")
 if (Test-Path -LiteralPath $installerPath) {
     Remove-Item -LiteralPath $installerPath -Force
 }
 Invoke-Checked $binaryCreator @("-c", (Join-Path $workDir "config.xml"), "-p", $packagesDir, $installerPath)
+Invoke-Checked $editBin @("/SUBSYSTEM:WINDOWS", $installerPath)
 
 if (-not $NoRepository) {
     $repositoryPath = Join-Path $outputDir "repository"

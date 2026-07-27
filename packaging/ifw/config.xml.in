@@ -7,8 +7,14 @@
     <WizardStyle>Modern</WizardStyle>
     <TargetDir>@VAPORVIEW_TARGET_DIR@</TargetDir>
     <StartMenuDir>VaporView</StartMenuDir>
+    <InstallerApplicationIcon>VaporViewInstallerIcon</InstallerApplicationIcon>
+    <InstallerWindowIcon>VaporViewInstallerIcon.png</InstallerWindowIcon>
     <MaintenanceToolName>VaporViewMaintenanceTool</MaintenanceToolName>
     <MaintenanceToolIniFile>VaporViewMaintenanceTool.ini</MaintenanceToolIniFile>
     <ControlScript>control.qs</ControlScript>
+    <Translations>
+        <Translation>ifw_zh_CN</Translation>
+        <Translation>qt_zh_CN</Translation>
+    </Translations>
     @VAPORVIEW_REMOTE_REPOSITORIES@
 </Installer>
