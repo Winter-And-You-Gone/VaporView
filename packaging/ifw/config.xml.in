@@ -5,6 +5,8 @@
     <Publisher>VaporView</Publisher>
     <ProductUrl>https://vaporview.example.invalid</ProductUrl>
     <WizardStyle>Modern</WizardStyle>
+    <WizardDefaultWidth>600</WizardDefaultWidth>
+    <WizardDefaultHeight>400</WizardDefaultHeight>
     <TargetDir>@VAPORVIEW_TARGET_DIR@</TargetDir>
     <StartMenuDir>VaporView</StartMenuDir>
     <InstallerApplicationIcon>VaporViewInstallerIcon</InstallerApplicationIcon>

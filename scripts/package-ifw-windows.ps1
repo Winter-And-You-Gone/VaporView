@@ -227,9 +227,11 @@ Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\packages\com.vaporvie
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\packages\com.vaporview.core\meta\shortcutselection.ui") -Destination $packageMeta -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\license-zh.txt") -Destination (Join-Path $packageMeta "license.txt") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") -Destination (Join-Path $packageMeta "license_en.txt") -Force
-$packageXml = (Get-Content -LiteralPath (Join-Path $repoRoot "packaging\ifw\packages\com.vaporview.core\meta\package.xml.in") -Raw)
+$packageXmlTemplatePath = Join-Path $repoRoot "packaging\ifw\packages\com.vaporview.core\meta\package.xml.in"
+$packageXml = [IO.File]::ReadAllText($packageXmlTemplatePath, [Text.Encoding]::UTF8)
 $packageXml = $packageXml.Replace("@VAPORVIEW_VERSION@", $version).Replace("@VAPORVIEW_RELEASE_DATE@", $releaseDate)
-Set-Content -LiteralPath (Join-Path $packageMeta "package.xml") -Value $packageXml -Encoding UTF8
+$utf8NoBom = New-Object Text.UTF8Encoding($false)
+[IO.File]::WriteAllText((Join-Path $packageMeta "package.xml"), $packageXml, $utf8NoBom)
 Copy-DirectoryContents $stageDir $packageData
 
 $remoteRepositories = ""

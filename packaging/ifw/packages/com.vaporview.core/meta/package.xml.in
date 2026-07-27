@@ -8,8 +8,8 @@
     <Essential>true</Essential>
     <ForcedInstallation>true</ForcedInstallation>
     <Licenses>
-        <License name="GPLv3（中文说明）" file="license.txt" />
-        <License name="GPLv3 (English)" file="license_en.txt" />
+        <License name="GPLv3（中文）" file="license.txt" priority="100" />
+        <License name="GPLv3 (English)" file="license_en.txt" priority="0" />
     </Licenses>
     <UserInterfaces>
         <UserInterface>shortcutselection.ui</UserInterface>
