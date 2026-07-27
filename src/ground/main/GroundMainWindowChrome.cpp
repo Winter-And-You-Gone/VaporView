@@ -8,6 +8,25 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+namespace
+{
+
+QString vaporViewUpdateRepositoryUrl()
+{
+    const QString overrideUrl = qEnvironmentVariable("VAPORVIEW_IFW_REPOSITORY_URL").trimmed();
+    if (!overrideUrl.isEmpty())
+    {
+        return overrideUrl;
+    }
+#ifdef Q_OS_WIN
+    return QStringLiteral("https://winter-and-you-gone.github.io/VaporView/ifw/windows/x64/repository/");
+#else
+    return QStringLiteral("https://winter-and-you-gone.github.io/VaporView/ifw/linux/x64/repository/");
+#endif
+}
+
+} // namespace
+
 void MainWindow::setEnglish(bool english)
 {
     auto setNativeMenuTitle = [this](QMenu *menu, const QString& title) {
@@ -401,13 +420,16 @@ void MainWindow::onCheckUpdatesClicked()
                              english ? QStringLiteral("Updates")
                                      : QStringLiteral("软件更新"),
                              english
-                                 ? QStringLiteral("VaporViewMaintenanceTool was not found next to the application. Run this command from an installed VaporView directory, or reinstall with the latest installer.")
-                                 : QStringLiteral("未在应用程序目录中找到 VaporViewMaintenanceTool。请从已安装的 VaporView 目录运行，或使用最新安装包重新安装。"));
+                                 ? QStringLiteral("This development build does not include VaporViewMaintenanceTool. Install VaporView with the setup package first, then run Check for Updates from the installed directory.")
+                                 : QStringLiteral("当前是开发构建，应用程序目录中不包含 VaporViewMaintenanceTool。请先使用安装包安装 VaporView，再从已安装目录中检查更新。"));
         return;
     }
 
+    const QString repositoryUrl = vaporViewUpdateRepositoryUrl();
     if (!QProcess::startDetached(maintenanceToolPath,
-                                 QStringList{QStringLiteral("--start-updater")},
+                                 QStringList{QStringLiteral("--set-temp-repository"),
+                                             repositoryUrl,
+                                             QStringLiteral("--start-updater")},
                                  applicationDir))
     {
         QMessageBox::warning(this,

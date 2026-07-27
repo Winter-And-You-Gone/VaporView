@@ -1,6 +1,6 @@
 param(
     [string]$IfwBin = $env:VAPORVIEW_IFW_BIN,
-    [string]$RepositoryUrl = $env:VAPORVIEW_IFW_REPOSITORY_URL,
+    [string]$RepositoryUrl,
     [string]$OutputDirectory,
     [string]$QtPrefix = $env:VAPORVIEW_QT_MSVC_PREFIX,
     [string]$VisualStudioInstall = $env:VAPORVIEW_VS2022_INSTALL,
@@ -23,10 +23,6 @@ $outputDir = if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 } else {
     [IO.Path]::GetFullPath($OutputDirectory)
 }
-if ([string]::IsNullOrWhiteSpace($RepositoryUrl)) {
-    $RepositoryUrl = "https://winter-and-you-gone.github.io/VaporView/ifw/windows/x64/repository/"
-}
-
 function Resolve-RequiredFile {
     param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][string]$Description)
     if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
@@ -253,7 +249,7 @@ $installerPath = Join-Path $outputDir ("VaporView-$version-win64-setup.exe")
 if (Test-Path -LiteralPath $installerPath) {
     Remove-Item -LiteralPath $installerPath -Force
 }
-Invoke-Checked $binaryCreator @("-c", (Join-Path $workDir "config.xml"), "-p", $packagesDir, $installerPath)
+Invoke-Checked $binaryCreator @("--offline-only", "-c", (Join-Path $workDir "config.xml"), "-p", $packagesDir, $installerPath)
 Invoke-Checked $editBin @("/SUBSYSTEM:WINDOWS", $installerPath)
 
 if (-not $NoRepository) {
@@ -268,7 +264,7 @@ if (-not $NoRepository) {
 Write-Host "Created: $installerPath"
 Write-Host "Staging: $stageDir"
 if (-not [string]::IsNullOrWhiteSpace($RepositoryUrl)) {
-    Write-Host "MaintenanceTool repository: $RepositoryUrl"
+    Write-Host "Embedded maintenance repository: $RepositoryUrl"
 } else {
-    Write-Host "No remote repository was embedded; use a repository URL for online updates."
+    Write-Host "Offline installer only; no remote repository is queried during installation."
 }

@@ -78,7 +78,7 @@ if ($LASTEXITCODE -eq 0) {
 }
 
 if ($remoteBranchExists) {
-    Invoke-Git @("fetch", $Remote, $Branch)
+    Invoke-Git @("fetch", $Remote, ("{0}:refs/remotes/{1}/{0}" -f $Branch, $Remote))
     Invoke-Git @("worktree", "add", "-B", $Branch, $worktreeDir, "$Remote/$Branch")
 } else {
     Invoke-Git @("worktree", "add", "--orphan", "-B", $Branch, $worktreeDir)

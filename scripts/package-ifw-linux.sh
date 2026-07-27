@@ -8,7 +8,7 @@ stage_dir="$work_dir/stage"
 packages_dir="$work_dir/packages"
 output_dir="${VAPORVIEW_IFW_OUTPUT_DIR:-$build_dir/ifw}"
 ifw_bin="${VAPORVIEW_IFW_BIN:-}"
-repository_url="${VAPORVIEW_IFW_REPOSITORY_URL:-https://winter-and-you-gone.github.io/VaporView/ifw/linux/x64/repository/}"
+repository_url=""
 skip_build=0
 
 usage() {
@@ -103,7 +103,7 @@ cp "$repo_root/packaging/ifw/control.qs" "$work_dir/"
 
 installer_path="$output_dir/VaporView-$version-linux-x64-setup.run"
 rm -f "$installer_path"
-"$binarycreator" -c "$work_dir/config.xml" -p "$packages_dir" "$installer_path"
+"$binarycreator" --offline-only -c "$work_dir/config.xml" -p "$packages_dir" "$installer_path"
 
 repository_path="$output_dir/repository"
 case "$repository_path" in
