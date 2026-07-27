@@ -225,9 +225,7 @@ $packageData = Join-Path $packageRoot "data"
 New-Item -ItemType Directory -Force -Path $packageMeta, $packageData | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\packages\com.vaporview.core\meta\installscript.qs") -Destination $packageMeta -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\packages\com.vaporview.core\meta\shortcutselection.ui") -Destination $packageMeta -Force
-$licenseEnglish = Get-Content -LiteralPath (Join-Path $repoRoot "LICENSE") -Raw
-$licenseChineseHeader = Get-Content -LiteralPath (Join-Path $repoRoot "packaging\ifw\license-zh-header.txt") -Raw
-Set-Content -LiteralPath (Join-Path $packageMeta "license.txt") -Value ($licenseChineseHeader + [Environment]::NewLine + $licenseEnglish) -Encoding UTF8
+Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\license-zh.txt") -Destination (Join-Path $packageMeta "license.txt") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") -Destination (Join-Path $packageMeta "license_en.txt") -Force
 $packageXml = (Get-Content -LiteralPath (Join-Path $repoRoot "packaging\ifw\packages\com.vaporview.core\meta\package.xml.in") -Raw)
 $packageXml = $packageXml.Replace("@VAPORVIEW_VERSION@", $version).Replace("@VAPORVIEW_RELEASE_DATE@", $releaseDate)
