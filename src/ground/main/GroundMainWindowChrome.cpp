@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QProcess>
 #include <QPushButton>
 #include <QVBoxLayout>
 
@@ -73,6 +74,8 @@ void MainWindow::setEnglish(bool english)
     discardTitleApplicationMenuPanel();
 
     setNativeMenuTitle(state_->help_menu_, english ? QStringLiteral("&Help") : QStringLiteral("帮助(&H)"));
+    state_->check_updates_action_->setText(english ? "Check for Updates..." : "检查更新...");
+    state_->check_updates_action_->setToolTip(english ? "Open VaporView updater" : "打开 VaporView 更新程序");
     state_->about_action_->setText(english ? "&About" : "关于(&A)");
 
     state_->refresh_ports_btn_->setText(english ? "Refresh" : "刷新");
@@ -380,6 +383,41 @@ void MainWindow::onOpenMap3DDiagnosticsClicked()
     onOpenMap3DWindowClicked();
 }
 #endif
+
+void MainWindow::onCheckUpdatesClicked()
+{
+    const bool english = state_->is_english_;
+    const QString applicationDir = QCoreApplication::applicationDirPath();
+    const QString toolName =
+#ifdef Q_OS_WIN
+        QStringLiteral("VaporViewMaintenanceTool.exe");
+#else
+        QStringLiteral("VaporViewMaintenanceTool");
+#endif
+    const QString maintenanceToolPath = QDir(applicationDir).absoluteFilePath(toolName);
+    if (!QFileInfo::exists(maintenanceToolPath))
+    {
+        QMessageBox::warning(this,
+                             english ? QStringLiteral("Updates")
+                                     : QStringLiteral("软件更新"),
+                             english
+                                 ? QStringLiteral("VaporViewMaintenanceTool was not found next to the application. Run this command from an installed VaporView directory, or reinstall with the latest installer.")
+                                 : QStringLiteral("未在应用程序目录中找到 VaporViewMaintenanceTool。请从已安装的 VaporView 目录运行，或使用最新安装包重新安装。"));
+        return;
+    }
+
+    if (!QProcess::startDetached(maintenanceToolPath,
+                                 QStringList{QStringLiteral("--start-updater")},
+                                 applicationDir))
+    {
+        QMessageBox::warning(this,
+                             english ? QStringLiteral("Updates")
+                                     : QStringLiteral("软件更新"),
+                             english
+                                 ? QStringLiteral("Failed to start VaporViewMaintenanceTool.")
+                                 : QStringLiteral("无法启动 VaporViewMaintenanceTool。"));
+    }
+}
 
 void MainWindow::onSwitchLanguage()
 {

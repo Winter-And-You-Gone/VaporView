@@ -327,6 +327,11 @@ void MainWindow::setupMenuBar()
 
     state_->help_menu_ = menuBar()->addMenu("");
 
+    state_->check_updates_action_ = new QAction(this);
+    state_->check_updates_action_->setObjectName(QStringLiteral("checkUpdatesAction"));
+    connect(state_->check_updates_action_, &QAction::triggered, this, &MainWindow::onCheckUpdatesClicked);
+    state_->help_menu_->addAction(state_->check_updates_action_);
+
     state_->about_action_ = new QAction(this);
     connect(state_->about_action_, &QAction::triggered, this, &MainWindow::showAboutDialog);
     state_->help_menu_->addAction(state_->about_action_);
@@ -836,6 +841,12 @@ void MainWindow::createTitleApplicationMenuPanel()
     TitleMenuSection helpSection{
         state_->is_english_ ? QStringLiteral("Help") : QStringLiteral("帮助"),
         {
+            {state_->is_english_ ? QStringLiteral("Check for Updates...") : QStringLiteral("检查更新..."),
+             QString(),
+             true,
+             false,
+             false,
+             [this]() { onCheckUpdatesClicked(); }},
             {state_->is_english_ ? QStringLiteral("About") : QStringLiteral("关于"),
              QString(),
              true,

@@ -23,6 +23,9 @@ $outputDir = if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 } else {
     [IO.Path]::GetFullPath($OutputDirectory)
 }
+if ([string]::IsNullOrWhiteSpace($RepositoryUrl)) {
+    $RepositoryUrl = "https://winter-and-you-gone.github.io/VaporView/ifw/windows/x64/repository/"
+}
 
 function Resolve-RequiredFile {
     param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][string]$Description)
@@ -237,7 +240,7 @@ Copy-DirectoryContents $stageDir $packageData
 $remoteRepositories = ""
 if (-not [string]::IsNullOrWhiteSpace($RepositoryUrl)) {
     $escapedRepositoryUrl = [System.Security.SecurityElement]::Escape($RepositoryUrl)
-    $remoteRepositories = "<RemoteRepositories>`n        <Repository>`n            <Url>$escapedRepositoryUrl</Url>`n            <Enabled>1</Enabled>`n            <Compressed>1</Compressed>`n        </Repository>`n    </RemoteRepositories>"
+    $remoteRepositories = "<RemoteRepositories>`n        <Repository>`n            <Url>$escapedRepositoryUrl</Url>`n            <Enabled>1</Enabled>`n        </Repository>`n    </RemoteRepositories>"
 }
 $configXml = (Get-Content -LiteralPath (Join-Path $repoRoot "packaging\ifw\config.xml.in") -Raw)
 $configXml = $configXml.Replace("@VAPORVIEW_VERSION@", $version).Replace("@VAPORVIEW_TARGET_DIR@", "C:\VaporView").Replace("@VAPORVIEW_REMOTE_REPOSITORIES@", $remoteRepositories)

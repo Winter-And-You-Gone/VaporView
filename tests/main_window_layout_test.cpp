@@ -227,6 +227,15 @@ QAction *findAboutAction(MainWindow *window)
     return nullptr;
 }
 
+QAction *findCheckUpdatesAction(MainWindow *window)
+{
+    if (!window)
+    {
+        return nullptr;
+    }
+    return window->findChild<QAction *>(QStringLiteral("checkUpdatesAction"));
+}
+
 void requireAboutDialogLayout(MainWindow *window,
                               QAction *aboutAction,
                               bool english,
@@ -2325,6 +2334,12 @@ int main(int argc, char **argv)
 
         QAction *aboutAction = findAboutAction(&aboutWindow);
         require(aboutAction != nullptr, "help menu exposes the about action");
+        QAction *checkUpdatesAction = findCheckUpdatesAction(&aboutWindow);
+        require(checkUpdatesAction != nullptr, "help menu exposes the check updates action");
+        require(checkUpdatesAction->text() == QStringLiteral("检查更新..."),
+                "check updates action defaults to Chinese");
+        require(checkUpdatesAction->toolTip() == QStringLiteral("打开 VaporView 更新程序"),
+                "check updates action has a Chinese tooltip");
         const QString originalApplicationVersion = app.applicationVersion();
         app.setApplicationVersion(QStringLiteral("9.8.7-test"));
         requireAboutDialogLayout(&aboutWindow, aboutAction, false, QStringLiteral("9.8.7-test"));
@@ -2334,6 +2349,9 @@ int main(int argc, char **argv)
                     return aboutAction->text() == QStringLiteral("&About");
                 }),
                 "about action updates to English");
+        require(checkUpdatesAction->text() == QStringLiteral("Check for Updates...") &&
+                    checkUpdatesAction->toolTip() == QStringLiteral("Open VaporView updater"),
+                "check updates action updates to English");
         app.setApplicationVersion(QString());
         requireAboutDialogLayout(&aboutWindow, aboutAction, true, QStringLiteral("1.0.1"));
         require(QMetaObject::invokeMethod(&aboutWindow, "onSwitchLanguage", Qt::DirectConnection),
@@ -2342,6 +2360,9 @@ int main(int argc, char **argv)
                     return aboutAction->text() == QStringLiteral("关于(&A)");
                 }),
                 "about action returns to Chinese");
+        require(checkUpdatesAction->text() == QStringLiteral("检查更新...") &&
+                    checkUpdatesAction->toolTip() == QStringLiteral("打开 VaporView 更新程序"),
+                "check updates action returns to Chinese");
         app.setApplicationVersion(originalApplicationVersion);
         aboutWindow.close();
         require(processEventsUntil(1000, [&aboutWindow]() {

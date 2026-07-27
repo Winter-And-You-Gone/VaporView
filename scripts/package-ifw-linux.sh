@@ -8,7 +8,7 @@ stage_dir="$work_dir/stage"
 packages_dir="$work_dir/packages"
 output_dir="${VAPORVIEW_IFW_OUTPUT_DIR:-$build_dir/ifw}"
 ifw_bin="${VAPORVIEW_IFW_BIN:-}"
-repository_url="${VAPORVIEW_IFW_REPOSITORY_URL:-}"
+repository_url="${VAPORVIEW_IFW_REPOSITORY_URL:-https://winter-and-you-gone.github.io/VaporView/ifw/linux/x64/repository/}"
 skip_build=0
 
 usage() {
@@ -95,7 +95,7 @@ cp -a "$stage_dir/." "$package_root/data/"
 
 remote_repositories=""
 if [[ -n "$repository_url" ]]; then
-    remote_repositories="<RemoteRepositories><Repository><Url>$repository_url</Url><Enabled>1</Enabled><Compressed>1</Compressed></Repository></RemoteRepositories>"
+    remote_repositories="<RemoteRepositories><Repository><Url>$repository_url</Url><Enabled>1</Enabled></Repository></RemoteRepositories>"
 fi
 sed -e "s/@VAPORVIEW_VERSION@/$version/g" -e "s#@VAPORVIEW_TARGET_DIR@#/opt/VaporView#g" -e "s#@VAPORVIEW_REMOTE_REPOSITORIES@#$remote_repositories#g" \
     "$repo_root/packaging/ifw/config.xml.in" > "$work_dir/config.xml"

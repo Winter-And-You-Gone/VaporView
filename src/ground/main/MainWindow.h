@@ -144,6 +144,7 @@ private slots:
     void onOpenSessionViewerClicked();
     void onOpenMap3DWindowClicked();
     void onOpenMap3DDiagnosticsClicked();
+    void onCheckUpdatesClicked();
     void onFontScaleTriggered(QAction *action);
     void onCancelConnectClicked();
     void onToggleTheme();

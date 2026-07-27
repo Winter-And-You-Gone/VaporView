@@ -179,6 +179,7 @@ struct MainWindowState
     QAction *epsilon_packet_rates_action_;
     QAction *recording_directory_action_;
     QAction *exit_action_;
+    QAction *check_updates_action_;
     QAction *about_action_;
     QActionGroup *font_scale_group_;
     QAction *font_tiny_action_;
