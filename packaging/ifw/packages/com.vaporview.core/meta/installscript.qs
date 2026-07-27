@@ -14,13 +14,12 @@ Component.prototype.createOperations = function() {
                               "@StartMenuDir@/VaporView Sky TUI.lnk",
                               "workingDirectory=@TargetDir@");
         component.addOperation("CreateShortcut",
-                              "@TargetDir@/VaporViewMaintenanceTool.exe",
-                              "@StartMenuDir@/Uninstall VaporView.lnk",
-                              "--start-uninstaller",
+                              "@TargetDir@/VaporView.exe",
+                              "@DesktopDir@/VaporView.lnk",
                               "workingDirectory=@TargetDir@");
         component.addOperation("CreateShortcut",
                               "@TargetDir@/VaporViewMaintenanceTool.exe",
-                              "@DesktopDir@/Uninstall VaporView.lnk",
+                              "@TargetDir@/Uninstall VaporView.lnk",
                               "--start-uninstaller",
                               "workingDirectory=@TargetDir@");
     }
