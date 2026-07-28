@@ -223,6 +223,7 @@ $packageMeta = Join-Path $packageRoot "meta"
 $packageData = Join-Path $packageRoot "data"
 New-Item -ItemType Directory -Force -Path $packageMeta, $packageData | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\packages\com.vaporview.core\meta\installscript.qs") -Destination $packageMeta -Force
+Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\packages\com.vaporview.core\meta\welcometargetdirectory.ui") -Destination $packageMeta -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\packages\com.vaporview.core\meta\shortcutselection.ui") -Destination $packageMeta -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\license-zh.txt") -Destination (Join-Path $packageMeta "license.txt") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") -Destination (Join-Path $packageMeta "license_en.txt") -Force

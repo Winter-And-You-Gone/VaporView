@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>WelcomeTargetDirectory</class>
+ <widget class="QWidget" name="WelcomeTargetDirectory">
+  <property name="windowTitle">
+   <string>欢迎</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QLabel" name="titleLabel">
+     <property name="text">
+      <string>欢迎使用 VaporView 安装程序</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="descriptionLabel">
+     <property name="text">
+      <string>安装程序将安装 VaporView 主程序、Sky 组件和 3D 运行时。请选择安装位置，然后继续。</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="targetDirectoryLabel">
+     <property name="text">
+      <string>安装位置：</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="targetDirectoryLayout">
+     <item>
+      <widget class="QLineEdit" name="targetDirectory"/>
+     </item>
+     <item>
+      <widget class="QPushButton" name="targetChooser">
+       <property name="text">
+        <string>浏览...</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QLabel" name="targetHintLabel">
+     <property name="text">
+      <string>如果选择的路径末尾不是 VaporView，安装程序会自动追加 VaporView 文件夹。</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
