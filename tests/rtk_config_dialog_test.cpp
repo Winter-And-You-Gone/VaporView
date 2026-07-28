@@ -1,15 +1,21 @@
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/widgets/SerialPortComboSupport.h"
 #include "shared/theme/AppTheme.h"
+#include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 
 #include <QApplication>
 #include <QComboBox>
+#include <QElapsedTimer>
+#include <QEventLoop>
+#include <QHostAddress>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QToolButton>
@@ -27,6 +33,22 @@ void require(bool condition, const char *message)
         std::cerr << "FAIL: " << message << '\n';
         std::exit(1);
     }
+}
+
+template <typename Predicate>
+bool processEventsUntil(int timeoutMs, Predicate predicate)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < timeoutMs)
+    {
+        QApplication::processEvents(QEventLoop::AllEvents, 50);
+        if (predicate())
+        {
+            return true;
+        }
+    }
+    return predicate();
 }
 }
 
@@ -66,6 +88,8 @@ int main(int argc, char **argv)
     require(mountpointCombo->currentText() == QStringLiteral("请先检测") &&
                 mountpointCombo->findText(QStringLiteral("AUTO")) < 0,
             "legacy AUTO mountpoint shows the detect-first prompt instead of a fake mountpoint");
+    require(mountpointCombo->property("usesSingleLevelPopupMenu").toBool(),
+            "RTK mountpoint combo uses the single-level popup implementation");
     dialog.setPreferredOutputPortAndBaud(QStringLiteral("COM77"), QStringLiteral("115200"));
     const int rememberedPortIndex = outputPortCombo->findText(QStringLiteral("COM77"));
     require(rememberedPortIndex >= 0 &&
@@ -74,6 +98,72 @@ int main(int argc, char **argv)
                     rememberedPortIndex,
                     VaporView::kSerialPortHistoryItemRole).toBool(),
             "explicit RTK serial history is retained and marked as history");
+    auto *serverEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
+    auto *portEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));
+    auto *fetchMountpointsButton = dialog.findChild<QPushButton *>(QStringLiteral("rtkFetchMountpointsButton"));
+    require(serverEdit && portEdit && fetchMountpointsButton, "mountpoint fetch controls exist");
+
+    QTcpServer caster;
+    require(caster.listen(QHostAddress::LocalHost, 0), "local sourcetable test server starts");
+    QObject::connect(&caster, &QTcpServer::newConnection, [&caster]() {
+        while (QTcpSocket *socket = caster.nextPendingConnection())
+        {
+            QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket]() {
+                socket->readAll();
+                const QByteArray body =
+                    "STR;AUTO;Auto mountpoint;RTCM 3;1004(1);2;GPS;NONE;B;N;0;0;VaporView;none;B;N;0;\r\n"
+                    "STR;RTCM32_GPS_LONG_WIDEST;Long mountpoint;RTCM 3;1004(1);2;GPS;NONE;B;N;0;0;VaporView;none;B;N;0;\r\n"
+                    "STR;RTCM30_GG;Short mountpoint;RTCM 3;1004(1);2;GPS;NONE;B;N;0;0;VaporView;none;B;N;0;\r\n"
+                    "ENDSOURCETABLE\r\n";
+                const QByteArray response =
+                    "HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " +
+                    QByteArray::number(body.size()) +
+                    "\r\n\r\n" +
+                    body;
+                socket->write(response);
+                socket->disconnectFromHost();
+            });
+            QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+        }
+    });
+    serverEdit->setText(QStringLiteral("127.0.0.1"));
+    portEdit->setText(QString::number(caster.serverPort()));
+    fetchMountpointsButton->click();
+    require(processEventsUntil(4000, [mountpointCombo]() {
+                return mountpointCombo->findText(QStringLiteral("RTCM32_GPS_LONG_WIDEST")) >= 0;
+            }),
+            "mountpoint detection populates the dropdown from the sourcetable");
+    require(mountpointCombo->findText(QStringLiteral("AUTO")) >= 0,
+            "detected AUTO is kept as a real mountpoint option");
+    require(mountpointCombo->currentText() == QStringLiteral("请选择挂载点"),
+            "detected mountpoints require an explicit user selection");
+    const int widestMountpointWidth =
+        mountpointCombo->fontMetrics().horizontalAdvance(QStringLiteral("RTCM32_GPS_LONG_WIDEST")) + 58;
+    require(mountpointCombo->width() >= widestMountpointWidth,
+            "mountpoint combo expands to fit the widest fetched mountpoint");
+    require(fetchMountpointsButton->width() == mountpointCombo->width(),
+            "mountpoint detect button tracks the expanded mountpoint combo width");
+    auto *singleLevelMountpointCombo =
+        dynamic_cast<VaporView::SingleLevelPopupComboBox *>(mountpointCombo);
+    require(singleLevelMountpointCombo != nullptr,
+            "mountpoint combo can expose the single-level popup for hover-state checks");
+    mountpointCombo->setCurrentText(QStringLiteral("AUTO"));
+    singleLevelMountpointCombo->showPopup();
+    QApplication::processEvents();
+    singleLevelMountpointCombo->hidePopup();
+    singleLevelMountpointCombo->showPopup();
+    QApplication::processEvents();
+    const auto popupRows = singleLevelMountpointCombo->popupMenu()->rows();
+    require(!popupRows.isEmpty(), "mountpoint popup builds rows");
+    for (const VaporView::SingleLevelPopupMenuRow *row : popupRows)
+    {
+        require(!row->property("hovered").toBool(),
+                "mountpoint popup clears stale hover highlight when reopened");
+        require(!row->property("selected").toBool(),
+                "mountpoint popup clears stale selected highlight when reopened");
+    }
+    singleLevelMountpointCombo->hidePopup();
+
     auto *xEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkLeverXEdit"));
     auto *yEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkLeverYEdit"));
     auto *zEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkLeverZEdit"));

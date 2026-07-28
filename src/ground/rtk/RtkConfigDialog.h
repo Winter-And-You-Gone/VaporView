@@ -86,6 +86,7 @@ private:
     QString textFor(const QString& english, const QString& chinese) const;
     int scalePixels(int pixels) const;
     void applyScaledUiMetrics();
+    void updateMountpointComboWidth();
     void startGgaMonitor();
     void stopGgaMonitor();
     void updateGgaMonitorText();

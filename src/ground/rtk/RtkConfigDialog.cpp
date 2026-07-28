@@ -1,4 +1,5 @@
 #include "shared/theme/AppTheme.h"
+#include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "shared/theme/TopLevelCardStyle.h"
 #include "RtkConfigDialog.h"
@@ -140,7 +141,6 @@ bool isMountpointPlaceholderText(const QString& text)
 {
     const QString trimmed = text.trimmed();
     return trimmed.isEmpty() ||
-        trimmed.compare(QStringLiteral("AUTO"), Qt::CaseInsensitive) == 0 ||
         trimmed == QStringLiteral("请先检测") ||
         trimmed == QStringLiteral("Detect first") ||
         trimmed == QStringLiteral("请选择挂载点") ||
@@ -154,7 +154,20 @@ QString selectedMountpointText(const QComboBox *combo)
         return QString();
     }
     const QString text = combo->currentText().trimmed();
-    return isMountpointPlaceholderText(text) ? QString() : text;
+    if (isMountpointPlaceholderText(text))
+    {
+        return QString();
+    }
+
+    const QString key = combo->currentData().toString();
+    if ((key == QString::fromLatin1(kMountpointDetectFirstKey) ||
+         key == QString::fromLatin1(kMountpointSelectKey)) &&
+        combo->currentIndex() >= 0 &&
+        text == combo->itemText(combo->currentIndex()).trimmed())
+    {
+        return QString();
+    }
+    return text;
 }
 
 void setMountpointPrompt(QComboBox *combo, bool english, bool mountpointsLoaded)
@@ -1287,11 +1300,13 @@ void RtkConfigDialog::setupUi()
 
     mountpoint_label_ = createFieldLabel();
     config_layout_->addWidget(mountpoint_label_, row, 4);
-    mountpoint_combo_ = new QComboBox(this);
+    auto *mountpointCombo = new VaporView::SingleLevelPopupComboBox(this);
+    mountpointCombo->setShowSelectionCheck(false);
+    mountpointCombo->setPopupFitContents(true);
+    mountpoint_combo_ = mountpointCombo;
     mountpoint_combo_->setObjectName(QStringLiteral("rtkMountpointCombo"));
     mountpoint_combo_->setEditable(true);
     mountpoint_combo_->setInsertPolicy(QComboBox::NoInsert);
-    configureComboBoxPopup(mountpoint_combo_, isDarkThemeEnabled());
     setMountpointPrompt(mountpoint_combo_, is_english_, false);
     config_layout_->addWidget(mountpoint_combo_, row, 5);
     fetch_mountpoints_btn_ = new QPushButton(this);
@@ -1818,16 +1833,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     password_edit_->setFixedWidth(std::max(scalePixels(140), passwordWidth));
     password_edit_->setFixedHeight(scalePixels(kRtkInputHeight));
     applyButtonWidth(fetch_mountpoints_btn_, 112);
-    if (fetch_mountpoints_btn_)
-    {
-        mountpoint_combo_->setFixedWidth(fetch_mountpoints_btn_->width());
-        mountpoint_combo_->setFixedHeight(scalePixels(kRtkInputHeight));
-        mountpoint_combo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    }
-    else
-    {
-        applyComboWidth(mountpoint_combo_, 112);
-    }
+    updateMountpointComboWidth();
 
     applyFieldLabelContentWidth(output_port_label_);
     applyFieldLabelContentWidth(baudrate_label_);
@@ -1981,6 +1987,39 @@ void RtkConfigDialog::applyScaledUiMetrics()
     }
 }
 
+void RtkConfigDialog::updateMountpointComboWidth()
+{
+    if (!mountpoint_combo_)
+    {
+        return;
+    }
+
+    const int targetHeight = scalePixels(kRtkInputHeight);
+    int targetWidth = std::max(scalePixels(112),
+                               fetch_mountpoints_btn_ ? fetch_mountpoints_btn_->width() : 0);
+
+    const QFontMetrics metrics(mountpoint_combo_->font());
+    for (int index = 0; index < mountpoint_combo_->count(); ++index)
+    {
+        targetWidth = std::max(targetWidth,
+                               metrics.horizontalAdvance(mountpoint_combo_->itemText(index)) +
+                                   scalePixels(58));
+    }
+
+    mountpoint_combo_->setFixedWidth(targetWidth);
+    mountpoint_combo_->setFixedHeight(targetHeight);
+    mountpoint_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    if (fetch_mountpoints_btn_)
+    {
+        fetch_mountpoints_btn_->setFixedWidth(targetWidth);
+        fetch_mountpoints_btn_->setFixedHeight(targetHeight);
+    }
+    if (auto *singleLevelCombo = dynamic_cast<VaporView::SingleLevelPopupComboBox *>(mountpoint_combo_))
+    {
+        singleLevelCombo->setPopupFitContents(true);
+    }
+}
+
 void RtkConfigDialog::setFontScale(int percent)
 {
     if (percent < 70 || percent > 150)
@@ -2037,7 +2076,10 @@ void RtkConfigDialog::loadSettings()
     username_edit_->setText(settings.value("username", "").toString());
     password_edit_->setText(settings.value("password", "").toString());
     const QString savedMountpoint = settings.value("mountpoint", "").toString().trimmed();
-    if (isMountpointPlaceholderText(savedMountpoint))
+    const bool savedMountpointConfirmed = settings.value("mountpoint_confirmed", false).toBool();
+    if (isMountpointPlaceholderText(savedMountpoint) ||
+        (savedMountpoint.compare(QStringLiteral("AUTO"), Qt::CaseInsensitive) == 0 &&
+         !savedMountpointConfirmed))
     {
         setMountpointPrompt(mountpoint_combo_, is_english_, false);
     }
@@ -2064,7 +2106,9 @@ void RtkConfigDialog::saveSettings()
     settings.setValue("port", port_edit_->text());
     settings.setValue("username", username_edit_->text());
     settings.setValue("password", password_edit_->text());
-    settings.setValue("mountpoint", selectedMountpointText(mountpoint_combo_));
+    const QString savedMountpoint = selectedMountpointText(mountpoint_combo_);
+    settings.setValue("mountpoint", savedMountpoint);
+    settings.setValue("mountpoint_confirmed", !savedMountpoint.isEmpty());
     settings.setValue("main_antenna_lever_x_m", main_antenna_lever_x_edit_->text());
     settings.setValue("main_antenna_lever_y_m", main_antenna_lever_y_edit_->text());
     settings.setValue("main_antenna_lever_z_m", main_antenna_lever_z_edit_->text());
@@ -3448,7 +3492,13 @@ void RtkConfigDialog::onFetchMountpointsClicked()
             else
             {
                 self->mountpoint_combo_->setCurrentIndex(0);
+                if (QLineEdit *edit = self->mountpoint_combo_->lineEdit())
+                {
+                    edit->setText(mountpointSelectLabel(self->is_english_));
+                    edit->setCursorPosition(0);
+                }
             }
+            self->updateMountpointComboWidth();
             self->appendLog(self->textFor("Fetched %1 mountpoints.", "已获取 %1 个挂载点。").arg(result.mountpoints.size()));
             self->appendLog(currentIndex >= 0
                                 ? self->textFor("Mountpoint dropdown updated; current: %1",

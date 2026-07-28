@@ -83,7 +83,7 @@ void SingleLevelPopupComboBox::rebuildPopupRows()
     {
         auto *row = new SingleLevelPopupMenuRow(popup_menu_);
         row->setText(itemText(i));
-        row->setChecked(i == currentIndex());
+        row->setChecked(show_selection_check_ && i == currentIndex());
         if (show_selection_check_)
         {
             row->setCheckIcon(checkIcon);

@@ -170,7 +170,7 @@ add_test(NAME rtk_serial_topology_test COMMAND rtk_serial_topology_test)
 add_executable(rtk_config_dialog_test
     ${CMAKE_CURRENT_SOURCE_DIR}/rtk_config_dialog_test.cpp
 )
-target_link_libraries(rtk_config_dialog_test PRIVATE vaporview_ground_rtk)
+target_link_libraries(rtk_config_dialog_test PRIVATE vaporview_ground_rtk Qt6::Network)
 add_test(NAME rtk_config_dialog_test COMMAND rtk_config_dialog_test)
 set_tests_properties(rtk_config_dialog_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=windows")
 
