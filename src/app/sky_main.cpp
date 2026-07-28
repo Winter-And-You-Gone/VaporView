@@ -29,7 +29,7 @@ int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
     app.setApplicationName("VaporViewSky");
-    app.setApplicationVersion("1.0.1");
+    app.setApplicationVersion("1.0.2");
     app.setOrganizationName("VaporView");
     registerTelemetryMetaTypes();
 

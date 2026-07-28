@@ -751,7 +751,7 @@ void MainWindow::showAboutDialog()
     const bool dark = state_->dark_theme_enabled_;
     const QString title = english ? QStringLiteral("About VaporView") : QStringLiteral("关于 VaporView");
     const QString applicationVersion = QCoreApplication::applicationVersion().trimmed().isEmpty()
-        ? QStringLiteral("1.0.1")
+        ? QStringLiteral("1.0.2")
         : QCoreApplication::applicationVersion().trimmed();
 
     QDialog dialog(this);
