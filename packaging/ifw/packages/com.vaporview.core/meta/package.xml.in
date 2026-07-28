@@ -12,7 +12,6 @@
         <License name="GPLv3 (English)" file="license_en.txt" priority="0" />
     </Licenses>
     <UserInterfaces>
-        <UserInterface>welcometargetdirectory.ui</UserInterface>
         <UserInterface>shortcutselection.ui</UserInterface>
     </UserInterfaces>
     <Script>installscript.qs</Script>
