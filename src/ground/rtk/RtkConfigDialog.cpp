@@ -99,6 +99,10 @@ constexpr int kEmbeddedMainContentRightInsetWithHiddenScrollBar =
 constexpr const char *kEpsilonMainGgaSourceKey = "__epsilon_main__";
 constexpr const char *kMountpointDetectFirstKey = "__mountpoint_detect_first__";
 constexpr const char *kMountpointSelectKey = "__mountpoint_select__";
+constexpr const char *kDefaultRtkCasterServer = "203.107.45.154";
+constexpr const char *kDefaultRtkCasterPortWgs84 = "8002";
+constexpr const char *kAlternateRtkCasterPortCgcs2000 = "8003";
+constexpr const char *kLegacyDefaultRtkCasterPort = "2101";
 constexpr const char *kSectionTitleIconNameProperty = "_vv_section_title_icon_name";
 constexpr int kSectionTitleIconBoxSize = 26;
 constexpr int kSectionTitleIconSize = 22;
@@ -167,6 +171,26 @@ bool shouldClearSavedLoopbackCaster(const QString& server,
 {
     return isLoopbackServerText(server) &&
         !hasConfirmedSavedMountpoint(savedMountpoint, savedMountpointConfirmed);
+}
+
+QString defaultRtkCasterServer()
+{
+    return QString::fromLatin1(kDefaultRtkCasterServer);
+}
+
+QString defaultRtkCasterPort()
+{
+    return QString::fromLatin1(kDefaultRtkCasterPortWgs84);
+}
+
+QString alternateRtkCasterPort()
+{
+    return QString::fromLatin1(kAlternateRtkCasterPortCgcs2000);
+}
+
+QString legacyDefaultRtkCasterPort()
+{
+    return QString::fromLatin1(kLegacyDefaultRtkCasterPort);
 }
 
 QString selectedMountpointText(const QComboBox *combo)
@@ -1317,7 +1341,7 @@ void RtkConfigDialog::setupUi()
     config_layout_->addWidget(port_label_, row, 2);
     port_edit_ = new QLineEdit(this);
     port_edit_->setObjectName(QStringLiteral("rtkPortEdit"));
-    port_edit_->setText("2101");
+    port_edit_->setText(defaultRtkCasterPort());
     config_layout_->addWidget(port_edit_, row, 3);
 
     mountpoint_label_ = createFieldLabel();
@@ -1665,7 +1689,15 @@ void RtkConfigDialog::setEnglish(bool english)
     timeout_label_->setText(textFor("Timeout (ms):", "超时 (ms):"));
     reconnect_label_->setText(textFor("Reconnect (ms):", "重连间隔 (ms):"));
 
-    server_edit_->setPlaceholderText(textFor("e.g. rtk.ntrip.org", "例如: rtk.ntrip.org"));
+    server_edit_->setPlaceholderText(defaultRtkCasterServer());
+    port_edit_->setPlaceholderText(textFor(QStringLiteral("%1 = WGS84, %2 = CGCS2000")
+                                               .arg(defaultRtkCasterPort(), alternateRtkCasterPort()),
+                                           QStringLiteral("%1 = WGS84，%2 = CGCS2000")
+                                               .arg(defaultRtkCasterPort(), alternateRtkCasterPort())));
+    port_edit_->setToolTip(textFor(QStringLiteral("Default: %1 (WGS84). Use %2 only if the downstream workflow requires CGCS2000.")
+                                       .arg(defaultRtkCasterPort(), alternateRtkCasterPort()),
+                                   QStringLiteral("默认使用 %1（WGS84）。只有下游流程明确要求 CGCS2000 时才改用 %2。")
+                                       .arg(defaultRtkCasterPort(), alternateRtkCasterPort())));
     if (mountpoint_combo_->lineEdit())
     {
         mountpoint_combo_->lineEdit()->setPlaceholderText(textFor("Detect first or type a mountpoint",
@@ -2093,20 +2125,30 @@ void RtkConfigDialog::loadSettings()
 {
     QSettings settings("VaporView", "RtkConfig");
 
-    QString savedServer = settings.value("server", "").toString().trimmed();
-    QString savedPort = settings.value("port", "2101").toString().trimmed();
+    QString savedServer = settings.value("server", QString()).toString().trimmed();
+    QString savedPort = settings.value("port", QString()).toString().trimmed();
     const QString savedMountpoint = settings.value("mountpoint", "").toString().trimmed();
     const bool savedMountpointConfirmed = settings.value("mountpoint_confirmed", false).toBool();
     if (shouldClearSavedLoopbackCaster(savedServer, savedMountpoint, savedMountpointConfirmed))
     {
         settings.remove("server");
         settings.remove("port");
-        savedServer.clear();
-        savedPort = QStringLiteral("2101");
+        savedServer = defaultRtkCasterServer();
+        savedPort = defaultRtkCasterPort();
+    }
+    if (savedServer.isEmpty())
+    {
+        savedServer = defaultRtkCasterServer();
+    }
+    if (savedPort.isEmpty() ||
+        (savedServer.compare(defaultRtkCasterServer(), Qt::CaseInsensitive) == 0 &&
+         savedPort.compare(legacyDefaultRtkCasterPort(), Qt::CaseInsensitive) == 0))
+    {
+        savedPort = defaultRtkCasterPort();
     }
 
     server_edit_->setText(savedServer);
-    port_edit_->setText(savedPort.isEmpty() ? QStringLiteral("2101") : savedPort);
+    port_edit_->setText(savedPort);
     username_edit_->setText(settings.value("username", "").toString());
     password_edit_->setText(settings.value("password", "").toString());
     if (isMountpointPlaceholderText(savedMountpoint) ||
@@ -2259,7 +2301,7 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config,
     if (config)
     {
         config->server = server;
-        config->port = port.isEmpty() ? QStringLiteral("2101") : port;
+        config->port = port.isEmpty() ? defaultRtkCasterPort() : port;
         config->username = username;
         config->password = password;
         config->mountpoint = mountpoint;
@@ -2282,14 +2324,14 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config,
             .arg(username)
             .arg(password)
             .arg(server)
-            .arg(port.isEmpty() ? QStringLiteral("2101") : port)
+            .arg(port.isEmpty() ? defaultRtkCasterPort() : port)
             .arg(mountpoint);
     }
     else
     {
         ntripUrl = QString("ntrip://%1:%2/%3")
             .arg(server)
-            .arg(port.isEmpty() ? QStringLiteral("2101") : port)
+            .arg(port.isEmpty() ? defaultRtkCasterPort() : port)
             .arg(mountpoint);
     }
 

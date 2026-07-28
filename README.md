@@ -527,7 +527,7 @@ RTK 功能由 `src/RtkConfigDialog.cpp` 和 `src/RtkStreamService.cpp` 实现。
 - 输出模式支持串口 `STR_SERIAL`，`RtkStreamConfig` 也定义了 TCP Client 输出模式。
 - 串口输出路径格式为 `port:baud:8:n:1:off`。
 - 默认输出波特率为 `115200`。
-- 默认 NTRIP 端口为空时按 `2101` 处理。
+- 默认 NTRIP caster 为 `203.107.45.154:8002`（WGS84 坐标系）；如现场链路明确要求 CGCS2000 坐标系，可将端口改为 `8003`。
 - 默认超时为 `5000 ms`，默认重连间隔为 `1000 ms`。
 - 当 EPSILON 主串口有可用经纬高时，RTK 服务按 `1 Hz` 从该位置生成 NMEA GGA 发给 NTRIP caster。
 - 当没有可用 EPSILON 主串口位置时，RTK 服务保留输出口 GGA 回读兼容模式。

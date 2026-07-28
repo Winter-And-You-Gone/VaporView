@@ -96,8 +96,9 @@ int main(int argc, char **argv)
     auto *serverEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
     auto *portEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));
     require(serverEdit && portEdit, "RTK server and port edits exist");
-    require(serverEdit->text().isEmpty() && portEdit->text() == QStringLiteral("2101"),
-            "saved loopback caster test residue is cleared back to the default server state");
+    require(serverEdit->text() == QStringLiteral("203.107.45.154") &&
+                portEdit->text() == QStringLiteral("8002"),
+            "saved loopback caster test residue is cleared back to the WGS84 default caster");
     dialog.setPreferredOutputPortAndBaud(QStringLiteral("COM77"), QStringLiteral("115200"));
     const int rememberedPortIndex = outputPortCombo->findText(QStringLiteral("COM77"));
     require(rememberedPortIndex >= 0 &&
