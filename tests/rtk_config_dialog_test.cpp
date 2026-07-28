@@ -17,6 +17,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
+#include <QTextEdit>
 #include <QTimer>
 #include <QToolButton>
 
@@ -175,6 +176,75 @@ int main(int argc, char **argv)
                 "mountpoint popup clears stale selected highlight when reopened");
     }
     singleLevelMountpointCombo->hidePopup();
+
+    QTcpServer ntripTestCaster;
+    require(ntripTestCaster.listen(QHostAddress::LocalHost, 0), "local NTRIP response test server starts");
+    QObject::connect(&ntripTestCaster, &QTcpServer::newConnection, [&ntripTestCaster]() {
+        while (QTcpSocket *socket = ntripTestCaster.nextPendingConnection())
+        {
+            QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket]() {
+                socket->readAll();
+                if (socket->property("sentHeader").toBool())
+                {
+                    return;
+                }
+                socket->setProperty("sentHeader", true);
+                socket->write("ICY 200 OK\r\n");
+                auto *burstTimer = new QTimer(socket);
+                burstTimer->setInterval(50);
+                QObject::connect(burstTimer, &QTimer::timeout, socket, [socket, burstTimer]() {
+                    int count = socket->property("burstCount").toInt();
+                    if (count >= 12)
+                    {
+                        burstTimer->stop();
+                        socket->disconnectFromHost();
+                        return;
+                    }
+                    QByteArray burst(48, '\xD3');
+                    socket->write(burst);
+                    socket->flush();
+                    socket->setProperty("burstCount", count + 1);
+                });
+                burstTimer->start();
+            });
+            QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+        }
+    });
+
+    outputPortCombo->setCurrentIndex(0);
+    serverEdit->setText(QStringLiteral("127.0.0.1"));
+    portEdit->setText(QString::number(ntripTestCaster.serverPort()));
+    mountpointCombo->setCurrentText(QStringLiteral("AUTO"));
+    auto *testButton = dialog.findChild<QPushButton *>();
+    for (QPushButton *button : dialog.findChildren<QPushButton *>())
+    {
+        if (button->text() == QStringLiteral("测试连接") || button->text() == QStringLiteral("Test Connection"))
+        {
+            testButton = button;
+            break;
+        }
+    }
+    auto *serviceLog = dialog.findChild<QTextEdit *>(QStringLiteral("rtkServiceLogTextEdit"));
+    require(testButton && serviceLog, "RTK test button and service log exist");
+    QTimer testMessageBoxCloser;
+    QObject::connect(&testMessageBoxCloser, &QTimer::timeout, []() {
+        for (QWidget *widget : QApplication::topLevelWidgets())
+        {
+            if (auto *messageBox = qobject_cast<QMessageBox *>(widget))
+            {
+                messageBox->accept();
+            }
+        }
+    });
+    testMessageBoxCloser.start(10);
+    testButton->click();
+    require(processEventsUntil(5000, [serviceLog, testButton]() {
+                return serviceLog->toPlainText().contains(QStringLiteral("不需要输出串口")) &&
+                    serviceLog->toPlainText().contains(QStringLiteral("模拟 GGA 测试成功")) &&
+                    testButton->isEnabled();
+            }),
+            "RTK connection test succeeds with simulated GGA and no selected output port");
+    testMessageBoxCloser.stop();
 
     auto *xEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkLeverXEdit"));
     auto *yEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkLeverYEdit"));

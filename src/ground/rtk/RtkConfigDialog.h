@@ -80,7 +80,8 @@ private:
     void saveSettings();
     bool buildRtkStreamConfig(RtkStreamConfig *config,
                               QString *description = nullptr,
-                              QString *validationError = nullptr) const;
+                              QString *validationError = nullptr,
+                              bool requireOutputPort = true) const;
     void updateButtonStates();
     QStringList getAvailablePorts() const;
     QString textFor(const QString& english, const QString& chinese) const;

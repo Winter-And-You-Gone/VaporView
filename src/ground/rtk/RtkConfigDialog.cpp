@@ -461,11 +461,11 @@ QString describeNoSignalTestFailure(const NoSignalTestResult& result, bool engli
         if (result.generatedGga)
         {
             return english
-                ? QStringLiteral("The EPSILON main-port position was sent to the NTRIP caster as GGA, but no bytes were received. "
+                ? QStringLiteral("The built-in simulated rover position was sent to the NTRIP caster as GGA, but no bytes were received. "
                                  "Check whether the caster requires a different mountpoint, valid credentials, or a different rover position.\n"
                                  "RTKLIB status: %1")
                       .arg(rtklibMessage.isEmpty() ? QStringLiteral("--") : rtklibMessage)
-                : QStringLiteral("已把 EPSILON 主串口定位组装成 GGA 发给 NTRIP 差分服务器，但没有收到任何字节。"
+                : QStringLiteral("已把内置模拟流动站位置组装成 GGA 发给 NTRIP 差分服务器，但没有收到任何字节。"
                                  "请检查挂载点、账号密码，或该服务是否要求不同的流动站位置。\n"
                                  "RTKLIB 状态: %1")
                       .arg(rtklibMessage.isEmpty() ? QStringLiteral("--") : rtklibMessage);
@@ -2247,7 +2247,8 @@ void RtkConfigDialog::setEpsilonMainAntennaLeverArmApplier(EpsilonLeverArmApplie
 
 bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config,
                                            QString *description,
-                                           QString *validationError) const
+                                           QString *validationError,
+                                           bool requireOutputPort) const
 {
     const QString server = server_edit_->text().trimmed();
     const QString port = port_edit_->text().trimmed();
@@ -2274,17 +2275,30 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config,
         return false;
     }
 
-    if (server.isEmpty() || outputPort.isEmpty())
+    if (server.isEmpty() || (requireOutputPort && outputPort.isEmpty()))
     {
         if (validationError)
         {
-            *validationError = textFor("Please fill in server and output port.",
-                                       "请填写服务器和输出串口。");
+            if (server.isEmpty() && requireOutputPort && outputPort.isEmpty())
+            {
+                *validationError = textFor("Please fill in server and output port.",
+                                           "请填写服务器和输出串口。");
+            }
+            else if (server.isEmpty())
+            {
+                *validationError = textFor("Please fill in server address.",
+                                           "请填写服务器地址。");
+            }
+            else
+            {
+                *validationError = textFor("Please select an output port before starting RTK forwarding.",
+                                           "启动 RTK 转发前请先选择输出串口。");
+            }
         }
         return false;
     }
 
-    if (serialPortNamesReferToSamePort(outputPort, epsilon_main_port_))
+    if (requireOutputPort && serialPortNamesReferToSamePort(outputPort, epsilon_main_port_))
     {
         if (validationError)
         {
@@ -2334,21 +2348,31 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config,
 
     if (description)
     {
-        const QString serialUrl = QString("serial://%1:%2:8:n:1:off")
-            .arg(outputPort)
-            .arg(baudrateOk ? baudrate : 115200);
-        const QString ggaSource = hasEpsilonPosition
-            ? textFor("GGA source: EPSILON main-port position [%1, %2, %3 m] at 1 Hz",
-                      "GGA 来源: EPSILON 主串口定位 [%1, %2, %3 m]，1Hz")
-                  .arg(QString::number(epsilonData.latitude_deg, 'f', 8),
-                       QString::number(epsilonData.longitude_deg, 'f', 8),
-                       QString::number(epsilonData.height_m, 'f', 3))
-            : textFor("GGA source: output-port relay fallback; connect EPSILON main port first to generate GGA without reading from the RTCM port.",
-                      "GGA 来源: 输出口回读兼容模式；请先连接 EPSILON 主串口，才能不依赖 RTCM 串口生成 GGA。");
-        *description = textFor("Embedded RTK stream: %1 -> %2\n%3",
-                               "内嵌 RTK 流服务: %1 -> %2\n%3")
-            .arg(ntripUrl, serialUrl)
-            .arg(ggaSource);
+        if (requireOutputPort)
+        {
+            const QString serialUrl = QString("serial://%1:%2:8:n:1:off")
+                .arg(outputPort)
+                .arg(baudrateOk ? baudrate : 115200);
+            const QString ggaSource = hasEpsilonPosition
+                ? textFor("GGA source: EPSILON main-port position [%1, %2, %3 m] at 1 Hz",
+                          "GGA 来源: EPSILON 主串口定位 [%1, %2, %3 m]，1Hz")
+                      .arg(QString::number(epsilonData.latitude_deg, 'f', 8),
+                           QString::number(epsilonData.longitude_deg, 'f', 8),
+                           QString::number(epsilonData.height_m, 'f', 3))
+                : textFor("GGA source: output-port relay fallback; connect EPSILON main port first to generate GGA without reading from the RTCM port.",
+                          "GGA 来源: 输出口回读兼容模式；请先连接 EPSILON 主串口，才能不依赖 RTCM 串口生成 GGA。");
+            *description = textFor("Embedded RTK stream: %1 -> %2\n%3",
+                                   "内嵌 RTK 流服务: %1 -> %2\n%3")
+                .arg(ntripUrl, serialUrl)
+                .arg(ggaSource);
+        }
+        else
+        {
+            *description = textFor(
+                "NTRIP connection test: %1 -> local RTCM receiver\nGGA source: built-in simulated rover position at 1 Hz; no output serial port is required.",
+                "NTRIP 连接测试: %1 -> 本地 RTCM 接收器\nGGA 来源: 内置模拟流动站位置，1Hz；不需要输出串口。")
+                .arg(ntripUrl);
+        }
     }
 
     return true;
@@ -3663,7 +3687,7 @@ void RtkConfigDialog::onTestClicked()
     RtkStreamConfig config;
     QString description;
     QString validationError;
-    if (!buildRtkStreamConfig(&config, &description, &validationError))
+    if (!buildRtkStreamConfig(&config, &description, &validationError, false))
     {
         QMessageBox::warning(this, textFor("Error", "错误"), validationError);
         return;
@@ -3721,19 +3745,24 @@ void RtkConfigDialog::onTestClicked()
         }
         else
         {
+            config.sendNmeaGga = true;
+            config.relayBack = 0;
+            config.nmeaGgaCycleMs = kGgaSendCycleMs;
+            config.nmeaLatitudeDeg = 30.0;
+            config.nmeaLongitudeDeg = 120.0;
+            config.nmeaHeightM = 0.0;
             const bool useGeneratedGga = config.sendNmeaGga;
             config.outputMode = RtkStreamConfig::OutputMode::TcpClient;
             config.outputPathOverride = QStringLiteral("127.0.0.1:%1").arg(mockSerialServer.serverPort());
-            config.relayBack = useGeneratedGga ? 0 : 1;
             queueLog(textForLanguage(english,
-                                     "Using loopback mock serial on 127.0.0.1:%1",
-                                     "正在使用 127.0.0.1:%1 的 loopback 模拟串口")
+                                     "Using local RTCM receiver on 127.0.0.1:%1; no output serial port is required.",
+                                     "正在使用 127.0.0.1:%1 的本地 RTCM 接收器；不需要输出串口。")
                 .arg(mockSerialServer.serverPort()));
             if (useGeneratedGga)
             {
                 queueLog(textForLanguage(english,
-                                         "The test will send EPSILON-position GGA directly to NTRIP; loopback only receives RTCM.",
-                                         "本次测试将把 EPSILON 定位 GGA 直接发给 NTRIP；loopback 只接收 RTCM。"));
+                                         "The test will send a built-in simulated GGA position (30.00000000, 120.00000000, 0.000 m) directly to NTRIP; loopback only receives RTCM.",
+                                         "本次测试将把内置模拟 GGA 位置（30.00000000, 120.00000000, 0.000 m）直接发给 NTRIP；loopback 只接收 RTCM。"));
             }
 
             std::unique_ptr<RtkStreamService> testService = std::make_unique<RtkStreamService>();
