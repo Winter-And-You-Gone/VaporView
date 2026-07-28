@@ -137,6 +137,15 @@ QString mountpointSelectLabel(bool english)
     return textForLanguage(english, QStringLiteral("Select one"), QStringLiteral("请选择挂载点"));
 }
 
+bool isLoopbackServerText(const QString& server)
+{
+    const QString normalized = server.trimmed();
+    return normalized.compare(QStringLiteral("127.0.0.1"), Qt::CaseInsensitive) == 0 ||
+        normalized.compare(QStringLiteral("localhost"), Qt::CaseInsensitive) == 0 ||
+        normalized == QStringLiteral("::1") ||
+        normalized == QStringLiteral("[::1]");
+}
+
 bool isMountpointPlaceholderText(const QString& text)
 {
     const QString trimmed = text.trimmed();
@@ -145,6 +154,19 @@ bool isMountpointPlaceholderText(const QString& text)
         trimmed == QStringLiteral("Detect first") ||
         trimmed == QStringLiteral("请选择挂载点") ||
         trimmed == QStringLiteral("Select one");
+}
+
+bool hasConfirmedSavedMountpoint(const QString& mountpoint, bool confirmed)
+{
+    return confirmed && !isMountpointPlaceholderText(mountpoint);
+}
+
+bool shouldClearSavedLoopbackCaster(const QString& server,
+                                    const QString& savedMountpoint,
+                                    bool savedMountpointConfirmed)
+{
+    return isLoopbackServerText(server) &&
+        !hasConfirmedSavedMountpoint(savedMountpoint, savedMountpointConfirmed);
 }
 
 QString selectedMountpointText(const QComboBox *combo)
@@ -2071,12 +2093,22 @@ void RtkConfigDialog::loadSettings()
 {
     QSettings settings("VaporView", "RtkConfig");
 
-    server_edit_->setText(settings.value("server", "").toString());
-    port_edit_->setText(settings.value("port", "2101").toString());
-    username_edit_->setText(settings.value("username", "").toString());
-    password_edit_->setText(settings.value("password", "").toString());
+    QString savedServer = settings.value("server", "").toString().trimmed();
+    QString savedPort = settings.value("port", "2101").toString().trimmed();
     const QString savedMountpoint = settings.value("mountpoint", "").toString().trimmed();
     const bool savedMountpointConfirmed = settings.value("mountpoint_confirmed", false).toBool();
+    if (shouldClearSavedLoopbackCaster(savedServer, savedMountpoint, savedMountpointConfirmed))
+    {
+        settings.remove("server");
+        settings.remove("port");
+        savedServer.clear();
+        savedPort = QStringLiteral("2101");
+    }
+
+    server_edit_->setText(savedServer);
+    port_edit_->setText(savedPort.isEmpty() ? QStringLiteral("2101") : savedPort);
+    username_edit_->setText(settings.value("username", "").toString());
+    password_edit_->setText(settings.value("password", "").toString());
     if (isMountpointPlaceholderText(savedMountpoint) ||
         (savedMountpoint.compare(QStringLiteral("AUTO"), Qt::CaseInsensitive) == 0 &&
          !savedMountpointConfirmed))

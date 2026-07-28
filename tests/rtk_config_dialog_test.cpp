@@ -60,8 +60,11 @@ int main(int argc, char **argv)
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
 
     QSettings rtkSettings(QStringLiteral("VaporView"), QStringLiteral("RtkConfig"));
+    rtkSettings.setValue(QStringLiteral("server"), QStringLiteral("127.0.0.1"));
+    rtkSettings.setValue(QStringLiteral("port"), QStringLiteral("60844"));
     rtkSettings.setValue(QStringLiteral("output_port"), QStringLiteral("__missing_serial_port__"));
     rtkSettings.setValue(QStringLiteral("mountpoint"), QStringLiteral("AUTO"));
+    rtkSettings.setValue(QStringLiteral("mountpoint_confirmed"), false);
     QSettings(QStringLiteral("VaporView"), QStringLiteral("SerialPortHistory"))
         .setValue(QStringLiteral("ports"), QStringList{QStringLiteral("COM77")});
 
@@ -90,6 +93,11 @@ int main(int argc, char **argv)
             "legacy AUTO mountpoint shows the detect-first prompt instead of a fake mountpoint");
     require(mountpointCombo->property("usesSingleLevelPopupMenu").toBool(),
             "RTK mountpoint combo uses the single-level popup implementation");
+    auto *serverEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
+    auto *portEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));
+    require(serverEdit && portEdit, "RTK server and port edits exist");
+    require(serverEdit->text().isEmpty() && portEdit->text() == QStringLiteral("2101"),
+            "saved loopback caster test residue is cleared back to the default server state");
     dialog.setPreferredOutputPortAndBaud(QStringLiteral("COM77"), QStringLiteral("115200"));
     const int rememberedPortIndex = outputPortCombo->findText(QStringLiteral("COM77"));
     require(rememberedPortIndex >= 0 &&
@@ -98,8 +106,6 @@ int main(int argc, char **argv)
                     rememberedPortIndex,
                     VaporView::kSerialPortHistoryItemRole).toBool(),
             "explicit RTK serial history is retained and marked as history");
-    auto *serverEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
-    auto *portEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));
     auto *fetchMountpointsButton = dialog.findChild<QPushButton *>(QStringLiteral("rtkFetchMountpointsButton"));
     require(serverEdit && portEdit && fetchMountpointsButton, "mountpoint fetch controls exist");
 
