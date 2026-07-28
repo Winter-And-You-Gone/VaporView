@@ -4,7 +4,6 @@
     <Description>VaporView desktop, Sky and 3D runtime.</Description>
     <Version>@VAPORVIEW_VERSION@</Version>
     <ReleaseDate>@VAPORVIEW_RELEASE_DATE@</ReleaseDate>
-    <Default>true</Default>
     <Essential>true</Essential>
     <ForcedInstallation>true</ForcedInstallation>
     <Licenses>
@@ -12,7 +11,6 @@
         <License name="GPLv3 (English)" file="license_en.txt" priority="0" />
     </Licenses>
     <UserInterfaces>
-        <UserInterface>welcometargetdirectory.ui</UserInterface>
         <UserInterface>shortcutselection.ui</UserInterface>
     </UserInterfaces>
     <Script>installscript.qs</Script>
