@@ -160,9 +160,16 @@ bool isMountpointPlaceholderText(const QString& text)
         trimmed == QStringLiteral("Select one");
 }
 
+bool isAutoMountpointText(const QString& text)
+{
+    return text.trimmed().compare(QStringLiteral("AUTO"), Qt::CaseInsensitive) == 0;
+}
+
 bool hasConfirmedSavedMountpoint(const QString& mountpoint, bool confirmed)
 {
-    return confirmed && !isMountpointPlaceholderText(mountpoint);
+    return confirmed &&
+        !isMountpointPlaceholderText(mountpoint) &&
+        !isAutoMountpointText(mountpoint);
 }
 
 bool shouldClearSavedLoopbackCaster(const QString& server,
@@ -2049,20 +2056,12 @@ void RtkConfigDialog::updateMountpointComboWidth()
     }
 
     const int targetHeight = scalePixels(kRtkInputHeight);
-    int targetWidth = std::max(scalePixels(112),
-                               fetch_mountpoints_btn_ ? fetch_mountpoints_btn_->width() : 0);
-
-    const QFontMetrics metrics(mountpoint_combo_->font());
-    for (int index = 0; index < mountpoint_combo_->count(); ++index)
-    {
-        targetWidth = std::max(targetWidth,
-                               metrics.horizontalAdvance(mountpoint_combo_->itemText(index)) +
-                                   scalePixels(58));
-    }
+    const int targetWidth = std::max(scalePixels(112),
+                                     fetch_mountpoints_btn_ ? fetch_mountpoints_btn_->width() : 0);
 
     mountpoint_combo_->setFixedWidth(targetWidth);
     mountpoint_combo_->setFixedHeight(targetHeight);
-    mountpoint_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    mountpoint_combo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     if (fetch_mountpoints_btn_)
     {
         fetch_mountpoints_btn_->setFixedWidth(targetWidth);
@@ -2151,9 +2150,7 @@ void RtkConfigDialog::loadSettings()
     port_edit_->setText(savedPort);
     username_edit_->setText(settings.value("username", "").toString());
     password_edit_->setText(settings.value("password", "").toString());
-    if (isMountpointPlaceholderText(savedMountpoint) ||
-        (savedMountpoint.compare(QStringLiteral("AUTO"), Qt::CaseInsensitive) == 0 &&
-         !savedMountpointConfirmed))
+    if (isMountpointPlaceholderText(savedMountpoint) || isAutoMountpointText(savedMountpoint))
     {
         setMountpointPrompt(mountpoint_combo_, is_english_, false);
     }

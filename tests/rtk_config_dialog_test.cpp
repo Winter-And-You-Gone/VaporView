@@ -64,7 +64,7 @@ int main(int argc, char **argv)
     rtkSettings.setValue(QStringLiteral("port"), QStringLiteral("60844"));
     rtkSettings.setValue(QStringLiteral("output_port"), QStringLiteral("__missing_serial_port__"));
     rtkSettings.setValue(QStringLiteral("mountpoint"), QStringLiteral("AUTO"));
-    rtkSettings.setValue(QStringLiteral("mountpoint_confirmed"), false);
+    rtkSettings.setValue(QStringLiteral("mountpoint_confirmed"), true);
     QSettings(QStringLiteral("VaporView"), QStringLiteral("SerialPortHistory"))
         .setValue(QStringLiteral("ports"), QStringList{QStringLiteral("COM77")});
 
@@ -90,7 +90,7 @@ int main(int argc, char **argv)
     require(mountpointCombo != nullptr, "RTK mountpoint combo exists");
     require(mountpointCombo->currentText() == QStringLiteral("请先检测") &&
                 mountpointCombo->findText(QStringLiteral("AUTO")) < 0,
-            "legacy AUTO mountpoint shows the detect-first prompt instead of a fake mountpoint");
+            "saved AUTO mountpoint shows the detect-first prompt until mountpoints are detected");
     require(mountpointCombo->property("usesSingleLevelPopupMenu").toBool(),
             "RTK mountpoint combo uses the single-level popup implementation");
     auto *serverEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
@@ -109,6 +109,7 @@ int main(int argc, char **argv)
             "explicit RTK serial history is retained and marked as history");
     auto *fetchMountpointsButton = dialog.findChild<QPushButton *>(QStringLiteral("rtkFetchMountpointsButton"));
     require(serverEdit && portEdit && fetchMountpointsButton, "mountpoint fetch controls exist");
+    const int compactMountpointWidth = mountpointCombo->width();
 
     QTcpServer caster;
     require(caster.listen(QHostAddress::LocalHost, 0), "local sourcetable test server starts");
@@ -144,12 +145,10 @@ int main(int argc, char **argv)
             "detected AUTO is kept as a real mountpoint option");
     require(mountpointCombo->currentText() == QStringLiteral("请选择挂载点"),
             "detected mountpoints require an explicit user selection");
-    const int widestMountpointWidth =
-        mountpointCombo->fontMetrics().horizontalAdvance(QStringLiteral("RTCM32_GPS_LONG_WIDEST")) + 58;
-    require(mountpointCombo->width() >= widestMountpointWidth,
-            "mountpoint combo expands to fit the widest fetched mountpoint");
-    require(fetchMountpointsButton->width() == mountpointCombo->width(),
-            "mountpoint detect button tracks the expanded mountpoint combo width");
+    require(mountpointCombo->width() == compactMountpointWidth,
+            "mountpoint combo stays compact after fetching long mountpoints");
+    require(fetchMountpointsButton->width() == compactMountpointWidth,
+            "mountpoint detect button stays aligned with the compact combo width");
     auto *singleLevelMountpointCombo =
         dynamic_cast<VaporView::SingleLevelPopupComboBox *>(mountpointCombo);
     require(singleLevelMountpointCombo != nullptr,
@@ -157,6 +156,12 @@ int main(int argc, char **argv)
     mountpointCombo->setCurrentText(QStringLiteral("AUTO"));
     singleLevelMountpointCombo->showPopup();
     QApplication::processEvents();
+    const int widestPopupContentWidth =
+        mountpointCombo->fontMetrics().horizontalAdvance(QStringLiteral("RTCM32_GPS_LONG_WIDEST")) + 32;
+    require(singleLevelMountpointCombo->popupMenu()->width() >= widestPopupContentWidth,
+            "mountpoint popup expands to fit the widest fetched mountpoint");
+    require(singleLevelMountpointCombo->popupMenu()->width() > mountpointCombo->width(),
+            "mountpoint popup can be wider than the compact combo box");
     singleLevelMountpointCombo->hidePopup();
     singleLevelMountpointCombo->showPopup();
     QApplication::processEvents();
