@@ -189,7 +189,7 @@ int main(int argc, char **argv)
                     return;
                 }
                 socket->setProperty("sentHeader", true);
-                socket->write("ICY 200 OK\r\n");
+                socket->write("ICY 200 OK\r\n\r\n");
                 auto *burstTimer = new QTimer(socket);
                 burstTimer->setInterval(50);
                 QObject::connect(burstTimer, &QTimer::timeout, socket, [socket, burstTimer]() {
@@ -238,11 +238,16 @@ int main(int argc, char **argv)
     });
     testMessageBoxCloser.start(10);
     testButton->click();
-    require(processEventsUntil(5000, [serviceLog, testButton]() {
+    const bool rtkConnectionTestSucceeded = processEventsUntil(5000, [serviceLog, testButton]() {
                 return serviceLog->toPlainText().contains(QStringLiteral("不需要输出串口")) &&
                     serviceLog->toPlainText().contains(QStringLiteral("模拟 GGA 测试成功")) &&
                     testButton->isEnabled();
-            }),
+            });
+    if (!rtkConnectionTestSucceeded)
+    {
+        std::cerr << serviceLog->toPlainText().toLocal8Bit().constData() << '\n';
+    }
+    require(rtkConnectionTestSucceeded,
             "RTK connection test succeeds with simulated GGA and no selected output port");
     testMessageBoxCloser.stop();
 

@@ -3922,8 +3922,8 @@ void RtkConfigDialog::onTestClicked()
 
             if (result.gotResponse)
             {
-                self->appendLog(self->textFor("No-signal RTK test succeeded: input %1 B, output %2 B, loopback %3 B",
-                                              "无信号 RTK 测试成功: 输入 %1 B, 输出 %2 B, loopback %3 B")
+                self->appendLog(self->textFor("Mock GGA RTK test succeeded: input %1 B, output %2 B, loopback %3 B",
+                                              "模拟 GGA 测试成功: 输入 %1 B, 输出 %2 B, loopback %3 B")
                     .arg(result.inputBytes)
                     .arg(result.outputBytes)
                     .arg(result.receivedRtcmBytes));
