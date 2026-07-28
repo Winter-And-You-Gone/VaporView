@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPlainTextEdit>
 #include <QProcess>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -528,6 +529,7 @@ void MainWindow::onOpenMap3DDiagnosticsClicked()
 void MainWindow::onCheckUpdatesClicked()
 {
     const bool english = state_->is_english_;
+    const bool dark = state_->dark_theme_enabled_;
     const QString applicationDir = QCoreApplication::applicationDirPath();
     const QString toolName =
 #ifdef Q_OS_WIN
@@ -568,45 +570,188 @@ void MainWindow::onCheckUpdatesClicked()
     dialog.setObjectName(QStringLiteral("updateCheckDialog"));
     dialog.setWindowTitle(english ? QStringLiteral("Updates") : QStringLiteral("软件更新"));
     dialog.setWindowModality(Qt::WindowModal);
-    dialog.setMinimumSize(520, 280);
+    dialog.setMinimumSize(560, 360);
 
     auto *rootLayout = new QVBoxLayout(&dialog);
-    rootLayout->setContentsMargins(20, 18, 20, 16);
-    rootLayout->setSpacing(12);
+    rootLayout->setContentsMargins(0, 0, 0, 0);
+    rootLayout->setSpacing(0);
+
+    auto *body = new QWidget(&dialog);
+    body->setObjectName(QStringLiteral("updateCheckDialogBody"));
+    auto *bodyLayout = new QVBoxLayout(body);
+    bodyLayout->setContentsMargins(32, 26, 32, 22);
+    bodyLayout->setSpacing(12);
 
     auto *titleLabel = new QLabel(english ? QStringLiteral("Check for VaporView Updates")
                                           : QStringLiteral("检查 VaporView 更新"),
-                                  &dialog);
+                                  body);
+    titleLabel->setObjectName(QStringLiteral("updateCheckTitleLabel"));
     QFont titleFont = titleLabel->font();
     titleFont.setBold(true);
     titleFont.setPointSize(std::max(titleFont.pointSize() + 1, 11));
     titleLabel->setFont(titleFont);
     titleLabel->setWordWrap(true);
-    rootLayout->addWidget(titleLabel);
+    bodyLayout->addWidget(titleLabel);
 
     auto *statusLabel = new QLabel(english ? QStringLiteral("Checking the update repository...")
                                            : QStringLiteral("正在检查更新仓库..."),
-                                   &dialog);
+                                   body);
+    statusLabel->setObjectName(QStringLiteral("updateCheckStatusLabel"));
     statusLabel->setWordWrap(true);
-    rootLayout->addWidget(statusLabel);
+    bodyLayout->addWidget(statusLabel);
 
     auto *detailLabel = new QLabel(english
                                        ? QStringLiteral("Repository:\n%1").arg(repositoryUrl)
                                        : QStringLiteral("更新源：\n%1").arg(repositoryUrl),
-                                   &dialog);
+                                   body);
+    detailLabel->setObjectName(QStringLiteral("updateCheckDetailLabel"));
     detailLabel->setWordWrap(true);
     detailLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    rootLayout->addWidget(detailLabel);
-    rootLayout->addStretch(1);
+    bodyLayout->addWidget(detailLabel);
 
-    auto *buttonBox = new QDialogButtonBox(&dialog);
-    auto *closeButton = buttonBox->addButton(english ? QStringLiteral("Cancel") : QStringLiteral("取消"),
-                                             QDialogButtonBox::RejectRole);
-    auto *updateButton = buttonBox->addButton(english ? QStringLiteral("Update Now") : QStringLiteral("立即更新"),
-                                              QDialogButtonBox::ActionRole);
+    auto *outputTitleLabel = new QLabel(english ? QStringLiteral("Diagnostic output")
+                                                : QStringLiteral("诊断输出"),
+                                        body);
+    outputTitleLabel->setObjectName(QStringLiteral("updateCheckOutputTitleLabel"));
+    outputTitleLabel->setVisible(false);
+    bodyLayout->addWidget(outputTitleLabel);
+
+    auto *outputEdit = new QPlainTextEdit(body);
+    outputEdit->setObjectName(QStringLiteral("updateCheckOutputEdit"));
+    outputEdit->setReadOnly(true);
+    outputEdit->setVisible(false);
+    outputEdit->setMaximumHeight(116);
+    outputEdit->setLineWrapMode(QPlainTextEdit::WidgetWidth);
+    bodyLayout->addWidget(outputEdit);
+
+    bodyLayout->addStretch(1);
+    rootLayout->addWidget(body, 1);
+
+    auto *footer = new QWidget(&dialog);
+    footer->setObjectName(QStringLiteral("updateCheckDialogFooter"));
+    footer->setMinimumHeight(76);
+    auto *footerLayout = new QHBoxLayout(footer);
+    footerLayout->setContentsMargins(24, 16, 28, 16);
+    footerLayout->setSpacing(10);
+    footerLayout->addStretch(1);
+
+    auto *updateButton = new QPushButton(english ? QStringLiteral("Update Now") : QStringLiteral("立即更新"), footer);
+    updateButton->setObjectName(QStringLiteral("updateCheckUpdateButton"));
+    updateButton->setFixedSize(124, 40);
     updateButton->setVisible(false);
     updateButton->setEnabled(false);
-    rootLayout->addWidget(buttonBox);
+    footerLayout->addWidget(updateButton);
+
+    auto *closeButton = new QPushButton(english ? QStringLiteral("Cancel") : QStringLiteral("取消"), footer);
+    closeButton->setObjectName(QStringLiteral("updateCheckCloseButton"));
+    closeButton->setFixedSize(112, 40);
+    closeButton->setDefault(true);
+    closeButton->setAutoDefault(true);
+    footerLayout->addWidget(closeButton);
+    rootLayout->addWidget(footer);
+
+    VaporView::installCustomTitleBar(&dialog, false);
+    if (QLabel *titleLogo = dialog.findChild<QLabel *>(QStringLiteral("customTitleLogo")))
+    {
+        titleLogo->setFixedSize(34, 34);
+        titleLogo->setPixmap(renderVaporViewLogo(dark, 28, titleLogo->devicePixelRatioF()));
+    }
+    for (QToolButton *button : dialog.findChildren<QToolButton *>())
+    {
+        if (button->accessibleName() == QStringLiteral("titleLanguageButton") ||
+            button->accessibleName() == QStringLiteral("titleThemeButton"))
+        {
+            button->hide();
+        }
+        else if (button->objectName() == QStringLiteral("windowCloseButton"))
+        {
+            button->setAccessibleName(english ? QStringLiteral("Close") : QStringLiteral("关闭"));
+            button->setFocusPolicy(Qt::TabFocus);
+        }
+    }
+    for (QFrame *separator : dialog.findChildren<QFrame *>(QStringLiteral("titleBarSeparator")))
+    {
+        separator->hide();
+    }
+
+    dialog.setStyleSheet(applyAppThemeTokens(
+        customTitleBarStyleSheet(dark) + QStringLiteral(R"(
+QDialog#updateCheckDialog,
+QDialog#updateCheckDialog QWidget#customTitleBarContent,
+QWidget#updateCheckDialogBody {
+    background-color: @vv-surface;
+    color: @vv-text;
+}
+QDialog#updateCheckDialog QLabel {
+    background-color: transparent;
+    border: none;
+}
+QLabel#updateCheckTitleLabel {
+    color: @vv-text-strong;
+}
+QLabel#updateCheckStatusLabel {
+    color: @vv-text;
+    font-weight: 600;
+}
+QLabel#updateCheckDetailLabel {
+    color: @vv-text-secondary;
+}
+QLabel#updateCheckOutputTitleLabel {
+    color: @vv-text-muted;
+    font-size: 13px;
+    font-weight: 600;
+}
+QPlainTextEdit#updateCheckOutputEdit {
+    background-color: @vv-surface-alt;
+    color: @vv-text-secondary;
+    border: 1px solid @vv-border;
+    border-radius: 8px;
+    padding: 8px;
+    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-size: 12px;
+    selection-background-color: @vv-primary-subtle-pressed;
+    selection-color: @vv-white;
+}
+QWidget#updateCheckDialogFooter {
+    background-color: @vv-surface-alt;
+    border-top: 1px solid @vv-border;
+}
+QPushButton#updateCheckCloseButton {
+    background-color: @vv-surface-raised;
+    color: @vv-text-strong;
+    border: 1px solid @vv-border-strong;
+    border-radius: 6px;
+    padding: 0px 18px;
+}
+QPushButton#updateCheckCloseButton:hover {
+    background-color: @vv-surface-subtle;
+}
+QPushButton#updateCheckCloseButton:pressed {
+    background-color: @vv-surface-sunken;
+}
+QPushButton#updateCheckCloseButton:focus {
+    border: 2px solid @vv-focus;
+}
+QPushButton#updateCheckUpdateButton {
+    background-color: @vv-primary;
+    color: @vv-white;
+    border: 1px solid @vv-primary;
+    border-radius: 6px;
+    padding: 0px 18px;
+    font-weight: 600;
+}
+QPushButton#updateCheckUpdateButton:hover {
+    background-color: @vv-primary-hover;
+    border-color: @vv-primary-hover;
+}
+QPushButton#updateCheckUpdateButton:pressed {
+    background-color: @vv-primary-pressed;
+    border-color: @vv-primary-pressed;
+}
+QPushButton#updateCheckUpdateButton:focus {
+    border: 2px solid @vv-focus;
+}
+)"), dark));
 
     auto *checkProcess = new QProcess(&dialog);
     checkProcess->setProgram(maintenanceToolPath);
@@ -624,10 +769,15 @@ void MainWindow::onCheckUpdatesClicked()
         closeButton->setText(english ? QStringLiteral("Close") : QStringLiteral("关闭"));
 
         const QString outputSummary = vaporViewTrimmedUpdateOutput(result.output);
-        const QString outputSuffix = outputSummary.isEmpty()
-            ? QString()
-            : (english ? QStringLiteral("\n\nMaintenanceTool output:\n%1").arg(outputSummary)
-                       : QStringLiteral("\n\n维护工具输出：\n%1").arg(outputSummary));
+        const auto showDiagnosticOutput = [outputTitleLabel, outputEdit, outputSummary](bool visible) {
+            const bool show = visible && !outputSummary.isEmpty();
+            outputTitleLabel->setVisible(show);
+            outputEdit->setVisible(show);
+            if (show)
+            {
+                outputEdit->setPlainText(outputSummary);
+            }
+        };
 
         switch (result.status)
         {
@@ -635,18 +785,21 @@ void MainWindow::onCheckUpdatesClicked()
             statusLabel->setText(english ? QStringLiteral("Updates are available.")
                                          : QStringLiteral("发现可用更新。"));
             detailLabel->setText(english
-                                     ? QStringLiteral("Click Update Now to open the VaporView maintenance wizard and apply the update.%1").arg(outputSuffix)
-                                     : QStringLiteral("点击“立即更新”会打开 VaporView 维护向导并执行更新。%1").arg(outputSuffix));
+                                     ? QStringLiteral("Click Update Now to open the VaporView maintenance wizard and apply the update.")
+                                     : QStringLiteral("点击“立即更新”会打开 VaporView 维护向导并执行更新。"));
+            showDiagnosticOutput(false);
             updateButton->setVisible(true);
             updateButton->setEnabled(true);
             updateButton->setDefault(true);
+            closeButton->setDefault(false);
             break;
         case VaporViewUpdateCheckStatus::UpToDate:
             statusLabel->setText(english ? QStringLiteral("VaporView is up to date.")
                                          : QStringLiteral("VaporView 已是最新版本。"));
             detailLabel->setText(english
-                                     ? QStringLiteral("No program updates were reported by the configured repository.%1").arg(outputSuffix)
-                                     : QStringLiteral("配置的更新源未报告可用程序更新。%1").arg(outputSuffix));
+                                     ? QStringLiteral("No program updates were reported by the configured repository.")
+                                     : QStringLiteral("配置的更新源未报告可用程序更新。"));
+            showDiagnosticOutput(false);
             break;
         case VaporViewUpdateCheckStatus::Failed:
         {
@@ -657,16 +810,18 @@ void MainWindow::onCheckUpdatesClicked()
             statusLabel->setText(english ? QStringLiteral("Update check failed.")
                                          : QStringLiteral("检查更新失败。"));
             detailLabel->setText(english
-                                     ? QStringLiteral("%1\nPlease check the network connection and try again.%2").arg(errorText, outputSuffix)
-                                     : QStringLiteral("%1\n请检查网络连接后重试。%2").arg(errorText, outputSuffix));
+                                     ? QStringLiteral("%1\nPlease check the network connection and try again.").arg(errorText)
+                                     : QStringLiteral("%1\n请检查网络连接后重试。").arg(errorText));
+            showDiagnosticOutput(true);
             break;
         }
         case VaporViewUpdateCheckStatus::Unknown:
             statusLabel->setText(english ? QStringLiteral("Update check finished.")
                                          : QStringLiteral("检查更新已完成。"));
             detailLabel->setText(english
-                                     ? QStringLiteral("The maintenance tool did not report a clear update state. Please try again later or run the maintenance tool from the installation folder if needed.%1").arg(outputSuffix)
-                                     : QStringLiteral("维护工具没有返回明确的更新状态。可稍后重试，必要时从安装目录手动运行维护工具。%1").arg(outputSuffix));
+                                     ? QStringLiteral("The maintenance tool did not report a clear update state. Please try again later or run the maintenance tool from the installation folder if needed.")
+                                     : QStringLiteral("维护工具没有返回明确的更新状态。可稍后重试，必要时从安装目录手动运行维护工具。"));
+            showDiagnosticOutput(true);
             break;
         }
     };
@@ -716,6 +871,7 @@ void MainWindow::onCheckUpdatesClicked()
             dialog.accept();
         }
     });
+    QObject::connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::reject);
     QObject::connect(&dialog, &QDialog::rejected, &dialog, [&]() {
         if (checkProcess->state() != QProcess::NotRunning)
         {
@@ -727,6 +883,7 @@ void MainWindow::onCheckUpdatesClicked()
         checkTimeout.start();
         checkProcess->start();
     });
+    dialog.resize(dialog.sizeHint().expandedTo(QSize(600, 380)));
     dialog.exec();
 }
 
@@ -751,7 +908,7 @@ void MainWindow::showAboutDialog()
     const bool dark = state_->dark_theme_enabled_;
     const QString title = english ? QStringLiteral("About VaporView") : QStringLiteral("关于 VaporView");
     const QString applicationVersion = QCoreApplication::applicationVersion().trimmed().isEmpty()
-        ? QStringLiteral("1.0.2")
+        ? QStringLiteral("1.0.3")
         : QCoreApplication::applicationVersion().trimmed();
 
     QDialog dialog(this);

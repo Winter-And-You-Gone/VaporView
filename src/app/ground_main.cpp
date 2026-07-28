@@ -90,7 +90,7 @@ int main(int argc, char *argv[])
     app.installEventFilter(&wheelValueChangeFilter);
 
     app.setApplicationName("VaporView");
-    app.setApplicationVersion("1.0.2");
+    app.setApplicationVersion("1.0.3");
     app.setOrganizationName("VaporView");
     const bool startupDarkTheme = startupDarkThemeEnabled();
     applyStartupTheme(app, startupDarkTheme);
