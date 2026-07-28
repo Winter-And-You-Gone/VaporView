@@ -2353,7 +2353,7 @@ int main(int argc, char **argv)
                     checkUpdatesAction->toolTip() == QStringLiteral("Check for VaporView updates"),
                 "check updates action updates to English");
         app.setApplicationVersion(QString());
-        requireAboutDialogLayout(&aboutWindow, aboutAction, true, QStringLiteral("1.0.4"));
+        requireAboutDialogLayout(&aboutWindow, aboutAction, true, QStringLiteral("1.0.5"));
         require(QMetaObject::invokeMethod(&aboutWindow, "onSwitchLanguage", Qt::DirectConnection),
                 "main window switches back to Chinese after about dialog coverage");
         require(processEventsUntil(1000, [aboutAction]() {
@@ -2972,7 +2972,7 @@ int main(int argc, char **argv)
     require(titleApplicationMainMenu->geometry().left() >= titleApplicationPanel->property("shadowMargin").toInt() &&
                 titleApplicationMainMenu->geometry().top() >= titleApplicationPanel->property("shadowMargin").toInt(),
             "title bar application menu content is inset inside the shadow margin");
-    const QList<QFrame*> titleApplicationRows =
+    QList<QFrame*> titleApplicationRows =
         titleApplicationMainMenu->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem"));
     require(!titleApplicationRows.isEmpty(),
             "title bar application menu exposes hoverable root rows");
@@ -2981,6 +2981,49 @@ int main(int argc, char **argv)
         titleApplicationMainMenu,
         titleApplicationRows,
         "title bar application main menu rows stay inside rounded vertical padding");
+    auto findTitleApplicationRow = [](const QList<QFrame *>& rows, const QStringList& texts) -> QFrame * {
+        for (QFrame *row : rows)
+        {
+            const QList<QLabel*> labels = row->findChildren<QLabel *>(QStringLiteral("titleApplicationMenuText"));
+            for (const QLabel *label : labels)
+            {
+                if (label && texts.contains(label->text()))
+                {
+                    return row;
+                }
+            }
+        }
+        return nullptr;
+    };
+    QFrame *helpRootRow = findTitleApplicationRow(
+        titleApplicationRows,
+        QStringList{QStringLiteral("帮助"), QStringLiteral("Help")});
+    require(helpRootRow != nullptr,
+            "title bar application menu exposes the Help root row");
+    hoverWidget(helpRootRow, true, 220);
+    require(helpRootRow->property("selected").toBool(),
+            "title bar application menu keeps the hovered Help row selected while its submenu is open");
+    auto *titleApplicationHelpSubPanel = window.findChild<QFrame *>(QStringLiteral("titleApplicationSubPanel"));
+    titleApplicationPanel->hide();
+    if (titleApplicationHelpSubPanel)
+    {
+        titleApplicationHelpSubPanel->hide();
+    }
+    if (auto *titleApplicationNestedPanel = window.findChild<QFrame *>(QStringLiteral("titleApplicationNestedPanel")))
+    {
+        titleApplicationNestedPanel->hide();
+    }
+    processEventsFor(50);
+    clickWidget(titleMenuButton, 120);
+    require(titleApplicationPanel->isVisible(),
+            "title bar application menu reopens after closing the Help submenu");
+    titleApplicationRows =
+        titleApplicationMainMenu->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem"));
+    for (QFrame *row : titleApplicationRows)
+    {
+        require(!row->property("selected").toBool(),
+                "title bar application root menu reopens without stale hover selection");
+    }
     auto *rootArrowLabel =
         titleApplicationRows.first()->findChild<QLabel *>(QStringLiteral("titleApplicationMenuArrow"));
     auto *rootTextLabel =

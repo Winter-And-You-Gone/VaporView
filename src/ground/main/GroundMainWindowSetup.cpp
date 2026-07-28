@@ -230,6 +230,20 @@ void installScrollAreaRightInsetSynchronizer(QScrollArea *scrollArea,
                                          std::move(scrollBarRightInset));
 }
 
+void clearTitleApplicationMenuSelection(QWidget *root)
+{
+    if (!root)
+    {
+        return;
+    }
+
+    const QList<QFrame *> rows = root->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem"));
+    for (QFrame *row : rows)
+    {
+        setWidgetBooleanProperty(row, "selected", false);
+    }
+}
+
 }  // namespace
 
 void MainWindow::setupMenuBar()
@@ -634,14 +648,17 @@ void MainWindow::createTitleApplicationMenuPanel()
         if (state_->title_application_panel_)
         {
             state_->title_application_panel_->hide();
+            clearTitleApplicationMenuSelection(state_->title_application_panel_);
         }
         if (state_->title_application_sub_panel_)
         {
             state_->title_application_sub_panel_->hide();
+            clearTitleApplicationMenuSelection(state_->title_application_sub_panel_);
         }
         if (state_->title_application_nested_panel_)
         {
             state_->title_application_nested_panel_->hide();
+            clearTitleApplicationMenuSelection(state_->title_application_nested_panel_);
         }
     };
 
@@ -1279,13 +1296,16 @@ void MainWindow::showTitleApplicationMenu()
     if (state_->title_application_panel_->isVisible())
     {
         state_->title_application_panel_->hide();
+        clearTitleApplicationMenuSelection(state_->title_application_panel_);
         if (state_->title_application_sub_panel_)
         {
             state_->title_application_sub_panel_->hide();
+            clearTitleApplicationMenuSelection(state_->title_application_sub_panel_);
         }
         if (state_->title_application_nested_panel_)
         {
             state_->title_application_nested_panel_->hide();
+            clearTitleApplicationMenuSelection(state_->title_application_nested_panel_);
         }
         return;
     }
@@ -1303,11 +1323,14 @@ void MainWindow::showTitleApplicationMenu()
     if (state_->title_application_sub_panel_)
     {
         state_->title_application_sub_panel_->hide();
+        clearTitleApplicationMenuSelection(state_->title_application_sub_panel_);
     }
     if (state_->title_application_nested_panel_)
     {
         state_->title_application_nested_panel_->hide();
+        clearTitleApplicationMenuSelection(state_->title_application_nested_panel_);
     }
+    clearTitleApplicationMenuSelection(state_->title_application_panel_);
     state_->title_application_panel_->show();
     state_->title_application_panel_->raise();
 }
