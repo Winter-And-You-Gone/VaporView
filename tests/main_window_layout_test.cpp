@@ -1475,6 +1475,11 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
             "RTK NTRIP compact fields exist for alignment checks");
     requireComboPopupStyled(mountpointCombo,
                             "RTK mountpoint combo uses the shared popup styling helper");
+    require(mountpointCombo->currentText() == QStringLiteral("请先检测") ||
+                mountpointCombo->currentText() == QStringLiteral("Detect first"),
+            "RTK mountpoint combo defaults to an explicit detect-first prompt");
+    require(mountpointCombo->findText(QStringLiteral("AUTO")) < 0,
+            "RTK mountpoint combo does not expose AUTO as a fake mountpoint");
     const int rtkInputHeight = serverEdit->height();
     const QList<QPushButton*> rtkPushButtons = dialog->findChildren<QPushButton *>();
     const QStringList manualConfigButtonTexts = {

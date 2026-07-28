@@ -37,8 +37,9 @@ int main(int argc, char **argv)
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
 
-    QSettings(QStringLiteral("VaporView"), QStringLiteral("RtkConfig"))
-        .setValue(QStringLiteral("output_port"), QStringLiteral("__missing_serial_port__"));
+    QSettings rtkSettings(QStringLiteral("VaporView"), QStringLiteral("RtkConfig"));
+    rtkSettings.setValue(QStringLiteral("output_port"), QStringLiteral("__missing_serial_port__"));
+    rtkSettings.setValue(QStringLiteral("mountpoint"), QStringLiteral("AUTO"));
     QSettings(QStringLiteral("VaporView"), QStringLiteral("SerialPortHistory"))
         .setValue(QStringLiteral("ports"), QStringList{QStringLiteral("COM77")});
 
@@ -60,6 +61,11 @@ int main(int argc, char **argv)
     require(outputPortCombo->findText(QStringLiteral("__missing_serial_port__")) < 0 &&
                 outputPortCombo->currentText() == QStringLiteral("未选择"),
             "unavailable legacy RTK output port shows the Chinese unselected placeholder");
+    auto *mountpointCombo = dialog.findChild<QComboBox *>(QStringLiteral("rtkMountpointCombo"));
+    require(mountpointCombo != nullptr, "RTK mountpoint combo exists");
+    require(mountpointCombo->currentText() == QStringLiteral("请先检测") &&
+                mountpointCombo->findText(QStringLiteral("AUTO")) < 0,
+            "legacy AUTO mountpoint shows the detect-first prompt instead of a fake mountpoint");
     dialog.setPreferredOutputPortAndBaud(QStringLiteral("COM77"), QStringLiteral("115200"));
     const int rememberedPortIndex = outputPortCombo->findText(QStringLiteral("COM77"));
     require(rememberedPortIndex >= 0 &&

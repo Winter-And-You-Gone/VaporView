@@ -96,6 +96,8 @@ constexpr int kEmbeddedMainContentVerticalScrollBarWidth = 8;
 constexpr int kEmbeddedMainContentRightInsetWithHiddenScrollBar =
     kEmbeddedMainContentRightCardInset + kEmbeddedMainContentVerticalScrollBarWidth;
 constexpr const char *kEpsilonMainGgaSourceKey = "__epsilon_main__";
+constexpr const char *kMountpointDetectFirstKey = "__mountpoint_detect_first__";
+constexpr const char *kMountpointSelectKey = "__mountpoint_select__";
 constexpr const char *kSectionTitleIconNameProperty = "_vv_section_title_icon_name";
 constexpr int kSectionTitleIconBoxSize = 26;
 constexpr int kSectionTitleIconSize = 22;
@@ -122,6 +124,76 @@ QString boldLabelColorStyle(AppThemeColor color)
 QString textForLanguage(bool english, const QString& englishText, const QString& chineseText)
 {
     return english ? englishText : chineseText;
+}
+
+QString mountpointDetectFirstLabel(bool english)
+{
+    return textForLanguage(english, QStringLiteral("Detect first"), QStringLiteral("请先检测"));
+}
+
+QString mountpointSelectLabel(bool english)
+{
+    return textForLanguage(english, QStringLiteral("Select one"), QStringLiteral("请选择挂载点"));
+}
+
+bool isMountpointPlaceholderText(const QString& text)
+{
+    const QString trimmed = text.trimmed();
+    return trimmed.isEmpty() ||
+        trimmed.compare(QStringLiteral("AUTO"), Qt::CaseInsensitive) == 0 ||
+        trimmed == QStringLiteral("请先检测") ||
+        trimmed == QStringLiteral("Detect first") ||
+        trimmed == QStringLiteral("请选择挂载点") ||
+        trimmed == QStringLiteral("Select one");
+}
+
+QString selectedMountpointText(const QComboBox *combo)
+{
+    if (!combo)
+    {
+        return QString();
+    }
+    const QString text = combo->currentText().trimmed();
+    return isMountpointPlaceholderText(text) ? QString() : text;
+}
+
+void setMountpointPrompt(QComboBox *combo, bool english, bool mountpointsLoaded)
+{
+    if (!combo)
+    {
+        return;
+    }
+
+    const QSignalBlocker blocker(combo);
+    combo->clear();
+    combo->addItem(mountpointsLoaded ? mountpointSelectLabel(english) : mountpointDetectFirstLabel(english),
+                   QString::fromLatin1(mountpointsLoaded ? kMountpointSelectKey : kMountpointDetectFirstKey));
+    combo->setCurrentIndex(0);
+    if (QLineEdit *edit = combo->lineEdit())
+    {
+        edit->setCursorPosition(0);
+    }
+}
+
+void refreshMountpointPromptText(QComboBox *combo, bool english)
+{
+    if (!combo)
+    {
+        return;
+    }
+
+    for (int index = 0; index < combo->count(); ++index)
+    {
+        const QString key = combo->itemData(index).toString();
+        if (key == QString::fromLatin1(kMountpointDetectFirstKey))
+        {
+            combo->setItemText(index, mountpointDetectFirstLabel(english));
+        }
+        else if (key == QString::fromLatin1(kMountpointSelectKey))
+        {
+            combo->setItemText(index, mountpointSelectLabel(english));
+        }
+    }
 }
 
 QString findResourceFile(const QString& relativePath)
@@ -1220,6 +1292,7 @@ void RtkConfigDialog::setupUi()
     mountpoint_combo_->setEditable(true);
     mountpoint_combo_->setInsertPolicy(QComboBox::NoInsert);
     configureComboBoxPopup(mountpoint_combo_, isDarkThemeEnabled());
+    setMountpointPrompt(mountpoint_combo_, is_english_, false);
     config_layout_->addWidget(mountpoint_combo_, row, 5);
     fetch_mountpoints_btn_ = new QPushButton(this);
     fetch_mountpoints_btn_->setObjectName(QStringLiteral("rtkFetchMountpointsButton"));
@@ -1558,8 +1631,10 @@ void RtkConfigDialog::setEnglish(bool english)
     server_edit_->setPlaceholderText(textFor("e.g. rtk.ntrip.org", "例如: rtk.ntrip.org"));
     if (mountpoint_combo_->lineEdit())
     {
-        mountpoint_combo_->lineEdit()->setPlaceholderText(textFor("e.g. RTCM33", "例如: RTCM33"));
+        mountpoint_combo_->lineEdit()->setPlaceholderText(textFor("Detect first or type a mountpoint",
+                                                                  "请先检测，或手动输入挂载点"));
     }
+    refreshMountpointPromptText(mountpoint_combo_, is_english_);
     main_antenna_lever_x_edit_->setPlaceholderText(textFor("forward", "前向"));
     main_antenna_lever_y_edit_->setPlaceholderText(textFor("right", "右向"));
     main_antenna_lever_z_edit_->setPlaceholderText(textFor("down", "下向"));
@@ -1961,7 +2036,15 @@ void RtkConfigDialog::loadSettings()
     port_edit_->setText(settings.value("port", "2101").toString());
     username_edit_->setText(settings.value("username", "").toString());
     password_edit_->setText(settings.value("password", "").toString());
-    mountpoint_combo_->setCurrentText(settings.value("mountpoint", "").toString());
+    const QString savedMountpoint = settings.value("mountpoint", "").toString().trimmed();
+    if (isMountpointPlaceholderText(savedMountpoint))
+    {
+        setMountpointPrompt(mountpoint_combo_, is_english_, false);
+    }
+    else
+    {
+        mountpoint_combo_->setCurrentText(savedMountpoint);
+    }
     main_antenna_lever_x_edit_->setText(settings.value("main_antenna_lever_x_m", "").toString());
     main_antenna_lever_y_edit_->setText(settings.value("main_antenna_lever_y_m", "").toString());
     main_antenna_lever_z_edit_->setText(settings.value("main_antenna_lever_z_m", "").toString());
@@ -1981,7 +2064,7 @@ void RtkConfigDialog::saveSettings()
     settings.setValue("port", port_edit_->text());
     settings.setValue("username", username_edit_->text());
     settings.setValue("password", password_edit_->text());
-    settings.setValue("mountpoint", mountpoint_combo_->currentText());
+    settings.setValue("mountpoint", selectedMountpointText(mountpoint_combo_));
     settings.setValue("main_antenna_lever_x_m", main_antenna_lever_x_edit_->text());
     settings.setValue("main_antenna_lever_y_m", main_antenna_lever_y_edit_->text());
     settings.setValue("main_antenna_lever_z_m", main_antenna_lever_z_edit_->text());
@@ -2055,7 +2138,7 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config,
     const QString port = port_edit_->text().trimmed();
     const QString username = username_edit_->text().trimmed();
     const QString password = password_edit_->text();
-    const QString mountpoint = mountpoint_combo_->currentText().trimmed();
+    const QString mountpoint = selectedMountpointText(mountpoint_combo_);
     const QString outputPort = selectedSerialPortText(output_port_combo_);
     bool baudrateOk = false;
     const int baudrate = baudrate_combo_->currentText().toInt(&baudrateOk);
@@ -2066,12 +2149,22 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config,
         : VaporView::EpsilonData();
     const bool hasEpsilonPosition = isUsableEpsilonNmeaPosition(epsilonData);
 
-    if (server.isEmpty() || mountpoint.isEmpty() || outputPort.isEmpty())
+    if (mountpoint.isEmpty())
     {
         if (validationError)
         {
-            *validationError = textFor("Please fill in server, mountpoint and output port.",
-                                       "请填写服务器、挂载点和输出串口。");
+            *validationError = textFor("Please detect and select a mountpoint, or type a valid mountpoint manually.",
+                                       "请先检测并选择挂载点，或手动输入有效挂载点。");
+        }
+        return false;
+    }
+
+    if (server.isEmpty() || outputPort.isEmpty())
+    {
+        if (validationError)
+        {
+            *validationError = textFor("Please fill in server and output port.",
+                                       "请填写服务器和输出串口。");
         }
         return false;
     }
@@ -3341,17 +3434,27 @@ void RtkConfigDialog::onFetchMountpointsClicked()
                 return;
             }
 
-            const QString currentMountpoint = self->mountpoint_combo_->currentText().trimmed();
+            const QString currentMountpoint = selectedMountpointText(self->mountpoint_combo_);
             const int currentIndex = result.mountpoints.indexOf(currentMountpoint);
-            const QString selected = currentIndex >= 0
-                ? currentMountpoint
-                : result.mountpoints.constFirst();
             const QSignalBlocker blocker(self->mountpoint_combo_);
             self->mountpoint_combo_->clear();
+            self->mountpoint_combo_->addItem(mountpointSelectLabel(self->is_english_),
+                                             QString::fromLatin1(kMountpointSelectKey));
             self->mountpoint_combo_->addItems(result.mountpoints);
-            self->mountpoint_combo_->setCurrentText(selected);
+            if (currentIndex >= 0)
+            {
+                self->mountpoint_combo_->setCurrentText(currentMountpoint);
+            }
+            else
+            {
+                self->mountpoint_combo_->setCurrentIndex(0);
+            }
             self->appendLog(self->textFor("Fetched %1 mountpoints.", "已获取 %1 个挂载点。").arg(result.mountpoints.size()));
-            self->appendLog(self->textFor("Mountpoint dropdown updated; current: %1", "挂载点下拉框已更新，当前: %1").arg(selected));
+            self->appendLog(currentIndex >= 0
+                                ? self->textFor("Mountpoint dropdown updated; current: %1",
+                                                "挂载点下拉框已更新，当前: %1").arg(currentMountpoint)
+                                : self->textFor("Mountpoint dropdown updated; please select one.",
+                                                "挂载点下拉框已更新，请选择一个挂载点。"));
             self->setServiceStatus(self->textFor("Status: Mountpoints loaded", "状态: 挂载点已载入"),
                                    QStringLiteral("check"),
                                    AppThemeColor::Success);
