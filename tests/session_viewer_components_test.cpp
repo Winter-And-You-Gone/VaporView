@@ -65,7 +65,7 @@ void testPages()
     QObject::connect(&overview, &SessionOverviewWidget::trajectoryRequested,
                      [&trajectoryCount]() { ++trajectoryCount; });
     overview.setEnglish(true);
-    QPushButton *chooseButton = buttonWithText(overview, QStringLiteral("Open Data..."));
+    QPushButton *chooseButton = buttonWithText(overview, QStringLiteral("Open Data"));
     QPushButton *trajectoryButton = buttonWithText(overview, QStringLiteral("View Trajectory"));
     require(chooseButton && trajectoryButton, "overview page creates its command controls");
     chooseButton->click();

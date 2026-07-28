@@ -2132,11 +2132,11 @@ QAction *findActionByText(QWidget *root, const QStringList& expectedTexts)
 void requireMainWindowMap3DEntries(MainWindow& window)
 {
     QAction *mapAction = findActionByText(&window,
-                                          {QStringLiteral("三维地图..."),
-                                           QStringLiteral("3D Map...")});
+                                          {QStringLiteral("三维地图"),
+                                           QStringLiteral("3D Map")});
     QAction *diagnosticsAction = findActionByText(&window,
-                                                  {QStringLiteral("地图数据诊断..."),
-                                                   QStringLiteral("Map Data Diagnostics...")});
+                                                  {QStringLiteral("地图数据诊断"),
+                                                   QStringLiteral("Map Data Diagnostics")});
     require(mapAction != nullptr, "3D map action exists in the main window");
     require(diagnosticsAction != nullptr, "map data diagnostics action exists in the main window");
 
@@ -2189,11 +2189,11 @@ void requireMainWindowMap3DEntries(MainWindow& window)
 void requireMainWindowOmitsMap3DEntries(MainWindow& window)
 {
     QAction *mapAction = findActionByText(&window,
-                                          {QStringLiteral("三维地图..."),
-                                           QStringLiteral("3D Map...")});
+                                          {QStringLiteral("三维地图"),
+                                           QStringLiteral("3D Map")});
     QAction *diagnosticsAction = findActionByText(&window,
-                                                  {QStringLiteral("地图数据诊断..."),
-                                                   QStringLiteral("Map Data Diagnostics...")});
+                                                  {QStringLiteral("地图数据诊断"),
+                                                   QStringLiteral("Map Data Diagnostics")});
     require(mapAction == nullptr, "default OFF build omits the 3D map action");
     require(diagnosticsAction == nullptr, "default OFF build omits the map data diagnostics action");
 
@@ -2336,7 +2336,7 @@ int main(int argc, char **argv)
         require(aboutAction != nullptr, "help menu exposes the about action");
         QAction *checkUpdatesAction = findCheckUpdatesAction(&aboutWindow);
         require(checkUpdatesAction != nullptr, "help menu exposes the check updates action");
-        require(checkUpdatesAction->text() == QStringLiteral("检查更新..."),
+        require(checkUpdatesAction->text() == QStringLiteral("检查更新"),
                 "check updates action defaults to Chinese");
         require(checkUpdatesAction->toolTip() == QStringLiteral("检查 VaporView 更新"),
                 "check updates action has a Chinese tooltip");
@@ -2349,18 +2349,18 @@ int main(int argc, char **argv)
                     return aboutAction->text() == QStringLiteral("&About");
                 }),
                 "about action updates to English");
-        require(checkUpdatesAction->text() == QStringLiteral("Check for Updates...") &&
+        require(checkUpdatesAction->text() == QStringLiteral("Check for Updates") &&
                     checkUpdatesAction->toolTip() == QStringLiteral("Check for VaporView updates"),
                 "check updates action updates to English");
         app.setApplicationVersion(QString());
-        requireAboutDialogLayout(&aboutWindow, aboutAction, true, QStringLiteral("1.0.5"));
+        requireAboutDialogLayout(&aboutWindow, aboutAction, true, QStringLiteral("1.0.6"));
         require(QMetaObject::invokeMethod(&aboutWindow, "onSwitchLanguage", Qt::DirectConnection),
                 "main window switches back to Chinese after about dialog coverage");
         require(processEventsUntil(1000, [aboutAction]() {
                     return aboutAction->text() == QStringLiteral("关于(&A)");
                 }),
                 "about action returns to Chinese");
-        require(checkUpdatesAction->text() == QStringLiteral("检查更新...") &&
+        require(checkUpdatesAction->text() == QStringLiteral("检查更新") &&
                     checkUpdatesAction->toolTip() == QStringLiteral("检查 VaporView 更新"),
                 "check updates action returns to Chinese");
         app.setApplicationVersion(originalApplicationVersion);
@@ -3094,8 +3094,8 @@ int main(int argc, char **argv)
         {
 #ifdef VAPORVIEW_HAS_OSGEARTH
             foundMapDiagnosticsCommand = foundMapDiagnosticsCommand ||
-                (label && (label->text() == QStringLiteral("地图数据诊断...") ||
-                           label->text() == QStringLiteral("Map Data Diagnostics...")));
+                (label && (label->text() == QStringLiteral("地图数据诊断") ||
+                           label->text() == QStringLiteral("Map Data Diagnostics")));
 #endif
             if (label && (label->text() == QStringLiteral("设备CSV记录频率") ||
                           label->text() == QStringLiteral("Device CSV recording rate")))

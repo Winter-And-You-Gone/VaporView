@@ -30,7 +30,7 @@ QString vaporViewUpdateRepositoryUrl()
 QString vaporViewApplicationVersion()
 {
     const QString applicationVersion = QCoreApplication::applicationVersion().trimmed();
-    return applicationVersion.isEmpty() ? QStringLiteral("1.0.5") : applicationVersion;
+    return applicationVersion.isEmpty() ? QStringLiteral("1.0.6") : applicationVersion;
 }
 
 QString vaporViewUpdateRepositoryDisplayName(const QString& repositoryUrl, bool english)
@@ -201,34 +201,34 @@ void MainWindow::setEnglish(bool english)
     }
 
     setNativeMenuTitle(state_->data_menu_, english ? QStringLiteral("&Data") : QStringLiteral("数据(&D)"));
-    state_->recording_directory_action_->setText(english ? "Recording Folder..." : "记录目录...");
+    state_->recording_directory_action_->setText(english ? "Recording Folder" : "记录目录");
     setNativeMenuTitle(state_->recording_rate_menu_, english ? QStringLiteral("Record Rates") : QStringLiteral("记录频率"));
     rebuildRecordingRateMenu();
     setNativeMenuTitle(state_->devices_menu_, english ? QStringLiteral("&Devices") : QStringLiteral("设备(&E)"));
     if (state_->epsilon_packet_rates_action_)
     {
-        state_->epsilon_packet_rates_action_->setText(english ? "EPSILON Packet Rates..." : "设置EPSILON包频率...");
+        state_->epsilon_packet_rates_action_->setText(english ? "EPSILON Packet Rates" : "设置EPSILON包频率");
     }
     if (state_->epsilon_rtcm_port_action_)
     {
-        state_->epsilon_rtcm_port_action_->setText(english ? "Configure EPSILON RTCM Port..." : "配置EPSILON RTCM串口...");
+        state_->epsilon_rtcm_port_action_->setText(english ? "Configure EPSILON RTCM Port" : "配置EPSILON RTCM串口");
     }
     if (state_->epsilon_reconfigure_action_)
     {
-        state_->epsilon_reconfigure_action_->setText(english ? "Reconfigure EPSILON Output..." : "重新配置EPSILON输出...");
+        state_->epsilon_reconfigure_action_->setText(english ? "Reconfigure EPSILON Output" : "重新配置EPSILON输出");
     }
-    state_->session_viewer_action_->setText(english ? "Data Viewer..." : "数据查看器...");
+    state_->session_viewer_action_->setText(english ? "Data Viewer" : "数据查看器");
     setNativeMenuTitle(state_->view_menu_, english ? QStringLiteral("&View") : QStringLiteral("视图(&V)"));
     setNativeMenuTitle(state_->developer_menu_, english ? QStringLiteral("Develo&per") : QStringLiteral("开发者(&P)"));
 #ifdef VAPORVIEW_HAS_OSGEARTH
     if (state_->map3d_action_)
     {
-        state_->map3d_action_->setText(english ? "3D Map..." : "三维地图...");
+        state_->map3d_action_->setText(english ? "3D Map" : "三维地图");
         state_->map3d_action_->setToolTip(english ? "Open 3D map" : "打开三维地图");
     }
     if (state_->map3d_diagnostics_action_)
     {
-        state_->map3d_diagnostics_action_->setText(english ? "Map Data Diagnostics..." : "地图数据诊断...");
+        state_->map3d_diagnostics_action_->setText(english ? "Map Data Diagnostics" : "地图数据诊断");
         state_->map3d_diagnostics_action_->setToolTip(english ? "Open 3D map data diagnostics" : "打开三维地图数据诊断");
     }
 #endif
@@ -250,7 +250,7 @@ void MainWindow::setEnglish(bool english)
     discardTitleApplicationMenuPanel();
 
     setNativeMenuTitle(state_->help_menu_, english ? QStringLiteral("&Help") : QStringLiteral("帮助(&H)"));
-    state_->check_updates_action_->setText(english ? "Check for Updates..." : "检查更新...");
+    state_->check_updates_action_->setText(english ? "Check for Updates" : "检查更新");
     state_->check_updates_action_->setToolTip(english ? "Check for VaporView updates" : "检查 VaporView 更新");
     state_->about_action_->setText(english ? "&About" : "关于(&A)");
 
@@ -369,7 +369,7 @@ void MainWindow::setEnglish(bool english)
     if (state_->epsilon_rate_lbl_) state_->epsilon_rate_lbl_->setText(english ? "Packets:" : "包频率:");
     if (state_->epsilon_packet_rates_btn_)
     {
-        state_->epsilon_packet_rates_btn_->setText(english ? "Packet Rates..." : "配置EPSILON包频率...");
+        state_->epsilon_packet_rates_btn_->setText(english ? "Packet Rates" : "配置EPSILON包频率");
         state_->epsilon_packet_rates_btn_->setToolTip(english
             ? "Configure EPSILON packet output rates"
             : "配置 EPSILON 各数据包输出频率");

@@ -710,13 +710,13 @@ void MainWindow::createTitleApplicationMenuPanel()
     TitleMenuSection fileSection{
         state_->is_english_ ? QStringLiteral("File") : QStringLiteral("文件"),
         {
-            {state_->is_english_ ? QStringLiteral("Recording Folder...") : QStringLiteral("记录目录..."),
+            {state_->is_english_ ? QStringLiteral("Recording Folder") : QStringLiteral("记录目录"),
              QStringLiteral("Ctrl+R"),
              true,
              false,
              false,
              [this]() { onChooseRecordingDirectoryClicked(); }},
-            {state_->is_english_ ? QStringLiteral("Data Viewer...") : QStringLiteral("数据查看器..."),
+            {state_->is_english_ ? QStringLiteral("Data Viewer") : QStringLiteral("数据查看器"),
              QString(),
              true,
              false,
@@ -772,7 +772,7 @@ void MainWindow::createTitleApplicationMenuPanel()
              [this]() { setFontScale(130); }}
 #ifdef VAPORVIEW_HAS_OSGEARTH
             ,
-            {state_->is_english_ ? QStringLiteral("3D Map...") : QStringLiteral("三维地图..."),
+            {state_->is_english_ ? QStringLiteral("3D Map") : QStringLiteral("三维地图"),
              QString(),
              true,
              false,
@@ -785,7 +785,7 @@ void MainWindow::createTitleApplicationMenuPanel()
     TitleMenuSection developerSection{state_->is_english_ ? QStringLiteral("Developer") : QStringLiteral("开发者"), {}};
 #ifdef VAPORVIEW_HAS_OSGEARTH
     developerSection.commands.push_back(
-        {state_->is_english_ ? QStringLiteral("Map Data Diagnostics...") : QStringLiteral("地图数据诊断..."),
+        {state_->is_english_ ? QStringLiteral("Map Data Diagnostics") : QStringLiteral("地图数据诊断"),
          QString(),
          true,
          false,
@@ -827,21 +827,21 @@ void MainWindow::createTitleApplicationMenuPanel()
          {},
          csvRateCommands});
     developerSection.commands.push_back(
-        {state_->is_english_ ? QStringLiteral("EPSILON Packet Rates...") : QStringLiteral("设置EPSILON包频率..."),
+        {state_->is_english_ ? QStringLiteral("EPSILON Packet Rates") : QStringLiteral("设置EPSILON包频率"),
          QString(),
          !uiBusy,
          false,
          true,
          [this]() { onConfigureEpsilonPacketRatesClicked(); }});
     developerSection.commands.push_back(
-        {state_->is_english_ ? QStringLiteral("Configure EPSILON RTCM Port...") : QStringLiteral("配置EPSILON RTCM串口..."),
+        {state_->is_english_ ? QStringLiteral("Configure EPSILON RTCM Port") : QStringLiteral("配置EPSILON RTCM串口"),
          QString(),
          !uiBusy,
          false,
          false,
          [this]() { onConfigureEpsilonRtcmPortClicked(); }});
     developerSection.commands.push_back(
-        {state_->is_english_ ? QStringLiteral("Reconfigure EPSILON Output...") : QStringLiteral("重新配置EPSILON输出..."),
+        {state_->is_english_ ? QStringLiteral("Reconfigure EPSILON Output") : QStringLiteral("重新配置EPSILON输出"),
          QString(),
          !uiBusy,
          false,
@@ -858,7 +858,7 @@ void MainWindow::createTitleApplicationMenuPanel()
     TitleMenuSection helpSection{
         state_->is_english_ ? QStringLiteral("Help") : QStringLiteral("帮助"),
         {
-            {state_->is_english_ ? QStringLiteral("Check for Updates...") : QStringLiteral("检查更新..."),
+            {state_->is_english_ ? QStringLiteral("Check for Updates") : QStringLiteral("检查更新"),
              QString(),
              true,
              false,

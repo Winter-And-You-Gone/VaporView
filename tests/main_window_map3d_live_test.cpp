@@ -122,8 +122,8 @@ int main(int argc, char** argv)
     processEventsFor(200);
 
     QAction* mapAction = findActionByText(&window,
-                                          {QStringLiteral("三维地图..."),
-                                           QStringLiteral("3D Map...")});
+                                          {QStringLiteral("三维地图"),
+                                           QStringLiteral("3D Map")});
     require(mapAction != nullptr, "3D map action exists");
     mapAction->trigger();
     processEventsFor(100);

@@ -225,10 +225,10 @@ SessionOverviewWidget::SessionOverviewWidget(QWidget *parent)
 
 void SessionOverviewWidget::setEnglish(bool english)
 {
-    choose_session_btn_->setText(english ? QStringLiteral("Open Data...") : QStringLiteral("打开数据..."));
+    choose_session_btn_->setText(english ? QStringLiteral("Open Data") : QStringLiteral("打开数据"));
     reload_btn_->setText(english ? QStringLiteral("Reload") : QStringLiteral("重新加载"));
     trajectory_view_btn_->setText(english ? QStringLiteral("View Trajectory") : QStringLiteral("轨迹查看"));
-    raw_data_parser_btn_->setText(english ? QStringLiteral("Raw Data Parser...") : QStringLiteral("原始数据解析..."));
+    raw_data_parser_btn_->setText(english ? QStringLiteral("Raw Data Parser") : QStringLiteral("原始数据解析"));
     clear_view_btn_->setText(english ? QStringLiteral("Clear Page") : QStringLiteral("清空页面"));
     summary_group_->setTitle(english ? QStringLiteral("Data Summary") : QStringLiteral("数据概览"));
     session_name_title_->setText(english ? QStringLiteral("Session:") : QStringLiteral("会话:"));
