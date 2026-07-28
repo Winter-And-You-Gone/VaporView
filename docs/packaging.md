@@ -23,6 +23,18 @@ The package contains Qt and the osgEarth/OSG/GDAL/PROJ runtime, but does not
 contain `resources/maps`. The signed vendor driver installers, when available,
 belong under the package `drivers/` folder and are not executed automatically.
 
+## Program updates
+
+VaporView program updates are still applied by Qt Installer Framework through
+`VaporViewMaintenanceTool`. The in-app Help > Check for Updates action first
+runs the maintenance tool's `check-updates` command against the configured IFW
+repository and shows the result inside VaporView. The maintenance wizard is
+opened only when an update is reported and the user chooses Update Now.
+
+Development builds that are run directly from the build directory do not include
+`VaporViewMaintenanceTool`; install VaporView with the setup package before
+testing the full online-update flow.
+
 ## Map resource manifest
 
 `packaging/map-resources/manifest.example.json` documents the manifest shape.

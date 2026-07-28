@@ -25,6 +25,128 @@ QString vaporViewUpdateRepositoryUrl()
 #endif
 }
 
+QStringList vaporViewUpdateCheckArguments(const QString& repositoryUrl)
+{
+    return QStringList{QStringLiteral("--set-temp-repository"),
+                       repositoryUrl,
+                       QStringLiteral("check-updates")};
+}
+
+QStringList vaporViewStartUpdaterArguments(const QString& repositoryUrl)
+{
+    return QStringList{QStringLiteral("--set-temp-repository"),
+                       repositoryUrl,
+                       QStringLiteral("--start-updater")};
+}
+
+enum class VaporViewUpdateCheckStatus
+{
+    UpdatesAvailable,
+    UpToDate,
+    Failed,
+    Unknown
+};
+
+struct VaporViewUpdateCheckResult
+{
+    VaporViewUpdateCheckStatus status = VaporViewUpdateCheckStatus::Unknown;
+    QString output;
+    QString errorText;
+    int exitCode = -1;
+};
+
+bool vaporViewOutputContainsAny(const QString& lowerOutput, const QStringList& markers)
+{
+    for (const QString& marker : markers)
+    {
+        if (lowerOutput.contains(marker))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+QString vaporViewTrimmedUpdateOutput(const QString& output, int maxLines = 10, int maxCharacters = 1400)
+{
+    QString normalized = output;
+    normalized.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+    const QStringList rawLines = normalized.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    QStringList lines;
+    lines.reserve(std::min(static_cast<int>(rawLines.size()), maxLines));
+    for (const QString& rawLine : rawLines)
+    {
+        const QString line = rawLine.simplified();
+        if (line.isEmpty())
+        {
+            continue;
+        }
+        lines.push_back(line);
+        if (lines.size() >= maxLines)
+        {
+            break;
+        }
+    }
+
+    QString trimmed = lines.join(QLatin1Char('\n'));
+    if (trimmed.size() > maxCharacters)
+    {
+        trimmed = trimmed.left(maxCharacters).trimmed() + QStringLiteral("...");
+    }
+    return trimmed;
+}
+
+VaporViewUpdateCheckResult vaporViewClassifyUpdateCheckResult(const QString& output,
+                                                              int exitCode,
+                                                              QProcess::ExitStatus exitStatus,
+                                                              const QString& errorText = QString())
+{
+    VaporViewUpdateCheckResult result;
+    result.output = output.trimmed();
+    result.errorText = errorText.trimmed();
+    result.exitCode = exitCode;
+
+    const QString lowerOutput = result.output.toLower();
+    const bool mentionsNoUpdates = vaporViewOutputContainsAny(lowerOutput,
+        QStringList{QStringLiteral("no updates"),
+                    QStringLiteral("no update available"),
+                    QStringLiteral("currently no updates"),
+                    QStringLiteral("already up to date"),
+                    QStringLiteral("nothing to update"),
+                    QStringLiteral("no packages to update")});
+    const bool mentionsAvailableUpdates = vaporViewOutputContainsAny(lowerOutput,
+        QStringList{QStringLiteral("updates available"),
+                    QStringLiteral("update available"),
+                    QStringLiteral("available updates"),
+                    QStringLiteral("new updates"),
+                    QStringLiteral("will be updated"),
+                    QStringLiteral("can be updated"),
+                    QStringLiteral("package updates")});
+
+    if (mentionsNoUpdates)
+    {
+        result.status = VaporViewUpdateCheckStatus::UpToDate;
+    }
+    else if (mentionsAvailableUpdates)
+    {
+        result.status = VaporViewUpdateCheckStatus::UpdatesAvailable;
+    }
+    else if (exitStatus != QProcess::NormalExit || exitCode != 0 || !result.errorText.isEmpty())
+    {
+        result.status = VaporViewUpdateCheckStatus::Failed;
+    }
+    else if (result.output.isEmpty())
+    {
+        result.status = VaporViewUpdateCheckStatus::UpToDate;
+    }
+    else
+    {
+        result.status = VaporViewUpdateCheckStatus::Unknown;
+    }
+
+    return result;
+}
+
 } // namespace
 
 void MainWindow::setEnglish(bool english)
@@ -94,7 +216,7 @@ void MainWindow::setEnglish(bool english)
 
     setNativeMenuTitle(state_->help_menu_, english ? QStringLiteral("&Help") : QStringLiteral("帮助(&H)"));
     state_->check_updates_action_->setText(english ? "Check for Updates..." : "检查更新...");
-    state_->check_updates_action_->setToolTip(english ? "Open VaporView updater" : "打开 VaporView 更新程序");
+    state_->check_updates_action_->setToolTip(english ? "Check for VaporView updates" : "检查 VaporView 更新");
     state_->about_action_->setText(english ? "&About" : "关于(&A)");
 
     state_->refresh_ports_btn_->setText(english ? "Refresh" : "刷新");
@@ -426,19 +548,186 @@ void MainWindow::onCheckUpdatesClicked()
     }
 
     const QString repositoryUrl = vaporViewUpdateRepositoryUrl();
-    if (!QProcess::startDetached(maintenanceToolPath,
-                                 QStringList{QStringLiteral("--set-temp-repository"),
-                                             repositoryUrl,
-                                             QStringLiteral("--start-updater")},
-                                 applicationDir))
-    {
-        QMessageBox::warning(this,
-                             english ? QStringLiteral("Updates")
-                                     : QStringLiteral("软件更新"),
-                             english
-                                 ? QStringLiteral("Failed to start VaporViewMaintenanceTool.")
-                                 : QStringLiteral("无法启动 VaporViewMaintenanceTool。"));
-    }
+    const auto startUpdater = [this, english, maintenanceToolPath, repositoryUrl, applicationDir]() {
+        if (!QProcess::startDetached(maintenanceToolPath,
+                                     vaporViewStartUpdaterArguments(repositoryUrl),
+                                     applicationDir))
+        {
+            QMessageBox::warning(this,
+                                 english ? QStringLiteral("Updates")
+                                         : QStringLiteral("软件更新"),
+                                 english
+                                     ? QStringLiteral("Failed to start VaporViewMaintenanceTool.")
+                                     : QStringLiteral("无法启动 VaporViewMaintenanceTool。"));
+            return false;
+        }
+        return true;
+    };
+
+    QDialog dialog(this);
+    dialog.setObjectName(QStringLiteral("updateCheckDialog"));
+    dialog.setWindowTitle(english ? QStringLiteral("Updates") : QStringLiteral("软件更新"));
+    dialog.setWindowModality(Qt::WindowModal);
+    dialog.setMinimumSize(520, 280);
+
+    auto *rootLayout = new QVBoxLayout(&dialog);
+    rootLayout->setContentsMargins(20, 18, 20, 16);
+    rootLayout->setSpacing(12);
+
+    auto *titleLabel = new QLabel(english ? QStringLiteral("Check for VaporView Updates")
+                                          : QStringLiteral("检查 VaporView 更新"),
+                                  &dialog);
+    QFont titleFont = titleLabel->font();
+    titleFont.setBold(true);
+    titleFont.setPointSize(std::max(titleFont.pointSize() + 1, 11));
+    titleLabel->setFont(titleFont);
+    titleLabel->setWordWrap(true);
+    rootLayout->addWidget(titleLabel);
+
+    auto *statusLabel = new QLabel(english ? QStringLiteral("Checking the update repository...")
+                                           : QStringLiteral("正在检查更新仓库..."),
+                                   &dialog);
+    statusLabel->setWordWrap(true);
+    rootLayout->addWidget(statusLabel);
+
+    auto *detailLabel = new QLabel(english
+                                       ? QStringLiteral("Repository:\n%1").arg(repositoryUrl)
+                                       : QStringLiteral("更新源：\n%1").arg(repositoryUrl),
+                                   &dialog);
+    detailLabel->setWordWrap(true);
+    detailLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    rootLayout->addWidget(detailLabel);
+    rootLayout->addStretch(1);
+
+    auto *buttonBox = new QDialogButtonBox(&dialog);
+    auto *closeButton = buttonBox->addButton(english ? QStringLiteral("Cancel") : QStringLiteral("取消"),
+                                             QDialogButtonBox::RejectRole);
+    auto *updateButton = buttonBox->addButton(english ? QStringLiteral("Update Now") : QStringLiteral("立即更新"),
+                                              QDialogButtonBox::ActionRole);
+    updateButton->setVisible(false);
+    updateButton->setEnabled(false);
+    rootLayout->addWidget(buttonBox);
+
+    auto *checkProcess = new QProcess(&dialog);
+    checkProcess->setProgram(maintenanceToolPath);
+    checkProcess->setArguments(vaporViewUpdateCheckArguments(repositoryUrl));
+    checkProcess->setWorkingDirectory(applicationDir);
+    checkProcess->setProcessChannelMode(QProcess::MergedChannels);
+
+    bool checkCompleted = false;
+    auto finishCheck = [&](const VaporViewUpdateCheckResult& result) {
+        if (checkCompleted)
+        {
+            return;
+        }
+        checkCompleted = true;
+        closeButton->setText(english ? QStringLiteral("Close") : QStringLiteral("关闭"));
+
+        const QString outputSummary = vaporViewTrimmedUpdateOutput(result.output);
+        const QString outputSuffix = outputSummary.isEmpty()
+            ? QString()
+            : (english ? QStringLiteral("\n\nMaintenanceTool output:\n%1").arg(outputSummary)
+                       : QStringLiteral("\n\n维护工具输出：\n%1").arg(outputSummary));
+
+        switch (result.status)
+        {
+        case VaporViewUpdateCheckStatus::UpdatesAvailable:
+            statusLabel->setText(english ? QStringLiteral("Updates are available.")
+                                         : QStringLiteral("发现可用更新。"));
+            detailLabel->setText(english
+                                     ? QStringLiteral("Click Update Now to open the VaporView maintenance wizard and apply the update.%1").arg(outputSuffix)
+                                     : QStringLiteral("点击“立即更新”会打开 VaporView 维护向导并执行更新。%1").arg(outputSuffix));
+            updateButton->setVisible(true);
+            updateButton->setEnabled(true);
+            updateButton->setDefault(true);
+            break;
+        case VaporViewUpdateCheckStatus::UpToDate:
+            statusLabel->setText(english ? QStringLiteral("VaporView is up to date.")
+                                         : QStringLiteral("VaporView 已是最新版本。"));
+            detailLabel->setText(english
+                                     ? QStringLiteral("No program updates were reported by the configured repository.%1").arg(outputSuffix)
+                                     : QStringLiteral("配置的更新源未报告可用程序更新。%1").arg(outputSuffix));
+            break;
+        case VaporViewUpdateCheckStatus::Failed:
+        {
+            const QString errorText = result.errorText.isEmpty()
+                ? (english ? QStringLiteral("The maintenance tool returned exit code %1.").arg(result.exitCode)
+                           : QStringLiteral("维护工具返回退出码 %1。").arg(result.exitCode))
+                : result.errorText;
+            statusLabel->setText(english ? QStringLiteral("Update check failed.")
+                                         : QStringLiteral("检查更新失败。"));
+            detailLabel->setText(english
+                                     ? QStringLiteral("%1\nPlease check the network connection and try again.%2").arg(errorText, outputSuffix)
+                                     : QStringLiteral("%1\n请检查网络连接后重试。%2").arg(errorText, outputSuffix));
+            break;
+        }
+        case VaporViewUpdateCheckStatus::Unknown:
+            statusLabel->setText(english ? QStringLiteral("Update check finished.")
+                                         : QStringLiteral("检查更新已完成。"));
+            detailLabel->setText(english
+                                     ? QStringLiteral("The maintenance tool did not report a clear update state. Please try again later or run the maintenance tool from the installation folder if needed.%1").arg(outputSuffix)
+                                     : QStringLiteral("维护工具没有返回明确的更新状态。可稍后重试，必要时从安装目录手动运行维护工具。%1").arg(outputSuffix));
+            break;
+        }
+    };
+
+    QTimer checkTimeout;
+    checkTimeout.setSingleShot(true);
+    checkTimeout.setInterval(30000);
+    QObject::connect(&checkTimeout, &QTimer::timeout, &dialog, [&]() {
+        if (checkProcess->state() == QProcess::NotRunning || checkCompleted)
+        {
+            return;
+        }
+        finishCheck(VaporViewUpdateCheckResult{VaporViewUpdateCheckStatus::Failed,
+                                               QString::fromLocal8Bit(checkProcess->readAllStandardOutput()),
+                                               english ? QStringLiteral("The update check timed out.")
+                                                       : QStringLiteral("检查更新超时。"),
+                                               -1});
+        checkProcess->kill();
+    });
+    QObject::connect(checkProcess, &QProcess::errorOccurred, &dialog, [&](QProcess::ProcessError error) {
+        if (checkCompleted || error != QProcess::FailedToStart)
+        {
+            return;
+        }
+        finishCheck(VaporViewUpdateCheckResult{VaporViewUpdateCheckStatus::Failed,
+                                               QString::fromLocal8Bit(checkProcess->readAllStandardOutput()),
+                                               checkProcess->errorString(),
+                                               -1});
+    });
+    QObject::connect(checkProcess,
+                     qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+                     &dialog,
+                     [&](int exitCode, QProcess::ExitStatus exitStatus) {
+        if (checkCompleted)
+        {
+            return;
+        }
+        checkTimeout.stop();
+        const QString output =
+            QString::fromLocal8Bit(checkProcess->readAllStandardOutput()) +
+            QString::fromLocal8Bit(checkProcess->readAllStandardError());
+        finishCheck(vaporViewClassifyUpdateCheckResult(output, exitCode, exitStatus));
+    });
+    QObject::connect(updateButton, &QPushButton::clicked, &dialog, [&]() {
+        if (startUpdater())
+        {
+            dialog.accept();
+        }
+    });
+    QObject::connect(&dialog, &QDialog::rejected, &dialog, [&]() {
+        if (checkProcess->state() != QProcess::NotRunning)
+        {
+            checkProcess->kill();
+        }
+    });
+
+    QTimer::singleShot(0, &dialog, [&]() {
+        checkTimeout.start();
+        checkProcess->start();
+    });
+    dialog.exec();
 }
 
 void MainWindow::onSwitchLanguage()

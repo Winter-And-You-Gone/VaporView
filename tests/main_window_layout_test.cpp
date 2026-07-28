@@ -2338,7 +2338,7 @@ int main(int argc, char **argv)
         require(checkUpdatesAction != nullptr, "help menu exposes the check updates action");
         require(checkUpdatesAction->text() == QStringLiteral("检查更新..."),
                 "check updates action defaults to Chinese");
-        require(checkUpdatesAction->toolTip() == QStringLiteral("打开 VaporView 更新程序"),
+        require(checkUpdatesAction->toolTip() == QStringLiteral("检查 VaporView 更新"),
                 "check updates action has a Chinese tooltip");
         const QString originalApplicationVersion = app.applicationVersion();
         app.setApplicationVersion(QStringLiteral("9.8.7-test"));
@@ -2350,7 +2350,7 @@ int main(int argc, char **argv)
                 }),
                 "about action updates to English");
         require(checkUpdatesAction->text() == QStringLiteral("Check for Updates...") &&
-                    checkUpdatesAction->toolTip() == QStringLiteral("Open VaporView updater"),
+                    checkUpdatesAction->toolTip() == QStringLiteral("Check for VaporView updates"),
                 "check updates action updates to English");
         app.setApplicationVersion(QString());
         requireAboutDialogLayout(&aboutWindow, aboutAction, true, QStringLiteral("1.0.1"));
@@ -2361,7 +2361,7 @@ int main(int argc, char **argv)
                 }),
                 "about action returns to Chinese");
         require(checkUpdatesAction->text() == QStringLiteral("检查更新...") &&
-                    checkUpdatesAction->toolTip() == QStringLiteral("打开 VaporView 更新程序"),
+                    checkUpdatesAction->toolTip() == QStringLiteral("检查 VaporView 更新"),
                 "check updates action returns to Chinese");
         app.setApplicationVersion(originalApplicationVersion);
         aboutWindow.close();
