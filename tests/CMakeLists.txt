@@ -334,6 +334,42 @@ add_custom_command(TARGET main_window_layout_test POST_BUILD
 )
 add_test(NAME main_window_layout_test COMMAND main_window_layout_test)
 
+add_executable(update_check_dialog_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/update_check_dialog_test.cpp
+)
+target_include_directories(update_check_dialog_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(update_check_dialog_test PRIVATE
+    vaporview_main_window
+    Qt6::Network
+)
+add_dependencies(update_check_dialog_test VaporViewRuntimeResources)
+if(VAPORVIEW_ENABLE_OSGEARTH AND WIN32)
+    vaporview_stage_osgearth_runtime(update_check_dialog_test)
+endif()
+add_custom_command(TARGET update_check_dialog_test POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:update_check_dialog_test>/resources
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/resources/modern_style.qss
+        $<TARGET_FILE_DIR:update_check_dialog_test>/resources/modern_style.qss
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/resources/combo_arrow_down.xpm
+        $<TARGET_FILE_DIR:update_check_dialog_test>/resources/combo_arrow_down.xpm
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/resources/combo_arrow_up.xpm
+        $<TARGET_FILE_DIR:update_check_dialog_test>/resources/combo_arrow_up.xpm
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/resources/lucide
+        $<TARGET_FILE_DIR:update_check_dialog_test>/resources/lucide
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/resources/VaproViewLOGO
+        $<TARGET_FILE_DIR:update_check_dialog_test>/resources/VaproViewLOGO
+    COMMENT "Copying resources for update_check_dialog_test"
+)
+add_test(NAME update_check_dialog_test COMMAND update_check_dialog_test)
+
 add_executable(main_window_session_viewer_test
     ${CMAKE_CURRENT_SOURCE_DIR}/main_window_session_viewer_test.cpp
 )
