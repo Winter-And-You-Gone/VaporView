@@ -1541,6 +1541,11 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(ggaSourceCombo->itemText(0) == QStringLiteral("Epsilon生成") ||
                 ggaSourceCombo->itemText(0) == QStringLiteral("Epsilon generated"),
             "RTK GGA source first option uses the compact Epsilon generated label");
+    for (int index = 0; index < ggaSourceCombo->count(); ++index)
+    {
+        require(!ggaSourceCombo->itemText(index).trimmed().isEmpty(),
+                "RTK GGA source combo does not include blank separator rows");
+    }
     const int compactGgaSourceWidth =
         ggaSourceCombo->fontMetrics().horizontalAdvance(ggaSourceCombo->currentText()) + 84;
     require(ggaSourceCombo->width() <= compactGgaSourceWidth,

@@ -3104,7 +3104,6 @@ void RtkConfigDialog::refreshPortCombos()
         const QSignalBlocker blocker(gga_port_combo_);
         gga_port_combo_->clear();
         gga_port_combo_->addItem(mainGgaSourceLabel(), QString::fromLatin1(kEpsilonMainGgaSourceKey));
-        gga_port_combo_->insertSeparator(gga_port_combo_->count());
         for (const QString& port : ports)
         {
             gga_port_combo_->addItem(port, port);
