@@ -2,6 +2,7 @@
 #include "ground/devices/DeviceRatePolicy.h"
 
 #include <QCoreApplication>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPlainTextEdit>
@@ -24,6 +25,39 @@ QString vaporViewUpdateRepositoryUrl()
 #else
     return QStringLiteral("https://winter-and-you-gone.github.io/VaporView/ifw/linux/x64/repository/");
 #endif
+}
+
+QString vaporViewApplicationVersion()
+{
+    const QString applicationVersion = QCoreApplication::applicationVersion().trimmed();
+    return applicationVersion.isEmpty() ? QStringLiteral("1.0.4") : applicationVersion;
+}
+
+QString vaporViewUpdateRepositoryDisplayName(const QString& repositoryUrl, bool english)
+{
+    if (repositoryUrl.contains(QStringLiteral("github.io"), Qt::CaseInsensitive))
+    {
+        return english ? QStringLiteral("GitHub Pages IFW repository")
+                       : QStringLiteral("GitHub Pages IFW 更新源");
+    }
+    if (!qEnvironmentVariable("VAPORVIEW_IFW_REPOSITORY_URL").trimmed().isEmpty())
+    {
+        return english ? QStringLiteral("Custom IFW repository")
+                       : QStringLiteral("自定义 IFW 更新源");
+    }
+    return english ? QStringLiteral("Qt IFW repository")
+                   : QStringLiteral("Qt IFW 更新源");
+}
+
+QString vaporViewCompactRepositoryUrl(const QString& repositoryUrl)
+{
+    constexpr int kMaxVisibleRepositoryUrlLength = 76;
+    if (repositoryUrl.size() <= kMaxVisibleRepositoryUrlLength)
+    {
+        return repositoryUrl;
+    }
+    return repositoryUrl.left(46).trimmed() + QStringLiteral("…") +
+           repositoryUrl.right(26).trimmed();
 }
 
 QStringList vaporViewUpdateCheckArguments(const QString& repositoryUrl)
@@ -550,6 +584,9 @@ void MainWindow::onCheckUpdatesClicked()
     }
 
     const QString repositoryUrl = vaporViewUpdateRepositoryUrl();
+    const QString applicationVersion = vaporViewApplicationVersion();
+    const QString repositoryDisplayName = vaporViewUpdateRepositoryDisplayName(repositoryUrl, english);
+    const QString compactRepositoryUrl = vaporViewCompactRepositoryUrl(repositoryUrl);
     const auto startUpdater = [this, english, maintenanceToolPath, repositoryUrl, applicationDir]() {
         if (!QProcess::startDetached(maintenanceToolPath,
                                      vaporViewStartUpdaterArguments(repositoryUrl),
@@ -570,7 +607,7 @@ void MainWindow::onCheckUpdatesClicked()
     dialog.setObjectName(QStringLiteral("updateCheckDialog"));
     dialog.setWindowTitle(english ? QStringLiteral("Updates") : QStringLiteral("软件更新"));
     dialog.setWindowModality(Qt::WindowModal);
-    dialog.setMinimumSize(560, 360);
+    dialog.setMinimumSize(480, 280);
 
     auto *rootLayout = new QVBoxLayout(&dialog);
     rootLayout->setContentsMargins(0, 0, 0, 0);
@@ -579,8 +616,8 @@ void MainWindow::onCheckUpdatesClicked()
     auto *body = new QWidget(&dialog);
     body->setObjectName(QStringLiteral("updateCheckDialogBody"));
     auto *bodyLayout = new QVBoxLayout(body);
-    bodyLayout->setContentsMargins(32, 26, 32, 22);
-    bodyLayout->setSpacing(12);
+    bodyLayout->setContentsMargins(26, 18, 26, 16);
+    bodyLayout->setSpacing(8);
 
     auto *titleLabel = new QLabel(english ? QStringLiteral("Check for VaporView Updates")
                                           : QStringLiteral("检查 VaporView 更新"),
@@ -601,13 +638,50 @@ void MainWindow::onCheckUpdatesClicked()
     bodyLayout->addWidget(statusLabel);
 
     auto *detailLabel = new QLabel(english
-                                       ? QStringLiteral("Repository:\n%1").arg(repositoryUrl)
-                                       : QStringLiteral("更新源：\n%1").arg(repositoryUrl),
+                                       ? QStringLiteral("Checking the configured source for program updates.")
+                                       : QStringLiteral("正在通过配置的更新源检查程序更新。"),
                                    body);
     detailLabel->setObjectName(QStringLiteral("updateCheckDetailLabel"));
     detailLabel->setWordWrap(true);
-    detailLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     bodyLayout->addWidget(detailLabel);
+
+    auto *sourcePanel = new QWidget(body);
+    sourcePanel->setObjectName(QStringLiteral("updateCheckSourcePanel"));
+    auto *sourceLayout = new QGridLayout(sourcePanel);
+    sourceLayout->setContentsMargins(12, 8, 12, 8);
+    sourceLayout->setHorizontalSpacing(10);
+    sourceLayout->setVerticalSpacing(4);
+
+    auto addSourceRow = [&](int row,
+                            const QString& labelText,
+                            const QString& valueText,
+                            const QString& tooltipText = QString()) {
+        auto *label = new QLabel(labelText, sourcePanel);
+        label->setObjectName(QStringLiteral("updateCheckSourceKeyLabel"));
+        auto *value = new QLabel(valueText, sourcePanel);
+        value->setObjectName(QStringLiteral("updateCheckSourceValueLabel"));
+        value->setWordWrap(true);
+        value->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        if (!tooltipText.isEmpty())
+        {
+            value->setToolTip(tooltipText);
+        }
+        sourceLayout->addWidget(label, row, 0, Qt::AlignTop);
+        sourceLayout->addWidget(value, row, 1);
+        return value;
+    };
+    addSourceRow(0,
+                 english ? QStringLiteral("Version") : QStringLiteral("当前版本"),
+                 applicationVersion);
+    addSourceRow(1,
+                 english ? QStringLiteral("Source") : QStringLiteral("更新来源"),
+                 repositoryDisplayName);
+    addSourceRow(2,
+                 english ? QStringLiteral("Repository") : QStringLiteral("仓库地址"),
+                 compactRepositoryUrl,
+                 repositoryUrl);
+    sourceLayout->setColumnStretch(1, 1);
+    bodyLayout->addWidget(sourcePanel);
 
     auto *outputTitleLabel = new QLabel(english ? QStringLiteral("Diagnostic output")
                                                 : QStringLiteral("诊断输出"),
@@ -620,31 +694,30 @@ void MainWindow::onCheckUpdatesClicked()
     outputEdit->setObjectName(QStringLiteral("updateCheckOutputEdit"));
     outputEdit->setReadOnly(true);
     outputEdit->setVisible(false);
-    outputEdit->setMaximumHeight(116);
+    outputEdit->setMaximumHeight(92);
     outputEdit->setLineWrapMode(QPlainTextEdit::WidgetWidth);
     bodyLayout->addWidget(outputEdit);
 
-    bodyLayout->addStretch(1);
     rootLayout->addWidget(body, 1);
 
     auto *footer = new QWidget(&dialog);
     footer->setObjectName(QStringLiteral("updateCheckDialogFooter"));
-    footer->setMinimumHeight(76);
+    footer->setMinimumHeight(60);
     auto *footerLayout = new QHBoxLayout(footer);
-    footerLayout->setContentsMargins(24, 16, 28, 16);
+    footerLayout->setContentsMargins(20, 10, 24, 10);
     footerLayout->setSpacing(10);
     footerLayout->addStretch(1);
 
     auto *updateButton = new QPushButton(english ? QStringLiteral("Update Now") : QStringLiteral("立即更新"), footer);
     updateButton->setObjectName(QStringLiteral("updateCheckUpdateButton"));
-    updateButton->setFixedSize(124, 40);
+    updateButton->setFixedSize(112, 34);
     updateButton->setVisible(false);
     updateButton->setEnabled(false);
     footerLayout->addWidget(updateButton);
 
     auto *closeButton = new QPushButton(english ? QStringLiteral("Cancel") : QStringLiteral("取消"), footer);
     closeButton->setObjectName(QStringLiteral("updateCheckCloseButton"));
-    closeButton->setFixedSize(112, 40);
+    closeButton->setFixedSize(100, 34);
     closeButton->setDefault(true);
     closeButton->setAutoDefault(true);
     footerLayout->addWidget(closeButton);
@@ -695,6 +768,20 @@ QLabel#updateCheckStatusLabel {
 }
 QLabel#updateCheckDetailLabel {
     color: @vv-text-secondary;
+}
+QWidget#updateCheckSourcePanel {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+    border-radius: 8px;
+}
+QLabel#updateCheckSourceKeyLabel {
+    color: @vv-text-muted;
+    font-size: 12px;
+    font-weight: 600;
+}
+QLabel#updateCheckSourceValueLabel {
+    color: @vv-text-secondary;
+    font-size: 12px;
 }
 QLabel#updateCheckOutputTitleLabel {
     color: @vv-text-muted;
@@ -785,8 +872,8 @@ QPushButton#updateCheckUpdateButton:focus {
             statusLabel->setText(english ? QStringLiteral("Updates are available.")
                                          : QStringLiteral("发现可用更新。"));
             detailLabel->setText(english
-                                     ? QStringLiteral("Click Update Now to open the VaporView maintenance wizard and apply the update.")
-                                     : QStringLiteral("点击“立即更新”会打开 VaporView 维护向导并执行更新。"));
+                                     ? QStringLiteral("Click Update Now to open the maintenance wizard and apply the update from the source below.")
+                                     : QStringLiteral("点击“立即更新”会打开维护向导，并从下方更新源执行更新。"));
             showDiagnosticOutput(false);
             updateButton->setVisible(true);
             updateButton->setEnabled(true);
@@ -797,8 +884,8 @@ QPushButton#updateCheckUpdateButton:focus {
             statusLabel->setText(english ? QStringLiteral("VaporView is up to date.")
                                          : QStringLiteral("VaporView 已是最新版本。"));
             detailLabel->setText(english
-                                     ? QStringLiteral("No program updates were reported by the configured repository.")
-                                     : QStringLiteral("配置的更新源未报告可用程序更新。"));
+                                     ? QStringLiteral("The configured source did not report a newer program version.")
+                                     : QStringLiteral("配置的更新源未报告比当前版本更新的程序。"));
             showDiagnosticOutput(false);
             break;
         case VaporViewUpdateCheckStatus::Failed:
@@ -883,7 +970,7 @@ QPushButton#updateCheckUpdateButton:focus {
         checkTimeout.start();
         checkProcess->start();
     });
-    dialog.resize(dialog.sizeHint().expandedTo(QSize(600, 380)));
+    dialog.resize(dialog.sizeHint().expandedTo(QSize(500, 300)));
     dialog.exec();
 }
 
@@ -907,9 +994,7 @@ void MainWindow::showAboutDialog()
     const bool english = state_->is_english_;
     const bool dark = state_->dark_theme_enabled_;
     const QString title = english ? QStringLiteral("About VaporView") : QStringLiteral("关于 VaporView");
-    const QString applicationVersion = QCoreApplication::applicationVersion().trimmed().isEmpty()
-        ? QStringLiteral("1.0.3")
-        : QCoreApplication::applicationVersion().trimmed();
+    const QString applicationVersion = vaporViewApplicationVersion();
 
     QDialog dialog(this);
     dialog.setObjectName(QStringLiteral("aboutDialog"));
