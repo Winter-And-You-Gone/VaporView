@@ -1163,12 +1163,14 @@ private:
     static constexpr int kOverviewMinimumValueHeight = 44;
     static constexpr int kOverviewOutputCapsuleHeight = 60;
     static constexpr int kOverviewOutputSwitchHeight = kOverviewChannelHeight;
+    static constexpr int kOverviewOutputFrameWidth = 1;
     static constexpr int kOverviewOutputHorizontalMargin = 4;
     static constexpr int kOverviewOutputVerticalMargin = 3;
     static constexpr int kOverviewOutputSpacing = 2;
     static constexpr int kOverviewOutputLabelHeight = 18;
     static constexpr int kOverviewOutputSwitchWidth =
-        kOverviewControlWidth - kOverviewOutputHorizontalMargin * 2;
+        kOverviewControlWidth -
+        (kOverviewOutputHorizontalMargin + kOverviewOutputFrameWidth) * 2;
 
     quint8 currentChannelNumber() const
     {

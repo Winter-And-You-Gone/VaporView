@@ -114,6 +114,13 @@ int main(int argc, char **argv)
                 overviewOutputSwitch->height() == 34 &&
                 overviewOutputCapsule->height() == 60,
             "temperature overview uses the shared 34 px segmented switch inside a compact capsule");
+    temperatureOverview->show();
+    QApplication::processEvents();
+    const int overviewSwitchLeftGap = overviewOutputSwitch->geometry().left();
+    const int overviewSwitchRightGap =
+        overviewOutputCapsule->width() - overviewOutputSwitch->geometry().right() - 1;
+    require(std::abs(overviewSwitchLeftGap - overviewSwitchRightGap) <= 1,
+            "temperature overview segmented switch is horizontally centered in its capsule");
     delete temperatureOverview;
 
     std::cout << "segmented_switch_button_test passed\n";
