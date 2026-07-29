@@ -9,6 +9,7 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QHostAddress>
+#include <QImage>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -116,6 +117,23 @@ int main(int argc, char **argv)
             "mountpoint combo and detect button have the same width");
     require(!fetchMountpointsButton->icon().isNull(),
             "mountpoint detect button uses the lucide radar icon");
+    const QImage mountpointIconImage =
+        fetchMountpointsButton->icon().pixmap(fetchMountpointsButton->iconSize()).toImage();
+    bool mountpointIconHasWhitePixel = false;
+    for (int y = 0; y < mountpointIconImage.height() && !mountpointIconHasWhitePixel; ++y)
+    {
+        for (int x = 0; x < mountpointIconImage.width(); ++x)
+        {
+            const QColor pixel = mountpointIconImage.pixelColor(x, y);
+            if (pixel.alpha() > 0 && pixel.red() >= 250 && pixel.green() >= 250 && pixel.blue() >= 250)
+            {
+                mountpointIconHasWhitePixel = true;
+                break;
+            }
+        }
+    }
+    require(mountpointIconHasWhitePixel,
+            "mountpoint detect button renders the lucide radar icon in white");
 
     QTcpServer caster;
     require(caster.listen(QHostAddress::LocalHost, 0), "local sourcetable test server starts");

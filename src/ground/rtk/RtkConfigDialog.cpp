@@ -1920,7 +1920,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
         fetch_mountpoints_btn_->setIconSize(QSize(iconSize, iconSize));
         fetch_mountpoints_btn_->setIcon(createLucideIcon(
             QStringLiteral("radar"),
-            appThemeColor(AppThemeColor::Primary, darkTheme)));
+            appThemeColor(AppThemeColor::White, darkTheme)));
     }
     updateMountpointComboWidth();
 
