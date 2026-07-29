@@ -4062,6 +4062,18 @@ int main(int argc, char **argv)
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
                                  "dark theme overrides temperature overview value pill background");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
+                                 QStringLiteral("QFrame#temperatureOverviewOutputCapsule {"),
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
+                                 "dark theme overrides temperature overview output capsule background");
+    requireLastStyleRuleContains(darkOverviewStyleSheet,
+                                 QStringLiteral("QLabel#temperatureOverviewOutputLabel {"),
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::TextStrong, true),
+                                 "dark theme overrides temperature overview output label color");
+    requireWidgetInteriorUsesBackground(
+        temperatureOutputCapsule,
+        VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceAlt, true),
+        "dark theme renders the temperature overview output capsule with the alternate surface");
+    requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QToolButton#temperatureOverviewChannelButton[available=\"false\"] {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
                                  "dark theme overrides unavailable temperature channel selector background");

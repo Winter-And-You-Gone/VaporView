@@ -1100,6 +1100,13 @@ QLabel#temperatureOverviewValuePill {
     border-radius: 10px;
     color: @vv-text-strong;
 }
+QFrame#temperatureOverviewOutputCapsule {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+}
+QLabel#temperatureOverviewOutputLabel {
+    color: @vv-text-strong;
+}
 QToolButton#temperatureOverviewChannelButton {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
