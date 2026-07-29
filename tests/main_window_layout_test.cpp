@@ -1584,23 +1584,11 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
             "RTK GGA output text area sits to the right of the read controls");
     require(std::abs(ggaCard->height() - ntripCard->height()) <= 24,
             "RTK GGA monitor card height matches the NTRIP card height closely");
-    auto *ggaStatusLabel = dialog->findChild<QLabel *>(QStringLiteral("rtkGgaStatusLabel"));
-    QLabel *logTitleLabel = findLabelByText(logCard,
-                                            {QStringLiteral("RTK 服务日志"),
-                                             QStringLiteral("RTK Service Log")});
-    QWidget *logTitleBar = nullptr;
-    for (QWidget *titleBar : logCard->findChildren<QWidget *>(QStringLiteral("sectionTitleBar")))
-    {
-        if (logTitleLabel && titleBar->isAncestorOf(logTitleLabel))
-        {
-            logTitleBar = titleBar;
-            break;
-        }
-    }
-    require(ggaStatusLabel != nullptr && logTitleBar != nullptr &&
-                logTitleBar->isAncestorOf(ggaStatusLabel) &&
-                !ggaCard->isAncestorOf(ggaStatusLabel),
-            "RTK GGA status is placed in the service log title area instead of the GGA controls");
+    require(dialog->findChild<QLabel *>(QStringLiteral("rtkGgaStatusLabel")) == nullptr,
+            "RTK GGA monitor does not use a standalone status label");
+    require(!ggaOutputText->toPlainText().contains(QStringLiteral("状态:")) &&
+                !ggaOutputText->toPlainText().contains(QStringLiteral("Status:")),
+            "RTK GGA log stays quiet before reading starts");
     require(findLabelByText(dialog,
                             {QStringLiteral("状态: 点击按钮开始读取GGA"),
                              QStringLiteral("Status: Click button to read GGA")}) == nullptr,

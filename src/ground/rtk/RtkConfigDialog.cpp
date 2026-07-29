@@ -121,12 +121,6 @@ QFont numericFontFrom(const QFont& base)
     return font;
 }
 
-QString boldLabelColorStyle(AppThemeColor color)
-{
-    return QStringLiteral("QLabel { color: %1; font-weight: bold; }")
-        .arg(appThemeColorName(color, isDarkThemeEnabled()));
-}
-
 QString textForLanguage(bool english, const QString& englishText, const QString& chineseText)
 {
     return english ? englishText : chineseText;
@@ -1030,7 +1024,6 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     , timeout_label_(nullptr)
     , reconnect_label_(nullptr)
     , gga_port_info_label_(nullptr)
-    , gga_status_label_(nullptr)
     , gga_frequency_label_(nullptr)
     , server_edit_(nullptr)
     , port_edit_(nullptr)
@@ -1588,25 +1581,12 @@ void RtkConfigDialog::setupUi()
     main_layout_->addWidget(topRowWidget);
 
     log_group_ = new QGroupBox(this);
-    QWidget *logTitleBar = nullptr;
-    auto *logCardLayout = createCardLayout(
-        log_group_, log_title_label_, QStringLiteral("scroll-text"), &logTitleBar);
+    auto *logCardLayout = createCardLayout(log_group_, log_title_label_, QStringLiteral("scroll-text"));
     log_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     log_layout_ = new QVBoxLayout();
     log_layout_->setSpacing(4);
     log_layout_->setContentsMargins(10, 10, 10, 4);
     logCardLayout->addLayout(log_layout_);
-
-    gga_status_label_ = new QLabel(logTitleBar ? logTitleBar : log_group_);
-    gga_status_label_->setObjectName(QStringLiteral("rtkGgaStatusLabel"));
-    gga_status_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    gga_status_label_->setWordWrap(false);
-    gga_status_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    gga_status_label_->setFixedHeight(scalePixels(24));
-    if (auto *logTitleLayout = logTitleBar ? qobject_cast<QHBoxLayout *>(logTitleBar->layout()) : nullptr)
-    {
-        logTitleLayout->insertWidget(1, gga_status_label_, 1, Qt::AlignVCenter | Qt::AlignLeft);
-    }
 
     log_text_container_ = new QWidget(log_group_);
     log_text_container_layout_ = new QVBoxLayout(log_text_container_);
@@ -2626,20 +2606,45 @@ void RtkConfigDialog::updateGgaFrequency(double hz)
     gga_frequency_label_->setText(textFor("Rate: %1 Hz", "频率: %1 Hz").arg(rateText));
 }
 
-void RtkConfigDialog::updateGgaStatusLabel(const QString& message, bool healthy)
+void RtkConfigDialog::appendGgaStatusLog(const QString& message, bool healthy)
 {
-    if (!gga_status_label_)
+    const QString statusMessage = message.trimmed();
+    const bool changed = statusMessage != gga_status_message_ || healthy != gga_status_healthy_;
+    gga_status_message_ = statusMessage;
+    gga_status_healthy_ = healthy;
+    if (!changed || statusMessage.isEmpty() || !gga_text_edit_)
     {
         return;
     }
 
-    const bool visible = !message.trimmed().isEmpty();
-    gga_status_message_ = message;
-    gga_status_healthy_ = healthy;
-    gga_status_label_->setText(message);
-    gga_status_label_->setVisible(visible);
-    gga_status_label_->setFixedHeight(scalePixels(24));
-    gga_status_label_->setStyleSheet(boldLabelColorStyle(healthy ? AppThemeColor::RtkHealthy : AppThemeColor::RtkWarning));
+    QScrollBar *scrollBar = gga_text_edit_->verticalScrollBar();
+    const bool stickToBottom = !scrollBar || scrollBar->value() >= (scrollBar->maximum() - 2);
+    const int previousValue = scrollBar ? scrollBar->value() : 0;
+    const QString timestamp = QDateTime::currentDateTime().toString(QStringLiteral("hh:mm:ss.zzz"));
+    const QColor statusColor = appThemeColor(
+        healthy ? AppThemeColor::RtkHealthy : AppThemeColor::RtkWarning,
+        isDarkThemePalette(gga_text_edit_->palette()));
+    gga_text_edit_->append(QStringLiteral("<span style=\"color:%1; font-weight:600;\">[%2] %3</span>")
+                               .arg(statusColor.name(QColor::HexRgb),
+                                    timestamp.toHtmlEscaped(),
+                                    statusMessage.toHtmlEscaped()));
+    trimGgaDisplay();
+    QTimer::singleShot(0, this, [this, stickToBottom, previousValue]() {
+        if (!gga_text_edit_)
+        {
+            return;
+        }
+
+        QScrollBar *updatedScrollBar = gga_text_edit_->verticalScrollBar();
+        if (!updatedScrollBar)
+        {
+            return;
+        }
+
+        updatedScrollBar->setValue(stickToBottom
+            ? updatedScrollBar->maximum()
+            : std::min(previousValue, updatedScrollBar->maximum()));
+    });
 }
 
 void RtkConfigDialog::updateGgaMonitorButton()
@@ -2667,7 +2672,7 @@ void RtkConfigDialog::updateGgaMonitorText()
     if (gga_status_message_.isEmpty())
     {
         const bool mainSource = isMainGgaSourceSelected();
-        updateGgaStatusLabel(
+        appendGgaStatusLog(
             gga_monitor_enabled_
                 ? (mainSource
                     ? textFor("Status: Waiting for EPSILON main-port position", "状态: 正在等待 EPSILON 主串口定位")
@@ -2677,7 +2682,7 @@ void RtkConfigDialog::updateGgaMonitorText()
     }
     else if (gga_status_message_.startsWith("Status:") || gga_status_message_.startsWith("状态:"))
     {
-        updateGgaStatusLabel(gga_status_message_, gga_status_healthy_);
+        appendGgaStatusLog(gga_status_message_, gga_status_healthy_);
     }
 
     if (gga_frequency_label_->text().isEmpty())
@@ -2767,13 +2772,13 @@ bool RtkConfigDialog::tryOpenGgaPort()
     const std::string port = ggaPortName().toStdString();
     if (port.empty())
     {
-        updateGgaStatusLabel(textFor("Status: Please select a GGA source", "状态: 请选择 GGA 来源"), false);
+        appendGgaStatusLog(textFor("Status: Please select a GGA source", "状态: 请选择 GGA 来源"), false);
         return false;
     }
 
     if (!gga_serial_.open(port, currentGgaBaudrate()))
     {
-        updateGgaStatusLabel(
+        appendGgaStatusLog(
             textFor("Status: %1 unavailable, retrying...", "状态: %1 不可用，正在重试...").arg(ggaPortName()),
             false);
         return false;
@@ -2784,7 +2789,7 @@ bool RtkConfigDialog::tryOpenGgaPort()
     gga_recent_intervals_sec_.clear();
     gga_has_sentence_time_ = false;
     updateGgaFrequency(0.0);
-    updateGgaStatusLabel(textFor("Status: Listening on %1", "状态: 正在监听 %1").arg(ggaPortName()), true);
+    appendGgaStatusLog(textFor("Status: Listening on %1", "状态: 正在监听 %1").arg(ggaPortName()), true);
     updateGgaMonitorText();
     return true;
 }
@@ -2798,7 +2803,7 @@ void RtkConfigDialog::pollMainGgaSource()
 
     if (!epsilon_data_provider_)
     {
-        updateGgaStatusLabel(
+        appendGgaStatusLog(
             textFor("Status: EPSILON main-port source is not connected", "状态: EPSILON 主串口来源未接入"),
             false);
         return;
@@ -2807,7 +2812,7 @@ void RtkConfigDialog::pollMainGgaSource()
     const VaporView::EpsilonData epsilonData = epsilon_data_provider_();
     if (!isUsableEpsilonNmeaPosition(epsilonData))
     {
-        updateGgaStatusLabel(
+        appendGgaStatusLog(
             textFor("Status: Waiting for valid EPSILON main-port position", "状态: 正在等待有效的 EPSILON 主串口定位"),
             false);
         return;
@@ -2824,7 +2829,7 @@ void RtkConfigDialog::pollMainGgaSource()
     const QString sentence = buildEpsilonGgaSentence(epsilonData);
     if (sentence.isEmpty())
     {
-        updateGgaStatusLabel(
+        appendGgaStatusLog(
             textFor("Status: Failed to build GGA from EPSILON position", "状态: EPSILON 定位无法组装 GGA"),
             false);
         return;
@@ -2833,7 +2838,7 @@ void RtkConfigDialog::pollMainGgaSource()
     gga_last_epsilon_sample_time_ = epsilonData.timestamp;
     gga_last_epsilon_device_timestamp_us_ = epsilonData.device_timestamp_us;
     handleGgaSentence(sentence);
-    updateGgaStatusLabel(
+    appendGgaStatusLog(
         textFor("Status: Reading generated GGA from EPSILON main port", "状态: 正在读取 EPSILON 主串口生成的 GGA"),
         true);
 }
@@ -3201,7 +3206,7 @@ void RtkConfigDialog::handleGgaSentence(const QString& sentence)
 
     gga_has_sentence_time_ = true;
     gga_last_sentence_time_ = now;
-    updateGgaStatusLabel(textFor("Status: Receiving GGA data", "状态: 正在接收 GGA 数据"), true);
+    appendGgaStatusLog(textFor("Status: Receiving GGA data", "状态: 正在接收 GGA 数据"), true);
 
     if (gga_text_edit_)
     {
@@ -3280,7 +3285,7 @@ void RtkConfigDialog::onGgaPollTimer()
             {
                 gga_recent_intervals_sec_.clear();
                 updateGgaFrequency(0.0);
-                updateGgaStatusLabel(textFor("Status: Waiting for next EPSILON main-port position", "状态: 正在等待下一帧 EPSILON 主串口定位"), false);
+                appendGgaStatusLog(textFor("Status: Waiting for next EPSILON main-port position", "状态: 正在等待下一帧 EPSILON 主串口定位"), false);
             }
         }
         return;
@@ -3306,7 +3311,7 @@ void RtkConfigDialog::onGgaPollTimer()
         {
             gga_serial_.close();
             updateGgaFrequency(0.0);
-            updateGgaStatusLabel(textFor("Status: %1 read failed, reconnecting...", "状态: %1 读取失败，正在重连...").arg(ggaPortName()), false);
+            appendGgaStatusLog(textFor("Status: %1 read failed, reconnecting...", "状态: %1 读取失败，正在重连...").arg(ggaPortName()), false);
         }
         break;
     }
@@ -3319,7 +3324,7 @@ void RtkConfigDialog::onGgaPollTimer()
         {
             gga_recent_intervals_sec_.clear();
             updateGgaFrequency(0.0);
-            updateGgaStatusLabel(textFor("Status: Waiting for next GGA sentence", "状态: 正在等待下一条 GGA 语句"), false);
+            appendGgaStatusLog(textFor("Status: Waiting for next GGA sentence", "状态: 正在等待下一条 GGA 语句"), false);
         }
     }
 }

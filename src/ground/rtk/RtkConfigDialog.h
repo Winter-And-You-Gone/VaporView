@@ -92,7 +92,7 @@ private:
     void stopGgaMonitor();
     void updateGgaMonitorText();
     void updateGgaFrequency(double hz);
-    void updateGgaStatusLabel(const QString& message, bool healthy);
+    void appendGgaStatusLog(const QString& message, bool healthy);
     void updateGgaMonitorButton();
     void processGgaBuffer();
     void handleGgaSentence(const QString& sentence);
@@ -158,7 +158,6 @@ private:
     QLabel *timeout_label_;
     QLabel *reconnect_label_;
     QLabel *gga_port_info_label_;
-    QLabel *gga_status_label_;
     QLabel *gga_frequency_label_;
     QLineEdit *server_edit_;
     QLineEdit *port_edit_;

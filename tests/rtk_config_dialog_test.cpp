@@ -135,6 +135,34 @@ int main(int argc, char **argv)
     require(mountpointIconHasWhitePixel,
             "mountpoint detect button renders the lucide radar icon in white");
 
+    auto *ggaToggleButton = dialog.findChild<QPushButton *>(QStringLiteral("rtkGgaToggleButton"));
+    auto *ggaMonitorLog = dialog.findChild<QTextEdit *>(QStringLiteral("rtkGgaTextEdit"));
+    QWidget *ggaCard = ggaMonitorLog && ggaMonitorLog->parentWidget()
+        ? ggaMonitorLog->parentWidget()->parentWidget()
+        : nullptr;
+    require(ggaToggleButton && ggaMonitorLog && ggaCard,
+            "GGA monitor button, internal log, and card exist");
+    require(dialog.findChild<QLabel *>(QStringLiteral("rtkGgaStatusLabel")) == nullptr,
+            "GGA monitor does not create a separate status label");
+    const int ggaCardHeightBeforeReading = ggaCard->height();
+    ggaToggleButton->click();
+    require(processEventsUntil(1000, [ggaMonitorLog]() {
+                const QString text = ggaMonitorLog->toPlainText();
+                return text.contains(QStringLiteral("状态:")) ||
+                    text.contains(QStringLiteral("Status:"));
+            }),
+            "GGA reading status is appended inside the GGA monitor log");
+    const QStringList ggaLogLines =
+        ggaMonitorLog->toPlainText().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    require(!ggaLogLines.isEmpty() && ggaLogLines.constFirst().startsWith(QLatin1Char('[')) &&
+                ggaLogLines.constFirst().contains(QStringLiteral("] ")),
+            "GGA status log entry includes a timestamp");
+    QApplication::processEvents();
+    require(ggaCard->height() == ggaCardHeightBeforeReading,
+            "GGA status log does not change the monitor card height");
+    ggaToggleButton->click();
+    QApplication::processEvents();
+
     QTcpServer caster;
     require(caster.listen(QHostAddress::LocalHost, 0), "local sourcetable test server starts");
     QObject::connect(&caster, &QTcpServer::newConnection, [&caster]() {
