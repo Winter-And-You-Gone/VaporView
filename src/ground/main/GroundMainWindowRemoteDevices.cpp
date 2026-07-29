@@ -591,9 +591,9 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendWaveformRate(1, QStringLiteral("原始波形:"));
         appendWaveformRate(4, QStringLiteral("谐波波形:"));
         rateRows << makeItem(QStringLiteral("波形采集:"), actualWaveRate, connected && state_->remote_status_.wave_tcp_actual_rate_hz > 0.0f, frequencyWidthText);
-        linkRows << makeItem(QStringLiteral("天空→地面:"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("地面→天空:"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("合计:"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("天→地"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("地→天"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("合"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
         appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON："));
         appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB："));
         appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP："));

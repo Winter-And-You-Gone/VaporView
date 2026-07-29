@@ -3929,6 +3929,20 @@ int main(int argc, char **argv)
         sortedTelemetrySections(homeTelemetrySummaryContainer);
     require(homeTelemetrySections.size() >= 3,
             "home device overview telemetry summary has rate, link, and data sections");
+    const QList<QFrame *> compactLinkRatePills =
+        homeTelemetrySections.at(1)->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+    QStringList linkRateNames;
+    for (QFrame *pill : compactLinkRatePills)
+    {
+        if (QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel")))
+        {
+            linkRateNames << nameLabel->text();
+        }
+    }
+    require(linkRateNames == QStringList{QStringLiteral("天→地"),
+                                         QStringLiteral("地→天"),
+                                         QStringLiteral("合")},
+            "home link-rate pills use the compact Chinese field names");
     const QList<QFrame*> ratePills =
         homeRateSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(!ratePills.isEmpty(),
