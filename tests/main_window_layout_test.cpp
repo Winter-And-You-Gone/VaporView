@@ -4030,6 +4030,12 @@ int main(int argc, char **argv)
                                  QStringLiteral("QAbstractSpinBox::down-arrow {"),
                                  QStringLiteral("chevron-down-dark.svg"),
                                  "dark theme spin chevron-down uses the white idle asset");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QComboBox#temperatureTitlePortCombo,"),
+        QStringLiteral("color: %1").arg(VaporView::appThemeColorName(
+            VaporView::AppThemeColor::TextStrong, true)),
+        "dark temperature title serial selector uses white text");
     requireSpinArrowHoverUsesPrimary(true,
                                      "dark theme spin arrow hover renders the primary lucide icon");
     requireComboArrowUsesDarkIdleAndPrimaryHighlight(
@@ -4073,6 +4079,18 @@ int main(int argc, char **argv)
         temperatureOutputCapsule,
         VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceAlt, true),
         "dark theme renders the temperature overview output capsule with the alternate surface");
+    const QList<QWidget *> darkTemperatureTrendPlots =
+        window.findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot"));
+    const auto visibleDarkTemperaturePlot = std::find_if(
+        darkTemperatureTrendPlots.cbegin(),
+        darkTemperatureTrendPlots.cend(),
+        [](QWidget *plot) { return plot && plot->isVisible(); });
+    require(visibleDarkTemperaturePlot != darkTemperatureTrendPlots.cend(),
+            "a temperature trend plot is visible for dark theme rendering checks");
+    requireWidgetInteriorUsesBackground(
+        *visibleDarkTemperaturePlot,
+        VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceRaised, true),
+        "dark temperature trend plot matches its raised card background");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QToolButton#temperatureOverviewChannelButton[available=\"false\"] {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),

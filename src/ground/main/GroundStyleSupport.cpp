@@ -983,6 +983,10 @@ QAbstractSpinBox[spinArrowHover="up"]::up-arrow {
 QAbstractSpinBox[spinArrowHover="down"]::down-arrow {
     image: url(lucide/chevron-down-primary-dark.svg);
 }
+QComboBox#temperatureTitlePortCombo,
+QComboBox#temperatureTitlePortCombo:disabled {
+    color: @vv-text-strong;
+}
 QComboBox#temperatureTitlePortCombo::down-arrow {
     image: url(lucide/chevron-down-dark.svg);
 }

@@ -554,13 +554,8 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        const QPalette palette = this->palette();
-        QColor background = palette.color(QPalette::Base);
-        if (!background.isValid() || background.alpha() == 0)
-        {
-            background = palette.color(QPalette::Window);
-        }
-        const bool dark = background.lightness() < 128;
+        const bool dark = VaporView::isDarkThemeEnabled();
+        const QColor background = appThemeColor(AppThemeColor::SurfaceRaised, dark);
         const QColor grid = VaporView::appThemeColor(VaporView::AppThemeColor::PlotGrid, dark);
         const QColor border = VaporView::appThemeColor(VaporView::AppThemeColor::PlotBorder, dark);
         const QColor text = VaporView::appThemeColor(VaporView::AppThemeColor::PlotText, dark);
