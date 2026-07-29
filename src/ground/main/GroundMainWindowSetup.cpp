@@ -3035,7 +3035,6 @@ void MainWindow::setupConfigPanel()
     state_->config_group_ = new QGroupBox(this);
     state_->config_group_->setObjectName("sensorGroupBox");
     configureTopLevelCard(state_->config_group_);
-    state_->config_group_->setMinimumWidth(kHomeOverviewDeviceMinWidth);
     state_->config_group_->setMinimumHeight(kConfigCardMinHeight);
     state_->config_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
@@ -3426,11 +3425,7 @@ void MainWindow::setupConfigPanel()
     homeDevicesLayout->setColumnStretch(kHomeDeviceGridColumns, 1);
     updateHomeDeviceStatusCapsules();
     homeDevicesLayout->activate();
-    const QMargins homeBodyMargins = homeBodyLayout->contentsMargins();
-    const int deviceOverviewDefaultWidth = homeDevicesWidget->sizeHint().width() +
-                                           homeBodyMargins.left() +
-                                           homeBodyMargins.right() + 2;
-    state_->config_group_->setMinimumWidth(std::max(kHomeOverviewDeviceMinWidth, deviceOverviewDefaultWidth));
+    state_->config_group_->setMinimumWidth(homeDeviceOverviewContentMinimumWidth());
 
     homeBodyLayout->addWidget(homeDevicesWidget, 0, Qt::AlignTop | Qt::AlignLeft);
     homeBodyLayout->addWidget(state_->data_telemetry_summary_card_, 0, Qt::AlignTop);

@@ -956,6 +956,39 @@ void requireHomeDeviceColumnsAligned(QWidget *scope)
     }
 }
 
+void requireHomeDeviceMinimumWidthMatchesControls(QWidget *scope)
+{
+    auto *deviceGrid = scope
+        ? scope->findChild<QWidget *>(QStringLiteral("homeOverviewDeviceGrid"))
+        : nullptr;
+    auto *deviceBody = scope
+        ? scope->findChild<QWidget *>(QStringLiteral("homeOverviewDeviceBody"))
+        : nullptr;
+    require(deviceGrid != nullptr && deviceBody != nullptr,
+            "home device controls exist for minimum-width checks");
+
+    QGroupBox *deviceCard = nullptr;
+    for (QWidget *ancestor = deviceBody; ancestor && !deviceCard; ancestor = ancestor->parentWidget())
+    {
+        deviceCard = qobject_cast<QGroupBox *>(ancestor);
+    }
+    require(deviceCard != nullptr && deviceCard->layout() != nullptr && deviceBody->layout() != nullptr,
+            "home device card layouts exist for minimum-width checks");
+
+    const int controlsWidth = std::max(
+        deviceGrid->minimumWidth(),
+        std::max(deviceGrid->minimumSizeHint().width(), deviceGrid->sizeHint().width()));
+    const QMargins cardMargins = deviceCard->layout()->contentsMargins();
+    const QMargins bodyMargins = deviceBody->layout()->contentsMargins();
+    const int expectedMinimumWidth = controlsWidth +
+                                     cardMargins.left() +
+                                     cardMargins.right() +
+                                     bodyMargins.left() +
+                                     bodyMargins.right();
+    require(deviceCard->minimumWidth() == expectedMinimumWidth,
+            "home device card minimum width follows only its six capsules and action icons");
+}
+
 void requireWidgetInteriorUsesBackground(QWidget *widget,
                                          const QColor& expected,
                                          const char *message)
@@ -3409,10 +3442,7 @@ int main(int argc, char **argv)
     requireMargins(temperatureOverviewBody->layout()->contentsMargins(),
                    QMargins(2, 2, 2, 2),
                    "temperature overview body padding matches sensor-card content rhythm");
-    require(deviceOverviewCard->minimumWidth() >= 500,
-            "device overview card keeps a practical minimum width");
-    require(deviceOverviewCard->minimumWidth() < 580,
-            "device overview card minimum width follows its telemetry content instead of a fixed wide floor");
+    requireHomeDeviceMinimumWidthMatchesControls(&window);
 
     auto *homeConfigCard = deviceOverviewCard;
     require(homeConfigCard != nullptr, "home configuration card exists");
@@ -3678,6 +3708,7 @@ int main(int argc, char **argv)
     require(homeDeviceActionButtons.size() >= 6,
             "home device overview includes six connection action buttons");
     requireHomeDeviceColumnsAligned(&window);
+    requireHomeDeviceMinimumWidthMatchesControls(&window);
     for (QToolButton *button : homeDeviceActionButtons)
     {
         if (!button->property("deviceConfigAction").toBool())
@@ -7321,6 +7352,7 @@ int main(int argc, char **argv)
                 "scaled main window becomes exposed for first-layout validation");
         activateLayouts(&scaledWindow);
         requireHomeDeviceColumnsAligned(&scaledWindow);
+        requireHomeDeviceMinimumWidthMatchesControls(&scaledWindow);
         QPushButton *scaledTemperatureNavButton = nullptr;
         for (QPushButton *button : scaledWindow.findChildren<QPushButton *>())
         {

@@ -93,7 +93,6 @@ inline constexpr int kConfigCardBottomPadding = kHomeOverviewCardOuterPadding;
 inline constexpr int kHomeTelemetrySummaryHeightPadding = 4;
 inline constexpr int kConfigCardMinHeight =
     kMainPageTitleBarHeight + kMainPageButtonHeight + kConfigHomeBodyBottomPadding + kConfigCardBottomPadding;
-inline constexpr int kHomeOverviewDeviceMinWidth = 568;
 inline constexpr int kHomeOverviewTemperatureMinWidth = 380;
 inline constexpr int kHomeOverviewSplitterHandleWidth = 12;
 inline constexpr const char *kHomeOverviewSplitterInitializedProperty = "_vv_home_overview_splitter_initialized";

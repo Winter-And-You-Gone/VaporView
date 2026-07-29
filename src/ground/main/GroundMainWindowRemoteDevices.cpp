@@ -96,148 +96,15 @@ int MainWindow::homeDeviceOverviewContentMinimumWidth() const
 {
     if (!state_->config_group_)
     {
-        return kHomeOverviewDeviceMinWidth;
+        return 0;
     }
 
-    auto childNaturalWidth = [](const QWidget *widget) {
-        if (!widget)
-        {
-            return 0;
-        }
-        int width = widget->minimumWidth();
-        width = std::max(width, widget->minimumSizeHint().width());
-        if (width <= 0)
-        {
-            width = widget->sizeHint().width();
-        }
-        return width;
-    };
-
-    auto telemetryPillWidthHint = [&childNaturalWidth](const QWidget *widget) {
-        if (!widget || !widget->layout())
-        {
-            return 0;
-        }
-
-        int width = 0;
-        int visibleItemCount = 0;
-        const QMargins margins = widget->layout()->contentsMargins();
-        for (int i = 0; i < widget->layout()->count(); ++i)
-        {
-            QLayoutItem *item = widget->layout()->itemAt(i);
-            QWidget *child = item ? item->widget() : nullptr;
-            if (!child || child->isHidden())
-            {
-                continue;
-            }
-            if (visibleItemCount > 0)
-            {
-                width += std::max(0, widget->layout()->spacing());
-            }
-            width += childNaturalWidth(child);
-            ++visibleItemCount;
-        }
-
-        return margins.left() + width + margins.right();
-    };
-
-    auto widgetWidthHint = [&childNaturalWidth, &telemetryPillWidthHint](const QWidget *widget) {
-        if (!widget)
-        {
-            return 0;
-        }
-        if (widget->objectName() == QStringLiteral("homeTelemetrySummaryPill"))
-        {
-            return telemetryPillWidthHint(widget);
-        }
-        if (widget->objectName() == QStringLiteral("homeTelemetrySummaryTitleLabel"))
-        {
-            return childNaturalWidth(widget);
-        }
-
-        int width = childNaturalWidth(widget);
-        width = std::max(width, widget->sizeHint().width());
-        return width;
-    };
-
-    auto horizontalLayoutContentWidth = [&widgetWidthHint](const QLayout *layout) {
-        if (!layout)
-        {
-            return 0;
-        }
-
-        int width = 0;
-        int visibleItemCount = 0;
-        const QMargins margins = layout->contentsMargins();
-        for (int i = 0; i < layout->count(); ++i)
-        {
-            QLayoutItem *item = layout->itemAt(i);
-            if (!item || item->spacerItem())
-            {
-                continue;
-            }
-
-            int itemWidth = 0;
-            if (QWidget *widget = item->widget())
-            {
-                if (widget->isHidden())
-                {
-                    continue;
-                }
-                itemWidth = widgetWidthHint(widget);
-            }
-            else if (QLayout *childLayout = item->layout())
-            {
-                itemWidth = childLayout->minimumSize().width();
-            }
-            else
-            {
-                itemWidth = item->minimumSize().width();
-            }
-
-            if (itemWidth <= 0)
-            {
-                continue;
-            }
-            if (visibleItemCount > 0)
-            {
-                width += std::max(0, layout->spacing());
-            }
-            width += itemWidth;
-            ++visibleItemCount;
-        }
-
-        return margins.left() + width + margins.right();
-    };
-
-    auto sectionContentWidth = [this, &horizontalLayoutContentWidth](const QWidget *section) {
-        if (!section || !section->layout())
-        {
-            return 0;
-        }
-
-        int widestLine = 0;
-        const QMargins sectionMargins = section->layout()->contentsMargins();
-        for (int i = 0; i < section->layout()->count(); ++i)
-        {
-            QLayoutItem *item = section->layout()->itemAt(i);
-            QWidget *lineWidget = item ? item->widget() : nullptr;
-            if (!lineWidget || lineWidget->isHidden())
-            {
-                continue;
-            }
-            widestLine = std::max(widestLine, horizontalLayoutContentWidth(lineWidget->layout()));
-        }
-
-        if (widestLine <= 0)
-        {
-            return 0;
-        }
-        return sectionMargins.left() +
-               widestLine +
-               sectionMargins.right() +
-               scalePixels(12);
-    };
+    QWidget *homeDevices =
+        state_->config_group_->findChild<QWidget *>(QStringLiteral("homeOverviewDeviceGrid"));
+    if (!homeDevices)
+    {
+        return 0;
+    }
 
     const QMargins cardMargins = state_->config_group_->layout()
         ? state_->config_group_->layout()->contentsMargins()
@@ -249,42 +116,14 @@ int MainWindow::homeDeviceOverviewContentMinimumWidth() const
                    scalePixels(kHomeOverviewBodyPadding),
                    scalePixels(kHomeOverviewBodyPadding),
                    scalePixels(kConfigHomeBodyBottomPadding));
-
-    auto widthInsideCard = [&cardMargins, &bodyMargins](int contentWidth) {
-        return contentWidth +
-               cardMargins.left() +
-               cardMargins.right() +
-               bodyMargins.left() +
-               bodyMargins.right();
-    };
-
-    int minimumWidth = kHomeOverviewDeviceMinWidth;
-    if (QWidget *homeDevices = state_->config_group_->findChild<QWidget *>(QStringLiteral("homeOverviewDeviceGrid")))
-    {
-        minimumWidth = std::max(minimumWidth, widthInsideCard(widgetWidthHint(homeDevices)));
-    }
-
-    if (state_->data_telemetry_summary_card_)
-    {
-        int summaryContentWidth = 0;
-        const QList<QFrame*> sections =
-            state_->data_telemetry_summary_card_->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
-        for (QFrame *section : sections)
-        {
-            if (section->isHidden())
-            {
-                continue;
-            }
-            summaryContentWidth = std::max(summaryContentWidth, sectionContentWidth(section));
-        }
-        if (summaryContentWidth <= 0)
-        {
-            summaryContentWidth = widgetWidthHint(state_->data_telemetry_summary_card_);
-        }
-        minimumWidth = std::max(minimumWidth, widthInsideCard(summaryContentWidth));
-    }
-
-    return minimumWidth;
+    const int deviceControlsWidth = std::max(
+        homeDevices->minimumWidth(),
+        std::max(homeDevices->minimumSizeHint().width(), homeDevices->sizeHint().width()));
+    return deviceControlsWidth +
+           cardMargins.left() +
+           cardMargins.right() +
+           bodyMargins.left() +
+           bodyMargins.right();
 }
 
 void MainWindow::updateHomeDeviceOverviewMinimumWidth()
@@ -664,7 +503,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             pill->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             pill->setMinimumHeight(scalePixels(useSideTitle ? 26 : 28));
             auto *pillLayout = new QHBoxLayout(pill);
-            const int horizontalPadding = scalePixels(useSideTitle ? 4 : 8);
+            const int horizontalPadding = scalePixels(useSideTitle ? 4 : 7);
             pillLayout->setContentsMargins(horizontalPadding, scalePixels(1), horizontalPadding, scalePixels(1));
             pillLayout->setSpacing(scalePixels(useSideTitle ? 2 : 3));
 
