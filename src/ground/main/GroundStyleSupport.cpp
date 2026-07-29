@@ -849,10 +849,10 @@ QSplitter#homeOverviewSplitter::handle:horizontal {
     background-color: @vv-window;
 }
 QSplitter#homeOverviewSplitter::handle:horizontal:hover {
-    background-color: @vv-border;
+    background-color: @vv-window;
 }
 QSplitter#homeOverviewSplitter::handle:horizontal:pressed {
-    background-color: @vv-border;
+    background-color: @vv-window;
 }
 QWidget#mainCardResizeHandle {
     min-height: 3px;

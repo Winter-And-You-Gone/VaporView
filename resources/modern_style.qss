@@ -985,11 +985,11 @@ QSplitter#homeOverviewSplitter::handle:horizontal {
 }
 
 QSplitter#homeOverviewSplitter::handle:horizontal:hover {
-    background-color: @vv-resize-hover;
+    background-color: @vv-surface;
 }
 
 QSplitter#homeOverviewSplitter::handle:horizontal:pressed {
-    background-color: @vv-resize-pressed;
+    background-color: @vv-surface;
 }
 
 /* 工具提示 */

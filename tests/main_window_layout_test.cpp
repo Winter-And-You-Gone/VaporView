@@ -2613,6 +2613,17 @@ int main(int argc, char **argv)
                                  QStringLiteral("QSplitter#homeOverviewSplitter::handle:horizontal {"),
                                  QStringLiteral("width: 12px"),
                                  "home overview splitter keeps the requested 12px card gap");
+    const QString homeOverviewSplitterSurface =
+        QStringLiteral("background-color: ") +
+        VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, false);
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QSplitter#homeOverviewSplitter::handle:horizontal:hover {"),
+                                 homeOverviewSplitterSurface,
+                                 "home overview splitter keeps its surface color while hovered");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QSplitter#homeOverviewSplitter::handle:horizontal:pressed {"),
+                                 homeOverviewSplitterSurface,
+                                 "home overview splitter keeps its surface color while pressed");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical {"),
@@ -4237,6 +4248,19 @@ int main(int argc, char **argv)
                                  "dark popup menus use the shared menu hover and rounded panel style");
     requireSidebarCardStyle(darkOverviewStyleSheet, true,
                             "dark sidebar keeps the complete rounded card border");
+    const QString darkHomeOverviewSplitterBackground =
+        QStringLiteral("background-color: ") +
+        VaporView::appThemeColorName(VaporView::AppThemeColor::Window, true);
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QSplitter#homeOverviewSplitter::handle:horizontal:hover {"),
+        darkHomeOverviewSplitterBackground,
+        "dark home overview splitter keeps its background while hovered");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QSplitter#homeOverviewSplitter::handle:horizontal:pressed {"),
+        darkHomeOverviewSplitterBackground,
+        "dark home overview splitter keeps its background while pressed");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QWidget#tcpWaveCardOutline {"),
                                  QStringLiteral("border: 1px solid %1")
