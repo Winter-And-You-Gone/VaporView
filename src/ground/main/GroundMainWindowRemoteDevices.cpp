@@ -133,6 +133,26 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
         return;
     }
 
+    if (QWidget *homeDevices =
+            state_->config_group_->findChild<QWidget *>(QStringLiteral("homeOverviewDeviceGrid")))
+    {
+        homeDevices->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        const QList<QWidget *> columns =
+            homeDevices->findChildren<QWidget *>(QStringLiteral("homeDeviceColumn"),
+                                                  Qt::FindDirectChildrenOnly);
+        for (QWidget *column : columns)
+        {
+            if (QLayout *columnLayout = column->layout())
+            {
+                columnLayout->setSizeConstraint(QLayout::SetFixedSize);
+            }
+        }
+        if (QLayout *deviceLayout = homeDevices->layout())
+        {
+            deviceLayout->setSizeConstraint(QLayout::SetFixedSize);
+        }
+    }
+
     const int contentMinimumWidth = homeDeviceOverviewContentMinimumWidth();
     state_->config_group_->setMinimumWidth(contentMinimumWidth);
 

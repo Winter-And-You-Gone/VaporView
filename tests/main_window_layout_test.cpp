@@ -989,6 +989,64 @@ void requireHomeDeviceMinimumWidthMatchesControls(QWidget *scope)
             "home device card minimum width follows only its six capsules and action icons");
 }
 
+void requireHomeDeviceGeometryStableAcrossCardResize(QWidget *scope,
+                                                     QSplitter *splitter,
+                                                     QGroupBox *deviceCard,
+                                                     QGroupBox *companionCard)
+{
+    auto *deviceGrid = scope
+        ? scope->findChild<QWidget *>(QStringLiteral("homeOverviewDeviceGrid"))
+        : nullptr;
+    require(deviceGrid != nullptr && splitter != nullptr && deviceCard != nullptr && companionCard != nullptr,
+            "home device controls and overview splitter exist for resize checks");
+
+    QList<QWidget *> controls;
+    for (QLabel *capsule : deviceGrid->findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule")))
+    {
+        controls.append(capsule);
+    }
+    for (QToolButton *button : deviceGrid->findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton")))
+    {
+        controls.append(button);
+    }
+    require(controls.size() == 12,
+            "home device resize check covers six capsules and six action icons");
+
+    std::vector<std::pair<QWidget *, QRect>> originalGeometries;
+    originalGeometries.reserve(static_cast<std::size_t>(controls.size()));
+    for (QWidget *control : controls)
+    {
+        originalGeometries.emplace_back(
+            control,
+            QRect(control->mapTo(deviceCard, QPoint(0, 0)), control->size()));
+    }
+
+    const QList<int> originalSizes = splitter->sizes();
+    require(originalSizes.size() == 2,
+            "home overview splitter exposes two resize sections");
+    const int availableGrowth = originalSizes.at(1) - companionCard->minimumWidth();
+    const int growth = std::min(80, availableGrowth);
+    require(growth >= 40,
+            "home overview splitter has enough room to test a wider device card");
+
+    splitter->setSizes({originalSizes.at(0) + growth, originalSizes.at(1) - growth});
+    processEventsFor(40);
+    activateLayouts(scope);
+    require(deviceCard->width() >= originalSizes.at(0) + growth - 1,
+            "home device card expands during the resize stability check");
+
+    for (const auto& [control, originalGeometry] : originalGeometries)
+    {
+        const QRect resizedGeometry(control->mapTo(deviceCard, QPoint(0, 0)), control->size());
+        require(resizedGeometry == originalGeometry,
+                "home device capsules and action icons keep their geometry when the card widens");
+    }
+
+    splitter->setSizes(originalSizes);
+    processEventsFor(40);
+    activateLayouts(scope);
+}
+
 void requireWidgetInteriorUsesBackground(QWidget *widget,
                                          const QColor& expected,
                                          const char *message)
@@ -7186,6 +7244,10 @@ int main(int argc, char **argv)
                         environmentGroup->geometry() != compactEnvironmentGeometry);
             }),
             "sensor-card layout responds to the wide window size");
+    requireHomeDeviceGeometryStableAcrossCardResize(&window,
+                                                    homeOverviewSplitter,
+                                                    deviceOverviewCard,
+                                                    temperatureOverviewCard);
     const bool sensorCardsStacked =
         std::abs(epsilonGroup->x() - environmentGroup->x()) <= 4 &&
         environmentGroup->y() > epsilonGroup->y();
