@@ -3,6 +3,7 @@
 #include "ground/wave/TcpWavePanel.h"
 #include "ground/widgets/SkyDeviceConfigDialog.h"
 #include "shared/config/SettingsWriteBarrier.h"
+#include "test_ui_helpers.h"
 
 #include <QAction>
 #include <QApplication>
@@ -16,6 +17,7 @@
 #include <QMap>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QToolButton>
 #include <QVariant>
 
 #include <cstdlib>
@@ -96,7 +98,7 @@ int main(int argc, char **argv)
             "main and RTK configuration controls exist");
     epsilonPort->addItem(QStringLiteral("UNSAVED-COM42"), QStringLiteral("UNSAVED-COM42"));
     epsilonPort->setCurrentIndex(epsilonPort->count() - 1);
-    rtkServer->setText(QStringLiteral("unsaved.normal.caster"));
+    rtkServer->setText(QStringLiteral("normal.unpersisted.caster"));
     QStringList epsilonItemsBefore;
     for (int index = 0; index < epsilonPort->count(); ++index)
     {
@@ -113,6 +115,35 @@ int main(int argc, char **argv)
     require(modeAction->isChecked(), "UI test mode action becomes checked");
     require(!badge->isHidden(), "persistent UI test badge is visible");
     require(scenarioMenu->isEnabled(), "scenario menu is enabled in UI test mode");
+    QToolButton *epsilonAction = nullptr;
+    for (QToolButton *button : window->findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton")))
+    {
+        if (!button->property("deviceConfigAction").toBool() &&
+            button->toolTip().contains(QStringLiteral("EPSILON")))
+        {
+            epsilonAction = button;
+            break;
+        }
+    }
+    require(epsilonAction, "EPSILON home connection action exists");
+    require(epsilonAction->isEnabled() &&
+                epsilonAction->property("state").toString() == QStringLiteral("connected"),
+            "EPSILON home action starts enabled and connected");
+    epsilonAction->click();
+    processEvents();
+    require(epsilonAction->isEnabled() &&
+                epsilonAction->property("state").toString() == QStringLiteral("disconnected"),
+            "a disconnected UI-test device remains available for reconnect");
+    epsilonAction->click();
+    processEvents();
+    require(!epsilonAction->isEnabled() &&
+                epsilonAction->property("state").toString() == QStringLiteral("connecting"),
+            "UI-test reconnect enters the temporary connecting state");
+    require(VaporViewTest::processEventsUntil(2000, [epsilonAction]() {
+                return epsilonAction->isEnabled() &&
+                    epsilonAction->property("state").toString() == QStringLiteral("connected");
+            }),
+            "UI-test reconnect finishes and restores the connected action style");
     QDialog testCreatedAuxiliary;
     testCreatedAuxiliary.show();
     processEvents();
@@ -183,7 +214,7 @@ int main(int argc, char **argv)
     require(!testCreatedAuxiliary.isVisible(), "test-created auxiliary window closes on UI test exit");
     require(snapshotAll() == before, "all settings namespaces remain unchanged after normal UI test exit");
     require(epsilonPort->currentText() == QStringLiteral("UNSAVED-COM42") &&
-                rtkServer->text() == QStringLiteral("unsaved.normal.caster"),
+                rtkServer->text() == QStringLiteral("normal.unpersisted.caster"),
             "unsaved normal-mode control values are restored after UI test mode");
     QStringList epsilonItemsAfter;
     for (int index = 0; index < epsilonPort->count(); ++index)

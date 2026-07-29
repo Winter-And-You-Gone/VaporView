@@ -383,12 +383,14 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         const bool linkOpen = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
         const bool enabled = state == VaporView::DeviceState::Disabled || spinnerActive
             ? false
-            : remoteMode
-                ? linkOpen
-                : (device == VaporView::SkyDeviceId::WaveTcp
-                    ? state_->tcp_wave_panel_ != nullptr
-                    : ((connected && state_->disconnect_btn_ && state_->disconnect_btn_->isEnabled()) ||
-                       (!connected && state_->connect_btn_ && state_->connect_btn_->isEnabled())));
+            : isUiTestMode()
+                ? true
+                : remoteMode
+                    ? linkOpen
+                    : (device == VaporView::SkyDeviceId::WaveTcp
+                        ? state_->tcp_wave_panel_ != nullptr
+                        : ((connected && state_->disconnect_btn_ && state_->disconnect_btn_->isEnabled()) ||
+                           (!connected && state_->connect_btn_ && state_->connect_btn_->isEnabled())));
         const QString actionText = [&]() {
             if (spinnerActive)
             {

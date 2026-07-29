@@ -1843,10 +1843,12 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
     const bool linkOpen = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
     const bool enabled = state == VaporView::DeviceState::Disabled || busy
         ? false
-        : remoteMode
-            ? linkOpen
-            : ((connected && state_->disconnect_btn_ && state_->disconnect_btn_->isEnabled()) ||
-               (!connected && state_->connect_btn_ && state_->connect_btn_->isEnabled()));
+        : isUiTestMode()
+            ? true
+            : remoteMode
+                ? linkOpen
+                : ((connected && state_->disconnect_btn_ && state_->disconnect_btn_->isEnabled()) ||
+                   (!connected && state_->connect_btn_ && state_->connect_btn_->isEnabled()));
     button->setEnabled(enabled);
 
     const QString actionText = busy
