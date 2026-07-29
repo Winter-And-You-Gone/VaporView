@@ -4063,6 +4063,12 @@ int main(int argc, char **argv)
                 VaporView::appThemeColor(VaporView::AppThemeColor::Primary, true),
             "dark theme focus token uses the orange primary color");
     const QString darkOverviewStyleSheet = qApp->styleSheet();
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QMessageBox QLabel {"),
+        QStringLiteral("color: %1").arg(VaporView::appThemeColorName(
+            VaporView::AppThemeColor::Text, true)),
+        "dark message-box body text uses the readable semantic text color");
     require(darkOverviewStyleSheet.contains(
                 QStringLiteral("QAbstractSpinBox,\nQPlainTextEdit,\nQTextEdit {\n    background-color: %1")
                     .arg(VaporView::appThemeColorName(

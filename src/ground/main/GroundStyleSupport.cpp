@@ -361,6 +361,9 @@ QMessageBox {
     color: @vv-text-title;
     border-color: @vv-border;
 }
+QMessageBox QLabel {
+    color: @vv-text;
+}
 QMenuBar::item,
 QMenu::item,
 QToolBar QToolButton {
