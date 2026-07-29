@@ -1230,7 +1230,7 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                 !rtkScrollArea->verticalScrollBar()->isVisible(),
             "RTK config page hides its unused vertical scrollbar at the default window size");
     const std::vector<std::pair<QString, int>> compactCombos = {
-        {QStringLiteral("rtkMountpointCombo"), 135},
+        {QStringLiteral("rtkMountpointCombo"), 180},
         {QStringLiteral("rtkOutputPortCombo"), 100},
         {QStringLiteral("rtkBaudrateCombo"), 130},
         {QStringLiteral("rtkTimeoutCombo"), 115},
@@ -1517,8 +1517,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(std::abs(widgetX(fetchMountpointsButton) - widgetX(mountpointCombo)) <= 2 &&
                 widgetY(fetchMountpointsButton) > widgetY(mountpointCombo),
             "RTK NTRIP mountpoint detection button sits below and aligns with the mountpoint combo");
-    require(std::abs(fetchMountpointsButton->width() - mountpointCombo->width()) <= 2,
-            "RTK NTRIP mountpoint combo matches the detect button width");
+    require(std::abs(mountpointCombo->width() * 2 - fetchMountpointsButton->width() * 3) <= 2,
+            "RTK NTRIP mountpoint combo is one and a half times wider than the detect button");
     auto *ggaSourceCombo = dialog->findChild<QComboBox *>(QStringLiteral("rtkGgaPortCombo"));
     auto *ggaToggleButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkGgaToggleButton"));
     auto *ggaOutputText = dialog->findChild<QTextEdit *>(QStringLiteral("rtkGgaTextEdit"));

@@ -80,6 +80,7 @@ constexpr int kRtkDefaultDialogHeight = 640;
 constexpr int kRtkMinimumDialogWidth = 640;
 constexpr int kRtkMinimumDialogHeight = 420;
 constexpr int kRtkInputHeight = 32;
+constexpr int kRtkMountpointComboWidth = 168;
 constexpr int kEmbeddedTopLevelCardGap = 12;
 constexpr int kEmbeddedTopLevelCardChromeInset = 12;
 constexpr int kEmbeddedTopLevelCardOuterVerticalInset = 4;
@@ -2081,17 +2082,11 @@ void RtkConfigDialog::updateMountpointComboWidth()
     }
 
     const int targetHeight = scalePixels(kRtkInputHeight);
-    const int targetWidth = std::max(scalePixels(112),
-                                     fetch_mountpoints_btn_ ? fetch_mountpoints_btn_->width() : 0);
+    const int targetWidth = scalePixels(kRtkMountpointComboWidth);
 
     mountpoint_combo_->setFixedWidth(targetWidth);
     mountpoint_combo_->setFixedHeight(targetHeight);
     mountpoint_combo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    if (fetch_mountpoints_btn_)
-    {
-        fetch_mountpoints_btn_->setFixedWidth(targetWidth);
-        fetch_mountpoints_btn_->setFixedHeight(targetHeight);
-    }
     if (auto *singleLevelCombo = dynamic_cast<VaporView::SingleLevelPopupComboBox *>(mountpoint_combo_))
     {
         singleLevelCombo->setPopupFitContents(true);

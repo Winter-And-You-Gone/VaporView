@@ -110,7 +110,10 @@ int main(int argc, char **argv)
             "explicit RTK serial history is retained and marked as history");
     auto *fetchMountpointsButton = dialog.findChild<QPushButton *>(QStringLiteral("rtkFetchMountpointsButton"));
     require(serverEdit && portEdit && fetchMountpointsButton, "mountpoint fetch controls exist");
-    const int compactMountpointWidth = mountpointCombo->width();
+    const int mountpointComboWidth = mountpointCombo->width();
+    const int detectButtonWidth = fetchMountpointsButton->width();
+    require(std::abs(mountpointComboWidth * 2 - detectButtonWidth * 3) <= 2,
+            "mountpoint combo is one and a half times wider than the detect button");
 
     QTcpServer caster;
     require(caster.listen(QHostAddress::LocalHost, 0), "local sourcetable test server starts");
@@ -146,10 +149,10 @@ int main(int argc, char **argv)
             "detected AUTO is kept as a real mountpoint option");
     require(mountpointCombo->currentText() == QStringLiteral("请选择挂载点"),
             "detected mountpoints require an explicit user selection");
-    require(mountpointCombo->width() == compactMountpointWidth,
-            "mountpoint combo stays compact after fetching long mountpoints");
-    require(fetchMountpointsButton->width() == compactMountpointWidth,
-            "mountpoint detect button stays aligned with the compact combo width");
+    require(mountpointCombo->width() == mountpointComboWidth,
+            "mountpoint combo keeps its widened width after fetching long mountpoints");
+    require(fetchMountpointsButton->width() == detectButtonWidth,
+            "mountpoint detect button keeps its original width");
     auto *singleLevelMountpointCombo =
         dynamic_cast<VaporView::SingleLevelPopupComboBox *>(mountpointCombo);
     require(singleLevelMountpointCombo != nullptr,
@@ -162,7 +165,7 @@ int main(int argc, char **argv)
     require(singleLevelMountpointCombo->popupMenu()->width() >= widestPopupContentWidth,
             "mountpoint popup expands to fit the widest fetched mountpoint");
     require(singleLevelMountpointCombo->popupMenu()->width() > mountpointCombo->width(),
-            "mountpoint popup can be wider than the compact combo box");
+            "mountpoint popup can still be wider than the combo box");
     singleLevelMountpointCombo->hidePopup();
     singleLevelMountpointCombo->showPopup();
     QApplication::processEvents();
