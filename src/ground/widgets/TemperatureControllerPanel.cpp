@@ -822,7 +822,6 @@ public:
     {
         setObjectName(QStringLiteral("temperatureOverviewOutputSwitch"));
         setAccentMode(AccentMode::BinaryState);
-        setAnimationDuration(160);
         setAutoToggle(false);
         setEnglish(false);
     }
@@ -844,7 +843,6 @@ public:
     {
         setObjectName(QStringLiteral("sourceModeOverviewSwitch"));
         setAccentMode(AccentMode::Primary);
-        setAnimationDuration(160);
         setAutoToggle(false);
         setEnglish(false);
     }
@@ -1031,8 +1029,7 @@ public:
         output_switch_button_->setStyleSheet(QStringLiteral(
             "QPushButton#temperatureOverviewOutputSwitch { min-height: %1px; max-height: %1px; }")
             .arg(kOverviewOutputSwitchHeight));
-        connect(output_switch_button_, &QPushButton::clicked, this, [this]() {
-            const bool requested = !output_switch_button_->switchChecked();
+        connect(output_switch_button_, &SegmentedSwitchButton::selectionRequested, this, [this](bool requested) {
             if (output_enabled_callback_)
             {
                 output_enabled_callback_(currentChannelNumber(), requested);
@@ -1780,8 +1777,9 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
     channel.enable_switch->setProperty("temperatureOutputEnableSwitch", true);
     channel.enable_switch->setFixedSize(kTemperatureControllerTopEnableWidth, kTemperatureControllerTopEnableHeight);
     channel.enable_switch->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    connect(channel.enable_switch, &QPushButton::clicked, this, [this, channelNumber, enableSwitch = channel.enable_switch]() {
-        emit outputEnabledRequested(channelNumber, !static_cast<TemperatureOverviewSwitchButton *>(enableSwitch)->switchChecked());
+    auto *enableSwitch = static_cast<TemperatureOverviewSwitchButton *>(channel.enable_switch);
+    connect(enableSwitch, &SegmentedSwitchButton::selectionRequested, this, [this, channelNumber](bool requested) {
+        emit outputEnabledRequested(channelNumber, requested);
     });
     channel.enable_field = makeCommonTopField(
         QStringLiteral("输出使能"), channel.enable_switch, channel.enable_label_text);

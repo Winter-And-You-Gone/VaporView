@@ -1,12 +1,16 @@
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "ground/widgets/TemperatureControllerWidgets.h"
 
+#include <QAbstractAnimation>
 #include <QApplication>
 #include <QFocusEvent>
 #include <QFrame>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QMouseEvent>
+#include <QVariantAnimation>
 
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 
@@ -22,6 +26,26 @@ void require(bool condition, const char *message)
     }
 }
 
+void sendMouseClick(QWidget *widget, const QPointF& position)
+{
+    const QPointF globalPosition = widget->mapToGlobal(position.toPoint());
+    QMouseEvent press(QEvent::MouseButtonPress,
+                      position,
+                      globalPosition,
+                      Qt::LeftButton,
+                      Qt::LeftButton,
+                      Qt::NoModifier);
+    QApplication::sendEvent(widget, &press);
+    QMouseEvent release(QEvent::MouseButtonRelease,
+                        position,
+                        globalPosition,
+                        Qt::LeftButton,
+                        Qt::NoButton,
+                        Qt::NoModifier);
+    QApplication::sendEvent(widget, &release);
+    QApplication::processEvents();
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -35,9 +59,10 @@ int main(int argc, char **argv)
     button.setSegmentTexts(QStringLiteral("Local"), QStringLiteral("Remote"));
     button.setStateDescription(QStringLiteral("Source"), QStringLiteral(": "));
     button.setAccentMode(SegmentedSwitchButton::AccentMode::Primary);
-    button.setAnimationDuration(160);
     button.setAutoToggle(false);
     button.setSwitchChecked(false, false);
+    button.show();
+    QApplication::processEvents();
 
     require(button.property("segmentedSwitchControl").toBool(),
             "segmented switch exposes its shared control identity");
@@ -48,20 +73,106 @@ int main(int argc, char **argv)
                 button.text() == QStringLiteral("Source: Local"),
             "segmented switch uses configurable labels and accessible state text");
     require(button.accentMode() == SegmentedSwitchButton::AccentMode::Primary &&
-                button.animationDuration() == 160,
-            "segmented switch uses configurable accent and animation timing");
+                button.animationDuration() == 480 &&
+                button.sizeHint() == QSize(250, 62) &&
+                button.minimumSizeHint() == QSize(96, 32),
+            "segmented switch uses configurable theme accents and responsive sizing");
 
-    button.click();
-    require(!button.switchChecked(),
-            "externally controlled segmented switch does not pre-toggle on click");
+    QList<bool> requestedSelections;
+    QObject::connect(&button,
+                     &SegmentedSwitchButton::selectionRequested,
+                     &button,
+                     [&requestedSelections](bool rightSelected) {
+                         requestedSelections.append(rightSelected);
+                     });
+    sendMouseClick(&button, QPointF(button.width() * 0.25, button.height() / 2.0));
+    require(requestedSelections.isEmpty() && !button.switchChecked(),
+            "clicking the selected left segment does not replay or request a change");
+    sendMouseClick(&button, QPointF(button.width() * 0.75, button.height() / 2.0));
+    require(requestedSelections == QList<bool>{true} && !button.switchChecked(),
+            "clicking the right segment reports a controlled selection without pre-toggling");
+
     button.setSwitchChecked(true, false);
     require(button.switchChecked() && button.text() == QStringLiteral("Source: Remote"),
             "segmented switch updates its selected segment and accessible state together");
+    sendMouseClick(&button, QPointF(button.width() * 0.75, button.height() / 2.0));
+    require(requestedSelections.size() == 1,
+            "clicking the selected right segment does not request the same state again");
+
+    QKeyEvent leftKey(QEvent::KeyPress, Qt::Key_Left, Qt::NoModifier);
+    QApplication::sendEvent(&button, &leftKey);
+    require(requestedSelections.size() == 2 &&
+                requestedSelections.at(0) &&
+                !requestedSelections.at(1),
+            "left arrow requests the left segment in controlled mode");
+    QKeyEvent enterKey(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(&button, &enterKey);
+    require(requestedSelections.size() == 3 && !requestedSelections.constLast(),
+            "Enter confirms the alternate segment through the controlled callback");
+    QKeyEvent spacePress(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier);
+    QKeyEvent spaceRelease(QEvent::KeyRelease, Qt::Key_Space, Qt::NoModifier);
+    QApplication::sendEvent(&button, &spacePress);
+    QApplication::sendEvent(&button, &spaceRelease);
+    require(requestedSelections.size() == 4 && !requestedSelections.constLast(),
+            "Space confirms the alternate segment through the controlled callback");
+
+    button.setEnabled(false);
+    QKeyEvent disabledRightKey(QEvent::KeyPress, Qt::Key_Right, Qt::NoModifier);
+    QApplication::sendEvent(&button, &disabledRightKey);
+    require(requestedSelections.size() == 4,
+            "disabled segmented switch ignores keyboard selection requests");
+    button.setEnabled(true);
 
     button.setAutoToggle(true);
+    button.setSwitchChecked(false, false);
     button.click();
-    require(!button.switchChecked() && button.text() == QStringLiteral("Source: Local"),
-            "self-controlled segmented switch can toggle through the shared implementation");
+    require(button.switchChecked() && button.text() == QStringLiteral("Source: Remote") &&
+                requestedSelections.constLast(),
+            "self-controlled segmented switch toggles and emits its selected value together");
+
+    auto *thumbAnimation =
+        button.findChild<QVariantAnimation *>(QStringLiteral("segmentedSwitchThumbAnimation"));
+    require(thumbAnimation != nullptr && thumbAnimation->duration() == 480,
+            "segmented switch exposes one reusable 480 ms thumb animation");
+    button.setSwitchChecked(false, false);
+    button.setSwitchChecked(true, true);
+    thumbAnimation->setCurrentTime(qRound(thumbAnimation->duration() * 0.16));
+    require(button.thumbHorizontalScale() >= 1.08 &&
+                button.thumbVerticalScale() <= 0.96,
+            "jelly launch stretches horizontally and compresses vertically");
+    thumbAnimation->setCurrentTime(qRound(thumbAnimation->duration() * 0.66));
+    require(button.thumbPosition() > 1.0 && button.thumbHorizontalScale() < 1.0,
+            "jelly arrival overshoots the target and briefly compresses");
+    thumbAnimation->setCurrentTime(qRound(thumbAnimation->duration() * 0.82));
+    require(button.thumbPosition() < 1.0 && button.thumbHorizontalScale() > 1.0,
+            "jelly rebound crosses back once before settling");
+
+    thumbAnimation->setCurrentTime(qRound(thumbAnimation->duration() * 0.45));
+    const qreal interruptedPosition = button.thumbPosition();
+    button.setSwitchChecked(false, true);
+    thumbAnimation->setCurrentTime(qRound(thumbAnimation->duration() * 0.16));
+    require(button.thumbPosition() < interruptedPosition &&
+                button.thumbHorizontalScale() >= 1.08,
+            "rapid reverse input restarts smoothly from the current visual state");
+    thumbAnimation->setCurrentTime(thumbAnimation->duration());
+    require(!button.switchChecked() &&
+                std::abs(button.thumbPosition()) < 0.001 &&
+                std::abs(button.thumbHorizontalScale() - 1.0) < 0.001 &&
+                std::abs(button.thumbVerticalScale() - 1.0) < 0.001,
+            "rapid reversal settles on exactly one left-side thumb");
+
+    button.setReducedMotionEnabled(true);
+    button.setSwitchChecked(true, true);
+    require(button.reducedMotionEnabled() &&
+                button.property("reducedMotionEnabled").toBool() &&
+                thumbAnimation->duration() == 150,
+            "reduced motion replaces the jelly sequence with a short slide");
+    thumbAnimation->setCurrentTime(thumbAnimation->duration() / 2);
+    require(std::abs(button.thumbHorizontalScale() - 1.0) < 0.001 &&
+                std::abs(button.thumbVerticalScale() - 1.0) < 0.001,
+            "reduced motion never deforms the selected thumb");
+    thumbAnimation->setCurrentTime(thumbAnimation->duration());
+    button.setReducedMotionEnabled(false);
 
     QFocusEvent activeWindowFocus(QEvent::FocusIn, Qt::ActiveWindowFocusReason);
     QApplication::sendEvent(&button, &activeWindowFocus);
@@ -74,13 +185,7 @@ int main(int argc, char **argv)
                 button.property("keyboardFocusIndicatorVisible").toBool(),
             "keyboard tab focus creates the segmented-switch focus ring");
 
-    QMouseEvent mousePress(QEvent::MouseButtonPress,
-                           QPointF(10.0, 10.0),
-                           QPointF(10.0, 10.0),
-                           Qt::LeftButton,
-                           Qt::LeftButton,
-                           Qt::NoModifier);
-    QApplication::sendEvent(&button, &mousePress);
+    sendMouseClick(&button, QPointF(10.0, 10.0));
     require(!button.keyboardFocusIndicatorVisible(),
             "pointer interaction clears the segmented-switch keyboard focus ring");
 
@@ -92,6 +197,16 @@ int main(int argc, char **argv)
                 button.text() == QStringLiteral("Output Enable: On"),
             "the same segmented switch supports binary output-state configuration");
 
+    auto *sourceModeSwitch =
+        VaporView::Ground::Widgets::createSourceModeOverviewSwitchButton();
+    sourceModeSwitch->setEnglish(false);
+    require(sourceModeSwitch->leftSegmentText() == QStringLiteral("本地") &&
+                sourceModeSwitch->rightSegmentText() == QStringLiteral("远程") &&
+                !sourceModeSwitch->switchChecked() &&
+                sourceModeSwitch->animationDuration() == 480,
+            "configuration page source switch uses the shared jelly component with local selected by default");
+    delete sourceModeSwitch;
+
     auto *temperatureOverview =
         VaporView::Ground::Widgets::createTemperatureControllerOverviewPanel();
     temperatureOverview->resize(420, 220);
@@ -101,7 +216,7 @@ int main(int argc, char **argv)
     auto *overviewOutputLabel =
         temperatureOverview->findChild<QLabel *>(QStringLiteral("temperatureOverviewOutputLabel"));
     auto *overviewOutputSwitch =
-        temperatureOverview->findChild<QPushButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
+        temperatureOverview->findChild<SegmentedSwitchButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
     require(overviewOutputCapsule != nullptr &&
                 overviewOutputLabel != nullptr &&
                 overviewOutputSwitch != nullptr,
@@ -112,8 +227,9 @@ int main(int argc, char **argv)
             "temperature overview places the output-enable label above the switch in one capsule");
     require(overviewOutputSwitch->property("segmentedSwitchControl").toBool() &&
                 overviewOutputSwitch->height() == 34 &&
+                overviewOutputSwitch->animationDuration() == 480 &&
                 overviewOutputCapsule->height() == 60,
-            "temperature overview uses the shared 34 px segmented switch inside a compact capsule");
+            "temperature overview uses the shared 480 ms jelly switch inside a compact capsule");
     temperatureOverview->show();
     QApplication::processEvents();
     const int overviewSwitchLeftGap = overviewOutputSwitch->geometry().left();

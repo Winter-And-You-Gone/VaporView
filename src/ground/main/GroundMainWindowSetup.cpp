@@ -3157,13 +3157,16 @@ void MainWindow::setupConfigPanel()
     state_->source_mode_switch_ = createSourceModeOverviewSwitchButton(configTitleBar);
     state_->source_mode_switch_->setFixedSize(128, kMainPageButtonHeight);
     state_->source_mode_switch_->setEnglish(state_->is_english_);
-    connect(state_->source_mode_switch_, &QPushButton::clicked, this, [this]() {
-        if (!state_->data_source_mode_combo_)
-        {
-            return;
-        }
-        state_->data_source_mode_combo_->setCurrentIndex(state_->source_mode_switch_->switchChecked() ? 0 : 1);
-    });
+    connect(state_->source_mode_switch_,
+            &VaporView::Ground::Widgets::SegmentedSwitchButton::selectionRequested,
+            this,
+            [this](bool remoteSelected) {
+                if (!state_->data_source_mode_combo_)
+                {
+                    return;
+                }
+                state_->data_source_mode_combo_->setCurrentIndex(remoteSelected ? 1 : 0);
+            });
     configTitleLayout->addWidget(state_->source_mode_switch_, 0, Qt::AlignVCenter | Qt::AlignRight);
 
     state_->auto_detect_ports_btn_ = new QPushButton(config_form_widget);
