@@ -422,8 +422,10 @@ void SegmentedSwitchButton::paintEvent(QPaintEvent *event)
                                                   contentInset,
                                                   -contentInset,
                                                   -contentInset);
-    QColor trackOutline = VaporView::appThemeColor(VaporView::AppThemeColor::White, dark);
-    trackOutline.setAlphaF(enabled ? 0.88 : 0.35);
+    QColor trackOutline = VaporView::appThemeColor(
+        dark ? VaporView::AppThemeColor::BorderStrong : VaporView::AppThemeColor::White,
+        dark);
+    trackOutline.setAlphaF(enabled ? (dark ? 0.82 : 0.88) : (dark ? 0.24 : 0.35));
     painter.setPen(QPen(trackOutline, 1.0));
     painter.setBrush(trackFill);
     painter.drawRoundedRect(trackRect, trackRect.height() / 2.0, trackRect.height() / 2.0);

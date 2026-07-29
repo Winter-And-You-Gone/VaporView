@@ -1,15 +1,18 @@
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "ground/widgets/TemperatureControllerWidgets.h"
+#include "shared/theme/AppTheme.h"
 
 #include <QAbstractAnimation>
 #include <QApplication>
 #include <QFocusEvent>
 #include <QFrame>
+#include <QImage>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QVariantAnimation>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -77,6 +80,22 @@ int main(int argc, char **argv)
                 button.sizeHint() == QSize(250, 62) &&
                 button.minimumSizeHint() == QSize(96, 32),
             "segmented switch uses configurable theme accents and responsive sizing");
+
+    const QVariant previousDarkTheme = app.property(VaporView::kAppDarkThemeProperty);
+    app.setProperty(VaporView::kAppDarkThemeProperty, true);
+    button.repaint();
+    QApplication::processEvents();
+    const QImage darkSwitchImage = button.grab().toImage();
+    const qreal imageScale = darkSwitchImage.devicePixelRatio();
+    const qreal darkTrackTop = 0.75 + std::clamp(button.height() * 0.08, 2.5, 5.0);
+    const QColor darkTrackEdgePixel = darkSwitchImage.pixelColor(
+        qRound(button.width() * imageScale / 2.0),
+        qRound(darkTrackTop * imageScale));
+    require(darkTrackEdgePixel.lightness() < 190,
+            "dark segmented switch uses a subdued semantic track outline instead of white");
+    app.setProperty(VaporView::kAppDarkThemeProperty, previousDarkTheme);
+    button.repaint();
+    QApplication::processEvents();
 
     QList<bool> requestedSelections;
     QObject::connect(&button,
