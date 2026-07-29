@@ -1896,7 +1896,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     applyButtonWidth(fetch_mountpoints_btn_, 112);
     if (fetch_mountpoints_btn_)
     {
-        const int iconSize = scalePixels(18);
+        const int iconSize = scalePixels(20);
         fetch_mountpoints_btn_->setIconSize(QSize(iconSize, iconSize));
         fetch_mountpoints_btn_->setIcon(createLucideIcon(
             QStringLiteral("radar"),

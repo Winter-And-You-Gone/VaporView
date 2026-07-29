@@ -117,6 +117,8 @@ int main(int argc, char **argv)
             "mountpoint combo and detect button have the same width");
     require(!fetchMountpointsButton->icon().isNull(),
             "mountpoint detect button uses the lucide radar icon");
+    require(fetchMountpointsButton->iconSize() == QSize(20, 20),
+            "mountpoint detect button uses the enlarged 20 px radar icon");
     const QImage mountpointIconImage =
         fetchMountpointsButton->icon().pixmap(fetchMountpointsButton->iconSize()).toImage();
     bool mountpointIconHasWhitePixel = false;
