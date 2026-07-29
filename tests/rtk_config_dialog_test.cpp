@@ -63,8 +63,8 @@ int main(int argc, char **argv)
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
 
     QSettings rtkSettings(QStringLiteral("VaporView"), QStringLiteral("RtkConfig"));
-    rtkSettings.setValue(QStringLiteral("server"), QStringLiteral("127.0.0.1"));
-    rtkSettings.setValue(QStringLiteral("port"), QStringLiteral("60844"));
+    rtkSettings.setValue(QStringLiteral("server"), QStringLiteral("unsaved.normal.caster"));
+    rtkSettings.setValue(QStringLiteral("port"), QStringLiteral("8002"));
     rtkSettings.setValue(QStringLiteral("output_port"), QStringLiteral("__missing_serial_port__"));
     rtkSettings.setValue(QStringLiteral("mountpoint"), QStringLiteral("AUTO"));
     rtkSettings.setValue(QStringLiteral("mountpoint_confirmed"), true);
@@ -80,6 +80,24 @@ int main(int argc, char **argv)
 #endif
     }
     QApplication app(argc, argv);
+
+    {
+        RtkConfigDialog testResidueDialog(nullptr, false);
+        auto *testResidueServer =
+            testResidueDialog.findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
+        auto *testResiduePort =
+            testResidueDialog.findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));
+        require(testResidueServer && testResiduePort &&
+                    testResidueServer->text() == QStringLiteral("203.107.45.154") &&
+                    testResiduePort->text() == QStringLiteral("8002"),
+                "saved UI-test caster residue is cleared back to the WGS84 default caster");
+    }
+    require(rtkSettings.value(QStringLiteral("server")).toString() == QStringLiteral("203.107.45.154") &&
+                rtkSettings.value(QStringLiteral("port")).toString() == QStringLiteral("8002"),
+            "saved UI-test caster residue is persisted as the WGS84 default caster");
+    rtkSettings.setValue(QStringLiteral("server"), QStringLiteral("127.0.0.1"));
+    rtkSettings.setValue(QStringLiteral("port"), QStringLiteral("60844"));
+    rtkSettings.sync();
 
     RtkConfigDialog dialog(nullptr, false);
     dialog.show();

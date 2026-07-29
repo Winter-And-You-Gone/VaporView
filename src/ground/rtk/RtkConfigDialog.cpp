@@ -146,6 +146,13 @@ bool isLoopbackServerText(const QString& server)
         normalized == QStringLiteral("[::1]");
 }
 
+bool isUiTestCasterServerText(const QString& server)
+{
+    const QString normalized = server.trimmed();
+    return normalized.compare(QStringLiteral("unsaved.normal.caster"), Qt::CaseInsensitive) == 0 ||
+        normalized.compare(QStringLiteral("caster.ui-test.local"), Qt::CaseInsensitive) == 0;
+}
+
 bool isMountpointPlaceholderText(const QString& text)
 {
     const QString trimmed = text.trimmed();
@@ -2162,12 +2169,15 @@ void RtkConfigDialog::loadSettings()
     QString savedPort = settings.value("port", QString()).toString().trimmed();
     const QString savedMountpoint = settings.value("mountpoint", "").toString().trimmed();
     const bool savedMountpointConfirmed = settings.value("mountpoint_confirmed", false).toBool();
-    if (shouldClearSavedLoopbackCaster(savedServer, savedMountpoint, savedMountpointConfirmed))
+    if (isUiTestCasterServerText(savedServer) ||
+        shouldClearSavedLoopbackCaster(savedServer, savedMountpoint, savedMountpointConfirmed))
     {
         VaporView::removePersistentSetting(settings, QStringLiteral("server"));
         VaporView::removePersistentSetting(settings, QStringLiteral("port"));
         savedServer = defaultRtkCasterServer();
         savedPort = defaultRtkCasterPort();
+        VaporView::setPersistentSetting(settings, QStringLiteral("server"), savedServer);
+        VaporView::setPersistentSetting(settings, QStringLiteral("port"), savedPort);
     }
     if (savedServer.isEmpty())
     {
