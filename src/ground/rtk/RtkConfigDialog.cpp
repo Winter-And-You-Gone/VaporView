@@ -1546,6 +1546,7 @@ void RtkConfigDialog::setupUi()
 
     gga_toggle_btn_ = new QPushButton(this);
     gga_toggle_btn_->setObjectName(QStringLiteral("rtkGgaToggleButton"));
+    gga_toggle_btn_->setFocusPolicy(Qt::NoFocus);
     connect(gga_toggle_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onGgaToggleClicked);
     gga_header_layout_->addWidget(gga_toggle_btn_, 0, 0, Qt::AlignLeft | Qt::AlignVCenter);
 
@@ -1560,11 +1561,6 @@ void RtkConfigDialog::setupUi()
     gga_frequency_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     gga_header_layout_->addWidget(gga_frequency_label_, 1, 0, Qt::AlignLeft | Qt::AlignVCenter);
     gga_controls_layout_->addLayout(gga_header_layout_);
-
-    gga_status_label_ = new QLabel(this);
-    gga_status_label_->setObjectName(QStringLiteral("rtkGgaStatusLabel"));
-    gga_status_label_->setWordWrap(true);
-    gga_controls_layout_->addWidget(gga_status_label_);
     gga_controls_layout_->addStretch(1);
     gga_layout_->addWidget(gga_controls_container_, 0, Qt::AlignTop | Qt::AlignLeft);
 
@@ -1592,12 +1588,25 @@ void RtkConfigDialog::setupUi()
     main_layout_->addWidget(topRowWidget);
 
     log_group_ = new QGroupBox(this);
-    auto *logCardLayout = createCardLayout(log_group_, log_title_label_, QStringLiteral("scroll-text"));
+    QWidget *logTitleBar = nullptr;
+    auto *logCardLayout = createCardLayout(
+        log_group_, log_title_label_, QStringLiteral("scroll-text"), &logTitleBar);
     log_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     log_layout_ = new QVBoxLayout();
     log_layout_->setSpacing(4);
     log_layout_->setContentsMargins(10, 10, 10, 4);
     logCardLayout->addLayout(log_layout_);
+
+    gga_status_label_ = new QLabel(logTitleBar ? logTitleBar : log_group_);
+    gga_status_label_->setObjectName(QStringLiteral("rtkGgaStatusLabel"));
+    gga_status_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    gga_status_label_->setWordWrap(false);
+    gga_status_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    gga_status_label_->setFixedHeight(scalePixels(24));
+    if (auto *logTitleLayout = logTitleBar ? qobject_cast<QHBoxLayout *>(logTitleBar->layout()) : nullptr)
+    {
+        logTitleLayout->insertWidget(1, gga_status_label_, 1, Qt::AlignVCenter | Qt::AlignLeft);
+    }
 
     log_text_container_ = new QWidget(log_group_);
     log_text_container_layout_ = new QVBoxLayout(log_text_container_);
@@ -1981,20 +1990,13 @@ void RtkConfigDialog::applyScaledUiMetrics()
         gga_frequency_label_->setFixedWidth(sharedWidth);
     }
 
-    const bool ggaStatusVisible = gga_status_label_ && !gga_status_label_->text().trimmed().isEmpty();
-    gga_status_label_->setVisible(ggaStatusVisible);
-    gga_status_label_->setMinimumHeight(ggaStatusVisible ? scalePixels(24) : 0);
     const QMargins ggaMargins = gga_layout_ ? gga_layout_->contentsMargins() : QMargins();
     const int headerHeight = gga_header_layout_
         ? gga_header_layout_->sizeHint().height()
         : std::max({gga_port_info_label_->sizeHint().height(),
                     gga_port_combo_->sizeHint().height(),
                     gga_frequency_label_->sizeHint().height()});
-    const int statusHeight = ggaStatusVisible
-        ? std::max(gga_status_label_->minimumHeight(), gga_status_label_->sizeHint().height())
-        : 0;
-    const int controlsSpacing = gga_controls_layout_ ? gga_controls_layout_->spacing() : 0;
-    const int controlsHeight = headerHeight + (ggaStatusVisible ? controlsSpacing + statusHeight : 0);
+    const int controlsHeight = headerHeight;
     if (gga_controls_container_)
     {
         gga_controls_container_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
@@ -2631,18 +2633,13 @@ void RtkConfigDialog::updateGgaStatusLabel(const QString& message, bool healthy)
         return;
     }
 
-    const bool wasVisible = gga_status_label_->isVisible();
     const bool visible = !message.trimmed().isEmpty();
     gga_status_message_ = message;
     gga_status_healthy_ = healthy;
     gga_status_label_->setText(message);
     gga_status_label_->setVisible(visible);
-    gga_status_label_->setMinimumHeight(visible ? scalePixels(24) : 0);
+    gga_status_label_->setFixedHeight(scalePixels(24));
     gga_status_label_->setStyleSheet(boldLabelColorStyle(healthy ? AppThemeColor::RtkHealthy : AppThemeColor::RtkWarning));
-    if (wasVisible != visible)
-    {
-        applyScaledUiMetrics();
-    }
 }
 
 void RtkConfigDialog::updateGgaMonitorButton()
