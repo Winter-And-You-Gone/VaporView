@@ -60,7 +60,6 @@ protected:
     void focusOutEvent(QFocusEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
-    void mouseReleaseEvent(QMouseEvent *event) override;
 
 private:
     void animateThumbTo(qreal target);
@@ -88,8 +87,6 @@ private:
     int thumb_direction_ = 1;
     int animation_duration_ms_ = 480;
     bool reduced_motion_enabled_ = false;
-    bool pointer_selection_pending_ = false;
-    bool pointer_right_selected_ = false;
     QVariantAnimation *thumb_animation_ = nullptr;
     QVariantAnimation *press_animation_ = nullptr;
 };

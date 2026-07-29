@@ -82,44 +82,42 @@ int main(int argc, char **argv)
     QObject::connect(&button,
                      &SegmentedSwitchButton::selectionRequested,
                      &button,
-                     [&requestedSelections](bool rightSelected) {
+                     [&button, &requestedSelections](bool rightSelected) {
                          requestedSelections.append(rightSelected);
+                         button.setSwitchChecked(rightSelected, true);
                      });
-    sendMouseClick(&button, QPointF(button.width() * 0.25, button.height() / 2.0));
-    require(requestedSelections.isEmpty() && !button.switchChecked(),
-            "clicking the selected left segment does not replay or request a change");
-    sendMouseClick(&button, QPointF(button.width() * 0.75, button.height() / 2.0));
-    require(requestedSelections == QList<bool>{true} && !button.switchChecked(),
-            "clicking the right segment reports a controlled selection without pre-toggling");
+    const QPointF repeatedClickPosition(button.width() * 0.25, button.height() / 2.0);
+    for (int clickIndex = 0; clickIndex < 6; ++clickIndex)
+    {
+        sendMouseClick(&button, repeatedClickPosition);
+    }
+    require(requestedSelections == QList<bool>({true, false, true, false, true, false}) &&
+                !button.switchChecked() &&
+                button.text() == QStringLiteral("Source: Local"),
+            "repeated clicks at one position toggle every time through controlled feedback");
 
+    requestedSelections.clear();
     button.setSwitchChecked(true, false);
-    require(button.switchChecked() && button.text() == QStringLiteral("Source: Remote"),
-            "segmented switch updates its selected segment and accessible state together");
-    sendMouseClick(&button, QPointF(button.width() * 0.75, button.height() / 2.0));
-    require(requestedSelections.size() == 1,
-            "clicking the selected right segment does not request the same state again");
 
     QKeyEvent leftKey(QEvent::KeyPress, Qt::Key_Left, Qt::NoModifier);
     QApplication::sendEvent(&button, &leftKey);
-    require(requestedSelections.size() == 2 &&
-                requestedSelections.at(0) &&
-                !requestedSelections.at(1),
+    require(requestedSelections == QList<bool>{false} && !button.switchChecked(),
             "left arrow requests the left segment in controlled mode");
     QKeyEvent enterKey(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
     QApplication::sendEvent(&button, &enterKey);
-    require(requestedSelections.size() == 3 && !requestedSelections.constLast(),
-            "Enter confirms the alternate segment through the controlled callback");
+    require(requestedSelections == QList<bool>({false, true}) && button.switchChecked(),
+            "Enter toggles once through the controlled callback");
     QKeyEvent spacePress(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier);
     QKeyEvent spaceRelease(QEvent::KeyRelease, Qt::Key_Space, Qt::NoModifier);
     QApplication::sendEvent(&button, &spacePress);
     QApplication::sendEvent(&button, &spaceRelease);
-    require(requestedSelections.size() == 4 && !requestedSelections.constLast(),
-            "Space confirms the alternate segment through the controlled callback");
+    require(requestedSelections == QList<bool>({false, true, false}) && !button.switchChecked(),
+            "Space toggles once through the controlled callback");
 
     button.setEnabled(false);
     QKeyEvent disabledRightKey(QEvent::KeyPress, Qt::Key_Right, Qt::NoModifier);
     QApplication::sendEvent(&button, &disabledRightKey);
-    require(requestedSelections.size() == 4,
+    require(requestedSelections.size() == 3,
             "disabled segmented switch ignores keyboard selection requests");
     button.setEnabled(true);
 

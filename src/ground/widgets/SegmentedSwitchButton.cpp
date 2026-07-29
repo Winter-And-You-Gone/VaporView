@@ -352,7 +352,7 @@ void SegmentedSwitchButton::setSwitchChecked(bool checked, bool animated)
 
 void SegmentedSwitchButton::nextCheckState()
 {
-    requestSelection(pointer_selection_pending_ ? pointer_right_selected_ : !isChecked());
+    requestSelection(!isChecked());
 }
 
 void SegmentedSwitchButton::paintEvent(QPaintEvent *event)
@@ -539,25 +539,7 @@ void SegmentedSwitchButton::keyPressEvent(QKeyEvent *event)
 void SegmentedSwitchButton::mousePressEvent(QMouseEvent *event)
 {
     setKeyboardFocusIndicatorVisible(false);
-    pointer_selection_pending_ =
-        event->button() == Qt::LeftButton && rect().contains(event->position().toPoint());
-    if (pointer_selection_pending_)
-    {
-        pointer_right_selected_ = event->position().x() >= width() / 2.0;
-    }
     QPushButton::mousePressEvent(event);
-}
-
-void SegmentedSwitchButton::mouseReleaseEvent(QMouseEvent *event)
-{
-    if (pointer_selection_pending_ &&
-        event->button() == Qt::LeftButton &&
-        rect().contains(event->position().toPoint()))
-    {
-        pointer_right_selected_ = event->position().x() >= width() / 2.0;
-    }
-    QPushButton::mouseReleaseEvent(event);
-    pointer_selection_pending_ = false;
 }
 
 void SegmentedSwitchButton::animateThumbTo(qreal target)
