@@ -1564,16 +1564,22 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(ggaToggleButton->text() == QStringLiteral("读取") ||
                 ggaToggleButton->text() == QStringLiteral("Read"),
             "RTK GGA idle action uses a compact read label");
-    require(widgetX(ggaSourceLabel) - widgetX(ggaCard) <= 40,
-            "RTK GGA source label is aligned near the left edge of its card");
-    require(widgetY(ggaToggleButton) > widgetY(ggaSourceLabel) &&
-                std::abs(widgetX(ggaToggleButton) - widgetX(ggaSourceLabel)) <= 8,
-            "RTK GGA read button sits below the source label");
-    require(widgetY(ggaFrequencyLabel) > widgetY(ggaSourceCombo) &&
-                std::abs(widgetX(ggaFrequencyLabel) - widgetX(ggaSourceCombo)) <= 8,
-            "RTK GGA frequency readout sits below the source combo");
-    require(widgetX(ggaOutputText) >= widgetX(ggaSourceCombo) + ggaSourceCombo->width(),
-            "RTK GGA output text area sits to the right of the source controls");
+    auto *ggaTitleBar = ggaSourceLabel->parentWidget();
+    auto *ggaTitleLayout = ggaTitleBar
+        ? qobject_cast<QHBoxLayout *>(ggaTitleBar->layout())
+        : nullptr;
+    require(ggaTitleBar && ggaTitleBar->objectName() == QStringLiteral("sectionTitleBar") &&
+                ggaSourceCombo->parentWidget() == ggaTitleBar && ggaTitleLayout &&
+                ggaTitleLayout->indexOf(ggaSourceLabel) > 0 &&
+                ggaTitleLayout->indexOf(ggaSourceCombo) > ggaTitleLayout->indexOf(ggaSourceLabel),
+            "RTK GGA source label and combo sit after the title in the GGA card title bar");
+    require(ggaToggleButton->parentWidget() == ggaFrequencyLabel->parentWidget() &&
+                widgetY(ggaFrequencyLabel) > widgetY(ggaToggleButton) &&
+                std::abs(widgetX(ggaFrequencyLabel) - widgetX(ggaToggleButton)) <= 2 &&
+                std::abs(ggaFrequencyLabel->width() - ggaToggleButton->width()) <= 2,
+            "RTK GGA read button and frequency readout stack vertically at a shared width");
+    require(widgetX(ggaOutputText) >= widgetX(ggaToggleButton) + ggaToggleButton->width(),
+            "RTK GGA output text area sits to the right of the read controls");
     require(std::abs(ggaCard->height() - ntripCard->height()) <= 24,
             "RTK GGA monitor card height matches the NTRIP card height closely");
     require(findLabelByText(dialog,

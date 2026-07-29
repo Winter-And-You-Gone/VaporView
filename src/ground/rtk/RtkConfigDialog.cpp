@@ -1503,7 +1503,9 @@ void RtkConfigDialog::setupUi()
     output_layout_->addWidget(buttonOutputRow.first, 0, Qt::AlignLeft);
 
     gga_group_ = new QGroupBox(this);
-    auto *ggaCardLayout = createCardLayout(gga_group_, gga_title_label_, QStringLiteral("activity"));
+    QWidget *ggaTitleBar = nullptr;
+    auto *ggaCardLayout = createCardLayout(
+        gga_group_, gga_title_label_, QStringLiteral("activity"), &ggaTitleBar);
     gga_layout_ = new QHBoxLayout();
     gga_layout_->setSpacing(6);
     gga_layout_->setContentsMargins(10, 10, 10, 12);
@@ -1523,20 +1525,28 @@ void RtkConfigDialog::setupUi()
     gga_header_layout_->setColumnStretch(1, 0);
 
     gga_port_info_label_ = createFieldLabel();
+    gga_port_info_label_->setObjectName(QStringLiteral("rtkGgaSourceLabel"));
     gga_port_info_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    gga_header_layout_->addWidget(gga_port_info_label_, 0, 0);
 
     gga_port_combo_ = new QComboBox(this);
     gga_port_combo_->setObjectName(QStringLiteral("rtkGgaPortCombo"));
     gga_port_combo_->setEditable(true);
     configureComboBoxPopup(gga_port_combo_, isDarkThemeEnabled());
     VaporView::installSerialPortPopupDelegate(gga_port_combo_);
-    gga_header_layout_->addWidget(gga_port_combo_, 0, 1);
+
+    if (ggaTitleBar)
+    {
+        if (auto *titleLayout = qobject_cast<QHBoxLayout *>(ggaTitleBar->layout()))
+        {
+            titleLayout->insertWidget(1, gga_port_info_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+            titleLayout->insertWidget(2, gga_port_combo_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+        }
+    }
 
     gga_toggle_btn_ = new QPushButton(this);
     gga_toggle_btn_->setObjectName(QStringLiteral("rtkGgaToggleButton"));
     connect(gga_toggle_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onGgaToggleClicked);
-    gga_header_layout_->addWidget(gga_toggle_btn_, 1, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    gga_header_layout_->addWidget(gga_toggle_btn_, 0, 0, Qt::AlignLeft | Qt::AlignVCenter);
 
     gga_frequency_label_ = new VaporView::VisualTextLabel(this);
     gga_frequency_label_->setObjectName(QStringLiteral("fieldLabel"));
@@ -1547,7 +1557,7 @@ void RtkConfigDialog::setupUi()
             ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("Rate: -999.99 Hz")),
             ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("频率: -999.99 Hz"))) + scalePixels(8));
     gga_frequency_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    gga_header_layout_->addWidget(gga_frequency_label_, 1, 1, Qt::AlignLeft | Qt::AlignVCenter);
+    gga_header_layout_->addWidget(gga_frequency_label_, 1, 0, Qt::AlignLeft | Qt::AlignVCenter);
     gga_controls_layout_->addLayout(gga_header_layout_);
 
     gga_status_label_ = new QLabel(this);
@@ -1927,6 +1937,15 @@ void RtkConfigDialog::applyScaledUiMetrics()
     }
     applyComboWidth(timeout_combo_, 96);
     applyComboWidth(reconnect_combo_, 104);
+    if (gga_frequency_label_)
+    {
+        const QFontMetrics metrics(gga_frequency_label_->font());
+        const int frequencyWidth = std::max(
+            metrics.horizontalAdvance(QStringLiteral("Rate: -999.99 Hz")),
+            metrics.horizontalAdvance(QStringLiteral("频率: -999.99 Hz"))) + scalePixels(8);
+        gga_frequency_label_->setFixedWidth(frequencyWidth);
+        gga_frequency_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    }
     applyFieldLabelContentWidth(gga_port_info_label_);
     if (gga_port_info_label_)
     {
@@ -1946,6 +1965,12 @@ void RtkConfigDialog::applyScaledUiMetrics()
         }
     }
     applyButtonWidth(gga_toggle_btn_, 72);
+    if (gga_toggle_btn_ && gga_frequency_label_)
+    {
+        const int sharedWidth = std::max(gga_toggle_btn_->width(), gga_frequency_label_->width());
+        gga_toggle_btn_->setFixedWidth(sharedWidth);
+        gga_frequency_label_->setFixedWidth(sharedWidth);
+    }
 
     const bool ggaStatusVisible = gga_status_label_ && !gga_status_label_->text().trimmed().isEmpty();
     gga_status_label_->setVisible(ggaStatusVisible);
