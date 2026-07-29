@@ -112,8 +112,10 @@ int main(int argc, char **argv)
     require(serverEdit && portEdit && fetchMountpointsButton, "mountpoint fetch controls exist");
     const int mountpointComboWidth = mountpointCombo->width();
     const int detectButtonWidth = fetchMountpointsButton->width();
-    require(std::abs(mountpointComboWidth * 2 - detectButtonWidth * 3) <= 2,
-            "mountpoint combo is one and a half times wider than the detect button");
+    require(std::abs(mountpointComboWidth - detectButtonWidth) <= 2,
+            "mountpoint combo and detect button have the same width");
+    require(!fetchMountpointsButton->icon().isNull(),
+            "mountpoint detect button uses the lucide radar icon");
 
     QTcpServer caster;
     require(caster.listen(QHostAddress::LocalHost, 0), "local sourcetable test server starts");
@@ -151,8 +153,9 @@ int main(int argc, char **argv)
             "detected mountpoints require an explicit user selection");
     require(mountpointCombo->width() == mountpointComboWidth,
             "mountpoint combo keeps its widened width after fetching long mountpoints");
-    require(fetchMountpointsButton->width() == detectButtonWidth,
-            "mountpoint detect button keeps its original width");
+    require(fetchMountpointsButton->width() == detectButtonWidth &&
+                std::abs(fetchMountpointsButton->width() - mountpointCombo->width()) <= 2,
+            "mountpoint detect button stays aligned with the widened combo width");
     auto *singleLevelMountpointCombo =
         dynamic_cast<VaporView::SingleLevelPopupComboBox *>(mountpointCombo);
     require(singleLevelMountpointCombo != nullptr,

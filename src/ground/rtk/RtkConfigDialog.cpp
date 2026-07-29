@@ -1905,6 +1905,14 @@ void RtkConfigDialog::applyScaledUiMetrics()
     password_edit_->setFixedWidth(std::max(scalePixels(140), passwordWidth));
     password_edit_->setFixedHeight(scalePixels(kRtkInputHeight));
     applyButtonWidth(fetch_mountpoints_btn_, 112);
+    if (fetch_mountpoints_btn_)
+    {
+        const int iconSize = scalePixels(18);
+        fetch_mountpoints_btn_->setIconSize(QSize(iconSize, iconSize));
+        fetch_mountpoints_btn_->setIcon(createLucideIcon(
+            QStringLiteral("radar"),
+            appThemeColor(AppThemeColor::Primary, darkTheme)));
+    }
     updateMountpointComboWidth();
 
     applyFieldLabelContentWidth(output_port_label_);
@@ -2087,6 +2095,11 @@ void RtkConfigDialog::updateMountpointComboWidth()
     mountpoint_combo_->setFixedWidth(targetWidth);
     mountpoint_combo_->setFixedHeight(targetHeight);
     mountpoint_combo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    if (fetch_mountpoints_btn_)
+    {
+        fetch_mountpoints_btn_->setFixedWidth(targetWidth);
+        fetch_mountpoints_btn_->setFixedHeight(targetHeight);
+    }
     if (auto *singleLevelCombo = dynamic_cast<VaporView::SingleLevelPopupComboBox *>(mountpoint_combo_))
     {
         singleLevelCombo->setPopupFitContents(true);

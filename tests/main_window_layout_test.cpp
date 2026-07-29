@@ -1517,8 +1517,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(std::abs(widgetX(fetchMountpointsButton) - widgetX(mountpointCombo)) <= 2 &&
                 widgetY(fetchMountpointsButton) > widgetY(mountpointCombo),
             "RTK NTRIP mountpoint detection button sits below and aligns with the mountpoint combo");
-    require(std::abs(mountpointCombo->width() * 2 - fetchMountpointsButton->width() * 3) <= 2,
-            "RTK NTRIP mountpoint combo is one and a half times wider than the detect button");
+    require(std::abs(fetchMountpointsButton->width() - mountpointCombo->width()) <= 2,
+            "RTK NTRIP mountpoint combo matches the detect button width");
     auto *ggaSourceCombo = dialog->findChild<QComboBox *>(QStringLiteral("rtkGgaPortCombo"));
     auto *ggaToggleButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkGgaToggleButton"));
     auto *ggaOutputText = dialog->findChild<QTextEdit *>(QStringLiteral("rtkGgaTextEdit"));

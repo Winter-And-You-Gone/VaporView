@@ -58,6 +58,7 @@ set(LUCIDE_RESOURCES
     ${CMAKE_SOURCE_DIR}/resources/lucide/pencil.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/play.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/plug.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/radar.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/refresh-cw.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/satellite.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/sliders-vertical.svg
