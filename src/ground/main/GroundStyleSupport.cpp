@@ -637,10 +637,10 @@ QLabel#rateLabel {
 }
 QComboBox,
 QLineEdit,
-QSpinBox,
-QDoubleSpinBox,
+QAbstractSpinBox,
+QPlainTextEdit,
 QTextEdit {
-    background-color: @vv-surface;
+    background-color: @vv-field-bg;
     border: 1px solid @vv-border;
     color: @vv-text;
     selection-background-color: @vv-primary-subtle-pressed;
@@ -657,20 +657,17 @@ QWidget#logTextViewport {
 }
 QComboBox:hover,
 QLineEdit:hover,
-QSpinBox:hover,
-QDoubleSpinBox:hover {
+QAbstractSpinBox:hover {
     border-color: @vv-border;
 }
 QComboBox:focus,
 QLineEdit:focus,
-QSpinBox:focus,
-QDoubleSpinBox:focus {
+QAbstractSpinBox:focus {
     border-color: @vv-focus;
 }
 QComboBox:disabled,
 QLineEdit:disabled,
-QSpinBox:disabled,
-QDoubleSpinBox:disabled {
+QAbstractSpinBox:disabled {
     background-color: @vv-border;
     color: @vv-text-disabled;
 }

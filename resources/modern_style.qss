@@ -679,7 +679,7 @@ QLabel#rtkStatusLabel {
 
 /* 下拉框 */
 QComboBox {
-    background-color: @vv-surface;
+    background-color: @vv-field-bg;
     border: 1px solid @vv-border;
     border-radius: 6px;
     padding: 4px 10px;
@@ -744,8 +744,9 @@ QComboBox QAbstractItemView::item:selected:!active {
 }
 
 /* 文本编辑框 */
+QPlainTextEdit,
 QTextEdit {
-    background-color: @vv-surface;
+    background-color: @vv-field-bg;
     color: @vv-text;
     border: 1px solid @vv-border;
     border-radius: 6px;
@@ -1060,7 +1061,7 @@ QPushButton#temperatureControlButton {
 
 /* 输入框 */
 QLineEdit {
-    background-color: @vv-surface;
+    background-color: @vv-field-bg;
     border: 1px solid @vv-border;
     border-radius: 6px;
     padding: 4px 10px;
@@ -1086,9 +1087,8 @@ QLineEdit:disabled {
     color: @vv-text;
 }
 
-QSpinBox,
-QDoubleSpinBox {
-    background-color: @vv-surface;
+QAbstractSpinBox {
+    background-color: @vv-field-bg;
     border: 1px solid @vv-border;
     border-radius: 6px;
     padding: 4px 0px 4px 10px;
@@ -1098,8 +1098,7 @@ QDoubleSpinBox {
     max-height: 26px;
 }
 
-QSpinBox QLineEdit,
-QDoubleSpinBox QLineEdit {
+QAbstractSpinBox QLineEdit {
     background-color: transparent;
     border: none;
     border-radius: 0px;
@@ -1108,19 +1107,16 @@ QDoubleSpinBox QLineEdit {
     max-height: 16777215px;
 }
 
-QSpinBox:hover,
-QDoubleSpinBox:hover {
+QAbstractSpinBox:hover {
     border-color: @vv-border-strong;
 }
 
-QSpinBox:focus,
-QDoubleSpinBox:focus {
+QAbstractSpinBox:focus {
     border-color: @vv-primary;
     border-width: 1px;
 }
 
-QSpinBox:disabled,
-QDoubleSpinBox:disabled {
+QAbstractSpinBox:disabled {
     background-color: @vv-surface-alt;
     color: @vv-text;
 }

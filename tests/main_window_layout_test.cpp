@@ -921,6 +921,20 @@ int countPixelsNearColor(const QImage& image,
     return count;
 }
 
+void requireWidgetInteriorUsesBackground(QWidget *widget,
+                                         const QColor& expected,
+                                         const char *message)
+{
+    require(widget != nullptr, message);
+    widget->ensurePolished();
+    const QImage image = widget->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    const QRect interior = image.rect().adjusted(2, 2, -2, -2);
+    require(!interior.isEmpty(), message);
+    require(countPixelsNearColor(image, interior, expected, 0) >=
+                interior.width() * interior.height() / 4,
+            message);
+}
+
 void requireSpinArrowHoverUsesPrimary(bool dark, const char *message)
 {
     QSpinBox spin;
@@ -2424,6 +2438,21 @@ int main(int argc, char **argv)
                 qApp->styleSheet().contains(QStringLiteral("QComboBox::down-arrow")) &&
                 qApp->styleSheet().contains(QStringLiteral("background-color: transparent")),
             "spin arrows use enlarged primary lucide hover icons without button backgrounds");
+    const QString lightFieldBackground =
+        VaporView::appThemeColorName(VaporView::AppThemeColor::FieldBackground, false);
+    require(VaporView::appThemeColor(VaporView::AppThemeColor::FieldBackground, false) ==
+                QColor(QStringLiteral("#FFFFFF")),
+            "light theme field background is pure white");
+    require(qApp->styleSheet().contains(
+                QStringLiteral("QComboBox {\n    background-color: %1").arg(lightFieldBackground)) &&
+                qApp->styleSheet().contains(
+                    QStringLiteral("QLineEdit {\n    background-color: %1").arg(lightFieldBackground)) &&
+                qApp->styleSheet().contains(
+                    QStringLiteral("QAbstractSpinBox {\n    background-color: %1").arg(lightFieldBackground)) &&
+                qApp->styleSheet().contains(
+                    QStringLiteral("QPlainTextEdit,\nQTextEdit {\n    background-color: %1")
+                        .arg(lightFieldBackground)),
+            "light theme gives combo, line, spin/date and multiline fields a pure white background");
     requireSpinArrowHoverUsesPrimary(false,
                                      "light theme spin arrow hover renders the primary lucide icon");
     requireMenuPopupStyleUnified(qApp->styleSheet(),
@@ -3975,6 +4004,11 @@ int main(int argc, char **argv)
                 VaporView::appThemeColor(VaporView::AppThemeColor::Primary, true),
             "dark theme focus token uses the orange primary color");
     const QString darkOverviewStyleSheet = qApp->styleSheet();
+    require(darkOverviewStyleSheet.contains(
+                QStringLiteral("QAbstractSpinBox,\nQPlainTextEdit,\nQTextEdit {\n    background-color: %1")
+                    .arg(VaporView::appThemeColorName(
+                        VaporView::AppThemeColor::FieldBackground, true))),
+            "dark theme keeps every editable control on the semantic field background");
     require(darkOverviewStyleSheet.contains(QStringLiteral("chevron-up-dark.svg")) &&
                 darkOverviewStyleSheet.contains(QStringLiteral("chevron-down-dark.svg")) &&
                 darkOverviewStyleSheet.contains(QStringLiteral("chevron-up-primary-dark.svg")) &&
@@ -6163,6 +6197,10 @@ int main(int argc, char **argv)
     }
     require(devicePortCombo != nullptr && devicePortCombo->width() <= 112,
             "device configuration serial combo is sized for COM999");
+    requireWidgetInteriorUsesBackground(
+        devicePortCombo,
+        VaporView::appThemeColor(VaporView::AppThemeColor::FieldBackground, false),
+        "device configuration combo renders a pure white field interior");
     const QList<QPair<QString, const char *>> deviceLocalSerialCombos = {
         {QStringLiteral("deviceSkyTelemetryPortCombo"), "device sky telemetry serial combo uses select-plus-manual behavior"},
         {QStringLiteral("deviceEpsilonPortCombo"), "device EPSILON local serial combo uses select-plus-manual behavior"},
@@ -6915,6 +6953,14 @@ int main(int argc, char **argv)
     processEventsFor(100);
     activateLayouts(&window);
     requireSkyTelemetryTcpMode(deviceSkyTelemetry);
+    requireWidgetInteriorUsesBackground(
+        deviceSkyTelemetry.tcpHostEdit,
+        VaporView::appThemeColor(VaporView::AppThemeColor::FieldBackground, false),
+        "device configuration line edit renders a pure white field interior");
+    requireWidgetInteriorUsesBackground(
+        deviceSkyTelemetry.tcpPortSpin,
+        VaporView::appThemeColor(VaporView::AppThemeColor::FieldBackground, false),
+        "device configuration spin box renders a pure white field interior");
     setSkyTelemetryTransport(deviceSkyTelemetry.transportCombo, QStringLiteral("serial"));
     processEventsFor(100);
     activateLayouts(&window);

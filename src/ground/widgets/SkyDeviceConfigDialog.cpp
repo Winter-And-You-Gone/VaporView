@@ -267,12 +267,16 @@ QString skyDeviceConfigStyleSheet(bool dark)
             "QDialog#skyDeviceConfigDialog QLabel { color: @vv-config-text; }"
             "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus { color: @vv-config-muted-text; padding: 2px 4px; }"
             "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus[status=\"error\"] { color: @vv-error-text; }"
+            "QDialog#skyDeviceConfigDialog QLineEdit,"
+            "QDialog#skyDeviceConfigDialog QComboBox,"
+            "QDialog#skyDeviceConfigDialog QSpinBox,"
+            "QDialog#skyDeviceConfigDialog QDoubleSpinBox { background-color: @vv-field-bg; border: 1px solid @vv-config-border; border-radius: 6px; color: @vv-config-title-text; selection-background-color: @vv-primary-subtle; selection-color: @vv-primary; }"
             "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle { background-color: transparent; border: none; border-radius: 6px; padding: 0; min-width: 30px; max-width: 30px; min-height: 30px; max-height: 30px; }"
             "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:hover { background-color: @vv-title-hover; border: none; }"
             "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:pressed { background-color: @vv-title-hover; border: none; }"
             "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked { background-color: transparent; border: none; }"
             "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked:hover { background-color: @vv-title-hover; border: none; }"
-            "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: @vv-white; color: @vv-text-strong; border: 1px solid @vv-config-border; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; selection-background-color: @vv-primary-subtle; selection-color: @vv-primary; }"
+            "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: @vv-field-bg; color: @vv-text-strong; border: 1px solid @vv-config-border; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; selection-background-color: @vv-primary-subtle; selection-color: @vv-primary; }"
         ), false);
     }
 
@@ -293,7 +297,7 @@ QString skyDeviceConfigStyleSheet(bool dark)
         "QDialog#skyDeviceConfigDialog QLineEdit,"
         "QDialog#skyDeviceConfigDialog QComboBox,"
         "QDialog#skyDeviceConfigDialog QSpinBox,"
-        "QDialog#skyDeviceConfigDialog QDoubleSpinBox { background-color: @vv-config-surface; border: 1px solid @vv-config-border; border-radius: 6px; color: @vv-config-title-text; selection-background-color: @vv-primary-subtle-pressed; selection-color: @vv-white; }"
+        "QDialog#skyDeviceConfigDialog QDoubleSpinBox { background-color: @vv-field-bg; border: 1px solid @vv-config-border; border-radius: 6px; color: @vv-config-title-text; selection-background-color: @vv-primary-subtle-pressed; selection-color: @vv-white; }"
         "QDialog#skyDeviceConfigDialog QLineEdit:hover,"
         "QDialog#skyDeviceConfigDialog QComboBox:hover,"
         "QDialog#skyDeviceConfigDialog QSpinBox:hover,"
@@ -315,7 +319,7 @@ QString skyDeviceConfigStyleSheet(bool dark)
         "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:pressed { background-color: @vv-title-hover; border: none; }"
         "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked { background-color: transparent; border: none; }"
         "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked:hover { background-color: @vv-title-hover; border: none; }"
-        "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: @vv-config-surface; color: @vv-config-title-text; border: 1px solid @vv-config-border; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; selection-background-color: @vv-primary-subtle-pressed; selection-color: @vv-white; }"
+        "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: @vv-field-bg; color: @vv-config-title-text; border: 1px solid @vv-config-border; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; selection-background-color: @vv-primary-subtle-pressed; selection-color: @vv-white; }"
     ), true);
 }
 }

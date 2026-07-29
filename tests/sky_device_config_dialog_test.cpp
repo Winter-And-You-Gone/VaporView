@@ -2,6 +2,7 @@
 #include "ground/widgets/SerialPortComboSupport.h"
 #include "ground/widgets/VisualTextLabel.h"
 #include "ground/widgets/WindowSizing.h"
+#include "shared/theme/AppTheme.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -135,6 +136,13 @@ int main(int argc, char **argv)
     processEventsFor(250);
 
     require(dialog.isVisible(), "dialog visible");
+    const QString expectedFieldBackground = VaporView::appThemeColorName(
+        VaporView::AppThemeColor::FieldBackground,
+        VaporView::isDarkThemePalette(dialog.palette()));
+    require(dialog.styleSheet().contains(
+                QStringLiteral("QDoubleSpinBox { background-color: %1")
+                    .arg(expectedFieldBackground)),
+            "sky-device line, combo and spin inputs use the shared field background");
     require(dialog.size().width() >= dialog.minimumSize().width(), "dialog opens at minimum width");
     require(dialog.size().height() >= dialog.minimumSize().height(), "dialog opens at minimum height");
     const QSize screenLimit = VaporView::screenFractionSize(&dialog);
