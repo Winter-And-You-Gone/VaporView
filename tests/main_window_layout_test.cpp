@@ -2286,6 +2286,13 @@ int main(int argc, char **argv)
                 "source mode combo uses the shared single-level popup");
         require(rememberedSourceModeCombo->currentIndex() == 1,
                 "source mode restores the last remote selection on startup");
+        auto *rememberedSourceModeSwitch =
+            rememberedModeWindow.findChild<QPushButton *>(QStringLiteral("sourceModeOverviewSwitch"));
+        require(rememberedSourceModeSwitch != nullptr &&
+                    rememberedSourceModeSwitch->property("segmentedSwitchControl").toBool() &&
+                    rememberedSourceModeSwitch->focusPolicy() == Qt::TabFocus &&
+                    !rememberedSourceModeSwitch->property("keyboardFocusIndicatorVisible").toBool(),
+                "source mode uses the shared segmented switch without an automatic focus ring");
         QComboBox *rememberedPressureSource =
             findComboWithData(&rememberedModeWindow, QStringLiteral("bmp390"));
         QComboBox *rememberedHumiditySource =
@@ -3758,6 +3765,9 @@ int main(int argc, char **argv)
         window.findChild<QPushButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
     require(temperatureOutputSwitch != nullptr,
             "temperature overview output enable capsule exists");
+    require(temperatureOutputSwitch->property("segmentedSwitchControl").toBool() &&
+                temperatureOutputSwitch->focusPolicy() == Qt::TabFocus,
+            "temperature overview output uses the keyboard-accessible shared segmented switch");
     require(!temperatureOutputSwitch->isEnabled(),
             "temperature overview output enable capsule is disabled without controller data");
     auto *temperatureOverviewSummary =
@@ -4529,8 +4539,11 @@ int main(int argc, char **argv)
                 enableSwitch->width() == 106 &&
                 enableSwitch2->height() == 34 &&
                 enableSwitch2->width() == 106 &&
-                enableSwitch->focusPolicy() == Qt::NoFocus,
-            "temperature output enable uses compact left-right switch geometry without a focus frame");
+                enableSwitch->property("segmentedSwitchControl").toBool() &&
+                enableSwitch2->property("segmentedSwitchControl").toBool() &&
+                enableSwitch->focusPolicy() == Qt::TabFocus &&
+                enableSwitch2->focusPolicy() == Qt::TabFocus,
+            "temperature output enable uses the shared keyboard-accessible segmented switch");
     const int channel1StackHeight = temperatureChannelStack->height();
     const int channel1TopRowHeight = temperatureChannelTopRow->height();
     const int channel1ConfigCardHeight = temperatureConfigCard->height();

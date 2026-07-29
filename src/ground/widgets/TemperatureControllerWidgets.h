@@ -2,9 +2,9 @@
 
 #include "TelemetryTypes.h"
 #include "data_types.h"
+#include "ground/widgets/SegmentedSwitchButton.h"
 
 #include <QComboBox>
-#include <QPushButton>
 #include <QWidget>
 
 #include <functional>
@@ -12,17 +12,15 @@
 namespace VaporView::Ground::Widgets
 {
 
-class SourceModeOverviewSwitchButton : public QPushButton
+class SourceModeOverviewSwitchButton : public SegmentedSwitchButton
 {
 public:
     explicit SourceModeOverviewSwitchButton(QWidget *parent = nullptr)
-        : QPushButton(parent)
+        : SegmentedSwitchButton(parent)
     {
     }
 
     virtual void setEnglish(bool english) = 0;
-    virtual bool switchChecked() const = 0;
-    virtual void setSwitchChecked(bool checked, bool animated) = 0;
 };
 
 class TemperatureControllerOverviewPanel : public QWidget

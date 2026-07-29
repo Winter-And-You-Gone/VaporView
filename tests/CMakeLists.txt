@@ -208,6 +208,12 @@ add_executable(device_panel_coordinator_test
 target_link_libraries(device_panel_coordinator_test PRIVATE vaporview_ground_widgets)
 add_test(NAME device_panel_coordinator_test COMMAND device_panel_coordinator_test)
 
+add_executable(segmented_switch_button_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/segmented_switch_button_test.cpp
+)
+target_link_libraries(segmented_switch_button_test PRIVATE vaporview_ground_widgets)
+add_test(NAME segmented_switch_button_test COMMAND segmented_switch_button_test)
+
 add_executable(session_core_test
     ${CMAKE_CURRENT_SOURCE_DIR}/session_core_test.cpp
 )
@@ -577,6 +583,7 @@ set(VAPORVIEW_FAST_UNIT_TESTS
     sky_session_recorder_test
     sky_local_ipc_client_test
     visual_text_label_test
+    segmented_switch_button_test
     session_time_format_test
     device_rate_policy_test
     rtk_serial_topology_test
@@ -628,6 +635,7 @@ set_property(TEST ${VAPORVIEW_SLOW_UI_TESTS} PROPERTY LABELS integration slow ui
 set_property(TEST map_data_script_test APPEND PROPERTY LABELS script)
 set_property(TEST tcp_wave_encoding_test tcp_wave_panel_test APPEND PROPERTY LABELS tcp-wave)
 set_property(TEST device_panel_coordinator_test APPEND PROPERTY LABELS ground-widgets)
+set_property(TEST segmented_switch_button_test APPEND PROPERTY LABELS ground-widgets ui)
 set_property(TEST
     temperature_controller_protocol_test
     epsilon_protocol_test

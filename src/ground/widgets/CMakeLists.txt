@@ -2,6 +2,8 @@ add_library(vaporview_ground_widgets STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/DevicePanelCoordinator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/DevicePanelCoordinator.h
     ${CMAKE_CURRENT_SOURCE_DIR}/EpsilonPanel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/SegmentedSwitchButton.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SegmentedSwitchButton.h
     ${CMAKE_CURRENT_SOURCE_DIR}/TelemetryPanels.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/TelemetryPanels.h
     ${CMAKE_CURRENT_SOURCE_DIR}/TemperatureControllerPanel.cpp

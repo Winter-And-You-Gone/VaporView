@@ -11,7 +11,6 @@
 #include <QButtonGroup>
 #include <QDir>
 #include <QDoubleValidator>
-#include <QEasingCurve>
 #include <QEvent>
 #include <QFile>
 #include <QFileInfo>
@@ -36,7 +35,6 @@
 #include <QSvgRenderer>
 #include <QTimer>
 #include <QToolButton>
-#include <QVariantAnimation>
 #include <QVBoxLayout>
 #include <QWidgetAction>
 
@@ -52,6 +50,7 @@ using VaporView::SingleLevelPopupComboBox;
 using VaporView::SingleLevelPopupMenu;
 using VaporView::SingleLevelPopupMenuRow;
 using VaporView::SingleLevelPopupTextAlignment;
+using VaporView::Ground::Widgets::SegmentedSwitchButton;
 using VaporView::Ground::Widgets::SourceModeOverviewSwitchButton;
 using VaporView::Ground::Widgets::TemperatureControllerOverviewPanel;
 
@@ -820,238 +819,26 @@ void setTemperatureOverviewPillText(QLabel *label, const QString& title, const Q
     label->style()->polish(label);
 }
 
-class TemperatureOverviewSwitchButton final : public QPushButton
+class TemperatureOverviewSwitchButton final : public SegmentedSwitchButton
 {
 public:
     explicit TemperatureOverviewSwitchButton(QWidget *parent = nullptr)
-        : QPushButton(parent)
+        : SegmentedSwitchButton(parent)
     {
-        setCheckable(true);
         setObjectName(QStringLiteral("temperatureOverviewOutputSwitch"));
-        setCursor(Qt::PointingHandCursor);
-        setFocusPolicy(Qt::NoFocus);
-        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        thumb_position_ = isChecked() ? 1.0 : 0.0;
-        thumb_animation_ = new QVariantAnimation(this);
-        thumb_animation_->setDuration(180);
-        thumb_animation_->setEasingCurve(QEasingCurve::OutCubic);
-        connect(thumb_animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
-            const qreal progress = std::clamp(value.toReal(), 0.0, 1.0);
-            constexpr qreal kPi = 3.14159265358979323846;
-            thumb_position_ = thumb_start_position_ + (thumb_target_position_ - thumb_start_position_) * progress;
-            thumb_jelly_ = std::sin(progress * kPi);
-            update();
-        });
-        connect(thumb_animation_, &QVariantAnimation::finished, this, [this]() {
-            thumb_position_ = thumb_target_position_;
-            thumb_jelly_ = 0.0;
-            update();
-        });
-        refreshText();
+        setAccentMode(AccentMode::BinaryState);
+        setAnimationDuration(160);
+        setAutoToggle(false);
+        setEnglish(false);
     }
 
     void setEnglish(bool english)
     {
-        is_english_ = english;
-        refreshText();
+        setSegmentTexts(english ? QStringLiteral("Off") : QStringLiteral("关闭"),
+                        english ? QStringLiteral("On") : QStringLiteral("开启"));
+        setStateDescription(english ? QStringLiteral("Output Enable") : QStringLiteral("输出使能"),
+                            english ? QStringLiteral(": ") : QStringLiteral("："));
     }
-
-    bool switchChecked() const
-    {
-        return isChecked();
-    }
-
-    void setSwitchChecked(bool checked, bool animated)
-    {
-        const QSignalBlocker blocker(this);
-        setChecked(checked);
-        refreshText();
-
-        const qreal target = checked ? 1.0 : 0.0;
-        if (animated)
-        {
-            animateThumbTo(target);
-        }
-        else
-        {
-            if (thumb_animation_)
-            {
-                thumb_animation_->stop();
-            }
-            thumb_position_ = target;
-            thumb_target_position_ = target;
-            thumb_start_position_ = target;
-            thumb_jelly_ = 0.0;
-            update();
-        }
-    }
-
-protected:
-    void nextCheckState() override
-    {
-        // The overview switch is controlled by the command confirmation flow.
-        // Do not let QAbstractButton pre-toggle before the confirmation dialog.
-    }
-
-    void paintEvent(QPaintEvent *event) override
-    {
-        Q_UNUSED(event);
-
-        const bool dark = VaporView::isDarkThemeEnabled();
-        const bool checked = isChecked();
-        const bool enabled = isEnabled();
-        const QColor stateFill = checked
-            ? appThemeColor(AppThemeColor::ToolbarGreen, dark)
-            : appThemeColor(AppThemeColor::ToolbarRed, dark);
-        const QColor border = appThemeColor(AppThemeColor::Border, dark);
-        const QColor fill = appThemeColor(AppThemeColor::Surface, dark);
-        const QColor switchFill = enabled
-            ? stateFill
-            : appThemeColor(AppThemeColor::Surface, dark);
-        const QColor text = enabled
-            ? appThemeColor(AppThemeColor::Primary, dark)
-            : appThemeColor(AppThemeColor::TextMuted, dark);
-        const QColor selectedFill = enabled
-            ? appThemeColor(AppThemeColor::Surface, dark)
-            : appThemeColor(AppThemeColor::SurfaceAlt, dark);
-        const QColor selectedText = enabled
-            ? stateFill
-            : text;
-        const QColor inactiveText = enabled
-            ? appThemeColor(AppThemeColor::White, dark)
-            : appThemeColor(AppThemeColor::TextMuted, dark);
-
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing, true);
-
-        const QRectF pillRect = rect().adjusted(0.5, 0.5, -0.5, -0.5);
-        constexpr qreal kControlRadius = 10.0;
-        painter.setPen(QPen(border, 1.0));
-        painter.setBrush(fill);
-        painter.drawRoundedRect(pillRect, kControlRadius, kControlRadius);
-
-        const qreal gap = 3.0;
-        const QRectF trackRect = pillRect.adjusted(gap, gap, -gap, -gap);
-        QFont segmentFont = font();
-        segmentFont.setWeight(QFont::DemiBold);
-
-        const QRectF switchRect = trackRect;
-        constexpr qreal kInnerGap = 2.0;
-        const QRectF switchCapsuleRect = switchRect.adjusted(0.5, 0.5, -0.5, -0.5);
-        const QRectF switchContentRect = switchCapsuleRect.adjusted(kInnerGap, kInnerGap, -kInnerGap, -kInnerGap);
-        const qreal segmentWidth = switchContentRect.width() / 2.0;
-        const qreal selectedLeft = switchContentRect.left() + segmentWidth * thumb_position_;
-        QRectF selectedRect(selectedLeft, switchContentRect.top(), segmentWidth, switchContentRect.height());
-        if (enabled && thumb_jelly_ > 0.001)
-        {
-            const qreal stretch = std::min<qreal>(segmentWidth * 0.22, 10.0) * thumb_jelly_;
-            if (thumb_direction_ >= 0)
-            {
-                selectedRect.adjust(-stretch * 0.35, 0.0, stretch * 0.65, 0.0);
-            }
-            else
-            {
-                selectedRect.adjust(-stretch * 0.65, 0.0, stretch * 0.35, 0.0);
-            }
-            selectedRect.setLeft(std::max(selectedRect.left(), switchContentRect.left()));
-            selectedRect.setRight(std::min(selectedRect.right(), switchContentRect.right()));
-        }
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(switchFill);
-        painter.drawRoundedRect(switchCapsuleRect, kControlRadius - gap, kControlRadius - gap);
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(selectedFill);
-        painter.drawRoundedRect(selectedRect, kControlRadius - gap - kInnerGap, kControlRadius - gap - kInnerGap);
-
-        const QRectF offRect(switchContentRect.left(), switchContentRect.top(), segmentWidth, switchContentRect.height());
-        const QRectF onRect(switchContentRect.left() + segmentWidth, switchContentRect.top(), segmentWidth, switchContentRect.height());
-        const bool offSelected = thumb_position_ < 0.5;
-        auto drawSegmentText = [&painter](const QRectF& textRect, const QString& text) {
-            const QRectF textBounds = QFontMetricsF(painter.font()).tightBoundingRect(text);
-            const QPointF baseline(textRect.center().x() - textBounds.center().x(),
-                                   textRect.center().y() - textBounds.center().y());
-            painter.drawText(baseline, text);
-        };
-        painter.setFont(segmentFont);
-        painter.setPen(offSelected ? selectedText : inactiveText);
-        drawSegmentText(offRect, offText());
-        painter.setPen(offSelected ? inactiveText : selectedText);
-        drawSegmentText(onRect, onText());
-
-        if (hasFocus())
-        {
-            painter.setPen(QPen(appThemeColor(AppThemeColor::Focus, dark), 1.0));
-            painter.setBrush(Qt::NoBrush);
-            painter.drawRoundedRect(pillRect.adjusted(2.0, 2.0, -2.0, -2.0),
-                                    kControlRadius - 2.0,
-                                    kControlRadius - 2.0);
-        }
-    }
-
-private:
-    QString offText() const
-    {
-        return is_english_ ? QStringLiteral("Off") : QStringLiteral("关闭");
-    }
-
-    QString onText() const
-    {
-        return is_english_ ? QStringLiteral("On") : QStringLiteral("开启");
-    }
-
-    QString outputLabelText() const
-    {
-        return is_english_ ? QStringLiteral("Output Enable") : QStringLiteral("输出使能");
-    }
-
-    void refreshText()
-    {
-        const QString text = QStringLiteral("%1: %2")
-            .arg(outputLabelText(), isChecked() ? onText() : offText());
-        setText(text);
-        setToolTip(text);
-        setAccessibleName(text);
-    }
-
-    void animateThumbTo(qreal target)
-    {
-        if (!thumb_animation_)
-        {
-            thumb_position_ = target;
-            thumb_target_position_ = target;
-            thumb_start_position_ = target;
-            thumb_jelly_ = 0.0;
-            update();
-            return;
-        }
-
-        if (qFuzzyCompare(thumb_position_, target))
-        {
-            thumb_position_ = target;
-            thumb_target_position_ = target;
-            thumb_start_position_ = target;
-            thumb_jelly_ = 0.0;
-            update();
-            return;
-        }
-
-        thumb_animation_->stop();
-        thumb_start_position_ = thumb_position_;
-        thumb_target_position_ = target;
-        thumb_direction_ = thumb_target_position_ >= thumb_start_position_ ? 1 : -1;
-        thumb_jelly_ = 0.0;
-        thumb_animation_->setStartValue(0.0);
-        thumb_animation_->setEndValue(1.0);
-        thumb_animation_->start();
-    }
-
-    bool is_english_ = false;
-    qreal thumb_position_ = 0.0;
-    qreal thumb_start_position_ = 0.0;
-    qreal thumb_target_position_ = 0.0;
-    qreal thumb_jelly_ = 0.0;
-    int thumb_direction_ = 1;
-    QVariantAnimation *thumb_animation_ = nullptr;
 };
 
 class SourceModeOverviewSwitchButtonImpl final : public SourceModeOverviewSwitchButton
@@ -1060,219 +847,20 @@ public:
     explicit SourceModeOverviewSwitchButtonImpl(QWidget *parent = nullptr)
         : SourceModeOverviewSwitchButton(parent)
     {
-        setCheckable(true);
         setObjectName(QStringLiteral("sourceModeOverviewSwitch"));
-        setCursor(Qt::PointingHandCursor);
-        setFocusPolicy(Qt::TabFocus);
-        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        thumb_position_ = isChecked() ? 1.0 : 0.0;
-        thumb_animation_ = new QVariantAnimation(this);
-        thumb_animation_->setDuration(160);
-        thumb_animation_->setEasingCurve(QEasingCurve::OutCubic);
-        connect(thumb_animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
-            const qreal progress = std::clamp(value.toReal(), 0.0, 1.0);
-            constexpr qreal kPi = 3.14159265358979323846;
-            thumb_position_ = thumb_start_position_ + (thumb_target_position_ - thumb_start_position_) * progress;
-            thumb_jelly_ = std::sin(progress * kPi);
-            update();
-        });
-        connect(thumb_animation_, &QVariantAnimation::finished, this, [this]() {
-            thumb_position_ = thumb_target_position_;
-            thumb_jelly_ = 0.0;
-            update();
-        });
-        refreshText();
+        setAccentMode(AccentMode::Primary);
+        setAnimationDuration(160);
+        setAutoToggle(false);
+        setEnglish(false);
     }
 
-    void setEnglish(bool english)
+    void setEnglish(bool english) override
     {
-        is_english_ = english;
-        refreshText();
-        update();
+        setSegmentTexts(english ? QStringLiteral("Local") : QStringLiteral("本地"),
+                        english ? QStringLiteral("Remote") : QStringLiteral("远程"));
+        setStateDescription(english ? QStringLiteral("Source") : QStringLiteral("数据源"),
+                            english ? QStringLiteral(": ") : QStringLiteral("："));
     }
-
-    bool switchChecked() const
-    {
-        return isChecked();
-    }
-
-    void setSwitchChecked(bool checked, bool animated)
-    {
-        const qreal target = checked ? 1.0 : 0.0;
-        const bool continuingSameAnimation =
-            !animated &&
-            thumb_animation_ &&
-            thumb_animation_->state() == QAbstractAnimation::Running &&
-            qFuzzyCompare(thumb_target_position_, target);
-
-        {
-            const QSignalBlocker blocker(this);
-            setChecked(checked);
-        }
-        refreshText();
-        if (continuingSameAnimation)
-        {
-            update();
-            return;
-        }
-
-        if (animated)
-        {
-            animateThumbTo(target);
-        }
-        else
-        {
-            if (thumb_animation_)
-            {
-                thumb_animation_->stop();
-            }
-            thumb_position_ = target;
-            thumb_start_position_ = target;
-            thumb_target_position_ = target;
-            thumb_jelly_ = 0.0;
-            update();
-        }
-    }
-
-protected:
-    void nextCheckState() override
-    {
-        // Source mode changes are routed through the existing data-source combo.
-    }
-
-    void paintEvent(QPaintEvent *event) override
-    {
-        Q_UNUSED(event);
-
-        const bool dark = VaporView::isDarkThemeEnabled();
-        const bool enabled = isEnabled();
-        const QColor border = appThemeColor(AppThemeColor::Border, dark);
-        const QColor fill = enabled
-            ? appThemeColor(AppThemeColor::PrimarySubtle, dark)
-            : appThemeColor(AppThemeColor::SurfaceAlt, dark);
-        const QColor trackFill = enabled
-            ? appThemeColor(AppThemeColor::Primary, dark)
-            : appThemeColor(AppThemeColor::Surface, dark);
-        const QColor selectedFill = enabled
-            ? appThemeColor(AppThemeColor::Surface, dark)
-            : appThemeColor(AppThemeColor::SurfaceAlt, dark);
-        const QColor selectedText = enabled
-            ? appThemeColor(AppThemeColor::Primary, dark)
-            : appThemeColor(AppThemeColor::TextMuted, dark);
-        const QColor inactiveText = enabled
-            ? appThemeColor(AppThemeColor::White, dark)
-            : appThemeColor(AppThemeColor::TextMuted, dark);
-
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing, true);
-
-        const QRectF outerRect = rect().adjusted(0.5, 0.5, -0.5, -0.5);
-        constexpr qreal kOuterRadius = 10.0;
-        painter.setPen(QPen(border, 1.0));
-        painter.setBrush(fill);
-        painter.drawRoundedRect(outerRect, kOuterRadius, kOuterRadius);
-
-        constexpr qreal kInset = 3.0;
-        constexpr qreal kInnerInset = 2.0;
-        const QRectF trackRect = outerRect.adjusted(kInset, kInset, -kInset, -kInset);
-        const QRectF contentRect = trackRect.adjusted(kInnerInset, kInnerInset, -kInnerInset, -kInnerInset);
-        const qreal segmentWidth = contentRect.width() / 2.0;
-        QRectF selectedRect(contentRect.left() + segmentWidth * thumb_position_,
-                            contentRect.top(),
-                            segmentWidth,
-                            contentRect.height());
-        if (enabled && thumb_jelly_ > 0.001)
-        {
-            const qreal stretch = std::min<qreal>(segmentWidth * 0.24, 12.0) * thumb_jelly_;
-            if (thumb_direction_ >= 0)
-            {
-                selectedRect.adjust(-stretch * 0.35, 0.0, stretch * 0.65, 0.0);
-            }
-            else
-            {
-                selectedRect.adjust(-stretch * 0.65, 0.0, stretch * 0.35, 0.0);
-            }
-            selectedRect.setLeft(std::max(selectedRect.left(), contentRect.left()));
-            selectedRect.setRight(std::min(selectedRect.right(), contentRect.right()));
-        }
-        const QRectF localRect(contentRect.left(), contentRect.top(), segmentWidth, contentRect.height());
-        const QRectF remoteRect(contentRect.left() + segmentWidth, contentRect.top(), segmentWidth, contentRect.height());
-        const bool localSelected = thumb_position_ < 0.5;
-
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(trackFill);
-        painter.drawRoundedRect(trackRect, kOuterRadius - kInset, kOuterRadius - kInset);
-        painter.setBrush(selectedFill);
-        painter.drawRoundedRect(selectedRect, kOuterRadius - kInset - kInnerInset, kOuterRadius - kInset - kInnerInset);
-
-        QFont segmentFont = font();
-        segmentFont.setWeight(QFont::DemiBold);
-        painter.setFont(segmentFont);
-        painter.setPen(localSelected ? selectedText : inactiveText);
-        painter.drawText(localRect, Qt::AlignCenter, localText());
-        painter.setPen(localSelected ? inactiveText : selectedText);
-        painter.drawText(remoteRect, Qt::AlignCenter, remoteText());
-
-        if (hasFocus())
-        {
-            painter.setPen(QPen(appThemeColor(AppThemeColor::Focus, dark), 1.0));
-            painter.setBrush(Qt::NoBrush);
-            painter.drawRoundedRect(outerRect.adjusted(2.0, 2.0, -2.0, -2.0),
-                                    kOuterRadius - 2.0,
-                                    kOuterRadius - 2.0);
-        }
-    }
-
-private:
-    QString localText() const
-    {
-        return is_english_ ? QStringLiteral("Local") : QStringLiteral("本地");
-    }
-
-    QString remoteText() const
-    {
-        return is_english_ ? QStringLiteral("Remote") : QStringLiteral("远程");
-    }
-
-    void refreshText()
-    {
-        const QString text = is_english_
-            ? QStringLiteral("Source: %1").arg(isChecked() ? remoteText() : localText())
-            : QStringLiteral("数据源：%1").arg(isChecked() ? remoteText() : localText());
-        setText(text);
-        setToolTip(text);
-        setAccessibleName(text);
-    }
-
-    void animateThumbTo(qreal target)
-    {
-        if (!thumb_animation_ || qFuzzyCompare(thumb_position_, target))
-        {
-            thumb_position_ = target;
-            thumb_start_position_ = target;
-            thumb_target_position_ = target;
-            thumb_jelly_ = 0.0;
-            update();
-            return;
-        }
-
-        thumb_animation_->stop();
-        thumb_start_position_ = thumb_position_;
-        thumb_target_position_ = target;
-        thumb_direction_ = thumb_target_position_ >= thumb_start_position_ ? 1 : -1;
-        thumb_jelly_ = 0.0;
-        thumb_animation_->setStartValue(0.0);
-        thumb_animation_->setEndValue(1.0);
-        thumb_animation_->start();
-    }
-
-    bool is_english_ = false;
-    qreal thumb_position_ = 0.0;
-    qreal thumb_start_position_ = 0.0;
-    qreal thumb_target_position_ = 0.0;
-    qreal thumb_jelly_ = 0.0;
-    int thumb_direction_ = 1;
-    QVariantAnimation *thumb_animation_ = nullptr;
 };
 
 class TemperatureOverviewChannelButton final : public QToolButton
