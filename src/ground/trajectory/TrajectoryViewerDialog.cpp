@@ -41,6 +41,7 @@
 #include <QScrollArea>
 #include <QSet>
 #include <QSettings>
+#include "shared/config/SettingsWriteBarrier.h"
 #include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QSlider>
@@ -3459,16 +3460,16 @@ void TrajectoryViewerDialog::applyMapSourceSelection(int index)
     QSettings settings("VaporView", "TrajectoryViewer");
     if (tiandituKey.isEmpty())
     {
-        settings.remove(tiandituKeySettingKey());
+        VaporView::removePersistentSetting(settings, tiandituKeySettingKey());
     }
     else
     {
-        settings.setValue(tiandituKeySettingKey(), tiandituKey);
+        VaporView::setPersistentSetting(settings, tiandituKeySettingKey(), tiandituKey);
     }
 
     mapWidget->setTianDiTuKey(tiandituKey);
     mapWidget->setTileProvider(selectedProvider);
-    settings.setValue(tileProviderSettingKey(), tileProviderKey(selectedProvider));
+    VaporView::setPersistentSetting(settings, tileProviderSettingKey(), tileProviderKey(selectedProvider));
 
     if (missingTiandituKey)
     {
@@ -3496,12 +3497,12 @@ void TrajectoryViewerDialog::applyTiandituKeyEdit()
     QSettings settings("VaporView", "TrajectoryViewer");
     if (tiandituKey.isEmpty())
     {
-        settings.remove(tiandituKeySettingKey());
+        VaporView::removePersistentSetting(settings, tiandituKeySettingKey());
         mapWidget->setTianDiTuKey(QString());
     }
     else
     {
-        settings.setValue(tiandituKeySettingKey(), tiandituKey);
+        VaporView::setPersistentSetting(settings, tiandituKeySettingKey(), tiandituKey);
         mapWidget->setTianDiTuKey(tiandituKey);
     }
     updateTexts();
@@ -3822,6 +3823,13 @@ void TrajectoryViewerDialog::exportTrackCsv()
 {
     if (track_points_.isEmpty())
     {
+        return;
+    }
+    if (VaporView::settingsWritesSuspended())
+    {
+        setMapFooterStatus(is_english_
+            ? QStringLiteral("[UI Test] Trajectory export simulated; no file was created.")
+            : QStringLiteral("[界面测试] 已模拟轨迹导出；未创建文件。"));
         return;
     }
 

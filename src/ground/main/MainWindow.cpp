@@ -436,6 +436,13 @@ void MainWindow::syncMainHoverStateFromCursor()
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    if (isUiTestMode())
+    {
+        state_->ui_test_application_closing_ = true;
+        // Keep the process-wide write barrier enabled through all child and
+        // main-window destructors. Several widgets persist state on teardown.
+        VaporView::setSettingsWritesSuspended(true);
+    }
 #ifdef VAPORVIEW_HAS_OSGEARTH
     if (state_->map3d_controller_)
     {

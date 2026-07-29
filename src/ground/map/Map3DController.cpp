@@ -26,6 +26,7 @@ void Map3DController::open()
     if (!window_)
     {
         window_ = new VaporView::Map3D::Map3DWindow(nullptr);
+        window_->setUiTestMode(ui_test_mode_);
         window_->setAttribute(Qt::WA_QuitOnClose, false);
         connect(window_, &QObject::destroyed, this, [this]() {
             window_ = nullptr;
@@ -36,6 +37,15 @@ void Map3DController::open()
     window_->show();
     window_->raise();
     window_->activateWindow();
+}
+
+void Map3DController::setUiTestMode(bool enabled)
+{
+    ui_test_mode_ = enabled;
+    if (window_)
+    {
+        window_->setUiTestMode(enabled);
+    }
 }
 
 void Map3DController::showDiagnostics()

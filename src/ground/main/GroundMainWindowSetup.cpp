@@ -285,9 +285,39 @@ void MainWindow::setupMenuBar()
     connect(state_->map3d_diagnostics_action_, &QAction::triggered, this, &MainWindow::onOpenMap3DDiagnosticsClicked);
 
     state_->view_menu_->addAction(state_->map3d_action_);
-    state_->developer_menu_ = menuBar()->addMenu("");
-    state_->developer_menu_->addAction(state_->map3d_diagnostics_action_);
 #endif
+
+    state_->developer_menu_ = menuBar()->addMenu("");
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    state_->developer_menu_->addAction(state_->map3d_diagnostics_action_);
+    state_->developer_menu_->addSeparator();
+#endif
+    state_->ui_test_mode_action_ = new QAction(this);
+    state_->ui_test_mode_action_->setObjectName(QStringLiteral("uiTestModeAction"));
+    state_->ui_test_mode_action_->setCheckable(true);
+    connect(state_->ui_test_mode_action_, &QAction::toggled,
+            this, &MainWindow::onUiTestModeTriggered);
+    state_->developer_menu_->addAction(state_->ui_test_mode_action_);
+
+    auto *uiTestScenarioMenu = state_->developer_menu_->addMenu(QString());
+    uiTestScenarioMenu->setObjectName(QStringLiteral("uiTestScenarioMenu"));
+    state_->ui_test_scenario_group_ = new QActionGroup(this);
+    state_->ui_test_scenario_group_->setExclusive(true);
+    auto createScenarioAction = [this, uiTestScenarioMenu](int scenario) {
+        auto *action = new QAction(this);
+        action->setCheckable(true);
+        action->setData(scenario);
+        state_->ui_test_scenario_group_->addAction(action);
+        uiTestScenarioMenu->addAction(action);
+        return action;
+    };
+    state_->ui_test_normal_action_ = createScenarioAction(0);
+    state_->ui_test_partial_failure_action_ = createScenarioAction(1);
+    state_->ui_test_stalled_action_ = createScenarioAction(2);
+    state_->ui_test_normal_action_->setChecked(true);
+    connect(state_->ui_test_scenario_group_, &QActionGroup::triggered,
+            this, &MainWindow::onUiTestScenarioTriggered);
+    uiTestScenarioMenu->setEnabled(false);
 
     state_->exit_action_ = new QAction(this);
     state_->exit_action_->setShortcut(QKeySequence::Quit);
@@ -484,6 +514,13 @@ void MainWindow::setupCustomTitleBar()
     state_->custom_title_label_->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
     state_->custom_title_label_->installEventFilter(this);
     titleLayout->addWidget(state_->custom_title_label_, 0);
+
+    state_->ui_test_mode_badge_ = new QLabel(state_->custom_title_bar_);
+    state_->ui_test_mode_badge_->setObjectName(QStringLiteral("uiTestModeBadge"));
+    state_->ui_test_mode_badge_->setAlignment(Qt::AlignCenter);
+    state_->ui_test_mode_badge_->setFocusPolicy(Qt::NoFocus);
+    state_->ui_test_mode_badge_->hide();
+    titleLayout->addWidget(state_->ui_test_mode_badge_, 0, Qt::AlignVCenter);
 
     titleLayout->addWidget(createTitleBarActionButton(state_->refresh_ports_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
     addTitleBarSeparator(titleLayout);
@@ -783,6 +820,27 @@ void MainWindow::createTitleApplicationMenuPanel()
     };
 
     TitleMenuSection developerSection{state_->is_english_ ? QStringLiteral("Developer") : QStringLiteral("开发者"), {}};
+    QVector<TitleMenuCommand> uiTestScenarioCommands{
+        {state_->is_english_ ? QStringLiteral("Normal operation") : QStringLiteral("正常运行"),
+         QString(), state_->ui_test_mode_enabled_,
+         state_->ui_test_model_->scenario() == VaporView::Ground::Devices::UiTestScenario::Normal,
+         false, [this]() { setUiTestScenario(VaporView::Ground::Devices::UiTestScenario::Normal); }},
+        {state_->is_english_ ? QStringLiteral("Partial device failure") : QStringLiteral("部分设备异常"),
+         QString(), state_->ui_test_mode_enabled_,
+         state_->ui_test_model_->scenario() == VaporView::Ground::Devices::UiTestScenario::PartialFailure,
+         false, [this]() { setUiTestScenario(VaporView::Ground::Devices::UiTestScenario::PartialFailure); }},
+        {state_->is_english_ ? QStringLiteral("Data stalled") : QStringLiteral("数据停更"),
+         QString(), state_->ui_test_mode_enabled_,
+         state_->ui_test_model_->scenario() == VaporView::Ground::Devices::UiTestScenario::DataStalled,
+         false, [this]() { setUiTestScenario(VaporView::Ground::Devices::UiTestScenario::DataStalled); }}
+    };
+    developerSection.commands.push_back(
+        {state_->is_english_ ? QStringLiteral("UI Test Mode") : QStringLiteral("界面测试模式"),
+         QString(), true, state_->ui_test_mode_enabled_, false,
+         [this]() { setUiTestModeEnabled(!state_->ui_test_mode_enabled_); }});
+    developerSection.commands.push_back(
+        {state_->is_english_ ? QStringLiteral("UI Test Scenario") : QStringLiteral("界面测试场景"),
+         QString(), state_->ui_test_mode_enabled_, false, true, {}, uiTestScenarioCommands});
 #ifdef VAPORVIEW_HAS_OSGEARTH
     developerSection.commands.push_back(
         {state_->is_english_ ? QStringLiteral("Map Data Diagnostics") : QStringLiteral("地图数据诊断"),
@@ -3890,7 +3948,13 @@ void MainWindow::setupDataPanels()
             this, &MainWindow::onTcpRawWaveFrameReady);
     connect(state_->tcp_wave_panel_, &TcpWavePanel::logMessageRequested,
             this, &MainWindow::log);
-    connect(state_->tcp_wave_panel_, &TcpWavePanel::connectionStateChanged, this, [this](bool) {
+    connect(state_->tcp_wave_panel_, &TcpWavePanel::connectionStateChanged, this, [this](bool connected) {
+        if (isUiTestMode())
+        {
+            state_->ui_test_model_->setDeviceState(
+                VaporView::SkyDeviceId::WaveTcp,
+                connected ? VaporView::DeviceState::Connected : VaporView::DeviceState::Disconnected);
+        }
         updateRecordingActionStates();
         updateHomeDeviceStatusCapsules();
     });

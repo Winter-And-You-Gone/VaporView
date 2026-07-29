@@ -2,6 +2,9 @@
 
 #include "ground/main/MainWindow.h"
 
+#include <QPointer>
+#include <QVariantMap>
+
 namespace VaporView::Ground::Main
 {
 
@@ -25,6 +28,12 @@ struct RemoteTelemetrySummarySections
     QList<Item> rateItems;
     QList<Item> linkItems;
     QList<Item> deviceItems;
+};
+
+struct UiTestWidgetStateEntry
+{
+    QPointer<QWidget> widget;
+    QVariantMap state;
 };
 
 struct DeviceConfigPageWidgets
@@ -116,6 +125,7 @@ struct MainWindowState
     QWidget *custom_title_bar_;
     QLabel *custom_logo_label_;
     QLabel *custom_title_label_;
+    QLabel *ui_test_mode_badge_;
     QToolButton *title_menu_btn_;
     QToolButton *title_language_btn_;
     QToolButton *log_side_panel_toggle_btn_;
@@ -170,6 +180,11 @@ struct MainWindowState
     QAction *log_filter_recording_action_;
     QAction *clear_log_action_;
     QAction *session_viewer_action_;
+    QAction *ui_test_mode_action_;
+    QActionGroup *ui_test_scenario_group_;
+    QAction *ui_test_normal_action_;
+    QAction *ui_test_partial_failure_action_;
+    QAction *ui_test_stalled_action_;
 #ifdef VAPORVIEW_HAS_OSGEARTH
     QAction *map3d_action_;
     QAction *map3d_diagnostics_action_;
@@ -365,6 +380,24 @@ struct MainWindowState
     bool port_detection_in_progress_;
     bool epsilon_reconfigure_in_progress_;
     bool is_connected_;
+    bool ui_test_mode_enabled_;
+    bool ui_test_application_closing_;
+    bool ui_test_connection_in_progress_;
+    int ui_test_recording_state_;
+    qint64 ui_test_started_ms_;
+    int ui_test_saved_page_index_;
+    int ui_test_saved_sidebar_width_;
+    int ui_test_saved_font_scale_percent_;
+    bool ui_test_saved_dark_theme_enabled_;
+    bool ui_test_session_viewer_existed_;
+    bool ui_test_sky_dialog_existed_;
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    bool ui_test_map3d_window_existed_;
+#endif
+    QString ui_test_saved_recording_directory_;
+    QVector<QPointer<QWidget>> ui_test_existing_top_levels_;
+    QVector<UiTestWidgetStateEntry> ui_test_widget_states_;
+    std::unique_ptr<VaporView::Ground::Devices::UiTestDataModel> ui_test_model_;
     bool compact_home_layout_;
     bool responsive_home_layout_refresh_pending_;
     bool log_side_panel_width_initialized_;

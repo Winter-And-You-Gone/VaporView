@@ -49,6 +49,16 @@ void MainWindow::applyEpsilonMainAntennaLeverArm(
         }
     };
 
+    if (isUiTestMode())
+    {
+        logUiTest(QString(state_->is_english_
+            ? "Applied EPSILON main antenna lever arm in memory: X=%1, Y=%2, Z=%3 m"
+            : "已在内存中应用 EPSILON 主天线杆臂：X=%1，Y=%2，Z=%3 m")
+                .arg(xM, 0, 'f', 4).arg(yM, 0, 'f', 4).arg(zM, 0, 'f', 4));
+        if (completion) completion(true, QString());
+        return;
+    }
+
     if (state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_)
     {
         fail(state_->is_english_
@@ -176,6 +186,7 @@ void MainWindow::syncRtkConfigPageState()
     }
     state_->rtk_config_dialog_->setFontScale(state_->font_scale_percent_);
     state_->rtk_config_dialog_->setEnglish(state_->is_english_);
+    state_->rtk_config_dialog_->setUiTestMode(isUiTestMode());
 }
 
 void MainWindow::onRtkConfigClicked()
@@ -195,6 +206,12 @@ void MainWindow::onRtkConfigClicked()
 
 void MainWindow::onConfigureEpsilonRtcmPortClicked()
 {
+    if (isUiTestMode())
+    {
+        logUiTest(state_->is_english_ ? QStringLiteral("Simulated EPSILON RTCM port configuration accepted")
+                                      : QStringLiteral("模拟 EPSILON RTCM 串口配置已接受"));
+        return;
+    }
     if (state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_)
     {
         return;
@@ -574,7 +591,7 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     }
     for (const auto& entry : savedPacketRates)
     {
-        settings.setValue(epsilonPacketRateSettingsKey(entry.first), entry.second);
+        VaporView::setPersistentSetting(settings, epsilonPacketRateSettingsKey(entry.first), entry.second);
     }
     bool hasCustomOverrides = false;
     for (const auto& entry : savedPacketRates)
@@ -587,10 +604,10 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
         }
     }
     const bool effectiveCustomEnabled = enableCustomCheck->isChecked() || hasCustomOverrides;
-    settings.setValue("epsilon_custom_packet_rates_enabled", effectiveCustomEnabled);
-    settings.setValue("epsilon_custom_packet_rates_user_saved", effectiveCustomEnabled);
-    settings.remove("epsilon_last_config_signature");
-    settings.remove("epsilon_last_config_apply_version");
+    VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_custom_packet_rates_enabled"), effectiveCustomEnabled);
+    VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_custom_packet_rates_user_saved"), effectiveCustomEnabled);
+    VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_signature"));
+    VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_apply_version"));
 
     if (hasCustomOverrides && !enableCustomCheck->isChecked())
     {
@@ -641,6 +658,12 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
 
 void MainWindow::onReconfigureEpsilonClicked()
 {
+    if (isUiTestMode())
+    {
+        logUiTest(state_->is_english_ ? QStringLiteral("Simulated EPSILON output reconfiguration completed")
+                                      : QStringLiteral("模拟 EPSILON 输出重配置已完成"));
+        return;
+    }
     if (state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_)
     {
         return;

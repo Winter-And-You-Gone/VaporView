@@ -35,6 +35,7 @@ public:
 
     void setEnglish(bool english);
     void setFontScale(int percent);
+    void setUiTestMode(bool enabled);
 
 private slots:
     void onReadClicked();
@@ -100,8 +101,10 @@ private:
     GroundTelemetryService *service_;
     bool is_english_ = false;
     bool applying_theme_style_ = false;
+    bool ui_test_mode_ = false;
     int font_scale_percent_ = 100;
     SkyConfig current_config_;
+    SkyConfig ui_test_saved_config_;
     SerialRow epsilon_;
     SerialRow ptb_;
     SerialRow hmp_;

@@ -44,6 +44,8 @@ public:
     void appendLog(const QString& message);
     void appendRawLogLine(const QString& line);
     bool isRunning() const;
+    bool hasActiveExternalOperation() const;
+    void setUiTestMode(bool enabled);
     void setEnglish(bool english);
     void setFontScale(int percent);
     void setPreferredOutputPortAndBaud(const QString& portName, const QString& baudText);
@@ -218,6 +220,7 @@ private:
     bool gga_has_sentence_time_;
     bool gga_monitor_enabled_;
     bool metrics_refresh_pending_;
+    bool ui_test_mode_ = false;
     std::atomic<bool> fetch_mountpoints_in_progress_{false};
     std::atomic<bool> port_detection_in_progress_{false};
     std::atomic<bool> test_in_progress_{false};

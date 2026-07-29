@@ -8,6 +8,7 @@
 #include <QLocale>
 #include <QRegularExpression>
 #include <QSettings>
+#include "shared/config/SettingsWriteBarrier.h"
 #include <QStyle>
 #include <QToolButton>
 #include <QWidget>
@@ -640,7 +641,7 @@ void saveRememberedSensorBaud(QSettings& settings,
     const QString baud = baudCombo->currentText().trimmed();
     if (!baud.isEmpty())
     {
-        settings.setValue(key, baud);
+        VaporView::setPersistentSetting(settings, key, baud);
     }
 }
 

@@ -1,4 +1,5 @@
 #include "ground/session/SessionExportService.h"
+#include "shared/config/SettingsWriteBarrier.h"
 
 #include <QDateTime>
 #include <QFile>
@@ -55,6 +56,11 @@ SessionExportResult SessionExportService::exportTrajectoryCsv(
     quint64 endTimestampUs)
 {
     SessionExportResult result;
+    if (VaporView::settingsWritesSuspended())
+    {
+        result.error = QStringLiteral("UI test mode blocks business file export.");
+        return result;
+    }
     if (filename.trimmed().isEmpty())
     {
         result.error = QStringLiteral("Export filename is empty.");

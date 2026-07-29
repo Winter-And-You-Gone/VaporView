@@ -31,7 +31,7 @@ void MainWindow::onDataSourceModeChanged(int index)
 void MainWindow::updateSourceModeUi()
 {
     const bool remote = isRemoteSkyMode();
-    const bool localInputsEnabled = !remote && !state_->is_connected_ &&
+    const bool localInputsEnabled = !remote && (isUiTestMode() || !state_->is_connected_) &&
         !state_->connection_attempt_in_progress_ && !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
     const QList<QWidget*> localWidgets = {state_->epsilon_port_combo_, state_->epsilon_baud_combo_, state_->ptb_port_combo_, state_->ptb_baud_combo_,
                                           state_->hmp_port_combo_, state_->hmp_baud_combo_, state_->lidar_port_combo_, state_->lidar_baud_combo_,
@@ -48,14 +48,14 @@ void MainWindow::updateSourceModeUi()
     }
     if (state_->auto_detect_ports_btn_)
     {
-        state_->auto_detect_ports_btn_->setEnabled(!remote && !state_->is_connected_ && !state_->connection_attempt_in_progress_);
+        state_->auto_detect_ports_btn_->setEnabled(!remote && (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_);
     }
     if (state_->source_mode_switch_)
     {
-        state_->source_mode_switch_->setEnabled(!state_->is_connected_ && !state_->connection_attempt_in_progress_);
+        state_->source_mode_switch_->setEnabled(isUiTestMode() || (!state_->is_connected_ && !state_->connection_attempt_in_progress_));
         state_->source_mode_switch_->setSwitchChecked(remote, state_->source_mode_switch_->switchChecked() != remote);
     }
-    const bool remoteInputsEnabled = remote && !state_->is_connected_ && !state_->connection_attempt_in_progress_;
+    const bool remoteInputsEnabled = remote && (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_;
     const bool tcpTelemetry = isRemoteSkyTcpMode();
     if (state_->sky_telemetry_transport_combo_) state_->sky_telemetry_transport_combo_->setEnabled(remoteInputsEnabled);
     if (state_->sky_telemetry_port_combo_) state_->sky_telemetry_port_combo_->setEnabled(remoteInputsEnabled && !tcpTelemetry);
@@ -73,8 +73,10 @@ void MainWindow::updateSourceModeUi()
     if (state_->sky_telemetry_tcp_host_edit_) state_->sky_telemetry_tcp_host_edit_->setVisible(tcpTelemetry);
     if (state_->sky_telemetry_tcp_port_lbl_) state_->sky_telemetry_tcp_port_lbl_->setVisible(tcpTelemetry);
     if (state_->sky_telemetry_tcp_port_spin_) state_->sky_telemetry_tcp_port_spin_->setVisible(tcpTelemetry);
-    if (state_->sky_device_config_btn_) state_->sky_device_config_btn_->setEnabled(remote && state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen());
-    setRemoteDeviceButtonsEnabled(remote && state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen());
+    const bool remoteActionsAvailable = remote && (isUiTestMode() ||
+        (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen()));
+    if (state_->sky_device_config_btn_) state_->sky_device_config_btn_->setEnabled(remoteActionsAvailable);
+    setRemoteDeviceButtonsEnabled(remoteActionsAvailable);
     updateTemperatureControllerTitleText();
     updateTemperatureTitleButtonsState();
     updateRemoteTelemetrySummaryLabel();
@@ -854,7 +856,7 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
     for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
     {
         const auto it = savedPacketRates.find(option.packet_id);
-        settings.setValue(epsilonPacketRateSettingsKey(option.packet_id),
+        VaporView::setPersistentSetting(settings, epsilonPacketRateSettingsKey(option.packet_id),
                           it != savedPacketRates.end() ? it->second : groupedRates.at(option.packet_id));
     }
 
@@ -871,10 +873,10 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
     const bool effectiveCustomEnabled =
         (state_->device_config_.epsilon_packet_custom_check && state_->device_config_.epsilon_packet_custom_check->isChecked()) ||
         hasCustomOverrides;
-    settings.setValue("epsilon_custom_packet_rates_enabled", effectiveCustomEnabled);
-    settings.setValue("epsilon_custom_packet_rates_user_saved", effectiveCustomEnabled);
-    settings.remove("epsilon_last_config_signature");
-    settings.remove("epsilon_last_config_apply_version");
+    VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_custom_packet_rates_enabled"), effectiveCustomEnabled);
+    VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_custom_packet_rates_user_saved"), effectiveCustomEnabled);
+    VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_signature"));
+    VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_apply_version"));
 
     if (hasCustomOverrides &&
         state_->device_config_.epsilon_packet_custom_check &&
@@ -997,6 +999,22 @@ void MainWindow::refreshRemoteSkyDataUi()
 
 void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested)
 {
+    if (isUiTestMode())
+    {
+        state_->ui_test_model_->setDeviceState(
+            VaporView::SkyDeviceId::WaveTcp,
+            connectRequested ? VaporView::DeviceState::Connected : VaporView::DeviceState::Disconnected);
+        if (state_->tcp_wave_panel_)
+        {
+            state_->tcp_wave_panel_->setRemoteWaveTcpState(
+                connectRequested ? VaporView::DeviceState::Connected : VaporView::DeviceState::Disconnected);
+        }
+        logUiTest(connectRequested
+            ? (state_->is_english_ ? QStringLiteral("Simulated Sky waveform connection enabled") : QStringLiteral("模拟天空端波形连接已开启"))
+            : (state_->is_english_ ? QStringLiteral("Simulated Sky waveform connection disabled") : QStringLiteral("模拟天空端波形连接已关闭")));
+        updateConnectionStatus(false);
+        return;
+    }
     state_->remote_wave_stream_requested_ = false;
     state_->remote_wave_stream_auto_start_ = connectRequested;
     if (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen())
@@ -1368,6 +1386,18 @@ void MainWindow::reconnectLocalTemperatureController()
 
 void MainWindow::sendRemoteDeviceCommand(VaporView::CommandId command, VaporView::SkyDeviceId device)
 {
+    if (isUiTestMode())
+    {
+        const bool connected = command != VaporView::CommandId::DisconnectDevice;
+        state_->ui_test_model_->setDeviceState(
+            device, connected ? VaporView::DeviceState::Connected : VaporView::DeviceState::Disconnected);
+        logUiTest(QString(state_->is_english_ ? "Simulated device command: %1 / %2"
+                                              : "模拟设备命令：%1 / %2")
+                      .arg(VaporView::commandIdName(command), VaporView::deviceStateName(
+                          state_->ui_test_model_->deviceState(device))));
+        updateConnectionStatus(false);
+        return;
+    }
     if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
     {
         log(state_->is_english_ ? "Remote Sky telemetry link is not connected" : "天空端数传链路未连接");
@@ -1378,6 +1408,17 @@ void MainWindow::sendRemoteDeviceCommand(VaporView::CommandId command, VaporView
 
 void MainWindow::sendRemotePeakSearchRange(quint32 startIndex, quint32 endIndex)
 {
+    if (isUiTestMode())
+    {
+        if (state_->tcp_wave_panel_)
+        {
+            state_->tcp_wave_panel_->applyRemotePeakSearchRange(startIndex, endIndex);
+        }
+        logUiTest(QString(state_->is_english_ ? "Peak search range applied in memory: [%1, %2)"
+                                              : "峰值搜索区间已在内存中应用：[%1, %2)")
+                      .arg(startIndex).arg(endIndex));
+        return;
+    }
     if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
     {
         log(state_->is_english_ ? "Remote Sky telemetry link is not connected" : "天空端数传链路未连接");
@@ -1402,6 +1443,23 @@ void MainWindow::sendRemotePeakSearchRange(quint32 startIndex, quint32 endIndex)
 
 void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload)
 {
+    if (isUiTestMode())
+    {
+        state_->ui_test_model_->applyTemperatureCommand(command, payload);
+        applyUiTestSnapshot();
+        const quint8 channel = payload.channel == 0 ? 1 : payload.channel;
+        if (state_->temperature_controller_panel_)
+        {
+            state_->temperature_controller_panel_->clearCommandPending(command, channel);
+            state_->temperature_controller_panel_->setCommandStatus(
+                temperatureCommandStatusText(command, channel, false));
+        }
+        logUiTest(QString(state_->is_english_ ? "RD105 command applied in memory: %1"
+                                              : "RD105 命令已在内存中应用：%1")
+                      .arg(VaporView::commandIdName(command)));
+        restoreTemperatureCommandUi(command, channel);
+        return;
+    }
     if (isRemoteSkyMode())
     {
         sendRemoteTemperatureCommand(command, payload);
@@ -1507,6 +1565,11 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
 
 void MainWindow::sendRemoteTemperatureCommand(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload)
 {
+    if (isUiTestMode())
+    {
+        sendTemperatureCommand(command, payload);
+        return;
+    }
     if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
     {
         log(state_->is_english_ ? "Remote Sky telemetry link is not connected" : "天空端数传链路未连接");
@@ -1869,6 +1932,14 @@ bool MainWindow::applyImuDeviceProfile(const QString& requestedFormat, int reque
     setImuBaudSelection(targetBaud);
     setImuRateSelection(targetRate);
     saveRememberedInputState();
+
+    if (isUiTestMode())
+    {
+        logUiTest(QString(state_->is_english_ ? "IMU profile applied in memory: %1, %2 baud, %3 Hz"
+                                              : "IMU 配置已在内存中应用：%1，%2 波特，%3 Hz")
+                      .arg(targetFormat).arg(targetBaud).arg(targetRate));
+        return true;
+    }
 
     VaporView::Ground::Devices::ImuProfileRequest request;
     request.english = state_->is_english_;

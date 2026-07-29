@@ -383,7 +383,7 @@ bool MainWindow::isAppSidebarCollapsed() const
 void MainWindow::saveAppSidebarWidth() const
 {
     QSettings settings("VaporView", "MainWindow");
-    settings.setValue(QStringLiteral("app_sidebar_width"), currentAppSidebarWidth());
+    VaporView::setPersistentSetting(settings, QStringLiteral("app_sidebar_width"), currentAppSidebarWidth());
 }
 
 void MainWindow::setAppSidebarWidth(int width)
@@ -1255,7 +1255,7 @@ void MainWindow::setFontScale(int percent)
     }
 
     QSettings settings("VaporView", "MainWindow");
-    settings.setValue("font_scale_percent", state_->font_scale_percent_);
+    VaporView::setPersistentSetting(settings, QStringLiteral("font_scale_percent"), state_->font_scale_percent_);
 }
 
 void MainWindow::rebuildRecordingRateMenu()
@@ -1544,10 +1544,10 @@ void MainWindow::saveRememberedInputState() const
                 }
                 const QString port = localSerialPortComboValue(combo);
                 VaporView::rememberSerialPort(port);
-                settings.setValue(key, port);
+                VaporView::setPersistentSetting(settings, key, port);
                 return;
             }
-            settings.setValue(key, combo->currentText().trimmed());
+            VaporView::setPersistentSetting(settings, key, combo->currentText().trimmed());
         }
     };
 
@@ -1583,33 +1583,33 @@ void MainWindow::saveRememberedInputState() const
     saveCombo(QStringLiteral("rate/temperature"), state_->temperature_rate_combo_);
     if (state_->device_config_.ptb_source_combo)
     {
-        settings.setValue(QStringLiteral("sensor/pressure_source"), state_->device_config_.ptb_source_combo->currentData());
+        VaporView::setPersistentSetting(settings, QStringLiteral("sensor/pressure_source"), state_->device_config_.ptb_source_combo->currentData());
     }
     if (state_->device_config_.hmp_source_combo)
     {
-        settings.setValue(QStringLiteral("sensor/humidity_source"), state_->device_config_.hmp_source_combo->currentData());
+        VaporView::setPersistentSetting(settings, QStringLiteral("sensor/humidity_source"), state_->device_config_.hmp_source_combo->currentData());
     }
     if (state_->data_source_mode_combo_)
     {
-        settings.setValue(QStringLiteral("source/mode"), sourceModeStorageValue(state_->data_source_mode_combo_->currentIndex()));
+        VaporView::setPersistentSetting(settings, QStringLiteral("source/mode"), sourceModeStorageValue(state_->data_source_mode_combo_->currentIndex()));
     }
     saveCombo(QStringLiteral("telemetry/sky_port"), state_->sky_telemetry_port_combo_);
     saveCombo(QStringLiteral("telemetry/sky_baud"), state_->sky_telemetry_baud_combo_);
     if (state_->sky_telemetry_transport_combo_)
     {
-        settings.setValue(QStringLiteral("telemetry/transport"), state_->sky_telemetry_transport_combo_->currentData().toString());
+        VaporView::setPersistentSetting(settings, QStringLiteral("telemetry/transport"), state_->sky_telemetry_transport_combo_->currentData().toString());
     }
     if (state_->sky_telemetry_tcp_host_edit_)
     {
-        settings.setValue(QStringLiteral("telemetry/tcp_host"), state_->sky_telemetry_tcp_host_edit_->text().trimmed());
+        VaporView::setPersistentSetting(settings, QStringLiteral("telemetry/tcp_host"), state_->sky_telemetry_tcp_host_edit_->text().trimmed());
     }
     if (state_->sky_telemetry_tcp_port_spin_)
     {
-        settings.setValue(QStringLiteral("telemetry/tcp_port"), state_->sky_telemetry_tcp_port_spin_->value());
+        VaporView::setPersistentSetting(settings, QStringLiteral("telemetry/tcp_port"), state_->sky_telemetry_tcp_port_spin_->value());
     }
-    settings.setValue("recording_export_rate_hz", state_->recording_export_rate_hz_);
-    settings.setValue("imu_recording_rate_hz", state_->imu_recording_rate_hz_);
-    settings.setValue("waveform_recording_rate_hz", state_->waveform_recording_rate_hz_);
+    VaporView::setPersistentSetting(settings, QStringLiteral("recording_export_rate_hz"), state_->recording_export_rate_hz_);
+    VaporView::setPersistentSetting(settings, QStringLiteral("imu_recording_rate_hz"), state_->imu_recording_rate_hz_);
+    VaporView::setPersistentSetting(settings, QStringLiteral("waveform_recording_rate_hz"), state_->waveform_recording_rate_hz_);
 }
 
 void MainWindow::bindRememberedInputState()

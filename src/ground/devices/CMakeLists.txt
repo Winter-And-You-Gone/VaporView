@@ -45,6 +45,8 @@ add_library(vaporview_ground_device_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/RemoteSkyController.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SerialPortDetectionService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SerialPortDetectionService.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/UiTestDataModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UiTestDataModel.h
 )
 
 target_include_directories(vaporview_ground_device_core PUBLIC

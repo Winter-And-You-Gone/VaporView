@@ -74,6 +74,7 @@ namespace VaporView::Ground { class Map3DController; }
 namespace VaporView::Ground::Devices { struct CollectorSet; }
 namespace VaporView::Ground::Devices { class LocalDeviceConnectionController; }
 namespace VaporView::Ground::Devices { class RemoteSkyController; }
+namespace VaporView::Ground::Devices { class UiTestDataModel; enum class UiTestScenario; }
 namespace VaporView::Ground::Session { class GroundRecordingService; }
 namespace VaporView::Ground::Session { class RecordingScheduleController; }
 namespace VaporView::Ground::Main
@@ -163,6 +164,8 @@ private slots:
     void onRemoteTemperatureControllerStatusUpdated(const VaporView::TemperatureControllerData& controllerData);
     void onRemoteCommandAckReceived(const VaporView::CommandAck& ack);
     void onRemoteLinkOpenChanged(bool open);
+    void onUiTestModeTriggered(bool enabled);
+    void onUiTestScenarioTriggered(QAction *action);
 
 private:
     using AppSidebarMode = VaporView::Ground::Main::AppSidebarMode;
@@ -194,6 +197,15 @@ private:
     void loadModernStyleSheet();
     void log(const QString& message);
     void updateRecordingStatusLabel();
+    bool isUiTestMode() const;
+    bool canEnterUiTestMode(QString *reason = nullptr) const;
+    void setUiTestModeEnabled(bool enabled);
+    void setUiTestScenario(VaporView::Ground::Devices::UiTestScenario scenario);
+    void applyUiTestSnapshot();
+    void updateUiTestModeUi();
+    void logUiTest(const QString& message);
+    void captureUiTestWidgetState();
+    void restoreUiTestWidgetState();
     void updateLogFilterAction();
     void renderLogView();
     bool shouldShowLogLine(const QString& line) const;

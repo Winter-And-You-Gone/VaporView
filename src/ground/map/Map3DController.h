@@ -29,6 +29,7 @@ public:
     void open();
     void showDiagnostics();
     void close();
+    void setUiTestMode(bool enabled);
 
     void forwardEpsilonSample(const VaporView::EpsilonData& data, quint64 recordTimestampUs);
     void noteDrop(const QString& source, const QString& reason, quint64 recordTimestampUs = 0);
@@ -50,6 +51,7 @@ private:
     QTimer flush_timer_;
     std::vector<VaporView::Geo::NavSample> pending_samples_;
     QString last_drop_reason_;
+    bool ui_test_mode_ = false;
 };
 
 }  // namespace VaporView::Ground

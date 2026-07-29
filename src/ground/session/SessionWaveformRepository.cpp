@@ -1,4 +1,5 @@
 #include "ground/session/SessionWaveformRepository.h"
+#include "shared/config/SettingsWriteBarrier.h"
 
 #include "ground/session/SessionCsv.h"
 #include "shared/session/UnifiedRawDat.h"
@@ -707,6 +708,10 @@ bool SessionWaveformRepository::writeCachedPeakSeries(
     const QVector<quint64>& timestampsUs,
     const QVector<float>& peakValues)
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        return false;
+    }
     if (catalog.waveformPeaksCsvFilename.isEmpty() || timestampsUs.isEmpty() ||
         timestampsUs.size() != peakValues.size())
     {

@@ -19,6 +19,7 @@
 #include <QMessageBox>
 #include <QScrollArea>
 #include <QSettings>
+#include "shared/config/SettingsWriteBarrier.h"
 #include <QSplitter>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -299,8 +300,36 @@ void SessionViewerWindow::setDefaultDataDirectory(const QString& directory)
     if (!normalized.isEmpty())
     {
         QSettings settings("VaporView", "SessionViewer");
-        settings.setValue("default_data_directory", normalized);
+        VaporView::setPersistentSetting(settings, QStringLiteral("default_data_directory"), normalized);
     }
+}
+
+void SessionViewerWindow::setUiTestMode(bool enabled)
+{
+    if (ui_test_mode_ == enabled)
+    {
+        return;
+    }
+    if (enabled)
+    {
+        ui_test_saved_default_data_directory_ = default_data_directory_;
+        ui_test_saved_peak_filter_settings_ = peak_filter_settings_;
+        ui_test_saved_peak_search_start_index_ = peak_search_start_index_;
+        ui_test_saved_peak_search_end_index_ = peak_search_end_index_;
+        ui_test_mode_ = true;
+        setStatusText(is_english_
+            ? QStringLiteral("[UI Test] Viewer settings are sandboxed; exports will not create files.")
+            : QStringLiteral("[界面测试] 查看器设置已沙箱化；导出不会创建文件。"));
+        return;
+    }
+    ui_test_mode_ = false;
+    default_data_directory_ = ui_test_saved_default_data_directory_;
+    peak_filter_settings_ = ui_test_saved_peak_filter_settings_;
+    peak_search_start_index_ = ui_test_saved_peak_search_start_index_;
+    peak_search_end_index_ = ui_test_saved_peak_search_end_index_;
+    updateWaveformControls();
+    updateWaveformActionTexts();
+    syncPeakSettingsToTrajectoryViewer();
 }
 
 void SessionViewerWindow::updateTexts()
@@ -413,7 +442,7 @@ bool SessionViewerWindow::applyPeakSettings(int searchStartIndex,
     }
 
     QSettings settings("VaporView", "SessionViewer");
-    settings.setValue("peak_filter/mode",
+    VaporView::setPersistentSetting(settings, QStringLiteral("peak_filter/mode"),
         mode == PeakFilterMode::IqrOutlier
             ? QStringLiteral("iqr")
             : mode == PeakFilterMode::KeepRange
@@ -421,10 +450,10 @@ bool SessionViewerWindow::applyPeakSettings(int searchStartIndex,
                 : mode == PeakFilterMode::ExcludeRange
                     ? QStringLiteral("exclude_range")
                     : QStringLiteral("none"));
-    settings.setValue("peak_filter/min_value", peak_filter_settings_.minValue);
-    settings.setValue("peak_filter/max_value", peak_filter_settings_.maxValue);
-    settings.setValue("peak_search/start_index", peak_search_start_index_);
-    settings.setValue("peak_search/end_index", peak_search_end_index_);
+    VaporView::setPersistentSetting(settings, QStringLiteral("peak_filter/min_value"), peak_filter_settings_.minValue);
+    VaporView::setPersistentSetting(settings, QStringLiteral("peak_filter/max_value"), peak_filter_settings_.maxValue);
+    VaporView::setPersistentSetting(settings, QStringLiteral("peak_search/start_index"), peak_search_start_index_);
+    VaporView::setPersistentSetting(settings, QStringLiteral("peak_search/end_index"), peak_search_end_index_);
 
     updateWaveformActionTexts();
     syncPeakSettingsToTrajectoryViewer();
@@ -600,7 +629,7 @@ bool SessionViewerWindow::openSessionPath(const QString& path)
     }
 
     QSettings settings("VaporView", "SessionViewer");
-    settings.setValue("last_session_directory", sessionDirectory);
+    VaporView::setPersistentSetting(settings, QStringLiteral("last_session_directory"), sessionDirectory);
     return true;
 }
 

@@ -2,6 +2,7 @@
 
 #include "ground/main/MainWindow.h"
 #include "ground/main/GroundMainWindowState.h"
+#include "shared/config/SettingsWriteBarrier.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"
 #include "ground/widgets/CustomTitleBar.h"
@@ -10,6 +11,7 @@
 #endif
 #include "ground/main/GroundMainWindowSupport.h"
 #include "ground/devices/RemoteTelemetryDecoder.h"
+#include "ground/devices/UiTestDataModel.h"
 #include "ground/devices/EpsilonConfigurationService.h"
 #include "ground/devices/ImuConfigurationService.h"
 #include "ground/devices/DeviceRatePolicy.h"
@@ -102,7 +104,9 @@
 #include <QSignalBlocker>
 #include <QSettings>
 #include <QStackedWidget>
+#include <QStandardItemModel>
 #include <QStyle>
+#include <QTabWidget>
 #include <QStyleOptionButton>
 #include <QStyleOptionSpinBox>
 #include <QStyleOptionToolButton>

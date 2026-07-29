@@ -247,6 +247,34 @@ void MainWindow::updateRecordingStatusLabel()
         return;
     }
 
+    if (isUiTestMode())
+    {
+        const char *visual = state_->ui_test_recording_state_ == 1
+            ? "connected" : state_->ui_test_recording_state_ == 2 ? "connecting" : "disconnected";
+        const QString text = state_->ui_test_recording_state_ == 1
+            ? (state_->is_english_ ? QStringLiteral("Recording: On (simulated; no files)")
+                                   : QStringLiteral("记录：进行中（模拟，不写文件）"))
+            : state_->ui_test_recording_state_ == 2
+                ? (state_->is_english_ ? QStringLiteral("Recording: Paused (simulated; no files)")
+                                       : QStringLiteral("记录：已暂停（模拟，不写文件）"))
+                : (state_->is_english_ ? QStringLiteral("Recording: Off (UI test)")
+                                       : QStringLiteral("记录：未记录（界面测试）"));
+        state_->recording_status_label_->setText(text);
+        state_->recording_status_label_->setToolTip(text);
+        state_->recording_status_label_->setProperty("status", QString::fromLatin1(visual));
+        if (state_->recording_status_card_)
+        {
+            state_->recording_status_card_->setProperty("status", QString::fromLatin1(visual));
+            state_->recording_status_card_->setToolTip(text);
+            state_->recording_status_card_->style()->unpolish(state_->recording_status_card_);
+            state_->recording_status_card_->style()->polish(state_->recording_status_card_);
+        }
+        state_->recording_status_label_->style()->unpolish(state_->recording_status_label_);
+        state_->recording_status_label_->style()->polish(state_->recording_status_label_);
+        updateRecordingActionStates();
+        return;
+    }
+
     auto setVisualStatus = [this](const char *status) {
         const QString statusValue = QString::fromLatin1(status);
         state_->recording_status_label_->setProperty("status", statusValue);
@@ -446,6 +474,14 @@ QString MainWindow::defaultRecordingDirectory() const
 
 bool MainWindow::startRecordingSession()
 {
+    if (isUiTestMode())
+    {
+        state_->ui_test_recording_state_ = 1;
+        updateRecordingStatusLabel();
+        logUiTest(state_->is_english_ ? QStringLiteral("Simulated recording started; no directory or file was created")
+                                      : QStringLiteral("模拟记录已开始；未创建目录或文件"));
+        return true;
+    }
     const bool resuming = state_->recording_service_->isSessionOpen() && state_->recording_service_->isPaused();
     VaporView::Ground::Session::GroundRecordingOptions options;
     options.baseDirectory = state_->recording_directory_.trimmed();
@@ -532,7 +568,7 @@ void MainWindow::onChooseRecordingDirectoryClicked()
 
     state_->recording_directory_ = QDir::fromNativeSeparators(selectedDirectory);
     QSettings settings("VaporView", "MainWindow");
-    settings.setValue("recording_directory", state_->recording_directory_);
+    VaporView::setPersistentSetting(settings, QStringLiteral("recording_directory"), state_->recording_directory_);
     log(QString(state_->is_english_ ? "Recording folder set to: %1" : "记录目录已设置为: %1").arg(state_->recording_directory_));
 }
 
@@ -555,6 +591,19 @@ void MainWindow::updateScheduledRecordingAction()
 
 QString MainWindow::scheduledRecordingStartBlockReason() const
 {
+    if (isUiTestMode())
+    {
+        const std::array devices{VaporView::SkyDeviceId::Epsilon, VaporView::SkyDeviceId::Ptb,
+                                 VaporView::SkyDeviceId::Hmp, VaporView::SkyDeviceId::Lidar,
+                                 VaporView::SkyDeviceId::TemperatureController, VaporView::SkyDeviceId::WaveTcp};
+        const bool connected = std::any_of(devices.cbegin(), devices.cend(),
+            [this](VaporView::SkyDeviceId device) {
+                return state_->ui_test_model_->deviceState(device) == VaporView::DeviceState::Connected;
+            });
+        return connected ? QString() : (state_->is_english_
+            ? QStringLiteral("No simulated device is connected.")
+            : QStringLiteral("没有已连接的模拟设备。"));
+    }
     if (isRemoteSkyMode())
     {
         if (!state_->remote_sky_controller_)
@@ -625,6 +674,10 @@ QString MainWindow::scheduledRecordingStartBlockReason() const
 
 bool MainWindow::scheduledRecordingSessionOpen() const
 {
+    if (isUiTestMode())
+    {
+        return state_->ui_test_recording_state_ != 0;
+    }
     if (isRemoteSkyMode())
     {
         return state_->remote_recording_state_ == 1 || state_->remote_recording_state_ == 2;
@@ -675,6 +728,14 @@ bool MainWindow::tryStartScheduledRecording(QString *failureReason)
 
 bool MainWindow::tryStopScheduledRecording()
 {
+    if (isUiTestMode())
+    {
+        state_->ui_test_recording_state_ = 0;
+        updateRecordingStatusLabel();
+        logUiTest(state_->is_english_ ? QStringLiteral("Simulated scheduled recording stopped")
+                                      : QStringLiteral("模拟定时记录已停止"));
+        return true;
+    }
     if (isRemoteSkyMode())
     {
         if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
@@ -1113,6 +1174,11 @@ void MainWindow::onScheduledRecordingClicked()
 
 void MainWindow::onStartRecordingClicked()
 {
+    if (isUiTestMode())
+    {
+        startRecordingSession();
+        return;
+    }
     if (isRemoteSkyMode())
     {
         if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
@@ -1140,6 +1206,17 @@ void MainWindow::onStartRecordingClicked()
 
 void MainWindow::onPauseRecordingClicked()
 {
+    if (isUiTestMode())
+    {
+        if (state_->ui_test_recording_state_ == 1)
+        {
+            state_->ui_test_recording_state_ = 2;
+            updateRecordingStatusLabel();
+            logUiTest(state_->is_english_ ? QStringLiteral("Simulated recording paused")
+                                          : QStringLiteral("模拟记录已暂停"));
+        }
+        return;
+    }
     if (isRemoteSkyMode())
     {
         if (state_->remote_sky_controller_) state_->remote_sky_controller_->sendCommand(VaporView::CommandId::PauseRecording);
@@ -1150,6 +1227,14 @@ void MainWindow::onPauseRecordingClicked()
 
 void MainWindow::onStopRecordingClicked()
 {
+    if (isUiTestMode())
+    {
+        state_->ui_test_recording_state_ = 0;
+        updateRecordingStatusLabel();
+        logUiTest(state_->is_english_ ? QStringLiteral("Simulated recording stopped")
+                                      : QStringLiteral("模拟记录已停止"));
+        return;
+    }
     if (isRemoteSkyMode())
     {
         if (state_->remote_sky_controller_) state_->remote_sky_controller_->sendCommand(VaporView::CommandId::StopRecording);
@@ -1192,6 +1277,10 @@ void MainWindow::onTcpRawWaveFrameReady(quint64 timestampUs,
                                         QByteArray harmonicPayload,
                                         VaporView::TcpFloatEncoding floatEncoding)
 {
+    if (isUiTestMode())
+    {
+        return;
+    }
     state_->recording_service_->recordTcpWaveFrame(timestampUs,
                                            rawSignalPayload,
                                            harmonicPayload,
@@ -1199,6 +1288,21 @@ void MainWindow::onTcpRawWaveFrameReady(quint64 timestampUs,
 }
 void MainWindow::updateRecordingActionStates()
 {
+    if (isUiTestMode())
+    {
+        const std::array devices{VaporView::SkyDeviceId::Epsilon, VaporView::SkyDeviceId::Ptb,
+                                 VaporView::SkyDeviceId::Hmp, VaporView::SkyDeviceId::Lidar,
+                                 VaporView::SkyDeviceId::TemperatureController, VaporView::SkyDeviceId::WaveTcp};
+        const bool anyConnected = std::any_of(devices.cbegin(), devices.cend(),
+            [this](VaporView::SkyDeviceId device) {
+                return state_->ui_test_model_->deviceState(device) == VaporView::DeviceState::Connected;
+            });
+        if (state_->start_recording_btn_) state_->start_recording_btn_->setEnabled(anyConnected && state_->ui_test_recording_state_ != 1);
+        if (state_->pause_recording_btn_) state_->pause_recording_btn_->setEnabled(state_->ui_test_recording_state_ == 1);
+        if (state_->stop_recording_btn_) state_->stop_recording_btn_->setEnabled(state_->ui_test_recording_state_ != 0);
+        updateScheduledRecordingAction();
+        return;
+    }
     if (isRemoteSkyMode())
     {
         const bool linkOpen = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();

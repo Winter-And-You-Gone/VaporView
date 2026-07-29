@@ -1,6 +1,7 @@
 #ifndef VaporView_SERIAL_PORT_COMBO_SUPPORT_H_
 #define VaporView_SERIAL_PORT_COMBO_SUPPORT_H_
 
+#include "shared/config/SettingsWriteBarrier.h"
 #include "shared/theme/AppTheme.h"
 
 #include <QAbstractItemDelegate>
@@ -73,7 +74,7 @@ inline void rememberSerialPort(const QString& port)
     }
     history.push_back(normalized);
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("SerialPortHistory"));
-    settings.setValue(QStringLiteral("ports"), history);
+    setPersistentSetting(settings, QStringLiteral("ports"), history);
 }
 
 class SerialPortPopupDelegate final : public QStyledItemDelegate

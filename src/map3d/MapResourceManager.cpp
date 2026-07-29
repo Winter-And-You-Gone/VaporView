@@ -12,6 +12,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QSettings>
+#include "shared/config/SettingsWriteBarrier.h"
 #include <QStandardPaths>
 
 #include <algorithm>
@@ -312,7 +313,7 @@ void MapResourceManager::setManifestUrl(const QString& url)
 {
     manifest_url_ = url.trimmed();
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
-    settings.setValue(QStringLiteral("mapManifestUrl"), manifest_url_);
+    VaporView::setPersistentSetting(settings, QStringLiteral("mapManifestUrl"), manifest_url_);
 }
 
 QString MapResourceManager::downloadRoot() const
@@ -376,6 +377,11 @@ bool MapResourceManager::packageInstalled(const MapResourcePackage& package, QSt
 
 void MapResourceManager::refreshManifest()
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        emit operationFinished(QString(), true, QStringLiteral("[界面测试] 已返回固定地图资源状态；未访问网络。"));
+        return;
+    }
     if (active_reply_)
     {
         emit operationFinished(QString(), false, QStringLiteral("已有地图资源操作正在进行。"));
@@ -438,6 +444,11 @@ void MapResourceManager::finishManifestReply()
 
 void MapResourceManager::downloadPackage(const QString& packageId)
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        emit operationFinished(packageId, true, QStringLiteral("[界面测试] 模拟地图资源安装完成；未访问网络或写入文件。"));
+        return;
+    }
     if (active_reply_)
     {
         emit operationFinished(packageId, false, QStringLiteral("已有地图资源操作正在进行。"));
@@ -647,6 +658,11 @@ bool MapResourceManager::verifyFile(const QString& filename, const MapResourceFi
 
 void MapResourceManager::removePackage(const QString& packageId)
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        emit operationFinished(packageId, true, QStringLiteral("[界面测试] 模拟地图资源移除完成；未删除文件。"));
+        return;
+    }
     if (active_reply_)
     {
         emit operationFinished(packageId, false, QStringLiteral("已有地图资源操作正在进行。"));

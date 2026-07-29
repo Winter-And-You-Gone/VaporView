@@ -8,6 +8,7 @@
 #include "shared/session/SessionSensorCsv.h"
 #include "shared/session/UnifiedRawDat.h"
 #include "shared/concurrency/BoundedByteQueue.h"
+#include "shared/config/SettingsWriteBarrier.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -1049,6 +1050,12 @@ bool GroundRecordingService::start(const GroundRecordingOptions& options,
                                    GroundRecordingStartError *startError,
                                    QString *errorMessage)
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        if (startError) *startError = GroundRecordingStartError::CreateSessionLayout;
+        if (errorMessage) *errorMessage = QStringLiteral("UI test mode blocks recording service file creation.");
+        return false;
+    }
     return impl_->start(options, startError, errorMessage);
 }
 

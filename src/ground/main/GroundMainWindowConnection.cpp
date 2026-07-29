@@ -4,6 +4,36 @@
 
 void MainWindow::updateConnectionStatus(bool connected)
 {
+    if (isUiTestMode())
+    {
+        Q_UNUSED(connected);
+        const std::array devices{VaporView::SkyDeviceId::Epsilon, VaporView::SkyDeviceId::Ptb,
+                                 VaporView::SkyDeviceId::Hmp, VaporView::SkyDeviceId::Lidar,
+                                 VaporView::SkyDeviceId::TemperatureController, VaporView::SkyDeviceId::WaveTcp};
+        const bool anyConnected = std::any_of(devices.cbegin(), devices.cend(),
+            [this](VaporView::SkyDeviceId device) {
+                return state_->ui_test_model_->deviceState(device) == VaporView::DeviceState::Connected;
+            });
+        state_->connect_btn_->setEnabled(!anyConnected && !state_->ui_test_connection_in_progress_);
+        state_->cancel_connect_btn_->setEnabled(state_->ui_test_connection_in_progress_);
+        state_->disconnect_btn_->setEnabled(anyConnected && !state_->ui_test_connection_in_progress_);
+        state_->refresh_ports_btn_->setEnabled(!state_->ui_test_connection_in_progress_);
+        if (state_->auto_detect_ports_btn_)
+        {
+            state_->auto_detect_ports_btn_->setEnabled(!state_->ui_test_connection_in_progress_);
+            state_->auto_detect_ports_btn_->setText(state_->is_english_ ? QStringLiteral("Auto Detect Ports")
+                                                                         : QStringLiteral("自动识别串口"));
+        }
+        for (QAction *action : {state_->epsilon_reconfigure_action_, state_->epsilon_rtcm_port_action_,
+                                state_->epsilon_packet_rates_action_, state_->rtk_config_action_})
+        {
+            if (action) action->setEnabled(true);
+        }
+        updateRecordingActionStates();
+        updateHomeDeviceStatusCapsules();
+        updateDeviceConfigState();
+        return;
+    }
     state_->is_connected_ = connected;
     const bool uiBusy = state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_;
     const bool inputsEnabled = !connected && !uiBusy;
@@ -64,6 +94,10 @@ void MainWindow::updateConnectionStatus(bool connected)
 
 bool MainWindow::homeDeviceConnected(VaporView::SkyDeviceId device) const
 {
+    if (isUiTestMode())
+    {
+        return state_->ui_test_model_->deviceState(device) == VaporView::DeviceState::Connected;
+    }
     if (isRemoteSkyMode())
     {
         return state_->remote_sky_controller_->deviceState(device) == VaporView::DeviceState::Connected;
@@ -129,6 +163,10 @@ bool MainWindow::homeDevicePortSelected(VaporView::SkyDeviceId device) const
 
 VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId device) const
 {
+    if (isUiTestMode())
+    {
+        return state_->ui_test_model_->deviceState(device);
+    }
     if (isRemoteSkyMode())
     {
         if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
@@ -182,6 +220,39 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
     }
     const bool connected = state == VaporView::DeviceState::Connected;
     const bool connectRequested = !connected;
+    if (isUiTestMode())
+    {
+        if (!connectRequested)
+        {
+            state_->ui_test_model_->setDeviceState(device, VaporView::DeviceState::Disconnected);
+            if (device == VaporView::SkyDeviceId::WaveTcp && state_->tcp_wave_panel_)
+            {
+                state_->tcp_wave_panel_->setUiTestConnected(false);
+            }
+            logUiTest((state_->is_english_ ? QStringLiteral("Disconnected %1") : QStringLiteral("已断开%1"))
+                          .arg(homeDeviceDisplayName(device, state_->is_english_)));
+            updateConnectionStatus(false);
+            return;
+        }
+        state_->ui_test_model_->setDeviceState(device, VaporView::DeviceState::Connecting);
+        startHomeDeviceActionSpinner(device);
+        updateConnectionStatus(false);
+        QTimer::singleShot(350, this, [this, device]() {
+            if (!isUiTestMode() || state_->ui_test_model_->deviceState(device) != VaporView::DeviceState::Connecting)
+            {
+                return;
+            }
+            state_->ui_test_model_->setDeviceState(device, VaporView::DeviceState::Connected);
+            if (device == VaporView::SkyDeviceId::WaveTcp && state_->tcp_wave_panel_)
+            {
+                state_->tcp_wave_panel_->setUiTestConnected(true);
+            }
+            logUiTest((state_->is_english_ ? QStringLiteral("Connected %1") : QStringLiteral("已连接%1"))
+                          .arg(homeDeviceDisplayName(device, state_->is_english_)));
+            updateConnectionStatus(false);
+        });
+        return;
+    }
     if (isRemoteSkyMode())
     {
         if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
@@ -506,7 +577,11 @@ void MainWindow::finishConnectionAttempt(bool connected)
 
 void MainWindow::onRefreshPortsClicked()
 {
-    QStringList ports = getAvailablePorts();
+    QStringList ports = isUiTestMode()
+        ? QStringList{QStringLiteral("UI-TEST-EPSILON"), QStringLiteral("UI-TEST-PTB"),
+                      QStringLiteral("UI-TEST-HMP"), QStringLiteral("UI-TEST-LIDAR"),
+                      QStringLiteral("UI-TEST-RD105"), QStringLiteral("UI-TEST-SKY")}
+        : getAvailablePorts();
 
     auto updateCombo = [this, &ports](QComboBox* combo) {
         if (!combo)
@@ -526,6 +601,12 @@ void MainWindow::onRefreshPortsClicked()
     updateTemperatureControllerTitleText();
     updateTemperatureTitleButtonsState();
 
+    if (isUiTestMode())
+    {
+        logUiTest(state_->is_english_ ? QStringLiteral("Returned fixed test serial ports")
+                                      : QStringLiteral("已返回固定测试串口"));
+        return;
+    }
     log(QString(state_->is_english_ ? "Ports refreshed: %1 serial ports"
                             : "端口已刷新: %1 个串口")
             .arg(ports.size()));
@@ -533,6 +614,25 @@ void MainWindow::onRefreshPortsClicked()
 
 void MainWindow::onAutoDetectPortsClicked()
 {
+    if (isUiTestMode())
+    {
+        onRefreshPortsClicked();
+        const QList<QPair<QComboBox *, QString>> detected{
+            {state_->epsilon_port_combo_, QStringLiteral("UI-TEST-EPSILON")},
+            {state_->ptb_port_combo_, QStringLiteral("UI-TEST-PTB")},
+            {state_->hmp_port_combo_, QStringLiteral("UI-TEST-HMP")},
+            {state_->lidar_port_combo_, QStringLiteral("UI-TEST-LIDAR")},
+            {state_->temperature_port_combo_, QStringLiteral("UI-TEST-RD105")}
+        };
+        for (const auto& item : detected)
+        {
+            setLocalSerialPortComboText(item.first, item.second);
+        }
+        syncDeviceConfigPageFromHome();
+        logUiTest(state_->is_english_ ? QStringLiteral("Automatic detection completed with fixed test devices")
+                                      : QStringLiteral("自动识别已完成，已填入固定测试设备"));
+        return;
+    }
     if (state_->port_detection_in_progress_)
     {
         state_->cancel_connection_requested_.store(true);
@@ -666,6 +766,41 @@ void MainWindow::onAutoDetectPortsClicked()
 }
 void MainWindow::onConnectClicked()
 {
+    if (isUiTestMode())
+    {
+        if (state_->ui_test_connection_in_progress_)
+        {
+            return;
+        }
+        state_->ui_test_connection_in_progress_ = true;
+        if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setUiTestConnected(false);
+        state_->ui_test_model_->setAllDevicesConnected(false);
+        for (VaporView::SkyDeviceId device : {VaporView::SkyDeviceId::Epsilon,
+                                              VaporView::SkyDeviceId::Ptb,
+                                              VaporView::SkyDeviceId::Hmp,
+                                              VaporView::SkyDeviceId::Lidar,
+                                              VaporView::SkyDeviceId::TemperatureController,
+                                              VaporView::SkyDeviceId::WaveTcp})
+        {
+            state_->ui_test_model_->setDeviceState(device, VaporView::DeviceState::Connecting);
+        }
+        updateConnectionStatus(false);
+        logUiTest(state_->is_english_ ? QStringLiteral("Simulated connection started")
+                                      : QStringLiteral("模拟连接已开始"));
+        QTimer::singleShot(500, this, [this]() {
+            if (!isUiTestMode() || !state_->ui_test_connection_in_progress_)
+            {
+                return;
+            }
+            state_->ui_test_connection_in_progress_ = false;
+            state_->ui_test_model_->setAllDevicesConnected(true);
+            if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setUiTestConnected(true);
+            updateConnectionStatus(false);
+            logUiTest(state_->is_english_ ? QStringLiteral("All simulated devices connected")
+                                          : QStringLiteral("所有模拟设备已连接"));
+        });
+        return;
+    }
     if (isRemoteSkyMode())
     {
         clearRemoteSkyDataUi();
@@ -838,6 +973,18 @@ void MainWindow::onConnectClicked()
 }
 void MainWindow::onDisconnectClicked()
 {
+    if (isUiTestMode())
+    {
+        state_->ui_test_connection_in_progress_ = false;
+        state_->ui_test_model_->setAllDevicesConnected(false);
+        if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setUiTestConnected(false);
+        state_->ui_test_recording_state_ = 0;
+        updateConnectionStatus(false);
+        updateRecordingStatusLabel();
+        logUiTest(state_->is_english_ ? QStringLiteral("All simulated devices disconnected")
+                                      : QStringLiteral("所有模拟设备已断开"));
+        return;
+    }
     if (isRemoteSkyMode())
     {
         log(state_->is_english_ ? "Disconnecting Remote Sky telemetry..." : "正在断开天空端数传...");
@@ -863,6 +1010,20 @@ void MainWindow::onDisconnectClicked()
 
 void MainWindow::onCancelConnectClicked()
 {
+    if (isUiTestMode())
+    {
+        if (!state_->ui_test_connection_in_progress_)
+        {
+            return;
+        }
+        state_->ui_test_connection_in_progress_ = false;
+        state_->ui_test_model_->setAllDevicesConnected(false);
+        if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setUiTestConnected(false);
+        updateConnectionStatus(false);
+        logUiTest(state_->is_english_ ? QStringLiteral("Simulated connection canceled")
+                                      : QStringLiteral("模拟连接已取消"));
+        return;
+    }
     if (!state_->connection_attempt_in_progress_)
     {
         return;
@@ -949,6 +1110,11 @@ void MainWindow::onTemperatureControllerDataReady()
 
 void MainWindow::onRefreshTimer()
 {
+    if (isUiTestMode())
+    {
+        applyUiTestSnapshot();
+        return;
+    }
     if (isRemoteSkyMode())
     {
         refreshRemoteSkyDataUi();

@@ -44,6 +44,7 @@ class Map3DWindow final : public QMainWindow {
 public:
     explicit Map3DWindow(QWidget* parent = nullptr);
     ~Map3DWindow() override;
+    void setUiTestMode(bool enabled);
 
 public slots:
     void appendSample(const VaporView::Geo::NavSample& sample);
@@ -178,6 +179,17 @@ private:
     qint64 latest_track_record_timestamp_us_ = 0;
     qint64 latest_track_device_timestamp_us_ = 0;
     int selected_track_sample_index_ = -1;
+    bool ui_test_mode_ = false;
+    int ui_test_saved_max_visible_samples_ = 200000;
+    int ui_test_saved_heat_metric_index_ = 0;
+    int ui_test_saved_heat_palette_index_ = 0;
+    bool ui_test_saved_follow_aircraft_ = false;
+    bool ui_test_saved_track_line_visible_ = true;
+    bool ui_test_saved_track_points_visible_ = true;
+    int ui_test_saved_track_line_width_ = 5;
+    int ui_test_saved_track_point_size_ = 7;
+    int ui_test_saved_replay_speed_index_ = 1;
+    std::array<bool, kMap3DLayerCount> ui_test_saved_layer_visibility_{};
 };
 
 } // namespace VaporView::Map3D

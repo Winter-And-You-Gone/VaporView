@@ -4,6 +4,7 @@
 #include "TcpWavePanel.h"
 #include "ground/widgets/VisualTextLabel.h"
 #include "ground/widgets/LabelTextSelection.h"
+#include "shared/config/SettingsWriteBarrier.h"
 #include <QAbstractSocket>
 #include <QApplication>
 #include <QByteArray>
@@ -1722,8 +1723,8 @@ void TcpWavePanel::loadRememberedInputState()
 void TcpWavePanel::saveRememberedInputState() const
 {
     QSettings settings("VaporView", "TcpWavePanel");
-    settings.setValue("connection/host", host_edit_->text());
-    settings.setValue("connection/port", port_edit_->text().trimmed());
+    VaporView::setPersistentSetting(settings, QStringLiteral("connection/host"), host_edit_->text());
+    VaporView::setPersistentSetting(settings, QStringLiteral("connection/port"), port_edit_->text().trimmed());
 
     QString modeKey = QStringLiteral("none");
     if (peak_filter_settings_.mode == PeakFilterMode::IqrOutlier)
@@ -1738,11 +1739,11 @@ void TcpWavePanel::saveRememberedInputState() const
     {
         modeKey = QStringLiteral("exclude_range");
     }
-    settings.setValue("peak_filter/mode", modeKey);
-    settings.setValue("peak_filter/min_value", peak_filter_settings_.min_value);
-    settings.setValue("peak_filter/max_value", peak_filter_settings_.max_value);
-    settings.setValue("peak_search/start_index", peak_search_start_index_);
-    settings.setValue("peak_search/end_index", peak_search_end_index_);
+    VaporView::setPersistentSetting(settings, QStringLiteral("peak_filter/mode"), modeKey);
+    VaporView::setPersistentSetting(settings, QStringLiteral("peak_filter/min_value"), peak_filter_settings_.min_value);
+    VaporView::setPersistentSetting(settings, QStringLiteral("peak_filter/max_value"), peak_filter_settings_.max_value);
+    VaporView::setPersistentSetting(settings, QStringLiteral("peak_search/start_index"), peak_search_start_index_);
+    VaporView::setPersistentSetting(settings, QStringLiteral("peak_search/end_index"), peak_search_end_index_);
 }
 
 void TcpWavePanel::setEnglish(bool english)
@@ -2178,6 +2179,10 @@ int TcpWavePanel::port() const
 
 bool TcpWavePanel::isConnected() const
 {
+    if (ui_test_mode_)
+    {
+        return ui_test_connected_;
+    }
     if (remote_sky_mode_)
     {
         return remote_wave_tcp_connected_;
@@ -2187,6 +2192,10 @@ bool TcpWavePanel::isConnected() const
 
 bool TcpWavePanel::isConnecting() const
 {
+    if (ui_test_mode_)
+    {
+        return false;
+    }
     if (remote_sky_mode_ || !socket_)
     {
         return false;
@@ -2379,6 +2388,44 @@ void TcpWavePanel::rejectRemotePeakSearchRange(const QString& reason)
         : QStringLiteral("天空端拒绝峰值搜索区间：%1").arg(reason));
 }
 
+void TcpWavePanel::setUiTestMode(bool enabled)
+{
+    if (ui_test_mode_ == enabled)
+    {
+        return;
+    }
+    if (enabled)
+    {
+        ui_test_saved_host_ = host_edit_ ? host_edit_->text() : QString();
+        ui_test_saved_port_ = port_edit_ ? port_edit_->text() : QString();
+        ui_test_mode_ = true;
+        ui_test_connected_ = true;
+        if (host_edit_) host_edit_->setText(QStringLiteral("ui-test.local"));
+        if (port_edit_) port_edit_->setText(QStringLiteral("18888"));
+        setConnectedUiState(true);
+        setStatusText(is_english_ ? QStringLiteral("UI test waveform source connected (simulated)")
+                                  : QStringLiteral("界面测试波形源已连接（模拟）"));
+        return;
+    }
+    ui_test_mode_ = false;
+    ui_test_connected_ = false;
+    if (host_edit_) host_edit_->setText(ui_test_saved_host_);
+    if (port_edit_) port_edit_->setText(ui_test_saved_port_);
+    setConnectedUiState(false);
+    setStatusText(QString());
+}
+
+void TcpWavePanel::setUiTestConnected(bool connected)
+{
+    if (!ui_test_mode_ || ui_test_connected_ == connected)
+    {
+        return;
+    }
+    ui_test_connected_ = connected;
+    setConnectedUiState(connected);
+    emit connectionStateChanged(connected);
+}
+
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
 void TcpWavePanel::testFeedSocketBytes(const QByteArray& bytes)
 {
@@ -2444,6 +2491,21 @@ void TcpWavePanel::requestGracefulDisconnect()
 
 void TcpWavePanel::onToggleConnectionClicked()
 {
+    if (ui_test_mode_)
+    {
+        ui_test_connected_ = !ui_test_connected_;
+        setConnectedUiState(ui_test_connected_);
+        setStatusText(ui_test_connected_
+            ? (is_english_ ? QStringLiteral("UI test waveform source connected (simulated)")
+                            : QStringLiteral("界面测试波形源已连接（模拟）"))
+            : (is_english_ ? QStringLiteral("UI test waveform source disconnected")
+                            : QStringLiteral("界面测试波形源已断开")));
+        emit connectionStateChanged(ui_test_connected_);
+        emit logMessageRequested(ui_test_connected_
+            ? QStringLiteral("[界面测试] TCP wave connected in memory")
+            : QStringLiteral("[界面测试] TCP wave disconnected in memory"));
+        return;
+    }
     if (remote_sky_mode_)
     {
         const bool connectRequested = !remote_wave_tcp_connected_;

@@ -349,6 +349,21 @@ void MainWindow::setEnglish(bool english)
     state_->session_viewer_action_->setText(english ? "Data Viewer" : "数据查看器");
     setNativeMenuTitle(state_->view_menu_, english ? QStringLiteral("&View") : QStringLiteral("视图(&V)"));
     setNativeMenuTitle(state_->developer_menu_, english ? QStringLiteral("Develo&per") : QStringLiteral("开发者(&P)"));
+    if (state_->ui_test_mode_action_)
+    {
+        state_->ui_test_mode_action_->setText(english ? QStringLiteral("UI Test Mode") : QStringLiteral("界面测试模式"));
+    }
+    if (state_->ui_test_normal_action_)
+    {
+        QMenu *scenarioMenu = findChild<QMenu *>(QStringLiteral("uiTestScenarioMenu"));
+        if (scenarioMenu)
+        {
+            scenarioMenu->setTitle(english ? QStringLiteral("UI Test Scenario") : QStringLiteral("界面测试场景"));
+        }
+        state_->ui_test_normal_action_->setText(english ? QStringLiteral("Normal Operation") : QStringLiteral("正常运行"));
+        state_->ui_test_partial_failure_action_->setText(english ? QStringLiteral("Partial Device Failure") : QStringLiteral("部分设备异常"));
+        state_->ui_test_stalled_action_->setText(english ? QStringLiteral("Data Stalled") : QStringLiteral("数据停更"));
+    }
 #ifdef VAPORVIEW_HAS_OSGEARTH
     if (state_->map3d_action_)
     {
@@ -621,6 +636,7 @@ void MainWindow::onOpenSessionViewerClicked()
             state_->session_viewer_window_ = nullptr;
         });
         state_->session_viewer_window_->setEnglish(state_->is_english_);
+        state_->session_viewer_window_->setUiTestMode(isUiTestMode());
     }
 
     state_->session_viewer_window_->setDefaultDataDirectory(
@@ -1563,6 +1579,16 @@ void MainWindow::updateCustomTitleBarTexts()
     {
         state_->custom_title_label_->setText(currentMainPageTitleText());
     }
+    if (state_->ui_test_mode_badge_)
+    {
+        state_->ui_test_mode_badge_->setText(state_->is_english_ ? QStringLiteral("UI TEST") : QStringLiteral("界面测试"));
+        state_->ui_test_mode_badge_->setAccessibleName(
+            state_->is_english_ ? QStringLiteral("UI test mode active") : QStringLiteral("界面测试模式已启用"));
+        state_->ui_test_mode_badge_->setToolTip(
+            state_->is_english_
+                ? QStringLiteral("Simulated data only. No device, network, or business file operations.")
+                : QStringLiteral("仅使用模拟数据，不访问设备、网络或业务文件。"));
+    }
     if (state_->title_menu_btn_)
     {
         state_->title_menu_btn_->setToolTip(state_->is_english_ ? "Menu" : "菜单");
@@ -1950,7 +1976,7 @@ void MainWindow::onToggleTheme()
     updateThemeAction();
 
     QSettings settings("VaporView", "MainWindow");
-    settings.setValue("dark_theme_enabled", state_->dark_theme_enabled_);
+    VaporView::setPersistentSetting(settings, QStringLiteral("dark_theme_enabled"), state_->dark_theme_enabled_);
 
     log(state_->dark_theme_enabled_
         ? (state_->is_english_ ? "Theme switched to dark" : "已切换为暗色模式")

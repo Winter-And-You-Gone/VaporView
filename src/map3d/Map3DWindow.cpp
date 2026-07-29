@@ -31,6 +31,7 @@
 #include <QPlainTextEdit>
 #include <QPixmap>
 #include <QSettings>
+#include "shared/config/SettingsWriteBarrier.h"
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QShowEvent>
@@ -718,7 +719,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
             view_->setMaxVisibleSamples(max_visible_samples_);
         }
         QSettings settings = map3DSettings();
-        settings.setValue(QStringLiteral("maxVisibleSamples"), max_visible_samples_);
+        VaporView::setPersistentSetting(settings, QStringLiteral("maxVisibleSamples"), max_visible_samples_);
         updateStatus(nullptr);
     });
 
@@ -735,7 +736,8 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     connect(heat_metric_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         heat_metric_ = heatMetricFromComboIndex(index);
         applyHeatControlsToView();
-        map3DSettings().setValue(QStringLiteral("heatMetric"), index);
+        QSettings settings = map3DSettings();
+        VaporView::setPersistentSetting(settings, QStringLiteral("heatMetric"), index);
         updateHeatLegend();
         updateStatus(nullptr);
     });
@@ -752,7 +754,8 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     connect(heat_palette_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         heat_palette_ = heatPaletteFromComboIndex(index);
         applyHeatControlsToView();
-        map3DSettings().setValue(QStringLiteral("heatPalette"), index);
+        QSettings settings = map3DSettings();
+        VaporView::setPersistentSetting(settings, QStringLiteral("heatPalette"), index);
         updateHeatLegend();
         updateStatus(nullptr);
     });
@@ -766,7 +769,8 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         {
             view_->setTrackLineVisible(visible);
         }
-        map3DSettings().setValue(QStringLiteral("trackLineVisible"), visible);
+        QSettings settings = map3DSettings();
+        VaporView::setPersistentSetting(settings, QStringLiteral("trackLineVisible"), visible);
         updateStatus(nullptr);
     });
 
@@ -779,7 +783,8 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         {
             view_->setTrackPointsVisible(visible);
         }
-        map3DSettings().setValue(QStringLiteral("trackPointsVisible"), visible);
+        QSettings settings = map3DSettings();
+        VaporView::setPersistentSetting(settings, QStringLiteral("trackPointsVisible"), visible);
         updateStatus(nullptr);
     });
 
@@ -795,7 +800,8 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         {
             view_->setTrackLineWidth(static_cast<float>(value));
         }
-        map3DSettings().setValue(QStringLiteral("trackLineWidth"), value);
+        QSettings settings = map3DSettings();
+        VaporView::setPersistentSetting(settings, QStringLiteral("trackLineWidth"), value);
     });
 
     track_point_size_spin_ = new QSpinBox(toolbar);
@@ -810,7 +816,8 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         {
             view_->setTrackPointSize(static_cast<float>(value));
         }
-        map3DSettings().setValue(QStringLiteral("trackPointSize"), value);
+        QSettings settings = map3DSettings();
+        VaporView::setPersistentSetting(settings, QStringLiteral("trackPointSize"), value);
     });
 
     heat_legend_label_ = new QLabel(toolbar);
@@ -850,7 +857,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
             view_->setFollowAircraft(enabled);
         }
         QSettings settings = map3DSettings();
-        settings.setValue(QStringLiteral("followAircraft"), enabled);
+        VaporView::setPersistentSetting(settings, QStringLiteral("followAircraft"), enabled);
         setCameraNote(enabled ? QStringLiteral("Follow aircraft") : QStringLiteral("Manual/free camera"));
         updateStatus(nullptr);
     });
@@ -1070,8 +1077,8 @@ void Map3DWindow::setLayerVisible(Map3DLayer layer, bool visible, bool announce)
         view_->setLayerVisible(layer, visible);
     }
 
-    map3DSettings()
-        .setValue(layerSettingKey(layer), visible);
+    QSettings layerSettings = map3DSettings();
+    VaporView::setPersistentSetting(layerSettings, layerSettingKey(layer), visible);
 
     if (layer == Map3DLayer::SatelliteImagery)
     {
@@ -1311,6 +1318,12 @@ void Map3DWindow::clearTrack()
 
 void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        Q_UNUSED(sessionDir);
+        statusBar()->showMessage(QStringLiteral("[界面测试] 已模拟会话轨迹加载；未读取业务文件。"), 6000);
+        return;
+    }
     VaporView::Ground::Session::SessionTrajectoryRenderLoadResult result =
         VaporView::Ground::Session::SessionTrajectoryRenderLoader::loadSessionDirectory(sessionDir);
     if (!result.success)
@@ -1322,7 +1335,7 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
     }
 
     QSettings settings = map3DSettings();
-    settings.setValue(QStringLiteral("lastSessionDir"), QFileInfo(sessionDir).absoluteFilePath());
+    VaporView::setPersistentSetting(settings, QStringLiteral("lastSessionDir"), QFileInfo(sessionDir).absoluteFilePath());
 
     const QString sourceCsvPath = result.sourceCsvPath;
     std::vector<VaporView::Geo::NavSample> replaySamples;
@@ -1402,6 +1415,13 @@ void Map3DWindow::noteLiveSampleDrop(const QString& source, const QString& reaso
 }
 void Map3DWindow::loadInitialEarthFile()
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        latest_earth_load_.requestedPath.clear();
+        latest_earth_load_.failureReason = QStringLiteral("UI test mode; external earth/map loading was not attempted.");
+        statusBar()->showMessage(QStringLiteral("[界面测试] 地图网络加载已禁用；仍可显示模拟轨迹。"), 6000);
+        return;
+    }
     const MapDataSelection autoSelection = map_data_manager_.selectBestAvailableMap();
     QSettings settings = map3DSettings();
     const QString persistedPath = settings.value(QStringLiteral("lastEarthFile")).toString();
@@ -1423,8 +1443,8 @@ void Map3DWindow::loadInitialEarthFile()
         latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
         if (!loaded && hasPersistedCustomEarth)
         {
-            map3DSettings()
-                .remove(QStringLiteral("lastEarthFile"));
+            QSettings settings = map3DSettings();
+            VaporView::removePersistentSetting(settings, QStringLiteral("lastEarthFile"));
             const QString fallbackPath = autoSelection.earthFile;
             if (view_ && QFileInfo(fallbackPath).isFile())
             {
@@ -1438,8 +1458,8 @@ void Map3DWindow::loadInitialEarthFile()
                         return;
                     }
                     setMapSelection(autoSelection);
-                    map3DSettings()
-                        .setValue(QStringLiteral("lastEarthFile"), fallbackPath);
+                    QSettings settings = map3DSettings();
+                    VaporView::setPersistentSetting(settings, QStringLiteral("lastEarthFile"), fallbackPath);
                     if (autoSelection.diagnostics.real3DLocalReady)
                     {
                         loadConfiguredLocal3DTiles(false);
@@ -1471,8 +1491,8 @@ void Map3DWindow::loadInitialEarthFile()
                                       QStringLiteral("Using user-selected custom earth file."));
         setMapSelection(activeSelection);
         resetAutomaticSentinel2Imagery();
-        map3DSettings()
-            .setValue(QStringLiteral("lastEarthFile"), initialPath);
+        QSettings settings = map3DSettings();
+        VaporView::setPersistentSetting(settings, QStringLiteral("lastEarthFile"), initialPath);
         if (activeSelection.diagnostics.real3DLocalReady)
         {
             loadConfiguredLocal3DTiles(false);
@@ -1490,6 +1510,11 @@ void Map3DWindow::loadInitialEarthFile()
 }
 void Map3DWindow::openSessionDirectory()
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        statusBar()->showMessage(QStringLiteral("[界面测试] 已模拟会话目录选择；未读取业务文件。"), 6000);
+        return;
+    }
     QSettings settings = map3DSettings();
     QString initial = settings.value(QStringLiteral("lastSessionDir")).toString();
     if (initial.isEmpty() || !QFileInfo(initial).isDir())
@@ -1503,11 +1528,16 @@ void Map3DWindow::openSessionDirectory()
     {
         return;
     }
-    settings.setValue(QStringLiteral("lastSessionDir"), dir);
+    VaporView::setPersistentSetting(settings, QStringLiteral("lastSessionDir"), dir);
     loadSessionDirectory(dir);
 }
 void Map3DWindow::openEarthFile()
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        statusBar()->showMessage(QStringLiteral("[界面测试] 已模拟 Earth 文件加载；未访问外部资源。"), 6000);
+        return;
+    }
     QSettings settings = map3DSettings();
     const QString file = QFileDialog::getOpenFileName(
         this, QStringLiteral("加载 Earth 文件"),
@@ -1527,8 +1557,8 @@ void Map3DWindow::openEarthFile()
                                  QStringLiteral("无法加载 Earth 文件: %1").arg(file));
             return;
         }
-        map3DSettings()
-            .setValue(QStringLiteral("lastEarthFile"), file);
+        QSettings settings = map3DSettings();
+        VaporView::setPersistentSetting(settings, QStringLiteral("lastEarthFile"), file);
         setMapSelection(selection);
         resetAutomaticSentinel2Imagery();
         applyConfiguredTiandituSatelliteImagery(false);
@@ -1547,6 +1577,12 @@ void Map3DWindow::openEarthFile()
 }
 void Map3DWindow::loadLocalImageryTemplate(const LocalImageryOption& option)
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        Q_UNUSED(option);
+        statusBar()->showMessage(QStringLiteral("[界面测试] 已模拟影像模板加载；未访问外部资源。"), 6000);
+        return;
+    }
     if (!option.available || !view_)
     {
         statusBar()->showMessage(QStringLiteral("本地影像不可用: %1").arg(option.label), 5000);
@@ -1568,8 +1604,8 @@ void Map3DWindow::loadLocalImageryTemplate(const LocalImageryOption& option)
         }
         setMapSelection(selection);
         resetAutomaticSentinel2Imagery();
-        map3DSettings()
-            .setValue(QStringLiteral("lastEarthFile"), option.earthFilePath);
+        QSettings settings = map3DSettings();
+        VaporView::setPersistentSetting(settings, QStringLiteral("lastEarthFile"), option.earthFilePath);
         applyConfiguredTiandituSatelliteImagery(false);
         if (sentinel2_auto_load_timer_
             && !tianditu_satellite_imagery_loaded_
@@ -1588,6 +1624,11 @@ void Map3DWindow::loadLocalImageryTemplate(const LocalImageryOption& option)
 
 void Map3DWindow::maybeLoadSentinel2ImageryForRange(double rangeM)
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        if (sentinel2_auto_load_timer_) sentinel2_auto_load_timer_->stop();
+        return;
+    }
     if (!layerVisible(Map3DLayer::SatelliteImagery))
     {
         if (sentinel2_auto_load_timer_)
@@ -1680,6 +1721,14 @@ void Map3DWindow::loadLocal3DTilesPreview()
 
 bool Map3DWindow::applyConfiguredTiandituSatelliteImagery(bool showStatusMessage)
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        if (showStatusMessage)
+        {
+            statusBar()->showMessage(QStringLiteral("[界面测试] 天地图网络图层已禁用。"), 6000);
+        }
+        return false;
+    }
     const bool hadTiandituLayer = tianditu_satellite_imagery_loaded_;
     tianditu_satellite_imagery_loaded_ = false;
     if (!view_ || !view_->hasEarthMap())
@@ -1727,6 +1776,14 @@ bool Map3DWindow::applyConfiguredTiandituSatelliteImagery(bool showStatusMessage
 
 bool Map3DWindow::loadConfiguredLocal3DTiles(bool showStatusMessage)
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        if (showStatusMessage)
+        {
+            statusBar()->showMessage(QStringLiteral("[界面测试] 已模拟本地 3D 建筑加载；未读取外部资源。"), 6000);
+        }
+        return false;
+    }
     if (!showStatusMessage && !layerVisible(Map3DLayer::Buildings3D))
     {
         return false;
@@ -1799,6 +1856,11 @@ void Map3DWindow::clearLocal3DTilesPreview()
 
 void Map3DWindow::openAircraftModel()
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        statusBar()->showMessage(QStringLiteral("[界面测试] 已模拟飞机模型选择；未读取外部文件。"), 6000);
+        return;
+    }
     QSettings settings = map3DSettings();
     const QString initial = settings.value(QStringLiteral("aircraftModelPath")).toString();
     const QString file = QFileDialog::getOpenFileName(this,
@@ -1821,8 +1883,8 @@ void Map3DWindow::openAircraftModel()
                                  QStringLiteral("无法加载飞机模型，已保留当前标记: %1").arg(file));
             return;
         }
-        map3DSettings()
-            .setValue(QStringLiteral("aircraftModelPath"), file);
+        QSettings settings = map3DSettings();
+        VaporView::setPersistentSetting(settings, QStringLiteral("aircraftModelPath"), file);
         statusBar()->showMessage(QStringLiteral("已加载飞机模型: %1").arg(file), 6000);
     });
 }
@@ -1830,7 +1892,7 @@ void Map3DWindow::openAircraftModel()
 void Map3DWindow::resetAircraftModel()
 {
     QSettings settings = map3DSettings();
-    settings.remove(QStringLiteral("aircraftModelPath"));
+    VaporView::removePersistentSetting(settings, QStringLiteral("aircraftModelPath"));
     if (view_)
     {
         view_->resetAircraftModelToBuiltIn();
@@ -1842,6 +1904,11 @@ void Map3DWindow::resetAircraftModel()
 
 void Map3DWindow::reloadBestLocalMap()
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        statusBar()->showMessage(QStringLiteral("[界面测试] 已模拟地图重载；未访问外部资源。"), 6000);
+        return;
+    }
     const MapDataSelection selection = map_data_manager_.selectBestAvailableMap();
     if (!view_ || !QFileInfo(selection.earthFile).isFile())
     {
@@ -1877,8 +1944,8 @@ void Map3DWindow::reloadBestLocalMap()
         {
             sentinel2_auto_load_timer_->start();
         }
-        map3DSettings()
-            .setValue(QStringLiteral("lastEarthFile"), selection.earthFile);
+        QSettings settings = map3DSettings();
+        VaporView::setPersistentSetting(settings, QStringLiteral("lastEarthFile"), selection.earthFile);
         const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
         updateStatus(nullptr);
         statusBar()->showMessage(QStringLiteral("已重载最佳本地地图: %1%2")
@@ -1941,6 +2008,48 @@ void Map3DWindow::showMapDiagnostics()
     diagnostics_dialog_->show();
     diagnostics_dialog_->raise();
     diagnostics_dialog_->activateWindow();
+}
+
+void Map3DWindow::setUiTestMode(bool enabled)
+{
+    if (ui_test_mode_ == enabled)
+    {
+        return;
+    }
+    if (enabled)
+    {
+        ui_test_saved_max_visible_samples_ = max_visible_samples_spin_ ? max_visible_samples_spin_->value() : max_visible_samples_;
+        ui_test_saved_heat_metric_index_ = heat_metric_combo_ ? heat_metric_combo_->currentIndex() : 0;
+        ui_test_saved_heat_palette_index_ = heat_palette_combo_ ? heat_palette_combo_->currentIndex() : 0;
+        ui_test_saved_follow_aircraft_ = follow_action_ && follow_action_->isChecked();
+        ui_test_saved_track_line_visible_ = track_line_visible_action_ && track_line_visible_action_->isChecked();
+        ui_test_saved_track_points_visible_ = track_points_visible_action_ && track_points_visible_action_->isChecked();
+        ui_test_saved_track_line_width_ = track_line_width_spin_ ? track_line_width_spin_->value() : 5;
+        ui_test_saved_track_point_size_ = track_point_size_spin_ ? track_point_size_spin_->value() : 7;
+        ui_test_saved_replay_speed_index_ = replay_speed_combo_ ? replay_speed_combo_->currentIndex() : 1;
+        ui_test_saved_layer_visibility_ = layer_visibility_;
+        ui_test_mode_ = true;
+        statusBar()->showMessage(QStringLiteral("[界面测试] 地图偏好已沙箱化，网络地图和资源写入已禁用。"), 6000);
+        return;
+    }
+
+    ui_test_mode_ = false;
+    if (max_visible_samples_spin_) max_visible_samples_spin_->setValue(ui_test_saved_max_visible_samples_);
+    if (heat_metric_combo_) heat_metric_combo_->setCurrentIndex(ui_test_saved_heat_metric_index_);
+    if (heat_palette_combo_) heat_palette_combo_->setCurrentIndex(ui_test_saved_heat_palette_index_);
+    if (follow_action_) follow_action_->setChecked(ui_test_saved_follow_aircraft_);
+    if (track_line_visible_action_) track_line_visible_action_->setChecked(ui_test_saved_track_line_visible_);
+    if (track_points_visible_action_) track_points_visible_action_->setChecked(ui_test_saved_track_points_visible_);
+    if (track_line_width_spin_) track_line_width_spin_->setValue(ui_test_saved_track_line_width_);
+    if (track_point_size_spin_) track_point_size_spin_->setValue(ui_test_saved_track_point_size_);
+    if (replay_speed_combo_) replay_speed_combo_->setCurrentIndex(ui_test_saved_replay_speed_index_);
+    for (int index = 0; index < static_cast<int>(kMap3DLayerCount); ++index)
+    {
+        setLayerVisible(static_cast<Map3DLayer>(index),
+                        ui_test_saved_layer_visibility_[static_cast<std::size_t>(index)],
+                        false);
+    }
+    statusBar()->showMessage(QStringLiteral("地图偏好已恢复。"), 4000);
 }
 
 void Map3DWindow::showMapResources()
@@ -2040,7 +2149,7 @@ void Map3DWindow::onReplaySpeedChanged(int index)
         replay_tick_clock_.restart();
     }
     QSettings settings = map3DSettings();
-    settings.setValue(QStringLiteral("replaySpeed"), replay_.speed());
+    VaporView::setPersistentSetting(settings, QStringLiteral("replaySpeed"), replay_.speed());
     refreshDiagnosticsText();
     updateStatus(nullptr);
 }

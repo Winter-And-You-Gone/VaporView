@@ -155,6 +155,14 @@ QLabel#customTitleLabel {
     font-weight: 600;
     padding: 0px 8px;
 }
+QLabel#uiTestModeBadge {
+    color: @vv-warning;
+    background-color: @vv-warning-bg;
+    border: 1px solid @vv-warning;
+    border-radius: 7px;
+    font-weight: 700;
+    padding: 2px 8px;
+}
 QLabel#customTitleLogo {
     background-color: transparent;
     border: none;
@@ -210,6 +218,14 @@ QLabel#customTitleLabel {
     font-size: 15px;
     font-weight: 600;
     padding: 0px 8px;
+}
+QLabel#uiTestModeBadge {
+    color: @vv-warning;
+    background-color: @vv-warning-bg;
+    border: 1px solid @vv-warning;
+    border-radius: 7px;
+    font-weight: 700;
+    padding: 2px 8px;
 }
 QLabel#customTitleLogo {
     background-color: transparent;

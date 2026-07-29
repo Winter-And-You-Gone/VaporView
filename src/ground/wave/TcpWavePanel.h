@@ -42,6 +42,8 @@ public:
     bool hasVisibleWaveDisplay() const;
     bool usesExpandedPanelHeight() const;
     void setRemoteSkyMode(bool enabled);
+    void setUiTestMode(bool enabled);
+    void setUiTestConnected(bool connected);
     void setRemoteWaveTcpState(VaporView::DeviceState state);
     void setRemoteFeatureRateHz(double rateHz);
     void injectRemoteRawSignalFrame(quint64 timestampUs, const QVector<float>& samples);
@@ -217,6 +219,10 @@ private:
     bool compact_layout_;
     bool remote_sky_mode_;
     bool remote_wave_tcp_connected_;
+    bool ui_test_mode_ = false;
+    bool ui_test_connected_ = false;
+    QString ui_test_saved_host_;
+    QString ui_test_saved_port_;
     quint64 last_remote_feature_time_us_;
     quint64 remote_expected_feature_interval_us_;
 };

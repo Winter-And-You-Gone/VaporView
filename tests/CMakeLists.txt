@@ -292,6 +292,12 @@ add_executable(local_device_connection_controller_test
 target_link_libraries(local_device_connection_controller_test PRIVATE vaporview_ground_device_core)
 add_test(NAME local_device_connection_controller_test COMMAND local_device_connection_controller_test)
 
+add_executable(ui_test_mode_model_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui_test_mode_model_test.cpp
+)
+target_link_libraries(ui_test_mode_model_test PRIVATE vaporview_ground_device_core Qt6::Core)
+add_test(NAME ui_test_mode_model_test COMMAND ui_test_mode_model_test)
+
 add_executable(imu_configuration_service_test
     ${CMAKE_CURRENT_SOURCE_DIR}/imu_configuration_service_test.cpp
 )
@@ -339,6 +345,17 @@ add_custom_command(TARGET main_window_layout_test POST_BUILD
     COMMENT "Copying resources for main_window_layout_test"
 )
 add_test(NAME main_window_layout_test COMMAND main_window_layout_test)
+
+add_executable(ui_test_mode_window_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui_test_mode_window_test.cpp
+)
+target_include_directories(ui_test_mode_window_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(ui_test_mode_window_test PRIVATE vaporview_main_window)
+add_dependencies(ui_test_mode_window_test VaporViewRuntimeResources)
+add_test(NAME ui_test_mode_window_test COMMAND ui_test_mode_window_test)
 
 add_executable(update_check_dialog_test
     ${CMAKE_CURRENT_SOURCE_DIR}/update_check_dialog_test.cpp
@@ -601,6 +618,7 @@ set(VAPORVIEW_FAST_UNIT_TESTS
     remote_telemetry_decoder_test
     remote_telemetry_state_test
     local_device_connection_controller_test
+    ui_test_mode_model_test
     imu_configuration_service_test
     serial_port_detection_service_test
 )
@@ -619,6 +637,7 @@ set_property(TEST ${VAPORVIEW_FAST_INTEGRATION_TESTS} PROPERTY LABELS fast integ
 
 set(VAPORVIEW_SLOW_UI_TESTS
     main_window_layout_test
+    ui_test_mode_window_test
     main_window_session_viewer_test
     session_viewer_io_test
     session_viewer_window_state_test
@@ -654,6 +673,7 @@ set_property(TEST
     APPEND PROPERTY LABELS ui
 )
 set_property(TEST main_window_layout_test APPEND PROPERTY LABELS main-window layout)
+set_property(TEST ui_test_mode_window_test APPEND PROPERTY LABELS main-window ui-test-mode)
 set_property(TEST main_window_session_viewer_test APPEND PROPERTY LABELS main-window session-viewer)
 set_property(TEST session_viewer_io_test APPEND PROPERTY LABELS session-viewer io)
 set_property(TEST session_viewer_window_state_test APPEND PROPERTY LABELS session-viewer window-state)

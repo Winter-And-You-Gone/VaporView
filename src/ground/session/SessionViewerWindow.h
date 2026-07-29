@@ -40,6 +40,7 @@ public:
     void setEnglish(bool english);
     void setDefaultDataDirectory(const QString& directory);
     bool openSessionPath(const QString& path);
+    void setUiTestMode(bool enabled);
 
 protected:
     void changeEvent(QEvent *event) override;
@@ -145,6 +146,11 @@ private:
     VaporView::Ground::SessionPeakFilterSettings peak_filter_settings_;
     int peak_search_start_index_;
     int peak_search_end_index_;
+    bool ui_test_mode_ = false;
+    QString ui_test_saved_default_data_directory_;
+    VaporView::Ground::SessionPeakFilterSettings ui_test_saved_peak_filter_settings_;
+    int ui_test_saved_peak_search_start_index_ = 0;
+    int ui_test_saved_peak_search_end_index_ = 0;
     bool is_english_;
     bool updating_frame_controls_;
     bool waveform_peak_scatter_mode_;

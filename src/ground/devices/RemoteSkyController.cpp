@@ -1,6 +1,7 @@
 #include "ground/devices/RemoteSkyController.h"
 
 #include "ground/devices/RemoteTelemetryDecoder.h"
+#include "shared/config/SettingsWriteBarrier.h"
 
 #include <QDateTime>
 #include <QMetaObject>
@@ -96,11 +97,13 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
 
 bool RemoteSkyController::openSerial(const QString& port, int baud)
 {
+    if (VaporView::settingsWritesSuspended()) return false;
     return service_.open(port, baud);
 }
 
 bool RemoteSkyController::openTcp(const QString& host, quint16 port)
 {
+    if (VaporView::settingsWritesSuspended()) return false;
     return service_.openTcp(host, port);
 }
 
@@ -131,26 +134,31 @@ double RemoteSkyController::transmitBitsPerSecond() const
 
 quint16 RemoteSkyController::sendCommand(CommandId command, const QByteArray& payload)
 {
+    if (VaporView::settingsWritesSuspended()) return 0;
     return service_.sendCommand(command, payload);
 }
 
 quint16 RemoteSkyController::sendDeviceCommand(CommandId command, SkyDeviceId device)
 {
+    if (VaporView::settingsWritesSuspended()) return 0;
     return service_.sendDeviceCommand(command, device);
 }
 
 quint16 RemoteSkyController::sendRateCommand(CommandId command, quint16 rateHz)
 {
+    if (VaporView::settingsWritesSuspended()) return 0;
     return service_.sendRateCommand(command, rateHz);
 }
 
 quint16 RemoteSkyController::sendPeakSearchRangeCommand(quint32 startIndex, quint32 endIndex)
 {
+    if (VaporView::settingsWritesSuspended()) return 0;
     return service_.sendPeakSearchRangeCommand(startIndex, endIndex);
 }
 
 quint16 RemoteSkyController::requestSkyConfig()
 {
+    if (VaporView::settingsWritesSuspended()) return 0;
     return service_.requestSkyConfig();
 }
 

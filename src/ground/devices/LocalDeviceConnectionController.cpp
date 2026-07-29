@@ -3,6 +3,7 @@
 #include "ground/devices/ImuConfigurationService.h"
 
 #include <QSettings>
+#include "shared/config/SettingsWriteBarrier.h"
 
 #include <atomic>
 #include <thread>
@@ -395,11 +396,11 @@ private:
         const bool useEnglish = request.english;
         auto persistEpsilonConfig = [&request]() {
             QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
-            settings.setValue(QStringLiteral("epsilon_last_config_port"), request.epsilon.port);
-            settings.setValue(QStringLiteral("epsilon_last_config_baud"), request.epsilon.baudText);
-            settings.setValue(QStringLiteral("epsilon_last_config_rate_hz"), request.epsilonConfiguredRateHz);
-            settings.setValue(QStringLiteral("epsilon_last_config_signature"), request.epsilonPacketRateSignature);
-            settings.setValue(QStringLiteral("epsilon_last_config_apply_version"), 2);
+            VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_port"), request.epsilon.port);
+            VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_baud"), request.epsilon.baudText);
+            VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_rate_hz"), request.epsilonConfiguredRateHz);
+            VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_signature"), request.epsilonPacketRateSignature);
+            VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_apply_version"), 2);
         };
 
         CollectorSet collectors;
@@ -760,6 +761,10 @@ void LocalDeviceConnectionController::setCallbacks(LocalConnectionCallbacks call
 
 bool LocalDeviceConnectionController::connectAsync(LocalConnectionRequest request)
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        return false;
+    }
     return impl_->connectAsync(std::move(request));
 }
 
@@ -767,6 +772,11 @@ bool LocalDeviceConnectionController::connectTemperatureAsync(
     LocalTemperatureConnectionRequest request,
     std::function<void(bool, const QString&)> completion)
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        if (completion) completion(false, QStringLiteral("UI test mode blocks serial I/O."));
+        return false;
+    }
     return impl_->connectTemperatureAsync(
         std::move(request),
         std::move(completion));
@@ -845,6 +855,10 @@ void LocalDeviceConnectionController::setTemperatureSampleRate(int rateHz)
 
 bool LocalDeviceConnectionController::applyImuProfile(const ImuProfileRequest& request)
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        return false;
+    }
     return impl_->applyImuProfile(request);
 }
 
@@ -852,6 +866,10 @@ LocalTemperatureCommandResult LocalDeviceConnectionController::sendTemperatureCo
     CommandId command,
     const TemperatureControllerCommand& payload)
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        return {};
+    }
     return impl_->sendTemperatureCommand(command, payload);
 }
 

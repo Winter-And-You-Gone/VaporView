@@ -8,6 +8,7 @@
 #include "ground/widgets/LabelTextSelection.h"
 #include "ground/widgets/SerialPortComboSupport.h"
 #include "ground/widgets/WindowSizing.h"
+#include "shared/config/SettingsWriteBarrier.h"
 #include <QApplication>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -2163,8 +2164,8 @@ void RtkConfigDialog::loadSettings()
     const bool savedMountpointConfirmed = settings.value("mountpoint_confirmed", false).toBool();
     if (shouldClearSavedLoopbackCaster(savedServer, savedMountpoint, savedMountpointConfirmed))
     {
-        settings.remove("server");
-        settings.remove("port");
+        VaporView::removePersistentSetting(settings, QStringLiteral("server"));
+        VaporView::removePersistentSetting(settings, QStringLiteral("port"));
         savedServer = defaultRtkCasterServer();
         savedPort = defaultRtkCasterPort();
     }
@@ -2206,26 +2207,26 @@ void RtkConfigDialog::saveSettings()
 {
     QSettings settings("VaporView", "RtkConfig");
 
-    settings.setValue("server", server_edit_->text());
-    settings.setValue("port", port_edit_->text());
-    settings.setValue("username", username_edit_->text());
-    settings.setValue("password", password_edit_->text());
+    VaporView::setPersistentSetting(settings, QStringLiteral("server"), server_edit_->text());
+    VaporView::setPersistentSetting(settings, QStringLiteral("port"), port_edit_->text());
+    VaporView::setPersistentSetting(settings, QStringLiteral("username"), username_edit_->text());
+    VaporView::setPersistentSetting(settings, QStringLiteral("password"), password_edit_->text());
     const QString savedMountpoint = selectedMountpointText(mountpoint_combo_);
-    settings.setValue("mountpoint", savedMountpoint);
-    settings.setValue("mountpoint_confirmed", !savedMountpoint.isEmpty());
-    settings.setValue("main_antenna_lever_x_m", main_antenna_lever_x_edit_->text());
-    settings.setValue("main_antenna_lever_y_m", main_antenna_lever_y_edit_->text());
-    settings.setValue("main_antenna_lever_z_m", main_antenna_lever_z_edit_->text());
+    VaporView::setPersistentSetting(settings, QStringLiteral("mountpoint"), savedMountpoint);
+    VaporView::setPersistentSetting(settings, QStringLiteral("mountpoint_confirmed"), !savedMountpoint.isEmpty());
+    VaporView::setPersistentSetting(settings, QStringLiteral("main_antenna_lever_x_m"), main_antenna_lever_x_edit_->text());
+    VaporView::setPersistentSetting(settings, QStringLiteral("main_antenna_lever_y_m"), main_antenna_lever_y_edit_->text());
+    VaporView::setPersistentSetting(settings, QStringLiteral("main_antenna_lever_z_m"), main_antenna_lever_z_edit_->text());
     const QString savedOutputPort = selectedSerialPortText(output_port_combo_);
     VaporView::rememberSerialPort(savedOutputPort);
-    settings.setValue("output_port", savedOutputPort);
-    settings.setValue("gga_source", savedGgaSourceValue());
+    VaporView::setPersistentSetting(settings, QStringLiteral("output_port"), savedOutputPort);
+    VaporView::setPersistentSetting(settings, QStringLiteral("gga_source"), savedGgaSourceValue());
     const QString savedGgaPort = isMainGgaSourceSelected() ? QString() : ggaPortName();
     VaporView::rememberSerialPort(savedGgaPort);
-    settings.setValue("gga_port", savedGgaPort);
-    settings.setValue("baudrate", baudrate_combo_->currentText());
-    settings.setValue("timeout", timeout_combo_->currentText());
-    settings.setValue("reconnect", reconnect_combo_->currentText());
+    VaporView::setPersistentSetting(settings, QStringLiteral("gga_port"), savedGgaPort);
+    VaporView::setPersistentSetting(settings, QStringLiteral("baudrate"), baudrate_combo_->currentText());
+    VaporView::setPersistentSetting(settings, QStringLiteral("timeout"), timeout_combo_->currentText());
+    VaporView::setPersistentSetting(settings, QStringLiteral("reconnect"), reconnect_combo_->currentText());
 }
 
 void RtkConfigDialog::setPreferredOutputPortAndBaud(const QString& portName, const QString& baudText)
@@ -2847,6 +2848,21 @@ void RtkConfigDialog::pollMainGgaSource()
 
 void RtkConfigDialog::onGgaToggleClicked()
 {
+    if (ui_test_mode_)
+    {
+        gga_monitor_enabled_ = !gga_monitor_enabled_;
+        updateGgaMonitorButton();
+        if (gga_monitor_enabled_)
+        {
+            handleGgaSentence(buildMockGgaSentence());
+            appendLog(textFor("[界面测试] Simulated GGA monitor started", "[界面测试] 模拟 GGA 监控已启动"));
+        }
+        else
+        {
+            appendLog(textFor("[界面测试] Simulated GGA monitor stopped", "[界面测试] 模拟 GGA 监控已停止"));
+        }
+        return;
+    }
     if (gga_monitor_enabled_)
     {
         stopGgaMonitor();
@@ -3078,6 +3094,14 @@ void RtkConfigDialog::onApplyMainAntennaLeverArmClicked()
             this,
             textFor("Invalid Lever Arm", "杆臂无效"),
             errorMessage);
+        return;
+    }
+
+    if (ui_test_mode_)
+    {
+        appendLog(textFor("[界面测试] Main antenna lever arm accepted in memory: X=%1, Y=%2, Z=%3 m",
+                          "[界面测试] 主天线杆臂已在内存中应用：X=%1，Y=%2，Z=%3 m")
+                      .arg(x, 0, 'f', 4).arg(y, 0, 'f', 4).arg(z, 0, 'f', 4));
         return;
     }
 
@@ -3383,6 +3407,10 @@ void RtkConfigDialog::refreshPortCombos()
 
 QStringList RtkConfigDialog::getAvailablePorts() const
 {
+    if (ui_test_mode_ || VaporView::settingsWritesSuspended())
+    {
+        return {QStringLiteral("UI-TEST-RTK"), QStringLiteral("UI-TEST-EPSILON")};
+    }
     QStringList ports;
     const auto infos = QSerialPortInfo::availablePorts();
     for (const QSerialPortInfo& info : infos)
@@ -3408,6 +3436,13 @@ void RtkConfigDialog::onRefreshPortsClicked()
 
 void RtkConfigDialog::onAutoDetectPortsClicked()
 {
+    if (ui_test_mode_)
+    {
+        refreshPortCombos();
+        applyDetectedOutputAndGgaPort(QStringLiteral("UI-TEST-RTK"), QStringLiteral("115200"));
+        appendLog(textFor("[界面测试] Fixed RTK output port detected", "[界面测试] 已识别固定 RTK 测试串口"));
+        return;
+    }
     if (is_running_ || isBackgroundTaskRunning())
     {
         return;
@@ -3530,6 +3565,23 @@ void RtkConfigDialog::applyDetectedOutputAndGgaPort(const QString& portName, con
 
 void RtkConfigDialog::onFetchMountpointsClicked()
 {
+    if (ui_test_mode_)
+    {
+        const QString current = mountpoint_combo_ ? mountpoint_combo_->currentText() : QString();
+        if (mountpoint_combo_)
+        {
+            const QSignalBlocker blocker(mountpoint_combo_);
+            mountpoint_combo_->clear();
+            mountpoint_combo_->addItems({QStringLiteral("VAPOR_TEST_RTCM32"),
+                                         QStringLiteral("VAPOR_TEST_RTCM33"),
+                                         QStringLiteral("VAPOR_TEST_NEAR")});
+            const int index = mountpoint_combo_->findText(current);
+            mountpoint_combo_->setCurrentIndex(index >= 0 ? index : 0);
+        }
+        appendLog(textFor("[界面测试] Fixed mountpoint list loaded; no network request was sent",
+                          "[界面测试] 已载入固定挂载点列表；未发送网络请求"));
+        return;
+    }
     if (isBackgroundTaskRunning())
     {
         return;
@@ -3646,6 +3698,17 @@ void RtkConfigDialog::onFetchMountpointsClicked()
 
 void RtkConfigDialog::onStartClicked()
 {
+    if (ui_test_mode_)
+    {
+        is_running_ = true;
+        emit rtkRunningChanged(true);
+        updateButtonStates();
+        setServiceStatus(textFor("Status: Running (UI test)", "状态：运行中（界面测试）"),
+                         QStringLiteral("check"), VaporView::AppThemeColor::Success);
+        appendLog(textFor("[界面测试] Simulated RTK service started; no serial or network I/O",
+                          "[界面测试] 模拟 RTK 服务已启动；无串口或网络访问"));
+        return;
+    }
     RtkStreamConfig config;
     QString description;
     QString validationError;
@@ -3691,6 +3754,19 @@ void RtkConfigDialog::onStartClicked()
 
 void RtkConfigDialog::onStopClicked()
 {
+    if (ui_test_mode_)
+    {
+        if (is_running_)
+        {
+            is_running_ = false;
+            emit rtkRunningChanged(false);
+            updateButtonStates();
+            setServiceStatus(textFor("Status: Stopped (UI test)", "状态：已停止（界面测试）"),
+                             QStringLiteral("circle"), VaporView::AppThemeColor::TextMuted);
+            appendLog(textFor("[界面测试] Simulated RTK service stopped", "[界面测试] 模拟 RTK 服务已停止"));
+        }
+        return;
+    }
     if (rtk_service_ && rtk_service_->isRunning())
     {
         appendLog(textFor("Stopping RTK service...", "正在停止 RTK 服务..."));
@@ -3709,6 +3785,12 @@ void RtkConfigDialog::onStopClicked()
 
 void RtkConfigDialog::onTestClicked()
 {
+    if (ui_test_mode_)
+    {
+        appendLog(textFor("[界面测试] NTRIP validation succeeded with deterministic RTCM3 data; no network request was sent",
+                          "[界面测试] NTRIP 验证使用固定 RTCM3 数据成功；未发送网络请求"));
+        return;
+    }
     if (isBackgroundTaskRunning())
     {
         return;
@@ -4017,5 +4099,39 @@ void RtkConfigDialog::appendRawLogLine(const QString& line)
 bool RtkConfigDialog::isRunning() const
 {
     return is_running_;
+}
+
+bool RtkConfigDialog::hasActiveExternalOperation() const
+{
+    return is_running_ || gga_monitor_enabled_ || isBackgroundTaskRunning();
+}
+
+void RtkConfigDialog::setUiTestMode(bool enabled)
+{
+    if (ui_test_mode_ == enabled)
+    {
+        return;
+    }
+    ui_test_mode_ = enabled;
+    if (enabled)
+    {
+        server_edit_->setText(QStringLiteral("caster.ui-test.local"));
+        port_edit_->setText(QStringLiteral("2101"));
+        username_edit_->setText(QStringLiteral("ui-test"));
+        password_edit_->setText(QStringLiteral("ui-test"));
+        refreshPortCombos();
+        setPreferredOutputPortAndBaud(QStringLiteral("UI-TEST-RTK"), QStringLiteral("115200"));
+        onFetchMountpointsClicked();
+        appendLog(textFor("[界面测试] RTK configuration sandbox enabled", "[界面测试] RTK 配置沙箱已启用"));
+    }
+    else
+    {
+        is_running_ = false;
+        gga_monitor_enabled_ = false;
+        loadSettings();
+        refreshPortCombos();
+        updateButtonStates();
+        updateGgaMonitorButton();
+    }
 }
 

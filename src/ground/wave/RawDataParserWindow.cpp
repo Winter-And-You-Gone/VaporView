@@ -4,6 +4,7 @@
 #include "ground/widgets/CustomTitleBar.h"
 #include "shared/session/UnifiedRawDat.h"
 #include "shared/session/SessionPathResolver.h"
+#include "shared/config/SettingsWriteBarrier.h"
 #include "TcpWaveEncoding.h"
 
 #include <QAbstractTableModel>
@@ -1735,6 +1736,13 @@ int RawDataParserWindow::Impl::currentRecordIndex() const
 
 void RawDataParserWindow::Impl::exportFilteredCsv()
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        QMessageBox::information(owner, owner->windowTitle(), english
+            ? QStringLiteral("[UI Test] Export simulated; no file was created.")
+            : QStringLiteral("[界面测试] 已模拟导出；未创建文件。"));
+        return;
+    }
     const QString filename = QFileDialog::getSaveFileName(owner,
         english ? QStringLiteral("Export Raw Record List CSV") : QStringLiteral("导出原始记录列表CSV"),
         QDir(session_directory).filePath(QStringLiteral("raw_records.csv")),
@@ -1810,6 +1818,13 @@ QJsonObject RawDataParserWindow::Impl::decodedRecordToJson(const RawRecordIndex&
 
 void RawDataParserWindow::Impl::exportSelectedJson()
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        QMessageBox::information(owner, owner->windowTitle(), english
+            ? QStringLiteral("[UI Test] Export simulated; no file was created.")
+            : QStringLiteral("[界面测试] 已模拟导出；未创建文件。"));
+        return;
+    }
     const int recordIndex = currentRecordIndex();
     if (recordIndex < 0 || recordIndex >= records.size())
     {
@@ -1846,6 +1861,13 @@ void RawDataParserWindow::Impl::exportSelectedJson()
 
 void RawDataParserWindow::Impl::exportSelectedPayload()
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        QMessageBox::information(owner, owner->windowTitle(), english
+            ? QStringLiteral("[UI Test] Export simulated; no file was created.")
+            : QStringLiteral("[界面测试] 已模拟导出；未创建文件。"));
+        return;
+    }
     const int recordIndex = currentRecordIndex();
     if (recordIndex < 0 || recordIndex >= records.size())
     {
@@ -1880,6 +1902,13 @@ void RawDataParserWindow::Impl::exportSelectedPayload()
 
 void RawDataParserWindow::Impl::exportDecodedCsv()
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        QMessageBox::information(owner, owner->windowTitle(), english
+            ? QStringLiteral("[UI Test] Export simulated; no file was created.")
+            : QStringLiteral("[界面测试] 已模拟导出；未创建文件。"));
+        return;
+    }
     if (visible_rows.isEmpty())
     {
         QMessageBox::information(owner,
@@ -1971,6 +2000,13 @@ void RawDataParserWindow::Impl::exportDecodedCsv()
 
 void RawDataParserWindow::Impl::exportDecodedJson()
 {
+    if (VaporView::settingsWritesSuspended())
+    {
+        QMessageBox::information(owner, owner->windowTitle(), english
+            ? QStringLiteral("[UI Test] Export simulated; no file was created.")
+            : QStringLiteral("[界面测试] 已模拟导出；未创建文件。"));
+        return;
+    }
     if (visible_rows.isEmpty())
     {
         QMessageBox::information(owner,

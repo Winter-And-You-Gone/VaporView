@@ -339,7 +339,7 @@ void MainWindow::onRemoteLinkOpenChanged(bool open)
 
 void MainWindow::onSkyDeviceConfigClicked()
 {
-    if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
+    if (!isUiTestMode() && (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen()))
     {
         log(state_->is_english_ ? "Connect Remote Sky telemetry before opening the Sky Device Config dialog"
                         : "打开天空端设备配置前，请先连接天空端数传");
@@ -353,11 +353,20 @@ void MainWindow::onSkyDeviceConfigClicked()
         state_->sky_device_config_dialog_->setEnglish(state_->is_english_);
         state_->sky_device_config_dialog_->setFontScale(state_->font_scale_percent_);
     }
+    state_->sky_device_config_dialog_->setUiTestMode(isUiTestMode());
     VaporView::centerWindowOnScreen(state_->sky_device_config_dialog_, this);
     state_->sky_device_config_dialog_->show();
     state_->sky_device_config_dialog_->raise();
     state_->sky_device_config_dialog_->activateWindow();
-    state_->remote_sky_controller_->requestSkyConfig();
+    if (isUiTestMode())
+    {
+        logUiTest(state_->is_english_ ? QStringLiteral("Opened simulated Sky device configuration")
+                                      : QStringLiteral("已打开模拟天空端设备配置"));
+    }
+    else
+    {
+        state_->remote_sky_controller_->requestSkyConfig();
+    }
 }
 
 void MainWindow::onClearLogClicked()

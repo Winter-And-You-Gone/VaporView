@@ -1,6 +1,7 @@
 #include "ground/devices/TemperatureCommandState.h"
 
 #include <QSettings>
+#include "shared/config/SettingsWriteBarrier.h"
 
 #include <array>
 #include <chrono>
@@ -125,13 +126,13 @@ void persistTemperatureSerialSettings(const TemperatureSerialSettingsUpdate& upd
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
     if (update.slaveAddress)
     {
-        settings.setValue(
+        VaporView::setPersistentSetting(settings,
             QStringLiteral("serial/temperature_slave_address"),
             *update.slaveAddress);
     }
     if (update.baudRate)
     {
-        settings.setValue(
+        VaporView::setPersistentSetting(settings,
             QStringLiteral("serial/temperature_baud"),
             QString::number(*update.baudRate));
     }

@@ -1,4 +1,5 @@
 #include "ground/widgets/SkyDeviceConfigDialog.h"
+#include "shared/config/SettingsWriteBarrier.h"
 #include "shared/theme/AppTheme.h"
 #include "ground/widgets/CustomTitleBar.h"
 #include "ground/widgets/LabelTextSelection.h"
@@ -549,9 +550,48 @@ void SkyDeviceConfigDialog::setFontScale(int percent)
     applyDynamicMetrics();
 }
 
+void SkyDeviceConfigDialog::setUiTestMode(bool enabled)
+{
+    if (ui_test_mode_ == enabled)
+    {
+        return;
+    }
+    if (!enabled)
+    {
+        ui_test_mode_ = false;
+        setConfig(ui_test_saved_config_);
+        setRawStatus(is_english_ ? QStringLiteral("Normal Sky configuration restored.")
+                                 : QStringLiteral("已恢复正常天空端配置。"));
+        return;
+    }
+    ui_test_saved_config_ = currentConfigFromUi();
+    ui_test_mode_ = enabled;
+    refreshSerialPortOptions();
+    SkyConfig config = SkyConfig::defaults();
+    config.epsilon.enabled = true;
+    config.epsilon.port = QStringLiteral("UI-TEST-EPSILON");
+    config.ptb.enabled = true;
+    config.ptb.port = QStringLiteral("UI-TEST-PTB");
+    config.hmp.enabled = true;
+    config.hmp.port = QStringLiteral("UI-TEST-HMP");
+    config.lidar.enabled = true;
+    config.lidar.port = QStringLiteral("UI-TEST-LIDAR");
+    config.temperature_controller.enabled = true;
+    config.temperature_controller.port = QStringLiteral("UI-TEST-RD105");
+    setConfig(config);
+    setRawStatus(is_english_ ? QStringLiteral("[UI Test] Fixed sky configuration loaded in memory.")
+                             : QStringLiteral("[界面测试] 已在内存中载入固定天空端配置。"));
+}
+
 void SkyDeviceConfigDialog::onReadClicked()
 {
     refreshSerialPortOptions();
+    if (ui_test_mode_)
+    {
+        setRawStatus(is_english_ ? QStringLiteral("[UI Test] Fixed sky configuration returned; no command was sent.")
+                                 : QStringLiteral("[界面测试] 已返回固定天空端配置；未发送命令。"));
+        return;
+    }
     if (service_)
     {
         service_->requestSkyConfig();
@@ -560,11 +600,6 @@ void SkyDeviceConfigDialog::onReadClicked()
 
 void SkyDeviceConfigDialog::onApplyClicked()
 {
-    if (!service_)
-    {
-        return;
-    }
-
     SkyConfig config;
     QString error;
     if (config_mode_ == ConfigMode::Raw)
@@ -591,12 +626,28 @@ void SkyDeviceConfigDialog::onApplyClicked()
     }
     current_config_ = config;
     syncRawTextFromVisual();
+    if (ui_test_mode_)
+    {
+        setRawStatus(is_english_ ? QStringLiteral("[UI Test] Configuration validated and applied in memory.")
+                                 : QStringLiteral("[界面测试] 配置已验证并在内存中应用。"));
+        return;
+    }
+    if (!service_)
+    {
+        return;
+    }
     setRawStatus(is_english_ ? QStringLiteral("Config sent to sky.") : QStringLiteral("配置已发送到天空端。"));
     service_->setSkyConfig(config.toJson());
 }
 
 void SkyDeviceConfigDialog::onSaveClicked()
 {
+    if (ui_test_mode_)
+    {
+        setRawStatus(is_english_ ? QStringLiteral("[UI Test] Simulated save completed; no file or command was created.")
+                                 : QStringLiteral("[界面测试] 模拟保存完成；未创建文件或发送命令。"));
+        return;
+    }
     if (service_)
     {
         service_->saveSkyConfig();
@@ -1014,7 +1065,13 @@ void SkyDeviceConfigDialog::updateTexts()
 void SkyDeviceConfigDialog::refreshSerialPortOptions()
 {
     QStringList ports;
-    for (const QSerialPortInfo& info : QSerialPortInfo::availablePorts())
+    if (ui_test_mode_ || VaporView::settingsWritesSuspended())
+    {
+        ports = {QStringLiteral("UI-TEST-EPSILON"), QStringLiteral("UI-TEST-PTB"),
+                 QStringLiteral("UI-TEST-HMP"), QStringLiteral("UI-TEST-LIDAR"),
+                 QStringLiteral("UI-TEST-RD105")};
+    }
+    else for (const QSerialPortInfo& info : QSerialPortInfo::availablePorts())
     {
         ports.push_back(info.portName());
     }
