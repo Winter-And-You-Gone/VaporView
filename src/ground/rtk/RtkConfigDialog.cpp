@@ -1994,10 +1994,15 @@ void RtkConfigDialog::applyScaledUiMetrics()
     }
     const int ggaTextVerticalPadding = scalePixels(2);
     const int ggaTextHorizontalPadding = scalePixels(4);
+    const QString logSurfaceColor = appThemeColorName(AppThemeColor::SurfaceRaised, darkTheme);
     gga_text_edit_->setStyleSheet(QStringLiteral(
-        "QTextEdit#rtkGgaTextEdit { padding: %1px %2px %1px %2px; }")
+        "QTextEdit#rtkGgaTextEdit {"
+        " background-color: %3;"
+        " padding: %1px %2px %1px %2px;"
+        "}")
                                       .arg(ggaTextVerticalPadding)
-                                      .arg(ggaTextHorizontalPadding));
+                                      .arg(ggaTextHorizontalPadding)
+                                      .arg(logSurfaceColor));
     gga_text_edit_->document()->setDocumentMargin(scalePixels(2));
     const int bodyHeight = std::max(controlsHeight, ggaTextHeight);
     const int cardTitleBarHeight = 40;
@@ -2014,6 +2019,13 @@ void RtkConfigDialog::applyScaledUiMetrics()
     applyButtonWidth(stop_btn_, 80);
     applyButtonWidth(test_btn_, 120);
     applyButtonWidth(clear_log_btn_, 96);
+
+    if (log_text_edit_)
+    {
+        log_text_edit_->setStyleSheet(QStringLiteral(
+            "QTextEdit#rtkServiceLogTextEdit { background-color: %1; }")
+                                          .arg(logSurfaceColor));
+    }
 
     const int logTextBottomGap = scalePixels(2);
     const QMargins logMargins = log_layout_ ? log_layout_->contentsMargins() : QMargins();

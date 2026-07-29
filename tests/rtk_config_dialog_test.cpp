@@ -151,6 +151,11 @@ int main(int argc, char **argv)
             "GGA monitor document uses compact inner margins");
     require(ggaMonitorLog->styleSheet().contains(QStringLiteral("padding:")),
             "GGA monitor overrides the generic text-edit padding");
+    const QString expectedLogBackground = VaporView::appThemeColorName(
+        VaporView::AppThemeColor::SurfaceRaised,
+        VaporView::isDarkThemePalette(ggaMonitorLog->palette()));
+    require(ggaMonitorLog->styleSheet().contains(expectedLogBackground, Qt::CaseInsensitive),
+            "GGA monitor uses the raised log-panel background");
     dialog.setEpsilonDataProvider([]() { return VaporView::EpsilonData{}; });
     const int ggaCardHeightBeforeReading = ggaCard->height();
     ggaToggleButton->click();
@@ -290,6 +295,8 @@ int main(int argc, char **argv)
     }
     auto *serviceLog = dialog.findChild<QTextEdit *>(QStringLiteral("rtkServiceLogTextEdit"));
     require(testButton && serviceLog, "RTK test button and service log exist");
+    require(serviceLog->styleSheet().contains(expectedLogBackground, Qt::CaseInsensitive),
+            "RTK service log uses the raised log-panel background");
     QTimer testMessageBoxCloser;
     QObject::connect(&testMessageBoxCloser, &QTimer::timeout, []() {
         for (QWidget *widget : QApplication::topLevelWidgets())
