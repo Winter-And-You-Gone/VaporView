@@ -3357,9 +3357,24 @@ void MainWindow::setupConfigPanel()
     auto *homeDevicesLayout = new QGridLayout(homeDevicesWidget);
     homeDevicesLayout->setContentsMargins(0, 0, 0, 0);
     homeDevicesLayout->setHorizontalSpacing(kHomeDeviceItemGap);
-    homeDevicesLayout->setVerticalSpacing(kHomeDeviceGridRowGap);
-    auto createHomeDeviceCapsule = [homeDevicesWidget]() {
-        auto *label = new QLabel(homeDevicesWidget);
+    homeDevicesLayout->setVerticalSpacing(0);
+
+    std::array<QGridLayout *, kHomeDeviceGridColumns> homeDeviceColumnLayouts{};
+    for (int column = 0; column < kHomeDeviceGridColumns; ++column)
+    {
+        auto *columnWidget = new QWidget(homeDevicesWidget);
+        columnWidget->setObjectName(QStringLiteral("homeDeviceColumn"));
+        columnWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        auto *columnLayout = new QGridLayout(columnWidget);
+        columnLayout->setContentsMargins(0, 0, 0, 0);
+        columnLayout->setHorizontalSpacing(4);
+        columnLayout->setVerticalSpacing(kHomeDeviceGridRowGap);
+        homeDeviceColumnLayouts[static_cast<std::size_t>(column)] = columnLayout;
+        homeDevicesLayout->addWidget(columnWidget, 0, column, Qt::AlignLeft | Qt::AlignTop);
+    }
+
+    auto createHomeDeviceCapsule = [](QWidget *parent) {
+        auto *label = new QLabel(parent);
         label->setObjectName(QStringLiteral("homeDeviceStatusCapsule"));
         label->setAlignment(Qt::AlignCenter);
         label->setTextFormat(Qt::PlainText);
@@ -3369,8 +3384,8 @@ void MainWindow::setupConfigPanel()
         return label;
     };
 
-    auto createHomeDeviceActionButton = [this, homeDevicesWidget](VaporView::SkyDeviceId device) {
-        auto *button = new QToolButton(homeDevicesWidget);
+    auto createHomeDeviceActionButton = [this](QWidget *parent, VaporView::SkyDeviceId device) {
+        auto *button = new QToolButton(parent);
         button->setObjectName(QStringLiteral("homeDeviceActionButton"));
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
         button->setIconSize(QSize(kHomeDeviceIconSize, kHomeDeviceIconSize));
@@ -3384,18 +3399,14 @@ void MainWindow::setupConfigPanel()
 
     int homeDeviceIndex = 0;
     auto addHomeDevice = [&](QLabel *&label, QToolButton *&button, VaporView::SkyDeviceId device) {
-        auto *item = new QWidget(homeDevicesWidget);
-        item->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        auto *itemLayout = new QHBoxLayout(item);
-        itemLayout->setContentsMargins(0, 0, 0, 0);
-        itemLayout->setSpacing(4);
-        label = createHomeDeviceCapsule();
-        button = createHomeDeviceActionButton(device);
-        itemLayout->addWidget(label, 0, Qt::AlignVCenter);
-        itemLayout->addWidget(button, 0, Qt::AlignVCenter);
         const int row = homeDeviceIndex / kHomeDeviceGridColumns;
         const int column = homeDeviceIndex % kHomeDeviceGridColumns;
-        homeDevicesLayout->addWidget(item, row, column, Qt::AlignLeft | Qt::AlignVCenter);
+        auto *columnLayout = homeDeviceColumnLayouts[static_cast<std::size_t>(column)];
+        QWidget *columnWidget = columnLayout->parentWidget();
+        label = createHomeDeviceCapsule(columnWidget);
+        button = createHomeDeviceActionButton(columnWidget, device);
+        columnLayout->addWidget(label, row, 0);
+        columnLayout->addWidget(button, row, 1, Qt::AlignVCenter);
         ++homeDeviceIndex;
     };
 

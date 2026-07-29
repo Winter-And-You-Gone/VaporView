@@ -921,6 +921,41 @@ int countPixelsNearColor(const QImage& image,
     return count;
 }
 
+void requireHomeDeviceColumnsAligned(QWidget *scope)
+{
+    auto *deviceGrid = scope
+        ? scope->findChild<QWidget *>(QStringLiteral("homeOverviewDeviceGrid"))
+        : nullptr;
+    require(deviceGrid != nullptr,
+            "home device overview grid exists for column alignment checks");
+    const QList<QWidget *> columns =
+        deviceGrid->findChildren<QWidget *>(QStringLiteral("homeDeviceColumn"),
+                                            Qt::FindDirectChildrenOnly);
+    require(columns.size() == 3,
+            "home device overview exposes three aligned device columns");
+
+    for (QWidget *column : columns)
+    {
+        const QList<QLabel *> capsules =
+            column->findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule"),
+                                           Qt::FindDirectChildrenOnly);
+        const QList<QToolButton *> actionButtons =
+            column->findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton"),
+                                                Qt::FindDirectChildrenOnly);
+        require(capsules.size() == 2 && actionButtons.size() == 2,
+                "each home device column contains two capsules and two actions");
+        require(capsules.at(0)->width() == capsules.at(1)->width(),
+                "home device capsules use the widest capsule width within their column");
+        require(actionButtons.at(0)->geometry().x() == actionButtons.at(1)->geometry().x(),
+                "home device connection actions align vertically within their column");
+        for (QLabel *capsule : capsules)
+        {
+            require(capsule->alignment().testFlag(Qt::AlignHCenter),
+                    "home device capsule text is horizontally centered");
+        }
+    }
+}
+
 void requireWidgetInteriorUsesBackground(QWidget *widget,
                                          const QColor& expected,
                                          const char *message)
@@ -2307,6 +2342,15 @@ int main(int argc, char **argv)
                     rememberedSourceModeSwitch->focusPolicy() == Qt::TabFocus &&
                     !rememberedSourceModeSwitch->property("keyboardFocusIndicatorVisible").toBool(),
                 "source mode uses the shared segmented switch without an automatic focus ring");
+        const QPoint repeatedSourceModeClick(rememberedSourceModeSwitch->width() / 4,
+                                             rememberedSourceModeSwitch->height() / 2);
+        for (int expectedIndex : {0, 1, 0, 1})
+        {
+            clickWidgetAt(rememberedSourceModeSwitch, repeatedSourceModeClick, 0);
+            processEventsFor(20);
+            require(rememberedSourceModeCombo->currentIndex() == expectedIndex,
+                    "repeated source-mode clicks at one position toggle every time");
+        }
         QComboBox *rememberedPressureSource =
             findComboWithData(&rememberedModeWindow, QStringLiteral("bmp390"));
         QComboBox *rememberedHumiditySource =
@@ -3633,6 +3677,7 @@ int main(int argc, char **argv)
         window.findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton"));
     require(homeDeviceActionButtons.size() >= 6,
             "home device overview includes six connection action buttons");
+    requireHomeDeviceColumnsAligned(&window);
     for (QToolButton *button : homeDeviceActionButtons)
     {
         if (!button->property("deviceConfigAction").toBool())
@@ -7254,6 +7299,8 @@ int main(int argc, char **argv)
         scaledWindow.show();
         require(waitForWindowExposed(&scaledWindow),
                 "scaled main window becomes exposed for first-layout validation");
+        activateLayouts(&scaledWindow);
+        requireHomeDeviceColumnsAligned(&scaledWindow);
         QPushButton *scaledTemperatureNavButton = nullptr;
         for (QPushButton *button : scaledWindow.findChildren<QPushButton *>())
         {
