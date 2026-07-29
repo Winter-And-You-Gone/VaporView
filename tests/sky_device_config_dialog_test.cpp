@@ -411,6 +411,25 @@ int main(int argc, char **argv)
     dialog.close();
     processEventsFor(100);
 
+    app.setProperty(VaporView::kAppDarkThemeProperty, true);
+    app.setPalette(VaporView::appThemePalette(true));
+    VaporView::SkyDeviceConfigDialog darkDialog(nullptr);
+    darkDialog.show();
+    processEventsFor(100);
+    const QString darkDialogStyle = darkDialog.styleSheet();
+    require(darkDialogStyle.contains(
+                QStringLiteral("QPushButton:hover { background-color: %1")
+                    .arg(VaporView::appThemeColorName(
+                        VaporView::AppThemeColor::PrimaryHover, true))),
+            "dark sky-device primary buttons use the hover theme color");
+    require(darkDialogStyle.contains(
+                QStringLiteral("QPushButton:checked { background-color: %1")
+                    .arg(VaporView::appThemeColorName(
+                        VaporView::AppThemeColor::PrimaryPressed, true))),
+            "dark sky-device primary buttons use the pressed theme color when checked");
+    darkDialog.close();
+    processEventsFor(50);
+
     std::cout << "sky_device_config_dialog_test passed\n";
     return 0;
 }

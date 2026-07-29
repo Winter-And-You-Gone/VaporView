@@ -4036,6 +4036,42 @@ int main(int argc, char **argv)
         QStringLiteral("color: %1").arg(VaporView::appThemeColorName(
             VaporView::AppThemeColor::TextStrong, true)),
         "dark temperature title serial selector uses white text");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QComboBox#temperatureTitlePortCombo:hover,"),
+        QStringLiteral("background-color: %1").arg(VaporView::appThemeColorName(
+            VaporView::AppThemeColor::TitleBarHover, true)),
+        "dark temperature title serial selector uses the dark title hover background");
+    require(VaporView::appThemeColor(VaporView::AppThemeColor::Primary, true) !=
+                VaporView::appThemeColor(VaporView::AppThemeColor::PrimaryHover, true) &&
+                VaporView::appThemeColor(VaporView::AppThemeColor::PrimaryHover, true) !=
+                    VaporView::appThemeColor(VaporView::AppThemeColor::PrimaryPressed, true),
+            "dark primary button state colors are visibly distinct");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QPushButton:hover {"),
+        VaporView::appThemeColorName(VaporView::AppThemeColor::PrimaryHover, true),
+        "dark primary buttons use the hover color while highlighted");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QPushButton:pressed,"),
+        VaporView::appThemeColorName(VaporView::AppThemeColor::PrimaryPressed, true),
+        "dark primary buttons use the pressed color while pressed or checked");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QToolBar QToolButton:hover {"),
+        VaporView::appThemeColorName(VaporView::AppThemeColor::PrimaryHover, true),
+        "dark primary toolbar buttons use the hover color");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QToolBar QToolButton:pressed,"),
+        VaporView::appThemeColorName(VaporView::AppThemeColor::PrimaryPressed, true),
+        "dark primary toolbar buttons use the pressed color while pressed or checked");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QPushButton#appSidebarButton:checked:hover,"),
+        VaporView::appThemeColorName(VaporView::AppThemeColor::PrimaryHover, true),
+        "dark selected sidebar buttons retain visible hover feedback");
     requireSpinArrowHoverUsesPrimary(true,
                                      "dark theme spin arrow hover renders the primary lucide icon");
     requireComboArrowUsesDarkIdleAndPrimaryHighlight(

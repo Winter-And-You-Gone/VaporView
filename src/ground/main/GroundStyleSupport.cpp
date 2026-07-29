@@ -983,8 +983,42 @@ QAbstractSpinBox[spinArrowHover="up"]::up-arrow {
 QAbstractSpinBox[spinArrowHover="down"]::down-arrow {
     image: url(lucide/chevron-down-primary-dark.svg);
 }
+QToolBar QToolButton:hover {
+    background-color: @vv-primary-hover;
+    color: @vv-white;
+}
+QToolBar QToolButton:pressed,
+QToolBar QToolButton:checked {
+    background-color: @vv-primary-pressed;
+    color: @vv-white;
+}
+QPushButton:hover {
+    background-color: @vv-primary-hover;
+    color: @vv-white;
+}
+QPushButton:pressed,
+QPushButton:checked {
+    background-color: @vv-primary-pressed;
+    color: @vv-white;
+}
+QPushButton#appSidebarButton:checked:hover,
+QPushButton#appSidebarButton:checked[_vv_hover="true"] {
+    background-color: @vv-primary-hover;
+    border-color: @vv-primary-hover;
+}
+QPushButton#appSidebarButton:checked:pressed {
+    background-color: @vv-primary-pressed;
+    border-color: @vv-primary-pressed;
+}
 QComboBox#temperatureTitlePortCombo,
 QComboBox#temperatureTitlePortCombo:disabled {
+    color: @vv-text-strong;
+}
+QComboBox#temperatureTitlePortCombo:hover,
+QComboBox#temperatureTitlePortCombo:focus,
+QComboBox#temperatureTitlePortCombo:on {
+    background-color: @vv-title-hover;
+    border: none;
     color: @vv-text-strong;
 }
 QComboBox#temperatureTitlePortCombo::down-arrow {
