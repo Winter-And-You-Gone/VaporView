@@ -1011,13 +1011,31 @@ public:
         current_temp_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
         summaryLayout->addWidget(current_temp_value_, 1);
 
-        output_switch_button_ = new TemperatureOverviewSwitchButton(summary_widget_);
-        output_switch_button_->setFixedWidth(kOverviewControlWidth);
-        output_switch_button_->setFixedHeight(kOverviewOutputHeight);
+        output_capsule_ = new QFrame(summary_widget_);
+        output_capsule_->setObjectName(QStringLiteral("temperatureOverviewOutputCapsule"));
+        output_capsule_->setFixedSize(kOverviewControlWidth, kOverviewOutputCapsuleHeight);
+        output_capsule_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        auto *outputLayout = new QVBoxLayout(output_capsule_);
+        outputLayout->setContentsMargins(kOverviewOutputHorizontalMargin,
+                                         kOverviewOutputVerticalMargin,
+                                         kOverviewOutputHorizontalMargin,
+                                         kOverviewOutputVerticalMargin);
+        outputLayout->setSpacing(kOverviewOutputSpacing);
+
+        output_label_ = new QLabel(output_capsule_);
+        output_label_->setObjectName(QStringLiteral("temperatureOverviewOutputLabel"));
+        output_label_->setAlignment(Qt::AlignCenter);
+        output_label_->setFixedHeight(kOverviewOutputLabelHeight);
+        output_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        outputLayout->addWidget(output_label_, 0);
+
+        output_switch_button_ = new TemperatureOverviewSwitchButton(output_capsule_);
+        output_switch_button_->setFixedWidth(kOverviewOutputSwitchWidth);
+        output_switch_button_->setFixedHeight(kOverviewOutputSwitchHeight);
         output_switch_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         output_switch_button_->setStyleSheet(QStringLiteral(
             "QPushButton#temperatureOverviewOutputSwitch { min-height: %1px; max-height: %1px; }")
-            .arg(kOverviewOutputHeight));
+            .arg(kOverviewOutputSwitchHeight));
         connect(output_switch_button_, &QPushButton::clicked, this, [this]() {
             const bool requested = !output_switch_button_->switchChecked();
             if (output_enabled_callback_)
@@ -1025,7 +1043,8 @@ public:
                 output_enabled_callback_(currentChannelNumber(), requested);
             }
         });
-        summaryLayout->addWidget(output_switch_button_, 0);
+        outputLayout->addWidget(output_switch_button_, 0, Qt::AlignHCenter);
+        summaryLayout->addWidget(output_capsule_, 0);
 
         layout->addWidget(summary_widget_, 0);
 
@@ -1059,6 +1078,7 @@ public:
         is_english_ = english;
         if (channel_action_1_) channel_action_1_->setText(english ? QStringLiteral("CH 1") : QStringLiteral("通道1"));
         if (channel_action_2_) channel_action_2_->setText(english ? QStringLiteral("CH 2") : QStringLiteral("通道2"));
+        if (output_label_) output_label_->setText(english ? QStringLiteral("Output Enable") : QStringLiteral("输出使能"));
         if (output_switch_button_) output_switch_button_->setEnglish(english);
         if (plot_)
         {
@@ -1141,7 +1161,14 @@ private:
     static constexpr int kOverviewSummarySpacing = 4;
     static constexpr int kOverviewChannelHeight = 34;
     static constexpr int kOverviewMinimumValueHeight = 44;
-    static constexpr int kOverviewOutputHeight = 56;
+    static constexpr int kOverviewOutputCapsuleHeight = 60;
+    static constexpr int kOverviewOutputSwitchHeight = kOverviewChannelHeight;
+    static constexpr int kOverviewOutputHorizontalMargin = 4;
+    static constexpr int kOverviewOutputVerticalMargin = 3;
+    static constexpr int kOverviewOutputSpacing = 2;
+    static constexpr int kOverviewOutputLabelHeight = 18;
+    static constexpr int kOverviewOutputSwitchWidth =
+        kOverviewControlWidth - kOverviewOutputHorizontalMargin * 2;
 
     quint8 currentChannelNumber() const
     {
@@ -1309,6 +1336,8 @@ private:
     SingleLevelPopupMenuRow *channel_menu_row_2_ = nullptr;
     QLabel *target_temp_value_ = nullptr;
     QLabel *current_temp_value_ = nullptr;
+    QFrame *output_capsule_ = nullptr;
+    QLabel *output_label_ = nullptr;
     TemperatureOverviewSwitchButton *output_switch_button_ = nullptr;
     TemperatureTrendPlotWidget *plot_ = nullptr;
     VaporView::TemperatureControllerData latest_data_;

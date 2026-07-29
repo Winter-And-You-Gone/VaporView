@@ -3763,11 +3763,27 @@ int main(int argc, char **argv)
     }
     auto *temperatureOutputSwitch =
         window.findChild<QPushButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
+    auto *temperatureOutputCapsule =
+        window.findChild<QFrame *>(QStringLiteral("temperatureOverviewOutputCapsule"));
+    auto *temperatureOutputLabel =
+        window.findChild<QLabel *>(QStringLiteral("temperatureOverviewOutputLabel"));
+    auto *temperatureConfigOutputSwitch =
+        window.findChild<QPushButton *>(QStringLiteral("temperatureOutputEnableSwitchChannel1"));
     require(temperatureOutputSwitch != nullptr,
             "temperature overview output enable capsule exists");
     require(temperatureOutputSwitch->property("segmentedSwitchControl").toBool() &&
                 temperatureOutputSwitch->focusPolicy() == Qt::TabFocus,
             "temperature overview output uses the keyboard-accessible shared segmented switch");
+    require(temperatureOutputCapsule != nullptr &&
+                temperatureOutputLabel != nullptr &&
+                temperatureOutputLabel->parentWidget() == temperatureOutputCapsule &&
+                temperatureOutputSwitch->parentWidget() == temperatureOutputCapsule &&
+                temperatureOutputLabel->text() == QStringLiteral("输出使能"),
+            "temperature overview keeps the output-enable label above the switch in one capsule");
+    require(temperatureConfigOutputSwitch != nullptr &&
+                temperatureOutputSwitch->height() == temperatureConfigOutputSwitch->height() &&
+                temperatureOutputSwitch->height() == 34,
+            "temperature overview and configuration use the same segmented-switch height");
     require(!temperatureOutputSwitch->isEnabled(),
             "temperature overview output enable capsule is disabled without controller data");
     auto *temperatureOverviewSummary =
@@ -3783,12 +3799,20 @@ int main(int argc, char **argv)
                                  QStringLiteral("font-size: 13px"),
                                  "temperature overview value pill font matches the other capsules");
     requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QFrame#temperatureOverviewOutputCapsule {"),
+                                 QStringLiteral("border-radius: 10px"),
+                                 "temperature overview output label and switch share one rounded capsule");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QLabel#temperatureOverviewOutputLabel {"),
+                                 QStringLiteral("font-size: 12px"),
+                                 "temperature overview output capsule uses the value-pill title size");
+    requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QPushButton#temperatureOverviewOutputSwitch {"),
                                  QStringLiteral("font-size: 14px"),
                                  "temperature overview output switch font is enlarged for readability");
     const int temperatureSummarySpacing = temperatureOverviewSummary->layout()->spacing();
     int temperatureSummaryControlHeight =
-        temperatureChannelButton->height() + temperatureOutputSwitch->height() +
+        temperatureChannelButton->height() + temperatureOutputCapsule->height() +
         temperatureSummarySpacing * 3;
     for (QLabel *pill : temperatureValuePills)
     {
@@ -3798,8 +3822,9 @@ int main(int argc, char **argv)
     }
     require(temperatureChannelButton->height() <= 38,
             "temperature overview channel selector is shorter than the value and output capsules");
-    require(temperatureOutputSwitch->height() == 56,
-            "temperature overview output enable capsule is restored to the previous compact height");
+    require(temperatureOutputCapsule->height() == 60 &&
+                temperatureOutputCapsule->width() == temperatureChannelButton->width(),
+            "temperature overview output capsule keeps the compact summary-column width and height");
     require(std::abs(temperatureSummaryControlHeight - temperatureOverviewSummary->height()) <= 2,
             "temperature overview summary capsules fill the available card body height");
 

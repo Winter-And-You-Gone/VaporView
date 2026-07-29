@@ -1,7 +1,10 @@
 #include "ground/widgets/SegmentedSwitchButton.h"
+#include "ground/widgets/TemperatureControllerWidgets.h"
 
 #include <QApplication>
 #include <QFocusEvent>
+#include <QFrame>
+#include <QLabel>
 #include <QMouseEvent>
 
 #include <cstdlib>
@@ -88,6 +91,30 @@ int main(int argc, char **argv)
     require(button.accentMode() == SegmentedSwitchButton::AccentMode::BinaryState &&
                 button.text() == QStringLiteral("Output Enable: On"),
             "the same segmented switch supports binary output-state configuration");
+
+    auto *temperatureOverview =
+        VaporView::Ground::Widgets::createTemperatureControllerOverviewPanel();
+    temperatureOverview->resize(420, 220);
+    temperatureOverview->setEnglish(false);
+    auto *overviewOutputCapsule =
+        temperatureOverview->findChild<QFrame *>(QStringLiteral("temperatureOverviewOutputCapsule"));
+    auto *overviewOutputLabel =
+        temperatureOverview->findChild<QLabel *>(QStringLiteral("temperatureOverviewOutputLabel"));
+    auto *overviewOutputSwitch =
+        temperatureOverview->findChild<QPushButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
+    require(overviewOutputCapsule != nullptr &&
+                overviewOutputLabel != nullptr &&
+                overviewOutputSwitch != nullptr,
+            "temperature overview exposes the output capsule, label, and switch");
+    require(overviewOutputLabel->parentWidget() == overviewOutputCapsule &&
+                overviewOutputSwitch->parentWidget() == overviewOutputCapsule &&
+                overviewOutputLabel->text() == QStringLiteral("输出使能"),
+            "temperature overview places the output-enable label above the switch in one capsule");
+    require(overviewOutputSwitch->property("segmentedSwitchControl").toBool() &&
+                overviewOutputSwitch->height() == 34 &&
+                overviewOutputCapsule->height() == 60,
+            "temperature overview uses the shared 34 px segmented switch inside a compact capsule");
+    delete temperatureOverview;
 
     std::cout << "segmented_switch_button_test passed\n";
     return 0;
