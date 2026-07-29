@@ -1992,7 +1992,13 @@ void RtkConfigDialog::applyScaledUiMetrics()
         gga_text_container_->setMinimumWidth(scalePixels(120));
         gga_text_container_->setFixedHeight(ggaTextHeight);
     }
-    gga_text_edit_->document()->setDocumentMargin(scalePixels(8));
+    const int ggaTextVerticalPadding = scalePixels(2);
+    const int ggaTextHorizontalPadding = scalePixels(4);
+    gga_text_edit_->setStyleSheet(QStringLiteral(
+        "QTextEdit#rtkGgaTextEdit { padding: %1px %2px %1px %2px; }")
+                                      .arg(ggaTextVerticalPadding)
+                                      .arg(ggaTextHorizontalPadding));
+    gga_text_edit_->document()->setDocumentMargin(scalePixels(2));
     const int bodyHeight = std::max(controlsHeight, ggaTextHeight);
     const int cardTitleBarHeight = 40;
     const int ggaGroupHeight = cardTitleBarHeight
@@ -2668,22 +2674,6 @@ void RtkConfigDialog::updateGgaMonitorText()
     }
 
     gga_port_info_label_->setText(textFor("GGA Source:", "GGA来源:"));
-
-    if (gga_status_message_.isEmpty())
-    {
-        const bool mainSource = isMainGgaSourceSelected();
-        appendGgaStatusLog(
-            gga_monitor_enabled_
-                ? (mainSource
-                    ? textFor("Status: Waiting for EPSILON main-port position", "状态: 正在等待 EPSILON 主串口定位")
-                    : textFor("Status: Waiting for serial data", "状态: 正在等待串口数据"))
-                : QString(),
-            false);
-    }
-    else if (gga_status_message_.startsWith("Status:") || gga_status_message_.startsWith("状态:"))
-    {
-        appendGgaStatusLog(gga_status_message_, gga_status_healthy_);
-    }
 
     if (gga_frequency_label_->text().isEmpty())
     {

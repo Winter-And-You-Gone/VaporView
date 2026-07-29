@@ -19,6 +19,7 @@
 #include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QTextEdit>
+#include <QTextDocument>
 #include <QTimer>
 #include <QToolButton>
 
@@ -146,6 +147,11 @@ int main(int argc, char **argv)
             "GGA monitor button, internal log, and card exist");
     require(dialog.findChild<QLabel *>(QStringLiteral("rtkGgaStatusLabel")) == nullptr,
             "GGA monitor does not create a separate status label");
+    require(ggaMonitorLog->document()->documentMargin() <= 3.0,
+            "GGA monitor document uses compact inner margins");
+    require(ggaMonitorLog->styleSheet().contains(QStringLiteral("padding:")),
+            "GGA monitor overrides the generic text-edit padding");
+    dialog.setEpsilonDataProvider([]() { return VaporView::EpsilonData{}; });
     const int ggaCardHeightBeforeReading = ggaCard->height();
     ggaToggleButton->click();
     require(processEventsUntil(1000, [ggaMonitorLog]() {
@@ -159,6 +165,10 @@ int main(int argc, char **argv)
     require(!ggaLogLines.isEmpty() && ggaLogLines.constFirst().startsWith(QLatin1Char('[')) &&
                 ggaLogLines.constFirst().contains(QStringLiteral("] ")),
             "GGA status log entry includes a timestamp");
+    require(ggaLogLines.size() == 1 &&
+                (ggaLogLines.constFirst().contains(QStringLiteral("正在等待有效的 EPSILON 主串口定位")) ||
+                 ggaLogLines.constFirst().contains(QStringLiteral("Waiting for valid EPSILON main-port position"))),
+            "GGA monitor logs only the precise initial EPSILON position status");
     QApplication::processEvents();
     require(ggaCard->height() == ggaCardHeightBeforeReading,
             "GGA status log does not change the monitor card height");
