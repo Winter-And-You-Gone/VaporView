@@ -2721,6 +2721,7 @@ void RtkConfigDialog::startGgaMonitor()
 
 void RtkConfigDialog::stopGgaMonitor()
 {
+    const bool wasEnabled = gga_monitor_enabled_;
     if (gga_poll_timer_ && gga_poll_timer_->isActive())
     {
         gga_poll_timer_->stop();
@@ -2741,6 +2742,12 @@ void RtkConfigDialog::stopGgaMonitor()
     updateGgaFrequency(0.0);
     updateGgaMonitorText();
     updateGgaMonitorButton();
+    if (wasEnabled)
+    {
+        appendGgaStatusLog(
+            textFor("Status: GGA reading stopped", "状态: 已停止读取 GGA"),
+            false);
+    }
 }
 
 bool RtkConfigDialog::tryOpenGgaPort()
@@ -2850,15 +2857,16 @@ void RtkConfigDialog::onGgaToggleClicked()
 {
     if (ui_test_mode_)
     {
-        gga_monitor_enabled_ = !gga_monitor_enabled_;
-        updateGgaMonitorButton();
-        if (gga_monitor_enabled_)
+        if (!gga_monitor_enabled_)
         {
+            gga_monitor_enabled_ = true;
+            updateGgaMonitorButton();
             handleGgaSentence(buildMockGgaSentence());
             appendLog(textFor("[界面测试] Simulated GGA monitor started", "[界面测试] 模拟 GGA 监控已启动"));
         }
         else
         {
+            stopGgaMonitor();
             appendLog(textFor("[界面测试] Simulated GGA monitor stopped", "[界面测试] 模拟 GGA 监控已停止"));
         }
         return;

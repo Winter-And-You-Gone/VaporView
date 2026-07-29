@@ -178,7 +178,20 @@ int main(int argc, char **argv)
     require(ggaCard->height() == ggaCardHeightBeforeReading,
             "GGA status log does not change the monitor card height");
     ggaToggleButton->click();
-    QApplication::processEvents();
+    require(processEventsUntil(1000, [ggaMonitorLog]() {
+                const QString text = ggaMonitorLog->toPlainText();
+                return text.contains(QStringLiteral("状态: 已停止读取 GGA")) ||
+                    text.contains(QStringLiteral("Status: GGA reading stopped"));
+            }),
+            "stopping GGA reading appends a status entry inside the monitor log");
+    const QStringList stoppedGgaLogLines =
+        ggaMonitorLog->toPlainText().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    require(stoppedGgaLogLines.size() == 2 &&
+                stoppedGgaLogLines.constLast().startsWith(QLatin1Char('[')) &&
+                stoppedGgaLogLines.constLast().contains(QStringLiteral("] ")),
+            "GGA stop status is appended once with a timestamp");
+    require(ggaCard->height() == ggaCardHeightBeforeReading,
+            "GGA stop status log does not change the monitor card height");
 
     QTcpServer caster;
     require(caster.listen(QHostAddress::LocalHost, 0), "local sourcetable test server starts");
