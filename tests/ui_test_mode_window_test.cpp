@@ -95,6 +95,16 @@ int main(int argc, char **argv)
         QSettings history(QStringLiteral("VaporView"), QStringLiteral("SerialPortHistory"));
         history.setValue(QStringLiteral("ports"), QStringList{QStringLiteral("NORMAL-COM7")});
         history.sync();
+        QSettings rtkSettings(QStringLiteral("VaporView"), QStringLiteral("RtkConfig"));
+        rtkSettings.setValue(QStringLiteral("server"), QStringLiteral("persisted.ui-test.caster"));
+        rtkSettings.setValue(QStringLiteral("port"), QStringLiteral("2201"));
+        rtkSettings.setValue(QStringLiteral("username"), QStringLiteral("persisted-user"));
+        rtkSettings.setValue(QStringLiteral("password"), QStringLiteral("persisted-password"));
+        rtkSettings.setValue(QStringLiteral("mountpoint"), QStringLiteral("PERSISTED_MOUNTPOINT"));
+        rtkSettings.setValue(QStringLiteral("mountpoint_confirmed"), true);
+        rtkSettings.setValue(QStringLiteral("timeout"), QStringLiteral("8000"));
+        rtkSettings.setValue(QStringLiteral("reconnect"), QStringLiteral("2000"));
+        rtkSettings.sync();
     }
 
     auto *window = new MainWindow();
@@ -102,7 +112,11 @@ int main(int argc, char **argv)
     processEvents();
     QComboBox *epsilonPort = window->findChild<QComboBox *>(QStringLiteral("epsilonPortCombo"));
     QLineEdit *rtkServer = window->findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
-    require(epsilonPort && rtkServer,
+    QLineEdit *rtkPort = window->findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));
+    QLineEdit *rtkUsername = window->findChild<QLineEdit *>(QStringLiteral("rtkUsernameEdit"));
+    QLineEdit *rtkPassword = window->findChild<QLineEdit *>(QStringLiteral("rtkPasswordEdit"));
+    QComboBox *rtkMountpoint = window->findChild<QComboBox *>(QStringLiteral("rtkMountpointCombo"));
+    require(epsilonPort && rtkServer && rtkPort && rtkUsername && rtkPassword && rtkMountpoint,
             "main and RTK configuration controls exist");
     epsilonPort->addItem(QStringLiteral("UNSAVED-COM42"), QStringLiteral("UNSAVED-COM42"));
     epsilonPort->setCurrentIndex(epsilonPort->count() - 1);
@@ -123,6 +137,12 @@ int main(int argc, char **argv)
     require(modeAction->isChecked(), "UI test mode action becomes checked");
     require(!badge->isHidden(), "persistent UI test badge is visible");
     require(scenarioMenu->isEnabled(), "scenario menu is enabled in UI test mode");
+    require(rtkServer->text() == QStringLiteral("persisted.ui-test.caster") &&
+                rtkPort->text() == QStringLiteral("2201") &&
+                rtkUsername->text() == QStringLiteral("persisted-user") &&
+                rtkPassword->text() == QStringLiteral("persisted-password") &&
+                rtkMountpoint->currentText() == QStringLiteral("PERSISTED_MOUNTPOINT"),
+            "UI test mode reloads the real RTK profile as its sandbox baseline");
     QToolButton *epsilonAction = nullptr;
     for (QToolButton *button : window->findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton")))
     {
@@ -222,8 +242,6 @@ int main(int argc, char **argv)
             QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
         }
     });
-    auto *rtkPort = rtkDialog->findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));
-    auto *rtkMountpoint = rtkDialog->findChild<QComboBox *>(QStringLiteral("rtkMountpointCombo"));
     auto *rtkServiceLog = rtkDialog->findChild<QTextEdit *>(QStringLiteral("rtkServiceLogTextEdit"));
     require(rtkServer && rtkPort && rtkMountpoint && rtkServiceLog,
             "RTK sandbox fields and service log exist");

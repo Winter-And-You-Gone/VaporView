@@ -112,6 +112,12 @@ int main(int argc, char **argv)
                     testResiduePassword->text() == QStringLiteral("saved-password"),
                 "saved RTK credentials survive caster residue migration");
         testResidueDialog.setUiTestMode(true);
+        require(testResidueServer->text() == QStringLiteral("203.107.45.154") &&
+                    testResiduePort->text() == QStringLiteral("8002") &&
+                    testResidueUsername->text() == QStringLiteral("saved-user") &&
+                    testResiduePassword->text() == QStringLiteral("saved-password"),
+                "UI test mode uses the real RTK profile instead of placeholder credentials");
+        testResidueServer->setText(QStringLiteral("sandbox-only.caster"));
     }
     require(rtkSettings.value(QStringLiteral("server")).toString() == QStringLiteral("203.107.45.154") &&
                 rtkSettings.value(QStringLiteral("port")).toString() == QStringLiteral("8002"),

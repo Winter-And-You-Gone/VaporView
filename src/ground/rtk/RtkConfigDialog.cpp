@@ -4339,14 +4339,22 @@ void RtkConfigDialog::setUiTestMode(bool enabled)
     ui_test_mode_ = enabled;
     if (enabled)
     {
-        server_edit_->setText(QStringLiteral("caster.ui-test.local"));
-        port_edit_->setText(QStringLiteral("2101"));
-        username_edit_->setText(QStringLiteral("ui-test"));
-        password_edit_->setText(QStringLiteral("ui-test"));
+        const bool writesWereSuspended = VaporView::settingsWritesSuspended();
+        if (!writesWereSuspended)
+        {
+            VaporView::setSettingsWritesSuspended(true);
+        }
+        loadSettings();
+        if (!writesWereSuspended)
+        {
+            VaporView::setSettingsWritesSuspended(false);
+        }
         refreshPortCombos();
-        setPreferredOutputPortAndBaud(QStringLiteral("UI-TEST-RTK"), QStringLiteral("115200"));
-        onFetchMountpointsClicked();
-        appendLog(textFor("[界面测试] RTK configuration sandbox enabled", "[界面测试] RTK 配置沙箱已启用"));
+        updateButtonStates();
+        updateGgaMonitorButton();
+        appendLog(textFor(
+            "[界面测试] Real RTK configuration loaded as the sandbox baseline; changes made in UI Test Mode will not be written back",
+            "[界面测试] 已载入真实 RTK 配置作为沙箱初始值；界面测试模式内的修改不会写回"));
     }
     else
     {
