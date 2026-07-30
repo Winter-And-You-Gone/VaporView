@@ -223,6 +223,7 @@ private:
     void setImuRecordingRateHz(int rate, bool should_log = true);
     void setWaveformRecordingRateHz(int rate, bool should_log = true);
     QString defaultRecordingDirectory() const;
+    QString configuredRecordingDirectory() const;
     QString scheduledRecordingStartBlockReason() const;
     bool scheduledRecordingSessionOpen() const;
     bool tryStartScheduledRecording(QString *failureReason = nullptr);

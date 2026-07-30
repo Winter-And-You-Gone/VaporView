@@ -30,11 +30,7 @@ MainWindow::MainWindow(QWidget *parent)
     {
         qApp->setProperty(kAppDarkThemeProperty, state_->dark_theme_enabled_);
     }
-    state_->recording_directory_ = userSettings.value("recording_directory", defaultRecordingDirectory()).toString();
-    if (state_->recording_directory_.isEmpty())
-    {
-        state_->recording_directory_ = defaultRecordingDirectory();
-    }
+    state_->recording_directory_ = configuredRecordingDirectory();
     state_->recording_export_rate_hz_ = applicationSettings.value("recording_export_rate_hz", 20).toInt();
     if (state_->recording_export_rate_hz_ < 1 || state_->recording_export_rate_hz_ > 200)
     {

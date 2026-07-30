@@ -5,10 +5,13 @@
 #include "test_ui_helpers.h"
 
 #include <QApplication>
+#include <QDir>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QMetaObject>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <QToolButton>
 
 #include <cstdlib>
@@ -51,6 +54,8 @@ void testMainWindowDataViewerOpenCanReopen()
     require(recordingDir.isValid(), "temporary configured recording directory");
     QTemporaryDir updatedRecordingDir;
     require(updatedRecordingDir.isValid(), "temporary updated recording directory");
+    QTemporaryDir menuRecordingDir;
+    require(menuRecordingDir.isValid(), "temporary menu recording directory");
 
     {
         QSettings mainSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
@@ -87,6 +92,46 @@ void testMainWindowDataViewerOpenCanReopen()
     window.show();
     require(waitForWindowExposed(&window), "main window becomes exposed for data viewer reopen test");
 
+    auto openRecordingDirectoryDialog = [&window]() {
+        QString openedDirectory;
+        QTimer dialogObserver;
+        QObject::connect(&dialogObserver, &QTimer::timeout, [&openedDirectory]() {
+            for (QWidget *widget : QApplication::topLevelWidgets())
+            {
+                auto *dialog = qobject_cast<QFileDialog *>(widget);
+                if (!dialog)
+                {
+                    continue;
+                }
+                openedDirectory = dialog->directory().absolutePath();
+                dialog->reject();
+                return;
+            }
+        });
+        dialogObserver.start(10);
+        require(QMetaObject::invokeMethod(&window, "onChooseRecordingDirectoryClicked", Qt::DirectConnection),
+                "main window can invoke recording directory action");
+        dialogObserver.stop();
+        return openedDirectory;
+    };
+
+    {
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        settings.setValue(QStringLiteral("recording_directory"),
+                          menuRecordingDir.filePath(QStringLiteral("missing")));
+        settings.sync();
+        require(QFileInfo(openRecordingDirectoryDialog()).absoluteFilePath() ==
+                    QFileInfo(VaporView::Ground::Session::GroundRecordingService::defaultRecordingDirectory())
+                        .absoluteFilePath(),
+                "recording directory action falls back to the project data directory for a missing setting");
+
+        settings.setValue(QStringLiteral("recording_directory"), menuRecordingDir.path());
+        settings.sync();
+        require(QFileInfo(openRecordingDirectoryDialog()).absoluteFilePath() ==
+                    QFileInfo(menuRecordingDir.path()).absoluteFilePath(),
+                "recording directory action opens the directory currently stored in settings");
+    }
+
     require(QMetaObject::invokeMethod(&window, "onOpenSessionViewerClicked", Qt::DirectConnection),
             "main window can invoke data viewer action");
     require(processEventsUntil(2000, []() {
@@ -97,7 +142,7 @@ void testMainWindowDataViewerOpenCanReopen()
     auto *viewer = visibleSessionViewerWindow();
     require(viewer != nullptr, "active data viewer is available");
     require(QFileInfo(viewer->dataSelectionDirectory()).absoluteFilePath() ==
-                QFileInfo(recordingDir.path()).absoluteFilePath(),
+                QFileInfo(menuRecordingDir.path()).absoluteFilePath(),
             "data viewer uses the recording directory configured by the main menu");
     auto *minimizeButton = viewer->findChild<QToolButton *>(QStringLiteral("windowMinimizeButton"));
     require(minimizeButton != nullptr, "data viewer minimize button exists before reopen");
@@ -136,6 +181,7 @@ int main(int argc, char **argv)
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
 
+    QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     QApplication app(argc, argv);
     app.setOrganizationName(QStringLiteral("VaporViewMainWindowSessionViewerTest"));
     app.setApplicationName(QStringLiteral("main_window_session_viewer_test"));

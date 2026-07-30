@@ -562,6 +562,16 @@ QString MainWindow::defaultRecordingDirectory() const
     return VaporView::Ground::Session::GroundRecordingService::defaultRecordingDirectory();
 }
 
+QString MainWindow::configuredRecordingDirectory() const
+{
+    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+    const QString configured = QDir::fromNativeSeparators(
+        settings.value(QStringLiteral("recording_directory")).toString().trimmed());
+    return configured.isEmpty() || !QFileInfo(configured).isDir()
+        ? defaultRecordingDirectory()
+        : QDir::cleanPath(configured);
+}
+
 bool MainWindow::startRecordingSession()
 {
     if (isUiTestMode())
@@ -644,6 +654,10 @@ bool MainWindow::startRecordingSession()
 }
 void MainWindow::onChooseRecordingDirectoryClicked()
 {
+    if (!isUiTestMode())
+    {
+        state_->recording_directory_ = configuredRecordingDirectory();
+    }
     const QString currentDirectory = state_->recording_directory_.isEmpty() ? defaultRecordingDirectory() : state_->recording_directory_;
     const QString selectedDirectory = QFileDialog::getExistingDirectory(
         this,
