@@ -39,6 +39,7 @@ public:
     ~SessionViewerWindow() override;
     void setEnglish(bool english);
     void setDefaultDataDirectory(const QString& directory);
+    QString defaultDataDirectory() const;
     bool openSessionPath(const QString& path);
     void setUiTestMode(bool enabled);
 

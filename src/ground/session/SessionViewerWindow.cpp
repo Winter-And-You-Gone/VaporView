@@ -9,6 +9,7 @@
 #include "ground/session/SessionIndex.h"
 #include "ground/session/SessionPlaybackController.h"
 #include "ground/session/SessionWaveformRepository.h"
+#include "ground/session/GroundRecordingService.h"
 
 #include <QDir>
 #include <QElapsedTimer>
@@ -40,6 +41,25 @@ constexpr int kDefaultPeakSearchStartIndex = 0;
 constexpr int kDefaultPeakSearchEndIndex = 0;
 constexpr int kSessionViewerDefaultWidth = 1280;
 constexpr int kSessionViewerDefaultHeight = 800;
+
+QString normalizedDirectoryPath(const QString& directory)
+{
+    const QString normalized = QDir::fromNativeSeparators(directory.trimmed());
+    return normalized.isEmpty()
+        ? QString()
+        : QDir::cleanPath(QFileInfo(normalized).absoluteFilePath());
+}
+
+QString configuredRecordingDirectory()
+{
+    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+    const QString configured = normalizedDirectoryPath(
+        settings.value(QStringLiteral("recording_directory")).toString());
+    return configured.isEmpty()
+        ? normalizedDirectoryPath(
+              VaporView::Ground::Session::GroundRecordingService::defaultRecordingDirectory())
+        : configured;
+}
 
 qint64 monotonicMilliseconds()
 {
@@ -180,7 +200,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     {
         peak_search_end_index_ = peak_search_start_index_ + 1;
     }
-    default_data_directory_ = QDir::fromNativeSeparators(settings.value("default_data_directory").toString());
+    default_data_directory_ = configuredRecordingDirectory();
     updateWaveformActionTexts();
     const QString lastSession = settings.value("last_session_directory").toString();
     if (!lastSession.isEmpty())
@@ -297,13 +317,12 @@ void SessionViewerWindow::changeEvent(QEvent *event)
 
 void SessionViewerWindow::setDefaultDataDirectory(const QString& directory)
 {
-    const QString normalized = QDir::fromNativeSeparators(directory.trimmed());
-    default_data_directory_ = normalized;
-    if (!normalized.isEmpty())
-    {
-        QSettings settings("VaporView", "SessionViewer");
-        VaporView::setPersistentSetting(settings, QStringLiteral("default_data_directory"), normalized);
-    }
+    default_data_directory_ = normalizedDirectoryPath(directory);
+}
+
+QString SessionViewerWindow::defaultDataDirectory() const
+{
+    return default_data_directory_;
 }
 
 void SessionViewerWindow::setUiTestMode(bool enabled)
@@ -637,20 +656,15 @@ bool SessionViewerWindow::openSessionPath(const QString& path)
 
 void SessionViewerWindow::onChooseSessionClicked()
 {
-    QSettings settings("VaporView", "SessionViewer");
     QString initialDir = default_data_directory_;
-    if (initialDir.isEmpty())
+    if (initialDir.isEmpty() || !QFileInfo(initialDir).isDir())
     {
-        initialDir = settings.value("default_data_directory").toString();
+        initialDir = configuredRecordingDirectory();
     }
-    if (initialDir.isEmpty())
+    if (initialDir.isEmpty() || !QFileInfo(initialDir).isDir())
     {
-        const QString lastSession = settings.value("last_session_directory").toString();
-        const QString lastSessionDirectory = resolveSessionDirectory(lastSession);
-        if (!lastSessionDirectory.isEmpty())
-        {
-            initialDir = QFileInfo(lastSessionDirectory).absolutePath();
-        }
+        initialDir = normalizedDirectoryPath(
+            VaporView::Ground::Session::GroundRecordingService::defaultRecordingDirectory());
     }
     if (initialDir.isEmpty() || !QFileInfo(initialDir).isDir())
     {

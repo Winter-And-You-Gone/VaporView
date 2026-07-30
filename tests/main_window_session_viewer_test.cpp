@@ -1,9 +1,11 @@
 #include "ground/main/MainWindow.h"
+#include "ground/session/GroundRecordingService.h"
 #include "ground/session/SessionViewerWindow.h"
 #include "shared/theme/AppTheme.h"
 #include "test_ui_helpers.h"
 
 #include <QApplication>
+#include <QFileInfo>
 #include <QMetaObject>
 #include <QSettings>
 #include <QTemporaryDir>
@@ -45,6 +47,20 @@ void testMainWindowDataViewerOpenCanReopen()
 
     QTemporaryDir sessionDir;
     require(sessionDir.isValid(), "temporary session directory for data viewer startup");
+    QTemporaryDir recordingDir;
+    require(recordingDir.isValid(), "temporary configured recording directory");
+
+    {
+        QSettings mainSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        mainSettings.remove(QStringLiteral("recording_directory"));
+        SessionViewerWindow viewerWithDefaultDirectory;
+        require(QFileInfo(viewerWithDefaultDirectory.defaultDataDirectory()).absoluteFilePath() ==
+                    QFileInfo(VaporView::Ground::Session::GroundRecordingService::defaultRecordingDirectory())
+                        .absoluteFilePath(),
+                "data viewer defaults to the project data directory");
+        mainSettings.setValue(QStringLiteral("recording_directory"), recordingDir.path());
+        mainSettings.sync();
+    }
 
     {
         QSettings settings(QStringLiteral("VaporView"), QStringLiteral("SessionViewer"));
@@ -65,6 +81,9 @@ void testMainWindowDataViewerOpenCanReopen()
 
     auto *viewer = visibleSessionViewerWindow();
     require(viewer != nullptr, "active data viewer is available");
+    require(QFileInfo(viewer->defaultDataDirectory()).absoluteFilePath() ==
+                QFileInfo(recordingDir.path()).absoluteFilePath(),
+            "data viewer uses the recording directory configured by the main menu");
     auto *minimizeButton = viewer->findChild<QToolButton *>(QStringLiteral("windowMinimizeButton"));
     require(minimizeButton != nullptr, "data viewer minimize button exists before reopen");
     minimizeButton->click();
