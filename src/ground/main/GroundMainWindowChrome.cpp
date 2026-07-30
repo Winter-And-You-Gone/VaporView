@@ -36,7 +36,7 @@ QString vaporViewUpdateRepositoryUrl()
 QString vaporViewApplicationVersion()
 {
     const QString applicationVersion = QCoreApplication::applicationVersion().trimmed();
-    return applicationVersion.isEmpty() ? QStringLiteral("1.0.7") : applicationVersion;
+    return applicationVersion.isEmpty() ? QStringLiteral("1.0.8") : applicationVersion;
 }
 
 QString vaporViewUpdateRepositoryDisplayName(const QString& repositoryUrl, bool english)
@@ -1006,6 +1006,7 @@ QPushButton#updateCheckUpdateButton:focus {
     }
 
     bool checkCompleted = false;
+    bool manifestFallbackPending = false;
     auto finishCheck = [&](const VaporViewUpdateCheckResult& result) {
         if (checkCompleted)
         {
@@ -1102,12 +1103,12 @@ QPushButton#updateCheckUpdateButton:focus {
             return;
         }
 
-        if (maintenanceToolAvailable &&
-            (!checkProcess || checkProcess->state() == QProcess::NotRunning))
+        if (manifestReply && manifestReply->isFinished())
         {
             return;
         }
-        if (!maintenanceToolAvailable && manifestReply && manifestReply->isFinished())
+        if (maintenanceToolAvailable && !manifestFallbackPending &&
+            (!checkProcess || checkProcess->state() == QProcess::NotRunning))
         {
             return;
         }
@@ -1129,6 +1130,59 @@ QPushButton#updateCheckUpdateButton:focus {
             manifestReply->abort();
         }
     });
+
+    auto requestManifestFallback = [&](const VaporViewUpdateCheckResult& maintenanceResult) {
+        if (manifestFallbackPending || checkCompleted)
+        {
+            return;
+        }
+        manifestFallbackPending = true;
+        if (!manifestNetwork)
+        {
+            manifestNetwork = new QNetworkAccessManager(&dialog);
+        }
+
+        const QUrl manifestUrl = vaporViewUpdateManifestUrl(repositoryUrl);
+        if (!manifestUrl.isValid() ||
+            (manifestUrl.scheme() != QStringLiteral("http") &&
+             manifestUrl.scheme() != QStringLiteral("https")))
+        {
+            manifestFallbackPending = false;
+            finishCheck(maintenanceResult);
+            return;
+        }
+
+        checkTimeout.start();
+        QNetworkRequest request(manifestUrl);
+        request.setHeader(QNetworkRequest::UserAgentHeader,
+                          QStringLiteral("VaporView/%1").arg(applicationVersion));
+        manifestReply = manifestNetwork->get(request);
+        QObject::connect(manifestReply,
+                         &QNetworkReply::finished,
+                         &dialog,
+                         [&, reply = manifestReply, maintenanceResult]() {
+            if (checkCompleted)
+            {
+                reply->deleteLater();
+                return;
+            }
+            manifestFallbackPending = false;
+            checkTimeout.stop();
+            VaporViewUpdateCheckResult manifestResult =
+                vaporViewClassifyRepositoryReply(reply, applicationVersion);
+            if (!maintenanceResult.output.isEmpty())
+            {
+                const QString maintenanceOutput = vaporViewTrimmedUpdateOutput(maintenanceResult.output);
+                manifestResult.output = maintenanceOutput.isEmpty()
+                    ? manifestResult.output
+                    : QStringLiteral("MaintenanceTool output:\n%1\n\n%2")
+                          .arg(maintenanceOutput, manifestResult.output);
+            }
+            finishCheck(manifestResult);
+            reply->deleteLater();
+        });
+    };
+
     if (maintenanceToolAvailable)
     {
         QObject::connect(checkProcess, &QProcess::errorOccurred, &dialog, [&](QProcess::ProcessError error) {
@@ -1154,7 +1208,16 @@ QPushButton#updateCheckUpdateButton:focus {
             const QString output =
                 QString::fromLocal8Bit(checkProcess->readAllStandardOutput()) +
                 QString::fromLocal8Bit(checkProcess->readAllStandardError());
-            finishCheck(vaporViewClassifyUpdateCheckResult(output, exitCode, exitStatus));
+            const VaporViewUpdateCheckResult maintenanceResult =
+                vaporViewClassifyUpdateCheckResult(output, exitCode, exitStatus);
+            if (maintenanceResult.status == VaporViewUpdateCheckStatus::Unknown)
+            {
+                requestManifestFallback(maintenanceResult);
+            }
+            else
+            {
+                finishCheck(maintenanceResult);
+            }
         });
     }
     QObject::connect(updateButton, &QPushButton::clicked, &dialog, [&]() {
