@@ -218,6 +218,22 @@ int main(int argc, char **argv)
                 (ggaLogLines.constFirst().contains(QStringLiteral("正在等待有效的 EPSILON 主串口定位")) ||
                  ggaLogLines.constFirst().contains(QStringLiteral("Waiting for valid EPSILON main-port position"))),
             "GGA monitor logs only the precise initial EPSILON position status");
+    require(!processEventsUntil(1500, [ggaMonitorLog]() {
+                return ggaMonitorLog->toPlainText().split(
+                    QLatin1Char('\n'), Qt::SkipEmptyParts).size() > 1;
+            }),
+            "GGA waiting heartbeat does not spam the log before two seconds");
+    require(processEventsUntil(1000, [ggaMonitorLog]() {
+                return ggaMonitorLog->toPlainText().split(
+                    QLatin1Char('\n'), Qt::SkipEmptyParts).size() >= 2;
+            }),
+            "GGA monitor repeats its waiting status every two seconds without data");
+    const QStringList repeatedGgaLogLines =
+        ggaMonitorLog->toPlainText().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    require(repeatedGgaLogLines.size() == 2 &&
+                (repeatedGgaLogLines.constLast().contains(QStringLiteral("正在等待有效的 EPSILON 主串口定位")) ||
+                 repeatedGgaLogLines.constLast().contains(QStringLiteral("Waiting for valid EPSILON main-port position"))),
+            "GGA waiting heartbeat repeats the current no-data reason");
     QApplication::processEvents();
     require(ggaCard->height() == ggaCardHeightBeforeReading,
             "GGA status log does not change the monitor card height");
@@ -233,7 +249,7 @@ int main(int argc, char **argv)
             "stopping GGA reading appends a status entry inside the monitor log");
     const QStringList stoppedGgaLogLines =
         ggaMonitorLog->toPlainText().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-    require(stoppedGgaLogLines.size() == 2 &&
+    require(stoppedGgaLogLines.size() == 3 &&
                 stoppedGgaLogLines.constLast().startsWith(QLatin1Char('[')) &&
                 stoppedGgaLogLines.constLast().contains(QStringLiteral("] ")),
             "GGA stop status is appended once with a timestamp");

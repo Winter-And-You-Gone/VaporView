@@ -94,7 +94,8 @@ private:
     void stopGgaMonitor();
     void updateGgaMonitorText();
     void updateGgaFrequency(double hz);
-    void appendGgaStatusLog(const QString& message, bool healthy);
+    void appendGgaStatusLog(const QString& message, bool healthy, bool force = false);
+    void appendGgaWaitingLog(const QString& message);
     void updateGgaMonitorButton();
     void processGgaBuffer();
     void handleGgaSentence(const QString& sentence);
@@ -214,6 +215,7 @@ private:
     bool gga_status_healthy_;
     std::chrono::steady_clock::time_point gga_last_open_attempt_;
     std::chrono::steady_clock::time_point gga_last_sentence_time_;
+    std::chrono::steady_clock::time_point gga_last_status_log_time_;
     std::chrono::steady_clock::time_point gga_last_epsilon_sample_time_;
     uint64_t gga_last_epsilon_device_timestamp_us_;
     std::deque<double> gga_recent_intervals_sec_;

@@ -75,6 +75,7 @@ constexpr int kGgaSendCycleMs = 1000;
 constexpr int kGgaPollIntervalMs = kGgaSendCycleMs / 2;
 constexpr int kGgaReconnectIntervalMs = 1500;
 constexpr int kGgaStaleTimeoutMs = 1500;
+constexpr int kGgaWaitingLogIntervalMs = 2000;
 constexpr int kGgaMaxVisibleLines = 200;
 constexpr int kRtkHttpTimeoutMs = 5000;
 constexpr int kRtkDefaultDialogWidth = 1024;
@@ -1107,6 +1108,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     , gga_status_healthy_(false)
     , gga_last_open_attempt_()
     , gga_last_sentence_time_()
+    , gga_last_status_log_time_()
     , gga_last_epsilon_sample_time_()
     , gga_last_epsilon_device_timestamp_us_(0)
     , gga_has_sentence_time_(false)
@@ -2682,16 +2684,17 @@ void RtkConfigDialog::updateGgaFrequency(double hz)
     gga_frequency_label_->setText(QStringLiteral("%1 Hz").arg(rateText));
 }
 
-void RtkConfigDialog::appendGgaStatusLog(const QString& message, bool healthy)
+void RtkConfigDialog::appendGgaStatusLog(const QString& message, bool healthy, bool force)
 {
     const QString statusMessage = message.trimmed();
     const bool changed = statusMessage != gga_status_message_ || healthy != gga_status_healthy_;
     gga_status_message_ = statusMessage;
     gga_status_healthy_ = healthy;
-    if (!changed || statusMessage.isEmpty() || !gga_text_edit_)
+    if ((!changed && !force) || statusMessage.isEmpty() || !gga_text_edit_)
     {
         return;
     }
+    gga_last_status_log_time_ = std::chrono::steady_clock::now();
 
     QScrollBar *scrollBar = gga_text_edit_->verticalScrollBar();
     const bool stickToBottom = !scrollBar || scrollBar->value() >= (scrollBar->maximum() - 2);
@@ -2721,6 +2724,23 @@ void RtkConfigDialog::appendGgaStatusLog(const QString& message, bool healthy)
             ? updatedScrollBar->maximum()
             : std::min(previousValue, updatedScrollBar->maximum()));
     });
+}
+
+void RtkConfigDialog::appendGgaWaitingLog(const QString& message)
+{
+    const QString statusMessage = message.trimmed();
+    const bool changed = statusMessage != gga_status_message_ || gga_status_healthy_;
+    const auto now = std::chrono::steady_clock::now();
+    if (!changed && gga_last_status_log_time_.time_since_epoch().count() > 0)
+    {
+        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - gga_last_status_log_time_).count();
+        if (elapsedMs < kGgaWaitingLogIntervalMs)
+        {
+            return;
+        }
+    }
+    appendGgaStatusLog(statusMessage, false, true);
 }
 
 void RtkConfigDialog::updateGgaMonitorButton()
@@ -2762,6 +2782,7 @@ void RtkConfigDialog::startGgaMonitor()
     gga_buffer_.clear();
     gga_recent_intervals_sec_.clear();
     gga_has_sentence_time_ = false;
+    gga_last_status_log_time_ = std::chrono::steady_clock::time_point();
     gga_last_epsilon_sample_time_ = std::chrono::steady_clock::time_point();
     gga_last_epsilon_device_timestamp_us_ = 0;
     updateGgaFrequency(0.0);
@@ -2792,6 +2813,7 @@ void RtkConfigDialog::stopGgaMonitor()
     gga_buffer_.clear();
     gga_recent_intervals_sec_.clear();
     gga_has_sentence_time_ = false;
+    gga_last_status_log_time_ = std::chrono::steady_clock::time_point();
     gga_last_epsilon_sample_time_ = std::chrono::steady_clock::time_point();
     gga_last_epsilon_device_timestamp_us_ = 0;
     gga_monitor_enabled_ = false;
@@ -2870,18 +2892,16 @@ void RtkConfigDialog::pollMainGgaSource()
 
     if (!epsilon_data_provider_)
     {
-        appendGgaStatusLog(
-            textFor("Status: EPSILON main-port source is not connected", "状态: EPSILON 主串口来源未接入"),
-            false);
+        appendGgaWaitingLog(
+            textFor("Status: EPSILON main-port source is not connected", "状态: EPSILON 主串口来源未接入"));
         return;
     }
 
     const VaporView::EpsilonData epsilonData = epsilon_data_provider_();
     if (!isUsableEpsilonNmeaPosition(epsilonData))
     {
-        appendGgaStatusLog(
-            textFor("Status: Waiting for valid EPSILON main-port position", "状态: 正在等待有效的 EPSILON 主串口定位"),
-            false);
+        appendGgaWaitingLog(
+            textFor("Status: Waiting for valid EPSILON main-port position", "状态: 正在等待有效的 EPSILON 主串口定位"));
         return;
     }
 
@@ -2896,9 +2916,8 @@ void RtkConfigDialog::pollMainGgaSource()
     const QString sentence = buildEpsilonGgaSentence(epsilonData);
     if (sentence.isEmpty())
     {
-        appendGgaStatusLog(
-            textFor("Status: Failed to build GGA from EPSILON position", "状态: EPSILON 定位无法组装 GGA"),
-            false);
+        appendGgaWaitingLog(
+            textFor("Status: Failed to build GGA from EPSILON position", "状态: EPSILON 定位无法组装 GGA"));
         return;
     }
 
@@ -3385,7 +3404,7 @@ void RtkConfigDialog::onGgaPollTimer()
             {
                 gga_recent_intervals_sec_.clear();
                 updateGgaFrequency(0.0);
-                appendGgaStatusLog(textFor("Status: Waiting for next EPSILON main-port position", "状态: 正在等待下一帧 EPSILON 主串口定位"), false);
+                appendGgaWaitingLog(textFor("Status: Waiting for next EPSILON main-port position", "状态: 正在等待下一帧 EPSILON 主串口定位"));
             }
         }
         return;
@@ -3393,6 +3412,10 @@ void RtkConfigDialog::onGgaPollTimer()
 
     if (!tryOpenGgaPort())
     {
+        if (!gga_status_message_.isEmpty())
+        {
+            appendGgaWaitingLog(gga_status_message_);
+        }
         return;
     }
 
@@ -3416,6 +3439,11 @@ void RtkConfigDialog::onGgaPollTimer()
         break;
     }
 
+    if (!gga_serial_.isOpen())
+    {
+        return;
+    }
+
     if (gga_has_sentence_time_)
     {
         const auto now = std::chrono::steady_clock::now();
@@ -3424,8 +3452,12 @@ void RtkConfigDialog::onGgaPollTimer()
         {
             gga_recent_intervals_sec_.clear();
             updateGgaFrequency(0.0);
-            appendGgaStatusLog(textFor("Status: Waiting for next GGA sentence", "状态: 正在等待下一条 GGA 语句"), false);
+            appendGgaWaitingLog(textFor("Status: Waiting for next GGA sentence", "状态: 正在等待下一条 GGA 语句"));
         }
+    }
+    else
+    {
+        appendGgaWaitingLog(textFor("Status: Waiting for next GGA sentence", "状态: 正在等待下一条 GGA 语句"));
     }
 }
 
