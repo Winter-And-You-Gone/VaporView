@@ -6,8 +6,10 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QFileInfo>
 #include <QHostAddress>
 #include <QImage>
 #include <QLabel>
@@ -62,9 +64,18 @@ int main(int argc, char **argv)
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
 
-    QSettings rtkSettings(QStringLiteral("VaporView"), QStringLiteral("RtkConfig"));
+    QSettings rtkSettings(
+        QSettings::IniFormat,
+        QSettings::UserScope,
+        QStringLiteral("VaporView"),
+        QStringLiteral("RtkConfig"));
+    require(QFileInfo(rtkSettings.fileName()).absoluteFilePath().startsWith(
+                QDir(settingsDir.path()).absolutePath(), Qt::CaseInsensitive),
+            "RTK test profile is isolated under the temporary settings directory");
     rtkSettings.setValue(QStringLiteral("server"), QStringLiteral("unsaved.normal.caster"));
     rtkSettings.setValue(QStringLiteral("port"), QStringLiteral("8002"));
+    rtkSettings.setValue(QStringLiteral("username"), QStringLiteral("saved-user"));
+    rtkSettings.setValue(QStringLiteral("password"), QStringLiteral("saved-password"));
     rtkSettings.setValue(QStringLiteral("output_port"), QStringLiteral("__missing_serial_port__"));
     rtkSettings.setValue(QStringLiteral("mountpoint"), QStringLiteral("AUTO"));
     rtkSettings.setValue(QStringLiteral("mountpoint_confirmed"), true);
@@ -87,14 +98,26 @@ int main(int argc, char **argv)
             testResidueDialog.findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
         auto *testResiduePort =
             testResidueDialog.findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));
+        auto *testResidueUsername =
+            testResidueDialog.findChild<QLineEdit *>(QStringLiteral("rtkUsernameEdit"));
+        auto *testResiduePassword =
+            testResidueDialog.findChild<QLineEdit *>(QStringLiteral("rtkPasswordEdit"));
         require(testResidueServer && testResiduePort &&
                     testResidueServer->text() == QStringLiteral("203.107.45.154") &&
                     testResiduePort->text() == QStringLiteral("8002"),
                 "saved UI-test caster residue is cleared back to the WGS84 default caster");
+        require(testResidueUsername && testResiduePassword &&
+                    testResidueUsername->text() == QStringLiteral("saved-user") &&
+                    testResiduePassword->text() == QStringLiteral("saved-password"),
+                "saved RTK credentials survive caster residue migration");
+        testResidueDialog.setUiTestMode(true);
     }
     require(rtkSettings.value(QStringLiteral("server")).toString() == QStringLiteral("203.107.45.154") &&
                 rtkSettings.value(QStringLiteral("port")).toString() == QStringLiteral("8002"),
             "saved UI-test caster residue is persisted as the WGS84 default caster");
+    require(rtkSettings.value(QStringLiteral("username")).toString() == QStringLiteral("saved-user") &&
+                rtkSettings.value(QStringLiteral("password")).toString() == QStringLiteral("saved-password"),
+            "direct UI-test dialog teardown cannot overwrite the isolated RTK profile");
     rtkSettings.setValue(QStringLiteral("server"), QStringLiteral("127.0.0.1"));
     rtkSettings.setValue(QStringLiteral("port"), QStringLiteral("60844"));
     rtkSettings.sync();

@@ -1101,6 +1101,12 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     {
         VaporView::installCustomTitleBar(this);
     }
+    QSettings profileSettings(
+        QSettings::IniFormat,
+        QSettings::UserScope,
+        QStringLiteral("VaporView"),
+        QStringLiteral("RtkConfig"));
+    config_file_path_ = profileSettings.fileName();
     loadSettings();
     setFontScale(100);
     setEnglish(false);
@@ -1108,8 +1114,6 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     {
         VaporView::centerWindowOnScreen(this, parent);
     }
-
-    config_file_path_ = QDir::homePath() + "/.config/VaporView/rtk_config.ini";
 
     rtk_status_timer_ = new QTimer(this);
     rtk_status_timer_->setInterval(1000);
@@ -2163,7 +2167,18 @@ void RtkConfigDialog::setFontScale(int percent)
 
 void RtkConfigDialog::loadSettings()
 {
-    QSettings settings("VaporView", "RtkConfig");
+    QSettings settings(config_file_path_, QSettings::IniFormat);
+    QSettings legacySettings(QStringLiteral("VaporView"), QStringLiteral("RtkConfig"));
+    if (settings.fileName().compare(legacySettings.fileName(), Qt::CaseInsensitive) != 0)
+    {
+        for (const QString& key : legacySettings.allKeys())
+        {
+            if (!settings.contains(key))
+            {
+                VaporView::setPersistentSetting(settings, key, legacySettings.value(key));
+            }
+        }
+    }
 
     QString savedServer = settings.value("server", QString()).toString().trimmed();
     QString savedPort = settings.value("port", QString()).toString().trimmed();
@@ -2215,7 +2230,12 @@ void RtkConfigDialog::loadSettings()
 
 void RtkConfigDialog::saveSettings()
 {
-    QSettings settings("VaporView", "RtkConfig");
+    if (ui_test_mode_ || isUiTestCasterServerText(server_edit_->text()))
+    {
+        return;
+    }
+
+    QSettings settings(config_file_path_, QSettings::IniFormat);
 
     VaporView::setPersistentSetting(settings, QStringLiteral("server"), server_edit_->text());
     VaporView::setPersistentSetting(settings, QStringLiteral("port"), port_edit_->text());
