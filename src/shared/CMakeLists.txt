@@ -1,3 +1,17 @@
+add_library(vaporview_logging STATIC
+    ${CMAKE_SOURCE_DIR}/src/shared/logging/LogService.cpp
+    ${CMAKE_SOURCE_DIR}/include/LogRecord.h
+    ${CMAKE_SOURCE_DIR}/include/LogService.h
+)
+
+target_include_directories(vaporview_logging PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+target_link_libraries(vaporview_logging PUBLIC
+    Qt6::Core
+)
+
 set(PROTOCOL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/shared/telemetry/TelemetryCodec.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/telemetry/TelemetryLink.cpp
@@ -22,6 +36,7 @@ target_include_directories(vaporview_protocol PUBLIC
 
 target_link_libraries(vaporview_protocol PUBLIC
     Qt6::Core
+    vaporview_logging
 )
 
 add_library(vaporview_app_theme STATIC

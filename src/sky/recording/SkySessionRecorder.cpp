@@ -249,11 +249,17 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     waveform_raw_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.waveformRawPath);
     waveform_peaks_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.waveformPeaksCsvPath);
     waveform_peaks_file_.setFileName(waveform_peaks_filename_);
+    event_log_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.eventLogPath);
+    error_log_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.errorLogPath);
+    event_log_file_.setFileName(event_log_filename_);
+    error_log_file_.setFileName(error_log_filename_);
 
     if (!basic_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !feature_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !temperature_controller_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !waveform_peaks_file_.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
+        !event_log_file_.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append) ||
+        !error_log_file_.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append) ||
         !openRawDatFile(navigation_raw_file_, navigation_raw_filename_, SessionRawDat::kSourceNavigation, errorMessage) ||
         !openRawDatFile(pressure_raw_file_, pressure_raw_filename_, SessionRawDat::kSourcePressure, errorMessage) ||
         !openRawDatFile(temperature_humidity_raw_file_, temperature_humidity_raw_filename_, SessionRawDat::kSourceTemperatureHumidity, errorMessage) ||
@@ -290,6 +296,8 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     raw_distance_record_count_ = 0;
     raw_waveform_record_count_ = 0;
     native_raw_waveform_record_count_ = 0;
+    event_row_count_ = 0;
+    error_row_count_ = 0;
     recording_state_ = 1;
     if (!writeSessionMetadata(QString(), errorMessage))
     {
@@ -406,6 +414,52 @@ quint64 SkySessionRecorder::rawDistanceRecordCount() const
 quint64 SkySessionRecorder::rawWaveformRecordCount() const
 {
     return raw_waveform_record_count_;
+}
+
+bool SkySessionRecorder::appendEvent(const LogRecord& record)
+{
+    std::lock_guard<std::mutex> lock(files_mutex_);
+    if (!event_log_file_.isOpen())
+    {
+        return false;
+    }
+    QTextStream out(&event_log_file_);
+    out.setEncoding(QStringConverter::Utf8);
+    out << SessionSensorCsv::escape(record.timestamp_utc.isEmpty()
+                                        ? QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)
+                                        : record.timestamp_utc)
+        << ',' << (record.timestamp_us == 0 ? nowUs() : record.timestamp_us)
+        << ',' << SessionSensorCsv::escape(logLevelName(record.level))
+        << ',' << SessionSensorCsv::escape(record.message) << '\n';
+    out.flush();
+    const bool ok = out.status() == QTextStream::Ok && event_log_file_.flush();
+    if (ok)
+    {
+        ++event_row_count_;
+    }
+    return ok;
+}
+
+bool SkySessionRecorder::appendError(const LogRecord& record)
+{
+    std::lock_guard<std::mutex> lock(files_mutex_);
+    if (!error_log_file_.isOpen())
+    {
+        return false;
+    }
+    QTextStream out(&error_log_file_);
+    out.setEncoding(QStringConverter::Utf8);
+    out << '[' << (record.timestamp_utc.isEmpty()
+                        ? QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)
+                        : record.timestamp_utc)
+        << "] " << record.message << '\n';
+    out.flush();
+    const bool ok = out.status() == QTextStream::Ok && error_log_file_.flush();
+    if (ok)
+    {
+        ++error_row_count_;
+    }
+    return ok;
 }
 
 void SkySessionRecorder::recordBasicTelemetry(const TelemetryBasic& data)
@@ -800,8 +854,8 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
     manifest.counts.temperatureControllerRows = temperature_controller_count_;
     manifest.counts.waveformFrames = raw_waveform_record_count_;
     manifest.counts.waveformFeatureRows = waveform_feature_count_;
-    manifest.counts.eventRows = 0;
-    manifest.counts.errorRows = 0;
+    manifest.counts.eventRows = event_row_count_;
+    manifest.counts.errorRows = error_row_count_;
     manifest.rawRecords.navigation = raw_navigation_record_count_;
     manifest.rawRecords.pressure = raw_pressure_record_count_;
     manifest.rawRecords.temperatureHumidity = raw_temperature_humidity_record_count_;
@@ -823,7 +877,9 @@ void SkySessionRecorder::closeFiles()
                         &temperature_humidity_raw_file_,
                         &distance_raw_file_,
                         &waveform_raw_file_,
-                        &waveform_peaks_file_})
+                        &waveform_peaks_file_,
+                        &event_log_file_,
+                        &error_log_file_})
     {
         if (file->isOpen())
         {

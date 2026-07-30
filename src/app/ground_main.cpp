@@ -6,6 +6,7 @@
 #include <QDebug>
 #include <QEvent>
 #include <QMainWindow>
+#include <QMessageBox>
 #include <QObject>
 #include <QLabel>
 #include <QVBoxLayout>
@@ -16,6 +17,7 @@
 #include <QPalette>
 #include <QSettings>
 #include "shared/theme/AppTheme.h"
+#include "LogService.h"
 #include "ground/main/MainWindow.h"
 #include "SkyRuntime.h"
 
@@ -60,6 +62,56 @@ protected:
     }
 };
 
+class UserIssueMessageFilter final : public QObject
+{
+public:
+    explicit UserIssueMessageFilter(QObject *parent = nullptr)
+        : QObject(parent)
+    {
+    }
+
+protected:
+    bool eventFilter(QObject *object, QEvent *event) override
+    {
+        if (event->type() != QEvent::Show)
+        {
+            return QObject::eventFilter(object, event);
+        }
+        auto *messageBox = qobject_cast<QMessageBox *>(object);
+        if (!messageBox)
+        {
+            return QObject::eventFilter(object, event);
+        }
+
+        VaporView::LogLevel level = VaporView::LogLevel::Info;
+        switch (messageBox->icon())
+        {
+        case QMessageBox::Critical:
+            level = VaporView::LogLevel::Critical;
+            break;
+        case QMessageBox::Warning:
+            level = VaporView::LogLevel::Warning;
+            break;
+        case QMessageBox::Information:
+            level = VaporView::LogLevel::Info;
+            break;
+        case QMessageBox::Question:
+            return QObject::eventFilter(object, event);
+        case QMessageBox::NoIcon:
+            break;
+        }
+        VaporView::reportUserIssue(level,
+                                   QStringLiteral("UI"),
+                                   QStringLiteral("messagebox"),
+                                   messageBox->text(),
+                                   {{QStringLiteral("title"), messageBox->windowTitle()},
+                                    {QStringLiteral("informative_text"), messageBox->informativeText()},
+                                    {QStringLiteral("source_class"), QString::fromLatin1(messageBox->metaObject()->className())}});
+        return QObject::eventFilter(object, event);
+    }
+
+};
+
 bool startupDarkThemeEnabled()
 {
     const QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
@@ -92,6 +144,22 @@ int main(int argc, char *argv[])
     app.setApplicationName("VaporView");
     app.setApplicationVersion("1.0.6");
     app.setOrganizationName("VaporView");
+    VaporView::LogService logService(QStringLiteral("VaporView"));
+    logService.installQtMessageHandler();
+    QObject::connect(&logService, &VaporView::LogService::diagnosticFailure, &app,
+                     [](const QString& message) {
+                         static bool shown = false;
+                         if (shown)
+                         {
+                             return;
+                         }
+                         shown = true;
+                         QMessageBox::warning(nullptr,
+                                               QStringLiteral("日志受限"),
+                                               QStringLiteral("软件诊断日志无法写入，已回退到调试输出。\n%1").arg(message));
+                     });
+    UserIssueMessageFilter userIssueMessageFilter(&app);
+    app.installEventFilter(&userIssueMessageFilter);
     const bool startupDarkTheme = startupDarkThemeEnabled();
     applyStartupTheme(app, startupDarkTheme);
 

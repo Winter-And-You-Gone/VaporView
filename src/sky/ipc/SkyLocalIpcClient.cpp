@@ -318,6 +318,10 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
             emit basicReceived(basic);
             emit dashboardUpdated();
         }
+        else
+        {
+            emit logMessage(QStringLiteral("SkyCore TelemetryBasic payload parse failed."));
+        }
         break;
     }
     case MsgType::WaveformDownsampled:
@@ -328,6 +332,10 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
             updateFromWaveform(waveform);
             emit waveformReceived(waveform);
             emit dashboardUpdated();
+        }
+        else
+        {
+            emit logMessage(QStringLiteral("SkyCore WaveformDownsampled payload parse failed."));
         }
         break;
     }
@@ -340,6 +348,10 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
             emit featureReceived(feature);
             emit dashboardUpdated();
         }
+        else
+        {
+            emit logMessage(QStringLiteral("SkyCore WaveformFeature payload parse failed."));
+        }
         break;
     }
     case MsgType::TelemetryStatus:
@@ -350,6 +362,10 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
             updateFromStatus(status);
             emit statusReceived(status);
             emit dashboardUpdated();
+        }
+        else
+        {
+            emit logMessage(QStringLiteral("SkyCore TelemetryStatus payload parse failed."));
         }
         break;
     }
@@ -370,6 +386,10 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
                 }
             }
             emit ackReceived(ack);
+        }
+        else
+        {
+            emit logMessage(QStringLiteral("SkyCore CommandAck payload parse failed."));
         }
         break;
     }
@@ -394,9 +414,26 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
     case MsgType::SkyConfigApplyResult:
         emit logMessage(QStringLiteral("SkyCore 配置应用结果：%1").arg(QString::fromUtf8(frame.payload)));
         break;
+    case MsgType::LogEvent:
+    {
+        LogRecord record;
+        if (TelemetryCodec::parseLogRecord(frame.payload, record))
+        {
+            emit logRecordReceived(record);
+            emit logMessage(record.message);
+        }
+        else
+        {
+            emit logMessage(QStringLiteral("SkyCore 日志帧解析失败。"));
+        }
+        break;
+    }
     case MsgType::Heartbeat:
-    case MsgType::Error:
     case MsgType::Command:
+        break;
+    case MsgType::Error:
+        emit logMessage(QStringLiteral("SkyCore 返回 telemetry Error 帧：%1")
+                            .arg(QString::fromLatin1(frame.payload.toHex())));
         break;
     }
 }

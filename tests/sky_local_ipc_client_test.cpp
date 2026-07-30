@@ -56,6 +56,7 @@ int main(int argc, char **argv)
     bool connected = false;
     bool ackReceived = false;
     bool statusReceived = false;
+    bool logReceived = false;
     QObject::connect(&client, &VaporView::SkyLocalIpcClient::connectedChanged, [&](bool value) {
         connected = value;
     });
@@ -65,6 +66,10 @@ int main(int argc, char **argv)
     });
     QObject::connect(&client, &VaporView::SkyLocalIpcClient::statusReceived, [&](const VaporView::TelemetryStatus& status) {
         statusReceived = status.session_name == QStringLiteral("ipc-test");
+    });
+    QObject::connect(&client, &VaporView::SkyLocalIpcClient::logRecordReceived, [&](const VaporView::LogRecord& record) {
+        logReceived = record.source == QStringLiteral("SkyCore") &&
+                      record.message == QStringLiteral("IPC log test");
     });
 
     client.connectToCore(QStringLiteral("127.0.0.1"), server.serverPort());
@@ -115,9 +120,19 @@ int main(int argc, char **argv)
                                       VaporView::TelemetryCodec::serializeTelemetryStatus(status),
                                       2,
                                       nowUs()));
+    VaporView::LogRecord logRecord;
+    logRecord.timestamp_us = nowUs();
+    logRecord.level = VaporView::LogLevel::Warning;
+    logRecord.source = QStringLiteral("SkyCore");
+    logRecord.category = QStringLiteral("ipc");
+    logRecord.message = QStringLiteral("IPC log test");
+    socket->write(encoder.encodeFrame(VaporView::MsgType::LogEvent,
+                                      VaporView::TelemetryCodec::serializeLogRecord(logRecord),
+                                      3,
+                                      nowUs()));
     socket->flush();
 
-    require(waitUntil([&]() { return ackReceived && statusReceived; }), "client parses ack and status");
+    require(waitUntil([&]() { return ackReceived && statusReceived && logReceived; }), "client parses ack, status and log");
 
     const quint16 shutdownSeq = client.requestCoreShutdown();
     require(shutdownSeq != 0, "client sends shutdown request");

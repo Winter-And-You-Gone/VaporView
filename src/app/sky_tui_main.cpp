@@ -1,4 +1,5 @@
 #include "SkyLocalIpcClient.h"
+#include "LogService.h"
 #include "SkyStartupScreen.h"
 #include "SkyTuiApp.h"
 #include "SkyTuiOptions.h"
@@ -41,6 +42,8 @@ int main(int argc, char *argv[])
     app.setApplicationName("VaporViewSkyTui");
     app.setApplicationVersion("1.0.6");
     app.setOrganizationName("VaporView");
+    VaporView::LogService logService(QStringLiteral("VaporViewSkyTui"));
+    logService.installQtMessageHandler();
     registerTelemetryMetaTypes();
 
     QCommandLineParser parser;
@@ -81,7 +84,11 @@ int main(int argc, char *argv[])
     if (parser.isSet(shutdownCoreOption))
     {
         VaporView::SkyLocalIpcClient client;
-        QObject::connect(&client, &VaporView::SkyLocalIpcClient::logMessage, [](const QString& message) {
+        QObject::connect(&client, &VaporView::SkyLocalIpcClient::logMessage, &logService, [&logService](const QString& message) {
+            logService.publish(VaporView::LogLevel::Info,
+                               QStringLiteral("SkyTui"),
+                               QStringLiteral("ipc"),
+                               message);
             QTextStream(stderr) << message << "\n";
         });
         QObject::connect(&client, &VaporView::SkyLocalIpcClient::connectedChanged, &app, [&client](bool connected) {

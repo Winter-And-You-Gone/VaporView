@@ -146,6 +146,30 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     , device_manager_(this)
 {
     connect(&device_manager_, &SkyDeviceManager::logMessage, this, &SkyRuntime::logMessage);
+    connect(this, &SkyRuntime::logMessage, this, [this](const QString& message) {
+        if (!session_recorder_.isRecording() && !session_recorder_.isPaused())
+        {
+            return;
+        }
+        const bool warning = message.contains(QStringLiteral("failed"), Qt::CaseInsensitive) ||
+            message.contains(QStringLiteral("error"), Qt::CaseInsensitive) ||
+            message.contains(QStringLiteral("disconnect"), Qt::CaseInsensitive) ||
+            message.contains(QStringLiteral("失败"), Qt::CaseInsensitive) ||
+            message.contains(QStringLiteral("错误"), Qt::CaseInsensitive) ||
+            message.contains(QStringLiteral("断开"), Qt::CaseInsensitive);
+        LogRecord record;
+        record.timestamp_utc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+        record.timestamp_us = currentTimestampUs();
+        record.level = warning ? LogLevel::Warning : LogLevel::Info;
+        record.source = QStringLiteral("SkyCore");
+        record.category = QStringLiteral("runtime");
+        record.message = message;
+        session_recorder_.appendEvent(record);
+        if (warning)
+        {
+            session_recorder_.appendError(record);
+        }
+    });
     connect(&device_manager_, &SkyDeviceManager::epsilonRawFrameReceived, this,
             [this](quint64 timestampUs, quint8 packetId, quint8 serialNumber, const QByteArray& frame) {
                 session_recorder_.recordRawEpsilonFrame(timestampUs, packetId, serialNumber, frame);

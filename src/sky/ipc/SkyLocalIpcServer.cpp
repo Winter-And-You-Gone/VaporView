@@ -1,4 +1,5 @@
 #include "SkyLocalIpcServer.h"
+#include "LogService.h"
 
 #include <QAbstractSocket>
 #include <QCoreApplication>
@@ -24,6 +25,7 @@ bool shouldBroadcastRuntimeFrame(MsgType type)
     case MsgType::SkyConfig:
     case MsgType::SkyConfigApplyResult:
     case MsgType::Heartbeat:
+    case MsgType::LogEvent:
     case MsgType::Error:
         return true;
     case MsgType::Command:
@@ -45,9 +47,35 @@ SkyLocalIpcServer::SkyLocalIpcServer(SkyRuntime *runtime, QObject *parent)
     status_timer_.setInterval(500);
     status_timer_.setTimerType(Qt::CoarseTimer);
 
+    if (LogService *logService = LogService::instance())
+    {
+        connect(logService, &LogService::recordPublished, this,
+                [this](const LogRecord& record) {
+                    broadcastFrame(MsgType::LogEvent, TelemetryCodec::serializeLogRecord(record));
+                });
+    }
+
     if (runtime_)
     {
         connect(runtime_, &SkyRuntime::telemetryFrameReady, this, &SkyLocalIpcServer::broadcastRuntimeFrame);
+        connect(runtime_, &SkyRuntime::logMessage, this, [this](const QString& message) {
+            LogRecord record;
+            if (LogService *logService = LogService::instance())
+            {
+                logService->publish(LogLevel::Info,
+                                    QStringLiteral("SkyCore"),
+                                    QStringLiteral("runtime"),
+                                    message);
+            }
+            else
+            {
+                record.level = LogLevel::Info;
+                record.source = QStringLiteral("SkyCore");
+                record.category = QStringLiteral("runtime");
+                record.message = message;
+                broadcastFrame(MsgType::LogEvent, TelemetryCodec::serializeLogRecord(record));
+            }
+        });
     }
 }
 

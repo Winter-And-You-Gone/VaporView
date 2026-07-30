@@ -52,6 +52,7 @@ public:
 signals:
     void connectedChanged(bool connected);
     void logMessage(const QString& message);
+    void logRecordReceived(const VaporView::LogRecord& record);
     void statusReceived(const TelemetryStatus& status);
     void basicReceived(const TelemetryBasic& basic);
     void featureReceived(const WaveformFeature& feature);

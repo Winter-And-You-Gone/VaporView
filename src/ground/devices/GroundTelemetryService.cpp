@@ -1,5 +1,6 @@
 #include "ground/devices/GroundTelemetryService.h"
 
+#include "LogService.h"
 #include "SerialTelemetryLink.h"
 #include "TcpTelemetryLink.h"
 
@@ -199,6 +200,31 @@ void GroundTelemetryService::onBytesReceived(const QByteArray& bytes)
 {
     noteReceivedBytes(bytes.size());
     const QVector<TelemetryFrame> frames = codec_.feedBytes(bytes);
+    const qint64 currentMs = nowMs();
+    const quint64 crcErrors = codec_.crcErrorCount();
+    if (crcErrors > last_logged_crc_errors_ &&
+        (last_decoder_diagnostic_ms_ == 0 || currentMs - last_decoder_diagnostic_ms_ >= 1000))
+    {
+        reportProtocolDiagnostic(LogLevel::Warning,
+                                 QStringLiteral("protocol.crc"),
+                                 QStringLiteral("Telemetry decoder rejected frames due to CRC or protocol-version errors."),
+                                 {{QStringLiteral("total_errors"), static_cast<qulonglong>(crcErrors)},
+                                  {QStringLiteral("delta"), static_cast<qulonglong>(crcErrors - last_logged_crc_errors_)}});
+        last_logged_crc_errors_ = crcErrors;
+        last_decoder_diagnostic_ms_ = currentMs;
+    }
+    const quint64 droppedFrames = codec_.droppedFrameCount();
+    if (droppedFrames > last_logged_dropped_frames_ &&
+        (last_decoder_diagnostic_ms_ == 0 || currentMs - last_decoder_diagnostic_ms_ >= 1000))
+    {
+        reportProtocolDiagnostic(LogLevel::Warning,
+                                 QStringLiteral("protocol.frame"),
+                                 QStringLiteral("Telemetry decoder dropped oversized or malformed frames."),
+                                 {{QStringLiteral("total_dropped"), static_cast<qulonglong>(droppedFrames)},
+                                  {QStringLiteral("delta"), static_cast<qulonglong>(droppedFrames - last_logged_dropped_frames_)}});
+        last_logged_dropped_frames_ = droppedFrames;
+        last_decoder_diagnostic_ms_ = currentMs;
+    }
     for (const TelemetryFrame& frame : frames)
     {
         dispatchFrame(frame);
@@ -247,6 +273,13 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         {
             emit basicTelemetryUpdated(data);
         }
+        else
+        {
+            reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
+                                     QStringLiteral("Failed to parse TelemetryBasic payload."),
+                                     {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                      {QStringLiteral("payload_bytes"), frame.payload.size()}});
+        }
         break;
     }
     case MsgType::WaveformDownsampled:
@@ -255,6 +288,13 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         if (TelemetryCodec::parseDownsampledWaveform(frame.payload, waveform))
         {
             emit waveformUpdated(waveform);
+        }
+        else
+        {
+            reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
+                                     QStringLiteral("Failed to parse WaveformDownsampled payload."),
+                                     {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                      {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
         break;
     }
@@ -265,6 +305,13 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         {
             emit waveformFeatureUpdated(feature);
         }
+        else
+        {
+            reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
+                                     QStringLiteral("Failed to parse WaveformFeature payload."),
+                                     {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                      {QStringLiteral("payload_bytes"), frame.payload.size()}});
+        }
         break;
     }
     case MsgType::TelemetryStatus:
@@ -273,6 +320,13 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         if (TelemetryCodec::parseTelemetryStatus(frame.payload, status))
         {
             emit statusUpdated(status);
+        }
+        else
+        {
+            reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
+                                     QStringLiteral("Failed to parse TelemetryStatus payload."),
+                                     {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                      {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
         break;
     }
@@ -284,6 +338,13 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
             pending_commands_.remove(ack.command_seq);
             emit commandAckReceived(ack);
         }
+        else
+        {
+            reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
+                                     QStringLiteral("Failed to parse CommandAck payload."),
+                                     {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                      {QStringLiteral("payload_bytes"), frame.payload.size()}});
+        }
         break;
     }
     case MsgType::SkyConfig:
@@ -292,6 +353,13 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         if (document.isObject())
         {
             emit skyConfigReceived(document.object());
+        }
+        else
+        {
+            reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
+                                     QStringLiteral("Failed to parse SkyConfig JSON payload."),
+                                     {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                      {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
         break;
     }
@@ -302,6 +370,13 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         {
             emit skyConfigApplyResultReceived(document.object());
         }
+        else
+        {
+            reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
+                                     QStringLiteral("Failed to parse SkyConfigApplyResult JSON payload."),
+                                     {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                      {QStringLiteral("payload_bytes"), frame.payload.size()}});
+        }
         break;
     }
     case MsgType::TemperatureControllerStatus:
@@ -311,12 +386,50 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         {
             emit temperatureControllerStatusUpdated(data);
         }
+        else
+        {
+            reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
+                                     QStringLiteral("Failed to parse TemperatureControllerStatus payload."),
+                                     {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                      {QStringLiteral("payload_bytes"), frame.payload.size()}});
+        }
+        break;
+    }
+    case MsgType::LogEvent:
+    {
+        LogRecord record;
+        if (TelemetryCodec::parseLogRecord(frame.payload, record))
+        {
+            if (LogService *logService = LogService::instance())
+            {
+                record.fields.insert(QStringLiteral("ui_visible"), true);
+                logService->publish(record);
+            }
+            emit logMessage(record.message);
+        }
+        else
+        {
+            reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
+                                     QStringLiteral("Failed to parse LogEvent payload."),
+                                     {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                      {QStringLiteral("payload_bytes"), frame.payload.size()}});
+        }
         break;
     }
     case MsgType::Heartbeat:
-    case MsgType::Error:
     case MsgType::Command:
+        break;
+    case MsgType::Error:
+        reportProtocolDiagnostic(LogLevel::Error, QStringLiteral("protocol.error"),
+                                 QStringLiteral("Received telemetry Error frame."),
+                                 {{QStringLiteral("payload_hex"), QString::fromLatin1(frame.payload.toHex())},
+                                  {QStringLiteral("payload_bytes"), frame.payload.size()}});
+        break;
     default:
+        reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.unknown"),
+                                 QStringLiteral("Received unknown telemetry message type."),
+                                 {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                  {QStringLiteral("payload_bytes"), frame.payload.size()}});
         break;
     }
 }
@@ -351,6 +464,9 @@ bool GroundTelemetryService::openLink(std::unique_ptr<TelemetryLink> link)
     tx_byte_samples_.clear();
     total_rx_bytes_ = 0;
     total_tx_bytes_ = 0;
+    last_logged_crc_errors_ = 0;
+    last_logged_dropped_frames_ = 0;
+    last_decoder_diagnostic_ms_ = 0;
     if (link_ && link_->isOpen())
     {
         retry_timer_.start();
@@ -404,6 +520,32 @@ void GroundTelemetryService::noteTransmittedBytes(qint64 bytes)
     tx_byte_samples_.push_back({currentMs, bytes});
     total_tx_bytes_ += static_cast<quint64>(bytes);
     pruneSamples(tx_byte_samples_, currentMs);
+}
+
+void GroundTelemetryService::reportProtocolDiagnostic(LogLevel level,
+                                                      const QString& category,
+                                                      const QString& message,
+                                                      const QVariantMap& fields)
+{
+    const qint64 currentMs = nowMs();
+    const bool throttle = category == QStringLiteral("protocol.parse") ||
+        category == QStringLiteral("protocol.unknown");
+    if (throttle && last_decoder_diagnostic_ms_ != 0 &&
+        currentMs - last_decoder_diagnostic_ms_ < 1000)
+    {
+        return;
+    }
+    QVariantMap recordFields = fields;
+    recordFields.insert(QStringLiteral("ui_visible"), true);
+    if (LogService *logService = LogService::instance())
+    {
+        logService->publish(level, QStringLiteral("Ground"), category, message, recordFields);
+    }
+    emit logMessage(message);
+    if (throttle)
+    {
+        last_decoder_diagnostic_ms_ = currentMs;
+    }
 }
 
 }  // namespace VaporView

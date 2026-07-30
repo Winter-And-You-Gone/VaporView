@@ -211,8 +211,10 @@ private:
     QTimer *rtk_status_timer_;
     QTimer *gga_poll_timer_;
     QString last_rtk_status_message_;
+    qint64 last_rtk_status_log_ms_ = 0;
     VaporView::SerialPort gga_serial_;
     QString gga_buffer_;
+    bool gga_buffer_overflow_logged_ = false;
     QString gga_status_message_;
     QString gga_waiting_reason_;
     bool gga_status_healthy_;

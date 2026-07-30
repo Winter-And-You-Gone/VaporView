@@ -31,6 +31,7 @@
 #include "ground/session/SessionViewerWindow.h"
 #include "ground/widgets/SkyDeviceConfigDialog.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
+#include "LogService.h"
 #include "TcpWaveEncoding.h"
 #include "ground/wave/TcpWavePanel.h"
 #include "ground/widgets/VisualTextLabel.h"

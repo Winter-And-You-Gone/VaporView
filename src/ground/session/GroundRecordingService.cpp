@@ -523,12 +523,12 @@ public:
         return enqueued;
     }
 
-    void appendEvent(const QString& level, const QString& message)
+    bool appendEvent(const QString& level, const QString& message)
     {
         std::lock_guard<std::mutex> lock(filesMutex);
         if (!eventLogFile || !eventLogFile->isOpen())
         {
-            return;
+            return false;
         }
         QTextStream out(eventLogFile.get());
         out.setEncoding(QStringConverter::Utf8);
@@ -537,21 +537,31 @@ public:
             << SessionSensorCsv::escape(level) << ','
             << SessionSensorCsv::escape(message) << '\n';
         out.flush();
-        eventRows.fetch_add(1);
+        const bool ok = out.status() == QTextStream::Ok && eventLogFile->flush();
+        if (ok)
+        {
+            eventRows.fetch_add(1);
+        }
+        return ok;
     }
 
-    void appendError(const QString& message)
+    bool appendError(const QString& message)
     {
         std::lock_guard<std::mutex> lock(filesMutex);
         if (!errorLogFile || !errorLogFile->isOpen())
         {
-            return;
+            return false;
         }
         QTextStream out(errorLogFile.get());
         out.setEncoding(QStringConverter::Utf8);
         out << '[' << timestampUtc() << "] " << message << '\n';
         out.flush();
-        errorRows.fetch_add(1);
+        const bool ok = out.status() == QTextStream::Ok && errorLogFile->flush();
+        if (ok)
+        {
+            errorRows.fetch_add(1);
+        }
+        return ok;
     }
 
     quint64 steadyToEpochUs(const std::chrono::steady_clock::time_point& timePoint) const
@@ -1173,14 +1183,14 @@ bool GroundRecordingService::recordTcpWaveFrame(quint64 hostTimestampUs,
     return impl_->enqueueTcpRawRecord(std::move(record));
 }
 
-void GroundRecordingService::appendEvent(const QString& level, const QString& message)
+bool GroundRecordingService::appendEvent(const QString& level, const QString& message)
 {
-    impl_->appendEvent(level, message);
+    return impl_->appendEvent(level, message);
 }
 
-void GroundRecordingService::appendError(const QString& message)
+bool GroundRecordingService::appendError(const QString& message)
 {
-    impl_->appendError(message);
+    return impl_->appendError(message);
 }
 
 quint64 GroundRecordingService::steadyToEpochUs(

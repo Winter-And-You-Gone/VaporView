@@ -15,6 +15,15 @@ void MainWindow::log(const QString& message)
 
     if (message.startsWith('\r'))
     {
+        if (VaporView::LogService *logService = VaporView::LogService::instance())
+        {
+            logService->publish(VaporView::LogLevel::Debug,
+                                QStringLiteral("Ground"),
+                                QStringLiteral("ui.progress"),
+                                message.mid(1),
+                                {{QStringLiteral("ui_visible"), true},
+                                 {QStringLiteral("inline"), true}});
+        }
         if (!state_->log_text_edit_)
         {
             return;
@@ -46,6 +55,21 @@ void MainWindow::log(const QString& message)
 
     QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
     const QString displayLine = QString("[%1] %2").arg(timestamp, message);
+    const bool mirrorsLegacyError = shouldMirrorToErrorLog(message);
+    const bool looksLikeDataLoss = message.contains(QStringLiteral("drop"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("丢弃"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("队列已满"), Qt::CaseInsensitive);
+    if (VaporView::LogService *logService = VaporView::LogService::instance())
+    {
+        logService->publish(mirrorsLegacyError || looksLikeDataLoss
+                                ? VaporView::LogLevel::Warning
+                                : VaporView::LogLevel::Info,
+                            QStringLiteral("Ground"),
+                            QStringLiteral("ui"),
+                            message,
+                            {{QStringLiteral("ui_visible"), true},
+                             {QStringLiteral("legacy_error_mirror"), mirrorsLegacyError}});
+    }
     state_->log_entries_.append(displayLine);
     if (state_->log_entries_.size() > kMaxLogEntryCount)
     {
@@ -58,10 +82,35 @@ void MainWindow::log(const QString& message)
     }
     state_->has_inline_progress_log_ = false;
 
-    state_->recording_service_->appendEvent(QStringLiteral("info"), message);
-    if (shouldMirrorToErrorLog(message))
+    const QString sessionLevel = mirrorsLegacyError || looksLikeDataLoss
+        ? QStringLiteral("warning")
+        : QStringLiteral("info");
+    if (state_->recording_service_->isSessionOpen() &&
+        !state_->recording_service_->appendEvent(sessionLevel, message))
     {
-        state_->recording_service_->appendError(message);
+        if (VaporView::LogService *logService = VaporView::LogService::instance())
+        {
+            logService->publish(VaporView::LogLevel::Error,
+                                QStringLiteral("Ground"),
+                                QStringLiteral("session.write"),
+                                QStringLiteral("Failed to append event_log.csv entry."),
+                                {{QStringLiteral("message"), message}});
+        }
+    }
+    if (mirrorsLegacyError)
+    {
+        if (state_->recording_service_->isSessionOpen() &&
+            !state_->recording_service_->appendError(message))
+        {
+            if (VaporView::LogService *logService = VaporView::LogService::instance())
+            {
+                logService->publish(VaporView::LogLevel::Error,
+                                    QStringLiteral("Ground"),
+                                    QStringLiteral("session.write"),
+                                    QStringLiteral("Failed to append error_log.txt entry."),
+                                    {{QStringLiteral("message"), message}});
+            }
+        }
     }
 }
 
@@ -1368,6 +1417,20 @@ void MainWindow::pauseRecordingSession(bool announce)
 
 void MainWindow::stopRecording(bool announce)
 {
+    const auto beforeStop = state_->recording_service_->status();
+    if (beforeStop.sessionOpen)
+    {
+        if (!state_->recording_service_->appendEvent(QStringLiteral("info"), QStringLiteral("Recording stop requested.")))
+        {
+            if (VaporView::LogService *logService = VaporView::LogService::instance())
+            {
+                logService->publish(VaporView::LogLevel::Error,
+                                    QStringLiteral("Ground"),
+                                    QStringLiteral("session.write"),
+                                    QStringLiteral("Failed to append recording stop summary."));
+            }
+        }
+    }
     const auto summary = state_->recording_service_->stop();
     updateRecordingStatusLabel();
     if (announce && summary.hadOpenSession)

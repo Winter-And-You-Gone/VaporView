@@ -3,6 +3,7 @@
 #include "SkyRuntime.h"
 #include "SkyStartupScreen.h"
 #include "SkyTuiApp.h"
+#include "LogService.h"
 #include "SkyTuiOptions.h"
 
 #include <QCommandLineParser>
@@ -31,6 +32,8 @@ int main(int argc, char *argv[])
     app.setApplicationName("VaporViewSky");
     app.setApplicationVersion("1.0.6");
     app.setOrganizationName("VaporView");
+    VaporView::LogService logService(QStringLiteral("VaporViewSky"));
+    logService.installQtMessageHandler();
     registerTelemetryMetaTypes();
 
     QCommandLineParser parser;
@@ -127,7 +130,6 @@ int main(int argc, char *argv[])
     VaporView::SkyLocalIpcClient client;
     client.setAutoReconnectEnabled(true);
     VaporView::SkyTuiApp tui(&client, tuiOptions);
-    QObject::connect(&runtime, &VaporView::SkyRuntime::logMessage, &tui, &VaporView::SkyTuiApp::appendLog);
     QObject::connect(&ipcServer, &VaporView::SkyLocalIpcServer::logMessage, &tui, &VaporView::SkyTuiApp::appendLog);
 
     tui.start();

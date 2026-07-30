@@ -1,4 +1,7 @@
 build/
+/logs/
+/build/**/logs/
+*.dmp
 *.o
 *.obj
 *.exe

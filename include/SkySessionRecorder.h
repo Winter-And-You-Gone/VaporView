@@ -2,6 +2,7 @@
 #define VaporView_SKY_SESSION_RECORDER_H_
 
 #include "TelemetryTypes.h"
+#include "LogRecord.h"
 #include "data_types.h"
 #include "TcpWaveEncoding.h"
 
@@ -46,6 +47,9 @@ public:
     quint64 rawTemperatureHumidityRecordCount() const;
     quint64 rawDistanceRecordCount() const;
     quint64 rawWaveformRecordCount() const;
+
+    bool appendEvent(const LogRecord& record);
+    bool appendError(const LogRecord& record);
 
     void recordBasicTelemetry(const TelemetryBasic& data);
     void recordDeviceSnapshot(quint64 hostTimeUs,
@@ -109,6 +113,8 @@ private:
     QString distance_raw_filename_;
     QString waveform_raw_filename_;
     QString waveform_peaks_filename_;
+    QString event_log_filename_;
+    QString error_log_filename_;
     QFile basic_record_file_;
     QFile feature_record_file_;
     QFile temperature_controller_record_file_;
@@ -118,6 +124,8 @@ private:
     QFile distance_raw_file_;
     QFile waveform_raw_file_;
     QFile waveform_peaks_file_;
+    QFile event_log_file_;
+    QFile error_log_file_;
     mutable std::mutex files_mutex_;
     QString session_start_time_utc_;
     QString telemetry_port_;
@@ -137,6 +145,8 @@ private:
     quint64 raw_distance_record_count_ = 0;
     quint64 raw_waveform_record_count_ = 0;
     quint64 native_raw_waveform_record_count_ = 0;
+    quint64 event_row_count_ = 0;
+    quint64 error_row_count_ = 0;
 };
 
 }  // namespace VaporView

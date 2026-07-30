@@ -140,8 +140,8 @@ public:
                             const QByteArray& harmonicPayload,
                             TcpFloatEncoding floatEncoding);
 
-    void appendEvent(const QString& level, const QString& message);
-    void appendError(const QString& message);
+    bool appendEvent(const QString& level, const QString& message);
+    bool appendError(const QString& message);
 
     quint64 steadyToEpochUs(const std::chrono::steady_clock::time_point& timePoint) const;
     static quint64 currentTimestampUs();

@@ -16,6 +16,7 @@ target_link_libraries(vaporview_ground_rtk PUBLIC
 )
 
 target_link_libraries(vaporview_ground_rtk PRIVATE
+    vaporview_logging
     vaporview_app_theme
     vaporview_ground_ui_support
     vaporview_sky_core

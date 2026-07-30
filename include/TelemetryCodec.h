@@ -3,6 +3,7 @@
 
 #include "TelemetryTypes.h"
 #include "data_types.h"
+#include "LogRecord.h"
 
 #include <QByteArray>
 #include <QVector>
@@ -54,6 +55,8 @@ public:
     static bool parseTemperatureControllerStatus(const QByteArray& payload, TemperatureControllerData& data);
     static QByteArray serializeTemperatureControllerCommand(const TemperatureControllerCommand& command);
     static bool parseTemperatureControllerCommand(const QByteArray& payload, TemperatureControllerCommand& command);
+    static QByteArray serializeLogRecord(const LogRecord& record);
+    static bool parseLogRecord(const QByteArray& payload, LogRecord& record);
 
 private:
     quint32 max_payload_size_;

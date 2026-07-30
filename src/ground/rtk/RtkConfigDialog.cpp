@@ -9,6 +9,7 @@
 #include "ground/widgets/SerialPortComboSupport.h"
 #include "ground/widgets/WindowSizing.h"
 #include "shared/config/SettingsWriteBarrier.h"
+#include "LogService.h"
 #include <QApplication>
 #include <QCoreApplication>
 #include <QVBoxLayout>
@@ -78,6 +79,8 @@ constexpr int kGgaReconnectIntervalMs = 1500;
 constexpr int kGgaStaleTimeoutMs = 1500;
 constexpr int kGgaWaitingLogIntervalMs = 2000;
 constexpr int kGgaMaxVisibleLines = 200;
+constexpr int kGgaMaxBufferBytes = 64 * 1024;
+constexpr int kRtkMaxVisibleLines = 5000;
 constexpr int kRtkHttpTimeoutMs = 5000;
 constexpr int kRtkDefaultDialogWidth = 1024;
 constexpr int kRtkDefaultDialogHeight = 640;
@@ -1705,6 +1708,7 @@ void RtkConfigDialog::setupUi()
     log_text_edit_->setReadOnly(true);
     log_text_edit_->setLineWrapMode(QTextEdit::WidgetWidth);
     log_text_edit_->setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+    log_text_edit_->document()->setMaximumBlockCount(kRtkMaxVisibleLines);
     log_text_container_layout_->addWidget(log_text_edit_);
     log_layout_->addWidget(log_text_container_);
 
@@ -2649,9 +2653,14 @@ void RtkConfigDialog::pollRtkServiceStatus(bool forceLog)
         textFor("Streaming RTCM data", "正在转发 RTCM 数据"),
         is_english_);
 
-    if ((forceLog || is_running_) && !message.isEmpty())
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const bool statusChanged = message != last_rtk_status_message_;
+    const bool heartbeatDue = last_rtk_status_log_ms_ <= 0 ||
+        nowMs - last_rtk_status_log_ms_ >= 30000;
+    if ((forceLog || statusChanged || heartbeatDue) && !message.isEmpty())
     {
         appendRawLogLine(summaryLine);
+        last_rtk_status_log_ms_ = nowMs;
     }
     last_rtk_status_message_ = message;
 
@@ -2940,6 +2949,7 @@ void RtkConfigDialog::startGgaMonitor()
 
     gga_monitor_enabled_ = true;
     gga_buffer_.clear();
+    gga_buffer_overflow_logged_ = false;
     gga_recent_intervals_sec_.clear();
     gga_has_sentence_time_ = false;
     gga_last_status_log_time_ = std::chrono::steady_clock::time_point();
@@ -2974,6 +2984,7 @@ void RtkConfigDialog::stopGgaMonitor()
     }
 
     gga_buffer_.clear();
+    gga_buffer_overflow_logged_ = false;
     gga_recent_intervals_sec_.clear();
     gga_has_sentence_time_ = false;
     gga_last_status_log_time_ = std::chrono::steady_clock::time_point();
@@ -3591,6 +3602,26 @@ void RtkConfigDialog::onGgaPollTimer()
         if (bytesRead > 0)
         {
             gga_buffer_.append(QString::fromLatin1(buffer, static_cast<int>(bytesRead)));
+            if (gga_buffer_.size() > kGgaMaxBufferBytes)
+            {
+                const qsizetype marker = std::max<qsizetype>(gga_buffer_.lastIndexOf('$'), gga_buffer_.lastIndexOf('!'));
+                const qsizetype keepFrom = marker >= 0 && gga_buffer_.size() - marker <= kGgaMaxBufferBytes
+                    ? marker
+                    : std::max<qsizetype>(0, gga_buffer_.size() - kGgaMaxBufferBytes);
+                gga_buffer_.remove(0, keepFrom);
+                if (!gga_buffer_overflow_logged_)
+                {
+                    gga_buffer_overflow_logged_ = true;
+                    if (VaporView::LogService *logService = VaporView::LogService::instance())
+                    {
+                        logService->publish(VaporView::LogLevel::Warning,
+                                            QStringLiteral("RTK"),
+                                            QStringLiteral("gga"),
+                                            QStringLiteral("GGA input buffer exceeded 64 KiB; discarded an unterminated prefix."),
+                                            {{QStringLiteral("buffer_limit_bytes"), kGgaMaxBufferBytes}});
+                    }
+                }
+            }
             processGgaBuffer();
             continue;
         }
@@ -4010,6 +4041,7 @@ void RtkConfigDialog::onStartClicked()
         is_running_ = true;
         emit rtkRunningChanged(true);
         last_rtk_status_message_.clear();
+        last_rtk_status_log_ms_ = 0;
         updateButtonStates();
         if (rtk_status_timer_ && !rtk_status_timer_->isActive())
         {
@@ -4051,6 +4083,7 @@ void RtkConfigDialog::onStopClicked()
         is_running_ = false;
         emit rtkRunningChanged(false);
         last_rtk_status_message_.clear();
+        last_rtk_status_log_ms_ = 0;
         updateButtonStates();
         appendLog(textFor("RTK service stopped", "RTK 服务已停止"));
     }
@@ -4384,6 +4417,18 @@ void RtkConfigDialog::onClearLogClicked()
 
 void RtkConfigDialog::appendLog(const QString& message)
 {
+    if (VaporView::LogService *logService = VaporView::LogService::instance())
+    {
+        const bool isError = message.contains(QStringLiteral("error"), Qt::CaseInsensitive) ||
+            message.contains(QStringLiteral("failed"), Qt::CaseInsensitive) ||
+            message.contains(QStringLiteral("失败"), Qt::CaseInsensitive) ||
+            message.contains(QStringLiteral("错误"), Qt::CaseInsensitive);
+        logService->publish(isError ? VaporView::LogLevel::Warning : VaporView::LogLevel::Info,
+                            QStringLiteral("RTK"),
+                            QStringLiteral("service"),
+                            message,
+                            {{QStringLiteral("ui_visible"), true}});
+    }
     if (!log_text_edit_) return;
 
     QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
@@ -4401,7 +4446,17 @@ void RtkConfigDialog::appendLog(const QString& message)
 
 void RtkConfigDialog::appendRawLogLine(const QString& line)
 {
-    if (!log_text_edit_ || line.isEmpty()) return;
+    if (line.isEmpty()) return;
+
+    if (VaporView::LogService *logService = VaporView::LogService::instance())
+    {
+        logService->publish(VaporView::LogLevel::Debug,
+                            QStringLiteral("RTK"),
+                            QStringLiteral("service.raw"),
+                            line.trimmed(),
+                            {{QStringLiteral("ui_visible"), true}});
+    }
+    if (!log_text_edit_) return;
 
     log_text_edit_->append(line.trimmed());
 

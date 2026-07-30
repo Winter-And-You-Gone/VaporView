@@ -1,5 +1,6 @@
 #include "SkyLocalIpcServer.h"
 #include "SkyRuntime.h"
+#include "LogService.h"
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
@@ -109,6 +110,8 @@ int main(int argc, char *argv[])
     app.setApplicationName("VaporViewSkyCore");
     app.setApplicationVersion("1.0.6");
     app.setOrganizationName("VaporView");
+    VaporView::LogService logService(QStringLiteral("VaporViewSkyCore"));
+    logService.installQtMessageHandler();
     registerTelemetryMetaTypes();
 
     QCommandLineParser parser;
@@ -205,7 +208,11 @@ int main(int argc, char *argv[])
     });
 
     VaporView::SkyLocalIpcServer ipcServer(&runtime);
-    QObject::connect(&ipcServer, &VaporView::SkyLocalIpcServer::logMessage, [](const QString& message) {
+    QObject::connect(&ipcServer, &VaporView::SkyLocalIpcServer::logMessage, &logService, [&logService](const QString& message) {
+        logService.publish(VaporView::LogLevel::Info,
+                           QStringLiteral("SkyCore"),
+                           QStringLiteral("ipc"),
+                           message);
         QTextStream(stdout) << message << "\n";
     });
 

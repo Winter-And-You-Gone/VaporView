@@ -41,6 +41,20 @@ int main(int argc, char *argv[])
     require(error.isEmpty(), "start recorder error text");
     require(recorder.isRecording(), "recorder state");
     require(!recorder.sessionName().isEmpty(), "session name");
+
+    VaporView::LogRecord eventRecord;
+    eventRecord.timestamp_utc = QStringLiteral("2026-07-30T12:00:00.000Z");
+    eventRecord.timestamp_us = 123456;
+    eventRecord.level = VaporView::LogLevel::Info;
+    eventRecord.source = QStringLiteral("SkyCore");
+    eventRecord.category = QStringLiteral("test");
+    eventRecord.message = QStringLiteral("session event");
+    require(recorder.appendEvent(eventRecord), "append session event");
+
+    VaporView::LogRecord errorRecord = eventRecord;
+    errorRecord.level = VaporView::LogLevel::Error;
+    errorRecord.message = QStringLiteral("session error");
+    require(recorder.appendError(errorRecord), "append session error");
     VaporView::EpsilonData epsilon;
     epsilon.valid = true;
     epsilon.device_timestamp_us = 900;
@@ -148,6 +162,8 @@ int main(int argc, char *argv[])
     require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/sensor_summary.csv")), "sensor summary csv");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/waveform_features.csv")), "waveform features csv");
     require(!QFileInfo::exists(sessionDir + QStringLiteral("/waveform_index.csv")), "no waveform index csv");
+    require(QFileInfo::exists(sessionDir + QStringLiteral("/logs/event_log.csv")), "event log");
+    require(QFileInfo::exists(sessionDir + QStringLiteral("/logs/error_log.txt")), "error log");
     require(!QFileInfo::exists(sessionDir + QStringLiteral("/waveforms")), "no waveform bin directory");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/navigation.dat")), "navigation raw dat");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/waveform.dat")), "waveform raw dat");
@@ -252,6 +268,10 @@ int main(int argc, char *argv[])
     require(root.value(QStringLiteral("waveform_points_per_frame")).toInt() == 4,
             "waveform points per frame");
     const QJsonObject counts = root.value(QStringLiteral("counts")).toObject();
+    require(counts.value(QStringLiteral("event_rows")).toString().toULongLong() == 1,
+            "event row count");
+    require(counts.value(QStringLiteral("error_rows")).toString().toULongLong() == 1,
+            "error row count");
     require(counts.value(QStringLiteral("waveform_frames")).toString().toULongLong() == 1,
             "waveform frame count");
     require(counts.value(QStringLiteral("waveform_feature_rows")).toString().toULongLong() == 1,
@@ -264,6 +284,20 @@ int main(int argc, char *argv[])
     const QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
     require(paths.value(QStringLiteral("waveform_peaks_csv")).toString() == QStringLiteral("raw/waveform_peaks.csv"),
             "metadata waveform peaks path");
+
+    QFile eventFile(sessionDir + QStringLiteral("/logs/event_log.csv"));
+    require(eventFile.open(QIODevice::ReadOnly | QIODevice::Text), "open event log");
+    const QStringList eventLines = QString::fromUtf8(eventFile.readAll()).trimmed().split('\n');
+    require(eventLines.size() == 2, "event log row count");
+    require(eventLines.at(0) == QStringLiteral("timestamp_utc,timestamp_us,level,message"),
+            "event log header");
+    require(eventLines.at(1).contains(QStringLiteral(",123456,Info,session event")),
+            "event log content");
+
+    QFile errorFile(sessionDir + QStringLiteral("/logs/error_log.txt"));
+    require(errorFile.open(QIODevice::ReadOnly | QIODevice::Text), "open error log");
+    require(QString::fromUtf8(errorFile.readAll()).contains(QStringLiteral("session error")),
+            "error log content");
 
     QFile deviceConfigFile(sessionDir + QStringLiteral("/config/device_config.json"));
     require(deviceConfigFile.open(QIODevice::ReadOnly), "open sky device config");

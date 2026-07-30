@@ -78,6 +78,10 @@ private:
     void attachLinkSignals();
     void noteReceivedBytes(qint64 bytes);
     void noteTransmittedBytes(qint64 bytes);
+    void reportProtocolDiagnostic(LogLevel level,
+                                  const QString& category,
+                                  const QString& message,
+                                  const QVariantMap& fields = QVariantMap());
 
     std::unique_ptr<TelemetryLink> link_;
     TelemetryTransportType transport_type_ = TelemetryTransportType::Tcp;
@@ -92,6 +96,9 @@ private:
     QVector<ByteSample> tx_byte_samples_;
     quint64 total_rx_bytes_ = 0;
     quint64 total_tx_bytes_ = 0;
+    quint64 last_logged_crc_errors_ = 0;
+    quint64 last_logged_dropped_frames_ = 0;
+    qint64 last_decoder_diagnostic_ms_ = 0;
 };
 
 }  // namespace VaporView

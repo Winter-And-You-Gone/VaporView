@@ -99,6 +99,19 @@ target_include_directories(telemetry_codec_test PRIVATE
 target_link_libraries(telemetry_codec_test PRIVATE vaporview_protocol)
 add_test(NAME telemetry_codec_test COMMAND telemetry_codec_test)
 
+add_executable(log_service_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/log_service_test.cpp
+)
+target_include_directories(log_service_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+target_link_libraries(log_service_test PRIVATE
+    vaporview_logging
+    vaporview_protocol
+    Qt6::Core
+)
+add_test(NAME log_service_test COMMAND log_service_test)
+
 add_executable(telemetry_tcp_link_test
     ${CMAKE_CURRENT_SOURCE_DIR}/telemetry_tcp_link_test.cpp
 )

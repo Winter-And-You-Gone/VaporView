@@ -292,6 +292,43 @@ QByteArray TelemetryCodec::encodeFrame(MsgType type,
     return frame;
 }
 
+QByteArray TelemetryCodec::serializeLogRecord(const LogRecord& record)
+{
+    return QJsonDocument(record.toJsonObject()).toJson(QJsonDocument::Compact);
+}
+
+bool TelemetryCodec::parseLogRecord(const QByteArray& payload, LogRecord& record)
+{
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(payload, &parseError);
+    if (!document.isObject() || parseError.error != QJsonParseError::NoError)
+    {
+        return false;
+    }
+    const QJsonObject object = document.object();
+    if (!object.contains(QStringLiteral("message")) || !object.value(QStringLiteral("message")).isString())
+    {
+        return false;
+    }
+    record.schema_version = object.value(QStringLiteral("schema_version")).toInt(1);
+    record.timestamp_utc = object.value(QStringLiteral("timestamp_utc")).toString();
+    record.timestamp_us = static_cast<quint64>(object.value(QStringLiteral("timestamp_us")).toVariant().toULongLong());
+    record.level = logLevelFromName(object.value(QStringLiteral("level")).toString());
+    record.source = object.value(QStringLiteral("source")).toString();
+    record.category = object.value(QStringLiteral("category")).toString();
+    record.process_id = static_cast<quint64>(object.value(QStringLiteral("process_id")).toVariant().toULongLong());
+    record.thread_id = static_cast<quint64>(object.value(QStringLiteral("thread_id")).toVariant().toULongLong());
+    record.sequence = static_cast<quint64>(object.value(QStringLiteral("sequence")).toVariant().toULongLong());
+    record.correlation_id = object.value(QStringLiteral("correlation_id")).toString();
+    record.session_id = object.value(QStringLiteral("session_id")).toString();
+    record.message = object.value(QStringLiteral("message")).toString();
+    if (object.value(QStringLiteral("fields")).isObject())
+    {
+        record.fields = object.value(QStringLiteral("fields")).toObject().toVariantMap();
+    }
+    return true;
+}
+
 QVector<TelemetryFrame> TelemetryCodec::feedBytes(const QByteArray& bytes)
 {
     buffer_.append(bytes);

@@ -36,6 +36,7 @@ enum class MsgType : quint8
     Command = 0x10,
     CommandAck = 0x11,
     Heartbeat = 0x20,
+    LogEvent = 0x7E,
     Error = 0x7F,
 };
 
