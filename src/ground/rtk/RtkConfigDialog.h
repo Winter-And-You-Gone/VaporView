@@ -181,6 +181,7 @@ private:
     QPushButton *stop_btn_;
     QPushButton *test_btn_;
     QPushButton *gga_toggle_btn_;
+    QToolButton *gga_clear_log_btn_;
     QPushButton *refresh_ports_btn_;
     QPushButton *auto_detect_ports_btn_;
     QPushButton *fetch_mountpoints_btn_;

@@ -187,12 +187,31 @@ int main(int argc, char **argv)
             "mountpoint detect button renders the lucide radar icon in white");
 
     auto *ggaToggleButton = dialog.findChild<QPushButton *>(QStringLiteral("rtkGgaToggleButton"));
+    auto *ggaSourceCombo = dialog.findChild<QComboBox *>(QStringLiteral("rtkGgaPortCombo"));
+    auto *ggaClearLogButton =
+        dialog.findChild<QToolButton *>(QStringLiteral("rtkGgaClearLogButton"));
     auto *ggaMonitorLog = dialog.findChild<QTextEdit *>(QStringLiteral("rtkGgaTextEdit"));
     QWidget *ggaCard = ggaMonitorLog && ggaMonitorLog->parentWidget()
         ? ggaMonitorLog->parentWidget()->parentWidget()
         : nullptr;
-    require(ggaToggleButton && ggaMonitorLog && ggaCard,
-            "GGA monitor button, internal log, and card exist");
+    require(ggaToggleButton && ggaSourceCombo && ggaClearLogButton && ggaMonitorLog && ggaCard,
+            "GGA monitor controls, internal log, and card exist");
+    const QFontMetrics ggaSourceMetrics(ggaSourceCombo->font());
+    require(ggaSourceCombo->width() <=
+                ggaSourceMetrics.horizontalAdvance(ggaSourceCombo->currentText()) + 40,
+            "GGA source combo leaves room for the clear-log action");
+    const QPoint ggaSourceTopLeft = ggaSourceCombo->mapTo(&dialog, QPoint(0, 0));
+    const QPoint ggaClearTopLeft = ggaClearLogButton->mapTo(&dialog, QPoint(0, 0));
+    require(ggaClearTopLeft.x() >= ggaSourceTopLeft.x() + ggaSourceCombo->width() &&
+                ggaClearTopLeft.x() <= ggaSourceTopLeft.x() + ggaSourceCombo->width() + 12 &&
+                std::abs((ggaClearTopLeft.y() + ggaClearLogButton->height() / 2) -
+                         (ggaSourceTopLeft.y() + ggaSourceCombo->height() / 2)) <= 1,
+            "GGA clear-log action sits directly to the right of the source combo");
+    require(!ggaClearLogButton->icon().isNull() &&
+                ggaClearLogButton->iconSize() == QSize(20, 20) &&
+                ggaClearLogButton->size() == QSize(32, 32) &&
+                ggaClearLogButton->toolTip() == QStringLiteral("清空 GGA 日志"),
+            "GGA clear-log action uses the standard icon-button presentation");
     const int mountpointCenter =
         mountpointCombo->mapTo(&dialog, QPoint(0, 0)).y() + mountpointCombo->height() / 2;
     const int ggaToggleCenter =
@@ -298,6 +317,9 @@ int main(int argc, char **argv)
             "GGA stop status is appended once with a timestamp");
     require(ggaCard->height() == ggaCardHeightBeforeReading,
             "GGA stop status log does not change the monitor card height");
+    ggaClearLogButton->click();
+    require(ggaMonitorLog->toPlainText().isEmpty(),
+            "GGA clear-log action clears only the monitor output");
 
     QTcpServer caster;
     require(caster.listen(QHostAddress::LocalHost, 0), "local sourcetable test server starts");

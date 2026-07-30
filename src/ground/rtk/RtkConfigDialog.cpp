@@ -1110,6 +1110,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     , stop_btn_(nullptr)
     , test_btn_(nullptr)
     , gga_toggle_btn_(nullptr)
+    , gga_clear_log_btn_(nullptr)
     , refresh_ports_btn_(nullptr)
     , auto_detect_ports_btn_(nullptr)
     , fetch_mountpoints_btn_(nullptr)
@@ -1599,12 +1600,25 @@ void RtkConfigDialog::setupUi()
     configureComboBoxPopup(gga_port_combo_, isDarkThemeEnabled());
     VaporView::installSerialPortPopupDelegate(gga_port_combo_);
 
+    gga_clear_log_btn_ = new QToolButton(ggaTitleBar ? ggaTitleBar : this);
+    gga_clear_log_btn_->setObjectName(QStringLiteral("rtkGgaClearLogButton"));
+    gga_clear_log_btn_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    gga_clear_log_btn_->setAutoRaise(false);
+    gga_clear_log_btn_->setCursor(Qt::PointingHandCursor);
+    connect(gga_clear_log_btn_, &QToolButton::clicked, this, [this]() {
+        if (gga_text_edit_)
+        {
+            gga_text_edit_->clear();
+        }
+    });
+
     if (ggaTitleBar)
     {
         if (auto *titleLayout = qobject_cast<QHBoxLayout *>(ggaTitleBar->layout()))
         {
             titleLayout->insertWidget(1, gga_port_info_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
             titleLayout->insertWidget(2, gga_port_combo_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+            titleLayout->insertWidget(3, gga_clear_log_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
         }
     }
 
@@ -1793,6 +1807,12 @@ void RtkConfigDialog::setEnglish(bool english)
     stop_btn_->setText(textFor("Stop", "停止"));
     test_btn_->setText(textFor("Test Connection", "测试连接"));
     clear_log_btn_->setText(textFor("Clear Log", "清空日志"));
+    if (gga_clear_log_btn_)
+    {
+        const QString clearGgaLogText = textFor("Clear GGA log", "清空 GGA 日志");
+        gga_clear_log_btn_->setToolTip(clearGgaLogText);
+        gga_clear_log_btn_->setAccessibleName(clearGgaLogText);
+    }
 
     updateGgaMonitorText();
     updateGgaMonitorButton();
@@ -2024,7 +2044,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (gga_port_combo_)
     {
         const QFontMetrics metrics(gga_port_combo_->font());
-        const int targetWidth = metrics.horizontalAdvance(mainGgaSourceLabel()) + scalePixels(72);
+        const int targetWidth = metrics.horizontalAdvance(mainGgaSourceLabel()) + scalePixels(34);
         gga_port_combo_->setFixedWidth(targetWidth);
         gga_port_combo_->setFixedHeight(scalePixels(kRtkInputHeight));
         gga_port_combo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
@@ -2033,6 +2053,23 @@ void RtkConfigDialog::applyScaledUiMetrics()
             edit->setCursorPosition(0);
             edit->setSelection(0, 0);
         }
+    }
+    if (gga_clear_log_btn_)
+    {
+        const int buttonSize = scalePixels(kRtkInputHeight);
+        const int iconSize = scalePixels(kRtkInputHeight - 12);
+        gga_clear_log_btn_->setFixedSize(buttonSize, buttonSize);
+        gga_clear_log_btn_->setIconSize(QSize(iconSize, iconSize));
+        gga_clear_log_btn_->setIcon(createLucideIcon(
+            QStringLiteral("trash-2"),
+            appThemeColor(AppThemeColor::ToolbarBlue, darkTheme)));
+        gga_clear_log_btn_->setStyleSheet(
+            QString("QToolButton#rtkGgaClearLogButton { background-color: transparent; border: none; "
+                    "border-radius: 6px; padding: 0px; }"
+                    "QToolButton#rtkGgaClearLogButton:hover, "
+                    "QToolButton#rtkGgaClearLogButton:focus, "
+                    "QToolButton#rtkGgaClearLogButton:pressed { background-color: %1; }")
+                .arg(appThemeColorName(AppThemeColor::TitleBarHover, darkTheme)));
     }
     applyButtonWidth(gga_toggle_btn_, 56);
 
