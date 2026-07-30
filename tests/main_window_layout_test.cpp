@@ -1709,6 +1709,9 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                 !ggaFrequencyLabel->text().contains(QStringLiteral("频率")) &&
                 !ggaFrequencyLabel->text().contains(QStringLiteral("Rate")),
             "RTK GGA frequency readout shows only the numeric hertz value");
+    require(ggaFrequencyLabel->alignment().testFlag(Qt::AlignHCenter) &&
+                ggaFrequencyLabel->alignment().testFlag(Qt::AlignVCenter),
+            "RTK GGA frequency readout centers its text in both directions");
     const int legacyFrequencyWidth = ggaFrequencyLabel->fontMetrics().horizontalAdvance(
         QStringLiteral("频率: -999.99 Hz"));
     require(ggaToggleButton->width() < legacyFrequencyWidth &&
@@ -1725,11 +1728,29 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
             "RTK GGA source label and combo sit after the title in the GGA card title bar");
     require(ggaToggleButton->parentWidget() == ggaFrequencyLabel->parentWidget() &&
                 widgetY(ggaFrequencyLabel) > widgetY(ggaToggleButton) &&
-                std::abs(widgetX(ggaFrequencyLabel) - widgetX(ggaToggleButton)) <= 2 &&
+                std::abs((widgetX(ggaFrequencyLabel) + ggaFrequencyLabel->width() / 2) -
+                         (widgetX(ggaToggleButton) + ggaToggleButton->width() / 2)) <= 2 &&
                 ggaToggleButton->width() < ggaFrequencyLabel->width(),
-            "RTK GGA compact read button stacks above the numeric frequency readout");
+            "RTK GGA compact read button and frequency readout share a horizontal center");
+    QWidget *ggaControls = ggaToggleButton->parentWidget();
+    const int buttonLeftInset = ggaToggleButton->mapTo(ggaControls, QPoint(0, 0)).x();
+    const int buttonRightInset =
+        ggaControls->width() - buttonLeftInset - ggaToggleButton->width();
+    require(std::abs(buttonLeftInset - buttonRightInset) <= 2,
+            "RTK GGA read button keeps equal left and right insets in its control column");
+    const int cardToButtonInset = widgetX(ggaToggleButton) - widgetX(ggaCard);
+    const int buttonToOutputInset =
+        widgetX(ggaOutputText) - widgetX(ggaToggleButton) - ggaToggleButton->width();
+    require(std::abs(cardToButtonInset - buttonToOutputInset) <= 2,
+            "RTK GGA read button keeps balanced outer spacing beside the output area");
     require(widgetX(ggaOutputText) >= widgetX(ggaToggleButton) + ggaToggleButton->width(),
             "RTK GGA output text area sits to the right of the read controls");
+    const int controlsTop = widgetY(ggaToggleButton);
+    const int controlsBottom = widgetY(ggaFrequencyLabel) + ggaFrequencyLabel->height();
+    const int outputTop = widgetY(ggaOutputText);
+    const int outputBottom = outputTop + ggaOutputText->height();
+    require(std::abs((controlsTop + controlsBottom) - (outputTop + outputBottom)) <= 4,
+            "RTK GGA read controls are vertically centered beside the output text area");
     require(ggaOutputText->width() > ggaCard->width() / 2,
             "RTK GGA output text area receives most of the card body width");
     require(std::abs(ggaCard->height() - ntripCard->height()) <= 24,

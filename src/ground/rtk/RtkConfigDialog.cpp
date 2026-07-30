@@ -1538,15 +1538,15 @@ void RtkConfigDialog::setupUi()
         gga_group_, gga_title_label_, QStringLiteral("activity"), &ggaTitleBar);
     gga_layout_ = new QHBoxLayout();
     gga_layout_->setSpacing(6);
-    gga_layout_->setContentsMargins(10, 10, 10, 12);
+    gga_layout_->setContentsMargins(6, 10, 10, 12);
     gga_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     ggaCardLayout->addLayout(gga_layout_);
 
     gga_controls_container_ = new QWidget(gga_group_);
     gga_controls_container_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     gga_controls_layout_ = new QVBoxLayout(gga_controls_container_);
-    gga_controls_layout_->setContentsMargins(0, 0, 0, 0);
-    gga_controls_layout_->setSpacing(4);
+    gga_controls_layout_->setContentsMargins(0, 2, 0, 0);
+    gga_controls_layout_->setSpacing(0);
 
     gga_header_layout_ = new QGridLayout();
     gga_header_layout_->setHorizontalSpacing(8);
@@ -1577,7 +1577,7 @@ void RtkConfigDialog::setupUi()
     gga_toggle_btn_->setObjectName(QStringLiteral("rtkGgaToggleButton"));
     gga_toggle_btn_->setFocusPolicy(Qt::NoFocus);
     connect(gga_toggle_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onGgaToggleClicked);
-    gga_header_layout_->addWidget(gga_toggle_btn_, 0, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    gga_header_layout_->addWidget(gga_toggle_btn_, 0, 0, Qt::AlignCenter);
 
     gga_frequency_label_ = new VaporView::VisualTextLabel(this);
     gga_frequency_label_->setObjectName(QStringLiteral("fieldLabel"));
@@ -1585,11 +1585,12 @@ void RtkConfigDialog::setupUi()
     const QFontMetrics ggaFrequencyMetrics(gga_frequency_label_->font());
     gga_frequency_label_->setFixedWidth(
         ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("999.99 Hz")) + scalePixels(8));
-    gga_frequency_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    gga_header_layout_->addWidget(gga_frequency_label_, 1, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    gga_frequency_label_->setAlignment(Qt::AlignCenter);
+    gga_header_layout_->addWidget(gga_frequency_label_, 1, 0, Qt::AlignCenter);
+    gga_controls_layout_->addStretch(1);
     gga_controls_layout_->addLayout(gga_header_layout_);
     gga_controls_layout_->addStretch(1);
-    gga_layout_->addWidget(gga_controls_container_, 0, Qt::AlignTop | Qt::AlignLeft);
+    gga_layout_->addWidget(gga_controls_container_, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
     gga_text_container_ = new QWidget(gga_group_);
     gga_text_container_->setObjectName(QStringLiteral("rtkGgaOutputContainer"));
@@ -1866,14 +1867,15 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     if (gga_layout_)
     {
-        gga_layout_->setSpacing(scalePixels(5));
-        gga_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(8));
+        const int controlsGap = scalePixels(5);
+        gga_layout_->setSpacing(controlsGap);
+        gga_layout_->setContentsMargins(controlsGap, scalePixels(8), scalePixels(8), scalePixels(8));
     }
 
     if (gga_controls_layout_)
     {
-        gga_controls_layout_->setSpacing(scalePixels(4));
-        gga_controls_layout_->setContentsMargins(0, 0, 0, 0);
+        gga_controls_layout_->setSpacing(0);
+        gga_controls_layout_->setContentsMargins(0, scalePixels(2), 0, 0);
     }
 
     if (gga_text_container_layout_)
@@ -1975,7 +1977,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
         const int frequencyWidth =
             metrics.horizontalAdvance(QStringLiteral("999.99 Hz")) + scalePixels(8);
         gga_frequency_label_->setFixedWidth(frequencyWidth);
-        gga_frequency_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        gga_frequency_label_->setAlignment(Qt::AlignCenter);
     }
     applyFieldLabelContentWidth(gga_port_info_label_);
     if (gga_port_info_label_)
@@ -2004,13 +2006,13 @@ void RtkConfigDialog::applyScaledUiMetrics()
                     gga_port_combo_->sizeHint().height(),
                     gga_frequency_label_->sizeHint().height()});
     const int controlsHeight = headerHeight;
+    const int ggaTextHeight = std::max(scalePixels(72), controlsHeight);
     if (gga_controls_container_)
     {
         gga_controls_container_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         gga_controls_container_->setFixedSize(gga_header_layout_ ? gga_header_layout_->sizeHint().width() : scalePixels(220),
-                                              controlsHeight);
+                                              ggaTextHeight);
     }
-    const int ggaTextHeight = std::max(scalePixels(72), controlsHeight);
     gga_text_edit_->setFixedHeight(ggaTextHeight);
     gga_text_edit_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     if (gga_text_container_)
