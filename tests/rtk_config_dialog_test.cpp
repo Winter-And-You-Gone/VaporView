@@ -207,6 +207,10 @@ int main(int argc, char **argv)
                 std::abs((ggaClearTopLeft.y() + ggaClearLogButton->height() / 2) -
                          (ggaSourceTopLeft.y() + ggaSourceCombo->height() / 2)) <= 1,
             "GGA clear-log action sits directly to the right of the source combo");
+    const int clearButtonRightGap = ggaClearLogButton->parentWidget()->width() -
+        ggaClearLogButton->geometry().right() - 1;
+    require(clearButtonRightGap >= 0 && clearButtonRightGap <= 12,
+            "GGA clear-log action follows the card title-bar right margin");
     require(!ggaClearLogButton->icon().isNull() &&
                 ggaClearLogButton->iconSize() == QSize(20, 20) &&
                 ggaClearLogButton->size() == QSize(32, 32) &&
