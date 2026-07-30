@@ -26,6 +26,7 @@ CMakeFiles/
 cmake_install.cmake
 *.autosave
 scripts/*.local.ps1
+/rtk_config.ini
 .idea/
 .vscode/
 .trae/

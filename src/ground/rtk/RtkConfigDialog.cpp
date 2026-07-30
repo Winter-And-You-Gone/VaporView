@@ -10,6 +10,7 @@
 #include "ground/widgets/WindowSizing.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include <QApplication>
+#include <QCoreApplication>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -151,6 +152,34 @@ bool isUiTestCasterServerText(const QString& server)
     const QString normalized = server.trimmed();
     return normalized.compare(QStringLiteral("unsaved.normal.caster"), Qt::CaseInsensitive) == 0 ||
         normalized.compare(QStringLiteral("caster.ui-test.local"), Qt::CaseInsensitive) == 0;
+}
+
+QString rtkConfigFilePath()
+{
+    QSettings scopedProfile(
+        QSettings::IniFormat,
+        QSettings::UserScope,
+        QStringLiteral("VaporView"),
+        QStringLiteral("RtkConfig"));
+    if (QSettings::defaultFormat() == QSettings::IniFormat)
+    {
+        return scopedProfile.fileName();
+    }
+
+    QDir directory(QCoreApplication::applicationDirPath());
+    for (int depth = 0; depth < 6; ++depth)
+    {
+        if (QFileInfo::exists(directory.filePath(QStringLiteral("CMakeLists.txt"))) &&
+            QFileInfo::exists(directory.filePath(QStringLiteral("src/ground/rtk/RtkConfigDialog.cpp"))))
+        {
+            return directory.filePath(QStringLiteral("rtk_config.ini"));
+        }
+        if (!directory.cdUp())
+        {
+            break;
+        }
+    }
+    return scopedProfile.fileName();
 }
 
 bool isMountpointPlaceholderText(const QString& text)
@@ -1101,12 +1130,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     {
         VaporView::installCustomTitleBar(this);
     }
-    QSettings profileSettings(
-        QSettings::IniFormat,
-        QSettings::UserScope,
-        QStringLiteral("VaporView"),
-        QStringLiteral("RtkConfig"));
-    config_file_path_ = profileSettings.fileName();
+    config_file_path_ = rtkConfigFilePath();
     loadSettings();
     setFontScale(100);
     setEnglish(false);
@@ -2168,17 +2192,28 @@ void RtkConfigDialog::setFontScale(int percent)
 void RtkConfigDialog::loadSettings()
 {
     QSettings settings(config_file_path_, QSettings::IniFormat);
-    QSettings legacySettings(QStringLiteral("VaporView"), QStringLiteral("RtkConfig"));
-    if (settings.fileName().compare(legacySettings.fileName(), Qt::CaseInsensitive) != 0)
-    {
-        for (const QString& key : legacySettings.allKeys())
+    const auto migrateMissingSettings = [&settings](QSettings& source) {
+        if (settings.fileName().compare(source.fileName(), Qt::CaseInsensitive) == 0)
+        {
+            return;
+        }
+        for (const QString& key : source.allKeys())
         {
             if (!settings.contains(key))
             {
-                VaporView::setPersistentSetting(settings, key, legacySettings.value(key));
+                VaporView::setPersistentSetting(settings, key, source.value(key));
             }
         }
-    }
+    };
+
+    QSettings scopedProfile(
+        QSettings::IniFormat,
+        QSettings::UserScope,
+        QStringLiteral("VaporView"),
+        QStringLiteral("RtkConfig"));
+    migrateMissingSettings(scopedProfile);
+    QSettings legacySettings(QStringLiteral("VaporView"), QStringLiteral("RtkConfig"));
+    migrateMissingSettings(legacySettings);
 
     QString savedServer = settings.value("server", QString()).toString().trimmed();
     QString savedPort = settings.value("port", QString()).toString().trimmed();
