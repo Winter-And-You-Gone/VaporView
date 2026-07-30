@@ -1111,6 +1111,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     , test_btn_(nullptr)
     , gga_toggle_btn_(nullptr)
     , gga_clear_log_btn_(nullptr)
+    , service_log_clear_btn_(nullptr)
     , refresh_ports_btn_(nullptr)
     , auto_detect_ports_btn_(nullptr)
     , fetch_mountpoints_btn_(nullptr)
@@ -1664,8 +1665,30 @@ void RtkConfigDialog::setupUi()
     main_layout_->addWidget(topRowWidget);
 
     log_group_ = new QGroupBox(this);
-    auto *logCardLayout = createCardLayout(log_group_, log_title_label_, QStringLiteral("scroll-text"));
+    QWidget *logTitleBar = nullptr;
+    auto *logCardLayout = createCardLayout(log_group_,
+                                           log_title_label_,
+                                           QStringLiteral("scroll-text"),
+                                           &logTitleBar);
     log_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+
+    service_log_clear_btn_ = new QToolButton(logTitleBar ? logTitleBar : this);
+    service_log_clear_btn_->setObjectName(QStringLiteral("rtkServiceLogClearButton"));
+    service_log_clear_btn_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    service_log_clear_btn_->setAutoRaise(false);
+    service_log_clear_btn_->setCursor(Qt::PointingHandCursor);
+    connect(service_log_clear_btn_,
+            &QToolButton::clicked,
+            this,
+            &RtkConfigDialog::onClearLogClicked);
+    if (logTitleBar)
+    {
+        if (auto *titleLayout = qobject_cast<QHBoxLayout *>(logTitleBar->layout()))
+        {
+            titleLayout->addWidget(service_log_clear_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
+        }
+    }
+
     log_layout_ = new QVBoxLayout();
     log_layout_->setSpacing(4);
     log_layout_->setContentsMargins(10, 10, 10, 4);
@@ -1812,6 +1835,13 @@ void RtkConfigDialog::setEnglish(bool english)
         const QString clearGgaLogText = textFor("Clear GGA log", "清空 GGA 日志");
         gga_clear_log_btn_->setToolTip(clearGgaLogText);
         gga_clear_log_btn_->setAccessibleName(clearGgaLogText);
+    }
+    if (service_log_clear_btn_)
+    {
+        const QString clearServiceLogText =
+            textFor("Clear RTK service log", "清空 RTK 服务日志");
+        service_log_clear_btn_->setToolTip(clearServiceLogText);
+        service_log_clear_btn_->setAccessibleName(clearServiceLogText);
     }
 
     updateGgaMonitorText();
@@ -2054,23 +2084,28 @@ void RtkConfigDialog::applyScaledUiMetrics()
             edit->setSelection(0, 0);
         }
     }
-    if (gga_clear_log_btn_)
-    {
-        const int buttonSize = scalePixels(kRtkInputHeight);
-        const int iconSize = scalePixels(kRtkInputHeight - 12);
-        gga_clear_log_btn_->setFixedSize(buttonSize, buttonSize);
-        gga_clear_log_btn_->setIconSize(QSize(iconSize, iconSize));
-        gga_clear_log_btn_->setIcon(createLucideIcon(
+    const auto applyLogClearButtonStyle = [this, darkTheme](QToolButton *button) {
+        if (!button)
+        {
+            return;
+        }
+
+        const int buttonSize = scalePixels(34);
+        const int iconSize = scalePixels(24);
+        button->setFixedSize(buttonSize, buttonSize);
+        button->setIconSize(QSize(iconSize, iconSize));
+        button->setIcon(createLucideIcon(
             QStringLiteral("trash-2"),
             appThemeColor(AppThemeColor::ToolbarBlue, darkTheme)));
-        gga_clear_log_btn_->setStyleSheet(
-            QString("QToolButton#rtkGgaClearLogButton { background-color: transparent; border: none; "
+        button->setStyleSheet(
+            QString("QToolButton { background-color: transparent; border: none; "
                     "border-radius: 6px; padding: 0px; }"
-                    "QToolButton#rtkGgaClearLogButton:hover, "
-                    "QToolButton#rtkGgaClearLogButton:focus, "
-                    "QToolButton#rtkGgaClearLogButton:pressed { background-color: %1; }")
+                    "QToolButton:hover, QToolButton:focus, QToolButton:pressed { "
+                    "background-color: %1; }")
                 .arg(appThemeColorName(AppThemeColor::TitleBarHover, darkTheme)));
-    }
+    };
+    applyLogClearButtonStyle(gga_clear_log_btn_);
+    applyLogClearButtonStyle(service_log_clear_btn_);
     applyButtonWidth(gga_toggle_btn_, 56);
 
     const QMargins ggaMargins = gga_layout_ ? gga_layout_->contentsMargins() : QMargins();

@@ -213,10 +213,10 @@ int main(int argc, char **argv)
     require(clearButtonRightGap >= 0 && clearButtonRightGap <= 12,
             "GGA clear-log action follows the card title-bar right margin");
     require(!ggaClearLogButton->icon().isNull() &&
-                ggaClearLogButton->iconSize() == QSize(20, 20) &&
-                ggaClearLogButton->size() == QSize(32, 32) &&
+                ggaClearLogButton->iconSize() == QSize(24, 24) &&
+                ggaClearLogButton->size() == QSize(34, 34) &&
                 ggaClearLogButton->toolTip() == QStringLiteral("清空 GGA 日志"),
-            "GGA clear-log action uses the standard icon-button presentation");
+            "GGA clear-log action matches the main log-card icon-button presentation");
     const int mountpointCenter =
         mountpointCombo->mapTo(&dialog, QPoint(0, 0)).y() + mountpointCombo->height() / 2;
     const int ggaToggleCenter =
@@ -440,9 +440,25 @@ int main(int argc, char **argv)
         }
     }
     auto *serviceLog = dialog.findChild<QTextEdit *>(QStringLiteral("rtkServiceLogTextEdit"));
-    require(testButton && serviceLog, "RTK test button and service log exist");
+    auto *serviceLogClearButton =
+        dialog.findChild<QToolButton *>(QStringLiteral("rtkServiceLogClearButton"));
+    require(testButton && serviceLog && serviceLogClearButton,
+            "RTK test button, service log, and title-bar clear action exist");
     require(serviceLog->styleSheet().contains(expectedLogBackground, Qt::CaseInsensitive),
             "RTK service log uses the raised log-panel background");
+    require(!serviceLogClearButton->icon().isNull() &&
+                serviceLogClearButton->iconSize() == QSize(24, 24) &&
+                serviceLogClearButton->size() == QSize(34, 34) &&
+                serviceLogClearButton->toolTip() == QStringLiteral("清空 RTK 服务日志"),
+            "RTK service-log clear action matches the main log-card icon-button presentation");
+    const int serviceClearButtonRightGap = serviceLogClearButton->parentWidget()->width() -
+        serviceLogClearButton->geometry().right() - 1;
+    require(serviceClearButtonRightGap >= 0 && serviceClearButtonRightGap <= 12,
+            "RTK service-log clear action follows the card title-bar right margin");
+    serviceLog->setPlainText(QStringLiteral("service log sentinel"));
+    serviceLogClearButton->click();
+    require(serviceLog->toPlainText().isEmpty(),
+            "RTK service-log title action clears the service log");
     QTimer testMessageBoxCloser;
     QObject::connect(&testMessageBoxCloser, &QTimer::timeout, []() {
         for (QWidget *widget : QApplication::topLevelWidgets())
