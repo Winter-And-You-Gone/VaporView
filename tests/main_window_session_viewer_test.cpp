@@ -49,15 +49,30 @@ void testMainWindowDataViewerOpenCanReopen()
     require(sessionDir.isValid(), "temporary session directory for data viewer startup");
     QTemporaryDir recordingDir;
     require(recordingDir.isValid(), "temporary configured recording directory");
+    QTemporaryDir updatedRecordingDir;
+    require(updatedRecordingDir.isValid(), "temporary updated recording directory");
 
     {
         QSettings mainSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
         mainSettings.remove(QStringLiteral("recording_directory"));
         SessionViewerWindow viewerWithDefaultDirectory;
-        require(QFileInfo(viewerWithDefaultDirectory.defaultDataDirectory()).absoluteFilePath() ==
+        require(QFileInfo(viewerWithDefaultDirectory.dataSelectionDirectory()).absoluteFilePath() ==
                     QFileInfo(VaporView::Ground::Session::GroundRecordingService::defaultRecordingDirectory())
                         .absoluteFilePath(),
                 "data viewer defaults to the project data directory");
+
+        QString providedDirectory = recordingDir.path();
+        viewerWithDefaultDirectory.setRecordingDirectoryProvider([&providedDirectory]() {
+            return providedDirectory;
+        });
+        require(QFileInfo(viewerWithDefaultDirectory.dataSelectionDirectory()).absoluteFilePath() ==
+                    QFileInfo(recordingDir.path()).absoluteFilePath(),
+                "data viewer reads its directory from the configured provider");
+        providedDirectory = updatedRecordingDir.path();
+        require(QFileInfo(viewerWithDefaultDirectory.dataSelectionDirectory()).absoluteFilePath() ==
+                    QFileInfo(updatedRecordingDir.path()).absoluteFilePath(),
+                "data viewer reads a changed recording directory without reopening");
+
         mainSettings.setValue(QStringLiteral("recording_directory"), recordingDir.path());
         mainSettings.sync();
     }
@@ -81,7 +96,7 @@ void testMainWindowDataViewerOpenCanReopen()
 
     auto *viewer = visibleSessionViewerWindow();
     require(viewer != nullptr, "active data viewer is available");
-    require(QFileInfo(viewer->defaultDataDirectory()).absoluteFilePath() ==
+    require(QFileInfo(viewer->dataSelectionDirectory()).absoluteFilePath() ==
                 QFileInfo(recordingDir.path()).absoluteFilePath(),
             "data viewer uses the recording directory configured by the main menu");
     auto *minimizeButton = viewer->findChild<QToolButton *>(QStringLiteral("windowMinimizeButton"));

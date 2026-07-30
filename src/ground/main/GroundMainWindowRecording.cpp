@@ -578,7 +578,6 @@ bool MainWindow::startRecordingSession()
     if (options.baseDirectory.isEmpty())
     {
         options.baseDirectory = defaultRecordingDirectory();
-        state_->recording_directory_ = options.baseDirectory;
     }
     options.exportRateHz = state_->recording_export_rate_hz_;
     options.deviceConfig.waveformHost = state_->tcp_wave_panel_
@@ -659,10 +658,6 @@ void MainWindow::onChooseRecordingDirectoryClicked()
     state_->recording_directory_ = QDir::fromNativeSeparators(selectedDirectory);
     QSettings settings("VaporView", "MainWindow");
     VaporView::setPersistentSetting(settings, QStringLiteral("recording_directory"), state_->recording_directory_);
-    if (state_->session_viewer_window_)
-    {
-        state_->session_viewer_window_->setDefaultDataDirectory(state_->recording_directory_);
-    }
     log(QString(state_->is_english_ ? "Recording folder set to: %1" : "记录目录已设置为: %1").arg(state_->recording_directory_));
 }
 

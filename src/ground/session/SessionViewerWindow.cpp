@@ -117,7 +117,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , waveform_index_filename_()
     , waveform_peak_index_filename_()
     , waveform_raw_filename_()
-    , default_data_directory_()
+    , recording_directory_provider_()
     , session_name_()
     , start_time_utc_()
     , end_time_utc_()
@@ -200,7 +200,6 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     {
         peak_search_end_index_ = peak_search_start_index_ + 1;
     }
-    default_data_directory_ = configuredRecordingDirectory();
     updateWaveformActionTexts();
     const QString lastSession = settings.value("last_session_directory").toString();
     if (!lastSession.isEmpty())
@@ -315,14 +314,32 @@ void SessionViewerWindow::changeEvent(QEvent *event)
     }
 }
 
-void SessionViewerWindow::setDefaultDataDirectory(const QString& directory)
+void SessionViewerWindow::setRecordingDirectoryProvider(RecordingDirectoryProvider provider)
 {
-    default_data_directory_ = normalizedDirectoryPath(directory);
+    recording_directory_provider_ = std::move(provider);
 }
 
-QString SessionViewerWindow::defaultDataDirectory() const
+QString SessionViewerWindow::dataSelectionDirectory() const
 {
-    return default_data_directory_;
+    QString directory;
+    if (recording_directory_provider_)
+    {
+        directory = normalizedDirectoryPath(recording_directory_provider_());
+    }
+    if (directory.isEmpty())
+    {
+        directory = configuredRecordingDirectory();
+    }
+    if (directory.isEmpty() || !QFileInfo(directory).isDir())
+    {
+        directory = normalizedDirectoryPath(
+            VaporView::Ground::Session::GroundRecordingService::defaultRecordingDirectory());
+    }
+    if (directory.isEmpty() || !QFileInfo(directory).isDir())
+    {
+        directory = QDir::currentPath();
+    }
+    return directory;
 }
 
 void SessionViewerWindow::setUiTestMode(bool enabled)
@@ -333,7 +350,6 @@ void SessionViewerWindow::setUiTestMode(bool enabled)
     }
     if (enabled)
     {
-        ui_test_saved_default_data_directory_ = default_data_directory_;
         ui_test_saved_peak_filter_settings_ = peak_filter_settings_;
         ui_test_saved_peak_search_start_index_ = peak_search_start_index_;
         ui_test_saved_peak_search_end_index_ = peak_search_end_index_;
@@ -344,7 +360,6 @@ void SessionViewerWindow::setUiTestMode(bool enabled)
         return;
     }
     ui_test_mode_ = false;
-    default_data_directory_ = ui_test_saved_default_data_directory_;
     peak_filter_settings_ = ui_test_saved_peak_filter_settings_;
     peak_search_start_index_ = ui_test_saved_peak_search_start_index_;
     peak_search_end_index_ = ui_test_saved_peak_search_end_index_;
@@ -656,20 +671,7 @@ bool SessionViewerWindow::openSessionPath(const QString& path)
 
 void SessionViewerWindow::onChooseSessionClicked()
 {
-    QString initialDir = default_data_directory_;
-    if (initialDir.isEmpty() || !QFileInfo(initialDir).isDir())
-    {
-        initialDir = configuredRecordingDirectory();
-    }
-    if (initialDir.isEmpty() || !QFileInfo(initialDir).isDir())
-    {
-        initialDir = normalizedDirectoryPath(
-            VaporView::Ground::Session::GroundRecordingService::defaultRecordingDirectory());
-    }
-    if (initialDir.isEmpty() || !QFileInfo(initialDir).isDir())
-    {
-        initialDir = QDir::currentPath();
-    }
+    const QString initialDir = dataSelectionDirectory();
     const QString sessionDirectory = QFileDialog::getExistingDirectory(
         this,
         is_english_ ? "Choose Data Directory" : "选择数据目录",

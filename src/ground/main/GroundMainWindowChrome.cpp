@@ -637,10 +637,12 @@ void MainWindow::onOpenSessionViewerClicked()
         });
         state_->session_viewer_window_->setEnglish(state_->is_english_);
         state_->session_viewer_window_->setUiTestMode(isUiTestMode());
+        state_->session_viewer_window_->setRecordingDirectoryProvider([this]() {
+            return state_->recording_directory_.isEmpty()
+                ? defaultRecordingDirectory()
+                : state_->recording_directory_;
+        });
     }
-
-    state_->session_viewer_window_->setDefaultDataDirectory(
-        state_->recording_directory_.isEmpty() ? defaultRecordingDirectory() : state_->recording_directory_);
 
     const bool wasMinimized =
         state_->session_viewer_window_->isMinimized() ||

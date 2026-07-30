@@ -10,6 +10,7 @@
 #include <QVector>
 
 #include <atomic>
+#include <functional>
 #include <memory>
 
 class QEvent;
@@ -35,11 +36,13 @@ class SessionViewerWindow : public QMainWindow
     Q_OBJECT
 
 public:
+    using RecordingDirectoryProvider = std::function<QString()>;
+
     explicit SessionViewerWindow(QWidget *parent = nullptr);
     ~SessionViewerWindow() override;
     void setEnglish(bool english);
-    void setDefaultDataDirectory(const QString& directory);
-    QString defaultDataDirectory() const;
+    void setRecordingDirectoryProvider(RecordingDirectoryProvider provider);
+    QString dataSelectionDirectory() const;
     bool openSessionPath(const QString& path);
     void setUiTestMode(bool enabled);
 
@@ -130,7 +133,7 @@ private:
     QString waveform_peak_index_filename_;
     QString waveform_raw_filename_;
     QString session_load_warning_;
-    QString default_data_directory_;
+    RecordingDirectoryProvider recording_directory_provider_;
     QString session_name_;
     QString start_time_utc_;
     QString end_time_utc_;
@@ -148,7 +151,6 @@ private:
     int peak_search_start_index_;
     int peak_search_end_index_;
     bool ui_test_mode_ = false;
-    QString ui_test_saved_default_data_directory_;
     VaporView::Ground::SessionPeakFilterSettings ui_test_saved_peak_filter_settings_;
     int ui_test_saved_peak_search_start_index_ = 0;
     int ui_test_saved_peak_search_end_index_ = 0;
