@@ -18,6 +18,7 @@
 #include <QMap>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QTextEdit>
 #include <QToolButton>
 #include <QVariant>
 
@@ -159,6 +160,22 @@ int main(int argc, char **argv)
     require(wavePanel->isConnected(), "TCP waveform reconnect is simulated in memory");
     require(QMetaObject::invokeMethod(rtkDialog, "onFetchMountpointsClicked", Qt::DirectConnection),
             "RTK fixed mountpoint action invoked");
+    auto *ggaMonitorLog = rtkDialog->findChild<QTextEdit *>(QStringLiteral("rtkGgaTextEdit"));
+    require(ggaMonitorLog, "RTK GGA monitor output exists");
+    ggaMonitorLog->clear();
+    require(QMetaObject::invokeMethod(rtkDialog, "onGgaToggleClicked", Qt::DirectConnection),
+            "RTK simulated GGA monitor starts");
+    require(VaporViewTest::processEventsUntil(2500, [ggaMonitorLog]() {
+                return ggaMonitorLog->toPlainText().count(QStringLiteral("$GPGGA,")) >= 3;
+            }),
+            "RTK simulated GGA monitor continuously appends one-hertz data");
+    require(QMetaObject::invokeMethod(rtkDialog, "onGgaToggleClicked", Qt::DirectConnection),
+            "RTK simulated GGA monitor stops");
+    const int stoppedGgaCount = ggaMonitorLog->toPlainText().count(QStringLiteral("$GPGGA,"));
+    require(!VaporViewTest::processEventsUntil(1200, [ggaMonitorLog, stoppedGgaCount]() {
+                return ggaMonitorLog->toPlainText().count(QStringLiteral("$GPGGA,")) > stoppedGgaCount;
+            }),
+            "RTK simulated GGA monitor stops appending after the user stops it");
     require(QMetaObject::invokeMethod(rtkDialog, "onTestClicked", Qt::DirectConnection),
             "RTK no-signal validation action invoked");
     require(QMetaObject::invokeMethod(rtkDialog, "onStartClicked", Qt::DirectConnection),

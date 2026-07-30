@@ -2744,7 +2744,7 @@ void RtkConfigDialog::startGgaMonitor()
     gga_last_open_attempt_ = std::chrono::steady_clock::time_point();
     if (!gga_poll_timer_->isActive())
     {
-        gga_poll_timer_->start(kGgaPollIntervalMs);
+        gga_poll_timer_->start(ui_test_mode_ ? kGgaSendCycleMs : kGgaPollIntervalMs);
     }
     onGgaPollTimer();
 }
@@ -2889,9 +2889,7 @@ void RtkConfigDialog::onGgaToggleClicked()
     {
         if (!gga_monitor_enabled_)
         {
-            gga_monitor_enabled_ = true;
-            updateGgaMonitorButton();
-            handleGgaSentence(buildMockGgaSentence());
+            startGgaMonitor();
             appendLog(textFor("[界面测试] Simulated GGA monitor started", "[界面测试] 模拟 GGA 监控已启动"));
         }
         else
@@ -3334,6 +3332,17 @@ void RtkConfigDialog::trimGgaDisplay()
 
 void RtkConfigDialog::onGgaPollTimer()
 {
+    if (!gga_monitor_enabled_)
+    {
+        return;
+    }
+
+    if (ui_test_mode_)
+    {
+        handleGgaSentence(buildMockGgaSentence());
+        return;
+    }
+
     if (isMainGgaSourceSelected())
     {
         if (gga_serial_.isOpen())
@@ -4150,6 +4159,10 @@ void RtkConfigDialog::setUiTestMode(bool enabled)
     {
         return;
     }
+    if (!enabled && gga_monitor_enabled_)
+    {
+        stopGgaMonitor();
+    }
     ui_test_mode_ = enabled;
     if (enabled)
     {
@@ -4165,7 +4178,6 @@ void RtkConfigDialog::setUiTestMode(bool enabled)
     else
     {
         is_running_ = false;
-        gga_monitor_enabled_ = false;
         loadSettings();
         refreshPortCombos();
         updateButtonStates();
