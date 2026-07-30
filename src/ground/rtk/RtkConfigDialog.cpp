@@ -1570,19 +1570,22 @@ void RtkConfigDialog::setupUi()
         gga_group_, gga_title_label_, QStringLiteral("activity"), &ggaTitleBar);
     gga_layout_ = new QHBoxLayout();
     gga_layout_->setSpacing(6);
-    gga_layout_->setContentsMargins(6, 10, 10, 12);
+    gga_layout_->setContentsMargins(6, 4, 10, 8);
     gga_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     ggaCardLayout->addLayout(gga_layout_);
 
     gga_controls_container_ = new QWidget(gga_group_);
     gga_controls_container_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     gga_controls_layout_ = new QVBoxLayout(gga_controls_container_);
-    gga_controls_layout_->setContentsMargins(0, 2, 0, 0);
+    gga_controls_layout_->setContentsMargins(0, 0, 0, 0);
     gga_controls_layout_->setSpacing(0);
 
     gga_header_layout_ = new QGridLayout();
+    gga_header_layout_->setContentsMargins(0, 0, 0, 0);
     gga_header_layout_->setHorizontalSpacing(8);
     gga_header_layout_->setVerticalSpacing(4);
+    gga_header_layout_->setRowMinimumHeight(0, 34);
+    gga_header_layout_->setRowMinimumHeight(1, 34);
     gga_header_layout_->setColumnStretch(0, 0);
     gga_header_layout_->setColumnStretch(1, 0);
 
@@ -1619,10 +1622,9 @@ void RtkConfigDialog::setupUi()
         ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("999.99 Hz")) + scalePixels(8));
     gga_frequency_label_->setAlignment(Qt::AlignCenter);
     gga_header_layout_->addWidget(gga_frequency_label_, 1, 0, Qt::AlignCenter);
-    gga_controls_layout_->addStretch(1);
     gga_controls_layout_->addLayout(gga_header_layout_);
     gga_controls_layout_->addStretch(1);
-    gga_layout_->addWidget(gga_controls_container_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    gga_layout_->addWidget(gga_controls_container_, 0, Qt::AlignTop | Qt::AlignLeft);
 
     gga_text_container_ = new QWidget(gga_group_);
     gga_text_container_->setObjectName(QStringLiteral("rtkGgaOutputContainer"));
@@ -1901,13 +1903,13 @@ void RtkConfigDialog::applyScaledUiMetrics()
     {
         const int controlsGap = scalePixels(5);
         gga_layout_->setSpacing(controlsGap);
-        gga_layout_->setContentsMargins(controlsGap, scalePixels(8), scalePixels(8), scalePixels(8));
+        gga_layout_->setContentsMargins(controlsGap, scalePixels(4), scalePixels(8), scalePixels(8));
     }
 
     if (gga_controls_layout_)
     {
         gga_controls_layout_->setSpacing(0);
-        gga_controls_layout_->setContentsMargins(0, scalePixels(2), 0, 0);
+        gga_controls_layout_->setContentsMargins(0, 0, 0, 0);
     }
 
     if (gga_text_container_layout_)
@@ -1922,8 +1924,11 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     if (gga_header_layout_)
     {
+        gga_header_layout_->setContentsMargins(0, 0, 0, 0);
         gga_header_layout_->setHorizontalSpacing(scalePixels(6));
         gga_header_layout_->setVerticalSpacing(scalePixels(4));
+        gga_header_layout_->setRowMinimumHeight(0, scalePixels(34));
+        gga_header_layout_->setRowMinimumHeight(1, scalePixels(34));
     }
 
     if (log_layout_)

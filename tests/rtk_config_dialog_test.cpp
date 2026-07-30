@@ -193,6 +193,12 @@ int main(int argc, char **argv)
         : nullptr;
     require(ggaToggleButton && ggaMonitorLog && ggaCard,
             "GGA monitor button, internal log, and card exist");
+    const int mountpointCenter =
+        mountpointCombo->mapTo(&dialog, QPoint(0, 0)).y() + mountpointCombo->height() / 2;
+    const int ggaToggleCenter =
+        ggaToggleButton->mapTo(&dialog, QPoint(0, 0)).y() + ggaToggleButton->height() / 2;
+    require(std::abs(mountpointCenter - ggaToggleCenter) <= 1,
+            "GGA read button aligns with the NTRIP mountpoint row");
     require(dialog.findChild<QLabel *>(QStringLiteral("rtkGgaStatusLabel")) == nullptr,
             "GGA monitor does not create a separate status label");
     require(ggaMonitorLog->document()->documentMargin() <= 3.0,
