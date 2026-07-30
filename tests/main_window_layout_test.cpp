@@ -253,6 +253,9 @@ void requireAboutDialogLayout(MainWindow *window,
                                                   : QStringLiteral("关于 VaporView")),
                 "about dialog title follows the interface language");
         require(dialog->isModal(), "about dialog is modal");
+        require(dialog->size() == QSize(560, 500) &&
+                    dialog->minimumSize() == QSize(520, 460),
+                "about dialog keeps a compact default and minimum size");
 
         auto *body = dialog->findChild<QWidget *>(QStringLiteral("aboutDialogBody"));
         auto *footer = dialog->findChild<QWidget *>(QStringLiteral("aboutDialogFooter"));

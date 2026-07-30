@@ -1242,7 +1242,7 @@ void MainWindow::showAboutDialog()
     dialog.setObjectName(QStringLiteral("aboutDialog"));
     dialog.setWindowTitle(title);
     dialog.setWindowModality(Qt::WindowModal);
-    dialog.setMinimumSize(560, 520);
+    dialog.setMinimumSize(520, 460);
 
     auto *rootLayout = new QVBoxLayout(&dialog);
     rootLayout->setContentsMargins(0, 0, 0, 0);
@@ -1405,7 +1405,7 @@ QPushButton#aboutDialogOkButton:focus {
 }
 )"), dark));
 
-    dialog.resize(dialog.sizeHint().expandedTo(QSize(620, 560)));
+    dialog.resize(QSize(560, 500));
     dialog.exec();
 }
 
