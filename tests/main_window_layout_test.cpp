@@ -1668,8 +1668,7 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     QLabel *ggaFrequencyLabel = nullptr;
     for (QLabel *label : dialog->findChildren<QLabel *>())
     {
-        if (label->text().startsWith(QStringLiteral("频率:")) ||
-            label->text().startsWith(QStringLiteral("Rate:")))
+        if (label->text() == QStringLiteral("0.00 Hz"))
         {
             ggaFrequencyLabel = label;
             break;
@@ -1706,6 +1705,15 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
             "RTK GGA idle action uses a compact read label");
     require(ggaToggleButton->focusPolicy() == Qt::NoFocus,
             "RTK GGA read button does not retain a focus outline after clicking");
+    require(ggaFrequencyLabel->text() == QStringLiteral("0.00 Hz") &&
+                !ggaFrequencyLabel->text().contains(QStringLiteral("频率")) &&
+                !ggaFrequencyLabel->text().contains(QStringLiteral("Rate")),
+            "RTK GGA frequency readout shows only the numeric hertz value");
+    const int legacyFrequencyWidth = ggaFrequencyLabel->fontMetrics().horizontalAdvance(
+        QStringLiteral("频率: -999.99 Hz"));
+    require(ggaToggleButton->width() < legacyFrequencyWidth &&
+                ggaFrequencyLabel->width() < legacyFrequencyWidth,
+            "RTK GGA read controls no longer reserve the legacy prefixed frequency width");
     auto *ggaTitleBar = ggaSourceLabel->parentWidget();
     auto *ggaTitleLayout = ggaTitleBar
         ? qobject_cast<QHBoxLayout *>(ggaTitleBar->layout())
@@ -1718,10 +1726,12 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(ggaToggleButton->parentWidget() == ggaFrequencyLabel->parentWidget() &&
                 widgetY(ggaFrequencyLabel) > widgetY(ggaToggleButton) &&
                 std::abs(widgetX(ggaFrequencyLabel) - widgetX(ggaToggleButton)) <= 2 &&
-                std::abs(ggaFrequencyLabel->width() - ggaToggleButton->width()) <= 2,
-            "RTK GGA read button and frequency readout stack vertically at a shared width");
+                ggaToggleButton->width() < ggaFrequencyLabel->width(),
+            "RTK GGA compact read button stacks above the numeric frequency readout");
     require(widgetX(ggaOutputText) >= widgetX(ggaToggleButton) + ggaToggleButton->width(),
             "RTK GGA output text area sits to the right of the read controls");
+    require(ggaOutputText->width() > ggaCard->width() / 2,
+            "RTK GGA output text area receives most of the card body width");
     require(std::abs(ggaCard->height() - ntripCard->height()) <= 24,
             "RTK GGA monitor card height matches the NTRIP card height closely");
     require(dialog->findChild<QLabel *>(QStringLiteral("rtkGgaStatusLabel")) == nullptr,

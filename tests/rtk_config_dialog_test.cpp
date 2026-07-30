@@ -200,6 +200,9 @@ int main(int argc, char **argv)
     dialog.setEpsilonDataProvider([]() { return VaporView::EpsilonData{}; });
     const int ggaCardHeightBeforeReading = ggaCard->height();
     ggaToggleButton->click();
+    require(ggaToggleButton->text() == QStringLiteral("停止") ||
+                ggaToggleButton->text() == QStringLiteral("Stop"),
+            "active GGA monitor uses the compact stop label");
     require(processEventsUntil(1000, [ggaMonitorLog]() {
                 const QString text = ggaMonitorLog->toPlainText();
                 return text.contains(QStringLiteral("状态:")) ||
@@ -219,6 +222,9 @@ int main(int argc, char **argv)
     require(ggaCard->height() == ggaCardHeightBeforeReading,
             "GGA status log does not change the monitor card height");
     ggaToggleButton->click();
+    require(ggaToggleButton->text() == QStringLiteral("读取") ||
+                ggaToggleButton->text() == QStringLiteral("Read"),
+            "stopped GGA monitor restores the compact read label");
     require(processEventsUntil(1000, [ggaMonitorLog]() {
                 const QString text = ggaMonitorLog->toPlainText();
                 return text.contains(QStringLiteral("状态: 已停止读取 GGA")) ||

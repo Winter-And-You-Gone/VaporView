@@ -1584,9 +1584,7 @@ void RtkConfigDialog::setupUi()
     gga_frequency_label_->setFont(numericFontFrom(gga_frequency_label_->font()));
     const QFontMetrics ggaFrequencyMetrics(gga_frequency_label_->font());
     gga_frequency_label_->setFixedWidth(
-        std::max(
-            ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("Rate: -999.99 Hz")),
-            ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("频率: -999.99 Hz"))) + scalePixels(8));
+        ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("999.99 Hz")) + scalePixels(8));
     gga_frequency_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     gga_header_layout_->addWidget(gga_frequency_label_, 1, 0, Qt::AlignLeft | Qt::AlignVCenter);
     gga_controls_layout_->addLayout(gga_header_layout_);
@@ -1974,9 +1972,8 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (gga_frequency_label_)
     {
         const QFontMetrics metrics(gga_frequency_label_->font());
-        const int frequencyWidth = std::max(
-            metrics.horizontalAdvance(QStringLiteral("Rate: -999.99 Hz")),
-            metrics.horizontalAdvance(QStringLiteral("频率: -999.99 Hz"))) + scalePixels(8);
+        const int frequencyWidth =
+            metrics.horizontalAdvance(QStringLiteral("999.99 Hz")) + scalePixels(8);
         gga_frequency_label_->setFixedWidth(frequencyWidth);
         gga_frequency_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     }
@@ -1998,13 +1995,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
             edit->setSelection(0, 0);
         }
     }
-    applyButtonWidth(gga_toggle_btn_, 72);
-    if (gga_toggle_btn_ && gga_frequency_label_)
-    {
-        const int sharedWidth = std::max(gga_toggle_btn_->width(), gga_frequency_label_->width());
-        gga_toggle_btn_->setFixedWidth(sharedWidth);
-        gga_frequency_label_->setFixedWidth(sharedWidth);
-    }
+    applyButtonWidth(gga_toggle_btn_, 56);
 
     const QMargins ggaMargins = gga_layout_ ? gga_layout_->contentsMargins() : QMargins();
     const int headerHeight = gga_header_layout_
@@ -2685,9 +2676,8 @@ void RtkConfigDialog::updateGgaFrequency(double hz)
         return;
     }
 
-    const QString rateText = QString::number(std::max(0.0, hz), 'f', 2)
-        .rightJustified(7, QLatin1Char(' '));
-    gga_frequency_label_->setText(textFor("Rate: %1 Hz", "频率: %1 Hz").arg(rateText));
+    const QString rateText = QString::number(std::max(0.0, hz), 'f', 2);
+    gga_frequency_label_->setText(QStringLiteral("%1 Hz").arg(rateText));
 }
 
 void RtkConfigDialog::appendGgaStatusLog(const QString& message, bool healthy)
@@ -2739,7 +2729,7 @@ void RtkConfigDialog::updateGgaMonitorButton()
     }
 
     gga_toggle_btn_->setText(gga_monitor_enabled_
-        ? textFor("Stop Reading", "停止读取")
+        ? textFor("Stop", "停止")
         : textFor("Read", "读取"));
     gga_toggle_btn_->setEnabled(true);
 }
