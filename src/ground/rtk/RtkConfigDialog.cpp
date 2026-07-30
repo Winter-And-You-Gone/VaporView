@@ -1109,8 +1109,10 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     , gga_last_open_attempt_()
     , gga_last_sentence_time_()
     , gga_last_status_log_time_()
+    , gga_waiting_since_()
     , gga_last_epsilon_sample_time_()
     , gga_last_epsilon_device_timestamp_us_(0)
+    , gga_waiting_reminder_count_(0)
     , gga_has_sentence_time_(false)
     , gga_monitor_enabled_(false)
     , metrics_refresh_pending_(false)
@@ -2690,6 +2692,12 @@ void RtkConfigDialog::appendGgaStatusLog(const QString& message, bool healthy, b
     const bool changed = statusMessage != gga_status_message_ || healthy != gga_status_healthy_;
     gga_status_message_ = statusMessage;
     gga_status_healthy_ = healthy;
+    if (healthy)
+    {
+        gga_waiting_reason_.clear();
+        gga_waiting_since_ = std::chrono::steady_clock::time_point();
+        gga_waiting_reminder_count_ = 0;
+    }
     if ((!changed && !force) || statusMessage.isEmpty() || !gga_text_edit_)
     {
         return;
@@ -2729,9 +2737,22 @@ void RtkConfigDialog::appendGgaStatusLog(const QString& message, bool healthy, b
 void RtkConfigDialog::appendGgaWaitingLog(const QString& message)
 {
     const QString statusMessage = message.trimmed();
-    const bool changed = statusMessage != gga_status_message_ || gga_status_healthy_;
+    if (statusMessage.isEmpty())
+    {
+        return;
+    }
+
     const auto now = std::chrono::steady_clock::now();
-    if (!changed && gga_last_status_log_time_.time_since_epoch().count() > 0)
+    if (statusMessage != gga_waiting_reason_)
+    {
+        gga_waiting_reason_ = statusMessage;
+        gga_waiting_since_ = now;
+        gga_waiting_reminder_count_ = 0;
+        appendGgaStatusLog(statusMessage, false, true);
+        return;
+    }
+
+    if (gga_last_status_log_time_.time_since_epoch().count() > 0)
     {
         const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
             now - gga_last_status_log_time_).count();
@@ -2740,7 +2761,25 @@ void RtkConfigDialog::appendGgaWaitingLog(const QString& message)
             return;
         }
     }
-    appendGgaStatusLog(statusMessage, false, true);
+
+    ++gga_waiting_reminder_count_;
+    const auto waitingSeconds = std::max<long long>(
+        kGgaWaitingLogIntervalMs / 1000,
+        std::chrono::duration_cast<std::chrono::seconds>(now - gga_waiting_since_).count());
+    QString waitingDetail = statusMessage;
+    const QString statusPrefix = textFor(QStringLiteral("Status: "), QStringLiteral("状态: "));
+    if (waitingDetail.startsWith(statusPrefix))
+    {
+        waitingDetail.remove(0, statusPrefix.size());
+    }
+    appendGgaStatusLog(
+        textFor("Status: Reminder %1: no valid GGA for %2 s; %3",
+                "状态: 第 %1 次提醒：已连续 %2 秒未收到有效 GGA；%3")
+            .arg(gga_waiting_reminder_count_)
+            .arg(waitingSeconds)
+            .arg(waitingDetail),
+        false,
+        true);
 }
 
 void RtkConfigDialog::updateGgaMonitorButton()
@@ -2783,6 +2822,9 @@ void RtkConfigDialog::startGgaMonitor()
     gga_recent_intervals_sec_.clear();
     gga_has_sentence_time_ = false;
     gga_last_status_log_time_ = std::chrono::steady_clock::time_point();
+    gga_waiting_reason_.clear();
+    gga_waiting_since_ = std::chrono::steady_clock::time_point();
+    gga_waiting_reminder_count_ = 0;
     gga_last_epsilon_sample_time_ = std::chrono::steady_clock::time_point();
     gga_last_epsilon_device_timestamp_us_ = 0;
     updateGgaFrequency(0.0);
@@ -2814,6 +2856,9 @@ void RtkConfigDialog::stopGgaMonitor()
     gga_recent_intervals_sec_.clear();
     gga_has_sentence_time_ = false;
     gga_last_status_log_time_ = std::chrono::steady_clock::time_point();
+    gga_waiting_reason_.clear();
+    gga_waiting_since_ = std::chrono::steady_clock::time_point();
+    gga_waiting_reminder_count_ = 0;
     gga_last_epsilon_sample_time_ = std::chrono::steady_clock::time_point();
     gga_last_epsilon_device_timestamp_us_ = 0;
     gga_monitor_enabled_ = false;
@@ -2861,15 +2906,14 @@ bool RtkConfigDialog::tryOpenGgaPort()
     const std::string port = ggaPortName().toStdString();
     if (port.empty())
     {
-        appendGgaStatusLog(textFor("Status: Please select a GGA source", "状态: 请选择 GGA 来源"), false);
+        appendGgaWaitingLog(textFor("Status: Please select a GGA source", "状态: 请选择 GGA 来源"));
         return false;
     }
 
     if (!gga_serial_.open(port, currentGgaBaudrate()))
     {
-        appendGgaStatusLog(
-            textFor("Status: %1 unavailable, retrying...", "状态: %1 不可用，正在重试...").arg(ggaPortName()),
-            false);
+        appendGgaWaitingLog(
+            textFor("Status: %1 unavailable, retrying...", "状态: %1 不可用，正在重试...").arg(ggaPortName()));
         return false;
     }
 
@@ -3412,9 +3456,9 @@ void RtkConfigDialog::onGgaPollTimer()
 
     if (!tryOpenGgaPort())
     {
-        if (!gga_status_message_.isEmpty())
+        if (!gga_waiting_reason_.isEmpty())
         {
-            appendGgaWaitingLog(gga_status_message_);
+            appendGgaWaitingLog(gga_waiting_reason_);
         }
         return;
     }
@@ -3434,7 +3478,8 @@ void RtkConfigDialog::onGgaPollTimer()
         {
             gga_serial_.close();
             updateGgaFrequency(0.0);
-            appendGgaStatusLog(textFor("Status: %1 read failed, reconnecting...", "状态: %1 读取失败，正在重连...").arg(ggaPortName()), false);
+            appendGgaWaitingLog(
+                textFor("Status: %1 read failed, reconnecting...", "状态: %1 读取失败，正在重连...").arg(ggaPortName()));
         }
         break;
     }

@@ -212,12 +212,15 @@ private:
     VaporView::SerialPort gga_serial_;
     QString gga_buffer_;
     QString gga_status_message_;
+    QString gga_waiting_reason_;
     bool gga_status_healthy_;
     std::chrono::steady_clock::time_point gga_last_open_attempt_;
     std::chrono::steady_clock::time_point gga_last_sentence_time_;
     std::chrono::steady_clock::time_point gga_last_status_log_time_;
+    std::chrono::steady_clock::time_point gga_waiting_since_;
     std::chrono::steady_clock::time_point gga_last_epsilon_sample_time_;
     uint64_t gga_last_epsilon_device_timestamp_us_;
+    int gga_waiting_reminder_count_;
     std::deque<double> gga_recent_intervals_sec_;
     bool gga_has_sentence_time_;
     bool gga_monitor_enabled_;

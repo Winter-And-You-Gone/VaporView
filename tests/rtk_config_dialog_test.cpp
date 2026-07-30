@@ -16,6 +16,7 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -227,13 +228,43 @@ int main(int argc, char **argv)
                 return ggaMonitorLog->toPlainText().split(
                     QLatin1Char('\n'), Qt::SkipEmptyParts).size() >= 2;
             }),
-            "GGA monitor repeats its waiting status every two seconds without data");
-    const QStringList repeatedGgaLogLines =
+            "GGA monitor adds its first counted reminder after two seconds without data");
+    QStringList repeatedGgaLogLines =
         ggaMonitorLog->toPlainText().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     require(repeatedGgaLogLines.size() == 2 &&
+                (repeatedGgaLogLines.constLast().contains(QStringLiteral("第 1 次提醒")) ||
+                 repeatedGgaLogLines.constLast().contains(QStringLiteral("Reminder 1"))) &&
+                (repeatedGgaLogLines.constLast().contains(QStringLiteral("秒未收到有效 GGA")) ||
+                 repeatedGgaLogLines.constLast().contains(QStringLiteral("no valid GGA for"))) &&
                 (repeatedGgaLogLines.constLast().contains(QStringLiteral("正在等待有效的 EPSILON 主串口定位")) ||
                  repeatedGgaLogLines.constLast().contains(QStringLiteral("Waiting for valid EPSILON main-port position"))),
-            "GGA waiting heartbeat repeats the current no-data reason");
+            "GGA waiting heartbeat includes a reminder count, elapsed time, and the current reason");
+    const QRegularExpression elapsedSecondsPattern(
+        QStringLiteral("(?:已连续\\s*(\\d+)\\s*秒未收到有效 GGA|no valid GGA for\\s*(\\d+)\\s*s)"));
+    const auto elapsedSecondsFromLine = [&elapsedSecondsPattern](const QString& line) {
+        const QRegularExpressionMatch match = elapsedSecondsPattern.match(line);
+        if (!match.hasMatch())
+        {
+            return -1;
+        }
+        return (match.captured(1).isEmpty() ? match.captured(2) : match.captured(1)).toInt();
+    };
+    const int firstReminderSeconds = elapsedSecondsFromLine(repeatedGgaLogLines.constLast());
+    require(firstReminderSeconds >= 2,
+            "the first GGA waiting reminder reports at least two elapsed seconds");
+    require(processEventsUntil(2500, [ggaMonitorLog]() {
+                return ggaMonitorLog->toPlainText().split(
+                    QLatin1Char('\n'), Qt::SkipEmptyParts).size() >= 3;
+            }),
+            "GGA monitor adds a second counted reminder when data is still absent");
+    repeatedGgaLogLines =
+        ggaMonitorLog->toPlainText().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    const int secondReminderSeconds = elapsedSecondsFromLine(repeatedGgaLogLines.constLast());
+    require(repeatedGgaLogLines.size() == 3 &&
+                (repeatedGgaLogLines.constLast().contains(QStringLiteral("第 2 次提醒")) ||
+                 repeatedGgaLogLines.constLast().contains(QStringLiteral("Reminder 2"))) &&
+                secondReminderSeconds > firstReminderSeconds,
+            "successive GGA waiting reminders increment both count and elapsed time");
     QApplication::processEvents();
     require(ggaCard->height() == ggaCardHeightBeforeReading,
             "GGA status log does not change the monitor card height");
@@ -249,7 +280,7 @@ int main(int argc, char **argv)
             "stopping GGA reading appends a status entry inside the monitor log");
     const QStringList stoppedGgaLogLines =
         ggaMonitorLog->toPlainText().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-    require(stoppedGgaLogLines.size() == 3 &&
+    require(stoppedGgaLogLines.size() == 4 &&
                 stoppedGgaLogLines.constLast().startsWith(QLatin1Char('[')) &&
                 stoppedGgaLogLines.constLast().contains(QStringLiteral("] ")),
             "GGA stop status is appended once with a timestamp");
