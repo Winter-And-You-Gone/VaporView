@@ -197,9 +197,10 @@ int main(int argc, char **argv)
     require(ggaToggleButton && ggaSourceCombo && ggaClearLogButton && ggaMonitorLog && ggaCard,
             "GGA monitor controls, internal log, and card exist");
     const QFontMetrics ggaSourceMetrics(ggaSourceCombo->font());
-    require(ggaSourceCombo->width() <=
-                ggaSourceMetrics.horizontalAdvance(ggaSourceCombo->currentText()) + 40,
-            "GGA source combo leaves room for the clear-log action");
+    const int ggaSourceExtraWidth =
+        ggaSourceCombo->width() - ggaSourceMetrics.horizontalAdvance(ggaSourceCombo->currentText());
+    require(ggaSourceExtraWidth >= 50 && ggaSourceExtraWidth <= 62,
+            "GGA source combo uses the widened compact width");
     const QPoint ggaSourceTopLeft = ggaSourceCombo->mapTo(&dialog, QPoint(0, 0));
     const QPoint ggaClearTopLeft = ggaClearLogButton->mapTo(&dialog, QPoint(0, 0));
     require(ggaClearTopLeft.x() >= ggaSourceTopLeft.x() + ggaSourceCombo->width() &&

@@ -2044,7 +2044,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (gga_port_combo_)
     {
         const QFontMetrics metrics(gga_port_combo_->font());
-        const int targetWidth = metrics.horizontalAdvance(mainGgaSourceLabel()) + scalePixels(34);
+        const int targetWidth = metrics.horizontalAdvance(mainGgaSourceLabel()) + scalePixels(56);
         gga_port_combo_->setFixedWidth(targetWidth);
         gga_port_combo_->setFixedHeight(scalePixels(kRtkInputHeight));
         gga_port_combo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
