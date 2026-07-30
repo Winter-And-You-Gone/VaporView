@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
     app.setApplicationName("VaporViewSky");
-    app.setApplicationVersion("1.0.6");
+    app.setApplicationVersion("1.0.7");
     app.setOrganizationName("VaporView");
     VaporView::LogService logService(QStringLiteral("VaporViewSky"));
     logService.installQtMessageHandler();
