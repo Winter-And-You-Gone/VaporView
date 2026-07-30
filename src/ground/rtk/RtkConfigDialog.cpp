@@ -1617,6 +1617,7 @@ void RtkConfigDialog::setupUi()
     {
         if (auto *titleLayout = qobject_cast<QHBoxLayout *>(ggaTitleBar->layout()))
         {
+            titleLayout->setSpacing(3);
             titleLayout->addWidget(gga_port_info_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
             titleLayout->addWidget(gga_port_combo_, 0, Qt::AlignVCenter | Qt::AlignLeft);
             titleLayout->addWidget(gga_clear_log_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);

@@ -1636,8 +1636,18 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                 "RTK push buttons match the input field height");
     }
     const QList<QToolButton*> rtkToolButtons = dialog->findChildren<QToolButton *>();
+    const QStringList rtkLogClearButtonNames = {
+        QStringLiteral("rtkGgaClearLogButton"),
+        QStringLiteral("rtkServiceLogClearButton"),
+    };
     for (QToolButton *button : rtkToolButtons)
     {
+        if (rtkLogClearButtonNames.contains(button->objectName()))
+        {
+            require(button->size() == QSize(34, 34),
+                    "RTK log clear buttons match the main log-card action size");
+            continue;
+        }
         require(std::abs(button->height() - rtkInputHeight) <= 1,
                 "RTK tool buttons match the input field height");
     }
