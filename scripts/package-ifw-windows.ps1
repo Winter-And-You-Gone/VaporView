@@ -211,6 +211,7 @@ if (Test-Path -LiteralPath (Join-Path $stageDir "resources\maps")) {
 
 $driversSource = Join-Path $repoRoot "packaging\ifw\drivers"
 Copy-DirectoryContents $driversSource (Join-Path $stageDir "drivers")
+New-Item -ItemType Directory -Force -Path (Join-Path $stageDir "data") | Out-Null
 $licenseDestination = Join-Path $stageDir "licenses"
 New-Item -ItemType Directory -Force -Path $licenseDestination | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") -Destination $licenseDestination -Force

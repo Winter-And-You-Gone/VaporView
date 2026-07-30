@@ -22,6 +22,8 @@ not use this manifest.
 The package contains Qt and the osgEarth/OSG/GDAL/PROJ runtime, but does not
 contain `resources/maps`. The signed vendor driver installers, when available,
 belong under the package `drivers/` folder and are not executed automatically.
+The installer creates an empty `data/` directory in the installation root;
+ground and Sky recordings use that directory by default.
 
 ## Program updates
 

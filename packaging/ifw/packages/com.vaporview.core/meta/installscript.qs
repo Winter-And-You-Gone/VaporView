@@ -7,6 +7,8 @@ function Component() {
 Component.prototype.createOperations = function() {
     component.createOperations();
 
+    component.addOperation("Mkdir", "@TargetDir@/data");
+
     if (systemInfo.productType === "windows") {
         component.addOperation("CreateShortcut",
                               "@TargetDir@/VaporView.exe",
