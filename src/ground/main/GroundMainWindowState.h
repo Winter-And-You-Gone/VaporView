@@ -1,5 +1,6 @@
 #pragma once
 
+#include "LogRecord.h"
 #include "ground/main/MainWindow.h"
 
 #include <QPointer>
@@ -445,6 +446,7 @@ struct MainWindowState
     int waveform_recording_rate_hz_;
     int home_device_action_spinner_step_;
     QVector<QString> log_entries_;
+    QVector<VaporView::LogRecord> log_records_;
     QString recording_directory_;
 
     QAction *rtk_config_action_;

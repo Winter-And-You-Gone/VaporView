@@ -1,6 +1,7 @@
 #ifndef VaporView_MAIN_WINDOW_H_
 #define VaporView_MAIN_WINDOW_H_
 
+#include "LogRecord.h"
 #include "data_collector.h"
 #include "data_types.h"
 #include "TelemetryTypes.h"
@@ -212,7 +213,7 @@ private:
     void restoreUiTestWidgetState();
     void updateLogFilterAction();
     void renderLogView();
-    bool shouldShowLogLine(const QString& line) const;
+    bool shouldShowLogRecord(const VaporView::LogRecord& record) const;
     void rebuildRecordingRateMenu();
     void setRecordingExportRateHz(int rate, bool should_log = true);
     void applyEpsilonMainAntennaLeverArm(

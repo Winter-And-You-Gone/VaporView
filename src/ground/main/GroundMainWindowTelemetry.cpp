@@ -372,6 +372,7 @@ void MainWindow::onSkyDeviceConfigClicked()
 void MainWindow::onClearLogClicked()
 {
     state_->log_entries_.clear();
+    state_->log_records_.clear();
     state_->log_text_edit_->clear();
     state_->has_inline_progress_log_ = false;
     log(state_->is_english_ ? "Log cleared" : "日志已清空");

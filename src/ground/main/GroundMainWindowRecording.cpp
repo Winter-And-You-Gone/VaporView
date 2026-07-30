@@ -1,5 +1,36 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 
+namespace
+{
+QString legacyLogCategory(const QString& message)
+{
+    if (message.contains(QStringLiteral("ACK"), Qt::CaseInsensitive)) return QStringLiteral("ack");
+    if (message.contains(QStringLiteral("配置"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("config"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("频率"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("波特率"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("output rate"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("sample rate"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("rate"), Qt::CaseInsensitive)) return QStringLiteral("config");
+    if (message.contains(QStringLiteral("连接"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("断开"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("串口"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("端口"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("connect"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("disconnect"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("port"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("telemetry link"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("handshake"), Qt::CaseInsensitive)) return QStringLiteral("connection");
+    if (message.contains(QStringLiteral("记录"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("定时"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("recording"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("record"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("session"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("schedule"), Qt::CaseInsensitive)) return QStringLiteral("recording");
+    return QStringLiteral("general");
+}
+}  // namespace
+
 void MainWindow::log(const QString& message)
 {
     auto scrollLogToBottom = [this]() {
@@ -59,23 +90,35 @@ void MainWindow::log(const QString& message)
     const bool looksLikeDataLoss = message.contains(QStringLiteral("drop"), Qt::CaseInsensitive) ||
         message.contains(QStringLiteral("丢弃"), Qt::CaseInsensitive) ||
         message.contains(QStringLiteral("队列已满"), Qt::CaseInsensitive);
+    const QString category = legacyLogCategory(message);
+    const VaporView::LogLevel level = mirrorsLegacyError || looksLikeDataLoss
+        ? VaporView::LogLevel::Warning
+        : VaporView::LogLevel::Info;
+    VaporView::LogRecord uiRecord;
     if (VaporView::LogService *logService = VaporView::LogService::instance())
     {
-        logService->publish(mirrorsLegacyError || looksLikeDataLoss
-                                ? VaporView::LogLevel::Warning
-                                : VaporView::LogLevel::Info,
+        uiRecord = logService->publish(level,
                             QStringLiteral("Ground"),
-                            QStringLiteral("ui"),
+                            category,
                             message,
                             {{QStringLiteral("ui_visible"), true},
                              {QStringLiteral("legacy_error_mirror"), mirrorsLegacyError}});
     }
+    else
+    {
+        uiRecord.level = level;
+        uiRecord.source = QStringLiteral("Ground");
+        uiRecord.category = category;
+        uiRecord.message = message;
+    }
     state_->log_entries_.append(displayLine);
+    state_->log_records_.append(uiRecord);
     if (state_->log_entries_.size() > kMaxLogEntryCount)
     {
         state_->log_entries_.remove(0, state_->log_entries_.size() - kMaxLogEntryCount);
+        state_->log_records_.remove(0, state_->log_records_.size() - kMaxLogEntryCount);
     }
-    if (state_->log_text_edit_ && shouldShowLogLine(displayLine))
+    if (state_->log_text_edit_ && shouldShowLogRecord(uiRecord))
     {
         state_->log_text_edit_->append(displayLine);
         scrollLogToBottom();
@@ -114,43 +157,21 @@ void MainWindow::log(const QString& message)
     }
 }
 
-bool MainWindow::shouldShowLogLine(const QString& line) const
+bool MainWindow::shouldShowLogRecord(const VaporView::LogRecord& record) const
 {
-    if (state_->log_filter_ack_enabled_ && line.contains(QStringLiteral("ACK"), Qt::CaseInsensitive))
+    if (state_->log_filter_ack_enabled_ && record.category == QStringLiteral("ack"))
     {
         return false;
     }
-    if (state_->log_filter_config_enabled_ &&
-        (line.contains(QStringLiteral("配置"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("config"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("频率"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("波特率"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("output rate"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("sample rate"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("rate"), Qt::CaseInsensitive)))
+    if (state_->log_filter_config_enabled_ && record.category == QStringLiteral("config"))
     {
         return false;
     }
-    if (state_->log_filter_connection_enabled_ &&
-        (line.contains(QStringLiteral("连接"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("断开"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("串口"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("端口"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("connect"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("disconnect"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("port"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("telemetry link"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("handshake"), Qt::CaseInsensitive)))
+    if (state_->log_filter_connection_enabled_ && record.category == QStringLiteral("connection"))
     {
         return false;
     }
-    if (state_->log_filter_recording_enabled_ &&
-        (line.contains(QStringLiteral("记录"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("定时"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("recording"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("record"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("session"), Qt::CaseInsensitive) ||
-         line.contains(QStringLiteral("schedule"), Qt::CaseInsensitive)))
+    if (state_->log_filter_recording_enabled_ && record.category == QStringLiteral("recording"))
     {
         return false;
     }
@@ -165,11 +186,12 @@ void MainWindow::renderLogView()
     }
 
     state_->log_text_edit_->clear();
-    for (const QString& line : state_->log_entries_)
+    const int count = qMin(state_->log_entries_.size(), state_->log_records_.size());
+    for (int index = 0; index < count; ++index)
     {
-        if (shouldShowLogLine(line))
+        if (shouldShowLogRecord(state_->log_records_.at(index)))
         {
-            state_->log_text_edit_->append(line);
+            state_->log_text_edit_->append(state_->log_entries_.at(index));
         }
     }
     state_->has_inline_progress_log_ = false;
