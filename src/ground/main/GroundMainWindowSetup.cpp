@@ -91,12 +91,9 @@ private:
     void syncGeometry()
     {
         QWidget *viewport = parentWidget();
-        const int bottomGap = std::min(kMainContentBottomShadowGap, viewport->height());
-        const int fadeHeight = std::min(
-            kMainContentBottomFadeHeight,
-            std::max(0, viewport->height() - bottomGap));
+        const int fadeHeight = std::min(kMainContentBottomFadeHeight, viewport->height());
         setGeometry(0,
-                    std::max(0, viewport->height() - bottomGap - fadeHeight),
+                    std::max(0, viewport->height() - fadeHeight),
                     viewport->width(),
                     fadeHeight);
         raise();

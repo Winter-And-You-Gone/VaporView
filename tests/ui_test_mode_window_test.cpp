@@ -22,7 +22,9 @@
 #include <QMap>
 #include <QPointer>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSettings>
+#include <QStackedWidget>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -121,6 +123,18 @@ int main(int argc, char **argv)
     QComboBox *rtkMountpoint = window->findChild<QComboBox *>(QStringLiteral("rtkMountpointCombo"));
     require(epsilonPort && rtkServer && rtkPort && rtkUsername && rtkPassword && rtkMountpoint,
             "main and RTK configuration controls exist");
+
+    auto *mainPageStack = window->findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
+    auto *homeScrollArea = mainPageStack
+        ? qobject_cast<QScrollArea *>(mainPageStack->currentWidget())
+        : nullptr;
+    auto *homeBottomFade = homeScrollArea
+        ? homeScrollArea->viewport()->findChild<QWidget *>(
+              QStringLiteral("mainContentBottomFade"), Qt::FindDirectChildrenOnly)
+        : nullptr;
+    require(homeBottomFade &&
+                homeBottomFade->geometry().bottom() == homeScrollArea->viewport()->rect().bottom(),
+            "home bottom fade stays attached to the viewport edge above the reserved content inset");
 
     VaporView::Ground::Widgets::SegmentedSwitchButton *sourceModeSwitch = nullptr;
     for (auto *candidate : window->findChildren<VaporView::Ground::Widgets::SegmentedSwitchButton *>())

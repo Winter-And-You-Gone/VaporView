@@ -2847,10 +2847,9 @@ int main(int argc, char **argv)
                 .toBool(),
             "home scroll card shadow layer clips the full scrollbar track");
     require(homeBottomFade->geometry().bottom() ==
-                    homeScrollArea->viewport()->rect().bottom() -
-                        VaporView::Ground::MainSupport::kMainContentBottomShadowGap &&
+                    homeScrollArea->viewport()->rect().bottom() &&
                 homeBottomFade->width() == homeScrollArea->viewport()->width(),
-            "bottom fade leaves an 8px shadow-safe gap below the scroll viewport");
+            "bottom fade stays on the viewport edge instead of following the content shadow inset");
     homeScrollArea->verticalScrollBar()->setValue(homeScrollArea->verticalScrollBar()->maximum());
     require(processEventsUntil(500, [homeBottomFade]() {
                 return homeBottomFade->isHidden();
