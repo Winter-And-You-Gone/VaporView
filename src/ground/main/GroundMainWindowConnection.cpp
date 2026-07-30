@@ -980,7 +980,7 @@ void MainWindow::onDisconnectClicked()
         state_->ui_test_connection_in_progress_ = false;
         state_->ui_test_model_->setAllDevicesConnected(false);
         if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setUiTestConnected(false);
-        state_->ui_test_recording_state_ = 0;
+        resetUiTestRecording();
         updateConnectionStatus(false);
         updateRecordingStatusLabel();
         logUiTest(state_->is_english_ ? QStringLiteral("All simulated devices disconnected")

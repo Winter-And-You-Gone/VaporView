@@ -197,6 +197,10 @@ private:
     void loadModernStyleSheet();
     void log(const QString& message);
     void updateRecordingStatusLabel();
+    qint64 uiTestRecordingElapsedMs() const;
+    void startOrResumeUiTestRecording();
+    void pauseUiTestRecording();
+    void resetUiTestRecording();
     bool isUiTestMode() const;
     bool canEnterUiTestMode(QString *reason = nullptr) const;
     void setUiTestModeEnabled(bool enabled);

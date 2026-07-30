@@ -316,7 +316,7 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         captureUiTestWidgetState();
         state_->ui_test_started_ms_ = QDateTime::currentMSecsSinceEpoch();
         state_->ui_test_connection_in_progress_ = false;
-        state_->ui_test_recording_state_ = 0;
+        resetUiTestRecording();
         state_->ui_test_model_->reset(0);
         state_->ui_test_mode_enabled_ = true;
         if (state_->tcp_wave_panel_)
@@ -381,7 +381,7 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         state_->recording_schedule_controller_->cancel();
     }
     state_->ui_test_connection_in_progress_ = false;
-    state_->ui_test_recording_state_ = 0;
+    resetUiTestRecording();
     state_->ui_test_mode_enabled_ = false;
     if (state_->tcp_wave_panel_)
     {
@@ -562,6 +562,7 @@ void MainWindow::applyUiTestSnapshot()
 #endif
     updateHomeDeviceStatusCapsules();
     updateDeviceConfigState();
+    updateRecordingStatusLabel();
 }
 
 void MainWindow::logUiTest(const QString& message)

@@ -242,6 +242,15 @@ void MainWindow::updateLogFilterAction()
 
 void MainWindow::updateRecordingStatusLabel()
 {
+    if (state_->recording_status_title_lbl_)
+    {
+        state_->recording_status_title_lbl_->setText(
+            state_->is_english_
+                ? (isUiTestMode() ? QStringLiteral("Recording Status (UI Test)")
+                                  : QStringLiteral("Recording Status"))
+                : (isUiTestMode() ? QStringLiteral("记录状态（界面测试）")
+                                  : QStringLiteral("记录状态")));
+    }
     if (!state_->recording_status_label_)
     {
         return;
@@ -249,28 +258,70 @@ void MainWindow::updateRecordingStatusLabel()
 
     if (isUiTestMode())
     {
+        const qint64 elapsedMs = uiTestRecordingElapsedMs();
+        const auto countAtRate = [elapsedMs](qint64 rateHz) {
+            return static_cast<qulonglong>(std::max<qint64>(0, elapsedMs) * rateHz / 1000);
+        };
         const char *visual = state_->ui_test_recording_state_ == 1
             ? "connected" : state_->ui_test_recording_state_ == 2 ? "connecting" : "disconnected";
-        const QString text = state_->ui_test_recording_state_ == 1
-            ? (state_->is_english_ ? QStringLiteral("Recording: On (simulated; no files)")
-                                   : QStringLiteral("记录：进行中（模拟，不写文件）"))
+        const QString stateText = state_->ui_test_recording_state_ == 1
+            ? (state_->is_english_ ? QStringLiteral("Recording: On (UI Test)")
+                                   : QStringLiteral("记录：进行中（界面测试）"))
             : state_->ui_test_recording_state_ == 2
-                ? (state_->is_english_ ? QStringLiteral("Recording: Paused (simulated; no files)")
-                                       : QStringLiteral("记录：已暂停（模拟，不写文件）"))
+                ? (state_->is_english_ ? QStringLiteral("Recording: Paused (UI Test)")
+                                       : QStringLiteral("记录：已暂停（界面测试）"))
                 : (state_->is_english_ ? QStringLiteral("Recording: Off (UI test)")
                                        : QStringLiteral("记录：未记录（界面测试）"));
+        const QString session = state_->ui_test_recording_state_ == 0
+            ? QStringLiteral("--")
+            : QStringLiteral("UI-TEST-SESSION");
+        const QString detail = state_->is_english_
+            ? QStringLiteral("Session: %1\nElapsed: %2\nSensor rows: %3\nWaveform frames: %4\nRaw EPSILON: %5\nRaw PTB: %6\nRaw HMP: %7\nRaw Lidar: %8\nRaw TCP wave: %9\nFile output: none (memory only)")
+                  .arg(session)
+                  .arg(formatElapsedCompact(static_cast<quint64>(std::max<qint64>(0, elapsedMs))))
+                  .arg(countAtRate(20))
+                  .arg(countAtRate(10))
+                  .arg(countAtRate(100))
+                  .arg(countAtRate(10))
+                  .arg(countAtRate(2))
+                  .arg(countAtRate(20))
+                  .arg(countAtRate(10))
+            : QStringLiteral("会话：%1\n时长：%2\n设备行数：%3\n波形帧数：%4\nRaw EPSILON：%5\nRaw PTB：%6\nRaw HMP：%7\nRaw Lidar：%8\nRaw TCP 波形：%9\n文件写入：无（仅内存模拟）")
+                  .arg(session)
+                  .arg(formatElapsedCompact(static_cast<quint64>(std::max<qint64>(0, elapsedMs))))
+                  .arg(countAtRate(20))
+                  .arg(countAtRate(10))
+                  .arg(countAtRate(100))
+                  .arg(countAtRate(10))
+                  .arg(countAtRate(2))
+                  .arg(countAtRate(20))
+                  .arg(countAtRate(10));
+        const QString text = QStringLiteral("%1\n%2").arg(stateText, detail);
+        setSectionTitleIconName(state_->recording_status_title_lbl_,
+                                state_->ui_test_recording_state_ == 1
+                                    ? QStringLiteral("pencil-sparkles")
+                                    : QStringLiteral("pencil"),
+                                state_->dark_theme_enabled_);
+        const QString visualStatus = QString::fromLatin1(visual);
+        const bool visualChanged = state_->recording_status_label_->property("status").toString() != visualStatus;
         state_->recording_status_label_->setText(text);
         state_->recording_status_label_->setToolTip(text);
-        state_->recording_status_label_->setProperty("status", QString::fromLatin1(visual));
+        state_->recording_status_label_->setProperty("status", visualStatus);
         if (state_->recording_status_card_)
         {
-            state_->recording_status_card_->setProperty("status", QString::fromLatin1(visual));
+            state_->recording_status_card_->setProperty("status", visualStatus);
             state_->recording_status_card_->setToolTip(text);
-            state_->recording_status_card_->style()->unpolish(state_->recording_status_card_);
-            state_->recording_status_card_->style()->polish(state_->recording_status_card_);
         }
-        state_->recording_status_label_->style()->unpolish(state_->recording_status_label_);
-        state_->recording_status_label_->style()->polish(state_->recording_status_label_);
+        if (visualChanged)
+        {
+            if (state_->recording_status_card_)
+            {
+                state_->recording_status_card_->style()->unpolish(state_->recording_status_card_);
+                state_->recording_status_card_->style()->polish(state_->recording_status_card_);
+            }
+            state_->recording_status_label_->style()->unpolish(state_->recording_status_label_);
+            state_->recording_status_label_->style()->polish(state_->recording_status_label_);
+        }
         updateRecordingActionStates();
         return;
     }
@@ -467,6 +518,45 @@ void MainWindow::updateRecordingStatusLabel()
     updateRecordingActionStates();
 }
 
+qint64 MainWindow::uiTestRecordingElapsedMs() const
+{
+    qint64 elapsedMs = state_->ui_test_recording_elapsed_ms_;
+    if (state_->ui_test_recording_state_ == 1 && state_->ui_test_recording_started_ms_ > 0)
+    {
+        elapsedMs += std::max<qint64>(
+            0, QDateTime::currentMSecsSinceEpoch() - state_->ui_test_recording_started_ms_);
+    }
+    return elapsedMs;
+}
+
+void MainWindow::startOrResumeUiTestRecording()
+{
+    if (state_->ui_test_recording_state_ == 0)
+    {
+        state_->ui_test_recording_elapsed_ms_ = 0;
+    }
+    state_->ui_test_recording_started_ms_ = QDateTime::currentMSecsSinceEpoch();
+    state_->ui_test_recording_state_ = 1;
+}
+
+void MainWindow::pauseUiTestRecording()
+{
+    if (state_->ui_test_recording_state_ != 1)
+    {
+        return;
+    }
+    state_->ui_test_recording_elapsed_ms_ = uiTestRecordingElapsedMs();
+    state_->ui_test_recording_started_ms_ = 0;
+    state_->ui_test_recording_state_ = 2;
+}
+
+void MainWindow::resetUiTestRecording()
+{
+    state_->ui_test_recording_state_ = 0;
+    state_->ui_test_recording_started_ms_ = 0;
+    state_->ui_test_recording_elapsed_ms_ = 0;
+}
+
 QString MainWindow::defaultRecordingDirectory() const
 {
     return VaporView::Ground::Session::GroundRecordingService::defaultRecordingDirectory();
@@ -476,7 +566,7 @@ bool MainWindow::startRecordingSession()
 {
     if (isUiTestMode())
     {
-        state_->ui_test_recording_state_ = 1;
+        startOrResumeUiTestRecording();
         updateRecordingStatusLabel();
         logUiTest(state_->is_english_ ? QStringLiteral("Simulated recording started; no directory or file was created")
                                       : QStringLiteral("模拟记录已开始；未创建目录或文件"));
@@ -697,6 +787,11 @@ bool MainWindow::tryStartScheduledRecording(QString *failureReason)
         return false;
     }
 
+    if (isUiTestMode())
+    {
+        return startRecordingSession();
+    }
+
     if (isRemoteSkyMode())
     {
         const quint16 seq = state_->remote_sky_controller_
@@ -730,7 +825,7 @@ bool MainWindow::tryStopScheduledRecording()
 {
     if (isUiTestMode())
     {
-        state_->ui_test_recording_state_ = 0;
+        resetUiTestRecording();
         updateRecordingStatusLabel();
         logUiTest(state_->is_english_ ? QStringLiteral("Simulated scheduled recording stopped")
                                       : QStringLiteral("模拟定时记录已停止"));
@@ -1210,7 +1305,7 @@ void MainWindow::onPauseRecordingClicked()
     {
         if (state_->ui_test_recording_state_ == 1)
         {
-            state_->ui_test_recording_state_ = 2;
+            pauseUiTestRecording();
             updateRecordingStatusLabel();
             logUiTest(state_->is_english_ ? QStringLiteral("Simulated recording paused")
                                           : QStringLiteral("模拟记录已暂停"));
@@ -1229,7 +1324,7 @@ void MainWindow::onStopRecordingClicked()
 {
     if (isUiTestMode())
     {
-        state_->ui_test_recording_state_ = 0;
+        resetUiTestRecording();
         updateRecordingStatusLabel();
         logUiTest(state_->is_english_ ? QStringLiteral("Simulated recording stopped")
                                       : QStringLiteral("模拟记录已停止"));

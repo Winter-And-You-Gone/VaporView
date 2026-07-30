@@ -384,6 +384,8 @@ struct MainWindowState
     bool ui_test_application_closing_;
     bool ui_test_connection_in_progress_;
     int ui_test_recording_state_;
+    qint64 ui_test_recording_started_ms_;
+    qint64 ui_test_recording_elapsed_ms_;
     qint64 ui_test_started_ms_;
     int ui_test_saved_page_index_;
     int ui_test_saved_sidebar_width_;

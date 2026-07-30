@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QDialog>
 #include <QEventLoop>
+#include <QFrame>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
@@ -187,12 +188,54 @@ int main(int argc, char **argv)
     stalledAction->trigger();
     processEvents();
 
+    auto *recordingCard = window->findChild<QFrame *>(QStringLiteral("recordingStatusCard"));
+    auto *recordingStatus = window->findChild<QLabel *>(QStringLiteral("recordingStatusLabel"));
+    require(recordingCard && recordingStatus, "recording status card exists");
+    QLabel *recordingTitle = nullptr;
+    for (QLabel *label : recordingCard->findChildren<QLabel *>())
+    {
+        if (label->text().contains(QStringLiteral("记录状态")))
+        {
+            recordingTitle = label;
+            break;
+        }
+    }
+    require(recordingTitle && recordingTitle->text() == QStringLiteral("记录状态（界面测试）"),
+            "recording card title identifies UI test mode");
     require(QMetaObject::invokeMethod(window, "onStartRecordingClicked", Qt::DirectConnection),
             "simulated recording start slot invoked");
+    require(VaporViewTest::processEventsUntil(1500, [recordingStatus]() {
+                return recordingStatus->text().contains(QStringLiteral("记录：进行中（界面测试）")) &&
+                    recordingStatus->text().contains(QStringLiteral("会话：UI-TEST-SESSION")) &&
+                    recordingStatus->text().contains(QStringLiteral("设备行数：")) &&
+                    !recordingStatus->text().contains(QStringLiteral("设备行数：0\n")) &&
+                    recordingStatus->text().contains(QStringLiteral("文件写入：无（仅内存模拟）"));
+            }),
+            "simulated recording displays deterministic in-memory counters");
     require(QMetaObject::invokeMethod(window, "onPauseRecordingClicked", Qt::DirectConnection),
             "simulated recording pause slot invoked");
+    processEvents();
+    const QString pausedRecordingText = recordingStatus->text();
+    require(pausedRecordingText.contains(QStringLiteral("记录：已暂停（界面测试）")),
+            "simulated recording displays the paused UI-test state");
+    require(!VaporViewTest::processEventsUntil(400, [recordingStatus, pausedRecordingText]() {
+                return recordingStatus->text() != pausedRecordingText;
+            }),
+            "simulated recording counters freeze while paused");
+    require(QMetaObject::invokeMethod(window, "onStartRecordingClicked", Qt::DirectConnection),
+            "simulated recording resume slot invoked");
+    require(VaporViewTest::processEventsUntil(1500, [recordingStatus, pausedRecordingText]() {
+                return recordingStatus->text().contains(QStringLiteral("记录：进行中（界面测试）")) &&
+                    recordingStatus->text() != pausedRecordingText;
+            }),
+            "simulated recording counters resume without starting the real recorder");
     require(QMetaObject::invokeMethod(window, "onStopRecordingClicked", Qt::DirectConnection),
             "simulated recording stop slot invoked");
+    processEvents();
+    require(recordingStatus->text().contains(QStringLiteral("记录：未记录（界面测试）")) &&
+                recordingStatus->text().contains(QStringLiteral("设备行数：0")) &&
+                recordingStatus->text().contains(QStringLiteral("文件写入：无（仅内存模拟）")),
+            "stopping simulated recording clears only its in-memory counters");
     require(QMetaObject::invokeMethod(window, "onDisconnectClicked", Qt::DirectConnection),
             "simulated disconnect slot invoked");
     require(QMetaObject::invokeMethod(window, "onConnectClicked", Qt::DirectConnection),
