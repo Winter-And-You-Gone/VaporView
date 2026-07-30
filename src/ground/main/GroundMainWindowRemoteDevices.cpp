@@ -816,7 +816,8 @@ void MainWindow::syncDeviceConfigEpsilonPanelFromSettings()
 
     const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
     const int groupedRateHz = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
-    QSettings settings("VaporView", "MainWindow");
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
     const bool customEnabled = settings.value("epsilon_custom_packet_rates_enabled", false).toBool();
     const std::map<uint8_t, int> packetRates = customEnabled
         ? loadCustomEpsilonPacketRates(settings, groupedRateHz)
@@ -852,7 +853,8 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
         return;
     }
 
-    QSettings settings("VaporView", "MainWindow");
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
     for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
     {
         const auto it = savedPacketRates.find(option.packet_id);

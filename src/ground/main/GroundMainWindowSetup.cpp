@@ -1896,7 +1896,8 @@ void MainWindow::setupDeviceConfigPage()
         sourceCombo->setProperty(kSensorBaudSourceProperty, sourceCombo->currentData().toString());
         connect(sourceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
                 [this, sourceCombo, deviceBaudCombo, homeBaudCombo](int) {
-            QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+            QSettings settings = VaporView::applicationConfigSettings();
+            settings.beginGroup(QStringLiteral("MainWindow"));
             const QString previousSource = sourceCombo->property(kSensorBaudSourceProperty).toString();
             saveRememberedSensorBaud(
                 settings, previousSource, homeBaudCombo ? homeBaudCombo : deviceBaudCombo);

@@ -32,6 +32,7 @@
 #include <QPixmap>
 #include <QSettings>
 #include "shared/config/SettingsWriteBarrier.h"
+#include "shared/config/ApplicationConfig.h"
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QShowEvent>
@@ -391,7 +392,9 @@ QString tiandituKeySettingKey()
 
 QString configuredTiandituKey()
 {
-    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("TrajectoryViewer"));
+    VaporView::migrateLegacyApplicationConfig();
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("TrajectoryViewer"));
     return settings.value(tiandituKeySettingKey()).toString().trimmed();
 }
 

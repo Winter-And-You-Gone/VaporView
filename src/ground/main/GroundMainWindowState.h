@@ -375,6 +375,7 @@ struct MainWindowState
     bool log_filter_connection_enabled_;
     bool log_filter_recording_enabled_;
     bool language_switch_in_progress_;
+    bool restoring_persistent_settings_;
     bool has_inline_progress_log_;
     bool connection_attempt_in_progress_;
     bool port_detection_in_progress_;

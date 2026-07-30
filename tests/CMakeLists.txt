@@ -161,6 +161,12 @@ add_executable(device_rate_policy_test
 target_link_libraries(device_rate_policy_test PRIVATE vaporview_ground_device_policy)
 add_test(NAME device_rate_policy_test COMMAND device_rate_policy_test)
 
+add_executable(application_config_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/application_config_test.cpp
+)
+target_link_libraries(application_config_test PRIVATE vaporview_app_config)
+add_test(NAME application_config_test COMMAND application_config_test)
+
 add_executable(rtk_serial_topology_test
     ${CMAKE_CURRENT_SOURCE_DIR}/rtk_serial_topology_test.cpp
 )
@@ -603,6 +609,7 @@ set(VAPORVIEW_FAST_UNIT_TESTS
     segmented_switch_button_test
     session_time_format_test
     device_rate_policy_test
+    application_config_test
     rtk_serial_topology_test
     rtk_config_dialog_test
     bounded_lru_cache_test

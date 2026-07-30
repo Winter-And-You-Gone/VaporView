@@ -95,6 +95,7 @@ target_link_libraries(vaporview_main_window PUBLIC
 )
 
 target_link_libraries(vaporview_main_window PRIVATE
+    vaporview_app_config
     vaporview_app_theme
     vaporview_geo_core
     vaporview_sky_core

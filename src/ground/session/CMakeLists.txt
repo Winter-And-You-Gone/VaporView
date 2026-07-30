@@ -69,6 +69,7 @@ target_link_libraries(vaporview_ground_session_ui PUBLIC
 )
 
 target_link_libraries(vaporview_ground_session_ui PRIVATE
+    vaporview_app_config
     vaporview_app_theme
     vaporview_ground_session_core
     vaporview_ground_trajectory

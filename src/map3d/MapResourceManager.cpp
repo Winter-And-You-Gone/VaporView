@@ -13,6 +13,7 @@
 #include <QNetworkRequest>
 #include <QSettings>
 #include "shared/config/SettingsWriteBarrier.h"
+#include "shared/config/ApplicationConfig.h"
 #include <QStandardPaths>
 
 #include <algorithm>
@@ -288,7 +289,9 @@ MapResourceManager::MapResourceManager(QObject* parent)
     , network_manager_(new QNetworkAccessManager(this))
 {
     const QString environmentUrl = qEnvironmentVariable("VAPORVIEW_MAP_MANIFEST_URL");
-    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    VaporView::migrateLegacyApplicationConfig();
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("Map3D"));
     manifest_url_ = environmentUrl.isEmpty()
         ? settings.value(QStringLiteral("mapManifestUrl")).toString()
         : environmentUrl;
@@ -312,7 +315,8 @@ QString MapResourceManager::manifestUrl() const
 void MapResourceManager::setManifestUrl(const QString& url)
 {
     manifest_url_ = url.trimmed();
-    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("Map3D"));
     VaporView::setPersistentSetting(settings, QStringLiteral("mapManifestUrl"), manifest_url_);
 }
 

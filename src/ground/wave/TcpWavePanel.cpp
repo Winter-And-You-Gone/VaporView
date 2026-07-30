@@ -5,6 +5,7 @@
 #include "ground/widgets/VisualTextLabel.h"
 #include "ground/widgets/LabelTextSelection.h"
 #include "shared/config/SettingsWriteBarrier.h"
+#include "shared/config/ApplicationConfig.h"
 #include <QAbstractSocket>
 #include <QApplication>
 #include <QByteArray>
@@ -1683,10 +1684,13 @@ void TcpWavePanel::setupUi()
 
 void TcpWavePanel::loadRememberedInputState()
 {
-    QSettings settings("VaporView", "TcpWavePanel");
-    const QString hostValue = settings.value("connection/host", host_edit_->text()).toString();
-    const QString portValue = settings.value("connection/port", port_edit_->text()).toString();
-    const QString peakFilterMode = settings.value("peak_filter/mode", QStringLiteral("none")).toString().trimmed().toLower();
+    VaporView::migrateLegacyApplicationConfig();
+    QSettings applicationSettings = VaporView::applicationConfigSettings();
+    applicationSettings.beginGroup(QStringLiteral("TcpWavePanel"));
+    QSettings userSettings("VaporView", "TcpWavePanel");
+    const QString hostValue = applicationSettings.value("connection/host", host_edit_->text()).toString();
+    const QString portValue = applicationSettings.value("connection/port", port_edit_->text()).toString();
+    const QString peakFilterMode = userSettings.value("peak_filter/mode", QStringLiteral("none")).toString().trimmed().toLower();
     if (peakFilterMode == QStringLiteral("iqr"))
     {
         peak_filter_settings_.mode = PeakFilterMode::IqrOutlier;
@@ -1703,10 +1707,10 @@ void TcpWavePanel::loadRememberedInputState()
     {
         peak_filter_settings_.mode = PeakFilterMode::None;
     }
-    peak_filter_settings_.min_value = settings.value("peak_filter/min_value", 0.0).toDouble();
-    peak_filter_settings_.max_value = settings.value("peak_filter/max_value", 0.0).toDouble();
-    peak_search_start_index_ = std::max(0, settings.value("peak_search/start_index", kDefaultPeakSearchStartIndex).toInt());
-    peak_search_end_index_ = std::max(0, settings.value("peak_search/end_index", kDefaultPeakSearchEndIndex).toInt());
+    peak_filter_settings_.min_value = userSettings.value("peak_filter/min_value", 0.0).toDouble();
+    peak_filter_settings_.max_value = userSettings.value("peak_filter/max_value", 0.0).toDouble();
+    peak_search_start_index_ = std::max(0, userSettings.value("peak_search/start_index", kDefaultPeakSearchStartIndex).toInt());
+    peak_search_end_index_ = std::max(0, userSettings.value("peak_search/end_index", kDefaultPeakSearchEndIndex).toInt());
 
     {
         const QSignalBlocker hostBlocker(host_edit_);
@@ -1722,9 +1726,12 @@ void TcpWavePanel::loadRememberedInputState()
 
 void TcpWavePanel::saveRememberedInputState() const
 {
-    QSettings settings("VaporView", "TcpWavePanel");
-    VaporView::setPersistentSetting(settings, QStringLiteral("connection/host"), host_edit_->text());
-    VaporView::setPersistentSetting(settings, QStringLiteral("connection/port"), port_edit_->text().trimmed());
+    QSettings applicationSettings = VaporView::applicationConfigSettings();
+    applicationSettings.beginGroup(QStringLiteral("TcpWavePanel"));
+    VaporView::setPersistentSetting(applicationSettings, QStringLiteral("connection/host"), host_edit_->text());
+    VaporView::setPersistentSetting(applicationSettings, QStringLiteral("connection/port"), port_edit_->text().trimmed());
+
+    QSettings userSettings("VaporView", "TcpWavePanel");
 
     QString modeKey = QStringLiteral("none");
     if (peak_filter_settings_.mode == PeakFilterMode::IqrOutlier)
@@ -1739,11 +1746,11 @@ void TcpWavePanel::saveRememberedInputState() const
     {
         modeKey = QStringLiteral("exclude_range");
     }
-    VaporView::setPersistentSetting(settings, QStringLiteral("peak_filter/mode"), modeKey);
-    VaporView::setPersistentSetting(settings, QStringLiteral("peak_filter/min_value"), peak_filter_settings_.min_value);
-    VaporView::setPersistentSetting(settings, QStringLiteral("peak_filter/max_value"), peak_filter_settings_.max_value);
-    VaporView::setPersistentSetting(settings, QStringLiteral("peak_search/start_index"), peak_search_start_index_);
-    VaporView::setPersistentSetting(settings, QStringLiteral("peak_search/end_index"), peak_search_end_index_);
+    VaporView::setPersistentSetting(userSettings, QStringLiteral("peak_filter/mode"), modeKey);
+    VaporView::setPersistentSetting(userSettings, QStringLiteral("peak_filter/min_value"), peak_filter_settings_.min_value);
+    VaporView::setPersistentSetting(userSettings, QStringLiteral("peak_filter/max_value"), peak_filter_settings_.max_value);
+    VaporView::setPersistentSetting(userSettings, QStringLiteral("peak_search/start_index"), peak_search_start_index_);
+    VaporView::setPersistentSetting(userSettings, QStringLiteral("peak_search/end_index"), peak_search_end_index_);
 }
 
 void TcpWavePanel::setEnglish(bool english)

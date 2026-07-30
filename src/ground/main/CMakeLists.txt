@@ -12,6 +12,7 @@ target_include_directories(vaporview_ground_main_support PRIVATE
 )
 
 target_link_libraries(vaporview_ground_main_support PRIVATE
+    vaporview_app_config
     vaporview_app_theme
     vaporview_sky_core
     Qt6::Widgets

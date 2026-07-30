@@ -42,6 +42,7 @@
 #include <QSet>
 #include <QSettings>
 #include "shared/config/SettingsWriteBarrier.h"
+#include "shared/config/ApplicationConfig.h"
 #include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QSlider>
@@ -3328,11 +3329,14 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
             this, &TrajectoryViewerDialog::applyPeakControlEdits);
 
     {
-        QSettings settings("VaporView", "TrajectoryViewer");
-        const QString tiandituKey = settings.value(tiandituKeySettingKey()).toString().trimmed();
+        VaporView::migrateLegacyApplicationConfig();
+        QSettings applicationSettings = VaporView::applicationConfigSettings();
+        applicationSettings.beginGroup(QStringLiteral("TrajectoryViewer"));
+        QSettings userSettings("VaporView", "TrajectoryViewer");
+        const QString tiandituKey = applicationSettings.value(tiandituKeySettingKey()).toString().trimmed();
         tianditu_key_edit_->setText(tiandituKey);
         mapWidget->setTianDiTuKey(tiandituKey);
-        const QString provider = settings.value(tileProviderSettingKey(), QStringLiteral("osm")).toString().trimmed().toLower();
+        const QString provider = userSettings.value(tileProviderSettingKey(), QStringLiteral("osm")).toString().trimmed().toLower();
         const TileProvider providerEnum =
             provider == QStringLiteral("tianditu_img")
                 ? TileProvider::TianDiTuSatellite
@@ -3457,19 +3461,21 @@ void TrajectoryViewerDialog::applyMapSourceSelection(int index)
     const QString tiandituKey = tianditu_key_edit_ ? tianditu_key_edit_->text().trimmed() : QString();
     const bool missingTiandituKey = isTianDiTuProvider(selectedProvider) && tiandituKey.isEmpty();
 
-    QSettings settings("VaporView", "TrajectoryViewer");
+    QSettings applicationSettings = VaporView::applicationConfigSettings();
+    applicationSettings.beginGroup(QStringLiteral("TrajectoryViewer"));
     if (tiandituKey.isEmpty())
     {
-        VaporView::removePersistentSetting(settings, tiandituKeySettingKey());
+        VaporView::removePersistentSetting(applicationSettings, tiandituKeySettingKey());
     }
     else
     {
-        VaporView::setPersistentSetting(settings, tiandituKeySettingKey(), tiandituKey);
+        VaporView::setPersistentSetting(applicationSettings, tiandituKeySettingKey(), tiandituKey);
     }
 
     mapWidget->setTianDiTuKey(tiandituKey);
     mapWidget->setTileProvider(selectedProvider);
-    VaporView::setPersistentSetting(settings, tileProviderSettingKey(), tileProviderKey(selectedProvider));
+    QSettings userSettings("VaporView", "TrajectoryViewer");
+    VaporView::setPersistentSetting(userSettings, tileProviderSettingKey(), tileProviderKey(selectedProvider));
 
     if (missingTiandituKey)
     {
@@ -3494,7 +3500,8 @@ void TrajectoryViewerDialog::applyTiandituKeyEdit()
         QSignalBlocker blocker(tianditu_key_edit_);
         tianditu_key_edit_->setText(tiandituKey);
     }
-    QSettings settings("VaporView", "TrajectoryViewer");
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("TrajectoryViewer"));
     if (tiandituKey.isEmpty())
     {
         VaporView::removePersistentSetting(settings, tiandituKeySettingKey());

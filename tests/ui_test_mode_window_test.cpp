@@ -79,11 +79,11 @@ void processEvents()
 
 int main(int argc, char **argv)
 {
-    QApplication application(argc, argv);
     QTemporaryDir settingsDirectory;
     require(settingsDirectory.isValid(), "temporary settings directory created");
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDirectory.path());
+    QApplication application(argc, argv);
 
     {
         QSettings mainSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));

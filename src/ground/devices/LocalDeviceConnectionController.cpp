@@ -3,6 +3,7 @@
 #include "ground/devices/ImuConfigurationService.h"
 
 #include <QSettings>
+#include "shared/config/ApplicationConfig.h"
 #include "shared/config/SettingsWriteBarrier.h"
 
 #include <atomic>
@@ -395,7 +396,8 @@ private:
     {
         const bool useEnglish = request.english;
         auto persistEpsilonConfig = [&request]() {
-            QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+            QSettings settings = VaporView::applicationConfigSettings();
+            settings.beginGroup(QStringLiteral("MainWindow"));
             VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_port"), request.epsilon.port);
             VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_baud"), request.epsilon.baudText);
             VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_rate_hz"), request.epsilonConfiguredRateHz);

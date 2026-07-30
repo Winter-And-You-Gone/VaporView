@@ -176,7 +176,8 @@ void MainWindow::syncRtkConfigPageState()
         state_->rtk_config_dialog_->setEpsilonMainPortAndBaud(epsilonPort, epsilonBaud);
     }
     {
-        QSettings settings("VaporView", "MainWindow");
+        QSettings settings = VaporView::applicationConfigSettings();
+        settings.beginGroup(QStringLiteral("MainWindow"));
         const QString preferredOutputPort = settings.value("epsilon_rtcm_forward_port").toString().trimmed();
         const QString preferredBaud = settings.value("epsilon_rtcm_forward_baud", "115200").toString().trimmed();
         if (!preferredOutputPort.isEmpty())
@@ -242,7 +243,8 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         return;
     }
 
-    QSettings settings("VaporView", "MainWindow");
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
     const QStringList availablePorts = getAvailablePorts();
 
     QDialog dialog(this);
@@ -399,7 +401,8 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
 
     const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
     const int groupedRateHz = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
-    QSettings settings("VaporView", "MainWindow");
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
     const bool customEnabled = settings.value("epsilon_custom_packet_rates_enabled", false).toBool();
     const std::map<uint8_t, int> defaultRates = defaultEpsilonPacketRates();
     const std::map<uint8_t, int> groupedRates = groupedEpsilonPacketRates(groupedRateHz);
@@ -704,7 +707,8 @@ void MainWindow::onReconfigureEpsilonClicked()
 
     const int epsilonRate = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
     state_->epsilon_sample_rate_ = epsilonRate;
-    QSettings settings("VaporView", "MainWindow");
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
     bool usingCustomPacketProfile = false;
     const std::map<uint8_t, int> desiredPacketRates = effectiveEpsilonPacketRates(settings, epsilonRate, &usingCustomPacketProfile);
     if (!validateEpsilonPacketBandwidth(desiredPacketRates, epsilonBaudText, true))

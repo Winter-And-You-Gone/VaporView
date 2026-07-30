@@ -8,6 +8,7 @@
 #include <QLocale>
 #include <QRegularExpression>
 #include <QSettings>
+#include "shared/config/ApplicationConfig.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include <QStyle>
 #include <QToolButton>
@@ -31,7 +32,8 @@ bool isTemperatureCommonCommand(VaporView::CommandId command)
 
 int rememberedTemperatureSlaveAddress()
 {
-    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
     return std::clamp(settings.value(QStringLiteral("serial/temperature_slave_address"), 1).toInt(), 1, 247);
 }
 

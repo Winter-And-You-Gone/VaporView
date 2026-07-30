@@ -1382,7 +1382,8 @@ void MainWindow::setWaveformRecordingRateHz(int rate, bool should_log)
 
 void MainWindow::loadRememberedInputState()
 {
-    QSettings settings("VaporView", "MainWindow");
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
 
     auto loadCombo = [this, &settings](QComboBox *combo, const QString& key, const QString& fallbackKey = QString()) {
         if (!combo)
@@ -1531,7 +1532,12 @@ void MainWindow::loadRememberedInputState()
 
 void MainWindow::saveRememberedInputState() const
 {
-    QSettings settings("VaporView", "MainWindow");
+    if (state_->restoring_persistent_settings_)
+    {
+        return;
+    }
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
 
     auto saveCombo = [this, &settings](const QString& key, QComboBox *combo) {
         if (combo)

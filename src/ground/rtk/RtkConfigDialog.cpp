@@ -2260,17 +2260,32 @@ void RtkConfigDialog::loadSettings()
 {
     QSettings settings(config_file_path_, QSettings::IniFormat);
     const auto migrateMissingSettings = [&settings](QSettings& source) {
-        if (settings.fileName().compare(source.fileName(), Qt::CaseInsensitive) == 0)
+        if (VaporView::settingsWritesSuspended() ||
+            settings.fileName().compare(source.fileName(), Qt::CaseInsensitive) == 0)
         {
             return;
         }
-        for (const QString& key : source.allKeys())
+        const QStringList sourceKeys = source.allKeys();
+        for (const QString& key : sourceKeys)
         {
             if (!settings.contains(key))
             {
                 VaporView::setPersistentSetting(settings, key, source.value(key));
             }
         }
+        settings.sync();
+        if (settings.status() != QSettings::NoError)
+        {
+            return;
+        }
+        for (const QString& key : sourceKeys)
+        {
+            if (settings.contains(key))
+            {
+                VaporView::removePersistentSetting(source, key);
+            }
+        }
+        source.sync();
     };
 
     QSettings scopedProfile(

@@ -3,6 +3,7 @@
 #include "ground/main/MainWindow.h"
 #include "ground/main/GroundMainWindowState.h"
 #include "shared/config/SettingsWriteBarrier.h"
+#include "shared/config/ApplicationConfig.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"
 #include "ground/widgets/CustomTitleBar.h"

@@ -20,6 +20,7 @@
 #include <QScrollArea>
 #include <QSettings>
 #include "shared/config/SettingsWriteBarrier.h"
+#include "shared/config/ApplicationConfig.h"
 #include <QSplitter>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -156,6 +157,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     setEnglish(false);
     VaporView::centerWindowOnScreen(this, parent);
 
+    VaporView::migrateLegacyApplicationConfig();
     QSettings settings("VaporView", "SessionViewer");
     const QString peakFilterMode = settings.value("peak_filter/mode", QStringLiteral("none")).toString().trimmed().toLower();
     if (peakFilterMode == QStringLiteral("iqr"))

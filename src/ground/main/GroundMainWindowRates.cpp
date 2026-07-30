@@ -34,7 +34,8 @@ void MainWindow::onGlobalRateChanged(const QString& text)
     if (state_->lidar_rate_combo_) state_->lidar_rate_combo_->blockSignals(false);
     if (state_->temperature_rate_combo_) state_->temperature_rate_combo_->blockSignals(false);
 
-    QSettings settings("VaporView", "MainWindow");
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
     bool epsilonUsesCustomPacketRates = false;
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
         effectiveEpsilonPacketRates(settings, state_->epsilon_sample_rate_, &epsilonUsesCustomPacketRates);
@@ -109,7 +110,8 @@ void MainWindow::onGnssRateChanged(const QString& text)
 {
     const bool skipDeviceRate = isRateUnspecified(text);
     state_->epsilon_sample_rate_ = effectiveRateOrDefault(text, kDefaultEpsilonSampleRateHz, 200);
-    QSettings settings("VaporView", "MainWindow");
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
     bool epsilonUsesCustomPacketRates = false;
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
         effectiveEpsilonPacketRates(settings, state_->epsilon_sample_rate_, &epsilonUsesCustomPacketRates);
@@ -262,7 +264,8 @@ void MainWindow::applyAllSampleRates()
     const bool skipHmpDeviceRate = state_->hmp_rate_combo_ && isRateUnspecified(state_->hmp_rate_combo_->currentText());
     const bool skipLidarDeviceRate = state_->lidar_rate_combo_ && isRateUnspecified(state_->lidar_rate_combo_->currentText());
     const bool skipTemperatureDeviceRate = state_->temperature_rate_combo_ && isRateUnspecified(state_->temperature_rate_combo_->currentText());
-    QSettings settings("VaporView", "MainWindow");
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
     bool epsilonUsesCustomPacketRates = false;
     const int epsilonRate = skipEpsilonDeviceRate ? kDefaultEpsilonSampleRateHz : std::clamp(rate, 20, 200);
     const int ptbRate = skipPtbDeviceRate ? kDefaultPtbSampleRateHz : clampPtbSampleRate(rate);

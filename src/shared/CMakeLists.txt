@@ -35,6 +35,20 @@ add_library(vaporview_app_theme STATIC
     ${CMAKE_SOURCE_DIR}/src/shared/theme/TopLevelCardStyle.h
 )
 
+add_library(vaporview_app_config STATIC
+    ${CMAKE_SOURCE_DIR}/src/shared/config/ApplicationConfig.cpp
+    ${CMAKE_SOURCE_DIR}/src/shared/config/ApplicationConfig.h
+    ${CMAKE_SOURCE_DIR}/src/shared/config/SettingsWriteBarrier.h
+)
+
+target_include_directories(vaporview_app_config PUBLIC
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(vaporview_app_config PUBLIC
+    Qt6::Core
+)
+
 target_include_directories(vaporview_app_theme PUBLIC
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/src

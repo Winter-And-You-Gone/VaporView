@@ -3,6 +3,7 @@
 #include "data_collector.h"
 
 #include <QSettings>
+#include "shared/config/ApplicationConfig.h"
 #include "shared/config/SettingsWriteBarrier.h"
 
 #include <utility>
@@ -175,12 +176,10 @@ EpsilonConfigurationResult EpsilonConfigurationService::configureRtcmPort(
 
     result.command_succeeded = true;
     {
-        QSettings main_settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        QSettings main_settings = VaporView::applicationConfigSettings();
+        main_settings.beginGroup(QStringLiteral("MainWindow"));
         VaporView::setPersistentSetting(main_settings, QStringLiteral("epsilon_rtcm_forward_port"), forward_port);
         VaporView::setPersistentSetting(main_settings, QStringLiteral("epsilon_rtcm_forward_baud"), forward_baud_text);
-        QSettings rtk_settings(QStringLiteral("VaporView"), QStringLiteral("RtkConfig"));
-        VaporView::setPersistentSetting(rtk_settings, QStringLiteral("output_port"), forward_port);
-        VaporView::setPersistentSetting(rtk_settings, QStringLiteral("baudrate"), forward_baud_text);
     }
 
     emitLog(log, QString(english
@@ -234,7 +233,8 @@ EpsilonConfigurationResult EpsilonConfigurationService::configurePacketRates(
 
     result.command_succeeded = true;
     {
-        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        QSettings settings = VaporView::applicationConfigSettings();
+        settings.beginGroup(QStringLiteral("MainWindow"));
         VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_port"), operation.port);
         VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_baud"), operation.baud_text);
         VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_rate_hz"), output_rate_hz);

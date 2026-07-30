@@ -911,7 +911,8 @@ void MainWindow::onConnectClicked()
     const int hmpRate = effectiveRateOrDefault(hmpRateText, kDefaultHmpSampleRateHz);
     const int lidarRate = effectiveRateOrDefault(lidarRateText, kDefaultLidarSampleRateHz, 100);
     const int temperatureRate = effectiveRateOrDefault(temperatureRateText, kDefaultTemperatureSampleRateHz, kMaxTemperatureSampleRateHz);
-    QSettings settings("VaporView", "MainWindow");
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
     bool epsilonUsesCustomPacketRates = false;
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
         effectiveEpsilonPacketRates(settings, epsilonRate, &epsilonUsesCustomPacketRates);

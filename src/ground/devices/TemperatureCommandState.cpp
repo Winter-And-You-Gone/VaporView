@@ -1,6 +1,7 @@
 #include "ground/devices/TemperatureCommandState.h"
 
 #include <QSettings>
+#include "shared/config/ApplicationConfig.h"
 #include "shared/config/SettingsWriteBarrier.h"
 
 #include <array>
@@ -123,7 +124,8 @@ void persistTemperatureSerialSettings(const TemperatureSerialSettingsUpdate& upd
         return;
     }
 
-    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
     if (update.slaveAddress)
     {
         VaporView::setPersistentSetting(settings,

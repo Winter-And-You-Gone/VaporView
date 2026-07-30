@@ -23,6 +23,7 @@ target_include_directories(vaporview_ground_temperature_command_state PUBLIC
 )
 
 target_link_libraries(vaporview_ground_temperature_command_state PUBLIC
+    vaporview_app_config
     Qt6::Core
 )
 
@@ -55,6 +56,7 @@ target_include_directories(vaporview_ground_device_core PUBLIC
 )
 
 target_link_libraries(vaporview_ground_device_core PUBLIC
+    vaporview_app_config
     vaporview_ground_device_policy
     vaporview_protocol
     vaporview_geo_core

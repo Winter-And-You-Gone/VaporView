@@ -14,30 +14,33 @@ MainWindow::MainWindow(QWidget *parent)
     const double currentPointSize = qApp->font().pointSizeF();
     state_->base_font_point_size_ = currentPointSize > 0.0 ? currentPointSize : 10.0;
 
-    QSettings settings("VaporView", "MainWindow");
-    state_->font_scale_percent_ = settings.value(
+    VaporView::migrateLegacyApplicationConfig();
+    QSettings userSettings("VaporView", "MainWindow");
+    QSettings applicationSettings = VaporView::applicationConfigSettings();
+    applicationSettings.beginGroup(QStringLiteral("MainWindow"));
+    state_->font_scale_percent_ = userSettings.value(
         "font_scale_percent",
         VaporView::defaultFontScalePercentForScreen(this)).toInt();
     if (state_->font_scale_percent_ < 70 || state_->font_scale_percent_ > 150)
     {
         state_->font_scale_percent_ = 100;
     }
-    state_->dark_theme_enabled_ = settings.value("dark_theme_enabled", false).toBool();
+    state_->dark_theme_enabled_ = userSettings.value("dark_theme_enabled", false).toBool();
     if (qApp)
     {
         qApp->setProperty(kAppDarkThemeProperty, state_->dark_theme_enabled_);
     }
-    state_->recording_directory_ = settings.value("recording_directory", defaultRecordingDirectory()).toString();
+    state_->recording_directory_ = userSettings.value("recording_directory", defaultRecordingDirectory()).toString();
     if (state_->recording_directory_.isEmpty())
     {
         state_->recording_directory_ = defaultRecordingDirectory();
     }
-    state_->recording_export_rate_hz_ = settings.value("recording_export_rate_hz", 20).toInt();
+    state_->recording_export_rate_hz_ = applicationSettings.value("recording_export_rate_hz", 20).toInt();
     if (state_->recording_export_rate_hz_ < 1 || state_->recording_export_rate_hz_ > 200)
     {
         state_->recording_export_rate_hz_ = 20;
     }
-    state_->imu_recording_rate_hz_ = settings.value("imu_recording_rate_hz", 0).toInt();
+    state_->imu_recording_rate_hz_ = applicationSettings.value("imu_recording_rate_hz", 0).toInt();
     if (state_->imu_recording_rate_hz_ < 0 || state_->imu_recording_rate_hz_ > 1000)
     {
         state_->imu_recording_rate_hz_ = 0;
@@ -225,6 +228,8 @@ MainWindow::MainWindow(QWidget *parent)
     };
     state_->recording_schedule_controller_->setHooks(std::move(scheduleHooks));
 
+    state_->restoring_persistent_settings_ = true;
+
     loadModernStyleSheet();
 
     setupMenuBar();
@@ -289,7 +294,10 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
     loadRememberedInputState();
+    syncDeviceConfigPageFromHome();
     bindRememberedInputState();
+    state_->restoring_persistent_settings_ = false;
+    saveRememberedInputState();
 
     state_->base_minimum_window_size_ = QSize(kMinimumMainWindowWidth, kMinimumMainWindowHeight);
     state_->base_window_size_ = QSize(kDefaultMainWindowWidth, kDefaultMainWindowHeight);

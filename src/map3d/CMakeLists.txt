@@ -63,6 +63,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
 
     target_link_libraries(vaporview_map3d_osgearth
         PUBLIC
+            vaporview_app_config
             vaporview_app_theme
             vaporview_geo_core
             vaporview_ground_session_core
