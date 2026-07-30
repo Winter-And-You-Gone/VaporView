@@ -1,6 +1,7 @@
 #include "ground/main/MainWindow.h"
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/wave/TcpWavePanel.h"
+#include "ground/widgets/SegmentedSwitchButton.h"
 #include "ground/widgets/SkyDeviceConfigDialog.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "test_ui_helpers.h"
@@ -12,12 +13,14 @@
 #include <QDialog>
 #include <QEventLoop>
 #include <QFrame>
+#include <QGroupBox>
 #include <QHostAddress>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMetaObject>
 #include <QMap>
+#include <QPointer>
 #include <QPushButton>
 #include <QSettings>
 #include <QTcpServer>
@@ -118,6 +121,49 @@ int main(int argc, char **argv)
     QComboBox *rtkMountpoint = window->findChild<QComboBox *>(QStringLiteral("rtkMountpointCombo"));
     require(epsilonPort && rtkServer && rtkPort && rtkUsername && rtkPassword && rtkMountpoint,
             "main and RTK configuration controls exist");
+
+    VaporView::Ground::Widgets::SegmentedSwitchButton *sourceModeSwitch = nullptr;
+    for (auto *candidate : window->findChildren<VaporView::Ground::Widgets::SegmentedSwitchButton *>())
+    {
+        if ((candidate->leftSegmentText().contains(QStringLiteral("本地")) ||
+             candidate->leftSegmentText().contains(QStringLiteral("Local"))) &&
+            (candidate->rightSegmentText().contains(QStringLiteral("远程")) ||
+             candidate->rightSegmentText().contains(QStringLiteral("Remote"))))
+        {
+            sourceModeSwitch = candidate;
+            break;
+        }
+    }
+    require(sourceModeSwitch, "home source mode switch exists");
+    QGroupBox *homeConfigCard = nullptr;
+    for (QWidget *ancestor = sourceModeSwitch->parentWidget(); ancestor && !homeConfigCard;
+         ancestor = ancestor->parentWidget())
+    {
+        homeConfigCard = qobject_cast<QGroupBox *>(ancestor);
+    }
+    require(homeConfigCard, "home device overview card exists");
+    QList<QPointer<QFrame>> telemetryPillsBeforeModeSwitch;
+    for (QFrame *pill : homeConfigCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")))
+    {
+        telemetryPillsBeforeModeSwitch.append(pill);
+    }
+    require(!telemetryPillsBeforeModeSwitch.isEmpty(),
+            "home telemetry summary contains persistent pills before source-mode switching");
+    sourceModeSwitch->click();
+    processEvents();
+    for (const QPointer<QFrame>& pill : telemetryPillsBeforeModeSwitch)
+    {
+        require(!pill.isNull(),
+                "unchanged home telemetry summary pills survive switching to remote mode");
+    }
+    sourceModeSwitch->click();
+    processEvents();
+    for (const QPointer<QFrame>& pill : telemetryPillsBeforeModeSwitch)
+    {
+        require(!pill.isNull(),
+                "unchanged home telemetry summary pills survive switching back to local mode");
+    }
+
     epsilonPort->addItem(QStringLiteral("UNSAVED-COM42"), QStringLiteral("UNSAVED-COM42"));
     epsilonPort->setCurrentIndex(epsilonPort->count() - 1);
     rtkServer->setText(QStringLiteral("normal.unpersisted.caster"));

@@ -299,7 +299,6 @@ void MainWindow::clearRemoteSkyDataUi()
     }
     updateEnvironmentStatusIcons(false, false, false);
     updateSourceModeUi();
-    updateRemoteTelemetrySummaryLabel();
     updateHomeDeviceStatusCapsules();
     updateRecordingStatusLabel();
 }
@@ -476,6 +475,47 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         return;
     }
     const RemoteTelemetrySummarySections sections = remoteTelemetrySummarySections();
+    QStringList summaryRenderTokens{
+        QString::number(state_->font_scale_percent_),
+        state_->is_english_ ? QStringLiteral("en") : QStringLiteral("zh")};
+    const auto appendSummaryRenderTokens = [&summaryRenderTokens](
+                                               const QList<RemoteTelemetrySummarySections::Item>& items) {
+        summaryRenderTokens << QString::number(items.size());
+        for (const RemoteTelemetrySummarySections::Item& item : items)
+        {
+            summaryRenderTokens << item.label
+                                << item.value
+                                << item.valueWidthText
+                                << (item.hasData ? QStringLiteral("1") : QStringLiteral("0"));
+        }
+    };
+    appendSummaryRenderTokens(sections.rateItems);
+    appendSummaryRenderTokens(sections.linkItems);
+    appendSummaryRenderTokens(sections.deviceItems);
+    const QString summaryRenderKey = summaryRenderTokens.join(QChar(0x1f));
+    constexpr auto kSummaryRenderKeyProperty = "vaporViewTelemetrySummaryRenderKey";
+
+    if (state_->data_telemetry_summary_card_)
+    {
+        state_->data_telemetry_summary_card_->setVisible(true);
+    }
+    if (state_->device_config_.data_telemetry_summary_card)
+    {
+        state_->device_config_.data_telemetry_summary_card->setVisible(true);
+    }
+    const bool homeSummaryCurrent = !state_->data_telemetry_summary_card_ ||
+        state_->data_telemetry_summary_card_->property(kSummaryRenderKeyProperty).toString() == summaryRenderKey;
+    const bool deviceConfigSummaryCurrent = !state_->device_config_.data_telemetry_summary_card ||
+        state_->device_config_.data_telemetry_summary_card->property(kSummaryRenderKeyProperty).toString() == summaryRenderKey;
+    if (homeSummaryCurrent && deviceConfigSummaryCurrent)
+    {
+        if (state_->home_overview_splitter_)
+        {
+            updateConfigCardHeightForSourceMode();
+        }
+        return;
+    }
+
     auto clearLayout = [](QLayout *layout) {
         if (!layout)
         {
@@ -697,7 +737,6 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     };
     if (state_->data_telemetry_summary_card_)
     {
-        state_->data_telemetry_summary_card_->setVisible(true);
         renderSummarySection(state_->data_telemetry_summary_card_,
                              state_->data_telemetry_summary_layout_,
                              state_->is_english_ ? QStringLiteral("Sky-ground data stream rates") : QStringLiteral("天地数据流频率"),
@@ -724,10 +763,10 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         }
         state_->data_telemetry_summary_card_->updateGeometry();
         updateHomeDeviceOverviewMinimumWidth();
+        state_->data_telemetry_summary_card_->setProperty(kSummaryRenderKeyProperty, summaryRenderKey);
     }
     if (state_->device_config_.data_telemetry_summary_card)
     {
-        state_->device_config_.data_telemetry_summary_card->setVisible(true);
         renderSummarySection(state_->device_config_.data_telemetry_summary_card,
                              state_->device_config_.data_telemetry_rate_summary_layout,
                              state_->is_english_ ? QStringLiteral("Data stream rates") : QStringLiteral("数据频率"),
@@ -756,6 +795,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             summaryLayout->activate();
         }
         state_->device_config_.data_telemetry_summary_card->updateGeometry();
+        state_->device_config_.data_telemetry_summary_card->setProperty(kSummaryRenderKeyProperty, summaryRenderKey);
     }
     if (state_->home_overview_splitter_)
     {
