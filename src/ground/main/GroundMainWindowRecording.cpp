@@ -84,8 +84,6 @@ void MainWindow::log(const QString& message)
         return;
     }
 
-    QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
-    const QString displayLine = QString("[%1] %2").arg(timestamp, message);
     const bool mirrorsLegacyError = shouldMirrorToErrorLog(message);
     const bool looksLikeDataLoss = message.contains(QStringLiteral("drop"), Qt::CaseInsensitive) ||
         message.contains(QStringLiteral("丢弃"), Qt::CaseInsensitive) ||
@@ -94,10 +92,10 @@ void MainWindow::log(const QString& message)
     const VaporView::LogLevel level = mirrorsLegacyError || looksLikeDataLoss
         ? VaporView::LogLevel::Warning
         : VaporView::LogLevel::Info;
-    VaporView::LogRecord uiRecord;
-    if (VaporView::LogService *logService = VaporView::LogService::instance())
+    VaporView::LogService *logService = VaporView::LogService::instance();
+    if (logService)
     {
-        uiRecord = logService->publish(level,
+        logService->publish(level,
                             QStringLiteral("Ground"),
                             category,
                             message,
@@ -106,53 +104,38 @@ void MainWindow::log(const QString& message)
     }
     else
     {
+        VaporView::LogRecord uiRecord;
         uiRecord.level = level;
         uiRecord.source = QStringLiteral("Ground");
         uiRecord.category = category;
         uiRecord.message = message;
-    }
-    state_->log_entries_.append(displayLine);
-    state_->log_records_.append(uiRecord);
-    if (state_->log_entries_.size() > kMaxLogEntryCount)
-    {
-        state_->log_entries_.remove(0, state_->log_entries_.size() - kMaxLogEntryCount);
-        state_->log_records_.remove(0, state_->log_records_.size() - kMaxLogEntryCount);
-    }
-    if (state_->log_text_edit_ && shouldShowLogRecord(uiRecord))
-    {
-        state_->log_text_edit_->append(displayLine);
-        scrollLogToBottom();
+        const QString displayLine = QStringLiteral("[%1] %2")
+            .arg(QDateTime::currentDateTime().toString(QStringLiteral("hh:mm:ss")), message);
+        state_->log_entries_.append(displayLine);
+        state_->log_records_.append(uiRecord);
+        if (state_->log_entries_.size() > kMaxLogEntryCount)
+        {
+            const int removeCount = state_->log_entries_.size() - kMaxLogEntryCount;
+            state_->log_entries_.remove(0, removeCount);
+            state_->log_records_.remove(0, removeCount);
+        }
+        if (state_->log_text_edit_ && shouldShowLogRecord(uiRecord))
+        {
+            state_->log_text_edit_->append(displayLine);
+            scrollLogToBottom();
+        }
     }
     state_->has_inline_progress_log_ = false;
 
-    const QString sessionLevel = mirrorsLegacyError || looksLikeDataLoss
-        ? QStringLiteral("warning")
-        : QStringLiteral("info");
-    if (state_->recording_service_->isSessionOpen() &&
-        !state_->recording_service_->appendEvent(sessionLevel, message))
+    if (!logService && state_->recording_service_->isSessionOpen())
     {
-        if (VaporView::LogService *logService = VaporView::LogService::instance())
+        state_->recording_service_->appendEvent(mirrorsLegacyError || looksLikeDataLoss
+                                                    ? QStringLiteral("warning")
+                                                    : QStringLiteral("info"),
+                                                message);
+        if (mirrorsLegacyError)
         {
-            logService->publish(VaporView::LogLevel::Error,
-                                QStringLiteral("Ground"),
-                                QStringLiteral("session.write"),
-                                QStringLiteral("Failed to append event_log.csv entry."),
-                                {{QStringLiteral("message"), message}});
-        }
-    }
-    if (mirrorsLegacyError)
-    {
-        if (state_->recording_service_->isSessionOpen() &&
-            !state_->recording_service_->appendError(message))
-        {
-            if (VaporView::LogService *logService = VaporView::LogService::instance())
-            {
-                logService->publish(VaporView::LogLevel::Error,
-                                    QStringLiteral("Ground"),
-                                    QStringLiteral("session.write"),
-                                    QStringLiteral("Failed to append error_log.txt entry."),
-                                    {{QStringLiteral("message"), message}});
-            }
+            state_->recording_service_->appendError(message);
         }
     }
 }
@@ -172,6 +155,19 @@ bool MainWindow::shouldShowLogRecord(const VaporView::LogRecord& record) const
         return false;
     }
     if (state_->log_filter_recording_enabled_ && record.category == QStringLiteral("recording"))
+    {
+        return false;
+    }
+    if (state_->log_filter_debug_enabled_ && record.level == VaporView::LogLevel::Debug)
+    {
+        return false;
+    }
+    if (state_->log_filter_warning_enabled_ &&
+        static_cast<int>(record.level) >= static_cast<int>(VaporView::LogLevel::Warning))
+    {
+        return false;
+    }
+    if (state_->log_filter_qt_enabled_ && record.source == QStringLiteral("Qt"))
     {
         return false;
     }
@@ -209,7 +205,7 @@ void MainWindow::updateLogFilterAction()
     }
 
     const QIcon checkIcon = createMenuCheckIcon(state_->dark_theme_enabled_);
-    const QStringList filterTexts = state_->is_english_
+    QStringList filterTexts = state_->is_english_
         ? QStringList{
               QStringLiteral("Filter ACK logs"),
               QStringLiteral("Filter config and rate logs"),
@@ -220,6 +216,13 @@ void MainWindow::updateLogFilterAction()
               QStringLiteral("过滤配置和频率日志"),
               QStringLiteral("过滤连接和端口日志"),
               QStringLiteral("过滤记录和定时日志")};
+    filterTexts += state_->is_english_
+        ? QStringList{QStringLiteral("Filter Debug logs"),
+                      QStringLiteral("Filter warnings and errors"),
+                      QStringLiteral("Filter Qt logs")}
+        : QStringList{QStringLiteral("过滤 Debug 日志"),
+                      QStringLiteral("过滤警告和错误"),
+                      QStringLiteral("过滤 Qt 日志")};
     const QFontMetrics filterTextMetrics(qApp ? qApp->font() : font());
     int filterTextWidth = 0;
     for (const QString& text : filterTexts)
@@ -295,6 +298,24 @@ void MainWindow::updateLogFilterAction()
                  QStringLiteral("过滤记录和定时日志"),
                  QStringLiteral("Hide recording session and scheduled-recording logs from the display"),
                  QStringLiteral("仅从显示中隐藏记录会话和定时记录日志"));
+    updateAction(state_->log_filter_debug_action_,
+                 state_->log_filter_debug_enabled_,
+                 QStringLiteral("Filter Debug logs"),
+                 QStringLiteral("过滤 Debug 日志"),
+                 QStringLiteral("Hide Debug-level records from the display"),
+                 QStringLiteral("仅从显示中隐藏 Debug 级别日志"));
+    updateAction(state_->log_filter_warning_action_,
+                 state_->log_filter_warning_enabled_,
+                 QStringLiteral("Filter warnings and errors"),
+                 QStringLiteral("过滤警告和错误"),
+                 QStringLiteral("Hide Warning, Error, and Critical records from the display"),
+                 QStringLiteral("仅从显示中隐藏 Warning、Error 和 Critical 日志"));
+    updateAction(state_->log_filter_qt_action_,
+                 state_->log_filter_qt_enabled_,
+                 QStringLiteral("Filter Qt logs"),
+                 QStringLiteral("过滤 Qt 日志"),
+                 QStringLiteral("Hide records emitted by Qt message categories"),
+                 QStringLiteral("仅从显示中隐藏 Qt 消息类别日志"));
 
     if (state_->log_filter_menu_)
     {

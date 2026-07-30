@@ -130,7 +130,6 @@ int main(int argc, char *argv[])
     VaporView::SkyLocalIpcClient client;
     client.setAutoReconnectEnabled(true);
     VaporView::SkyTuiApp tui(&client, tuiOptions);
-    QObject::connect(&ipcServer, &VaporView::SkyLocalIpcServer::logMessage, &tui, &VaporView::SkyTuiApp::appendLog);
 
     tui.start();
     if (!runtime.start())

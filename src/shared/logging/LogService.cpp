@@ -35,6 +35,9 @@ constexpr qint64 kMaxFileBytes = 10LL * 1024LL * 1024LL;
 constexpr qint64 kMaxTotalFileBytes = 100LL * 1024LL * 1024LL;
 constexpr int kMaxRetainedFiles = 10;
 constexpr int kMaxRotatedFiles = kMaxRetainedFiles - 1;
+constexpr qint64 kDropReportIntervalMs = 5000;
+constexpr char kProcessStdoutProperty[] = "_vaporview_logged_stdout";
+constexpr char kProcessStderrProperty[] = "_vaporview_logged_stderr";
 
 bool isHighPriority(LogLevel level)
 {
@@ -65,10 +68,15 @@ class LogWriterThread final : public QThread
 {
 public:
     using FailureCallback = std::function<void(const QString&)>;
+    using SequenceCallback = std::function<quint64()>;
 
-    LogWriterThread(QString directory, QString applicationName, FailureCallback failureCallback)
+    LogWriterThread(QString directory,
+                    QString applicationName,
+                    FailureCallback failureCallback,
+                    SequenceCallback sequenceCallback)
         : directory_(std::move(directory)), application_name_(std::move(applicationName)),
-          failure_callback_(std::move(failureCallback))
+          failure_callback_(std::move(failureCallback)),
+          sequence_callback_(std::move(sequenceCallback))
     {
     }
 
@@ -145,25 +153,28 @@ protected:
                 }
                 record = std::move(queue_.front());
                 queue_.pop_front();
-                dropped = std::exchange(dropped_count_, 0ULL);
+                const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+                if (dropped_count_ > 0 &&
+                    (last_drop_report_ms_ == 0 || nowMs - last_drop_report_ms_ >= kDropReportIntervalMs))
+                {
+                    dropped = std::exchange(dropped_count_, 0ULL);
+                    last_drop_report_ms_ = nowMs;
+                }
             }
 
             if (dropped > 0)
             {
-                LogRecord notice;
-                notice.timestamp_utc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
-                notice.timestamp_us = static_cast<quint64>(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) * 1000ULL;
-                notice.level = LogLevel::Warning;
-                notice.source = QStringLiteral("LogService");
-                notice.category = QStringLiteral("queue");
-                notice.message = QStringLiteral("Dropped %1 low-priority log records because the writer queue was full.").arg(dropped);
-                notice.fields.insert(QStringLiteral("dropped_count"), static_cast<qulonglong>(dropped));
-                writeRecord(notice);
+                writeDropNotice(dropped);
             }
             writeRecord(record);
         }
 
         QMutexLocker locker(&mutex_);
+        const quint64 finalDropped = std::exchange(dropped_count_, 0ULL);
+        if (finalDropped > 0)
+        {
+            writeDropNotice(finalDropped);
+        }
         while (!queue_.empty())
         {
             writeRecord(queue_.front());
@@ -173,6 +184,22 @@ protected:
     }
 
 private:
+    void writeDropNotice(quint64 dropped)
+    {
+        LogRecord notice;
+        notice.timestamp_utc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+        notice.timestamp_us = static_cast<quint64>(QDateTime::currentMSecsSinceEpoch()) * 1000ULL;
+        notice.level = LogLevel::Warning;
+        notice.source = QStringLiteral("LogService");
+        notice.category = QStringLiteral("queue");
+        notice.process_id = static_cast<quint64>(QCoreApplication::applicationPid());
+        notice.thread_id = static_cast<quint64>(reinterpret_cast<quintptr>(QThread::currentThreadId()));
+        notice.sequence = sequence_callback_ ? sequence_callback_() : 0;
+        notice.message = QStringLiteral("Dropped %1 log records because the writer queue was full.").arg(dropped);
+        notice.fields.insert(QStringLiteral("dropped_count"), static_cast<qulonglong>(dropped));
+        writeRecord(notice);
+    }
+
     void openFile()
     {
         if (file_.isOpen())
@@ -295,12 +322,14 @@ private:
     QString current_path_;
     QFile file_;
     FailureCallback failure_callback_;
+    SequenceCallback sequence_callback_;
     bool failure_reported_ = false;
     bool cleanup_complete_ = false;
     QMutex mutex_;
     QWaitCondition wake_;
     std::deque<LogRecord> queue_;
     quint64 dropped_count_ = 0;
+    qint64 last_drop_report_ms_ = 0;
     bool stopping_ = false;
 };
 
@@ -369,7 +398,8 @@ LogService::LogService(const QString& applicationName,
     writer_ = std::make_unique<LogWriterThread>(
         log_directory_,
         application_name_,
-        [this](const QString& message) { emit diagnosticFailure(message); });
+        [this](const QString& message) { emit diagnosticFailure(message); },
+        [this]() { return nextSequence(); });
     writer_->start();
     if (!instance_)
     {
@@ -388,10 +418,11 @@ LogService::~LogService()
     {
         writer_->stop();
     }
-    if (instance_ == this && previous_message_handler_)
+    if (instance_ == this && qt_message_handler_installed_)
     {
         qInstallMessageHandler(previous_message_handler_);
         previous_message_handler_ = nullptr;
+        qt_message_handler_installed_ = false;
     }
     if (instance_ == this)
     {
@@ -406,9 +437,10 @@ LogService *LogService::instance()
 
 void LogService::installQtMessageHandler()
 {
-    if (previous_message_handler_ == nullptr)
+    if (!qt_message_handler_installed_)
     {
         previous_message_handler_ = qInstallMessageHandler(&LogService::qtMessageHandler);
+        qt_message_handler_installed_ = true;
     }
 }
 
@@ -453,6 +485,83 @@ void reportUserIssue(LogLevel level,
         fields.insert(QStringLiteral("ui_visible"), true);
         logService->publish(level, source, category, message, fields);
     }
+}
+
+void attachProcessLogging(QProcess *process,
+                          const QString& source,
+                          const QString& category)
+{
+    if (!process)
+    {
+        return;
+    }
+    const auto publishChunk = [process, source, category](const QByteArray& bytes, bool standardError) {
+        if (bytes.isEmpty())
+        {
+            return;
+        }
+        const char *propertyName = standardError ? kProcessStderrProperty : kProcessStdoutProperty;
+        QByteArray captured = process->property(propertyName).toByteArray();
+        captured.append(bytes);
+        process->setProperty(propertyName, captured);
+        if (LogService *logService = LogService::instance())
+        {
+            const QString output = QString::fromLocal8Bit(bytes).trimmed();
+            if (!output.isEmpty())
+            {
+                logService->publish(standardError ? LogLevel::Warning : LogLevel::Debug,
+                                    source,
+                                    category,
+                                    output,
+                                    {{QStringLiteral("stream"), standardError ? QStringLiteral("stderr")
+                                                                                : QStringLiteral("stdout")},
+                                     {QStringLiteral("raw_bytes"), bytes.size()}});
+            }
+        }
+    };
+    QObject::connect(process, &QProcess::readyReadStandardOutput, process,
+                     [process, publishChunk]() {
+                         publishChunk(process->readAllStandardOutput(), false);
+                     });
+    QObject::connect(process, &QProcess::readyReadStandardError, process,
+                     [process, publishChunk]() {
+                         publishChunk(process->readAllStandardError(), true);
+                     });
+    QObject::connect(process,
+                     qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+                     process,
+                     [source, category](int exitCode, QProcess::ExitStatus exitStatus) {
+                         if (LogService *logService = LogService::instance())
+                         {
+                             logService->publish(exitCode == 0 ? LogLevel::Info : LogLevel::Error,
+                                                 source,
+                                                 category,
+                                                 QStringLiteral("Child process finished."),
+                                                 {{QStringLiteral("exit_code"), exitCode},
+                                                  {QStringLiteral("exit_status"), static_cast<int>(exitStatus)}});
+                         }
+                     });
+    QObject::connect(process, &QProcess::errorOccurred, process,
+                     [source, category](QProcess::ProcessError error) {
+                         if (LogService *logService = LogService::instance())
+                         {
+                             logService->publish(LogLevel::Error,
+                                                 source,
+                                                 category,
+                                                 QStringLiteral("Child process error."),
+                                                 {{QStringLiteral("process_error"), static_cast<int>(error)}});
+                         }
+                     });
+}
+
+QByteArray processLoggedStandardOutput(const QProcess *process)
+{
+    return process ? process->property(kProcessStdoutProperty).toByteArray() : QByteArray();
+}
+
+QByteArray processLoggedStandardError(const QProcess *process)
+{
+    return process ? process->property(kProcessStderrProperty).toByteArray() : QByteArray();
 }
 
 LogRecord LogService::publish(LogLevel level,
@@ -568,8 +677,16 @@ quint64 LogService::currentTimestampUs()
 QString LogService::chooseLogDirectory(const QString& applicationName)
 {
     const QString primary = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("logs"));
+#ifdef Q_OS_WIN
+    const QString localAppData = qEnvironmentVariable("LOCALAPPDATA");
+    const QString fallback = localAppData.isEmpty()
+        ? QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation))
+              .filePath(QStringLiteral("logs"))
+        : QDir(localAppData).filePath(QStringLiteral("VaporView/logs"));
+#else
     const QString fallback = QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation))
         .filePath(QStringLiteral("logs"));
+#endif
     for (const QString& candidate : {primary, fallback})
     {
         if (candidate.isEmpty() || !QDir().mkpath(candidate))

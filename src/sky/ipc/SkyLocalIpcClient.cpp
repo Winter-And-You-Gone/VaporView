@@ -420,7 +420,6 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
         if (TelemetryCodec::parseLogRecord(frame.payload, record))
         {
             emit logRecordReceived(record);
-            emit logMessage(record.message);
         }
         else
         {

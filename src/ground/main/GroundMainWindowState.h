@@ -179,6 +179,9 @@ struct MainWindowState
     QAction *log_filter_config_action_;
     QAction *log_filter_connection_action_;
     QAction *log_filter_recording_action_;
+    QAction *log_filter_debug_action_;
+    QAction *log_filter_warning_action_;
+    QAction *log_filter_qt_action_;
     QAction *clear_log_action_;
     QAction *session_viewer_action_;
     QAction *ui_test_mode_action_;
@@ -375,6 +378,9 @@ struct MainWindowState
     bool log_filter_config_enabled_;
     bool log_filter_connection_enabled_;
     bool log_filter_recording_enabled_;
+    bool log_filter_debug_enabled_;
+    bool log_filter_warning_enabled_;
+    bool log_filter_qt_enabled_;
     bool language_switch_in_progress_;
     bool restoring_persistent_settings_;
     bool has_inline_progress_log_;

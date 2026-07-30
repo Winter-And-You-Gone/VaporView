@@ -152,6 +152,19 @@ target_include_directories(sky_local_ipc_client_test PRIVATE
 target_link_libraries(sky_local_ipc_client_test PRIVATE vaporview_sky_tui)
 add_test(NAME sky_local_ipc_client_test COMMAND sky_local_ipc_client_test)
 
+add_executable(sky_ipc_log_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/sky_ipc_log_test.cpp
+)
+target_include_directories(sky_ipc_log_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+target_link_libraries(sky_ipc_log_test PRIVATE
+    vaporview_sky_core
+    vaporview_sky_tui
+    vaporview_logging
+)
+add_test(NAME sky_ipc_log_test COMMAND sky_ipc_log_test)
+
 add_executable(visual_text_label_test
     ${CMAKE_CURRENT_SOURCE_DIR}/visual_text_label_test.cpp
 )

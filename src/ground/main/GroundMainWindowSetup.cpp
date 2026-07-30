@@ -459,6 +459,9 @@ void MainWindow::setupToolBar()
     state_->log_filter_config_action_ = createLogFilterAction(&state_->log_filter_config_enabled_);
     state_->log_filter_connection_action_ = createLogFilterAction(&state_->log_filter_connection_enabled_);
     state_->log_filter_recording_action_ = createLogFilterAction(&state_->log_filter_recording_enabled_);
+    state_->log_filter_debug_action_ = createLogFilterAction(&state_->log_filter_debug_enabled_);
+    state_->log_filter_warning_action_ = createLogFilterAction(&state_->log_filter_warning_enabled_);
+    state_->log_filter_qt_action_ = createLogFilterAction(&state_->log_filter_qt_enabled_);
 
     state_->session_viewer_action_->setIcon(createWaveformViewerIcon());
 #ifdef VAPORVIEW_HAS_OSGEARTH

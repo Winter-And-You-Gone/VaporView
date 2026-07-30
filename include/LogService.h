@@ -10,6 +10,8 @@
 #include <memory>
 #include <atomic>
 
+class QProcess;
+
 namespace VaporView
 {
 
@@ -61,6 +63,7 @@ private:
     QString log_directory_;
     std::unique_ptr<LogWriterThread> writer_;
     std::atomic<quint64> sequence_{0};
+    bool qt_message_handler_installed_ = false;
     static LogService *instance_;
     static QtMessageHandler previous_message_handler_;
 };
@@ -70,6 +73,12 @@ void reportUserIssue(LogLevel level,
                      const QString& category,
                      const QString& message,
                      const QVariantMap& details = QVariantMap());
+
+void attachProcessLogging(QProcess *process,
+                          const QString& source,
+                          const QString& category);
+QByteArray processLoggedStandardOutput(const QProcess *process);
+QByteArray processLoggedStandardError(const QProcess *process);
 
 }  // namespace VaporView
 

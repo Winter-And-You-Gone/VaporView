@@ -1,4 +1,5 @@
 #include "SkyRuntime.h"
+#include "LogService.h"
 #include "geo/CoordinateTransform.h"
 #include "geo/GeoTypes.h"
 
@@ -146,30 +147,49 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     , device_manager_(this)
 {
     connect(&device_manager_, &SkyDeviceManager::logMessage, this, &SkyRuntime::logMessage);
-    connect(this, &SkyRuntime::logMessage, this, [this](const QString& message) {
-        if (!session_recorder_.isRecording() && !session_recorder_.isPaused())
-        {
-            return;
-        }
+    connect(this, &SkyRuntime::logMessage, this, [](const QString& message) {
         const bool warning = message.contains(QStringLiteral("failed"), Qt::CaseInsensitive) ||
             message.contains(QStringLiteral("error"), Qt::CaseInsensitive) ||
             message.contains(QStringLiteral("disconnect"), Qt::CaseInsensitive) ||
             message.contains(QStringLiteral("失败"), Qt::CaseInsensitive) ||
             message.contains(QStringLiteral("错误"), Qt::CaseInsensitive) ||
             message.contains(QStringLiteral("断开"), Qt::CaseInsensitive);
-        LogRecord record;
-        record.timestamp_utc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
-        record.timestamp_us = currentTimestampUs();
-        record.level = warning ? LogLevel::Warning : LogLevel::Info;
-        record.source = QStringLiteral("SkyCore");
-        record.category = QStringLiteral("runtime");
-        record.message = message;
-        session_recorder_.appendEvent(record);
-        if (warning)
+        if (LogService *logService = LogService::instance())
         {
-            session_recorder_.appendError(record);
+            logService->publish(warning ? LogLevel::Warning : LogLevel::Info,
+                                QStringLiteral("SkyCore"),
+                                QStringLiteral("runtime"),
+                                message,
+                                {{QStringLiteral("legacy_error_mirror"), warning}});
         }
     });
+    if (LogService *logService = LogService::instance())
+    {
+        connect(logService, &LogService::recordPublished, this,
+                [this, logService](const LogRecord& record) {
+                    if ((!session_recorder_.isRecording() && !session_recorder_.isPaused()) ||
+                        record.fields.value(QStringLiteral("session_sink_failure")).toBool())
+                    {
+                        return;
+                    }
+                    const bool eventOk = session_recorder_.appendEvent(record);
+                    const bool errorOk = static_cast<int>(record.level) >= static_cast<int>(LogLevel::Warning) ||
+                        record.fields.value(QStringLiteral("legacy_error_mirror")).toBool();
+                    const bool errorFileOk = !errorOk || session_recorder_.appendError(record);
+                    if ((!eventOk || !errorFileOk) && logService)
+                    {
+                        logService->publish(LogLevel::Error,
+                                            QStringLiteral("SkyCore"),
+                                            QStringLiteral("session.write"),
+                                            QStringLiteral("Failed to append Sky session log record."),
+                                            {{QStringLiteral("session_sink_failure"), true},
+                                             {QStringLiteral("event_ok"), eventOk},
+                                             {QStringLiteral("error_ok"), errorFileOk},
+                                             {QStringLiteral("source"), record.source},
+                                             {QStringLiteral("category"), record.category}});
+                    }
+                });
+    }
     connect(&device_manager_, &SkyDeviceManager::epsilonRawFrameReceived, this,
             [this](quint64 timestampUs, quint8 packetId, quint8 serialNumber, const QByteArray& frame) {
                 session_recorder_.recordRawEpsilonFrame(timestampUs, packetId, serialNumber, frame);
@@ -305,6 +325,9 @@ void SkyRuntime::stop()
 
     if (session_recorder_.isRecording() || session_recorder_.isPaused())
     {
+        emit logMessage(QStringLiteral("Sky recording stop requested during runtime shutdown: %1 telemetry rows, %2 waveform frames")
+                            .arg(session_recorder_.telemetryRecordCount())
+                            .arg(session_recorder_.waveformSnapshotRecordCount()));
         QString error;
         if (!session_recorder_.stop(&error))
         {
@@ -392,6 +415,7 @@ bool SkyRuntime::pauseRecording(QString *error)
         return false;
     }
     session_recorder_.pause();
+    emit logMessage(QStringLiteral("Sky recording paused: %1").arg(session_recorder_.sessionDirectory()));
     return true;
 }
 
@@ -402,6 +426,9 @@ bool SkyRuntime::stopRecording(QString *error)
         if (error) *error = QStringLiteral("recording not started");
         return false;
     }
+    emit logMessage(QStringLiteral("Sky recording stop requested: %1 telemetry rows, %2 waveform frames")
+                        .arg(session_recorder_.telemetryRecordCount())
+                        .arg(session_recorder_.waveformSnapshotRecordCount()));
     if (!session_recorder_.stop(error))
     {
         emit logMessage(QStringLiteral("Failed to save sky recording metadata: %1")

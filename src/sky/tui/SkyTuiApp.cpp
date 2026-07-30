@@ -257,6 +257,7 @@ SkyTuiApp::SkyTuiApp(SkyLocalIpcClient *client, const SkyTuiOptions& options, QO
             refreshStatus();
         });
         connect(client_, &SkyLocalIpcClient::logMessage, this, &SkyTuiApp::appendLog);
+        connect(client_, &SkyLocalIpcClient::logRecordReceived, this, &SkyTuiApp::appendLogRecord);
         connect(client_, &SkyLocalIpcClient::dashboardUpdated, this, &SkyTuiApp::refreshStatus);
         connect(client_, &SkyLocalIpcClient::ackReceived, this, [this](const CommandAck& ack) {
             appendLog(QStringLiteral("ACK %1 #%2：%3")
@@ -307,6 +308,16 @@ void SkyTuiApp::appendLog(const QString& message)
                             message,
                             {{QStringLiteral("ui_visible"), true}});
     }
+    appendLogToModel(message);
+}
+
+void SkyTuiApp::appendLogRecord(const LogRecord& record)
+{
+    appendLogToModel(record.message);
+}
+
+void SkyTuiApp::appendLogToModel(const QString& message)
+{
     model_.logs << makeLogLine(message);
     while (model_.logs.size() > SkyTuiModel::MaxLogLines)
     {

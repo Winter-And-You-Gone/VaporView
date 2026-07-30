@@ -405,7 +405,10 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
                 record.fields.insert(QStringLiteral("ui_visible"), true);
                 logService->publish(record);
             }
-            emit logMessage(record.message);
+            else
+            {
+                emit logMessage(record.message);
+            }
         }
         else
         {
@@ -541,7 +544,10 @@ void GroundTelemetryService::reportProtocolDiagnostic(LogLevel level,
     {
         logService->publish(level, QStringLiteral("Ground"), category, message, recordFields);
     }
-    emit logMessage(message);
+    else
+    {
+        emit logMessage(message);
+    }
     if (throttle)
     {
         last_decoder_diagnostic_ms_ = currentMs;

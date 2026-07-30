@@ -46,11 +46,35 @@ SkyLocalIpcServer::SkyLocalIpcServer(SkyRuntime *runtime, QObject *parent)
     connect(&status_timer_, &QTimer::timeout, this, &SkyLocalIpcServer::onStatusTimer);
     status_timer_.setInterval(500);
     status_timer_.setTimerType(Qt::CoarseTimer);
+    connect(this, &SkyLocalIpcServer::logMessage, this, [this](const QString& message) {
+        if (LogService *logService = LogService::instance())
+        {
+            const bool warning = message.contains(QStringLiteral("failed"), Qt::CaseInsensitive) ||
+                message.contains(QStringLiteral("error"), Qt::CaseInsensitive) ||
+                message.contains(QStringLiteral("失败"), Qt::CaseInsensitive) ||
+                message.contains(QStringLiteral("错误"), Qt::CaseInsensitive);
+            logService->publish(warning ? LogLevel::Warning : LogLevel::Info,
+                                QStringLiteral("SkyCore"),
+                                QStringLiteral("ipc"),
+                                message);
+            return;
+        }
+
+        LogRecord fallback;
+        fallback.source = QStringLiteral("SkyCore");
+        fallback.category = QStringLiteral("ipc");
+        fallback.message = message;
+        broadcastFrame(MsgType::LogEvent, TelemetryCodec::serializeLogRecord(fallback));
+    });
 
     if (LogService *logService = LogService::instance())
     {
         connect(logService, &LogService::recordPublished, this,
                 [this](const LogRecord& record) {
+                    if (record.source == QStringLiteral("SkyTui"))
+                    {
+                        return;
+                    }
                     broadcastFrame(MsgType::LogEvent, TelemetryCodec::serializeLogRecord(record));
                 });
     }
@@ -58,24 +82,6 @@ SkyLocalIpcServer::SkyLocalIpcServer(SkyRuntime *runtime, QObject *parent)
     if (runtime_)
     {
         connect(runtime_, &SkyRuntime::telemetryFrameReady, this, &SkyLocalIpcServer::broadcastRuntimeFrame);
-        connect(runtime_, &SkyRuntime::logMessage, this, [this](const QString& message) {
-            LogRecord record;
-            if (LogService *logService = LogService::instance())
-            {
-                logService->publish(LogLevel::Info,
-                                    QStringLiteral("SkyCore"),
-                                    QStringLiteral("runtime"),
-                                    message);
-            }
-            else
-            {
-                record.level = LogLevel::Info;
-                record.source = QStringLiteral("SkyCore");
-                record.category = QStringLiteral("runtime");
-                record.message = message;
-                broadcastFrame(MsgType::LogEvent, TelemetryCodec::serializeLogRecord(record));
-            }
-        });
     }
 }
 
@@ -134,6 +140,11 @@ void SkyLocalIpcServer::close()
 bool SkyLocalIpcServer::isListening() const
 {
     return server_->isListening();
+}
+
+quint16 SkyLocalIpcServer::serverPort() const
+{
+    return server_->serverPort();
 }
 
 void SkyLocalIpcServer::onNewConnection()

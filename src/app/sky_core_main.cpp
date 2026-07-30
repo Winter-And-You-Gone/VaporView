@@ -208,11 +208,7 @@ int main(int argc, char *argv[])
     });
 
     VaporView::SkyLocalIpcServer ipcServer(&runtime);
-    QObject::connect(&ipcServer, &VaporView::SkyLocalIpcServer::logMessage, &logService, [&logService](const QString& message) {
-        logService.publish(VaporView::LogLevel::Info,
-                           QStringLiteral("SkyCore"),
-                           QStringLiteral("ipc"),
-                           message);
+    QObject::connect(&ipcServer, &VaporView::SkyLocalIpcServer::logMessage, [](const QString& message) {
         QTextStream(stdout) << message << "\n";
     });
 

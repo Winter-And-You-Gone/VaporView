@@ -230,9 +230,6 @@ int main(int argc, char *argv[])
         }
         qInfo().noquote() << "Running sky in background mode. For split sky mode use VaporViewSkyCore.exe and VaporViewSkyTui.exe.";
         VaporView::SkyRuntime runtime(options);
-        QObject::connect(&runtime, &VaporView::SkyRuntime::logMessage, [](const QString& message) {
-            qInfo().noquote() << message;
-        });
         if (!runtime.start())
         {
             return 1;

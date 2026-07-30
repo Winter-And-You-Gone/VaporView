@@ -26,6 +26,7 @@ public:
     bool listen(const QString& host, quint16 port);
     void close();
     bool isListening() const;
+    quint16 serverPort() const;
 
 signals:
     void logMessage(const QString& message);

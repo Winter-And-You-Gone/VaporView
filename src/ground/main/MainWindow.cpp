@@ -4,6 +4,81 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , state_(std::make_unique<MainWindowState>())
 {
+    if (VaporView::LogService *logService = VaporView::LogService::instance())
+    {
+        connect(logService, &VaporView::LogService::recordPublished, this,
+                [this, logService](const VaporView::LogRecord& record) {
+                    if (!state_->recording_service_->isSessionOpen() ||
+                        record.category == QStringLiteral("ui.progress") ||
+                        record.fields.value(QStringLiteral("session_sink_failure")).toBool())
+                    {
+                        return;
+                    }
+                    const bool errorRecord = record.level >= VaporView::LogLevel::Error ||
+                        record.fields.value(QStringLiteral("legacy_error_mirror")).toBool();
+                    if (!state_->recording_service_->appendEvent(
+                            VaporView::logLevelName(record.level).toLower(), record.message))
+                    {
+                        logService->publish(VaporView::LogLevel::Error,
+                                            QStringLiteral("Ground"),
+                                            QStringLiteral("session.write"),
+                                            QStringLiteral("Failed to append event_log.csv entry from session sink."),
+                                            {{QStringLiteral("session_sink_failure"), true},
+                                             {QStringLiteral("source"), record.source},
+                                             {QStringLiteral("category"), record.category}});
+                    }
+                    if (errorRecord && !state_->recording_service_->appendError(record.message))
+                    {
+                        logService->publish(VaporView::LogLevel::Error,
+                                            QStringLiteral("Ground"),
+                                            QStringLiteral("session.write"),
+                                            QStringLiteral("Failed to append error_log.txt entry from session sink."),
+                                            {{QStringLiteral("session_sink_failure"), true},
+                                             {QStringLiteral("source"), record.source},
+                                            {QStringLiteral("category"), record.category}});
+                    }
+                },
+                Qt::DirectConnection);
+        connect(logService, &VaporView::LogService::recordPublished, this,
+                [this](const VaporView::LogRecord& record) {
+                    if (record.category == QStringLiteral("ui.progress"))
+                    {
+                        return;
+                    }
+                    QDateTime timestamp = QDateTime::fromString(record.timestamp_utc, Qt::ISODateWithMs);
+                    if (!timestamp.isValid())
+                    {
+                        timestamp = QDateTime::currentDateTimeUtc();
+                    }
+                    const bool legacyGroundLine = record.source == QStringLiteral("Ground") &&
+                        record.fields.value(QStringLiteral("ui_visible")).toBool();
+                    const QString context = legacyGroundLine
+                        ? QString()
+                        : QStringLiteral(" [%1/%2/%3]")
+                              .arg(VaporView::logLevelName(record.level), record.source, record.category);
+                    const QString displayLine = QStringLiteral("[%1]%2 %3")
+                        .arg(timestamp.toLocalTime().toString(QStringLiteral("hh:mm:ss")),
+                             context,
+                             record.message);
+                    state_->log_entries_.append(displayLine);
+                    state_->log_records_.append(record);
+                    if (state_->log_entries_.size() > kMaxLogEntryCount)
+                    {
+                        const int removeCount = state_->log_entries_.size() - kMaxLogEntryCount;
+                        state_->log_entries_.remove(0, removeCount);
+                        state_->log_records_.remove(0, removeCount);
+                    }
+                    if (state_->log_text_edit_ && shouldShowLogRecord(record))
+                    {
+                        state_->log_text_edit_->append(displayLine);
+                        if (QScrollBar *scrollBar = state_->log_text_edit_->verticalScrollBar())
+                        {
+                            scrollBar->setValue(scrollBar->maximum());
+                        }
+                    }
+                    state_->has_inline_progress_log_ = false;
+                });
+    }
     setWindowFlags(Qt::Window |
                    Qt::FramelessWindowHint |
                    Qt::WindowMinimizeButtonHint |

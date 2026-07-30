@@ -998,7 +998,7 @@ QPushButton#updateCheckUpdateButton:focus {
         checkProcess->setProgram(maintenanceToolPath);
         checkProcess->setArguments(vaporViewUpdateCheckArguments(repositoryUrl));
         checkProcess->setWorkingDirectory(applicationDir);
-        checkProcess->setProcessChannelMode(QProcess::MergedChannels);
+        checkProcess->setProcessChannelMode(QProcess::SeparateChannels);
     }
     else
     {
@@ -1115,7 +1115,9 @@ QPushButton#updateCheckUpdateButton:focus {
 
         finishCheck(VaporViewUpdateCheckResult{VaporViewUpdateCheckStatus::Failed,
                                                maintenanceToolAvailable && checkProcess
-                                                   ? QString::fromLocal8Bit(checkProcess->readAllStandardOutput())
+                                                   ? QString::fromLocal8Bit(
+                                                         VaporView::processLoggedStandardOutput(checkProcess) +
+                                                         checkProcess->readAllStandardOutput())
                                                    : QString(),
                                                english ? QStringLiteral("The update check timed out.")
                                                        : QStringLiteral("检查更新超时。"),
@@ -1185,13 +1187,18 @@ QPushButton#updateCheckUpdateButton:focus {
 
     if (maintenanceToolAvailable)
     {
+        VaporView::attachProcessLogging(checkProcess,
+                                        QStringLiteral("UpdateCheck"),
+                                        QStringLiteral("maintenance_tool"));
         QObject::connect(checkProcess, &QProcess::errorOccurred, &dialog, [&](QProcess::ProcessError error) {
             if (checkCompleted || error != QProcess::FailedToStart)
             {
                 return;
             }
             finishCheck(VaporViewUpdateCheckResult{VaporViewUpdateCheckStatus::Failed,
-                                                   QString::fromLocal8Bit(checkProcess->readAllStandardOutput()),
+                                                   QString::fromLocal8Bit(
+                                                       VaporView::processLoggedStandardOutput(checkProcess) +
+                                                       checkProcess->readAllStandardOutput()),
                                                    checkProcess->errorString(),
                                                    QString(),
                                                    -1});
@@ -1206,8 +1213,10 @@ QPushButton#updateCheckUpdateButton:focus {
             }
             checkTimeout.stop();
             const QString output =
-                QString::fromLocal8Bit(checkProcess->readAllStandardOutput()) +
-                QString::fromLocal8Bit(checkProcess->readAllStandardError());
+                QString::fromLocal8Bit(VaporView::processLoggedStandardOutput(checkProcess) +
+                                       checkProcess->readAllStandardOutput()) +
+                QString::fromLocal8Bit(VaporView::processLoggedStandardError(checkProcess) +
+                                       checkProcess->readAllStandardError());
             const VaporViewUpdateCheckResult maintenanceResult =
                 vaporViewClassifyUpdateCheckResult(output, exitCode, exitStatus);
             if (maintenanceResult.status == VaporViewUpdateCheckStatus::Unknown)

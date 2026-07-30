@@ -6,6 +6,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QJsonDocument>
+#include <QProcess>
 #include <QTemporaryDir>
 #include <QThread>
 
@@ -31,6 +32,23 @@ bool waitForFile(const QString& path)
     {
         QFile file(path);
         if (file.open(QIODevice::ReadOnly | QIODevice::Text) && !file.readAll().trimmed().isEmpty())
+        {
+            return true;
+        }
+        QThread::msleep(10);
+    }
+    return false;
+}
+
+bool waitForText(const QString& path, const QByteArray& text, int timeoutMs = 5000)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < timeoutMs)
+    {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        QFile file(path);
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text) && file.readAll().contains(text))
         {
             return true;
         }
@@ -98,6 +116,49 @@ int main(int argc, char **argv)
         file.seek(0);
         require(QString::fromUtf8(file.readAll()).contains(QStringLiteral("qt handler test message")),
                 "Qt message handler writes JSONL");
+
+#ifdef Q_OS_WIN
+        QProcess process;
+        VaporView::attachProcessLogging(&process,
+                                        QStringLiteral("TestProcess"),
+                                        QStringLiteral("child"));
+        process.start(QStringLiteral("cmd.exe"),
+                      {QStringLiteral("/d"),
+                       QStringLiteral("/s"),
+                       QStringLiteral("/c"),
+                       QStringLiteral("echo process-stdout & echo process-stderr 1>&2")});
+        require(process.waitForStarted(), "child process starts");
+        require(process.waitForFinished(), "child process finishes");
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        require(VaporView::processLoggedStandardOutput(&process).contains("process-stdout"),
+                "captured stdout remains available to the process owner");
+        require(VaporView::processLoggedStandardError(&process).contains("process-stderr"),
+                "captured stderr remains available to the process owner");
+        require(waitForText(service.logFilePath(), QByteArrayLiteral("process-stdout")),
+                "child stdout is captured");
+        require(waitForText(service.logFilePath(), QByteArrayLiteral("process-stderr")),
+                "child stderr is captured");
+#endif
+    }
+
+    QTemporaryDir rotationDirectory;
+    require(rotationDirectory.isValid(), "temporary rotation directory");
+    {
+        VaporView::LogService service(QStringLiteral("VaporViewRotationTest"),
+                                      &app,
+                                      rotationDirectory.path());
+        const QString largeMessage(6 * 1024 * 1024, QLatin1Char('x'));
+        service.publish(VaporView::LogLevel::Debug,
+                        QStringLiteral("Test"),
+                        QStringLiteral("rotation"),
+                        largeMessage);
+        service.publish(VaporView::LogLevel::Debug,
+                        QStringLiteral("Test"),
+                        QStringLiteral("rotation"),
+                        largeMessage);
+        require(waitForFile(service.logFilePath() + QStringLiteral(".1")),
+                "JSONL rotates before exceeding 10 MiB");
+        require(waitForFile(service.logFilePath()), "rotated JSONL continues writing");
     }
 
     return 0;

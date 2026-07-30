@@ -62,6 +62,8 @@ private slots:
     void handleKey(const SkyTuiKey& key);
 
 private:
+    void appendLogRecord(const LogRecord& record);
+    void appendLogToModel(const QString& message);
     void startInputThread();
     void restoreTerminal();
     void scheduleRender();
