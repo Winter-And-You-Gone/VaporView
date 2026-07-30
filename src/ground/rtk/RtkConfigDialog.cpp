@@ -43,6 +43,7 @@
 #include <QSignalBlocker>
 #include <QScrollArea>
 #include <QSvgRenderer>
+#include <QTemporaryFile>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTextBlock>
@@ -155,6 +156,21 @@ bool isUiTestCasterServerText(const QString& server)
         normalized.compare(QStringLiteral("caster.ui-test.local"), Qt::CaseInsensitive) == 0;
 }
 
+QString configFilePathInWritableDirectory(const QDir& directory)
+{
+    const QString path = directory.filePath(QStringLiteral("rtk_config.ini"));
+    const QFileInfo configFile(path);
+    if (configFile.exists())
+    {
+        QFile file(path);
+        return configFile.isFile() && file.open(QIODevice::ReadWrite) ? path : QString();
+    }
+
+    QTemporaryFile writeProbe(directory.filePath(QStringLiteral(".vaporview-rtk-write-XXXXXX")));
+    writeProbe.setAutoRemove(true);
+    return writeProbe.open() ? path : QString();
+}
+
 QString rtkConfigFilePath()
 {
     QSettings scopedProfile(
@@ -167,18 +183,30 @@ QString rtkConfigFilePath()
         return scopedProfile.fileName();
     }
 
-    QDir directory(QCoreApplication::applicationDirPath());
+    const QDir applicationDirectory(QCoreApplication::applicationDirPath());
+    QDir directory(applicationDirectory);
     for (int depth = 0; depth < 6; ++depth)
     {
         if (QFileInfo::exists(directory.filePath(QStringLiteral("CMakeLists.txt"))) &&
             QFileInfo::exists(directory.filePath(QStringLiteral("src/ground/rtk/RtkConfigDialog.cpp"))))
         {
-            return directory.filePath(QStringLiteral("rtk_config.ini"));
+            const QString projectConfigPath = configFilePathInWritableDirectory(directory);
+            if (!projectConfigPath.isEmpty())
+            {
+                return projectConfigPath;
+            }
+            break;
         }
         if (!directory.cdUp())
         {
             break;
         }
+    }
+
+    const QString portableConfigPath = configFilePathInWritableDirectory(applicationDirectory);
+    if (!portableConfigPath.isEmpty())
+    {
+        return portableConfigPath;
     }
     return scopedProfile.fileName();
 }
