@@ -1187,7 +1187,8 @@ void MainWindow::createTitleApplicationMenuPanel()
         const int nestedHeight = commandRowsHeight(commands);
         const int submenuOverlap = std::max(6, rowSpacing + 2);
         const int sourceY = sourceRow->mapTo(subMenu, QPoint(0, 0)).y();
-        const int nestedY = std::clamp(sourceY,
+        const int sourceAlignedNestedY = sourceY - menuVerticalPadding;
+        const int nestedY = std::clamp(sourceAlignedNestedY,
                                        0,
                                        std::max(0, std::max(subMenu->height(), nestedHeight) - nestedHeight));
         nestedMenu->setFixedSize(nestedWidth, nestedHeight);

@@ -197,6 +197,60 @@ int main(int argc, char **argv)
     require(modeAction->isChecked(), "UI test mode action becomes checked");
     require(!badge->isHidden(), "persistent UI test badge is visible");
     require(scenarioMenu->isEnabled(), "scenario menu is enabled in UI test mode");
+
+    auto findTitleMenuRow = [](QWidget *menu, const QStringList& texts) -> QFrame * {
+        if (!menu)
+        {
+            return nullptr;
+        }
+        for (QFrame *row : menu->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem")))
+        {
+            auto *label = row->findChild<QLabel *>(QStringLiteral("titleApplicationMenuText"));
+            if (label && texts.contains(label->text()))
+            {
+                return row;
+            }
+        }
+        return nullptr;
+    };
+    auto hoverTitleMenuRow = [](QFrame *row) {
+        QEvent enter(QEvent::Enter);
+        QApplication::sendEvent(row, &enter);
+        processEvents();
+    };
+
+    auto *titleMenuButton = window->findChild<QToolButton *>(QStringLiteral("titleBarMenuButton"));
+    require(titleMenuButton, "title application menu button exists in UI test mode");
+    titleMenuButton->click();
+    processEvents();
+    auto *titleApplicationMainMenu =
+        window->findChild<QFrame *>(QStringLiteral("titleApplicationMainMenu"));
+    QFrame *developerRow = findTitleMenuRow(
+        titleApplicationMainMenu,
+        QStringList{QStringLiteral("开发者"), QStringLiteral("Developer")});
+    require(developerRow, "title application menu exposes the Developer row");
+    hoverTitleMenuRow(developerRow);
+    auto *titleApplicationSubMenu =
+        window->findChild<QFrame *>(QStringLiteral("titleApplicationSubMenu"));
+    QFrame *scenarioRow = findTitleMenuRow(
+        titleApplicationSubMenu,
+        QStringList{QStringLiteral("界面测试场景"), QStringLiteral("UI Test Scenario")});
+    require(scenarioRow && scenarioRow->isEnabled(),
+            "Developer submenu exposes the enabled UI test scenario row");
+    hoverTitleMenuRow(scenarioRow);
+    auto *titleApplicationNestedMenu =
+        window->findChild<QFrame *>(QStringLiteral("titleApplicationNestedMenu"));
+    const QList<QFrame *> nestedScenarioRows = titleApplicationNestedMenu
+        ? titleApplicationNestedMenu->findChildren<QFrame *>(
+              QStringLiteral("titleApplicationMenuItem"), Qt::FindDirectChildrenOnly)
+        : QList<QFrame *>{};
+    require(!nestedScenarioRows.isEmpty() &&
+                std::abs(nestedScenarioRows.first()->mapToGlobal(QPoint(0, 0)).y() -
+                         scenarioRow->mapToGlobal(QPoint(0, 0)).y()) <= 1,
+            "UI test scenario tertiary first row aligns with its secondary source row");
+    titleMenuButton->click();
+    processEvents();
+
     require(rtkServer->text() == QStringLiteral("persisted.ui-test.caster") &&
                 rtkPort->text() == QStringLiteral("2201") &&
                 rtkUsername->text() == QStringLiteral("persisted-user") &&
