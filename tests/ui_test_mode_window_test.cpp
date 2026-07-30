@@ -184,8 +184,48 @@ int main(int argc, char **argv)
     require(!wavePanel->isConnected(), "TCP waveform disconnect is simulated in memory");
     wavePanel->toggleConnection();
     require(wavePanel->isConnected(), "TCP waveform reconnect is simulated in memory");
+
+    QTcpServer mountpointCaster;
+    require(mountpointCaster.listen(QHostAddress::LocalHost, 0),
+            "UI-test real mountpoint caster starts");
+    bool mountpointRequestReceived = false;
+    QObject::connect(&mountpointCaster, &QTcpServer::newConnection,
+                     [&mountpointCaster, &mountpointRequestReceived]() {
+        while (QTcpSocket *socket = mountpointCaster.nextPendingConnection())
+        {
+            QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket, &mountpointRequestReceived]() {
+                if (socket->readAll().isEmpty())
+                {
+                    return;
+                }
+                mountpointRequestReceived = true;
+                const QByteArray body =
+                    "STR;PERSISTED_MOUNTPOINT;Saved mountpoint;RTCM 3;1004(1);2;GPS;NONE;B;N;0;0;VaporView;none;B;N;0;\r\n"
+                    "STR;REAL_UI_TEST_MOUNTPOINT;UI test mountpoint;RTCM 3;1004(1);2;GPS;NONE;B;N;0;0;VaporView;none;B;N;0;\r\n"
+                    "ENDSOURCETABLE\r\n";
+                const QByteArray response =
+                    "HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " +
+                    QByteArray::number(body.size()) + "\r\n\r\n" + body;
+                socket->write(response);
+                socket->disconnectFromHost();
+            });
+            QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+        }
+    });
+    auto *rtkServiceLog = rtkDialog->findChild<QTextEdit *>(QStringLiteral("rtkServiceLogTextEdit"));
+    require(rtkServiceLog, "RTK service log exists");
+    rtkServer->setText(QStringLiteral("127.0.0.1"));
+    rtkPort->setText(QString::number(mountpointCaster.serverPort()));
     require(QMetaObject::invokeMethod(rtkDialog, "onFetchMountpointsClicked", Qt::DirectConnection),
-            "RTK fixed mountpoint action invoked");
+            "RTK real mountpoint request invoked in UI test mode");
+    require(VaporViewTest::processEventsUntil(5000, [rtkDialog, rtkMountpoint, rtkServiceLog, &mountpointRequestReceived]() {
+                const QString log = rtkServiceLog->toPlainText();
+                return mountpointRequestReceived && !rtkDialog->hasActiveExternalOperation() &&
+                    rtkMountpoint->findText(QStringLiteral("REAL_UI_TEST_MOUNTPOINT")) >= 0 &&
+                    (log.contains(QStringLiteral("[界面测试] 已从真实源表获取")) ||
+                     log.contains(QStringLiteral("[界面测试] Fetched")));
+            }),
+            "UI-test mountpoint detection sends a real sourcetable request");
     auto *ggaMonitorLog = rtkDialog->findChild<QTextEdit *>(QStringLiteral("rtkGgaTextEdit"));
     require(ggaMonitorLog, "RTK GGA monitor output exists");
     ggaMonitorLog->clear();
@@ -242,12 +282,11 @@ int main(int argc, char **argv)
             QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
         }
     });
-    auto *rtkServiceLog = rtkDialog->findChild<QTextEdit *>(QStringLiteral("rtkServiceLogTextEdit"));
     require(rtkServer && rtkPort && rtkMountpoint && rtkServiceLog,
             "RTK sandbox fields and service log exist");
     rtkServer->setText(QStringLiteral("127.0.0.1"));
     rtkPort->setText(QString::number(ntripValidationCaster.serverPort()));
-    rtkMountpoint->setCurrentText(QStringLiteral("VAPOR_TEST_RTCM32"));
+    rtkMountpoint->setCurrentText(QStringLiteral("REAL_UI_TEST_MOUNTPOINT"));
     require(QMetaObject::invokeMethod(rtkDialog, "onTestClicked", Qt::DirectConnection),
             "RTK real NTRIP validation action invoked in UI test mode");
     require(VaporViewTest::processEventsUntil(6000, [rtkDialog, rtkServiceLog, &ntripRequestReceived]() {

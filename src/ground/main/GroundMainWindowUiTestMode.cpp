@@ -371,8 +371,8 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         updateConnectionStatus(false);
         applyUiTestSnapshot();
         logUiTest(state_->is_english_
-            ? QStringLiteral("UI Test Mode enabled; device, recording, and settings operations are simulated in memory. RTK Test Connection may access the NTRIP network with sandbox settings.")
-            : QStringLiteral("界面测试模式已开启；设备、记录和设置操作仅在内存中模拟；RTK“测试连接”可使用沙箱配置访问 NTRIP 网络。"));
+            ? QStringLiteral("UI Test Mode enabled; device, recording, and settings operations are simulated in memory. RTK mountpoint detection and Test Connection may access the NTRIP network with sandbox settings.")
+            : QStringLiteral("界面测试模式已开启；设备、记录和设置操作仅在内存中模拟；RTK“检测挂载点”和“测试连接”可使用沙箱配置访问 NTRIP 网络。"));
         return;
     }
 

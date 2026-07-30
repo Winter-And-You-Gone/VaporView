@@ -3744,23 +3744,6 @@ void RtkConfigDialog::applyDetectedOutputAndGgaPort(const QString& portName, con
 
 void RtkConfigDialog::onFetchMountpointsClicked()
 {
-    if (ui_test_mode_)
-    {
-        const QString current = mountpoint_combo_ ? mountpoint_combo_->currentText() : QString();
-        if (mountpoint_combo_)
-        {
-            const QSignalBlocker blocker(mountpoint_combo_);
-            mountpoint_combo_->clear();
-            mountpoint_combo_->addItems({QStringLiteral("VAPOR_TEST_RTCM32"),
-                                         QStringLiteral("VAPOR_TEST_RTCM33"),
-                                         QStringLiteral("VAPOR_TEST_NEAR")});
-            const int index = mountpoint_combo_->findText(current);
-            mountpoint_combo_->setCurrentIndex(index >= 0 ? index : 0);
-        }
-        appendLog(textFor("[界面测试] Fixed mountpoint list loaded; no network request was sent",
-                          "[界面测试] 已载入固定挂载点列表；未发送网络请求"));
-        return;
-    }
     if (isBackgroundTaskRunning())
     {
         return;
@@ -3777,7 +3760,12 @@ void RtkConfigDialog::onFetchMountpointsClicked()
         return;
     }
 
-    appendLog(textFor("Fetching mountpoint list from %1:%2...", "正在从 %1:%2 获取挂载点列表...").arg(server, port));
+    const bool uiTestMode = ui_test_mode_;
+    appendLog((uiTestMode ? QStringLiteral("[界面测试] ") : QString()) +
+        (uiTestMode
+            ? textFor("Fetching the real mountpoint list from %1:%2...", "正在从 %1:%2 获取真实挂载点列表...")
+            : textFor("Fetching mountpoint list from %1:%2...", "正在从 %1:%2 获取挂载点列表..."))
+            .arg(server, port));
     if (fetch_mountpoints_thread_.joinable())
     {
         fetch_mountpoints_thread_.join();
@@ -3787,7 +3775,7 @@ void RtkConfigDialog::onFetchMountpointsClicked()
     updateButtonStates();
 
     QPointer<RtkConfigDialog> self(this);
-    fetch_mountpoints_thread_ = std::thread([self, server, port, username, password]() {
+    fetch_mountpoints_thread_ = std::thread([self, server, port, username, password, uiTestMode]() {
         MountpointFetchResult result;
         result.response = performRtkHttpGet(
             nullptr,
@@ -3808,11 +3796,15 @@ void RtkConfigDialog::onFetchMountpointsClicked()
         }
 
         QObject *receiver = self.data();
-        QMetaObject::invokeMethod(receiver, [self, result = std::move(result)]() mutable {
+        QMetaObject::invokeMethod(receiver, [self, result = std::move(result), uiTestMode]() mutable {
             if (!self)
             {
                 return;
             }
+
+            const auto appendModeLog = [self, uiTestMode](const QString& message) {
+                self->appendLog((uiTestMode ? QStringLiteral("[界面测试] ") : QString()) + message);
+            };
 
             self->fetch_mountpoints_in_progress_.store(false);
             self->updateButtonStates();
@@ -3823,9 +3815,11 @@ void RtkConfigDialog::onFetchMountpointsClicked()
                 const QString errorText = response.timedOut
                     ? self->textFor("Request timed out", "请求超时")
                     : response.error;
-                self->appendLog(self->textFor("Failed to fetch mountpoint list: %1", "获取挂载点列表失败: %1").arg(errorText));
+                appendModeLog(self->textFor("Failed to fetch mountpoint list: %1", "获取挂载点列表失败: %1").arg(errorText));
                 self->setServiceStatus(
-                    self->textFor("Status: Failed to fetch mountpoints", "状态: 获取挂载点失败"),
+                    uiTestMode
+                        ? self->textFor("Status: Failed to fetch mountpoints (UI test)", "状态: 获取挂载点失败（界面测试）")
+                        : self->textFor("Status: Failed to fetch mountpoints", "状态: 获取挂载点失败"),
                     QStringLiteral("triangle-alert"),
                     AppThemeColor::Warning);
                 return;
@@ -3833,9 +3827,11 @@ void RtkConfigDialog::onFetchMountpointsClicked()
 
             if (result.mountpoints.isEmpty())
             {
-                self->appendLog(self->textFor("No mountpoints found in sourcetable response.", "返回的源表中未找到挂载点。"));
+                appendModeLog(self->textFor("No mountpoints found in sourcetable response.", "返回的源表中未找到挂载点。"));
                 self->setServiceStatus(
-                    self->textFor("Status: No mountpoints found", "状态: 未找到挂载点"),
+                    uiTestMode
+                        ? self->textFor("Status: No mountpoints found (UI test)", "状态: 未找到挂载点（界面测试）")
+                        : self->textFor("Status: No mountpoints found", "状态: 未找到挂载点"),
                     QStringLiteral("triangle-alert"),
                     AppThemeColor::Warning);
                 return;
@@ -3862,13 +3858,18 @@ void RtkConfigDialog::onFetchMountpointsClicked()
                 }
             }
             self->updateMountpointComboWidth();
-            self->appendLog(self->textFor("Fetched %1 mountpoints.", "已获取 %1 个挂载点。").arg(result.mountpoints.size()));
-            self->appendLog(currentIndex >= 0
-                                ? self->textFor("Mountpoint dropdown updated; current: %1",
-                                                "挂载点下拉框已更新，当前: %1").arg(currentMountpoint)
-                                : self->textFor("Mountpoint dropdown updated; please select one.",
-                                                "挂载点下拉框已更新，请选择一个挂载点。"));
-            self->setServiceStatus(self->textFor("Status: Mountpoints loaded", "状态: 挂载点已载入"),
+            appendModeLog((uiTestMode
+                ? self->textFor("Fetched %1 mountpoints from the real sourcetable.", "已从真实源表获取 %1 个挂载点。")
+                : self->textFor("Fetched %1 mountpoints.", "已获取 %1 个挂载点。"))
+                .arg(result.mountpoints.size()));
+            appendModeLog(currentIndex >= 0
+                ? self->textFor("Mountpoint dropdown updated; current: %1",
+                                "挂载点下拉框已更新，当前: %1").arg(currentMountpoint)
+                : self->textFor("Mountpoint dropdown updated; please select one.",
+                                "挂载点下拉框已更新，请选择一个挂载点。"));
+            self->setServiceStatus(uiTestMode
+                                   ? self->textFor("Status: Mountpoints loaded (UI test)", "状态: 挂载点已载入（界面测试）")
+                                   : self->textFor("Status: Mountpoints loaded", "状态: 挂载点已载入"),
                                    QStringLiteral("check"),
                                    AppThemeColor::Success);
         }, Qt::QueuedConnection);

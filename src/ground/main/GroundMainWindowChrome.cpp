@@ -1586,8 +1586,8 @@ void MainWindow::updateCustomTitleBarTexts()
             state_->is_english_ ? QStringLiteral("UI test mode active") : QStringLiteral("界面测试模式已启用"));
         state_->ui_test_mode_badge_->setToolTip(
             state_->is_english_
-                ? QStringLiteral("Device, recording, and business-file operations stay simulated. RTK Test Connection may access the NTRIP network with sandbox settings.")
-                : QStringLiteral("设备、记录和业务文件操作保持模拟；RTK“测试连接”可使用沙箱配置访问 NTRIP 网络。"));
+                ? QStringLiteral("Device, recording, and business-file operations stay simulated. RTK mountpoint detection and Test Connection may access the NTRIP network with sandbox settings.")
+                : QStringLiteral("设备、记录和业务文件操作保持模拟；RTK“检测挂载点”和“测试连接”可使用沙箱配置访问 NTRIP 网络。"));
     }
     if (state_->title_menu_btn_)
     {
