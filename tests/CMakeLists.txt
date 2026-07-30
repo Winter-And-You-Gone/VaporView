@@ -353,7 +353,7 @@ target_include_directories(ui_test_mode_window_test PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/src
 )
-target_link_libraries(ui_test_mode_window_test PRIVATE vaporview_main_window)
+target_link_libraries(ui_test_mode_window_test PRIVATE vaporview_main_window Qt6::Network)
 add_dependencies(ui_test_mode_window_test VaporViewRuntimeResources)
 add_test(NAME ui_test_mode_window_test COMMAND ui_test_mode_window_test)
 

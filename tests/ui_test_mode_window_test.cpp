@@ -7,18 +7,24 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QComboBox>
 #include <QDir>
 #include <QDialog>
 #include <QEventLoop>
 #include <QFrame>
+#include <QHostAddress>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMetaObject>
 #include <QMap>
+#include <QPushButton>
 #include <QSettings>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QTextEdit>
+#include <QTimer>
 #include <QToolButton>
 #include <QVariant>
 
@@ -176,8 +182,63 @@ int main(int argc, char **argv)
                 return ggaMonitorLog->toPlainText().count(QStringLiteral("$GPGGA,")) > stoppedGgaCount;
             }),
             "RTK simulated GGA monitor stops appending after the user stops it");
+
+    QTcpServer ntripValidationCaster;
+    require(ntripValidationCaster.listen(QHostAddress::LocalHost, 0),
+            "UI-test real NTRIP validation caster starts");
+    bool ntripRequestReceived = false;
+    QObject::connect(&ntripValidationCaster, &QTcpServer::newConnection,
+                     [&ntripValidationCaster, &ntripRequestReceived]() {
+        while (QTcpSocket *socket = ntripValidationCaster.nextPendingConnection())
+        {
+            QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket, &ntripRequestReceived]() {
+                if (socket->readAll().isEmpty())
+                {
+                    return;
+                }
+                ntripRequestReceived = true;
+                if (socket->property("sentHeader").toBool())
+                {
+                    return;
+                }
+                socket->setProperty("sentHeader", true);
+                socket->write("ICY 200 OK\r\n\r\n");
+                auto *burstTimer = new QTimer(socket);
+                burstTimer->setInterval(50);
+                QObject::connect(burstTimer, &QTimer::timeout, socket, [socket, burstTimer]() {
+                    const int count = socket->property("burstCount").toInt();
+                    if (count >= 12)
+                    {
+                        burstTimer->stop();
+                        socket->disconnectFromHost();
+                        return;
+                    }
+                    socket->write(QByteArray(48, '\xD3'));
+                    socket->flush();
+                    socket->setProperty("burstCount", count + 1);
+                });
+                burstTimer->start();
+            });
+            QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+        }
+    });
+    auto *rtkPort = rtkDialog->findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));
+    auto *rtkMountpoint = rtkDialog->findChild<QComboBox *>(QStringLiteral("rtkMountpointCombo"));
+    auto *rtkServiceLog = rtkDialog->findChild<QTextEdit *>(QStringLiteral("rtkServiceLogTextEdit"));
+    require(rtkServer && rtkPort && rtkMountpoint && rtkServiceLog,
+            "RTK sandbox fields and service log exist");
+    rtkServer->setText(QStringLiteral("127.0.0.1"));
+    rtkPort->setText(QString::number(ntripValidationCaster.serverPort()));
+    rtkMountpoint->setCurrentText(QStringLiteral("VAPOR_TEST_RTCM32"));
     require(QMetaObject::invokeMethod(rtkDialog, "onTestClicked", Qt::DirectConnection),
-            "RTK no-signal validation action invoked");
+            "RTK real NTRIP validation action invoked in UI test mode");
+    require(VaporViewTest::processEventsUntil(6000, [rtkDialog, rtkServiceLog, &ntripRequestReceived]() {
+                const QString log = rtkServiceLog->toPlainText();
+                return ntripRequestReceived && !rtkDialog->hasActiveExternalOperation() &&
+                    (log.contains(QStringLiteral("[界面测试] 真实 NTRIP 验证成功")) ||
+                     log.contains(QStringLiteral("[界面测试] Real NTRIP validation succeeded")));
+            }),
+            "UI-test NTRIP validation sends a real request and receives RTCM locally");
     require(QMetaObject::invokeMethod(rtkDialog, "onStartClicked", Qt::DirectConnection),
             "RTK simulated start action invoked");
     require(rtkDialog->isRunning(), "RTK simulated service enters running state");

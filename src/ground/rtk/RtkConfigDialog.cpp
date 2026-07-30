@@ -3964,12 +3964,6 @@ void RtkConfigDialog::onStopClicked()
 
 void RtkConfigDialog::onTestClicked()
 {
-    if (ui_test_mode_)
-    {
-        appendLog(textFor("[界面测试] NTRIP validation succeeded with deterministic RTCM3 data; no network request was sent",
-                          "[界面测试] NTRIP 验证使用固定 RTCM3 数据成功；未发送网络请求"));
-        return;
-    }
     if (isBackgroundTaskRunning())
     {
         return;
@@ -3991,8 +3985,23 @@ void RtkConfigDialog::onTestClicked()
         return;
     }
 
-    appendLog(textFor("Starting no-signal RTK test...", "正在启动无信号 RTK 测试..."));
-    appendLog(description);
+    const bool uiTestMode = ui_test_mode_;
+    if (uiTestMode && isUiTestCasterServerText(config.server))
+    {
+        const QString message = textFor(
+            "Replace the UI-test placeholder with a real NTRIP server before testing the connection.",
+            "请先将界面测试占位地址替换为真实 NTRIP 服务器，再测试连接。");
+        appendLog(textFor("[界面测试] Real NTRIP validation was not started: %1",
+                          "[界面测试] 未启动真实 NTRIP 验证：%1").arg(message));
+        QMessageBox::warning(this, textFor("Invalid Server", "服务器无效"), message);
+        return;
+    }
+
+    appendLog(uiTestMode
+        ? textFor("[界面测试] Starting real NTRIP validation with the current sandbox configuration; RTCM output stays on a temporary local receiver.",
+                  "[界面测试] 正在使用当前沙箱配置发起真实 NTRIP 验证；RTCM 输出仍使用本机临时接收器。")
+        : textFor("Starting no-signal RTK test...", "正在启动无信号 RTK 测试..."));
+    appendLog(uiTestMode ? QStringLiteral("[界面测试] %1").arg(description) : description);
 
     if (test_thread_.joinable())
     {
@@ -4004,11 +4013,15 @@ void RtkConfigDialog::onTestClicked()
 
     QPointer<RtkConfigDialog> self(this);
     const bool english = is_english_;
-    test_thread_ = std::thread([self, config, english]() mutable {
-        auto queueLog = [self](const QString &message) {
+    test_thread_ = std::thread([self, config, english, uiTestMode]() mutable {
+        auto queueLog = [self, uiTestMode](QString message) {
             if (!self)
             {
                 return;
+            }
+            if (uiTestMode)
+            {
+                message.prepend(QStringLiteral("[界面测试] "));
             }
             QObject *receiver = self.data();
             QMetaObject::invokeMethod(receiver, [self, message]() {
@@ -4020,10 +4033,14 @@ void RtkConfigDialog::onTestClicked()
             }, Qt::QueuedConnection);
         };
 
-        auto queueRawLog = [self](const QString &message) {
+        auto queueRawLog = [self, uiTestMode](QString message) {
             if (!self)
             {
                 return;
+            }
+            if (uiTestMode)
+            {
+                message.prepend(QStringLiteral("[界面测试] "));
             }
             QObject *receiver = self.data();
             QMetaObject::invokeMethod(receiver, [self, message]() {
@@ -4101,7 +4118,9 @@ void RtkConfigDialog::onTestClicked()
                     {
                         queueRawLog(formatRtkStatusLine(
                             finalStats,
-                            textForLanguage(english, "Running no-signal RTK test", "正在执行无信号 RTK 测试"),
+                            uiTestMode
+                                ? textForLanguage(english, "Running real NTRIP validation", "正在执行真实 NTRIP 验证")
+                                : textForLanguage(english, "Running no-signal RTK test", "正在执行无信号 RTK 测试"),
                             english));
                         lastStatusLogMs = timer.elapsed();
                     }
@@ -4194,7 +4213,7 @@ void RtkConfigDialog::onTestClicked()
         }
 
         QObject *receiver = self.data();
-        QMetaObject::invokeMethod(receiver, [self, result = std::move(result)]() mutable {
+        QMetaObject::invokeMethod(receiver, [self, result = std::move(result), uiTestMode]() mutable {
             if (!self)
             {
                 return;
@@ -4210,34 +4229,56 @@ void RtkConfigDialog::onTestClicked()
 
             if (!result.startError.isEmpty())
             {
-                self->appendLog(self->textFor("No-signal RTK test failed to start: %1", "无信号 RTK 测试启动失败: %1").arg(result.startError));
-                QMessageBox::warning(
-                    self,
-                    self->textFor("Failed", "失败"),
-                    self->textFor("Failed to start no-signal RTK test: %1", "无信号 RTK 测试启动失败: %1").arg(result.startError));
+                self->appendLog((uiTestMode ? QStringLiteral("[界面测试] ") : QString()) +
+                    (uiTestMode
+                        ? self->textFor("Real NTRIP validation failed to start: %1", "真实 NTRIP 验证启动失败: %1")
+                        : self->textFor("No-signal RTK test failed to start: %1", "无信号 RTK 测试启动失败: %1"))
+                        .arg(result.startError));
+                if (!uiTestMode)
+                {
+                    QMessageBox::warning(
+                        self,
+                        self->textFor("Failed", "失败"),
+                        self->textFor("Failed to start no-signal RTK test: %1", "无信号 RTK 测试启动失败: %1").arg(result.startError));
+                }
                 return;
             }
 
             if (result.gotResponse)
             {
-                self->appendLog(self->textFor("Mock GGA RTK test succeeded: input %1 B, output %2 B, loopback %3 B",
-                                              "模拟 GGA 测试成功: 输入 %1 B, 输出 %2 B, loopback %3 B")
-                    .arg(result.inputBytes)
-                    .arg(result.outputBytes)
-                    .arg(result.receivedRtcmBytes));
-                QMessageBox::information(
-                    self,
-                    self->textFor("Success", "成功"),
-                    self->textFor("Mock GGA test succeeded. RTCM data was received multiple times.", "模拟 GGA 测试成功，已多次收到 RTCM 返回数据。"));
+                self->appendLog((uiTestMode ? QStringLiteral("[界面测试] ") : QString()) +
+                    (uiTestMode
+                        ? self->textFor("Real NTRIP validation succeeded: input %1 B, output %2 B, local receiver %3 B",
+                                        "真实 NTRIP 验证成功: 输入 %1 B, 输出 %2 B, 本机临时接收 %3 B")
+                        : self->textFor("Mock GGA RTK test succeeded: input %1 B, output %2 B, loopback %3 B",
+                                        "模拟 GGA 测试成功: 输入 %1 B, 输出 %2 B, loopback %3 B"))
+                        .arg(result.inputBytes)
+                        .arg(result.outputBytes)
+                        .arg(result.receivedRtcmBytes));
+                if (!uiTestMode)
+                {
+                    QMessageBox::information(
+                        self,
+                        self->textFor("Success", "成功"),
+                        self->textFor("Mock GGA test succeeded. RTCM data was received multiple times.", "模拟 GGA 测试成功，已多次收到 RTCM 返回数据。"));
+                }
                 return;
             }
 
             const QString detail = describeNoSignalTestFailure(result, self->is_english_);
-            self->appendLog(self->textFor("No-signal RTK test finished without RTCM response: %1", "无信号 RTK 测试结束，未收到 RTCM 返回: %1").arg(detail));
-            QMessageBox::warning(
-                self,
-                self->textFor("No Response", "无返回"),
-                self->textFor("Mock GGA test did not receive RTCM data.\n%1", "模拟 GGA 测试未收到 RTCM 返回数据。\n%1").arg(detail));
+            self->appendLog((uiTestMode ? QStringLiteral("[界面测试] ") : QString()) +
+                (uiTestMode
+                    ? self->textFor("Real NTRIP validation finished without RTCM response: %1", "真实 NTRIP 验证结束，未收到 RTCM 返回: %1")
+                    : self->textFor("No-signal RTK test finished without RTCM response: %1", "无信号 RTK 测试结束，未收到 RTCM 返回: %1"))
+                    .arg(detail));
+            if (!uiTestMode)
+            {
+                QMessageBox::warning(
+                    self,
+                    self->textFor("No Response", "无返回"),
+                    self->textFor("Mock GGA test did not receive RTCM data.\n%1", "模拟 GGA 测试未收到 RTCM 返回数据。\n%1")
+                        .arg(detail));
+            }
         }, Qt::QueuedConnection);
     });
 }
