@@ -1,8 +1,24 @@
 function Component() {
+    if (installer.isUpdater()) {
+        installer.finishButtonClicked.connect(this, Component.prototype.launchVaporViewAfterUpdate);
+    }
+
     if (installer.isInstaller() && !installer.isCommandLineInstance()) {
         installer.addWizardPage(component, "ShortcutSelection", QInstaller.ReadyForInstallation);
     }
 }
+
+Component.prototype.launchVaporViewAfterUpdate = function() {
+    if (installer.status !== QInstaller.Success) {
+        return;
+    }
+
+    var targetDirectory = installer.value("TargetDir");
+    var applicationPath = targetDirectory + "/VaporView.exe";
+    if (installer.fileExists(applicationPath)) {
+        installer.executeDetached(applicationPath, [], targetDirectory);
+    }
+};
 
 Component.prototype.createOperations = function() {
     component.createOperations();

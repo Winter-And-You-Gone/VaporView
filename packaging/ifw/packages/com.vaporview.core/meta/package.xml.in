@@ -5,7 +5,6 @@
     <Version>@VAPORVIEW_VERSION@</Version>
     <ReleaseDate>@VAPORVIEW_RELEASE_DATE@</ReleaseDate>
     <Default>true</Default>
-    <Essential>true</Essential>
     <ForcedInstallation>true</ForcedInstallation>
     <Licenses>
         <License name="GPLv3（中文）" file="license.txt" priority="100" />

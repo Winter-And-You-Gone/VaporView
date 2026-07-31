@@ -11,6 +11,7 @@
 #include <QPlainTextEdit>
 #include <QProcess>
 #include <QPushButton>
+#include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QVersionNumber>
@@ -36,7 +37,7 @@ QString vaporViewUpdateRepositoryUrl()
 QString vaporViewApplicationVersion()
 {
     const QString applicationVersion = QCoreApplication::applicationVersion().trimmed();
-    return applicationVersion.isEmpty() ? QStringLiteral("1.0.10") : applicationVersion;
+    return applicationVersion.isEmpty() ? QStringLiteral("1.0.11") : applicationVersion;
 }
 
 QString vaporViewUpdateRepositoryDisplayName(const QString& repositoryUrl, bool english)
@@ -1233,6 +1234,9 @@ QPushButton#updateCheckUpdateButton:focus {
         if (startUpdater())
         {
             dialog.accept();
+            QTimer::singleShot(0, []() {
+                QCoreApplication::quit();
+            });
         }
     });
     QObject::connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::reject);
