@@ -1030,22 +1030,31 @@ QPushButton#appSidebarButton:checked:pressed {
     border-color: @vv-primary-pressed;
 }
 QComboBox#temperatureTitlePortCombo,
-QComboBox#temperatureTitlePortCombo:disabled {
+QComboBox#ai8TitlePortCombo,
+QComboBox#temperatureTitlePortCombo:disabled,
+QComboBox#ai8TitlePortCombo:disabled {
     color: @vv-text-strong;
 }
 QComboBox#temperatureTitlePortCombo:hover,
 QComboBox#temperatureTitlePortCombo:focus,
-QComboBox#temperatureTitlePortCombo:on {
+QComboBox#temperatureTitlePortCombo:on,
+QComboBox#ai8TitlePortCombo:hover,
+QComboBox#ai8TitlePortCombo:focus,
+QComboBox#ai8TitlePortCombo:on {
     background-color: @vv-title-hover;
     border: none;
     color: @vv-text-strong;
 }
-QComboBox#temperatureTitlePortCombo::down-arrow {
+QComboBox#temperatureTitlePortCombo::down-arrow,
+QComboBox#ai8TitlePortCombo::down-arrow {
     image: url(lucide/chevron-down-dark.svg);
 }
 QComboBox#temperatureTitlePortCombo::down-arrow:hover,
 QComboBox#temperatureTitlePortCombo::down-arrow:focus,
-QComboBox#temperatureTitlePortCombo::down-arrow:on {
+QComboBox#temperatureTitlePortCombo::down-arrow:on,
+QComboBox#ai8TitlePortCombo::down-arrow:hover,
+QComboBox#ai8TitlePortCombo::down-arrow:focus,
+QComboBox#ai8TitlePortCombo::down-arrow:on {
     image: url(lucide/chevron-down-primary-dark.svg);
 }
 QMenu {

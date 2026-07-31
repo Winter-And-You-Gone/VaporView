@@ -582,7 +582,8 @@ void MainWindow::onRefreshPortsClicked()
     QStringList ports = isUiTestMode()
         ? QStringList{QStringLiteral("UI-TEST-EPSILON"), QStringLiteral("UI-TEST-PTB"),
                       QStringLiteral("UI-TEST-HMP"), QStringLiteral("UI-TEST-LIDAR"),
-                      QStringLiteral("UI-TEST-RD105"), QStringLiteral("UI-TEST-SKY")}
+                      QStringLiteral("UI-TEST-RD105"), QStringLiteral("UI-TEST-SKY"),
+                      QStringLiteral("UI-TEST-AI8")}
         : getAvailablePorts();
 
     auto updateCombo = [this, &ports](QComboBox* combo) {
@@ -599,6 +600,11 @@ void MainWindow::onRefreshPortsClicked()
     updateCombo(state_->lidar_port_combo_);
     updateCombo(state_->temperature_port_combo_);
     updateCombo(state_->sky_telemetry_port_combo_);
+    refreshAi8TemperatureTitlePortOptions(
+        ports,
+        state_->ai8_temperature_title_port_combo_
+            ? state_->ai8_temperature_title_port_combo_->currentData().toString()
+            : QString());
     syncDeviceConfigPageFromHome();
     updateTemperatureControllerTitleText();
     updateTemperatureTitleButtonsState();

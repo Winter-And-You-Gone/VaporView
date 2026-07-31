@@ -2942,6 +2942,72 @@ void MainWindow::setLocalSerialPortComboText(QComboBox *combo, const QString& te
         localSerialPortItemValue(combo, selectedIndex));
 }
 
+void MainWindow::refreshAi8TemperatureTitlePortOptions(const QStringList& ports,
+                                                       const QString& preferredText)
+{
+    if (!state_->ai8_temperature_title_port_combo_)
+    {
+        return;
+    }
+
+    QComboBox *combo = state_->ai8_temperature_title_port_combo_;
+    const QString preferredPort = preferredText.isNull()
+        ? combo->currentData().toString().trimmed()
+        : preferredText.trimmed();
+    int selectedIndex = 0;
+    {
+        const QSignalBlocker blocker(combo);
+        combo->clear();
+        combo->addItem(state_->is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("未选择"), QString());
+        for (const QString& port : ports)
+        {
+            const QString trimmed = port.trimmed();
+            if (trimmed.isEmpty() || combo->findData(trimmed) >= 0)
+            {
+                continue;
+            }
+            combo->addItem(trimmed, trimmed);
+            if (!preferredPort.isEmpty() && VaporView::serialPortNamesMatch(trimmed, preferredPort))
+            {
+                selectedIndex = combo->count() - 1;
+            }
+        }
+        if (!preferredPort.isEmpty() && selectedIndex == 0)
+        {
+            combo->addItem(preferredPort, preferredPort);
+            selectedIndex = combo->count() - 1;
+        }
+        combo->setCurrentIndex(selectedIndex);
+    }
+    updateAi8TemperatureTitlePortAppearance();
+}
+
+void MainWindow::updateAi8TemperatureTitlePortAppearance()
+{
+    QComboBox *combo = state_->ai8_temperature_title_port_combo_;
+    if (!combo)
+    {
+        return;
+    }
+
+    combo->ensurePolished();
+    const QString displayText = combo->currentText();
+    const int titlePortWidth = std::clamp(
+        combo->fontMetrics().horizontalAdvance(displayText) + scalePixels(kTemperatureTitlePortChromeWidth),
+        scalePixels(kTemperatureTitlePortMinimumWidth),
+        scalePixels(kTemperatureTitlePortMaximumWidth));
+    combo->setFixedWidth(titlePortWidth);
+    const QString selectedPort = combo->currentData().toString().trimmed();
+    const QString toolTip = selectedPort.isEmpty()
+        ? (state_->is_english_ ? QStringLiteral("Select the AI-8 RS485 serial port")
+                               : QStringLiteral("选择 AI-8 的 RS485 串口"))
+        : (state_->is_english_ ? QStringLiteral("AI-8 RS485 serial port: %1").arg(selectedPort)
+                               : QStringLiteral("AI-8 RS485 串口：%1").arg(selectedPort));
+    combo->setToolTip(toolTip);
+    combo->setAccessibleName(toolTip);
+    combo->updateGeometry();
+}
+
 void MainWindow::beginManualLocalSerialPortEntry(QComboBox *combo)
 {
     if (!combo || !combo->property(kLocalSerialPortComboProperty).toBool() ||
@@ -3088,6 +3154,14 @@ void MainWindow::refreshLocalSerialPortManualOptionTexts()
         {
             combo->addItem(manualLocalSerialPortOptionText(), QString::fromLatin1(kLocalSerialPortManualOptionData));
         }
+    }
+    if (state_->ai8_temperature_title_port_combo_)
+    {
+        const QSignalBlocker blocker(state_->ai8_temperature_title_port_combo_);
+        state_->ai8_temperature_title_port_combo_->setItemText(
+            0,
+            state_->is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("未选择"));
+        updateAi8TemperatureTitlePortAppearance();
     }
 }
 
@@ -3952,6 +4026,22 @@ void MainWindow::setupDataPanels()
             ? QStringLiteral("AI-8 Series Multi-loop Temperature Controller")
             : QStringLiteral("AI-8 系列多回路智能温控器"));
     ai8TitleLayout->addWidget(ai8TitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
+
+    state_->ai8_temperature_title_port_combo_ = createSingleLevelPopupComboBox(ai8TitleBar, false, true);
+    state_->ai8_temperature_title_port_combo_->setObjectName(QStringLiteral("ai8TitlePortCombo"));
+    state_->ai8_temperature_title_port_combo_->setEditable(false);
+    state_->ai8_temperature_title_port_combo_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    state_->ai8_temperature_title_port_combo_->setFixedHeight(kMainPageButtonHeight);
+    state_->ai8_temperature_title_port_combo_->setCursor(Qt::PointingHandCursor);
+    state_->ai8_temperature_title_port_combo_->setFocusPolicy(Qt::TabFocus);
+    connect(state_->ai8_temperature_title_port_combo_,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this,
+            [this](int) {
+                updateAi8TemperatureTitlePortAppearance();
+            });
+    refreshAi8TemperatureTitlePortOptions(getAvailablePorts());
+    ai8TitleLayout->addWidget(state_->ai8_temperature_title_port_combo_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     ai8TitleLayout->addStretch(1);
     ai8Layout->addWidget(ai8TitleBar);
 

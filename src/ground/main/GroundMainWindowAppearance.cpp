@@ -1138,6 +1138,7 @@ void MainWindow::applyStyleConfiguration()
     setWindowsTitleBarDark(this, state_->dark_theme_enabled_);
     applyScaledUiMetrics();
     updateTemperatureControllerTitleText();
+    updateAi8TemperatureTitlePortAppearance();
     if (state_->temperature_controller_panel_)
     {
         state_->temperature_controller_panel_->refreshTopControlsLayout();
@@ -1422,6 +1423,9 @@ void MainWindow::loadRememberedInputState()
     loadCombo(state_->hmp_port_combo_, QStringLiteral("serial/hmp_port"));
     loadCombo(state_->lidar_port_combo_, QStringLiteral("serial/lidar_port"));
     loadCombo(state_->temperature_port_combo_, QStringLiteral("serial/temperature_port"));
+    refreshAi8TemperatureTitlePortOptions(
+        getAvailablePorts(),
+        settings.value(QStringLiteral("serial/ai8_temperature_port"), QString()).toString());
 
     loadCombo(state_->epsilon_baud_combo_, QStringLiteral("serial/epsilon_baud"), QStringLiteral("serial/gnss_baud"));
     loadCombo(state_->lidar_baud_combo_, QStringLiteral("serial/lidar_baud"));
@@ -1570,6 +1574,12 @@ void MainWindow::saveRememberedInputState() const
     saveCombo(QStringLiteral("serial/hmp_port"), state_->hmp_port_combo_);
     saveCombo(QStringLiteral("serial/lidar_port"), state_->lidar_port_combo_);
     saveCombo(QStringLiteral("serial/temperature_port"), state_->temperature_port_combo_);
+    VaporView::setPersistentSetting(
+        settings,
+        QStringLiteral("serial/ai8_temperature_port"),
+        state_->ai8_temperature_title_port_combo_
+            ? state_->ai8_temperature_title_port_combo_->currentData().toString().trimmed()
+            : QString());
 
     saveCombo(QStringLiteral("serial/epsilon_baud"), state_->epsilon_baud_combo_);
     saveCombo(QStringLiteral("serial/ptb_baud"), state_->ptb_baud_combo_);
@@ -1647,6 +1657,7 @@ void MainWindow::bindRememberedInputState()
     bindCombo(state_->hmp_port_combo_);
     bindCombo(state_->lidar_port_combo_);
     bindCombo(state_->temperature_port_combo_);
+    bindCombo(state_->ai8_temperature_title_port_combo_);
     bindCombo(state_->epsilon_baud_combo_);
     bindCombo(state_->ptb_baud_combo_);
     bindCombo(state_->hmp_baud_combo_);

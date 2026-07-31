@@ -294,6 +294,7 @@ struct MainWindowState
     QLabel *temperature_controller_inline_title_lbl_;
     QLabel *ai8_temperature_controller_inline_title_lbl_;
     QComboBox *temperature_title_port_combo_;
+    QComboBox *ai8_temperature_title_port_combo_;
     VaporView::Ground::Widgets::TemperatureControllerOverviewPanel *temperature_overview_panel_;
     QLabel *config_inline_title_lbl_;
     QLabel *global_rate_lbl_;

@@ -350,7 +350,8 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
             QStringLiteral("UI-TEST-HMP"),
             QStringLiteral("UI-TEST-LIDAR"),
             QStringLiteral("UI-TEST-RD105"),
-            QStringLiteral("UI-TEST-SKY")
+            QStringLiteral("UI-TEST-SKY"),
+            QStringLiteral("UI-TEST-AI8")
         };
         const QList<QComboBox *> portCombos{
             state_->epsilon_port_combo_, state_->gnss_port_combo_, state_->imu_port_combo_,
@@ -366,6 +367,7 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
                 setLocalSerialPortComboText(portCombos[index], testPorts[index]);
             }
         }
+        refreshAi8TemperatureTitlePortOptions(testPorts, QStringLiteral("UI-TEST-AI8"));
         syncDeviceConfigPageFromHome();
         updateUiTestModeUi();
         updateConnectionStatus(false);

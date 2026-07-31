@@ -3872,6 +3872,21 @@ int main(int argc, char **argv)
     require(!homeOverviewSplitter->isAncestorOf(ai8TemperatureCard),
             "AI-8 controller card is not added to the home overview");
 
+    auto *ai8TitlePortCombo = ai8TemperatureCard->findChild<QComboBox *>(
+        QStringLiteral("ai8TitlePortCombo"));
+    auto *ai8TitleLayout = ai8TitlePortCombo
+        ? qobject_cast<QHBoxLayout *>(ai8TitlePortCombo->parentWidget()->layout())
+        : nullptr;
+    require(ai8TitlePortCombo != nullptr && ai8TitleLayout != nullptr &&
+                ai8TitleLayout->indexOf(ai8TitlePortCombo) == 1 &&
+                ai8TitlePortCombo->count() >= 1 &&
+                ai8TitlePortCombo->itemData(0).toString().isEmpty() &&
+                !ai8TitlePortCombo->isEditable() &&
+                ai8TitlePortCombo->property("usesSingleLevelPopupMenu").toBool() &&
+                ai8TitlePortCombo->cursor().shape() == Qt::PointingHandCursor &&
+                ai8TitlePortCombo->focusPolicy() == Qt::TabFocus,
+            "AI-8 title is followed by the detected serial-port selector");
+
     auto *ai8Panel = ai8TemperatureCard->findChild<QWidget *>(
         QStringLiteral("ai8TemperatureControllerPanel"));
     auto *ai8Stack = ai8TemperatureCard->findChild<QStackedWidget *>(

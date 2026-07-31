@@ -353,6 +353,8 @@ private:
     void updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, VaporView::DeviceState state);
     void updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId device);
     void updateTemperatureControllerTitleText();
+    void refreshAi8TemperatureTitlePortOptions(const QStringList& ports, const QString& preferredText = QString());
+    void updateAi8TemperatureTitlePortAppearance();
     void updateTemperatureTitleButtonsState();
     void handleTemperatureTitleButton(VaporView::CommandId command);
     void connectLocalTemperatureController();
