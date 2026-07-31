@@ -11,8 +11,15 @@ files, local session data, and optional map datasets.
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File scripts\package-ifw-windows.ps1 `
   -IfwBin F:\Qt\QtIFW\4.8.1\bin `
-  -RepositoryUrl https://updates.example.invalid/vaporview/stable
+  -RepositoryUrl https://winter-and-you-gone.github.io/VaporView/ifw/windows/x64/repository/
 ```
+
+When `-RepositoryUrl` is provided, all components are still embedded for the
+initial install and the maintenance tool stores that URL for later online
+updates. The installer itself always runs in IFW `--offline-only` mode, so it
+cannot replace the requested setup version with a newer package from the
+remote repository while the initial installation is in progress. Without
+`-RepositoryUrl`, it creates a pure offline installer with no update source.
 
 The installer defaults to `C:\VaporView` but keeps the target-directory page
 visible so a field deployment can choose another machine-wide path. The four

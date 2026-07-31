@@ -250,6 +250,9 @@ $installerPath = Join-Path $outputDir ("VaporView-$version-win64-setup.exe")
 if (Test-Path -LiteralPath $installerPath) {
     Remove-Item -LiteralPath $installerPath -Force
 }
+# Keep the initial installation self-contained even when the maintenance tool
+# receives a remote repository. The IFW config separately disables repositories
+# for offline installers; --offline-only alone still permits them by default.
 Invoke-Checked $binaryCreator @("--offline-only", "-c", (Join-Path $workDir "config.xml"), "-p", $packagesDir, $installerPath)
 Invoke-Checked $editBin @("/SUBSYSTEM:WINDOWS", $installerPath)
 
@@ -265,7 +268,7 @@ if (-not $NoRepository) {
 Write-Host "Created: $installerPath"
 Write-Host "Staging: $stageDir"
 if (-not [string]::IsNullOrWhiteSpace($RepositoryUrl)) {
-    Write-Host "Embedded maintenance repository: $RepositoryUrl"
+    Write-Host "Offline installer with maintenance repository: $RepositoryUrl"
 } else {
     Write-Host "Offline installer only; no remote repository is queried during installation."
 }

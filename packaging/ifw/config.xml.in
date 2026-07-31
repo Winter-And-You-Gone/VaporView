@@ -14,6 +14,9 @@
     <MaintenanceToolName>VaporViewMaintenanceTool</MaintenanceToolName>
     <MaintenanceToolIniFile>VaporViewMaintenanceTool.ini</MaintenanceToolIniFile>
     <ControlScript>control.qs</ControlScript>
+    <!-- Keep the initial offline installer self-contained; the generated
+         maintenance tool may still use the configured repositories. -->
+    <AllowRepositoriesForOfflineInstaller>false</AllowRepositoriesForOfflineInstaller>
     <Translations>
         <Translation>ifw_zh_CN</Translation>
         <Translation>qt_zh_CN</Translation>
