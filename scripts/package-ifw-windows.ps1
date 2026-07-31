@@ -234,6 +234,18 @@ $utf8NoBom = New-Object Text.UTF8Encoding($false)
 [IO.File]::WriteAllText((Join-Path $packageMeta "package.xml"), $packageXml, $utf8NoBom)
 Copy-DirectoryContents $stageDir $packageData
 
+$maintenanceToolSource = Resolve-RequiredFile (Join-Path $IfwBin "installerbase.exe") "Qt Installer Framework installerbase.exe"
+$maintenancePackageRoot = Join-Path $packagesDir "com.vaporview.maintenancetool"
+$maintenancePackageMeta = Join-Path $maintenancePackageRoot "meta"
+$maintenancePackageData = Join-Path $maintenancePackageRoot "data"
+New-Item -ItemType Directory -Force -Path $maintenancePackageMeta, $maintenancePackageData | Out-Null
+Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\packages\com.vaporview.maintenancetool\meta\installscript.qs") -Destination $maintenancePackageMeta -Force
+$maintenancePackageXmlTemplatePath = Join-Path $repoRoot "packaging\ifw\packages\com.vaporview.maintenancetool\meta\package.xml.in"
+$maintenancePackageXml = [IO.File]::ReadAllText($maintenancePackageXmlTemplatePath, [Text.Encoding]::UTF8)
+$maintenancePackageXml = $maintenancePackageXml.Replace("@VAPORVIEW_VERSION@", $version).Replace("@VAPORVIEW_RELEASE_DATE@", $releaseDate)
+[IO.File]::WriteAllText((Join-Path $maintenancePackageMeta "package.xml"), $maintenancePackageXml, $utf8NoBom)
+Copy-Item -LiteralPath $maintenanceToolSource -Destination (Join-Path $maintenancePackageData "installerbase.exe") -Force
+
 $remoteRepositories = ""
 if (-not [string]::IsNullOrWhiteSpace($RepositoryUrl)) {
     $escapedRepositoryUrl = [System.Security.SecurityElement]::Escape($RepositoryUrl)
@@ -242,6 +254,18 @@ if (-not [string]::IsNullOrWhiteSpace($RepositoryUrl)) {
 $configXml = (Get-Content -LiteralPath (Join-Path $repoRoot "packaging\ifw\config.xml.in") -Raw)
 $configXml = $configXml.Replace("@VAPORVIEW_VERSION@", $version).Replace("@VAPORVIEW_TARGET_DIR@", "C:\VaporView").Replace("@VAPORVIEW_REMOTE_REPOSITORIES@", $remoteRepositories)
 Set-Content -LiteralPath (Join-Path $workDir "config.xml") -Value $configXml -Encoding UTF8
+
+Push-Location $workDir
+try {
+    Invoke-Checked $binaryCreator @("-c", (Join-Path $workDir "config.xml"), "-p", $packagesDir, "-rcc")
+} finally {
+    Pop-Location
+}
+$updateResourcePath = Join-Path $workDir "update.rcc"
+if (-not (Test-Path -LiteralPath $updateResourcePath -PathType Leaf)) {
+    throw "Qt Installer Framework update.rcc was not generated."
+}
+Copy-Item -LiteralPath $updateResourcePath -Destination (Join-Path $maintenancePackageData "update.rcc") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\control.qs") -Destination $workDir -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\installer.qss") -Destination $workDir -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "resources\VaproViewLOGO\VaporViewLOGO_black.ico") -Destination (Join-Path $workDir "VaporViewInstallerIcon.ico") -Force

@@ -37,6 +37,9 @@ binarycreator="${binarycreator:-$(command -v binarycreator || true)}"
 repogen="${repogen:-$(command -v repogen || true)}"
 [[ -x "$binarycreator" ]] || { printf 'binarycreator was not found.\n' >&2; exit 1; }
 [[ -x "$repogen" ]] || { printf 'repogen was not found.\n' >&2; exit 1; }
+if [[ -z "$ifw_bin" ]]; then
+    ifw_bin="$(dirname "$binarycreator")"
+fi
 
 version="$(sed -nE 's/^project\(VaporView VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$repo_root/CMakeLists.txt")"
 [[ -n "$version" ]] || { printf 'Could not determine project version.\n' >&2; exit 1; }
@@ -93,12 +96,27 @@ sed -e "s/@VAPORVIEW_VERSION@/$version/g" -e "s/@VAPORVIEW_RELEASE_DATE@/$releas
     "$repo_root/packaging/ifw/packages/com.vaporview.core/meta/package.xml.in" > "$package_root/meta/package.xml"
 cp -a "$stage_dir/." "$package_root/data/"
 
+maintenance_tool_source="$ifw_bin/installerbase"
+[[ -x "$maintenance_tool_source" ]] || { printf 'Qt Installer Framework installerbase was not found.\n' >&2; exit 1; }
+maintenance_package_root="$packages_dir/com.vaporview.maintenancetool"
+mkdir -p "$maintenance_package_root/meta" "$maintenance_package_root/data"
+cp "$repo_root/packaging/ifw/packages/com.vaporview.maintenancetool/meta/installscript.qs" \
+   "$maintenance_package_root/meta/"
+sed -e "s/@VAPORVIEW_VERSION@/$version/g" -e "s/@VAPORVIEW_RELEASE_DATE@/$release_date/g" \
+    "$repo_root/packaging/ifw/packages/com.vaporview.maintenancetool/meta/package.xml.in" > \
+    "$maintenance_package_root/meta/package.xml"
+cp "$maintenance_tool_source" "$maintenance_package_root/data/installerbase"
+
 remote_repositories=""
 if [[ -n "$repository_url" ]]; then
     remote_repositories="<RemoteRepositories><Repository><Url>$repository_url</Url><Enabled>1</Enabled></Repository></RemoteRepositories>"
 fi
 sed -e "s/@VAPORVIEW_VERSION@/$version/g" -e "s#@VAPORVIEW_TARGET_DIR@#/opt/VaporView#g" -e "s#@VAPORVIEW_REMOTE_REPOSITORIES@#$remote_repositories#g" \
     "$repo_root/packaging/ifw/config.xml.in" > "$work_dir/config.xml"
+
+(cd "$work_dir" && "$binarycreator" -c "$work_dir/config.xml" -p "$packages_dir" -rcc)
+[[ -f "$work_dir/update.rcc" ]] || { printf 'Qt Installer Framework update.rcc was not generated.\n' >&2; exit 1; }
+cp "$work_dir/update.rcc" "$maintenance_package_root/data/update.rcc"
 cp "$repo_root/packaging/ifw/control.qs" "$work_dir/"
 cp "$repo_root/packaging/ifw/installer.qss" "$work_dir/"
 

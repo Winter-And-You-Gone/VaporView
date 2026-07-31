@@ -1,0 +1,11 @@
+<Package>
+    <Name>com.vaporview.maintenancetool</Name>
+    <DisplayName>VaporView Maintenance Tool</DisplayName>
+    <Description>VaporView maintenance tool.</Description>
+    <Version>@VAPORVIEW_VERSION@</Version>
+    <ReleaseDate>@VAPORVIEW_RELEASE_DATE@</ReleaseDate>
+    <Essential>true</Essential>
+    <Virtual>true</Virtual>
+    <ForcedInstallation>true</ForcedInstallation>
+    <Script>installscript.qs</Script>
+</Package>
