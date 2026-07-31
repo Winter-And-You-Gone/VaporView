@@ -5,6 +5,7 @@
 #include <QImage>
 #include <QSvgRenderer>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -95,7 +96,9 @@ int main(int argc, char **argv)
             "startup splash card interior must be near-black");
 
     bool firstFrameContainsWhiteLogo = false;
-    for (int y = 0; y < renderedFrame.height() && !firstFrameContainsWhiteLogo; ++y)
+    int logoMinX = renderedFrame.width();
+    int logoMaxX = -1;
+    for (int y = 0; y < renderedFrame.height(); ++y)
     {
         for (int x = 0; x < renderedFrame.width(); ++x)
         {
@@ -103,12 +106,15 @@ int main(int argc, char **argv)
             if (pixel.alpha() > 220 && pixel.red() > 220 && pixel.green() > 220 && pixel.blue() > 220)
             {
                 firstFrameContainsWhiteLogo = true;
-                break;
+                logoMinX = std::min(logoMinX, x);
+                logoMaxX = std::max(logoMaxX, x);
             }
         }
     }
     require(firstFrameContainsWhiteLogo,
             "startup splash first frame must already contain a white logo");
+    require(logoMaxX - logoMinX + 1 >= renderedFrame.width() * 0.25,
+            "startup splash logo must occupy a substantial portion of the card");
 
     splash.fadeOutAndClose(0);
     QCoreApplication::processEvents();
