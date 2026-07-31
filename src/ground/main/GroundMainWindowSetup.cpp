@@ -1514,11 +1514,11 @@ void MainWindow::setupCentralWidget()
     state_->main_content_splitter_->setAttribute(Qt::WA_StyledBackground, true);
     state_->main_content_splitter_->setAutoFillBackground(true);
     state_->main_content_splitter_->setChildrenCollapsible(true);
-    state_->main_content_splitter_->setCollapsible(0, true);
-    state_->main_content_splitter_->setCollapsible(1, true);
     state_->main_content_splitter_->setHandleWidth(kSidePanelSplitterVisualWidth);
     state_->main_content_splitter_->addWidget(state_->main_page_stack_);
     state_->main_content_splitter_->addWidget(state_->log_side_panel_);
+    state_->main_content_splitter_->setCollapsible(0, true);
+    state_->main_content_splitter_->setCollapsible(1, true);
     if (QSplitterHandle *handle = state_->main_content_splitter_->handle(1))
     {
         handle->installEventFilter(this);
@@ -3848,14 +3848,14 @@ void MainWindow::setupDataPanels()
     state_->home_overview_splitter_->setAttribute(Qt::WA_StyledBackground, true);
     state_->home_overview_splitter_->setAutoFillBackground(true);
     state_->home_overview_splitter_->setChildrenCollapsible(false);
-    state_->home_overview_splitter_->setCollapsible(0, false);
-    state_->home_overview_splitter_->setCollapsible(1, false);
     state_->home_overview_splitter_->setHandleWidth(kHomeOverviewSplitterHandleWidth);
     state_->home_overview_splitter_->setOpaqueResize(true);
     state_->home_overview_splitter_->setMinimumWidth(0);
     state_->home_overview_splitter_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     state_->home_overview_splitter_->addWidget(state_->config_group_);
     state_->home_overview_splitter_->addWidget(state_->temperature_overview_group_);
+    state_->home_overview_splitter_->setCollapsible(0, false);
+    state_->home_overview_splitter_->setCollapsible(1, false);
     state_->home_overview_splitter_->setStretchFactor(0, 0);
     state_->home_overview_splitter_->setStretchFactor(1, 1);
     state_->home_overview_splitter_->setSizes({state_->config_group_->minimumWidth(), kHomeOverviewTemperatureMinWidth});

@@ -2741,6 +2741,10 @@ int main(int argc, char **argv)
     auto *mainContentSplitter =
         window.findChild<QSplitter *>(QStringLiteral("mainContentSplitter"));
     require(mainContentSplitter != nullptr, "main content splitter exists");
+    require(mainContentSplitter->count() == 2 &&
+                mainContentSplitter->isCollapsible(0) &&
+                mainContentSplitter->isCollapsible(1),
+            "main content splitter initializes both collapsible child panes");
     require(appLayoutSplitter->handleWidth() ==
                 VaporView::Ground::MainSupport::kSidePanelSplitterVisualWidth &&
                 mainContentSplitter->handleWidth() ==
@@ -3539,6 +3543,9 @@ int main(int argc, char **argv)
     auto *homeOverviewSplitter = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
     require(homeOverviewSplitter != nullptr, "home overview splitter exists");
     require(homeOverviewSplitter->count() == 2, "home overview splitter has device and temperature cards");
+    require(!homeOverviewSplitter->isCollapsible(0) &&
+                !homeOverviewSplitter->isCollapsible(1),
+            "home overview splitter keeps both overview cards non-collapsible");
 
     auto *deviceOverviewCard = qobject_cast<QGroupBox *>(homeOverviewSplitter->widget(0));
     auto *temperatureOverviewCard = qobject_cast<QGroupBox *>(homeOverviewSplitter->widget(1));
