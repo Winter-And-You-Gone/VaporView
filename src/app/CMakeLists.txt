@@ -1,5 +1,7 @@
 set(NAV_SOURCES
     ${CMAKE_SOURCE_DIR}/src/app/ground_main.cpp
+    ${CMAKE_SOURCE_DIR}/src/app/StartupSplash.cpp
+    ${CMAKE_SOURCE_DIR}/src/app/StartupSplash.h
 )
 
 set(SKY_TUI_SOURCES
@@ -13,6 +15,7 @@ set(NAV_UI_FILES
 )
 
 set(NAV_RESOURCES
+    ${CMAKE_SOURCE_DIR}/resources/vaporview_startup.qrc
     ${CMAKE_SOURCE_DIR}/resources/modern_style.qss
     ${CMAKE_SOURCE_DIR}/resources/combo_arrow_down.xpm
     ${CMAKE_SOURCE_DIR}/resources/combo_arrow_up.xpm
@@ -112,6 +115,7 @@ target_include_directories(VaporView PRIVATE
 
 target_link_libraries(VaporView PRIVATE
     Qt6::Widgets
+    Qt6::Svg
     vaporview_main_window
     vaporview_app_theme
     vaporview_sky_core

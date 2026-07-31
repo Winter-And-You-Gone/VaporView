@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/vaporview/startup">
+        <file alias="logo-white.svg">VaproViewLOGO/VaporViewLOGO_white.svg</file>
+    </qresource>
+</RCC>

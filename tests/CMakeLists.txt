@@ -652,6 +652,21 @@ add_executable(vaporview_startup_test
 target_link_libraries(vaporview_startup_test PRIVATE Qt6::Core)
 add_test(NAME vaporview_startup_test COMMAND vaporview_startup_test)
 
+add_executable(startup_splash_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/startup_splash_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/app/StartupSplash.cpp
+    ${CMAKE_SOURCE_DIR}/src/app/StartupSplash.h
+    ${CMAKE_SOURCE_DIR}/resources/vaporview_startup.qrc
+)
+target_include_directories(startup_splash_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(startup_splash_test PRIVATE
+    Qt6::Widgets
+    Qt6::Svg
+)
+add_test(NAME startup_splash_test COMMAND startup_splash_test)
+
 set(VAPORVIEW_FAST_UNIT_TESTS
     trajectory_buffer_test
     trajectory_quality_test
@@ -700,6 +715,7 @@ set(VAPORVIEW_FAST_INTEGRATION_TESTS
     device_panel_coordinator_test
     tcp_wave_panel_test
     sky_device_config_dialog_test
+    startup_splash_test
     vaporview_startup_test
 )
 set_tests_properties(${VAPORVIEW_FAST_INTEGRATION_TESTS} PROPERTIES TIMEOUT 60)
@@ -741,6 +757,7 @@ set_property(TEST
     session_viewer_trajectory_test
     session_viewer_theme_test
     session_viewer_components_test
+    startup_splash_test
     vaporview_startup_test
     APPEND PROPERTY LABELS ui
 )

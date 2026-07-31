@@ -1,10 +1,13 @@
+#include <QAbstractAnimation>
 #include <QAbstractItemView>
 #include <QAbstractSpinBox>
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QComboBox>
 #include <QDebug>
+#include <QEasingCurve>
 #include <QEvent>
+#include <QEventLoop>
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QObject>
@@ -15,11 +18,17 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QPalette>
+#include <QPointer>
+#include <QPropertyAnimation>
 #include <QSettings>
+#include <QTimer>
 #include "shared/theme/AppTheme.h"
 #include "LogService.h"
+#include "app/StartupSplash.h"
 #include "ground/main/MainWindow.h"
 #include "SkyRuntime.h"
+
+#include <algorithm>
 
 namespace
 {
@@ -129,9 +138,34 @@ void applyStartupTheme(QApplication& app, bool darkThemeEnabled)
     app.setStyleSheet(VaporView::startupAppThemeStyleSheet(true));
 }
 
-void showMainWindow(MainWindow& window)
+constexpr qint64 kMinimumSplashVisibleMs = 600;
+constexpr int kWindowTransitionDurationMs = 200;
+
+void showMainWindow(MainWindow& window, VaporView::StartupSplash *splash)
 {
+    window.setWindowOpacity(0.0);
     window.show();
+
+    auto *mainWindowFade = new QPropertyAnimation(&window, "windowOpacity", &window);
+    mainWindowFade->setDuration(kWindowTransitionDurationMs);
+    mainWindowFade->setStartValue(0.0);
+    mainWindowFade->setEndValue(1.0);
+    mainWindowFade->setEasingCurve(QEasingCurve::OutCubic);
+    QObject::connect(mainWindowFade, &QPropertyAnimation::finished, &window, [&window]() {
+        window.setWindowOpacity(1.0);
+        window.raise();
+        window.activateWindow();
+    });
+
+    if (splash)
+    {
+        QObject::connect(splash, &VaporView::StartupSplash::fadeOutFinished,
+                         &window, [splash]() {
+                             splash->deleteLater();
+                         });
+        splash->fadeOutAndClose(kWindowTransitionDurationMs);
+    }
+    mainWindowFade->start(QAbstractAnimation::DeleteWhenStopped);
 }
 }
 
@@ -237,6 +271,17 @@ int main(int argc, char *argv[])
         return app.exec();
     }
 
+    auto *startupSplash = new VaporView::StartupSplash;
+    QPointer<VaporView::StartupSplash> startupSplashGuard(startupSplash);
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, [startupSplashGuard]() {
+        if (startupSplashGuard)
+        {
+            delete startupSplashGuard.data();
+        }
+    });
+    startupSplash->showCentered();
+    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+
     const QString appDir = QCoreApplication::applicationDirPath();
     const QString logoFileName = startupDarkTheme
         ? QStringLiteral("VaporViewLOGO_rgb217_119_87.svg")
@@ -271,7 +316,19 @@ int main(int argc, char *argv[])
     {
         mainWindow.setWindowIcon(app.windowIcon());
     }
-    showMainWindow(mainWindow);
+
+    QTimer::singleShot(0, &mainWindow, [&mainWindow, startupSplashGuard]() {
+        QTimer::singleShot(0, &mainWindow, [&mainWindow, startupSplashGuard]() {
+            const qint64 elapsedMs = startupSplashGuard
+                ? startupSplashGuard->visibleElapsedMilliseconds()
+                : kMinimumSplashVisibleMs;
+            const int remainingMs = static_cast<int>(
+                std::max<qint64>(0, kMinimumSplashVisibleMs - elapsedMs));
+            QTimer::singleShot(remainingMs, &mainWindow, [&mainWindow, startupSplashGuard]() {
+                showMainWindow(mainWindow, startupSplashGuard.data());
+            });
+        });
+    });
 
     return app.exec();
 }

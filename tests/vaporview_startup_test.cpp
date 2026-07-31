@@ -93,6 +93,7 @@ struct WindowSearchState
 {
     DWORD pid = 0;
     HWND hwnd = nullptr;
+    QString requiredTitle;
 };
 
 BOOL CALLBACK enumWindowsProc(HWND hwnd, LPARAM lParam)
@@ -112,7 +113,9 @@ BOOL CALLBACK enumWindowsProc(HWND hwnd, LPARAM lParam)
 
     wchar_t title[256] = {};
     GetWindowTextW(hwnd, title, static_cast<int>(sizeof(title) / sizeof(title[0])));
-    if (QString::fromWCharArray(title).contains(QStringLiteral("VaporView")))
+    const QString windowTitle = QString::fromWCharArray(title);
+    if ((!state->requiredTitle.isEmpty() && windowTitle == state->requiredTitle) ||
+        (state->requiredTitle.isEmpty() && windowTitle.contains(QStringLiteral("VaporView"))))
     {
         state->hwnd = hwnd;
         return FALSE;
@@ -125,6 +128,15 @@ HWND findMainWindow(DWORD pid)
 {
     WindowSearchState state;
     state.pid = pid;
+    EnumWindows(enumWindowsProc, reinterpret_cast<LPARAM>(&state));
+    return state.hwnd;
+}
+
+HWND findStartupSplashWindow(DWORD pid)
+{
+    WindowSearchState state;
+    state.pid = pid;
+    state.requiredTitle = QStringLiteral("Startup Splash");
     EnumWindows(enumWindowsProc, reinterpret_cast<LPARAM>(&state));
     return state.hwnd;
 }
@@ -188,6 +200,58 @@ int main(int argc, char **argv)
     QElapsedTimer timer;
     timer.start();
 
+    HWND splashHwnd = nullptr;
+    while (timer.elapsed() < 5000)
+    {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        stdoutText += QString::fromLocal8Bit(process.readAllStandardOutput());
+        stderrText += QString::fromLocal8Bit(process.readAllStandardError());
+
+        if (process.state() == QProcess::NotRunning)
+        {
+            fail(QStringLiteral("VaporView exited before its startup splash appeared"),
+                 &process,
+                 stdoutText,
+                 stderrText);
+        }
+        if (findMainWindow(pid) != nullptr)
+        {
+            fail(QStringLiteral("VaporView main window appeared before its startup splash"),
+                 &process,
+                 stdoutText,
+                 stderrText);
+        }
+
+        splashHwnd = findStartupSplashWindow(pid);
+        if (splashHwnd != nullptr)
+        {
+            break;
+        }
+        QThread::msleep(20);
+    }
+
+    require(splashHwnd != nullptr,
+            QStringLiteral("VaporView startup splash did not become visible within 5 seconds"));
+    require(IsWindowVisible(splashHwnd), QStringLiteral("startup splash is not visible"));
+    require((GetWindowLongPtrW(splashHwnd, GWL_STYLE) & WS_CAPTION) == 0,
+            QStringLiteral("startup splash unexpectedly has a system caption"));
+    const LONG_PTR splashExStyle = GetWindowLongPtrW(splashHwnd, GWL_EXSTYLE);
+    require((splashExStyle & WS_EX_TOOLWINDOW) != 0 || GetWindow(splashHwnd, GW_OWNER) != nullptr,
+            QStringLiteral("startup splash can create a separate taskbar entry"));
+
+    RECT splashRect = {};
+    require(GetWindowRect(splashHwnd, &splashRect) != FALSE,
+            QStringLiteral("failed to read startup splash geometry"));
+    const int splashWidth = splashRect.right - splashRect.left;
+    const int splashHeight = splashRect.bottom - splashRect.top;
+    require(splashWidth > 0 && splashHeight > 0,
+            QStringLiteral("startup splash geometry is empty"));
+    const double splashRatio = static_cast<double>(splashWidth) / splashHeight;
+    require(splashRatio > 1.70 && splashRatio < 1.85,
+            QStringLiteral("startup splash aspect ratio is not close to 16:9"));
+
+    timer.restart();
+
     HWND hwnd = nullptr;
     while (timer.elapsed() < 15000)
     {
@@ -204,7 +268,7 @@ int main(int argc, char **argv)
         }
 
         hwnd = findMainWindow(pid);
-        if (hwnd != nullptr)
+        if (hwnd != nullptr && isWindowOpaque(hwnd))
         {
             break;
         }
@@ -225,6 +289,15 @@ int main(int argc, char **argv)
             QStringLiteral("main window title did not contain VaporView: %1").arg(title));
     require(IsWindowVisible(hwnd), QStringLiteral("main window is not visible"));
     require(isWindowOpaque(hwnd), QStringLiteral("main window is visible but fully transparent"));
+
+    timer.restart();
+    while (timer.elapsed() < 3000 && findStartupSplashWindow(pid) != nullptr)
+    {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        QThread::msleep(20);
+    }
+    require(findStartupSplashWindow(pid) == nullptr,
+            QStringLiteral("startup splash remained visible after the main-window transition"));
 
     QThread::msleep(500);
     QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
