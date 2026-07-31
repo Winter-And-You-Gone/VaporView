@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include <QDate>
 #include <QDateTime>
+#include <QDeadlineTimer>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -19,7 +20,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
-#include <deque>
+#include <cstdlib>
 #include <functional>
 #include <utility>
 
@@ -32,13 +33,12 @@ namespace VaporView
 
 namespace
 {
-constexpr qsizetype kQueueLimit = 8192;
 constexpr qint64 kMaxFileBytes = 10LL * 1024LL * 1024LL;
 constexpr qint64 kMaxTotalFileBytes = 100LL * 1024LL * 1024LL;
 constexpr int kMaxRetainedFiles = 10;
 constexpr int kMaxRotatedFiles = kMaxRetainedFiles - 1;
-constexpr qint64 kDropReportIntervalMs = 5000;
-constexpr qint64 kFlushIntervalMs = 250;
+constexpr qint64 kDropReportPeriodMilliseconds = 5000;
+constexpr qint64 kFlushPeriodMilliseconds = 250;
 constexpr qsizetype kFlushRecordLimit = 256;
 constexpr qsizetype kMaxProcessCaptureBytes = 1 * 1024 * 1024;
 constexpr qsizetype kMaxProcessLineBytes = 64 * 1024;
@@ -51,6 +51,9 @@ QMutex instance_mutex;
 QWaitCondition instance_condition;
 int active_instance_accesses = 0;
 bool instance_shutting_down = false;
+// Lifecycle state is released before publish, file IO, signal emission, or any
+// external callback. LogWriterThread likewise never nests its queue mutex with
+// its file mutex: queue state is selected first, then IO runs after unlock.
 
 bool isHighPriority(LogLevel level)
 {
@@ -62,12 +65,17 @@ void fallbackWrite(const QByteArray& line)
 #ifdef Q_OS_WIN
     const QString text = QString::fromUtf8(line);
     OutputDebugStringW(reinterpret_cast<LPCWSTR>(text.utf16()));
-    OutputDebugStringW(L"\n");
-#else
-    std::fwrite(line.constData(), 1, static_cast<size_t>(line.size()), stderr);
-    std::fputc('\n', stderr);
-    std::fflush(stderr);
+    if (!line.endsWith('\n'))
+    {
+        OutputDebugStringW(L"\n");
+    }
 #endif
+    std::fwrite(line.constData(), 1, static_cast<size_t>(line.size()), stderr);
+    if (!line.endsWith('\n'))
+    {
+        std::fputc('\n', stderr);
+    }
+    std::fflush(stderr);
 }
 
 QString rotatedPath(const QString& currentPath, int index)
@@ -91,8 +99,9 @@ QString defaultFallbackLogDirectory()
 
 quint64 currentTimestampUsNow()
 {
-    return static_cast<quint64>(std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count());
+    const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::system_clock::now().time_since_epoch());
+    return static_cast<quint64>(elapsed / std::chrono::microseconds(1));
 }
 
 void appendBounded(QByteArray& target, const QByteArray& bytes, qsizetype limit)
@@ -121,7 +130,7 @@ void publishProcessLine(QProcess *process,
         return;
     }
     LogService::withCurrentInstance([&](LogService& logService) {
-        QVariantMap fields{
+        QVariantMap fields = {
             {QStringLiteral("stream"), standardError ? QStringLiteral("stderr")
                                                        : QStringLiteral("stdout")},
             {QStringLiteral("raw_bytes"), line.size()}};
@@ -211,20 +220,8 @@ class LogWriterThread final : public QThread
 public:
     using FailureCallback = std::function<void(const QString&)>;
     using SequenceCallback = std::function<quint64()>;
-
-    struct CompletionState
-    {
-        QMutex mutex;
-        QWaitCondition condition;
-        bool completed = false;
-        bool success = false;
-    };
-
-    struct QueuedRecord
-    {
-        LogRecord record;
-        std::shared_ptr<CompletionState> completion;
-    };
+    using CompletionState = LoggingInternal::LogCompletionState;
+    using QueuedRecord = LoggingInternal::QueuedLogRecord;
 
     LogWriterThread(QString directory,
                     QString applicationName,
@@ -243,7 +240,7 @@ public:
         stop();
     }
 
-    bool enqueue(LogRecord record, std::shared_ptr<CompletionState> completion = {})
+    bool enqueue(LogRecord& record, std::shared_ptr<CompletionState> completion = {})
     {
         QMutexLocker locker(&mutex_);
         if (stopping_)
@@ -252,40 +249,47 @@ public:
             return false;
         }
 
-        if (queue_.size() >= kQueueLimit)
+        if (record.sequence == 0)
         {
-            QVector<LogLevel> queuedLevels;
-            queuedLevels.reserve(static_cast<qsizetype>(queue_.size()));
-            for (const QueuedRecord& item : queue_)
-            {
-                queuedLevels.push_back(item.record.level);
-            }
-            const LoggingInternal::QueueOverflowDecision decision =
-                LoggingInternal::decideQueueOverflow(queuedLevels, record.level);
-            if (decision.action == LoggingInternal::QueueOverflowAction::RemoveLowPriorityAndEnqueue)
-            {
-                queue_.erase(queue_.begin() + decision.low_priority_index);
-                dropped_count_ += decision.dropped_increment;
-            }
-            else if (decision.action == LoggingInternal::QueueOverflowAction::DropIncoming)
-            {
-                dropped_count_ += decision.dropped_increment;
-                complete(completion, false);
-                return false;
-            }
-            else if (decision.action == LoggingInternal::QueueOverflowAction::EmergencyWrite)
-            {
-                locker.unlock();
-                const bool success = emergencyWrite(record);
-                complete(completion, success);
-                return success;
-            }
-            // Critical records are allowed to grow the queue temporarily so
-            // they cannot overtake or silently replace accepted records.
+            record.sequence = sequence_callback_ ? sequence_callback_() : 0;
         }
 
-        queue_.push_back({std::move(record), std::move(completion)});
+        LoggingInternal::QueueEnqueueResult result = queue_.enqueue({record, completion});
+        dropped_count_ += result.dropped_increment;
+        const std::shared_ptr<CompletionState> evictedCompletion =
+            result.evicted ? result.evicted->completion : nullptr;
+
+        if (result.action == LoggingInternal::QueueEnqueueAction::DroppedIncoming)
+        {
+            wake_.wakeOne();
+            locker.unlock();
+            complete(evictedCompletion, false);
+            complete(completion, false);
+            return false;
+        }
+        if (result.action == LoggingInternal::QueueEnqueueAction::EmergencyWrite)
+        {
+            std::optional<LogRecord> overloadNotice = std::nullopt;
+            if (result.critical_overload_started)
+            {
+                overloadNotice = LoggingInternal::makeCriticalOverloadNotice(
+                    sequence_callback_ ? sequence_callback_() : 0,
+                    currentTimestampUsNow(),
+                    QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs),
+                    static_cast<quint64>(QCoreApplication::applicationPid()),
+                    static_cast<quint64>(reinterpret_cast<quintptr>(QThread::currentThreadId())),
+                    result.pending_critical_limit);
+            }
+            locker.unlock();
+            complete(evictedCompletion, false);
+            const bool success = emergencyWrite(record, overloadNotice);
+            complete(completion, success);
+            return success;
+        }
+
         wake_.wakeOne();
+        locker.unlock();
+        complete(evictedCompletion, false);
         return true;
     }
 
@@ -298,6 +302,10 @@ public:
                 return;
             }
             stopping_ = true;
+#ifdef VAPORVIEW_LOGGING_TEST_HOOKS
+            test_block_requested_ = false;
+            test_block_condition_.wakeAll();
+#endif
             wake_.wakeAll();
         }
         if (QThread::currentThread() == this)
@@ -307,107 +315,183 @@ public:
         wait();
     }
 
-    bool emergencyWrite(const LogRecord& record)
+    bool emergencyWrite(const LogRecord& record,
+                        const std::optional<LogRecord>& overloadNotice = std::nullopt)
+    {
+        const QByteArray recordLine = record.toJsonLine();
+        fallbackWrite(recordLine);
+        QByteArray noticeLine;
+        if (overloadNotice)
+        {
+            noticeLine = overloadNotice->toJsonLine();
+            fallbackWrite(noticeLine);
+        }
+
+        QMutexLocker locker(&file_mutex_);
+        const bool recordWritten = writeEmergencyLine(recordLine);
+        const bool noticeWritten = !overloadNotice || writeEmergencyLine(noticeLine);
+        return recordWritten && noticeWritten;
+    }
+
+#ifdef VAPORVIEW_LOGGING_TEST_HOOKS
+    void setBlockedForTest(bool blocked)
+    {
+        QMutexLocker locker(&mutex_);
+        test_block_requested_ = blocked;
+        if (!blocked)
+        {
+            test_block_condition_.wakeAll();
+        }
+        wake_.wakeAll();
+    }
+
+    bool waitUntilBlockedForTest(std::chrono::milliseconds timeout)
+    {
+        const QDeadlineTimer deadline(timeout);
+        QMutexLocker locker(&mutex_);
+        while (!test_writer_blocked_ && !deadline.hasExpired())
+        {
+            test_block_condition_.wait(&mutex_, deadline);
+        }
+        return test_writer_blocked_;
+    }
+
+    bool setMaxPendingCriticalForTest(qsizetype limit)
+    {
+        QMutexLocker locker(&mutex_);
+        return queue_.setMaxPendingCriticalForTest(limit);
+    }
+
+    QVariantMap stateForTest() const
+    {
+        QMutexLocker locker(&mutex_);
+        const LoggingInternal::LogQueueStats stats = queue_.stats();
+        return {{QStringLiteral("size"), static_cast<qlonglong>(stats.size)},
+                {QStringLiteral("pending_critical"), static_cast<qlonglong>(stats.pending_critical)},
+                {QStringLiteral("max_observed_size"),
+                 static_cast<qlonglong>(stats.max_observed_size)},
+                {QStringLiteral("priority_index_lookups"),
+                 static_cast<qulonglong>(stats.priority_index_lookups)},
+                {QStringLiteral("critical_overload_active"), stats.critical_overload_active}};
+    }
+
+    QString emergencyFilePathForTest() const
     {
         QMutexLocker locker(&file_mutex_);
-        return writeRecord(record, true);
+        return emergency_path_;
     }
+#endif
 
 protected:
     void run() override
     {
         while (true)
         {
-            QueuedRecord item;
-            quint64 dropped = 0;
+            std::optional<QueuedRecord> item = std::nullopt;
             bool idleFlush = false;
             {
                 QMutexLocker locker(&mutex_);
                 while (queue_.empty() && !stopping_)
                 {
+#ifdef VAPORVIEW_LOGGING_TEST_HOOKS
+                    while (test_block_requested_ && !stopping_)
+                    {
+                        test_writer_blocked_ = true;
+                        test_block_condition_.wakeAll();
+                        test_block_condition_.wait(&mutex_);
+                    }
+                    test_writer_blocked_ = false;
+                    test_block_condition_.wakeAll();
+                    if (stopping_)
+                    {
+                        break;
+                    }
+                    if (!queue_.empty())
+                    {
+                        break;
+                    }
+#endif
+                    qint64 waitMs = -1;
                     if (pending_flush_.load(std::memory_order_acquire))
                     {
-                        if (!wake_.wait(&mutex_, static_cast<unsigned long>(kFlushIntervalMs)))
-                        {
-                            idleFlush = true;
-                            break;
-                        }
+                        waitMs = kFlushPeriodMilliseconds;
                     }
-                    else
+                    if (dropped_count_ > 0)
                     {
-                        wake_.wait(&mutex_);
+                        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+                        const qint64 dropWaitMs = last_drop_report_ms_ == 0
+                            ? 0
+                            : (std::max)(0LL,
+                                         kDropReportPeriodMilliseconds -
+                                             (nowMs - last_drop_report_ms_));
+                        waitMs = waitMs < 0 ? dropWaitMs : (std::min)(waitMs, dropWaitMs);
+                    }
+                    if (waitMs == 0)
+                    {
+                        break;
+                    }
+                    const bool signaled = waitMs < 0
+                        ? wake_.wait(&mutex_)
+                        : wake_.wait(&mutex_, static_cast<unsigned long>(waitMs));
+                    if (!signaled && pending_flush_.load(std::memory_order_acquire))
+                    {
+                        idleFlush = true;
+                        break;
                     }
                 }
-                if (queue_.empty() && stopping_)
+
+#ifdef VAPORVIEW_LOGGING_TEST_HOOKS
+                while (test_block_requested_ && !stopping_)
+                {
+                    test_writer_blocked_ = true;
+                    test_block_condition_.wakeAll();
+                    test_block_condition_.wait(&mutex_);
+                }
+                test_writer_blocked_ = false;
+                test_block_condition_.wakeAll();
+#endif
+
+                if (queue_.empty())
+                {
+                    queueDropNoticeIfDueLocked(stopping_);
+                }
+                if (!queue_.empty())
+                {
+                    item = queue_.takeNext();
+                    // The pop creates room for a control record. Appending the
+                    // notice at the tail preserves FIFO/sequence ordering.
+                    queueDropNoticeIfDueLocked(false);
+                }
+                else if (stopping_)
                 {
                     break;
                 }
-                if (!idleFlush)
-                {
-                    item = std::move(queue_.front());
-                    queue_.pop_front();
-                }
-                const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-                if (dropped_count_ > 0 &&
-                    (last_drop_report_ms_ == 0 || nowMs - last_drop_report_ms_ >= kDropReportIntervalMs))
-                {
-                    dropped = std::exchange(dropped_count_, 0ULL);
-                    last_drop_report_ms_ = nowMs;
-                }
             }
 
-            QMutexLocker fileLocker(&file_mutex_);
-            if (dropped > 0)
-            {
-                writeDropNotice(dropped);
-            }
             if (idleFlush)
             {
+                QMutexLocker fileLocker(&file_mutex_);
                 flushPending();
             }
-            else
+            if (item)
             {
-                const bool success = writeRecord(item.record, item.completion != nullptr);
-                complete(item.completion, success);
+                bool success = false;
+                {
+                    QMutexLocker fileLocker(&file_mutex_);
+                    success = writeRecord(item->record, item->completion != nullptr);
+                }
+                {
+                    QMutexLocker locker(&mutex_);
+                    queue_.markProcessed(item->record.level);
+                    wake_.wakeAll();
+                }
+                complete(item->completion, success);
             }
         }
 
-        while (true)
-        {
-            QueuedRecord item;
-            quint64 dropped = 0;
-            bool hasItem = false;
-            {
-                QMutexLocker locker(&mutex_);
-                if (queue_.empty())
-                {
-                    dropped = std::exchange(dropped_count_, 0ULL);
-                }
-                else
-                {
-                    item = std::move(queue_.front());
-                    queue_.pop_front();
-                    hasItem = true;
-                }
-            }
-            if (!hasItem)
-            {
-                QMutexLocker fileLocker(&file_mutex_);
-                if (dropped > 0)
-                {
-                    writeDropNotice(dropped);
-                }
-                flushPending();
-                closeFile();
-                break;
-            }
-            QMutexLocker fileLocker(&file_mutex_);
-            if (dropped > 0)
-            {
-                writeDropNotice(dropped);
-            }
-            complete(item.completion, writeRecord(item.record, item.completion != nullptr));
-        }
+        QMutexLocker fileLocker(&file_mutex_);
+        flushPending();
+        closeFile();
     }
 
 private:
@@ -423,23 +507,120 @@ private:
         completion->condition.wakeAll();
     }
 
-    void writeDropNotice(quint64 dropped)
+    void queueDropNoticeIfDueLocked(bool force)
     {
-        const LogRecord notice = LoggingInternal::makeDropNotice(
+        if (dropped_count_ == 0 ||
+            queue_.size() >= LoggingInternal::kLogQueueCapacity)
+        {
+            return;
+        }
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        if (!force && last_drop_report_ms_ != 0 &&
+            nowMs - last_drop_report_ms_ < kDropReportPeriodMilliseconds)
+        {
+            return;
+        }
+
+        const quint64 dropped = std::exchange(dropped_count_, 0ULL);
+        last_drop_report_ms_ = nowMs;
+        LogRecord notice = LoggingInternal::makeDropNotice(
             dropped,
             sequence_callback_ ? sequence_callback_() : 0,
             currentTimestampUsNow(),
             QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs),
             static_cast<quint64>(QCoreApplication::applicationPid()),
             static_cast<quint64>(reinterpret_cast<quintptr>(QThread::currentThreadId())));
-        writeRecord(notice, true);
+        const LoggingInternal::QueueEnqueueResult result =
+            queue_.enqueue({std::move(notice), {}});
+        if (result.action != LoggingInternal::QueueEnqueueAction::Enqueued)
+        {
+            dropped_count_ += dropped;
+        }
+    }
+
+    bool rotateEmergencyIfNeeded(const QString& path, qint64 additionalBytes)
+    {
+        const QFileInfo active(path);
+        if (!active.exists() || active.size() + additionalBytes <= kMaxFileBytes)
+        {
+            return true;
+        }
+        for (int index = kMaxRotatedFiles - 1; index >= 1; --index)
+        {
+            const QString source = rotatedPath(path, index);
+            const QString target = rotatedPath(path, index + 1);
+            if (!QFile::exists(source))
+            {
+                continue;
+            }
+            if (QFile::exists(target) && !QFile::remove(target))
+            {
+                return false;
+            }
+            if (!QFile::rename(source, target))
+            {
+                return false;
+            }
+        }
+        const QString firstRotation = rotatedPath(path, 1);
+        if (QFile::exists(firstRotation) && !QFile::remove(firstRotation))
+        {
+            return false;
+        }
+        return !QFile::exists(path) || QFile::rename(path, firstRotation);
+    }
+
+    bool writeEmergencyLine(const QByteArray& line)
+    {
+        QStringList candidateDirectories = {directory_};
+        if (!fallback_directory_.isEmpty() &&
+            QDir::cleanPath(fallback_directory_) != QDir::cleanPath(directory_))
+        {
+            candidateDirectories.push_back(fallback_directory_);
+        }
+
+        for (const QString& candidate : candidateDirectories)
+        {
+            if (!QDir().mkpath(candidate))
+            {
+                continue;
+            }
+            const QString path = QDir(candidate).filePath(
+                QStringLiteral("%1-emergency-%2.jsonl")
+                    .arg(application_name_,
+                         QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"))));
+            if (!rotateEmergencyIfNeeded(path, line.size()))
+            {
+                continue;
+            }
+            QFile emergencyFile(path);
+            if (!emergencyFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
+            {
+                continue;
+            }
+            const qint64 originalSize = emergencyFile.size();
+            const qint64 written = emergencyFile.write(line);
+            const bool completeWrite = written == line.size();
+            const bool flushed = completeWrite && emergencyFile.flush();
+            if (!flushed && originalSize >= 0)
+            {
+                emergencyFile.resize(originalSize);
+            }
+            emergencyFile.close();
+            if (flushed)
+            {
+                emergency_path_ = path;
+                return true;
+            }
+        }
+        return false;
     }
 
     bool openFile()
     {
         const QString date = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
         const QString desiredPath = QDir(directory_).filePath(
-            QStringLiteral("%1-%2.jsonl").arg(application_name_, date));
+            QStringLiteral("%1-%2.jsonl").arg(application_name_).arg(date));
         if (file_.isOpen() && current_path_ == desiredPath)
         {
             return true;
@@ -565,22 +746,33 @@ private:
         return true;
     }
 
-    bool writeRecordOnce(const LogRecord& record, bool forceFlush)
+    bool writeRecordOnce(const LogRecord& record,
+                         const QByteArray& line,
+                         bool forceFlush)
     {
-        const QByteArray line = record.toJsonLine();
         if (!openFile())
         {
             return false;
         }
         rotateIfNeeded(line.size());
-        if (!file_.isOpen() || file_.write(line) != line.size())
+        if (!file_.isOpen())
         {
+            return false;
+        }
+        const qint64 originalSize = file_.size();
+        if (file_.write(line) != line.size())
+        {
+            if (originalSize >= 0)
+            {
+                file_.resize(originalSize);
+                file_.seek(originalSize);
+            }
             return false;
         }
         ++pending_records_;
         const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
         const bool due = forceFlush || isHighPriority(record.level) ||
-            last_flush_ms_ == 0 || nowMs - last_flush_ms_ >= kFlushIntervalMs ||
+            last_flush_ms_ == 0 || nowMs - last_flush_ms_ >= kFlushPeriodMilliseconds ||
             pending_records_ >= kFlushRecordLimit;
         if (!due)
         {
@@ -600,13 +792,13 @@ private:
     bool writeRecord(const LogRecord& record, bool forceFlush)
     {
         const QByteArray line = record.toJsonLine();
-        if (writeRecordOnce(record, forceFlush))
+        if (writeRecordOnce(record, line, forceFlush))
         {
             return true;
         }
 
         notifyFailure(QStringLiteral("Cannot write application log file: %1").arg(current_path_));
-        if (switchToFallbackDirectory() && writeRecordOnce(record, forceFlush))
+        if (switchToFallbackDirectory() && writeRecordOnce(record, line, forceFlush))
         {
             return true;
         }
@@ -670,15 +862,19 @@ public:
             return current_path_;
         }
         const QString date = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
-        return QDir(directory_).filePath(QStringLiteral("%1-%2.jsonl").arg(application_name_, date));
+        return QDir(directory_).filePath(
+            QStringLiteral("%1-%2.jsonl").arg(application_name_).arg(date));
     }
 
 private:
-
+    // mutex_ protects queue_, dropped/stop state, Critical accounting, and test
+    // wake state. file_mutex_ protects QFile, active paths, rotation, cleanup,
+    // and emergency output. The two locks are intentionally never nested.
     QString directory_;
     QString application_name_;
     QString fallback_directory_;
     QString current_path_;
+    QString emergency_path_;
     QFile file_;
     FailureCallback failure_callback_;
     SequenceCallback sequence_callback_;
@@ -686,14 +882,19 @@ private:
     bool cleanup_complete_ = false;
     qint64 last_flush_ms_ = 0;
     qsizetype pending_records_ = 0;
-    QMutex mutex_;
+    mutable QMutex mutex_;
     mutable QMutex file_mutex_;
     QWaitCondition wake_;
-    std::deque<QueuedRecord> queue_;
+    LoggingInternal::LogRecordQueue queue_;
     quint64 dropped_count_ = 0;
     qint64 last_drop_report_ms_ = 0;
     bool stopping_ = false;
-    std::atomic_bool pending_flush_{false};
+    std::atomic_bool pending_flush_ = false;
+#ifdef VAPORVIEW_LOGGING_TEST_HOOKS
+    QWaitCondition test_block_condition_;
+    bool test_block_requested_ = false;
+    bool test_writer_blocked_ = false;
+#endif
 };
 
 LogService *LogService::instance_ = nullptr;
@@ -750,7 +951,8 @@ QByteArray LogRecord::toJsonLine() const
 
 LogService::LogService(const QString& applicationName,
                        QObject *parent,
-                       const QString& logDirectoryOverride)
+                       const QString& logDirectoryOverride,
+                       const QString& fallbackDirectoryOverride)
     : QObject(parent),
       application_name_(applicationName),
       log_directory_(logDirectoryOverride.trimmed().isEmpty()
@@ -761,8 +963,14 @@ LogService::LogService(const QString& applicationName,
     writer_ = std::make_unique<LogWriterThread>(
         log_directory_,
         application_name_,
-        defaultFallbackLogDirectory(),
-        [this](const QString& message) { emit diagnosticFailure(message); },
+        fallbackDirectoryOverride.trimmed().isEmpty()
+            ? defaultFallbackLogDirectory()
+            : fallbackDirectoryOverride,
+        [this](const QString& message) {
+            QMetaObject::invokeMethod(this,
+                                      [this, message]() { emit diagnosticFailure(message); },
+                                      Qt::QueuedConnection);
+        },
         [this]() { return nextSequence(); });
     writer_->start();
     {
@@ -789,6 +997,7 @@ LogService::~LogService()
         {
             instance_shutting_down = true;
             instance_ = nullptr;
+            instance_condition.wakeAll();
             previousHandler = previous_message_handler_;
             previous_message_handler_ = nullptr;
             restoreHandler = qt_message_handler_installed_;
@@ -799,6 +1008,7 @@ LogService::~LogService()
     {
         qInstallMessageHandler(previousHandler);
     }
+    if (owns_global_instance_)
     {
         QMutexLocker locker(&instance_mutex);
         while (active_instance_accesses > 0)
@@ -817,6 +1027,7 @@ LogService::~LogService()
     {
         QMutexLocker locker(&instance_mutex);
         instance_shutting_down = false;
+        instance_condition.wakeAll();
     }
 }
 
@@ -877,6 +1088,12 @@ void LogService::installQtMessageHandler()
 
 void LogService::publish(LogRecord record)
 {
+    submit(std::move(record));
+}
+
+LogRecord LogService::submit(LogRecord record)
+{
+    const bool localProcessRecord = record.process_id == 0;
     if (record.timestamp_us == 0)
     {
         record.timestamp_us = currentTimestampUs();
@@ -893,17 +1110,23 @@ void LogService::publish(LogRecord record)
     {
         record.thread_id = currentThreadId();
     }
-    if (record.sequence == 0)
+    if (localProcessRecord && record.sequence > 0)
     {
-        record.sequence = nextSequence();
+        quint64 observed = sequence_.load(std::memory_order_relaxed);
+        while (observed < record.sequence &&
+               !sequence_.compare_exchange_weak(observed,
+                                                record.sequence,
+                                                std::memory_order_relaxed))
+        {
+        }
     }
-    emit recordPublished(record);
     if (writer_)
     {
         if (record.level == LogLevel::Critical)
         {
             auto completion = std::make_shared<LogWriterThread::CompletionState>();
             const bool queued = writer_->enqueue(record, completion);
+            emit recordPublished(record);
             if (queued && QThread::currentThread() != writer_.get())
             {
                 QMutexLocker locker(&completion->mutex);
@@ -915,9 +1138,19 @@ void LogService::publish(LogRecord record)
         }
         else
         {
-            writer_->enqueue(std::move(record));
+            writer_->enqueue(record);
+            emit recordPublished(record);
         }
     }
+    else
+    {
+        if (record.sequence == 0)
+        {
+            record.sequence = nextSequence();
+        }
+        emit recordPublished(record);
+    }
+    return record;
 }
 
 void reportUserIssue(LogLevel level,
@@ -1024,9 +1257,7 @@ LogRecord LogService::publish(LogLevel level,
     record.timestamp_utc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
     record.process_id = currentProcessId();
     record.thread_id = currentThreadId();
-    record.sequence = nextSequence();
-    publish(record);
-    return record;
+    return submit(std::move(record));
 }
 
 QString LogService::logFilePath() const
@@ -1041,6 +1272,47 @@ QString LogService::logDirectory() const
 {
     return writer_ ? writer_->activeDirectory() : log_directory_;
 }
+
+#ifdef VAPORVIEW_LOGGING_TEST_HOOKS
+void LogService::setWriterBlockedForTest(bool blocked)
+{
+    if (writer_)
+    {
+        writer_->setBlockedForTest(blocked);
+    }
+}
+
+bool LogService::waitForWriterBlockedForTest(std::chrono::milliseconds timeout)
+{
+    return writer_ && writer_->waitUntilBlockedForTest(timeout);
+}
+
+bool LogService::setMaxPendingCriticalForTest(qsizetype limit)
+{
+    return writer_ && writer_->setMaxPendingCriticalForTest(limit);
+}
+
+QVariantMap LogService::writerStateForTest() const
+{
+    return writer_ ? writer_->stateForTest() : QVariantMap{};
+}
+
+QString LogService::emergencyLogFilePathForTest() const
+{
+    return writer_ ? writer_->emergencyFilePathForTest() : QString{};
+}
+
+bool LogService::waitUntilGlobalAccessRejectedForTest(std::chrono::milliseconds timeout)
+{
+    const QDeadlineTimer deadline(timeout);
+    QMutexLocker locker(&instance_mutex);
+    while (!instance_shutting_down && instance_ && !deadline.hasExpired())
+    {
+        instance_condition.wait(&instance_mutex, deadline);
+    }
+    return instance_shutting_down || !instance_;
+}
+#endif
 
 quint64 LogService::nextSequence()
 {

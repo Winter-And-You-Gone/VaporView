@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QDate>
 #include <QDateTime>
+#include <QDeadlineTimer>
 #include <QDebug>
 #include <QDir>
 #include <QElapsedTimer>
@@ -13,12 +14,16 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QSemaphore>
+#include <QSet>
 #include <QTemporaryDir>
 #include <QThread>
 
 #include <cstdlib>
 #include <atomic>
+#include <chrono>
 #include <iostream>
+#include <functional>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -34,11 +39,11 @@ void require(bool condition, const char *message)
     }
 }
 
-bool waitForFile(const QString& path, int timeoutMs = 3000)
+bool waitForFile(const QString& path,
+                 std::chrono::milliseconds timeout = std::chrono::seconds(3))
 {
-    QElapsedTimer timer;
-    timer.start();
-    while (timer.elapsed() < timeoutMs)
+    const QDeadlineTimer deadline(timeout);
+    while (!deadline.hasExpired())
     {
         QFile file(path);
         if (file.open(QIODevice::ReadOnly | QIODevice::Text) && !file.readAll().trimmed().isEmpty())
@@ -50,11 +55,12 @@ bool waitForFile(const QString& path, int timeoutMs = 3000)
     return false;
 }
 
-bool waitForText(const QString& path, const QByteArray& text, int timeoutMs = 5000)
+bool waitForText(const QString& path,
+                 const QByteArray& text,
+                 std::chrono::milliseconds timeout = std::chrono::seconds(5))
 {
-    QElapsedTimer timer;
-    timer.start();
-    while (timer.elapsed() < timeoutMs)
+    const QDeadlineTimer deadline(timeout);
+    while (!deadline.hasExpired())
     {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
         QFile file(path);
@@ -67,10 +73,37 @@ bool waitForText(const QString& path, const QByteArray& text, int timeoutMs = 50
     return false;
 }
 
+bool waitForCondition(const std::function<bool()>& condition,
+                      std::chrono::milliseconds timeout = std::chrono::seconds(3))
+{
+    const QDeadlineTimer deadline(timeout);
+    while (!deadline.hasExpired())
+    {
+        if (condition())
+        {
+            return true;
+        }
+        QThread::msleep(5);
+    }
+    return condition();
+}
+
+VaporView::LogRecord queueRecord(VaporView::LogLevel level,
+                                 quint64 sequence,
+                                 const QString& message)
+{
+    VaporView::LogRecord record;
+    record.level = level;
+    record.sequence = sequence;
+    record.message = message;
+    return record;
+}
+
 QVector<QJsonObject> readJsonLines(const QString& path)
 {
     QFile file(path);
-    require(file.open(QIODevice::ReadOnly | QIODevice::Text), "open JSONL file for parsing");
+    const bool opened = file.open(QIODevice::ReadOnly | QIODevice::Text);
+    require(opened, "open JSONL file for parsing");
     QVector<QJsonObject> records;
     while (!file.atEnd())
     {
@@ -114,37 +147,109 @@ int main(int argc, char **argv)
     require(parsed.message == source.message, "log message round trip");
     require(parsed.fields.value(QStringLiteral("dropped_count")).toInt() == 3, "log fields round trip");
 
-    // queueOverflowDropsLowPriorityFirst / criticalSurvivesQueueOverload
-    using VaporView::LoggingInternal::QueueOverflowAction;
-    const auto removeLow = VaporView::LoggingInternal::decideQueueOverflow(
-        {VaporView::LogLevel::Warning,
-         VaporView::LogLevel::Debug,
-         VaporView::LogLevel::Error,
-         VaporView::LogLevel::Info},
-        VaporView::LogLevel::Warning);
-    require(removeLow.action == QueueOverflowAction::RemoveLowPriorityAndEnqueue,
-            "queue overflow removes low priority first");
-    require(removeLow.low_priority_index == 1,
-            "queue overflow removes the earliest low-priority record");
-    require(removeLow.dropped_increment == 1,
-            "removing a queued low-priority record increments the drop count");
+    using VaporView::LoggingInternal::LogRecordQueue;
+    using VaporView::LoggingInternal::QueueEnqueueAction;
 
-    const QVector<VaporView::LogLevel> allHigh{
-        VaporView::LogLevel::Warning,
-        VaporView::LogLevel::Error,
-        VaporView::LogLevel::Critical};
-    const auto dropIncoming = VaporView::LoggingInternal::decideQueueOverflow(
-        allHigh, VaporView::LogLevel::Info);
-    require(dropIncoming.action == QueueOverflowAction::DropIncoming,
-            "incoming low-priority record is dropped when the queue is all high priority");
-    require(dropIncoming.dropped_increment == 1,
-            "dropping the incoming record increments the drop count");
-    const auto keepCritical = VaporView::LoggingInternal::decideQueueOverflow(
-        allHigh, VaporView::LogLevel::Critical);
-    require(keepCritical.action == QueueOverflowAction::EnqueueCriticalBeyondLimit,
-            "critical record is never silently dropped");
-    require(keepCritical.dropped_increment == 0,
-            "keeping a critical record does not change the drop count");
+    // queueOverflowDropsDebugBeforeInfo / queueOverflowPreservesHighPriority
+    {
+        LogRecordQueue queue(4, 4);
+        queue.enqueue({queueRecord(VaporView::LogLevel::Info, 1, QStringLiteral("info-old")), {}});
+        queue.enqueue({queueRecord(VaporView::LogLevel::Warning, 2, QStringLiteral("warning")), {}});
+        queue.enqueue({queueRecord(VaporView::LogLevel::Debug, 3, QStringLiteral("debug")), {}});
+        queue.enqueue({queueRecord(VaporView::LogLevel::Info, 4, QStringLiteral("info-new")), {}});
+        const auto result = queue.enqueue(
+            {queueRecord(VaporView::LogLevel::Error, 5, QStringLiteral("error")), {}});
+        require(result.action == QueueEnqueueAction::Enqueued,
+                "high-priority record is accepted on overflow");
+        require(result.evicted && result.evicted->record.message == QStringLiteral("debug"),
+                "queue overflow drops Debug before Info regardless of FIFO position");
+        require(result.dropped_increment == 1,
+                "evicting a queued low-priority record increments dropped count");
+
+        QStringList remainingMessages;
+        while (const auto item = queue.takeNext())
+        {
+            remainingMessages.push_back(item->record.message);
+            queue.markProcessed(item->record.level);
+        }
+        require(remainingMessages == QStringList({QStringLiteral("info-old"),
+                                                  QStringLiteral("warning"),
+                                                  QStringLiteral("info-new"),
+                                                  QStringLiteral("error")}),
+                "eviction preserves FIFO order of retained records");
+    }
+
+    {
+        LogRecordQueue queue(3, 3);
+        queue.enqueue({queueRecord(VaporView::LogLevel::Warning, 1, QStringLiteral("w")), {}});
+        queue.enqueue({queueRecord(VaporView::LogLevel::Error, 2, QStringLiteral("e")), {}});
+        queue.enqueue({queueRecord(VaporView::LogLevel::Critical, 3, QStringLiteral("c")), {}});
+        const auto result = queue.enqueue(
+            {queueRecord(VaporView::LogLevel::Info, 4, QStringLiteral("i")), {}});
+        require(result.action == QueueEnqueueAction::DroppedIncoming,
+                "incoming Info is dropped when the queue is all high priority");
+        require(result.dropped_increment == 1, "dropped count remains accurate");
+        require(queue.size() == 3, "high-priority records remain queued");
+    }
+
+    // queuePolicyDoesNotRequireFullScan
+    {
+        constexpr qsizetype kCapacity = 128;
+        constexpr int kSubmissions = 50000;
+        LogRecordQueue queue(kCapacity, 8);
+        for (qsizetype index = 0; index < kCapacity; ++index)
+        {
+            const auto level = index % 2 == 0
+                ? VaporView::LogLevel::Info
+                : VaporView::LogLevel::Debug;
+            queue.enqueue({queueRecord(level, static_cast<quint64>(index + 1),
+                                       QStringLiteral("seed")), {}});
+        }
+        quint64 dropped = 0;
+        for (int index = 0; index < kSubmissions; ++index)
+        {
+            const auto result = queue.enqueue(
+                {queueRecord(VaporView::LogLevel::Debug,
+                             static_cast<quint64>(kCapacity + index + 1),
+                             QStringLiteral("stress")), {}});
+            dropped += result.dropped_increment;
+        }
+        const auto stats = queue.stats();
+        require(queue.size() == kCapacity, "stress queue remains at its configured capacity");
+        require(dropped == kSubmissions, "stress overload dropped count is exact");
+        require(stats.priority_index_lookups <= static_cast<quint64>(kSubmissions * 2),
+                "overload uses bounded priority-index lookups instead of full scans");
+    }
+
+    // criticalQueueHasHardBound / criticalOverflowStateResetsAfterRecovery
+    {
+        LogRecordQueue queue(2, 2);
+        queue.enqueue({queueRecord(VaporView::LogLevel::Warning, 1, QStringLiteral("w")), {}});
+        queue.enqueue({queueRecord(VaporView::LogLevel::Error, 2, QStringLiteral("e")), {}});
+        require(queue.enqueue({queueRecord(VaporView::LogLevel::Critical, 3,
+                                           QStringLiteral("c1")), {}}).action ==
+                    QueueEnqueueAction::Enqueued,
+                "first pending Critical may exceed normal capacity");
+        require(queue.enqueue({queueRecord(VaporView::LogLevel::Critical, 4,
+                                           QStringLiteral("c2")), {}}).action ==
+                    QueueEnqueueAction::Enqueued,
+                "Critical remains FIFO below its pending limit");
+        const auto overflow = queue.enqueue(
+            {queueRecord(VaporView::LogLevel::Critical, 5, QStringLiteral("c3")), {}});
+        require(overflow.action == QueueEnqueueAction::EmergencyWrite,
+                "Critical above its pending limit uses emergency output");
+        require(overflow.critical_overload_started,
+                "first Critical overflow starts one overload cycle");
+        require(queue.stats().max_observed_size == 4,
+                "Critical queue has a hard capacity plus pending-Critical bound");
+
+        while (const auto item = queue.takeNext())
+        {
+            queue.markProcessed(item->record.level);
+        }
+        require(!queue.stats().critical_overload_active,
+                "Critical overload state resets after queued Critical recovery");
+    }
 
     const VaporView::LogRecord dropNotice = VaporView::LoggingInternal::makeDropNotice(
         7, 91, 1234567, QStringLiteral("2026-07-31T00:00:00.000Z"), 12, 34);
@@ -172,7 +277,8 @@ int main(int argc, char **argv)
         require(waitForFile(service.logFilePath()), "JSONL file is written");
 
         QFile file(service.logFilePath());
-        require(file.open(QIODevice::ReadOnly | QIODevice::Text), "open JSONL file");
+        const bool opened = file.open(QIODevice::ReadOnly | QIODevice::Text);
+        require(opened, "open JSONL file");
         bool foundSourceRecord = false;
         while (!file.atEnd())
         {
@@ -195,7 +301,9 @@ int main(int argc, char **argv)
                         QStringLiteral("Test"),
                         QStringLiteral("critical"),
                         QStringLiteral("critical-sync"));
-        require(waitForText(service.logFilePath(), QByteArrayLiteral("critical-sync"), 1000),
+        require(waitForText(service.logFilePath(),
+                            QByteArrayLiteral("critical-sync"),
+                            std::chrono::seconds(1)),
                 "critical record is synchronously written");
 
 #ifdef Q_OS_WIN
@@ -252,7 +360,9 @@ int main(int argc, char **argv)
                         QStringLiteral("Test"),
                         QStringLiteral("idle.flush"),
                         QStringLiteral("idle-info-sentinel"));
-        require(waitForText(service.logFilePath(), QByteArrayLiteral("idle-info-sentinel"), 2000),
+        require(waitForText(service.logFilePath(),
+                            QByteArrayLiteral("idle-info-sentinel"),
+                            std::chrono::seconds(2)),
                 "idle Info log is flushed while LogService is still alive");
     }
 
@@ -305,26 +415,28 @@ int main(int argc, char **argv)
         require(foundCritical, "Critical is persisted before publish returns");
     }
 
-#ifdef Q_OS_WIN
-    // fallbackAccessorsReportActualLogLocation
+    // fallbackWorksWhenOverridePathIsAFile / fallbackAccessorsAreCrossPlatform /
+    // criticalWorksAfterFallback
     {
+        QTemporaryDir primaryRoot;
         QTemporaryDir fallbackRoot;
-        require(fallbackRoot.isValid(), "temporary fallback root");
-        const bool hadLocalAppData = qEnvironmentVariableIsSet("LOCALAPPDATA");
-        const QByteArray previousLocalAppData = qgetenv("LOCALAPPDATA");
-        qputenv("LOCALAPPDATA", fallbackRoot.path().toUtf8());
-
-        const QString blockedPath = QDir(fallbackRoot.path()).filePath(QStringLiteral("blocked"));
+        require(primaryRoot.isValid() && fallbackRoot.isValid(),
+                "cross-platform fallback temporary roots");
+        const QString blockedPath = QDir(primaryRoot.path()).filePath(QStringLiteral("blocked"));
         QFile blocker(blockedPath);
-        require(blocker.open(QIODevice::WriteOnly | QIODevice::Truncate),
-                "create blocked log path");
+        const bool blockerOpened = blocker.open(QIODevice::WriteOnly | QIODevice::Truncate);
+        require(blockerOpened, "create blocked log path");
         blocker.close();
-        const QString fallbackDirectory = QDir(fallbackRoot.path()).filePath(
-            QStringLiteral("VaporView/logs"));
+        const QString fallbackDirectory = QDir(fallbackRoot.path()).filePath(QStringLiteral("logs"));
         {
             VaporView::LogService service(QStringLiteral("VaporViewFallbackTest"),
-                                          &app,
-                                          blockedPath + QStringLiteral("/logs"));
+                                           &app,
+                                           blockedPath + QStringLiteral("/logs"),
+                                           fallbackDirectory);
+            service.publish(VaporView::LogLevel::Info,
+                            QStringLiteral("Test"),
+                            QStringLiteral("fallback"),
+                            QStringLiteral("fallback-info-sentinel"));
             service.publish(VaporView::LogLevel::Critical,
                             QStringLiteral("Test"),
                             QStringLiteral("fallback"),
@@ -337,19 +449,119 @@ int main(int argc, char **argv)
             require(QFileInfo::exists(service.logFilePath()),
                     "fallback path accessor points to the real JSONL file");
             require(waitForText(service.logFilePath(), QByteArrayLiteral("fallback-accessor-sentinel")),
-                    "application log is persisted in the reported fallback path");
-        }
-
-        if (hadLocalAppData)
-        {
-            qputenv("LOCALAPPDATA", previousLocalAppData);
-        }
-        else
-        {
-            qunsetenv("LOCALAPPDATA");
+                    "Critical is persisted after switching to fallback");
+            require(waitForText(service.logFilePath(), QByteArrayLiteral("fallback-info-sentinel")),
+                    "ordinary log is persisted after switching to fallback");
         }
     }
-#endif
+
+    // criticalOverflowUsesEmergencyPath / criticalOverflowDoesNotDeadlock /
+    // emergencyCriticalJsonIsValid / criticalOverflowStateResetsAfterRecovery
+    {
+        QTemporaryDir criticalDirectory;
+        require(criticalDirectory.isValid(), "Critical overload temporary directory");
+        VaporView::LogService service(QStringLiteral("VaporViewCriticalBoundTest"),
+                                      &app,
+                                      criticalDirectory.path(),
+                                      QDir(criticalDirectory.path()).filePath(QStringLiteral("fallback")));
+        require(waitForText(service.logFilePath(),
+                            QByteArrayLiteral("Application logging initialized.")),
+                "Critical overload lifecycle record is flushed");
+        require(waitForCondition([&service]() {
+                    return service.writerStateForTest()
+                               .value(QStringLiteral("size")).toLongLong() == 0;
+                }),
+                "writer is idle before configuring Critical test limit");
+        require(service.setMaxPendingCriticalForTest(4),
+                "test-only pending Critical limit is configured while idle");
+
+        auto runOverloadCycle = [&service](const QString& cycleName) {
+            service.setWriterBlockedForTest(true);
+            require(service.waitForWriterBlockedForTest(std::chrono::seconds(2)),
+                    "writer enters the controlled blocked state");
+
+            std::vector<std::thread> criticalWorkers;
+            for (int index = 0; index < 4; ++index)
+            {
+                criticalWorkers.emplace_back([&service, cycleName, index]() {
+                    service.publish(VaporView::LogLevel::Critical,
+                                    QStringLiteral("CriticalStress"),
+                                    QStringLiteral("critical.bound"),
+                                    QStringLiteral("%1-queued-%2").arg(cycleName).arg(index));
+                });
+            }
+            require(waitForCondition([&service]() {
+                        return service.writerStateForTest()
+                                   .value(QStringLiteral("pending_critical")).toLongLong() == 4;
+                    }),
+                    "controlled writer accumulates exactly the Critical hard limit");
+
+            QElapsedTimer emergencyTimer;
+            emergencyTimer.start();
+            service.publish(VaporView::LogLevel::Critical,
+                            QStringLiteral("CriticalStress"),
+                            QStringLiteral("critical.emergency"),
+                            cycleName + QStringLiteral("-emergency"));
+            service.publish(VaporView::LogLevel::Critical,
+                            QStringLiteral("CriticalStress"),
+                            QStringLiteral("critical.emergency"),
+                            cycleName + QStringLiteral("-emergency-second"));
+            require(emergencyTimer.elapsed() < 2000,
+                    "Critical emergency writes return within the explicit timeout");
+
+            const QVariantMap blockedState = service.writerStateForTest();
+            require(blockedState.value(QStringLiteral("pending_critical")).toLongLong() == 4,
+                    "Critical pending count never exceeds its hard limit");
+            require(blockedState.value(QStringLiteral("max_observed_size")).toLongLong() <= 4,
+                    "controlled Critical queue memory remains bounded");
+
+            service.setWriterBlockedForTest(false);
+            for (std::thread& worker : criticalWorkers)
+            {
+                worker.join();
+            }
+            require(waitForCondition([&service]() {
+                        const QVariantMap state = service.writerStateForTest();
+                        return state.value(QStringLiteral("pending_critical")).toLongLong() == 0 &&
+                            !state.value(QStringLiteral("critical_overload_active")).toBool();
+                    }),
+                    "writer recovery clears pending Critical and overload state");
+        };
+
+        runOverloadCycle(QStringLiteral("cycle-one"));
+        const QString emergencyPath = service.emergencyLogFilePathForTest();
+        require(!emergencyPath.isEmpty() && QFileInfo::exists(emergencyPath),
+                "Critical overflow creates an independent emergency JSONL file");
+        require(waitForText(emergencyPath, QByteArrayLiteral("cycle-one-emergency")),
+                "overflow Critical is present in emergency JSONL");
+
+        runOverloadCycle(QStringLiteral("cycle-two"));
+        int overloadNotices = 0;
+        int emergencyRecords = 0;
+        QSet<quint64> emergencySequences;
+        for (const QJsonObject& object : readJsonLines(emergencyPath))
+        {
+            const quint64 sequence = object.value(QStringLiteral("sequence"))
+                                         .toVariant().toULongLong();
+            require(sequence > 0 && !emergencySequences.contains(sequence),
+                    "emergency JSON records preserve unique sequence values");
+            emergencySequences.insert(sequence);
+            if (object.value(QStringLiteral("category")).toString() ==
+                QStringLiteral("queue.critical_overload"))
+            {
+                ++overloadNotices;
+            }
+            if (object.value(QStringLiteral("category")).toString() ==
+                QStringLiteral("critical.emergency"))
+            {
+                ++emergencyRecords;
+            }
+        }
+        require(overloadNotices == 2,
+                "each recovered Critical overload cycle emits one status record");
+        require(emergencyRecords == 4,
+                "every overflow Critical is retained as complete emergency JSON");
+    }
 
     // fatalMessageIsPersistedBeforeAbort
     {
@@ -419,8 +631,18 @@ int main(int argc, char **argv)
                         QStringLiteral("concurrent.publish"),
                         QStringLiteral("concurrent-publish-sentinel"));
         int concurrentRecords = 0;
+        quint64 previousSequence = 0;
+        QSet<quint64> sequences;
         for (const QJsonObject& object : readJsonLines(service.logFilePath()))
         {
+            const quint64 sequence = object.value(QStringLiteral("sequence"))
+                                         .toVariant().toULongLong();
+            require(sequence > previousSequence,
+                    "normal concurrent JSONL remains monotonic by sequence");
+            require(!sequences.contains(sequence),
+                    "normal concurrent JSONL sequence values are unique");
+            previousSequence = sequence;
+            sequences.insert(sequence);
             if (object.value(QStringLiteral("category")).toString() ==
                 QStringLiteral("concurrent.publish") &&
                 object.value(QStringLiteral("message")).toString() !=
@@ -446,10 +668,10 @@ int main(int argc, char **argv)
                 shutdownDirectory.path());
             service->installQtMessageHandler();
 
-            std::atomic_bool start{false};
-            std::atomic_bool stop{false};
-            std::atomic_int ready{0};
-            std::atomic_int published{0};
+            std::atomic_bool start = false;
+            std::atomic_bool stop = false;
+            std::atomic_int ready = 0;
+            std::atomic_int published = 0;
             std::vector<std::thread> workers;
             for (int index = 0; index < 4; ++index)
             {
@@ -487,6 +709,73 @@ int main(int argc, char **argv)
             }
         }
         qInstallMessageHandler(originalHandler);
+    }
+
+    // directPublishDuringShutdownIsSafe / newAccessIsRejectedAfterShutdownBegins /
+    // activeAccessCompletesBeforeDestruction
+    {
+        QTemporaryDir shutdownDirectory;
+        require(shutdownDirectory.isValid(), "direct publish shutdown temporary directory");
+        auto service = std::make_unique<VaporView::LogService>(
+            QStringLiteral("VaporViewDirectShutdownTest"),
+            nullptr,
+            shutdownDirectory.path());
+        require(waitForText(service->logFilePath(),
+                            QByteArrayLiteral("Application logging initialized.")),
+                "direct shutdown lifecycle record is flushed");
+
+        QSemaphore accessEntered;
+        QSemaphore allowPublish;
+        std::atomic_bool activePublishCompleted = false;
+        std::atomic_bool workerAccessed = false;
+        std::atomic_bool workerReleased = false;
+        std::atomic_bool shutdownGateObserved = false;
+        std::atomic_bool newAccessRejected = false;
+
+        std::thread activeWorker([&]() {
+            const bool accessed = VaporView::LogService::withCurrentInstance(
+                [&](VaporView::LogService& activeService) {
+                    accessEntered.release();
+                    const bool released = allowPublish.tryAcquire(1, 3000);
+                    workerReleased.store(released, std::memory_order_release);
+                    if (released)
+                    {
+                        activeService.publish(VaporView::LogLevel::Info,
+                                              QStringLiteral("ShutdownTest"),
+                                              QStringLiteral("lifecycle.direct"),
+                                              QStringLiteral("direct-publish-during-shutdown"));
+                        activePublishCompleted.store(true, std::memory_order_release);
+                    }
+                });
+            workerAccessed.store(accessed, std::memory_order_release);
+        });
+        require(accessEntered.tryAcquire(1, 3000),
+                "worker enters lifecycle-protected direct access");
+
+        std::thread shutdownCoordinator([&]() {
+            shutdownGateObserved.store(
+                VaporView::LogService::waitUntilGlobalAccessRejectedForTest(
+                    std::chrono::seconds(3)),
+                std::memory_order_release);
+            newAccessRejected.store(
+                !VaporView::LogService::withCurrentInstance([](VaporView::LogService&) {}),
+                std::memory_order_release);
+            allowPublish.release();
+        });
+
+        service.reset();
+        activeWorker.join();
+        shutdownCoordinator.join();
+        require(shutdownGateObserved.load(std::memory_order_acquire),
+                "destructor closes the global access gate before waiting");
+        require(workerAccessed.load(std::memory_order_acquire),
+                "worker obtains the active service before shutdown");
+        require(workerReleased.load(std::memory_order_acquire),
+                "active access is released before its timeout");
+        require(newAccessRejected.load(std::memory_order_acquire),
+                "new safe access is rejected after shutdown begins");
+        require(activePublishCompleted.load(std::memory_order_acquire),
+                "already-active direct publish completes before destruction");
     }
 
     // dropNoticeIsPersistedOnShutdown
@@ -547,9 +836,10 @@ int main(int argc, char **argv)
                 QStringLiteral("VaporViewRetentionTest-2026-06-%1.jsonl")
                     .arg(index + 1, 2, 10, QLatin1Char('0')));
             QFile file(path);
-            require(file.open(QIODevice::WriteOnly | QIODevice::Truncate),
-                    "create pre-existing retention log");
-            file.write("{\"old\":true}\n");
+            const bool opened = file.open(QIODevice::WriteOnly | QIODevice::Truncate);
+            require(opened, "create pre-existing retention log");
+            require(file.write("{\"old\":true}\n") > 0,
+                    "write pre-existing retention log");
             require(file.setFileTime(baseTime.addSecs(index), QFileDevice::FileModificationTime),
                     "set deterministic retention modification time");
             file.close();
@@ -601,7 +891,8 @@ int main(int argc, char **argv)
                             QStringLiteral("rotation"),
                             largeMessage);
         }
-        require(waitForFile(service.logFilePath() + QStringLiteral(".1"), 15000),
+        require(waitForFile(service.logFilePath() + QStringLiteral(".1"),
+                            std::chrono::seconds(15)),
                 "JSONL rotates before exceeding 10 MiB");
     }
 

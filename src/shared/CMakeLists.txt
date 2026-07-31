@@ -16,6 +16,10 @@ target_link_libraries(vaporview_logging PUBLIC
     Qt6::Core
 )
 
+if(BUILD_TESTING)
+    target_compile_definitions(vaporview_logging PUBLIC VAPORVIEW_LOGGING_TEST_HOOKS)
+endif()
+
 set(PROTOCOL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/shared/telemetry/TelemetryCodec.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/telemetry/TelemetryLink.cpp

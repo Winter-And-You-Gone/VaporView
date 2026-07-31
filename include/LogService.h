@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <atomic>
+#include <chrono>
 #include <functional>
 
 class QProcess;
@@ -25,14 +26,16 @@ class LogService final : public QObject
 public:
     explicit LogService(const QString& applicationName,
                         QObject *parent = nullptr,
-                        const QString& logDirectoryOverride = {});
+                        const QString& logDirectoryOverride = {},
+                        const QString& fallbackDirectoryOverride = {});
     ~LogService() override;
 
     LogService(const LogService&) = delete;
     LogService& operator=(const LogService&) = delete;
 
-    // Legacy raw access; callers must independently prove the service lifetime.
-    // Internal asynchronous callbacks should use withCurrentInstance().
+    // Legacy raw access only. The returned pointer is not protected across
+    // statements and must never be retained. New code uses withCurrentInstance().
+    [[deprecated("Use LogService::withCurrentInstance() to avoid lifetime races")]]
     static LogService *instance();
     // Safe access for callbacks that may race with application shutdown.
     static bool withCurrentInstance(const std::function<void(LogService&)>& callback);
@@ -51,6 +54,15 @@ public:
     QString logDirectory() const;
     quint64 nextSequence();
 
+#ifdef VAPORVIEW_LOGGING_TEST_HOOKS
+    void setWriterBlockedForTest(bool blocked);
+    bool waitForWriterBlockedForTest(std::chrono::milliseconds timeout);
+    bool setMaxPendingCriticalForTest(qsizetype limit);
+    QVariantMap writerStateForTest() const;
+    QString emergencyLogFilePathForTest() const;
+    static bool waitUntilGlobalAccessRejectedForTest(std::chrono::milliseconds timeout);
+#endif
+
 signals:
     void recordPublished(const VaporView::LogRecord& record);
     void diagnosticFailure(const QString& message);
@@ -63,6 +75,7 @@ private:
     static quint64 currentThreadId();
     static quint64 currentTimestampUs();
     static QString chooseLogDirectory(const QString& applicationName);
+    LogRecord submit(LogRecord record);
 
     QString application_name_;
     QString log_directory_;
