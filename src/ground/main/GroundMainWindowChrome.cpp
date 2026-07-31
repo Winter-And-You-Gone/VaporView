@@ -37,7 +37,7 @@ QString vaporViewUpdateRepositoryUrl()
 QString vaporViewApplicationVersion()
 {
     const QString applicationVersion = QCoreApplication::applicationVersion().trimmed();
-    return applicationVersion.isEmpty() ? QStringLiteral("1.0.14") : applicationVersion;
+    return applicationVersion.isEmpty() ? QStringLiteral("1.0.15") : applicationVersion;
 }
 
 QString vaporViewUpdateRepositoryDisplayName(const QString& repositoryUrl, bool english)

@@ -95,8 +95,9 @@ BOOL CALLBACK closeProcessWindow(HWND window, LPARAM parameter)
 
 void requestMaintenanceToolExit(const std::wstring& maintenanceToolPath)
 {
-    // Let IFW finish writing its maintenance data before the first close request.
-    Sleep(2000);
+    // Give the IFW restart handler a brief chance to finish dispatching the click,
+    // then close it before its wizard can visibly return to the welcome page.
+    Sleep(100);
     for (int attempt = 0; attempt < 120; ++attempt)
     {
         const std::vector<DWORD> processes = matchingProcesses(maintenanceToolPath);
