@@ -3,3 +3,17 @@ QWizard QListWidget {
     min-width: 160px;
     max-width: 160px;
 }
+
+/* Give the license and Start Menu pages a wider work area inside the wizard. */
+QWizardPage#LicenseAgreementPage,
+QWizardPage#StartMenuDirectoryPage {
+    min-width: 400px;
+}
+
+QWizardPage#LicenseAgreementPage QSplitter,
+QWizardPage#LicenseAgreementPage QListWidget#LicenseListWidget,
+QWizardPage#LicenseAgreementPage QTextBrowser#LicenseTextBrowser,
+QWizardPage#StartMenuDirectoryPage QLineEdit#StartMenuPathLineEdit,
+QWizardPage#StartMenuDirectoryPage QListWidget {
+    min-width: 400px;
+}
