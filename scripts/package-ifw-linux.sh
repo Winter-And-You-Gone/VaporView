@@ -100,6 +100,7 @@ fi
 sed -e "s/@VAPORVIEW_VERSION@/$version/g" -e "s#@VAPORVIEW_TARGET_DIR@#/opt/VaporView#g" -e "s#@VAPORVIEW_REMOTE_REPOSITORIES@#$remote_repositories#g" \
     "$repo_root/packaging/ifw/config.xml.in" > "$work_dir/config.xml"
 cp "$repo_root/packaging/ifw/control.qs" "$work_dir/"
+cp "$repo_root/packaging/ifw/installer.qss" "$work_dir/"
 
 installer_path="$output_dir/VaporView-$version-linux-x64-setup.run"
 rm -f "$installer_path"
