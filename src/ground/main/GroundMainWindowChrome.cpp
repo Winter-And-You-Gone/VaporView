@@ -10,6 +10,7 @@
 #include <QNetworkRequest>
 #include <QPlainTextEdit>
 #include <QProcess>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QTimer>
 #include <QUrl>
@@ -19,6 +20,39 @@
 
 namespace
 {
+
+class UpdateCheckDialog final : public QDialog
+{
+public:
+    using QDialog::QDialog;
+
+    void setMaintenanceUpdateInProgress(bool inProgress)
+    {
+        maintenance_update_in_progress_ = inProgress;
+    }
+
+    void reject() override
+    {
+        if (!maintenance_update_in_progress_)
+        {
+            QDialog::reject();
+        }
+    }
+
+protected:
+    void closeEvent(QCloseEvent *event) override
+    {
+        if (maintenance_update_in_progress_)
+        {
+            event->ignore();
+            return;
+        }
+        QDialog::closeEvent(event);
+    }
+
+private:
+    bool maintenance_update_in_progress_ = false;
+};
 
 QString vaporViewUpdateRepositoryUrl()
 {
@@ -79,6 +113,17 @@ QStringList vaporViewStartUpdaterArguments(const QString& repositoryUrl)
     return QStringList{QStringLiteral("--set-temp-repository"),
                        repositoryUrl,
                        QStringLiteral("--start-updater")};
+}
+
+QStringList vaporViewPrepareMaintenanceToolArguments(const QString& repositoryUrl)
+{
+    return QStringList{QStringLiteral("--set-temp-repository"),
+                       repositoryUrl,
+                       QStringLiteral("--accept-licenses"),
+                       QStringLiteral("--accept-messages"),
+                       QStringLiteral("--confirm-command"),
+                       QStringLiteral("update"),
+                       QStringLiteral("com.vaporview.maintenancetool")};
 }
 
 enum class VaporViewUpdateCheckStatus
@@ -753,7 +798,7 @@ void MainWindow::onCheckUpdatesClicked()
         return true;
     };
 
-    QDialog dialog(this);
+    UpdateCheckDialog dialog(this);
     dialog.setObjectName(QStringLiteral("updateCheckDialog"));
     dialog.setWindowTitle(english ? QStringLiteral("Updates") : QStringLiteral("软件更新"));
     dialog.setWindowModality(Qt::WindowModal);
@@ -844,6 +889,14 @@ void MainWindow::onCheckUpdatesClicked()
     sourceLayout->setColumnStretch(1, 1);
     bodyLayout->addWidget(sourcePanel);
 
+    auto *maintenanceUpdateProgress = new QProgressBar(body);
+    maintenanceUpdateProgress->setObjectName(QStringLiteral("updateCheckMaintenanceProgress"));
+    maintenanceUpdateProgress->setRange(0, 0);
+    maintenanceUpdateProgress->setTextVisible(false);
+    maintenanceUpdateProgress->setFixedHeight(8);
+    maintenanceUpdateProgress->setVisible(false);
+    bodyLayout->addWidget(maintenanceUpdateProgress);
+
     auto *outputTitleLabel = new QLabel(english ? QStringLiteral("Diagnostic output")
                                                 : QStringLiteral("诊断输出"),
                                         body);
@@ -891,6 +944,7 @@ void MainWindow::onCheckUpdatesClicked()
         titleLogo->setFixedSize(34, 34);
         titleLogo->setPixmap(renderVaporViewLogo(dark, 28, titleLogo->devicePixelRatioF()));
     }
+    QToolButton *windowCloseButton = nullptr;
     for (QToolButton *button : dialog.findChildren<QToolButton *>())
     {
         if (button->accessibleName() == QStringLiteral("titleLanguageButton") ||
@@ -900,6 +954,7 @@ void MainWindow::onCheckUpdatesClicked()
         }
         else if (button->objectName() == QStringLiteral("windowCloseButton"))
         {
+            windowCloseButton = button;
             button->setAccessibleName(english ? QStringLiteral("Close") : QStringLiteral("关闭"));
             button->setFocusPolicy(Qt::TabFocus);
         }
@@ -944,6 +999,15 @@ QLabel#updateCheckSourceKeyLabel {
 QLabel#updateCheckSourceValueLabel {
     color: @vv-text-secondary;
     font-size: 12px;
+}
+QProgressBar#updateCheckMaintenanceProgress {
+    background-color: @vv-surface-sunken;
+    border: 1px solid @vv-border;
+    border-radius: 4px;
+}
+QProgressBar#updateCheckMaintenanceProgress::chunk {
+    background-color: @vv-primary;
+    border-radius: 3px;
 }
 QLabel#updateCheckOutputTitleLabel {
     color: @vv-text-muted;
@@ -1003,6 +1067,7 @@ QPushButton#updateCheckUpdateButton:focus {
 )"), dark));
 
     QProcess *checkProcess = nullptr;
+    QProcess *maintenanceUpdateProcess = nullptr;
     QNetworkAccessManager *manifestNetwork = nullptr;
     QNetworkReply *manifestReply = nullptr;
     if (maintenanceToolAvailable)
@@ -1020,6 +1085,17 @@ QPushButton#updateCheckUpdateButton:focus {
 
     bool checkCompleted = false;
     bool manifestFallbackPending = false;
+    const auto showDiagnosticOutput = [&](const QString& output, bool visible) {
+        const QString outputSummary = vaporViewTrimmedUpdateOutput(output);
+        const bool show = visible && !outputSummary.isEmpty();
+        outputTitleLabel->setVisible(show);
+        outputEdit->setVisible(show);
+        if (show)
+        {
+            outputEdit->setPlainText(outputSummary);
+            dialog.resize(dialog.sizeHint().expandedTo(QSize(520, 420)));
+        }
+    };
     auto finishCheck = [&](const VaporViewUpdateCheckResult& result) {
         if (checkCompleted)
         {
@@ -1027,18 +1103,6 @@ QPushButton#updateCheckUpdateButton:focus {
         }
         checkCompleted = true;
         closeButton->setText(english ? QStringLiteral("Close") : QStringLiteral("关闭"));
-
-        const QString outputSummary = vaporViewTrimmedUpdateOutput(result.output);
-        const auto showDiagnosticOutput = [&, outputTitleLabel, outputEdit, outputSummary](bool visible) {
-            const bool show = visible && !outputSummary.isEmpty();
-            outputTitleLabel->setVisible(show);
-            outputEdit->setVisible(show);
-            if (show)
-            {
-                outputEdit->setPlainText(outputSummary);
-                dialog.resize(dialog.sizeHint().expandedTo(QSize(520, 420)));
-            }
-        };
 
         switch (result.status)
         {
@@ -1049,11 +1113,11 @@ QPushButton#updateCheckUpdateButton:focus {
             {
                 detailLabel->setText(english
                                          ? (result.latestVersion.isEmpty()
-                                                ? QStringLiteral("Click Update Now to open the maintenance wizard and apply the update from the source below.")
-                                                : QStringLiteral("Version %1 is available. Click Update Now to open the maintenance wizard and apply the update from the source below.").arg(result.latestVersion))
+                                                ? QStringLiteral("Click Update Now to prepare the maintenance tool, then open the maintenance wizard automatically.")
+                                                : QStringLiteral("Version %1 is available. Click Update Now to prepare the maintenance tool, then open the maintenance wizard automatically.").arg(result.latestVersion))
                                          : (result.latestVersion.isEmpty()
-                                                ? QStringLiteral("点击“立即更新”会打开维护向导，并从下方更新源执行更新。")
-                                                : QStringLiteral("发现版本 %1。点击“立即更新”会打开维护向导，并从下方更新源执行更新。").arg(result.latestVersion)));
+                                                ? QStringLiteral("点击“立即更新”会先准备维护工具，完成后自动打开维护向导。")
+                                                : QStringLiteral("发现版本 %1。点击“立即更新”会先准备维护工具，完成后自动打开维护向导。").arg(result.latestVersion)));
             }
             else
             {
@@ -1065,7 +1129,7 @@ QPushButton#updateCheckUpdateButton:focus {
                                                 ? QStringLiteral("当前开发构建可以检查更新，但缺少 VaporViewMaintenanceTool，无法直接应用更新。请使用安装包安装 VaporView 后再更新。")
                                                 : QStringLiteral("发现版本 %1。当前开发构建可以检查更新，但缺少 VaporViewMaintenanceTool，无法直接应用更新。请使用安装包安装 VaporView 后再更新。").arg(result.latestVersion)));
             }
-            showDiagnosticOutput(false);
+            showDiagnosticOutput(QString(), false);
             updateButton->setVisible(maintenanceToolAvailable);
             updateButton->setEnabled(maintenanceToolAvailable);
             updateButton->setDefault(maintenanceToolAvailable);
@@ -1081,7 +1145,7 @@ QPushButton#updateCheckUpdateButton:focus {
                                      : (result.latestVersion.isEmpty()
                                             ? QStringLiteral("配置的更新源未报告比当前版本更新的程序。")
                                             : QStringLiteral("更新源最新版本为 %1，未报告比当前版本更新的程序。").arg(result.latestVersion)));
-            showDiagnosticOutput(false);
+            showDiagnosticOutput(QString(), false);
             break;
         case VaporViewUpdateCheckStatus::Failed:
         {
@@ -1094,7 +1158,7 @@ QPushButton#updateCheckUpdateButton:focus {
             detailLabel->setText(english
                                      ? QStringLiteral("%1\nPlease check the network connection and try again.").arg(errorText)
                                      : QStringLiteral("%1\n请检查网络连接后重试。").arg(errorText));
-            showDiagnosticOutput(true);
+            showDiagnosticOutput(result.output, true);
             break;
         }
         case VaporViewUpdateCheckStatus::Unknown:
@@ -1103,7 +1167,7 @@ QPushButton#updateCheckUpdateButton:focus {
             detailLabel->setText(english
                                      ? QStringLiteral("The maintenance tool did not report a clear update state. Please try again later or run the maintenance tool from the installation folder if needed.")
                                      : QStringLiteral("维护工具没有返回明确的更新状态。可稍后重试，必要时从安装目录手动运行维护工具。"));
-            showDiagnosticOutput(true);
+            showDiagnosticOutput(result.output, true);
             break;
         }
     };
@@ -1244,13 +1308,115 @@ QPushButton#updateCheckUpdateButton:focus {
         });
     }
     QObject::connect(updateButton, &QPushButton::clicked, &dialog, [&]() {
-        if (startUpdater())
+        if (maintenanceUpdateProcess)
         {
-            dialog.accept();
-            QTimer::singleShot(0, []() {
-                QCoreApplication::quit();
-            });
+            return;
         }
+
+        updateButton->setEnabled(false);
+        closeButton->setEnabled(false);
+        dialog.setMaintenanceUpdateInProgress(true);
+        if (windowCloseButton)
+        {
+            windowCloseButton->setEnabled(false);
+        }
+        maintenanceUpdateProgress->setVisible(true);
+        statusLabel->setText(english ? QStringLiteral("Preparing the maintenance tool...")
+                                     : QStringLiteral("正在准备维护工具..."));
+        detailLabel->setText(english
+                                 ? QStringLiteral("VaporView will open the updated maintenance wizard automatically when this step finishes.")
+                                 : QStringLiteral("此步骤完成后，VaporView 会自动打开新版维护向导。"));
+        showDiagnosticOutput(QString(), false);
+
+        maintenanceUpdateProcess = new QProcess(&dialog);
+        maintenanceUpdateProcess->setProgram(maintenanceToolPath);
+        maintenanceUpdateProcess->setArguments(
+            vaporViewPrepareMaintenanceToolArguments(repositoryUrl));
+        maintenanceUpdateProcess->setWorkingDirectory(applicationDir);
+        maintenanceUpdateProcess->setProcessChannelMode(QProcess::SeparateChannels);
+        VaporView::attachProcessLogging(maintenanceUpdateProcess,
+                                        QStringLiteral("UpdateCheck"),
+                                        QStringLiteral("maintenance_tool_update"));
+
+        const auto resetMaintenanceUpdateUi = [&]() {
+            maintenanceUpdateProgress->setVisible(false);
+            updateButton->setEnabled(true);
+            closeButton->setEnabled(true);
+            dialog.setMaintenanceUpdateInProgress(false);
+            if (windowCloseButton)
+            {
+                windowCloseButton->setEnabled(true);
+            }
+        };
+        QObject::connect(maintenanceUpdateProcess,
+                         &QProcess::errorOccurred,
+                         &dialog,
+                         [&, resetMaintenanceUpdateUi](QProcess::ProcessError error) {
+            if (error != QProcess::FailedToStart || !maintenanceUpdateProcess)
+            {
+                return;
+            }
+            const QString errorText = maintenanceUpdateProcess->errorString();
+            resetMaintenanceUpdateUi();
+            statusLabel->setText(english ? QStringLiteral("Could not prepare the maintenance tool.")
+                                         : QStringLiteral("无法准备维护工具。"));
+            detailLabel->setText(errorText);
+            showDiagnosticOutput(errorText, true);
+            maintenanceUpdateProcess->deleteLater();
+            maintenanceUpdateProcess = nullptr;
+        });
+        QObject::connect(maintenanceUpdateProcess,
+                         qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+                         &dialog,
+                         [&, resetMaintenanceUpdateUi](int exitCode, QProcess::ExitStatus exitStatus) {
+            if (!maintenanceUpdateProcess)
+            {
+                return;
+            }
+            const QString output =
+                QString::fromLocal8Bit(
+                    VaporView::processLoggedStandardOutput(maintenanceUpdateProcess) +
+                    maintenanceUpdateProcess->readAllStandardOutput()) +
+                QString::fromLocal8Bit(
+                    VaporView::processLoggedStandardError(maintenanceUpdateProcess) +
+                    maintenanceUpdateProcess->readAllStandardError());
+            const VaporViewUpdateCheckResult maintenanceResult =
+                vaporViewClassifyUpdateCheckResult(output, exitCode, exitStatus);
+            const bool succeeded = exitStatus == QProcess::NormalExit &&
+                (exitCode == 0 ||
+                 maintenanceResult.status == VaporViewUpdateCheckStatus::UpToDate);
+            maintenanceUpdateProcess->deleteLater();
+            maintenanceUpdateProcess = nullptr;
+
+            if (!succeeded)
+            {
+                resetMaintenanceUpdateUi();
+                statusLabel->setText(english ? QStringLiteral("Could not prepare the maintenance tool.")
+                                             : QStringLiteral("无法准备维护工具。"));
+                detailLabel->setText(english
+                                         ? QStringLiteral("The maintenance tool returned exit code %1. Check the network connection and try again.").arg(exitCode)
+                                         : QStringLiteral("维护工具返回退出码 %1。请检查网络连接后重试。").arg(exitCode));
+                showDiagnosticOutput(output, true);
+                return;
+            }
+
+            statusLabel->setText(english ? QStringLiteral("Opening the maintenance wizard...")
+                                         : QStringLiteral("正在打开维护向导..."));
+            detailLabel->setText(english
+                                     ? QStringLiteral("The maintenance tool is ready. VaporView will close before the program update starts.")
+                                     : QStringLiteral("维护工具已准备完成。程序更新开始前，VaporView 将自动关闭。"));
+            if (startUpdater())
+            {
+                dialog.setMaintenanceUpdateInProgress(false);
+                dialog.accept();
+                QTimer::singleShot(0, []() {
+                    QCoreApplication::quit();
+                });
+                return;
+            }
+            resetMaintenanceUpdateUi();
+        });
+        maintenanceUpdateProcess->start();
     });
     QObject::connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::reject);
     QObject::connect(&dialog, &QDialog::rejected, &dialog, [&]() {

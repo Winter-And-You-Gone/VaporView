@@ -10,18 +10,23 @@ Component.prototype.onInstallationStarted = function() {
         return;
     }
 
+    var targetDirectory = installer.value("TargetDir");
+    var maintenanceToolDirectory = targetDirectory;
+    if (!installer.versionMatches(vaporViewMaintenanceToolIfwVersion, "<4.8.0")) {
+        maintenanceToolDirectory += "/tmpMaintenanceToolApp";
+    }
+
     if (installer.value("os") === "win") {
-        component.installerbaseBinaryPath = "@TargetDir@/VaporViewMaintenanceTool.exe";
+        component.installerbaseBinaryPath = maintenanceToolDirectory + "/installerbase.exe";
     } else if (installer.value("os") === "x11") {
-        component.installerbaseBinaryPath = "@TargetDir@/VaporViewMaintenanceTool";
+        component.installerbaseBinaryPath = maintenanceToolDirectory + "/installerbase";
     }
 
     if (component.installerbaseBinaryPath) {
         installer.setInstallerBaseBinary(component.installerbaseBinaryPath);
     }
 
-    installer.setValue("DefaultResourceReplacement",
-                      installer.value("TargetDir") + "/update.rcc");
+    installer.setValue("DefaultResourceReplacement", maintenanceToolDirectory + "/update.rcc");
 };
 
 Component.prototype.createOperationsForArchive = function(archive) {

@@ -1,6 +1,7 @@
 var vaporViewUpdateCompleted = false;
 var vaporViewTargetDirectory = "";
 var vaporViewRelaunchScheduled = false;
+var vaporViewCoreUpdateRequested = false;
 
 function Component() {
     if (vaporViewTargetDirectory.length === 0) {
@@ -12,6 +13,7 @@ function Component() {
     }
 
     if (installer.isUpdater()) {
+        installer.installationStarted.connect(this, Component.prototype.rememberCoreUpdateRequest);
         installer.installationFinished.connect(this, Component.prototype.rememberSuccessfulUpdate);
         installer.finishButtonClicked.connect(this, Component.prototype.launchVaporViewAfterUpdate);
         var finishedPage = gui.pageById(QInstaller.InstallationFinished);
@@ -25,8 +27,13 @@ function Component() {
     }
 }
 
+Component.prototype.rememberCoreUpdateRequest = function() {
+    vaporViewCoreUpdateRequested = component.updateRequested();
+};
+
 Component.prototype.rememberSuccessfulUpdate = function() {
-    vaporViewUpdateCompleted = installer.status == QInstaller.Success;
+    vaporViewUpdateCompleted = vaporViewCoreUpdateRequested &&
+                               installer.status == QInstaller.Success;
     var targetDirectory = installer.value("TargetDir");
     if (targetDirectory.length > 0) {
         vaporViewTargetDirectory = targetDirectory;
@@ -37,7 +44,7 @@ Component.prototype.launchVaporViewAfterUpdate = function() {
     if (vaporViewRelaunchScheduled) {
         return true;
     }
-    if (!vaporViewUpdateCompleted && installer.status != QInstaller.Success) {
+    if (!vaporViewUpdateCompleted) {
         return false;
     }
 

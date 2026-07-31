@@ -8,6 +8,7 @@
 #include <QLabel>
 #include <QElapsedTimer>
 #include <QNetworkProxy>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -104,6 +105,7 @@ int main(int argc, char **argv)
     bool sawAvailable = false;
     bool sawDevelopmentBuildDetail = false;
     bool updateButtonHidden = false;
+    bool maintenanceProgressHidden = false;
     QString lastStatusText;
     QString lastDetailText;
     bool lastUpdateButtonVisible = false;
@@ -122,6 +124,8 @@ int main(int argc, char **argv)
         auto *statusLabel = dialog->findChild<QLabel *>(QStringLiteral("updateCheckStatusLabel"));
         auto *detailLabel = dialog->findChild<QLabel *>(QStringLiteral("updateCheckDetailLabel"));
         auto *updateButton = dialog->findChild<QPushButton *>(QStringLiteral("updateCheckUpdateButton"));
+        auto *maintenanceProgress =
+            dialog->findChild<QProgressBar *>(QStringLiteral("updateCheckMaintenanceProgress"));
         lastStatusText = statusLabel ? statusLabel->text() : QStringLiteral("<missing status>");
         lastDetailText = detailLabel ? detailLabel->text() : QStringLiteral("<missing detail>");
         lastUpdateButtonVisible = updateButton && updateButton->isVisible();
@@ -134,8 +138,10 @@ int main(int argc, char **argv)
             (detailLabel->text().contains(QStringLiteral("开发构建")) ||
              detailLabel->text().contains(QStringLiteral("development build"), Qt::CaseInsensitive));
         updateButtonHidden = updateButton && !updateButton->isVisible();
+        maintenanceProgressHidden = maintenanceProgress && !maintenanceProgress->isVisible();
 
-        if (sawAvailable && sawDevelopmentBuildDetail && updateButtonHidden)
+        if (sawAvailable && sawDevelopmentBuildDetail && updateButtonHidden &&
+            maintenanceProgressHidden)
         {
             dialog->accept();
         }
@@ -148,7 +154,8 @@ int main(int argc, char **argv)
 
     QTimer::singleShot(0, checkUpdatesAction, &QAction::trigger);
     const bool matchedExpectedState = VaporViewTest::processEventsUntil(5000, [&]() {
-        return sawAvailable && sawDevelopmentBuildDetail && updateButtonHidden;
+        return sawAvailable && sawDevelopmentBuildDetail && updateButtonHidden &&
+               maintenanceProgressHidden;
     });
     if (!matchedExpectedState)
     {
@@ -157,6 +164,7 @@ int main(int argc, char **argv)
                   << " sawAvailable=" << sawAvailable
                   << " sawDevelopmentBuildDetail=" << sawDevelopmentBuildDetail
                   << " updateButtonHidden=" << updateButtonHidden
+                  << " maintenanceProgressHidden=" << maintenanceProgressHidden
                   << " requestServed=" << requestServed
                   << " lastUpdateButtonVisible=" << lastUpdateButtonVisible
                   << "\nstatus=" << lastStatusText.toLocal8Bit().constData()
