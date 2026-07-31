@@ -1,6 +1,21 @@
+var vaporViewUpdateCompleted = false;
+var vaporViewTargetDirectory = "";
+var vaporViewRelaunchScheduled = false;
+
 function Component() {
+    if (vaporViewTargetDirectory.length === 0) {
+        vaporViewTargetDirectory = installer.value("TargetDir");
+    }
+
+    if (systemInfo.productType === "windows") {
+        component.addStopProcessForUpdateRequest("VaporView.exe");
+    }
+
     if (installer.isUpdater()) {
+        installer.installationFinished.connect(this, Component.prototype.rememberSuccessfulUpdate);
         installer.finishButtonClicked.connect(this, Component.prototype.launchVaporViewAfterUpdate);
+        var finishedPage = gui.pageById(QInstaller.InstallationFinished);
+        finishedPage.left.connect(this, Component.prototype.restartVaporViewAfterUpdate);
     }
 
     if (installer.isInstaller() && !installer.isCommandLineInstance()) {
@@ -8,16 +23,48 @@ function Component() {
     }
 }
 
+Component.prototype.rememberSuccessfulUpdate = function() {
+    vaporViewUpdateCompleted = installer.status == QInstaller.Success;
+    var targetDirectory = installer.value("TargetDir");
+    if (targetDirectory.length > 0) {
+        vaporViewTargetDirectory = targetDirectory;
+    }
+};
+
 Component.prototype.launchVaporViewAfterUpdate = function() {
-    if (installer.status !== QInstaller.Success) {
-        return;
+    if (vaporViewRelaunchScheduled) {
+        return true;
+    }
+    if (!vaporViewUpdateCompleted && installer.status != QInstaller.Success) {
+        return false;
     }
 
-    var targetDirectory = installer.value("TargetDir");
-    var applicationPath = targetDirectory + "/VaporView.exe";
-    if (installer.fileExists(applicationPath)) {
-        installer.executeDetached(applicationPath, [], targetDirectory);
+    var targetDirectory = vaporViewTargetDirectory;
+    if (targetDirectory.length === 0) {
+        targetDirectory = installer.value("TargetDir");
     }
+    var maintenanceToolPath = targetDirectory + "/VaporViewMaintenanceTool.exe";
+    var applicationPath = targetDirectory + "/VaporView.exe";
+    var relauncherPath = targetDirectory + "/VaporViewUpdateRelauncher.exe";
+    if (installer.fileExists(relauncherPath) && installer.fileExists(applicationPath)) {
+        vaporViewRelaunchScheduled = installer.executeDetached(
+            relauncherPath,
+            [maintenanceToolPath, applicationPath],
+            targetDirectory);
+        return vaporViewRelaunchScheduled;
+    }
+    if (installer.fileExists(applicationPath)) {
+        vaporViewRelaunchScheduled = installer.executeDetached(applicationPath, [], targetDirectory);
+        return vaporViewRelaunchScheduled;
+    }
+    return false;
+};
+
+Component.prototype.restartVaporViewAfterUpdate = function() {
+    if (!vaporViewUpdateCompleted) {
+        return;
+    }
+    Component.prototype.launchVaporViewAfterUpdate();
 };
 
 Component.prototype.createOperations = function() {

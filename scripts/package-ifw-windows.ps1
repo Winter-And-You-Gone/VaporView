@@ -149,7 +149,7 @@ if ($cmakeText -notmatch 'project\(VaporView VERSION ([0-9]+\.[0-9]+\.[0-9]+)') 
 $version = $Matches[1]
 $releaseDate = (Get-Date).ToString("yyyy-MM-dd")
 
-$executableNames = @("VaporView.exe", "VaporViewSky.exe", "VaporViewSkyCore.exe", "VaporViewSkyTui.exe")
+$executableNames = @("VaporView.exe", "VaporViewSky.exe", "VaporViewSkyCore.exe", "VaporViewSkyTui.exe", "VaporViewUpdateRelauncher.exe")
 $executableSources = @{}
 foreach ($name in $executableNames) {
     $matches = Get-ChildItem -LiteralPath $buildDir -Recurse -Filter $name -File |
