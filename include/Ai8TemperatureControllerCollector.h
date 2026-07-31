@@ -1,0 +1,62 @@
+#pragma once
+
+#include "Ai8TemperatureControllerProtocol.h"
+#include "data_collector.h"
+
+#include <mutex>
+#include <vector>
+
+namespace VaporView
+{
+
+class Ai8TemperatureControllerCollector final : public DataCollector
+{
+public:
+    Ai8TemperatureControllerProtocol::LiveData getLatestData();
+    bool checkDeviceResponse() override;
+    void setSlaveAddress(quint8 slaveAddress);
+    quint8 slaveAddress() const;
+
+    bool readPage(Ai8TemperatureControllerProtocol::Page page,
+                  const Ai8TemperatureControllerProtocol::Selection& selection,
+                  Ai8TemperatureControllerProtocol::PageData& data,
+                  QString *errorMessage = nullptr);
+    bool writePage(const Ai8TemperatureControllerProtocol::PageData& data,
+                   QString *resultMessage = nullptr);
+
+protected:
+    bool initialize() override;
+    void run() override;
+
+private:
+    bool readRegisters(quint16 address, quint16 count, std::vector<quint16>& values, int waitMs = 250);
+    bool readRegistersUnlocked(quint16 address, quint16 count, std::vector<quint16>& values, int waitMs);
+    bool writeAndConfirm(quint16 address, quint16 value, QString *errorMessage);
+    bool writeAndConfirmUnlocked(quint16 address, quint16 value, QString *errorMessage);
+    bool readResponseFrame(quint8 functionCode, std::vector<quint8>& frame, int waitMs);
+    bool readRegisterValue(quint16 address, quint16& value, QString *errorMessage = nullptr);
+    bool readRegisterValueUnlocked(quint16 address, quint16& value, QString *errorMessage = nullptr);
+    bool readChannelPage(const Ai8TemperatureControllerProtocol::Selection& selection,
+                         Ai8TemperatureControllerProtocol::PageData& data,
+                         QString *errorMessage);
+    bool readInputPage(const Ai8TemperatureControllerProtocol::Selection& selection,
+                       Ai8TemperatureControllerProtocol::PageData& data,
+                       QString *errorMessage);
+    bool readOutputPage(const Ai8TemperatureControllerProtocol::Selection& selection,
+                        Ai8TemperatureControllerProtocol::PageData& data,
+                        QString *errorMessage);
+    bool readGlobalPage(const Ai8TemperatureControllerProtocol::Selection& selection,
+                        Ai8TemperatureControllerProtocol::PageData& data,
+                        QString *errorMessage);
+    bool writeChannelPage(const Ai8TemperatureControllerProtocol::PageData& data, QString *errorMessage);
+    bool writeInputPage(const Ai8TemperatureControllerProtocol::PageData& data, QString *errorMessage);
+    bool writeOutputPage(const Ai8TemperatureControllerProtocol::PageData& data, QString *errorMessage);
+    bool writeGlobalPage(const Ai8TemperatureControllerProtocol::PageData& data, QString *resultMessage);
+    bool readLiveData(Ai8TemperatureControllerProtocol::LiveData& data);
+
+    Ai8TemperatureControllerProtocol::LiveData latestData_;
+    std::atomic<quint8> slaveAddress_{1};
+    std::mutex modbusMutex_;
+};
+
+} // namespace VaporView

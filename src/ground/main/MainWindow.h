@@ -127,6 +127,9 @@ private slots:
     void onHmpDataReady();
     void onLidarDataReady();
     void onTemperatureControllerDataReady();
+    void onAi8TemperatureControllerDataReady();
+    void onAi8ReadPageRequested();
+    void onAi8WritePageRequested();
     void onRefreshTimer();
     void onClearLogClicked();
     void onRefreshPortsClicked();

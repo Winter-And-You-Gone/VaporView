@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Ai8TemperatureControllerProtocol.h"
+
 #include <QString>
 #include <QVariant>
 #include <QVector>
@@ -22,6 +24,15 @@ public:
     explicit Ai8TemperatureControllerPanel(QWidget *parent = nullptr);
 
     void setEnglish(bool english);
+    void setBackendConnected(bool connected, const QString& detail = QString());
+    void setOperationStatus(const QString& text, bool success);
+    Ai8TemperatureControllerProtocol::PageData currentPageData() const;
+    void applyPageData(const Ai8TemperatureControllerProtocol::PageData& pageData);
+    void applyLiveData(const Ai8TemperatureControllerProtocol::LiveData& liveData);
+
+signals:
+    void readPageRequested();
+    void writePageRequested();
 
 private:
     struct LabelBinding
@@ -61,6 +72,8 @@ private:
                       const QString& english,
                       const QVariant& userData = QVariant());
     void selectPage(int index);
+    void updateStatusText();
+    void updateMeasuredValue();
 
     QButtonGroup *page_button_group_ = nullptr;
     QStackedWidget *page_stack_ = nullptr;
@@ -70,6 +83,12 @@ private:
     QVector<LabelBinding> label_bindings_;
     QVector<ButtonBinding> button_bindings_;
     QVector<ComboItemBinding> combo_item_bindings_;
+    Ai8TemperatureControllerProtocol::LiveData latest_live_data_;
+    QString backend_detail_;
+    QString operation_status_;
+    bool english_ = false;
+    bool backend_connected_ = false;
+    bool operation_succeeded_ = true;
 };
 
 } // namespace VaporView::Ground::Widgets

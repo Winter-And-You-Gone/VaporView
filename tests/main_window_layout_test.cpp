@@ -3938,11 +3938,11 @@ int main(int argc, char **argv)
     auto *ai8BaudCombo = ai8TemperatureCard->findChild<QComboBox *>(
         QStringLiteral("ai8BaudCombo"));
     require(ai8ChannelSpin != nullptr && ai8ChannelSpin->minimum() == 1 &&
-                ai8ChannelSpin->maximum() == 96,
-            "AI-8 channel selector covers the documented 1-96 range");
-    require(ai8AddressSpin != nullptr && ai8AddressSpin->minimum() == 0 &&
+                ai8ChannelSpin->maximum() == 8,
+            "AI-8288 channel selector covers the model's eight loops");
+    require(ai8AddressSpin != nullptr && ai8AddressSpin->minimum() == 1 &&
                 ai8AddressSpin->maximum() == 88 && ai8AddressSpin->value() == 1,
-            "AI-8 address control uses the documented range and default");
+            "AI-8288 address control uses the usable Modbus range and default");
     require(ai8BaudCombo != nullptr && ai8BaudCombo->currentData().toInt() == 19200,
             "AI-8 baud control defaults to the documented 19.2K setting");
     auto *ai8ReadButton = ai8TemperatureCard->findChild<QPushButton *>(

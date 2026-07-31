@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Ai8TemperatureControllerCollector.h"
 #include "data_collector.h"
 
 #include <memory>
@@ -17,6 +18,7 @@ struct CollectorSet
     std::shared_ptr<VaporView::HmpCollector> hmp;
     std::shared_ptr<VaporView::LidarCollector> lidar;
     std::shared_ptr<VaporView::TemperatureControllerCollector> temperature_controller;
+    std::shared_ptr<VaporView::Ai8TemperatureControllerCollector> ai8_temperature_controller;
 };
 
 class CollectorRegistry final

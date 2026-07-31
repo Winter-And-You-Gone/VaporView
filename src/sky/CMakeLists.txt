@@ -5,6 +5,8 @@ set(SKY_CORE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sky/devices/SerialTelemetryLink.cpp
     ${CMAKE_SOURCE_DIR}/src/sky/devices/TcpTelemetryLink.cpp
     ${CMAKE_SOURCE_DIR}/src/sky/ipc/SkyLocalIpcServer.cpp
+    ${CMAKE_SOURCE_DIR}/src/sky/devices/Ai8TemperatureControllerCollector.cpp
+    ${CMAKE_SOURCE_DIR}/src/sky/devices/Ai8TemperatureControllerProtocol.cpp
     ${CMAKE_SOURCE_DIR}/src/sky/devices/TemperatureControllerProtocol.cpp
     ${CMAKE_SOURCE_DIR}/src/sky/devices/serial_port.cpp
     ${CMAKE_SOURCE_DIR}/src/sky/devices/data_collector.cpp
@@ -21,6 +23,8 @@ set(SKY_CORE_HEADERS
     ${CMAKE_SOURCE_DIR}/include/TcpTelemetryLink.h
     ${CMAKE_SOURCE_DIR}/include/SkyLocalIpcServer.h
     ${CMAKE_SOURCE_DIR}/include/TcpWaveEncoding.h
+    ${CMAKE_SOURCE_DIR}/include/Ai8TemperatureControllerCollector.h
+    ${CMAKE_SOURCE_DIR}/include/Ai8TemperatureControllerProtocol.h
     ${CMAKE_SOURCE_DIR}/include/TemperatureControllerProtocol.h
     ${CMAKE_SOURCE_DIR}/include/serial_port.h
     ${CMAKE_SOURCE_DIR}/include/data_types.h

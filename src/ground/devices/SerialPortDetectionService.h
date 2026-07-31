@@ -24,7 +24,9 @@ struct SerialPortDetectionRequest
     SerialPortProbeSelection hmp;
     SerialPortProbeSelection lidar;
     SerialPortProbeSelection temperatureController;
+    SerialPortProbeSelection ai8TemperatureController;
     int temperatureSlaveAddress = 1;
+    int ai8SlaveAddress = 1;
 };
 
 struct SerialPortDetectionResult

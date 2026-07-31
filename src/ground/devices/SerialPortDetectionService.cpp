@@ -1,5 +1,6 @@
 #include "ground/devices/SerialPortDetectionService.h"
 
+#include "Ai8TemperatureControllerCollector.h"
 #include "data_collector.h"
 
 #include <QHash>
@@ -90,6 +91,7 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
     const QString hmpDefaultBaud = QStringLiteral("19200");
     const QString lidarDefaultBaud = QStringLiteral("500000");
     const QString temperatureDefaultBaud = QStringLiteral("38400");
+    const QString ai8TemperatureDefaultBaud = QStringLiteral("19200");
 
     auto makeEpsilonProbe = [&](const QString& baud) {
         return ProbeSpec{QStringLiteral("epsilon"), QStringLiteral("EPSILON"), baud,
@@ -138,6 +140,17 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
                                       cancelRequested);
             }};
     };
+    auto makeAi8TemperatureProbe = [&](const QString& baud) {
+        return ProbeSpec{QStringLiteral("ai8"), QStringLiteral("AI-8288"), baud,
+            [cancelRequested, baud, slaveAddress = request.ai8SlaveAddress](const QString& port) {
+                auto collector = std::make_unique<Ai8TemperatureControllerCollector>();
+                collector->setSlaveAddress(static_cast<quint8>(slaveAddress));
+                return probeCollector(port,
+                                      std::move(collector),
+                                      SerialConfig::N81(baud.toInt()),
+                                      cancelRequested);
+            }};
+    };
 
     QVector<SelectedProbeSpec> selected;
     QSet<QString> selectedIds;
@@ -160,13 +173,17 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
     addSelected(makeLidarProbe(normalizedBaud(request.lidar.baud, lidarDefaultBaud)), request.lidar.port);
     addSelected(makeTemperatureProbe(normalizedBaud(request.temperatureController.baud, temperatureDefaultBaud)),
                 request.temperatureController.port);
+    addSelected(makeAi8TemperatureProbe(
+                    normalizedBaud(request.ai8TemperatureController.baud, ai8TemperatureDefaultBaud)),
+                request.ai8TemperatureController.port);
 
     QVector<ProbeSpec> defaults;
     defaults << makeEpsilonProbe(epsilonDefaultBaud)
              << makePtbProbe(ptbDefaultBaud)
              << makeHmpProbe(hmpDefaultBaud)
              << makeLidarProbe(lidarDefaultBaud)
-             << makeTemperatureProbe(temperatureDefaultBaud);
+             << makeTemperatureProbe(temperatureDefaultBaud)
+             << makeAi8TemperatureProbe(ai8TemperatureDefaultBaud);
 
     SerialPortDetectionOutcome outcome;
     if (request.availablePorts.isEmpty() && selected.isEmpty())
@@ -266,6 +283,7 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
         {QStringLiteral("hmp"), QStringLiteral("HMP3")},
         {QStringLiteral("lidar"), QStringLiteral("TFA1500-L")},
         {QStringLiteral("temperature"), QStringLiteral("RD105")},
+        {QStringLiteral("ai8"), QStringLiteral("AI-8288")},
     };
     for (auto it = labels.cbegin(); it != labels.cend(); ++it)
     {

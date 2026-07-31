@@ -40,6 +40,7 @@ void CollectorRegistry::replaceAll(CollectorSet collectors, bool english)
     applyLanguage(collectors.hmp, english);
     applyLanguage(collectors.lidar, english);
     applyLanguage(collectors.temperature_controller, english);
+    applyLanguage(collectors.ai8_temperature_controller, english);
 
     std::lock_guard<std::mutex> lock(mutex_);
     collectors_ = std::move(collectors);
@@ -74,7 +75,8 @@ bool CollectorRegistry::anyRunning() const
            (current.ptb && current.ptb->isRunning()) ||
            (current.hmp && current.hmp->isRunning()) ||
            (current.lidar && current.lidar->isRunning()) ||
-           (current.temperature_controller && current.temperature_controller->isRunning());
+           (current.temperature_controller && current.temperature_controller->isRunning()) ||
+           (current.ai8_temperature_controller && current.ai8_temperature_controller->isRunning());
 }
 
 void CollectorRegistry::setEnglish(bool english)
@@ -87,6 +89,7 @@ void CollectorRegistry::setEnglish(bool english)
     applyLanguage(current.hmp, english);
     applyLanguage(current.lidar, english);
     applyLanguage(current.temperature_controller, english);
+    applyLanguage(current.ai8_temperature_controller, english);
 }
 
 CollectorSet CollectorRegistry::takeAll()
@@ -107,6 +110,7 @@ void CollectorRegistry::stopAll()
     stopCollector(current.hmp);
     stopCollector(current.lidar);
     stopCollector(current.temperature_controller);
+    stopCollector(current.ai8_temperature_controller);
 }
 
 } // namespace VaporView::Ground::Devices

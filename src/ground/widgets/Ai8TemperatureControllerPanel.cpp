@@ -13,9 +13,11 @@
 #include <QLineEdit>
 #include <QList>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QStyle>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -145,9 +147,6 @@ void Ai8TemperatureControllerPanel::setupUi()
     protocol_status_label_->setObjectName(QStringLiteral("ai8ProtocolStatus"));
     protocol_status_label_->setProperty("protocolReady", false);
     protocol_status_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    label_bindings_.append({protocol_status_label_,
-                            QStringLiteral("通信后端未接入"),
-                            QStringLiteral("Communication backend not connected")});
     statusLayout->addWidget(protocol_status_label_);
     statusLayout->addStretch(1);
 
@@ -161,6 +160,8 @@ void Ai8TemperatureControllerPanel::setupUi()
                              QStringLiteral("读取当前页"),
                              QStringLiteral("Read Page")});
     statusLayout->addWidget(readButton);
+    connect(readButton, &QPushButton::clicked, this,
+            &Ai8TemperatureControllerPanel::readPageRequested);
 
     auto *writeButton = new QPushButton(statusRow);
     write_button_ = writeButton;
@@ -173,6 +174,8 @@ void Ai8TemperatureControllerPanel::setupUi()
                              QStringLiteral("写入当前页"),
                              QStringLiteral("Write Page")});
     statusLayout->addWidget(writeButton);
+    connect(writeButton, &QPushButton::clicked, this,
+            &Ai8TemperatureControllerPanel::writePageRequested);
     rootLayout->addWidget(statusRow);
 
     setEnglish(false);
@@ -188,7 +191,9 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
     layout->setHorizontalSpacing(8);
     layout->setVerticalSpacing(8);
 
-    auto *channelSpin = createSpinBox(page, QStringLiteral("ai8ChannelSpin"), 1, 96, 1);
+    auto *channelSpin = createSpinBox(page, QStringLiteral("ai8ChannelSpin"), 1, 8, 1);
+    connect(channelSpin, qOverload<int>(&QSpinBox::valueChanged), this,
+            [this]() { updateMeasuredValue(); });
     auto *setpointSpin = createDoubleSpinBox(page,
                                               QStringLiteral("ai8SetpointSpin"),
                                               -999.0,
@@ -201,7 +206,12 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
     pvEdit->setReadOnly(true);
     pvEdit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     pvEdit->setMinimumWidth(kEditorMinimumWidth);
-    auto *pSpin = createSpinBox(page, QStringLiteral("ai8ProportionalBandSpin"), 0, 32000, 0);
+    auto *pSpin = createDoubleSpinBox(page,
+                                      QStringLiteral("ai8ProportionalBandSpin"),
+                                      0.0,
+                                      3200.0,
+                                      0.0,
+                                      1);
     auto *iSpin = createDoubleSpinBox(page,
                                      QStringLiteral("ai8IntegralTimeSpin"),
                                      0.0,
@@ -266,9 +276,9 @@ QWidget *Ai8TemperatureControllerPanel::createInputPage()
     auto *scaleLowSpin = createDoubleSpinBox(page, QStringLiteral("ai8ScaleLowSpin"), -999.0, 3200.0, 0.0, 1);
     auto *scaleHighSpin = createDoubleSpinBox(page, QStringLiteral("ai8ScaleHighSpin"), -999.0, 3200.0, 100.0, 1);
     auto *filterSpin = createSpinBox(page, QStringLiteral("ai8FilterSpin"), 0, 999, 0);
-    auto *channelInputSpin = createSpinBox(page, QStringLiteral("ai8ChannelInputConfigSpin"), 0, 9999, 1);
+    auto *channelInputSpin = createSpinBox(page, QStringLiteral("ai8ChannelInputConfigSpin"), 0, 4, 1);
     auto *offsetSpin = createDoubleSpinBox(page, QStringLiteral("ai8MeasurementOffsetSpin"), -999.0, 3200.0, 0.0, 1);
-    auto *correctionEntrySpin = createSpinBox(page, QStringLiteral("ai8CorrectionEntrySpin"), 0, 99, 0);
+    auto *correctionEntrySpin = createSpinBox(page, QStringLiteral("ai8CorrectionEntrySpin"), 0, 999, 0);
 
     addFieldsToPage(layout,
                     {createParameterField(QStringLiteral("输入参数组"), QStringLiteral("Input Group"), groupSpin, page),
@@ -276,7 +286,7 @@ QWidget *Ai8TemperatureControllerPanel::createInputPage()
                      createParameterField(QStringLiteral("定标下限 ScL"), QStringLiteral("Scale Low ScL"), scaleLowSpin, page),
                      createParameterField(QStringLiteral("定标上限 ScH"), QStringLiteral("Scale High ScH"), scaleHighSpin, page),
                      createParameterField(QStringLiteral("数字滤波 FIL"), QStringLiteral("Digital Filter FIL"), filterSpin, page),
-                     createParameterField(QStringLiteral("通道配置 In"), QStringLiteral("Channel Config In"), channelInputSpin, page),
+                     createParameterField(QStringLiteral("通道输入组 In"), QStringLiteral("Channel Input Group In"), channelInputSpin, page),
                      createParameterField(QStringLiteral("测量平移 Sc"), QStringLiteral("Measurement Offset Sc"), offsetSpin, page),
                      createParameterField(QStringLiteral("校正表入口"), QStringLiteral("Correction Entry"), correctionEntrySpin, page)});
     return page;
@@ -303,10 +313,7 @@ QWidget *Ai8TemperatureControllerPanel::createOutputPage()
     outputHighSpin->setSuffix(QStringLiteral(" %"));
     auto *riseSlopeSpin = createDoubleSpinBox(page, QStringLiteral("ai8RiseSlopeSpin"), 0.0, 3200.0, 0.0, 1);
     auto *fallSlopeSpin = createDoubleSpinBox(page, QStringLiteral("ai8FallSlopeSpin"), 0.0, 3200.0, 0.0, 1);
-    QComboBox *alarmResetCombo = createFixedChoiceCombo(page);
-    alarmResetCombo->setObjectName(QStringLiteral("ai8AlarmResetCombo"));
-    addComboItem(alarmResetCombo, QStringLiteral("自动复位"), QStringLiteral("Auto Reset"), 0);
-    addComboItem(alarmResetCombo, QStringLiteral("锁定，手动复位"), QStringLiteral("Latched / Manual Reset"), 1);
+    auto *alarmResetSpin = createSpinBox(page, QStringLiteral("ai8AlarmResetSpin"), 0, 31, 0);
 
     addFieldsToPage(layout,
                     {createParameterField(QStringLiteral("输出参数组"), QStringLiteral("Output Group"), groupSpin, page),
@@ -316,7 +323,7 @@ QWidget *Ai8TemperatureControllerPanel::createOutputPage()
                      createParameterField(QStringLiteral("输出上限 OPH"), QStringLiteral("Output High OPH"), outputHighSpin, page),
                      createParameterField(QStringLiteral("升温斜率 Srh"), QStringLiteral("Rise Slope Srh"), riseSlopeSpin, page),
                      createParameterField(QStringLiteral("降温斜率 SrL"), QStringLiteral("Fall Slope SrL"), fallSlopeSpin, page),
-                     createParameterField(QStringLiteral("报警复位 AAF"), QStringLiteral("Alarm Reset AAF"), alarmResetCombo, page)});
+                     createParameterField(QStringLiteral("报警锁定掩码 AAF"), QStringLiteral("Alarm Latch Mask AAF"), alarmResetSpin, page)});
     return page;
 }
 
@@ -329,7 +336,7 @@ QWidget *Ai8TemperatureControllerPanel::createGlobalPage()
     layout->setHorizontalSpacing(8);
     layout->setVerticalSpacing(8);
 
-    auto *addressSpin = createSpinBox(page, QStringLiteral("ai8DeviceAddressSpin"), 0, 88, 1);
+    auto *addressSpin = createSpinBox(page, QStringLiteral("ai8DeviceAddressSpin"), 1, 88, 1);
     QComboBox *baudCombo = createFixedChoiceCombo(page);
     baudCombo->setObjectName(QStringLiteral("ai8BaudCombo"));
     for (int baudRate : {4800, 9600, 19200, 38400, 57600, 115200})
@@ -337,7 +344,7 @@ QWidget *Ai8TemperatureControllerPanel::createGlobalPage()
         baudCombo->addItem(QString::number(baudRate), baudRate);
     }
     baudCombo->setCurrentIndex(2);
-    auto *controlChannelsSpin = createSpinBox(page, QStringLiteral("ai8ControlChannelCountSpin"), 1, 96, 8);
+    auto *controlChannelsSpin = createSpinBox(page, QStringLiteral("ai8ControlChannelCountSpin"), 1, 8, 8);
     auto *controlCycleSpin = createDoubleSpinBox(page,
                                                  QStringLiteral("ai8ControlCycleSpin"),
                                                  0.0,
@@ -430,6 +437,7 @@ void Ai8TemperatureControllerPanel::selectPage(int index)
 
 void Ai8TemperatureControllerPanel::setEnglish(bool english)
 {
+    english_ = english;
     for (const LabelBinding& binding : label_bindings_)
     {
         if (binding.label)
@@ -452,9 +460,14 @@ void Ai8TemperatureControllerPanel::setEnglish(bool english)
         }
     }
 
-    const QString backendToolTip = english
-        ? QStringLiteral("The AI-8 Modbus backend is not connected yet.")
-        : QStringLiteral("AI-8 Modbus 通信后端尚未接入。");
+    updateStatusText();
+    const QString backendToolTip = backend_connected_
+        ? (english
+               ? QStringLiteral("Read and write use Modbus-RTU; every write is confirmed by read-back.")
+               : QStringLiteral("读写使用 Modbus-RTU；每次写入后都会回读确认。"))
+        : (english
+               ? QStringLiteral("Select the AI-8288 serial port and connect first.")
+               : QStringLiteral("请先选择 AI-8288 串口并执行连接。"));
     if (protocol_status_label_)
     {
         protocol_status_label_->setToolTip(backendToolTip);
@@ -468,6 +481,210 @@ void Ai8TemperatureControllerPanel::setEnglish(bool english)
         write_button_->setToolTip(backendToolTip);
     }
     updateGeometry();
+}
+
+void Ai8TemperatureControllerPanel::setBackendConnected(bool connected, const QString& detail)
+{
+    backend_connected_ = connected;
+    backend_detail_ = detail;
+    if (!connected)
+    {
+        operation_status_.clear();
+    }
+    if (read_button_) read_button_->setEnabled(connected);
+    if (write_button_) write_button_->setEnabled(connected);
+    updateStatusText();
+}
+
+void Ai8TemperatureControllerPanel::setOperationStatus(const QString& text, bool success)
+{
+    operation_status_ = text;
+    operation_succeeded_ = success;
+    updateStatusText();
+}
+
+void Ai8TemperatureControllerPanel::updateStatusText()
+{
+    if (!protocol_status_label_)
+    {
+        return;
+    }
+    protocol_status_label_->setProperty("protocolReady", backend_connected_);
+    protocol_status_label_->setProperty("operationFailed", backend_connected_ && !operation_succeeded_);
+    QString text;
+    if (!operation_status_.isEmpty())
+    {
+        text = operation_status_;
+    }
+    else if (backend_connected_)
+    {
+        text = english_ ? QStringLiteral("Modbus backend connected")
+                        : QStringLiteral("Modbus 通信后端已连接");
+        if (!backend_detail_.isEmpty())
+        {
+            text += QStringLiteral(" · ") + backend_detail_;
+        }
+    }
+    else
+    {
+        text = english_ ? QStringLiteral("Communication backend not connected")
+                        : QStringLiteral("通信后端未连接");
+    }
+    protocol_status_label_->setText(text);
+    protocol_status_label_->style()->unpolish(protocol_status_label_);
+    protocol_status_label_->style()->polish(protocol_status_label_);
+}
+
+Ai8TemperatureControllerProtocol::PageData Ai8TemperatureControllerPanel::currentPageData() const
+{
+    using namespace Ai8TemperatureControllerProtocol;
+    PageData pageData;
+    pageData.page = static_cast<Page>(page_stack_ ? page_stack_->currentIndex() : 0);
+    auto spin = [this](const char *name) {
+        return findChild<QSpinBox *>(QString::fromLatin1(name));
+    };
+    auto doubleSpin = [this](const char *name) {
+        return findChild<QDoubleSpinBox *>(QString::fromLatin1(name));
+    };
+    auto combo = [this](const char *name) {
+        return findChild<QComboBox *>(QString::fromLatin1(name));
+    };
+    pageData.selection.channel = spin("ai8ChannelSpin")->value();
+    pageData.selection.inputGroup = spin("ai8InputGroupSpin")->value();
+    pageData.selection.outputGroup = spin("ai8OutputGroupSpin")->value();
+
+    pageData.channel.setpointC = doubleSpin("ai8SetpointSpin")->value();
+    pageData.channel.proportionalBand = doubleSpin("ai8ProportionalBandSpin")->value();
+    pageData.channel.integralTimeS = doubleSpin("ai8IntegralTimeSpin")->value();
+    pageData.channel.derivativeTimeS = doubleSpin("ai8DerivativeTimeSpin")->value();
+    pageData.channel.workMode = combo("ai8WorkModeCombo")->currentData().toInt();
+    pageData.channel.manualOutputPercent = doubleSpin("ai8ManualOutputSpin")->value();
+
+    pageData.input.inputType = combo("ai8InputSpecCombo")->currentData().toInt();
+    pageData.input.scaleLow = doubleSpin("ai8ScaleLowSpin")->value();
+    pageData.input.scaleHigh = doubleSpin("ai8ScaleHighSpin")->value();
+    pageData.input.filter = spin("ai8FilterSpin")->value();
+    pageData.input.channelInputGroup = spin("ai8ChannelInputConfigSpin")->value();
+    pageData.input.measurementOffset = doubleSpin("ai8MeasurementOffsetSpin")->value();
+    pageData.input.correctionEntry = spin("ai8CorrectionEntrySpin")->value();
+
+    pageData.output.controlAction = combo("ai8ControlActionCombo")->currentData().toInt();
+    pageData.output.hysteresis = doubleSpin("ai8HysteresisSpin")->value();
+    pageData.output.outputLowPercent = spin("ai8OutputLowSpin")->value();
+    pageData.output.outputHighPercent = spin("ai8OutputHighSpin")->value();
+    pageData.output.riseSlope = doubleSpin("ai8RiseSlopeSpin")->value();
+    pageData.output.fallSlope = doubleSpin("ai8FallSlopeSpin")->value();
+    pageData.output.alarmResetFlags = spin("ai8AlarmResetSpin")->value();
+
+    pageData.global.address = spin("ai8DeviceAddressSpin")->value();
+    pageData.global.baudRate = combo("ai8BaudCombo")->currentData().toInt();
+    pageData.global.controlChannelCount = spin("ai8ControlChannelCountSpin")->value();
+    pageData.global.controlCycleS = doubleSpin("ai8ControlCycleSpin")->value();
+    pageData.global.runState = combo("ai8RunModeCombo")->currentData().toInt();
+    pageData.global.parameterLock = combo("ai8ParameterLockCombo")->currentData().toInt();
+    pageData.global.sampleMode = spin("ai8SampleModeSpin")->value();
+    pageData.global.decimalPoint = spin("ai8DecimalPointSpin")->value();
+    return pageData;
+}
+
+void Ai8TemperatureControllerPanel::applyPageData(
+    const Ai8TemperatureControllerProtocol::PageData& pageData)
+{
+    auto setSpin = [this](const char *name, int value) {
+        if (auto *widget = findChild<QSpinBox *>(QString::fromLatin1(name)))
+        {
+            const QSignalBlocker blocker(widget);
+            widget->setValue(value);
+        }
+    };
+    auto setDouble = [this](const char *name, double value) {
+        if (auto *widget = findChild<QDoubleSpinBox *>(QString::fromLatin1(name)))
+        {
+            const QSignalBlocker blocker(widget);
+            widget->setValue(value);
+        }
+    };
+    auto setCombo = [this](const char *name, int value) {
+        if (auto *widget = findChild<QComboBox *>(QString::fromLatin1(name)))
+        {
+            const int index = widget->findData(value);
+            if (index >= 0)
+            {
+                const QSignalBlocker blocker(widget);
+                widget->setCurrentIndex(index);
+            }
+        }
+    };
+
+    setSpin("ai8ChannelSpin", pageData.selection.channel);
+    setSpin("ai8InputGroupSpin", pageData.selection.inputGroup);
+    setSpin("ai8OutputGroupSpin", pageData.selection.outputGroup);
+    switch (pageData.page)
+    {
+    case Ai8TemperatureControllerProtocol::Page::Channel:
+        setDouble("ai8SetpointSpin", pageData.channel.setpointC);
+        setDouble("ai8ProportionalBandSpin", pageData.channel.proportionalBand);
+        setDouble("ai8IntegralTimeSpin", pageData.channel.integralTimeS);
+        setDouble("ai8DerivativeTimeSpin", pageData.channel.derivativeTimeS);
+        setCombo("ai8WorkModeCombo", pageData.channel.workMode);
+        setDouble("ai8ManualOutputSpin", pageData.channel.manualOutputPercent);
+        if (auto *pv = findChild<QLineEdit *>(QStringLiteral("ai8MeasuredTemperatureEdit")))
+        {
+            pv->setText(QString::number(pageData.channel.measuredC, 'f', 1) + QStringLiteral(" °C"));
+        }
+        break;
+    case Ai8TemperatureControllerProtocol::Page::InputGroup:
+        setCombo("ai8InputSpecCombo", pageData.input.inputType);
+        setDouble("ai8ScaleLowSpin", pageData.input.scaleLow);
+        setDouble("ai8ScaleHighSpin", pageData.input.scaleHigh);
+        setSpin("ai8FilterSpin", pageData.input.filter);
+        setSpin("ai8ChannelInputConfigSpin", pageData.input.channelInputGroup);
+        setDouble("ai8MeasurementOffsetSpin", pageData.input.measurementOffset);
+        setSpin("ai8CorrectionEntrySpin", pageData.input.correctionEntry);
+        break;
+    case Ai8TemperatureControllerProtocol::Page::OutputGroup:
+        setCombo("ai8ControlActionCombo", pageData.output.controlAction);
+        setDouble("ai8HysteresisSpin", pageData.output.hysteresis);
+        setSpin("ai8OutputLowSpin", pageData.output.outputLowPercent);
+        setSpin("ai8OutputHighSpin", pageData.output.outputHighPercent);
+        setDouble("ai8RiseSlopeSpin", pageData.output.riseSlope);
+        setDouble("ai8FallSlopeSpin", pageData.output.fallSlope);
+        setSpin("ai8AlarmResetSpin", pageData.output.alarmResetFlags);
+        break;
+    case Ai8TemperatureControllerProtocol::Page::Global:
+        setSpin("ai8DeviceAddressSpin", pageData.global.address);
+        setCombo("ai8BaudCombo", pageData.global.baudRate);
+        setSpin("ai8ControlChannelCountSpin", pageData.global.controlChannelCount);
+        setDouble("ai8ControlCycleSpin", pageData.global.controlCycleS);
+        setCombo("ai8RunModeCombo", pageData.global.runState);
+        setCombo("ai8ParameterLockCombo", (pageData.global.parameterLock & 0x0020) != 0 ? 32 : 0);
+        setSpin("ai8SampleModeSpin", pageData.global.sampleMode);
+        setSpin("ai8DecimalPointSpin", pageData.global.decimalPoint);
+        break;
+    }
+}
+
+void Ai8TemperatureControllerPanel::applyLiveData(
+    const Ai8TemperatureControllerProtocol::LiveData& liveData)
+{
+    latest_live_data_ = liveData;
+    updateMeasuredValue();
+}
+
+void Ai8TemperatureControllerPanel::updateMeasuredValue()
+{
+    auto *edit = findChild<QLineEdit *>(QStringLiteral("ai8MeasuredTemperatureEdit"));
+    auto *channelSpin = findChild<QSpinBox *>(QStringLiteral("ai8ChannelSpin"));
+    if (!edit || !channelSpin)
+    {
+        return;
+    }
+    const int index = std::clamp(channelSpin->value(), 1,
+                                 Ai8TemperatureControllerProtocol::kChannelCount) - 1;
+    edit->setText(latest_live_data_.valid
+        ? QString::number(latest_live_data_.measuredC[static_cast<size_t>(index)], 'f', 1) +
+              QStringLiteral(" °C")
+        : QStringLiteral("---"));
 }
 
 } // namespace VaporView::Ground::Widgets

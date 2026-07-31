@@ -22,7 +22,8 @@ enum class LocalDeviceKind
     Ptb,
     Hmp,
     Lidar,
-    TemperatureController
+    TemperatureController,
+    Ai8TemperatureController
 };
 
 struct LocalSerialDeviceSettings
@@ -42,9 +43,11 @@ struct LocalConnectionRequest
     LocalSerialDeviceSettings hmp;
     LocalSerialDeviceSettings lidar;
     LocalSerialDeviceSettings temperatureController;
+    LocalSerialDeviceSettings ai8TemperatureController;
     PressureSensorProtocol pressureProtocol = PressureSensorProtocol::Ptb210;
     HumiditySensorProtocol humidityProtocol = HumiditySensorProtocol::Hmp3Modbus;
     int temperatureSlaveAddress = 1;
+    int ai8SlaveAddress = 1;
     std::map<uint8_t, int> epsilonPacketRates;
     int epsilonConfiguredRateHz = 100;
     QString epsilonPacketRateSignature;
@@ -86,6 +89,7 @@ struct LocalSampleRateConfiguration
     int lidarRateHz = 1;
     bool applyLidarDeviceRate = true;
     int temperatureRateHz = 1;
+    int ai8TemperatureRateHz = 5;
 };
 
 struct LocalSampleRateApplyResult
@@ -107,6 +111,13 @@ struct LocalTemperatureCommandResult
 {
     LocalTemperatureCommandStatus status = LocalTemperatureCommandStatus::NotConnected;
     TemperatureControllerData latestData;
+};
+
+struct LocalAi8OperationResult
+{
+    bool success = false;
+    QString message;
+    Ai8TemperatureControllerProtocol::PageData data;
 };
 
 class LocalDeviceConnectionController final
@@ -141,11 +152,17 @@ public:
     void setHmpSampleRate(int rateHz);
     void setLidarSampleRate(int rateHz, bool applyDeviceRate);
     void setTemperatureSampleRate(int rateHz);
+    void setAi8TemperatureSampleRate(int rateHz);
     bool applyImuProfile(const ImuProfileRequest& request);
     LocalTemperatureCommandResult sendTemperatureCommand(
         CommandId command,
         const TemperatureControllerCommand& payload);
     bool disconnectTemperatureController();
+    LocalAi8OperationResult readAi8Page(
+        Ai8TemperatureControllerProtocol::Page page,
+        const Ai8TemperatureControllerProtocol::Selection& selection);
+    LocalAi8OperationResult writeAi8Page(
+        const Ai8TemperatureControllerProtocol::PageData& data);
 
 private:
     class Impl;

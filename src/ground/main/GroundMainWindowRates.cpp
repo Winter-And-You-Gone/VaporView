@@ -50,6 +50,9 @@ void MainWindow::onGlobalRateChanged(const QString& text)
     configuration.lidarRateHz = state_->lidar_sample_rate_;
     configuration.applyLidarDeviceRate = !skipLidarDeviceRate;
     configuration.temperatureRateHz = state_->temperature_sample_rate_;
+    configuration.ai8TemperatureRateHz = state_->device_config_.ai8_temperature_rate_combo
+        ? effectiveRateOrDefault(state_->device_config_.ai8_temperature_rate_combo->currentText(), 5, 20)
+        : 5;
     const LocalSampleRateApplyResult rateResult =
         state_->local_connection_controller_->applyRunningSampleRates(configuration);
     const bool epsilonDeviceRateFailed =
@@ -286,6 +289,9 @@ void MainWindow::applyAllSampleRates()
     configuration.lidarRateHz = lidarRate;
     configuration.applyLidarDeviceRate = !skipLidarDeviceRate;
     configuration.temperatureRateHz = temperatureRate;
+    configuration.ai8TemperatureRateHz = state_->device_config_.ai8_temperature_rate_combo
+        ? effectiveRateOrDefault(state_->device_config_.ai8_temperature_rate_combo->currentText(), 5, 20)
+        : 5;
     const LocalSampleRateApplyResult rateResult =
         state_->local_connection_controller_->applyRunningSampleRates(configuration);
     const bool epsilonDeviceRateFailed =

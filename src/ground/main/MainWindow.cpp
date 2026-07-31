@@ -251,6 +251,7 @@ MainWindow::MainWindow(QWidget *parent)
             case Device::Hmp: onHmpDataReady(); break;
             case Device::Lidar: onLidarDataReady(); break;
             case Device::TemperatureController: onTemperatureControllerDataReady(); break;
+            case Device::Ai8TemperatureController: onAi8TemperatureControllerDataReady(); break;
             }
         }, Qt::QueuedConnection);
     };

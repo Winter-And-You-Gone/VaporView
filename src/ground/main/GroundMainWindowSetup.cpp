@@ -1882,6 +1882,16 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.ai8_temperature_rate_combo->setCurrentText(QStringLiteral("5"));
     state_->device_config_.ai8_temperature_rate_combo->setValidator(
         new QIntValidator(1, 20, state_->device_config_.ai8_temperature_rate_combo));
+    connect(state_->device_config_.ai8_temperature_rate_combo,
+            &QComboBox::currentTextChanged,
+            this,
+            [this](const QString& text) {
+                if (state_->local_connection_controller_)
+                {
+                    state_->local_connection_controller_->setAi8TemperatureSampleRate(
+                        effectiveRateOrDefault(text, 5, 20));
+                }
+            });
     if (auto *ai8PanelBaudCombo = findChild<QComboBox *>(QStringLiteral("ai8BaudCombo"));
         ai8PanelBaudCombo && state_->device_config_.ai8_temperature_baud_combo)
     {
@@ -4140,6 +4150,14 @@ void MainWindow::setupDataPanels()
 
     state_->ai8_temperature_controller_panel_ = new Ai8TemperatureControllerPanel(
         state_->ai8_temperature_controller_group_);
+    connect(state_->ai8_temperature_controller_panel_,
+            &Ai8TemperatureControllerPanel::readPageRequested,
+            this,
+            &MainWindow::onAi8ReadPageRequested);
+    connect(state_->ai8_temperature_controller_panel_,
+            &Ai8TemperatureControllerPanel::writePageRequested,
+            this,
+            &MainWindow::onAi8WritePageRequested);
     ai8Layout->addWidget(state_->ai8_temperature_controller_panel_);
 
     state_->device_panel_coordinator_ = std::make_unique<DevicePanelCoordinator>(DevicePanelBindings{

@@ -4,6 +4,7 @@
 #include <QComboBox>
 #include <QImage>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStackedWidget>
@@ -54,9 +55,9 @@ int main(int argc, char **argv)
     auto *channelSpin = panel.findChild<QSpinBox *>(QStringLiteral("ai8ChannelSpin"));
     auto *addressSpin = panel.findChild<QSpinBox *>(QStringLiteral("ai8DeviceAddressSpin"));
     auto *baudCombo = panel.findChild<QComboBox *>(QStringLiteral("ai8BaudCombo"));
-    require(channelSpin != nullptr && channelSpin->minimum() == 1 && channelSpin->maximum() == 96,
-            "AI-8 channel range is 1 through 96");
-    require(addressSpin != nullptr && addressSpin->minimum() == 0 && addressSpin->maximum() == 88 &&
+    require(channelSpin != nullptr && channelSpin->minimum() == 1 && channelSpin->maximum() == 8,
+            "AI-8288 channel range is 1 through 8");
+    require(addressSpin != nullptr && addressSpin->minimum() == 1 && addressSpin->maximum() == 88 &&
                 addressSpin->value() == 1,
             "AI-8 address range and default match the register table");
     require(baudCombo != nullptr && baudCombo->currentData().toInt() == 19200,
@@ -68,13 +69,27 @@ int main(int argc, char **argv)
     require(readButton != nullptr && writeButton != nullptr && statusLabel != nullptr &&
                 !readButton->isEnabled() && !writeButton->isEnabled() &&
                 !statusLabel->property("protocolReady").toBool(),
-            "AI-8 read and write stay unavailable before backend integration");
+            "AI-8 read and write stay unavailable before connection");
+
+    panel.setBackendConnected(true, QStringLiteral("COM8 @ 19200"));
+    QApplication::processEvents();
+    require(readButton->isEnabled() && writeButton->isEnabled() &&
+                statusLabel->property("protocolReady").toBool(),
+            "AI-8 read and write become available after connection");
+
+    VaporView::Ai8TemperatureControllerProtocol::LiveData liveData;
+    liveData.valid = true;
+    liveData.measuredC[0] = 23.4;
+    panel.applyLiveData(liveData);
+    auto *pvEdit = panel.findChild<QLineEdit *>(QStringLiteral("ai8MeasuredTemperatureEdit"));
+    require(pvEdit != nullptr && pvEdit->text().contains(QStringLiteral("23.4")),
+            "AI-8 selected-channel PV is updated from live polling");
 
     panel.setEnglish(true);
     QApplication::processEvents();
     require(channelButton->text() == QStringLiteral("Channel") &&
                 globalButton->text() == QStringLiteral("Global") &&
-                statusLabel->text() == QStringLiteral("Communication backend not connected") &&
+                statusLabel->text().contains(QStringLiteral("Modbus backend connected")) &&
                 baudCombo->currentData().toInt() == 19200,
             "AI-8 panel translates labels without changing parameter values");
 

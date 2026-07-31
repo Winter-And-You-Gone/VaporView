@@ -120,6 +120,10 @@ public:
         {
             collectors.temperature_controller->setSampleRate(configuration.temperatureRateHz);
         }
+        if (collectors.ai8_temperature_controller && collectors.ai8_temperature_controller->isRunning())
+        {
+            collectors.ai8_temperature_controller->setSampleRate(configuration.ai8TemperatureRateHz);
+        }
         return result;
     }
 
@@ -190,6 +194,63 @@ public:
         {
             collector->setSampleRate(rateHz);
         }
+    }
+
+    void setAi8TemperatureSampleRate(int rateHz)
+    {
+        const auto collector = registry.snapshot().ai8_temperature_controller;
+        if (collector)
+        {
+            collector->setSampleRate(rateHz);
+        }
+    }
+
+    LocalAi8OperationResult readAi8Page(
+        Ai8TemperatureControllerProtocol::Page page,
+        const Ai8TemperatureControllerProtocol::Selection& selection)
+    {
+        LocalAi8OperationResult result;
+        const auto collector = registry.snapshot().ai8_temperature_controller;
+        if (!collector || !collector->isRunning())
+        {
+            result.message = english.load()
+                ? QStringLiteral("AI-8288 is not connected.")
+                : QStringLiteral("AI-8288 尚未连接。");
+            return result;
+        }
+        result.success = collector->readPage(page, selection, result.data, &result.message);
+        if (result.success)
+        {
+            result.message = english.load()
+                ? QStringLiteral("Current page was read successfully.")
+                : QStringLiteral("当前页读取成功。");
+        }
+        return result;
+    }
+
+    LocalAi8OperationResult writeAi8Page(
+        const Ai8TemperatureControllerProtocol::PageData& data)
+    {
+        LocalAi8OperationResult result;
+        const auto collector = registry.snapshot().ai8_temperature_controller;
+        if (!collector || !collector->isRunning())
+        {
+            result.message = english.load()
+                ? QStringLiteral("AI-8288 is not connected.")
+                : QStringLiteral("AI-8288 尚未连接。");
+            return result;
+        }
+        result.success = collector->writePage(data, &result.message);
+        if (result.success)
+        {
+            QString readError;
+            if (!collector->readPage(data.page, data.selection, result.data, &readError))
+            {
+                result.success = false;
+                result.message = readError;
+            }
+        }
+        return result;
     }
 
     bool applyImuProfile(const ImuProfileRequest& request)
@@ -413,6 +474,7 @@ private:
         collectors.hmp->setProtocol(request.humidityProtocol);
         collectors.lidar = std::make_shared<LidarCollector>();
         collectors.temperature_controller = std::make_shared<TemperatureControllerCollector>();
+        collectors.ai8_temperature_controller = std::make_shared<Ai8TemperatureControllerCollector>();
         registry.replaceAll(collectors, useEnglish);
 
         auto collectorLog = [this](const std::string& message) {
@@ -428,17 +490,23 @@ private:
         collectors.temperature_controller->setSampleRate(request.temperatureController.sampleRateHz);
         collectors.temperature_controller->setSlaveAddress(
             static_cast<uint8_t>(request.temperatureSlaveAddress));
+        collectors.ai8_temperature_controller->setSampleRate(
+            request.ai8TemperatureController.sampleRateHz);
+        collectors.ai8_temperature_controller->setSlaveAddress(
+            static_cast<uint8_t>(request.ai8SlaveAddress));
 
         collectors.epsilon->setLogCallback(collectorLog);
         collectors.ptb->setLogCallback(collectorLog);
         collectors.hmp->setLogCallback(collectorLog);
         collectors.lidar->setLogCallback(collectorLog);
         collectors.temperature_controller->setLogCallback(collectorLog);
+        collectors.ai8_temperature_controller->setLogCallback(collectorLog);
         collectors.epsilon->setCancelCallback(cancelRequested);
         collectors.ptb->setCancelCallback(cancelRequested);
         collectors.hmp->setCancelCallback(cancelRequested);
         collectors.lidar->setCancelCallback(cancelRequested);
         collectors.temperature_controller->setCancelCallback(cancelRequested);
+        collectors.ai8_temperature_controller->setCancelCallback(cancelRequested);
 
         collectors.epsilon->setRawFrameCallback(
             [this](uint64_t timestampUs,
@@ -725,6 +793,24 @@ private:
             return false;
         }) < 0) return;
 
+        if (connectCollector(QStringLiteral("AI-8288"),
+                             request.ai8TemperatureController,
+                             collectors.ai8_temperature_controller.get(),
+                             SerialConfig::N81(request.ai8TemperatureController.baudText.toInt()),
+                             [&]() {
+            collectors.ai8_temperature_controller->setDataCallback(
+                [this]() { notifyData(LocalDeviceKind::Ai8TemperatureController); });
+            postLog(QString(useEnglish
+                ? "[AI-8288] Host polling rate set to %1 Hz"
+                : "[AI-8288] 主机轮询频率设置为 %1 Hz")
+                    .arg(request.ai8TemperatureController.sampleRateHz));
+            if (collectors.ai8_temperature_controller->startStreaming()) return true;
+            postLog(useEnglish
+                ? QStringLiteral("[AI-8288] Failed to start Modbus polling.")
+                : QStringLiteral("[AI-8288] 启动 Modbus 轮询失败。"));
+            return false;
+        }) < 0) return;
+
         postLog(QString(useEnglish
             ? "========== Connection Summary: %1/%2 devices connected =========="
             : "========== 连接摘要: %1/%2 设备已连接 ==========")
@@ -855,6 +941,11 @@ void LocalDeviceConnectionController::setTemperatureSampleRate(int rateHz)
     impl_->setTemperatureSampleRate(rateHz);
 }
 
+void LocalDeviceConnectionController::setAi8TemperatureSampleRate(int rateHz)
+{
+    impl_->setAi8TemperatureSampleRate(rateHz);
+}
+
 bool LocalDeviceConnectionController::applyImuProfile(const ImuProfileRequest& request)
 {
     if (VaporView::settingsWritesSuspended())
@@ -884,6 +975,27 @@ bool LocalDeviceConnectionController::disconnectTemperatureController()
     }
     collector->stop();
     return true;
+}
+
+LocalAi8OperationResult LocalDeviceConnectionController::readAi8Page(
+    Ai8TemperatureControllerProtocol::Page page,
+    const Ai8TemperatureControllerProtocol::Selection& selection)
+{
+    if (VaporView::settingsWritesSuspended())
+    {
+        return {};
+    }
+    return impl_->readAi8Page(page, selection);
+}
+
+LocalAi8OperationResult LocalDeviceConnectionController::writeAi8Page(
+    const Ai8TemperatureControllerProtocol::PageData& data)
+{
+    if (VaporView::settingsWritesSuspended())
+    {
+        return {};
+    }
+    return impl_->writeAi8Page(data);
 }
 
 }  // namespace VaporView::Ground::Devices

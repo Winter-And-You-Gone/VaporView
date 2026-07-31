@@ -564,6 +564,11 @@ void MainWindow::stopAllCollectors()
     {
         state_->local_connection_controller_->disconnect();
     }
+    if (state_->ai8_temperature_controller_panel_)
+    {
+        state_->ai8_temperature_controller_panel_->setBackendConnected(false);
+        state_->ai8_temperature_controller_panel_->applyLiveData({});
+    }
 }
 
 void MainWindow::finishConnectionAttempt(bool connected)
@@ -575,6 +580,20 @@ void MainWindow::finishConnectionAttempt(bool connected)
         stopRecording(true);
     }
     updateConnectionStatus(connected);
+    if (state_->ai8_temperature_controller_panel_)
+    {
+        const CollectorSnapshot collectors = snapshotCollectors();
+        const bool ai8Connected = collectors.ai8_temperature_controller &&
+                                  collectors.ai8_temperature_controller->isRunning();
+        const QString detail = ai8Connected
+            ? QStringLiteral("%1 @ %2")
+                  .arg(localSerialPortComboValue(state_->device_config_.ai8_temperature_port_combo),
+                       state_->device_config_.ai8_temperature_baud_combo
+                           ? state_->device_config_.ai8_temperature_baud_combo->currentText()
+                           : QStringLiteral("19200"))
+            : QString();
+        state_->ai8_temperature_controller_panel_->setBackendConnected(ai8Connected, detail);
+    }
 }
 
 void MainWindow::onRefreshPortsClicked()
@@ -629,7 +648,8 @@ void MainWindow::onAutoDetectPortsClicked()
             {state_->ptb_port_combo_, QStringLiteral("UI-TEST-PTB")},
             {state_->hmp_port_combo_, QStringLiteral("UI-TEST-HMP")},
             {state_->lidar_port_combo_, QStringLiteral("UI-TEST-LIDAR")},
-            {state_->temperature_port_combo_, QStringLiteral("UI-TEST-RD105")}
+            {state_->temperature_port_combo_, QStringLiteral("UI-TEST-RD105")},
+            {state_->device_config_.ai8_temperature_port_combo, QStringLiteral("UI-TEST-AI8")}
         };
         for (const auto& item : detected)
         {
@@ -669,11 +689,16 @@ void MainWindow::onAutoDetectPortsClicked()
     const QString selectedHmpPort = localSerialPortComboValue(state_->hmp_port_combo_);
     const QString selectedLidarPort = localSerialPortComboValue(state_->lidar_port_combo_);
     const QString selectedTemperaturePort = localSerialPortComboValue(state_->temperature_port_combo_);
+    const QString selectedAi8TemperaturePort = localSerialPortComboValue(
+        state_->device_config_.ai8_temperature_port_combo);
     const QString selectedEpsilonBaud = state_->epsilon_baud_combo_ ? state_->epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
     const QString selectedPtbBaud = state_->ptb_baud_combo_ ? state_->ptb_baud_combo_->currentText().trimmed() : QStringLiteral("9600");
     const QString selectedHmpBaud = state_->hmp_baud_combo_ ? state_->hmp_baud_combo_->currentText().trimmed() : QStringLiteral("19200");
     const QString selectedLidarBaud = state_->lidar_baud_combo_ ? state_->lidar_baud_combo_->currentText().trimmed() : QStringLiteral("500000");
     const QString selectedTemperatureBaud = state_->temperature_baud_combo_ ? state_->temperature_baud_combo_->currentText().trimmed() : QStringLiteral("38400");
+    const QString selectedAi8TemperatureBaud = state_->device_config_.ai8_temperature_baud_combo
+        ? state_->device_config_.ai8_temperature_baud_combo->currentText().trimmed()
+        : QStringLiteral("19200");
     const bool english = state_->is_english_;
 
     VaporView::Ground::Devices::SerialPortDetectionRequest request;
@@ -683,7 +708,11 @@ void MainWindow::onAutoDetectPortsClicked()
     request.hmp = {selectedHmpPort, selectedHmpBaud};
     request.lidar = {selectedLidarPort, selectedLidarBaud};
     request.temperatureController = {selectedTemperaturePort, selectedTemperatureBaud};
+    request.ai8TemperatureController = {selectedAi8TemperaturePort, selectedAi8TemperatureBaud};
     request.temperatureSlaveAddress = rememberedTemperatureSlaveAddress();
+    request.ai8SlaveAddress = state_->ai8_temperature_controller_panel_
+        ? state_->ai8_temperature_controller_panel_->currentPageData().global.address
+        : 1;
 
     state_->port_detection_thread_ = std::thread([this, request = std::move(request)]() mutable {
         request.availablePorts =
@@ -719,6 +748,7 @@ void MainWindow::onAutoDetectPortsClicked()
                 {QStringLiteral("hmp"), state_->hmp_port_combo_},
                 {QStringLiteral("lidar"), state_->lidar_port_combo_},
                 {QStringLiteral("temperature"), state_->temperature_port_combo_},
+                {QStringLiteral("ai8"), state_->device_config_.ai8_temperature_port_combo},
             };
             QHash<QString, QComboBox *> baudCombos{
                 {QStringLiteral("epsilon"), state_->epsilon_baud_combo_},
@@ -726,6 +756,7 @@ void MainWindow::onAutoDetectPortsClicked()
                 {QStringLiteral("hmp"), state_->hmp_baud_combo_},
                 {QStringLiteral("lidar"), state_->lidar_baud_combo_},
                 {QStringLiteral("temperature"), state_->temperature_baud_combo_},
+                {QStringLiteral("ai8"), state_->device_config_.ai8_temperature_baud_combo},
             };
             QHash<QString, QString> detectedPorts;
             QHash<QString, QString> detectedBauds;
@@ -886,11 +917,16 @@ void MainWindow::onConnectClicked()
     const QString hmpPort = localSerialPortComboValue(state_->hmp_port_combo_);
     const QString lidarPort = localSerialPortComboValue(state_->lidar_port_combo_);
     const QString temperaturePort = localSerialPortComboValue(state_->temperature_port_combo_);
+    const QString ai8TemperaturePort = localSerialPortComboValue(
+        state_->device_config_.ai8_temperature_port_combo);
     const QString epsilonBaudText = state_->epsilon_baud_combo_ ? state_->epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
     const QString ptbBaudText = state_->ptb_baud_combo_->currentText();
     const QString hmpBaudText = state_->hmp_baud_combo_->currentText();
     const QString lidarBaudText = state_->lidar_baud_combo_->currentText();
     const QString temperatureBaudText = state_->temperature_baud_combo_ ? state_->temperature_baud_combo_->currentText().trimmed() : QStringLiteral("38400");
+    const QString ai8TemperatureBaudText = state_->device_config_.ai8_temperature_baud_combo
+        ? state_->device_config_.ai8_temperature_baud_combo->currentText().trimmed()
+        : QStringLiteral("19200");
     const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
     const QString ptbRateText = state_->ptb_rate_combo_ ? state_->ptb_rate_combo_->currentText() : QStringLiteral("20");
     const QString hmpRateText = state_->hmp_rate_combo_ ? state_->hmp_rate_combo_->currentText() : QStringLiteral("20");
@@ -906,6 +942,9 @@ void MainWindow::onConnectClicked()
         : VaporView::HumiditySensorProtocol::Hmp3Modbus;
     const QString lidarRateText = state_->lidar_rate_combo_ ? state_->lidar_rate_combo_->currentText() : QStringLiteral("100");
     const QString temperatureRateText = state_->temperature_rate_combo_ ? state_->temperature_rate_combo_->currentText() : QString::number(kDefaultTemperatureSampleRateHz);
+    const QString ai8TemperatureRateText = state_->device_config_.ai8_temperature_rate_combo
+        ? state_->device_config_.ai8_temperature_rate_combo->currentText()
+        : QStringLiteral("5");
     const bool skipEpsilonDeviceRate = isRateUnspecified(epsilonRateText);
     const bool skipPtbDeviceRate = isRateUnspecified(ptbRateText);
     const bool skipHmpDeviceRate = isRateUnspecified(hmpRateText);
@@ -916,6 +955,7 @@ void MainWindow::onConnectClicked()
     const int hmpRate = effectiveRateOrDefault(hmpRateText, kDefaultHmpSampleRateHz);
     const int lidarRate = effectiveRateOrDefault(lidarRateText, kDefaultLidarSampleRateHz, 100);
     const int temperatureRate = effectiveRateOrDefault(temperatureRateText, kDefaultTemperatureSampleRateHz, kMaxTemperatureSampleRateHz);
+    const int ai8TemperatureRate = effectiveRateOrDefault(ai8TemperatureRateText, 5, 20);
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
     bool epsilonUsesCustomPacketRates = false;
@@ -962,9 +1002,18 @@ void MainWindow::onConnectClicked()
         temperatureRate,
         skipTemperatureDeviceRate
     };
+    request.ai8TemperatureController = {
+        ai8TemperaturePort,
+        ai8TemperatureBaudText,
+        ai8TemperatureRate,
+        false
+    };
     request.pressureProtocol = pressureProtocol;
     request.humidityProtocol = humidityProtocol;
     request.temperatureSlaveAddress = rememberedTemperatureSlaveAddress();
+    request.ai8SlaveAddress = state_->ai8_temperature_controller_panel_
+        ? state_->ai8_temperature_controller_panel_->currentPageData().global.address
+        : 1;
     request.epsilonPacketRates = epsilonDesiredPacketRates;
     request.epsilonConfiguredRateHz = epsilonRate;
     request.epsilonPacketRateSignature = epsilonDesiredPacketSignature;
@@ -1114,6 +1163,60 @@ void MainWindow::onTemperatureControllerDataReady()
         }
         state_->current_temperature_controller_ = latest;
     }
+}
+
+void MainWindow::onAi8TemperatureControllerDataReady()
+{
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.ai8_temperature_controller && state_->ai8_temperature_controller_panel_)
+    {
+        state_->ai8_temperature_controller_panel_->applyLiveData(
+            collectors.ai8_temperature_controller->getLatestData());
+    }
+}
+
+void MainWindow::onAi8ReadPageRequested()
+{
+    if (!state_->ai8_temperature_controller_panel_ || !state_->local_connection_controller_)
+    {
+        return;
+    }
+    const auto requested = state_->ai8_temperature_controller_panel_->currentPageData();
+    state_->ai8_temperature_controller_panel_->setOperationStatus(
+        state_->is_english_ ? QStringLiteral("Reading current page...")
+                            : QStringLiteral("正在读取当前页…"),
+        true);
+    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+    const auto result = state_->local_connection_controller_->readAi8Page(
+        requested.page,
+        requested.selection);
+    if (result.success)
+    {
+        state_->ai8_temperature_controller_panel_->applyPageData(result.data);
+    }
+    state_->ai8_temperature_controller_panel_->setOperationStatus(result.message, result.success);
+    log(QStringLiteral("[AI-8288] %1").arg(result.message));
+}
+
+void MainWindow::onAi8WritePageRequested()
+{
+    if (!state_->ai8_temperature_controller_panel_ || !state_->local_connection_controller_)
+    {
+        return;
+    }
+    const auto requested = state_->ai8_temperature_controller_panel_->currentPageData();
+    state_->ai8_temperature_controller_panel_->setOperationStatus(
+        state_->is_english_ ? QStringLiteral("Writing and reading back...")
+                            : QStringLiteral("正在写入并回读确认…"),
+        true);
+    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+    const auto result = state_->local_connection_controller_->writeAi8Page(requested);
+    if (result.success)
+    {
+        state_->ai8_temperature_controller_panel_->applyPageData(result.data);
+    }
+    state_->ai8_temperature_controller_panel_->setOperationStatus(result.message, result.success);
+    log(QStringLiteral("[AI-8288] %1").arg(result.message));
 }
 
 void MainWindow::onRefreshTimer()

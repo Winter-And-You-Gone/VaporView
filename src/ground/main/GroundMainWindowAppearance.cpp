@@ -265,6 +265,8 @@ QString temperatureControllerConfigStyleSheet()
         "Ai8TemperatureControllerPanel QPushButton[ai8PageSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
         "Ai8TemperatureControllerPanel QFrame#ai8ParameterField { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
         "Ai8TemperatureControllerPanel QLabel#ai8ProtocolStatus[protocolReady=\"false\"] { color: @vv-text-muted; font-weight: 500; }"
+        "Ai8TemperatureControllerPanel QLabel#ai8ProtocolStatus[protocolReady=\"true\"] { color: @vv-success; font-weight: 600; }"
+        "Ai8TemperatureControllerPanel QLabel#ai8ProtocolStatus[operationFailed=\"true\"] { color: @vv-danger; font-weight: 600; }"
         "Ai8TemperatureControllerPanel QPushButton#ai8WriteParametersButton[primaryAction=\"true\"] { background-color: @vv-primary; border-color: @vv-primary; color: @vv-white; }"
         "Ai8TemperatureControllerPanel QPushButton#ai8WriteParametersButton[primaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }");
 }
