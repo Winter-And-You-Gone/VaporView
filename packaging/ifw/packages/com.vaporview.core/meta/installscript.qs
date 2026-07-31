@@ -15,7 +15,9 @@ function Component() {
         installer.installationFinished.connect(this, Component.prototype.rememberSuccessfulUpdate);
         installer.finishButtonClicked.connect(this, Component.prototype.launchVaporViewAfterUpdate);
         var finishedPage = gui.pageById(QInstaller.InstallationFinished);
-        finishedPage.left.connect(this, Component.prototype.restartVaporViewAfterUpdate);
+        if (finishedPage && finishedPage.left) {
+            finishedPage.left.connect(this, Component.prototype.restartVaporViewAfterUpdate);
+        }
     }
 
     if (installer.isInstaller() && !installer.isCommandLineInstance()) {

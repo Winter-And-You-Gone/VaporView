@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
 #endif
 
     app.setApplicationName("VaporViewSkyCore");
-    app.setApplicationVersion("1.0.13");
+    app.setApplicationVersion("1.0.14");
     app.setOrganizationName("VaporView");
     VaporView::LogService logService(QStringLiteral("VaporViewSkyCore"));
     logService.installQtMessageHandler();

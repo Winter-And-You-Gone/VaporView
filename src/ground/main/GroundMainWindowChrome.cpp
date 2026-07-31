@@ -37,7 +37,7 @@ QString vaporViewUpdateRepositoryUrl()
 QString vaporViewApplicationVersion()
 {
     const QString applicationVersion = QCoreApplication::applicationVersion().trimmed();
-    return applicationVersion.isEmpty() ? QStringLiteral("1.0.13") : applicationVersion;
+    return applicationVersion.isEmpty() ? QStringLiteral("1.0.14") : applicationVersion;
 }
 
 QString vaporViewUpdateRepositoryDisplayName(const QString& repositoryUrl, bool english)
@@ -855,7 +855,8 @@ void MainWindow::onCheckUpdatesClicked()
     outputEdit->setObjectName(QStringLiteral("updateCheckOutputEdit"));
     outputEdit->setReadOnly(true);
     outputEdit->setVisible(false);
-    outputEdit->setMaximumHeight(92);
+    outputEdit->setMinimumHeight(96);
+    outputEdit->setMaximumHeight(144);
     outputEdit->setLineWrapMode(QPlainTextEdit::WidgetWidth);
     bodyLayout->addWidget(outputEdit);
 
@@ -1028,13 +1029,14 @@ QPushButton#updateCheckUpdateButton:focus {
         closeButton->setText(english ? QStringLiteral("Close") : QStringLiteral("关闭"));
 
         const QString outputSummary = vaporViewTrimmedUpdateOutput(result.output);
-        const auto showDiagnosticOutput = [outputTitleLabel, outputEdit, outputSummary](bool visible) {
+        const auto showDiagnosticOutput = [&, outputTitleLabel, outputEdit, outputSummary](bool visible) {
             const bool show = visible && !outputSummary.isEmpty();
             outputTitleLabel->setVisible(show);
             outputEdit->setVisible(show);
             if (show)
             {
                 outputEdit->setPlainText(outputSummary);
+                dialog.resize(dialog.sizeHint().expandedTo(QSize(520, 420)));
             }
         };
 
