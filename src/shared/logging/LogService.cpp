@@ -16,6 +16,7 @@
 #include <QWaitCondition>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <deque>
 #include <functional>
@@ -36,8 +37,14 @@ constexpr qint64 kMaxTotalFileBytes = 100LL * 1024LL * 1024LL;
 constexpr int kMaxRetainedFiles = 10;
 constexpr int kMaxRotatedFiles = kMaxRetainedFiles - 1;
 constexpr qint64 kDropReportIntervalMs = 5000;
+constexpr qint64 kFlushIntervalMs = 250;
+constexpr qsizetype kFlushRecordLimit = 256;
+constexpr qsizetype kMaxProcessCaptureBytes = 1 * 1024 * 1024;
+constexpr qsizetype kMaxProcessLineBytes = 64 * 1024;
 constexpr char kProcessStdoutProperty[] = "_vaporview_logged_stdout";
 constexpr char kProcessStderrProperty[] = "_vaporview_logged_stderr";
+constexpr char kProcessStdoutLineBufferProperty[] = "_vaporview_logged_stdout_line_buffer";
+constexpr char kProcessStderrLineBufferProperty[] = "_vaporview_logged_stderr_line_buffer";
 
 bool isHighPriority(LogLevel level)
 {
@@ -62,6 +69,136 @@ QString rotatedPath(const QString& currentPath, int index)
     return QStringLiteral("%1.%2").arg(currentPath).arg(index);
 }
 
+QString defaultFallbackLogDirectory()
+{
+#ifdef Q_OS_WIN
+    const QString localAppData = qEnvironmentVariable("LOCALAPPDATA");
+    return localAppData.isEmpty()
+        ? QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation))
+              .filePath(QStringLiteral("logs"))
+        : QDir(localAppData).filePath(QStringLiteral("VaporView/logs"));
+#else
+    return QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation))
+        .filePath(QStringLiteral("logs"));
+#endif
+}
+
+quint64 currentTimestampUsNow()
+{
+    return static_cast<quint64>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count());
+}
+
+void appendBounded(QByteArray& target, const QByteArray& bytes, qsizetype limit)
+{
+    target.append(bytes);
+    if (target.size() > limit)
+    {
+        target.remove(0, target.size() - limit);
+    }
+}
+
+void publishProcessLine(QProcess *process,
+                        const QString& source,
+                        const QString& category,
+                        const QByteArray& bytes,
+                        bool standardError,
+                        bool partial)
+{
+    QByteArray line = bytes;
+    if (line.endsWith('\r'))
+    {
+        line.chop(1);
+    }
+    if (line.isEmpty())
+    {
+        return;
+    }
+    if (LogService *logService = LogService::instance())
+    {
+        QVariantMap fields{
+            {QStringLiteral("stream"), standardError ? QStringLiteral("stderr")
+                                                       : QStringLiteral("stdout")},
+            {QStringLiteral("raw_bytes"), line.size()}};
+        if (partial)
+        {
+            fields.insert(QStringLiteral("partial"), true);
+        }
+        logService->publish(standardError ? LogLevel::Warning : LogLevel::Debug,
+                            source,
+                            category,
+                            QString::fromLocal8Bit(line),
+                            fields);
+    }
+    Q_UNUSED(process);
+}
+
+void consumeProcessOutput(QProcess *process,
+                          const QString& source,
+                          const QString& category,
+                          const QByteArray& bytes,
+                          bool standardError)
+{
+    if (!process || bytes.isEmpty())
+    {
+        return;
+    }
+
+    const char *captureProperty = standardError ? kProcessStderrProperty : kProcessStdoutProperty;
+    QByteArray captured = process->property(captureProperty).toByteArray();
+    appendBounded(captured, bytes, kMaxProcessCaptureBytes);
+    process->setProperty(captureProperty, captured);
+
+    const char *lineProperty = standardError
+        ? kProcessStderrLineBufferProperty
+        : kProcessStdoutLineBufferProperty;
+    QByteArray pending = process->property(lineProperty).toByteArray();
+    pending.append(bytes);
+    while (true)
+    {
+        const qsizetype newline = pending.indexOf('\n');
+        if (newline < 0)
+        {
+            break;
+        }
+        publishProcessLine(process,
+                           source,
+                           category,
+                           pending.left(newline),
+                           standardError,
+                           false);
+        pending.remove(0, newline + 1);
+    }
+    while (pending.size() > kMaxProcessLineBytes)
+    {
+        publishProcessLine(process,
+                           source,
+                           category,
+                           pending.left(kMaxProcessLineBytes),
+                           standardError,
+                           true);
+        pending.remove(0, kMaxProcessLineBytes);
+    }
+    process->setProperty(lineProperty, pending);
+}
+
+void flushProcessOutput(QProcess *process,
+                        const QString& source,
+                        const QString& category,
+                        bool standardError)
+{
+    if (!process)
+    {
+        return;
+    }
+    const char *lineProperty = standardError
+        ? kProcessStderrLineBufferProperty
+        : kProcessStdoutLineBufferProperty;
+    const QByteArray pending = process->property(lineProperty).toByteArray();
+    publishProcessLine(process, source, category, pending, standardError, true);
+    process->setProperty(lineProperty, QByteArray());
+}
+
 }  // namespace
 
 class LogWriterThread final : public QThread
@@ -72,9 +209,11 @@ public:
 
     LogWriterThread(QString directory,
                     QString applicationName,
+                    QString fallbackDirectory,
                     FailureCallback failureCallback,
                     SequenceCallback sequenceCallback)
         : directory_(std::move(directory)), application_name_(std::move(applicationName)),
+          fallback_directory_(std::move(fallbackDirectory)),
           failure_callback_(std::move(failureCallback)),
           sequence_callback_(std::move(sequenceCallback))
     {
@@ -110,8 +249,13 @@ public:
             }
             else
             {
-                ++dropped_count_;
-                fallbackWrite(record.toJsonLine());
+                if (!isHighPriority(record.level))
+                {
+                    ++dropped_count_;
+                    return;
+                }
+                locker.unlock();
+                emergencyWrite(record);
                 return;
             }
         }
@@ -132,6 +276,12 @@ public:
             wake_.wakeOne();
         }
         wait();
+    }
+
+    void emergencyWrite(const LogRecord& record)
+    {
+        QMutexLocker locker(&file_mutex_);
+        writeRecord(record, true);
     }
 
 protected:
@@ -162,14 +312,16 @@ protected:
                 }
             }
 
+            QMutexLocker fileLocker(&file_mutex_);
             if (dropped > 0)
             {
                 writeDropNotice(dropped);
             }
-            writeRecord(record);
+            writeRecord(record, false);
         }
 
         QMutexLocker locker(&mutex_);
+        QMutexLocker fileLocker(&file_mutex_);
         const quint64 finalDropped = std::exchange(dropped_count_, 0ULL);
         if (finalDropped > 0)
         {
@@ -177,7 +329,7 @@ protected:
         }
         while (!queue_.empty())
         {
-            writeRecord(queue_.front());
+            writeRecord(queue_.front(), false);
             queue_.pop_front();
         }
         closeFile();
@@ -188,7 +340,7 @@ private:
     {
         LogRecord notice;
         notice.timestamp_utc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
-        notice.timestamp_us = static_cast<quint64>(QDateTime::currentMSecsSinceEpoch()) * 1000ULL;
+        notice.timestamp_us = currentTimestampUsNow();
         notice.level = LogLevel::Warning;
         notice.source = QStringLiteral("LogService");
         notice.category = QStringLiteral("queue");
@@ -197,14 +349,22 @@ private:
         notice.sequence = sequence_callback_ ? sequence_callback_() : 0;
         notice.message = QStringLiteral("Dropped %1 log records because the writer queue was full.").arg(dropped);
         notice.fields.insert(QStringLiteral("dropped_count"), static_cast<qulonglong>(dropped));
-        writeRecord(notice);
+        writeRecord(notice, true);
     }
 
-    void openFile()
+    bool openFile()
     {
+        const QString date = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
+        const QString desiredPath = QDir(directory_).filePath(
+            QStringLiteral("%1-%2.jsonl").arg(application_name_, date));
+        if (file_.isOpen() && current_path_ == desiredPath)
+        {
+            return true;
+        }
         if (file_.isOpen())
         {
-            return;
+            closeFile();
+            cleanup_complete_ = false;
         }
         if (!cleanup_complete_)
         {
@@ -214,17 +374,19 @@ private:
         if (!QDir().mkpath(directory_))
         {
             notifyFailure(QStringLiteral("Cannot create application log directory: %1").arg(directory_));
-            return;
+            return false;
         }
-        const QString date = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
-        current_path_ = QDir(directory_).filePath(
-            QStringLiteral("%1-%2.jsonl").arg(application_name_, date));
+        current_path_ = desiredPath;
         file_.setFileName(current_path_);
         if (!file_.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
         {
             current_path_.clear();
             notifyFailure(QStringLiteral("Cannot open application log file in: %1").arg(directory_));
+            return false;
         }
+        last_flush_ms_ = 0;
+        pending_records_ = 0;
+        return true;
     }
 
     void cleanupOldFiles()
@@ -278,24 +440,68 @@ private:
             QFile::remove(rotatedPath(current_path_, 1));
             QFile::rename(current_path_, rotatedPath(current_path_, 1));
         }
+        cleanup_complete_ = false;
         openFile();
     }
 
-    void writeRecord(const LogRecord& record)
+    bool switchToFallbackDirectory()
+    {
+        if (fallback_directory_.isEmpty() ||
+            QDir::cleanPath(directory_) == QDir::cleanPath(fallback_directory_))
+        {
+            return false;
+        }
+        closeFile();
+        directory_ = fallback_directory_;
+        current_path_.clear();
+        cleanup_complete_ = false;
+        return true;
+    }
+
+    bool writeRecordOnce(const LogRecord& record, bool forceFlush)
     {
         const QByteArray line = record.toJsonLine();
-        openFile();
-        if (!file_.isOpen())
+        if (!openFile())
         {
-            fallbackWrite(line);
-            return;
+            return false;
         }
         rotateIfNeeded(line.size());
-        if (file_.write(line) != line.size() || !file_.flush())
+        if (!file_.isOpen() || file_.write(line) != line.size())
         {
-            notifyFailure(QStringLiteral("Cannot flush application log file: %1").arg(current_path_));
-            fallbackWrite(line);
+            return false;
         }
+        ++pending_records_;
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        const bool due = forceFlush || isHighPriority(record.level) ||
+            last_flush_ms_ == 0 || nowMs - last_flush_ms_ >= kFlushIntervalMs ||
+            pending_records_ >= kFlushRecordLimit;
+        if (!due)
+        {
+            return true;
+        }
+        if (!file_.flush())
+        {
+            return false;
+        }
+        last_flush_ms_ = nowMs;
+        pending_records_ = 0;
+        return true;
+    }
+
+    void writeRecord(const LogRecord& record, bool forceFlush)
+    {
+        const QByteArray line = record.toJsonLine();
+        if (writeRecordOnce(record, forceFlush))
+        {
+            return;
+        }
+
+        notifyFailure(QStringLiteral("Cannot write application log file: %1").arg(current_path_));
+        if (switchToFallbackDirectory() && writeRecordOnce(record, forceFlush))
+        {
+            return;
+        }
+        fallbackWrite(line);
     }
 
     void notifyFailure(const QString& message)
@@ -312,20 +518,29 @@ private:
     {
         if (file_.isOpen())
         {
-            file_.flush();
+            if (!file_.flush())
+            {
+                notifyFailure(QStringLiteral("Cannot flush application log file: %1").arg(current_path_));
+            }
             file_.close();
         }
+        last_flush_ms_ = 0;
+        pending_records_ = 0;
     }
 
     QString directory_;
     QString application_name_;
+    QString fallback_directory_;
     QString current_path_;
     QFile file_;
     FailureCallback failure_callback_;
     SequenceCallback sequence_callback_;
     bool failure_reported_ = false;
     bool cleanup_complete_ = false;
+    qint64 last_flush_ms_ = 0;
+    qsizetype pending_records_ = 0;
     QMutex mutex_;
+    QMutex file_mutex_;
     QWaitCondition wake_;
     std::deque<LogRecord> queue_;
     quint64 dropped_count_ = 0;
@@ -398,6 +613,7 @@ LogService::LogService(const QString& applicationName,
     writer_ = std::make_unique<LogWriterThread>(
         log_directory_,
         application_name_,
+        defaultFallbackLogDirectory(),
         [this](const QString& message) { emit diagnosticFailure(message); },
         [this]() { return nextSequence(); });
     writer_->start();
@@ -469,7 +685,14 @@ void LogService::publish(LogRecord record)
     emit recordPublished(record);
     if (writer_)
     {
-        writer_->enqueue(std::move(record));
+        if (record.level == LogLevel::Critical)
+        {
+            writer_->emergencyWrite(record);
+        }
+        else
+        {
+            writer_->enqueue(std::move(record));
+        }
     }
 }
 
@@ -495,42 +718,38 @@ void attachProcessLogging(QProcess *process,
     {
         return;
     }
-    const auto publishChunk = [process, source, category](const QByteArray& bytes, bool standardError) {
-        if (bytes.isEmpty())
-        {
-            return;
-        }
-        const char *propertyName = standardError ? kProcessStderrProperty : kProcessStdoutProperty;
-        QByteArray captured = process->property(propertyName).toByteArray();
-        captured.append(bytes);
-        process->setProperty(propertyName, captured);
-        if (LogService *logService = LogService::instance())
-        {
-            const QString output = QString::fromLocal8Bit(bytes).trimmed();
-            if (!output.isEmpty())
-            {
-                logService->publish(standardError ? LogLevel::Warning : LogLevel::Debug,
-                                    source,
-                                    category,
-                                    output,
-                                    {{QStringLiteral("stream"), standardError ? QStringLiteral("stderr")
-                                                                                : QStringLiteral("stdout")},
-                                     {QStringLiteral("raw_bytes"), bytes.size()}});
-            }
-        }
-    };
     QObject::connect(process, &QProcess::readyReadStandardOutput, process,
-                     [process, publishChunk]() {
-                         publishChunk(process->readAllStandardOutput(), false);
+                     [process, source, category]() {
+                         consumeProcessOutput(process,
+                                               source,
+                                               category,
+                                               process->readAllStandardOutput(),
+                                               false);
                      });
     QObject::connect(process, &QProcess::readyReadStandardError, process,
-                     [process, publishChunk]() {
-                         publishChunk(process->readAllStandardError(), true);
+                     [process, source, category]() {
+                         consumeProcessOutput(process,
+                                               source,
+                                               category,
+                                               process->readAllStandardError(),
+                                               true);
                      });
     QObject::connect(process,
                      qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
                      process,
-                     [source, category](int exitCode, QProcess::ExitStatus exitStatus) {
+                     [process, source, category](int exitCode, QProcess::ExitStatus exitStatus) {
+                         consumeProcessOutput(process,
+                                               source,
+                                               category,
+                                               process->readAllStandardOutput(),
+                                               false);
+                         consumeProcessOutput(process,
+                                               source,
+                                               category,
+                                               process->readAllStandardError(),
+                                               true);
+                         flushProcessOutput(process, source, category, false);
+                         flushProcessOutput(process, source, category, true);
                          if (LogService *logService = LogService::instance())
                          {
                              logService->publish(exitCode == 0 ? LogLevel::Info : LogLevel::Error,
@@ -671,22 +890,13 @@ quint64 LogService::currentThreadId()
 
 quint64 LogService::currentTimestampUs()
 {
-    return static_cast<quint64>(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) * 1000ULL;
+    return currentTimestampUsNow();
 }
 
 QString LogService::chooseLogDirectory(const QString& applicationName)
 {
     const QString primary = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("logs"));
-#ifdef Q_OS_WIN
-    const QString localAppData = qEnvironmentVariable("LOCALAPPDATA");
-    const QString fallback = localAppData.isEmpty()
-        ? QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation))
-              .filePath(QStringLiteral("logs"))
-        : QDir(localAppData).filePath(QStringLiteral("VaporView/logs"));
-#else
-    const QString fallback = QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation))
-        .filePath(QStringLiteral("logs"));
-#endif
+    const QString fallback = defaultFallbackLogDirectory();
     for (const QString& candidate : {primary, fallback})
     {
         if (candidate.isEmpty() || !QDir().mkpath(candidate))
