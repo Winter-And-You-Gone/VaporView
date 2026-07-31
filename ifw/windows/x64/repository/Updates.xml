@@ -12,15 +12,15 @@
   <Essential>true</Essential>
   <ForcedInstallation>true</ForcedInstallation>
   <Script>installscript.qs</Script>
-  <UpdateFile CompressedSize="71290304" OS="Any" UncompressedSize="270688732"/>
+  <UpdateFile CompressedSize="71293051" OS="Any" UncompressedSize="270703068"/>
   <DownloadableArchives>data.7z,drivers.7z,generic.7z,iconengines.7z,imageformats.7z,licenses.7z,networkinformation.7z,osgPlugins-3.6.5.7z,platforms.7z,resources.7z,share.7z,styles.7z,tls.7z,content.7z</DownloadableArchives>
   <UserInterfaces>shortcutselection.ui</UserInterfaces>
   <Licenses>
    <License file="license.txt" name="GPLv3（中文）" priority="100"/>
    <License file="license_en.txt" name="GPLv3 (English)" priority="0"/>
   </Licenses>
-  <SHA1>949b21d5971312f5e21f1af8f7e810967f75091d</SHA1>
+  <SHA1>fca20bb205d81f37750410fc39b56e9b9c7a89ed</SHA1>
  </PackageUpdate>
- <SHA1>949b21d5971312f5e21f1af8f7e810967f75091d</SHA1>
- <MetadataName>2026-07-31-0111_meta.7z</MetadataName>
+ <SHA1>fca20bb205d81f37750410fc39b56e9b9c7a89ed</SHA1>
+ <MetadataName>2026-07-31-0245_meta.7z</MetadataName>
 </Updates>
