@@ -66,6 +66,7 @@ class TemperatureTrendPlotWidget;
 namespace VaporView { class SingleLevelPopupMenu; }
 namespace VaporView { class SkyDeviceConfigDialog; }
 namespace VaporView::Ground::Widgets { class EpsilonPanel; }
+namespace VaporView::Ground::Widgets { class Ai8TemperatureControllerPanel; }
 namespace VaporView::Ground::Widgets { class DevicePanelCoordinator; }
 namespace VaporView::Ground::Widgets { class SourceModeOverviewSwitchButton; }
 namespace VaporView::Ground::Widgets { class TemperatureControllerOverviewPanel; }

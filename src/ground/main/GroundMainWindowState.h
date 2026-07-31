@@ -141,6 +141,7 @@ struct MainWindowState
     HmpPanel *hmp_panel_;
     LidarPanel *lidar_panel_;
     TemperatureControllerPanel *temperature_controller_panel_;
+    VaporView::Ground::Widgets::Ai8TemperatureControllerPanel *ai8_temperature_controller_panel_;
     std::unique_ptr<VaporView::Ground::Widgets::DevicePanelCoordinator> device_panel_coordinator_;
 
     QTextEdit *log_text_edit_;
@@ -255,6 +256,7 @@ struct MainWindowState
     QGroupBox *env_group_;
     QGroupBox *temperature_overview_group_;
     QGroupBox *temperature_controller_group_;
+    QGroupBox *ai8_temperature_controller_group_;
     QGroupBox *lidar_group_;
 
     QLabel *epsilon_lbl_;
@@ -290,6 +292,7 @@ struct MainWindowState
     QLabel *env_hmp_status_icon_;
     QLabel *temperature_overview_inline_title_lbl_;
     QLabel *temperature_controller_inline_title_lbl_;
+    QLabel *ai8_temperature_controller_inline_title_lbl_;
     QComboBox *temperature_title_port_combo_;
     VaporView::Ground::Widgets::TemperatureControllerOverviewPanel *temperature_overview_panel_;
     QLabel *config_inline_title_lbl_;

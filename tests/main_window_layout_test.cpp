@@ -3853,6 +3853,70 @@ int main(int argc, char **argv)
     require(hasTemperatureHomeCapsule,
             "home device overview includes the RD105 laser temperature controller");
 
+    auto *ai8TemperaturePage = window.findChild<QWidget *>(QStringLiteral("temperaturePage"));
+    require(ai8TemperaturePage != nullptr, "temperature page exists");
+    QGroupBox *ai8TemperatureCard = nullptr;
+    const QList<QGroupBox *> topLevelGroups = window.findChildren<QGroupBox *>();
+    for (QGroupBox *group : topLevelGroups)
+    {
+        if (group->property("ai8TemperatureControllerCard").toBool())
+        {
+            ai8TemperatureCard = group;
+            break;
+        }
+    }
+    require(ai8TemperatureCard != nullptr,
+            "AI-8 multi-loop controller card exists");
+    require(ai8TemperaturePage->isAncestorOf(ai8TemperatureCard),
+            "AI-8 controller card belongs to the temperature page");
+    require(!homeOverviewSplitter->isAncestorOf(ai8TemperatureCard),
+            "AI-8 controller card is not added to the home overview");
+
+    auto *ai8Panel = ai8TemperatureCard->findChild<QWidget *>(
+        QStringLiteral("ai8TemperatureControllerPanel"));
+    auto *ai8Stack = ai8TemperatureCard->findChild<QStackedWidget *>(
+        QStringLiteral("ai8ParameterStack"));
+    require(ai8Panel != nullptr && ai8Stack != nullptr && ai8Stack->count() == 4,
+            "AI-8 card exposes channel, input, output, and global parameter pages");
+    require(ai8Stack->currentIndex() == 0,
+            "AI-8 card opens on channel parameters");
+    auto *ai8GlobalButton = ai8TemperatureCard->findChild<QPushButton *>(
+        QStringLiteral("ai8PageSelectorButton4"));
+    auto *ai8ChannelButton = ai8TemperatureCard->findChild<QPushButton *>(
+        QStringLiteral("ai8PageSelectorButton1"));
+    require(ai8GlobalButton != nullptr && ai8ChannelButton != nullptr,
+            "AI-8 page selectors exist");
+    ai8GlobalButton->click();
+    processEventsFor(10);
+    require(ai8Stack->currentIndex() == 3 && ai8GlobalButton->isChecked(),
+            "AI-8 page selector switches to global parameters");
+    ai8ChannelButton->click();
+    processEventsFor(10);
+    require(ai8Stack->currentIndex() == 0 && ai8ChannelButton->isChecked(),
+            "AI-8 page selector returns to channel parameters");
+
+    auto *ai8ChannelSpin = ai8TemperatureCard->findChild<QSpinBox *>(
+        QStringLiteral("ai8ChannelSpin"));
+    auto *ai8AddressSpin = ai8TemperatureCard->findChild<QSpinBox *>(
+        QStringLiteral("ai8DeviceAddressSpin"));
+    auto *ai8BaudCombo = ai8TemperatureCard->findChild<QComboBox *>(
+        QStringLiteral("ai8BaudCombo"));
+    require(ai8ChannelSpin != nullptr && ai8ChannelSpin->minimum() == 1 &&
+                ai8ChannelSpin->maximum() == 96,
+            "AI-8 channel selector covers the documented 1-96 range");
+    require(ai8AddressSpin != nullptr && ai8AddressSpin->minimum() == 0 &&
+                ai8AddressSpin->maximum() == 88 && ai8AddressSpin->value() == 1,
+            "AI-8 address control uses the documented range and default");
+    require(ai8BaudCombo != nullptr && ai8BaudCombo->currentData().toInt() == 19200,
+            "AI-8 baud control defaults to the documented 19.2K setting");
+    auto *ai8ReadButton = ai8TemperatureCard->findChild<QPushButton *>(
+        QStringLiteral("ai8ReadParametersButton"));
+    auto *ai8WriteButton = ai8TemperatureCard->findChild<QPushButton *>(
+        QStringLiteral("ai8WriteParametersButton"));
+    require(ai8ReadButton != nullptr && ai8WriteButton != nullptr &&
+                !ai8ReadButton->isEnabled() && !ai8WriteButton->isEnabled(),
+            "AI-8 read and write actions remain disabled until the protocol backend is connected");
+
     auto *temperaturePortCombo = window.findChild<QComboBox *>(QStringLiteral("temperaturePortCombo"));
     auto *temperatureBaudCombo = window.findChild<QComboBox *>(QStringLiteral("temperatureBaudCombo"));
     auto *temperatureRateCombo = window.findChild<QComboBox *>(QStringLiteral("temperatureRateCombo"));

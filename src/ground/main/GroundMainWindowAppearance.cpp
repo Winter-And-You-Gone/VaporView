@@ -258,7 +258,15 @@ QString temperatureControllerConfigStyleSheet()
         "TemperatureControllerPanel QPushButton#temperatureFactoryResetButton:hover { background-color: rgba(210, 74, 48, 0.10); }"
         "TemperatureControllerPanel QLabel#fieldLabel[temperatureOvertempWarning=\"true\"] { color: @vv-danger; }"
         "TemperatureControllerPanel QLabel#fieldLabel[temperatureMaxOutputWarning=\"true\"] { color: @vv-danger; }"
-        "TemperatureControllerPanel QSpinBox[temperatureMaxOutputWarning=\"true\"] { color: @vv-danger; }");
+        "TemperatureControllerPanel QSpinBox[temperatureMaxOutputWarning=\"true\"] { color: @vv-danger; }"
+        "Ai8TemperatureControllerPanel QFrame#ai8NavigationBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
+        "Ai8TemperatureControllerPanel QPushButton[ai8PageSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 30px; max-height: 30px; padding: 0px 10px; text-align: center; outline: none; }"
+        "Ai8TemperatureControllerPanel QPushButton[ai8PageSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
+        "Ai8TemperatureControllerPanel QPushButton[ai8PageSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
+        "Ai8TemperatureControllerPanel QFrame#ai8ParameterField { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
+        "Ai8TemperatureControllerPanel QLabel#ai8ProtocolStatus[protocolReady=\"false\"] { color: @vv-text-muted; font-weight: 500; }"
+        "Ai8TemperatureControllerPanel QPushButton#ai8WriteParametersButton[primaryAction=\"true\"] { background-color: @vv-primary; border-color: @vv-primary; color: @vv-white; }"
+        "Ai8TemperatureControllerPanel QPushButton#ai8WriteParametersButton[primaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }");
 }
 
 QString MainWindow::themedStyleSheet() const

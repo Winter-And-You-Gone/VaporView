@@ -1601,6 +1601,7 @@ void MainWindow::setupCentralWidget()
                                                  kMainContentBottomShadowSafeInset);
     temperatureContentLayout->setSpacing(kTopLevelCardGap);
     temperatureContentLayout->addWidget(state_->temperature_controller_group_, 0);
+    temperatureContentLayout->addWidget(state_->ai8_temperature_controller_group_, 0);
     temperatureContentLayout->addStretch(1);
     temperatureScrollArea->setWidget(temperatureContent);
     installScrollAreaBottomFade(temperatureScrollArea);
@@ -3923,6 +3924,40 @@ void MainWindow::setupDataPanels()
         sendTemperatureCommand(VaporView::CommandId::RestoreTemperatureFactoryDefaults, command);
     });
     temperatureLayout->addWidget(state_->temperature_controller_panel_);
+
+    state_->ai8_temperature_controller_group_ = new QGroupBox(this);
+    state_->ai8_temperature_controller_group_->setObjectName(QStringLiteral("sensorGroupBox"));
+    state_->ai8_temperature_controller_group_->setProperty("ai8TemperatureControllerCard", true);
+    configureTopLevelCard(state_->ai8_temperature_controller_group_);
+    state_->ai8_temperature_controller_group_->setMinimumWidth(0);
+    state_->ai8_temperature_controller_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    auto *ai8Layout = new QVBoxLayout(state_->ai8_temperature_controller_group_);
+    ai8Layout->setContentsMargins(1, 0, 1, 1);
+    ai8Layout->setSpacing(0);
+
+    auto *ai8TitleBar = new QWidget(state_->ai8_temperature_controller_group_);
+    ai8TitleBar->setObjectName(QStringLiteral("sectionTitleBar"));
+    ai8TitleBar->setFixedHeight(kMainPageTitleBarHeight);
+    auto *ai8TitleLayout = new QHBoxLayout(ai8TitleBar);
+    ai8TitleLayout->setContentsMargins(8, 2, 8, 2);
+    ai8TitleLayout->setSpacing(8);
+    QWidget *ai8TitleCluster = nullptr;
+    state_->ai8_temperature_controller_inline_title_lbl_ = createSectionTitleCluster(
+        ai8TitleBar,
+        QStringLiteral("thermometer"),
+        kMainPageButtonHeight,
+        &ai8TitleCluster);
+    state_->ai8_temperature_controller_inline_title_lbl_->setText(
+        state_->is_english_
+            ? QStringLiteral("AI-8 Series Multi-loop Temperature Controller")
+            : QStringLiteral("AI-8 系列多回路智能温控器"));
+    ai8TitleLayout->addWidget(ai8TitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    ai8TitleLayout->addStretch(1);
+    ai8Layout->addWidget(ai8TitleBar);
+
+    state_->ai8_temperature_controller_panel_ = new Ai8TemperatureControllerPanel(
+        state_->ai8_temperature_controller_group_);
+    ai8Layout->addWidget(state_->ai8_temperature_controller_panel_);
 
     state_->device_panel_coordinator_ = std::make_unique<DevicePanelCoordinator>(DevicePanelBindings{
         state_->epsilon_panel_,

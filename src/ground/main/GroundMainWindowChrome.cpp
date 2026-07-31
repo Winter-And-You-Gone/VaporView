@@ -509,6 +509,17 @@ void MainWindow::setEnglish(bool english)
     {
         updateTemperatureControllerTitleText();
     }
+    if (state_->ai8_temperature_controller_inline_title_lbl_)
+    {
+        state_->ai8_temperature_controller_inline_title_lbl_->setText(
+            english
+                ? QStringLiteral("AI-8 Series Multi-loop Temperature Controller")
+                : QStringLiteral("AI-8 系列多回路智能温控器"));
+    }
+    if (state_->ai8_temperature_controller_panel_)
+    {
+        state_->ai8_temperature_controller_panel_->setEnglish(english);
+    }
     updateTemperatureTitleButtonsState();
     if (state_->global_rate_lbl_) state_->global_rate_lbl_->setText(english ? "Global Rate:" : "统一频率:");
     if (state_->epsilon_rate_lbl_) state_->epsilon_rate_lbl_->setText(english ? "Packets:" : "包频率:");

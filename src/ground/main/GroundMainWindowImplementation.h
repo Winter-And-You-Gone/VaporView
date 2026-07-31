@@ -23,6 +23,7 @@
 #include "ground/session/GroundRecordingService.h"
 #include "ground/session/RecordingScheduleController.h"
 #include "ground/session/RecordingSessionLayout.h"
+#include "ground/widgets/Ai8TemperatureControllerPanel.h"
 #include "ground/widgets/EpsilonPanel.h"
 #include "ground/widgets/DevicePanelCoordinator.h"
 #include "ground/widgets/TelemetryPanels.h"
@@ -157,6 +158,7 @@ using VaporView::SingleLevelPopupAnchor;
 using VaporView::SingleLevelPopupMenu;
 using VaporView::SingleLevelPopupMenuRow;
 using VaporView::SingleLevelPopupTextAlignment;
+using VaporView::Ground::Widgets::Ai8TemperatureControllerPanel;
 using VaporView::Ground::Widgets::EpsilonPanel;
 using VaporView::Ground::Widgets::DevicePanelBindings;
 using VaporView::Ground::Widgets::DevicePanelCoordinator;

@@ -90,6 +90,18 @@ target_include_directories(temperature_controller_protocol_test PRIVATE
 target_link_libraries(temperature_controller_protocol_test PRIVATE vaporview_sky_core)
 add_test(NAME temperature_controller_protocol_test COMMAND temperature_controller_protocol_test)
 
+add_executable(ai8_temperature_controller_panel_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/ai8_temperature_controller_panel_test.cpp
+)
+target_include_directories(ai8_temperature_controller_panel_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(ai8_temperature_controller_panel_test PRIVATE
+    vaporview_ground_widgets
+)
+add_dependencies(ai8_temperature_controller_panel_test VaporViewRuntimeResources)
+add_test(NAME ai8_temperature_controller_panel_test COMMAND ai8_temperature_controller_panel_test)
+
 add_executable(telemetry_codec_test
     ${CMAKE_CURRENT_SOURCE_DIR}/telemetry_codec_test.cpp
 )
@@ -627,6 +639,7 @@ set(VAPORVIEW_FAST_UNIT_TESTS
     height_reference_test
     tcp_wave_encoding_test
     temperature_controller_protocol_test
+    ai8_temperature_controller_panel_test
     telemetry_codec_test
     telemetry_tcp_link_test
     sky_session_recorder_test
@@ -688,6 +701,7 @@ set_property(TEST map_data_script_test APPEND PROPERTY LABELS script)
 set_property(TEST tcp_wave_encoding_test tcp_wave_panel_test APPEND PROPERTY LABELS tcp-wave)
 set_property(TEST device_panel_coordinator_test APPEND PROPERTY LABELS ground-widgets)
 set_property(TEST segmented_switch_button_test APPEND PROPERTY LABELS ground-widgets ui)
+set_property(TEST ai8_temperature_controller_panel_test APPEND PROPERTY LABELS ground-widgets ui)
 set_property(TEST
     temperature_controller_protocol_test
     epsilon_protocol_test
