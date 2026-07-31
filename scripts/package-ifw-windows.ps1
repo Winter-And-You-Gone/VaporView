@@ -243,6 +243,7 @@ $configXml = (Get-Content -LiteralPath (Join-Path $repoRoot "packaging\ifw\confi
 $configXml = $configXml.Replace("@VAPORVIEW_VERSION@", $version).Replace("@VAPORVIEW_TARGET_DIR@", "C:\VaporView").Replace("@VAPORVIEW_REMOTE_REPOSITORIES@", $remoteRepositories)
 Set-Content -LiteralPath (Join-Path $workDir "config.xml") -Value $configXml -Encoding UTF8
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\control.qs") -Destination $workDir -Force
+Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\ifw\installer.qss") -Destination $workDir -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "resources\VaproViewLOGO\VaporViewLOGO_black.ico") -Destination (Join-Path $workDir "VaporViewInstallerIcon.ico") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "resources\VaproViewLOGO\VaporViewLOGO_black_icon.png") -Destination (Join-Path $workDir "VaporViewInstallerIcon.png") -Force
 

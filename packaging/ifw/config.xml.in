@@ -5,6 +5,7 @@
     <Publisher>VaporView</Publisher>
     <ProductUrl>https://github.com/Winter-And-You-Gone/VaporView</ProductUrl>
     <WizardStyle>Modern</WizardStyle>
+    <StyleSheet>installer.qss</StyleSheet>
     <WizardDefaultWidth>600</WizardDefaultWidth>
     <WizardDefaultHeight>400</WizardDefaultHeight>
     <TargetDir>@VAPORVIEW_TARGET_DIR@</TargetDir>

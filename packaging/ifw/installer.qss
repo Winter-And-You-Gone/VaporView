@@ -1,0 +1,5 @@
+/* Keep the IFW page list compact so the component content has room to breathe. */
+QWizard QListWidget {
+    min-width: 160px;
+    max-width: 160px;
+}
