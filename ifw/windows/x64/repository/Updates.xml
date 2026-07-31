@@ -6,20 +6,20 @@
   <Name>com.vaporview.core</Name>
   <DisplayName>VaporView</DisplayName>
   <Description>VaporView desktop, Sky and 3D runtime.</Description>
-  <Version>1.0.15</Version>
+  <Version>1.0.16</Version>
   <ReleaseDate>2026-07-31</ReleaseDate>
   <Default>true</Default>
   <ForcedInstallation>true</ForcedInstallation>
   <Script>installscript.qs</Script>
-  <UpdateFile CompressedSize="71382273" OS="Any" UncompressedSize="271142095"/>
+  <UpdateFile CompressedSize="71381357" OS="Any" UncompressedSize="271142095"/>
   <DownloadableArchives>data.7z,drivers.7z,generic.7z,iconengines.7z,imageformats.7z,licenses.7z,networkinformation.7z,osgPlugins-3.6.5.7z,platforms.7z,resources.7z,share.7z,styles.7z,tls.7z,content.7z</DownloadableArchives>
   <UserInterfaces>shortcutselection.ui</UserInterfaces>
   <Licenses>
    <License file="license.txt" name="GPLv3（中文）" priority="100"/>
    <License file="license_en.txt" name="GPLv3 (English)" priority="0"/>
   </Licenses>
-  <SHA1>6683f660c45fd89378112d8dbd817a8882ad8926</SHA1>
+  <SHA1>f9818de2d39d18d8057f6fa5ee9ee99c4c78d74f</SHA1>
  </PackageUpdate>
- <SHA1>6683f660c45fd89378112d8dbd817a8882ad8926</SHA1>
- <MetadataName>2026-07-31-2239_meta.7z</MetadataName>
+ <SHA1>f9818de2d39d18d8057f6fa5ee9ee99c4c78d74f</SHA1>
+ <MetadataName>2026-07-31-2309_meta.7z</MetadataName>
 </Updates>
