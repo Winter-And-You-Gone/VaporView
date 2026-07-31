@@ -58,6 +58,7 @@ struct DeviceConfigPageWidgets
     QLabel *hmp_rate_lbl = nullptr;
     QLabel *lidar_rate_lbl = nullptr;
     QLabel *temperature_rate_lbl = nullptr;
+    QLabel *ai8_temperature_rate_lbl = nullptr;
     QWidget *sky_telemetry_row_widget = nullptr;
     QFrame *data_telemetry_summary_card = nullptr;
     QLabel *data_telemetry_summary_title_lbl = nullptr;
@@ -97,10 +98,12 @@ struct DeviceConfigPageWidgets
     QComboBox *temperature_port_combo = nullptr;
     QComboBox *temperature_baud_combo = nullptr;
     QComboBox *ai8_temperature_port_combo = nullptr;
+    QComboBox *ai8_temperature_baud_combo = nullptr;
     QComboBox *ptb_rate_combo = nullptr;
     QComboBox *hmp_rate_combo = nullptr;
     QComboBox *lidar_rate_combo = nullptr;
     QComboBox *temperature_rate_combo = nullptr;
+    QComboBox *ai8_temperature_rate_combo = nullptr;
     QToolButton *epsilon_remote_action_btn = nullptr;
     QWidget *epsilon_remote_buttons_widget = nullptr;
     QToolButton *ptb_remote_action_btn = nullptr;

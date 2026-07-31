@@ -513,8 +513,8 @@ void MainWindow::setEnglish(bool english)
     {
         state_->ai8_temperature_controller_inline_title_lbl_->setText(
             english
-                ? QStringLiteral("AI-8 Series Multi-loop Temperature Controller")
-                : QStringLiteral("AI-8 系列多回路智能温控器"));
+                ? QStringLiteral("AI-8 Series Multi-loop Temperature Controller ·")
+                : QStringLiteral("AI-8 系列多回路智能温控器 ·"));
     }
     if (state_->ai8_temperature_controller_panel_)
     {

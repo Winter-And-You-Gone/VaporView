@@ -1425,6 +1425,14 @@ void MainWindow::loadRememberedInputState()
     loadCombo(state_->temperature_port_combo_, QStringLiteral("serial/temperature_port"));
     loadCombo(state_->device_config_.ai8_temperature_port_combo,
               QStringLiteral("serial/ai8_temperature_port"));
+    loadCombo(state_->device_config_.ai8_temperature_baud_combo,
+              QStringLiteral("serial/ai8_temperature_baud"));
+    loadCombo(state_->device_config_.ai8_temperature_rate_combo,
+              QStringLiteral("rate/ai8_temperature"));
+    applyComboText(findChild<QComboBox *>(QStringLiteral("ai8BaudCombo")),
+                   state_->device_config_.ai8_temperature_baud_combo
+                       ? state_->device_config_.ai8_temperature_baud_combo->currentText()
+                       : QString());
     refreshAi8TemperatureTitlePortOptions(
         getAvailablePorts(),
         localSerialPortComboValue(state_->device_config_.ai8_temperature_port_combo));
@@ -1578,6 +1586,10 @@ void MainWindow::saveRememberedInputState() const
     saveCombo(QStringLiteral("serial/temperature_port"), state_->temperature_port_combo_);
     saveCombo(QStringLiteral("serial/ai8_temperature_port"),
               state_->device_config_.ai8_temperature_port_combo);
+    saveCombo(QStringLiteral("serial/ai8_temperature_baud"),
+              state_->device_config_.ai8_temperature_baud_combo);
+    saveCombo(QStringLiteral("rate/ai8_temperature"),
+              state_->device_config_.ai8_temperature_rate_combo);
 
     saveCombo(QStringLiteral("serial/epsilon_baud"), state_->epsilon_baud_combo_);
     saveCombo(QStringLiteral("serial/ptb_baud"), state_->ptb_baud_combo_);
@@ -1656,6 +1668,8 @@ void MainWindow::bindRememberedInputState()
     bindCombo(state_->lidar_port_combo_);
     bindCombo(state_->temperature_port_combo_);
     bindCombo(state_->device_config_.ai8_temperature_port_combo);
+    bindCombo(state_->device_config_.ai8_temperature_baud_combo);
+    bindCombo(state_->device_config_.ai8_temperature_rate_combo);
     bindCombo(state_->epsilon_baud_combo_);
     bindCombo(state_->ptb_baud_combo_);
     bindCombo(state_->hmp_baud_combo_);

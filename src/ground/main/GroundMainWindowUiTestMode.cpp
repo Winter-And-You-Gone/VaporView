@@ -371,6 +371,10 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
             state_->device_config_.ai8_temperature_port_combo,
             testPorts,
             QStringLiteral("UI-TEST-AI8"));
+        applyComboText(state_->device_config_.ai8_temperature_baud_combo,
+                       QStringLiteral("19200"));
+        applyComboText(state_->device_config_.ai8_temperature_rate_combo,
+                       QStringLiteral("5"));
         refreshAi8TemperatureTitlePortOptions(testPorts, QStringLiteral("UI-TEST-AI8"));
         syncDeviceConfigPageFromHome();
         updateUiTestModeUi();

@@ -3877,15 +3877,36 @@ int main(int argc, char **argv)
     auto *ai8TitleLayout = ai8TitlePortCombo
         ? qobject_cast<QHBoxLayout *>(ai8TitlePortCombo->parentWidget()->layout())
         : nullptr;
+    auto *ai8TitleCluster = ai8TitleLayout && ai8TitleLayout->itemAt(0)
+        ? ai8TitleLayout->itemAt(0)->widget()
+        : nullptr;
+    auto *ai8TitleLabel = ai8TitleCluster
+        ? ai8TitleCluster->findChild<QLabel *>(QStringLiteral("sectionTitleLabel"))
+        : nullptr;
+    auto *rd105TitlePortCombo = window.findChild<QComboBox *>(
+        QStringLiteral("temperatureTitlePortCombo"));
     require(ai8TitlePortCombo != nullptr && ai8TitleLayout != nullptr &&
                 ai8TitleLayout->indexOf(ai8TitlePortCombo) == 1 &&
                 ai8TitlePortCombo->count() >= 1 &&
                 ai8TitlePortCombo->itemData(0).toString().isEmpty() &&
+                ai8TitlePortCombo->itemText(0) == QStringLiteral("未选择串口") &&
                 !ai8TitlePortCombo->isEditable() &&
                 ai8TitlePortCombo->property("usesSingleLevelPopupMenu").toBool() &&
                 ai8TitlePortCombo->cursor().shape() == Qt::PointingHandCursor &&
                 ai8TitlePortCombo->focusPolicy() == Qt::TabFocus,
             "AI-8 title is followed by the detected serial-port selector");
+    require(ai8TitleLabel != nullptr &&
+                ai8TitleLabel->text() == QStringLiteral("AI-8 系列多回路智能温控器 ·"),
+            "AI-8 title uses the same separator as the RD105 title");
+    require(rd105TitlePortCombo != nullptr &&
+                ai8TitlePortCombo->font().weight() == rd105TitlePortCombo->font().weight() &&
+                ai8TitlePortCombo->font().pointSizeF() == rd105TitlePortCombo->font().pointSizeF(),
+            "AI-8 and RD105 title serial selectors share typography");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QComboBox#ai8TitlePortCombo {"),
+        QStringLiteral("background-color: transparent"),
+        "AI-8 title serial selector shares the RD105 transparent title style");
 
     auto *ai8Panel = ai8TemperatureCard->findChild<QWidget *>(
         QStringLiteral("ai8TemperatureControllerPanel"));
@@ -4748,12 +4769,12 @@ int main(int argc, char **argv)
     const bool temperatureTitlePortDark =
         qApp->property(VaporView::kAppDarkThemeProperty).toBool();
     requireLastStyleRuleContains(qApp->styleSheet(),
-                                 QStringLiteral("QComboBox#temperatureTitlePortCombo:hover {"),
+                                 QStringLiteral("QComboBox#temperatureTitlePortCombo:hover,"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover,
                                                               temperatureTitlePortDark),
                                  "temperature title serial selector changes its background on hover");
     requireLastStyleRuleContains(qApp->styleSheet(),
-                                 QStringLiteral("QComboBox#temperatureTitlePortCombo::down-arrow {"),
+                                 QStringLiteral("QComboBox#temperatureTitlePortCombo::down-arrow,"),
                                  temperatureTitlePortDark
                                      ? QStringLiteral("chevron-down-dark.svg")
                                      : QStringLiteral("chevron-down-primary.svg"),
@@ -6568,7 +6589,8 @@ int main(int argc, char **argv)
         {
             continue;
         }
-        if (combo->currentText() == QStringLiteral("5"))
+        if (combo->currentText() == QStringLiteral("5") &&
+            combo->objectName() != QStringLiteral("deviceAi8TemperatureRateCombo"))
         {
             deviceRateCombo = combo;
         }
@@ -6702,15 +6724,42 @@ int main(int argc, char **argv)
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceTemperatureBaudCombo"));
     auto *deviceAi8TemperaturePortCombo =
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperaturePortCombo"));
-    auto *deviceAi8TemperatureLabel =
-        deviceConfigPage->findChild<QLabel *>(QStringLiteral("deviceAi8TemperatureLabel"));
+    auto *deviceAi8TemperatureBaudCombo =
+        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureBaudCombo"));
+    auto *deviceAi8TemperatureRateCombo =
+        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureRateCombo"));
+    auto *deviceSerialGrid = deviceAi8TemperaturePortCombo
+        ? qobject_cast<QGridLayout *>(deviceAi8TemperaturePortCombo->parentWidget()->layout())
+        : nullptr;
+    auto *deviceAi8TemperatureLabel = deviceSerialGrid && deviceSerialGrid->itemAtPosition(5, 0)
+        ? qobject_cast<QLabel *>(deviceSerialGrid->itemAtPosition(5, 0)->widget())
+        : nullptr;
+    auto *deviceAi8TemperatureRateLabel = deviceSerialGrid && deviceSerialGrid->itemAtPosition(5, 3)
+        ? qobject_cast<QLabel *>(deviceSerialGrid->itemAtPosition(5, 3)->widget())
+        : nullptr;
+    auto *deviceTemperatureLabel = deviceSerialGrid && deviceSerialGrid->itemAtPosition(4, 0)
+        ? qobject_cast<QLabel *>(deviceSerialGrid->itemAtPosition(4, 0)->widget())
+        : nullptr;
     require(deviceTemperaturePortCombo != nullptr,
             "device configuration temperature serial-port combo exists");
     require(deviceTemperatureBaudCombo != nullptr,
             "device configuration temperature baud-rate combo exists");
-    require(deviceAi8TemperatureLabel != nullptr &&
-                deviceAi8TemperatureLabel->text() == QStringLiteral("AI-8288:"),
-            "device configuration labels the AI-8288 serial selector");
+    require(deviceAi8TemperatureLabel != nullptr && deviceTemperatureLabel != nullptr &&
+                deviceAi8TemperatureLabel->text() == QStringLiteral("AI-8288:") &&
+                deviceAi8TemperatureLabel->objectName() == QStringLiteral("fieldLabel") &&
+                deviceAi8TemperatureLabel->font().weight() == deviceTemperatureLabel->font().weight(),
+            "device configuration AI-8288 label matches the RD105 field-label typography");
+    require(deviceAi8TemperatureBaudCombo != nullptr &&
+                deviceAi8TemperatureBaudCombo->count() == 6 &&
+                deviceAi8TemperatureBaudCombo->currentData().toInt() == 19200 &&
+                deviceAi8TemperatureBaudCombo->findData(4800) >= 0 &&
+                deviceAi8TemperatureBaudCombo->findData(115200) >= 0,
+            "device configuration exposes the documented AI-8288 baud-rate choices");
+    require(deviceAi8TemperatureRateLabel != nullptr &&
+                deviceAi8TemperatureRateLabel->text() == QStringLiteral("轮询:") &&
+                deviceAi8TemperatureRateCombo != nullptr &&
+                deviceAi8TemperatureRateCombo->currentData().toInt() == 5,
+            "device configuration exposes the AI-8288 polling-rate selector");
     const QPoint deviceTemperaturePortPosition =
         deviceTemperaturePortCombo->mapTo(deviceConfigPage, QPoint(0, 0));
     const QPoint deviceAi8TemperaturePortPosition =
@@ -6721,6 +6770,20 @@ int main(int argc, char **argv)
                 deviceAi8TemperaturePortPosition.y() > deviceTemperaturePortPosition.y() &&
                 std::abs(deviceAi8TemperaturePortPosition.x() - deviceTemperaturePortPosition.x()) <= 1,
             "device configuration places the AI-8288 serial selector directly below RD105");
+    require(std::abs(deviceAi8TemperatureBaudCombo->mapTo(deviceConfigPage, QPoint(0, 0)).x() -
+                     deviceTemperatureBaudCombo->mapTo(deviceConfigPage, QPoint(0, 0)).x()) <= 1 &&
+                deviceAi8TemperatureRateCombo->mapTo(deviceConfigPage, QPoint(0, 0)).x() >
+                    deviceAi8TemperatureBaudCombo->mapTo(deviceConfigPage, QPoint(0, 0)).x(),
+            "device configuration aligns all AI-8288 serial controls with the RD105 row");
+    deviceAi8TemperatureBaudCombo->setCurrentIndex(
+        deviceAi8TemperatureBaudCombo->findData(57600));
+    processEventsFor(20);
+    require(ai8BaudCombo->currentData().toInt() == 57600,
+            "device configuration AI-8288 baud selection updates the global parameter editor");
+    ai8BaudCombo->setCurrentIndex(ai8BaudCombo->findData(19200));
+    processEventsFor(20);
+    require(deviceAi8TemperatureBaudCombo->currentData().toInt() == 19200,
+            "AI-8 global baud parameter writes back to device configuration");
     deviceConfigScrollArea->ensureWidgetVisible(deviceTemperaturePortCombo, 20, 20);
     processEventsFor(80);
     requireComboPopupFloatingContainer(deviceTemperaturePortCombo,

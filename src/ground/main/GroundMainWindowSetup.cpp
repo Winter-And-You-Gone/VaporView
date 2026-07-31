@@ -1857,17 +1857,60 @@ void MainWindow::setupDeviceConfigPage()
                state_->device_config_.lidar_rate_lbl, state_->device_config_.lidar_rate_combo, 3);
     addPortRow(state_->device_config_.temperature_lbl, state_->device_config_.temperature_port_combo, state_->device_config_.temperature_baud_combo,
                state_->device_config_.temperature_rate_lbl, state_->device_config_.temperature_rate_combo, 4);
-    state_->device_config_.ai8_temperature_lbl = new QLabel(formWidget);
-    state_->device_config_.ai8_temperature_lbl->setObjectName(QStringLiteral("deviceAi8TemperatureLabel"));
-    state_->device_config_.ai8_temperature_lbl->setFixedHeight(kMainPageInputHeight);
-    state_->device_config_.ai8_temperature_lbl->setFixedWidth(76);
-    formLayout->addWidget(state_->device_config_.ai8_temperature_lbl, 5, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    state_->device_config_.ai8_temperature_port_combo = createCombo(kDeviceConfigPortComboWidth);
+    addPortRow(state_->device_config_.ai8_temperature_lbl,
+               state_->device_config_.ai8_temperature_port_combo,
+               state_->device_config_.ai8_temperature_baud_combo,
+               state_->device_config_.ai8_temperature_rate_lbl,
+               state_->device_config_.ai8_temperature_rate_combo,
+               5);
     state_->device_config_.ai8_temperature_port_combo->setObjectName(QStringLiteral("deviceAi8TemperaturePortCombo"));
-    state_->device_config_.ai8_temperature_port_combo->setMinimumContentsLength(6);
-    state_->device_config_.ai8_temperature_port_combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     refreshLocalSerialPortComboOptions(state_->device_config_.ai8_temperature_port_combo, getAvailablePorts());
-    formLayout->addWidget(state_->device_config_.ai8_temperature_port_combo, 5, 1, Qt::AlignVCenter);
+    state_->device_config_.ai8_temperature_baud_combo->setObjectName(
+        QStringLiteral("deviceAi8TemperatureBaudCombo"));
+    for (int baudRate : {4800, 9600, 19200, 38400, 57600, 115200})
+    {
+        state_->device_config_.ai8_temperature_baud_combo->addItem(
+            QString::number(baudRate), baudRate);
+    }
+    state_->device_config_.ai8_temperature_baud_combo->setCurrentText(QStringLiteral("19200"));
+    state_->device_config_.ai8_temperature_rate_combo->setObjectName(
+        QStringLiteral("deviceAi8TemperatureRateCombo"));
+    for (int rate : {1, 2, 5, 10, 20})
+    {
+        state_->device_config_.ai8_temperature_rate_combo->addItem(QString::number(rate), rate);
+    }
+    state_->device_config_.ai8_temperature_rate_combo->setCurrentText(QStringLiteral("5"));
+    state_->device_config_.ai8_temperature_rate_combo->setValidator(
+        new QIntValidator(1, 20, state_->device_config_.ai8_temperature_rate_combo));
+    if (auto *ai8PanelBaudCombo = findChild<QComboBox *>(QStringLiteral("ai8BaudCombo"));
+        ai8PanelBaudCombo && state_->device_config_.ai8_temperature_baud_combo)
+    {
+        auto setMatchingBaud = [](QComboBox *combo, const QString& baud) {
+            if (!combo || combo->currentText() == baud)
+            {
+                return;
+            }
+            const int index = combo->findText(baud);
+            if (index >= 0)
+            {
+                combo->setCurrentIndex(index);
+            }
+        };
+        setMatchingBaud(ai8PanelBaudCombo,
+                        state_->device_config_.ai8_temperature_baud_combo->currentText());
+        connect(state_->device_config_.ai8_temperature_baud_combo,
+                &QComboBox::currentTextChanged,
+                this,
+                [ai8PanelBaudCombo, setMatchingBaud](const QString& baud) {
+                    setMatchingBaud(ai8PanelBaudCombo, baud);
+                });
+        connect(ai8PanelBaudCombo,
+                &QComboBox::currentTextChanged,
+                this,
+                [this, setMatchingBaud](const QString& baud) {
+                    setMatchingBaud(state_->device_config_.ai8_temperature_baud_combo, baud);
+                });
+    }
     state_->device_config_.ptb_baud_combo->setObjectName(QStringLiteral("devicePressureBaudCombo"));
     state_->device_config_.hmp_baud_combo->setObjectName(QStringLiteral("deviceHumidityBaudCombo"));
     if (state_->device_config_.epsilon_port_combo)
@@ -2520,6 +2563,7 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.hmp_rate_lbl) state_->device_config_.hmp_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
     if (state_->device_config_.lidar_rate_lbl) state_->device_config_.lidar_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
     if (state_->device_config_.temperature_rate_lbl) state_->device_config_.temperature_rate_lbl->setText(state_->is_english_ ? "Poll:" : "轮询:");
+    if (state_->device_config_.ai8_temperature_rate_lbl) state_->device_config_.ai8_temperature_rate_lbl->setText(state_->is_english_ ? "Poll:" : "轮询:");
     if (state_->device_config_.epsilon_config_title_lbl)
     {
         state_->device_config_.epsilon_config_title_lbl->setText(state_->is_english_ ? "EPSILON Configuration" : "EPSILON 配置");
@@ -2663,6 +2707,8 @@ void MainWindow::updateDeviceConfigState()
         state_->device_config_.temperature_port_combo,
         state_->device_config_.temperature_baud_combo,
         state_->device_config_.ai8_temperature_port_combo,
+        state_->device_config_.ai8_temperature_baud_combo,
+        state_->device_config_.ai8_temperature_rate_combo,
         state_->device_config_.ptb_rate_combo,
         state_->device_config_.hmp_rate_combo,
         state_->device_config_.lidar_rate_combo,
@@ -2985,7 +3031,9 @@ void MainWindow::refreshAi8TemperatureTitlePortOptions(const QStringList& ports,
     {
         const QSignalBlocker blocker(combo);
         combo->clear();
-        combo->addItem(state_->is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("未选择"), QString());
+        combo->addItem(state_->is_english_ ? QStringLiteral("No serial port")
+                                           : QStringLiteral("未选择串口"),
+                       QString());
         for (const QString& port : ports)
         {
             const QString trimmed = port.trimmed();
@@ -3006,6 +3054,7 @@ void MainWindow::refreshAi8TemperatureTitlePortOptions(const QStringList& ports,
         }
         combo->setCurrentIndex(selectedIndex);
     }
+    combo->setEnabled(combo->count() > 1);
     updateAi8TemperatureTitlePortAppearance();
 }
 
@@ -3188,7 +3237,8 @@ void MainWindow::refreshLocalSerialPortManualOptionTexts()
         const QSignalBlocker blocker(state_->ai8_temperature_title_port_combo_);
         state_->ai8_temperature_title_port_combo_->setItemText(
             0,
-            state_->is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("未选择"));
+            state_->is_english_ ? QStringLiteral("No serial port")
+                                : QStringLiteral("未选择串口"));
         updateAi8TemperatureTitlePortAppearance();
     }
 }
@@ -4049,10 +4099,11 @@ void MainWindow::setupDataPanels()
         QStringLiteral("thermometer"),
         kMainPageButtonHeight,
         &ai8TitleCluster);
+    const QString ai8Title = state_->is_english_
+        ? QStringLiteral("AI-8 Series Multi-loop Temperature Controller")
+        : QStringLiteral("AI-8 系列多回路智能温控器");
     state_->ai8_temperature_controller_inline_title_lbl_->setText(
-        state_->is_english_
-            ? QStringLiteral("AI-8 Series Multi-loop Temperature Controller")
-            : QStringLiteral("AI-8 系列多回路智能温控器"));
+        QStringLiteral("%1 ·").arg(ai8Title));
     ai8TitleLayout->addWidget(ai8TitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
     state_->ai8_temperature_title_port_combo_ = createSingleLevelPopupComboBox(ai8TitleBar, false, true);
