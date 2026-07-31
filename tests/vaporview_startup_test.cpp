@@ -247,8 +247,10 @@ int main(int argc, char **argv)
     require(splashWidth > 0 && splashHeight > 0,
             QStringLiteral("startup splash geometry is empty"));
     const double splashRatio = static_cast<double>(splashWidth) / splashHeight;
-    require(splashRatio > 1.70 && splashRatio < 1.85,
-            QStringLiteral("startup splash aspect ratio is not close to 16:9"));
+    require(splashRatio > 0.94 && splashRatio < 1.06,
+            QStringLiteral("startup splash aspect ratio is not square"));
+    require(splashWidth >= 180 && splashWidth <= 340,
+            QStringLiteral("startup splash is outside the compact app-icon size range"));
 
     timer.restart();
 

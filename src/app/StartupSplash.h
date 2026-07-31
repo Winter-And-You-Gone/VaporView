@@ -12,7 +12,6 @@ class QPaintEvent;
 class QPropertyAnimation;
 class QResizeEvent;
 class QShowEvent;
-class QVariantAnimation;
 
 namespace VaporView
 {
@@ -28,6 +27,7 @@ public:
     ~StartupSplash() override;
 
     static QString defaultLogoResourcePath();
+    static int calculateCardExtent(const QSize& availableSize);
     static QSize calculateWindowSize(const QSize& availableSize);
 
     void showCentered();
@@ -49,15 +49,12 @@ protected:
     void showEvent(QShowEvent *event) override;
 
 private:
-    class LogoWidget;
+    class SplashCardWidget;
 
-    void startLogoAnimation();
     void stopAnimations();
     void updateLogoSize();
 
-    LogoWidget *logo_widget_ = nullptr;
-    QVariantAnimation *logo_fade_animation_ = nullptr;
-    QVariantAnimation *logo_breath_animation_ = nullptr;
+    SplashCardWidget *card_widget_ = nullptr;
     QPropertyAnimation *window_fade_animation_ = nullptr;
     QElapsedTimer visible_timer_;
     bool fading_out_ = false;
