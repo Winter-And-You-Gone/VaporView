@@ -10,6 +10,18 @@
 namespace VaporView
 {
 
+namespace LogRecordLimits
+{
+constexpr qsizetype kMaxMessageUtf8Bytes = 64 * 1024;
+constexpr qsizetype kMaxSingleStringUtf8Bytes = 64 * 1024;
+constexpr qsizetype kMaxByteArrayBytes = 64 * 1024;
+constexpr qsizetype kMaxFieldsJsonBytes = 192 * 1024;
+constexpr qsizetype kMaxSerializedRecordBytes = 256 * 1024;
+constexpr int kMaxVariantDepth = 8;
+constexpr qsizetype kMaxContainerElements = 256;
+constexpr qsizetype kMaxVariantNodes = 4096;
+}  // namespace LogRecordLimits
+
 enum class LogLevel : quint8
 {
     Debug = 0,

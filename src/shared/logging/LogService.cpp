@@ -1,4 +1,5 @@
 #include "LogService.h"
+#include "logging/BoundedLogRecord.h"
 #include "logging/LogQueuePolicy.h"
 
 #include <QCoreApplication>
@@ -318,12 +319,12 @@ public:
     bool emergencyWrite(const LogRecord& record,
                         const std::optional<LogRecord>& overloadNotice = std::nullopt)
     {
-        const QByteArray recordLine = record.toJsonLine();
+        const QByteArray recordLine = LoggingInternal::serializePreparedLogRecord(record);
         fallbackWrite(recordLine);
         QByteArray noticeLine;
         if (overloadNotice)
         {
-            noticeLine = overloadNotice->toJsonLine();
+            noticeLine = LoggingInternal::serializePreparedLogRecord(*overloadNotice);
             fallbackWrite(noticeLine);
         }
 
@@ -791,7 +792,7 @@ private:
 
     bool writeRecord(const LogRecord& record, bool forceFlush)
     {
-        const QByteArray line = record.toJsonLine();
+        const QByteArray line = LoggingInternal::serializePreparedLogRecord(record);
         if (writeRecordOnce(record, line, forceFlush))
         {
             return true;
@@ -944,9 +945,8 @@ QJsonObject LogRecord::toJsonObject() const
 
 QByteArray LogRecord::toJsonLine() const
 {
-    QByteArray line = QJsonDocument(toJsonObject()).toJson(QJsonDocument::Compact);
-    line.append('\n');
-    return line;
+    return LoggingInternal::serializePreparedLogRecord(
+        LoggingInternal::boundLogRecord(*this));
 }
 
 LogService::LogService(const QString& applicationName,
@@ -1120,6 +1120,7 @@ LogRecord LogService::submit(LogRecord record)
         {
         }
     }
+    record = LoggingInternal::boundLogRecord(std::move(record));
     if (writer_)
     {
         if (record.level == LogLevel::Critical)

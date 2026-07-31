@@ -11,6 +11,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
@@ -19,6 +20,7 @@
 #include <QTemporaryDir>
 #include <QThread>
 
+#include <algorithm>
 #include <cstdlib>
 #include <atomic>
 #include <chrono>
@@ -27,6 +29,13 @@
 #include <memory>
 #include <thread>
 #include <vector>
+
+struct UnsupportedLogValue
+{
+    int value = 0;
+};
+
+Q_DECLARE_METATYPE(UnsupportedLogValue)
 
 namespace
 {
@@ -119,6 +128,17 @@ QVector<QJsonObject> readJsonLines(const QString& path)
     return records;
 }
 
+QJsonObject parseJsonLine(const QByteArray& line)
+{
+    require(line.size() <= VaporView::LogRecordLimits::kMaxSerializedRecordBytes,
+            "serialized record stays within its hard byte limit");
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(line, &error);
+    require(error.error == QJsonParseError::NoError && document.isObject(),
+            "bounded JSONL is a complete parseable object");
+    return document.object();
+}
+
 void silentQtMessageHandler(QtMsgType, const QMessageLogContext&, const QString&)
 {
 }
@@ -146,6 +166,218 @@ int main(int argc, char **argv)
     require(parsed.level == VaporView::LogLevel::Warning, "log level round trip");
     require(parsed.message == source.message, "log message round trip");
     require(parsed.fields.value(QStringLiteral("dropped_count")).toInt() == 3, "log fields round trip");
+
+    // shortMessageIsUnchanged / longMessageIsUtf8SafelyTruncated /
+    // multibyteMessageIsNotCutMidCharacter / messageLimitUsesUtf8BytesNotQStringLength /
+    // truncatedMessageContainsMetadata
+    {
+        VaporView::LogRecord record = source;
+        record.message = QStringLiteral("short 中文 emoji 🚀");
+        QJsonObject object = parseJsonLine(record.toJsonLine());
+        require(object.value(QStringLiteral("message")).toString() == record.message,
+                "short message is unchanged");
+        require(!object.value(QStringLiteral("fields")).toObject()
+                     .contains(QStringLiteral("_log_truncated")),
+                "short message has no truncation metadata");
+
+        record.message = QString(VaporView::LogRecordLimits::kMaxMessageUtf8Bytes,
+                                 QLatin1Char('a'));
+        object = parseJsonLine(record.toJsonLine());
+        require(object.value(QStringLiteral("message")).toString() == record.message,
+                "message exactly at the UTF-8 byte limit is unchanged");
+
+        const QString multibyte =
+            QString(VaporView::LogRecordLimits::kMaxMessageUtf8Bytes / 3,
+                    QChar(0x4E2D)) + QStringLiteral("🚀");
+        require(multibyte.size() < VaporView::LogRecordLimits::kMaxMessageUtf8Bytes,
+                "multibyte fixture has fewer UTF-16 code units than the byte limit");
+        record.message = multibyte;
+        object = parseJsonLine(record.toJsonLine());
+        const QString boundedMessage = object.value(QStringLiteral("message")).toString();
+        require(boundedMessage.toUtf8().size() <=
+                    VaporView::LogRecordLimits::kMaxMessageUtf8Bytes,
+                "message limit is measured in UTF-8 bytes");
+        require(QString::fromUtf8(boundedMessage.toUtf8()) == boundedMessage,
+                "multibyte message remains valid UTF-8");
+        require(boundedMessage.endsWith(QStringLiteral("...<truncated>")),
+                "truncated multibyte message has an explicit marker");
+        const QJsonObject metadata = object.value(QStringLiteral("fields")).toObject();
+        require(metadata.value(QStringLiteral("_log_truncated")).toBool(),
+                "truncated message contains metadata");
+        require(metadata.value(QStringLiteral("_log_original_message_utf8_bytes")).toDouble() ==
+                    multibyte.toUtf8().size(),
+                "truncated message metadata preserves original UTF-8 byte count");
+        require(metadata.value(QStringLiteral("_log_truncation_reasons")).toArray()
+                    .contains(QStringLiteral("message_limit")),
+                "truncated message reports the machine-readable reason");
+    }
+
+    // largeStringFieldIsTruncated / largeByteArrayFieldIsTruncated /
+    // deepVariantIsBounded / largeListIsBounded / largeMapIsBounded /
+    // unsupportedVariantTypeDoesNotBreakRecord / fieldsSizeLimitProducesValidJson /
+    // fieldTruncationMetadataIsPresent
+    {
+        VaporView::LogRecord record = source;
+        record.message = QStringLiteral("bounded fields");
+        record.fields.clear();
+        record.fields.insert(QStringLiteral("large_string"),
+                             QString(70 * 1024, QLatin1Char('s')));
+        record.fields.insert(QStringLiteral("large_bytes"),
+                             QByteArray(70 * 1024, 'b'));
+
+        QVariant deepValue = QStringLiteral("leaf");
+        for (int depth = 0; depth < 20; ++depth)
+        {
+            deepValue = QVariantMap{{QStringLiteral("child"), deepValue}};
+        }
+        record.fields.insert(QStringLiteral("deep"), deepValue);
+
+        QVariantList list;
+        for (int index = 0; index < 300; ++index)
+        {
+            list.push_back(QStringLiteral("item-%1").arg(index));
+        }
+        record.fields.insert(QStringLiteral("large_list"), list);
+        record.fields.insert(QStringLiteral("unsupported"),
+                             QVariant::fromValue(UnsupportedLogValue{42}));
+
+        const QJsonObject object = parseJsonLine(record.toJsonLine());
+        const QJsonObject fieldsObject = object.value(QStringLiteral("fields")).toObject();
+        require(fieldsObject.value(QStringLiteral("large_string")).toString().toUtf8().size() <=
+                    VaporView::LogRecordLimits::kMaxSingleStringUtf8Bytes,
+                "large string field is bounded");
+        require(fieldsObject.value(QStringLiteral("large_string")).toString()
+                    .endsWith(QStringLiteral("...<truncated>")),
+                "large string field carries a truncation marker");
+        require(fieldsObject.value(QStringLiteral("large_bytes")).toString().toUtf8().size() <=
+                    VaporView::LogRecordLimits::kMaxByteArrayBytes,
+                "large QByteArray field is bounded before JSON conversion");
+        require(fieldsObject.value(QStringLiteral("large_list")).toArray().size() <=
+                    VaporView::LogRecordLimits::kMaxContainerElements,
+                "large list retains at most the configured element count");
+        require(fieldsObject.value(QStringLiteral("unsupported")).toObject()
+                    .value(QStringLiteral("_unsupported_type")).toString()
+                    .contains(QStringLiteral("UnsupportedLogValue")),
+                "unsupported QVariant is represented by its safe type descriptor");
+        require(fieldsObject.value(QStringLiteral("_log_truncated")).toBool(),
+                "field truncation metadata is present");
+        require(fieldsObject.value(QStringLiteral("_log_truncated_byte_array_count")).toInt() == 1,
+                "byte array truncation count is present");
+        require(fieldsObject.value(QStringLiteral("_log_dropped_container_elements")).toInt() > 0,
+                "container truncation count is present");
+        require(fieldsObject.value(QStringLiteral("_log_truncation_reasons")).toArray()
+                    .contains(QStringLiteral("variant_depth_limit")),
+                "deep QVariant reports its depth limit");
+        require(QJsonDocument(fieldsObject).toJson(QJsonDocument::Compact).size() <=
+                    VaporView::LogRecordLimits::kMaxFieldsJsonBytes,
+                "fields compact JSON remains within its aggregate limit");
+    }
+
+    {
+        VaporView::LogRecord record = source;
+        record.message = QStringLiteral("large map and fields budget");
+        record.fields.clear();
+        for (int index = 0; index < 300; ++index)
+        {
+            record.fields.insert(QStringLiteral("field-%1").arg(index, 3, 10, QLatin1Char('0')),
+                                 QString(2048, QLatin1Char('v')));
+        }
+        record.fields.insert(QStringLiteral("_log_truncated"), false);
+        const QJsonObject object = parseJsonLine(record.toJsonLine());
+        const QJsonObject fieldsObject = object.value(QStringLiteral("fields")).toObject();
+        require(fieldsObject.value(QStringLiteral("_log_truncated")).toBool(),
+                "business reserved field cannot override truncation metadata");
+        require(fieldsObject.value(QStringLiteral("_log_dropped_field_count")).toInt() > 0,
+                "large map reports dropped fields");
+        require(fieldsObject.value(QStringLiteral("_log_reserved_field_collision_count")).toInt() == 1,
+                "reserved field collision is counted");
+        require(QJsonDocument(fieldsObject).toJson(QJsonDocument::Compact).size() <=
+                    VaporView::LogRecordLimits::kMaxFieldsJsonBytes,
+                "large map remains valid bounded fields JSON");
+    }
+
+    {
+        QVariantHash hash;
+        for (int index = 299; index >= 0; --index)
+        {
+            hash.insert(QStringLiteral("hash-%1").arg(index, 3, 10, QLatin1Char('0')),
+                        index);
+        }
+        VaporView::LogRecord record = source;
+        record.fields = {{QStringLiteral("hash"), hash}};
+        const QByteArray firstLine = record.toJsonLine();
+        const QByteArray secondLine = record.toJsonLine();
+        require(firstLine == secondLine,
+                "QVariantHash truncation uses deterministic key ordering");
+        const QJsonObject fieldsObject = parseJsonLine(firstLine)
+                                             .value(QStringLiteral("fields")).toObject();
+        require(fieldsObject.value(QStringLiteral("hash")).toObject().size() <=
+                    VaporView::LogRecordLimits::kMaxContainerElements,
+                "large QVariantHash retains at most the configured element count");
+        require(fieldsObject.value(QStringLiteral("_log_truncation_reasons")).toArray()
+                    .contains(QStringLiteral("container_element_limit")),
+                "large QVariantHash reports its element limit");
+    }
+
+    {
+        QVariantList leafContainers;
+        for (int index = 0; index < 256; ++index)
+        {
+            leafContainers.push_back(QVariantList());
+        }
+        QVariantList wideTree;
+        for (int index = 0; index < 20; ++index)
+        {
+            wideTree.push_back(leafContainers);
+        }
+        VaporView::LogRecord record = source;
+        record.fields = {{QStringLiteral("wide_tree"), wideTree}};
+        const QJsonObject fieldsObject = parseJsonLine(record.toJsonLine())
+                                             .value(QStringLiteral("fields")).toObject();
+        require(fieldsObject.value(QStringLiteral("_log_truncation_reasons")).toArray()
+                    .contains(QStringLiteral("variant_node_limit")),
+                "wide QVariant tree reports the global node-work limit");
+    }
+
+    // serializedRecordNeverExceedsHardLimit / oversizedRecordRemainsValidJson /
+    // minimumDiagnosticFieldsArePreserved
+    {
+        VaporView::LogRecord record = source;
+        record.timestamp_utc = QString(100 * 1024, QLatin1Char('t'));
+        record.source = QString(100 * 1024, QLatin1Char('s'));
+        record.category = QString(100 * 1024, QLatin1Char('c'));
+        record.correlation_id = QString(100 * 1024, QLatin1Char('r'));
+        record.session_id = QString(100 * 1024, QLatin1Char('i'));
+        record.message = QString(1024 * 1024, QChar(0x4E2D));
+        for (int index = 0; index < 16; ++index)
+        {
+            record.fields.insert(QStringLiteral("payload-%1").arg(index),
+                                 QString(64 * 1024, QLatin1Char('p')));
+        }
+        const QByteArray line = record.toJsonLine();
+        const QJsonObject object = parseJsonLine(line);
+        for (const QString& key : {QStringLiteral("schema_version"),
+                                   QStringLiteral("timestamp_utc"),
+                                   QStringLiteral("timestamp_us"),
+                                   QStringLiteral("sequence"),
+                                   QStringLiteral("level"),
+                                   QStringLiteral("source"),
+                                   QStringLiteral("category"),
+                                   QStringLiteral("message"),
+                                   QStringLiteral("process_id"),
+                                   QStringLiteral("thread_id"),
+                                   QStringLiteral("fields")})
+        {
+            require(object.contains(key), "minimum diagnostic field is preserved");
+        }
+        require(object.value(QStringLiteral("fields")).toObject()
+                    .value(QStringLiteral("_log_truncated")).toBool(),
+                "whole-record truncation is explicit");
+        require(object.value(QStringLiteral("fields")).toObject()
+                    .value(QStringLiteral("_log_truncation_reasons")).toArray()
+                    .contains(QStringLiteral("record_size_limit")),
+                "whole-record size reason is machine-readable");
+    }
 
     using VaporView::LoggingInternal::LogRecordQueue;
     using VaporView::LoggingInternal::QueueEnqueueAction;
@@ -563,6 +795,119 @@ int main(int argc, char **argv)
                 "every overflow Critical is retained as complete emergency JSON");
     }
 
+    // normalAndEmergencyUseSameBoundedSerialization /
+    // oversizedCriticalDoesNotCreateHugeEmergencyFile
+    {
+        VaporView::LogRecord oversized;
+        oversized.level = VaporView::LogLevel::Critical;
+        oversized.source = QStringLiteral("BoundedCritical");
+        oversized.category = QStringLiteral("critical.bounded.serialization");
+        oversized.message = QString(2 * 1024 * 1024, QChar(0x4E2D));
+        for (int index = 0; index < 8; ++index)
+        {
+            oversized.fields.insert(QStringLiteral("large-%1").arg(index),
+                                    QString(128 * 1024, QLatin1Char('f')));
+        }
+
+        QJsonObject normalObject;
+        {
+            QTemporaryDir normalDirectory;
+            require(normalDirectory.isValid(), "normal bounded Critical temporary directory");
+            VaporView::LogService service(QStringLiteral("VaporViewBoundedNormalTest"),
+                                          &app,
+                                          normalDirectory.path());
+            const VaporView::LogRecord normal = service.publish(oversized.level,
+                                                                 oversized.source,
+                                                                 oversized.category,
+                                                                 oversized.message,
+                                                                 oversized.fields);
+            require(normal.message.toUtf8().size() <=
+                        VaporView::LogRecordLimits::kMaxMessageUtf8Bytes,
+                    "normal queue receives the bounded message");
+            for (const QJsonObject& object : readJsonLines(service.logFilePath()))
+            {
+                if (object.value(QStringLiteral("category")).toString() == oversized.category)
+                {
+                    normalObject = object;
+                }
+            }
+            require(!normalObject.isEmpty(), "normal bounded Critical reaches the main JSONL");
+        }
+
+        QTemporaryDir emergencyDirectory;
+        require(emergencyDirectory.isValid(), "emergency bounded Critical temporary directory");
+        VaporView::LogService service(QStringLiteral("VaporViewBoundedEmergencyTest"),
+                                      &app,
+                                      emergencyDirectory.path());
+        require(waitForText(service.logFilePath(),
+                            QByteArrayLiteral("Application logging initialized.")),
+                "bounded emergency writer is initially idle");
+        require(waitForCondition([&service]() {
+                    return service.writerStateForTest().value(QStringLiteral("size")).toInt() == 0;
+                }),
+                "bounded emergency queue drains before blocking");
+        require(service.setMaxPendingCriticalForTest(1),
+                "bounded emergency test sets one pending Critical slot");
+        service.setWriterBlockedForTest(true);
+        require(service.waitForWriterBlockedForTest(std::chrono::seconds(2)),
+                "bounded emergency writer enters controlled blocked state");
+
+        std::thread queuedCritical([&service]() {
+            service.publish(VaporView::LogLevel::Critical,
+                            QStringLiteral("BoundedCritical"),
+                            QStringLiteral("critical.bounded.queue"),
+                            QStringLiteral("queued-before-bounded-emergency"));
+        });
+        require(waitForCondition([&service]() {
+                    return service.writerStateForTest()
+                               .value(QStringLiteral("pending_critical")).toInt() == 1;
+                }),
+                "one Critical occupies the controlled pending slot");
+
+        QElapsedTimer emergencyTimer;
+        emergencyTimer.start();
+        const VaporView::LogRecord emergency = service.publish(oversized.level,
+                                                                oversized.source,
+                                                                oversized.category,
+                                                                oversized.message,
+                                                                oversized.fields);
+        require(emergencyTimer.elapsed() < 5000,
+                "oversized emergency Critical completes within an explicit timeout");
+        const QString emergencyPath = service.emergencyLogFilePathForTest();
+        require(QFileInfo::exists(emergencyPath),
+                "oversized Critical creates the independent emergency JSONL");
+        service.setWriterBlockedForTest(false);
+        queuedCritical.join();
+
+        QJsonObject emergencyObject;
+        QFile emergencyFile(emergencyPath);
+        const bool emergencyOpened = emergencyFile.open(QIODevice::ReadOnly | QIODevice::Text);
+        require(emergencyOpened,
+                "open bounded emergency JSONL");
+        while (!emergencyFile.atEnd())
+        {
+            const QByteArray line = emergencyFile.readLine();
+            const QJsonObject object = parseJsonLine(line);
+            if (object.value(QStringLiteral("category")).toString() == oversized.category)
+            {
+                emergencyObject = object;
+            }
+        }
+        require(!emergencyObject.isEmpty(),
+                "oversized Critical remains a complete emergency JSON record");
+        require(emergencyObject.value(QStringLiteral("message")) ==
+                    normalObject.value(QStringLiteral("message")),
+                "normal and emergency paths use the same bounded message");
+        require(emergencyObject.value(QStringLiteral("fields")) ==
+                    normalObject.value(QStringLiteral("fields")),
+                "normal and emergency paths use the same bounded fields");
+        require(QFileInfo(emergencyPath).size() <=
+                    2 * VaporView::LogRecordLimits::kMaxSerializedRecordBytes,
+                "oversized Critical cannot create a huge emergency file");
+        require(emergency.sequence > 0 && emergency.level == VaporView::LogLevel::Critical,
+                "bounded emergency preserves sequence and Critical level");
+    }
+
     // fatalMessageIsPersistedBeforeAbort
     {
         QTemporaryDir fatalDirectory;
@@ -788,7 +1133,17 @@ int main(int argc, char **argv)
             VaporView::LogService service(QStringLiteral("VaporViewOverloadTest"),
                                           &app,
                                           overloadDirectory.path());
-            for (int index = 0; index < 50000; ++index)
+            require(waitForText(service.logFilePath(),
+                                QByteArrayLiteral("Application logging initialized.")),
+                    "overload writer lifecycle record is flushed");
+            require(waitForCondition([&service]() {
+                        return service.writerStateForTest().value(QStringLiteral("size")).toInt() == 0;
+                    }),
+                    "overload writer is idle before controlled blocking");
+            service.setWriterBlockedForTest(true);
+            require(service.waitForWriterBlockedForTest(std::chrono::seconds(2)),
+                    "overload writer enters controlled blocked state");
+            for (int index = 0; index < 10000; ++index)
             {
                 lastPublishedSequence = service.publish(
                     VaporView::LogLevel::Debug,
@@ -877,14 +1232,81 @@ int main(int argc, char **argv)
                 "retention keeps total bytes within the configured limit");
     }
 
+    // oversizedPublishIsBoundedBeforeQueueAndSignal / moderateOversizeStressIsBounded
+    {
+        QTemporaryDir stressDirectory;
+        require(stressDirectory.isValid(), "oversized stress temporary directory");
+        VaporView::LogService service(QStringLiteral("VaporViewOversizeStressTest"),
+                                      &app,
+                                      stressDirectory.path());
+        int observedRecords = 0;
+        qsizetype largestObservedMessage = 0;
+        qsizetype largestObservedLine = 0;
+        QObject::connect(&service,
+                         &VaporView::LogService::recordPublished,
+                         &app,
+                         [&](const VaporView::LogRecord& record) {
+                             if (record.category != QStringLiteral("oversize.stress"))
+                             {
+                                 return;
+                             }
+                             ++observedRecords;
+                             largestObservedMessage = (std::max)(largestObservedMessage,
+                                                                 record.message.toUtf8().size());
+                             largestObservedLine = (std::max)(largestObservedLine,
+                                                              record.toJsonLine().size());
+                         },
+                         Qt::DirectConnection);
+
+        const QString hugeMessage(20 * 1024 * 1024, QLatin1Char('m'));
+        QVariantMap hugeFields;
+        for (int index = 0; index < 4; ++index)
+        {
+            hugeFields.insert(QStringLiteral("large-field-%1").arg(index),
+                              QString(1024 * 1024, QLatin1Char('v')));
+        }
+
+        QElapsedTimer timer;
+        timer.start();
+        for (int index = 0; index < 3; ++index)
+        {
+            const VaporView::LogRecord bounded = service.publish(
+                VaporView::LogLevel::Error,
+                QStringLiteral("OversizeStress"),
+                QStringLiteral("oversize.stress"),
+                hugeMessage,
+                hugeFields);
+            require(bounded.message.toUtf8().size() <=
+                        VaporView::LogRecordLimits::kMaxMessageUtf8Bytes,
+                    "publish returns the same bounded message stored by the queue");
+            require(bounded.toJsonLine().size() <=
+                        VaporView::LogRecordLimits::kMaxSerializedRecordBytes,
+                    "publish returns a bounded complete record");
+        }
+        service.publish(VaporView::LogLevel::Critical,
+                        QStringLiteral("OversizeStress"),
+                        QStringLiteral("oversize.stress.flush"),
+                        QStringLiteral("oversize-stress-flush"));
+        require(timer.elapsed() < 15000,
+                "moderate 20 MiB oversize stress completes within an explicit timeout");
+        require(observedRecords == 3,
+                "recordPublished observes every bounded oversize record");
+        require(largestObservedMessage <= VaporView::LogRecordLimits::kMaxMessageUtf8Bytes,
+                "recordPublished never retains the original 20 MiB message");
+        require(largestObservedLine <= VaporView::LogRecordLimits::kMaxSerializedRecordBytes,
+                "recordPublished payload remains within the JSONL hard limit");
+        require(QFileInfo(service.logFilePath()).size() < 2 * 1024 * 1024,
+                "moderate oversize stress produces a controlled log file size");
+    }
+
     QTemporaryDir rotationDirectory;
     require(rotationDirectory.isValid(), "temporary rotation directory");
     {
         VaporView::LogService service(QStringLiteral("VaporViewRotationTest"),
                                       &app,
                                       rotationDirectory.path());
-        const QString largeMessage(1100 * 1024, QLatin1Char('x'));
-        for (int index = 0; index < 100; ++index)
+        const QString largeMessage(70 * 1024, QLatin1Char('x'));
+        for (int index = 0; index < 200; ++index)
         {
             service.publish(VaporView::LogLevel::Debug,
                             QStringLiteral("Test"),

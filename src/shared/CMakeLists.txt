@@ -1,4 +1,6 @@
 add_library(vaporview_logging STATIC
+    ${CMAKE_SOURCE_DIR}/src/shared/logging/BoundedLogRecord.cpp
+    ${CMAKE_SOURCE_DIR}/src/shared/logging/BoundedLogRecord.h
     ${CMAKE_SOURCE_DIR}/src/shared/logging/LogService.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/logging/LogQueuePolicy.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/logging/LogQueuePolicy.h
