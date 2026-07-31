@@ -400,12 +400,11 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         LogRecord record;
         if (TelemetryCodec::parseLogRecord(frame.payload, record))
         {
-            if (LogService *logService = LogService::instance())
-            {
+            const bool published = LogService::withCurrentInstance([&](LogService& logService) {
                 record.fields.insert(QStringLiteral("ui_visible"), true);
-                logService->publish(record);
-            }
-            else
+                logService.publish(record);
+            });
+            if (!published)
             {
                 emit logMessage(record.message);
             }
@@ -540,11 +539,9 @@ void GroundTelemetryService::reportProtocolDiagnostic(LogLevel level,
     }
     QVariantMap recordFields = fields;
     recordFields.insert(QStringLiteral("ui_visible"), true);
-    if (LogService *logService = LogService::instance())
-    {
-        logService->publish(level, QStringLiteral("Ground"), category, message, recordFields);
-    }
-    else
+    if (!LogService::withCurrentInstance([&](LogService& logService) {
+            logService.publish(level, QStringLiteral("Ground"), category, message, recordFields);
+        }))
     {
         emit logMessage(message);
     }

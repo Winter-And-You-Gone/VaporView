@@ -3612,14 +3612,13 @@ void RtkConfigDialog::onGgaPollTimer()
                 if (!gga_buffer_overflow_logged_)
                 {
                     gga_buffer_overflow_logged_ = true;
-                    if (VaporView::LogService *logService = VaporView::LogService::instance())
-                    {
-                        logService->publish(VaporView::LogLevel::Warning,
-                                            QStringLiteral("RTK"),
-                                            QStringLiteral("gga"),
-                                            QStringLiteral("GGA input buffer exceeded 64 KiB; discarded an unterminated prefix."),
-                                            {{QStringLiteral("buffer_limit_bytes"), kGgaMaxBufferBytes}});
-                    }
+                    VaporView::LogService::withCurrentInstance([](VaporView::LogService& logService) {
+                        logService.publish(VaporView::LogLevel::Warning,
+                                           QStringLiteral("RTK"),
+                                           QStringLiteral("gga"),
+                                           QStringLiteral("GGA input buffer exceeded 64 KiB; discarded an unterminated prefix."),
+                                           {{QStringLiteral("buffer_limit_bytes"), kGgaMaxBufferBytes}});
+                    });
                 }
             }
             processGgaBuffer();
@@ -4417,18 +4416,17 @@ void RtkConfigDialog::onClearLogClicked()
 
 void RtkConfigDialog::appendLog(const QString& message)
 {
-    if (VaporView::LogService *logService = VaporView::LogService::instance())
-    {
+    VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
         const bool isError = message.contains(QStringLiteral("error"), Qt::CaseInsensitive) ||
             message.contains(QStringLiteral("failed"), Qt::CaseInsensitive) ||
             message.contains(QStringLiteral("失败"), Qt::CaseInsensitive) ||
             message.contains(QStringLiteral("错误"), Qt::CaseInsensitive);
-        logService->publish(isError ? VaporView::LogLevel::Warning : VaporView::LogLevel::Info,
-                            QStringLiteral("RTK"),
-                            QStringLiteral("service"),
-                            message,
-                            {{QStringLiteral("ui_visible"), true}});
-    }
+        logService.publish(isError ? VaporView::LogLevel::Warning : VaporView::LogLevel::Info,
+                           QStringLiteral("RTK"),
+                           QStringLiteral("service"),
+                           message,
+                           {{QStringLiteral("ui_visible"), true}});
+    });
     if (!log_text_edit_) return;
 
     QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
@@ -4448,14 +4446,13 @@ void RtkConfigDialog::appendRawLogLine(const QString& line)
 {
     if (line.isEmpty()) return;
 
-    if (VaporView::LogService *logService = VaporView::LogService::instance())
-    {
-        logService->publish(VaporView::LogLevel::Debug,
-                            QStringLiteral("RTK"),
-                            QStringLiteral("service.raw"),
-                            line.trimmed(),
-                            {{QStringLiteral("ui_visible"), true}});
-    }
+    VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
+        logService.publish(VaporView::LogLevel::Debug,
+                           QStringLiteral("RTK"),
+                           QStringLiteral("service.raw"),
+                           line.trimmed(),
+                           {{QStringLiteral("ui_visible"), true}});
+    });
     if (!log_text_edit_) return;
 
     log_text_edit_->append(line.trimmed());

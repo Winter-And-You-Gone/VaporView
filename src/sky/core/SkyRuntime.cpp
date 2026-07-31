@@ -154,19 +154,17 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
             message.contains(QStringLiteral("失败"), Qt::CaseInsensitive) ||
             message.contains(QStringLiteral("错误"), Qt::CaseInsensitive) ||
             message.contains(QStringLiteral("断开"), Qt::CaseInsensitive);
-        if (LogService *logService = LogService::instance())
-        {
-            logService->publish(warning ? LogLevel::Warning : LogLevel::Info,
-                                QStringLiteral("SkyCore"),
-                                QStringLiteral("runtime"),
-                                message,
-                                {{QStringLiteral("legacy_error_mirror"), warning}});
-        }
+        LogService::withCurrentInstance([&](LogService& logService) {
+            logService.publish(warning ? LogLevel::Warning : LogLevel::Info,
+                               QStringLiteral("SkyCore"),
+                               QStringLiteral("runtime"),
+                               message,
+                               {{QStringLiteral("legacy_error_mirror"), warning}});
+        });
     });
-    if (LogService *logService = LogService::instance())
-    {
-        connect(logService, &LogService::recordPublished, this,
-                [this, logService](const LogRecord& record) {
+    LogService::withCurrentInstance([this](LogService& logService) {
+        connect(&logService, &LogService::recordPublished, this,
+                [this](const LogRecord& record) {
                     if ((!session_recorder_.isRecording() && !session_recorder_.isPaused()) ||
                         record.fields.value(QStringLiteral("session_sink_failure")).toBool())
                     {
@@ -176,20 +174,22 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
                     const bool errorOk = static_cast<int>(record.level) >= static_cast<int>(LogLevel::Warning) ||
                         record.fields.value(QStringLiteral("legacy_error_mirror")).toBool();
                     const bool errorFileOk = !errorOk || session_recorder_.appendError(record);
-                    if ((!eventOk || !errorFileOk) && logService)
+                    if (!eventOk || !errorFileOk)
                     {
-                        logService->publish(LogLevel::Error,
-                                            QStringLiteral("SkyCore"),
-                                            QStringLiteral("session.write"),
-                                            QStringLiteral("Failed to append Sky session log record."),
-                                            {{QStringLiteral("session_sink_failure"), true},
-                                             {QStringLiteral("event_ok"), eventOk},
-                                             {QStringLiteral("error_ok"), errorFileOk},
-                                             {QStringLiteral("source"), record.source},
-                                             {QStringLiteral("category"), record.category}});
+                        LogService::withCurrentInstance([&](LogService& logService) {
+                            logService.publish(LogLevel::Error,
+                                               QStringLiteral("SkyCore"),
+                                               QStringLiteral("session.write"),
+                                               QStringLiteral("Failed to append Sky session log record."),
+                                               {{QStringLiteral("session_sink_failure"), true},
+                                                {QStringLiteral("event_ok"), eventOk},
+                                                {QStringLiteral("error_ok"), errorFileOk},
+                                                {QStringLiteral("source"), record.source},
+                                                {QStringLiteral("category"), record.category}});
+                        });
                     }
                 });
-    }
+    });
     connect(&device_manager_, &SkyDeviceManager::epsilonRawFrameReceived, this,
             [this](quint64 timestampUs, quint8 packetId, quint8 serialNumber, const QByteArray& frame) {
                 session_recorder_.recordRawEpsilonFrame(timestampUs, packetId, serialNumber, frame);

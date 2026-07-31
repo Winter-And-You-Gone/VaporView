@@ -1,4 +1,5 @@
 #include "LogService.h"
+#include "logging/LogQueuePolicy.h"
 
 #include <QCoreApplication>
 #include <QDate>
@@ -45,6 +46,11 @@ constexpr char kProcessStdoutProperty[] = "_vaporview_logged_stdout";
 constexpr char kProcessStderrProperty[] = "_vaporview_logged_stderr";
 constexpr char kProcessStdoutLineBufferProperty[] = "_vaporview_logged_stdout_line_buffer";
 constexpr char kProcessStderrLineBufferProperty[] = "_vaporview_logged_stderr_line_buffer";
+
+QMutex instance_mutex;
+QWaitCondition instance_condition;
+int active_instance_accesses = 0;
+bool instance_shutting_down = false;
 
 bool isHighPriority(LogLevel level)
 {
@@ -114,8 +120,7 @@ void publishProcessLine(QProcess *process,
     {
         return;
     }
-    if (LogService *logService = LogService::instance())
-    {
+    LogService::withCurrentInstance([&](LogService& logService) {
         QVariantMap fields{
             {QStringLiteral("stream"), standardError ? QStringLiteral("stderr")
                                                        : QStringLiteral("stdout")},
@@ -124,12 +129,12 @@ void publishProcessLine(QProcess *process,
         {
             fields.insert(QStringLiteral("partial"), true);
         }
-        logService->publish(standardError ? LogLevel::Warning : LogLevel::Debug,
-                            source,
-                            category,
-                            QString::fromLocal8Bit(line),
-                            fields);
-    }
+        logService.publish(standardError ? LogLevel::Warning : LogLevel::Debug,
+                           source,
+                           category,
+                           QString::fromLocal8Bit(line),
+                           fields);
+    });
     Q_UNUSED(process);
 }
 
@@ -207,6 +212,20 @@ public:
     using FailureCallback = std::function<void(const QString&)>;
     using SequenceCallback = std::function<quint64()>;
 
+    struct CompletionState
+    {
+        QMutex mutex;
+        QWaitCondition condition;
+        bool completed = false;
+        bool success = false;
+    };
+
+    struct QueuedRecord
+    {
+        LogRecord record;
+        std::shared_ptr<CompletionState> completion;
+    };
+
     LogWriterThread(QString directory,
                     QString applicationName,
                     QString fallbackDirectory,
@@ -224,44 +243,50 @@ public:
         stop();
     }
 
-    void enqueue(LogRecord record)
+    bool enqueue(LogRecord record, std::shared_ptr<CompletionState> completion = {})
     {
         QMutexLocker locker(&mutex_);
         if (stopping_)
         {
-            return;
+            complete(completion, false);
+            return false;
         }
 
         if (queue_.size() >= kQueueLimit)
         {
-            auto lowPriority = std::find_if(queue_.begin(), queue_.end(), [](const LogRecord& item) {
-                return !isHighPriority(item.level);
-            });
-            if (lowPriority != queue_.end())
+            QVector<LogLevel> queuedLevels;
+            queuedLevels.reserve(static_cast<qsizetype>(queue_.size()));
+            for (const QueuedRecord& item : queue_)
             {
-                queue_.erase(lowPriority);
-                ++dropped_count_;
+                queuedLevels.push_back(item.record.level);
             }
-            else if (!isHighPriority(record.level))
+            const LoggingInternal::QueueOverflowDecision decision =
+                LoggingInternal::decideQueueOverflow(queuedLevels, record.level);
+            if (decision.action == LoggingInternal::QueueOverflowAction::RemoveLowPriorityAndEnqueue)
             {
-                ++dropped_count_;
-                return;
+                queue_.erase(queue_.begin() + decision.low_priority_index);
+                dropped_count_ += decision.dropped_increment;
             }
-            else
+            else if (decision.action == LoggingInternal::QueueOverflowAction::DropIncoming)
             {
-                if (!isHighPriority(record.level))
-                {
-                    ++dropped_count_;
-                    return;
-                }
+                dropped_count_ += decision.dropped_increment;
+                complete(completion, false);
+                return false;
+            }
+            else if (decision.action == LoggingInternal::QueueOverflowAction::EmergencyWrite)
+            {
                 locker.unlock();
-                emergencyWrite(record);
-                return;
+                const bool success = emergencyWrite(record);
+                complete(completion, success);
+                return success;
             }
+            // Critical records are allowed to grow the queue temporarily so
+            // they cannot overtake or silently replace accepted records.
         }
 
-        queue_.push_back(std::move(record));
+        queue_.push_back({std::move(record), std::move(completion)});
         wake_.wakeOne();
+        return true;
     }
 
     void stop()
@@ -273,15 +298,19 @@ public:
                 return;
             }
             stopping_ = true;
-            wake_.wakeOne();
+            wake_.wakeAll();
+        }
+        if (QThread::currentThread() == this)
+        {
+            return;
         }
         wait();
     }
 
-    void emergencyWrite(const LogRecord& record)
+    bool emergencyWrite(const LogRecord& record)
     {
         QMutexLocker locker(&file_mutex_);
-        writeRecord(record, true);
+        return writeRecord(record, true);
     }
 
 protected:
@@ -289,20 +318,35 @@ protected:
     {
         while (true)
         {
-            LogRecord record;
+            QueuedRecord item;
             quint64 dropped = 0;
+            bool idleFlush = false;
             {
                 QMutexLocker locker(&mutex_);
                 while (queue_.empty() && !stopping_)
                 {
-                    wake_.wait(&mutex_);
+                    if (pending_flush_.load(std::memory_order_acquire))
+                    {
+                        if (!wake_.wait(&mutex_, static_cast<unsigned long>(kFlushIntervalMs)))
+                        {
+                            idleFlush = true;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        wake_.wait(&mutex_);
+                    }
                 }
                 if (queue_.empty() && stopping_)
                 {
                     break;
                 }
-                record = std::move(queue_.front());
-                queue_.pop_front();
+                if (!idleFlush)
+                {
+                    item = std::move(queue_.front());
+                    queue_.pop_front();
+                }
                 const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
                 if (dropped_count_ > 0 &&
                     (last_drop_report_ms_ == 0 || nowMs - last_drop_report_ms_ >= kDropReportIntervalMs))
@@ -317,38 +361,77 @@ protected:
             {
                 writeDropNotice(dropped);
             }
-            writeRecord(record, false);
+            if (idleFlush)
+            {
+                flushPending();
+            }
+            else
+            {
+                const bool success = writeRecord(item.record, item.completion != nullptr);
+                complete(item.completion, success);
+            }
         }
 
-        QMutexLocker locker(&mutex_);
-        QMutexLocker fileLocker(&file_mutex_);
-        const quint64 finalDropped = std::exchange(dropped_count_, 0ULL);
-        if (finalDropped > 0)
+        while (true)
         {
-            writeDropNotice(finalDropped);
+            QueuedRecord item;
+            quint64 dropped = 0;
+            bool hasItem = false;
+            {
+                QMutexLocker locker(&mutex_);
+                if (queue_.empty())
+                {
+                    dropped = std::exchange(dropped_count_, 0ULL);
+                }
+                else
+                {
+                    item = std::move(queue_.front());
+                    queue_.pop_front();
+                    hasItem = true;
+                }
+            }
+            if (!hasItem)
+            {
+                QMutexLocker fileLocker(&file_mutex_);
+                if (dropped > 0)
+                {
+                    writeDropNotice(dropped);
+                }
+                flushPending();
+                closeFile();
+                break;
+            }
+            QMutexLocker fileLocker(&file_mutex_);
+            if (dropped > 0)
+            {
+                writeDropNotice(dropped);
+            }
+            complete(item.completion, writeRecord(item.record, item.completion != nullptr));
         }
-        while (!queue_.empty())
-        {
-            writeRecord(queue_.front(), false);
-            queue_.pop_front();
-        }
-        closeFile();
     }
 
 private:
+    static void complete(const std::shared_ptr<CompletionState>& completion, bool success)
+    {
+        if (!completion)
+        {
+            return;
+        }
+        QMutexLocker locker(&completion->mutex);
+        completion->success = success;
+        completion->completed = true;
+        completion->condition.wakeAll();
+    }
+
     void writeDropNotice(quint64 dropped)
     {
-        LogRecord notice;
-        notice.timestamp_utc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
-        notice.timestamp_us = currentTimestampUsNow();
-        notice.level = LogLevel::Warning;
-        notice.source = QStringLiteral("LogService");
-        notice.category = QStringLiteral("queue");
-        notice.process_id = static_cast<quint64>(QCoreApplication::applicationPid());
-        notice.thread_id = static_cast<quint64>(reinterpret_cast<quintptr>(QThread::currentThreadId()));
-        notice.sequence = sequence_callback_ ? sequence_callback_() : 0;
-        notice.message = QStringLiteral("Dropped %1 log records because the writer queue was full.").arg(dropped);
-        notice.fields.insert(QStringLiteral("dropped_count"), static_cast<qulonglong>(dropped));
+        const LogRecord notice = LoggingInternal::makeDropNotice(
+            dropped,
+            sequence_callback_ ? sequence_callback_() : 0,
+            currentTimestampUsNow(),
+            QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs),
+            static_cast<quint64>(QCoreApplication::applicationPid()),
+            static_cast<quint64>(reinterpret_cast<quintptr>(QThread::currentThreadId())));
         writeRecord(notice, true);
     }
 
@@ -368,7 +451,7 @@ private:
         }
         if (!cleanup_complete_)
         {
-            cleanupOldFiles();
+            cleanupOldFiles(desiredPath);
             cleanup_complete_ = true;
         }
         if (!QDir().mkpath(directory_))
@@ -389,7 +472,7 @@ private:
         return true;
     }
 
-    void cleanupOldFiles()
+    void cleanupOldFiles(const QString& activePath)
     {
         QDir directory(directory_);
         if (!directory.exists())
@@ -399,18 +482,42 @@ private:
         const QStringList patterns{
             QStringLiteral("%1-*.jsonl").arg(application_name_),
             QStringLiteral("%1-*.jsonl.*").arg(application_name_)};
-        const QFileInfoList files = directory.entryInfoList(patterns,
-                                                              QDir::Files | QDir::Readable,
-                                                              QDir::Time);
-        qint64 retainedBytes = 0;
-        int retainedFiles = 0;
+        QFileInfoList files = directory.entryInfoList(patterns,
+                                                       QDir::Files | QDir::Readable,
+                                                       QDir::NoSort);
+        const QString activeAbsolutePath = QFileInfo(activePath).absoluteFilePath();
+        const QFileInfo activeInfo(activeAbsolutePath);
+        const qint64 activeBytes = activeInfo.exists() ? activeInfo.size() : 0;
+        std::sort(files.begin(), files.end(), [](const QFileInfo& left, const QFileInfo& right) {
+            const qint64 leftTime = left.lastModified().toMSecsSinceEpoch();
+            const qint64 rightTime = right.lastModified().toMSecsSinceEpoch();
+            if (leftTime != rightTime)
+            {
+                return leftTime > rightTime;
+            }
+            return left.absoluteFilePath() > right.absoluteFilePath();
+        });
+        qint64 retainedBytes = activeBytes;
+        const int maxOtherFiles = (std::max)(0, kMaxRetainedFiles - 1);
+        const qint64 reservedActiveBytes = (std::max)(activeBytes, kMaxFileBytes);
+        const qint64 remainingBytes = reservedActiveBytes < kMaxTotalFileBytes
+            ? kMaxTotalFileBytes - reservedActiveBytes
+            : 0;
+        int retainedOtherFiles = 0;
+        qint64 retainedOtherBytes = 0;
         for (const QFileInfo& fileInfo : files)
         {
-            const bool keep = retainedFiles < kMaxRetainedFiles &&
-                (retainedFiles == 0 || retainedBytes + fileInfo.size() <= kMaxTotalFileBytes);
+            if (fileInfo.absoluteFilePath() == activeAbsolutePath)
+            {
+                continue;
+            }
+            const bool keep = retainedOtherFiles < maxOtherFiles &&
+                retainedOtherBytes + fileInfo.size() <= remainingBytes &&
+                retainedBytes + fileInfo.size() <= kMaxTotalFileBytes;
             if (keep)
             {
-                ++retainedFiles;
+                ++retainedOtherFiles;
+                retainedOtherBytes += fileInfo.size();
                 retainedBytes += fileInfo.size();
                 continue;
             }
@@ -477,6 +584,7 @@ private:
             pending_records_ >= kFlushRecordLimit;
         if (!due)
         {
+            pending_flush_.store(true, std::memory_order_release);
             return true;
         }
         if (!file_.flush())
@@ -485,23 +593,41 @@ private:
         }
         last_flush_ms_ = nowMs;
         pending_records_ = 0;
+        pending_flush_.store(false, std::memory_order_release);
         return true;
     }
 
-    void writeRecord(const LogRecord& record, bool forceFlush)
+    bool writeRecord(const LogRecord& record, bool forceFlush)
     {
         const QByteArray line = record.toJsonLine();
         if (writeRecordOnce(record, forceFlush))
         {
-            return;
+            return true;
         }
 
         notifyFailure(QStringLiteral("Cannot write application log file: %1").arg(current_path_));
         if (switchToFallbackDirectory() && writeRecordOnce(record, forceFlush))
         {
-            return;
+            return true;
         }
         fallbackWrite(line);
+        return false;
+    }
+
+    void flushPending()
+    {
+        if (!file_.isOpen() || !pending_flush_.load(std::memory_order_acquire))
+        {
+            return;
+        }
+        if (!file_.flush())
+        {
+            notifyFailure(QStringLiteral("Cannot flush application log file: %1").arg(current_path_));
+            return;
+        }
+        last_flush_ms_ = QDateTime::currentMSecsSinceEpoch();
+        pending_records_ = 0;
+        pending_flush_.store(false, std::memory_order_release);
     }
 
     void notifyFailure(const QString& message)
@@ -526,7 +652,28 @@ private:
         }
         last_flush_ms_ = 0;
         pending_records_ = 0;
+        pending_flush_.store(false, std::memory_order_release);
     }
+
+public:
+    QString activeDirectory() const
+    {
+        QMutexLocker locker(&file_mutex_);
+        return directory_;
+    }
+
+    QString activeFilePath() const
+    {
+        QMutexLocker locker(&file_mutex_);
+        if (!current_path_.isEmpty())
+        {
+            return current_path_;
+        }
+        const QString date = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
+        return QDir(directory_).filePath(QStringLiteral("%1-%2.jsonl").arg(application_name_, date));
+    }
+
+private:
 
     QString directory_;
     QString application_name_;
@@ -540,12 +687,13 @@ private:
     qint64 last_flush_ms_ = 0;
     qsizetype pending_records_ = 0;
     QMutex mutex_;
-    QMutex file_mutex_;
+    mutable QMutex file_mutex_;
     QWaitCondition wake_;
-    std::deque<LogRecord> queue_;
+    std::deque<QueuedRecord> queue_;
     quint64 dropped_count_ = 0;
     qint64 last_drop_report_ms_ = 0;
     bool stopping_ = false;
+    std::atomic_bool pending_flush_{false};
 };
 
 LogService *LogService::instance_ = nullptr;
@@ -617,9 +765,14 @@ LogService::LogService(const QString& applicationName,
         [this](const QString& message) { emit diagnosticFailure(message); },
         [this]() { return nextSequence(); });
     writer_->start();
-    if (!instance_)
     {
-        instance_ = this;
+        QMutexLocker locker(&instance_mutex);
+        if (!instance_ && !instance_shutting_down)
+        {
+            instance_ = this;
+            owns_global_instance_ = true;
+            instance_shutting_down = false;
+        }
     }
     publish(LogLevel::Info, QStringLiteral("App"), QStringLiteral("lifecycle"),
             QStringLiteral("Application logging initialized."),
@@ -628,34 +781,96 @@ LogService::LogService(const QString& applicationName,
 
 LogService::~LogService()
 {
+    QtMessageHandler previousHandler = nullptr;
+    bool restoreHandler = false;
+    {
+        QMutexLocker locker(&instance_mutex);
+        if (owns_global_instance_ && instance_ == this)
+        {
+            instance_shutting_down = true;
+            instance_ = nullptr;
+            previousHandler = previous_message_handler_;
+            previous_message_handler_ = nullptr;
+            restoreHandler = qt_message_handler_installed_;
+            qt_message_handler_installed_ = false;
+        }
+    }
+    if (restoreHandler)
+    {
+        qInstallMessageHandler(previousHandler);
+    }
+    {
+        QMutexLocker locker(&instance_mutex);
+        while (active_instance_accesses > 0)
+        {
+            instance_condition.wait(&instance_mutex);
+        }
+    }
+
     publish(LogLevel::Info, QStringLiteral("App"), QStringLiteral("lifecycle"),
             QStringLiteral("Application logging stopped."));
     if (writer_)
     {
         writer_->stop();
     }
-    if (instance_ == this && qt_message_handler_installed_)
+    if (owns_global_instance_)
     {
-        qInstallMessageHandler(previous_message_handler_);
-        previous_message_handler_ = nullptr;
-        qt_message_handler_installed_ = false;
-    }
-    if (instance_ == this)
-    {
-        instance_ = nullptr;
+        QMutexLocker locker(&instance_mutex);
+        instance_shutting_down = false;
     }
 }
 
 LogService *LogService::instance()
 {
+    QMutexLocker locker(&instance_mutex);
     return instance_;
+}
+
+bool LogService::withCurrentInstance(const std::function<void(LogService&)>& callback)
+{
+    if (!callback)
+    {
+        return false;
+    }
+    LogService *service = nullptr;
+    {
+        QMutexLocker locker(&instance_mutex);
+        if (instance_shutting_down || !instance_)
+        {
+            return false;
+        }
+        service = instance_;
+        ++active_instance_accesses;
+    }
+
+    const auto releaseAccess = []() {
+        QMutexLocker locker(&instance_mutex);
+        --active_instance_accesses;
+        if (active_instance_accesses == 0)
+        {
+            instance_condition.wakeAll();
+        }
+    };
+    try
+    {
+        callback(*service);
+    }
+    catch (...)
+    {
+        releaseAccess();
+        throw;
+    }
+    releaseAccess();
+    return true;
 }
 
 void LogService::installQtMessageHandler()
 {
     if (!qt_message_handler_installed_)
     {
-        previous_message_handler_ = qInstallMessageHandler(&LogService::qtMessageHandler);
+        QtMessageHandler previous = qInstallMessageHandler(&LogService::qtMessageHandler);
+        QMutexLocker locker(&instance_mutex);
+        previous_message_handler_ = previous;
         qt_message_handler_installed_ = true;
     }
 }
@@ -687,7 +902,16 @@ void LogService::publish(LogRecord record)
     {
         if (record.level == LogLevel::Critical)
         {
-            writer_->emergencyWrite(record);
+            auto completion = std::make_shared<LogWriterThread::CompletionState>();
+            const bool queued = writer_->enqueue(record, completion);
+            if (queued && QThread::currentThread() != writer_.get())
+            {
+                QMutexLocker locker(&completion->mutex);
+                while (!completion->completed)
+                {
+                    completion->condition.wait(&completion->mutex);
+                }
+            }
         }
         else
         {
@@ -702,12 +926,11 @@ void reportUserIssue(LogLevel level,
                      const QString& message,
                      const QVariantMap& details)
 {
-    if (LogService *logService = LogService::instance())
-    {
+    LogService::withCurrentInstance([&](LogService& logService) {
         QVariantMap fields = details;
         fields.insert(QStringLiteral("ui_visible"), true);
-        logService->publish(level, source, category, message, fields);
-    }
+        logService.publish(level, source, category, message, fields);
+    });
 }
 
 void attachProcessLogging(QProcess *process,
@@ -750,26 +973,24 @@ void attachProcessLogging(QProcess *process,
                                                true);
                          flushProcessOutput(process, source, category, false);
                          flushProcessOutput(process, source, category, true);
-                         if (LogService *logService = LogService::instance())
-                         {
-                             logService->publish(exitCode == 0 ? LogLevel::Info : LogLevel::Error,
-                                                 source,
-                                                 category,
-                                                 QStringLiteral("Child process finished."),
-                                                 {{QStringLiteral("exit_code"), exitCode},
-                                                  {QStringLiteral("exit_status"), static_cast<int>(exitStatus)}});
-                         }
+                         LogService::withCurrentInstance([&](LogService& logService) {
+                             logService.publish(exitCode == 0 ? LogLevel::Info : LogLevel::Error,
+                                                source,
+                                                category,
+                                                QStringLiteral("Child process finished."),
+                                                {{QStringLiteral("exit_code"), exitCode},
+                                                 {QStringLiteral("exit_status"), static_cast<int>(exitStatus)}});
+                         });
                      });
     QObject::connect(process, &QProcess::errorOccurred, process,
                      [source, category](QProcess::ProcessError error) {
-                         if (LogService *logService = LogService::instance())
-                         {
-                             logService->publish(LogLevel::Error,
-                                                 source,
-                                                 category,
-                                                 QStringLiteral("Child process error."),
-                                                 {{QStringLiteral("process_error"), static_cast<int>(error)}});
-                         }
+                         LogService::withCurrentInstance([&](LogService& logService) {
+                             logService.publish(LogLevel::Error,
+                                                source,
+                                                category,
+                                                QStringLiteral("Child process error."),
+                                                {{QStringLiteral("process_error"), static_cast<int>(error)}});
+                         });
                      });
 }
 
@@ -810,13 +1031,15 @@ LogRecord LogService::publish(LogLevel level,
 
 QString LogService::logFilePath() const
 {
-    const QString date = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
-    return QDir(log_directory_).filePath(QStringLiteral("%1-%2.jsonl").arg(application_name_, date));
+    return writer_ ? writer_->activeFilePath() :
+        QDir(log_directory_).filePath(QStringLiteral("%1-%2.jsonl")
+                                          .arg(application_name_,
+                                               QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"))));
 }
 
 QString LogService::logDirectory() const
 {
-    return log_directory_;
+    return writer_ ? writer_->activeDirectory() : log_directory_;
 }
 
 quint64 LogService::nextSequence()
@@ -836,31 +1059,35 @@ void LogService::qtMessageHandler(QtMsgType type,
     }
     handling = true;
 
-    if (instance_)
+    LogLevel level = LogLevel::Info;
+    switch (type)
     {
-        LogLevel level = LogLevel::Info;
-        switch (type)
-        {
-        case QtDebugMsg: level = LogLevel::Debug; break;
-        case QtInfoMsg: level = LogLevel::Info; break;
-        case QtWarningMsg: level = LogLevel::Warning; break;
-        case QtCriticalMsg: level = LogLevel::Critical; break;
-        case QtFatalMsg: level = LogLevel::Critical; break;
-        }
-        QVariantMap fields;
-        if (context.file) fields.insert(QStringLiteral("file"), QString::fromUtf8(context.file));
-        if (context.function) fields.insert(QStringLiteral("function"), QString::fromUtf8(context.function));
-        if (context.line > 0) fields.insert(QStringLiteral("line"), context.line);
-        instance_->publish(level,
+    case QtDebugMsg: level = LogLevel::Debug; break;
+    case QtInfoMsg: level = LogLevel::Info; break;
+    case QtWarningMsg: level = LogLevel::Warning; break;
+    case QtCriticalMsg: level = LogLevel::Critical; break;
+    case QtFatalMsg: level = LogLevel::Critical; break;
+    }
+    QVariantMap fields;
+    if (context.file) fields.insert(QStringLiteral("file"), QString::fromUtf8(context.file));
+    if (context.function) fields.insert(QStringLiteral("function"), QString::fromUtf8(context.function));
+    if (context.line > 0) fields.insert(QStringLiteral("line"), context.line);
+    LogService::withCurrentInstance([&](LogService& logService) {
+        logService.publish(level,
                            QStringLiteral("Qt"),
                            context.category ? QString::fromUtf8(context.category) : QStringLiteral("default"),
                            message,
                            fields);
-    }
+    });
 
-    if (previous_message_handler_ && previous_message_handler_ != &LogService::qtMessageHandler)
+    QtMessageHandler previous = nullptr;
     {
-        previous_message_handler_(type, context, message);
+        QMutexLocker locker(&instance_mutex);
+        previous = previous_message_handler_;
+    }
+    if (previous && previous != &LogService::qtMessageHandler)
+    {
+        previous(type, context, message);
     }
     else if (type == QtFatalMsg)
     {

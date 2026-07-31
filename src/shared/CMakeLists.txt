@@ -1,11 +1,15 @@
 add_library(vaporview_logging STATIC
     ${CMAKE_SOURCE_DIR}/src/shared/logging/LogService.cpp
+    ${CMAKE_SOURCE_DIR}/src/shared/logging/LogQueuePolicy.cpp
+    ${CMAKE_SOURCE_DIR}/src/shared/logging/LogQueuePolicy.h
     ${CMAKE_SOURCE_DIR}/include/LogRecord.h
     ${CMAKE_SOURCE_DIR}/include/LogService.h
 )
 
 target_include_directories(vaporview_logging PUBLIC
     ${CMAKE_SOURCE_DIR}/include
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/shared
 )
 
 target_link_libraries(vaporview_logging PUBLIC

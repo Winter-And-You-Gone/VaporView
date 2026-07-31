@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <atomic>
+#include <functional>
 
 class QProcess;
 
@@ -30,7 +31,11 @@ public:
     LogService(const LogService&) = delete;
     LogService& operator=(const LogService&) = delete;
 
+    // Legacy raw access; callers must independently prove the service lifetime.
+    // Internal asynchronous callbacks should use withCurrentInstance().
     static LogService *instance();
+    // Safe access for callbacks that may race with application shutdown.
+    static bool withCurrentInstance(const std::function<void(LogService&)>& callback);
 
     void installQtMessageHandler();
     void publish(LogRecord record);
@@ -64,6 +69,7 @@ private:
     std::unique_ptr<LogWriterThread> writer_;
     std::atomic<quint64> sequence_{0};
     bool qt_message_handler_installed_ = false;
+    bool owns_global_instance_ = false;
     static LogService *instance_;
     static QtMessageHandler previous_message_handler_;
 };

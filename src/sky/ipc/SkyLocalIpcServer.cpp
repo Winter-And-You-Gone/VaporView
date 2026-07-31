@@ -47,16 +47,18 @@ SkyLocalIpcServer::SkyLocalIpcServer(SkyRuntime *runtime, QObject *parent)
     status_timer_.setInterval(500);
     status_timer_.setTimerType(Qt::CoarseTimer);
     connect(this, &SkyLocalIpcServer::logMessage, this, [this](const QString& message) {
-        if (LogService *logService = LogService::instance())
-        {
+        const bool published = LogService::withCurrentInstance([&](LogService& logService) {
             const bool warning = message.contains(QStringLiteral("failed"), Qt::CaseInsensitive) ||
                 message.contains(QStringLiteral("error"), Qt::CaseInsensitive) ||
                 message.contains(QStringLiteral("失败"), Qt::CaseInsensitive) ||
                 message.contains(QStringLiteral("错误"), Qt::CaseInsensitive);
-            logService->publish(warning ? LogLevel::Warning : LogLevel::Info,
-                                QStringLiteral("SkyCore"),
-                                QStringLiteral("ipc"),
-                                message);
+            logService.publish(warning ? LogLevel::Warning : LogLevel::Info,
+                               QStringLiteral("SkyCore"),
+                               QStringLiteral("ipc"),
+                               message);
+        });
+        if (published)
+        {
             return;
         }
 
@@ -67,9 +69,8 @@ SkyLocalIpcServer::SkyLocalIpcServer(SkyRuntime *runtime, QObject *parent)
         broadcastFrame(MsgType::LogEvent, TelemetryCodec::serializeLogRecord(fallback));
     });
 
-    if (LogService *logService = LogService::instance())
-    {
-        connect(logService, &LogService::recordPublished, this,
+    LogService::withCurrentInstance([this](LogService& logService) {
+        connect(&logService, &LogService::recordPublished, this,
                 [this](const LogRecord& record) {
                     if (record.source == QStringLiteral("SkyTui"))
                     {
@@ -77,7 +78,7 @@ SkyLocalIpcServer::SkyLocalIpcServer(SkyRuntime *runtime, QObject *parent)
                     }
                     broadcastFrame(MsgType::LogEvent, TelemetryCodec::serializeLogRecord(record));
                 });
-    }
+    });
 
     if (runtime_)
     {

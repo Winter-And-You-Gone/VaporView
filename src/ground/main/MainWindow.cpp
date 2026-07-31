@@ -4,10 +4,9 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , state_(std::make_unique<MainWindowState>())
 {
-    if (VaporView::LogService *logService = VaporView::LogService::instance())
-    {
-        connect(logService, &VaporView::LogService::recordPublished, this,
-                [this, logService](const VaporView::LogRecord& record) {
+    VaporView::LogService::withCurrentInstance([this](VaporView::LogService& logService) {
+        connect(&logService, &VaporView::LogService::recordPublished, this,
+                [this](const VaporView::LogRecord& record) {
                     if (!state_->recording_service_->isSessionOpen() ||
                         record.category == QStringLiteral("ui.progress") ||
                         record.fields.value(QStringLiteral("session_sink_failure")).toBool())
@@ -19,27 +18,31 @@ MainWindow::MainWindow(QWidget *parent)
                     if (!state_->recording_service_->appendEvent(
                             VaporView::logLevelName(record.level).toLower(), record.message))
                     {
-                        logService->publish(VaporView::LogLevel::Error,
-                                            QStringLiteral("Ground"),
-                                            QStringLiteral("session.write"),
-                                            QStringLiteral("Failed to append event_log.csv entry from session sink."),
-                                            {{QStringLiteral("session_sink_failure"), true},
-                                             {QStringLiteral("source"), record.source},
-                                             {QStringLiteral("category"), record.category}});
+                        VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
+                            logService.publish(VaporView::LogLevel::Error,
+                                               QStringLiteral("Ground"),
+                                               QStringLiteral("session.write"),
+                                               QStringLiteral("Failed to append event_log.csv entry from session sink."),
+                                               {{QStringLiteral("session_sink_failure"), true},
+                                                {QStringLiteral("source"), record.source},
+                                                {QStringLiteral("category"), record.category}});
+                        });
                     }
                     if (errorRecord && !state_->recording_service_->appendError(record.message))
                     {
-                        logService->publish(VaporView::LogLevel::Error,
-                                            QStringLiteral("Ground"),
-                                            QStringLiteral("session.write"),
-                                            QStringLiteral("Failed to append error_log.txt entry from session sink."),
-                                            {{QStringLiteral("session_sink_failure"), true},
-                                             {QStringLiteral("source"), record.source},
-                                            {QStringLiteral("category"), record.category}});
+                        VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
+                            logService.publish(VaporView::LogLevel::Error,
+                                               QStringLiteral("Ground"),
+                                               QStringLiteral("session.write"),
+                                               QStringLiteral("Failed to append error_log.txt entry from session sink."),
+                                               {{QStringLiteral("session_sink_failure"), true},
+                                                {QStringLiteral("source"), record.source},
+                                                {QStringLiteral("category"), record.category}});
+                        });
                     }
                 },
                 Qt::DirectConnection);
-        connect(logService, &VaporView::LogService::recordPublished, this,
+        connect(&logService, &VaporView::LogService::recordPublished, this,
                 [this](const VaporView::LogRecord& record) {
                     if (record.category == QStringLiteral("ui.progress"))
                     {
@@ -78,7 +81,7 @@ MainWindow::MainWindow(QWidget *parent)
                     }
                     state_->has_inline_progress_log_ = false;
                 });
-    }
+    });
     setWindowFlags(Qt::Window |
                    Qt::FramelessWindowHint |
                    Qt::WindowMinimizeButtonHint |

@@ -300,14 +300,13 @@ void SkyTuiApp::start()
 
 void SkyTuiApp::appendLog(const QString& message)
 {
-    if (VaporView::LogService *logService = VaporView::LogService::instance())
-    {
-        logService->publish(VaporView::LogLevel::Info,
-                            QStringLiteral("SkyTui"),
-                            QStringLiteral("ui"),
-                            message,
-                            {{QStringLiteral("ui_visible"), true}});
-    }
+    VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
+        logService.publish(VaporView::LogLevel::Info,
+                           QStringLiteral("SkyTui"),
+                           QStringLiteral("ui"),
+                           message,
+                           {{QStringLiteral("ui_visible"), true}});
+    });
     appendLogToModel(message);
 }
 

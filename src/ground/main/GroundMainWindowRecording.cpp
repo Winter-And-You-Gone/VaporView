@@ -46,15 +46,14 @@ void MainWindow::log(const QString& message)
 
     if (message.startsWith('\r'))
     {
-        if (VaporView::LogService *logService = VaporView::LogService::instance())
-        {
-            logService->publish(VaporView::LogLevel::Debug,
-                                QStringLiteral("Ground"),
-                                QStringLiteral("ui.progress"),
-                                message.mid(1),
-                                {{QStringLiteral("ui_visible"), true},
-                                 {QStringLiteral("inline"), true}});
-        }
+        VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
+            logService.publish(VaporView::LogLevel::Debug,
+                               QStringLiteral("Ground"),
+                               QStringLiteral("ui.progress"),
+                               message.mid(1),
+                               {{QStringLiteral("ui_visible"), true},
+                                {QStringLiteral("inline"), true}});
+        });
         if (!state_->log_text_edit_)
         {
             return;
@@ -92,17 +91,15 @@ void MainWindow::log(const QString& message)
     const VaporView::LogLevel level = mirrorsLegacyError || looksLikeDataLoss
         ? VaporView::LogLevel::Warning
         : VaporView::LogLevel::Info;
-    VaporView::LogService *logService = VaporView::LogService::instance();
-    if (logService)
-    {
-        logService->publish(level,
-                            QStringLiteral("Ground"),
-                            category,
-                            message,
-                            {{QStringLiteral("ui_visible"), true},
-                             {QStringLiteral("legacy_error_mirror"), mirrorsLegacyError}});
-    }
-    else
+    const bool published = VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
+        logService.publish(level,
+                           QStringLiteral("Ground"),
+                           category,
+                           message,
+                           {{QStringLiteral("ui_visible"), true},
+                            {QStringLiteral("legacy_error_mirror"), mirrorsLegacyError}});
+    });
+    if (!published)
     {
         VaporView::LogRecord uiRecord;
         uiRecord.level = level;
@@ -127,7 +124,7 @@ void MainWindow::log(const QString& message)
     }
     state_->has_inline_progress_log_ = false;
 
-    if (!logService && state_->recording_service_->isSessionOpen())
+    if (!published && state_->recording_service_->isSessionOpen())
     {
         state_->recording_service_->appendEvent(mirrorsLegacyError || looksLikeDataLoss
                                                     ? QStringLiteral("warning")
@@ -1465,13 +1462,12 @@ void MainWindow::stopRecording(bool announce)
     {
         if (!state_->recording_service_->appendEvent(QStringLiteral("info"), QStringLiteral("Recording stop requested.")))
         {
-            if (VaporView::LogService *logService = VaporView::LogService::instance())
-            {
-                logService->publish(VaporView::LogLevel::Error,
-                                    QStringLiteral("Ground"),
-                                    QStringLiteral("session.write"),
-                                    QStringLiteral("Failed to append recording stop summary."));
-            }
+            VaporView::LogService::withCurrentInstance([](VaporView::LogService& logService) {
+                logService.publish(VaporView::LogLevel::Error,
+                                   QStringLiteral("Ground"),
+                                   QStringLiteral("session.write"),
+                                   QStringLiteral("Failed to append recording stop summary."));
+            });
         }
     }
     const auto summary = state_->recording_service_->stop();

@@ -116,6 +116,7 @@ add_executable(log_service_test
 )
 target_include_directories(log_service_test PRIVATE
     ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src/shared
 )
 target_link_libraries(log_service_test PRIVATE
     vaporview_logging
@@ -123,6 +124,19 @@ target_link_libraries(log_service_test PRIVATE
     Qt6::Core
 )
 add_test(NAME log_service_test COMMAND log_service_test)
+set_tests_properties(log_service_test PROPERTIES TIMEOUT 90)
+
+add_executable(log_fatal_helper
+    ${CMAKE_CURRENT_SOURCE_DIR}/log_fatal_helper.cpp
+)
+target_include_directories(log_fatal_helper PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+target_link_libraries(log_fatal_helper PRIVATE
+    vaporview_logging
+    Qt6::Core
+)
+add_dependencies(log_service_test log_fatal_helper)
 
 add_executable(telemetry_tcp_link_test
     ${CMAKE_CURRENT_SOURCE_DIR}/telemetry_tcp_link_test.cpp
