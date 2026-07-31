@@ -1857,6 +1857,17 @@ void MainWindow::setupDeviceConfigPage()
                state_->device_config_.lidar_rate_lbl, state_->device_config_.lidar_rate_combo, 3);
     addPortRow(state_->device_config_.temperature_lbl, state_->device_config_.temperature_port_combo, state_->device_config_.temperature_baud_combo,
                state_->device_config_.temperature_rate_lbl, state_->device_config_.temperature_rate_combo, 4);
+    state_->device_config_.ai8_temperature_lbl = new QLabel(formWidget);
+    state_->device_config_.ai8_temperature_lbl->setObjectName(QStringLiteral("deviceAi8TemperatureLabel"));
+    state_->device_config_.ai8_temperature_lbl->setFixedHeight(kMainPageInputHeight);
+    state_->device_config_.ai8_temperature_lbl->setFixedWidth(76);
+    formLayout->addWidget(state_->device_config_.ai8_temperature_lbl, 5, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    state_->device_config_.ai8_temperature_port_combo = createCombo(kDeviceConfigPortComboWidth);
+    state_->device_config_.ai8_temperature_port_combo->setObjectName(QStringLiteral("deviceAi8TemperaturePortCombo"));
+    state_->device_config_.ai8_temperature_port_combo->setMinimumContentsLength(6);
+    state_->device_config_.ai8_temperature_port_combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    refreshLocalSerialPortComboOptions(state_->device_config_.ai8_temperature_port_combo, getAvailablePorts());
+    formLayout->addWidget(state_->device_config_.ai8_temperature_port_combo, 5, 1, Qt::AlignVCenter);
     state_->device_config_.ptb_baud_combo->setObjectName(QStringLiteral("devicePressureBaudCombo"));
     state_->device_config_.hmp_baud_combo->setObjectName(QStringLiteral("deviceHumidityBaudCombo"));
     if (state_->device_config_.epsilon_port_combo)
@@ -2297,6 +2308,20 @@ void MainWindow::setupDeviceConfigPage()
     mirrorComboToHome(state_->device_config_.hmp_rate_combo, state_->hmp_rate_combo_);
     mirrorComboToHome(state_->device_config_.lidar_rate_combo, state_->lidar_rate_combo_);
     mirrorComboToHome(state_->device_config_.temperature_rate_combo, state_->temperature_rate_combo_);
+    connect(state_->device_config_.ai8_temperature_port_combo,
+            &QComboBox::currentTextChanged,
+            this,
+            [this](const QString&) {
+                if (!state_->device_config_.ai8_temperature_port_combo ||
+                    state_->device_config_.ai8_temperature_port_combo->property(
+                        kLocalSerialPortManualEntryProperty).toBool())
+                {
+                    return;
+                }
+                refreshAi8TemperatureTitlePortOptions(
+                    getAvailablePorts(),
+                    localSerialPortComboValue(state_->device_config_.ai8_temperature_port_combo));
+            });
 
     connect(state_->device_config_.sky_telemetry_tcp_host_edit, &QLineEdit::textChanged, this, [this](const QString& text) {
         if (state_->sky_telemetry_tcp_host_edit_ && state_->sky_telemetry_tcp_host_edit_->text() != text)
@@ -2489,6 +2514,7 @@ void MainWindow::updateDeviceConfigTexts()
     }
     if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(QStringLiteral("TFA1500-L:"));
     if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(QStringLiteral("RD105:"));
+    if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(QStringLiteral("AI-8288:"));
     if (state_->device_config_.epsilon_rate_lbl) state_->device_config_.epsilon_rate_lbl->setText(QString());
     if (state_->device_config_.ptb_rate_lbl) state_->device_config_.ptb_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
     if (state_->device_config_.hmp_rate_lbl) state_->device_config_.hmp_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
@@ -2636,6 +2662,7 @@ void MainWindow::updateDeviceConfigState()
         state_->device_config_.lidar_baud_combo,
         state_->device_config_.temperature_port_combo,
         state_->device_config_.temperature_baud_combo,
+        state_->device_config_.ai8_temperature_port_combo,
         state_->device_config_.ptb_rate_combo,
         state_->device_config_.hmp_rate_combo,
         state_->device_config_.lidar_rate_combo,
@@ -3128,6 +3155,7 @@ void MainWindow::refreshLocalSerialPortManualOptionTexts()
                              state_->device_config_.hmp_port_combo,
                              state_->device_config_.lidar_port_combo,
                              state_->device_config_.temperature_port_combo,
+                             state_->device_config_.ai8_temperature_port_combo,
                              state_->sky_telemetry_port_combo_,
                              state_->device_config_.sky_telemetry_port_combo})
     {
@@ -4037,10 +4065,24 @@ void MainWindow::setupDataPanels()
     connect(state_->ai8_temperature_title_port_combo_,
             QOverload<int>::of(&QComboBox::currentIndexChanged),
             this,
-            [this](int) {
+            [this](int index) {
                 updateAi8TemperatureTitlePortAppearance();
+                if (!state_->device_config_.ai8_temperature_port_combo || index < 0)
+                {
+                    return;
+                }
+                const QString selectedPort =
+                    state_->ai8_temperature_title_port_combo_->itemData(index).toString().trimmed();
+                if (localSerialPortComboValue(state_->device_config_.ai8_temperature_port_combo) != selectedPort)
+                {
+                    setLocalSerialPortComboText(
+                        state_->device_config_.ai8_temperature_port_combo,
+                        selectedPort);
+                }
             });
-    refreshAi8TemperatureTitlePortOptions(getAvailablePorts());
+    refreshAi8TemperatureTitlePortOptions(
+        getAvailablePorts(),
+        localSerialPortComboValue(state_->device_config_.ai8_temperature_port_combo));
     ai8TitleLayout->addWidget(state_->ai8_temperature_title_port_combo_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     ai8TitleLayout->addStretch(1);
     ai8Layout->addWidget(ai8TitleBar);

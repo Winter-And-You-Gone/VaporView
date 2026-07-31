@@ -6443,9 +6443,9 @@ int main(int argc, char **argv)
         deviceConfigPage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
     require(deviceConfigScrollArea != nullptr, "device configuration scroll area exists");
     require(deviceConfigScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAsNeeded &&
-                deviceConfigScrollArea->verticalScrollBar()->maximum() == 0 &&
-                !deviceConfigScrollArea->verticalScrollBar()->isVisible(),
-            "device configuration page hides its unused vertical scrollbar");
+                deviceConfigScrollArea->verticalScrollBar()->maximum() > 0 &&
+                deviceConfigScrollArea->verticalScrollBar()->isVisible(),
+            "device configuration page exposes scrolling for the expanded serial configuration");
     const QRect deviceConfigScrollRect = widgetRectInCentral(deviceConfigScrollArea);
     require(std::abs(deviceConfigScrollRect.left() - mainPageStackCentralRect.left()) <= 1 &&
                 std::abs(deviceConfigScrollRect.top() - mainPageStackCentralRect.top()) <= 1 &&
@@ -6456,9 +6456,9 @@ int main(int argc, char **argv)
                 deviceConfigScrollArea->widget()->layout()->contentsMargins() ==
                     QMargins(kExpectedPageLeftInset,
                              kExpectedPageTopInset,
-                             kExpectedNoScrollPageRightInset,
+                             kExpectedHomeShadowSafeRightInset,
                              VaporView::Ground::MainSupport::kMainContentBottomShadowSafeInset),
-            "device configuration page keeps the 18px right-side gap while its scrollbar is hidden");
+            "device configuration page keeps the card shadow inset ahead of its visible scrollbar");
     require(deviceConfigScrollArea->horizontalScrollBar() != nullptr &&
                 deviceConfigScrollArea->horizontalScrollBar()->maximum() == 0,
             "device configuration page fits horizontally at default window size");
@@ -6585,7 +6585,8 @@ int main(int argc, char **argv)
         {QStringLiteral("devicePressurePortCombo"), "device PTB local serial combo uses select-plus-manual behavior"},
         {QStringLiteral("deviceHumidityPortCombo"), "device HMP local serial combo uses select-plus-manual behavior"},
         {QStringLiteral("deviceLidarPortCombo"), "device Lidar local serial combo uses select-plus-manual behavior"},
-        {QStringLiteral("deviceTemperaturePortCombo"), "device RD105 local serial combo uses select-plus-manual behavior"}};
+        {QStringLiteral("deviceTemperaturePortCombo"), "device RD105 local serial combo uses select-plus-manual behavior"},
+        {QStringLiteral("deviceAi8TemperaturePortCombo"), "device AI-8288 local serial combo uses select-plus-manual behavior"}};
     for (const auto& comboSpec : deviceLocalSerialCombos)
     {
         requireLocalSerialPortComboReady(deviceConfigPage->findChild<QComboBox *>(comboSpec.first), comboSpec.second);
@@ -6699,10 +6700,27 @@ int main(int argc, char **argv)
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceTemperaturePortCombo"));
     auto *deviceTemperatureBaudCombo =
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceTemperatureBaudCombo"));
+    auto *deviceAi8TemperaturePortCombo =
+        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperaturePortCombo"));
+    auto *deviceAi8TemperatureLabel =
+        deviceConfigPage->findChild<QLabel *>(QStringLiteral("deviceAi8TemperatureLabel"));
     require(deviceTemperaturePortCombo != nullptr,
             "device configuration temperature serial-port combo exists");
     require(deviceTemperatureBaudCombo != nullptr,
             "device configuration temperature baud-rate combo exists");
+    require(deviceAi8TemperatureLabel != nullptr &&
+                deviceAi8TemperatureLabel->text() == QStringLiteral("AI-8288:"),
+            "device configuration labels the AI-8288 serial selector");
+    const QPoint deviceTemperaturePortPosition =
+        deviceTemperaturePortCombo->mapTo(deviceConfigPage, QPoint(0, 0));
+    const QPoint deviceAi8TemperaturePortPosition =
+        deviceAi8TemperaturePortCombo != nullptr
+            ? deviceAi8TemperaturePortCombo->mapTo(deviceConfigPage, QPoint(0, 0))
+            : QPoint();
+    require(deviceAi8TemperaturePortCombo != nullptr &&
+                deviceAi8TemperaturePortPosition.y() > deviceTemperaturePortPosition.y() &&
+                std::abs(deviceAi8TemperaturePortPosition.x() - deviceTemperaturePortPosition.x()) <= 1,
+            "device configuration places the AI-8288 serial selector directly below RD105");
     deviceConfigScrollArea->ensureWidgetVisible(deviceTemperaturePortCombo, 20, 20);
     processEventsFor(80);
     requireComboPopupFloatingContainer(deviceTemperaturePortCombo,
@@ -6717,6 +6735,21 @@ int main(int argc, char **argv)
         homePortCombo->addItem(expectedTemperaturePortText, expectedTemperaturePortText);
     }
     const QString syntheticPort = QStringLiteral("COM123");
+    const int ai8ManualIndex = deviceAi8TemperaturePortCombo->findData(
+        QStringLiteral("__vv_manual_serial_port__"));
+    deviceAi8TemperaturePortCombo->insertItem(
+        ai8ManualIndex >= 0 ? ai8ManualIndex : deviceAi8TemperaturePortCombo->count(),
+        syntheticPort,
+        syntheticPort);
+    deviceAi8TemperaturePortCombo->setCurrentIndex(
+        deviceAi8TemperaturePortCombo->findData(syntheticPort));
+    processEventsFor(50);
+    require(ai8TitlePortCombo->currentData().toString() == syntheticPort,
+            "device configuration AI-8288 serial selection updates the temperature-page title selector");
+    ai8TitlePortCombo->setCurrentIndex(0);
+    processEventsFor(50);
+    require(localSerialPortValue(deviceAi8TemperaturePortCombo).isEmpty(),
+            "temperature-page AI-8 title selector writes back to device configuration");
     if (homePortCombo->findText(syntheticPort) < 0)
     {
         homePortCombo->addItem(syntheticPort, syntheticPort);

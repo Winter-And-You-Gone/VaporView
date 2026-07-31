@@ -367,6 +367,10 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
                 setLocalSerialPortComboText(portCombos[index], testPorts[index]);
             }
         }
+        refreshLocalSerialPortComboOptions(
+            state_->device_config_.ai8_temperature_port_combo,
+            testPorts,
+            QStringLiteral("UI-TEST-AI8"));
         refreshAi8TemperatureTitlePortOptions(testPorts, QStringLiteral("UI-TEST-AI8"));
         syncDeviceConfigPageFromHome();
         updateUiTestModeUi();

@@ -52,6 +52,7 @@ struct DeviceConfigPageWidgets
     QLabel *hmp_lbl = nullptr;
     QLabel *lidar_lbl = nullptr;
     QLabel *temperature_lbl = nullptr;
+    QLabel *ai8_temperature_lbl = nullptr;
     QLabel *epsilon_rate_lbl = nullptr;
     QLabel *ptb_rate_lbl = nullptr;
     QLabel *hmp_rate_lbl = nullptr;
@@ -95,6 +96,7 @@ struct DeviceConfigPageWidgets
     QComboBox *lidar_baud_combo = nullptr;
     QComboBox *temperature_port_combo = nullptr;
     QComboBox *temperature_baud_combo = nullptr;
+    QComboBox *ai8_temperature_port_combo = nullptr;
     QComboBox *ptb_rate_combo = nullptr;
     QComboBox *hmp_rate_combo = nullptr;
     QComboBox *lidar_rate_combo = nullptr;

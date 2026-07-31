@@ -600,11 +600,10 @@ void MainWindow::onRefreshPortsClicked()
     updateCombo(state_->lidar_port_combo_);
     updateCombo(state_->temperature_port_combo_);
     updateCombo(state_->sky_telemetry_port_combo_);
+    updateCombo(state_->device_config_.ai8_temperature_port_combo);
     refreshAi8TemperatureTitlePortOptions(
         ports,
-        state_->ai8_temperature_title_port_combo_
-            ? state_->ai8_temperature_title_port_combo_->currentData().toString()
-            : QString());
+        localSerialPortComboValue(state_->device_config_.ai8_temperature_port_combo));
     syncDeviceConfigPageFromHome();
     updateTemperatureControllerTitleText();
     updateTemperatureTitleButtonsState();
