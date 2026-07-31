@@ -22,13 +22,13 @@
 
 namespace
 {
-constexpr int kDefaultSplashCardExtent = 220;
+constexpr int kDefaultSplashCardExtent = 200;
 constexpr int kMinimumSplashCardExtent = 180;
-constexpr int kMaximumSplashCardExtent = 240;
-constexpr qreal kSplashCardFraction = 0.20;
-constexpr int kSplashShadowMargin = 30;
+constexpr int kMaximumSplashCardExtent = 220;
+constexpr qreal kSplashCardFraction = 0.18;
+constexpr int kSplashShadowMargin = 26;
 constexpr qreal kCardCornerRadiusFraction = 0.22;
-constexpr qreal kLogoExtentFraction = 0.72;
+constexpr qreal kLogoExtentFraction = 0.85;
 constexpr int kShadowBlurRadius = 22;
 constexpr int kShadowVerticalOffset = 10;
 constexpr int kShadowOpacity = 90;

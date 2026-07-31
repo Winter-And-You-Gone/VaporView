@@ -33,7 +33,7 @@ void requireSizeWithin(const QSize& availableSize)
                 splashSize.height() <= availableSize.height(),
             "startup splash must fit inside the available screen geometry");
     const int cardExtent = VaporView::StartupSplash::calculateCardExtent(availableSize);
-    require(cardExtent > 0 && cardExtent <= 240,
+    require(cardExtent > 0 && cardExtent <= 220,
             "startup splash card extent must stay bounded");
 }
 
@@ -70,7 +70,7 @@ int main(int argc, char **argv)
     requireSizeWithin(QSize(800, 600));
     requireSizeWithin(QSize(480, 270));
     const QSize hugeScreenSize = VaporView::StartupSplash::calculateWindowSize(QSize(7680, 4320));
-    require(hugeScreenSize == QSize(300, 300),
+    require(hugeScreenSize == QSize(272, 272),
             "startup splash must cap its large-screen extent");
     const QSize tinyScreenSize = VaporView::StartupSplash::calculateWindowSize(QSize(120, 90));
     require(tinyScreenSize.width() == tinyScreenSize.height() &&
