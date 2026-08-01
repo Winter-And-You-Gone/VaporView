@@ -460,6 +460,14 @@ add_custom_command(TARGET update_check_dialog_test POST_BUILD
 )
 add_test(NAME update_check_dialog_test COMMAND update_check_dialog_test)
 
+add_executable(ifw_update_status_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/ifw_update_status_test.cpp
+)
+target_include_directories(ifw_update_status_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+add_test(NAME ifw_update_status_test COMMAND ifw_update_status_test)
+
 add_executable(main_window_session_viewer_test
     ${CMAKE_CURRENT_SOURCE_DIR}/main_window_session_viewer_test.cpp
 )

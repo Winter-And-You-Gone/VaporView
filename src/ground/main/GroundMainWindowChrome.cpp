@@ -1,4 +1,5 @@
 #include "ground/main/GroundMainWindowImplementation.h"
+#include "ground/main/UpdateCheckStatus.h"
 #include "ground/devices/DeviceRatePolicy.h"
 
 #include <QCoreApplication>
@@ -1383,7 +1384,7 @@ QPushButton#updateCheckUpdateButton:focus {
             const VaporViewUpdateCheckResult maintenanceResult =
                 vaporViewClassifyUpdateCheckResult(output, exitCode, exitStatus);
             const bool succeeded = exitStatus == QProcess::NormalExit &&
-                (exitCode == 0 ||
+                (VaporView::ifwUpdateCommandSucceeded(exitCode) ||
                  maintenanceResult.status == VaporViewUpdateCheckStatus::UpToDate);
             maintenanceUpdateProcess->deleteLater();
             maintenanceUpdateProcess = nullptr;
