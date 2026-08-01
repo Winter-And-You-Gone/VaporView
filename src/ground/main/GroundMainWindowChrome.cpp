@@ -1500,7 +1500,7 @@ void MainWindow::showAboutDialog()
     dialog.setObjectName(QStringLiteral("aboutDialog"));
     dialog.setWindowTitle(title);
     dialog.setWindowModality(Qt::WindowModal);
-    dialog.setMinimumSize(520, 460);
+    dialog.setMinimumSize(312, 276);
 
     auto *rootLayout = new QVBoxLayout(&dialog);
     rootLayout->setContentsMargins(0, 0, 0, 0);
@@ -1509,29 +1509,29 @@ void MainWindow::showAboutDialog()
     auto *body = new QWidget(&dialog);
     body->setObjectName(QStringLiteral("aboutDialogBody"));
     auto *bodyLayout = new QVBoxLayout(body);
-    bodyLayout->setContentsMargins(48, 24, 48, 24);
+    bodyLayout->setContentsMargins(29, 14, 29, 14);
     bodyLayout->setSpacing(0);
     bodyLayout->addStretch(1);
 
     auto *logoLabel = new QLabel(body);
     logoLabel->setObjectName(QStringLiteral("aboutDialogLogo"));
     logoLabel->setAccessibleName(english ? QStringLiteral("VaporView logo") : QStringLiteral("VaporView 标志"));
-    logoLabel->setFixedSize(108, 108);
+    logoLabel->setFixedSize(65, 65);
     logoLabel->setAlignment(Qt::AlignCenter);
-    logoLabel->setPixmap(renderVaporViewLogo(dark, 104, logoLabel->devicePixelRatioF()));
+    logoLabel->setPixmap(renderVaporViewLogo(dark, 62, logoLabel->devicePixelRatioF()));
     bodyLayout->addWidget(logoLabel, 0, Qt::AlignHCenter);
-    bodyLayout->addSpacing(18);
+    bodyLayout->addSpacing(11);
 
     auto *productNameLabel = new QLabel(QStringLiteral("VaporView"), body);
     productNameLabel->setObjectName(QStringLiteral("aboutDialogProductNameLabel"));
     productNameLabel->setAlignment(Qt::AlignCenter);
     QFont productNameFont = productNameLabel->font();
     const qreal basePointSize = productNameFont.pointSizeF() > 0.0 ? productNameFont.pointSizeF() : 10.0;
-    productNameFont.setPointSizeF(std::max<qreal>(20.0, basePointSize * 1.9));
+    productNameFont.setPointSizeF(std::max<qreal>(15.0, basePointSize * 1.45));
     productNameFont.setWeight(QFont::DemiBold);
     productNameLabel->setFont(productNameFont);
     bodyLayout->addWidget(productNameLabel);
-    bodyLayout->addSpacing(18);
+    bodyLayout->addSpacing(11);
 
     auto createCenteredLabel = [body](const QString& objectName, const QString& text) {
         auto *label = new QLabel(text, body);
@@ -1552,24 +1552,18 @@ void MainWindow::showAboutDialog()
     descriptionFont.setWeight(QFont::Medium);
     descriptionLabel->setFont(descriptionFont);
     bodyLayout->addWidget(descriptionLabel);
-    bodyLayout->addSpacing(10);
+    bodyLayout->addSpacing(6);
 
     bodyLayout->addWidget(createCenteredLabel(
         QStringLiteral("aboutDialogFrameworkLabel"),
         english ? QStringLiteral("Built with Qt 6") : QStringLiteral("基于 Qt 6 构建")));
-    bodyLayout->addSpacing(2);
+    bodyLayout->addSpacing(1);
     bodyLayout->addWidget(createCenteredLabel(
         QStringLiteral("aboutDialogVersionLabel"),
         english
             ? QStringLiteral("Version %1").arg(applicationVersion)
             : QStringLiteral("版本 %1").arg(applicationVersion)));
-    bodyLayout->addSpacing(20);
-    bodyLayout->addWidget(createCenteredLabel(
-        QStringLiteral("aboutDialogSupportedDevicesLabel"),
-        english
-            ? QStringLiteral("Supports EPSILON, PTB210, HMP3, TFA1500-L, and RD105")
-            : QStringLiteral("支持 EPSILON、PTB210、HMP3、TFA1500-L 与 RD105")));
-    bodyLayout->addSpacing(20);
+    bodyLayout->addSpacing(12);
     bodyLayout->addWidget(createCenteredLabel(
         QStringLiteral("aboutDialogCopyrightLabel"),
         QStringLiteral("© 2026 VaporView")));
@@ -1578,15 +1572,15 @@ void MainWindow::showAboutDialog()
 
     auto *footer = new QWidget(&dialog);
     footer->setObjectName(QStringLiteral("aboutDialogFooter"));
-    footer->setMinimumHeight(82);
+    footer->setMinimumHeight(49);
     auto *footerLayout = new QHBoxLayout(footer);
-    footerLayout->setContentsMargins(24, 18, 28, 18);
+    footerLayout->setContentsMargins(14, 10, 17, 10);
     footerLayout->setSpacing(0);
     footerLayout->addStretch(1);
 
     auto *okButton = new QPushButton(english ? QStringLiteral("OK") : QStringLiteral("确定"), footer);
     okButton->setObjectName(QStringLiteral("aboutDialogOkButton"));
-    okButton->setFixedSize(124, 40);
+    okButton->setFixedSize(74, 30);
     okButton->setDefault(true);
     okButton->setAutoDefault(true);
     QObject::connect(okButton, &QPushButton::clicked, &dialog, &QDialog::accept);
@@ -1596,8 +1590,8 @@ void MainWindow::showAboutDialog()
     VaporView::installCustomTitleBar(&dialog, false);
     if (QLabel *titleLogo = dialog.findChild<QLabel *>(QStringLiteral("customTitleLogo")))
     {
-        titleLogo->setFixedSize(36, 36);
-        titleLogo->setPixmap(renderVaporViewLogo(dark, 30, titleLogo->devicePixelRatioF()));
+        titleLogo->setFixedSize(22, 22);
+        titleLogo->setPixmap(renderVaporViewLogo(dark, 18, titleLogo->devicePixelRatioF()));
     }
     for (QToolButton *button : dialog.findChildren<QToolButton *>())
     {
@@ -1634,8 +1628,7 @@ QLabel#aboutDialogProductNameLabel {
 }
 QLabel#aboutDialogDescriptionLabel,
 QLabel#aboutDialogFrameworkLabel,
-QLabel#aboutDialogVersionLabel,
-QLabel#aboutDialogSupportedDevicesLabel {
+QLabel#aboutDialogVersionLabel {
     color: @vv-text-secondary;
 }
 QLabel#aboutDialogCopyrightLabel {
@@ -1663,7 +1656,7 @@ QPushButton#aboutDialogOkButton:focus {
 }
 )"), dark));
 
-    dialog.resize(QSize(560, 500));
+    dialog.resize(QSize(336, 300));
     dialog.exec();
 }
 

@@ -253,9 +253,9 @@ void requireAboutDialogLayout(MainWindow *window,
                                                   : QStringLiteral("关于 VaporView")),
                 "about dialog title follows the interface language");
         require(dialog->isModal(), "about dialog is modal");
-        require(dialog->size() == QSize(560, 500) &&
-                    dialog->minimumSize() == QSize(520, 460),
-                "about dialog keeps a compact default and minimum size");
+        require(dialog->size() == QSize(336, 300) &&
+                    dialog->minimumSize() == QSize(312, 276),
+                "about dialog keeps the reduced default and minimum size");
 
         auto *body = dialog->findChild<QWidget *>(QStringLiteral("aboutDialogBody"));
         auto *footer = dialog->findChild<QWidget *>(QStringLiteral("aboutDialogFooter"));
@@ -264,13 +264,22 @@ void requireAboutDialogLayout(MainWindow *window,
         auto *description = dialog->findChild<QLabel *>(QStringLiteral("aboutDialogDescriptionLabel"));
         auto *framework = dialog->findChild<QLabel *>(QStringLiteral("aboutDialogFrameworkLabel"));
         auto *version = dialog->findChild<QLabel *>(QStringLiteral("aboutDialogVersionLabel"));
-        auto *supportedDevices = dialog->findChild<QLabel *>(QStringLiteral("aboutDialogSupportedDevicesLabel"));
         auto *copyright = dialog->findChild<QLabel *>(QStringLiteral("aboutDialogCopyrightLabel"));
         auto *okButton = dialog->findChild<QPushButton *>(QStringLiteral("aboutDialogOkButton"));
         require(body != nullptr && footer != nullptr && logo != nullptr && productName != nullptr &&
                     description != nullptr && framework != nullptr && version != nullptr &&
-                    supportedDevices != nullptr && copyright != nullptr && okButton != nullptr,
-                "about dialog exposes the complete reference layout");
+                    copyright != nullptr && okButton != nullptr,
+                "about dialog exposes the reduced reference layout");
+        const QList<QLabel *> aboutLabels = dialog->findChildren<QLabel *>();
+        require(dialog->findChild<QLabel *>(QStringLiteral("aboutDialogSupportedDevicesLabel")) == nullptr &&
+                    aboutLabels.cend() ==
+                        std::find_if(aboutLabels.cbegin(),
+                                     aboutLabels.cend(),
+                                     [](QLabel *label) {
+                                         return label && (label->text().contains(QStringLiteral("EPSILON")) ||
+                                                          label->text().contains(QStringLiteral("RD105")));
+                                     }),
+                "about dialog omits the supported hardware summary");
         require(!logo->pixmap().isNull() && logo->width() == logo->height(),
                 "about dialog renders the square VaporView logo");
         require(productName->text() == QStringLiteral("VaporView") &&
@@ -288,14 +297,14 @@ void requireAboutDialogLayout(MainWindow *window,
                                          ? QStringLiteral("Version %1").arg(expectedVersion)
                                          : QStringLiteral("版本 %1").arg(expectedVersion)),
                 "about dialog uses the runtime application version with a stable fallback");
-        require(supportedDevices->text().contains(QStringLiteral("EPSILON")) &&
-                    supportedDevices->text().contains(QStringLiteral("RD105")),
-                "about dialog keeps the supported hardware summary concise");
         require(copyright->text() == QStringLiteral("© 2026 VaporView"),
                 "about dialog shows the product copyright");
-        require(okButton->text() == (english ? QStringLiteral("OK") : QStringLiteral("确定")) &&
-                    okButton->isDefault() && okButton->width() == 124,
-                "about dialog has a stable right-aligned default confirmation button");
+        require(okButton->text() == (english ? QStringLiteral("OK") : QStringLiteral("确定")),
+                "about dialog confirmation button follows the active language");
+        require(okButton->isDefault(),
+                "about dialog confirmation button remains the default action");
+        require(okButton->size() == QSize(74, 30),
+                "about dialog confirmation button uses the reduced fixed size");
         require(okButton->mapTo(footer, QPoint(0, 0)).x() > footer->width() / 2,
                 "about dialog confirmation button stays on the right side of the footer");
         require(footer->styleSheet().isEmpty() &&
@@ -2597,7 +2606,7 @@ int main(int argc, char **argv)
                     checkUpdatesAction->toolTip() == QStringLiteral("Check for VaporView updates"),
                 "check updates action updates to English");
         app.setApplicationVersion(QString());
-        requireAboutDialogLayout(&aboutWindow, aboutAction, true, QStringLiteral("1.0.17"));
+        requireAboutDialogLayout(&aboutWindow, aboutAction, true, QStringLiteral("1.0.18"));
         require(QMetaObject::invokeMethod(&aboutWindow, "onSwitchLanguage", Qt::DirectConnection),
                 "main window switches back to Chinese after about dialog coverage");
         require(processEventsUntil(1000, [aboutAction]() {
