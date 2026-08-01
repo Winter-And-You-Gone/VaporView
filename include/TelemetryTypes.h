@@ -8,6 +8,7 @@
 #include <QtGlobal>
 
 #include <array>
+#include <cstdint>
 
 namespace VaporView
 {
@@ -264,8 +265,8 @@ struct TemperatureControllerCommand
     qint32 pt_a = 3908300;
     qint32 pt_b = -577500;
     qint32 pt_c = -41830;
-    std::array<qint64, 8> polynomial_mantissas{};
-    std::array<qint16, 8> polynomial_exponents{};
+    std::array<int64_t, 8> polynomial_mantissas{};
+    std::array<int16_t, 8> polynomial_exponents{};
 };
 
 struct DeviceStatusItem

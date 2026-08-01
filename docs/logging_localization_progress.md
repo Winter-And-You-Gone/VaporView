@@ -51,4 +51,4 @@
 
 - 全量 CTest 中的 3 个 GUI/地图问题需要独立基线/环境排查；本轮不修改无关布局、session-viewer 或地图行为。
 - Linux ARM64：WSL 为 x86_64；虽有 `aarch64-linux-gnu-g++`，但没有 Linux ARM64 Qt 6 工具链，无法完成本地 ARM64 构建/运行验证。一次交叉配置可生成，但构建误用了 Windows MinGW `moc.exe`，不作为兼容性证据。
-- 提交前仍需执行 staged 文件审计、最终 `build/Release` 构建、提交并推送。
+- 最终收尾已完成 staged 文件审计、最终 `build/Release` 构建、提交并推送；Linux ARM64 未做实机或完整 Qt 交叉运行验证，仅通过固定宽度整数字段修正消除 LP64 ABI 歧义。
