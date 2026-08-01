@@ -73,13 +73,13 @@ int main(int argc, char *argv[])
     VaporView::TelemetryTransportType transport = VaporView::TelemetryTransportType::Tcp;
     if (!VaporView::parseTelemetryTransport(parser.value(telemetryTransportOption), transport))
     {
-        QTextStream(stderr) << "--telemetry-transport must be tcp or serial\n";
+        QTextStream(stderr) << "--telemetry-transport 必须为 tcp 或 serial。\n";
         return 2;
     }
     if (!parser.isSet(telemetryTransportOption) && parser.isSet(telemetryPortOption))
     {
         transport = VaporView::TelemetryTransportType::Serial;
-        QTextStream(stdout) << "Compatibility: --telemetry-port without --telemetry-transport selects serial telemetry\n";
+        QTextStream(stdout) << "兼容模式：未指定 --telemetry-transport 时，--telemetry-port 将选择串口遥测。\n";
     }
     runtimeOptions.telemetry_transport = transport;
     runtimeOptions.telemetry_host = parser.value(telemetryHostOption);
@@ -94,13 +94,13 @@ int main(int argc, char *argv[])
     if (runtimeOptions.telemetry_transport == VaporView::TelemetryTransportType::Serial &&
         runtimeOptions.telemetry_port.trimmed().isEmpty())
     {
-        QTextStream(stderr) << "--telemetry-port is required for serial telemetry\n";
+        QTextStream(stderr) << "串口遥测必须指定 --telemetry-port。\n";
         return 2;
     }
     if (runtimeOptions.telemetry_transport == VaporView::TelemetryTransportType::Tcp &&
         (runtimeOptions.telemetry_tcp_port <= 0 || runtimeOptions.telemetry_tcp_port > 65535))
     {
-        QTextStream(stderr) << "--telemetry-tcp-port must be 1-65535\n";
+        QTextStream(stderr) << "--telemetry-tcp-port 必须为 1 到 65535。\n";
         return 2;
     }
 

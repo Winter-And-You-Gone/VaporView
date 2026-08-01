@@ -1,6 +1,7 @@
 #ifndef VaporView_SKY_RUNTIME_H_
 #define VaporView_SKY_RUNTIME_H_
 
+#include "LogRecord.h"
 #include "SerialTelemetryLink.h"
 #include "SkyDashboardTypes.h"
 #include "SkyDeviceManager.h"
@@ -76,6 +77,7 @@ public:
 
 signals:
     void logMessage(const QString& message);
+    void logRecord(const VaporView::LogRecord& record);
     void runningChanged(bool running);
     void telemetryFrameReady(MsgType type, QByteArray payload);
 
@@ -97,6 +99,11 @@ private:
     void sendSkyConfig();
     void sendSkyConfigApplyResult(const QJsonObject& result);
     void sendDownsampledWaveformFrame(bool honorStreamingEnabled);
+    void publishRuntimeLog(LogLevel level,
+                           const QString& category,
+                           const QString& event,
+                           const QString& message,
+                           QVariantMap fields = QVariantMap());
     void updateTimerIntervals();
     quint64 currentTimestampUs() const;
     QVector<float> waveformPreview(const QVector<float>& samples, int maxPoints) const;

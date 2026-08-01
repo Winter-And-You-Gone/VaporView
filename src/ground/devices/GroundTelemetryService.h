@@ -78,8 +78,14 @@ private:
     void attachLinkSignals();
     void noteReceivedBytes(qint64 bytes);
     void noteTransmittedBytes(qint64 bytes);
+    void publishTelemetryLog(LogLevel level,
+                             const QString& category,
+                             const QString& event,
+                             const QString& message,
+                             QVariantMap fields = QVariantMap());
     void reportProtocolDiagnostic(LogLevel level,
                                   const QString& category,
+                                  const QString& event,
                                   const QString& message,
                                   const QVariantMap& fields = QVariantMap());
 

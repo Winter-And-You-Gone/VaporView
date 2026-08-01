@@ -256,7 +256,15 @@ SkyTuiApp::SkyTuiApp(SkyLocalIpcClient *client, const SkyTuiOptions& options, QO
             appendLog(connected ? QStringLiteral("已连接 SkyCore") : QStringLiteral("已断开 SkyCore"));
             refreshStatus();
         });
-        connect(client_, &SkyLocalIpcClient::logMessage, this, &SkyTuiApp::appendLog);
+        connect(client_, &SkyLocalIpcClient::logMessage, this, [this](const QString& message) {
+            appendLogToModel(message);
+        });
+        connect(client_, &SkyLocalIpcClient::logRecordGenerated, this,
+                [](const LogRecord& record) {
+                    VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
+                        logService.publish(record);
+                    });
+                });
         connect(client_, &SkyLocalIpcClient::logRecordReceived, this, &SkyTuiApp::appendLogRecord);
         connect(client_, &SkyLocalIpcClient::dashboardUpdated, this, &SkyTuiApp::refreshStatus);
         connect(client_, &SkyLocalIpcClient::ackReceived, this, [this](const CommandAck& ack) {
@@ -305,7 +313,9 @@ void SkyTuiApp::appendLog(const QString& message)
                            QStringLiteral("SkyTui"),
                            QStringLiteral("ui"),
                            message,
-                           {{QStringLiteral("ui_visible"), true}});
+                           {{QStringLiteral("event"), QStringLiteral("sky_tui_ui_log")},
+                            {QStringLiteral("ui_visible"), true},
+                            {QStringLiteral("legacy_unclassified"), true}});
     });
     appendLogToModel(message);
 }

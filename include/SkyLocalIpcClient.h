@@ -9,6 +9,7 @@
 #include <QAbstractSocket>
 #include <QTcpSocket>
 #include <QTimer>
+#include <QVariantMap>
 
 namespace VaporView
 {
@@ -52,6 +53,7 @@ public:
 signals:
     void connectedChanged(bool connected);
     void logMessage(const QString& message);
+    void logRecordGenerated(const VaporView::LogRecord& record);
     void logRecordReceived(const VaporView::LogRecord& record);
     void statusReceived(const TelemetryStatus& status);
     void basicReceived(const TelemetryBasic& basic);
@@ -69,6 +71,11 @@ private slots:
 
 private:
     quint16 sendCommand(CommandId commandId, const QByteArray& payload = QByteArray());
+    void publishClientLog(LogLevel level,
+                          const QString& category,
+                          const QString& event,
+                          const QString& message,
+                          QVariantMap fields = QVariantMap());
     void dispatchFrame(const TelemetryFrame& frame);
     void attemptReconnect();
     void scheduleReconnect();

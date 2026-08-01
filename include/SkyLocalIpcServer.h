@@ -7,6 +7,7 @@
 #include <QJsonObject>
 #include <QObject>
 #include <QTimer>
+#include <QVariantMap>
 #include <QVector>
 
 class QTcpServer;
@@ -55,6 +56,10 @@ private:
     void broadcastRuntimeFrame(MsgType type, const QByteArray& payload);
     void broadcastFrame(MsgType type, const QByteArray& payload);
     void sendFrame(QTcpSocket *socket, MsgType type, const QByteArray& payload);
+    void publishIpcLog(LogLevel level,
+                       const QString& event,
+                       const QString& message,
+                       QVariantMap fields = QVariantMap());
     quint64 currentTimestampUs() const;
 
     SkyRuntime *runtime_ = nullptr;

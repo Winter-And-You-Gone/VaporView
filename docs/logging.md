@@ -62,3 +62,78 @@ producer that uses it, but the 256 KiB record cap bounds the work for one record
 `LogService::instance()` remains available for compatibility. Its raw pointer is
 not lifetime-safe and must not be retained; new callbacks use
 `LogService::withCurrentInstance()`.
+
+## 日志语言规范
+
+VaporView 第一方运行日志采用“中文可读、英文可检索”的约定。`message` 默认使用简体中文，面向开发者和现场人员直接阅读；`level`、`source`、`category`、`event`、`error_code`、`reason_code`、字段键、枚举值、协议消息类型和命令行参数保持英文。
+
+日志级别必须由调用方、状态机、返回值、错误枚举或明确事件分支决定，不能通过 `message.contains(...)` 搜索中文或英文关键词判断。外部库、操作系统、设备驱动、串口/TCP 错误、子进程 stdout/stderr、协议 payload 和设备返回原文必须保留在结构化字段中，例如 `system_error`、`process_output`、`external_raw_text` 或 `payload_hex`，不能覆盖或翻译成第一方描述。
+
+旧的仅字符串 UI/控制台日志路径如暂时无法完全结构化，必须使用稳定中文包装 message，并在 `fields` 中标记 `legacy_unclassified=true`，原始 UI 文本放入 `ui_message`。中文 message 保持简洁、稳定，不把大量变量拼进正文；变量、端点、设备名、错误原文和重试参数优先放入 `fields`。允许在中文句子中保留产品名和协议名，例如 SkyCore、SkyTui、IPC、TCP、JSON、CRC、EPSILON、PTB210、HMP3、TFA1500-L 和 RD105。
+
+## 命名规范
+
+- `source`：稳定组件名称，保持现有英文风格，例如 `App`、`Ground`、`SkyCore`、`SkyTui`、`LogService`、`RTK`。
+- `category`：小写点分层级，例如 `device.connection`、`session.write`、`telemetry.link`、`ipc.protocol`。
+- `event`：小写下划线形式，例如 `device_connection_failed`、`sky_runtime_started`、`child_process_output`。
+- `error_code`：大写下划线形式，例如 `SERIAL_OPEN_FAILED`、`SKY_CONFIG_SAVE_FAILED`。
+- `reason_code`：大写下划线形式，用于可恢复、预期或不一定表示操作失败的原因，例如 `RAW_FRAME_QUEUE_FULL`。
+- 字段键：小写下划线形式，例如 `device_id`、`retry_delay_ms`、`endpoint`、`system_error`。
+
+不要仅为了中文化而修改已经稳定使用的机器标识；也不要把新事件写成中文 `event` 或中文字段键。
+
+## 事件示例
+
+设备连接成功：
+
+```json
+{"schema_version":1,"level":"Info","source":"SkyCore","category":"device.connection","message":"设备已连接。","fields":{"event":"device_connected","device_id":"epsilon","endpoint":"COM3"}}
+```
+
+设备连接失败：
+
+```json
+{"schema_version":1,"level":"Error","source":"SkyCore","category":"device.connection","message":"设备连接失败，将自动重试。","fields":{"event":"device_connection_failed","error_code":"SERIAL_OPEN_FAILED","device_id":"epsilon","port":"COM3","system_error":"Access is denied."}}
+```
+
+IPC 断开：
+
+```json
+{"schema_version":1,"level":"Info","source":"SkyTui","category":"ipc.connection","message":"SkyCore IPC 连接已断开。","fields":{"event":"sky_ipc_disconnected","ui_visible":true}}
+```
+
+会话记录开始：
+
+```json
+{"schema_version":1,"level":"Info","source":"SkyCore","category":"session.recording","message":"天空端会话记录已开始。","fields":{"event":"sky_recording_started","session_directory":"data/session-20260801","transport":"tcp","endpoint":"0.0.0.0:39100"}}
+```
+
+会话写入失败：
+
+```json
+{"schema_version":1,"level":"Error","source":"Ground","category":"session.write","message":"无法从会话日志接收器写入 event_log.csv。","fields":{"event":"session_event_log_append_failed","error_code":"SESSION_EVENT_LOG_APPEND_FAILED","session_sink_failure":true,"source":"SkyCore","category":"device.connection"}}
+```
+
+子进程错误输出：
+
+```json
+{"schema_version":1,"level":"Warning","source":"Updater","category":"process","message":"已收到子进程错误输出。","fields":{"event":"child_process_output","stream":"stderr","process_output":"original raw stderr line","raw_bytes":24}}
+```
+
+emergency 日志：
+
+```json
+{"schema_version":1,"level":"Critical","source":"LogService","category":"queue.critical_overload","message":"Critical 日志队列已达到上限，已切换到紧急写入通道。","fields":{"event":"critical_queue_overload","reason_code":"CRITICAL_QUEUE_LIMIT","pending_critical_limit":16}}
+```
+
+## 例外规则
+
+以下内容允许保留英文，但不得冒充第一方中文描述：
+
+- 命令行帮助、参数名和示例命令；
+- 协议枚举、消息类型、设备/产品名和标准术语；
+- Qt、操作系统、驱动、串口/TCP socket、文件系统和子进程输出的原始文本；
+- 测试 sentinel、golden fixture 和刻意用于审计自测的英文样例；
+- UI 语言切换所需的英文界面文本。
+
+新增日志或修改日志语义后，应同步更新 `docs/logging_events.md`，并运行 `logging_language_audit_test` 或 `python scripts/audit_logging_language.py --root . --self-test`。

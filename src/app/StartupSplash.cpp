@@ -1,4 +1,5 @@
 #include "app/StartupSplash.h"
+#include "LogService.h"
 
 #include <QAbstractAnimation>
 #include <QCloseEvent>
@@ -55,7 +56,13 @@ public:
         if (!renderer_.load(logoPath) || !renderer_.isValid())
         {
             fallback_text_ = true;
-            qWarning().noquote() << "Startup splash logo could not be loaded from" << logoPath;
+            VaporView::reportUserIssue(VaporView::LogLevel::Warning,
+                                       QStringLiteral("Ground"),
+                                       QStringLiteral("startup"),
+                                       QStringLiteral("启动页标志加载失败。"),
+                                       {{QStringLiteral("event"), QStringLiteral("startup_splash_logo_load_failed")},
+                                        {QStringLiteral("error_code"), QStringLiteral("STARTUP_SPLASH_LOGO_LOAD_FAILED")},
+                                        {QStringLiteral("path"), logoPath}});
         }
     }
 

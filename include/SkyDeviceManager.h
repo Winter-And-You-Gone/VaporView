@@ -1,6 +1,7 @@
 #ifndef VaporView_SKY_DEVICE_MANAGER_H_
 #define VaporView_SKY_DEVICE_MANAGER_H_
 
+#include "LogRecord.h"
 #include "SkyConfig.h"
 #include "TelemetryTypes.h"
 #include "TcpWaveEncoding.h"
@@ -95,6 +96,7 @@ signals:
                                  QByteArray harmonicPayload,
                                  TcpFloatEncoding floatEncoding);
     void logMessage(const QString& message);
+    void logRecord(const VaporView::LogRecord& record);
 
 private slots:
     void generateSimulatedData();
@@ -112,6 +114,11 @@ private:
     bool connectWaveTcp(CommandErrorCode *errorCode);
     void disconnectWaveTcp();
     void processWaveTcpBuffer();
+    void publishDeviceLog(LogLevel level,
+                          const QString& category,
+                          const QString& event,
+                          const QString& message,
+                          QVariantMap fields = QVariantMap());
     void publishWaveform(const QVector<float>& raw, const QVector<float>& harmonic);
     void handleEpsilonData(const EpsilonData& data);
     void handlePtbData(const PtbData& data);

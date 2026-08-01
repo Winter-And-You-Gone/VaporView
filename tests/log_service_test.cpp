@@ -167,6 +167,55 @@ int main(int argc, char **argv)
     require(parsed.message == source.message, "log message round trip");
     require(parsed.fields.value(QStringLiteral("dropped_count")).toInt() == 3, "log fields round trip");
 
+    // ExplicitLogLevelIsIndependentOfMessageText: the same failure wording may
+    // be intentionally emitted at different levels by different call sites.
+    {
+        VaporView::LogRecord warning = source;
+        warning.level = VaporView::LogLevel::Warning;
+        warning.message = QStringLiteral("设备连接失败。");
+        warning.fields.insert(QStringLiteral("event"), QStringLiteral("device_connection_retry"));
+        warning.fields.insert(QStringLiteral("error_code"), QStringLiteral("device_connect_failed"));
+        VaporView::LogRecord parsedWarning;
+        require(VaporView::TelemetryCodec::parseLogRecord(
+                    VaporView::TelemetryCodec::serializeLogRecord(warning), parsedWarning),
+                "warning with failure wording round trip");
+        require(parsedWarning.level == VaporView::LogLevel::Warning,
+                "warning level is not inferred from failure wording");
+
+        VaporView::LogRecord error = warning;
+        error.level = VaporView::LogLevel::Error;
+        VaporView::LogRecord parsedError;
+        require(VaporView::TelemetryCodec::parseLogRecord(
+                    VaporView::TelemetryCodec::serializeLogRecord(error), parsedError),
+                "error with failure wording round trip");
+        require(parsedError.level == VaporView::LogLevel::Error,
+                "error level remains the explicit level");
+    }
+
+    // ExternalRawErrorRemainsInFields: first-party Chinese context must not
+    // replace the original operating-system/device text.
+    {
+        VaporView::LogRecord record = source;
+        record.message = QStringLiteral("串口打开失败。");
+        record.fields.clear();
+        record.fields.insert(QStringLiteral("event"), QStringLiteral("serial_open_failed"));
+        record.fields.insert(QStringLiteral("error_code"), QStringLiteral("SERIAL_OPEN_FAILED"));
+        record.fields.insert(QStringLiteral("system_error"), QStringLiteral("Access is denied."));
+        record.fields.insert(QStringLiteral("external_raw_text"), QStringLiteral("driver returned EACCES"));
+        VaporView::LogRecord parsedExternal;
+        require(VaporView::TelemetryCodec::parseLogRecord(
+                    VaporView::TelemetryCodec::serializeLogRecord(record), parsedExternal),
+                "external raw error record round trip");
+        require(parsedExternal.message == QStringLiteral("串口打开失败。"),
+                "Chinese first-party message is preserved beside external text");
+        require(parsedExternal.fields.value(QStringLiteral("system_error")).toString() ==
+                    QStringLiteral("Access is denied."),
+                "system error remains in its dedicated field");
+        require(parsedExternal.fields.value(QStringLiteral("external_raw_text")).toString() ==
+                    QStringLiteral("driver returned EACCES"),
+                "external raw text remains in its dedicated field");
+    }
+
     // shortMessageIsUnchanged / longMessageIsUtf8SafelyTruncated /
     // multibyteMessageIsNotCutMidCharacter / messageLimitUsesUtf8BytesNotQStringLength /
     // truncatedMessageContainsMetadata
@@ -586,7 +635,7 @@ int main(int argc, char **argv)
         VaporView::LogService service(QStringLiteral("VaporViewIdleFlushTest"),
                                       &app,
                                       idleDirectory.path());
-        require(waitForText(service.logFilePath(), QByteArrayLiteral("Application logging initialized.")),
+        require(waitForText(service.logFilePath(), QByteArrayLiteral("应用日志系统已启动。")),
                 "initial lifecycle log is flushed");
         service.publish(VaporView::LogLevel::Info,
                         QStringLiteral("Test"),
@@ -605,7 +654,7 @@ int main(int argc, char **argv)
         VaporView::LogService service(QStringLiteral("VaporViewCriticalFifoTest"),
                                       &app,
                                       fifoDirectory.path());
-        require(waitForText(service.logFilePath(), QByteArrayLiteral("Application logging initialized.")),
+        require(waitForText(service.logFilePath(), QByteArrayLiteral("应用日志系统已启动。")),
                 "critical FIFO lifecycle log is flushed");
         QVector<quint64> acceptedSequences;
         for (int index = 0; index < 128; ++index)
@@ -697,7 +746,7 @@ int main(int argc, char **argv)
                                       criticalDirectory.path(),
                                       QDir(criticalDirectory.path()).filePath(QStringLiteral("fallback")));
         require(waitForText(service.logFilePath(),
-                            QByteArrayLiteral("Application logging initialized.")),
+                            QByteArrayLiteral("应用日志系统已启动。")),
                 "Critical overload lifecycle record is flushed");
         require(waitForCondition([&service]() {
                     return service.writerStateForTest()
@@ -840,7 +889,7 @@ int main(int argc, char **argv)
                                       &app,
                                       emergencyDirectory.path());
         require(waitForText(service.logFilePath(),
-                            QByteArrayLiteral("Application logging initialized.")),
+                            QByteArrayLiteral("应用日志系统已启动。")),
                 "bounded emergency writer is initially idle");
         require(waitForCondition([&service]() {
                     return service.writerStateForTest().value(QStringLiteral("size")).toInt() == 0;
@@ -1066,7 +1115,7 @@ int main(int argc, char **argv)
             nullptr,
             shutdownDirectory.path());
         require(waitForText(service->logFilePath(),
-                            QByteArrayLiteral("Application logging initialized.")),
+                            QByteArrayLiteral("应用日志系统已启动。")),
                 "direct shutdown lifecycle record is flushed");
 
         QSemaphore accessEntered;
@@ -1134,7 +1183,7 @@ int main(int argc, char **argv)
                                           &app,
                                           overloadDirectory.path());
             require(waitForText(service.logFilePath(),
-                                QByteArrayLiteral("Application logging initialized.")),
+                                QByteArrayLiteral("应用日志系统已启动。")),
                     "overload writer lifecycle record is flushed");
             require(waitForCondition([&service]() {
                         return service.writerStateForTest().value(QStringLiteral("size")).toInt() == 0;

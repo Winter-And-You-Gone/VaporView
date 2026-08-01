@@ -3616,8 +3616,10 @@ void RtkConfigDialog::onGgaPollTimer()
                         logService.publish(VaporView::LogLevel::Warning,
                                            QStringLiteral("RTK"),
                                            QStringLiteral("gga"),
-                                           QStringLiteral("GGA input buffer exceeded 64 KiB; discarded an unterminated prefix."),
-                                           {{QStringLiteral("buffer_limit_bytes"), kGgaMaxBufferBytes}});
+                                           QStringLiteral("GGA 输入缓冲区超过上限，已丢弃未结束的前缀。"),
+                                           {{QStringLiteral("event"), QStringLiteral("gga_input_buffer_overflow")},
+                                            {QStringLiteral("reason_code"), QStringLiteral("GGA_INPUT_BUFFER_LIMIT")},
+                                            {QStringLiteral("buffer_limit_bytes"), kGgaMaxBufferBytes}});
                     });
                 }
             }
@@ -4417,15 +4419,14 @@ void RtkConfigDialog::onClearLogClicked()
 void RtkConfigDialog::appendLog(const QString& message)
 {
     VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
-        const bool isError = message.contains(QStringLiteral("error"), Qt::CaseInsensitive) ||
-            message.contains(QStringLiteral("failed"), Qt::CaseInsensitive) ||
-            message.contains(QStringLiteral("失败"), Qt::CaseInsensitive) ||
-            message.contains(QStringLiteral("错误"), Qt::CaseInsensitive);
-        logService.publish(isError ? VaporView::LogLevel::Warning : VaporView::LogLevel::Info,
+        logService.publish(VaporView::LogLevel::Info,
                            QStringLiteral("RTK"),
                            QStringLiteral("service"),
-                           message,
-                           {{QStringLiteral("ui_visible"), true}});
+                           QStringLiteral("RTK 服务状态已更新。"),
+                           {{QStringLiteral("ui_visible"), true},
+                            {QStringLiteral("event"), QStringLiteral("rtk_service_log")},
+                            {QStringLiteral("legacy_unclassified"), true},
+                            {QStringLiteral("ui_message"), message}});
     });
     if (!log_text_edit_) return;
 
@@ -4450,8 +4451,10 @@ void RtkConfigDialog::appendRawLogLine(const QString& line)
         logService.publish(VaporView::LogLevel::Debug,
                            QStringLiteral("RTK"),
                            QStringLiteral("service.raw"),
-                           line.trimmed(),
-                           {{QStringLiteral("ui_visible"), true}});
+                           QStringLiteral("RTK 服务输出了原始诊断信息。"),
+                           {{QStringLiteral("ui_visible"), true},
+                            {QStringLiteral("event"), QStringLiteral("rtk_service_raw_output")},
+                            {QStringLiteral("external_raw_text"), line.trimmed()}});
     });
     if (!log_text_edit_) return;
 

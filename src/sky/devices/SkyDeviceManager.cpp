@@ -136,6 +136,29 @@ SkyDeviceManager::~SkyDeviceManager()
     pending_raw_events_.close();
 }
 
+void SkyDeviceManager::publishDeviceLog(LogLevel level,
+                                        const QString& category,
+                                        const QString& event,
+                                        const QString& message,
+                                        QVariantMap fields)
+{
+    fields.insert(QStringLiteral("event"), event);
+    if (level >= LogLevel::Error &&
+        !fields.contains(QStringLiteral("error_code")) &&
+        !fields.contains(QStringLiteral("reason_code")))
+    {
+        fields.insert(QStringLiteral("error_code"), QStringLiteral("SKY_DEVICE_ERROR"));
+    }
+
+    LogRecord record;
+    record.level = level;
+    record.source = QStringLiteral("SkyCore");
+    record.category = category;
+    record.message = message;
+    record.fields = fields;
+    emit logRecord(record);
+}
+
 void SkyDeviceManager::scheduleRawEventDrain()
 {
     if (raw_event_drain_scheduled_.exchange(true))
@@ -207,9 +230,14 @@ void SkyDeviceManager::drainRawEvents()
     const quint64 dropped = pending_raw_events_.droppedRecords();
     if (dropped > raw_event_drops_reported_)
     {
-        emit logMessage(QStringLiteral("Raw-frame event queue full: dropped %1 frame(s), total %2")
-                            .arg(dropped - raw_event_drops_reported_)
-                            .arg(dropped));
+        publishDeviceLog(LogLevel::Warning,
+                         QStringLiteral("device.raw_queue"),
+                         QStringLiteral("raw_frame_queue_overloaded"),
+                         QStringLiteral("原始数据帧队列已满，已丢弃部分数据。"),
+                         {{QStringLiteral("reason_code"), QStringLiteral("RAW_FRAME_QUEUE_FULL")},
+                          {QStringLiteral("dropped_count"),
+                           static_cast<qulonglong>(dropped - raw_event_drops_reported_)},
+                          {QStringLiteral("total_dropped_count"), static_cast<qulonglong>(dropped)}});
         raw_event_drops_reported_ = dropped;
     }
 
@@ -316,7 +344,11 @@ bool SkyDeviceManager::disconnectDevice(SkyDeviceId id, CommandErrorCode *errorC
     }
     invalidateDeviceData(id);
     setState(id, DeviceState::Disconnected);
-    emit logMessage(QStringLiteral("%1 disconnected, data invalidated").arg(skyDeviceIdName(id)));
+    publishDeviceLog(LogLevel::Info,
+                     QStringLiteral("device.connection"),
+                     QStringLiteral("device_disconnected"),
+                     QStringLiteral("设备已断开，缓存数据已失效。"),
+                     {{QStringLiteral("device_id"), skyDeviceIdName(id)}});
     if (errorCode) *errorCode = CommandErrorCode::Ok;
     return true;
 }
@@ -470,9 +502,12 @@ bool SkyDeviceManager::setPeakSearchRange(quint32 startIndex, quint32 endIndex, 
     }
     config_.wave_tcp.peak_search_start_index = static_cast<int>(startIndex);
     config_.wave_tcp.peak_search_end_index = static_cast<int>(endIndex);
-    emit logMessage(QStringLiteral("Wave TCP peak search range updated: [%1, %2)")
-                        .arg(startIndex)
-                        .arg(endIndex == 0 ? QStringLiteral("end") : QString::number(endIndex)));
+    publishDeviceLog(LogLevel::Info,
+                     QStringLiteral("device.wave_tcp"),
+                     QStringLiteral("wave_tcp_peak_search_range_updated"),
+                     QStringLiteral("Wave TCP 峰值搜索范围已更新。"),
+                     {{QStringLiteral("start_index"), startIndex},
+                      {QStringLiteral("end_index"), endIndex}});
     if (errorCode) *errorCode = CommandErrorCode::Ok;
     return true;
 }
@@ -1031,7 +1066,13 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
     };
 
     auto logCallback = [this, id](const std::string& message) {
-        emit logMessage(QStringLiteral("[%1] %2").arg(skyDeviceIdName(id), QString::fromStdString(message)));
+        publishDeviceLog(LogLevel::Info,
+                         QStringLiteral("device.collector"),
+                         QStringLiteral("device_collector_output"),
+                         QStringLiteral("设备采集器输出了原始诊断信息。"),
+                         {{QStringLiteral("device_id"), skyDeviceIdName(id)},
+                          {QStringLiteral("process_output"), QString::fromStdString(message)},
+                          {QStringLiteral("external_raw_text"), true}});
     };
 
     switch (id)
@@ -1424,8 +1465,12 @@ void SkyDeviceManager::processWaveTcpBuffer()
             if (bytesToDrop > 0)
             {
                 wave_buffer_.remove(0, bytesToDrop);
-                emit logMessage(QStringLiteral("Wave TCP resync: discarded %1 byte(s) while looking for a valid frame header")
-                                    .arg(bytesToDrop));
+                publishDeviceLog(LogLevel::Warning,
+                                 QStringLiteral("device.wave_tcp"),
+                                 QStringLiteral("wave_tcp_resync_discarded_bytes"),
+                                 QStringLiteral("Wave TCP 重新同步时已丢弃部分字节。"),
+                                 {{QStringLiteral("reason_code"), QStringLiteral("WAVE_TCP_FRAME_HEADER_NOT_FOUND")},
+                                  {QStringLiteral("dropped_bytes"), bytesToDrop}});
             }
             return;
         }
@@ -1433,9 +1478,13 @@ void SkyDeviceManager::processWaveTcpBuffer()
         if (frameOffset > 0)
         {
             wave_buffer_.remove(0, frameOffset);
-            emit logMessage(QStringLiteral("Wave TCP resync: skipped %1 byte(s), header order %2")
-                                .arg(frameOffset)
-                                .arg(waveTcpHeaderOrderText(headerOrder)));
+            publishDeviceLog(LogLevel::Warning,
+                             QStringLiteral("device.wave_tcp"),
+                             QStringLiteral("wave_tcp_resync_skipped_bytes"),
+                             QStringLiteral("Wave TCP 重新同步时已跳过部分字节。"),
+                             {{QStringLiteral("reason_code"), QStringLiteral("WAVE_TCP_FRAME_OFFSET")},
+                              {QStringLiteral("skipped_bytes"), frameOffset},
+                              {QStringLiteral("header_order"), waveTcpHeaderOrderText(headerOrder)}});
         }
 
         if (!frameComplete)
@@ -1456,9 +1505,13 @@ void SkyDeviceManager::processWaveTcpBuffer()
         {
             const QByteArray& payloadForDetection = harmonicPayload.isEmpty() ? rawPayload : harmonicPayload;
             wave_float_encoding_ = autoDetectTcpFloatEncoding(payloadForDetection);
-            emit logMessage(QStringLiteral("Wave TCP payload format locked: header=%1, float=%2")
-                                .arg(waveTcpHeaderOrderText(headerOrder))
-                                .arg(tcpFloatEncodingLabel(false, wave_float_encoding_)));
+            publishDeviceLog(LogLevel::Info,
+                             QStringLiteral("device.wave_tcp"),
+                             QStringLiteral("wave_tcp_payload_format_locked"),
+                             QStringLiteral("Wave TCP 载荷格式已锁定。"),
+                             {{QStringLiteral("header_order"), waveTcpHeaderOrderText(headerOrder)},
+                              {QStringLiteral("float_encoding"),
+                               tcpFloatEncodingLabel(false, wave_float_encoding_)}});
         }
         const quint64 timestampUs = nowUs();
         emit tcpRawWaveFrameReceived(timestampUs, rawPayload, harmonicPayload, wave_float_encoding_);

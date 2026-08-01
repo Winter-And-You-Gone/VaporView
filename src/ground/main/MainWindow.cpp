@@ -13,8 +13,7 @@ MainWindow::MainWindow(QWidget *parent)
                     {
                         return;
                     }
-                    const bool errorRecord = record.level >= VaporView::LogLevel::Error ||
-                        record.fields.value(QStringLiteral("legacy_error_mirror")).toBool();
+                    const bool errorRecord = record.level >= VaporView::LogLevel::Error;
                     if (!state_->recording_service_->appendEvent(
                             VaporView::logLevelName(record.level).toLower(), record.message))
                     {
@@ -22,8 +21,10 @@ MainWindow::MainWindow(QWidget *parent)
                             logService.publish(VaporView::LogLevel::Error,
                                                QStringLiteral("Ground"),
                                                QStringLiteral("session.write"),
-                                               QStringLiteral("Failed to append event_log.csv entry from session sink."),
+                                               QStringLiteral("无法从会话日志接收器写入 event_log.csv。"),
                                                {{QStringLiteral("session_sink_failure"), true},
+                                                {QStringLiteral("event"), QStringLiteral("session_event_log_append_failed")},
+                                                {QStringLiteral("error_code"), QStringLiteral("SESSION_EVENT_LOG_APPEND_FAILED")},
                                                 {QStringLiteral("source"), record.source},
                                                 {QStringLiteral("category"), record.category}});
                         });
@@ -34,8 +35,10 @@ MainWindow::MainWindow(QWidget *parent)
                             logService.publish(VaporView::LogLevel::Error,
                                                QStringLiteral("Ground"),
                                                QStringLiteral("session.write"),
-                                               QStringLiteral("Failed to append error_log.txt entry from session sink."),
+                                               QStringLiteral("无法从会话日志接收器写入 error_log.txt。"),
                                                {{QStringLiteral("session_sink_failure"), true},
+                                                {QStringLiteral("event"), QStringLiteral("session_error_log_append_failed")},
+                                                {QStringLiteral("error_code"), QStringLiteral("SESSION_ERROR_LOG_APPEND_FAILED")},
                                                 {QStringLiteral("source"), record.source},
                                                 {QStringLiteral("category"), record.category}});
                         });

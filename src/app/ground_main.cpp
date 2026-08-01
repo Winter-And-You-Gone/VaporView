@@ -233,13 +233,26 @@ int main(int argc, char *argv[])
         VaporView::TelemetryTransportType transport = VaporView::TelemetryTransportType::Tcp;
         if (!VaporView::parseTelemetryTransport(parser.value(telemetryTransportOption), transport))
         {
-            qCritical() << "--telemetry-transport must be tcp or serial";
+            logService.publish(VaporView::LogLevel::Critical,
+                               QStringLiteral("App"),
+                               QStringLiteral("startup.arguments"),
+                               QStringLiteral("启动参数无效：遥测传输方式只能是 tcp 或 serial。"),
+                               {{QStringLiteral("event"), QStringLiteral("startup_argument_invalid")},
+                                {QStringLiteral("error_code"), QStringLiteral("INVALID_TELEMETRY_TRANSPORT")},
+                                {QStringLiteral("argument"), QStringLiteral("--telemetry-transport")},
+                                {QStringLiteral("value"), parser.value(telemetryTransportOption)}});
             return 2;
         }
         if (!parser.isSet(telemetryTransportOption) && parser.isSet(telemetryPortOption))
         {
             transport = VaporView::TelemetryTransportType::Serial;
-            qInfo().noquote() << "Compatibility: --telemetry-port without --telemetry-transport selects serial telemetry";
+            logService.publish(VaporView::LogLevel::Info,
+                               QStringLiteral("App"),
+                               QStringLiteral("startup.arguments"),
+                               QStringLiteral("已按兼容规则选择串口遥测。"),
+                               {{QStringLiteral("event"), QStringLiteral("startup_argument_compatibility_mode")},
+                                {QStringLiteral("argument"), QStringLiteral("--telemetry-port")},
+                                {QStringLiteral("selected_transport"), QStringLiteral("serial")}});
         }
         options.telemetry_transport = transport;
         options.telemetry_host = parser.value(telemetryHostOption);
@@ -253,16 +266,37 @@ int main(int argc, char *argv[])
         if (options.telemetry_transport == VaporView::TelemetryTransportType::Serial &&
             options.telemetry_port.trimmed().isEmpty())
         {
-            qCritical() << "--telemetry-port is required for serial telemetry in sky mode";
+            logService.publish(VaporView::LogLevel::Critical,
+                               QStringLiteral("App"),
+                               QStringLiteral("startup.arguments"),
+                               QStringLiteral("启动参数无效：串口遥测必须提供串口名称。"),
+                               {{QStringLiteral("event"), QStringLiteral("startup_argument_missing")},
+                                {QStringLiteral("error_code"), QStringLiteral("MISSING_TELEMETRY_PORT")},
+                                {QStringLiteral("argument"), QStringLiteral("--telemetry-port")},
+                                {QStringLiteral("transport"), QStringLiteral("serial")}});
             return 2;
         }
         if (options.telemetry_transport == VaporView::TelemetryTransportType::Tcp &&
             (options.telemetry_tcp_port <= 0 || options.telemetry_tcp_port > 65535))
         {
-            qCritical() << "--telemetry-tcp-port must be 1-65535";
+            logService.publish(VaporView::LogLevel::Critical,
+                               QStringLiteral("App"),
+                               QStringLiteral("startup.arguments"),
+                               QStringLiteral("启动参数无效：TCP 遥测端口必须在 1 到 65535 之间。"),
+                               {{QStringLiteral("event"), QStringLiteral("startup_argument_invalid")},
+                                {QStringLiteral("error_code"), QStringLiteral("INVALID_TELEMETRY_TCP_PORT")},
+                                {QStringLiteral("argument"), QStringLiteral("--telemetry-tcp-port")},
+                                {QStringLiteral("value"), options.telemetry_tcp_port}});
             return 2;
         }
-        qInfo().noquote() << "Running sky in background mode. For split sky mode use VaporViewSkyCore.exe and VaporViewSkyTui.exe.";
+        logService.publish(VaporView::LogLevel::Info,
+                           QStringLiteral("App"),
+                           QStringLiteral("startup.lifecycle"),
+                           QStringLiteral("天空端后台模式已启动。"),
+                           {{QStringLiteral("event"), QStringLiteral("sky_background_mode_started")},
+                            {QStringLiteral("transport"), VaporView::telemetryTransportName(options.telemetry_transport)},
+                            {QStringLiteral("split_core_executable"), QStringLiteral("VaporViewSkyCore.exe")},
+                            {QStringLiteral("split_tui_executable"), QStringLiteral("VaporViewSkyTui.exe")}});
         VaporView::SkyRuntime runtime(options);
         if (!runtime.start())
         {

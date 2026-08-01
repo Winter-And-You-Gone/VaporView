@@ -132,8 +132,10 @@ void publishProcessLine(QProcess *process,
     }
     LogService::withCurrentInstance([&](LogService& logService) {
         QVariantMap fields = {
+            {QStringLiteral("event"), QStringLiteral("child_process_output")},
             {QStringLiteral("stream"), standardError ? QStringLiteral("stderr")
                                                        : QStringLiteral("stdout")},
+            {QStringLiteral("process_output"), QString::fromLocal8Bit(line)},
             {QStringLiteral("raw_bytes"), line.size()}};
         if (partial)
         {
@@ -142,7 +144,9 @@ void publishProcessLine(QProcess *process,
         logService.publish(standardError ? LogLevel::Warning : LogLevel::Debug,
                            source,
                            category,
-                           QString::fromLocal8Bit(line),
+                           standardError
+                               ? QStringLiteral("已收到子进程错误输出。")
+                               : QStringLiteral("已收到子进程标准输出。"),
                            fields);
     });
     Q_UNUSED(process);
@@ -638,7 +642,7 @@ private:
         }
         if (!QDir().mkpath(directory_))
         {
-            notifyFailure(QStringLiteral("Cannot create application log directory: %1").arg(directory_));
+            notifyFailure(QStringLiteral("无法创建应用日志目录。路径：%1").arg(directory_));
             return false;
         }
         current_path_ = desiredPath;
@@ -646,7 +650,7 @@ private:
         if (!file_.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
         {
             current_path_.clear();
-            notifyFailure(QStringLiteral("Cannot open application log file in: %1").arg(directory_));
+            notifyFailure(QStringLiteral("无法打开应用日志文件。目录：%1").arg(directory_));
             return false;
         }
         last_flush_ms_ = 0;
@@ -798,7 +802,7 @@ private:
             return true;
         }
 
-        notifyFailure(QStringLiteral("Cannot write application log file: %1").arg(current_path_));
+        notifyFailure(QStringLiteral("无法写入应用日志文件。路径：%1").arg(current_path_));
         if (switchToFallbackDirectory() && writeRecordOnce(record, line, forceFlush))
         {
             return true;
@@ -815,7 +819,7 @@ private:
         }
         if (!file_.flush())
         {
-            notifyFailure(QStringLiteral("Cannot flush application log file: %1").arg(current_path_));
+            notifyFailure(QStringLiteral("无法刷新应用日志文件。路径：%1").arg(current_path_));
             return;
         }
         last_flush_ms_ = QDateTime::currentMSecsSinceEpoch();
@@ -839,7 +843,7 @@ private:
         {
             if (!file_.flush())
             {
-                notifyFailure(QStringLiteral("Cannot flush application log file: %1").arg(current_path_));
+                notifyFailure(QStringLiteral("无法刷新应用日志文件。路径：%1").arg(current_path_));
             }
             file_.close();
         }
@@ -945,8 +949,7 @@ QJsonObject LogRecord::toJsonObject() const
 
 QByteArray LogRecord::toJsonLine() const
 {
-    return LoggingInternal::serializePreparedLogRecord(
-        LoggingInternal::boundLogRecord(*this));
+    return LoggingInternal::serializeBoundedLogRecord(*this);
 }
 
 LogService::LogService(const QString& applicationName,
@@ -983,8 +986,9 @@ LogService::LogService(const QString& applicationName,
         }
     }
     publish(LogLevel::Info, QStringLiteral("App"), QStringLiteral("lifecycle"),
-            QStringLiteral("Application logging initialized."),
-            {{QStringLiteral("log_directory"), log_directory_}});
+            QStringLiteral("应用日志系统已启动。"),
+            {{QStringLiteral("event"), QStringLiteral("logging_started")},
+             {QStringLiteral("log_directory"), log_directory_}});
 }
 
 LogService::~LogService()
@@ -1018,7 +1022,8 @@ LogService::~LogService()
     }
 
     publish(LogLevel::Info, QStringLiteral("App"), QStringLiteral("lifecycle"),
-            QStringLiteral("Application logging stopped."));
+            QStringLiteral("应用日志系统已停止。"),
+            {{QStringLiteral("event"), QStringLiteral("logging_stopped")}});
     if (writer_)
     {
         writer_->stop();
@@ -1163,6 +1168,18 @@ void reportUserIssue(LogLevel level,
     LogService::withCurrentInstance([&](LogService& logService) {
         QVariantMap fields = details;
         fields.insert(QStringLiteral("ui_visible"), true);
+        if (!fields.contains(QStringLiteral("event")))
+        {
+            fields.insert(QStringLiteral("event"), QStringLiteral("user_issue_reported"));
+            fields.insert(QStringLiteral("legacy_unclassified"), true);
+        }
+        if (level >= LogLevel::Error &&
+            !fields.contains(QStringLiteral("error_code")) &&
+            !fields.contains(QStringLiteral("reason_code")))
+        {
+            fields.insert(QStringLiteral("error_code"),
+                          QStringLiteral("UNCLASSIFIED_USER_ISSUE"));
+        }
         logService.publish(level, source, category, message, fields);
     });
 }
@@ -1208,12 +1225,21 @@ void attachProcessLogging(QProcess *process,
                          flushProcessOutput(process, source, category, false);
                          flushProcessOutput(process, source, category, true);
                          LogService::withCurrentInstance([&](LogService& logService) {
+                             QVariantMap fields{
+                                 {QStringLiteral("event"), QStringLiteral("child_process_finished")},
+                                 {QStringLiteral("exit_code"), exitCode},
+                                 {QStringLiteral("exit_status"), static_cast<int>(exitStatus)},
+                             };
+                             if (exitCode != 0 || exitStatus != QProcess::NormalExit)
+                             {
+                                 fields.insert(QStringLiteral("error_code"),
+                                               QStringLiteral("CHILD_PROCESS_ABNORMAL_EXIT"));
+                             }
                              logService.publish(exitCode == 0 ? LogLevel::Info : LogLevel::Error,
                                                 source,
                                                 category,
-                                                QStringLiteral("Child process finished."),
-                                                {{QStringLiteral("exit_code"), exitCode},
-                                                 {QStringLiteral("exit_status"), static_cast<int>(exitStatus)}});
+                                                QStringLiteral("子进程已结束。"),
+                                                fields);
                          });
                      });
     QObject::connect(process, &QProcess::errorOccurred, process,
@@ -1222,8 +1248,10 @@ void attachProcessLogging(QProcess *process,
                              logService.publish(LogLevel::Error,
                                                 source,
                                                 category,
-                                                QStringLiteral("Child process error."),
-                                                {{QStringLiteral("process_error"), static_cast<int>(error)}});
+                                                QStringLiteral("子进程发生错误。"),
+                                                {{QStringLiteral("event"), QStringLiteral("child_process_error")},
+                                                 {QStringLiteral("error_code"), QStringLiteral("CHILD_PROCESS_ERROR")},
+                                                 {QStringLiteral("process_error"), static_cast<int>(error)}});
                          });
                      });
 }
@@ -1345,6 +1373,14 @@ void LogService::qtMessageHandler(QtMsgType type,
     if (context.file) fields.insert(QStringLiteral("file"), QString::fromUtf8(context.file));
     if (context.function) fields.insert(QStringLiteral("function"), QString::fromUtf8(context.function));
     if (context.line > 0) fields.insert(QStringLiteral("line"), context.line);
+    fields.insert(QStringLiteral("event"), QStringLiteral("qt_message"));
+    if (level >= LogLevel::Error)
+    {
+        fields.insert(QStringLiteral("error_code"),
+                      type == QtFatalMsg
+                          ? QStringLiteral("QT_FATAL_MESSAGE")
+                          : QStringLiteral("QT_CRITICAL_MESSAGE"));
+    }
     LogService::withCurrentInstance([&](LogService& logService) {
         logService.publish(level,
                            QStringLiteral("Qt"),

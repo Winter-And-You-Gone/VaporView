@@ -154,13 +154,13 @@ int main(int argc, char *argv[])
     VaporView::TelemetryTransportType transport = VaporView::TelemetryTransportType::Tcp;
     if (!VaporView::parseTelemetryTransport(parser.value(telemetryTransportOption), transport))
     {
-        QTextStream(stderr) << "--telemetry-transport must be tcp or serial\n";
+        QTextStream(stderr) << "--telemetry-transport 必须为 tcp 或 serial。\n";
         return 2;
     }
     if (!parser.isSet(telemetryTransportOption) && parser.isSet(telemetryPortOption))
     {
         transport = VaporView::TelemetryTransportType::Serial;
-        QTextStream(stdout) << "Compatibility: --telemetry-port without --telemetry-transport selects serial telemetry\n";
+        QTextStream(stdout) << "兼容模式：未指定 --telemetry-transport 时，--telemetry-port 将选择串口遥测。\n";
     }
     options.telemetry_transport = transport;
     options.telemetry_host = parser.value(telemetryHostOption);
@@ -175,13 +175,13 @@ int main(int argc, char *argv[])
     if (options.telemetry_transport == VaporView::TelemetryTransportType::Serial &&
         options.telemetry_port.trimmed().isEmpty())
     {
-        QTextStream(stderr) << "--telemetry-port is required for serial telemetry\n";
+        QTextStream(stderr) << "串口遥测必须指定 --telemetry-port。\n";
         return 2;
     }
     if (options.telemetry_transport == VaporView::TelemetryTransportType::Tcp &&
         (options.telemetry_tcp_port <= 0 || options.telemetry_tcp_port > 65535))
     {
-        QTextStream(stderr) << "--telemetry-tcp-port must be 1-65535\n";
+        QTextStream(stderr) << "--telemetry-tcp-port 必须为 1 到 65535。\n";
         return 2;
     }
 
@@ -190,7 +190,7 @@ int main(int argc, char *argv[])
     QObject::connect(&shutdownTimer, &QTimer::timeout, &app, [&app]() {
         if (g_shutdownRequested.exchange(false, std::memory_order_relaxed))
         {
-            QTextStream(stdout) << "SkyCore shutdown requested\n";
+            QTextStream(stdout) << "已收到 SkyCore 停止请求。\n";
             QCoreApplication::quit();
         }
     });
@@ -202,9 +202,9 @@ int main(int argc, char *argv[])
         QTextStream(stdout) << message << "\n";
     });
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&runtime]() {
-        QTextStream(stdout) << "SkyCore stopping runtime\n";
+        QTextStream(stdout) << "正在停止 SkyCore 运行时。\n";
         runtime.stop();
-        QTextStream(stdout) << "SkyCore runtime stopped\n";
+        QTextStream(stdout) << "SkyCore 运行时已停止。\n";
     });
 
     VaporView::SkyLocalIpcServer ipcServer(&runtime);
@@ -220,8 +220,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    QTextStream(stdout) << "SkyCore profile: " << parser.value(profileOption) << "\n";
-    QTextStream(stdout) << "SkyCore exit: press Ctrl+C/Ctrl+Break, type quit, or send /core stop from SkyTui\n";
+    QTextStream(stdout) << "SkyCore 运行配置：" << parser.value(profileOption) << "\n";
+    QTextStream(stdout) << "SkyCore 退出方式：按 Ctrl+C/Ctrl+Break、输入 quit，或从 SkyTui 发送 /core stop。\n";
     if (!runtime.start())
     {
         return 3;

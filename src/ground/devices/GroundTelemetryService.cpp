@@ -69,7 +69,13 @@ bool GroundTelemetryService::open(const QString& portName, int baudRate)
     const bool ok = link->open(portName, baudRate);
     if (!ok)
     {
-        emit logMessage(QStringLiteral("Failed to open telemetry serial port: %1").arg(portName));
+        publishTelemetryLog(LogLevel::Error,
+                            QStringLiteral("telemetry.serial"),
+                            QStringLiteral("ground_telemetry_serial_open_failed"),
+                            QStringLiteral("无法打开地面端遥测串口。"),
+                            {{QStringLiteral("error_code"), QStringLiteral("GROUND_TELEMETRY_SERIAL_OPEN_FAILED")},
+                             {QStringLiteral("port"), portName},
+                             {QStringLiteral("baud"), baudRate}});
         return false;
     }
     transport_type_ = TelemetryTransportType::Serial;
@@ -82,7 +88,13 @@ bool GroundTelemetryService::openTcp(const QString& host, quint16 port)
     const bool ok = link->connectToHost(host, port);
     if (!ok)
     {
-        emit logMessage(QStringLiteral("Failed to connect telemetry TCP endpoint: %1:%2").arg(host).arg(port));
+        publishTelemetryLog(LogLevel::Error,
+                            QStringLiteral("telemetry.tcp"),
+                            QStringLiteral("ground_telemetry_tcp_connect_failed"),
+                            QStringLiteral("无法连接地面端 TCP 遥测端点。"),
+                            {{QStringLiteral("error_code"), QStringLiteral("GROUND_TELEMETRY_TCP_CONNECT_FAILED")},
+                             {QStringLiteral("host"), host},
+                             {QStringLiteral("port"), port}});
         return false;
     }
     transport_type_ = TelemetryTransportType::Tcp;
@@ -207,7 +219,8 @@ void GroundTelemetryService::onBytesReceived(const QByteArray& bytes)
     {
         reportProtocolDiagnostic(LogLevel::Warning,
                                  QStringLiteral("protocol.crc"),
-                                 QStringLiteral("Telemetry decoder rejected frames due to CRC or protocol-version errors."),
+                                 QStringLiteral("telemetry_crc_or_version_error"),
+                                 QStringLiteral("遥测解码器拒绝了 CRC 或协议版本错误的数据帧。"),
                                  {{QStringLiteral("total_errors"), static_cast<qulonglong>(crcErrors)},
                                   {QStringLiteral("delta"), static_cast<qulonglong>(crcErrors - last_logged_crc_errors_)}});
         last_logged_crc_errors_ = crcErrors;
@@ -219,7 +232,8 @@ void GroundTelemetryService::onBytesReceived(const QByteArray& bytes)
     {
         reportProtocolDiagnostic(LogLevel::Warning,
                                  QStringLiteral("protocol.frame"),
-                                 QStringLiteral("Telemetry decoder dropped oversized or malformed frames."),
+                                 QStringLiteral("telemetry_frame_dropped"),
+                                 QStringLiteral("遥测解码器已丢弃过大或格式错误的数据帧。"),
                                  {{QStringLiteral("total_dropped"), static_cast<qulonglong>(droppedFrames)},
                                   {QStringLiteral("delta"), static_cast<qulonglong>(droppedFrames - last_logged_dropped_frames_)}});
         last_logged_dropped_frames_ = droppedFrames;
@@ -245,10 +259,15 @@ void GroundTelemetryService::onRetryTimer()
         if (pending.retry_count >= kCommandMaxRetries)
         {
             expired.push_back(it.key());
-            emit logMessage(QStringLiteral("命令 %1(%2) 序号 %3 超时：未收到天空端 ACK")
-                                .arg(commandIdName(pending.command.command_id))
-                                .arg(static_cast<quint16>(pending.command.command_id))
-                                .arg(pending.command.command_seq));
+            publishTelemetryLog(LogLevel::Warning,
+                                QStringLiteral("telemetry.command"),
+                                QStringLiteral("telemetry_command_ack_timeout"),
+                                QStringLiteral("天空端命令 ACK 等待超时。"),
+                                {{QStringLiteral("reason_code"), QStringLiteral("TELEMETRY_COMMAND_ACK_TIMEOUT")},
+                                 {QStringLiteral("command_id"), commandIdName(pending.command.command_id)},
+                                 {QStringLiteral("command_value"),
+                                  static_cast<quint16>(pending.command.command_id)},
+                                 {QStringLiteral("command_seq"), pending.command.command_seq}});
             emit commandTimedOut(pending.command.command_id, pending.command.command_seq);
             continue;
         }
@@ -276,7 +295,8 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         else
         {
             reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
-                                     QStringLiteral("Failed to parse TelemetryBasic payload."),
+                                     QStringLiteral("telemetry_basic_parse_failed"),
+                                     QStringLiteral("无法解析 TelemetryBasic 遥测载荷。"),
                                      {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
                                       {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
@@ -292,7 +312,8 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         else
         {
             reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
-                                     QStringLiteral("Failed to parse WaveformDownsampled payload."),
+                                     QStringLiteral("waveform_downsampled_parse_failed"),
+                                     QStringLiteral("无法解析 WaveformDownsampled 遥测载荷。"),
                                      {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
                                       {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
@@ -308,7 +329,8 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         else
         {
             reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
-                                     QStringLiteral("Failed to parse WaveformFeature payload."),
+                                     QStringLiteral("waveform_feature_parse_failed"),
+                                     QStringLiteral("无法解析 WaveformFeature 遥测载荷。"),
                                      {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
                                       {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
@@ -324,7 +346,8 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         else
         {
             reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
-                                     QStringLiteral("Failed to parse TelemetryStatus payload."),
+                                     QStringLiteral("telemetry_status_parse_failed"),
+                                     QStringLiteral("无法解析 TelemetryStatus 遥测载荷。"),
                                      {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
                                       {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
@@ -341,7 +364,8 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         else
         {
             reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
-                                     QStringLiteral("Failed to parse CommandAck payload."),
+                                     QStringLiteral("command_ack_parse_failed"),
+                                     QStringLiteral("无法解析 CommandAck 遥测载荷。"),
                                      {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
                                       {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
@@ -357,7 +381,8 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         else
         {
             reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
-                                     QStringLiteral("Failed to parse SkyConfig JSON payload."),
+                                     QStringLiteral("sky_config_parse_failed"),
+                                     QStringLiteral("无法解析 SkyConfig JSON 遥测载荷。"),
                                      {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
                                       {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
@@ -373,7 +398,8 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         else
         {
             reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
-                                     QStringLiteral("Failed to parse SkyConfigApplyResult JSON payload."),
+                                     QStringLiteral("sky_config_apply_result_parse_failed"),
+                                     QStringLiteral("无法解析 SkyConfigApplyResult JSON 遥测载荷。"),
                                      {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
                                       {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
@@ -389,7 +415,8 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         else
         {
             reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
-                                     QStringLiteral("Failed to parse TemperatureControllerStatus payload."),
+                                     QStringLiteral("temperature_controller_status_parse_failed"),
+                                     QStringLiteral("无法解析 TemperatureControllerStatus 遥测载荷。"),
                                      {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
                                       {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
@@ -412,7 +439,8 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         else
         {
             reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
-                                     QStringLiteral("Failed to parse LogEvent payload."),
+                                     QStringLiteral("log_event_parse_failed"),
+                                     QStringLiteral("无法解析 LogEvent 遥测载荷。"),
                                      {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
                                       {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
@@ -423,13 +451,16 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         break;
     case MsgType::Error:
         reportProtocolDiagnostic(LogLevel::Error, QStringLiteral("protocol.error"),
-                                 QStringLiteral("Received telemetry Error frame."),
-                                 {{QStringLiteral("payload_hex"), QString::fromLatin1(frame.payload.toHex())},
+                                 QStringLiteral("telemetry_error_frame_received"),
+                                 QStringLiteral("已收到遥测 Error 帧。"),
+                                 {{QStringLiteral("error_code"), QStringLiteral("TELEMETRY_ERROR_FRAME")},
+                                  {QStringLiteral("payload_hex"), QString::fromLatin1(frame.payload.toHex())},
                                   {QStringLiteral("payload_bytes"), frame.payload.size()}});
         break;
     default:
         reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.unknown"),
-                                 QStringLiteral("Received unknown telemetry message type."),
+                                 QStringLiteral("unknown_telemetry_message_type"),
+                                 QStringLiteral("已收到未知遥测消息类型。"),
                                  {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
                                   {QStringLiteral("payload_bytes"), frame.payload.size()}});
         break;
@@ -496,8 +527,21 @@ void GroundTelemetryService::attachLinkSignals()
         }
         emit linkOpenChanged(open);
     });
-    connect(link_.get(), &TelemetryLink::errorOccurred, this, &GroundTelemetryService::logMessage);
-    connect(link_.get(), &TelemetryLink::statusMessage, this, &GroundTelemetryService::logMessage);
+    connect(link_.get(), &TelemetryLink::errorOccurred, this, [this](const QString& systemError) {
+        publishTelemetryLog(LogLevel::Warning,
+                            QStringLiteral("telemetry.link"),
+                            QStringLiteral("ground_telemetry_link_error"),
+                            QStringLiteral("地面端遥测链路异常。"),
+                            {{QStringLiteral("reason_code"), QStringLiteral("GROUND_TELEMETRY_LINK_ERROR")},
+                             {QStringLiteral("system_error"), systemError}});
+    });
+    connect(link_.get(), &TelemetryLink::statusMessage, this, [this](const QString& statusText) {
+        publishTelemetryLog(LogLevel::Info,
+                            QStringLiteral("telemetry.link"),
+                            QStringLiteral("ground_telemetry_link_status"),
+                            QStringLiteral("地面端遥测链路状态已更新。"),
+                            {{QStringLiteral("external_raw_text"), statusText}});
+    });
 }
 
 void GroundTelemetryService::noteReceivedBytes(qint64 bytes)
@@ -524,8 +568,31 @@ void GroundTelemetryService::noteTransmittedBytes(qint64 bytes)
     pruneSamples(tx_byte_samples_, currentMs);
 }
 
+void GroundTelemetryService::publishTelemetryLog(LogLevel level,
+                                                 const QString& category,
+                                                 const QString& event,
+                                                 const QString& message,
+                                                 QVariantMap fields)
+{
+    fields.insert(QStringLiteral("event"), event);
+    fields.insert(QStringLiteral("ui_visible"), true);
+    if (level >= LogLevel::Error &&
+        !fields.contains(QStringLiteral("error_code")) &&
+        !fields.contains(QStringLiteral("reason_code")))
+    {
+        fields.insert(QStringLiteral("error_code"), QStringLiteral("GROUND_TELEMETRY_ERROR"));
+    }
+    if (!LogService::withCurrentInstance([&](LogService& logService) {
+            logService.publish(level, QStringLiteral("Ground"), category, message, fields);
+        }))
+    {
+        emit logMessage(message);
+    }
+}
+
 void GroundTelemetryService::reportProtocolDiagnostic(LogLevel level,
                                                       const QString& category,
+                                                      const QString& event,
                                                       const QString& message,
                                                       const QVariantMap& fields)
 {
@@ -538,13 +605,13 @@ void GroundTelemetryService::reportProtocolDiagnostic(LogLevel level,
         return;
     }
     QVariantMap recordFields = fields;
-    recordFields.insert(QStringLiteral("ui_visible"), true);
-    if (!LogService::withCurrentInstance([&](LogService& logService) {
-            logService.publish(level, QStringLiteral("Ground"), category, message, recordFields);
-        }))
+    if (level >= LogLevel::Error &&
+        !recordFields.contains(QStringLiteral("error_code")) &&
+        !recordFields.contains(QStringLiteral("reason_code")))
     {
-        emit logMessage(message);
+        recordFields.insert(QStringLiteral("error_code"), QStringLiteral("GROUND_PROTOCOL_ERROR"));
     }
+    publishTelemetryLog(level, category, event, message, recordFields);
     if (throttle)
     {
         last_decoder_diagnostic_ms_ = currentMs;

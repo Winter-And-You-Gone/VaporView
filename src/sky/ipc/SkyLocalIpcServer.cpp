@@ -46,28 +46,6 @@ SkyLocalIpcServer::SkyLocalIpcServer(SkyRuntime *runtime, QObject *parent)
     connect(&status_timer_, &QTimer::timeout, this, &SkyLocalIpcServer::onStatusTimer);
     status_timer_.setInterval(500);
     status_timer_.setTimerType(Qt::CoarseTimer);
-    connect(this, &SkyLocalIpcServer::logMessage, this, [this](const QString& message) {
-        const bool published = LogService::withCurrentInstance([&](LogService& logService) {
-            const bool warning = message.contains(QStringLiteral("failed"), Qt::CaseInsensitive) ||
-                message.contains(QStringLiteral("error"), Qt::CaseInsensitive) ||
-                message.contains(QStringLiteral("失败"), Qt::CaseInsensitive) ||
-                message.contains(QStringLiteral("错误"), Qt::CaseInsensitive);
-            logService.publish(warning ? LogLevel::Warning : LogLevel::Info,
-                               QStringLiteral("SkyCore"),
-                               QStringLiteral("ipc"),
-                               message);
-        });
-        if (published)
-        {
-            return;
-        }
-
-        LogRecord fallback;
-        fallback.source = QStringLiteral("SkyCore");
-        fallback.category = QStringLiteral("ipc");
-        fallback.message = message;
-        broadcastFrame(MsgType::LogEvent, TelemetryCodec::serializeLogRecord(fallback));
-    });
 
     LogService::withCurrentInstance([this](LogService& logService) {
         connect(&logService, &LogService::recordPublished, this,
@@ -91,6 +69,41 @@ SkyLocalIpcServer::~SkyLocalIpcServer()
     close();
 }
 
+void SkyLocalIpcServer::publishIpcLog(LogLevel level,
+                                      const QString& event,
+                                      const QString& message,
+                                      QVariantMap fields)
+{
+    fields.insert(QStringLiteral("event"), event);
+    if (level >= LogLevel::Error &&
+        !fields.contains(QStringLiteral("error_code")) &&
+        !fields.contains(QStringLiteral("reason_code")))
+    {
+        fields.insert(QStringLiteral("error_code"), QStringLiteral("SKY_IPC_ERROR"));
+    }
+
+    const bool published = LogService::withCurrentInstance([&](LogService& logService) {
+        logService.publish(level,
+                           QStringLiteral("SkyCore"),
+                           QStringLiteral("ipc"),
+                           message,
+                           fields);
+    });
+    emit logMessage(message);
+    if (published)
+    {
+        return;
+    }
+
+    LogRecord fallback;
+    fallback.level = level;
+    fallback.source = QStringLiteral("SkyCore");
+    fallback.category = QStringLiteral("ipc");
+    fallback.message = message;
+    fallback.fields = fields;
+    broadcastFrame(MsgType::LogEvent, TelemetryCodec::serializeLogRecord(fallback));
+}
+
 bool SkyLocalIpcServer::listen(const QString& host, quint16 port)
 {
     close();
@@ -103,17 +116,22 @@ bool SkyLocalIpcServer::listen(const QString& host, quint16 port)
 
     if (!server_->listen(address, port))
     {
-        emit logMessage(QStringLiteral("Sky local IPC listen failed on %1:%2: %3")
-                            .arg(address.toString())
-                            .arg(port)
-                            .arg(server_->errorString()));
+        publishIpcLog(LogLevel::Error,
+                      QStringLiteral("sky_ipc_listen_failed"),
+                      QStringLiteral("本地 IPC 服务监听失败。"),
+                      {{QStringLiteral("error_code"), QStringLiteral("SKY_IPC_LISTEN_FAILED")},
+                       {QStringLiteral("host"), address.toString()},
+                       {QStringLiteral("port"), port},
+                       {QStringLiteral("system_error"), server_->errorString()}});
         return false;
     }
 
     status_timer_.start();
-    emit logMessage(QStringLiteral("Sky local IPC listening on %1:%2")
-                        .arg(server_->serverAddress().toString())
-                        .arg(server_->serverPort()));
+    publishIpcLog(LogLevel::Info,
+                  QStringLiteral("sky_ipc_listening"),
+                  QStringLiteral("本地 IPC 服务已开始监听。"),
+                  {{QStringLiteral("host"), server_->serverAddress().toString()},
+                   {QStringLiteral("port"), server_->serverPort()}});
     return true;
 }
 
@@ -162,13 +180,20 @@ void SkyLocalIpcServer::onNewConnection()
         connect(socket, &QTcpSocket::disconnected, this, [this, socket]() {
             removeClient(socket);
         });
-        connect(socket, &QTcpSocket::errorOccurred, this, [this, socket](QAbstractSocket::SocketError) {
-            emit logMessage(QStringLiteral("Sky local IPC client error: %1").arg(socket->errorString()));
+        connect(socket, &QTcpSocket::errorOccurred, this, [this, socket](QAbstractSocket::SocketError error) {
+            publishIpcLog(LogLevel::Warning,
+                          QStringLiteral("sky_ipc_client_error"),
+                          QStringLiteral("本地 IPC 客户端连接异常。"),
+                          {{QStringLiteral("reason_code"), QStringLiteral("SKY_IPC_CLIENT_SOCKET_ERROR")},
+                           {QStringLiteral("socket_error"), static_cast<int>(error)},
+                           {QStringLiteral("system_error"), socket->errorString()}});
         });
 
-        emit logMessage(QStringLiteral("Sky local IPC client connected from %1:%2")
-                            .arg(socket->peerAddress().toString())
-                            .arg(socket->peerPort()));
+        publishIpcLog(LogLevel::Info,
+                      QStringLiteral("sky_ipc_client_connected"),
+                      QStringLiteral("本地 IPC 客户端已连接。"),
+                      {{QStringLiteral("peer_host"), socket->peerAddress().toString()},
+                       {QStringLiteral("peer_port"), socket->peerPort()}});
         sendStatus(socket);
         sendSkyConfig(socket);
     }
@@ -199,7 +224,9 @@ void SkyLocalIpcServer::removeClient(QTcpSocket *socket)
         if (state && state->socket == socket)
         {
             clients_.removeAt(i);
-            emit logMessage(QStringLiteral("Sky local IPC client disconnected"));
+            publishIpcLog(LogLevel::Info,
+                          QStringLiteral("sky_ipc_client_disconnected"),
+                          QStringLiteral("本地 IPC 客户端已断开。"));
             socket->deleteLater();
             delete state;
             return;
@@ -257,7 +284,11 @@ void SkyLocalIpcServer::handleCommand(QTcpSocket *socket, const CommandMessage& 
         {
             socket->flush();
         }
-        emit logMessage(QStringLiteral("Sky local IPC shutdown requested"));
+        publishIpcLog(LogLevel::Info,
+                      QStringLiteral("sky_ipc_shutdown_requested"),
+                      QStringLiteral("已收到本地 IPC 停止请求。"),
+                      {{QStringLiteral("command_id"), static_cast<quint16>(command.command_id)},
+                       {QStringLiteral("command_seq"), command.command_seq}});
         QTimer::singleShot(100, QCoreApplication::instance(), []() {
             QCoreApplication::quit();
         });

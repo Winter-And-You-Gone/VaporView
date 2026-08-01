@@ -193,8 +193,10 @@ LogRecord makeDropNotice(quint64 dropped,
     notice.process_id = processId;
     notice.thread_id = threadId;
     notice.sequence = sequence;
-    notice.message = QStringLiteral("Dropped %1 log records because the writer queue was full.").arg(dropped);
-    notice.fields.insert(QStringLiteral("dropped_count"), static_cast<qulonglong>(dropped));
+    notice.message = QStringLiteral("日志写入队列已满，已丢弃部分日志记录。");
+    notice.fields = {{QStringLiteral("event"), QStringLiteral("log_queue_overloaded")},
+                     {QStringLiteral("reason_code"), QStringLiteral("LOG_QUEUE_FULL")},
+                     {QStringLiteral("dropped_count"), static_cast<qulonglong>(dropped)}};
     return notice;
 }
 
@@ -214,8 +216,10 @@ LogRecord makeCriticalOverloadNotice(quint64 sequence,
     notice.process_id = processId;
     notice.thread_id = threadId;
     notice.sequence = sequence;
-    notice.message = QStringLiteral("Critical log queue limit reached; using emergency output.");
-    notice.fields.insert(QStringLiteral("pending_critical_limit"), pendingCriticalLimit);
+    notice.message = QStringLiteral("Critical 日志队列已达到上限，已切换到紧急写入通道。");
+    notice.fields = {{QStringLiteral("event"), QStringLiteral("critical_queue_overload")},
+                     {QStringLiteral("reason_code"), QStringLiteral("CRITICAL_QUEUE_LIMIT")},
+                     {QStringLiteral("pending_critical_limit"), pendingCriticalLimit}};
     return notice;
 }
 

@@ -1,36 +1,5 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 
-namespace
-{
-QString legacyLogCategory(const QString& message)
-{
-    if (message.contains(QStringLiteral("ACK"), Qt::CaseInsensitive)) return QStringLiteral("ack");
-    if (message.contains(QStringLiteral("配置"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("config"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("频率"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("波特率"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("output rate"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("sample rate"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("rate"), Qt::CaseInsensitive)) return QStringLiteral("config");
-    if (message.contains(QStringLiteral("连接"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("断开"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("串口"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("端口"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("connect"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("disconnect"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("port"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("telemetry link"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("handshake"), Qt::CaseInsensitive)) return QStringLiteral("connection");
-    if (message.contains(QStringLiteral("记录"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("定时"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("recording"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("record"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("session"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("schedule"), Qt::CaseInsensitive)) return QStringLiteral("recording");
-    return QStringLiteral("general");
-}
-}  // namespace
-
 void MainWindow::log(const QString& message)
 {
     auto scrollLogToBottom = [this]() {
@@ -50,9 +19,12 @@ void MainWindow::log(const QString& message)
             logService.publish(VaporView::LogLevel::Debug,
                                QStringLiteral("Ground"),
                                QStringLiteral("ui.progress"),
-                               message.mid(1),
+                               QStringLiteral("界面进度日志已更新。"),
                                {{QStringLiteral("ui_visible"), true},
-                                {QStringLiteral("inline"), true}});
+                                {QStringLiteral("inline"), true},
+                                {QStringLiteral("event"), QStringLiteral("ground_ui_progress_updated")},
+                                {QStringLiteral("legacy_unclassified"), true},
+                                {QStringLiteral("ui_message"), message.mid(1)}});
         });
         if (!state_->log_text_edit_)
         {
@@ -83,21 +55,17 @@ void MainWindow::log(const QString& message)
         return;
     }
 
-    const bool mirrorsLegacyError = shouldMirrorToErrorLog(message);
-    const bool looksLikeDataLoss = message.contains(QStringLiteral("drop"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("丢弃"), Qt::CaseInsensitive) ||
-        message.contains(QStringLiteral("队列已满"), Qt::CaseInsensitive);
-    const QString category = legacyLogCategory(message);
-    const VaporView::LogLevel level = mirrorsLegacyError || looksLikeDataLoss
-        ? VaporView::LogLevel::Warning
-        : VaporView::LogLevel::Info;
+    const QString category = QStringLiteral("ui.legacy");
+    const VaporView::LogLevel level = VaporView::LogLevel::Info;
     const bool published = VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
         logService.publish(level,
                            QStringLiteral("Ground"),
                            category,
-                           message,
+                           QStringLiteral("地面端界面日志已更新。"),
                            {{QStringLiteral("ui_visible"), true},
-                            {QStringLiteral("legacy_error_mirror"), mirrorsLegacyError}});
+                            {QStringLiteral("event"), QStringLiteral("ground_ui_legacy_log")},
+                            {QStringLiteral("legacy_unclassified"), true},
+                            {QStringLiteral("ui_message"), message}});
     });
     if (!published)
     {
@@ -105,7 +73,10 @@ void MainWindow::log(const QString& message)
         uiRecord.level = level;
         uiRecord.source = QStringLiteral("Ground");
         uiRecord.category = category;
-        uiRecord.message = message;
+        uiRecord.message = QStringLiteral("地面端界面日志已更新。");
+        uiRecord.fields = {{QStringLiteral("event"), QStringLiteral("ground_ui_legacy_log")},
+                           {QStringLiteral("legacy_unclassified"), true},
+                           {QStringLiteral("ui_message"), message}};
         const QString displayLine = QStringLiteral("[%1] %2")
             .arg(QDateTime::currentDateTime().toString(QStringLiteral("hh:mm:ss")), message);
         state_->log_entries_.append(displayLine);
@@ -126,14 +97,7 @@ void MainWindow::log(const QString& message)
 
     if (!published && state_->recording_service_->isSessionOpen())
     {
-        state_->recording_service_->appendEvent(mirrorsLegacyError || looksLikeDataLoss
-                                                    ? QStringLiteral("warning")
-                                                    : QStringLiteral("info"),
-                                                message);
-        if (mirrorsLegacyError)
-        {
-            state_->recording_service_->appendError(message);
-        }
+        state_->recording_service_->appendEvent(QStringLiteral("info"), message);
     }
 }
 
@@ -1466,7 +1430,9 @@ void MainWindow::stopRecording(bool announce)
                 logService.publish(VaporView::LogLevel::Error,
                                    QStringLiteral("Ground"),
                                    QStringLiteral("session.write"),
-                                   QStringLiteral("Failed to append recording stop summary."));
+                                   QStringLiteral("无法写入记录停止摘要。"),
+                                   {{QStringLiteral("event"), QStringLiteral("recording_stop_summary_append_failed")},
+                                    {QStringLiteral("error_code"), QStringLiteral("RECORDING_STOP_SUMMARY_APPEND_FAILED")}});
             });
         }
     }

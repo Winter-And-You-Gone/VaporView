@@ -875,17 +875,26 @@ LogRecord boundLogRecord(LogRecord record)
 
 QByteArray serializePreparedLogRecord(const LogRecord& record)
 {
+    // Writer and emergency paths pass records through boundLogRecord() before
+    // queueing. Keep the hot path to one JSON serialization and only rebalance
+    // if a future caller violates that invariant.
     QByteArray line = serializeRawRecord(record);
     if (line.size() <= LogRecordLimits::kMaxSerializedRecordBytes)
     {
         return line;
     }
-    line = serializeRawRecord(boundLogRecord(record));
+    const LogRecord bounded = boundLogRecord(record);
+    line = serializeRawRecord(bounded);
     if (line.size() <= LogRecordLimits::kMaxSerializedRecordBytes)
     {
         return line;
     }
-    return serializeRawRecord(minimalBoundedRecord(record, TruncationState{}));
+    return serializeRawRecord(minimalBoundedRecord(bounded, TruncationState{}));
+}
+
+QByteArray serializeBoundedLogRecord(const LogRecord& record)
+{
+    return serializePreparedLogRecord(boundLogRecord(record));
 }
 
 }  // namespace VaporView::LoggingInternal

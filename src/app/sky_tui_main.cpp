@@ -84,17 +84,18 @@ int main(int argc, char *argv[])
     if (parser.isSet(shutdownCoreOption))
     {
         VaporView::SkyLocalIpcClient client;
-        QObject::connect(&client, &VaporView::SkyLocalIpcClient::logMessage, &logService, [&logService](const QString& message) {
-            logService.publish(VaporView::LogLevel::Info,
-                               QStringLiteral("SkyTui"),
-                               QStringLiteral("ipc"),
-                               message);
+        QObject::connect(&client, &VaporView::SkyLocalIpcClient::logRecordGenerated,
+                         &logService, [&logService](const VaporView::LogRecord& record) {
+            logService.publish(record);
+        });
+        QObject::connect(&client, &VaporView::SkyLocalIpcClient::logMessage, &app,
+                         [](const QString& message) {
             QTextStream(stderr) << message << "\n";
         });
         QObject::connect(&client, &VaporView::SkyLocalIpcClient::connectedChanged, &app, [&client](bool connected) {
             if (connected)
             {
-                QTextStream(stdout) << "Sending SkyCore shutdown request\n";
+                QTextStream(stdout) << "正在发送 SkyCore 停止请求。\n";
                 client.requestCoreShutdown();
             }
         });
@@ -102,13 +103,13 @@ int main(int argc, char *argv[])
             if (ack.command_id == VaporView::CommandId::ShutdownCore)
             {
                 QTextStream(stdout) << (ack.error_code == VaporView::CommandErrorCode::Ok
-                    ? QStringLiteral("SkyCore accepted shutdown request\n")
-                    : QStringLiteral("SkyCore rejected shutdown request\n"));
+                    ? QStringLiteral("SkyCore 已接受停止请求。\n")
+                    : QStringLiteral("SkyCore 已拒绝停止请求。\n"));
                 QTimer::singleShot(300, &app, &QCoreApplication::quit);
             }
         });
         QTimer::singleShot(5000, &app, [&app]() {
-            QTextStream(stderr) << "Timed out waiting for SkyCore shutdown ack\n";
+            QTextStream(stderr) << "等待 SkyCore 停止确认超时。\n";
             app.exit(2);
         });
         client.connectToCore(options.ipc_host, static_cast<quint16>(options.ipc_port));

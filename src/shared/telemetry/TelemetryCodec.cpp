@@ -1,4 +1,5 @@
 #include "TelemetryCodec.h"
+#include "logging/BoundedLogRecord.h"
 
 #include <QJsonDocument>
 #include <QVector>
@@ -6,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <utility>
 
 namespace VaporView
 {
@@ -294,11 +296,20 @@ QByteArray TelemetryCodec::encodeFrame(MsgType type,
 
 QByteArray TelemetryCodec::serializeLogRecord(const LogRecord& record)
 {
-    return QJsonDocument(record.toJsonObject()).toJson(QJsonDocument::Compact);
+    QByteArray line = LoggingInternal::serializeBoundedLogRecord(record);
+    if (line.endsWith('\n'))
+    {
+        line.chop(1);
+    }
+    return line;
 }
 
 bool TelemetryCodec::parseLogRecord(const QByteArray& payload, LogRecord& record)
 {
+    if (payload.size() > LogRecordLimits::kMaxSerializedRecordBytes)
+    {
+        return false;
+    }
     QJsonParseError parseError;
     const QJsonDocument document = QJsonDocument::fromJson(payload, &parseError);
     if (!document.isObject() || parseError.error != QJsonParseError::NoError)
@@ -326,6 +337,7 @@ bool TelemetryCodec::parseLogRecord(const QByteArray& payload, LogRecord& record
     {
         record.fields = object.value(QStringLiteral("fields")).toObject().toVariantMap();
     }
+    record = LoggingInternal::boundLogRecord(std::move(record));
     return true;
 }
 

@@ -58,6 +58,20 @@ set_tests_properties(map_data_script_test PROPERTIES
     SKIP_RETURN_CODE 77
 )
 
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME logging_language_audit_test
+        COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/scripts/audit_logging_language.py
+                --root ${CMAKE_SOURCE_DIR}
+                --self-test
+    )
+    set_tests_properties(logging_language_audit_test PROPERTIES
+        TIMEOUT 30
+        LABELS "fast;unit;logging"
+    )
+endif()
+
 add_executable(tcp_wave_encoding_test
     ${CMAKE_CURRENT_SOURCE_DIR}/tcp_wave_encoding_test.cpp
 )
@@ -667,9 +681,11 @@ add_executable(startup_splash_test
     ${CMAKE_SOURCE_DIR}/resources/vaporview_startup.qrc
 )
 target_include_directories(startup_splash_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/src
 )
 target_link_libraries(startup_splash_test PRIVATE
+    vaporview_logging
     Qt6::Widgets
     Qt6::Svg
 )

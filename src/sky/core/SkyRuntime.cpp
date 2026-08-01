@@ -146,21 +146,19 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     , codec_(1024u * 1024u)
     , device_manager_(this)
 {
-    connect(&device_manager_, &SkyDeviceManager::logMessage, this, &SkyRuntime::logMessage);
-    connect(this, &SkyRuntime::logMessage, this, [](const QString& message) {
-        const bool warning = message.contains(QStringLiteral("failed"), Qt::CaseInsensitive) ||
-            message.contains(QStringLiteral("error"), Qt::CaseInsensitive) ||
-            message.contains(QStringLiteral("disconnect"), Qt::CaseInsensitive) ||
-            message.contains(QStringLiteral("失败"), Qt::CaseInsensitive) ||
-            message.contains(QStringLiteral("错误"), Qt::CaseInsensitive) ||
-            message.contains(QStringLiteral("断开"), Qt::CaseInsensitive);
+    connect(&device_manager_, &SkyDeviceManager::logMessage, this, [this](const QString& message) {
+        publishRuntimeLog(LogLevel::Info,
+                          QStringLiteral("device.legacy"),
+                          QStringLiteral("legacy_device_log"),
+                          message,
+                          {{QStringLiteral("legacy_unclassified"), true}});
+    });
+    connect(&device_manager_, &SkyDeviceManager::logRecord, this, [this](LogRecord record) {
         LogService::withCurrentInstance([&](LogService& logService) {
-            logService.publish(warning ? LogLevel::Warning : LogLevel::Info,
-                               QStringLiteral("SkyCore"),
-                               QStringLiteral("runtime"),
-                               message,
-                               {{QStringLiteral("legacy_error_mirror"), warning}});
+            logService.publish(record);
         });
+        emit logRecord(record);
+        emit logMessage(record.message);
     });
     LogService::withCurrentInstance([this](LogService& logService) {
         connect(&logService, &LogService::recordPublished, this,
@@ -171,8 +169,7 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
                         return;
                     }
                     const bool eventOk = session_recorder_.appendEvent(record);
-                    const bool errorOk = static_cast<int>(record.level) >= static_cast<int>(LogLevel::Warning) ||
-                        record.fields.value(QStringLiteral("legacy_error_mirror")).toBool();
+                    const bool errorOk = static_cast<int>(record.level) >= static_cast<int>(LogLevel::Warning);
                     const bool errorFileOk = !errorOk || session_recorder_.appendError(record);
                     if (!eventOk || !errorFileOk)
                     {
@@ -180,8 +177,10 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
                             logService.publish(LogLevel::Error,
                                                QStringLiteral("SkyCore"),
                                                QStringLiteral("session.write"),
-                                               QStringLiteral("Failed to append Sky session log record."),
+                                               QStringLiteral("无法写入天空端会话日志记录。"),
                                                {{QStringLiteral("session_sink_failure"), true},
+                                                {QStringLiteral("event"), QStringLiteral("sky_session_log_append_failed")},
+                                                {QStringLiteral("error_code"), QStringLiteral("SKY_SESSION_LOG_APPEND_FAILED")},
                                                 {QStringLiteral("event_ok"), eventOk},
                                                 {QStringLiteral("error_ok"), errorFileOk},
                                                 {QStringLiteral("source"), record.source},
@@ -234,6 +233,33 @@ SkyRuntime::~SkyRuntime()
     stop();
 }
 
+void SkyRuntime::publishRuntimeLog(LogLevel level,
+                                   const QString& category,
+                                   const QString& event,
+                                   const QString& message,
+                                   QVariantMap fields)
+{
+    fields.insert(QStringLiteral("event"), event);
+    if (level >= LogLevel::Error &&
+        !fields.contains(QStringLiteral("error_code")) &&
+        !fields.contains(QStringLiteral("reason_code")))
+    {
+        fields.insert(QStringLiteral("error_code"), QStringLiteral("SKY_RUNTIME_ERROR"));
+    }
+
+    LogRecord record;
+    record.level = level;
+    record.source = QStringLiteral("SkyCore");
+    record.category = category;
+    record.message = message;
+    record.fields = fields;
+    LogService::withCurrentInstance([&](LogService& logService) {
+        logService.publish(record);
+    });
+    emit logRecord(record);
+    emit logMessage(message);
+}
+
 bool SkyRuntime::start()
 {
     if (running_)
@@ -246,7 +272,13 @@ bool SkyRuntime::start()
     const QString configPath = options_.config_path.isEmpty() ? defaultConfigPath() : options_.config_path;
     if (!SkyConfig::loadFromFile(configPath, config, &configError))
     {
-        emit logMessage(QStringLiteral("Failed to load sky config, using defaults: %1").arg(configError));
+        publishRuntimeLog(LogLevel::Warning,
+                          QStringLiteral("config.load"),
+                          QStringLiteral("sky_config_load_failed"),
+                          QStringLiteral("天空端配置加载失败，已使用默认配置。"),
+                          {{QStringLiteral("config_path"), configPath},
+                           {QStringLiteral("system_error"), configError},
+                           {QStringLiteral("reason_code"), QStringLiteral("SKY_CONFIG_LOAD_FAILED")}});
         config = SkyConfig::defaults();
     }
     if (!options_.wave_host.isEmpty())
@@ -262,22 +294,45 @@ bool SkyRuntime::start()
         connect(link, &TelemetryLink::bytesReceived, this, [this](const QByteArray& bytes) {
             onBytesReceived(bytes);
         });
-        connect(link, &TelemetryLink::errorOccurred, this, &SkyRuntime::logMessage);
-        connect(link, &TelemetryLink::statusMessage, this, &SkyRuntime::logMessage);
+        connect(link, &TelemetryLink::errorOccurred, this, [this](const QString& systemError) {
+            publishRuntimeLog(LogLevel::Warning,
+                              QStringLiteral("telemetry.link"),
+                              QStringLiteral("telemetry_link_error"),
+                              QStringLiteral("天空端遥测链路异常。"),
+                              {{QStringLiteral("reason_code"), QStringLiteral("TELEMETRY_LINK_ERROR")},
+                               {QStringLiteral("system_error"), systemError}});
+        });
+        connect(link, &TelemetryLink::statusMessage, this, [this](const QString& statusText) {
+            publishRuntimeLog(LogLevel::Info,
+                              QStringLiteral("telemetry.link"),
+                              QStringLiteral("telemetry_link_status"),
+                              QStringLiteral("天空端遥测链路状态已更新。"),
+                              {{QStringLiteral("external_raw_text"), statusText}});
+        });
     };
 
     if (options_.telemetry_transport == TelemetryTransportType::Serial)
     {
         if (options_.telemetry_port.trimmed().isEmpty())
         {
-            emit logMessage(QStringLiteral("Telemetry serial port is empty"));
+            publishRuntimeLog(LogLevel::Error,
+                              QStringLiteral("telemetry.serial"),
+                              QStringLiteral("telemetry_serial_port_missing"),
+                              QStringLiteral("无法启动串口遥测：串口名称为空。"),
+                              {{QStringLiteral("error_code"), QStringLiteral("TELEMETRY_SERIAL_PORT_MISSING")}});
             return false;
         }
         auto link = std::make_unique<SerialTelemetryLink>();
         attachLinkSignals(link.get());
         if (!link->open(options_.telemetry_port, options_.telemetry_baud))
         {
-            emit logMessage(QStringLiteral("Failed to open telemetry port %1").arg(options_.telemetry_port));
+            publishRuntimeLog(LogLevel::Error,
+                              QStringLiteral("telemetry.serial"),
+                              QStringLiteral("telemetry_serial_open_failed"),
+                              QStringLiteral("无法打开天空端遥测串口。"),
+                              {{QStringLiteral("error_code"), QStringLiteral("TELEMETRY_SERIAL_OPEN_FAILED")},
+                               {QStringLiteral("port"), options_.telemetry_port},
+                               {QStringLiteral("baud"), options_.telemetry_baud}});
             return false;
         }
         link_ = std::move(link);
@@ -288,9 +343,13 @@ bool SkyRuntime::start()
         attachLinkSignals(link.get());
         if (!link->listen(options_.telemetry_host, static_cast<quint16>(options_.telemetry_tcp_port)))
         {
-            emit logMessage(QStringLiteral("Failed to listen telemetry TCP endpoint %1:%2")
-                                .arg(options_.telemetry_host)
-                                .arg(options_.telemetry_tcp_port));
+            publishRuntimeLog(LogLevel::Error,
+                              QStringLiteral("telemetry.tcp"),
+                              QStringLiteral("telemetry_tcp_listen_failed"),
+                              QStringLiteral("无法监听天空端 TCP 遥测端点。"),
+                              {{QStringLiteral("error_code"), QStringLiteral("TELEMETRY_TCP_LISTEN_FAILED")},
+                               {QStringLiteral("host"), options_.telemetry_host},
+                               {QStringLiteral("port"), options_.telemetry_tcp_port}});
             return false;
         }
         link_ = std::move(link);
@@ -306,7 +365,12 @@ bool SkyRuntime::start()
     running_ = true;
     started_time_us_ = currentTimestampUs();
     emit runningChanged(true);
-    emit logMessage(QStringLiteral("SkyRuntime started on %1").arg(link_ ? link_->endpointDescription() : QString()));
+    publishRuntimeLog(LogLevel::Info,
+                      QStringLiteral("runtime.lifecycle"),
+                      QStringLiteral("sky_runtime_started"),
+                      QStringLiteral("SkyRuntime 已开始运行。"),
+                      {{QStringLiteral("endpoint"), link_ ? link_->endpointDescription() : QString()},
+                       {QStringLiteral("transport"), telemetryTransportName(options_.telemetry_transport)}});
     return true;
 }
 
@@ -325,13 +389,23 @@ void SkyRuntime::stop()
 
     if (session_recorder_.isRecording() || session_recorder_.isPaused())
     {
-        emit logMessage(QStringLiteral("Sky recording stop requested during runtime shutdown: %1 telemetry rows, %2 waveform frames")
-                            .arg(session_recorder_.telemetryRecordCount())
-                            .arg(session_recorder_.waveformSnapshotRecordCount()));
+        publishRuntimeLog(LogLevel::Info,
+                          QStringLiteral("session.recording"),
+                          QStringLiteral("sky_recording_stop_requested_for_shutdown"),
+                          QStringLiteral("运行时停止前已请求结束天空端会话记录。"),
+                          {{QStringLiteral("telemetry_rows"),
+                            static_cast<qulonglong>(session_recorder_.telemetryRecordCount())},
+                           {QStringLiteral("waveform_frames"),
+                            static_cast<qulonglong>(session_recorder_.waveformSnapshotRecordCount())}});
         QString error;
         if (!session_recorder_.stop(&error))
         {
-            emit logMessage(QStringLiteral("Failed to save sky recording metadata while stopping: %1").arg(error));
+            publishRuntimeLog(LogLevel::Error,
+                              QStringLiteral("session.write"),
+                              QStringLiteral("sky_recording_metadata_save_failed_on_shutdown"),
+                              QStringLiteral("无法在停止运行时保存天空端会话记录元数据。"),
+                              {{QStringLiteral("error_code"), QStringLiteral("SKY_RECORDING_METADATA_SAVE_FAILED")},
+                               {QStringLiteral("system_error"), error}});
         }
     }
 
@@ -346,7 +420,10 @@ void SkyRuntime::stop()
     started_time_us_ = 0;
     last_sent_feature_time_us_ = 0;
     emit runningChanged(false);
-    emit logMessage(QStringLiteral("SkyRuntime stopped"));
+    publishRuntimeLog(LogLevel::Info,
+                      QStringLiteral("runtime.lifecycle"),
+                      QStringLiteral("sky_runtime_stopped"),
+                      QStringLiteral("SkyRuntime 已停止。"));
 }
 
 bool SkyRuntime::isRunning() const
@@ -403,7 +480,13 @@ bool SkyRuntime::startRecording(QString *error)
     {
         return false;
     }
-    emit logMessage(QStringLiteral("Sky recording started: %1").arg(session_recorder_.sessionDirectory()));
+    publishRuntimeLog(LogLevel::Info,
+                      QStringLiteral("session.recording"),
+                      QStringLiteral("sky_recording_started"),
+                      QStringLiteral("天空端会话记录已开始。"),
+                      {{QStringLiteral("session_directory"), session_recorder_.sessionDirectory()},
+                       {QStringLiteral("transport"), transport},
+                       {QStringLiteral("endpoint"), endpoint}});
     return true;
 }
 
@@ -415,7 +498,11 @@ bool SkyRuntime::pauseRecording(QString *error)
         return false;
     }
     session_recorder_.pause();
-    emit logMessage(QStringLiteral("Sky recording paused: %1").arg(session_recorder_.sessionDirectory()));
+    publishRuntimeLog(LogLevel::Info,
+                      QStringLiteral("session.recording"),
+                      QStringLiteral("sky_recording_paused"),
+                      QStringLiteral("天空端会话记录已暂停。"),
+                      {{QStringLiteral("session_directory"), session_recorder_.sessionDirectory()}});
     return true;
 }
 
@@ -426,16 +513,29 @@ bool SkyRuntime::stopRecording(QString *error)
         if (error) *error = QStringLiteral("recording not started");
         return false;
     }
-    emit logMessage(QStringLiteral("Sky recording stop requested: %1 telemetry rows, %2 waveform frames")
-                        .arg(session_recorder_.telemetryRecordCount())
-                        .arg(session_recorder_.waveformSnapshotRecordCount()));
+    publishRuntimeLog(LogLevel::Info,
+                      QStringLiteral("session.recording"),
+                      QStringLiteral("sky_recording_stop_requested"),
+                      QStringLiteral("天空端会话记录已请求停止。"),
+                      {{QStringLiteral("telemetry_rows"),
+                        static_cast<qulonglong>(session_recorder_.telemetryRecordCount())},
+                       {QStringLiteral("waveform_frames"),
+                        static_cast<qulonglong>(session_recorder_.waveformSnapshotRecordCount())}});
     if (!session_recorder_.stop(error))
     {
-        emit logMessage(QStringLiteral("Failed to save sky recording metadata: %1")
-                            .arg(error ? *error : QString()));
+        publishRuntimeLog(LogLevel::Error,
+                          QStringLiteral("session.write"),
+                          QStringLiteral("sky_recording_metadata_save_failed"),
+                          QStringLiteral("无法保存天空端会话记录元数据。"),
+                          {{QStringLiteral("error_code"), QStringLiteral("SKY_RECORDING_METADATA_SAVE_FAILED")},
+                           {QStringLiteral("system_error"), error ? *error : QString()}});
         return false;
     }
-    emit logMessage(QStringLiteral("Sky recording stopped"));
+    publishRuntimeLog(LogLevel::Info,
+                      QStringLiteral("session.recording"),
+                      QStringLiteral("sky_recording_stopped"),
+                      QStringLiteral("天空端会话记录已停止。"),
+                      {{QStringLiteral("session_directory"), session_recorder_.sessionDirectory()}});
     return true;
 }
 
@@ -844,7 +944,12 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         QString error;
         if (!startRecording(&error))
         {
-            emit logMessage(QStringLiteral("Failed to start sky recording: %1").arg(error));
+            publishRuntimeLog(LogLevel::Error,
+                              QStringLiteral("session.recording"),
+                              QStringLiteral("sky_recording_start_failed"),
+                              QStringLiteral("无法启动天空端会话记录。"),
+                              {{QStringLiteral("error_code"), QStringLiteral("SKY_RECORDING_START_FAILED")},
+                               {QStringLiteral("system_error"), error}});
             result.ack = makeAck(command, CommandErrorCode::InternalError);
             break;
         }
@@ -870,7 +975,12 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         QString stopError;
         if (!stopRecording(&stopError))
         {
-            emit logMessage(QStringLiteral("Failed to stop sky recording: %1").arg(stopError));
+            publishRuntimeLog(LogLevel::Error,
+                              QStringLiteral("session.recording"),
+                              QStringLiteral("sky_recording_stop_failed"),
+                              QStringLiteral("无法停止天空端会话记录。"),
+                              {{QStringLiteral("error_code"), QStringLiteral("SKY_RECORDING_STOP_FAILED")},
+                               {QStringLiteral("system_error"), stopError}});
             result.ack = makeAck(command, CommandErrorCode::InternalError);
             result.send_status = true;
             break;
@@ -1041,7 +1151,12 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         QString error;
         if (!document.isObject() || !SkyConfig::fromJson(document.object(), config, &error))
         {
-            emit logMessage(QStringLiteral("Invalid sky config: %1").arg(error));
+            publishRuntimeLog(LogLevel::Warning,
+                              QStringLiteral("config.apply"),
+                              QStringLiteral("sky_config_apply_rejected"),
+                              QStringLiteral("天空端配置无效，未应用。"),
+                              {{QStringLiteral("reason_code"), QStringLiteral("SKY_CONFIG_INVALID")},
+                               {QStringLiteral("system_error"), error}});
             result.ack = makeAck(command, CommandErrorCode::ConfigInvalid);
             break;
         }
@@ -1061,7 +1176,13 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         const QString configPath = options_.config_path.isEmpty() ? defaultConfigPath() : options_.config_path;
         if (!device_manager_.config().saveToFile(configPath, &error))
         {
-            emit logMessage(QStringLiteral("Failed to save sky config: %1").arg(error));
+            publishRuntimeLog(LogLevel::Error,
+                              QStringLiteral("config.save"),
+                              QStringLiteral("sky_config_save_failed"),
+                              QStringLiteral("无法保存天空端配置。"),
+                              {{QStringLiteral("error_code"), QStringLiteral("SKY_CONFIG_SAVE_FAILED")},
+                               {QStringLiteral("config_path"), configPath},
+                               {QStringLiteral("system_error"), error}});
             result.ack = makeAck(command, CommandErrorCode::ConfigSaveFailed);
             break;
         }

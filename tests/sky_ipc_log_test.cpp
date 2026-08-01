@@ -64,7 +64,7 @@ int main(int argc, char **argv)
                      [&](const VaporView::LogRecord& record) {
                          if (record.source == QStringLiteral("SkyCore") &&
                              record.category == QStringLiteral("integration") &&
-                             record.message == QStringLiteral("Sky IPC structured log test"))
+                             record.message == QStringLiteral("SkyCore IPC 结构化日志测试。"))
                          {
                              ++matchingRecords;
                          }
@@ -76,8 +76,9 @@ int main(int argc, char **argv)
     logService.publish(VaporView::LogLevel::Warning,
                        QStringLiteral("SkyCore"),
                        QStringLiteral("integration"),
-                       QStringLiteral("Sky IPC structured log test"),
-                       {{QStringLiteral("failure_reason"), QStringLiteral("test")}});
+                       QStringLiteral("SkyCore IPC 结构化日志测试。"),
+                       {{QStringLiteral("event"), QStringLiteral("sky_ipc_structured_log_test")},
+                        {QStringLiteral("failure_reason"), QStringLiteral("test")}});
     require(waitUntil([&]() { return matchingRecords == 1; }),
             "structured SkyCore log reaches SkyTui client exactly once");
 

@@ -56,6 +56,31 @@ SkyLocalIpcClient::SkyLocalIpcClient(QObject *parent)
     updateDashboardRates();
 }
 
+void SkyLocalIpcClient::publishClientLog(LogLevel level,
+                                         const QString& category,
+                                         const QString& event,
+                                         const QString& message,
+                                         QVariantMap fields)
+{
+    fields.insert(QStringLiteral("event"), event);
+    fields.insert(QStringLiteral("ui_visible"), true);
+    if (level >= LogLevel::Error &&
+        !fields.contains(QStringLiteral("error_code")) &&
+        !fields.contains(QStringLiteral("reason_code")))
+    {
+        fields.insert(QStringLiteral("error_code"), QStringLiteral("SKY_TUI_IPC_ERROR"));
+    }
+
+    LogRecord record;
+    record.level = level;
+    record.source = QStringLiteral("SkyTui");
+    record.category = category;
+    record.message = message;
+    record.fields = fields;
+    emit logRecordGenerated(record);
+    emit logMessage(message);
+}
+
 void SkyLocalIpcClient::connectToCore(const QString& host, quint16 port)
 {
     core_host_ = host;
@@ -215,7 +240,12 @@ void SkyLocalIpcClient::onConnected()
     reconnect_timer_.stop();
     connected_time_us_ = currentTimestampUs();
     emit connectedChanged(true);
-    emit logMessage(QStringLiteral("已连接 SkyCore IPC。"));
+    publishClientLog(LogLevel::Info,
+                     QStringLiteral("ipc.connection"),
+                     QStringLiteral("sky_ipc_connected"),
+                     QStringLiteral("SkyCore IPC 已连接。"),
+                     {{QStringLiteral("host"), core_host_},
+                      {QStringLiteral("port"), core_port_}});
     QTimer::singleShot(0, this, [this]() {
         requestStatus();
         getConfig();
@@ -225,7 +255,10 @@ void SkyLocalIpcClient::onConnected()
 void SkyLocalIpcClient::onDisconnected()
 {
     emit connectedChanged(false);
-    emit logMessage(QStringLiteral("SkyCore IPC 连接已断开。"));
+    publishClientLog(LogLevel::Info,
+                     QStringLiteral("ipc.connection"),
+                     QStringLiteral("sky_ipc_disconnected"),
+                     QStringLiteral("SkyCore IPC 连接已断开。"));
     scheduleReconnect();
 }
 
@@ -245,19 +278,37 @@ void SkyLocalIpcClient::onErrorOccurred(QAbstractSocket::SocketError error)
     {
         if (!reconnect_timer_.isActive())
         {
-            emit logMessage(QStringLiteral("SkyCore IPC 暂不可用：%1，将自动重连。").arg(socket_.errorString()));
+            publishClientLog(LogLevel::Warning,
+                             QStringLiteral("ipc.connection"),
+                             QStringLiteral("sky_ipc_unavailable_retrying"),
+                             QStringLiteral("SkyCore IPC 暂不可用，将自动重连。"),
+                             {{QStringLiteral("reason_code"), QStringLiteral("SKY_IPC_UNAVAILABLE")},
+                              {QStringLiteral("socket_error"), static_cast<int>(error)},
+                              {QStringLiteral("system_error"), socket_.errorString()}});
         }
         scheduleReconnect();
         return;
     }
-    emit logMessage(QStringLiteral("SkyCore IPC 错误：%1").arg(socket_.errorString()));
+    publishClientLog(LogLevel::Error,
+                     QStringLiteral("ipc.connection"),
+                     QStringLiteral("sky_ipc_socket_error"),
+                     QStringLiteral("SkyCore IPC 发生错误。"),
+                     {{QStringLiteral("error_code"), QStringLiteral("SKY_IPC_SOCKET_ERROR")},
+                      {QStringLiteral("socket_error"), static_cast<int>(error)},
+                      {QStringLiteral("system_error"), socket_.errorString()}});
 }
 
 quint16 SkyLocalIpcClient::sendCommand(CommandId commandId, const QByteArray& payload)
 {
     if (!isConnected())
     {
-        emit logMessage(QStringLiteral("未连接 SkyCore，命令未发送：%1").arg(commandIdName(commandId)));
+        publishClientLog(LogLevel::Warning,
+                         QStringLiteral("ipc.command"),
+                         QStringLiteral("sky_ipc_command_send_skipped"),
+                         QStringLiteral("未连接 SkyCore，命令未发送。"),
+                         {{QStringLiteral("reason_code"), QStringLiteral("SKY_IPC_NOT_CONNECTED")},
+                          {QStringLiteral("command_id"), commandIdName(commandId)},
+                          {QStringLiteral("command_value"), static_cast<quint16>(commandId)}});
         return 0;
     }
 
@@ -301,7 +352,11 @@ void SkyLocalIpcClient::scheduleReconnect()
         return;
     }
 
-    emit logMessage(QStringLiteral("SkyCore IPC 将在 %1 ms 后自动重连。").arg(reconnect_timer_.interval()));
+    publishClientLog(LogLevel::Info,
+                     QStringLiteral("ipc.connection"),
+                     QStringLiteral("sky_ipc_reconnect_scheduled"),
+                     QStringLiteral("SkyCore IPC 自动重连已计划。"),
+                     {{QStringLiteral("retry_delay_ms"), reconnect_timer_.interval()}});
     reconnect_timer_.start();
 }
 
@@ -320,7 +375,12 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
         }
         else
         {
-            emit logMessage(QStringLiteral("SkyCore TelemetryBasic payload parse failed."));
+            publishClientLog(LogLevel::Warning,
+                             QStringLiteral("ipc.protocol"),
+                             QStringLiteral("sky_ipc_telemetry_basic_parse_failed"),
+                             QStringLiteral("无法解析 SkyCore TelemetryBasic 载荷。"),
+                             {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                              {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
         break;
     }
@@ -335,7 +395,12 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
         }
         else
         {
-            emit logMessage(QStringLiteral("SkyCore WaveformDownsampled payload parse failed."));
+            publishClientLog(LogLevel::Warning,
+                             QStringLiteral("ipc.protocol"),
+                             QStringLiteral("sky_ipc_waveform_downsampled_parse_failed"),
+                             QStringLiteral("无法解析 SkyCore WaveformDownsampled 载荷。"),
+                             {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                              {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
         break;
     }
@@ -350,7 +415,12 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
         }
         else
         {
-            emit logMessage(QStringLiteral("SkyCore WaveformFeature payload parse failed."));
+            publishClientLog(LogLevel::Warning,
+                             QStringLiteral("ipc.protocol"),
+                             QStringLiteral("sky_ipc_waveform_feature_parse_failed"),
+                             QStringLiteral("无法解析 SkyCore WaveformFeature 载荷。"),
+                             {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                              {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
         break;
     }
@@ -365,7 +435,12 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
         }
         else
         {
-            emit logMessage(QStringLiteral("SkyCore TelemetryStatus payload parse failed."));
+            publishClientLog(LogLevel::Warning,
+                             QStringLiteral("ipc.protocol"),
+                             QStringLiteral("sky_ipc_telemetry_status_parse_failed"),
+                             QStringLiteral("无法解析 SkyCore TelemetryStatus 载荷。"),
+                             {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                              {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
         break;
     }
@@ -389,7 +464,12 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
         }
         else
         {
-            emit logMessage(QStringLiteral("SkyCore CommandAck payload parse failed."));
+            publishClientLog(LogLevel::Warning,
+                             QStringLiteral("ipc.protocol"),
+                             QStringLiteral("sky_ipc_command_ack_parse_failed"),
+                             QStringLiteral("无法解析 SkyCore CommandAck 载荷。"),
+                             {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                              {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
         break;
     }
@@ -407,12 +487,22 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
         }
         else
         {
-            emit logMessage(QStringLiteral("SkyCore 返回的配置无法解析：%1").arg(error));
+            publishClientLog(LogLevel::Warning,
+                             QStringLiteral("ipc.protocol"),
+                             QStringLiteral("sky_ipc_config_parse_failed"),
+                             QStringLiteral("无法解析 SkyCore 返回的配置。"),
+                             {{QStringLiteral("reason_code"), QStringLiteral("SKY_IPC_CONFIG_PARSE_FAILED")},
+                              {QStringLiteral("system_error"), error},
+                              {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
         break;
     }
     case MsgType::SkyConfigApplyResult:
-        emit logMessage(QStringLiteral("SkyCore 配置应用结果：%1").arg(QString::fromUtf8(frame.payload)));
+        publishClientLog(LogLevel::Info,
+                         QStringLiteral("ipc.config"),
+                         QStringLiteral("sky_ipc_config_apply_result_received"),
+                         QStringLiteral("已收到 SkyCore 配置应用结果。"),
+                         {{QStringLiteral("config_apply_result"), QString::fromUtf8(frame.payload)}});
         break;
     case MsgType::LogEvent:
     {
@@ -423,7 +513,12 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
         }
         else
         {
-            emit logMessage(QStringLiteral("SkyCore 日志帧解析失败。"));
+            publishClientLog(LogLevel::Warning,
+                             QStringLiteral("ipc.protocol"),
+                             QStringLiteral("sky_ipc_log_event_parse_failed"),
+                             QStringLiteral("无法解析 SkyCore 日志帧。"),
+                             {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                              {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
         break;
     }
@@ -431,8 +526,13 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
     case MsgType::Command:
         break;
     case MsgType::Error:
-        emit logMessage(QStringLiteral("SkyCore 返回 telemetry Error 帧：%1")
-                            .arg(QString::fromLatin1(frame.payload.toHex())));
+        publishClientLog(LogLevel::Error,
+                         QStringLiteral("ipc.protocol"),
+                         QStringLiteral("sky_ipc_error_frame_received"),
+                         QStringLiteral("已收到 SkyCore telemetry Error 帧。"),
+                         {{QStringLiteral("error_code"), QStringLiteral("SKY_IPC_ERROR_FRAME")},
+                          {QStringLiteral("payload_hex"), QString::fromLatin1(frame.payload.toHex())},
+                          {QStringLiteral("payload_bytes"), frame.payload.size()}});
         break;
     }
 }
