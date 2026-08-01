@@ -1590,6 +1590,8 @@ void MainWindow::showAboutDialog()
     VaporView::installCustomTitleBar(&dialog, false);
     if (QLabel *titleLogo = dialog.findChild<QLabel *>(QStringLiteral("customTitleLogo")))
     {
+        titleLogo->setProperty("customTitleLogoSize", 24);
+        titleLogo->setProperty("customTitleLogoRenderSize", 20);
         titleLogo->setFixedSize(24, 24);
         titleLogo->setPixmap(renderVaporViewLogo(dark, 20, titleLogo->devicePixelRatioF()));
     }

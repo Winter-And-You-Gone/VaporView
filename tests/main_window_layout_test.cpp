@@ -333,8 +333,19 @@ void requireAboutDialogLayout(MainWindow *window,
                     separator != nullptr && !separator->isVisible(),
                 "about title bar hides unrelated language and theme controls");
         require(titleLogo != nullptr && titleLogo->size() == QSize(24, 24) &&
-                    !titleLogo->pixmap().isNull(),
+                    titleLogo->property("customTitleLogoSize").toInt() == 24 &&
+                    titleLogo->property("customTitleLogoRenderSize").toInt() == 20 &&
+                    !titleLogo->pixmap().isNull() &&
+                    titleLogo->pixmap().deviceIndependentSize().toSize() == QSize(20, 20),
                 "about title bar keeps a safe logo frame without clipping");
+        QEvent styleChange(QEvent::StyleChange);
+        QCoreApplication::sendEvent(dialog, &styleChange);
+        require(titleLogo->size() == QSize(24, 24) &&
+                    titleLogo->property("customTitleLogoSize").toInt() == 24 &&
+                    titleLogo->property("customTitleLogoRenderSize").toInt() == 20 &&
+                    !titleLogo->pixmap().isNull() &&
+                    titleLogo->pixmap().deviceIndependentSize().toSize() == QSize(20, 20),
+                "about title bar keeps the safe logo frame after a title bar refresh");
         require(closeButton != nullptr && closeButton->isVisible() &&
                     closeButton->focusPolicy() == Qt::TabFocus,
                 "about title bar retains an accessible close control");

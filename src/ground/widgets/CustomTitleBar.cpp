@@ -57,6 +57,8 @@ constexpr const char *kMainWindowProperty = "vaporViewMainWindow";
 constexpr const char *kEnglishProperty = "vaporViewEnglish";
 constexpr const char *kTitleBarButtonProperty = "customTitleBarButton";
 constexpr const char *kTitleBarHoverProperty = "titleBarHover";
+constexpr const char *kTitleLogoSizeProperty = "customTitleLogoSize";
+constexpr const char *kTitleLogoRenderSizeProperty = "customTitleLogoRenderSize";
 QColor toolbarColor(AppThemeColor color)
 {
     bool dark = false;
@@ -676,7 +678,14 @@ private:
         }
         if (logo_label_)
         {
-            logo_label_->setPixmap(renderLogo(dark, 44, logo_label_->devicePixelRatioF()));
+            const int logoSize = std::max(1, logo_label_->property(kTitleLogoSizeProperty).toInt());
+            const int renderSize =
+                std::max(1, logo_label_->property(kTitleLogoRenderSizeProperty).toInt());
+            logo_label_->setFixedSize(logoSize > 1 ? logoSize : 44,
+                                      logoSize > 1 ? logoSize : 44);
+            logo_label_->setPixmap(renderLogo(dark,
+                                              renderSize > 1 ? renderSize : 44,
+                                              logo_label_->devicePixelRatioF()));
         }
         if (minimize_button_)
         {
