@@ -1272,6 +1272,8 @@ void requireMenuRowsRespectRoundedVerticalPadding(QFrame *panel,
     require(topGap >= minVerticalGap && bottomGap >= minVerticalGap, message);
 }
 
+void requireMainWindowOuterBorder(MainWindow& window, bool dark, const char *message);
+
 void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
 {
     QPushButton *homeButton = nullptr;
@@ -1866,6 +1868,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
             "main window can switch to dark theme from the RTK page");
     processEventsFor(250);
+    requireMainWindowOuterBorder(window, true,
+                                 "dark theme main window refreshes white left, right and bottom outer borders");
     activateLayouts(dialog);
     processEventsFor(100);
     require(qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
@@ -1897,6 +1901,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
             "main window can switch back to light theme from the RTK page");
     processEventsFor(250);
+    requireMainWindowOuterBorder(window, false,
+                                 "light theme main window restores black outer borders after switching back");
     activateLayouts(dialog);
     processEventsFor(100);
     require(!qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
@@ -2423,6 +2429,21 @@ void requireMainWindowOmitsMap3DEntries(MainWindow& window)
 }
 #endif
 
+void requireMainWindowOuterBorder(MainWindow& window, bool dark, const char *message)
+{
+    const QString expectedColor = VaporView::appThemeColorName(
+        dark ? VaporView::AppThemeColor::White : VaporView::AppThemeColor::Black,
+        dark);
+    const QList<QFrame *> borders = {
+        window.findChild<QFrame *>(QStringLiteral("windowBorderLeft")),
+        window.findChild<QFrame *>(QStringLiteral("windowBorderRight")),
+        window.findChild<QFrame *>(QStringLiteral("windowBorderBottom"))};
+    require(std::all_of(borders.cbegin(), borders.cend(), [&expectedColor](QFrame *border) {
+                return border && border->isVisible() && border->styleSheet().contains(expectedColor);
+            }),
+            message);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -2599,6 +2620,8 @@ int main(int argc, char **argv)
     window.resize(1280, 800);
     window.show();
     require(waitForWindowExposed(&window), "main window becomes exposed for layout testing");
+    requireMainWindowOuterBorder(window, false,
+                                 "light theme main window keeps black left, right and bottom outer borders");
 #ifdef VAPORVIEW_HAS_OSGEARTH
     requireMainWindowMap3DEntries(window);
 #else

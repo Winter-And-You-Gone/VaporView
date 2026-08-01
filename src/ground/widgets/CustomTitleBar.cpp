@@ -651,6 +651,9 @@ private:
     {
         const bool dark = isDarkPalette();
         const QColor background = appThemeColor(dark ? AppThemeColor::Window : AppThemeColor::Surface, dark);
+        const AppThemeColor borderColor = dark ? AppThemeColor::White : AppThemeColor::Black;
+        const QString borderStyle = QStringLiteral("background-color: %1; border: none;")
+            .arg(appThemeColorName(borderColor, dark));
         setWindowsTitleBarDark(window_, dark);
         for (QWidget *widget : {window_, content_})
         {
@@ -663,6 +666,13 @@ private:
             widget->setPalette(palette);
             widget->setAutoFillBackground(true);
             widget->update();
+        }
+        for (QFrame *border : {border_left_, border_right_, border_bottom_})
+        {
+            if (border && border->styleSheet() != borderStyle)
+            {
+                border->setStyleSheet(borderStyle);
+            }
         }
         if (logo_label_)
         {
@@ -816,8 +826,11 @@ private:
             border->setFrameShape(QFrame::NoFrame);
             border->setLineWidth(0);
             border->setAutoFillBackground(false);
+            const AppThemeColor borderColor = isDarkThemeEnabled()
+                ? AppThemeColor::White
+                : AppThemeColor::Black;
             border->setStyleSheet(QStringLiteral("background-color: %1; border: none;")
-                .arg(appThemeColorName(AppThemeColor::SurfaceSunken, isDarkThemeEnabled())));
+                .arg(appThemeColorName(borderColor, isDarkThemeEnabled())));
             return border;
         };
 

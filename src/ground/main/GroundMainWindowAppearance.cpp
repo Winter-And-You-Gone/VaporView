@@ -1156,6 +1156,7 @@ void MainWindow::applyStyleConfiguration()
     updateAppSidebarButtonTexts();
     updateThemedIcons();
     updateCustomTitleBarStyle();
+    updateWindowBorderFrames();
     updateResponsiveHomeLayout();
     QTimer::singleShot(0, this, [this]() {
         if (!state_->log_side_panel_width_initialized_)

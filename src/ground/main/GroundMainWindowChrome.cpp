@@ -2110,13 +2110,11 @@ void MainWindow::setupWindowBorderFrames()
     state_->window_border_bottom_ = createBorder();
     state_->window_border_left_ = createBorder();
 
+    state_->window_border_top_->setObjectName(QStringLiteral("windowBorderTop"));
+    state_->window_border_right_->setObjectName(QStringLiteral("windowBorderRight"));
+    state_->window_border_bottom_->setObjectName(QStringLiteral("windowBorderBottom"));
+    state_->window_border_left_->setObjectName(QStringLiteral("windowBorderLeft"));
     state_->window_border_top_->hide();
-    state_->window_border_bottom_->setStyleSheet(QStringLiteral("background-color: %1; border: none;")
-        .arg(appThemeColorName(AppThemeColor::SurfaceSunken, state_->dark_theme_enabled_)));
-    const QString verticalBorderStyle = QStringLiteral("background-color: %1; border: none;")
-        .arg(appThemeColorName(AppThemeColor::SurfaceSunken, state_->dark_theme_enabled_));
-    state_->window_border_left_->setStyleSheet(verticalBorderStyle);
-    state_->window_border_right_->setStyleSheet(verticalBorderStyle);
 
     updateWindowBorderFrames();
 }
@@ -2125,6 +2123,20 @@ void MainWindow::updateWindowBorderFrames()
 {
     const bool visible = !isFullScreen() && !isWindowMaximizedForUi();
     const int borderThickness = 1;
+    const AppThemeColor borderColor = state_->dark_theme_enabled_
+        ? AppThemeColor::White
+        : AppThemeColor::Black;
+    const QString borderStyle = QStringLiteral("background-color: %1; border: none;")
+        .arg(appThemeColorName(borderColor, state_->dark_theme_enabled_));
+    auto updateBorderStyle = [&borderStyle](QFrame *border) {
+        if (border && border->styleSheet() != borderStyle)
+        {
+            border->setStyleSheet(borderStyle);
+        }
+    };
+    updateBorderStyle(state_->window_border_left_);
+    updateBorderStyle(state_->window_border_right_);
+    updateBorderStyle(state_->window_border_bottom_);
     if (state_->window_border_top_)
     {
         state_->window_border_top_->setVisible(false);
