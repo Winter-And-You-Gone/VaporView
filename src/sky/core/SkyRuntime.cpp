@@ -14,6 +14,7 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QStorageInfo>
+#include <QtGlobal>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -244,6 +245,9 @@ void SkyRuntime::publishRuntimeLog(LogLevel level,
         !fields.contains(QStringLiteral("error_code")) &&
         !fields.contains(QStringLiteral("reason_code")))
     {
+        Q_ASSERT_X(false,
+                   "SkyRuntime::publishRuntimeLog",
+                   "Error/Critical runtime logs must provide error_code or reason_code.");
         fields.insert(QStringLiteral("error_code"), QStringLiteral("SKY_RUNTIME_ERROR"));
     }
 
@@ -465,7 +469,7 @@ bool SkyRuntime::startRecording(QString *error)
 {
     if (session_recorder_.isRecording())
     {
-        if (error) *error = QStringLiteral("recording already started");
+        if (error) *error = QStringLiteral("会话记录已经开始。");
         return false;
     }
     const QString transport = telemetryTransportName(options_.telemetry_transport);
@@ -494,7 +498,7 @@ bool SkyRuntime::pauseRecording(QString *error)
 {
     if (!session_recorder_.isRecording() && !session_recorder_.isPaused())
     {
-        if (error) *error = QStringLiteral("recording not started");
+        if (error) *error = QStringLiteral("会话记录尚未开始。");
         return false;
     }
     session_recorder_.pause();
@@ -510,7 +514,7 @@ bool SkyRuntime::stopRecording(QString *error)
 {
     if (!session_recorder_.isRecording() && !session_recorder_.isPaused())
     {
-        if (error) *error = QStringLiteral("recording not started");
+        if (error) *error = QStringLiteral("会话记录尚未开始。");
         return false;
     }
     publishRuntimeLog(LogLevel::Info,
