@@ -253,9 +253,9 @@ void requireAboutDialogLayout(MainWindow *window,
                                                   : QStringLiteral("关于 VaporView")),
                 "about dialog title follows the interface language");
         require(dialog->isModal(), "about dialog is modal");
-        require(dialog->size() == QSize(336, 300) &&
-                    dialog->minimumSize() == QSize(312, 276),
-                "about dialog keeps the reduced default and minimum size");
+        require(dialog->size() == QSize(500, 365) &&
+                    dialog->minimumSize() == QSize(480, 280),
+                "about dialog matches the update dialog reference size");
 
         auto *body = dialog->findChild<QWidget *>(QStringLiteral("aboutDialogBody"));
         auto *footer = dialog->findChild<QWidget *>(QStringLiteral("aboutDialogFooter"));
@@ -269,7 +269,7 @@ void requireAboutDialogLayout(MainWindow *window,
         require(body != nullptr && footer != nullptr && logo != nullptr && productName != nullptr &&
                     description != nullptr && framework != nullptr && version != nullptr &&
                     copyright != nullptr && okButton != nullptr,
-                "about dialog exposes the reduced reference layout");
+                "about dialog exposes the update-sized reference layout");
         const QList<QLabel *> aboutLabels = dialog->findChildren<QLabel *>();
         require(dialog->findChild<QLabel *>(QStringLiteral("aboutDialogSupportedDevicesLabel")) == nullptr &&
                     aboutLabels.cend() ==
@@ -304,7 +304,7 @@ void requireAboutDialogLayout(MainWindow *window,
         require(okButton->isDefault(),
                 "about dialog confirmation button remains the default action");
         require(okButton->size() == QSize(74, 30),
-                "about dialog confirmation button uses the reduced fixed size");
+                "about dialog confirmation button keeps the compact fixed size");
         require(okButton->mapTo(footer, QPoint(0, 0)).x() > footer->width() / 2,
                 "about dialog confirmation button stays on the right side of the footer");
         require(footer->styleSheet().isEmpty() &&
@@ -332,20 +332,20 @@ void requireAboutDialogLayout(MainWindow *window,
                     !languageButton->isVisible() && !themeButton->isVisible() &&
                     separator != nullptr && !separator->isVisible(),
                 "about title bar hides unrelated language and theme controls");
-        require(titleLogo != nullptr && titleLogo->size() == QSize(24, 24) &&
-                    titleLogo->property("customTitleLogoSize").toInt() == 24 &&
-                    titleLogo->property("customTitleLogoRenderSize").toInt() == 20 &&
+        require(titleLogo != nullptr && titleLogo->size() == QSize(34, 34) &&
+                    titleLogo->property("customTitleLogoSize").toInt() == 34 &&
+                    titleLogo->property("customTitleLogoRenderSize").toInt() == 28 &&
                     !titleLogo->pixmap().isNull() &&
-                    titleLogo->pixmap().deviceIndependentSize().toSize() == QSize(20, 20),
-                "about title bar keeps a safe logo frame without clipping");
+                    titleLogo->pixmap().deviceIndependentSize().toSize() == QSize(28, 28),
+                "about title bar matches the update dialog logo size");
         QEvent styleChange(QEvent::StyleChange);
         QCoreApplication::sendEvent(dialog, &styleChange);
-        require(titleLogo->size() == QSize(24, 24) &&
-                    titleLogo->property("customTitleLogoSize").toInt() == 24 &&
-                    titleLogo->property("customTitleLogoRenderSize").toInt() == 20 &&
+        require(titleLogo->size() == QSize(34, 34) &&
+                    titleLogo->property("customTitleLogoSize").toInt() == 34 &&
+                    titleLogo->property("customTitleLogoRenderSize").toInt() == 28 &&
                     !titleLogo->pixmap().isNull() &&
-                    titleLogo->pixmap().deviceIndependentSize().toSize() == QSize(20, 20),
-                "about title bar keeps the safe logo frame after a title bar refresh");
+                    titleLogo->pixmap().deviceIndependentSize().toSize() == QSize(28, 28),
+                "about title bar keeps the update dialog logo size after a title bar refresh");
         require(closeButton != nullptr && closeButton->isVisible() &&
                     closeButton->focusPolicy() == Qt::TabFocus,
                 "about title bar retains an accessible close control");

@@ -1500,7 +1500,7 @@ void MainWindow::showAboutDialog()
     dialog.setObjectName(QStringLiteral("aboutDialog"));
     dialog.setWindowTitle(title);
     dialog.setWindowModality(Qt::WindowModal);
-    dialog.setMinimumSize(312, 276);
+    dialog.setMinimumSize(480, 280);
 
     auto *rootLayout = new QVBoxLayout(&dialog);
     rootLayout->setContentsMargins(0, 0, 0, 0);
@@ -1590,10 +1590,10 @@ void MainWindow::showAboutDialog()
     VaporView::installCustomTitleBar(&dialog, false);
     if (QLabel *titleLogo = dialog.findChild<QLabel *>(QStringLiteral("customTitleLogo")))
     {
-        titleLogo->setProperty("customTitleLogoSize", 24);
-        titleLogo->setProperty("customTitleLogoRenderSize", 20);
-        titleLogo->setFixedSize(24, 24);
-        titleLogo->setPixmap(renderVaporViewLogo(dark, 20, titleLogo->devicePixelRatioF()));
+        titleLogo->setProperty("customTitleLogoSize", 34);
+        titleLogo->setProperty("customTitleLogoRenderSize", 28);
+        titleLogo->setFixedSize(34, 34);
+        titleLogo->setPixmap(renderVaporViewLogo(dark, 28, titleLogo->devicePixelRatioF()));
     }
     for (QToolButton *button : dialog.findChildren<QToolButton *>())
     {
@@ -1658,7 +1658,7 @@ QPushButton#aboutDialogOkButton:focus {
 }
 )"), dark));
 
-    dialog.resize(QSize(336, 300));
+    dialog.resize(QSize(500, 365));
     dialog.exec();
 }
 
