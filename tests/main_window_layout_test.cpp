@@ -327,10 +327,14 @@ void requireAboutDialogLayout(MainWindow *window,
         }
         auto *separator = dialog->findChild<QFrame *>(QStringLiteral("titleBarSeparator"));
         auto *closeButton = dialog->findChild<QToolButton *>(QStringLiteral("windowCloseButton"));
+        auto *titleLogo = dialog->findChild<QLabel *>(QStringLiteral("customTitleLogo"));
         require(languageButton != nullptr && themeButton != nullptr &&
                     !languageButton->isVisible() && !themeButton->isVisible() &&
                     separator != nullptr && !separator->isVisible(),
                 "about title bar hides unrelated language and theme controls");
+        require(titleLogo != nullptr && titleLogo->size() == QSize(24, 24) &&
+                    !titleLogo->pixmap().isNull(),
+                "about title bar keeps a safe logo frame without clipping");
         require(closeButton != nullptr && closeButton->isVisible() &&
                     closeButton->focusPolicy() == Qt::TabFocus,
                 "about title bar retains an accessible close control");
