@@ -115,6 +115,8 @@ struct DeviceConfigPageWidgets
     QWidget *lidar_remote_buttons_widget = nullptr;
     QToolButton *temperature_remote_action_btn = nullptr;
     QWidget *temperature_remote_buttons_widget = nullptr;
+    QToolButton *ai8_temperature_remote_action_btn = nullptr;
+    QWidget *ai8_temperature_remote_buttons_widget = nullptr;
 };
 
 struct MainWindowState
@@ -288,12 +290,14 @@ struct MainWindowState
     QLabel *home_lidar_status_lbl_;
     QLabel *home_temperature_status_lbl_;
     QLabel *home_wave_status_lbl_;
+    QLabel *home_ai8_temperature_status_lbl_;
     QToolButton *home_epsilon_action_btn_;
     QToolButton *home_ptb_action_btn_;
     QToolButton *home_hmp_action_btn_;
     QToolButton *home_lidar_action_btn_;
     QToolButton *home_temperature_action_btn_;
     QToolButton *home_wave_action_btn_;
+    QToolButton *home_ai8_temperature_action_btn_;
     QWidget *data_telemetry_summary_card_;
     QVBoxLayout *data_telemetry_summary_layout_;
     QVBoxLayout *data_telemetry_link_summary_layout_;

@@ -2039,6 +2039,9 @@ void MainWindow::setupDeviceConfigPage()
     addDeviceRemoteButton(4, state_->device_config_.temperature_remote_buttons_widget,
                            state_->device_config_.temperature_remote_action_btn,
                            VaporView::SkyDeviceId::TemperatureController);
+    addDeviceRemoteButton(5, state_->device_config_.ai8_temperature_remote_buttons_widget,
+                           state_->device_config_.ai8_temperature_remote_action_btn,
+                           VaporView::SkyDeviceId::Ai8TemperatureController);
 
     state_->device_config_.epsilon_config_card = new QFrame(content);
     state_->device_config_.epsilon_config_card->setObjectName(QStringLiteral("epsilonSectionCard"));
@@ -2672,7 +2675,8 @@ void MainWindow::updateDeviceConfigTexts()
                                           VaporView::SkyDeviceId::Ptb,
                                           VaporView::SkyDeviceId::Hmp,
                                           VaporView::SkyDeviceId::Lidar,
-                                          VaporView::SkyDeviceId::TemperatureController})
+                                          VaporView::SkyDeviceId::TemperatureController,
+                                          VaporView::SkyDeviceId::Ai8TemperatureController})
     {
         updateDeviceConfigRemoteActionButton(device);
     }
@@ -2767,7 +2771,8 @@ void MainWindow::updateDeviceConfigState()
                             state_->device_config_.ptb_remote_buttons_widget,
                             state_->device_config_.hmp_remote_buttons_widget,
                             state_->device_config_.lidar_remote_buttons_widget,
-                            state_->device_config_.temperature_remote_buttons_widget})
+                            state_->device_config_.temperature_remote_buttons_widget,
+                            state_->device_config_.ai8_temperature_remote_buttons_widget})
     {
         if (widget)
         {
@@ -2778,7 +2783,8 @@ void MainWindow::updateDeviceConfigState()
                                           VaporView::SkyDeviceId::Ptb,
                                           VaporView::SkyDeviceId::Hmp,
                                           VaporView::SkyDeviceId::Lidar,
-                                          VaporView::SkyDeviceId::TemperatureController})
+                                          VaporView::SkyDeviceId::TemperatureController,
+                                          VaporView::SkyDeviceId::Ai8TemperatureController})
     {
         updateDeviceConfigRemoteActionButton(device);
     }
@@ -3650,6 +3656,7 @@ void MainWindow::setupConfigPanel()
     addHomeDevice(state_->home_lidar_status_lbl_, state_->home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
     addHomeDevice(state_->home_temperature_status_lbl_, state_->home_temperature_action_btn_, VaporView::SkyDeviceId::TemperatureController);
     addHomeDevice(state_->home_wave_status_lbl_, state_->home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
+    addHomeDevice(state_->home_ai8_temperature_status_lbl_, state_->home_ai8_temperature_action_btn_, VaporView::SkyDeviceId::Ai8TemperatureController);
     state_->home_device_action_spinner_timer_ = new QTimer(this);
     state_->home_device_action_spinner_timer_->setTimerType(Qt::PreciseTimer);
     state_->home_device_action_spinner_timer_->setInterval(kHomeDeviceActionSpinnerIntervalMs);

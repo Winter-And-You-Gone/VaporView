@@ -340,6 +340,7 @@ QString skyDeviceDisplayName(VaporView::SkyDeviceId device)
     case VaporView::SkyDeviceId::Hmp: return QStringLiteral("HMP3");
     case VaporView::SkyDeviceId::Lidar: return QStringLiteral("TFA1500-L");
     case VaporView::SkyDeviceId::TemperatureController: return QStringLiteral("RD105");
+    case VaporView::SkyDeviceId::Ai8TemperatureController: return QStringLiteral("AI-8288");
     case VaporView::SkyDeviceId::WaveTcp: return QStringLiteral("Wave TCP");
     case VaporView::SkyDeviceId::All: return QStringLiteral("全部设备");
     }
@@ -360,6 +361,8 @@ QString homeDeviceDisplayName(VaporView::SkyDeviceId device, bool english)
         return english ? QStringLiteral("TFA1500-L LiDAR") : QStringLiteral("TFA1500-L 激光测距");
     case VaporView::SkyDeviceId::TemperatureController:
         return english ? QStringLiteral("RD105 Thermal") : QStringLiteral("RD105 激光温控");
+    case VaporView::SkyDeviceId::Ai8TemperatureController:
+        return english ? QStringLiteral("AI-8288 8-Channel Thermal") : QStringLiteral("AI-8288八路温控");
     case VaporView::SkyDeviceId::WaveTcp:
         return english ? QStringLiteral("Wave Source") : QStringLiteral("波形源");
     case VaporView::SkyDeviceId::All:

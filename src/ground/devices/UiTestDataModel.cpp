@@ -342,6 +342,7 @@ int UiTestDataModel::deviceIndex(SkyDeviceId device)
     case SkyDeviceId::Lidar: return 3;
     case SkyDeviceId::WaveTcp: return 4;
     case SkyDeviceId::TemperatureController: return 5;
+    case SkyDeviceId::Ai8TemperatureController: return 6;
     case SkyDeviceId::All: return -1;
     }
     return -1;

@@ -286,6 +286,49 @@ int main(int argc, char **argv)
                     epsilonAction->property("state").toString() == QStringLiteral("connected");
             }),
             "UI-test reconnect finishes and restores the connected action style");
+    QLabel *ai8HomeCapsule = nullptr;
+    for (QLabel *capsule : window->findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule")))
+    {
+        if (capsule->text().contains(QStringLiteral("AI-8288八路温控")))
+        {
+            ai8HomeCapsule = capsule;
+            break;
+        }
+    }
+    QToolButton *ai8HomeAction = nullptr;
+    QToolButton *ai8DeviceAction = nullptr;
+    for (QToolButton *button : window->findChildren<QToolButton *>())
+    {
+        if (button->property("deviceConfigAction").toBool() &&
+            button->toolTip().contains(QStringLiteral("AI-8288")))
+        {
+            ai8DeviceAction = button;
+        }
+        if (!button->property("deviceConfigAction").toBool() &&
+            button->objectName() == QStringLiteral("homeDeviceActionButton") &&
+            button->toolTip().contains(QStringLiteral("AI-8288")))
+        {
+            ai8HomeAction = button;
+        }
+    }
+    require(ai8HomeCapsule != nullptr,
+            "AI-8288 home status capsule exists in UI test mode");
+    require(ai8HomeAction != nullptr && ai8HomeAction->isEnabled() &&
+                ai8HomeAction->property("state").toString() == QStringLiteral("connected"),
+            "AI-8288 home connection action starts connected in UI test mode");
+    require(ai8DeviceAction != nullptr && ai8DeviceAction->isEnabled(),
+            "AI-8288 device configuration connection action exists and is enabled");
+    ai8HomeAction->click();
+    processEvents();
+    require(ai8HomeAction->isEnabled() &&
+                ai8HomeAction->property("state").toString() == QStringLiteral("disconnected"),
+            "AI-8288 home action supports simulated disconnect");
+    ai8HomeAction->click();
+    require(VaporViewTest::processEventsUntil(2000, [ai8HomeAction]() {
+                return ai8HomeAction->isEnabled() &&
+                    ai8HomeAction->property("state").toString() == QStringLiteral("connected");
+            }),
+            "AI-8288 home action supports simulated reconnect");
     QDialog testCreatedAuxiliary;
     testCreatedAuxiliary.show();
     processEvents();

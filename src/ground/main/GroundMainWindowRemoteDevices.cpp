@@ -1816,6 +1816,8 @@ void MainWindow::updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, Vap
     case VaporView::SkyDeviceId::TemperatureController:
         connectButton = state_->temperature_remote_connect_btn_; disconnectButton = state_->temperature_remote_disconnect_btn_; reconnectButton = state_->temperature_remote_reconnect_btn_;
         break;
+    case VaporView::SkyDeviceId::Ai8TemperatureController:
+        return;
     case VaporView::SkyDeviceId::WaveTcp:
         if (state_->tcp_wave_panel_)
         {
@@ -1855,6 +1857,9 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
         break;
     case VaporView::SkyDeviceId::TemperatureController:
         button = state_->device_config_.temperature_remote_action_btn;
+        break;
+    case VaporView::SkyDeviceId::Ai8TemperatureController:
+        button = state_->device_config_.ai8_temperature_remote_action_btn;
         break;
     case VaporView::SkyDeviceId::WaveTcp:
     case VaporView::SkyDeviceId::All:

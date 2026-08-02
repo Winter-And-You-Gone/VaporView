@@ -969,12 +969,18 @@ void requireHomeDeviceColumnsAligned(QWidget *scope)
         const QList<QToolButton *> actionButtons =
             column->findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton"),
                                                 Qt::FindDirectChildrenOnly);
-        require(capsules.size() == 2 && actionButtons.size() == 2,
-                "each home device column contains two capsules and two actions");
-        require(capsules.at(0)->width() == capsules.at(1)->width(),
-                "home device capsules use the widest capsule width within their column");
-        require(actionButtons.at(0)->geometry().x() == actionButtons.at(1)->geometry().x(),
-                "home device connection actions align vertically within their column");
+        require(capsules.size() >= 2 && actionButtons.size() == capsules.size(),
+                "each home device column contains aligned capsules and actions");
+        for (int i = 1; i < capsules.size(); ++i)
+        {
+            require(capsules.at(0)->width() == capsules.at(i)->width(),
+                    "home device capsules use the widest capsule width within their column");
+        }
+        for (int i = 1; i < actionButtons.size(); ++i)
+        {
+            require(actionButtons.at(0)->geometry().x() == actionButtons.at(i)->geometry().x(),
+                    "home device connection actions align vertically within their column");
+        }
         for (QLabel *capsule : capsules)
         {
             require(capsule->alignment().testFlag(Qt::AlignHCenter),
@@ -1013,7 +1019,7 @@ void requireHomeDeviceMinimumWidthMatchesControls(QWidget *scope)
                                      bodyMargins.left() +
                                      bodyMargins.right();
     require(deviceCard->minimumWidth() == expectedMinimumWidth,
-            "home device card minimum width follows only its six capsules and action icons");
+            "home device card minimum width follows only its seven capsules and action icons");
 }
 
 void requireHomeDeviceGeometryStableAcrossCardResize(QWidget *scope,
@@ -1036,8 +1042,8 @@ void requireHomeDeviceGeometryStableAcrossCardResize(QWidget *scope,
     {
         controls.append(button);
     }
-    require(controls.size() == 12,
-            "home device resize check covers six capsules and six action icons");
+    require(controls.size() == 14,
+            "home device resize check covers seven capsules and seven action icons");
 
     std::vector<std::pair<QWidget *, QRect>> originalGeometries;
     originalGeometries.reserve(static_cast<std::size_t>(controls.size()));
@@ -3880,12 +3886,12 @@ int main(int argc, char **argv)
 
     const QList<QLabel*> homeDeviceCapsules =
         window.findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule"));
-    require(homeDeviceCapsules.size() == 6,
-            "home device overview includes six status capsules");
+    require(homeDeviceCapsules.size() == 7,
+            "home device overview includes seven status capsules");
     const QList<QToolButton*> homeDeviceActionButtons =
         window.findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton"));
-    require(homeDeviceActionButtons.size() >= 6,
-            "home device overview includes six connection action buttons");
+    require(homeDeviceActionButtons.size() >= 7,
+            "home device overview includes seven connection action buttons");
     requireHomeDeviceColumnsAligned(&window);
     requireHomeDeviceMinimumWidthMatchesControls(&window);
     for (QToolButton *button : homeDeviceActionButtons)
@@ -3907,6 +3913,17 @@ int main(int argc, char **argv)
     }
     require(hasTemperatureHomeCapsule,
             "home device overview includes the RD105 laser temperature controller");
+    bool hasAi8HomeCapsule = false;
+    for (QLabel *capsule : homeDeviceCapsules)
+    {
+        if (capsule->text().contains(QStringLiteral("AI-8288八路温控")))
+        {
+            hasAi8HomeCapsule = true;
+            break;
+        }
+    }
+    require(hasAi8HomeCapsule,
+            "home device overview includes the AI-8288 eight-channel temperature controller");
 
     auto *ai8TemperaturePage = window.findChild<QWidget *>(QStringLiteral("temperaturePage"));
     require(ai8TemperaturePage != nullptr, "temperature page exists");
@@ -6555,6 +6572,7 @@ int main(int argc, char **argv)
     int connectRemoteActionCount = 0;
     int disconnectRemoteActionCount = 0;
     QToolButton *temperatureDeviceActionButton = nullptr;
+    QToolButton *ai8TemperatureDeviceActionButton = nullptr;
     QPushButton *deviceAutoDetectButton = nullptr;
     QPushButton *deviceSkyConfigButton = nullptr;
     for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
@@ -6621,15 +6639,22 @@ int main(int argc, char **argv)
             {
                 temperatureDeviceActionButton = button;
             }
+            if (button->property("deviceConfigRemoteDevice").toInt() ==
+                static_cast<int>(VaporView::SkyDeviceId::Ai8TemperatureController))
+            {
+                ai8TemperatureDeviceActionButton = button;
+            }
             ++localDeviceActionCount;
         }
     }
-    require(localDeviceActionCount == 5,
+    require(localDeviceActionCount == 6,
             "device configuration keeps one local action per serial device");
-    require(connectRemoteActionCount == 5 && disconnectRemoteActionCount == 0,
+    require(connectRemoteActionCount == 6 && disconnectRemoteActionCount == 0,
             "device configuration shows one connect action for every disconnected device");
     require(temperatureDeviceActionButton != nullptr,
             "device configuration exposes the RD105 connection action button");
+    require(ai8TemperatureDeviceActionButton != nullptr,
+            "device configuration exposes the AI-8288 connection action button");
     require(deviceAutoDetectButton != nullptr && deviceAutoDetectButton->width() <= 145,
             "device configuration auto-detect button uses compact title-bar width");
     require(deviceSkyConfigButton != nullptr && deviceSkyConfigButton->width() <= 145,

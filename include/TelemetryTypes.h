@@ -93,6 +93,7 @@ enum class SkyDeviceId : quint8
     Lidar = 4,
     WaveTcp = 5,
     TemperatureController = 6,
+    Ai8TemperatureController = 7,
     All = 255,
 };
 

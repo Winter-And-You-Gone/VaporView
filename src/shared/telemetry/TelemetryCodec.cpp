@@ -121,6 +121,8 @@ QString skyDeviceIdName(SkyDeviceId id)
         return QStringLiteral("wave_tcp");
     case SkyDeviceId::TemperatureController:
         return QStringLiteral("temperature_controller");
+    case SkyDeviceId::Ai8TemperatureController:
+        return QStringLiteral("ai8_temperature_controller");
     case SkyDeviceId::All:
         return QStringLiteral("all");
     }

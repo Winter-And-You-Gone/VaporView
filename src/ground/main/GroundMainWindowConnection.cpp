@@ -9,7 +9,9 @@ void MainWindow::updateConnectionStatus(bool connected)
         Q_UNUSED(connected);
         const std::array devices{VaporView::SkyDeviceId::Epsilon, VaporView::SkyDeviceId::Ptb,
                                  VaporView::SkyDeviceId::Hmp, VaporView::SkyDeviceId::Lidar,
-                                 VaporView::SkyDeviceId::TemperatureController, VaporView::SkyDeviceId::WaveTcp};
+                                 VaporView::SkyDeviceId::TemperatureController,
+                                 VaporView::SkyDeviceId::Ai8TemperatureController,
+                                 VaporView::SkyDeviceId::WaveTcp};
         const bool anyConnected = std::any_of(devices.cbegin(), devices.cend(),
             [this](VaporView::SkyDeviceId device) {
                 return state_->ui_test_model_->deviceState(device) == VaporView::DeviceState::Connected;
@@ -116,6 +118,8 @@ bool MainWindow::homeDeviceConnected(VaporView::SkyDeviceId device) const
         return collectors.lidar && collectors.lidar->isRunning();
     case VaporView::SkyDeviceId::TemperatureController:
         return collectors.temperature_controller && collectors.temperature_controller->isRunning();
+    case VaporView::SkyDeviceId::Ai8TemperatureController:
+        return collectors.ai8_temperature_controller && collectors.ai8_temperature_controller->isRunning();
     case VaporView::SkyDeviceId::WaveTcp:
         return state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnected();
     case VaporView::SkyDeviceId::All:
@@ -154,6 +158,8 @@ bool MainWindow::homeDevicePortSelected(VaporView::SkyDeviceId device) const
         return portSelected(state_->lidar_port_combo_);
     case VaporView::SkyDeviceId::TemperatureController:
         return portSelected(state_->temperature_port_combo_);
+    case VaporView::SkyDeviceId::Ai8TemperatureController:
+        return portSelected(state_->device_config_.ai8_temperature_port_combo);
     case VaporView::SkyDeviceId::All:
     case VaporView::SkyDeviceId::WaveTcp:
         return false;
@@ -169,6 +175,10 @@ VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId 
     }
     if (isRemoteSkyMode())
     {
+        if (device == VaporView::SkyDeviceId::Ai8TemperatureController)
+        {
+            return VaporView::DeviceState::Disabled;
+        }
         if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
         {
             return VaporView::DeviceState::Disabled;
@@ -255,6 +265,10 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
     }
     if (isRemoteSkyMode())
     {
+        if (device == VaporView::SkyDeviceId::Ai8TemperatureController)
+        {
+            return;
+        }
         if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
         {
             return;
@@ -301,7 +315,8 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
                                                      VaporView::SkyDeviceId::Ptb,
                                                      VaporView::SkyDeviceId::Hmp,
                                                      VaporView::SkyDeviceId::Lidar,
-                                                     VaporView::SkyDeviceId::TemperatureController})
+                                                     VaporView::SkyDeviceId::TemperatureController,
+                                                     VaporView::SkyDeviceId::Ai8TemperatureController})
             {
                 if (homeDevicePortSelected(candidate) && !homeDeviceConnected(candidate))
                 {
@@ -460,6 +475,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
     updateCapsule(state_->home_lidar_status_lbl_, state_->home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
     updateCapsule(state_->home_temperature_status_lbl_, state_->home_temperature_action_btn_, VaporView::SkyDeviceId::TemperatureController);
     updateCapsule(state_->home_wave_status_lbl_, state_->home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
+    updateCapsule(state_->home_ai8_temperature_status_lbl_, state_->home_ai8_temperature_action_btn_, VaporView::SkyDeviceId::Ai8TemperatureController);
     if (state_->home_device_action_spinner_timer_)
     {
         if (anySpinnerActive)
@@ -517,12 +533,15 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
     updateButton(state_->home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
     updateButton(state_->home_temperature_action_btn_, VaporView::SkyDeviceId::TemperatureController);
     updateButton(state_->home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
+    updateButton(state_->home_ai8_temperature_action_btn_, VaporView::SkyDeviceId::Ai8TemperatureController);
     updateButton(state_->device_config_.epsilon_remote_action_btn, VaporView::SkyDeviceId::Epsilon);
     updateButton(state_->device_config_.ptb_remote_action_btn, VaporView::SkyDeviceId::Ptb);
     updateButton(state_->device_config_.hmp_remote_action_btn, VaporView::SkyDeviceId::Hmp);
     updateButton(state_->device_config_.lidar_remote_action_btn, VaporView::SkyDeviceId::Lidar);
     updateButton(state_->device_config_.temperature_remote_action_btn,
                  VaporView::SkyDeviceId::TemperatureController);
+    updateButton(state_->device_config_.ai8_temperature_remote_action_btn,
+                 VaporView::SkyDeviceId::Ai8TemperatureController);
     if (needsFullRefresh)
     {
         updateHomeDeviceStatusCapsules();

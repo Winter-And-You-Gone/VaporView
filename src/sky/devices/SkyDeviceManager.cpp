@@ -221,6 +221,7 @@ void SkyDeviceManager::drainRawEvents()
             }
             break;
         case SkyDeviceId::TemperatureController:
+        case SkyDeviceId::Ai8TemperatureController:
         case SkyDeviceId::WaveTcp:
         case SkyDeviceId::All:
             break;
@@ -279,6 +280,11 @@ bool SkyDeviceManager::connectDevice(SkyDeviceId id, CommandErrorCode *errorCode
         if (errorCode) *errorCode = CommandErrorCode::Ok;
         return true;
     }
+    if (id == SkyDeviceId::Ai8TemperatureController)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::InvalidDeviceId;
+        return false;
+    }
     DeviceStatusItem& statusItem = mutableStatus(id);
     if (statusItem.state == DeviceState::Connected)
     {
@@ -319,6 +325,11 @@ bool SkyDeviceManager::disconnectDevice(SkyDeviceId id, CommandErrorCode *errorC
         if (errorCode) *errorCode = CommandErrorCode::Ok;
         return true;
     }
+    if (id == SkyDeviceId::Ai8TemperatureController)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::InvalidDeviceId;
+        return false;
+    }
     switch (id)
     {
     case SkyDeviceId::Epsilon:
@@ -335,6 +346,8 @@ bool SkyDeviceManager::disconnectDevice(SkyDeviceId id, CommandErrorCode *errorC
         break;
     case SkyDeviceId::TemperatureController:
         stopCollector(temperature_controller_);
+        break;
+    case SkyDeviceId::Ai8TemperatureController:
         break;
     case SkyDeviceId::WaveTcp:
         disconnectWaveTcp();
@@ -360,6 +373,11 @@ bool SkyDeviceManager::reconnectDevice(SkyDeviceId id, CommandErrorCode *errorCo
         reconnectAll();
         if (errorCode) *errorCode = CommandErrorCode::Ok;
         return true;
+    }
+    if (id == SkyDeviceId::Ai8TemperatureController)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::InvalidDeviceId;
+        return false;
     }
     setState(id, DeviceState::Reconnecting);
     disconnectDevice(id);
@@ -417,6 +435,8 @@ DeviceStatusItem SkyDeviceManager::status(SkyDeviceId id) const
         return lidar_status_;
     case SkyDeviceId::TemperatureController:
         return temperature_controller_status_;
+    case SkyDeviceId::Ai8TemperatureController:
+        break;
     case SkyDeviceId::WaveTcp:
         return wave_tcp_status_;
     case SkyDeviceId::All:
@@ -999,6 +1019,8 @@ DeviceStatusItem& SkyDeviceManager::mutableStatus(SkyDeviceId id)
         return lidar_status_;
     case SkyDeviceId::TemperatureController:
         return temperature_controller_status_;
+    case SkyDeviceId::Ai8TemperatureController:
+        break;
     case SkyDeviceId::WaveTcp:
         return wave_tcp_status_;
     case SkyDeviceId::All:
@@ -1020,6 +1042,7 @@ const SerialDeviceConfig& SkyDeviceManager::serialConfigFor(SkyDeviceId id) cons
     case SkyDeviceId::Lidar:
         return config_.lidar;
     case SkyDeviceId::TemperatureController:
+    case SkyDeviceId::Ai8TemperatureController:
     case SkyDeviceId::WaveTcp:
     case SkyDeviceId::All:
         break;
@@ -1054,6 +1077,8 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
             break;
         case SkyDeviceId::TemperatureController:
             stopCollector(temperature_controller_);
+            break;
+        case SkyDeviceId::Ai8TemperatureController:
             break;
         case SkyDeviceId::WaveTcp:
         case SkyDeviceId::All:
@@ -1302,6 +1327,8 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
         if (!temperature_controller_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!temperature_controller_->startStreaming()) return fail(CommandErrorCode::DeviceConnectFailed);
         break;
+    case SkyDeviceId::Ai8TemperatureController:
+        return fail(CommandErrorCode::InvalidDeviceId);
     case SkyDeviceId::WaveTcp:
     case SkyDeviceId::All:
         return fail(CommandErrorCode::InvalidDeviceId);
@@ -1654,6 +1681,8 @@ void SkyDeviceManager::invalidateDeviceData(SkyDeviceId id)
     case SkyDeviceId::TemperatureController:
         latest_temperature_controller_ = TemperatureControllerData();
         temperature_controller_status_.last_data_time_us = 0;
+        break;
+    case SkyDeviceId::Ai8TemperatureController:
         break;
     case SkyDeviceId::WaveTcp:
         latest_raw_waveform_.clear();

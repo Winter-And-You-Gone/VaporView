@@ -62,7 +62,7 @@ private:
 
     UiTestScenario scenario_ = UiTestScenario::Normal;
     qint64 scenario_started_ms_ = 0;
-    std::array<DeviceState, 6> device_states_{};
+    std::array<DeviceState, 7> device_states_{};
     TemperatureControllerData temperature_state_;
 };
 
