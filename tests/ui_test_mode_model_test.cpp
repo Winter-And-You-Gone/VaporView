@@ -36,10 +36,13 @@ int main(int argc, char **argv)
     require(firstSnapshot.epsilon.valid, "normal scenario supplies EPSILON data");
     require(firstSnapshot.rawWaveform.size() == 512, "normal scenario supplies raw waveform");
     require(firstSnapshot.harmonicWaveform.size() == 512, "normal scenario supplies harmonic waveform");
+    require(firstSnapshot.ai8Temperature.valid, "normal scenario supplies AI-8 temperature data");
     require(firstSnapshot.epsilon.latitude_deg == secondSnapshot.epsilon.latitude_deg,
             "same elapsed time produces deterministic navigation data");
     require(firstSnapshot.rawWaveform == secondSnapshot.rawWaveform,
             "same elapsed time produces deterministic waveform data");
+    require(firstSnapshot.ai8Temperature.measuredC == secondSnapshot.ai8Temperature.measuredC,
+            "same elapsed time produces deterministic AI-8 temperature data");
 
     first.setScenario(UiTestScenario::PartialFailure, 2500);
     const UiTestSnapshot partial = first.snapshot(2600);
@@ -47,11 +50,13 @@ int main(int argc, char **argv)
     require(!partial.hmp.valid, "partial-failure scenario disconnects HMP");
     require(partial.temperature.error_code != 0, "partial-failure scenario reports RD105 alarm");
     require(partial.waveformFeature.quality_flags != 0, "partial-failure scenario marks waveform anomaly");
+    require(partial.ai8Temperature.valid, "partial-failure scenario keeps AI-8 data available");
 
     first.setScenario(UiTestScenario::DataStalled, 3000);
     require(first.snapshot(5900).epsilon.valid, "data remains fresh before stall timeout");
     require(first.snapshot(6100).dataStalled, "data-stalled scenario becomes stale after timeout");
     require(!first.snapshot(6100).epsilon.valid, "stalled navigation data becomes invalid");
+    require(!first.snapshot(6100).ai8Temperature.valid, "stalled AI-8 data becomes invalid");
     require(first.snapshot(6100).epsilon.timestamp == first.snapshot(9000).epsilon.timestamp,
             "stalled scenario freezes its sample timestamp");
     first.setScenario(UiTestScenario::Normal, 6200);

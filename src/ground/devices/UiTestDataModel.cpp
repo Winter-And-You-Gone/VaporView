@@ -291,6 +291,21 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
         result.temperature.error_message = "UI test temperature data stalled";
     }
 
+    result.ai8Temperature.valid =
+        connected(deviceState(SkyDeviceId::Ai8TemperatureController)) && !stalled;
+    for (int index = 0; index < Ai8TemperatureControllerProtocol::kChannelCount; ++index)
+    {
+        const double channelOffset = static_cast<double>(index) * 0.65;
+        result.ai8Temperature.measuredC[static_cast<std::size_t>(index)] =
+            23.5 + channelOffset + std::sin(seconds * 0.7 + index * 0.33) * 0.4;
+    }
+    if (!result.ai8Temperature.valid)
+    {
+        result.ai8Temperature.errorMessage = stalled
+            ? QStringLiteral("UI test AI-8 data stalled")
+            : QStringLiteral("UI test AI-8 device disconnected");
+    }
+
     result.rawWaveform.reserve(512);
     result.harmonicWaveform.reserve(512);
     for (int index = 0; index < 512; ++index)

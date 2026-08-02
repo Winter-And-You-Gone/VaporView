@@ -461,6 +461,11 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
     state_->current_hmp_ = VaporView::HmpData();
     state_->current_lidar_ = VaporView::LidarData();
     state_->current_temperature_controller_ = VaporView::TemperatureControllerData();
+    if (state_->ai8_temperature_controller_panel_)
+    {
+        state_->ai8_temperature_controller_panel_->setBackendConnected(false);
+        state_->ai8_temperature_controller_panel_->applyLiveData({});
+    }
     if (state_->device_panel_coordinator_)
     {
         state_->device_panel_coordinator_->updateAllData(
@@ -539,6 +544,15 @@ void MainWindow::applyUiTestSnapshot()
     state_->current_hmp_ = snapshot.hmp;
     state_->current_lidar_ = snapshot.lidar;
     state_->current_temperature_controller_ = snapshot.temperature;
+    if (state_->ai8_temperature_controller_panel_)
+    {
+        const QString detail = snapshot.ai8Temperature.valid
+            ? QStringLiteral("UI-TEST-AI8 @ 19200")
+            : snapshot.ai8Temperature.errorMessage;
+        state_->ai8_temperature_controller_panel_->setBackendConnected(
+            snapshot.ai8Temperature.valid, detail);
+        state_->ai8_temperature_controller_panel_->applyLiveData(snapshot.ai8Temperature);
+    }
     if (state_->device_panel_coordinator_)
     {
         state_->device_panel_coordinator_->updateAllData(

@@ -9,12 +9,14 @@
 #include <QAction>
 #include <QApplication>
 #include <QComboBox>
+#include <QColor>
 #include <QDir>
 #include <QDialog>
 #include <QEventLoop>
 #include <QFrame>
 #include <QGroupBox>
 #include <QHostAddress>
+#include <QImage>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
@@ -24,6 +26,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSettings>
+#include <QSpinBox>
 #include <QStackedWidget>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -34,6 +37,7 @@
 #include <QVariant>
 
 #include <cstdlib>
+#include <cmath>
 #include <iostream>
 
 namespace
@@ -329,6 +333,69 @@ int main(int argc, char **argv)
                     ai8HomeAction->property("state").toString() == QStringLiteral("connected");
             }),
             "AI-8288 home action supports simulated reconnect");
+
+    auto *temperaturePage = window->findChild<QWidget *>(QStringLiteral("temperaturePage"));
+    auto *ai8Panel = window->findChild<QWidget *>(QStringLiteral("ai8TemperatureControllerPanel"));
+    auto *ai8Plot = window->findChild<QWidget *>(QStringLiteral("ai8TemperatureTrendPlot"));
+    auto *ai8ParameterStack = window->findChild<QStackedWidget *>(QStringLiteral("ai8ParameterStack"));
+    auto *ai8ProtocolStatus = window->findChild<QLabel *>(QStringLiteral("ai8ProtocolStatus"));
+    auto *ai8ChannelSpin = window->findChild<QSpinBox *>(QStringLiteral("ai8ChannelSpin"));
+    auto *ai8MeasuredTemperature = window->findChild<QLineEdit *>(
+        QStringLiteral("ai8MeasuredTemperatureEdit"));
+    auto *ai8GlobalButton = window->findChild<QPushButton *>(QStringLiteral("ai8PageSelectorButton4"));
+    auto *ai8ChannelButton = window->findChild<QPushButton *>(QStringLiteral("ai8PageSelectorButton1"));
+    require(mainPageStack && temperaturePage && ai8Panel && ai8Plot && ai8ParameterStack &&
+                ai8ProtocolStatus && ai8ChannelSpin && ai8MeasuredTemperature &&
+                ai8GlobalButton && ai8ChannelButton,
+            "UI test mode exposes the AI-8 temperature page and controls");
+    mainPageStack->setCurrentWidget(temperaturePage);
+    require(VaporViewTest::processEventsUntil(1500, [ai8Plot]() {
+                return ai8Plot->isVisible() && ai8Plot->property("sampleCount").toInt() >= 2;
+            }),
+            "UI test mode continuously feeds AI-8 samples into the temperature trend plot");
+    require(ai8Panel->isVisible() && ai8ProtocolStatus->property("protocolReady").toBool() &&
+                ai8ProtocolStatus->text().contains(QStringLiteral("UI-TEST-AI8")),
+            "AI-8 panel receives the simulated connected backend status");
+    require(ai8Plot->property("sampleCount").toInt() >= 2 &&
+                ai8Plot->property("axisLabelsVisible").toBool() &&
+                ai8Plot->property("yAxisTickCount").toInt() == 7 &&
+                ai8Plot->property("xAxisTickCount").toInt() == 5 &&
+                ai8Plot->property("yAxisMaxC").toDouble() > ai8Plot->property("yAxisMinC").toDouble(),
+            "AI-8 trend plot exposes populated samples and numeric axes in UI test mode");
+    ai8ChannelSpin->setValue(8);
+    processEvents();
+    require(ai8MeasuredTemperature->text() != QStringLiteral("---") &&
+                ai8MeasuredTemperature->text().contains(QStringLiteral("°C")) &&
+                ai8Plot->property("sampleCount").toInt() > 0,
+            "AI-8 UI test data follows the selected eighth channel");
+    ai8GlobalButton->click();
+    processEvents();
+    require(ai8ParameterStack->currentIndex() == 3 && ai8GlobalButton->isChecked(),
+            "AI-8 UI test page navigation reaches global parameters");
+    ai8ChannelButton->click();
+    processEvents();
+    require(ai8ParameterStack->currentIndex() == 0 && ai8ChannelButton->isChecked(),
+            "AI-8 UI test page navigation returns to channel parameters");
+    const QImage ai8PlotImage = ai8Plot->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    const QColor expectedSeriesColor = VaporView::appThemeColor(
+        VaporView::AppThemeColor::PlotSeriesTemperature, VaporView::isDarkThemeEnabled());
+    int seriesPixelCount = 0;
+    for (int y = 0; y < ai8PlotImage.height(); ++y)
+    {
+        for (int x = 0; x < ai8PlotImage.width(); ++x)
+        {
+            const QColor pixel = ai8PlotImage.pixelColor(x, y);
+            if (std::abs(pixel.red() - expectedSeriesColor.red()) <= 8 &&
+                std::abs(pixel.green() - expectedSeriesColor.green()) <= 8 &&
+                std::abs(pixel.blue() - expectedSeriesColor.blue()) <= 8)
+            {
+                ++seriesPixelCount;
+            }
+        }
+    }
+    require(!ai8PlotImage.isNull() && ai8PlotImage.width() > 0 && ai8PlotImage.height() > 0 &&
+                seriesPixelCount > 0,
+            "AI-8 trend plot renders the temperature series in a QWidget snapshot");
     QDialog testCreatedAuxiliary;
     testCreatedAuxiliary.show();
     processEvents();

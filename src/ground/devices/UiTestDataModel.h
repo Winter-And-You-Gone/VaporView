@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Ai8TemperatureControllerProtocol.h"
 #include "TelemetryTypes.h"
 #include "data_types.h"
 
@@ -26,6 +27,7 @@ struct UiTestSnapshot
     HmpData hmp;
     LidarData lidar;
     TemperatureControllerData temperature;
+    Ai8TemperatureControllerProtocol::LiveData ai8Temperature;
     QVector<float> rawWaveform;
     QVector<float> harmonicWaveform;
     WaveformFeature waveformFeature;
