@@ -50,6 +50,27 @@ int proxyRows(VaporView::Ground::Main::UiLogModel& model,
     return proxy.rowCount();
 }
 
+QVector<VaporView::LogRecord> queueWithFirstRecord(const VaporView::LogRecord& first,
+                                                   VaporView::LogLevel fillLevel,
+                                                   QVariantMap fillFields,
+                                                   const QString& fillMessage)
+{
+    QVector<VaporView::LogRecord> records;
+    records.reserve(VaporView::Ground::Main::kMaxPendingUiLogRecords);
+    records.append(first);
+    for (int i = 1; i < VaporView::Ground::Main::kMaxPendingUiLogRecords; ++i)
+    {
+        records.append(makeRecord(fillLevel,
+                                  fillMessage,
+                                  fillFields,
+                                  QStringLiteral("Ground"),
+                                  QStringLiteral("pending"),
+                                  static_cast<quint64>(i + 1),
+                                  static_cast<quint64>(i + 1) * 1'000'000));
+    }
+    return records;
+}
+
 void defaultViewIsAttention()
 {
     using namespace VaporView::Ground::Main;
@@ -165,6 +186,108 @@ void aggregationPromotesVisibility()
             "attention view keeps showing an entry after a later details duplicate");
 }
 
+void pendingAttentionInfoDoesNotEvictWarning()
+{
+    using namespace VaporView::Ground::Main;
+    const auto warning = makeRecord(VaporView::LogLevel::Warning,
+                                    QStringLiteral("需要保留的警告"),
+                                    {{QStringLiteral("event"), QStringLiteral("pending_warning_retained")}},
+                                    QStringLiteral("Ground"),
+                                    QStringLiteral("pending"),
+                                    1,
+                                    1'000'000);
+    const auto incomingAttentionInfo = makeRecord(
+        VaporView::LogLevel::Info,
+        QStringLiteral("关注状态"),
+        {{QStringLiteral("event"), QStringLiteral("pending_attention_info")},
+         {QStringLiteral("ui_visibility"), QStringLiteral("attention")}},
+        QStringLiteral("Ground"),
+        QStringLiteral("pending"),
+        10'000,
+        10'000'000'000);
+    const QVector<VaporView::LogRecord> records = queueWithFirstRecord(
+        warning,
+        VaporView::LogLevel::Info,
+        {{QStringLiteral("event"), QStringLiteral("pending_attention_info")},
+         {QStringLiteral("ui_visibility"), QStringLiteral("attention")}},
+        QStringLiteral("关注状态"));
+
+    const int dropRow = uiLogPendingDropRow(records, incomingAttentionInfo);
+    require(dropRow > 0, "pending attention Info does not evict an existing Warning");
+    require(records.at(dropRow).level == VaporView::LogLevel::Info,
+            "pending attention Info evicts another attention Info before a Warning");
+}
+
+void pendingErrorDoesNotEvictCritical()
+{
+    using namespace VaporView::Ground::Main;
+    const auto critical = makeRecord(VaporView::LogLevel::Critical,
+                                     QStringLiteral("需要保留的严重错误"),
+                                     {{QStringLiteral("event"), QStringLiteral("pending_critical_retained")}},
+                                     QStringLiteral("Ground"),
+                                     QStringLiteral("pending"),
+                                     1,
+                                     1'000'000);
+    const auto incomingError = makeRecord(VaporView::LogLevel::Error,
+                                          QStringLiteral("错误"),
+                                          {{QStringLiteral("event"), QStringLiteral("pending_error")}},
+                                          QStringLiteral("Ground"),
+                                          QStringLiteral("pending"),
+                                          10'000,
+                                          10'000'000'000);
+    const QVector<VaporView::LogRecord> records = queueWithFirstRecord(
+        critical,
+        VaporView::LogLevel::Error,
+        {{QStringLiteral("event"), QStringLiteral("pending_error")}},
+        QStringLiteral("错误"));
+
+    const int dropRow = uiLogPendingDropRow(records, incomingError);
+    require(dropRow > 0, "pending Error does not evict an existing Critical");
+    require(records.at(dropRow).level == VaporView::LogLevel::Error,
+            "pending Error evicts another Error before a Critical");
+}
+
+void pendingCriticalEvictsLowerSeverityFirst()
+{
+    using namespace VaporView::Ground::Main;
+    QVector<VaporView::LogRecord> records;
+    records.reserve(kMaxPendingUiLogRecords);
+    records.append(makeRecord(VaporView::LogLevel::Critical,
+                              QStringLiteral("最早的严重错误"),
+                              {{QStringLiteral("event"), QStringLiteral("pending_critical_oldest")}},
+                              QStringLiteral("Ground"),
+                              QStringLiteral("pending"),
+                              1,
+                              1'000'000));
+    records.append(makeRecord(VaporView::LogLevel::Error,
+                              QStringLiteral("可淘汰的错误"),
+                              {{QStringLiteral("event"), QStringLiteral("pending_error_evictable")}},
+                              QStringLiteral("Ground"),
+                              QStringLiteral("pending"),
+                              2,
+                              2'000'000));
+    for (int i = 2; i < kMaxPendingUiLogRecords; ++i)
+    {
+        records.append(makeRecord(VaporView::LogLevel::Critical,
+                                  QStringLiteral("严重错误 %1").arg(i),
+                                  {{QStringLiteral("event"), QStringLiteral("pending_critical_%1").arg(i)}},
+                                  QStringLiteral("Ground"),
+                                  QStringLiteral("pending"),
+                                  static_cast<quint64>(i + 1),
+                                  static_cast<quint64>(i + 1) * 1'000'000));
+    }
+    const auto incomingCritical = makeRecord(VaporView::LogLevel::Critical,
+                                             QStringLiteral("新严重错误"),
+                                             {{QStringLiteral("event"), QStringLiteral("pending_critical_incoming")}},
+                                             QStringLiteral("Ground"),
+                                             QStringLiteral("pending"),
+                                             20'000,
+                                             20'000'000'000);
+
+    const int dropRow = uiLogPendingDropRow(records, incomingCritical);
+    require(dropRow == 1, "pending Critical evicts lower-severity Error before an older Critical");
+}
+
 void capacityAndBatchingAreBounded()
 {
     using namespace VaporView::Ground::Main;
@@ -207,6 +330,9 @@ int main(int argc, char **argv)
     searchMatchesStructuredFields();
     repeatedWarningsAreAggregated();
     aggregationPromotesVisibility();
+    pendingAttentionInfoDoesNotEvictWarning();
+    pendingErrorDoesNotEvictCritical();
+    pendingCriticalEvictsLowerSeverityFirst();
     capacityAndBatchingAreBounded();
     return 0;
 }

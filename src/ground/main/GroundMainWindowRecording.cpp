@@ -8,54 +8,6 @@ QString uiLogPendingQueueDropEvent()
     return QStringLiteral("ui_log_pending_queue_dropped");
 }
 
-int pendingUiLogRetentionPriority(const VaporView::LogRecord& record)
-{
-    const auto decision = VaporView::Ground::Main::uiLogVisibilityForRecord(record);
-    if (record.level == VaporView::LogLevel::Debug ||
-        (decision.explicitVisibility &&
-         decision.visibility == VaporView::Ground::Main::LogUiVisibility::Hidden))
-    {
-        return 0;
-    }
-    if (record.level >= VaporView::LogLevel::Error ||
-        (record.level == VaporView::LogLevel::Info &&
-         decision.visibility == VaporView::Ground::Main::LogUiVisibility::Attention))
-    {
-        return 3;
-    }
-    if (decision.visibility == VaporView::Ground::Main::LogUiVisibility::Details)
-    {
-        return 1;
-    }
-    if (record.level == VaporView::LogLevel::Warning)
-    {
-        return 2;
-    }
-    return 1;
-}
-
-int pendingUiLogDropRow(const QVector<VaporView::LogRecord>& records,
-                        const VaporView::LogRecord& incoming)
-{
-    int lowestPriority = std::numeric_limits<int>::max();
-    int row = -1;
-    for (int i = 0; i < records.size(); ++i)
-    {
-        const int priority = pendingUiLogRetentionPriority(records.at(i));
-        if (priority < lowestPriority)
-        {
-            lowestPriority = priority;
-            row = i;
-        }
-    }
-
-    if (row < 0 || pendingUiLogRetentionPriority(incoming) < lowestPriority)
-    {
-        return -1;
-    }
-    return row;
-}
-
 void publishPendingUiLogDropNotice(quint64 dropped)
 {
     if (dropped == 0)
@@ -139,7 +91,8 @@ void MainWindow::enqueueUiLogRecord(const VaporView::LogRecord& record)
     }
     if (state_->pending_ui_log_records_.size() >= kMaxPendingUiLogRecords)
     {
-        const int dropRow = pendingUiLogDropRow(state_->pending_ui_log_records_, record);
+        const int dropRow = VaporView::Ground::Main::uiLogPendingDropRow(
+            state_->pending_ui_log_records_, record);
         ++state_->pending_ui_log_records_dropped_;
         if (dropRow < 0)
         {

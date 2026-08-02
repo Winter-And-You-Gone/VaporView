@@ -57,6 +57,9 @@ QString uiLogDisplayMessage(const VaporView::LogRecord& record);
 QString uiLogEvent(const VaporView::LogRecord& record);
 QString uiLogErrorCode(const VaporView::LogRecord& record);
 QString uiLogDedupeKey(const VaporView::LogRecord& record);
+int uiLogPendingRetentionPriority(const VaporView::LogRecord& record);
+int uiLogPendingDropRow(const QVector<VaporView::LogRecord>& records,
+                        const VaporView::LogRecord& incoming);
 QString uiLogViewModeToSetting(LogUiViewMode mode);
 LogUiViewMode uiLogViewModeFromSetting(const QString& value);
 
