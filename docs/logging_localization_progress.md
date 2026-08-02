@@ -8,7 +8,7 @@
 - 应用入口：`src/app/ground_main.cpp`、`StartupSplash.cpp`、SkyCore/SkyTui 控制台运行状态输出。
 - 天空端运行链路：`SkyRuntime`、`SkyDeviceManager`、`SkyLocalIpcServer`、`SkyLocalIpcClient`、`SkyTuiApp`。
 - 地面端遥测/记录/RTK：`GroundTelemetryService`、`GroundMainWindowRecording`、`MainWindow` session sink、`RtkConfigDialog`。
-- 自动审计覆盖：`src/` 和 `include/` 下 C++ 源码中的第一方日志调用、`notifyFailure` 内部诊断文本和 stdout/stderr `QTextStream` 字面量。
+- 自动审计覆盖：`src/` 和 `include/` 下 C++ 源码中的第一方日志调用、`qDebug/qInfo/qWarning/qCritical` 字面量、明显中英混杂句、`notifyFailure` 内部诊断文本、stdout/stderr `QTextStream` 字面量、机器标识命名和事件目录漂移。
 - 全量 CTest 覆盖结构化日志、IPC、遥测、session、RTK 和地图相关回归。
 
 ## 已迁移内容
@@ -32,23 +32,32 @@
 
 ## 新增事件
 
-详见 `docs/logging_events.md`。本轮新增或明确化事件覆盖日志系统、应用启动参数、SkyRuntime 生命周期、设备连接/队列、IPC、遥测协议、session sink、RTK 和 legacy UI 隔离。
+详见 `docs/logging_events.md`。本轮补齐启动参数兼容模式、启动页资源失败、Qt message handler、用户可见问题 fallback、Ground/SkyTui 遥测解析、IPC 配置与日志帧解析、SkyTui UI legacy、SkyCore legacy 设备日志等已在源码使用但未登记的事件。
+
+## 本轮收尾
+
+- `qDebug()` 已纳入直接 Qt 日志审计，与 `qInfo()`、`qWarning()`、`qCritical()` 使用同一语言规则。
+- 第一方 message 增加明显中英混杂检测，允许产品名、协议名、路径、文件名和第三方原文保留英文。
+- `category`、`event`、`error_code`、`reason_code`、字面量 fields key 和中文 source 误用已自动验证。
+- 新增 `scripts/audit_logging_events.py`，自动比较源码事件和 `docs/logging_events.md`，检查遗漏、过期、重复、category/level 冲突和错误事件缺少错误码。
+- shutdown 场景不再拆分 `sky_recording_stop_requested_for_shutdown` / `sky_recording_metadata_save_failed_on_shutdown`，改为复用稳定事件并写入 `reason_code=APPLICATION_SHUTDOWN`。
 
 ## 自动审计状态
 
-- 脚本：`scripts/audit_logging_language.py`。
-- CTest：`logging_language_audit_test`（已重新配置并注册）。
+- 脚本：`scripts/audit_logging_language.py`、`scripts/audit_logging_events.py`。
+- CTest：`logging_language_audit_test`、`logging_event_catalog_audit_test`（均已注册）。
 - 最近直接运行命令：`python scripts\audit_logging_language.py --root . --self-test`。
 - 最近直接运行结果：通过，输出 `logging language audit passed`。
-- focused logging/IPC tests：全部通过。
-- `build/Release` Release 构建：通过。
-- 全量 CTest（当前工作区）：66/69 通过；2 个稳定 GUI 几何/交互断言失败，另有 1 个地图 GUI SegFault：
-  `main_window_layout_test`（RTK GGA 控件垂直居中）、
-  `session_viewer_trajectory_test`（轨迹卡片标题选择/复制）、
-  `map3d_real_data_load_test`（全量运行时偶发 SegFault，单独复跑通过）。
+- 最近直接运行命令：`python scripts\audit_logging_events.py --root . --self-test`。
+- 最近直接运行结果：通过，输出 `logging event catalog audit passed`。
+- focused logging/IPC tests：`ctest --test-dir build\Release -C Release -R "^(log_service_test|sky_ipc_log_test)$" --output-on-failure` 通过。
+- 审计 CTest：`ctest --test-dir build\Release -C Release -R "^(logging_language_audit_test|logging_event_catalog_audit_test)$" --output-on-failure` 通过。
+- `build/Release` Release 构建：`cmake --build build\Release --config Release -- -j1` 通过。
+- 快速 CTest：`ctest --test-dir build\Release -C Release -L fast --output-on-failure` 为 52/53 通过；`vaporview_startup_test` 未通过，原因是 `build/Release/VaporView.exe` 嵌入 `requireAdministrator` 清单，非提权 QProcess 启动被 Windows 拒绝。
+- 全量 CTest：`ctest --test-dir build\Release -C Release --output-on-failure` 为 67/70 通过；`main_window_layout_test`、`session_viewer_trajectory_test` 和 `vaporview_startup_test` 未通过，均不在本轮日志治理改动面。
 
 ## 剩余问题
 
-- 全量 CTest 中的 3 个 GUI/地图问题需要独立基线/环境排查；本轮不修改无关布局、session-viewer 或地图行为。
-- Linux ARM64：WSL 为 x86_64；虽有 `aarch64-linux-gnu-g++`，但没有 Linux ARM64 Qt 6 工具链，无法完成本地 ARM64 构建/运行验证。一次交叉配置可生成，但构建误用了 Windows MinGW `moc.exe`，不作为兼容性证据。
-- 最终收尾已完成 staged 文件审计、最终 `build/Release` 构建、提交并推送；Linux ARM64 未做实机或完整 Qt 交叉运行验证，仅通过固定宽度整数字段修正消除 LP64 ABI 歧义。
+- `main_window_layout_test` 仍有 RTK GGA 控件垂直居中断言失败，需要独立 UI 布局排查；本轮未修改相关页面。
+- `session_viewer_trajectory_test` 仍有轨迹卡片标题选择/复制断言失败，需要独立 session viewer UI 排查；本轮未修改相关页面。
+- `vaporview_startup_test` 与当前 Windows 主程序 `requireAdministrator` 清单存在测试环境冲突，需要独立决定是提权运行该 smoke test、调整测试跳过策略，还是改变主程序 UAC 清单；本轮日志治理不修改既有打包/UAC 策略。

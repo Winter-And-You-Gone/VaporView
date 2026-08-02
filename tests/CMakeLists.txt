@@ -66,7 +66,17 @@ if(Python3_Interpreter_FOUND)
                 --root ${CMAKE_SOURCE_DIR}
                 --self-test
     )
+    add_test(NAME logging_event_catalog_audit_test
+        COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/scripts/audit_logging_events.py
+                --root ${CMAKE_SOURCE_DIR}
+                --self-test
+    )
     set_tests_properties(logging_language_audit_test PROPERTIES
+        TIMEOUT 30
+        LABELS "fast;unit;logging"
+    )
+    set_tests_properties(logging_event_catalog_audit_test PROPERTIES
         TIMEOUT 30
         LABELS "fast;unit;logging"
     )

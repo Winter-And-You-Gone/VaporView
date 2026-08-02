@@ -67,9 +67,9 @@ not lifetime-safe and must not be retained; new callbacks use
 
 VaporView 第一方运行日志采用“中文可读、英文可检索”的约定。`message` 默认使用简体中文，面向开发者和现场人员直接阅读；`level`、`source`、`category`、`event`、`error_code`、`reason_code`、字段键、枚举值、协议消息类型和命令行参数保持英文。
 
-日志级别必须由调用方、状态机、返回值、错误枚举或明确事件分支决定，不能通过 `message.contains(...)` 搜索中文或英文关键词判断。外部库、操作系统、设备驱动、串口/TCP 错误、子进程 stdout/stderr、协议 payload 和设备返回原文必须保留在结构化字段中，例如 `system_error`、`process_output`、`external_raw_text` 或 `payload_hex`，不能覆盖或翻译成第一方描述。
+日志级别必须由调用方、状态机、返回值、错误枚举或明确事件分支决定，不能通过 `message.contains(...)` 搜索中文或英文关键词判断。外部库、操作系统、设备驱动、串口/TCP 错误、子进程 stdout/stderr、协议 payload 和设备返回原文必须保留在结构化字段中，例如 `system_error`、`process_output`、`external_raw_text` 或 `payload_hex`，不能覆盖或翻译成第一方描述。直接 Qt 日志调用 `qDebug()`、`qInfo()`、`qWarning()` 和 `qCritical()` 同样纳入审计；第一方文本必须是自然中文，第三方原文只能通过精确 allowlist 或结构化原文字段保留。
 
-旧的仅字符串 UI/控制台日志路径如暂时无法完全结构化，必须使用稳定中文包装 message，并在 `fields` 中标记 `legacy_unclassified=true`，原始 UI 文本放入 `ui_message`。中文 message 保持简洁、稳定，不把大量变量拼进正文；变量、端点、设备名、错误原文和重试参数优先放入 `fields`。允许在中文句子中保留产品名和协议名，例如 SkyCore、SkyTui、IPC、TCP、JSON、CRC、EPSILON、PTB210、HMP3、TFA1500-L 和 RD105。
+旧的仅字符串 UI/控制台日志路径如暂时无法完全结构化，必须使用稳定中文包装 message，并在 `fields` 中标记 `legacy_unclassified=true`，原始 UI 文本放入 `ui_message`。中文 message 保持简洁、稳定，不把大量变量拼进正文；变量、端点、设备名、错误原文和重试参数优先放入 `fields`。允许在中文句子中保留产品名和协议名，例如 SkyCore、SkyTui、IPC、TCP、UDP、JSON、CRC、EPSILON、PTB210、HMP3、TFA1500-L 和 RD105；但 `设备 connect failed and retry later`、`IPC 服务 start failed`、`配置 file loaded successfully` 这类完整英文语法片段视为中英混杂，必须改成自然中文。
 
 ## 命名规范
 
@@ -79,6 +79,15 @@ VaporView 第一方运行日志采用“中文可读、英文可检索”的约�
 - `error_code`：大写下划线形式，例如 `SERIAL_OPEN_FAILED`、`SKY_CONFIG_SAVE_FAILED`。
 - `reason_code`：大写下划线形式，用于可恢复、预期或不一定表示操作失败的原因，例如 `RAW_FRAME_QUEUE_FULL`。
 - 字段键：小写下划线形式，例如 `device_id`、`retry_delay_ms`、`endpoint`、`system_error`。
+
+审计采用的命名正则如下：
+
+- `category`：`^[a-z0-9]+(?:\.[a-z0-9_]+)*$`
+- `event`：`^[a-z0-9]+(?:_[a-z0-9]+)*$`
+- `error_code` / `reason_code`：`^[A-Z0-9]+(?:_[A-Z0-9]+)*$`
+- `fields` key：`^[a-z0-9]+(?:_[a-z0-9]+)*$`，保留键包括 `event`、`error_code`、`reason_code`、`system_error`、`external_raw_text`、`process_output`、`legacy_unclassified` 以及 `_log_*` 内部字段。
+
+`event` 表示“发生了什么”，`reason_code` 表示“为什么发生”，`error_code` 表示具体失败类型。不要因为 shutdown、retry、timeout 等上下文差异拆出新 event；优先复用稳定 event 并补 `reason_code`，例如 `sky_recording_stop_requested` + `APPLICATION_SHUTDOWN`。
 
 不要仅为了中文化而修改已经稳定使用的机器标识；也不要把新事件写成中文 `event` 或中文字段键。
 
@@ -136,4 +145,17 @@ emergency 日志：
 - 测试 sentinel、golden fixture 和刻意用于审计自测的英文样例；
 - UI 语言切换所需的英文界面文本。
 
-新增日志或修改日志语义后，应同步更新 `docs/logging_events.md`，并运行 `logging_language_audit_test` 或 `python scripts/audit_logging_language.py --root . --self-test`。
+## 自动审计
+
+本仓库提供两个轻量 Python 审计入口：
+
+```bash
+python scripts/audit_logging_language.py --root . --self-test
+python scripts/audit_logging_events.py --root . --self-test
+```
+
+`audit_logging_language.py` 检查第一方日志语言、`qDebug/qInfo/qWarning/qCritical` 字面量、中英混杂句、`category/event/error_code/reason_code/fields key/source` 命名、Error/Critical 缺少具体错误码，以及 `SKY_RUNTIME_ERROR` 是否只作为 SkyRuntime Release 兜底。`audit_logging_events.py` 比对源码可静态识别的 `event` 字面量和 `docs/logging_events.md`，检查遗漏、过期、重复、category/level 冲突、目录命名和错误事件缺少错误码。
+
+CTest 中注册了 `logging_language_audit_test` 和 `logging_event_catalog_audit_test`；支持 Python 的 CI 必须运行这两个测试。审计失败时优先修正源码 message、机器标识或事件目录。只有第三方原文、测试 sentinel、无法静态结构化的 legacy 文本等明确场景可以进入 allowlist；allowlist 必须精确到文本或调用场景，不能按目录宽泛跳过。
+
+新增日志或修改日志语义后，应同步更新 `docs/logging_events.md`，并运行上述两个脚本或对应 CTest。

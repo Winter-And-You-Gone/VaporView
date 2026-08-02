@@ -395,20 +395,22 @@ void SkyRuntime::stop()
     {
         publishRuntimeLog(LogLevel::Info,
                           QStringLiteral("session.recording"),
-                          QStringLiteral("sky_recording_stop_requested_for_shutdown"),
+                          QStringLiteral("sky_recording_stop_requested"),
                           QStringLiteral("运行时停止前已请求结束天空端会话记录。"),
                           {{QStringLiteral("telemetry_rows"),
                             static_cast<qulonglong>(session_recorder_.telemetryRecordCount())},
                            {QStringLiteral("waveform_frames"),
-                            static_cast<qulonglong>(session_recorder_.waveformSnapshotRecordCount())}});
+                             static_cast<qulonglong>(session_recorder_.waveformSnapshotRecordCount())},
+                           {QStringLiteral("reason_code"), QStringLiteral("APPLICATION_SHUTDOWN")}});
         QString error;
         if (!session_recorder_.stop(&error))
         {
             publishRuntimeLog(LogLevel::Error,
                               QStringLiteral("session.write"),
-                              QStringLiteral("sky_recording_metadata_save_failed_on_shutdown"),
+                              QStringLiteral("sky_recording_metadata_save_failed"),
                               QStringLiteral("无法在停止运行时保存天空端会话记录元数据。"),
                               {{QStringLiteral("error_code"), QStringLiteral("SKY_RECORDING_METADATA_SAVE_FAILED")},
+                               {QStringLiteral("reason_code"), QStringLiteral("APPLICATION_SHUTDOWN")},
                                {QStringLiteral("system_error"), error}});
         }
     }
