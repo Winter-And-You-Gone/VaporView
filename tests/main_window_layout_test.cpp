@@ -3982,9 +3982,13 @@ int main(int argc, char **argv)
 
     auto *ai8Panel = ai8TemperatureCard->findChild<QWidget *>(
         QStringLiteral("ai8TemperatureControllerPanel"));
+    auto *ai8NavigationBar = ai8TemperatureCard->findChild<QFrame *>(
+        QStringLiteral("ai8NavigationBar"));
     auto *ai8Stack = ai8TemperatureCard->findChild<QStackedWidget *>(
         QStringLiteral("ai8ParameterStack"));
-    require(ai8Panel != nullptr && ai8Stack != nullptr && ai8Stack->count() == 4,
+    require(ai8Panel != nullptr && ai8NavigationBar != nullptr &&
+                ai8NavigationBar->testAttribute(Qt::WA_StyledBackground) &&
+                ai8Stack != nullptr && ai8Stack->count() == 4,
             "AI-8 card exposes channel, input, output, and global parameter pages");
     require(ai8Stack->currentIndex() == 0,
             "AI-8 card opens on channel parameters");
@@ -3995,15 +3999,15 @@ int main(int argc, char **argv)
     require(ai8GlobalButton != nullptr && ai8ChannelButton != nullptr,
             "AI-8 page selectors exist");
     requireLastStyleRuleContains(qApp->styleSheet(),
-                                 QStringLiteral("Ai8TemperatureControllerPanel QFrame#ai8NavigationBar {"),
+                                 QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8NavigationBar {"),
                                  QStringLiteral("border-radius: 8px"),
                                  "AI-8 page selectors use the same rounded gray track as temperature parameters");
     requireLastStyleRuleContains(qApp->styleSheet(),
-                                 QStringLiteral("Ai8TemperatureControllerPanel QPushButton[ai8PageSelector=\"true\"] {"),
+                                 QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8NavigationBar QPushButton {"),
                                  QStringLiteral("background-color: transparent"),
                                  "AI-8 page selector buttons override the global primary button fill");
     requireLastStyleRuleContains(qApp->styleSheet(),
-                                 QStringLiteral("Ai8TemperatureControllerPanel QPushButton[ai8PageSelector=\"true\"]:checked {"),
+                                 QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8NavigationBar QPushButton:checked {"),
                                  QStringLiteral("font-weight: 600"),
                                  "AI-8 page selector marks the selected parameter group like the temperature tabs");
     ai8GlobalButton->click();

@@ -32,6 +32,10 @@ constexpr int kPageColumnCount = 4;
 constexpr int kEditorMinimumWidth = 118;
 constexpr int kParameterFieldMinimumHeight = 66;
 constexpr int kAi8TemperatureHistoryLimit = 240;
+constexpr int kAi8NavigationButtonHeight = 30;
+constexpr int kAi8NavigationHorizontalMargin = 4;
+constexpr int kAi8NavigationVerticalMargin = 3;
+constexpr int kAi8NavigationSpacing = 4;
 
 QSpinBox *createSpinBox(QWidget *parent,
                         const QString& objectName,
@@ -98,10 +102,15 @@ void Ai8TemperatureControllerPanel::setupUi()
 
     auto *navigationBar = new QFrame(this);
     navigationBar->setObjectName(QStringLiteral("ai8NavigationBar"));
-    navigationBar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    navigationBar->setFrameShape(QFrame::NoFrame);
+    navigationBar->setAttribute(Qt::WA_StyledBackground, true);
+    navigationBar->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     auto *navigationLayout = new QHBoxLayout(navigationBar);
-    navigationLayout->setContentsMargins(4, 4, 4, 4);
-    navigationLayout->setSpacing(4);
+    navigationLayout->setContentsMargins(kAi8NavigationHorizontalMargin,
+                                         kAi8NavigationVerticalMargin,
+                                         kAi8NavigationHorizontalMargin,
+                                         kAi8NavigationVerticalMargin);
+    navigationLayout->setSpacing(kAi8NavigationSpacing);
 
     page_button_group_ = new QButtonGroup(this);
     page_button_group_->setExclusive(true);
@@ -119,13 +128,19 @@ void Ai8TemperatureControllerPanel::setupUi()
         button->setCheckable(true);
         button->setCursor(Qt::PointingHandCursor);
         button->setFocusPolicy(Qt::TabFocus);
+        button->setText(pageTexts.at(index).first);
         button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        button->setMinimumWidth(104);
+        button->ensurePolished();
+        const int buttonWidth = std::max({
+            88,
+            button->fontMetrics().horizontalAdvance(pageTexts.at(index).first) + 40,
+            button->fontMetrics().horizontalAdvance(pageTexts.at(index).second) + 40});
+        button->setFixedSize(buttonWidth, kAi8NavigationButtonHeight);
         page_button_group_->addButton(button, index);
         navigationLayout->addWidget(button);
         button_bindings_.append({button, pageTexts.at(index).first, pageTexts.at(index).second});
     }
-    navigationLayout->addStretch(1);
+    navigationBar->setMinimumWidth(navigationBar->sizeHint().width());
     connect(page_button_group_, &QButtonGroup::idClicked, this, [this](int index) {
         selectPage(index);
     });
