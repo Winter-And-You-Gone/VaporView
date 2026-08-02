@@ -30,11 +30,11 @@
 | SkyCore | telemetry.link | telemetry_link_status | Info | 天空端遥测链路状态已更新。 | external_raw_text |  |  |
 | SkyCore | session.recording | sky_recording_started | Info | 天空端会话记录已开始。 | session_directory, transport, endpoint |  |  |
 | SkyCore | session.recording | sky_recording_paused | Info | 天空端会话记录已暂停。 | session_directory |  |  |
-| SkyCore | session.recording | sky_recording_stop_requested | Info | 天空端会话记录已请求停止。 | telemetry_rows, waveform_frames | reason_code |  |
+| SkyCore | session.recording | sky_recording_stop_requested | Info | 天空端会话记录已请求停止。 | telemetry_rows, waveform_frames | reason_code | APPLICATION_SHUTDOWN |
 | SkyCore | session.recording | sky_recording_stopped | Info | 天空端会话记录已停止。 | session_directory |  |  |
 | SkyCore | session.recording | sky_recording_start_failed | Error | 无法启动天空端会话记录。 | system_error |  | SKY_RECORDING_START_FAILED |
 | SkyCore | session.recording | sky_recording_stop_failed | Error | 无法停止天空端会话记录。 | system_error |  | SKY_RECORDING_STOP_FAILED |
-| SkyCore | session.write | sky_recording_metadata_save_failed | Error | 无法保存天空端会话记录元数据。 | system_error | reason_code | SKY_RECORDING_METADATA_SAVE_FAILED |
+| SkyCore | session.write | sky_recording_metadata_save_failed | Error | 无法保存天空端会话记录元数据。 | system_error | reason_code | SKY_RECORDING_METADATA_SAVE_FAILED / APPLICATION_SHUTDOWN |
 | SkyCore | session.write | sky_session_log_append_failed | Error | 无法写入天空端会话日志记录。 | session_sink_failure, event_ok, error_ok, source, category |  | SKY_SESSION_LOG_APPEND_FAILED |
 | SkyCore | device.raw_queue | raw_frame_queue_overloaded | Warning | 原始数据帧队列已满，已丢弃部分数据。 | dropped_count, total_dropped_count |  | RAW_FRAME_QUEUE_FULL |
 | SkyCore | device.connection | device_disconnected | Info | 设备已断开，缓存数据已失效。 | device_id |  |  |

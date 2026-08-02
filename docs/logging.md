@@ -63,7 +63,11 @@ producer that uses it, but the 256 KiB record cap bounds the work for one record
 not lifetime-safe and must not be retained; new callbacks use
 `LogService::withCurrentInstance()`.
 
-## 日志语言规范
+## 日志语言与自动审计
+
+本节集中记录日志文本语言、机器标识命名和自动审计入口。`docs/logging_localization_progress.md`
+只记录迁移进度，`docs/logging_events.md` 只记录事件目录；新增或修改日志时，应以本节作为
+主规范入口。
 
 VaporView 第一方运行日志采用“中文可读、英文可检索”的约定。`message` 默认使用简体中文，面向开发者和现场人员直接阅读；`level`、`source`、`category`、`event`、`error_code`、`reason_code`、字段键、枚举值、协议消息类型和命令行参数保持英文。
 
@@ -71,7 +75,7 @@ VaporView 第一方运行日志采用“中文可读、英文可检索”的约�
 
 旧的仅字符串 UI/控制台日志路径如暂时无法完全结构化，必须使用稳定中文包装 message，并在 `fields` 中标记 `legacy_unclassified=true`，原始 UI 文本放入 `ui_message`。中文 message 保持简洁、稳定，不把大量变量拼进正文；变量、端点、设备名、错误原文和重试参数优先放入 `fields`。允许在中文句子中保留产品名和协议名，例如 SkyCore、SkyTui、IPC、TCP、UDP、JSON、CRC、EPSILON、PTB210、HMP3、TFA1500-L 和 RD105；但 `设备 connect failed and retry later`、`IPC 服务 start failed`、`配置 file loaded successfully` 这类完整英文语法片段视为中英混杂，必须改成自然中文。
 
-## 命名规范
+### 命名规范
 
 - `source`：稳定组件名称，保持现有英文风格，例如 `App`、`Ground`、`SkyCore`、`SkyTui`、`LogService`、`RTK`。
 - `category`：小写点分层级，例如 `device.connection`、`session.write`、`telemetry.link`、`ipc.protocol`。
@@ -91,7 +95,7 @@ VaporView 第一方运行日志采用“中文可读、英文可检索”的约�
 
 不要仅为了中文化而修改已经稳定使用的机器标识；也不要把新事件写成中文 `event` 或中文字段键。
 
-## 事件示例
+### 事件示例
 
 设备连接成功：
 
@@ -135,7 +139,7 @@ emergency 日志：
 {"schema_version":1,"level":"Critical","source":"LogService","category":"queue.critical_overload","message":"Critical 日志队列已达到上限，已切换到紧急写入通道。","fields":{"event":"critical_queue_overload","reason_code":"CRITICAL_QUEUE_LIMIT","pending_critical_limit":16}}
 ```
 
-## 例外规则
+### 例外规则
 
 以下内容允许保留英文，但不得冒充第一方中文描述：
 
@@ -145,7 +149,7 @@ emergency 日志：
 - 测试 sentinel、golden fixture 和刻意用于审计自测的英文样例；
 - UI 语言切换所需的英文界面文本。
 
-## 自动审计
+### 自动审计
 
 本仓库提供两个轻量 Python 审计入口：
 
