@@ -1,5 +1,5 @@
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
-
+#include "ground/widgets/TemperatureTrendPlotWidget.h"
 #include "ground/widgets/TemperatureControllerWidgets.h"
 
 #include <QAbstractButton>
@@ -21,6 +21,8 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace VaporView::Ground::Widgets
 {
@@ -29,6 +31,7 @@ namespace
 constexpr int kPageColumnCount = 4;
 constexpr int kEditorMinimumWidth = 118;
 constexpr int kParameterFieldMinimumHeight = 66;
+constexpr int kAi8TemperatureHistoryLimit = 240;
 
 QSpinBox *createSpinBox(QWidget *parent,
                         const QString& objectName,
@@ -137,6 +140,14 @@ void Ai8TemperatureControllerPanel::setupUi()
     page_stack_->addWidget(createGlobalPage());
     rootLayout->addWidget(page_stack_);
 
+    temperature_plot_ = new ::TemperatureTrendPlotWidget(this);
+    temperature_plot_->setObjectName(QStringLiteral("ai8TemperatureTrendPlot"));
+    temperature_plot_->setProperty("ai8TemperaturePlot", true);
+    temperature_plot_->setCompactMode(true);
+    temperature_plot_->setMinimumHeight(180);
+    temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    rootLayout->addWidget(temperature_plot_, 1);
+
     auto *statusRow = new QWidget(this);
     statusRow->setObjectName(QStringLiteral("ai8ProtocolStatusRow"));
     auto *statusLayout = new QHBoxLayout(statusRow);
@@ -193,7 +204,10 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
 
     auto *channelSpin = createSpinBox(page, QStringLiteral("ai8ChannelSpin"), 1, 8, 1);
     connect(channelSpin, qOverload<int>(&QSpinBox::valueChanged), this,
-            [this]() { updateMeasuredValue(); });
+            [this]() {
+                updateMeasuredValue();
+                updateTemperaturePlot();
+            });
     auto *setpointSpin = createDoubleSpinBox(page,
                                               QStringLiteral("ai8SetpointSpin"),
                                               -999.0,
@@ -201,6 +215,8 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
                                               0.0,
                                               1,
                                               QStringLiteral(" °C"));
+    connect(setpointSpin, qOverload<double>(&QDoubleSpinBox::valueChanged), this,
+            [this]() { updateTemperaturePlot(); });
     auto *pvEdit = new QLineEdit(QStringLiteral("---"), page);
     pvEdit->setObjectName(QStringLiteral("ai8MeasuredTemperatureEdit"));
     pvEdit->setReadOnly(true);
@@ -480,6 +496,10 @@ void Ai8TemperatureControllerPanel::setEnglish(bool english)
     {
         write_button_->setToolTip(backendToolTip);
     }
+    if (temperature_plot_)
+    {
+        temperature_plot_->setEnglish(english);
+    }
     updateGeometry();
 }
 
@@ -662,13 +682,46 @@ void Ai8TemperatureControllerPanel::applyPageData(
         setSpin("ai8DecimalPointSpin", pageData.global.decimalPoint);
         break;
     }
+    if (pageData.page == Ai8TemperatureControllerProtocol::Page::Channel)
+    {
+        const int channelIndex = std::clamp(
+            pageData.selection.channel, 1, Ai8TemperatureControllerProtocol::kChannelCount) - 1;
+        if (std::isfinite(pageData.channel.measuredC))
+        {
+            auto& history = measured_temperature_history_[static_cast<size_t>(channelIndex)];
+            history.append(pageData.channel.measuredC);
+            while (history.size() > kAi8TemperatureHistoryLimit)
+            {
+                history.removeFirst();
+            }
+        }
+    }
+    updateTemperaturePlot();
 }
 
 void Ai8TemperatureControllerPanel::applyLiveData(
     const Ai8TemperatureControllerProtocol::LiveData& liveData)
 {
     latest_live_data_ = liveData;
+    if (liveData.valid)
+    {
+        for (int index = 0; index < Ai8TemperatureControllerProtocol::kChannelCount; ++index)
+        {
+            const double measured = liveData.measuredC[static_cast<size_t>(index)];
+            if (!std::isfinite(measured))
+            {
+                continue;
+            }
+            auto& history = measured_temperature_history_[static_cast<size_t>(index)];
+            history.append(measured);
+            while (history.size() > kAi8TemperatureHistoryLimit)
+            {
+                history.removeFirst();
+            }
+        }
+    }
     updateMeasuredValue();
+    updateTemperaturePlot();
 }
 
 void Ai8TemperatureControllerPanel::updateMeasuredValue()
@@ -685,6 +738,26 @@ void Ai8TemperatureControllerPanel::updateMeasuredValue()
         ? QString::number(latest_live_data_.measuredC[static_cast<size_t>(index)], 'f', 1) +
               QStringLiteral(" °C")
         : QStringLiteral("---"));
+}
+
+void Ai8TemperatureControllerPanel::updateTemperaturePlot()
+{
+    if (!temperature_plot_)
+    {
+        return;
+    }
+    auto *channelSpin = findChild<QSpinBox *>(QStringLiteral("ai8ChannelSpin"));
+    auto *setpointSpin = findChild<QDoubleSpinBox *>(QStringLiteral("ai8SetpointSpin"));
+    if (!channelSpin)
+    {
+        return;
+    }
+    const int channelIndex = std::clamp(
+        channelSpin->value(), 1, Ai8TemperatureControllerProtocol::kChannelCount) - 1;
+    temperature_plot_->setChannelIndex(channelIndex);
+    temperature_plot_->setTargetTemperature(
+        setpointSpin ? setpointSpin->value() : std::numeric_limits<double>::quiet_NaN());
+    temperature_plot_->setSamples(measured_temperature_history_[static_cast<size_t>(channelIndex)]);
 }
 
 } // namespace VaporView::Ground::Widgets

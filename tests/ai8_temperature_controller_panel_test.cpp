@@ -11,6 +11,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 
 namespace
 {
@@ -79,12 +80,23 @@ int main(int argc, char **argv)
 
     VaporView::Ai8TemperatureControllerProtocol::LiveData liveData;
     liveData.valid = true;
+    liveData.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
     liveData.measuredC[0] = 23.4;
     panel.applyLiveData(liveData);
     auto *pvEdit = panel.findChild<QLineEdit *>(QStringLiteral("ai8MeasuredTemperatureEdit"));
+    auto *temperaturePlot = panel.findChild<QWidget *>(QStringLiteral("ai8TemperatureTrendPlot"));
     require(pvEdit != nullptr && pvEdit->text().contains(QStringLiteral("23.4")),
             "AI-8 selected-channel PV is updated from live polling");
+    require(temperaturePlot != nullptr && temperaturePlot->property("ai8TemperaturePlot").toBool() &&
+                temperaturePlot->property("sampleCount").toInt() == 1,
+            "AI-8 temperature plot receives the selected channel PV");
 
+    liveData.measuredC[1] = 24.1;
+    panel.applyLiveData(liveData);
+    channelSpin->setValue(2);
+    QApplication::processEvents();
+    require(temperaturePlot->property("sampleCount").toInt() == 1,
+            "AI-8 temperature plot follows the selected channel history");
     panel.setEnglish(true);
     QApplication::processEvents();
     require(channelButton->text() == QStringLiteral("Channel") &&

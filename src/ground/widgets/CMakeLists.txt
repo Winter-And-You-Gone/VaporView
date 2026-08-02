@@ -9,6 +9,8 @@ add_library(vaporview_ground_widgets STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/TelemetryPanels.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/TelemetryPanels.h
     ${CMAKE_CURRENT_SOURCE_DIR}/TemperatureControllerPanel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/TemperatureTrendPlotWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/TemperatureTrendPlotWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/TemperatureControllerWidgets.h
 )
 

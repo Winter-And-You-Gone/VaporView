@@ -7,11 +7,14 @@
 #include <QVector>
 #include <QWidget>
 
+#include <array>
+
 class QAbstractButton;
 class QButtonGroup;
 class QComboBox;
 class QLabel;
 class QStackedWidget;
+class TemperatureTrendPlotWidget;
 
 namespace VaporView::Ground::Widgets
 {
@@ -74,15 +77,19 @@ private:
     void selectPage(int index);
     void updateStatusText();
     void updateMeasuredValue();
+    void updateTemperaturePlot();
 
     QButtonGroup *page_button_group_ = nullptr;
     QStackedWidget *page_stack_ = nullptr;
+    TemperatureTrendPlotWidget *temperature_plot_ = nullptr;
     QLabel *protocol_status_label_ = nullptr;
     QAbstractButton *read_button_ = nullptr;
     QAbstractButton *write_button_ = nullptr;
     QVector<LabelBinding> label_bindings_;
     QVector<ButtonBinding> button_bindings_;
     QVector<ComboItemBinding> combo_item_bindings_;
+    std::array<QVector<double>, Ai8TemperatureControllerProtocol::kChannelCount>
+        measured_temperature_history_{};
     Ai8TemperatureControllerProtocol::LiveData latest_live_data_;
     QString backend_detail_;
     QString operation_status_;
