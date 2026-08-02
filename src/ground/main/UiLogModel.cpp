@@ -7,6 +7,7 @@
 #include <QStyle>
 
 #include <algorithm>
+#include <limits>
 
 namespace VaporView::Ground::Main
 {
@@ -215,6 +216,56 @@ QString uiLogDedupeKey(const VaporView::LogRecord& record)
         parts << message << code;
     }
     return parts.join(QChar(0x1f));
+}
+
+int uiLogPendingRetentionPriority(const VaporView::LogRecord& record)
+{
+    const auto decision = uiLogVisibilityForRecord(record);
+    if (record.level == VaporView::LogLevel::Debug ||
+        (decision.explicitVisibility && decision.visibility == LogUiVisibility::Hidden))
+    {
+        return 0;
+    }
+    if (record.level == VaporView::LogLevel::Critical)
+    {
+        return 5;
+    }
+    if (record.level == VaporView::LogLevel::Error)
+    {
+        return 4;
+    }
+    if (record.level == VaporView::LogLevel::Warning)
+    {
+        return 3;
+    }
+    if (record.level == VaporView::LogLevel::Info &&
+        decision.visibility == LogUiVisibility::Attention)
+    {
+        return 2;
+    }
+    return 1;
+}
+
+int uiLogPendingDropRow(const QVector<VaporView::LogRecord>& records,
+                        const VaporView::LogRecord& incoming)
+{
+    int lowestPriority = std::numeric_limits<int>::max();
+    int row = -1;
+    for (int i = 0; i < records.size(); ++i)
+    {
+        const int priority = uiLogPendingRetentionPriority(records.at(i));
+        if (priority < lowestPriority)
+        {
+            lowestPriority = priority;
+            row = i;
+        }
+    }
+
+    if (row < 0 || uiLogPendingRetentionPriority(incoming) < lowestPriority)
+    {
+        return -1;
+    }
+    return row;
 }
 
 QString uiLogViewModeToSetting(LogUiViewMode mode)
