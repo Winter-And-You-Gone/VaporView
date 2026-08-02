@@ -113,11 +113,12 @@ std::wstring parentOf(const std::wstring& path)
     return path.substr(0, slash);
 }
 
-bool fileExists(const std::wstring& path)
+bool regularFileExistsWithoutReparsePoint(const std::wstring& path)
 {
     const DWORD attributes = GetFileAttributesW(path.c_str());
     return attributes != INVALID_FILE_ATTRIBUTES &&
-           (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+           (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0 &&
+           (attributes & FILE_ATTRIBUTE_REPARSE_POINT) == 0;
 }
 
 std::wstring processPath(DWORD processId)
@@ -283,14 +284,19 @@ bool validateRelaunchTarget(const std::wstring& maintenanceToolPath,
         debugLog(L"maintenance tool path is not VaporViewMaintenanceTool.exe");
         return false;
     }
+    if (!regularFileExistsWithoutReparsePoint(maintenanceToolPath))
+    {
+        debugLog(L"maintenance tool path does not exist or is a reparse point");
+        return false;
+    }
     if (!iequals(fileNameOf(applicationPath), L"VaporView.exe"))
     {
         debugLog(L"application path is not VaporView.exe");
         return false;
     }
-    if (!fileExists(applicationPath))
+    if (!regularFileExistsWithoutReparsePoint(applicationPath))
     {
-        debugLog(L"application path does not exist");
+        debugLog(L"application path does not exist or is a reparse point");
         return false;
     }
 

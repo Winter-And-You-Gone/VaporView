@@ -40,6 +40,17 @@ bool tokenElevation(bool& elevated, TOKEN_ELEVATION_TYPE& type)
     return true;
 }
 
+std::string wideToUtf8(const wchar_t* text)
+{
+    const int required = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
+    std::string result(required > 0 ? required - 1 : 0, '\0');
+    if (required > 1)
+    {
+        WideCharToMultiByte(CP_UTF8, 0, text, -1, result.data(), required, nullptr, nullptr);
+    }
+    return result;
+}
+
 } // namespace
 
 int wmain()
@@ -59,5 +70,6 @@ int wmain()
     out << "elevated=" << (elevated ? 1 : 0) << "\n";
     out << "type=" << static_cast<int>(elevationType) << "\n";
     out << "session=" << sessionId << "\n";
+    out << "cwd=" << wideToUtf8(cwd) << "\n";
     return out ? 0 : 1;
 }

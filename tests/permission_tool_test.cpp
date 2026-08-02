@@ -416,7 +416,7 @@ int main()
     {
         SidBuffer broadGroup = wellKnownSid(type);
         require(!hasFullControlAce(targetDir, broadGroup.sid(), false),
-                "broad user group has Full Control");
+                "broad user group has explicit Full Control");
     }
     for (const WELL_KNOWN_SID_TYPE type : {WinLocalSystemSid, WinBuiltinAdministratorsSid})
     {

@@ -733,7 +733,7 @@ bool verifyForbiddenGroupsNotFullControl(const std::wstring& path)
         }
         if (hasFullControl)
         {
-            printError(L"forbidden broad user group has Full Control on " + path);
+            printError(L"forbidden broad user group has explicit Full Control on " + path);
             return false;
         }
     }

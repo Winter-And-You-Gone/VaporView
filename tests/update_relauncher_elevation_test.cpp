@@ -37,6 +37,31 @@ std::wstring utf8ToWide(const char* text)
     return result;
 }
 
+std::string wideToUtf8(const std::wstring& text)
+{
+    const int required = WideCharToMultiByte(CP_UTF8,
+                                             0,
+                                             text.c_str(),
+                                             -1,
+                                             nullptr,
+                                             0,
+                                             nullptr,
+                                             nullptr);
+    std::string result(required > 0 ? required - 1 : 0, '\0');
+    if (required > 1)
+    {
+        WideCharToMultiByte(CP_UTF8,
+                            0,
+                            text.c_str(),
+                            -1,
+                            result.data(),
+                            required,
+                            nullptr,
+                            nullptr);
+    }
+    return result;
+}
+
 std::wstring joinPath(const std::wstring& directory, const std::wstring& fileName)
 {
     if (directory.empty() || directory.back() == L'\\')
@@ -183,13 +208,20 @@ int main()
     std::filesystem::create_directories(targetDir);
 
     const std::wstring fakeMaintenanceTool = joinPath(targetDir, L"VaporViewMaintenanceTool.exe");
+    const std::wstring badMaintenanceTool = joinPath(targetDir, L"OtherMaintenanceTool.exe");
     const std::wstring fakeVaporView = joinPath(targetDir, L"VaporView.exe");
     const std::wstring probeResult = joinPath(targetDir, L"relaunch_probe_result.txt");
     const std::wstring badApplication = joinPath(targetDir, L"BadName.exe");
 
     std::ofstream(fakeMaintenanceTool, std::ios::binary).put('\0');
+    std::ofstream(badMaintenanceTool, std::ios::binary).put('\0');
     std::filesystem::copy_file(probeSource, fakeVaporView, std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file(probeSource, badApplication, std::filesystem::copy_options::overwrite_existing);
+
+    require(runRelauncher(relauncher, badMaintenanceTool, fakeVaporView) != 0,
+            "relauncher accepted an unexpected maintenance tool file name");
+    require(!waitForFile(probeResult),
+            "invalid maintenance tool target unexpectedly started a process");
 
     require(runRelauncher(relauncher, fakeMaintenanceTool, badApplication) != 0,
             "relauncher accepted an unexpected application file name");
@@ -203,11 +235,15 @@ int main()
     require(result.find("token_ok=1") != std::string::npos, "probe could not read token elevation");
     require(result.find("elevated=0") != std::string::npos,
             "relauncher started an elevated child process");
+    require(result.find("type=2") == std::string::npos,
+            "relauncher started a child with TokenElevationTypeFull");
 
     DWORD currentSession = 0;
     ProcessIdToSessionId(GetCurrentProcessId(), &currentSession);
     require(result.find("session=" + std::to_string(currentSession)) != std::string::npos,
             "relauncher started child in the wrong session");
+    require(result.find("cwd=" + wideToUtf8(targetDir)) != std::string::npos,
+            "relauncher did not set the application working directory");
 
     std::filesystem::remove_all(targetDir);
     std::cout << "update_relauncher_elevation_test passed\n";
