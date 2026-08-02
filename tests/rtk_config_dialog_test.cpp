@@ -217,12 +217,13 @@ int main(int argc, char **argv)
                 ggaClearLogButton->size() == QSize(34, 34) &&
                 ggaClearLogButton->toolTip() == QStringLiteral("清空 GGA 日志"),
             "GGA clear-log action matches the main log-card icon-button presentation");
-    const int mountpointCenter =
-        mountpointCombo->mapTo(&dialog, QPoint(0, 0)).y() + mountpointCombo->height() / 2;
-    const int ggaToggleCenter =
-        ggaToggleButton->mapTo(&dialog, QPoint(0, 0)).y() + ggaToggleButton->height() / 2;
-    require(std::abs(mountpointCenter - ggaToggleCenter) <= 1,
-            "GGA read button aligns with the NTRIP mountpoint row");
+    const int ggaControlsCenter =
+        ggaToggleButton->parentWidget()->mapTo(&dialog, QPoint(0, 0)).y() +
+        ggaToggleButton->parentWidget()->height() / 2;
+    const int ggaLogCenter =
+        ggaMonitorLog->mapTo(&dialog, QPoint(0, 0)).y() + ggaMonitorLog->height() / 2;
+    require(std::abs(ggaControlsCenter - ggaLogCenter) <= 2,
+            "GGA read controls are vertically centered beside the GGA log");
     require(dialog.findChild<QLabel *>(QStringLiteral("rtkGgaStatusLabel")) == nullptr,
             "GGA monitor does not create a separate status label");
     require(ggaMonitorLog->document()->documentMargin() <= 3.0,

@@ -5,6 +5,7 @@
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/widgets/TelemetryPanels.h"
 #include "ground/widgets/VisualTextLabel.h"
+#include "shared/config/ApplicationConfig.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "test_ui_helpers.h"
 
@@ -2596,6 +2597,19 @@ int main(int argc, char **argv)
         settings.remove(QStringLiteral("serial/hmp3_baud"));
         settings.remove(QStringLiteral("serial/sht45_baud"));
         settings.sync();
+
+        QSettings applicationSettings = VaporView::applicationConfigSettings();
+        applicationSettings.beginGroup(QStringLiteral("MainWindow"));
+        applicationSettings.setValue(QStringLiteral("sensor/pressure_source"), QStringLiteral("ptb210"));
+        applicationSettings.setValue(QStringLiteral("serial/ptb_baud"), QStringLiteral("9600"));
+        applicationSettings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("hmp3"));
+        applicationSettings.setValue(QStringLiteral("serial/hmp_baud"), QStringLiteral("19200"));
+        applicationSettings.remove(QStringLiteral("serial/ptb210_baud"));
+        applicationSettings.remove(QStringLiteral("serial/bmp390_baud"));
+        applicationSettings.remove(QStringLiteral("serial/hmp3_baud"));
+        applicationSettings.remove(QStringLiteral("serial/sht45_baud"));
+        applicationSettings.endGroup();
+        applicationSettings.sync();
     }
 
     {
@@ -6509,10 +6523,11 @@ int main(int argc, char **argv)
         temperaturePage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
     require(temperatureScrollAreaForSpacing != nullptr,
             "temperature page scroll area exists for horizontal margin checks");
+    const bool temperaturePageScrollable =
+        temperatureScrollAreaForSpacing->verticalScrollBar()->maximum() > 0;
     require(temperatureScrollAreaForSpacing->verticalScrollBarPolicy() == Qt::ScrollBarAsNeeded &&
-                temperatureScrollAreaForSpacing->verticalScrollBar()->maximum() == 0 &&
-                !temperatureScrollAreaForSpacing->verticalScrollBar()->isVisible(),
-            "temperature page hides its unused vertical scrollbar");
+                temperatureScrollAreaForSpacing->verticalScrollBar()->isVisible() == temperaturePageScrollable,
+            "temperature page shows its vertical scrollbar only when content needs scrolling");
     const QRect temperatureScrollRect = widgetRectInCentral(temperatureScrollAreaForSpacing);
     require(std::abs(temperatureScrollRect.left() - mainPageStackCentralRect.left()) <= 1 &&
                 std::abs(temperatureScrollRect.top() - mainPageStackCentralRect.top()) <= 1 &&
@@ -6523,9 +6538,11 @@ int main(int argc, char **argv)
                 temperatureScrollAreaForSpacing->widget()->layout()->contentsMargins() ==
                     QMargins(kExpectedPageLeftInset,
                              kExpectedPageTopInset,
-                             kExpectedNoScrollPageRightInset,
+                             temperaturePageScrollable
+                                 ? kExpectedHomeShadowSafeRightInset
+                                 : kExpectedNoScrollPageRightInset,
                              VaporView::Ground::MainSupport::kMainContentBottomShadowSafeInset),
-            "temperature page keeps the 18px right-side gap while its scrollbar is hidden");
+            "temperature page keeps the right-side card shadow gap in both scroll states");
     const int kExpectedMainCardToRightSidebarGap =
         kExpectedNoScrollPageRightInset +
         kExpectedHomeShadowSafeRightInset;

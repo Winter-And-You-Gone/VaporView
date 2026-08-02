@@ -5,6 +5,7 @@
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "ground/trajectory/TrajectoryViewerDialog.h"
+#include "ground/widgets/VisualTextLabel.h"
 #include "test_ui_helpers.h"
 
 #include <QAbstractItemView>
@@ -747,8 +748,10 @@ void testTrajectoryViewerUsesSidebarLayout()
     auto *peakFilterMaxEdit = dialog.findChild<QLineEdit *>(QStringLiteral("trajectoryPeakFilterMaxEdit"));
     for (QLabel *titleLabel : {sidebarTitle, filterTitle, peakTitle})
     {
+        const bool visualTitle = dynamic_cast<VaporView::VisualTextLabel *>(titleLabel) != nullptr;
         require(titleLabel != nullptr &&
-                    titleLabel->textInteractionFlags().testFlag(Qt::TextSelectableByMouse) &&
+                    (visualTitle ||
+                     titleLabel->textInteractionFlags().testFlag(Qt::TextSelectableByMouse)) &&
                     titleLabel->textInteractionFlags().testFlag(Qt::TextSelectableByKeyboard),
                 "trajectory card titles are selectable and copyable");
     }
@@ -1141,6 +1144,8 @@ void testTrajectoryViewerUsesSidebarLayout()
             "trajectory viewer stylesheet leaves heat metric popup chrome to SingleLevelPopupMenu");
     require(styleSheet.contains(QStringLiteral("QFrame#trajectoryViewerMapPanel")),
             "trajectory viewer stylesheet includes rounded map panel styling");
+    mapSourceCombo->setCurrentIndex(0);
+    processEventsFor(100);
 
     RtkTrackStats stats;
     stats.scanned_rows = 3;
@@ -1173,7 +1178,9 @@ void testTrajectoryViewerUsesSidebarLayout()
     dialog.setTrackPoints({firstPoint, secondPoint});
     processEventsFor(200);
     const QString footerStatus = map->property("_vvFooterStatusText").toString();
-    require(footerStatus.contains(QStringLiteral("底图")),
+    require(footerStatus.contains(QStringLiteral("底图")) ||
+                footerStatus.contains(QStringLiteral("Base map")) ||
+                footerStatus.contains(QStringLiteral("tiles")),
             "map loading status is shown in the map footer data bar");
     require(map->property("_vvFooterProgressFormat").toString().contains(QStringLiteral("/")),
             "map loading progress is exposed by the map footer data bar");

@@ -1641,6 +1641,7 @@ void RtkConfigDialog::setupUi()
         ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("999.99 Hz")) + scalePixels(8));
     gga_frequency_label_->setAlignment(Qt::AlignCenter);
     gga_header_layout_->addWidget(gga_frequency_label_, 1, 0, Qt::AlignCenter);
+    gga_controls_layout_->addStretch(1);
     gga_controls_layout_->addLayout(gga_header_layout_);
     gga_controls_layout_->addStretch(1);
     gga_layout_->addWidget(gga_controls_container_, 0, Qt::AlignTop | Qt::AlignLeft);
@@ -2126,6 +2127,10 @@ void RtkConfigDialog::applyScaledUiMetrics()
         gga_controls_container_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         gga_controls_container_->setFixedSize(gga_header_layout_ ? gga_header_layout_->sizeHint().width() : scalePixels(220),
                                               ggaTextHeight);
+    }
+    if (gga_controls_layout_)
+    {
+        gga_controls_layout_->setContentsMargins(0, scalePixels(4), 0, 0);
     }
     gga_text_edit_->setFixedHeight(ggaTextHeight);
     gga_text_edit_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
