@@ -21,7 +21,7 @@ VaporViewPermissionTool.exe
 C:\VaporView
 ```
 
-也支持用户在安装器中选择其他普通目录，例如：
+也支持用户在安装器中选择其他普通目录，安装器配置显式允许非 ASCII 安装路径，例如：
 
 ```text
 D:\Tools\VaporView

@@ -42,5 +42,8 @@ $configText = Get-Content -LiteralPath $configPath -Raw
 if ($configText -notmatch '<TargetDir>C:\\VaporView</TargetDir>') {
     throw "Generated IFW config.xml does not keep the default TargetDir as C:\VaporView"
 }
+if ($configText -notmatch '<AllowNonAsciiCharacters>true</AllowNonAsciiCharacters>') {
+    throw "Generated IFW config.xml does not allow non-ASCII installation paths"
+}
 
 Write-Host "ifw_staging_test passed"

@@ -9,6 +9,7 @@
     <WizardDefaultWidth>600</WizardDefaultWidth>
     <WizardDefaultHeight>400</WizardDefaultHeight>
     <TargetDir>@VAPORVIEW_TARGET_DIR@</TargetDir>
+    <AllowNonAsciiCharacters>true</AllowNonAsciiCharacters>
     <StartMenuDir>VaporView</StartMenuDir>
     <InstallerApplicationIcon>VaporViewInstallerIcon</InstallerApplicationIcon>
     <InstallerWindowIcon>VaporViewInstallerIcon.png</InstallerWindowIcon>
