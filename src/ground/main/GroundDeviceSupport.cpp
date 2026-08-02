@@ -702,31 +702,6 @@ int sourceModeIndexFromStoredValue(const QString& value)
     return -1;
 }
 
-bool shouldMirrorToErrorLog(const QString& message)
-{
-    static const QStringList keywords = {
-        QStringLiteral("error"),
-        QStringLiteral("failed"),
-        QStringLiteral("timeout"),
-        QStringLiteral("exception"),
-        QStringLiteral("disconnect"),
-        QStringLiteral("异常"),
-        QStringLiteral("失败"),
-        QStringLiteral("错误"),
-        QStringLiteral("超时"),
-        QStringLiteral("掉线"),
-        QStringLiteral("断开"),
-    };
-    const QString lower = message.toLower();
-    for (const QString& keyword : keywords)
-    {
-        if (lower.contains(keyword.toLower()))
-        {
-            return true;
-        }
-    }
-    return false;
-}
 void rememberBaseMetric(QObject *object, const char *propertyName, int value)
 {
     if (!object->property(propertyName).isValid())

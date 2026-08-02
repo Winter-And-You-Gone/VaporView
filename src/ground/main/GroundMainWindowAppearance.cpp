@@ -163,8 +163,12 @@ void MainWindow::loadModernStyleSheet()
             "QAbstractSpinBox[spinArrowHover=\"up\"]::up-arrow { image: url(lucide/chevron-up-primary.svg); width: 14px; height: 14px; margin-right: 5px; }"
             "QAbstractSpinBox[spinArrowHover=\"down\"]::down-arrow { image: url(lucide/chevron-down-primary.svg); width: 14px; height: 14px; margin-right: 5px; }"
             "QPlainTextEdit, QTextEdit { background-color: @vv-field-bg; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 10px; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; }"
-            "QTextEdit#logTextEdit { background-color: transparent; border: none; border-radius: 0px; }"
-            "QWidget#logTextViewport { background-color: transparent; border: none; }"
+            "QListView#logListView { background-color: transparent; border: none; border-radius: 0px; padding: 4px 0px; }"
+            "QListView#logListView::item { padding: 2px 8px; }"
+            "QListView#logListView::item:selected { background-color: @vv-primary-subtle; color: @vv-text; }"
+            "QWidget#logControlsRow { background-color: transparent; border: none; }"
+            "QToolButton#logViewModeButton, QToolButton#logAutoFollowButton, QPushButton#logNewEntriesButton { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; padding: 0px 9px; }"
+            "QToolButton#logViewModeButton:checked, QToolButton#logAutoFollowButton:checked, QPushButton#logNewEntriesButton { background-color: @vv-primary-subtle; border-color: @vv-primary; color: @vv-text-strong; }"
             "QScrollBar:vertical { background-color: @vv-surface-sunken; width: 8px; border: none; border-radius: 4px; margin: 14px 0px 14px 0px; }"
             "QScrollBar::handle:vertical { background-color: @vv-scrollbar-handle; min-height: 30px; border-radius: 4px; border: none; margin: 0px; }"
             "QScrollBar::handle:vertical:hover { background-color: @vv-scrollbar-handle-hover; }"
@@ -707,6 +711,10 @@ void MainWindow::setLogSidePanelCollapsed(bool collapsed)
     state_->log_side_panel_->setMinimumWidth(minimumLogWidth);
     state_->log_side_panel_->show();
     state_->log_side_panel_->setMaximumWidth(QWIDGETSIZE_MAX);
+    if (isLogViewNearBottom())
+    {
+        clearLogUnreadState();
+    }
 
     const QRect availableGeometry = currentScreenAvailableGeometry();
     const int totalWidth = std::max(1, state_->main_content_splitter_->width() > 1

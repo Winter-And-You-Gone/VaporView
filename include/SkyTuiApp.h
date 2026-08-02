@@ -53,6 +53,11 @@ public:
 
     void start();
 
+#ifdef VAPORVIEW_SKY_TUI_TESTING
+    const SkyTuiModel& modelForTest() const;
+    void appendLogRecordForTest(const LogRecord& record);
+#endif
+
 public slots:
     void appendLog(const QString& message);
 
@@ -64,6 +69,7 @@ private slots:
 private:
     void appendLogRecord(const LogRecord& record);
     void appendLogToModel(const QString& message);
+    void appendLogEntryToModel(const SkyTuiLogEntry& entry);
     void startInputThread();
     void restoreTerminal();
     void scheduleRender();

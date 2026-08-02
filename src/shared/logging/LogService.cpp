@@ -1168,6 +1168,10 @@ void reportUserIssue(LogLevel level,
     LogService::withCurrentInstance([&](LogService& logService) {
         QVariantMap fields = details;
         fields.insert(QStringLiteral("ui_visible"), true);
+        if (!fields.contains(QStringLiteral("ui_visibility")))
+        {
+            fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("attention"));
+        }
         if (!fields.contains(QStringLiteral("event")))
         {
             fields.insert(QStringLiteral("event"), QStringLiteral("user_issue_reported"));

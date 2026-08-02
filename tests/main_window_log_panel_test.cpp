@@ -1,0 +1,245 @@
+#include "LogService.h"
+#include "ground/main/MainWindow.h"
+#include "shared/config/SettingsWriteBarrier.h"
+#include "test_ui_helpers.h"
+
+#include <QAbstractItemModel>
+#include <QApplication>
+#include <QLineEdit>
+#include <QListView>
+#include <QPushButton>
+#include <QSettings>
+#include <QTemporaryDir>
+#include <QToolButton>
+
+#include <cstdlib>
+#include <iostream>
+#include <memory>
+
+namespace
+{
+
+struct MainWindowSettingsBackup
+{
+    MainWindowSettingsBackup()
+    {
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        hadLogAutoFollow = settings.contains(QStringLiteral("log_auto_follow"));
+        logAutoFollow = settings.value(QStringLiteral("log_auto_follow"));
+        hadLogViewMode = settings.contains(QStringLiteral("log_view_mode"));
+        logViewMode = settings.value(QStringLiteral("log_view_mode"));
+        settings.remove(QStringLiteral("log_auto_follow"));
+        settings.remove(QStringLiteral("log_view_mode"));
+        settings.sync();
+    }
+
+    void restore()
+    {
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        if (hadLogAutoFollow)
+        {
+            settings.setValue(QStringLiteral("log_auto_follow"), logAutoFollow);
+        }
+        else
+        {
+            settings.remove(QStringLiteral("log_auto_follow"));
+        }
+        if (hadLogViewMode)
+        {
+            settings.setValue(QStringLiteral("log_view_mode"), logViewMode);
+        }
+        else
+        {
+            settings.remove(QStringLiteral("log_view_mode"));
+        }
+        settings.sync();
+    }
+
+    bool hadLogAutoFollow = false;
+    QVariant logAutoFollow;
+    bool hadLogViewMode = false;
+    QVariant logViewMode;
+};
+
+MainWindowSettingsBackup *settingsBackup = nullptr;
+
+[[noreturn]] void fail(const char *message)
+{
+    std::cerr << "FAIL: " << message << '\n';
+    VaporView::setSettingsWritesSuspended(false);
+    if (settingsBackup)
+    {
+        settingsBackup->restore();
+    }
+    std::exit(1);
+}
+
+void require(bool condition, const char *message)
+{
+    if (!condition)
+    {
+        fail(message);
+    }
+}
+
+void publishRecord(VaporView::LogService& logService,
+                   VaporView::LogLevel level,
+                   const QString& source,
+                   const QString& category,
+                   const QString& message,
+                   QVariantMap fields = {})
+{
+    logService.publish(level, source, category, message, fields);
+    VaporViewTest::processEventsFor(90);
+}
+
+QToolButton *findLogModeButton(MainWindow& window, const QString& text)
+{
+    const QList<QToolButton*> buttons = window.findChildren<QToolButton *>(QStringLiteral("logViewModeButton"));
+    for (QToolButton *button : buttons)
+    {
+        if (button && button->text() == text)
+        {
+            return button;
+        }
+    }
+    return nullptr;
+}
+
+QToolButton *findActionButton(MainWindow& window, const QString& actionText, const QString& toolTipText)
+{
+    const QList<QToolButton*> buttons = window.findChildren<QToolButton *>();
+    for (QToolButton *button : buttons)
+    {
+        if (!button)
+        {
+            continue;
+        }
+        if ((button->defaultAction() && button->defaultAction()->text() == actionText) ||
+            button->toolTip() == toolTipText)
+        {
+            return button;
+        }
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+int main(int argc, char **argv)
+{
+    QTemporaryDir settingsDirectory;
+    require(settingsDirectory.isValid(), "temporary settings directory created");
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDirectory.path());
+    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDirectory.path());
+
+    QTemporaryDir logDirectory;
+    require(logDirectory.isValid(), "temporary log directory created");
+
+    QApplication app(argc, argv);
+    app.setApplicationName(QStringLiteral("VaporView"));
+    app.setOrganizationName(QStringLiteral("VaporView"));
+
+    MainWindowSettingsBackup backup;
+    settingsBackup = &backup;
+    VaporView::setSettingsWritesSuspended(true);
+
+    VaporView::LogService logService(QStringLiteral("VaporViewLogPanelTest"),
+                                     nullptr,
+                                     logDirectory.path(),
+                                     logDirectory.path());
+    auto window = std::make_unique<MainWindow>();
+    window->show();
+    require(VaporViewTest::waitForWindowExposed(window.get()), "main window exposed for log panel test");
+
+    auto *logList = window->findChild<QListView *>(QStringLiteral("logListView"));
+    auto *searchEdit = window->findChild<QLineEdit *>(QStringLiteral("logSearchEdit"));
+    auto *newEntriesButton = window->findChild<QPushButton *>(QStringLiteral("logNewEntriesButton"));
+    auto *attentionButton = findLogModeButton(*window, QStringLiteral("关注"));
+    auto *allButton = findLogModeButton(*window, QStringLiteral("全部"));
+    auto *debugButton = findLogModeButton(*window, QStringLiteral("调试"));
+    auto *followButton = window->findChild<QToolButton *>(QStringLiteral("logAutoFollowButton"));
+    auto *clearButton = findActionButton(*window,
+                                         QStringLiteral("清空显示"),
+                                         QStringLiteral("仅清空当前显示，不删除日志文件"));
+
+    require(logList && logList->model(), "log list view is backed by a model");
+    require(searchEdit != nullptr, "log search edit exists");
+    require(newEntriesButton != nullptr, "new log indicator button exists");
+    require(attentionButton && allButton && debugButton, "positive log view buttons exist");
+    require(followButton && followButton->isChecked(), "auto follow defaults on");
+    require(clearButton != nullptr, "clear display button exists");
+    require(attentionButton->isChecked(), "default log view is attention");
+
+    publishRecord(logService,
+                  VaporView::LogLevel::Info,
+                  QStringLiteral("Ground"),
+                  QStringLiteral("ordinary"),
+                  QStringLiteral("普通 Info"),
+                  {{QStringLiteral("event"), QStringLiteral("ordinary_info")}});
+    publishRecord(logService,
+                  VaporView::LogLevel::Debug,
+                  QStringLiteral("Qt"),
+                  QStringLiteral("qt"),
+                  QStringLiteral("调试细节"),
+                  {{QStringLiteral("event"), QStringLiteral("debug_line")}});
+    publishRecord(logService,
+                  VaporView::LogLevel::Warning,
+                  QStringLiteral("Ground"),
+                  QStringLiteral("device.connection"),
+                  QStringLiteral("设备连接失败。"),
+                  {{QStringLiteral("event"), QStringLiteral("device_connection_failed")},
+                   {QStringLiteral("error_code"), QStringLiteral("DEVICE_CONNECTION_FAILED")}});
+    publishRecord(logService,
+                  VaporView::LogLevel::Info,
+                  QStringLiteral("Ground"),
+                  QStringLiteral("recording"),
+                  QStringLiteral("记录已开始。"),
+                  {{QStringLiteral("event"), QStringLiteral("recording_started")},
+                   {QStringLiteral("ui_visibility"), QStringLiteral("attention")}});
+
+    require(logList->model()->rowCount() == 2,
+            "attention view shows warning and explicit attention Info only");
+
+    allButton->click();
+    VaporViewTest::processEventsFor(30);
+    require(allButton->isChecked(), "all view button becomes checked");
+    require(logList->model()->rowCount() == 3, "all view includes ordinary Info but keeps Debug hidden");
+
+    debugButton->click();
+    VaporViewTest::processEventsFor(30);
+    require(logList->model()->rowCount() == 4, "debug view includes Debug records");
+
+    searchEdit->setText(QStringLiteral("DEVICE_CONNECTION_FAILED"));
+    VaporViewTest::processEventsFor(30);
+    require(logList->model()->rowCount() == 1, "search matches structured error_code");
+    searchEdit->clear();
+    VaporViewTest::processEventsFor(30);
+
+    clearButton->click();
+    VaporViewTest::processEventsFor(90);
+    require(logList->model()->rowCount() == 0, "clear display leaves the visible panel empty");
+
+    attentionButton->click();
+    followButton->click();
+    require(!followButton->isChecked(), "auto follow can be disabled");
+    publishRecord(logService,
+                  VaporView::LogLevel::Error,
+                  QStringLiteral("Ground"),
+                  QStringLiteral("device.connection"),
+                  QStringLiteral("设备连接失败。"),
+                  {{QStringLiteral("event"), QStringLiteral("device_connection_failed")},
+                   {QStringLiteral("error_code"), QStringLiteral("DEVICE_CONNECTION_FAILED")}});
+    require(newEntriesButton->isVisible(), "new log indicator appears when auto follow is disabled");
+    require(newEntriesButton->text().contains(QStringLiteral("1")), "new log indicator counts pending visible rows");
+    newEntriesButton->click();
+    VaporViewTest::processEventsFor(30);
+    require(!newEntriesButton->isVisible(), "clicking new log indicator clears unread state");
+
+    window.reset();
+    VaporView::setSettingsWritesSuspended(false);
+    backup.restore();
+    settingsBackup = nullptr;
+    return 0;
+}

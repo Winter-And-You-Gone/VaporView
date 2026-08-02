@@ -2,17 +2,6 @@
 
 void MainWindow::log(const QString& message)
 {
-    auto scrollLogToBottom = [this]() {
-        if (state_->log_text_edit_)
-        {
-            state_->log_text_edit_->ensureCursorVisible();
-            if (QScrollBar *scrollBar = state_->log_text_edit_->verticalScrollBar())
-            {
-                scrollBar->setValue(scrollBar->maximum());
-            }
-        }
-    };
-
     if (message.startsWith('\r'))
     {
         VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
@@ -20,38 +9,13 @@ void MainWindow::log(const QString& message)
                                QStringLiteral("Ground"),
                                QStringLiteral("ui.progress"),
                                QStringLiteral("界面进度日志已更新。"),
-                               {{QStringLiteral("ui_visible"), true},
-                                {QStringLiteral("inline"), true},
-                                {QStringLiteral("event"), QStringLiteral("ground_ui_progress_updated")},
-                                {QStringLiteral("legacy_unclassified"), true},
-                                {QStringLiteral("ui_message"), message.mid(1)}});
+                               {{QStringLiteral("ui_visibility"), QStringLiteral("hidden")},
+                                {QStringLiteral("ui_visible"), true},
+                                 {QStringLiteral("inline"), true},
+                                 {QStringLiteral("event"), QStringLiteral("ground_ui_progress_updated")},
+                                 {QStringLiteral("legacy_unclassified"), true},
+                                 {QStringLiteral("ui_message"), message.mid(1)}});
         });
-        if (!state_->log_text_edit_)
-        {
-            return;
-        }
-        const QString inlineMessage = message.mid(1);
-        QTextCursor cursor = state_->log_text_edit_->textCursor();
-        cursor.movePosition(QTextCursor::End);
-
-        if (!state_->has_inline_progress_log_)
-        {
-            if (!state_->log_text_edit_->document()->isEmpty())
-            {
-                cursor.insertBlock();
-            }
-            cursor.insertText(inlineMessage);
-            state_->has_inline_progress_log_ = true;
-        }
-        else
-        {
-            cursor.movePosition(QTextCursor::StartOfBlock, QTextCursor::KeepAnchor);
-            cursor.removeSelectedText();
-            cursor.insertText(inlineMessage);
-        }
-
-        state_->log_text_edit_->setTextCursor(cursor);
-        scrollLogToBottom();
         return;
     }
 
@@ -62,10 +26,11 @@ void MainWindow::log(const QString& message)
                            QStringLiteral("Ground"),
                            category,
                            QStringLiteral("地面端界面日志已更新。"),
-                           {{QStringLiteral("ui_visible"), true},
-                            {QStringLiteral("event"), QStringLiteral("ground_ui_legacy_log")},
-                            {QStringLiteral("legacy_unclassified"), true},
-                            {QStringLiteral("ui_message"), message}});
+                           {{QStringLiteral("ui_visibility"), QStringLiteral("details")},
+                            {QStringLiteral("ui_visible"), true},
+                             {QStringLiteral("event"), QStringLiteral("ground_ui_legacy_log")},
+                             {QStringLiteral("legacy_unclassified"), true},
+                             {QStringLiteral("ui_message"), message}});
     });
     if (!published)
     {
@@ -74,24 +39,11 @@ void MainWindow::log(const QString& message)
         uiRecord.source = QStringLiteral("Ground");
         uiRecord.category = category;
         uiRecord.message = QStringLiteral("地面端界面日志已更新。");
-        uiRecord.fields = {{QStringLiteral("event"), QStringLiteral("ground_ui_legacy_log")},
+        uiRecord.fields = {{QStringLiteral("ui_visibility"), QStringLiteral("details")},
+                           {QStringLiteral("event"), QStringLiteral("ground_ui_legacy_log")},
                            {QStringLiteral("legacy_unclassified"), true},
                            {QStringLiteral("ui_message"), message}};
-        const QString displayLine = QStringLiteral("[%1] %2")
-            .arg(QDateTime::currentDateTime().toString(QStringLiteral("hh:mm:ss")), message);
-        state_->log_entries_.append(displayLine);
-        state_->log_records_.append(uiRecord);
-        if (state_->log_entries_.size() > kMaxLogEntryCount)
-        {
-            const int removeCount = state_->log_entries_.size() - kMaxLogEntryCount;
-            state_->log_entries_.remove(0, removeCount);
-            state_->log_records_.remove(0, removeCount);
-        }
-        if (state_->log_text_edit_ && shouldShowLogRecord(uiRecord))
-        {
-            state_->log_text_edit_->append(displayLine);
-            scrollLogToBottom();
-        }
+        enqueueUiLogRecord(uiRecord);
     }
     state_->has_inline_progress_log_ = false;
 
@@ -101,66 +53,215 @@ void MainWindow::log(const QString& message)
     }
 }
 
-bool MainWindow::shouldShowLogRecord(const VaporView::LogRecord& record) const
+void MainWindow::enqueueUiLogRecord(const VaporView::LogRecord& record)
 {
-    if (state_->log_filter_ack_enabled_ && record.category == QStringLiteral("ack"))
+    if (record.category == QStringLiteral("ui.progress"))
     {
-        return false;
+        return;
     }
-    if (state_->log_filter_config_enabled_ && record.category == QStringLiteral("config"))
+    if (state_->pending_ui_log_records_.size() >= kMaxPendingUiLogRecords)
     {
-        return false;
+        state_->pending_ui_log_records_.removeFirst();
     }
-    if (state_->log_filter_connection_enabled_ && record.category == QStringLiteral("connection"))
+    state_->pending_ui_log_records_.append(record);
+    if (state_->log_flush_timer_)
     {
-        return false;
+        if (!state_->log_flush_timer_->isActive())
+        {
+            state_->log_flush_timer_->start();
+        }
+        return;
     }
-    if (state_->log_filter_recording_enabled_ && record.category == QStringLiteral("recording"))
-    {
-        return false;
-    }
-    if (state_->log_filter_debug_enabled_ && record.level == VaporView::LogLevel::Debug)
-    {
-        return false;
-    }
-    if (state_->log_filter_warning_enabled_ &&
-        static_cast<int>(record.level) >= static_cast<int>(VaporView::LogLevel::Warning))
-    {
-        return false;
-    }
-    if (state_->log_filter_qt_enabled_ && record.source == QStringLiteral("Qt"))
-    {
-        return false;
-    }
-    return true;
+    flushPendingUiLogRecords();
 }
 
-void MainWindow::renderLogView()
+void MainWindow::flushPendingUiLogRecords()
 {
-    if (!state_->log_text_edit_)
+    if (state_->pending_ui_log_records_.isEmpty() || !state_->log_model_)
     {
         return;
     }
 
-    state_->log_text_edit_->clear();
-    const int count = qMin(state_->log_entries_.size(), state_->log_records_.size());
-    for (int index = 0; index < count; ++index)
+    if (state_->log_flush_timer_)
     {
-        if (shouldShowLogRecord(state_->log_records_.at(index)))
+        state_->log_flush_timer_->stop();
+    }
+
+    const bool wasNearBottom = isLogViewNearBottom();
+    const bool shouldFollow = state_->log_auto_follow_enabled_ && wasNearBottom;
+    QVector<VaporView::LogRecord> records;
+    records.swap(state_->pending_ui_log_records_);
+
+    int visibleInCurrentView = 0;
+    int warningCount = 0;
+    int errorCount = 0;
+    int statusCount = 0;
+    for (const VaporView::LogRecord& record : records)
+    {
+        if (VaporView::Ground::Main::uiLogRecordVisibleInMode(record, state_->log_view_mode_))
         {
-            state_->log_text_edit_->append(state_->log_entries_.at(index));
+            ++visibleInCurrentView;
+        }
+        const auto decision = VaporView::Ground::Main::uiLogVisibilityForRecord(record);
+        if (decision.explicitVisibility &&
+            decision.visibility == VaporView::Ground::Main::LogUiVisibility::Hidden)
+        {
+            continue;
+        }
+        if (record.level >= VaporView::LogLevel::Error)
+        {
+            ++errorCount;
+        }
+        else if (record.level == VaporView::LogLevel::Warning)
+        {
+            ++warningCount;
+        }
+        else if (record.level == VaporView::LogLevel::Info &&
+                 decision.visibility == VaporView::Ground::Main::LogUiVisibility::Attention)
+        {
+            ++statusCount;
         }
     }
-    state_->has_inline_progress_log_ = false;
-    if (QScrollBar *scrollBar = state_->log_text_edit_->verticalScrollBar())
+
+    state_->log_model_->appendRecords(records);
+
+    if (shouldFollow)
     {
-        scrollBar->setValue(scrollBar->maximum());
+        QTimer::singleShot(0, this, [this]() {
+            scrollLogViewToBottom();
+        });
+    }
+    else if (visibleInCurrentView > 0)
+    {
+        state_->log_new_visible_count_ += visibleInCurrentView;
+        state_->log_unread_warning_count_ += warningCount;
+        state_->log_unread_error_count_ += errorCount;
+        state_->log_unread_status_count_ += statusCount;
+        updateLogUnreadUi();
+    }
+}
+
+bool MainWindow::shouldShowLogRecord(const VaporView::LogRecord& record) const
+{
+    return VaporView::Ground::Main::uiLogRecordVisibleInMode(record, state_->log_view_mode_);
+}
+
+void MainWindow::renderLogView()
+{
+    if (!state_->log_filter_proxy_)
+    {
+        return;
+    }
+
+    state_->log_filter_proxy_->setViewMode(state_->log_view_mode_);
+    state_->log_filter_proxy_->setSearchText(state_->log_search_edit_ ? state_->log_search_edit_->text() : QString());
+    state_->has_inline_progress_log_ = false;
+    if (state_->log_auto_follow_enabled_)
+    {
+        QTimer::singleShot(0, this, [this]() {
+            scrollLogViewToBottom();
+        });
+    }
+    updateLogFilterAction();
+    updateLogUnreadUi();
+}
+
+void MainWindow::setLogViewMode(VaporView::Ground::Main::LogUiViewMode mode, bool persist)
+{
+    if (state_->log_view_mode_ == mode)
+    {
+        renderLogView();
+        return;
+    }
+    state_->log_view_mode_ = mode;
+    if (persist)
+    {
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        VaporView::setPersistentSetting(settings,
+                                        QStringLiteral("log_view_mode"),
+                                        VaporView::Ground::Main::uiLogViewModeToSetting(mode));
+    }
+    renderLogView();
+}
+
+bool MainWindow::isLogViewNearBottom() const
+{
+    if (!state_->log_list_view_)
+    {
+        return true;
+    }
+    QScrollBar *scrollBar = state_->log_list_view_->verticalScrollBar();
+    if (!scrollBar)
+    {
+        return true;
+    }
+    return scrollBar->maximum() - scrollBar->value() <= scalePixels(32);
+}
+
+void MainWindow::scrollLogViewToBottom()
+{
+    if (state_->log_list_view_)
+    {
+        state_->log_list_view_->scrollToBottom();
+    }
+    clearLogUnreadState();
+}
+
+void MainWindow::updateLogFollowState()
+{
+    if (state_->log_auto_follow_btn_)
+    {
+        state_->log_auto_follow_btn_->setChecked(state_->log_auto_follow_enabled_);
+    }
+    if (isLogViewNearBottom() && !state_->log_side_panel_collapsed_)
+    {
+        clearLogUnreadState();
+    }
+}
+
+void MainWindow::clearLogUnreadState()
+{
+    state_->log_new_visible_count_ = 0;
+    state_->log_unread_warning_count_ = 0;
+    state_->log_unread_error_count_ = 0;
+    state_->log_unread_status_count_ = 0;
+    if (state_->log_model_)
+    {
+        state_->log_model_->clearUnread();
+    }
+    updateLogUnreadUi();
+}
+
+void MainWindow::updateLogUnreadUi()
+{
+    if (state_->log_new_entries_btn_)
+    {
+        const int count = state_->log_new_visible_count_;
+        state_->log_new_entries_btn_->setVisible(count > 0);
+        state_->log_new_entries_btn_->setText(state_->is_english_
+            ? QStringLiteral("%1 new").arg(count)
+            : QStringLiteral("%1 条新日志").arg(count));
+    }
+    if (state_->log_inline_title_lbl_)
+    {
+        const int severe = state_->log_unread_error_count_ + state_->log_unread_warning_count_;
+        const int status = state_->log_unread_status_count_;
+        QString text = state_->is_english_ ? QStringLiteral("Log") : QStringLiteral("日志");
+        if (severe > 0)
+        {
+            text += QStringLiteral("  !%1").arg(severe);
+        }
+        else if (status > 0)
+        {
+            text += QStringLiteral("  %1").arg(status);
+        }
+        state_->log_inline_title_lbl_->setText(text);
     }
 }
 
 void MainWindow::updateLogFilterAction()
 {
-    if (!state_->log_filter_ack_action_)
+    if (!state_->log_filter_btn_)
     {
         return;
     }
@@ -168,22 +269,15 @@ void MainWindow::updateLogFilterAction()
     const QIcon checkIcon = createMenuCheckIcon(state_->dark_theme_enabled_);
     QStringList filterTexts = state_->is_english_
         ? QStringList{
-              QStringLiteral("Filter ACK logs"),
-              QStringLiteral("Filter config and rate logs"),
-              QStringLiteral("Filter connection and port logs"),
-              QStringLiteral("Filter recording and schedule logs")}
+              QStringLiteral("Attention"),
+              QStringLiteral("All"),
+              QStringLiteral("Debug"),
+              QStringLiteral("Auto follow")}
         : QStringList{
-              QStringLiteral("过滤 ACK 日志"),
-              QStringLiteral("过滤配置和频率日志"),
-              QStringLiteral("过滤连接和端口日志"),
-              QStringLiteral("过滤记录和定时日志")};
-    filterTexts += state_->is_english_
-        ? QStringList{QStringLiteral("Filter Debug logs"),
-                      QStringLiteral("Filter warnings and errors"),
-                      QStringLiteral("Filter Qt logs")}
-        : QStringList{QStringLiteral("过滤 Debug 日志"),
-                      QStringLiteral("过滤警告和错误"),
-                      QStringLiteral("过滤 Qt 日志")};
+              QStringLiteral("关注"),
+              QStringLiteral("全部"),
+              QStringLiteral("调试"),
+              QStringLiteral("自动跟随")};
     const QFontMetrics filterTextMetrics(qApp ? qApp->font() : font());
     int filterTextWidth = 0;
     for (const QString& text : filterTexts)
@@ -198,11 +292,11 @@ void MainWindow::updateLogFilterAction()
     const int menuItemWidth = rowLeftPadding + filterTextWidth + rowSpacing + checkSlotWidth + rowRightPadding;
 
     const auto updateAction = [this, &checkIcon, filterTextWidth, checkSlotWidth, menuItemWidth, rowHeight, rowLeftPadding, rowRightPadding, rowSpacing](QAction *action,
-                                                             bool enabled,
+                                                             bool checked,
                                                              const QString& englishText,
                                                              const QString& chineseText,
-                                                            const QString& englishDetail,
-                                                            const QString& chineseDetail) {
+                                                             const QString& englishDetail,
+                                                             const QString& chineseDetail) {
         if (!action)
         {
             return;
@@ -216,7 +310,7 @@ void MainWindow::updateLogFilterAction()
         auto *row = widgetAction ? qobject_cast<SingleLevelPopupMenuRow *>(widgetAction->defaultWidget()) : nullptr;
         if (!row)
         {
-            action->setIcon(enabled ? checkIcon : QIcon());
+            action->setIcon(checked ? checkIcon : QIcon());
             return;
         }
 
@@ -231,65 +325,89 @@ void MainWindow::updateLogFilterAction()
         row->setText(text);
         row->setToolTip(detail);
         row->setCheckIcon(checkIcon);
-        row->setChecked(enabled);
+        row->setChecked(checked);
         row->refreshTheme();
     };
 
     updateAction(state_->log_filter_ack_action_,
-                 state_->log_filter_ack_enabled_,
-                 QStringLiteral("Filter ACK logs"),
-                 QStringLiteral("过滤 ACK 日志"),
-                 QStringLiteral("Hide remote ACK command result logs from the display"),
-                 QStringLiteral("仅从显示中隐藏远程 ACK 命令结果日志"));
+                 state_->log_view_mode_ == VaporView::Ground::Main::LogUiViewMode::Attention,
+                 QStringLiteral("Attention"),
+                 QStringLiteral("关注"),
+                 QStringLiteral("Show warnings, errors, critical records, and Info records explicitly marked for attention"),
+                 QStringLiteral("只显示警告、错误、严重日志，以及显式标记需要关注的 Info"));
     updateAction(state_->log_filter_config_action_,
-                 state_->log_filter_config_enabled_,
-                 QStringLiteral("Filter config and rate logs"),
-                 QStringLiteral("过滤配置和频率日志"),
-                 QStringLiteral("Hide configuration, baud-rate, and output-rate logs from the display"),
-                 QStringLiteral("仅从显示中隐藏配置、波特率和输出频率日志"));
+                 state_->log_view_mode_ == VaporView::Ground::Main::LogUiViewMode::All,
+                 QStringLiteral("All"),
+                 QStringLiteral("全部"),
+                 QStringLiteral("Show Info and higher records, while keeping Debug hidden"),
+                 QStringLiteral("显示 Info 及以上日志，Debug 仍保持隐藏"));
     updateAction(state_->log_filter_connection_action_,
-                 state_->log_filter_connection_enabled_,
-                 QStringLiteral("Filter connection and port logs"),
-                 QStringLiteral("过滤连接和端口日志"),
-                 QStringLiteral("Hide connection, disconnection, port, and handshake logs from the display"),
-                 QStringLiteral("仅从显示中隐藏连接、断开、端口和握手日志"));
+                 state_->log_view_mode_ == VaporView::Ground::Main::LogUiViewMode::Debug,
+                 QStringLiteral("Debug"),
+                 QStringLiteral("调试"),
+                 QStringLiteral("Show Debug diagnostics together with Info, Warning, Error, and Critical records"),
+                 QStringLiteral("显示 Debug 诊断以及 Info、Warning、Error、Critical 日志"));
     updateAction(state_->log_filter_recording_action_,
-                 state_->log_filter_recording_enabled_,
-                 QStringLiteral("Filter recording and schedule logs"),
-                 QStringLiteral("过滤记录和定时日志"),
-                 QStringLiteral("Hide recording session and scheduled-recording logs from the display"),
-                 QStringLiteral("仅从显示中隐藏记录会话和定时记录日志"));
-    updateAction(state_->log_filter_debug_action_,
-                 state_->log_filter_debug_enabled_,
-                 QStringLiteral("Filter Debug logs"),
-                 QStringLiteral("过滤 Debug 日志"),
-                 QStringLiteral("Hide Debug-level records from the display"),
-                 QStringLiteral("仅从显示中隐藏 Debug 级别日志"));
-    updateAction(state_->log_filter_warning_action_,
-                 state_->log_filter_warning_enabled_,
-                 QStringLiteral("Filter warnings and errors"),
-                 QStringLiteral("过滤警告和错误"),
-                 QStringLiteral("Hide Warning, Error, and Critical records from the display"),
-                 QStringLiteral("仅从显示中隐藏 Warning、Error 和 Critical 日志"));
-    updateAction(state_->log_filter_qt_action_,
-                 state_->log_filter_qt_enabled_,
-                 QStringLiteral("Filter Qt logs"),
-                 QStringLiteral("过滤 Qt 日志"),
-                 QStringLiteral("Hide records emitted by Qt message categories"),
-                 QStringLiteral("仅从显示中隐藏 Qt 消息类别日志"));
+                 state_->log_auto_follow_enabled_,
+                 QStringLiteral("Auto follow"),
+                 QStringLiteral("自动跟随"),
+                 QStringLiteral("Follow new logs only while the view is already near the bottom"),
+                 QStringLiteral("仅在当前接近底部时跟随新日志"));
 
     if (state_->log_filter_menu_)
     {
-        state_->log_filter_menu_->setTitle(state_->is_english_ ? QStringLiteral("Log Filters")
-                                               : QStringLiteral("日志过滤"));
+        state_->log_filter_menu_->setTitle(state_->is_english_ ? QStringLiteral("Log View")
+                                               : QStringLiteral("日志视图"));
         state_->log_filter_menu_->refreshTheme();
         state_->log_filter_menu_->setPanelContentWidth(menuItemWidth);
     }
     if (state_->log_filter_btn_)
     {
         state_->log_filter_btn_->setIcon(createLogFilterIcon());
-        state_->log_filter_btn_->setToolTip(state_->is_english_ ? QStringLiteral("Log filters")
-                                                : QStringLiteral("日志过滤"));
+        state_->log_filter_btn_->setToolTip(state_->is_english_ ? QStringLiteral("Log view")
+                                                : QStringLiteral("日志视图"));
+    }
+    if (state_->log_attention_view_btn_)
+    {
+        state_->log_attention_view_btn_->setText(state_->is_english_ ? QStringLiteral("Attention")
+                                                                      : QStringLiteral("关注"));
+        state_->log_attention_view_btn_->setToolTip(state_->is_english_
+            ? QStringLiteral("Show logs that require attention")
+            : QStringLiteral("显示需要关注的日志"));
+        state_->log_attention_view_btn_->setChecked(state_->log_view_mode_ == VaporView::Ground::Main::LogUiViewMode::Attention);
+    }
+    if (state_->log_all_view_btn_)
+    {
+        state_->log_all_view_btn_->setText(state_->is_english_ ? QStringLiteral("All")
+                                                               : QStringLiteral("全部"));
+        state_->log_all_view_btn_->setToolTip(state_->is_english_
+            ? QStringLiteral("Show Info and higher logs")
+            : QStringLiteral("显示 Info 及以上日志"));
+        state_->log_all_view_btn_->setChecked(state_->log_view_mode_ == VaporView::Ground::Main::LogUiViewMode::All);
+    }
+    if (state_->log_debug_view_btn_)
+    {
+        state_->log_debug_view_btn_->setText(state_->is_english_ ? QStringLiteral("Debug")
+                                                                 : QStringLiteral("调试"));
+        state_->log_debug_view_btn_->setToolTip(state_->is_english_
+            ? QStringLiteral("Show Debug diagnostics")
+            : QStringLiteral("显示 Debug 诊断日志"));
+        state_->log_debug_view_btn_->setChecked(state_->log_view_mode_ == VaporView::Ground::Main::LogUiViewMode::Debug);
+    }
+    if (state_->log_auto_follow_btn_)
+    {
+        state_->log_auto_follow_btn_->setText(state_->is_english_ ? QStringLiteral("Follow")
+                                                                  : QStringLiteral("跟随"));
+        state_->log_auto_follow_btn_->setToolTip(state_->is_english_
+            ? QStringLiteral("Auto-follow new logs while near the bottom")
+            : QStringLiteral("接近底部时自动跟随新日志"));
+        state_->log_auto_follow_btn_->setChecked(state_->log_auto_follow_enabled_);
+    }
+    if (state_->log_search_edit_)
+    {
+        state_->log_search_edit_->setPlaceholderText(state_->is_english_
+            ? QStringLiteral("Search logs")
+            : QStringLiteral("搜索日志"));
     }
 }
 

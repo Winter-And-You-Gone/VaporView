@@ -429,6 +429,12 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         {
             const bool published = LogService::withCurrentInstance([&](LogService& logService) {
                 record.fields.insert(QStringLiteral("ui_visible"), true);
+                if (!record.fields.contains(QStringLiteral("ui_visibility")))
+                {
+                    record.fields.insert(QStringLiteral("ui_visibility"),
+                                         record.level >= LogLevel::Warning ? QStringLiteral("attention")
+                                                                    : QStringLiteral("details"));
+                }
                 logService.publish(record);
             });
             if (!published)
@@ -576,6 +582,12 @@ void GroundTelemetryService::publishTelemetryLog(LogLevel level,
 {
     fields.insert(QStringLiteral("event"), event);
     fields.insert(QStringLiteral("ui_visible"), true);
+    if (!fields.contains(QStringLiteral("ui_visibility")))
+    {
+        fields.insert(QStringLiteral("ui_visibility"),
+                      level >= LogLevel::Warning ? QStringLiteral("attention")
+                                                 : QStringLiteral("details"));
+    }
     if (level >= LogLevel::Error &&
         !fields.contains(QStringLiteral("error_code")) &&
         !fields.contains(QStringLiteral("reason_code")))

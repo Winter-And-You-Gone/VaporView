@@ -85,6 +85,12 @@ target_include_directories(vaporview_sky_tui PUBLIC
     ${CMAKE_SOURCE_DIR}/src
 )
 
+if(BUILD_TESTING)
+    target_compile_definitions(vaporview_sky_tui PUBLIC
+        VAPORVIEW_SKY_TUI_TESTING=1
+    )
+endif()
+
 target_link_libraries(vaporview_sky_tui PUBLIC
     vaporview_app_theme
     vaporview_protocol

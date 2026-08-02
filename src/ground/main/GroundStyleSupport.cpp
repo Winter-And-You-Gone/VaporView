@@ -665,12 +665,12 @@ QTextEdit {
     selection-background-color: @vv-primary-subtle-pressed;
     selection-color: @vv-white;
 }
-QTextEdit#logTextEdit {
+QListView#logListView {
     background-color: @vv-surface;
     border: none;
     border-radius: 0px;
 }
-QWidget#logTextViewport {
+QWidget#logControlsRow {
     background-color: @vv-surface;
     border: none;
 }

@@ -371,9 +371,19 @@ void MainWindow::onSkyDeviceConfigClicked()
 
 void MainWindow::onClearLogClicked()
 {
-    state_->log_entries_.clear();
-    state_->log_records_.clear();
-    state_->log_text_edit_->clear();
+    state_->pending_ui_log_records_.clear();
+    if (state_->log_model_)
+    {
+        state_->log_model_->clearEntries();
+    }
     state_->has_inline_progress_log_ = false;
-    log(state_->is_english_ ? "Log cleared" : "日志已清空");
+    clearLogUnreadState();
+    VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
+        logService.publish(VaporView::LogLevel::Info,
+                           QStringLiteral("Ground"),
+                           QStringLiteral("ui.log"),
+                           QStringLiteral("日志面板显示已清空。"),
+                           {{QStringLiteral("event"), QStringLiteral("ui_log_view_cleared")},
+                            {QStringLiteral("ui_visibility"), QStringLiteral("hidden")}});
+    });
 }

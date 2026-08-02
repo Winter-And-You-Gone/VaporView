@@ -339,7 +339,6 @@ QString sourceModeStorageValue(int index);
 QString skyTelemetryTransportDisplayText(bool english, const QString& transport);
 void updateSkyTelemetryTransportComboTexts(QComboBox *combo, bool english);
 int sourceModeIndexFromStoredValue(const QString& value);
-bool shouldMirrorToErrorLog(const QString& message);
 void rememberBaseMetric(QObject *object, const char *propertyName, int value);
 
 

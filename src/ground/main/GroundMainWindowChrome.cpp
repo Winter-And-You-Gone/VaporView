@@ -460,8 +460,9 @@ void MainWindow::setEnglish(bool english)
     state_->pause_recording_btn_->setToolTip(english ? "Pause recording" : "暂停记录");
     state_->stop_recording_btn_->setText(english ? "Stop Recording" : "结束记录");
     state_->stop_recording_btn_->setToolTip(english ? "Stop recording" : "结束记录");
-    state_->clear_log_action_->setText(english ? "Clear Log" : "清空日志");
-    state_->clear_log_action_->setToolTip(english ? "Clear Log" : "清空日志");
+    state_->clear_log_action_->setText(english ? "Clear Display" : "清空显示");
+    state_->clear_log_action_->setToolTip(english ? "Clear the visible log panel without deleting log files"
+                                                 : "仅清空当前显示，不删除日志文件");
     updateLogFilterAction();
     state_->rtk_config_action_->setText(english ? "RTK Config" : "RTK配置");
     updateRtkConfigIcon();

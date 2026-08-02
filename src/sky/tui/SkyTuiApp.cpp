@@ -282,6 +282,18 @@ SkyTuiApp::~SkyTuiApp()
     restoreTerminal();
 }
 
+#ifdef VAPORVIEW_SKY_TUI_TESTING
+const SkyTuiModel& SkyTuiApp::modelForTest() const
+{
+    return model_;
+}
+
+void SkyTuiApp::appendLogRecordForTest(const LogRecord& record)
+{
+    appendLogRecord(record);
+}
+#endif
+
 void SkyTuiApp::start()
 {
     if (started_)
@@ -314,7 +326,8 @@ void SkyTuiApp::appendLog(const QString& message)
                            QStringLiteral("ui"),
                            message,
                            {{QStringLiteral("event"), QStringLiteral("sky_tui_ui_log")},
-                            {QStringLiteral("ui_visible"), true},
+                             {QStringLiteral("ui_visibility"), QStringLiteral("details")},
+                             {QStringLiteral("ui_visible"), true},
                             {QStringLiteral("legacy_unclassified"), true}});
     });
     appendLogToModel(message);
@@ -322,15 +335,45 @@ void SkyTuiApp::appendLog(const QString& message)
 
 void SkyTuiApp::appendLogRecord(const LogRecord& record)
 {
-    appendLogToModel(record.message);
+    SkyTuiLogEntry entry;
+    entry.level = record.level;
+    entry.source = record.source;
+    entry.category = record.category;
+    entry.event = record.fields.value(QStringLiteral("event")).toString();
+    entry.message = record.message;
+    const QString context = QStringLiteral("%1/%2/%3")
+        .arg(VaporView::logLevelName(record.level), record.source, record.category);
+    entry.line = makeLogLine(QStringLiteral("[%1] %2").arg(context, record.message));
+    appendLogEntryToModel(entry);
 }
 
 void SkyTuiApp::appendLogToModel(const QString& message)
 {
-    model_.logs << makeLogLine(message);
-    while (model_.logs.size() > SkyTuiModel::MaxLogLines)
+    SkyTuiLogEntry entry;
+    entry.level = LogLevel::Info;
+    entry.source = QStringLiteral("SkyTui");
+    entry.category = QStringLiteral("ui");
+    entry.event = QStringLiteral("sky_tui_ui_log");
+    entry.message = message;
+    entry.line = makeLogLine(message);
+    appendLogEntryToModel(entry);
+}
+
+void SkyTuiApp::appendLogEntryToModel(const SkyTuiLogEntry& entry)
+{
+    model_.logs << entry.line;
+    model_.log_records << entry;
+    while (model_.logs.size() > SkyTuiModel::MaxLogLines ||
+           model_.log_records.size() > SkyTuiModel::MaxLogLines)
     {
-        model_.logs.removeFirst();
+        if (!model_.logs.isEmpty())
+        {
+            model_.logs.removeFirst();
+        }
+        if (!model_.log_records.isEmpty())
+        {
+            model_.log_records.removeFirst();
+        }
     }
     if (model_.log_scroll > 0)
     {
@@ -970,6 +1013,7 @@ void SkyTuiApp::requestQuit()
 void SkyTuiApp::clearLogs()
 {
     model_.logs.clear();
+    model_.log_records.clear();
     model_.log_scroll = 0;
     model_.selected_log_index = -1;
     model_.hint = QStringLiteral("日志已清空");

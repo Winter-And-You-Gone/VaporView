@@ -58,6 +58,15 @@ void require(bool condition, const QString& message)
     }
 }
 
+bool isElevationRequiredError(const QString& errorString)
+{
+    const QString lower = errorString.toLower();
+    return lower.contains(QStringLiteral("elevation")) ||
+           lower.contains(QStringLiteral("提升")) ||
+           lower.contains(QStringLiteral("需要管理员")) ||
+           lower.contains(QStringLiteral("requires elevation"));
+}
+
 QString readProcessOutput(QProcess& process)
 {
     return QString::fromLocal8Bit(process.readAllStandardOutput()) +
@@ -171,21 +180,26 @@ int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
 
-    const QString exePath = mainExecutablePath();
+    const QString exePath = QDir::toNativeSeparators(mainExecutablePath());
     require(QFileInfo::exists(exePath), QStringLiteral("main executable not found at %1").arg(exePath));
 
     QProcess process;
     process.setProgram(exePath);
-    process.setWorkingDirectory(QFileInfo(exePath).absolutePath());
+    process.setWorkingDirectory(QDir::toNativeSeparators(QFileInfo(exePath).absolutePath()));
 #ifdef Q_OS_WIN
-    process.setProcessChannelMode(QProcess::ForwardedErrorChannel);
-    process.setStandardOutputFile(QProcess::nullDevice());
+    process.setProcessChannelMode(QProcess::SeparateChannels);
 #else
     process.setProcessChannelMode(QProcess::SeparateChannels);
 #endif
     process.start();
     if (!process.waitForStarted(5000))
     {
+        if (isElevationRequiredError(process.errorString()))
+        {
+            std::cerr << "SKIP: VaporView.exe requires elevation in this environment; "
+                         "QProcess cannot launch elevated GUI applications.\n";
+            return 77;
+        }
         fail(QStringLiteral("failed to start main executable: %1\nprogram: %2\nworking directory: %3")
                  .arg(process.errorString(), process.program(), process.workingDirectory()),
              &process,

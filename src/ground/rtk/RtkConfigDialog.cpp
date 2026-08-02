@@ -4424,7 +4424,8 @@ void RtkConfigDialog::appendLog(const QString& message)
                            QStringLiteral("service"),
                            QStringLiteral("RTK 服务状态已更新。"),
                            {{QStringLiteral("ui_visible"), true},
-                            {QStringLiteral("event"), QStringLiteral("rtk_service_log")},
+                             {QStringLiteral("ui_visibility"), QStringLiteral("details")},
+                             {QStringLiteral("event"), QStringLiteral("rtk_service_log")},
                             {QStringLiteral("legacy_unclassified"), true},
                             {QStringLiteral("ui_message"), message}});
     });
@@ -4453,7 +4454,8 @@ void RtkConfigDialog::appendRawLogLine(const QString& line)
                            QStringLiteral("service.raw"),
                            QStringLiteral("RTK 服务输出了原始诊断信息。"),
                            {{QStringLiteral("ui_visible"), true},
-                            {QStringLiteral("event"), QStringLiteral("rtk_service_raw_output")},
+                             {QStringLiteral("ui_visibility"), QStringLiteral("hidden")},
+                             {QStringLiteral("event"), QStringLiteral("rtk_service_raw_output")},
                             {QStringLiteral("external_raw_text"), line.trimmed()}});
     });
     if (!log_text_edit_) return;
@@ -4514,4 +4516,3 @@ void RtkConfigDialog::setUiTestMode(bool enabled)
         updateGgaMonitorButton();
     }
 }
-

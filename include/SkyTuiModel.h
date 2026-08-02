@@ -1,12 +1,14 @@
 #ifndef VaporView_SKY_TUI_MODEL_H_
 #define VaporView_SKY_TUI_MODEL_H_
 
+#include "LogRecord.h"
 #include "SkyConfig.h"
 #include "SkyDashboardTypes.h"
 #include "TelemetryTypes.h"
 
 #include <QString>
 #include <QStringList>
+#include <QVector>
 
 namespace VaporView
 {
@@ -24,6 +26,16 @@ enum class SkyTuiPage
     DeviceOverview,
 };
 
+struct SkyTuiLogEntry
+{
+    LogLevel level = LogLevel::Info;
+    QString source;
+    QString category;
+    QString event;
+    QString message;
+    QString line;
+};
+
 struct SkyTuiModel
 {
     static constexpr int MaxLogLines = 600;
@@ -35,6 +47,7 @@ struct SkyTuiModel
     bool palette_visible = false;
     int palette_selected = 0;
     QStringList logs;
+    QVector<SkyTuiLogEntry> log_records;
     int log_scroll = 0;
     int selected_log_index = -1;
     int selected_status_index = 0;

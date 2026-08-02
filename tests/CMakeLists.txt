@@ -82,6 +82,41 @@ if(Python3_Interpreter_FOUND)
     )
 endif()
 
+add_executable(ui_log_model_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui_log_model_test.cpp
+)
+target_include_directories(ui_log_model_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(ui_log_model_test PRIVATE vaporview_main_window)
+add_test(NAME ui_log_model_test COMMAND ui_log_model_test)
+set_tests_properties(ui_log_model_test PROPERTIES
+    TIMEOUT 30
+    LABELS "fast;unit;logging;ui"
+)
+
+add_executable(main_window_log_panel_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/main_window_log_panel_test.cpp
+)
+target_include_directories(main_window_log_panel_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_compile_definitions(main_window_log_panel_test PRIVATE
+    VAPORVIEW_MAIN_WINDOW_TESTING=1
+)
+target_link_libraries(main_window_log_panel_test PRIVATE
+    vaporview_main_window
+    Qt6::Widgets
+)
+add_dependencies(main_window_log_panel_test VaporViewRuntimeResources)
+add_test(NAME main_window_log_panel_test COMMAND main_window_log_panel_test)
+set_tests_properties(main_window_log_panel_test PROPERTIES
+    TIMEOUT 60
+    LABELS "fast;integration;logging;ui;main-window"
+)
+
 add_executable(tcp_wave_encoding_test
     ${CMAKE_CURRENT_SOURCE_DIR}/tcp_wave_encoding_test.cpp
 )
@@ -224,6 +259,21 @@ target_link_libraries(sky_ipc_log_test PRIVATE
 )
 add_test(NAME sky_ipc_log_test COMMAND sky_ipc_log_test)
 
+add_executable(sky_tui_log_model_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/sky_tui_log_model_test.cpp
+)
+target_include_directories(sky_tui_log_model_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+target_compile_definitions(sky_tui_log_model_test PRIVATE
+    VAPORVIEW_SKY_TUI_TESTING=1
+)
+target_link_libraries(sky_tui_log_model_test PRIVATE vaporview_sky_tui)
+add_test(NAME sky_tui_log_model_test COMMAND sky_tui_log_model_test)
+set_tests_properties(sky_tui_log_model_test PROPERTIES
+    TIMEOUT 30
+    LABELS "fast;unit;logging;sky-tui"
+)
 add_executable(visual_text_label_test
     ${CMAKE_CURRENT_SOURCE_DIR}/visual_text_label_test.cpp
 )
@@ -683,6 +733,9 @@ add_executable(vaporview_startup_test
 )
 target_link_libraries(vaporview_startup_test PRIVATE Qt6::Core)
 add_test(NAME vaporview_startup_test COMMAND vaporview_startup_test)
+set_tests_properties(vaporview_startup_test PROPERTIES
+    SKIP_RETURN_CODE 77
+)
 
 add_executable(startup_splash_test
     ${CMAKE_CURRENT_SOURCE_DIR}/startup_splash_test.cpp

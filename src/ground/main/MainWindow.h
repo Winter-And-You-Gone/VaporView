@@ -54,6 +54,7 @@ class QButtonGroup;
 class QRadioButton;
 class QStackedWidget;
 class QCheckBox;
+class QListView;
 class TcpWavePanel;
 class SessionViewerWindow;
 class GnssPanel;
@@ -82,6 +83,7 @@ namespace VaporView::Ground::Session { class RecordingScheduleController; }
 namespace VaporView::Ground::Main
 {
 enum class AppSidebarMode;
+enum class LogUiViewMode;
 struct MainWindowState;
 struct RemoteTelemetrySummarySections;
 }
@@ -215,6 +217,14 @@ private:
     void logUiTest(const QString& message);
     void captureUiTestWidgetState();
     void restoreUiTestWidgetState();
+    void enqueueUiLogRecord(const VaporView::LogRecord& record);
+    void flushPendingUiLogRecords();
+    void setLogViewMode(VaporView::Ground::Main::LogUiViewMode mode, bool persist = true);
+    void scrollLogViewToBottom();
+    bool isLogViewNearBottom() const;
+    void updateLogFollowState();
+    void updateLogUnreadUi();
+    void clearLogUnreadState();
     void updateLogFilterAction();
     void renderLogView();
     bool shouldShowLogRecord(const VaporView::LogRecord& record) const;

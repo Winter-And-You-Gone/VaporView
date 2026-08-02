@@ -3467,8 +3467,8 @@ int main(int argc, char **argv)
         window.findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
     for (QToolButton *button : titleBarButtons)
     {
-        if (button && (button->toolTip() == QStringLiteral("日志过滤") ||
-                       button->toolTip() == QStringLiteral("Log filters")))
+        if (button && (button->toolTip() == QStringLiteral("日志视图") ||
+                       button->toolTip() == QStringLiteral("Log view")))
         {
             logFilterButton = button;
             break;
@@ -3481,16 +3481,16 @@ int main(int argc, char **argv)
     {
         auto *menu = qobject_cast<VaporView::SingleLevelPopupMenu *>(topLevel);
         if (menu && menu->isVisible() &&
-            (menu->title() == QStringLiteral("日志过滤") ||
-             menu->title() == QStringLiteral("Log Filters")))
+            (menu->title() == QStringLiteral("日志视图") ||
+             menu->title() == QStringLiteral("Log View")))
         {
             logFilterMenu = menu;
             break;
         }
     }
     require(logFilterMenu != nullptr, "log filter menu uses the shared single-level popup");
-    require(logFilterMenu->rows().size() == 7,
-            "log filter menu exposes category, level, and source filter rows");
+    require(logFilterMenu->rows().size() == 4,
+            "log view menu exposes attention, all, debug, and follow rows");
     QStringList logFilterTexts;
     for (VaporView::SingleLevelPopupMenuRow *row : logFilterMenu->rows())
     {
@@ -3499,10 +3499,11 @@ int main(int argc, char **argv)
             logFilterTexts.append(row->text());
         }
     }
-    require(logFilterTexts.contains(QStringLiteral("过滤 Debug 日志")) &&
-                logFilterTexts.contains(QStringLiteral("过滤警告和错误")) &&
-                logFilterTexts.contains(QStringLiteral("过滤 Qt 日志")),
-            "log filter menu exposes structured level and source filters");
+    require(logFilterTexts.contains(QStringLiteral("关注")) &&
+                logFilterTexts.contains(QStringLiteral("全部")) &&
+                logFilterTexts.contains(QStringLiteral("调试")) &&
+                logFilterTexts.contains(QStringLiteral("自动跟随")),
+            "log view menu exposes positive view choices");
     require(logFilterMenu->cornerRadius() == 10,
             "log filter menu uses the shared 10px popup corner radius");
     require(logFilterMenu->panelPadding() == 12,
@@ -3544,8 +3545,8 @@ int main(int argc, char **argv)
     {
         auto *menu = qobject_cast<VaporView::SingleLevelPopupMenu *>(topLevel);
         if (menu && menu->isVisible() &&
-            (menu->title() == QStringLiteral("日志过滤") ||
-             menu->title() == QStringLiteral("Log Filters")))
+            (menu->title() == QStringLiteral("日志视图") ||
+             menu->title() == QStringLiteral("Log View")))
         {
             logFilterMenu = menu;
             break;
@@ -7824,4 +7825,3 @@ int main(int argc, char **argv)
     std::cout << "main_window_layout_test passed\n";
     return 0;
 }
-

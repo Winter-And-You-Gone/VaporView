@@ -2,6 +2,7 @@
 
 #include "ground/main/MainWindow.h"
 #include "ground/main/GroundMainWindowState.h"
+#include "ground/main/UiLogModel.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "shared/config/ApplicationConfig.h"
 #include "shared/theme/AppTheme.h"
@@ -70,6 +71,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
+#include <QListView>
 #include <QTimeZone>
 #include <QGridLayout>
 #include <QFrame>
@@ -158,6 +160,8 @@ using VaporView::SingleLevelPopupAnchor;
 using VaporView::SingleLevelPopupMenu;
 using VaporView::SingleLevelPopupMenuRow;
 using VaporView::SingleLevelPopupTextAlignment;
+using VaporView::Ground::Main::kMaxPendingUiLogRecords;
+using VaporView::Ground::Main::kUiLogBatchIntervalMs;
 using VaporView::Ground::Widgets::Ai8TemperatureControllerPanel;
 using VaporView::Ground::Widgets::EpsilonPanel;
 using VaporView::Ground::Widgets::DevicePanelBindings;

@@ -2,6 +2,7 @@
 
 #include "LogRecord.h"
 #include "ground/main/MainWindow.h"
+#include "ground/main/UiLogModel.h"
 
 #include <QPointer>
 #include <QVariantMap>
@@ -149,7 +150,17 @@ struct MainWindowState
     VaporView::Ground::Widgets::Ai8TemperatureControllerPanel *ai8_temperature_controller_panel_;
     std::unique_ptr<VaporView::Ground::Widgets::DevicePanelCoordinator> device_panel_coordinator_;
 
-    QTextEdit *log_text_edit_;
+    QListView *log_list_view_;
+    QLineEdit *log_search_edit_;
+    UiLogModel *log_model_;
+    UiLogFilterProxyModel *log_filter_proxy_;
+    UiLogItemDelegate *log_item_delegate_;
+    QTimer *log_flush_timer_;
+    QToolButton *log_attention_view_btn_;
+    QToolButton *log_all_view_btn_;
+    QToolButton *log_debug_view_btn_;
+    QToolButton *log_auto_follow_btn_;
+    QPushButton *log_new_entries_btn_;
     QToolButton *log_filter_btn_;
     QToolButton *log_clear_btn_;
     QFrame *recording_status_card_;
@@ -383,13 +394,12 @@ struct MainWindowState
     VaporView::TemperatureControllerData current_temperature_controller_;
 
     bool is_english_;
-    bool log_filter_ack_enabled_;
-    bool log_filter_config_enabled_;
-    bool log_filter_connection_enabled_;
-    bool log_filter_recording_enabled_;
-    bool log_filter_debug_enabled_;
-    bool log_filter_warning_enabled_;
-    bool log_filter_qt_enabled_;
+    LogUiViewMode log_view_mode_;
+    bool log_auto_follow_enabled_;
+    int log_new_visible_count_;
+    int log_unread_warning_count_;
+    int log_unread_error_count_;
+    int log_unread_status_count_;
     bool language_switch_in_progress_;
     bool restoring_persistent_settings_;
     bool has_inline_progress_log_;
@@ -460,8 +470,7 @@ struct MainWindowState
     int imu_recording_rate_hz_;
     int waveform_recording_rate_hz_;
     int home_device_action_spinner_step_;
-    QVector<QString> log_entries_;
-    QVector<VaporView::LogRecord> log_records_;
+    QVector<VaporView::LogRecord> pending_ui_log_records_;
     QString recording_directory_;
 
     QAction *rtk_config_action_;

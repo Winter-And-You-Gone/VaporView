@@ -65,7 +65,7 @@
 | SkyTui | ipc.config | sky_ipc_config_apply_result_received | Info | 已收到 SkyCore 配置应用结果。 | config_apply_result |  |  |
 | SkyTui | ipc.protocol | sky_ipc_log_event_parse_failed | Warning | 无法解析 SkyCore 日志帧。 | message_type, payload_bytes |  |  |
 | SkyTui | ipc.protocol | sky_ipc_error_frame_received | Error | 已收到 SkyCore telemetry Error 帧。 | payload_hex, payload_bytes |  | SKY_IPC_ERROR_FRAME |
-| SkyTui | ui | sky_tui_ui_log | Info | SkyTui 界面日志已更新。 | ui_visible, legacy_unclassified |  |  |
+| SkyTui | ui | sky_tui_ui_log | Info | SkyTui 界面日志已更新。 | ui_visibility, ui_visible, legacy_unclassified |  |  |
 | Ground | telemetry.serial | ground_telemetry_serial_open_failed | Error | 无法打开地面端遥测串口。 | port, baud | system_error | GROUND_TELEMETRY_SERIAL_OPEN_FAILED |
 | Ground | telemetry.tcp | ground_telemetry_tcp_connect_failed | Error | 无法连接地面端 TCP 遥测端点。 | host, port | system_error | GROUND_TELEMETRY_TCP_CONNECT_FAILED |
 | Ground | telemetry.link | ground_telemetry_link_error | Warning | 地面端遥测链路异常。 | system_error |  | GROUND_TELEMETRY_LINK_ERROR |
@@ -87,10 +87,31 @@
 | Ground | session.write | session_event_log_append_failed | Error | 无法从会话日志接收器写入 event_log.csv。 | session_sink_failure, source, category |  | SESSION_EVENT_LOG_APPEND_FAILED |
 | Ground | session.write | session_error_log_append_failed | Error | 无法从会话日志接收器写入 error_log.txt。 | session_sink_failure, source, category |  | SESSION_ERROR_LOG_APPEND_FAILED |
 | Ground | session.write | recording_stop_summary_append_failed | Error | 无法写入记录停止摘要。 |  |  | RECORDING_STOP_SUMMARY_APPEND_FAILED |
-| Ground | ui.legacy | ground_ui_legacy_log | Info | 地面端界面日志已更新。 | ui_message, legacy_unclassified, ui_visible |  |  |
-| Ground | ui.progress | ground_ui_progress_updated | Debug | 界面进度日志已更新。 | ui_message, inline, legacy_unclassified, ui_visible |  |  |
+| Ground | ui.legacy | ground_ui_legacy_log | Info | 地面端界面日志已更新。 | ui_visibility, ui_message, legacy_unclassified, ui_visible |  |  |
+| Ground | ui.progress | ground_ui_progress_updated | Debug | 界面进度日志已更新。 | ui_visibility, ui_message, inline, legacy_unclassified, ui_visible |  |  |
+| Ground | ui.log | ui_log_view_cleared | Info | 日志面板显示已清空。 | ui_visibility |  |  |
 | RTK | gga | gga_input_buffer_overflow | Warning | GGA 输入缓冲区超过上限，已丢弃未结束的前缀。 | buffer_limit_bytes |  | GGA_INPUT_BUFFER_LIMIT |
-| RTK | service | rtk_service_log | Info | RTK 服务状态已更新。 | ui_message, legacy_unclassified, ui_visible |  |  |
-| RTK | service.raw | rtk_service_raw_output | Debug | RTK 服务输出了原始诊断信息。 | external_raw_text, ui_visible |  |  |
+| RTK | service | rtk_service_log | Info | RTK 服务状态已更新。 | ui_visibility, ui_message, legacy_unclassified, ui_visible |  |  |
+| RTK | service.raw | rtk_service_raw_output | Debug | RTK 服务输出了原始诊断信息。 | ui_visibility, external_raw_text, ui_visible |  |  |
 
 新增或调整日志事件时，保持本表作为开发入口；无法立即结构化的旧路径必须在 `event` 中体现 legacy 隔离，并在字段中说明保留原因。
+
+## 桌面日志展示迁移清单
+
+本清单记录本轮已经结构化分类的 UI 可见 Info/Debug 入口。`ui_visibility` 只影响桌面日志面板，不影响 JSONL 文件保存。
+
+清单格式使用普通条目，避免被事件目录审计脚本当成第二张事件目录表解析：
+
+- Any / ui.legacy / `user_issue_reported` / Info、Warning、Error / `attention` / 可合并 / 默认键：用户问题上报需要默认进入关注视图，Info 也可作为重要状态确认。
+- Ground / ui.legacy / `ground_ui_legacy_log` / Info / `details` / 可合并 / 默认键：旧 `log(QString)` 只保留普通 UI 文本，默认不占用关注视图。
+- Ground / ui.progress / `ground_ui_progress_updated` / Debug / `hidden` / 可合并 / 默认键：回车进度和高频状态只写文件，不进入桌面面板。
+- Ground / ui.log / `ui_log_view_cleared` / Info / `hidden` / 可合并 / 默认键：“清空显示”动作可审计，但清空后不能立即生成可见行。
+- Ground / telemetry helper / Info / `details` / 可合并 / 默认键：普通遥测状态保留在全部视图；Warning 和 Error 按 helper 回退进入关注。
+- Ground / telemetry helper / Warning、Error / `attention` / 可合并 / 默认键：遥测异常需要默认可见，且不依赖 message 文本判断。
+- SkyTui / ui / `sky_tui_ui_log` / Info / `details` / 可合并 / 默认键：TUI 本地操作提示为普通状态，不默认占用桌面关注视图。
+- SkyTui / IPC helper / Info / `details` / 可合并 / 默认键：IPC 普通状态进入全部视图；Warning 和 Error 由 helper 标为关注。
+- SkyTui / IPC helper / Warning、Error / `attention` / 可合并 / 默认键：IPC 异常需要默认可见，并保留 source、category 和 event。
+- RTK / service / `rtk_service_log` / Info / `details` / 可合并 / 默认键：RTK 对话框仍本地显示服务状态，桌面主日志默认只在全部视图显示。
+- RTK / service.raw / `rtk_service_raw_output` / Debug / `hidden` / 可合并 / 默认键：原始 RTK 输出只写文件和 RTK 对话框，不进入桌面主日志。
+
+尚未逐项迁移的普通 Info 事件：全仓库仍有历史 helper/legacy 路径；缺少 `ui_visibility` 时由桌面模型按级别兼容回退，普通 Info 进入 `details`，Debug 只在调试视图显示。后续新增日志应直接在生产端显式填写 `ui_visibility`。

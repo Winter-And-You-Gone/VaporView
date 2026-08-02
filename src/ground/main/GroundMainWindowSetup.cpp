@@ -435,7 +435,7 @@ void MainWindow::setupToolBar()
     state_->log_filter_menu_->setCornerRadius(10);
     state_->log_filter_menu_->refreshTheme();
 
-    auto createLogFilterAction = [this](bool *enabled) {
+    auto createLogFilterAction = [this](const std::function<void()>& handler) {
         auto *row = new SingleLevelPopupMenuRow(state_->log_filter_menu_);
         row->setTextAlignment(SingleLevelPopupTextAlignment::Left);
         row->setHorizontalPadding(scalePixels(18), scalePixels(14));
@@ -447,21 +447,33 @@ void MainWindow::setupToolBar()
         row->setCloseOnClick(true);
         auto *action = state_->log_filter_menu_->addRow(row);
         action->setCheckable(false);
-        connect(action, &QAction::triggered, this, [this, enabled]() {
-            *enabled = !*enabled;
-            updateLogFilterAction();
-            renderLogView();
+        connect(action, &QAction::triggered, this, [handler]() {
+            handler();
         });
         return action;
     };
 
-    state_->log_filter_ack_action_ = createLogFilterAction(&state_->log_filter_ack_enabled_);
-    state_->log_filter_config_action_ = createLogFilterAction(&state_->log_filter_config_enabled_);
-    state_->log_filter_connection_action_ = createLogFilterAction(&state_->log_filter_connection_enabled_);
-    state_->log_filter_recording_action_ = createLogFilterAction(&state_->log_filter_recording_enabled_);
-    state_->log_filter_debug_action_ = createLogFilterAction(&state_->log_filter_debug_enabled_);
-    state_->log_filter_warning_action_ = createLogFilterAction(&state_->log_filter_warning_enabled_);
-    state_->log_filter_qt_action_ = createLogFilterAction(&state_->log_filter_qt_enabled_);
+    state_->log_filter_ack_action_ = createLogFilterAction([this]() {
+        setLogViewMode(VaporView::Ground::Main::LogUiViewMode::Attention);
+    });
+    state_->log_filter_config_action_ = createLogFilterAction([this]() {
+        setLogViewMode(VaporView::Ground::Main::LogUiViewMode::All);
+    });
+    state_->log_filter_connection_action_ = createLogFilterAction([this]() {
+        setLogViewMode(VaporView::Ground::Main::LogUiViewMode::Debug);
+    });
+    state_->log_filter_recording_action_ = createLogFilterAction([this]() {
+        state_->log_auto_follow_enabled_ = !state_->log_auto_follow_enabled_;
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        VaporView::setPersistentSetting(settings,
+                                        QStringLiteral("log_auto_follow"),
+                                        state_->log_auto_follow_enabled_);
+        updateLogFilterAction();
+        if (state_->log_auto_follow_enabled_)
+        {
+            scrollLogViewToBottom();
+        }
+    });
 
     state_->session_viewer_action_->setIcon(createWaveformViewerIcon());
 #ifdef VAPORVIEW_HAS_OSGEARTH
@@ -4294,10 +4306,27 @@ void MainWindow::setupLogPanel()
 
     QWidget *logTitleCluster = nullptr;
     state_->log_inline_title_lbl_ = createSectionTitleCluster(logTitleBar,
-                                                      QStringLiteral("scroll-text"),
-                                                      kMainPageButtonHeight,
-                                                      &logTitleCluster);
+                                                       QStringLiteral("scroll-text"),
+                                                       kMainPageButtonHeight,
+                                                       &logTitleCluster);
     logTitleLayout->addWidget(logTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    auto createLogViewButton = [this, logTitleBar](VaporView::Ground::Main::LogUiViewMode mode) {
+        auto *button = new QToolButton(logTitleBar);
+        button->setObjectName(QStringLiteral("logViewModeButton"));
+        button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        button->setCheckable(true);
+        button->setAutoRaise(false);
+        button->setFocusPolicy(Qt::StrongFocus);
+        button->setFixedHeight(kMainPageButtonHeight - 6);
+        button->setFixedWidth(scalePixels(50));
+        connect(button, &QToolButton::clicked, this, [this, mode]() {
+            setLogViewMode(mode);
+        });
+        return button;
+    };
+    state_->log_attention_view_btn_ = createLogViewButton(VaporView::Ground::Main::LogUiViewMode::Attention);
+    state_->log_all_view_btn_ = createLogViewButton(VaporView::Ground::Main::LogUiViewMode::All);
+    state_->log_debug_view_btn_ = createLogViewButton(VaporView::Ground::Main::LogUiViewMode::Debug);
     logTitleLayout->addStretch(1);
     state_->log_filter_btn_ = new QToolButton(logTitleBar);
     state_->log_filter_btn_->setObjectName(QStringLiteral("titleBarButton"));
@@ -4350,18 +4379,87 @@ void MainWindow::setupLogPanel()
     logTitleLayout->addWidget(state_->log_clear_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
     log_layout->addWidget(logTitleBar);
 
-    state_->log_text_edit_ = new QTextEdit(state_->log_group_);
-    state_->log_text_edit_->setObjectName(QStringLiteral("logTextEdit"));
-    state_->log_text_edit_->viewport()->setObjectName(QStringLiteral("logTextViewport"));
-    state_->log_text_edit_->setFrameShape(QFrame::NoFrame);
-    state_->log_text_edit_->setLineWidth(0);
-    state_->log_text_edit_->setAutoFillBackground(false);
-    state_->log_text_edit_->viewport()->setAutoFillBackground(false);
-    state_->log_text_edit_->setReadOnly(true);
-    state_->log_text_edit_->document()->setMaximumBlockCount(kMaxLogEntryCount);
-    state_->log_text_edit_->setMinimumWidth(0);
-    state_->log_text_edit_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
-    log_layout->addWidget(state_->log_text_edit_);
+    auto *logControls = new QWidget(state_->log_group_);
+    logControls->setObjectName(QStringLiteral("logControlsRow"));
+    auto *logControlsLayout = new QHBoxLayout(logControls);
+    logControlsLayout->setContentsMargins(8, 6, 8, 6);
+    logControlsLayout->setSpacing(6);
+    logControlsLayout->addWidget(state_->log_attention_view_btn_, 0);
+    logControlsLayout->addWidget(state_->log_all_view_btn_, 0);
+    logControlsLayout->addWidget(state_->log_debug_view_btn_, 0);
+    state_->log_search_edit_ = new QLineEdit(logControls);
+    state_->log_search_edit_->setObjectName(QStringLiteral("logSearchEdit"));
+    state_->log_search_edit_->setClearButtonEnabled(true);
+    state_->log_search_edit_->setMinimumWidth(0);
+    state_->log_search_edit_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    connect(state_->log_search_edit_, &QLineEdit::textChanged, this, [this](const QString& text) {
+        if (state_->log_filter_proxy_)
+        {
+            state_->log_filter_proxy_->setSearchText(text);
+        }
+        updateLogFollowState();
+    });
+    logControlsLayout->addWidget(state_->log_search_edit_, 1);
+    state_->log_auto_follow_btn_ = new QToolButton(logControls);
+    state_->log_auto_follow_btn_->setObjectName(QStringLiteral("logAutoFollowButton"));
+    state_->log_auto_follow_btn_->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    state_->log_auto_follow_btn_->setCheckable(true);
+    state_->log_auto_follow_btn_->setFixedHeight(kMainPageButtonHeight - 6);
+    connect(state_->log_auto_follow_btn_, &QToolButton::toggled, this, [this](bool checked) {
+        if (state_->log_auto_follow_enabled_ == checked)
+        {
+            return;
+        }
+        state_->log_auto_follow_enabled_ = checked;
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        VaporView::setPersistentSetting(settings, QStringLiteral("log_auto_follow"), checked);
+        updateLogFilterAction();
+        if (checked)
+        {
+            scrollLogViewToBottom();
+        }
+    });
+    logControlsLayout->addWidget(state_->log_auto_follow_btn_, 0);
+    state_->log_new_entries_btn_ = new QPushButton(logControls);
+    state_->log_new_entries_btn_->setObjectName(QStringLiteral("logNewEntriesButton"));
+    state_->log_new_entries_btn_->setVisible(false);
+    state_->log_new_entries_btn_->setFixedHeight(kMainPageButtonHeight - 6);
+    connect(state_->log_new_entries_btn_, &QPushButton::clicked, this, &MainWindow::scrollLogViewToBottom);
+    logControlsLayout->addWidget(state_->log_new_entries_btn_, 0);
+    log_layout->addWidget(logControls);
+
+    state_->log_model_ = new VaporView::Ground::Main::UiLogModel(this);
+    state_->log_filter_proxy_ = new VaporView::Ground::Main::UiLogFilterProxyModel(this);
+    state_->log_filter_proxy_->setSourceModel(state_->log_model_);
+    state_->log_filter_proxy_->setViewMode(state_->log_view_mode_);
+    state_->log_item_delegate_ = new VaporView::Ground::Main::UiLogItemDelegate(this);
+    state_->log_list_view_ = new QListView(state_->log_group_);
+    state_->log_list_view_->setObjectName(QStringLiteral("logListView"));
+    state_->log_list_view_->setModel(state_->log_filter_proxy_);
+    state_->log_list_view_->setItemDelegate(state_->log_item_delegate_);
+    state_->log_list_view_->setFrameShape(QFrame::NoFrame);
+    state_->log_list_view_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    state_->log_list_view_->setSelectionMode(QAbstractItemView::SingleSelection);
+    state_->log_list_view_->setUniformItemSizes(true);
+    state_->log_list_view_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    state_->log_list_view_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    state_->log_list_view_->setMinimumWidth(0);
+    state_->log_list_view_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
+    if (QScrollBar *scrollBar = state_->log_list_view_->verticalScrollBar())
+    {
+        connect(scrollBar, &QScrollBar::valueChanged, this, [this]() {
+            updateLogFollowState();
+        });
+    }
+    log_layout->addWidget(state_->log_list_view_);
+    state_->log_flush_timer_ = new QTimer(this);
+    state_->log_flush_timer_->setSingleShot(true);
+    state_->log_flush_timer_->setInterval(kUiLogBatchIntervalMs);
+    state_->log_flush_timer_->setTimerType(Qt::CoarseTimer);
+    connect(state_->log_flush_timer_, &QTimer::timeout, this, &MainWindow::flushPendingUiLogRecords);
+    updateLogFilterAction();
+    updateLogUnreadUi();
+    flushPendingUiLogRecords();
     logSideLayout->addWidget(state_->log_group_, 1);
     state_->log_side_panel_->setMinimumWidth(minimumLogSidePanelWidth());
 }

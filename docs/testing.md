@@ -36,6 +36,13 @@ cmake --build build/Release --config Release --target main_window_layout_test
 ctest --test-dir build/Release -C Release -R "^main_window_layout_test$" --output-on-failure
 ```
 
+日志 UI 展示策略、主窗口交互、重复合并和 SkyTui 日志模型：
+
+```powershell
+cmake --build build/Release --config Release --target ui_log_model_test main_window_log_panel_test sky_tui_log_model_test
+ctest --test-dir build/Release -C Release -R "^(ui_log_model_test|main_window_log_panel_test|sky_tui_log_model_test)$" --output-on-failure
+```
+
 Session 数据查看、轨迹查看或主题：
 
 ```powershell

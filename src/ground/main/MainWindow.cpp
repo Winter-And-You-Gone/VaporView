@@ -51,37 +51,7 @@ MainWindow::MainWindow(QWidget *parent)
                     {
                         return;
                     }
-                    QDateTime timestamp = QDateTime::fromString(record.timestamp_utc, Qt::ISODateWithMs);
-                    if (!timestamp.isValid())
-                    {
-                        timestamp = QDateTime::currentDateTimeUtc();
-                    }
-                    const bool legacyGroundLine = record.source == QStringLiteral("Ground") &&
-                        record.fields.value(QStringLiteral("ui_visible")).toBool();
-                    const QString context = legacyGroundLine
-                        ? QString()
-                        : QStringLiteral(" [%1/%2/%3]")
-                              .arg(VaporView::logLevelName(record.level), record.source, record.category);
-                    const QString displayLine = QStringLiteral("[%1]%2 %3")
-                        .arg(timestamp.toLocalTime().toString(QStringLiteral("hh:mm:ss")),
-                             context,
-                             record.message);
-                    state_->log_entries_.append(displayLine);
-                    state_->log_records_.append(record);
-                    if (state_->log_entries_.size() > kMaxLogEntryCount)
-                    {
-                        const int removeCount = state_->log_entries_.size() - kMaxLogEntryCount;
-                        state_->log_entries_.remove(0, removeCount);
-                        state_->log_records_.remove(0, removeCount);
-                    }
-                    if (state_->log_text_edit_ && shouldShowLogRecord(record))
-                    {
-                        state_->log_text_edit_->append(displayLine);
-                        if (QScrollBar *scrollBar = state_->log_text_edit_->verticalScrollBar())
-                        {
-                            scrollBar->setValue(scrollBar->maximum());
-                        }
-                    }
+                    enqueueUiLogRecord(record);
                     state_->has_inline_progress_log_ = false;
                 });
     });
@@ -107,6 +77,9 @@ MainWindow::MainWindow(QWidget *parent)
         state_->font_scale_percent_ = 100;
     }
     state_->dark_theme_enabled_ = userSettings.value("dark_theme_enabled", false).toBool();
+    state_->log_view_mode_ = VaporView::Ground::Main::uiLogViewModeFromSetting(
+        userSettings.value(QStringLiteral("log_view_mode"), QStringLiteral("attention")).toString());
+    state_->log_auto_follow_enabled_ = userSettings.value(QStringLiteral("log_auto_follow"), true).toBool();
     if (qApp)
     {
         qApp->setProperty(kAppDarkThemeProperty, state_->dark_theme_enabled_);
