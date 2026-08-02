@@ -63,7 +63,7 @@ IFW 打包脚本在生成 stage 时也会清除 staged 普通文件的只读属�
 
 更新完成后，`VaporViewUpdateRelauncher.exe` 会等待维护工具退出，然后从同一交互 Session 的 `explorer.exe` 获取非提升用户令牌，并以 `@TargetDir@` 作为工作目录启动 `VaporView.exe`。它会验证目标 EXE 名称为 `VaporView.exe`，且与 `VaporViewMaintenanceTool.exe` 位于同一个安装根目录。
 
-如果无法可靠获得非提升令牌，重启器会返回失败；IFW 脚本不会回退到直接执行 `VaporView.exe`，以免主程序继承维护工具的管理员令牌。用户可稍后从桌面或开始菜单快捷方式手动启动。
+如果无法可靠获得非提升令牌，重启器会返回失败并显示手动启动提示；IFW 脚本不会回退到直接执行 `VaporView.exe`，以免主程序继承维护工具的管理员令牌。用户可稍后从桌面或开始菜单快捷方式手动启动。
 
 ## 检查和修复
 

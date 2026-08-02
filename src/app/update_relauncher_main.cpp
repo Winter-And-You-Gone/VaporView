@@ -60,6 +60,22 @@ void debugLog(const std::wstring& message)
     OutputDebugStringW((L"VaporViewUpdateRelauncher: " + message + L"\n").c_str());
 }
 
+void showManualStartMessage()
+{
+    const wchar_t* message =
+        L"VaporView \u5df2\u66f4\u65b0\u5b8c\u6210\uff0c"
+        L"\u4f46\u65e0\u6cd5\u786e\u8ba4\u53ef\u7528\u7684"
+        L"\u975e\u7ba1\u7406\u5458\u4ee4\u724c\u6765\u5b89\u5168"
+        L"\u542f\u52a8\u4e3b\u7a0b\u5e8f\u3002"
+        L"\n\n\u8bf7\u7a0d\u540e\u4ece\u684c\u9762\u6216"
+        L"\u5f00\u59cb\u83dc\u5355\u5feb\u6377\u65b9\u5f0f"
+        L"\u624b\u52a8\u542f\u52a8 VaporView\u3002";
+    MessageBoxW(nullptr,
+                message,
+                L"VaporView",
+                MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
+}
+
 bool iequals(const std::wstring& left, const std::wstring& right)
 {
     return CompareStringOrdinal(left.c_str(), -1, right.c_str(), -1, TRUE) == CSTR_EQUAL;
@@ -426,5 +442,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     }
 
     requestMaintenanceToolExit(maintenanceToolPath);
-    return launchApplicationUnelevated(applicationPath, workingDirectory) ? 0 : 3;
+    if (launchApplicationUnelevated(applicationPath, workingDirectory))
+    {
+        return 0;
+    }
+    showManualStartMessage();
+    return 3;
 }
