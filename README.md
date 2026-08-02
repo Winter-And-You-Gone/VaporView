@@ -29,6 +29,12 @@ Windows: .\build\Release\VaporView.exe
 Linux:   ./build/Release/VaporView
 ```
 
+### Windows 安装权限
+
+Windows 安装包默认安装到 `C:\VaporView`，也支持选择带空格或中文的普通目录。主程序、Sky、SkyCore、SkyTui、更新重启器和权限诊断工具均使用 `asInvoker` manifest，日常运行不要求管理员权限；安装器和维护工具只在安装、修复、更新文件时可能请求 UAC。
+
+安装或更新完成后，安装目录内 EXE、DLL、Qt 插件、`resources`、`drivers`、`data`、日志、配置、缓存、记录目录、维护工具和后续新增文件会继承发起安装的交互用户 Full Control。项目不向 `Everyone`、`Users` 或 `Authenticated Users` 授予 Full Control，也不把运行数据迁移到用户目录。详细检查和修复命令见 [docs/windows_permissions.md](docs/windows_permissions.md)。
+
 ### VaporViewSkyCore + VaporViewSkyTui
 
 天空端推荐拆成两个进程运行：

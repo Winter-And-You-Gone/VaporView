@@ -53,11 +53,11 @@
 - focused logging/IPC tests：`ctest --test-dir build\Release -C Release -R "^(log_service_test|sky_ipc_log_test)$" --output-on-failure` 通过。
 - 审计 CTest：`ctest --test-dir build\Release -C Release -R "^(logging_language_audit_test|logging_event_catalog_audit_test)$" --output-on-failure` 通过。
 - `build/Release` Release 构建：`cmake --build build\Release --config Release -- -j1` 通过。
-- 快速 CTest：`ctest --test-dir build\Release -C Release -L fast --output-on-failure` 为 52/53 通过；`vaporview_startup_test` 未通过，原因是 `build/Release/VaporView.exe` 嵌入 `requireAdministrator` 清单，非提权 QProcess 启动被 Windows 拒绝。
+- 快速 CTest：`ctest --test-dir build\Release -C Release -L fast --output-on-failure` 为 52/53 通过；当时 `vaporview_startup_test` 未通过，原因是 `build/Release/VaporView.exe` 仍嵌入 `requireAdministrator` 清单，非提权 QProcess 启动被 Windows 拒绝。
 - 全量 CTest：`ctest --test-dir build\Release -C Release --output-on-failure` 为 67/70 通过；`main_window_layout_test`、`session_viewer_trajectory_test` 和 `vaporview_startup_test` 未通过，均不在本轮日志治理改动面。
 
 ## 剩余问题
 
 - `main_window_layout_test` 仍有 RTK GGA 控件垂直居中断言失败，需要独立 UI 布局排查；本轮未修改相关页面。
 - `session_viewer_trajectory_test` 仍有轨迹卡片标题选择/复制断言失败，需要独立 session viewer UI 排查；本轮未修改相关页面。
-- `vaporview_startup_test` 与当前 Windows 主程序 `requireAdministrator` 清单存在测试环境冲突，需要独立决定是提权运行该 smoke test、调整测试跳过策略，还是改变主程序 UAC 清单；本轮日志治理不修改既有打包/UAC 策略。
+- `vaporview_startup_test` 曾与当时 Windows 主程序 `requireAdministrator` 清单存在测试环境冲突；后续权限模型改为主程序显式 `asInvoker` 后，应重新以当前构建结果验证该 smoke test。

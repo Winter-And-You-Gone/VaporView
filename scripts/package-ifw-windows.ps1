@@ -65,6 +65,18 @@ function Copy-DirectoryContents {
     }
 }
 
+function Clear-ReadOnlyRegularFiles {
+    param([Parameter(Mandatory = $true)][string]$Root)
+    if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
+        return
+    }
+    Get-ChildItem -LiteralPath $Root -Recurse -Force -File | ForEach-Object {
+        if (($_.Attributes -band [IO.FileAttributes]::ReadOnly) -ne 0) {
+            $_.Attributes = ($_.Attributes -band (-bnot [IO.FileAttributes]::ReadOnly))
+        }
+    }
+}
+
 function Invoke-Checked {
     param([Parameter(Mandatory = $true)][string]$FilePath, [Parameter(Mandatory = $true)][string[]]$Arguments)
     & $FilePath @Arguments
@@ -149,7 +161,14 @@ if ($cmakeText -notmatch 'project\(VaporView VERSION ([0-9]+\.[0-9]+\.[0-9]+)') 
 $version = $Matches[1]
 $releaseDate = (Get-Date).ToString("yyyy-MM-dd")
 
-$executableNames = @("VaporView.exe", "VaporViewSky.exe", "VaporViewSkyCore.exe", "VaporViewSkyTui.exe", "VaporViewUpdateRelauncher.exe")
+$executableNames = @(
+    "VaporView.exe",
+    "VaporViewSky.exe",
+    "VaporViewSkyCore.exe",
+    "VaporViewSkyTui.exe",
+    "VaporViewUpdateRelauncher.exe",
+    "VaporViewPermissionTool.exe"
+)
 $executableSources = @{}
 foreach ($name in $executableNames) {
     $matches = Get-ChildItem -LiteralPath $buildDir -Recurse -Filter $name -File |
@@ -218,6 +237,7 @@ Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") -Destination $licenseDest
 if (Test-Path -LiteralPath (Join-Path $repoRoot "third_party\rtklib\LICENSE.txt")) {
     Copy-Item -LiteralPath (Join-Path $repoRoot "third_party\rtklib\LICENSE.txt") -Destination $licenseDestination -Force
 }
+Clear-ReadOnlyRegularFiles $stageDir
 
 $packageRoot = Join-Path $packagesDir "com.vaporview.core"
 $packageMeta = Join-Path $packageRoot "meta"
@@ -245,6 +265,7 @@ $maintenancePackageXml = [IO.File]::ReadAllText($maintenancePackageXmlTemplatePa
 $maintenancePackageXml = $maintenancePackageXml.Replace("@VAPORVIEW_VERSION@", $version).Replace("@VAPORVIEW_RELEASE_DATE@", $releaseDate)
 [IO.File]::WriteAllText((Join-Path $maintenancePackageMeta "package.xml"), $maintenancePackageXml, $utf8NoBom)
 Copy-Item -LiteralPath $maintenanceToolSource -Destination (Join-Path $maintenancePackageData "installerbase.exe") -Force
+Copy-Item -LiteralPath (Join-Path $stageDir "VaporViewPermissionTool.exe") -Destination (Join-Path $maintenancePackageData "VaporViewPermissionTool.exe") -Force
 
 $remoteRepositories = ""
 if (-not [string]::IsNullOrWhiteSpace($RepositoryUrl)) {

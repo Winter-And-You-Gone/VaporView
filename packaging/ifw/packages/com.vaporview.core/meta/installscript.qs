@@ -3,6 +3,14 @@ var vaporViewTargetDirectory = "";
 var vaporViewRelaunchScheduled = false;
 var vaporViewCoreUpdateRequested = false;
 
+function vaporViewShowSafeRelaunchMessage() {
+    var message = "VaporView 已更新完成，但无法确认可用非管理员令牌安全启动主程序。请稍后从桌面或开始菜单快捷方式手动启动 VaporView。";
+    console.log(message);
+    if (typeof QMessageBox !== "undefined") {
+        QMessageBox.warning("VaporViewSafeRelaunch", "VaporView", message);
+    }
+}
+
 function Component() {
     if (vaporViewTargetDirectory.length === 0) {
         vaporViewTargetDirectory = installer.value("TargetDir");
@@ -60,11 +68,14 @@ Component.prototype.launchVaporViewAfterUpdate = function() {
             relauncherPath,
             [maintenanceToolPath, applicationPath],
             targetDirectory);
+        if (!vaporViewRelaunchScheduled) {
+            vaporViewShowSafeRelaunchMessage();
+        }
         return vaporViewRelaunchScheduled;
     }
     if (installer.fileExists(applicationPath)) {
-        vaporViewRelaunchScheduled = installer.executeDetached(applicationPath, [], targetDirectory);
-        return vaporViewRelaunchScheduled;
+        vaporViewShowSafeRelaunchMessage();
+        return false;
     }
     return false;
 };
@@ -82,6 +93,18 @@ Component.prototype.createOperations = function() {
     component.addOperation("Mkdir", "@TargetDir@/data");
 
     if (systemInfo.productType === "windows") {
+        component.addOperation("Execute",
+                              "@TargetDir@/VaporViewPermissionTool.exe",
+                              "apply",
+                              "--target-dir",
+                              "@TargetDir@",
+                              "errormessage=无法配置 VaporView 安装目录权限。请查看安装日志。");
+        component.addOperation("Execute",
+                              "@TargetDir@/VaporViewPermissionTool.exe",
+                              "verify",
+                              "--target-dir",
+                              "@TargetDir@",
+                              "errormessage=VaporView 安装目录权限验证失败。请查看安装日志。");
         component.addOperation("CreateShortcut",
                               "@TargetDir@/VaporView.exe",
                               "@StartMenuDir@/VaporView.lnk",

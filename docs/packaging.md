@@ -22,15 +22,22 @@ remote repository while the initial installation is in progress. Without
 `-RepositoryUrl`, it creates a pure offline installer with no update source.
 
 The installer defaults to `C:\VaporView` but keeps the target-directory page
-visible so a field deployment can choose another machine-wide path. The four
-Windows executables are embedded with `requireAdministrator`; Linux builds do
-not use this manifest.
+visible so a field deployment can choose another machine-wide path. VaporView's
+daily Windows executables are embedded with explicit `asInvoker` manifests; the
+installer and maintenance tool may still request elevation while installing,
+repairing, or updating files.
 
 The package contains Qt and the osgEarth/OSG/GDAL/PROJ runtime, but does not
 contain `resources/maps`. The signed vendor driver installers, when available,
 belong under the package `drivers/` folder and are not executed automatically.
 The installer creates an empty `data/` directory in the installation root;
 ground and Sky recordings use that directory by default.
+
+The Windows package includes `VaporViewPermissionTool.exe` in the installation
+root. IFW runs it after file deployment and maintenance-tool replacement to
+clear regular-file ReadOnly attributes, grant the initiating interactive user
+recursive inheritable Full Control on `@TargetDir@`, and verify that the ACL is
+not broadened to `Everyone`, `Users`, or `Authenticated Users`.
 
 ## Program updates
 
@@ -43,6 +50,11 @@ opened only when an update is reported and the user chooses Update Now.
 Development builds that are run directly from the build directory do not include
 `VaporViewMaintenanceTool`; install VaporView with the setup package before
 testing the full online-update flow.
+
+After a successful Windows update, `VaporViewUpdateRelauncher.exe` restarts
+`VaporView.exe` through the current interactive session shell token. If that
+non-elevated token cannot be obtained, IFW shows a manual-start message instead
+of falling back to an elevated `CreateProcessW` launch.
 
 ## Map resource manifest
 

@@ -3,10 +3,6 @@
 namespace
 {
 
-QString uiLogPendingQueueDropEvent()
-{
-    return QStringLiteral("ui_log_pending_queue_dropped");
-}
 
 void publishPendingUiLogDropNotice(quint64 dropped)
 {
@@ -20,7 +16,7 @@ void publishPendingUiLogDropNotice(quint64 dropped)
                            QStringLiteral("Ground"),
                            QStringLiteral("ui.log"),
                            QStringLiteral("桌面日志 UI 队列已满，已丢弃部分待显示记录。"),
-                           {{QStringLiteral("event"), uiLogPendingQueueDropEvent()},
+                           {{QStringLiteral("event"), QStringLiteral("ui_log_pending_queue_dropped")},
                             {QStringLiteral("ui_visibility"), QStringLiteral("hidden")},
                             {QStringLiteral("dropped_count"), static_cast<qulonglong>(dropped)},
                             {QStringLiteral("pending_limit"), kMaxPendingUiLogRecords}});
@@ -85,7 +81,7 @@ void MainWindow::log(const QString& message)
 void MainWindow::enqueueUiLogRecord(const VaporView::LogRecord& record)
 {
     if (record.category == QStringLiteral("ui.progress") ||
-        VaporView::Ground::Main::uiLogEvent(record) == uiLogPendingQueueDropEvent())
+        VaporView::Ground::Main::uiLogEvent(record) == QStringLiteral("ui_log_pending_queue_dropped"))
     {
         return;
     }

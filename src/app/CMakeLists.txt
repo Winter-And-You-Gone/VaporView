@@ -177,9 +177,7 @@ add_dependencies(VaporView VaporViewSky)
 
 if(WIN32)
     foreach(vaporview_app_target IN ITEMS VaporView VaporViewSky VaporViewSkyCore VaporViewSkyTui)
-        target_link_options(${vaporview_app_target} PRIVATE
-            "/MANIFESTUAC:level='requireAdministrator' uiAccess='false'"
-        )
+        vaporview_set_windows_as_invoker_manifest(${vaporview_app_target})
     endforeach()
 endif()
 

@@ -35,4 +35,23 @@ Component.prototype.createOperationsForArchive = function(archive) {
     } else {
         component.addOperation("Extract", archive, "@TargetDir@/tmpMaintenanceToolApp");
     }
+
+    if (systemInfo.productType === "windows") {
+        var permissionTool = "@TargetDir@/VaporViewPermissionTool.exe";
+        if (!installer.versionMatches(vaporViewMaintenanceToolIfwVersion, "<4.8.0")) {
+            permissionTool = "@TargetDir@/tmpMaintenanceToolApp/VaporViewPermissionTool.exe";
+        }
+        component.addOperation("Execute",
+                              permissionTool,
+                              "apply",
+                              "--target-dir",
+                              "@TargetDir@",
+                              "errormessage=无法在维护工具更新后配置 VaporView 安装目录权限。请查看安装日志。");
+        component.addOperation("Execute",
+                              permissionTool,
+                              "verify",
+                              "--target-dir",
+                              "@TargetDir@",
+                              "errormessage=维护工具更新后的 VaporView 安装目录权限验证失败。请查看安装日志。");
+    }
 };

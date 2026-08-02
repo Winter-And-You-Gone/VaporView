@@ -542,6 +542,82 @@ target_include_directories(ifw_update_status_test PRIVATE
 )
 add_test(NAME ifw_update_status_test COMMAND ifw_update_status_test)
 
+if(WIN32)
+    add_executable(manifest_policy_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/manifest_policy_test.cpp
+    )
+    target_compile_definitions(manifest_policy_test PRIVATE
+        VAPORVIEW_BINARY_DIR="${CMAKE_BINARY_DIR}"
+        UNICODE
+        _UNICODE
+    )
+    add_dependencies(manifest_policy_test
+        VaporView
+        VaporViewSky
+        VaporViewSkyCore
+        VaporViewSkyTui
+        VaporViewUpdateRelauncher
+        VaporViewPermissionTool
+    )
+    add_test(NAME manifest_policy_test COMMAND manifest_policy_test)
+    set_tests_properties(manifest_policy_test PROPERTIES
+        TIMEOUT 30
+        LABELS "fast;integration;windows;manifest"
+    )
+
+    add_executable(permission_tool_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/permission_tool_test.cpp
+    )
+    target_compile_definitions(permission_tool_test PRIVATE
+        VAPORVIEW_BINARY_DIR="${CMAKE_BINARY_DIR}"
+        UNICODE
+        _UNICODE
+    )
+    target_link_libraries(permission_tool_test PRIVATE advapi32)
+    add_dependencies(permission_tool_test VaporViewPermissionTool)
+    add_test(NAME permission_tool_test COMMAND permission_tool_test)
+    set_tests_properties(permission_tool_test PROPERTIES
+        TIMEOUT 120
+        LABELS "integration;windows;acl"
+    )
+
+    add_executable(relauncher_probe_child
+        ${CMAKE_CURRENT_SOURCE_DIR}/relauncher_probe_child.cpp
+    )
+    target_compile_definitions(relauncher_probe_child PRIVATE UNICODE _UNICODE)
+
+    add_executable(update_relauncher_elevation_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/update_relauncher_elevation_test.cpp
+    )
+    target_compile_definitions(update_relauncher_elevation_test PRIVATE
+        VAPORVIEW_BINARY_DIR="${CMAKE_BINARY_DIR}"
+        UNICODE
+        _UNICODE
+    )
+    add_dependencies(update_relauncher_elevation_test
+        VaporViewUpdateRelauncher
+        relauncher_probe_child
+    )
+    add_test(NAME update_relauncher_elevation_test COMMAND update_relauncher_elevation_test)
+    set_tests_properties(update_relauncher_elevation_test PROPERTIES
+        SKIP_RETURN_CODE 77
+        TIMEOUT 120
+        LABELS "integration;windows;relauncher"
+    )
+
+    add_test(NAME ifw_staging_test
+        COMMAND powershell -ExecutionPolicy Bypass
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/ifw_staging_test.ps1
+                -StageDir ${CMAKE_BINARY_DIR}/ifw-work/stage
+                -WorkDir ${CMAKE_BINARY_DIR}/ifw-work
+    )
+    set_tests_properties(ifw_staging_test PROPERTIES
+        SKIP_RETURN_CODE 77
+        TIMEOUT 60
+        LABELS "integration;windows;ifw"
+    )
+endif()
+
 add_executable(main_window_session_viewer_test
     ${CMAKE_CURRENT_SOURCE_DIR}/main_window_session_viewer_test.cpp
 )
