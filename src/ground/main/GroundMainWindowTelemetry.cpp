@@ -372,6 +372,7 @@ void MainWindow::onSkyDeviceConfigClicked()
 void MainWindow::onClearLogClicked()
 {
     state_->pending_ui_log_records_.clear();
+    state_->pending_ui_log_records_dropped_ = 0;
     if (state_->log_model_)
     {
         state_->log_model_->clearEntries();

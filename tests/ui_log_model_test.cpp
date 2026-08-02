@@ -122,6 +122,49 @@ void repeatedWarningsAreAggregated()
     require(windowModel.entryCount() == 2, "dedupe window expires");
 }
 
+void aggregationPromotesVisibility()
+{
+    using namespace VaporView::Ground::Main;
+    UiLogModel model;
+    model.appendRecord(makeRecord(VaporView::LogLevel::Info,
+                                  QStringLiteral("设备状态已更新。"),
+                                  {{QStringLiteral("event"), QStringLiteral("device_status_updated")},
+                                   {QStringLiteral("ui_visibility"), QStringLiteral("details")}},
+                                  QStringLiteral("Ground"),
+                                  QStringLiteral("device"),
+                                  1,
+                                  1'000'000));
+    model.appendRecord(makeRecord(VaporView::LogLevel::Info,
+                                  QStringLiteral("设备状态已更新。"),
+                                  {{QStringLiteral("event"), QStringLiteral("device_status_updated")},
+                                   {QStringLiteral("ui_visibility"), QStringLiteral("attention")}},
+                                  QStringLiteral("Ground"),
+                                  QStringLiteral("device"),
+                                  2,
+                                  2'000'000));
+    require(model.entryCount() == 1, "same Info event remains aggregated when visibility changes");
+    require(model.index(0, 0).data(UiLogModel::VisibilityRole).toString() == QStringLiteral("attention"),
+            "merged record promotes details to attention visibility");
+    require(model.index(0, 0).data(UiLogModel::ExplicitVisibilityRole).toBool(),
+            "merged record keeps explicit visibility when later record supplies it");
+    require(proxyRows(model, LogUiViewMode::Attention) == 1,
+            "attention view shows a merged record that was promoted to attention");
+
+    model.appendRecord(makeRecord(VaporView::LogLevel::Info,
+                                  QStringLiteral("设备状态已更新。"),
+                                  {{QStringLiteral("event"), QStringLiteral("device_status_updated")},
+                                   {QStringLiteral("ui_visibility"), QStringLiteral("details")}},
+                                  QStringLiteral("Ground"),
+                                  QStringLiteral("device"),
+                                  3,
+                                  3'000'000));
+    require(model.entryCount() == 1, "later details record still aggregates");
+    require(model.index(0, 0).data(UiLogModel::VisibilityRole).toString() == QStringLiteral("attention"),
+            "merged record never downgrades attention visibility");
+    require(proxyRows(model, LogUiViewMode::Attention) == 1,
+            "attention view keeps showing an entry after a later details duplicate");
+}
+
 void capacityAndBatchingAreBounded()
 {
     using namespace VaporView::Ground::Main;
@@ -163,6 +206,7 @@ int main(int argc, char **argv)
     structuredVisibilityDoesNotUseMessageLanguage();
     searchMatchesStructuredFields();
     repeatedWarningsAreAggregated();
+    aggregationPromotesVisibility();
     capacityAndBatchingAreBounded();
     return 0;
 }

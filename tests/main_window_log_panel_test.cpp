@@ -1,5 +1,6 @@
 #include "LogService.h"
 #include "ground/main/MainWindow.h"
+#include "ground/main/UiLogModel.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "test_ui_helpers.h"
 
@@ -8,6 +9,7 @@
 #include <QLineEdit>
 #include <QListView>
 #include <QPushButton>
+#include <QScrollBar>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QToolButton>
@@ -236,6 +238,69 @@ int main(int argc, char **argv)
     newEntriesButton->click();
     VaporViewTest::processEventsFor(30);
     require(!newEntriesButton->isVisible(), "clicking new log indicator clears unread state");
+
+    clearButton->click();
+    VaporViewTest::processEventsFor(90);
+    require(logList->model()->rowCount() == 0, "clear display resets before pending overload test");
+    logService.publish(VaporView::LogLevel::Critical,
+                       QStringLiteral("Ground"),
+                       QStringLiteral("pending.overload"),
+                       QStringLiteral("关键待处理日志"),
+                       {{QStringLiteral("event"), QStringLiteral("pending_overload_critical")},
+                        {QStringLiteral("ui_visibility"), QStringLiteral("attention")}});
+    for (int i = 0; i < VaporView::Ground::Main::kMaxPendingUiLogRecords; ++i)
+    {
+        logService.publish(VaporView::LogLevel::Info,
+                           QStringLiteral("Ground"),
+                           QStringLiteral("pending.overload"),
+                           QStringLiteral("普通待处理日志 %1").arg(i),
+                           {{QStringLiteral("event"), QStringLiteral("pending_overload_info_%1").arg(i)},
+                            {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+    }
+    VaporViewTest::processEventsFor(140);
+    searchEdit->setText(QStringLiteral("pending_overload_critical"));
+    VaporViewTest::processEventsFor(30);
+    require(logList->model()->rowCount() == 1,
+            "pending overload keeps Critical instead of dropping it behind ordinary Info");
+    searchEdit->clear();
+    VaporViewTest::processEventsFor(30);
+
+    clearButton->click();
+    VaporViewTest::processEventsFor(90);
+    if (!followButton->isChecked())
+    {
+        followButton->click();
+        VaporViewTest::processEventsFor(30);
+    }
+    require(followButton->isChecked(), "auto follow remains enabled for manual history scroll test");
+    for (int i = 0; i < 80; ++i)
+    {
+        logService.publish(VaporView::LogLevel::Warning,
+                           QStringLiteral("Ground"),
+                           QStringLiteral("scroll.history"),
+                           QStringLiteral("滚动测试警告 %1").arg(i),
+                           {{QStringLiteral("event"), QStringLiteral("scroll_history_warning_%1").arg(i)}});
+    }
+    VaporViewTest::processEventsFor(140);
+    logList->scrollToBottom();
+    VaporViewTest::processEventsFor(30);
+    QScrollBar *logScrollBar = logList->verticalScrollBar();
+    require(logScrollBar != nullptr, "log list has a vertical scrollbar");
+    require(logScrollBar->maximum() > 0, "log list has enough rows to scroll");
+    const int historyScrollValue = logScrollBar->maximum() / 2;
+    logScrollBar->setValue(historyScrollValue);
+    VaporViewTest::processEventsFor(30);
+    const int beforeNewLogScrollValue = logScrollBar->value();
+    require(beforeNewLogScrollValue < logScrollBar->maximum(), "manual scroll moves away from bottom");
+    logService.publish(VaporView::LogLevel::Warning,
+                       QStringLiteral("Ground"),
+                       QStringLiteral("scroll.history"),
+                       QStringLiteral("滚动测试新增警告"),
+                       {{QStringLiteral("event"), QStringLiteral("scroll_history_new_warning")}});
+    VaporViewTest::processEventsFor(140);
+    require(logScrollBar->value() == beforeNewLogScrollValue,
+            "new log does not jump when auto follow is enabled but the user is viewing history");
+    require(newEntriesButton->isVisible(), "new log indicator appears while viewing history with auto follow enabled");
 
     window.reset();
     VaporView::setSettingsWritesSuspended(false);

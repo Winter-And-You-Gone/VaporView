@@ -1,5 +1,82 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 
+namespace
+{
+
+QString uiLogPendingQueueDropEvent()
+{
+    return QStringLiteral("ui_log_pending_queue_dropped");
+}
+
+int pendingUiLogRetentionPriority(const VaporView::LogRecord& record)
+{
+    const auto decision = VaporView::Ground::Main::uiLogVisibilityForRecord(record);
+    if (record.level == VaporView::LogLevel::Debug ||
+        (decision.explicitVisibility &&
+         decision.visibility == VaporView::Ground::Main::LogUiVisibility::Hidden))
+    {
+        return 0;
+    }
+    if (record.level >= VaporView::LogLevel::Error ||
+        (record.level == VaporView::LogLevel::Info &&
+         decision.visibility == VaporView::Ground::Main::LogUiVisibility::Attention))
+    {
+        return 3;
+    }
+    if (decision.visibility == VaporView::Ground::Main::LogUiVisibility::Details)
+    {
+        return 1;
+    }
+    if (record.level == VaporView::LogLevel::Warning)
+    {
+        return 2;
+    }
+    return 1;
+}
+
+int pendingUiLogDropRow(const QVector<VaporView::LogRecord>& records,
+                        const VaporView::LogRecord& incoming)
+{
+    int lowestPriority = std::numeric_limits<int>::max();
+    int row = -1;
+    for (int i = 0; i < records.size(); ++i)
+    {
+        const int priority = pendingUiLogRetentionPriority(records.at(i));
+        if (priority < lowestPriority)
+        {
+            lowestPriority = priority;
+            row = i;
+        }
+    }
+
+    if (row < 0 || pendingUiLogRetentionPriority(incoming) < lowestPriority)
+    {
+        return -1;
+    }
+    return row;
+}
+
+void publishPendingUiLogDropNotice(quint64 dropped)
+{
+    if (dropped == 0)
+    {
+        return;
+    }
+
+    VaporView::LogService::withCurrentInstance([dropped](VaporView::LogService& logService) {
+        logService.publish(VaporView::LogLevel::Info,
+                           QStringLiteral("Ground"),
+                           QStringLiteral("ui.log"),
+                           QStringLiteral("桌面日志 UI 队列已满，已丢弃部分待显示记录。"),
+                           {{QStringLiteral("event"), uiLogPendingQueueDropEvent()},
+                            {QStringLiteral("ui_visibility"), QStringLiteral("hidden")},
+                            {QStringLiteral("dropped_count"), static_cast<qulonglong>(dropped)},
+                            {QStringLiteral("pending_limit"), kMaxPendingUiLogRecords}});
+    });
+}
+
+}  // namespace
+
 void MainWindow::log(const QString& message)
 {
     if (message.startsWith('\r'))
@@ -55,13 +132,20 @@ void MainWindow::log(const QString& message)
 
 void MainWindow::enqueueUiLogRecord(const VaporView::LogRecord& record)
 {
-    if (record.category == QStringLiteral("ui.progress"))
+    if (record.category == QStringLiteral("ui.progress") ||
+        VaporView::Ground::Main::uiLogEvent(record) == uiLogPendingQueueDropEvent())
     {
         return;
     }
     if (state_->pending_ui_log_records_.size() >= kMaxPendingUiLogRecords)
     {
-        state_->pending_ui_log_records_.removeFirst();
+        const int dropRow = pendingUiLogDropRow(state_->pending_ui_log_records_, record);
+        ++state_->pending_ui_log_records_dropped_;
+        if (dropRow < 0)
+        {
+            return;
+        }
+        state_->pending_ui_log_records_.removeAt(dropRow);
     }
     state_->pending_ui_log_records_.append(record);
     if (state_->log_flush_timer_)
@@ -89,8 +173,10 @@ void MainWindow::flushPendingUiLogRecords()
 
     const bool wasNearBottom = isLogViewNearBottom();
     const bool shouldFollow = state_->log_auto_follow_enabled_ && wasNearBottom;
+    const quint64 droppedPendingRecords = std::exchange(state_->pending_ui_log_records_dropped_, 0ULL);
     QVector<VaporView::LogRecord> records;
     records.swap(state_->pending_ui_log_records_);
+    publishPendingUiLogDropNotice(droppedPendingRecords);
 
     int visibleInCurrentView = 0;
     int warningCount = 0;

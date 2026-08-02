@@ -27,6 +27,20 @@ QString visibilityName(LogUiVisibility visibility)
     return QStringLiteral("details");
 }
 
+int visibilityRank(LogUiVisibility visibility)
+{
+    switch (visibility)
+    {
+    case LogUiVisibility::Hidden:
+        return 0;
+    case LogUiVisibility::Details:
+        return 1;
+    case LogUiVisibility::Attention:
+        return 2;
+    }
+    return 1;
+}
+
 QString levelText(LogLevel level)
 {
     switch (level)
@@ -555,10 +569,16 @@ bool UiLogModel::canAggregate(const UiLogEntry& entry, const VaporView::LogRecor
 
 void UiLogModel::aggregateInto(UiLogEntry& entry, const VaporView::LogRecord& record)
 {
+    const UiLogVisibilityDecision decision = uiLogVisibilityForRecord(record);
     entry.record = record;
     entry.lastTimestamp = recordTimestamp(record);
     entry.lastSequence = record.sequence;
     entry.repeatCount += 1;
+    if (visibilityRank(decision.visibility) > visibilityRank(entry.visibility))
+    {
+        entry.visibility = decision.visibility;
+    }
+    entry.explicitVisibility = entry.explicitVisibility || decision.explicitVisibility;
     entry.unread = true;
 }
 
