@@ -10,6 +10,7 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QToolButton>
 
 #include <cstdlib>
 #include <iostream>
@@ -64,6 +65,36 @@ int main(int argc, char **argv)
     require(channelSpin != nullptr && channelSpin->minimum() == 1 && channelSpin->maximum() == 8 &&
                 setpointSpin != nullptr,
             "AI-8288 channel range and setpoint control are available");
+
+    auto *channelDetailToggle =
+        panel.findChild<QToolButton *>(QStringLiteral("ai8ChannelDetailParametersToggle"));
+    auto *inputDetailToggle =
+        panel.findChild<QToolButton *>(QStringLiteral("ai8InputDetailParametersToggle"));
+    auto *outputDetailToggle =
+        panel.findChild<QToolButton *>(QStringLiteral("ai8OutputDetailParametersToggle"));
+    auto *globalDetailToggle =
+        panel.findChild<QToolButton *>(QStringLiteral("ai8GlobalDetailParametersToggle"));
+    auto *channelDetailContent =
+        panel.findChild<QWidget *>(QStringLiteral("ai8ChannelDetailParametersContent"));
+    require(channelDetailToggle != nullptr && inputDetailToggle != nullptr &&
+                outputDetailToggle != nullptr && globalDetailToggle != nullptr &&
+                channelDetailContent != nullptr && !channelDetailToggle->isChecked() &&
+                !inputDetailToggle->isChecked() && !outputDetailToggle->isChecked() &&
+                !globalDetailToggle->isChecked() && !channelDetailContent->isVisible() &&
+                channelDetailToggle->arrowType() == Qt::RightArrow,
+            "AI-8 detailed parameter cards start collapsed with right arrows");
+    channelDetailToggle->click();
+    QApplication::processEvents();
+    require(channelDetailToggle->isChecked() && channelDetailContent->isVisible() &&
+                channelDetailToggle->arrowType() == Qt::DownArrow &&
+                channelDetailContent->geometry().top() > channelDetailToggle->geometry().bottom(),
+            "AI-8 detailed parameters expand below the toggle card header");
+    channelDetailToggle->click();
+    QApplication::processEvents();
+    require(!channelDetailToggle->isChecked() && !channelDetailContent->isVisible() &&
+                channelDetailToggle->arrowType() == Qt::RightArrow,
+            "AI-8 detailed parameters collapse without changing their values");
+
     require(addressSpin != nullptr && addressSpin->minimum() == 1 && addressSpin->maximum() == 88 &&
                 addressSpin->value() == 1,
             "AI-8 address range and default match the register table");

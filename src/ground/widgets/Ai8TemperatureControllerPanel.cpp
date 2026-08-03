@@ -18,6 +18,7 @@
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QStyle>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -252,14 +253,71 @@ void Ai8TemperatureControllerPanel::setupUi()
     selectPage(0);
 }
 
+QWidget *Ai8TemperatureControllerPanel::createDetailSection(const QString& objectName,
+                                                            const QString& chinese,
+                                                            const QString& english,
+                                                            const QList<QWidget *>& fields,
+                                                            QWidget *parent)
+{
+    auto *card = new QFrame(parent);
+    card->setObjectName(QStringLiteral("ai8DetailParametersCard"));
+    card->setProperty("ai8DetailCard", true);
+    card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    auto *layout = new QVBoxLayout(card);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+
+    auto *toggle = new QToolButton(card);
+    toggle->setObjectName(objectName + QStringLiteral("Toggle"));
+    toggle->setProperty("ai8DetailToggle", true);
+    toggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    toggle->setArrowType(Qt::RightArrow);
+    toggle->setCheckable(true);
+    toggle->setChecked(false);
+    toggle->setCursor(Qt::PointingHandCursor);
+    toggle->setFocusPolicy(Qt::TabFocus);
+    toggle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    toggle->setText(chinese);
+    toggle->setAccessibleName(chinese);
+    button_bindings_.append({toggle, chinese, english});
+    layout->addWidget(toggle);
+
+    auto *content = new QWidget(card);
+    content->setObjectName(objectName + QStringLiteral("Content"));
+    content->setProperty("ai8DetailContent", true);
+    content->setVisible(false);
+    auto *contentLayout = new QGridLayout(content);
+    contentLayout->setContentsMargins(8, 8, 8, 8);
+    contentLayout->setHorizontalSpacing(8);
+    contentLayout->setVerticalSpacing(8);
+    addFieldsToPage(contentLayout, fields);
+    layout->addWidget(content);
+
+    connect(toggle, &QToolButton::toggled, this, [toggle, content](bool checked) {
+        content->setVisible(checked);
+        toggle->setArrowType(checked ? Qt::DownArrow : Qt::RightArrow);
+        toggle->setProperty("expanded", checked);
+        toggle->style()->unpolish(toggle);
+        toggle->style()->polish(toggle);
+        content->updateGeometry();
+        if (auto *parentWidget = content->parentWidget())
+        {
+            parentWidget->updateGeometry();
+        }
+    });
+    return card;
+}
+
 QWidget *Ai8TemperatureControllerPanel::createChannelPage()
 {
     auto *page = new QWidget(page_stack_);
     page->setObjectName(QStringLiteral("ai8ChannelParametersPage"));
-    auto *layout = new QGridLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setHorizontalSpacing(8);
-    layout->setVerticalSpacing(8);
+    auto *pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(0, 0, 0, 0);
+    pageLayout->setSpacing(8);
+    auto *commonLayout = new QGridLayout;
+    commonLayout->setHorizontalSpacing(8);
+    commonLayout->setVerticalSpacing(8);
 
     auto *channelSpin = createSpinBox(page, QStringLiteral("ai8ChannelSpin"), 1, 8, 1);
     connect(channelSpin, qOverload<int>(&QSpinBox::valueChanged), this,
@@ -339,7 +397,7 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
     auto *displayedSetpointEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8DisplayedSetpointEdit"));
     auto *alarmStatusEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8ChannelAlarmStatusEdit"));
 
-    addFieldsToPage(layout,
+    addFieldsToPage(commonLayout,
                     {createParameterField(QStringLiteral("通道"), QStringLiteral("Channel"), channelSpin, page),
                      createParameterField(QStringLiteral("给定值 SP"), QStringLiteral("Setpoint SP"), setpointSpin, page),
                      createParameterField(QStringLiteral("测量值 PV"), QStringLiteral("Measured PV"), pvEdit, page),
@@ -347,15 +405,22 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
                      createParameterField(QStringLiteral("积分时间 I"), QStringLiteral("Integral Time I"), iSpin, page),
                      createParameterField(QStringLiteral("微分时间 d"), QStringLiteral("Derivative Time d"), dSpin, page),
                      createParameterField(QStringLiteral("工作模式 At"), QStringLiteral("Work Mode At"), modeCombo, page),
-                     createParameterField(QStringLiteral("手动输出 OP"), QStringLiteral("Manual Output OP"), outputSpin, page),
-                     createParameterField(QStringLiteral("输入组 In"), QStringLiteral("Input Group In"), inputGroupEdit, page),
+                     createParameterField(QStringLiteral("手动输出 OP"), QStringLiteral("Manual Output OP"), outputSpin, page)});
+    pageLayout->addLayout(commonLayout);
+    pageLayout->addWidget(createDetailSection(
+        QStringLiteral("ai8ChannelDetailParameters"),
+        QStringLiteral("详细参数"),
+        QStringLiteral("Detailed Parameters"),
+        {createParameterField(QStringLiteral("输入组 In"), QStringLiteral("Input Group In"), inputGroupEdit, page),
                      createParameterField(QStringLiteral("测量平移 Sc"), QStringLiteral("Measurement Offset Sc"), offsetEdit, page),
                      createParameterField(QStringLiteral("输出组 On"), QStringLiteral("Output Group On"), outputGroupSpin, page),
                      createParameterField(QStringLiteral("通道配置 Pn"), QStringLiteral("Channel Config Pn"), programSpin, page),
                      createParameterField(QStringLiteral("上限报警 HA"), QStringLiteral("High Alarm HA"), highAlarmSpin, page),
                      createParameterField(QStringLiteral("下限报警 LA"), QStringLiteral("Low Alarm LA"), lowAlarmSpin, page),
                      createParameterField(QStringLiteral("实际给定 SV"), QStringLiteral("Actual Setpoint SV"), displayedSetpointEdit, page),
-                     createParameterField(QStringLiteral("报警状态"), QStringLiteral("Alarm Status"), alarmStatusEdit, page)});
+                     createParameterField(QStringLiteral("报警状态"), QStringLiteral("Alarm Status"), alarmStatusEdit, page)},
+        page));
+    pageLayout->addStretch(1);
     return page;
 }
 
@@ -363,10 +428,12 @@ QWidget *Ai8TemperatureControllerPanel::createInputPage()
 {
     auto *page = new QWidget(page_stack_);
     page->setObjectName(QStringLiteral("ai8InputParametersPage"));
-    auto *layout = new QGridLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setHorizontalSpacing(8);
-    layout->setVerticalSpacing(8);
+    auto *pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(0, 0, 0, 0);
+    pageLayout->setSpacing(8);
+    auto *commonLayout = new QGridLayout;
+    commonLayout->setHorizontalSpacing(8);
+    commonLayout->setVerticalSpacing(8);
 
     auto *groupSpin = createSpinBox(page, QStringLiteral("ai8InputGroupSpin"), 1, 4, 1);
     QComboBox *inputSpecCombo = createFixedChoiceCombo(page);
@@ -387,15 +454,22 @@ QWidget *Ai8TemperatureControllerPanel::createInputPage()
     auto *offsetSpin = createDoubleSpinBox(page, QStringLiteral("ai8MeasurementOffsetSpin"), -999.0, 3200.0, 0.0, 1);
     auto *correctionEntrySpin = createSpinBox(page, QStringLiteral("ai8CorrectionEntrySpin"), 0, 999, 0);
 
-    addFieldsToPage(layout,
+    addFieldsToPage(commonLayout,
                     {createParameterField(QStringLiteral("输入参数组"), QStringLiteral("Input Group"), groupSpin, page),
                      createParameterField(QStringLiteral("输入规格 InP"), QStringLiteral("Input Type InP"), inputSpecCombo, page),
                      createParameterField(QStringLiteral("定标下限 ScL"), QStringLiteral("Scale Low ScL"), scaleLowSpin, page),
                      createParameterField(QStringLiteral("定标上限 ScH"), QStringLiteral("Scale High ScH"), scaleHighSpin, page),
-                     createParameterField(QStringLiteral("数字滤波 FIL"), QStringLiteral("Digital Filter FIL"), filterSpin, page),
-                     createParameterField(QStringLiteral("通道输入组 In"), QStringLiteral("Channel Input Group In"), channelInputSpin, page),
-                     createParameterField(QStringLiteral("测量平移 Sc"), QStringLiteral("Measurement Offset Sc"), offsetSpin, page),
-                     createParameterField(QStringLiteral("校正表入口"), QStringLiteral("Correction Entry"), correctionEntrySpin, page)});
+                     createParameterField(QStringLiteral("数字滤波 FIL"), QStringLiteral("Digital Filter FIL"), filterSpin, page)});
+    pageLayout->addLayout(commonLayout);
+    pageLayout->addWidget(createDetailSection(
+        QStringLiteral("ai8InputDetailParameters"),
+        QStringLiteral("详细参数"),
+        QStringLiteral("Detailed Parameters"),
+        {createParameterField(QStringLiteral("通道输入组 In"), QStringLiteral("Channel Input Group In"), channelInputSpin, page),
+                      createParameterField(QStringLiteral("测量平移 Sc"), QStringLiteral("Measurement Offset Sc"), offsetSpin, page),
+                      createParameterField(QStringLiteral("校正表入口"), QStringLiteral("Correction Entry"), correctionEntrySpin, page)},
+        page));
+    pageLayout->addStretch(1);
     return page;
 }
 
@@ -403,10 +477,12 @@ QWidget *Ai8TemperatureControllerPanel::createOutputPage()
 {
     auto *page = new QWidget(page_stack_);
     page->setObjectName(QStringLiteral("ai8OutputParametersPage"));
-    auto *layout = new QGridLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setHorizontalSpacing(8);
-    layout->setVerticalSpacing(8);
+    auto *pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(0, 0, 0, 0);
+    pageLayout->setSpacing(8);
+    auto *commonLayout = new QGridLayout;
+    commonLayout->setHorizontalSpacing(8);
+    commonLayout->setVerticalSpacing(8);
 
     auto *groupSpin = createSpinBox(page, QStringLiteral("ai8OutputGroupSpin"), 1, 4, 1);
     QComboBox *actionCombo = createFixedChoiceCombo(page);
@@ -452,20 +528,27 @@ QWidget *Ai8TemperatureControllerPanel::createOutputPage()
                                                       1);
     auto *alarmResetSpin = createSpinBox(page, QStringLiteral("ai8AlarmResetSpin"), 0, 31, 0);
 
-    addFieldsToPage(layout,
+    addFieldsToPage(commonLayout,
                     {createParameterField(QStringLiteral("输出参数组"), QStringLiteral("Output Group"), groupSpin, page),
                      createParameterField(QStringLiteral("控制方向 Act"), QStringLiteral("Control Action Act"), actionCombo, page),
-                     createParameterField(QStringLiteral("正偏差报警 dHA"), QStringLiteral("Deviation High dHA"), deviationHighSpin, page),
-                     createParameterField(QStringLiteral("负偏差报警 dLA"), QStringLiteral("Deviation Low dLA"), deviationLowSpin, page),
                      createParameterField(QStringLiteral("控制回差 HYS"), QStringLiteral("Hysteresis HYS"), hysteresisSpin, page),
                      createParameterField(QStringLiteral("输出下限 OPL"), QStringLiteral("Output Low OPL"), outputLowSpin, page),
-                     createParameterField(QStringLiteral("输出上限 OPH"), QStringLiteral("Output High OPH"), outputHighSpin, page),
+                     createParameterField(QStringLiteral("输出上限 OPH"), QStringLiteral("Output High OPH"), outputHighSpin, page)});
+    pageLayout->addLayout(commonLayout);
+    pageLayout->addWidget(createDetailSection(
+        QStringLiteral("ai8OutputDetailParameters"),
+        QStringLiteral("详细参数"),
+        QStringLiteral("Detailed Parameters"),
+        {createParameterField(QStringLiteral("正偏差报警 dHA"), QStringLiteral("Deviation High dHA"), deviationHighSpin, page),
+                     createParameterField(QStringLiteral("负偏差报警 dLA"), QStringLiteral("Deviation Low dLA"), deviationLowSpin, page),
                      createParameterField(QStringLiteral("超温输出 OHE"), QStringLiteral("Overheat Output OHE"), outputHighThresholdSpin, page),
                      createParameterField(QStringLiteral("升温斜率 Srh"), QStringLiteral("Rise Slope Srh"), riseSlopeSpin, page),
                      createParameterField(QStringLiteral("降温斜率 SrL"), QStringLiteral("Fall Slope SrL"), fallSlopeSpin, page),
                      createParameterField(QStringLiteral("给定下限 SPL"), QStringLiteral("Setpoint Low SPL"), setpointLowLimitSpin, page),
                      createParameterField(QStringLiteral("给定上限 SPH"), QStringLiteral("Setpoint High SPH"), setpointHighLimitSpin, page),
-                     createParameterField(QStringLiteral("报警锁定掩码 AAF"), QStringLiteral("Alarm Latch Mask AAF"), alarmResetSpin, page)});
+                     createParameterField(QStringLiteral("报警锁定掩码 AAF"), QStringLiteral("Alarm Latch Mask AAF"), alarmResetSpin, page)},
+        page));
+    pageLayout->addStretch(1);
     return page;
 }
 
@@ -473,10 +556,12 @@ QWidget *Ai8TemperatureControllerPanel::createGlobalPage()
 {
     auto *page = new QWidget(page_stack_);
     page->setObjectName(QStringLiteral("ai8GlobalParametersPage"));
-    auto *layout = new QGridLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setHorizontalSpacing(8);
-    layout->setVerticalSpacing(8);
+    auto *pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(0, 0, 0, 0);
+    pageLayout->setSpacing(8);
+    auto *commonLayout = new QGridLayout;
+    commonLayout->setHorizontalSpacing(8);
+    commonLayout->setVerticalSpacing(8);
 
     auto *addressSpin = createSpinBox(page, QStringLiteral("ai8DeviceAddressSpin"), 1, 88, 1);
     QComboBox *baudCombo = createFixedChoiceCombo(page);
@@ -550,14 +635,20 @@ QWidget *Ai8TemperatureControllerPanel::createGlobalPage()
     auto *aiflP1prEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8AiflP1prEdit"));
     auto *p1tiOpsnEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8P1tiOpsnEdit"));
 
-    addFieldsToPage(layout,
+    addFieldsToPage(commonLayout,
                     {createParameterField(QStringLiteral("通讯地址 Addr"), QStringLiteral("Address Addr"), addressSpin, page),
                      createParameterField(QStringLiteral("波特率 bAud"), QStringLiteral("Baud Rate bAud"), baudCombo, page),
-                     createParameterField(QStringLiteral("本机输入 Adn"), QStringLiteral("Local Inputs Adn"), localInputEdit, page),
-                     createParameterField(QStringLiteral("扩展输入 ACH"), QStringLiteral("Expansion Inputs ACH"), expansionInputEdit, page),
                      createParameterField(QStringLiteral("控制回路数 Ctn"), QStringLiteral("Control Channels Ctn"), controlChannelsSpin, page),
                      createParameterField(QStringLiteral("控制周期 CtI"), QStringLiteral("Control Cycle CtI"), controlCycleSpin, page),
                      createParameterField(QStringLiteral("运行状态 Srun"), QStringLiteral("Run State Srun"), runCombo, page),
+                     createParameterField(QStringLiteral("参数锁 Loc"), QStringLiteral("Parameter Lock Loc"), lockCombo, page)});
+    pageLayout->addLayout(commonLayout);
+    pageLayout->addWidget(createDetailSection(
+        QStringLiteral("ai8GlobalDetailParameters"),
+        QStringLiteral("详细参数"),
+        QStringLiteral("Detailed Parameters"),
+        {createParameterField(QStringLiteral("本机输入 Adn"), QStringLiteral("Local Inputs Adn"), localInputEdit, page),
+                     createParameterField(QStringLiteral("扩展输入 ACH"), QStringLiteral("Expansion Inputs ACH"), expansionInputEdit, page),
                      createParameterField(QStringLiteral("公共报警 ALAL"), QStringLiteral("Common Alarm ALAL"), commonAlarmEdit, page),
                      createParameterField(QStringLiteral("独立报警通道 ALCH"), QStringLiteral("Alarm Channels ALCH"), independentAlarmChannelsEdit, page),
                      createParameterField(QStringLiteral("独立报警掩码 ALbt"), QStringLiteral("Alarm Mask ALbt"), independentAlarmMaskEdit, page),
@@ -565,23 +656,24 @@ QWidget *Ai8TemperatureControllerPanel::createGlobalPage()
                      createParameterField(QStringLiteral("功能参数 AFB"), QStringLiteral("Function Flags AFB"), alarmFunctionBEdit, page),
                      createParameterField(QStringLiteral("校验位 AFC"), QStringLiteral("Parity Flags AFC"), parityFlagsEdit, page),
                      createParameterField(QStringLiteral("报警极性 Nonc"), QStringLiteral("Alarm Polarity Nonc"), alarmPolarityEdit, page),
-                     createParameterField(QStringLiteral("参数锁 Loc"), QStringLiteral("Parameter Lock Loc"), lockCombo, page),
                      createParameterField(QStringLiteral("采样模式 EAF"), QStringLiteral("Sample Mode EAF"), sampleModeSpin, page),
                      createParameterField(QStringLiteral("额外回差 EHYS"), QStringLiteral("Extra Hysteresis EHYS"), extraHysteresisEdit, page),
-                     createParameterField(QStringLiteral("显示小数点 dPt"), QStringLiteral("Display Decimal dPt"), decimalPointSpin, page)});
-    layout->addWidget(createParameterField(QStringLiteral("主状态"), QStringLiteral("Main Status"), mainStatusEdit, page), 5, 0);
-    layout->addWidget(createParameterField(QStringLiteral("型号特征"), QStringLiteral("Model Feature"), modelFeatureEdit, page), 5, 1);
-    layout->addWidget(createParameterField(QStringLiteral("机号"), QStringLiteral("Serial Number"), serialNumberEdit, page), 5, 2);
-    layout->addWidget(createParameterField(QStringLiteral("输出始通道 OPCH"), QStringLiteral("Output Start OPCH"), outputStartChannelEdit, page), 5, 3);
-    layout->addWidget(createParameterField(QStringLiteral("高分辨率滤波 FL32"), QStringLiteral("High-Res Filter FL32"), highResolutionFilterEdit, page), 6, 0);
-    layout->addWidget(createParameterField(QStringLiteral("升温与超调 AIF1"), QStringLiteral("Ramp/Overshoot AIF1"), aif1Edit, page), 6, 1);
-    layout->addWidget(createParameterField(QStringLiteral("升温与超调 AIF2"), QStringLiteral("Ramp/Overshoot AIF2"), aif2Edit, page), 6, 2);
-    layout->addWidget(createParameterField(QStringLiteral("P1FA/AIF3"), QStringLiteral("P1FA/AIF3"), p1faAif3Edit, page), 6, 3);
-    layout->addWidget(createParameterField(QStringLiteral("dIFA"), QStringLiteral("dIFA"), difaEdit, page), 7, 0);
-    layout->addWidget(createParameterField(QStringLiteral("厂家调试 SPSr"), QStringLiteral("Factory SPSr"), spsrEdit, page), 7, 1);
-    layout->addWidget(createParameterField(QStringLiteral("自整定风格 AtFn"), QStringLiteral("Auto-Tune Style AtFn"), atFunctionEdit, page), 7, 2);
-    layout->addWidget(createParameterField(QStringLiteral("AIFL/P1Pr"), QStringLiteral("AIFL/P1Pr"), aiflP1prEdit, page), 7, 3);
-    layout->addWidget(createParameterField(QStringLiteral("P1TI/OPSn"), QStringLiteral("P1TI/OPSn"), p1tiOpsnEdit, page), 8, 0);
+                     createParameterField(QStringLiteral("显示小数点 dPt"), QStringLiteral("Display Decimal dPt"), decimalPointSpin, page),
+                     createParameterField(QStringLiteral("主状态"), QStringLiteral("Main Status"), mainStatusEdit, page),
+                     createParameterField(QStringLiteral("型号特征"), QStringLiteral("Model Feature"), modelFeatureEdit, page),
+                     createParameterField(QStringLiteral("机号"), QStringLiteral("Serial Number"), serialNumberEdit, page),
+                     createParameterField(QStringLiteral("输出始通道 OPCH"), QStringLiteral("Output Start OPCH"), outputStartChannelEdit, page),
+                     createParameterField(QStringLiteral("高分辨率滤波 FL32"), QStringLiteral("High-Res Filter FL32"), highResolutionFilterEdit, page),
+                     createParameterField(QStringLiteral("升温与超调 AIF1"), QStringLiteral("Ramp/Overshoot AIF1"), aif1Edit, page),
+                     createParameterField(QStringLiteral("升温与超调 AIF2"), QStringLiteral("Ramp/Overshoot AIF2"), aif2Edit, page),
+                     createParameterField(QStringLiteral("P1FA/AIF3"), QStringLiteral("P1FA/AIF3"), p1faAif3Edit, page),
+                     createParameterField(QStringLiteral("dIFA"), QStringLiteral("dIFA"), difaEdit, page),
+                     createParameterField(QStringLiteral("厂家调试 SPSr"), QStringLiteral("Factory SPSr"), spsrEdit, page),
+                     createParameterField(QStringLiteral("自整定风格 AtFn"), QStringLiteral("Auto-Tune Style AtFn"), atFunctionEdit, page),
+                     createParameterField(QStringLiteral("AIFL/P1Pr"), QStringLiteral("AIFL/P1Pr"), aiflP1prEdit, page),
+                     createParameterField(QStringLiteral("P1TI/OPSn"), QStringLiteral("P1TI/OPSn"), p1tiOpsnEdit, page)},
+        page));
+    pageLayout->addStretch(1);
     return page;
 }
 
@@ -744,7 +836,12 @@ void Ai8TemperatureControllerPanel::setEnglish(bool english)
     {
         if (binding.button)
         {
-            binding.button->setText(english ? binding.english : binding.chinese);
+            const QString text = english ? binding.english : binding.chinese;
+            binding.button->setText(text);
+            if (binding.button->property("ai8DetailToggle").toBool())
+            {
+                binding.button->setAccessibleName(text);
+            }
         }
     }
     for (const ComboItemBinding& binding : combo_item_bindings_)
