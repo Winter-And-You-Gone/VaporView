@@ -32,14 +32,22 @@ QFrame#titleApplicationNestedMenu {
     border: none;
     border-radius: 0px;
 }
-QFrame#titleApplicationMenuItem {
+QToolButton[titleApplicationMenuItem="true"] {
     background-color: transparent;
     border: none;
     border-radius: 0px;
+    padding: 0px;
+    margin: 0px;
 }
-QFrame#titleApplicationMenuItem[selected="true"],
-QFrame#titleApplicationMenuItem:hover {
+QToolButton[titleApplicationMenuItem="true"][selected="true"],
+QToolButton[titleApplicationMenuItem="true"][keyboardFocus="true"],
+QToolButton[titleApplicationMenuItem="true"]:hover {
     background-color: @vv-menu-hover;
+}
+QToolButton[titleApplicationMenuItem="true"]::menu-indicator {
+    image: none;
+    width: 0px;
+    height: 0px;
 }
 QLabel#titleApplicationMenuText {
     color: @vv-menu-text;
@@ -93,14 +101,22 @@ QFrame#titleApplicationNestedMenu {
     border: none;
     border-radius: 0px;
 }
-QFrame#titleApplicationMenuItem {
+QToolButton[titleApplicationMenuItem="true"] {
     background-color: transparent;
     border: none;
     border-radius: 0px;
+    padding: 0px;
+    margin: 0px;
 }
-QFrame#titleApplicationMenuItem[selected="true"],
-QFrame#titleApplicationMenuItem:hover {
+QToolButton[titleApplicationMenuItem="true"][selected="true"],
+QToolButton[titleApplicationMenuItem="true"][keyboardFocus="true"],
+QToolButton[titleApplicationMenuItem="true"]:hover {
     background-color: @vv-menu-hover;
+}
+QToolButton[titleApplicationMenuItem="true"]::menu-indicator {
+    image: none;
+    width: 0px;
+    height: 0px;
 }
 QLabel#titleApplicationMenuText {
     color: @vv-text;

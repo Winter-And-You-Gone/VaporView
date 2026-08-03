@@ -507,6 +507,24 @@ add_custom_command(TARGET main_window_layout_test POST_BUILD
 )
 add_test(NAME main_window_layout_test COMMAND main_window_layout_test)
 
+add_executable(title_application_menu_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/title_application_menu_test.cpp
+)
+target_include_directories(title_application_menu_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_compile_definitions(title_application_menu_test PRIVATE
+    VAPORVIEW_MAIN_WINDOW_TESTING=1
+)
+target_link_libraries(title_application_menu_test PRIVATE vaporview_main_window)
+add_dependencies(title_application_menu_test VaporViewRuntimeResources)
+add_test(NAME title_application_menu_test COMMAND title_application_menu_test)
+set_tests_properties(title_application_menu_test PROPERTIES
+    TIMEOUT 120
+    LABELS "integration;slow;ui;main-window;title-menu"
+)
+
 add_executable(ui_test_mode_window_test
     ${CMAKE_CURRENT_SOURCE_DIR}/ui_test_mode_window_test.cpp
 )

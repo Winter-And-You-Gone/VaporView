@@ -1271,7 +1271,7 @@ void requireTitleMenuFloatingPanel(QFrame *panel, const char *message)
 
 void requireMenuRowsRespectRoundedVerticalPadding(QFrame *panel,
                                                   QFrame *menu,
-                                                  const QList<QFrame *>& rows,
+                                                  const QList<QWidget *>& rows,
                                                   const char *message)
 {
     require(panel != nullptr, message);
@@ -1283,7 +1283,7 @@ void requireMenuRowsRespectRoundedVerticalPadding(QFrame *panel,
     int topGap = std::numeric_limits<int>::max();
     int bottomGap = std::numeric_limits<int>::max();
     int visibleRows = 0;
-    for (QFrame *row : rows)
+    for (QWidget *row : rows)
     {
         if (!row || !row->isVisibleTo(menu))
         {
@@ -3291,8 +3291,22 @@ int main(int argc, char **argv)
     require(titleApplicationMainMenu->geometry().left() >= titleApplicationPanel->property("shadowMargin").toInt() &&
                 titleApplicationMainMenu->geometry().top() >= titleApplicationPanel->property("shadowMargin").toInt(),
             "title bar application menu content is inset inside the shadow margin");
-    QList<QFrame*> titleApplicationRows =
-        titleApplicationMainMenu->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem"));
+    auto findTitleApplicationRows = [](QWidget *menu, Qt::FindChildOptions options = Qt::FindChildrenRecursively) {
+        QList<QWidget *> rows;
+        if (!menu)
+        {
+            return rows;
+        }
+        for (QToolButton *row : menu->findChildren<QToolButton *>(QString(), options))
+        {
+            if (row && row->property("titleApplicationMenuItem").toBool())
+            {
+                rows.push_back(row);
+            }
+        }
+        return rows;
+    };
+    QList<QWidget *> titleApplicationRows = findTitleApplicationRows(titleApplicationMainMenu);
     require(!titleApplicationRows.isEmpty(),
             "title bar application menu exposes hoverable root rows");
     requireMenuRowsRespectRoundedVerticalPadding(
@@ -3300,8 +3314,8 @@ int main(int argc, char **argv)
         titleApplicationMainMenu,
         titleApplicationRows,
         "title bar application main menu rows stay inside rounded vertical padding");
-    auto findTitleApplicationRow = [](const QList<QFrame *>& rows, const QStringList& texts) -> QFrame * {
-        for (QFrame *row : rows)
+    auto findTitleApplicationRow = [](const QList<QWidget *>& rows, const QStringList& texts) -> QWidget * {
+        for (QWidget *row : rows)
         {
             const QList<QLabel*> labels = row->findChildren<QLabel *>(QStringLiteral("titleApplicationMenuText"));
             for (const QLabel *label : labels)
@@ -3314,7 +3328,7 @@ int main(int argc, char **argv)
         }
         return nullptr;
     };
-    QFrame *helpRootRow = findTitleApplicationRow(
+    QWidget *helpRootRow = findTitleApplicationRow(
         titleApplicationRows,
         QStringList{QStringLiteral("帮助"), QStringLiteral("Help")});
     require(helpRootRow != nullptr,
@@ -3337,8 +3351,8 @@ int main(int argc, char **argv)
     require(titleApplicationPanel->isVisible(),
             "title bar application menu reopens after closing the Help submenu");
     titleApplicationRows =
-        titleApplicationMainMenu->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem"));
-    for (QFrame *row : titleApplicationRows)
+        findTitleApplicationRows(titleApplicationMainMenu);
+    for (QWidget *row : titleApplicationRows)
     {
         require(!row->property("selected").toBool(),
                 "title bar application root menu reopens without stale hover selection");
@@ -3370,8 +3384,8 @@ int main(int argc, char **argv)
                 titleApplicationSubMenu->geometry().top() >= titleApplicationSubPanel->property("shadowMargin").toInt(),
             "title bar application submenu content is inset inside the shadow margin");
 
-    QFrame *nestedRootRow = nullptr;
-    for (QFrame *row : titleApplicationRows)
+    QWidget *nestedRootRow = nullptr;
+    for (QWidget *row : titleApplicationRows)
     {
         const QList<QLabel*> labels = row->findChildren<QLabel *>(QStringLiteral("titleApplicationMenuText"));
         for (const QLabel *label : labels)
@@ -3395,18 +3409,17 @@ int main(int argc, char **argv)
     QRect subContentGlobalBefore(titleApplicationSubMenu->mapToGlobal(QPoint(0, 0)),
                                  titleApplicationSubMenu->size());
 
-    QFrame *nestedCommandRow = nullptr;
+    QWidget *nestedCommandRow = nullptr;
 #ifdef VAPORVIEW_HAS_OSGEARTH
     bool foundMapDiagnosticsCommand = false;
 #endif
-    const QList<QFrame*> subRows =
-        titleApplicationSubMenu->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem"));
+    const QList<QWidget *> subRows = findTitleApplicationRows(titleApplicationSubMenu);
     requireMenuRowsRespectRoundedVerticalPadding(
         titleApplicationSubPanel,
         titleApplicationSubMenu,
         subRows,
         "title bar application submenu rows stay inside rounded vertical padding");
-    for (QFrame *row : subRows)
+    for (QWidget *row : subRows)
     {
         const QList<QLabel*> labels = row->findChildren<QLabel *>(QStringLiteral("titleApplicationMenuText"));
         for (const QLabel *label : labels)
@@ -3445,8 +3458,7 @@ int main(int argc, char **argv)
         titleApplicationNestedPanel->findChild<QFrame *>(QStringLiteral("titleApplicationNestedMenu"));
     require(titleApplicationNestedMenu != nullptr,
             "title bar application nested submenu content is inside its own floating panel");
-    const QList<QFrame*> nestedRows =
-        titleApplicationNestedMenu->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem"));
+    const QList<QWidget *> nestedRows = findTitleApplicationRows(titleApplicationNestedMenu);
     requireMenuRowsRespectRoundedVerticalPadding(
         titleApplicationNestedPanel,
         titleApplicationNestedMenu,
@@ -3465,21 +3477,22 @@ int main(int argc, char **argv)
             "title bar application tertiary panel overlaps the secondary panel edge for visual grouping");
     const QSize nestedPanelSizeBeforeRepeatedHover = titleApplicationNestedPanel->size();
     const QRect nestedPanelGeometryBeforeRepeatedHover = titleApplicationNestedPanel->geometry();
-    QFrame *firstNestedRowBeforeRepeatedHover = nestedRows.isEmpty() ? nullptr : nestedRows.first();
+    QWidget *firstNestedRowBeforeRepeatedHover = nestedRows.isEmpty() ? nullptr : nestedRows.first();
     hoverWidget(nestedCommandRow, true, 220);
     require(titleApplicationNestedPanel->isVisible(),
             "title bar application nested submenu remains visible while hovering its source row");
     require(titleApplicationNestedPanel->size() == nestedPanelSizeBeforeRepeatedHover &&
                 titleApplicationNestedPanel->geometry() == nestedPanelGeometryBeforeRepeatedHover,
             "title bar application nested submenu is not rebuilt or moved on repeated source hover");
-    const QList<QFrame*> nestedRowsAfterRepeatedHover =
-        titleApplicationNestedMenu->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem"));
+    const QList<QWidget *> nestedRowsAfterRepeatedHover = findTitleApplicationRows(titleApplicationNestedMenu);
     require(!nestedRowsAfterRepeatedHover.isEmpty() &&
                 nestedRowsAfterRepeatedHover.first() == firstNestedRowBeforeRepeatedHover,
             "title bar application nested submenu keeps its row widgets on repeated source hover");
-    titleApplicationPanel->hide();
-    titleApplicationSubPanel->hide();
-    titleApplicationNestedPanel->hide();
+    clickWidget(titleMenuButton, 50);
+    require(!titleApplicationPanel->isVisible() &&
+                !titleApplicationSubPanel->isVisible() &&
+                !titleApplicationNestedPanel->isVisible(),
+            "title bar application menu closes through its menu button");
     processEventsFor(50);
 
     QToolButton *logFilterButton = nullptr;

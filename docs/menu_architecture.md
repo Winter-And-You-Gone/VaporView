@@ -18,6 +18,32 @@ SingleLevelPopupMenu : QMenu
 
 这个结构的目标是“视觉继续自定义，交互改为标准 Qt 控件”。不得把这些菜单替换成系统默认 `QMenu` 样式，也不得回退成透明按钮覆盖纯绘制区域。
 
+## 标题栏应用菜单
+
+标题栏应用菜单继续使用现有的三个 `FloatingTitleMenuPanel` 浮动容器，以及其中的 `mainMenu`、`subMenu` 和 `nestedMenu` 内容容器。它们仍负责自绘背景、圆角、阴影、定位、子菜单层级和关闭行为；标题栏菜单没有改为系统 `QMenu`。
+
+```text
+FloatingTitleMenuPanel
+├─ mainMenu
+├─ subMenu
+└─ nestedMenu
+   └─ TitleApplicationMenuRow : QToolButton
+      ├─ setDefaultAction(command.action)
+      ├─ QLabel 主文字、快捷键、check 和 arrow 布局
+      └─ keyboardFocus 与 selected 状态分离
+```
+
+标题栏菜单的 `TitleMenuCommand` 为每个命令创建对应 `QAction`，并使用稳定的英文命令 ID 作为 QAction 和行控件的 `objectName`。当前对自动化最重要的 ID 包括：
+
+- `titleMenuRecordingFolderAction`
+- `titleMenuDataViewerAction`
+- `titleMenuExitAction`
+- `titleMenuViewLogPanelAction`
+- `titleMenuLanguageChineseAction`
+- `titleMenuLanguageEnglishAction`
+
+标题栏菜单打开后聚焦第一个可用行，`Up` / `Down` / `Home` / `End` 移动行焦点，`Right` / `Left` 进入或返回子菜单，`Enter` / `Return` / `Space` 触发当前 QAction，`Esc` 逐级关闭并最终把焦点恢复到 `titleBarMenuButton`。鼠标 hover 使用 `selected`，键盘导航使用 `keyboardFocus`，两者不共用状态。
+
 ## QAction 是状态和行为来源
 
 每个交互菜单行通过 `setDefaultAction(action)` 绑定对应 `QAction`。核心状态来自 `QAction`：

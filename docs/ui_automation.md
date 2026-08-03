@@ -16,6 +16,8 @@
 
 非交互元素（分隔线、标题、说明、留白）不应伪装成按钮。
 
+标题栏应用菜单也遵循同一语义，但保留自己的浮动容器：`FloatingTitleMenuPanel` 内的 `mainMenu`、`subMenu` 和 `nestedMenu` 继续自绘，所有可交互行都是 `TitleApplicationMenuRow : QToolButton`。标题栏命令的 QAction 与行控件使用相同的稳定 command ID，自动化可直接按 `objectName` 查找并 Invoke。
+
 ## 推荐 selector
 
 ScreenShotTool-MCP 和 UI 自动化脚本优先使用 objectName：
@@ -42,6 +44,8 @@ objectName=map3DLayer_satelliteImagery
 
 | 菜单 | objectName 示例 | 说明 |
 | --- | --- | --- |
+| 标题栏应用菜单 | `titleMenuRecordingFolderAction` / `titleMenuDataViewerAction` / `titleMenuExitAction` | 自绘标题栏菜单的文件命令 |
+| 标题栏视图菜单 | `titleMenuViewLogPanelAction` / `titleMenuLanguageChineseAction` / `titleMenuLanguageEnglishAction` | 自绘标题栏菜单的视图和语言命令 |
 | 日志筛选 | `logFilterAttentionMenuAction` / `logFilterAllMenuAction` / `logFilterDebugMenuAction` / `logFilterAutoFollowMenuAction` | 主窗口日志筛选 Popup |
 | 3D 图层 | `map3DLayer_<layerKey>` | 3D 地图图层显隐，多选项 closeOnClick=false |
 | 3D 本地影像 | `map3DLocalImagery_<optionKey>` | 动态本地影像模板项 |
@@ -62,11 +66,12 @@ objectName=map3DLayer_satelliteImagery
 6. 验证对应 QAction 执行一次，菜单按原 closeOnClick 语义关闭或保持。
 7. Esc 关闭菜单后确认焦点回到触发按钮。
 
-如果 Windows UIA / MCP 实机环境不可用，至少必须保留 Qt 层自动化测试。当前 `single_level_popup_menu_test` 覆盖真实 QToolButton、QAction 同步、objectName 唯一性、accessibleName、hidden/disabled 跳过、键盘导航、`closeOnClick=false` 保持可见、关闭后焦点恢复和 QAction 销毁清理。
+如果 Windows UIA / MCP 实机环境不可用，至少必须保留 Qt 层自动化测试。`single_level_popup_menu_test` 覆盖共享 Popup 的真实 QToolButton 语义，`title_application_menu_test` 覆盖标题栏三个浮动容器、稳定 command ID、QAction 绑定、键盘导航、子菜单焦点恢复和 Esc 关闭。
 
 ## 维护规则
 
 - 新增菜单项时先给 QAction 或 row 设置稳定 objectName。
+- 标题栏应用菜单新增命令时同步更新 `TitleMenuCommand` 的 ID 清单，并保持 QAction 与 `TitleApplicationMenuRow` 使用同一 ID。
 - 固定选项 combo 应给 itemData 写稳定英文 key，避免语言变化影响 selector。
 - 不要为自动化新增网络控制后门；只使用 QWidget、Qt Accessibility 和 UIA 语义。
 - 不要把 disabled 项做成可点击的灰色行；必须 `setEnabled(false)`。

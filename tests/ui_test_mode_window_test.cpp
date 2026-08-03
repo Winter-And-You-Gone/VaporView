@@ -202,13 +202,17 @@ int main(int argc, char **argv)
     require(!badge->isHidden(), "persistent UI test badge is visible");
     require(scenarioMenu->isEnabled(), "scenario menu is enabled in UI test mode");
 
-    auto findTitleMenuRow = [](QWidget *menu, const QStringList& texts) -> QFrame * {
+    auto findTitleMenuRow = [](QWidget *menu, const QStringList& texts) -> QWidget * {
         if (!menu)
         {
             return nullptr;
         }
-        for (QFrame *row : menu->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem")))
+        for (QToolButton *row : menu->findChildren<QToolButton *>())
         {
+            if (!row || !row->property("titleApplicationMenuItem").toBool())
+            {
+                continue;
+            }
             auto *label = row->findChild<QLabel *>(QStringLiteral("titleApplicationMenuText"));
             if (label && texts.contains(label->text()))
             {
@@ -217,7 +221,7 @@ int main(int argc, char **argv)
         }
         return nullptr;
     };
-    auto hoverTitleMenuRow = [](QFrame *row) {
+    auto hoverTitleMenuRow = [](QWidget *row) {
         QEvent enter(QEvent::Enter);
         QApplication::sendEvent(row, &enter);
         processEvents();
@@ -229,14 +233,14 @@ int main(int argc, char **argv)
     processEvents();
     auto *titleApplicationMainMenu =
         window->findChild<QFrame *>(QStringLiteral("titleApplicationMainMenu"));
-    QFrame *developerRow = findTitleMenuRow(
+    QWidget *developerRow = findTitleMenuRow(
         titleApplicationMainMenu,
         QStringList{QStringLiteral("开发者"), QStringLiteral("Developer")});
     require(developerRow, "title application menu exposes the Developer row");
     hoverTitleMenuRow(developerRow);
     auto *titleApplicationSubMenu =
         window->findChild<QFrame *>(QStringLiteral("titleApplicationSubMenu"));
-    QFrame *scenarioRow = findTitleMenuRow(
+    QWidget *scenarioRow = findTitleMenuRow(
         titleApplicationSubMenu,
         QStringList{QStringLiteral("界面测试场景"), QStringLiteral("UI Test Scenario")});
     require(scenarioRow && scenarioRow->isEnabled(),
@@ -244,10 +248,18 @@ int main(int argc, char **argv)
     hoverTitleMenuRow(scenarioRow);
     auto *titleApplicationNestedMenu =
         window->findChild<QFrame *>(QStringLiteral("titleApplicationNestedMenu"));
-    const QList<QFrame *> nestedScenarioRows = titleApplicationNestedMenu
-        ? titleApplicationNestedMenu->findChildren<QFrame *>(
-              QStringLiteral("titleApplicationMenuItem"), Qt::FindDirectChildrenOnly)
-        : QList<QFrame *>{};
+    QList<QToolButton *> nestedScenarioRows;
+    if (titleApplicationNestedMenu)
+    {
+        for (QToolButton *row : titleApplicationNestedMenu->findChildren<QToolButton *>(
+                 QString(), Qt::FindDirectChildrenOnly))
+        {
+            if (row && row->property("titleApplicationMenuItem").toBool())
+            {
+                nestedScenarioRows.push_back(row);
+            }
+        }
+    }
     require(!nestedScenarioRows.isEmpty() &&
                 std::abs(nestedScenarioRows.first()->mapToGlobal(QPoint(0, 0)).y() -
                          scenarioRow->mapToGlobal(QPoint(0, 0)).y()) <= 1,

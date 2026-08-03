@@ -579,9 +579,13 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         (state_->title_application_nested_panel_ && state_->title_application_nested_panel_->isVisible());
     if (titleMenuVisible)
     {
-        if (eventType == QEvent::ApplicationDeactivate ||
-            eventType == QEvent::WindowDeactivate)
-        {
+        auto restoreTitleMenuButtonFocus = [this]() {
+            if (state_->title_menu_btn_ && state_->title_menu_btn_->isVisible())
+            {
+                state_->title_menu_btn_->setFocus(Qt::OtherFocusReason);
+            }
+        };
+        auto hideTitleMenu = [this, restoreTitleMenuButtonFocus]() {
             if (state_->title_application_panel_)
             {
                 state_->title_application_panel_->hide();
@@ -594,6 +598,41 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             {
                 state_->title_application_nested_panel_->hide();
             }
+            restoreTitleMenuButtonFocus();
+        };
+        auto isTitleMenuWindow = [this](const QWidget *window) {
+            return window &&
+                   (window == state_->title_application_panel_ ||
+                    window == state_->title_application_sub_panel_ ||
+                    window == state_->title_application_nested_panel_);
+        };
+        // Let activation move between the three top-level menu panels before deciding that the app lost focus.
+        auto scheduleTitleMenuClose = [this, hideTitleMenu, isTitleMenuWindow]() {
+            QTimer::singleShot(50, this, [hideTitleMenu, isTitleMenuWindow]() {
+                const QWidget *activeWindow = QApplication::activeWindow();
+                if (QApplication::applicationState() != Qt::ApplicationActive &&
+                    !isTitleMenuWindow(activeWindow))
+                {
+                    hideTitleMenu();
+                }
+            });
+        };
+        if (eventType == QEvent::ApplicationDeactivate)
+        {
+            scheduleTitleMenuClose();
+        }
+        else if (eventType == QEvent::WindowDeactivate && watched == this)
+        {
+            QTimer::singleShot(50, this, [this, hideTitleMenu, isTitleMenuWindow]() {
+                const QWidget *activeWindow = QApplication::activeWindow();
+                const bool switchedToAnotherWindow =
+                    activeWindow && activeWindow != this && !isTitleMenuWindow(activeWindow);
+                if (QApplication::applicationState() != Qt::ApplicationActive ||
+                    switchedToAnotherWindow)
+                {
+                    hideTitleMenu();
+                }
+            });
         }
         else if (eventType == QEvent::MouseButtonPress)
         {
@@ -625,6 +664,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 {
                     state_->title_application_nested_panel_->hide();
                 }
+                restoreTitleMenuButtonFocus();
             }
         }
     }

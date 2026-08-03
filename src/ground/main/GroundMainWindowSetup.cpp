@@ -8,6 +8,7 @@
 #include <QPointer>
 #include <QScrollBar>
 #include <QTimer>
+#include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -234,11 +235,137 @@ void clearTitleApplicationMenuSelection(QWidget *root)
         return;
     }
 
-    const QList<QFrame *> rows = root->findChildren<QFrame *>(QStringLiteral("titleApplicationMenuItem"));
-    for (QFrame *row : rows)
+    const QList<QWidget *> rows = root->findChildren<QWidget *>(QString(), Qt::FindChildrenRecursively);
+    for (QWidget *row : rows)
     {
+        if (!row || !row->property("titleApplicationMenuItem").toBool())
+        {
+            continue;
+        }
         setWidgetBooleanProperty(row, "selected", false);
+        setWidgetBooleanProperty(row, "keyboardFocus", false);
     }
+}
+
+class TitleApplicationMenuRow final : public QToolButton
+{
+public:
+    explicit TitleApplicationMenuRow(QWidget *parent = nullptr)
+        : QToolButton(parent)
+    {
+        setProperty("titleApplicationMenuItem", true);
+        setAttribute(Qt::WA_StyledBackground, true);
+        setAutoRaise(false);
+        setCheckable(false);
+        setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        setFocusPolicy(Qt::StrongFocus);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        setCursor(Qt::PointingHandCursor);
+        setMouseTracking(true);
+        setProperty("keyboardFocus", false);
+    }
+
+    void setKeyboardFocus(bool active)
+    {
+        setWidgetBooleanProperty(this, "keyboardFocus", active);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        Q_UNUSED(event);
+        QStyleOption option;
+        option.initFrom(this);
+        QPainter painter(this);
+        style()->drawPrimitive(QStyle::PE_Widget, &option, &painter, this);
+    }
+
+    void focusInEvent(QFocusEvent *event) override
+    {
+        QToolButton::focusInEvent(event);
+        setKeyboardFocus(true);
+    }
+
+    void focusOutEvent(QFocusEvent *event) override
+    {
+        QToolButton::focusOutEvent(event);
+        setKeyboardFocus(false);
+    }
+};
+
+class TitleApplicationMenuKeyFilter final : public QObject
+{
+public:
+    explicit TitleApplicationMenuKeyFilter(QObject *parent = nullptr)
+        : QObject(parent)
+    {
+    }
+
+    void setHandler(std::function<bool(QKeyEvent *)> handler)
+    {
+        handler_ = std::move(handler);
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        Q_UNUSED(watched);
+        if (event->type() == QEvent::KeyPress && handler_)
+        {
+            return handler_(static_cast<QKeyEvent *>(event));
+        }
+        return false;
+    }
+
+private:
+    std::function<bool(QKeyEvent *)> handler_;
+};
+
+QList<TitleApplicationMenuRow *> titleApplicationMenuRows(QWidget *root)
+{
+    QList<TitleApplicationMenuRow *> rows;
+    if (!root)
+    {
+        return rows;
+    }
+
+    for (QToolButton *candidate : root->findChildren<QToolButton *>(QString(),
+                                                                     Qt::FindChildrenRecursively))
+    {
+        if (auto *row = dynamic_cast<TitleApplicationMenuRow *>(candidate))
+        {
+            rows.push_back(row);
+        }
+    }
+    return rows;
+}
+
+TitleApplicationMenuRow *firstEnabledTitleApplicationMenuRow(QWidget *root)
+{
+    const QList<TitleApplicationMenuRow *> rows = titleApplicationMenuRows(root);
+    for (TitleApplicationMenuRow *row : rows)
+    {
+        if (row && row->isVisible() && row->isEnabled())
+        {
+            return row;
+        }
+    }
+    return nullptr;
+}
+
+QVector<TitleApplicationMenuRow *> enabledVisibleTitleApplicationMenuRows(QWidget *root)
+{
+    QVector<TitleApplicationMenuRow *> rows;
+    const QList<TitleApplicationMenuRow *> candidates = titleApplicationMenuRows(root);
+    rows.reserve(candidates.size());
+    for (TitleApplicationMenuRow *row : candidates)
+    {
+        if (row && row->isVisible() && row->isEnabled())
+        {
+            rows.push_back(row);
+        }
+    }
+    return rows;
 }
 
 }  // namespace
@@ -519,6 +646,7 @@ void MainWindow::setupCustomTitleBar()
     titleLayout->addWidget(state_->custom_logo_label_, 0, Qt::AlignVCenter);
 
     state_->title_menu_btn_ = createTitleBarIconButton(QStringLiteral("titleBarMenuButton"), state_->custom_title_bar_);
+    state_->title_menu_btn_->setFocusPolicy(Qt::StrongFocus);
     connect(state_->title_menu_btn_, &QToolButton::clicked, this, &MainWindow::showTitleApplicationMenu);
     titleLayout->addWidget(state_->title_menu_btn_, 0, Qt::AlignVCenter);
 
@@ -679,18 +807,21 @@ void MainWindow::createTitleApplicationMenuPanel()
 
     auto *panel = createFloatingTitleMenuPanel(this);
     panel->setObjectName(QStringLiteral("titleApplicationPanel"));
+    panel->setAttribute(Qt::WA_ShowWithoutActivating, false);
     panel->hide();
     state_->title_application_panel_ = panel;
     panel->raise();
 
     auto *subPanel = createFloatingTitleMenuPanel(this);
     subPanel->setObjectName(QStringLiteral("titleApplicationSubPanel"));
+    subPanel->setAttribute(Qt::WA_ShowWithoutActivating, false);
     subPanel->hide();
     state_->title_application_sub_panel_ = subPanel;
     subPanel->raise();
 
     auto *nestedPanel = createFloatingTitleMenuPanel(this);
     nestedPanel->setObjectName(QStringLiteral("titleApplicationNestedPanel"));
+    nestedPanel->setAttribute(Qt::WA_ShowWithoutActivating, false);
     nestedPanel->hide();
     state_->title_application_nested_panel_ = nestedPanel;
     nestedPanel->raise();
@@ -711,15 +842,28 @@ void MainWindow::createTitleApplicationMenuPanel()
             state_->title_application_nested_panel_->hide();
             clearTitleApplicationMenuSelection(state_->title_application_nested_panel_);
         }
+        if (state_->title_menu_btn_ && state_->title_menu_btn_->isVisible())
+        {
+            activateWindow();
+            QTimer::singleShot(0, this, [this]() {
+                if (state_->title_menu_btn_ && state_->title_menu_btn_->isVisible())
+                {
+                    state_->title_menu_btn_->setFocus(Qt::OtherFocusReason);
+                }
+            });
+        }
     };
 
     const bool uiBusy = state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_;
 
     struct TitleMenuCommand
     {
+        QString commandId;
+        QAction *action = nullptr;
         QString text;
         QString shortcut;
         bool enabled = true;
+        bool checkable = false;
         bool checked = false;
         bool separatorBefore = false;
         std::function<void()> handler;
@@ -756,192 +900,347 @@ void MainWindow::createTitleApplicationMenuPanel()
     auto commandRowsHeight = [menuVerticalPadding, rowHeight](const QVector<TitleMenuCommand>& commands) {
         return menuVerticalPadding * 2 + rowHeight * static_cast<int>(commands.size());
     };
+    auto createAction = [this](const QString& commandId,
+                               const QString& text,
+                               const QString& shortcut,
+                               bool enabled,
+                               bool checkable,
+                               bool checked,
+                               const std::function<void()>& handler) {
+        auto *action = new QAction(text, state_->title_application_panel_);
+        action->setObjectName(commandId);
+        action->setProperty("titleMenuCommandId", commandId);
+        if (shortcut.contains(QLatin1Char('+')))
+        {
+            action->setShortcut(QKeySequence(shortcut));
+        }
+        action->setEnabled(enabled);
+        action->setCheckable(checkable);
+        action->setChecked(checked);
+        if (handler)
+        {
+            connect(action, &QAction::triggered, this, [handler]() { handler(); });
+        }
+        return action;
+    };
+    auto command = [&createAction](const QString& commandId,
+                                   const QString& text,
+                                   const QString& shortcut,
+                                   bool enabled,
+                                   bool checkable,
+                                   bool checked,
+                                   bool separatorBefore,
+                                   const std::function<void()>& handler = {},
+                                   const QVector<TitleMenuCommand>& submenu = {}) {
+        TitleMenuCommand item;
+        item.commandId = commandId;
+        item.action = createAction(commandId, text, shortcut, enabled, checkable, checked, handler);
+        item.text = text;
+        item.shortcut = shortcut;
+        item.enabled = enabled;
+        item.checkable = checkable;
+        item.checked = checked;
+        item.separatorBefore = separatorBefore;
+        item.handler = handler;
+        item.submenu = submenu;
+        return item;
+    };
 
     QVector<TitleMenuSection> sections;
     TitleMenuSection fileSection{
         state_->is_english_ ? QStringLiteral("File") : QStringLiteral("文件"),
         {
-            {state_->is_english_ ? QStringLiteral("Recording Folder") : QStringLiteral("记录目录"),
-             QStringLiteral("Ctrl+R"),
-             true,
-             false,
-             false,
-             [this]() { onChooseRecordingDirectoryClicked(); }},
-            {state_->is_english_ ? QStringLiteral("Data Viewer") : QStringLiteral("数据查看器"),
-             QString(),
-             true,
-             false,
-             false,
-             [this]() { onOpenSessionViewerClicked(); }},
-            {state_->is_english_ ? QStringLiteral("Exit") : QStringLiteral("退出"),
-             QStringLiteral("Ctrl+Q"),
-             true,
-             false,
-             true,
-             [this]() { close(); }}
+            command(QStringLiteral("titleMenuRecordingFolderAction"),
+                    state_->is_english_ ? QStringLiteral("Recording Folder") : QStringLiteral("记录目录"),
+                    QStringLiteral("Ctrl+R"),
+                    true,
+                    false,
+                    false,
+                    false,
+                    [this]() { onChooseRecordingDirectoryClicked(); }),
+            command(QStringLiteral("titleMenuDataViewerAction"),
+                    state_->is_english_ ? QStringLiteral("Data Viewer") : QStringLiteral("数据查看器"),
+                    QString(),
+                    true,
+                    false,
+                    false,
+                    false,
+                    [this]() { onOpenSessionViewerClicked(); }),
+            command(QStringLiteral("titleMenuExitAction"),
+                    state_->is_english_ ? QStringLiteral("Exit") : QStringLiteral("退出"),
+                    QStringLiteral("Ctrl+Q"),
+                    true,
+                    false,
+                    false,
+                    true,
+                    [this]() { close(); })
         }
+    };
+
+    const QVector<TitleMenuCommand> languageCommands{
+        command(QStringLiteral("titleMenuLanguageChineseAction"),
+                state_->is_english_ ? QStringLiteral("Chinese") : QStringLiteral("中文"),
+                QString(),
+                true,
+                true,
+                !state_->is_english_,
+                false,
+                [this]() {
+                    if (state_->is_english_)
+                    {
+                        onSwitchLanguage();
+                    }
+                }),
+        command(QStringLiteral("titleMenuLanguageEnglishAction"),
+                state_->is_english_ ? QStringLiteral("English") : QStringLiteral("英文"),
+                QString(),
+                true,
+                true,
+                state_->is_english_,
+                false,
+                [this]() {
+                    if (!state_->is_english_)
+                    {
+                        onSwitchLanguage();
+                    }
+                })
     };
 
     TitleMenuSection viewSection{
         state_->is_english_ ? QStringLiteral("View") : QStringLiteral("视图"),
         {
-            {state_->is_english_ ? QStringLiteral("Tiny (70%)") : QStringLiteral("超小 (70%)"),
-             QString(),
-             true,
-             state_->font_scale_percent_ == 70,
-             true,
-             [this]() { setFontScale(70); }},
-            {state_->is_english_ ? QStringLiteral("Extra Small (80%)") : QStringLiteral("特小 (80%)"),
-             QString(),
-             true,
-             state_->font_scale_percent_ == 80,
-             false,
-             [this]() { setFontScale(80); }},
-            {state_->is_english_ ? QStringLiteral("Small (90%)") : QStringLiteral("小号 (90%)"),
-             QString(),
-             true,
-             state_->font_scale_percent_ == 90,
-             false,
-             [this]() { setFontScale(90); }},
-            {state_->is_english_ ? QStringLiteral("Normal (100%)") : QStringLiteral("标准 (100%)"),
-             QString(),
-             true,
-             state_->font_scale_percent_ == 100,
-             false,
-             [this]() { setFontScale(100); }},
-            {state_->is_english_ ? QStringLiteral("Large (115%)") : QStringLiteral("大号 (115%)"),
-             QString(),
-             true,
-             state_->font_scale_percent_ == 115,
-             false,
-             [this]() { setFontScale(115); }},
-            {state_->is_english_ ? QStringLiteral("Extra Large (130%)") : QStringLiteral("超大 (130%)"),
-             QString(),
-             true,
-             state_->font_scale_percent_ == 130,
-             false,
-             [this]() { setFontScale(130); }}
+            command(QStringLiteral("titleMenuFontTinyAction"),
+                    state_->is_english_ ? QStringLiteral("Tiny (70%)") : QStringLiteral("超小 (70%)"),
+                    QString(),
+                    true,
+                    true,
+                    state_->font_scale_percent_ == 70,
+                    true,
+                    [this]() { setFontScale(70); }),
+            command(QStringLiteral("titleMenuFontExtraSmallAction"),
+                    state_->is_english_ ? QStringLiteral("Extra Small (80%)") : QStringLiteral("特小 (80%)"),
+                    QString(),
+                    true,
+                    true,
+                    state_->font_scale_percent_ == 80,
+                    false,
+                    [this]() { setFontScale(80); }),
+            command(QStringLiteral("titleMenuFontSmallAction"),
+                    state_->is_english_ ? QStringLiteral("Small (90%)") : QStringLiteral("小号 (90%)"),
+                    QString(),
+                    true,
+                    true,
+                    state_->font_scale_percent_ == 90,
+                    false,
+                    [this]() { setFontScale(90); }),
+            command(QStringLiteral("titleMenuFontNormalAction"),
+                    state_->is_english_ ? QStringLiteral("Normal (100%)") : QStringLiteral("标准 (100%)"),
+                    QString(),
+                    true,
+                    true,
+                    state_->font_scale_percent_ == 100,
+                    false,
+                    [this]() { setFontScale(100); }),
+            command(QStringLiteral("titleMenuFontLargeAction"),
+                    state_->is_english_ ? QStringLiteral("Large (115%)") : QStringLiteral("大号 (115%)"),
+                    QString(),
+                    true,
+                    true,
+                    state_->font_scale_percent_ == 115,
+                    false,
+                    [this]() { setFontScale(115); }),
+            command(QStringLiteral("titleMenuFontExtraLargeAction"),
+                    state_->is_english_ ? QStringLiteral("Extra Large (130%)") : QStringLiteral("超大 (130%)"),
+                    QString(),
+                    true,
+                    true,
+                    state_->font_scale_percent_ == 130,
+                    false,
+                    [this]() { setFontScale(130); }),
+            command(QStringLiteral("titleMenuViewLogPanelAction"),
+                    state_->is_english_ ? QStringLiteral("Log Panel") : QStringLiteral("日志面板"),
+                    QString(),
+                    true,
+                    true,
+                    !state_->log_side_panel_collapsed_,
+                    true,
+                    [this]() { toggleLogSidePanel(); }),
+            command(QStringLiteral("titleMenuLanguageAction"),
+                    state_->is_english_ ? QStringLiteral("Language") : QStringLiteral("语言"),
+                    state_->is_english_ ? QStringLiteral("English") : QStringLiteral("中文"),
+                    true,
+                    false,
+                    false,
+                    false,
+                    {},
+                    languageCommands)
 #ifdef VAPORVIEW_HAS_OSGEARTH
             ,
-            {state_->is_english_ ? QStringLiteral("3D Map") : QStringLiteral("三维地图"),
-             QString(),
-             true,
-             false,
-             true,
-             [this]() { onOpenMap3DWindowClicked(); }}
+            command(QStringLiteral("titleMenuMap3DAction"),
+                    state_->is_english_ ? QStringLiteral("3D Map") : QStringLiteral("三维地图"),
+                    QString(),
+                    true,
+                    false,
+                    false,
+                    true,
+                    [this]() { onOpenMap3DWindowClicked(); })
 #endif
         }
     };
 
     TitleMenuSection developerSection{state_->is_english_ ? QStringLiteral("Developer") : QStringLiteral("开发者"), {}};
     QVector<TitleMenuCommand> uiTestScenarioCommands{
-        {state_->is_english_ ? QStringLiteral("Normal operation") : QStringLiteral("正常运行"),
-         QString(), state_->ui_test_mode_enabled_,
-         state_->ui_test_model_->scenario() == VaporView::Ground::Devices::UiTestScenario::Normal,
-         false, [this]() { setUiTestScenario(VaporView::Ground::Devices::UiTestScenario::Normal); }},
-        {state_->is_english_ ? QStringLiteral("Partial device failure") : QStringLiteral("部分设备异常"),
-         QString(), state_->ui_test_mode_enabled_,
-         state_->ui_test_model_->scenario() == VaporView::Ground::Devices::UiTestScenario::PartialFailure,
-         false, [this]() { setUiTestScenario(VaporView::Ground::Devices::UiTestScenario::PartialFailure); }},
-        {state_->is_english_ ? QStringLiteral("Data stalled") : QStringLiteral("数据停更"),
-         QString(), state_->ui_test_mode_enabled_,
-         state_->ui_test_model_->scenario() == VaporView::Ground::Devices::UiTestScenario::DataStalled,
-         false, [this]() { setUiTestScenario(VaporView::Ground::Devices::UiTestScenario::DataStalled); }}
+        command(QStringLiteral("titleMenuUiTestScenarioNormalAction"),
+                state_->is_english_ ? QStringLiteral("Normal operation") : QStringLiteral("正常运行"),
+                QString(),
+                state_->ui_test_mode_enabled_,
+                true,
+                state_->ui_test_model_->scenario() == VaporView::Ground::Devices::UiTestScenario::Normal,
+                false,
+                [this]() { setUiTestScenario(VaporView::Ground::Devices::UiTestScenario::Normal); }),
+        command(QStringLiteral("titleMenuUiTestScenarioPartialFailureAction"),
+                state_->is_english_ ? QStringLiteral("Partial device failure") : QStringLiteral("部分设备异常"),
+                QString(),
+                state_->ui_test_mode_enabled_,
+                true,
+                state_->ui_test_model_->scenario() == VaporView::Ground::Devices::UiTestScenario::PartialFailure,
+                false,
+                [this]() { setUiTestScenario(VaporView::Ground::Devices::UiTestScenario::PartialFailure); }),
+        command(QStringLiteral("titleMenuUiTestScenarioDataStalledAction"),
+                state_->is_english_ ? QStringLiteral("Data stalled") : QStringLiteral("数据停更"),
+                QString(),
+                state_->ui_test_mode_enabled_,
+                true,
+                state_->ui_test_model_->scenario() == VaporView::Ground::Devices::UiTestScenario::DataStalled,
+                false,
+                [this]() { setUiTestScenario(VaporView::Ground::Devices::UiTestScenario::DataStalled); })
     };
     developerSection.commands.push_back(
-        {state_->is_english_ ? QStringLiteral("UI Test Mode") : QStringLiteral("界面测试模式"),
-         QString(), true, state_->ui_test_mode_enabled_, false,
-         [this]() { setUiTestModeEnabled(!state_->ui_test_mode_enabled_); }});
+        command(QStringLiteral("titleMenuUiTestModeAction"),
+                state_->is_english_ ? QStringLiteral("UI Test Mode") : QStringLiteral("界面测试模式"),
+                QString(),
+                true,
+                true,
+                state_->ui_test_mode_enabled_,
+                false,
+                [this]() { setUiTestModeEnabled(!state_->ui_test_mode_enabled_); }));
     developerSection.commands.push_back(
-        {state_->is_english_ ? QStringLiteral("UI Test Scenario") : QStringLiteral("界面测试场景"),
-         QString(), state_->ui_test_mode_enabled_, false, true, {}, uiTestScenarioCommands});
+        command(QStringLiteral("titleMenuUiTestScenarioAction"),
+                state_->is_english_ ? QStringLiteral("UI Test Scenario") : QStringLiteral("界面测试场景"),
+                QString(),
+                state_->ui_test_mode_enabled_,
+                false,
+                false,
+                true,
+                {},
+                uiTestScenarioCommands));
 #ifdef VAPORVIEW_HAS_OSGEARTH
     developerSection.commands.push_back(
-        {state_->is_english_ ? QStringLiteral("Map Data Diagnostics") : QStringLiteral("地图数据诊断"),
-         QString(),
-         true,
-         false,
-         false,
-         [this]() { onOpenMap3DDiagnosticsClicked(); }});
+        command(QStringLiteral("titleMenuMapDataDiagnosticsAction"),
+                state_->is_english_ ? QStringLiteral("Map Data Diagnostics") : QStringLiteral("地图数据诊断"),
+                QString(),
+                true,
+                false,
+                false,
+                false,
+                [this]() { onOpenMap3DDiagnosticsClicked(); }));
 #endif
     developerSection.commands.push_back(
-        {state_->is_english_ ? QStringLiteral("TCP wave: record every raw frame") : QStringLiteral("TCP波形：记录完整原始帧"),
-         QString(),
-         true,
-         state_->waveform_recording_rate_hz_ == 0,
-         false,
-         [this]() { setWaveformRecordingRateHz(0); }});
+        command(QStringLiteral("titleMenuTcpWaveRecordRawAction"),
+                state_->is_english_ ? QStringLiteral("TCP wave: record every raw frame") : QStringLiteral("TCP波形：记录完整原始帧"),
+                QString(),
+                true,
+                true,
+                state_->waveform_recording_rate_hz_ == 0,
+                false,
+                [this]() { setWaveformRecordingRateHz(0); }));
     developerSection.commands.push_back(
-        {state_->is_english_ ? QStringLiteral("EPSILON: record verified raw frames") : QStringLiteral("EPSILON：记录已校验原始帧"),
-         QString(),
-         true,
-         state_->imu_recording_rate_hz_ == 0,
-         false,
-         [this]() { setImuRecordingRateHz(0); }});
+        command(QStringLiteral("titleMenuEpsilonRecordRawAction"),
+                state_->is_english_ ? QStringLiteral("EPSILON: record verified raw frames") : QStringLiteral("EPSILON：记录已校验原始帧"),
+                QString(),
+                true,
+                true,
+                state_->imu_recording_rate_hz_ == 0,
+                false,
+                [this]() { setImuRecordingRateHz(0); }));
     QVector<TitleMenuCommand> csvRateCommands;
     for (int rate : QVector<int>{1, 2, 5, 10, 20, 50, 100, 200})
     {
-        csvRateCommands.push_back({
-            QStringLiteral("%1 Hz").arg(rate),
-            QString(),
-            true,
-            rate == std::clamp(state_->recording_export_rate_hz_, 1, 200),
-            false,
-            [this, rate]() { setRecordingExportRateHz(rate); }
-        });
+        csvRateCommands.push_back(command(QStringLiteral("titleMenuCsvRate%1HzAction").arg(rate),
+                                          QStringLiteral("%1 Hz").arg(rate),
+                                          QString(),
+                                          true,
+                                          true,
+                                          rate == std::clamp(state_->recording_export_rate_hz_, 1, 200),
+                                          false,
+                                          [this, rate]() { setRecordingExportRateHz(rate); }));
     }
     developerSection.commands.push_back(
-        {state_->is_english_ ? QStringLiteral("Device CSV recording rate") : QStringLiteral("设备CSV记录频率"),
-         QStringLiteral("%1 Hz").arg(std::clamp(state_->recording_export_rate_hz_, 1, 200)),
-         true,
-         false,
-         true,
-         {},
-         csvRateCommands});
+        command(QStringLiteral("titleMenuDeviceCsvRecordingRateAction"),
+                state_->is_english_ ? QStringLiteral("Device CSV recording rate") : QStringLiteral("设备CSV记录频率"),
+                QStringLiteral("%1 Hz").arg(std::clamp(state_->recording_export_rate_hz_, 1, 200)),
+                true,
+                false,
+                false,
+                true,
+                {},
+                csvRateCommands));
     developerSection.commands.push_back(
-        {state_->is_english_ ? QStringLiteral("EPSILON Packet Rates") : QStringLiteral("设置EPSILON包频率"),
-         QString(),
-         !uiBusy,
-         false,
-         true,
-         [this]() { onConfigureEpsilonPacketRatesClicked(); }});
+        command(QStringLiteral("titleMenuEpsilonPacketRatesAction"),
+                state_->is_english_ ? QStringLiteral("EPSILON Packet Rates") : QStringLiteral("设置EPSILON包频率"),
+                QString(),
+                !uiBusy,
+                false,
+                false,
+                true,
+                [this]() { onConfigureEpsilonPacketRatesClicked(); }));
     developerSection.commands.push_back(
-        {state_->is_english_ ? QStringLiteral("Configure EPSILON RTCM Port") : QStringLiteral("配置EPSILON RTCM串口"),
-         QString(),
-         !uiBusy,
-         false,
-         false,
-         [this]() { onConfigureEpsilonRtcmPortClicked(); }});
+        command(QStringLiteral("titleMenuConfigureEpsilonRtcmPortAction"),
+                state_->is_english_ ? QStringLiteral("Configure EPSILON RTCM Port") : QStringLiteral("配置EPSILON RTCM串口"),
+                QString(),
+                !uiBusy,
+                false,
+                false,
+                false,
+                [this]() { onConfigureEpsilonRtcmPortClicked(); }));
     developerSection.commands.push_back(
-        {state_->is_english_ ? QStringLiteral("Reconfigure EPSILON Output") : QStringLiteral("重新配置EPSILON输出"),
-         QString(),
-         !uiBusy,
-         false,
-         false,
-         [this]() { onReconfigureEpsilonClicked(); }});
+        command(QStringLiteral("titleMenuReconfigureEpsilonOutputAction"),
+                state_->is_english_ ? QStringLiteral("Reconfigure EPSILON Output") : QStringLiteral("重新配置EPSILON输出"),
+                QString(),
+                !uiBusy,
+                false,
+                false,
+                false,
+                [this]() { onReconfigureEpsilonClicked(); }));
     developerSection.commands.push_back(
-        {state_->is_english_ ? QStringLiteral("RTK Config") : QStringLiteral("RTK配置"),
-         QString(),
-         true,
-         false,
-         true,
-         [this]() { onRtkConfigClicked(); }});
+        command(QStringLiteral("titleMenuRtkConfigAction"),
+                state_->is_english_ ? QStringLiteral("RTK Config") : QStringLiteral("RTK配置"),
+                QString(),
+                true,
+                false,
+                false,
+                true,
+                [this]() { onRtkConfigClicked(); }));
 
     TitleMenuSection helpSection{
         state_->is_english_ ? QStringLiteral("Help") : QStringLiteral("帮助"),
         {
-            {state_->is_english_ ? QStringLiteral("Check for Updates") : QStringLiteral("检查更新"),
-             QString(),
-             true,
-             false,
-             false,
-             [this]() { onCheckUpdatesClicked(); }},
-            {state_->is_english_ ? QStringLiteral("About") : QStringLiteral("关于"),
-             QString(),
-             true,
-             false,
-             false,
-             [this]() { showAboutDialog(); }}
+            command(QStringLiteral("titleMenuCheckUpdatesAction"),
+                    state_->is_english_ ? QStringLiteral("Check for Updates") : QStringLiteral("检查更新"),
+                    QString(),
+                    true,
+                    false,
+                    false,
+                    false,
+                    [this]() { onCheckUpdatesClicked(); }),
+            command(QStringLiteral("titleMenuAboutAction"),
+                    state_->is_english_ ? QStringLiteral("About") : QStringLiteral("关于"),
+                    QString(),
+                    true,
+                    false,
+                    false,
+                    false,
+                    [this]() { showAboutDialog(); })
         }
     };
 
@@ -949,6 +1248,12 @@ void MainWindow::createTitleApplicationMenuPanel()
     sections.push_back(viewSection);
     sections.push_back(developerSection);
     sections.push_back(helpSection);
+    const QStringList sectionCommandIds{
+        QStringLiteral("titleMenuFileSectionAction"),
+        QStringLiteral("titleMenuViewSectionAction"),
+        QStringLiteral("titleMenuDeveloperSectionAction"),
+        QStringLiteral("titleMenuHelpSectionAction")
+    };
 
     int mainMenuWidth = mainMenuMinWidth;
     QVector<int> subMenuWidths;
@@ -965,25 +1270,25 @@ void MainWindow::createTitleApplicationMenuPanel()
                                       rowRightPadding);
 
         bool needsCheckColumn = false;
-        for (const TitleMenuCommand& command : section.commands)
+        for (const TitleMenuCommand& menuCommand : section.commands)
         {
-            needsCheckColumn = needsCheckColumn || command.checked;
+            needsCheckColumn = needsCheckColumn || menuCommand.checked;
         }
         subMenuNeedsCheckColumn.push_back(needsCheckColumn);
 
         int sectionWidth = subMenuMinWidth;
-        for (const TitleMenuCommand& command : section.commands)
+        for (const TitleMenuCommand& menuCommand : section.commands)
         {
-            int commandWidth = rowLeftPadding + menuMetrics.horizontalAdvance(command.text) + rowRightPadding;
+            int commandWidth = rowLeftPadding + menuMetrics.horizontalAdvance(menuCommand.text) + rowRightPadding;
             if (needsCheckColumn)
             {
                 commandWidth += checkColumnWidth + rowSpacing;
             }
-            if (!command.shortcut.isEmpty())
+            if (!menuCommand.shortcut.isEmpty())
             {
-                commandWidth += shortcutGap + menuMetrics.horizontalAdvance(command.shortcut);
+                commandWidth += shortcutGap + menuMetrics.horizontalAdvance(menuCommand.shortcut);
             }
-            if (!command.submenu.isEmpty())
+            if (!menuCommand.submenu.isEmpty())
             {
                 commandWidth += rowSpacing + arrowColumnWidth;
             }
@@ -1026,62 +1331,64 @@ void MainWindow::createTitleApplicationMenuPanel()
     nestedLayout->setContentsMargins(0, menuVerticalPadding, 0, menuVerticalPadding);
     nestedLayout->setSpacing(0);
 
-    std::function<QFrame *(QWidget *,
-                           const QString&,
-                           const QString&,
-                           bool,
-                           bool,
-                           bool,
-                           const QString&,
-                           const std::function<void()>&)> createRow =
+    std::function<TitleApplicationMenuRow *(QWidget *,
+                                            const TitleMenuCommand&,
+                                            bool,
+                                            bool)> createRow =
         [closePanel,
          rowHeight,
          rowLeftPadding,
          rowRightPadding,
          rowSpacing,
-         checkColumnWidth,
-         checkIconSize,
-         arrowFontSize,
-         arrowColumnWidth](QWidget *parent,
-                           const QString& text,
-                           const QString& trailingText,
-                           bool enabled,
-                           bool checked,
-                           bool reserveCheckColumn,
-                           const QString& arrow,
-                           const std::function<void()>& clickHandler) {
-        auto *row = new QFrame(parent);
-        row->setObjectName(QStringLiteral("titleApplicationMenuItem"));
-        row->setAttribute(Qt::WA_StyledBackground, true);
-        row->setEnabled(enabled);
+          checkColumnWidth,
+          checkIconSize,
+          arrowFontSize,
+          arrowColumnWidth](QWidget *parent,
+                            const TitleMenuCommand& command,
+                            bool reserveCheckColumn,
+                            bool hasSubmenu) {
+        auto *row = new TitleApplicationMenuRow(parent);
+        row->setObjectName(command.commandId);
+        row->setProperty("titleMenuCommandId", command.commandId);
+        row->setProperty("hasSubmenu", hasSubmenu);
+        row->setDefaultAction(command.action);
+        row->setEnabled(command.enabled);
+        row->setCheckable(command.checkable);
+        row->setChecked(command.checked);
+        row->setAccessibleName(command.text);
+        row->setAccessibleDescription(hasSubmenu
+                                          ? (qApp->property(kEnglishProperty).toBool()
+                                                 ? QStringLiteral("Opens a submenu")
+                                                 : QStringLiteral("打开子菜单"))
+                                          : command.text);
         row->setFixedHeight(rowHeight);
-        row->setCursor(enabled ? Qt::PointingHandCursor : Qt::ArrowCursor);
-        row->setMouseTracking(true);
+        row->setCursor(command.enabled ? Qt::PointingHandCursor : Qt::ArrowCursor);
 
         auto *rowLayout = new QHBoxLayout(row);
         rowLayout->setContentsMargins(rowLeftPadding, 0, rowRightPadding, 0);
         rowLayout->setSpacing(rowSpacing);
 
-        if (reserveCheckColumn || checked)
+        QLabel *checkLabel = nullptr;
+        if (reserveCheckColumn || command.checkable || command.checked)
         {
-            auto *checkLabel = new QLabel(row);
+            checkLabel = new QLabel(row);
             checkLabel->setObjectName(QStringLiteral("titleApplicationMenuCheck"));
-            checkLabel->setEnabled(enabled);
+            checkLabel->setEnabled(command.enabled);
             checkLabel->setFixedWidth(checkColumnWidth);
             checkLabel->setAlignment(Qt::AlignCenter);
             checkLabel->setMargin(0);
             checkLabel->setIndent(0);
             checkLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-            if (checked)
+            if (command.checked)
             {
                 checkLabel->setPixmap(createMenuCheckIcon(qApp->property(kAppDarkThemeProperty).toBool()).pixmap(checkIconSize, checkIconSize));
             }
             rowLayout->addWidget(checkLabel);
         }
 
-        auto *textLabel = new QLabel(text, row);
+        auto *textLabel = new QLabel(command.text, row);
         textLabel->setObjectName(QStringLiteral("titleApplicationMenuText"));
-        textLabel->setEnabled(enabled);
+        textLabel->setEnabled(command.enabled);
         textLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         textLabel->setMargin(0);
         textLabel->setIndent(0);
@@ -1089,11 +1396,12 @@ void MainWindow::createTitleApplicationMenuPanel()
         textLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         rowLayout->addWidget(textLabel, 1);
 
-        if (!trailingText.isEmpty())
+        QLabel *shortcutLabel = nullptr;
+        if (!command.shortcut.isEmpty())
         {
-            auto *shortcutLabel = new QLabel(trailingText, row);
+            shortcutLabel = new QLabel(command.shortcut, row);
             shortcutLabel->setObjectName(QStringLiteral("titleApplicationMenuShortcut"));
-            shortcutLabel->setEnabled(enabled);
+            shortcutLabel->setEnabled(command.enabled);
             shortcutLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
             shortcutLabel->setMargin(0);
             shortcutLabel->setIndent(0);
@@ -1101,18 +1409,19 @@ void MainWindow::createTitleApplicationMenuPanel()
             rowLayout->addWidget(shortcutLabel);
         }
 
-        if (!arrow.isEmpty())
+        QLabel *arrowLabel = nullptr;
+        if (hasSubmenu)
         {
-            auto *arrowLabel = new QLabel(row);
+            arrowLabel = new QLabel(row);
             arrowLabel->setObjectName(QStringLiteral("titleApplicationMenuArrow"));
-            arrowLabel->setEnabled(enabled);
+            arrowLabel->setEnabled(command.enabled);
             arrowLabel->setFixedSize(arrowColumnWidth, rowHeight);
             arrowLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
             arrowLabel->setMargin(0);
             arrowLabel->setIndent(0);
             const bool dark = qApp->property(kAppDarkThemeProperty).toBool();
-            const QColor arrowColor = appThemeColor(enabled ? AppThemeColor::MenuText
-                                                            : AppThemeColor::MenuDisabledText,
+            const QColor arrowColor = appThemeColor(command.enabled ? AppThemeColor::MenuText
+                                                                    : AppThemeColor::MenuDisabledText,
                                                    dark);
             const QSize arrowIconSize(arrowFontSize, arrowFontSize);
             arrowLabel->setPixmap(createLucideIcon(QStringLiteral("chevron-right"), arrowColor).pixmap(arrowIconSize));
@@ -1122,18 +1431,58 @@ void MainWindow::createTitleApplicationMenuPanel()
             rowLayout->addWidget(arrowLabel);
         }
 
-        if (clickHandler)
+        auto syncFromAction = [row, checkLabel, textLabel, shortcutLabel, arrowLabel, checkIconSize]() {
+            QAction *action = row->defaultAction();
+            if (!action)
+            {
+                return;
+            }
+            row->setEnabled(action->isEnabled());
+            row->setCheckable(action->isCheckable());
+            row->setChecked(action->isChecked());
+            row->setCursor(action->isEnabled() ? Qt::PointingHandCursor : Qt::ArrowCursor);
+            row->setAccessibleName(action->text());
+            textLabel->setText(action->text());
+            textLabel->setEnabled(action->isEnabled());
+            if (shortcutLabel)
+            {
+                shortcutLabel->setEnabled(action->isEnabled());
+            }
+            if (arrowLabel)
+            {
+                arrowLabel->setEnabled(action->isEnabled());
+            }
+            if (checkLabel)
+            {
+                checkLabel->setEnabled(action->isEnabled());
+                if (action->isChecked())
+                {
+                    checkLabel->setPixmap(createMenuCheckIcon(qApp->property(kAppDarkThemeProperty).toBool()).pixmap(checkIconSize, checkIconSize));
+                }
+                else
+                {
+                    checkLabel->clear();
+                }
+            }
+            row->update();
+        };
+        if (command.action)
         {
-            installMenuItemEventFilter(row, {}, [closePanel, clickHandler]() {
+            QObject::connect(command.action, &QAction::changed, row, syncFromAction);
+        }
+        syncFromAction();
+
+        if (command.action && command.handler && !hasSubmenu)
+        {
+            QObject::connect(row, &QToolButton::clicked, row, [closePanel]() {
                 closePanel();
-                clickHandler();
             });
         }
         return row;
     };
 
-    auto sectionRows = std::make_shared<QVector<QFrame *>>();
-    auto activeNestedSource = std::make_shared<QFrame *>(nullptr);
+    auto sectionRows = std::make_shared<QVector<TitleApplicationMenuRow *>>();
+    auto activeNestedSource = std::make_shared<TitleApplicationMenuRow *>(nullptr);
 
     auto hideNestedMenu = [subPanel, subMenu, nestedPanel, nestedMenu, activeNestedSource]() {
         *activeNestedSource = nullptr;
@@ -1154,15 +1503,18 @@ void MainWindow::createTitleApplicationMenuPanel()
         }
     };
 
-    auto showNestedMenu = [=](const QVector<TitleMenuCommand>& commands, QFrame *sourceRow) {
+    auto showNestedMenu = [=](const QVector<TitleMenuCommand>& commands, TitleApplicationMenuRow *sourceRow) {
         if (commands.isEmpty() || !sourceRow)
         {
             hideNestedMenu();
             return;
         }
 
-        if (*activeNestedSource == sourceRow && nestedPanel->isVisible() && nestedMenu->isVisible())
+        if (*activeNestedSource == sourceRow)
         {
+            nestedMenu->show();
+            nestedMenu->raise();
+            nestedPanel->show();
             nestedPanel->raise();
             return;
         }
@@ -1171,34 +1523,30 @@ void MainWindow::createTitleApplicationMenuPanel()
         clearLayout(nestedLayout);
         bool needsCheckColumn = false;
         int nestedWidth = subMenuMinWidth;
-        for (const TitleMenuCommand& command : commands)
+        for (const TitleMenuCommand& menuCommand : commands)
         {
-            needsCheckColumn = needsCheckColumn || command.checked;
+            needsCheckColumn = needsCheckColumn || menuCommand.checked;
         }
-        for (const TitleMenuCommand& command : commands)
+        for (const TitleMenuCommand& menuCommand : commands)
         {
-            int commandWidth = rowLeftPadding + menuMetrics.horizontalAdvance(command.text) + rowRightPadding;
+            int commandWidth = rowLeftPadding + menuMetrics.horizontalAdvance(menuCommand.text) + rowRightPadding;
             if (needsCheckColumn)
             {
                 commandWidth += checkColumnWidth + rowSpacing;
             }
-            if (!command.shortcut.isEmpty())
+            if (!menuCommand.shortcut.isEmpty())
             {
-                commandWidth += shortcutGap + menuMetrics.horizontalAdvance(command.shortcut);
+                commandWidth += shortcutGap + menuMetrics.horizontalAdvance(menuCommand.shortcut);
             }
             nestedWidth = std::max(nestedWidth, commandWidth);
         }
 
-        for (const TitleMenuCommand& command : commands)
+        for (const TitleMenuCommand& menuCommand : commands)
         {
             nestedLayout->addWidget(createRow(nestedMenu,
-                                             command.text,
-                                             command.shortcut,
-                                             command.enabled,
-                                             command.checked,
-                                             needsCheckColumn,
-                                             QString(),
-                                             command.enabled ? command.handler : std::function<void()>{}));
+                                              menuCommand,
+                                              needsCheckColumn,
+                                              false));
         }
 
         const int nestedHeight = commandRowsHeight(commands);
@@ -1237,6 +1585,7 @@ void MainWindow::createTitleApplicationMenuPanel()
         nestedMenu->raise();
         nestedPanel->show();
         nestedPanel->raise();
+        nestedPanel->activateWindow();
     };
 
     for (int sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex)
@@ -1257,21 +1606,17 @@ void MainWindow::createTitleApplicationMenuPanel()
         contentLayout->setSpacing(0);
         pageLayout->addWidget(pageContent);
 
-        for (const TitleMenuCommand& command : sections[sectionIndex].commands)
+        for (const TitleMenuCommand& menuCommand : sections[sectionIndex].commands)
         {
-            QFrame *commandRow = createRow(pageContent,
-                                           command.text,
-                                           command.shortcut,
-                                           command.enabled,
-                                           command.checked,
-                                           subMenuNeedsCheckColumn.value(sectionIndex, false),
-                                           command.submenu.isEmpty() ? QString() : QStringLiteral("›"),
-                                           command.enabled && command.submenu.isEmpty() ? command.handler : std::function<void()>{});
+            TitleApplicationMenuRow *commandRow = createRow(pageContent,
+                                                            menuCommand,
+                                                            subMenuNeedsCheckColumn.value(sectionIndex, false),
+                                                            !menuCommand.submenu.isEmpty());
             contentLayout->addWidget(commandRow);
-            if (!command.submenu.isEmpty())
+            if (!menuCommand.submenu.isEmpty())
             {
-                installMenuItemEventFilter(commandRow, [showNestedMenu, command, commandRow]() {
-                    showNestedMenu(command.submenu, commandRow);
+                installMenuItemEventFilter(commandRow, [showNestedMenu, menuCommand, commandRow]() {
+                    showNestedMenu(menuCommand.submenu, commandRow);
                 });
             }
             else
@@ -1281,14 +1626,18 @@ void MainWindow::createTitleApplicationMenuPanel()
         }
         stack->addWidget(page);
 
+        TitleMenuCommand sectionCommand = command(sectionCommandIds.value(sectionIndex,
+                                                                          QStringLiteral("titleMenuSection%1Action").arg(sectionIndex + 1)),
+                                                  sections[sectionIndex].title,
+                                                  QString(),
+                                                  true,
+                                                  false,
+                                                  false,
+                                                  false);
         auto *sectionRow = createRow(mainMenu,
-                                     sections[sectionIndex].title,
-                                      QString(),
-                                      true,
-                                      false,
-                                      false,
-                                      QStringLiteral("›"),
-                                      {});
+                                     sectionCommand,
+                                     false,
+                                     true);
         sectionRow->setProperty("selected", false);
         sectionRows->push_back(sectionRow);
         mainLayout->addWidget(sectionRow);
@@ -1331,8 +1680,9 @@ void MainWindow::createTitleApplicationMenuPanel()
                 subMenu->show();
                 subPanel->show();
                 subPanel->raise();
+                subPanel->activateWindow();
             }
-            for (QFrame *row : *sectionRows)
+            for (TitleApplicationMenuRow *row : *sectionRows)
             {
                 if (row)
                 {
@@ -1345,6 +1695,184 @@ void MainWindow::createTitleApplicationMenuPanel()
         });
     }
     mainLayout->addStretch(1);
+
+    auto focusFirstRow = [](QWidget *root) {
+        if (TitleApplicationMenuRow *row = firstEnabledTitleApplicationMenuRow(root))
+        {
+            row->setFocus(Qt::OtherFocusReason);
+            row->setKeyboardFocus(true);
+            return true;
+        }
+        return false;
+    };
+    auto focusedMenuRow = []() -> TitleApplicationMenuRow * {
+        return dynamic_cast<TitleApplicationMenuRow *>(QApplication::focusWidget());
+    };
+    auto currentMenuRoot = [mainMenu, subPanel, subMenu, nestedPanel, nestedMenu]() -> QWidget * {
+        QWidget *focus = QApplication::focusWidget();
+        if (nestedPanel->isVisible() && focus && nestedPanel->isAncestorOf(focus))
+        {
+            return nestedMenu;
+        }
+        if (subPanel->isVisible() && focus && subPanel->isAncestorOf(focus))
+        {
+            return subMenu;
+        }
+        return mainMenu;
+    };
+    auto focusRowByOffset = [focusedMenuRow](QWidget *root, int offset) {
+        const QVector<TitleApplicationMenuRow *> rows = enabledVisibleTitleApplicationMenuRows(root);
+        if (rows.isEmpty())
+        {
+            return false;
+        }
+        TitleApplicationMenuRow *current = focusedMenuRow();
+        int index = rows.indexOf(current);
+        if (index < 0)
+        {
+            index = offset >= 0 ? 0 : rows.size() - 1;
+        }
+        else
+        {
+            index = (index + offset + rows.size()) % rows.size();
+        }
+        rows[index]->setFocus(Qt::OtherFocusReason);
+        rows[index]->setKeyboardFocus(true);
+        return true;
+    };
+    auto focusRowAtEdge = [](QWidget *root, bool first) {
+        const QVector<TitleApplicationMenuRow *> rows = enabledVisibleTitleApplicationMenuRows(root);
+        if (rows.isEmpty())
+        {
+            return false;
+        }
+        TitleApplicationMenuRow *row = first ? rows.first() : rows.last();
+        row->setFocus(Qt::OtherFocusReason);
+        row->setKeyboardFocus(true);
+        return true;
+    };
+    auto openFocusedSubmenu = [subMenu, nestedMenu, sectionRows, focusFirstRow, focusedMenuRow]() {
+        TitleApplicationMenuRow *row = focusedMenuRow();
+        if (!row || !row->property("hasSubmenu").toBool())
+        {
+            return false;
+        }
+        QEvent enterEvent(QEvent::Enter);
+        QApplication::sendEvent(row, &enterEvent);
+        if (sectionRows->contains(row))
+        {
+            QTimer::singleShot(0, subMenu, [subMenu, focusFirstRow]() {
+                focusFirstRow(subMenu);
+            });
+        }
+        else
+        {
+            QTimer::singleShot(0, nestedMenu, [nestedMenu, focusFirstRow]() {
+                focusFirstRow(nestedMenu);
+            });
+        }
+        return true;
+    };
+    auto closeCurrentKeyboardLevel =
+        [closePanel,
+          hideNestedMenu,
+          mainMenu,
+          panel,
+          subPanel,
+         subMenu,
+         nestedPanel,
+         nestedMenu,
+         stack,
+         sectionRows,
+         activeNestedSource,
+         currentMenuRoot]() {
+            QWidget *root = currentMenuRoot();
+            if (root == nestedMenu && nestedPanel->isVisible())
+            {
+                TitleApplicationMenuRow *source = *activeNestedSource;
+                hideNestedMenu();
+                subPanel->activateWindow();
+                if (source)
+                {
+                    QTimer::singleShot(0, subPanel, [source]() {
+                        source->setFocus(Qt::OtherFocusReason);
+                        source->setKeyboardFocus(true);
+                    });
+                }
+                return true;
+            }
+            if (root == subMenu && subPanel->isVisible())
+            {
+                *activeNestedSource = nullptr;
+                nestedMenu->hide();
+                nestedPanel->hide();
+                subMenu->hide();
+                subPanel->hide();
+                TitleApplicationMenuRow *sectionRow = sectionRows->value(stack->currentIndex(), nullptr);
+                panel->activateWindow();
+                if (sectionRow)
+                {
+                    QTimer::singleShot(0, panel, [sectionRow]() {
+                        sectionRow->setFocus(Qt::OtherFocusReason);
+                        sectionRow->setKeyboardFocus(true);
+                    });
+                }
+                return true;
+            }
+            if (root == mainMenu)
+            {
+                closePanel();
+                return true;
+            }
+            return false;
+        };
+    auto *keyFilter = new TitleApplicationMenuKeyFilter(panel);
+    keyFilter->setHandler([=](QKeyEvent *event) {
+        const bool anyMenuVisible = panel->isVisible() ||
+                                    subPanel->isVisible() ||
+                                    nestedPanel->isVisible();
+        if (!anyMenuVisible)
+        {
+            return false;
+        }
+        QWidget *root = currentMenuRoot();
+        switch (event->key())
+        {
+        case Qt::Key_Down:
+            return focusRowByOffset(root, 1);
+        case Qt::Key_Up:
+            return focusRowByOffset(root, -1);
+        case Qt::Key_Home:
+            return focusRowAtEdge(root, true);
+        case Qt::Key_End:
+            return focusRowAtEdge(root, false);
+        case Qt::Key_Right:
+            return openFocusedSubmenu();
+        case Qt::Key_Left:
+        case Qt::Key_Escape:
+            return closeCurrentKeyboardLevel();
+        case Qt::Key_Return:
+        case Qt::Key_Enter:
+        case Qt::Key_Space:
+            if (openFocusedSubmenu())
+            {
+                return true;
+            }
+            if (TitleApplicationMenuRow *row = focusedMenuRow())
+            {
+                row->click();
+                return true;
+            }
+            return focusFirstRow(root);
+        default:
+            return false;
+        }
+    });
+    qApp->installEventFilter(keyFilter);
+    connect(panel, &QObject::destroyed, qApp, [keyFilter]() {
+        qApp->removeEventFilter(keyFilter);
+    });
+
     stack->setCurrentIndex(0);
     const QRect panelContentRect = floatingMenuContentRect(panel);
     mainMenu->move(panelContentRect.topLeft());
@@ -1380,6 +1908,7 @@ void MainWindow::showTitleApplicationMenu()
             state_->title_application_nested_panel_->hide();
             clearTitleApplicationMenuSelection(state_->title_application_nested_panel_);
         }
+        state_->title_menu_btn_->setFocus(Qt::OtherFocusReason);
         return;
     }
 
@@ -1406,6 +1935,14 @@ void MainWindow::showTitleApplicationMenu()
     clearTitleApplicationMenuSelection(state_->title_application_panel_);
     state_->title_application_panel_->show();
     state_->title_application_panel_->raise();
+    state_->title_application_panel_->activateWindow();
+    QTimer::singleShot(0, state_->title_application_panel_, [panel = state_->title_application_panel_]() {
+        if (TitleApplicationMenuRow *row = firstEnabledTitleApplicationMenuRow(panel))
+        {
+            row->setFocus(Qt::OtherFocusReason);
+            row->setKeyboardFocus(true);
+        }
+    });
 }
 
 void MainWindow::setupCentralWidget()
