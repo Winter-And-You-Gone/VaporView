@@ -77,8 +77,7 @@ bool inheritedHandleAccessible(const std::wstring& value)
         return false;
     }
     HANDLE handle = reinterpret_cast<HANDLE>(static_cast<uintptr_t>(raw));
-    const DWORD waitResult = WaitForSingleObject(handle, 0);
-    return waitResult != WAIT_FAILED;
+    return SetEvent(handle) != FALSE;
 }
 
 } // namespace
