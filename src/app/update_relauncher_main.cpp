@@ -76,9 +76,34 @@ void showManualStartMessage()
                 MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
 }
 
+bool currentProcessIsElevated();
+
 bool iequals(const std::wstring& left, const std::wstring& right)
 {
     return CompareStringOrdinal(left.c_str(), -1, right.c_str(), -1, TRUE) == CSTR_EQUAL;
+}
+
+std::wstring environmentValue(const wchar_t* name)
+{
+    const DWORD required = GetEnvironmentVariableW(name, nullptr, 0);
+    if (required == 0)
+    {
+        return {};
+    }
+    std::wstring value(required, L'\0');
+    const DWORD written = GetEnvironmentVariableW(name, value.data(), required);
+    if (written == 0 || written >= required)
+    {
+        return {};
+    }
+    value.resize(written);
+    return value;
+}
+
+bool environmentFlag(const wchar_t* name)
+{
+    const std::wstring value = environmentValue(name);
+    return value == L"1" || iequals(value, L"true") || iequals(value, L"yes");
 }
 
 std::wstring normalizePath(const wchar_t* path)
@@ -113,6 +138,58 @@ std::wstring fileNameOf(const std::wstring& path)
 {
     const std::wstring::size_type slash = path.find_last_of(L"\\/");
     return slash == std::wstring::npos ? path : path.substr(slash + 1);
+}
+
+std::wstring quoteCommandLineArg(const std::wstring& value)
+{
+    std::wstring quoted = L"\"";
+    for (wchar_t ch : value)
+    {
+        if (ch == L'\\' || ch == L'"')
+        {
+            quoted += L'\\';
+        }
+        quoted += ch;
+    }
+    quoted += L"\"";
+    return quoted;
+}
+
+DWORD currentSessionId()
+{
+    DWORD sessionId = 0;
+    ProcessIdToSessionId(GetCurrentProcessId(), &sessionId);
+    return sessionId;
+}
+
+void appendRelauncherTestArguments(std::wstring& commandLine)
+{
+    const std::wstring resultPath = environmentValue(L"VAPORVIEW_RELAUNCHER_TEST_RESULT");
+    if (resultPath.empty())
+    {
+        return;
+    }
+
+    commandLine += L" --result ";
+    commandLine += quoteCommandLineArg(resultPath);
+    commandLine += L" --parent-elevated ";
+    commandLine += quoteCommandLineArg(environmentValue(L"VAPORVIEW_RELAUNCHER_TEST_PARENT_ELEVATED"));
+    commandLine += L" --relauncher-elevated ";
+    commandLine += currentProcessIsElevated() ? L"1" : L"0";
+    commandLine += L" --relauncher-session ";
+    commandLine += std::to_wstring(currentSessionId());
+
+    const std::wstring inheritedHandle = environmentValue(L"VAPORVIEW_RELAUNCHER_TEST_INHERITED_HANDLE");
+    if (!inheritedHandle.empty())
+    {
+        commandLine += L" --inherited-handle ";
+        commandLine += quoteCommandLineArg(inheritedHandle);
+    }
+}
+
+bool runningRelauncherTest()
+{
+    return !environmentValue(L"VAPORVIEW_RELAUNCHER_TEST_RESULT").empty();
 }
 
 std::wstring parentOf(const std::wstring& path)
@@ -353,6 +430,7 @@ bool launchWithCurrentToken(const std::wstring& applicationPath,
                             const std::wstring& workingDirectory)
 {
     std::wstring commandLine = L"\"" + applicationPath + L"\"";
+    appendRelauncherTestArguments(commandLine);
     STARTUPINFOW startupInfo{};
     startupInfo.cb = sizeof(startupInfo);
     PROCESS_INFORMATION processInfo{};
@@ -391,6 +469,7 @@ bool launchApplicationUnelevated(const std::wstring& applicationPath,
     }
 
     std::wstring commandLine = L"\"" + applicationPath + L"\"";
+    appendRelauncherTestArguments(commandLine);
     STARTUPINFOW startupInfo{};
     startupInfo.cb = sizeof(startupInfo);
     PROCESS_INFORMATION processInfo{};

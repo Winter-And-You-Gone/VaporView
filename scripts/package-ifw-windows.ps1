@@ -160,6 +160,7 @@ if ($cmakeText -notmatch 'project\(VaporView VERSION ([0-9]+\.[0-9]+\.[0-9]+)') 
 }
 $version = $Matches[1]
 $releaseDate = (Get-Date).ToString("yyyy-MM-dd")
+$utf8NoBom = New-Object Text.UTF8Encoding($false)
 
 $executableNames = @(
     "VaporView.exe",
@@ -231,6 +232,8 @@ if (Test-Path -LiteralPath (Join-Path $stageDir "resources\maps")) {
 $driversSource = Join-Path $repoRoot "packaging\ifw\drivers"
 Copy-DirectoryContents $driversSource (Join-Path $stageDir "drivers")
 New-Item -ItemType Directory -Force -Path (Join-Path $stageDir "data") | Out-Null
+$installRootMarker = "VAPORVIEW_INSTALL_ROOT_V1`nproduct=VaporView`n"
+[IO.File]::WriteAllText((Join-Path $stageDir ".vaporview-install-root"), $installRootMarker, $utf8NoBom)
 $licenseDestination = Join-Path $stageDir "licenses"
 New-Item -ItemType Directory -Force -Path $licenseDestination | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") -Destination $licenseDestination -Force
@@ -250,7 +253,6 @@ Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") -Destination (Join-Path $
 $packageXmlTemplatePath = Join-Path $repoRoot "packaging\ifw\packages\com.vaporview.core\meta\package.xml.in"
 $packageXml = [IO.File]::ReadAllText($packageXmlTemplatePath, [Text.Encoding]::UTF8)
 $packageXml = $packageXml.Replace("@VAPORVIEW_VERSION@", $version).Replace("@VAPORVIEW_RELEASE_DATE@", $releaseDate)
-$utf8NoBom = New-Object Text.UTF8Encoding($false)
 [IO.File]::WriteAllText((Join-Path $packageMeta "package.xml"), $packageXml, $utf8NoBom)
 Copy-DirectoryContents $stageDir $packageData
 
@@ -266,6 +268,7 @@ $maintenancePackageXml = $maintenancePackageXml.Replace("@VAPORVIEW_VERSION@", $
 [IO.File]::WriteAllText((Join-Path $maintenancePackageMeta "package.xml"), $maintenancePackageXml, $utf8NoBom)
 Copy-Item -LiteralPath $maintenanceToolSource -Destination (Join-Path $maintenancePackageData "installerbase.exe") -Force
 Copy-Item -LiteralPath (Join-Path $stageDir "VaporViewPermissionTool.exe") -Destination (Join-Path $maintenancePackageData "VaporViewPermissionTool.exe") -Force
+Copy-Item -LiteralPath (Join-Path $stageDir ".vaporview-install-root") -Destination (Join-Path $maintenancePackageData ".vaporview-install-root") -Force
 
 $remoteRepositories = ""
 if (-not [string]::IsNullOrWhiteSpace($RepositoryUrl)) {

@@ -25,7 +25,7 @@ if(WIN32)
         src/app/permission_tool_main.cpp
     )
     target_compile_definitions(VaporViewPermissionTool PRIVATE UNICODE _UNICODE)
-    target_link_libraries(VaporViewPermissionTool PRIVATE advapi32 shell32)
+    target_link_libraries(VaporViewPermissionTool PRIVATE advapi32 shell32 rpcrt4)
     vaporview_set_windows_as_invoker_manifest(VaporViewPermissionTool)
 endif()
 set(CMAKE_CXX_EXTENSIONS OFF)

@@ -69,6 +69,28 @@ std::wstring joinPath(const std::wstring& directory, const std::wstring& fileNam
     return directory + L"\\" + fileName;
 }
 
+void require(bool condition, const std::string& message);
+
+void writeTextFile(const std::wstring& path, const std::string& text)
+{
+    std::ofstream output(std::filesystem::path(path), std::ios::binary);
+    output << text;
+    require(output.good(), "failed to write text file");
+}
+
+void createFakeInstallRoot(const std::wstring& targetDir, const std::wstring& toolSource)
+{
+    std::filesystem::create_directories(targetDir);
+    std::filesystem::create_directories(joinPath(targetDir, L"resources"));
+    std::filesystem::create_directories(joinPath(targetDir, L"data"));
+    writeTextFile(joinPath(targetDir, L".vaporview-install-root"),
+                  "VAPORVIEW_INSTALL_ROOT_V1\nproduct=VaporView\n");
+    writeTextFile(joinPath(targetDir, L"VaporView.exe"), "fake vaporview executable\n");
+    std::filesystem::copy_file(toolSource,
+                               joinPath(targetDir, L"VaporViewPermissionTool.exe"),
+                               std::filesystem::copy_options::overwrite_existing);
+}
+
 void require(bool condition, const std::string& message)
 {
     if (!condition)
@@ -257,6 +279,65 @@ bool hasFullControlAce(const std::wstring& path, PSID sid, bool includeInherited
     return false;
 }
 
+bool aceMatchesSid(void* ace, PSID sid)
+{
+    const auto* header = reinterpret_cast<const ACE_HEADER*>(ace);
+    if (header->AceType != ACCESS_ALLOWED_ACE_TYPE &&
+        header->AceType != ACCESS_DENIED_ACE_TYPE)
+    {
+        return false;
+    }
+    const auto* allowed = reinterpret_cast<const ACCESS_ALLOWED_ACE*>(ace);
+    PSID aceSid = const_cast<SID*>(reinterpret_cast<const SID*>(&allowed->SidStart));
+    return EqualSid(aceSid, sid) != FALSE;
+}
+
+bool removeExplicitDenyAcesForSid(const std::wstring& path, PSID sid)
+{
+    LocalMemory descriptor;
+    PACL oldDacl = daclForPath(path, descriptor);
+    ACL_SIZE_INFORMATION info{};
+    require(GetAclInformation(oldDacl, &info, sizeof(info), AclSizeInformation) != FALSE,
+            "GetAclInformation failed while removing deny ACEs");
+
+    DWORD aclBytes = sizeof(ACL);
+    std::vector<void*> keptAces;
+    for (DWORD i = 0; i < info.AceCount; ++i)
+    {
+        void* ace = nullptr;
+        require(GetAce(oldDacl, i, &ace) != FALSE, "GetAce failed while removing deny ACEs");
+        const auto* header = reinterpret_cast<const ACE_HEADER*>(ace);
+        if (header->AceType == ACCESS_DENIED_ACE_TYPE &&
+            (header->AceFlags & INHERITED_ACE) == 0 &&
+            aceMatchesSid(ace, sid))
+        {
+            continue;
+        }
+        keptAces.push_back(ace);
+        aclBytes += header->AceSize;
+    }
+
+    std::vector<BYTE> aclBuffer(aclBytes);
+    PACL newDacl = reinterpret_cast<PACL>(aclBuffer.data());
+    require(InitializeAcl(newDacl, aclBytes, ACL_REVISION) != FALSE,
+            "InitializeAcl failed while removing deny ACEs");
+    for (void* ace : keptAces)
+    {
+        const auto* header = reinterpret_cast<const ACE_HEADER*>(ace);
+        require(AddAce(newDacl, ACL_REVISION, MAXDWORD, ace, header->AceSize) != FALSE,
+                "AddAce failed while removing deny ACEs");
+    }
+
+    const DWORD setResult = SetNamedSecurityInfoW(const_cast<LPWSTR>(path.c_str()),
+                                                  SE_FILE_OBJECT,
+                                                  DACL_SECURITY_INFORMATION,
+                                                  nullptr,
+                                                  nullptr,
+                                                  newDacl,
+                                                  nullptr);
+    return setResult == ERROR_SUCCESS;
+}
+
 void writeFile(const std::wstring& path)
 {
     Handle file(CreateFileW(path.c_str(),
@@ -271,6 +352,64 @@ void writeFile(const std::wstring& path)
     DWORD written = 0;
     require(WriteFile(file.value, payload, sizeof(payload) - 1, &written, nullptr) != FALSE,
             "WriteFile failed");
+}
+
+bool addAce(const std::wstring& path,
+            PSID sid,
+            ACCESS_MODE mode,
+            ACCESS_MASK mask,
+            DWORD inheritance)
+{
+    PACL oldDacl = nullptr;
+    PSECURITY_DESCRIPTOR rawDescriptor = nullptr;
+    const DWORD infoResult = GetNamedSecurityInfoW(const_cast<LPWSTR>(path.c_str()),
+                                                   SE_FILE_OBJECT,
+                                                   DACL_SECURITY_INFORMATION,
+                                                   nullptr,
+                                                   nullptr,
+                                                   &oldDacl,
+                                                   nullptr,
+                                                   &rawDescriptor);
+    LocalMemory descriptor(rawDescriptor);
+    require(infoResult == ERROR_SUCCESS, "GetNamedSecurityInfoW for addAce failed");
+
+    EXPLICIT_ACCESSW access{};
+    access.grfAccessPermissions = mask;
+    access.grfAccessMode = mode;
+    access.grfInheritance = inheritance;
+    BuildTrusteeWithSidW(&access.Trustee, sid);
+
+    PACL newDacl = nullptr;
+    const DWORD aclResult = SetEntriesInAclW(1, &access, oldDacl, &newDacl);
+    LocalMemory aclMemory(newDacl);
+    require(aclResult == ERROR_SUCCESS, "SetEntriesInAclW for addAce failed");
+
+    const DWORD setResult = SetNamedSecurityInfoW(const_cast<LPWSTR>(path.c_str()),
+                                                  SE_FILE_OBJECT,
+                                                  DACL_SECURITY_INFORMATION,
+                                                  nullptr,
+                                                  nullptr,
+                                                  newDacl,
+                                                  nullptr);
+    return setResult == ERROR_SUCCESS;
+}
+
+bool replaceTargetAllowAce(const std::wstring& path, PSID sid, ACCESS_MASK mask)
+{
+    return addAce(path,
+                  sid,
+                  SET_ACCESS,
+                  mask,
+                  OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE);
+}
+
+bool addTargetDenyAce(const std::wstring& path, PSID sid, ACCESS_MASK mask)
+{
+    return addAce(path,
+                  sid,
+                  DENY_ACCESS,
+                  mask,
+                  OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE);
 }
 
 std::wstring windowsDirectory()
@@ -361,6 +500,96 @@ void verifyReparsePointIsNotFollowed(const std::wstring& tool,
     require((outsideAttributes & FILE_ATTRIBUTE_READONLY) != 0,
             "permission tool followed reparse point and modified outside file attributes");
     RemoveDirectoryW(linkPath.c_str());
+    SetFileAttributesW(outsideFile.c_str(), FILE_ATTRIBUTE_NORMAL);
+}
+
+void verifyInstallRootMarkerGuards(const std::wstring& validTool,
+                                   const std::wstring& parentDir,
+                                   const std::wstring& toolSource)
+{
+    const std::wstring unrelatedDir = joinPath(parentDir, L"UnrelatedApp");
+    std::filesystem::create_directories(unrelatedDir);
+    require(runPermissionTool(validTool, L"verify", unrelatedDir) != 0,
+            "ordinary directory without marker was accepted");
+
+    const std::wstring fakeNamedRoot = joinPath(parentDir, L"FakeVaporViewName");
+    std::filesystem::create_directories(fakeNamedRoot);
+    require(runPermissionTool(validTool, L"verify", fakeNamedRoot) != 0,
+            "directory named like VaporView without marker was accepted");
+
+    const std::wstring badMarkerRoot = joinPath(parentDir, L"Bad Marker Root");
+    createFakeInstallRoot(badMarkerRoot, toolSource);
+    writeTextFile(joinPath(badMarkerRoot, L".vaporview-install-root"), "bad marker\n");
+    require(runPermissionTool(joinPath(badMarkerRoot, L"VaporViewPermissionTool.exe"),
+                              L"verify",
+                              badMarkerRoot) != 0,
+            "invalid marker content was accepted");
+
+    const std::wstring largeMarkerRoot = joinPath(parentDir, L"Large Marker Root");
+    createFakeInstallRoot(largeMarkerRoot, toolSource);
+    writeTextFile(joinPath(largeMarkerRoot, L".vaporview-install-root"),
+                  std::string(2048, 'x'));
+    require(runPermissionTool(joinPath(largeMarkerRoot, L"VaporViewPermissionTool.exe"),
+                              L"verify",
+                              largeMarkerRoot) != 0,
+            "oversized marker was accepted");
+
+    const std::wstring markerOnlyRoot = joinPath(parentDir, L"Marker Only Root");
+    std::filesystem::create_directories(markerOnlyRoot);
+    writeTextFile(joinPath(markerOnlyRoot, L".vaporview-install-root"),
+                  "VAPORVIEW_INSTALL_ROOT_V1\nproduct=VaporView\n");
+    require(runPermissionTool(validTool, L"verify", markerOnlyRoot) != 0,
+            "marker-only directory was accepted");
+
+    const std::wstring wrongToolDir = joinPath(parentDir, L"CopiedToolElsewhere");
+    std::filesystem::create_directories(wrongToolDir);
+    const std::wstring wrongTool = joinPath(wrongToolDir, L"VaporViewPermissionTool.exe");
+    std::filesystem::copy_file(toolSource, wrongTool, std::filesystem::copy_options::overwrite_existing);
+    require(runPermissionTool(wrongTool, L"verify", parentDir) != 0,
+            "permission tool copied outside target root was accepted");
+}
+
+void verifyAclFailureCases(const std::wstring& targetDir,
+                           const std::wstring& tool,
+                           PSID targetSid)
+{
+    require(addTargetDenyAce(targetDir, targetSid, FILE_WRITE_DATA),
+            "failed to add deny write ACE");
+    require(runPermissionTool(tool, L"verify", targetDir) != 0,
+            "verify passed despite a higher-priority deny write ACE");
+    require(removeExplicitDenyAcesForSid(targetDir, targetSid),
+            "failed to remove deny write ACE");
+    require(runPermissionTool(tool, L"apply", targetDir) == 0,
+            "apply failed after deny write ACE");
+
+    require(addTargetDenyAce(targetDir, targetSid, DELETE | FILE_DELETE_CHILD),
+            "failed to add deny delete ACE");
+    require(runPermissionTool(tool, L"verify", targetDir) != 0,
+            "verify passed despite missing delete rights");
+    require(removeExplicitDenyAcesForSid(targetDir, targetSid),
+            "failed to remove deny delete ACE");
+    require(runPermissionTool(tool, L"apply", targetDir) == 0,
+            "apply failed after deny delete ACE");
+
+    ACCESS_MASK missingWriteOwner = FILE_GENERIC_READ | FILE_GENERIC_WRITE |
+                                    FILE_GENERIC_EXECUTE | DELETE | READ_CONTROL |
+                                    WRITE_DAC;
+    require(replaceTargetAllowAce(targetDir, targetSid, missingWriteOwner),
+            "failed to replace allow ACE without WRITE_OWNER");
+    require(runPermissionTool(tool, L"verify", targetDir) != 0,
+            "verify passed despite missing WRITE_OWNER");
+    require(runPermissionTool(tool, L"apply", targetDir) == 0,
+            "apply failed after missing WRITE_OWNER ACE");
+
+    ACCESS_MASK missingWriteDac = FILE_GENERIC_READ | FILE_GENERIC_WRITE |
+                                  FILE_GENERIC_EXECUTE | DELETE | READ_CONTROL |
+                                  WRITE_OWNER;
+    require(replaceTargetAllowAce(targetDir, targetSid, missingWriteDac),
+            "failed to replace allow ACE without WRITE_DAC");
+    require(runPermissionTool(tool, L"verify", targetDir) != 0,
+            "verify passed despite missing WRITE_DAC");
+    require(runPermissionTool(tool, L"apply", targetDir) == 0,
+            "apply failed after missing WRITE_DAC ACE");
 }
 
 } // namespace
@@ -376,25 +605,39 @@ int main()
     require(GetTempPathW(MAX_PATH, tempPathBuffer) > 0, "GetTempPathW failed");
     const std::wstring parentDir =
         joinPath(tempPathBuffer, L"VaporView Permission Tool Test " + std::to_wstring(GetCurrentProcessId()));
-    const std::wstring targetDir = joinPath(parentDir, L"VaporView 权限 测试");
+    const std::wstring targetDir = joinPath(parentDir, L"VaporView \u6743\u9650 \u6D4B\u8BD5");
     std::filesystem::remove_all(parentDir);
+    createFakeInstallRoot(targetDir, tool);
     std::filesystem::create_directories(joinPath(targetDir, L"child directory"));
+    const std::wstring toolInRoot = joinPath(targetDir, L"VaporViewPermissionTool.exe");
 
     const std::wstring readonlyFile = joinPath(targetDir, L"child directory\\readonly file.txt");
     writeFile(readonlyFile);
     require(SetFileAttributesW(readonlyFile.c_str(), FILE_ATTRIBUTE_READONLY) != FALSE,
             "failed to set readonly test attribute");
 
-    verifyReparsePointIsNotFollowed(tool, targetDir, parentDir);
+    verifyReparsePointIsNotFollowed(toolInRoot, targetDir, parentDir);
+    verifyInstallRootMarkerGuards(toolInRoot, parentDir, tool);
 
-    require(runPermissionTool(tool, L"apply", targetDir) == 0, "permission tool apply failed");
-    require(runPermissionTool(tool, L"apply", targetDir) == 0,
+    require(runPermissionTool(toolInRoot, L"apply", targetDir) == 0, "permission tool apply failed");
+    require(runPermissionTool(toolInRoot, L"apply", targetDir) == 0,
             "permission tool second apply failed");
-    require(runPermissionTool(tool, L"verify", targetDir) == 0, "permission tool verify failed");
+    require(runPermissionTool(toolInRoot, L"verify", targetDir) == 0, "permission tool verify failed");
 
     SidBuffer targetSid = currentUserSid();
     require(countExplicitTargetFullControlAces(targetDir, targetSid.sid()) == 1,
             "apply is not idempotent for target user ACEs");
+
+    verifyAclFailureCases(targetDir, toolInRoot, targetSid.sid());
+    require(runPermissionTool(toolInRoot, L"verify", targetDir) == 0,
+            "permission tool verify failed after ACL failure cases were repaired");
+
+    const std::wstring tempToolDir = joinPath(targetDir, L"tmpMaintenanceToolApp");
+    std::filesystem::create_directories(tempToolDir);
+    const std::wstring tempTool = joinPath(tempToolDir, L"VaporViewPermissionTool.exe");
+    std::filesystem::copy_file(tool, tempTool, std::filesystem::copy_options::overwrite_existing);
+    require(runPermissionTool(tempTool, L"verify", targetDir) == 0,
+            "legal tmpMaintenanceToolApp permission tool was rejected");
 
     const DWORD readonlyAttributes = GetFileAttributesW(readonlyFile.c_str());
     require((readonlyAttributes & FILE_ATTRIBUTE_READONLY) == 0,
@@ -425,7 +668,8 @@ int main()
                 "SYSTEM or Administrators Full Control was not preserved");
     }
 
-    verifyDangerousPathsAreRejected(tool);
+    verifyDangerousPathsAreRejected(toolInRoot);
+    GetFileAttributesW(readonlyFile.c_str());
     std::filesystem::remove_all(parentDir);
     std::cout << "permission_tool_test passed\n";
     return 0;

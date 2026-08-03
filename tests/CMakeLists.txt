@@ -598,8 +598,18 @@ if(WIN32)
         VaporViewUpdateRelauncher
         relauncher_probe_child
     )
-    add_test(NAME update_relauncher_elevation_test COMMAND update_relauncher_elevation_test)
-    set_tests_properties(update_relauncher_elevation_test PROPERTIES
+    add_test(NAME update_relauncher_standard_parent_test
+        COMMAND update_relauncher_elevation_test standard
+    )
+    add_test(NAME update_relauncher_elevated_parent_test
+        COMMAND update_relauncher_elevation_test elevated
+    )
+    set_tests_properties(update_relauncher_standard_parent_test PROPERTIES
+        SKIP_RETURN_CODE 77
+        TIMEOUT 120
+        LABELS "integration;windows;relauncher"
+    )
+    set_tests_properties(update_relauncher_elevated_parent_test PROPERTIES
         SKIP_RETURN_CODE 77
         TIMEOUT 120
         LABELS "integration;windows;relauncher"

@@ -26,6 +26,31 @@ foreach ($name in $requiredRootExecutables) {
     }
 }
 
+$markerPath = Join-Path $StageDir ".vaporview-install-root"
+if (-not (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
+    throw "Missing VaporView install-root marker in IFW stage"
+}
+$markerText = [IO.File]::ReadAllText($markerPath, [Text.Encoding]::UTF8)
+if ($markerText -ne "VAPORVIEW_INSTALL_ROOT_V1`nproduct=VaporView`n") {
+    throw "Invalid VaporView install-root marker content"
+}
+if (((Get-Item -LiteralPath $markerPath).Attributes -band [IO.FileAttributes]::ReadOnly) -ne 0) {
+    throw "VaporView install-root marker is unexpectedly ReadOnly"
+}
+
+$corePackageMarker = Join-Path $WorkDir "packages\com.vaporview.core\data\.vaporview-install-root"
+if (-not (Test-Path -LiteralPath $corePackageMarker -PathType Leaf)) {
+    throw "Missing VaporView install-root marker in core package data"
+}
+$maintenancePackageMarker = Join-Path $WorkDir "packages\com.vaporview.maintenancetool\data\.vaporview-install-root"
+if (-not (Test-Path -LiteralPath $maintenancePackageMarker -PathType Leaf)) {
+    throw "Missing VaporView install-root marker in maintenance-tool package data"
+}
+$maintenancePackagePermissionTool = Join-Path $WorkDir "packages\com.vaporview.maintenancetool\data\VaporViewPermissionTool.exe"
+if (-not (Test-Path -LiteralPath $maintenancePackagePermissionTool -PathType Leaf)) {
+    throw "Missing VaporViewPermissionTool.exe in maintenance-tool package data"
+}
+
 $readonlyFiles = Get-ChildItem -LiteralPath $StageDir -Recurse -Force -File |
     Where-Object { ($_.Attributes -band [IO.FileAttributes]::ReadOnly) -ne 0 } |
     Select-Object -First 5

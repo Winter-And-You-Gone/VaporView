@@ -50,8 +50,21 @@ C:\包含中文的目录\VaporView
 - 对安装目录根、已有文件和子目录递归生效，后续新增文件和目录通过继承获得权限。
 - 重复执行是幂等的，不会不断增加重复 ACE。
 - 目录树中的 reparse point 默认跳过，不跟随到安装目录之外。
+- `verify` 不只检查 ACL 文本结构：它会复用同一交互会话的用户 token，通过 Windows `AccessCheck` 计算目标用户的有效 Full Control，并在 `ImpersonateLoggedOnUser` 状态下实际创建、读取、改写、重命名、改属性和删除探针文件/目录。这样可以发现“提升后的安装器能写入，但目标普通用户不能写入”的错误。
 
 权限工具在修改 ACL 前会拒绝危险路径，包括空路径、相对路径、盘符根目录、Windows 目录、系统目录、Program Files 根目录、用户配置文件根目录以及目标目录本身是 reparse point 的路径，避免变量为空或路径规范化错误导致递归修改系统范围。
+
+## 安装根标记
+
+安装根目录包含固定标记文件：
+
+```text
+.vaporview-install-root
+VAPORVIEW_INSTALL_ROOT_V1
+product=VaporView
+```
+
+该 marker 由 IFW 正式部署到安装根目录，用于证明目标目录是 VaporView 安装根，而不是任意普通目录。`VaporViewPermissionTool.exe apply/verify` 会同时检查 marker 内容、权限工具自身位置、`VaporView.exe`、`resources` 和维护工具相关文件组合；权限工具必须位于安装根目录，或位于合法的 `@TargetDir@\tmpMaintenanceToolApp` 维护工具自更新临时目录。marker 是额外防线，不替代危险路径和 reparse point 检查。
 
 ## 只读属性
 
@@ -73,7 +86,17 @@ IFW 打包脚本在生成 stage 时也会清除 staged 普通文件的只读属�
 Get-Process VaporView | Select-Object Id, Path
 ```
 
-如需查看令牌提升类型，可使用 Process Explorer，或运行自动化测试中的 `update_relauncher_elevation_test` 探针。
+如需查看令牌提升类型，可使用 Process Explorer，或运行自动化测试中的重启探针：
+
+```powershell
+ctest --test-dir build/Release -C Release -R "^update_relauncher_standard_parent_test$" --output-on-failure
+```
+
+提升父进程分支需要在管理员 PowerShell 中运行；普通测试环境下会显示 `SKIPPED: requires an elevated test runner`，这表示该分支未覆盖，不应当记为通过：
+
+```powershell
+ctest --test-dir build/Release -C Release -R "^update_relauncher_elevated_parent_test$" --output-on-failure
+```
 
 检查安装目录 ACL：
 
@@ -97,3 +120,5 @@ C:\VaporView\VaporViewPermissionTool.exe verify --target-dir "C:\VaporView"
 ```
 
 如果旧版本目录缺少权限工具，请先安装或更新到包含 `VaporViewPermissionTool.exe` 的版本，再执行上述命令。
+
+如果旧版本目录缺少 `.vaporview-install-root` marker，权限工具会拒绝直接作用于该目录。请先通过新版安装器或维护工具完成一次正式安装/修复/更新，让 IFW 部署 marker 后再运行诊断或修复命令。

@@ -34,10 +34,13 @@ The installer creates an empty `data/` directory in the installation root;
 ground and Sky recordings use that directory by default.
 
 The Windows package includes `VaporViewPermissionTool.exe` in the installation
-root. IFW runs it after file deployment and maintenance-tool replacement to
-clear regular-file ReadOnly attributes, grant the initiating interactive user
-recursive inheritable Full Control on `@TargetDir@`, and verify that the ACL is
-not broadened to `Everyone`, `Users`, or `Authenticated Users`.
+root plus the `.vaporview-install-root` marker. IFW runs the permission tool
+after file deployment and maintenance-tool replacement to clear regular-file
+ReadOnly attributes, grant the initiating interactive user recursive
+inheritable Full Control on `@TargetDir@`, and verify that the ACL is not
+broadened to `Everyone`, `Users`, or `Authenticated Users`. The marker is part
+of the safety check that prevents the elevated tool from being copied elsewhere
+and applied to an unrelated directory.
 
 ## Program updates
 

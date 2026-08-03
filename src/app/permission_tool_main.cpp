@@ -3,6 +3,7 @@
 #endif
 #include <windows.h>
 #include <aclapi.h>
+#include <rpc.h>
 #include <sddl.h>
 #include <tlhelp32.h>
 
@@ -15,9 +16,20 @@
 namespace
 {
 
+constexpr wchar_t kPermissionToolName[] = L"VaporViewPermissionTool.exe";
+constexpr wchar_t kMarkerFileName[] = L".vaporview-install-root";
+constexpr char kMarkerMagic[] = "VAPORVIEW_INSTALL_ROOT_V1\nproduct=VaporView\n";
+constexpr DWORD kMaxMarkerBytes = 1024;
+
 constexpr ACCESS_MASK kRequiredFullControl =
     FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE |
     DELETE | READ_CONTROL | WRITE_DAC | WRITE_OWNER;
+
+constexpr ACCESS_MASK kRequiredAccessCheckRights =
+    FILE_READ_DATA | FILE_WRITE_DATA | FILE_APPEND_DATA |
+    FILE_READ_EA | FILE_WRITE_EA | FILE_EXECUTE | FILE_DELETE_CHILD |
+    FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES | DELETE | READ_CONTROL |
+    WRITE_DAC | WRITE_OWNER | SYNCHRONIZE;
 
 GENERIC_MAPPING fileGenericMapping()
 {
@@ -92,6 +104,64 @@ struct SidBuffer
     PSID sid() const { return bytes.empty() ? nullptr : const_cast<BYTE*>(bytes.data()); }
 };
 
+std::wstring lastErrorMessage(DWORD error);
+void printError(const std::wstring& message);
+
+struct InteractiveUserToken
+{
+    Handle token;
+    SidBuffer sid;
+    DWORD sessionId = 0;
+};
+
+class ScopedImpersonation final
+{
+public:
+    explicit ScopedImpersonation(HANDLE token)
+        : active_(ImpersonateLoggedOnUser(token) != FALSE)
+    {
+        if (!active_)
+        {
+            error_ = GetLastError();
+        }
+    }
+
+    ~ScopedImpersonation()
+    {
+        if (active_ && !RevertToSelf())
+        {
+            printError(L"RevertToSelf failed in ScopedImpersonation destructor: " +
+                       lastErrorMessage(GetLastError()));
+        }
+    }
+
+    ScopedImpersonation(const ScopedImpersonation&) = delete;
+    ScopedImpersonation& operator=(const ScopedImpersonation&) = delete;
+
+    bool active() const noexcept { return active_; }
+    DWORD error() const noexcept { return error_; }
+
+    bool revert()
+    {
+        if (!active_)
+        {
+            return true;
+        }
+        if (!RevertToSelf())
+        {
+            error_ = GetLastError();
+            printError(L"RevertToSelf failed: " + lastErrorMessage(error_));
+            return false;
+        }
+        active_ = false;
+        return true;
+    }
+
+private:
+    bool active_ = false;
+    DWORD error_ = ERROR_SUCCESS;
+};
+
 std::wstring lastErrorMessage(DWORD error)
 {
     wchar_t* buffer = nullptr;
@@ -127,6 +197,8 @@ bool iequals(const std::wstring& left, const std::wstring& right)
 {
     return CompareStringOrdinal(left.c_str(), -1, right.c_str(), -1, TRUE) == CSTR_EQUAL;
 }
+
+std::wstring joinPath(const std::wstring& directory, const std::wstring& name);
 
 bool startsWithPath(const std::wstring& path, const std::wstring& parent)
 {
@@ -182,6 +254,205 @@ std::wstring directoryNameOf(const std::wstring& path)
         return path;
     }
     return path.substr(slash + 1);
+}
+
+std::wstring parentOf(const std::wstring& path)
+{
+    const std::wstring::size_type slash = path.find_last_of(L"\\/");
+    if (slash == std::wstring::npos)
+    {
+        return {};
+    }
+    if (slash == 2 && path.size() >= 3 && path[1] == L':')
+    {
+        return path.substr(0, 3);
+    }
+    return path.substr(0, slash);
+}
+
+bool regularFileExistsWithoutReparsePoint(const std::wstring& path)
+{
+    const DWORD attributes = GetFileAttributesW(path.c_str());
+    return attributes != INVALID_FILE_ATTRIBUTES &&
+           (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0 &&
+           (attributes & FILE_ATTRIBUTE_REPARSE_POINT) == 0;
+}
+
+bool directoryExistsWithoutReparsePoint(const std::wstring& path)
+{
+    const DWORD attributes = GetFileAttributesW(path.c_str());
+    return attributes != INVALID_FILE_ATTRIBUTES &&
+           (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0 &&
+           (attributes & FILE_ATTRIBUTE_REPARSE_POINT) == 0;
+}
+
+std::wstring currentExecutablePath()
+{
+    std::wstring path(MAX_PATH, L'\0');
+    for (;;)
+    {
+        const DWORD written = GetModuleFileNameW(nullptr,
+                                                 path.data(),
+                                                 static_cast<DWORD>(path.size()));
+        if (written == 0)
+        {
+            return {};
+        }
+        if (written < path.size() - 1)
+        {
+            path.resize(written);
+            return normalizePath(path);
+        }
+        path.resize(path.size() * 2);
+    }
+}
+
+bool readMarkerFile(const std::wstring& markerPath, std::string& content, std::wstring& error)
+{
+    const DWORD attributes = GetFileAttributesW(markerPath.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES)
+    {
+        error = L"marker missing: " + markerPath;
+        return false;
+    }
+    if ((attributes & FILE_ATTRIBUTE_DIRECTORY) != 0 ||
+        (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+    {
+        error = L"marker is not a regular file: " + markerPath;
+        return false;
+    }
+
+    Handle file(CreateFileW(markerPath.c_str(),
+                            GENERIC_READ,
+                            FILE_SHARE_READ | FILE_SHARE_DELETE,
+                            nullptr,
+                            OPEN_EXISTING,
+                            FILE_ATTRIBUTE_NORMAL,
+                            nullptr));
+    if (!file.value || file.value == INVALID_HANDLE_VALUE)
+    {
+        error = L"CreateFileW(marker) failed for " + markerPath + L": " +
+                lastErrorMessage(GetLastError());
+        return false;
+    }
+
+    LARGE_INTEGER size{};
+    if (!GetFileSizeEx(file.value, &size))
+    {
+        error = L"GetFileSizeEx(marker) failed for " + markerPath + L": " +
+                lastErrorMessage(GetLastError());
+        return false;
+    }
+    if (size.QuadPart <= 0 || size.QuadPart > kMaxMarkerBytes)
+    {
+        error = L"marker content size is invalid: " + markerPath;
+        return false;
+    }
+
+    content.assign(static_cast<size_t>(size.QuadPart), '\0');
+    DWORD read = 0;
+    if (!ReadFile(file.value,
+                  content.data(),
+                  static_cast<DWORD>(content.size()),
+                  &read,
+                  nullptr) ||
+        read != content.size())
+    {
+        error = L"ReadFile(marker) failed for " + markerPath + L": " +
+                lastErrorMessage(GetLastError());
+        return false;
+    }
+    return true;
+}
+
+bool validateInstallMarker(const std::wstring& targetDir, std::wstring& error)
+{
+    std::string marker;
+    const std::wstring markerPath = joinPath(targetDir, kMarkerFileName);
+    if (!readMarkerFile(markerPath, marker, error))
+    {
+        error = L"target is not a valid VaporView install root: " + error;
+        return false;
+    }
+    if (marker != kMarkerMagic)
+    {
+        error = L"invalid marker content; target is not a valid VaporView install root: " + markerPath;
+        return false;
+    }
+    return true;
+}
+
+bool validatePermissionToolLocation(const std::wstring& targetDir, std::wstring& error)
+{
+    const std::wstring executablePath = currentExecutablePath();
+    if (executablePath.empty())
+    {
+        error = L"GetModuleFileNameW failed: " + lastErrorMessage(GetLastError());
+        return false;
+    }
+    if (!regularFileExistsWithoutReparsePoint(executablePath) ||
+        !iequals(directoryNameOf(executablePath), kPermissionToolName))
+    {
+        error = L"permission tool executable location is invalid: " + executablePath;
+        return false;
+    }
+
+    const std::wstring toolDirectory = parentOf(executablePath);
+    const std::wstring expectedRootTool = joinPath(targetDir, kPermissionToolName);
+    const std::wstring tempToolDirectory = joinPath(targetDir, L"tmpMaintenanceToolApp");
+    const std::wstring expectedTempTool = joinPath(tempToolDirectory, kPermissionToolName);
+
+    if (iequals(executablePath, normalizePath(expectedRootTool)))
+    {
+        return true;
+    }
+    if (iequals(toolDirectory, normalizePath(tempToolDirectory)) &&
+        iequals(executablePath, normalizePath(expectedTempTool)) &&
+        directoryExistsWithoutReparsePoint(tempToolDirectory))
+    {
+        return true;
+    }
+
+    error = L"permission tool must be in the install root or valid tmpMaintenanceToolApp: " + executablePath;
+    return false;
+}
+
+bool validateVaporViewInstallRoot(const std::wstring& targetDir, bool requireComplete, std::wstring& error)
+{
+    if (!validateInstallMarker(targetDir, error))
+    {
+        return false;
+    }
+    if (!validatePermissionToolLocation(targetDir, error))
+    {
+        return false;
+    }
+
+    if (!regularFileExistsWithoutReparsePoint(joinPath(targetDir, kPermissionToolName)))
+    {
+        error = L"target is not a valid VaporView install root: missing " + std::wstring(kPermissionToolName);
+        return false;
+    }
+
+    const bool hasMainExe = regularFileExistsWithoutReparsePoint(joinPath(targetDir, L"VaporView.exe"));
+    const bool hasResources = directoryExistsWithoutReparsePoint(joinPath(targetDir, L"resources"));
+    const bool hasMaintenanceTool =
+        regularFileExistsWithoutReparsePoint(joinPath(targetDir, L"VaporViewMaintenanceTool.exe"));
+
+    if (requireComplete)
+    {
+        if (!hasMainExe || !hasResources)
+        {
+            error = L"target is not a complete VaporView install root: missing VaporView.exe or resources";
+            return false;
+        }
+    }
+    else if (!hasMainExe && !hasResources && !hasMaintenanceTool)
+    {
+        error = L"target is not a valid VaporView install root: missing product files";
+        return false;
+    }
+    return true;
 }
 
 std::wstring environmentPath(const wchar_t* name)
@@ -343,20 +614,20 @@ bool sameSession(DWORD processId, DWORD sessionId)
            candidateSession == sessionId;
 }
 
-SidBuffer interactiveShellUserSid()
+bool acquireInteractiveUserToken(InteractiveUserToken& result)
 {
     DWORD currentSession = 0;
     if (!ProcessIdToSessionId(GetCurrentProcessId(), &currentSession))
     {
         printError(L"ProcessIdToSessionId failed: " + lastErrorMessage(GetLastError()));
-        return {};
+        return false;
     }
 
     Handle snapshot(CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0));
     if (snapshot.value == INVALID_HANDLE_VALUE)
     {
         printError(L"CreateToolhelp32Snapshot failed: " + lastErrorMessage(GetLastError()));
-        return {};
+        return false;
     }
 
     PROCESSENTRY32W entry{};
@@ -364,7 +635,7 @@ SidBuffer interactiveShellUserSid()
     if (!Process32FirstW(snapshot.value, &entry))
     {
         printError(L"Process32FirstW failed: " + lastErrorMessage(GetLastError()));
-        return {};
+        return false;
     }
 
     do
@@ -378,24 +649,60 @@ SidBuffer interactiveShellUserSid()
         Handle process(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ProcessID));
         if (!process.value)
         {
+            printError(L"OpenProcess(explorer.exe) failed: " + lastErrorMessage(GetLastError()));
             continue;
         }
 
         HANDLE rawToken = nullptr;
-        if (!OpenProcessToken(process.value, TOKEN_QUERY, &rawToken))
+        if (!OpenProcessToken(process.value,
+                              TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_IMPERSONATE,
+                              &rawToken))
         {
+            printError(L"OpenProcessToken(explorer.exe) failed: " +
+                       lastErrorMessage(GetLastError()));
             continue;
         }
-        Handle token(rawToken);
-        SidBuffer sid = tokenUserSid(token.value);
-        if (sid.sid())
+        Handle processToken(rawToken);
+
+        HANDLE rawImpersonationToken = nullptr;
+        if (!DuplicateTokenEx(processToken.value,
+                              TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_IMPERSONATE,
+                              nullptr,
+                              SecurityImpersonation,
+                              TokenImpersonation,
+                              &rawImpersonationToken))
         {
-            return sid;
+            printError(L"DuplicateTokenEx(explorer.exe) failed: " +
+                       lastErrorMessage(GetLastError()));
+            continue;
         }
+
+        SidBuffer sid = tokenUserSid(processToken.value);
+        if (!sid.sid())
+        {
+            printError(L"GetTokenInformation(TokenUser) failed for explorer.exe token");
+            CloseHandle(rawImpersonationToken);
+            continue;
+        }
+
+        result.token = Handle(rawImpersonationToken);
+        result.sid = std::move(sid);
+        result.sessionId = currentSession;
+        return true;
     } while (Process32NextW(snapshot.value, &entry));
 
-    printError(L"could not determine the interactive shell user SID from explorer.exe");
-    return {};
+    printError(L"could not acquire interactive user token: no usable explorer.exe token in the current session");
+    return false;
+}
+
+SidBuffer interactiveShellUserSid()
+{
+    InteractiveUserToken user;
+    if (!acquireInteractiveUserToken(user))
+    {
+        return {};
+    }
+    return std::move(user.sid);
 }
 
 std::wstring sidToString(PSID sid)
@@ -758,6 +1065,77 @@ bool verifySystemAndAdministratorsFullControl(const std::wstring& path)
     return true;
 }
 
+bool verifyAccessCheckFullControl(const std::wstring& path, HANDLE impersonationToken)
+{
+    PSECURITY_DESCRIPTOR rawDescriptor = nullptr;
+    const DWORD result = GetNamedSecurityInfoW(const_cast<LPWSTR>(path.c_str()),
+                                               SE_FILE_OBJECT,
+                                               OWNER_SECURITY_INFORMATION |
+                                                   GROUP_SECURITY_INFORMATION |
+                                                   DACL_SECURITY_INFORMATION,
+                                               nullptr,
+                                               nullptr,
+                                               nullptr,
+                                               nullptr,
+                                               &rawDescriptor);
+    LocalMemory securityDescriptor(rawDescriptor);
+    if (result != ERROR_SUCCESS)
+    {
+        printError(L"GetNamedSecurityInfoW before AccessCheck failed for " + path + L": " +
+                   lastErrorMessage(result));
+        return false;
+    }
+
+    GENERIC_MAPPING mapping = fileGenericMapping();
+    ACCESS_MASK desired = kRequiredAccessCheckRights;
+    MapGenericMask(&desired, &mapping);
+
+    PRIVILEGE_SET privileges{};
+    DWORD privilegeLength = sizeof(privileges);
+    DWORD grantedAccess = 0;
+    BOOL accessStatus = FALSE;
+    if (!AccessCheck(rawDescriptor,
+                     impersonationToken,
+                     desired,
+                     &mapping,
+                     &privileges,
+                     &privilegeLength,
+                     &grantedAccess,
+                     &accessStatus))
+    {
+        printError(L"AccessCheck API failed for " + path + L": " +
+                   lastErrorMessage(GetLastError()));
+        return false;
+    }
+    if (!accessStatus || (grantedAccess & desired) != desired)
+    {
+        printError(L"interactive user effective rights are insufficient for " + path +
+                   L": desired=0x" + std::to_wstring(desired) +
+                   L", granted=0x" + std::to_wstring(grantedAccess));
+        return false;
+    }
+    return true;
+}
+
+std::wstring createGuidSuffix()
+{
+    UUID uuid{};
+    const RPC_STATUS status = UuidCreate(&uuid);
+    if (status != RPC_S_OK && status != RPC_S_UUID_LOCAL_ONLY)
+    {
+        return std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64());
+    }
+
+    RPC_WSTR raw = nullptr;
+    if (UuidToStringW(&uuid, &raw) != RPC_S_OK || !raw)
+    {
+        return std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64());
+    }
+    std::wstring result(reinterpret_cast<wchar_t*>(raw));
+    RpcStringFreeW(&raw);
+    return result;
+}
+
 bool writeProbeFile(const std::wstring& path)
 {
     Handle file(CreateFileW(path.c_str(),
@@ -782,50 +1160,253 @@ bool writeProbeFile(const std::wstring& path)
     return true;
 }
 
-bool verifyCreateRenameDelete(const std::wstring& targetDir, PSID targetSid)
+bool readProbeFile(const std::wstring& path)
 {
-    const std::wstring suffix = L".vaporview-permission-probe-" + std::to_wstring(GetCurrentProcessId());
-    const std::wstring probeFile = joinPath(targetDir, suffix + L".tmp");
-    const std::wstring renamedFile = joinPath(targetDir, suffix + L".renamed.tmp");
-    const std::wstring probeDirectory = joinPath(targetDir, suffix + L".dir");
-
-    DeleteFileW(probeFile.c_str());
-    DeleteFileW(renamedFile.c_str());
-    RemoveDirectoryW(probeDirectory.c_str());
-
-    if (!writeProbeFile(probeFile))
+    Handle file(CreateFileW(path.c_str(),
+                            GENERIC_READ,
+                            FILE_SHARE_READ | FILE_SHARE_DELETE,
+                            nullptr,
+                            OPEN_EXISTING,
+                            FILE_ATTRIBUTE_NORMAL,
+                            nullptr));
+    if (!file.value || file.value == INVALID_HANDLE_VALUE)
     {
-        return false;
-    }
-    if (!verifyEffectiveFullControl(probeFile, targetSid, L"target user"))
-    {
-        DeleteFileW(probeFile.c_str());
-        return false;
-    }
-    if (!MoveFileExW(probeFile.c_str(), renamedFile.c_str(), MOVEFILE_REPLACE_EXISTING))
-    {
-        printError(L"MoveFileExW failed for probe file: " + lastErrorMessage(GetLastError()));
-        DeleteFileW(probeFile.c_str());
-        return false;
-    }
-    if (!DeleteFileW(renamedFile.c_str()))
-    {
-        printError(L"DeleteFileW failed for probe file: " + lastErrorMessage(GetLastError()));
+        printError(L"CreateFileW(read probe) failed for " + path + L": " +
+                   lastErrorMessage(GetLastError()));
         return false;
     }
 
-    if (!CreateDirectoryW(probeDirectory.c_str(), nullptr))
+    char buffer[64] = {};
+    DWORD read = 0;
+    if (!ReadFile(file.value, buffer, sizeof(buffer), &read, nullptr))
     {
-        printError(L"CreateDirectoryW failed for probe directory: " + lastErrorMessage(GetLastError()));
+        printError(L"ReadFile(probe) failed for " + path + L": " +
+                   lastErrorMessage(GetLastError()));
         return false;
     }
-    const bool directoryRightsOk = verifyEffectiveFullControl(probeDirectory, targetSid, L"target user");
-    if (!RemoveDirectoryW(probeDirectory.c_str()))
+    return read > 0;
+}
+
+bool appendProbeFile(const std::wstring& path)
+{
+    Handle file(CreateFileW(path.c_str(),
+                            FILE_APPEND_DATA | FILE_READ_DATA,
+                            FILE_SHARE_READ | FILE_SHARE_DELETE,
+                            nullptr,
+                            OPEN_EXISTING,
+                            FILE_ATTRIBUTE_NORMAL,
+                            nullptr));
+    if (!file.value || file.value == INVALID_HANDLE_VALUE)
     {
-        printError(L"RemoveDirectoryW failed for probe directory: " + lastErrorMessage(GetLastError()));
+        printError(L"CreateFileW(append probe) failed for " + path + L": " +
+                   lastErrorMessage(GetLastError()));
         return false;
     }
-    return directoryRightsOk;
+    const char payload[] = "append\n";
+    DWORD written = 0;
+    if (!WriteFile(file.value, payload, static_cast<DWORD>(sizeof(payload) - 1), &written, nullptr))
+    {
+        printError(L"WriteFile(append probe) failed for " + path + L": " +
+                   lastErrorMessage(GetLastError()));
+        return false;
+    }
+    return true;
+}
+
+void cleanupProbePath(const std::wstring& file,
+                      const std::wstring& nestedFile,
+                      const std::wstring& nestedDirectory,
+                      const std::wstring& rootDirectory)
+{
+    if (!file.empty())
+    {
+        SetFileAttributesW(file.c_str(), FILE_ATTRIBUTE_NORMAL);
+        DeleteFileW(file.c_str());
+    }
+    if (!nestedFile.empty())
+    {
+        SetFileAttributesW(nestedFile.c_str(), FILE_ATTRIBUTE_NORMAL);
+        DeleteFileW(nestedFile.c_str());
+    }
+    if (!nestedDirectory.empty())
+    {
+        RemoveDirectoryW(nestedDirectory.c_str());
+    }
+    if (!rootDirectory.empty())
+    {
+        RemoveDirectoryW(rootDirectory.c_str());
+    }
+}
+
+bool verifyImpersonatedProbe(const std::wstring& targetDir,
+                             HANDLE impersonationToken,
+                             PSID targetSid)
+{
+    const std::wstring probeRoot = joinPath(targetDir, L".vaporview-permission-probe-" + createGuidSuffix());
+    const std::wstring probeFile = joinPath(probeRoot, L"probe.txt");
+    const std::wstring renamedFile = joinPath(probeRoot, L"probe-renamed.txt");
+    const std::wstring nestedDirectory = joinPath(probeRoot, L"nested");
+    const std::wstring nestedFile = joinPath(nestedDirectory, L"inherited.txt");
+
+    bool ok = true;
+    {
+        ScopedImpersonation impersonation(impersonationToken);
+        if (!impersonation.active())
+        {
+            printError(L"impersonation failed: ImpersonateLoggedOnUser failed: " +
+                       lastErrorMessage(impersonation.error()));
+            return false;
+        }
+
+        if (!CreateDirectoryW(probeRoot.c_str(), nullptr))
+        {
+            printError(L"target user probe failed: CreateDirectoryW(probe root) failed: " +
+                       lastErrorMessage(GetLastError()));
+            ok = false;
+        }
+        if (ok && !writeProbeFile(probeFile))
+        {
+            ok = false;
+        }
+        if (ok && !readProbeFile(probeFile))
+        {
+            ok = false;
+        }
+        if (ok && !appendProbeFile(probeFile))
+        {
+            ok = false;
+        }
+        if (ok && !MoveFileExW(probeFile.c_str(), renamedFile.c_str(), MOVEFILE_REPLACE_EXISTING))
+        {
+            printError(L"target user probe failed: MoveFileExW failed: " +
+                       lastErrorMessage(GetLastError()));
+            ok = false;
+        }
+        if (ok && !SetFileAttributesW(renamedFile.c_str(), FILE_ATTRIBUTE_ARCHIVE))
+        {
+            printError(L"target user probe failed: SetFileAttributesW failed: " +
+                       lastErrorMessage(GetLastError()));
+            ok = false;
+        }
+        if (ok && !CreateDirectoryW(nestedDirectory.c_str(), nullptr))
+        {
+            printError(L"target user probe failed: CreateDirectoryW(nested) failed: " +
+                       lastErrorMessage(GetLastError()));
+            ok = false;
+        }
+        if (ok && !writeProbeFile(nestedFile))
+        {
+            ok = false;
+        }
+
+        if (ok)
+        {
+            const DWORD nestedAttributes = GetFileAttributesW(nestedFile.c_str());
+            if (nestedAttributes == INVALID_FILE_ATTRIBUTES ||
+                (nestedAttributes & FILE_ATTRIBUTE_READONLY) != 0)
+            {
+                printError(L"target user probe failed: inherited file has unexpected ReadOnly attribute");
+                ok = false;
+            }
+        }
+
+        if (ok && !DeleteFileW(nestedFile.c_str()))
+        {
+            printError(L"target user probe failed: DeleteFileW(nested) failed: " +
+                       lastErrorMessage(GetLastError()));
+            ok = false;
+        }
+        if (ok && !RemoveDirectoryW(nestedDirectory.c_str()))
+        {
+            printError(L"target user probe failed: RemoveDirectoryW(nested) failed: " +
+                       lastErrorMessage(GetLastError()));
+            ok = false;
+        }
+        if (ok && !DeleteFileW(renamedFile.c_str()))
+        {
+            printError(L"target user probe failed: DeleteFileW(renamed) failed: " +
+                       lastErrorMessage(GetLastError()));
+            ok = false;
+        }
+        if (ok && !RemoveDirectoryW(probeRoot.c_str()))
+        {
+            printError(L"target user probe failed: RemoveDirectoryW(probe root) failed: " +
+                       lastErrorMessage(GetLastError()));
+            ok = false;
+        }
+
+        if (!impersonation.revert())
+        {
+            cleanupProbePath(renamedFile, nestedFile, nestedDirectory, probeRoot);
+            return false;
+        }
+    }
+
+    if (!ok)
+    {
+        cleanupProbePath(renamedFile, nestedFile, nestedDirectory, probeRoot);
+        return false;
+    }
+
+    const std::wstring inheritanceRoot = joinPath(targetDir, L".vaporview-permission-probe-" + createGuidSuffix());
+    const std::wstring inheritanceDir = joinPath(inheritanceRoot, L"child");
+    const std::wstring inheritanceFile = joinPath(inheritanceDir, L"child.txt");
+    bool inheritanceOk = true;
+    {
+        ScopedImpersonation impersonation(impersonationToken);
+        if (!impersonation.active())
+        {
+            printError(L"impersonation failed: ImpersonateLoggedOnUser failed: " +
+                       lastErrorMessage(impersonation.error()));
+            return false;
+        }
+        if (!CreateDirectoryW(inheritanceRoot.c_str(), nullptr) ||
+            !CreateDirectoryW(inheritanceDir.c_str(), nullptr) ||
+            !writeProbeFile(inheritanceFile))
+        {
+            inheritanceOk = false;
+        }
+        if (!impersonation.revert())
+        {
+            cleanupProbePath({}, inheritanceFile, inheritanceDir, inheritanceRoot);
+            return false;
+        }
+    }
+    if (!inheritanceOk)
+    {
+        printError(L"target user probe failed: could not create inheritance probe items");
+        cleanupProbePath({}, inheritanceFile, inheritanceDir, inheritanceRoot);
+        return false;
+    }
+
+    bool inheritedFullControl = false;
+    std::wstring error;
+    inheritanceOk = daclHasFullControlAce(inheritanceFile, targetSid, true, inheritedFullControl, error) &&
+                    inheritedFullControl &&
+                    verifyAccessCheckFullControl(inheritanceFile, impersonationToken);
+    if (!error.empty())
+    {
+        printError(error);
+    }
+
+    {
+        ScopedImpersonation impersonation(impersonationToken);
+        if (impersonation.active())
+        {
+            DeleteFileW(inheritanceFile.c_str());
+            RemoveDirectoryW(inheritanceDir.c_str());
+            RemoveDirectoryW(inheritanceRoot.c_str());
+            impersonation.revert();
+        }
+    }
+    cleanupProbePath({}, inheritanceFile, inheritanceDir, inheritanceRoot);
+
+    if (!inheritanceOk)
+    {
+        printError(L"new file and directory inheritance validation failed");
+        return false;
+    }
+    return true;
 }
 
 bool parseTargetDirectory(int argc, wchar_t** argv, std::wstring& action, std::wstring& targetDir)
@@ -857,15 +1438,21 @@ int applyPermissions(const std::wstring& rawTargetDir)
         return 10;
     }
 
-    SidBuffer targetSid = interactiveShellUserSid();
-    if (!targetSid.sid())
+    if (!validateVaporViewInstallRoot(targetDir, false, error))
+    {
+        printError(error);
+        return 13;
+    }
+
+    InteractiveUserToken targetUser;
+    if (!acquireInteractiveUserToken(targetUser))
     {
         return 11;
     }
 
     std::wcout << L"TargetDir=" << targetDir << L"\n";
-    std::wcout << L"TargetUserSid=" << sidToString(targetSid.sid()) << L"\n";
-    if (!applyTree(targetDir, targetSid.sid()))
+    std::wcout << L"TargetUserSid=" << sidToString(targetUser.sid.sid()) << L"\n";
+    if (!applyTree(targetDir, targetUser.sid.sid()))
     {
         return 12;
     }
@@ -882,24 +1469,37 @@ int verifyPermissions(const std::wstring& rawTargetDir)
         return 20;
     }
 
-    SidBuffer targetSid = interactiveShellUserSid();
-    if (!targetSid.sid())
+    if (!validateVaporViewInstallRoot(targetDir, true, error))
+    {
+        printError(error);
+        return 23;
+    }
+
+    InteractiveUserToken targetUser;
+    if (!acquireInteractiveUserToken(targetUser))
     {
         return 21;
     }
 
     bool ok = true;
-    ok = verifyExplicitInheritedAce(targetDir, targetSid.sid()) && ok;
-    ok = verifyEffectiveFullControl(targetDir, targetSid.sid(), L"target user") && ok;
+    ok = verifyExplicitInheritedAce(targetDir, targetUser.sid.sid()) && ok;
+    ok = verifyEffectiveFullControl(targetDir, targetUser.sid.sid(), L"target user") && ok;
     ok = verifySystemAndAdministratorsFullControl(targetDir) && ok;
     ok = verifyForbiddenGroupsNotFullControl(targetDir) && ok;
-    ok = verifyCreateRenameDelete(targetDir, targetSid.sid()) && ok;
     if (!ok)
     {
         return 22;
     }
+    if (!verifyAccessCheckFullControl(targetDir, targetUser.token.value))
+    {
+        return 24;
+    }
+    if (!verifyImpersonatedProbe(targetDir, targetUser.token.value, targetUser.sid.sid()))
+    {
+        return 25;
+    }
 
-    std::wcout << L"Verified Full Control for SID " << sidToString(targetSid.sid())
+    std::wcout << L"Verified effective Full Control for SID " << sidToString(targetUser.sid.sid())
                << L" on " << targetDir << L"\n";
     return 0;
 }

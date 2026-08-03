@@ -30,15 +30,24 @@ Component.prototype.onInstallationStarted = function() {
 };
 
 Component.prototype.createOperationsForArchive = function(archive) {
-    if (installer.versionMatches(vaporViewMaintenanceToolIfwVersion, "<4.8.0")) {
+    var usesTemporaryMaintenanceToolDirectory =
+        !installer.versionMatches(vaporViewMaintenanceToolIfwVersion, "<4.8.0");
+
+    if (!usesTemporaryMaintenanceToolDirectory) {
         component.createOperationsForArchive(archive);
     } else {
         component.addOperation("Extract", archive, "@TargetDir@/tmpMaintenanceToolApp");
+        component.addOperation("Copy",
+                               "@TargetDir@/tmpMaintenanceToolApp/.vaporview-install-root",
+                               "@TargetDir@/.vaporview-install-root");
+        component.addOperation("Copy",
+                               "@TargetDir@/tmpMaintenanceToolApp/VaporViewPermissionTool.exe",
+                               "@TargetDir@/VaporViewPermissionTool.exe");
     }
 
     if (systemInfo.productType === "windows") {
         var permissionTool = "@TargetDir@/VaporViewPermissionTool.exe";
-        if (!installer.versionMatches(vaporViewMaintenanceToolIfwVersion, "<4.8.0")) {
+        if (usesTemporaryMaintenanceToolDirectory) {
             permissionTool = "@TargetDir@/tmpMaintenanceToolApp/VaporViewPermissionTool.exe";
         }
         component.addOperation("Execute",

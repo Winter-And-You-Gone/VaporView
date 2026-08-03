@@ -3,6 +3,7 @@
 #endif
 #include <windows.h>
 
+#include <filesystem>
 #include <fstream>
 #include <string>
 
@@ -51,9 +52,38 @@ std::string wideToUtf8(const wchar_t* text)
     return result;
 }
 
+std::wstring valueAfter(int argc, wchar_t** argv, const wchar_t* option)
+{
+    for (int i = 1; i + 1 < argc; ++i)
+    {
+        if (wcscmp(argv[i], option) == 0)
+        {
+            return argv[i + 1];
+        }
+    }
+    return {};
+}
+
+bool inheritedHandleAccessible(const std::wstring& value)
+{
+    if (value.empty())
+    {
+        return false;
+    }
+    wchar_t* end = nullptr;
+    const unsigned long long raw = wcstoull(value.c_str(), &end, 10);
+    if (end == value.c_str() || raw == 0)
+    {
+        return false;
+    }
+    HANDLE handle = reinterpret_cast<HANDLE>(static_cast<uintptr_t>(raw));
+    const DWORD waitResult = WaitForSingleObject(handle, 0);
+    return waitResult != WAIT_FAILED;
+}
+
 } // namespace
 
-int wmain()
+int wmain(int argc, wchar_t** argv)
 {
     wchar_t cwd[MAX_PATH] = {};
     GetCurrentDirectoryW(MAX_PATH, cwd);
@@ -65,11 +95,23 @@ int wmain()
     DWORD sessionId = 0;
     ProcessIdToSessionId(GetCurrentProcessId(), &sessionId);
 
-    std::ofstream out("relaunch_probe_result.txt", std::ios::binary);
+    std::wstring resultPath = valueAfter(argc, argv, L"--result");
+    if (resultPath.empty())
+    {
+        resultPath = L"relaunch_probe_result.txt";
+    }
+
+    std::ofstream out(std::filesystem::path(resultPath), std::ios::binary);
     out << "token_ok=" << (tokenOk ? 1 : 0) << "\n";
     out << "elevated=" << (elevated ? 1 : 0) << "\n";
     out << "type=" << static_cast<int>(elevationType) << "\n";
     out << "session=" << sessionId << "\n";
     out << "cwd=" << wideToUtf8(cwd) << "\n";
+    out << "parent_elevated=" << wideToUtf8(valueAfter(argc, argv, L"--parent-elevated").c_str()) << "\n";
+    out << "relauncher_elevated=" << wideToUtf8(valueAfter(argc, argv, L"--relauncher-elevated").c_str()) << "\n";
+    out << "relauncher_session=" << wideToUtf8(valueAfter(argc, argv, L"--relauncher-session").c_str()) << "\n";
+    out << "inherited_handle_accessible="
+        << (inheritedHandleAccessible(valueAfter(argc, argv, L"--inherited-handle")) ? 1 : 0)
+        << "\n";
     return out ? 0 : 1;
 }

@@ -24,6 +24,45 @@ struct Handle
             CloseHandle(value);
         }
     }
+
+    Handle(const Handle&) = delete;
+    Handle& operator=(const Handle&) = delete;
+};
+
+class ScopedEnvironment final
+{
+public:
+    ScopedEnvironment(const wchar_t* name, const std::wstring& value)
+        : name_(name)
+    {
+        const DWORD required = GetEnvironmentVariableW(name_.c_str(), nullptr, 0);
+        if (required > 0)
+        {
+            previous_.resize(required);
+            const DWORD written = GetEnvironmentVariableW(name_.c_str(),
+                                                          previous_.data(),
+                                                          required);
+            if (written > 0 && written < required)
+            {
+                previous_.resize(written);
+                hadPrevious_ = true;
+            }
+        }
+        SetEnvironmentVariableW(name_.c_str(), value.c_str());
+    }
+
+    ~ScopedEnvironment()
+    {
+        SetEnvironmentVariableW(name_.c_str(), hadPrevious_ ? previous_.c_str() : nullptr);
+    }
+
+    ScopedEnvironment(const ScopedEnvironment&) = delete;
+    ScopedEnvironment& operator=(const ScopedEnvironment&) = delete;
+
+private:
+    std::wstring name_;
+    std::wstring previous_;
+    bool hadPrevious_ = false;
 };
 
 std::wstring utf8ToWide(const char* text)
@@ -98,6 +137,37 @@ void require(bool condition, const std::string& message)
     }
 }
 
+bool currentProcessElevation(bool& elevated, TOKEN_ELEVATION_TYPE& type)
+{
+    HANDLE rawToken = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &rawToken))
+    {
+        return false;
+    }
+    Handle token(rawToken);
+
+    TOKEN_ELEVATION elevation{};
+    DWORD required = 0;
+    if (!GetTokenInformation(token.value,
+                             TokenElevation,
+                             &elevation,
+                             sizeof(elevation),
+                             &required))
+    {
+        return false;
+    }
+    if (!GetTokenInformation(token.value,
+                             TokenElevationType,
+                             &type,
+                             sizeof(type),
+                             &required))
+    {
+        return false;
+    }
+    elevated = elevation.TokenIsElevated != 0;
+    return true;
+}
+
 bool explorerExistsInCurrentSession()
 {
     DWORD currentSession = 0;
@@ -144,7 +214,7 @@ int runRelauncher(const std::wstring& relauncher,
                         commandLine.data(),
                         nullptr,
                         nullptr,
-                        FALSE,
+                        TRUE,
                         0,
                         nullptr,
                         nullptr,
@@ -182,13 +252,41 @@ bool waitForFile(const std::wstring& path)
     return false;
 }
 
+void requireContains(const std::string& result,
+                     const std::string& needle,
+                     const std::string& message)
+{
+    require(result.find(needle) != std::string::npos, message);
+}
+
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
+    const std::string mode = argc >= 2 ? argv[1] : "standard";
+    const bool elevatedMode = mode == "elevated";
+    const bool standardMode = mode == "standard";
+    require(elevatedMode || standardMode, "expected standard or elevated mode");
+
     if (!explorerExistsInCurrentSession())
     {
         std::cout << "SKIP: no explorer.exe token in current session\n";
+        return 77;
+    }
+
+    bool parentElevated = true;
+    TOKEN_ELEVATION_TYPE parentType = TokenElevationTypeFull;
+    require(currentProcessElevation(parentElevated, parentType),
+            "could not inspect test host token elevation");
+
+    if (elevatedMode && (!parentElevated || parentType != TokenElevationTypeFull))
+    {
+        std::cout << "SKIPPED: requires an elevated test runner\n";
+        return 77;
+    }
+    if (standardMode && parentElevated)
+    {
+        std::cout << "SKIP: standard parent branch requires a non-elevated test runner\n";
         return 77;
     }
 
@@ -203,7 +301,9 @@ int main()
     wchar_t tempPathBuffer[MAX_PATH] = {};
     require(GetTempPathW(MAX_PATH, tempPathBuffer) > 0, "GetTempPathW failed");
     const std::wstring targetDir =
-        joinPath(tempPathBuffer, L"VaporView Relaunch Test " + std::to_wstring(GetCurrentProcessId()));
+        joinPath(tempPathBuffer,
+                 L"VaporView Relaunch Test " + utf8ToWide(mode.c_str()) +
+                     L" " + std::to_wstring(GetCurrentProcessId()));
     std::filesystem::remove_all(targetDir);
     std::filesystem::create_directories(targetDir);
 
@@ -217,6 +317,19 @@ int main()
     std::ofstream(badMaintenanceTool, std::ios::binary).put('\0');
     std::filesystem::copy_file(probeSource, fakeVaporView, std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file(probeSource, badApplication, std::filesystem::copy_options::overwrite_existing);
+
+    SECURITY_ATTRIBUTES inheritableAttributes{};
+    inheritableAttributes.nLength = sizeof(inheritableAttributes);
+    inheritableAttributes.bInheritHandle = TRUE;
+    Handle inheritedProbe(CreateEventW(&inheritableAttributes, TRUE, FALSE, nullptr));
+    require(inheritedProbe.value != nullptr, "CreateEventW for inherited-handle probe failed");
+
+    ScopedEnvironment resultPathEnv(L"VAPORVIEW_RELAUNCHER_TEST_RESULT", probeResult);
+    ScopedEnvironment parentElevatedEnv(L"VAPORVIEW_RELAUNCHER_TEST_PARENT_ELEVATED",
+                                        parentElevated ? L"1" : L"0");
+    ScopedEnvironment inheritedHandleEnv(
+        L"VAPORVIEW_RELAUNCHER_TEST_INHERITED_HANDLE",
+        std::to_wstring(reinterpret_cast<uintptr_t>(inheritedProbe.value)));
 
     require(runRelauncher(relauncher, badMaintenanceTool, fakeVaporView) != 0,
             "relauncher accepted an unexpected maintenance tool file name");
@@ -232,20 +345,33 @@ int main()
             "relauncher failed to start probe child");
     require(waitForFile(probeResult), "probe child result was not written");
     const std::string result = readFile(probeResult);
-    require(result.find("token_ok=1") != std::string::npos, "probe could not read token elevation");
-    require(result.find("elevated=0") != std::string::npos,
-            "relauncher started an elevated child process");
+    requireContains(result, "token_ok=1", "probe could not read token elevation");
+    requireContains(result, "elevated=0", "relauncher started an elevated child process");
     require(result.find("type=2") == std::string::npos,
             "relauncher started a child with TokenElevationTypeFull");
+    requireContains(result,
+                    std::string("parent_elevated=") + (parentElevated ? "1" : "0"),
+                    "probe did not receive parent elevation state");
+    requireContains(result,
+                    std::string("relauncher_elevated=") + (parentElevated ? "1" : "0"),
+                    "relauncher elevation state did not match the parent branch");
+    requireContains(result,
+                    "inherited_handle_accessible=0",
+                    "probe child inherited an unnecessary parent handle");
 
     DWORD currentSession = 0;
     ProcessIdToSessionId(GetCurrentProcessId(), &currentSession);
-    require(result.find("session=" + std::to_string(currentSession)) != std::string::npos,
-            "relauncher started child in the wrong session");
-    require(result.find("cwd=" + wideToUtf8(targetDir)) != std::string::npos,
-            "relauncher did not set the application working directory");
+    requireContains(result,
+                    "session=" + std::to_string(currentSession),
+                    "relauncher started child in the wrong session");
+    requireContains(result,
+                    "relauncher_session=" + std::to_string(currentSession),
+                    "relauncher reported the wrong session");
+    requireContains(result,
+                    "cwd=" + wideToUtf8(targetDir),
+                    "relauncher did not set the application working directory");
 
     std::filesystem::remove_all(targetDir);
-    std::cout << "update_relauncher_elevation_test passed\n";
+    std::cout << "update_relauncher_" << mode << "_parent_test passed\n";
     return 0;
 }
