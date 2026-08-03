@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QGridLayout>
 #include <QImage>
 #include <QLabel>
 #include <QMetaObject>
@@ -76,6 +77,14 @@ int main(int argc, char **argv)
         panel.findChild<QToolButton *>(QStringLiteral("ai8GlobalDetailParametersToggle"));
     auto *channelDetailContent =
         panel.findChild<QWidget *>(QStringLiteral("ai8ChannelDetailParametersContent"));
+    auto *channelCommonLayout =
+        panel.findChild<QGridLayout *>(QStringLiteral("ai8ChannelCommonParametersLayout"));
+    auto *inputCommonLayout =
+        panel.findChild<QGridLayout *>(QStringLiteral("ai8InputCommonParametersLayout"));
+    auto *outputCommonLayout =
+        panel.findChild<QGridLayout *>(QStringLiteral("ai8OutputCommonParametersLayout"));
+    auto *globalCommonLayout =
+        panel.findChild<QGridLayout *>(QStringLiteral("ai8GlobalCommonParametersLayout"));
     auto *channelInputGroupEdit =
         panel.findChild<QLineEdit *>(QStringLiteral("ai8ChannelInputGroupEdit"));
     auto *channelAlarmStatusEdit =
@@ -83,7 +92,11 @@ int main(int argc, char **argv)
     require(channelDetailToggle != nullptr && inputDetailToggle != nullptr &&
                 outputDetailToggle != nullptr && globalDetailToggle != nullptr &&
                 channelDetailContent != nullptr && channelInputGroupEdit != nullptr &&
-                channelAlarmStatusEdit != nullptr && channelInputGroupEdit->isVisible() &&
+                channelAlarmStatusEdit != nullptr && !channelInputGroupEdit->isVisible() &&
+                channelCommonLayout != nullptr && channelCommonLayout->count() == 8 &&
+                inputCommonLayout != nullptr && inputCommonLayout->count() == 7 &&
+                outputCommonLayout != nullptr && outputCommonLayout->count() == 8 &&
+                globalCommonLayout != nullptr && globalCommonLayout->count() == 8 &&
                 !channelAlarmStatusEdit->isVisible() && !channelDetailToggle->isChecked() &&
                 !inputDetailToggle->isChecked() && !outputDetailToggle->isChecked() &&
                 !globalDetailToggle->isChecked() && !channelDetailContent->isVisible() &&
@@ -92,6 +105,7 @@ int main(int argc, char **argv)
     channelDetailToggle->click();
     QApplication::processEvents();
     require(channelDetailToggle->isChecked() && channelDetailContent->isVisible() &&
+                channelInputGroupEdit->isVisible() && channelAlarmStatusEdit->isVisible() &&
                 channelDetailToggle->arrowType() == Qt::DownArrow &&
                 channelDetailContent->geometry().top() > channelDetailToggle->geometry().bottom(),
             "AI-8 detailed parameters expand below the toggle card header");
