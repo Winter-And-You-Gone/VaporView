@@ -715,6 +715,21 @@ private:
     SingleLevelPopupMenuRow *addModeRow(int mode)
     {
         auto *row = new SingleLevelPopupMenuRow(menu_);
+        const QString objectName = [mode]() {
+            switch (mode)
+            {
+            case 1:
+                return QStringLiteral("tcpWaveDisplayRawMenuAction");
+            case 2:
+                return QStringLiteral("tcpWaveDisplayHarmonicMenuAction");
+            case 3:
+                return QStringLiteral("tcpWaveDisplayPeakTrendMenuAction");
+            case 0:
+            default:
+                return QStringLiteral("tcpWaveDisplayShowAllMenuAction");
+            }
+        }();
+        row->setObjectName(objectName);
         row->setTextAlignment(SingleLevelPopupTextAlignment::Left);
         row->setHorizontalPadding(18, 14);
         row->setRowSpacing(6);
@@ -724,6 +739,8 @@ private:
         row->setMinimumRowWidth(238);
         row->setCloseOnClick(mode == 0);
         auto *action = menu_->addRow(row);
+        action->setObjectName(objectName);
+        action->setCheckable(true);
         connect(action, &QAction::triggered, this, [this, mode]() {
             if (mode == 0)
             {

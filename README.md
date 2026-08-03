@@ -211,6 +211,10 @@ VaporView/
 ```
 
 完整 target 边界、依赖方向和模块职责见 [docs/architecture.md](docs/architecture.md)。
+自绘 Popup 菜单的结构、QAction 绑定、菜单行 objectName 和键盘导航规则见
+[docs/menu_architecture.md](docs/menu_architecture.md)。ScreenShotTool-MCP /
+Windows UI Automation 的菜单 selector 和验收路径见
+[docs/ui_automation.md](docs/ui_automation.md)。
 
 说明：
 
@@ -348,6 +352,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-windows-msvc2022.ps1 -A
 ```
 
 如果只需要构建桌面程序，可以使用 `-Action BuildApp`，它仍使用 `build/Release`，但不会编译全部测试目标。测试标签、focused 命令和 osgEarth ON/OFF 顺序见 [`docs/testing.md`](docs/testing.md)。
+自绘菜单自动化语义的 focused 回归测试是
+`ctest --test-dir build/Release -C Release -R single_level_popup_menu_test --output-on-failure`。
 
 离线开源底图可使用 Natural Earth 公共领域数据。运行 `powershell -ExecutionPolicy Bypass -File scripts/download-natural-earth-map.ps1` 会下载 Natural Earth II 1:50m 栅格并生成 `data/maps/vaporview_default.earth`；详见 `docs/map_data.md`。
 

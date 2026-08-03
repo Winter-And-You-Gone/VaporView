@@ -91,6 +91,16 @@ target_include_directories(ui_log_model_test PRIVATE
 )
 target_link_libraries(ui_log_model_test PRIVATE vaporview_main_window)
 add_test(NAME ui_log_model_test COMMAND ui_log_model_test)
+
+add_executable(single_level_popup_menu_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/single_level_popup_menu_test.cpp
+)
+target_include_directories(single_level_popup_menu_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(single_level_popup_menu_test PRIVATE vaporview_app_theme)
+add_test(NAME single_level_popup_menu_test COMMAND single_level_popup_menu_test)
 set_tests_properties(ui_log_model_test PROPERTIES
     TIMEOUT 30
     LABELS "fast;unit;logging;ui"
@@ -890,6 +900,7 @@ set(VAPORVIEW_FAST_UNIT_TESTS
     ui_test_mode_model_test
     imu_configuration_service_test
     serial_port_detection_service_test
+    single_level_popup_menu_test
 )
 set_tests_properties(${VAPORVIEW_FAST_UNIT_TESTS} PROPERTIES TIMEOUT 30)
 set_property(TEST ${VAPORVIEW_FAST_UNIT_TESTS} PROPERTY LABELS fast unit)
@@ -925,6 +936,7 @@ set_property(TEST map_data_script_test APPEND PROPERTY LABELS script)
 set_property(TEST tcp_wave_encoding_test tcp_wave_panel_test APPEND PROPERTY LABELS tcp-wave)
 set_property(TEST device_panel_coordinator_test APPEND PROPERTY LABELS ground-widgets)
 set_property(TEST segmented_switch_button_test APPEND PROPERTY LABELS ground-widgets ui)
+set_property(TEST single_level_popup_menu_test APPEND PROPERTY LABELS ui menu accessibility)
 set_property(TEST ai8_temperature_controller_panel_test APPEND PROPERTY LABELS ground-widgets ui)
 set_property(TEST
     temperature_controller_protocol_test

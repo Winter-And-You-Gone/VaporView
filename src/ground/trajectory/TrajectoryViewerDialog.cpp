@@ -169,6 +169,36 @@ QString tileProviderKey(TileProvider provider)
     }
 }
 
+QString heatPaletteKey(HeatPalette palette)
+{
+    switch (palette)
+    {
+    case HeatPalette::BlueRedFast:
+        return QStringLiteral("blueRedFast");
+    case HeatPalette::SpectralReverse:
+        return QStringLiteral("spectralReverse");
+    case HeatPalette::Candy:
+    default:
+        return QStringLiteral("candy");
+    }
+}
+
+QString heatMetricKey(HeatMetric metric)
+{
+    switch (metric)
+    {
+    case HeatMetric::Humidity:
+        return QStringLiteral("humidity");
+    case HeatMetric::Temperature:
+        return QStringLiteral("temperature");
+    case HeatMetric::Pressure:
+        return QStringLiteral("pressure");
+    case HeatMetric::Peak:
+    default:
+        return QStringLiteral("peak");
+    }
+}
+
 bool isTianDiTuProvider(TileProvider provider)
 {
     return provider == TileProvider::TianDiTuVector || provider == TileProvider::TianDiTuSatellite;
@@ -4211,6 +4241,8 @@ void TrajectoryViewerDialog::updateHeatMetricCombo()
     {
         const HeatMetric metric = heatMetricFromComboIndex(index);
         auto *row = new SingleLevelPopupMenuRow(heat_metric_menu_);
+        const QString objectName = QStringLiteral("trajectoryHeatMetricMenuAction_%1").arg(heatMetricKey(metric));
+        row->setObjectName(objectName);
         row->setText(VaporView::Geo::heatMetricName(metric, is_english_));
         row->setTextAlignment(SingleLevelPopupTextAlignment::Left);
         row->setHorizontalPadding(18, 14);
@@ -4222,6 +4254,7 @@ void TrajectoryViewerDialog::updateHeatMetricCombo()
         row->setCheckIcon(checkIcon);
         row->setChecked(metric == currentMetric);
         QAction *action = heat_metric_menu_->addRow(row);
+        action->setObjectName(objectName);
         action->setData(index);
         action->setCheckable(true);
         action->setChecked(metric == currentMetric);
@@ -4365,9 +4398,12 @@ void TrajectoryViewerDialog::updateTexts()
     {
         QSignalBlocker blocker(map_source_combo_);
         map_source_combo_->clear();
-        map_source_combo_->addItem(is_english_ ? QStringLiteral("OpenStreetMap") : QStringLiteral("OpenStreetMap"));
-        map_source_combo_->addItem(is_english_ ? QStringLiteral("Tianditu Vector") : QStringLiteral("天地图矢量"));
-        map_source_combo_->addItem(is_english_ ? QStringLiteral("Tianditu Satellite") : QStringLiteral("天地图卫星"));
+        map_source_combo_->addItem(is_english_ ? QStringLiteral("OpenStreetMap") : QStringLiteral("OpenStreetMap"),
+                                   QStringLiteral("osm"));
+        map_source_combo_->addItem(is_english_ ? QStringLiteral("Tianditu Vector") : QStringLiteral("天地图矢量"),
+                                   QStringLiteral("tiandituVector"));
+        map_source_combo_->addItem(is_english_ ? QStringLiteral("Tianditu Satellite") : QStringLiteral("天地图卫星"),
+                                   QStringLiteral("tiandituSatellite"));
         const TileProvider provider = static_cast<TrajectoryMapWidget*>(map_widget_)->tileProvider();
         map_source_combo_->setCurrentIndex(tileProviderComboIndex(provider));
     }
@@ -4382,8 +4418,11 @@ void TrajectoryViewerDialog::updateTexts()
         const QIcon checkIcon = createMenuCheckIcon(isDarkThemeEnabled());
         for (int index = 0; index < kHeatPaletteCount; ++index)
         {
+            const HeatPalette paletteOption = heatPaletteFromComboIndex(index);
             auto *row = new SingleLevelPopupMenuRow(heat_palette_menu_);
-            row->setText(VaporView::Geo::heatPaletteName(heatPaletteFromComboIndex(index), is_english_));
+            const QString objectName = QStringLiteral("trajectoryHeatPaletteMenuAction_%1").arg(heatPaletteKey(paletteOption));
+            row->setObjectName(objectName);
+            row->setText(VaporView::Geo::heatPaletteName(paletteOption, is_english_));
             row->setTextAlignment(SingleLevelPopupTextAlignment::Left);
             row->setHorizontalPadding(18, 14);
             row->setRowSpacing(6);
@@ -4394,6 +4433,7 @@ void TrajectoryViewerDialog::updateTexts()
             row->setCheckIcon(checkIcon);
             row->setChecked(index == currentIndex);
             QAction *action = heat_palette_menu_->addRow(row);
+            action->setObjectName(objectName);
             action->setData(index);
             action->setCheckable(true);
             action->setChecked(index == currentIndex);

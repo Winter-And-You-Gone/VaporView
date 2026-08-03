@@ -435,8 +435,9 @@ void MainWindow::setupToolBar()
     state_->log_filter_menu_->setCornerRadius(10);
     state_->log_filter_menu_->refreshTheme();
 
-    auto createLogFilterAction = [this](const std::function<void()>& handler) {
+    auto createLogFilterAction = [this](const QString& objectName, const std::function<void()>& handler) {
         auto *row = new SingleLevelPopupMenuRow(state_->log_filter_menu_);
+        row->setObjectName(objectName);
         row->setTextAlignment(SingleLevelPopupTextAlignment::Left);
         row->setHorizontalPadding(scalePixels(18), scalePixels(14));
         row->setRowSpacing(scalePixels(6));
@@ -446,6 +447,7 @@ void MainWindow::setupToolBar()
         row->setMinimumRowWidth(scalePixels(120));
         row->setCloseOnClick(true);
         auto *action = state_->log_filter_menu_->addRow(row);
+        action->setObjectName(objectName);
         action->setCheckable(false);
         connect(action, &QAction::triggered, this, [handler]() {
             handler();
@@ -453,16 +455,16 @@ void MainWindow::setupToolBar()
         return action;
     };
 
-    state_->log_filter_ack_action_ = createLogFilterAction([this]() {
+    state_->log_filter_ack_action_ = createLogFilterAction(QStringLiteral("logFilterAttentionMenuAction"), [this]() {
         setLogViewMode(VaporView::Ground::Main::LogUiViewMode::Attention);
     });
-    state_->log_filter_config_action_ = createLogFilterAction([this]() {
+    state_->log_filter_config_action_ = createLogFilterAction(QStringLiteral("logFilterAllMenuAction"), [this]() {
         setLogViewMode(VaporView::Ground::Main::LogUiViewMode::All);
     });
-    state_->log_filter_connection_action_ = createLogFilterAction([this]() {
+    state_->log_filter_connection_action_ = createLogFilterAction(QStringLiteral("logFilterDebugMenuAction"), [this]() {
         setLogViewMode(VaporView::Ground::Main::LogUiViewMode::Debug);
     });
-    state_->log_filter_recording_action_ = createLogFilterAction([this]() {
+    state_->log_filter_recording_action_ = createLogFilterAction(QStringLiteral("logFilterAutoFollowMenuAction"), [this]() {
         state_->log_auto_follow_enabled_ = !state_->log_auto_follow_enabled_;
         QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
         VaporView::setPersistentSetting(settings,

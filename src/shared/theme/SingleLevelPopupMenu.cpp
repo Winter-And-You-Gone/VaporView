@@ -2,10 +2,14 @@
 
 #include "shared/theme/AppTheme.h"
 
+#include <QAction>
 #include <QApplication>
 #include <QEvent>
 #include <QFontMetrics>
+#include <QFocusEvent>
 #include <QGuiApplication>
+#include <QHideEvent>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
@@ -29,6 +33,13 @@ namespace VaporView
 namespace
 {
 constexpr int kPopupBoundaryMargin = 8;
+constexpr const char *kDefaultRowObjectName = "singleLevelPopupMenuRow";
+
+QString accessibleNameFromText(QString text)
+{
+    text.remove(QLatin1Char('&'));
+    return text.simplified();
+}
 
 QWidget *popupHostWindow(const QWidget *popup, QWidget *anchor)
 {
@@ -231,15 +242,23 @@ void drawTintedAlphaImage(QPainter& painter,
 }
 
 SingleLevelPopupMenuRow::SingleLevelPopupMenuRow(QWidget *parent)
-    : QWidget(parent)
+    : QToolButton(parent)
     , text_label_(new QLabel(this))
     , check_label_(new QLabel(this))
 {
-    setObjectName(QStringLiteral("singleLevelPopupMenuRow"));
+    setObjectName(QString::fromLatin1(kDefaultRowObjectName));
     setAttribute(Qt::WA_Hover, true);
+    setAttribute(Qt::WA_StyledBackground, false);
+    setAutoFillBackground(false);
+    setAutoRaise(false);
     setCursor(Qt::PointingHandCursor);
-    setFocusPolicy(Qt::NoFocus);
+    setFocusPolicy(Qt::StrongFocus);
     setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    setStyleSheet(QStringLiteral(
+        "QToolButton { background: transparent; border: none; padding: 0px; margin: 0px; }"
+        "QToolButton:focus { outline: none; }"
+        "QToolButton::menu-indicator { image: none; width: 0px; }"));
 
     text_label_->setObjectName(QStringLiteral("singleLevelPopupMenuText"));
     text_label_->setMargin(0);
@@ -257,6 +276,16 @@ SingleLevelPopupMenuRow::SingleLevelPopupMenuRow(QWidget *parent)
     setProperty("selected", false);
     setProperty("hasCheckIcon", false);
     setProperty("hovered", false);
+    setProperty("keyboardFocus", false);
+    setProperty("menuRow", true);
+
+    connect(this, &QToolButton::toggled, this, &SingleLevelPopupMenuRow::updateCheckedState);
+    connect(this, &QToolButton::pressed, this, [this]() {
+        update();
+    });
+    connect(this, &QToolButton::released, this, [this]() {
+        update();
+    });
 
     refreshTheme();
     layoutChildren();
@@ -269,18 +298,44 @@ QString SingleLevelPopupMenuRow::text() const
 
 void SingleLevelPopupMenuRow::setText(const QString& text)
 {
+    if (!syncing_from_action_)
+    {
+        if (QAction *action = defaultAction())
+        {
+            if (action->text() != text)
+            {
+                action->setText(text);
+            }
+        }
+    }
+    QToolButton::setText(text);
     text_label_->setText(text);
+    const QString accessible = accessibleNameFromText(text);
+    if (!accessible.isEmpty())
+    {
+        setAccessibleName(accessible);
+    }
     updateGeometry();
     layoutChildren();
 }
 
 void SingleLevelPopupMenuRow::setChecked(bool checked)
 {
-    checked_ = checked;
-    setProperty("selected", checked_);
-    setProperty("hasCheckIcon", checked_ && !check_icon_.isNull());
-    updateCheckIcon();
-    update();
+    if (!syncing_from_action_)
+    {
+        if (QAction *action = defaultAction())
+        {
+            if (action->isCheckable() && action->isChecked() != checked)
+            {
+                action->setChecked(checked);
+            }
+        }
+    }
+    if (isCheckable())
+    {
+        QToolButton::setChecked(checked);
+    }
+    updateCheckedState(checked);
 }
 
 bool SingleLevelPopupMenuRow::isChecked() const
@@ -388,6 +443,74 @@ void SingleLevelPopupMenuRow::clearHover()
     setHovered(false);
 }
 
+void SingleLevelPopupMenuRow::syncFromDefaultAction()
+{
+    QAction *action = defaultAction();
+    if (!action)
+    {
+        updateCheckedState(isChecked());
+        return;
+    }
+
+    syncing_from_action_ = true;
+
+    if (!action->objectName().isEmpty() && objectName() != action->objectName())
+    {
+        setObjectName(action->objectName());
+    }
+
+    const QString actionText = action->text();
+    if (!actionText.isEmpty() || text_label_->text().isEmpty())
+    {
+        QToolButton::setText(actionText);
+        text_label_->setText(actionText);
+        const QString accessible = accessibleNameFromText(actionText);
+        if (!accessible.isEmpty())
+        {
+            setAccessibleName(accessible);
+        }
+    }
+    if (!action->toolTip().isEmpty())
+    {
+        setToolTip(action->toolTip());
+        setAccessibleDescription(action->toolTip());
+    }
+    else if (!action->statusTip().isEmpty())
+    {
+        setAccessibleDescription(action->statusTip());
+    }
+
+    setIcon(action->icon());
+    setEnabled(action->isEnabled());
+    setVisible(action->isVisible());
+    setCheckable(action->isCheckable());
+    if (action->isCheckable())
+    {
+        QToolButton::setChecked(action->isChecked());
+        updateCheckedState(action->isChecked());
+    }
+    else
+    {
+        updateCheckedState(checked_);
+    }
+
+    syncing_from_action_ = false;
+    updateGeometry();
+    layoutChildren();
+    update();
+}
+
+void SingleLevelPopupMenuRow::setKeyboardFocusHighlight(bool active)
+{
+    if (keyboard_focus_highlight_ == active)
+    {
+        return;
+    }
+    keyboard_focus_highlight_ = active;
+    setProperty("keyboardFocus", keyboard_focus_highlight_);
+    update();
+}
+
 void SingleLevelPopupMenuRow::refreshTheme()
 {
     updateLabelStyles();
@@ -411,7 +534,7 @@ QSize SingleLevelPopupMenuRow::minimumSizeHint() const
 
 void SingleLevelPopupMenuRow::changeEvent(QEvent *event)
 {
-    QWidget::changeEvent(event);
+    QToolButton::changeEvent(event);
     if (event && (event->type() == QEvent::FontChange ||
                   event->type() == QEvent::PaletteChange ||
                   event->type() == QEvent::ApplicationPaletteChange ||
@@ -425,40 +548,57 @@ void SingleLevelPopupMenuRow::changeEvent(QEvent *event)
 
 void SingleLevelPopupMenuRow::enterEvent(QEnterEvent *event)
 {
-    QWidget::enterEvent(event);
+    QToolButton::enterEvent(event);
     setHovered(true);
+}
+
+void SingleLevelPopupMenuRow::focusInEvent(QFocusEvent *event)
+{
+    QToolButton::focusInEvent(event);
+    setKeyboardFocusHighlight(event && event->reason() != Qt::MouseFocusReason);
+}
+
+void SingleLevelPopupMenuRow::focusOutEvent(QFocusEvent *event)
+{
+    QToolButton::focusOutEvent(event);
+    setKeyboardFocusHighlight(false);
 }
 
 void SingleLevelPopupMenuRow::leaveEvent(QEvent *event)
 {
-    QWidget::leaveEvent(event);
+    QToolButton::leaveEvent(event);
     setHovered(false);
-}
-
-void SingleLevelPopupMenuRow::mouseReleaseEvent(QMouseEvent *event)
-{
-    if (isEnabled() && event->button() == Qt::LeftButton && rect().contains(event->position().toPoint()))
-    {
-        emit clicked();
-        event->accept();
-        return;
-    }
-    QWidget::mouseReleaseEvent(event);
 }
 
 void SingleLevelPopupMenuRow::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event);
     QPainter painter(this);
-    if (hovered_ && isEnabled())
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    const bool active = isEnabled();
+    if (active && (hovered_ || isDown()))
     {
-        painter.fillRect(rect(), appThemeColor(AppThemeColor::MenuHover, isDarkThemeEnabled()));
+        QColor fill = appThemeColor(AppThemeColor::MenuHover, isDarkThemeEnabled());
+        if (isDown())
+        {
+            fill = fill.darker(isDarkThemeEnabled() ? 118 : 104);
+        }
+        painter.fillRect(rect(), fill);
+    }
+    if (active && keyboard_focus_highlight_)
+    {
+        const bool dark = isDarkThemeEnabled();
+        const QColor focusColor = appThemeColor(AppThemeColor::Primary, dark);
+        painter.setPen(QPen(focusColor, 1));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(rect().adjusted(2, 2, -3, -3), 5, 5);
     }
 }
 
 void SingleLevelPopupMenuRow::resizeEvent(QResizeEvent *event)
 {
-    QWidget::resizeEvent(event);
+    QToolButton::resizeEvent(event);
     layoutChildren();
 }
 
@@ -512,6 +652,15 @@ void SingleLevelPopupMenuRow::updateLabelStyles()
     check_label_->setEnabled(isEnabled());
 }
 
+void SingleLevelPopupMenuRow::updateCheckedState(bool checked)
+{
+    checked_ = checked;
+    setProperty("selected", checked_);
+    setProperty("hasCheckIcon", checked_ && !check_icon_.isNull());
+    updateCheckIcon();
+    update();
+}
+
 void SingleLevelPopupMenuRow::setHovered(bool hovered)
 {
     if (hovered_ == hovered)
@@ -548,15 +697,48 @@ QWidgetAction *SingleLevelPopupMenu::addRow(SingleLevelPopupMenuRow *row)
     row->setParent(this);
     auto *action = new QWidgetAction(this);
     action->setText(row->text());
+    if (action->objectName().isEmpty() &&
+        !row->objectName().isEmpty() &&
+        row->objectName() != QString::fromLatin1(kDefaultRowObjectName))
+    {
+        action->setObjectName(row->objectName());
+    }
     action->setDefaultWidget(row);
+    row->setDefaultAction(action);
+    row->installEventFilter(this);
     QMenu::addAction(action);
-    connect(row, &SingleLevelPopupMenuRow::clicked, this, [this, row, action]() {
-        action->trigger();
-        if (row->closeOnClick())
+
+    connect(action, &QAction::changed, row, &SingleLevelPopupMenuRow::syncFromDefaultAction);
+    connect(action, &QObject::objectNameChanged, row, [row]() {
+        row->syncFromDefaultAction();
+    });
+    connect(row, &QToolButton::pressed, this, [this, row]() {
+        if (!row->closeOnClick())
         {
-            hide();
+            prepareKeepOpenAfterTrigger(row);
         }
     });
+    QPointer<SingleLevelPopupMenuRow> rowGuard(row);
+    connect(action, &QObject::destroyed, this, [rowGuard]() {
+        if (rowGuard)
+        {
+            rowGuard->setDefaultAction(nullptr);
+            rowGuard->syncFromDefaultAction();
+            rowGuard->deleteLater();
+        }
+    });
+    connect(action, &QAction::triggered, this, [this, row]() {
+        if (row->closeOnClick())
+        {
+            keep_open_after_trigger_ = false;
+            keep_open_focus_row_.clear();
+            hide();
+            return;
+        }
+        prepareKeepOpenAfterTrigger(row);
+        QTimer::singleShot(0, this, &SingleLevelPopupMenu::restoreKeptOpenPopup);
+    });
+    row->syncFromDefaultAction();
     return action;
 }
 
@@ -680,6 +862,7 @@ void SingleLevelPopupMenu::popupFrom(QWidget *anchor, SingleLevelPopupAnchor anc
         return;
     }
 
+    focus_restore_widget_ = anchor;
     refreshTheme();
     clearRowHoverStates();
     ensurePolished();
@@ -781,6 +964,62 @@ void SingleLevelPopupMenu::paintEvent(QPaintEvent *event)
     painter.fillPath(panelPath, dark ? appThemeColor(AppThemeColor::MenuPanel, dark) : QColor(255, 255, 255));
 }
 
+bool SingleLevelPopupMenu::eventFilter(QObject *object, QEvent *event)
+{
+    auto *row = qobject_cast<SingleLevelPopupMenuRow *>(object);
+    if (row && event && event->type() == QEvent::KeyPress)
+    {
+        if (handleNavigationKey(static_cast<QKeyEvent *>(event), row))
+        {
+            return true;
+        }
+    }
+    return QMenu::eventFilter(object, event);
+}
+
+void SingleLevelPopupMenu::hideEvent(QHideEvent *event)
+{
+    const bool keepOpenAfterTrigger = keep_open_after_trigger_;
+    clearRowHoverStates();
+    for (SingleLevelPopupMenuRow *row : rows())
+    {
+        if (row)
+        {
+            row->setKeyboardFocusHighlight(false);
+        }
+    }
+
+    if (keepOpenAfterTrigger)
+    {
+        QMenu::hideEvent(event);
+        QTimer::singleShot(0, this, &SingleLevelPopupMenu::restoreKeptOpenPopup);
+        return;
+    }
+
+    QPointer<QWidget> restoreTarget = focus_restore_widget_;
+    focus_restore_widget_.clear();
+    QMenu::hideEvent(event);
+
+    if (restoreTarget && restoreTarget->isVisible() && restoreTarget->isEnabled())
+    {
+        QTimer::singleShot(0, restoreTarget, [restoreTarget]() {
+            if (restoreTarget && restoreTarget->isVisible() && restoreTarget->isEnabled())
+            {
+                restoreTarget->setFocus(Qt::PopupFocusReason);
+            }
+        });
+    }
+}
+
+void SingleLevelPopupMenu::keyPressEvent(QKeyEvent *event)
+{
+    if (handleNavigationKey(event, qobject_cast<SingleLevelPopupMenuRow *>(QApplication::focusWidget())))
+    {
+        return;
+    }
+    QMenu::keyPressEvent(event);
+}
+
 void SingleLevelPopupMenu::resizeEvent(QResizeEvent *event)
 {
     QMenu::resizeEvent(event);
@@ -800,6 +1039,7 @@ void SingleLevelPopupMenu::showEvent(QShowEvent *event)
         syncRowWidths();
         applyRoundedMask();
         constrainPopupToHostWindow(this);
+        focusFirstAvailableRow();
     });
 }
 
@@ -817,6 +1057,184 @@ QSize SingleLevelPopupMenu::maskSize() const
         menuSize = sizeHint();
     }
     return menuSize;
+}
+
+QList<SingleLevelPopupMenuRow *> SingleLevelPopupMenu::focusableRows() const
+{
+    QList<SingleLevelPopupMenuRow *> result;
+    for (SingleLevelPopupMenuRow *row : rows())
+    {
+        if (row && row->isVisible() && row->isEnabled())
+        {
+            result.push_back(row);
+        }
+    }
+    return result;
+}
+
+void SingleLevelPopupMenu::focusFirstAvailableRow()
+{
+    const QList<SingleLevelPopupMenuRow *> candidates = focusableRows();
+    if (candidates.isEmpty())
+    {
+        setFocus(Qt::OtherFocusReason);
+        return;
+    }
+    auto checkedIt = std::find_if(candidates.cbegin(), candidates.cend(), [](SingleLevelPopupMenuRow *row) {
+        return row && row->isChecked();
+    });
+    focusRow(checkedIt != candidates.cend() ? *checkedIt : candidates.first(), Qt::OtherFocusReason);
+}
+
+void SingleLevelPopupMenu::focusRow(SingleLevelPopupMenuRow *targetRow, Qt::FocusReason reason)
+{
+    if (!targetRow)
+    {
+        return;
+    }
+    for (SingleLevelPopupMenuRow *row : rows())
+    {
+        if (row)
+        {
+            row->setKeyboardFocusHighlight(row == targetRow);
+        }
+    }
+    targetRow->setFocus(reason);
+}
+
+bool SingleLevelPopupMenu::handleNavigationKey(QKeyEvent *event, SingleLevelPopupMenuRow *sourceRow)
+{
+    if (!event)
+    {
+        return false;
+    }
+
+    const QList<SingleLevelPopupMenuRow *> candidates = focusableRows();
+    auto focusCandidate = [&]() -> SingleLevelPopupMenuRow * {
+        if (sourceRow && candidates.contains(sourceRow))
+        {
+            return sourceRow;
+        }
+        for (SingleLevelPopupMenuRow *row : candidates)
+        {
+            if (row && row->hasFocus())
+            {
+                return row;
+            }
+        }
+        return candidates.isEmpty() ? nullptr : candidates.first();
+    };
+    auto focusByOffset = [&](int offset) {
+        if (candidates.isEmpty())
+        {
+            return;
+        }
+        SingleLevelPopupMenuRow *current = focusCandidate();
+        int index = candidates.indexOf(current);
+        if (index < 0)
+        {
+            index = 0;
+        }
+        const int count = candidates.size();
+        const int nextIndex = (index + offset + count) % count;
+        focusRow(candidates.at(nextIndex), Qt::OtherFocusReason);
+    };
+
+    switch (event->key())
+    {
+    case Qt::Key_Down:
+        focusByOffset(1);
+        event->accept();
+        return true;
+    case Qt::Key_Up:
+        focusByOffset(-1);
+        event->accept();
+        return true;
+    case Qt::Key_Home:
+        if (!candidates.isEmpty())
+        {
+            focusRow(candidates.first(), Qt::OtherFocusReason);
+        }
+        event->accept();
+        return true;
+    case Qt::Key_End:
+        if (!candidates.isEmpty())
+        {
+            focusRow(candidates.last(), Qt::OtherFocusReason);
+        }
+        event->accept();
+        return true;
+    case Qt::Key_Return:
+    case Qt::Key_Enter:
+    case Qt::Key_Space:
+        if (SingleLevelPopupMenuRow *row = focusCandidate())
+        {
+            row->click();
+        }
+        event->accept();
+        return true;
+    case Qt::Key_Escape:
+        hide();
+        event->accept();
+        return true;
+    case Qt::Key_Tab:
+    case Qt::Key_Backtab:
+        hide();
+        event->accept();
+        return true;
+    case Qt::Key_Right:
+        if (SingleLevelPopupMenuRow *row = focusCandidate())
+        {
+            if (QAction *action = row->defaultAction())
+            {
+                if (auto *submenu = qobject_cast<SingleLevelPopupMenu *>(action->menu()))
+                {
+                    submenu->popupFrom(row, SingleLevelPopupAnchor::Right);
+                    event->accept();
+                    return true;
+                }
+            }
+        }
+        return false;
+    case Qt::Key_Left:
+        hide();
+        event->accept();
+        return true;
+    default:
+        return false;
+    }
+}
+
+void SingleLevelPopupMenu::prepareKeepOpenAfterTrigger(SingleLevelPopupMenuRow *row)
+{
+    keep_open_after_trigger_ = true;
+    keep_open_position_ = pos();
+    keep_open_focus_row_ = row;
+}
+
+void SingleLevelPopupMenu::restoreKeptOpenPopup()
+{
+    if (!keep_open_after_trigger_)
+    {
+        return;
+    }
+
+    keep_open_after_trigger_ = false;
+    const QPoint restorePosition = keep_open_position_;
+    QPointer<SingleLevelPopupMenuRow> focusRowAfterRestore = keep_open_focus_row_;
+    keep_open_focus_row_.clear();
+
+    if (!isVisible())
+    {
+        popup(restorePosition);
+        move(restorePosition);
+        applyRoundedMask();
+        syncRowWidths();
+    }
+    if (focusRowAfterRestore && focusRowAfterRestore->isVisible() && focusRowAfterRestore->isEnabled())
+    {
+        focusRow(focusRowAfterRestore, Qt::OtherFocusReason);
+    }
 }
 
 void SingleLevelPopupMenu::syncRowWidths()

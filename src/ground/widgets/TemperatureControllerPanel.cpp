@@ -692,9 +692,10 @@ public:
         connect(channel_button_, &QToolButton::clicked, this, [this]() {
             popupChannelMenu();
         });
-        auto configureChannelMenuAction = [this](SingleLevelPopupMenuRow *row, const QString& text) {
+        auto configureChannelMenuAction = [this](SingleLevelPopupMenuRow *row, const QString& text, const QString& objectName) {
             QFont rowFont = row->font();
             rowFont.setWeight(QFont::DemiBold);
+            row->setObjectName(objectName);
             row->setFont(rowFont);
             row->setTextAlignment(SingleLevelPopupTextAlignment::Center);
             row->setCheckSlotWidth(18);
@@ -705,16 +706,19 @@ public:
             row->setMinimumRowWidth(kOverviewMenuItemWidth);
             row->setFixedSize(kOverviewMenuItemWidth, kOverviewChannelHeight);
             row->setCursor(Qt::PointingHandCursor);
-            row->setFocusPolicy(Qt::NoFocus);
+            row->setFocusPolicy(Qt::StrongFocus);
             row->setText(text);
             QWidgetAction *action = channel_menu_->addRow(row);
+            action->setObjectName(objectName);
             action->setText(text);
             return action;
         };
         channel_menu_row_1_ = new SingleLevelPopupMenuRow(channel_menu_);
         channel_menu_row_2_ = new SingleLevelPopupMenuRow(channel_menu_);
-        channel_action_1_ = configureChannelMenuAction(channel_menu_row_1_, QStringLiteral("通道1"));
-        channel_action_2_ = configureChannelMenuAction(channel_menu_row_2_, QStringLiteral("通道2"));
+        channel_action_1_ = configureChannelMenuAction(channel_menu_row_1_, QStringLiteral("通道1"),
+                                                       QStringLiteral("temperatureOverviewChannel1MenuAction"));
+        channel_action_2_ = configureChannelMenuAction(channel_menu_row_2_, QStringLiteral("通道2"),
+                                                       QStringLiteral("temperatureOverviewChannel2MenuAction"));
         for (QAction *action : {channel_action_1_, channel_action_2_})
         {
             action->setCheckable(true);

@@ -5,6 +5,7 @@
 #include <QAbstractItemModel>
 #include <QAction>
 #include <QModelIndex>
+#include <QVariant>
 #include <QWidgetAction>
 
 #include <algorithm>
@@ -12,6 +13,59 @@
 
 namespace VaporView
 {
+namespace
+{
+QString stableObjectToken(QString value)
+{
+    value = value.trimmed();
+    if (value.isEmpty())
+    {
+        return QString();
+    }
+
+    QString result;
+    result.reserve(value.size());
+    bool uppercaseNext = false;
+    for (const QChar ch : value)
+    {
+        if (ch.isLetterOrNumber())
+        {
+            const QString lower = ch.toLower();
+            result += uppercaseNext && !result.isEmpty() ? lower.toUpper() : lower;
+            uppercaseNext = false;
+        }
+        else
+        {
+            uppercaseNext = true;
+        }
+    }
+    return result;
+}
+
+QString itemObjectToken(const QComboBox *combo, int index)
+{
+    if (!combo)
+    {
+        return QStringLiteral("item%1").arg(index);
+    }
+
+    const QVariant data = combo->itemData(index);
+    if (data.isValid())
+    {
+        const QString dataToken = stableObjectToken(data.toString());
+        if (!dataToken.isEmpty())
+        {
+            return dataToken;
+        }
+    }
+    const QString textToken = stableObjectToken(combo->itemText(index));
+    if (!textToken.isEmpty())
+    {
+        return textToken;
+    }
+    return QStringLiteral("item%1").arg(index);
+}
+}
 
 SingleLevelPopupComboBox::SingleLevelPopupComboBox(QWidget *parent)
     : QComboBox(parent)
@@ -101,6 +155,8 @@ void SingleLevelPopupComboBox::rebuildPopupRows()
         {
             continue;
         }
+        const QString comboName = objectName().isEmpty() ? QStringLiteral("singleLevelCombo") : objectName();
+        action->setObjectName(QStringLiteral("%1MenuAction_%2").arg(comboName, itemObjectToken(this, i)));
         action->setData(i);
         action->setEnabled(row->isEnabled());
         connect(action, &QAction::triggered, this, [this, i]() {
