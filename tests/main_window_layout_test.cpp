@@ -4015,17 +4015,22 @@ int main(int argc, char **argv)
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QToolButton[temperatureTitleAction=\"true\"] {"),
-        QStringLiteral("border: 1px solid transparent"),
-        "temperature title icon actions hide their button chrome by default");
+        QStringLiteral("border: none"),
+        "temperature title icon actions have no visible edge by default");
     const bool temperatureTitleActionDark =
         qApp->property(VaporView::kAppDarkThemeProperty).toBool();
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QToolButton[temperatureTitleAction=\"true\"]:hover {"),
         QStringLiteral("background-color: ") +
-            VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtle,
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt,
                                          temperatureTitleActionDark),
-        "temperature title icon actions show a background only on hover");
+        "temperature title icon actions show a gray background only on hover");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QToolButton[temperatureTitleAction=\"true\"]:hover {"),
+        QStringLiteral("border: none"),
+        "temperature title icon actions have no hover edge");
 
     auto *ai8Panel = ai8TemperatureCard->findChild<QWidget *>(
         QStringLiteral("ai8TemperatureControllerPanel"));

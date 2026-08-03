@@ -974,26 +974,26 @@ QLabel#statusIndicator[status="warning"] {
 )") + QStringLiteral(R"(
 QToolButton[temperatureTitleAction="true"] {
     background-color: transparent;
-    border: 1px solid transparent;
+    border: none;
     border-radius: 7px;
     padding: 2px;
 }
 QToolButton[temperatureTitleAction="true"]:disabled {
     background-color: transparent;
-    border-color: transparent;
+    border: none;
 }
 QToolButton[temperatureTitleAction="true"][state="disconnected"],
 QToolButton[temperatureTitleAction="true"][state="connecting"] {
     background-color: transparent;
-    border-color: transparent;
+    border: none;
 }
 QToolButton[temperatureTitleAction="true"][state="connected"] {
     background-color: transparent;
-    border-color: transparent;
+    border: none;
 }
 QToolButton[temperatureTitleAction="true"]:hover {
-    background-color: @vv-primary-subtle;
-    border-color: @vv-border-strong;
+    background-color: @vv-surface-alt;
+    border: none;
 }
 QWidget#tcpWaveCardOutline {
     background-color: transparent;
