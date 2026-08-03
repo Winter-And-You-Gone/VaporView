@@ -76,9 +76,15 @@ int main(int argc, char **argv)
         panel.findChild<QToolButton *>(QStringLiteral("ai8GlobalDetailParametersToggle"));
     auto *channelDetailContent =
         panel.findChild<QWidget *>(QStringLiteral("ai8ChannelDetailParametersContent"));
+    auto *channelInputGroupEdit =
+        panel.findChild<QLineEdit *>(QStringLiteral("ai8ChannelInputGroupEdit"));
+    auto *channelAlarmStatusEdit =
+        panel.findChild<QLineEdit *>(QStringLiteral("ai8ChannelAlarmStatusEdit"));
     require(channelDetailToggle != nullptr && inputDetailToggle != nullptr &&
                 outputDetailToggle != nullptr && globalDetailToggle != nullptr &&
-                channelDetailContent != nullptr && !channelDetailToggle->isChecked() &&
+                channelDetailContent != nullptr && channelInputGroupEdit != nullptr &&
+                channelAlarmStatusEdit != nullptr && channelInputGroupEdit->isVisible() &&
+                !channelAlarmStatusEdit->isVisible() && !channelDetailToggle->isChecked() &&
                 !inputDetailToggle->isChecked() && !outputDetailToggle->isChecked() &&
                 !globalDetailToggle->isChecked() && !channelDetailContent->isVisible() &&
                 channelDetailToggle->arrowType() == Qt::RightArrow,
