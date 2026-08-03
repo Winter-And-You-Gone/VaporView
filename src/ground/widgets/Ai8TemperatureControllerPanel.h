@@ -81,6 +81,7 @@ private:
     void updateRunStateAccessibility();
     void updateStatusText();
     void updateMeasuredValue();
+    void updateAlarmStatusDisplay();
     void updateTemperaturePlot();
 
     QButtonGroup *page_button_group_ = nullptr;

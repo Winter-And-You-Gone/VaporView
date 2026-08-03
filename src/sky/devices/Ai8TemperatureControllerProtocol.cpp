@@ -73,6 +73,14 @@ double decodeManualOutput(quint16 value)
     return static_cast<double>(value) / 256.0;
 }
 
+quint8 decodeChannelAlarmStatus(quint16 statusRegister, int channel)
+{
+    const int normalizedChannel = std::clamp(channel, 1, kChannelCount) - 1;
+    return normalizedChannel % 2 == 0
+        ? static_cast<quint8>((statusRegister >> 8) & 0x00FFu)
+        : static_cast<quint8>(statusRegister & 0x00FFu);
+}
+
 ChannelControlState decodeChannelControlState(quint16 statusRegister, int channel)
 {
     const int normalizedChannel = std::clamp(channel, 1, kChannelCount) - 1;

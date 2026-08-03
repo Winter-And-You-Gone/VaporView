@@ -29,12 +29,29 @@ int main()
     require(Ai8::channelRegister(Ai8::Register::MeasuredValueBase, 1) == 0x0600 &&
                 Ai8::channelRegister(Ai8::Register::MeasuredValueBase, 8) == 0x0607,
             "AI-8288 PV register range mismatch");
+    require(Ai8::channelRegister(Ai8::Register::ChannelOutputBase, 8) == 0x0247 &&
+                Ai8::channelRegister(Ai8::Register::ProgramNumberBase, 8) == 0x02A7 &&
+                Ai8::channelRegister(Ai8::Register::HighAlarmBase, 8) == 0x03C7 &&
+                Ai8::channelRegister(Ai8::Register::DisplayedSetpointBase, 8) == 0x0487,
+            "AI-8288 extended channel register range mismatch");
     require(Ai8::groupRegister(Ai8::Register::InputTypeBase, 4) == 0x0803 &&
-                Ai8::groupRegister(Ai8::Register::ControlActionBase, 4) == 0x082F,
+                Ai8::groupRegister(Ai8::Register::DeviationHighAlarmBase, 4) == 0x0813 &&
+                Ai8::groupRegister(Ai8::Register::ControlActionBase, 4) == 0x082F &&
+                Ai8::groupRegister(Ai8::Register::SetpointHighLimitBase, 4) == 0x083F,
             "AI-8288 parameter group register range mismatch");
     require(static_cast<quint16>(Ai8::Register::ControlStatusBase) == 0x06C0 &&
-                Ai8::kControlStatusRegisterCount == 4,
+                Ai8::kControlStatusRegisterCount == 4 &&
+                static_cast<quint16>(Ai8::Register::AlarmStatusBase) == 0x0680 &&
+                Ai8::kAlarmStatusRegisterCount == 4,
             "AI-8288 control status register range mismatch");
+    require(static_cast<quint16>(Ai8::Register::Address) == 0x0840 &&
+                static_cast<quint16>(Ai8::Register::SerialNumberLow) == 0x0855 &&
+                static_cast<quint16>(Ai8::Register::OutputStartChannel) == 0x0856 &&
+                static_cast<quint16>(Ai8::Register::P1tiOpsn) == 0x085F,
+            "AI-8288 global and extension register range mismatch");
+    require(Ai8::decodeChannelAlarmStatus(0x0102, 1) == 0x01 &&
+                Ai8::decodeChannelAlarmStatus(0x0102, 2) == 0x02,
+            "AI-8288 alarm status byte decoding mismatch");
     require(Ai8::decodeChannelControlState(0x0000, 1) == Ai8::ChannelControlState::AutoTuning &&
                 Ai8::decodeChannelControlState(0x0100, 1) == Ai8::ChannelControlState::ApidOutput &&
                 Ai8::decodeChannelControlState(0x0201, 1) == Ai8::ChannelControlState::Stopped &&

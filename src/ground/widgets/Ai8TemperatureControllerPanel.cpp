@@ -53,6 +53,22 @@ QString unknownRunStateText(quint16 rawValue, bool english)
         : QStringLiteral("保持设备原值（未识别：%1 / 0x%2）").arg(decimalText, hexText);
 }
 
+QString hexText(quint32 value, int width)
+{
+    return QStringLiteral("0x") +
+           QString::number(value, 16).rightJustified(width, QLatin1Char('0')).toUpper();
+}
+
+QString decimalHexText(quint32 value, int width)
+{
+    return QStringLiteral("%1 / %2").arg(value).arg(hexText(value, width));
+}
+
+QString temperatureText(double value)
+{
+    return QString::number(value, 'f', 1) + QStringLiteral(" °C");
+}
+
 QSpinBox *createSpinBox(QWidget *parent,
                         const QString& objectName,
                         int minimum,
@@ -83,6 +99,18 @@ QDoubleSpinBox *createDoubleSpinBox(QWidget *parent,
     spin->setMinimumWidth(kEditorMinimumWidth);
     spin->setSuffix(suffix);
     return spin;
+}
+
+QLineEdit *createReadOnlyLineEdit(QWidget *parent,
+                                  const QString& objectName,
+                                  const QString& value = QStringLiteral("---"))
+{
+    auto *edit = new QLineEdit(value, parent);
+    edit->setObjectName(objectName);
+    edit->setReadOnly(true);
+    edit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    edit->setMinimumWidth(kEditorMinimumWidth);
+    return edit;
 }
 
 void addFieldsToPage(QGridLayout *layout, const QList<QWidget *>& fields)
@@ -237,6 +265,7 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
     connect(channelSpin, qOverload<int>(&QSpinBox::valueChanged), this,
             [this]() {
                 updateMeasuredValue();
+                updateAlarmStatusDisplay();
                 updateTemperaturePlot();
                 emit outputStatusChanged();
             });
@@ -289,6 +318,26 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
                                            0.0,
                                            1,
                                            QStringLiteral(" %"));
+    auto *inputGroupEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8ChannelInputGroupEdit"));
+    auto *offsetEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8ChannelMeasurementOffsetEdit"));
+    auto *outputGroupSpin = createSpinBox(page, QStringLiteral("ai8ChannelOutputGroupSpin"), 0, 4, 0);
+    auto *programSpin = createSpinBox(page, QStringLiteral("ai8ProgramNumberSpin"), 0, 9999, 0);
+    auto *highAlarmSpin = createDoubleSpinBox(page,
+                                             QStringLiteral("ai8HighAlarmSpin"),
+                                             -999.0,
+                                             3200.0,
+                                             3200.0,
+                                             1,
+                                             QStringLiteral(" °C"));
+    auto *lowAlarmSpin = createDoubleSpinBox(page,
+                                            QStringLiteral("ai8LowAlarmSpin"),
+                                            -999.0,
+                                            3200.0,
+                                            -999.0,
+                                            1,
+                                            QStringLiteral(" °C"));
+    auto *displayedSetpointEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8DisplayedSetpointEdit"));
+    auto *alarmStatusEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8ChannelAlarmStatusEdit"));
 
     addFieldsToPage(layout,
                     {createParameterField(QStringLiteral("通道"), QStringLiteral("Channel"), channelSpin, page),
@@ -298,7 +347,15 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
                      createParameterField(QStringLiteral("积分时间 I"), QStringLiteral("Integral Time I"), iSpin, page),
                      createParameterField(QStringLiteral("微分时间 d"), QStringLiteral("Derivative Time d"), dSpin, page),
                      createParameterField(QStringLiteral("工作模式 At"), QStringLiteral("Work Mode At"), modeCombo, page),
-                     createParameterField(QStringLiteral("手动输出 OP"), QStringLiteral("Manual Output OP"), outputSpin, page)});
+                     createParameterField(QStringLiteral("手动输出 OP"), QStringLiteral("Manual Output OP"), outputSpin, page),
+                     createParameterField(QStringLiteral("输入组 In"), QStringLiteral("Input Group In"), inputGroupEdit, page),
+                     createParameterField(QStringLiteral("测量平移 Sc"), QStringLiteral("Measurement Offset Sc"), offsetEdit, page),
+                     createParameterField(QStringLiteral("输出组 On"), QStringLiteral("Output Group On"), outputGroupSpin, page),
+                     createParameterField(QStringLiteral("通道配置 Pn"), QStringLiteral("Channel Config Pn"), programSpin, page),
+                     createParameterField(QStringLiteral("上限报警 HA"), QStringLiteral("High Alarm HA"), highAlarmSpin, page),
+                     createParameterField(QStringLiteral("下限报警 LA"), QStringLiteral("Low Alarm LA"), lowAlarmSpin, page),
+                     createParameterField(QStringLiteral("实际给定 SV"), QStringLiteral("Actual Setpoint SV"), displayedSetpointEdit, page),
+                     createParameterField(QStringLiteral("报警状态"), QStringLiteral("Alarm Status"), alarmStatusEdit, page)});
     return page;
 }
 
@@ -319,7 +376,9 @@ QWidget *Ai8TemperatureControllerPanel::createInputPage()
     addComboItem(inputSpecCombo, QStringLiteral("T 热电偶"), QStringLiteral("T Thermocouple"), 3);
     addComboItem(inputSpecCombo, QStringLiteral("J 热电偶"), QStringLiteral("J Thermocouple"), 5);
     addComboItem(inputSpecCombo, QStringLiteral("Pt100"), QStringLiteral("Pt100"), 21);
+    addComboItem(inputSpecCombo, QStringLiteral("Pt100 高分辨率"), QStringLiteral("Pt100 High Resolution"), 22);
     addComboItem(inputSpecCombo, QStringLiteral("Pt1000"), QStringLiteral("Pt1000"), 23);
+    addComboItem(inputSpecCombo, QStringLiteral("电阻 0–2000 Ω"), QStringLiteral("Resistance 0–2000 Ω"), 24);
     addComboItem(inputSpecCombo, QStringLiteral("4–20 mA"), QStringLiteral("4–20 mA"), 51);
     auto *scaleLowSpin = createDoubleSpinBox(page, QStringLiteral("ai8ScaleLowSpin"), -999.0, 3200.0, 0.0, 1);
     auto *scaleHighSpin = createDoubleSpinBox(page, QStringLiteral("ai8ScaleHighSpin"), -999.0, 3200.0, 100.0, 1);
@@ -354,23 +413,58 @@ QWidget *Ai8TemperatureControllerPanel::createOutputPage()
     actionCombo->setObjectName(QStringLiteral("ai8ControlActionCombo"));
     addComboItem(actionCombo, QStringLiteral("加热（反作用）"), QStringLiteral("Heating (Reverse)"), 0);
     addComboItem(actionCombo, QStringLiteral("制冷（正作用）"), QStringLiteral("Cooling (Direct)"), 1);
+    auto *deviationHighSpin = createDoubleSpinBox(page,
+                                                  QStringLiteral("ai8DeviationHighAlarmSpin"),
+                                                  -999.0,
+                                                  3200.0,
+                                                  3200.0,
+                                                  1);
+    auto *deviationLowSpin = createDoubleSpinBox(page,
+                                                 QStringLiteral("ai8DeviationLowAlarmSpin"),
+                                                 -999.0,
+                                                 3200.0,
+                                                 -999.0,
+                                                 1);
     auto *hysteresisSpin = createDoubleSpinBox(page, QStringLiteral("ai8HysteresisSpin"), -999.0, 3200.0, 0.0, 1);
     auto *outputLowSpin = createSpinBox(page, QStringLiteral("ai8OutputLowSpin"), 0, 100, 0);
     outputLowSpin->setSuffix(QStringLiteral(" %"));
     auto *outputHighSpin = createSpinBox(page, QStringLiteral("ai8OutputHighSpin"), 0, 105, 100);
     outputHighSpin->setSuffix(QStringLiteral(" %"));
+    auto *outputHighThresholdSpin = createDoubleSpinBox(page,
+                                                        QStringLiteral("ai8OutputHighThresholdSpin"),
+                                                        -999.0,
+                                                        3200.0,
+                                                        3200.0,
+                                                        1);
     auto *riseSlopeSpin = createDoubleSpinBox(page, QStringLiteral("ai8RiseSlopeSpin"), 0.0, 3200.0, 0.0, 1);
     auto *fallSlopeSpin = createDoubleSpinBox(page, QStringLiteral("ai8FallSlopeSpin"), 0.0, 3200.0, 0.0, 1);
+    auto *setpointLowLimitSpin = createDoubleSpinBox(page,
+                                                     QStringLiteral("ai8SetpointLowLimitSpin"),
+                                                     -999.0,
+                                                     3200.0,
+                                                     -999.0,
+                                                     1);
+    auto *setpointHighLimitSpin = createDoubleSpinBox(page,
+                                                      QStringLiteral("ai8SetpointHighLimitSpin"),
+                                                      -999.0,
+                                                      3200.0,
+                                                      3200.0,
+                                                      1);
     auto *alarmResetSpin = createSpinBox(page, QStringLiteral("ai8AlarmResetSpin"), 0, 31, 0);
 
     addFieldsToPage(layout,
                     {createParameterField(QStringLiteral("输出参数组"), QStringLiteral("Output Group"), groupSpin, page),
                      createParameterField(QStringLiteral("控制方向 Act"), QStringLiteral("Control Action Act"), actionCombo, page),
+                     createParameterField(QStringLiteral("正偏差报警 dHA"), QStringLiteral("Deviation High dHA"), deviationHighSpin, page),
+                     createParameterField(QStringLiteral("负偏差报警 dLA"), QStringLiteral("Deviation Low dLA"), deviationLowSpin, page),
                      createParameterField(QStringLiteral("控制回差 HYS"), QStringLiteral("Hysteresis HYS"), hysteresisSpin, page),
                      createParameterField(QStringLiteral("输出下限 OPL"), QStringLiteral("Output Low OPL"), outputLowSpin, page),
                      createParameterField(QStringLiteral("输出上限 OPH"), QStringLiteral("Output High OPH"), outputHighSpin, page),
+                     createParameterField(QStringLiteral("超温输出 OHE"), QStringLiteral("Overheat Output OHE"), outputHighThresholdSpin, page),
                      createParameterField(QStringLiteral("升温斜率 Srh"), QStringLiteral("Rise Slope Srh"), riseSlopeSpin, page),
                      createParameterField(QStringLiteral("降温斜率 SrL"), QStringLiteral("Fall Slope SrL"), fallSlopeSpin, page),
+                     createParameterField(QStringLiteral("给定下限 SPL"), QStringLiteral("Setpoint Low SPL"), setpointLowLimitSpin, page),
+                     createParameterField(QStringLiteral("给定上限 SPH"), QStringLiteral("Setpoint High SPH"), setpointHighLimitSpin, page),
                      createParameterField(QStringLiteral("报警锁定掩码 AAF"), QStringLiteral("Alarm Latch Mask AAF"), alarmResetSpin, page)});
     return page;
 }
@@ -431,16 +525,63 @@ QWidget *Ai8TemperatureControllerPanel::createGlobalPage()
     addComboItem(lockCombo, QStringLiteral("锁定组参数"), QStringLiteral("Lock Group Parameters"), 32);
     auto *sampleModeSpin = createSpinBox(page, QStringLiteral("ai8SampleModeSpin"), 0, 3, 0);
     auto *decimalPointSpin = createSpinBox(page, QStringLiteral("ai8DecimalPointSpin"), 0, 3, 1);
+    auto *localInputEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8LocalInputChannelCountEdit"));
+    auto *expansionInputEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8ExpansionInputChannelCountEdit"));
+    auto *commonAlarmEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8CommonAlarmOutputEdit"));
+    auto *independentAlarmChannelsEdit =
+        createReadOnlyLineEdit(page, QStringLiteral("ai8IndependentAlarmChannelCountEdit"));
+    auto *independentAlarmMaskEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8IndependentAlarmMaskEdit"));
+    auto *alarmFunctionAEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8AlarmFunctionAEdit"));
+    auto *alarmFunctionBEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8AlarmFunctionBEdit"));
+    auto *parityFlagsEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8ParityFlagsEdit"));
+    auto *alarmPolarityEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8AlarmPolarityEdit"));
+    auto *extraHysteresisEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8ExtraHysteresisEdit"));
+    auto *mainStatusEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8MainStatusEdit"));
+    auto *modelFeatureEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8ModelFeatureEdit"));
+    auto *serialNumberEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8SerialNumberEdit"));
+    auto *outputStartChannelEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8OutputStartChannelEdit"));
+    auto *highResolutionFilterEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8HighResolutionFilterEdit"));
+    auto *aif1Edit = createReadOnlyLineEdit(page, QStringLiteral("ai8Aif1Edit"));
+    auto *aif2Edit = createReadOnlyLineEdit(page, QStringLiteral("ai8Aif2Edit"));
+    auto *p1faAif3Edit = createReadOnlyLineEdit(page, QStringLiteral("ai8P1faAif3Edit"));
+    auto *difaEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8DifaEdit"));
+    auto *spsrEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8SpsrEdit"));
+    auto *atFunctionEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8AtFunctionEdit"));
+    auto *aiflP1prEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8AiflP1prEdit"));
+    auto *p1tiOpsnEdit = createReadOnlyLineEdit(page, QStringLiteral("ai8P1tiOpsnEdit"));
 
     addFieldsToPage(layout,
                     {createParameterField(QStringLiteral("通讯地址 Addr"), QStringLiteral("Address Addr"), addressSpin, page),
                      createParameterField(QStringLiteral("波特率 bAud"), QStringLiteral("Baud Rate bAud"), baudCombo, page),
+                     createParameterField(QStringLiteral("本机输入 Adn"), QStringLiteral("Local Inputs Adn"), localInputEdit, page),
+                     createParameterField(QStringLiteral("扩展输入 ACH"), QStringLiteral("Expansion Inputs ACH"), expansionInputEdit, page),
                      createParameterField(QStringLiteral("控制回路数 Ctn"), QStringLiteral("Control Channels Ctn"), controlChannelsSpin, page),
                      createParameterField(QStringLiteral("控制周期 CtI"), QStringLiteral("Control Cycle CtI"), controlCycleSpin, page),
                      createParameterField(QStringLiteral("运行状态 Srun"), QStringLiteral("Run State Srun"), runCombo, page),
+                     createParameterField(QStringLiteral("公共报警 ALAL"), QStringLiteral("Common Alarm ALAL"), commonAlarmEdit, page),
+                     createParameterField(QStringLiteral("独立报警通道 ALCH"), QStringLiteral("Alarm Channels ALCH"), independentAlarmChannelsEdit, page),
+                     createParameterField(QStringLiteral("独立报警掩码 ALbt"), QStringLiteral("Alarm Mask ALbt"), independentAlarmMaskEdit, page),
+                     createParameterField(QStringLiteral("报警功能 AFA"), QStringLiteral("Alarm Function AFA"), alarmFunctionAEdit, page),
+                     createParameterField(QStringLiteral("功能参数 AFB"), QStringLiteral("Function Flags AFB"), alarmFunctionBEdit, page),
+                     createParameterField(QStringLiteral("校验位 AFC"), QStringLiteral("Parity Flags AFC"), parityFlagsEdit, page),
+                     createParameterField(QStringLiteral("报警极性 Nonc"), QStringLiteral("Alarm Polarity Nonc"), alarmPolarityEdit, page),
                      createParameterField(QStringLiteral("参数锁 Loc"), QStringLiteral("Parameter Lock Loc"), lockCombo, page),
                      createParameterField(QStringLiteral("采样模式 EAF"), QStringLiteral("Sample Mode EAF"), sampleModeSpin, page),
+                     createParameterField(QStringLiteral("额外回差 EHYS"), QStringLiteral("Extra Hysteresis EHYS"), extraHysteresisEdit, page),
                      createParameterField(QStringLiteral("显示小数点 dPt"), QStringLiteral("Display Decimal dPt"), decimalPointSpin, page)});
+    layout->addWidget(createParameterField(QStringLiteral("主状态"), QStringLiteral("Main Status"), mainStatusEdit, page), 5, 0);
+    layout->addWidget(createParameterField(QStringLiteral("型号特征"), QStringLiteral("Model Feature"), modelFeatureEdit, page), 5, 1);
+    layout->addWidget(createParameterField(QStringLiteral("机号"), QStringLiteral("Serial Number"), serialNumberEdit, page), 5, 2);
+    layout->addWidget(createParameterField(QStringLiteral("输出始通道 OPCH"), QStringLiteral("Output Start OPCH"), outputStartChannelEdit, page), 5, 3);
+    layout->addWidget(createParameterField(QStringLiteral("高分辨率滤波 FL32"), QStringLiteral("High-Res Filter FL32"), highResolutionFilterEdit, page), 6, 0);
+    layout->addWidget(createParameterField(QStringLiteral("升温与超调 AIF1"), QStringLiteral("Ramp/Overshoot AIF1"), aif1Edit, page), 6, 1);
+    layout->addWidget(createParameterField(QStringLiteral("升温与超调 AIF2"), QStringLiteral("Ramp/Overshoot AIF2"), aif2Edit, page), 6, 2);
+    layout->addWidget(createParameterField(QStringLiteral("P1FA/AIF3"), QStringLiteral("P1FA/AIF3"), p1faAif3Edit, page), 6, 3);
+    layout->addWidget(createParameterField(QStringLiteral("dIFA"), QStringLiteral("dIFA"), difaEdit, page), 7, 0);
+    layout->addWidget(createParameterField(QStringLiteral("厂家调试 SPSr"), QStringLiteral("Factory SPSr"), spsrEdit, page), 7, 1);
+    layout->addWidget(createParameterField(QStringLiteral("自整定风格 AtFn"), QStringLiteral("Auto-Tune Style AtFn"), atFunctionEdit, page), 7, 2);
+    layout->addWidget(createParameterField(QStringLiteral("AIFL/P1Pr"), QStringLiteral("AIFL/P1Pr"), aiflP1prEdit, page), 7, 3);
+    layout->addWidget(createParameterField(QStringLiteral("P1TI/OPSn"), QStringLiteral("P1TI/OPSn"), p1tiOpsnEdit, page), 8, 0);
     return page;
 }
 
@@ -739,8 +880,12 @@ Ai8TemperatureControllerProtocol::PageData Ai8TemperatureControllerPanel::curren
     pageData.channel.proportionalBand = doubleSpin("ai8ProportionalBandSpin")->value();
     pageData.channel.integralTimeS = doubleSpin("ai8IntegralTimeSpin")->value();
     pageData.channel.derivativeTimeS = doubleSpin("ai8DerivativeTimeSpin")->value();
+    pageData.channel.channelOutputGroupRaw = spin("ai8ChannelOutputGroupSpin")->value();
+    pageData.channel.programNumber = spin("ai8ProgramNumberSpin")->value();
     pageData.channel.workMode = combo("ai8WorkModeCombo")->currentData().toInt();
     pageData.channel.manualOutputPercent = doubleSpin("ai8ManualOutputSpin")->value();
+    pageData.channel.highAlarmC = doubleSpin("ai8HighAlarmSpin")->value();
+    pageData.channel.lowAlarmC = doubleSpin("ai8LowAlarmSpin")->value();
 
     pageData.input.inputType = combo("ai8InputSpecCombo")->currentData().toInt();
     pageData.input.scaleLow = doubleSpin("ai8ScaleLowSpin")->value();
@@ -751,11 +896,16 @@ Ai8TemperatureControllerProtocol::PageData Ai8TemperatureControllerPanel::curren
     pageData.input.correctionEntry = spin("ai8CorrectionEntrySpin")->value();
 
     pageData.output.controlAction = combo("ai8ControlActionCombo")->currentData().toInt();
+    pageData.output.deviationHighAlarm = doubleSpin("ai8DeviationHighAlarmSpin")->value();
+    pageData.output.deviationLowAlarm = doubleSpin("ai8DeviationLowAlarmSpin")->value();
     pageData.output.hysteresis = doubleSpin("ai8HysteresisSpin")->value();
     pageData.output.outputLowPercent = spin("ai8OutputLowSpin")->value();
     pageData.output.outputHighPercent = spin("ai8OutputHighSpin")->value();
+    pageData.output.outputHighThreshold = doubleSpin("ai8OutputHighThresholdSpin")->value();
     pageData.output.riseSlope = doubleSpin("ai8RiseSlopeSpin")->value();
     pageData.output.fallSlope = doubleSpin("ai8FallSlopeSpin")->value();
+    pageData.output.setpointLowLimit = doubleSpin("ai8SetpointLowLimitSpin")->value();
+    pageData.output.setpointHighLimit = doubleSpin("ai8SetpointHighLimitSpin")->value();
     pageData.output.alarmResetFlags = spin("ai8AlarmResetSpin")->value();
 
     pageData.global.address = spin("ai8DeviceAddressSpin")->value();
@@ -801,6 +951,12 @@ void Ai8TemperatureControllerPanel::applyPageData(
             }
         }
     };
+    auto setText = [this](const char *name, const QString& value) {
+        if (auto *widget = findChild<QLineEdit *>(QString::fromLatin1(name)))
+        {
+            widget->setText(value);
+        }
+    };
 
     setSpin("ai8ChannelSpin", pageData.selection.channel);
     setSpin("ai8InputGroupSpin", pageData.selection.inputGroup);
@@ -812,11 +968,25 @@ void Ai8TemperatureControllerPanel::applyPageData(
         setDouble("ai8ProportionalBandSpin", pageData.channel.proportionalBand);
         setDouble("ai8IntegralTimeSpin", pageData.channel.integralTimeS);
         setDouble("ai8DerivativeTimeSpin", pageData.channel.derivativeTimeS);
+        setText("ai8ChannelInputGroupEdit",
+                QStringLiteral("%1 / entry %2")
+                    .arg(pageData.channel.channelInputGroup)
+                    .arg(pageData.channel.correctionEntry));
+        setText("ai8ChannelMeasurementOffsetEdit", temperatureText(pageData.channel.measurementOffset));
+        setSpin("ai8ChannelOutputGroupSpin", pageData.channel.channelOutputGroupRaw);
+        setSpin("ai8ProgramNumberSpin", pageData.channel.programNumber);
         setCombo("ai8WorkModeCombo", pageData.channel.workMode);
         setDouble("ai8ManualOutputSpin", pageData.channel.manualOutputPercent);
+        setDouble("ai8HighAlarmSpin", pageData.channel.highAlarmC);
+        setDouble("ai8LowAlarmSpin", pageData.channel.lowAlarmC);
+        setText("ai8DisplayedSetpointEdit", temperatureText(pageData.channel.displayedSetpointC));
+        setText("ai8ChannelAlarmStatusEdit",
+                pageData.channel.alarmStatusValid
+                    ? decimalHexText(pageData.channel.alarmStatusRaw, 2)
+                    : QStringLiteral("---"));
         if (auto *pv = findChild<QLineEdit *>(QStringLiteral("ai8MeasuredTemperatureEdit")))
         {
-            pv->setText(QString::number(pageData.channel.measuredC, 'f', 1) + QStringLiteral(" °C"));
+            pv->setText(temperatureText(pageData.channel.measuredC));
         }
         break;
     case Ai8TemperatureControllerProtocol::Page::InputGroup:
@@ -830,11 +1000,16 @@ void Ai8TemperatureControllerPanel::applyPageData(
         break;
     case Ai8TemperatureControllerProtocol::Page::OutputGroup:
         setCombo("ai8ControlActionCombo", pageData.output.controlAction);
+        setDouble("ai8DeviationHighAlarmSpin", pageData.output.deviationHighAlarm);
+        setDouble("ai8DeviationLowAlarmSpin", pageData.output.deviationLowAlarm);
         setDouble("ai8HysteresisSpin", pageData.output.hysteresis);
         setSpin("ai8OutputLowSpin", pageData.output.outputLowPercent);
         setSpin("ai8OutputHighSpin", pageData.output.outputHighPercent);
+        setDouble("ai8OutputHighThresholdSpin", pageData.output.outputHighThreshold);
         setDouble("ai8RiseSlopeSpin", pageData.output.riseSlope);
         setDouble("ai8FallSlopeSpin", pageData.output.fallSlope);
+        setDouble("ai8SetpointLowLimitSpin", pageData.output.setpointLowLimit);
+        setDouble("ai8SetpointHighLimitSpin", pageData.output.setpointHighLimit);
         setSpin("ai8AlarmResetSpin", pageData.output.alarmResetFlags);
         break;
     case Ai8TemperatureControllerProtocol::Page::Global:
@@ -846,6 +1021,30 @@ void Ai8TemperatureControllerPanel::applyPageData(
         setCombo("ai8ParameterLockCombo", (pageData.global.parameterLock & 0x0020) != 0 ? 32 : 0);
         setSpin("ai8SampleModeSpin", pageData.global.sampleMode);
         setSpin("ai8DecimalPointSpin", pageData.global.decimalPoint);
+        setText("ai8LocalInputChannelCountEdit", QString::number(pageData.global.localInputChannelCount));
+        setText("ai8ExpansionInputChannelCountEdit", QString::number(pageData.global.expansionInputChannelCount));
+        setText("ai8CommonAlarmOutputEdit", decimalHexText(pageData.global.commonAlarmOutput, 4));
+        setText("ai8IndependentAlarmChannelCountEdit",
+                decimalHexText(pageData.global.independentAlarmChannelCount, 4));
+        setText("ai8IndependentAlarmMaskEdit", decimalHexText(pageData.global.independentAlarmMask, 4));
+        setText("ai8AlarmFunctionAEdit", decimalHexText(pageData.global.alarmFunctionA, 4));
+        setText("ai8AlarmFunctionBEdit", decimalHexText(pageData.global.alarmFunctionB, 4));
+        setText("ai8ParityFlagsEdit", decimalHexText(pageData.global.parityFlags, 4));
+        setText("ai8AlarmPolarityEdit", decimalHexText(pageData.global.alarmPolarity, 4));
+        setText("ai8ExtraHysteresisEdit", temperatureText(pageData.global.extraHysteresis));
+        setText("ai8MainStatusEdit", decimalHexText(pageData.global.mainStatusRaw, 4));
+        setText("ai8ModelFeatureEdit", hexText(pageData.global.modelFeature, 4));
+        setText("ai8SerialNumberEdit", hexText(pageData.global.serialNumber, 8));
+        setText("ai8OutputStartChannelEdit", decimalHexText(pageData.global.outputStartChannel, 4));
+        setText("ai8HighResolutionFilterEdit", decimalHexText(pageData.global.highResolutionFilter, 4));
+        setText("ai8Aif1Edit", decimalHexText(pageData.global.aif1, 4));
+        setText("ai8Aif2Edit", decimalHexText(pageData.global.aif2, 4));
+        setText("ai8P1faAif3Edit", decimalHexText(pageData.global.p1faAif3, 4));
+        setText("ai8DifaEdit", decimalHexText(pageData.global.difa, 4));
+        setText("ai8SpsrEdit", decimalHexText(pageData.global.spsr, 4));
+        setText("ai8AtFunctionEdit", decimalHexText(pageData.global.atFunction, 4));
+        setText("ai8AiflP1prEdit", decimalHexText(pageData.global.aiflP1pr, 4));
+        setText("ai8P1tiOpsnEdit", decimalHexText(pageData.global.p1tiOpsn, 4));
         break;
     }
     if (pageData.page == Ai8TemperatureControllerProtocol::Page::Channel)
@@ -862,6 +1061,7 @@ void Ai8TemperatureControllerPanel::applyPageData(
             }
         }
     }
+    updateAlarmStatusDisplay();
     updateTemperaturePlot();
 }
 
@@ -887,6 +1087,7 @@ void Ai8TemperatureControllerPanel::applyLiveData(
         }
     }
     updateMeasuredValue();
+    updateAlarmStatusDisplay();
     updateTemperaturePlot();
     emit outputStatusChanged();
 }
@@ -905,6 +1106,28 @@ void Ai8TemperatureControllerPanel::updateMeasuredValue()
         ? QString::number(latest_live_data_.measuredC[static_cast<size_t>(index)], 'f', 1) +
               QStringLiteral(" °C")
         : QStringLiteral("---"));
+}
+
+void Ai8TemperatureControllerPanel::updateAlarmStatusDisplay()
+{
+    auto *edit = findChild<QLineEdit *>(QStringLiteral("ai8ChannelAlarmStatusEdit"));
+    auto *channelSpin = findChild<QSpinBox *>(QStringLiteral("ai8ChannelSpin"));
+    if (!edit || !channelSpin)
+    {
+        return;
+    }
+    if (!latest_live_data_.alarmStatusValid)
+    {
+        return;
+    }
+    const int channel = std::clamp(channelSpin->value(),
+                                   1,
+                                   Ai8TemperatureControllerProtocol::kChannelCount);
+    const int registerIndex = (channel - 1) / 2;
+    const quint8 status = Ai8TemperatureControllerProtocol::decodeChannelAlarmStatus(
+        latest_live_data_.alarmStatusRegisters[static_cast<size_t>(registerIndex)],
+        channel);
+    edit->setText(decimalHexText(status, 2));
 }
 
 void Ai8TemperatureControllerPanel::updateTemperaturePlot()
