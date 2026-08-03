@@ -1198,66 +1198,105 @@ void MainWindow::updateTemperatureControllerTitleText()
 
 void MainWindow::updateTemperatureTitleButtonsState()
 {
-    const QString connectText = state_->is_english_ ? QStringLiteral("Connect") : QStringLiteral("连接");
-    const QString disconnectText = state_->is_english_ ? QStringLiteral("Disconnect") : QStringLiteral("断开");
-    const QString reconnectText = state_->is_english_ ? QStringLiteral("Reconnect") : QStringLiteral("重连");
-    if (state_->temperature_remote_connect_btn_) state_->temperature_remote_connect_btn_->setText(connectText);
-    if (state_->temperature_remote_disconnect_btn_) state_->temperature_remote_disconnect_btn_->setText(disconnectText);
-    if (state_->temperature_remote_reconnect_btn_) state_->temperature_remote_reconnect_btn_->setText(reconnectText);
-    for (QPushButton *button : {state_->temperature_remote_connect_btn_,
-                                state_->temperature_remote_disconnect_btn_,
-                                state_->temperature_remote_reconnect_btn_})
-    {
-        if (button)
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    auto updateTitleButton = [this, nowMs](QToolButton *button,
+                                           VaporView::CommandId command,
+                                           VaporView::SkyDeviceId device) {
+        if (!button)
         {
-            fitButtonMinimumWidth(button, 64);
+            return;
         }
-    }
 
-    if (isRemoteSkyMode())
-    {
-        const bool remoteCommandEnabled = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
-        if (state_->temperature_remote_connect_btn_) state_->temperature_remote_connect_btn_->setEnabled(remoteCommandEnabled);
-        if (state_->temperature_remote_disconnect_btn_) state_->temperature_remote_disconnect_btn_->setEnabled(remoteCommandEnabled);
-        if (state_->temperature_remote_reconnect_btn_) state_->temperature_remote_reconnect_btn_->setEnabled(remoteCommandEnabled);
-        updateRemoteDeviceButtonText(VaporView::SkyDeviceId::TemperatureController,
-                                     state_->remote_sky_controller_->deviceState(VaporView::SkyDeviceId::TemperatureController));
-        return;
-    }
+        const VaporView::DeviceState deviceState = homeDeviceActionState(device);
+        const bool connected = deviceState == VaporView::DeviceState::Connected;
+        const bool spinnerActive = deviceState == VaporView::DeviceState::Connecting ||
+            deviceState == VaporView::DeviceState::Reconnecting ||
+            homeDeviceActionSpinnerActive(device, nowMs);
+        const bool connectCommand = command == VaporView::CommandId::ConnectDevice;
+        const bool localActionIdle = !state_->connection_attempt_in_progress_ &&
+            !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
+        const bool remoteMode = isRemoteSkyMode();
+        const bool linkOpen = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
 
-    const bool hasPort = homeDevicePortSelected(VaporView::SkyDeviceId::TemperatureController);
-    const bool connected = homeDeviceConnected(VaporView::SkyDeviceId::TemperatureController);
-    const bool localActionIdle = !state_->connection_attempt_in_progress_ &&
-        !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
-    const bool canConnect = hasPort && !connected && localActionIdle;
-    const bool canDisconnect = connected && localActionIdle;
-    const bool canReconnect = hasPort && localActionIdle;
-    if (state_->temperature_remote_connect_btn_) state_->temperature_remote_connect_btn_->setEnabled(canConnect);
-    if (state_->temperature_remote_disconnect_btn_) state_->temperature_remote_disconnect_btn_->setEnabled(canDisconnect);
-    if (state_->temperature_remote_reconnect_btn_) state_->temperature_remote_reconnect_btn_->setEnabled(canReconnect);
+        bool enabled = false;
+        if (deviceState != VaporView::DeviceState::Disabled && !spinnerActive)
+        {
+            if (isUiTestMode())
+            {
+                enabled = connectCommand ? !connected : connected;
+            }
+            else if (remoteMode)
+            {
+                enabled = device != VaporView::SkyDeviceId::Ai8TemperatureController &&
+                    linkOpen &&
+                    (connectCommand ? !connected : connected);
+            }
+            else if (device == VaporView::SkyDeviceId::TemperatureController)
+            {
+                enabled = connectCommand
+                    ? homeDevicePortSelected(device) && !connected && localActionIdle
+                    : connected && localActionIdle;
+            }
+            else
+            {
+                enabled = connectCommand
+                    ? homeDevicePortSelected(device) && !connected &&
+                        state_->connect_btn_ && state_->connect_btn_->isEnabled()
+                    : connected && state_->disconnect_btn_ && state_->disconnect_btn_->isEnabled();
+            }
+        }
 
-    const QString portText = localSerialPortComboValue(state_->temperature_port_combo_);
-    const QString portDisplay = hasPort
-        ? portText
-        : (state_->is_english_ ? QStringLiteral("No serial port selected") : QStringLiteral("未选择串口"));
-    if (state_->temperature_remote_connect_btn_)
-    {
-        state_->temperature_remote_connect_btn_->setToolTip(state_->is_english_
-            ? QStringLiteral("Connect the local RD105 on %1").arg(portDisplay)
-            : QStringLiteral("连接本地 RD105：%1").arg(portDisplay));
-    }
-    if (state_->temperature_remote_disconnect_btn_)
-    {
-        state_->temperature_remote_disconnect_btn_->setToolTip(state_->is_english_
-            ? QStringLiteral("Disconnect the local RD105 on %1").arg(portDisplay)
-            : QStringLiteral("断开本地 RD105：%1").arg(portDisplay));
-    }
-    if (state_->temperature_remote_reconnect_btn_)
-    {
-        state_->temperature_remote_reconnect_btn_->setToolTip(state_->is_english_
-            ? QStringLiteral("Reconnect the local RD105 on %1").arg(portDisplay)
-            : QStringLiteral("重连本地 RD105：%1").arg(portDisplay));
-    }
+        if (spinnerActive && connectCommand)
+        {
+            button->setIcon(createRotatedLucideIcon(
+                QStringLiteral("link"),
+                toolbarColor(AppThemeColor::HomeDeviceSuccess),
+                (state_->home_device_action_spinner_step_ * 360) /
+                    kHomeDeviceActionSpinnerFrames));
+        }
+        else
+        {
+            button->setIcon(createLucideIcon(deviceConfigRemoteIconName(command),
+                                             deviceConfigRemoteIconColor(command)));
+        }
+        button->setEnabled(enabled);
+        button->setText(QString());
+        button->setProperty("connected", connected);
+        button->setProperty("state", spinnerActive && connectCommand
+            ? QStringLiteral("connecting")
+            : enabled
+                ? (connectCommand ? QStringLiteral("disconnected") : QStringLiteral("connected"))
+                : QStringLiteral("disabled"));
+
+        const QString deviceName = homeDeviceDisplayName(device, state_->is_english_);
+        const QString actionText = spinnerActive && connectCommand
+            ? (state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中"))
+            : deviceConfigRemoteActionText(command, state_->is_english_);
+        const QString modeHint = remoteMode
+            ? (state_->is_english_ ? QStringLiteral("remote Sky device") : QStringLiteral("天空端设备"))
+            : (state_->is_english_ ? QStringLiteral("local serial device") : QStringLiteral("本地串口设备"));
+        const QString tooltip = state_->is_english_
+            ? QStringLiteral("%1 %2 (%3)").arg(actionText, deviceName, modeHint)
+            : QStringLiteral("%1%2（%3）").arg(actionText, deviceName, modeHint);
+        button->setToolTip(tooltip);
+        button->setAccessibleName(tooltip);
+        button->setStatusTip(QString());
+        button->style()->unpolish(button);
+        button->style()->polish(button);
+    };
+
+    updateTitleButton(state_->temperature_title_connect_btn_,
+                      VaporView::CommandId::ConnectDevice,
+                      VaporView::SkyDeviceId::TemperatureController);
+    updateTitleButton(state_->temperature_title_disconnect_btn_,
+                      VaporView::CommandId::DisconnectDevice,
+                      VaporView::SkyDeviceId::TemperatureController);
+    updateTitleButton(state_->ai8_temperature_title_connect_btn_,
+                      VaporView::CommandId::ConnectDevice,
+                      VaporView::SkyDeviceId::Ai8TemperatureController);
+    updateTitleButton(state_->ai8_temperature_title_disconnect_btn_,
+                      VaporView::CommandId::DisconnectDevice,
+                      VaporView::SkyDeviceId::Ai8TemperatureController);
 }
 
 void MainWindow::handleTemperatureTitleButton(VaporView::CommandId command)

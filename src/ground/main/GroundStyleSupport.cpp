@@ -972,6 +972,29 @@ QLabel#statusIndicator[status="warning"] {
     color: @vv-warning;
 }
 )") + QStringLiteral(R"(
+QToolButton[temperatureTitleAction="true"] {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+    border-radius: 7px;
+    padding: 2px;
+}
+QToolButton[temperatureTitleAction="true"]:disabled {
+    background-color: @vv-surface-alt;
+    border-color: @vv-border;
+}
+QToolButton[temperatureTitleAction="true"][state="disconnected"],
+QToolButton[temperatureTitleAction="true"][state="connecting"] {
+    background-color: @vv-hd-ok-bg;
+    border-color: @vv-hd-ok;
+}
+QToolButton[temperatureTitleAction="true"][state="connected"] {
+    background-color: @vv-hd-bad-bg;
+    border-color: @vv-hd-bad;
+}
+QToolButton[temperatureTitleAction="true"]:hover {
+    background-color: @vv-primary-subtle;
+    border-color: @vv-border-strong;
+}
 QWidget#tcpWaveCardOutline {
     background-color: transparent;
     border: 1px solid @vv-border;
