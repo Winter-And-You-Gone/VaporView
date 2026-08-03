@@ -1443,35 +1443,35 @@ QLabel#homeDeviceStatusCapsule[state="connected"] {
 }
 
 QToolButton#homeDeviceActionButton {
-    background-color: transparent;
-    border: none;
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
     border-radius: 7px;
     padding: 2px;
 }
 
 QToolButton#homeDeviceActionButton:disabled {
-    background-color: transparent;
-    border: none;
+    background-color: @vv-surface-alt;
+    border-color: @vv-border;
 }
 
 QToolButton#homeDeviceActionButton[state="disconnected"] {
-    background-color: transparent;
-    border: none;
+    background-color: @vv-hd-ok-bg;
+    border-color: @vv-hd-ok;
 }
 
 QToolButton#homeDeviceActionButton[state="connecting"] {
-    background-color: transparent;
-    border: none;
+    background-color: @vv-hd-ok-bg;
+    border-color: @vv-hd-ok;
 }
 
 QToolButton#homeDeviceActionButton[state="connected"] {
-    background-color: transparent;
-    border: none;
+    background-color: @vv-hd-bad-bg;
+    border-color: @vv-hd-bad;
 }
 
 QToolButton#homeDeviceActionButton:hover {
-    background-color: @vv-surface-alt;
-    border: none;
+    background-color: @vv-primary-subtle;
+    border-color: @vv-border-strong;
 }
 
 QToolButton[temperatureTitleAction="true"] {

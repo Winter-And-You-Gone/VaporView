@@ -3913,25 +3913,53 @@ int main(int argc, char **argv)
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QToolButton#homeDeviceActionButton {"),
-        QStringLiteral("background-color: transparent"),
-        "home serial configuration action buttons are transparent by default");
+        QStringLiteral("background-color: ") +
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt,
+                                         homeDeviceActionDark),
+        "home device overview action buttons keep their gray background");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QToolButton#homeDeviceActionButton {"),
-        QStringLiteral("border: none"),
-        "home serial configuration action buttons have no visible edge by default");
+        QStringLiteral("border: 1px solid ") +
+            VaporView::appThemeColorName(VaporView::AppThemeColor::Border,
+                                         homeDeviceActionDark),
+        "home device overview action buttons keep their border");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QToolButton#homeDeviceActionButton:hover {"),
         QStringLiteral("background-color: ") +
-            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt,
+            VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtle,
                                          homeDeviceActionDark),
-        "home serial configuration action buttons show a gray background only on hover");
+        "home device overview action buttons keep their primary hover background");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QToolButton#homeDeviceActionButton:hover {"),
+        QStringLiteral("border-color: ") +
+            VaporView::appThemeColorName(VaporView::AppThemeColor::BorderStrong,
+                                         homeDeviceActionDark),
+        "home device overview action buttons keep their hover border");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QToolButton#homeDeviceActionButton[deviceConfigAction=\"true\"] {"),
+        QStringLiteral("background-color: transparent"),
+        "serial configuration action buttons are transparent by default");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QToolButton#homeDeviceActionButton[deviceConfigAction=\"true\"] {"),
         QStringLiteral("border: none"),
-        "home serial configuration action buttons have no hover edge");
+        "serial configuration action buttons have no visible edge by default");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QToolButton#homeDeviceActionButton[deviceConfigAction=\"true\"]:hover {"),
+        QStringLiteral("background-color: ") +
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt,
+                                         homeDeviceActionDark),
+        "serial configuration action buttons show a gray background only on hover");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QToolButton#homeDeviceActionButton[deviceConfigAction=\"true\"]:hover {"),
+        QStringLiteral("border: none"),
+        "serial configuration action buttons have no hover edge");
     for (QToolButton *button : homeDeviceActionButtons)
     {
         if (!button->property("deviceConfigAction").toBool())
