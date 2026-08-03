@@ -1200,7 +1200,6 @@ void MainWindow::updateTemperatureTitleButtonsState()
 {
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     auto updateTitleButton = [this, nowMs](QToolButton *button,
-                                           VaporView::CommandId command,
                                            VaporView::SkyDeviceId device) {
         if (!button)
         {
@@ -1212,7 +1211,9 @@ void MainWindow::updateTemperatureTitleButtonsState()
         const bool spinnerActive = deviceState == VaporView::DeviceState::Connecting ||
             deviceState == VaporView::DeviceState::Reconnecting ||
             homeDeviceActionSpinnerActive(device, nowMs);
-        const bool connectCommand = command == VaporView::CommandId::ConnectDevice;
+        const VaporView::CommandId command = connected
+            ? VaporView::CommandId::DisconnectDevice
+            : VaporView::CommandId::ConnectDevice;
         const bool localActionIdle = !state_->connection_attempt_in_progress_ &&
             !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
         const bool remoteMode = isRemoteSkyMode();
@@ -1223,30 +1224,29 @@ void MainWindow::updateTemperatureTitleButtonsState()
         {
             if (isUiTestMode())
             {
-                enabled = connectCommand ? !connected : connected;
+                enabled = true;
             }
             else if (remoteMode)
             {
                 enabled = device != VaporView::SkyDeviceId::Ai8TemperatureController &&
-                    linkOpen &&
-                    (connectCommand ? !connected : connected);
+                    linkOpen;
             }
             else if (device == VaporView::SkyDeviceId::TemperatureController)
             {
-                enabled = connectCommand
+                enabled = !connected
                     ? homeDevicePortSelected(device) && !connected && localActionIdle
                     : connected && localActionIdle;
             }
             else
             {
-                enabled = connectCommand
+                enabled = !connected
                     ? homeDevicePortSelected(device) && !connected &&
                         state_->connect_btn_ && state_->connect_btn_->isEnabled()
                     : connected && state_->disconnect_btn_ && state_->disconnect_btn_->isEnabled();
             }
         }
 
-        if (spinnerActive && connectCommand)
+        if (spinnerActive)
         {
             button->setIcon(createRotatedLucideIcon(
                 QStringLiteral("link"),
@@ -1256,20 +1256,27 @@ void MainWindow::updateTemperatureTitleButtonsState()
         }
         else
         {
-            button->setIcon(createLucideIcon(deviceConfigRemoteIconName(command),
-                                             deviceConfigRemoteIconColor(command)));
+            const QColor iconColor = connected
+                ? toolbarColor(AppThemeColor::HomeDeviceDanger)
+                : deviceState == VaporView::DeviceState::Disabled
+                    ? toolbarColor(AppThemeColor::ToolbarDisabled)
+                    : toolbarColor(AppThemeColor::HomeDeviceSuccess);
+            button->setIcon(createLucideIcon(deviceConfigRemoteIconName(command), iconColor));
         }
         button->setEnabled(enabled);
         button->setText(QString());
         button->setProperty("connected", connected);
-        button->setProperty("state", spinnerActive && connectCommand
+        button->setProperty("state", spinnerActive
             ? QStringLiteral("connecting")
-            : enabled
-                ? (connectCommand ? QStringLiteral("disconnected") : QStringLiteral("connected"))
-                : QStringLiteral("disabled"));
+            : deviceState == VaporView::DeviceState::Disabled
+                ? QStringLiteral("disabled")
+                : connected
+                    ? QStringLiteral("connected")
+                    : QStringLiteral("disconnected"));
+        button->setProperty("temperatureTitleCommand", deviceConfigRemoteActionKey(command));
 
         const QString deviceName = homeDeviceDisplayName(device, state_->is_english_);
-        const QString actionText = spinnerActive && connectCommand
+        const QString actionText = spinnerActive
             ? (state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中"))
             : deviceConfigRemoteActionText(command, state_->is_english_);
         const QString modeHint = remoteMode
@@ -1285,17 +1292,9 @@ void MainWindow::updateTemperatureTitleButtonsState()
         button->style()->polish(button);
     };
 
-    updateTitleButton(state_->temperature_title_connect_btn_,
-                      VaporView::CommandId::ConnectDevice,
+    updateTitleButton(state_->temperature_title_action_btn_,
                       VaporView::SkyDeviceId::TemperatureController);
-    updateTitleButton(state_->temperature_title_disconnect_btn_,
-                      VaporView::CommandId::DisconnectDevice,
-                      VaporView::SkyDeviceId::TemperatureController);
-    updateTitleButton(state_->ai8_temperature_title_connect_btn_,
-                      VaporView::CommandId::ConnectDevice,
-                      VaporView::SkyDeviceId::Ai8TemperatureController);
-    updateTitleButton(state_->ai8_temperature_title_disconnect_btn_,
-                      VaporView::CommandId::DisconnectDevice,
+    updateTitleButton(state_->ai8_temperature_title_action_btn_,
                       VaporView::SkyDeviceId::Ai8TemperatureController);
 }
 

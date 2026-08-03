@@ -3907,12 +3907,11 @@ void MainWindow::setupDataPanels()
 
     auto createTemperatureTitleActionButton = [this](QWidget *parent,
                                                      const QString& objectName,
-                                                     VaporView::CommandId command,
                                                      VaporView::SkyDeviceId device) {
         auto *button = new QToolButton(parent);
         button->setObjectName(objectName);
         button->setProperty("temperatureTitleAction", true);
-        button->setProperty("temperatureTitleCommand", deviceConfigRemoteActionKey(command));
+        button->setProperty("temperatureTitleCommand", deviceConfigRemoteActionKey(VaporView::CommandId::ConnectDevice));
         button->setProperty("temperatureTitleDevice", static_cast<int>(device));
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
         button->setIconSize(QSize(kHomeDeviceIconSize, kHomeDeviceIconSize));
@@ -3922,8 +3921,8 @@ void MainWindow::setupDataPanels()
         button->setCursor(Qt::PointingHandCursor);
         button->setText(QString());
         button->setStatusTip(QString());
-        button->setIcon(createLucideIcon(deviceConfigRemoteIconName(command),
-                                         deviceConfigRemoteIconColor(command)));
+        button->setIcon(createLucideIcon(deviceConfigRemoteIconName(VaporView::CommandId::ConnectDevice),
+                                         toolbarColor(AppThemeColor::HomeDeviceSuccess)));
         return button;
     };
 
@@ -3974,24 +3973,25 @@ void MainWindow::setupDataPanels()
                 }
             });
     temperatureTitleLayout->addWidget(state_->temperature_title_port_combo_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    state_->temperature_title_connect_btn_ = createTemperatureTitleActionButton(
+    state_->temperature_title_action_btn_ = createTemperatureTitleActionButton(
         temperatureTitleBar,
-        QStringLiteral("temperatureTitleConnectButton"),
-        VaporView::CommandId::ConnectDevice,
+        QStringLiteral("temperatureTitleActionButton"),
         VaporView::SkyDeviceId::TemperatureController);
-    state_->temperature_title_disconnect_btn_ = createTemperatureTitleActionButton(
-        temperatureTitleBar,
-        QStringLiteral("temperatureTitleDisconnectButton"),
-        VaporView::CommandId::DisconnectDevice,
-        VaporView::SkyDeviceId::TemperatureController);
-    connect(state_->temperature_title_connect_btn_, &QToolButton::clicked, this, [this]() {
-        handleTemperatureTitleButton(VaporView::CommandId::ConnectDevice);
+    connect(state_->temperature_title_action_btn_, &QToolButton::clicked, this, [this]() {
+        const VaporView::DeviceState state =
+            homeDeviceActionState(VaporView::SkyDeviceId::TemperatureController);
+        if (state == VaporView::DeviceState::Connecting ||
+            state == VaporView::DeviceState::Reconnecting ||
+            state == VaporView::DeviceState::Disabled)
+        {
+            return;
+        }
+        handleTemperatureTitleButton(
+            state == VaporView::DeviceState::Connected
+                ? VaporView::CommandId::DisconnectDevice
+                : VaporView::CommandId::ConnectDevice);
     });
-    connect(state_->temperature_title_disconnect_btn_, &QToolButton::clicked, this, [this]() {
-        handleTemperatureTitleButton(VaporView::CommandId::DisconnectDevice);
-    });
-    temperatureTitleLayout->addWidget(state_->temperature_title_connect_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    temperatureTitleLayout->addWidget(state_->temperature_title_disconnect_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    temperatureTitleLayout->addWidget(state_->temperature_title_action_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     temperatureTitleLayout->addStretch(1);
     updateTemperatureControllerTitleText();
     temperatureLayout->addWidget(temperatureTitleBar);
@@ -4174,35 +4174,22 @@ void MainWindow::setupDataPanels()
         getAvailablePorts(),
         localSerialPortComboValue(state_->device_config_.ai8_temperature_port_combo));
     ai8TitleLayout->addWidget(state_->ai8_temperature_title_port_combo_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    state_->ai8_temperature_title_connect_btn_ = createTemperatureTitleActionButton(
+    state_->ai8_temperature_title_action_btn_ = createTemperatureTitleActionButton(
         ai8TitleBar,
-        QStringLiteral("ai8TitleConnectButton"),
-        VaporView::CommandId::ConnectDevice,
+        QStringLiteral("ai8TitleActionButton"),
         VaporView::SkyDeviceId::Ai8TemperatureController);
-    state_->ai8_temperature_title_disconnect_btn_ = createTemperatureTitleActionButton(
-        ai8TitleBar,
-        QStringLiteral("ai8TitleDisconnectButton"),
-        VaporView::CommandId::DisconnectDevice,
-        VaporView::SkyDeviceId::Ai8TemperatureController);
-    auto triggerAi8TitleAction = [this](VaporView::CommandId command) {
+    connect(state_->ai8_temperature_title_action_btn_, &QToolButton::clicked, this, [this]() {
         const VaporView::DeviceState state =
             homeDeviceActionState(VaporView::SkyDeviceId::Ai8TemperatureController);
-        if ((command == VaporView::CommandId::ConnectDevice &&
-             state != VaporView::DeviceState::Connected) ||
-            (command == VaporView::CommandId::DisconnectDevice &&
-             state == VaporView::DeviceState::Connected))
+        if (state == VaporView::DeviceState::Connecting ||
+            state == VaporView::DeviceState::Reconnecting ||
+            state == VaporView::DeviceState::Disabled)
         {
-            triggerHomeDeviceAction(VaporView::SkyDeviceId::Ai8TemperatureController);
+            return;
         }
-    };
-    connect(state_->ai8_temperature_title_connect_btn_, &QToolButton::clicked, this, [triggerAi8TitleAction]() {
-        triggerAi8TitleAction(VaporView::CommandId::ConnectDevice);
+        triggerHomeDeviceAction(VaporView::SkyDeviceId::Ai8TemperatureController);
     });
-    connect(state_->ai8_temperature_title_disconnect_btn_, &QToolButton::clicked, this, [triggerAi8TitleAction]() {
-        triggerAi8TitleAction(VaporView::CommandId::DisconnectDevice);
-    });
-    ai8TitleLayout->addWidget(state_->ai8_temperature_title_connect_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    ai8TitleLayout->addWidget(state_->ai8_temperature_title_disconnect_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    ai8TitleLayout->addWidget(state_->ai8_temperature_title_action_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     ai8TitleLayout->addStretch(1);
     ai8Layout->addWidget(ai8TitleBar);
 

@@ -315,10 +315,8 @@ struct MainWindowState
     QLabel *ai8_temperature_controller_inline_title_lbl_;
     QComboBox *temperature_title_port_combo_;
     QComboBox *ai8_temperature_title_port_combo_;
-    QToolButton *temperature_title_connect_btn_;
-    QToolButton *temperature_title_disconnect_btn_;
-    QToolButton *ai8_temperature_title_connect_btn_;
-    QToolButton *ai8_temperature_title_disconnect_btn_;
+    QToolButton *temperature_title_action_btn_;
+    QToolButton *ai8_temperature_title_action_btn_;
     VaporView::Ground::Widgets::TemperatureControllerOverviewPanel *temperature_overview_panel_;
     QLabel *config_inline_title_lbl_;
     QLabel *global_rate_lbl_;

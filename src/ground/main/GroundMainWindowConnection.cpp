@@ -544,13 +544,14 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
                  VaporView::SkyDeviceId::TemperatureController);
     updateButton(state_->device_config_.ai8_temperature_remote_action_btn,
                  VaporView::SkyDeviceId::Ai8TemperatureController);
-    updateButton(state_->temperature_title_connect_btn_,
+    updateButton(state_->temperature_title_action_btn_,
                  VaporView::SkyDeviceId::TemperatureController);
-    updateButton(state_->ai8_temperature_title_connect_btn_,
+    updateButton(state_->ai8_temperature_title_action_btn_,
                  VaporView::SkyDeviceId::Ai8TemperatureController);
     if (needsFullRefresh)
     {
         updateHomeDeviceStatusCapsules();
+        updateTemperatureTitleButtonsState();
         updateDeviceConfigState();
         return;
     }

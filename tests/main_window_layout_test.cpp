@@ -3993,27 +3993,20 @@ int main(int argc, char **argv)
         QStringLiteral("QComboBox#ai8TitlePortCombo {"),
         QStringLiteral("background-color: transparent"),
         "AI-8 title serial selector shares the RD105 transparent title style");
-    auto *ai8TitleConnectButton =
-        ai8TemperatureCard->findChild<QToolButton *>(QStringLiteral("ai8TitleConnectButton"));
-    auto *ai8TitleDisconnectButton =
-        ai8TemperatureCard->findChild<QToolButton *>(QStringLiteral("ai8TitleDisconnectButton"));
-    require(ai8TitleConnectButton != nullptr &&
-                ai8TitleDisconnectButton != nullptr &&
-                ai8TitleLayout->indexOf(ai8TitleConnectButton) ==
+    auto *ai8TitleActionButton =
+        ai8TemperatureCard->findChild<QToolButton *>(QStringLiteral("ai8TitleActionButton"));
+    require(ai8TitleActionButton != nullptr &&
+                ai8TemperatureCard->findChild<QToolButton *>(QStringLiteral("ai8TitleConnectButton")) == nullptr &&
+                ai8TemperatureCard->findChild<QToolButton *>(QStringLiteral("ai8TitleDisconnectButton")) == nullptr &&
+                ai8TitleLayout->indexOf(ai8TitleActionButton) ==
                     ai8TitleLayout->indexOf(ai8TitlePortCombo) + 1 &&
-                ai8TitleLayout->indexOf(ai8TitleDisconnectButton) ==
-                    ai8TitleLayout->indexOf(ai8TitlePortCombo) + 2 &&
-                ai8TitleConnectButton->property("temperatureTitleAction").toBool() &&
-                ai8TitleDisconnectButton->property("temperatureTitleAction").toBool() &&
-                ai8TitleConnectButton->text().isEmpty() &&
-                ai8TitleDisconnectButton->text().isEmpty() &&
-                !ai8TitleConnectButton->icon().isNull() &&
-                !ai8TitleDisconnectButton->icon().isNull() &&
-                ai8TitleConnectButton->iconSize() == QSize(18, 18) &&
-                ai8TitleDisconnectButton->iconSize() == QSize(18, 18) &&
-                ai8TitleConnectButton->size() == QSize(32, 32) &&
-                ai8TitleDisconnectButton->size() == QSize(32, 32),
-            "AI-8 title serial selector is followed by connect/disconnect icon actions");
+                ai8TitleActionButton->property("temperatureTitleAction").toBool() &&
+                ai8TitleActionButton->property("temperatureTitleCommand").toString() == QStringLiteral("connect") &&
+                ai8TitleActionButton->text().isEmpty() &&
+                !ai8TitleActionButton->icon().isNull() &&
+                ai8TitleActionButton->iconSize() == QSize(18, 18) &&
+                ai8TitleActionButton->size() == QSize(32, 32),
+            "AI-8 title serial selector is followed by one stateful connection icon action");
     require(qApp->styleSheet().contains(QStringLiteral("QToolButton[temperatureTitleAction=\"true\"]")),
             "temperature title icon actions reuse the home device icon-button style");
 
@@ -4934,6 +4927,8 @@ int main(int argc, char **argv)
             "temperature title serial selector opens its current port choices without a redundant check slot");
     temperatureTitlePortCombo->hidePopup();
     processEventsFor(40);
+    auto *temperatureTitleActionButton =
+        temperaturePageForLayout->findChild<QToolButton *>(QStringLiteral("temperatureTitleActionButton"));
     auto *temperatureTitleConnectButton =
         temperaturePageForLayout->findChild<QToolButton *>(QStringLiteral("temperatureTitleConnectButton"));
     auto *temperatureTitleDisconnectButton =
@@ -4943,46 +4938,35 @@ int main(int argc, char **argv)
     auto *temperatureTitleLayout = temperatureTitlePortCombo
         ? qobject_cast<QHBoxLayout *>(temperatureTitlePortCombo->parentWidget()->layout())
         : nullptr;
-    require(temperatureTitleConnectButton != nullptr &&
-                temperatureTitleDisconnectButton != nullptr &&
+    require(temperatureTitleActionButton != nullptr &&
+                temperatureTitleConnectButton == nullptr &&
+                temperatureTitleDisconnectButton == nullptr &&
                 temperatureTitleReconnectButton == nullptr &&
                 temperatureTitleLayout != nullptr &&
-                temperatureTitleLayout->indexOf(temperatureTitleConnectButton) ==
+                temperatureTitleLayout->indexOf(temperatureTitleActionButton) ==
                     temperatureTitleLayout->indexOf(temperatureTitlePortCombo) + 1 &&
-                temperatureTitleLayout->indexOf(temperatureTitleDisconnectButton) ==
-                    temperatureTitleLayout->indexOf(temperatureTitlePortCombo) + 2 &&
-                temperatureTitleConnectButton->property("temperatureTitleAction").toBool() &&
-                temperatureTitleDisconnectButton->property("temperatureTitleAction").toBool() &&
-                temperatureTitleConnectButton->text().isEmpty() &&
-                temperatureTitleDisconnectButton->text().isEmpty() &&
-                !temperatureTitleConnectButton->icon().isNull() &&
-                !temperatureTitleDisconnectButton->icon().isNull() &&
-                temperatureTitleConnectButton->iconSize() == QSize(18, 18) &&
-                temperatureTitleDisconnectButton->iconSize() == QSize(18, 18) &&
-                temperatureTitleConnectButton->size() == QSize(32, 32) &&
-                temperatureTitleDisconnectButton->size() == QSize(32, 32),
-            "temperature controller title-bar connection actions are icon-only and sit after the serial selector");
-    require(temperatureTitleConnectButton->isEnabled() &&
-                !temperatureTitleDisconnectButton->isEnabled(),
-            "temperature controller title-bar connect action is usable in local serial mode");
+                temperatureTitleActionButton->property("temperatureTitleAction").toBool() &&
+                temperatureTitleActionButton->property("temperatureTitleCommand").toString() == QStringLiteral("connect") &&
+                temperatureTitleActionButton->text().isEmpty() &&
+                !temperatureTitleActionButton->icon().isNull() &&
+                temperatureTitleActionButton->iconSize() == QSize(18, 18) &&
+                temperatureTitleActionButton->size() == QSize(32, 32),
+            "temperature controller title-bar connection action is one icon-only state button after the serial selector");
+    require(temperatureTitleActionButton->isEnabled(),
+            "temperature controller title-bar state action is usable in local serial mode");
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
     std::vector<VaporView::CommandId> temperatureTitleCommands;
     window.testSetLocalTemperatureCommandObserver([&temperatureTitleCommands](VaporView::CommandId command) {
         temperatureTitleCommands.push_back(command);
     });
-    const bool temperatureConnectWasEnabled = temperatureTitleConnectButton->isEnabled();
-    const bool temperatureDisconnectWasEnabled = temperatureTitleDisconnectButton->isEnabled();
-    temperatureTitleConnectButton->setEnabled(true);
-    temperatureTitleDisconnectButton->setEnabled(true);
-    temperatureTitleConnectButton->click();
-    temperatureTitleDisconnectButton->click();
+    const bool temperatureActionWasEnabled = temperatureTitleActionButton->isEnabled();
+    temperatureTitleActionButton->setEnabled(true);
+    temperatureTitleActionButton->click();
     require(temperatureTitleCommands ==
-                std::vector<VaporView::CommandId>{VaporView::CommandId::ConnectDevice,
-                                                  VaporView::CommandId::DisconnectDevice},
-            "temperature title buttons dispatch only local RD105 device commands");
+                std::vector<VaporView::CommandId>{VaporView::CommandId::ConnectDevice},
+            "temperature title state button dispatches the current local RD105 device command");
     window.testSetLocalTemperatureCommandObserver({});
-    temperatureTitleConnectButton->setEnabled(temperatureConnectWasEnabled);
-    temperatureTitleDisconnectButton->setEnabled(temperatureDisconnectWasEnabled);
+    temperatureTitleActionButton->setEnabled(temperatureActionWasEnabled);
 #endif
     auto *temperatureConfigCard =
         temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureConfigCard"));

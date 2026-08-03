@@ -322,17 +322,29 @@ int main(int argc, char **argv)
             "AI-8288 home connection action starts connected in UI test mode");
     require(ai8DeviceAction != nullptr && ai8DeviceAction->isEnabled(),
             "AI-8288 device configuration connection action exists and is enabled");
+    auto *ai8TitleAction = window->findChild<QToolButton *>(QStringLiteral("ai8TitleActionButton"));
+    require(ai8TitleAction != nullptr &&
+                window->findChild<QToolButton *>(QStringLiteral("ai8TitleConnectButton")) == nullptr &&
+                window->findChild<QToolButton *>(QStringLiteral("ai8TitleDisconnectButton")) == nullptr &&
+                ai8TitleAction->property("temperatureTitleCommand").toString() == QStringLiteral("disconnect"),
+            "AI-8288 temperature title uses one connected-state icon action");
     ai8HomeAction->click();
     processEvents();
     require(ai8HomeAction->isEnabled() &&
                 ai8HomeAction->property("state").toString() == QStringLiteral("disconnected"),
             "AI-8288 home action supports simulated disconnect");
+    require(ai8TitleAction->isEnabled() &&
+                ai8TitleAction->property("temperatureTitleCommand").toString() == QStringLiteral("connect"),
+            "AI-8288 temperature title reuses the same icon action for reconnect");
     ai8HomeAction->click();
     require(VaporViewTest::processEventsUntil(2000, [ai8HomeAction]() {
                 return ai8HomeAction->isEnabled() &&
                     ai8HomeAction->property("state").toString() == QStringLiteral("connected");
             }),
             "AI-8288 home action supports simulated reconnect");
+    require(ai8TitleAction->isEnabled() &&
+                ai8TitleAction->property("temperatureTitleCommand").toString() == QStringLiteral("disconnect"),
+            "AI-8288 temperature title icon action returns to disconnect state after reconnect");
 
     auto *temperaturePage = window->findChild<QWidget *>(QStringLiteral("temperaturePage"));
     auto *ai8Panel = window->findChild<QWidget *>(QStringLiteral("ai8TemperatureControllerPanel"));
