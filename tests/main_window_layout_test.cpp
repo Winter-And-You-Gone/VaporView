@@ -3908,6 +3908,30 @@ int main(int argc, char **argv)
             "home device overview includes seven connection action buttons");
     requireHomeDeviceColumnsAligned(&window);
     requireHomeDeviceMinimumWidthMatchesControls(&window);
+    const bool homeDeviceActionDark =
+        qApp->property(VaporView::kAppDarkThemeProperty).toBool();
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QToolButton#homeDeviceActionButton {"),
+        QStringLiteral("background-color: transparent"),
+        "home serial configuration action buttons are transparent by default");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QToolButton#homeDeviceActionButton {"),
+        QStringLiteral("border: none"),
+        "home serial configuration action buttons have no visible edge by default");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QToolButton#homeDeviceActionButton:hover {"),
+        QStringLiteral("background-color: ") +
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt,
+                                         homeDeviceActionDark),
+        "home serial configuration action buttons show a gray background only on hover");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QToolButton#homeDeviceActionButton:hover {"),
+        QStringLiteral("border: none"),
+        "home serial configuration action buttons have no hover edge");
     for (QToolButton *button : homeDeviceActionButtons)
     {
         if (!button->property("deviceConfigAction").toBool())

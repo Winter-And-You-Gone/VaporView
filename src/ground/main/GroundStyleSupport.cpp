@@ -926,37 +926,37 @@ QLabel#homeDeviceStatusCapsule[state="connected"] {
     color: @vv-hd-ok;
 }
 QToolButton#homeDeviceActionButton {
-    background-color: @vv-surface-alt;
-    border: 1px solid @vv-border;
+    background-color: transparent;
+    border: none;
     border-radius: 7px;
     padding: 2px;
 }
 QToolButton#homeDeviceActionButton:disabled {
-    background-color: @vv-surface-alt;
-    border-color: @vv-border;
+    background-color: transparent;
+    border: none;
 }
 QToolButton#homeDeviceActionButton[state="disconnected"] {
-    background-color: @vv-hd-ok-bg;
-    border-color: @vv-hd-ok;
+    background-color: transparent;
+    border: none;
 }
 QToolButton#homeDeviceActionButton[state="connecting"] {
-    background-color: @vv-hd-ok-bg;
-    border-color: @vv-hd-ok;
+    background-color: transparent;
+    border: none;
 }
 QToolButton#homeDeviceActionButton[state="connected"] {
-    background-color: @vv-hd-bad-bg;
-    border-color: @vv-hd-bad;
+    background-color: transparent;
+    border: none;
 }
 QToolButton#homeDeviceActionButton:hover {
-    background-color: @vv-primary-subtle;
-    border-color: @vv-border-strong;
+    background-color: @vv-surface-alt;
+    border: none;
 }
 QToolButton#homeDeviceActionButton[deviceConfigAction="true"] {
     background-color: transparent;
     border: none;
 }
 QToolButton#homeDeviceActionButton[deviceConfigAction="true"]:hover {
-    background-color: @vv-primary-subtle;
+    background-color: @vv-surface-alt;
     border: none;
 }
 QLabel#statusIndicator[status="connected"] {
