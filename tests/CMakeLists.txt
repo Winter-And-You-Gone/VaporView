@@ -166,6 +166,7 @@ target_include_directories(ai8_temperature_controller_panel_test PRIVATE
 )
 target_link_libraries(ai8_temperature_controller_panel_test PRIVATE
     vaporview_ground_widgets
+    vaporview_sky_core
 )
 add_dependencies(ai8_temperature_controller_panel_test VaporViewRuntimeResources)
 add_test(NAME ai8_temperature_controller_panel_test COMMAND ai8_temperature_controller_panel_test)

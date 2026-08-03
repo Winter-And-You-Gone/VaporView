@@ -293,6 +293,9 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
 
     result.ai8Temperature.valid =
         connected(deviceState(SkyDeviceId::Ai8TemperatureController)) && !stalled;
+    result.ai8Temperature.controlStatesValid = result.ai8Temperature.valid;
+    result.ai8Temperature.controlStates.fill(
+        Ai8TemperatureControllerProtocol::ChannelControlState::ApidOutput);
     for (int index = 0; index < Ai8TemperatureControllerProtocol::kChannelCount; ++index)
     {
         const double channelOffset = static_cast<double>(index) * 0.65;

@@ -4190,6 +4190,11 @@ void MainWindow::setupDataPanels()
         triggerHomeDeviceAction(VaporView::SkyDeviceId::Ai8TemperatureController);
     });
     ai8TitleLayout->addWidget(state_->ai8_temperature_title_action_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    state_->ai8_temperature_title_status_lbl_ = new QLabel(ai8TitleBar);
+    state_->ai8_temperature_title_status_lbl_->setObjectName(QStringLiteral("ai8TitleOutputStatusLabel"));
+    state_->ai8_temperature_title_status_lbl_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    state_->ai8_temperature_title_status_lbl_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    ai8TitleLayout->addWidget(state_->ai8_temperature_title_status_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     ai8TitleLayout->addStretch(1);
     ai8Layout->addWidget(ai8TitleBar);
 
@@ -4203,6 +4208,11 @@ void MainWindow::setupDataPanels()
             &Ai8TemperatureControllerPanel::writePageRequested,
             this,
             &MainWindow::onAi8WritePageRequested);
+    connect(state_->ai8_temperature_controller_panel_,
+            &Ai8TemperatureControllerPanel::outputStatusChanged,
+            this,
+            &MainWindow::updateAi8TemperatureTitleStatus);
+    updateAi8TemperatureTitleStatus();
     ai8Layout->addWidget(state_->ai8_temperature_controller_panel_);
 
     state_->device_panel_coordinator_ = std::make_unique<DevicePanelCoordinator>(DevicePanelBindings{

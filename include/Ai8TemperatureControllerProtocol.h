@@ -11,6 +11,15 @@ namespace VaporView::Ai8TemperatureControllerProtocol
 
 constexpr int kChannelCount = 8;
 constexpr int kParameterGroupCount = 4;
+constexpr int kControlStatusRegisterCount = (kChannelCount + 1) / 2;
+
+enum class ChannelControlState : quint8
+{
+    Unknown = 0,
+    ApidOutput,
+    AutoTuning,
+    Stopped,
+};
 
 enum class Page
 {
@@ -32,6 +41,7 @@ enum class Register : quint16
     WorkModeBase = 0x0300,
     ManualOutputBase = 0x0360,
     MeasuredValueBase = 0x0600,
+    ControlStatusBase = 0x06C0,
     InputTypeBase = 0x0800,
     ScaleLowBase = 0x0804,
     ScaleHighBase = 0x0808,
@@ -126,7 +136,9 @@ struct PageData
 struct LiveData
 {
     std::array<double, kChannelCount> measuredC{};
+    std::array<ChannelControlState, kChannelCount> controlStates{};
     bool valid = false;
+    bool controlStatesValid = false;
     QString errorMessage;
 };
 
@@ -140,6 +152,8 @@ double decodeSignedTenths(quint16 value);
 double decodeUnsignedTenths(quint16 value);
 double decodeSignedHundredths(quint16 value);
 double decodeManualOutput(quint16 value);
+ChannelControlState decodeChannelControlState(quint16 statusRegister, int channel);
+QString channelControlStateName(ChannelControlState state, bool english);
 quint16 encodeChannelInput(int group, int correctionEntry);
 int decodeChannelInputGroup(quint16 value);
 int decodeCorrectionEntry(quint16 value);

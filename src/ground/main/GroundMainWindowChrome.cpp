@@ -567,6 +567,7 @@ void MainWindow::setEnglish(bool english)
     {
         state_->ai8_temperature_controller_panel_->setEnglish(english);
     }
+    updateAi8TemperatureTitleStatus();
     updateTemperatureTitleButtonsState();
     if (state_->global_rate_lbl_) state_->global_rate_lbl_->setText(english ? "Global Rate:" : "统一频率:");
     if (state_->epsilon_rate_lbl_) state_->epsilon_rate_lbl_->setText(english ? "Packets:" : "包频率:");

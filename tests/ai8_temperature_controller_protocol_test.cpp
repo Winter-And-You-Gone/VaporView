@@ -32,6 +32,14 @@ int main()
     require(Ai8::groupRegister(Ai8::Register::InputTypeBase, 4) == 0x0803 &&
                 Ai8::groupRegister(Ai8::Register::ControlActionBase, 4) == 0x082F,
             "AI-8288 parameter group register range mismatch");
+    require(static_cast<quint16>(Ai8::Register::ControlStatusBase) == 0x06C0 &&
+                Ai8::kControlStatusRegisterCount == 4,
+            "AI-8288 control status register range mismatch");
+    require(Ai8::decodeChannelControlState(0x0000, 1) == Ai8::ChannelControlState::AutoTuning &&
+                Ai8::decodeChannelControlState(0x0100, 1) == Ai8::ChannelControlState::ApidOutput &&
+                Ai8::decodeChannelControlState(0x0201, 1) == Ai8::ChannelControlState::Stopped &&
+                Ai8::decodeChannelControlState(0x0201, 2) == Ai8::ChannelControlState::ApidOutput,
+            "AI-8288 channel control status decoding mismatch");
 
     require(Ai8::encodeSignedTenths(-12.3) == static_cast<quint16>(static_cast<qint16>(-123)) &&
                 std::fabs(Ai8::decodeSignedTenths(Ai8::encodeSignedTenths(-12.3)) + 12.3) < 0.001,

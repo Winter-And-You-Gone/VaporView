@@ -29,6 +29,7 @@ public:
     void setEnglish(bool english);
     void setBackendConnected(bool connected, const QString& detail = QString());
     void setOperationStatus(const QString& text, bool success);
+    QString currentOutputStatusText() const;
     Ai8TemperatureControllerProtocol::PageData currentPageData() const;
     void applyPageData(const Ai8TemperatureControllerProtocol::PageData& pageData);
     void applyLiveData(const Ai8TemperatureControllerProtocol::LiveData& liveData);
@@ -36,6 +37,7 @@ public:
 signals:
     void readPageRequested();
     void writePageRequested();
+    void outputStatusChanged();
 
 private:
     struct LabelBinding

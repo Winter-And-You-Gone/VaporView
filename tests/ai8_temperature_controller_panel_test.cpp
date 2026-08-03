@@ -84,6 +84,9 @@ int main(int argc, char **argv)
     setpointSpin->setValue(23.0);
     VaporView::Ai8TemperatureControllerProtocol::LiveData liveData;
     liveData.valid = true;
+    liveData.controlStatesValid = true;
+    liveData.controlStates.fill(
+        VaporView::Ai8TemperatureControllerProtocol::ChannelControlState::ApidOutput);
     liveData.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
     liveData.measuredC[0] = 23.4;
     panel.applyLiveData(liveData);
@@ -97,13 +100,19 @@ int main(int argc, char **argv)
     require(temperaturePlot->property("yAxisMinC").toDouble() == 22.0 &&
                 temperaturePlot->property("yAxisMaxC").toDouble() == 24.0,
             "AI-8 temperature plot uses a one-degree target-centered axis range");
+    require(panel.currentOutputStatusText() == QStringLiteral("通道1：APID输出"),
+            "AI-8 title status reports the selected channel output state");
 
     liveData.measuredC[1] = 24.1;
+    liveData.controlStates[1] =
+        VaporView::Ai8TemperatureControllerProtocol::ChannelControlState::Stopped;
     panel.applyLiveData(liveData);
     channelSpin->setValue(2);
     QApplication::processEvents();
     require(temperaturePlot->property("sampleCount").toInt() == 1,
             "AI-8 temperature plot follows the selected channel history");
+    require(panel.currentOutputStatusText() == QStringLiteral("通道2：停止输出"),
+            "AI-8 title status follows the selected channel");
     panel.setEnglish(true);
     QApplication::processEvents();
     require(channelButton->text() == QStringLiteral("Channel") &&

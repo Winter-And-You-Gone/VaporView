@@ -1196,6 +1196,24 @@ void MainWindow::updateTemperatureControllerTitleText()
     state_->temperature_title_port_combo_->updateGeometry();
 }
 
+void MainWindow::updateAi8TemperatureTitleStatus()
+{
+    if (!state_->ai8_temperature_title_status_lbl_)
+    {
+        return;
+    }
+
+    const QString text = state_->ai8_temperature_controller_panel_
+        ? state_->ai8_temperature_controller_panel_->currentOutputStatusText()
+        : (state_->is_english_ ? QStringLiteral("Output: --") : QStringLiteral("输出：--"));
+    state_->ai8_temperature_title_status_lbl_->setText(text);
+    const QString toolTip = state_->is_english_
+        ? QStringLiteral("Current AI-8 output state for the selected channel")
+        : QStringLiteral("当前选中 AI-8 通道的输出状态");
+    state_->ai8_temperature_title_status_lbl_->setToolTip(toolTip);
+    state_->ai8_temperature_title_status_lbl_->setAccessibleName(toolTip);
+}
+
 void MainWindow::updateTemperatureTitleButtonsState()
 {
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();

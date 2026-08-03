@@ -4047,8 +4047,10 @@ int main(int argc, char **argv)
         "AI-8 title serial selector shares the RD105 transparent title style");
     auto *ai8TitleActionButton =
         ai8TemperatureCard->findChild<QToolButton *>(QStringLiteral("ai8TitleActionButton"));
+    auto *ai8TitleStatusLabel =
+        ai8TemperatureCard->findChild<QLabel *>(QStringLiteral("ai8TitleOutputStatusLabel"));
     require(ai8TitleActionButton != nullptr &&
-                ai8TemperatureCard->findChild<QToolButton *>(QStringLiteral("ai8TitleConnectButton")) == nullptr &&
+            ai8TemperatureCard->findChild<QToolButton *>(QStringLiteral("ai8TitleConnectButton")) == nullptr &&
                 ai8TemperatureCard->findChild<QToolButton *>(QStringLiteral("ai8TitleDisconnectButton")) == nullptr &&
                 ai8TitleLayout->indexOf(ai8TitleActionButton) ==
                     ai8TitleLayout->indexOf(ai8TitlePortCombo) + 1 &&
@@ -4059,6 +4061,11 @@ int main(int argc, char **argv)
                 ai8TitleActionButton->iconSize() == QSize(18, 18) &&
                 ai8TitleActionButton->size() == QSize(32, 32),
             "AI-8 title serial selector is followed by one stateful connection icon action");
+    require(ai8TitleStatusLabel != nullptr &&
+                ai8TitleLayout->indexOf(ai8TitleStatusLabel) ==
+                    ai8TitleLayout->indexOf(ai8TitleActionButton) + 1 &&
+                ai8TitleStatusLabel->text() == QStringLiteral("输出：--"),
+            "AI-8 title shows the selected channel output state after the connection icon");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QToolButton[temperatureTitleAction=\"true\"] {"),

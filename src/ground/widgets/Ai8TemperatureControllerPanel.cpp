@@ -222,6 +222,7 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
             [this]() {
                 updateMeasuredValue();
                 updateTemperaturePlot();
+                emit outputStatusChanged();
             });
     auto *setpointSpin = createDoubleSpinBox(page,
                                               QStringLiteral("ai8SetpointSpin"),
@@ -516,6 +517,7 @@ void Ai8TemperatureControllerPanel::setEnglish(bool english)
         temperature_plot_->setEnglish(english);
     }
     updateGeometry();
+    emit outputStatusChanged();
 }
 
 void Ai8TemperatureControllerPanel::setBackendConnected(bool connected, const QString& detail)
@@ -529,6 +531,7 @@ void Ai8TemperatureControllerPanel::setBackendConnected(bool connected, const QS
     if (read_button_) read_button_->setEnabled(connected);
     if (write_button_) write_button_->setEnabled(connected);
     updateStatusText();
+    emit outputStatusChanged();
 }
 
 void Ai8TemperatureControllerPanel::setOperationStatus(const QString& text, bool success)
@@ -536,6 +539,27 @@ void Ai8TemperatureControllerPanel::setOperationStatus(const QString& text, bool
     operation_status_ = text;
     operation_succeeded_ = success;
     updateStatusText();
+}
+
+QString Ai8TemperatureControllerPanel::currentOutputStatusText() const
+{
+    const auto unknownText = english_
+        ? QStringLiteral("Output: --")
+        : QStringLiteral("输出：--");
+    auto *channelSpin = findChild<QSpinBox *>(QStringLiteral("ai8ChannelSpin"));
+    if (!channelSpin || !backend_connected_ || !latest_live_data_.controlStatesValid)
+    {
+        return unknownText;
+    }
+
+    const int channel = std::clamp(channelSpin->value(),
+                                   1,
+                                   Ai8TemperatureControllerProtocol::kChannelCount);
+    const auto state = latest_live_data_.controlStates[static_cast<size_t>(channel - 1)];
+    const QString stateText = Ai8TemperatureControllerProtocol::channelControlStateName(state, english_);
+    return english_
+        ? QStringLiteral("CH%1: %2").arg(channel).arg(stateText)
+        : QStringLiteral("通道%1：%2").arg(channel).arg(stateText);
 }
 
 void Ai8TemperatureControllerPanel::updateStatusText()
@@ -737,6 +761,7 @@ void Ai8TemperatureControllerPanel::applyLiveData(
     }
     updateMeasuredValue();
     updateTemperaturePlot();
+    emit outputStatusChanged();
 }
 
 void Ai8TemperatureControllerPanel::updateMeasuredValue()

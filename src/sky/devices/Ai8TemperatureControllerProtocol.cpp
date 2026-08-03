@@ -73,6 +73,37 @@ double decodeManualOutput(quint16 value)
     return static_cast<double>(value) / 256.0;
 }
 
+ChannelControlState decodeChannelControlState(quint16 statusRegister, int channel)
+{
+    const int normalizedChannel = std::clamp(channel, 1, kChannelCount) - 1;
+    const quint8 statusByte = normalizedChannel % 2 == 0
+        ? static_cast<quint8>((statusRegister >> 8) & 0x00FFu)
+        : static_cast<quint8>(statusRegister & 0x00FFu);
+    if ((statusByte & 0x02u) != 0)
+    {
+        return ChannelControlState::Stopped;
+    }
+    return (statusByte & 0x01u) == 0
+        ? ChannelControlState::AutoTuning
+        : ChannelControlState::ApidOutput;
+}
+
+QString channelControlStateName(ChannelControlState state, bool english)
+{
+    switch (state)
+    {
+    case ChannelControlState::ApidOutput:
+        return english ? QStringLiteral("APID output") : QStringLiteral("APID输出");
+    case ChannelControlState::AutoTuning:
+        return english ? QStringLiteral("Auto tuning") : QStringLiteral("自整定");
+    case ChannelControlState::Stopped:
+        return english ? QStringLiteral("Output stopped") : QStringLiteral("停止输出");
+    case ChannelControlState::Unknown:
+        break;
+    }
+    return english ? QStringLiteral("Output: --") : QStringLiteral("输出：--");
+}
+
 quint16 encodeChannelInput(int group, int correctionEntry)
 {
     const int normalizedGroup = std::clamp(group, 0, kParameterGroupCount);

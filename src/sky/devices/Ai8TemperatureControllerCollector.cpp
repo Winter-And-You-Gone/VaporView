@@ -523,6 +523,27 @@ bool Ai8TemperatureControllerCollector::readLiveData(LiveData& data)
         data.measuredC[static_cast<size_t>(index)] = decodeSignedTenths(values[static_cast<size_t>(index)]);
     }
     data.valid = true;
+
+    std::vector<quint16> statusValues;
+    if (!readRegisters(static_cast<quint16>(Register::ControlStatusBase),
+                       kControlStatusRegisterCount,
+                       statusValues,
+                       250) ||
+        statusValues.size() != kControlStatusRegisterCount)
+    {
+        data.controlStatesValid = false;
+        data.errorMessage = isEnglishLog()
+            ? QStringLiteral("AI-8288 control status polling failed")
+            : QStringLiteral("AI-8288 输出状态轮询失败");
+        return true;
+    }
+    for (int index = 0; index < kChannelCount; ++index)
+    {
+        const int registerIndex = index / 2;
+        data.controlStates[static_cast<size_t>(index)] = decodeChannelControlState(
+            statusValues[static_cast<size_t>(registerIndex)], index + 1);
+    }
+    data.controlStatesValid = true;
     data.errorMessage.clear();
     return true;
 }

@@ -368,6 +368,7 @@ private:
     void updateTemperatureControllerTitleText();
     void refreshAi8TemperatureTitlePortOptions(const QStringList& ports, const QString& preferredText = QString());
     void updateAi8TemperatureTitlePortAppearance();
+    void updateAi8TemperatureTitleStatus();
     void updateTemperatureTitleButtonsState();
     void handleTemperatureTitleButton(VaporView::CommandId command);
     void connectLocalTemperatureController();

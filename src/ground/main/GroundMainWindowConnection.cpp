@@ -595,6 +595,7 @@ void MainWindow::stopAllCollectors()
         state_->ai8_temperature_controller_panel_->setBackendConnected(false);
         state_->ai8_temperature_controller_panel_->applyLiveData({});
     }
+    updateAi8TemperatureTitleStatus();
 }
 
 void MainWindow::finishConnectionAttempt(bool connected)
@@ -606,11 +607,12 @@ void MainWindow::finishConnectionAttempt(bool connected)
         stopRecording(true);
     }
     updateConnectionStatus(connected);
+    bool ai8Connected = false;
     if (state_->ai8_temperature_controller_panel_)
     {
         const CollectorSnapshot collectors = snapshotCollectors();
-        const bool ai8Connected = collectors.ai8_temperature_controller &&
-                                  collectors.ai8_temperature_controller->isRunning();
+        ai8Connected = collectors.ai8_temperature_controller &&
+                       collectors.ai8_temperature_controller->isRunning();
         const QString detail = ai8Connected
             ? QStringLiteral("%1 @ %2")
                   .arg(localSerialPortComboValue(state_->device_config_.ai8_temperature_port_combo),
@@ -619,6 +621,20 @@ void MainWindow::finishConnectionAttempt(bool connected)
                            : QStringLiteral("19200"))
             : QString();
         state_->ai8_temperature_controller_panel_->setBackendConnected(ai8Connected, detail);
+    }
+    updateAi8TemperatureTitleStatus();
+    if (ai8Connected)
+    {
+        QTimer::singleShot(0, this, [this]() {
+            const CollectorSnapshot collectors = snapshotCollectors();
+            if (!state_->ai8_temperature_controller_panel_ ||
+                !collectors.ai8_temperature_controller ||
+                !collectors.ai8_temperature_controller->isRunning())
+            {
+                return;
+            }
+            onAi8ReadPageRequested();
+        });
     }
 }
 
@@ -1199,6 +1215,7 @@ void MainWindow::onAi8TemperatureControllerDataReady()
         state_->ai8_temperature_controller_panel_->applyLiveData(
             collectors.ai8_temperature_controller->getLatestData());
     }
+    updateAi8TemperatureTitleStatus();
 }
 
 void MainWindow::onAi8ReadPageRequested()
