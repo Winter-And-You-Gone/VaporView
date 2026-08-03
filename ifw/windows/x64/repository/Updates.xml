@@ -6,34 +6,34 @@
   <Name>com.vaporview.core</Name>
   <DisplayName>VaporView</DisplayName>
   <Description>VaporView desktop, Sky and 3D runtime.</Description>
-  <Version>1.0.19</Version>
+  <Version>1.0.20</Version>
   <ReleaseDate>2026-08-03</ReleaseDate>
   <Default>true</Default>
   <ForcedInstallation>true</ForcedInstallation>
   <Script>installscript.qs</Script>
-  <UpdateFile CompressedSize="71484750" OS="Any" UncompressedSize="271534449"/>
+  <UpdateFile CompressedSize="71484912" OS="Any" UncompressedSize="271537125"/>
   <DownloadableArchives>data.7z,drivers.7z,generic.7z,iconengines.7z,imageformats.7z,licenses.7z,networkinformation.7z,osgPlugins-3.6.5.7z,platforms.7z,resources.7z,share.7z,styles.7z,tls.7z,content.7z</DownloadableArchives>
   <UserInterfaces>shortcutselection.ui</UserInterfaces>
   <Licenses>
    <License file="license.txt" name="GPLv3（中文）" priority="100"/>
    <License file="license_en.txt" name="GPLv3 (English)" priority="0"/>
   </Licenses>
-  <SHA1>f1bf54ea074d2e3333959914e9258f7e5679f7e9</SHA1>
+  <SHA1>6f9b40b7ff76081ac1a69940df7423bf4601c52f</SHA1>
  </PackageUpdate>
  <PackageUpdate>
   <Name>com.vaporview.maintenancetool</Name>
   <DisplayName>VaporView Maintenance Tool</DisplayName>
   <Description>VaporView maintenance tool.</Description>
-  <Version>1.0.19</Version>
+  <Version>1.0.20</Version>
   <ReleaseDate>2026-08-03</ReleaseDate>
   <Essential>true</Essential>
   <Virtual>true</Virtual>
   <ForcedInstallation>true</ForcedInstallation>
   <Script>installscript.qs</Script>
-  <UpdateFile CompressedSize="12176061" OS="Any" UncompressedSize="33377473"/>
+  <UpdateFile CompressedSize="12176112" OS="Any" UncompressedSize="33377473"/>
   <DownloadableArchives>content.7z</DownloadableArchives>
-  <SHA1>d9283ffabcd03b023463a196c5eaadafdbd581fc</SHA1>
+  <SHA1>ec822f03567f17283e14ca12aca8b82a6c4bd96b</SHA1>
  </PackageUpdate>
- <SHA1>dafdb92bc43234f9106c5e6ffab49d2c238fb943</SHA1>
- <MetadataName>2026-08-03-1715_meta.7z</MetadataName>
+ <SHA1>75d9cd6d80db0acb57d48486e3ce18846c649dc1</SHA1>
+ <MetadataName>2026-08-03-2021_meta.7z</MetadataName>
 </Updates>
