@@ -4007,8 +4007,25 @@ int main(int argc, char **argv)
                 ai8TitleActionButton->iconSize() == QSize(18, 18) &&
                 ai8TitleActionButton->size() == QSize(32, 32),
             "AI-8 title serial selector is followed by one stateful connection icon action");
-    require(qApp->styleSheet().contains(QStringLiteral("QToolButton[temperatureTitleAction=\"true\"]")),
-            "temperature title icon actions reuse the home device icon-button style");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QToolButton[temperatureTitleAction=\"true\"] {"),
+        QStringLiteral("background-color: transparent"),
+        "temperature title icon actions are transparent by default");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QToolButton[temperatureTitleAction=\"true\"] {"),
+        QStringLiteral("border: 1px solid transparent"),
+        "temperature title icon actions hide their button chrome by default");
+    const bool temperatureTitleActionDark =
+        qApp->property(VaporView::kAppDarkThemeProperty).toBool();
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QToolButton[temperatureTitleAction=\"true\"]:hover {"),
+        QStringLiteral("background-color: ") +
+            VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtle,
+                                         temperatureTitleActionDark),
+        "temperature title icon actions show a background only on hover");
 
     auto *ai8Panel = ai8TemperatureCard->findChild<QWidget *>(
         QStringLiteral("ai8TemperatureControllerPanel"));

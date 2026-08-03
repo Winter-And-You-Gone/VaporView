@@ -1475,26 +1475,26 @@ QToolButton#homeDeviceActionButton:hover {
 }
 
 QToolButton[temperatureTitleAction="true"] {
-    background-color: @vv-surface-alt;
-    border: 1px solid @vv-border;
+    background-color: transparent;
+    border: 1px solid transparent;
     border-radius: 7px;
     padding: 2px;
 }
 
 QToolButton[temperatureTitleAction="true"]:disabled {
-    background-color: @vv-surface-alt;
-    border-color: @vv-border;
+    background-color: transparent;
+    border-color: transparent;
 }
 
 QToolButton[temperatureTitleAction="true"][state="disconnected"],
 QToolButton[temperatureTitleAction="true"][state="connecting"] {
-    background-color: @vv-hd-ok-bg;
-    border-color: @vv-hd-ok;
+    background-color: transparent;
+    border-color: transparent;
 }
 
 QToolButton[temperatureTitleAction="true"][state="connected"] {
-    background-color: @vv-hd-bad-bg;
-    border-color: @vv-hd-bad;
+    background-color: transparent;
+    border-color: transparent;
 }
 
 QToolButton[temperatureTitleAction="true"]:hover {
