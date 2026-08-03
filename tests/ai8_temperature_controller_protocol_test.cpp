@@ -55,6 +55,12 @@ int main()
             "channel input/correction encoding mismatch");
     require(Ai8::encodeBaudRate(19200) == 192 && Ai8::decodeBaudRate(192) == 19200,
             "bAud 0.1K encoding mismatch");
+    require(Ai8::isDocumentedRunState(0) &&
+                Ai8::isDocumentedRunState(15) &&
+                Ai8::isDocumentedRunState(9655) &&
+                !Ai8::isDocumentedRunState(1) &&
+                !Ai8::isDocumentedRunState(65535),
+            "Srun documented-value validation mismatch");
 
     const QByteArray request = Modbus::buildReadRegistersRequest(
         1,

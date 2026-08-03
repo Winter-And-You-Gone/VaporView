@@ -37,6 +37,22 @@ constexpr int kAi8NavigationHorizontalMargin = 4;
 constexpr int kAi8NavigationVerticalMargin = 3;
 constexpr int kAi8NavigationSpacing = 4;
 
+QString runStateHexDigits(quint16 rawValue)
+{
+    return QString::number(static_cast<uint>(rawValue), 16)
+        .rightJustified(4, QLatin1Char('0'))
+        .toUpper();
+}
+
+QString unknownRunStateText(quint16 rawValue, bool english)
+{
+    const QString decimalText = QString::number(static_cast<uint>(rawValue));
+    const QString hexText = runStateHexDigits(rawValue);
+    return english
+        ? QStringLiteral("Keep Device Value (Unknown: %1 / 0x%2)").arg(decimalText, hexText)
+        : QStringLiteral("保持设备原值（未识别：%1 / 0x%2）").arg(decimalText, hexText);
+}
+
 QSpinBox *createSpinBox(QWidget *parent,
                         const QString& objectName,
                         int minimum,
@@ -385,7 +401,27 @@ QWidget *Ai8TemperatureControllerPanel::createGlobalPage()
                                                  1,
                                                  QStringLiteral(" s"));
     QComboBox *runCombo = createFixedChoiceCombo(page);
+    run_state_combo_ = runCombo;
     runCombo->setObjectName(QStringLiteral("ai8RunModeCombo"));
+    connect(runCombo, QOverload<int>::of(&QComboBox::activated), this,
+            [this](int index) {
+                if (!run_state_combo_ || index < 0 || index >= run_state_combo_->count())
+                {
+                    return;
+                }
+                bool ok = false;
+                const uint rawValue = run_state_combo_->itemData(index).toUInt(&ok);
+                if (!ok || rawValue > std::numeric_limits<quint16>::max() ||
+                    !Ai8TemperatureControllerProtocol::isDocumentedRunState(
+                        static_cast<quint16>(rawValue)))
+                {
+                    run_state_write_requested_ = false;
+                    run_state_write_value_ = 0;
+                    return;
+                }
+                run_state_write_requested_ = true;
+                run_state_write_value_ = static_cast<quint16>(rawValue);
+            });
     addComboItem(runCombo, QStringLiteral("自动运行"), QStringLiteral("Auto Run"), 0);
     addComboItem(runCombo, QStringLiteral("上电后停止"), QStringLiteral("Stop After Power Cycle"), 15);
     addComboItem(runCombo, QStringLiteral("全部停止"), QStringLiteral("Stop All"), 9655);
@@ -449,8 +485,94 @@ void Ai8TemperatureControllerPanel::addComboItem(QComboBox *combo,
         return;
     }
     const int index = combo->count();
-    combo->addItem(chinese, userData);
+    combo->addItem(english_ ? english : chinese, userData);
     combo_item_bindings_.append({combo, index, chinese, english});
+}
+
+void Ai8TemperatureControllerPanel::updateRunStateCombo(quint16 rawValue)
+{
+    run_state_raw_ = rawValue;
+    run_state_write_requested_ = false;
+    run_state_write_value_ = 0;
+    if (!run_state_combo_)
+    {
+        return;
+    }
+
+    if (run_state_unknown_item_index_ >= 0 &&
+        run_state_unknown_item_index_ < run_state_combo_->count())
+    {
+        const int removedIndex = run_state_unknown_item_index_;
+        run_state_combo_->removeItem(removedIndex);
+        for (int index = combo_item_bindings_.size() - 1; index >= 0; --index)
+        {
+            ComboItemBinding& binding = combo_item_bindings_[index];
+            if (binding.combo != run_state_combo_)
+            {
+                continue;
+            }
+            if (binding.index == removedIndex)
+            {
+                combo_item_bindings_.removeAt(index);
+            }
+            else if (binding.index > removedIndex)
+            {
+                --binding.index;
+            }
+        }
+    }
+    run_state_unknown_item_index_ = -1;
+
+    if (!Ai8TemperatureControllerProtocol::isDocumentedRunState(rawValue))
+    {
+        addComboItem(run_state_combo_,
+                     unknownRunStateText(rawValue, false),
+                     unknownRunStateText(rawValue, true),
+                     QVariant::fromValue(static_cast<uint>(rawValue)));
+        run_state_unknown_item_index_ = run_state_combo_->count() - 1;
+    }
+
+    int selectedIndex = -1;
+    for (int index = 0; index < run_state_combo_->count(); ++index)
+    {
+        bool ok = false;
+        const uint value = run_state_combo_->itemData(index).toUInt(&ok);
+        if (ok && value == static_cast<uint>(rawValue))
+        {
+            selectedIndex = index;
+            break;
+        }
+    }
+    if (selectedIndex >= 0)
+    {
+        const QSignalBlocker blocker(run_state_combo_);
+        run_state_combo_->setCurrentIndex(selectedIndex);
+    }
+    updateRunStateAccessibility();
+}
+
+void Ai8TemperatureControllerPanel::updateRunStateAccessibility()
+{
+    if (!run_state_combo_)
+    {
+        return;
+    }
+    run_state_combo_->setAccessibleName(
+        english_ ? QStringLiteral("Run State Srun") : QStringLiteral("运行状态 Srun"));
+    run_state_combo_->setAccessibleDescription(
+        english_
+            ? QStringLiteral("Select a documented Srun value to request a change. The unknown device value is preserved; saving other global parameters does not write Srun.")
+            : QStringLiteral("选择说明书支持的 Srun 值才会请求修改。未知设备原值会被保留；保存其他全局参数不会写入 Srun。"));
+    if (run_state_unknown_item_index_ >= 0 &&
+        run_state_unknown_item_index_ < run_state_combo_->count())
+    {
+        run_state_combo_->setItemData(
+            run_state_unknown_item_index_,
+            english_
+                ? QStringLiteral("Saving other global parameters preserves this device value and does not write Srun.")
+                : QStringLiteral("保存其他全局参数时会保留设备原始值，不会写入 Srun。"),
+            Qt::ToolTipRole);
+    }
 }
 
 void Ai8TemperatureControllerPanel::selectPage(int index)
@@ -491,6 +613,7 @@ void Ai8TemperatureControllerPanel::setEnglish(bool english)
             binding.combo->setItemText(binding.index, english ? binding.english : binding.chinese);
         }
     }
+    updateRunStateAccessibility();
 
     updateStatusText();
     const QString backendToolTip = backend_connected_
@@ -639,7 +762,11 @@ Ai8TemperatureControllerProtocol::PageData Ai8TemperatureControllerPanel::curren
     pageData.global.baudRate = combo("ai8BaudCombo")->currentData().toInt();
     pageData.global.controlChannelCount = spin("ai8ControlChannelCountSpin")->value();
     pageData.global.controlCycleS = doubleSpin("ai8ControlCycleSpin")->value();
-    pageData.global.runState = combo("ai8RunModeCombo")->currentData().toInt();
+    pageData.global.runStateRaw = run_state_raw_;
+    pageData.global.runStateIsDocumented =
+        Ai8TemperatureControllerProtocol::isDocumentedRunState(pageData.global.runStateRaw);
+    pageData.global.runStateWriteRequested = run_state_write_requested_;
+    pageData.global.runStateWriteValue = run_state_write_value_;
     pageData.global.parameterLock = combo("ai8ParameterLockCombo")->currentData().toInt();
     pageData.global.sampleMode = spin("ai8SampleModeSpin")->value();
     pageData.global.decimalPoint = spin("ai8DecimalPointSpin")->value();
@@ -715,7 +842,7 @@ void Ai8TemperatureControllerPanel::applyPageData(
         setCombo("ai8BaudCombo", pageData.global.baudRate);
         setSpin("ai8ControlChannelCountSpin", pageData.global.controlChannelCount);
         setDouble("ai8ControlCycleSpin", pageData.global.controlCycleS);
-        setCombo("ai8RunModeCombo", pageData.global.runState);
+        updateRunStateCombo(pageData.global.runStateRaw);
         setCombo("ai8ParameterLockCombo", (pageData.global.parameterLock & 0x0020) != 0 ? 32 : 0);
         setSpin("ai8SampleModeSpin", pageData.global.sampleMode);
         setSpin("ai8DecimalPointSpin", pageData.global.decimalPoint);

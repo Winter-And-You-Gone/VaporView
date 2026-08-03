@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <thread>
+#include <utility>
 
 namespace VaporView
 {
@@ -42,6 +43,14 @@ void Ai8TemperatureControllerCollector::setSlaveAddress(quint8 slaveAddress)
 quint8 Ai8TemperatureControllerCollector::slaveAddress() const
 {
     return slaveAddress_.load();
+}
+
+void Ai8TemperatureControllerCollector::setRegisterBackendForTest(
+    RegisterReadBackendForTest readBackend,
+    RegisterWriteBackendForTest writeBackend)
+{
+    readBackendForTest_ = std::move(readBackend);
+    writeBackendForTest_ = std::move(writeBackend);
 }
 
 bool Ai8TemperatureControllerCollector::initialize()
@@ -119,6 +128,10 @@ bool Ai8TemperatureControllerCollector::readRegisters(quint16 address,
                                                        int waitMs)
 {
     std::lock_guard<std::mutex> lock(modbusMutex_);
+    if (readBackendForTest_)
+    {
+        return readBackendForTest_(address, count, values);
+    }
     return readRegistersUnlocked(address, count, values, waitMs);
 }
 
@@ -188,6 +201,10 @@ bool Ai8TemperatureControllerCollector::writeAndConfirm(quint16 address,
                                                          QString *errorMessage)
 {
     std::lock_guard<std::mutex> lock(modbusMutex_);
+    if (writeBackendForTest_)
+    {
+        return writeBackendForTest_(address, value, errorMessage);
+    }
     return writeAndConfirmUnlocked(address, value, errorMessage);
 }
 
@@ -345,7 +362,8 @@ bool Ai8TemperatureControllerCollector::readGlobalPage(const Selection&,
     data.global.address = at(Register::Address);
     data.global.baudRate = decodeBaudRate(at(Register::BaudRate));
     data.global.controlChannelCount = at(Register::ControlChannelCount);
-    data.global.runState = at(Register::RunState);
+    data.global.runStateRaw = at(Register::RunState);
+    data.global.runStateIsDocumented = isDocumentedRunState(data.global.runStateRaw);
     data.global.controlCycleS = decodeUnsignedTenths(at(Register::ControlCycle));
     data.global.parityFlags = at(Register::ParityFlags);
     data.global.sampleMode = at(Register::SampleMode);
@@ -441,31 +459,87 @@ bool Ai8TemperatureControllerCollector::writeGlobalPage(const PageData& data, QS
         if (resultMessage) *resultMessage = error;
         return false;
     }
+
+    if (data.global.runStateWriteRequested &&
+        !isDocumentedRunState(data.global.runStateWriteValue))
+    {
+        const quint16 value = data.global.runStateWriteValue;
+        const QString hexDigits = QString::number(static_cast<uint>(value), 16)
+                                      .rightJustified(4, QLatin1Char('0'))
+                                      .toUpper();
+        if (resultMessage)
+        {
+            *resultMessage = isEnglishLog()
+                ? QStringLiteral("Srun value %1 (0x%2) is not documented; no global registers were written.")
+                      .arg(static_cast<uint>(value))
+                      .arg(hexDigits)
+                : QStringLiteral("Srun 值 %1（0x%2）未被说明书支持，未执行任何全局寄存器写入。")
+                      .arg(static_cast<uint>(value))
+                      .arg(hexDigits);
+        }
+        return false;
+    }
+
     const bool connectionSettingsChanged =
         current.global.address != data.global.address ||
         current.global.baudRate != data.global.baudRate;
+    const quint16 currentLock = static_cast<quint16>(current.global.parameterLock);
+    const quint16 targetLock = static_cast<quint16>(
+        (currentLock & ~0x0020u) |
+        (data.global.parameterLock & 0x0020));
+    const quint16 targetControlChannelCount = static_cast<quint16>(
+        std::clamp(data.global.controlChannelCount, 1, kChannelCount));
+    const quint16 targetControlCycle = encodeUnsignedTenths(data.global.controlCycleS);
+    const quint16 targetRunState = data.global.runStateWriteValue;
+    const quint16 targetSampleMode = static_cast<quint16>(data.global.sampleMode);
+    const quint16 targetDecimalPoint = static_cast<quint16>(data.global.decimalPoint);
+    const bool controlChannelCountChanged =
+        static_cast<quint16>(current.global.controlChannelCount) != targetControlChannelCount;
+    const bool controlCycleChanged =
+        encodeUnsignedTenths(current.global.controlCycleS) != targetControlCycle;
+    const bool runStateChanged = data.global.runStateWriteRequested &&
+                                 current.global.runStateRaw != targetRunState;
+    const bool sampleModeChanged =
+        static_cast<quint16>(current.global.sampleMode) != targetSampleMode;
+    const bool decimalPointChanged =
+        static_cast<quint16>(current.global.decimalPoint) != targetDecimalPoint;
+    const bool nonLockChanges = controlChannelCountChanged ||
+                                controlCycleChanged ||
+                                runStateChanged ||
+                                sampleModeChanged ||
+                                decimalPointChanged;
+    const bool currentLocked = (currentLock & 0x0020u) != 0;
+    const bool targetLocked = (targetLock & 0x0020u) != 0;
+    const bool unlockBeforeWrite = currentLocked && (!targetLocked || nonLockChanges);
+    bool unlockedForWrite = false;
+    bool wroteAny = false;
     auto write = [&](Register reg, quint16 value) {
-        return writeAndConfirm(static_cast<quint16>(reg), value, &error);
+        const bool success = writeAndConfirm(static_cast<quint16>(reg), value, &error);
+        wroteAny = wroteAny || success;
+        return success;
     };
 
-    const quint16 targetLock = static_cast<quint16>(
-        (current.global.parameterLock & ~0x0020u) |
-        (data.global.parameterLock & 0x0020));
-    if ((current.global.parameterLock & 0x0020) != 0 &&
-        (targetLock & 0x0020) == 0 &&
-        !write(Register::ParameterLock, targetLock))
+    if (unlockBeforeWrite && !write(Register::ParameterLock,
+                                    static_cast<quint16>(currentLock & ~0x0020u)))
     {
         if (resultMessage) *resultMessage = error;
         return false;
     }
-    if (!write(Register::ControlChannelCount,
-               static_cast<quint16>(std::clamp(data.global.controlChannelCount, 1, kChannelCount))) ||
-        !write(Register::ControlCycle, encodeUnsignedTenths(data.global.controlCycleS)) ||
-        !write(Register::RunState, static_cast<quint16>(data.global.runState)) ||
-        !write(Register::SampleMode, static_cast<quint16>(data.global.sampleMode)) ||
-        !write(Register::DecimalPoint, static_cast<quint16>(data.global.decimalPoint)) ||
-        ((targetLock & 0x0020) != 0 && targetLock != current.global.parameterLock &&
-         !write(Register::ParameterLock, targetLock)))
+    unlockedForWrite = unlockBeforeWrite;
+
+    if ((controlChannelCountChanged &&
+         !write(Register::ControlChannelCount, targetControlChannelCount)) ||
+        (controlCycleChanged && !write(Register::ControlCycle, targetControlCycle)) ||
+        (runStateChanged && !write(Register::RunState, targetRunState)) ||
+        (sampleModeChanged && !write(Register::SampleMode, targetSampleMode)) ||
+        (decimalPointChanged && !write(Register::DecimalPoint, targetDecimalPoint)))
+    {
+        if (resultMessage) *resultMessage = error;
+        return false;
+    }
+
+    if (targetLocked && (targetLock != currentLock || unlockedForWrite) &&
+        !write(Register::ParameterLock, targetLock))
     {
         if (resultMessage) *resultMessage = error;
         return false;
@@ -477,9 +551,13 @@ bool Ai8TemperatureControllerCollector::writeGlobalPage(const PageData& data, QS
             ? (isEnglishLog()
                    ? QStringLiteral("Other global parameters were confirmed. Addr/bAud were intentionally not changed until hardware switchover behavior is verified.")
                    : QStringLiteral("其他全局参数已回读确认；Addr/bAud 涉及通信切换，实机验证前暂不下发。"))
-            : (isEnglishLog()
-                   ? QStringLiteral("Global parameters were written and confirmed by read-back.")
-                   : QStringLiteral("全局参数已写入并回读确认。"));
+             : wroteAny
+                   ? (isEnglishLog()
+                          ? QStringLiteral("Global parameters were written and confirmed by read-back.")
+                          : QStringLiteral("全局参数已写入并回读确认。"))
+                   : (isEnglishLog()
+                          ? QStringLiteral("No changed writable global parameters required a device write.")
+                          : QStringLiteral("没有变化的可写全局参数需要下发。"));
     }
     return true;
 }

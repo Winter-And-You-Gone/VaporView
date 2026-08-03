@@ -3,6 +3,7 @@
 #include "Ai8TemperatureControllerProtocol.h"
 #include "data_collector.h"
 
+#include <functional>
 #include <mutex>
 #include <vector>
 
@@ -12,10 +13,19 @@ namespace VaporView
 class Ai8TemperatureControllerCollector final : public DataCollector
 {
 public:
+    using RegisterReadBackendForTest = std::function<bool(quint16,
+                                                          quint16,
+                                                          std::vector<quint16>&)>;
+    using RegisterWriteBackendForTest = std::function<bool(quint16,
+                                                           quint16,
+                                                           QString*)>;
+
     Ai8TemperatureControllerProtocol::LiveData getLatestData();
     bool checkDeviceResponse() override;
     void setSlaveAddress(quint8 slaveAddress);
     quint8 slaveAddress() const;
+    void setRegisterBackendForTest(RegisterReadBackendForTest readBackend,
+                                   RegisterWriteBackendForTest writeBackend);
 
     bool readPage(Ai8TemperatureControllerProtocol::Page page,
                   const Ai8TemperatureControllerProtocol::Selection& selection,
@@ -57,6 +67,8 @@ private:
     Ai8TemperatureControllerProtocol::LiveData latestData_;
     std::atomic<quint8> slaveAddress_{1};
     std::mutex modbusMutex_;
+    RegisterReadBackendForTest readBackendForTest_;
+    RegisterWriteBackendForTest writeBackendForTest_;
 };
 
 } // namespace VaporView

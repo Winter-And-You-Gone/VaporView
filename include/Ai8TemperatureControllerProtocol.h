@@ -114,7 +114,10 @@ struct GlobalParameters
     int baudRate = 19200;
     int controlChannelCount = kChannelCount;
     double controlCycleS = 0.0;
-    int runState = 0;
+    quint16 runStateRaw = 0;
+    bool runStateIsDocumented = true;
+    bool runStateWriteRequested = false;
+    quint16 runStateWriteValue = 0;
     int parameterLock = 0;
     int sampleMode = 0;
     int decimalPoint = 1;
@@ -160,6 +163,7 @@ int decodeCorrectionEntry(quint16 value);
 quint16 encodeBaudRate(int baudRate);
 int decodeBaudRate(quint16 value);
 bool isSupportedBaudRate(int baudRate);
+bool isDocumentedRunState(quint16 value);
 QString pageName(Page page, bool english);
 
 } // namespace VaporView::Ai8TemperatureControllerProtocol

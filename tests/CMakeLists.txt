@@ -158,6 +158,15 @@ target_include_directories(ai8_temperature_controller_protocol_test PRIVATE
 target_link_libraries(ai8_temperature_controller_protocol_test PRIVATE vaporview_sky_core)
 add_test(NAME ai8_temperature_controller_protocol_test COMMAND ai8_temperature_controller_protocol_test)
 
+add_executable(ai8_temperature_controller_collector_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/ai8_temperature_controller_collector_test.cpp
+)
+target_include_directories(ai8_temperature_controller_collector_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+target_link_libraries(ai8_temperature_controller_collector_test PRIVATE vaporview_sky_core)
+add_test(NAME ai8_temperature_controller_collector_test COMMAND ai8_temperature_controller_collector_test)
+
 add_executable(ai8_temperature_controller_panel_test
     ${CMAKE_CURRENT_SOURCE_DIR}/ai8_temperature_controller_panel_test.cpp
 )
@@ -852,6 +861,7 @@ set(VAPORVIEW_FAST_UNIT_TESTS
     tcp_wave_encoding_test
     temperature_controller_protocol_test
     ai8_temperature_controller_protocol_test
+    ai8_temperature_controller_collector_test
     ai8_temperature_controller_panel_test
     telemetry_codec_test
     telemetry_tcp_link_test
@@ -919,6 +929,7 @@ set_property(TEST ai8_temperature_controller_panel_test APPEND PROPERTY LABELS g
 set_property(TEST
     temperature_controller_protocol_test
     ai8_temperature_controller_protocol_test
+    ai8_temperature_controller_collector_test
     epsilon_protocol_test
     telemetry_codec_test
     telemetry_tcp_link_test

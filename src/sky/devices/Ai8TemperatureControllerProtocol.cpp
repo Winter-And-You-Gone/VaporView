@@ -147,6 +147,19 @@ bool isSupportedBaudRate(int baudRate)
     }
 }
 
+bool isDocumentedRunState(quint16 value)
+{
+    switch (value)
+    {
+    case 0:
+    case 15:
+    case 9655:
+        return true;
+    default:
+        return false;
+    }
+}
+
 QString pageName(Page page, bool english)
 {
     switch (page)

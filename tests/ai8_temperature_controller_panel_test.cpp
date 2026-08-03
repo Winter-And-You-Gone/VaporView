@@ -5,6 +5,7 @@
 #include <QDoubleSpinBox>
 #include <QImage>
 #include <QLabel>
+#include <QMetaObject>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSpinBox>
@@ -67,6 +68,72 @@ int main(int argc, char **argv)
     require(baudCombo != nullptr && baudCombo->currentData().toInt() == 19200,
             "AI-8 baud rate defaults to 19.2K");
 
+    auto *runCombo = panel.findChild<QComboBox *>(QStringLiteral("ai8RunModeCombo"));
+    require(runCombo != nullptr && runCombo->count() == 3 &&
+                runCombo->objectName() == QStringLiteral("ai8RunModeCombo") &&
+                runCombo->accessibleName() == QStringLiteral("运行状态 Srun"),
+            "AI-8 Srun selector exposes the documented choices and an accessible name");
+    VaporView::Ai8TemperatureControllerProtocol::PageData unknownRunState;
+    unknownRunState.page = VaporView::Ai8TemperatureControllerProtocol::Page::Global;
+    unknownRunState.global.runStateRaw = 1;
+    unknownRunState.global.runStateIsDocumented = false;
+    unknownRunState.global.controlCycleS = 0.4;
+    panel.applyPageData(unknownRunState);
+    QApplication::processEvents();
+    require(runCombo->count() == 4 && runCombo->currentData().toUInt() == 1 &&
+                runCombo->currentText().contains(QStringLiteral("1")) &&
+                runCombo->currentText().contains(QStringLiteral("0x0001")) &&
+                !runCombo->currentText().contains(QStringLiteral("自动运行")) &&
+                runCombo->itemData(3, Qt::ToolTipRole).toString().contains(QStringLiteral("不会写入 Srun")),
+            "AI-8 unknown Srun raw value is displayed and documented as preserved");
+    auto unknownData = panel.currentPageData();
+    require(unknownData.global.runStateRaw == 1 &&
+                !unknownData.global.runStateIsDocumented &&
+                !unknownData.global.runStateWriteRequested &&
+                unknownData.global.runStateWriteValue == 0,
+            "AI-8 unknown Srun value is not converted into a write request");
+
+    panel.setEnglish(true);
+    QApplication::processEvents();
+    require(runCombo->currentText() == QStringLiteral("Keep Device Value (Unknown: 1 / 0x0001)") &&
+                runCombo->itemData(3, Qt::ToolTipRole).toString().contains(QStringLiteral("does not write Srun")),
+            "AI-8 unknown Srun item follows the language switch");
+    require(!panel.currentPageData().global.runStateWriteRequested,
+            "language switching does not create an Srun write request");
+    panel.setEnglish(false);
+    const int autoRunIndex = runCombo->findData(0);
+    require(autoRunIndex >= 0, "AI-8 documented automatic Srun item remains addressable");
+    runCombo->setCurrentIndex(autoRunIndex);
+    QApplication::processEvents();
+    require(!panel.currentPageData().global.runStateWriteRequested,
+            "programmatic Srun selection does not create a write request");
+    require(QMetaObject::invokeMethod(runCombo,
+                                      "activated",
+                                      Qt::DirectConnection,
+                                      Q_ARG(int, autoRunIndex)),
+            "AI-8 Srun user activation signal can be exercised");
+    auto explicitData = panel.currentPageData();
+    require(explicitData.global.runStateRaw == 1 &&
+                explicitData.global.runStateWriteRequested &&
+                explicitData.global.runStateWriteValue == 0,
+            "only explicit user activation requests a documented Srun write");
+    const int unknownIndex = runCombo->findData(1);
+    require(unknownIndex >= 0 &&
+                QMetaObject::invokeMethod(runCombo,
+                                          "activated",
+                                          Qt::DirectConnection,
+                                          Q_ARG(int, unknownIndex)) &&
+                !panel.currentPageData().global.runStateWriteRequested,
+            "reselecting the unknown raw-value item clears the Srun write request");
+    panel.applyPageData(unknownRunState);
+    require(!panel.currentPageData().global.runStateWriteRequested,
+            "refreshing global page data clears a pending Srun write request");
+    globalButton->click();
+    channelButton->click();
+    globalButton->click();
+    require(!panel.currentPageData().global.runStateWriteRequested,
+            "page navigation does not create an Srun write request");
+
     auto *readButton = panel.findChild<QPushButton *>(QStringLiteral("ai8ReadParametersButton"));
     auto *writeButton = panel.findChild<QPushButton *>(QStringLiteral("ai8WriteParametersButton"));
     auto *statusLabel = panel.findChild<QLabel *>(QStringLiteral("ai8ProtocolStatus"));
@@ -117,6 +184,7 @@ int main(int argc, char **argv)
     QApplication::processEvents();
     require(channelButton->text() == QStringLiteral("Channel") &&
                 globalButton->text() == QStringLiteral("Global") &&
+                runCombo->currentText() == QStringLiteral("Keep Device Value (Unknown: 1 / 0x0001)") &&
                 statusLabel->text().contains(QStringLiteral("Modbus backend connected")) &&
                 baudCombo->currentData().toInt() == 19200,
             "AI-8 panel translates labels without changing parameter values");

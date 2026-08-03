@@ -77,6 +77,8 @@ private:
                       const QString& english,
                       const QVariant& userData = QVariant());
     void selectPage(int index);
+    void updateRunStateCombo(quint16 rawValue);
+    void updateRunStateAccessibility();
     void updateStatusText();
     void updateMeasuredValue();
     void updateTemperaturePlot();
@@ -87,6 +89,7 @@ private:
     QLabel *protocol_status_label_ = nullptr;
     QAbstractButton *read_button_ = nullptr;
     QAbstractButton *write_button_ = nullptr;
+    QComboBox *run_state_combo_ = nullptr;
     QVector<LabelBinding> label_bindings_;
     QVector<ButtonBinding> button_bindings_;
     QVector<ComboItemBinding> combo_item_bindings_;
@@ -95,6 +98,10 @@ private:
     Ai8TemperatureControllerProtocol::LiveData latest_live_data_;
     QString backend_detail_;
     QString operation_status_;
+    int run_state_unknown_item_index_ = -1;
+    quint16 run_state_raw_ = 0;
+    quint16 run_state_write_value_ = 0;
+    bool run_state_write_requested_ = false;
     bool english_ = false;
     bool backend_connected_ = false;
     bool operation_succeeded_ = true;
