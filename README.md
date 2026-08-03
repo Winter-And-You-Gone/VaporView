@@ -15,7 +15,7 @@
 
 ```powershell
 # Windows
-$env:VAPORVIEW_QT_MSVC_PREFIX = "C:/Qt/6.10.1/msvc2022_64"
+# Set VAPORVIEW_QT_MSVC_PREFIX to the local Qt 6.10.1 MSVC 2022 Kit directory first.
 powershell -ExecutionPolicy Bypass -File .\scripts\build-windows-msvc2022.ps1 -Action Rebuild
 
 # Linux ARM64
@@ -228,6 +228,21 @@ VaporView/
 - Qt 6 MSVC Kit，路径由每台机器本地配置提供。
 - CMake，推荐 `3.21+`，本仓库提供 `CMakePresets.json`。
 - Ninja，优先使用 VS2022 CMake Tools 随附的 `ninja.exe`。
+
+#### 当前本机验证版本
+
+以下版本用于当前 Windows 本机的 `build/Release` 验证；更新本机工具链后应同步维护本节。文档只记录工具名和版本，不记录安装绝对路径。
+
+- Qt 6.10.1 MSVC 2022 64-bit：VaporView 的交付验证套件。
+- Qt 6.10.1 MinGW 64-bit：本机并存的辅助套件，不作为项目交付验证链。
+- Qt 工具：QMake 3.1；`qtpaths`、`moc`、`uic`、`rcc`、`windeployqt` 6.10.1。
+- Qt GUI 工具：Qt Designer、Qt Assistant、Qt Linguist 6.10.1。
+- Qt Creator：18.0.1；其 `qsb` 工具 6.10.1。
+- Qt Design Studio：4.8.1；其 `qsb` 工具 6.9.2。
+- Qt Installer Framework：4.8.1；`binarycreator`、`archivegen`、`devtool`、`repogen` 为 4.8.1.0。
+- CMake：3.28.1；Ninja：1.13.2。
+- MSVC 编译器：19.44.35226，工具集 14.44.35207。
+- VaporView 当前配置的 Qt 模块：`Core`、`Gui`、`Widgets`、`Network`、`OpenGL`、`OpenGLWidgets`、`SerialPort`、`Svg`、`Test`、`Concurrent`。
 
 本机如果缺少 VS2022 Build Tools，可以并排安装到 VS2022 目录，不覆盖已有 VS 或 Qt：
 
