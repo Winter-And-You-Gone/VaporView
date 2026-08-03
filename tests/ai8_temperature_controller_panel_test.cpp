@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QImage>
 #include <QLabel>
 #include <QLineEdit>
@@ -54,10 +55,12 @@ int main(int argc, char **argv)
             "AI-8 channel page selector restores the visible page");
 
     auto *channelSpin = panel.findChild<QSpinBox *>(QStringLiteral("ai8ChannelSpin"));
+    auto *setpointSpin = panel.findChild<QDoubleSpinBox *>(QStringLiteral("ai8SetpointSpin"));
     auto *addressSpin = panel.findChild<QSpinBox *>(QStringLiteral("ai8DeviceAddressSpin"));
     auto *baudCombo = panel.findChild<QComboBox *>(QStringLiteral("ai8BaudCombo"));
-    require(channelSpin != nullptr && channelSpin->minimum() == 1 && channelSpin->maximum() == 8,
-            "AI-8288 channel range is 1 through 8");
+    require(channelSpin != nullptr && channelSpin->minimum() == 1 && channelSpin->maximum() == 8 &&
+                setpointSpin != nullptr,
+            "AI-8288 channel range and setpoint control are available");
     require(addressSpin != nullptr && addressSpin->minimum() == 1 && addressSpin->maximum() == 88 &&
                 addressSpin->value() == 1,
             "AI-8 address range and default match the register table");
@@ -78,6 +81,7 @@ int main(int argc, char **argv)
                 statusLabel->property("protocolReady").toBool(),
             "AI-8 read and write become available after connection");
 
+    setpointSpin->setValue(23.0);
     VaporView::Ai8TemperatureControllerProtocol::LiveData liveData;
     liveData.valid = true;
     liveData.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
@@ -90,6 +94,9 @@ int main(int argc, char **argv)
     require(temperaturePlot != nullptr && temperaturePlot->property("ai8TemperaturePlot").toBool() &&
                 temperaturePlot->property("sampleCount").toInt() == 1,
             "AI-8 temperature plot receives the selected channel PV");
+    require(temperaturePlot->property("yAxisMinC").toDouble() == 22.0 &&
+                temperaturePlot->property("yAxisMaxC").toDouble() == 24.0,
+            "AI-8 temperature plot uses a one-degree target-centered axis range");
 
     liveData.measuredC[1] = 24.1;
     panel.applyLiveData(liveData);

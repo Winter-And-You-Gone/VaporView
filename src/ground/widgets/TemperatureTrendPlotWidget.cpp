@@ -220,8 +220,8 @@ std::pair<double, double> TemperatureTrendPlotWidget::temperatureAxisRange(
     const QVector<double>& finiteSamples,
     double targetTemperature)
 {
-    double minValue = std::isfinite(targetTemperature) ? targetTemperature - 2.0 : 20.0;
-    double maxValue = std::isfinite(targetTemperature) ? targetTemperature + 2.0 : 25.0;
+    double minValue = std::isfinite(targetTemperature) ? targetTemperature - 1.0 : 20.0;
+    double maxValue = std::isfinite(targetTemperature) ? targetTemperature + 1.0 : 25.0;
     if (finiteSamples.isEmpty())
     {
         return {minValue, maxValue};

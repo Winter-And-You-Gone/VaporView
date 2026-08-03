@@ -6262,8 +6262,8 @@ int main(int argc, char **argv)
     {
         require(plot->property("sampleCount").toInt() > 0,
                 "temperature trend plot has samples after controller data arrives");
-        require(plot->property("yAxisMinC").toDouble() == 23.0 &&
-                    plot->property("yAxisMaxC").toDouble() == 27.0,
+        require(plot->property("yAxisMinC").toDouble() == 24.0 &&
+                    plot->property("yAxisMaxC").toDouble() == 26.0,
                 "temperature trend plot centers the default axis range around the target temperature");
         require(plot->property("axisLabelsVisible").toBool(),
                 "temperature trend plot exposes visible axis labels");
@@ -6282,7 +6282,7 @@ int main(int argc, char **argv)
     for (QWidget *plot : temperatureTrendPlots)
     {
         require(plot->property("yAxisMinC").toDouble() == 11.0 &&
-                    plot->property("yAxisMaxC").toDouble() == 27.0,
+                    plot->property("yAxisMaxC").toDouble() == 26.0,
                 "temperature trend plot extends the lower axis only when data drops below the target-centered range");
     }
     VaporView::TelemetryStatus disconnectedTemperatureStatus;
