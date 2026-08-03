@@ -2,6 +2,7 @@
 
 #include "Ai8TemperatureControllerProtocol.h"
 
+#include <QList>
 #include <QString>
 #include <QVariant>
 #include <QVector>
@@ -67,6 +68,11 @@ private:
     QWidget *createInputPage();
     QWidget *createOutputPage();
     QWidget *createGlobalPage();
+    QWidget *createDetailSection(const QString& objectName,
+                                 const QString& chinese,
+                                 const QString& english,
+                                 const QList<QWidget *>& fields,
+                                 QWidget *parent);
     QWidget *createParameterField(const QString& chinese,
                                   const QString& english,
                                   QWidget *editor,
@@ -81,6 +87,7 @@ private:
     void updateRunStateAccessibility();
     void updateStatusText();
     void updateMeasuredValue();
+    void updateAlarmStatusDisplay();
     void updateTemperaturePlot();
 
     QButtonGroup *page_button_group_ = nullptr;

@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QGridLayout>
 #include <QImage>
 #include <QLabel>
 #include <QMetaObject>
@@ -10,6 +11,7 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QToolButton>
 
 #include <cstdlib>
 #include <iostream>
@@ -43,8 +45,10 @@ int main(int argc, char **argv)
             "AI-8 panel starts on one of four documented parameter groups");
 
     auto *globalButton = panel.findChild<QPushButton *>(QStringLiteral("ai8PageSelectorButton4"));
+    auto *outputButton = panel.findChild<QPushButton *>(QStringLiteral("ai8PageSelectorButton3"));
     auto *channelButton = panel.findChild<QPushButton *>(QStringLiteral("ai8PageSelectorButton1"));
-    require(globalButton != nullptr && channelButton != nullptr && channelButton->isChecked(),
+    require(globalButton != nullptr && outputButton != nullptr &&
+                channelButton != nullptr && channelButton->isChecked(),
             "AI-8 parameter page selectors exist and channel is selected");
     globalButton->click();
     QApplication::processEvents();
@@ -62,11 +66,121 @@ int main(int argc, char **argv)
     require(channelSpin != nullptr && channelSpin->minimum() == 1 && channelSpin->maximum() == 8 &&
                 setpointSpin != nullptr,
             "AI-8288 channel range and setpoint control are available");
+
+    auto *channelDetailToggle =
+        panel.findChild<QToolButton *>(QStringLiteral("ai8ChannelDetailParametersToggle"));
+    auto *inputDetailToggle =
+        panel.findChild<QToolButton *>(QStringLiteral("ai8InputDetailParametersToggle"));
+    auto *outputDetailToggle =
+        panel.findChild<QToolButton *>(QStringLiteral("ai8OutputDetailParametersToggle"));
+    auto *globalDetailToggle =
+        panel.findChild<QToolButton *>(QStringLiteral("ai8GlobalDetailParametersToggle"));
+    auto *channelDetailContent =
+        panel.findChild<QWidget *>(QStringLiteral("ai8ChannelDetailParametersContent"));
+    auto *channelCommonLayout =
+        panel.findChild<QGridLayout *>(QStringLiteral("ai8ChannelCommonParametersLayout"));
+    auto *inputCommonLayout =
+        panel.findChild<QGridLayout *>(QStringLiteral("ai8InputCommonParametersLayout"));
+    auto *outputCommonLayout =
+        panel.findChild<QGridLayout *>(QStringLiteral("ai8OutputCommonParametersLayout"));
+    auto *globalCommonLayout =
+        panel.findChild<QGridLayout *>(QStringLiteral("ai8GlobalCommonParametersLayout"));
+    auto *channelInputGroupEdit =
+        panel.findChild<QLineEdit *>(QStringLiteral("ai8ChannelInputGroupEdit"));
+    auto *channelAlarmStatusEdit =
+        panel.findChild<QLineEdit *>(QStringLiteral("ai8ChannelAlarmStatusEdit"));
+    require(channelDetailToggle != nullptr && inputDetailToggle != nullptr &&
+                outputDetailToggle != nullptr && globalDetailToggle != nullptr &&
+                channelDetailContent != nullptr && channelInputGroupEdit != nullptr &&
+                channelAlarmStatusEdit != nullptr && !channelInputGroupEdit->isVisible() &&
+                channelCommonLayout != nullptr && channelCommonLayout->count() == 8 &&
+                inputCommonLayout != nullptr && inputCommonLayout->count() == 7 &&
+                outputCommonLayout != nullptr && outputCommonLayout->count() == 8 &&
+                globalCommonLayout != nullptr && globalCommonLayout->count() == 8 &&
+                !channelAlarmStatusEdit->isVisible() && !channelDetailToggle->isChecked() &&
+                !inputDetailToggle->isChecked() && !outputDetailToggle->isChecked() &&
+                !globalDetailToggle->isChecked() && !channelDetailContent->isVisible() &&
+                channelDetailToggle->arrowType() == Qt::RightArrow,
+            "AI-8 detailed parameter cards start collapsed with right arrows");
+    channelDetailToggle->click();
+    QApplication::processEvents();
+    require(channelDetailToggle->isChecked() && channelDetailContent->isVisible() &&
+                channelInputGroupEdit->isVisible() && channelAlarmStatusEdit->isVisible() &&
+                channelDetailToggle->arrowType() == Qt::DownArrow &&
+                channelDetailContent->geometry().top() > channelDetailToggle->geometry().bottom(),
+            "AI-8 detailed parameters expand below the toggle card header");
+    channelDetailToggle->click();
+    QApplication::processEvents();
+    require(!channelDetailToggle->isChecked() && !channelDetailContent->isVisible() &&
+                channelDetailToggle->arrowType() == Qt::RightArrow,
+            "AI-8 detailed parameters collapse without changing their values");
+
     require(addressSpin != nullptr && addressSpin->minimum() == 1 && addressSpin->maximum() == 88 &&
                 addressSpin->value() == 1,
             "AI-8 address range and default match the register table");
     require(baudCombo != nullptr && baudCombo->currentData().toInt() == 19200,
             "AI-8 baud rate defaults to 19.2K");
+    auto *channelOutputGroupSpin = panel.findChild<QSpinBox *>(QStringLiteral("ai8ChannelOutputGroupSpin"));
+    auto *programNumberSpin = panel.findChild<QSpinBox *>(QStringLiteral("ai8ProgramNumberSpin"));
+    auto *highAlarmSpin = panel.findChild<QDoubleSpinBox *>(QStringLiteral("ai8HighAlarmSpin"));
+    auto *deviationHighSpin = panel.findChild<QDoubleSpinBox *>(QStringLiteral("ai8DeviationHighAlarmSpin"));
+    auto *setpointHighLimitSpin = panel.findChild<QDoubleSpinBox *>(QStringLiteral("ai8SetpointHighLimitSpin"));
+    auto *modelFeatureEdit = panel.findChild<QLineEdit *>(QStringLiteral("ai8ModelFeatureEdit"));
+    auto *serialNumberEdit = panel.findChild<QLineEdit *>(QStringLiteral("ai8SerialNumberEdit"));
+    auto *outputStartChannelEdit = panel.findChild<QLineEdit *>(QStringLiteral("ai8OutputStartChannelEdit"));
+    auto *atFunctionEdit = panel.findChild<QLineEdit *>(QStringLiteral("ai8AtFunctionEdit"));
+    auto *p1tiOpsnEdit = panel.findChild<QLineEdit *>(QStringLiteral("ai8P1tiOpsnEdit"));
+    require(channelOutputGroupSpin != nullptr && channelOutputGroupSpin->minimum() == 0 &&
+                channelOutputGroupSpin->maximum() == 4 &&
+                programNumberSpin != nullptr && programNumberSpin->maximum() == 9999 &&
+                highAlarmSpin != nullptr,
+            "AI-8288 extended channel parameters are visible");
+    require(deviationHighSpin != nullptr && setpointHighLimitSpin != nullptr &&
+                modelFeatureEdit != nullptr && serialNumberEdit != nullptr &&
+                outputStartChannelEdit != nullptr && atFunctionEdit != nullptr &&
+                p1tiOpsnEdit != nullptr,
+            "AI-8288 output and global diagnostic parameters are visible");
+
+    VaporView::Ai8TemperatureControllerProtocol::PageData channelData;
+    channelData.page = VaporView::Ai8TemperatureControllerProtocol::Page::Channel;
+    channelData.selection.channel = 1;
+    channelData.channel.setpointC = 31.0;
+    channelData.channel.measuredC = std::numeric_limits<double>::quiet_NaN();
+    channelData.channel.channelInputGroup = 2;
+    channelData.channel.correctionEntry = 11;
+    channelData.channel.measurementOffset = -1.2;
+    channelData.channel.channelOutputGroupRaw = 3;
+    channelData.channel.programNumber = 4321;
+    channelData.channel.highAlarmC = 320.0;
+    channelData.channel.lowAlarmC = -20.0;
+    channelData.channel.displayedSetpointC = 30.5;
+    channelData.channel.alarmStatusRaw = 0x02;
+    channelData.channel.alarmStatusValid = true;
+    panel.applyPageData(channelData);
+    QApplication::processEvents();
+    require(channelOutputGroupSpin->value() == 3 &&
+                programNumberSpin->value() == 4321 &&
+                highAlarmSpin->value() == 320.0 &&
+                panel.findChild<QLineEdit *>(QStringLiteral("ai8ChannelInputGroupEdit"))->text().contains(QStringLiteral("entry 11")) &&
+                panel.findChild<QLineEdit *>(QStringLiteral("ai8ChannelAlarmStatusEdit"))->text().contains(QStringLiteral("0x02")),
+            "AI-8288 channel read-back fills extended channel controls");
+    auto channelRequest = panel.currentPageData();
+    require(channelRequest.channel.channelOutputGroupRaw == 3 &&
+                channelRequest.channel.programNumber == 4321 &&
+                channelRequest.channel.highAlarmC == 320.0 &&
+                channelRequest.channel.lowAlarmC == -20.0,
+            "AI-8288 channel write request includes extended channel controls");
+    outputButton->click();
+    QApplication::processEvents();
+    deviationHighSpin->setValue(35.0);
+    setpointHighLimitSpin->setValue(280.0);
+    auto outputRequest = panel.currentPageData();
+    require(outputRequest.page == VaporView::Ai8TemperatureControllerProtocol::Page::OutputGroup &&
+                outputRequest.output.deviationHighAlarm == 35.0 &&
+                outputRequest.output.setpointHighLimit == 280.0,
+            "AI-8288 output write request includes extended output controls");
+    channelButton->click();
+    QApplication::processEvents();
 
     auto *runCombo = panel.findChild<QComboBox *>(QStringLiteral("ai8RunModeCombo"));
     require(runCombo != nullptr && runCombo->count() == 3 &&
@@ -78,6 +192,18 @@ int main(int argc, char **argv)
     unknownRunState.global.runStateRaw = 1;
     unknownRunState.global.runStateIsDocumented = false;
     unknownRunState.global.controlCycleS = 0.4;
+    unknownRunState.global.modelFeature = 0x218A;
+    unknownRunState.global.serialNumber = 0x20001919u;
+    unknownRunState.global.mainStatusRaw = 0x0200;
+    unknownRunState.global.commonAlarmOutput = 0x0018;
+    unknownRunState.global.outputStartChannel = 1;
+    unknownRunState.global.highResolutionFilter = 20;
+    unknownRunState.global.aif1 = 150;
+    unknownRunState.global.aif2 = 15;
+    unknownRunState.global.p1faAif3 = 9999;
+    unknownRunState.global.difa = 2;
+    unknownRunState.global.spsr = 100;
+    unknownRunState.global.atFunction = 55;
     panel.applyPageData(unknownRunState);
     QApplication::processEvents();
     require(runCombo->count() == 4 && runCombo->currentData().toUInt() == 1 &&
@@ -92,6 +218,14 @@ int main(int argc, char **argv)
                 !unknownData.global.runStateWriteRequested &&
                 unknownData.global.runStateWriteValue == 0,
             "AI-8 unknown Srun value is not converted into a write request");
+    require(modelFeatureEdit->text() == QStringLiteral("0x218A") &&
+                serialNumberEdit->text() == QStringLiteral("0x20001919") &&
+                panel.findChild<QLineEdit *>(QStringLiteral("ai8MainStatusEdit"))->text().contains(QStringLiteral("0x0200")) &&
+                panel.findChild<QLineEdit *>(QStringLiteral("ai8CommonAlarmOutputEdit"))->text().contains(QStringLiteral("0x0018")) &&
+                outputStartChannelEdit->text().contains(QStringLiteral("0x0001")) &&
+                atFunctionEdit->text().contains(QStringLiteral("0x0037")) &&
+                p1tiOpsnEdit->text().contains(QStringLiteral("0x0000")),
+            "AI-8288 global diagnostics are displayed as read-only values");
 
     panel.setEnglish(true);
     QApplication::processEvents();
@@ -156,11 +290,16 @@ int main(int argc, char **argv)
         VaporView::Ai8TemperatureControllerProtocol::ChannelControlState::ApidOutput);
     liveData.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
     liveData.measuredC[0] = 23.4;
+    liveData.alarmStatusValid = true;
+    liveData.alarmStatusRegisters[0] = 0x0203;
     panel.applyLiveData(liveData);
     auto *pvEdit = panel.findChild<QLineEdit *>(QStringLiteral("ai8MeasuredTemperatureEdit"));
+    auto *alarmStatusEdit = panel.findChild<QLineEdit *>(QStringLiteral("ai8ChannelAlarmStatusEdit"));
     auto *temperaturePlot = panel.findChild<QWidget *>(QStringLiteral("ai8TemperatureTrendPlot"));
     require(pvEdit != nullptr && pvEdit->text().contains(QStringLiteral("23.4")),
             "AI-8 selected-channel PV is updated from live polling");
+    require(alarmStatusEdit != nullptr && alarmStatusEdit->text().contains(QStringLiteral("0x02")),
+            "AI-8 selected-channel alarm status is updated from live polling");
     require(temperaturePlot != nullptr && temperaturePlot->property("ai8TemperaturePlot").toBool() &&
                 temperaturePlot->property("sampleCount").toInt() == 1,
             "AI-8 temperature plot receives the selected channel PV");
@@ -180,6 +319,8 @@ int main(int argc, char **argv)
             "AI-8 temperature plot follows the selected channel history");
     require(panel.currentOutputStatusText() == QStringLiteral("通道2：停止输出"),
             "AI-8 title status follows the selected channel");
+    require(alarmStatusEdit->text().contains(QStringLiteral("0x03")),
+            "AI-8 selected-channel alarm status follows the selected channel");
     panel.setEnglish(true);
     QApplication::processEvents();
     require(channelButton->text() == QStringLiteral("Channel") &&

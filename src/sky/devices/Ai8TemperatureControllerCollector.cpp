@@ -181,7 +181,10 @@ bool Ai8TemperatureControllerCollector::readRegisterValueUnlocked(quint16 addres
                                                                    QString *errorMessage)
 {
     std::vector<quint16> values;
-    if (!readRegistersUnlocked(address, 1, values, 250) || values.empty())
+    const bool readOk = readBackendForTest_
+        ? readBackendForTest_(address, 1, values)
+        : readRegistersUnlocked(address, 1, values, 250);
+    if (!readOk || values.empty())
     {
         if (errorMessage)
         {
@@ -268,11 +271,19 @@ bool Ai8TemperatureControllerCollector::readChannelPage(const Selection& selecti
     auto read = [&](Register reg, quint16& value) {
         return readRegisterValue(channelRegister(reg, channel), value, errorMessage);
     };
-    quint16 sp = 0, pv = 0, p = 0, i = 0, d = 0, at = 0, op = 0;
+    quint16 sp = 0, pv = 0, p = 0, i = 0, d = 0, in = 0, sc = 0, on = 0, pn = 0;
+    quint16 at = 0, op = 0, ha = 0, la = 0, sv = 0, alarmStatus = 0;
     if (!read(Register::SetpointBase, sp) || !read(Register::MeasuredValueBase, pv) ||
         !read(Register::ProportionalBandBase, p) || !read(Register::IntegralTimeBase, i) ||
-        !read(Register::DerivativeTimeBase, d) || !read(Register::WorkModeBase, at) ||
-        !read(Register::ManualOutputBase, op))
+        !read(Register::DerivativeTimeBase, d) || !read(Register::ChannelInputBase, in) ||
+        !read(Register::MeasurementOffsetBase, sc) || !read(Register::ChannelOutputBase, on) ||
+        !read(Register::ProgramNumberBase, pn) || !read(Register::WorkModeBase, at) ||
+        !read(Register::ManualOutputBase, op) || !read(Register::HighAlarmBase, ha) ||
+        !read(Register::LowAlarmBase, la) || !read(Register::DisplayedSetpointBase, sv) ||
+        !readRegisterValue(static_cast<quint16>(static_cast<quint16>(Register::AlarmStatusBase) +
+                                                ((channel - 1) / 2)),
+                           alarmStatus,
+                           errorMessage))
     {
         return false;
     }
@@ -281,8 +292,18 @@ bool Ai8TemperatureControllerCollector::readChannelPage(const Selection& selecti
     data.channel.proportionalBand = decodeUnsignedTenths(p);
     data.channel.integralTimeS = decodeUnsignedTenths(i);
     data.channel.derivativeTimeS = decodeSignedHundredths(d);
+    data.channel.channelInputGroup = decodeChannelInputGroup(in);
+    data.channel.correctionEntry = decodeCorrectionEntry(in);
+    data.channel.measurementOffset = decodeSignedTenths(sc);
+    data.channel.channelOutputGroupRaw = on;
+    data.channel.programNumber = pn;
     data.channel.workMode = at;
     data.channel.manualOutputPercent = decodeManualOutput(op);
+    data.channel.highAlarmC = decodeSignedTenths(ha);
+    data.channel.lowAlarmC = decodeSignedTenths(la);
+    data.channel.displayedSetpointC = decodeSignedTenths(sv);
+    data.channel.alarmStatusRaw = decodeChannelAlarmStatus(alarmStatus, channel);
+    data.channel.alarmStatusValid = true;
     return true;
 }
 
@@ -321,20 +342,32 @@ bool Ai8TemperatureControllerCollector::readOutputPage(const Selection& selectio
     auto read = [&](Register reg, quint16& value) {
         return readRegisterValue(groupRegister(reg, group), value, errorMessage);
     };
-    quint16 act = 0, hys = 0, opl = 0, oph = 0, srh = 0, srl = 0, aaf = 0;
-    if (!read(Register::ControlActionBase, act) || !read(Register::HysteresisBase, hys) ||
+    quint16 act = 0, dha = 0, dla = 0, hys = 0, opl = 0, oph = 0, ohe = 0;
+    quint16 srh = 0, srl = 0, spl = 0, sph = 0, aaf = 0;
+    if (!read(Register::ControlActionBase, act) ||
+        !read(Register::DeviationHighAlarmBase, dha) ||
+        !read(Register::DeviationLowAlarmBase, dla) ||
+        !read(Register::HysteresisBase, hys) ||
         !read(Register::OutputLowBase, opl) || !read(Register::OutputHighBase, oph) ||
+        !read(Register::OutputHighThresholdBase, ohe) ||
         !read(Register::RiseSlopeBase, srh) || !read(Register::FallSlopeBase, srl) ||
+        !read(Register::SetpointLowLimitBase, spl) ||
+        !read(Register::SetpointHighLimitBase, sph) ||
         !read(Register::AlarmResetBase, aaf))
     {
         return false;
     }
     data.output.controlAction = act & 0x0001u;
+    data.output.deviationHighAlarm = decodeSignedTenths(dha);
+    data.output.deviationLowAlarm = decodeSignedTenths(dla);
     data.output.hysteresis = decodeSignedTenths(hys);
     data.output.outputLowPercent = opl;
     data.output.outputHighPercent = oph;
+    data.output.outputHighThreshold = decodeSignedTenths(ohe);
     data.output.riseSlope = decodeUnsignedTenths(srh);
     data.output.fallSlope = decodeUnsignedTenths(srl);
+    data.output.setpointLowLimit = decodeSignedTenths(spl);
+    data.output.setpointHighLimit = decodeSignedTenths(sph);
     data.output.alarmResetFlags = aaf;
     return true;
 }
@@ -345,7 +378,7 @@ bool Ai8TemperatureControllerCollector::readGlobalPage(const Selection&,
 {
     std::vector<quint16> values;
     constexpr quint16 start = static_cast<quint16>(Register::Address);
-    constexpr quint16 count = static_cast<quint16>(static_cast<quint16>(Register::SerialNumberLow) - start + 1);
+    constexpr quint16 count = static_cast<quint16>(static_cast<quint16>(Register::P1tiOpsn) - start + 1);
     if (!readRegisters(start, count, values, 300))
     {
         if (errorMessage)
@@ -361,17 +394,37 @@ bool Ai8TemperatureControllerCollector::readGlobalPage(const Selection&,
     };
     data.global.address = at(Register::Address);
     data.global.baudRate = decodeBaudRate(at(Register::BaudRate));
+    data.global.localInputChannelCount = at(Register::LocalInputChannelCount);
+    data.global.expansionInputChannelCount = at(Register::ExpansionInputChannelCount);
     data.global.controlChannelCount = at(Register::ControlChannelCount);
     data.global.runStateRaw = at(Register::RunState);
     data.global.runStateIsDocumented = isDocumentedRunState(data.global.runStateRaw);
     data.global.controlCycleS = decodeUnsignedTenths(at(Register::ControlCycle));
+    data.global.commonAlarmOutput = at(Register::CommonAlarmOutput);
+    data.global.independentAlarmChannelCount = at(Register::IndependentAlarmChannelCount);
+    data.global.independentAlarmMask = at(Register::IndependentAlarmMask);
+    data.global.alarmFunctionA = at(Register::AlarmFunctionA);
+    data.global.alarmFunctionB = at(Register::AlarmFunctionB);
     data.global.parityFlags = at(Register::ParityFlags);
+    data.global.alarmPolarity = at(Register::AlarmPolarity);
     data.global.sampleMode = at(Register::SampleMode);
+    data.global.extraHysteresis = decodeUnsignedTenths(at(Register::ExtraHysteresis));
     data.global.decimalPoint = at(Register::DecimalPoint);
+    data.global.mainStatusRaw = at(Register::MainStatus);
     data.global.parameterLock = at(Register::ParameterLock);
     data.global.modelFeature = at(Register::ModelFeature);
     data.global.serialNumber = (static_cast<quint32>(at(Register::SerialNumberHigh)) << 16) |
                                at(Register::SerialNumberLow);
+    data.global.outputStartChannel = at(Register::OutputStartChannel);
+    data.global.highResolutionFilter = at(Register::HighResolutionFilter);
+    data.global.aif1 = at(Register::Aif1);
+    data.global.aif2 = at(Register::Aif2);
+    data.global.p1faAif3 = at(Register::P1faAif3);
+    data.global.difa = at(Register::Difa);
+    data.global.spsr = at(Register::Spsr);
+    data.global.atFunction = at(Register::AtFunction);
+    data.global.aiflP1pr = at(Register::AiflP1pr);
+    data.global.p1tiOpsn = at(Register::P1tiOpsn);
     return true;
 }
 
@@ -403,12 +456,19 @@ bool Ai8TemperatureControllerCollector::writeChannelPage(const PageData& data, Q
         !write(Register::ProportionalBandBase, encodeUnsignedTenths(data.channel.proportionalBand)) ||
         !write(Register::IntegralTimeBase, encodeUnsignedTenths(data.channel.integralTimeS)) ||
         !write(Register::DerivativeTimeBase, encodeSignedHundredths(data.channel.derivativeTimeS)) ||
+        !write(Register::ChannelOutputBase, static_cast<quint16>(data.channel.channelOutputGroupRaw)) ||
+        !write(Register::ProgramNumberBase, static_cast<quint16>(data.channel.programNumber)) ||
         !write(Register::WorkModeBase, static_cast<quint16>(data.channel.workMode)))
     {
         return false;
     }
-    return data.channel.workMode != 3 ||
-           write(Register::ManualOutputBase, encodeManualOutput(data.channel.manualOutputPercent));
+    if (data.channel.workMode == 3 &&
+        !write(Register::ManualOutputBase, encodeManualOutput(data.channel.manualOutputPercent)))
+    {
+        return false;
+    }
+    return write(Register::HighAlarmBase, encodeSignedTenths(data.channel.highAlarmC)) &&
+           write(Register::LowAlarmBase, encodeSignedTenths(data.channel.lowAlarmC));
 }
 
 bool Ai8TemperatureControllerCollector::writeInputPage(const PageData& data, QString *errorMessage)
@@ -442,11 +502,16 @@ bool Ai8TemperatureControllerCollector::writeOutputPage(const PageData& data, QS
     const quint16 updatedAction = static_cast<quint16>((currentAction & ~0x0001u) |
                                                        (data.output.controlAction & 0x0001));
     return writeAndConfirm(address(Register::ControlActionBase), updatedAction, errorMessage) &&
+           writeAndConfirm(address(Register::DeviationHighAlarmBase), encodeSignedTenths(data.output.deviationHighAlarm), errorMessage) &&
+           writeAndConfirm(address(Register::DeviationLowAlarmBase), encodeSignedTenths(data.output.deviationLowAlarm), errorMessage) &&
            writeAndConfirm(address(Register::HysteresisBase), encodeSignedTenths(data.output.hysteresis), errorMessage) &&
            writeAndConfirm(address(Register::OutputLowBase), static_cast<quint16>(data.output.outputLowPercent), errorMessage) &&
            writeAndConfirm(address(Register::OutputHighBase), static_cast<quint16>(data.output.outputHighPercent), errorMessage) &&
+           writeAndConfirm(address(Register::OutputHighThresholdBase), encodeSignedTenths(data.output.outputHighThreshold), errorMessage) &&
            writeAndConfirm(address(Register::RiseSlopeBase), encodeUnsignedTenths(data.output.riseSlope), errorMessage) &&
            writeAndConfirm(address(Register::FallSlopeBase), encodeUnsignedTenths(data.output.fallSlope), errorMessage) &&
+           writeAndConfirm(address(Register::SetpointLowLimitBase), encodeSignedTenths(data.output.setpointLowLimit), errorMessage) &&
+           writeAndConfirm(address(Register::SetpointHighLimitBase), encodeSignedTenths(data.output.setpointHighLimit), errorMessage) &&
            writeAndConfirm(address(Register::AlarmResetBase), static_cast<quint16>(data.output.alarmResetFlags), errorMessage);
 }
 
@@ -601,6 +666,27 @@ bool Ai8TemperatureControllerCollector::readLiveData(LiveData& data)
         data.measuredC[static_cast<size_t>(index)] = decodeSignedTenths(values[static_cast<size_t>(index)]);
     }
     data.valid = true;
+
+    std::vector<quint16> alarmValues;
+    if (readRegisters(static_cast<quint16>(Register::AlarmStatusBase),
+                      kAlarmStatusRegisterCount,
+                      alarmValues,
+                      250) &&
+        alarmValues.size() == kAlarmStatusRegisterCount)
+    {
+        for (int index = 0; index < kAlarmStatusRegisterCount; ++index)
+        {
+            data.alarmStatusRegisters[static_cast<size_t>(index)] =
+                alarmValues[static_cast<size_t>(index)];
+        }
+        data.alarmStatusValid = true;
+    }
+    quint16 mainStatus = 0;
+    if (readRegisterValue(static_cast<quint16>(Register::MainStatus), mainStatus))
+    {
+        data.mainStatusRaw = mainStatus;
+        data.mainStatusValid = true;
+    }
 
     std::vector<quint16> statusValues;
     if (!readRegisters(static_cast<quint16>(Register::ControlStatusBase),
