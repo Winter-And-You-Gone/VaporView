@@ -4110,12 +4110,30 @@ int main(int argc, char **argv)
         QStringLiteral("ai8NavigationBar"));
     auto *ai8Stack = ai8TemperatureCard->findChild<QStackedWidget *>(
         QStringLiteral("ai8ParameterStack"));
+    auto *ai8DetailStack = ai8TemperatureCard->findChild<QStackedWidget *>(
+        QStringLiteral("ai8DetailParametersStack"));
+    auto *ai8MainContentCard = ai8TemperatureCard->findChild<QFrame *>(
+        QStringLiteral("ai8MainContentCard"));
+    auto *ai8TemperaturePlot = ai8TemperatureCard->findChild<QWidget *>(
+        QStringLiteral("ai8TemperatureTrendPlot"));
     require(ai8Panel != nullptr && ai8NavigationBar != nullptr &&
                 ai8NavigationBar->testAttribute(Qt::WA_StyledBackground) &&
-                ai8Stack != nullptr && ai8Stack->count() == 4,
+                ai8Stack != nullptr && ai8Stack->count() == 4 &&
+                ai8DetailStack != nullptr && ai8DetailStack->count() == 4 &&
+                ai8MainContentCard != nullptr && ai8TemperaturePlot != nullptr,
             "AI-8 card exposes channel, input, output, and global parameter pages");
     require(ai8Stack->currentIndex() == 0,
             "AI-8 card opens on channel parameters");
+    const QRect ai8MainContentRect(ai8MainContentCard->mapTo(ai8Panel, QPoint(0, 0)),
+                                   ai8MainContentCard->size());
+    const QRect ai8StackRect(ai8Stack->mapTo(ai8Panel, QPoint(0, 0)), ai8Stack->size());
+    const QRect ai8PlotRect(ai8TemperaturePlot->mapTo(ai8Panel, QPoint(0, 0)), ai8TemperaturePlot->size());
+    const QRect ai8DetailStackRect(ai8DetailStack->mapTo(ai8Panel, QPoint(0, 0)), ai8DetailStack->size());
+    require(ai8StackRect.left() < ai8PlotRect.left() &&
+                ai8StackRect.right() < ai8PlotRect.left() &&
+                std::abs(ai8StackRect.top() - ai8PlotRect.top()) <= 2 &&
+                ai8DetailStackRect.top() > ai8MainContentRect.bottom(),
+            "AI-8 common parameters sit left of the trend plot with details below");
     auto *ai8GlobalButton = ai8TemperatureCard->findChild<QPushButton *>(
         QStringLiteral("ai8PageSelectorButton4"));
     auto *ai8ChannelButton = ai8TemperatureCard->findChild<QPushButton *>(
@@ -4134,13 +4152,19 @@ int main(int argc, char **argv)
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8NavigationBar QPushButton:checked {"),
                                  QStringLiteral("font-weight: 600"),
                                  "AI-8 page selector marks the selected parameter group like the temperature tabs");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8MainContentCard {"),
+                                 QStringLiteral("border-radius: 8px"),
+                                 "AI-8 common parameters and trend plot share a bordered content card");
     ai8GlobalButton->click();
     processEventsFor(10);
-    require(ai8Stack->currentIndex() == 3 && ai8GlobalButton->isChecked(),
+    require(ai8Stack->currentIndex() == 3 && ai8DetailStack->currentIndex() == 3 &&
+                ai8GlobalButton->isChecked(),
             "AI-8 page selector switches to global parameters");
     ai8ChannelButton->click();
     processEventsFor(10);
-    require(ai8Stack->currentIndex() == 0 && ai8ChannelButton->isChecked(),
+    require(ai8Stack->currentIndex() == 0 && ai8DetailStack->currentIndex() == 0 &&
+                ai8ChannelButton->isChecked(),
             "AI-8 page selector returns to channel parameters");
 
     auto *ai8ChannelSpin = ai8TemperatureCard->findChild<QSpinBox *>(

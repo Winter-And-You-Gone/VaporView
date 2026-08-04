@@ -92,6 +92,7 @@ private:
 
     QButtonGroup *page_button_group_ = nullptr;
     QStackedWidget *page_stack_ = nullptr;
+    QStackedWidget *detail_stack_ = nullptr;
     TemperatureTrendPlotWidget *temperature_plot_ = nullptr;
     QLabel *protocol_status_label_ = nullptr;
     QAbstractButton *read_button_ = nullptr;

@@ -3,12 +3,15 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QFrame>
 #include <QGridLayout>
 #include <QImage>
 #include <QLabel>
 #include <QMetaObject>
 #include <QLineEdit>
+#include <QPoint>
 #include <QPushButton>
+#include <QRect>
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QToolButton>
@@ -36,13 +39,20 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
 
     VaporView::Ground::Widgets::Ai8TemperatureControllerPanel panel;
-    panel.resize(1180, 300);
+    panel.resize(1180, 560);
     panel.show();
     QApplication::processEvents();
 
     auto *stack = panel.findChild<QStackedWidget *>(QStringLiteral("ai8ParameterStack"));
     require(stack != nullptr && stack->count() == 4 && stack->currentIndex() == 0,
             "AI-8 panel starts on one of four documented parameter groups");
+    auto *detailStack = panel.findChild<QStackedWidget *>(QStringLiteral("ai8DetailParametersStack"));
+    auto *mainContentCard = panel.findChild<QFrame *>(QStringLiteral("ai8MainContentCard"));
+    auto *mainContentDivider = panel.findChild<QFrame *>(QStringLiteral("ai8MainContentDivider"));
+    auto *temperaturePlot = panel.findChild<QWidget *>(QStringLiteral("ai8TemperatureTrendPlot"));
+    require(detailStack != nullptr && detailStack->count() == 4 && detailStack->currentIndex() == 0 &&
+                mainContentCard != nullptr && mainContentDivider != nullptr && temperaturePlot != nullptr,
+            "AI-8 panel builds the side-by-side common-parameter and plot layout");
 
     auto *globalButton = panel.findChild<QPushButton *>(QStringLiteral("ai8PageSelectorButton4"));
     auto *outputButton = panel.findChild<QPushButton *>(QStringLiteral("ai8PageSelectorButton3"));
@@ -52,11 +62,11 @@ int main(int argc, char **argv)
             "AI-8 parameter page selectors exist and channel is selected");
     globalButton->click();
     QApplication::processEvents();
-    require(stack->currentIndex() == 3 && globalButton->isChecked(),
+    require(stack->currentIndex() == 3 && detailStack->currentIndex() == 3 && globalButton->isChecked(),
             "AI-8 global page selector changes the visible page");
     channelButton->click();
     QApplication::processEvents();
-    require(stack->currentIndex() == 0 && channelButton->isChecked(),
+    require(stack->currentIndex() == 0 && detailStack->currentIndex() == 0 && channelButton->isChecked(),
             "AI-8 channel page selector restores the visible page");
 
     auto *channelSpin = panel.findChild<QSpinBox *>(QStringLiteral("ai8ChannelSpin"));
@@ -94,14 +104,26 @@ int main(int argc, char **argv)
                 channelDetailContent != nullptr && channelInputGroupEdit != nullptr &&
                 channelAlarmStatusEdit != nullptr && !channelInputGroupEdit->isVisible() &&
                 channelCommonLayout != nullptr && channelCommonLayout->count() == 8 &&
+                channelCommonLayout->columnCount() == 2 &&
                 inputCommonLayout != nullptr && inputCommonLayout->count() == 7 &&
+                inputCommonLayout->columnCount() == 2 &&
                 outputCommonLayout != nullptr && outputCommonLayout->count() == 8 &&
+                outputCommonLayout->columnCount() == 2 &&
                 globalCommonLayout != nullptr && globalCommonLayout->count() == 8 &&
+                globalCommonLayout->columnCount() == 2 &&
                 !channelAlarmStatusEdit->isVisible() && !channelDetailToggle->isChecked() &&
                 !inputDetailToggle->isChecked() && !outputDetailToggle->isChecked() &&
                 !globalDetailToggle->isChecked() && !channelDetailContent->isVisible() &&
                 channelDetailToggle->arrowType() == Qt::RightArrow,
             "AI-8 detailed parameter cards start collapsed with right arrows");
+    const QRect commonStackRect(stack->mapTo(&panel, QPoint(0, 0)), stack->size());
+    const QRect plotRect(temperaturePlot->mapTo(&panel, QPoint(0, 0)), temperaturePlot->size());
+    const QRect detailStackRect(detailStack->mapTo(&panel, QPoint(0, 0)), detailStack->size());
+    require(commonStackRect.left() < plotRect.left() &&
+                commonStackRect.right() < plotRect.left() &&
+                std::abs(commonStackRect.top() - plotRect.top()) <= 2 &&
+                detailStackRect.top() > plotRect.bottom(),
+            "AI-8 common parameters sit left of the plot and details expand below");
     channelDetailToggle->click();
     QApplication::processEvents();
     require(channelDetailToggle->isChecked() && channelDetailContent->isVisible() &&
@@ -295,7 +317,6 @@ int main(int argc, char **argv)
     panel.applyLiveData(liveData);
     auto *pvEdit = panel.findChild<QLineEdit *>(QStringLiteral("ai8MeasuredTemperatureEdit"));
     auto *alarmStatusEdit = panel.findChild<QLineEdit *>(QStringLiteral("ai8ChannelAlarmStatusEdit"));
-    auto *temperaturePlot = panel.findChild<QWidget *>(QStringLiteral("ai8TemperatureTrendPlot"));
     require(pvEdit != nullptr && pvEdit->text().contains(QStringLiteral("23.4")),
             "AI-8 selected-channel PV is updated from live polling");
     require(alarmStatusEdit != nullptr && alarmStatusEdit->text().contains(QStringLiteral("0x02")),
