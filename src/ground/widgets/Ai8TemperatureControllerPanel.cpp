@@ -33,6 +33,7 @@ namespace
 constexpr int kPageColumnCount = 2;
 constexpr int kEditorMinimumWidth = 118;
 constexpr int kParameterFieldMinimumHeight = 66;
+constexpr int kParameterFieldVerticalPadding = 7;
 constexpr int kAi8TemperatureHistoryLimit = 240;
 constexpr int kAi8NavigationButtonHeight = 30;
 constexpr int kAi8NavigationHorizontalMargin = 4;
@@ -346,7 +347,8 @@ void Ai8TemperatureControllerPanel::setupUi()
     temperature_plot_->setProperty("forceWhiteBackground", true);
     temperature_plot_->setCompactMode(true);
     temperature_plot_->setFixedHeight(
-        std::max(kAi8TemperaturePlotMinimumHeight, page_stack_->sizeHint().height()));
+        std::max(kAi8TemperaturePlotMinimumHeight,
+                 page_stack_->sizeHint().height() - kParameterFieldVerticalPadding));
     temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     mainContentLayout->addWidget(temperature_plot_, 1, Qt::AlignTop);
     rootLayout->addWidget(mainContentCard);
@@ -812,10 +814,13 @@ QWidget *Ai8TemperatureControllerPanel::createParameterField(const QString& chin
 {
     auto *field = new Ai8ParameterFieldFrame(editor, parent);
     field->setObjectName(QStringLiteral("ai8ParameterField"));
-    field->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    field->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     field->setMinimumHeight(kParameterFieldMinimumHeight);
     auto *layout = new QVBoxLayout(field);
-    layout->setContentsMargins(0, 7, 0, 7);
+    layout->setContentsMargins(0,
+                               kParameterFieldVerticalPadding,
+                               0,
+                               kParameterFieldVerticalPadding);
     layout->setSpacing(4);
 
     auto *label = new QLabel(field);

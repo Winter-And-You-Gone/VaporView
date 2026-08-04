@@ -4240,11 +4240,17 @@ int main(int argc, char **argv)
     const QRect ai8DetailStackRect(ai8DetailStack->mapTo(ai8Panel, QPoint(0, 0)), ai8DetailStack->size());
     const QRect ai8NavigationRect(ai8NavigationBar->mapTo(ai8Panel, QPoint(0, 0)), ai8NavigationBar->size());
     const QRect ai8StatusRect(ai8StatusRow->mapTo(ai8Panel, QPoint(0, 0)), ai8StatusRow->size());
+    auto *ai8ManualOutputSpin = ai8TemperatureCard->findChild<QDoubleSpinBox *>(
+        QStringLiteral("ai8ManualOutputSpin"));
+    require(ai8ManualOutputSpin != nullptr,
+            "AI-8 channel common parameters include the bottom-row manual output editor");
+    const QRect ai8ManualOutputRect(ai8ManualOutputSpin->mapTo(ai8Panel, QPoint(0, 0)),
+                                    ai8ManualOutputSpin->size());
     constexpr int kSerialConfigComboSpacingPx = 6;
     require(ai8StackRect.left() < ai8PlotRect.left() &&
                 ai8StackRect.right() < ai8PlotRect.left() &&
                 ai8PlotRect.width() > ai8StackRect.width() &&
-                std::abs(ai8PlotRect.height() - ai8StackRect.height()) <= 2 &&
+                std::abs(ai8PlotRect.bottom() - ai8ManualOutputRect.bottom()) <= 2 &&
                 std::abs(ai8StackRect.top() - ai8PlotRect.top()) <= 2 &&
                 ai8DetailStackRect.top() > ai8MainContentRect.bottom() &&
                 std::abs(ai8StackRect.left() - ai8MainContentRect.left() -
@@ -4252,7 +4258,7 @@ int main(int argc, char **argv)
                 std::abs(ai8PlotRect.left() -
                          (ai8StackRect.left() + ai8StackRect.width()) -
                          kSerialConfigComboSpacingPx) <= 1,
-            "AI-8 common parameters use 6px left and plot-side spacing with details below");
+            "AI-8 common parameters stay compact and align the plot x-axis baseline with the bottom-row editor");
     require(ai8StatusRect.left() > ai8NavigationRect.right() &&
                 ai8StatusRect.right() <= ai8Panel->rect().right() &&
                 ai8StatusRect.bottom() < ai8MainContentRect.top() &&

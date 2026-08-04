@@ -60,9 +60,24 @@ int main(int argc, char **argv)
     require(temperaturePlot->property("forceWhiteBackground").toBool(),
             "AI-8 temperature plot uses the same white background as the parameter area");
     require(temperaturePlot->testAttribute(Qt::WA_OpaquePaintEvent) &&
-                temperaturePlot->minimumHeight() == temperaturePlot->maximumHeight() &&
-                temperaturePlot->height() >= stack->height(),
-            "AI-8 temperature plot has a stable opaque paint area that matches the parameter stack height");
+                temperaturePlot->minimumHeight() == temperaturePlot->maximumHeight(),
+            "AI-8 temperature plot has a stable opaque paint area");
+    auto *manualOutputSpin = panel.findChild<QDoubleSpinBox *>(QStringLiteral("ai8ManualOutputSpin"));
+    require(manualOutputSpin != nullptr, "AI-8 channel page exposes the bottom-row manual output editor");
+    const int plotBottom =
+        temperaturePlot->mapTo(&panel, QPoint(0, 0)).y() + temperaturePlot->height();
+    const int manualOutputBottom =
+        manualOutputSpin->mapTo(&panel, QPoint(0, 0)).y() + manualOutputSpin->height();
+    if (std::abs(plotBottom - manualOutputBottom) > 2)
+    {
+        std::cerr << "PLOT_BOTTOM=" << plotBottom
+                  << " MANUAL_BOTTOM=" << manualOutputBottom
+                  << " PLOT_HEIGHT=" << temperaturePlot->height()
+                  << " STACK_HEIGHT=" << stack->height()
+                  << '\n';
+    }
+    require(std::abs(plotBottom - manualOutputBottom) <= 2,
+            "AI-8 temperature plot bottom aligns with the bottom-row channel editor");
 
     auto *globalButton = panel.findChild<QPushButton *>(QStringLiteral("ai8PageSelectorButton4"));
     auto *outputButton = panel.findChild<QPushButton *>(QStringLiteral("ai8PageSelectorButton3"));
