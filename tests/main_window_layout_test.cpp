@@ -4167,6 +4167,10 @@ int main(int argc, char **argv)
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8MainContentCard {"),
                                  QStringLiteral("border-radius: 8px"),
                                  "AI-8 common parameters and trend plot share a bordered content card");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8ParameterField {"),
+                                 QStringLiteral("border: none"),
+                                 "AI-8 common parameter fields have no outer frame");
     ai8GlobalButton->click();
     processEventsFor(10);
     require(ai8Stack->currentIndex() == 3 && ai8DetailStack->currentIndex() == 3 &&

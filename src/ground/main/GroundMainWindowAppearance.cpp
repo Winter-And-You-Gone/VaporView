@@ -287,7 +287,7 @@ QString temperatureControllerConfigStyleSheet()
         "QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:hover, QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:checked { background-color: @vv-primary-subtle; color: @vv-primary; }"
         "QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:focus { border-color: @vv-primary; }"
         "QWidget#ai8TemperatureControllerPanel QWidget[ai8DetailContent=\"true\"] { background-color: transparent; border: none; }"
-        "QWidget#ai8TemperatureControllerPanel QFrame#ai8ParameterField { background-color: @vv-white; border: 1px solid @vv-border; border-radius: 8px; }"
+        "QWidget#ai8TemperatureControllerPanel QFrame#ai8ParameterField { background-color: transparent; border: none; border-radius: 0px; }"
         "Ai8TemperatureControllerPanel QLabel#ai8ProtocolStatus[protocolReady=\"false\"] { color: @vv-text-muted; font-weight: 500; }"
         "Ai8TemperatureControllerPanel QLabel#ai8ProtocolStatus[protocolReady=\"true\"] { color: @vv-success; font-weight: 600; }"
         "Ai8TemperatureControllerPanel QLabel#ai8ProtocolStatus[operationFailed=\"true\"] { color: @vv-danger; font-weight: 600; }"
