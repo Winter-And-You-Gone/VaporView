@@ -191,6 +191,9 @@ int main(int argc, char **argv)
     singleLevelLockCombo->hidePopup();
     channelButton->click();
     QApplication::processEvents();
+    panel.resize(1180, 820);
+    QApplication::processEvents();
+    const int mainContentHeightBeforeDetailExpand = mainContentCard->height();
     channelDetailToggle->click();
     QApplication::processEvents();
     require(channelDetailToggle->isChecked() && channelDetailContent->isVisible() &&
@@ -198,6 +201,8 @@ int main(int argc, char **argv)
                 channelDetailToggle->arrowType() == Qt::DownArrow &&
                 channelDetailContent->geometry().top() > channelDetailToggle->geometry().bottom(),
             "AI-8 detailed parameters expand below the toggle card header");
+    require(mainContentCard->height() >= mainContentHeightBeforeDetailExpand,
+            "AI-8 detail expansion keeps the main parameter and trend area from shrinking");
     channelDetailToggle->click();
     QApplication::processEvents();
     require(!channelDetailToggle->isChecked() && !channelDetailContent->isVisible() &&

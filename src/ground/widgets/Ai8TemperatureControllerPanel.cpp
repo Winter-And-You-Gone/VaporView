@@ -345,7 +345,7 @@ void Ai8TemperatureControllerPanel::setupUi()
     temperature_plot_->setMinimumHeight(180);
     temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     mainContentLayout->addWidget(temperature_plot_, 1);
-    rootLayout->addWidget(mainContentCard, 1);
+    rootLayout->addWidget(mainContentCard);
     rootLayout->addWidget(detail_stack_);
 
     setEnglish(false);
