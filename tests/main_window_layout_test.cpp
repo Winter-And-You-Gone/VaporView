@@ -3513,10 +3513,17 @@ int main(int argc, char **argv)
         }
     }
     require(logSearchButton != nullptr, "log search title-bar button exists");
+    require(!logSearchButton->icon().isNull(),
+            "log search title-bar button has a visible search icon");
     require(window.findChildren<QToolButton *>(QStringLiteral("logViewModeButton")).isEmpty(),
             "log mode buttons are not duplicated below the title bar");
     require(window.findChild<QToolButton *>(QStringLiteral("logAutoFollowButton")) == nullptr,
             "log follow button is not duplicated below the title bar");
+    auto *logNewEntriesRow = window.findChild<QWidget *>(QStringLiteral("logNewEntriesRow"));
+    auto *logNewEntriesButton = window.findChild<QPushButton *>(QStringLiteral("logNewEntriesButton"));
+    require(logNewEntriesRow != nullptr && logNewEntriesButton != nullptr &&
+                logNewEntriesButton->parentWidget() == logNewEntriesRow,
+            "log new-entry reminder sits in its own row below the title bar");
     clickWidget(logSearchButton, 120);
     auto *logSearchMenu = window.findChild<QMenu *>(QStringLiteral("logSearchMenu"));
     auto *logSearchEdit = window.findChild<QLineEdit *>(QStringLiteral("logSearchEdit"));

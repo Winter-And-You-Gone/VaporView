@@ -174,6 +174,7 @@ int main(int argc, char **argv)
     auto *searchButton = findAccessibleToolButton(*window, QStringLiteral("logSearchButton"));
     auto *searchMenu = window->findChild<QMenu *>(QStringLiteral("logSearchMenu"));
     auto *searchEdit = window->findChild<QLineEdit *>(QStringLiteral("logSearchEdit"));
+    auto *newEntriesRow = window->findChild<QWidget *>(QStringLiteral("logNewEntriesRow"));
     auto *newEntriesButton = window->findChild<QPushButton *>(QStringLiteral("logNewEntriesButton"));
     auto *attentionAction = window->findChild<QAction *>(QStringLiteral("logFilterAttentionMenuAction"));
     auto *allAction = window->findChild<QAction *>(QStringLiteral("logFilterAllMenuAction"));
@@ -185,9 +186,13 @@ int main(int argc, char **argv)
 
     require(logList && logList->model(), "log list view is backed by a model");
     require(searchButton != nullptr, "log search icon button exists");
+    require(!searchButton->icon().isNull(), "log search icon is backed by a visible resource");
     require(searchMenu != nullptr, "log search popup menu exists");
     require(searchEdit != nullptr, "log search edit exists inside the popup");
+    require(newEntriesRow != nullptr, "new log indicator row exists below the title bar");
     require(newEntriesButton != nullptr, "new log indicator button exists");
+    require(newEntriesButton->parentWidget() == newEntriesRow,
+            "new log indicator lives below the title bar instead of inside it");
     require(findLogModeButton(*window, QStringLiteral("关注")) == nullptr &&
                 findLogModeButton(*window, QStringLiteral("全部")) == nullptr &&
                 findLogModeButton(*window, QStringLiteral("调试")) == nullptr,
@@ -260,12 +265,14 @@ int main(int argc, char **argv)
                   QStringLiteral("Ground"),
                   QStringLiteral("device.connection"),
                   QStringLiteral("设备连接失败。"),
-                  {{QStringLiteral("event"), QStringLiteral("device_connection_failed")},
-                   {QStringLiteral("error_code"), QStringLiteral("DEVICE_CONNECTION_FAILED")}});
+                   {{QStringLiteral("event"), QStringLiteral("device_connection_failed")},
+                    {QStringLiteral("error_code"), QStringLiteral("DEVICE_CONNECTION_FAILED")}});
+    require(newEntriesRow->isVisible(), "new log indicator row appears with pending visible rows");
     require(newEntriesButton->isVisible(), "new log indicator appears when auto follow is disabled");
     require(newEntriesButton->text().contains(QStringLiteral("1")), "new log indicator counts pending visible rows");
     newEntriesButton->click();
     VaporViewTest::processEventsFor(30);
+    require(!newEntriesRow->isVisible(), "clicking new log indicator hides the indicator row");
     require(!newEntriesButton->isVisible(), "clicking new log indicator clears unread state");
 
     clearButton->click();

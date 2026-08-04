@@ -158,6 +158,7 @@ struct MainWindowState
     UiLogFilterProxyModel *log_filter_proxy_;
     UiLogItemDelegate *log_item_delegate_;
     QTimer *log_flush_timer_;
+    QWidget *log_new_entries_row_;
     QPushButton *log_new_entries_btn_;
     QToolButton *log_search_btn_;
     QMenu *log_search_menu_;

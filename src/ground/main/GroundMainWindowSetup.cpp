@@ -4895,12 +4895,6 @@ void MainWindow::setupLogPanel()
                                                         kMainPageButtonHeight,
                                                         &logTitleCluster);
     logTitleLayout->addWidget(logTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    state_->log_new_entries_btn_ = new QPushButton(logTitleBar);
-    state_->log_new_entries_btn_->setObjectName(QStringLiteral("logNewEntriesButton"));
-    state_->log_new_entries_btn_->setVisible(false);
-    state_->log_new_entries_btn_->setFixedHeight(kMainPageButtonHeight - 6);
-    connect(state_->log_new_entries_btn_, &QPushButton::clicked, this, &MainWindow::scrollLogViewToBottom);
-    logTitleLayout->addWidget(state_->log_new_entries_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     logTitleLayout->addStretch(1);
     state_->log_search_menu_ = new QMenu(logTitleBar);
     state_->log_search_menu_->setObjectName(QStringLiteral("logSearchMenu"));
@@ -5020,6 +5014,21 @@ void MainWindow::setupLogPanel()
     state_->log_clear_btn_->setIconSize(QSize(kMainPageButtonHeight - 12, kMainPageButtonHeight - 12));
     logTitleLayout->addWidget(state_->log_clear_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
     log_layout->addWidget(logTitleBar);
+
+    state_->log_new_entries_row_ = new QWidget(state_->log_group_);
+    state_->log_new_entries_row_->setObjectName(QStringLiteral("logNewEntriesRow"));
+    state_->log_new_entries_row_->setVisible(false);
+    auto *logNewEntriesLayout = new QHBoxLayout(state_->log_new_entries_row_);
+    logNewEntriesLayout->setContentsMargins(8, 6, 8, 4);
+    logNewEntriesLayout->setSpacing(0);
+    state_->log_new_entries_btn_ = new QPushButton(state_->log_new_entries_row_);
+    state_->log_new_entries_btn_->setObjectName(QStringLiteral("logNewEntriesButton"));
+    state_->log_new_entries_btn_->setVisible(false);
+    state_->log_new_entries_btn_->setFixedHeight(kMainPageButtonHeight - 6);
+    connect(state_->log_new_entries_btn_, &QPushButton::clicked, this, &MainWindow::scrollLogViewToBottom);
+    logNewEntriesLayout->addWidget(state_->log_new_entries_btn_, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    logNewEntriesLayout->addStretch(1);
+    log_layout->addWidget(state_->log_new_entries_row_);
 
     state_->log_model_ = new VaporView::Ground::Main::UiLogModel(this);
     state_->log_filter_proxy_ = new VaporView::Ground::Main::UiLogFilterProxyModel(this);

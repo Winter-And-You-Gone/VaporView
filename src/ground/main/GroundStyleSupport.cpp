@@ -686,6 +686,10 @@ QListView#logListView {
     border: none;
     border-radius: 0px;
 }
+QWidget#logNewEntriesRow {
+    background-color: @vv-surface;
+    border: none;
+}
 QComboBox:hover,
 QLineEdit:hover,
 QAbstractSpinBox:hover {

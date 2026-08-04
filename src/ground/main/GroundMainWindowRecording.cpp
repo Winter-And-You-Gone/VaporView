@@ -273,6 +273,10 @@ void MainWindow::updateLogUnreadUi()
             ? QStringLiteral("%1 new").arg(count)
             : QStringLiteral("%1 条新日志").arg(count));
     }
+    if (state_->log_new_entries_row_)
+    {
+        state_->log_new_entries_row_->setVisible(state_->log_new_visible_count_ > 0);
+    }
     if (state_->log_inline_title_lbl_)
     {
         const int severe = state_->log_unread_error_count_ + state_->log_unread_warning_count_;

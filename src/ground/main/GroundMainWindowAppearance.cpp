@@ -166,6 +166,7 @@ void MainWindow::loadModernStyleSheet()
             "QListView#logListView { background-color: transparent; border: none; border-radius: 0px; padding: 4px 0px; }"
             "QListView#logListView::item { padding: 2px 8px; }"
             "QListView#logListView::item:selected { background-color: @vv-primary-subtle; color: @vv-text; }"
+            "QWidget#logNewEntriesRow { background-color: transparent; border: none; }"
             "QPushButton#logNewEntriesButton { background-color: @vv-primary-subtle; border: 1px solid @vv-primary; border-radius: 6px; color: @vv-text-strong; padding: 0px 9px; }"
             "QScrollBar:vertical { background-color: @vv-surface-sunken; width: 8px; border: none; border-radius: 4px; margin: 14px 0px 14px 0px; }"
             "QScrollBar::handle:vertical { background-color: @vv-scrollbar-handle; min-height: 30px; border-radius: 4px; border: none; margin: 0px; }"
