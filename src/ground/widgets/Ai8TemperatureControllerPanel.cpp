@@ -39,9 +39,9 @@ constexpr int kAi8NavigationHorizontalMargin = 4;
 constexpr int kAi8NavigationVerticalMargin = 3;
 constexpr int kAi8NavigationSpacing = 4;
 constexpr int kAi8CommonControlGap = 6;
+constexpr int kCommonEditorMinimumWidth = (kEditorMinimumWidth * 4) / 3;
 constexpr int kCommonParameterStackWidth =
-    kEditorMinimumWidth * kPageColumnCount + kAi8CommonControlGap;
-constexpr double kCommonEditorWidthRatio = 0.6;
+    kCommonEditorMinimumWidth * kPageColumnCount + kAi8CommonControlGap;
 
 class Ai8ParameterFieldFrame final : public QFrame
 {
@@ -74,12 +74,12 @@ private:
             return;
         }
         const QMargins margins = layout() ? layout()->contentsMargins() : QMargins();
-        const int minimumFieldWidth = kEditorMinimumWidth + margins.left() + margins.right();
+        const int minimumFieldWidth =
+            kCommonEditorMinimumWidth + margins.left() + margins.right();
+        setMinimumWidth(minimumFieldWidth);
         setMaximumWidth(minimumFieldWidth);
-        const int contentWidth = std::max(0, width() - margins.left() - margins.right());
-        const int compactWidth = std::max(kEditorMinimumWidth,
-                                          qRound(contentWidth * kCommonEditorWidthRatio));
-        editor_->setMaximumWidth(compactWidth);
+        editor_->setMinimumWidth(kCommonEditorMinimumWidth);
+        editor_->setMaximumWidth(kCommonEditorMinimumWidth);
         editor_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         if (auto *boxLayout = qobject_cast<QVBoxLayout *>(layout()))
         {
