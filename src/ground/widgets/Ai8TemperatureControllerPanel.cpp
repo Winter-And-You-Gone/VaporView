@@ -825,7 +825,7 @@ QWidget *Ai8TemperatureControllerPanel::createParameterField(const QString& chin
 
 QComboBox *Ai8TemperatureControllerPanel::createFixedChoiceCombo(QWidget *parent)
 {
-    QComboBox *combo = createSingleLevelPopupComboBox(parent, true, false);
+    QComboBox *combo = createSingleLevelPopupComboBox(parent, true, true);
     combo->setMinimumWidth(kEditorMinimumWidth);
     combo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     return combo;

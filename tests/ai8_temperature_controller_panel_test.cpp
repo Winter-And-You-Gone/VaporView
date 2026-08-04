@@ -1,4 +1,6 @@
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
+#include "shared/theme/SingleLevelPopupComboBox.h"
+#include "shared/theme/SingleLevelPopupMenu.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -162,6 +164,33 @@ int main(int argc, char **argv)
                     channelSpin->minimumWidth() + setpointSpin->minimumWidth() +
                         kSerialConfigComboSpacingPx,
             "AI-8 common controls use the serial config's 6px left, middle, and right spacing");
+    globalButton->click();
+    QApplication::processEvents();
+    auto *lockCombo = panel.findChild<QComboBox *>(QStringLiteral("ai8ParameterLockCombo"));
+    auto *singleLevelLockCombo =
+        dynamic_cast<VaporView::SingleLevelPopupComboBox *>(lockCombo);
+    require(lockCombo != nullptr && singleLevelLockCombo != nullptr,
+            "AI-8 parameter lock uses the shared single-level combo");
+    const QString lockGroupText = QStringLiteral("锁定组参数");
+    lockCombo->setCurrentIndex(lockCombo->findText(lockGroupText));
+    require(lockCombo->currentText() == lockGroupText &&
+                lockCombo->width() >=
+                    lockCombo->fontMetrics().horizontalAdvance(lockGroupText) + 44,
+            "AI-8 parameter lock display text fits the compact combo width");
+    singleLevelLockCombo->showPopup();
+    QApplication::processEvents();
+    const auto lockRows = singleLevelLockCombo->popupMenu()->rows();
+    require(lockRows.size() >= 2 && lockRows.at(1)->textLabel() != nullptr,
+            "AI-8 parameter lock popup exposes the lock row label");
+    require(lockRows.at(1)->font() == lockCombo->font() &&
+                lockRows.at(1)->textLabel()->font() == lockCombo->font(),
+            "AI-8 parameter lock popup row uses the combo font");
+    require(lockRows.at(1)->textLabel()->width() >=
+                lockRows.at(1)->textLabel()->fontMetrics().horizontalAdvance(lockGroupText),
+            "AI-8 parameter lock popup row fits the lock text");
+    singleLevelLockCombo->hidePopup();
+    channelButton->click();
+    QApplication::processEvents();
     channelDetailToggle->click();
     QApplication::processEvents();
     require(channelDetailToggle->isChecked() && channelDetailContent->isVisible() &&

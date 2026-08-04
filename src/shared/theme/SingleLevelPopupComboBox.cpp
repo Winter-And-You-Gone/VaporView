@@ -129,6 +129,7 @@ void SingleLevelPopupComboBox::rebuildPopupRows()
         return;
     }
 
+    popup_menu_->setFont(font());
     popup_menu_->clear();
     const QIcon checkIcon = show_selection_check_ && selection_check_icon_provider_
         ? selection_check_icon_provider_()
@@ -136,6 +137,7 @@ void SingleLevelPopupComboBox::rebuildPopupRows()
     for (int i = 0; i < count(); ++i)
     {
         auto *row = new SingleLevelPopupMenuRow(popup_menu_);
+        row->setFont(font());
         row->setText(itemText(i));
         row->setChecked(show_selection_check_ && i == currentIndex());
         if (show_selection_check_)
