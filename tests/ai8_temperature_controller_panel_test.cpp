@@ -48,12 +48,11 @@ int main(int argc, char **argv)
             "AI-8 panel starts on one of four documented parameter groups");
     auto *detailStack = panel.findChild<QStackedWidget *>(QStringLiteral("ai8DetailParametersStack"));
     auto *mainContentCard = panel.findChild<QFrame *>(QStringLiteral("ai8MainContentCard"));
-    auto *mainContentDivider = panel.findChild<QFrame *>(QStringLiteral("ai8MainContentDivider"));
     auto *temperaturePlot = panel.findChild<QWidget *>(QStringLiteral("ai8TemperatureTrendPlot"));
     auto *navigationBar = panel.findChild<QFrame *>(QStringLiteral("ai8NavigationBar"));
     auto *statusRow = panel.findChild<QWidget *>(QStringLiteral("ai8ProtocolStatusRow"));
     require(detailStack != nullptr && detailStack->count() == 4 && detailStack->currentIndex() == 0 &&
-                mainContentCard != nullptr && mainContentDivider != nullptr && temperaturePlot != nullptr &&
+                mainContentCard != nullptr && temperaturePlot != nullptr &&
                 navigationBar != nullptr && statusRow != nullptr,
             "AI-8 panel builds the side-by-side common-parameter and plot layout");
     require(temperaturePlot->property("forceWhiteBackground").toBool(),
@@ -126,6 +125,7 @@ int main(int argc, char **argv)
     const QRect detailStackRect(detailStack->mapTo(&panel, QPoint(0, 0)), detailStack->size());
     const QRect navigationRect(navigationBar->mapTo(&panel, QPoint(0, 0)), navigationBar->size());
     const QRect statusRect(statusRow->mapTo(&panel, QPoint(0, 0)), statusRow->size());
+    const QRect mainContentRect(mainContentCard->mapTo(&panel, QPoint(0, 0)), mainContentCard->size());
     require(commonStackRect.left() < plotRect.left() &&
                 commonStackRect.right() < plotRect.left() &&
                 plotRect.width() > commonStackRect.width() &&
@@ -136,19 +136,32 @@ int main(int argc, char **argv)
                 statusRect.right() <= panel.rect().right() &&
                 statusRect.bottom() < commonStackRect.top(),
             "AI-8 backend status and page actions sit right of the page selectors");
-    const QWidget *setpointField = setpointSpin->parentWidget();
-    const int commonColumnWidth = std::max(0, (commonStackRect.width() - 8) / 2);
-    const int compactFieldWidth = std::max(138, qRound(commonColumnWidth * 0.6));
-    require(setpointField != nullptr &&
+    constexpr int kSerialConfigComboSpacingPx = 6;
+    QWidget *channelField = channelSpin->parentWidget();
+    QWidget *setpointField = setpointSpin->parentWidget();
+    require(channelField != nullptr && setpointField != nullptr &&
+                channelField->property("ai8CompactCommonField").toBool() &&
                 setpointField->property("ai8CompactCommonField").toBool() &&
-                setpointField->maximumWidth() <= compactFieldWidth + 2 &&
-                setpointField->width() <= compactFieldWidth + 2,
-            "AI-8 common parameter field frames are narrowed to three-fifths of their columns");
-    const int setpointContentWidth = std::max(0, setpointField->width() - 20);
-    const int compactSetpointWidth = std::max(118, qRound(setpointContentWidth * 0.6));
-    require(std::abs(setpointSpin->maximumWidth() - compactSetpointWidth) <= 2 &&
-                setpointSpin->width() <= compactSetpointWidth + 2,
-            "AI-8 common parameter editors are narrowed to three-fifths of the field width");
+                channelField->maximumWidth() == channelSpin->minimumWidth() &&
+                setpointField->maximumWidth() == setpointSpin->minimumWidth(),
+            "AI-8 common parameter fields shrink to the editor width");
+    const QRect channelControlRect(channelSpin->mapTo(mainContentCard, QPoint(0, 0)),
+                                   channelSpin->size());
+    const QRect setpointControlRect(setpointSpin->mapTo(mainContentCard, QPoint(0, 0)),
+                                    setpointSpin->size());
+    const QRect plotRectInMainContent(temperaturePlot->mapTo(mainContentCard, QPoint(0, 0)),
+                                      temperaturePlot->size());
+    require(channelControlRect.left() == kSerialConfigComboSpacingPx &&
+                setpointControlRect.left() -
+                    (channelControlRect.left() + channelControlRect.width()) ==
+                    kSerialConfigComboSpacingPx &&
+                plotRectInMainContent.left() -
+                    (setpointControlRect.left() + setpointControlRect.width()) ==
+                    kSerialConfigComboSpacingPx &&
+                commonStackRect.width() ==
+                    channelSpin->minimumWidth() + setpointSpin->minimumWidth() +
+                        kSerialConfigComboSpacingPx,
+            "AI-8 common controls use the serial config's 6px left, middle, and right spacing");
     channelDetailToggle->click();
     QApplication::processEvents();
     require(channelDetailToggle->isChecked() && channelDetailContent->isVisible() &&

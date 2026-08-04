@@ -38,9 +38,10 @@ constexpr int kAi8NavigationButtonHeight = 30;
 constexpr int kAi8NavigationHorizontalMargin = 4;
 constexpr int kAi8NavigationVerticalMargin = 3;
 constexpr int kAi8NavigationSpacing = 4;
-constexpr int kCommonParameterStackMaximumWidth = 380;
+constexpr int kAi8CommonControlGap = 6;
+constexpr int kCommonParameterStackWidth =
+    kEditorMinimumWidth * kPageColumnCount + kAi8CommonControlGap;
 constexpr double kCommonEditorWidthRatio = 0.6;
-constexpr double kCommonFieldWidthRatio = 0.6;
 
 class Ai8ParameterFieldFrame final : public QFrame
 {
@@ -74,12 +75,7 @@ private:
         }
         const QMargins margins = layout() ? layout()->contentsMargins() : QMargins();
         const int minimumFieldWidth = kEditorMinimumWidth + margins.left() + margins.right();
-        if (const QWidget *container = parentWidget())
-        {
-            const int columnWidth = std::max(0, (container->contentsRect().width() - 8) / kPageColumnCount);
-            setMaximumWidth(std::max(minimumFieldWidth,
-                                     qRound(columnWidth * kCommonFieldWidthRatio)));
-        }
+        setMaximumWidth(minimumFieldWidth);
         const int contentWidth = std::max(0, width() - margins.left() - margins.right());
         const int compactWidth = std::max(kEditorMinimumWidth,
                                           qRound(contentWidth * kCommonEditorWidthRatio));
@@ -328,25 +324,18 @@ void Ai8TemperatureControllerPanel::setupUi()
     mainContentCard->setAttribute(Qt::WA_StyledBackground, true);
     mainContentCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     auto *mainContentLayout = new QHBoxLayout(mainContentCard);
-    mainContentLayout->setContentsMargins(12, 12, 12, 12);
-    mainContentLayout->setSpacing(12);
+    mainContentLayout->setContentsMargins(kAi8CommonControlGap, 12, kAi8CommonControlGap, 12);
+    mainContentLayout->setSpacing(kAi8CommonControlGap);
 
     page_stack_ = new QStackedWidget(mainContentCard);
     page_stack_->setObjectName(QStringLiteral("ai8ParameterStack"));
-    page_stack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    page_stack_->setMaximumWidth(kCommonParameterStackMaximumWidth);
+    page_stack_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    page_stack_->setFixedWidth(kCommonParameterStackWidth);
     page_stack_->addWidget(createChannelPage());
     page_stack_->addWidget(createInputPage());
     page_stack_->addWidget(createOutputPage());
     page_stack_->addWidget(createGlobalPage());
     mainContentLayout->addWidget(page_stack_, 0);
-
-    auto *mainContentDivider = new QFrame(mainContentCard);
-    mainContentDivider->setObjectName(QStringLiteral("ai8MainContentDivider"));
-    mainContentDivider->setFrameShape(QFrame::VLine);
-    mainContentDivider->setFrameShadow(QFrame::Plain);
-    mainContentDivider->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
-    mainContentLayout->addWidget(mainContentDivider);
 
     temperature_plot_ = new ::TemperatureTrendPlotWidget(mainContentCard);
     temperature_plot_->setObjectName(QStringLiteral("ai8TemperatureTrendPlot"));
@@ -427,7 +416,8 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
     pageLayout->setSpacing(8);
     auto *commonLayout = new QGridLayout;
     commonLayout->setObjectName(QStringLiteral("ai8ChannelCommonParametersLayout"));
-    commonLayout->setHorizontalSpacing(8);
+    commonLayout->setContentsMargins(0, 0, 0, 0);
+    commonLayout->setHorizontalSpacing(kAi8CommonControlGap);
     commonLayout->setVerticalSpacing(8);
 
     auto *channelSpin = createSpinBox(page, QStringLiteral("ai8ChannelSpin"), 1, 8, 1);
@@ -548,7 +538,8 @@ QWidget *Ai8TemperatureControllerPanel::createInputPage()
     pageLayout->setSpacing(8);
     auto *commonLayout = new QGridLayout;
     commonLayout->setObjectName(QStringLiteral("ai8InputCommonParametersLayout"));
-    commonLayout->setHorizontalSpacing(8);
+    commonLayout->setContentsMargins(0, 0, 0, 0);
+    commonLayout->setHorizontalSpacing(kAi8CommonControlGap);
     commonLayout->setVerticalSpacing(8);
 
     auto *groupSpin = createSpinBox(page, QStringLiteral("ai8InputGroupSpin"), 1, 4, 1);
@@ -602,7 +593,8 @@ QWidget *Ai8TemperatureControllerPanel::createOutputPage()
     pageLayout->setSpacing(8);
     auto *commonLayout = new QGridLayout;
     commonLayout->setObjectName(QStringLiteral("ai8OutputCommonParametersLayout"));
-    commonLayout->setHorizontalSpacing(8);
+    commonLayout->setContentsMargins(0, 0, 0, 0);
+    commonLayout->setHorizontalSpacing(kAi8CommonControlGap);
     commonLayout->setVerticalSpacing(8);
 
     auto *groupSpin = createSpinBox(page, QStringLiteral("ai8OutputGroupSpin"), 1, 4, 1);
@@ -686,7 +678,8 @@ QWidget *Ai8TemperatureControllerPanel::createGlobalPage()
     pageLayout->setSpacing(8);
     auto *commonLayout = new QGridLayout;
     commonLayout->setObjectName(QStringLiteral("ai8GlobalCommonParametersLayout"));
-    commonLayout->setHorizontalSpacing(8);
+    commonLayout->setContentsMargins(0, 0, 0, 0);
+    commonLayout->setHorizontalSpacing(kAi8CommonControlGap);
     commonLayout->setVerticalSpacing(8);
 
     auto *addressSpin = createSpinBox(page, QStringLiteral("ai8DeviceAddressSpin"), 1, 88, 1);
@@ -817,7 +810,7 @@ QWidget *Ai8TemperatureControllerPanel::createParameterField(const QString& chin
     field->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     field->setMinimumHeight(kParameterFieldMinimumHeight);
     auto *layout = new QVBoxLayout(field);
-    layout->setContentsMargins(10, 7, 10, 7);
+    layout->setContentsMargins(0, 7, 0, 7);
     layout->setSpacing(4);
 
     auto *label = new QLabel(field);
