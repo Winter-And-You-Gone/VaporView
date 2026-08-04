@@ -39,6 +39,7 @@ constexpr int kAi8NavigationHorizontalMargin = 4;
 constexpr int kAi8NavigationVerticalMargin = 3;
 constexpr int kAi8NavigationSpacing = 4;
 constexpr int kAi8CommonControlGap = 6;
+constexpr int kAi8TemperaturePlotHeight = 180;
 constexpr int kCommonEditorMinimumWidth = (kEditorMinimumWidth * 4) / 3;
 constexpr int kCommonParameterStackWidth =
     kCommonEditorMinimumWidth * kPageColumnCount + kAi8CommonControlGap;
@@ -337,16 +338,16 @@ void Ai8TemperatureControllerPanel::setupUi()
     page_stack_->addWidget(createInputPage());
     page_stack_->addWidget(createOutputPage());
     page_stack_->addWidget(createGlobalPage());
-    mainContentLayout->addWidget(page_stack_, 0);
+    mainContentLayout->addWidget(page_stack_, 0, Qt::AlignTop);
 
     temperature_plot_ = new ::TemperatureTrendPlotWidget(mainContentCard);
     temperature_plot_->setObjectName(QStringLiteral("ai8TemperatureTrendPlot"));
     temperature_plot_->setProperty("ai8TemperaturePlot", true);
     temperature_plot_->setProperty("forceWhiteBackground", true);
     temperature_plot_->setCompactMode(true);
-    temperature_plot_->setMinimumHeight(180);
-    temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    mainContentLayout->addWidget(temperature_plot_, 1);
+    temperature_plot_->setFixedHeight(kAi8TemperaturePlotHeight);
+    temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    mainContentLayout->addWidget(temperature_plot_, 1, Qt::AlignTop);
     rootLayout->addWidget(mainContentCard);
     rootLayout->addWidget(detail_stack_);
 

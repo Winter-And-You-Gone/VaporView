@@ -842,6 +842,39 @@ private:
     int minimum_height_ = 0;
 };
 
+class ResizeEventCounter final : public QObject
+{
+public:
+    explicit ResizeEventCounter(QWidget *widget)
+        : QObject(widget)
+        , widget_(widget)
+    {
+        if (widget_)
+        {
+            widget_->installEventFilter(this);
+        }
+    }
+
+    int count() const
+    {
+        return count_;
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (watched == widget_ && event->type() == QEvent::Resize)
+        {
+            ++count_;
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    QWidget *widget_ = nullptr;
+    int count_ = 0;
+};
+
 struct VerticalDragContext
 {
     QWidget *widget = nullptr;
@@ -4278,9 +4311,11 @@ int main(int argc, char **argv)
     const int rd105CardHeightBeforeAi8DetailExpand =
         rd105TemperatureCardForAi8Expansion->height();
     const int ai8MainContentHeightBeforeDetailExpand = ai8MainContentCard->height();
+    const QSize ai8TemperaturePlotSizeBeforeDetailExpand = ai8TemperaturePlot->size();
     MinimumHeightRecorder rd105CardHeightDuringAi8DetailExpand(
         rd105TemperatureCardForAi8Expansion);
     MinimumHeightRecorder ai8MainContentHeightDuringDetailExpand(ai8MainContentCard);
+    ResizeEventCounter ai8TemperaturePlotResizeDuringDetailExpand(ai8TemperaturePlot);
     clickWidget(ai8ChannelDetailToggle, 120);
     activateLayouts(&window);
     require(rd105CardHeightDuringAi8DetailExpand.minimumHeight() >=
@@ -4289,6 +4324,11 @@ int main(int argc, char **argv)
     require(ai8MainContentHeightDuringDetailExpand.minimumHeight() >=
                 ai8MainContentHeightBeforeDetailExpand,
             "AI-8 detail expansion does not transiently shrink its main parameter and trend area");
+    require(ai8TemperaturePlotResizeDuringDetailExpand.count() == 0 &&
+                ai8TemperaturePlot->size() == ai8TemperaturePlotSizeBeforeDetailExpand,
+            "AI-8 detail expansion keeps the temperature trend plot geometry stable");
+    require(ai8TemperaturePlot->testAttribute(Qt::WA_OpaquePaintEvent),
+            "AI-8 temperature trend plot paints opaquely without a background erase flash");
     if (temperatureScrollContentForAi8Expansion->minimumHeight() <
         temperatureScrollContentForAi8Expansion->layout()->sizeHint().height())
     {
