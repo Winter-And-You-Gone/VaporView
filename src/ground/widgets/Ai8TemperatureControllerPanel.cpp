@@ -13,6 +13,7 @@
 #include <QLineEdit>
 #include <QList>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QSpinBox>
@@ -37,6 +38,52 @@ constexpr int kAi8NavigationButtonHeight = 30;
 constexpr int kAi8NavigationHorizontalMargin = 4;
 constexpr int kAi8NavigationVerticalMargin = 3;
 constexpr int kAi8NavigationSpacing = 4;
+constexpr double kCommonEditorWidthRatio = 0.6;
+
+class Ai8ParameterFieldFrame final : public QFrame
+{
+public:
+    explicit Ai8ParameterFieldFrame(QWidget *editor, QWidget *parent = nullptr)
+        : QFrame(parent),
+          editor_(editor)
+    {
+    }
+
+    void setCompactEditorWidthEnabled(bool enabled)
+    {
+        compact_editor_width_ = enabled;
+        updateCompactEditorWidth();
+    }
+
+protected:
+    void resizeEvent(QResizeEvent *event) override
+    {
+        QFrame::resizeEvent(event);
+        updateCompactEditorWidth();
+    }
+
+private:
+    void updateCompactEditorWidth()
+    {
+        if (!compact_editor_width_ || !editor_)
+        {
+            return;
+        }
+        const QMargins margins = layout() ? layout()->contentsMargins() : QMargins();
+        const int contentWidth = std::max(0, width() - margins.left() - margins.right());
+        const int compactWidth = std::max(kEditorMinimumWidth,
+                                          qRound(contentWidth * kCommonEditorWidthRatio));
+        editor_->setMaximumWidth(compactWidth);
+        editor_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        if (auto *boxLayout = qobject_cast<QVBoxLayout *>(layout()))
+        {
+            boxLayout->setAlignment(editor_, Qt::AlignLeft | Qt::AlignVCenter);
+        }
+    }
+
+    QWidget *editor_ = nullptr;
+    bool compact_editor_width_ = false;
+};
 
 QString runStateHexDigits(quint16 rawValue)
 {
@@ -128,6 +175,24 @@ void addFieldsToPage(QGridLayout *layout, const QList<QWidget *>& fields)
     }
 }
 
+void applyCompactCommonEditorWidth(QGridLayout *layout)
+{
+    if (!layout)
+    {
+        return;
+    }
+    for (int index = 0; index < layout->count(); ++index)
+    {
+        if (auto *item = layout->itemAt(index))
+        {
+            if (auto *field = dynamic_cast<Ai8ParameterFieldFrame *>(item->widget()))
+            {
+                field->setCompactEditorWidthEnabled(true);
+            }
+        }
+    }
+}
+
 } // namespace
 
 Ai8TemperatureControllerPanel::Ai8TemperatureControllerPanel(QWidget *parent)
@@ -185,11 +250,61 @@ void Ai8TemperatureControllerPanel::setupUi()
         navigationLayout->addWidget(button);
         button_bindings_.append({button, pageTexts.at(index).first, pageTexts.at(index).second});
     }
-    navigationBar->setMinimumWidth(navigationBar->sizeHint().width());
     connect(page_button_group_, &QButtonGroup::idClicked, this, [this](int index) {
         selectPage(index);
     });
-    rootLayout->addWidget(navigationBar);
+
+    auto *topControlsRow = new QWidget(this);
+    topControlsRow->setObjectName(QStringLiteral("ai8TopControlsRow"));
+    topControlsRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    auto *topControlsLayout = new QHBoxLayout(topControlsRow);
+    topControlsLayout->setContentsMargins(0, 0, 0, 0);
+    topControlsLayout->setSpacing(8);
+    topControlsLayout->addWidget(navigationBar);
+    topControlsLayout->addStretch(1);
+
+    auto *statusRow = new QWidget(topControlsRow);
+    statusRow->setObjectName(QStringLiteral("ai8ProtocolStatusRow"));
+    statusRow->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    auto *statusLayout = new QHBoxLayout(statusRow);
+    statusLayout->setContentsMargins(0, 0, 0, 0);
+    statusLayout->setSpacing(8);
+
+    protocol_status_label_ = new QLabel(statusRow);
+    protocol_status_label_->setObjectName(QStringLiteral("ai8ProtocolStatus"));
+    protocol_status_label_->setProperty("protocolReady", false);
+    protocol_status_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    statusLayout->addWidget(protocol_status_label_, 0, Qt::AlignRight | Qt::AlignVCenter);
+
+    auto *readButton = new QPushButton(statusRow);
+    read_button_ = readButton;
+    readButton->setObjectName(QStringLiteral("ai8ReadParametersButton"));
+    readButton->setEnabled(false);
+    readButton->setFocusPolicy(Qt::TabFocus);
+    readButton->setMinimumWidth(112);
+    button_bindings_.append({readButton,
+                             QStringLiteral("读取当前页"),
+                             QStringLiteral("Read Page")});
+    statusLayout->addWidget(readButton);
+    connect(readButton, &QPushButton::clicked, this,
+            &Ai8TemperatureControllerPanel::readPageRequested);
+
+    auto *writeButton = new QPushButton(statusRow);
+    write_button_ = writeButton;
+    writeButton->setObjectName(QStringLiteral("ai8WriteParametersButton"));
+    writeButton->setProperty("primaryAction", true);
+    writeButton->setEnabled(false);
+    writeButton->setFocusPolicy(Qt::TabFocus);
+    writeButton->setMinimumWidth(112);
+    button_bindings_.append({writeButton,
+                             QStringLiteral("写入当前页"),
+                             QStringLiteral("Write Page")});
+    statusLayout->addWidget(writeButton);
+    connect(writeButton, &QPushButton::clicked, this,
+            &Ai8TemperatureControllerPanel::writePageRequested);
+
+    topControlsLayout->addWidget(statusRow);
+    rootLayout->addWidget(topControlsRow);
 
     detail_stack_ = new QStackedWidget(this);
     detail_stack_->setObjectName(QStringLiteral("ai8DetailParametersStack"));
@@ -224,53 +339,13 @@ void Ai8TemperatureControllerPanel::setupUi()
     temperature_plot_ = new ::TemperatureTrendPlotWidget(mainContentCard);
     temperature_plot_->setObjectName(QStringLiteral("ai8TemperatureTrendPlot"));
     temperature_plot_->setProperty("ai8TemperaturePlot", true);
+    temperature_plot_->setProperty("forceWhiteBackground", true);
     temperature_plot_->setCompactMode(true);
     temperature_plot_->setMinimumHeight(180);
     temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     mainContentLayout->addWidget(temperature_plot_, 11);
     rootLayout->addWidget(mainContentCard, 1);
     rootLayout->addWidget(detail_stack_);
-
-    auto *statusRow = new QWidget(this);
-    statusRow->setObjectName(QStringLiteral("ai8ProtocolStatusRow"));
-    auto *statusLayout = new QHBoxLayout(statusRow);
-    statusLayout->setContentsMargins(0, 0, 0, 0);
-    statusLayout->setSpacing(8);
-
-    protocol_status_label_ = new QLabel(statusRow);
-    protocol_status_label_->setObjectName(QStringLiteral("ai8ProtocolStatus"));
-    protocol_status_label_->setProperty("protocolReady", false);
-    protocol_status_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    statusLayout->addWidget(protocol_status_label_);
-    statusLayout->addStretch(1);
-
-    auto *readButton = new QPushButton(statusRow);
-    read_button_ = readButton;
-    readButton->setObjectName(QStringLiteral("ai8ReadParametersButton"));
-    readButton->setEnabled(false);
-    readButton->setFocusPolicy(Qt::TabFocus);
-    readButton->setMinimumWidth(112);
-    button_bindings_.append({readButton,
-                             QStringLiteral("读取当前页"),
-                             QStringLiteral("Read Page")});
-    statusLayout->addWidget(readButton);
-    connect(readButton, &QPushButton::clicked, this,
-            &Ai8TemperatureControllerPanel::readPageRequested);
-
-    auto *writeButton = new QPushButton(statusRow);
-    write_button_ = writeButton;
-    writeButton->setObjectName(QStringLiteral("ai8WriteParametersButton"));
-    writeButton->setProperty("primaryAction", true);
-    writeButton->setEnabled(false);
-    writeButton->setFocusPolicy(Qt::TabFocus);
-    writeButton->setMinimumWidth(112);
-    button_bindings_.append({writeButton,
-                             QStringLiteral("写入当前页"),
-                             QStringLiteral("Write Page")});
-    statusLayout->addWidget(writeButton);
-    connect(writeButton, &QPushButton::clicked, this,
-            &Ai8TemperatureControllerPanel::writePageRequested);
-    rootLayout->addWidget(statusRow);
 
     setEnglish(false);
     selectPage(0);
@@ -430,6 +505,7 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
                      createParameterField(QStringLiteral("微分时间 d"), QStringLiteral("Derivative Time d"), dSpin, page),
                      createParameterField(QStringLiteral("工作模式 At"), QStringLiteral("Work Mode At"), modeCombo, page),
                      createParameterField(QStringLiteral("手动输出 OP"), QStringLiteral("Manual Output OP"), outputSpin, page)});
+    applyCompactCommonEditorWidth(commonLayout);
     pageLayout->addLayout(commonLayout);
     if (detail_stack_)
     {
@@ -490,6 +566,7 @@ QWidget *Ai8TemperatureControllerPanel::createInputPage()
                      createParameterField(QStringLiteral("数字滤波 FIL"), QStringLiteral("Digital Filter FIL"), filterSpin, page),
                      createParameterField(QStringLiteral("通道输入组 In"), QStringLiteral("Channel Input Group In"), channelInputSpin, page),
                      createParameterField(QStringLiteral("测量平移 Sc"), QStringLiteral("Measurement Offset Sc"), offsetSpin, page)});
+    applyCompactCommonEditorWidth(commonLayout);
     pageLayout->addLayout(commonLayout);
     if (detail_stack_)
     {
@@ -569,6 +646,7 @@ QWidget *Ai8TemperatureControllerPanel::createOutputPage()
                      createParameterField(QStringLiteral("输出下限 OPL"), QStringLiteral("Output Low OPL"), outputLowSpin, page),
                      createParameterField(QStringLiteral("输出上限 OPH"), QStringLiteral("Output High OPH"), outputHighSpin, page),
                      createParameterField(QStringLiteral("超温输出 OHE"), QStringLiteral("Overheat Output OHE"), outputHighThresholdSpin, page)});
+    applyCompactCommonEditorWidth(commonLayout);
     pageLayout->addLayout(commonLayout);
     if (detail_stack_)
     {
@@ -680,6 +758,7 @@ QWidget *Ai8TemperatureControllerPanel::createGlobalPage()
                      createParameterField(QStringLiteral("控制周期 CtI"), QStringLiteral("Control Cycle CtI"), controlCycleSpin, page),
                      createParameterField(QStringLiteral("运行状态 Srun"), QStringLiteral("Run State Srun"), runCombo, page),
                      createParameterField(QStringLiteral("参数锁 Loc"), QStringLiteral("Parameter Lock Loc"), lockCombo, page)});
+    applyCompactCommonEditorWidth(commonLayout);
     pageLayout->addLayout(commonLayout);
     if (detail_stack_)
     {
@@ -721,7 +800,7 @@ QWidget *Ai8TemperatureControllerPanel::createParameterField(const QString& chin
                                                               QWidget *editor,
                                                               QWidget *parent)
 {
-    auto *field = new QFrame(parent);
+    auto *field = new Ai8ParameterFieldFrame(editor, parent);
     field->setObjectName(QStringLiteral("ai8ParameterField"));
     field->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     field->setMinimumHeight(kParameterFieldMinimumHeight);

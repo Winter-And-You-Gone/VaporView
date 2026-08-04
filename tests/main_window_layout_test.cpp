@@ -4116,11 +4116,14 @@ int main(int argc, char **argv)
         QStringLiteral("ai8MainContentCard"));
     auto *ai8TemperaturePlot = ai8TemperatureCard->findChild<QWidget *>(
         QStringLiteral("ai8TemperatureTrendPlot"));
+    auto *ai8StatusRow = ai8TemperatureCard->findChild<QWidget *>(
+        QStringLiteral("ai8ProtocolStatusRow"));
     require(ai8Panel != nullptr && ai8NavigationBar != nullptr &&
                 ai8NavigationBar->testAttribute(Qt::WA_StyledBackground) &&
                 ai8Stack != nullptr && ai8Stack->count() == 4 &&
                 ai8DetailStack != nullptr && ai8DetailStack->count() == 4 &&
-                ai8MainContentCard != nullptr && ai8TemperaturePlot != nullptr,
+                ai8MainContentCard != nullptr && ai8TemperaturePlot != nullptr &&
+                ai8StatusRow != nullptr,
             "AI-8 card exposes channel, input, output, and global parameter pages");
     require(ai8Stack->currentIndex() == 0,
             "AI-8 card opens on channel parameters");
@@ -4129,11 +4132,18 @@ int main(int argc, char **argv)
     const QRect ai8StackRect(ai8Stack->mapTo(ai8Panel, QPoint(0, 0)), ai8Stack->size());
     const QRect ai8PlotRect(ai8TemperaturePlot->mapTo(ai8Panel, QPoint(0, 0)), ai8TemperaturePlot->size());
     const QRect ai8DetailStackRect(ai8DetailStack->mapTo(ai8Panel, QPoint(0, 0)), ai8DetailStack->size());
+    const QRect ai8NavigationRect(ai8NavigationBar->mapTo(ai8Panel, QPoint(0, 0)), ai8NavigationBar->size());
+    const QRect ai8StatusRect(ai8StatusRow->mapTo(ai8Panel, QPoint(0, 0)), ai8StatusRow->size());
     require(ai8StackRect.left() < ai8PlotRect.left() &&
                 ai8StackRect.right() < ai8PlotRect.left() &&
                 std::abs(ai8StackRect.top() - ai8PlotRect.top()) <= 2 &&
                 ai8DetailStackRect.top() > ai8MainContentRect.bottom(),
             "AI-8 common parameters sit left of the trend plot with details below");
+    require(ai8StatusRect.left() > ai8NavigationRect.right() &&
+                ai8StatusRect.right() <= ai8Panel->rect().right() &&
+                ai8StatusRect.bottom() < ai8MainContentRect.top() &&
+                ai8TemperaturePlot->property("forceWhiteBackground").toBool(),
+            "AI-8 backend status row is right-aligned beside page selectors and the plot uses a white background");
     auto *ai8GlobalButton = ai8TemperatureCard->findChild<QPushButton *>(
         QStringLiteral("ai8PageSelectorButton4"));
     auto *ai8ChannelButton = ai8TemperatureCard->findChild<QPushButton *>(

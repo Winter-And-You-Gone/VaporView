@@ -50,9 +50,14 @@ int main(int argc, char **argv)
     auto *mainContentCard = panel.findChild<QFrame *>(QStringLiteral("ai8MainContentCard"));
     auto *mainContentDivider = panel.findChild<QFrame *>(QStringLiteral("ai8MainContentDivider"));
     auto *temperaturePlot = panel.findChild<QWidget *>(QStringLiteral("ai8TemperatureTrendPlot"));
+    auto *navigationBar = panel.findChild<QFrame *>(QStringLiteral("ai8NavigationBar"));
+    auto *statusRow = panel.findChild<QWidget *>(QStringLiteral("ai8ProtocolStatusRow"));
     require(detailStack != nullptr && detailStack->count() == 4 && detailStack->currentIndex() == 0 &&
-                mainContentCard != nullptr && mainContentDivider != nullptr && temperaturePlot != nullptr,
+                mainContentCard != nullptr && mainContentDivider != nullptr && temperaturePlot != nullptr &&
+                navigationBar != nullptr && statusRow != nullptr,
             "AI-8 panel builds the side-by-side common-parameter and plot layout");
+    require(temperaturePlot->property("forceWhiteBackground").toBool(),
+            "AI-8 temperature plot uses the same white background as the parameter area");
 
     auto *globalButton = panel.findChild<QPushButton *>(QStringLiteral("ai8PageSelectorButton4"));
     auto *outputButton = panel.findChild<QPushButton *>(QStringLiteral("ai8PageSelectorButton3"));
@@ -119,11 +124,22 @@ int main(int argc, char **argv)
     const QRect commonStackRect(stack->mapTo(&panel, QPoint(0, 0)), stack->size());
     const QRect plotRect(temperaturePlot->mapTo(&panel, QPoint(0, 0)), temperaturePlot->size());
     const QRect detailStackRect(detailStack->mapTo(&panel, QPoint(0, 0)), detailStack->size());
+    const QRect navigationRect(navigationBar->mapTo(&panel, QPoint(0, 0)), navigationBar->size());
+    const QRect statusRect(statusRow->mapTo(&panel, QPoint(0, 0)), statusRow->size());
     require(commonStackRect.left() < plotRect.left() &&
                 commonStackRect.right() < plotRect.left() &&
                 std::abs(commonStackRect.top() - plotRect.top()) <= 2 &&
                 detailStackRect.top() > plotRect.bottom(),
             "AI-8 common parameters sit left of the plot and details expand below");
+    require(statusRect.left() > navigationRect.right() &&
+                statusRect.right() <= panel.rect().right() &&
+                statusRect.bottom() < commonStackRect.top(),
+            "AI-8 backend status and page actions sit right of the page selectors");
+    const int setpointContentWidth = std::max(0, setpointSpin->parentWidget()->width() - 20);
+    const int compactSetpointWidth = std::max(118, qRound(setpointContentWidth * 0.6));
+    require(std::abs(setpointSpin->maximumWidth() - compactSetpointWidth) <= 2 &&
+                setpointSpin->width() <= compactSetpointWidth + 2,
+            "AI-8 common parameter editors are narrowed to three-fifths of the field width");
     channelDetailToggle->click();
     QApplication::processEvents();
     require(channelDetailToggle->isChecked() && channelDetailContent->isVisible() &&
