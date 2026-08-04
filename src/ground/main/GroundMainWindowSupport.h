@@ -302,6 +302,7 @@ QIcon createStopIcon();
 QIcon createTimerIcon();
 QIcon createRtkSatelliteIcon(bool running);
 QIcon createClearLogIcon();
+QIcon createLogSearchIcon();
 QIcon createLogFilterIcon();
 QIcon createLogSidePanelToggleIcon(bool collapsed);
 QIcon createAppSidebarToggleIcon(bool collapsed);

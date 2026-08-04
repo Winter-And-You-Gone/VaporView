@@ -252,6 +252,11 @@ QIcon createClearLogIcon()
     return createLucideIcon(QStringLiteral("trash-2"), toolbarColor(AppThemeColor::ToolbarBlue));
 }
 
+QIcon createLogSearchIcon()
+{
+    return createLucideIcon(QStringLiteral("search"), toolbarColor(AppThemeColor::ToolbarBlue));
+}
+
 QIcon createLogFilterIcon()
 {
     return createLucideIcon(QStringLiteral("funnel"), toolbarColor(AppThemeColor::ToolbarBlue));

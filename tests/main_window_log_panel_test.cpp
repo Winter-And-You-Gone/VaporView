@@ -5,9 +5,11 @@
 #include "test_ui_helpers.h"
 
 #include <QAbstractItemModel>
+#include <QAction>
 #include <QApplication>
 #include <QLineEdit>
 #include <QListView>
+#include <QMenu>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QSettings>
@@ -108,6 +110,19 @@ QToolButton *findLogModeButton(MainWindow& window, const QString& text)
     return nullptr;
 }
 
+QToolButton *findAccessibleToolButton(MainWindow& window, const QString& accessibleName)
+{
+    const QList<QToolButton*> buttons = window.findChildren<QToolButton *>();
+    for (QToolButton *button : buttons)
+    {
+        if (button && button->accessibleName() == accessibleName)
+        {
+            return button;
+        }
+    }
+    return nullptr;
+}
+
 QToolButton *findActionButton(MainWindow& window, const QString& actionText, const QString& toolTipText)
 {
     const QList<QToolButton*> buttons = window.findChildren<QToolButton *>();
@@ -156,23 +171,38 @@ int main(int argc, char **argv)
     require(VaporViewTest::waitForWindowExposed(window.get()), "main window exposed for log panel test");
 
     auto *logList = window->findChild<QListView *>(QStringLiteral("logListView"));
+    auto *searchButton = findAccessibleToolButton(*window, QStringLiteral("logSearchButton"));
+    auto *searchMenu = window->findChild<QMenu *>(QStringLiteral("logSearchMenu"));
     auto *searchEdit = window->findChild<QLineEdit *>(QStringLiteral("logSearchEdit"));
     auto *newEntriesButton = window->findChild<QPushButton *>(QStringLiteral("logNewEntriesButton"));
-    auto *attentionButton = findLogModeButton(*window, QStringLiteral("关注"));
-    auto *allButton = findLogModeButton(*window, QStringLiteral("全部"));
-    auto *debugButton = findLogModeButton(*window, QStringLiteral("调试"));
-    auto *followButton = window->findChild<QToolButton *>(QStringLiteral("logAutoFollowButton"));
+    auto *attentionAction = window->findChild<QAction *>(QStringLiteral("logFilterAttentionMenuAction"));
+    auto *allAction = window->findChild<QAction *>(QStringLiteral("logFilterAllMenuAction"));
+    auto *debugAction = window->findChild<QAction *>(QStringLiteral("logFilterDebugMenuAction"));
+    auto *followAction = window->findChild<QAction *>(QStringLiteral("logFilterAutoFollowMenuAction"));
     auto *clearButton = findActionButton(*window,
                                          QStringLiteral("清空显示"),
                                          QStringLiteral("仅清空当前显示，不删除日志文件"));
 
     require(logList && logList->model(), "log list view is backed by a model");
-    require(searchEdit != nullptr, "log search edit exists");
+    require(searchButton != nullptr, "log search icon button exists");
+    require(searchMenu != nullptr, "log search popup menu exists");
+    require(searchEdit != nullptr, "log search edit exists inside the popup");
     require(newEntriesButton != nullptr, "new log indicator button exists");
-    require(attentionButton && allButton && debugButton, "positive log view buttons exist");
-    require(followButton && followButton->isChecked(), "auto follow defaults on");
+    require(findLogModeButton(*window, QStringLiteral("关注")) == nullptr &&
+                findLogModeButton(*window, QStringLiteral("全部")) == nullptr &&
+                findLogModeButton(*window, QStringLiteral("调试")) == nullptr,
+            "positive log view buttons are not duplicated outside the filter menu");
+    require(window->findChild<QToolButton *>(QStringLiteral("logAutoFollowButton")) == nullptr,
+            "auto-follow is not duplicated outside the filter menu");
+    require(attentionAction && allAction && debugAction && followAction, "log filter menu actions exist");
     require(clearButton != nullptr, "clear display button exists");
-    require(attentionButton->isChecked(), "default log view is attention");
+    require(!searchEdit->isVisible(), "log search edit is hidden until the search icon is clicked");
+    searchButton->click();
+    VaporViewTest::processEventsFor(90);
+    require(searchMenu->isVisible() && searchEdit->isVisible(),
+            "clicking the search icon opens the search popup");
+    searchMenu->hide();
+    VaporViewTest::processEventsFor(30);
 
     publishRecord(logService,
                   VaporView::LogLevel::Info,
@@ -204,12 +234,11 @@ int main(int argc, char **argv)
     require(logList->model()->rowCount() == 2,
             "attention view shows warning and explicit attention Info only");
 
-    allButton->click();
+    allAction->trigger();
     VaporViewTest::processEventsFor(30);
-    require(allButton->isChecked(), "all view button becomes checked");
     require(logList->model()->rowCount() == 3, "all view includes ordinary Info but keeps Debug hidden");
 
-    debugButton->click();
+    debugAction->trigger();
     VaporViewTest::processEventsFor(30);
     require(logList->model()->rowCount() == 4, "debug view includes Debug records");
 
@@ -223,9 +252,9 @@ int main(int argc, char **argv)
     VaporViewTest::processEventsFor(90);
     require(logList->model()->rowCount() == 0, "clear display leaves the visible panel empty");
 
-    attentionButton->click();
-    followButton->click();
-    require(!followButton->isChecked(), "auto follow can be disabled");
+    attentionAction->trigger();
+    followAction->trigger();
+    VaporViewTest::processEventsFor(30);
     publishRecord(logService,
                   VaporView::LogLevel::Error,
                   QStringLiteral("Ground"),
@@ -267,12 +296,8 @@ int main(int argc, char **argv)
 
     clearButton->click();
     VaporViewTest::processEventsFor(90);
-    if (!followButton->isChecked())
-    {
-        followButton->click();
-        VaporViewTest::processEventsFor(30);
-    }
-    require(followButton->isChecked(), "auto follow remains enabled for manual history scroll test");
+    followAction->trigger();
+    VaporViewTest::processEventsFor(30);
     for (int i = 0; i < 80; ++i)
     {
         logService.publish(VaporView::LogLevel::Warning,

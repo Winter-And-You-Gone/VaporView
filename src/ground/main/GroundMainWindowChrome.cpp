@@ -1748,6 +1748,10 @@ void MainWindow::updateThemedIcons()
     {
         state_->log_filter_btn_->setIcon(createLogFilterIcon());
     }
+    if (state_->log_search_btn_)
+    {
+        state_->log_search_btn_->setIcon(createLogSearchIcon());
+    }
     updateFontScaleMenuCheckIcons();
     updateLogSidePanelToggleButton();
     updateSectionTitleIcons(this, state_->dark_theme_enabled_);
@@ -1907,6 +1911,11 @@ void MainWindow::updateCustomTitleBarStyle()
     {
         state_->log_filter_btn_->setFixedSize(actionButtonSize);
         state_->log_filter_btn_->setIconSize(iconSize);
+    }
+    if (state_->log_search_btn_)
+    {
+        state_->log_search_btn_->setFixedSize(actionButtonSize);
+        state_->log_search_btn_->setIconSize(iconSize);
     }
     updateCustomLogoPixmap();
     updateCustomLogoTooltip();

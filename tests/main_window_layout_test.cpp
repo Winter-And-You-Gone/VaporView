@@ -3496,10 +3496,15 @@ int main(int argc, char **argv)
     processEventsFor(50);
 
     QToolButton *logFilterButton = nullptr;
+    QToolButton *logSearchButton = nullptr;
     const QList<QToolButton*> titleBarButtons =
         window.findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
     for (QToolButton *button : titleBarButtons)
     {
+        if (button && button->accessibleName() == QStringLiteral("logSearchButton"))
+        {
+            logSearchButton = button;
+        }
         if (button && (button->toolTip() == QStringLiteral("日志视图") ||
                        button->toolTip() == QStringLiteral("Log view")))
         {
@@ -3507,6 +3512,19 @@ int main(int argc, char **argv)
             break;
         }
     }
+    require(logSearchButton != nullptr, "log search title-bar button exists");
+    require(window.findChildren<QToolButton *>(QStringLiteral("logViewModeButton")).isEmpty(),
+            "log mode buttons are not duplicated below the title bar");
+    require(window.findChild<QToolButton *>(QStringLiteral("logAutoFollowButton")) == nullptr,
+            "log follow button is not duplicated below the title bar");
+    clickWidget(logSearchButton, 120);
+    auto *logSearchMenu = window.findChild<QMenu *>(QStringLiteral("logSearchMenu"));
+    auto *logSearchEdit = window.findChild<QLineEdit *>(QStringLiteral("logSearchEdit"));
+    require(logSearchMenu != nullptr && logSearchMenu->isVisible() &&
+                logSearchEdit != nullptr && logSearchEdit->isVisible(),
+            "log search icon opens a popup search field");
+    logSearchMenu->hide();
+    processEventsFor(50);
     require(logFilterButton != nullptr, "log filter title-bar button exists");
     clickWidget(logFilterButton, 180);
     VaporView::SingleLevelPopupMenu *logFilterMenu = nullptr;

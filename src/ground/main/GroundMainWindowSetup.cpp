@@ -4891,28 +4891,85 @@ void MainWindow::setupLogPanel()
 
     QWidget *logTitleCluster = nullptr;
     state_->log_inline_title_lbl_ = createSectionTitleCluster(logTitleBar,
-                                                       QStringLiteral("scroll-text"),
-                                                       kMainPageButtonHeight,
-                                                       &logTitleCluster);
+                                                        QStringLiteral("scroll-text"),
+                                                        kMainPageButtonHeight,
+                                                        &logTitleCluster);
     logTitleLayout->addWidget(logTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    auto createLogViewButton = [this, logTitleBar](VaporView::Ground::Main::LogUiViewMode mode) {
-        auto *button = new QToolButton(logTitleBar);
-        button->setObjectName(QStringLiteral("logViewModeButton"));
-        button->setToolButtonStyle(Qt::ToolButtonTextOnly);
-        button->setCheckable(true);
-        button->setAutoRaise(false);
-        button->setFocusPolicy(Qt::StrongFocus);
-        button->setFixedHeight(kMainPageButtonHeight - 6);
-        button->setFixedWidth(scalePixels(50));
-        connect(button, &QToolButton::clicked, this, [this, mode]() {
-            setLogViewMode(mode);
-        });
-        return button;
-    };
-    state_->log_attention_view_btn_ = createLogViewButton(VaporView::Ground::Main::LogUiViewMode::Attention);
-    state_->log_all_view_btn_ = createLogViewButton(VaporView::Ground::Main::LogUiViewMode::All);
-    state_->log_debug_view_btn_ = createLogViewButton(VaporView::Ground::Main::LogUiViewMode::Debug);
+    state_->log_new_entries_btn_ = new QPushButton(logTitleBar);
+    state_->log_new_entries_btn_->setObjectName(QStringLiteral("logNewEntriesButton"));
+    state_->log_new_entries_btn_->setVisible(false);
+    state_->log_new_entries_btn_->setFixedHeight(kMainPageButtonHeight - 6);
+    connect(state_->log_new_entries_btn_, &QPushButton::clicked, this, &MainWindow::scrollLogViewToBottom);
+    logTitleLayout->addWidget(state_->log_new_entries_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     logTitleLayout->addStretch(1);
+    state_->log_search_menu_ = new QMenu(logTitleBar);
+    state_->log_search_menu_->setObjectName(QStringLiteral("logSearchMenu"));
+    auto *searchWidgetAction = new QWidgetAction(state_->log_search_menu_);
+    auto *searchPopup = new QWidget(state_->log_search_menu_);
+    searchPopup->setObjectName(QStringLiteral("logSearchPopup"));
+    auto *searchPopupLayout = new QHBoxLayout(searchPopup);
+    searchPopupLayout->setContentsMargins(10, 8, 10, 8);
+    searchPopupLayout->setSpacing(0);
+    state_->log_search_edit_ = new QLineEdit(searchPopup);
+    state_->log_search_edit_->setObjectName(QStringLiteral("logSearchEdit"));
+    state_->log_search_edit_->setClearButtonEnabled(true);
+    state_->log_search_edit_->setMinimumWidth(scalePixels(190));
+    state_->log_search_edit_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    connect(state_->log_search_edit_, &QLineEdit::textChanged, this, [this](const QString& text) {
+        if (state_->log_filter_proxy_)
+        {
+            state_->log_filter_proxy_->setSearchText(text);
+        }
+        updateLogFollowState();
+    });
+    searchPopupLayout->addWidget(state_->log_search_edit_);
+    searchWidgetAction->setDefaultWidget(searchPopup);
+    state_->log_search_menu_->addAction(searchWidgetAction);
+    state_->log_search_btn_ = new QToolButton(logTitleBar);
+    state_->log_search_btn_->setObjectName(QStringLiteral("titleBarButton"));
+    state_->log_search_btn_->setAccessibleName(QStringLiteral("logSearchButton"));
+    state_->log_search_btn_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    state_->log_search_btn_->setAutoRaise(false);
+    state_->log_search_btn_->setFocusPolicy(Qt::NoFocus);
+    state_->log_search_btn_->setProperty(kTitleBarHoverProperty, false);
+    configureHoverParticipant(state_->log_search_btn_, kTitleBarHoverParticipantProperty, this);
+    state_->log_search_btn_->setIcon(createLogSearchIcon());
+    state_->log_search_btn_->setFixedSize(kMainPageButtonHeight, kMainPageButtonHeight);
+    state_->log_search_btn_->setIconSize(QSize(kMainPageButtonHeight - 12, kMainPageButtonHeight - 12));
+    connect(state_->log_search_btn_, &QToolButton::clicked, this, [this]() {
+        if (!state_->log_search_btn_ || !state_->log_search_menu_ || !state_->log_search_edit_)
+        {
+            return;
+        }
+        if (state_->log_search_menu_->isVisible())
+        {
+            state_->log_search_menu_->hide();
+            state_->log_search_btn_->setDown(false);
+            return;
+        }
+        state_->log_search_btn_->setDown(true);
+        updateLogFilterAction();
+        const QSize menuSize = state_->log_search_menu_->sizeHint();
+        const QPoint anchor = state_->log_search_btn_->mapToGlobal(
+            QPoint(state_->log_search_btn_->width(), state_->log_search_btn_->height()));
+        state_->log_search_menu_->popup(QPoint(anchor.x() - menuSize.width(), anchor.y() + scalePixels(4)));
+        QTimer::singleShot(0, state_->log_search_edit_, [edit = state_->log_search_edit_]() {
+            edit->setFocus(Qt::PopupFocusReason);
+            edit->selectAll();
+        });
+    });
+    connect(state_->log_search_menu_, &QMenu::aboutToHide, state_->log_search_btn_, [button = state_->log_search_btn_]() {
+        QTimer::singleShot(0, button, [button]() {
+            button->setDown(false);
+            button->setChecked(false);
+            button->setProperty("titleBarHover", false);
+            button->clearFocus();
+            button->style()->unpolish(button);
+            button->style()->polish(button);
+            button->update();
+        });
+    });
+    logTitleLayout->addWidget(state_->log_search_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
     state_->log_filter_btn_ = new QToolButton(logTitleBar);
     state_->log_filter_btn_->setObjectName(QStringLiteral("titleBarButton"));
     state_->log_filter_btn_->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -4963,55 +5020,6 @@ void MainWindow::setupLogPanel()
     state_->log_clear_btn_->setIconSize(QSize(kMainPageButtonHeight - 12, kMainPageButtonHeight - 12));
     logTitleLayout->addWidget(state_->log_clear_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
     log_layout->addWidget(logTitleBar);
-
-    auto *logControls = new QWidget(state_->log_group_);
-    logControls->setObjectName(QStringLiteral("logControlsRow"));
-    auto *logControlsLayout = new QHBoxLayout(logControls);
-    logControlsLayout->setContentsMargins(8, 6, 8, 6);
-    logControlsLayout->setSpacing(6);
-    logControlsLayout->addWidget(state_->log_attention_view_btn_, 0);
-    logControlsLayout->addWidget(state_->log_all_view_btn_, 0);
-    logControlsLayout->addWidget(state_->log_debug_view_btn_, 0);
-    state_->log_search_edit_ = new QLineEdit(logControls);
-    state_->log_search_edit_->setObjectName(QStringLiteral("logSearchEdit"));
-    state_->log_search_edit_->setClearButtonEnabled(true);
-    state_->log_search_edit_->setMinimumWidth(0);
-    state_->log_search_edit_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
-    connect(state_->log_search_edit_, &QLineEdit::textChanged, this, [this](const QString& text) {
-        if (state_->log_filter_proxy_)
-        {
-            state_->log_filter_proxy_->setSearchText(text);
-        }
-        updateLogFollowState();
-    });
-    logControlsLayout->addWidget(state_->log_search_edit_, 1);
-    state_->log_auto_follow_btn_ = new QToolButton(logControls);
-    state_->log_auto_follow_btn_->setObjectName(QStringLiteral("logAutoFollowButton"));
-    state_->log_auto_follow_btn_->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    state_->log_auto_follow_btn_->setCheckable(true);
-    state_->log_auto_follow_btn_->setFixedHeight(kMainPageButtonHeight - 6);
-    connect(state_->log_auto_follow_btn_, &QToolButton::toggled, this, [this](bool checked) {
-        if (state_->log_auto_follow_enabled_ == checked)
-        {
-            return;
-        }
-        state_->log_auto_follow_enabled_ = checked;
-        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
-        VaporView::setPersistentSetting(settings, QStringLiteral("log_auto_follow"), checked);
-        updateLogFilterAction();
-        if (checked)
-        {
-            scrollLogViewToBottom();
-        }
-    });
-    logControlsLayout->addWidget(state_->log_auto_follow_btn_, 0);
-    state_->log_new_entries_btn_ = new QPushButton(logControls);
-    state_->log_new_entries_btn_->setObjectName(QStringLiteral("logNewEntriesButton"));
-    state_->log_new_entries_btn_->setVisible(false);
-    state_->log_new_entries_btn_->setFixedHeight(kMainPageButtonHeight - 6);
-    connect(state_->log_new_entries_btn_, &QPushButton::clicked, this, &MainWindow::scrollLogViewToBottom);
-    logControlsLayout->addWidget(state_->log_new_entries_btn_, 0);
-    log_layout->addWidget(logControls);
 
     state_->log_model_ = new VaporView::Ground::Main::UiLogModel(this);
     state_->log_filter_proxy_ = new VaporView::Ground::Main::UiLogFilterProxyModel(this);
