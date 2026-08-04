@@ -4136,9 +4136,10 @@ int main(int argc, char **argv)
     const QRect ai8StatusRect(ai8StatusRow->mapTo(ai8Panel, QPoint(0, 0)), ai8StatusRow->size());
     require(ai8StackRect.left() < ai8PlotRect.left() &&
                 ai8StackRect.right() < ai8PlotRect.left() &&
+                ai8PlotRect.width() > ai8StackRect.width() &&
                 std::abs(ai8StackRect.top() - ai8PlotRect.top()) <= 2 &&
                 ai8DetailStackRect.top() > ai8MainContentRect.bottom(),
-            "AI-8 common parameters sit left of the trend plot with details below");
+            "AI-8 common parameters sit left of a wider trend plot with details below");
     require(ai8StatusRect.left() > ai8NavigationRect.right() &&
                 ai8StatusRect.right() <= ai8Panel->rect().right() &&
                 ai8StatusRect.bottom() < ai8MainContentRect.top() &&

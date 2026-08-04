@@ -38,7 +38,9 @@ constexpr int kAi8NavigationButtonHeight = 30;
 constexpr int kAi8NavigationHorizontalMargin = 4;
 constexpr int kAi8NavigationVerticalMargin = 3;
 constexpr int kAi8NavigationSpacing = 4;
+constexpr int kCommonParameterStackMaximumWidth = 380;
 constexpr double kCommonEditorWidthRatio = 0.6;
+constexpr double kCommonFieldWidthRatio = 0.6;
 
 class Ai8ParameterFieldFrame final : public QFrame
 {
@@ -49,27 +51,35 @@ public:
     {
     }
 
-    void setCompactEditorWidthEnabled(bool enabled)
+    void setCompactCommonWidthEnabled(bool enabled)
     {
-        compact_editor_width_ = enabled;
-        updateCompactEditorWidth();
+        compact_common_width_ = enabled;
+        setProperty("ai8CompactCommonField", enabled);
+        updateCompactCommonWidth();
     }
 
 protected:
     void resizeEvent(QResizeEvent *event) override
     {
         QFrame::resizeEvent(event);
-        updateCompactEditorWidth();
+        updateCompactCommonWidth();
     }
 
 private:
-    void updateCompactEditorWidth()
+    void updateCompactCommonWidth()
     {
-        if (!compact_editor_width_ || !editor_)
+        if (!compact_common_width_ || !editor_)
         {
             return;
         }
         const QMargins margins = layout() ? layout()->contentsMargins() : QMargins();
+        const int minimumFieldWidth = kEditorMinimumWidth + margins.left() + margins.right();
+        if (const QWidget *container = parentWidget())
+        {
+            const int columnWidth = std::max(0, (container->contentsRect().width() - 8) / kPageColumnCount);
+            setMaximumWidth(std::max(minimumFieldWidth,
+                                     qRound(columnWidth * kCommonFieldWidthRatio)));
+        }
         const int contentWidth = std::max(0, width() - margins.left() - margins.right());
         const int compactWidth = std::max(kEditorMinimumWidth,
                                           qRound(contentWidth * kCommonEditorWidthRatio));
@@ -82,7 +92,7 @@ private:
     }
 
     QWidget *editor_ = nullptr;
-    bool compact_editor_width_ = false;
+    bool compact_common_width_ = false;
 };
 
 QString runStateHexDigits(quint16 rawValue)
@@ -187,7 +197,8 @@ void applyCompactCommonEditorWidth(QGridLayout *layout)
         {
             if (auto *field = dynamic_cast<Ai8ParameterFieldFrame *>(item->widget()))
             {
-                field->setCompactEditorWidthEnabled(true);
+                field->setCompactCommonWidthEnabled(true);
+                layout->setAlignment(field, Qt::AlignLeft | Qt::AlignTop);
             }
         }
     }
@@ -323,11 +334,12 @@ void Ai8TemperatureControllerPanel::setupUi()
     page_stack_ = new QStackedWidget(mainContentCard);
     page_stack_->setObjectName(QStringLiteral("ai8ParameterStack"));
     page_stack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    page_stack_->setMaximumWidth(kCommonParameterStackMaximumWidth);
     page_stack_->addWidget(createChannelPage());
     page_stack_->addWidget(createInputPage());
     page_stack_->addWidget(createOutputPage());
     page_stack_->addWidget(createGlobalPage());
-    mainContentLayout->addWidget(page_stack_, 10);
+    mainContentLayout->addWidget(page_stack_, 0);
 
     auto *mainContentDivider = new QFrame(mainContentCard);
     mainContentDivider->setObjectName(QStringLiteral("ai8MainContentDivider"));
@@ -343,7 +355,7 @@ void Ai8TemperatureControllerPanel::setupUi()
     temperature_plot_->setCompactMode(true);
     temperature_plot_->setMinimumHeight(180);
     temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    mainContentLayout->addWidget(temperature_plot_, 11);
+    mainContentLayout->addWidget(temperature_plot_, 1);
     rootLayout->addWidget(mainContentCard, 1);
     rootLayout->addWidget(detail_stack_);
 

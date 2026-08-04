@@ -128,14 +128,23 @@ int main(int argc, char **argv)
     const QRect statusRect(statusRow->mapTo(&panel, QPoint(0, 0)), statusRow->size());
     require(commonStackRect.left() < plotRect.left() &&
                 commonStackRect.right() < plotRect.left() &&
+                plotRect.width() > commonStackRect.width() &&
                 std::abs(commonStackRect.top() - plotRect.top()) <= 2 &&
                 detailStackRect.top() > plotRect.bottom(),
-            "AI-8 common parameters sit left of the plot and details expand below");
+            "AI-8 common parameters sit left of a wider plot and details expand below");
     require(statusRect.left() > navigationRect.right() &&
                 statusRect.right() <= panel.rect().right() &&
                 statusRect.bottom() < commonStackRect.top(),
             "AI-8 backend status and page actions sit right of the page selectors");
-    const int setpointContentWidth = std::max(0, setpointSpin->parentWidget()->width() - 20);
+    const QWidget *setpointField = setpointSpin->parentWidget();
+    const int commonColumnWidth = std::max(0, (commonStackRect.width() - 8) / 2);
+    const int compactFieldWidth = std::max(138, qRound(commonColumnWidth * 0.6));
+    require(setpointField != nullptr &&
+                setpointField->property("ai8CompactCommonField").toBool() &&
+                setpointField->maximumWidth() <= compactFieldWidth + 2 &&
+                setpointField->width() <= compactFieldWidth + 2,
+            "AI-8 common parameter field frames are narrowed to three-fifths of their columns");
+    const int setpointContentWidth = std::max(0, setpointField->width() - 20);
     const int compactSetpointWidth = std::max(118, qRound(setpointContentWidth * 0.6));
     require(std::abs(setpointSpin->maximumWidth() - compactSetpointWidth) <= 2 &&
                 setpointSpin->width() <= compactSetpointWidth + 2,
