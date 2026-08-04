@@ -5048,7 +5048,7 @@ void MainWindow::setupLogPanel()
     state_->log_list_view_->setFrameShape(QFrame::NoFrame);
     state_->log_list_view_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     state_->log_list_view_->setSelectionMode(QAbstractItemView::SingleSelection);
-    state_->log_list_view_->setUniformItemSizes(true);
+    state_->log_list_view_->setUniformItemSizes(false);
     state_->log_list_view_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     state_->log_list_view_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     state_->log_list_view_->setMinimumWidth(0);

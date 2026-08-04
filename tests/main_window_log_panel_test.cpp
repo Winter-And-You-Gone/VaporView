@@ -255,6 +255,18 @@ int main(int argc, char **argv)
     VaporViewTest::processEventsFor(30);
     require(logList->model()->rowCount() == 4, "debug view includes Debug records");
 
+    publishRecord(logService,
+                  VaporView::LogLevel::Warning,
+                  QStringLiteral("Ground"),
+                  QStringLiteral("ui.legacy.detail"),
+                  QStringLiteral("这是一条用于验证窄日志面板自动换行的较长详情：连接状态、设备路径、数据帧和错误上下文都应在默认宽度下完整显示。"),
+                  {{QStringLiteral("event"), QStringLiteral("narrow_log_detail_wrap")}});
+    const QModelIndex wrappedLogIndex = logList->model()->index(logList->model()->rowCount() - 1, 0);
+    logList->scrollTo(wrappedLogIndex, QAbstractItemView::PositionAtCenter);
+    VaporViewTest::processEventsFor(30);
+    require(logList->visualRect(wrappedLogIndex).height() > logList->fontMetrics().height() * 2,
+            "long log details wrap into multiple visible lines");
+
     searchEdit->setText(QStringLiteral("DEVICE_CONNECTION_FAILED"));
     VaporViewTest::processEventsFor(30);
     require(logList->model()->rowCount() == 1, "search matches structured error_code");
