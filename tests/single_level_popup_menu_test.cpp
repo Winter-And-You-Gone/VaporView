@@ -1,8 +1,10 @@
 #include "shared/theme/SingleLevelPopupMenu.h"
+#include "shared/theme/AppTheme.h"
 
 #include <QAction>
 #include <QApplication>
 #include <QFocusEvent>
+#include <QImage>
 #include <QKeyEvent>
 #include <QPointer>
 #include <QPushButton>
@@ -197,6 +199,23 @@ int main(int argc, char **argv)
             "menu focuses checked row on open");
     require(checkableRow->property("keyboardFocus").toBool(),
             "keyboard focus state is visually tracked separately");
+    const QImage focusedRowImage = checkableRow->grab().toImage();
+    const QColor primaryColor = VaporView::appThemeColor(
+        VaporView::AppThemeColor::Primary,
+        VaporView::isDarkThemeEnabled());
+    int primaryPixelCount = 0;
+    for (int y = 0; y < focusedRowImage.height(); ++y)
+    {
+        for (int x = 0; x < focusedRowImage.width(); ++x)
+        {
+            if (focusedRowImage.pixelColor(x, y) == primaryColor)
+            {
+                ++primaryPixelCount;
+            }
+        }
+    }
+    require(primaryPixelCount == 0,
+            "focused popup row does not render a primary-color outline");
 
     sendKey(checkableRow, Qt::Key_Down);
     require(QApplication::focusWidget() == firstRow,

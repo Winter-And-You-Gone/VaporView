@@ -586,14 +586,6 @@ void SingleLevelPopupMenuRow::paintEvent(QPaintEvent *event)
         }
         painter.fillRect(rect(), fill);
     }
-    if (active && keyboard_focus_highlight_)
-    {
-        const bool dark = isDarkThemeEnabled();
-        const QColor focusColor = appThemeColor(AppThemeColor::Primary, dark);
-        painter.setPen(QPen(focusColor, 1));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawRoundedRect(rect().adjusted(2, 2, -3, -3), 5, 5);
-    }
 }
 
 void SingleLevelPopupMenuRow::resizeEvent(QResizeEvent *event)
