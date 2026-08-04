@@ -781,7 +781,6 @@ void UiLogItemDelegate::paint(QPainter *painter,
     style->drawPrimitive(QStyle::PE_PanelItemViewItem, &opt, painter, widget);
 
     painter->save();
-    const QRect textRect = opt.rect.adjusted(10, 3, -10, -3);
     const auto level = static_cast<VaporView::LogLevel>(index.data(UiLogModel::LevelRole).toInt());
     QFont font = opt.font;
     if (level >= VaporView::LogLevel::Warning)
@@ -790,8 +789,8 @@ void UiLogItemDelegate::paint(QPainter *painter,
     }
     painter->setFont(font);
     painter->setPen(levelColor(level, opt.palette));
-    painter->drawText(textRect,
-                      Qt::AlignLeft | Qt::AlignVCenter,
+    painter->drawText(opt.rect.adjusted(10, 3, -10, -3),
+                      Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap,
                       index.data(Qt::DisplayRole).toString());
     painter->restore();
 }
@@ -799,7 +798,26 @@ void UiLogItemDelegate::paint(QPainter *painter,
 QSize UiLogItemDelegate::sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const
 {
     QSize size = QStyledItemDelegate::sizeHint(option, index);
-    size.setHeight(std::max(size.height(), 26));
+    QStyleOptionViewItem opt(option);
+    initStyleOption(&opt, index);
+    const auto level = static_cast<VaporView::LogLevel>(index.data(UiLogModel::LevelRole).toInt());
+    QFont font = opt.font;
+    if (level >= VaporView::LogLevel::Warning)
+    {
+        font.setBold(true);
+    }
+
+    int itemWidth = option.rect.width();
+    if (itemWidth <= 0 && option.widget)
+    {
+        itemWidth = option.widget->width();
+    }
+    const int textWidth = std::max(1, itemWidth - 20);
+    const QRect textBounds = QFontMetrics(font).boundingRect(
+        QRect(0, 0, textWidth, std::numeric_limits<int>::max()),
+        Qt::AlignLeft | Qt::TextWordWrap,
+        index.data(Qt::DisplayRole).toString());
+    size.setHeight(std::max({size.height(), 26, textBounds.height() + 6}));
     return size;
 }
 

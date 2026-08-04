@@ -5,9 +5,12 @@
 #include "test_ui_helpers.h"
 
 #include <QAbstractItemModel>
+#include <QAction>
 #include <QApplication>
+#include <QLayout>
 #include <QLineEdit>
 #include <QListView>
+#include <QMenu>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QSettings>
@@ -108,6 +111,19 @@ QToolButton *findLogModeButton(MainWindow& window, const QString& text)
     return nullptr;
 }
 
+QToolButton *findAccessibleToolButton(MainWindow& window, const QString& accessibleName)
+{
+    const QList<QToolButton*> buttons = window.findChildren<QToolButton *>();
+    for (QToolButton *button : buttons)
+    {
+        if (button && button->accessibleName() == accessibleName)
+        {
+            return button;
+        }
+    }
+    return nullptr;
+}
+
 QToolButton *findActionButton(MainWindow& window, const QString& actionText, const QString& toolTipText)
 {
     const QList<QToolButton*> buttons = window.findChildren<QToolButton *>();
@@ -156,23 +172,50 @@ int main(int argc, char **argv)
     require(VaporViewTest::waitForWindowExposed(window.get()), "main window exposed for log panel test");
 
     auto *logList = window->findChild<QListView *>(QStringLiteral("logListView"));
+    auto *searchButton = findAccessibleToolButton(*window, QStringLiteral("logSearchButton"));
+    auto *searchMenu = window->findChild<QMenu *>(QStringLiteral("logSearchMenu"));
     auto *searchEdit = window->findChild<QLineEdit *>(QStringLiteral("logSearchEdit"));
+    auto *logTitleActions = window->findChild<QWidget *>(QStringLiteral("logTitleActions"));
+    auto *newEntriesRow = window->findChild<QWidget *>(QStringLiteral("logNewEntriesRow"));
     auto *newEntriesButton = window->findChild<QPushButton *>(QStringLiteral("logNewEntriesButton"));
-    auto *attentionButton = findLogModeButton(*window, QStringLiteral("关注"));
-    auto *allButton = findLogModeButton(*window, QStringLiteral("全部"));
-    auto *debugButton = findLogModeButton(*window, QStringLiteral("调试"));
-    auto *followButton = window->findChild<QToolButton *>(QStringLiteral("logAutoFollowButton"));
+    auto *attentionAction = window->findChild<QAction *>(QStringLiteral("logFilterAttentionMenuAction"));
+    auto *allAction = window->findChild<QAction *>(QStringLiteral("logFilterAllMenuAction"));
+    auto *debugAction = window->findChild<QAction *>(QStringLiteral("logFilterDebugMenuAction"));
+    auto *followAction = window->findChild<QAction *>(QStringLiteral("logFilterAutoFollowMenuAction"));
     auto *clearButton = findActionButton(*window,
                                          QStringLiteral("清空显示"),
                                          QStringLiteral("仅清空当前显示，不删除日志文件"));
 
     require(logList && logList->model(), "log list view is backed by a model");
-    require(searchEdit != nullptr, "log search edit exists");
+    require(searchButton != nullptr, "log search icon button exists");
+    require(!searchButton->icon().isNull(), "log search icon is backed by a visible resource");
+    require(logTitleActions != nullptr && logTitleActions->layout() &&
+                logTitleActions->layout()->spacing() == 0,
+            "log title action icons share a zero-spacing container");
+    require(searchMenu != nullptr, "log search popup menu exists");
+    require(searchEdit != nullptr, "log search edit exists inside the popup");
+    require(newEntriesRow != nullptr, "new log indicator row exists below the title bar");
     require(newEntriesButton != nullptr, "new log indicator button exists");
-    require(attentionButton && allButton && debugButton, "positive log view buttons exist");
-    require(followButton && followButton->isChecked(), "auto follow defaults on");
+    require(newEntriesButton->parentWidget() == newEntriesRow,
+            "new log indicator lives below the title bar instead of inside it");
+    require(findLogModeButton(*window, QStringLiteral("关注")) == nullptr &&
+                findLogModeButton(*window, QStringLiteral("全部")) == nullptr &&
+                findLogModeButton(*window, QStringLiteral("调试")) == nullptr,
+            "positive log view buttons are not duplicated outside the filter menu");
+    require(window->findChild<QToolButton *>(QStringLiteral("logAutoFollowButton")) == nullptr,
+            "auto-follow is not duplicated outside the filter menu");
+    require(attentionAction && allAction && debugAction && followAction, "log filter menu actions exist");
     require(clearButton != nullptr, "clear display button exists");
-    require(attentionButton->isChecked(), "default log view is attention");
+    require(searchButton->parentWidget() == logTitleActions &&
+                clearButton->parentWidget() == logTitleActions,
+            "log search and clear buttons sit in the zero-spacing title action cluster");
+    require(!searchEdit->isVisible(), "log search edit is hidden until the search icon is clicked");
+    searchButton->click();
+    VaporViewTest::processEventsFor(90);
+    require(searchMenu->isVisible() && searchEdit->isVisible(),
+            "clicking the search icon opens the search popup");
+    searchMenu->hide();
+    VaporViewTest::processEventsFor(30);
 
     publishRecord(logService,
                   VaporView::LogLevel::Info,
@@ -204,14 +247,25 @@ int main(int argc, char **argv)
     require(logList->model()->rowCount() == 2,
             "attention view shows warning and explicit attention Info only");
 
-    allButton->click();
+    allAction->trigger();
     VaporViewTest::processEventsFor(30);
-    require(allButton->isChecked(), "all view button becomes checked");
     require(logList->model()->rowCount() == 3, "all view includes ordinary Info but keeps Debug hidden");
 
-    debugButton->click();
+    debugAction->trigger();
     VaporViewTest::processEventsFor(30);
     require(logList->model()->rowCount() == 4, "debug view includes Debug records");
+
+    publishRecord(logService,
+                  VaporView::LogLevel::Warning,
+                  QStringLiteral("Ground"),
+                  QStringLiteral("ui.legacy.detail"),
+                  QStringLiteral("这是一条用于验证窄日志面板自动换行的较长详情：连接状态、设备路径、数据帧和错误上下文都应在默认宽度下完整显示。"),
+                  {{QStringLiteral("event"), QStringLiteral("narrow_log_detail_wrap")}});
+    const QModelIndex wrappedLogIndex = logList->model()->index(logList->model()->rowCount() - 1, 0);
+    logList->scrollTo(wrappedLogIndex, QAbstractItemView::PositionAtCenter);
+    VaporViewTest::processEventsFor(30);
+    require(logList->visualRect(wrappedLogIndex).height() > logList->fontMetrics().height() * 2,
+            "long log details wrap into multiple visible lines");
 
     searchEdit->setText(QStringLiteral("DEVICE_CONNECTION_FAILED"));
     VaporViewTest::processEventsFor(30);
@@ -223,20 +277,22 @@ int main(int argc, char **argv)
     VaporViewTest::processEventsFor(90);
     require(logList->model()->rowCount() == 0, "clear display leaves the visible panel empty");
 
-    attentionButton->click();
-    followButton->click();
-    require(!followButton->isChecked(), "auto follow can be disabled");
+    attentionAction->trigger();
+    followAction->trigger();
+    VaporViewTest::processEventsFor(30);
     publishRecord(logService,
                   VaporView::LogLevel::Error,
                   QStringLiteral("Ground"),
                   QStringLiteral("device.connection"),
                   QStringLiteral("设备连接失败。"),
-                  {{QStringLiteral("event"), QStringLiteral("device_connection_failed")},
-                   {QStringLiteral("error_code"), QStringLiteral("DEVICE_CONNECTION_FAILED")}});
+                   {{QStringLiteral("event"), QStringLiteral("device_connection_failed")},
+                    {QStringLiteral("error_code"), QStringLiteral("DEVICE_CONNECTION_FAILED")}});
+    require(newEntriesRow->isVisible(), "new log indicator row appears with pending visible rows");
     require(newEntriesButton->isVisible(), "new log indicator appears when auto follow is disabled");
     require(newEntriesButton->text().contains(QStringLiteral("1")), "new log indicator counts pending visible rows");
     newEntriesButton->click();
     VaporViewTest::processEventsFor(30);
+    require(!newEntriesRow->isVisible(), "clicking new log indicator hides the indicator row");
     require(!newEntriesButton->isVisible(), "clicking new log indicator clears unread state");
 
     clearButton->click();
@@ -267,12 +323,8 @@ int main(int argc, char **argv)
 
     clearButton->click();
     VaporViewTest::processEventsFor(90);
-    if (!followButton->isChecked())
-    {
-        followButton->click();
-        VaporViewTest::processEventsFor(30);
-    }
-    require(followButton->isChecked(), "auto follow remains enabled for manual history scroll test");
+    followAction->trigger();
+    VaporViewTest::processEventsFor(30);
     for (int i = 0; i < 80; ++i)
     {
         logService.publish(VaporView::LogLevel::Warning,

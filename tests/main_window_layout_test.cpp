@@ -3496,17 +3496,56 @@ int main(int argc, char **argv)
     processEventsFor(50);
 
     QToolButton *logFilterButton = nullptr;
+    QToolButton *logSearchButton = nullptr;
+    QToolButton *logClearButton = nullptr;
     const QList<QToolButton*> titleBarButtons =
         window.findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
     for (QToolButton *button : titleBarButtons)
     {
+        if (button && button->accessibleName() == QStringLiteral("logSearchButton"))
+        {
+            logSearchButton = button;
+        }
+        if (button && (button->toolTip() == QStringLiteral("仅清空当前显示，不删除日志文件") ||
+                       button->toolTip() == QStringLiteral("Clear the visible log panel without deleting log files")))
+        {
+            logClearButton = button;
+        }
         if (button && (button->toolTip() == QStringLiteral("日志视图") ||
                        button->toolTip() == QStringLiteral("Log view")))
         {
             logFilterButton = button;
-            break;
         }
     }
+    require(logSearchButton != nullptr, "log search title-bar button exists");
+    auto *logTitleActions = window.findChild<QWidget *>(QStringLiteral("logTitleActions"));
+    require(logTitleActions != nullptr && logTitleActions->layout() &&
+                logTitleActions->layout()->spacing() == 0,
+            "log title action icon cluster has zero spacing");
+    require(logFilterButton != nullptr && logClearButton != nullptr &&
+                logSearchButton->parentWidget() == logTitleActions &&
+                logFilterButton->parentWidget() == logTitleActions &&
+                logClearButton->parentWidget() == logTitleActions,
+            "log title search, filter, and clear icons share the zero-spacing cluster");
+    require(!logSearchButton->icon().isNull(),
+            "log search title-bar button has a visible search icon");
+    require(window.findChildren<QToolButton *>(QStringLiteral("logViewModeButton")).isEmpty(),
+            "log mode buttons are not duplicated below the title bar");
+    require(window.findChild<QToolButton *>(QStringLiteral("logAutoFollowButton")) == nullptr,
+            "log follow button is not duplicated below the title bar");
+    auto *logNewEntriesRow = window.findChild<QWidget *>(QStringLiteral("logNewEntriesRow"));
+    auto *logNewEntriesButton = window.findChild<QPushButton *>(QStringLiteral("logNewEntriesButton"));
+    require(logNewEntriesRow != nullptr && logNewEntriesButton != nullptr &&
+                logNewEntriesButton->parentWidget() == logNewEntriesRow,
+            "log new-entry reminder sits in its own row below the title bar");
+    clickWidget(logSearchButton, 120);
+    auto *logSearchMenu = window.findChild<QMenu *>(QStringLiteral("logSearchMenu"));
+    auto *logSearchEdit = window.findChild<QLineEdit *>(QStringLiteral("logSearchEdit"));
+    require(logSearchMenu != nullptr && logSearchMenu->isVisible() &&
+                logSearchEdit != nullptr && logSearchEdit->isVisible(),
+            "log search icon opens a popup search field");
+    logSearchMenu->hide();
+    processEventsFor(50);
     require(logFilterButton != nullptr, "log filter title-bar button exists");
     clickWidget(logFilterButton, 180);
     VaporView::SingleLevelPopupMenu *logFilterMenu = nullptr;

@@ -244,10 +244,6 @@ void MainWindow::scrollLogViewToBottom()
 
 void MainWindow::updateLogFollowState()
 {
-    if (state_->log_auto_follow_btn_)
-    {
-        state_->log_auto_follow_btn_->setChecked(state_->log_auto_follow_enabled_);
-    }
     if (isLogViewNearBottom() && !state_->log_side_panel_collapsed_)
     {
         clearLogUnreadState();
@@ -276,6 +272,10 @@ void MainWindow::updateLogUnreadUi()
         state_->log_new_entries_btn_->setText(state_->is_english_
             ? QStringLiteral("%1 new").arg(count)
             : QStringLiteral("%1 条新日志").arg(count));
+    }
+    if (state_->log_new_entries_row_)
+    {
+        state_->log_new_entries_row_->setVisible(state_->log_new_visible_count_ > 0);
     }
     if (state_->log_inline_title_lbl_)
     {
@@ -400,43 +400,13 @@ void MainWindow::updateLogFilterAction()
     {
         state_->log_filter_btn_->setIcon(createLogFilterIcon());
         state_->log_filter_btn_->setToolTip(state_->is_english_ ? QStringLiteral("Log view")
-                                                : QStringLiteral("日志视图"));
+                                                 : QStringLiteral("日志视图"));
     }
-    if (state_->log_attention_view_btn_)
+    if (state_->log_search_btn_)
     {
-        state_->log_attention_view_btn_->setText(state_->is_english_ ? QStringLiteral("Attention")
-                                                                      : QStringLiteral("关注"));
-        state_->log_attention_view_btn_->setToolTip(state_->is_english_
-            ? QStringLiteral("Show logs that require attention")
-            : QStringLiteral("显示需要关注的日志"));
-        state_->log_attention_view_btn_->setChecked(state_->log_view_mode_ == VaporView::Ground::Main::LogUiViewMode::Attention);
-    }
-    if (state_->log_all_view_btn_)
-    {
-        state_->log_all_view_btn_->setText(state_->is_english_ ? QStringLiteral("All")
-                                                               : QStringLiteral("全部"));
-        state_->log_all_view_btn_->setToolTip(state_->is_english_
-            ? QStringLiteral("Show Info and higher logs")
-            : QStringLiteral("显示 Info 及以上日志"));
-        state_->log_all_view_btn_->setChecked(state_->log_view_mode_ == VaporView::Ground::Main::LogUiViewMode::All);
-    }
-    if (state_->log_debug_view_btn_)
-    {
-        state_->log_debug_view_btn_->setText(state_->is_english_ ? QStringLiteral("Debug")
-                                                                 : QStringLiteral("调试"));
-        state_->log_debug_view_btn_->setToolTip(state_->is_english_
-            ? QStringLiteral("Show Debug diagnostics")
-            : QStringLiteral("显示 Debug 诊断日志"));
-        state_->log_debug_view_btn_->setChecked(state_->log_view_mode_ == VaporView::Ground::Main::LogUiViewMode::Debug);
-    }
-    if (state_->log_auto_follow_btn_)
-    {
-        state_->log_auto_follow_btn_->setText(state_->is_english_ ? QStringLiteral("Follow")
-                                                                  : QStringLiteral("跟随"));
-        state_->log_auto_follow_btn_->setToolTip(state_->is_english_
-            ? QStringLiteral("Auto-follow new logs while near the bottom")
-            : QStringLiteral("接近底部时自动跟随新日志"));
-        state_->log_auto_follow_btn_->setChecked(state_->log_auto_follow_enabled_);
+        state_->log_search_btn_->setIcon(createLogSearchIcon());
+        state_->log_search_btn_->setToolTip(state_->is_english_ ? QStringLiteral("Search logs")
+                                                : QStringLiteral("搜索日志"));
     }
     if (state_->log_search_edit_)
     {

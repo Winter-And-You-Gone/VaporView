@@ -686,7 +686,7 @@ QListView#logListView {
     border: none;
     border-radius: 0px;
 }
-QWidget#logControlsRow {
+QWidget#logNewEntriesRow {
     background-color: @vv-surface;
     border: none;
 }
