@@ -7,6 +7,7 @@
 #include <QAbstractItemModel>
 #include <QAction>
 #include <QApplication>
+#include <QLayout>
 #include <QLineEdit>
 #include <QListView>
 #include <QMenu>
@@ -174,6 +175,7 @@ int main(int argc, char **argv)
     auto *searchButton = findAccessibleToolButton(*window, QStringLiteral("logSearchButton"));
     auto *searchMenu = window->findChild<QMenu *>(QStringLiteral("logSearchMenu"));
     auto *searchEdit = window->findChild<QLineEdit *>(QStringLiteral("logSearchEdit"));
+    auto *logTitleActions = window->findChild<QWidget *>(QStringLiteral("logTitleActions"));
     auto *newEntriesRow = window->findChild<QWidget *>(QStringLiteral("logNewEntriesRow"));
     auto *newEntriesButton = window->findChild<QPushButton *>(QStringLiteral("logNewEntriesButton"));
     auto *attentionAction = window->findChild<QAction *>(QStringLiteral("logFilterAttentionMenuAction"));
@@ -187,6 +189,9 @@ int main(int argc, char **argv)
     require(logList && logList->model(), "log list view is backed by a model");
     require(searchButton != nullptr, "log search icon button exists");
     require(!searchButton->icon().isNull(), "log search icon is backed by a visible resource");
+    require(logTitleActions != nullptr && logTitleActions->layout() &&
+                logTitleActions->layout()->spacing() == 0,
+            "log title action icons share a zero-spacing container");
     require(searchMenu != nullptr, "log search popup menu exists");
     require(searchEdit != nullptr, "log search edit exists inside the popup");
     require(newEntriesRow != nullptr, "new log indicator row exists below the title bar");
@@ -201,6 +206,9 @@ int main(int argc, char **argv)
             "auto-follow is not duplicated outside the filter menu");
     require(attentionAction && allAction && debugAction && followAction, "log filter menu actions exist");
     require(clearButton != nullptr, "clear display button exists");
+    require(searchButton->parentWidget() == logTitleActions &&
+                clearButton->parentWidget() == logTitleActions,
+            "log search and clear buttons sit in the zero-spacing title action cluster");
     require(!searchEdit->isVisible(), "log search edit is hidden until the search icon is clicked");
     searchButton->click();
     VaporViewTest::processEventsFor(90);

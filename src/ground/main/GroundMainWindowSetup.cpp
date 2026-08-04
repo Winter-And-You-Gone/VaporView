@@ -4896,6 +4896,11 @@ void MainWindow::setupLogPanel()
                                                         &logTitleCluster);
     logTitleLayout->addWidget(logTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
     logTitleLayout->addStretch(1);
+    auto *logTitleActions = new QWidget(logTitleBar);
+    logTitleActions->setObjectName(QStringLiteral("logTitleActions"));
+    auto *logTitleActionsLayout = new QHBoxLayout(logTitleActions);
+    logTitleActionsLayout->setContentsMargins(0, 0, 0, 0);
+    logTitleActionsLayout->setSpacing(0);
     state_->log_search_menu_ = new QMenu(logTitleBar);
     state_->log_search_menu_->setObjectName(QStringLiteral("logSearchMenu"));
     auto *searchWidgetAction = new QWidgetAction(state_->log_search_menu_);
@@ -4919,7 +4924,7 @@ void MainWindow::setupLogPanel()
     searchPopupLayout->addWidget(state_->log_search_edit_);
     searchWidgetAction->setDefaultWidget(searchPopup);
     state_->log_search_menu_->addAction(searchWidgetAction);
-    state_->log_search_btn_ = new QToolButton(logTitleBar);
+    state_->log_search_btn_ = new QToolButton(logTitleActions);
     state_->log_search_btn_->setObjectName(QStringLiteral("titleBarButton"));
     state_->log_search_btn_->setAccessibleName(QStringLiteral("logSearchButton"));
     state_->log_search_btn_->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -4963,8 +4968,8 @@ void MainWindow::setupLogPanel()
             button->update();
         });
     });
-    logTitleLayout->addWidget(state_->log_search_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
-    state_->log_filter_btn_ = new QToolButton(logTitleBar);
+    logTitleActionsLayout->addWidget(state_->log_search_btn_, 0, Qt::AlignVCenter);
+    state_->log_filter_btn_ = new QToolButton(logTitleActions);
     state_->log_filter_btn_->setObjectName(QStringLiteral("titleBarButton"));
     state_->log_filter_btn_->setToolButtonStyle(Qt::ToolButtonIconOnly);
     state_->log_filter_btn_->setAutoRaise(false);
@@ -5008,11 +5013,12 @@ void MainWindow::setupLogPanel()
     }
     state_->log_filter_btn_->setFixedSize(kMainPageButtonHeight, kMainPageButtonHeight);
     state_->log_filter_btn_->setIconSize(QSize(kMainPageButtonHeight - 12, kMainPageButtonHeight - 12));
-    logTitleLayout->addWidget(state_->log_filter_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
-    state_->log_clear_btn_ = createTitleBarActionButton(state_->clear_log_action_, logTitleBar);
+    logTitleActionsLayout->addWidget(state_->log_filter_btn_, 0, Qt::AlignVCenter);
+    state_->log_clear_btn_ = createTitleBarActionButton(state_->clear_log_action_, logTitleActions);
     state_->log_clear_btn_->setFixedSize(kMainPageButtonHeight, kMainPageButtonHeight);
     state_->log_clear_btn_->setIconSize(QSize(kMainPageButtonHeight - 12, kMainPageButtonHeight - 12));
-    logTitleLayout->addWidget(state_->log_clear_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
+    logTitleActionsLayout->addWidget(state_->log_clear_btn_, 0, Qt::AlignVCenter);
+    logTitleLayout->addWidget(logTitleActions, 0, Qt::AlignVCenter | Qt::AlignRight);
     log_layout->addWidget(logTitleBar);
 
     state_->log_new_entries_row_ = new QWidget(state_->log_group_);

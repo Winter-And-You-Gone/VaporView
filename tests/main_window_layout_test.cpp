@@ -3497,6 +3497,7 @@ int main(int argc, char **argv)
 
     QToolButton *logFilterButton = nullptr;
     QToolButton *logSearchButton = nullptr;
+    QToolButton *logClearButton = nullptr;
     const QList<QToolButton*> titleBarButtons =
         window.findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
     for (QToolButton *button : titleBarButtons)
@@ -3505,14 +3506,27 @@ int main(int argc, char **argv)
         {
             logSearchButton = button;
         }
+        if (button && (button->toolTip() == QStringLiteral("仅清空当前显示，不删除日志文件") ||
+                       button->toolTip() == QStringLiteral("Clear the visible log panel without deleting log files")))
+        {
+            logClearButton = button;
+        }
         if (button && (button->toolTip() == QStringLiteral("日志视图") ||
                        button->toolTip() == QStringLiteral("Log view")))
         {
             logFilterButton = button;
-            break;
         }
     }
     require(logSearchButton != nullptr, "log search title-bar button exists");
+    auto *logTitleActions = window.findChild<QWidget *>(QStringLiteral("logTitleActions"));
+    require(logTitleActions != nullptr && logTitleActions->layout() &&
+                logTitleActions->layout()->spacing() == 0,
+            "log title action icon cluster has zero spacing");
+    require(logFilterButton != nullptr && logClearButton != nullptr &&
+                logSearchButton->parentWidget() == logTitleActions &&
+                logFilterButton->parentWidget() == logTitleActions &&
+                logClearButton->parentWidget() == logTitleActions,
+            "log title search, filter, and clear icons share the zero-spacing cluster");
     require(!logSearchButton->icon().isNull(),
             "log search title-bar button has a visible search icon");
     require(window.findChildren<QToolButton *>(QStringLiteral("logViewModeButton")).isEmpty(),
