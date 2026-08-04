@@ -1846,7 +1846,9 @@ void MainWindow::updateCustomTitleBarTexts()
     }
     if (state_->title_menu_btn_)
     {
-        state_->title_menu_btn_->setToolTip(state_->is_english_ ? "Menu" : "菜单");
+        const QString menuText = state_->is_english_ ? QStringLiteral("Menu") : QStringLiteral("菜单");
+        state_->title_menu_btn_->setToolTip(menuText);
+        state_->title_menu_btn_->setAccessibleName(menuText);
     }
     updateCustomLogoTooltip();
     if (state_->title_language_btn_)

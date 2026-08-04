@@ -7,6 +7,7 @@
 #include <QFrame>
 #include <QKeyEvent>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QSet>
 #include <QSettings>
 #include <QTemporaryDir>
@@ -78,6 +79,31 @@ void sendKey(QWidget *receiver, int key)
     VaporViewTest::processEventsFor(30);
 }
 
+void sendMouseClick(QWidget *receiver)
+{
+    require(receiver != nullptr, "mouse click receiver exists");
+    const QPointF localPos(receiver->rect().center());
+    const QPointF scenePos = localPos;
+    const QPointF globalPos = receiver->mapToGlobal(localPos.toPoint());
+    QMouseEvent press(QEvent::MouseButtonPress,
+                      localPos,
+                      scenePos,
+                      globalPos,
+                      Qt::LeftButton,
+                      Qt::LeftButton,
+                      Qt::NoModifier);
+    QApplication::sendEvent(receiver, &press);
+    QMouseEvent release(QEvent::MouseButtonRelease,
+                        localPos,
+                        scenePos,
+                        globalPos,
+                        Qt::LeftButton,
+                        Qt::NoButton,
+                        Qt::NoModifier);
+    QApplication::sendEvent(receiver, &release);
+    VaporViewTest::processEventsFor(80);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -107,6 +133,8 @@ int main(int argc, char **argv)
     require(titleMenuButton != nullptr, "title bar menu button exists");
     require(titleMenuButton->focusPolicy() == Qt::StrongFocus,
             "title bar menu button accepts restored keyboard focus");
+    require(titleMenuButton->accessibleName() == QStringLiteral("菜单"),
+            "titleBarMenuButton exposes a localized accessible name");
 
     titleMenuButton->click();
     VaporViewTest::processEventsFor(80);
@@ -182,8 +210,72 @@ int main(int argc, char **argv)
     require(findRow(subMenu, QStringLiteral("titleMenuExitAction")) != nullptr,
             "exit command row uses its stable object name");
 
-    auto *viewRootRow = rootRows.value(1);
-    auto *fileRootRow = rootRows.first();
+    auto *viewLogAction = window.findChild<QAction *>(QStringLiteral("titleMenuViewLogPanelAction"));
+    require(viewLogAction != nullptr, "View log panel action exists for trigger-count regression");
+    int viewLogTriggerCount = 0;
+    QObject::connect(viewLogAction, &QAction::triggered, &window, [&viewLogTriggerCount]() {
+        ++viewLogTriggerCount;
+    });
+
+    auto reopenViewSubmenu = [&]() -> QToolButton * {
+        if (!panel->isVisible())
+        {
+            titleMenuButton->click();
+            VaporViewTest::processEventsFor(80);
+        }
+        auto *viewSectionRow = rootRows.value(1);
+        require(viewSectionRow != nullptr, "View section row exists for trigger regression");
+        viewSectionRow->setFocus(Qt::OtherFocusReason);
+        sendKey(viewSectionRow, Qt::Key_Right);
+        require(subMenu->isVisible(), "View submenu opens for trigger regression");
+        auto *row = findRow(subMenu, QStringLiteral("titleMenuViewLogPanelAction"));
+        require(row != nullptr && row->isEnabled(),
+                "View log panel row is available for trigger regression");
+        row->setFocus(Qt::OtherFocusReason);
+        return row;
+    };
+
+    QToolButton *triggerRow = reopenViewSubmenu();
+    sendKey(triggerRow, Qt::Key_Enter);
+    require(viewLogTriggerCount == 1,
+            "Enter triggers the focused title-menu QAction exactly once");
+    require(!panel->isVisible(),
+            "Enter-triggered command closes the title menu");
+
+    triggerRow = reopenViewSubmenu();
+    sendKey(triggerRow, Qt::Key_Space);
+    require(viewLogTriggerCount == 2,
+            "Space triggers the focused title-menu QAction exactly once");
+    require(!panel->isVisible(),
+            "Space-triggered command closes the title menu");
+
+    triggerRow = reopenViewSubmenu();
+    sendMouseClick(triggerRow);
+    require(viewLogTriggerCount == 3,
+            "a single mouse click triggers the title-menu QAction exactly once");
+    require(!panel->isVisible(),
+            "mouse-click command closes the title menu");
+
+    titleMenuButton->click();
+    VaporViewTest::processEventsFor(80);
+    panel = window.findChild<QFrame *>(QStringLiteral("titleApplicationPanel"));
+    subMenu = window.findChild<QFrame *>(QStringLiteral("titleApplicationSubMenu"));
+    nestedMenu = window.findChild<QFrame *>(QStringLiteral("titleApplicationNestedMenu"));
+    mainMenu = window.findChild<QFrame *>(QStringLiteral("titleApplicationMainMenu"));
+    require(panel && mainMenu && subMenu && nestedMenu,
+            "title application menu containers still exist after trigger regression checks");
+    const QList<QToolButton *> reopenedRootRows = menuRows(mainMenu, Qt::FindDirectChildrenOnly);
+    require(reopenedRootRows.size() == rootRows.size(),
+            "title application menu root rows reopen consistently after trigger regression checks");
+
+    auto *viewRootRow = reopenedRootRows.value(1);
+    auto *fileRootRow = reopenedRootRows.first();
+    fileRootRow->setFocus(Qt::OtherFocusReason);
+    sendKey(fileRootRow, Qt::Key_Right);
+    require(subMenu->isVisible(), "Right reopens the File submenu after trigger regression checks");
+    const QList<QToolButton *> reopenedFileSubmenuRows = visibleMenuRows(subMenu);
+    require(!reopenedFileSubmenuRows.isEmpty() && reopenedFileSubmenuRows.first()->hasFocus(),
+            "File submenu focus is restored before the Left-key regression check");
     sendKey(QApplication::focusWidget(), Qt::Key_Left);
     if (!fileRootRow->hasFocus())
     {
