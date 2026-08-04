@@ -2146,6 +2146,7 @@ void MainWindow::setupCentralWidget()
     temperatureScrollArea->setFrameShape(QFrame::NoFrame);
     auto *temperatureContent = new QWidget(temperatureScrollArea);
     auto *temperatureContentLayout = new QVBoxLayout(temperatureContent);
+    temperatureContentLayout->setSizeConstraint(QLayout::SetMinimumSize);
     temperatureContentLayout->setContentsMargins(kMainContentLeftCardInset,
                                                  kTopLevelCardOuterVerticalInset,
                                                  kMainContentRightCardInset,
@@ -4439,7 +4440,7 @@ void MainWindow::setupDataPanels()
     state_->temperature_controller_group_->setObjectName("sensorGroupBox");
     configureTopLevelCard(state_->temperature_controller_group_);
     state_->temperature_controller_group_->setMinimumWidth(0);
-    state_->temperature_controller_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    state_->temperature_controller_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     auto *temperatureLayout = new QVBoxLayout(state_->temperature_controller_group_);
     temperatureLayout->setContentsMargins(1, 0, 1, 1);
     temperatureLayout->setSpacing(0);
@@ -4660,7 +4661,7 @@ void MainWindow::setupDataPanels()
     state_->ai8_temperature_controller_group_->setProperty("ai8TemperatureControllerCard", true);
     configureTopLevelCard(state_->ai8_temperature_controller_group_);
     state_->ai8_temperature_controller_group_->setMinimumWidth(0);
-    state_->ai8_temperature_controller_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    state_->ai8_temperature_controller_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     auto *ai8Layout = new QVBoxLayout(state_->ai8_temperature_controller_group_);
     ai8Layout->setContentsMargins(1, 0, 1, 1);
     ai8Layout->setSpacing(0);

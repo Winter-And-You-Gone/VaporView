@@ -808,6 +808,40 @@ void clickWidget(QWidget *widget, int waitMs = 50)
     clickWidgetAt(widget, widget->rect().center(), waitMs);
 }
 
+class MinimumHeightRecorder final : public QObject
+{
+public:
+    explicit MinimumHeightRecorder(QWidget *widget)
+        : QObject(widget)
+        , widget_(widget)
+        , minimum_height_(widget ? widget->height() : 0)
+    {
+        if (widget_)
+        {
+            widget_->installEventFilter(this);
+        }
+    }
+
+    int minimumHeight() const
+    {
+        return minimum_height_;
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (watched == widget_ && event->type() == QEvent::Resize && widget_)
+        {
+            minimum_height_ = std::min(minimum_height_, widget_->height());
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    QWidget *widget_ = nullptr;
+    int minimum_height_ = 0;
+};
+
 struct VerticalDragContext
 {
     QWidget *widget = nullptr;
@@ -4196,6 +4230,21 @@ int main(int argc, char **argv)
         QStringLiteral("ai8PageSelectorButton1"));
     require(ai8GlobalButton != nullptr && ai8ChannelButton != nullptr,
             "AI-8 page selectors exist");
+    auto *ai8ChannelDetailToggle = ai8TemperatureCard->findChild<QToolButton *>(
+        QStringLiteral("ai8ChannelDetailParametersToggle"));
+    auto *rd105TemperaturePanelForAi8Expansion =
+        window.findChild<TemperatureControllerPanel *>();
+    QWidget *rd105TemperatureCardForAi8Expansion =
+        sensorGroupAncestor(rd105TemperaturePanelForAi8Expansion);
+    auto *temperatureScrollAreaForAi8Expansion =
+        ai8TemperaturePage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
+    QWidget *temperatureScrollContentForAi8Expansion =
+        temperatureScrollAreaForAi8Expansion ? temperatureScrollAreaForAi8Expansion->widget() : nullptr;
+    require(ai8ChannelDetailToggle != nullptr &&
+                rd105TemperatureCardForAi8Expansion != nullptr &&
+                temperatureScrollContentForAi8Expansion != nullptr &&
+                temperatureScrollContentForAi8Expansion->layout() != nullptr,
+            "AI-8 detail toggle, RD105 card, and temperature scroll content exist for expansion stability checks");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8NavigationBar {"),
                                  QStringLiteral("border-radius: 8px"),
@@ -4226,6 +4275,32 @@ int main(int argc, char **argv)
     require(ai8Stack->currentIndex() == 0 && ai8DetailStack->currentIndex() == 0 &&
                 ai8ChannelButton->isChecked(),
             "AI-8 page selector returns to channel parameters");
+    const int rd105CardHeightBeforeAi8DetailExpand =
+        rd105TemperatureCardForAi8Expansion->height();
+    const int ai8MainContentHeightBeforeDetailExpand = ai8MainContentCard->height();
+    MinimumHeightRecorder rd105CardHeightDuringAi8DetailExpand(
+        rd105TemperatureCardForAi8Expansion);
+    MinimumHeightRecorder ai8MainContentHeightDuringDetailExpand(ai8MainContentCard);
+    clickWidget(ai8ChannelDetailToggle, 120);
+    activateLayouts(&window);
+    require(rd105CardHeightDuringAi8DetailExpand.minimumHeight() >=
+                rd105CardHeightBeforeAi8DetailExpand,
+            "AI-8 detail expansion does not transiently shrink the RD105 card above it");
+    require(ai8MainContentHeightDuringDetailExpand.minimumHeight() >=
+                ai8MainContentHeightBeforeDetailExpand,
+            "AI-8 detail expansion does not transiently shrink its main parameter and trend area");
+    if (temperatureScrollContentForAi8Expansion->minimumHeight() <
+        temperatureScrollContentForAi8Expansion->layout()->sizeHint().height())
+    {
+        std::cerr << "TEMP_MIN=" << temperatureScrollContentForAi8Expansion->minimumHeight()
+                  << " TEMP_HINT=" << temperatureScrollContentForAi8Expansion->layout()->sizeHint().height()
+                  << " TEMP_MIN_SIZE=" << temperatureScrollContentForAi8Expansion->layout()->minimumSize().height()
+                  << " VIEWPORT=" << temperatureScrollAreaForAi8Expansion->viewport()->height()
+                  << '\n';
+    }
+    require(temperatureScrollContentForAi8Expansion->minimumHeight() >=
+                temperatureScrollContentForAi8Expansion->layout()->sizeHint().height(),
+            "temperature page scroll content tracks its expanded preferred height instead of compressing cards");
 
     auto *ai8ChannelSpin = ai8TemperatureCard->findChild<QSpinBox *>(
         QStringLiteral("ai8ChannelSpin"));

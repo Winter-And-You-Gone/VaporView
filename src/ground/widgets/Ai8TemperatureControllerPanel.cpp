@@ -211,9 +211,10 @@ Ai8TemperatureControllerPanel::Ai8TemperatureControllerPanel(QWidget *parent)
 void Ai8TemperatureControllerPanel::setupUi()
 {
     setObjectName(QStringLiteral("ai8TemperatureControllerPanel"));
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
 
     auto *rootLayout = new QVBoxLayout(this);
+    rootLayout->setSizeConstraint(QLayout::SetMinimumSize);
     rootLayout->setContentsMargins(10, 10, 10, 10);
     rootLayout->setSpacing(8);
 
@@ -315,15 +316,16 @@ void Ai8TemperatureControllerPanel::setupUi()
 
     detail_stack_ = new QStackedWidget(this);
     detail_stack_->setObjectName(QStringLiteral("ai8DetailParametersStack"));
-    detail_stack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    detail_stack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
 
     auto *mainContentCard = new QFrame(this);
     mainContentCard->setObjectName(QStringLiteral("ai8MainContentCard"));
     mainContentCard->setProperty("ai8MainContentCard", true);
     mainContentCard->setFrameShape(QFrame::NoFrame);
     mainContentCard->setAttribute(Qt::WA_StyledBackground, true);
-    mainContentCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    mainContentCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     auto *mainContentLayout = new QHBoxLayout(mainContentCard);
+    mainContentLayout->setSizeConstraint(QLayout::SetMinimumSize);
     mainContentLayout->setContentsMargins(kAi8CommonControlGap, 12, kAi8CommonControlGap, 12);
     mainContentLayout->setSpacing(kAi8CommonControlGap);
 
@@ -361,8 +363,9 @@ QWidget *Ai8TemperatureControllerPanel::createDetailSection(const QString& objec
     auto *card = new QFrame(parent);
     card->setObjectName(QStringLiteral("ai8DetailParametersCard"));
     card->setProperty("ai8DetailCard", true);
-    card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     auto *layout = new QVBoxLayout(card);
+    layout->setSizeConstraint(QLayout::SetMinimumSize);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
