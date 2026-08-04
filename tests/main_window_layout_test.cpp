@@ -4244,6 +4244,7 @@ int main(int argc, char **argv)
     require(ai8StackRect.left() < ai8PlotRect.left() &&
                 ai8StackRect.right() < ai8PlotRect.left() &&
                 ai8PlotRect.width() > ai8StackRect.width() &&
+                std::abs(ai8PlotRect.height() - ai8StackRect.height()) <= 2 &&
                 std::abs(ai8StackRect.top() - ai8PlotRect.top()) <= 2 &&
                 ai8DetailStackRect.top() > ai8MainContentRect.bottom() &&
                 std::abs(ai8StackRect.left() - ai8MainContentRect.left() -

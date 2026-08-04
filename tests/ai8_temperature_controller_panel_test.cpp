@@ -60,9 +60,9 @@ int main(int argc, char **argv)
     require(temperaturePlot->property("forceWhiteBackground").toBool(),
             "AI-8 temperature plot uses the same white background as the parameter area");
     require(temperaturePlot->testAttribute(Qt::WA_OpaquePaintEvent) &&
-                temperaturePlot->minimumHeight() == 180 &&
-                temperaturePlot->maximumHeight() == 180,
-            "AI-8 temperature plot has a stable opaque paint area");
+                temperaturePlot->minimumHeight() == temperaturePlot->maximumHeight() &&
+                temperaturePlot->height() >= stack->height(),
+            "AI-8 temperature plot has a stable opaque paint area that matches the parameter stack height");
 
     auto *globalButton = panel.findChild<QPushButton *>(QStringLiteral("ai8PageSelectorButton4"));
     auto *outputButton = panel.findChild<QPushButton *>(QStringLiteral("ai8PageSelectorButton3"));
