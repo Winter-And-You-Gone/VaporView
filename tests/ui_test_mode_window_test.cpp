@@ -1,6 +1,7 @@
 #include "ground/main/MainWindow.h"
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/wave/TcpWavePanel.h"
+#include "ground/widgets/Ai8TemperatureControllerPanel.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "ground/widgets/SkyDeviceConfigDialog.h"
 #include "shared/config/SettingsWriteBarrier.h"
@@ -357,6 +358,26 @@ int main(int argc, char **argv)
     require(ai8TitleAction->isEnabled() &&
                 ai8TitleAction->property("temperatureTitleCommand").toString() == QStringLiteral("disconnect"),
             "AI-8288 temperature title icon action returns to disconnect state after reconnect");
+
+    ai8TitleAction->setEnabled(false);
+    ai8TitleAction->setProperty("state", QStringLiteral("connecting"));
+    ai8TitleAction->setProperty("temperatureTitleCommand", QStringLiteral("connect"));
+    auto *ai8PanelForTitleRefresh =
+        window->findChild<VaporView::Ground::Widgets::Ai8TemperatureControllerPanel *>(
+            QStringLiteral("ai8TemperatureControllerPanel"));
+    require(ai8PanelForTitleRefresh != nullptr,
+            "AI-8 panel is available for title action refresh regression");
+    VaporView::Ai8TemperatureControllerProtocol::LiveData ai8TitleRefreshData;
+    ai8TitleRefreshData.valid = true;
+    ai8TitleRefreshData.controlStatesValid = true;
+    ai8TitleRefreshData.controlStates.fill(
+        VaporView::Ai8TemperatureControllerProtocol::ChannelControlState::ApidOutput);
+    ai8PanelForTitleRefresh->applyLiveData(ai8TitleRefreshData);
+    processEvents();
+    require(ai8TitleAction->isEnabled() &&
+                ai8TitleAction->property("state").toString() == QStringLiteral("connected") &&
+                ai8TitleAction->property("temperatureTitleCommand").toString() == QStringLiteral("disconnect"),
+            "AI-8288 live data refresh restores a stale title action from connecting to disconnect");
 
     auto *temperaturePage = window->findChild<QWidget *>(QStringLiteral("temperaturePage"));
     auto *ai8Panel = window->findChild<QWidget *>(QStringLiteral("ai8TemperatureControllerPanel"));

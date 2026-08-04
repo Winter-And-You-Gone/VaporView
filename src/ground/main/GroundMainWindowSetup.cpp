@@ -4750,7 +4750,10 @@ void MainWindow::setupDataPanels()
     connect(state_->ai8_temperature_controller_panel_,
             &Ai8TemperatureControllerPanel::outputStatusChanged,
             this,
-            &MainWindow::updateAi8TemperatureTitleStatus);
+            [this]() {
+                updateAi8TemperatureTitleStatus();
+                updateTemperatureTitleButtonsState();
+            });
     updateAi8TemperatureTitleStatus();
     ai8Layout->addWidget(state_->ai8_temperature_controller_panel_);
 
