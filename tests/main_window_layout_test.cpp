@@ -4309,6 +4309,12 @@ int main(int argc, char **argv)
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8MainContentCard {"),
                                  QStringLiteral("border-radius: 8px"),
                                  "AI-8 common parameters and trend plot share a bordered content card");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8DetailParametersCard {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::White, false)),
+        "AI-8 detail parameter cards use the same background as the common parameter card");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8ParameterField {"),
                                  QStringLiteral("border: none"),

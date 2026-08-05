@@ -248,11 +248,38 @@ int main(int argc, char **argv)
     QApplication::processEvents();
     require(channelDetailToggle->isChecked() && channelDetailContent->isVisible() &&
                 channelInputGroupEdit->isVisible() && channelAlarmStatusEdit->isVisible() &&
+                channelDetailContent->property("ai8DetailContent").toBool() &&
+                channelDetailContent->testAttribute(Qt::WA_StyledBackground) &&
                 channelDetailToggle->arrowType() == Qt::DownArrow &&
                 channelDetailContent->geometry().top() > channelDetailToggle->geometry().bottom(),
             "AI-8 detailed parameters expand below the toggle card header");
     require(mainContentCard->height() >= mainContentHeightBeforeDetailExpand,
             "AI-8 detail expansion keeps the main parameter and trend area from shrinking");
+    const QList<QFrame *> channelDetailFields =
+        channelDetailContent->findChildren<QFrame *>(QStringLiteral("ai8ParameterField"));
+    require(channelDetailFields.size() == 8,
+            "AI-8 channel detail page exposes its eight detail field frames");
+    for (QFrame *field : channelDetailFields)
+    {
+        QWidget *editor = nullptr;
+        const QList<QWidget *> directChildren =
+            field->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly);
+        for (QWidget *child : directChildren)
+        {
+            if (child && child->objectName() != QStringLiteral("fieldLabel"))
+            {
+                editor = child;
+                break;
+            }
+        }
+        require(field->property("ai8CompactParameterField").toBool() &&
+                    field->property("ai8CompactCommonField").toBool() &&
+                    field->maximumWidth() == channelField->maximumWidth() &&
+                    editor != nullptr &&
+                    editor->minimumWidth() == channelSpin->minimumWidth() &&
+                    editor->maximumWidth() == channelSpin->maximumWidth(),
+                "AI-8 detail fields use the same compact width as common parameters");
+    }
     channelDetailToggle->click();
     QApplication::processEvents();
     require(!channelDetailToggle->isChecked() && !channelDetailContent->isVisible() &&

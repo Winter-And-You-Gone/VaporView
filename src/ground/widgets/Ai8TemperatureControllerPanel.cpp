@@ -63,6 +63,7 @@ public:
     {
         compact_common_width_ = enabled;
         setProperty("ai8CompactCommonField", enabled);
+        setProperty("ai8CompactParameterField", enabled);
         updateCompactCommonWidth();
     }
 
@@ -402,12 +403,14 @@ QWidget *Ai8TemperatureControllerPanel::createDetailSection(const QString& objec
     auto *content = new QWidget(card);
     content->setObjectName(objectName + QStringLiteral("Content"));
     content->setProperty("ai8DetailContent", true);
+    content->setAttribute(Qt::WA_StyledBackground, true);
     content->setVisible(false);
     auto *contentLayout = new QGridLayout(content);
-    contentLayout->setContentsMargins(8, 8, 8, 8);
-    contentLayout->setHorizontalSpacing(8);
+    contentLayout->setContentsMargins(kAi8CommonControlGap, 8, kAi8CommonControlGap, 8);
+    contentLayout->setHorizontalSpacing(kAi8CommonControlGap);
     contentLayout->setVerticalSpacing(8);
     addFieldsToPage(contentLayout, fields);
+    applyCompactCommonEditorWidth(contentLayout);
     layout->addWidget(content);
 
     connect(toggle, &QToolButton::toggled, this, [toggle, content](bool checked) {
