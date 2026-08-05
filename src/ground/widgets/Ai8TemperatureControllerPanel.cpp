@@ -417,20 +417,9 @@ QWidget *Ai8TemperatureControllerPanel::createDetailSection(const QString& objec
     applyCompactCommonEditorWidth(contentLayout);
     layout->addWidget(content);
 
-    connect(toggle, &QToolButton::toggled, this, [this, toggle, content](bool checked) {
-        content->setVisible(checked);
-        toggle->setArrowType(checked ? Qt::DownArrow : Qt::RightArrow);
-        toggle->setProperty("expanded", checked);
-        toggle->style()->unpolish(toggle);
-        toggle->style()->polish(toggle);
-        content->updateGeometry();
-        if (auto *parentWidget = content->parentWidget())
-        {
-            parentWidget->updateGeometry();
-        }
-        syncDetailStackHeight();
-        QTimer::singleShot(0, this, [this]() { syncDetailStackHeight(); });
-    });
+    detail_section_bindings_.append({toggle, content});
+    connect(toggle, &QToolButton::toggled, this,
+            [this](bool checked) { setDetailSectionsExpanded(checked); });
     return card;
 }
 
@@ -973,7 +962,7 @@ void Ai8TemperatureControllerPanel::selectPage(int index)
     if (detail_stack_ && detail_stack_->count() > pageIndex)
     {
         detail_stack_->setCurrentIndex(pageIndex);
-        syncDetailStackHeight();
+        setDetailSectionsExpanded(detail_sections_expanded_);
     }
     if (QAbstractButton *button = page_button_group_->button(pageIndex))
     {
@@ -983,6 +972,34 @@ void Ai8TemperatureControllerPanel::selectPage(int index)
         syncDetailStackHeight();
         adjustTemperaturePlotHeight();
     });
+}
+
+void Ai8TemperatureControllerPanel::setDetailSectionsExpanded(bool expanded)
+{
+    detail_sections_expanded_ = expanded;
+    for (const DetailSectionBinding& binding : detail_section_bindings_)
+    {
+        if (!binding.toggle || !binding.content)
+        {
+            continue;
+        }
+
+        const QSignalBlocker blocker(binding.toggle);
+        binding.toggle->setChecked(expanded);
+        binding.toggle->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
+        binding.toggle->setProperty("expanded", expanded);
+        binding.toggle->style()->unpolish(binding.toggle);
+        binding.toggle->style()->polish(binding.toggle);
+        binding.content->setVisible(expanded);
+        binding.content->updateGeometry();
+        if (auto *parentWidget = binding.content->parentWidget())
+        {
+            parentWidget->updateGeometry();
+        }
+    }
+
+    syncDetailStackHeight();
+    QTimer::singleShot(0, this, [this]() { syncDetailStackHeight(); });
 }
 
 void Ai8TemperatureControllerPanel::syncDetailStackHeight()
