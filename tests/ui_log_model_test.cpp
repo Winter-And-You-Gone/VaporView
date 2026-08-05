@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 #include <QModelIndex>
+#include <QTimeZone>
 #include <QVariantMap>
 
 #include <cstdlib>
@@ -34,7 +35,7 @@ VaporView::LogRecord makeRecord(VaporView::LogLevel level,
     record.fields = fields;
     record.sequence = sequence;
     record.timestamp_us = timestampUs;
-    record.timestamp_utc = QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(timestampUs / 1000), Qt::UTC)
+    record.timestamp_utc = QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(timestampUs / 1000), QTimeZone::UTC)
         .toString(Qt::ISODateWithMs);
     return record;
 }

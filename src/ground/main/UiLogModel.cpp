@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QPainter>
 #include <QStyle>
+#include <QTimeZone>
 
 #include <algorithm>
 #include <limits>
@@ -531,7 +532,7 @@ QDateTime UiLogModel::recordTimestamp(const VaporView::LogRecord& record)
     QDateTime timestamp = QDateTime::fromString(record.timestamp_utc, Qt::ISODateWithMs);
     if (!timestamp.isValid() && record.timestamp_us > 0)
     {
-        timestamp = QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(record.timestamp_us / 1000), Qt::UTC);
+        timestamp = QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(record.timestamp_us / 1000), QTimeZone::UTC);
     }
     if (!timestamp.isValid())
     {
@@ -696,8 +697,9 @@ void UiLogFilterProxyModel::setViewMode(LogUiViewMode mode)
     {
         return;
     }
+    beginFilterChange();
     view_mode_ = mode;
-    invalidateFilter();
+    endFilterChange(QSortFilterProxyModel::Direction::Rows);
 }
 
 LogUiViewMode UiLogFilterProxyModel::viewMode() const
@@ -712,8 +714,9 @@ void UiLogFilterProxyModel::setSearchText(const QString& text)
     {
         return;
     }
+    beginFilterChange();
     search_text_ = normalized;
-    invalidateFilter();
+    endFilterChange(QSortFilterProxyModel::Direction::Rows);
 }
 
 QString UiLogFilterProxyModel::searchText() const
