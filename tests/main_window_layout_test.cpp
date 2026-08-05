@@ -2716,7 +2716,7 @@ int main(int argc, char **argv)
                     checkUpdatesAction->toolTip() == QStringLiteral("Check for VaporView updates"),
                 "check updates action updates to English");
         app.setApplicationVersion(QString());
-        requireAboutDialogLayout(&aboutWindow, aboutAction, true, QStringLiteral("1.0.20"));
+        requireAboutDialogLayout(&aboutWindow, aboutAction, true, QStringLiteral("1.0.21"));
         require(QMetaObject::invokeMethod(&aboutWindow, "onSwitchLanguage", Qt::DirectConnection),
                 "main window switches back to Chinese after about dialog coverage");
         require(processEventsUntil(1000, [aboutAction]() {
