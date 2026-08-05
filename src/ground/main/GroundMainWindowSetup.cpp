@@ -1936,11 +1936,13 @@ void MainWindow::showTitleApplicationMenu()
     state_->title_application_panel_->show();
     state_->title_application_panel_->raise();
     state_->title_application_panel_->activateWindow();
-    QTimer::singleShot(0, state_->title_application_panel_, [panel = state_->title_application_panel_]() {
-        if (TitleApplicationMenuRow *row = firstEnabledTitleApplicationMenuRow(panel))
+    state_->title_application_panel_->setFocus(Qt::OtherFocusReason);
+    QPointer<QFrame> panel = state_->title_application_panel_;
+    QTimer::singleShot(0, state_->title_application_panel_, [panel]() {
+        if (panel)
         {
-            row->setFocus(Qt::OtherFocusReason);
-            row->setKeyboardFocus(true);
+            clearTitleApplicationMenuSelection(panel);
+            panel->setFocus(Qt::OtherFocusReason);
         }
     });
 }

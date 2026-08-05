@@ -202,7 +202,7 @@ public:
         setAttribute(Qt::WA_StyledBackground, false);
         setAttribute(Qt::WA_ShowWithoutActivating, true);
         setAutoFillBackground(false);
-        setFocusPolicy(Qt::NoFocus);
+        setFocusPolicy(Qt::StrongFocus);
         setFrameShape(QFrame::NoFrame);
         setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         setWindowModality(Qt::NonModal);

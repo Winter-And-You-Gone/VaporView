@@ -144,7 +144,6 @@ private:
     QRect panelRect() const;
     QSize maskSize() const;
     QList<SingleLevelPopupMenuRow *> focusableRows() const;
-    void focusFirstAvailableRow();
     void focusRow(SingleLevelPopupMenuRow *row, Qt::FocusReason reason = Qt::OtherFocusReason);
     bool handleNavigationKey(QKeyEvent *event, SingleLevelPopupMenuRow *sourceRow);
     void prepareKeepOpenAfterTrigger(SingleLevelPopupMenuRow *row);

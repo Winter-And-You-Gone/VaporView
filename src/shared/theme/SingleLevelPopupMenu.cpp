@@ -1022,6 +1022,7 @@ void SingleLevelPopupMenu::resizeEvent(QResizeEvent *event)
 void SingleLevelPopupMenu::showEvent(QShowEvent *event)
 {
     QMenu::showEvent(event);
+    setFocus(Qt::PopupFocusReason);
     clearRowHoverStates();
     refreshTheme();
     syncRowWidths();
@@ -1031,7 +1032,6 @@ void SingleLevelPopupMenu::showEvent(QShowEvent *event)
         syncRowWidths();
         applyRoundedMask();
         constrainPopupToHostWindow(this);
-        focusFirstAvailableRow();
     });
 }
 
@@ -1062,20 +1062,6 @@ QList<SingleLevelPopupMenuRow *> SingleLevelPopupMenu::focusableRows() const
         }
     }
     return result;
-}
-
-void SingleLevelPopupMenu::focusFirstAvailableRow()
-{
-    const QList<SingleLevelPopupMenuRow *> candidates = focusableRows();
-    if (candidates.isEmpty())
-    {
-        setFocus(Qt::OtherFocusReason);
-        return;
-    }
-    auto checkedIt = std::find_if(candidates.cbegin(), candidates.cend(), [](SingleLevelPopupMenuRow *row) {
-        return row && row->isChecked();
-    });
-    focusRow(checkedIt != candidates.cend() ? *checkedIt : candidates.first(), Qt::OtherFocusReason);
 }
 
 void SingleLevelPopupMenu::focusRow(SingleLevelPopupMenuRow *targetRow, Qt::FocusReason reason)
@@ -1114,7 +1100,7 @@ bool SingleLevelPopupMenu::handleNavigationKey(QKeyEvent *event, SingleLevelPopu
                 return row;
             }
         }
-        return candidates.isEmpty() ? nullptr : candidates.first();
+        return nullptr;
     };
     auto focusByOffset = [&](int offset) {
         if (candidates.isEmpty())
@@ -1123,11 +1109,12 @@ bool SingleLevelPopupMenu::handleNavigationKey(QKeyEvent *event, SingleLevelPopu
         }
         SingleLevelPopupMenuRow *current = focusCandidate();
         int index = candidates.indexOf(current);
+        const int count = candidates.size();
         if (index < 0)
         {
-            index = 0;
+            focusRow(candidates.at(offset >= 0 ? 0 : count - 1), Qt::OtherFocusReason);
+            return;
         }
-        const int count = candidates.size();
         const int nextIndex = (index + offset + count) % count;
         focusRow(candidates.at(nextIndex), Qt::OtherFocusReason);
     };

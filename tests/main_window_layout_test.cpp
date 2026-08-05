@@ -2291,10 +2291,18 @@ void requireMenuPopupStyleUnified(const QString& styleSheet, bool dark, const ch
                                  message);
     requireLastStyleRuleContains(styleSheet,
                                  QStringLiteral("QMenu::item:selected {"),
-                                 QStringLiteral("background-color: %1").arg(hoverColor),
+                                 QStringLiteral("background-color: transparent"),
                                  message);
     requireLastStyleRuleContains(styleSheet,
                                  QStringLiteral("QMenu::item:selected {"),
+                                 QStringLiteral("color: %1").arg(textColor),
+                                 message);
+    requireLastStyleRuleContains(styleSheet,
+                                 QStringLiteral("QMenu::item:hover {"),
+                                 QStringLiteral("background-color: %1").arg(hoverColor),
+                                 message);
+    requireLastStyleRuleContains(styleSheet,
+                                 QStringLiteral("QMenu::item:hover {"),
                                  QStringLiteral("color: %1").arg(textColor),
                                  message);
     requireLastStyleRuleContains(styleSheet,
