@@ -105,20 +105,26 @@ int main(int argc, char **argv)
         panel.findChild<QLineEdit *>(QStringLiteral("ai8ChannelInputGroupEdit"));
     auto *channelAlarmStatusEdit =
         panel.findChild<QLineEdit *>(QStringLiteral("ai8ChannelAlarmStatusEdit"));
-    require(channelDetailToggle != nullptr && inputDetailToggle != nullptr &&
+    auto *correctionEntrySpin =
+        panel.findChild<QSpinBox *>(QStringLiteral("ai8CorrectionEntrySpin"));
+    require(channelDetailToggle != nullptr && inputDetailToggle == nullptr &&
                 outputDetailToggle != nullptr && globalDetailToggle != nullptr &&
                 channelDetailContent != nullptr && channelInputGroupEdit != nullptr &&
                 channelAlarmStatusEdit != nullptr && !channelInputGroupEdit->isVisible() &&
                 channelCommonLayout != nullptr && channelCommonLayout->count() == 8 &&
                 channelCommonLayout->columnCount() == 2 &&
-                inputCommonLayout != nullptr && inputCommonLayout->count() == 7 &&
+                inputCommonLayout != nullptr && inputCommonLayout->count() == 8 &&
                 inputCommonLayout->columnCount() == 2 &&
+                correctionEntrySpin != nullptr &&
+                inputCommonLayout->indexOf(correctionEntrySpin->parentWidget()) >= 0 &&
+                detailStack->widget(1)->findChild<QSpinBox *>(
+                    QStringLiteral("ai8CorrectionEntrySpin")) == nullptr &&
                 outputCommonLayout != nullptr && outputCommonLayout->count() == 8 &&
                 outputCommonLayout->columnCount() == 2 &&
                 globalCommonLayout != nullptr && globalCommonLayout->count() == 8 &&
                 globalCommonLayout->columnCount() == 2 &&
                 !channelAlarmStatusEdit->isVisible() && !channelDetailToggle->isChecked() &&
-                !inputDetailToggle->isChecked() && !outputDetailToggle->isChecked() &&
+                !outputDetailToggle->isChecked() &&
                 !globalDetailToggle->isChecked() && !channelDetailContent->isVisible() &&
                 channelDetailToggle->arrowType() == Qt::RightArrow,
             "AI-8 detailed parameter cards start collapsed with right arrows");

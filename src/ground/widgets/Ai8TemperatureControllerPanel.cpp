@@ -568,17 +568,15 @@ QWidget *Ai8TemperatureControllerPanel::createInputPage()
                      createParameterField(QStringLiteral("定标上限 ScH"), QStringLiteral("Scale High ScH"), scaleHighSpin, page),
                      createParameterField(QStringLiteral("数字滤波 FIL"), QStringLiteral("Digital Filter FIL"), filterSpin, page),
                      createParameterField(QStringLiteral("通道输入组 In"), QStringLiteral("Channel Input Group In"), channelInputSpin, page),
-                     createParameterField(QStringLiteral("测量平移 Sc"), QStringLiteral("Measurement Offset Sc"), offsetSpin, page)});
+                     createParameterField(QStringLiteral("测量平移 Sc"), QStringLiteral("Measurement Offset Sc"), offsetSpin, page),
+                     createParameterField(QStringLiteral("校正表入口"), QStringLiteral("Correction Entry"), correctionEntrySpin, page)});
     applyCompactCommonEditorWidth(commonLayout);
     pageLayout->addLayout(commonLayout);
     if (detail_stack_)
     {
-        detail_stack_->addWidget(createDetailSection(
-            QStringLiteral("ai8InputDetailParameters"),
-            QStringLiteral("详细参数"),
-            QStringLiteral("Detailed Parameters"),
-            {createParameterField(QStringLiteral("校正表入口"), QStringLiteral("Correction Entry"), correctionEntrySpin, page)},
-            detail_stack_));
+        auto *emptyDetailPage = new QWidget(detail_stack_);
+        emptyDetailPage->setObjectName(QStringLiteral("ai8InputDetailParametersPage"));
+        detail_stack_->addWidget(emptyDetailPage);
     }
     pageLayout->addStretch(1);
     return page;
