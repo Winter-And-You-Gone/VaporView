@@ -14,6 +14,7 @@ class QAbstractButton;
 class QButtonGroup;
 class QComboBox;
 class QLabel;
+class QResizeEvent;
 class QStackedWidget;
 class TemperatureTrendPlotWidget;
 
@@ -39,6 +40,9 @@ signals:
     void readPageRequested();
     void writePageRequested();
     void outputStatusChanged();
+
+protected:
+    void resizeEvent(QResizeEvent *event) override;
 
 private:
     struct LabelBinding
@@ -89,6 +93,7 @@ private:
     void updateMeasuredValue();
     void updateAlarmStatusDisplay();
     void updateTemperaturePlot();
+    void adjustTemperaturePlotHeight();
 
     QButtonGroup *page_button_group_ = nullptr;
     QStackedWidget *page_stack_ = nullptr;
