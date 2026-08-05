@@ -301,9 +301,9 @@ int main(int argc, char **argv)
                 "AI-8 channel detail fields fill each compact detail column");
     }
     const int channelExpandedDetailHeight = detailStack->height();
-    require(channelDetailToggle->isChecked() && inputDetailToggle->isChecked() &&
-                outputDetailToggle->isChecked() && globalDetailToggle->isChecked(),
-            "AI-8 detail expansion is shared by every parameter page");
+    require(channelDetailToggle->isChecked() && outputDetailToggle->isChecked() &&
+                globalDetailToggle->isChecked(),
+            "AI-8 detail expansion is shared by every page with detail parameters");
     globalButton->click();
     QApplication::processEvents();
     QApplication::processEvents();
@@ -316,7 +316,7 @@ int main(int argc, char **argv)
     QApplication::processEvents();
     QApplication::processEvents();
     require(!globalDetailToggle->isChecked() && !channelDetailToggle->isChecked() &&
-                !inputDetailToggle->isChecked() && !outputDetailToggle->isChecked() &&
+                !outputDetailToggle->isChecked() &&
                 !globalDetailContent->isVisible(),
             "AI-8 collapsing one detail page collapses every parameter page");
     channelButton->click();
@@ -340,7 +340,7 @@ int main(int argc, char **argv)
     channelDetailToggle->click();
     QApplication::processEvents();
     require(!channelDetailToggle->isChecked() && !channelDetailContent->isVisible() &&
-                !inputDetailToggle->isChecked() && !outputDetailToggle->isChecked() &&
+                !outputDetailToggle->isChecked() &&
                 !globalDetailToggle->isChecked() &&
                 channelDetailToggle->arrowType() == Qt::RightArrow,
             "AI-8 detailed parameters collapse without changing their values");
