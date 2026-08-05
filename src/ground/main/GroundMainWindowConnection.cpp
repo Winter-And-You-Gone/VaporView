@@ -332,8 +332,13 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
 
 void MainWindow::startHomeDeviceActionSpinner(VaporView::SkyDeviceId device)
 {
-    const qint64 untilMs = QDateTime::currentMSecsSinceEpoch() + kHomeDeviceActionSpinnerMinimumMs;
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     const qint64 currentUntilMs = state_->home_device_action_spinner_until_ms_.value(device, 0);
+    if (!state_->home_device_action_spinner_started_ms_.contains(device) || currentUntilMs <= nowMs)
+    {
+        state_->home_device_action_spinner_started_ms_.insert(device, nowMs);
+    }
+    const qint64 untilMs = nowMs + kHomeDeviceActionSpinnerMinimumMs;
     state_->home_device_action_spinner_until_ms_.insert(device, std::max(currentUntilMs, untilMs));
     if (state_->home_device_action_spinner_timer_ && !state_->home_device_action_spinner_timer_->isActive())
     {
@@ -344,6 +349,15 @@ void MainWindow::startHomeDeviceActionSpinner(VaporView::SkyDeviceId device)
 bool MainWindow::homeDeviceActionSpinnerActive(VaporView::SkyDeviceId device, qint64 nowMs) const
 {
     return state_->home_device_action_spinner_until_ms_.value(device, 0) > nowMs;
+}
+
+int MainWindow::homeDeviceActionSpinnerDegrees(VaporView::SkyDeviceId device, qint64 nowMs) const
+{
+    const qint64 startMs = state_->home_device_action_spinner_started_ms_.value(device, nowMs);
+    const qint64 elapsedMs = std::max<qint64>(0, nowMs - startMs);
+    const int frame = static_cast<int>((elapsedMs / kHomeDeviceActionSpinnerIntervalMs) %
+                                       kHomeDeviceActionSpinnerFrames);
+    return (frame * 360) / kHomeDeviceActionSpinnerFrames;
 }
 
 void MainWindow::updateHomeDeviceStatusCapsules()
@@ -367,6 +381,10 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         if (spinnerActive)
         {
             anySpinnerActive = true;
+        }
+        else
+        {
+            state_->home_device_action_spinner_started_ms_.remove(device);
         }
         const QString stateKey = connected
             ? QStringLiteral("connected")
@@ -447,9 +465,9 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         button->setEnabled(enabled);
         if (spinnerActive)
         {
-            button->setIcon(createRotatedLucideIcon(QStringLiteral("link"),
+            button->setIcon(createRotatedLucideIcon(QStringLiteral("refresh-cw"),
                                                     toolbarColor(AppThemeColor::HomeDeviceSuccess),
-                                                    (state_->home_device_action_spinner_step_ * 360) / kHomeDeviceActionSpinnerFrames));
+                                                    homeDeviceActionSpinnerDegrees(device, nowMs)));
         }
         else
         {
@@ -490,7 +508,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         else
         {
             state_->home_device_action_spinner_timer_->stop();
-            state_->home_device_action_spinner_step_ = 0;
+            state_->home_device_action_spinner_started_ms_.clear();
         }
     }
 }
@@ -519,13 +537,14 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
             homeDeviceActionSpinnerActive(device, nowMs);
         if (!spinnerActive)
         {
+            state_->home_device_action_spinner_started_ms_.remove(device);
             return;
         }
 
         anySpinnerActive = true;
-        button->setIcon(createRotatedLucideIcon(QStringLiteral("link"),
+        button->setIcon(createRotatedLucideIcon(QStringLiteral("refresh-cw"),
                                                 toolbarColor(AppThemeColor::HomeDeviceSuccess),
-                                                (state_->home_device_action_spinner_step_ * 360) / kHomeDeviceActionSpinnerFrames));
+                                                homeDeviceActionSpinnerDegrees(device, nowMs)));
         button->update();
     };
 
@@ -558,7 +577,7 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
     if (!anySpinnerActive && state_->home_device_action_spinner_timer_)
     {
         state_->home_device_action_spinner_timer_->stop();
-        state_->home_device_action_spinner_step_ = 0;
+        state_->home_device_action_spinner_started_ms_.clear();
     }
 }
 

@@ -446,6 +446,7 @@ struct MainWindowState
     bool remote_wave_stream_auto_start_;
     int remote_recording_state_;
     QHash<VaporView::SkyDeviceId, qint64> home_device_action_spinner_until_ms_;
+    QHash<VaporView::SkyDeviceId, qint64> home_device_action_spinner_started_ms_;
     std::unique_ptr<VaporView::Ground::Devices::RemoteSkyController> remote_sky_controller_;
     QHash<quint16, VaporView::TemperatureControllerCommand> remote_temperature_commands_;
     QHash<quint16, VaporView::PeakSearchRange> remote_peak_search_commands_;
@@ -476,7 +477,6 @@ struct MainWindowState
     int recording_export_rate_hz_;
     int imu_recording_rate_hz_;
     int waveform_recording_rate_hz_;
-    int home_device_action_spinner_step_;
     QVector<VaporView::LogRecord> pending_ui_log_records_;
     QString recording_directory_;
 

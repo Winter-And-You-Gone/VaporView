@@ -4201,7 +4201,6 @@ void MainWindow::setupConfigPanel()
     state_->home_device_action_spinner_timer_->setTimerType(Qt::PreciseTimer);
     state_->home_device_action_spinner_timer_->setInterval(kHomeDeviceActionSpinnerIntervalMs);
     connect(state_->home_device_action_spinner_timer_, &QTimer::timeout, this, [this]() {
-        state_->home_device_action_spinner_step_ = (state_->home_device_action_spinner_step_ + 1) % kHomeDeviceActionSpinnerFrames;
         updateHomeDeviceActionSpinnerIcons();
     });
     homeDevicesLayout->setColumnStretch(kHomeDeviceGridColumns, 1);
