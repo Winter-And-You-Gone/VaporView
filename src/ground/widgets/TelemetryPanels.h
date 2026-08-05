@@ -334,6 +334,10 @@ private:
         QComboBox *overtemp_output_combo = nullptr;
         QLineEdit *internal_temperature_edit = nullptr;
         QPushButton *factory_reset_button = nullptr;
+        QFrame *sub_top_bar = nullptr;
+        QPushButton *common_params_button = nullptr;
+        QPushButton *advanced_params_button = nullptr;
+        QPushButton *sensor_config_button = nullptr;
     };
     struct PendingCommonEdits
     {
@@ -355,7 +359,6 @@ private:
     void selectChannel(int index);
     void selectChannelSubPage(int channelIndex, int subPageIndex);
     bool eventFilter(QObject *watched, QEvent *event) override;
-    void alignSensorTopPolynomialFields(int channelIndex);
     void alignChannelTopControlFields(int channelIndex);
     void alignCommonSettingsColumns(int channelIndex);
     void updateChannelStackMinimumHeight();

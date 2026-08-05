@@ -5308,6 +5308,10 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureChannelCommonTopControlsChannel1"));
     auto *temperatureChannelStack =
         temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelStack"));
+    auto *temperatureControllerContentRow =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureControllerContentRow"));
+    auto *temperatureControllerControlsCard =
+        temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureControllerControlsCard"));
     auto *temperatureCommonSettingsPage =
         temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureCommonSettingsPage"));
     auto *temperatureConfigChannelButton1 =
@@ -5334,6 +5338,8 @@ int main(int argc, char **argv)
                 temperatureChannelTopControlsStack != nullptr &&
                 temperatureChannelCommonTopControls1 != nullptr &&
                 temperatureChannelStack != nullptr &&
+                temperatureControllerContentRow != nullptr &&
+                temperatureControllerControlsCard != nullptr &&
                 temperatureCommonSettingsPage != nullptr &&
                 temperatureConfigChannelButton1 != nullptr &&
                 temperatureConfigChannelButton2 != nullptr &&
@@ -5346,8 +5352,11 @@ int main(int argc, char **argv)
                 temperatureChannelSelectorRow->parentWidget() == temperatureChannelTopRow &&
                 temperatureChannelTopBar->parentWidget() == temperatureChannelSelectorRow &&
                 temperatureChannelTopControlsStack->parentWidget() == temperatureChannelSelectorRow &&
-                temperatureChannelStack->parentWidget() == temperatureConfigCard,
-            "temperature top selector row and page stack live in the internal config card");
+                temperatureControllerContentRow->parentWidget() == temperatureConfigCard &&
+                temperatureControllerControlsCard->parentWidget() == temperatureControllerContentRow &&
+                temperatureChannelStack->parentWidget() == temperatureControllerControlsCard &&
+                temperatureConfigPlot->parentWidget() == temperatureControllerContentRow,
+            "temperature card uses the screenshot layout: top selector above left controls and right trend plot");
     require(temperatureConfigChannelButton1->parentWidget() == temperatureChannelTopBar &&
                 temperatureConfigChannelButton2->parentWidget() == temperatureChannelTopBar &&
                 temperatureCommonSettingsButton->parentWidget() == temperatureChannelTopBar,
@@ -5478,36 +5487,27 @@ int main(int argc, char **argv)
                 temperatureCommonSettingsButton->isChecked(),
             "temperature top bar switches to a compact three-column common settings page");
     require(std::abs(temperatureChannelTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)).x() -
-                     temperatureChannelStack->mapTo(temperatureConfigCard, QPoint(0, 0)).x()) <= 1,
-            "temperature top navigation stays left aligned on the common settings page");
+                     temperatureControllerContentRow->mapTo(temperatureConfigCard, QPoint(0, 0)).x()) <= 1,
+            "temperature top navigation stays aligned with the left control card on the common settings page");
     auto *commonSettingsGrid = qobject_cast<QGridLayout *>(temperatureCommonSettingsPage->layout());
     require(commonSettingsGrid != nullptr &&
-                commonSettingsGrid->columnCount() >= 4 &&
-                commonSettingsGrid->columnStretch(3) > 0 &&
                 commonSettingsGrid->itemAtPosition(0, 0) != nullptr &&
                 commonSettingsGrid->itemAtPosition(0, 0)->widget() == addressSpin->parentWidget() &&
-                commonSettingsGrid->itemAtPosition(0, 2) != nullptr &&
-                commonSettingsGrid->itemAtPosition(0, 2)->widget() == rs485BaudCombo->parentWidget() &&
+                commonSettingsGrid->itemAtPosition(0, 1) != nullptr &&
+                commonSettingsGrid->itemAtPosition(0, 1)->widget() == rs485BaudCombo->parentWidget() &&
                 commonSettingsGrid->itemAtPosition(1, 0) != nullptr &&
                 commonSettingsGrid->itemAtPosition(1, 0)->widget() == overtempOutputCombo->parentWidget() &&
-                commonSettingsGrid->itemAtPosition(1, 2) != nullptr &&
-                commonSettingsGrid->itemAtPosition(1, 2)->widget() == commonInternalTemperatureEdit->parentWidget() &&
+                commonSettingsGrid->itemAtPosition(1, 1) != nullptr &&
+                commonSettingsGrid->itemAtPosition(1, 1)->widget() == commonInternalTemperatureEdit->parentWidget() &&
                 commonSettingsGrid->itemAtPosition(2, 0) != nullptr &&
-                commonSettingsGrid->itemAtPosition(2, 0)->widget() == factoryResetButton,
-            "temperature common settings reserve a shared anchor before the second data column");
+                commonSettingsGrid->itemAtPosition(2, 0)->widget() == factoryResetButton &&
+                commonSettingsGrid->itemAtPosition(4, 0) != nullptr,
+            "temperature common settings use a two-column stacked form with a lower selector bar");
     auto *selectedChannelCommonParamsPage = temperaturePanel->findChild<QWidget *>(
         QStringLiteral("temperatureChannelCommonParamsPageChannel2"));
     auto *selectedChannelCommonParamsGrid = selectedChannelCommonParamsPage
         ? qobject_cast<QGridLayout *>(selectedChannelCommonParamsPage->layout())
         : nullptr;
-    QLayoutItem *selectedSecondColumnItem = selectedChannelCommonParamsGrid
-        ? selectedChannelCommonParamsGrid->itemAtPosition(0, 3)
-        : nullptr;
-    QWidget *selectedSecondColumnLabel = selectedSecondColumnItem
-        ? selectedSecondColumnItem->widget()
-        : nullptr;
-    require(selectedSecondColumnLabel != nullptr,
-            "temperature channel common parameters expose the shared second-column anchor");
     const QRect selectorBarRectInCard(temperatureChannelTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                       temperatureChannelTopBar->size());
     const QRect commonAddressRowRect(addressSpin->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
@@ -5528,6 +5528,25 @@ int main(int argc, char **argv)
                                               overtempOutputCombo->size());
     const QRect commonInternalInputRectInCard(commonInternalTemperatureEdit->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                               commonInternalTemperatureEdit->size());
+    auto *commonSettingsSubTopBar =
+        temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureCommonSettingsSubTopBar"));
+    auto *commonSettingsCommonParamsButton =
+        temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureCommonSettingsCommonParamsButton"));
+    auto *commonSettingsAdvancedParamsButton =
+        temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureCommonSettingsAdvancedParamsButton"));
+    auto *commonSettingsSensorConfigButton =
+        temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureCommonSettingsSensorConfigButton"));
+    require(commonSettingsSubTopBar != nullptr &&
+                commonSettingsCommonParamsButton != nullptr &&
+                commonSettingsAdvancedParamsButton != nullptr &&
+                commonSettingsSensorConfigButton != nullptr &&
+                commonSettingsCommonParamsButton->isChecked() &&
+                commonSettingsCommonParamsButton->property("temperatureChannelSubSelector").toBool() &&
+                commonSettingsAdvancedParamsButton->property("temperatureChannelSubSelector").toBool() &&
+                commonSettingsSensorConfigButton->property("temperatureChannelSubSelector").toBool(),
+            "temperature common settings page keeps the lower common/professional/sensor selector shown like the screenshot");
+    const QRect commonSubBarRectInCard(commonSettingsSubTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                       commonSettingsSubTopBar->size());
     require(commonAddressRowRect.top() > selectorBarRectInCard.bottom() &&
                 commonAddressRowRect.right() < commonBaudRowRect.left() &&
                 std::abs(commonAddressRowRect.center().y() - commonBaudRowRect.center().y()) <= 2 &&
@@ -5535,22 +5554,22 @@ int main(int argc, char **argv)
                 commonOvertempRowRect.right() < commonInternalRowRect.left() &&
                 std::abs(commonOvertempRowRect.center().y() - commonInternalRowRect.center().y()) <= 2 &&
                 factoryResetRectInCard.top() > commonOvertempRowRect.bottom() &&
+                commonSubBarRectInCard.top() > factoryResetRectInCard.bottom() &&
                 std::abs(commonAddressRowRect.left() - commonOvertempRowRect.left()) <= 2 &&
-                std::abs(commonOvertempRowRect.left() - factoryResetRectInCard.left()) <= 2,
-            "temperature common settings follow selector, RS485, values, and factory-reset rows");
+                std::abs(commonOvertempRowRect.left() - factoryResetRectInCard.left()) <= 2 &&
+                std::abs(commonSubBarRectInCard.left() - commonAddressRowRect.left()) <= 2,
+            "temperature common settings follow selector, RS485, values, factory-reset, and lower-tab rows");
     require(std::abs(commonAddressInputRectInCard.left() - commonOvertempInputRectInCard.left()) <= 1 &&
                 std::abs(commonBaudComboRectInCard.left() - commonInternalInputRectInCard.left()) <= 1 &&
                 addressSpin->width() == overtempOutputCombo->width() &&
                 rs485BaudCombo->width() == commonInternalTemperatureEdit->width(),
             "temperature common settings align equal-width field editors within each data column");
-    const QRect selectedSecondColumnRectInCard(
-        selectedSecondColumnLabel->mapTo(temperatureConfigCard, QPoint(0, 0)),
-        selectedSecondColumnLabel->size());
-    require(std::abs(commonBaudRowRect.left() - selectedSecondColumnRectInCard.left()) <= 1 &&
-                std::abs(commonInternalRowRect.left() - selectedSecondColumnRectInCard.left()) <= 1,
-            "temperature common settings align their second column with channel parameter pages");
-    require(commonBaudComboRectInCard.right() <= temperatureConfigCard->rect().right() - 12,
-            "temperature common RS485 baud combo leaves room for its right border");
+    require(selectedChannelCommonParamsPage != nullptr && selectedChannelCommonParamsGrid != nullptr,
+            "temperature channel common parameters remain available after switching into common settings");
+    require(commonBaudComboRectInCard.right() <=
+                temperatureControllerControlsCard->mapTo(temperatureConfigCard, QPoint(0, 0)).x() +
+                    temperatureControllerControlsCard->width() - 12,
+            "temperature common RS485 baud combo leaves room inside the left control card");
     auto *overtempOutputMenu = overtempOutputCombo->findChild<VaporView::SingleLevelPopupMenu *>(
         QStringLiteral("singleLevelComboPopupMenu"));
     require(overtempOutputMenu != nullptr,
@@ -5574,14 +5593,15 @@ int main(int argc, char **argv)
                 overtempLabels.first()->palette().color(QPalette::WindowText) ==
                     VaporView::appThemeColor(VaporView::AppThemeColor::Danger, false),
             "temperature over-temperature output label is rendered in danger red");
-    const QRect commonCardRectInPanel(temperatureConfigCard->mapTo(temperaturePanel, QPoint(0, 0)),
-                                      temperatureConfigCard->size());
-    const QRect commonPlotRectInPanel(temperatureConfigPlot->mapTo(temperaturePanel, QPoint(0, 0)),
-                                      temperatureConfigPlot->size());
-    require(commonCardRectInPanel.right() <= temperaturePanel->rect().right() - 12 &&
-                std::abs(commonCardRectInPanel.left() - commonPlotRectInPanel.left()) <= 2 &&
-                std::abs(commonCardRectInPanel.right() - commonPlotRectInPanel.right()) <= 2,
-            "temperature common settings keep the controller card right edge visible and aligned with the plot");
+    const QRect controlsCardRectInContent(
+        temperatureControllerControlsCard->mapTo(temperatureControllerContentRow, QPoint(0, 0)),
+        temperatureControllerControlsCard->size());
+    const QRect plotRectInContent(temperatureConfigPlot->mapTo(temperatureControllerContentRow, QPoint(0, 0)),
+                                  temperatureConfigPlot->size());
+    require(controlsCardRectInContent.right() < plotRectInContent.left() &&
+                std::abs(controlsCardRectInContent.top() - plotRectInContent.top()) <= 2 &&
+                plotRectInContent.right() <= temperatureControllerContentRow->rect().right(),
+            "temperature common settings keep the left control card beside the right trend plot");
     clickWidget(temperatureConfigChannelButton1, 150);
     activateLayouts(&window);
     require(temperatureChannelTopControlsStack->currentIndex() == 0 &&
@@ -5597,17 +5617,20 @@ int main(int argc, char **argv)
                 !temperatureConfigChannelButton2->isChecked() &&
                 !temperatureCommonSettingsButton->isChecked(),
             "temperature channel top bar can switch back to channel 1");
-    const QRect cardRectInPanel(temperatureConfigCard->mapTo(temperaturePanel, QPoint(0, 0)),
-                                temperatureConfigCard->size());
-    const QRect plotRectInPanel(temperatureConfigPlot->mapTo(temperaturePanel, QPoint(0, 0)),
-                                temperatureConfigPlot->size());
-    require(cardRectInPanel.bottom() < plotRectInPanel.top(),
-            "temperature trend plot is laid out below the channel configuration card");
-    require(std::abs(cardRectInPanel.left() - plotRectInPanel.left()) <= 2 &&
-                std::abs(cardRectInPanel.width() - plotRectInPanel.width()) <= 2,
-            "temperature trend plot follows the full channel configuration card width");
-    require(plotRectInPanel.width() >= temperaturePanel->width() - 32,
-            "temperature trend plot expands to the controller panel width");
+    const QRect controlsCardRectAfterChannelSwitch(
+        temperatureControllerControlsCard->mapTo(temperatureControllerContentRow, QPoint(0, 0)),
+        temperatureControllerControlsCard->size());
+    const QRect plotRectAfterChannelSwitch(
+        temperatureConfigPlot->mapTo(temperatureControllerContentRow, QPoint(0, 0)),
+        temperatureConfigPlot->size());
+    require(controlsCardRectAfterChannelSwitch.right() < plotRectAfterChannelSwitch.left(),
+            "temperature trend plot is laid out to the right of the channel configuration card");
+    require(std::abs(controlsCardRectAfterChannelSwitch.top() - plotRectAfterChannelSwitch.top()) <= 2 &&
+                plotRectAfterChannelSwitch.right() <= temperatureControllerContentRow->rect().right(),
+            "temperature trend plot follows the screenshot's side-by-side card layout");
+    require(plotRectAfterChannelSwitch.width() > 0 &&
+                plotRectAfterChannelSwitch.right() >= temperatureControllerContentRow->rect().right() - 1,
+            "temperature trend plot expands to the right edge of the remaining controller panel width");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QFrame#temperatureConfigCard {"),
                                  QStringLiteral("border-radius: 8px"),
@@ -5731,8 +5754,6 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelConfigSubStackChannel2"));
     auto *temperatureChannelSubTopBar =
         qobject_cast<QFrame *>(temperatureChannelCommonParamsButton->parentWidget());
-    auto *temperatureSensorTopPolynomialFields = temperaturePanel->findChild<QWidget *>(
-        QStringLiteral("temperatureSensorTopPolynomialFieldsChannel1"));
     require(temperatureChannelCommonParamsButton != nullptr &&
                 temperatureChannelAdvancedParamsButton != nullptr &&
                 temperatureChannelSensorConfigButton != nullptr &&
@@ -5740,8 +5761,7 @@ int main(int argc, char **argv)
                 temperatureChannelAdvancedParamsButton2 != nullptr &&
                 temperatureChannelCommonParamsButton2 != nullptr &&
                 temperatureChannelConfigSubStack2 != nullptr &&
-                temperatureChannelSubTopBar != nullptr &&
-                temperatureSensorTopPolynomialFields != nullptr,
+                temperatureChannelSubTopBar != nullptr,
             "temperature channel exposes lower common, advanced, and sensor config tabs");
     require(temperatureChannelCommonParamsButton->focusPolicy() == Qt::TabFocus &&
                 temperatureChannelAdvancedParamsButton->focusPolicy() == Qt::TabFocus &&
@@ -5764,37 +5784,31 @@ int main(int argc, char **argv)
     require(channelContentGrids[0] != nullptr &&
                 channelContentGrids[1] != nullptr &&
                 channelContentGrids[2] != nullptr,
-            "temperature channel sub-pages share grid-based two-row content controls");
-    const int sharedContentHeight = channelContentGrids[0]->rowMinimumHeight(0) +
-        channelContentGrids[0]->verticalSpacing() +
-        channelContentGrids[0]->rowMinimumHeight(1);
-    for (QGridLayout *contentGrid : channelContentGrids)
-    {
-        require(contentGrid->rowCount() == 2 &&
-                    contentGrid->alignment() == Qt::AlignTop &&
-                    contentGrid->verticalSpacing() == 8 &&
-                    contentGrid->rowMinimumHeight(0) == contentGrid->rowMinimumHeight(1) &&
-                    contentGrid->rowMinimumHeight(0) > 0,
-                "temperature channel sub-pages use the shared two-row layout contract");
-    }
-    require(temperatureChannelConfigSubStack->minimumHeight() == sharedContentHeight &&
-                temperatureChannelConfigSubStack->maximumHeight() == sharedContentHeight &&
-                temperatureChannelConfigSubStack->height() == sharedContentHeight,
-            "temperature channel keeps top navigation, two content rows, and bottom navigation as four stable rows");
+            "temperature channel sub-pages share grid-based screenshot layouts");
+    require(channelContentGrids[0]->alignment() == (Qt::AlignTop | Qt::AlignLeft) &&
+                channelContentGrids[1]->alignment() == (Qt::AlignTop | Qt::AlignLeft) &&
+                channelContentGrids[2]->alignment() == (Qt::AlignTop | Qt::AlignLeft),
+            "temperature channel sub-pages top-align their stacked form controls");
+    require(channelContentGrids[0]->verticalSpacing() == 24 &&
+                channelContentGrids[1]->verticalSpacing() == 22 &&
+                channelContentGrids[2]->verticalSpacing() == 14,
+            "temperature channel sub-pages use the screenshot-specific vertical rhythm");
+    require(temperatureChannelConfigSubStack->minimumHeight() == temperatureChannelConfigSubStack->maximumHeight() &&
+                temperatureChannelConfigSubStack->height() == temperatureChannelConfigSubStack->minimumHeight() &&
+                temperatureChannelConfigSubStack->height() >=
+                    temperatureChannelConfigSubStack->currentWidget()->sizeHint().height(),
+            "temperature channel content stack reserves stable height for the tallest screenshot page");
     auto *temperatureConfigCardLayout = qobject_cast<QVBoxLayout *>(temperatureConfigCard->layout());
     auto *temperatureChannelPageLayout =
         qobject_cast<QVBoxLayout *>(temperatureChannelStack->currentWidget()->layout());
-    const int sharedRowSpacing = channelContentGrids[0]->verticalSpacing();
-    require(sharedRowSpacing > 0 &&
-                temperatureConfigCardLayout != nullptr &&
-                temperatureConfigCardLayout->spacing() == sharedRowSpacing &&
+    require(temperatureConfigCardLayout != nullptr &&
+                temperatureConfigCardLayout->spacing() == 12 &&
                 temperatureChannelPageLayout != nullptr &&
-                temperatureChannelPageLayout->spacing() == sharedRowSpacing,
-            "temperature four-row layout uses one shared gap above, within, and below the content rows");
+                temperatureChannelPageLayout->spacing() == 8,
+            "temperature screenshot layout keeps a clear top row gap and compact lower-tab gap");
     require(temperatureChannelTopBar->height() == temperatureChannelSubTopBar->height() &&
-                temperatureChannelTopBar->height() == channelContentGrids[0]->rowMinimumHeight(0) &&
                 temperatureConfigChannelButton1->height() == temperatureChannelCommonParamsButton->height(),
-            "temperature four-row layout keeps both navigation bars and content rows at one shared height");
+            "temperature screenshot layout keeps the upper and lower segmented bars visually matched");
     require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
                 temperatureChannelConfigSubStack->currentWidget()->objectName() ==
                     QStringLiteral("temperatureChannelCommonParamsPageChannel1") &&
@@ -5834,8 +5848,8 @@ int main(int argc, char **argv)
                 sensorResistanceEdit != nullptr,
             "temperature lower advanced tab exposes all RD105 professional parameters");
     require(std::abs(temperatureChannelTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)).x() -
-                     temperatureChannelStack->mapTo(temperatureConfigCard, QPoint(0, 0)).x()) <= 1,
-            "temperature top navigation stays left aligned on the professional parameters page");
+                     temperatureControllerContentRow->mapTo(temperatureConfigCard, QPoint(0, 0)).x()) <= 1,
+            "temperature top navigation stays aligned with the left control-card region on the professional parameters page");
     require(overtempUpperSpin->minimum() == -3000.0 &&
                 overtempUpperSpin->maximum() == 5000.0 &&
                 overtempUpperSpin->decimals() == 5 &&
@@ -5858,17 +5872,17 @@ int main(int argc, char **argv)
     QWidget *advancedParamsPage = temperatureChannelConfigSubStack->currentWidget();
     auto *advancedParamsGrid = qobject_cast<QGridLayout *>(advancedParamsPage->layout());
     require(advancedParamsGrid != nullptr &&
+                advancedParamsGrid->itemAtPosition(0, 0) != nullptr &&
+                advancedParamsGrid->itemAtPosition(0, 0)->widget() == overtempUpperSpin->parentWidget() &&
                 advancedParamsGrid->itemAtPosition(0, 1) != nullptr &&
-                advancedParamsGrid->itemAtPosition(0, 1)->widget() == overtempUpperSpin &&
-                advancedParamsGrid->itemAtPosition(0, 4) != nullptr &&
-                advancedParamsGrid->itemAtPosition(0, 4)->widget() == overtempLowerSpin &&
+                advancedParamsGrid->itemAtPosition(0, 1)->widget() == overtempLowerSpin->parentWidget() &&
+                advancedParamsGrid->itemAtPosition(1, 0) != nullptr &&
+                advancedParamsGrid->itemAtPosition(1, 0)->widget() == temperatureSlopeSpin->parentWidget() &&
                 advancedParamsGrid->itemAtPosition(1, 1) != nullptr &&
-                advancedParamsGrid->itemAtPosition(1, 1)->widget() == temperatureSlopeSpin &&
-                advancedParamsGrid->itemAtPosition(1, 4) != nullptr &&
-                advancedParamsGrid->itemAtPosition(1, 4)->widget() == startupDelaySpin &&
-                advancedParamsGrid->itemAtPosition(1, 7) != nullptr &&
-                advancedParamsGrid->itemAtPosition(1, 7)->widget() == sensorResistanceEdit,
-            "temperature professional parameters use two fields on row one and three fields on row two");
+                advancedParamsGrid->itemAtPosition(1, 1)->widget() == startupDelaySpin->parentWidget() &&
+                advancedParamsGrid->itemAtPosition(2, 0) != nullptr &&
+                advancedParamsGrid->itemAtPosition(2, 0)->widget() == sensorResistanceEdit->parentWidget(),
+            "temperature professional parameters use the two-column stacked form from the screenshot");
     const QRect overtempUpperRect(overtempUpperSpin->mapTo(advancedParamsPage, QPoint(0, 0)), overtempUpperSpin->size());
     const QRect overtempLowerRect(overtempLowerSpin->mapTo(advancedParamsPage, QPoint(0, 0)), overtempLowerSpin->size());
     const QRect temperatureSlopeRect(temperatureSlopeSpin->mapTo(advancedParamsPage, QPoint(0, 0)), temperatureSlopeSpin->size());
@@ -5882,7 +5896,8 @@ int main(int argc, char **argv)
                 overtempUpperRect.width() == sensorResistanceRect.width() &&
                 overtempUpperRect.top() == overtempLowerRect.top() &&
                 temperatureSlopeRect.top() == startupDelayRect.top() &&
-                temperatureSlopeRect.top() == sensorResistanceRect.top(),
+                sensorResistanceRect.top() > temperatureSlopeRect.bottom() &&
+                sensorResistanceRect.left() == overtempUpperRect.left(),
             "temperature professional input fields align by column and use one shared width");
     clickWidget(temperatureChannelCommonParamsButton, 150);
     activateLayouts(&window);
@@ -5897,31 +5912,41 @@ int main(int argc, char **argv)
     auto *commonParamsGrid = qobject_cast<QGridLayout *>(temperatureChannelConfigSubStack->currentWidget()->layout());
     require(commonParamsGrid != nullptr,
             "temperature lower common tab uses a shared grid for cross-row input alignment");
-    auto requireCompactChannelFieldLayout = [commonParamsGrid](QWidget *editor,
+    auto requireStackedChannelFieldLayout = [commonParamsGrid](QWidget *editor,
                                                                int row,
-                                                               int editorColumn,
+                                                               int column,
                                                                const char *message) {
-        require(editor != nullptr && editorColumn > 0, message);
-        QLayoutItem *labelItem = commonParamsGrid->itemAtPosition(row, editorColumn - 1);
-        QLayoutItem *editorItem = commonParamsGrid->itemAtPosition(row, editorColumn);
-        auto *label = labelItem ? qobject_cast<QLabel *>(labelItem->widget()) : nullptr;
-        require(label != nullptr && editorItem != nullptr && editorItem->widget() == editor, message);
-        const QRect labelRect(label->mapTo(commonParamsGrid->parentWidget(), QPoint(0, 0)), label->size());
-        const QRect editorRect(editor->mapTo(commonParamsGrid->parentWidget(), QPoint(0, 0)), editor->size());
-        require(labelRect.right() < editorRect.left(),
+        require(editor != nullptr && editor->parentWidget() != nullptr, message);
+        QWidget *cell = editor->parentWidget();
+        QLayoutItem *cellItem = commonParamsGrid->itemAtPosition(row, column);
+        auto *cellLayout = qobject_cast<QVBoxLayout *>(cell->layout());
+        const QList<QLabel*> labels =
+            cell->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
+        require(cell->objectName() == QStringLiteral("temperatureConfigFieldColumn") &&
+                    cellItem != nullptr &&
+                    cellItem->widget() == cell &&
+                    cellLayout != nullptr &&
+                    cellLayout->spacing() == 8 &&
+                    !labels.isEmpty(),
+                message);
+        const QRect labelRect(labels.first()->mapTo(cell, QPoint(0, 0)), labels.first()->size());
+        const QRect editorRect(editor->mapTo(cell, QPoint(0, 0)), editor->size());
+        require(labelRect.left() <= 1 &&
+                    editorRect.left() <= 1 &&
+                    labelRect.bottom() < editorRect.top(),
                 message);
     };
-    requireCompactChannelFieldLayout(modeCombo, 1, 1,
+    requireStackedChannelFieldLayout(modeCombo, 1, 0,
                                      "temperature output mode field lives in the lower common-params page");
-    requireCompactChannelFieldLayout(targetSpin, 1, 4,
+    requireStackedChannelFieldLayout(targetSpin, 1, 2,
                                      "temperature target temperature field lives in the lower common-params page");
-    requireCompactChannelFieldLayout(maxOutputSpin, 1, 7,
+    requireStackedChannelFieldLayout(maxOutputSpin, 2, 0,
                                      "temperature max output field lives in the lower common-params page");
-    requireCompactChannelFieldLayout(kpSpin, 0, 1,
+    requireStackedChannelFieldLayout(kpSpin, 0, 0,
                                      "temperature PID P field lives in the lower common-params page");
-    requireCompactChannelFieldLayout(kiSpin, 0, 4,
+    requireStackedChannelFieldLayout(kiSpin, 0, 1,
                                      "temperature PID I field lives in the lower common-params page");
-    requireCompactChannelFieldLayout(kdSpin, 0, 7,
+    requireStackedChannelFieldLayout(kdSpin, 0, 2,
                                      "temperature PID D field lives in the lower common-params page");
     auto requirePidTextFits = [](QSpinBox *spin, const char *message) {
         QLineEdit *lineEdit = spin ? spin->findChild<QLineEdit *>(QString(), Qt::FindDirectChildrenOnly) : nullptr;
@@ -5954,13 +5979,13 @@ int main(int argc, char **argv)
             "temperature lower common tab lays P, I, and D on the first row without a redundant PID heading");
     require(modeRowRect.top() > kdRowRect.bottom() &&
                 std::abs(modeRowRect.top() - targetRowRect.top()) <= 2 &&
-                std::abs(targetRowRect.top() - maxOutputRowRect.top()) <= 2 &&
+                maxOutputRowRect.top() > modeRowRect.bottom() &&
                 modeRowRect.right() < targetRowRect.left() &&
-                targetRowRect.right() < maxOutputRowRect.left(),
-            "temperature lower common tab lays output mode, target, and max output on the second row");
+                maxOutputRowRect.left() == modeRowRect.left(),
+            "temperature lower common tab lays output mode and target on the second row, with max output below");
     require(std::abs(kpRowRect.left() - modeRowRect.left()) <= 1 &&
-                std::abs(kiRowRect.left() - targetRowRect.left()) <= 1 &&
-                std::abs(kdRowRect.left() - maxOutputRowRect.left()) <= 1,
+                std::abs(modeRowRect.left() - maxOutputRowRect.left()) <= 1 &&
+                std::abs(kdRowRect.left() - targetRowRect.left()) <= 1,
             "temperature common-parameter inputs align vertically by column");
     require(temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePidHeadingChannel1")) == nullptr,
             "temperature common parameters omit the redundant PID heading");
@@ -5975,7 +6000,7 @@ int main(int argc, char **argv)
             "temperature max output value carries warning styling");
     QList<QLabel*> maxOutputLabels;
     for (QLabel *label : temperatureChannelConfigSubStack->currentWidget()->findChildren<QLabel *>(
-             QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly))
+             QStringLiteral("fieldLabel")))
     {
         if (label->property("temperatureMaxOutputWarning").toBool())
         {
@@ -6017,25 +6042,6 @@ int main(int argc, char **argv)
     require(std::abs(enableFieldRect.top() - autoPidFieldRect.top()) <= 2 &&
                 enableFieldRect.right() < autoPidFieldRect.left(),
             "temperature output enable and auto PID share the channel selector top row");
-    QLayoutItem *secondColumnLabelItem = commonParamsGrid->itemAtPosition(0, 3);
-    QLayoutItem *thirdColumnLabelItem = commonParamsGrid->itemAtPosition(0, 6);
-    QWidget *secondColumnLabel = secondColumnLabelItem ? secondColumnLabelItem->widget() : nullptr;
-    QWidget *thirdColumnLabel = thirdColumnLabelItem ? thirdColumnLabelItem->widget() : nullptr;
-    require(secondColumnLabel != nullptr && thirdColumnLabel != nullptr,
-            "temperature common parameters expose second and third column anchors");
-    const QRect enableFieldRectInCard(
-        enableSwitch->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
-        enableSwitch->parentWidget()->size());
-    const QRect autoPidFieldRectInCard(
-        autoPidCombo->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
-        autoPidCombo->parentWidget()->size());
-    const QRect secondColumnRectInCard(secondColumnLabel->mapTo(temperatureConfigCard, QPoint(0, 0)),
-                                       secondColumnLabel->size());
-    const QRect thirdColumnRectInCard(thirdColumnLabel->mapTo(temperatureConfigCard, QPoint(0, 0)),
-                                      thirdColumnLabel->size());
-    require(std::abs(enableFieldRectInCard.left() - secondColumnRectInCard.left()) <= 1 &&
-                std::abs(autoPidFieldRectInCard.left() - thirdColumnRectInCard.left()) <= 1,
-            "temperature output enable and auto PID align with the second and third parameter columns");
     requireTopBarFieldLayout(sensorModelSelector1,
                              "temperature sensor model radio selector lives in the channel top row");
     require(addressSpin->parentWidget() != nullptr &&
@@ -6052,17 +6058,20 @@ int main(int argc, char **argv)
         QWidget *row = editor->parentWidget();
         require(row->objectName() == QStringLiteral("temperatureCommonFieldRow"), message);
         require(temperatureChannelStack->isAncestorOf(row), message);
+        auto *rowLayout = qobject_cast<QVBoxLayout *>(row->layout());
         const QList<QLabel*> labels =
             row->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
-        require(!labels.isEmpty(), message);
+        require(rowLayout != nullptr &&
+                    rowLayout->spacing() == 8 &&
+                    !labels.isEmpty(),
+                message);
         const QRect labelRect(labels.first()->mapTo(row, QPoint(0, 0)), labels.first()->size());
         const QRect editorRect(editor->mapTo(row, QPoint(0, 0)), editor->size());
         require(labelRect.left() <= 1 &&
-                    labelRect.width() >=
-                        labels.first()->fontMetrics().horizontalAdvance(labels.first()->text()) + 12 &&
-                    labelRect.right() < editorRect.left() &&
-                    editorRect.left() - labelRect.right() <= 10 &&
-                    editorRect.right() >= row->rect().right() - 1,
+                    labelRect.right() <= row->rect().right() &&
+                    editorRect.left() <= 1 &&
+                    labelRect.bottom() < editorRect.top() &&
+                    editorRect.right() <= row->rect().right(),
                 message);
     };
     requireCommonFieldRowLayout(addressSpin,
@@ -6145,73 +6154,67 @@ int main(int argc, char **argv)
                 temperatureChannelConfigSubStack->currentWidget()->findChildren<QSpinBox *>().isEmpty() &&
                 temperatureChannelConfigSubStack->currentWidget()->findChildren<QDoubleSpinBox *>().isEmpty(),
             "temperature sensor config page uses text inputs instead of dropdowns or spin boxes");
-    auto requireCompactSensorFieldLayout = [](QWidget *editor, const char *message) {
-        require(editor != nullptr && editor->parentWidget() != nullptr, message);
-        QWidget *row = editor->parentWidget();
-        require(row->objectName() == QStringLiteral("temperatureConfigFieldRow"), message);
-        const QList<QLabel*> labels =
-            row->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
-        require(!labels.isEmpty(), message);
-        const QRect labelRect(labels.first()->mapTo(row, QPoint(0, 0)), labels.first()->size());
-        const QRect editorRect(editor->mapTo(row, QPoint(0, 0)), editor->size());
-        auto *fieldLayout = qobject_cast<QHBoxLayout *>(row->layout());
-        const int requiredRowWidth = labels.first()->width() + editor->width() + 6;
-        const bool layoutIsValid = labelRect.left() <= 1 &&
-            labelRect.right() < editorRect.left() &&
-            fieldLayout != nullptr &&
-            fieldLayout->spacing() == 6 &&
-            row->minimumWidth() == requiredRowWidth &&
-            row->maximumWidth() == requiredRowWidth;
-        require(layoutIsValid, message);
-    };
-    requireCompactSensorFieldLayout(ntcR0Edit,
-                                    "temperature NTC R0 field keeps label and input tightly grouped");
-    requireCompactSensorFieldLayout(ntcBEdit,
-                                    "temperature NTC B field keeps label and input tightly grouped");
-    requireCompactSensorFieldLayout(ptR0Edit,
-                                    "temperature PT R0 field keeps label and input tightly grouped");
-    requireCompactSensorFieldLayout(polynomialA0Edit,
-                                    "temperature polynomial field keeps label and input tightly grouped");
+    auto *sensorConfigGrid = qobject_cast<QGridLayout *>(temperatureChannelConfigSubStack->currentWidget()->layout());
     auto sensorFieldLabel = [](QWidget *editor) -> QLabel * {
         return editor && editor->parentWidget()
             ? editor->parentWidget()->findChild<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly)
             : nullptr;
     };
+    auto requireStackedSensorFieldLayout = [sensorConfigGrid](QWidget *editor,
+                                                              int row,
+                                                              int column,
+                                                              int expectedWidth,
+                                                              const char *message) {
+        require(sensorConfigGrid != nullptr && editor != nullptr && editor->parentWidget() != nullptr, message);
+        QWidget *cell = editor->parentWidget();
+        QLayoutItem *cellItem = sensorConfigGrid->itemAtPosition(row, column);
+        auto *cellLayout = qobject_cast<QVBoxLayout *>(cell->layout());
+        const QList<QLabel*> labels =
+            cell->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
+        require(cell->objectName() == QStringLiteral("temperatureConfigFieldRow") &&
+                    cellItem != nullptr &&
+                    cellItem->widget() == cell &&
+                    cellLayout != nullptr &&
+                    cellLayout->spacing() == 6 &&
+                    !labels.isEmpty() &&
+                    cell->width() == expectedWidth &&
+                    editor->width() == expectedWidth,
+                message);
+        const QRect labelRect(labels.first()->mapTo(cell, QPoint(0, 0)), labels.first()->size());
+        const QRect editorRect(editor->mapTo(cell, QPoint(0, 0)), editor->size());
+        require(labelRect.left() <= 1 &&
+                    editorRect.left() <= 1 &&
+                    labelRect.bottom() < editorRect.top(),
+                message);
+    };
+    requireStackedSensorFieldLayout(ntcR0Edit, 0, 0, 220,
+                                    "temperature NTC R0 field uses the screenshot stacked layout");
+    requireStackedSensorFieldLayout(ntcBEdit, 0, 1, 220,
+                                    "temperature NTC B field uses the screenshot stacked layout");
+    requireStackedSensorFieldLayout(ptR0Edit, 1, 0, 220,
+                                    "temperature PT R0 field uses the screenshot stacked layout");
+    requireStackedSensorFieldLayout(ptAEdit, 1, 1, 220,
+                                    "temperature PT A field uses the screenshot stacked layout");
+    requireStackedSensorFieldLayout(ptBEdit, 2, 0, 220,
+                                    "temperature PT B field uses the screenshot stacked layout");
+    requireStackedSensorFieldLayout(ptCEdit, 2, 1, 220,
+                                    "temperature PT C field uses the screenshot stacked layout");
+    requireStackedSensorFieldLayout(polynomialA0Edit, 3, 0, 115,
+                                    "temperature polynomial field uses the screenshot stacked layout");
     require(sensorFieldLabel(ntcR0Edit) && sensorFieldLabel(ntcR0Edit)->text() == QStringLiteral("NTC R0(Ohm)") &&
+                sensorFieldLabel(ntcBEdit) && sensorFieldLabel(ntcBEdit)->text() == QStringLiteral("NTC B") &&
                 sensorFieldLabel(ptR0Edit) && sensorFieldLabel(ptR0Edit)->text() == QStringLiteral("PT R0(Ohm)") &&
                 sensorFieldLabel(ptAEdit) && sensorFieldLabel(ptAEdit)->text() == QStringLiteral("PT A(E-3)") &&
                 sensorFieldLabel(ptBEdit) && sensorFieldLabel(ptBEdit)->text() == QStringLiteral("PT B(E-7)") &&
                 sensorFieldLabel(ptCEdit) && sensorFieldLabel(ptCEdit)->text() == QStringLiteral("PT C(E-12)"),
-            "temperature compact sensor fields retain their unit and exponent annotations");
-    auto sensorLabelHasTrailingPadding = [](QLabel *label, int padding) {
-        return label != nullptr &&
-            label->width() >= label->fontMetrics().boundingRect(label->text()).width() + padding;
-    };
-    require(sensorLabelHasTrailingPadding(sensorFieldLabel(ntcR0Edit), 16) &&
-                sensorLabelHasTrailingPadding(sensorFieldLabel(ptR0Edit), 16) &&
-                sensorLabelHasTrailingPadding(sensorFieldLabel(ptAEdit), 16) &&
-                sensorLabelHasTrailingPadding(sensorFieldLabel(ptBEdit), 16) &&
-                sensorLabelHasTrailingPadding(sensorFieldLabel(ptCEdit), 16),
-            "temperature sensor labels reserve enough trailing width to render closing parentheses");
-    require(ntcR0Edit->width() <= 82 &&
-                ntcBEdit->width() <= 82 &&
-                ptR0Edit->width() <= 82 &&
-                ptAEdit->width() == 104 &&
-                ptBEdit->width() == 104 &&
-                ptCEdit->width() == 104,
-            "temperature PT coefficient inputs show full precision while the other RD105 fields stay compact");
-    auto *sensorConfigGrid = qobject_cast<QGridLayout *>(temperatureChannelConfigSubStack->currentWidget()->layout());
-    auto requireSensorGridPosition = [sensorConfigGrid](QWidget *editor, int row, int column, const char *message) {
-        require(sensorConfigGrid != nullptr && editor != nullptr && editor->parentWidget() != nullptr, message);
-        QLayoutItem *item = sensorConfigGrid->itemAtPosition(row, column * 2);
-        require(item != nullptr && item->widget() == editor->parentWidget(), message);
-    };
-    requireSensorGridPosition(ntcR0Edit, 0, 0, "temperature sensor grid places NTC R0 at row 1 column 1");
-    requireSensorGridPosition(ptR0Edit, 0, 1, "temperature sensor grid places PT R0 at row 1 column 2");
-    requireSensorGridPosition(ptAEdit, 0, 2, "temperature sensor grid places PT A at row 1 column 3");
-    requireSensorGridPosition(ptBEdit, 0, 3, "temperature sensor grid places PT B at row 1 column 4");
-    requireSensorGridPosition(ptCEdit, 0, 4, "temperature sensor grid places PT C at row 1 column 5");
-    requireSensorGridPosition(ntcBEdit, 1, 0, "temperature sensor grid places NTC B at row 2 column 1");
+            "temperature sensor fields retain their unit and exponent annotations");
+    require(ntcR0Edit->width() == 220 &&
+                ntcBEdit->width() == 220 &&
+                ptR0Edit->width() == 220 &&
+                ptAEdit->width() == 220 &&
+                ptBEdit->width() == 220 &&
+                ptCEdit->width() == 220,
+            "temperature primary sensor inputs use the wide screenshot field width");
     std::array<QLineEdit *, 8> polynomialEdits{};
     for (int coefficient = 0; coefficient < 8; ++coefficient)
     {
@@ -6220,88 +6223,17 @@ int main(int argc, char **argv)
         polynomialEdits[static_cast<size_t>(coefficient)] = edit;
         require(edit != nullptr,
                 "temperature polynomial inputs all exist");
-        if (coefficient < 4)
-        {
-            requireSensorGridPosition(edit,
-                                      1,
-                                      1 + coefficient,
-                                      "temperature polynomial A0-A3 inputs stay on the second sensor grid row");
-        }
-        else
-        {
-            require(temperatureSensorTopPolynomialFields->isAncestorOf(edit) &&
-                        !temperatureChannelSubTopBar->isAncestorOf(edit) &&
-                        edit->parentWidget() != nullptr &&
-                        edit->parentWidget()->objectName() ==
-                            QStringLiteral("temperatureSensorTopPolynomialA%1FieldChannel1").arg(coefficient) &&
-                        edit->parentWidget()->isVisible(),
-                    "temperature polynomial A4-A7 inputs live beside but outside the sensor navigation bar");
-        }
+        requireStackedSensorFieldLayout(edit,
+                                        3 + coefficient / 4,
+                                        coefficient % 4,
+                                        115,
+                                        "temperature polynomial inputs stay in the two four-column screenshot rows");
     }
     QWidget *temperatureChannelSubPageRow = temperatureChannelSubTopBar->parentWidget();
     require(temperatureChannelSubPageRow != nullptr &&
-                temperatureSensorTopPolynomialFields->parentWidget() == temperatureChannelSubPageRow,
-            "temperature sensor navigation and A4-A7 fields share an outer row");
-    const QRect sensorConfigButtonRectInSubPageRow(
-        temperatureChannelSensorConfigButton->mapTo(temperatureChannelSubPageRow, QPoint(0, 0)),
-        temperatureChannelSensorConfigButton->size());
-    const QRect polynomialFieldsRectInSubPageRow(
-        temperatureSensorTopPolynomialFields->mapTo(temperatureChannelSubPageRow, QPoint(0, 0)),
-        temperatureSensorTopPolynomialFields->size());
-    const QRect subTopBarRectInSubPageRow(
-        temperatureChannelSubTopBar->mapTo(temperatureChannelSubPageRow, QPoint(0, 0)),
-        temperatureChannelSubTopBar->size());
-    const QRect topBarRectInSelectorRow(
-        temperatureChannelTopBar->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
-        temperatureChannelTopBar->size());
-    const QRect topControlsRectInSelectorRow(
-        temperatureChannelTopControlsStack->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
-        temperatureChannelTopControlsStack->size());
-    const int topNavigationGap =
-        topControlsRectInSelectorRow.left() - topBarRectInSelectorRow.right() - 1;
-    const int lowerNavigationGap =
-        polynomialFieldsRectInSubPageRow.left() - subTopBarRectInSubPageRow.right() - 1;
-    require(temperatureChannelSubTopBar->width() >= temperatureChannelSubTopBar->sizeHint().width() &&
-                lowerNavigationGap == topNavigationGap,
-            "temperature lower navigation keeps its full width before the A4-A7 fields");
-    require(polynomialFieldsRectInSubPageRow.left() > sensorConfigButtonRectInSubPageRow.right() &&
-                std::abs(polynomialFieldsRectInSubPageRow.right() -
-                         temperatureChannelSubPageRow->rect().right()) <= 1,
-            "temperature polynomial A4-A7 group fills the row to the right of the navigation bar");
-    int previousTopFieldRight = sensorConfigButtonRectInSubPageRow.right();
-    int topFieldWidth = -1;
-    int topInputWidth = -1;
-    for (int coefficient = 4; coefficient < 8; ++coefficient)
-    {
-        QWidget *field = polynomialEdits[static_cast<size_t>(coefficient)]->parentWidget();
-        const QRect fieldRect(field->mapTo(temperatureChannelSubPageRow, QPoint(0, 0)), field->size());
-        const QRect lowerInputRect(
-            temperatureChannelSubPageRow->mapFromGlobal(
-                polynomialEdits[static_cast<size_t>(coefficient)]->mapToGlobal(QPoint(0, 0))),
-            polynomialEdits[static_cast<size_t>(coefficient)]->size());
-        if (topFieldWidth < 0)
-        {
-            topFieldWidth = fieldRect.width();
-            topInputWidth = lowerInputRect.width();
-        }
-        require(fieldRect.left() > previousTopFieldRight,
-                "temperature polynomial A4-A7 fields remain ordered without overlap");
-        require(std::abs(fieldRect.center().y() - sensorConfigButtonRectInSubPageRow.center().y()) <= 2,
-                "temperature polynomial A4-A7 fields stay vertically aligned with the navigation bar");
-        require(std::abs(fieldRect.width() - topFieldWidth) <= 1 &&
-                    std::abs(lowerInputRect.width() - topInputWidth) <= 1,
-                "temperature polynomial A4-A7 fields keep equal spacing and equal input widths");
-        require(field->height() >= polynomialEdits[static_cast<size_t>(coefficient)]->sizeHint().height() &&
-                    lowerInputRect.top() >= fieldRect.top() &&
-                    lowerInputRect.bottom() <= fieldRect.bottom(),
-                "temperature polynomial A4-A7 inputs are not clipped by their lower-row field containers");
-        require(polynomialEdits[static_cast<size_t>(coefficient)]->width() ==
-                    polynomialEdits[1]->width() &&
-                    polynomialEdits[static_cast<size_t>(coefficient)]->sizePolicy().horizontalPolicy() ==
-                        QSizePolicy::Fixed,
-                "temperature polynomial A4-A7 inputs match the fixed A1-A3 width");
-        previousTopFieldRight = fieldRect.right();
-    }
+                temperaturePanel->findChild<QWidget *>(
+                    QStringLiteral("temperatureSensorTopPolynomialFieldsChannel1")) == nullptr,
+            "temperature sensor navigation no longer owns a separate A4-A7 top-row container");
     clickWidget(temperatureConfigChannelButton2, 100);
     activateLayouts(&window);
     require(temperatureChannelConfigSubStack2->currentWidget() != nullptr &&
@@ -6335,76 +6267,16 @@ int main(int argc, char **argv)
     for (int coefficient = 4; coefficient < 8; ++coefficient)
     {
         require(!polynomialEdits[static_cast<size_t>(coefficient)]->parentWidget()->isVisible(),
-                "temperature top polynomial fields hide outside the sensor config tab");
+                "temperature polynomial fields hide outside the sensor config tab");
     }
     clickWidget(temperatureChannelSensorConfigButton, 100);
     activateLayouts(&window);
-    auto fieldLeftInSensorPage = [temperatureChannelConfigSubStack](QWidget *editor) {
-        return editor->parentWidget()->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)).x();
-    };
-    auto inputLeftInSensorPage = [temperatureChannelConfigSubStack](QWidget *editor) {
-        return editor->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)).x();
-    };
-    auto requireSensorColumnAlignment = [&fieldLeftInSensorPage, &inputLeftInSensorPage](
-                                            const QList<QWidget *>& fields,
-                                            const char *message) {
-        require(!fields.isEmpty() && fields.first() != nullptr, message);
-        const int fieldLeft = fieldLeftInSensorPage(fields.first());
-        const int inputLeft = inputLeftInSensorPage(fields.first());
-        for (QWidget *field : fields)
-        {
-            require(field != nullptr &&
-                        fieldLeftInSensorPage(field) == fieldLeft &&
-                        inputLeftInSensorPage(field) == inputLeft &&
-                        field->width() == fields.first()->width(),
-                    message);
-        }
-    };
-    requireSensorColumnAlignment({ntcR0Edit, ntcBEdit},
-                                 "temperature sensor column 1 aligns labels and inputs");
-    requireSensorColumnAlignment({ptR0Edit, polynomialEdits[0]},
-                                 "temperature sensor column 2 aligns labels and inputs");
-    requireSensorColumnAlignment({ptAEdit, polynomialEdits[1]},
-                                 "temperature sensor column 3 aligns labels and inputs");
-    requireSensorColumnAlignment({ptBEdit, polynomialEdits[2]},
-                                 "temperature sensor column 4 aligns labels and inputs");
-    requireSensorColumnAlignment({ptCEdit, polynomialEdits[3]},
-                                 "temperature sensor column 5 aligns labels and inputs");
-    const std::array<QWidget *, 5> firstRowFields{
-        ntcR0Edit, ptR0Edit, ptAEdit, ptBEdit, ptCEdit};
-    int adaptiveColumnGap = -1;
-    for (size_t column = 1; column < firstRowFields.size(); ++column)
-    {
-        QWidget *previousCell = firstRowFields[column - 1]->parentWidget();
-        QWidget *currentCell = firstRowFields[column]->parentWidget();
-        const QRect previousRect(previousCell->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
-                                 previousCell->size());
-        const QRect currentRect(currentCell->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
-                                currentCell->size());
-        const int gap = currentRect.left() - previousRect.right() - 1;
-        if (adaptiveColumnGap < 0)
-        {
-            adaptiveColumnGap = gap;
-        }
-        require(gap >= 0 && std::abs(gap - adaptiveColumnGap) <= 1,
-                "temperature sensor grid distributes available card width evenly between columns");
-    }
     require(sensorConfigGrid != nullptr &&
-                sensorConfigGrid->horizontalSpacing() == 0 &&
-                sensorConfigGrid->verticalSpacing() == 8 &&
-                sensorConfigGrid->columnStretch(1) == 1 &&
-                sensorConfigGrid->columnStretch(3) == 1 &&
-                sensorConfigGrid->columnStretch(5) == 1 &&
-                sensorConfigGrid->columnStretch(7) == 1,
-            "temperature sensor grid uses four adaptive spacer columns");
-    const QMargins temperatureChannelPageMargins =
-        temperatureChannelStack->currentWidget()->layout()->contentsMargins();
-    require(temperatureChannelPageMargins.left() == 0 &&
-                temperatureChannelPageMargins.right() == 0,
-            "temperature channel page releases horizontal margins for the five sensor columns");
-    require(sensorConfigGrid != nullptr && sensorConfigGrid->rowCount() == 2,
-            "temperature sensor grid contains exactly two parameter rows");
-    QWidget *sensorLastRow = polynomialEdits[3] ? polynomialEdits[3]->parentWidget() : nullptr;
+                sensorConfigGrid->horizontalSpacing() == 28 &&
+                sensorConfigGrid->verticalSpacing() == 14 &&
+                sensorConfigGrid->rowCount() == 5,
+            "temperature sensor grid uses two wide columns plus two compact polynomial rows");
+    QWidget *sensorLastRow = polynomialEdits[7] ? polynomialEdits[7]->parentWidget() : nullptr;
     const QRect sensorFirstRowRect(ntcR0Edit->parentWidget()->mapTo(
                                        temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
                                    ntcR0Edit->parentWidget()->size());
@@ -6425,14 +6297,13 @@ int main(int argc, char **argv)
     require(temperatureChannelStack->height() >= temperatureChannelStack->currentWidget()->sizeHint().height() &&
                 temperatureConfigCard->height() >= temperatureConfigCard->sizeHint().height(),
             "temperature four-row card reserves enough total height");
-    require(sensorConfigGrid->alignment() == Qt::AlignTop &&
+    require(sensorConfigGrid->alignment() == (Qt::AlignTop | Qt::AlignLeft) &&
                 sensorFirstRowRect.top() >= 0 &&
                 sensorFirstRowRect.top() <= 4,
             "temperature sensor content starts at the shared first content row");
     require(sensorLastRowRect.bottom() < temperatureChannelConfigSubStack->currentWidget()->height() &&
-                sensorPageBottomUnusedHeight >= 0 &&
-                sensorPageBottomUnusedHeight <= 4,
-            "temperature sensor second content row fills the shared content height");
+                sensorPageBottomUnusedHeight >= 0,
+            "temperature sensor stacked rows remain inside the reserved content height");
     require(sensorLastTopInputRectInCard.bottom() <= sensorLastTopFieldRectInCard.bottom() &&
                 sensorLastTopInputRectInCard.bottom() <= temperatureConfigCard->contentsRect().bottom(),
             "temperature sensor polynomial inputs remain inside their row and card");
@@ -6856,6 +6727,13 @@ int main(int argc, char **argv)
     auto *temperaturePage = window.findChild<QWidget *>(QStringLiteral("temperaturePage"));
     require(temperaturePage != nullptr && temperaturePage->isVisible(),
             "temperature page can be opened");
+    auto *temperatureScrollAreaForTopGap =
+        temperaturePage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
+    if (temperatureScrollAreaForTopGap && temperatureScrollAreaForTopGap->verticalScrollBar())
+    {
+        temperatureScrollAreaForTopGap->verticalScrollBar()->setValue(0);
+        activateLayouts(&window);
+    }
     QWidget *temperatureControllerCard = sensorGroupAncestor(temperaturePanel);
     require(temperatureControllerCard != nullptr,
             "temperature controller card can be identified from the controller panel");
@@ -8214,8 +8092,10 @@ int main(int argc, char **argv)
                                            metrics.boundingRect(label->text()).width());
             const QRect labelRect(label->mapTo(row, QPoint(0, 0)), label->size());
             const QRect editorRect(editor->mapTo(row, QPoint(0, 0)), editor->size());
-            require(label->width() >= textWidth + 12 && labelRect.right() < editorRect.left(),
-                    "scaled temperature common label keeps its last character clear of the editor");
+            require(label->width() >= textWidth &&
+                        labelRect.bottom() < editorRect.top() &&
+                        editorRect.left() <= 1,
+                    "scaled temperature common label keeps its last character clear above the editor");
         }
         scaledWindow.close();
         processEventsFor(100);
