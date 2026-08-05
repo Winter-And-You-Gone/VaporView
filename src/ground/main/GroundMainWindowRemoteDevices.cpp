@@ -1267,10 +1267,9 @@ void MainWindow::updateTemperatureTitleButtonsState()
         if (spinnerActive)
         {
             button->setIcon(createRotatedLucideIcon(
-                QStringLiteral("link"),
+                QStringLiteral("refresh-cw"),
                 toolbarColor(AppThemeColor::HomeDeviceSuccess),
-                (state_->home_device_action_spinner_step_ * 360) /
-                    kHomeDeviceActionSpinnerFrames));
+                homeDeviceActionSpinnerDegrees(device, nowMs)));
         }
         else
         {
@@ -1926,21 +1925,21 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
         return;
     }
 
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     const VaporView::DeviceState state = homeDeviceActionState(device);
     const bool connected = state == VaporView::DeviceState::Connected;
     const bool busy = state == VaporView::DeviceState::Connecting ||
         state == VaporView::DeviceState::Reconnecting ||
-        homeDeviceActionSpinnerActive(device, QDateTime::currentMSecsSinceEpoch());
+        homeDeviceActionSpinnerActive(device, nowMs);
     const VaporView::CommandId command = connected
         ? VaporView::CommandId::DisconnectDevice
         : VaporView::CommandId::ConnectDevice;
     applyDeviceConfigRemoteButtonPresentation(button, command, device, state_->is_english_, false);
     if (busy)
     {
-        button->setIcon(createRotatedLucideIcon(QStringLiteral("link"),
+        button->setIcon(createRotatedLucideIcon(QStringLiteral("refresh-cw"),
                                                 toolbarColor(AppThemeColor::HomeDeviceSuccess),
-                                                (state_->home_device_action_spinner_step_ * 360) /
-                                                    kHomeDeviceActionSpinnerFrames));
+                                                homeDeviceActionSpinnerDegrees(device, nowMs)));
     }
     const bool remoteMode = isRemoteSkyMode();
     const bool linkOpen = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();

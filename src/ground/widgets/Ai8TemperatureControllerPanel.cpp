@@ -19,6 +19,7 @@
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QStyle>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -31,14 +32,21 @@ namespace VaporView::Ground::Widgets
 namespace
 {
 constexpr int kPageColumnCount = 2;
+constexpr int kDetailPageColumnCount = 4;
 constexpr int kEditorMinimumWidth = 118;
-constexpr int kParameterFieldMinimumHeight = 66;
+constexpr int kParameterFieldHeight = 66;
+constexpr int kParameterFieldLabelHeight = 20;
+constexpr int kParameterFieldTopInset = 2;
+constexpr int kParameterFieldBottomInset = 2;
+constexpr int kParameterFieldLabelEditorGap = 6;
+constexpr int kAi8TemperaturePlotBottomTrim = kParameterFieldBottomInset;
 constexpr int kAi8TemperatureHistoryLimit = 240;
 constexpr int kAi8NavigationButtonHeight = 30;
 constexpr int kAi8NavigationHorizontalMargin = 4;
 constexpr int kAi8NavigationVerticalMargin = 3;
 constexpr int kAi8NavigationSpacing = 4;
 constexpr int kAi8CommonControlGap = 6;
+constexpr int kAi8TemperaturePlotMinimumHeight = 180;
 constexpr int kCommonEditorMinimumWidth = (kEditorMinimumWidth * 4) / 3;
 constexpr int kCommonParameterStackWidth =
     kCommonEditorMinimumWidth * kPageColumnCount + kAi8CommonControlGap;
@@ -56,6 +64,7 @@ public:
     {
         compact_common_width_ = enabled;
         setProperty("ai8CompactCommonField", enabled);
+        setProperty("ai8CompactParameterField", enabled);
         updateCompactCommonWidth();
     }
 
@@ -167,15 +176,18 @@ QLineEdit *createReadOnlyLineEdit(QWidget *parent,
     return edit;
 }
 
-void addFieldsToPage(QGridLayout *layout, const QList<QWidget *>& fields)
+void addFieldsToPage(QGridLayout *layout,
+                     const QList<QWidget *>& fields,
+                     int columnCount = kPageColumnCount)
 {
+    columnCount = std::max(1, columnCount);
     for (qsizetype index = 0; index < fields.size(); ++index)
     {
-        const int row = static_cast<int>(index) / kPageColumnCount;
-        const int column = static_cast<int>(index) % kPageColumnCount;
+        const int row = static_cast<int>(index) / columnCount;
+        const int column = static_cast<int>(index) % columnCount;
         layout->addWidget(fields.at(index), row, column);
     }
-    for (int column = 0; column < kPageColumnCount; ++column)
+    for (int column = 0; column < columnCount; ++column)
     {
         layout->setColumnStretch(column, 1);
     }
@@ -208,12 +220,19 @@ Ai8TemperatureControllerPanel::Ai8TemperatureControllerPanel(QWidget *parent)
     setupUi();
 }
 
+void Ai8TemperatureControllerPanel::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    QTimer::singleShot(0, this, [this]() { adjustTemperaturePlotHeight(); });
+}
+
 void Ai8TemperatureControllerPanel::setupUi()
 {
     setObjectName(QStringLiteral("ai8TemperatureControllerPanel"));
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
 
     auto *rootLayout = new QVBoxLayout(this);
+    rootLayout->setSizeConstraint(QLayout::SetMinimumSize);
     rootLayout->setContentsMargins(10, 10, 10, 10);
     rootLayout->setSpacing(8);
 
@@ -315,15 +334,16 @@ void Ai8TemperatureControllerPanel::setupUi()
 
     detail_stack_ = new QStackedWidget(this);
     detail_stack_->setObjectName(QStringLiteral("ai8DetailParametersStack"));
-    detail_stack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    detail_stack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
     auto *mainContentCard = new QFrame(this);
     mainContentCard->setObjectName(QStringLiteral("ai8MainContentCard"));
     mainContentCard->setProperty("ai8MainContentCard", true);
     mainContentCard->setFrameShape(QFrame::NoFrame);
     mainContentCard->setAttribute(Qt::WA_StyledBackground, true);
-    mainContentCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    mainContentCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *mainContentLayout = new QHBoxLayout(mainContentCard);
+    mainContentLayout->setSizeConstraint(QLayout::SetMinimumSize);
     mainContentLayout->setContentsMargins(kAi8CommonControlGap, 12, kAi8CommonControlGap, 12);
     mainContentLayout->setSpacing(kAi8CommonControlGap);
 
@@ -335,17 +355,19 @@ void Ai8TemperatureControllerPanel::setupUi()
     page_stack_->addWidget(createInputPage());
     page_stack_->addWidget(createOutputPage());
     page_stack_->addWidget(createGlobalPage());
-    mainContentLayout->addWidget(page_stack_, 0);
+    mainContentLayout->addWidget(page_stack_, 0, Qt::AlignTop);
 
     temperature_plot_ = new ::TemperatureTrendPlotWidget(mainContentCard);
     temperature_plot_->setObjectName(QStringLiteral("ai8TemperatureTrendPlot"));
     temperature_plot_->setProperty("ai8TemperaturePlot", true);
     temperature_plot_->setProperty("forceWhiteBackground", true);
     temperature_plot_->setCompactMode(true);
-    temperature_plot_->setMinimumHeight(180);
-    temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    mainContentLayout->addWidget(temperature_plot_, 1);
-    rootLayout->addWidget(mainContentCard, 1);
+    temperature_plot_->setFixedHeight(
+        std::max(kAi8TemperaturePlotMinimumHeight,
+                 page_stack_->sizeHint().height() - kAi8TemperaturePlotBottomTrim));
+    temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    mainContentLayout->addWidget(temperature_plot_, 1, Qt::AlignTop);
+    rootLayout->addWidget(mainContentCard);
     rootLayout->addWidget(detail_stack_);
 
     setEnglish(false);
@@ -361,8 +383,9 @@ QWidget *Ai8TemperatureControllerPanel::createDetailSection(const QString& objec
     auto *card = new QFrame(parent);
     card->setObjectName(QStringLiteral("ai8DetailParametersCard"));
     card->setProperty("ai8DetailCard", true);
-    card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     auto *layout = new QVBoxLayout(card);
+    layout->setSizeConstraint(QLayout::SetMinimumSize);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
@@ -384,26 +407,19 @@ QWidget *Ai8TemperatureControllerPanel::createDetailSection(const QString& objec
     auto *content = new QWidget(card);
     content->setObjectName(objectName + QStringLiteral("Content"));
     content->setProperty("ai8DetailContent", true);
+    content->setAttribute(Qt::WA_StyledBackground, true);
     content->setVisible(false);
     auto *contentLayout = new QGridLayout(content);
-    contentLayout->setContentsMargins(8, 8, 8, 8);
-    contentLayout->setHorizontalSpacing(8);
+    contentLayout->setContentsMargins(kAi8CommonControlGap, 8, kAi8CommonControlGap, 8);
+    contentLayout->setHorizontalSpacing(kAi8CommonControlGap);
     contentLayout->setVerticalSpacing(8);
-    addFieldsToPage(contentLayout, fields);
+    addFieldsToPage(contentLayout, fields, kDetailPageColumnCount);
+    applyCompactCommonEditorWidth(contentLayout);
     layout->addWidget(content);
 
-    connect(toggle, &QToolButton::toggled, this, [toggle, content](bool checked) {
-        content->setVisible(checked);
-        toggle->setArrowType(checked ? Qt::DownArrow : Qt::RightArrow);
-        toggle->setProperty("expanded", checked);
-        toggle->style()->unpolish(toggle);
-        toggle->style()->polish(toggle);
-        content->updateGeometry();
-        if (auto *parentWidget = content->parentWidget())
-        {
-            parentWidget->updateGeometry();
-        }
-    });
+    detail_section_bindings_.append({toggle, content});
+    connect(toggle, &QToolButton::toggled, this,
+            [this](bool checked) { setDetailSectionsExpanded(checked); });
     return card;
 }
 
@@ -805,17 +821,21 @@ QWidget *Ai8TemperatureControllerPanel::createParameterField(const QString& chin
 {
     auto *field = new Ai8ParameterFieldFrame(editor, parent);
     field->setObjectName(QStringLiteral("ai8ParameterField"));
-    field->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    field->setMinimumHeight(kParameterFieldMinimumHeight);
+    field->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    field->setFixedHeight(kParameterFieldHeight);
     auto *layout = new QVBoxLayout(field);
-    layout->setContentsMargins(0, 7, 0, 7);
-    layout->setSpacing(4);
+    layout->setContentsMargins(0,
+                               kParameterFieldTopInset,
+                               0,
+                               kParameterFieldBottomInset);
+    layout->setSpacing(kParameterFieldLabelEditorGap);
 
     auto *label = new QLabel(field);
     label->setObjectName(QStringLiteral("fieldLabel"));
     label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    label->setFixedHeight(kParameterFieldLabelHeight);
     label_bindings_.append({label, chinese, english});
-    layout->addWidget(label);
+    layout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
     editor->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     layout->addWidget(editor);
     return field;
@@ -940,10 +960,124 @@ void Ai8TemperatureControllerPanel::selectPage(int index)
     if (detail_stack_ && detail_stack_->count() > pageIndex)
     {
         detail_stack_->setCurrentIndex(pageIndex);
+        setDetailSectionsExpanded(detail_sections_expanded_);
     }
     if (QAbstractButton *button = page_button_group_->button(pageIndex))
     {
         button->setChecked(true);
+    }
+    QTimer::singleShot(0, this, [this]() {
+        syncDetailStackHeight();
+        adjustTemperaturePlotHeight();
+    });
+}
+
+void Ai8TemperatureControllerPanel::setDetailSectionsExpanded(bool expanded)
+{
+    detail_sections_expanded_ = expanded;
+    for (const DetailSectionBinding& binding : detail_section_bindings_)
+    {
+        if (!binding.toggle || !binding.content)
+        {
+            continue;
+        }
+
+        const QSignalBlocker blocker(binding.toggle);
+        binding.toggle->setChecked(expanded);
+        binding.toggle->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
+        binding.toggle->setProperty("expanded", expanded);
+        binding.toggle->style()->unpolish(binding.toggle);
+        binding.toggle->style()->polish(binding.toggle);
+        binding.content->setVisible(expanded);
+        binding.content->updateGeometry();
+        if (auto *parentWidget = binding.content->parentWidget())
+        {
+            parentWidget->updateGeometry();
+        }
+    }
+
+    syncDetailStackHeight();
+    QTimer::singleShot(0, this, [this]() { syncDetailStackHeight(); });
+}
+
+void Ai8TemperatureControllerPanel::syncDetailStackHeight()
+{
+    if (!detail_stack_)
+    {
+        return;
+    }
+
+    QWidget *currentDetailPage = detail_stack_->currentWidget();
+    if (!currentDetailPage)
+    {
+        detail_stack_->setFixedHeight(0);
+        return;
+    }
+
+    if (QLayout *pageLayout = currentDetailPage->layout())
+    {
+        pageLayout->invalidate();
+        pageLayout->activate();
+    }
+    currentDetailPage->updateGeometry();
+
+    const int targetHeight = std::max(1, currentDetailPage->sizeHint().height());
+    if (detail_stack_->minimumHeight() != targetHeight ||
+        detail_stack_->maximumHeight() != targetHeight)
+    {
+        detail_stack_->setFixedHeight(targetHeight);
+    }
+    detail_stack_->updateGeometry();
+    if (QLayout *ownLayout = layout())
+    {
+        ownLayout->invalidate();
+        ownLayout->activate();
+    }
+}
+
+void Ai8TemperatureControllerPanel::adjustTemperaturePlotHeight()
+{
+    if (!temperature_plot_ || !page_stack_ || page_stack_->height() <= 0 ||
+        temperature_plot_->height() <= 0)
+    {
+        return;
+    }
+
+    QWidget *currentPage = page_stack_->currentWidget();
+    if (!currentPage)
+    {
+        return;
+    }
+
+    int editorBottom = 0;
+    const QList<QFrame *> fields =
+        currentPage->findChildren<QFrame *>(QStringLiteral("ai8ParameterField"));
+    for (QFrame *field : fields)
+    {
+        const QList<QWidget *> children =
+            field->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly);
+        for (QWidget *child : children)
+        {
+            if (qobject_cast<QLabel *>(child))
+            {
+                continue;
+            }
+            const QPoint childTopLeft = child->mapTo(this, QPoint(0, 0));
+            editorBottom = std::max(editorBottom, childTopLeft.y() + child->height());
+        }
+    }
+
+    if (editorBottom <= 0)
+    {
+        return;
+    }
+
+    const int plotTop = temperature_plot_->mapTo(this, QPoint(0, 0)).y();
+    const int targetHeight =
+        std::max(kAi8TemperaturePlotMinimumHeight, editorBottom - plotTop);
+    if (targetHeight > 0 && temperature_plot_->height() != targetHeight)
+    {
+        temperature_plot_->setFixedHeight(targetHeight);
     }
 }
 

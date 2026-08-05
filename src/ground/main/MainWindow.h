@@ -254,6 +254,7 @@ private:
     void triggerHomeDeviceAction(VaporView::SkyDeviceId device);
     void startHomeDeviceActionSpinner(VaporView::SkyDeviceId device);
     bool homeDeviceActionSpinnerActive(VaporView::SkyDeviceId device, qint64 nowMs) const;
+    int homeDeviceActionSpinnerDegrees(VaporView::SkyDeviceId device, qint64 nowMs) const;
     void updateHomeDeviceStatusCapsules();
     void updateHomeDeviceActionSpinnerIcons();
     bool anyCollectorRunning() const;

@@ -37,6 +37,7 @@ TemperatureTrendPlotWidget::TemperatureTrendPlotWidget(QWidget *parent)
     : QWidget(parent)
 {
     setObjectName(QStringLiteral("temperatureTrendPlot"));
+    setAttribute(Qt::WA_OpaquePaintEvent, true);
     setFont(numericFontFrom(font()));
     applyPlotSizing();
     updateSampleProperties();

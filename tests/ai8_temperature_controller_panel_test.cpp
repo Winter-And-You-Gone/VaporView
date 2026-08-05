@@ -59,6 +59,25 @@ int main(int argc, char **argv)
             "AI-8 panel builds the side-by-side common-parameter and plot layout");
     require(temperaturePlot->property("forceWhiteBackground").toBool(),
             "AI-8 temperature plot uses the same white background as the parameter area");
+    require(temperaturePlot->testAttribute(Qt::WA_OpaquePaintEvent) &&
+                temperaturePlot->minimumHeight() == temperaturePlot->maximumHeight(),
+            "AI-8 temperature plot has a stable opaque paint area");
+    auto *manualOutputSpin = panel.findChild<QDoubleSpinBox *>(QStringLiteral("ai8ManualOutputSpin"));
+    require(manualOutputSpin != nullptr, "AI-8 channel page exposes the bottom-row manual output editor");
+    const int plotBottom =
+        temperaturePlot->mapTo(&panel, QPoint(0, 0)).y() + temperaturePlot->height();
+    const int manualOutputBottom =
+        manualOutputSpin->mapTo(&panel, QPoint(0, 0)).y() + manualOutputSpin->height();
+    if (std::abs(plotBottom - manualOutputBottom) > 2)
+    {
+        std::cerr << "PLOT_BOTTOM=" << plotBottom
+                  << " MANUAL_BOTTOM=" << manualOutputBottom
+                  << " PLOT_HEIGHT=" << temperaturePlot->height()
+                  << " STACK_HEIGHT=" << stack->height()
+                  << '\n';
+    }
+    require(std::abs(plotBottom - manualOutputBottom) <= 2,
+            "AI-8 temperature plot bottom aligns with the bottom-row channel editor");
 
     auto *globalButton = panel.findChild<QPushButton *>(QStringLiteral("ai8PageSelectorButton4"));
     auto *outputButton = panel.findChild<QPushButton *>(QStringLiteral("ai8PageSelectorButton3"));
@@ -93,6 +112,8 @@ int main(int argc, char **argv)
         panel.findChild<QToolButton *>(QStringLiteral("ai8GlobalDetailParametersToggle"));
     auto *channelDetailContent =
         panel.findChild<QWidget *>(QStringLiteral("ai8ChannelDetailParametersContent"));
+    auto *globalDetailContent =
+        panel.findChild<QWidget *>(QStringLiteral("ai8GlobalDetailParametersContent"));
     auto *channelCommonLayout =
         panel.findChild<QGridLayout *>(QStringLiteral("ai8ChannelCommonParametersLayout"));
     auto *inputCommonLayout =
@@ -109,7 +130,8 @@ int main(int argc, char **argv)
         panel.findChild<QSpinBox *>(QStringLiteral("ai8CorrectionEntrySpin"));
     require(channelDetailToggle != nullptr && inputDetailToggle == nullptr &&
                 outputDetailToggle != nullptr && globalDetailToggle != nullptr &&
-                channelDetailContent != nullptr && channelInputGroupEdit != nullptr &&
+                channelDetailContent != nullptr && globalDetailContent != nullptr &&
+                channelInputGroupEdit != nullptr &&
                 channelAlarmStatusEdit != nullptr && !channelInputGroupEdit->isVisible() &&
                 channelCommonLayout != nullptr && channelCommonLayout->count() == 8 &&
                 channelCommonLayout->columnCount() == 2 &&
@@ -153,6 +175,37 @@ int main(int argc, char **argv)
                 channelField->maximumWidth() == channelSpin->minimumWidth() &&
                 setpointField->maximumWidth() == setpointSpin->minimumWidth(),
             "AI-8 common parameter fields shrink to the editor width");
+    QList<QWidget *> channelCommonFields;
+    for (int itemIndex = 0; itemIndex < channelCommonLayout->count(); ++itemIndex)
+    {
+        if (auto *item = channelCommonLayout->itemAt(itemIndex))
+        {
+            if (auto *field = item->widget())
+            {
+                channelCommonFields.append(field);
+            }
+        }
+    }
+    require(channelCommonFields.size() == 8, "AI-8 channel common page has eight field frames");
+    const int commonFieldHeight = channelCommonFields.first()->height();
+    for (QWidget *field : channelCommonFields)
+    {
+        auto *label = field->findChild<QLabel *>(QStringLiteral("fieldLabel"),
+                                                Qt::FindDirectChildrenOnly);
+        require(field->height() == commonFieldHeight &&
+                    label != nullptr &&
+                    label->alignment().testFlag(Qt::AlignVCenter) &&
+                    label->height() >= label->fontMetrics().height() + 2,
+                "AI-8 common parameter rows share one height and center field labels");
+    }
+    auto *row0Field = channelCommonLayout->itemAtPosition(0, 0)->widget();
+    auto *row1Field = channelCommonLayout->itemAtPosition(1, 0)->widget();
+    auto *row2Field = channelCommonLayout->itemAtPosition(2, 0)->widget();
+    auto *row3Field = channelCommonLayout->itemAtPosition(3, 0)->widget();
+    const int firstRowPitch = row1Field->y() - row0Field->y();
+    require(firstRowPitch == row2Field->y() - row1Field->y() &&
+                firstRowPitch == row3Field->y() - row2Field->y(),
+            "AI-8 channel common parameter row pitch stays even");
     const QRect channelControlRect(channelSpin->mapTo(mainContentCard, QPoint(0, 0)),
                                    channelSpin->size());
     const QRect setpointControlRect(setpointSpin->mapTo(mainContentCard, QPoint(0, 0)),
@@ -197,16 +250,98 @@ int main(int argc, char **argv)
     singleLevelLockCombo->hidePopup();
     channelButton->click();
     QApplication::processEvents();
+    panel.resize(1180, 820);
+    QApplication::processEvents();
+    const int mainContentHeightBeforeDetailExpand = mainContentCard->height();
     channelDetailToggle->click();
     QApplication::processEvents();
     require(channelDetailToggle->isChecked() && channelDetailContent->isVisible() &&
                 channelInputGroupEdit->isVisible() && channelAlarmStatusEdit->isVisible() &&
+                channelDetailContent->property("ai8DetailContent").toBool() &&
+                channelDetailContent->testAttribute(Qt::WA_StyledBackground) &&
                 channelDetailToggle->arrowType() == Qt::DownArrow &&
                 channelDetailContent->geometry().top() > channelDetailToggle->geometry().bottom(),
             "AI-8 detailed parameters expand below the toggle card header");
+    require(mainContentCard->height() >= mainContentHeightBeforeDetailExpand,
+            "AI-8 detail expansion keeps the main parameter and trend area from shrinking");
+    const QList<QFrame *> channelDetailFields =
+        channelDetailContent->findChildren<QFrame *>(QStringLiteral("ai8ParameterField"));
+    auto *channelDetailLayout = qobject_cast<QGridLayout *>(channelDetailContent->layout());
+    require(channelDetailFields.size() == 8,
+            "AI-8 channel detail page exposes its eight detail field frames");
+    require(channelDetailLayout != nullptr &&
+                channelDetailLayout->columnCount() == 4 &&
+                channelDetailLayout->rowCount() == 2,
+            "AI-8 channel detail page uses four compact columns instead of leaving the middle empty");
+    for (QFrame *field : channelDetailFields)
+    {
+        QWidget *editor = nullptr;
+        const QList<QWidget *> directChildren =
+            field->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly);
+        for (QWidget *child : directChildren)
+        {
+            if (child && child->objectName() != QStringLiteral("fieldLabel"))
+            {
+                editor = child;
+                break;
+            }
+        }
+        require(field->property("ai8CompactParameterField").toBool() &&
+                    field->property("ai8CompactCommonField").toBool() &&
+                    field->maximumWidth() == channelField->maximumWidth() &&
+                    editor != nullptr &&
+                    editor->minimumWidth() == channelSpin->minimumWidth() &&
+                    editor->maximumWidth() == channelSpin->maximumWidth(),
+                "AI-8 detail fields use the same compact width as common parameters");
+    }
+    for (int column = 0; column < 4; ++column)
+    {
+        require(channelDetailLayout->itemAtPosition(0, column) != nullptr &&
+                    channelDetailLayout->itemAtPosition(1, column) != nullptr,
+                "AI-8 channel detail fields fill each compact detail column");
+    }
+    const int channelExpandedDetailHeight = detailStack->height();
+    require(channelDetailToggle->isChecked() && inputDetailToggle->isChecked() &&
+                outputDetailToggle->isChecked() && globalDetailToggle->isChecked(),
+            "AI-8 detail expansion is shared by every parameter page");
+    globalButton->click();
+    QApplication::processEvents();
+    QApplication::processEvents();
+    const int globalExpandedDetailHeight = detailStack->height();
+    require(detailStack->currentIndex() == 3 && globalDetailToggle->isChecked() &&
+                globalDetailContent->isVisible() &&
+                globalExpandedDetailHeight > channelExpandedDetailHeight,
+            "AI-8 switching pages preserves the shared expanded detail state and current-page height");
+    globalDetailToggle->click();
+    QApplication::processEvents();
+    QApplication::processEvents();
+    require(!globalDetailToggle->isChecked() && !channelDetailToggle->isChecked() &&
+                !inputDetailToggle->isChecked() && !outputDetailToggle->isChecked() &&
+                !globalDetailContent->isVisible(),
+            "AI-8 collapsing one detail page collapses every parameter page");
+    channelButton->click();
+    QApplication::processEvents();
+    QApplication::processEvents();
+    auto *firstTopDetailField = qobject_cast<QFrame *>(
+        channelDetailLayout->itemAtPosition(0, 0)->widget());
+    auto *firstBottomDetailField = qobject_cast<QFrame *>(
+        channelDetailLayout->itemAtPosition(1, 0)->widget());
+    require(detailStack->currentIndex() == 0 &&
+                !channelDetailToggle->isChecked() &&
+                !channelDetailContent->isVisible() &&
+                detailStack->height() < channelExpandedDetailHeight &&
+                firstTopDetailField != nullptr &&
+                firstBottomDetailField != nullptr &&
+                firstBottomDetailField->y() - firstTopDetailField->y() <=
+                    firstTopDetailField->height() + 16,
+            "AI-8 switching pages preserves the shared collapsed detail state without vertical blank space");
+    channelDetailToggle->click();
+    QApplication::processEvents();
     channelDetailToggle->click();
     QApplication::processEvents();
     require(!channelDetailToggle->isChecked() && !channelDetailContent->isVisible() &&
+                !inputDetailToggle->isChecked() && !outputDetailToggle->isChecked() &&
+                !globalDetailToggle->isChecked() &&
                 channelDetailToggle->arrowType() == Qt::RightArrow,
             "AI-8 detailed parameters collapse without changing their values");
 

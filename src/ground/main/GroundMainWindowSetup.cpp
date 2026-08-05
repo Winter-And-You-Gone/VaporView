@@ -1936,11 +1936,13 @@ void MainWindow::showTitleApplicationMenu()
     state_->title_application_panel_->show();
     state_->title_application_panel_->raise();
     state_->title_application_panel_->activateWindow();
-    QTimer::singleShot(0, state_->title_application_panel_, [panel = state_->title_application_panel_]() {
-        if (TitleApplicationMenuRow *row = firstEnabledTitleApplicationMenuRow(panel))
+    state_->title_application_panel_->setFocus(Qt::OtherFocusReason);
+    QPointer<QFrame> panel = state_->title_application_panel_;
+    QTimer::singleShot(0, state_->title_application_panel_, [panel]() {
+        if (panel)
         {
-            row->setFocus(Qt::OtherFocusReason);
-            row->setKeyboardFocus(true);
+            clearTitleApplicationMenuSelection(panel);
+            panel->setFocus(Qt::OtherFocusReason);
         }
     });
 }
@@ -2146,6 +2148,7 @@ void MainWindow::setupCentralWidget()
     temperatureScrollArea->setFrameShape(QFrame::NoFrame);
     auto *temperatureContent = new QWidget(temperatureScrollArea);
     auto *temperatureContentLayout = new QVBoxLayout(temperatureContent);
+    temperatureContentLayout->setSizeConstraint(QLayout::SetMinimumSize);
     temperatureContentLayout->setContentsMargins(kMainContentLeftCardInset,
                                                  kTopLevelCardOuterVerticalInset,
                                                  kMainContentRightCardInset,
@@ -4200,7 +4203,6 @@ void MainWindow::setupConfigPanel()
     state_->home_device_action_spinner_timer_->setTimerType(Qt::PreciseTimer);
     state_->home_device_action_spinner_timer_->setInterval(kHomeDeviceActionSpinnerIntervalMs);
     connect(state_->home_device_action_spinner_timer_, &QTimer::timeout, this, [this]() {
-        state_->home_device_action_spinner_step_ = (state_->home_device_action_spinner_step_ + 1) % kHomeDeviceActionSpinnerFrames;
         updateHomeDeviceActionSpinnerIcons();
     });
     homeDevicesLayout->setColumnStretch(kHomeDeviceGridColumns, 1);
@@ -4439,7 +4441,7 @@ void MainWindow::setupDataPanels()
     state_->temperature_controller_group_->setObjectName("sensorGroupBox");
     configureTopLevelCard(state_->temperature_controller_group_);
     state_->temperature_controller_group_->setMinimumWidth(0);
-    state_->temperature_controller_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    state_->temperature_controller_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     auto *temperatureLayout = new QVBoxLayout(state_->temperature_controller_group_);
     temperatureLayout->setContentsMargins(1, 0, 1, 1);
     temperatureLayout->setSpacing(0);
@@ -4660,7 +4662,7 @@ void MainWindow::setupDataPanels()
     state_->ai8_temperature_controller_group_->setProperty("ai8TemperatureControllerCard", true);
     configureTopLevelCard(state_->ai8_temperature_controller_group_);
     state_->ai8_temperature_controller_group_->setMinimumWidth(0);
-    state_->ai8_temperature_controller_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    state_->ai8_temperature_controller_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     auto *ai8Layout = new QVBoxLayout(state_->ai8_temperature_controller_group_);
     ai8Layout->setContentsMargins(1, 0, 1, 1);
     ai8Layout->setSpacing(0);

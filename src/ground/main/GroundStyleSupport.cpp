@@ -405,8 +405,15 @@ QToolBar QToolButton {
     background-color: @vv-primary;
 }
 QMenuBar::item:selected,
-QMenu::item:selected,
 QToolBar QToolButton:hover {
+    background-color: @vv-primary;
+    color: @vv-white;
+}
+QMenu::item:selected {
+    background-color: transparent;
+    color: @vv-text-title;
+}
+QMenu::item:hover {
     background-color: @vv-primary;
     color: @vv-white;
 }
@@ -706,12 +713,13 @@ QAbstractSpinBox:disabled {
     background-color: @vv-border;
     color: @vv-text-disabled;
 }
+)") + QStringLiteral(R"(
 QComboBox QAbstractItemView {
     background-color: @vv-menu-panel;
     border: none;
     border-radius: 10px;
     color: @vv-menu-text;
-    selection-background-color: @vv-menu-hover;
+    selection-background-color: transparent;
     selection-color: @vv-menu-text;
     padding: 12px 0px;
     outline: none;
@@ -724,10 +732,13 @@ QComboBox QAbstractItemView::item {
     border: 0px;
     border-radius: 0px;
 }
-QComboBox QAbstractItemView::item:hover,
 QComboBox QAbstractItemView::item:selected,
 QComboBox QAbstractItemView::item:selected:active,
 QComboBox QAbstractItemView::item:selected:!active {
+    background-color: transparent;
+    color: @vv-menu-text;
+}
+QComboBox QAbstractItemView::item:hover {
     background-color: @vv-menu-hover;
     color: @vv-menu-text;
 }
@@ -736,7 +747,7 @@ QComboBox QAbstractItemView::item:disabled {
     color: @vv-menu-disabled;
 }
 QComboBox QAbstractItemView::item:selected:disabled {
-    background-color: @vv-menu-hover;
+    background-color: transparent;
     color: @vv-menu-disabled;
 }
 QPushButton {
@@ -1111,6 +1122,10 @@ QMenu::item {
     padding: 8px 32px 8px 16px;
 }
 QMenu::item:selected {
+    background-color: transparent;
+    color: @vv-menu-text;
+}
+QMenu::item:hover {
     background-color: @vv-menu-hover;
     color: @vv-menu-text;
 }

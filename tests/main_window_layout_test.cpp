@@ -808,6 +808,73 @@ void clickWidget(QWidget *widget, int waitMs = 50)
     clickWidgetAt(widget, widget->rect().center(), waitMs);
 }
 
+class MinimumHeightRecorder final : public QObject
+{
+public:
+    explicit MinimumHeightRecorder(QWidget *widget)
+        : QObject(widget)
+        , widget_(widget)
+        , minimum_height_(widget ? widget->height() : 0)
+    {
+        if (widget_)
+        {
+            widget_->installEventFilter(this);
+        }
+    }
+
+    int minimumHeight() const
+    {
+        return minimum_height_;
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (watched == widget_ && event->type() == QEvent::Resize && widget_)
+        {
+            minimum_height_ = std::min(minimum_height_, widget_->height());
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    QWidget *widget_ = nullptr;
+    int minimum_height_ = 0;
+};
+
+class ResizeEventCounter final : public QObject
+{
+public:
+    explicit ResizeEventCounter(QWidget *widget)
+        : QObject(widget)
+        , widget_(widget)
+    {
+        if (widget_)
+        {
+            widget_->installEventFilter(this);
+        }
+    }
+
+    int count() const
+    {
+        return count_;
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (watched == widget_ && event->type() == QEvent::Resize)
+        {
+            ++count_;
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    QWidget *widget_ = nullptr;
+    int count_ = 0;
+};
+
 struct VerticalDragContext
 {
     QWidget *widget = nullptr;
@@ -2224,10 +2291,18 @@ void requireMenuPopupStyleUnified(const QString& styleSheet, bool dark, const ch
                                  message);
     requireLastStyleRuleContains(styleSheet,
                                  QStringLiteral("QMenu::item:selected {"),
-                                 QStringLiteral("background-color: %1").arg(hoverColor),
+                                 QStringLiteral("background-color: transparent"),
                                  message);
     requireLastStyleRuleContains(styleSheet,
                                  QStringLiteral("QMenu::item:selected {"),
+                                 QStringLiteral("color: %1").arg(textColor),
+                                 message);
+    requireLastStyleRuleContains(styleSheet,
+                                 QStringLiteral("QMenu::item:hover {"),
+                                 QStringLiteral("background-color: %1").arg(hoverColor),
+                                 message);
+    requireLastStyleRuleContains(styleSheet,
+                                 QStringLiteral("QMenu::item:hover {"),
                                  QStringLiteral("color: %1").arg(textColor),
                                  message);
     requireLastStyleRuleContains(styleSheet,
@@ -4173,10 +4248,17 @@ int main(int argc, char **argv)
     const QRect ai8DetailStackRect(ai8DetailStack->mapTo(ai8Panel, QPoint(0, 0)), ai8DetailStack->size());
     const QRect ai8NavigationRect(ai8NavigationBar->mapTo(ai8Panel, QPoint(0, 0)), ai8NavigationBar->size());
     const QRect ai8StatusRect(ai8StatusRow->mapTo(ai8Panel, QPoint(0, 0)), ai8StatusRow->size());
+    auto *ai8ManualOutputSpin = ai8TemperatureCard->findChild<QDoubleSpinBox *>(
+        QStringLiteral("ai8ManualOutputSpin"));
+    require(ai8ManualOutputSpin != nullptr,
+            "AI-8 channel common parameters include the bottom-row manual output editor");
+    const QRect ai8ManualOutputRect(ai8ManualOutputSpin->mapTo(ai8Panel, QPoint(0, 0)),
+                                    ai8ManualOutputSpin->size());
     constexpr int kSerialConfigComboSpacingPx = 6;
     require(ai8StackRect.left() < ai8PlotRect.left() &&
                 ai8StackRect.right() < ai8PlotRect.left() &&
                 ai8PlotRect.width() > ai8StackRect.width() &&
+                std::abs(ai8PlotRect.bottom() - ai8ManualOutputRect.bottom()) <= 2 &&
                 std::abs(ai8StackRect.top() - ai8PlotRect.top()) <= 2 &&
                 ai8DetailStackRect.top() > ai8MainContentRect.bottom() &&
                 std::abs(ai8StackRect.left() - ai8MainContentRect.left() -
@@ -4184,7 +4266,7 @@ int main(int argc, char **argv)
                 std::abs(ai8PlotRect.left() -
                          (ai8StackRect.left() + ai8StackRect.width()) -
                          kSerialConfigComboSpacingPx) <= 1,
-            "AI-8 common parameters use 6px left and plot-side spacing with details below");
+            "AI-8 common parameters stay compact and align the plot x-axis baseline with the bottom-row editor");
     require(ai8StatusRect.left() > ai8NavigationRect.right() &&
                 ai8StatusRect.right() <= ai8Panel->rect().right() &&
                 ai8StatusRect.bottom() < ai8MainContentRect.top() &&
@@ -4196,6 +4278,21 @@ int main(int argc, char **argv)
         QStringLiteral("ai8PageSelectorButton1"));
     require(ai8GlobalButton != nullptr && ai8ChannelButton != nullptr,
             "AI-8 page selectors exist");
+    auto *ai8ChannelDetailToggle = ai8TemperatureCard->findChild<QToolButton *>(
+        QStringLiteral("ai8ChannelDetailParametersToggle"));
+    auto *rd105TemperaturePanelForAi8Expansion =
+        window.findChild<TemperatureControllerPanel *>();
+    QWidget *rd105TemperatureCardForAi8Expansion =
+        sensorGroupAncestor(rd105TemperaturePanelForAi8Expansion);
+    auto *temperatureScrollAreaForAi8Expansion =
+        ai8TemperaturePage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
+    QWidget *temperatureScrollContentForAi8Expansion =
+        temperatureScrollAreaForAi8Expansion ? temperatureScrollAreaForAi8Expansion->widget() : nullptr;
+    require(ai8ChannelDetailToggle != nullptr &&
+                rd105TemperatureCardForAi8Expansion != nullptr &&
+                temperatureScrollContentForAi8Expansion != nullptr &&
+                temperatureScrollContentForAi8Expansion->layout() != nullptr,
+            "AI-8 detail toggle, RD105 card, and temperature scroll content exist for expansion stability checks");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8NavigationBar {"),
                                  QStringLiteral("border-radius: 8px"),
@@ -4212,6 +4309,12 @@ int main(int argc, char **argv)
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8MainContentCard {"),
                                  QStringLiteral("border-radius: 8px"),
                                  "AI-8 common parameters and trend plot share a bordered content card");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8DetailParametersCard {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::White, false)),
+        "AI-8 detail parameter cards use the same background as the common parameter card");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8ParameterField {"),
                                  QStringLiteral("border: none"),
@@ -4226,6 +4329,39 @@ int main(int argc, char **argv)
     require(ai8Stack->currentIndex() == 0 && ai8DetailStack->currentIndex() == 0 &&
                 ai8ChannelButton->isChecked(),
             "AI-8 page selector returns to channel parameters");
+    const int rd105CardHeightBeforeAi8DetailExpand =
+        rd105TemperatureCardForAi8Expansion->height();
+    const int ai8MainContentHeightBeforeDetailExpand = ai8MainContentCard->height();
+    const QSize ai8TemperaturePlotSizeBeforeDetailExpand = ai8TemperaturePlot->size();
+    MinimumHeightRecorder rd105CardHeightDuringAi8DetailExpand(
+        rd105TemperatureCardForAi8Expansion);
+    MinimumHeightRecorder ai8MainContentHeightDuringDetailExpand(ai8MainContentCard);
+    ResizeEventCounter ai8TemperaturePlotResizeDuringDetailExpand(ai8TemperaturePlot);
+    clickWidget(ai8ChannelDetailToggle, 120);
+    activateLayouts(&window);
+    require(rd105CardHeightDuringAi8DetailExpand.minimumHeight() >=
+                rd105CardHeightBeforeAi8DetailExpand,
+            "AI-8 detail expansion does not transiently shrink the RD105 card above it");
+    require(ai8MainContentHeightDuringDetailExpand.minimumHeight() >=
+                ai8MainContentHeightBeforeDetailExpand,
+            "AI-8 detail expansion does not transiently shrink its main parameter and trend area");
+    require(ai8TemperaturePlotResizeDuringDetailExpand.count() == 0 &&
+                ai8TemperaturePlot->size() == ai8TemperaturePlotSizeBeforeDetailExpand,
+            "AI-8 detail expansion keeps the temperature trend plot geometry stable");
+    require(ai8TemperaturePlot->testAttribute(Qt::WA_OpaquePaintEvent),
+            "AI-8 temperature trend plot paints opaquely without a background erase flash");
+    if (temperatureScrollContentForAi8Expansion->minimumHeight() <
+        temperatureScrollContentForAi8Expansion->layout()->sizeHint().height())
+    {
+        std::cerr << "TEMP_MIN=" << temperatureScrollContentForAi8Expansion->minimumHeight()
+                  << " TEMP_HINT=" << temperatureScrollContentForAi8Expansion->layout()->sizeHint().height()
+                  << " TEMP_MIN_SIZE=" << temperatureScrollContentForAi8Expansion->layout()->minimumSize().height()
+                  << " VIEWPORT=" << temperatureScrollAreaForAi8Expansion->viewport()->height()
+                  << '\n';
+    }
+    require(temperatureScrollContentForAi8Expansion->minimumHeight() >=
+                temperatureScrollContentForAi8Expansion->layout()->sizeHint().height(),
+            "temperature page scroll content tracks its expanded preferred height instead of compressing cards");
 
     auto *ai8ChannelSpin = ai8TemperatureCard->findChild<QSpinBox *>(
         QStringLiteral("ai8ChannelSpin"));

@@ -350,6 +350,17 @@ int main(int argc, char **argv)
                 ai8TitleAction->property("temperatureTitleCommand").toString() == QStringLiteral("connect"),
             "AI-8288 temperature title reuses the same icon action for reconnect");
     ai8HomeAction->click();
+    require(VaporViewTest::processEventsUntil(900, [ai8HomeAction, ai8DeviceAction, ai8TitleAction]() {
+                return !ai8HomeAction->isEnabled() &&
+                    ai8HomeAction->property("state").toString() == QStringLiteral("connecting") &&
+                    !ai8DeviceAction->isEnabled() &&
+                    ai8DeviceAction->property("state").toString() == QStringLiteral("connecting") &&
+                    !ai8TitleAction->isEnabled() &&
+                    ai8TitleAction->property("state").toString() == QStringLiteral("connecting") &&
+                    ai8TitleAction->property("temperatureTitleCommand").toString() ==
+                        QStringLiteral("disconnect");
+            }),
+            "AI-8288 connection icons keep the spinner state briefly after fast reconnect");
     require(VaporViewTest::processEventsUntil(2000, [ai8HomeAction]() {
                 return ai8HomeAction->isEnabled() &&
                     ai8HomeAction->property("state").toString() == QStringLiteral("connected");

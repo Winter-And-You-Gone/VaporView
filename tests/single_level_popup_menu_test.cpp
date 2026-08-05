@@ -195,31 +195,36 @@ int main(int argc, char **argv)
     menu.popupFrom(&anchor);
     pump();
     require(menu.isVisible(), "popupFrom shows the custom popup shell");
-    require(QApplication::focusWidget() == checkableRow,
-            "menu focuses checked row on open");
-    require(checkableRow->property("keyboardFocus").toBool(),
-            "keyboard focus state is visually tracked separately");
-    const QImage focusedRowImage = checkableRow->grab().toImage();
+    require(QApplication::focusWidget() == &menu,
+            "menu popup keeps focus on the menu shell when first opened");
+    for (VaporView::SingleLevelPopupMenuRow *row : menu.rows())
+    {
+        require(!row->property("hovered").toBool(),
+                "menu popup opens without stale hover highlight");
+        require(!row->property("keyboardFocus").toBool(),
+                "menu popup opens without default keyboard-focus highlight");
+    }
+    const QImage openedCheckedRowImage = checkableRow->grab().toImage();
     const QColor primaryColor = VaporView::appThemeColor(
         VaporView::AppThemeColor::Primary,
         VaporView::isDarkThemeEnabled());
     int primaryPixelCount = 0;
-    for (int y = 0; y < focusedRowImage.height(); ++y)
+    for (int y = 0; y < openedCheckedRowImage.height(); ++y)
     {
-        for (int x = 0; x < focusedRowImage.width(); ++x)
+        for (int x = 0; x < openedCheckedRowImage.width(); ++x)
         {
-            if (focusedRowImage.pixelColor(x, y) == primaryColor)
+            if (openedCheckedRowImage.pixelColor(x, y) == primaryColor)
             {
                 ++primaryPixelCount;
             }
         }
     }
     require(primaryPixelCount == 0,
-            "focused popup row does not render a primary-color outline");
+            "opened popup row does not render a default primary-color outline");
 
-    sendKey(checkableRow, Qt::Key_Down);
+    sendKey(&menu, Qt::Key_Down);
     require(QApplication::focusWidget() == firstRow,
-            "Down skips disabled and hidden rows and wraps to first enabled row");
+            "Down enters the popup at the first enabled row without a default highlight");
     sendKey(firstRow, Qt::Key_Up);
     require(QApplication::focusWidget() == checkableRow,
             "Up skips disabled and hidden rows and wraps to the last enabled row");
@@ -237,6 +242,9 @@ int main(int argc, char **argv)
 
     menu.popupFrom(&anchor);
     pump();
+    sendKey(&menu, Qt::Key_Up);
+    require(QApplication::focusWidget() == checkableRow,
+            "Up enters the popup at the last enabled row");
     sendKey(QApplication::focusWidget(), Qt::Key_Space);
     require(checkableTriggerCount == 1,
             "Space invokes focused checkable row without double trigger");
@@ -248,7 +256,7 @@ int main(int argc, char **argv)
 
     menu.popupFrom(&anchor);
     pump();
-    sendKey(QApplication::focusWidget(), Qt::Key_Escape);
+    sendKey(&menu, Qt::Key_Escape);
     require(!menu.isVisible(),
             "Escape closes menu");
     pump();

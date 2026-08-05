@@ -14,8 +14,10 @@ class QAbstractButton;
 class QButtonGroup;
 class QComboBox;
 class QLabel;
+class QResizeEvent;
 class QStackedWidget;
 class TemperatureTrendPlotWidget;
+class QToolButton;
 
 namespace VaporView::Ground::Widgets
 {
@@ -40,6 +42,9 @@ signals:
     void writePageRequested();
     void outputStatusChanged();
 
+protected:
+    void resizeEvent(QResizeEvent *event) override;
+
 private:
     struct LabelBinding
     {
@@ -61,6 +66,12 @@ private:
         int index = -1;
         QString chinese;
         QString english;
+    };
+
+    struct DetailSectionBinding
+    {
+        QToolButton *toggle = nullptr;
+        QWidget *content = nullptr;
     };
 
     void setupUi();
@@ -89,6 +100,9 @@ private:
     void updateMeasuredValue();
     void updateAlarmStatusDisplay();
     void updateTemperaturePlot();
+    void adjustTemperaturePlotHeight();
+    void setDetailSectionsExpanded(bool expanded);
+    void syncDetailStackHeight();
 
     QButtonGroup *page_button_group_ = nullptr;
     QStackedWidget *page_stack_ = nullptr;
@@ -101,6 +115,7 @@ private:
     QVector<LabelBinding> label_bindings_;
     QVector<ButtonBinding> button_bindings_;
     QVector<ComboItemBinding> combo_item_bindings_;
+    QVector<DetailSectionBinding> detail_section_bindings_;
     std::array<QVector<double>, Ai8TemperatureControllerProtocol::kChannelCount>
         measured_temperature_history_{};
     Ai8TemperatureControllerProtocol::LiveData latest_live_data_;
@@ -113,6 +128,7 @@ private:
     bool english_ = false;
     bool backend_connected_ = false;
     bool operation_succeeded_ = true;
+    bool detail_sections_expanded_ = false;
 };
 
 } // namespace VaporView::Ground::Widgets

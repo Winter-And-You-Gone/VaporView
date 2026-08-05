@@ -151,7 +151,11 @@ int main(int argc, char **argv)
 
     const QList<QToolButton *> rootRows = menuRows(mainMenu, Qt::FindDirectChildrenOnly);
     require(rootRows.size() >= 4, "title application menu exposes root rows as QToolButtons");
-    require(rootRows.first()->hasFocus(), "opening title application menu focuses its first row");
+    for (QToolButton *row : rootRows)
+    {
+        require(!row->hasFocus() && !row->property("keyboardFocus").toBool(),
+                "opening title application menu leaves root rows unhighlighted");
+    }
 
     QSet<QString> objectNames;
     for (QToolButton *row : rootRows)
@@ -167,6 +171,9 @@ int main(int argc, char **argv)
     }
 
     auto *firstRow = rootRows.first();
+    sendKey(panel, Qt::Key_Down);
+    require(QApplication::focusWidget() == firstRow,
+            "Down enters the title application menu at the first root row");
     sendKey(firstRow, Qt::Key_Down);
     require(QApplication::focusWidget() == rootRows.value(1),
             "Down moves to the next root menu row");
