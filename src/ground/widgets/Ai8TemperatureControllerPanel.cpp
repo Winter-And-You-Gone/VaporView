@@ -32,8 +32,12 @@ namespace
 {
 constexpr int kPageColumnCount = 2;
 constexpr int kEditorMinimumWidth = 118;
-constexpr int kParameterFieldMinimumHeight = 66;
-constexpr int kParameterFieldVerticalPadding = 7;
+constexpr int kParameterFieldHeight = 64;
+constexpr int kParameterFieldLabelHeight = 24;
+constexpr int kParameterFieldEditorHeight = 30;
+constexpr int kParameterFieldTopInset = 3;
+constexpr int kParameterFieldBottomInset = 3;
+constexpr int kAi8TemperaturePlotBottomTrim = kParameterFieldBottomInset;
 constexpr int kAi8TemperatureHistoryLimit = 240;
 constexpr int kAi8NavigationButtonHeight = 30;
 constexpr int kAi8NavigationHorizontalMargin = 4;
@@ -348,7 +352,7 @@ void Ai8TemperatureControllerPanel::setupUi()
     temperature_plot_->setCompactMode(true);
     temperature_plot_->setFixedHeight(
         std::max(kAi8TemperaturePlotMinimumHeight,
-                 page_stack_->sizeHint().height() - kParameterFieldVerticalPadding));
+                 page_stack_->sizeHint().height() - kAi8TemperaturePlotBottomTrim));
     temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     mainContentLayout->addWidget(temperature_plot_, 1, Qt::AlignTop);
     rootLayout->addWidget(mainContentCard);
@@ -815,20 +819,23 @@ QWidget *Ai8TemperatureControllerPanel::createParameterField(const QString& chin
     auto *field = new Ai8ParameterFieldFrame(editor, parent);
     field->setObjectName(QStringLiteral("ai8ParameterField"));
     field->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    field->setMinimumHeight(kParameterFieldMinimumHeight);
+    field->setFixedHeight(kParameterFieldHeight);
     auto *layout = new QVBoxLayout(field);
     layout->setContentsMargins(0,
-                               kParameterFieldVerticalPadding,
+                               kParameterFieldTopInset,
                                0,
-                               kParameterFieldVerticalPadding);
+                               kParameterFieldBottomInset);
     layout->setSpacing(4);
 
     auto *label = new QLabel(field);
     label->setObjectName(QStringLiteral("fieldLabel"));
     label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    label->setFixedHeight(kParameterFieldLabelHeight);
     label_bindings_.append({label, chinese, english});
-    layout->addWidget(label);
+    layout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    editor->setProperty("ai8ParameterEditor", true);
     editor->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    editor->setFixedHeight(kParameterFieldEditorHeight);
     layout->addWidget(editor);
     return field;
 }

@@ -166,6 +166,37 @@ int main(int argc, char **argv)
                 channelField->maximumWidth() == channelSpin->minimumWidth() &&
                 setpointField->maximumWidth() == setpointSpin->minimumWidth(),
             "AI-8 common parameter fields shrink to the editor width");
+    QList<QWidget *> channelCommonFields;
+    for (int itemIndex = 0; itemIndex < channelCommonLayout->count(); ++itemIndex)
+    {
+        if (auto *item = channelCommonLayout->itemAt(itemIndex))
+        {
+            if (auto *field = item->widget())
+            {
+                channelCommonFields.append(field);
+            }
+        }
+    }
+    require(channelCommonFields.size() == 8, "AI-8 channel common page has eight field frames");
+    const int commonFieldHeight = channelCommonFields.first()->height();
+    for (QWidget *field : channelCommonFields)
+    {
+        auto *label = field->findChild<QLabel *>(QStringLiteral("fieldLabel"),
+                                                Qt::FindDirectChildrenOnly);
+        require(field->height() == commonFieldHeight &&
+                    label != nullptr &&
+                    label->alignment().testFlag(Qt::AlignVCenter) &&
+                    label->height() >= label->fontMetrics().height() + 2,
+                "AI-8 common parameter rows share one height and center field labels");
+    }
+    auto *row0Field = channelCommonLayout->itemAtPosition(0, 0)->widget();
+    auto *row1Field = channelCommonLayout->itemAtPosition(1, 0)->widget();
+    auto *row2Field = channelCommonLayout->itemAtPosition(2, 0)->widget();
+    auto *row3Field = channelCommonLayout->itemAtPosition(3, 0)->widget();
+    const int firstRowPitch = row1Field->y() - row0Field->y();
+    require(firstRowPitch == row2Field->y() - row1Field->y() &&
+                firstRowPitch == row3Field->y() - row2Field->y(),
+            "AI-8 channel common parameter row pitch stays even");
     const QRect channelControlRect(channelSpin->mapTo(mainContentCard, QPoint(0, 0)),
                                    channelSpin->size());
     const QRect setpointControlRect(setpointSpin->mapTo(mainContentCard, QPoint(0, 0)),
