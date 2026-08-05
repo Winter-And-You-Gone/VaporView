@@ -5086,6 +5086,17 @@ int main(int argc, char **argv)
                 sensorModelSelector1 != nullptr && sensorModelBValueRadio != nullptr &&
                 sensorModelPtRadio != nullptr && sensorModelShRadio != nullptr && sensorModelMf501Radio != nullptr,
             "temperature controller editable controls are discoverable for stale telemetry checks");
+    for (QLabel *fieldLabel : temperaturePanel->findChildren<QLabel *>(QStringLiteral("fieldLabel")))
+    {
+        if (fieldLabel->wordWrap())
+        {
+            continue;
+        }
+        requireSelectableCardTitle(fieldLabel,
+                                   "RD105 temperature-controller field names are selectable and copyable");
+        require(fieldLabel->focusPolicy() == Qt::ClickFocus,
+                "RD105 temperature-controller field names accept mouse focus for selection");
+    }
     require(sensorModelBValueRadio->property("temperatureSensorModelOption").toBool() &&
                 sensorModelPtRadio->property("temperatureSensorModelOption").toBool() &&
                 sensorModelShRadio->property("temperatureSensorModelOption").toBool() &&
@@ -5105,6 +5116,7 @@ int main(int argc, char **argv)
 
     clickWidget(temperatureNavButton, 150);
     activateLayouts(&window);
+    requireCardTitleMouseSelectionAndCopy(controllerModeLabel);
     auto *temperaturePageForLayout = window.findChild<QWidget *>(QStringLiteral("temperaturePage"));
     require(temperaturePageForLayout != nullptr && temperaturePageForLayout->isVisible(),
             "temperature page is visible for controller layout checks");

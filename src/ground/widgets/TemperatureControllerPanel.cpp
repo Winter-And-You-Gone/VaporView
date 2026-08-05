@@ -3,6 +3,7 @@
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
+#include "ground/widgets/LabelTextSelection.h"
 #include "ground/widgets/VisualTextLabel.h"
 #include "ground/widgets/TelemetryPanels.h"
 #include "ground/widgets/TemperatureTrendPlotWidget.h"
@@ -1473,6 +1474,13 @@ void TemperatureControllerPanel::setupUi()
     status_label_->setMinimumHeight(20);
     status_label_->setWordWrap(true);
     layout->addWidget(status_label_);
+    for (QLabel *fieldLabel : findChildren<QLabel *>(QStringLiteral("fieldLabel")))
+    {
+        if (fieldLabel != status_label_)
+        {
+            VaporView::configureSelectableCardTitle(fieldLabel);
+        }
+    }
     setEnglish(false);
     setCommandStatus(QStringLiteral("写入命令会在天空端读回确认后才返回成功。"));
     updateData(VaporView::TemperatureControllerData());
