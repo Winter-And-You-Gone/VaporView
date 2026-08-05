@@ -94,6 +94,7 @@ private:
     void updateAlarmStatusDisplay();
     void updateTemperaturePlot();
     void adjustTemperaturePlotHeight();
+    void syncDetailStackHeight();
 
     QButtonGroup *page_button_group_ = nullptr;
     QStackedWidget *page_stack_ = nullptr;

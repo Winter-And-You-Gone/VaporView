@@ -334,14 +334,14 @@ void Ai8TemperatureControllerPanel::setupUi()
 
     detail_stack_ = new QStackedWidget(this);
     detail_stack_->setObjectName(QStringLiteral("ai8DetailParametersStack"));
-    detail_stack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    detail_stack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
     auto *mainContentCard = new QFrame(this);
     mainContentCard->setObjectName(QStringLiteral("ai8MainContentCard"));
     mainContentCard->setProperty("ai8MainContentCard", true);
     mainContentCard->setFrameShape(QFrame::NoFrame);
     mainContentCard->setAttribute(Qt::WA_StyledBackground, true);
-    mainContentCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    mainContentCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *mainContentLayout = new QHBoxLayout(mainContentCard);
     mainContentLayout->setSizeConstraint(QLayout::SetMinimumSize);
     mainContentLayout->setContentsMargins(kAi8CommonControlGap, 12, kAi8CommonControlGap, 12);
@@ -417,7 +417,7 @@ QWidget *Ai8TemperatureControllerPanel::createDetailSection(const QString& objec
     applyCompactCommonEditorWidth(contentLayout);
     layout->addWidget(content);
 
-    connect(toggle, &QToolButton::toggled, this, [toggle, content](bool checked) {
+    connect(toggle, &QToolButton::toggled, this, [this, toggle, content](bool checked) {
         content->setVisible(checked);
         toggle->setArrowType(checked ? Qt::DownArrow : Qt::RightArrow);
         toggle->setProperty("expanded", checked);
@@ -428,6 +428,8 @@ QWidget *Ai8TemperatureControllerPanel::createDetailSection(const QString& objec
         {
             parentWidget->updateGeometry();
         }
+        syncDetailStackHeight();
+        QTimer::singleShot(0, this, [this]() { syncDetailStackHeight(); });
     });
     return card;
 }
@@ -971,12 +973,51 @@ void Ai8TemperatureControllerPanel::selectPage(int index)
     if (detail_stack_ && detail_stack_->count() > pageIndex)
     {
         detail_stack_->setCurrentIndex(pageIndex);
+        syncDetailStackHeight();
     }
     if (QAbstractButton *button = page_button_group_->button(pageIndex))
     {
         button->setChecked(true);
     }
-    QTimer::singleShot(0, this, [this]() { adjustTemperaturePlotHeight(); });
+    QTimer::singleShot(0, this, [this]() {
+        syncDetailStackHeight();
+        adjustTemperaturePlotHeight();
+    });
+}
+
+void Ai8TemperatureControllerPanel::syncDetailStackHeight()
+{
+    if (!detail_stack_)
+    {
+        return;
+    }
+
+    QWidget *currentDetailPage = detail_stack_->currentWidget();
+    if (!currentDetailPage)
+    {
+        detail_stack_->setFixedHeight(0);
+        return;
+    }
+
+    if (QLayout *pageLayout = currentDetailPage->layout())
+    {
+        pageLayout->invalidate();
+        pageLayout->activate();
+    }
+    currentDetailPage->updateGeometry();
+
+    const int targetHeight = std::max(1, currentDetailPage->sizeHint().height());
+    if (detail_stack_->minimumHeight() != targetHeight ||
+        detail_stack_->maximumHeight() != targetHeight)
+    {
+        detail_stack_->setFixedHeight(targetHeight);
+    }
+    detail_stack_->updateGeometry();
+    if (QLayout *ownLayout = layout())
+    {
+        ownLayout->invalidate();
+        ownLayout->activate();
+    }
 }
 
 void Ai8TemperatureControllerPanel::adjustTemperaturePlotHeight()

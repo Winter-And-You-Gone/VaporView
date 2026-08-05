@@ -112,6 +112,8 @@ int main(int argc, char **argv)
         panel.findChild<QToolButton *>(QStringLiteral("ai8GlobalDetailParametersToggle"));
     auto *channelDetailContent =
         panel.findChild<QWidget *>(QStringLiteral("ai8ChannelDetailParametersContent"));
+    auto *globalDetailContent =
+        panel.findChild<QWidget *>(QStringLiteral("ai8GlobalDetailParametersContent"));
     auto *channelCommonLayout =
         panel.findChild<QGridLayout *>(QStringLiteral("ai8ChannelCommonParametersLayout"));
     auto *inputCommonLayout =
@@ -126,7 +128,8 @@ int main(int argc, char **argv)
         panel.findChild<QLineEdit *>(QStringLiteral("ai8ChannelAlarmStatusEdit"));
     require(channelDetailToggle != nullptr && inputDetailToggle != nullptr &&
                 outputDetailToggle != nullptr && globalDetailToggle != nullptr &&
-                channelDetailContent != nullptr && channelInputGroupEdit != nullptr &&
+                channelDetailContent != nullptr && globalDetailContent != nullptr &&
+                channelInputGroupEdit != nullptr &&
                 channelAlarmStatusEdit != nullptr && !channelInputGroupEdit->isVisible() &&
                 channelCommonLayout != nullptr && channelCommonLayout->count() == 8 &&
                 channelCommonLayout->columnCount() == 2 &&
@@ -291,6 +294,39 @@ int main(int argc, char **argv)
                     channelDetailLayout->itemAtPosition(1, column) != nullptr,
                 "AI-8 channel detail fields fill each compact detail column");
     }
+    const int channelExpandedDetailHeight = detailStack->height();
+    globalButton->click();
+    QApplication::processEvents();
+    QApplication::processEvents();
+    require(detailStack->currentIndex() == 3 &&
+                !globalDetailToggle->isChecked() &&
+                !globalDetailContent->isVisible() &&
+                detailStack->height() < channelExpandedDetailHeight,
+            "AI-8 switching to a collapsed global detail page releases the previous expanded channel height");
+    globalDetailToggle->click();
+    QApplication::processEvents();
+    QApplication::processEvents();
+    const int globalExpandedDetailHeight = detailStack->height();
+    require(globalDetailToggle->isChecked() &&
+                globalDetailContent->isVisible() &&
+                globalExpandedDetailHeight > channelExpandedDetailHeight,
+            "AI-8 global detail page expands to its own taller content height");
+    channelButton->click();
+    QApplication::processEvents();
+    QApplication::processEvents();
+    auto *firstTopDetailField = qobject_cast<QFrame *>(
+        channelDetailLayout->itemAtPosition(0, 0)->widget());
+    auto *firstBottomDetailField = qobject_cast<QFrame *>(
+        channelDetailLayout->itemAtPosition(1, 0)->widget());
+    require(detailStack->currentIndex() == 0 &&
+                channelDetailToggle->isChecked() &&
+                channelDetailContent->isVisible() &&
+                detailStack->height() == channelExpandedDetailHeight &&
+                firstTopDetailField != nullptr &&
+                firstBottomDetailField != nullptr &&
+                firstBottomDetailField->y() - firstTopDetailField->y() <=
+                    firstTopDetailField->height() + 16,
+            "AI-8 switching back to channel detail restores the compact two-row height without vertical blank space");
     channelDetailToggle->click();
     QApplication::processEvents();
     require(!channelDetailToggle->isChecked() && !channelDetailContent->isVisible() &&
