@@ -32,6 +32,7 @@ namespace VaporView::Ground::Widgets
 namespace
 {
 constexpr int kPageColumnCount = 2;
+constexpr int kDetailPageColumnCount = 4;
 constexpr int kEditorMinimumWidth = 118;
 constexpr int kParameterFieldHeight = 66;
 constexpr int kParameterFieldLabelHeight = 20;
@@ -175,15 +176,18 @@ QLineEdit *createReadOnlyLineEdit(QWidget *parent,
     return edit;
 }
 
-void addFieldsToPage(QGridLayout *layout, const QList<QWidget *>& fields)
+void addFieldsToPage(QGridLayout *layout,
+                     const QList<QWidget *>& fields,
+                     int columnCount = kPageColumnCount)
 {
+    columnCount = std::max(1, columnCount);
     for (qsizetype index = 0; index < fields.size(); ++index)
     {
-        const int row = static_cast<int>(index) / kPageColumnCount;
-        const int column = static_cast<int>(index) % kPageColumnCount;
+        const int row = static_cast<int>(index) / columnCount;
+        const int column = static_cast<int>(index) % columnCount;
         layout->addWidget(fields.at(index), row, column);
     }
-    for (int column = 0; column < kPageColumnCount; ++column)
+    for (int column = 0; column < columnCount; ++column)
     {
         layout->setColumnStretch(column, 1);
     }
@@ -409,7 +413,7 @@ QWidget *Ai8TemperatureControllerPanel::createDetailSection(const QString& objec
     contentLayout->setContentsMargins(kAi8CommonControlGap, 8, kAi8CommonControlGap, 8);
     contentLayout->setHorizontalSpacing(kAi8CommonControlGap);
     contentLayout->setVerticalSpacing(8);
-    addFieldsToPage(contentLayout, fields);
+    addFieldsToPage(contentLayout, fields, kDetailPageColumnCount);
     applyCompactCommonEditorWidth(contentLayout);
     layout->addWidget(content);
 

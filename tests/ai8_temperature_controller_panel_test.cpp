@@ -257,8 +257,13 @@ int main(int argc, char **argv)
             "AI-8 detail expansion keeps the main parameter and trend area from shrinking");
     const QList<QFrame *> channelDetailFields =
         channelDetailContent->findChildren<QFrame *>(QStringLiteral("ai8ParameterField"));
+    auto *channelDetailLayout = qobject_cast<QGridLayout *>(channelDetailContent->layout());
     require(channelDetailFields.size() == 8,
             "AI-8 channel detail page exposes its eight detail field frames");
+    require(channelDetailLayout != nullptr &&
+                channelDetailLayout->columnCount() == 4 &&
+                channelDetailLayout->rowCount() == 2,
+            "AI-8 channel detail page uses four compact columns instead of leaving the middle empty");
     for (QFrame *field : channelDetailFields)
     {
         QWidget *editor = nullptr;
@@ -279,6 +284,12 @@ int main(int argc, char **argv)
                     editor->minimumWidth() == channelSpin->minimumWidth() &&
                     editor->maximumWidth() == channelSpin->maximumWidth(),
                 "AI-8 detail fields use the same compact width as common parameters");
+    }
+    for (int column = 0; column < 4; ++column)
+    {
+        require(channelDetailLayout->itemAtPosition(0, column) != nullptr &&
+                    channelDetailLayout->itemAtPosition(1, column) != nullptr,
+                "AI-8 channel detail fields fill each compact detail column");
     }
     channelDetailToggle->click();
     QApplication::processEvents();
