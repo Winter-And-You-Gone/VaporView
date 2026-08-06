@@ -5346,6 +5346,9 @@ int main(int argc, char **argv)
                 temperatureCommonSettingsButton != nullptr &&
                 temperatureConfigPlot != nullptr,
             "temperature controller page exposes a top channel selector and a full-width trend plot");
+    require(temperatureConfigPlot->sizePolicy().verticalPolicy() == QSizePolicy::Fixed &&
+                temperatureControllerContentRow->sizePolicy().verticalPolicy() == QSizePolicy::Fixed,
+            "temperature controller config plot and content row do not expand vertically with the page");
     require(temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureConfigTabs")) == nullptr,
             "temperature controller no longer uses the native tab widget that drew the gray base bar");
     require(temperatureChannelTopRow->parentWidget() == temperatureConfigCard &&
@@ -5506,6 +5509,7 @@ int main(int argc, char **argv)
     require(commonSettingsFields != nullptr &&
                 commonSettingsGrid != nullptr &&
                 commonSettingsGrid->horizontalSpacing() == 6 &&
+                commonSettingsGrid->verticalSpacing() == 10 &&
                 commonSettingsGrid->itemAtPosition(0, 0) != nullptr &&
                 commonSettingsGrid->itemAtPosition(0, 0)->widget() == addressSpin->parentWidget() &&
                 commonSettingsGrid->itemAtPosition(0, 1) != nullptr &&
@@ -5623,10 +5627,12 @@ int main(int argc, char **argv)
     require(controlsCardRectInContent.right() < plotRectInContent.left() &&
                 std::abs(controlsCardRectInContent.top() - plotRectInContent.top()) <= 2 &&
                 plotRectInContent.right() <= temperatureControllerContentRow->rect().right() &&
-                controlsCardRectInContent.height() <= plotRectInContent.height() &&
+                controlsCardRectInContent.height() == plotRectInContent.height() &&
+                plotRectInContent.height() == 306 &&
+                temperatureControllerContentRow->height() == plotRectInContent.height() &&
                 controlsCardBorderHeight >= 0 &&
                 controlsCardBorderHeight <= 2,
-            "temperature common settings keep the shortened left control card aligned with the right trend plot");
+            "temperature common settings keep the shortened left control card aligned with the compressed right trend plot");
     clickWidget(temperatureConfigChannelButton1, 150);
     activateLayouts(&window);
     require(temperatureChannelTopControlsStack->currentIndex() == 0 &&
@@ -5652,8 +5658,9 @@ int main(int argc, char **argv)
             "temperature trend plot is laid out to the right of the channel configuration card");
     require(std::abs(controlsCardRectAfterChannelSwitch.top() - plotRectAfterChannelSwitch.top()) <= 2 &&
                 plotRectAfterChannelSwitch.right() <= temperatureControllerContentRow->rect().right() &&
-                controlsCardRectAfterChannelSwitch.height() <= plotRectAfterChannelSwitch.height(),
-            "temperature trend plot follows the screenshot's side-by-side card layout with the shortened control card");
+                controlsCardRectAfterChannelSwitch.height() == plotRectAfterChannelSwitch.height() &&
+                plotRectAfterChannelSwitch.height() == 306,
+            "temperature trend plot follows the screenshot's side-by-side card layout with the compressed control card");
     require(plotRectAfterChannelSwitch.width() > 0 &&
                 plotRectAfterChannelSwitch.right() >= temperatureControllerContentRow->rect().right() - 1,
             "temperature trend plot expands to the right edge of the remaining controller panel width");
@@ -5836,12 +5843,12 @@ int main(int argc, char **argv)
                 channel2ContentGrids[1]->alignment() == (Qt::AlignTop | Qt::AlignLeft) &&
                 channel2ContentGrids[2]->alignment() == (Qt::AlignTop | Qt::AlignLeft),
             "temperature channel sub-pages top-align their stacked form controls on both channels");
-    require(channelContentGrids[0]->verticalSpacing() == 14 &&
-                channelContentGrids[1]->verticalSpacing() == 14 &&
-                channelContentGrids[2]->verticalSpacing() == 14 &&
-                channel2ContentGrids[0]->verticalSpacing() == 14 &&
-                channel2ContentGrids[1]->verticalSpacing() == 14 &&
-                channel2ContentGrids[2]->verticalSpacing() == 14,
+    require(channelContentGrids[0]->verticalSpacing() == 10 &&
+                channelContentGrids[1]->verticalSpacing() == 10 &&
+                channelContentGrids[2]->verticalSpacing() == 10 &&
+                channel2ContentGrids[0]->verticalSpacing() == 10 &&
+                channel2ContentGrids[1]->verticalSpacing() == 10 &&
+                channel2ContentGrids[2]->verticalSpacing() == 10,
             "temperature channel sub-pages share the sensor-config vertical rhythm on both channels");
     require(channelContentGrids[0]->contentsMargins() == QMargins(6, 0, 6, 6) &&
                 channelContentGrids[1]->contentsMargins() == QMargins(6, 0, 6, 6) &&
@@ -6152,7 +6159,7 @@ int main(int argc, char **argv)
         const QList<QLabel*> labels =
             row->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
         require(rowLayout != nullptr &&
-                    rowLayout->spacing() == 8 &&
+                    rowLayout->spacing() == 6 &&
                     !labels.isEmpty(),
                 message);
         const QRect labelRect(labels.first()->mapTo(row, QPoint(0, 0)), labels.first()->size());
@@ -6500,7 +6507,7 @@ int main(int argc, char **argv)
     activateLayouts(&window);
     require(sensorConfigGrid != nullptr &&
                 sensorConfigGrid->horizontalSpacing() == 6 &&
-                sensorConfigGrid->verticalSpacing() == 14 &&
+                sensorConfigGrid->verticalSpacing() == 10 &&
                 sensorConfigGrid->itemAtPosition(3, 0) == nullptr &&
                 temperatureCalibrationButton->isVisible() &&
                 !polynomialFields->isVisible(),

@@ -63,7 +63,7 @@ constexpr int kTemperatureControllerStackedWideFieldWidth = 110;
 constexpr int kTemperatureControllerPolynomialStackedFieldWidth = 58;
 constexpr int kTemperatureControllerCompactColumnGap = 6;
 constexpr int kTemperatureControllerStackedFieldSpacing = 6;
-constexpr int kTemperatureControllerChannelSubPageVerticalSpacing = 14;
+constexpr int kTemperatureControllerChannelSubPageVerticalSpacing = 10;
 constexpr int kTemperatureControllerCalibrationTabWidth = 26;
 constexpr int kTemperatureControllerCalibrationOverlayHeight = 224;
 constexpr int kTemperatureControllerControlsCardWidth = 280;
@@ -85,9 +85,9 @@ constexpr int kTemperatureControllerNavigationHorizontalMargin = 2;
 constexpr int kTemperatureControllerNavigationVerticalMargin = 3;
 constexpr int kTemperatureControllerNavigationSpacing = 2;
 constexpr int kTemperatureControllerRowSpacing = 8;
-constexpr int kTemperatureControllerConfigPlotMinimumHeight = 430;
+constexpr int kTemperatureControllerConfigPlotHeight = 306;
 constexpr int kTemperatureControllerChannelConfigSubStackHeight =
-    kTemperatureControllerConfigPlotMinimumHeight -
+    kTemperatureControllerConfigPlotHeight -
     2 * kTemperatureControllerControlsCardVerticalPadding -
     kTemperatureControllerRowSpacing -
     kTemperatureControllerConfigRowHeight;
@@ -1348,6 +1348,7 @@ void TemperatureControllerPanel::setupUi()
     auto *contentRow = new QWidget(configCard);
     contentRow->setObjectName(QStringLiteral("temperatureControllerContentRow"));
     contentRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    contentRow->setFixedHeight(kTemperatureControllerConfigPlotHeight);
     auto *contentRowLayout = new QHBoxLayout(contentRow);
     contentRowLayout->setContentsMargins(0, 0, 0, 0);
     contentRowLayout->setSpacing(12);
@@ -1381,9 +1382,9 @@ void TemperatureControllerPanel::setupUi()
     temperature_plot_ = new TemperatureTrendPlotWidget(contentRow);
     temperature_plot_->setProperty("temperatureConfigPlot", true);
     temperature_plot_->setCompactMode(true);
-    temperature_plot_->setMinimumHeight(kTemperatureControllerConfigPlotMinimumHeight);
-    temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    contentRowLayout->addWidget(temperature_plot_, 1);
+    temperature_plot_->setFixedHeight(kTemperatureControllerConfigPlotHeight);
+    temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    contentRowLayout->addWidget(temperature_plot_, 1, Qt::AlignTop);
 
     configCardLayout->addWidget(contentRow, 0);
     selectChannel(0);
@@ -2162,7 +2163,7 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
     page->setMinimumHeight(kTemperatureControllerCommonStackHeight);
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(6, 10, 6, 8);
-    layout->setSpacing(24);
+    layout->setSpacing(kTemperatureControllerChannelSubPageVerticalSpacing);
     layout->setAlignment(Qt::AlignLeft);
 
     auto *fieldsContainer = new QWidget(page);
@@ -2172,7 +2173,7 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
     fieldsLayout->setObjectName(QStringLiteral("temperatureCommonSettingsFieldsGrid"));
     fieldsLayout->setContentsMargins(0, 0, 0, 0);
     fieldsLayout->setHorizontalSpacing(kTemperatureControllerCompactColumnGap);
-    fieldsLayout->setVerticalSpacing(24);
+    fieldsLayout->setVerticalSpacing(kTemperatureControllerChannelSubPageVerticalSpacing);
     fieldsLayout->setAlignment(Qt::AlignLeft | Qt::AlignTop);
 
     auto makeFieldLabel = [page](const QString& text) {
@@ -2192,7 +2193,7 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
         cell->setFixedWidth(kTemperatureControllerSettingsInputWidth);
         auto *cellLayout = new QVBoxLayout(cell);
         cellLayout->setContentsMargins(0, 0, 0, 0);
-        cellLayout->setSpacing(8);
+        cellLayout->setSpacing(kTemperatureControllerStackedFieldSpacing);
         cellLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
         cellLayout->addWidget(editor, 0, Qt::AlignLeft | Qt::AlignVCenter);
         return cell;
