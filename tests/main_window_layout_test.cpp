@@ -3636,8 +3636,8 @@ int main(int argc, char **argv)
         }
     }
     require(logFilterMenu != nullptr, "log filter menu uses the shared single-level popup");
-    require(logFilterMenu->rows().size() == 4,
-            "log view menu exposes attention, all, debug, and follow rows");
+    require(logFilterMenu->rows().size() == 5,
+            "log view menu exposes attention, all, debug, follow, and source/category rows");
     QStringList logFilterTexts;
     for (VaporView::SingleLevelPopupMenuRow *row : logFilterMenu->rows())
     {
@@ -3649,7 +3649,8 @@ int main(int argc, char **argv)
     require(logFilterTexts.contains(QStringLiteral("关注")) &&
                 logFilterTexts.contains(QStringLiteral("全部")) &&
                 logFilterTexts.contains(QStringLiteral("调试")) &&
-                logFilterTexts.contains(QStringLiteral("自动跟随")),
+                logFilterTexts.contains(QStringLiteral("自动跟随")) &&
+                logFilterTexts.contains(QStringLiteral("过滤[来源/分类]")),
             "log view menu exposes positive view choices");
     require(logFilterMenu->cornerRadius() == 10,
             "log filter menu uses the shared 10px popup corner radius");

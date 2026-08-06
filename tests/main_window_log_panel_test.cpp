@@ -33,8 +33,11 @@ struct MainWindowSettingsBackup
         logAutoFollow = settings.value(QStringLiteral("log_auto_follow"));
         hadLogViewMode = settings.contains(QStringLiteral("log_view_mode"));
         logViewMode = settings.value(QStringLiteral("log_view_mode"));
+        hadLogHideSourceCategory = settings.contains(QStringLiteral("log_hide_source_category"));
+        logHideSourceCategory = settings.value(QStringLiteral("log_hide_source_category"));
         settings.remove(QStringLiteral("log_auto_follow"));
         settings.remove(QStringLiteral("log_view_mode"));
+        settings.remove(QStringLiteral("log_hide_source_category"));
         settings.sync();
     }
 
@@ -57,6 +60,14 @@ struct MainWindowSettingsBackup
         {
             settings.remove(QStringLiteral("log_view_mode"));
         }
+        if (hadLogHideSourceCategory)
+        {
+            settings.setValue(QStringLiteral("log_hide_source_category"), logHideSourceCategory);
+        }
+        else
+        {
+            settings.remove(QStringLiteral("log_hide_source_category"));
+        }
         settings.sync();
     }
 
@@ -64,6 +75,8 @@ struct MainWindowSettingsBackup
     QVariant logAutoFollow;
     bool hadLogViewMode = false;
     QVariant logViewMode;
+    bool hadLogHideSourceCategory = false;
+    QVariant logHideSourceCategory;
 };
 
 MainWindowSettingsBackup *settingsBackup = nullptr;
@@ -182,6 +195,7 @@ int main(int argc, char **argv)
     auto *allAction = window->findChild<QAction *>(QStringLiteral("logFilterAllMenuAction"));
     auto *debugAction = window->findChild<QAction *>(QStringLiteral("logFilterDebugMenuAction"));
     auto *followAction = window->findChild<QAction *>(QStringLiteral("logFilterAutoFollowMenuAction"));
+    auto *hideSourceCategoryAction = window->findChild<QAction *>(QStringLiteral("logFilterSourceCategoryMenuAction"));
     auto *clearButton = findActionButton(*window,
                                          QStringLiteral("清空显示"),
                                          QStringLiteral("仅清空当前显示，不删除日志文件"));
@@ -204,7 +218,8 @@ int main(int argc, char **argv)
             "positive log view buttons are not duplicated outside the filter menu");
     require(window->findChild<QToolButton *>(QStringLiteral("logAutoFollowButton")) == nullptr,
             "auto-follow is not duplicated outside the filter menu");
-    require(attentionAction && allAction && debugAction && followAction, "log filter menu actions exist");
+    require(attentionAction && allAction && debugAction && followAction && hideSourceCategoryAction,
+            "log filter menu actions exist");
     require(clearButton != nullptr, "clear display button exists");
     require(searchButton->parentWidget() == logTitleActions &&
                 clearButton->parentWidget() == logTitleActions,
@@ -254,6 +269,37 @@ int main(int argc, char **argv)
 
     require(logList->model()->rowCount() == 3,
             "attention view shows warning, explicit attention Info, and connection Info");
+    QModelIndex connectionLogIndex;
+    for (int row = 0; row < logList->model()->rowCount(); ++row)
+    {
+        const QModelIndex index = logList->model()->index(row, 0);
+        if (index.data(VaporView::Ground::Main::UiLogModel::MessageRole)
+                .toString()
+                .contains(QStringLiteral("[EPSILON]")))
+        {
+            connectionLogIndex = index;
+            break;
+        }
+    }
+    require(connectionLogIndex.isValid(), "connection log row is visible in attention view");
+    require(connectionLogIndex.data(Qt::DisplayRole).toString().contains(QStringLiteral("Ground/device.connection")),
+            "connection row shows source/category by default");
+    hideSourceCategoryAction->trigger();
+    VaporViewTest::processEventsFor(30);
+    connectionLogIndex = logList->model()->index(connectionLogIndex.row(), 0);
+    require(!connectionLogIndex.data(Qt::DisplayRole).toString().contains(QStringLiteral("Ground/device.connection")),
+            "source/category filter hides source/category from the visible row text");
+    require(connectionLogIndex.data(VaporView::Ground::Main::UiLogModel::SourceRole).toString() == QStringLiteral("Ground") &&
+                connectionLogIndex.data(VaporView::Ground::Main::UiLogModel::CategoryRole).toString() == QStringLiteral("device.connection"),
+            "source/category filter keeps structured source and category roles intact");
+    searchEdit->setText(QStringLiteral("device.connection"));
+    VaporViewTest::processEventsFor(30);
+    require(logList->model()->rowCount() == 2,
+            "source/category filter does not remove source/category from structured search");
+    searchEdit->clear();
+    VaporViewTest::processEventsFor(30);
+    hideSourceCategoryAction->trigger();
+    VaporViewTest::processEventsFor(30);
 
     allAction->trigger();
     VaporViewTest::processEventsFor(30);

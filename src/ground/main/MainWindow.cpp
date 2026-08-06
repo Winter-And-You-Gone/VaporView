@@ -80,6 +80,8 @@ MainWindow::MainWindow(QWidget *parent)
     state_->log_view_mode_ = VaporView::Ground::Main::uiLogViewModeFromSetting(
         userSettings.value(QStringLiteral("log_view_mode"), QStringLiteral("attention")).toString());
     state_->log_auto_follow_enabled_ = userSettings.value(QStringLiteral("log_auto_follow"), true).toBool();
+    state_->log_hide_source_category_enabled_ =
+        userSettings.value(QStringLiteral("log_hide_source_category"), false).toBool();
     if (qApp)
     {
         qApp->setProperty(kAppDarkThemeProperty, state_->dark_theme_enabled_);

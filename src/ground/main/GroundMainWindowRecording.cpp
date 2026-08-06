@@ -350,12 +350,14 @@ void MainWindow::updateLogFilterAction()
               QStringLiteral("Attention"),
               QStringLiteral("All"),
               QStringLiteral("Debug"),
-              QStringLiteral("Auto follow")}
+              QStringLiteral("Auto follow"),
+              QStringLiteral("Hide source/category")}
         : QStringList{
               QStringLiteral("关注"),
               QStringLiteral("全部"),
               QStringLiteral("调试"),
-              QStringLiteral("自动跟随")};
+              QStringLiteral("自动跟随"),
+              QStringLiteral("过滤[来源/分类]")};
     const QFontMetrics filterTextMetrics(qApp ? qApp->font() : font());
     int filterTextWidth = 0;
     for (const QString& text : filterTexts)
@@ -431,6 +433,12 @@ void MainWindow::updateLogFilterAction()
                  QStringLiteral("自动跟随"),
                  QStringLiteral("Follow new logs only while the view is already near the bottom"),
                  QStringLiteral("仅在当前接近底部时跟随新日志"));
+    updateAction(state_->log_filter_source_category_action_,
+                 state_->log_hide_source_category_enabled_,
+                 QStringLiteral("Hide source/category"),
+                 QStringLiteral("过滤[来源/分类]"),
+                 QStringLiteral("Hide source/category in displayed rows while keeping full fields in log files"),
+                 QStringLiteral("隐藏每条显示日志中的来源/分类，日志文件仍保留完整字段"));
 
     if (state_->log_filter_menu_)
     {

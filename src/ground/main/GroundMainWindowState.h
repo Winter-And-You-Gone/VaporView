@@ -197,6 +197,7 @@ struct MainWindowState
     QAction *log_filter_config_action_;
     QAction *log_filter_connection_action_;
     QAction *log_filter_recording_action_;
+    QAction *log_filter_source_category_action_;
     QAction *log_filter_debug_action_;
     QAction *log_filter_warning_action_;
     QAction *log_filter_qt_action_;
@@ -402,6 +403,7 @@ struct MainWindowState
     bool is_english_;
     LogUiViewMode log_view_mode_;
     bool log_auto_follow_enabled_;
+    bool log_hide_source_category_enabled_;
     int log_new_visible_count_;
     int log_unread_warning_count_;
     int log_unread_error_count_;

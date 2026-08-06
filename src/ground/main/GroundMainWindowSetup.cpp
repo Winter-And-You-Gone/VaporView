@@ -603,6 +603,19 @@ void MainWindow::setupToolBar()
             scrollLogViewToBottom();
         }
     });
+    state_->log_filter_source_category_action_ =
+        createLogFilterAction(QStringLiteral("logFilterSourceCategoryMenuAction"), [this]() {
+            state_->log_hide_source_category_enabled_ = !state_->log_hide_source_category_enabled_;
+            QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+            VaporView::setPersistentSetting(settings,
+                                            QStringLiteral("log_hide_source_category"),
+                                            state_->log_hide_source_category_enabled_);
+            if (state_->log_model_)
+            {
+                state_->log_model_->setHideSourceCategory(state_->log_hide_source_category_enabled_);
+            }
+            updateLogFilterAction();
+        });
 
     state_->session_viewer_action_->setIcon(createWaveformViewerIcon());
 #ifdef VAPORVIEW_HAS_OSGEARTH
@@ -5041,6 +5054,7 @@ void MainWindow::setupLogPanel()
     log_layout->addWidget(state_->log_new_entries_row_);
 
     state_->log_model_ = new VaporView::Ground::Main::UiLogModel(this);
+    state_->log_model_->setHideSourceCategory(state_->log_hide_source_category_enabled_);
     state_->log_filter_proxy_ = new VaporView::Ground::Main::UiLogFilterProxyModel(this);
     state_->log_filter_proxy_->setSourceModel(state_->log_model_);
     state_->log_filter_proxy_->setViewMode(state_->log_view_mode_);

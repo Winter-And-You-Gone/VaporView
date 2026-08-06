@@ -119,6 +119,40 @@ void searchMatchesStructuredFields()
     require(proxyRows(model, LogUiViewMode::Attention, QStringLiteral("epsilon")) == 1, "search matches field values");
 }
 
+void hideSourceCategoryOnlyChangesDisplayText()
+{
+    using namespace VaporView::Ground::Main;
+    UiLogModel model;
+    model.appendRecord(makeRecord(VaporView::LogLevel::Info,
+                                  QStringLiteral("设备连接信息"),
+                                  {{QStringLiteral("event"), QStringLiteral("device_connection_status")},
+                                   {QStringLiteral("ui_visibility"), QStringLiteral("attention")}},
+                                  QStringLiteral("Ground"),
+                                  QStringLiteral("device.connection")));
+
+    const QModelIndex index = model.index(0, 0);
+    require(index.isValid(), "hide source/category test has one log row");
+    require(!model.hideSourceCategory(), "source/category display is visible by default");
+    require(index.data(Qt::DisplayRole).toString().contains(QStringLiteral("Ground/device.connection")),
+            "default display includes source/category");
+
+    model.setHideSourceCategory(true);
+    require(model.hideSourceCategory(), "source/category display toggle is enabled");
+    require(!index.data(Qt::DisplayRole).toString().contains(QStringLiteral("Ground/device.connection")),
+            "hidden source/category is removed from display text");
+    require(index.data(Qt::DisplayRole).toString().contains(QStringLiteral("设备连接信息")),
+            "hidden source/category display keeps the log message");
+    require(index.data(UiLogModel::SourceRole).toString() == QStringLiteral("Ground") &&
+                index.data(UiLogModel::CategoryRole).toString() == QStringLiteral("device.connection"),
+            "hidden source/category keeps structured roles");
+    require(proxyRows(model, LogUiViewMode::Attention, QStringLiteral("device.connection")) == 1,
+            "hidden source/category keeps structured search text");
+
+    model.setHideSourceCategory(false);
+    require(index.data(Qt::DisplayRole).toString().contains(QStringLiteral("Ground/device.connection")),
+            "source/category display can be restored");
+}
+
 void repeatedWarningsAreAggregated()
 {
     using namespace VaporView::Ground::Main;
@@ -329,6 +363,7 @@ int main(int argc, char **argv)
     defaultViewIsAttention();
     structuredVisibilityDoesNotUseMessageLanguage();
     searchMatchesStructuredFields();
+    hideSourceCategoryOnlyChangesDisplayText();
     repeatedWarningsAreAggregated();
     aggregationPromotesVisibility();
     pendingAttentionInfoDoesNotEvictWarning();
