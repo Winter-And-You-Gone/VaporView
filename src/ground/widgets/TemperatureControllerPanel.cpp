@@ -68,6 +68,7 @@ constexpr int kTemperatureControllerCalibrationTabWidth = 26;
 constexpr int kTemperatureControllerCalibrationOverlayHeight = 224;
 constexpr int kTemperatureControllerControlsCardWidth = 280;
 constexpr int kTemperatureControllerControlsCardHorizontalPadding = 7;
+constexpr int kTemperatureControllerControlsCardVerticalPadding = 16;
 constexpr int kTemperatureControllerFactoryResetButtonWidth = 170;
 constexpr int kTemperatureControllerChannelButtonWidth = 78;
 constexpr int kTemperatureControllerCommonButtonWidth = 88;
@@ -84,8 +85,12 @@ constexpr int kTemperatureControllerNavigationHorizontalMargin = 2;
 constexpr int kTemperatureControllerNavigationVerticalMargin = 3;
 constexpr int kTemperatureControllerNavigationSpacing = 2;
 constexpr int kTemperatureControllerRowSpacing = 8;
+constexpr int kTemperatureControllerConfigPlotMinimumHeight = 430;
 constexpr int kTemperatureControllerChannelConfigSubStackHeight =
-    430;
+    kTemperatureControllerConfigPlotMinimumHeight -
+    2 * kTemperatureControllerControlsCardVerticalPadding -
+    kTemperatureControllerRowSpacing -
+    kTemperatureControllerConfigRowHeight;
 constexpr int kTemperatureControllerChannelStackHeight =
     kTemperatureControllerChannelConfigSubStackHeight +
     kTemperatureControllerRowSpacing +
@@ -1355,9 +1360,9 @@ void TemperatureControllerPanel::setupUi()
     controlsCard->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     auto *controlsCardLayout = new QVBoxLayout(controlsCard);
     controlsCardLayout->setContentsMargins(kTemperatureControllerControlsCardHorizontalPadding,
-                                           16,
+                                           kTemperatureControllerControlsCardVerticalPadding,
                                            kTemperatureControllerControlsCardHorizontalPadding,
-                                           16);
+                                           kTemperatureControllerControlsCardVerticalPadding);
     controlsCardLayout->setSpacing(0);
 
     channel_stack_ = new QStackedWidget(controlsCard);
@@ -1376,7 +1381,7 @@ void TemperatureControllerPanel::setupUi()
     temperature_plot_ = new TemperatureTrendPlotWidget(contentRow);
     temperature_plot_->setProperty("temperatureConfigPlot", true);
     temperature_plot_->setCompactMode(true);
-    temperature_plot_->setMinimumHeight(430);
+    temperature_plot_->setMinimumHeight(kTemperatureControllerConfigPlotMinimumHeight);
     temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     contentRowLayout->addWidget(temperature_plot_, 1);
 

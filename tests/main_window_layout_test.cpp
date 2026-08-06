@@ -5404,7 +5404,10 @@ int main(int argc, char **argv)
     const QRect stackRectInControlsCard(
         temperatureChannelStack->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
         temperatureChannelStack->size());
+    auto *temperatureControllerControlsCardLayout =
+        qobject_cast<QVBoxLayout *>(temperatureControllerControlsCard->layout());
     require(temperatureControllerControlsCard->width() <= 280 &&
+                temperatureControllerControlsCardLayout != nullptr &&
                 stackRectInControlsCard.left() <= 8 &&
                 temperatureControllerControlsCard->width() - stackRectInControlsCard.right() - 1 <= 8,
             "temperature parameter card trims the outer horizontal padding around the config stack");
@@ -5611,10 +5614,19 @@ int main(int argc, char **argv)
         temperatureControllerControlsCard->size());
     const QRect plotRectInContent(temperatureConfigPlot->mapTo(temperatureControllerContentRow, QPoint(0, 0)),
                                   temperatureConfigPlot->size());
+    const QMargins controlsCardMargins = temperatureControllerControlsCardLayout->contentsMargins();
+    const int controlsCardBorderHeight =
+        controlsCardRectInContent.height() -
+        controlsCardMargins.top() -
+        controlsCardMargins.bottom() -
+        temperatureChannelStack->height();
     require(controlsCardRectInContent.right() < plotRectInContent.left() &&
                 std::abs(controlsCardRectInContent.top() - plotRectInContent.top()) <= 2 &&
-                plotRectInContent.right() <= temperatureControllerContentRow->rect().right(),
-            "temperature common settings keep the left control card beside the right trend plot");
+                plotRectInContent.right() <= temperatureControllerContentRow->rect().right() &&
+                controlsCardRectInContent.height() <= plotRectInContent.height() &&
+                controlsCardBorderHeight >= 0 &&
+                controlsCardBorderHeight <= 2,
+            "temperature common settings keep the shortened left control card aligned with the right trend plot");
     clickWidget(temperatureConfigChannelButton1, 150);
     activateLayouts(&window);
     require(temperatureChannelTopControlsStack->currentIndex() == 0 &&
@@ -5639,8 +5651,9 @@ int main(int argc, char **argv)
     require(controlsCardRectAfterChannelSwitch.right() < plotRectAfterChannelSwitch.left(),
             "temperature trend plot is laid out to the right of the channel configuration card");
     require(std::abs(controlsCardRectAfterChannelSwitch.top() - plotRectAfterChannelSwitch.top()) <= 2 &&
-                plotRectAfterChannelSwitch.right() <= temperatureControllerContentRow->rect().right(),
-            "temperature trend plot follows the screenshot's side-by-side card layout");
+                plotRectAfterChannelSwitch.right() <= temperatureControllerContentRow->rect().right() &&
+                controlsCardRectAfterChannelSwitch.height() <= plotRectAfterChannelSwitch.height(),
+            "temperature trend plot follows the screenshot's side-by-side card layout with the shortened control card");
     require(plotRectAfterChannelSwitch.width() > 0 &&
                 plotRectAfterChannelSwitch.right() >= temperatureControllerContentRow->rect().right() - 1,
             "temperature trend plot expands to the right edge of the remaining controller panel width");
@@ -5863,11 +5876,19 @@ int main(int argc, char **argv)
         temperatureChannelSubTopBar->size());
     const int subTopBarBottomGap =
         temperatureChannelStack->currentWidget()->rect().bottom() - subTopBarRectInChannelPage.bottom();
+    QWidget *initialChannelSubPageRow = temperatureChannelSubTopBar->parentWidget();
+    const int expectedConfigSubStackHeight =
+        initialChannelSubPageRow
+            ? temperatureChannelStack->height() -
+                  initialChannelSubPageRow->height() -
+                  temperatureChannelPageLayout->spacing()
+            : -1;
     require(temperatureChannelStack->height() >= temperatureChannelStack->currentWidget()->sizeHint().height() &&
                 temperatureChannelConfigSubStack->height() >=
                     temperatureChannelConfigSubStack->currentWidget()->sizeHint().height() &&
+                temperatureChannelConfigSubStack->height() == expectedConfigSubStackHeight &&
                 subTopBarBottomGap == 0,
-            "temperature lower parameter tabs reserve enough height for their tallest content page");
+            "temperature lower parameter tabs reserve enough height without retaining the old tall subpage stack");
     clickWidget(temperatureChannelAdvancedParamsButton, 150);
     activateLayouts(&window);
     auto *overtempUpperSpin = temperaturePanel->findChild<QDoubleSpinBox *>(
