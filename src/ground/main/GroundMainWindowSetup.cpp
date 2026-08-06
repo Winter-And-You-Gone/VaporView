@@ -4785,6 +4785,8 @@ void MainWindow::setupDataPanels()
             this, &MainWindow::onTcpRawWaveFrameReady);
     connect(state_->tcp_wave_panel_, &TcpWavePanel::logMessageRequested,
             this, &MainWindow::log);
+    connect(state_->tcp_wave_panel_, &TcpWavePanel::connectionLogMessageRequested,
+            this, &MainWindow::logConnectionInfo);
     connect(state_->tcp_wave_panel_, &TcpWavePanel::connectionStateChanged, this, [this](bool connected) {
         if (isUiTestMode())
         {

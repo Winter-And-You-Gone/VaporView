@@ -203,6 +203,7 @@ private:
     void refreshLocalSerialPortManualOptionTexts();
     void loadModernStyleSheet();
     void log(const QString& message);
+    void logConnectionInfo(const QString& message);
     void updateRecordingStatusLabel();
     qint64 uiTestRecordingElapsedMs() const;
     void startOrResumeUiTestRecording();

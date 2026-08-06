@@ -1398,7 +1398,7 @@ void MainWindow::connectLocalTemperatureController()
     invalidateTemperatureControllerDataUi();
     startHomeDeviceActionSpinner(VaporView::SkyDeviceId::TemperatureController);
     updateConnectionStatus(anyCollectorRunning());
-    log(QString(english ? "[RD105] Connecting %1 @ %2..." : "[RD105] 正在连接 %1 @ %2...")
+    logConnectionInfo(QString(english ? "[RD105] Connecting %1 @ %2..." : "[RD105] 正在连接 %1 @ %2...")
             .arg(port, baudText));
 
     VaporView::Ground::Devices::LocalTemperatureConnectionRequest request;
@@ -1413,7 +1413,7 @@ void MainWindow::connectLocalTemperatureController()
         std::move(request),
         [this](bool connected, const QString& resultText) {
             QMetaObject::invokeMethod(this, [this, connected, resultText]() {
-                log(resultText);
+                logConnectionInfo(resultText);
                 state_->connection_attempt_in_progress_ = false;
                 state_->cancel_connection_requested_.store(false);
                 if (!connected)

@@ -243,17 +243,25 @@ int main(int argc, char **argv)
                   QStringLiteral("记录已开始。"),
                   {{QStringLiteral("event"), QStringLiteral("recording_started")},
                    {QStringLiteral("ui_visibility"), QStringLiteral("attention")}});
+    publishRecord(logService,
+                  VaporView::LogLevel::Info,
+                  QStringLiteral("Ground"),
+                  QStringLiteral("device.connection"),
+                  QStringLiteral("设备连接状态已更新。"),
+                  {{QStringLiteral("event"), QStringLiteral("ground_device_connection_status")},
+                   {QStringLiteral("ui_visibility"), QStringLiteral("attention")},
+                   {QStringLiteral("ui_message"), QStringLiteral("[EPSILON] 设备响应正常，连接成功: COM3 @ 921600 波特率")}});
 
-    require(logList->model()->rowCount() == 2,
-            "attention view shows warning and explicit attention Info only");
+    require(logList->model()->rowCount() == 3,
+            "attention view shows warning, explicit attention Info, and connection Info");
 
     allAction->trigger();
     VaporViewTest::processEventsFor(30);
-    require(logList->model()->rowCount() == 3, "all view includes ordinary Info but keeps Debug hidden");
+    require(logList->model()->rowCount() == 4, "all view includes ordinary Info but keeps Debug hidden");
 
     debugAction->trigger();
     VaporViewTest::processEventsFor(30);
-    require(logList->model()->rowCount() == 4, "debug view includes Debug records");
+    require(logList->model()->rowCount() == 5, "debug view includes Debug records");
 
     publishRecord(logService,
                   VaporView::LogLevel::Warning,

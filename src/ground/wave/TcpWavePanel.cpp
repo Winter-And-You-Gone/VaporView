@@ -2525,7 +2525,7 @@ void TcpWavePanel::onToggleConnectionClicked()
             : (is_english_ ? QStringLiteral("UI test waveform source disconnected")
                             : QStringLiteral("界面测试波形源已断开")));
         emit connectionStateChanged(ui_test_connected_);
-        emit logMessageRequested(ui_test_connected_
+        emit connectionLogMessageRequested(ui_test_connected_
             ? QStringLiteral("[界面测试] TCP wave connected in memory")
             : QStringLiteral("[界面测试] TCP wave disconnected in memory"));
         return;
@@ -2533,7 +2533,7 @@ void TcpWavePanel::onToggleConnectionClicked()
     if (remote_sky_mode_)
     {
         const bool connectRequested = !remote_wave_tcp_connected_;
-        emit logMessageRequested(connectRequested
+        emit connectionLogMessageRequested(connectRequested
             ? (is_english_ ? QStringLiteral("Requesting Sky wave TCP connection...")
                            : QStringLiteral("正在请求连接天空端波形 TCP..."))
             : (is_english_ ? QStringLiteral("Requesting Sky wave TCP disconnection...")
@@ -2544,7 +2544,7 @@ void TcpWavePanel::onToggleConnectionClicked()
 
     if (socket_ && socket_->state() != QAbstractSocket::UnconnectedState)
     {
-        emit logMessageRequested(is_english_ ? QStringLiteral("Disconnecting TCP wave link...")
+        emit connectionLogMessageRequested(is_english_ ? QStringLiteral("Disconnecting TCP wave link...")
                                              : QStringLiteral("正在断开 TCP 波形连接..."));
         requestGracefulDisconnect();
         return;
@@ -2566,8 +2566,8 @@ void TcpWavePanel::onToggleConnectionClicked()
         return;
     }
 
-    emit logMessageRequested(QString(is_english_ ? "Connecting TCP wave link: %1:%2..."
-                                                 : "正在连接 TCP 波形：%1:%2...")
+    emit connectionLogMessageRequested(QString(is_english_ ? "Connecting TCP wave link: %1:%2..."
+                                                  : "正在连接 TCP 波形：%1:%2...")
         .arg(host_edit_->text()).arg(targetPort));
     recreateSocket();
     buffer_.clear();
@@ -2799,7 +2799,7 @@ void TcpWavePanel::onSocketConnected()
 {
     setConnectedUiState(true);
     emit connectionStateChanged(true);
-    emit logMessageRequested(QString(is_english_
+    emit connectionLogMessageRequested(QString(is_english_
         ? "TCP wave link connected: %1:%2"
         : "TCP 波形已连接：%1:%2")
         .arg(host_edit_->text()).arg(port()));
@@ -2816,7 +2816,7 @@ void TcpWavePanel::onSocketDisconnected()
         : (is_english_ ? QStringLiteral("connection closed") : QStringLiteral("连接已关闭"));
     setConnectedUiState(false);
     emit connectionStateChanged(false);
-    emit logMessageRequested(QString(is_english_
+    emit connectionLogMessageRequested(QString(is_english_
         ? "TCP wave link disconnected: %1; received frames=%2, buffered bytes=%3, expected payload=%4"
         : "TCP 波形已断开：%1；已接收帧=%2，客户端缓冲=%3 字节，当前期望负载=%4 字节")
         .arg(reason)
@@ -2907,7 +2907,7 @@ void TcpWavePanel::onSocketError()
     }
     const QString errorText = socket_->errorString();
     setStatusText(errorText);
-    emit logMessageRequested(QString(is_english_
+    emit connectionLogMessageRequested(QString(is_english_
         ? "TCP wave socket error: %1; received frames=%2, buffered bytes=%3"
         : "TCP 波形 socket 错误：%1；已接收帧=%2，客户端缓冲=%3 字节")
         .arg(errorText)

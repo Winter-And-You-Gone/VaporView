@@ -204,7 +204,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     VaporView::Ground::Devices::LocalConnectionCallbacks connectionCallbacks;
     connectionCallbacks.log = [this](const QString& message) {
-        QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(this, [this, message]() { logConnectionInfo(message); }, Qt::QueuedConnection);
     };
     connectionCallbacks.finished = [this](bool connected) {
         QMetaObject::invokeMethod(this, [this, connected]() {

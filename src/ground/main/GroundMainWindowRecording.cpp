@@ -78,6 +78,49 @@ void MainWindow::log(const QString& message)
     }
 }
 
+void MainWindow::logConnectionInfo(const QString& message)
+{
+    if (message.startsWith('\r'))
+    {
+        log(message);
+        return;
+    }
+
+    const QString category = QStringLiteral("device.connection");
+    const VaporView::LogLevel level = VaporView::LogLevel::Info;
+    const bool published = VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
+        logService.publish(level,
+                           QStringLiteral("Ground"),
+                           category,
+                           QStringLiteral("设备连接状态已更新。"),
+                           {{QStringLiteral("ui_visibility"), QStringLiteral("attention")},
+                            {QStringLiteral("ui_visible"), true},
+                             {QStringLiteral("event"), QStringLiteral("ground_device_connection_status")},
+                             {QStringLiteral("legacy_unclassified"), true},
+                             {QStringLiteral("ui_message"), message}});
+    });
+    if (!published)
+    {
+        VaporView::LogRecord uiRecord;
+        uiRecord.level = level;
+        uiRecord.source = QStringLiteral("Ground");
+        uiRecord.category = category;
+        uiRecord.message = QStringLiteral("设备连接状态已更新。");
+        uiRecord.fields = {{QStringLiteral("ui_visibility"), QStringLiteral("attention")},
+                           {QStringLiteral("ui_visible"), true},
+                           {QStringLiteral("event"), QStringLiteral("ground_device_connection_status")},
+                           {QStringLiteral("legacy_unclassified"), true},
+                           {QStringLiteral("ui_message"), message}};
+        enqueueUiLogRecord(uiRecord);
+    }
+    state_->has_inline_progress_log_ = false;
+
+    if (!published && state_->recording_service_->isSessionOpen())
+    {
+        state_->recording_service_->appendEvent(QStringLiteral("info"), message);
+    }
+}
+
 void MainWindow::enqueueUiLogRecord(const VaporView::LogRecord& record)
 {
     if (record.category == QStringLiteral("ui.progress") ||

@@ -87,6 +87,7 @@
 | Ground | session.write | session_event_log_append_failed | Error | 无法从会话日志接收器写入 event_log.csv。 | session_sink_failure, source, category |  | SESSION_EVENT_LOG_APPEND_FAILED |
 | Ground | session.write | session_error_log_append_failed | Error | 无法从会话日志接收器写入 error_log.txt。 | session_sink_failure, source, category |  | SESSION_ERROR_LOG_APPEND_FAILED |
 | Ground | session.write | recording_stop_summary_append_failed | Error | 无法写入记录停止摘要。 |  |  | RECORDING_STOP_SUMMARY_APPEND_FAILED |
+| Ground | device.connection | ground_device_connection_status | Info | 设备连接状态已更新。 | ui_visibility, ui_message, legacy_unclassified, ui_visible |  |  |
 | Ground | ui.legacy | ground_ui_legacy_log | Info | 地面端界面日志已更新。 | ui_visibility, ui_message, legacy_unclassified, ui_visible |  |  |
 | Ground | ui.progress | ground_ui_progress_updated | Debug | 界面进度日志已更新。 | ui_visibility, ui_message, inline, legacy_unclassified, ui_visible |  |  |
 | Ground | ui.log | ui_log_view_cleared | Info | 日志面板显示已清空。 | ui_visibility |  |  |
@@ -104,6 +105,7 @@
 清单格式使用普通条目，避免被事件目录审计脚本当成第二张事件目录表解析：
 
 - Any / ui.legacy / `user_issue_reported` / Info、Warning、Error / `attention` / 可合并 / 默认键：用户问题上报需要默认进入关注视图，Info 也可作为重要状态确认。
+- Ground / device.connection / `ground_device_connection_status` / Info / `attention` / 可合并 / 默认键：用户点击设备连接后产生的连接进度、结果和 TCP 波形连接状态需要默认进入关注视图。
 - Ground / ui.legacy / `ground_ui_legacy_log` / Info / `details` / 可合并 / 默认键：旧 `log(QString)` 只保留普通 UI 文本，默认不占用关注视图。
 - Ground / ui.progress / `ground_ui_progress_updated` / Debug / `hidden` / 可合并 / 默认键：回车进度和高频状态只写文件，不进入桌面面板。
 - Ground / ui.log / `ui_log_view_cleared` / Info / `hidden` / 可合并 / 默认键：“清空显示”动作可审计，但清空后不能立即生成可见行。
