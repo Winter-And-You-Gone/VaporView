@@ -5565,9 +5565,11 @@ int main(int argc, char **argv)
             "temperature common settings follow selector, RS485, values, factory-reset, and lower-tab rows");
     require(std::abs(commonAddressInputRectInCard.left() - commonOvertempInputRectInCard.left()) <= 1 &&
                 std::abs(commonBaudComboRectInCard.left() - commonInternalInputRectInCard.left()) <= 1 &&
+                commonBaudComboRectInCard.left() - commonAddressInputRectInCard.right() - 1 <= 8 &&
+                commonInternalInputRectInCard.left() - commonOvertempInputRectInCard.right() - 1 <= 8 &&
                 addressSpin->width() == overtempOutputCombo->width() &&
                 rs485BaudCombo->width() == commonInternalTemperatureEdit->width(),
-            "temperature common settings align equal-width field editors within each data column");
+            "temperature common settings align equal-width field editors with compact adjacent gaps");
     require(selectedChannelCommonParamsPage != nullptr && selectedChannelCommonParamsGrid != nullptr,
             "temperature channel common parameters remain available after switching into common settings");
     require(commonBaudComboRectInCard.right() <=
@@ -5879,6 +5881,7 @@ int main(int argc, char **argv)
     QWidget *advancedParamsPage = temperatureChannelConfigSubStack->currentWidget();
     auto *advancedParamsGrid = qobject_cast<QGridLayout *>(advancedParamsPage->layout());
     require(advancedParamsGrid != nullptr &&
+                advancedParamsGrid->horizontalSpacing() == 6 &&
                 advancedParamsGrid->itemAtPosition(0, 0) != nullptr &&
                 advancedParamsGrid->itemAtPosition(0, 0)->widget() == overtempUpperSpin->parentWidget() &&
                 advancedParamsGrid->itemAtPosition(0, 1) != nullptr &&
@@ -5906,6 +5909,9 @@ int main(int argc, char **argv)
                 sensorResistanceRect.top() > temperatureSlopeRect.bottom() &&
                 sensorResistanceRect.left() == overtempUpperRect.left(),
             "temperature professional input fields align by column and use one shared width");
+    require(overtempLowerRect.left() - overtempUpperRect.right() - 1 <= 8 &&
+                startupDelayRect.left() - temperatureSlopeRect.right() - 1 <= 8,
+            "temperature professional adjacent inputs use the compact reference horizontal gap");
     clickWidget(temperatureChannelCommonParamsButton, 150);
     activateLayouts(&window);
     require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
@@ -5919,19 +5925,30 @@ int main(int argc, char **argv)
     auto *commonParamsGrid = qobject_cast<QGridLayout *>(temperatureChannelConfigSubStack->currentWidget()->layout());
     require(commonParamsGrid != nullptr,
             "temperature lower common tab uses a shared grid for cross-row input alignment");
-    auto requireStackedChannelFieldLayout = [commonParamsGrid](QWidget *editor,
-                                                               int row,
-                                                               int column,
-                                                               const char *message) {
+    auto *pidFields = temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePidFieldsChannel1"));
+    auto *outputTargetFields =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureOutputTargetFieldsChannel1"));
+    require(pidFields != nullptr &&
+                outputTargetFields != nullptr &&
+                qobject_cast<QHBoxLayout *>(pidFields->layout()) != nullptr &&
+                qobject_cast<QHBoxLayout *>(outputTargetFields->layout()) != nullptr &&
+                qobject_cast<QHBoxLayout *>(pidFields->layout())->spacing() == 6 &&
+                qobject_cast<QHBoxLayout *>(outputTargetFields->layout())->spacing() == 6 &&
+                commonParamsGrid->itemAtPosition(0, 0) != nullptr &&
+                commonParamsGrid->itemAtPosition(0, 0)->widget() == pidFields &&
+                commonParamsGrid->itemAtPosition(1, 0) != nullptr &&
+                commonParamsGrid->itemAtPosition(1, 0)->widget() == outputTargetFields &&
+                commonParamsGrid->itemAtPosition(2, 0) != nullptr &&
+                commonParamsGrid->itemAtPosition(2, 0)->widget() == maxOutputSpin->parentWidget(),
+            "temperature lower common tab groups adjacent input columns into compact row containers");
+    auto requireStackedChannelFieldLayout = [](QWidget *editor,
+                                               const char *message) {
         require(editor != nullptr && editor->parentWidget() != nullptr, message);
         QWidget *cell = editor->parentWidget();
-        QLayoutItem *cellItem = commonParamsGrid->itemAtPosition(row, column);
         auto *cellLayout = qobject_cast<QVBoxLayout *>(cell->layout());
         const QList<QLabel*> labels =
             cell->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
         require(cell->objectName() == QStringLiteral("temperatureConfigFieldColumn") &&
-                    cellItem != nullptr &&
-                    cellItem->widget() == cell &&
                     cellLayout != nullptr &&
                     cellLayout->spacing() == 8 &&
                     !labels.isEmpty(),
@@ -5943,17 +5960,17 @@ int main(int argc, char **argv)
                     labelRect.bottom() < editorRect.top(),
                 message);
     };
-    requireStackedChannelFieldLayout(modeCombo, 1, 0,
+    requireStackedChannelFieldLayout(modeCombo,
                                      "temperature output mode field lives in the lower common-params page");
-    requireStackedChannelFieldLayout(targetSpin, 1, 2,
+    requireStackedChannelFieldLayout(targetSpin,
                                      "temperature target temperature field lives in the lower common-params page");
-    requireStackedChannelFieldLayout(maxOutputSpin, 2, 0,
+    requireStackedChannelFieldLayout(maxOutputSpin,
                                      "temperature max output field lives in the lower common-params page");
-    requireStackedChannelFieldLayout(kpSpin, 0, 0,
+    requireStackedChannelFieldLayout(kpSpin,
                                      "temperature PID P field lives in the lower common-params page");
-    requireStackedChannelFieldLayout(kiSpin, 0, 1,
+    requireStackedChannelFieldLayout(kiSpin,
                                      "temperature PID I field lives in the lower common-params page");
-    requireStackedChannelFieldLayout(kdSpin, 0, 2,
+    requireStackedChannelFieldLayout(kdSpin,
                                      "temperature PID D field lives in the lower common-params page");
     auto requirePidTextFits = [](QSpinBox *spin, const char *message) {
         QLineEdit *lineEdit = spin ? spin->findChild<QLineEdit *>(QString(), Qt::FindDirectChildrenOnly) : nullptr;
@@ -5982,18 +5999,25 @@ int main(int argc, char **argv)
     require(std::abs(kpRowRect.top() - kiRowRect.top()) <= 2 &&
                 std::abs(kiRowRect.top() - kdRowRect.top()) <= 2 &&
                 kpRowRect.right() < kiRowRect.left() &&
-                kiRowRect.right() < kdRowRect.left(),
-            "temperature lower common tab lays P, I, and D on the first row without a redundant PID heading");
-    require(modeRowRect.top() > kdRowRect.bottom() &&
-                std::abs(modeRowRect.top() - targetRowRect.top()) <= 2 &&
-                maxOutputRowRect.top() > modeRowRect.bottom() &&
-                modeRowRect.right() < targetRowRect.left() &&
-                maxOutputRowRect.left() == modeRowRect.left(),
-            "temperature lower common tab lays output mode and target on the second row, with max output below");
+                kiRowRect.right() < kdRowRect.left() &&
+                kiRowRect.left() - kpRowRect.right() - 1 <= 8 &&
+                kdRowRect.left() - kiRowRect.right() - 1 <= 8,
+            "temperature lower common tab lays P, I, and D on the first row with compact adjacent gaps");
+    require(modeRowRect.top() > kdRowRect.bottom(),
+            "temperature lower common tab places output mode below the PID row");
+    require(std::abs(modeRowRect.top() - targetRowRect.top()) <= 2,
+            "temperature lower common tab aligns output mode and target on the same row");
+    require(maxOutputRowRect.top() > modeRowRect.bottom(),
+            "temperature lower common tab places max output below the output/target row");
+    require(modeRowRect.right() < targetRowRect.left(),
+            "temperature lower common tab keeps target to the right of output mode");
+    require(targetRowRect.left() - modeRowRect.right() - 1 <= 8,
+            "temperature output mode and target inputs use the compact reference horizontal gap");
+    require(maxOutputRowRect.left() == modeRowRect.left(),
+            "temperature lower common tab keeps max output aligned under output mode");
     require(std::abs(kpRowRect.left() - modeRowRect.left()) <= 1 &&
-                std::abs(modeRowRect.left() - maxOutputRowRect.left()) <= 1 &&
-                std::abs(kdRowRect.left() - targetRowRect.left()) <= 1,
-            "temperature common-parameter inputs align vertically by column");
+                std::abs(modeRowRect.left() - maxOutputRowRect.left()) <= 1,
+            "temperature common-parameter rows align their first input column while keeping row-local compact gaps");
     require(temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePidHeadingChannel1")) == nullptr,
             "temperature common parameters omit the redundant PID heading");
     require(modeRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
@@ -6166,31 +6190,44 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePolynomialFieldsChannel1"));
     auto *polynomialFieldsGrid =
         polynomialFields ? qobject_cast<QGridLayout *>(polynomialFields->layout()) : nullptr;
+    auto *ntcFields = temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureNtcFieldsChannel1"));
+    auto *ptR0Fields = temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePtR0FieldsChannel1"));
+    auto *ptBFields = temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePtBFieldsChannel1"));
     require(sensorConfigGrid != nullptr &&
                 sensorConfigGrid->horizontalSpacing() == 6 &&
+                ntcFields != nullptr &&
+                ptR0Fields != nullptr &&
+                ptBFields != nullptr &&
+                qobject_cast<QHBoxLayout *>(ntcFields->layout()) != nullptr &&
+                qobject_cast<QHBoxLayout *>(ptR0Fields->layout()) != nullptr &&
+                qobject_cast<QHBoxLayout *>(ptBFields->layout()) != nullptr &&
+                qobject_cast<QHBoxLayout *>(ntcFields->layout())->spacing() == 6 &&
+                qobject_cast<QHBoxLayout *>(ptR0Fields->layout())->spacing() == 6 &&
+                qobject_cast<QHBoxLayout *>(ptBFields->layout())->spacing() == 6 &&
+                sensorConfigGrid->itemAtPosition(0, 0) != nullptr &&
+                sensorConfigGrid->itemAtPosition(0, 0)->widget() == ntcFields &&
+                sensorConfigGrid->itemAtPosition(1, 0) != nullptr &&
+                sensorConfigGrid->itemAtPosition(1, 0)->widget() == ptR0Fields &&
+                sensorConfigGrid->itemAtPosition(2, 0) != nullptr &&
+                sensorConfigGrid->itemAtPosition(2, 0)->widget() == ptBFields &&
                 polynomialFields != nullptr &&
                 polynomialFieldsGrid != nullptr &&
                 polynomialFieldsGrid->horizontalSpacing() == 6,
-            "temperature sensor config uses the compact AI-8-style horizontal field gap");
+            "temperature sensor config uses compact row containers and AI-8-style horizontal field gaps");
     auto sensorFieldLabel = [](QWidget *editor) -> QLabel * {
         return editor && editor->parentWidget()
             ? editor->parentWidget()->findChild<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly)
             : nullptr;
     };
     auto requireStackedSensorFieldLayout = [sensorConfigGrid](QWidget *editor,
-                                                              int row,
-                                                              int column,
                                                               int expectedWidth,
                                                               const char *message) {
         require(sensorConfigGrid != nullptr && editor != nullptr && editor->parentWidget() != nullptr, message);
         QWidget *cell = editor->parentWidget();
-        QLayoutItem *cellItem = sensorConfigGrid->itemAtPosition(row, column);
         auto *cellLayout = qobject_cast<QVBoxLayout *>(cell->layout());
         const QList<QLabel*> labels =
             cell->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
         require(cell->objectName() == QStringLiteral("temperatureConfigFieldRow") &&
-                    cellItem != nullptr &&
-                    cellItem->widget() == cell &&
                     cellLayout != nullptr &&
                     cellLayout->spacing() == 6 &&
                     !labels.isEmpty() &&
@@ -6231,17 +6268,17 @@ int main(int argc, char **argv)
                     labelRect.bottom() < editorRect.top(),
                 message);
     };
-    requireStackedSensorFieldLayout(ntcR0Edit, 0, 0, 110,
+    requireStackedSensorFieldLayout(ntcR0Edit, 110,
                                     "temperature NTC R0 field uses the narrowed stacked layout");
-    requireStackedSensorFieldLayout(ntcBEdit, 0, 1, 110,
+    requireStackedSensorFieldLayout(ntcBEdit, 110,
                                     "temperature NTC B field uses the narrowed stacked layout");
-    requireStackedSensorFieldLayout(ptR0Edit, 1, 0, 110,
+    requireStackedSensorFieldLayout(ptR0Edit, 110,
                                     "temperature PT R0 field uses the narrowed stacked layout");
-    requireStackedSensorFieldLayout(ptAEdit, 1, 1, 110,
+    requireStackedSensorFieldLayout(ptAEdit, 110,
                                     "temperature PT A field uses the narrowed stacked layout");
-    requireStackedSensorFieldLayout(ptBEdit, 2, 0, 110,
+    requireStackedSensorFieldLayout(ptBEdit, 110,
                                     "temperature PT B field uses the narrowed stacked layout");
-    requireStackedSensorFieldLayout(ptCEdit, 2, 1, 110,
+    requireStackedSensorFieldLayout(ptCEdit, 110,
                                     "temperature PT C field uses the narrowed stacked layout");
     requirePolynomialFieldLayout(polynomialA0Edit, 0, 0, 58,
                                  "temperature polynomial field uses the compact nested stacked layout");
@@ -6259,6 +6296,30 @@ int main(int argc, char **argv)
                 ptBEdit->width() == 110 &&
                 ptCEdit->width() == 110,
             "temperature primary sensor inputs use the narrowed half-width fields");
+    auto requireCompactHorizontalInputGap = [](QWidget *left,
+                                               QWidget *right,
+                                               QWidget *host,
+                                               const char *message) {
+        require(left != nullptr && right != nullptr && host != nullptr, message);
+        const QRect leftRect(left->mapTo(host, QPoint(0, 0)), left->size());
+        const QRect rightRect(right->mapTo(host, QPoint(0, 0)), right->size());
+        require(std::abs(leftRect.top() - rightRect.top()) <= 2 &&
+                    leftRect.right() < rightRect.left() &&
+                    rightRect.left() - leftRect.right() - 1 <= 8,
+                message);
+    };
+    requireCompactHorizontalInputGap(ntcR0Edit,
+                                     ntcBEdit,
+                                     temperatureChannelConfigSubStack->currentWidget(),
+                                     "temperature NTC adjacent inputs use the compact reference horizontal gap");
+    requireCompactHorizontalInputGap(ptR0Edit,
+                                     ptAEdit,
+                                     temperatureChannelConfigSubStack->currentWidget(),
+                                     "temperature PT R0/PT A adjacent inputs use the compact reference horizontal gap");
+    requireCompactHorizontalInputGap(ptBEdit,
+                                     ptCEdit,
+                                     temperatureChannelConfigSubStack->currentWidget(),
+                                     "temperature PT B/PT C adjacent inputs use the compact reference horizontal gap");
     std::array<QLineEdit *, 8> polynomialEdits{};
     for (int coefficient = 0; coefficient < 8; ++coefficient)
     {

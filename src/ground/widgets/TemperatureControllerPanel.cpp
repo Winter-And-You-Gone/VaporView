@@ -1691,11 +1691,32 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
                                         channel.kd_spin,
                                         kdLabelText,
                                         kTemperatureControllerCompactPidInputWidth);
-    layout->addWidget(kpField, 0, 0, Qt::AlignLeft | Qt::AlignTop);
-    layout->addWidget(kiField, 0, 1, Qt::AlignLeft | Qt::AlignTop);
-    layout->addWidget(kdField, 0, 2, Qt::AlignLeft | Qt::AlignTop);
-    layout->addWidget(modeField, 1, 0, 1, 2, Qt::AlignLeft | Qt::AlignTop);
-    layout->addWidget(targetField, 1, 2, 1, 1, Qt::AlignLeft | Qt::AlignTop);
+
+    auto *pidFields = new QWidget(page);
+    pidFields->setObjectName(QStringLiteral("temperaturePidFieldsChannel%1").arg(index + 1));
+    pidFields->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    pidFields->setFixedWidth(kTemperatureControllerCompactPidInputWidth * 3 +
+                             kTemperatureControllerCompactColumnGap * 2);
+    auto *pidFieldsLayout = new QHBoxLayout(pidFields);
+    pidFieldsLayout->setContentsMargins(0, 0, 0, 0);
+    pidFieldsLayout->setSpacing(kTemperatureControllerCompactColumnGap);
+    pidFieldsLayout->addWidget(kpField, 0, Qt::AlignLeft | Qt::AlignTop);
+    pidFieldsLayout->addWidget(kiField, 0, Qt::AlignLeft | Qt::AlignTop);
+    pidFieldsLayout->addWidget(kdField, 0, Qt::AlignLeft | Qt::AlignTop);
+
+    auto *outputTargetFields = new QWidget(page);
+    outputTargetFields->setObjectName(QStringLiteral("temperatureOutputTargetFieldsChannel%1").arg(index + 1));
+    outputTargetFields->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    outputTargetFields->setFixedWidth(kTemperatureControllerStackedWideFieldWidth * 2 +
+                                      kTemperatureControllerCompactColumnGap);
+    auto *outputTargetFieldsLayout = new QHBoxLayout(outputTargetFields);
+    outputTargetFieldsLayout->setContentsMargins(0, 0, 0, 0);
+    outputTargetFieldsLayout->setSpacing(kTemperatureControllerCompactColumnGap);
+    outputTargetFieldsLayout->addWidget(modeField, 0, Qt::AlignLeft | Qt::AlignTop);
+    outputTargetFieldsLayout->addWidget(targetField, 0, Qt::AlignLeft | Qt::AlignTop);
+
+    layout->addWidget(pidFields, 0, 0, 1, 3, Qt::AlignLeft | Qt::AlignTop);
+    layout->addWidget(outputTargetFields, 1, 0, 1, 3, Qt::AlignLeft | Qt::AlignTop);
     layout->addWidget(maxOutputField, 2, 0, 1, 2, Qt::AlignLeft | Qt::AlignTop);
 
     connect(channel.max_output_spin, &QSpinBox::editingFinished, this, [this, channelNumber, spin = channel.max_output_spin]() {
@@ -1727,7 +1748,7 @@ QWidget *TemperatureControllerPanel::createChannelAdvancedParamsPage(int index)
     page->setObjectName(QStringLiteral("temperatureChannelAdvancedParamsPageChannel%1").arg(index + 1));
     auto *layout = new QGridLayout(page);
     layout->setContentsMargins(14, 8, 14, 8);
-    layout->setHorizontalSpacing(42);
+    layout->setHorizontalSpacing(kTemperatureControllerCompactColumnGap);
     layout->setVerticalSpacing(22);
     layout->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     ChannelWidgets& channel = channels_[index];
@@ -1830,13 +1851,10 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         label->setMinimumHeight(22);
         return label;
     };
-    auto addFieldToLayout = [page, &makeFieldLabel](QGridLayout *targetLayout,
-                                                    int row,
-                                                    int column,
-                                                    const QString& labelText,
-                                                    QWidget *editor,
-                                                    QLabel *&label,
-                                                    int fieldWidth) {
+    auto makeFieldCell = [page, &makeFieldLabel](const QString& labelText,
+                                                 QWidget *editor,
+                                                 QLabel *&label,
+                                                 int fieldWidth) {
         label = makeFieldLabel(labelText);
         editor->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         auto *cell = new QWidget(page);
@@ -1848,15 +1866,35 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         cellLayout->setSpacing(6);
         cellLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
         cellLayout->addWidget(editor, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        return cell;
+    };
+    auto addFieldToLayout = [&makeFieldCell](QGridLayout *targetLayout,
+                                             int row,
+                                             int column,
+                                             const QString& labelText,
+                                             QWidget *editor,
+                                             QLabel *&label,
+                                             int fieldWidth) {
+        QWidget *cell = makeFieldCell(labelText, editor, label, fieldWidth);
         targetLayout->addWidget(cell, row, column, Qt::AlignLeft | Qt::AlignTop);
     };
-    auto addField = [layout, &addFieldToLayout](int row,
-                                                int column,
-                                                const QString& labelText,
-                                                QWidget *editor,
-                                                QLabel *&label,
-                                                int fieldWidth) {
-        addFieldToLayout(layout, row, column, labelText, editor, label, fieldWidth);
+    auto addFieldToRow = [&makeFieldCell](QHBoxLayout *targetLayout,
+                                          const QString& labelText,
+                                          QWidget *editor,
+                                          QLabel *&label,
+                                          int fieldWidth) {
+        QWidget *cell = makeFieldCell(labelText, editor, label, fieldWidth);
+        targetLayout->addWidget(cell, 0, Qt::AlignLeft | Qt::AlignTop);
+    };
+    auto makeFieldRow = [page, index](const QString& objectName, int fixedWidth) {
+        auto *row = new QWidget(page);
+        row->setObjectName(QStringLiteral("%1Channel%2").arg(objectName).arg(index + 1));
+        row->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        row->setFixedWidth(fixedWidth);
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        rowLayout->setSpacing(kTemperatureControllerCompactColumnGap);
+        return std::pair<QWidget *, QHBoxLayout *>(row, rowLayout);
     };
     auto makeIntegerEdit = [page](const QString& name, int min, int max, int width) {
         auto *edit = new QLineEdit(page);
@@ -1879,17 +1917,26 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         return edit;
     };
 
+    auto [ntcFields, ntcFieldsLayout] = makeFieldRow(
+        QStringLiteral("temperatureNtcFields"),
+        kTemperatureControllerStackedWideFieldWidth * 2 + kTemperatureControllerCompactColumnGap);
+    auto [ptR0Fields, ptR0FieldsLayout] = makeFieldRow(
+        QStringLiteral("temperaturePtR0Fields"),
+        kTemperatureControllerStackedWideFieldWidth * 2 + kTemperatureControllerCompactColumnGap);
+    auto [ptBFields, ptBFieldsLayout] = makeFieldRow(
+        QStringLiteral("temperaturePtBFields"),
+        kTemperatureControllerStackedWideFieldWidth * 2 + kTemperatureControllerCompactColumnGap);
+
     channel.ntc_r0_edit = makeIntegerEdit(QStringLiteral("temperatureNtcR0EditChannel%1").arg(index + 1),
                                           0,
                                           9000000,
                                           kTemperatureControllerStackedWideFieldWidth);
     channel.ntc_r0_edit->setText(QStringLiteral("0"));
-    addField(0,
-             0,
-             QStringLiteral("NTC R0(Ohm)"),
-             channel.ntc_r0_edit,
-             channel.ntc_r0_label_text,
-             kTemperatureControllerStackedWideFieldWidth);
+    addFieldToRow(ntcFieldsLayout,
+                  QStringLiteral("NTC R0(Ohm)"),
+                  channel.ntc_r0_edit,
+                  channel.ntc_r0_label_text,
+                  kTemperatureControllerStackedWideFieldWidth);
 
     channel.ntc_b_edit = makeDecimalEdit(QStringLiteral("temperatureNtcBEditChannel%1").arg(index + 1),
                                          1000.0,
@@ -1897,12 +1944,12 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
                                          2,
                                          kTemperatureControllerStackedWideFieldWidth);
     channel.ntc_b_edit->setText(QStringLiteral("1000.00"));
-    addField(0,
-             1,
-             QStringLiteral("NTC B"),
-             channel.ntc_b_edit,
-             channel.ntc_b_label_text,
-             kTemperatureControllerStackedWideFieldWidth);
+    addFieldToRow(ntcFieldsLayout,
+                  QStringLiteral("NTC B"),
+                  channel.ntc_b_edit,
+                  channel.ntc_b_label_text,
+                  kTemperatureControllerStackedWideFieldWidth);
+    layout->addWidget(ntcFields, 0, 0, 1, 2, Qt::AlignLeft | Qt::AlignTop);
 
     channel.pt_r0_edit = makeDecimalEdit(QStringLiteral("temperaturePtR0EditChannel%1").arg(index + 1),
                                          0.0,
@@ -1910,50 +1957,52 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
                                          3,
                                          kTemperatureControllerStackedWideFieldWidth);
     channel.pt_r0_edit->setText(QStringLiteral("0.000"));
-    addField(1,
-             0,
-             QStringLiteral("PT R0(Ohm)"),
-             channel.pt_r0_edit,
-             channel.pt_r0_label_text,
-             kTemperatureControllerStackedWideFieldWidth);
+    addFieldToRow(ptR0FieldsLayout,
+                  QStringLiteral("PT R0(Ohm)"),
+                  channel.pt_r0_edit,
+                  channel.pt_r0_label_text,
+                  kTemperatureControllerStackedWideFieldWidth);
 
     channel.pt_a_edit = makeDecimalEdit(QStringLiteral("temperaturePtAEditChannel%1").arg(index + 1),
                                         -9.0,
                                         9.0,
                                         6,
                                         kTemperatureControllerStackedWideFieldWidth);
-    addField(1,
-             1,
-             QStringLiteral("PT A(E-3)"),
-             channel.pt_a_edit,
-             channel.pt_a_label_text,
-             kTemperatureControllerStackedWideFieldWidth);
+    addFieldToRow(ptR0FieldsLayout,
+                  QStringLiteral("PT A(E-3)"),
+                  channel.pt_a_edit,
+                  channel.pt_a_label_text,
+                  kTemperatureControllerStackedWideFieldWidth);
+    layout->addWidget(ptR0Fields, 1, 0, 1, 2, Qt::AlignLeft | Qt::AlignTop);
+
     channel.pt_b_edit = makeDecimalEdit(QStringLiteral("temperaturePtBEditChannel%1").arg(index + 1),
                                         -90.0,
                                         90.0,
                                         6,
                                         kTemperatureControllerStackedWideFieldWidth);
-    addField(2,
-             0,
-             QStringLiteral("PT B(E-7)"),
-             channel.pt_b_edit,
-             channel.pt_b_label_text,
-             kTemperatureControllerStackedWideFieldWidth);
+    addFieldToRow(ptBFieldsLayout,
+                  QStringLiteral("PT B(E-7)"),
+                  channel.pt_b_edit,
+                  channel.pt_b_label_text,
+                  kTemperatureControllerStackedWideFieldWidth);
+
     channel.pt_c_edit = makeDecimalEdit(QStringLiteral("temperaturePtCEditChannel%1").arg(index + 1),
                                         -9.0,
                                         9.0,
                                         6,
                                         kTemperatureControllerStackedWideFieldWidth);
-    addField(2,
-             1,
-             QStringLiteral("PT C(E-12)"),
-             channel.pt_c_edit,
-             channel.pt_c_label_text,
-             kTemperatureControllerStackedWideFieldWidth);
+    addFieldToRow(ptBFieldsLayout,
+                  QStringLiteral("PT C(E-12)"),
+                  channel.pt_c_edit,
+                  channel.pt_c_label_text,
+                  kTemperatureControllerStackedWideFieldWidth);
+    layout->addWidget(ptBFields, 2, 0, 1, 2, Qt::AlignLeft | Qt::AlignTop);
 
     auto *polynomialFields = new QWidget(page);
     polynomialFields->setObjectName(QStringLiteral("temperaturePolynomialFieldsChannel%1").arg(index + 1));
     polynomialFields->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    polynomialFields->setFixedWidth(kTemperatureControllerPolynomialStackedFieldWidth * 4 +
+                                    kTemperatureControllerCompactColumnGap * 3);
     auto *polynomialLayout = new QGridLayout(polynomialFields);
     polynomialLayout->setObjectName(QStringLiteral("temperaturePolynomialFieldsGridChannel%1").arg(index + 1));
     polynomialLayout->setContentsMargins(0, 0, 0, 0);
