@@ -5785,12 +5785,18 @@ int main(int argc, char **argv)
             "temperature lower parameter tabs keep keyboard tab focus without mouse-click focus frames");
     auto lowerTabHasTextPadding = [](QPushButton *button) {
         return button != nullptr &&
-            button->width() >= button->fontMetrics().horizontalAdvance(button->text()) + 20;
+            button->width() >= button->fontMetrics().horizontalAdvance(button->text()) + 28;
     };
     require(lowerTabHasTextPadding(temperatureChannelCommonParamsButton) &&
                 lowerTabHasTextPadding(temperatureChannelAdvancedParamsButton) &&
                 lowerTabHasTextPadding(temperatureChannelSensorConfigButton),
             "temperature lower parameter tabs reserve horizontal padding for their full labels");
+    auto *temperatureChannelSubTopBarLayout =
+        qobject_cast<QHBoxLayout *>(temperatureChannelSubTopBar->layout());
+    require(temperatureChannelSubTopBarLayout != nullptr &&
+                temperatureChannelSubTopBarLayout->contentsMargins() == QMargins(2, 3, 2, 3) &&
+                temperatureChannelSubTopBarLayout->spacing() == 2,
+            "temperature lower parameter tabs reserve text width without excess outer gaps");
     std::array<QGridLayout *, 3> channelContentGrids{};
     for (int pageIndex = 0; pageIndex < temperatureChannelConfigSubStack->count(); ++pageIndex)
     {
