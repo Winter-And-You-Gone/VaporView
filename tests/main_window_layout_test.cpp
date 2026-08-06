@@ -5631,6 +5631,9 @@ int main(int argc, char **argv)
     require(plotRectAfterChannelSwitch.width() > 0 &&
                 plotRectAfterChannelSwitch.right() >= temperatureControllerContentRow->rect().right() - 1,
             "temperature trend plot expands to the right edge of the remaining controller panel width");
+    require(controlsCardRectAfterChannelSwitch.width() <= 410 &&
+                plotRectAfterChannelSwitch.width() > controlsCardRectAfterChannelSwitch.width(),
+            "temperature controller gives the narrowed parameter card less width than the trend plot");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QFrame#temperatureConfigCard {"),
                                  QStringLiteral("border-radius: 8px"),
@@ -6014,12 +6017,12 @@ int main(int argc, char **argv)
             "temperature max output label is renamed and marked red");
     require(maxOutputSpin->palette().color(QPalette::Text) == warningTextColor,
             "temperature max output value palette is actually painted red");
-    require(targetSpin->width() >= 170,
-            "temperature target spin reserves enough width for five decimals");
-    require(kpSpin->width() >= 80 &&
-                kiSpin->width() >= 80 &&
-                kdSpin->width() >= 80,
-            "temperature PID spin boxes reserve visible value width");
+    require(targetSpin->width() == 110,
+            "temperature target spin uses the narrowed half-width parameter field");
+    require(kpSpin->width() == 73 &&
+                kiSpin->width() == 73 &&
+                kdSpin->width() == 73,
+            "temperature PID spin boxes use compact half-width fields");
     auto requireTopBarFieldLayout = [temperatureChannelTopControlsStack](QWidget *editor, const char *message) {
         require(editor != nullptr && editor->parentWidget() != nullptr, message);
         QWidget *row = editor->parentWidget();
@@ -6187,20 +6190,20 @@ int main(int argc, char **argv)
                     labelRect.bottom() < editorRect.top(),
                 message);
     };
-    requireStackedSensorFieldLayout(ntcR0Edit, 0, 0, 220,
-                                    "temperature NTC R0 field uses the screenshot stacked layout");
-    requireStackedSensorFieldLayout(ntcBEdit, 0, 1, 220,
-                                    "temperature NTC B field uses the screenshot stacked layout");
-    requireStackedSensorFieldLayout(ptR0Edit, 1, 0, 220,
-                                    "temperature PT R0 field uses the screenshot stacked layout");
-    requireStackedSensorFieldLayout(ptAEdit, 1, 1, 220,
-                                    "temperature PT A field uses the screenshot stacked layout");
-    requireStackedSensorFieldLayout(ptBEdit, 2, 0, 220,
-                                    "temperature PT B field uses the screenshot stacked layout");
-    requireStackedSensorFieldLayout(ptCEdit, 2, 1, 220,
-                                    "temperature PT C field uses the screenshot stacked layout");
-    requireStackedSensorFieldLayout(polynomialA0Edit, 3, 0, 115,
-                                    "temperature polynomial field uses the screenshot stacked layout");
+    requireStackedSensorFieldLayout(ntcR0Edit, 0, 0, 110,
+                                    "temperature NTC R0 field uses the narrowed stacked layout");
+    requireStackedSensorFieldLayout(ntcBEdit, 0, 1, 110,
+                                    "temperature NTC B field uses the narrowed stacked layout");
+    requireStackedSensorFieldLayout(ptR0Edit, 1, 0, 110,
+                                    "temperature PT R0 field uses the narrowed stacked layout");
+    requireStackedSensorFieldLayout(ptAEdit, 1, 1, 110,
+                                    "temperature PT A field uses the narrowed stacked layout");
+    requireStackedSensorFieldLayout(ptBEdit, 2, 0, 110,
+                                    "temperature PT B field uses the narrowed stacked layout");
+    requireStackedSensorFieldLayout(ptCEdit, 2, 1, 110,
+                                    "temperature PT C field uses the narrowed stacked layout");
+    requireStackedSensorFieldLayout(polynomialA0Edit, 3, 0, 58,
+                                    "temperature polynomial field uses the narrowed stacked layout");
     require(sensorFieldLabel(ntcR0Edit) && sensorFieldLabel(ntcR0Edit)->text() == QStringLiteral("NTC R0(Ohm)") &&
                 sensorFieldLabel(ntcBEdit) && sensorFieldLabel(ntcBEdit)->text() == QStringLiteral("NTC B") &&
                 sensorFieldLabel(ptR0Edit) && sensorFieldLabel(ptR0Edit)->text() == QStringLiteral("PT R0(Ohm)") &&
@@ -6208,13 +6211,13 @@ int main(int argc, char **argv)
                 sensorFieldLabel(ptBEdit) && sensorFieldLabel(ptBEdit)->text() == QStringLiteral("PT B(E-7)") &&
                 sensorFieldLabel(ptCEdit) && sensorFieldLabel(ptCEdit)->text() == QStringLiteral("PT C(E-12)"),
             "temperature sensor fields retain their unit and exponent annotations");
-    require(ntcR0Edit->width() == 220 &&
-                ntcBEdit->width() == 220 &&
-                ptR0Edit->width() == 220 &&
-                ptAEdit->width() == 220 &&
-                ptBEdit->width() == 220 &&
-                ptCEdit->width() == 220,
-            "temperature primary sensor inputs use the wide screenshot field width");
+    require(ntcR0Edit->width() == 110 &&
+                ntcBEdit->width() == 110 &&
+                ptR0Edit->width() == 110 &&
+                ptAEdit->width() == 110 &&
+                ptBEdit->width() == 110 &&
+                ptCEdit->width() == 110,
+            "temperature primary sensor inputs use the narrowed half-width fields");
     std::array<QLineEdit *, 8> polynomialEdits{};
     for (int coefficient = 0; coefficient < 8; ++coefficient)
     {
@@ -6226,8 +6229,8 @@ int main(int argc, char **argv)
         requireStackedSensorFieldLayout(edit,
                                         3 + coefficient / 4,
                                         coefficient % 4,
-                                        115,
-                                        "temperature polynomial inputs stay in the two four-column screenshot rows");
+                                        58,
+                                        "temperature polynomial inputs stay in two compact four-column rows");
     }
     QWidget *temperatureChannelSubPageRow = temperatureChannelSubTopBar->parentWidget();
     require(temperatureChannelSubPageRow != nullptr &&

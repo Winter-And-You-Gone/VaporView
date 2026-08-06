@@ -57,16 +57,17 @@ using VaporView::Ground::Widgets::TemperatureControllerOverviewPanel;
 namespace
 {
 constexpr int kHomeOverviewBodyPadding = 2;
-constexpr int kTemperatureControllerSettingsInputWidth = 250;
-constexpr int kTemperatureControllerStackedWideFieldWidth = 220;
-constexpr int kTemperatureControllerPolynomialStackedFieldWidth = 115;
-constexpr int kTemperatureControllerControlsCardWidth = 610;
-constexpr int kTemperatureControllerChannelButtonWidth = 136;
-constexpr int kTemperatureControllerCommonButtonWidth = 148;
+constexpr int kTemperatureControllerSettingsInputWidth = 125;
+constexpr int kTemperatureControllerStackedWideFieldWidth = 110;
+constexpr int kTemperatureControllerPolynomialStackedFieldWidth = 58;
+constexpr int kTemperatureControllerControlsCardWidth = 410;
+constexpr int kTemperatureControllerFactoryResetButtonWidth = 170;
+constexpr int kTemperatureControllerChannelButtonWidth = 108;
+constexpr int kTemperatureControllerCommonButtonWidth = 128;
 constexpr int kTemperatureControllerTopEnableWidth = 106;
 constexpr int kTemperatureControllerTopEnableHeight = 34;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
-constexpr int kTemperatureControllerCompactPidInputWidth = 146;
+constexpr int kTemperatureControllerCompactPidInputWidth = 73;
 constexpr int kTemperatureControllerConfigRowHeight = 38;
 constexpr int kTemperatureControllerTopControlsHeight = 38;
 constexpr int kTemperatureControllerNavigationButtonHeight = 30;
@@ -2050,7 +2051,7 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
     common_.factory_reset_button->setObjectName(QStringLiteral("temperatureFactoryResetButton"));
     common_.factory_reset_button->setCursor(Qt::PointingHandCursor);
     common_.factory_reset_button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    common_.factory_reset_button->setFixedSize(kTemperatureControllerSettingsInputWidth, 40);
+    common_.factory_reset_button->setFixedSize(kTemperatureControllerFactoryResetButtonWidth, 40);
     common_.factory_reset_button->setIconSize(QSize(18, 18));
     common_.factory_reset_button->setIcon(createLucideIcon(QStringLiteral("refresh-cw"),
                                                            appThemeColor(AppThemeColor::ToolbarRed, VaporView::isDarkThemeEnabled())));
