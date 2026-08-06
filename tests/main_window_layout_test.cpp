@@ -5803,22 +5803,40 @@ int main(int argc, char **argv)
         channelContentGrids[static_cast<size_t>(pageIndex)] =
             qobject_cast<QGridLayout *>(temperatureChannelConfigSubStack->widget(pageIndex)->layout());
     }
+    std::array<QGridLayout *, 3> channel2ContentGrids{};
+    for (int pageIndex = 0; pageIndex < temperatureChannelConfigSubStack2->count(); ++pageIndex)
+    {
+        channel2ContentGrids[static_cast<size_t>(pageIndex)] =
+            qobject_cast<QGridLayout *>(temperatureChannelConfigSubStack2->widget(pageIndex)->layout());
+    }
     require(channelContentGrids[0] != nullptr &&
                 channelContentGrids[1] != nullptr &&
-                channelContentGrids[2] != nullptr,
-            "temperature channel sub-pages share grid-based screenshot layouts");
+                channelContentGrids[2] != nullptr &&
+                channel2ContentGrids[0] != nullptr &&
+                channel2ContentGrids[1] != nullptr &&
+                channel2ContentGrids[2] != nullptr,
+            "temperature channel sub-pages share grid-based screenshot layouts on both channels");
     require(channelContentGrids[0]->alignment() == (Qt::AlignTop | Qt::AlignLeft) &&
                 channelContentGrids[1]->alignment() == (Qt::AlignTop | Qt::AlignLeft) &&
-                channelContentGrids[2]->alignment() == (Qt::AlignTop | Qt::AlignLeft),
-            "temperature channel sub-pages top-align their stacked form controls");
-    require(channelContentGrids[0]->verticalSpacing() == 24 &&
-                channelContentGrids[1]->verticalSpacing() == 22 &&
-                channelContentGrids[2]->verticalSpacing() == 14,
-            "temperature channel sub-pages use the screenshot-specific vertical rhythm");
-    require(channelContentGrids[0]->contentsMargins() == QMargins(6, 8, 6, 8) &&
-                channelContentGrids[1]->contentsMargins() == QMargins(6, 8, 6, 8) &&
-                channelContentGrids[2]->contentsMargins() == QMargins(0, 0, 0, 6),
-            "temperature channel sub-pages trim their left and right content margins");
+                channelContentGrids[2]->alignment() == (Qt::AlignTop | Qt::AlignLeft) &&
+                channel2ContentGrids[0]->alignment() == (Qt::AlignTop | Qt::AlignLeft) &&
+                channel2ContentGrids[1]->alignment() == (Qt::AlignTop | Qt::AlignLeft) &&
+                channel2ContentGrids[2]->alignment() == (Qt::AlignTop | Qt::AlignLeft),
+            "temperature channel sub-pages top-align their stacked form controls on both channels");
+    require(channelContentGrids[0]->verticalSpacing() == 14 &&
+                channelContentGrids[1]->verticalSpacing() == 14 &&
+                channelContentGrids[2]->verticalSpacing() == 14 &&
+                channel2ContentGrids[0]->verticalSpacing() == 14 &&
+                channel2ContentGrids[1]->verticalSpacing() == 14 &&
+                channel2ContentGrids[2]->verticalSpacing() == 14,
+            "temperature channel sub-pages share the sensor-config vertical rhythm on both channels");
+    require(channelContentGrids[0]->contentsMargins() == QMargins(6, 0, 6, 6) &&
+                channelContentGrids[1]->contentsMargins() == QMargins(6, 0, 6, 6) &&
+                channelContentGrids[2]->contentsMargins() == QMargins(0, 0, 0, 6) &&
+                channel2ContentGrids[0]->contentsMargins() == QMargins(6, 0, 6, 6) &&
+                channel2ContentGrids[1]->contentsMargins() == QMargins(6, 0, 6, 6) &&
+                channel2ContentGrids[2]->contentsMargins() == QMargins(0, 0, 0, 6),
+            "temperature channel sub-pages trim their vertical content margins to the sensor-config reference on both channels");
     require(temperatureChannelConfigSubStack->minimumHeight() == temperatureChannelConfigSubStack->maximumHeight() &&
                 temperatureChannelConfigSubStack->height() == temperatureChannelConfigSubStack->minimumHeight() &&
                 temperatureChannelConfigSubStack->height() >=
@@ -5967,7 +5985,7 @@ int main(int argc, char **argv)
             cell->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
         require(cell->objectName() == QStringLiteral("temperatureConfigFieldColumn") &&
                     cellLayout != nullptr &&
-                    cellLayout->spacing() == 8 &&
+                    cellLayout->spacing() == 6 &&
                     !labels.isEmpty(),
                 message);
         const QRect labelRect(labels.first()->mapTo(cell, QPoint(0, 0)), labels.first()->size());

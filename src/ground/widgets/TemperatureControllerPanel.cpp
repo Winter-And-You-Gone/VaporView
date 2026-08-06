@@ -62,6 +62,8 @@ constexpr int kTemperatureControllerSettingsInputWidth = 125;
 constexpr int kTemperatureControllerStackedWideFieldWidth = 110;
 constexpr int kTemperatureControllerPolynomialStackedFieldWidth = 58;
 constexpr int kTemperatureControllerCompactColumnGap = 6;
+constexpr int kTemperatureControllerStackedFieldSpacing = 6;
+constexpr int kTemperatureControllerChannelSubPageVerticalSpacing = 14;
 constexpr int kTemperatureControllerCalibrationTabWidth = 26;
 constexpr int kTemperatureControllerCalibrationOverlayHeight = 224;
 constexpr int kTemperatureControllerControlsCardWidth = 280;
@@ -1635,9 +1637,9 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
     QWidget *page = new QWidget(channels_[index].config_sub_stack);
     page->setObjectName(QStringLiteral("temperatureChannelCommonParamsPageChannel%1").arg(index + 1));
     auto *layout = new QGridLayout(page);
-    layout->setContentsMargins(6, 8, 6, 8);
+    layout->setContentsMargins(6, 0, 6, 6);
     layout->setHorizontalSpacing(kTemperatureControllerCompactColumnGap);
-    layout->setVerticalSpacing(24);
+    layout->setVerticalSpacing(kTemperatureControllerChannelSubPageVerticalSpacing);
     layout->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     ChannelWidgets& channel = channels_[index];
 
@@ -1660,7 +1662,7 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
         cell->setFixedWidth(fieldWidth);
         auto *cellLayout = new QVBoxLayout(cell);
         cellLayout->setContentsMargins(0, 0, 0, 0);
-        cellLayout->setSpacing(8);
+        cellLayout->setSpacing(kTemperatureControllerStackedFieldSpacing);
         cellLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
         cellLayout->addWidget(editor, 0, Qt::AlignLeft | Qt::AlignVCenter);
         return cell;
@@ -1800,9 +1802,9 @@ QWidget *TemperatureControllerPanel::createChannelAdvancedParamsPage(int index)
     QWidget *page = new QWidget(channels_[index].config_sub_stack);
     page->setObjectName(QStringLiteral("temperatureChannelAdvancedParamsPageChannel%1").arg(index + 1));
     auto *layout = new QGridLayout(page);
-    layout->setContentsMargins(6, 8, 6, 8);
+    layout->setContentsMargins(6, 0, 6, 6);
     layout->setHorizontalSpacing(kTemperatureControllerCompactColumnGap);
-    layout->setVerticalSpacing(22);
+    layout->setVerticalSpacing(kTemperatureControllerChannelSubPageVerticalSpacing);
     layout->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     ChannelWidgets& channel = channels_[index];
 
@@ -1822,7 +1824,7 @@ QWidget *TemperatureControllerPanel::createChannelAdvancedParamsPage(int index)
         cell->setFixedWidth(kTemperatureControllerStackedWideFieldWidth);
         auto *cellLayout = new QVBoxLayout(cell);
         cellLayout->setContentsMargins(0, 0, 0, 0);
-        cellLayout->setSpacing(8);
+        cellLayout->setSpacing(kTemperatureControllerStackedFieldSpacing);
         cellLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
         cellLayout->addWidget(editor, 0, Qt::AlignLeft | Qt::AlignVCenter);
         layout->addWidget(cell, row, column, Qt::AlignLeft | Qt::AlignTop);
@@ -1895,7 +1897,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
     auto *layout = new QGridLayout(page);
     layout->setContentsMargins(0, 0, 0, 6);
     layout->setHorizontalSpacing(kTemperatureControllerCompactColumnGap);
-    layout->setVerticalSpacing(14);
+    layout->setVerticalSpacing(kTemperatureControllerChannelSubPageVerticalSpacing);
     layout->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     ChannelWidgets& channel = channels_[index];
 
@@ -1918,7 +1920,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         cell->setFixedWidth(fieldWidth);
         auto *cellLayout = new QVBoxLayout(cell);
         cellLayout->setContentsMargins(0, 0, 0, 0);
-        cellLayout->setSpacing(6);
+        cellLayout->setSpacing(kTemperatureControllerStackedFieldSpacing);
         cellLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
         cellLayout->addWidget(editor, 0, Qt::AlignLeft | Qt::AlignVCenter);
         return cell;
@@ -2065,7 +2067,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
     polynomialLayout->setObjectName(QStringLiteral("temperaturePolynomialFieldsGridChannel%1").arg(index + 1));
     polynomialLayout->setContentsMargins(0, 0, 0, 0);
     polynomialLayout->setHorizontalSpacing(kTemperatureControllerCompactColumnGap);
-    polynomialLayout->setVerticalSpacing(14);
+    polynomialLayout->setVerticalSpacing(kTemperatureControllerChannelSubPageVerticalSpacing);
     polynomialLayout->setAlignment(Qt::AlignTop | Qt::AlignLeft);
 
     for (int i = 0; i < 8; ++i)
