@@ -5401,6 +5401,13 @@ int main(int argc, char **argv)
                                 temperatureChannelTopBar->size());
     const QRect stackRectInCard(temperatureChannelStack->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                  temperatureChannelStack->size());
+    const QRect stackRectInControlsCard(
+        temperatureChannelStack->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
+        temperatureChannelStack->size());
+    require(temperatureControllerControlsCard->width() <= 280 &&
+                stackRectInControlsCard.left() <= 8 &&
+                temperatureControllerControlsCard->width() - stackRectInControlsCard.right() - 1 <= 8,
+            "temperature parameter card trims the outer horizontal padding around the config stack");
     require(topRowRectInCard.bottom() < stackRectInCard.top() &&
                 topRowRectInCard.left() <= stackRectInCard.left() + 1 &&
                 topBarRectInRow.width() < stackRectInCard.width(),
@@ -5637,7 +5644,7 @@ int main(int argc, char **argv)
     require(plotRectAfterChannelSwitch.width() > 0 &&
                 plotRectAfterChannelSwitch.right() >= temperatureControllerContentRow->rect().right() - 1,
             "temperature trend plot expands to the right edge of the remaining controller panel width");
-    require(controlsCardRectAfterChannelSwitch.width() <= 344 &&
+    require(controlsCardRectAfterChannelSwitch.width() <= 280 &&
                 plotRectAfterChannelSwitch.width() > controlsCardRectAfterChannelSwitch.width(),
             "temperature controller gives the narrowed parameter card less width than the trend plot");
     requireLastStyleRuleContains(qApp->styleSheet(),
@@ -5778,7 +5785,7 @@ int main(int argc, char **argv)
             "temperature lower parameter tabs keep keyboard tab focus without mouse-click focus frames");
     auto lowerTabHasTextPadding = [](QPushButton *button) {
         return button != nullptr &&
-            button->width() >= button->fontMetrics().horizontalAdvance(button->text()) + 32;
+            button->width() >= button->fontMetrics().horizontalAdvance(button->text()) + 20;
     };
     require(lowerTabHasTextPadding(temperatureChannelCommonParamsButton) &&
                 lowerTabHasTextPadding(temperatureChannelAdvancedParamsButton) &&
@@ -5802,6 +5809,10 @@ int main(int argc, char **argv)
                 channelContentGrids[1]->verticalSpacing() == 22 &&
                 channelContentGrids[2]->verticalSpacing() == 14,
             "temperature channel sub-pages use the screenshot-specific vertical rhythm");
+    require(channelContentGrids[0]->contentsMargins() == QMargins(6, 8, 6, 8) &&
+                channelContentGrids[1]->contentsMargins() == QMargins(6, 8, 6, 8) &&
+                channelContentGrids[2]->contentsMargins() == QMargins(0, 0, 0, 6),
+            "temperature channel sub-pages trim their left and right content margins");
     require(temperatureChannelConfigSubStack->minimumHeight() == temperatureChannelConfigSubStack->maximumHeight() &&
                 temperatureChannelConfigSubStack->height() == temperatureChannelConfigSubStack->minimumHeight() &&
                 temperatureChannelConfigSubStack->height() >=
@@ -5996,6 +6007,9 @@ int main(int argc, char **argv)
     const QRect kpRowRect(kpSpin->mapTo(temperatureChannelStack, QPoint(0, 0)), kpSpin->size());
     const QRect kiRowRect(kiSpin->mapTo(temperatureChannelStack, QPoint(0, 0)), kiSpin->size());
     const QRect kdRowRect(kdSpin->mapTo(temperatureChannelStack, QPoint(0, 0)), kdSpin->size());
+    require(kpRowRect.left() <= 6 &&
+                temperatureChannelStack->width() - kdRowRect.right() - 1 <= 32,
+            "temperature lower common tab keeps the parameter inputs close to the card edges");
     require(std::abs(kpRowRect.top() - kiRowRect.top()) <= 2 &&
                 std::abs(kiRowRect.top() - kdRowRect.top()) <= 2 &&
                 kpRowRect.right() < kiRowRect.left() &&

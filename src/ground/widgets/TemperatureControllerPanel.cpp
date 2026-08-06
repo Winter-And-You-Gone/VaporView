@@ -61,11 +61,13 @@ constexpr int kTemperatureControllerSettingsInputWidth = 125;
 constexpr int kTemperatureControllerStackedWideFieldWidth = 110;
 constexpr int kTemperatureControllerPolynomialStackedFieldWidth = 58;
 constexpr int kTemperatureControllerCompactColumnGap = 6;
-constexpr int kTemperatureControllerControlsCardWidth = 344;
-constexpr int kTemperatureControllerControlsCardHorizontalPadding = 18;
+constexpr int kTemperatureControllerControlsCardWidth = 280;
+constexpr int kTemperatureControllerControlsCardHorizontalPadding = 7;
 constexpr int kTemperatureControllerFactoryResetButtonWidth = 170;
-constexpr int kTemperatureControllerChannelButtonWidth = 92;
-constexpr int kTemperatureControllerCommonButtonWidth = 104;
+constexpr int kTemperatureControllerChannelButtonWidth = 78;
+constexpr int kTemperatureControllerCommonButtonWidth = 88;
+constexpr int kTemperatureControllerSubTabMinimumWidth = 80;
+constexpr int kTemperatureControllerSubTabTextPadding = 24;
 constexpr int kTemperatureControllerTopEnableWidth = 106;
 constexpr int kTemperatureControllerTopEnableHeight = 34;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
@@ -1527,7 +1529,9 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
             return;
         }
         button->ensurePolished();
-        button->setMinimumWidth(std::max(88, button->fontMetrics().horizontalAdvance(button->text()) + 40));
+        button->setMinimumWidth(std::max(kTemperatureControllerSubTabMinimumWidth,
+                                         button->fontMetrics().horizontalAdvance(button->text()) +
+                                             kTemperatureControllerSubTabTextPadding));
         button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     };
     auto makeTabButton = [this, index, bar = channel.sensor_config_top_bar, fitSubTabButtonWidth](const QString& text, int pageIndex) {
@@ -1582,7 +1586,7 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
     QWidget *page = new QWidget(channels_[index].config_sub_stack);
     page->setObjectName(QStringLiteral("temperatureChannelCommonParamsPageChannel%1").arg(index + 1));
     auto *layout = new QGridLayout(page);
-    layout->setContentsMargins(14, 8, 14, 8);
+    layout->setContentsMargins(6, 8, 6, 8);
     layout->setHorizontalSpacing(kTemperatureControllerCompactColumnGap);
     layout->setVerticalSpacing(24);
     layout->setAlignment(Qt::AlignTop | Qt::AlignLeft);
@@ -1747,7 +1751,7 @@ QWidget *TemperatureControllerPanel::createChannelAdvancedParamsPage(int index)
     QWidget *page = new QWidget(channels_[index].config_sub_stack);
     page->setObjectName(QStringLiteral("temperatureChannelAdvancedParamsPageChannel%1").arg(index + 1));
     auto *layout = new QGridLayout(page);
-    layout->setContentsMargins(14, 8, 14, 8);
+    layout->setContentsMargins(6, 8, 6, 8);
     layout->setHorizontalSpacing(kTemperatureControllerCompactColumnGap);
     layout->setVerticalSpacing(22);
     layout->setAlignment(Qt::AlignTop | Qt::AlignLeft);
@@ -1838,7 +1842,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
     QWidget *page = new QWidget(channels_[index].config_sub_stack);
     page->setObjectName(QStringLiteral("temperatureChannelSensorConfigPageChannel%1").arg(index + 1));
     auto *layout = new QGridLayout(page);
-    layout->setContentsMargins(4, 0, 4, 6);
+    layout->setContentsMargins(0, 0, 0, 6);
     layout->setHorizontalSpacing(kTemperatureControllerCompactColumnGap);
     layout->setVerticalSpacing(14);
     layout->setAlignment(Qt::AlignTop | Qt::AlignLeft);
@@ -2054,7 +2058,7 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
     page->setObjectName(QStringLiteral("temperatureCommonSettingsPage"));
     page->setMinimumHeight(kTemperatureControllerCommonStackHeight);
     auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(8, 10, 8, 8);
+    layout->setContentsMargins(6, 10, 6, 8);
     layout->setSpacing(24);
     layout->setAlignment(Qt::AlignLeft);
 
@@ -2165,7 +2169,9 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
             return;
         }
         button->ensurePolished();
-        button->setMinimumWidth(std::max(88, button->fontMetrics().horizontalAdvance(button->text()) + 40));
+        button->setMinimumWidth(std::max(kTemperatureControllerSubTabMinimumWidth,
+                                         button->fontMetrics().horizontalAdvance(button->text()) +
+                                             kTemperatureControllerSubTabTextPadding));
         button->setMinimumHeight(kTemperatureControllerNavigationButtonHeight);
         button->setMaximumHeight(kTemperatureControllerNavigationButtonHeight);
         button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -2767,7 +2773,9 @@ void TemperatureControllerPanel::updateChannelTexts()
             return;
         }
         button->ensurePolished();
-        button->setMinimumWidth(std::max(88, button->fontMetrics().horizontalAdvance(button->text()) + 40));
+        button->setMinimumWidth(std::max(kTemperatureControllerSubTabMinimumWidth,
+                                         button->fontMetrics().horizontalAdvance(button->text()) +
+                                             kTemperatureControllerSubTabTextPadding));
         button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     };
     if (common_.common_params_button)
@@ -2799,7 +2807,9 @@ void TemperatureControllerPanel::updateChannelTexts()
                 return;
             }
             button->ensurePolished();
-            button->setMinimumWidth(std::max(88, button->fontMetrics().horizontalAdvance(button->text()) + 40));
+            button->setMinimumWidth(std::max(kTemperatureControllerSubTabMinimumWidth,
+                                             button->fontMetrics().horizontalAdvance(button->text()) +
+                                                 kTemperatureControllerSubTabTextPadding));
             button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         };
         if (channel.common_params_button)
