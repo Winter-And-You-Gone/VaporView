@@ -292,6 +292,9 @@ private:
         QLineEdit *pt_b_edit = nullptr;
         QLineEdit *pt_c_edit = nullptr;
         std::array<QLineEdit *, 8> polynomial_edits{};
+        QWidget *sensor_config_page = nullptr;
+        QFrame *sensor_calibration_overlay = nullptr;
+        QPushButton *sensor_calibration_button = nullptr;
         QFrame *sensor_config_top_bar = nullptr;
         QPushButton *common_params_button = nullptr;
         QPushButton *advanced_params_button = nullptr;
@@ -361,6 +364,7 @@ private:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void alignChannelTopControlFields(int channelIndex);
     void alignCommonSettingsColumns(int channelIndex);
+    void alignSensorCalibrationOverlay(int channelIndex);
     void updateChannelStackMinimumHeight();
     void emitSensorConfigRequest(int index);
     void updateChannelTexts();

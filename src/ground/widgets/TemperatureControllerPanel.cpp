@@ -30,6 +30,7 @@
 #include <QResizeEvent>
 #include <QSignalBlocker>
 #include <QSizePolicy>
+#include <QShortcut>
 #include <QStyle>
 #include <QStyleOptionToolButton>
 #include <QSvgRenderer>
@@ -61,6 +62,8 @@ constexpr int kTemperatureControllerSettingsInputWidth = 125;
 constexpr int kTemperatureControllerStackedWideFieldWidth = 110;
 constexpr int kTemperatureControllerPolynomialStackedFieldWidth = 58;
 constexpr int kTemperatureControllerCompactColumnGap = 6;
+constexpr int kTemperatureControllerCalibrationTabWidth = 26;
+constexpr int kTemperatureControllerCalibrationOverlayHeight = 224;
 constexpr int kTemperatureControllerControlsCardWidth = 280;
 constexpr int kTemperatureControllerControlsCardHorizontalPadding = 7;
 constexpr int kTemperatureControllerFactoryResetButtonWidth = 170;
@@ -1077,7 +1080,53 @@ bool TemperatureControllerPanel::eventFilter(QObject *watched, QEvent *event)
             alignCommonSettingsColumns(channelIndex);
         });
     }
+    for (int channelIndex = 0; channelIndex < static_cast<int>(channels_.size()); ++channelIndex)
+    {
+        if (watched == channels_[channelIndex].sensor_config_page &&
+            (event->type() == QEvent::Show || event->type() == QEvent::Resize))
+        {
+            QTimer::singleShot(0, this, [this, channelIndex]() {
+                alignSensorCalibrationOverlay(channelIndex);
+            });
+            break;
+        }
+    }
     return QWidget::eventFilter(watched, event);
+}
+
+void TemperatureControllerPanel::alignSensorCalibrationOverlay(int channelIndex)
+{
+    if (channelIndex < 0 || channelIndex >= static_cast<int>(channels_.size()))
+    {
+        return;
+    }
+    ChannelWidgets& channel = channels_[channelIndex];
+    if (!channel.sensor_config_page || !channel.sensor_calibration_overlay ||
+        !channel.sensor_calibration_button || channel.sensor_config_page->width() <= 0 ||
+        channel.sensor_config_page->height() <= 0)
+    {
+        return;
+    }
+
+    QWidget *page = channel.sensor_config_page;
+    const int tabWidth = channel.sensor_calibration_button->width() > 0
+        ? channel.sensor_calibration_button->width()
+        : kTemperatureControllerCalibrationTabWidth;
+    // The overlay must fully cover the underlying NTC/PT field area; the pull tab is raised above its right edge.
+    const int overlayWidth = page->width();
+    const int overlayHeight = std::min(page->height(),
+                                       std::max(kTemperatureControllerCalibrationOverlayHeight,
+                                                channel.sensor_calibration_overlay->sizeHint().height()));
+    channel.sensor_calibration_overlay->setGeometry(page->width() - overlayWidth,
+                                                    0,
+                                                    overlayWidth,
+                                                    overlayHeight);
+    channel.sensor_calibration_button->setGeometry(std::max(0, page->width() - tabWidth),
+                                                   0,
+                                                   std::min(tabWidth, page->width()),
+                                                   overlayHeight);
+    channel.sensor_calibration_overlay->raise();
+    channel.sensor_calibration_button->raise();
 }
 
 void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
@@ -1841,6 +1890,8 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
 {
     QWidget *page = new QWidget(channels_[index].config_sub_stack);
     page->setObjectName(QStringLiteral("temperatureChannelSensorConfigPageChannel%1").arg(index + 1));
+    page->setProperty("temperatureSensorCalibrationLayoutHost", true);
+    page->installEventFilter(this);
     auto *layout = new QGridLayout(page);
     layout->setContentsMargins(0, 0, 0, 6);
     layout->setHorizontalSpacing(kTemperatureControllerCompactColumnGap);
@@ -2002,8 +2053,11 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
                   kTemperatureControllerStackedWideFieldWidth);
     layout->addWidget(ptBFields, 2, 0, 1, 2, Qt::AlignLeft | Qt::AlignTop);
 
-    auto *polynomialFields = new QWidget(page);
+    auto *polynomialFields = new QFrame(page);
     polynomialFields->setObjectName(QStringLiteral("temperaturePolynomialFieldsChannel%1").arg(index + 1));
+    polynomialFields->setProperty("temperatureSensorCalibrationOverlay", true);
+    polynomialFields->setFrameShape(QFrame::NoFrame);
+    polynomialFields->setAttribute(Qt::WA_StyledBackground, true);
     polynomialFields->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     polynomialFields->setFixedWidth(kTemperatureControllerPolynomialStackedFieldWidth * 4 +
                                     kTemperatureControllerCompactColumnGap * 3);
@@ -2032,7 +2086,49 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
                          kTemperatureControllerPolynomialStackedFieldWidth);
         channel.polynomial_label_text[static_cast<size_t>(i)] = label;
     }
-    layout->addWidget(polynomialFields, 3, 0, 2, 2, Qt::AlignLeft | Qt::AlignTop);
+
+    auto *calibrationButton = new QPushButton(page);
+    calibrationButton->setObjectName(QStringLiteral("temperatureCalibrationPullButtonChannel%1").arg(index + 1));
+    calibrationButton->setProperty("temperatureCalibrationPullTab", true);
+    calibrationButton->setCheckable(true);
+    calibrationButton->setFocusPolicy(Qt::TabFocus);
+    calibrationButton->setCursor(Qt::PointingHandCursor);
+    calibrationButton->setFixedWidth(kTemperatureControllerCalibrationTabWidth);
+    calibrationButton->setText(QStringLiteral("校\n准\n系\n数\nA0\n↓\nA7"));
+    calibrationButton->setToolTip(QStringLiteral("展开校准系数 A0-A7"));
+    calibrationButton->setAccessibleName(QStringLiteral("校准系数 A0-A7"));
+    channel.sensor_config_page = page;
+    channel.sensor_calibration_overlay = polynomialFields;
+    channel.sensor_calibration_button = calibrationButton;
+    polynomialFields->setVisible(false);
+
+    connect(calibrationButton, &QPushButton::toggled, this, [this, channelIndex = index](bool expanded) {
+        ChannelWidgets& channel = channels_[channelIndex];
+        if (!channel.sensor_calibration_overlay || !channel.sensor_calibration_button)
+        {
+            return;
+        }
+        channel.sensor_calibration_overlay->setVisible(expanded);
+        alignSensorCalibrationOverlay(channelIndex);
+        if (expanded)
+        {
+            channel.sensor_calibration_overlay->raise();
+            channel.sensor_calibration_button->raise();
+        }
+    });
+    auto *escapeShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), page);
+    escapeShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(escapeShortcut, &QShortcut::activated, this, [this, channelIndex = index]() {
+        ChannelWidgets& channel = channels_[channelIndex];
+        if (channel.sensor_calibration_button && channel.sensor_calibration_button->isChecked())
+        {
+            channel.sensor_calibration_button->setChecked(false);
+            channel.sensor_calibration_button->setFocus(Qt::OtherFocusReason);
+        }
+    });
+    QTimer::singleShot(0, this, [this, channelIndex = index]() {
+        alignSensorCalibrationOverlay(channelIndex);
+    });
 
     const int channelIndex = index;
     auto emitConfig = [this, channelIndex]() { emitSensorConfigRequest(channelIndex); };
@@ -2826,6 +2922,18 @@ void TemperatureControllerPanel::updateChannelTexts()
         {
             channel.sensor_config_button->setText(is_english_ ? QStringLiteral("Sensor Config") : QStringLiteral("传感器配置"));
             fitSubTabButtonWidth(channel.sensor_config_button);
+        }
+        if (channel.sensor_calibration_button)
+        {
+            channel.sensor_calibration_button->setText(is_english_
+                ? QStringLiteral("Cal\nA0\n↓\nA7")
+                : QStringLiteral("校\n准\n系\n数\nA0\n↓\nA7"));
+            channel.sensor_calibration_button->setToolTip(is_english_
+                ? QStringLiteral("Expand calibration coefficients A0-A7")
+                : QStringLiteral("展开校准系数 A0-A7"));
+            channel.sensor_calibration_button->setAccessibleName(is_english_
+                ? QStringLiteral("Calibration coefficients A0-A7")
+                : QStringLiteral("校准系数 A0-A7"));
         }
         if (channel.sensor_config_top_bar)
         {

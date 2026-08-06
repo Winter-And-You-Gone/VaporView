@@ -6210,6 +6210,11 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePolynomialFieldsChannel1"));
     auto *polynomialFieldsGrid =
         polynomialFields ? qobject_cast<QGridLayout *>(polynomialFields->layout()) : nullptr;
+    auto *temperatureCalibrationButton =
+        temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureCalibrationPullButtonChannel1"));
+    auto *temperatureCalibrationOverlay =
+        qobject_cast<QFrame *>(temperaturePanel->findChild<QWidget *>(
+            QStringLiteral("temperaturePolynomialFieldsChannel1")));
     auto *ntcFields = temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureNtcFieldsChannel1"));
     auto *ptR0Fields = temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePtR0FieldsChannel1"));
     auto *ptBFields = temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePtBFieldsChannel1"));
@@ -6230,10 +6235,19 @@ int main(int argc, char **argv)
                 sensorConfigGrid->itemAtPosition(1, 0)->widget() == ptR0Fields &&
                 sensorConfigGrid->itemAtPosition(2, 0) != nullptr &&
                 sensorConfigGrid->itemAtPosition(2, 0)->widget() == ptBFields &&
+                sensorConfigGrid->itemAtPosition(3, 0) == nullptr &&
                 polynomialFields != nullptr &&
                 polynomialFieldsGrid != nullptr &&
-                polynomialFieldsGrid->horizontalSpacing() == 6,
-            "temperature sensor config uses compact row containers and AI-8-style horizontal field gaps");
+                polynomialFieldsGrid->horizontalSpacing() == 6 &&
+                temperatureCalibrationButton != nullptr &&
+                temperatureCalibrationOverlay != nullptr &&
+                temperatureCalibrationButton->isCheckable() &&
+                temperatureCalibrationButton->focusPolicy() == Qt::TabFocus &&
+                temperatureCalibrationButton->width() == 26 &&
+                temperatureCalibrationButton->property("temperatureCalibrationPullTab").toBool() &&
+                temperatureCalibrationOverlay->property("temperatureSensorCalibrationOverlay").toBool() &&
+                !temperatureCalibrationOverlay->isVisible(),
+            "temperature sensor config keeps the six primary fields in the base grid and hides A0-A7 behind a compact calibration tab");
     auto sensorFieldLabel = [](QWidget *editor) -> QLabel * {
         return editor && editor->parentWidget()
             ? editor->parentWidget()->findChild<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly)
@@ -6316,6 +6330,9 @@ int main(int argc, char **argv)
                 ptBEdit->width() == 110 &&
                 ptCEdit->width() == 110,
             "temperature primary sensor inputs use the narrowed half-width fields");
+    require(temperatureCalibrationOverlay->isAncestorOf(polynomialA0Edit) &&
+                temperatureCalibrationOverlay->isAncestorOf(ntcR0Edit) == false,
+            "temperature calibration coefficients share the overlay without moving the six primary sensor fields");
     auto requireCompactHorizontalInputGap = [](QWidget *left,
                                                QWidget *right,
                                                QWidget *host,
@@ -6340,6 +6357,39 @@ int main(int argc, char **argv)
                                      ptCEdit,
                                      temperatureChannelConfigSubStack->currentWidget(),
                                      "temperature PT B/PT C adjacent inputs use the compact reference horizontal gap");
+
+    clickWidget(temperatureCalibrationButton, 0);
+    activateLayouts(&window);
+    processEventsFor(20);
+    const QRect calibrationOverlayRect(
+        temperatureCalibrationOverlay->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
+        temperatureCalibrationOverlay->size());
+    const std::array<QLineEdit *, 6> primarySensorEdits = {
+        ntcR0Edit, ntcBEdit, ptR0Edit, ptAEdit, ptBEdit, ptCEdit};
+    bool allPrimaryCentersCovered = true;
+    int primaryLeftEdge = std::numeric_limits<int>::max();
+    int primaryRightEdge = std::numeric_limits<int>::min();
+    for (QLineEdit *edit : primarySensorEdits)
+    {
+        const QRect editorRect(edit->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
+                               edit->size());
+        allPrimaryCentersCovered = allPrimaryCentersCovered &&
+            calibrationOverlayRect.contains(editorRect.center());
+        primaryLeftEdge = std::min(primaryLeftEdge, editorRect.left());
+        primaryRightEdge = std::max(primaryRightEdge, editorRect.right());
+    }
+    require(temperatureCalibrationButton->isChecked() &&
+                temperatureCalibrationOverlay->isVisible() &&
+                allPrimaryCentersCovered &&
+                calibrationOverlayRect.left() <= primaryLeftEdge &&
+                calibrationOverlayRect.right() >= primaryRightEdge &&
+                temperatureCalibrationOverlay->geometry().right() >=
+                    temperatureCalibrationButton->geometry().left(),
+            "temperature calibration tab expands a card over the six primary sensor fields");
+    clickWidget(temperatureCalibrationButton, 0);
+    require(!temperatureCalibrationButton->isChecked() &&
+                !temperatureCalibrationOverlay->isVisible(),
+            "temperature calibration tab collapses the coefficient card");
     std::array<QLineEdit *, 8> polynomialEdits{};
     for (int coefficient = 0; coefficient < 8; ++coefficient)
     {
@@ -6412,10 +6462,11 @@ int main(int argc, char **argv)
     require(sensorConfigGrid != nullptr &&
                 sensorConfigGrid->horizontalSpacing() == 6 &&
                 sensorConfigGrid->verticalSpacing() == 14 &&
-                sensorConfigGrid->itemAtPosition(3, 0) != nullptr &&
-                sensorConfigGrid->itemAtPosition(3, 0)->widget() == polynomialFields,
-            "temperature sensor grid uses two wide rows plus a compact polynomial field group");
-    QWidget *sensorLastRow = polynomialEdits[7] ? polynomialEdits[7]->parentWidget() : nullptr;
+                sensorConfigGrid->itemAtPosition(3, 0) == nullptr &&
+                temperatureCalibrationButton->isVisible() &&
+                !polynomialFields->isVisible(),
+            "temperature sensor grid keeps the primary rows visible while A0-A7 stays in the collapsed calibration card");
+    QWidget *sensorLastRow = ptCEdit ? ptCEdit->parentWidget() : nullptr;
     const QRect sensorFirstRowRect(ntcR0Edit->parentWidget()->mapTo(
                                        temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
                                    ntcR0Edit->parentWidget()->size());
@@ -6425,27 +6476,19 @@ int main(int argc, char **argv)
         : QRect();
     const int sensorPageBottomUnusedHeight =
         temperatureChannelConfigSubStack->currentWidget()->height() - 1 - sensorLastRowRect.bottom();
-    const QRect sensorLastTopInputRectInCard(
-        polynomialEdits[7]->mapTo(temperatureConfigCard, QPoint(0, 0)),
-        polynomialEdits[7]->size());
-    const QRect sensorLastTopFieldRectInCard(
-        polynomialEdits[7]->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
-        polynomialEdits[7]->parentWidget()->size());
-    require(polynomialEdits[7] != nullptr,
-            "temperature sensor config exposes the final polynomial input");
+    require(polynomialEdits[7] != nullptr &&
+                temperatureCalibrationOverlay->isAncestorOf(polynomialEdits[7]),
+            "temperature sensor config retains the final polynomial input in the calibration card");
     require(temperatureChannelStack->height() >= temperatureChannelStack->currentWidget()->sizeHint().height() &&
                 temperatureConfigCard->height() >= temperatureConfigCard->sizeHint().height(),
-            "temperature four-row card reserves enough total height");
+            "temperature primary sensor card reserves enough total height");
     require(sensorConfigGrid->alignment() == (Qt::AlignTop | Qt::AlignLeft) &&
                 sensorFirstRowRect.top() >= 0 &&
                 sensorFirstRowRect.top() <= 4,
             "temperature sensor content starts at the shared first content row");
     require(sensorLastRowRect.bottom() < temperatureChannelConfigSubStack->currentWidget()->height() &&
                 sensorPageBottomUnusedHeight >= 0,
-            "temperature sensor stacked rows remain inside the reserved content height");
-    require(sensorLastTopInputRectInCard.bottom() <= sensorLastTopFieldRectInCard.bottom() &&
-                sensorLastTopInputRectInCard.bottom() <= temperatureConfigCard->contentsRect().bottom(),
-            "temperature sensor polynomial inputs remain inside their row and card");
+            "temperature sensor primary rows remain inside the reserved content height");
     require(temperatureChannelStack->isAncestorOf(factoryResetButton) &&
                 !temperatureChannelSelectorRow->isAncestorOf(factoryResetButton),
             "temperature factory reset button lives on the last common-settings row");
