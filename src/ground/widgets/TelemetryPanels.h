@@ -300,6 +300,7 @@ private:
         QPushButton *advanced_params_button = nullptr;
         QPushButton *sensor_config_button = nullptr;
         QStackedWidget *config_sub_stack = nullptr;
+        QWidget *sub_page_row = nullptr;
     };
     struct PendingChannelEdits
     {
@@ -377,6 +378,7 @@ private:
     QPushButton *common_settings_button_ = nullptr;
     QStackedWidget *channel_top_controls_stack_ = nullptr;
     QStackedWidget *channel_stack_ = nullptr;
+    QStackedWidget *sub_page_bar_stack_ = nullptr;
     TemperatureTrendPlotWidget *temperature_plot_ = nullptr;
     QLabel *rate_title_lbl_ = nullptr;
     QLabel *rate_label_ = nullptr;

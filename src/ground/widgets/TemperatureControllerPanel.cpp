@@ -92,9 +92,7 @@ constexpr int kTemperatureControllerChannelConfigSubStackHeight =
     kTemperatureControllerRowSpacing -
     kTemperatureControllerConfigRowHeight;
 constexpr int kTemperatureControllerChannelStackHeight =
-    kTemperatureControllerChannelConfigSubStackHeight +
-    kTemperatureControllerRowSpacing +
-    kTemperatureControllerConfigRowHeight;
+    kTemperatureControllerChannelConfigSubStackHeight;
 constexpr int kTemperatureControllerCommonStackHeight = kTemperatureControllerChannelStackHeight;
 constexpr int kTemperatureControllerHistoryLimit = 240;
 constexpr const char *kTextWidthCandidatesProperty = "_vv_text_width_candidates";
@@ -1374,7 +1372,6 @@ void TemperatureControllerPanel::setupUi()
     channel_stack_->addWidget(createChannelPage(0));
     channel_stack_->addWidget(createChannelPage(1));
     channel_stack_->addWidget(createCommonSettingsPage());
-    updateChannelStackMinimumHeight();
     controlsCardLayout->addWidget(channel_stack_, 0);
 
     contentRowLayout->addWidget(controlsCard, 0, Qt::AlignTop);
@@ -1387,6 +1384,15 @@ void TemperatureControllerPanel::setupUi()
     contentRowLayout->addWidget(temperature_plot_, 1, Qt::AlignTop);
 
     configCardLayout->addWidget(contentRow, 0);
+    sub_page_bar_stack_ = new QStackedWidget(configCard);
+    sub_page_bar_stack_->setObjectName(QStringLiteral("temperatureSubPageBarStack"));
+    sub_page_bar_stack_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    sub_page_bar_stack_->addWidget(channels_[0].sub_page_row);
+    sub_page_bar_stack_->addWidget(channels_[1].sub_page_row);
+    sub_page_bar_stack_->addWidget(common_.sub_top_bar);
+    configCardLayout->addWidget(sub_page_bar_stack_, 0, Qt::AlignLeft | Qt::AlignVCenter);
+
+    updateChannelStackMinimumHeight();
     selectChannel(0);
     layout->addWidget(configCard, 0);
 
@@ -1623,6 +1629,7 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     subPageRowLayout->setContentsMargins(0, 0, 0, 0);
     subPageRowLayout->setSpacing(0);
     subPageRowLayout->addWidget(channel.sensor_config_top_bar, 1, Qt::AlignLeft | Qt::AlignVCenter);
+    channel.sub_page_row = subPageRow;
 
     channel.config_sub_stack = new QStackedWidget(page);
     channel.config_sub_stack->setObjectName(QStringLiteral("temperatureChannelConfigSubStackChannel%1").arg(index + 1));
@@ -1633,7 +1640,6 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     channel.config_sub_stack->addWidget(createChannelAdvancedParamsPage(index));
     channel.config_sub_stack->addWidget(createChannelSensorConfigPage(index));
     layout->addWidget(channel.config_sub_stack, 0);
-    layout->addWidget(subPageRow, 0);
     selectChannelSubPage(index, 0);
     return page;
 }
@@ -2304,8 +2310,6 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
     subBarLayout->addWidget(common_.common_params_button, 1);
     subBarLayout->addWidget(common_.advanced_params_button, 1);
     subBarLayout->addWidget(common_.sensor_config_button, 1);
-    layout->addStretch(1);
-    layout->addWidget(common_.sub_top_bar, 0, Qt::AlignLeft | Qt::AlignBottom);
 
     connect(common_.address_spin, &QSpinBox::editingFinished, this, [this]() {
         emit deviceAddressRequested(static_cast<quint16>(common_.address_spin->value()));
@@ -2334,6 +2338,10 @@ void TemperatureControllerPanel::selectChannel(int index)
         updateChannelStackMinimumHeight();
         channel_stack_->setCurrentIndex(pageIndex);
         channel_stack_->updateGeometry();
+    }
+    if (sub_page_bar_stack_)
+    {
+        sub_page_bar_stack_->setCurrentIndex(pageIndex);
     }
     if (channel_top_controls_stack_)
     {
@@ -2392,6 +2400,7 @@ void TemperatureControllerPanel::updateChannelStackMinimumHeight()
     }
 
     int maximumPageHeight = kTemperatureControllerChannelStackHeight;
+    int maximumSubBarHeight = 0;
     for (int index = 0; index < static_cast<int>(channels_.size()); ++index)
     {
         ChannelWidgets& channel = channels_[index];
@@ -2406,30 +2415,27 @@ void TemperatureControllerPanel::updateChannelStackMinimumHeight()
             channel.config_sub_stack->setFixedHeight(kTemperatureControllerChannelConfigSubStackHeight);
         }
 
-        int subPageRowHeight = kTemperatureControllerConfigRowHeight;
-        QWidget *subPageRow = channel.sensor_config_top_bar
-            ? channel.sensor_config_top_bar->parentWidget()
-            : nullptr;
-        if (subPageRow)
-        {
-            subPageRowHeight = std::max(subPageRowHeight,
-                                        channel.sensor_config_top_bar->sizeHint().height());
-            subPageRow->setFixedHeight(subPageRowHeight);
-        }
-
         QMargins channelMargins;
-        int channelSpacing = 0;
         if (QLayout *channelLayout = channelPage->layout())
         {
             channelLayout->invalidate();
             channelLayout->activate();
             channelMargins = channelLayout->contentsMargins();
-            channelSpacing = channelLayout->spacing();
         }
         const int channelPageHeight = channelMargins.top() + kTemperatureControllerChannelConfigSubStackHeight +
-            channelSpacing + subPageRowHeight + channelMargins.bottom();
+            channelMargins.bottom();
         channelPage->setFixedHeight(channelPageHeight);
         maximumPageHeight = std::max(maximumPageHeight, channelPageHeight);
+
+        if (channel.sub_page_row)
+        {
+            const int subPageRowHeight = std::max(
+                kTemperatureControllerConfigRowHeight,
+                channel.sensor_config_top_bar ? channel.sensor_config_top_bar->sizeHint().height()
+                                              : kTemperatureControllerConfigRowHeight);
+            channel.sub_page_row->setFixedHeight(subPageRowHeight);
+            maximumSubBarHeight = std::max(maximumSubBarHeight, subPageRowHeight);
+        }
     }
 
     if (QWidget *commonPage = channel_stack_->widget(2))
@@ -2445,8 +2451,22 @@ void TemperatureControllerPanel::updateChannelStackMinimumHeight()
         maximumPageHeight = std::max(maximumPageHeight, commonHeight);
     }
 
+    if (common_.sub_top_bar)
+    {
+        const int commonSubBarHeight = std::max(
+            kTemperatureControllerConfigRowHeight,
+            common_.sub_top_bar->sizeHint().height());
+        common_.sub_top_bar->setFixedHeight(commonSubBarHeight);
+        maximumSubBarHeight = std::max(maximumSubBarHeight, commonSubBarHeight);
+    }
+
     channel_stack_->setFixedHeight(maximumPageHeight);
     channel_stack_->updateGeometry();
+    if (sub_page_bar_stack_ && maximumSubBarHeight > 0)
+    {
+        sub_page_bar_stack_->setFixedHeight(maximumSubBarHeight);
+        sub_page_bar_stack_->updateGeometry();
+    }
 }
 
 void TemperatureControllerPanel::selectChannelSubPage(int channelIndex, int subPageIndex)
@@ -2479,6 +2499,9 @@ void TemperatureControllerPanel::selectChannelSubPage(int channelIndex, int subP
         updateButton(channel.advanced_params_button, 1);
         updateButton(channel.sensor_config_button, 2);
     }
+    updateButton(common_.common_params_button, 0);
+    updateButton(common_.advanced_params_button, 1);
+    updateButton(common_.sensor_config_button, 2);
 
     const int selectedChannelIndex = std::clamp(selected_channel_index_, 0, 1);
     ChannelWidgets& selectedChannel = channels_[selectedChannelIndex];
