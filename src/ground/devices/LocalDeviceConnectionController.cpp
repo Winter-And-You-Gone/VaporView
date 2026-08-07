@@ -812,14 +812,14 @@ private:
         }) < 0) return;
 
         postLog(QString(useEnglish
-            ? "========== Connection Summary: %1/%2 devices connected =========="
-            : "========== 连接摘要: %1/%2 设备已连接 ==========")
+            ? "========== Serial device phase: %1/%2 devices connected =========="
+            : "========== 串口设备阶段: %1/%2 设备已连接 ==========")
                 .arg(connectedDevices)
                 .arg(totalDevices));
         if (connectedDevices == 0)
         {
-            postLog(useEnglish ? QStringLiteral("No ports connected")
-                               : QStringLiteral("没有端口连接成功"));
+            postLog(useEnglish ? QStringLiteral("No serial devices connected")
+                               : QStringLiteral("没有串口设备连接成功"));
             finish(false);
             return;
         }
