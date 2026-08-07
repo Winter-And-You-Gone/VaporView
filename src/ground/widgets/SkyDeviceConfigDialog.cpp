@@ -801,7 +801,7 @@ void SkyDeviceConfigDialog::setupUi()
     addSerialGroup(QStringLiteral("EPSILON"), epsilon_group_, epsilon_, 0, 0);
     addSerialGroup(QStringLiteral("PTB210"), ptb_group_, ptb_, 0, 1);
     addSerialGroup(QStringLiteral("HMP3"), hmp_group_, hmp_, 0, 2);
-    addSerialGroup(QStringLiteral("TFA1500-L"), lidar_group_, lidar_, 0, 3);
+    addSerialGroup(QStringLiteral("TFA1005-L"), lidar_group_, lidar_, 0, 3);
     addSerialGroup(QStringLiteral("RD105"), temperature_controller_group_, temperature_controller_, 1, 0);
     temperature_controller_slave_address_ = new QSpinBox(this);
     temperature_controller_slave_address_->setRange(1, 247);
@@ -1021,7 +1021,7 @@ void SkyDeviceConfigDialog::updateTexts()
     setCardTitle(epsilon_group_, QStringLiteral("EPSILON"));
     setCardTitle(ptb_group_, QStringLiteral("PTB210"));
     setCardTitle(hmp_group_, QStringLiteral("HMP3"));
-    setCardTitle(lidar_group_, QStringLiteral("TFA1500-L"));
+    setCardTitle(lidar_group_, QStringLiteral("TFA1005-L"));
     setCardTitle(temperature_controller_group_, QStringLiteral("RD105"));
     setCardTitle(wave_group_, QStringLiteral("Wave TCP"));
     setCardTitle(telemetry_group_, is_english_ ? QStringLiteral("Telemetry") : QStringLiteral("数传配置"));

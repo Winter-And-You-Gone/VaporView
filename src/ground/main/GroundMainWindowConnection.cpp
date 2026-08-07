@@ -37,12 +37,17 @@ void MainWindow::updateConnectionStatus(bool connected)
         updateDeviceConfigState();
         return;
     }
+    const bool localWaveformConnected = !isRemoteSkyMode() && state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnected();
+    const bool localWaveformConnecting = !isRemoteSkyMode() && state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnecting();
+    connected = connected || localWaveformConnected;
     state_->is_connected_ = connected;
-    const bool uiBusy = state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_;
+    const bool uiBusy = state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_ || localWaveformConnecting;
     const bool inputsEnabled = !connected && !uiBusy;
 
     state_->connect_btn_->setEnabled(inputsEnabled);
-    state_->cancel_connect_btn_->setEnabled(state_->connection_attempt_in_progress_);
+    state_->cancel_connect_btn_->setEnabled(
+        state_->connection_attempt_in_progress_ ||
+        (state_->local_waveform_started_by_connect_action_ && localWaveformConnecting));
     state_->disconnect_btn_->setEnabled(connected && !state_->connection_attempt_in_progress_ && !state_->epsilon_reconfigure_in_progress_);
     state_->refresh_ports_btn_->setEnabled(inputsEnabled);
     if (state_->epsilon_reconfigure_action_)
@@ -586,6 +591,25 @@ bool MainWindow::anyCollectorRunning() const
     return state_->local_connection_controller_ && state_->local_connection_controller_->anyCollectorRunning();
 }
 
+bool MainWindow::anyLocalDeviceConnected() const
+{
+    return anyCollectorRunning() ||
+        (!isRemoteSkyMode() && state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnected());
+}
+
+void MainWindow::disconnectLocalWaveformSource()
+{
+    if (isRemoteSkyMode() || !state_->tcp_wave_panel_)
+    {
+        return;
+    }
+    state_->local_waveform_started_by_connect_action_ = false;
+    if (state_->tcp_wave_panel_->isConnected() || state_->tcp_wave_panel_->isConnecting())
+    {
+        state_->tcp_wave_panel_->toggleConnection();
+    }
+}
+
 CollectorSnapshot MainWindow::snapshotCollectors() const
 {
     return state_->local_connection_controller_
@@ -621,11 +645,12 @@ void MainWindow::finishConnectionAttempt(bool connected)
 {
     state_->connection_attempt_in_progress_ = false;
     state_->cancel_connection_requested_.store(false);
-    if (!connected && state_->recording_service_->isSessionOpen())
+    const bool overallConnected = connected || anyLocalDeviceConnected();
+    if (!overallConnected && state_->recording_service_->isSessionOpen())
     {
         stopRecording(true);
     }
-    updateConnectionStatus(connected);
+    updateConnectionStatus(overallConnected);
     bool ai8Connected = false;
     if (state_->ai8_temperature_controller_panel_)
     {
@@ -1087,6 +1112,14 @@ void MainWindow::onConnectClicked()
         log(state_->is_english_ ? "A device connection attempt is already running."
                         : "已有设备连接流程正在进行。");
         updateConnectionStatus(anyCollectorRunning());
+        return;
+    }
+    if (state_->tcp_wave_panel_ &&
+        !state_->tcp_wave_panel_->isConnected() &&
+        !state_->tcp_wave_panel_->isConnecting())
+    {
+        state_->local_waveform_started_by_connect_action_ = true;
+        state_->tcp_wave_panel_->toggleConnection();
     }
 }
 void MainWindow::onDisconnectClicked()
@@ -1121,6 +1154,7 @@ void MainWindow::onDisconnectClicked()
 
     stopRecording(true);
     stopAllCollectors();
+    disconnectLocalWaveformSource();
     invalidateTemperatureControllerDataUi();
     finishConnectionAttempt(false);
     log(state_->is_english_ ? "Disconnected" : "已断开");
@@ -1142,13 +1176,24 @@ void MainWindow::onCancelConnectClicked()
                                       : QStringLiteral("模拟连接已取消"));
         return;
     }
-    if (!state_->connection_attempt_in_progress_)
+    const bool waveformConnectInProgress =
+        state_->local_waveform_started_by_connect_action_ &&
+        state_->tcp_wave_panel_ &&
+        (state_->tcp_wave_panel_->isConnected() || state_->tcp_wave_panel_->isConnecting());
+    if (!state_->connection_attempt_in_progress_ && !waveformConnectInProgress)
     {
         return;
     }
 
-    state_->cancel_connection_requested_.store(true);
-    state_->local_connection_controller_->requestCancel();
+    if (state_->connection_attempt_in_progress_)
+    {
+        state_->cancel_connection_requested_.store(true);
+        state_->local_connection_controller_->requestCancel();
+    }
+    if (waveformConnectInProgress)
+    {
+        disconnectLocalWaveformSource();
+    }
     log(state_->is_english_ ? "Cancel requested, stopping connection attempt..." : "已请求取消，正在停止连接流程...");
     QApplication::processEvents(QEventLoop::AllEvents);
 }

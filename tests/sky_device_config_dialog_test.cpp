@@ -227,14 +227,14 @@ int main(int argc, char **argv)
         if (title == QStringLiteral("EPSILON")) epsilonGroup = group;
         if (title == QStringLiteral("PTB210")) ptbGroup = group;
         if (title == QStringLiteral("HMP3")) hmpGroup = group;
-        if (title == QStringLiteral("TFA1500-L")) lidarGroup = group;
+        if (title == QStringLiteral("TFA1005-L")) lidarGroup = group;
         if (title == QStringLiteral("RD105")) temperatureControllerGroup = group;
         if (title == QStringLiteral("Wave TCP")) waveGroup = group;
         if (title == QStringLiteral("数传配置")) telemetryGroup = group;
         if (title == QStringLiteral("EPSILON") ||
             title == QStringLiteral("PTB210") ||
             title == QStringLiteral("HMP3") ||
-            title == QStringLiteral("TFA1500-L"))
+            title == QStringLiteral("TFA1005-L"))
         {
             require(group->height() <= group->sizeHint().height() + 12, "top row cards are not stretched vertically");
         }

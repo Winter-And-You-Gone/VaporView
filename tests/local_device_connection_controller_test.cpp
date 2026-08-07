@@ -40,8 +40,8 @@ int main()
     controller.setCallbacks(std::move(callbacks));
 
     LocalConnectionRequest request;
-    request.english = true;
-    request.selectText = QStringLiteral("-- Select --");
+    request.english = false;
+    request.selectText = QStringLiteral("未选择");
     request.epsilon.port = request.selectText;
     request.ptb.port = request.selectText;
     request.hmp.port = request.selectText;
@@ -57,11 +57,14 @@ int main()
     {
         std::lock_guard<std::mutex> lock(mutex);
         bool foundSummary = false;
+        bool foundLidarSkip = false;
         for (const QString& line : logs)
         {
-            foundSummary = foundSummary || line.contains(QStringLiteral("No ports connected"));
+            foundSummary = foundSummary || line.contains(QStringLiteral("没有端口连接成功"));
+            foundLidarSkip = foundLidarSkip || line == QStringLiteral("[TFA1005-L] 跳过 (未选择)");
         }
         require(foundSummary, "no-port result logged");
+        require(foundLidarSkip, "lidar skip log uses the concrete device model");
     }
 
     controller.disconnect();

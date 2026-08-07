@@ -3135,7 +3135,7 @@ void MainWindow::updateDeviceConfigTexts()
         state_->device_config_.hmp_source_combo->setItemText(1, QStringLiteral("SHT45"));
         state_->device_config_.hmp_source_combo->setCurrentIndex(std::max(0, state_->device_config_.hmp_source_combo->findData(sourceData)));
     }
-    if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(QStringLiteral("TFA1500-L:"));
+    if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(QStringLiteral("TFA1005-L:"));
     if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(QStringLiteral("RD105:"));
     if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(QStringLiteral("AI-8288:"));
     if (state_->device_config_.epsilon_rate_lbl) state_->device_config_.epsilon_rate_lbl->setText(QString());
@@ -4806,6 +4806,14 @@ void MainWindow::setupDataPanels()
             state_->ui_test_model_->setDeviceState(
                 VaporView::SkyDeviceId::WaveTcp,
                 connected ? VaporView::DeviceState::Connected : VaporView::DeviceState::Disconnected);
+        }
+        if (!connected)
+        {
+            state_->local_waveform_started_by_connect_action_ = false;
+        }
+        if (!isRemoteSkyMode())
+        {
+            updateConnectionStatus(anyLocalDeviceConnected());
         }
         updateRecordingActionStates();
         updateHomeDeviceStatusCapsules();

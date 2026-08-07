@@ -698,6 +698,75 @@ int main(int argc, char **argv)
     require(snapshotAll() == beforeDirectClose, "direct close from UI test mode does not persist destructor state");
     VaporView::setSettingsWritesSuspended(false);
 
+    {
+        VaporView::setSettingsWritesSuspended(true);
+        QTcpServer localWaveSource;
+        require(localWaveSource.listen(QHostAddress::LocalHost),
+                "local TCP waveform source starts for title-bar connection coverage");
+        auto *connectionWindow = new MainWindow();
+        connectionWindow->show();
+        processEvents();
+        VaporView::Ground::Widgets::SegmentedSwitchButton *connectionSourceModeSwitch = nullptr;
+        for (auto *candidate : connectionWindow->findChildren<VaporView::Ground::Widgets::SegmentedSwitchButton *>())
+        {
+            if ((candidate->leftSegmentText().contains(QStringLiteral("本地")) ||
+                 candidate->leftSegmentText().contains(QStringLiteral("Local"))) &&
+                (candidate->rightSegmentText().contains(QStringLiteral("远程")) ||
+                 candidate->rightSegmentText().contains(QStringLiteral("Remote"))))
+            {
+                connectionSourceModeSwitch = candidate;
+                break;
+            }
+        }
+        require(connectionSourceModeSwitch != nullptr,
+                "normal-mode source mode switch exists");
+        if (connectionSourceModeSwitch->switchChecked())
+        {
+            connectionSourceModeSwitch->click();
+            processEvents();
+        }
+        auto *connectionWavePanel = connectionWindow->findChild<TcpWavePanel *>();
+        require(connectionWavePanel != nullptr,
+                "normal-mode window exposes its TCP waveform panel");
+        const QList<QLineEdit *> waveInputs = connectionWavePanel->findChildren<QLineEdit *>();
+        require(waveInputs.size() >= 2,
+                "normal-mode TCP waveform panel exposes host and port inputs");
+        waveInputs.at(0)->setText(QStringLiteral("127.0.0.1"));
+        waveInputs.at(1)->setText(QString::number(localWaveSource.serverPort()));
+        for (const QString& objectName : {
+                 QStringLiteral("epsilonPortCombo"),
+                 QStringLiteral("pressurePortCombo"),
+                 QStringLiteral("humidityPortCombo"),
+                 QStringLiteral("lidarPortCombo"),
+                 QStringLiteral("temperaturePortCombo"),
+                 QStringLiteral("deviceAi8TemperaturePortCombo")})
+        {
+            if (QComboBox *combo = connectionWindow->findChild<QComboBox *>(objectName))
+            {
+                combo->setCurrentIndex(0);
+            }
+        }
+        VaporView::setSettingsWritesSuspended(false);
+        require(QMetaObject::invokeMethod(connectionWindow, "onConnectClicked", Qt::DirectConnection),
+                "normal-mode title-bar connection slot invoked");
+        VaporView::setSettingsWritesSuspended(true);
+        require(VaporViewTest::processEventsUntil(3000, [connectionWavePanel]() {
+                    return connectionWavePanel->isConnected();
+                }),
+                "title-bar connection also connects the local TCP waveform source");
+        require(QMetaObject::invokeMethod(connectionWindow, "onDisconnectClicked", Qt::DirectConnection),
+                "normal-mode title-bar disconnect slot invoked");
+        require(VaporViewTest::processEventsUntil(1500, [connectionWavePanel]() {
+                    return !connectionWavePanel->isConnected();
+                }),
+                "title-bar disconnect also disconnects the local TCP waveform source");
+        connectionWindow->close();
+        delete connectionWindow;
+        VaporView::setSettingsWritesSuspended(false);
+    }
+    require(snapshotAll() == beforeDirectClose,
+            "normal-mode waveform connection coverage does not persist temporary inputs");
+
     std::cout << "ui_test_mode_window_test passed\n";
     return 0;
 }

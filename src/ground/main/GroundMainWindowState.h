@@ -416,6 +416,7 @@ struct MainWindowState
     bool port_detection_in_progress_;
     bool epsilon_reconfigure_in_progress_;
     bool is_connected_;
+    bool local_waveform_started_by_connect_action_;
     bool ui_test_mode_enabled_;
     bool ui_test_application_closing_;
     bool ui_test_connection_in_progress_;

@@ -956,11 +956,11 @@ const char* lidarProtocolName(LidarProtocol protocol)
   switch (protocol)
   {
   case LidarProtocol::TFA1500DistanceFrame:
-    return "TFA1500-L";
+    return "TFA1005-L";
   case LidarProtocol::TFA1500LowFrequencyFrame:
-    return "TFA1500-L 低频";
+    return "TFA1005-L 低频";
   case LidarProtocol::TFA1500HighFrequency:
-    return "TFA1500-L 高频";
+    return "TFA1005-L 高频";
   case LidarProtocol::ObservedAaB7Frame:
     return "AA-B7 激光测距帧";
   case LidarProtocol::Unknown:
@@ -4851,7 +4851,7 @@ bool LidarCollector::ensureTfa1500Streaming()
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
   {
-    log("TFA1500-L: 发送高频测距启动命令失败");
+    log("TFA1005-L: 发送高频测距启动命令失败");
     return false;
   }
 
@@ -4865,7 +4865,7 @@ bool LidarCollector::ensureTfa1500Standby()
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
   {
-    log("TFA1500-L: 发送待机命令失败");
+    log("TFA1005-L: 发送待机命令失败");
     return false;
   }
 
@@ -4879,7 +4879,7 @@ bool LidarCollector::ensureTfa1500DistanceOutput()
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
   {
-    log("TFA1500-L: 发送距离输出命令失败");
+    log("TFA1005-L: 发送距离输出命令失败");
     return false;
   }
 
@@ -4892,7 +4892,7 @@ bool LidarCollector::ensureTfa1500LowFrequencyContinuous()
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
   {
-    log("TFA1500-L: 发送低频连续测距命令失败");
+    log("TFA1005-L: 发送低频连续测距命令失败");
     return false;
   }
 
@@ -4926,7 +4926,7 @@ bool LidarCollector::setDeviceSampleRate(int hz)
     }
 
     sample_rate_hz_.store(std::min(hz, 1000));
-    log("TFA1500-L: 高频模式使用设备自适应输出；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
+    log("TFA1005-L: 高频模式使用设备自适应输出；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
     return true;
   }
 
@@ -4934,7 +4934,7 @@ bool LidarCollector::setDeviceSampleRate(int hz)
   {
     ensureTfa1500DistanceOutput();
     sample_rate_hz_.store(std::min(hz, 100));
-    log("TFA1500-L: 距离输出模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
+    log("TFA1005-L: 距离输出模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
     return true;
   }
 
@@ -4942,13 +4942,13 @@ bool LidarCollector::setDeviceSampleRate(int hz)
   {
     ensureTfa1500LowFrequencyContinuous();
     sample_rate_hz_.store(std::min(hz, 100));
-    log("TFA1500-L: 低频模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
+    log("TFA1005-L: 低频模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
     return true;
   }
 
   ensureTfa1500DistanceOutput();
   sample_rate_hz_.store(std::min(hz, 100));
-  log("TFA1500-L: 未识别具体输出模式，已使用距离输出命令并将主机采样率限制设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
+  log("TFA1005-L: 未识别具体输出模式，已使用距离输出命令并将主机采样率限制设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
   return true;
 }
 

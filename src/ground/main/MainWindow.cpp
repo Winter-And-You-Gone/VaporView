@@ -445,6 +445,7 @@ MainWindow::~MainWindow()
     state_->recording_service_->setWarningCallback({});
     state_->recording_service_->setSensorSnapshotProvider({});
     stopAllCollectors();
+    disconnectLocalWaveformSource();
 }
 
 bool MainWindow::shouldStartWindowMove(QObject *watched) const

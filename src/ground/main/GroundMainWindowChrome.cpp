@@ -482,7 +482,7 @@ void MainWindow::setEnglish(bool english)
     if (state_->imu_lbl_) state_->imu_lbl_->setText(english ? "IMU:" : "IMU:");
     if (state_->ptb_lbl_) state_->ptb_lbl_->setText(english ? "PTB210:" : "PTB210:");
     if (state_->hmp_lbl_) state_->hmp_lbl_->setText(english ? "HMP3:" : "HMP3:");
-    if (state_->lidar_lbl_) state_->lidar_lbl_->setText(english ? "TFA1500-L:" : "TFA1500-L:");
+    if (state_->lidar_lbl_) state_->lidar_lbl_->setText(english ? "TFA1005-L:" : "TFA1005-L:");
     if (state_->temperature_lbl_) state_->temperature_lbl_->setText(QStringLiteral("RD105:"));
 
     if (state_->config_inline_title_lbl_)

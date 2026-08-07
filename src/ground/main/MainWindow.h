@@ -259,6 +259,8 @@ private:
     void updateHomeDeviceStatusCapsules();
     void updateHomeDeviceActionSpinnerIcons();
     bool anyCollectorRunning() const;
+    bool anyLocalDeviceConnected() const;
+    void disconnectLocalWaveformSource();
     QStringList getAvailablePorts();
     void setEnglish(bool english);
     void setFontScale(int percent);

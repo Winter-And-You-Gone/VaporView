@@ -735,7 +735,7 @@ private:
             return false;
         }) < 0) return;
 
-        if (connectCollector(QStringLiteral("LIDAR"),
+        if (connectCollector(QStringLiteral("TFA1005-L"),
                              request.lidar,
                              collectors.lidar.get(),
                              SerialConfig::N81(request.lidar.baudText.toInt()),
@@ -744,26 +744,26 @@ private:
             if (request.lidar.skipDeviceRate)
             {
                 postLog(useEnglish
-                    ? QStringLiteral("[Lidar] Skip output-rate command; using device default/adaptive output.")
-                    : QStringLiteral("[Lidar] 跳过输出频率下发，使用设备默认/自适应输出。"));
+                    ? QStringLiteral("[TFA1005-L] Skip output-rate command; using device default/adaptive output.")
+                    : QStringLiteral("[TFA1005-L] 跳过输出频率下发，使用设备默认/自适应输出。"));
             }
             else if (!collectors.lidar->setDeviceSampleRate(request.lidar.sampleRateHz))
             {
                 postLog(QString(useEnglish
-                    ? "[Lidar] Failed to apply output rate %1 Hz, using device default."
-                    : "[Lidar] 应用 %1 Hz 输出频率失败，使用设备默认输出。")
+                    ? "[TFA1005-L] Failed to apply output rate %1 Hz, using device default."
+                    : "[TFA1005-L] 应用 %1 Hz 输出频率失败，使用设备默认输出。")
                         .arg(request.lidar.sampleRateHz));
             }
             else
             {
                 postLog(QString(useEnglish
-                    ? "[Lidar] Output rate set to %1 Hz or host-side limit updated"
-                    : "[Lidar] 输出频率已设置为 %1 Hz，或已更新主机侧限频")
+                    ? "[TFA1005-L] Output rate set to %1 Hz or host-side limit updated"
+                    : "[TFA1005-L] 输出频率已设置为 %1 Hz，或已更新主机侧限频")
                         .arg(request.lidar.sampleRateHz));
             }
             if (collectors.lidar->startStreaming()) return true;
-            postLog(useEnglish ? QStringLiteral("[Lidar] Failed to start data stream.")
-                               : QStringLiteral("[Lidar] 启动数据流失败。"));
+            postLog(useEnglish ? QStringLiteral("[TFA1005-L] Failed to start data stream.")
+                               : QStringLiteral("[TFA1005-L] 启动数据流失败。"));
             return false;
         }) < 0) return;
 

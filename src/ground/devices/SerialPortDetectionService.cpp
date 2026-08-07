@@ -121,7 +121,7 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
             }};
     };
     auto makeLidarProbe = [&](const QString& baud) {
-        return ProbeSpec{QStringLiteral("lidar"), QStringLiteral("TFA1500-L"), baud,
+        return ProbeSpec{QStringLiteral("lidar"), QStringLiteral("TFA1005-L"), baud,
             [cancelRequested, baud](const QString& port) {
                 return probeCollector(port,
                                       std::make_unique<LidarCollector>(),
@@ -281,7 +281,7 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
         {QStringLiteral("epsilon"), QStringLiteral("EPSILON")},
         {QStringLiteral("ptb"), QStringLiteral("PTB210")},
         {QStringLiteral("hmp"), QStringLiteral("HMP3")},
-        {QStringLiteral("lidar"), QStringLiteral("TFA1500-L")},
+        {QStringLiteral("lidar"), QStringLiteral("TFA1005-L")},
         {QStringLiteral("temperature"), QStringLiteral("RD105")},
         {QStringLiteral("ai8"), QStringLiteral("AI-8288")},
     };
