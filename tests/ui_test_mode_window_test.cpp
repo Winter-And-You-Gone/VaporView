@@ -780,34 +780,34 @@ int main(int argc, char **argv)
                                           QStringLiteral("连接摘要"),
                                           QStringLiteral("Connection Summary")) >= 0 &&
                         findLogMessageRow(connectionLogList,
+                                          QStringLiteral("串口设备阶段"),
+                                          QStringLiteral("Serial device phase")) >= 0 &&
+                        findLogMessageRow(connectionLogList,
                                           QStringLiteral("正在连接 TCP 波形"),
                                           QStringLiteral("Connecting TCP wave link")) >= 0 &&
                         findLogMessageRow(connectionLogList,
                                           QStringLiteral("TCP 波形已连接"),
-                                          QStringLiteral("TCP wave link connected")) >= 0 &&
-                        findLogMessageRow(connectionLogList,
-                                          QStringLiteral("本地连接总摘要"),
-                                          QStringLiteral("Local connection summary")) >= 0;
+                                          QStringLiteral("TCP wave link connected")) >= 0;
                 }),
                 "title-bar connection connects the local TCP waveform source and flushes its logs");
         const int summaryRow = findLogMessageRow(connectionLogList,
                                                  QStringLiteral("连接摘要"),
                                                  QStringLiteral("Connection Summary"));
+        const int serialPhaseRow = findLogMessageRow(connectionLogList,
+                                                      QStringLiteral("串口设备阶段"),
+                                                      QStringLiteral("Serial device phase"));
         const int waveformConnectingRow = findLogMessageRow(connectionLogList,
                                                              QStringLiteral("正在连接 TCP 波形"),
                                                              QStringLiteral("Connecting TCP wave link"));
         const int waveformConnectedRow = findLogMessageRow(connectionLogList,
                                                             QStringLiteral("TCP 波形已连接"),
                                                             QStringLiteral("TCP wave link connected"));
-        const int totalSummaryRow = findLogMessageRow(connectionLogList,
-                                                       QStringLiteral("本地连接总摘要"),
-                                                       QStringLiteral("Local connection summary"));
-        require(summaryRow >= 0 && waveformConnectingRow > summaryRow,
-                "title-bar waveform connection starts after the local connection summary");
+        require(serialPhaseRow >= 0 && waveformConnectingRow > serialPhaseRow,
+                "title-bar waveform connection starts after the serial device phase");
         require(waveformConnectedRow == waveformConnectingRow + 1,
                 "TCP waveform connection logs remain adjacent");
-        require(totalSummaryRow > waveformConnectedRow,
-                "overall local connection summary follows both waveform logs");
+        require(summaryRow > waveformConnectedRow,
+                "connection summary follows both waveform logs");
         require(QMetaObject::invokeMethod(connectionWindow, "onDisconnectClicked", Qt::DirectConnection),
                 "normal-mode title-bar disconnect slot invoked");
         require(VaporViewTest::processEventsUntil(1500, [connectionWavePanel]() {

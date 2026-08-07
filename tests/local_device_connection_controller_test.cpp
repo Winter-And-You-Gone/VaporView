@@ -60,7 +60,7 @@ int main()
         bool foundLidarSkip = false;
         for (const QString& line : logs)
         {
-            foundSummary = foundSummary || line.contains(QStringLiteral("没有端口连接成功"));
+            foundSummary = foundSummary || line.contains(QStringLiteral("没有串口设备连接成功"));
             foundLidarSkip = foundLidarSkip || line == QStringLiteral("[TFA1005-L] 跳过 (未选择)");
         }
         require(foundSummary, "no-port result logged");

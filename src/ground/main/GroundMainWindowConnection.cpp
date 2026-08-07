@@ -661,8 +661,8 @@ void MainWindow::configureLocalConnectionCoordinator()
                             ? (state_->is_english_ ? QStringLiteral("rejected") : QStringLiteral("已拒绝"))
                             : (state_->is_english_ ? QStringLiteral("completed") : QStringLiteral("已完成"));
             logConnectionInfo(QString(state_->is_english_
-                ? "========== Local connection summary: serial %1, TCP waveform %2 (%3) =========="
-                : "========== 本地连接总摘要：串口设备%1，TCP 波形%2（%3） ==========")
+                ? "========== Connection Summary: serial %1, TCP waveform %2 (%3) =========="
+                : "========== 连接摘要: 串口设备%1，TCP 波形%2（%3） ==========")
                 .arg(serialState, waveformState, outcome));
             finishConnectionAttempt(connected);
         });
