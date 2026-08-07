@@ -784,6 +784,11 @@ QListView#logListView::item {
     padding: 2px 8px;
 }
 
+QListView#logListView::item:hover {
+    background-color: @vv-menu-hover;
+    color: @vv-text;
+}
+
 QListView#logListView::item:selected {
     background-color: @vv-primary-subtle;
     color: @vv-text;

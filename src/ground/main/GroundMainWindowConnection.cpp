@@ -644,27 +644,29 @@ void MainWindow::configureLocalConnectionCoordinator()
     hooks.stopWaveform = hooks.cancelWaveform;
     hooks.finished = [this](const VaporView::Ground::Devices::LocalConnectionResult& result) {
         QTimer::singleShot(0, this, [this, result]() {
-            const bool connected = result.connected();
-            const QString serialState = result.serialConnected
-                ? (state_->is_english_ ? QStringLiteral("connected") : QStringLiteral("已连接"))
-                : (state_->is_english_ ? QStringLiteral("not connected") : QStringLiteral("未连接"));
-            const QString waveformState = result.waveformConnected
-                ? (state_->is_english_ ? QStringLiteral("connected") : QStringLiteral("已连接"))
-                : (state_->is_english_ ? QStringLiteral("not connected") : QStringLiteral("未连接"));
-            const QString outcome = result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::Cancelled
-                ? (state_->is_english_ ? QStringLiteral("cancelled") : QStringLiteral("已取消"))
-                : result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::TimedOut
-                    ? (state_->is_english_ ? QStringLiteral("timed out") : QStringLiteral("已超时"))
-                    : result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::Failed
-                        ? (state_->is_english_ ? QStringLiteral("failed") : QStringLiteral("失败"))
-                        : result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::Rejected
-                            ? (state_->is_english_ ? QStringLiteral("rejected") : QStringLiteral("已拒绝"))
-                            : (state_->is_english_ ? QStringLiteral("completed") : QStringLiteral("已完成"));
-            logConnectionInfo(QString(state_->is_english_
-                ? "========== Connection Summary: serial %1, TCP waveform %2 (%3) =========="
-                : "========== 连接摘要: 串口设备%1，TCP 波形%2（%3） ==========")
-                .arg(serialState, waveformState, outcome));
-            finishConnectionAttempt(connected);
+            QTimer::singleShot(0, this, [this, result]() {
+                const bool connected = result.connected();
+                const QString serialState = result.serialConnected
+                    ? (state_->is_english_ ? QStringLiteral("connected") : QStringLiteral("已连接"))
+                    : (state_->is_english_ ? QStringLiteral("not connected") : QStringLiteral("未连接"));
+                const QString waveformState = result.waveformConnected
+                    ? (state_->is_english_ ? QStringLiteral("connected") : QStringLiteral("已连接"))
+                    : (state_->is_english_ ? QStringLiteral("not connected") : QStringLiteral("未连接"));
+                const QString outcome = result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::Cancelled
+                    ? (state_->is_english_ ? QStringLiteral("cancelled") : QStringLiteral("已取消"))
+                    : result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::TimedOut
+                        ? (state_->is_english_ ? QStringLiteral("timed out") : QStringLiteral("已超时"))
+                        : result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::Failed
+                            ? (state_->is_english_ ? QStringLiteral("failed") : QStringLiteral("失败"))
+                            : result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::Rejected
+                                ? (state_->is_english_ ? QStringLiteral("rejected") : QStringLiteral("已拒绝"))
+                                : (state_->is_english_ ? QStringLiteral("completed") : QStringLiteral("已完成"));
+                logConnectionInfo(QString(state_->is_english_
+                    ? "========== Connection Summary: serial %1, TCP waveform %2 (%3) =========="
+                    : "========== 连接摘要: 串口设备%1，TCP 波形%2（%3） ==========")
+                    .arg(serialState, waveformState, outcome));
+                finishConnectionAttempt(connected);
+            });
         });
     };
     state_->local_connection_coordinator_->setHooks(std::move(hooks));
