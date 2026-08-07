@@ -4754,6 +4754,30 @@ int main(int argc, char **argv)
     const QString darkOverviewStyleSheet = qApp->styleSheet();
     requireLastStyleRuleContains(
         darkOverviewStyleSheet,
+        QStringLiteral("QListView#logListView::item:selected {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtlePressed, true)),
+        "dark log selection uses the dark primary selection background");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QListView#logListView::item:selected {"),
+        QStringLiteral("color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::White, true)),
+        "dark log selection keeps the text readable");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QListView#logListView::item:hover {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtle, true)),
+        "dark log hover uses the dark primary hover background");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QListView#logListView::item:selected:hover {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtlePressed, true)),
+        "dark selected log hover keeps the pressed selection background");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
         QStringLiteral("QMessageBox QLabel {"),
         QStringLiteral("color: %1").arg(VaporView::appThemeColorName(
             VaporView::AppThemeColor::Text, true)),
@@ -5791,12 +5815,12 @@ int main(int argc, char **argv)
     require(VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandle, false) ==
                     QColor(226, 226, 226) &&
                 VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandle, true) ==
-                    QColor(226, 226, 226) &&
+                    QColor(39, 39, 39) &&
                 VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandleHover, false) ==
                     QColor(87, 89, 90) &&
                 VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandleHover, true) ==
-                    QColor(87, 89, 90),
-            "scrollbar handles use the requested default and highlighted colors in both themes");
+                    QColor(190, 190, 191),
+            "dark theme scrollbar handles use the requested dim default and light hover colors");
     for (const QString& arrowFile : {QStringLiteral("combo_arrow_up.xpm"),
                                      QStringLiteral("combo_arrow_down.xpm")})
     {

@@ -2916,6 +2916,7 @@ void TcpWavePanel::onSocketError()
     if (socket_->state() == QAbstractSocket::UnconnectedState)
     {
         setConnectedUiState(false);
+        emit connectionStateChanged(false);
     }
 }
 

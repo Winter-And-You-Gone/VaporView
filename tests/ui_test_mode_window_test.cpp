@@ -817,6 +817,101 @@ int main(int argc, char **argv)
         connectionWindow->close();
         delete connectionWindow;
         VaporView::setSettingsWritesSuspended(false);
+
+        VaporView::setSettingsWritesSuspended(true);
+        QTcpServer reservedClosedPort;
+        require(reservedClosedPort.listen(QHostAddress::LocalHost),
+                "closed TCP waveform port can be reserved");
+        const quint16 closedWavePort = reservedClosedPort.serverPort();
+        reservedClosedPort.close();
+
+        auto *failedConnectionWindow = new MainWindow();
+        failedConnectionWindow->show();
+        processEvents();
+        VaporView::Ground::Widgets::SegmentedSwitchButton *failedSourceModeSwitch = nullptr;
+        for (auto *candidate : failedConnectionWindow->findChildren<VaporView::Ground::Widgets::SegmentedSwitchButton *>())
+        {
+            if ((candidate->leftSegmentText().contains(QStringLiteral("本地")) ||
+                 candidate->leftSegmentText().contains(QStringLiteral("Local"))) &&
+                (candidate->rightSegmentText().contains(QStringLiteral("远程")) ||
+                 candidate->rightSegmentText().contains(QStringLiteral("Remote"))))
+            {
+                failedSourceModeSwitch = candidate;
+                break;
+            }
+        }
+        require(failedSourceModeSwitch != nullptr,
+                "failed-path normal-mode source mode switch exists");
+        if (failedSourceModeSwitch->switchChecked())
+        {
+            failedSourceModeSwitch->click();
+            processEvents();
+        }
+        auto *failedWavePanel = failedConnectionWindow->findChild<TcpWavePanel *>();
+        require(failedWavePanel != nullptr,
+                "failed-path normal-mode window exposes its TCP waveform panel");
+        auto *failedLogList = failedConnectionWindow->findChild<QListView *>(QStringLiteral("logListView"));
+        require(failedLogList && failedLogList->model(),
+                "failed-path normal-mode window exposes the log model");
+        const QList<QLineEdit *> failedWaveInputs = failedWavePanel->findChildren<QLineEdit *>();
+        require(failedWaveInputs.size() >= 2,
+                "failed-path TCP waveform panel exposes host and port inputs");
+        failedWaveInputs.at(0)->setText(QStringLiteral("127.0.0.1"));
+        failedWaveInputs.at(1)->setText(QString::number(closedWavePort));
+        for (const QString& objectName : {
+                 QStringLiteral("epsilonPortCombo"),
+                 QStringLiteral("pressurePortCombo"),
+                 QStringLiteral("humidityPortCombo"),
+                 QStringLiteral("lidarPortCombo"),
+                 QStringLiteral("temperaturePortCombo"),
+                 QStringLiteral("deviceAi8TemperaturePortCombo")})
+        {
+            if (QComboBox *combo = failedConnectionWindow->findChild<QComboBox *>(objectName))
+            {
+                combo->setCurrentIndex(0);
+            }
+        }
+        VaporView::setSettingsWritesSuspended(false);
+        require(QMetaObject::invokeMethod(failedConnectionWindow, "onConnectClicked", Qt::DirectConnection),
+                "failed-path normal-mode title-bar connection slot invoked");
+        VaporView::setSettingsWritesSuspended(true);
+        const bool failedLogsFlushed = VaporViewTest::processEventsUntil(5000, [failedLogList]() {
+            return findLogMessageRow(failedLogList,
+                                     QStringLiteral("没有串口设备连接成功"),
+                                     QStringLiteral("No serial devices connected")) >= 0 &&
+                findLogMessageRow(failedLogList,
+                                  QStringLiteral("正在连接 TCP 波形"),
+                                  QStringLiteral("Connecting TCP wave link")) >= 0 &&
+                findLogMessageRow(failedLogList,
+                                  QStringLiteral("TCP 波形 socket 错误"),
+                                  QStringLiteral("TCP wave socket error")) >= 0 &&
+                findLogMessageRow(failedLogList,
+                                  QStringLiteral("连接摘要"),
+                                  QStringLiteral("Connection Summary")) >= 0;
+        });
+        require(failedLogsFlushed,
+                "failed-path title-bar connection flushes serial, TCP error, and summary logs");
+        const int failedNoSerialRow = findLogMessageRow(failedLogList,
+                                                        QStringLiteral("没有串口设备连接成功"),
+                                                        QStringLiteral("No serial devices connected"));
+        const int failedWaveformConnectingRow = findLogMessageRow(failedLogList,
+                                                                  QStringLiteral("正在连接 TCP 波形"),
+                                                                  QStringLiteral("Connecting TCP wave link"));
+        const int failedWaveformErrorRow = findLogMessageRow(failedLogList,
+                                                             QStringLiteral("TCP 波形 socket 错误"),
+                                                             QStringLiteral("TCP wave socket error"));
+        const int failedSummaryRow = findLogMessageRow(failedLogList,
+                                                       QStringLiteral("连接摘要"),
+                                                       QStringLiteral("Connection Summary"));
+        require(failedNoSerialRow >= 0 && failedWaveformConnectingRow > failedNoSerialRow,
+                "failed-path TCP waveform connection starts after the no-serial-device log");
+        require(failedWaveformErrorRow > failedWaveformConnectingRow,
+                "failed-path TCP waveform error follows its connecting log");
+        require(failedSummaryRow > failedWaveformErrorRow,
+                "failed-path connection summary follows the TCP waveform error");
+        failedConnectionWindow->close();
+        delete failedConnectionWindow;
+        VaporView::setSettingsWritesSuspended(false);
     }
     require(snapshotAll() == beforeDirectClose,
             "normal-mode waveform connection coverage does not persist temporary inputs");
