@@ -1175,6 +1175,14 @@ QFrame#recordingStatusCard[vaporViewTopLevelCard="true"] > QWidget#recordingStat
 QString darkOverviewStyleSheet()
 {
     return QStringLiteral(R"(
+QListView#logListView::item:hover {
+    background-color: @vv-title-hover;
+    color: @vv-text;
+}
+QListView#logListView::item:selected:hover {
+    background-color: @vv-primary-subtle-pressed;
+    color: @vv-white;
+}
 QFrame#deviceTelemetrySectionTitlePane {
     background-color: @vv-surface-alt;
     border: none;

@@ -4768,8 +4768,8 @@ int main(int argc, char **argv)
         darkOverviewStyleSheet,
         QStringLiteral("QListView#logListView::item:hover {"),
         QStringLiteral("background-color: %1").arg(
-            VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtle, true)),
-        "dark log hover uses the dark primary hover background");
+            VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover, true)),
+        "dark log hover uses the neutral gray hover background");
     requireLastStyleRuleContains(
         darkOverviewStyleSheet,
         QStringLiteral("QListView#logListView::item:selected:hover {"),
