@@ -4766,6 +4766,18 @@ int main(int argc, char **argv)
         "dark log selection keeps the text readable");
     requireLastStyleRuleContains(
         darkOverviewStyleSheet,
+        QStringLiteral("QListView#logListView::item:hover {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtle, true)),
+        "dark log hover uses the dark primary hover background");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QListView#logListView::item:selected:hover {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtlePressed, true)),
+        "dark selected log hover keeps the pressed selection background");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
         QStringLiteral("QMessageBox QLabel {"),
         QStringLiteral("color: %1").arg(VaporView::appThemeColorName(
             VaporView::AppThemeColor::Text, true)),
