@@ -80,6 +80,7 @@ private:
     void setupUi();
     void loadSettings();
     void saveSettings();
+    void saveMountpointSetting(const QString& mountpoint);
     bool buildRtkStreamConfig(RtkStreamConfig *config,
                               QString *description = nullptr,
                               QString *validationError = nullptr,
@@ -117,6 +118,7 @@ private:
     bool parseMainAntennaLeverArm(double *x, double *y, double *z, QString *errorMessage = nullptr) const;
     QString mainAntennaLeverArmHelpText() const;
     void applyDetectedOutputAndGgaPort(const QString& portName, const QString& baudText);
+    void scheduleStartupMountpointFetch();
     void setServiceStatus(const QString& text, const QString& iconName, VaporView::AppThemeColor color);
     void refreshServiceStatusAppearance();
     QVBoxLayout *createCardLayout(QGroupBox *group,
@@ -204,6 +206,7 @@ private:
     std::function<VaporView::EpsilonData()> epsilon_data_provider_;
     EpsilonLeverArmApplier epsilon_main_antenna_lever_arm_applier_;
     QString epsilon_main_port_;
+    QString saved_mountpoint_;
     int epsilon_main_baudrate_;
     QSize base_dialog_size_;
     QSize base_minimum_dialog_size_;

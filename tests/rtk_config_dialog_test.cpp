@@ -91,6 +91,7 @@ int main(int argc, char **argv)
         qputenv("QT_QPA_PLATFORM", QByteArrayLiteral("offscreen"));
 #endif
     }
+    qputenv("VAPORVIEW_ENABLE_STARTUP_RTK_MOUNTPOINT_FETCH_IN_TESTS", QByteArrayLiteral("1"));
     QApplication app(argc, argv);
 
     {
@@ -127,6 +128,57 @@ int main(int argc, char **argv)
             "direct UI-test dialog teardown cannot overwrite the isolated RTK profile");
     rtkSettings.setValue(QStringLiteral("server"), QStringLiteral("127.0.0.1"));
     rtkSettings.setValue(QStringLiteral("port"), QStringLiteral("60844"));
+    rtkSettings.setValue(QStringLiteral("mountpoint"), QStringLiteral("AUTO"));
+    rtkSettings.setValue(QStringLiteral("mountpoint_confirmed"), true);
+    rtkSettings.sync();
+    {
+        RtkConfigDialog loopbackResidueDialog(nullptr, false);
+        auto *loopbackResidueServer =
+            loopbackResidueDialog.findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
+        auto *loopbackResiduePort =
+            loopbackResidueDialog.findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));
+        auto *loopbackResidueMountpoint =
+            loopbackResidueDialog.findChild<QComboBox *>(QStringLiteral("rtkMountpointCombo"));
+        require(loopbackResidueServer && loopbackResiduePort &&
+                    loopbackResidueServer->text() == QStringLiteral("203.107.45.154") &&
+                    loopbackResiduePort->text() == QStringLiteral("8002"),
+                "saved loopback caster test residue is cleared back to the WGS84 default caster");
+        require(loopbackResidueMountpoint &&
+                    loopbackResidueMountpoint->currentText() == QStringLiteral("请先检测") &&
+                    loopbackResidueMountpoint->findText(QStringLiteral("AUTO")) < 0,
+                "saved AUTO mountpoint shows the detect-first prompt until mountpoints are detected");
+    }
+
+    QTcpServer caster;
+    require(caster.listen(QHostAddress::LocalHost, 0), "local sourcetable test server starts");
+    int mountpointRequestCount = 0;
+    QObject::connect(&caster, &QTcpServer::newConnection, [&caster, &mountpointRequestCount]() {
+        while (QTcpSocket *socket = caster.nextPendingConnection())
+        {
+            QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket, &mountpointRequestCount]() {
+                socket->readAll();
+                ++mountpointRequestCount;
+                const QByteArray body =
+                    "STR;AUTO;Auto mountpoint;RTCM 3;1004(1);2;GPS;NONE;B;N;0;0;VaporView;none;B;N;0;\r\n"
+                    "STR;PERSISTED_MOUNTPOINT;Saved mountpoint;RTCM 3;1004(1);2;GPS;NONE;B;N;0;0;VaporView;none;B;N;0;\r\n"
+                    "STR;RTCM32_GPS_LONG_WIDEST;Long mountpoint;RTCM 3;1004(1);2;GPS;NONE;B;N;0;0;VaporView;none;B;N;0;\r\n"
+                    "STR;RTCM30_GG;Short mountpoint;RTCM 3;1004(1);2;GPS;NONE;B;N;0;0;VaporView;none;B;N;0;\r\n"
+                    "ENDSOURCETABLE\r\n";
+                const QByteArray response =
+                    "HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " +
+                    QByteArray::number(body.size()) +
+                    "\r\n\r\n" +
+                    body;
+                socket->write(response);
+                socket->disconnectFromHost();
+            });
+            QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+        }
+    });
+    rtkSettings.setValue(QStringLiteral("server"), QStringLiteral("127.0.0.1"));
+    rtkSettings.setValue(QStringLiteral("port"), QString::number(caster.serverPort()));
+    rtkSettings.setValue(QStringLiteral("mountpoint"), QStringLiteral("PERSISTED_MOUNTPOINT"));
+    rtkSettings.setValue(QStringLiteral("mountpoint_confirmed"), true);
     rtkSettings.sync();
 
     RtkConfigDialog dialog(nullptr, false);
@@ -139,17 +191,14 @@ int main(int argc, char **argv)
             "unavailable legacy RTK output port shows the Chinese unselected placeholder");
     auto *mountpointCombo = dialog.findChild<QComboBox *>(QStringLiteral("rtkMountpointCombo"));
     require(mountpointCombo != nullptr, "RTK mountpoint combo exists");
-    require(mountpointCombo->currentText() == QStringLiteral("请先检测") &&
-                mountpointCombo->findText(QStringLiteral("AUTO")) < 0,
-            "saved AUTO mountpoint shows the detect-first prompt until mountpoints are detected");
     require(mountpointCombo->property("usesSingleLevelPopupMenu").toBool(),
             "RTK mountpoint combo uses the single-level popup implementation");
     auto *serverEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
     auto *portEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));
     require(serverEdit && portEdit, "RTK server and port edits exist");
-    require(serverEdit->text() == QStringLiteral("203.107.45.154") &&
-                portEdit->text() == QStringLiteral("8002"),
-            "saved loopback caster test residue is cleared back to the WGS84 default caster");
+    require(serverEdit->text() == QStringLiteral("127.0.0.1") &&
+                portEdit->text() == QString::number(caster.serverPort()),
+            "saved real caster settings are loaded before startup mountpoint detection");
     dialog.setPreferredOutputPortAndBaud(QStringLiteral("COM77"), QStringLiteral("115200"));
     const int rememberedPortIndex = outputPortCombo->findText(QStringLiteral("COM77"));
     require(rememberedPortIndex >= 0 &&
@@ -162,6 +211,17 @@ int main(int argc, char **argv)
     require(serverEdit && portEdit && fetchMountpointsButton, "mountpoint fetch controls exist");
     const int mountpointComboWidth = mountpointCombo->width();
     const int detectButtonWidth = fetchMountpointsButton->width();
+    require(processEventsUntil(5000, [&dialog, mountpointCombo, &mountpointRequestCount]() {
+                return mountpointRequestCount >= 1 && !dialog.hasActiveExternalOperation() &&
+                    mountpointCombo->findText(QStringLiteral("RTCM32_GPS_LONG_WIDEST")) >= 0 &&
+                    mountpointCombo->currentText() == QStringLiteral("PERSISTED_MOUNTPOINT");
+            }),
+            "startup mountpoint detection loads the sourcetable and selects the saved mountpoint");
+    rtkSettings.sync();
+    require(rtkSettings.value(QStringLiteral("mountpoint")).toString() ==
+                QStringLiteral("PERSISTED_MOUNTPOINT") &&
+                rtkSettings.value(QStringLiteral("mountpoint_confirmed")).toBool(),
+            "startup mountpoint detection persists the matched mountpoint");
     require(std::abs(mountpointComboWidth - detectButtonWidth) <= 2,
             "mountpoint combo and detect button have the same width");
     require(!fetchMountpointsButton->icon().isNull(),
@@ -327,40 +387,22 @@ int main(int argc, char **argv)
     require(ggaMonitorLog->toPlainText().isEmpty(),
             "GGA clear-log action clears only the monitor output");
 
-    QTcpServer caster;
-    require(caster.listen(QHostAddress::LocalHost, 0), "local sourcetable test server starts");
-    QObject::connect(&caster, &QTcpServer::newConnection, [&caster]() {
-        while (QTcpSocket *socket = caster.nextPendingConnection())
-        {
-            QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket]() {
-                socket->readAll();
-                const QByteArray body =
-                    "STR;AUTO;Auto mountpoint;RTCM 3;1004(1);2;GPS;NONE;B;N;0;0;VaporView;none;B;N;0;\r\n"
-                    "STR;RTCM32_GPS_LONG_WIDEST;Long mountpoint;RTCM 3;1004(1);2;GPS;NONE;B;N;0;0;VaporView;none;B;N;0;\r\n"
-                    "STR;RTCM30_GG;Short mountpoint;RTCM 3;1004(1);2;GPS;NONE;B;N;0;0;VaporView;none;B;N;0;\r\n"
-                    "ENDSOURCETABLE\r\n";
-                const QByteArray response =
-                    "HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " +
-                    QByteArray::number(body.size()) +
-                    "\r\n\r\n" +
-                    body;
-                socket->write(response);
-                socket->disconnectFromHost();
-            });
-            QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
-        }
-    });
-    serverEdit->setText(QStringLiteral("127.0.0.1"));
-    portEdit->setText(QString::number(caster.serverPort()));
+    mountpointCombo->setCurrentText(QStringLiteral("MISSING_MOUNTPOINT"));
+    const int expectedMountpointRequestCount = mountpointRequestCount + 1;
     fetchMountpointsButton->click();
-    require(processEventsUntil(4000, [mountpointCombo]() {
-                return mountpointCombo->findText(QStringLiteral("RTCM32_GPS_LONG_WIDEST")) >= 0;
+    require(processEventsUntil(4000, [&dialog, &mountpointRequestCount, expectedMountpointRequestCount]() {
+                return mountpointRequestCount >= expectedMountpointRequestCount &&
+                    !dialog.hasActiveExternalOperation();
             }),
             "mountpoint detection populates the dropdown from the sourcetable");
     require(mountpointCombo->findText(QStringLiteral("AUTO")) >= 0,
             "detected AUTO is kept as a real mountpoint option");
     require(mountpointCombo->currentText() == QStringLiteral("请选择挂载点"),
-            "detected mountpoints require an explicit user selection");
+            "detected mountpoints fall back to the select prompt when the saved mountpoint is absent");
+    rtkSettings.sync();
+    require(rtkSettings.value(QStringLiteral("mountpoint")).toString().isEmpty() &&
+                !rtkSettings.value(QStringLiteral("mountpoint_confirmed")).toBool(),
+            "missing mountpoint selection is persisted as an empty unconfirmed mountpoint");
     require(mountpointCombo->width() == mountpointComboWidth,
             "mountpoint combo keeps its widened width after fetching long mountpoints");
     require(fetchMountpointsButton->width() == detectButtonWidth &&

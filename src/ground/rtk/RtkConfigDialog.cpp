@@ -229,6 +229,12 @@ bool isAutoMountpointText(const QString& text)
     return text.trimmed().compare(QStringLiteral("AUTO"), Qt::CaseInsensitive) == 0;
 }
 
+QString savedMountpointCandidate(const QString& mountpoint)
+{
+    const QString trimmed = mountpoint.trimmed();
+    return isMountpointPlaceholderText(trimmed) ? QString() : trimmed;
+}
+
 bool hasConfirmedSavedMountpoint(const QString& mountpoint, bool confirmed)
 {
     return confirmed &&
@@ -1052,6 +1058,22 @@ QStringList parseMountpoints(const QString &responseBody)
     mountpoints.sort();
     return mountpoints;
 }
+
+bool startupMountpointFetchAllowedInProcess()
+{
+    const QString executableName =
+        QFileInfo(QCoreApplication::applicationFilePath()).completeBaseName();
+    const bool isTestProcess = executableName.endsWith(QStringLiteral("_test"), Qt::CaseInsensitive);
+    return !isTestProcess ||
+        qEnvironmentVariableIsSet("VAPORVIEW_ENABLE_STARTUP_RTK_MOUNTPOINT_FETCH_IN_TESTS");
+}
+
+bool startupMountpointFetchHasConfiguredSource(const QString& configFilePath)
+{
+    QSettings settings(configFilePath, QSettings::IniFormat);
+    return settings.contains(QStringLiteral("server")) &&
+        settings.contains(QStringLiteral("port"));
+}
 }
 
 RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
@@ -1132,6 +1154,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     , is_running_(false)
     , is_english_(false)
     , font_scale_percent_(100)
+    , saved_mountpoint_()
     , epsilon_main_baudrate_(921600)
     , base_dialog_size_(kRtkDefaultDialogWidth, kRtkDefaultDialogHeight)
     , base_minimum_dialog_size_(kRtkMinimumDialogWidth, kRtkMinimumDialogHeight)
@@ -1188,6 +1211,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     connect(gga_port_combo_, &QComboBox::currentTextChanged, this, [this](const QString&) {
         stopGgaMonitor();
     });
+    scheduleStartupMountpointFetch();
 }
 
 RtkConfigDialog::~RtkConfigDialog()
@@ -1276,6 +1300,23 @@ void RtkConfigDialog::joinBackgroundTasks()
     {
         test_thread_.join();
     }
+}
+
+void RtkConfigDialog::scheduleStartupMountpointFetch()
+{
+    QTimer::singleShot(0, this, [this]() {
+        if (!startupMountpointFetchAllowedInProcess() ||
+            !startupMountpointFetchHasConfiguredSource(config_file_path_) ||
+            shutdown_requested_.load() || ui_test_mode_ || isBackgroundTaskRunning() ||
+            !server_edit_ || !port_edit_ ||
+            server_edit_->text().trimmed().isEmpty() ||
+            port_edit_->text().trimmed().isEmpty())
+        {
+            return;
+        }
+
+        onFetchMountpointsClicked();
+    });
 }
 
 bool RtkConfigDialog::isBackgroundTaskRunning() const
@@ -2345,6 +2386,7 @@ void RtkConfigDialog::loadSettings()
     QString savedServer = settings.value("server", QString()).toString().trimmed();
     QString savedPort = settings.value("port", QString()).toString().trimmed();
     const QString savedMountpoint = settings.value("mountpoint", "").toString().trimmed();
+    saved_mountpoint_ = savedMountpointCandidate(savedMountpoint);
     const bool savedMountpointConfirmed = settings.value("mountpoint_confirmed", false).toBool();
     if (isUiTestCasterServerText(savedServer) ||
         shouldClearSavedLoopbackCaster(savedServer, savedMountpoint, savedMountpointConfirmed))
@@ -2404,6 +2446,7 @@ void RtkConfigDialog::saveSettings()
     VaporView::setPersistentSetting(settings, QStringLiteral("username"), username_edit_->text());
     VaporView::setPersistentSetting(settings, QStringLiteral("password"), password_edit_->text());
     const QString savedMountpoint = selectedMountpointText(mountpoint_combo_);
+    saved_mountpoint_ = savedMountpoint;
     VaporView::setPersistentSetting(settings, QStringLiteral("mountpoint"), savedMountpoint);
     VaporView::setPersistentSetting(settings, QStringLiteral("mountpoint_confirmed"), !savedMountpoint.isEmpty());
     VaporView::setPersistentSetting(settings, QStringLiteral("main_antenna_lever_x_m"), main_antenna_lever_x_edit_->text());
@@ -2419,6 +2462,18 @@ void RtkConfigDialog::saveSettings()
     VaporView::setPersistentSetting(settings, QStringLiteral("baudrate"), baudrate_combo_->currentText());
     VaporView::setPersistentSetting(settings, QStringLiteral("timeout"), timeout_combo_->currentText());
     VaporView::setPersistentSetting(settings, QStringLiteral("reconnect"), reconnect_combo_->currentText());
+}
+
+void RtkConfigDialog::saveMountpointSetting(const QString& mountpoint)
+{
+    if (ui_test_mode_ || isUiTestCasterServerText(server_edit_->text()))
+    {
+        return;
+    }
+
+    QSettings settings(config_file_path_, QSettings::IniFormat);
+    VaporView::setPersistentSetting(settings, QStringLiteral("mountpoint"), mountpoint);
+    VaporView::setPersistentSetting(settings, QStringLiteral("mountpoint_confirmed"), !mountpoint.isEmpty());
 }
 
 void RtkConfigDialog::setPreferredOutputPortAndBaud(const QString& portName, const QString& baudText)
@@ -3968,15 +4023,19 @@ void RtkConfigDialog::onFetchMountpointsClicked()
             }
 
             const QString currentMountpoint = selectedMountpointText(self->mountpoint_combo_);
-            const int currentIndex = result.mountpoints.indexOf(currentMountpoint);
+            const QString configuredMountpoint = savedMountpointCandidate(self->saved_mountpoint_);
+            const QString desiredMountpoint = !currentMountpoint.isEmpty()
+                ? currentMountpoint
+                : configuredMountpoint;
+            const int desiredIndex = result.mountpoints.indexOf(desiredMountpoint);
             const QSignalBlocker blocker(self->mountpoint_combo_);
             self->mountpoint_combo_->clear();
             self->mountpoint_combo_->addItem(mountpointSelectLabel(self->is_english_),
                                              QString::fromLatin1(kMountpointSelectKey));
             self->mountpoint_combo_->addItems(result.mountpoints);
-            if (currentIndex >= 0)
+            if (desiredIndex >= 0)
             {
-                self->mountpoint_combo_->setCurrentText(currentMountpoint);
+                self->mountpoint_combo_->setCurrentText(desiredMountpoint);
             }
             else
             {
@@ -3987,14 +4046,16 @@ void RtkConfigDialog::onFetchMountpointsClicked()
                     edit->setCursorPosition(0);
                 }
             }
+            self->saved_mountpoint_ = selectedMountpointText(self->mountpoint_combo_);
+            self->saveMountpointSetting(self->saved_mountpoint_);
             self->updateMountpointComboWidth();
             appendModeLog((uiTestMode
                 ? self->textFor("Fetched %1 mountpoints from the real sourcetable.", "已从真实源表获取 %1 个挂载点。")
                 : self->textFor("Fetched %1 mountpoints.", "已获取 %1 个挂载点。"))
                 .arg(result.mountpoints.size()));
-            appendModeLog(currentIndex >= 0
+            appendModeLog(desiredIndex >= 0
                 ? self->textFor("Mountpoint dropdown updated; current: %1",
-                                "挂载点下拉框已更新，当前: %1").arg(currentMountpoint)
+                                "挂载点下拉框已更新，当前: %1").arg(desiredMountpoint)
                 : self->textFor("Mountpoint dropdown updated; please select one.",
                                 "挂载点下拉框已更新，请选择一个挂载点。"));
             self->setServiceStatus(uiTestMode
