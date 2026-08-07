@@ -1264,32 +1264,34 @@ QPushButton#temperatureOverviewOutputSwitch {
 )");
 }
 
-QString mainCardsScrollBarBackgroundStyleSheet(bool)
+QString mainCardsScrollBarBackgroundStyleSheet(bool dark)
 {
+    const QString trackBackground = dark ? QStringLiteral("@vv-window") : QStringLiteral("@vv-surface");
     return QStringLiteral(
         "QScrollArea#mainCardsScrollArea QScrollBar:vertical { "
-        "background-color: @vv-surface; width: 8px; border-radius: 4px; margin: 14px 0px 14px 0px; }"
+        "background-color: %1; width: 8px; border-radius: 4px; margin: 14px 0px 14px 0px; }"
         "QScrollArea#mainCardsScrollArea QScrollBar:horizontal { "
-        "background-color: @vv-surface; height: 8px; border-radius: 4px; margin: 0px; }"
+        "background-color: %1; height: 8px; border-radius: 4px; margin: 0px; }"
         "QScrollArea#mainCardsScrollArea QScrollBar::add-page:vertical, "
         "QScrollArea#mainCardsScrollArea QScrollBar::sub-page:vertical, "
         "QScrollArea#mainCardsScrollArea QScrollBar::add-page:horizontal, "
         "QScrollArea#mainCardsScrollArea QScrollBar::sub-page:horizontal { "
-        "background-color: @vv-surface; }"
+        "background-color: %1; }"
         "QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical, "
         "QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical { "
-        "background-color: @vv-surface; border: none; height: 14px; subcontrol-origin: margin; }"
+        "background-color: %1; border: none; height: 14px; subcontrol-origin: margin; }"
         "QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical:hover, "
         "QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical:hover, "
         "QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical:pressed, "
         "QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical:pressed { "
-        "background-color: @vv-surface; }"
+        "background-color: %1; }"
         "QScrollArea#mainCardsScrollArea QScrollBar::add-line:horizontal, "
         "QScrollArea#mainCardsScrollArea QScrollBar::sub-line:horizontal { "
-        "background-color: @vv-surface; border: none; width: 0px; }"
+        "background-color: %1; border: none; width: 0px; }"
         "QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, "
         "QScrollArea#mainCardsScrollArea QScrollBar::handle:horizontal { "
-        "border: none; border-radius: 4px; margin: 0px; }");
+        "border: none; border-radius: 4px; margin: 0px; }")
+        .arg(trackBackground);
 }
 
 QString mainCardsTopLevelCardStyleSheet()

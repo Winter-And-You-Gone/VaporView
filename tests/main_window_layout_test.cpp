@@ -4874,6 +4874,12 @@ int main(int argc, char **argv)
         QStringLiteral("QSplitter#homeOverviewSplitter::handle:horizontal:pressed {"),
         darkHomeOverviewSplitterBackground,
         "dark home overview splitter keeps its background while pressed");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical {"),
+        QStringLiteral("background-color: ") +
+            VaporView::appThemeColorName(VaporView::AppThemeColor::Window, true),
+        "dark main card scrollbar track blends into the adjacent window background");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QWidget#tcpWaveCardOutline {"),
                                  QStringLiteral("border: 1px solid %1")
