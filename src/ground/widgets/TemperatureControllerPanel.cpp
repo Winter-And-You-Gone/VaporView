@@ -809,7 +809,7 @@ private:
     {
         const int currentHeight = std::min(height(), handleHeight());
         const qreal top = (height() - currentHeight) / 2.0;
-        return QRectF(width() - handleWidth(), top, handleWidth(), currentHeight);
+        return QRectF(0, top, handleWidth(), currentHeight);
     }
 
     int expandedWidthForHost() const
@@ -860,7 +860,7 @@ private:
         if (content_widget_)
         {
             const int contentWidth = std::max(0, currentWidth - handleWidth());
-            content_widget_->setGeometry(0, 0, contentWidth, contentHeight);
+            content_widget_->setGeometry(handleWidth(), 0, contentWidth, contentHeight);
             content_widget_->setVisible(currentWidth > handleWidth() + 1 || expanded_);
             content_widget_->raise();
         }

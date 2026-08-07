@@ -6534,7 +6534,7 @@ int main(int argc, char **argv)
         temperatureCalibrationDrawer->property("temperatureCalibrationHandleWidth").toInt();
     auto clickCalibrationHandle = [temperatureCalibrationDrawer, calibrationHandleWidth](int waitMs) {
         clickWidgetAt(temperatureCalibrationDrawer,
-                      QPoint(temperatureCalibrationDrawer->width() - calibrationHandleWidth / 2,
+                      QPoint(calibrationHandleWidth / 2,
                              temperatureCalibrationDrawer->height() / 2),
                       waitMs);
     };
@@ -6576,7 +6576,7 @@ int main(int argc, char **argv)
                 temperatureCalibrationOverlay->isVisible() &&
                 calibrationDrawerRect.width() > calibrationHandleWidth &&
                 calibrationDrawerRect.left() >= 0 &&
-                temperatureCalibrationOverlay->geometry().left() >= 0 &&
+                temperatureCalibrationOverlay->geometry().left() >= calibrationHandleWidth &&
                 temperatureCalibrationOverlay->geometry().right() <
                     temperatureCalibrationDrawer->width() &&
                 calibrationDrawerRect.right() ==
