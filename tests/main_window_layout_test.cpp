@@ -5311,8 +5311,12 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelStack"));
     auto *temperatureControllerContentRow =
         temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureControllerContentRow"));
+    auto *temperatureControllerLeftConfigColumn =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureControllerLeftConfigColumn"));
     auto *temperatureControllerControlsCard =
         temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureControllerControlsCard"));
+    auto *temperatureSubPageBarStack =
+        temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureSubPageBarStack"));
     auto *temperatureCommonSettingsPage =
         temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureCommonSettingsPage"));
     auto *temperatureConfigChannelButton1 =
@@ -5340,7 +5344,9 @@ int main(int argc, char **argv)
                 temperatureChannelCommonTopControls1 != nullptr &&
                 temperatureChannelStack != nullptr &&
                 temperatureControllerContentRow != nullptr &&
+                temperatureControllerLeftConfigColumn != nullptr &&
                 temperatureControllerControlsCard != nullptr &&
+                temperatureSubPageBarStack != nullptr &&
                 temperatureCommonSettingsPage != nullptr &&
                 temperatureConfigChannelButton1 != nullptr &&
                 temperatureConfigChannelButton2 != nullptr &&
@@ -5357,10 +5363,12 @@ int main(int argc, char **argv)
                 temperatureChannelTopBar->parentWidget() == temperatureChannelSelectorRow &&
                 temperatureChannelTopControlsStack->parentWidget() == temperatureChannelSelectorRow &&
                 temperatureControllerContentRow->parentWidget() == temperatureConfigCard &&
-                temperatureControllerControlsCard->parentWidget() == temperatureControllerContentRow &&
+                temperatureControllerLeftConfigColumn->parentWidget() == temperatureControllerContentRow &&
+                temperatureSubPageBarStack->parentWidget() == temperatureControllerLeftConfigColumn &&
+                temperatureControllerControlsCard->parentWidget() == temperatureControllerLeftConfigColumn &&
                 temperatureChannelStack->parentWidget() == temperatureControllerControlsCard &&
                 temperatureConfigPlot->parentWidget() == temperatureControllerContentRow,
-            "temperature card uses the screenshot layout: top selector above left controls and right trend plot");
+            "temperature card uses the screenshot layout: top selector above left controls and external lower selector");
     require(temperatureConfigChannelButton1->parentWidget() == temperatureChannelTopBar &&
                 temperatureConfigChannelButton2->parentWidget() == temperatureChannelTopBar &&
                 temperatureCommonSettingsButton->parentWidget() == temperatureChannelTopBar,
@@ -5408,9 +5416,13 @@ int main(int argc, char **argv)
     const QRect stackRectInControlsCard(
         temperatureChannelStack->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
         temperatureChannelStack->size());
+    auto *temperatureControllerLeftConfigColumnLayout =
+        qobject_cast<QVBoxLayout *>(temperatureControllerLeftConfigColumn->layout());
     auto *temperatureControllerControlsCardLayout =
         qobject_cast<QVBoxLayout *>(temperatureControllerControlsCard->layout());
     require(temperatureControllerControlsCard->width() <= 280 &&
+                temperatureControllerLeftConfigColumnLayout != nullptr &&
+                temperatureControllerLeftConfigColumnLayout->spacing() == 6 &&
                 temperatureControllerControlsCardLayout != nullptr &&
                 stackRectInControlsCard.left() <= 8 &&
                 temperatureControllerControlsCard->width() - stackRectInControlsCard.right() - 1 <= 8,
@@ -5480,6 +5492,7 @@ int main(int argc, char **argv)
     require(temperatureChannelTopControlsStack->currentIndex() == 1 &&
                 temperatureChannelTopControlsStack->isVisible() &&
                 temperatureChannelStack->currentIndex() == 1 &&
+                temperatureSubPageBarStack->currentIndex() == 1 &&
                 std::abs(temperatureChannelStack->height() - channel1StackHeight) <= 1 &&
                 std::abs(temperatureChannelTopRow->height() - channel1TopRowHeight) <= 1 &&
                 std::abs(temperatureConfigCard->height() - channel1ConfigCardHeight) <= 1 &&
@@ -5492,6 +5505,7 @@ int main(int argc, char **argv)
     const int commonStackHeight = temperatureChannelStack->height();
     require(!temperatureChannelTopControlsStack->isVisible() &&
                 temperatureChannelStack->currentIndex() == 2 &&
+                temperatureSubPageBarStack->currentIndex() == 2 &&
                 std::abs(commonStackHeight - channel1StackHeight) <= 1 &&
                 std::abs(temperatureChannelTopRow->height() - channel1TopRowHeight) <= 1 &&
                 std::abs(temperatureConfigCard->height() - channel1ConfigCardHeight) <= 1 &&
@@ -5557,13 +5571,21 @@ int main(int argc, char **argv)
                 commonSettingsCommonParamsButton != nullptr &&
                 commonSettingsAdvancedParamsButton != nullptr &&
                 commonSettingsSensorConfigButton != nullptr &&
+                temperatureSubPageBarStack->isAncestorOf(commonSettingsSubTopBar) &&
+                !temperatureControllerControlsCard->isAncestorOf(commonSettingsSubTopBar) &&
+                !temperatureChannelStack->isAncestorOf(commonSettingsSubTopBar) &&
                 commonSettingsCommonParamsButton->isChecked() &&
                 commonSettingsCommonParamsButton->property("temperatureChannelSubSelector").toBool() &&
                 commonSettingsAdvancedParamsButton->property("temperatureChannelSubSelector").toBool() &&
                 commonSettingsSensorConfigButton->property("temperatureChannelSubSelector").toBool(),
-            "temperature common settings page keeps the lower common/professional/sensor selector shown like the screenshot");
+            "temperature common settings page keeps the lower common/professional/sensor selector outside the left card");
     const QRect commonSubBarRectInCard(commonSettingsSubTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                        commonSettingsSubTopBar->size());
+    const QRect controlsCardRectInCard(
+        temperatureControllerControlsCard->mapTo(temperatureConfigCard, QPoint(0, 0)),
+        temperatureControllerControlsCard->size());
+    const QRect contentRowRectInCard(temperatureControllerContentRow->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                     temperatureControllerContentRow->size());
     require(commonAddressRowRect.top() > selectorBarRectInCard.bottom() &&
                 commonAddressRowRect.right() < commonBaudRowRect.left() &&
                 commonBaudRowRect.left() - commonAddressRowRect.right() - 1 <= 8 &&
@@ -5573,11 +5595,13 @@ int main(int argc, char **argv)
                 commonInternalRowRect.left() - commonOvertempRowRect.right() - 1 <= 8 &&
                 std::abs(commonOvertempRowRect.center().y() - commonInternalRowRect.center().y()) <= 2 &&
                 factoryResetRectInCard.top() > commonOvertempRowRect.bottom() &&
-                commonSubBarRectInCard.top() > factoryResetRectInCard.bottom() &&
+                commonSubBarRectInCard.top() > controlsCardRectInCard.bottom() &&
+                commonSubBarRectInCard.top() - controlsCardRectInCard.bottom() - 1 ==
+                    commonSettingsGrid->horizontalSpacing() &&
                 std::abs(commonAddressRowRect.left() - commonOvertempRowRect.left()) <= 2 &&
                 std::abs(commonOvertempRowRect.left() - factoryResetRectInCard.left()) <= 2 &&
-                std::abs(commonSubBarRectInCard.left() - commonAddressRowRect.left()) <= 2,
-            "temperature common settings follow selector, RS485, values, factory-reset, and lower-tab rows");
+                std::abs(commonSubBarRectInCard.left() - contentRowRectInCard.left()) <= 2,
+            "temperature common settings keep the lower-tab row outside the parameter card");
     require(std::abs(commonAddressInputRectInCard.left() - commonOvertempInputRectInCard.left()) <= 1 &&
                 std::abs(commonBaudComboRectInCard.left() - commonInternalInputRectInCard.left()) <= 1 &&
                 commonBaudComboRectInCard.left() - commonAddressInputRectInCard.right() - 1 <= 8 &&
@@ -5628,17 +5652,18 @@ int main(int argc, char **argv)
     require(controlsCardRectInContent.right() < plotRectInContent.left() &&
                 std::abs(controlsCardRectInContent.top() - plotRectInContent.top()) <= 2 &&
                 plotRectInContent.right() <= temperatureControllerContentRow->rect().right() &&
-                controlsCardRectInContent.height() == plotRectInContent.height() &&
+                controlsCardRectInContent.height() < plotRectInContent.height() &&
                 plotRectInContent.height() == 306 &&
                 temperatureControllerContentRow->height() == plotRectInContent.height() &&
                 controlsCardBorderHeight >= 0 &&
                 controlsCardBorderHeight <= 2,
-            "temperature common settings keep the shortened left control card aligned with the compressed right trend plot");
+            "temperature common settings keep the shortened left control card above the external lower selector");
     clickWidget(temperatureConfigChannelButton1, 150);
     activateLayouts(&window);
     require(temperatureChannelTopControlsStack->currentIndex() == 0 &&
                 temperatureChannelTopControlsStack->isVisible() &&
                 temperatureChannelStack->currentIndex() == 0 &&
+                temperatureSubPageBarStack->currentIndex() == 0 &&
                 std::abs(temperatureChannelStack->height() - channel1StackHeight) <= 1 &&
                 std::abs(temperatureChannelTopRow->height() - channel1TopRowHeight) <= 1 &&
                 std::abs(temperatureConfigCard->height() - channel1ConfigCardHeight) <= 1 &&
@@ -5659,9 +5684,9 @@ int main(int argc, char **argv)
             "temperature trend plot is laid out to the right of the channel configuration card");
     require(std::abs(controlsCardRectAfterChannelSwitch.top() - plotRectAfterChannelSwitch.top()) <= 2 &&
                 plotRectAfterChannelSwitch.right() <= temperatureControllerContentRow->rect().right() &&
-                controlsCardRectAfterChannelSwitch.height() == plotRectAfterChannelSwitch.height() &&
+                controlsCardRectAfterChannelSwitch.height() < plotRectAfterChannelSwitch.height() &&
                 plotRectAfterChannelSwitch.height() == 306,
-            "temperature trend plot follows the screenshot's side-by-side card layout with the compressed control card");
+            "temperature trend plot follows the screenshot's side-by-side layout with the selector below the control card");
     require(plotRectAfterChannelSwitch.width() > 0 &&
                 plotRectAfterChannelSwitch.right() >= temperatureControllerContentRow->rect().right() - 1,
             "temperature trend plot expands to the right edge of the remaining controller panel width");
@@ -5869,8 +5894,8 @@ int main(int argc, char **argv)
     require(temperatureConfigCardLayout != nullptr &&
                 temperatureConfigCardLayout->spacing() == 12 &&
                 temperatureChannelPageLayout != nullptr &&
-                temperatureChannelPageLayout->spacing() == 8,
-            "temperature screenshot layout keeps a clear top row gap and compact lower-tab gap");
+                temperatureChannelPageLayout->count() == 1,
+            "temperature screenshot layout keeps the lower selector outside the page content");
     require(temperatureChannelTopBar->height() == temperatureChannelSubTopBar->height() &&
                 temperatureConfigChannelButton1->height() == temperatureChannelCommonParamsButton->height(),
             "temperature screenshot layout keeps the upper and lower segmented bars visually matched");
@@ -5879,24 +5904,23 @@ int main(int argc, char **argv)
                     QStringLiteral("temperatureChannelCommonParamsPageChannel1") &&
                 temperatureChannelCommonParamsButton->isChecked(),
             "temperature channel defaults to the lower common-params page");
-    const QRect subTopBarRectInChannelPage(
-        temperatureChannelSubTopBar->mapTo(temperatureChannelStack->currentWidget(), QPoint(0, 0)),
+    const QRect subTopBarRectInCard(
+        temperatureChannelSubTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)),
         temperatureChannelSubTopBar->size());
-    const int subTopBarBottomGap =
-        temperatureChannelStack->currentWidget()->rect().bottom() - subTopBarRectInChannelPage.bottom();
     QWidget *initialChannelSubPageRow = temperatureChannelSubTopBar->parentWidget();
-    const int expectedConfigSubStackHeight =
-        initialChannelSubPageRow
-            ? temperatureChannelStack->height() -
-                  initialChannelSubPageRow->height() -
-                  temperatureChannelPageLayout->spacing()
-            : -1;
-    require(temperatureChannelStack->height() >= temperatureChannelStack->currentWidget()->sizeHint().height() &&
+    require(initialChannelSubPageRow != nullptr &&
+                temperatureSubPageBarStack->isAncestorOf(temperatureChannelSubTopBar) &&
+                !temperatureControllerControlsCard->isAncestorOf(temperatureChannelSubTopBar) &&
+                !temperatureChannelStack->isAncestorOf(temperatureChannelSubTopBar) &&
+                subTopBarRectInCard.top() > controlsCardRectInCard.bottom() &&
+                subTopBarRectInCard.top() - controlsCardRectInCard.bottom() - 1 ==
+                    temperatureControllerLeftConfigColumnLayout->spacing() &&
+                std::abs(subTopBarRectInCard.left() - contentRowRectInCard.left()) <= 2 &&
+                temperatureChannelStack->height() >= temperatureChannelStack->currentWidget()->sizeHint().height() &&
                 temperatureChannelConfigSubStack->height() >=
                     temperatureChannelConfigSubStack->currentWidget()->sizeHint().height() &&
-                temperatureChannelConfigSubStack->height() == expectedConfigSubStackHeight &&
-                subTopBarBottomGap == 0,
-            "temperature lower parameter tabs reserve enough height without retaining the old tall subpage stack");
+                std::abs(temperatureChannelConfigSubStack->height() - temperatureChannelStack->height()) <= 1,
+            "temperature lower selector stays outside the left parameter card without reserving its height inside the card");
     clickWidget(temperatureChannelAdvancedParamsButton, 150);
     activateLayouts(&window);
     auto *overtempUpperSpin = temperaturePanel->findChild<QDoubleSpinBox *>(
@@ -6523,12 +6547,25 @@ int main(int argc, char **argv)
         : QRect();
     const int sensorPageBottomUnusedHeight =
         temperatureChannelConfigSubStack->currentWidget()->height() - 1 - sensorLastRowRect.bottom();
+    const QRect lowerBarRectForSensor(
+        temperatureChannelSubTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)),
+        temperatureChannelSubTopBar->size());
+    const QRect sensorLastRowRectInControlsCard(
+        sensorLastRow->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
+        sensorLastRow->size());
+    const int sensorCardBottomGap =
+        temperatureControllerControlsCard->height() - 1 - sensorLastRowRectInControlsCard.bottom();
+    const int sensorLowerBarGap = lowerBarRectForSensor.top() - controlsCardRectInCard.bottom() - 1;
     require(polynomialEdits[7] != nullptr &&
                 temperatureCalibrationOverlay->isAncestorOf(polynomialEdits[7]),
             "temperature sensor config retains the final polynomial input in the calibration card");
     require(temperatureChannelStack->height() >= temperatureChannelStack->currentWidget()->sizeHint().height() &&
                 temperatureConfigCard->height() >= temperatureConfigCard->sizeHint().height(),
             "temperature primary sensor card reserves enough total height");
+    require(sensorPageBottomUnusedHeight == sensorConfigGrid->horizontalSpacing() &&
+                sensorCardBottomGap <= sensorConfigGrid->horizontalSpacing() + 2 &&
+                sensorLowerBarGap == sensorConfigGrid->horizontalSpacing(),
+            "temperature sensor card and lower selector keep the shared compact spacing");
     require(sensorConfigGrid->alignment() == (Qt::AlignTop | Qt::AlignLeft) &&
                 sensorFirstRowRect.top() >= 0 &&
                 sensorFirstRowRect.top() <= 4,
