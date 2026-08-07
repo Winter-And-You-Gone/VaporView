@@ -38,6 +38,8 @@ add_library(vaporview_ground_device_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/EpsilonConfigurationService.h
     ${CMAKE_CURRENT_SOURCE_DIR}/LocalDeviceConnectionController.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/LocalDeviceConnectionController.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/LocalConnectionCoordinator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/LocalConnectionCoordinator.h
     ${CMAKE_CURRENT_SOURCE_DIR}/RemoteTelemetryDecoder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/RemoteTelemetryDecoder.h
     ${CMAKE_CURRENT_SOURCE_DIR}/RemoteTelemetryState.cpp

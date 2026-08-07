@@ -210,8 +210,10 @@ MainWindow::MainWindow(QWidget *parent)
     };
     connectionCallbacks.finished = [this](bool connected) {
         QMetaObject::invokeMethod(this, [this, connected]() {
-            finishConnectionAttempt(connected);
-            startPendingLocalWaveformSource();
+            if (state_->local_connection_coordinator_)
+            {
+                state_->local_connection_coordinator_->serialFinished(connected);
+            }
         }, Qt::QueuedConnection);
     };
     connectionCallbacks.dataReady = [this](VaporView::Ground::Devices::LocalDeviceKind device) {
@@ -290,6 +292,7 @@ MainWindow::MainWindow(QWidget *parent)
     setupToolBar();
     state_->remote_sky_controller_ = std::make_unique<VaporView::Ground::Devices::RemoteSkyController>();
     setupCentralWidget();
+    configureLocalConnectionCoordinator();
     setupWindowBorderFrames();
     setupWindowResizeHandles();
     using RemoteSkyController = VaporView::Ground::Devices::RemoteSkyController;
@@ -446,7 +449,10 @@ MainWindow::~MainWindow()
     state_->recording_service_->setWarningCallback({});
     state_->recording_service_->setSensorSnapshotProvider({});
     stopAllCollectors();
-    disconnectLocalWaveformSource();
+    if (state_->local_connection_coordinator_)
+    {
+        state_->local_connection_coordinator_->disconnect();
+    }
 }
 
 bool MainWindow::shouldStartWindowMove(QObject *watched) const
