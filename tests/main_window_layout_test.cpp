@@ -5475,6 +5475,16 @@ int main(int argc, char **argv)
                 !factoryResetButton->isVisible() &&
                 !factoryResetButton->icon().isNull(),
             "temperature factory reset button belongs to the common settings page and starts hidden");
+    const QColor plotBackgroundColor = VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceRaised, false);
+    const QImage plotSnapshot = temperatureConfigPlot->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    const QImage configCardSnapshot = temperatureConfigCard->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    const QImage controlsCardSnapshot =
+        temperatureControllerControlsCard->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    require(!plotSnapshot.isNull() && !configCardSnapshot.isNull() && !controlsCardSnapshot.isNull() &&
+                plotSnapshot.pixelColor(0, 0) == plotBackgroundColor &&
+                configCardSnapshot.pixelColor(4, configCardSnapshot.height() / 2) == plotBackgroundColor &&
+                controlsCardSnapshot.pixelColor(4, controlsCardSnapshot.height() / 2) == plotBackgroundColor,
+            "temperature cards use the same raised white background as the trend plot");
     require(enableSwitch->height() == 34 &&
                 enableSwitch->width() == 106 &&
                 enableSwitch2->height() == 34 &&
@@ -5550,6 +5560,7 @@ int main(int argc, char **argv)
                 commonSettingsPage->width() - 1 - commonSettingsFieldsRectInPage.right() ==
                     commonSettingsPageLayout->contentsMargins().right(),
             "temperature common settings narrow both columns to preserve the 6px right inset");
+    const QMargins commonSettingsPageMargins = commonSettingsPageLayout->contentsMargins();
     auto *selectedChannelCommonParamsPage = temperaturePanel->findChild<QWidget *>(
         QStringLiteral("temperatureChannelCommonParamsPageChannel2"));
     auto *selectedChannelCommonParamsGrid = selectedChannelCommonParamsPage
@@ -5566,6 +5577,8 @@ int main(int argc, char **argv)
     const QRect commonInternalRowRect(commonInternalTemperatureEdit->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                       commonInternalTemperatureEdit->parentWidget()->size());
     const QRect factoryResetRectInCard(factoryResetButton->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                       factoryResetButton->size());
+    const QRect factoryResetRectInPage(factoryResetButton->mapTo(commonSettingsPage, QPoint(0, 0)),
                                        factoryResetButton->size());
     const QRect commonBaudComboRectInCard(rs485BaudCombo->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                           rs485BaudCombo->size());
@@ -5615,9 +5628,13 @@ int main(int argc, char **argv)
                 commonSubBarRectInCard.top() - controlsCardRectInCard.bottom() - 1 ==
                     commonSettingsGrid->horizontalSpacing() &&
                 std::abs(commonAddressRowRect.left() - commonOvertempRowRect.left()) <= 2 &&
-                std::abs(commonOvertempRowRect.left() - factoryResetRectInCard.left()) <= 2 &&
+                factoryResetRectInPage.left() ==
+                    commonSettingsPageMargins.left() +
+                        (commonSettingsPage->width() - commonSettingsPageMargins.left() -
+                         commonSettingsPageMargins.right() - factoryResetButton->width()) /
+                            2 &&
                 std::abs(commonSubBarRectInCard.left() - contentRowRectInCard.left()) <= 2,
-            "temperature common settings keep the lower-tab row outside the parameter card");
+            "temperature common settings center the factory reset action and keep the lower-tab row outside the parameter card");
     require(std::abs(commonAddressInputRectInCard.left() - commonOvertempInputRectInCard.left()) <= 1 &&
                 std::abs(commonBaudComboRectInCard.left() - commonInternalInputRectInCard.left()) <= 1 &&
                 commonBaudComboRectInCard.left() - commonAddressInputRectInCard.right() - 1 <= 8 &&
@@ -6179,6 +6196,10 @@ int main(int argc, char **argv)
                 maxOutputLabels.first()->text() == QStringLiteral("最大输出电压百分比(%)") &&
                 maxOutputLabels.first()->property("temperatureMaxOutputWarning").toBool(),
             "temperature max output label is renamed and marked red");
+    require(maxOutputSpin->parentWidget()->width() == 254 &&
+                maxOutputLabels.first()->width() >=
+                    maxOutputLabels.first()->fontMetrics().horizontalAdvance(maxOutputLabels.first()->text()),
+            "temperature max output label uses the full parameter row without narrowing its input");
     require(maxOutputSpin->palette().color(QPalette::Text) == warningTextColor,
             "temperature max output value palette is actually painted red");
     require(modeCombo->width() == 124 &&

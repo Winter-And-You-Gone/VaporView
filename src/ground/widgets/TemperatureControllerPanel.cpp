@@ -63,6 +63,8 @@ constexpr int kTemperatureControllerStackedWideFieldWidth = 110;
 constexpr int kTemperatureControllerChannelParameterInputWidth = 124;
 constexpr int kTemperatureControllerPolynomialStackedFieldWidth = 58;
 constexpr int kTemperatureControllerCompactColumnGap = 6;
+constexpr int kTemperatureControllerChannelParameterRowWidth =
+    kTemperatureControllerChannelParameterInputWidth * 2 + kTemperatureControllerCompactColumnGap;
 constexpr int kTemperatureControllerStackedFieldSpacing = 6;
 constexpr int kTemperatureControllerChannelSubPageVerticalSpacing = 10;
 constexpr int kTemperatureControllerCalibrationTabWidth = 26;
@@ -1757,6 +1759,7 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
                                                channel.max_output_spin,
                                                channel.max_output_label_text,
                                                kTemperatureControllerChannelParameterInputWidth);
+    maxOutputField->setFixedWidth(kTemperatureControllerChannelParameterRowWidth);
     if (channel.max_output_label_text)
     {
         setWidgetBooleanProperty(channel.max_output_label_text, "temperatureMaxOutputWarning", true);
@@ -1792,8 +1795,7 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
     auto *outputTargetFields = new QWidget(page);
     outputTargetFields->setObjectName(QStringLiteral("temperatureOutputTargetFieldsChannel%1").arg(index + 1));
     outputTargetFields->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    outputTargetFields->setFixedWidth(kTemperatureControllerChannelParameterInputWidth * 2 +
-                                      kTemperatureControllerCompactColumnGap);
+    outputTargetFields->setFixedWidth(kTemperatureControllerChannelParameterRowWidth);
     auto *outputTargetFieldsLayout = new QHBoxLayout(outputTargetFields);
     outputTargetFieldsLayout->setContentsMargins(0, 0, 0, 0);
     outputTargetFieldsLayout->setSpacing(kTemperatureControllerCompactColumnGap);
@@ -2278,7 +2280,7 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
     connect(common_.factory_reset_button, &QPushButton::clicked, this, [this]() {
         emit factoryResetRequested();
     });
-    layout->addWidget(common_.factory_reset_button, 0, Qt::AlignLeft | Qt::AlignTop);
+    layout->addWidget(common_.factory_reset_button, 0, Qt::AlignHCenter | Qt::AlignTop);
 
     common_.sub_top_bar = new QFrame(page);
     common_.sub_top_bar->setObjectName(QStringLiteral("temperatureCommonSettingsSubTopBar"));
