@@ -460,6 +460,17 @@ int main(int argc, char **argv)
     serviceLogClearButton->click();
     require(serviceLog->toPlainText().isEmpty(),
             "RTK service-log title action clears the service log");
+    dialog.appendLog(QStringLiteral("RTK 服务日志格式验证"));
+    const QString serviceLogText = serviceLog->toPlainText();
+    const QStringList serviceLogLines =
+        serviceLogText.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    require(serviceLogLines.size() == 1 &&
+                serviceLogLines.constFirst().startsWith(QLatin1Char('[')) &&
+                serviceLogLines.constFirst().contains(QStringLiteral("] RTK 服务日志格式验证")),
+            "RTK service log keeps the timestamp and message on one line");
+    serviceLogClearButton->click();
+    require(serviceLog->toPlainText().isEmpty(),
+            "RTK service-log clear action resets the formatting probe");
     QTimer testMessageBoxCloser;
     QObject::connect(&testMessageBoxCloser, &QTimer::timeout, []() {
         for (QWidget *widget : QApplication::topLevelWidgets())

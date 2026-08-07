@@ -4442,7 +4442,7 @@ void RtkConfigDialog::appendLog(const QString& message)
     {
         return;
     }
-    log_text_edit_->append(QString("[%1]\n%2").arg(timestamp, formattedMessage));
+    log_text_edit_->append(QString("[%1] %2").arg(timestamp, formattedMessage));
 
     QTextCursor cursor = log_text_edit_->textCursor();
     cursor.movePosition(QTextCursor::End);
