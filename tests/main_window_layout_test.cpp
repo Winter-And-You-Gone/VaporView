@@ -4754,6 +4754,18 @@ int main(int argc, char **argv)
     const QString darkOverviewStyleSheet = qApp->styleSheet();
     requireLastStyleRuleContains(
         darkOverviewStyleSheet,
+        QStringLiteral("QListView#logListView::item:selected {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtlePressed, true)),
+        "dark log selection uses the dark primary selection background");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QListView#logListView::item:selected {"),
+        QStringLiteral("color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::White, true)),
+        "dark log selection keeps the text readable");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
         QStringLiteral("QMessageBox QLabel {"),
         QStringLiteral("color: %1").arg(VaporView::appThemeColorName(
             VaporView::AppThemeColor::Text, true)),

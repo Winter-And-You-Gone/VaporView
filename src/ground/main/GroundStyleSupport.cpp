@@ -693,6 +693,10 @@ QListView#logListView {
     border: none;
     border-radius: 0px;
 }
+QListView#logListView::item:selected {
+    background-color: @vv-primary-subtle-pressed;
+    color: @vv-white;
+}
 QWidget#logNewEntriesRow {
     background-color: @vv-surface;
     border: none;
