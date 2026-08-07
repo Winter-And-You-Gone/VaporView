@@ -58,9 +58,9 @@ using VaporView::Ground::Widgets::TemperatureControllerOverviewPanel;
 namespace
 {
 constexpr int kHomeOverviewBodyPadding = 2;
-constexpr int kTemperatureControllerSettingsInputWidth = 124;
+constexpr int kTemperatureControllerSettingsInputWidth = 130;
 constexpr int kTemperatureControllerStackedWideFieldWidth = 110;
-constexpr int kTemperatureControllerChannelParameterInputWidth = 124;
+constexpr int kTemperatureControllerChannelParameterInputWidth = 130;
 constexpr int kTemperatureControllerPolynomialStackedFieldWidth = 58;
 constexpr int kTemperatureControllerCompactColumnGap = 6;
 constexpr int kTemperatureControllerChannelParameterRowWidth =
@@ -70,7 +70,7 @@ constexpr int kTemperatureControllerChannelSubPageVerticalSpacing = 10;
 constexpr int kTemperatureControllerCalibrationTabWidth = 26;
 constexpr int kTemperatureControllerCalibrationOverlayHeight = 224;
 constexpr int kTemperatureControllerControlsCardWidth = 280;
-constexpr int kTemperatureControllerControlsCardHorizontalPadding = 7;
+constexpr int kTemperatureControllerControlsCardHorizontalPadding = 6;
 constexpr int kTemperatureControllerControlsCardTopPadding = 6;
 constexpr int kTemperatureControllerControlsCardBottomPadding = 0;
 constexpr int kTemperatureControllerFactoryResetButtonWidth = 170;
@@ -81,9 +81,9 @@ constexpr int kTemperatureControllerSubTabTextPadding = 28;
 constexpr int kTemperatureControllerTopEnableWidth = 106;
 constexpr int kTemperatureControllerTopEnableHeight = 34;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
-// The 254px common-parameter row is 81 + 6 + 80 + 6 + 81, matching 124 + 6 + 124.
-constexpr int kTemperatureControllerPidSideInputWidth = 81;
-constexpr int kTemperatureControllerPidCenterInputWidth = 80;
+// The 266px common-parameter row is 85 + 6 + 84 + 6 + 85, matching 130 + 6 + 130.
+constexpr int kTemperatureControllerPidSideInputWidth = 85;
+constexpr int kTemperatureControllerPidCenterInputWidth = 84;
 constexpr int kTemperatureControllerConfigRowHeight = 38;
 constexpr int kTemperatureControllerTopControlsHeight = 38;
 constexpr int kTemperatureControllerNavigationButtonHeight = 30;
@@ -1382,9 +1382,8 @@ void TemperatureControllerPanel::setupUi()
 
     channel_stack_ = new QStackedWidget(controlsCard);
     channel_stack_->setObjectName(QStringLiteral("temperatureChannelStack"));
-    channel_stack_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    channel_stack_->setFixedWidth(kTemperatureControllerControlsCardWidth -
-                                  2 * kTemperatureControllerControlsCardHorizontalPadding);
+    channel_stack_->setFrameShape(QFrame::NoFrame);
+    channel_stack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     channel_stack_->addWidget(createChannelPage(0));
     channel_stack_->addWidget(createChannelPage(1));
     channel_stack_->addWidget(createCommonSettingsPage());
@@ -1666,7 +1665,7 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
     QWidget *page = new QWidget(channels_[index].config_sub_stack);
     page->setObjectName(QStringLiteral("temperatureChannelCommonParamsPageChannel%1").arg(index + 1));
     auto *layout = new QGridLayout(page);
-    layout->setContentsMargins(6, 0, 6, 6);
+    layout->setContentsMargins(0, 0, 0, 6);
     layout->setHorizontalSpacing(kTemperatureControllerCompactColumnGap);
     layout->setVerticalSpacing(kTemperatureControllerChannelSubPageVerticalSpacing);
     layout->setAlignment(Qt::AlignTop | Qt::AlignLeft);
@@ -1834,7 +1833,7 @@ QWidget *TemperatureControllerPanel::createChannelAdvancedParamsPage(int index)
     QWidget *page = new QWidget(channels_[index].config_sub_stack);
     page->setObjectName(QStringLiteral("temperatureChannelAdvancedParamsPageChannel%1").arg(index + 1));
     auto *layout = new QGridLayout(page);
-    layout->setContentsMargins(6, 0, 6, 6);
+    layout->setContentsMargins(0, 0, 0, 6);
     layout->setHorizontalSpacing(kTemperatureControllerCompactColumnGap);
     layout->setVerticalSpacing(kTemperatureControllerChannelSubPageVerticalSpacing);
     layout->setAlignment(Qt::AlignTop | Qt::AlignLeft);
@@ -2188,9 +2187,9 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
     page->setObjectName(QStringLiteral("temperatureCommonSettingsPage"));
     page->setMinimumHeight(kTemperatureControllerCommonStackHeight);
     auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(6, 10, 6, 8);
+    layout->setContentsMargins(0, 0, 0, 6);
     layout->setSpacing(kTemperatureControllerChannelSubPageVerticalSpacing);
-    layout->setAlignment(Qt::AlignLeft);
+    layout->setAlignment(Qt::AlignTop | Qt::AlignLeft);
 
     auto *fieldsContainer = new QWidget(page);
     fieldsContainer->setObjectName(QStringLiteral("temperatureCommonSettingsFields"));

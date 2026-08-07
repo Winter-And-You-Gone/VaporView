@@ -5424,9 +5424,10 @@ int main(int argc, char **argv)
                 temperatureControllerLeftConfigColumnLayout != nullptr &&
                 temperatureControllerLeftConfigColumnLayout->spacing() == 6 &&
                 temperatureControllerControlsCardLayout != nullptr &&
+                temperatureChannelStack->frameShape() == QFrame::NoFrame &&
                 stackRectInControlsCard.left() <= 8 &&
                 temperatureControllerControlsCard->width() - stackRectInControlsCard.right() - 1 <= 8,
-            "temperature parameter card trims the outer horizontal padding around the config stack");
+            "temperature parameter card removes the stacked-page frame and trims the outer horizontal padding");
     require(topRowRectInCard.bottom() < stackRectInCard.top() &&
                 topRowRectInCard.left() <= stackRectInCard.left() + 1 &&
                 topBarRectInRow.width() < stackRectInCard.width(),
@@ -5549,17 +5550,17 @@ int main(int argc, char **argv)
     const QRect commonSettingsFieldsRectInPage(
         commonSettingsFields->mapTo(commonSettingsPage, QPoint(0, 0)), commonSettingsFields->size());
     require(commonSettingsPageLayout != nullptr &&
-                commonSettingsPageLayout->contentsMargins().right() == 6 &&
-                addressSpin->width() == 124 &&
-                rs485BaudCombo->width() == 124 &&
-                overtempOutputCombo->width() == 124 &&
-                commonInternalTemperatureEdit->width() == 124 &&
+                commonSettingsPageLayout->contentsMargins() == QMargins(0, 0, 0, 6) &&
+                addressSpin->width() == 130 &&
+                rs485BaudCombo->width() == 130 &&
+                overtempOutputCombo->width() == 130 &&
+                commonInternalTemperatureEdit->width() == 130 &&
                 commonSettingsFields->width() ==
                     addressSpin->width() * 2 + commonSettingsGrid->horizontalSpacing() &&
                 commonSettingsFieldsRectInPage.left() == commonSettingsPageLayout->contentsMargins().left() &&
                 commonSettingsPage->width() - 1 - commonSettingsFieldsRectInPage.right() ==
                     commonSettingsPageLayout->contentsMargins().right(),
-            "temperature common settings narrow both columns to preserve the 6px right inset");
+            "temperature common settings leave the shared 6px inset to the outer parameter card");
     const QMargins commonSettingsPageMargins = commonSettingsPageLayout->contentsMargins();
     auto *selectedChannelCommonParamsPage = temperaturePanel->findChild<QWidget *>(
         QStringLiteral("temperatureChannelCommonParamsPageChannel2"));
@@ -5644,10 +5645,12 @@ int main(int argc, char **argv)
             "temperature common settings align equal-width field editors with compact adjacent gaps");
     require(selectedChannelCommonParamsPage != nullptr && selectedChannelCommonParamsGrid != nullptr,
             "temperature channel common parameters remain available after switching into common settings");
-    require(commonBaudComboRectInCard.right() <=
-                temperatureControllerControlsCard->mapTo(temperatureConfigCard, QPoint(0, 0)).x() +
-                    temperatureControllerControlsCard->width() - 12,
-            "temperature common RS485 baud combo leaves room inside the left control card");
+    const int controlsCardLeftInCard =
+        temperatureControllerControlsCard->mapTo(temperatureConfigCard, QPoint(0, 0)).x();
+    const int commonBaudRightInset =
+        controlsCardLeftInCard + temperatureControllerControlsCard->width() - 2 - commonBaudComboRectInCard.right();
+    require(commonBaudRightInset == 6,
+            "temperature common RS485 baud combo keeps the shared right inset inside the left control card");
     auto *overtempOutputMenu = overtempOutputCombo->findChild<VaporView::SingleLevelPopupMenu *>(
         QStringLiteral("singleLevelComboPopupMenu"));
     require(overtempOutputMenu != nullptr,
@@ -5911,13 +5914,13 @@ int main(int argc, char **argv)
                 channel2ContentGrids[1]->verticalSpacing() == 10 &&
                 channel2ContentGrids[2]->verticalSpacing() == 10,
             "temperature channel sub-pages share the sensor-config vertical rhythm on both channels");
-    require(channelContentGrids[0]->contentsMargins() == QMargins(6, 0, 6, 6) &&
-                channelContentGrids[1]->contentsMargins() == QMargins(6, 0, 6, 6) &&
+    require(channelContentGrids[0]->contentsMargins() == QMargins(0, 0, 0, 6) &&
+                channelContentGrids[1]->contentsMargins() == QMargins(0, 0, 0, 6) &&
                 channelContentGrids[2]->contentsMargins() == QMargins(0, 0, 0, 6) &&
-                channel2ContentGrids[0]->contentsMargins() == QMargins(6, 0, 6, 6) &&
-                channel2ContentGrids[1]->contentsMargins() == QMargins(6, 0, 6, 6) &&
+                channel2ContentGrids[0]->contentsMargins() == QMargins(0, 0, 0, 6) &&
+                channel2ContentGrids[1]->contentsMargins() == QMargins(0, 0, 0, 6) &&
                 channel2ContentGrids[2]->contentsMargins() == QMargins(0, 0, 0, 6),
-            "temperature channel sub-pages trim their vertical content margins to the sensor-config reference on both channels");
+            "temperature channel sub-pages leave the shared horizontal inset to the parameter card on both channels");
     require(temperatureChannelConfigSubStack->minimumHeight() == temperatureChannelConfigSubStack->maximumHeight() &&
                 temperatureChannelConfigSubStack->height() == temperatureChannelConfigSubStack->minimumHeight() &&
                 temperatureChannelConfigSubStack->height() >=
@@ -6036,7 +6039,7 @@ int main(int argc, char **argv)
                 overtempUpperRect.width() == temperatureSlopeRect.width() &&
                 overtempUpperRect.width() == startupDelayRect.width() &&
                 overtempUpperRect.width() == sensorResistanceRect.width() &&
-                overtempUpperRect.width() == 124 &&
+                overtempUpperRect.width() == 130 &&
                 overtempUpperRect.top() == overtempLowerRect.top() &&
                 temperatureSlopeRect.top() == startupDelayRect.top() &&
                 sensorResistanceRect.top() > temperatureSlopeRect.bottom() &&
@@ -6044,7 +6047,7 @@ int main(int argc, char **argv)
                 overtempUpperRect.left() == advancedParamsMargins.left() &&
                 advancedParamsPage->width() - 1 - overtempLowerRect.right() == advancedParamsMargins.right() &&
                 advancedParamsPage->width() - 1 - startupDelayRect.right() == advancedParamsMargins.right(),
-            "temperature professional input fields fill the two-column area while preserving the 6px right inset");
+            "temperature professional input fields fill the two-column parameter area");
     require(overtempLowerRect.left() - overtempUpperRect.right() - 1 == advancedParamsGrid->horizontalSpacing() &&
                 startupDelayRect.left() - temperatureSlopeRect.right() - 1 == advancedParamsGrid->horizontalSpacing(),
             "temperature professional adjacent inputs keep the compact reference horizontal gap");
@@ -6145,10 +6148,16 @@ int main(int argc, char **argv)
                 commonParamsPage->width() - 1 - pidFieldsRectInCommonParamsPage.right() == commonParamsMargins.right() &&
                 commonParamsPage->width() - 1 - outputTargetFieldsRectInCommonParamsPage.right() ==
                     commonParamsMargins.right(),
-            "temperature lower common tab fills the parameter area while preserving the 6px right inset");
-    require(controlsCardMargins.top() == 6 &&
-                std::abs(pidFieldsRectInControlsCard.top() - controlsCardMargins.top()) <= 1,
-            "temperature PID row starts at the shared compact top inset of the parameter card");
+            "temperature lower common tab fills the parameter area while preserving the shared card inset");
+    const QRect maxOutputFieldRectInControlsCard(
+        maxOutputSpin->parentWidget()->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
+        maxOutputSpin->parentWidget()->size());
+    require(controlsCardMargins == QMargins(6, 6, 6, 0) &&
+                std::abs(pidFieldsRectInControlsCard.left() - 6) <= 1 &&
+                std::abs(temperatureControllerControlsCard->width() - 1 - pidFieldsRectInControlsCard.right() - 6) <= 1 &&
+                std::abs(pidFieldsRectInControlsCard.top() - 6) <= 1 &&
+                std::abs(temperatureControllerControlsCard->height() - 1 - maxOutputFieldRectInControlsCard.bottom() - 6) <= 1,
+            "temperature common parameters keep one visible 6px inset on all four card edges");
     require(std::abs(kpRowRect.top() - kiRowRect.top()) <= 2 &&
                 std::abs(kiRowRect.top() - kdRowRect.top()) <= 2 &&
                 kpRowRect.right() < kiRowRect.left() &&
@@ -6196,19 +6205,19 @@ int main(int argc, char **argv)
                 maxOutputLabels.first()->text() == QStringLiteral("最大输出电压百分比(%)") &&
                 maxOutputLabels.first()->property("temperatureMaxOutputWarning").toBool(),
             "temperature max output label is renamed and marked red");
-    require(maxOutputSpin->parentWidget()->width() == 254 &&
+    require(maxOutputSpin->parentWidget()->width() == 266 &&
                 maxOutputLabels.first()->width() >=
                     maxOutputLabels.first()->fontMetrics().horizontalAdvance(maxOutputLabels.first()->text()),
             "temperature max output label uses the full parameter row without narrowing its input");
     require(maxOutputSpin->palette().color(QPalette::Text) == warningTextColor,
             "temperature max output value palette is actually painted red");
-    require(modeCombo->width() == 124 &&
-                targetSpin->width() == 124 &&
-                maxOutputSpin->width() == 124,
+    require(modeCombo->width() == 130 &&
+                targetSpin->width() == 130 &&
+                maxOutputSpin->width() == 130,
             "temperature common parameter inputs use the widened field width");
-    require(kpSpin->width() == 81 &&
-                kiSpin->width() == 80 &&
-                kdSpin->width() == 81,
+    require(kpSpin->width() == 85 &&
+                kiSpin->width() == 84 &&
+                kdSpin->width() == 85,
             "temperature PID spin boxes divide the widened row across three fields");
     auto requireTopBarFieldLayout = [temperatureChannelTopControlsStack](QWidget *editor, const char *message) {
         require(editor != nullptr && editor->parentWidget() != nullptr, message);
