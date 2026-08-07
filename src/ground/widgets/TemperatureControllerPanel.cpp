@@ -847,8 +847,12 @@ private:
                                                                 content_widget_ ? content_widget_->sizeHint().height() : 0));
         const bool collapsed = visual_progress_ <= 0.001;
         const int currentHeight = collapsed ? std::min(hostHeight, handleHeight()) : contentHeight;
-        const int top = host_rect_.top() +
-            (collapsed ? std::max(0, (hostHeight - currentHeight) / 2) : 0);
+        // Keep the handle's vertical center anchored to the sensor-config host
+        // while the drawer changes width or switches between collapsed and
+        // expanded heights. Only the left edge participates in the animation.
+        const int maxTop = host_rect_.top() + std::max(0, hostHeight - currentHeight);
+        const int centeredTop = host_rect_.top() + std::max(0, (hostHeight - currentHeight) / 2);
+        const int top = std::clamp(centeredTop, host_rect_.top(), maxTop);
         setGeometry(host_rect_.left() + hostWidth - currentWidth,
                     top,
                     currentWidth,

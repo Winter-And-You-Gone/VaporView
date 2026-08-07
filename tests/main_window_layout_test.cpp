@@ -6542,20 +6542,31 @@ int main(int argc, char **argv)
         QStringLiteral("temperatureCalibrationDrawerAnimation"));
     require(calibrationAnimation != nullptr && calibrationAnimation->duration() == 320,
             "temperature calibration drawer owns the restrained 320 ms jelly animation");
+    const int collapsedHandleCenterY = collapsedDrawerRectInControlsCard.center().y();
 
     clickCalibrationHandle(0);
     activateLayouts(&window);
     calibrationAnimation->setCurrentTime(qRound(calibrationAnimation->duration() * 0.36));
     const int expandingWidth = temperatureCalibrationDrawer->width();
+    const QRect expandingDrawerRectInControlsCard(
+        temperatureCalibrationDrawer->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
+        temperatureCalibrationDrawer->size());
     require(temperatureCalibrationDrawer->property("expanded").toBool() &&
                 expandingWidth > calibrationHandleWidth &&
                 expandingWidth < temperatureChannelConfigSubStack->currentWidget()->width(),
             "temperature calibration drawer starts expanding from the handle without occupying the full page immediately");
+    require(std::abs(expandingDrawerRectInControlsCard.center().y() - collapsedHandleCenterY) <= 1,
+            "temperature calibration handle keeps a fixed vertical center during expansion");
     clickCalibrationHandle(0);
     calibrationAnimation->setCurrentTime(qRound(calibrationAnimation->duration() * 0.20));
+    const QRect reversingDrawerRectInControlsCard(
+        temperatureCalibrationDrawer->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
+        temperatureCalibrationDrawer->size());
     require(!temperatureCalibrationDrawer->property("expanded").toBool() &&
                 temperatureCalibrationDrawer->width() < expandingWidth,
             "temperature calibration drawer reverses smoothly from its current visual width");
+    require(std::abs(reversingDrawerRectInControlsCard.center().y() - collapsedHandleCenterY) <= 1,
+            "temperature calibration handle keeps a fixed vertical center during reversal");
     clickCalibrationHandle(0);
     calibrationAnimation->setCurrentTime(calibrationAnimation->duration());
     const QRect calibrationDrawerRect(
