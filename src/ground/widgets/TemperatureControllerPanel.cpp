@@ -75,7 +75,6 @@ constexpr int kTemperatureControllerChannelParameterRowWidth =
 constexpr int kTemperatureControllerStackedFieldSpacing = 6;
 constexpr int kTemperatureControllerChannelSubPageVerticalSpacing = 10;
 constexpr int kTemperatureControllerCalibrationHandleWidth = 38;
-constexpr int kTemperatureControllerCalibrationOverlayHeight = 224;
 constexpr int kTemperatureControllerPolynomialColumnCount = 3;
 constexpr int kTemperatureControllerControlsCardWidth = 280;
 constexpr int kTemperatureControllerControlsCardHorizontalPadding = 6;
@@ -1540,13 +1539,10 @@ void TemperatureControllerPanel::alignSensorCalibrationOverlay(int channelIndex)
     }
     const QRect pageRectInHost(page->mapTo(host, QPoint(0, 0)), page->size());
     const QRect hostRect(pageRectInHost.left(),
-                         pageRectInHost.top(),
+                         0,
                          std::max(0, host->width() - pageRectInHost.left()),
-                         pageRectInHost.height());
-    const int overlayHeight = std::min(page->height(),
-                                       std::max(kTemperatureControllerCalibrationOverlayHeight,
-                                                 channel.sensor_calibration_overlay->sizeHint().height()));
-    drawer->setHostRect(hostRect, overlayHeight);
+                         host->height());
+    drawer->setHostRect(hostRect, hostRect.height());
 }
 
 void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
@@ -2506,7 +2502,10 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
                                       2);
     auto *polynomialLayout = new QGridLayout(polynomialFields);
     polynomialLayout->setObjectName(QStringLiteral("temperaturePolynomialFieldsGridChannel%1").arg(index + 1));
-    polynomialLayout->setContentsMargins(0, 0, 0, 0);
+    polynomialLayout->setContentsMargins(kTemperatureControllerCompactColumnGap,
+                                         0,
+                                         kTemperatureControllerCompactColumnGap,
+                                         0);
     polynomialLayout->setHorizontalSpacing(kTemperatureControllerCompactColumnGap);
     polynomialLayout->setVerticalSpacing(kTemperatureControllerChannelSubPageVerticalSpacing);
     polynomialLayout->setAlignment(Qt::AlignTop | Qt::AlignLeft);

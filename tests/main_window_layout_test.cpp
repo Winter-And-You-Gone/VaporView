@@ -6388,6 +6388,8 @@ int main(int argc, char **argv)
                 polynomialFields != nullptr &&
                 polynomialFieldsGrid != nullptr &&
                 polynomialFieldsGrid->horizontalSpacing() == 6 &&
+                polynomialFieldsGrid->contentsMargins().left() == 6 &&
+                polynomialFieldsGrid->contentsMargins().right() == 6 &&
                 temperatureCalibrationDrawer != nullptr &&
                 temperatureCalibrationOverlay != nullptr &&
                 temperatureCalibrationDrawer->parentWidget() == temperatureControllerControlsCard &&
@@ -6403,7 +6405,7 @@ int main(int argc, char **argv)
                     QStringLiteral("temperatureCalibrationPullButtonChannel1")) == nullptr &&
                 temperatureCalibrationOverlay->property("temperatureSensorCalibrationOverlay").toBool() &&
                 !temperatureCalibrationOverlay->isVisible(),
-            "temperature sensor config keeps the six primary fields in the base grid and hides A0-A7 in a right-edge calibration drawer");
+            "temperature sensor config keeps the six primary fields in the base grid and hides A0-A7 in an edge calibration drawer");
     auto sensorFieldLabel = [](QWidget *editor) -> QLabel * {
         return editor && editor->parentWidget()
             ? editor->parentWidget()->findChild<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly)
@@ -6526,7 +6528,7 @@ int main(int argc, char **argv)
                 calibrationHandleHeight < sensorPageRectInControlsCard.height() &&
                 temperatureCalibrationDrawer->height() == calibrationHandleHeight &&
                 std::abs(collapsedDrawerRectInControlsCard.center().y() -
-                         sensorPageRectInControlsCard.center().y()) <= 1 &&
+                         temperatureControllerControlsCard->rect().center().y()) <= 1 &&
                 collapsedDrawerRectInControlsCard.right() == temperatureControllerControlsCard->width() - 1,
             "temperature calibration handle fits its seven rows, stays vertically centered, and touches the controls-card edge");
 
@@ -6576,7 +6578,12 @@ int main(int argc, char **argv)
                 temperatureCalibrationOverlay->isVisible() &&
                 calibrationDrawerRect.width() > calibrationHandleWidth &&
                 calibrationDrawerRect.left() >= 0 &&
-                temperatureCalibrationOverlay->geometry().left() >= calibrationHandleWidth &&
+                calibrationDrawerRect.top() == 0 &&
+                calibrationDrawerRect.bottom() == temperatureControllerControlsCard->height() - 1 &&
+                temperatureCalibrationOverlay->geometry().left() == calibrationHandleWidth &&
+                temperatureCalibrationOverlay->geometry().top() == 0 &&
+                temperatureCalibrationOverlay->geometry().bottom() ==
+                    temperatureCalibrationDrawer->height() - 1 &&
                 temperatureCalibrationOverlay->geometry().right() <
                     temperatureCalibrationDrawer->width() &&
                 calibrationDrawerRect.right() ==
