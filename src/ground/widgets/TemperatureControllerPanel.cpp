@@ -68,7 +68,8 @@ constexpr int kTemperatureControllerCalibrationTabWidth = 26;
 constexpr int kTemperatureControllerCalibrationOverlayHeight = 224;
 constexpr int kTemperatureControllerControlsCardWidth = 280;
 constexpr int kTemperatureControllerControlsCardHorizontalPadding = 7;
-constexpr int kTemperatureControllerControlsCardVerticalPadding = 16;
+constexpr int kTemperatureControllerControlsCardTopPadding = 16;
+constexpr int kTemperatureControllerControlsCardBottomPadding = 0;
 constexpr int kTemperatureControllerFactoryResetButtonWidth = 170;
 constexpr int kTemperatureControllerChannelButtonWidth = 78;
 constexpr int kTemperatureControllerCommonButtonWidth = 88;
@@ -86,11 +87,8 @@ constexpr int kTemperatureControllerNavigationVerticalMargin = 3;
 constexpr int kTemperatureControllerNavigationSpacing = 2;
 constexpr int kTemperatureControllerRowSpacing = 8;
 constexpr int kTemperatureControllerConfigPlotHeight = 306;
-constexpr int kTemperatureControllerChannelConfigSubStackHeight =
-    kTemperatureControllerConfigPlotHeight -
-    2 * kTemperatureControllerControlsCardVerticalPadding -
-    kTemperatureControllerRowSpacing -
-    kTemperatureControllerConfigRowHeight;
+// The selector is below the left card now, so the stack only needs the three-row page content height.
+constexpr int kTemperatureControllerChannelConfigSubStackHeight = 218;
 constexpr int kTemperatureControllerChannelStackHeight =
     kTemperatureControllerChannelConfigSubStackHeight;
 constexpr int kTemperatureControllerCommonStackHeight = kTemperatureControllerChannelStackHeight;
@@ -1351,7 +1349,15 @@ void TemperatureControllerPanel::setupUi()
     contentRowLayout->setContentsMargins(0, 0, 0, 0);
     contentRowLayout->setSpacing(12);
 
-    auto *controlsCard = new QFrame(contentRow);
+    auto *leftConfigColumn = new QWidget(contentRow);
+    leftConfigColumn->setObjectName(QStringLiteral("temperatureControllerLeftConfigColumn"));
+    leftConfigColumn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    leftConfigColumn->setFixedWidth(kTemperatureControllerControlsCardWidth);
+    auto *leftConfigColumnLayout = new QVBoxLayout(leftConfigColumn);
+    leftConfigColumnLayout->setContentsMargins(0, 0, 0, 0);
+    leftConfigColumnLayout->setSpacing(kTemperatureControllerCompactColumnGap);
+
+    auto *controlsCard = new QFrame(leftConfigColumn);
     controlsCard->setObjectName(QStringLiteral("temperatureControllerControlsCard"));
     controlsCard->setFrameShape(QFrame::NoFrame);
     controlsCard->setAttribute(Qt::WA_StyledBackground, true);
@@ -1359,9 +1365,9 @@ void TemperatureControllerPanel::setupUi()
     controlsCard->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     auto *controlsCardLayout = new QVBoxLayout(controlsCard);
     controlsCardLayout->setContentsMargins(kTemperatureControllerControlsCardHorizontalPadding,
-                                           kTemperatureControllerControlsCardVerticalPadding,
+                                           kTemperatureControllerControlsCardTopPadding,
                                            kTemperatureControllerControlsCardHorizontalPadding,
-                                           kTemperatureControllerControlsCardVerticalPadding);
+                                           kTemperatureControllerControlsCardBottomPadding);
     controlsCardLayout->setSpacing(0);
 
     channel_stack_ = new QStackedWidget(controlsCard);
@@ -1374,7 +1380,8 @@ void TemperatureControllerPanel::setupUi()
     channel_stack_->addWidget(createCommonSettingsPage());
     controlsCardLayout->addWidget(channel_stack_, 0);
 
-    contentRowLayout->addWidget(controlsCard, 0, Qt::AlignTop);
+    leftConfigColumnLayout->addWidget(controlsCard, 0);
+    contentRowLayout->addWidget(leftConfigColumn, 0, Qt::AlignTop);
 
     temperature_plot_ = new TemperatureTrendPlotWidget(contentRow);
     temperature_plot_->setProperty("temperatureConfigPlot", true);
@@ -1384,13 +1391,13 @@ void TemperatureControllerPanel::setupUi()
     contentRowLayout->addWidget(temperature_plot_, 1, Qt::AlignTop);
 
     configCardLayout->addWidget(contentRow, 0);
-    sub_page_bar_stack_ = new QStackedWidget(configCard);
+    sub_page_bar_stack_ = new QStackedWidget(leftConfigColumn);
     sub_page_bar_stack_->setObjectName(QStringLiteral("temperatureSubPageBarStack"));
     sub_page_bar_stack_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     sub_page_bar_stack_->addWidget(channels_[0].sub_page_row);
     sub_page_bar_stack_->addWidget(channels_[1].sub_page_row);
     sub_page_bar_stack_->addWidget(common_.sub_top_bar);
-    configCardLayout->addWidget(sub_page_bar_stack_, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    leftConfigColumnLayout->addWidget(sub_page_bar_stack_, 0, Qt::AlignLeft | Qt::AlignTop);
 
     updateChannelStackMinimumHeight();
     selectChannel(0);
