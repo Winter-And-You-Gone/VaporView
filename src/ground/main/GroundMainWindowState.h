@@ -385,6 +385,7 @@ struct MainWindowState
     QPushButton *imu_rate_1000_btn_;
 
     std::unique_ptr<VaporView::Ground::Devices::LocalDeviceConnectionController> local_connection_controller_;
+    std::unique_ptr<VaporView::Ground::Devices::LocalConnectionCoordinator> local_connection_coordinator_;
     std::unique_ptr<VaporView::Ground::Session::GroundRecordingService> recording_service_;
     std::unique_ptr<VaporView::Ground::Session::RecordingScheduleController> recording_schedule_controller_;
 
@@ -416,8 +417,6 @@ struct MainWindowState
     bool port_detection_in_progress_;
     bool epsilon_reconfigure_in_progress_;
     bool is_connected_;
-    bool local_waveform_connect_pending_;
-    bool local_waveform_started_by_connect_action_;
     bool ui_test_mode_enabled_;
     bool ui_test_application_closing_;
     bool ui_test_connection_in_progress_;

@@ -453,6 +453,12 @@ add_executable(local_device_connection_controller_test
 target_link_libraries(local_device_connection_controller_test PRIVATE vaporview_ground_device_core)
 add_test(NAME local_device_connection_controller_test COMMAND local_device_connection_controller_test)
 
+add_executable(local_connection_coordinator_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/local_connection_coordinator_test.cpp
+)
+target_link_libraries(local_connection_coordinator_test PRIVATE vaporview_ground_device_core Qt6::Core)
+add_test(NAME local_connection_coordinator_test COMMAND local_connection_coordinator_test)
+
 add_executable(ui_test_mode_model_test
     ${CMAKE_CURRENT_SOURCE_DIR}/ui_test_mode_model_test.cpp
 )

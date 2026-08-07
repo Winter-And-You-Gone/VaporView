@@ -4801,15 +4801,15 @@ void MainWindow::setupDataPanels()
     connect(state_->tcp_wave_panel_, &TcpWavePanel::connectionLogMessageRequested,
             this, &MainWindow::logConnectionInfo);
     connect(state_->tcp_wave_panel_, &TcpWavePanel::connectionStateChanged, this, [this](bool connected) {
+        if (state_->local_connection_coordinator_)
+        {
+            state_->local_connection_coordinator_->waveformStateChanged(connected);
+        }
         if (isUiTestMode())
         {
             state_->ui_test_model_->setDeviceState(
                 VaporView::SkyDeviceId::WaveTcp,
                 connected ? VaporView::DeviceState::Connected : VaporView::DeviceState::Disconnected);
-        }
-        if (!connected)
-        {
-            state_->local_waveform_started_by_connect_action_ = false;
         }
         if (!isRemoteSkyMode())
         {

@@ -76,6 +76,7 @@ namespace VaporView::Ground { class Map3DController; }
 #endif
 namespace VaporView::Ground::Devices { struct CollectorSet; }
 namespace VaporView::Ground::Devices { class LocalDeviceConnectionController; }
+namespace VaporView::Ground::Devices { class LocalConnectionCoordinator; }
 namespace VaporView::Ground::Devices { class RemoteSkyController; }
 namespace VaporView::Ground::Devices { class UiTestDataModel; enum class UiTestScenario; }
 namespace VaporView::Ground::Session { class GroundRecordingService; }
@@ -260,8 +261,7 @@ private:
     void updateHomeDeviceActionSpinnerIcons();
     bool anyCollectorRunning() const;
     bool anyLocalDeviceConnected() const;
-    void startPendingLocalWaveformSource();
-    void disconnectLocalWaveformSource();
+    void configureLocalConnectionCoordinator();
     QStringList getAvailablePorts();
     void setEnglish(bool english);
     void setFontScale(int percent);
