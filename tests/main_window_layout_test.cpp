@@ -55,6 +55,7 @@
 #include <QTextOption>
 #include <QTimer>
 #include <QToolButton>
+#include <QVariantAnimation>
 #include <QWidget>
 #include <algorithm>
 #include <cmath>
@@ -6358,8 +6359,8 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePolynomialFieldsChannel1"));
     auto *polynomialFieldsGrid =
         polynomialFields ? qobject_cast<QGridLayout *>(polynomialFields->layout()) : nullptr;
-    auto *temperatureCalibrationButton =
-        temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureCalibrationPullButtonChannel1"));
+    auto *temperatureCalibrationDrawer =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureCalibrationSideDrawerChannel1"));
     auto *temperatureCalibrationOverlay =
         qobject_cast<QFrame *>(temperaturePanel->findChild<QWidget *>(
             QStringLiteral("temperaturePolynomialFieldsChannel1")));
@@ -6387,15 +6388,20 @@ int main(int argc, char **argv)
                 polynomialFields != nullptr &&
                 polynomialFieldsGrid != nullptr &&
                 polynomialFieldsGrid->horizontalSpacing() == 6 &&
-                temperatureCalibrationButton != nullptr &&
+                temperatureCalibrationDrawer != nullptr &&
                 temperatureCalibrationOverlay != nullptr &&
-                temperatureCalibrationButton->isCheckable() &&
-                temperatureCalibrationButton->focusPolicy() == Qt::TabFocus &&
-                temperatureCalibrationButton->width() == 26 &&
-                temperatureCalibrationButton->property("temperatureCalibrationPullTab").toBool() &&
+                temperatureCalibrationDrawer->parentWidget() == temperatureChannelConfigSubStack->currentWidget() &&
+                temperatureCalibrationDrawer->focusPolicy() == Qt::TabFocus &&
+                temperatureCalibrationDrawer->width() ==
+                    temperatureCalibrationDrawer->property("temperatureCalibrationHandleWidth").toInt() &&
+                temperatureCalibrationDrawer->property("temperatureCalibrationSideDrawer").toBool() &&
+                temperatureCalibrationDrawer->property("temperatureCalibrationHandleText").toString() ==
+                    QStringLiteral("校\n准\n系\n数\nA0\n-\nA7") &&
+                temperaturePanel->findChild<QPushButton *>(
+                    QStringLiteral("temperatureCalibrationPullButtonChannel1")) == nullptr &&
                 temperatureCalibrationOverlay->property("temperatureSensorCalibrationOverlay").toBool() &&
                 !temperatureCalibrationOverlay->isVisible(),
-            "temperature sensor config keeps the six primary fields in the base grid and hides A0-A7 behind a compact calibration tab");
+            "temperature sensor config keeps the six primary fields in the base grid and hides A0-A7 in a right-edge calibration drawer");
     auto sensorFieldLabel = [](QWidget *editor) -> QLabel * {
         return editor && editor->parentWidget()
             ? editor->parentWidget()->findChild<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly)
@@ -6506,38 +6512,61 @@ int main(int argc, char **argv)
                                      temperatureChannelConfigSubStack->currentWidget(),
                                      "temperature PT B/PT C adjacent inputs use the compact reference horizontal gap");
 
-    clickWidget(temperatureCalibrationButton, 0);
+    const int calibrationHandleWidth =
+        temperatureCalibrationDrawer->property("temperatureCalibrationHandleWidth").toInt();
+    auto clickCalibrationHandle = [temperatureCalibrationDrawer, calibrationHandleWidth](int waitMs) {
+        clickWidgetAt(temperatureCalibrationDrawer,
+                      QPoint(temperatureCalibrationDrawer->width() - calibrationHandleWidth / 2,
+                             temperatureCalibrationDrawer->height() / 2),
+                      waitMs);
+    };
+    auto *calibrationAnimation = temperatureCalibrationDrawer->findChild<QVariantAnimation *>(
+        QStringLiteral("temperatureCalibrationDrawerAnimation"));
+    require(calibrationAnimation != nullptr && calibrationAnimation->duration() == 320,
+            "temperature calibration drawer owns the restrained 320 ms jelly animation");
+
+    clickCalibrationHandle(0);
     activateLayouts(&window);
-    processEventsFor(20);
-    const QRect calibrationOverlayRect(
-        temperatureCalibrationOverlay->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
-        temperatureCalibrationOverlay->size());
-    const std::array<QLineEdit *, 6> primarySensorEdits = {
-        ntcR0Edit, ntcBEdit, ptR0Edit, ptAEdit, ptBEdit, ptCEdit};
-    bool allPrimaryCentersCovered = true;
-    int primaryLeftEdge = std::numeric_limits<int>::max();
-    int primaryRightEdge = std::numeric_limits<int>::min();
-    for (QLineEdit *edit : primarySensorEdits)
-    {
-        const QRect editorRect(edit->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
-                               edit->size());
-        allPrimaryCentersCovered = allPrimaryCentersCovered &&
-            calibrationOverlayRect.contains(editorRect.center());
-        primaryLeftEdge = std::min(primaryLeftEdge, editorRect.left());
-        primaryRightEdge = std::max(primaryRightEdge, editorRect.right());
-    }
-    require(temperatureCalibrationButton->isChecked() &&
+    calibrationAnimation->setCurrentTime(qRound(calibrationAnimation->duration() * 0.36));
+    const int expandingWidth = temperatureCalibrationDrawer->width();
+    require(temperatureCalibrationDrawer->property("expanded").toBool() &&
+                expandingWidth > calibrationHandleWidth &&
+                expandingWidth < temperatureChannelConfigSubStack->currentWidget()->width(),
+            "temperature calibration drawer starts expanding from the handle without occupying the full page immediately");
+    clickCalibrationHandle(0);
+    calibrationAnimation->setCurrentTime(qRound(calibrationAnimation->duration() * 0.20));
+    require(!temperatureCalibrationDrawer->property("expanded").toBool() &&
+                temperatureCalibrationDrawer->width() < expandingWidth,
+            "temperature calibration drawer reverses smoothly from its current visual width");
+    clickCalibrationHandle(0);
+    calibrationAnimation->setCurrentTime(calibrationAnimation->duration());
+    const QRect calibrationDrawerRect(
+        temperatureCalibrationDrawer->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
+        temperatureCalibrationDrawer->size());
+    require(temperatureCalibrationDrawer->property("expanded").toBool() &&
                 temperatureCalibrationOverlay->isVisible() &&
-                allPrimaryCentersCovered &&
-                calibrationOverlayRect.left() <= primaryLeftEdge &&
-                calibrationOverlayRect.right() >= primaryRightEdge &&
-                temperatureCalibrationOverlay->geometry().right() >=
-                    temperatureCalibrationButton->geometry().left(),
-            "temperature calibration tab expands a card over the six primary sensor fields");
-    clickWidget(temperatureCalibrationButton, 0);
-    require(!temperatureCalibrationButton->isChecked() &&
-                !temperatureCalibrationOverlay->isVisible(),
-            "temperature calibration tab collapses the coefficient card");
+                calibrationDrawerRect.width() > calibrationHandleWidth &&
+                calibrationDrawerRect.left() >= 0 &&
+                temperatureCalibrationOverlay->geometry().left() >= 0 &&
+                temperatureCalibrationOverlay->geometry().right() <
+                    temperatureCalibrationDrawer->width() &&
+                calibrationDrawerRect.right() ==
+                    temperatureChannelConfigSubStack->currentWidget()->width() - 1,
+            "temperature calibration drawer expands left inside the sensor-config page while its right edge stays anchored");
+    clickCalibrationHandle(0);
+    calibrationAnimation->setCurrentTime(calibrationAnimation->duration());
+    const QRect collapsedCalibrationDrawerRect(
+        temperatureCalibrationDrawer->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
+        temperatureCalibrationDrawer->size());
+    require(!temperatureCalibrationDrawer->property("expanded").toBool() &&
+                !temperatureCalibrationOverlay->isVisible() &&
+                collapsedCalibrationDrawerRect.width() == calibrationHandleWidth &&
+                collapsedCalibrationDrawerRect.right() ==
+                    temperatureChannelConfigSubStack->currentWidget()->width() - 1 &&
+                !collapsedCalibrationDrawerRect.contains(
+                    ntcR0Edit->mapTo(temperatureChannelConfigSubStack->currentWidget(),
+                                     ntcR0Edit->rect().center())),
+            "temperature calibration drawer collapses back to its edge handle without blocking primary sensor input");
     std::array<QLineEdit *, 8> polynomialEdits{};
     for (int coefficient = 0; coefficient < 8; ++coefficient)
     {
@@ -6547,14 +6576,14 @@ int main(int argc, char **argv)
         require(edit != nullptr,
                 "temperature polynomial inputs all exist");
         requirePolynomialFieldLayout(edit,
-                                     coefficient / 4,
-                                     coefficient % 4,
+                                     coefficient / 3,
+                                     coefficient % 3,
                                      58,
-                                     "temperature polynomial inputs stay in two compact four-column rows");
+                                     "temperature polynomial inputs stay in three compact rows inside the drawer");
     }
     for (int coefficient = 0; coefficient < 6; ++coefficient)
     {
-        if (coefficient == 3)
+        if (coefficient == 2 || coefficient == 5)
         {
             continue;
         }
@@ -6611,7 +6640,7 @@ int main(int argc, char **argv)
                 sensorConfigGrid->horizontalSpacing() == 6 &&
                 sensorConfigGrid->verticalSpacing() == 10 &&
                 sensorConfigGrid->itemAtPosition(3, 0) == nullptr &&
-                temperatureCalibrationButton->isVisible() &&
+                temperatureCalibrationDrawer->isVisible() &&
                 !polynomialFields->isVisible(),
             "temperature sensor grid keeps the primary rows visible while A0-A7 stays in the collapsed calibration card");
     QWidget *sensorLastRow = ptCEdit ? ptCEdit->parentWidget() : nullptr;

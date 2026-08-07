@@ -9,11 +9,14 @@
 #include "ground/widgets/TemperatureTrendPlotWidget.h"
 
 #include <QAction>
+#include <QAbstractAnimation>
 #include <QApplication>
 #include <QButtonGroup>
+#include <QCoreApplication>
 #include <QDir>
 #include <QDoubleValidator>
 #include <QEvent>
+#include <QFocusEvent>
 #include <QFile>
 #include <QFileInfo>
 #include <QFontMetrics>
@@ -21,10 +24,13 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QIntValidator>
+#include <QKeyEvent>
 #include <QLocale>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
+#include <QPainterPath>
 #include <QPalette>
 #include <QRadioButton>
 #include <QResizeEvent>
@@ -36,6 +42,7 @@
 #include <QSvgRenderer>
 #include <QTimer>
 #include <QToolButton>
+#include <QVariantAnimation>
 #include <QVBoxLayout>
 #include <QWidgetAction>
 
@@ -67,8 +74,9 @@ constexpr int kTemperatureControllerChannelParameterRowWidth =
     kTemperatureControllerChannelParameterInputWidth * 2 + kTemperatureControllerCompactColumnGap;
 constexpr int kTemperatureControllerStackedFieldSpacing = 6;
 constexpr int kTemperatureControllerChannelSubPageVerticalSpacing = 10;
-constexpr int kTemperatureControllerCalibrationTabWidth = 26;
+constexpr int kTemperatureControllerCalibrationHandleWidth = 38;
 constexpr int kTemperatureControllerCalibrationOverlayHeight = 224;
+constexpr int kTemperatureControllerPolynomialColumnCount = 3;
 constexpr int kTemperatureControllerControlsCardWidth = 280;
 constexpr int kTemperatureControllerControlsCardHorizontalPadding = 6;
 constexpr int kTemperatureControllerControlsCardTopPadding = 6;
@@ -472,6 +480,371 @@ void setWidgetBooleanProperty(QWidget *widget, const char *propertyName, bool en
     }
     widget->update();
 }
+
+class CalibrationSideDrawer final : public QWidget
+{
+public:
+    explicit CalibrationSideDrawer(QWidget *parent = nullptr)
+        : QWidget(parent)
+        , animation_(new QVariantAnimation(this))
+    {
+        setObjectName(QStringLiteral("temperatureCalibrationSideDrawer"));
+        setMouseTracking(true);
+        setFocusPolicy(Qt::TabFocus);
+        setCursor(Qt::PointingHandCursor);
+        setAttribute(Qt::WA_StyledBackground, false);
+        setProperty("temperatureCalibrationSideDrawer", true);
+        setProperty("temperatureCalibrationHandleWidth", kTemperatureControllerCalibrationHandleWidth);
+        setProperty("expanded", false);
+        setProperty("expansionProgress", 0.0);
+
+        reduced_motion_enabled_ = QCoreApplication::instance() &&
+            QCoreApplication::instance()->property("vaporViewReducedMotion").toBool();
+        setProperty("reducedMotionEnabled", reduced_motion_enabled_);
+        animation_->setObjectName(QStringLiteral("temperatureCalibrationDrawerAnimation"));
+        animation_->setDuration(reduced_motion_enabled_ ? 150 : 320);
+        animation_->setEasingCurve(QEasingCurve::Linear);
+        connect(animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
+            const qreal t = std::clamp(value.toReal(), 0.0, 1.0);
+            if (reduced_motion_enabled_)
+            {
+                visual_progress_ = animation_start_progress_ +
+                    (animation_target_progress_ - animation_start_progress_) * easeOutCubic(t);
+            }
+            else
+            {
+                // A damped spring gives the panel a restrained overshoot without moving its right edge.
+                const qreal spring = 1.0 - std::exp(-11.0 * t) * std::cos(11.0 * t);
+                visual_progress_ = animation_start_progress_ +
+                    (animation_target_progress_ - animation_start_progress_) * spring;
+            }
+            updateDrawerGeometry();
+        });
+        connect(animation_, &QVariantAnimation::finished, this, [this]() {
+            visual_progress_ = animation_target_progress_;
+            expansion_progress_ = animation_target_progress_;
+            setProperty("expansionProgress", expansion_progress_);
+            updateDrawerGeometry();
+        });
+        updateHandleText();
+    }
+
+    void setContentWidget(QWidget *widget)
+    {
+        if (content_widget_ == widget)
+        {
+            return;
+        }
+        if (content_widget_)
+        {
+            content_widget_->setParent(nullptr);
+        }
+        content_widget_ = widget;
+        if (content_widget_)
+        {
+            content_widget_->setParent(this);
+            content_widget_->setVisible(false);
+        }
+        updateDrawerGeometry();
+    }
+
+    QWidget *contentWidget() const
+    {
+        return content_widget_;
+    }
+
+    void setHandleText(const QString& text)
+    {
+        handle_text_ = text;
+        setProperty("temperatureCalibrationHandleText", handle_text_);
+        updateHandleText();
+        update();
+    }
+
+    void setHostSize(const QSize& size, int preferredHeight)
+    {
+        host_size_ = size;
+        preferred_height_ = preferredHeight;
+        updateDrawerGeometry();
+    }
+
+    void setExpanded(bool expanded, bool animated = true)
+    {
+        if (!animated)
+        {
+            animation_->stop();
+            expanded_ = expanded;
+            expansion_progress_ = expanded ? 1.0 : 0.0;
+            visual_progress_ = expansion_progress_;
+            setProperty("expanded", expanded_);
+            setProperty("expansionProgress", expansion_progress_);
+            updateDrawerGeometry();
+            return;
+        }
+
+        if (expanded_ == expanded && animation_->state() != QAbstractAnimation::Running)
+        {
+            return;
+        }
+        expanded_ = expanded;
+        setProperty("expanded", expanded_);
+        animation_->stop();
+        animation_start_progress_ = visual_progress_;
+        animation_target_progress_ = expanded ? 1.0 : 0.0;
+        expansion_progress_ = animation_start_progress_;
+        setProperty("expansionProgress", expansion_progress_);
+        animation_->setStartValue(0.0);
+        animation_->setEndValue(1.0);
+        animation_->start();
+    }
+
+    void toggle()
+    {
+        setExpanded(!expanded_);
+    }
+
+    bool isExpanded() const
+    {
+        return expanded_;
+    }
+
+    bool isAnimationRunning() const
+    {
+        return animation_->state() == QAbstractAnimation::Running;
+    }
+
+    qreal expansionProgress() const
+    {
+        return expansion_progress_;
+    }
+
+    int handleWidth() const
+    {
+        return kTemperatureControllerCalibrationHandleWidth;
+    }
+
+    QSize sizeHint() const override
+    {
+        return QSize(handleWidth(), std::max(preferred_height_, 160));
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        Q_UNUSED(event);
+        if (width() <= 0 || height() <= 0)
+        {
+            return;
+        }
+
+        const bool dark = VaporView::isDarkThemeEnabled();
+        const bool handleHovered = hovered_handle_ || pressed_;
+        const QColor fill = appThemeColor(
+            handleHovered || expanded_ ? AppThemeColor::PrimarySubtle : AppThemeColor::SurfaceAlt,
+            dark);
+        const QColor border = appThemeColor(
+            hasFocus() ? AppThemeColor::Focus : (expanded_ ? AppThemeColor::Primary : AppThemeColor::Border),
+            dark);
+        const QColor text = appThemeColor(expanded_ || handleHovered ? AppThemeColor::Primary : AppThemeColor::Text,
+                                          dark);
+        const QRectF handleRect(width() - handleWidth(), 0, handleWidth(), height());
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        QPainterPath path;
+        const qreal radius = 8.0;
+        path.moveTo(handleRect.right(), handleRect.top());
+        path.lineTo(handleRect.left() + radius, handleRect.top());
+        path.quadTo(handleRect.left(), handleRect.top(), handleRect.left(), handleRect.top() + radius);
+        path.lineTo(handleRect.left(), handleRect.bottom() - radius);
+        path.quadTo(handleRect.left(), handleRect.bottom(), handleRect.left() + radius, handleRect.bottom());
+        path.lineTo(handleRect.right(), handleRect.bottom());
+        path.closeSubpath();
+        painter.setPen(QPen(border, hasFocus() ? 2.0 : 1.0));
+        painter.setBrush(fill);
+        painter.drawPath(path);
+
+        QFont handleFont = font();
+        handleFont.setWeight(QFont::DemiBold);
+        painter.setFont(handleFont);
+        painter.setPen(text);
+        const QFontMetrics metrics(handleFont);
+        const QStringList rows = handle_text_.split(QLatin1Char('\n'));
+        const int lineHeight = metrics.height();
+        const int extraGap = rows.size() > 4 ? 3 : 0;
+        const int totalHeight = rows.size() * lineHeight + extraGap;
+        int y = std::max(0, (height() - totalHeight) / 2);
+        for (int i = 0; i < rows.size(); ++i)
+        {
+            painter.drawText(QRectF(handleRect.left(), y, handleRect.width(), lineHeight),
+                             Qt::AlignCenter,
+                             rows.at(i));
+            y += lineHeight;
+            if (i == 3)
+            {
+                y += extraGap;
+            }
+        }
+    }
+
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        const bool inHandle = event && event->position().x() >= width() - handleWidth();
+        if (inHandle != hovered_handle_)
+        {
+            hovered_handle_ = inHandle;
+            update();
+        }
+        QWidget::mouseMoveEvent(event);
+    }
+
+    void leaveEvent(QEvent *event) override
+    {
+        hovered_handle_ = false;
+        update();
+        QWidget::leaveEvent(event);
+    }
+
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        if (event && event->button() == Qt::LeftButton && isHandlePosition(event->position()))
+        {
+            setFocus(Qt::MouseFocusReason);
+            pressed_ = true;
+            update();
+            event->accept();
+            return;
+        }
+        QWidget::mousePressEvent(event);
+    }
+
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        if (event && event->button() == Qt::LeftButton)
+        {
+            const bool activate = pressed_ && isHandlePosition(event->position());
+            pressed_ = false;
+            update();
+            if (activate)
+            {
+                toggle();
+            }
+            event->accept();
+            return;
+        }
+        QWidget::mouseReleaseEvent(event);
+    }
+
+    void keyPressEvent(QKeyEvent *event) override
+    {
+        if (event && (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter ||
+                      event->key() == Qt::Key_Space))
+        {
+            toggle();
+            event->accept();
+            return;
+        }
+        if (event && event->key() == Qt::Key_Escape && expanded_)
+        {
+            setExpanded(false);
+            event->accept();
+            return;
+        }
+        QWidget::keyPressEvent(event);
+    }
+
+    void focusInEvent(QFocusEvent *event) override
+    {
+        QWidget::focusInEvent(event);
+        update();
+    }
+
+    void focusOutEvent(QFocusEvent *event) override
+    {
+        QWidget::focusOutEvent(event);
+        update();
+    }
+
+private:
+    static qreal easeOutCubic(qreal value)
+    {
+        const qreal t = 1.0 - std::clamp(value, 0.0, 1.0);
+        return 1.0 - t * t * t;
+    }
+
+    bool isHandlePosition(const QPointF& position) const
+    {
+        return position.x() >= width() - handleWidth() && position.y() >= 0 && position.y() < height();
+    }
+
+    void updateHandleText()
+    {
+        if (handle_text_.isEmpty())
+        {
+            handle_text_ = QStringLiteral("校\n准\n系\n数\nA0\n-\nA7");
+            setProperty("temperatureCalibrationHandleText", handle_text_);
+        }
+        setToolTip(QStringLiteral("展开校准系数 A0-A7"));
+        setAccessibleName(QStringLiteral("校准系数 A0-A7"));
+    }
+
+    int expandedWidthForHost() const
+    {
+        const int hostWidth = std::max(0, host_size_.width());
+        if (hostWidth <= handleWidth())
+        {
+            return hostWidth;
+        }
+        const int contentMinimum = content_widget_
+            ? std::max(content_widget_->minimumSizeHint().width(), content_widget_->sizeHint().width())
+            : 0;
+        const int minimumExpanded = handleWidth() + std::max(0, contentMinimum);
+        return std::clamp(std::max(minimumExpanded, qRound(hostWidth * 0.46)),
+                          handleWidth(),
+                          hostWidth);
+    }
+
+    void updateDrawerGeometry()
+    {
+        const int hostWidth = std::max(0, host_size_.width());
+        const int hostHeight = std::max(0, host_size_.height());
+        if (hostWidth <= 0 || hostHeight <= 0)
+        {
+            return;
+        }
+        const int expandedWidth = expandedWidthForHost();
+        const qreal progress = std::clamp(visual_progress_, 0.0, 1.2);
+        const int currentWidth = std::clamp(
+            qRound(handleWidth() + (expandedWidth - handleWidth()) * progress),
+            handleWidth(),
+            hostWidth);
+        const int currentHeight = std::min(hostHeight, std::max(preferred_height_,
+                                                                 content_widget_ ? content_widget_->sizeHint().height() : 0));
+        setGeometry(hostWidth - currentWidth, 0, currentWidth, currentHeight);
+        if (content_widget_)
+        {
+            const int contentWidth = std::max(0, currentWidth - handleWidth());
+            content_widget_->setGeometry(0, 0, contentWidth, currentHeight);
+            content_widget_->setVisible(currentWidth > handleWidth() + 1 || expanded_);
+            content_widget_->raise();
+        }
+        raise();
+        update();
+    }
+
+    QWidget *content_widget_ = nullptr;
+    QVariantAnimation *animation_ = nullptr;
+    QSize host_size_;
+    QString handle_text_;
+    qreal expansion_progress_ = 0.0;
+    qreal visual_progress_ = 0.0;
+    qreal animation_start_progress_ = 0.0;
+    qreal animation_target_progress_ = 0.0;
+    int preferred_height_ = 0;
+    bool expanded_ = false;
+    bool reduced_motion_enabled_ = false;
+    bool hovered_handle_ = false;
+    bool pressed_ = false;
+};
 } // namespace
 
 QString temperatureOverviewNumberText(double value)
@@ -1114,32 +1487,19 @@ void TemperatureControllerPanel::alignSensorCalibrationOverlay(int channelIndex)
         return;
     }
     ChannelWidgets& channel = channels_[channelIndex];
-    if (!channel.sensor_config_page || !channel.sensor_calibration_overlay ||
-        !channel.sensor_calibration_button || channel.sensor_config_page->width() <= 0 ||
+    auto *drawer = static_cast<CalibrationSideDrawer *>(channel.sensor_calibration_drawer);
+    if (!channel.sensor_config_page || !channel.sensor_calibration_overlay || !drawer ||
+        channel.sensor_config_page->width() <= 0 ||
         channel.sensor_config_page->height() <= 0)
     {
         return;
     }
 
     QWidget *page = channel.sensor_config_page;
-    const int tabWidth = channel.sensor_calibration_button->width() > 0
-        ? channel.sensor_calibration_button->width()
-        : kTemperatureControllerCalibrationTabWidth;
-    // The overlay must fully cover the underlying NTC/PT field area; the pull tab is raised above its right edge.
-    const int overlayWidth = page->width();
     const int overlayHeight = std::min(page->height(),
                                        std::max(kTemperatureControllerCalibrationOverlayHeight,
-                                                channel.sensor_calibration_overlay->sizeHint().height()));
-    channel.sensor_calibration_overlay->setGeometry(page->width() - overlayWidth,
-                                                    0,
-                                                    overlayWidth,
-                                                    overlayHeight);
-    channel.sensor_calibration_button->setGeometry(std::max(0, page->width() - tabWidth),
-                                                   0,
-                                                   std::min(tabWidth, page->width()),
-                                                   overlayHeight);
-    channel.sensor_calibration_overlay->raise();
-    channel.sensor_calibration_button->raise();
+                                                 channel.sensor_calibration_overlay->sizeHint().height()));
+    drawer->setHostSize(page->size(), overlayHeight);
 }
 
 void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
@@ -2091,9 +2451,12 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
     polynomialFields->setProperty("temperatureSensorCalibrationOverlay", true);
     polynomialFields->setFrameShape(QFrame::NoFrame);
     polynomialFields->setAttribute(Qt::WA_StyledBackground, true);
-    polynomialFields->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    polynomialFields->setFixedWidth(kTemperatureControllerPolynomialStackedFieldWidth * 4 +
-                                    kTemperatureControllerCompactColumnGap * 3);
+    polynomialFields->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    polynomialFields->setMinimumWidth(kTemperatureControllerPolynomialStackedFieldWidth *
+                                      kTemperatureControllerPolynomialColumnCount +
+                                      kTemperatureControllerCompactColumnGap *
+                                          (kTemperatureControllerPolynomialColumnCount - 1) +
+                                      2);
     auto *polynomialLayout = new QGridLayout(polynomialFields);
     polynomialLayout->setObjectName(QStringLiteral("temperaturePolynomialFieldsGridChannel%1").arg(index + 1));
     polynomialLayout->setContentsMargins(0, 0, 0, 0);
@@ -2111,8 +2474,8 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         edit->setFixedWidth(kTemperatureControllerPolynomialStackedFieldWidth);
         QLabel *label = nullptr;
         addFieldToLayout(polynomialLayout,
-                         i / 4,
-                         i % 4,
+                         i / kTemperatureControllerPolynomialColumnCount,
+                         i % kTemperatureControllerPolynomialColumnCount,
                          QStringLiteral("A%1").arg(i),
                          edit,
                          label,
@@ -2120,43 +2483,25 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         channel.polynomial_label_text[static_cast<size_t>(i)] = label;
     }
 
-    auto *calibrationButton = new QPushButton(page);
-    calibrationButton->setObjectName(QStringLiteral("temperatureCalibrationPullButtonChannel%1").arg(index + 1));
-    calibrationButton->setProperty("temperatureCalibrationPullTab", true);
-    calibrationButton->setCheckable(true);
-    calibrationButton->setFocusPolicy(Qt::TabFocus);
-    calibrationButton->setCursor(Qt::PointingHandCursor);
-    calibrationButton->setFixedWidth(kTemperatureControllerCalibrationTabWidth);
-    calibrationButton->setText(QStringLiteral("校\n准\n系\n数\nA0\n↓\nA7"));
-    calibrationButton->setToolTip(QStringLiteral("展开校准系数 A0-A7"));
-    calibrationButton->setAccessibleName(QStringLiteral("校准系数 A0-A7"));
+    auto *calibrationDrawer = new CalibrationSideDrawer(page);
+    calibrationDrawer->setObjectName(QStringLiteral("temperatureCalibrationSideDrawerChannel%1").arg(index + 1));
+    calibrationDrawer->setProperty("temperatureCalibrationSideDrawer", true);
+    calibrationDrawer->setProperty("temperatureCalibrationChannel", index + 1);
+    calibrationDrawer->setHandleText(QStringLiteral("校\n准\n系\n数\nA0\n-\nA7"));
+    calibrationDrawer->setContentWidget(polynomialFields);
     channel.sensor_config_page = page;
     channel.sensor_calibration_overlay = polynomialFields;
-    channel.sensor_calibration_button = calibrationButton;
+    channel.sensor_calibration_drawer = calibrationDrawer;
     polynomialFields->setVisible(false);
-
-    connect(calibrationButton, &QPushButton::toggled, this, [this, channelIndex = index](bool expanded) {
-        ChannelWidgets& channel = channels_[channelIndex];
-        if (!channel.sensor_calibration_overlay || !channel.sensor_calibration_button)
-        {
-            return;
-        }
-        channel.sensor_calibration_overlay->setVisible(expanded);
-        alignSensorCalibrationOverlay(channelIndex);
-        if (expanded)
-        {
-            channel.sensor_calibration_overlay->raise();
-            channel.sensor_calibration_button->raise();
-        }
-    });
     auto *escapeShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), page);
     escapeShortcut->setContext(Qt::WidgetWithChildrenShortcut);
     connect(escapeShortcut, &QShortcut::activated, this, [this, channelIndex = index]() {
         ChannelWidgets& channel = channels_[channelIndex];
-        if (channel.sensor_calibration_button && channel.sensor_calibration_button->isChecked())
+        auto *drawer = static_cast<CalibrationSideDrawer *>(channel.sensor_calibration_drawer);
+        if (drawer && drawer->isExpanded())
         {
-            channel.sensor_calibration_button->setChecked(false);
-            channel.sensor_calibration_button->setFocus(Qt::OtherFocusReason);
+            drawer->setExpanded(false);
+            drawer->setFocus(Qt::OtherFocusReason);
         }
     });
     QTimer::singleShot(0, this, [this, channelIndex = index]() {
@@ -2973,15 +3318,15 @@ void TemperatureControllerPanel::updateChannelTexts()
             channel.sensor_config_button->setText(is_english_ ? QStringLiteral("Sensor Config") : QStringLiteral("传感器配置"));
             fitSubTabButtonWidth(channel.sensor_config_button);
         }
-        if (channel.sensor_calibration_button)
+        if (auto *drawer = static_cast<CalibrationSideDrawer *>(channel.sensor_calibration_drawer))
         {
-            channel.sensor_calibration_button->setText(is_english_
-                ? QStringLiteral("Cal\nA0\n↓\nA7")
-                : QStringLiteral("校\n准\n系\n数\nA0\n↓\nA7"));
-            channel.sensor_calibration_button->setToolTip(is_english_
+            drawer->setHandleText(is_english_
+                ? QStringLiteral("Cal\nA0\n-\nA7")
+                : QStringLiteral("校\n准\n系\n数\nA0\n-\nA7"));
+            drawer->setToolTip(is_english_
                 ? QStringLiteral("Expand calibration coefficients A0-A7")
                 : QStringLiteral("展开校准系数 A0-A7"));
-            channel.sensor_calibration_button->setAccessibleName(is_english_
+            drawer->setAccessibleName(is_english_
                 ? QStringLiteral("Calibration coefficients A0-A7")
                 : QStringLiteral("校准系数 A0-A7"));
         }

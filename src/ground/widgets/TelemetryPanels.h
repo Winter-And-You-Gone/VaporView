@@ -294,7 +294,7 @@ private:
         std::array<QLineEdit *, 8> polynomial_edits{};
         QWidget *sensor_config_page = nullptr;
         QFrame *sensor_calibration_overlay = nullptr;
-        QPushButton *sensor_calibration_button = nullptr;
+        QWidget *sensor_calibration_drawer = nullptr;
         QFrame *sensor_config_top_bar = nullptr;
         QPushButton *common_params_button = nullptr;
         QPushButton *advanced_params_button = nullptr;
