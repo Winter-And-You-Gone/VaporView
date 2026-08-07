@@ -60,6 +60,7 @@ namespace
 constexpr int kHomeOverviewBodyPadding = 2;
 constexpr int kTemperatureControllerSettingsInputWidth = 124;
 constexpr int kTemperatureControllerStackedWideFieldWidth = 110;
+constexpr int kTemperatureControllerChannelParameterInputWidth = 124;
 constexpr int kTemperatureControllerPolynomialStackedFieldWidth = 58;
 constexpr int kTemperatureControllerCompactColumnGap = 6;
 constexpr int kTemperatureControllerStackedFieldSpacing = 6;
@@ -78,7 +79,9 @@ constexpr int kTemperatureControllerSubTabTextPadding = 28;
 constexpr int kTemperatureControllerTopEnableWidth = 106;
 constexpr int kTemperatureControllerTopEnableHeight = 34;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
-constexpr int kTemperatureControllerCompactPidInputWidth = 73;
+// The 254px common-parameter row is 81 + 6 + 80 + 6 + 81, matching 124 + 6 + 124.
+constexpr int kTemperatureControllerPidSideInputWidth = 81;
+constexpr int kTemperatureControllerPidCenterInputWidth = 80;
 constexpr int kTemperatureControllerConfigRowHeight = 38;
 constexpr int kTemperatureControllerTopControlsHeight = 38;
 constexpr int kTemperatureControllerNavigationButtonHeight = 30;
@@ -1703,9 +1706,11 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
     for (QSpinBox *spin : {channel.kp_spin, channel.ki_spin, channel.kd_spin})
     {
         spin->setRange(0, std::numeric_limits<int>::max());
-        spin->setFixedWidth(kTemperatureControllerCompactPidInputWidth);
         spin->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     }
+    channel.kp_spin->setFixedWidth(kTemperatureControllerPidSideInputWidth);
+    channel.ki_spin->setFixedWidth(kTemperatureControllerPidCenterInputWidth);
+    channel.kd_spin->setFixedWidth(kTemperatureControllerPidSideInputWidth);
     QLabel *kpLabelText = nullptr;
     QLabel *kiLabelText = nullptr;
     QLabel *kdLabelText = nullptr;
@@ -1713,7 +1718,7 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
     channel.mode_combo = new SingleLevelPopupComboBox(page);
     configureSingleLevelComboCheckIcon(static_cast<SingleLevelPopupComboBox *>(channel.mode_combo));
     channel.mode_combo->setObjectName(QStringLiteral("temperatureOutputModeComboChannel%1").arg(index + 1));
-    channel.mode_combo->setFixedWidth(kTemperatureControllerStackedWideFieldWidth);
+    channel.mode_combo->setFixedWidth(kTemperatureControllerChannelParameterInputWidth);
     channel.mode_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     channel.mode_combo->addItem(QStringLiteral("制冷和加热"), 0);
     channel.mode_combo->addItem(QStringLiteral("制冷"), 1);
@@ -1722,7 +1727,7 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
     QWidget *modeField = makeStackedField(QStringLiteral("输出模式"),
                                           channel.mode_combo,
                                           channel.mode_label_text,
-                                          kTemperatureControllerStackedWideFieldWidth);
+                                          kTemperatureControllerChannelParameterInputWidth);
     connect(channel.mode_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.mode_combo](int) {
         emit outputModeRequested(channelNumber, static_cast<quint16>(combo->currentData().toUInt()));
     });
@@ -1732,11 +1737,11 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
     channel.target_spin->setRange(-40.0, 100.0);
     channel.target_spin->setDecimals(5);
     channel.target_spin->setSuffix(QStringLiteral(" °C"));
-    channel.target_spin->setFixedWidth(kTemperatureControllerStackedWideFieldWidth);
+    channel.target_spin->setFixedWidth(kTemperatureControllerChannelParameterInputWidth);
     QWidget *targetField = makeStackedField(QStringLiteral("目标温度(°C)"),
                                             channel.target_spin,
                                             channel.target_label_text,
-                                            kTemperatureControllerStackedWideFieldWidth);
+                                            kTemperatureControllerChannelParameterInputWidth);
     connect(channel.target_spin, &QDoubleSpinBox::editingFinished, this, [this, channelNumber, spin = channel.target_spin]() {
         emit targetTemperatureRequested(channelNumber, spin->value());
     });
@@ -1747,11 +1752,11 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
     setDangerTextPalette(channel.max_output_spin);
     channel.max_output_spin->setRange(0, 90);
     channel.max_output_spin->setSuffix(QStringLiteral(" %"));
-    channel.max_output_spin->setFixedWidth(kTemperatureControllerStackedWideFieldWidth);
+    channel.max_output_spin->setFixedWidth(kTemperatureControllerChannelParameterInputWidth);
     QWidget *maxOutputField = makeStackedField(QStringLiteral("最大输出电压百分比(%)"),
                                                channel.max_output_spin,
                                                channel.max_output_label_text,
-                                               kTemperatureControllerStackedWideFieldWidth);
+                                               kTemperatureControllerChannelParameterInputWidth);
     if (channel.max_output_label_text)
     {
         setWidgetBooleanProperty(channel.max_output_label_text, "temperatureMaxOutputWarning", true);
@@ -1761,20 +1766,21 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
     QWidget *kpField = makeStackedField(QStringLiteral("P"),
                                         channel.kp_spin,
                                         kpLabelText,
-                                        kTemperatureControllerCompactPidInputWidth);
+                                        kTemperatureControllerPidSideInputWidth);
     QWidget *kiField = makeStackedField(QStringLiteral("I"),
                                         channel.ki_spin,
                                         kiLabelText,
-                                        kTemperatureControllerCompactPidInputWidth);
+                                        kTemperatureControllerPidCenterInputWidth);
     QWidget *kdField = makeStackedField(QStringLiteral("D"),
                                         channel.kd_spin,
                                         kdLabelText,
-                                        kTemperatureControllerCompactPidInputWidth);
+                                        kTemperatureControllerPidSideInputWidth);
 
     auto *pidFields = new QWidget(page);
     pidFields->setObjectName(QStringLiteral("temperaturePidFieldsChannel%1").arg(index + 1));
     pidFields->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    pidFields->setFixedWidth(kTemperatureControllerCompactPidInputWidth * 3 +
+    pidFields->setFixedWidth(kTemperatureControllerPidSideInputWidth * 2 +
+                             kTemperatureControllerPidCenterInputWidth +
                              kTemperatureControllerCompactColumnGap * 2);
     auto *pidFieldsLayout = new QHBoxLayout(pidFields);
     pidFieldsLayout->setContentsMargins(0, 0, 0, 0);
@@ -1786,7 +1792,7 @@ QWidget *TemperatureControllerPanel::createChannelCommonParamsPage(int index)
     auto *outputTargetFields = new QWidget(page);
     outputTargetFields->setObjectName(QStringLiteral("temperatureOutputTargetFieldsChannel%1").arg(index + 1));
     outputTargetFields->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    outputTargetFields->setFixedWidth(kTemperatureControllerStackedWideFieldWidth * 2 +
+    outputTargetFields->setFixedWidth(kTemperatureControllerChannelParameterInputWidth * 2 +
                                       kTemperatureControllerCompactColumnGap);
     auto *outputTargetFieldsLayout = new QHBoxLayout(outputTargetFields);
     outputTargetFieldsLayout->setContentsMargins(0, 0, 0, 0);
@@ -1845,7 +1851,7 @@ QWidget *TemperatureControllerPanel::createChannelAdvancedParamsPage(int index)
         auto *cell = new QWidget(page);
         cell->setObjectName(QStringLiteral("temperatureConfigFieldColumn"));
         cell->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        cell->setFixedWidth(kTemperatureControllerStackedWideFieldWidth);
+        cell->setFixedWidth(kTemperatureControllerChannelParameterInputWidth);
         auto *cellLayout = new QVBoxLayout(cell);
         cellLayout->setContentsMargins(0, 0, 0, 0);
         cellLayout->setSpacing(kTemperatureControllerStackedFieldSpacing);
@@ -1861,7 +1867,7 @@ QWidget *TemperatureControllerPanel::createChannelAdvancedParamsPage(int index)
     channel.overtemp_upper_spin->setRange(-3000.0, 5000.0);
     channel.overtemp_upper_spin->setDecimals(5);
     channel.overtemp_upper_spin->setSingleStep(0.00001);
-    channel.overtemp_upper_spin->setFixedWidth(kTemperatureControllerStackedWideFieldWidth);
+    channel.overtemp_upper_spin->setFixedWidth(kTemperatureControllerChannelParameterInputWidth);
     addField(0, 0, QStringLiteral("高温报警值(°C)"), channel.overtemp_upper_spin, channel.overtemp_upper_label_text);
     setDangerTextPalette(channel.overtemp_upper_label_text);
 
@@ -1870,7 +1876,7 @@ QWidget *TemperatureControllerPanel::createChannelAdvancedParamsPage(int index)
     channel.overtemp_lower_spin->setRange(-3000.0, 5000.0);
     channel.overtemp_lower_spin->setDecimals(5);
     channel.overtemp_lower_spin->setSingleStep(0.00001);
-    channel.overtemp_lower_spin->setFixedWidth(kTemperatureControllerStackedWideFieldWidth);
+    channel.overtemp_lower_spin->setFixedWidth(kTemperatureControllerChannelParameterInputWidth);
     addField(0, 1, QStringLiteral("低温报警值(°C)"), channel.overtemp_lower_spin, channel.overtemp_lower_label_text);
     setDangerTextPalette(channel.overtemp_lower_label_text);
 
@@ -1879,21 +1885,21 @@ QWidget *TemperatureControllerPanel::createChannelAdvancedParamsPage(int index)
     channel.temperature_slope_spin->setRange(0.0, 10.0);
     channel.temperature_slope_spin->setDecimals(3);
     channel.temperature_slope_spin->setSingleStep(0.001);
-    channel.temperature_slope_spin->setFixedWidth(kTemperatureControllerStackedWideFieldWidth);
+    channel.temperature_slope_spin->setFixedWidth(kTemperatureControllerChannelParameterInputWidth);
     addField(1, 0, QStringLiteral("温度变化速率(°C/s)"), channel.temperature_slope_spin, channel.temperature_slope_label_text);
 
     channel.startup_delay_spin = new QSpinBox(page);
     channel.startup_delay_spin->setObjectName(QStringLiteral("temperatureStartupDelaySpinChannel%1").arg(index + 1));
     channel.startup_delay_spin->setRange(3, 180);
     channel.startup_delay_spin->setSuffix(QStringLiteral(" s"));
-    channel.startup_delay_spin->setFixedWidth(kTemperatureControllerStackedWideFieldWidth);
+    channel.startup_delay_spin->setFixedWidth(kTemperatureControllerChannelParameterInputWidth);
     addField(1, 1, QStringLiteral("开机输出延时(s)"), channel.startup_delay_spin, channel.startup_delay_label_text);
 
     channel.sensor_resistance_edit = new QLineEdit(page);
     channel.sensor_resistance_edit->setObjectName(QStringLiteral("temperatureSensorResistanceEditChannel%1").arg(index + 1));
     channel.sensor_resistance_edit->setReadOnly(true);
     channel.sensor_resistance_edit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    channel.sensor_resistance_edit->setFixedWidth(kTemperatureControllerStackedWideFieldWidth);
+    channel.sensor_resistance_edit->setFixedWidth(kTemperatureControllerChannelParameterInputWidth);
     channel.sensor_resistance_edit->setText(QStringLiteral("---"));
     addField(2, 0, QStringLiteral("传感器电阻(Ω)"), channel.sensor_resistance_edit, channel.sensor_resistance_label_text);
 
