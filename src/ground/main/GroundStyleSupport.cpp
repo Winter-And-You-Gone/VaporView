@@ -1302,6 +1302,7 @@ QString mainCardsTopLevelCardStyleSheet()
         "QScrollArea#mainCardsScrollArea QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"], "
         "QScrollArea#mainCardsScrollArea QFrame#logPanelFrame[vaporViewTopLevelCard=\"true\"], "
         "QScrollArea#mainCardsScrollArea QFrame[vaporViewTopLevelCard=\"true\"] { "
+        "background-color: @vv-surface-raised; "
         "border-color: transparent; }");
 }
 

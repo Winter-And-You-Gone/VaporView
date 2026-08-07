@@ -4751,7 +4751,22 @@ int main(int argc, char **argv)
     require(VaporView::appThemeColor(VaporView::AppThemeColor::Focus, true) ==
                 VaporView::appThemeColor(VaporView::AppThemeColor::Primary, true),
             "dark theme focus token uses the orange primary color");
+    require(VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceRaised, true) ==
+                QColor(24, 24, 24),
+            "dark top-level card background uses the requested rgb(24, 24, 24) surface");
     const QString darkOverviewStyleSheet = qApp->styleSheet();
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"],"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised, true)),
+        "dark top-level cards use the shared raised surface background");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar,"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised, true)),
+        "dark top-level card title bars use the shared raised surface background");
     requireLastStyleRuleContains(
         darkOverviewStyleSheet,
         QStringLiteral("QListView#logListView::item:selected {"),

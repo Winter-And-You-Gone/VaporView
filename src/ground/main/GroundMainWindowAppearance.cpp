@@ -323,7 +323,8 @@ QString MainWindow::themedStyleSheet() const
     const QString mainCardsScrollBarStyle =
         applyAppThemeTokens(mainCardsScrollBarBackgroundStyleSheet(state_->dark_theme_enabled_),
                             state_->dark_theme_enabled_);
-    const QString mainCardsTopLevelCardStyle = mainCardsTopLevelCardStyleSheet();
+    const QString mainCardsTopLevelCardStyle =
+        applyAppThemeTokens(mainCardsTopLevelCardStyleSheet(), state_->dark_theme_enabled_);
     const QString rtkConfigCardStyle =
         applyAppThemeTokens(rtkConfigCardStyleSheet(), state_->dark_theme_enabled_);
     return state_->dark_theme_enabled_
