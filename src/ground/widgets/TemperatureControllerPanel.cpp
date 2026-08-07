@@ -68,7 +68,7 @@ constexpr int kTemperatureControllerCalibrationTabWidth = 26;
 constexpr int kTemperatureControllerCalibrationOverlayHeight = 224;
 constexpr int kTemperatureControllerControlsCardWidth = 280;
 constexpr int kTemperatureControllerControlsCardHorizontalPadding = 7;
-constexpr int kTemperatureControllerControlsCardTopPadding = 16;
+constexpr int kTemperatureControllerControlsCardTopPadding = 6;
 constexpr int kTemperatureControllerControlsCardBottomPadding = 0;
 constexpr int kTemperatureControllerFactoryResetButtonWidth = 170;
 constexpr int kTemperatureControllerChannelButtonWidth = 78;
@@ -86,12 +86,17 @@ constexpr int kTemperatureControllerNavigationHorizontalMargin = 2;
 constexpr int kTemperatureControllerNavigationVerticalMargin = 3;
 constexpr int kTemperatureControllerNavigationSpacing = 2;
 constexpr int kTemperatureControllerRowSpacing = 8;
-constexpr int kTemperatureControllerConfigPlotHeight = 306;
 // The selector is below the left card now, so the stack only needs the three-row page content height.
 constexpr int kTemperatureControllerChannelConfigSubStackHeight = 218;
 constexpr int kTemperatureControllerChannelStackHeight =
     kTemperatureControllerChannelConfigSubStackHeight;
 constexpr int kTemperatureControllerCommonStackHeight = kTemperatureControllerChannelStackHeight;
+constexpr int kTemperatureControllerConfigPlotHeight =
+    kTemperatureControllerControlsCardTopPadding +
+    kTemperatureControllerChannelConfigSubStackHeight +
+    kTemperatureControllerControlsCardBottomPadding +
+    kTemperatureControllerCompactColumnGap +
+    kTemperatureControllerConfigRowHeight;
 constexpr int kTemperatureControllerHistoryLimit = 240;
 constexpr const char *kTextWidthCandidatesProperty = "_vv_text_width_candidates";
 constexpr const char *kTextWidthPaddingProperty = "_vv_text_width_padding";
@@ -1264,8 +1269,8 @@ void TemperatureControllerPanel::setupUi()
     configCard->setMinimumWidth(0);
     configCard->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     auto *configCardLayout = new QVBoxLayout(configCard);
-    configCardLayout->setContentsMargins(12, 12, 12, 12);
-    configCardLayout->setSpacing(12);
+    configCardLayout->setContentsMargins(12, 12, 12, kTemperatureControllerCompactColumnGap);
+    configCardLayout->setSpacing(kTemperatureControllerCompactColumnGap);
 
     auto *channelTopRow = new QWidget(configCard);
     channelTopRow->setObjectName(QStringLiteral("temperatureChannelTopRow"));
