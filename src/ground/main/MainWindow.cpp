@@ -211,6 +211,7 @@ MainWindow::MainWindow(QWidget *parent)
     connectionCallbacks.finished = [this](bool connected) {
         QMetaObject::invokeMethod(this, [this, connected]() {
             finishConnectionAttempt(connected);
+            startPendingLocalWaveformSource();
         }, Qt::QueuedConnection);
     };
     connectionCallbacks.dataReady = [this](VaporView::Ground::Devices::LocalDeviceKind device) {

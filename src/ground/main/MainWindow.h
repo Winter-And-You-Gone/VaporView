@@ -260,6 +260,7 @@ private:
     void updateHomeDeviceActionSpinnerIcons();
     bool anyCollectorRunning() const;
     bool anyLocalDeviceConnected() const;
+    void startPendingLocalWaveformSource();
     void disconnectLocalWaveformSource();
     QStringList getAvailablePorts();
     void setEnglish(bool english);

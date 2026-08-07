@@ -1,4 +1,5 @@
 #include "ground/main/MainWindow.h"
+#include "ground/main/UiLogModel.h"
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/wave/TcpWavePanel.h"
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
@@ -20,6 +21,7 @@
 #include <QImage>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListView>
 #include <QMenu>
 #include <QMetaObject>
 #include <QMap>
@@ -83,6 +85,25 @@ QMap<QString, SettingsSnapshot> snapshotAll()
 void processEvents()
 {
     QApplication::processEvents(QEventLoop::AllEvents, 100);
+}
+
+int findLogMessageRow(QListView *logList, const QString& chineseText, const QString& englishText)
+{
+    if (!logList || !logList->model())
+    {
+        return -1;
+    }
+    for (int row = 0; row < logList->model()->rowCount(); ++row)
+    {
+        const QString message = logList->model()->index(row, 0)
+            .data(VaporView::Ground::Main::UiLogModel::MessageRole)
+            .toString();
+        if (message.contains(chineseText) || message.contains(englishText))
+        {
+            return row;
+        }
+    }
+    return -1;
 }
 
 } // namespace
@@ -728,6 +749,9 @@ int main(int argc, char **argv)
         auto *connectionWavePanel = connectionWindow->findChild<TcpWavePanel *>();
         require(connectionWavePanel != nullptr,
                 "normal-mode window exposes its TCP waveform panel");
+        auto *connectionLogList = connectionWindow->findChild<QListView *>(QStringLiteral("logListView"));
+        require(connectionLogList && connectionLogList->model(),
+                "normal-mode window exposes the log model");
         const QList<QLineEdit *> waveInputs = connectionWavePanel->findChildren<QLineEdit *>();
         require(waveInputs.size() >= 2,
                 "normal-mode TCP waveform panel exposes host and port inputs");
@@ -750,10 +774,32 @@ int main(int argc, char **argv)
         require(QMetaObject::invokeMethod(connectionWindow, "onConnectClicked", Qt::DirectConnection),
                 "normal-mode title-bar connection slot invoked");
         VaporView::setSettingsWritesSuspended(true);
-        require(VaporViewTest::processEventsUntil(3000, [connectionWavePanel]() {
-                    return connectionWavePanel->isConnected();
+        require(VaporViewTest::processEventsUntil(3000, [connectionWavePanel, connectionLogList]() {
+                    return connectionWavePanel->isConnected() &&
+                        findLogMessageRow(connectionLogList,
+                                          QStringLiteral("连接摘要"),
+                                          QStringLiteral("Connection Summary")) >= 0 &&
+                        findLogMessageRow(connectionLogList,
+                                          QStringLiteral("正在连接 TCP 波形"),
+                                          QStringLiteral("Connecting TCP wave link")) >= 0 &&
+                        findLogMessageRow(connectionLogList,
+                                          QStringLiteral("TCP 波形已连接"),
+                                          QStringLiteral("TCP wave link connected")) >= 0;
                 }),
-                "title-bar connection also connects the local TCP waveform source");
+                "title-bar connection connects the local TCP waveform source and flushes its logs");
+        const int summaryRow = findLogMessageRow(connectionLogList,
+                                                 QStringLiteral("连接摘要"),
+                                                 QStringLiteral("Connection Summary"));
+        const int waveformConnectingRow = findLogMessageRow(connectionLogList,
+                                                             QStringLiteral("正在连接 TCP 波形"),
+                                                             QStringLiteral("Connecting TCP wave link"));
+        const int waveformConnectedRow = findLogMessageRow(connectionLogList,
+                                                            QStringLiteral("TCP 波形已连接"),
+                                                            QStringLiteral("TCP wave link connected"));
+        require(summaryRow >= 0 && waveformConnectingRow > summaryRow,
+                "title-bar waveform connection starts after the local connection summary");
+        require(waveformConnectedRow == waveformConnectingRow + 1,
+                "TCP waveform connection logs remain adjacent");
         require(QMetaObject::invokeMethod(connectionWindow, "onDisconnectClicked", Qt::DirectConnection),
                 "normal-mode title-bar disconnect slot invoked");
         require(VaporViewTest::processEventsUntil(1500, [connectionWavePanel]() {

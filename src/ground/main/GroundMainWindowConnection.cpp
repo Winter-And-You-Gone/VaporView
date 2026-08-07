@@ -597,8 +597,28 @@ bool MainWindow::anyLocalDeviceConnected() const
         (!isRemoteSkyMode() && state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnected());
 }
 
+void MainWindow::startPendingLocalWaveformSource()
+{
+    if (!state_->local_waveform_connect_pending_)
+    {
+        return;
+    }
+
+    state_->local_waveform_connect_pending_ = false;
+    if (isRemoteSkyMode() || !state_->tcp_wave_panel_ ||
+        state_->tcp_wave_panel_->isConnected() || state_->tcp_wave_panel_->isConnecting())
+    {
+        return;
+    }
+
+    state_->local_waveform_started_by_connect_action_ = true;
+    state_->tcp_wave_panel_->toggleConnection();
+    updateConnectionStatus(anyLocalDeviceConnected());
+}
+
 void MainWindow::disconnectLocalWaveformSource()
 {
+    state_->local_waveform_connect_pending_ = false;
     if (isRemoteSkyMode() || !state_->tcp_wave_panel_)
     {
         return;
@@ -974,6 +994,7 @@ void MainWindow::onConnectClicked()
 
     state_->connection_attempt_in_progress_ = true;
     state_->cancel_connection_requested_.store(false);
+    state_->local_waveform_connect_pending_ = false;
     updateConnectionStatus(false);
 
     log(state_->is_english_ ? "Connecting..." : "正在连接...");
@@ -1114,13 +1135,9 @@ void MainWindow::onConnectClicked()
         updateConnectionStatus(anyCollectorRunning());
         return;
     }
-    if (state_->tcp_wave_panel_ &&
+    state_->local_waveform_connect_pending_ = state_->tcp_wave_panel_ &&
         !state_->tcp_wave_panel_->isConnected() &&
-        !state_->tcp_wave_panel_->isConnecting())
-    {
-        state_->local_waveform_started_by_connect_action_ = true;
-        state_->tcp_wave_panel_->toggleConnection();
-    }
+        !state_->tcp_wave_panel_->isConnecting();
 }
 void MainWindow::onDisconnectClicked()
 {
@@ -1187,6 +1204,7 @@ void MainWindow::onCancelConnectClicked()
 
     if (state_->connection_attempt_in_progress_)
     {
+        state_->local_waveform_connect_pending_ = false;
         state_->cancel_connection_requested_.store(true);
         state_->local_connection_controller_->requestCancel();
     }
