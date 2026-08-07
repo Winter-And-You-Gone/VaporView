@@ -5815,12 +5815,12 @@ int main(int argc, char **argv)
     require(VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandle, false) ==
                     QColor(226, 226, 226) &&
                 VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandle, true) ==
-                    QColor(226, 226, 226) &&
+                    QColor(39, 39, 39) &&
                 VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandleHover, false) ==
                     QColor(87, 89, 90) &&
                 VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandleHover, true) ==
-                    QColor(87, 89, 90),
-            "scrollbar handles use the requested default and highlighted colors in both themes");
+                    QColor(190, 190, 191),
+            "dark theme scrollbar handles use the requested dim default and light hover colors");
     for (const QString& arrowFile : {QStringLiteral("combo_arrow_up.xpm"),
                                      QStringLiteral("combo_arrow_down.xpm")})
     {
