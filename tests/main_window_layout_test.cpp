@@ -5534,6 +5534,22 @@ int main(int argc, char **argv)
                 commonSettingsGrid->itemAtPosition(1, 1) != nullptr &&
                 commonSettingsGrid->itemAtPosition(1, 1)->widget() == commonInternalTemperatureEdit->parentWidget(),
             "temperature common settings use a compact two-column stacked form");
+    QWidget *commonSettingsPage = commonSettingsFields->parentWidget();
+    auto *commonSettingsPageLayout = qobject_cast<QVBoxLayout *>(commonSettingsPage->layout());
+    const QRect commonSettingsFieldsRectInPage(
+        commonSettingsFields->mapTo(commonSettingsPage, QPoint(0, 0)), commonSettingsFields->size());
+    require(commonSettingsPageLayout != nullptr &&
+                commonSettingsPageLayout->contentsMargins().right() == 6 &&
+                addressSpin->width() == 124 &&
+                rs485BaudCombo->width() == 124 &&
+                overtempOutputCombo->width() == 124 &&
+                commonInternalTemperatureEdit->width() == 124 &&
+                commonSettingsFields->width() ==
+                    addressSpin->width() * 2 + commonSettingsGrid->horizontalSpacing() &&
+                commonSettingsFieldsRectInPage.left() == commonSettingsPageLayout->contentsMargins().left() &&
+                commonSettingsPage->width() - 1 - commonSettingsFieldsRectInPage.right() ==
+                    commonSettingsPageLayout->contentsMargins().right(),
+            "temperature common settings narrow both columns to preserve the 6px right inset");
     auto *selectedChannelCommonParamsPage = temperaturePanel->findChild<QWidget *>(
         QStringLiteral("temperatureChannelCommonParamsPageChannel2"));
     auto *selectedChannelCommonParamsGrid = selectedChannelCommonParamsPage

@@ -58,7 +58,7 @@ using VaporView::Ground::Widgets::TemperatureControllerOverviewPanel;
 namespace
 {
 constexpr int kHomeOverviewBodyPadding = 2;
-constexpr int kTemperatureControllerSettingsInputWidth = 125;
+constexpr int kTemperatureControllerSettingsInputWidth = 124;
 constexpr int kTemperatureControllerStackedWideFieldWidth = 110;
 constexpr int kTemperatureControllerPolynomialStackedFieldWidth = 58;
 constexpr int kTemperatureControllerCompactColumnGap = 6;
