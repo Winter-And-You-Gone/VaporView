@@ -534,6 +534,24 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         return true;
     }
 
+    if (state_->log_list_view_ &&
+        watched == state_->log_list_view_->viewport() &&
+        eventType == QEvent::MouseButtonPress)
+    {
+        auto *mouseEvent = static_cast<QMouseEvent *>(event);
+        if (mouseEvent->button() == Qt::LeftButton)
+        {
+            const QModelIndex index =
+                state_->log_list_view_->indexAt(mouseEvent->position().toPoint());
+            const bool selected = index.isValid() &&
+                                  state_->log_list_view_->selectionModel() &&
+                                  state_->log_list_view_->selectionModel()->isSelected(index);
+            state_->log_list_view_->setProperty("vaporViewLogPressedRow",
+                                                index.isValid() ? index.row() : -1);
+            state_->log_list_view_->setProperty("vaporViewLogPressedWasSelected", selected);
+        }
+    }
+
     if (eventType == QEvent::ApplicationActivate ||
         eventType == QEvent::WindowActivate ||
         eventType == QEvent::ActivationChange)

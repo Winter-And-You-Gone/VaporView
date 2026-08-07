@@ -5079,6 +5079,30 @@ void MainWindow::setupLogPanel()
     state_->log_list_view_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     state_->log_list_view_->setMinimumWidth(0);
     state_->log_list_view_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
+    if (state_->log_list_view_->viewport())
+    {
+        state_->log_list_view_->viewport()->installEventFilter(this);
+    }
+    connect(state_->log_list_view_, &QListView::clicked, this, [this](const QModelIndex& index) {
+        if (!state_->log_list_view_)
+        {
+            return;
+        }
+        const bool pressedWasSelected =
+            state_->log_list_view_->property("vaporViewLogPressedWasSelected").toBool();
+        const int pressedRow =
+            state_->log_list_view_->property("vaporViewLogPressedRow").toInt();
+        if (pressedWasSelected && index.isValid() && pressedRow == index.row())
+        {
+            if (QItemSelectionModel *selection = state_->log_list_view_->selectionModel())
+            {
+                selection->clearSelection();
+                selection->clearCurrentIndex();
+            }
+        }
+        state_->log_list_view_->setProperty("vaporViewLogPressedWasSelected", false);
+        state_->log_list_view_->setProperty("vaporViewLogPressedRow", -1);
+    });
     if (QScrollBar *scrollBar = state_->log_list_view_->verticalScrollBar())
     {
         connect(scrollBar, &QScrollBar::valueChanged, this, [this]() {

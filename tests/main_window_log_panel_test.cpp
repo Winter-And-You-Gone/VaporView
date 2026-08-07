@@ -11,6 +11,7 @@
 #include <QLineEdit>
 #include <QListView>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QSettings>
@@ -155,6 +156,33 @@ QToolButton *findActionButton(MainWindow& window, const QString& actionText, con
     return nullptr;
 }
 
+void clickLogRow(QListView *logList, const QModelIndex& index)
+{
+    require(logList != nullptr && logList->viewport() != nullptr, "log list viewport exists");
+    require(index.isValid(), "clicked log index is valid");
+    logList->scrollTo(index, QAbstractItemView::PositionAtCenter);
+    VaporViewTest::processEventsFor(30);
+    const QRect rowRect = logList->visualRect(index);
+    require(rowRect.isValid() && !rowRect.isEmpty(), "clicked log row is visible");
+    const QPoint localPos = rowRect.center();
+    const QPoint globalPos = logList->viewport()->mapToGlobal(localPos);
+    QMouseEvent press(QEvent::MouseButtonPress,
+                      localPos,
+                      globalPos,
+                      Qt::LeftButton,
+                      Qt::LeftButton,
+                      Qt::NoModifier);
+    QApplication::sendEvent(logList->viewport(), &press);
+    QMouseEvent release(QEvent::MouseButtonRelease,
+                        localPos,
+                        globalPos,
+                        Qt::LeftButton,
+                        Qt::NoButton,
+                        Qt::NoModifier);
+    QApplication::sendEvent(logList->viewport(), &release);
+    VaporViewTest::processEventsFor(30);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -282,6 +310,13 @@ int main(int argc, char **argv)
         }
     }
     require(connectionLogIndex.isValid(), "connection log row is visible in attention view");
+    clickLogRow(logList, connectionLogIndex);
+    require(logList->selectionModel() &&
+                logList->selectionModel()->isSelected(connectionLogIndex),
+            "clicking a log row selects it");
+    clickLogRow(logList, connectionLogIndex);
+    require(logList->selectionModel() && !logList->selectionModel()->hasSelection(),
+            "clicking the selected log row again clears the highlight");
     require(connectionLogIndex.data(Qt::DisplayRole).toString().contains(QStringLiteral("Ground/device.connection")),
             "connection row shows source/category by default");
     hideSourceCategoryAction->trigger();
