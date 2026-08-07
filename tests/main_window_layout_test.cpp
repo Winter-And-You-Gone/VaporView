@@ -6390,10 +6390,12 @@ int main(int argc, char **argv)
                 polynomialFieldsGrid->horizontalSpacing() == 6 &&
                 temperatureCalibrationDrawer != nullptr &&
                 temperatureCalibrationOverlay != nullptr &&
-                temperatureCalibrationDrawer->parentWidget() == temperatureChannelConfigSubStack->currentWidget() &&
+                temperatureCalibrationDrawer->parentWidget() == temperatureControllerControlsCard &&
                 temperatureCalibrationDrawer->focusPolicy() == Qt::TabFocus &&
                 temperatureCalibrationDrawer->width() ==
                     temperatureCalibrationDrawer->property("temperatureCalibrationHandleWidth").toInt() &&
+                temperatureCalibrationDrawer->height() ==
+                    temperatureCalibrationDrawer->property("temperatureCalibrationHandleHeight").toInt() &&
                 temperatureCalibrationDrawer->property("temperatureCalibrationSideDrawer").toBool() &&
                 temperatureCalibrationDrawer->property("temperatureCalibrationHandleText").toString() ==
                     QStringLiteral("校\n准\n系\n数\nA0\n-\nA7") &&
@@ -6512,6 +6514,22 @@ int main(int argc, char **argv)
                                      temperatureChannelConfigSubStack->currentWidget(),
                                      "temperature PT B/PT C adjacent inputs use the compact reference horizontal gap");
 
+    const QRect sensorPageRectInControlsCard(
+        temperatureChannelConfigSubStack->currentWidget()->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
+        temperatureChannelConfigSubStack->currentWidget()->size());
+    const QRect collapsedDrawerRectInControlsCard(
+        temperatureCalibrationDrawer->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
+        temperatureCalibrationDrawer->size());
+    const int calibrationHandleHeight =
+        temperatureCalibrationDrawer->property("temperatureCalibrationHandleHeight").toInt();
+    require(calibrationHandleHeight > 0 &&
+                calibrationHandleHeight < sensorPageRectInControlsCard.height() &&
+                temperatureCalibrationDrawer->height() == calibrationHandleHeight &&
+                std::abs(collapsedDrawerRectInControlsCard.center().y() -
+                         sensorPageRectInControlsCard.center().y()) <= 1 &&
+                collapsedDrawerRectInControlsCard.right() == temperatureControllerControlsCard->width() - 1,
+            "temperature calibration handle fits its seven rows, stays vertically centered, and touches the controls-card edge");
+
     const int calibrationHandleWidth =
         temperatureCalibrationDrawer->property("temperatureCalibrationHandleWidth").toInt();
     auto clickCalibrationHandle = [temperatureCalibrationDrawer, calibrationHandleWidth](int waitMs) {
@@ -6541,7 +6559,7 @@ int main(int argc, char **argv)
     clickCalibrationHandle(0);
     calibrationAnimation->setCurrentTime(calibrationAnimation->duration());
     const QRect calibrationDrawerRect(
-        temperatureCalibrationDrawer->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
+        temperatureCalibrationDrawer->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
         temperatureCalibrationDrawer->size());
     require(temperatureCalibrationDrawer->property("expanded").toBool() &&
                 temperatureCalibrationOverlay->isVisible() &&
@@ -6551,18 +6569,18 @@ int main(int argc, char **argv)
                 temperatureCalibrationOverlay->geometry().right() <
                     temperatureCalibrationDrawer->width() &&
                 calibrationDrawerRect.right() ==
-                    temperatureChannelConfigSubStack->currentWidget()->width() - 1,
+                    temperatureControllerControlsCard->width() - 1,
             "temperature calibration drawer expands left inside the sensor-config page while its right edge stays anchored");
     clickCalibrationHandle(0);
     calibrationAnimation->setCurrentTime(calibrationAnimation->duration());
     const QRect collapsedCalibrationDrawerRect(
-        temperatureCalibrationDrawer->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
+        temperatureCalibrationDrawer->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
         temperatureCalibrationDrawer->size());
     require(!temperatureCalibrationDrawer->property("expanded").toBool() &&
                 !temperatureCalibrationOverlay->isVisible() &&
                 collapsedCalibrationDrawerRect.width() == calibrationHandleWidth &&
                 collapsedCalibrationDrawerRect.right() ==
-                    temperatureChannelConfigSubStack->currentWidget()->width() - 1 &&
+                    temperatureControllerControlsCard->width() - 1 &&
                 !collapsedCalibrationDrawerRect.contains(
                     ntcR0Edit->mapTo(temperatureChannelConfigSubStack->currentWidget(),
                                      ntcR0Edit->rect().center())),

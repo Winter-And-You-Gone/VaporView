@@ -561,11 +561,16 @@ public:
         update();
     }
 
-    void setHostSize(const QSize& size, int preferredHeight)
+    void setHostRect(const QRect& rect, int preferredHeight)
     {
-        host_size_ = size;
+        host_rect_ = rect;
         preferred_height_ = preferredHeight;
         updateDrawerGeometry();
+    }
+
+    void setHostSize(const QSize& size, int preferredHeight)
+    {
+        setHostRect(QRect(QPoint(0, 0), size), preferredHeight);
     }
 
     void setExpanded(bool expanded, bool animated = true)
@@ -623,9 +628,20 @@ public:
         return kTemperatureControllerCalibrationHandleWidth;
     }
 
+    int handleHeight() const
+    {
+        QFont handleFont = font();
+        handleFont.setWeight(QFont::DemiBold);
+        const QFontMetrics metrics(handleFont);
+        const QStringList rows = handle_text_.split(QLatin1Char('\n'));
+        const int extraGap = rows.size() > 4 ? 3 : 0;
+        constexpr int verticalPadding = 8;
+        return rows.size() * metrics.height() + extraGap + verticalPadding * 2;
+    }
+
     QSize sizeHint() const override
     {
-        return QSize(handleWidth(), std::max(preferred_height_, 160));
+        return QSize(handleWidth(), handleHeight());
     }
 
 protected:
@@ -647,7 +663,7 @@ protected:
             dark);
         const QColor text = appThemeColor(expanded_ || handleHovered ? AppThemeColor::Primary : AppThemeColor::Text,
                                           dark);
-        const QRectF handleRect(width() - handleWidth(), 0, handleWidth(), height());
+        const QRectF handleRect = currentHandleRect();
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
         QPainterPath path;
@@ -672,7 +688,8 @@ protected:
         const int lineHeight = metrics.height();
         const int extraGap = rows.size() > 4 ? 3 : 0;
         const int totalHeight = rows.size() * lineHeight + extraGap;
-        int y = std::max(0, (height() - totalHeight) / 2);
+        int y = qRound(handleRect.top()) +
+            std::max(0, qRound((handleRect.height() - totalHeight) / 2.0));
         for (int i = 0; i < rows.size(); ++i)
         {
             painter.drawText(QRectF(handleRect.left(), y, handleRect.width(), lineHeight),
@@ -688,7 +705,7 @@ protected:
 
     void mouseMoveEvent(QMouseEvent *event) override
     {
-        const bool inHandle = event && event->position().x() >= width() - handleWidth();
+        const bool inHandle = event && currentHandleRect().contains(event->position());
         if (inHandle != hovered_handle_)
         {
             hovered_handle_ = inHandle;
@@ -773,7 +790,7 @@ private:
 
     bool isHandlePosition(const QPointF& position) const
     {
-        return position.x() >= width() - handleWidth() && position.y() >= 0 && position.y() < height();
+        return currentHandleRect().contains(position);
     }
 
     void updateHandleText()
@@ -783,13 +800,21 @@ private:
             handle_text_ = QStringLiteral("校\n准\n系\n数\nA0\n-\nA7");
             setProperty("temperatureCalibrationHandleText", handle_text_);
         }
+        setProperty("temperatureCalibrationHandleHeight", handleHeight());
         setToolTip(QStringLiteral("展开校准系数 A0-A7"));
         setAccessibleName(QStringLiteral("校准系数 A0-A7"));
     }
 
+    QRectF currentHandleRect() const
+    {
+        const int currentHeight = std::min(height(), handleHeight());
+        const qreal top = (height() - currentHeight) / 2.0;
+        return QRectF(width() - handleWidth(), top, handleWidth(), currentHeight);
+    }
+
     int expandedWidthForHost() const
     {
-        const int hostWidth = std::max(0, host_size_.width());
+        const int hostWidth = std::max(0, host_rect_.width());
         if (hostWidth <= handleWidth())
         {
             return hostWidth;
@@ -805,8 +830,9 @@ private:
 
     void updateDrawerGeometry()
     {
-        const int hostWidth = std::max(0, host_size_.width());
-        const int hostHeight = std::max(0, host_size_.height());
+        setProperty("temperatureCalibrationHandleHeight", handleHeight());
+        const int hostWidth = std::max(0, host_rect_.width());
+        const int hostHeight = std::max(0, host_rect_.height());
         if (hostWidth <= 0 || hostHeight <= 0)
         {
             return;
@@ -817,13 +843,20 @@ private:
             qRound(handleWidth() + (expandedWidth - handleWidth()) * progress),
             handleWidth(),
             hostWidth);
-        const int currentHeight = std::min(hostHeight, std::max(preferred_height_,
-                                                                 content_widget_ ? content_widget_->sizeHint().height() : 0));
-        setGeometry(hostWidth - currentWidth, 0, currentWidth, currentHeight);
+        const int contentHeight = std::min(hostHeight, std::max(preferred_height_,
+                                                                content_widget_ ? content_widget_->sizeHint().height() : 0));
+        const bool collapsed = visual_progress_ <= 0.001;
+        const int currentHeight = collapsed ? std::min(hostHeight, handleHeight()) : contentHeight;
+        const int top = host_rect_.top() +
+            (collapsed ? std::max(0, (hostHeight - currentHeight) / 2) : 0);
+        setGeometry(host_rect_.left() + hostWidth - currentWidth,
+                    top,
+                    currentWidth,
+                    currentHeight);
         if (content_widget_)
         {
             const int contentWidth = std::max(0, currentWidth - handleWidth());
-            content_widget_->setGeometry(0, 0, contentWidth, currentHeight);
+            content_widget_->setGeometry(0, 0, contentWidth, contentHeight);
             content_widget_->setVisible(currentWidth > handleWidth() + 1 || expanded_);
             content_widget_->raise();
         }
@@ -833,7 +866,7 @@ private:
 
     QWidget *content_widget_ = nullptr;
     QVariantAnimation *animation_ = nullptr;
-    QSize host_size_;
+    QRect host_rect_;
     QString handle_text_;
     qreal expansion_progress_ = 0.0;
     qreal visual_progress_ = 0.0;
@@ -1496,10 +1529,20 @@ void TemperatureControllerPanel::alignSensorCalibrationOverlay(int channelIndex)
     }
 
     QWidget *page = channel.sensor_config_page;
+    QWidget *host = drawer->parentWidget();
+    if (!host)
+    {
+        return;
+    }
+    const QRect pageRectInHost(page->mapTo(host, QPoint(0, 0)), page->size());
+    const QRect hostRect(pageRectInHost.left(),
+                         pageRectInHost.top(),
+                         std::max(0, host->width() - pageRectInHost.left()),
+                         pageRectInHost.height());
     const int overlayHeight = std::min(page->height(),
                                        std::max(kTemperatureControllerCalibrationOverlayHeight,
                                                  channel.sensor_calibration_overlay->sizeHint().height()));
-    drawer->setHostSize(page->size(), overlayHeight);
+    drawer->setHostRect(hostRect, overlayHeight);
 }
 
 void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
@@ -2483,7 +2526,12 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
         channel.polynomial_label_text[static_cast<size_t>(i)] = label;
     }
 
-    auto *calibrationDrawer = new CalibrationSideDrawer(page);
+    QWidget *drawerParent = page;
+    if (channel_stack_ && channel_stack_->parentWidget())
+    {
+        drawerParent = channel_stack_->parentWidget();
+    }
+    auto *calibrationDrawer = new CalibrationSideDrawer(drawerParent);
     calibrationDrawer->setObjectName(QStringLiteral("temperatureCalibrationSideDrawerChannel%1").arg(index + 1));
     calibrationDrawer->setProperty("temperatureCalibrationSideDrawer", true);
     calibrationDrawer->setProperty("temperatureCalibrationChannel", index + 1);
@@ -2492,6 +2540,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
     channel.sensor_config_page = page;
     channel.sensor_calibration_overlay = polynomialFields;
     channel.sensor_calibration_drawer = calibrationDrawer;
+    calibrationDrawer->setVisible(false);
     polynomialFields->setVisible(false);
     auto *escapeShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), page);
     escapeShortcut->setContext(Qt::WidgetWithChildrenShortcut);
@@ -2754,6 +2803,33 @@ void TemperatureControllerPanel::selectChannel(int index)
         temperature_plot_->setTargetTemperature(target_temperature_by_channel_[channelIndex]);
         temperature_plot_->setSamples(measured_temperature_history_[channelIndex]);
     }
+    updateCalibrationDrawerVisibility();
+}
+
+void TemperatureControllerPanel::updateCalibrationDrawerVisibility()
+{
+    const bool sensorPageSelected = selected_config_page_index_ < 2 &&
+        selected_channel_sub_page_index_ == 2;
+    const int selectedChannelIndex = std::clamp(selected_channel_index_, 0, 1);
+    for (int index = 0; index < static_cast<int>(channels_.size()); ++index)
+    {
+        auto *drawer = static_cast<CalibrationSideDrawer *>(channels_[index].sensor_calibration_drawer);
+        if (!drawer)
+        {
+            continue;
+        }
+        const bool active = sensorPageSelected && index == selectedChannelIndex;
+        if (!active)
+        {
+            drawer->setExpanded(false, false);
+            drawer->setVisible(false);
+            continue;
+        }
+        drawer->setVisible(true);
+        QTimer::singleShot(0, this, [this, index]() {
+            alignSensorCalibrationOverlay(index);
+        });
+    }
 }
 
 void TemperatureControllerPanel::updateChannelStackMinimumHeight()
@@ -2886,6 +2962,7 @@ void TemperatureControllerPanel::selectChannelSubPage(int channelIndex, int subP
             refreshTopControlsLayout();
         }
     }
+    updateCalibrationDrawerVisibility();
 }
 
 void TemperatureControllerPanel::emitSensorConfigRequest(int index)

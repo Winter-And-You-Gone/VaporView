@@ -366,6 +366,7 @@ private:
     void alignChannelTopControlFields(int channelIndex);
     void alignCommonSettingsColumns(int channelIndex);
     void alignSensorCalibrationOverlay(int channelIndex);
+    void updateCalibrationDrawerVisibility();
     void updateChannelStackMinimumHeight();
     void emitSensorConfigRequest(int index);
     void updateChannelTexts();
