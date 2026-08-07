@@ -505,18 +505,8 @@ public:
         animation_->setEasingCurve(QEasingCurve::Linear);
         connect(animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
             const qreal t = std::clamp(value.toReal(), 0.0, 1.0);
-            if (reduced_motion_enabled_)
-            {
-                visual_progress_ = animation_start_progress_ +
-                    (animation_target_progress_ - animation_start_progress_) * easeOutCubic(t);
-            }
-            else
-            {
-                // A damped spring gives the panel a restrained overshoot without moving its right edge.
-                const qreal spring = 1.0 - std::exp(-11.0 * t) * std::cos(11.0 * t);
-                visual_progress_ = animation_start_progress_ +
-                    (animation_target_progress_ - animation_start_progress_) * spring;
-            }
+            visual_progress_ = animation_start_progress_ +
+                (animation_target_progress_ - animation_start_progress_) * easeOutCubic(t);
             updateDrawerGeometry();
         });
         connect(animation_, &QVariantAnimation::finished, this, [this]() {

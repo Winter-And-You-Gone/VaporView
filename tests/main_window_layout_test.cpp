@@ -6543,7 +6543,7 @@ int main(int argc, char **argv)
     auto *calibrationAnimation = temperatureCalibrationDrawer->findChild<QVariantAnimation *>(
         QStringLiteral("temperatureCalibrationDrawerAnimation"));
     require(calibrationAnimation != nullptr && calibrationAnimation->duration() == 320,
-            "temperature calibration drawer owns the restrained 320 ms jelly animation");
+            "temperature calibration drawer owns the smooth 320 ms animation");
     const int collapsedHandleCenterY = collapsedDrawerRectInControlsCard.center().y();
 
     clickCalibrationHandle(0);
