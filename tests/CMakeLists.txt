@@ -214,6 +214,22 @@ target_link_libraries(log_service_test PRIVATE
 add_test(NAME log_service_test COMMAND log_service_test)
 set_tests_properties(log_service_test PROPERTIES TIMEOUT 90)
 
+add_executable(lifecycle_breadcrumb_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/lifecycle_breadcrumb_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/app/LifecycleBreadcrumb.cpp
+)
+target_compile_definitions(lifecycle_breadcrumb_test PRIVATE
+    VAPORVIEW_LIFECYCLE_BREADCRUMB_TESTING=1
+)
+target_include_directories(lifecycle_breadcrumb_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(lifecycle_breadcrumb_test PRIVATE Qt6::Core)
+add_test(NAME lifecycle_breadcrumb_test COMMAND lifecycle_breadcrumb_test)
+set_tests_properties(lifecycle_breadcrumb_test PROPERTIES
+    TIMEOUT 30
+    LABELS "fast;unit;logging"
+)
 add_executable(log_fatal_helper
     ${CMAKE_CURRENT_SOURCE_DIR}/log_fatal_helper.cpp
 )
@@ -897,6 +913,7 @@ set(VAPORVIEW_FAST_UNIT_TESTS
     ai8_temperature_controller_protocol_test
     ai8_temperature_controller_collector_test
     ai8_temperature_controller_panel_test
+    lifecycle_breadcrumb_test
     telemetry_codec_test
     telemetry_tcp_link_test
     sky_session_recorder_test
@@ -928,6 +945,7 @@ set(VAPORVIEW_FAST_UNIT_TESTS
 )
 set_tests_properties(${VAPORVIEW_FAST_UNIT_TESTS} PROPERTIES TIMEOUT 30)
 set_property(TEST ${VAPORVIEW_FAST_UNIT_TESTS} PROPERTY LABELS fast unit)
+set_property(TEST lifecycle_breadcrumb_test APPEND PROPERTY LABELS logging)
 
 set(VAPORVIEW_FAST_INTEGRATION_TESTS
     map_data_script_test

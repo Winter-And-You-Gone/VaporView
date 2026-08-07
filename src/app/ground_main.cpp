@@ -24,11 +24,13 @@
 #include <QTimer>
 #include "shared/theme/AppTheme.h"
 #include "LogService.h"
+#include "app/LifecycleBreadcrumb.h"
 #include "app/StartupSplash.h"
 #include "ground/main/MainWindow.h"
 #include "SkyRuntime.h"
 
 #include <algorithm>
+#include <string_view>
 
 namespace
 {
@@ -171,7 +173,25 @@ void showMainWindow(MainWindow& window, VaporView::StartupSplash *splash)
 
 int main(int argc, char *argv[])
 {
+    VaporView::writeLifecycleBreadcrumb("process_entry");
     QApplication app(argc, argv);
+    VaporView::writeLifecycleBreadcrumb("qapplication_constructed");
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, []() {
+        VaporView::writeLifecycleBreadcrumb("about_to_quit");
+    });
+
+    const auto requestProcessExit = [](int exitCode, std::string_view reasonCode) {
+        VaporView::writeLifecycleBreadcrumb("process_exit_requested", exitCode, reasonCode);
+        return exitCode;
+    };
+    const auto runApplication = [&app]() {
+        VaporView::writeLifecycleBreadcrumb("app_exec_enter");
+        const int exitCode = app.exec();
+        VaporView::writeLifecycleBreadcrumb("app_exec_returned", exitCode);
+        VaporView::writeLifecycleBreadcrumb("normal_process_exit", exitCode);
+        return exitCode;
+    };
+
     WheelValueChangeFilter wheelValueChangeFilter;
     app.installEventFilter(&wheelValueChangeFilter);
 
@@ -180,6 +200,7 @@ int main(int argc, char *argv[])
     app.setOrganizationName("VaporView");
     VaporView::LogService logService(QStringLiteral("VaporView"));
     logService.installQtMessageHandler();
+    VaporView::writeLifecycleBreadcrumb("logging_initialized");
     QObject::connect(&logService, &VaporView::LogService::diagnosticFailure, &app,
                      [](const QString& message) {
                          static bool shown = false;
@@ -241,7 +262,7 @@ int main(int argc, char *argv[])
                                 {QStringLiteral("error_code"), QStringLiteral("INVALID_TELEMETRY_TRANSPORT")},
                                 {QStringLiteral("argument"), QStringLiteral("--telemetry-transport")},
                                 {QStringLiteral("value"), parser.value(telemetryTransportOption)}});
-            return 2;
+            return requestProcessExit(2, "invalid_telemetry_transport");
         }
         if (!parser.isSet(telemetryTransportOption) && parser.isSet(telemetryPortOption))
         {
@@ -274,7 +295,7 @@ int main(int argc, char *argv[])
                                 {QStringLiteral("error_code"), QStringLiteral("MISSING_TELEMETRY_PORT")},
                                 {QStringLiteral("argument"), QStringLiteral("--telemetry-port")},
                                 {QStringLiteral("transport"), QStringLiteral("serial")}});
-            return 2;
+            return requestProcessExit(2, "missing_telemetry_port");
         }
         if (options.telemetry_transport == VaporView::TelemetryTransportType::Tcp &&
             (options.telemetry_tcp_port <= 0 || options.telemetry_tcp_port > 65535))
@@ -287,7 +308,7 @@ int main(int argc, char *argv[])
                                 {QStringLiteral("error_code"), QStringLiteral("INVALID_TELEMETRY_TCP_PORT")},
                                 {QStringLiteral("argument"), QStringLiteral("--telemetry-tcp-port")},
                                 {QStringLiteral("value"), options.telemetry_tcp_port}});
-            return 2;
+            return requestProcessExit(2, "invalid_telemetry_tcp_port");
         }
         logService.publish(VaporView::LogLevel::Info,
                            QStringLiteral("App"),
@@ -300,9 +321,9 @@ int main(int argc, char *argv[])
         VaporView::SkyRuntime runtime(options);
         if (!runtime.start())
         {
-            return 1;
+            return requestProcessExit(1, "sky_runtime_start_failed");
         }
-        return app.exec();
+        return runApplication();
     }
 
     auto *startupSplash = new VaporView::StartupSplash;
@@ -345,6 +366,7 @@ int main(int argc, char *argv[])
     }
 
     MainWindow mainWindow;
+    VaporView::writeLifecycleBreadcrumb("main_window_created");
     mainWindow.setWindowTitle("VaporView");
     if (!app.windowIcon().isNull())
     {
@@ -364,6 +386,5 @@ int main(int argc, char *argv[])
         });
     });
 
-    return app.exec();
+    return runApplication();
 }
-

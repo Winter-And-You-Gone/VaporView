@@ -1,5 +1,7 @@
 set(NAV_SOURCES
     ${CMAKE_SOURCE_DIR}/src/app/ground_main.cpp
+    ${CMAKE_SOURCE_DIR}/src/app/LifecycleBreadcrumb.cpp
+    ${CMAKE_SOURCE_DIR}/src/app/LifecycleBreadcrumb.h
     ${CMAKE_SOURCE_DIR}/src/app/StartupSplash.cpp
     ${CMAKE_SOURCE_DIR}/src/app/StartupSplash.h
 )

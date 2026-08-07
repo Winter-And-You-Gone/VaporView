@@ -19,6 +19,69 @@ writer switches to the platform-local VaporView log directory. Runtime code can
 query the actual location through `LogService::logDirectory()` and
 `LogService::logFilePath()`.
 
+## Lifecycle breadcrumb
+
+VaporView also writes a minimal lifecycle breadcrumb file named
+`lifecycle-breadcrumb.jsonl` in the log directory. This file is independent of
+`LogService`: it can record `process_entry` before the normal logging service is
+constructed, and each event is appended synchronously as one compact JSON object
+per line. Breadcrumb writes are best-effort; a path or disk failure must not
+block startup, runtime behavior, or shutdown.
+
+The normal ground UI process records these lifecycle events in the true runtime
+order:
+
+- `process_entry`
+- `qapplication_constructed`
+- `logging_initialized`
+- `main_window_created`
+- `app_exec_enter`
+- `about_to_quit`
+- `app_exec_returned`
+- `normal_process_exit`
+
+`app_exec_returned` and `normal_process_exit` include the original `exit_code`
+returned by `QApplication::exec()`. Explicit early-return startup paths record
+`process_exit_requested` with `exit_code` and a narrow `reason_code`.
+
+Interpretation is deliberately limited. If the final breadcrumb is
+`app_exec_enter`, the process disappeared while the Qt event loop was running,
+but this file alone cannot distinguish a crash, `ExitProcess`, or external
+termination. If the file contains `about_to_quit`, `app_exec_returned` with
+`exit_code=1`, and `normal_process_exit` with `exit_code=1`, then `main()` reached
+the normal return path and propagated exit code 1.
+
+Breadcrumb records include UTC timestamp, process ID, thread ID, sequence,
+event, and optional exit/reason fields. They must not contain command lines,
+environment variables, passwords, serial payloads, device data, or window text.
+
+## Windows LocalDumps
+
+For development or field diagnosis, WER LocalDumps for `VaporView.exe` can be
+configured manually with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\diagnostics\configure-vaporview-localdumps.ps1 -Enable
+powershell -ExecutionPolicy Bypass -File scripts\diagnostics\configure-vaporview-localdumps.ps1 -Status
+powershell -ExecutionPolicy Bypass -File scripts\diagnostics\configure-vaporview-localdumps.ps1 -Disable
+```
+
+`-Enable` accepts `-DumpFolder`, `-DumpCount`, and `-DumpType`; for example:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\diagnostics\configure-vaporview-localdumps.ps1 -Enable -DumpFolder X:\Debug\VaporViewDumps
+```
+
+The script writes
+`HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\VaporView.exe`
+and therefore requires an elevated PowerShell session for `-Enable` and
+`-Disable`. It does not silently elevate, and VaporView does not run it from the
+application, installer, or updater.
+
+Full dumps may contain runtime memory such as device data, local paths,
+connection details, credentials, or other sensitive content. Do not commit or
+push dump files or dump directories to GitHub.
+
 Main and emergency files rotate at 10 MiB. Rotated generations are bounded, and
 the normal cleanup pass retains at most 10 matching application log files with a
 target total size of about 100 MiB. Emergency output is also sent to `stderr`
