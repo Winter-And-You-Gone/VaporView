@@ -89,6 +89,7 @@ constexpr int kPeakPlotMinimumHeight = 150;
 constexpr int kPeakPlotMaximumHeight = 190;
 constexpr int kPlotTopMargin = 2;
 constexpr int kPlotRightMargin = 2;
+constexpr int kPlotBottomMarginExtra = 8;
 constexpr int kWavePlotLeftMargin = 72;
 constexpr int kPeakPlotLeftMargin = 72;
 constexpr int kDefaultPeakSearchStartIndex = 0;
@@ -898,17 +899,27 @@ public:
         setMinimumHeight(kWavePlotMinimumHeight);
         setMaximumHeight(kWavePlotMaximumHeight);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        setProperty("xAxisBottomMarginExtra", kPlotBottomMarginExtra);
+        updateXAxisLabelProperty();
     }
 
     void setSamples(const QVector<float>& samples)
     {
         samples_ = samples;
+        updateXAxisLabelProperty();
         update();
     }
 
     void setEmptyText(const QString& text)
     {
         empty_text_ = text;
+        update();
+    }
+
+    void setEnglish(bool english)
+    {
+        is_english_ = english;
+        updateXAxisLabelProperty();
         update();
     }
 
@@ -924,7 +935,7 @@ protected:
 
         const QFontMetrics fm = painter.fontMetrics();
         const int leftMargin = kWavePlotLeftMargin;
-        const int bottomMargin = fm.height() + 2;
+        const int bottomMargin = fm.height() + kPlotBottomMarginExtra;
         const QRectF plotRect = rect().adjusted(leftMargin, kPlotTopMargin, -kPlotRightMargin, -bottomMargin);
         const auto drawGrid = [&]() {
             painter.setPen(QPen(theme.grid, 1));
@@ -995,13 +1006,26 @@ protected:
                              formatWaveValue(value, 3));
         }
         painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 2, plotRect.width(), fm.height()), Qt::AlignRight | Qt::AlignVCenter,
-                         QString("%1 samples").arg(sampleCount));
+                         xAxisLabel(sampleCount));
     }
 
 private:
+    QString xAxisLabel(int sampleCount) const
+    {
+        return is_english_
+            ? QStringLiteral("%1 samples").arg(sampleCount)
+            : QStringLiteral("%1 点").arg(sampleCount);
+    }
+
+    void updateXAxisLabelProperty()
+    {
+        setProperty("xAxisLabelText", xAxisLabel(samples_.size()));
+    }
+
     QColor line_color_;
     QVector<float> samples_;
     QString empty_text_ = QStringLiteral("No data");
+    bool is_english_ = false;
 };
 
 class PeakTrendPlotWidget : public QWidget
@@ -1023,6 +1047,8 @@ public:
         setMinimumHeight(kPeakPlotMinimumHeight);
         setMaximumHeight(kPeakPlotMaximumHeight);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        setProperty("xAxisBottomMarginExtra", kPlotBottomMarginExtra);
+        updateXAxisLabelProperty();
     }
 
     void setPeakValues(const QVector<float>& values)
@@ -1033,6 +1059,7 @@ public:
         peak_values_ = values;
         normalizeView(keepTail);
         notifyViewChanged();
+        updateXAxisLabelProperty();
         update();
     }
 
@@ -1062,6 +1089,7 @@ public:
         }
 
         notifyViewChanged();
+        updateXAxisLabelProperty();
         update();
     }
 
@@ -1077,6 +1105,13 @@ public:
         update();
     }
 
+    void setEnglish(bool english)
+    {
+        is_english_ = english;
+        updateXAxisLabelProperty();
+        update();
+    }
+
 protected:
     void paintEvent(QPaintEvent *event) override
     {
@@ -1089,7 +1124,7 @@ protected:
 
         const QFontMetrics fm = painter.fontMetrics();
         const int leftMargin = kPeakPlotLeftMargin;
-        const int bottomMargin = fm.height() + 2;
+        const int bottomMargin = fm.height() + kPlotBottomMarginExtra;
         const QRectF plotRect = rect().adjusted(leftMargin, kPlotTopMargin, -kPlotRightMargin, -bottomMargin);
         const auto drawGrid = [&]() {
             painter.setPen(QPen(theme.grid, 1));
@@ -1224,7 +1259,7 @@ protected:
                              .arg(startIndex + count)
                              .arg(peak_values_.size()));
         painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 2, plotRect.width(), fm.height()), Qt::AlignRight | Qt::AlignVCenter,
-                         QString("%1 frames").arg(count));
+                         xAxisFrameLabel(count));
     }
 
 private:
@@ -1284,12 +1319,25 @@ private:
         }
     }
 
+    QString xAxisFrameLabel(int count) const
+    {
+        return is_english_
+            ? QStringLiteral("%1 frames").arg(count)
+            : QStringLiteral("%1 帧").arg(count);
+    }
+
+    void updateXAxisLabelProperty()
+    {
+        setProperty("xAxisFrameLabelText", xAxisFrameLabel(visibleCount()));
+    }
+
     QVector<float> peak_values_;
     PlotMode plot_mode_;
     int view_start_index_;
     int view_count_;
     QString empty_text_ = QStringLiteral("No peak data");
     std::function<void(int, int, int)> on_view_changed_;
+    bool is_english_ = false;
 };
 
 TcpWavePanel::TcpWavePanel(QWidget *parent)
@@ -1593,6 +1641,7 @@ void TcpWavePanel::setupUi()
     wave1HeaderLayout->addWidget(wave1_info_label_, 1);
     wave1Layout->addWidget(wave1HeaderBar);
     wave1_plot_ = new WavePlotWidget(appThemeColor(AppThemeColor::PlotSeriesWaveBlue, false), this);
+    wave1_plot_->setObjectName(QStringLiteral("tcpWaveRawPlot"));
     wave1Layout->addWidget(wave1_plot_, 1);
     installTcpWaveCardOutline(wave1_group_);
     plots_layout_->addWidget(wave1_group_, 1);
@@ -1625,6 +1674,7 @@ void TcpWavePanel::setupUi()
     wave4HeaderLayout->addWidget(wave4_info_label_, 1);
     wave4Layout->addWidget(wave4HeaderBar);
     wave4_plot_ = new WavePlotWidget(appThemeColor(AppThemeColor::PlotSeriesWaveOrange, false), this);
+    wave4_plot_->setObjectName(QStringLiteral("tcpWaveHarmonicPlot"));
     wave4Layout->addWidget(wave4_plot_, 1);
     installTcpWaveCardOutline(wave4_group_);
     plots_layout_->addWidget(wave4_group_, 1);
@@ -1680,6 +1730,7 @@ void TcpWavePanel::setupUi()
     peakHeaderLayout->addStretch(1);
     peakLayout->addWidget(peakHeaderBar);
     peak_plot_ = new PeakTrendPlotWidget(this);
+    peak_plot_->setObjectName(QStringLiteral("tcpWavePeakTrendPlot"));
     peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);
     peakLayout->addWidget(peak_plot_);
     installTcpWaveCardOutline(peak_group_);
@@ -1819,14 +1870,17 @@ void TcpWavePanel::setEnglish(bool english)
     }
     if (wave1_plot_)
     {
+        wave1_plot_->setEnglish(english);
         wave1_plot_->setEmptyText(english ? QStringLiteral("No data") : QStringLiteral("暂无数据"));
     }
     if (wave4_plot_)
     {
+        wave4_plot_->setEnglish(english);
         wave4_plot_->setEmptyText(english ? QStringLiteral("No data") : QStringLiteral("暂无数据"));
     }
     if (peak_plot_)
     {
+        peak_plot_->setEnglish(english);
         peak_plot_->setEmptyText(english ? QStringLiteral("No peak data") : QStringLiteral("暂无峰值数据"));
     }
     if (peak_clear_button_)
@@ -2451,6 +2505,36 @@ void TcpWavePanel::setUiTestConnected(bool connected)
 }
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
+void TcpWavePanel::testFlushLiveDisplay()
+{
+    updateLiveDisplay();
+}
+
+QString TcpWavePanel::testRawXAxisLabel() const
+{
+    return wave1_plot_ ? wave1_plot_->property("xAxisLabelText").toString() : QString();
+}
+
+QString TcpWavePanel::testHarmonicXAxisLabel() const
+{
+    return wave4_plot_ ? wave4_plot_->property("xAxisLabelText").toString() : QString();
+}
+
+QString TcpWavePanel::testPeakXAxisLabel() const
+{
+    return peak_plot_ ? peak_plot_->property("xAxisFrameLabelText").toString() : QString();
+}
+
+int TcpWavePanel::testWavePlotBottomMarginExtra() const
+{
+    return wave1_plot_ ? wave1_plot_->property("xAxisBottomMarginExtra").toInt() : 0;
+}
+
+int TcpWavePanel::testPeakPlotBottomMarginExtra() const
+{
+    return peak_plot_ ? peak_plot_->property("xAxisBottomMarginExtra").toInt() : 0;
+}
+
 void TcpWavePanel::testFeedSocketBytes(const QByteArray& bytes)
 {
     buffer_.append(bytes);

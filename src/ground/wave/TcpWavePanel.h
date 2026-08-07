@@ -54,6 +54,12 @@ public:
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
     void testFeedSocketBytes(const QByteArray& bytes);
     qsizetype testBufferedByteCount() const;
+    void testFlushLiveDisplay();
+    QString testRawXAxisLabel() const;
+    QString testHarmonicXAxisLabel() const;
+    QString testPeakXAxisLabel() const;
+    int testWavePlotBottomMarginExtra() const;
+    int testPeakPlotBottomMarginExtra() const;
 #endif
 
     enum class ParseMode
