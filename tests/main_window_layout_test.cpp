@@ -1095,30 +1095,13 @@ void requireHomeDeviceMinimumWidthMatchesControls(QWidget *scope)
     int telemetrySummaryWidth = 0;
     if (telemetrySummary)
     {
-        int telemetrySectionWidth = 0;
-        const QList<QFrame*> sections = telemetrySummary->findChildren<QFrame *>(
-            QStringLiteral("homeTelemetrySectionCard"));
-        for (const QFrame *section : sections)
+        telemetrySummaryWidth = telemetrySummary->minimumWidth();
+        if (QLayout *summaryLayout = telemetrySummary->layout())
         {
-            telemetrySectionWidth = std::max(
-                telemetrySectionWidth,
-                std::max(section->minimumWidth(),
-                         std::max(section->minimumSizeHint().width(), section->sizeHint().width())));
-            const QList<QFrame*> pills = section->findChildren<QFrame *>(
-                QStringLiteral("homeTelemetrySummaryPill"));
-            for (const QFrame *pill : pills)
-            {
-                const QRect pillRect(pill->mapTo(section, QPoint(0, 0)), pill->size());
-                telemetrySectionWidth = std::max(telemetrySectionWidth, pillRect.right() + 1 + 13);
-            }
+            summaryLayout->invalidate();
+            telemetrySummaryWidth = std::max(telemetrySummaryWidth,
+                                             summaryLayout->minimumSize().width());
         }
-        const QMargins summaryMargins = telemetrySummary->layout()
-            ? telemetrySummary->layout()->contentsMargins()
-            : QMargins();
-        telemetrySummaryWidth = std::max(
-            telemetrySummary->minimumWidth(),
-            std::max(telemetrySectionWidth + summaryMargins.left() + summaryMargins.right(),
-                     std::max(telemetrySummary->minimumSizeHint().width(), telemetrySummary->sizeHint().width())));
     }
     const QMargins cardMargins = deviceCard->layout()->contentsMargins();
     const QMargins bodyMargins = deviceBody->layout()->contentsMargins();
@@ -2394,6 +2377,97 @@ QFrame *findTelemetryPillByName(QFrame *section, const QString& text)
     return nullptr;
 }
 
+struct TelemetryPillWidthSnapshotItem
+{
+    QString key;
+    int width = 0;
+};
+
+QVector<TelemetryPillWidthSnapshotItem> telemetryPillWidthSnapshot(QWidget *summaryContainer)
+{
+    QVector<TelemetryPillWidthSnapshotItem> snapshot;
+    const QList<QFrame*> sections = sortedTelemetrySections(summaryContainer);
+    for (int sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex)
+    {
+        QFrame *section = sections.at(sectionIndex);
+        const QList<QFrame*> sectionPills =
+            section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+        QList<QWidget*> lines;
+        for (QFrame *pill : sectionPills)
+        {
+            if (QWidget *line = pill->parentWidget(); line && !lines.contains(line))
+            {
+                lines.append(line);
+            }
+        }
+        std::sort(lines.begin(), lines.end(), [section](QWidget *a, QWidget *b) {
+            const QPoint aPos = a->mapTo(section, QPoint(0, 0));
+            const QPoint bPos = b->mapTo(section, QPoint(0, 0));
+            return std::make_tuple(aPos.y(), aPos.x()) < std::make_tuple(bPos.y(), bPos.x());
+        });
+        for (QWidget *line : lines)
+        {
+            QList<QFrame*> linePills =
+                line->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"),
+                                             Qt::FindDirectChildrenOnly);
+            std::sort(linePills.begin(), linePills.end(), [section](QFrame *a, QFrame *b) {
+                return a->mapTo(section, QPoint(0, 0)).x() < b->mapTo(section, QPoint(0, 0)).x();
+            });
+            for (QFrame *pill : linePills)
+            {
+                QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+                QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+                snapshot.append({
+                    QStringLiteral("%1:%2=%3").arg(sectionIndex)
+                                             .arg(nameLabel ? nameLabel->text() : QString())
+                                             .arg(valueLabel ? valueLabel->text() : QString()),
+                    pill->width()});
+            }
+        }
+    }
+    return snapshot;
+}
+
+void requireTelemetryPillWidthSnapshotMatches(const QVector<TelemetryPillWidthSnapshotItem>& expected,
+                                              const QVector<TelemetryPillWidthSnapshotItem>& actual,
+                                              const char *message)
+{
+    require(expected.size() == actual.size(), message);
+    for (int i = 0; i < expected.size(); ++i)
+    {
+        if (expected.at(i).key != actual.at(i).key ||
+            std::abs(expected.at(i).width - actual.at(i).width) > 1)
+        {
+            std::cerr << "Telemetry pill width mismatch at " << i
+                      << ": expected " << expected.at(i).key.toStdString()
+                      << " width=" << expected.at(i).width
+                      << ", actual " << actual.at(i).key.toStdString()
+                      << " width=" << actual.at(i).width << '\n';
+        }
+        require(expected.at(i).key == actual.at(i).key, message);
+        require(std::abs(expected.at(i).width - actual.at(i).width) <= 1, message);
+    }
+}
+
+void requireChineseWaveformTelemetryLabelsHaveNoAsciiColon(QWidget *summaryContainer,
+                                                           const char *message)
+{
+    QFrame *rateSection = firstTelemetrySection(summaryContainer);
+    require(rateSection != nullptr, message);
+    const QStringList waveformNames = {
+        QStringLiteral("原始波形"),
+        QStringLiteral("谐波波形"),
+        QStringLiteral("波形采集")
+    };
+    for (const QString& waveformName : waveformNames)
+    {
+        QFrame *pill = findTelemetryPillByName(rateSection, waveformName);
+        require(pill != nullptr, message);
+        QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+        require(nameLabel != nullptr && nameLabel->text() == waveformName, message);
+    }
+}
+
 void requireTelemetrySummaryPillsOrdered(QWidget *summaryContainer, const char *message)
 {
     const QList<QFrame*> sections = sortedTelemetrySections(summaryContainer);
@@ -2734,6 +2808,11 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireTelemetrySummaryPillsOrdered(
         languageTelemetrySummaryContainer,
         "language overview telemetry capsules start without overlap");
+    requireChineseWaveformTelemetryLabelsHaveNoAsciiColon(
+        languageTelemetrySummaryContainer,
+        "language overview Chinese waveform telemetry labels start without ASCII colons");
+    const QVector<TelemetryPillWidthSnapshotItem> initialTelemetryPillWidths =
+        telemetryPillWidthSnapshot(languageTelemetrySummaryContainer);
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
     requireHomeDeviceColumnsAligned(&languageOverviewWindow);
     requireHomeDeviceMinimumWidthMatchesControls(&languageOverviewWindow);
@@ -2795,6 +2874,13 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireTelemetrySummaryPillsOrdered(
         languageTelemetrySummaryContainer,
         "language overview telemetry capsules stay ordered after returning to Chinese");
+    requireChineseWaveformTelemetryLabelsHaveNoAsciiColon(
+        languageTelemetrySummaryContainer,
+        "language overview Chinese waveform telemetry labels stay without ASCII colons after language toggles");
+    requireTelemetryPillWidthSnapshotMatches(
+        initialTelemetryPillWidths,
+        telemetryPillWidthSnapshot(languageTelemetrySummaryContainer),
+        "language overview telemetry capsule widths return to their initial Chinese widths");
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
     languageOverviewWindow.close();
     require(processEventsUntil(1000, [&languageOverviewWindow]() {
