@@ -147,11 +147,15 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
             if (QLayout *columnLayout = column->layout())
             {
                 columnLayout->setSizeConstraint(QLayout::SetFixedSize);
+                columnLayout->invalidate();
+                columnLayout->activate();
             }
         }
         if (QLayout *deviceLayout = homeDevices->layout())
         {
             deviceLayout->setSizeConstraint(QLayout::SetFixedSize);
+            deviceLayout->invalidate();
+            deviceLayout->activate();
         }
     }
 
@@ -163,9 +167,16 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
         return;
     }
 
+    auto rememberAutoMinimumWidth = [this, contentMinimumWidth]() {
+        state_->home_overview_splitter_->setProperty(
+            kHomeOverviewDeviceAutoMinimumWidthProperty,
+            contentMinimumWidth);
+    };
+
     const QList<int> sizes = state_->home_overview_splitter_->sizes();
-    if (sizes.size() < 2 || sizes.at(0) >= contentMinimumWidth)
+    if (sizes.size() < 2)
     {
+        rememberAutoMinimumWidth();
         return;
     }
 
@@ -176,6 +187,22 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
     const int rightMinimumWidth = state_->temperature_overview_group_->minimumWidth();
     if (availableWidth < contentMinimumWidth + rightMinimumWidth)
     {
+        rememberAutoMinimumWidth();
+        return;
+    }
+
+    bool hadPreviousAutoMinimum = false;
+    const int previousAutoMinimumWidth = state_->home_overview_splitter_
+                                             ->property(kHomeOverviewDeviceAutoMinimumWidthProperty)
+                                             .toInt(&hadPreviousAutoMinimum);
+    const bool belowCurrentMinimum = sizes.at(0) < contentMinimumWidth;
+    const bool followsPreviousAutoMinimum =
+        hadPreviousAutoMinimum &&
+        previousAutoMinimumWidth > contentMinimumWidth &&
+        std::abs(sizes.at(0) - previousAutoMinimumWidth) <= 1;
+    if (!belowCurrentMinimum && !followsPreviousAutoMinimum)
+    {
+        rememberAutoMinimumWidth();
         return;
     }
 
@@ -183,6 +210,7 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
         contentMinimumWidth,
         std::max(rightMinimumWidth, availableWidth - contentMinimumWidth)
     });
+    rememberAutoMinimumWidth();
 }
 
 void MainWindow::updateConfigCardHeightForSourceMode()

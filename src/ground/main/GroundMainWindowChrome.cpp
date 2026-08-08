@@ -681,6 +681,8 @@ void MainWindow::setEnglish(bool english)
         updateEnvironmentStatusIcons(state_->current_lidar_.valid, state_->current_ptb_.valid, state_->current_hmp_.valid);
     }
     updateSourceModeUi();
+    updateHomeDeviceOverviewMinimumWidth();
+    updateResponsiveHomeLayout();
     updateDeviceConfigTexts();
     updateSidebarNavIcons();
     updateRecordingStatusLabel();
