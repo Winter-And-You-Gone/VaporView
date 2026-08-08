@@ -1598,9 +1598,16 @@ void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
                                           channel.enable_field->sizeHint().width());
     const int autoPidFieldWidth = std::max(channel.auto_pid_field->width(),
                                            channel.auto_pid_field->sizeHint().width());
+    const bool controllerModeInRow = controller_mode_field_ &&
+        controller_mode_field_->parentWidget() == channel.common_top_controls &&
+        controller_mode_field_->isVisible();
+    const int controllerModeFieldWidth = controllerModeInRow
+        ? std::max(controller_mode_field_->width(), controller_mode_field_->sizeHint().width())
+        : 0;
     const int availableWidth = std::max(0, channel.common_top_controls->width() -
-                                           enableFieldWidth -
-                                           autoPidFieldWidth);
+                                            enableFieldWidth -
+                                            autoPidFieldWidth -
+                                            controllerModeFieldWidth);
     channel.common_top_leading_spacer->setFixedWidth(std::max(24, availableWidth / 5));
     channel.common_top_middle_spacer->setFixedWidth(std::max(36, availableWidth * 3 / 5));
     if (QLayout *layout = channel.common_top_controls->layout())
@@ -1608,6 +1615,86 @@ void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
         layout->invalidate();
         layout->activate();
     }
+}
+
+void TemperatureControllerPanel::placeControllerModeFieldInTopControls(int channelIndex, int subPageIndex)
+{
+    if (!controller_mode_field_)
+    {
+        return;
+    }
+
+    if (selected_config_page_index_ >= 2 ||
+        channelIndex < 0 ||
+        channelIndex >= static_cast<int>(channels_.size()) ||
+        subPageIndex == 1)
+    {
+        controller_mode_field_->setVisible(false);
+        return;
+    }
+
+    ChannelWidgets& channel = channels_[channelIndex];
+    QWidget *target = nullptr;
+    QWidget *anchor = nullptr;
+    if (subPageIndex == 0)
+    {
+        target = channel.common_top_controls;
+        anchor = channel.auto_pid_field;
+    }
+    else if (subPageIndex == 2)
+    {
+        target = channel.sensor_model_field;
+        anchor = channel.sensor_model_selector;
+    }
+    if (!target || !anchor)
+    {
+        controller_mode_field_->setVisible(false);
+        return;
+    }
+
+    auto *targetLayout = qobject_cast<QHBoxLayout *>(target->layout());
+    if (!targetLayout)
+    {
+        controller_mode_field_->setVisible(false);
+        return;
+    }
+
+    if (QWidget *previousParent = controller_mode_field_->parentWidget();
+        previousParent && previousParent != target)
+    {
+        if (QLayout *previousLayout = previousParent->layout())
+        {
+            const int previousIndex = previousLayout->indexOf(controller_mode_field_);
+            if (previousIndex >= 0)
+            {
+                delete previousLayout->takeAt(previousIndex);
+            }
+        }
+    }
+
+    int desiredIndex = targetLayout->indexOf(anchor) + 1;
+    if (desiredIndex <= 0)
+    {
+        desiredIndex = targetLayout->count();
+    }
+
+    const int existingIndex = targetLayout->indexOf(controller_mode_field_);
+    if (existingIndex >= 0)
+    {
+        if (existingIndex == desiredIndex)
+        {
+            controller_mode_field_->setVisible(true);
+            return;
+        }
+        delete targetLayout->takeAt(existingIndex);
+        if (existingIndex < desiredIndex)
+        {
+            --desiredIndex;
+        }
+    }
+
+    targetLayout->insertWidget(desiredIndex, controller_mode_field_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    controller_mode_field_->setVisible(true);
 }
 
 void TemperatureControllerPanel::alignCommonSettingsColumns(int channelIndex)
@@ -1733,9 +1820,9 @@ void TemperatureControllerPanel::setupUi()
     controller_mode_field_->setObjectName(QStringLiteral("temperatureControllerModeField"));
     controller_mode_field_->setAttribute(Qt::WA_StyledBackground, true);
     controller_mode_field_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    controller_mode_field_->setFixedHeight(42);
+    controller_mode_field_->setFixedHeight(kTemperatureControllerTopControlsHeight);
     auto *controllerModeLayout = new QHBoxLayout(controller_mode_field_);
-    controllerModeLayout->setContentsMargins(8, 3, 4, 3);
+    controllerModeLayout->setContentsMargins(0, 0, 0, 0);
     controllerModeLayout->setSpacing(6);
     controllerModeLayout->addWidget(controller_mode_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     controllerModeLayout->addWidget(controller_mode_combo_, 0, Qt::AlignVCenter | Qt::AlignLeft);
@@ -1879,7 +1966,6 @@ void TemperatureControllerPanel::setupUi()
     temperature_plot_->setFixedHeight(kTemperatureControllerConfigPlotHeight);
     temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     temperaturePlotLayout->addWidget(temperature_plot_, 0, 0);
-    temperaturePlotLayout->addWidget(controller_mode_field_, 0, 0, Qt::AlignTop | Qt::AlignRight);
     contentRowLayout->addWidget(temperature_plot_container_, 1, Qt::AlignTop);
 
     configCardLayout->addWidget(contentRow, 0);
@@ -2863,6 +2949,7 @@ void TemperatureControllerPanel::selectChannel(int index)
         }
         const bool showTopControls = pageIndex < 2 && subPageIndex != 1;
         channel_top_controls_stack_->setVisible(showTopControls);
+        placeControllerModeFieldInTopControls(channelIndex, subPageIndex);
         refreshTopControlsLayout();
     }
     auto updateButton = [pageIndex](QPushButton *button, int buttonIndex) {
@@ -3042,7 +3129,12 @@ void TemperatureControllerPanel::selectChannelSubPage(int channelIndex, int subP
         if (pageIndex != 1)
         {
             channel_top_controls_stack_->setCurrentIndex(selectedChannelIndex);
+            placeControllerModeFieldInTopControls(selectedChannelIndex, pageIndex);
             refreshTopControlsLayout();
+        }
+        else
+        {
+            placeControllerModeFieldInTopControls(selectedChannelIndex, pageIndex);
         }
     }
     updateCalibrationDrawerVisibility();

@@ -5431,7 +5431,7 @@ int main(int argc, char **argv)
                 temperatureConfigPlotContainer != nullptr &&
                 temperatureControllerModeField != nullptr &&
                 temperatureConfigPlot != nullptr,
-            "temperature controller page exposes a top channel selector and a trend plot with a mode overlay");
+            "temperature controller page exposes a top channel selector and a trend plot with inline mode controls");
     require(temperatureConfigPlot->sizePolicy().verticalPolicy() == QSizePolicy::Fixed &&
                 temperatureControllerContentRow->sizePolicy().verticalPolicy() == QSizePolicy::Fixed,
             "temperature controller config plot and content row do not expand vertically with the page");
@@ -5448,8 +5448,8 @@ int main(int argc, char **argv)
                 temperatureChannelStack->parentWidget() == temperatureControllerControlsCard &&
                 temperatureConfigPlotContainer->parentWidget() == temperatureControllerContentRow &&
                 temperatureConfigPlot->parentWidget() == temperatureConfigPlotContainer &&
-                temperatureControllerModeField->parentWidget() == temperatureConfigPlotContainer,
-            "temperature card uses the screenshot layout with the mode field over the trend plot");
+                temperatureControllerModeField->parentWidget() == temperatureChannelCommonTopControls1,
+            "temperature card keeps the controller mode field in the channel top controls");
     require(temperatureConfigChannelButton1->parentWidget() == temperatureChannelTopBar &&
                 temperatureConfigChannelButton2->parentWidget() == temperatureChannelTopBar &&
                 temperatureCommonSettingsButton->parentWidget() == temperatureChannelTopBar,
@@ -5476,16 +5476,20 @@ int main(int argc, char **argv)
                 temperatureConfigCard->sizePolicy().horizontalPolicy() == QSizePolicy::Ignored,
             "temperature controller card width follows the available page width instead of the active page size hint");
     const QRect controllerModeFieldRect(
-        temperatureControllerModeField->mapTo(temperatureConfigPlotContainer, QPoint(0, 0)),
+        temperatureControllerModeField->mapTo(temperatureChannelCommonTopControls1, QPoint(0, 0)),
         temperatureControllerModeField->size());
+    const QRect autoPidFieldRectForMode(
+        autoPidCombo->parentWidget()->mapTo(temperatureChannelCommonTopControls1, QPoint(0, 0)),
+        autoPidCombo->parentWidget()->size());
     const QRect controllerModeLabelRect(controllerModeLabel->mapTo(temperatureControllerModeField, QPoint(0, 0)),
                                         controllerModeLabel->size());
     const QRect controllerModeComboRect(controllerModeCombo->mapTo(temperatureControllerModeField, QPoint(0, 0)),
                                         controllerModeCombo->size());
-    require(controllerModeFieldRect.top() <= 2,
-            "temperature controller mode field is top-aligned on the trend plot");
-    require(temperatureConfigPlotContainer->rect().right() - controllerModeFieldRect.right() <= 2,
-            "temperature controller mode field is right-aligned on the trend plot");
+    require(std::abs(controllerModeFieldRect.top() - autoPidFieldRectForMode.top()) <= 2,
+            "temperature controller mode field shares the top row with auto PID");
+    require(autoPidFieldRectForMode.right() < controllerModeFieldRect.left() &&
+                controllerModeFieldRect.left() - autoPidFieldRectForMode.right() <= 12,
+            "temperature controller mode field sits immediately to the right of auto PID");
     require(controllerModeLabelRect.right() < controllerModeComboRect.left(),
             "temperature controller mode label sits immediately before the combo");
     require(std::abs(controllerModeLabelRect.center().y() - controllerModeComboRect.center().y()) <= 2,
@@ -6319,6 +6323,9 @@ int main(int argc, char **argv)
                               "temperature output enable switch lives beside the channel selectors");
     requireTopBarFieldLayout(autoPidCombo,
                              "temperature auto PID field lives beside the output enable switch");
+    require(temperatureChannelTopControlsStack->isAncestorOf(temperatureControllerModeField) &&
+                temperatureControllerModeField->parentWidget() == temperatureChannelCommonTopControls1,
+            "temperature controller mode field lives beside the auto PID control");
     const QRect enableFieldRect(enableSwitch->parentWidget()->mapTo(temperatureChannelTopControlsStack, QPoint(0, 0)),
                                 enableSwitch->parentWidget()->size());
     const QRect autoPidFieldRect(autoPidCombo->parentWidget()->mapTo(temperatureChannelTopControlsStack, QPoint(0, 0)),

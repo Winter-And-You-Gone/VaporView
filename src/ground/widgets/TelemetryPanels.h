@@ -365,6 +365,7 @@ private:
     void selectChannelSubPage(int channelIndex, int subPageIndex);
     bool eventFilter(QObject *watched, QEvent *event) override;
     void alignChannelTopControlFields(int channelIndex);
+    void placeControllerModeFieldInTopControls(int channelIndex, int subPageIndex);
     void alignCommonSettingsColumns(int channelIndex);
     void alignSensorCalibrationOverlay(int channelIndex);
     void updateCalibrationDrawerVisibility();
