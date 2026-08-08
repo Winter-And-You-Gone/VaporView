@@ -647,9 +647,8 @@ protected:
         const QColor fill = appThemeColor(
             handleHovered || expanded_ ? AppThemeColor::PrimarySubtle : AppThemeColor::SurfaceAlt,
             dark);
-        const QColor border = appThemeColor(
-            hasFocus() ? AppThemeColor::Focus : (expanded_ ? AppThemeColor::Primary : AppThemeColor::Border),
-            dark);
+        const QColor border = appThemeColor(expanded_ ? AppThemeColor::Primary : AppThemeColor::Border,
+                                            dark);
         const QColor text = appThemeColor(expanded_ || handleHovered ? AppThemeColor::Primary : AppThemeColor::Text,
                                           dark);
         const QRectF handleRect = currentHandleRect();
@@ -664,7 +663,7 @@ protected:
         path.quadTo(handleRect.left(), handleRect.bottom(), handleRect.left() + radius, handleRect.bottom());
         path.lineTo(handleRect.right(), handleRect.bottom());
         path.closeSubpath();
-        painter.setPen(QPen(border, hasFocus() ? 2.0 : 1.0));
+        painter.setPen(QPen(border, 1.0));
         painter.setBrush(fill);
         painter.drawPath(path);
 

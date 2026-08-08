@@ -6451,6 +6451,19 @@ int main(int argc, char **argv)
                 temperatureCalibrationOverlay->property("temperatureSensorCalibrationOverlay").toBool() &&
                 !temperatureCalibrationOverlay->isVisible(),
             "temperature sensor config keeps the six primary fields in the base grid and hides A0-A7 in an edge calibration drawer");
+    temperatureCalibrationDrawer->setFocus(Qt::MouseFocusReason);
+    processEventsFor(20);
+    require(temperatureCalibrationDrawer->hasFocus(),
+            "temperature calibration handle accepts focus after selection");
+    const QImage focusedCalibrationHandleImage =
+        temperatureCalibrationDrawer->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    require(countPixelsNearColor(
+                focusedCalibrationHandleImage,
+                focusedCalibrationHandleImage.rect(),
+                VaporView::appThemeColor(VaporView::AppThemeColor::Focus,
+                                          VaporView::isDarkThemeEnabled()),
+                0) == 0,
+            "temperature calibration handle does not draw a focus-colored border after selection");
     auto sensorFieldLabel = [](QWidget *editor) -> QLabel * {
         return editor && editor->parentWidget()
             ? editor->parentWidget()->findChild<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly)
