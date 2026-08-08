@@ -1601,21 +1601,64 @@ void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
                                           channel.enable_field->sizeHint().width());
     const int autoPidFieldWidth = std::max(channel.auto_pid_field->width(),
                                            channel.auto_pid_field->sizeHint().width());
-    const bool controllerModeInCommonRow = controller_mode_field_ &&
-        controller_mode_field_->parentWidget() == channel.common_top_controls &&
-        controller_mode_field_->isVisible();
-    const int controllerModeFieldWidth = controllerModeInCommonRow
+    const int controllerModeFieldWidth = controller_mode_field_
         ? std::max(controller_mode_field_->width(), controller_mode_field_->sizeHint().width())
         : 0;
-    const int availableWidth = std::max(0, channel.common_top_controls->width() -
-                                            enableFieldWidth -
-                                            autoPidFieldWidth -
-                                            controllerModeFieldWidth);
-    const int leadingGap = availableWidth / 5;
-    const int middleGap = availableWidth * 3 / 5;
-    channel.common_top_leading_spacer->setFixedWidth(leadingGap);
+    QWidget *page = channel.common_top_controls->parentWidget();
+    QWidget *selectorRow = page && page->parentWidget()
+        ? page->parentWidget()->parentWidget()
+        : nullptr;
+    auto *selectorRowLayout = selectorRow
+        ? qobject_cast<QHBoxLayout *>(selectorRow->layout())
+        : nullptr;
+    auto *pageLayout = page
+        ? qobject_cast<QHBoxLayout *>(page->layout())
+        : nullptr;
+    const bool commonPageActive = selectorRow && pageLayout &&
+        channel.common_top_controls->isVisible() &&
+        controller_mode_field_ && controller_mode_field_->parentWidget() == page;
+    const bool sensorPageActive = selectorRow && pageLayout &&
+        channel.sensor_model_field && channel.sensor_model_field->isVisible() &&
+        controller_mode_field_ && controller_mode_field_->parentWidget() == page;
+
+    int rowSpacing = 12;
+    int pageSpacing = 12;
+    int middleGap = 0;
+    if (commonPageActive)
+    {
+        const int availableWidth = std::max(0, selectorRow->width() -
+                                                channel_top_bar_->width() -
+                                                enableFieldWidth -
+                                                autoPidFieldWidth -
+                                                controllerModeFieldWidth);
+        rowSpacing = availableWidth / 3;
+        pageSpacing = rowSpacing + (availableWidth % 3);
+        middleGap = rowSpacing;
+        channel.common_top_controls->setFixedWidth(enableFieldWidth + autoPidFieldWidth + middleGap);
+    }
+    else if (sensorPageActive)
+    {
+        const int sensorModelFieldWidth = std::max(channel.sensor_model_field->width(),
+                                                   channel.sensor_model_field->sizeHint().width());
+        const int availableWidth = std::max(0, selectorRow->width() -
+                                                channel_top_bar_->width() -
+                                                sensorModelFieldWidth -
+                                                controllerModeFieldWidth);
+        rowSpacing = availableWidth / 2;
+        pageSpacing = rowSpacing + (availableWidth % 2);
+    }
+
+    channel.common_top_leading_spacer->setFixedWidth(0);
     channel.common_top_middle_spacer->setFixedWidth(middleGap);
     channel.common_top_mode_spacer->setFixedWidth(0);
+    if (selectorRowLayout)
+    {
+        selectorRowLayout->setSpacing(rowSpacing);
+    }
+    if (pageLayout)
+    {
+        pageLayout->setSpacing(pageSpacing);
+    }
     if (QLayout *layout = channel.common_top_controls->layout())
     {
         layout->invalidate();
@@ -2074,7 +2117,6 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
     auto *commonLayout = new QHBoxLayout(channel.common_top_controls);
     commonLayout->setContentsMargins(0, 0, 0, 0);
     commonLayout->setSpacing(0);
-    commonLayout->addStretch(1);
     auto makeCommonTopField = [this](const QString& text, QWidget *editor, QLabel *&label) {
         auto *field = new QWidget();
         field->setObjectName(QStringLiteral("temperatureTopBarField"));

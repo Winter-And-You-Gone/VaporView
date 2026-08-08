@@ -5529,6 +5529,14 @@ int main(int argc, char **argv)
     const int autoToControllerModeGap = controllerModeFieldRect.left() - autoPidFieldRectForMode.right() - 1;
     require(enableToAutoGap >= 0 && autoToControllerModeGap >= 0,
             "temperature top fields do not overlap when the mode selector keeps its full width");
+    const QRect topBarRectForMode(
+        temperatureChannelTopBar->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
+        temperatureChannelTopBar->size());
+    const int commonTopBarToEnableGap = topEnableFieldRect.left() - topBarRectForMode.right() - 1;
+    require(commonTopBarToEnableGap >= 0 &&
+                std::abs(commonTopBarToEnableGap - enableToAutoGap) <= 1 &&
+                std::abs(enableToAutoGap - autoToControllerModeGap) <= 1,
+            "temperature common-page top controls use one evenly distributed gap");
     require(controllerModeLabelRect.right() < controllerModeComboRect.left(),
             "temperature controller mode label sits immediately before the combo");
     require(controllerModeComboRect.left() - controllerModeLabelRect.right() - 1 <= 1,
@@ -6485,6 +6493,14 @@ int main(int argc, char **argv)
         temperatureControllerModeField->size());
     require(sensorControllerModeFieldRect == professionalControllerModeFieldRect,
             "temperature sensor-config mode field matches the professional-parameter reference position");
+    const QRect sensorModelFieldRect(
+        sensorModelSelector1->parentWidget()->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
+        sensorModelSelector1->parentWidget()->size());
+    const int sensorTopBarToModelGap = sensorModelFieldRect.left() - topBarRectForMode.right() - 1;
+    const int sensorModelToModeGap = sensorControllerModeFieldRect.left() - sensorModelFieldRect.right() - 1;
+    require(sensorTopBarToModelGap >= 0 && sensorModelToModeGap >= 0 &&
+                std::abs(sensorTopBarToModelGap - sensorModelToModeGap) <= 1,
+            "temperature sensor-page top controls use one evenly distributed gap");
 
     auto *ntcR0Edit =
         temperaturePanel->findChild<QLineEdit *>(QStringLiteral("temperatureNtcR0EditChannel1"));
