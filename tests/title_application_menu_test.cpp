@@ -104,6 +104,14 @@ void sendMouseClick(QWidget *receiver)
     VaporViewTest::processEventsFor(80);
 }
 
+void sendMouseEnter(QWidget *receiver)
+{
+    require(receiver != nullptr, "mouse enter receiver exists");
+    QEvent event(QEvent::Enter);
+    QApplication::sendEvent(receiver, &event);
+    VaporViewTest::processEventsFor(80);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -156,6 +164,35 @@ int main(int argc, char **argv)
         require(!row->hasFocus() && !row->property("keyboardFocus").toBool(),
                 "opening title application menu leaves root rows unhighlighted");
     }
+
+    QToolButton *mouseFileRootRow = rootRows.first();
+    sendMouseEnter(mouseFileRootRow);
+    require(subMenu->isVisible(), "mouse hover opens the File submenu");
+    const QList<QToolButton *> fileSubmenuRows = visibleMenuRows(subMenu);
+    require(!fileSubmenuRows.isEmpty(), "File submenu exposes command rows");
+    require(!fileSubmenuRows.first()->hasFocus() &&
+                !fileSubmenuRows.first()->property("keyboardFocus").toBool(),
+            "mouse-opened submenu leaves its first row unhighlighted");
+
+    QToolButton *developerRootRow = rootRows.value(2);
+    sendMouseEnter(developerRootRow);
+    require(subMenu->isVisible(), "mouse hover opens the Developer submenu");
+    QToolButton *csvRateRow = findRow(subMenu, QStringLiteral("titleMenuDeviceCsvRecordingRateAction"));
+    require(csvRateRow != nullptr, "Developer submenu exposes the CSV-rate nested row");
+    sendMouseEnter(csvRateRow);
+    require(nestedMenu->isVisible(), "mouse hover opens the CSV-rate nested submenu");
+    const QList<QToolButton *> csvRateRows = visibleMenuRows(nestedMenu);
+    require(!csvRateRows.isEmpty(), "CSV-rate nested submenu exposes command rows");
+    require(!csvRateRows.first()->hasFocus() &&
+                !csvRateRows.first()->property("keyboardFocus").toBool(),
+            "mouse-opened nested submenu leaves its first row unhighlighted");
+
+    panel->hide();
+    subMenu->window()->hide();
+    nestedMenu->window()->hide();
+    VaporViewTest::processEventsFor(30);
+    titleMenuButton->click();
+    VaporViewTest::processEventsFor(80);
 
     QSet<QString> objectNames;
     for (QToolButton *row : rootRows)
