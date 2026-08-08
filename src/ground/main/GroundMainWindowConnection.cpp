@@ -404,7 +404,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
                     ? (state_->is_english_ ? QStringLiteral("Not ready") : QStringLiteral("未就绪"))
                     : (state_->is_english_ ? QStringLiteral("Ready to connect") : QStringLiteral("可以连接"));
         const QString deviceName = homeDeviceDisplayName(device, state_->is_english_);
-        label->setText(QStringLiteral("• %1").arg(deviceName));
+        label->setText(deviceName);
         label->setProperty("connected", connected);
         label->setProperty("state", stateKey);
         label->setToolTip(state_->is_english_

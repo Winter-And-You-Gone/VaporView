@@ -1055,7 +1055,16 @@ void requireHomeDeviceColumnsAligned(QWidget *scope)
         {
             require(capsule->alignment().testFlag(Qt::AlignHCenter),
                     "home device capsule text is horizontally centered");
+            require(!capsule->text().startsWith(QChar(0x2022)),
+                    "home device capsule names omit the leading bullet");
         }
+    }
+
+    for (int i = 1; i < columns.size(); ++i)
+    {
+        const int gap = columns.at(i)->geometry().left() - columns.at(i - 1)->geometry().right() - 1;
+        require(gap == 6,
+                "home device columns keep a 6px gap between the previous action and next capsule");
     }
 }
 

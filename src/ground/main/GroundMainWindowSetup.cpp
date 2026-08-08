@@ -1599,6 +1599,7 @@ void MainWindow::createTitleApplicationMenuPanel()
         nestedPanel->show();
         nestedPanel->raise();
         nestedPanel->activateWindow();
+        nestedPanel->setFocus(Qt::OtherFocusReason);
     };
 
     for (int sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex)
@@ -1694,6 +1695,7 @@ void MainWindow::createTitleApplicationMenuPanel()
                 subPanel->show();
                 subPanel->raise();
                 subPanel->activateWindow();
+                subPanel->setFocus(Qt::OtherFocusReason);
             }
             for (TitleApplicationMenuRow *row : *sectionRows)
             {
