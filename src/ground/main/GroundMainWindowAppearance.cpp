@@ -261,8 +261,15 @@ void MainWindow::loadModernStyleSheet()
 QString temperatureControllerConfigStyleSheet()
 {
     return QStringLiteral(
+        "QWidget#temperatureTitleStatusStrip { background-color: transparent; border: none; }"
+        "QWidget#temperatureTitleStatusStrip QWidget[temperatureTitleStatusField=\"true\"] { background-color: transparent; border: none; }"
+        "QWidget#temperatureTitleStatusStrip QLabel#fieldLabel { color: @vv-text; font-size: 13px; font-weight: 600; margin: 0px; padding: 0px; }"
+        "QWidget#temperatureTitleStatusStrip QLabel#highlightedValue { color: @vv-text; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 600; background-color: transparent; margin: 0px; padding: 0px; }"
+        "QWidget#temperatureTitleStatusStrip QLabel#rateLabel[temperatureControllerRateValue=\"true\"] { color: @vv-text; font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; font-size: 15px; font-weight: 700; margin: 0px; padding: 0px; }"
         "TemperatureControllerPanel QFrame#temperatureConfigCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
         "TemperatureControllerPanel QFrame#temperatureControllerControlsCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
+        "TemperatureControllerPanel QWidget#temperatureConfigPlotContainer { background-color: transparent; border: none; }"
+        "TemperatureControllerPanel QWidget#temperatureControllerModeField { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
         "TemperatureControllerPanel QFrame#temperatureChannelTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
         "TemperatureControllerPanel QFrame#temperatureCommonSettingsSubTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
         "TemperatureControllerPanel QFrame#temperatureChannelSubTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"

@@ -4545,12 +4545,17 @@ void MainWindow::setupDataPanels()
                 ? VaporView::CommandId::DisconnectDevice
                 : VaporView::CommandId::ConnectDevice);
     });
+    state_->temperature_controller_panel_ = new TemperatureControllerPanel(this);
     temperatureTitleLayout->addWidget(state_->temperature_title_action_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    if (QWidget *temperatureTitleStatus = state_->temperature_controller_panel_->titleStatusWidget())
+    {
+        temperatureTitleStatus->setVisible(true);
+        temperatureTitleLayout->addWidget(temperatureTitleStatus, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    }
     temperatureTitleLayout->addStretch(1);
     updateTemperatureControllerTitleText();
     temperatureLayout->addWidget(temperatureTitleBar);
 
-    state_->temperature_controller_panel_ = new TemperatureControllerPanel(this);
     connect(state_->temperature_controller_panel_, &TemperatureControllerPanel::targetTemperatureRequested, this, [this](quint8 channel, double celsius) {
         VaporView::TemperatureControllerCommand command;
         command.channel = channel;

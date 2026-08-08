@@ -215,6 +215,7 @@ class TemperatureControllerPanel : public QWidget
 
 public:
     explicit TemperatureControllerPanel(QWidget *parent = nullptr);
+    QWidget *titleStatusWidget() const;
     void updateData(const VaporView::TemperatureControllerData& controllerData);
     void updateRate(double hz);
     void setEnglish(bool english);
@@ -381,6 +382,9 @@ private:
     QStackedWidget *channel_stack_ = nullptr;
     QStackedWidget *sub_page_bar_stack_ = nullptr;
     TemperatureTrendPlotWidget *temperature_plot_ = nullptr;
+    QWidget *temperature_plot_container_ = nullptr;
+    QWidget *title_status_strip_ = nullptr;
+    QWidget *controller_mode_field_ = nullptr;
     QLabel *rate_title_lbl_ = nullptr;
     QLabel *rate_label_ = nullptr;
     QLabel *internal_temperature_label_ = nullptr;

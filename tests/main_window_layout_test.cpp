@@ -5074,6 +5074,19 @@ int main(int argc, char **argv)
     auto *temperaturePanel = window.findChild<TemperatureControllerPanel *>();
     require(temperaturePanel != nullptr,
             "temperature controller panel exists for pending command refresh checks");
+    auto *temperaturePageForLayout = window.findChild<QWidget *>(QStringLiteral("temperaturePage"));
+    require(temperaturePageForLayout != nullptr,
+            "temperature page exists for controller layout checks");
+    auto findTemperatureStatusLabel = [&window](const char *propertyName) -> QLabel * {
+        for (QLabel *label : window.findChildren<QLabel *>())
+        {
+            if (label->property(propertyName).toBool())
+            {
+                return label;
+            }
+        }
+        return nullptr;
+    };
     auto *controllerModeCombo =
         temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureControllerModeCombo"));
     QLabel *controllerModeLabel = nullptr;
@@ -5086,7 +5099,7 @@ int main(int argc, char **argv)
         }
     }
     auto *temperatureStatusRateLabel =
-        temperaturePanel->findChild<QLabel *>(QStringLiteral("rateLabel"));
+        findTemperatureStatusLabel("temperatureControllerRateValue");
     auto *targetSpin =
         temperaturePanel->findChild<QDoubleSpinBox *>(QStringLiteral("temperatureTargetSpinChannel1"));
     auto *enableSwitch =
@@ -5165,33 +5178,39 @@ int main(int argc, char **argv)
     clickWidget(temperatureNavButton, 150);
     activateLayouts(&window);
     requireCardTitleMouseSelectionAndCopy(controllerModeLabel);
-    auto *temperaturePageForLayout = window.findChild<QWidget *>(QStringLiteral("temperaturePage"));
     require(temperaturePageForLayout != nullptr && temperaturePageForLayout->isVisible(),
             "temperature page is visible for controller layout checks");
-    auto *temperatureStatusLayout = qobject_cast<QGridLayout *>(
-        temperaturePanel->layout() ? temperaturePanel->layout()->itemAt(0)->layout() : nullptr);
-    auto statusLabelAt = [temperatureStatusLayout](int column) {
-        return temperatureStatusLayout
-            ? qobject_cast<QLabel *>(temperatureStatusLayout->itemAtPosition(0, column)->widget())
-            : nullptr;
-    };
-    QLabel *internalTemperatureStatusLabel = statusLabelAt(0);
-    QLabel *internalTemperatureStatusValue = statusLabelAt(1);
-    QLabel *errorCodeStatusLabel = statusLabelAt(2);
-    QLabel *errorCodeStatusValue = statusLabelAt(3);
-    QLabel *pollingRateStatusLabel = statusLabelAt(4);
-    QLabel *pollingRateStatusValue = statusLabelAt(5);
+    auto *temperatureTitleStatusStrip =
+        temperaturePageForLayout->findChild<QWidget *>(QStringLiteral("temperatureTitleStatusStrip"));
+    QLabel *internalTemperatureStatusLabel =
+        findTemperatureStatusLabel("temperatureControllerInternalTemperatureTitle");
+    QLabel *internalTemperatureStatusValue =
+        findTemperatureStatusLabel("temperatureControllerInternalTemperatureValue");
+    QLabel *errorCodeStatusLabel =
+        findTemperatureStatusLabel("temperatureControllerErrorCodeTitle");
+    QLabel *errorCodeStatusValue =
+        findTemperatureStatusLabel("temperatureControllerErrorCodeValue");
+    QLabel *pollingRateStatusLabel =
+        findTemperatureStatusLabel("temperatureControllerRateTitle");
+    QLabel *pollingRateStatusValue = temperatureStatusRateLabel;
     require(internalTemperatureStatusLabel != nullptr && internalTemperatureStatusValue != nullptr &&
                 errorCodeStatusLabel != nullptr && errorCodeStatusValue != nullptr &&
-                pollingRateStatusLabel != nullptr && pollingRateStatusValue != nullptr,
-            "temperature, error, and polling-rate fields exist in the top status row");
+                pollingRateStatusLabel != nullptr && pollingRateStatusValue != nullptr &&
+                temperatureTitleStatusStrip != nullptr && temperatureTitleStatusStrip->isVisible(),
+            "temperature, error, and polling-rate fields exist in the title-bar status strip");
     require((internalTemperatureStatusValue->alignment() & Qt::AlignHorizontal_Mask) == Qt::AlignLeft &&
                 (errorCodeStatusValue->alignment() & Qt::AlignHorizontal_Mask) == Qt::AlignLeft &&
                 (pollingRateStatusValue->alignment() & Qt::AlignHorizontal_Mask) == Qt::AlignLeft,
-            "temperature status values align toward their labels");
+            "temperature title status values align toward their labels");
     require(internalTemperatureStatusLabel->width() < controllerModeLabel->width() &&
                 errorCodeStatusLabel->width() < controllerModeLabel->width(),
             "temperature and error labels do not reserve controller-mode label width");
+    auto leftInTitleStatus = [temperatureTitleStatusStrip](QWidget *widget) {
+        return widget->mapTo(temperatureTitleStatusStrip, QPoint(0, 0)).x();
+    };
+    auto rightInTitleStatus = [temperatureTitleStatusStrip](QWidget *widget) {
+        return widget->mapTo(temperatureTitleStatusStrip, QPoint(0, 0)).x() + widget->width();
+    };
     require(internalTemperatureStatusValue->x() -
                     (internalTemperatureStatusLabel->x() + internalTemperatureStatusLabel->width()) <= 12 &&
                 errorCodeStatusValue->x() -
@@ -5201,15 +5220,20 @@ int main(int argc, char **argv)
                 pollingRateStatusLabel->property("temperatureControllerRateTitle").toBool() &&
                 pollingRateStatusValue == temperatureStatusRateLabel &&
                 pollingRateStatusValue->property("temperatureControllerRateValue").toBool(),
-            "temperature status row describes the Hz value as polling rate");
-    require(pollingRateStatusLabel->x() -
-                    (errorCodeStatusValue->x() + errorCodeStatusValue->width()) <= 12 &&
+            "temperature title status strip describes the Hz value as polling rate");
+    require(leftInTitleStatus(pollingRateStatusLabel) -
+                    rightInTitleStatus(errorCodeStatusValue) <= 16 &&
                 pollingRateStatusValue->x() -
                     (pollingRateStatusLabel->x() + pollingRateStatusLabel->width()) <= 12,
-            "polling-rate label and value follow the error code without stretch spacing");
+            "polling-rate label and value follow the error code in the title bar");
     require(pollingRateStatusValue->fontMetrics().height() >
                 errorCodeStatusValue->fontMetrics().height(),
             "temperature polling-rate value and Hz unit use a larger font");
+    for (QLabel *titleStatusLabel : {internalTemperatureStatusLabel, errorCodeStatusLabel, pollingRateStatusLabel})
+    {
+        requireSelectableCardTitle(titleStatusLabel,
+                                   "RD105 title-bar status field names remain selectable and copyable");
+    }
     QLabel *temperatureControllerTitleLabel = nullptr;
     const QList<QLabel*> temperaturePageTitleLabels =
         temperaturePageForLayout->findChildren<QLabel *>(QStringLiteral("sectionTitleLabel"));
@@ -5319,13 +5343,15 @@ int main(int argc, char **argv)
                 temperatureTitleLayout != nullptr &&
                 temperatureTitleLayout->indexOf(temperatureTitleActionButton) ==
                     temperatureTitleLayout->indexOf(temperatureTitlePortCombo) + 1 &&
+                temperatureTitleLayout->indexOf(temperatureTitleStatusStrip) ==
+                    temperatureTitleLayout->indexOf(temperatureTitleActionButton) + 1 &&
                 temperatureTitleActionButton->property("temperatureTitleAction").toBool() &&
                 temperatureTitleActionButton->property("temperatureTitleCommand").toString() == QStringLiteral("connect") &&
                 temperatureTitleActionButton->text().isEmpty() &&
                 !temperatureTitleActionButton->icon().isNull() &&
                 temperatureTitleActionButton->iconSize() == QSize(18, 18) &&
                 temperatureTitleActionButton->size() == QSize(32, 32),
-            "temperature controller title-bar connection action is one icon-only state button after the serial selector");
+            "temperature controller title bar places status fields after the icon-only connection action");
     require(temperatureTitleActionButton->isEnabled(),
             "temperature controller title-bar state action is usable in local serial mode");
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
@@ -5372,6 +5398,10 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureChannelSelectorButton2"));
     auto *temperatureCommonSettingsButton =
         temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureCommonSettingsButton"));
+    auto *temperatureConfigPlotContainer =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureConfigPlotContainer"));
+    auto *temperatureControllerModeField =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureControllerModeField"));
     QWidget *temperatureConfigPlot = nullptr;
     const QList<QWidget*> controllerTrendPlots =
         temperaturePanel->findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot"));
@@ -5398,8 +5428,10 @@ int main(int argc, char **argv)
                 temperatureConfigChannelButton1 != nullptr &&
                 temperatureConfigChannelButton2 != nullptr &&
                 temperatureCommonSettingsButton != nullptr &&
+                temperatureConfigPlotContainer != nullptr &&
+                temperatureControllerModeField != nullptr &&
                 temperatureConfigPlot != nullptr,
-            "temperature controller page exposes a top channel selector and a full-width trend plot");
+            "temperature controller page exposes a top channel selector and a trend plot with a mode overlay");
     require(temperatureConfigPlot->sizePolicy().verticalPolicy() == QSizePolicy::Fixed &&
                 temperatureControllerContentRow->sizePolicy().verticalPolicy() == QSizePolicy::Fixed,
             "temperature controller config plot and content row do not expand vertically with the page");
@@ -5414,8 +5446,10 @@ int main(int argc, char **argv)
                 temperatureSubPageBarStack->parentWidget() == temperatureControllerLeftConfigColumn &&
                 temperatureControllerControlsCard->parentWidget() == temperatureControllerLeftConfigColumn &&
                 temperatureChannelStack->parentWidget() == temperatureControllerControlsCard &&
-                temperatureConfigPlot->parentWidget() == temperatureControllerContentRow,
-            "temperature card uses the screenshot layout: top selector above left controls and external lower selector");
+                temperatureConfigPlotContainer->parentWidget() == temperatureControllerContentRow &&
+                temperatureConfigPlot->parentWidget() == temperatureConfigPlotContainer &&
+                temperatureControllerModeField->parentWidget() == temperatureConfigPlotContainer,
+            "temperature card uses the screenshot layout with the mode field over the trend plot");
     require(temperatureConfigChannelButton1->parentWidget() == temperatureChannelTopBar &&
                 temperatureConfigChannelButton2->parentWidget() == temperatureChannelTopBar &&
                 temperatureCommonSettingsButton->parentWidget() == temperatureChannelTopBar,
@@ -5441,17 +5475,21 @@ int main(int argc, char **argv)
                 temperatureConfigCard->minimumWidth() == 0 &&
                 temperatureConfigCard->sizePolicy().horizontalPolicy() == QSizePolicy::Ignored,
             "temperature controller card width follows the available page width instead of the active page size hint");
-    const QRect temperatureHeaderRateRect(temperatureStatusRateLabel->mapTo(temperaturePanel, QPoint(0, 0)),
-                                          temperatureStatusRateLabel->size());
-    const QRect controllerModeLabelRect(controllerModeLabel->mapTo(temperaturePanel, QPoint(0, 0)),
+    const QRect controllerModeFieldRect(
+        temperatureControllerModeField->mapTo(temperatureConfigPlotContainer, QPoint(0, 0)),
+        temperatureControllerModeField->size());
+    const QRect controllerModeLabelRect(controllerModeLabel->mapTo(temperatureControllerModeField, QPoint(0, 0)),
                                         controllerModeLabel->size());
-    const QRect controllerModeComboRect(controllerModeCombo->mapTo(temperaturePanel, QPoint(0, 0)),
+    const QRect controllerModeComboRect(controllerModeCombo->mapTo(temperatureControllerModeField, QPoint(0, 0)),
                                         controllerModeCombo->size());
-    require(temperatureHeaderRateRect.right() < controllerModeLabelRect.left() &&
-                controllerModeLabelRect.right() < controllerModeComboRect.left() &&
-                std::abs(temperatureHeaderRateRect.center().y() - controllerModeLabelRect.center().y()) <= 2 &&
-                std::abs(controllerModeLabelRect.center().y() - controllerModeComboRect.center().y()) <= 2,
-            "temperature controller mode label and combo sit on the status row to the right of Hz");
+    require(controllerModeFieldRect.top() <= 2,
+            "temperature controller mode field is top-aligned on the trend plot");
+    require(temperatureConfigPlotContainer->rect().right() - controllerModeFieldRect.right() <= 2,
+            "temperature controller mode field is right-aligned on the trend plot");
+    require(controllerModeLabelRect.right() < controllerModeComboRect.left(),
+            "temperature controller mode label sits immediately before the combo");
+    require(std::abs(controllerModeLabelRect.center().y() - controllerModeComboRect.center().y()) <= 2,
+            "temperature controller mode label and combo are vertically centered together");
     const QRect topRowRectInCard(temperatureChannelTopRow->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                  temperatureChannelTopRow->size());
     const QRect selectorRowRectInTopRow(temperatureChannelSelectorRow->mapTo(temperatureChannelTopRow, QPoint(0, 0)),

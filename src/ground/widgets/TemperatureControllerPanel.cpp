@@ -1522,6 +1522,11 @@ TemperatureControllerPanel::TemperatureControllerPanel(QWidget *parent)
     setupUi();
 }
 
+QWidget *TemperatureControllerPanel::titleStatusWidget() const
+{
+    return title_status_strip_;
+}
+
 bool TemperatureControllerPanel::eventFilter(QObject *watched, QEvent *event)
 {
     if (watched->property("temperatureTopControlAlignmentHost").toBool() &&
@@ -1636,15 +1641,22 @@ void TemperatureControllerPanel::setupUi()
     layout->setContentsMargins(12, 10, 12, 12);
     layout->setSpacing(10);
 
-    auto *statusLayout = new QGridLayout();
-    statusLayout->setHorizontalSpacing(8);
-    statusLayout->setVerticalSpacing(6);
+    title_status_strip_ = new QWidget(this);
+    title_status_strip_->setObjectName(QStringLiteral("temperatureTitleStatusStrip"));
+    title_status_strip_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    title_status_strip_->setFixedHeight(28);
+    title_status_strip_->setVisible(false);
+    auto *statusLayout = new QHBoxLayout(title_status_strip_);
+    statusLayout->setContentsMargins(0, 0, 0, 0);
+    statusLayout->setSpacing(10);
     internal_temperature_lbl_ = new QLabel(this);
     internal_temperature_lbl_->setObjectName(QStringLiteral("fieldLabel"));
+    internal_temperature_lbl_->setProperty("temperatureControllerInternalTemperatureTitle", true);
     internal_temperature_lbl_->setMinimumHeight(22);
     setFixedTextLabelWidth(internal_temperature_lbl_, temperatureControllerCompactStatusLabelWidthCandidates(), 4);
     internal_temperature_label_ = new QLabel(QStringLiteral("--- °C"), this);
     internal_temperature_label_->setObjectName(QStringLiteral("highlightedValue"));
+    internal_temperature_label_->setProperty("temperatureControllerInternalTemperatureValue", true);
     internal_temperature_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     internal_temperature_label_->setMinimumHeight(22);
     setFixedNumericLabelWidth(internal_temperature_label_,
@@ -1652,10 +1664,12 @@ void TemperatureControllerPanel::setupUi()
                               4);
     error_code_lbl_ = new QLabel(this);
     error_code_lbl_->setObjectName(QStringLiteral("fieldLabel"));
+    error_code_lbl_->setProperty("temperatureControllerErrorCodeTitle", true);
     error_code_lbl_->setMinimumHeight(22);
     setFixedTextLabelWidth(error_code_lbl_, temperatureControllerCompactStatusLabelWidthCandidates(), 4);
     error_code_label_ = new QLabel(QStringLiteral("0x0000"), this);
     error_code_label_->setObjectName(QStringLiteral("highlightedValue"));
+    error_code_label_->setProperty("temperatureControllerErrorCodeValue", true);
     error_code_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     error_code_label_->setMinimumHeight(22);
     setFixedNumericLabelWidth(error_code_label_,
@@ -1671,6 +1685,7 @@ void TemperatureControllerPanel::setupUi()
     controller_mode_lbl_->setProperty("temperatureControllerModeLabel", true);
     controller_mode_lbl_->setMinimumHeight(22);
     setFixedTextLabelWidth(controller_mode_lbl_, temperatureControllerStatusLabelWidthCandidates(), 4);
+    controller_mode_lbl_->setFixedHeight(36);
     controller_mode_combo_ = new SingleLevelPopupComboBox(this);
     configureSingleLevelComboCheckIcon(static_cast<SingleLevelPopupComboBox *>(controller_mode_combo_));
     controller_mode_combo_->setObjectName(QStringLiteral("temperatureControllerModeCombo"));
@@ -1690,16 +1705,40 @@ void TemperatureControllerPanel::setupUi()
     rate_label_->setMinimumHeight(22);
     setFixedNumericLabelWidth(rate_label_, {QStringLiteral("-999.9 Hz"), QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 4);
     polishNumericLabel(rate_label_);
-    statusLayout->addWidget(internal_temperature_lbl_, 0, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    statusLayout->addWidget(internal_temperature_label_, 0, 1, Qt::AlignVCenter | Qt::AlignLeft);
-    statusLayout->addWidget(error_code_lbl_, 0, 2, Qt::AlignVCenter | Qt::AlignLeft);
-    statusLayout->addWidget(error_code_label_, 0, 3, Qt::AlignVCenter | Qt::AlignLeft);
-    statusLayout->addWidget(rate_title_lbl_, 0, 4, Qt::AlignVCenter | Qt::AlignLeft);
-    statusLayout->addWidget(rate_label_, 0, 5, Qt::AlignVCenter | Qt::AlignLeft);
-    statusLayout->addWidget(controller_mode_lbl_, 0, 7, Qt::AlignVCenter | Qt::AlignLeft);
-    statusLayout->addWidget(controller_mode_combo_, 0, 8, Qt::AlignVCenter | Qt::AlignLeft);
-    statusLayout->setColumnStretch(6, 1);
-    layout->addLayout(statusLayout);
+
+    auto makeTitleStatusField = [this, statusLayout](const QString& objectName, QLabel *label, QLabel *value) {
+        auto *field = new QWidget(title_status_strip_);
+        field->setObjectName(objectName);
+        field->setProperty("temperatureTitleStatusField", true);
+        field->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        field->setFixedHeight(24);
+        auto *fieldLayout = new QHBoxLayout(field);
+        fieldLayout->setContentsMargins(0, 0, 0, 0);
+        fieldLayout->setSpacing(4);
+        fieldLayout->addWidget(label, 0, Qt::AlignVCenter | Qt::AlignLeft);
+        fieldLayout->addWidget(value, 0, Qt::AlignVCenter | Qt::AlignLeft);
+        statusLayout->addWidget(field, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    };
+    makeTitleStatusField(QStringLiteral("temperatureTitleInternalTemperatureField"),
+                         internal_temperature_lbl_,
+                         internal_temperature_label_);
+    makeTitleStatusField(QStringLiteral("temperatureTitleErrorCodeField"),
+                         error_code_lbl_,
+                         error_code_label_);
+    makeTitleStatusField(QStringLiteral("temperatureTitlePollingRateField"),
+                         rate_title_lbl_,
+                         rate_label_);
+
+    controller_mode_field_ = new QWidget(this);
+    controller_mode_field_->setObjectName(QStringLiteral("temperatureControllerModeField"));
+    controller_mode_field_->setAttribute(Qt::WA_StyledBackground, true);
+    controller_mode_field_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    controller_mode_field_->setFixedHeight(42);
+    auto *controllerModeLayout = new QHBoxLayout(controller_mode_field_);
+    controllerModeLayout->setContentsMargins(8, 3, 4, 3);
+    controllerModeLayout->setSpacing(6);
+    controllerModeLayout->addWidget(controller_mode_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    controllerModeLayout->addWidget(controller_mode_combo_, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
     auto *configCard = new QFrame(this);
     configCard->setObjectName(QStringLiteral("temperatureConfigCard"));
@@ -1826,12 +1865,22 @@ void TemperatureControllerPanel::setupUi()
     leftConfigColumnLayout->addWidget(controlsCard, 0);
     contentRowLayout->addWidget(leftConfigColumn, 0, Qt::AlignTop);
 
-    temperature_plot_ = new TemperatureTrendPlotWidget(contentRow);
+    temperature_plot_container_ = new QWidget(contentRow);
+    temperature_plot_container_->setObjectName(QStringLiteral("temperatureConfigPlotContainer"));
+    temperature_plot_container_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    temperature_plot_container_->setFixedHeight(kTemperatureControllerConfigPlotHeight);
+    auto *temperaturePlotLayout = new QGridLayout(temperature_plot_container_);
+    temperaturePlotLayout->setContentsMargins(0, 0, 0, 0);
+    temperaturePlotLayout->setSpacing(0);
+
+    temperature_plot_ = new TemperatureTrendPlotWidget(temperature_plot_container_);
     temperature_plot_->setProperty("temperatureConfigPlot", true);
     temperature_plot_->setCompactMode(true);
     temperature_plot_->setFixedHeight(kTemperatureControllerConfigPlotHeight);
     temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    contentRowLayout->addWidget(temperature_plot_, 1, Qt::AlignTop);
+    temperaturePlotLayout->addWidget(temperature_plot_, 0, 0);
+    temperaturePlotLayout->addWidget(controller_mode_field_, 0, 0, Qt::AlignTop | Qt::AlignRight);
+    contentRowLayout->addWidget(temperature_plot_container_, 1, Qt::AlignTop);
 
     configCardLayout->addWidget(contentRow, 0);
     sub_page_bar_stack_ = new QStackedWidget(leftConfigColumn);
