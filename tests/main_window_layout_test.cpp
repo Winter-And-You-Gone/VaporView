@@ -2449,22 +2449,40 @@ void requireTelemetryPillWidthSnapshotMatches(const QVector<TelemetryPillWidthSn
     }
 }
 
-void requireChineseWaveformTelemetryLabelsHaveNoAsciiColon(QWidget *summaryContainer,
-                                                           const char *message)
+void requireTelemetryLabelsHaveNoColon(QWidget *summaryContainer, const char *message)
 {
-    QFrame *rateSection = firstTelemetrySection(summaryContainer);
-    require(rateSection != nullptr, message);
-    const QStringList waveformNames = {
-        QStringLiteral("原始波形"),
-        QStringLiteral("谐波波形"),
-        QStringLiteral("波形采集")
-    };
-    for (const QString& waveformName : waveformNames)
+    require(summaryContainer != nullptr, message);
+    const QList<QLabel*> labels = summaryContainer->findChildren<QLabel *>();
+    require(!labels.isEmpty(), message);
+    for (QLabel *label : labels)
     {
-        QFrame *pill = findTelemetryPillByName(rateSection, waveformName);
-        require(pill != nullptr, message);
-        QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
-        require(nameLabel != nullptr && nameLabel->text() == waveformName, message);
+        require(label != nullptr &&
+                    !label->text().contains(QLatin1Char(':')) &&
+                    !label->text().contains(QStringLiteral("：")),
+                message);
+    }
+}
+
+void requireTelemetryLabelsFit(QWidget *summaryContainer, const char *message)
+{
+    require(summaryContainer != nullptr, message);
+    const QList<QLabel*> labels = summaryContainer->findChildren<QLabel *>();
+    require(!labels.isEmpty(), message);
+    for (QLabel *label : labels)
+    {
+        if (label->text().isEmpty())
+        {
+            continue;
+        }
+        const int textWidth = label->fontMetrics().horizontalAdvance(label->text());
+        if (textWidth > label->width() + 1)
+        {
+            std::cerr << "Telemetry label clipped: object=" << label->objectName().toStdString()
+                      << " text='" << label->text().toStdString()
+                      << "' textWidth=" << textWidth
+                      << " labelWidth=" << label->width() << '\n';
+        }
+        require(textWidth <= label->width() + 1, message);
     }
 }
 
@@ -2808,9 +2826,12 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireTelemetrySummaryPillsOrdered(
         languageTelemetrySummaryContainer,
         "language overview telemetry capsules start without overlap");
-    requireChineseWaveformTelemetryLabelsHaveNoAsciiColon(
+    requireTelemetryLabelsHaveNoColon(
         languageTelemetrySummaryContainer,
         "language overview Chinese waveform telemetry labels start without ASCII colons");
+    requireTelemetryLabelsFit(
+        languageTelemetrySummaryContainer,
+        "language overview telemetry labels fit at startup");
     const QVector<TelemetryPillWidthSnapshotItem> initialTelemetryPillWidths =
         telemetryPillWidthSnapshot(languageTelemetrySummaryContainer);
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
@@ -2844,6 +2865,12 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireTelemetrySummaryPillsOrdered(
         languageTelemetrySummaryContainer,
         "language overview telemetry capsules stay ordered in English");
+    requireTelemetryLabelsHaveNoColon(
+        languageTelemetrySummaryContainer,
+        "language overview English telemetry labels stay without colons");
+    requireTelemetryLabelsFit(
+        languageTelemetrySummaryContainer,
+        "language overview telemetry labels fit in English");
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, true);
     require(QMetaObject::invokeMethod(&languageOverviewWindow,
                                       "onSwitchLanguage",
@@ -2874,9 +2901,12 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireTelemetrySummaryPillsOrdered(
         languageTelemetrySummaryContainer,
         "language overview telemetry capsules stay ordered after returning to Chinese");
-    requireChineseWaveformTelemetryLabelsHaveNoAsciiColon(
+    requireTelemetryLabelsHaveNoColon(
         languageTelemetrySummaryContainer,
         "language overview Chinese waveform telemetry labels stay without ASCII colons after language toggles");
+    requireTelemetryLabelsFit(
+        languageTelemetrySummaryContainer,
+        "language overview telemetry labels fit after returning to Chinese");
     requireTelemetryPillWidthSnapshotMatches(
         initialTelemetryPillWidths,
         telemetryPillWidthSnapshot(languageTelemetrySummaryContainer),
@@ -5044,8 +5074,8 @@ int main(int argc, char **argv)
     QLabel *homeDataTitle =
         homeDataSection->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryTitleLabel"));
     require(homeDataTitle != nullptr &&
-                (homeDataTitle->text() == QStringLiteral("数据：") ||
-                 homeDataTitle->text() == QStringLiteral("Data:")),
+                (homeDataTitle->text() == QStringLiteral("数据") ||
+                 homeDataTitle->text() == QStringLiteral("Data")),
             "home data availability row starts with a data title");
     bool homeDataHasEpsilon = false;
     const QList<QFrame*> dataPills =

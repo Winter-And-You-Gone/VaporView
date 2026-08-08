@@ -469,37 +469,37 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     };
     if (state_->is_english_)
     {
-        appendPacketRate(VaporView::MsgType::TelemetryBasic, QStringLiteral("Basic:"));
-        appendPacketRate(VaporView::MsgType::WaveformFeature, QStringLiteral("Feature:"));
-        appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("Status:"));
-        appendWaveformRate(1, QStringLiteral("Wave raw:"));
-        appendWaveformRate(4, QStringLiteral("Wave harm.:"));
-        rateRows << makeItem(QStringLiteral("Wave capture:"), actualWaveRate, connected && state_->remote_status_.wave_tcp_actual_rate_hz > 0.0f, frequencyWidthText);
-        linkRows << makeItem(QStringLiteral("Sky->Ground:"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("Ground->Sky:"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("Total:"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
-        appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON:"));
-        appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB:"));
-        appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP:"));
-        appendDevice(VaporView::SkyDeviceId::Lidar, 2000, QStringLiteral("Lidar:"));
-        appendDevice(VaporView::SkyDeviceId::WaveTcp, 3000, QStringLiteral("Wave:"));
+        appendPacketRate(VaporView::MsgType::TelemetryBasic, QStringLiteral("Basic"));
+        appendPacketRate(VaporView::MsgType::WaveformFeature, QStringLiteral("Feature"));
+        appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("Status"));
+        appendWaveformRate(1, QStringLiteral("Wave raw"));
+        appendWaveformRate(4, QStringLiteral("Wave harm."));
+        rateRows << makeItem(QStringLiteral("Wave capture"), actualWaveRate, connected && state_->remote_status_.wave_tcp_actual_rate_hz > 0.0f, frequencyWidthText);
+        linkRows << makeItem(QStringLiteral("Sky->Ground"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("Ground->Sky"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("Total"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
+        appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON"));
+        appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB"));
+        appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP"));
+        appendDevice(VaporView::SkyDeviceId::Lidar, 2000, QStringLiteral("Lidar"));
+        appendDevice(VaporView::SkyDeviceId::WaveTcp, 3000, QStringLiteral("Wave"));
     }
     else
     {
-        appendPacketRate(VaporView::MsgType::TelemetryBasic, QStringLiteral("基础:"));
-        appendPacketRate(VaporView::MsgType::WaveformFeature, QStringLiteral("特征值:"));
-        appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("状态:"));
+        appendPacketRate(VaporView::MsgType::TelemetryBasic, QStringLiteral("基础"));
+        appendPacketRate(VaporView::MsgType::WaveformFeature, QStringLiteral("特征值"));
+        appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("状态"));
         appendWaveformRate(1, QStringLiteral("原始波形"));
         appendWaveformRate(4, QStringLiteral("谐波波形"));
         rateRows << makeItem(QStringLiteral("波形采集"), actualWaveRate, connected && state_->remote_status_.wave_tcp_actual_rate_hz > 0.0f, frequencyWidthText);
         linkRows << makeItem(QStringLiteral("天→地"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("地→天"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("合"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
-        appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON："));
-        appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB："));
-        appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP："));
-        appendDevice(VaporView::SkyDeviceId::Lidar, 2000, QStringLiteral("Lidar："));
-        appendDevice(VaporView::SkyDeviceId::WaveTcp, 3000, QStringLiteral("波形："));
+        appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON"));
+        appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB"));
+        appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP"));
+        appendDevice(VaporView::SkyDeviceId::Lidar, 2000, QStringLiteral("Lidar"));
+        appendDevice(VaporView::SkyDeviceId::WaveTcp, 3000, QStringLiteral("波形"));
     }
 
     RemoteTelemetrySummarySections sections;
@@ -622,13 +622,12 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             nameLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
             nameLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             nameLabel->setTextFormat(Qt::PlainText);
-            const int compactHomeNameWidth =
-                nameLabel->fontMetrics().horizontalAdvance(item.label) + scalePixels(1);
             nameLabel->ensurePolished();
-            const int nameWidth = useSideTitle
-                ? nameLabel->fontMetrics().horizontalAdvance(item.label) + scalePixels(1)
-                : compactHomeNameWidth;
-            nameLabel->setMinimumWidth(nameWidth);
+            const int nameWidth =
+                std::max(nameLabel->sizeHint().width(),
+                         nameLabel->fontMetrics().horizontalAdvance(item.label)) +
+                scalePixels(useSideTitle ? 4 : 8);
+            nameLabel->setFixedWidth(nameWidth);
             nameLabel->setMinimumHeight(nameLabel->fontMetrics().height() + scalePixels(2));
             pillLayout->addWidget(nameLabel, 0, Qt::AlignVCenter);
 
@@ -646,27 +645,18 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             valueLabel->setTextFormat(Qt::PlainText);
             const bool compactHomeZeroFrequency =
                 !useSideTitle && !item.hasData && item.valueWidthText.endsWith(QStringLiteral("Hz"));
-            const bool compactHomeActualValueWidth =
-                compactHomeZeroFrequency || compactAvailabilityValues || item.valueWidthText.isEmpty();
-            const QString compactWidthValue = compactHomeActualValueWidth
-                ? valueText
-                : item.valueWidthText;
-            const int compactHomeValueWidth =
-                std::max(valueLabel->fontMetrics().horizontalAdvance(compactWidthValue),
-                         valueLabel->fontMetrics().horizontalAdvance(valueText)) + scalePixels(2);
             valueLabel->ensurePolished();
             valueLabel->setMinimumHeight(valueLabel->fontMetrics().height() + scalePixels(2));
             const QString widthValue = compactAvailabilityValues
                 ? (state_->is_english_ ? QStringLiteral("Yes") : QStringLiteral("有"))
                 : ((compactHomeZeroFrequency || item.valueWidthText.isEmpty()) ? valueText : item.valueWidthText);
             const int polishedValueWidth =
-                std::max(valueLabel->fontMetrics().horizontalAdvance(widthValue),
-                         valueLabel->fontMetrics().horizontalAdvance(valueText)) + scalePixels(2);
-            const int valueWidth = !useSideTitle && compactHomeActualValueWidth
-                ? compactHomeValueWidth
-                : polishedValueWidth;
-            valueLabel->setMinimumWidth(valueWidth);
-            valueLabel->setMaximumWidth(valueWidth);
+                std::max(valueLabel->sizeHint().width(),
+                         std::max(valueLabel->fontMetrics().horizontalAdvance(widthValue),
+                                  valueLabel->fontMetrics().horizontalAdvance(valueText))) +
+                scalePixels(useSideTitle ? 4 : 8);
+            const int valueWidth = polishedValueWidth;
+            valueLabel->setFixedWidth(valueWidth);
             pillLayout->addWidget(valueLabel, 0, Qt::AlignVCenter);
             if (!useSideTitle)
             {
@@ -750,7 +740,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                 auto *titleLabel = new QLabel(line);
                 titleLabel->setObjectName(QStringLiteral("homeTelemetrySummaryTitleLabel"));
                 titleLabel->setProperty("skyTelemetryTitle", true);
-                titleLabel->setText(title + (state_->is_english_ ? QStringLiteral(":") : QStringLiteral("：")));
+                titleLabel->setText(title);
                 titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
                 titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
                 titleLabel->ensurePolished();
