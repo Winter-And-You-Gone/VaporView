@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QStringList>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 
@@ -70,6 +71,113 @@ std::vector<QJsonObject> readJsonLines(const std::filesystem::path& path)
     return objects;
 }
 
+int eventIndex(const std::vector<QJsonObject>& objects, const QString& event)
+{
+    for (int index = 0; index < static_cast<int>(objects.size()); ++index)
+    {
+        if (objects.at(index).value(QStringLiteral("event")).toString() == event)
+        {
+            return index;
+        }
+    }
+    return -1;
+}
+
+struct ShutdownProbe
+{
+    std::filesystem::path directory;
+
+    ~ShutdownProbe() noexcept
+    {
+        VaporView::LifecycleBreadcrumbTest::writeLifecycleBreadcrumbToDirectory(
+            directory, "shutdown_probe_destroyed");
+    }
+};
+
+bool shutdownOrderIsValid(bool writeNormalProcessExitEarly)
+{
+    QTemporaryDir directory;
+    require(directory.isValid(), QStringLiteral("temporary directory is valid"));
+
+    const std::filesystem::path path = toPath(directory.path());
+    {
+        ShutdownProbe probe{path};
+        require(VaporView::LifecycleBreadcrumbTest::writeLifecycleBreadcrumbToDirectory(
+                    path, "process_entry"),
+                QStringLiteral("process_entry breadcrumb write succeeds"));
+        require(VaporView::LifecycleBreadcrumbTest::writeLifecycleBreadcrumbToDirectory(
+                    path, "qapplication_constructed"),
+                QStringLiteral("qapplication_constructed breadcrumb write succeeds"));
+        require(VaporView::LifecycleBreadcrumbTest::writeLifecycleBreadcrumbToDirectory(
+                    path, "logging_initialized"),
+                QStringLiteral("logging_initialized breadcrumb write succeeds"));
+        require(VaporView::LifecycleBreadcrumbTest::writeLifecycleBreadcrumbToDirectory(
+                    path, "main_window_created"),
+                QStringLiteral("main_window_created breadcrumb write succeeds"));
+        require(VaporView::LifecycleBreadcrumbTest::writeLifecycleBreadcrumbToDirectory(
+                    path, "app_exec_enter"),
+                QStringLiteral("app_exec_enter breadcrumb write succeeds"));
+        require(VaporView::LifecycleBreadcrumbTest::writeLifecycleBreadcrumbToDirectory(
+                    path, "about_to_quit"),
+                QStringLiteral("about_to_quit breadcrumb write succeeds"));
+        require(VaporView::LifecycleBreadcrumbTest::writeLifecycleBreadcrumbToDirectory(
+                    path, "app_exec_returned", 0),
+                QStringLiteral("app_exec_returned breadcrumb write succeeds"));
+        if (writeNormalProcessExitEarly)
+        {
+            require(VaporView::LifecycleBreadcrumbTest::writeLifecycleBreadcrumbToDirectory(
+                        path, "normal_process_exit", 0),
+                    QStringLiteral("early normal_process_exit breadcrumb write succeeds"));
+        }
+    }
+    if (!writeNormalProcessExitEarly)
+    {
+        require(VaporView::LifecycleBreadcrumbTest::writeLifecycleBreadcrumbToDirectory(
+                    path, "normal_process_exit", 0),
+                QStringLiteral("normal_process_exit breadcrumb write succeeds"));
+    }
+
+    const std::vector<QJsonObject> objects = readJsonLines(
+        VaporView::LifecycleBreadcrumbTest::lifecycleBreadcrumbFilePath(path));
+    const QStringList requiredEvents = {
+        QStringLiteral("process_entry"),
+        QStringLiteral("qapplication_constructed"),
+        QStringLiteral("logging_initialized"),
+        QStringLiteral("main_window_created"),
+        QStringLiteral("app_exec_enter"),
+        QStringLiteral("about_to_quit"),
+        QStringLiteral("app_exec_returned"),
+        QStringLiteral("shutdown_probe_destroyed"),
+        QStringLiteral("normal_process_exit"),
+    };
+    for (const QString& event : requiredEvents)
+    {
+        if (eventIndex(objects, event) < 0)
+        {
+            return false;
+        }
+    }
+
+    return eventIndex(objects, QStringLiteral("process_entry")) <
+               eventIndex(objects, QStringLiteral("app_exec_enter")) &&
+           eventIndex(objects, QStringLiteral("app_exec_enter")) <
+               eventIndex(objects, QStringLiteral("about_to_quit")) &&
+           eventIndex(objects, QStringLiteral("about_to_quit")) <
+               eventIndex(objects, QStringLiteral("app_exec_returned")) &&
+           eventIndex(objects, QStringLiteral("app_exec_returned")) <
+               eventIndex(objects, QStringLiteral("shutdown_probe_destroyed")) &&
+           eventIndex(objects, QStringLiteral("shutdown_probe_destroyed")) <
+               eventIndex(objects, QStringLiteral("normal_process_exit"));
+}
+
+void testNormalProcessExitAfterShutdownDestructors()
+{
+    require(!shutdownOrderIsValid(true),
+            QStringLiteral("order check rejects normal_process_exit before shutdown destructors"));
+    require(shutdownOrderIsValid(false),
+            QStringLiteral("normal_process_exit follows shutdown destructors"));
+}
+
 void testNormalWrite()
 {
     QTemporaryDir directory;
@@ -130,8 +238,16 @@ int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
 
+    if (app.arguments().contains(QStringLiteral("--simulate-early-normal")))
+    {
+        require(shutdownOrderIsValid(true),
+                QStringLiteral("early normal_process_exit should fail order validation"));
+        return 0;
+    }
+
     testNormalWrite();
     testWriteFailureDoesNotThrow();
+    testNormalProcessExitAfterShutdownDestructors();
 
     std::cout << "lifecycle_breadcrumb_test passed\n";
     return 0;

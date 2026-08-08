@@ -23,6 +23,21 @@ function Test-IsAdministrator {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+function Get-RegistryValueOrMissing {
+    param(
+        [Parameter(Mandatory = $true)]
+        [psobject]$Item,
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    $property = $Item.PSObject.Properties[$Name]
+    if ($null -eq $property -or $null -eq $property.Value) {
+        return '<missing>'
+    }
+    return $property.Value
+}
+
 function Show-LocalDumpStatus {
     if (-not (Test-Path -LiteralPath $registryPath)) {
         Write-Host 'VaporView.exe LocalDumps is not configured.'
@@ -30,11 +45,24 @@ function Show-LocalDumpStatus {
     }
 
     $item = Get-ItemProperty -LiteralPath $registryPath
+    $dumpFolderValue = Get-RegistryValueOrMissing -Item $item -Name 'DumpFolder'
+    $dumpCountValue = Get-RegistryValueOrMissing -Item $item -Name 'DumpCount'
+    $dumpTypeValue = Get-RegistryValueOrMissing -Item $item -Name 'DumpType'
+    $configured = if ($dumpFolderValue -eq '<missing>' -or
+                      $dumpCountValue -eq '<missing>' -or
+                      $dumpTypeValue -eq '<missing>') {
+        'partial'
+    }
+    else {
+        'full'
+    }
+
     [pscustomobject]@{
+        Configured   = $configured
         RegistryPath = $registryPath
-        DumpFolder  = $item.DumpFolder
-        DumpCount   = $item.DumpCount
-        DumpType    = $item.DumpType
+        DumpFolder   = $dumpFolderValue
+        DumpCount    = $dumpCountValue
+        DumpType     = $dumpTypeValue
     } | Format-List
 }
 

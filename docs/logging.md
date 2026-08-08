@@ -40,16 +40,24 @@ order:
 - `app_exec_returned`
 - `normal_process_exit`
 
-`app_exec_returned` and `normal_process_exit` include the original `exit_code`
-returned by `QApplication::exec()`. Explicit early-return startup paths record
-`process_exit_requested` with `exit_code` and a narrow `reason_code`.
+`about_to_quit` means Qt has started its normal quit flow. `app_exec_returned`
+means the Qt event loop has returned and includes the original `exit_code` from
+`QApplication::exec()`. `normal_process_exit` means the normal VaporView/Qt
+lifecycle objects owned by the application runner have already been destroyed,
+and the outermost `main()` is about to return with the same `exit_code`. Explicit
+early-return startup paths record `process_exit_requested` with `exit_code` and a
+narrow `reason_code`.
 
 Interpretation is deliberately limited. If the final breadcrumb is
 `app_exec_enter`, the process disappeared while the Qt event loop was running,
 but this file alone cannot distinguish a crash, `ExitProcess`, or external
-termination. If the file contains `about_to_quit`, `app_exec_returned` with
-`exit_code=1`, and `normal_process_exit` with `exit_code=1`, then `main()` reached
-the normal return path and propagated exit code 1.
+termination. If the file contains `about_to_quit` and `app_exec_returned` but no
+`normal_process_exit`, the process did not reach the normal outer `main()` return
+point during the shutdown/destructor phase after `app.exec()` returned; the
+breadcrumb does not by itself distinguish crash, abort, or external termination.
+If the file contains `about_to_quit`, `app_exec_returned` with `exit_code=1`, and
+`normal_process_exit` with `exit_code=1`, then `main()` reached the normal return
+path after cleanup and propagated exit code 1.
 
 Breadcrumb records include UTC timestamp, process ID, thread ID, sequence,
 event, and optional exit/reason fields. They must not contain command lines,

@@ -169,11 +169,9 @@ void showMainWindow(MainWindow& window, VaporView::StartupSplash *splash)
     }
     mainWindowFade->start(QAbstractAnimation::DeleteWhenStopped);
 }
-}
 
-int main(int argc, char *argv[])
+int runApplication(int argc, char *argv[])
 {
-    VaporView::writeLifecycleBreadcrumb("process_entry");
     QApplication app(argc, argv);
     VaporView::writeLifecycleBreadcrumb("qapplication_constructed");
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, []() {
@@ -184,11 +182,10 @@ int main(int argc, char *argv[])
         VaporView::writeLifecycleBreadcrumb("process_exit_requested", exitCode, reasonCode);
         return exitCode;
     };
-    const auto runApplication = [&app]() {
+    const auto runEventLoop = [&app]() {
         VaporView::writeLifecycleBreadcrumb("app_exec_enter");
         const int exitCode = app.exec();
         VaporView::writeLifecycleBreadcrumb("app_exec_returned", exitCode);
-        VaporView::writeLifecycleBreadcrumb("normal_process_exit", exitCode);
         return exitCode;
     };
 
@@ -323,7 +320,7 @@ int main(int argc, char *argv[])
         {
             return requestProcessExit(1, "sky_runtime_start_failed");
         }
-        return runApplication();
+        return runEventLoop();
     }
 
     auto *startupSplash = new VaporView::StartupSplash;
@@ -386,5 +383,15 @@ int main(int argc, char *argv[])
         });
     });
 
-    return runApplication();
+    return runEventLoop();
+}
+
+}  // namespace
+
+int main(int argc, char *argv[])
+{
+    VaporView::writeLifecycleBreadcrumb("process_entry");
+    const int exitCode = runApplication(argc, argv);
+    VaporView::writeLifecycleBreadcrumb("normal_process_exit", exitCode);
+    return exitCode;
 }
