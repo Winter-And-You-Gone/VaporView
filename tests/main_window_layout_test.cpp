@@ -2561,6 +2561,44 @@ void requireMainWindowOuterBorder(MainWindow& window, bool dark, const char *mes
             message);
 }
 
+void requireEpsilonSectionTitleWidths(QWidget *epsilonPanel, bool english)
+{
+    require(epsilonPanel != nullptr, "language overview EPSILON panel exists");
+    const QList<QLabel*> sectionLabels =
+        epsilonPanel->findChildren<QLabel *>(QStringLiteral("epsilonSectionLabel"));
+    require(sectionLabels.size() == 3,
+            "language overview EPSILON panel exposes three section title labels");
+
+    bool sawWideEnglishTitle = false;
+    for (const QLabel *label : sectionLabels)
+    {
+        require(label != nullptr, "language overview EPSILON section title label exists");
+        const QFontMetrics metrics(label->font());
+        int maxLineWidth = 0;
+        const QStringList lines = label->text().split(QChar('\n'));
+        for (const QString& line : lines)
+        {
+            maxLineWidth = std::max(maxLineWidth, metrics.horizontalAdvance(line));
+        }
+        require(label->width() >= maxLineWidth + 4,
+                "language overview EPSILON section title fits its widest line");
+        if (english)
+        {
+            sawWideEnglishTitle = sawWideEnglishTitle || label->width() > 24;
+        }
+        else
+        {
+            require(label->width() <= 30,
+                    "language overview EPSILON Chinese section title stays compact");
+        }
+    }
+    if (english)
+    {
+        require(sawWideEnglishTitle,
+                "language overview EPSILON English section titles widen beyond the compact Chinese rail");
+    }
+}
+
 void requireHomeOverviewLanguageWidthRoundTrip()
 {
     MainWindow languageOverviewWindow;
@@ -2579,6 +2617,9 @@ void requireHomeOverviewLanguageWidthRoundTrip()
         qobject_cast<QGroupBox *>(languageHomeOverviewSplitter->widget(0));
     require(languageDeviceOverviewCard != nullptr,
             "language overview window exposes the device overview card");
+    auto *languageEpsilonPanel =
+        languageOverviewWindow.findChild<QWidget *>(QStringLiteral("epsilonPanel"));
+    requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
     requireHomeDeviceColumnsAligned(&languageOverviewWindow);
     requireHomeDeviceMinimumWidthMatchesControls(&languageOverviewWindow);
 
@@ -2602,6 +2643,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
                        sizes.at(0) > initialDeviceOverviewWidth;
             }),
             "language overview device card expands for English labels");
+    requireEpsilonSectionTitleWidths(languageEpsilonPanel, true);
     require(QMetaObject::invokeMethod(&languageOverviewWindow,
                                       "onSwitchLanguage",
                                       Qt::DirectConnection),
@@ -2615,6 +2657,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
                        std::abs(sizes.at(0) - initialDeviceOverviewWidth) <= 1;
             }),
             "language overview device card returns to the Chinese minimum width after language toggles");
+    requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
     languageOverviewWindow.close();
     require(processEventsUntil(1000, [&languageOverviewWindow]() {
                 return !languageOverviewWindow.isVisible();
