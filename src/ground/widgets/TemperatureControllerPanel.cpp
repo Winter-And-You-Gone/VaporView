@@ -1611,12 +1611,11 @@ void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
                                             enableFieldWidth -
                                             autoPidFieldWidth -
                                             controllerModeFieldWidth);
-    const int interFieldGap = controllerModeInCommonRow
-        ? std::max(36, availableWidth * 3 / 10)
-        : std::max(36, availableWidth * 3 / 5);
-    channel.common_top_leading_spacer->setFixedWidth(std::max(24, availableWidth / 5));
-    channel.common_top_middle_spacer->setFixedWidth(interFieldGap);
-    channel.common_top_mode_spacer->setFixedWidth(controllerModeInCommonRow ? interFieldGap : 0);
+    const int leadingGap = availableWidth / 5;
+    const int middleGap = availableWidth * 3 / 5;
+    channel.common_top_leading_spacer->setFixedWidth(leadingGap);
+    channel.common_top_middle_spacer->setFixedWidth(middleGap);
+    channel.common_top_mode_spacer->setFixedWidth(0);
     if (QLayout *layout = channel.common_top_controls->layout())
     {
         layout->invalidate();
@@ -1670,7 +1669,6 @@ void TemperatureControllerPanel::placeControllerModeFieldInTopControls(int chann
 
     QWidget *target = nullptr;
     QWidget *anchor = nullptr;
-    QWidget *modeSpacer = nullptr;
     if (selected_config_page_index_ < 2 &&
         channelIndex >= 0 &&
         channelIndex < static_cast<int>(channels_.size()))
@@ -1678,14 +1676,13 @@ void TemperatureControllerPanel::placeControllerModeFieldInTopControls(int chann
         ChannelWidgets& channel = channels_[channelIndex];
         if (subPageIndex == 0)
         {
-            target = channel.common_top_controls;
-            anchor = channel.auto_pid_field;
-            modeSpacer = channel.common_top_mode_spacer;
+            target = channel.common_top_controls->parentWidget();
+            anchor = channel.common_top_controls;
         }
         else if (subPageIndex == 2)
         {
-            target = channel.sensor_model_field;
-            anchor = channel.sensor_model_selector;
+            target = channel.sensor_model_field->parentWidget();
+            anchor = channel.sensor_model_field;
         }
     }
     if (!target)
@@ -1722,14 +1719,6 @@ void TemperatureControllerPanel::placeControllerModeFieldInTopControls(int chann
     }
 
     int desiredIndex = anchor ? targetLayout->indexOf(anchor) + 1 : targetLayout->count();
-    if (modeSpacer)
-    {
-        const int modeSpacerIndex = targetLayout->indexOf(modeSpacer);
-        if (modeSpacerIndex >= 0)
-        {
-            desiredIndex = modeSpacerIndex + 1;
-        }
-    }
     if (anchor && desiredIndex <= 0)
     {
         desiredIndex = targetLayout->count();
