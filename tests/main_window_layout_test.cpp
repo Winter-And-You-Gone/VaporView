@@ -5534,7 +5534,7 @@ int main(int argc, char **argv)
             "temperature controller mode label removes the gap before its combo");
     require(std::abs(controllerModeLabelRect.center().y() - controllerModeComboRect.center().y()) <= 2,
             "temperature controller mode label and combo are vertically centered together");
-    require(controllerModeComboEditRect.width() >= longestControllerModeTextWidth + 32,
+    require(controllerModeComboEditRect.width() >= longestControllerModeTextWidth + 48,
             "temperature controller mode combo reserves text padding beyond its longest option");
     controllerModeCombo->setCurrentIndex(initialControllerModeIndex);
     require(controllerModeFieldRect.right() >= temperatureChannelCommonTopControls1->width() - 1,
