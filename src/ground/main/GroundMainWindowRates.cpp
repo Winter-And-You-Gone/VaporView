@@ -61,51 +61,102 @@ void MainWindow::onGlobalRateChanged(const QString& text)
         rateResult.ptbDeviceRateAttempted && !rateResult.ptbDeviceRateSucceeded;
     if (epsilonDeviceRateFailed)
     {
-        log(state_->is_english_
-            ? "EPSILON output-rate command failed; the live stream recovery result is shown above."
-            : "EPSILON 输出频率下发失败；实时数据流恢复结果请查看上方日志。");
+        publishGroundLog(VaporView::LogLevel::Error,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_output_rate_command_failed"),
+                         QStringLiteral("EPSILON 输出频率下发失败。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("requested_rate_hz"), state_->epsilon_sample_rate_},
+                          {QStringLiteral("error_code"), QStringLiteral("COMMAND_VERIFY_FAILED")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("epsilon:output_rate:command_failed")}});
     }
     if (ptbDeviceRateFailed)
     {
-        log(QString(state_->is_english_
-            ? "PTB sample rate command failed for %1 Hz"
-            : "PTB采样频率命令下发失败：%1 Hz").arg(state_->ptb_sample_rate_));
+        publishGroundLog(VaporView::LogLevel::Error,
+                         QStringLiteral("device.pressure.command"),
+                         QStringLiteral("ptb_sample_rate_command_failed"),
+                         QStringLiteral("PTB210 采样频率命令下发失败。"),
+                         {{QStringLiteral("device"), QStringLiteral("PTB210")},
+                          {QStringLiteral("requested_rate_hz"), state_->ptb_sample_rate_},
+                          {QStringLiteral("error_code"), QStringLiteral("COMMAND_VERIFY_FAILED")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("ptb210:sample_rate:command_failed")}});
     }
 
     if (epsilonDeviceRateFailed || ptbDeviceRateFailed)
     {
-        log(state_->is_english_
-            ? "Host-side rates were updated, but one or more device output-rate commands failed."
-            : "主机侧频率已更新，但一个或多个设备输出频率命令失败。");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("sample_rate_apply_partial_failure"),
+                         QStringLiteral("主机侧频率已更新，但一个或多个设备输出频率命令失败。"),
+                         {{QStringLiteral("requested_rate_hz"), rate},
+                          {QStringLiteral("epsilon_command_failed"), epsilonDeviceRateFailed},
+                          {QStringLiteral("ptb_command_failed"), ptbDeviceRateFailed},
+                          {QStringLiteral("reason_code"), QStringLiteral("DEPENDENCY_UNAVAILABLE")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("sample_rate:apply:partial_failure")}});
     }
     else if (epsilonUsesCustomPacketRates)
     {
-        log(QString(state_->is_english_
-                        ? "All rates set to %1 Hz; EPSILON keeps the saved custom packet-rate profile."
-                        : "所有频率已设置为 %1 Hz；EPSILON 保持已保存的自定义包频率配置。")
-                .arg(rate));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("sample_rates_updated_custom_epsilon_profile"),
+                         QStringLiteral("所有频率已更新，EPSILON 保持已保存的自定义包频率配置。"),
+                         {{QStringLiteral("requested_rate_hz"), rate},
+                          {QStringLiteral("epsilon_rate_hz"), state_->epsilon_sample_rate_},
+                          {QStringLiteral("ptb_rate_hz"), state_->ptb_sample_rate_},
+                          {QStringLiteral("hmp_rate_hz"), state_->hmp_sample_rate_},
+                          {QStringLiteral("lidar_rate_hz"), state_->lidar_sample_rate_},
+                          {QStringLiteral("temperature_rate_hz"), state_->temperature_sample_rate_},
+                          {QStringLiteral("epsilon_packet_profile"), QStringLiteral("custom")},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     else
     {
-        log(QString(state_->is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("sample_rates_updated"),
+                         QStringLiteral("所有频率已更新。"),
+                         {{QStringLiteral("requested_rate_hz"), rate},
+                          {QStringLiteral("epsilon_rate_hz"), state_->epsilon_sample_rate_},
+                          {QStringLiteral("ptb_rate_hz"), state_->ptb_sample_rate_},
+                          {QStringLiteral("hmp_rate_hz"), state_->hmp_sample_rate_},
+                          {QStringLiteral("lidar_rate_hz"), state_->lidar_sample_rate_},
+                          {QStringLiteral("temperature_rate_hz"), state_->temperature_sample_rate_},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     if (skipEpsilonDeviceRate || skipPtbDeviceRate || skipHmpDeviceRate || skipLidarDeviceRate || skipTemperatureDeviceRate)
     {
-        log(state_->is_english_
-            ? "Devices set to No Set keep their output-rate commands disabled."
-            : "已选择“不设定”的设备保持不下发输出频率命令。");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("sample_rate_device_commands_skipped_unspecified"),
+                         QStringLiteral("已选择“不设定”的设备保持不下发输出频率命令。"),
+                         {{QStringLiteral("epsilon_skipped"), skipEpsilonDeviceRate},
+                          {QStringLiteral("ptb_skipped"), skipPtbDeviceRate},
+                          {QStringLiteral("hmp_skipped"), skipHmpDeviceRate},
+                          {QStringLiteral("lidar_skipped"), skipLidarDeviceRate},
+                          {QStringLiteral("temperature_skipped"), skipTemperatureDeviceRate},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     if (!skipPtbDeviceRate && state_->ptb_sample_rate_ != rate)
     {
-        log(QString(state_->is_english_
-            ? "PTB sample rate capped at %1 Hz"
-            : "PTB采样频率已限制为 %1 Hz").arg(state_->ptb_sample_rate_));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("ptb_sample_rate_capped"),
+                         QStringLiteral("PTB210 采样频率已按设备上限限制。"),
+                         {{QStringLiteral("device"), QStringLiteral("PTB210")},
+                          {QStringLiteral("requested_rate_hz"), rate},
+                          {QStringLiteral("effective_rate_hz"), state_->ptb_sample_rate_},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     if (!skipTemperatureDeviceRate && state_->temperature_sample_rate_ != rate)
     {
-        log(QString(state_->is_english_
-            ? "RD105 polling rate capped at %1 Hz"
-            : "RD105 轮询频率已限制为 %1 Hz").arg(state_->temperature_sample_rate_));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("temperature_polling_rate_capped"),
+                         QStringLiteral("RD105 轮询频率已按设备上限限制。"),
+                         {{QStringLiteral("device"), QStringLiteral("RD105")},
+                          {QStringLiteral("requested_rate_hz"), rate},
+                          {QStringLiteral("effective_rate_hz"), state_->temperature_sample_rate_},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }
 
@@ -126,32 +177,55 @@ void MainWindow::onGnssRateChanged(const QString& text)
         !skipDeviceRate);
     if (skipDeviceRate)
     {
-        log(state_->is_english_
-            ? "EPSILON output-rate command disabled; using the current device output."
-            : "已禁用 EPSILON 输出频率下发，使用设备当前输出。");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_output_rate_command_disabled"),
+                         QStringLiteral("已禁用 EPSILON 输出频率下发，使用设备当前输出。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("apply_device_rate"), false},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     else if (rateResult.epsilonDeviceRateAttempted && !rateResult.epsilonDeviceRateSucceeded)
     {
-        log(state_->is_english_
-            ? "EPSILON output-rate command failed; the live stream recovery result is shown above."
-            : "EPSILON 输出频率下发失败；实时数据流恢复结果请查看上方日志。");
+        publishGroundLog(VaporView::LogLevel::Error,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_output_rate_command_failed"),
+                         QStringLiteral("EPSILON 输出频率下发失败。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("requested_rate_hz"), state_->epsilon_sample_rate_},
+                          {QStringLiteral("error_code"), QStringLiteral("COMMAND_VERIFY_FAILED")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("epsilon:output_rate:command_failed")}});
     }
     else if (!rateResult.epsilonDeviceRateAttempted)
     {
-        log(state_->is_english_
-            ? "EPSILON output rate saved for the next connection."
-            : "EPSILON 输出频率已保存，将在下次连接时应用。");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_output_rate_saved_deferred"),
+                         QStringLiteral("EPSILON 输出频率已保存，将在下次连接时应用。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("requested_rate_hz"), state_->epsilon_sample_rate_},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     else if (epsilonUsesCustomPacketRates)
     {
-        log(QString(state_->is_english_
-                        ? "EPSILON grouped rate was set to %1 Hz, but the saved custom packet-rate profile remains active."
-                        : "EPSILON 分组频率已设置为 %1 Hz，但当前仍启用已保存的自定义包频率配置。")
-                .arg(state_->epsilon_sample_rate_));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_output_rate_updated_custom_profile_retained"),
+                         QStringLiteral("EPSILON 分组频率已更新，但仍使用已保存的自定义包频率配置。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("requested_rate_hz"), state_->epsilon_sample_rate_},
+                          {QStringLiteral("epsilon_packet_profile"), QStringLiteral("custom")},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     else
     {
-        log(QString(state_->is_english_ ? "EPSILON output rate set to %1 Hz" : "EPSILON 输出频率已设置为 %1 Hz").arg(state_->epsilon_sample_rate_));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_output_rate_updated"),
+                         QStringLiteral("EPSILON 输出频率已更新。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("requested_rate_hz"), state_->epsilon_sample_rate_},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }
 
@@ -170,9 +244,13 @@ void MainWindow::onPtbRateChanged(const QString& text)
         state_->local_connection_controller_->setPtbSampleRate(
             state_->ptb_sample_rate_,
             false);
-        log(state_->is_english_
-            ? "PTB sample-rate command disabled; using the current device output."
-            : "已禁用 PTB 采样频率下发，使用设备当前输出。");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.pressure.command"),
+                         QStringLiteral("ptb_sample_rate_command_disabled"),
+                         QStringLiteral("已禁用 PTB210 采样频率下发，使用设备当前输出。"),
+                         {{QStringLiteral("device"), QStringLiteral("PTB210")},
+                          {QStringLiteral("apply_device_rate"), false},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         return;
     }
 
@@ -188,22 +266,36 @@ void MainWindow::onPtbRateChanged(const QString& text)
             true);
     if (rateResult.ptbDeviceRateAttempted && !rateResult.ptbDeviceRateSucceeded)
     {
-        log(QString(state_->is_english_
-            ? "PTB sample rate command failed for %1 Hz"
-            : "PTB采样频率命令下发失败：%1 Hz").arg(state_->ptb_sample_rate_));
+        publishGroundLog(VaporView::LogLevel::Error,
+                         QStringLiteral("device.pressure.command"),
+                         QStringLiteral("ptb_sample_rate_command_failed"),
+                         QStringLiteral("PTB210 采样频率命令下发失败。"),
+                         {{QStringLiteral("device"), QStringLiteral("PTB210")},
+                          {QStringLiteral("requested_rate_hz"), state_->ptb_sample_rate_},
+                          {QStringLiteral("error_code"), QStringLiteral("COMMAND_VERIFY_FAILED")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("ptb210:sample_rate:command_failed")}});
         return;
     }
     if (requestedRate != state_->ptb_sample_rate_)
     {
-        log(QString(state_->is_english_
-            ? "PTB sample rate set to %1 Hz (capped from %2 Hz)"
-            : "PTB采样频率已设置为 %1 Hz（由 %2 Hz 限制）")
-            .arg(state_->ptb_sample_rate_)
-            .arg(requestedRate));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("ptb_sample_rate_updated_capped"),
+                         QStringLiteral("PTB210 采样频率已更新，并按设备上限限制。"),
+                         {{QStringLiteral("device"), QStringLiteral("PTB210")},
+                          {QStringLiteral("requested_rate_hz"), requestedRate},
+                          {QStringLiteral("effective_rate_hz"), state_->ptb_sample_rate_},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     else
     {
-        log(QString(state_->is_english_ ? "PTB sample rate set to %1 Hz" : "PTB采样频率已设置为 %1 Hz").arg(state_->ptb_sample_rate_));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("ptb_sample_rate_updated"),
+                         QStringLiteral("PTB210 采样频率已更新。"),
+                         {{QStringLiteral("device"), QStringLiteral("PTB210")},
+                          {QStringLiteral("requested_rate_hz"), state_->ptb_sample_rate_},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }
 
@@ -214,13 +306,23 @@ void MainWindow::onHmpRateChanged(const QString& text)
     state_->local_connection_controller_->setHmpSampleRate(state_->hmp_sample_rate_);
     if (skipDeviceRate)
     {
-        log(state_->is_english_
-            ? "HMP polling-rate selection left unset; using the default host polling rate."
-            : "HMP 轮询频率保持不设定，使用默认主机轮询频率。");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("hmp_polling_rate_defaulted"),
+                         QStringLiteral("HMP3 轮询频率保持不设定，使用默认主机轮询频率。"),
+                         {{QStringLiteral("device"), QStringLiteral("HMP3")},
+                          {QStringLiteral("effective_rate_hz"), state_->hmp_sample_rate_},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     else
     {
-        log(QString(state_->is_english_ ? "HMP sample rate set to %1 Hz" : "HMP采样频率已设置为 %1 Hz").arg(state_->hmp_sample_rate_));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("hmp_sample_rate_updated"),
+                         QStringLiteral("HMP3 采样频率已更新。"),
+                         {{QStringLiteral("device"), QStringLiteral("HMP3")},
+                          {QStringLiteral("requested_rate_hz"), state_->hmp_sample_rate_},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }
 
@@ -233,11 +335,23 @@ void MainWindow::onLidarRateChanged(const QString& text)
         !skipDeviceRate);
     if (skipDeviceRate)
     {
-        log(state_->is_english_ ? "Lidar output-rate command disabled; using device default/adaptive output" : "已禁用激光测距仪输出频率下发，使用设备默认/自适应输出");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.lidar.command"),
+                         QStringLiteral("lidar_output_rate_command_disabled"),
+                         QStringLiteral("已禁用激光测距仪输出频率下发，使用设备默认或自适应输出。"),
+                         {{QStringLiteral("device"), QStringLiteral("TFA1005-L")},
+                          {QStringLiteral("apply_device_rate"), false},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     else
     {
-        log(QString(state_->is_english_ ? "Lidar sample rate set to %1 Hz" : "激光测距仪采样频率已设置为 %1 Hz").arg(state_->lidar_sample_rate_));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("lidar_sample_rate_updated"),
+                         QStringLiteral("激光测距仪采样频率已更新。"),
+                         {{QStringLiteral("device"), QStringLiteral("TFA1005-L")},
+                          {QStringLiteral("requested_rate_hz"), state_->lidar_sample_rate_},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }
 
@@ -249,13 +363,23 @@ void MainWindow::onTemperatureRateChanged(const QString& text)
         state_->temperature_sample_rate_);
     if (skipDeviceRate)
     {
-        log(state_->is_english_
-            ? "RD105 polling-rate selection left unset; using the default host polling rate."
-            : "RD105 轮询频率保持不设定，使用默认主机轮询频率。");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("temperature_polling_rate_defaulted"),
+                         QStringLiteral("RD105 轮询频率保持不设定，使用默认主机轮询频率。"),
+                         {{QStringLiteral("device"), QStringLiteral("RD105")},
+                          {QStringLiteral("effective_rate_hz"), state_->temperature_sample_rate_},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     else
     {
-        log(QString(state_->is_english_ ? "RD105 polling rate set to %1 Hz" : "RD105 轮询频率已设置为 %1 Hz").arg(state_->temperature_sample_rate_));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("temperature_polling_rate_updated"),
+                         QStringLiteral("RD105 轮询频率已更新。"),
+                         {{QStringLiteral("device"), QStringLiteral("RD105")},
+                          {QStringLiteral("requested_rate_hz"), state_->temperature_sample_rate_},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }
 
@@ -300,15 +424,25 @@ void MainWindow::applyAllSampleRates()
         rateResult.ptbDeviceRateAttempted && !rateResult.ptbDeviceRateSucceeded;
     if (epsilonDeviceRateFailed)
     {
-        log(state_->is_english_
-            ? "EPSILON output-rate command failed; the live stream recovery result is shown above."
-            : "EPSILON 输出频率下发失败；实时数据流恢复结果请查看上方日志。");
+        publishGroundLog(VaporView::LogLevel::Error,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_output_rate_command_failed"),
+                         QStringLiteral("EPSILON 输出频率下发失败。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("requested_rate_hz"), epsilonRate},
+                          {QStringLiteral("error_code"), QStringLiteral("COMMAND_VERIFY_FAILED")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("epsilon:output_rate:command_failed")}});
     }
     if (ptbDeviceRateFailed)
     {
-        log(QString(state_->is_english_
-            ? "PTB sample rate command failed for %1 Hz"
-            : "PTB采样频率命令下发失败：%1 Hz").arg(ptbRate));
+        publishGroundLog(VaporView::LogLevel::Error,
+                         QStringLiteral("device.pressure.command"),
+                         QStringLiteral("ptb_sample_rate_command_failed"),
+                         QStringLiteral("PTB210 采样频率命令下发失败。"),
+                         {{QStringLiteral("device"), QStringLiteral("PTB210")},
+                          {QStringLiteral("requested_rate_hz"), ptbRate},
+                          {QStringLiteral("error_code"), QStringLiteral("COMMAND_VERIFY_FAILED")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("ptb210:sample_rate:command_failed")}});
     }
 
     if (state_->epsilon_rate_combo_) state_->epsilon_rate_combo_->blockSignals(true);
@@ -338,30 +472,63 @@ void MainWindow::applyAllSampleRates()
 
     if (epsilonDeviceRateFailed || ptbDeviceRateFailed)
     {
-        log(state_->is_english_
-            ? "Host-side rates were updated, but one or more device output-rate commands failed."
-            : "主机侧频率已更新，但一个或多个设备输出频率命令失败。");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("sample_rate_apply_partial_failure"),
+                         QStringLiteral("主机侧频率已更新，但一个或多个设备输出频率命令失败。"),
+                         {{QStringLiteral("requested_rate_hz"), rate},
+                          {QStringLiteral("epsilon_command_failed"), epsilonDeviceRateFailed},
+                          {QStringLiteral("ptb_command_failed"), ptbDeviceRateFailed},
+                          {QStringLiteral("reason_code"), QStringLiteral("DEPENDENCY_UNAVAILABLE")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("sample_rate:apply:partial_failure")}});
     }
     else
     {
-        log(QString(state_->is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("sample_rates_updated"),
+                         QStringLiteral("所有频率已更新。"),
+                         {{QStringLiteral("requested_rate_hz"), rate},
+                          {QStringLiteral("epsilon_rate_hz"), epsilonRate},
+                          {QStringLiteral("ptb_rate_hz"), ptbRate},
+                          {QStringLiteral("hmp_rate_hz"), hmpRate},
+                          {QStringLiteral("lidar_rate_hz"), lidarRate},
+                          {QStringLiteral("temperature_rate_hz"), temperatureRate},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     if (skipEpsilonDeviceRate || skipPtbDeviceRate || skipHmpDeviceRate || skipLidarDeviceRate || skipTemperatureDeviceRate)
     {
-        log(state_->is_english_
-            ? "Devices set to No Set keep their output-rate commands disabled."
-            : "已选择“不设定”的设备保持不下发输出频率命令。");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("sample_rate_device_commands_skipped_unspecified"),
+                         QStringLiteral("已选择“不设定”的设备保持不下发输出频率命令。"),
+                         {{QStringLiteral("epsilon_skipped"), skipEpsilonDeviceRate},
+                          {QStringLiteral("ptb_skipped"), skipPtbDeviceRate},
+                          {QStringLiteral("hmp_skipped"), skipHmpDeviceRate},
+                          {QStringLiteral("lidar_skipped"), skipLidarDeviceRate},
+                          {QStringLiteral("temperature_skipped"), skipTemperatureDeviceRate},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     if (!skipPtbDeviceRate && ptbRate != rate)
     {
-        log(QString(state_->is_english_
-            ? "PTB sample rate capped at %1 Hz"
-            : "PTB采样频率已限制为 %1 Hz").arg(ptbRate));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("ptb_sample_rate_capped"),
+                         QStringLiteral("PTB210 采样频率已按设备上限限制。"),
+                         {{QStringLiteral("device"), QStringLiteral("PTB210")},
+                          {QStringLiteral("requested_rate_hz"), rate},
+                          {QStringLiteral("effective_rate_hz"), ptbRate},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     if (!skipTemperatureDeviceRate && temperatureRate != rate)
     {
-        log(QString(state_->is_english_
-            ? "RD105 polling rate capped at %1 Hz"
-            : "RD105 轮询频率已限制为 %1 Hz").arg(temperatureRate));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.rate"),
+                         QStringLiteral("temperature_polling_rate_capped"),
+                         QStringLiteral("RD105 轮询频率已按设备上限限制。"),
+                         {{QStringLiteral("device"), QStringLiteral("RD105")},
+                          {QStringLiteral("requested_rate_hz"), rate},
+                          {QStringLiteral("effective_rate_hz"), temperatureRate},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }

@@ -146,6 +146,16 @@ VaporView 第一方运行日志采用“中文可读、英文可检索”的约�
 
 旧的仅字符串 UI/控制台日志路径如暂时无法完全结构化，必须使用稳定中文包装 message，并在 `fields` 中标记 `legacy_unclassified=true`，原始 UI 文本放入 `ui_message`。旧路径默认只能进入桌面日志的“全部”视图，应设置 `ui_visibility=details`；高频进度或原始输出设置 `ui_visibility=hidden`。中文 message 保持简洁、稳定，不把大量变量拼进正文；变量、端点、设备名、错误原文和重试参数优先放入 `fields`。允许在中文句子中保留产品名和协议名，例如 SkyCore、SkyTui、IPC、TCP、UDP、JSON、CRC、EPSILON、PTB210、HMP3、TFA1005-L 和 RD105；但 `设备 connect failed and retry later`、`IPC 服务 start failed`、`配置 file loaded successfully` 这类完整英文语法片段视为中英混杂，必须改成自然中文。
 
+### Legacy 日志迁移规则
+
+`MainWindow::log(QString)`、仅字符串 `logMessage(QString)` 和无结构 Qt 日志只作为兼容或第三方原文通道；新增第一方业务事件禁止使用这些入口表达语义。业务调用点必须根据程序状态、返回值、ACK、错误枚举或明确分支直接选择 `LogLevel`、`category`、`event`、`error_code` / `reason_code` 和 `ui_visibility`。设备未连接导致用户命令无法执行是 Warning；命令已执行但写入、读回或 ACK 确认失败是 Error；普通成功是 Info/details；协议帧、单次 ACK 内容和高频内部状态是 Debug/hidden；只有无法安全继续运行或严重数据完整性风险才使用 Critical。
+
+`scripts/audit_legacy_logging.py` 维护当前剩余 legacy 字符串入口的临时基线，并通过 CTest 的 `logging_legacy_audit_test` 防止新增 `MainWindow::log(QString)` 调用、第一方 `emit logMessage(QString)` 和仅字符串 `logMessage(QString)` 信号。每迁移一个 legacy 调用点后，应同步降低脚本中的基线；不得通过扩大基线来绕过结构化迁移。
+
+当前仅保留的 `logMessage(QString)` 入口是 GroundTelemetryService、SkyRuntime、SkyLocalIpcClient、SkyLocalIpcServer 和 SkyDeviceManager 之间的兼容桥接或 LogService 不可用时的兜底通知；这些路径的业务语义已经通过 `LogRecord`、`LogService::publish()` 或结构化 IPC LogEvent 传递。新代码不得只新增 QString 日志信号；如果后续移除这些兼容桥接，必须同步降低 `scripts/audit_legacy_logging.py` 的基线。
+
+RD105 温控命令统一使用 `Ground / device.temperature.command`。典型事件包括 `temperature_command_rejected_not_connected` + `reason_code=DEVICE_NOT_CONNECTED`、`temperature_command_failed` + `error_code=COMMAND_VERIFY_FAILED`、`temperature_command_sent`、`temperature_command_ack_timeout` + `error_code=COMMAND_TIMEOUT` 和 `temperature_command_completed`。重复的未连接、超时和失败事件应设置稳定 `ui_dedupe_key`，例如 `rd105:temperature_command_rejected_not_connected:SetTemperatureTarget:channel_2`，不得包含时间戳或随机值。
+
 ### 桌面日志面板展示策略
 
 日志文件和桌面日志面板是分层的：JSONL 文件继续保存 Debug、Info、Warning、Error 和 Critical；桌面日志面板只根据结构化字段和级别决定是否显示，不提高全局最低日志级别，也不丢弃普通 Info 文件记录。

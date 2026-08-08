@@ -1393,7 +1393,12 @@ void MainWindow::setRecordingExportRateHz(int rate, bool should_log)
 
     if (changed && should_log)
     {
-        log(QString(state_->is_english_ ? "Other-devices recording rate set to %1 Hz" : "其余设备记录频率已设置为 %1 Hz").arg(state_->recording_export_rate_hz_));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("recording_csv_rate_updated"),
+                         QStringLiteral("其余设备记录频率已更新。"),
+                         {{QStringLiteral("recording_rate_hz"), state_->recording_export_rate_hz_},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }
 
@@ -1409,9 +1414,13 @@ void MainWindow::setImuRecordingRateHz(int rate, bool should_log)
 
     if (changed && should_log)
     {
-        log(state_->is_english_
-            ? QStringLiteral("EPSILON raw recording keeps full verified FDILink frames")
-            : QStringLiteral("EPSILON 原始记录固定保存完整已校验 FDILink 帧"));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("epsilon_raw_recording_full_frames_enabled"),
+                         QStringLiteral("EPSILON 原始记录固定保存完整已校验 FDILink 帧。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("recording_mode"), QStringLiteral("full_verified_fdilink_frames")},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }
 
@@ -1427,9 +1436,13 @@ void MainWindow::setWaveformRecordingRateHz(int rate, bool should_log)
 
     if (changed && should_log)
     {
-        log(state_->is_english_
-            ? QStringLiteral("TCP wave raw recording keeps every complete TCP frame")
-            : QStringLiteral("TCP 波形原始记录固定保存每组完整 TCP 帧"));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("tcp_wave_raw_recording_full_frames_enabled"),
+                         QStringLiteral("TCP 波形原始记录固定保存每组完整 TCP 帧。"),
+                         {{QStringLiteral("device"), QStringLiteral("Wave TCP")},
+                          {QStringLiteral("recording_mode"), QStringLiteral("full_tcp_frames")},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }
 

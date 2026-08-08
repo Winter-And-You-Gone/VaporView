@@ -37,8 +37,18 @@ void RecordingScheduleController::configure(const Configuration& configuration,
     stop_time_ = {};
     round_observed_session_ = false;
 
-    log(QStringLiteral("Scheduled recording configured: %1").arg(summary(true)),
-        QStringLiteral("定时记录已配置：%1").arg(summary(false)));
+    log({VaporView::LogLevel::Info,
+         QStringLiteral("scheduled_recording_configured"),
+         QStringLiteral("定时记录已配置。"),
+         {{QStringLiteral("summary"), summary(false)},
+          {QStringLiteral("mode"), mode_ == Mode::FixedTime ? QStringLiteral("fixed_time")
+                                                            : QStringLiteral("interval")},
+          {QStringLiteral("duration_seconds"), duration_seconds_},
+          {QStringLiteral("interval_seconds"), interval_seconds_},
+          {QStringLiteral("fixed_count_enabled"), fixed_count_enabled_},
+          {QStringLiteral("total_runs"), total_runs_},
+          {QStringLiteral("next_start_time"), formatDateTime(next_start_time_)},
+          {QStringLiteral("ui_visibility"), QStringLiteral("details")}}});
     notifyStateChanged();
 }
 
@@ -54,8 +64,10 @@ void RecordingScheduleController::cancel(bool announce)
 
     if (announce && wasActive)
     {
-        log(QStringLiteral("Scheduled recording canceled"),
-            QStringLiteral("定时记录已取消"));
+        log({VaporView::LogLevel::Info,
+             QStringLiteral("scheduled_recording_canceled"),
+             QStringLiteral("定时记录已取消。"),
+             {{QStringLiteral("ui_visibility"), QStringLiteral("details")}}});
     }
     notifyStateChanged();
 }
@@ -90,8 +102,15 @@ void RecordingScheduleController::tick(const QDateTime& now)
         const QString englishReason = result.failureReason.isEmpty()
             ? QStringLiteral("Unknown reason.")
             : result.failureReason;
-        log(QStringLiteral("Scheduled recording could not start: %1").arg(englishReason),
-            QStringLiteral("定时记录未能启动：%1").arg(englishReason));
+        log({VaporView::LogLevel::Warning,
+             QStringLiteral("scheduled_recording_start_failed"),
+             QStringLiteral("定时记录未能启动。"),
+             {{QStringLiteral("reason_code"), QStringLiteral("DEPENDENCY_UNAVAILABLE")},
+              {QStringLiteral("failure_reason"), englishReason},
+              {QStringLiteral("mode"), mode_ == Mode::FixedTime ? QStringLiteral("fixed_time")
+                                                                : QStringLiteral("interval")},
+              {QStringLiteral("next_start_time"), formatDateTime(next_start_time_)},
+              {QStringLiteral("ui_dedupe_key"), QStringLiteral("scheduled_recording:start_failed")}}});
         if (mode_ == Mode::FixedTime)
         {
             cancel(false);
@@ -126,8 +145,11 @@ void RecordingScheduleController::tick(const QDateTime& now)
             completeRound(true, now);
             return;
         }
-        log(QStringLiteral("Scheduled recording could not stop because the recording link is unavailable."),
-            QStringLiteral("定时记录未能停止：当前记录链路不可用。"));
+        log({VaporView::LogLevel::Warning,
+             QStringLiteral("scheduled_recording_stop_failed"),
+             QStringLiteral("定时记录未能停止，当前记录链路不可用。"),
+             {{QStringLiteral("reason_code"), QStringLiteral("DEPENDENCY_UNAVAILABLE")},
+              {QStringLiteral("ui_dedupe_key"), QStringLiteral("scheduled_recording:stop_failed")}}});
     }
 
     notifyStateChanged();
@@ -292,15 +314,24 @@ void RecordingScheduleController::completeRound(bool counted, const QDateTime& n
     const bool fixedDone = fixed_count_enabled_ && completed_runs_ >= total_runs_;
     if (mode_ == Mode::FixedTime || fixedDone)
     {
-        log(QStringLiteral("Scheduled recording completed: %1").arg(summary(true)),
-            QStringLiteral("定时记录已完成：%1").arg(summary(false)));
+        log({VaporView::LogLevel::Info,
+             QStringLiteral("scheduled_recording_completed"),
+             QStringLiteral("定时记录已完成。"),
+             {{QStringLiteral("summary"), summary(false)},
+              {QStringLiteral("completed_runs"), completed_runs_},
+              {QStringLiteral("total_runs"), total_runs_},
+              {QStringLiteral("ui_visibility"), QStringLiteral("details")}}});
         cancel(false);
         return;
     }
 
     scheduleNextInterval(now);
-    log(QStringLiteral("Scheduled recording next start: %1").arg(formatDateTime(next_start_time_)),
-        QStringLiteral("定时记录下次开始：%1").arg(formatDateTime(next_start_time_)));
+    log({VaporView::LogLevel::Info,
+         QStringLiteral("scheduled_recording_next_start_scheduled"),
+         QStringLiteral("已安排下一次定时记录。"),
+         {{QStringLiteral("next_start_time"), formatDateTime(next_start_time_)},
+          {QStringLiteral("completed_runs"), completed_runs_},
+          {QStringLiteral("ui_visibility"), QStringLiteral("details")}}});
     notifyStateChanged();
 }
 
@@ -312,11 +343,11 @@ void RecordingScheduleController::notifyStateChanged() const
     }
 }
 
-void RecordingScheduleController::log(const QString& english, const QString& chinese) const
+void RecordingScheduleController::log(LogEntry entry) const
 {
     if (hooks_.log)
     {
-        hooks_.log(english, chinese);
+        hooks_.log(entry);
     }
 }
 

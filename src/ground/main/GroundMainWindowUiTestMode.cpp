@@ -591,5 +591,10 @@ void MainWindow::applyUiTestSnapshot()
 
 void MainWindow::logUiTest(const QString& message)
 {
-    log(QStringLiteral("[界面测试] %1").arg(message));
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("ui.test"),
+                     QStringLiteral("ui_test_log_updated"),
+                     QStringLiteral("界面测试日志已更新。"),
+                     {{QStringLiteral("ui_message"), message},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 }

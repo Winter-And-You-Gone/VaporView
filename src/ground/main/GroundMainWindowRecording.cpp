@@ -1,5 +1,7 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 
+#include <utility>
+
 namespace
 {
 
@@ -82,7 +84,13 @@ void MainWindow::logConnectionInfo(const QString& message)
 {
     if (message.startsWith('\r'))
     {
-        log(message);
+        publishGroundLog(VaporView::LogLevel::Debug,
+                         QStringLiteral("device.connection"),
+                         QStringLiteral("device_connection_progress_updated"),
+                         QStringLiteral("设备连接进度已更新。"),
+                         {{QStringLiteral("ui_visibility"), QStringLiteral("hidden")},
+                          {QStringLiteral("inline"), true},
+                          {QStringLiteral("ui_message"), message.mid(1)}});
         return;
     }
 
@@ -119,6 +127,53 @@ void MainWindow::logConnectionInfo(const QString& message)
     {
         state_->recording_service_->appendEvent(QStringLiteral("info"), message);
     }
+}
+
+void MainWindow::publishGroundLog(VaporView::LogLevel level,
+                                  const QString& category,
+                                  const QString& event,
+                                  const QString& message,
+                                  QVariantMap fields)
+{
+    fields.insert(QStringLiteral("event"), event);
+    fields.insert(QStringLiteral("ui_visible"), true);
+    if (!fields.contains(QStringLiteral("ui_visibility")))
+    {
+        fields.insert(QStringLiteral("ui_visibility"),
+                      level >= VaporView::LogLevel::Warning ? QStringLiteral("attention")
+                                                            : QStringLiteral("details"));
+    }
+
+    VaporView::LogRecord record;
+    record.level = level;
+    record.source = QStringLiteral("Ground");
+    record.category = category;
+    record.message = message;
+    record.fields = std::move(fields);
+
+    const bool published = VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
+        logService.publish(record);
+    });
+    if (!published)
+    {
+        enqueueUiLogRecord(record);
+    }
+    state_->has_inline_progress_log_ = false;
+}
+
+void MainWindow::publishTemperatureCommandLog(VaporView::LogLevel level,
+                                              const QString& event,
+                                              const QString& message,
+                                              QVariantMap fields)
+{
+    fields.insert(QStringLiteral("device"), fields.value(QStringLiteral("device"), QStringLiteral("RD105")));
+    fields.insert(QStringLiteral("device_id"),
+                  fields.value(QStringLiteral("device_id"), QStringLiteral("temperature_controller")));
+    publishGroundLog(level,
+                     QStringLiteral("device.temperature.command"),
+                     event,
+                     message,
+                     std::move(fields));
 }
 
 void MainWindow::enqueueUiLogRecord(const VaporView::LogRecord& record)
@@ -842,29 +897,40 @@ bool MainWindow::startRecordingSession()
     {
         using StartError = VaporView::Ground::Session::GroundRecordingStartError;
         QString message;
+        QString errorCode;
         switch (startError)
         {
         case StartError::CreateSessionLayout:
             message = state_->is_english_ ? QStringLiteral("Failed to create session directories")
                                   : QStringLiteral("无法创建会话目录结构");
+            errorCode = QStringLiteral("SESSION_LAYOUT_CREATE_FAILED");
             break;
         case StartError::OpenSessionFiles:
             message = state_->is_english_ ? QStringLiteral("Failed to open session files for writing")
                                   : QStringLiteral("无法打开会话文件进行写入");
+            errorCode = QStringLiteral("SESSION_FILES_OPEN_FAILED");
             break;
         case StartError::WriteSessionMetadata:
             message = state_->is_english_ ? QStringLiteral("Failed to save session metadata")
                                   : QStringLiteral("无法保存会话元数据");
+            errorCode = QStringLiteral("SESSION_METADATA_WRITE_FAILED");
             break;
         case StartError::None:
             message = state_->is_english_ ? QStringLiteral("Failed to start recording session")
                                   : QStringLiteral("启动记录会话失败");
+            errorCode = QStringLiteral("SESSION_RECORDING_START_FAILED");
             break;
         }
+        QVariantMap fields{{QStringLiteral("error_code"), errorCode}};
         if (!errorMessage.isEmpty())
         {
-            log(QStringLiteral("Recording service: %1").arg(errorMessage));
+            fields.insert(QStringLiteral("system_error"), errorMessage);
         }
+        publishGroundLog(VaporView::LogLevel::Error,
+                         QStringLiteral("session.recording"),
+                         QStringLiteral("session_recording_start_failed"),
+                         QStringLiteral("启动记录会话失败。"),
+                         fields);
         QMessageBox::warning(this,
                              state_->is_english_ ? QStringLiteral("Error") : QStringLiteral("错误"),
                              message);
@@ -873,10 +939,26 @@ bool MainWindow::startRecordingSession()
 
     const auto status = state_->recording_service_->status();
     updateRecordingStatusLabel();
-    log(QString(resuming
-        ? (state_->is_english_ ? "Resumed recording session: %1" : "已继续记录会话: %1")
-        : (state_->is_english_ ? "Started recording session: %1" : "已开始记录会话: %1"))
-            .arg(status.sessionDirectory));
+    if (resuming)
+    {
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("session.recording"),
+                         QStringLiteral("session_recording_resumed"),
+                         QStringLiteral("已继续记录会话。"),
+                         {{QStringLiteral("session_directory"), status.sessionDirectory},
+                          {QStringLiteral("resumed"), true},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+    }
+    else
+    {
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("session.recording"),
+                         QStringLiteral("session_recording_started"),
+                         QStringLiteral("已开始记录会话。"),
+                         {{QStringLiteral("session_directory"), status.sessionDirectory},
+                          {QStringLiteral("resumed"), false},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+    }
     return true;
 }
 void MainWindow::onChooseRecordingDirectoryClicked()
@@ -899,7 +981,12 @@ void MainWindow::onChooseRecordingDirectoryClicked()
     state_->recording_directory_ = QDir::fromNativeSeparators(selectedDirectory);
     QSettings settings("VaporView", "MainWindow");
     VaporView::setPersistentSetting(settings, QStringLiteral("recording_directory"), state_->recording_directory_);
-    log(QString(state_->is_english_ ? "Recording folder set to: %1" : "记录目录已设置为: %1").arg(state_->recording_directory_));
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("configuration.apply"),
+                     QStringLiteral("recording_directory_updated"),
+                     QStringLiteral("记录目录已更新。"),
+                     {{QStringLiteral("recording_directory"), state_->recording_directory_},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 }
 
 void MainWindow::updateScheduledRecordingAction()
@@ -1039,8 +1126,14 @@ bool MainWindow::tryStartScheduledRecording(QString *failureReason)
             : 0;
         if (seq != 0)
         {
-            log(state_->is_english_ ? "Scheduled recording start command sent"
-                            : "定时记录开始命令已发送");
+            publishGroundLog(VaporView::LogLevel::Info,
+                             QStringLiteral("session.recording"),
+                             QStringLiteral("scheduled_recording_start_command_sent"),
+                             QStringLiteral("定时记录开始命令已发送。"),
+                             {{QStringLiteral("execution_path"), QStringLiteral("remote_sky")},
+                              {QStringLiteral("command"), VaporView::commandIdName(VaporView::CommandId::StartRecording)},
+                              {QStringLiteral("command_seq"), seq},
+                              {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         }
         else if (failureReason)
         {
@@ -1080,8 +1173,14 @@ bool MainWindow::tryStopScheduledRecording()
         const quint16 seq = state_->remote_sky_controller_->sendCommand(VaporView::CommandId::StopRecording);
         if (seq != 0)
         {
-            log(state_->is_english_ ? "Scheduled recording stop command sent"
-                            : "定时记录停止命令已发送");
+            publishGroundLog(VaporView::LogLevel::Info,
+                             QStringLiteral("session.recording"),
+                             QStringLiteral("scheduled_recording_stop_command_sent"),
+                             QStringLiteral("定时记录停止命令已发送。"),
+                             {{QStringLiteral("execution_path"), QStringLiteral("remote_sky")},
+                              {QStringLiteral("command"), VaporView::commandIdName(VaporView::CommandId::StopRecording)},
+                              {QStringLiteral("command_seq"), seq},
+                              {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         }
         return seq != 0;
     }
@@ -1518,7 +1617,14 @@ void MainWindow::onStartRecordingClicked()
     {
         if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
         {
-            log(state_->is_english_ ? "Connect Remote Sky telemetry before recording" : "开始记录前请先连接天空端数传");
+            publishGroundLog(VaporView::LogLevel::Warning,
+                             QStringLiteral("session.recording"),
+                             QStringLiteral("session_recording_rejected_dependency_unavailable"),
+                             QStringLiteral("开始记录前请先连接天空端数传。"),
+                             {{QStringLiteral("reason_code"), QStringLiteral("DEPENDENCY_UNAVAILABLE")},
+                              {QStringLiteral("dependency"), QStringLiteral("remote_sky_telemetry")},
+                              {QStringLiteral("mode"), QStringLiteral("remote_sky")},
+                              {QStringLiteral("ui_dedupe_key"), QStringLiteral("recording:remote_sky:not_connected")}});
             return;
         }
         state_->remote_sky_controller_->sendCommand(VaporView::CommandId::StartRecording);
@@ -1528,15 +1634,19 @@ void MainWindow::onStartRecordingClicked()
     const bool tcpConnected = state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnected();
     if (!state_->is_connected_ && !tcpConnected)
     {
-        log(state_->is_english_ ? "At least one serial device or the TCP wave link must be connected before recording"
-                        : "开始记录前，至少需要一个串口设备在线或 TCP 波形链路已连接");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("session.recording"),
+                         QStringLiteral("session_recording_rejected_no_source"),
+                         QStringLiteral("开始记录前，至少需要一个串口设备在线或 TCP 波形链路已连接。"),
+                         {{QStringLiteral("reason_code"), QStringLiteral("NO_RECORDING_SOURCE_CONNECTED")},
+                          {QStringLiteral("mode"), QStringLiteral("local")},
+                          {QStringLiteral("serial_connected"), state_->is_connected_},
+                          {QStringLiteral("tcp_wave_connected"), tcpConnected},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("recording:local:no_source")}});
         return;
     }
 
-    if (!startRecordingSession())
-    {
-        log(state_->is_english_ ? "Failed to start recording session" : "启动记录会话失败");
-    }
+    startRecordingSession();
 }
 
 void MainWindow::onPauseRecordingClicked()
@@ -1588,8 +1698,12 @@ void MainWindow::pauseRecordingSession(bool announce)
     updateRecordingStatusLabel();
     if (announce)
     {
-        log(QString(state_->is_english_ ? "Paused recording session: %1" : "已暂停记录会话: %1")
-                .arg(sessionDirectory));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("session.recording"),
+                         QStringLiteral("session_recording_paused"),
+                         QStringLiteral("已暂停记录会话。"),
+                         {{QStringLiteral("session_directory"), sessionDirectory},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }
 
@@ -1614,12 +1728,14 @@ void MainWindow::stopRecording(bool announce)
     updateRecordingStatusLabel();
     if (announce && summary.hadOpenSession)
     {
-        log(QString(state_->is_english_
-            ? "Stopped recording (%1 sensor rows, %2 waveform frames): %3"
-            : "记录已结束（设备 %1 行，波形 %2 帧）: %3")
-                .arg(summary.sensorRows)
-                .arg(summary.waveformFrames)
-                .arg(summary.sessionDirectory));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("session.recording"),
+                         QStringLiteral("session_recording_stopped"),
+                         QStringLiteral("记录会话已结束。"),
+                         {{QStringLiteral("sensor_rows"), static_cast<qulonglong>(summary.sensorRows)},
+                          {QStringLiteral("waveform_frames"), static_cast<qulonglong>(summary.waveformFrames)},
+                          {QStringLiteral("session_directory"), summary.sessionDirectory},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }
 void MainWindow::onTcpRawWaveFrameReady(quint64 timestampUs,

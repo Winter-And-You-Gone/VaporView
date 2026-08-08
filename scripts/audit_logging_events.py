@@ -18,6 +18,16 @@ import audit_logging_language as lang
 CATALOG_PATH = Path("docs/logging_events.md")
 ACTIVE_STATUS = ""
 NON_BLOCKING_STATUSES = {"planned", "deprecated", "legacy"}
+LOG_ENTRY_INIT_RE = re.compile(
+    r"log\s*\(\s*\{\s*VaporView::LogLevel::(?P<level>[A-Za-z]+)\s*,\s*"
+    r"QStringLiteral\(\"(?P<event>[a-z0-9]+(?:_[a-z0-9]+)*)\"\)",
+    re.DOTALL,
+)
+CONDITIONAL_EVENT_LITERAL_RE = re.compile(
+    r"\?\s*QStringLiteral\(\"(?P<true>[a-z0-9]+(?:_[a-z0-9]+)*)\"\)\s*"
+    r":\s*QStringLiteral\(\"(?P<false>[a-z0-9]+(?:_[a-z0-9]+)*)\"\)",
+    re.DOTALL,
+)
 
 
 @dataclass(frozen=True)
@@ -83,21 +93,30 @@ def extract_event_uses_from_text(path_label: str, text: str) -> list[EventUse]:
     uses: list[EventUse] = []
     seen = set()
     for call in calls:
-        event = event_for_call(call)
-        if not event:
-            continue
-        use = EventUse(
-            event=event,
-            category=category_for_call(call),
-            level=level_for_call(call),
-            source=source_for_call(call),
-            path=path_label,
-            line=call.line,
-        )
-        key = (use.event, use.category, use.level, use.source, use.path, use.line)
-        if key not in seen:
-            seen.add(key)
-            uses.append(use)
+        spec = lang.LOG_CALLS[call.name]
+        event_index = spec.get("event")
+        event_literals: list[str] = []
+        if isinstance(event_index, int) and len(call.args) > event_index:
+            event_arg = call.args[event_index]
+            for match in CONDITIONAL_EVENT_LITERAL_RE.finditer(event_arg):
+                event_literals.extend([match.group("true"), match.group("false")])
+        if not event_literals:
+            event = event_for_call(call)
+            if event:
+                event_literals.append(event)
+        for event_literal in event_literals:
+            use = EventUse(
+                event=event_literal,
+                category=category_for_call(call),
+                level=level_for_call(call),
+                source=source_for_call(call),
+                path=path_label,
+                line=call.line,
+            )
+            key = (use.event, use.category, use.level, use.source, use.path, use.line)
+            if key not in seen:
+                seen.add(key)
+                uses.append(use)
 
     for regex in (lang.FIELD_PAIR_RE, lang.FIELD_INSERT_RE):
         for match in regex.finditer(scan_text):
@@ -121,6 +140,22 @@ def extract_event_uses_from_text(path_label: str, text: str) -> list[EventUse]:
             if dedupe not in seen:
                 seen.add(dedupe)
                 uses.append(use)
+
+    for match in LOG_ENTRY_INIT_RE.finditer(scan_text):
+        event = match.group("event")
+        use = EventUse(
+            event=event,
+            category=None,
+            level=match.group("level"),
+            source=None,
+            path=path_label,
+            line=lang.line_for_offset(scan_text, match.start()),
+        )
+        key = (use.event, use.category, use.level, use.source, use.path, use.line)
+        if key not in seen:
+            seen.add(key)
+            uses.append(use)
+
     return uses
 
 

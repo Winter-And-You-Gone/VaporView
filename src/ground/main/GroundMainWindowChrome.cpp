@@ -1489,7 +1489,12 @@ void MainWindow::onSwitchLanguage()
     QTimer::singleShot(0, this, [this]() {
         state_->is_english_ = !state_->is_english_;
         setEnglish(state_->is_english_);
-        log(state_->is_english_ ? "Language switched to English" : "语言已切换为中文");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("ui.action"),
+                         QStringLiteral("language_switched"),
+                         QStringLiteral("界面语言已切换。"),
+                         {{QStringLiteral("language"), state_->is_english_ ? QStringLiteral("en") : QStringLiteral("zh_CN")},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         state_->language_switch_in_progress_ = false;
     });
 }
@@ -2258,9 +2263,12 @@ void MainWindow::onToggleTheme()
     QSettings settings("VaporView", "MainWindow");
     VaporView::setPersistentSetting(settings, QStringLiteral("dark_theme_enabled"), state_->dark_theme_enabled_);
 
-    log(state_->dark_theme_enabled_
-        ? (state_->is_english_ ? "Theme switched to dark" : "已切换为暗色模式")
-        : (state_->is_english_ ? "Theme switched to light" : "已切换为亮色模式"));
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("ui.action"),
+                     QStringLiteral("theme_switched"),
+                     QStringLiteral("界面主题已切换。"),
+                     {{QStringLiteral("theme"), state_->dark_theme_enabled_ ? QStringLiteral("dark") : QStringLiteral("light")},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 }
 
 void MainWindow::onFontScaleTriggered(QAction *action)
@@ -2277,5 +2285,10 @@ void MainWindow::onFontScaleTriggered(QAction *action)
     }
 
     setFontScale(percent);
-    log(QString(state_->is_english_ ? "Font size set to %1%" : "字体大小已设置为 %1%").arg(percent));
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("ui.action"),
+                     QStringLiteral("font_scale_updated"),
+                     QStringLiteral("界面字号已更新。"),
+                     {{QStringLiteral("font_scale_percent"), percent},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 }

@@ -1025,6 +1025,7 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
     VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_custom_packet_rates_user_saved"), effectiveCustomEnabled);
     VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_signature"));
     VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_apply_version"));
+    const QString packetRateSummary = epsilonPacketRatesSummary(savedPacketRates);
 
     if (hasCustomOverrides &&
         state_->device_config_.epsilon_packet_custom_check &&
@@ -1032,28 +1033,39 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
     {
         const QSignalBlocker blocker(state_->device_config_.epsilon_packet_custom_check);
         state_->device_config_.epsilon_packet_custom_check->setChecked(true);
-        log(state_->is_english_
-                ? "[EPSILON] Packet-rate overrides detected, so the custom packet-rate profile has been enabled automatically."
-                : "[EPSILON] 检测到包频率已偏离分组模式，已自动启用自定义包频率配置。");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("epsilon_packet_profile_custom_enabled"),
+                         QStringLiteral("检测到包频率已偏离分组模式，已自动启用自定义包频率配置。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("packet_rate_summary"), packetRateSummary},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 
     if (effectiveCustomEnabled)
     {
-        log(QString(state_->is_english_
-                        ? ((savedPacketRates == defaultRates)
-                               ? "[EPSILON] Recommended default packet-rate profile saved: %1"
-                               : "[EPSILON] Custom packet-rate profile saved: %1")
-                        : ((savedPacketRates == defaultRates)
-                               ? "[EPSILON] 已保存推荐默认包频率配置: %1"
-                               : "[EPSILON] 已保存自定义包频率配置: %1"))
-                .arg(epsilonPacketRatesSummary(savedPacketRates)));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("epsilon_packet_profile_saved"),
+                         savedPacketRates == defaultRates
+                             ? QStringLiteral("已保存 EPSILON 推荐默认包频率配置。")
+                             : QStringLiteral("已保存 EPSILON 自定义包频率配置。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("packet_rate_profile"), savedPacketRates == defaultRates
+                              ? QStringLiteral("recommended_default")
+                              : QStringLiteral("custom")},
+                          {QStringLiteral("packet_rate_summary"), packetRateSummary},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     else
     {
-        log(QString(state_->is_english_
-                        ? "[EPSILON] Custom packet-rate profile disabled. The grouped %1 Hz profile will be used."
-                        : "[EPSILON] 已关闭自定义包频率，后续将使用分组 %1 Hz 配置。")
-                .arg(groupedRateHz));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("epsilon_packet_profile_disabled"),
+                         QStringLiteral("已关闭 EPSILON 自定义包频率，后续将使用分组配置。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("grouped_rate_hz"), groupedRateHz},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 
     const QString selectText = state_->is_english_ ? "-- Select --" : "未选择";
@@ -1064,16 +1076,25 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
         epsilonPort != selectText &&
         !isRateUnspecified(epsilonRateText))
     {
-        log(state_->is_english_
-                ? "[EPSILON] Applying the saved packet-rate profile now..."
-                : "[EPSILON] 正在应用刚保存的包频率配置...");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("epsilon_packet_profile_apply_requested"),
+                         QStringLiteral("正在应用刚保存的 EPSILON 包频率配置。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("port"), epsilonPort},
+                          {QStringLiteral("packet_rate_summary"), packetRateSummary},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         onReconfigureEpsilonClicked();
     }
     else
     {
-        log(state_->is_english_
-                ? "[EPSILON] Packet-rate profile saved. It will be used on the next connect/reconfigure."
-                : "[EPSILON] 包频率配置已保存，将在下次连接或重配时生效。");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("epsilon_packet_profile_saved_deferred"),
+                         QStringLiteral("EPSILON 包频率配置已保存，将在下次连接或重配时生效。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("packet_rate_summary"), packetRateSummary},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }
 
@@ -1473,7 +1494,14 @@ void MainWindow::connectLocalTemperatureController()
     const QString selectText = state_->is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("未选择");
     if (port.isEmpty() || port == selectText || port.startsWith(QStringLiteral("--")))
     {
-        log(state_->is_english_ ? "Select the local RD105 serial port first." : "请先选择本地 RD105 串口。");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.connection"),
+                         QStringLiteral("temperature_controller_connection_rejected_missing_port"),
+                         QStringLiteral("请先选择本地 RD105 串口。"),
+                         {{QStringLiteral("device"), QStringLiteral("RD105")},
+                          {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
+                          {QStringLiteral("reason_code"), QStringLiteral("MISSING_ENDPOINT")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("rd105:connect:missing_port")}});
         updateTemperatureTitleButtonsState();
         return;
     }
@@ -1485,7 +1513,15 @@ void MainWindow::connectLocalTemperatureController()
     const int baud = baudText.toInt(&baudOk);
     if (!baudOk || baud <= 0)
     {
-        log(QString(state_->is_english_ ? "Invalid RD105 baud rate: %1" : "RD105 波特率无效：%1").arg(baudText));
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.connection"),
+                         QStringLiteral("temperature_controller_connection_rejected_invalid_baud"),
+                         QStringLiteral("RD105 波特率无效。"),
+                         {{QStringLiteral("device"), QStringLiteral("RD105")},
+                          {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
+                          {QStringLiteral("reason_code"), QStringLiteral("CONFIG_INVALID")},
+                          {QStringLiteral("baud_text"), baudText},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("rd105:connect:invalid_baud")}});
         return;
     }
 
@@ -1504,8 +1540,16 @@ void MainWindow::connectLocalTemperatureController()
     invalidateTemperatureControllerDataUi();
     startHomeDeviceActionSpinner(VaporView::SkyDeviceId::TemperatureController);
     updateConnectionStatus(anyCollectorRunning());
-    logConnectionInfo(QString(english ? "[RD105] Connecting %1 @ %2..." : "[RD105] 正在连接 %1 @ %2...")
-            .arg(port, baudText));
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("device.connection"),
+                     QStringLiteral("temperature_controller_connection_started"),
+                     QStringLiteral("正在连接本地 RD105 温控器。"),
+                     {{QStringLiteral("device"), QStringLiteral("RD105")},
+                      {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
+                      {QStringLiteral("port"), port},
+                      {QStringLiteral("baud"), baud},
+                      {QStringLiteral("sample_rate_hz"), rate},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 
     VaporView::Ground::Devices::LocalTemperatureConnectionRequest request;
     request.english = english;
@@ -1519,7 +1563,36 @@ void MainWindow::connectLocalTemperatureController()
         std::move(request),
         [this](bool connected, const QString& resultText) {
             QMetaObject::invokeMethod(this, [this, connected, resultText]() {
-                logConnectionInfo(resultText);
+                QVariantMap fields{{QStringLiteral("device"), QStringLiteral("RD105")},
+                                   {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
+                                   {QStringLiteral("ui_visibility"),
+                                    connected ? QStringLiteral("details") : QStringLiteral("attention")}};
+                if (!resultText.isEmpty())
+                {
+                    fields.insert(connected ? QStringLiteral("details") : QStringLiteral("system_error"),
+                                  resultText);
+                }
+                if (!connected)
+                {
+                    fields.insert(QStringLiteral("error_code"), QStringLiteral("SERIAL_OPEN_FAILED"));
+                    fields.insert(QStringLiteral("ui_dedupe_key"), QStringLiteral("rd105:connect:failed"));
+                }
+                if (connected)
+                {
+                    publishGroundLog(VaporView::LogLevel::Info,
+                                     QStringLiteral("device.connection"),
+                                     QStringLiteral("temperature_controller_connected"),
+                                     QStringLiteral("本地 RD105 温控器已连接。"),
+                                     fields);
+                }
+                else
+                {
+                    publishGroundLog(VaporView::LogLevel::Error,
+                                     QStringLiteral("device.connection"),
+                                     QStringLiteral("temperature_controller_connection_failed"),
+                                     QStringLiteral("本地 RD105 温控器连接失败。"),
+                                     fields);
+                }
                 state_->connection_attempt_in_progress_ = false;
                 state_->cancel_connection_requested_.store(false);
                 if (!connected)
@@ -1534,9 +1607,14 @@ void MainWindow::connectLocalTemperatureController()
     {
         state_->connection_attempt_in_progress_ = false;
         updateTemperatureTitleButtonsState();
-        log(english
-            ? QStringLiteral("Another local connection operation is already running.")
-            : QStringLiteral("另一个本地连接操作正在进行中。"));
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.connection"),
+                         QStringLiteral("temperature_controller_connection_rejected_busy"),
+                         QStringLiteral("另一个本地连接操作正在进行中。"),
+                         {{QStringLiteral("device"), QStringLiteral("RD105")},
+                          {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
+                          {QStringLiteral("reason_code"), QStringLiteral("INVALID_STATE")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("rd105:connect:busy")}});
     }
 }
 
@@ -1557,10 +1635,13 @@ void MainWindow::disconnectLocalTemperatureController()
 
     if (state_->local_connection_controller_->disconnectTemperatureController())
     {
-        log(state_->is_english_ ? "[RD105] Disconnecting local controller..."
-                        : "[RD105] 正在断开本地温控器...");
-        log(state_->is_english_ ? "[RD105] Local controller disconnected."
-                        : "[RD105] 本地温控器已断开。");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.connection"),
+                         QStringLiteral("temperature_controller_disconnected"),
+                         QStringLiteral("本地 RD105 温控器已断开。"),
+                         {{QStringLiteral("device"), QStringLiteral("RD105")},
+                          {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     invalidateTemperatureControllerDataUi();
     updateConnectionStatus(anyCollectorRunning());
@@ -1603,7 +1684,15 @@ void MainWindow::sendRemoteDeviceCommand(VaporView::CommandId command, VaporView
     }
     if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
     {
-        log(state_->is_english_ ? "Remote Sky telemetry link is not connected" : "天空端数传链路未连接");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.command"),
+                         QStringLiteral("remote_device_command_rejected_dependency_unavailable"),
+                         QStringLiteral("天空端数传链路未连接，无法下发设备命令。"),
+                         {{QStringLiteral("reason_code"), QStringLiteral("DEPENDENCY_UNAVAILABLE")},
+                          {QStringLiteral("dependency"), QStringLiteral("remote_sky_telemetry")},
+                          {QStringLiteral("device_id"), VaporView::skyDeviceIdName(device)},
+                          {QStringLiteral("command"), VaporView::commandIdName(command)},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_device_command:not_connected")}});
         return;
     }
     state_->remote_sky_controller_->sendDeviceCommand(command, device);
@@ -1624,7 +1713,15 @@ void MainWindow::sendRemotePeakSearchRange(quint32 startIndex, quint32 endIndex)
     }
     if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
     {
-        log(state_->is_english_ ? "Remote Sky telemetry link is not connected" : "天空端数传链路未连接");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("telemetry.command"),
+                         QStringLiteral("peak_search_range_rejected_dependency_unavailable"),
+                         QStringLiteral("天空端数传链路未连接，无法下发峰值搜索区间。"),
+                         {{QStringLiteral("reason_code"), QStringLiteral("DEPENDENCY_UNAVAILABLE")},
+                          {QStringLiteral("dependency"), QStringLiteral("remote_sky_telemetry")},
+                          {QStringLiteral("range_start_index"), startIndex},
+                          {QStringLiteral("range_end_index"), endIndex},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("peak_search:not_connected")}});
         if (state_->tcp_wave_panel_)
         {
             state_->tcp_wave_panel_->rejectRemotePeakSearchRange(state_->is_english_ ? QStringLiteral("link is not connected") : QStringLiteral("数传链路未连接"));
@@ -1636,12 +1733,14 @@ void MainWindow::sendRemotePeakSearchRange(quint32 startIndex, quint32 endIndex)
     range.start_index = startIndex;
     range.end_index = endIndex;
     state_->remote_peak_search_commands_.insert(seq, range);
-    log(QString(state_->is_english_
-            ? "Peak search range sent to sky: [%1, %2), seq=%3"
-            : "峰值搜索区间已下发到天空端：[%1, %2)，序号=%3")
-            .arg(startIndex)
-            .arg(endIndex == 0 ? QStringLiteral("end") : QString::number(endIndex))
-            .arg(seq));
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("telemetry.command"),
+                     QStringLiteral("peak_search_range_sent"),
+                     QStringLiteral("峰值搜索区间已下发到天空端。"),
+                     {{QStringLiteral("range_start_index"), startIndex},
+                      {QStringLiteral("range_end_index"), endIndex},
+                      {QStringLiteral("command_seq"), seq},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 }
 
 void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload)
@@ -1714,16 +1813,14 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
             {
                 state_->device_panel_coordinator_->updateTemperatureData(state_->current_temperature_controller_);
             }
-            log(isTemperatureCommonCommand(command)
-                    ? QString(state_->is_english_
-                          ? "RD105 local command confirmed: %1"
-                          : "RD105 本地命令已确认：%1")
-                          .arg(VaporView::commandIdName(command))
-                    : QString(state_->is_english_
-                          ? "RD105 local command confirmed: %1 channel=%2"
-                          : "RD105 本地命令已确认：%1 通道=%2")
-                          .arg(VaporView::commandIdName(command))
-                          .arg(channel));
+            QVariantMap fields = temperatureCommandLogFields(command, payload, channel);
+            fields.insert(QStringLiteral("execution_path"), QStringLiteral("local"));
+            fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("details"));
+            publishTemperatureCommandLog(
+                VaporView::LogLevel::Info,
+                QStringLiteral("temperature_command_completed"),
+                QStringLiteral("RD105 温控命令执行成功。"),
+                fields);
             restoreTemperatureCommandUi(command, channel);
             return;
         }
@@ -1731,9 +1828,21 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
         const QString failedDetail = state_->is_english_
             ? QStringLiteral("write/read-back confirmation failed")
             : QStringLiteral("写入或读回确认失败");
-        log(state_->is_english_
-            ? QStringLiteral("RD105 local command failed: write/read-back confirmation failed")
-            : QStringLiteral("RD105 本地命令失败：写入或读回确认失败"));
+        {
+            QVariantMap fields = temperatureCommandLogFields(command, payload, channel);
+            fields.insert(QStringLiteral("execution_path"), QStringLiteral("local"));
+            fields.insert(QStringLiteral("error_code"), QStringLiteral("COMMAND_VERIFY_FAILED"));
+            fields.insert(QStringLiteral("ui_dedupe_key"),
+                          temperatureCommandDedupeKey(
+                              QStringLiteral("temperature_command_failed"),
+                              command,
+                              channel));
+            publishTemperatureCommandLog(
+                VaporView::LogLevel::Error,
+                QStringLiteral("temperature_command_failed"),
+                QStringLiteral("RD105 温控命令执行失败：写入或读回确认失败。"),
+                fields);
+        }
         if (state_->temperature_controller_panel_)
         {
             state_->temperature_controller_panel_->clearCommandPending(command, channel);
@@ -1753,9 +1862,21 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
     const QString detail = state_->is_english_
         ? QStringLiteral("local RD105 controller is not connected")
         : QStringLiteral("本地 RD105 温控器未连接");
-    log(state_->is_english_
-        ? QStringLiteral("Local RD105 temperature controller is not connected")
-        : QStringLiteral("本地 RD105 温控器未连接，无法下发温控命令"));
+    {
+        QVariantMap fields = temperatureCommandLogFields(command, payload, channel);
+        fields.insert(QStringLiteral("execution_path"), QStringLiteral("local"));
+        fields.insert(QStringLiteral("reason_code"), QStringLiteral("DEVICE_NOT_CONNECTED"));
+        fields.insert(QStringLiteral("ui_dedupe_key"),
+                      temperatureCommandDedupeKey(
+                          QStringLiteral("temperature_command_rejected_not_connected"),
+                          command,
+                          channel));
+        publishTemperatureCommandLog(
+            VaporView::LogLevel::Warning,
+            QStringLiteral("temperature_command_rejected_not_connected"),
+            QStringLiteral("本地 RD105 温控器未连接，无法下发温控命令。"),
+            fields);
+    }
     if (state_->temperature_controller_panel_)
     {
         state_->temperature_controller_panel_->clearCommandPending(command, channel);
@@ -1775,8 +1896,21 @@ void MainWindow::sendRemoteTemperatureCommand(VaporView::CommandId command, cons
     }
     if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
     {
-        log(state_->is_english_ ? "Remote Sky telemetry link is not connected" : "天空端数传链路未连接");
         const quint8 channel = payload.channel == 0 ? 1 : payload.channel;
+        QVariantMap fields = temperatureCommandLogFields(command, payload, channel);
+        fields.insert(QStringLiteral("execution_path"), QStringLiteral("remote_sky"));
+        fields.insert(QStringLiteral("reason_code"), QStringLiteral("DEPENDENCY_UNAVAILABLE"));
+        fields.insert(QStringLiteral("dependency"), QStringLiteral("remote_sky_telemetry"));
+        fields.insert(QStringLiteral("ui_dedupe_key"),
+                      temperatureCommandDedupeKey(
+                          QStringLiteral("temperature_command_rejected_dependency_unavailable"),
+                          command,
+                          channel));
+        publishTemperatureCommandLog(
+            VaporView::LogLevel::Warning,
+            QStringLiteral("temperature_command_rejected_dependency_unavailable"),
+            QStringLiteral("天空端数传链路未连接，无法下发 RD105 温控命令。"),
+            fields);
         if (state_->temperature_controller_panel_)
         {
             state_->temperature_controller_panel_->setCommandStatus(
@@ -1798,23 +1932,16 @@ void MainWindow::sendRemoteTemperatureCommand(VaporView::CommandId command, cons
         state_->temperature_controller_panel_->setCommandStatus(temperatureCommandStatusText(command, payload.channel, true));
     }
     restoreTemperatureCommandUi(command, payload.channel == 0 ? 1 : payload.channel);
-    if (isTemperatureCommonCommand(command))
-    {
-        log(QString(state_->is_english_
-                ? "RD105 command sent: %1 seq=%2"
-                : "RD105 命令已下发：%1 序号=%2")
-                .arg(VaporView::commandIdName(command))
-                .arg(seq));
-    }
-    else
-    {
-        log(QString(state_->is_english_
-                ? "RD105 command sent: %1 channel=%2 seq=%3"
-                : "RD105 命令已下发：%1 通道=%2 序号=%3")
-                .arg(VaporView::commandIdName(command))
-                .arg(payload.channel)
-                .arg(seq));
-    }
+    QVariantMap fields = temperatureCommandLogFields(command,
+                                                     payload,
+                                                     payload.channel == 0 ? 1 : payload.channel);
+    fields.insert(QStringLiteral("execution_path"), QStringLiteral("remote_sky"));
+    fields.insert(QStringLiteral("command_seq"), seq);
+    fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("details"));
+    publishTemperatureCommandLog(VaporView::LogLevel::Info,
+                                 QStringLiteral("temperature_command_sent"),
+                                 QStringLiteral("RD105 温控命令已下发到天空端。"),
+                                 fields);
 }
 
 void MainWindow::restoreTemperatureCommandUi(VaporView::CommandId command, quint8 channel)
@@ -2116,7 +2243,13 @@ bool MainWindow::applyImuDeviceProfile(const QString& requestedFormat, int reque
     const QString port = state_->imu_port_combo_ ? state_->imu_port_combo_->currentText().trimmed() : QString();
     if (port.isEmpty() || port == selectText)
     {
-        log(state_->is_english_ ? "Select an IMU serial port first" : "请先选择 IMU 串口");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("imu_profile_apply_rejected_missing_port"),
+                         QStringLiteral("请先选择 IMU 串口。"),
+                         {{QStringLiteral("device"), QStringLiteral("IMU")},
+                          {QStringLiteral("reason_code"), QStringLiteral("MISSING_ENDPOINT")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("imu:profile_apply:missing_port")}});
         return false;
     }
 
@@ -2134,7 +2267,15 @@ bool MainWindow::applyImuDeviceProfile(const QString& requestedFormat, int reque
             targetFormat,
             targetRate))
     {
-        log(state_->is_english_ ? "Unsupported IMU format or rate" : "IMU 输出格式或频率不受支持");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("imu_profile_apply_rejected_unsupported"),
+                         QStringLiteral("IMU 输出格式或频率不受支持。"),
+                         {{QStringLiteral("device"), QStringLiteral("IMU")},
+                          {QStringLiteral("reason_code"), QStringLiteral("COMMAND_NOT_SUPPORTED")},
+                          {QStringLiteral("output_format"), targetFormat},
+                          {QStringLiteral("rate_hz"), targetRate},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("imu:profile_apply:unsupported")}});
         return false;
     }
 

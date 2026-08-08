@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <map>
+#include <string>
 
 namespace VaporView
 {
@@ -59,6 +61,16 @@ int temperatureRs485BaudRateForIndex(quint16 index)
     case 7: return 460800;
     default: return 9600;
     }
+}
+
+QVariantMap structuredLogFieldsFromStd(const DataCollector::StructuredLogFields& fields)
+{
+    QVariantMap result;
+    for (const auto& [key, value] : fields)
+    {
+        result.insert(QString::fromStdString(key), QString::fromStdString(value));
+    }
+    return result;
 }
 
 void setQuaternionFromEuler(EpsilonData& data)
@@ -1099,12 +1111,26 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
                           {QStringLiteral("process_output"), QString::fromStdString(message)},
                           {QStringLiteral("external_raw_text"), true}});
     };
+    auto structuredLogCallback = [this, id](LogLevel level,
+                                            const std::string& category,
+                                            const std::string& event,
+                                            const std::string& message,
+                                            DataCollector::StructuredLogFields fields) {
+        QVariantMap mappedFields = structuredLogFieldsFromStd(fields);
+        mappedFields.insert(QStringLiteral("device_id"), skyDeviceIdName(id));
+        publishDeviceLog(level,
+                         QString::fromStdString(category),
+                         QString::fromStdString(event),
+                         QString::fromStdString(message),
+                         mappedFields);
+    };
 
     switch (id)
     {
     case SkyDeviceId::Epsilon:
         epsilon_ = std::make_shared<EpsilonCollector>();
         epsilon_->setLogCallback(logCallback);
+        epsilon_->setStructuredLogCallback(structuredLogCallback);
         epsilon_->setSampleRate(static_cast<int>(config.frequency_hz));
         epsilon_->setDataCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<EpsilonCollector>(epsilon_)]() {
             if (!self)
@@ -1157,6 +1183,7 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
     case SkyDeviceId::Ptb:
         ptb_ = std::make_shared<PtbCollector>();
         ptb_->setLogCallback(logCallback);
+        ptb_->setStructuredLogCallback(structuredLogCallback);
         ptb_->setSampleRate(static_cast<int>(config.frequency_hz));
         ptb_->setDataCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<PtbCollector>(ptb_)]() {
             if (!self)
@@ -1205,6 +1232,7 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
     case SkyDeviceId::Hmp:
         hmp_ = std::make_shared<HmpCollector>();
         hmp_->setLogCallback(logCallback);
+        hmp_->setStructuredLogCallback(structuredLogCallback);
         hmp_->setSampleRate(static_cast<int>(config.frequency_hz));
         hmp_->setDataCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<HmpCollector>(hmp_)]() {
             if (!self)
@@ -1252,6 +1280,7 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
     case SkyDeviceId::Lidar:
         lidar_ = std::make_shared<LidarCollector>();
         lidar_->setLogCallback(logCallback);
+        lidar_->setStructuredLogCallback(structuredLogCallback);
         lidar_->setSampleRate(static_cast<int>(config.frequency_hz));
         lidar_->setDataCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<LidarCollector>(lidar_)]() {
             if (!self)
@@ -1302,6 +1331,7 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
     case SkyDeviceId::TemperatureController:
         temperature_controller_ = std::make_shared<TemperatureControllerCollector>();
         temperature_controller_->setLogCallback(logCallback);
+        temperature_controller_->setStructuredLogCallback(structuredLogCallback);
         temperature_controller_->setSampleRate(static_cast<int>(config.frequency_hz));
         temperature_controller_->setSlaveAddress(static_cast<uint8_t>(std::clamp(config_.temperature_controller.slave_address, 1, 247)));
         temperature_controller_->setDataCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<TemperatureControllerCollector>(temperature_controller_)]() {

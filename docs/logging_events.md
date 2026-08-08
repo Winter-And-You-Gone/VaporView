@@ -39,6 +39,30 @@
 | SkyCore | device.raw_queue | raw_frame_queue_overloaded | Warning | 原始数据帧队列已满，已丢弃部分数据。 | dropped_count, total_dropped_count |  | RAW_FRAME_QUEUE_FULL |
 | SkyCore | device.connection | device_disconnected | Info | 设备已断开，缓存数据已失效。 | device_id |  |  |
 | SkyCore | device.collector | device_collector_output | Info | 设备采集器输出了原始诊断信息。 | device_id, process_output, external_raw_text |  |  |
+| Ground | device.collector | epsilon_configuration_collector_output | Info | EPSILON 配置过程输出了采集器诊断信息。 | device, process_output, external_raw_text | ui_visibility |  |
+| SkyCore | device.navigation.command | rtk_command_write_failed | Error | RTK 命令发送失败。 | device_id, command, requested_rate_hz, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.navigation.command | rtk_command_response_timeout | Warning | RTK 命令未收到响应。 | device_id, command, requested_rate_hz, error_code |  | COMMAND_TIMEOUT |
+| SkyCore | device.navigation.command | epsilon_output_rate_rejected_unsupported | Warning | EPSILON 输出频率不受支持。 | device_id, device, requested_rate_hz, reason_code |  | COMMAND_NOT_SUPPORTED |
+| SkyCore | device.navigation.command | imu_output_message_rejected_unsupported | Warning | IMU 输出消息类型不受支持。 | device_id, device, message_type, reason_code |  | COMMAND_NOT_SUPPORTED |
+| SkyCore | device.navigation.command | imu_command_rejected_serial_closed | Warning | IMU 串口未打开，无法发送命令。 | device_id, device, reason_code |  | DEVICE_NOT_CONNECTED |
+| SkyCore | device.navigation.command | imu_command_write_failed | Error | IMU 命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.navigation.command | imu_sample_rate_rejected_unsupported | Warning | IMU 采样频率不受支持。 | device_id, device, requested_rate_hz, reason_code |  | COMMAND_NOT_SUPPORTED |
+| SkyCore | device.navigation.command | imu_sample_rate_command_failed | Error | IMU 采样频率命令发送失败。 | device_id, device, message_type, requested_rate_hz, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.pressure.command | ptb_sample_rate_rejected_unsupported | Warning | PTB210 采样频率不受支持。 | device_id, device, requested_rate_hz, reason_code |  | COMMAND_NOT_SUPPORTED |
+| SkyCore | device.pressure.command | ptb_average_command_write_failed | Error | PTB210 AVRG 命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.pressure.command | ptb_mpm_command_write_failed | Error | PTB210 MPM 命令发送失败。 | device_id, device, command, mpm, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.pressure.command | ptb_reset_command_write_failed | Error | PTB210 RESET 命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.pressure.command | ptb_continuous_restore_failed | Error | PTB210 恢复连续输出失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.pressure.command | ptb_pressure_probe_write_failed | Error | PTB210 压力探测命令发送失败。 | device_id, device, command, attempt, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.pressure.command | ptb_continuous_start_failed | Error | PTB210 启动连续输出失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.temperature.state | temperature_controller_model_read_failed | Error | RD105 温控器型号读取失败。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
+| SkyCore | device.temperature.state | temperature_controller_firmware_read_failed | Error | RD105 温控器版本号读取失败。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
+| SkyCore | device.temperature.state | temperature_controller_parameters_read_failed | Error | RD105 温控器参数读取失败。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
+| SkyCore | device.temperature.state | temperature_controller_parameters_incomplete | Error | RD105 温控器参数读取不完整。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
+| SkyCore | device.lidar.command | lidar_high_frequency_start_failed | Error | TFA1005-L 高频测距启动命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.lidar.command | lidar_standby_command_failed | Error | TFA1005-L 待机命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.lidar.command | lidar_distance_output_command_failed | Error | TFA1005-L 距离输出命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.lidar.command | lidar_low_frequency_continuous_command_failed | Error | TFA1005-L 低频连续测距命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
 | SkyCore | device.legacy | legacy_device_log | Info | 设备 legacy 日志已更新。 | legacy_unclassified |  |  |
 | SkyCore | device.wave_tcp | wave_tcp_peak_search_range_updated | Info | Wave TCP 峰值搜索范围已更新。 | start_index, end_index |  |  |
 | SkyCore | device.wave_tcp | wave_tcp_resync_discarded_bytes | Warning | Wave TCP 重新同步时已丢弃部分字节。 | dropped_bytes |  | WAVE_TCP_FRAME_HEADER_NOT_FOUND |
@@ -87,7 +111,136 @@
 | Ground | session.write | session_event_log_append_failed | Error | 无法从会话日志接收器写入 event_log.csv。 | session_sink_failure, source, category |  | SESSION_EVENT_LOG_APPEND_FAILED |
 | Ground | session.write | session_error_log_append_failed | Error | 无法从会话日志接收器写入 error_log.txt。 | session_sink_failure, source, category |  | SESSION_ERROR_LOG_APPEND_FAILED |
 | Ground | session.write | recording_stop_summary_append_failed | Error | 无法写入记录停止摘要。 |  |  | RECORDING_STOP_SUMMARY_APPEND_FAILED |
+| Ground | session.write | raw_format_document_copy_failed | Warning | 未能将统一 raw DAT 格式说明复制到当前会话目录。 | error_code | ui_dedupe_key | RAW_FORMAT_DOCUMENT_COPY_FAILED |
+| Ground | session.write | device_config_snapshot_failed | Warning | 保存设备配置快照失败。 | error_code | ui_dedupe_key | DEVICE_CONFIG_SNAPSHOT_FAILED |
+| Ground | session.write | session_metadata_update_failed | Warning | 更新会话元数据失败。 | error_code | ui_dedupe_key | SESSION_METADATA_UPDATE_FAILED |
+| Ground | session.write | tcp_raw_recording_queue_backlog | Warning | TCP 原始记录队列出现积压，磁盘写入可能慢于数据流。 | backlog_mib, reason_code | ui_dedupe_key | BACKPRESSURE |
+| Ground | session.write | tcp_raw_recording_queue_full | Warning | TCP 原始记录队列已满，正在丢弃新到原始帧以保持链路响应。 | queue_mib, error_code | ui_dedupe_key | TCP_RAW_QUEUE_FULL |
+| Ground | session.write | tcp_raw_frames_dropped | Warning | TCP 原始记录队列已满，已丢弃部分帧。 | dropped_frames, error_code | ui_dedupe_key | TCP_RAW_FRAMES_DROPPED |
+| Ground | session.write | device_raw_recording_queue_backlog | Warning | 设备原始记录队列出现积压，磁盘写入可能慢于串口数据流。 | backlog_mib, reason_code | ui_dedupe_key | BACKPRESSURE |
+| Ground | session.write | device_raw_recording_queue_full | Warning | 设备原始记录队列已满，正在丢弃新到原始帧以保持采集线程响应。 | queue_mib, error_code | ui_dedupe_key | DEVICE_RAW_QUEUE_FULL |
+| Ground | session.write | device_raw_frames_dropped | Warning | 设备原始记录队列已满，已丢弃部分帧。 | dropped_frames, error_code | ui_dedupe_key | DEVICE_RAW_FRAMES_DROPPED |
+| Ground | session.recording | session_recording_started | Info | 已开始记录会话。 | session_directory, resumed | ui_visibility |  |
+| Ground | session.recording | session_recording_resumed | Info | 已继续记录会话。 | session_directory, resumed | ui_visibility |  |
+| Ground | session.recording | session_recording_paused | Info | 已暂停记录会话。 | session_directory | ui_visibility |  |
+| Ground | session.recording | session_recording_stopped | Info | 记录会话已结束。 | session_directory, sensor_rows, waveform_frames | ui_visibility |  |
+| Ground | session.recording | session_recording_start_failed | Error | 启动记录会话失败。 | error_code | system_error | SESSION_LAYOUT_CREATE_FAILED / SESSION_FILES_OPEN_FAILED / SESSION_METADATA_WRITE_FAILED / SESSION_RECORDING_START_FAILED |
+| Ground | session.recording | session_recording_rejected_dependency_unavailable | Warning | 开始记录前请先连接天空端数传。 | reason_code, dependency, mode | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
+| Ground | session.recording | session_recording_rejected_no_source | Warning | 开始记录前，至少需要一个串口设备在线或 TCP 波形链路已连接。 | reason_code, mode, serial_connected, tcp_wave_connected | ui_dedupe_key | NO_RECORDING_SOURCE_CONNECTED |
+| Ground | session.recording | scheduled_recording_configured | Info | 定时记录已配置。 | summary, mode, duration_seconds, interval_seconds, fixed_count_enabled, total_runs, next_start_time | ui_visibility |  |
+| Ground | session.recording | scheduled_recording_canceled | Info | 定时记录已取消。 |  | ui_visibility |  |
+| Ground | session.recording | scheduled_recording_start_failed | Warning | 定时记录未能启动。 | reason_code, failure_reason, mode, next_start_time | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
+| Ground | session.recording | scheduled_recording_stop_failed | Warning | 定时记录未能停止，当前记录链路不可用。 | reason_code | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
+| Ground | session.recording | scheduled_recording_completed | Info | 定时记录已完成。 | summary, completed_runs, total_runs | ui_visibility |  |
+| Ground | session.recording | scheduled_recording_next_start_scheduled | Info | 已安排下一次定时记录。 | next_start_time, completed_runs | ui_visibility |  |
+| Ground | session.recording | scheduled_recording_start_command_sent | Info | 定时记录开始命令已发送。 | execution_path, command, command_seq | ui_visibility |  |
+| Ground | session.recording | scheduled_recording_stop_command_sent | Info | 定时记录停止命令已发送。 | execution_path, command, command_seq | ui_visibility |  |
 | Ground | device.connection | ground_device_connection_status | Info | 设备连接状态已更新。 | ui_visibility, ui_message, legacy_unclassified, ui_visible |  |  |
+| Ground | device.connection | serial_ports_refreshed | Info | 串口列表已刷新。 | serial_port_count | ui_visibility |  |
+| Ground | device.connection | serial_port_detection_started | Info | 开始自动识别串口。 |  | ui_visibility |  |
+| Ground | device.connection | serial_port_detection_cancel_requested | Info | 已请求取消，正在停止自动识别串口。 | reason_code | ui_visibility | USER_CANCELLED |
+| Ground | device.connection | serial_port_detection_progress_updated | Debug/Info | 串口自动识别状态已更新。 | ui_message, inline | ui_visibility |  |
+| Ground | device.connection | device_connection_started | Info | 正在连接本地设备。 |  | ui_visibility |  |
+| Ground | device.connection | device_connection_progress_updated | Debug | 设备连接进度已更新。 | ui_message, inline | ui_visibility |  |
+| Ground | device.connection | device_connection_rejected_busy | Warning | 已有设备连接流程正在进行。 | reason_code | ui_dedupe_key | INVALID_STATE |
+| Ground | device.connection | device_connection_cancel_requested | Info | 已请求取消，正在停止连接流程。 | reason_code | ui_visibility | USER_CANCELLED |
+| Ground | device.connection | device_disconnection_started | Info | 正在断开本地设备。 |  | ui_visibility |  |
+| Ground | device.connection | local_device_disconnected | Info | 本地设备已断开。 |  | ui_visibility |  |
+| Ground | device.connection | temperature_controller_connection_rejected_missing_port | Warning | 请先选择本地 RD105 串口。 | device, device_id, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
+| Ground | device.connection | temperature_controller_connection_rejected_invalid_baud | Warning | RD105 波特率无效。 | device, device_id, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
+| Ground | device.connection | temperature_controller_connection_started | Info | 正在连接本地 RD105 温控器。 | device, device_id, port, baud, sample_rate_hz | ui_visibility |  |
+| Ground | device.connection | temperature_controller_connected | Info | 本地 RD105 温控器已连接。 | device, device_id | details, ui_visibility |  |
+| Ground | device.connection | temperature_controller_connection_failed | Error | 本地 RD105 温控器连接失败。 | device, device_id, error_code | system_error, ui_dedupe_key | SERIAL_OPEN_FAILED |
+| Ground | device.connection | temperature_controller_connection_rejected_busy | Warning | 另一个本地连接操作正在进行中。 | device, device_id, reason_code | ui_dedupe_key | INVALID_STATE |
+| Ground | device.connection | temperature_controller_disconnected | Info | 本地 RD105 温控器已断开。 | device, device_id | ui_visibility |  |
+| Ground | telemetry.connection | remote_sky_connection_rejected_missing_host | Warning | 请先输入天空端数传 IP。 | reason_code, transport | ui_dedupe_key | MISSING_ENDPOINT |
+| Ground | telemetry.connection | remote_sky_connection_rejected_missing_port | Warning | 请先选择天空端数传串口。 | reason_code, transport | ui_dedupe_key | MISSING_ENDPOINT |
+| Ground | telemetry.connection | remote_sky_connection_started | Info | 正在连接天空端数传。 | transport, endpoint | ui_visibility |  |
+| Ground | telemetry.connection | remote_sky_connection_opened | Info | 数传链路已打开，正在等待天空端握手。 | endpoint, transport | ui_visibility |  |
+| Ground | telemetry.connection | remote_sky_connection_open_failed | Error | 打开天空端数传链路失败。 | error_code, endpoint, transport | ui_dedupe_key | TELEMETRY_LINK_OPEN_FAILED |
+| Ground | telemetry.connection | remote_sky_handshake_confirmed | Info | 天空端握手成功。 |  | ui_visibility |  |
+| Ground | telemetry.connection | remote_sky_disconnection_started | Info | 正在断开天空端数传。 |  | ui_visibility |  |
+| Ground | telemetry.connection | remote_sky_disconnected | Info | 天空端数传已断开。 |  | ui_visibility |  |
+| Ground | telemetry.link | remote_sky_legacy_status | Info | 远程数传状态已更新。 | ui_message, legacy_unclassified | ui_visibility |  |
+| Ground | telemetry.command | remote_command_ack_received | Debug | 远程命令 ACK 已收到。 | command, command_id, command_seq, ack_result, command_error_code | ui_visibility |  |
+| Ground | telemetry.command | remote_command_failed | Error | 远程命令执行失败。 | command, command_id, command_seq, ack_result, command_error_code, error_code | ui_dedupe_key | REMOTE_COMMAND_FAILED / INVALID_PAYLOAD / INVALID_DEVICE_ID / CONFIG_INVALID / CONFIG_APPLY_FAILED / INTERNAL_ERROR |
+| Ground | telemetry.command | peak_search_range_sent | Info | 峰值搜索区间已下发到天空端。 | range_start_index, range_end_index, command_seq | ui_visibility |  |
+| Ground | telemetry.command | peak_search_range_applied | Info | 峰值搜索区间已生效，旧远程峰值趋势已清空。 | command, command_id, command_seq, range_start_index, range_end_index | ui_visibility |  |
+| Ground | telemetry.command | peak_search_range_rejected_dependency_unavailable | Warning | 天空端数传链路未连接，无法下发峰值搜索区间。 | reason_code, dependency, range_start_index, range_end_index | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
+| Ground | device.command | remote_device_command_rejected_dependency_unavailable | Warning | 天空端数传链路未连接，无法下发设备命令。 | reason_code, dependency, device_id, command | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
+| Ground | ui.action | sky_device_config_rejected_not_connected | Warning | 打开天空端设备配置前，请先连接天空端数传。 | reason_code, dependency | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
+| Ground | ui.action | language_switched | Info | 界面语言已切换。 | language | ui_visibility |  |
+| Ground | ui.action | theme_switched | Info | 界面主题已切换。 | theme | ui_visibility |  |
+| Ground | ui.action | font_scale_updated | Info | 界面字号已更新。 | font_scale_percent | ui_visibility |  |
+| Ground | ui.test | ui_test_log_updated | Info | 界面测试日志已更新。 | ui_message | ui_visibility |  |
+| Ground | device.navigation.command | epsilon_rtcm_config_rejected_recording_active | Warning | 请先结束记录，再配置 EPSILON RTCM 串口。 | device, reason_code | ui_dedupe_key | INVALID_STATE |
+| Ground | device.navigation.command | epsilon_rtcm_config_rejected_missing_main_port | Warning | 请先选择 EPSILON 主串口。 | device, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
+| Ground | device.navigation.command | epsilon_rtcm_config_rejected_invalid_main_baud | Warning | EPSILON 波特率无效。 | device, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
+| Ground | device.navigation.command | epsilon_rtcm_config_rejected_missing_forward_port | Warning | 请选择连接到 EPSILON 第二串口的本机串口。 | device, reason_code, main_port | ui_dedupe_key | MISSING_ENDPOINT |
+| Ground | device.navigation.command | epsilon_rtcm_config_rejected_port_conflict | Warning | RTCM 转发串口不能与 EPSILON 主串口相同。 | device, reason_code, main_port, forward_port, details | ui_dedupe_key | CONFIG_INVALID |
+| Ground | device.navigation.command | epsilon_rtcm_config_rejected_invalid_forward_baud | Warning | RTCM 转发波特率无效。 | device, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
+| Ground | device.navigation.command | epsilon_rtcm_config_started | Info | 正在把 EPSILON 第二通信串口配置为 RTCM。 | device, main_port, main_baud, forward_port, forward_baud | ui_visibility |  |
+| Ground | device.navigation.command | epsilon_rtcm_port_open_failed | Error | 打开 EPSILON 串口进行 RTCM 配置失败。 | device, operation, port, baud, system_error, error_code | ui_dedupe_key | SERIAL_OPEN_FAILED |
+| Ground | device.navigation.command | epsilon_rtcm_port_config_failed | Error | EPSILON RTCM 串口配置失败。 | device, operation, port, baud, forward_port, forward_baud, error_code | ui_dedupe_key | CONFIG_APPLY_FAILED |
+| Ground | device.navigation.command | epsilon_rtcm_port_config_completed | Info | EPSILON RTCM 串口配置已完成，RTK 转发配置已预填。 | device, operation, port, forward_port, forward_baud | ui_visibility |  |
+| Ground | device.navigation.command | epsilon_live_stream_pause_for_configuration | Info | 为配置 EPSILON 临时停止当前数据流。 | device, operation | ui_visibility |  |
+| Ground | device.navigation.command | epsilon_configuration_completed_live_stream_restored | Info | EPSILON 配置已完成，实时导航流已恢复。 | device, operation | ui_visibility |  |
+| Ground | device.navigation.command | epsilon_configuration_failed_live_stream_restored | Error | EPSILON 配置失败，但原实时导航流已恢复。 | device, operation, error_code | ui_visibility | CONFIG_APPLY_FAILED |
+| Ground | device.navigation.command | epsilon_live_stream_restore_failed | Error | EPSILON 实时导航流未能恢复，请手动重新连接 EPSILON。 | device, operation, error_code, recovery_error | ui_dedupe_key | STREAM_RESTORE_FAILED |
+| Ground | device.navigation.command | epsilon_main_antenna_lever_arm_config_started | Info | 正在通过临时连接下发 EPSILON 主天线杆臂配置。 | device, operation, port, baud, values | ui_visibility |  |
+| Ground | device.navigation.command | epsilon_main_antenna_lever_arm_open_failed | Error | 打开 EPSILON 串口进行主天线杆臂配置失败。 | device, operation, port, baud, system_error, error_code | ui_dedupe_key | SERIAL_OPEN_FAILED |
+| Ground | device.navigation.command | epsilon_main_antenna_lever_arm_config_failed | Error | EPSILON 主天线杆臂配置失败。 | device, operation, port, baud, x_m, y_m, z_m, error_code | ui_dedupe_key | CONFIG_APPLY_FAILED |
+| Ground | device.navigation.command | epsilon_packet_profile_rejected_bandwidth | Warning | EPSILON 包频率超过当前波特率安全带宽。 | device, baud_text, required_kbps, limit_kbps, reason_code | details, ui_dedupe_key | CONFIG_INVALID |
+| Ground | device.navigation.command | epsilon_output_reconfigure_rejected_recording_active | Warning | 请先结束记录，再重新配置 EPSILON 输出。 | device, reason_code | ui_dedupe_key | INVALID_STATE |
+| Ground | device.navigation.command | epsilon_output_reconfigure_rejected_missing_port | Warning | 请先选择 EPSILON 串口。 | device, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
+| Ground | device.navigation.command | epsilon_output_reconfigure_rejected_invalid_baud | Warning | EPSILON 波特率无效。 | device, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
+| Ground | device.navigation.command | epsilon_output_reconfigure_skipped_rate_unspecified | Info | EPSILON 频率为“不设定”，已跳过输出频率下发。 | device, reason_code | ui_visibility | COMMAND_NOT_SUPPORTED |
+| Ground | device.navigation.command | epsilon_output_reconfigure_started | Info | 开始手动重配 EPSILON 输出。 | device, port, baud, packet_rate_profile, packet_rate_summary | ui_visibility |  |
+| Ground | device.navigation.command | epsilon_output_reconfigure_open_failed | Error | 打开 EPSILON 串口进行手动重配失败。 | device, operation, port, baud, system_error, error_code | ui_dedupe_key | SERIAL_OPEN_FAILED |
+| Ground | device.navigation.command | epsilon_output_reconfigure_failed | Error | EPSILON 输出手动重配失败。 | device, operation, port, baud, output_rate_hz, callback_rate_hz, packet_rate_signature, error_code | ui_dedupe_key | CONFIG_APPLY_FAILED |
+| Ground | device.navigation.command | epsilon_output_reconfigure_completed | Info | EPSILON 输出手动重配已完成。 | device, operation, port, output_rate_hz, callback_rate_hz, packet_rate_signature | ui_visibility |  |
+| Ground | device.navigation.command | epsilon_output_rate_command_disabled | Info | 已禁用 EPSILON 输出频率下发，使用设备当前输出。 | device, apply_device_rate | ui_visibility |  |
+| Ground | device.navigation.command | epsilon_output_rate_command_failed | Error | EPSILON 输出频率下发失败。 | device, requested_rate_hz, error_code | ui_dedupe_key | COMMAND_VERIFY_FAILED |
+| Ground | device.navigation.command | epsilon_output_rate_saved_deferred | Info | EPSILON 输出频率已保存，将在下次连接时应用。 | device, requested_rate_hz | ui_visibility |  |
+| Ground | device.navigation.command | epsilon_output_rate_updated_custom_profile_retained | Info | EPSILON 分组频率已更新，但仍使用已保存的自定义包频率配置。 | device, requested_rate_hz, epsilon_packet_profile | ui_visibility |  |
+| Ground | device.navigation.command | epsilon_output_rate_updated | Info | EPSILON 输出频率已更新。 | device, requested_rate_hz | ui_visibility |  |
+| Ground | device.navigation.command | imu_profile_apply_rejected_missing_port | Warning | 请先选择 IMU 串口。 | device, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
+| Ground | device.navigation.command | imu_profile_apply_rejected_unsupported | Warning | IMU 输出格式或频率不受支持。 | device, reason_code, output_format, rate_hz | ui_dedupe_key | COMMAND_NOT_SUPPORTED |
+| Ground | configuration.apply | epsilon_packet_profile_custom_enabled | Info | 检测到包频率已偏离分组模式，已自动启用自定义包频率配置。 | device, packet_rate_summary | ui_visibility |  |
+| Ground | configuration.apply | epsilon_packet_profile_saved | Info | 已保存 EPSILON 包频率配置。 | device, packet_rate_profile, packet_rate_summary | ui_visibility |  |
+| Ground | configuration.apply | epsilon_packet_profile_disabled | Info | 已关闭 EPSILON 自定义包频率，后续将使用分组配置。 | device, grouped_rate_hz | ui_visibility |  |
+| Ground | configuration.apply | epsilon_packet_profile_apply_requested | Info | 正在应用刚保存的 EPSILON 包频率配置。 | device, port, packet_rate_summary | ui_visibility |  |
+| Ground | configuration.apply | epsilon_packet_profile_saved_deferred | Info | EPSILON 包频率配置已保存，将在下次连接或重配时生效。 | device, packet_rate_summary | ui_visibility |  |
+| Ground | configuration.apply | recording_directory_updated | Info | 记录目录已更新。 | recording_directory | ui_visibility |  |
+| Ground | configuration.apply | recording_csv_rate_updated | Info | 其余设备记录频率已更新。 | recording_rate_hz | ui_visibility |  |
+| Ground | configuration.apply | epsilon_raw_recording_full_frames_enabled | Info | EPSILON 原始记录固定保存完整已校验 FDILink 帧。 | device, recording_mode | ui_visibility |  |
+| Ground | configuration.apply | tcp_wave_raw_recording_full_frames_enabled | Info | TCP 波形原始记录固定保存每组完整 TCP 帧。 | device, recording_mode | ui_visibility |  |
+| Ground | device.pressure.command | ptb_sample_rate_command_disabled | Info | 已禁用 PTB210 采样频率下发，使用设备当前输出。 | device, apply_device_rate | ui_visibility |  |
+| Ground | device.pressure.command | ptb_sample_rate_command_failed | Error | PTB210 采样频率命令下发失败。 | device, requested_rate_hz, error_code | ui_dedupe_key | COMMAND_VERIFY_FAILED |
+| Ground | device.lidar.command | lidar_output_rate_command_disabled | Info | 已禁用激光测距仪输出频率下发，使用设备默认或自适应输出。 | device, apply_device_rate | ui_visibility |  |
+| Ground | device.rate | sample_rate_apply_partial_failure | Warning | 主机侧频率已更新，但一个或多个设备输出频率命令失败。 | requested_rate_hz, epsilon_command_failed, ptb_command_failed, reason_code | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
+| Ground | device.rate | sample_rates_updated | Info | 所有频率已更新。 | requested_rate_hz, epsilon_rate_hz, ptb_rate_hz, hmp_rate_hz, lidar_rate_hz, temperature_rate_hz | ui_visibility |  |
+| Ground | device.rate | sample_rates_updated_custom_epsilon_profile | Info | 所有频率已更新，EPSILON 仍保留自定义包频率配置。 | requested_rate_hz, epsilon_rate_hz, ptb_rate_hz, hmp_rate_hz, lidar_rate_hz, temperature_rate_hz, epsilon_packet_profile | ui_visibility |  |
+| Ground | device.rate | sample_rate_device_commands_skipped_unspecified | Info | 已选择“不设定”的设备保持不下发输出频率命令。 | epsilon_skipped, ptb_skipped, hmp_skipped, lidar_skipped, temperature_skipped | ui_visibility |  |
+| Ground | device.rate | ptb_sample_rate_capped | Info | PTB210 采样频率已按设备上限限制。 | device, requested_rate_hz, effective_rate_hz | ui_visibility |  |
+| Ground | device.rate | ptb_sample_rate_updated_capped | Info | PTB210 采样频率已更新，并按设备上限限制。 | device, requested_rate_hz, effective_rate_hz | ui_visibility |  |
+| Ground | device.rate | ptb_sample_rate_updated | Info | PTB210 采样频率已更新。 | device, requested_rate_hz | ui_visibility |  |
+| Ground | device.rate | hmp_polling_rate_defaulted | Info | HMP3 轮询频率保持不设定，使用默认主机轮询频率。 | device, effective_rate_hz | ui_visibility |  |
+| Ground | device.rate | hmp_sample_rate_updated | Info | HMP3 采样频率已更新。 | device, requested_rate_hz | ui_visibility |  |
+| Ground | device.rate | lidar_sample_rate_updated | Info | 激光测距仪采样频率已更新。 | device, requested_rate_hz | ui_visibility |  |
+| Ground | device.rate | temperature_polling_rate_defaulted | Info | RD105 轮询频率保持不设定，使用默认主机轮询频率。 | device, effective_rate_hz | ui_visibility |  |
+| Ground | device.rate | temperature_polling_rate_updated | Info | RD105 轮询频率已更新。 | device, requested_rate_hz | ui_visibility |  |
+| Ground | device.rate | temperature_polling_rate_capped | Info | RD105 轮询频率已按设备上限限制。 | device, requested_rate_hz, effective_rate_hz | ui_visibility |  |
+| Ground | device.temperature.command | ai8_page_read_completed | Info | AI-8288 参数页读取完成。 | device, device_id, page, channel, input_group, output_group, details | ui_visibility |  |
+| Ground | device.temperature.command | ai8_page_read_failed | Error | AI-8288 参数页读取失败。 | device, device_id, page, channel, input_group, output_group, details, error_code | ui_dedupe_key | AI8_PAGE_READ_FAILED |
+| Ground | device.temperature.command | ai8_page_write_completed | Info | AI-8288 参数页写入完成。 | device, device_id, page, channel, input_group, output_group, details | ui_visibility |  |
+| Ground | device.temperature.command | ai8_page_write_failed | Error | AI-8288 参数页写入失败。 | device, device_id, page, channel, input_group, output_group, details, error_code | ui_dedupe_key | AI8_PAGE_WRITE_FAILED |
+| Ground | device.temperature.command | temperature_command_sent | Info | RD105 温控命令已下发到天空端。 | device, command, command_id, execution_path, command_seq | channel, target, ui_visibility |  |
+| Ground | device.temperature.command | temperature_command_completed | Info | RD105 温控命令执行成功。 | device, command, command_id, execution_path | channel, target, command_seq, ui_visibility |  |
+| Ground | device.temperature.command | temperature_command_rejected_not_connected | Warning | 本地 RD105 温控器未连接，无法下发温控命令。 | device, command, command_id, execution_path, reason_code | channel, target, command_seq, command_error_code, ui_dedupe_key | DEVICE_NOT_CONNECTED |
+| Ground | device.temperature.command | temperature_command_rejected_dependency_unavailable | Warning | 天空端数传链路未连接，无法下发 RD105 温控命令。 | device, command, command_id, execution_path, dependency, reason_code | channel, target, ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
+| Ground | device.temperature.command | temperature_command_ack_timeout | Warning | RD105 温控命令 ACK 等待超时。 | device, command, command_id, execution_path, command_seq, error_code | channel, target, ui_dedupe_key | COMMAND_TIMEOUT |
+| Ground | device.temperature.command | temperature_command_failed | Error | RD105 温控命令执行失败。 | device, command, command_id, execution_path, error_code | channel, target, command_seq, command_error_code, ack_result, ui_dedupe_key | COMMAND_VERIFY_FAILED / INVALID_PAYLOAD / INVALID_DEVICE_ID / CONFIG_INVALID / CONFIG_APPLY_FAILED / INTERNAL_ERROR |
 | Ground | ui.legacy | ground_ui_legacy_log | Info | 地面端界面日志已更新。 | ui_visibility, ui_message, legacy_unclassified, ui_visible |  |  |
 | Ground | ui.progress | ground_ui_progress_updated | Debug | 界面进度日志已更新。 | ui_visibility, ui_message, inline, legacy_unclassified, ui_visible |  |  |
 | Ground | ui.log | ui_log_view_cleared | Info | 日志面板显示已清空。 | ui_visibility |  |  |

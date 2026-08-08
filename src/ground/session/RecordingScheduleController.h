@@ -1,7 +1,10 @@
 #pragma once
 
+#include "LogRecord.h"
+
 #include <QDateTime>
 #include <QString>
+#include <QVariantMap>
 
 #include <functional>
 
@@ -41,12 +44,20 @@ public:
         QString failureReason;
     };
 
+    struct LogEntry
+    {
+        VaporView::LogLevel level = VaporView::LogLevel::Info;
+        QString event;
+        QString message;
+        QVariantMap fields;
+    };
+
     struct Hooks
     {
         std::function<StartResult()> startRecording;
         std::function<bool()> stopRecording;
         std::function<bool()> sessionOpen;
-        std::function<void(const QString& english, const QString& chinese)> log;
+        std::function<void(const LogEntry& entry)> log;
         std::function<void()> stateChanged;
     };
 
@@ -79,7 +90,7 @@ private:
     void scheduleNextInterval(const QDateTime& fromTime);
     void completeRound(bool counted, const QDateTime& now);
     void notifyStateChanged() const;
-    void log(const QString& english, const QString& chinese) const;
+    void log(LogEntry entry) const;
     bool sessionOpen() const;
 
     Hooks hooks_;

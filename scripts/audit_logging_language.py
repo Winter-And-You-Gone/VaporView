@@ -50,10 +50,14 @@ LOG_CALLS = {
     "reportUserIssue": {"source": 1, "category": 2, "message": 3, "fields": 4},
     "publishRuntimeLog": {"source_literal": "SkyCore", "category": 1, "event": 2, "message": 3, "fields": 4},
     "publishDeviceLog": {"source_literal": "SkyCore", "category": 1, "event": 2, "message": 3, "fields": 4},
+    "logStructured": {"source_literal": "SkyCore", "category": 1, "event": 2, "message": 3, "fields": 4},
     "publishIpcLog": {"source_literal": "SkyCore", "category_literal": "ipc", "event": 1, "message": 2, "fields": 3},
     "publishClientLog": {"source_literal": "SkyTui", "category": 1, "event": 2, "message": 3, "fields": 4},
     "publishTelemetryLog": {"source_literal": "Ground", "category": 1, "event": 2, "message": 3, "fields": 4},
     "reportProtocolDiagnostic": {"source_literal": "Ground", "category": 1, "event": 2, "message": 3, "fields": 4},
+    "publishGroundLog": {"source_literal": "Ground", "category": 1, "event": 2, "message": 3, "fields": 4},
+    "publishTemperatureCommandLog": {"source_literal": "Ground", "category_literal": "device.temperature.command", "event": 1, "message": 2, "fields": 3},
+    "emitLog": {"source_literal": "Ground", "category": 2, "event": 3, "message": 4, "fields": 5},
 }
 
 LEVEL_NAMES = ("LogLevel::Warning", "LogLevel::Error", "LogLevel::Critical")

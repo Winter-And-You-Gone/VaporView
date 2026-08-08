@@ -1,6 +1,9 @@
 #pragma once
 
+#include "LogRecord.h"
+
 #include <QString>
+#include <QVariantMap>
 
 #include <cstdint>
 #include <functional>
@@ -37,10 +40,19 @@ struct EpsilonConfigurationResult
     }
 };
 
+struct EpsilonConfigurationLogEntry
+{
+    VaporView::LogLevel level = VaporView::LogLevel::Info;
+    QString category;
+    QString event;
+    QString message;
+    QVariantMap fields;
+};
+
 class EpsilonConfigurationService final
 {
 public:
-    using LogCallback = std::function<void(const QString&)>;
+    using LogCallback = std::function<void(const EpsilonConfigurationLogEntry&)>;
 
     static constexpr int PacketConfigurationVersion = 2;
 

@@ -205,6 +205,15 @@ private:
     void loadModernStyleSheet();
     void log(const QString& message);
     void logConnectionInfo(const QString& message);
+    void publishGroundLog(VaporView::LogLevel level,
+                          const QString& category,
+                          const QString& event,
+                          const QString& message,
+                          QVariantMap fields = {});
+    void publishTemperatureCommandLog(VaporView::LogLevel level,
+                                      const QString& event,
+                                      const QString& message,
+                                      QVariantMap fields = {});
     void updateRecordingStatusLabel();
     qint64 uiTestRecordingElapsedMs() const;
     void startOrResumeUiTestRecording();

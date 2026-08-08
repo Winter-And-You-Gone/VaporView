@@ -1,5 +1,6 @@
 #pragma once
 
+#include "LogRecord.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"
 #include "TelemetryTypes.h"
@@ -17,6 +18,7 @@
 #include <QSize>
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
 #include <Qt>
 
 #include <cstdint>
@@ -206,6 +208,15 @@ inline constexpr int kSectionTitleIconSize = 22;
 inline constexpr char kSensorBaudSourceProperty[] = "sensorBaudSource";
 
 bool isTemperatureCommonCommand(CommandId command);
+QString commandErrorCodeIdentifier(CommandErrorCode error);
+QVariantMap temperatureCommandLogFields(CommandId command,
+                                        const TemperatureControllerCommand& payload,
+                                        quint8 channel);
+QString temperatureCommandDedupeKey(const QString& event, CommandId command, quint8 channel);
+LogRecord makeTemperatureCommandLogRecord(LogLevel level,
+                                          const QString& event,
+                                          const QString& message,
+                                          QVariantMap fields = {});
 int rememberedTemperatureSlaveAddress();
 QString formatTemperaturePolynomial(qint64 mantissa, int exponent);
 bool parseTemperaturePolynomial(const QString& text, qint64& mantissa, qint16& exponent);

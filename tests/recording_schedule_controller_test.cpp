@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 #include <QTimeZone>
+#include <QVector>
 
 #include <cstdlib>
 #include <iostream>
@@ -31,7 +32,7 @@ int main(int argc, char **argv)
     int startCalls = 0;
     int stopCalls = 0;
     int stateChanges = 0;
-    QStringList logs;
+    QVector<Controller::LogEntry> logs;
 
     Controller controller({
         [&]() {
@@ -49,7 +50,7 @@ int main(int argc, char **argv)
             return stopSucceeds;
         },
         [&]() { return sessionOpen; },
-        [&](const QString& english, const QString&) { logs.push_back(english); },
+        [&](const Controller::LogEntry& entry) { logs.push_back(entry); },
         [&]() { ++stateChanges; },
     });
 
@@ -96,8 +97,12 @@ int main(int argc, char **argv)
     controller.tick(fixed.firstStartTime);
     require(!controller.isActive(),
             "failed fixed-time start does not remain armed indefinitely");
-    require(!logs.isEmpty() && logs.back().contains(QStringLiteral("could not start")),
-            "failed start emits a diagnostic log");
+    require(!logs.isEmpty() &&
+                logs.back().level == VaporView::LogLevel::Warning &&
+                logs.back().event == QStringLiteral("scheduled_recording_start_failed") &&
+                logs.back().fields.value(QStringLiteral("reason_code")).toString() ==
+                    QStringLiteral("DEPENDENCY_UNAVAILABLE"),
+            "failed start emits a structured warning log");
 
     Controller::Configuration retry = interval;
     retry.fixedCountEnabled = false;

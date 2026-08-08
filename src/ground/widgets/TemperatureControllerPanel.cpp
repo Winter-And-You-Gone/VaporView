@@ -91,6 +91,7 @@ constexpr int kTemperatureControllerTopEnableWidth = 106;
 constexpr int kTemperatureControllerTopEnableHeight = 34;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
 constexpr int kTemperatureControllerModeTextWidthReserve = 48;
+constexpr int kTemperatureControllerAutoPidTextWidthReserve = 24;
 // The 266px common-parameter row is 85 + 6 + 84 + 6 + 85, matching 130 + 6 + 130.
 constexpr int kTemperatureControllerPidSideInputWidth = 85;
 constexpr int kTemperatureControllerPidCenterInputWidth = 84;
@@ -118,7 +119,7 @@ constexpr const char *kTextWidthPaddingProperty = "_vv_text_width_padding";
 constexpr const char *kNumericWidthCandidatesProperty = "_vv_numeric_width_candidates";
 constexpr const char *kNumericWidthPaddingProperty = "_vv_numeric_width_padding";
 
-void fitTemperatureComboWidth(QComboBox *combo)
+void fitTemperatureComboWidth(QComboBox *combo, int textWidthReserve = kTemperatureControllerModeTextWidthReserve)
 {
     if (!combo)
     {
@@ -150,7 +151,7 @@ void fitTemperatureComboWidth(QComboBox *combo)
     }
     if (longestTextWidth > 0)
     {
-        combo->setFixedWidth(longestTextWidth + nonTextWidth + kTemperatureControllerModeTextWidthReserve);
+        combo->setFixedWidth(longestTextWidth + nonTextWidth + textWidthReserve);
     }
 }
 
@@ -1633,13 +1634,27 @@ void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
         return;
     }
 
-    const int enableFieldWidth = std::max(channel.enable_field->width(),
-                                          channel.enable_field->sizeHint().width());
-    const int autoPidFieldWidth = std::max(channel.auto_pid_field->width(),
-                                           channel.auto_pid_field->sizeHint().width());
-    const int controllerModeFieldWidth = controller_mode_field_
-        ? std::max(controller_mode_field_->width(), controller_mode_field_->sizeHint().width())
-        : 0;
+    auto currentFieldWidth = [](QWidget *field) {
+        if (!field)
+        {
+            return 0;
+        }
+        if (QLayout *layout = field->layout())
+        {
+            layout->invalidate();
+            layout->activate();
+        }
+        const int width = field->sizeHint().width();
+        if (width > 0)
+        {
+            field->setFixedWidth(width);
+        }
+        return std::max(0, width);
+    };
+
+    const int enableFieldWidth = currentFieldWidth(channel.enable_field);
+    const int autoPidFieldWidth = currentFieldWidth(channel.auto_pid_field);
+    const int controllerModeFieldWidth = currentFieldWidth(controller_mode_field_);
     QWidget *page = channel.common_top_controls->parentWidget();
     QWidget *selectorRow = page && page->parentWidget()
         ? page->parentWidget()->parentWidget()
@@ -1674,8 +1689,7 @@ void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
     }
     else if (sensorPageActive)
     {
-        const int sensorModelFieldWidth = std::max(channel.sensor_model_field->width(),
-                                                   channel.sensor_model_field->sizeHint().width());
+        const int sensorModelFieldWidth = currentFieldWidth(channel.sensor_model_field);
         const int availableWidth = std::max(0, selectorRow->width() -
                                                 channel_top_bar_->width() -
                                                 sensorModelFieldWidth -
@@ -2174,7 +2188,7 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
     channel.auto_pid_combo->addItem(QStringLiteral("关闭"), 0);
     channel.auto_pid_combo->addItem(QStringLiteral("PID自整定"), 1);
     channel.auto_pid_combo->addItem(QStringLiteral("实时优化(预留)"), 2);
-    fitTemperatureComboWidth(channel.auto_pid_combo);
+    fitTemperatureComboWidth(channel.auto_pid_combo, kTemperatureControllerAutoPidTextWidthReserve);
     channel.auto_pid_field = makeCommonTopField(
         QStringLiteral("自动 PID"), channel.auto_pid_combo, channel.auto_pid_label_text);
     commonLayout->addWidget(channel.auto_pid_field, 0, Qt::AlignVCenter);
@@ -3760,7 +3774,7 @@ void TemperatureControllerPanel::updateChannelTexts()
             channel.auto_pid_combo->setItemText(0, is_english_ ? QStringLiteral("Off") : QStringLiteral("关闭"));
             channel.auto_pid_combo->setItemText(1, is_english_ ? QStringLiteral("PID auto-tune") : QStringLiteral("PID自整定"));
             channel.auto_pid_combo->setItemText(2, is_english_ ? QStringLiteral("Realtime optimize (reserved)") : QStringLiteral("实时优化(预留)"));
-            fitTemperatureComboWidth(channel.auto_pid_combo);
+            fitTemperatureComboWidth(channel.auto_pid_combo, kTemperatureControllerAutoPidTextWidthReserve);
             channel.auto_pid_combo->setToolTip(is_english_
                 ? QStringLiteral("RD105 AUTOPID: off, PID auto-tune, or reserved realtime optimization.")
                 : QStringLiteral("RD105 AUTOPID：关闭、PID自整定，或预留的实时优化。"));

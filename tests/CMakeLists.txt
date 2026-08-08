@@ -72,11 +72,21 @@ if(Python3_Interpreter_FOUND)
                 --root ${CMAKE_SOURCE_DIR}
                 --self-test
     )
+    add_test(NAME logging_legacy_audit_test
+        COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/scripts/audit_legacy_logging.py
+                --root ${CMAKE_SOURCE_DIR}
+                --self-test
+    )
     set_tests_properties(logging_language_audit_test PROPERTIES
         TIMEOUT 30
         LABELS "fast;unit;logging"
     )
     set_tests_properties(logging_event_catalog_audit_test PROPERTIES
+        TIMEOUT 30
+        LABELS "fast;unit;logging"
+    )
+    set_tests_properties(logging_legacy_audit_test PROPERTIES
         TIMEOUT 30
         LABELS "fast;unit;logging"
     )
@@ -368,8 +378,14 @@ add_test(NAME bounded_byte_queue_test COMMAND bounded_byte_queue_test)
 add_executable(temperature_command_state_test
     ${CMAKE_CURRENT_SOURCE_DIR}/temperature_command_state_test.cpp
 )
+target_include_directories(temperature_command_state_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
 target_link_libraries(temperature_command_state_test PRIVATE
     vaporview_ground_temperature_command_state
+    vaporview_ground_main_support
+    Qt6::Widgets
 )
 add_test(NAME temperature_command_state_test COMMAND temperature_command_state_test)
 

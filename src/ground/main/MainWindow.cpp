@@ -150,55 +150,82 @@ MainWindow::MainWindow(QWidget *parent)
             switch (warning)
             {
             case Warning::RawFormatDocumentCopyFailed:
-                log(state_->is_english_
-                    ? QStringLiteral("Warning: failed to copy unified raw DAT format document into session folder")
-                    : QStringLiteral("警告：未能将统一 raw DAT 格式说明复制到当前会话目录"));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("raw_format_document_copy_failed"),
+                                 QStringLiteral("未能将统一 raw DAT 格式说明复制到当前会话目录。"),
+                                 {{QStringLiteral("error_code"), QStringLiteral("RAW_FORMAT_DOCUMENT_COPY_FAILED")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:raw_format_document_copy_failed")}});
                 break;
             case Warning::DeviceConfigSnapshotFailed:
-                log(state_->is_english_
-                    ? QStringLiteral("Warning: failed to save device configuration snapshot")
-                    : QStringLiteral("警告：保存设备配置快照失败"));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("device_config_snapshot_failed"),
+                                 QStringLiteral("保存设备配置快照失败。"),
+                                 {{QStringLiteral("error_code"), QStringLiteral("DEVICE_CONFIG_SNAPSHOT_FAILED")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:device_config_snapshot_failed")}});
                 break;
             case Warning::MetadataUpdateFailed:
-                log(state_->is_english_
-                    ? QStringLiteral("Warning: failed to update session metadata")
-                    : QStringLiteral("警告：更新会话元数据失败"));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("session_metadata_update_failed"),
+                                 QStringLiteral("更新会话元数据失败。"),
+                                 {{QStringLiteral("error_code"), QStringLiteral("SESSION_METADATA_UPDATE_FAILED")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:metadata_update_failed")}});
                 break;
             case Warning::TcpQueueBacklog:
-                log(QString(state_->is_english_
-                    ? "TCP raw recording queue backlog is %1 MiB. Disk writes may be slower than the incoming stream."
-                    : "TCP 原始记录队列积压 %1 MiB，磁盘写入可能慢于数据流。")
-                        .arg(value));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("tcp_raw_recording_queue_backlog"),
+                                 QStringLiteral("TCP 原始记录队列出现积压，磁盘写入可能慢于数据流。"),
+                                 {{QStringLiteral("backlog_mib"), static_cast<qulonglong>(value)},
+                                  {QStringLiteral("reason_code"), QStringLiteral("BACKPRESSURE")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:tcp_raw_queue_backlog")}});
                 break;
             case Warning::TcpQueueFull:
-                log(QString(state_->is_english_
-                    ? "TCP raw recording queue is full (%1 MiB). Dropping incoming raw frames to keep the TCP link responsive."
-                    : "TCP 原始记录队列已满（%1 MiB）。为保持 TCP 链路响应，正在丢弃新到原始帧。")
-                        .arg(value));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("tcp_raw_recording_queue_full"),
+                                 QStringLiteral("TCP 原始记录队列已满，正在丢弃新到原始帧以保持链路响应。"),
+                                 {{QStringLiteral("queue_mib"), static_cast<qulonglong>(value)},
+                                  {QStringLiteral("error_code"), QStringLiteral("TCP_RAW_QUEUE_FULL")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:tcp_raw_queue_full")}});
                 break;
             case Warning::TcpFramesDropped:
-                log(QString(state_->is_english_
-                    ? "Warning: dropped %1 TCP raw frames because the recording queue was full."
-                    : "警告：TCP 原始记录队列已满，已丢弃 %1 帧。")
-                        .arg(value));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("tcp_raw_frames_dropped"),
+                                 QStringLiteral("TCP 原始记录队列已满，已丢弃部分帧。"),
+                                 {{QStringLiteral("dropped_frames"), static_cast<qulonglong>(value)},
+                                  {QStringLiteral("error_code"), QStringLiteral("TCP_RAW_FRAMES_DROPPED")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:tcp_raw_frames_dropped")}});
                 break;
             case Warning::DeviceRawQueueBacklog:
-                log(QString(state_->is_english_
-                    ? "Device raw recording queue backlog is %1 MiB. Disk writes may be slower than the serial streams."
-                    : "设备原始记录队列积压 %1 MiB，磁盘写入可能慢于串口数据流。")
-                        .arg(value));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("device_raw_recording_queue_backlog"),
+                                 QStringLiteral("设备原始记录队列出现积压，磁盘写入可能慢于串口数据流。"),
+                                 {{QStringLiteral("backlog_mib"), static_cast<qulonglong>(value)},
+                                  {QStringLiteral("reason_code"), QStringLiteral("BACKPRESSURE")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:device_raw_queue_backlog")}});
                 break;
             case Warning::DeviceRawQueueFull:
-                log(QString(state_->is_english_
-                    ? "Device raw recording queue is full (%1 MiB). Dropping incoming raw frames to keep collectors responsive."
-                    : "设备原始记录队列已满（%1 MiB）。为保持采集线程响应，正在丢弃新到原始帧。")
-                        .arg(value));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("device_raw_recording_queue_full"),
+                                 QStringLiteral("设备原始记录队列已满，正在丢弃新到原始帧以保持采集线程响应。"),
+                                 {{QStringLiteral("queue_mib"), static_cast<qulonglong>(value)},
+                                  {QStringLiteral("error_code"), QStringLiteral("DEVICE_RAW_QUEUE_FULL")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:device_raw_queue_full")}});
                 break;
             case Warning::DeviceRawFramesDropped:
-                log(QString(state_->is_english_
-                    ? "Warning: dropped %1 device raw frames because the recording queue was full."
-                    : "警告：设备原始记录队列已满，已丢弃 %1 帧。")
-                        .arg(value));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("device_raw_frames_dropped"),
+                                 QStringLiteral("设备原始记录队列已满，已丢弃部分帧。"),
+                                 {{QStringLiteral("dropped_frames"), static_cast<qulonglong>(value)},
+                                  {QStringLiteral("error_code"), QStringLiteral("DEVICE_RAW_FRAMES_DROPPED")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:device_raw_frames_dropped")}});
                 break;
             }
         }, Qt::QueuedConnection);
@@ -269,8 +296,12 @@ MainWindow::MainWindow(QWidget *parent)
     scheduleHooks.sessionOpen = [this]() {
         return scheduledRecordingSessionOpen();
     };
-    scheduleHooks.log = [this](const QString& english, const QString& chinese) {
-        log(state_->is_english_ ? english : chinese);
+    scheduleHooks.log = [this](const RecordingScheduleController::LogEntry& entry) {
+        publishGroundLog(entry.level,
+                         QStringLiteral("session.recording"),
+                         entry.event,
+                         entry.message,
+                         entry.fields);
     };
     scheduleHooks.stateChanged = [this]() {
         if (state_->scheduled_recording_timer_)
@@ -299,7 +330,15 @@ MainWindow::MainWindow(QWidget *parent)
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::linkOpenChanged,
             this, &MainWindow::onRemoteLinkOpenChanged);
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::logMessage,
-            this, [this](const QString& message) { log(message); });
+            this, [this](const QString& message) {
+                publishGroundLog(VaporView::LogLevel::Info,
+                                 QStringLiteral("telemetry.link"),
+                                 QStringLiteral("remote_sky_legacy_status"),
+                                 QStringLiteral("远程数传状态已更新。"),
+                                 {{QStringLiteral("ui_message"), message},
+                                  {QStringLiteral("legacy_unclassified"), true},
+                                  {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+            });
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::basicTelemetryUpdated,
             this, &MainWindow::onRemoteBasicTelemetryUpdated);
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::waveformUpdated,
@@ -328,6 +367,19 @@ MainWindow::MainWindow(QWidget *parent)
             const VaporView::TemperatureControllerCommand request =
                 state_->remote_temperature_commands_.take(commandSeq);
             const quint8 channel = request.channel == 0 ? 1 : request.channel;
+            QVariantMap fields = temperatureCommandLogFields(commandId, request, channel);
+            fields.insert(QStringLiteral("execution_path"), QStringLiteral("remote_sky"));
+            fields.insert(QStringLiteral("command_seq"), commandSeq);
+            fields.insert(QStringLiteral("error_code"), QStringLiteral("COMMAND_TIMEOUT"));
+            fields.insert(QStringLiteral("ui_dedupe_key"),
+                          temperatureCommandDedupeKey(
+                              QStringLiteral("temperature_command_ack_timeout"),
+                              commandId,
+                              channel));
+            publishTemperatureCommandLog(VaporView::LogLevel::Warning,
+                                         QStringLiteral("temperature_command_ack_timeout"),
+                                         QStringLiteral("RD105 温控命令 ACK 等待超时。"),
+                                         fields);
             if (state_->temperature_controller_panel_)
             {
                 state_->temperature_controller_panel_->clearCommandPending(commandId, channel);

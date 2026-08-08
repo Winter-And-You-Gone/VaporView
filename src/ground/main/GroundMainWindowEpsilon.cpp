@@ -25,7 +25,17 @@ bool MainWindow::validateEpsilonPacketBandwidth(
               .arg(QString::number(bandwidth.required_bits_per_second / 1000.0, 'f', 2),
                    QString::number(bandwidth.limit_bits_per_second / 1000.0, 'f', 2),
                    baudText);
-    log(QStringLiteral("[EPSILON] %1").arg(message));
+    publishGroundLog(VaporView::LogLevel::Warning,
+                     QStringLiteral("device.navigation.command"),
+                     QStringLiteral("epsilon_packet_profile_rejected_bandwidth"),
+                     QStringLiteral("EPSILON 包频率超过串口安全带宽。"),
+                     {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                      {QStringLiteral("required_kbps"), bandwidth.required_bits_per_second / 1000.0},
+                      {QStringLiteral("limit_kbps"), bandwidth.limit_bits_per_second / 1000.0},
+                      {QStringLiteral("baud_text"), baudText},
+                      {QStringLiteral("reason_code"), QStringLiteral("CONFIG_INVALID")},
+                      {QStringLiteral("details"), message},
+                      {QStringLiteral("ui_dedupe_key"), QStringLiteral("epsilon:packet_profile:bandwidth")}});
     if (showWarning)
     {
         QMessageBox::warning(this,
@@ -104,10 +114,16 @@ void MainWindow::applyEpsilonMainAntennaLeverArm(
     state_->epsilon_reconfigure_in_progress_ = true;
     updateConnectionStatus(state_->is_connected_);
 
-    log(QString(english
-                    ? "[EPSILON] Applying main antenna lever arm on %1 @ %2: %3"
-                    : "[EPSILON] 正在通过主串口 %1 @ %2 下发主天线杆臂：%3")
-            .arg(epsilonPort, epsilonBaudText, values));
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("device.navigation.command"),
+                     QStringLiteral("epsilon_main_antenna_lever_arm_config_started"),
+                     QStringLiteral("正在通过主串口下发 EPSILON 主天线杆臂配置。"),
+                     {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                      {QStringLiteral("operation"), QStringLiteral("main_antenna_lever_arm")},
+                      {QStringLiteral("port"), epsilonPort},
+                      {QStringLiteral("baud"), epsilonBaud},
+                      {QStringLiteral("values"), values},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 
     if (state_->epsilon_reconfigure_thread_.joinable())
     {
@@ -134,8 +150,14 @@ void MainWindow::applyEpsilonMainAntennaLeverArm(
         operation.live_collector = liveCollector;
         operation.restart_live_stream = shouldRestartCollector;
 
-        const auto serviceLog = [this](const QString& message) {
-            QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
+        const auto serviceLog = [this](VaporView::Ground::EpsilonConfigurationLogEntry entry) {
+            QMetaObject::invokeMethod(this, [this, entry = std::move(entry)]() mutable {
+                publishGroundLog(entry.level,
+                                 entry.category,
+                                 entry.event,
+                                 entry.message,
+                                 std::move(entry.fields));
+            }, Qt::QueuedConnection);
         };
         const VaporView::Ground::EpsilonConfigurationResult result =
             VaporView::Ground::EpsilonConfigurationService::applyMainAntennaLeverArm(
@@ -220,8 +242,13 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
 
     if (state_->recording_service_->isActive())
     {
-        log(state_->is_english_ ? "Stop recording before configuring the EPSILON RTCM port."
-                        : "请先结束记录，再配置 EPSILON RTCM 串口。");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_rtcm_config_rejected_recording_active"),
+                         QStringLiteral("请先结束记录，再配置 EPSILON RTCM 串口。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("reason_code"), QStringLiteral("INVALID_STATE")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("epsilon:rtcm_config:recording_active")}});
         return;
     }
 
@@ -229,8 +256,13 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
     if (epsilonPort.isEmpty() || epsilonPort == selectText)
     {
-        log(state_->is_english_ ? "Select the EPSILON main serial port first."
-                        : "请先选择 EPSILON 主串口。");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_rtcm_config_rejected_missing_main_port"),
+                         QStringLiteral("请先选择 EPSILON 主串口。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("reason_code"), QStringLiteral("MISSING_ENDPOINT")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("epsilon:rtcm_config:missing_main_port")}});
         return;
     }
 
@@ -239,7 +271,14 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     const int epsilonBaud = epsilonBaudText.toInt(&epsilonBaudOk);
     if (!epsilonBaudOk || epsilonBaud <= 0)
     {
-        log(QString(state_->is_english_ ? "Invalid EPSILON baud rate: %1" : "EPSILON 波特率无效: %1").arg(epsilonBaudText));
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_rtcm_config_rejected_invalid_main_baud"),
+                         QStringLiteral("EPSILON 波特率无效。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("reason_code"), QStringLiteral("CONFIG_INVALID")},
+                          {QStringLiteral("baud_text"), epsilonBaudText},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("epsilon:rtcm_config:invalid_main_baud")}});
         return;
     }
 
@@ -305,8 +344,14 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     const QString forwardPort = localSerialPortComboValue(forwardPortCombo);
     if (forwardPort.isEmpty())
     {
-        log(state_->is_english_ ? "Select the PC serial port that is wired to EPSILON port 2."
-                        : "请选择连接到 EPSILON 第二串口的本机串口。");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_rtcm_config_rejected_missing_forward_port"),
+                         QStringLiteral("请选择连接到 EPSILON 第二串口的本机串口。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("reason_code"), QStringLiteral("MISSING_ENDPOINT")},
+                          {QStringLiteral("main_port"), epsilonPort},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("epsilon:rtcm_config:missing_forward_port")}});
         return;
     }
 
@@ -315,7 +360,16 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         const QString message = state_->is_english_
             ? QStringLiteral("The RTCM forwarding port must differ from the EPSILON main port. The main port reads real GNSS/FDILink data for NTRIP GGA; connect another PC serial port to EPSILON COMM2 for RTCM input.")
             : QStringLiteral("RTCM 转发串口不能与 EPSILON 主串口相同。主串口用于读取真实 GNSS/FDILink 数据并生成 NTRIP GGA；请用另一条本机串口连接 EPSILON COMM2 写入 RTCM。");
-        log(message);
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_rtcm_config_rejected_port_conflict"),
+                         QStringLiteral("RTCM 转发串口不能与 EPSILON 主串口相同。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("reason_code"), QStringLiteral("CONFIG_INVALID")},
+                          {QStringLiteral("main_port"), epsilonPort},
+                          {QStringLiteral("forward_port"), forwardPort},
+                          {QStringLiteral("details"), message},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("epsilon:rtcm_config:port_conflict")}});
         QMessageBox::warning(this,
                              state_->is_english_ ? QStringLiteral("Serial Port Conflict") : QStringLiteral("串口冲突"),
                              message);
@@ -327,7 +381,14 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     const int forwardBaud = forwardBaudText.toInt(&forwardBaudOk);
     if (!forwardBaudOk || forwardBaud <= 0)
     {
-        log(QString(state_->is_english_ ? "Invalid RTCM forwarding baud rate: %1" : "RTCM 转发波特率无效: %1").arg(forwardBaudText));
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_rtcm_config_rejected_invalid_forward_baud"),
+                         QStringLiteral("RTCM 转发波特率无效。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("reason_code"), QStringLiteral("CONFIG_INVALID")},
+                          {QStringLiteral("baud_text"), forwardBaudText},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("epsilon:rtcm_config:invalid_forward_baud")}});
         return;
     }
 
@@ -343,10 +404,16 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
 
     state_->epsilon_reconfigure_in_progress_ = true;
     updateConnectionStatus(state_->is_connected_);
-    log(QString(english
-                    ? "[EPSILON] Configuring communication port 2 as RTCM: main %1 @ %2, RTCM forward port %3 @ %4"
-                    : "[EPSILON] 正在把第二通信串口配置为 RTCM：主串口 %1 @ %2，RTCM 转发串口 %3 @ %4")
-            .arg(epsilonPort, epsilonBaudText, forwardPort, forwardBaudText));
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("device.navigation.command"),
+                     QStringLiteral("epsilon_rtcm_config_started"),
+                     QStringLiteral("正在把 EPSILON 第二通信串口配置为 RTCM。"),
+                     {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                      {QStringLiteral("main_port"), epsilonPort},
+                      {QStringLiteral("main_baud"), epsilonBaud},
+                      {QStringLiteral("forward_port"), forwardPort},
+                      {QStringLiteral("forward_baud"), forwardBaud},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 
     state_->epsilon_reconfigure_thread_ = std::thread([this,
                                                english,
@@ -359,8 +426,14 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
                                                liveCollector,
                                                shouldRestartCollector,
                                                shouldOpenRtkDialog]() {
-        auto postLog = [this](const QString& message) {
-            QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
+        auto postLog = [this](VaporView::Ground::EpsilonConfigurationLogEntry entry) {
+            QMetaObject::invokeMethod(this, [this, entry = std::move(entry)]() mutable {
+                publishGroundLog(entry.level,
+                                 entry.category,
+                                 entry.event,
+                                 entry.message,
+                                 std::move(entry.fields));
+            }, Qt::QueuedConnection);
         };
         auto finishOnUi = [this](bool openRtkDialog) {
             QMetaObject::invokeMethod(this, [this, openRtkDialog]() {
@@ -611,31 +684,43 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_custom_packet_rates_user_saved"), effectiveCustomEnabled);
     VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_signature"));
     VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_apply_version"));
+    const QString packetRateSummary = epsilonPacketRatesSummary(savedPacketRates);
 
     if (hasCustomOverrides && !enableCustomCheck->isChecked())
     {
-        log(state_->is_english_
-                ? "[EPSILON] Packet-rate overrides detected, so the custom packet-rate profile has been enabled automatically."
-                : "[EPSILON] 检测到包频率已偏离分组模式，已自动启用自定义包频率配置。");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("epsilon_packet_profile_custom_enabled"),
+                         QStringLiteral("检测到包频率已偏离分组模式，已自动启用自定义包频率配置。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("packet_rate_summary"), packetRateSummary},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 
     if (effectiveCustomEnabled)
     {
-        log(QString(state_->is_english_
-                        ? ((savedPacketRates == defaultRates)
-                               ? "[EPSILON] Recommended default packet-rate profile saved: %1"
-                               : "[EPSILON] Custom packet-rate profile saved: %1")
-                        : ((savedPacketRates == defaultRates)
-                               ? "[EPSILON] 已保存推荐默认包频率配置: %1"
-                               : "[EPSILON] 已保存自定义包频率配置: %1"))
-                .arg(epsilonPacketRatesSummary(savedPacketRates)));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("epsilon_packet_profile_saved"),
+                         (savedPacketRates == defaultRates)
+                             ? QStringLiteral("已保存 EPSILON 推荐默认包频率配置。")
+                             : QStringLiteral("已保存 EPSILON 自定义包频率配置。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("packet_rate_profile"), savedPacketRates == defaultRates
+                              ? QStringLiteral("recommended_default")
+                              : QStringLiteral("custom")},
+                          {QStringLiteral("packet_rate_summary"), packetRateSummary},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     else
     {
-        log(QString(state_->is_english_
-                        ? "[EPSILON] Custom packet-rate profile disabled. The grouped %1 Hz profile will be used."
-                        : "[EPSILON] 已关闭自定义包频率，后续将使用分组 %1 Hz 配置。")
-                .arg(groupedRateHz));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("epsilon_packet_profile_disabled"),
+                         QStringLiteral("已关闭 EPSILON 自定义包频率，后续将使用分组配置。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("grouped_rate_hz"), groupedRateHz},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 
     const QString selectText = state_->is_english_ ? "-- Select --" : "未选择";
@@ -645,16 +730,25 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
         epsilonPort != selectText &&
         !isRateUnspecified(epsilonRateText))
     {
-        log(state_->is_english_
-                ? "[EPSILON] Applying the saved packet-rate profile now..."
-                : "[EPSILON] 正在应用刚保存的包频率配置...");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("epsilon_packet_profile_apply_requested"),
+                         QStringLiteral("正在应用刚保存的 EPSILON 包频率配置。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("port"), epsilonPort},
+                          {QStringLiteral("packet_rate_summary"), packetRateSummary},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         onReconfigureEpsilonClicked();
     }
     else
     {
-        log(state_->is_english_
-                ? "[EPSILON] Packet-rate profile saved. It will be used on the next connect/reconfigure."
-                : "[EPSILON] 包频率配置已保存，将在下次连接或重配时生效。");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("epsilon_packet_profile_saved_deferred"),
+                         QStringLiteral("EPSILON 包频率配置已保存，将在下次连接或重配时生效。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("packet_rate_summary"), packetRateSummary},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     syncDeviceConfigEpsilonPanelFromSettings();
 }
@@ -674,8 +768,13 @@ void MainWindow::onReconfigureEpsilonClicked()
 
     if (state_->recording_service_->isActive())
     {
-        log(state_->is_english_ ? "Stop recording before reconfiguring EPSILON output."
-                        : "请先结束记录，再重新配置 EPSILON 输出。");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_output_reconfigure_rejected_recording_active"),
+                         QStringLiteral("请先结束记录，再重新配置 EPSILON 输出。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("reason_code"), QStringLiteral("INVALID_STATE")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("epsilon:output_reconfigure:recording_active")}});
         return;
     }
 
@@ -683,7 +782,13 @@ void MainWindow::onReconfigureEpsilonClicked()
     const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
     if (epsilonPort.isEmpty() || epsilonPort == selectText)
     {
-        log(state_->is_english_ ? "Select an EPSILON serial port first." : "请先选择 EPSILON 串口。");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_output_reconfigure_rejected_missing_port"),
+                         QStringLiteral("请先选择 EPSILON 串口。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("reason_code"), QStringLiteral("MISSING_ENDPOINT")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("epsilon:output_reconfigure:missing_port")}});
         return;
     }
 
@@ -692,16 +797,27 @@ void MainWindow::onReconfigureEpsilonClicked()
     const int epsilonBaud = epsilonBaudText.toInt(&baudOk);
     if (!baudOk || epsilonBaud <= 0)
     {
-        log(QString(state_->is_english_ ? "Invalid EPSILON baud rate: %1" : "EPSILON 波特率无效: %1").arg(epsilonBaudText));
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_output_reconfigure_rejected_invalid_baud"),
+                         QStringLiteral("EPSILON 波特率无效。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("reason_code"), QStringLiteral("CONFIG_INVALID")},
+                          {QStringLiteral("baud_text"), epsilonBaudText},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("epsilon:output_reconfigure:invalid_baud")}});
         return;
     }
 
     const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
     if (isRateUnspecified(epsilonRateText))
     {
-        log(state_->is_english_
-            ? "[EPSILON] Output-rate command is disabled because the EPSILON rate is set to No Set."
-            : "[EPSILON] EPSILON 频率为“不设定”，已跳过输出频率下发。");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_output_reconfigure_skipped_rate_unspecified"),
+                         QStringLiteral("EPSILON 频率为“不设定”，已跳过输出频率下发。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("reason_code"), QStringLiteral("COMMAND_NOT_SUPPORTED")},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         return;
     }
 
@@ -730,12 +846,17 @@ void MainWindow::onReconfigureEpsilonClicked()
 
     state_->epsilon_reconfigure_in_progress_ = true;
     updateConnectionStatus(state_->is_connected_);
-    log(QString(english ? "[EPSILON] Starting manual output reconfiguration: %1 @ %2, %3 profile (%4)"
-                        : "[EPSILON] 开始手动重配输出: %1 @ %2，使用%3配置（%4）")
-            .arg(epsilonPort, epsilonBaudText)
-            .arg(usingCustomPacketProfile ? (english ? "custom packet-rate" : "自定义包频率")
-                                          : (english ? "grouped output-rate" : "分组输出频率"))
-            .arg(desiredPacketRateSummary));
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("device.navigation.command"),
+                     QStringLiteral("epsilon_output_reconfigure_started"),
+                     QStringLiteral("开始手动重配 EPSILON 输出。"),
+                     {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                      {QStringLiteral("port"), epsilonPort},
+                      {QStringLiteral("baud"), epsilonBaud},
+                      {QStringLiteral("packet_rate_profile"), usingCustomPacketProfile ? QStringLiteral("custom")
+                                                                                       : QStringLiteral("grouped")},
+                      {QStringLiteral("packet_rate_summary"), desiredPacketRateSummary},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 
     state_->epsilon_reconfigure_thread_ = std::thread([this,
                                                english,
@@ -748,8 +869,14 @@ void MainWindow::onReconfigureEpsilonClicked()
                                                desiredPacketRateSignature,
                                                liveCollector,
                                                shouldRestartCollector]() {
-        auto postLog = [this](const QString& message) {
-            QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
+        auto postLog = [this](VaporView::Ground::EpsilonConfigurationLogEntry entry) {
+            QMetaObject::invokeMethod(this, [this, entry = std::move(entry)]() mutable {
+                publishGroundLog(entry.level,
+                                 entry.category,
+                                 entry.event,
+                                 entry.message,
+                                 std::move(entry.fields));
+            }, Qt::QueuedConnection);
         };
         auto finishOnUi = [this]() {
             QMetaObject::invokeMethod(this, [this]() {
