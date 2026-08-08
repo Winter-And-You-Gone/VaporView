@@ -280,6 +280,7 @@ private:
         QWidget *common_top_controls = nullptr;
         QWidget *common_top_leading_spacer = nullptr;
         QWidget *common_top_middle_spacer = nullptr;
+        QWidget *common_top_mode_spacer = nullptr;
         QWidget *enable_field = nullptr;
         QWidget *auto_pid_field = nullptr;
         QWidget *sensor_model_field = nullptr;

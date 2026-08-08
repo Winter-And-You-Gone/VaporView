@@ -5484,6 +5484,9 @@ int main(int argc, char **argv)
     const QRect controllerModeFieldRect(
         temperatureControllerModeField->mapTo(temperatureChannelCommonTopControls1, QPoint(0, 0)),
         temperatureControllerModeField->size());
+    const QRect topEnableFieldRect(
+        enableSwitch->parentWidget()->mapTo(temperatureChannelCommonTopControls1, QPoint(0, 0)),
+        enableSwitch->parentWidget()->size());
     const QRect autoPidFieldRectForMode(
         autoPidCombo->parentWidget()->mapTo(temperatureChannelCommonTopControls1, QPoint(0, 0)),
         autoPidCombo->parentWidget()->size());
@@ -5509,17 +5512,20 @@ int main(int argc, char **argv)
     }
     require(std::abs(controllerModeFieldRect.top() - autoPidFieldRectForMode.top()) <= 2,
             "temperature controller mode field shares the top row with auto PID");
-    require(autoPidFieldRectForMode.right() < controllerModeFieldRect.left() &&
-                controllerModeFieldRect.left() - autoPidFieldRectForMode.right() <= 12,
-            "temperature controller mode field sits immediately to the right of auto PID");
+    const int enableToAutoGap = autoPidFieldRectForMode.left() - topEnableFieldRect.right() - 1;
+    const int autoToControllerModeGap = controllerModeFieldRect.left() - autoPidFieldRectForMode.right() - 1;
+    require(enableToAutoGap > 0 &&
+                autoToControllerModeGap > 0 &&
+                std::abs(enableToAutoGap - autoToControllerModeGap) <= 1,
+            "temperature top fields use equal gaps between output enable, auto PID, and controller mode");
     require(controllerModeLabelRect.right() < controllerModeComboRect.left(),
             "temperature controller mode label sits immediately before the combo");
     require(controllerModeComboRect.left() - controllerModeLabelRect.right() - 1 <= 1,
             "temperature controller mode label removes the gap before its combo");
     require(std::abs(controllerModeLabelRect.center().y() - controllerModeComboRect.center().y()) <= 2,
             "temperature controller mode label and combo are vertically centered together");
-    require(controllerModeComboEditRect.width() >= longestControllerModeTextWidth,
-            "temperature controller mode combo reserves the full width of its longest option");
+    require(controllerModeComboEditRect.width() >= longestControllerModeTextWidth + 16,
+            "temperature controller mode combo reserves popup padding beyond its longest option");
     require(controllerModeFieldRect.right() >= temperatureChannelCommonTopControls1->width() - 1,
             "temperature controller mode field and combo are right aligned in the common top row");
     const QRect topRowRectInCard(temperatureChannelTopRow->mapTo(temperatureConfigCard, QPoint(0, 0)),

@@ -90,6 +90,7 @@ constexpr int kTemperatureControllerSubTabTextPadding = 28;
 constexpr int kTemperatureControllerTopEnableWidth = 106;
 constexpr int kTemperatureControllerTopEnableHeight = 34;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
+constexpr int kTemperatureControllerModePopupWidthReserve = 16;
 // The 266px common-parameter row is 85 + 6 + 84 + 6 + 85, matching 130 + 6 + 130.
 constexpr int kTemperatureControllerPidSideInputWidth = 85;
 constexpr int kTemperatureControllerPidCenterInputWidth = 84;
@@ -1590,7 +1591,8 @@ void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
     }
     ChannelWidgets& channel = channels_[channelIndex];
     if (!channel.common_top_controls || !channel.common_top_leading_spacer ||
-        !channel.common_top_middle_spacer || !channel.enable_field || !channel.auto_pid_field)
+        !channel.common_top_middle_spacer || !channel.common_top_mode_spacer ||
+        !channel.enable_field || !channel.auto_pid_field)
     {
         return;
     }
@@ -1609,8 +1611,12 @@ void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
                                             enableFieldWidth -
                                             autoPidFieldWidth -
                                             controllerModeFieldWidth);
+    const int interFieldGap = controllerModeInCommonRow
+        ? std::max(36, availableWidth * 3 / 10)
+        : std::max(36, availableWidth * 3 / 5);
     channel.common_top_leading_spacer->setFixedWidth(std::max(24, availableWidth / 5));
-    channel.common_top_middle_spacer->setFixedWidth(std::max(36, availableWidth * 3 / 5));
+    channel.common_top_middle_spacer->setFixedWidth(interFieldGap);
+    channel.common_top_mode_spacer->setFixedWidth(controllerModeInCommonRow ? interFieldGap : 0);
     if (QLayout *layout = channel.common_top_controls->layout())
     {
         layout->invalidate();
@@ -1647,7 +1653,8 @@ void TemperatureControllerPanel::fitControllerModeComboWidth()
     }
     if (longestTextWidth > 0)
     {
-        controller_mode_combo_->setFixedWidth(longestTextWidth + nonTextWidth + 2);
+        controller_mode_combo_->setFixedWidth(longestTextWidth + nonTextWidth +
+                                               kTemperatureControllerModePopupWidthReserve);
     }
 }
 
@@ -1660,6 +1667,7 @@ void TemperatureControllerPanel::placeControllerModeFieldInTopControls(int chann
 
     QWidget *target = nullptr;
     QWidget *anchor = nullptr;
+    QWidget *modeSpacer = nullptr;
     if (selected_config_page_index_ < 2 &&
         channelIndex >= 0 &&
         channelIndex < static_cast<int>(channels_.size()))
@@ -1669,6 +1677,7 @@ void TemperatureControllerPanel::placeControllerModeFieldInTopControls(int chann
         {
             target = channel.common_top_controls;
             anchor = channel.auto_pid_field;
+            modeSpacer = channel.common_top_mode_spacer;
         }
         else if (subPageIndex == 2)
         {
@@ -1710,6 +1719,14 @@ void TemperatureControllerPanel::placeControllerModeFieldInTopControls(int chann
     }
 
     int desiredIndex = anchor ? targetLayout->indexOf(anchor) + 1 : targetLayout->count();
+    if (modeSpacer)
+    {
+        const int modeSpacerIndex = targetLayout->indexOf(modeSpacer);
+        if (modeSpacerIndex >= 0)
+        {
+            desiredIndex = modeSpacerIndex + 1;
+        }
+    }
     if (anchor && desiredIndex <= 0)
     {
         desiredIndex = targetLayout->count();
@@ -1813,6 +1830,7 @@ void TemperatureControllerPanel::setupUi()
     controller_mode_combo_ = new SingleLevelPopupComboBox(this);
     configureSingleLevelComboCheckIcon(static_cast<SingleLevelPopupComboBox *>(controller_mode_combo_));
     controller_mode_combo_->setObjectName(QStringLiteral("temperatureControllerModeCombo"));
+    static_cast<SingleLevelPopupComboBox *>(controller_mode_combo_)->setPopupFitContents(true);
     controller_mode_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     controller_mode_combo_->addItem(QStringLiteral("独立控制"), 0);
     controller_mode_combo_->addItem(QStringLiteral("通道1温差控制"), 1);
@@ -2121,6 +2139,12 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
     channel.auto_pid_field = makeCommonTopField(
         QStringLiteral("自动 PID"), channel.auto_pid_combo, channel.auto_pid_label_text);
     commonLayout->addWidget(channel.auto_pid_field, 0, Qt::AlignVCenter);
+    channel.common_top_mode_spacer = new QWidget(channel.common_top_controls);
+    channel.common_top_mode_spacer->setObjectName(
+        QStringLiteral("temperatureTopModeSpacerChannel%1").arg(index + 1));
+    channel.common_top_mode_spacer->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    channel.common_top_mode_spacer->setFixedSize(0, kTemperatureControllerTopControlsHeight);
+    commonLayout->addWidget(channel.common_top_mode_spacer, 0, Qt::AlignVCenter);
     connect(channel.auto_pid_combo,
             QOverload<int>::of(&QComboBox::currentIndexChanged),
             this,
