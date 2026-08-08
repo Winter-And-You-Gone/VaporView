@@ -75,6 +75,7 @@ constexpr int kTemperatureControllerChannelParameterRowWidth =
 constexpr int kTemperatureControllerStackedFieldSpacing = 6;
 constexpr int kTemperatureControllerChannelSubPageVerticalSpacing = 10;
 constexpr int kTemperatureControllerCalibrationHandleWidth = 38;
+constexpr int kTemperatureControllerCalibrationChevronIconSize = 14;
 constexpr int kTemperatureControllerPolynomialColumnCount = 3;
 constexpr int kTemperatureControllerControlsCardWidth = 280;
 constexpr int kTemperatureControllerControlsCardHorizontalPadding = 6;
@@ -545,6 +546,7 @@ public:
     void setHandleText(const QString& text)
     {
         handle_text_ = text;
+        handle_text_.replace(QStringLiteral("\n-\n"), QStringLiteral("\n"));
         setProperty("temperatureCalibrationHandleText", handle_text_);
         updateHandleText();
         update();
@@ -572,6 +574,7 @@ public:
             visual_progress_ = expansion_progress_;
             setProperty("expanded", expanded_);
             setProperty("expansionProgress", expansion_progress_);
+            updateHandleChevronIconProperty();
             updateDrawerGeometry();
             return;
         }
@@ -582,6 +585,7 @@ public:
         }
         expanded_ = expanded;
         setProperty("expanded", expanded_);
+        updateHandleChevronIconProperty();
         animation_->stop();
         animation_start_progress_ = visual_progress_;
         animation_target_progress_ = expanded ? 1.0 : 0.0;
@@ -623,9 +627,11 @@ public:
         handleFont.setWeight(QFont::DemiBold);
         const QFontMetrics metrics(handleFont);
         const QStringList rows = handle_text_.split(QLatin1Char('\n'));
+        const bool hasChevron = hasChevronRow(rows);
         const int extraGap = rows.size() > 4 ? 3 : 0;
         constexpr int verticalPadding = 8;
-        return rows.size() * metrics.height() + extraGap + verticalPadding * 2;
+        return (rows.size() + (hasChevron ? 1 : 0)) * metrics.height() +
+            extraGap + verticalPadding * 2;
     }
 
     QSize sizeHint() const override
@@ -673,11 +679,29 @@ protected:
         painter.setPen(text);
         const QFontMetrics metrics(handleFont);
         const QStringList rows = handle_text_.split(QLatin1Char('\n'));
+        const bool hasChevron = hasChevronRow(rows);
         const int lineHeight = metrics.height();
         const int extraGap = rows.size() > 4 ? 3 : 0;
-        const int totalHeight = rows.size() * lineHeight + extraGap;
+        const int totalHeight = (rows.size() + (hasChevron ? 1 : 0)) * lineHeight + extraGap;
         int y = qRound(handleRect.top()) +
             std::max(0, qRound((handleRect.height() - totalHeight) / 2.0));
+        const auto drawChevron = [&]() {
+            const QIcon icon = createLucideIcon(expanded_ ? QStringLiteral("chevron-right")
+                                                          : QStringLiteral("chevron-left"),
+                                                text);
+            const int iconSize = std::min(kTemperatureControllerCalibrationChevronIconSize,
+                                          std::max(1, lineHeight));
+            const QRect iconRect(qRound(handleRect.left() + (handleRect.width() - iconSize) / 2.0),
+                                 y + std::max(0, (lineHeight - iconSize) / 2),
+                                 iconSize,
+                                 iconSize);
+            const QPixmap pixmap = icon.pixmap(QSize(iconSize, iconSize));
+            if (!pixmap.isNull())
+            {
+                painter.drawPixmap(iconRect, pixmap);
+            }
+            y += lineHeight;
+        };
         for (int i = 0; i < rows.size(); ++i)
         {
             painter.drawText(QRectF(handleRect.left(), y, handleRect.width(), lineHeight),
@@ -687,6 +711,10 @@ protected:
             if (i == 3)
             {
                 y += extraGap;
+            }
+            if (hasChevron && i == rows.size() - 2)
+            {
+                drawChevron();
             }
         }
     }
@@ -785,12 +813,26 @@ private:
     {
         if (handle_text_.isEmpty())
         {
-            handle_text_ = QStringLiteral("校\n准\n系\n数\nA0\n-\nA7");
+            handle_text_ = QStringLiteral("校\n准\n系\n数\nA0\nA7");
             setProperty("temperatureCalibrationHandleText", handle_text_);
         }
+        updateHandleChevronIconProperty();
         setProperty("temperatureCalibrationHandleHeight", handleHeight());
         setToolTip(QStringLiteral("展开校准系数 A0-A7"));
         setAccessibleName(QStringLiteral("校准系数 A0-A7"));
+    }
+
+    bool hasChevronRow(const QStringList& rows) const
+    {
+        return rows.size() >= 2 &&
+            rows.at(rows.size() - 2).contains(QStringLiteral("A0")) &&
+            rows.last().contains(QStringLiteral("A7"));
+    }
+
+    void updateHandleChevronIconProperty()
+    {
+        setProperty("temperatureCalibrationHandleChevronIconName",
+                    expanded_ ? QStringLiteral("chevron-right") : QStringLiteral("chevron-left"));
     }
 
     QRectF currentHandleRect() const
@@ -2527,7 +2569,7 @@ QWidget *TemperatureControllerPanel::createChannelSensorConfigPage(int index)
     calibrationDrawer->setObjectName(QStringLiteral("temperatureCalibrationSideDrawerChannel%1").arg(index + 1));
     calibrationDrawer->setProperty("temperatureCalibrationSideDrawer", true);
     calibrationDrawer->setProperty("temperatureCalibrationChannel", index + 1);
-    calibrationDrawer->setHandleText(QStringLiteral("校\n准\n系\n数\nA0\n-\nA7"));
+    calibrationDrawer->setHandleText(QStringLiteral("校\n准\n系\n数\nA0\nA7"));
     calibrationDrawer->setContentWidget(polynomialFields);
     channel.sensor_config_page = page;
     channel.sensor_calibration_overlay = polynomialFields;
@@ -3390,8 +3432,8 @@ void TemperatureControllerPanel::updateChannelTexts()
         if (auto *drawer = static_cast<CalibrationSideDrawer *>(channel.sensor_calibration_drawer))
         {
             drawer->setHandleText(is_english_
-                ? QStringLiteral("Cal\nA0\n-\nA7")
-                : QStringLiteral("校\n准\n系\n数\nA0\n-\nA7"));
+                ? QStringLiteral("Cal\nA0\nA7")
+                : QStringLiteral("校\n准\n系\n数\nA0\nA7"));
             drawer->setToolTip(is_english_
                 ? QStringLiteral("Expand calibration coefficients A0-A7")
                 : QStringLiteral("展开校准系数 A0-A7"));

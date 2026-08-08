@@ -21,6 +21,7 @@
 #include <QCoreApplication>
 #include <QDoubleSpinBox>
 #include <QDialog>
+#include <QFile>
 #include <QFontMetrics>
 #include <QFrame>
 #include <QFocusEvent>
@@ -6445,7 +6446,13 @@ int main(int argc, char **argv)
                     temperatureCalibrationDrawer->property("temperatureCalibrationHandleHeight").toInt() &&
                 temperatureCalibrationDrawer->property("temperatureCalibrationSideDrawer").toBool() &&
                 temperatureCalibrationDrawer->property("temperatureCalibrationHandleText").toString() ==
-                    QStringLiteral("校\n准\n系\n数\nA0\n-\nA7") &&
+                    QStringLiteral("校\n准\n系\n数\nA0\nA7") &&
+                !temperatureCalibrationDrawer->property("temperatureCalibrationHandleText").toString().contains(
+                    QLatin1Char('-')) &&
+                temperatureCalibrationDrawer->property("temperatureCalibrationHandleChevronIconName").toString() ==
+                    QStringLiteral("chevron-left") &&
+                QFile::exists(QCoreApplication::applicationDirPath() +
+                              QStringLiteral("/resources/lucide/chevron-left.svg")) &&
                 temperaturePanel->findChild<QPushButton *>(
                     QStringLiteral("temperatureCalibrationPullButtonChannel1")) == nullptr &&
                 temperatureCalibrationOverlay->property("temperatureSensorCalibrationOverlay").toBool() &&
@@ -6613,6 +6620,8 @@ int main(int argc, char **argv)
         temperatureCalibrationDrawer->size());
     require(temperatureCalibrationDrawer->property("expanded").toBool() &&
                 expandingWidth > calibrationHandleWidth &&
+                temperatureCalibrationDrawer->property("temperatureCalibrationHandleChevronIconName").toString() ==
+                    QStringLiteral("chevron-right") &&
                 expandingWidth < temperatureChannelConfigSubStack->currentWidget()->width(),
             "temperature calibration drawer starts expanding from the handle without occupying the full page immediately");
     require(std::abs(expandingDrawerRectInControlsCard.center().y() - collapsedHandleCenterY) <= 1,
@@ -6623,6 +6632,8 @@ int main(int argc, char **argv)
         temperatureCalibrationDrawer->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
         temperatureCalibrationDrawer->size());
     require(!temperatureCalibrationDrawer->property("expanded").toBool() &&
+                temperatureCalibrationDrawer->property("temperatureCalibrationHandleChevronIconName").toString() ==
+                    QStringLiteral("chevron-left") &&
                 temperatureCalibrationDrawer->width() < expandingWidth,
             "temperature calibration drawer reverses smoothly from its current visual width");
     require(std::abs(reversingDrawerRectInControlsCard.center().y() - collapsedHandleCenterY) <= 1,

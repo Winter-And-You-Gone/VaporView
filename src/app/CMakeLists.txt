@@ -34,6 +34,7 @@ set(LUCIDE_RESOURCES
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-down-dark.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-down-primary-dark.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-down-primary.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-left.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-right.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-up.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-up-dark.svg
