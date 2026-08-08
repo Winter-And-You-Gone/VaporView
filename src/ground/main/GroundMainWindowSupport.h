@@ -96,6 +96,7 @@ inline constexpr int kConfigCardMinHeight =
 inline constexpr int kHomeOverviewTemperatureMinWidth = 380;
 inline constexpr int kHomeOverviewSplitterHandleWidth = 12;
 inline constexpr const char *kHomeOverviewSplitterInitializedProperty = "_vv_home_overview_splitter_initialized";
+inline constexpr const char *kHomeOverviewDeviceAutoMinimumWidthProperty = "_vv_home_overview_device_auto_minimum_width";
 inline constexpr int kSensorNavigationStretch = 4;
 inline constexpr int kSensorEnvironmentStretch = 1;
 inline constexpr int kTcpWaveCardMinHeight = 430;

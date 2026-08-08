@@ -2561,6 +2561,67 @@ void requireMainWindowOuterBorder(MainWindow& window, bool dark, const char *mes
             message);
 }
 
+void requireHomeOverviewLanguageWidthRoundTrip()
+{
+    MainWindow languageOverviewWindow;
+    languageOverviewWindow.setWindowTitle(QStringLiteral("VaporView"));
+    languageOverviewWindow.resize(1280, 800);
+    languageOverviewWindow.show();
+    require(waitForWindowExposed(&languageOverviewWindow),
+            "dedicated language overview window becomes exposed");
+
+    auto *languageHomeOverviewSplitter =
+        languageOverviewWindow.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
+    require(languageHomeOverviewSplitter != nullptr &&
+                languageHomeOverviewSplitter->count() == 2,
+            "language overview window exposes the home overview splitter");
+    auto *languageDeviceOverviewCard =
+        qobject_cast<QGroupBox *>(languageHomeOverviewSplitter->widget(0));
+    require(languageDeviceOverviewCard != nullptr,
+            "language overview window exposes the device overview card");
+    requireHomeDeviceColumnsAligned(&languageOverviewWindow);
+    requireHomeDeviceMinimumWidthMatchesControls(&languageOverviewWindow);
+
+    const QList<int> initialHomeOverviewSizes = languageHomeOverviewSplitter->sizes();
+    require(initialHomeOverviewSizes.size() == 2,
+            "language overview splitter exposes initial device and temperature widths");
+    const int initialDeviceOverviewWidth = initialHomeOverviewSizes.at(0);
+    require(std::abs(initialDeviceOverviewWidth -
+                     languageDeviceOverviewCard->minimumWidth()) <= 1,
+            "language overview device card starts at its Chinese minimum width");
+    require(QMetaObject::invokeMethod(&languageOverviewWindow,
+                                      "onSwitchLanguage",
+                                      Qt::DirectConnection),
+            "language overview window switches to English");
+    require(processEventsUntil(1000, [&languageOverviewWindow,
+                                      languageHomeOverviewSplitter,
+                                      initialDeviceOverviewWidth]() {
+                activateLayouts(&languageOverviewWindow);
+                const QList<int> sizes = languageHomeOverviewSplitter->sizes();
+                return sizes.size() == 2 &&
+                       sizes.at(0) > initialDeviceOverviewWidth;
+            }),
+            "language overview device card expands for English labels");
+    require(QMetaObject::invokeMethod(&languageOverviewWindow,
+                                      "onSwitchLanguage",
+                                      Qt::DirectConnection),
+            "language overview window switches back to Chinese");
+    require(processEventsUntil(1000, [&languageOverviewWindow,
+                                      languageHomeOverviewSplitter,
+                                      initialDeviceOverviewWidth]() {
+                activateLayouts(&languageOverviewWindow);
+                const QList<int> sizes = languageHomeOverviewSplitter->sizes();
+                return sizes.size() == 2 &&
+                       std::abs(sizes.at(0) - initialDeviceOverviewWidth) <= 1;
+            }),
+            "language overview device card returns to the Chinese minimum width after language toggles");
+    languageOverviewWindow.close();
+    require(processEventsUntil(1000, [&languageOverviewWindow]() {
+                return !languageOverviewWindow.isVisible();
+            }),
+            "dedicated language overview test window closes cleanly");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -2590,6 +2651,13 @@ int main(int argc, char **argv)
         settings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("sht45"));
         settings.setValue(QStringLiteral("serial/sht45_baud"), QStringLiteral("38400"));
         settings.sync();
+    }
+
+    if (app.arguments().contains(QStringLiteral("--home-overview-language-only")))
+    {
+        requireHomeOverviewLanguageWidthRoundTrip();
+        std::cout << "home_overview_language_layout_test passed\n";
+        return 0;
     }
 
     {
@@ -8725,6 +8793,9 @@ int main(int argc, char **argv)
 
     window.close();
     processEventsFor(100);
+
+    requireHomeOverviewLanguageWidthRoundTrip();
+
     std::cout << "main_window_layout_test passed\n";
     return 0;
 }
