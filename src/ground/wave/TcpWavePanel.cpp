@@ -1252,14 +1252,25 @@ protected:
                              Qt::AlignRight | Qt::AlignVCenter,
                              formatWaveValue(value, 3));
         }
-        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 2, plotRect.width() * 0.55, fm.height()),
+        const qreal axisLabelTop = plotRect.bottom() + 2;
+        const QString startLabel = xAxisStartLabel(startIndex);
+        const QString rangeLabel = xAxisRangeLabel(startIndex, count);
+        const QString endLabel = xAxisEndLabel(startIndex, count);
+        const qreal startWidth = fm.horizontalAdvance(startLabel) + 8.0;
+        const qreal endWidth = fm.horizontalAdvance(endLabel) + 8.0;
+        painter.drawText(QRectF(plotRect.left(), axisLabelTop, plotRect.width(), fm.height()),
                          Qt::AlignLeft | Qt::AlignVCenter,
-                         QString("%1-%2 / %3")
-                             .arg(startIndex + 1)
-                             .arg(startIndex + count)
-                             .arg(peak_values_.size()));
-        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 2, plotRect.width(), fm.height()), Qt::AlignRight | Qt::AlignVCenter,
-                         xAxisFrameLabel(count));
+                         startLabel);
+        painter.drawText(QRectF(plotRect.left(), axisLabelTop, plotRect.width(), fm.height()),
+                         Qt::AlignRight | Qt::AlignVCenter,
+                         endLabel);
+        const QRectF rangeRect(plotRect.left() + startWidth,
+                               axisLabelTop,
+                               std::max<qreal>(1.0, plotRect.width() - startWidth - endWidth),
+                               fm.height());
+        painter.drawText(rangeRect,
+                         Qt::AlignCenter | Qt::AlignVCenter,
+                         fm.elidedText(rangeLabel, Qt::ElideRight, static_cast<int>(rangeRect.width())));
     }
 
 private:
@@ -1319,16 +1330,36 @@ private:
         }
     }
 
-    QString xAxisFrameLabel(int count) const
+    QString xAxisStartLabel(int startIndex) const
+    {
+        return QString::number(startIndex + 1);
+    }
+
+    QString xAxisEndLabel(int startIndex, int count) const
+    {
+        return QString::number(startIndex + count);
+    }
+
+    QString xAxisRangeLabel(int startIndex, int count) const
     {
         return is_english_
-            ? QStringLiteral("%1 frames").arg(count)
-            : QStringLiteral("%1 帧").arg(count);
+            ? QStringLiteral("Visible range %1-%2 / cache %3 pts")
+                  .arg(startIndex + 1)
+                  .arg(startIndex + count)
+                  .arg(peak_values_.size())
+            : QStringLiteral("显示范围%1-%2/缓存%3点")
+                  .arg(startIndex + 1)
+                  .arg(startIndex + count)
+                  .arg(peak_values_.size());
     }
 
     void updateXAxisLabelProperty()
     {
-        setProperty("xAxisFrameLabelText", xAxisFrameLabel(visibleCount()));
+        const int startIndex = visibleStartIndex();
+        const int count = visibleCount();
+        setProperty("xAxisStartLabelText", xAxisStartLabel(startIndex));
+        setProperty("xAxisRangeLabelText", xAxisRangeLabel(startIndex, count));
+        setProperty("xAxisEndLabelText", xAxisEndLabel(startIndex, count));
     }
 
     QVector<float> peak_values_;
@@ -2522,7 +2553,17 @@ QString TcpWavePanel::testHarmonicXAxisLabel() const
 
 QString TcpWavePanel::testPeakXAxisLabel() const
 {
-    return peak_plot_ ? peak_plot_->property("xAxisFrameLabelText").toString() : QString();
+    return peak_plot_ ? peak_plot_->property("xAxisRangeLabelText").toString() : QString();
+}
+
+QString TcpWavePanel::testPeakXAxisStartLabel() const
+{
+    return peak_plot_ ? peak_plot_->property("xAxisStartLabelText").toString() : QString();
+}
+
+QString TcpWavePanel::testPeakXAxisEndLabel() const
+{
+    return peak_plot_ ? peak_plot_->property("xAxisEndLabelText").toString() : QString();
 }
 
 int TcpWavePanel::testWavePlotBottomMarginExtra() const

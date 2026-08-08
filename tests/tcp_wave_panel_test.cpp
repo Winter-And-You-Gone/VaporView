@@ -56,8 +56,12 @@ void testWavePlotXAxisLabelsDefaultToChinese()
             "raw waveform x-axis defaults samples to Chinese");
     require(panel.testHarmonicXAxisLabel() == QStringLiteral("512 点"),
             "harmonic waveform x-axis defaults samples to Chinese");
-    require(panel.testPeakXAxisLabel() == QStringLiteral("11 帧"),
-            "peak trend x-axis defaults frames to Chinese");
+    require(panel.testPeakXAxisStartLabel() == QStringLiteral("1"),
+            "peak trend x-axis shows the visible range start");
+    require(panel.testPeakXAxisLabel() == QStringLiteral("显示范围1-11/缓存11点"),
+            "peak trend x-axis centers a Chinese visible range and cache label");
+    require(panel.testPeakXAxisEndLabel() == QStringLiteral("11"),
+            "peak trend x-axis shows the visible range end");
     require(panel.testWavePlotBottomMarginExtra() >= 8 &&
                 panel.testPeakPlotBottomMarginExtra() >= 8,
             "waveform plots reserve extra bottom margin for full x-axis labels");
@@ -65,8 +69,8 @@ void testWavePlotXAxisLabelsDefaultToChinese()
     panel.setEnglish(true);
     require(panel.testRawXAxisLabel() == QStringLiteral("512 samples"),
             "raw waveform x-axis still supports English samples");
-    require(panel.testPeakXAxisLabel() == QStringLiteral("11 frames"),
-            "peak trend x-axis still supports English frames");
+    require(panel.testPeakXAxisLabel() == QStringLiteral("Visible range 1-11 / cache 11 pts"),
+            "peak trend x-axis still supports English range text");
 }
 
 }  // namespace

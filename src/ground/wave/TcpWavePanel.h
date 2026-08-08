@@ -58,6 +58,8 @@ public:
     QString testRawXAxisLabel() const;
     QString testHarmonicXAxisLabel() const;
     QString testPeakXAxisLabel() const;
+    QString testPeakXAxisStartLabel() const;
+    QString testPeakXAxisEndLabel() const;
     int testWavePlotBottomMarginExtra() const;
     int testPeakPlotBottomMarginExtra() const;
 #endif
