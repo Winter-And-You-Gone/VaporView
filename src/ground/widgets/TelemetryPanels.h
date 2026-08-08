@@ -371,6 +371,7 @@ private:
     void updateCalibrationDrawerVisibility();
     void updateChannelStackMinimumHeight();
     void emitSensorConfigRequest(int index);
+    void fitControllerModeComboWidth();
     void updateChannelTexts();
     void updateChannelData(int index, const VaporView::TemperatureControllerChannelData& channel, bool valid);
     int channelIndex(quint8 channel) const;

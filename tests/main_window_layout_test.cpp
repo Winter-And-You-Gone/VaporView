@@ -5491,6 +5491,22 @@ int main(int argc, char **argv)
                                         controllerModeLabel->size());
     const QRect controllerModeComboRect(controllerModeCombo->mapTo(temperatureControllerModeField, QPoint(0, 0)),
                                         controllerModeCombo->size());
+    QStyleOptionComboBox controllerModeComboOption;
+    controllerModeComboOption.initFrom(controllerModeCombo);
+    controllerModeComboOption.editable = controllerModeCombo->isEditable();
+    controllerModeComboOption.frame = controllerModeCombo->hasFrame();
+    const QRect controllerModeComboEditRect = controllerModeCombo->style()->subControlRect(
+        QStyle::CC_ComboBox,
+        &controllerModeComboOption,
+        QStyle::SC_ComboBoxEditField,
+        controllerModeCombo);
+    int longestControllerModeTextWidth = 0;
+    for (int index = 0; index < controllerModeCombo->count(); ++index)
+    {
+        longestControllerModeTextWidth = std::max(
+            longestControllerModeTextWidth,
+            controllerModeCombo->fontMetrics().horizontalAdvance(controllerModeCombo->itemText(index)));
+    }
     require(std::abs(controllerModeFieldRect.top() - autoPidFieldRectForMode.top()) <= 2,
             "temperature controller mode field shares the top row with auto PID");
     require(autoPidFieldRectForMode.right() < controllerModeFieldRect.left() &&
@@ -5502,6 +5518,10 @@ int main(int argc, char **argv)
             "temperature controller mode label removes the gap before its combo");
     require(std::abs(controllerModeLabelRect.center().y() - controllerModeComboRect.center().y()) <= 2,
             "temperature controller mode label and combo are vertically centered together");
+    require(controllerModeComboEditRect.width() >= longestControllerModeTextWidth,
+            "temperature controller mode combo reserves the full width of its longest option");
+    require(controllerModeFieldRect.right() >= temperatureChannelCommonTopControls1->width() - 1,
+            "temperature controller mode field and combo are right aligned in the common top row");
     const QRect topRowRectInCard(temperatureChannelTopRow->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                  temperatureChannelTopRow->size());
     const QRect selectorRowRectInTopRow(temperatureChannelSelectorRow->mapTo(temperatureChannelTopRow, QPoint(0, 0)),
@@ -5625,6 +5645,11 @@ int main(int argc, char **argv)
                 !temperatureConfigChannelButton2->isChecked() &&
                 temperatureCommonSettingsButton->isChecked(),
             "temperature top bar switches to a compact three-column common settings page");
+    const QRect modeOnlyControllerModeFieldRect(
+        temperatureControllerModeField->mapTo(temperatureControllerModeTopControls, QPoint(0, 0)),
+        temperatureControllerModeField->size());
+    require(modeOnlyControllerModeFieldRect.right() >= temperatureControllerModeTopControls->width() - 1,
+            "temperature controller mode field stays right aligned on the mode-only top row");
     require(std::abs(temperatureChannelTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)).x() -
                      temperatureControllerContentRow->mapTo(temperatureConfigCard, QPoint(0, 0)).x()) <= 1,
             "temperature top navigation stays aligned with the left control card on the common settings page");

@@ -38,6 +38,7 @@
 #include <QSizePolicy>
 #include <QShortcut>
 #include <QStyle>
+#include <QStyleOptionComboBox>
 #include <QStyleOptionToolButton>
 #include <QSvgRenderer>
 #include <QTimer>
@@ -1617,6 +1618,39 @@ void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
     }
 }
 
+void TemperatureControllerPanel::fitControllerModeComboWidth()
+{
+    if (!controller_mode_combo_)
+    {
+        return;
+    }
+
+    controller_mode_combo_->ensurePolished();
+    QStyleOptionComboBox option;
+    option.initFrom(controller_mode_combo_);
+    option.editable = controller_mode_combo_->isEditable();
+    option.frame = controller_mode_combo_->hasFrame();
+    const QRect editField = controller_mode_combo_->style()->subControlRect(
+        QStyle::CC_ComboBox,
+        &option,
+        QStyle::SC_ComboBoxEditField,
+        controller_mode_combo_);
+    const int nonTextWidth = editField.isValid()
+        ? std::max(0, controller_mode_combo_->width() - editField.width())
+        : 0;
+    QFontMetrics metrics(controller_mode_combo_->font());
+    int longestTextWidth = 0;
+    for (int index = 0; index < controller_mode_combo_->count(); ++index)
+    {
+        longestTextWidth = std::max(longestTextWidth,
+                                     metrics.horizontalAdvance(controller_mode_combo_->itemText(index)));
+    }
+    if (longestTextWidth > 0)
+    {
+        controller_mode_combo_->setFixedWidth(longestTextWidth + nonTextWidth + 2);
+    }
+}
+
 void TemperatureControllerPanel::placeControllerModeFieldInTopControls(int channelIndex, int subPageIndex)
 {
     if (!controller_mode_field_)
@@ -1675,7 +1709,7 @@ void TemperatureControllerPanel::placeControllerModeFieldInTopControls(int chann
         }
     }
 
-    int desiredIndex = anchor ? targetLayout->indexOf(anchor) + 1 : 0;
+    int desiredIndex = anchor ? targetLayout->indexOf(anchor) + 1 : targetLayout->count();
     if (anchor && desiredIndex <= 0)
     {
         desiredIndex = targetLayout->count();
@@ -1696,7 +1730,7 @@ void TemperatureControllerPanel::placeControllerModeFieldInTopControls(int chann
         }
     }
 
-    targetLayout->insertWidget(desiredIndex, controller_mode_field_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    targetLayout->insertWidget(desiredIndex, controller_mode_field_, 0, Qt::AlignVCenter | Qt::AlignRight);
     controller_mode_field_->setVisible(true);
 }
 
@@ -1779,12 +1813,12 @@ void TemperatureControllerPanel::setupUi()
     controller_mode_combo_ = new SingleLevelPopupComboBox(this);
     configureSingleLevelComboCheckIcon(static_cast<SingleLevelPopupComboBox *>(controller_mode_combo_));
     controller_mode_combo_->setObjectName(QStringLiteral("temperatureControllerModeCombo"));
-    controller_mode_combo_->setFixedWidth(206);
     controller_mode_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     controller_mode_combo_->addItem(QStringLiteral("独立控制"), 0);
     controller_mode_combo_->addItem(QStringLiteral("通道1温差控制"), 1);
     controller_mode_combo_->addItem(QStringLiteral("通道2跟随输出"), 2);
     controller_mode_combo_->addItem(QStringLiteral("温差控制+跟随输出"), 3);
+    fitControllerModeComboWidth();
     connect(controller_mode_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
         emit controllerModeRequested(static_cast<quint16>(controller_mode_combo_->currentData().toUInt()));
     });
@@ -1917,6 +1951,7 @@ void TemperatureControllerPanel::setupUi()
     auto *controllerModeTopLayout = new QHBoxLayout(controller_mode_top_controls_);
     controllerModeTopLayout->setContentsMargins(0, 0, 0, 0);
     controllerModeTopLayout->setSpacing(0);
+    controllerModeTopLayout->addStretch(1);
     channel_top_controls_stack_->addWidget(controller_mode_top_controls_);
     channelSelectorRowLayout->addWidget(channel_top_controls_stack_, 1, Qt::AlignVCenter);
     channelTopRowLayout->addWidget(channelSelectorRow);
@@ -2029,6 +2064,7 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
     auto *commonLayout = new QHBoxLayout(channel.common_top_controls);
     commonLayout->setContentsMargins(0, 0, 0, 0);
     commonLayout->setSpacing(0);
+    commonLayout->addStretch(1);
     auto makeCommonTopField = [this](const QString& text, QWidget *editor, QLabel *&label) {
         auto *field = new QWidget();
         field->setObjectName(QStringLiteral("temperatureTopBarField"));
@@ -2085,7 +2121,6 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
     channel.auto_pid_field = makeCommonTopField(
         QStringLiteral("自动 PID"), channel.auto_pid_combo, channel.auto_pid_label_text);
     commonLayout->addWidget(channel.auto_pid_field, 0, Qt::AlignVCenter);
-    commonLayout->addStretch(1);
     connect(channel.auto_pid_combo,
             QOverload<int>::of(&QComboBox::currentIndexChanged),
             this,
@@ -3512,6 +3547,7 @@ void TemperatureControllerPanel::updateChannelTexts()
         controller_mode_combo_->setToolTip(is_english_
             ? QStringLiteral("RD105 CONTMODE. Modes 2 and 3 require a resistor temperature sensor on channel 2.")
             : QStringLiteral("RD105 CONTMODE。使用模式2和3时，通道2传感器接口应接入电阻温度传感器。"));
+        fitControllerModeComboWidth();
     }
     if (channel_button_1_) channel_button_1_->setText(is_english_ ? QStringLiteral("Channel 1") : QStringLiteral("通道1"));
     if (channel_button_2_) channel_button_2_->setText(is_english_ ? QStringLiteral("Channel 2") : QStringLiteral("通道2"));
