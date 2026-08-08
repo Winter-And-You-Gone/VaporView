@@ -5494,8 +5494,25 @@ int main(int argc, char **argv)
                                         controllerModeLabel->size());
     const QRect controllerModeComboRect(controllerModeCombo->mapTo(temperatureControllerModeField, QPoint(0, 0)),
                                         controllerModeCombo->size());
+    int longestControllerModeTextWidth = 0;
+    int longestControllerModeIndex = -1;
+    for (int index = 0; index < controllerModeCombo->count(); ++index)
+    {
+        const int textWidth = controllerModeCombo->fontMetrics().horizontalAdvance(
+            controllerModeCombo->itemText(index));
+        if (textWidth > longestControllerModeTextWidth)
+        {
+            longestControllerModeTextWidth = textWidth;
+            longestControllerModeIndex = index;
+        }
+    }
+    const int initialControllerModeIndex = controllerModeCombo->currentIndex();
+    controllerModeCombo->setCurrentIndex(longestControllerModeIndex);
+    processEventsFor(20);
     QStyleOptionComboBox controllerModeComboOption;
     controllerModeComboOption.initFrom(controllerModeCombo);
+    controllerModeComboOption.rect = controllerModeCombo->rect();
+    controllerModeComboOption.currentText = controllerModeCombo->currentText();
     controllerModeComboOption.editable = controllerModeCombo->isEditable();
     controllerModeComboOption.frame = controllerModeCombo->hasFrame();
     const QRect controllerModeComboEditRect = controllerModeCombo->style()->subControlRect(
@@ -5503,13 +5520,6 @@ int main(int argc, char **argv)
         &controllerModeComboOption,
         QStyle::SC_ComboBoxEditField,
         controllerModeCombo);
-    int longestControllerModeTextWidth = 0;
-    for (int index = 0; index < controllerModeCombo->count(); ++index)
-    {
-        longestControllerModeTextWidth = std::max(
-            longestControllerModeTextWidth,
-            controllerModeCombo->fontMetrics().horizontalAdvance(controllerModeCombo->itemText(index)));
-    }
     require(std::abs(controllerModeFieldRect.top() - autoPidFieldRectForMode.top()) <= 2,
             "temperature controller mode field shares the top row with auto PID");
     const int enableToAutoGap = autoPidFieldRectForMode.left() - topEnableFieldRect.right() - 1;
@@ -5524,8 +5534,9 @@ int main(int argc, char **argv)
             "temperature controller mode label removes the gap before its combo");
     require(std::abs(controllerModeLabelRect.center().y() - controllerModeComboRect.center().y()) <= 2,
             "temperature controller mode label and combo are vertically centered together");
-    require(controllerModeComboEditRect.width() >= longestControllerModeTextWidth + 16,
-            "temperature controller mode combo reserves popup padding beyond its longest option");
+    require(controllerModeComboEditRect.width() >= longestControllerModeTextWidth + 32,
+            "temperature controller mode combo reserves text padding beyond its longest option");
+    controllerModeCombo->setCurrentIndex(initialControllerModeIndex);
     require(controllerModeFieldRect.right() >= temperatureChannelCommonTopControls1->width() - 1,
             "temperature controller mode field and combo are right aligned in the common top row");
     const QRect topRowRectInCard(temperatureChannelTopRow->mapTo(temperatureConfigCard, QPoint(0, 0)),

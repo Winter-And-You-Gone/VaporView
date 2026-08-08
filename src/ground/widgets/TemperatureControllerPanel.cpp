@@ -90,7 +90,7 @@ constexpr int kTemperatureControllerSubTabTextPadding = 28;
 constexpr int kTemperatureControllerTopEnableWidth = 106;
 constexpr int kTemperatureControllerTopEnableHeight = 34;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
-constexpr int kTemperatureControllerModePopupWidthReserve = 16;
+constexpr int kTemperatureControllerModeTextWidthReserve = 32;
 // The 266px common-parameter row is 85 + 6 + 84 + 6 + 85, matching 130 + 6 + 130.
 constexpr int kTemperatureControllerPidSideInputWidth = 85;
 constexpr int kTemperatureControllerPidCenterInputWidth = 84;
@@ -1634,6 +1634,9 @@ void TemperatureControllerPanel::fitControllerModeComboWidth()
     controller_mode_combo_->ensurePolished();
     QStyleOptionComboBox option;
     option.initFrom(controller_mode_combo_);
+    constexpr int kWidthProbe = 1000;
+    option.rect = QRect(0, 0, kWidthProbe, controller_mode_combo_->height());
+    option.currentText = controller_mode_combo_->currentText();
     option.editable = controller_mode_combo_->isEditable();
     option.frame = controller_mode_combo_->hasFrame();
     const QRect editField = controller_mode_combo_->style()->subControlRect(
@@ -1642,7 +1645,7 @@ void TemperatureControllerPanel::fitControllerModeComboWidth()
         QStyle::SC_ComboBoxEditField,
         controller_mode_combo_);
     const int nonTextWidth = editField.isValid()
-        ? std::max(0, controller_mode_combo_->width() - editField.width())
+        ? std::max(0, kWidthProbe - editField.width())
         : 0;
     QFontMetrics metrics(controller_mode_combo_->font());
     int longestTextWidth = 0;
@@ -1654,7 +1657,7 @@ void TemperatureControllerPanel::fitControllerModeComboWidth()
     if (longestTextWidth > 0)
     {
         controller_mode_combo_->setFixedWidth(longestTextWidth + nonTextWidth +
-                                               kTemperatureControllerModePopupWidthReserve);
+                                               kTemperatureControllerModeTextWidthReserve);
     }
 }
 
