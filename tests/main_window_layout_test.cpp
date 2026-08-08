@@ -1090,15 +1090,45 @@ void requireHomeDeviceMinimumWidthMatchesControls(QWidget *scope)
     const int controlsWidth = std::max(
         deviceGrid->minimumWidth(),
         std::max(deviceGrid->minimumSizeHint().width(), deviceGrid->sizeHint().width()));
+    auto *telemetrySummary = deviceBody->findChild<QWidget *>(
+        QStringLiteral("homeTelemetrySummaryContainer"));
+    int telemetrySummaryWidth = 0;
+    if (telemetrySummary)
+    {
+        int telemetrySectionWidth = 0;
+        const QList<QFrame*> sections = telemetrySummary->findChildren<QFrame *>(
+            QStringLiteral("homeTelemetrySectionCard"));
+        for (const QFrame *section : sections)
+        {
+            telemetrySectionWidth = std::max(
+                telemetrySectionWidth,
+                std::max(section->minimumWidth(),
+                         std::max(section->minimumSizeHint().width(), section->sizeHint().width())));
+            const QList<QFrame*> pills = section->findChildren<QFrame *>(
+                QStringLiteral("homeTelemetrySummaryPill"));
+            for (const QFrame *pill : pills)
+            {
+                const QRect pillRect(pill->mapTo(section, QPoint(0, 0)), pill->size());
+                telemetrySectionWidth = std::max(telemetrySectionWidth, pillRect.right() + 1 + 13);
+            }
+        }
+        const QMargins summaryMargins = telemetrySummary->layout()
+            ? telemetrySummary->layout()->contentsMargins()
+            : QMargins();
+        telemetrySummaryWidth = std::max(
+            telemetrySummary->minimumWidth(),
+            std::max(telemetrySectionWidth + summaryMargins.left() + summaryMargins.right(),
+                     std::max(telemetrySummary->minimumSizeHint().width(), telemetrySummary->sizeHint().width())));
+    }
     const QMargins cardMargins = deviceCard->layout()->contentsMargins();
     const QMargins bodyMargins = deviceBody->layout()->contentsMargins();
-    const int expectedMinimumWidth = controlsWidth +
+    const int expectedMinimumWidth = std::max(controlsWidth, telemetrySummaryWidth) +
                                      cardMargins.left() +
                                      cardMargins.right() +
                                      bodyMargins.left() +
                                      bodyMargins.right();
     require(deviceCard->minimumWidth() == expectedMinimumWidth,
-            "home device card minimum width follows only its seven capsules and action icons");
+            "home device card minimum width covers its controls and telemetry summary capsules");
 }
 
 void requireHomeDeviceGeometryStableAcrossCardResize(QWidget *scope,
@@ -2364,6 +2394,86 @@ QFrame *findTelemetryPillByName(QFrame *section, const QString& text)
     return nullptr;
 }
 
+void requireTelemetrySummaryPillsOrdered(QWidget *summaryContainer, const char *message)
+{
+    const QList<QFrame*> sections = sortedTelemetrySections(summaryContainer);
+    require(sections.size() >= 3, message);
+    for (QFrame *section : sections)
+    {
+        const QList<QFrame*> pills =
+            section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+        require(!pills.isEmpty(), message);
+        QList<QWidget*> lines;
+        for (QFrame *pill : pills)
+        {
+            if (QWidget *line = pill->parentWidget(); line && !lines.contains(line))
+            {
+                lines.append(line);
+            }
+            const QRect pillRect(pill->mapTo(section, QPoint(0, 0)), pill->size());
+            if (!section->rect().adjusted(0, 0, 1, 1).contains(pillRect))
+            {
+                QGroupBox *deviceCard = nullptr;
+                for (QWidget *ancestor = section; ancestor && !deviceCard; ancestor = ancestor->parentWidget())
+                {
+                    deviceCard = qobject_cast<QGroupBox *>(ancestor);
+                }
+                std::cerr << "Telemetry pill outside section: section=" << section->rect().width()
+                          << " section min=" << section->minimumWidth()
+                          << " card width=" << (deviceCard ? deviceCard->width() : 0)
+                          << " card min=" << (deviceCard ? deviceCard->minimumWidth() : 0)
+                          << " pill x=" << pillRect.x()
+                          << " width=" << pillRect.width()
+                          << " right=" << pillRect.right() << '\n';
+            }
+            require(section->rect().adjusted(0, 0, 1, 1).contains(pillRect), message);
+        }
+
+        for (QWidget *line : lines)
+        {
+            QLabel *titleLabel = line->findChild<QLabel *>(
+                QStringLiteral("homeTelemetrySummaryTitleLabel"),
+                Qt::FindDirectChildrenOnly);
+            QList<QFrame*> linePills =
+                line->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"),
+                                             Qt::FindDirectChildrenOnly);
+            std::sort(linePills.begin(), linePills.end(), [section](QFrame *a, QFrame *b) {
+                return a->mapTo(section, QPoint(0, 0)).x() < b->mapTo(section, QPoint(0, 0)).x();
+            });
+            if (titleLabel && !linePills.isEmpty())
+            {
+                const QRect titleRect(titleLabel->mapTo(section, QPoint(0, 0)), titleLabel->size());
+                const QRect firstPillRect(linePills.first()->mapTo(section, QPoint(0, 0)),
+                                          linePills.first()->size());
+                if (firstPillRect.left() <= titleRect.right())
+                {
+                    std::cerr << "Telemetry title overlap: title='" << titleLabel->text().toStdString()
+                              << "' title right=" << titleRect.right()
+                              << " first pill left=" << firstPillRect.left()
+                              << " first pill width=" << firstPillRect.width() << '\n';
+                }
+                require(firstPillRect.left() > titleRect.right(), message);
+            }
+            QRect previousRect;
+            bool hasPrevious = false;
+            for (QFrame *pill : linePills)
+            {
+                const QRect pillRect(pill->mapTo(section, QPoint(0, 0)), pill->size());
+                if (hasPrevious && pillRect.left() <= previousRect.right())
+                {
+                    std::cerr << "Telemetry pill overlap: section=" << section->rect().width()
+                              << " previous right=" << previousRect.right()
+                              << " current left=" << pillRect.left()
+                              << " current width=" << pillRect.width() << '\n';
+                }
+                require(!hasPrevious || pillRect.left() > previousRect.right(), message);
+                previousRect = pillRect;
+                hasPrevious = true;
+            }
+        }
+    }
+}
+
 bool isRemoteSourceModeText(const QString& text)
 {
     return text.contains(QStringLiteral("天地远程")) ||
@@ -2619,6 +2729,11 @@ void requireHomeOverviewLanguageWidthRoundTrip()
             "language overview window exposes the device overview card");
     auto *languageEpsilonPanel =
         languageOverviewWindow.findChild<QWidget *>(QStringLiteral("epsilonPanel"));
+    auto *languageTelemetrySummaryContainer = languageDeviceOverviewCard->findChild<QWidget *>(
+        QStringLiteral("homeTelemetrySummaryContainer"));
+    requireTelemetrySummaryPillsOrdered(
+        languageTelemetrySummaryContainer,
+        "language overview telemetry capsules start without overlap");
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
     requireHomeDeviceColumnsAligned(&languageOverviewWindow);
     requireHomeDeviceMinimumWidthMatchesControls(&languageOverviewWindow);
@@ -2643,20 +2758,43 @@ void requireHomeOverviewLanguageWidthRoundTrip()
                        sizes.at(0) > initialDeviceOverviewWidth;
             }),
             "language overview device card expands for English labels");
+    const QList<int> englishHomeOverviewSizes = languageHomeOverviewSplitter->sizes();
+    require(englishHomeOverviewSizes.size() == 2,
+            "language overview splitter exposes English device and temperature widths");
+    const int englishDeviceOverviewWidth = englishHomeOverviewSizes.at(0);
+    requireTelemetrySummaryPillsOrdered(
+        languageTelemetrySummaryContainer,
+        "language overview telemetry capsules stay ordered in English");
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, true);
     require(QMetaObject::invokeMethod(&languageOverviewWindow,
                                       "onSwitchLanguage",
                                       Qt::DirectConnection),
             "language overview window switches back to Chinese");
-    require(processEventsUntil(1000, [&languageOverviewWindow,
-                                      languageHomeOverviewSplitter,
-                                      initialDeviceOverviewWidth]() {
+    const bool returnedToChineseWidth = processEventsUntil(1000, [&languageOverviewWindow,
+                                                                  languageHomeOverviewSplitter,
+                                                                  languageDeviceOverviewCard,
+                                                                  englishDeviceOverviewWidth]() {
                 activateLayouts(&languageOverviewWindow);
                 const QList<int> sizes = languageHomeOverviewSplitter->sizes();
                 return sizes.size() == 2 &&
-                       std::abs(sizes.at(0) - initialDeviceOverviewWidth) <= 1;
-            }),
+                       sizes.at(0) < englishDeviceOverviewWidth &&
+                       std::abs(sizes.at(0) - languageDeviceOverviewCard->minimumWidth()) <= 1;
+            });
+    if (!returnedToChineseWidth)
+    {
+        const QList<int> sizes = languageHomeOverviewSplitter->sizes();
+        std::cerr << "Language overview splitter width after Chinese: initial="
+                  << initialDeviceOverviewWidth
+                  << " current=" << (sizes.size() == 2 ? sizes.at(0) : -1)
+                  << " english=" << englishDeviceOverviewWidth
+                  << " card min=" << languageDeviceOverviewCard->minimumWidth()
+                  << '\n';
+    }
+    require(returnedToChineseWidth,
             "language overview device card returns to the Chinese minimum width after language toggles");
+    requireTelemetrySummaryPillsOrdered(
+        languageTelemetrySummaryContainer,
+        "language overview telemetry capsules stay ordered after returning to Chinese");
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
     languageOverviewWindow.close();
     require(processEventsUntil(1000, [&languageOverviewWindow]() {

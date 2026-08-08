@@ -121,7 +121,38 @@ int MainWindow::homeDeviceOverviewContentMinimumWidth() const
     const int deviceControlsWidth = std::max(
         homeDevices->minimumWidth(),
         std::max(homeDevices->minimumSizeHint().width(), homeDevices->sizeHint().width()));
-    return deviceControlsWidth +
+    int telemetrySummaryWidth = 0;
+    if (state_->data_telemetry_summary_card_)
+    {
+        int telemetrySectionWidth = 0;
+        const QList<QFrame*> sections = state_->data_telemetry_summary_card_->findChildren<QFrame *>(
+            QStringLiteral("homeTelemetrySectionCard"));
+        for (const QFrame *section : sections)
+        {
+            telemetrySectionWidth = std::max(
+                telemetrySectionWidth,
+                std::max(section->minimumWidth(),
+                         std::max(section->minimumSizeHint().width(), section->sizeHint().width())));
+            const QList<QFrame*> pills = section->findChildren<QFrame *>(
+                QStringLiteral("homeTelemetrySummaryPill"));
+            for (const QFrame *pill : pills)
+            {
+                const QRect pillRect(pill->mapTo(section, QPoint(0, 0)), pill->size());
+                telemetrySectionWidth = std::max(telemetrySectionWidth,
+                                                 pillRect.right() + 1 + 13);
+            }
+        }
+        const QMargins summaryMargins = state_->data_telemetry_summary_card_->layout()
+            ? state_->data_telemetry_summary_card_->layout()->contentsMargins()
+            : QMargins();
+        telemetrySummaryWidth = std::max(
+            state_->data_telemetry_summary_card_->minimumWidth(),
+            std::max(telemetrySectionWidth + summaryMargins.left() + summaryMargins.right(),
+                     std::max(state_->data_telemetry_summary_card_->minimumSizeHint().width(),
+                              state_->data_telemetry_summary_card_->sizeHint().width())));
+    }
+    const int contentWidth = std::max(deviceControlsWidth, telemetrySummaryWidth);
+    return contentWidth +
            cardMargins.left() +
            cardMargins.right() +
            bodyMargins.left() +
@@ -282,6 +313,7 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         {
             state_->home_overview_splitter_->setFixedHeight(targetHeight);
         }
+        updateHomeDeviceOverviewMinimumWidth();
         return;
     }
     if (state_->config_group_->height() < minimumHeight)
@@ -583,6 +615,10 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             return;
         }
         clearLayout(sectionLayout);
+        if (QWidget *section = qobject_cast<QWidget *>(sectionLayout->parent()))
+        {
+            section->setMinimumWidth(0);
+        }
 
         auto addItemLabel = [this, useSideTitle, compactAvailabilityValues](QHBoxLayout *lineLayout,
                                                                             QWidget *lineWidget,
@@ -699,6 +735,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         }
 
         int renderedLineCount = 0;
+        int explicitSectionMinimumWidth = 0;
         auto addLine = [&](int begin, int end, bool includeTitle) {
             ++renderedLineCount;
             auto *line = new QWidget(lineParent);
@@ -715,7 +752,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                 titleLabel->setText(title + (state_->is_english_ ? QStringLiteral(":") : QStringLiteral("：")));
                 titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
                 titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-                titleLabel->setMinimumWidth(titleLabel->fontMetrics().horizontalAdvance(titleLabel->text()) + scalePixels(4));
+                titleLabel->ensurePolished();
+                titleLabel->setFixedWidth(titleLabel->fontMetrics().horizontalAdvance(titleLabel->text()) + scalePixels(3));
                 lineLayout->addWidget(titleLabel, 0, Qt::AlignVCenter);
             }
 
@@ -724,6 +762,34 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                 addItemLabel(lineLayout, line, items.at(i));
             }
             lineLayout->addStretch(1);
+            lineLayout->invalidate();
+            lineLayout->activate();
+            const QMargins lineMargins = lineLayout->contentsMargins();
+            int lineMinimumWidth = lineMargins.left() + lineMargins.right();
+            int lineWidgetCount = 0;
+            for (int i = 0; i < lineLayout->count(); ++i)
+            {
+                QWidget *widget = lineLayout->itemAt(i) ? lineLayout->itemAt(i)->widget() : nullptr;
+                if (!widget)
+                {
+                    continue;
+                }
+                if (lineWidgetCount > 0)
+                {
+                    lineMinimumWidth += lineLayout->spacing();
+                }
+                lineMinimumWidth += std::max(widget->minimumWidth(),
+                                             std::max(widget->minimumSizeHint().width(), widget->sizeHint().width()));
+                ++lineWidgetCount;
+            }
+            line->setMinimumWidth(lineMinimumWidth);
+            line->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+            if (!useSideTitle)
+            {
+                const QMargins sectionMargins = sectionLayout->contentsMargins();
+                explicitSectionMinimumWidth = std::max(explicitSectionMinimumWidth,
+                                                       lineMinimumWidth + sectionMargins.left() + sectionMargins.right());
+            }
             linesLayout->addWidget(line, 0, Qt::AlignLeft | Qt::AlignTop);
         };
 
@@ -758,6 +824,15 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                                       (renderedLineCount * rowHeight) +
                                       (std::max(0, renderedLineCount - 1) * rowSpacing) +
                                       borderAllowance;
+            int sectionMinimumWidth = std::max(sectionLayout->minimumSize().width(), explicitSectionMinimumWidth);
+            const QList<QFrame*> pills = section->findChildren<QFrame *>(
+                QStringLiteral("homeTelemetrySummaryPill"));
+            for (QFrame *pill : pills)
+            {
+                const QRect pillRect(pill->mapTo(section, QPoint(0, 0)), pill->size());
+                sectionMinimumWidth = std::max(sectionMinimumWidth, pillRect.right() + 1 + 13);
+            }
+            section->setMinimumWidth(sectionMinimumWidth);
             section->setFixedHeight(sectionHeight);
             section->adjustSize();
             section->updateGeometry();
