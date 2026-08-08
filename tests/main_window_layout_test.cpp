@@ -5380,6 +5380,10 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelTopControlsStack"));
     auto *temperatureChannelCommonTopControls1 =
         temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureChannelCommonTopControlsChannel1"));
+    auto *temperatureChannelCommonTopControls2 =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureChannelCommonTopControlsChannel2"));
+    auto *temperatureControllerModeTopControls =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureControllerModeTopControls"));
     auto *temperatureChannelStack =
         temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelStack"));
     auto *temperatureControllerContentRow =
@@ -5419,6 +5423,8 @@ int main(int argc, char **argv)
                 temperatureChannelTopBar != nullptr &&
                 temperatureChannelTopControlsStack != nullptr &&
                 temperatureChannelCommonTopControls1 != nullptr &&
+                temperatureChannelCommonTopControls2 != nullptr &&
+                temperatureControllerModeTopControls != nullptr &&
                 temperatureChannelStack != nullptr &&
                 temperatureControllerContentRow != nullptr &&
                 temperatureControllerLeftConfigColumn != nullptr &&
@@ -5492,6 +5498,8 @@ int main(int argc, char **argv)
             "temperature controller mode field sits immediately to the right of auto PID");
     require(controllerModeLabelRect.right() < controllerModeComboRect.left(),
             "temperature controller mode label sits immediately before the combo");
+    require(controllerModeComboRect.left() - controllerModeLabelRect.right() - 1 <= 1,
+            "temperature controller mode label removes the gap before its combo");
     require(std::abs(controllerModeLabelRect.center().y() - controllerModeComboRect.center().y()) <= 2,
             "temperature controller mode label and combo are vertically centered together");
     const QRect topRowRectInCard(temperatureChannelTopRow->mapTo(temperatureConfigCard, QPoint(0, 0)),
@@ -5591,6 +5599,7 @@ int main(int argc, char **argv)
     activateLayouts(&window);
     require(temperatureChannelTopControlsStack->currentIndex() == 1 &&
                 temperatureChannelTopControlsStack->isVisible() &&
+                temperatureControllerModeField->parentWidget() == temperatureChannelCommonTopControls2 &&
                 temperatureChannelStack->currentIndex() == 1 &&
                 temperatureSubPageBarStack->currentIndex() == 1 &&
                 std::abs(temperatureChannelStack->height() - channel1StackHeight) <= 1 &&
@@ -5603,7 +5612,9 @@ int main(int argc, char **argv)
     clickWidget(temperatureCommonSettingsButton, 150);
     activateLayouts(&window);
     const int commonStackHeight = temperatureChannelStack->height();
-    require(!temperatureChannelTopControlsStack->isVisible() &&
+    require(temperatureChannelTopControlsStack->isVisible() &&
+                temperatureChannelTopControlsStack->currentWidget() == temperatureControllerModeTopControls &&
+                temperatureControllerModeField->parentWidget() == temperatureControllerModeTopControls &&
                 temperatureChannelStack->currentIndex() == 2 &&
                 temperatureSubPageBarStack->currentIndex() == 2 &&
                 std::abs(commonStackHeight - channel1StackHeight) <= 1 &&
@@ -6072,7 +6083,9 @@ int main(int argc, char **argv)
                 temperatureChannelConfigSubStack->currentWidget()->objectName() ==
                     QStringLiteral("temperatureChannelAdvancedParamsPageChannel1") &&
                 temperatureChannelAdvancedParamsButton->isChecked() &&
-                !temperatureChannelTopControlsStack->isVisible() &&
+                temperatureChannelTopControlsStack->isVisible() &&
+                temperatureChannelTopControlsStack->currentWidget() == temperatureControllerModeTopControls &&
+                temperatureControllerModeField->parentWidget() == temperatureControllerModeTopControls &&
                 overtempUpperSpin != nullptr &&
                 overtempLowerSpin != nullptr &&
                 temperatureSlopeSpin != nullptr &&
@@ -6410,6 +6423,7 @@ int main(int argc, char **argv)
                 temperatureChannelSensorConfigButton->isChecked() &&
                 temperatureChannelTopControlsStack->isVisible() &&
                 !temperatureChannelCommonTopControls1->isVisible() &&
+                temperatureControllerModeField->parentWidget() == sensorModelSelector1->parentWidget() &&
                 sensorModelSelector1->parentWidget()->isVisible(),
             "temperature sensor config tab switches to the sensor config page");
 

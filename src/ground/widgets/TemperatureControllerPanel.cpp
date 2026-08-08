@@ -1598,10 +1598,10 @@ void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
                                           channel.enable_field->sizeHint().width());
     const int autoPidFieldWidth = std::max(channel.auto_pid_field->width(),
                                            channel.auto_pid_field->sizeHint().width());
-    const bool controllerModeInRow = controller_mode_field_ &&
+    const bool controllerModeInCommonRow = controller_mode_field_ &&
         controller_mode_field_->parentWidget() == channel.common_top_controls &&
         controller_mode_field_->isVisible();
-    const int controllerModeFieldWidth = controllerModeInRow
+    const int controllerModeFieldWidth = controllerModeInCommonRow
         ? std::max(controller_mode_field_->width(), controller_mode_field_->sizeHint().width())
         : 0;
     const int availableWidth = std::max(0, channel.common_top_controls->width() -
@@ -1624,32 +1624,35 @@ void TemperatureControllerPanel::placeControllerModeFieldInTopControls(int chann
         return;
     }
 
-    if (selected_config_page_index_ >= 2 ||
-        channelIndex < 0 ||
-        channelIndex >= static_cast<int>(channels_.size()) ||
-        subPageIndex == 1)
-    {
-        controller_mode_field_->setVisible(false);
-        return;
-    }
-
-    ChannelWidgets& channel = channels_[channelIndex];
     QWidget *target = nullptr;
     QWidget *anchor = nullptr;
-    if (subPageIndex == 0)
+    if (selected_config_page_index_ < 2 &&
+        channelIndex >= 0 &&
+        channelIndex < static_cast<int>(channels_.size()))
     {
-        target = channel.common_top_controls;
-        anchor = channel.auto_pid_field;
+        ChannelWidgets& channel = channels_[channelIndex];
+        if (subPageIndex == 0)
+        {
+            target = channel.common_top_controls;
+            anchor = channel.auto_pid_field;
+        }
+        else if (subPageIndex == 2)
+        {
+            target = channel.sensor_model_field;
+            anchor = channel.sensor_model_selector;
+        }
     }
-    else if (subPageIndex == 2)
+    if (!target)
     {
-        target = channel.sensor_model_field;
-        anchor = channel.sensor_model_selector;
+        target = controller_mode_top_controls_;
     }
     if (!target || !anchor)
     {
-        controller_mode_field_->setVisible(false);
-        return;
+        if (!target)
+        {
+            controller_mode_field_->setVisible(false);
+            return;
+        }
     }
 
     auto *targetLayout = qobject_cast<QHBoxLayout *>(target->layout());
@@ -1672,8 +1675,8 @@ void TemperatureControllerPanel::placeControllerModeFieldInTopControls(int chann
         }
     }
 
-    int desiredIndex = targetLayout->indexOf(anchor) + 1;
-    if (desiredIndex <= 0)
+    int desiredIndex = anchor ? targetLayout->indexOf(anchor) + 1 : 0;
+    if (anchor && desiredIndex <= 0)
     {
         desiredIndex = targetLayout->count();
     }
@@ -1771,8 +1774,8 @@ void TemperatureControllerPanel::setupUi()
     controller_mode_lbl_->setObjectName(QStringLiteral("fieldLabel"));
     controller_mode_lbl_->setProperty("temperatureControllerModeLabel", true);
     controller_mode_lbl_->setMinimumHeight(22);
-    setFixedTextLabelWidth(controller_mode_lbl_, temperatureControllerStatusLabelWidthCandidates(), 4);
     controller_mode_lbl_->setFixedHeight(36);
+    controller_mode_lbl_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     controller_mode_combo_ = new SingleLevelPopupComboBox(this);
     configureSingleLevelComboCheckIcon(static_cast<SingleLevelPopupComboBox *>(controller_mode_combo_));
     controller_mode_combo_->setObjectName(QStringLiteral("temperatureControllerModeCombo"));
@@ -1823,7 +1826,7 @@ void TemperatureControllerPanel::setupUi()
     controller_mode_field_->setFixedHeight(kTemperatureControllerTopControlsHeight);
     auto *controllerModeLayout = new QHBoxLayout(controller_mode_field_);
     controllerModeLayout->setContentsMargins(0, 0, 0, 0);
-    controllerModeLayout->setSpacing(6);
+    controllerModeLayout->setSpacing(0);
     controllerModeLayout->addWidget(controller_mode_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     controllerModeLayout->addWidget(controller_mode_combo_, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
@@ -1907,6 +1910,14 @@ void TemperatureControllerPanel::setupUi()
     channel_top_controls_stack_->setFixedHeight(kTemperatureControllerTopControlsHeight);
     channel_top_controls_stack_->addWidget(createChannelTopControlsPage(0));
     channel_top_controls_stack_->addWidget(createChannelTopControlsPage(1));
+    controller_mode_top_controls_ = new QWidget(channel_top_controls_stack_);
+    controller_mode_top_controls_->setObjectName(QStringLiteral("temperatureControllerModeTopControls"));
+    controller_mode_top_controls_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    controller_mode_top_controls_->setFixedHeight(kTemperatureControllerTopControlsHeight);
+    auto *controllerModeTopLayout = new QHBoxLayout(controller_mode_top_controls_);
+    controllerModeTopLayout->setContentsMargins(0, 0, 0, 0);
+    controllerModeTopLayout->setSpacing(0);
+    channel_top_controls_stack_->addWidget(controller_mode_top_controls_);
     channelSelectorRowLayout->addWidget(channel_top_controls_stack_, 1, Qt::AlignVCenter);
     channelTopRowLayout->addWidget(channelSelectorRow);
     configCardLayout->addWidget(channelTopRow, 0);
@@ -2927,7 +2938,8 @@ void TemperatureControllerPanel::selectChannel(int index)
     }
     if (channel_top_controls_stack_)
     {
-        if (pageIndex < 2)
+        const int subPageIndex = std::clamp(selected_channel_sub_page_index_, 0, 2);
+        if (pageIndex < 2 && subPageIndex != 1)
         {
             channel_top_controls_stack_->setCurrentIndex(channelIndex);
             if (channels_[channelIndex].config_sub_stack)
@@ -2935,7 +2947,10 @@ void TemperatureControllerPanel::selectChannel(int index)
                 channels_[channelIndex].config_sub_stack->setCurrentIndex(selected_channel_sub_page_index_);
             }
         }
-        const int subPageIndex = std::clamp(selected_channel_sub_page_index_, 0, 2);
+        else
+        {
+            channel_top_controls_stack_->setCurrentIndex(2);
+        }
         if (pageIndex < 2)
         {
             if (channels_[channelIndex].common_top_controls)
@@ -2947,8 +2962,7 @@ void TemperatureControllerPanel::selectChannel(int index)
                 channels_[channelIndex].sensor_model_field->setVisible(subPageIndex == 2);
             }
         }
-        const bool showTopControls = pageIndex < 2 && subPageIndex != 1;
-        channel_top_controls_stack_->setVisible(showTopControls);
+        channel_top_controls_stack_->setVisible(true);
         placeControllerModeFieldInTopControls(channelIndex, subPageIndex);
         refreshTopControlsLayout();
     }
@@ -3125,7 +3139,7 @@ void TemperatureControllerPanel::selectChannelSubPage(int channelIndex, int subP
         {
             selectedChannel.sensor_model_field->setVisible(pageIndex == 2);
         }
-        channel_top_controls_stack_->setVisible(pageIndex != 1);
+        channel_top_controls_stack_->setVisible(true);
         if (pageIndex != 1)
         {
             channel_top_controls_stack_->setCurrentIndex(selectedChannelIndex);
@@ -3134,7 +3148,9 @@ void TemperatureControllerPanel::selectChannelSubPage(int channelIndex, int subP
         }
         else
         {
+            channel_top_controls_stack_->setCurrentIndex(2);
             placeControllerModeFieldInTopControls(selectedChannelIndex, pageIndex);
+            refreshTopControlsLayout();
         }
     }
     updateCalibrationDrawerVisibility();

@@ -380,6 +380,7 @@ private:
     QPushButton *channel_button_2_ = nullptr;
     QPushButton *common_settings_button_ = nullptr;
     QStackedWidget *channel_top_controls_stack_ = nullptr;
+    QWidget *controller_mode_top_controls_ = nullptr;
     QStackedWidget *channel_stack_ = nullptr;
     QStackedWidget *sub_page_bar_stack_ = nullptr;
     TemperatureTrendPlotWidget *temperature_plot_ = nullptr;
