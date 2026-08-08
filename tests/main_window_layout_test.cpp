@@ -5557,6 +5557,15 @@ int main(int argc, char **argv)
             "temperature controller mode label and combo are vertically centered together");
     require(controllerModeComboEditRect.width() >= longestControllerModeTextWidth + 48,
             "temperature controller mode combo reserves text padding beyond its longest option");
+    int longestAutoPidTextWidth = 0;
+    for (int index = 0; index < autoPidCombo->count(); ++index)
+    {
+        longestAutoPidTextWidth = std::max(longestAutoPidTextWidth,
+                                           autoPidCombo->fontMetrics().horizontalAdvance(
+                                               autoPidCombo->itemText(index)));
+    }
+    require(autoPidCombo->width() >= longestAutoPidTextWidth + 48,
+            "temperature auto PID combo keeps its longest option fully visible");
     controllerModeCombo->setCurrentIndex(initialControllerModeIndex);
     require(controllerModeFieldRect.right() >= temperatureChannelSelectorRow->width() - 1,
             "temperature controller mode field and combo are right aligned in the shared top row");

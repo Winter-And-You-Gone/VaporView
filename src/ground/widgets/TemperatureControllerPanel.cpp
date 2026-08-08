@@ -118,6 +118,42 @@ constexpr const char *kTextWidthPaddingProperty = "_vv_text_width_padding";
 constexpr const char *kNumericWidthCandidatesProperty = "_vv_numeric_width_candidates";
 constexpr const char *kNumericWidthPaddingProperty = "_vv_numeric_width_padding";
 
+void fitTemperatureComboWidth(QComboBox *combo)
+{
+    if (!combo)
+    {
+        return;
+    }
+
+    combo->ensurePolished();
+    QStyleOptionComboBox option;
+    option.initFrom(combo);
+    constexpr int kWidthProbe = 1000;
+    option.rect = QRect(0, 0, kWidthProbe, combo->height());
+    option.currentText = combo->currentText();
+    option.editable = combo->isEditable();
+    option.frame = combo->hasFrame();
+    const QRect editField = combo->style()->subControlRect(
+        QStyle::CC_ComboBox,
+        &option,
+        QStyle::SC_ComboBoxEditField,
+        combo);
+    const int nonTextWidth = editField.isValid()
+        ? std::max(0, kWidthProbe - editField.width())
+        : 0;
+    QFontMetrics metrics(combo->font());
+    int longestTextWidth = 0;
+    for (int index = 0; index < combo->count(); ++index)
+    {
+        longestTextWidth = std::max(longestTextWidth,
+                                    metrics.horizontalAdvance(combo->itemText(index)));
+    }
+    if (longestTextWidth > 0)
+    {
+        combo->setFixedWidth(longestTextWidth + nonTextWidth + kTemperatureControllerModeTextWidthReserve);
+    }
+}
+
 QFont numericFontFrom(const QFont& base)
 {
     QFont font(base);
@@ -1668,39 +1704,7 @@ void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
 
 void TemperatureControllerPanel::fitControllerModeComboWidth()
 {
-    if (!controller_mode_combo_)
-    {
-        return;
-    }
-
-    controller_mode_combo_->ensurePolished();
-    QStyleOptionComboBox option;
-    option.initFrom(controller_mode_combo_);
-    constexpr int kWidthProbe = 1000;
-    option.rect = QRect(0, 0, kWidthProbe, controller_mode_combo_->height());
-    option.currentText = controller_mode_combo_->currentText();
-    option.editable = controller_mode_combo_->isEditable();
-    option.frame = controller_mode_combo_->hasFrame();
-    const QRect editField = controller_mode_combo_->style()->subControlRect(
-        QStyle::CC_ComboBox,
-        &option,
-        QStyle::SC_ComboBoxEditField,
-        controller_mode_combo_);
-    const int nonTextWidth = editField.isValid()
-        ? std::max(0, kWidthProbe - editField.width())
-        : 0;
-    QFontMetrics metrics(controller_mode_combo_->font());
-    int longestTextWidth = 0;
-    for (int index = 0; index < controller_mode_combo_->count(); ++index)
-    {
-        longestTextWidth = std::max(longestTextWidth,
-                                     metrics.horizontalAdvance(controller_mode_combo_->itemText(index)));
-    }
-    if (longestTextWidth > 0)
-    {
-        controller_mode_combo_->setFixedWidth(longestTextWidth + nonTextWidth +
-                                               kTemperatureControllerModeTextWidthReserve);
-    }
+    fitTemperatureComboWidth(controller_mode_combo_);
 }
 
 void TemperatureControllerPanel::placeControllerModeFieldInTopControls(int channelIndex, int subPageIndex)
@@ -2170,6 +2174,7 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
     channel.auto_pid_combo->addItem(QStringLiteral("关闭"), 0);
     channel.auto_pid_combo->addItem(QStringLiteral("PID自整定"), 1);
     channel.auto_pid_combo->addItem(QStringLiteral("实时优化(预留)"), 2);
+    fitTemperatureComboWidth(channel.auto_pid_combo);
     channel.auto_pid_field = makeCommonTopField(
         QStringLiteral("自动 PID"), channel.auto_pid_combo, channel.auto_pid_label_text);
     commonLayout->addWidget(channel.auto_pid_field, 0, Qt::AlignVCenter);
@@ -3755,6 +3760,7 @@ void TemperatureControllerPanel::updateChannelTexts()
             channel.auto_pid_combo->setItemText(0, is_english_ ? QStringLiteral("Off") : QStringLiteral("关闭"));
             channel.auto_pid_combo->setItemText(1, is_english_ ? QStringLiteral("PID auto-tune") : QStringLiteral("PID自整定"));
             channel.auto_pid_combo->setItemText(2, is_english_ ? QStringLiteral("Realtime optimize (reserved)") : QStringLiteral("实时优化(预留)"));
+            fitTemperatureComboWidth(channel.auto_pid_combo);
             channel.auto_pid_combo->setToolTip(is_english_
                 ? QStringLiteral("RD105 AUTOPID: off, PID auto-tune, or reserved realtime optimization.")
                 : QStringLiteral("RD105 AUTOPID：关闭、PID自整定，或预留的实时优化。"));
