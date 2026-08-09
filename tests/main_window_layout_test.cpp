@@ -5090,10 +5090,12 @@ int main(int argc, char **argv)
                 "home link-rate pill has a value label");
         require(valueLabel->fontMetrics().horizontalAdvance(valueLabel->text()) <= valueLabel->width() + 1,
                 "home link-rate value text fits its compact label");
-        const int mbpsWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Mbps"));
         const int compactKbpsWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9kbps"));
-        require(valueLabel->width() >= std::max(mbpsWidth, compactKbpsWidth),
-                "home link-rate value label reserves room for 999.9 Mbps and 999.9kbps");
+        const int oldMbpsReserveWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Mbps")) + 8;
+        require(valueLabel->width() >= compactKbpsWidth,
+                "home link-rate value label reserves room for 999.9kbps");
+        require(valueLabel->width() < oldMbpsReserveWidth,
+                "home link-rate value label no longer reserves the wider 999.9 Mbps width");
     }
     QFrame *homeDataSection = homeTelemetrySections.at(2);
     QLabel *homeDataTitle =
