@@ -169,6 +169,30 @@ bool homeTelemetrySummaryShowsUiTestRates(QWidget *homeConfigCard)
     return nonZeroHzValues >= 6 && kbpsValues == 3 && sawAvailableData;
 }
 
+QStringList homeTelemetryDynamicSummaryValues(QWidget *homeConfigCard)
+{
+    QWidget *summaryContainer = homeTelemetrySummaryContainer(homeConfigCard);
+    const QList<QFrame *> sections = sortedHomeTelemetrySections(summaryContainer);
+    QStringList values;
+    const int sectionCount = std::min(2, static_cast<int>(sections.size()));
+    for (int sectionIndex = 0; sectionIndex < sectionCount; ++sectionIndex)
+    {
+        QList<QLabel *> labels =
+            sections.at(sectionIndex)->findChildren<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+        std::sort(labels.begin(), labels.end(), [summaryContainer](QLabel *lhs, QLabel *rhs) {
+            const QPoint lhsPos = lhs->mapTo(summaryContainer, QPoint(0, 0));
+            const QPoint rhsPos = rhs->mapTo(summaryContainer, QPoint(0, 0));
+            return std::make_tuple(lhsPos.y(), lhsPos.x()) <
+                   std::make_tuple(rhsPos.y(), rhsPos.x());
+        });
+        for (QLabel *label : labels)
+        {
+            values << label->text();
+        }
+    }
+    return values;
+}
+
 void requireCompactTelemetryPillTextGap(QFrame *pill, const char *message)
 {
     require(pill != nullptr, message);
@@ -241,6 +265,23 @@ void requireUiTestHomeTelemetryCapsulesCovered(QWidget *homeConfigCard, const ch
             for (QLabel *pillLabel : pill->findChildren<QLabel *>())
             {
                 const QRect labelRect(pillLabel->mapTo(pill, QPoint(0, 0)), pillLabel->size());
+                if (!pill->rect().adjusted(0, 0, 1, 1).contains(labelRect))
+                {
+                    std::cerr << "UI-test telemetry pill label outside capsule: object="
+                              << pillLabel->objectName().toStdString()
+                              << " text='" << pillLabel->text().toStdString()
+                              << "' pill=" << pill->rect().x() << ','
+                              << pill->rect().y() << ','
+                              << pill->rect().width() << 'x'
+                              << pill->rect().height()
+                              << " label=" << labelRect.x() << ','
+                              << labelRect.y() << ','
+                              << labelRect.width() << 'x'
+                              << labelRect.height()
+                              << " textWidth="
+                              << pillLabel->fontMetrics().horizontalAdvance(pillLabel->text())
+                              << '\n';
+                }
                 require(pill->rect().adjusted(0, 0, 1, 1).contains(labelRect),
                         "UI-test home telemetry summary pill label stays inside its capsule");
             }
@@ -433,6 +474,16 @@ int main(int argc, char **argv)
     requireUiTestHomeTelemetryCapsulesCovered(
         homeConfigCard,
         "UI-test home telemetry summary capsules are covered in Chinese");
+    const QStringList dynamicValuesBefore = homeTelemetryDynamicSummaryValues(homeConfigCard);
+    require(!dynamicValuesBefore.isEmpty(),
+            "UI test mode exposes dynamic home telemetry capsule values");
+    require(VaporViewTest::processEventsUntil(1600, [homeConfigCard, dynamicValuesBefore]() {
+                return homeTelemetryDynamicSummaryValues(homeConfigCard) != dynamicValuesBefore;
+            }),
+            "UI test mode refreshes home telemetry capsule values over time");
+    requireUiTestHomeTelemetryCapsulesCovered(
+        homeConfigCard,
+        "UI-test home telemetry summary capsules stay covered after dynamic refresh");
 
     auto findTitleMenuRow = [](QWidget *menu, const QStringList& texts) -> QWidget * {
         if (!menu)
@@ -592,9 +643,15 @@ int main(int argc, char **argv)
                         QStringLiteral("disconnect");
             }),
             "AI-8288 connection icons keep the spinner state briefly after fast reconnect");
-    require(VaporViewTest::processEventsUntil(2000, [ai8HomeAction]() {
+    require(VaporViewTest::processEventsUntil(2000, [ai8HomeAction, ai8DeviceAction, ai8TitleAction]() {
                 return ai8HomeAction->isEnabled() &&
-                    ai8HomeAction->property("state").toString() == QStringLiteral("connected");
+                    ai8HomeAction->property("state").toString() == QStringLiteral("connected") &&
+                    ai8DeviceAction->isEnabled() &&
+                    ai8DeviceAction->property("state").toString() == QStringLiteral("connected") &&
+                    ai8TitleAction->isEnabled() &&
+                    ai8TitleAction->property("state").toString() == QStringLiteral("connected") &&
+                    ai8TitleAction->property("temperatureTitleCommand").toString() ==
+                        QStringLiteral("disconnect");
             }),
             "AI-8288 home action supports simulated reconnect");
     require(ai8TitleAction->isEnabled() &&

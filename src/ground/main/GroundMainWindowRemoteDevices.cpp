@@ -489,9 +489,6 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
             : (state_->is_english_ ? QStringLiteral("none") : QStringLiteral("无数据"));
     };
 
-    constexpr double kUiTestWaveCaptureRateHz = 31.2;
-    constexpr double kUiTestRxBitsPerSecond = 612'300.0;
-    constexpr double kUiTestTxBitsPerSecond = 387'100.0;
     auto packetRate = [this, uiTestMode, &uiTestSnapshot](VaporView::MsgType type) {
         if (!uiTestMode)
         {
@@ -502,31 +499,33 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         case VaporView::MsgType::TelemetryBasic:
             return uiTestSnapshot.epsilonRateHz;
         case VaporView::MsgType::WaveformFeature:
-            return 45.6;
+            return uiTestSnapshot.waveformFeatureRateHz;
         case VaporView::MsgType::TelemetryStatus:
-            return uiTestSnapshot.temperatureRateHz;
+            return uiTestSnapshot.telemetryStatusRateHz;
         default:
             return 0.0;
         }
     };
-    auto waveformRate = [this, uiTestMode](quint16 channelId) {
+    auto waveformRate = [this, uiTestMode, &uiTestSnapshot](quint16 channelId) {
         if (!uiTestMode)
         {
             return remoteWaveformPacketRate(channelId);
         }
-        return channelId == 1 ? 37.5 : 18.8;
+        return channelId == 1
+            ? uiTestSnapshot.rawWaveformRateHz
+            : uiTestSnapshot.harmonicWaveformRateHz;
     };
 
+    const double waveCaptureRateHz = uiTestMode
+        ? uiTestSnapshot.waveCaptureRateHz
+        : static_cast<double>(state_->remote_status_.wave_tcp_actual_rate_hz);
     const QString actualWaveRate = formatFrequencyText(
-        connected
-            ? (uiTestMode ? kUiTestWaveCaptureRateHz
-                          : static_cast<double>(state_->remote_status_.wave_tcp_actual_rate_hz))
-            : 0.0);
+        connected ? waveCaptureRateHz : 0.0);
     const double rxBps = connected
-        ? (uiTestMode ? kUiTestRxBitsPerSecond : state_->remote_sky_controller_->receiveBitsPerSecond())
+        ? (uiTestMode ? uiTestSnapshot.receiveBitsPerSecond : state_->remote_sky_controller_->receiveBitsPerSecond())
         : 0.0;
     const double txBps = connected
-        ? (uiTestMode ? kUiTestTxBitsPerSecond : state_->remote_sky_controller_->transmitBitsPerSecond())
+        ? (uiTestMode ? uiTestSnapshot.transmitBitsPerSecond : state_->remote_sky_controller_->transmitBitsPerSecond())
         : 0.0;
 
     auto makeItem = [](const QString& label, const QString& value, bool hasData, const QString& valueWidthText = QString()) {
@@ -562,7 +561,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("Status"));
         appendWaveformRate(1, QStringLiteral("Wave raw"));
         appendWaveformRate(4, QStringLiteral("Wave harm."));
-        rateRows << makeItem(QStringLiteral("Wave capture"), actualWaveRate, connected && state_->remote_status_.wave_tcp_actual_rate_hz > 0.0f, frequencyWidthText);
+        rateRows << makeItem(QStringLiteral("Wave capture"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
         linkRows << makeItem(QStringLiteral("Sky->Ground"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("Ground->Sky"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("Total"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
@@ -579,7 +578,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("状态"));
         appendWaveformRate(1, QStringLiteral("原始波形"));
         appendWaveformRate(4, QStringLiteral("谐波波形"));
-        rateRows << makeItem(QStringLiteral("波形采集"), actualWaveRate, connected && state_->remote_status_.wave_tcp_actual_rate_hz > 0.0f, frequencyWidthText);
+        rateRows << makeItem(QStringLiteral("波形采集"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
         linkRows << makeItem(QStringLiteral("天→地"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("地→天"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("合"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
