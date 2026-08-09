@@ -2805,7 +2805,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
 {
     MainWindow languageOverviewWindow;
     languageOverviewWindow.setWindowTitle(QStringLiteral("VaporView"));
-    languageOverviewWindow.resize(1280, 800);
+    languageOverviewWindow.resize(1600, 800);
     languageOverviewWindow.show();
     require(waitForWindowExposed(&languageOverviewWindow),
             "dedicated language overview window becomes exposed");
@@ -2862,6 +2862,31 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     require(englishHomeOverviewSizes.size() == 2,
             "language overview splitter exposes English device and temperature widths");
     const int englishDeviceOverviewWidth = englishHomeOverviewSizes.at(0);
+    const int englishAvailableWidth = englishHomeOverviewSizes.at(0) + englishHomeOverviewSizes.at(1);
+    const int inflatedEnglishDeviceWidth =
+        std::min(englishDeviceOverviewWidth + 72,
+                 englishAvailableWidth - languageHomeOverviewSplitter->widget(1)->minimumWidth());
+    require(inflatedEnglishDeviceWidth > englishDeviceOverviewWidth,
+            "language overview has room to simulate an auto-expanded English device card");
+    languageHomeOverviewSplitter->setProperty(
+        VaporView::Ground::MainSupport::kHomeOverviewDeviceProgrammaticResizeProperty,
+        true);
+    languageHomeOverviewSplitter->setSizes({
+        inflatedEnglishDeviceWidth,
+        std::max(languageHomeOverviewSplitter->widget(1)->minimumWidth(),
+                 englishAvailableWidth - inflatedEnglishDeviceWidth)
+    });
+    languageHomeOverviewSplitter->setProperty(
+        VaporView::Ground::MainSupport::kHomeOverviewDeviceProgrammaticResizeProperty,
+        false);
+    languageHomeOverviewSplitter->setProperty(
+        VaporView::Ground::MainSupport::kHomeOverviewDeviceAutoManagedWidthProperty,
+        true);
+    activateLayouts(&languageOverviewWindow);
+    const QList<int> inflatedEnglishHomeOverviewSizes = languageHomeOverviewSplitter->sizes();
+    require(inflatedEnglishHomeOverviewSizes.size() == 2 &&
+                inflatedEnglishHomeOverviewSizes.at(0) > englishDeviceOverviewWidth,
+            "language overview reproduces the wider auto-managed English device card");
     requireTelemetrySummaryPillsOrdered(
         languageTelemetrySummaryContainer,
         "language overview telemetry capsules stay ordered in English");

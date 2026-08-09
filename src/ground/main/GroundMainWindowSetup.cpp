@@ -4433,7 +4433,20 @@ void MainWindow::setupDataPanels()
     state_->home_overview_splitter_->setCollapsible(1, false);
     state_->home_overview_splitter_->setStretchFactor(0, 0);
     state_->home_overview_splitter_->setStretchFactor(1, 1);
+    state_->home_overview_splitter_->setProperty(kHomeOverviewDeviceProgrammaticResizeProperty, true);
     state_->home_overview_splitter_->setSizes({state_->config_group_->minimumWidth(), kHomeOverviewTemperatureMinWidth});
+    state_->home_overview_splitter_->setProperty(kHomeOverviewDeviceProgrammaticResizeProperty, false);
+    state_->home_overview_splitter_->setProperty(kHomeOverviewDeviceAutoManagedWidthProperty, true);
+    connect(state_->home_overview_splitter_, &QSplitter::splitterMoved, this, [this]() {
+        if (!state_->home_overview_splitter_ ||
+            state_->home_overview_splitter_
+                ->property(kHomeOverviewDeviceProgrammaticResizeProperty)
+                .toBool())
+        {
+            return;
+        }
+        state_->home_overview_splitter_->setProperty(kHomeOverviewDeviceAutoManagedWidthProperty, false);
+    });
     state_->main_layout_->addWidget(state_->home_overview_splitter_, 0);
     auto *homeOverviewResizeGap = new QWidget(this);
     homeOverviewResizeGap->setObjectName(QStringLiteral("homeOverviewResizeGap"));
