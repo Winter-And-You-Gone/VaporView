@@ -2805,6 +2805,19 @@ void requireEpsilonSectionTitleWidths(QWidget *epsilonPanel, bool english)
     }
 }
 
+bool epsilonSectionTitlesContain(QWidget *epsilonPanel, const QString& token)
+{
+    if (!epsilonPanel)
+    {
+        return false;
+    }
+    const QList<QLabel*> sectionLabels =
+        epsilonPanel->findChildren<QLabel *>(QStringLiteral("epsilonSectionLabel"));
+    return std::any_of(sectionLabels.cbegin(), sectionLabels.cend(), [&token](const QLabel *label) {
+        return label && label->text().contains(token);
+    });
+}
+
 void requireHomeOverviewLanguageWidthRoundTrip()
 {
     MainWindow languageOverviewWindow;
@@ -2855,13 +2868,15 @@ void requireHomeOverviewLanguageWidthRoundTrip()
             "language overview window switches to English");
     require(processEventsUntil(1000, [&languageOverviewWindow,
                                       languageHomeOverviewSplitter,
-                                      initialDeviceOverviewWidth]() {
+                                      languageDeviceOverviewCard,
+                                      languageEpsilonPanel]() {
                 activateLayouts(&languageOverviewWindow);
                 const QList<int> sizes = languageHomeOverviewSplitter->sizes();
                 return sizes.size() == 2 &&
-                       sizes.at(0) > initialDeviceOverviewWidth;
+                       epsilonSectionTitlesContain(languageEpsilonPanel, QStringLiteral("Overall")) &&
+                       std::abs(sizes.at(0) - languageDeviceOverviewCard->minimumWidth()) <= 1;
             }),
-            "language overview device card expands for English labels");
+            "language overview device card settles at its English minimum width");
     const QList<int> englishHomeOverviewSizes = languageHomeOverviewSplitter->sizes();
     require(englishHomeOverviewSizes.size() == 2,
             "language overview splitter exposes English device and temperature widths");
@@ -2908,11 +2923,11 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     const bool returnedToChineseWidth = processEventsUntil(1000, [&languageOverviewWindow,
                                                                   languageHomeOverviewSplitter,
                                                                   languageDeviceOverviewCard,
-                                                                  englishDeviceOverviewWidth]() {
+                                                                  inflatedEnglishDeviceWidth]() {
                 activateLayouts(&languageOverviewWindow);
                 const QList<int> sizes = languageHomeOverviewSplitter->sizes();
                 return sizes.size() == 2 &&
-                       sizes.at(0) < englishDeviceOverviewWidth &&
+                       sizes.at(0) < inflatedEnglishDeviceWidth &&
                        std::abs(sizes.at(0) - languageDeviceOverviewCard->minimumWidth()) <= 1;
             });
     if (!returnedToChineseWidth)

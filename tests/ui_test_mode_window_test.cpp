@@ -39,9 +39,11 @@
 #include <QToolButton>
 #include <QVariant>
 
+#include <algorithm>
 #include <cstdlib>
 #include <cmath>
 #include <iostream>
+#include <tuple>
 
 namespace
 {
@@ -104,6 +106,171 @@ int findLogMessageRow(QListView *logList, const QString& chineseText, const QStr
         }
     }
     return -1;
+}
+
+QWidget *homeTelemetrySummaryContainer(QWidget *homeConfigCard)
+{
+    return homeConfigCard
+        ? homeConfigCard->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer"))
+        : nullptr;
+}
+
+QList<QFrame *> sortedHomeTelemetrySections(QWidget *summaryContainer)
+{
+    if (!summaryContainer)
+    {
+        return {};
+    }
+    QList<QFrame *> sections =
+        summaryContainer->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
+    std::sort(sections.begin(), sections.end(), [summaryContainer](QFrame *lhs, QFrame *rhs) {
+        const QPoint lhsPos = lhs->mapTo(summaryContainer, QPoint(0, 0));
+        const QPoint rhsPos = rhs->mapTo(summaryContainer, QPoint(0, 0));
+        return std::make_tuple(lhsPos.y(), lhsPos.x()) < std::make_tuple(rhsPos.y(), rhsPos.x());
+    });
+    return sections;
+}
+
+bool homeTelemetrySummaryShowsUiTestRates(QWidget *homeConfigCard)
+{
+    QWidget *summaryContainer = homeTelemetrySummaryContainer(homeConfigCard);
+    const QList<QFrame *> sections = sortedHomeTelemetrySections(summaryContainer);
+    if (sections.size() < 3)
+    {
+        return false;
+    }
+
+    int nonZeroHzValues = 0;
+    for (QLabel *valueLabel : sections.at(0)->findChildren<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel")))
+    {
+        const QString text = valueLabel->text();
+        if (text.endsWith(QStringLiteral("Hz")) && text != QStringLiteral("0.0 Hz"))
+        {
+            ++nonZeroHzValues;
+        }
+    }
+
+    int kbpsValues = 0;
+    for (QLabel *valueLabel : sections.at(1)->findChildren<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel")))
+    {
+        if (valueLabel->text().contains(QStringLiteral("kbps")))
+        {
+            ++kbpsValues;
+        }
+    }
+
+    bool sawAvailableData = false;
+    for (QLabel *valueLabel : sections.at(2)->findChildren<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel")))
+    {
+        sawAvailableData = sawAvailableData ||
+            valueLabel->text() == QStringLiteral("有") ||
+            valueLabel->text() == QStringLiteral("Yes");
+    }
+    return nonZeroHzValues >= 6 && kbpsValues == 3 && sawAvailableData;
+}
+
+void requireUiTestHomeTelemetryCapsulesCovered(QWidget *homeConfigCard, const char *message)
+{
+    QWidget *summaryContainer = homeTelemetrySummaryContainer(homeConfigCard);
+    require(summaryContainer != nullptr, message);
+    const QList<QFrame *> sections = sortedHomeTelemetrySections(summaryContainer);
+    require(sections.size() >= 3, message);
+
+    for (QLabel *label : summaryContainer->findChildren<QLabel *>())
+    {
+        const QString text = label->text();
+        require(!text.contains(QLatin1Char(':')) && !text.contains(QStringLiteral("：")),
+                "UI-test home telemetry summary labels omit colon separators");
+        if (text.isEmpty())
+        {
+            continue;
+        }
+        const int textWidth = label->fontMetrics().horizontalAdvance(text);
+        if (textWidth > label->width() + 1)
+        {
+            std::cerr << "UI-test telemetry label clipped: object="
+                      << label->objectName().toStdString()
+                      << " text='" << text.toStdString()
+                      << "' textWidth=" << textWidth
+                      << " labelWidth=" << label->width() << '\n';
+        }
+        require(textWidth <= label->width() + 1,
+                "UI-test home telemetry summary label text fits");
+    }
+
+    for (QFrame *section : sections)
+    {
+        const QList<QFrame *> sectionPills =
+            section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+        require(!sectionPills.isEmpty(), message);
+
+        QList<QWidget *> lines;
+        for (QFrame *pill : sectionPills)
+        {
+            const QRect pillRect(pill->mapTo(section, QPoint(0, 0)), pill->size());
+            require(section->rect().adjusted(0, 0, 1, 1).contains(pillRect),
+                    "UI-test home telemetry summary pill stays inside its section");
+            if (QWidget *line = pill->parentWidget(); line && !lines.contains(line))
+            {
+                lines.append(line);
+            }
+            for (QLabel *pillLabel : pill->findChildren<QLabel *>())
+            {
+                const QRect labelRect(pillLabel->mapTo(pill, QPoint(0, 0)), pillLabel->size());
+                require(pill->rect().adjusted(0, 0, 1, 1).contains(labelRect),
+                        "UI-test home telemetry summary pill label stays inside its capsule");
+            }
+        }
+
+        for (QWidget *line : lines)
+        {
+            QLabel *titleLabel = line->findChild<QLabel *>(
+                QStringLiteral("homeTelemetrySummaryTitleLabel"),
+                Qt::FindDirectChildrenOnly);
+            QList<QFrame *> linePills =
+                line->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"),
+                                             Qt::FindDirectChildrenOnly);
+            std::sort(linePills.begin(), linePills.end(), [section](QFrame *lhs, QFrame *rhs) {
+                return lhs->mapTo(section, QPoint(0, 0)).x() <
+                       rhs->mapTo(section, QPoint(0, 0)).x();
+            });
+            if (titleLabel && !linePills.isEmpty())
+            {
+                const QRect titleRect(titleLabel->mapTo(section, QPoint(0, 0)), titleLabel->size());
+                const QRect firstPillRect(linePills.first()->mapTo(section, QPoint(0, 0)),
+                                          linePills.first()->size());
+                require(firstPillRect.left() > titleRect.right(),
+                        "UI-test home telemetry title does not overlap the first capsule");
+                const int titleTextRight =
+                    titleRect.left() + titleLabel->fontMetrics().horizontalAdvance(titleLabel->text());
+                require(firstPillRect.left() - titleTextRight >= 6,
+                        "UI-test home telemetry title keeps a visible gap before the first capsule");
+            }
+
+            QRect previousRect;
+            bool hasPrevious = false;
+            for (QFrame *pill : linePills)
+            {
+                const QRect pillRect(pill->mapTo(section, QPoint(0, 0)), pill->size());
+                require(!hasPrevious || pillRect.left() > previousRect.right(),
+                        "UI-test home telemetry capsules do not overlap within a row");
+                previousRect = pillRect;
+                hasPrevious = true;
+            }
+        }
+    }
+
+    const QList<QFrame *> linkPills =
+        sections.at(1)->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+    require(linkPills.size() == 3, "UI-test link-rate summary keeps three capsules");
+    for (QFrame *pill : linkPills)
+    {
+        QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+        require(valueLabel != nullptr && valueLabel->text().contains(QStringLiteral("kbps")),
+                "UI-test link-rate capsule shows representative kbps data");
+        require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9kbps")),
+                "UI-test link-rate capsule reserves the requested 999.9kbps width");
+    }
 }
 
 } // namespace
@@ -223,6 +390,13 @@ int main(int argc, char **argv)
     require(modeAction->isChecked(), "UI test mode action becomes checked");
     require(!badge->isHidden(), "persistent UI test badge is visible");
     require(scenarioMenu->isEnabled(), "scenario menu is enabled in UI test mode");
+    require(VaporViewTest::processEventsUntil(1500, [homeConfigCard]() {
+                return homeTelemetrySummaryShowsUiTestRates(homeConfigCard);
+            }),
+            "UI test mode feeds representative home telemetry summary capsules");
+    requireUiTestHomeTelemetryCapsulesCovered(
+        homeConfigCard,
+        "UI-test home telemetry summary capsules are covered in Chinese");
 
     auto findTitleMenuRow = [](QWidget *menu, const QStringList& texts) -> QWidget * {
         if (!menu)

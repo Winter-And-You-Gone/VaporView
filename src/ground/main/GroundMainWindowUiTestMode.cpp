@@ -584,6 +584,7 @@ void MainWindow::applyUiTestSnapshot()
             VaporView::Ground::Session::GroundRecordingService::currentTimestampUs());
     }
 #endif
+    updateRemoteTelemetrySummaryLabel();
     updateHomeDeviceStatusCapsules();
     updateDeviceConfigState();
     updateRecordingStatusLabel();

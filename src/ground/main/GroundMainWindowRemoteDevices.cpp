@@ -444,10 +444,43 @@ double MainWindow::remoteWaveformPacketRate(quint16 channelId) const
 
 MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySections() const
 {
-    const bool connected = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
+    const bool uiTestMode = isUiTestMode() && state_->ui_test_model_;
+    VaporView::Ground::Devices::UiTestSnapshot uiTestSnapshot;
+    if (uiTestMode)
+    {
+        const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - state_->ui_test_started_ms_;
+        uiTestSnapshot = state_->ui_test_model_->snapshot(elapsed);
+    }
+    const bool connected = uiTestMode
+        ? !uiTestSnapshot.dataStalled
+        : (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen());
 
     auto hasDeviceData = [this, connected](VaporView::SkyDeviceId device, qint64 timeoutMs) {
         return connected && remoteDeviceDataValid(device, timeoutMs);
+    };
+    auto hasUiTestDeviceData = [this, &uiTestSnapshot](VaporView::SkyDeviceId device) {
+        switch (device)
+        {
+        case VaporView::SkyDeviceId::Epsilon:
+            return uiTestSnapshot.epsilon.valid;
+        case VaporView::SkyDeviceId::Ptb:
+            return uiTestSnapshot.ptb.valid;
+        case VaporView::SkyDeviceId::Hmp:
+            return uiTestSnapshot.hmp.valid;
+        case VaporView::SkyDeviceId::Lidar:
+            return uiTestSnapshot.lidar.valid;
+        case VaporView::SkyDeviceId::TemperatureController:
+            return uiTestSnapshot.temperature.valid;
+        case VaporView::SkyDeviceId::Ai8TemperatureController:
+            return uiTestSnapshot.ai8Temperature.valid;
+        case VaporView::SkyDeviceId::WaveTcp:
+            return state_->ui_test_model_->deviceState(VaporView::SkyDeviceId::WaveTcp) ==
+                       VaporView::DeviceState::Connected &&
+                   !uiTestSnapshot.rawWaveform.isEmpty();
+        case VaporView::SkyDeviceId::All:
+            return false;
+        }
+        return false;
     };
 
     auto hasText = [this](bool hasData) {
@@ -456,10 +489,45 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
             : (state_->is_english_ ? QStringLiteral("none") : QStringLiteral("无数据"));
     };
 
+    constexpr double kUiTestWaveCaptureRateHz = 31.2;
+    constexpr double kUiTestRxBitsPerSecond = 612'300.0;
+    constexpr double kUiTestTxBitsPerSecond = 387'100.0;
+    auto packetRate = [this, uiTestMode, &uiTestSnapshot](VaporView::MsgType type) {
+        if (!uiTestMode)
+        {
+            return remotePacketRate(type);
+        }
+        switch (type)
+        {
+        case VaporView::MsgType::TelemetryBasic:
+            return uiTestSnapshot.epsilonRateHz;
+        case VaporView::MsgType::WaveformFeature:
+            return 45.6;
+        case VaporView::MsgType::TelemetryStatus:
+            return uiTestSnapshot.temperatureRateHz;
+        default:
+            return 0.0;
+        }
+    };
+    auto waveformRate = [this, uiTestMode](quint16 channelId) {
+        if (!uiTestMode)
+        {
+            return remoteWaveformPacketRate(channelId);
+        }
+        return channelId == 1 ? 37.5 : 18.8;
+    };
+
     const QString actualWaveRate = formatFrequencyText(
-        connected ? static_cast<double>(state_->remote_status_.wave_tcp_actual_rate_hz) : 0.0);
-    const double rxBps = connected ? state_->remote_sky_controller_->receiveBitsPerSecond() : 0.0;
-    const double txBps = connected ? state_->remote_sky_controller_->transmitBitsPerSecond() : 0.0;
+        connected
+            ? (uiTestMode ? kUiTestWaveCaptureRateHz
+                          : static_cast<double>(state_->remote_status_.wave_tcp_actual_rate_hz))
+            : 0.0);
+    const double rxBps = connected
+        ? (uiTestMode ? kUiTestRxBitsPerSecond : state_->remote_sky_controller_->receiveBitsPerSecond())
+        : 0.0;
+    const double txBps = connected
+        ? (uiTestMode ? kUiTestTxBitsPerSecond : state_->remote_sky_controller_->transmitBitsPerSecond())
+        : 0.0;
 
     auto makeItem = [](const QString& label, const QString& value, bool hasData, const QString& valueWidthText = QString()) {
         RemoteTelemetrySummarySections::Item item;
@@ -476,15 +544,15 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     const QString frequencyWidthText = QStringLiteral("999.9 Hz");
     const QString bitRateWidthText = QStringLiteral("999.9kbps");
     auto appendPacketRate = [&](VaporView::MsgType type, const QString& label) {
-        const double rate = remotePacketRate(type);
+        const double rate = packetRate(type);
         rateRows << makeItem(label, formatFrequencyText(rate), connected && rate > 0.0, frequencyWidthText);
     };
     auto appendWaveformRate = [&](quint16 channelId, const QString& label) {
-        const double rate = remoteWaveformPacketRate(channelId);
+        const double rate = waveformRate(channelId);
         rateRows << makeItem(label, formatFrequencyText(rate), connected && rate > 0.0, frequencyWidthText);
     };
     auto appendDevice = [&](VaporView::SkyDeviceId device, qint64 timeoutMs, const QString& label) {
-        const bool hasData = hasDeviceData(device, timeoutMs);
+        const bool hasData = uiTestMode ? hasUiTestDeviceData(device) : hasDeviceData(device, timeoutMs);
         deviceRows << makeItem(label, hasText(hasData), hasData);
     };
     if (state_->is_english_)
