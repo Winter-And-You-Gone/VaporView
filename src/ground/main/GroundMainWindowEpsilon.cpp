@@ -61,10 +61,15 @@ void MainWindow::applyEpsilonMainAntennaLeverArm(
 
     if (isUiTestMode())
     {
-        logUiTest(QString(state_->is_english_
-            ? "Applied EPSILON main antenna lever arm in memory: X=%1, Y=%2, Z=%3 m"
-            : "已在内存中应用 EPSILON 主天线杆臂：X=%1，Y=%2，Z=%3 m")
-                .arg(xM, 0, 'f', 4).arg(yM, 0, 'f', 4).arg(zM, 0, 'f', 4));
+        publishUiTestEvent(QStringLiteral("ui_test_epsilon_main_antenna_lever_arm_applied"),
+                           QString(state_->is_english_
+                               ? "Applied EPSILON main antenna lever arm in memory: X=%1, Y=%2, Z=%3 m"
+                               : "已在内存中应用 EPSILON 主天线杆臂：X=%1，Y=%2，Z=%3 m")
+                               .arg(xM, 0, 'f', 4).arg(yM, 0, 'f', 4).arg(zM, 0, 'f', 4),
+                           {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                            {QStringLiteral("x_m"), xM},
+                            {QStringLiteral("y_m"), yM},
+                            {QStringLiteral("z_m"), zM}});
         if (completion) completion(true, QString());
         return;
     }
@@ -231,8 +236,10 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
 {
     if (isUiTestMode())
     {
-        logUiTest(state_->is_english_ ? QStringLiteral("Simulated EPSILON RTCM port configuration accepted")
-                                      : QStringLiteral("模拟 EPSILON RTCM 串口配置已接受"));
+        publishUiTestEvent(QStringLiteral("ui_test_epsilon_rtcm_port_config_accepted"),
+                           state_->is_english_ ? QStringLiteral("Simulated EPSILON RTCM port configuration accepted")
+                                               : QStringLiteral("模拟 EPSILON RTCM 串口配置已接受"),
+                           {{QStringLiteral("device"), QStringLiteral("EPSILON")}});
         return;
     }
     if (state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_)
@@ -757,8 +764,10 @@ void MainWindow::onReconfigureEpsilonClicked()
 {
     if (isUiTestMode())
     {
-        logUiTest(state_->is_english_ ? QStringLiteral("Simulated EPSILON output reconfiguration completed")
-                                      : QStringLiteral("模拟 EPSILON 输出重配置已完成"));
+        publishUiTestEvent(QStringLiteral("ui_test_epsilon_output_reconfigure_completed"),
+                           state_->is_english_ ? QStringLiteral("Simulated EPSILON output reconfiguration completed")
+                                               : QStringLiteral("模拟 EPSILON 输出重配置已完成"),
+                           {{QStringLiteral("device"), QStringLiteral("EPSILON")}});
         return;
     }
     if (state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_)

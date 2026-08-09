@@ -69,7 +69,7 @@ public:
 
 signals:
     void recordPublished(const VaporView::LogRecord& record);
-    void diagnosticFailure(const QString& message);
+    void writerFailureReported(const QString& message);
 
 private:
     static void qtMessageHandler(QtMsgType type,

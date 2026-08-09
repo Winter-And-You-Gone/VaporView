@@ -24,6 +24,7 @@ target_link_libraries(vaporview_ground_wave PRIVATE
     vaporview_app_config
     vaporview_app_theme
     vaporview_ground_ui_support
+    vaporview_logging
     vaporview_protocol
     vaporview_session_format
     vaporview_wave_encoding

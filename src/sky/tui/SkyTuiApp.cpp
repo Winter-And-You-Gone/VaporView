@@ -325,8 +325,7 @@ void SkyTuiApp::appendLog(const QString& message)
                            message,
                            {{QStringLiteral("event"), QStringLiteral("sky_tui_ui_log")},
                              {QStringLiteral("ui_visibility"), QStringLiteral("details")},
-                             {QStringLiteral("ui_visible"), true},
-                            {QStringLiteral("legacy_unclassified"), true}});
+                             {QStringLiteral("ui_visible"), true}});
     });
     appendLogToModel(message);
 }

@@ -244,8 +244,10 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
             {
                 state_->tcp_wave_panel_->setUiTestConnected(false);
             }
-            logUiTest((state_->is_english_ ? QStringLiteral("Disconnected %1") : QStringLiteral("已断开%1"))
-                          .arg(homeDeviceDisplayName(device, state_->is_english_)));
+            publishUiTestEvent(QStringLiteral("ui_test_device_disconnected"),
+                               (state_->is_english_ ? QStringLiteral("Disconnected %1") : QStringLiteral("已断开%1"))
+                                   .arg(homeDeviceDisplayName(device, state_->is_english_)),
+                               {{QStringLiteral("device_id"), VaporView::skyDeviceIdName(device)}});
             updateConnectionStatus(false);
             return;
         }
@@ -262,8 +264,10 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
             {
                 state_->tcp_wave_panel_->setUiTestConnected(true);
             }
-            logUiTest((state_->is_english_ ? QStringLiteral("Connected %1") : QStringLiteral("已连接%1"))
-                          .arg(homeDeviceDisplayName(device, state_->is_english_)));
+            publishUiTestEvent(QStringLiteral("ui_test_device_connected"),
+                               (state_->is_english_ ? QStringLiteral("Connected %1") : QStringLiteral("已连接%1"))
+                                   .arg(homeDeviceDisplayName(device, state_->is_english_)),
+                               {{QStringLiteral("device_id"), VaporView::skyDeviceIdName(device)}});
             updateConnectionStatus(false);
         });
         return;
@@ -646,25 +650,33 @@ void MainWindow::configureLocalConnectionCoordinator()
         QTimer::singleShot(0, this, [this, result]() {
             QTimer::singleShot(0, this, [this, result]() {
                 const bool connected = result.connected();
-                const QString serialState = result.serialConnected
-                    ? (state_->is_english_ ? QStringLiteral("connected") : QStringLiteral("已连接"))
-                    : (state_->is_english_ ? QStringLiteral("not connected") : QStringLiteral("未连接"));
-                const QString waveformState = result.waveformConnected
-                    ? (state_->is_english_ ? QStringLiteral("connected") : QStringLiteral("已连接"))
-                    : (state_->is_english_ ? QStringLiteral("not connected") : QStringLiteral("未连接"));
-                const QString outcome = result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::Cancelled
-                    ? (state_->is_english_ ? QStringLiteral("cancelled") : QStringLiteral("已取消"))
-                    : result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::TimedOut
-                        ? (state_->is_english_ ? QStringLiteral("timed out") : QStringLiteral("已超时"))
-                        : result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::Failed
-                            ? (state_->is_english_ ? QStringLiteral("failed") : QStringLiteral("失败"))
-                            : result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::Rejected
-                                ? (state_->is_english_ ? QStringLiteral("rejected") : QStringLiteral("已拒绝"))
-                                : (state_->is_english_ ? QStringLiteral("completed") : QStringLiteral("已完成"));
-                logConnectionInfo(QString(state_->is_english_
-                    ? "========== Connection Summary: serial %1, TCP waveform %2 (%3) =========="
-                    : "========== 连接摘要: 串口设备%1，TCP 波形%2（%3） ==========")
-                    .arg(serialState, waveformState, outcome));
+                auto outcomeCode = [](VaporView::Ground::Devices::LocalConnectionOutcome outcome) {
+                    using Outcome = VaporView::Ground::Devices::LocalConnectionOutcome;
+                    switch (outcome)
+                    {
+                    case Outcome::Completed: return QStringLiteral("COMPLETED");
+                    case Outcome::Failed: return QStringLiteral("FAILED");
+                    case Outcome::Cancelled: return QStringLiteral("CANCELLED");
+                    case Outcome::TimedOut: return QStringLiteral("TIMED_OUT");
+                    case Outcome::Rejected: return QStringLiteral("REJECTED");
+                    }
+                    return QStringLiteral("UNKNOWN");
+                };
+                const QString outcome = outcomeCode(result.outcome);
+                const bool attention =
+                    result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::Failed ||
+                    result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::TimedOut ||
+                    result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::Rejected;
+                publishGroundLog(attention ? VaporView::LogLevel::Warning : VaporView::LogLevel::Info,
+                                 QStringLiteral("device.connection"),
+                                 QStringLiteral("local_connection_summary"),
+                                 QStringLiteral("本地连接流程已结束。"),
+                                 {{QStringLiteral("serial_connected"), result.serialConnected},
+                                  {QStringLiteral("tcp_wave_connected"), result.waveformConnected},
+                                  {QStringLiteral("outcome"), outcome},
+                                  {QStringLiteral("ui_visibility"), attention
+                                      ? QStringLiteral("attention")
+                                      : QStringLiteral("details")}});
                 finishConnectionAttempt(connected);
             });
         });
@@ -777,8 +789,9 @@ void MainWindow::onRefreshPortsClicked()
 
     if (isUiTestMode())
     {
-        logUiTest(state_->is_english_ ? QStringLiteral("Returned fixed test serial ports")
-                                      : QStringLiteral("已返回固定测试串口"));
+        publishUiTestEvent(QStringLiteral("ui_test_serial_ports_refreshed"),
+                           state_->is_english_ ? QStringLiteral("Returned fixed test serial ports")
+                                               : QStringLiteral("已返回固定测试串口"));
         return;
     }
     publishGroundLog(VaporView::LogLevel::Info,
@@ -807,8 +820,10 @@ void MainWindow::onAutoDetectPortsClicked()
             setLocalSerialPortComboText(item.first, item.second);
         }
         syncDeviceConfigPageFromHome();
-        logUiTest(state_->is_english_ ? QStringLiteral("Automatic detection completed with fixed test devices")
-                                      : QStringLiteral("自动识别已完成，已填入固定测试设备"));
+        publishUiTestEvent(QStringLiteral("ui_test_auto_detection_completed"),
+                           state_->is_english_ ? QStringLiteral("Automatic detection completed with fixed test devices")
+                                               : QStringLiteral("自动识别已完成，已填入固定测试设备"),
+                           {{QStringLiteral("detected_devices"), detected.size()}});
         return;
     }
     if (state_->port_detection_in_progress_)
@@ -881,21 +896,13 @@ void MainWindow::onAutoDetectPortsClicked()
             VaporView::Ground::Devices::SerialPortDetectionService::detect(
                 request,
                 [this]() { return state_->cancel_connection_requested_.load(); },
-                [this](const QString& message) {
-                    QMetaObject::invokeMethod(this, [this, message]() {
-                        const bool inlineProgress = message.startsWith(QLatin1Char('\r'));
-                        publishGroundLog(inlineProgress ? VaporView::LogLevel::Debug
-                                                        : VaporView::LogLevel::Info,
+                [this](const VaporView::Ground::Devices::SerialPortDetectionService::LogEntry& entry) {
+                    QMetaObject::invokeMethod(this, [this, entry]() {
+                        publishGroundLog(entry.level,
                                          QStringLiteral("device.connection"),
-                                         QStringLiteral("serial_port_detection_progress_updated"),
-                                         QStringLiteral("串口自动识别状态已更新。"),
-                                         {{QStringLiteral("ui_visibility"), inlineProgress
-                                              ? QStringLiteral("hidden")
-                                              : QStringLiteral("details")},
-                                          {QStringLiteral("inline"), inlineProgress},
-                                          {QStringLiteral("ui_message"), inlineProgress
-                                              ? message.mid(1)
-                                              : message}});
+                                         entry.event,
+                                         entry.message,
+                                         entry.fields);
                     }, Qt::QueuedConnection);
                 });
         QMetaObject::invokeMethod(this, [this, detections = outcome.detections]() {
@@ -996,8 +1003,9 @@ void MainWindow::onConnectClicked()
             state_->ui_test_model_->setDeviceState(device, VaporView::DeviceState::Connecting);
         }
         updateConnectionStatus(false);
-        logUiTest(state_->is_english_ ? QStringLiteral("Simulated connection started")
-                                      : QStringLiteral("模拟连接已开始"));
+        publishUiTestEvent(QStringLiteral("ui_test_connection_started"),
+                           state_->is_english_ ? QStringLiteral("Simulated connection started")
+                                               : QStringLiteral("模拟连接已开始"));
         QTimer::singleShot(500, this, [this]() {
             if (!isUiTestMode() || !state_->ui_test_connection_in_progress_)
             {
@@ -1007,8 +1015,9 @@ void MainWindow::onConnectClicked()
             state_->ui_test_model_->setAllDevicesConnected(true);
             if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setUiTestConnected(true);
             updateConnectionStatus(false);
-            logUiTest(state_->is_english_ ? QStringLiteral("All simulated devices connected")
-                                          : QStringLiteral("所有模拟设备已连接"));
+            publishUiTestEvent(QStringLiteral("ui_test_all_devices_connected"),
+                               state_->is_english_ ? QStringLiteral("All simulated devices connected")
+                                                   : QStringLiteral("所有模拟设备已连接"));
         });
         return;
     }
@@ -1257,8 +1266,9 @@ void MainWindow::onDisconnectClicked()
         resetUiTestRecording();
         updateConnectionStatus(false);
         updateRecordingStatusLabel();
-        logUiTest(state_->is_english_ ? QStringLiteral("All simulated devices disconnected")
-                                      : QStringLiteral("所有模拟设备已断开"));
+        publishUiTestEvent(QStringLiteral("ui_test_all_devices_disconnected"),
+                           state_->is_english_ ? QStringLiteral("All simulated devices disconnected")
+                                               : QStringLiteral("所有模拟设备已断开"));
         return;
     }
     if (isRemoteSkyMode())
@@ -1316,8 +1326,10 @@ void MainWindow::onCancelConnectClicked()
         state_->ui_test_model_->setAllDevicesConnected(false);
         if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setUiTestConnected(false);
         updateConnectionStatus(false);
-        logUiTest(state_->is_english_ ? QStringLiteral("Simulated connection canceled")
-                                      : QStringLiteral("模拟连接已取消"));
+        publishUiTestEvent(QStringLiteral("ui_test_connection_cancelled"),
+                           state_->is_english_ ? QStringLiteral("Simulated connection canceled")
+                                               : QStringLiteral("模拟连接已取消"),
+                           {{QStringLiteral("reason_code"), QStringLiteral("USER_CANCELLED")}});
         return;
     }
     if (!state_->connection_attempt_in_progress_ || !state_->local_connection_coordinator_)

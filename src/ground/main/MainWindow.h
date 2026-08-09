@@ -203,8 +203,6 @@ private:
     QString manualLocalSerialPortOptionText() const;
     void refreshLocalSerialPortManualOptionTexts();
     void loadModernStyleSheet();
-    void log(const QString& message);
-    void logConnectionInfo(const QString& message);
     void publishGroundLog(VaporView::LogLevel level,
                           const QString& category,
                           const QString& event,
@@ -225,7 +223,9 @@ private:
     void setUiTestScenario(VaporView::Ground::Devices::UiTestScenario scenario);
     void applyUiTestSnapshot();
     void updateUiTestModeUi();
-    void logUiTest(const QString& message);
+    void publishUiTestEvent(const QString& event,
+                            const QString& message,
+                            QVariantMap fields = {});
     void captureUiTestWidgetState();
     void restoreUiTestWidgetState();
     void enqueueUiLogRecord(const VaporView::LogRecord& record);

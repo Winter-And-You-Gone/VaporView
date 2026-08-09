@@ -1,4 +1,5 @@
 #include "ground/widgets/CustomTitleBar.h"
+#include "LogService.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "TcpWavePanel.h"
@@ -1431,6 +1432,9 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , live_display_dirty_(false)
     , process_buffer_pending_(false)
     , payload_order_auto_correct_logged_(false)
+    , user_disconnect_requested_(false)
+    , suppress_next_disconnected_log_(false)
+    , socket_error_logged_for_current_connection_(false)
     , is_english_(false)
     , compact_layout_(false)
     , remote_sky_mode_(false)
@@ -2578,10 +2582,23 @@ int TcpWavePanel::testPeakPlotBottomMarginExtra() const
 
 void TcpWavePanel::testFeedSocketBytes(const QByteArray& bytes)
 {
-    buffer_.append(bytes);
-    if (!enforceTcpBufferBacklogLimit())
+    appendIncomingSocketBytes(bytes, false);
+}
+
+void TcpWavePanel::testFeedReadyReadBytes(const QByteArray& bytes)
+{
+    appendIncomingSocketBytes(bytes, true);
+}
+
+void TcpWavePanel::testSetConnectionEndpoint(const QString& host, const QString& portText)
+{
+    if (host_edit_)
     {
-        processBuffer();
+        host_edit_->setText(host);
+    }
+    if (port_edit_)
+    {
+        port_edit_->setText(portText);
     }
 }
 
@@ -2650,27 +2667,40 @@ void TcpWavePanel::onToggleConnectionClicked()
             : (is_english_ ? QStringLiteral("UI test waveform source disconnected")
                             : QStringLiteral("界面测试波形源已断开")));
         emit connectionStateChanged(ui_test_connected_);
-        emit connectionLogMessageRequested(ui_test_connected_
-            ? QStringLiteral("[界面测试] TCP wave connected in memory")
-            : QStringLiteral("[界面测试] TCP wave disconnected in memory"));
+        publishTcpWaveLog(VaporView::LogLevel::Info,
+                          ui_test_connected_ ? QStringLiteral("tcp_wave_ui_test_connected")
+                                             : QStringLiteral("tcp_wave_ui_test_disconnected"),
+                          ui_test_connected_ ? QStringLiteral("界面测试 TCP 波形源已连接。")
+                                             : QStringLiteral("界面测试 TCP 波形源已断开。"),
+                          {{QStringLiteral("simulated"), true},
+                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         return;
     }
     if (remote_sky_mode_)
     {
         const bool connectRequested = !remote_wave_tcp_connected_;
-        emit connectionLogMessageRequested(connectRequested
-            ? (is_english_ ? QStringLiteral("Requesting Sky wave TCP connection...")
-                           : QStringLiteral("正在请求连接天空端波形 TCP..."))
-            : (is_english_ ? QStringLiteral("Requesting Sky wave TCP disconnection...")
-                           : QStringLiteral("正在请求断开天空端波形 TCP...")));
+        publishTcpWaveLog(VaporView::LogLevel::Info,
+                          connectRequested ? QStringLiteral("tcp_wave_remote_connection_requested")
+                                           : QStringLiteral("tcp_wave_remote_disconnection_requested"),
+                          connectRequested ? QStringLiteral("已请求连接天空端波形 TCP。")
+                                           : QStringLiteral("已请求断开天空端波形 TCP。"),
+                          {{QStringLiteral("execution_path"), QStringLiteral("remote_sky")},
+                           {QStringLiteral("requested_connected"), connectRequested},
+                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         emit remoteWaveTcpConnectionRequested(connectRequested);
         return;
     }
 
     if (socket_ && socket_->state() != QAbstractSocket::UnconnectedState)
     {
-        emit connectionLogMessageRequested(is_english_ ? QStringLiteral("Disconnecting TCP wave link...")
-                                             : QStringLiteral("正在断开 TCP 波形连接..."));
+        user_disconnect_requested_ = true;
+        publishTcpWaveLog(VaporView::LogLevel::Info,
+                          QStringLiteral("tcp_wave_disconnection_requested"),
+                          QStringLiteral("正在断开 TCP 波形连接。"),
+                          {{QStringLiteral("reason_code"), QStringLiteral("USER_REQUEST")},
+                           {QStringLiteral("host"), host()},
+                           {QStringLiteral("port"), port()},
+                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         requestGracefulDisconnect();
         return;
     }
@@ -2682,7 +2712,12 @@ void TcpWavePanel::onToggleConnectionClicked()
         const QString message = is_english_
             ? QStringLiteral("Enter a TCP port from 1 to 65535.")
             : QStringLiteral("请输入 1 到 65535 之间的 TCP 端口。");
-        emit logMessageRequested(message);
+        publishTcpWaveLog(VaporView::LogLevel::Warning,
+                          QStringLiteral("tcp_wave_connection_rejected_invalid_port"),
+                          QStringLiteral("TCP 波形端口无效，无法建立连接。"),
+                          {{QStringLiteral("reason_code"), QStringLiteral("INVALID_PORT")},
+                           {QStringLiteral("input_value"), port_edit_ ? port_edit_->text().trimmed() : QString()},
+                           {QStringLiteral("ui_visibility"), QStringLiteral("attention")}});
         setStatusText(message);
         if (port_edit_)
         {
@@ -2691,9 +2726,12 @@ void TcpWavePanel::onToggleConnectionClicked()
         return;
     }
 
-    emit connectionLogMessageRequested(QString(is_english_ ? "Connecting TCP wave link: %1:%2..."
-                                                  : "正在连接 TCP 波形：%1:%2...")
-        .arg(host_edit_->text()).arg(targetPort));
+    publishTcpWaveLog(VaporView::LogLevel::Info,
+                      QStringLiteral("tcp_wave_connection_started"),
+                      QStringLiteral("正在连接 TCP 波形。"),
+                      {{QStringLiteral("host"), host_edit_ ? host_edit_->text() : QString()},
+                       {QStringLiteral("port"), targetPort},
+                       {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     recreateSocket();
     buffer_.clear();
     wave1_history_.clear();
@@ -2716,6 +2754,9 @@ void TcpWavePanel::onToggleConnectionClicked()
     invalid_resync_discarded_bytes_ = 0;
     process_buffer_pending_ = false;
     payload_order_auto_correct_logged_ = false;
+    user_disconnect_requested_ = false;
+    suppress_next_disconnected_log_ = false;
+    socket_error_logged_for_current_connection_ = false;
     frame_arrival_times_ms_.clear();
     resetFrameRateDisplay();
     setStatusText(QString(is_english_ ? "Connecting to %1:%2..." : "正在连接 %1:%2...")
@@ -2924,10 +2965,12 @@ void TcpWavePanel::onSocketConnected()
 {
     setConnectedUiState(true);
     emit connectionStateChanged(true);
-    emit connectionLogMessageRequested(QString(is_english_
-        ? "TCP wave link connected: %1:%2"
-        : "TCP 波形已连接：%1:%2")
-        .arg(host_edit_->text()).arg(port()));
+    publishTcpWaveLog(VaporView::LogLevel::Info,
+                      QStringLiteral("tcp_wave_connected"),
+                      QStringLiteral("TCP 波形已连接。"),
+                      {{QStringLiteral("host"), host_edit_ ? host_edit_->text() : QString()},
+                       {QStringLiteral("port"), port()},
+                       {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     setStatusText(QString(is_english_
         ? "Connected to %1:%2, waiting for the first frame..."
         : "已连接到 %1:%2，正在等待首帧数据...")
@@ -2936,18 +2979,36 @@ void TcpWavePanel::onSocketConnected()
 
 void TcpWavePanel::onSocketDisconnected()
 {
+    const bool suppressLog = suppress_next_disconnected_log_ || socket_error_logged_for_current_connection_;
     const QString reason = socket_ && socket_->error() != QAbstractSocket::UnknownSocketError
         ? socket_->errorString()
         : (is_english_ ? QStringLiteral("connection closed") : QStringLiteral("连接已关闭"));
+    const bool userRequested = user_disconnect_requested_;
     setConnectedUiState(false);
     emit connectionStateChanged(false);
-    emit connectionLogMessageRequested(QString(is_english_
-        ? "TCP wave link disconnected: %1; received frames=%2, buffered bytes=%3, expected payload=%4"
-        : "TCP 波形已断开：%1；已接收帧=%2，客户端缓冲=%3 字节，当前期望负载=%4 字节")
-        .arg(reason)
-        .arg(frame_count_)
-        .arg(static_cast<qlonglong>(buffer_.size()))
-        .arg(expected_payload_size_));
+    if (!suppressLog)
+    {
+        publishTcpWaveLog(userRequested ? VaporView::LogLevel::Info : VaporView::LogLevel::Warning,
+                          userRequested ? QStringLiteral("tcp_wave_disconnected")
+                                        : QStringLiteral("tcp_wave_disconnected_unexpectedly"),
+                          userRequested ? QStringLiteral("TCP 波形已断开。")
+                                        : QStringLiteral("TCP 波形连接非预期断开。"),
+                          {{QStringLiteral("reason_code"), userRequested
+                               ? QStringLiteral("USER_REQUEST")
+                               : QStringLiteral("REMOTE_DISCONNECTED")},
+                           {QStringLiteral("system_error"), reason},
+                           {QStringLiteral("received_frames"), static_cast<qlonglong>(frame_count_)},
+                           {QStringLiteral("buffered_bytes"), static_cast<qlonglong>(buffer_.size())},
+                           {QStringLiteral("expected_payload_bytes"), expected_payload_size_},
+                           {QStringLiteral("host"), host_edit_ ? host_edit_->text() : QString()},
+                           {QStringLiteral("port"), port()},
+                           {QStringLiteral("ui_visibility"), userRequested
+                               ? QStringLiteral("details")
+                               : QStringLiteral("attention")}});
+    }
+    user_disconnect_requested_ = false;
+    suppress_next_disconnected_log_ = false;
+    socket_error_logged_for_current_connection_ = false;
     if (frame_count_ > 0)
     {
         setStatusText(QString(is_english_
@@ -2969,21 +3030,30 @@ void TcpWavePanel::onSocketReadyRead()
         return;
     }
 
-    buffer_.append(socket_->readAll());
+    appendIncomingSocketBytes(socket_->readAll(), true);
+}
+
+void TcpWavePanel::appendIncomingSocketBytes(const QByteArray& bytes, bool publishBacklogWarning)
+{
+    buffer_.append(bytes);
     if (enforceTcpBufferBacklogLimit())
     {
         return;
     }
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-    if (buffer_.size() >= kTcpBufferBacklogWarningBytes &&
+    if (publishBacklogWarning &&
+        buffer_.size() >= kTcpBufferBacklogWarningBytes &&
         (last_backlog_warning_ms_ <= 0 ||
          nowMs - last_backlog_warning_ms_ >= kTcpBufferBacklogWarningIntervalMs))
     {
         last_backlog_warning_ms_ = nowMs;
-        emit logMessageRequested(QString(is_english_
-            ? "TCP wave receive backlog is %1 bytes; UI processing may be falling behind."
-            : "TCP 波形接收缓冲已积压 %1 字节；界面处理可能跟不上数据流。")
-            .arg(static_cast<qlonglong>(buffer_.size())));
+        publishTcpWaveLog(VaporView::LogLevel::Warning,
+                          QStringLiteral("tcp_wave_receive_backlog"),
+                          QStringLiteral("TCP 波形接收缓冲出现积压，界面处理可能慢于数据流。"),
+                          {{QStringLiteral("buffered_bytes"), static_cast<qlonglong>(buffer_.size())},
+                           {QStringLiteral("backlog_threshold"), kTcpBufferBacklogWarningBytes},
+                           {QStringLiteral("ui_dedupe_key"), QStringLiteral("tcp_wave:receive_backlog")},
+                           {QStringLiteral("ui_visibility"), QStringLiteral("attention")}});
     }
     if (!process_buffer_pending_)
     {
@@ -3031,13 +3101,26 @@ void TcpWavePanel::onSocketError()
         return;
     }
     const QString errorText = socket_->errorString();
+    const auto socketError = socket_->error();
     setStatusText(errorText);
-    emit connectionLogMessageRequested(QString(is_english_
-        ? "TCP wave socket error: %1; received frames=%2, buffered bytes=%3"
-        : "TCP 波形 socket 错误：%1；已接收帧=%2，客户端缓冲=%3 字节")
-        .arg(errorText)
-        .arg(frame_count_)
-        .arg(static_cast<qlonglong>(buffer_.size())));
+    if (socketError == QAbstractSocket::RemoteHostClosedError)
+    {
+        return;
+    }
+    socket_error_logged_for_current_connection_ = true;
+    publishTcpWaveLog(VaporView::LogLevel::Error,
+                      QStringLiteral("tcp_wave_socket_error"),
+                      QStringLiteral("TCP 波形 socket 发生错误。"),
+                      {{QStringLiteral("error_code"), QStringLiteral("SOCKET_ERROR")},
+                       {QStringLiteral("socket_error_code"), static_cast<int>(socketError)},
+                       {QStringLiteral("system_error"), errorText},
+                       {QStringLiteral("host"), host_edit_ ? host_edit_->text() : QString()},
+                       {QStringLiteral("port"), port()},
+                       {QStringLiteral("received_frames"), static_cast<qlonglong>(frame_count_)},
+                       {QStringLiteral("buffered_bytes"), static_cast<qlonglong>(buffer_.size())},
+                       {QStringLiteral("ui_visibility"), QStringLiteral("attention")},
+                       {QStringLiteral("ui_dedupe_key"), QStringLiteral("tcp_wave:socket_error:%1")
+                            .arg(static_cast<int>(socketError))}});
     if (socket_->state() == QAbstractSocket::UnconnectedState)
     {
         setConnectedUiState(false);
@@ -3110,6 +3193,34 @@ void TcpWavePanel::resetParserState()
     expected_payload_size_ = 0;
 }
 
+void TcpWavePanel::publishTcpWaveLog(VaporView::LogLevel level,
+                                     const QString& event,
+                                     const QString& message,
+                                     QVariantMap fields) const
+{
+    fields.insert(QStringLiteral("event"), event);
+    fields.insert(QStringLiteral("ui_visible"), true);
+    if (!fields.contains(QStringLiteral("ui_visibility")))
+    {
+        fields.insert(QStringLiteral("ui_visibility"),
+                      level >= VaporView::LogLevel::Warning ? QStringLiteral("attention")
+                                                            : QStringLiteral("details"));
+    }
+
+    VaporView::LogRecord record;
+    record.level = level;
+    record.source = QStringLiteral("Ground");
+    record.category = QStringLiteral("telemetry.wave.tcp");
+    record.message = message;
+    record.fields = std::move(fields);
+    if (!VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
+            logService.publish(record);
+        }))
+    {
+        VaporView::LogService::writeLogFallback(record);
+    }
+}
+
 void TcpWavePanel::scheduleDeferredProcessBuffer()
 {
     if (process_buffer_pending_)
@@ -3146,10 +3257,14 @@ bool TcpWavePanel::discardInvalidTcpPrefix(qsizetype bytesToDrop)
 
     buffer_.remove(0, bytesToDrop);
     invalid_resync_discarded_bytes_ += bytesToDrop;
-    emit logMessageRequested(QString(is_english_
-        ? "TCP wave resync discarded %1 byte(s) while looking for a valid frame boundary."
-        : "TCP 波形重同步已丢弃 %1 字节，以查找有效帧边界。")
-        .arg(static_cast<qlonglong>(bytesToDrop)));
+    publishTcpWaveLog(VaporView::LogLevel::Debug,
+                      QStringLiteral("tcp_wave_resynchronized"),
+                      QStringLiteral("TCP 波形重同步已丢弃字节以查找有效帧边界。"),
+                      {{QStringLiteral("discarded_bytes"), static_cast<qlonglong>(bytesToDrop)},
+                       {QStringLiteral("total_discarded_bytes"), static_cast<qlonglong>(invalid_resync_discarded_bytes_)},
+                       {QStringLiteral("buffered_bytes"), static_cast<qlonglong>(buffer_.size())},
+                       {QStringLiteral("ui_visibility"), QStringLiteral("hidden")},
+                       {QStringLiteral("ui_dedupe_key"), QStringLiteral("tcp_wave:resynchronized")}});
 
     if (invalid_resync_discarded_bytes_ >= kTcpInvalidResyncDisconnectBytes)
     {
@@ -3162,10 +3277,20 @@ bool TcpWavePanel::discardInvalidTcpPrefix(qsizetype bytesToDrop)
     return false;
 }
 
-void TcpWavePanel::disconnectInvalidTcpStream(const QString& reason)
+void TcpWavePanel::disconnectInvalidTcpStream(const QString& statusText)
 {
-    setStatusText(reason);
-    emit logMessageRequested(reason);
+    const qsizetype bufferedBytes = buffer_.size();
+    const qsizetype discardedBytes = invalid_resync_discarded_bytes_;
+    setStatusText(statusText);
+    publishTcpWaveLog(VaporView::LogLevel::Error,
+                      QStringLiteral("tcp_wave_invalid_stream_disconnected"),
+                      QStringLiteral("TCP 波形数据流无效，已主动断开连接。"),
+                      {{QStringLiteral("error_code"), QStringLiteral("INVALID_WAVE_STREAM")},
+                       {QStringLiteral("buffered_bytes"), static_cast<qlonglong>(bufferedBytes)},
+                       {QStringLiteral("discarded_bytes"), static_cast<qlonglong>(discardedBytes)},
+                       {QStringLiteral("backlog_threshold"), kTcpBufferMaxBacklogBytes},
+                       {QStringLiteral("ui_visibility"), QStringLiteral("attention")},
+                       {QStringLiteral("ui_dedupe_key"), QStringLiteral("tcp_wave:invalid_stream_disconnected")}});
     buffer_.clear();
     pending_wave1_payload_.clear();
     resetParserState();
@@ -3173,6 +3298,7 @@ void TcpWavePanel::disconnectInvalidTcpStream(const QString& reason)
     header_byte_order_ = HeaderByteOrder::Unknown;
     invalid_resync_discarded_bytes_ = 0;
     process_buffer_pending_ = false;
+    suppress_next_disconnected_log_ = true;
 
     if (socket_ && socket_->state() != QAbstractSocket::UnconnectedState)
     {
@@ -3235,10 +3361,11 @@ void TcpWavePanel::processBuffer()
                 if (!payload_order_auto_correct_logged_)
                 {
                     payload_order_auto_correct_logged_ = true;
-                    emit logMessageRequested(QString(is_english_
-                        ? "Auto-corrected reversed TCP waveform payload order (confidence=%1)."
-                        : "已自动校正反向 TCP 波形负载顺序（置信比=%1）。")
-                        .arg(orderAnalysis.confidence, 0, 'f', 1));
+                    publishTcpWaveLog(VaporView::LogLevel::Info,
+                                      QStringLiteral("tcp_wave_payload_order_corrected"),
+                                      QStringLiteral("已自动校正反向 TCP 波形负载顺序。"),
+                                      {{QStringLiteral("confidence"), orderAnalysis.confidence},
+                                       {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
                 }
             }
             emit rawWaveFrameReady(frameTimestampUs, rawSignalPayload, harmonicPayload, float_encoding_);

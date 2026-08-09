@@ -1,9 +1,11 @@
 #pragma once
 
+#include "LogRecord.h"
 #include "ground/devices/CollectorRegistry.h"
 #include "TelemetryTypes.h"
 
 #include <QString>
+#include <QVariantMap>
 
 #include <cstddef>
 #include <cstdint>
@@ -67,9 +69,18 @@ struct LocalTemperatureConnectionRequest
     bool usesDefaultRate = false;
 };
 
+struct LocalConnectionLogEntry
+{
+    VaporView::LogLevel level = VaporView::LogLevel::Info;
+    QString category = QStringLiteral("device.connection");
+    QString event;
+    QString message;
+    QVariantMap fields;
+};
+
 struct LocalConnectionCallbacks
 {
-    std::function<void(const QString&)> log;
+    std::function<void(const LocalConnectionLogEntry&)> log;
     std::function<void(bool)> finished;
     std::function<void(LocalDeviceKind)> dataReady;
     std::function<void(quint64, quint8, quint8, const void *, size_t)> rawEpsilonFrame;

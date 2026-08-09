@@ -287,23 +287,25 @@ int main(int argc, char **argv)
                   {{QStringLiteral("event"), QStringLiteral("recording_started")},
                    {QStringLiteral("ui_visibility"), QStringLiteral("attention")}});
     publishRecord(logService,
-                  VaporView::LogLevel::Info,
+                  VaporView::LogLevel::Warning,
                   QStringLiteral("Ground"),
                   QStringLiteral("device.connection"),
-                  QStringLiteral("设备连接状态已更新。"),
-                  {{QStringLiteral("event"), QStringLiteral("ground_device_connection_status")},
+                  QStringLiteral("打开本地设备串口失败。"),
+                  {{QStringLiteral("event"), QStringLiteral("local_device_port_open_failed")},
+                   {QStringLiteral("device"), QStringLiteral("EPSILON")},
+                   {QStringLiteral("error_code"), QStringLiteral("PORT_OPEN_FAILED")},
                    {QStringLiteral("ui_visibility"), QStringLiteral("attention")},
-                   {QStringLiteral("ui_message"), QStringLiteral("[EPSILON] 设备响应正常，连接成功: COM3 @ 921600 波特率")}});
+                   {QStringLiteral("system_error"), QStringLiteral("Access denied")}});
 
     require(logList->model()->rowCount() == 3,
-            "attention view shows warning, explicit attention Info, and connection Info");
+            "attention view shows warnings and explicit attention Info");
     QModelIndex connectionLogIndex;
     for (int row = 0; row < logList->model()->rowCount(); ++row)
     {
         const QModelIndex index = logList->model()->index(row, 0);
         if (index.data(VaporView::Ground::Main::UiLogModel::MessageRole)
                 .toString()
-                .contains(QStringLiteral("[EPSILON]")))
+                .contains(QStringLiteral("打开本地设备串口失败")))
         {
             connectionLogIndex = index;
             break;

@@ -29,6 +29,36 @@ struct SelectedProbeSpec
     QString port;
 };
 
+QVariantMap probeFields(const ProbeSpec& probe, const QString& port = QString())
+{
+    QVariantMap fields{{QStringLiteral("device_key"), probe.key},
+                       {QStringLiteral("device"), probe.label},
+                       {QStringLiteral("baud"), probe.baud}};
+    if (!port.isEmpty())
+    {
+        fields.insert(QStringLiteral("port"), port);
+    }
+    return fields;
+}
+
+void postSerialPortDetectionLog(const SerialPortDetectionService::LogCallback& log,
+                                LogLevel level,
+                                const QString& event,
+                                const QString& message,
+                                QVariantMap fields = QVariantMap())
+{
+    if (!fields.contains(QStringLiteral("ui_visibility")))
+    {
+        fields.insert(QStringLiteral("ui_visibility"),
+                      level >= LogLevel::Warning ? QStringLiteral("attention")
+                                                 : QStringLiteral("details"));
+    }
+    if (log)
+    {
+        log({level, event, message, std::move(fields)});
+    }
+}
+
 QString normalizedBaud(const QString& baud, const QString& fallback)
 {
     const QString trimmed = baud.trimmed();
@@ -78,9 +108,6 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
     LogCallback log)
 {
     const bool english = request.english;
-    auto postLog = [&log](const QString& message) {
-        if (log) log(message);
-    };
     if (!cancelRequested)
     {
         cancelRequested = []() { return false; };
@@ -188,18 +215,36 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
     SerialPortDetectionOutcome outcome;
     if (request.availablePorts.isEmpty() && selected.isEmpty())
     {
-        postLog(english ? QStringLiteral("Auto detect stopped: no serial ports found.")
-                        : QStringLiteral("自动识别结束：当前没有发现可用串口。"));
+        postSerialPortDetectionLog(
+            log,
+            LogLevel::Warning,
+            QStringLiteral("serial_port_detection_no_ports"),
+            QStringLiteral("自动识别结束，当前没有发现可用串口。"),
+            {{QStringLiteral("reason_code"), QStringLiteral("NO_SERIAL_PORTS")},
+             {QStringLiteral("serial_port_count"), request.availablePorts.size()},
+             {QStringLiteral("selected_candidates"), selected.size()},
+             {QStringLiteral("ui_message"),
+              english ? QStringLiteral("Auto detect stopped: no serial ports found.")
+                      : QStringLiteral("自动识别结束：当前没有发现可用串口。")}});
         return outcome;
     }
 
     QSet<QString> detectedKeys;
     QSet<QString> detectedPorts;
     QSet<QString> attempted;
-    postLog(QString(english
-        ? "Auto detect: selected settings first, then %1 serial port(s) with default bauds."
-        : "自动识别：先探测已选配置，再用默认波特率探测 %1 个串口。")
-            .arg(request.availablePorts.size()));
+    postSerialPortDetectionLog(
+        log,
+        LogLevel::Info,
+        QStringLiteral("serial_port_detection_plan_created"),
+        QStringLiteral("串口自动识别计划已创建。"),
+        {{QStringLiteral("serial_port_count"), request.availablePorts.size()},
+         {QStringLiteral("selected_candidates"), selected.size()},
+         {QStringLiteral("default_probe_count"), defaults.size()},
+         {QStringLiteral("ui_message"),
+          QString(english
+              ? "Auto detect: selected settings first, then %1 serial port(s) with default bauds."
+              : "自动识别：先探测已选配置，再用默认波特率探测 %1 个串口。")
+              .arg(request.availablePorts.size())}});
 
     auto attemptId = [](const ProbeSpec& probe, const QString& port) {
         return probe.key + QLatin1Char('@') + port + QLatin1Char('@') + probe.baud;
@@ -208,25 +253,49 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
         outcome.detections.push_back({probe.key, port, probe.baud});
         detectedKeys.insert(probe.key);
         detectedPorts.insert(port);
-        postLog(QString(english ? "[Auto Detect] Identified %1 on %2 @ %3"
-                                : "[自动识别] 已识别 %1: %2 @ %3")
-                    .arg(probe.label, port, probe.baud));
+        QVariantMap fields = probeFields(probe, port);
+        fields.insert(QStringLiteral("detected_devices"), outcome.detections.size());
+        fields.insert(QStringLiteral("ui_message"),
+                      QString(english ? "[Auto Detect] Identified %1 on %2 @ %3"
+                                      : "[自动识别] 已识别 %1: %2 @ %3")
+                          .arg(probe.label, port, probe.baud));
+        postSerialPortDetectionLog(log,
+                                   LogLevel::Info,
+                                   QStringLiteral("serial_port_detection_device_identified"),
+                                   QStringLiteral("串口自动识别已识别设备。"),
+                                   std::move(fields));
     };
     auto canceled = [&]() {
         if (!cancelRequested()) return false;
         outcome.canceled = true;
-        postLog(QString(english
-            ? "Auto detect canceled; keeping %1 identified device(s)."
-            : "自动识别已取消；保留已识别出的 %1 个设备。")
-                .arg(outcome.detections.size()));
+        postSerialPortDetectionLog(
+            log,
+            LogLevel::Info,
+            QStringLiteral("serial_port_detection_cancelled"),
+            QStringLiteral("串口自动识别已取消。"),
+            {{QStringLiteral("reason_code"), QStringLiteral("USER_CANCELLED")},
+             {QStringLiteral("detected_devices"), outcome.detections.size()},
+             {QStringLiteral("ui_visibility"), QStringLiteral("attention")},
+             {QStringLiteral("ui_message"),
+              QString(english
+                  ? "Auto detect canceled; keeping %1 identified device(s)."
+                  : "自动识别已取消；保留已识别出的 %1 个设备。")
+                  .arg(outcome.detections.size())}});
         return true;
     };
 
     if (!selected.isEmpty())
     {
-        postLog(english
-            ? QStringLiteral("[Auto Detect] Selected port/baud pass: probing the current configured port for each device.")
-            : QStringLiteral("[自动识别] 已选串口/波特率阶段：先探测每个设备当前配置的串口。"));
+        postSerialPortDetectionLog(
+            log,
+            LogLevel::Info,
+            QStringLiteral("serial_port_detection_selected_pass_started"),
+            QStringLiteral("开始按已选串口和波特率探测设备。"),
+            {{QStringLiteral("selected_candidates"), selected.size()},
+             {QStringLiteral("ui_message"),
+              english
+                  ? QStringLiteral("[Auto Detect] Selected port/baud pass: probing the current configured port for each device.")
+                  : QStringLiteral("[自动识别] 已选串口/波特率阶段：先探测每个设备当前配置的串口。")}});
     }
     for (const SelectedProbeSpec& selectedProbe : selected)
     {
@@ -236,10 +305,21 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
         }
         if (canceled()) return outcome;
         attempted.insert(attemptId(selectedProbe.probe, selectedProbe.port));
-        postLog(QString(english
-            ? "[Auto Detect] Probing selected %1 on %2 @ %3..."
-            : "[自动识别] 正在探测已选 %1: %2 @ %3 ...")
-                .arg(selectedProbe.probe.label, selectedProbe.port, selectedProbe.probe.baud));
+        {
+            QVariantMap fields = probeFields(selectedProbe.probe, selectedProbe.port);
+            fields.insert(QStringLiteral("probe_phase"), QStringLiteral("selected"));
+            fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("hidden"));
+            fields.insert(QStringLiteral("ui_message"),
+                          QString(english
+                              ? "[Auto Detect] Probing selected %1 on %2 @ %3..."
+                              : "[自动识别] 正在探测已选 %1: %2 @ %3 ...")
+                              .arg(selectedProbe.probe.label, selectedProbe.port, selectedProbe.probe.baud));
+            postSerialPortDetectionLog(log,
+                                       LogLevel::Debug,
+                                       QStringLiteral("serial_port_detection_probe_started"),
+                                       QStringLiteral("开始探测串口设备。"),
+                                       std::move(fields));
+        }
         if (selectedProbe.probe.probe(selectedProbe.port))
         {
             record(selectedProbe.probe, selectedProbe.port);
@@ -248,9 +328,17 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
 
     if (!defaults.isEmpty() && !request.availablePorts.isEmpty())
     {
-        postLog(english
-            ? QStringLiteral("[Auto Detect] Default baud pass: probing remaining devices on available ports.")
-            : QStringLiteral("[自动识别] 默认波特率阶段：使用各设备默认波特率探测剩余串口。"));
+        postSerialPortDetectionLog(
+            log,
+            LogLevel::Info,
+            QStringLiteral("serial_port_detection_default_pass_started"),
+            QStringLiteral("开始按默认波特率探测剩余设备。"),
+            {{QStringLiteral("serial_port_count"), request.availablePorts.size()},
+             {QStringLiteral("default_probe_count"), defaults.size()},
+             {QStringLiteral("ui_message"),
+              english
+                  ? QStringLiteral("[Auto Detect] Default baud pass: probing remaining devices on available ports.")
+                  : QStringLiteral("[自动识别] 默认波特率阶段：使用各设备默认波特率探测剩余串口。")}});
     }
     for (const ProbeSpec& probe : defaults)
     {
@@ -266,9 +354,20 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
                 continue;
             }
             attempted.insert(attemptId(probe, port));
-            postLog(QString(english ? "[Auto Detect] Probing %1 on %2 @ %3..."
-                                    : "[自动识别] 正在探测 %1: %2 @ %3 ...")
-                        .arg(probe.label, port, probe.baud));
+            {
+                QVariantMap fields = probeFields(probe, port);
+                fields.insert(QStringLiteral("probe_phase"), QStringLiteral("default"));
+                fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("hidden"));
+                fields.insert(QStringLiteral("ui_message"),
+                              QString(english ? "[Auto Detect] Probing %1 on %2 @ %3..."
+                                              : "[自动识别] 正在探测 %1: %2 @ %3 ...")
+                                  .arg(probe.label, port, probe.baud));
+                postSerialPortDetectionLog(log,
+                                           LogLevel::Debug,
+                                           QStringLiteral("serial_port_detection_probe_started"),
+                                           QStringLiteral("开始探测串口设备。"),
+                                           std::move(fields));
+            }
             if (probe.probe(port))
             {
                 record(probe, port);
@@ -289,12 +388,28 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
     {
         if (!detectedKeys.contains(it.key()))
         {
-            postLog(QString(english ? "[Auto Detect] %1 not found" : "[自动识别] 未找到 %1").arg(it.value()));
+            postSerialPortDetectionLog(
+                log,
+                LogLevel::Info,
+                QStringLiteral("serial_port_detection_device_not_found"),
+                QStringLiteral("串口自动识别未找到设备。"),
+                {{QStringLiteral("device_key"), it.key()},
+                 {QStringLiteral("device"), it.value()},
+                 {QStringLiteral("ui_message"),
+                  QString(english ? "[Auto Detect] %1 not found" : "[自动识别] 未找到 %1").arg(it.value())}});
         }
     }
-    postLog(QString(english ? "Auto detect finished: identified %1 device(s)."
-                            : "自动识别完成：共识别出 %1 个设备。")
-                .arg(outcome.detections.size()));
+    postSerialPortDetectionLog(
+        log,
+        LogLevel::Info,
+        QStringLiteral("serial_port_detection_completed"),
+        QStringLiteral("串口自动识别已完成。"),
+        {{QStringLiteral("detected_devices"), outcome.detections.size()},
+         {QStringLiteral("attempted_probes"), attempted.size()},
+         {QStringLiteral("ui_message"),
+          QString(english ? "Auto detect finished: identified %1 device(s)."
+                          : "自动识别完成：共识别出 %1 个设备。")
+              .arg(outcome.detections.size())}});
     return outcome;
 }
 

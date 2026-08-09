@@ -14,7 +14,7 @@
 | LogService | queue | log_queue_overloaded | Warning | 日志写入队列已满，已丢弃部分日志记录。 | dropped_count |  | LOG_QUEUE_FULL |
 | LogService | queue.critical_overload | critical_queue_overload | Critical | Critical 日志队列已达到上限，已切换到紧急写入通道。 | pending_critical_limit |  | CRITICAL_QUEUE_LIMIT |
 | Qt | qt | qt_message | Debug/Info/Warning/Critical | Qt message handler 已转发日志。 |  | file, function, line | QT_CRITICAL_MESSAGE / QT_FATAL_MESSAGE |
-| Any | ui.legacy | user_issue_reported | Info/Warning/Error | 用户可见问题已上报。 | ui_visible | legacy_unclassified | UNCLASSIFIED_USER_ISSUE |
+| Any | ui.issue | user_issue_reported | Info/Warning/Error | 用户可见问题已上报。 | ui_visible | ui_visibility | UNCLASSIFIED_USER_ISSUE |
 | Any | process | child_process_output | Debug/Warning | 已收到子进程标准输出。 / 已收到子进程错误输出。 | stream, process_output, raw_bytes | partial |  |
 | Any | process | child_process_finished | Info/Error | 子进程已结束。 | exit_code, exit_status |  | CHILD_PROCESS_ABNORMAL_EXIT |
 | Any | process | child_process_error | Error | 子进程发生错误。 | process_error |  | CHILD_PROCESS_ERROR |
@@ -27,7 +27,11 @@
 | SkyCore | telemetry.serial | telemetry_serial_open_failed | Error | 无法打开天空端遥测串口。 | port, baud | system_error | TELEMETRY_SERIAL_OPEN_FAILED |
 | SkyCore | telemetry.tcp | telemetry_tcp_listen_failed | Error | 无法监听天空端 TCP 遥测端点。 | host, port | system_error | TELEMETRY_TCP_LISTEN_FAILED |
 | SkyCore | telemetry.link | telemetry_link_error | Warning | 天空端遥测链路异常。 | system_error |  | TELEMETRY_LINK_ERROR |
-| SkyCore | telemetry.link | telemetry_link_status | Info | 天空端遥测链路状态已更新。 | external_raw_text |  |  |
+| TelemetryLink | telemetry.link | telemetry_tcp_server_listening | Info | TCP 遥测服务端已开始监听。 | role, host, requested_port, local_port | ui_visibility |  |
+| TelemetryLink | telemetry.link | telemetry_tcp_connected | Info | TCP 遥测客户端已连接。 | role, host, port | ui_visibility |  |
+| TelemetryLink | telemetry.link | telemetry_tcp_client_replaced | Info | TCP 遥测客户端连接已被新连接替换。 | role, peer_host, peer_port | ui_visibility |  |
+| TelemetryLink | telemetry.link | telemetry_tcp_client_connected | Info | TCP 遥测客户端已接入。 | role, peer_host, peer_port | ui_visibility |  |
+| TelemetryLink | telemetry.link | telemetry_tcp_client_disconnected | Info | TCP 遥测客户端已断开。 | role, peer, reason_code | ui_visibility | REMOTE_DISCONNECTED |
 | SkyCore | session.recording | sky_recording_started | Info | 天空端会话记录已开始。 | session_directory, transport, endpoint |  |  |
 | SkyCore | session.recording | sky_recording_paused | Info | 天空端会话记录已暂停。 | session_directory |  |  |
 | SkyCore | session.recording | sky_recording_stop_requested | Info | 天空端会话记录已请求停止。 | telemetry_rows, waveform_frames | reason_code | APPLICATION_SHUTDOWN |
@@ -88,11 +92,10 @@
 | SkyTui | ipc.config | sky_ipc_config_apply_result_received | Info | 已收到 SkyCore 配置应用结果。 | config_apply_result |  |  |
 | SkyTui | ipc.protocol | sky_ipc_log_event_parse_failed | Warning | 无法解析 SkyCore 日志帧。 | message_type, payload_bytes |  |  |
 | SkyTui | ipc.protocol | sky_ipc_error_frame_received | Error | 已收到 SkyCore telemetry Error 帧。 | payload_hex, payload_bytes |  | SKY_IPC_ERROR_FRAME |
-| SkyTui | ui | sky_tui_ui_log | Info | SkyTui 界面日志已更新。 | ui_visibility, ui_visible, legacy_unclassified |  |  |
+| SkyTui | ui | sky_tui_ui_log | Info | SkyTui 界面日志已更新。 | ui_visibility, ui_visible |  |  |
 | Ground | telemetry.serial | ground_telemetry_serial_open_failed | Error | 无法打开地面端遥测串口。 | port, baud | system_error | GROUND_TELEMETRY_SERIAL_OPEN_FAILED |
 | Ground | telemetry.tcp | ground_telemetry_tcp_connect_failed | Error | 无法连接地面端 TCP 遥测端点。 | host, port | system_error | GROUND_TELEMETRY_TCP_CONNECT_FAILED |
 | Ground | telemetry.link | ground_telemetry_link_error | Warning | 地面端遥测链路异常。 | system_error |  | GROUND_TELEMETRY_LINK_ERROR |
-| Ground | telemetry.link | ground_telemetry_link_status | Info | 地面端遥测链路状态已更新。 | external_raw_text |  |  |
 | Ground | telemetry.command | telemetry_command_ack_timeout | Warning | 天空端命令 ACK 等待超时。 | command_id, command_value, command_seq |  | TELEMETRY_COMMAND_ACK_TIMEOUT |
 | Ground | protocol.crc | telemetry_crc_or_version_error | Warning | 遥测解码器拒绝了 CRC 或协议版本错误的数据帧。 | total_errors, delta |  |  |
 | Ground | protocol.frame | telemetry_frame_dropped | Warning | 遥测解码器已丢弃过大或格式错误的数据帧。 | total_dropped, delta |  |  |
@@ -134,17 +137,45 @@
 | Ground | session.recording | scheduled_recording_next_start_scheduled | Info | 已安排下一次定时记录。 | next_start_time, completed_runs | ui_visibility |  |
 | Ground | session.recording | scheduled_recording_start_command_sent | Info | 定时记录开始命令已发送。 | execution_path, command, command_seq | ui_visibility |  |
 | Ground | session.recording | scheduled_recording_stop_command_sent | Info | 定时记录停止命令已发送。 | execution_path, command, command_seq | ui_visibility |  |
-| Ground | device.connection | ground_device_connection_status | Info | 设备连接状态已更新。 | ui_visibility, ui_message, legacy_unclassified, ui_visible |  |  |
 | Ground | device.connection | serial_ports_refreshed | Info | 串口列表已刷新。 | serial_port_count | ui_visibility |  |
 | Ground | device.connection | serial_port_detection_started | Info | 开始自动识别串口。 |  | ui_visibility |  |
 | Ground | device.connection | serial_port_detection_cancel_requested | Info | 已请求取消，正在停止自动识别串口。 | reason_code | ui_visibility | USER_CANCELLED |
-| Ground | device.connection | serial_port_detection_progress_updated | Debug/Info | 串口自动识别状态已更新。 | ui_message, inline | ui_visibility |  |
+| Ground | device.connection | serial_port_detection_no_ports | Warning | 自动识别结束，当前没有发现可用串口。 | reason_code, serial_port_count, selected_candidates | ui_message, ui_visibility | NO_SERIAL_PORTS |
+| Ground | device.connection | serial_port_detection_plan_created | Info | 串口自动识别计划已创建。 | serial_port_count, selected_candidates, default_probe_count | ui_message, ui_visibility |  |
+| Ground | device.connection | serial_port_detection_selected_pass_started | Info | 开始按已选串口和波特率探测设备。 | selected_candidates | ui_message, ui_visibility |  |
+| Ground | device.connection | serial_port_detection_default_pass_started | Info | 开始按默认波特率探测剩余设备。 | serial_port_count, default_probe_count | ui_message, ui_visibility |  |
+| Ground | device.connection | serial_port_detection_probe_started | Debug | 开始探测串口设备。 | device_key, device, port, baud, probe_phase | ui_message, ui_visibility |  |
+| Ground | device.connection | serial_port_detection_device_identified | Info | 串口自动识别已识别设备。 | device_key, device, port, baud, detected_devices | ui_message, ui_visibility |  |
+| Ground | device.connection | serial_port_detection_cancelled | Info | 串口自动识别已取消。 | reason_code, detected_devices | ui_message, ui_visibility | USER_CANCELLED |
+| Ground | device.connection | serial_port_detection_device_not_found | Info | 串口自动识别未找到设备。 | device_key, device | ui_message, ui_visibility |  |
+| Ground | device.connection | serial_port_detection_completed | Info | 串口自动识别已完成。 | detected_devices, attempted_probes | ui_message, ui_visibility |  |
 | Ground | device.connection | device_connection_started | Info | 正在连接本地设备。 |  | ui_visibility |  |
-| Ground | device.connection | device_connection_progress_updated | Debug | 设备连接进度已更新。 | ui_message, inline | ui_visibility |  |
 | Ground | device.connection | device_connection_rejected_busy | Warning | 已有设备连接流程正在进行。 | reason_code | ui_dedupe_key | INVALID_STATE |
 | Ground | device.connection | device_connection_cancel_requested | Info | 已请求取消，正在停止连接流程。 | reason_code | ui_visibility | USER_CANCELLED |
 | Ground | device.connection | device_disconnection_started | Info | 正在断开本地设备。 |  | ui_visibility |  |
 | Ground | device.connection | local_device_disconnected | Info | 本地设备已断开。 |  | ui_visibility |  |
+| Ground | device.connection | local_connection_phase_started | Info | 开始本地连接流程。 |  | ui_visibility |  |
+| Ground | device.connection | local_connection_summary | Info/Warning | 本地连接流程已结束。 | serial_connected, tcp_wave_connected, outcome | ui_visibility | FAILED / TIMED_OUT / REJECTED |
+| Ground | device.connection | local_device_connection_cancelled | Info | 本地设备连接已取消。 | reason_code | ui_visibility | USER_CANCELLED |
+| Ground | device.connection | local_device_connection_skipped | Info | 本地设备未选择端口，已跳过连接。 | device, reason_code | ui_visibility | PORT_NOT_SELECTED |
+| Ground | device.connection | local_device_port_check_started | Info | 开始检查本地设备串口。 | device, port, baud | ui_visibility |  |
+| Ground | device.connection | local_device_connection_started | Info | 正在连接本地设备。 | device, port, baud | ui_visibility |  |
+| Ground | device.connection | local_device_port_open_failed | Warning | 打开本地设备串口失败。 | device, port, baud, error_code | system_error, ui_visibility | PORT_OPEN_FAILED |
+| Ground | device.connection | local_device_response_check_started | Info | 本地设备串口已打开，正在检测设备响应。 | device, port, baud | ui_visibility |  |
+| Ground | device.connection | local_device_no_response | Warning | 本地设备无响应，请检查电源和连接线。 | device, port, baud, reason_code | ui_visibility | NO_RESPONSE |
+| Ground | device.connection | local_device_connected | Info | 本地设备响应正常，连接成功。 | device, port, baud | ui_visibility |  |
+| Ground | device.connection | local_device_stream_start_failed | Error | 本地设备数据流启动失败。 | device, error_code | ui_visibility | STREAM_START_FAILED |
+| Ground | device.connection | local_device_collector_diagnostic | Debug | 本地设备采集器输出了诊断信息。 | external_raw_text | ui_visibility |  |
+| Ground | device.connection | epsilon_output_rate_command_skipped | Info | 已跳过 EPSILON 输出频率下发，使用设备当前输出。 | device, reason_code | ui_visibility | RATE_UNSPECIFIED |
+| Ground | device.connection | epsilon_output_reconfigure_skipped_config_unchanged | Info | EPSILON 输出配置与上次保存配置一致，已跳过自动重配。 | device, epsilon_packet_profile, custom_packet_rates, reason_code | ui_visibility | CONFIG_UNCHANGED |
+| Ground | device.connection | ptb_sample_rate_command_skipped | Info | 已跳过 PTB210 采样频率下发，使用设备当前输出。 | device, reason_code | ui_visibility | RATE_UNSPECIFIED |
+| Ground | device.connection | ptb_sample_rate_update_failed | Warning | PTB210 采样频率下发失败。 | device, requested_rate_hz, error_code | ui_visibility | SAMPLE_RATE_UPDATE_FAILED |
+| Ground | device.connection | lidar_output_rate_command_skipped | Info | 已跳过激光测距仪输出频率下发，使用设备默认或自适应输出。 | device, reason_code | ui_visibility | RATE_UNSPECIFIED |
+| Ground | device.connection | lidar_output_rate_update_failed | Warning | 激光测距仪输出频率下发失败，使用设备默认输出。 | device, requested_rate_hz, error_code | ui_visibility | OUTPUT_RATE_UPDATE_FAILED |
+| Ground | device.connection | lidar_output_rate_updated | Info | 激光测距仪输出频率已更新。 | device, requested_rate_hz | ui_visibility |  |
+| Ground | device.connection | ai8_temperature_polling_rate_updated | Info | AI-8288 主机轮询频率已更新。 | device, requested_rate_hz | ui_visibility |  |
+| Ground | device.connection | local_serial_device_phase_completed | Info | 本地串口设备连接阶段已完成。 | connected_devices, total_devices | ui_visibility |  |
+| Ground | device.connection | local_serial_devices_not_connected | Warning | 没有串口设备连接成功。 | connected_devices, total_devices, reason_code | ui_visibility | NO_DEVICE_CONNECTED |
 | Ground | device.connection | temperature_controller_connection_rejected_missing_port | Warning | 请先选择本地 RD105 串口。 | device, device_id, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | device.connection | temperature_controller_connection_rejected_invalid_baud | Warning | RD105 波特率无效。 | device, device_id, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
 | Ground | device.connection | temperature_controller_connection_started | Info | 正在连接本地 RD105 温控器。 | device, device_id, port, baud, sample_rate_hz | ui_visibility |  |
@@ -170,7 +201,31 @@
 | Ground | ui.action | language_switched | Info | 界面语言已切换。 | language | ui_visibility |  |
 | Ground | ui.action | theme_switched | Info | 界面主题已切换。 | theme | ui_visibility |  |
 | Ground | ui.action | font_scale_updated | Info | 界面字号已更新。 | font_scale_percent | ui_visibility |  |
-| Ground | ui.test | ui_test_log_updated | Info | 界面测试日志已更新。 | ui_message | ui_visibility |  |
+| Ground | ui.test | ui_test_mode_enabled | Info | 界面测试日志已更新。 | execution_path, ui_message | ui_visibility |  |
+| Ground | ui.test | ui_test_mode_disabled | Info | 界面测试日志已更新。 | execution_path, ui_message | ui_visibility |  |
+| Ground | ui.test | ui_test_scenario_selected | Info | 界面测试日志已更新。 | execution_path, ui_message, scenario | ui_visibility |  |
+| Ground | ui.test | ui_test_device_connected | Info | 界面测试日志已更新。 | execution_path, ui_message, device_id | ui_visibility |  |
+| Ground | ui.test | ui_test_device_disconnected | Info | 界面测试日志已更新。 | execution_path, ui_message, device_id | ui_visibility |  |
+| Ground | ui.test | ui_test_serial_ports_refreshed | Info | 界面测试日志已更新。 | execution_path, ui_message | ui_visibility |  |
+| Ground | ui.test | ui_test_auto_detection_completed | Info | 界面测试日志已更新。 | execution_path, ui_message, detected_devices | ui_visibility |  |
+| Ground | ui.test | ui_test_connection_started | Info | 界面测试日志已更新。 | execution_path, ui_message | ui_visibility |  |
+| Ground | ui.test | ui_test_all_devices_connected | Info | 界面测试日志已更新。 | execution_path, ui_message | ui_visibility |  |
+| Ground | ui.test | ui_test_all_devices_disconnected | Info | 界面测试日志已更新。 | execution_path, ui_message | ui_visibility |  |
+| Ground | ui.test | ui_test_connection_cancelled | Info | 界面测试日志已更新。 | execution_path, ui_message, reason_code | ui_visibility | USER_CANCELLED |
+| Ground | ui.test | ui_test_epsilon_main_antenna_lever_arm_applied | Info | 界面测试日志已更新。 | execution_path, ui_message, device, x_m, y_m, z_m | ui_visibility |  |
+| Ground | ui.test | ui_test_epsilon_rtcm_port_config_accepted | Info | 界面测试日志已更新。 | execution_path, ui_message, device | ui_visibility |  |
+| Ground | ui.test | ui_test_epsilon_output_reconfigure_completed | Info | 界面测试日志已更新。 | execution_path, ui_message, device | ui_visibility |  |
+| Ground | ui.test | ui_test_recording_started | Info | 界面测试日志已更新。 | execution_path, ui_message | ui_visibility |  |
+| Ground | ui.test | ui_test_scheduled_recording_stopped | Info | 界面测试日志已更新。 | execution_path, ui_message | ui_visibility |  |
+| Ground | ui.test | ui_test_recording_paused | Info | 界面测试日志已更新。 | execution_path, ui_message | ui_visibility |  |
+| Ground | ui.test | ui_test_recording_stopped | Info | 界面测试日志已更新。 | execution_path, ui_message | ui_visibility |  |
+| Ground | ui.test | ui_test_remote_wave_connection_enabled | Info | 界面测试日志已更新。 | execution_path, ui_message, device_id, requested_connected | ui_visibility |  |
+| Ground | ui.test | ui_test_remote_wave_connection_disabled | Info | 界面测试日志已更新。 | execution_path, ui_message, device_id, requested_connected | ui_visibility |  |
+| Ground | ui.test | ui_test_device_command_applied | Info | 界面测试日志已更新。 | execution_path, ui_message, device_id, command, connected | ui_visibility |  |
+| Ground | ui.test | ui_test_peak_search_range_applied | Info | 界面测试日志已更新。 | execution_path, ui_message, start_index, end_index | ui_visibility |  |
+| Ground | ui.test | ui_test_temperature_command_applied | Info | 界面测试日志已更新。 | execution_path, ui_message, device, command, channel | ui_visibility |  |
+| Ground | ui.test | ui_test_imu_profile_applied | Info | 界面测试日志已更新。 | execution_path, ui_message, output_format, baud, rate_hz | ui_visibility |  |
+| Ground | ui.test | ui_test_sky_device_config_opened | Info | 界面测试日志已更新。 | execution_path, ui_message | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_rtcm_config_rejected_recording_active | Warning | 请先结束记录，再配置 EPSILON RTCM 串口。 | device, reason_code | ui_dedupe_key | INVALID_STATE |
 | Ground | device.navigation.command | epsilon_rtcm_config_rejected_missing_main_port | Warning | 请先选择 EPSILON 主串口。 | device, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | device.navigation.command | epsilon_rtcm_config_rejected_invalid_main_baud | Warning | EPSILON 波特率无效。 | device, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
@@ -204,6 +259,15 @@
 | Ground | device.navigation.command | epsilon_output_rate_updated | Info | EPSILON 输出频率已更新。 | device, requested_rate_hz | ui_visibility |  |
 | Ground | device.navigation.command | imu_profile_apply_rejected_missing_port | Warning | 请先选择 IMU 串口。 | device, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | device.navigation.command | imu_profile_apply_rejected_unsupported | Warning | IMU 输出格式或频率不受支持。 | device, reason_code, output_format, rate_hz | ui_dedupe_key | COMMAND_NOT_SUPPORTED |
+| Ground | device.navigation.command | imu_profile_command_sent | Debug | 已向 IMU 发送配置命令。 | device, port, current_baud, target_baud, rate_hz, output_format, command, wait_ms | ui_visibility |  |
+| Ground | device.navigation.command | imu_profile_command_write_failed | Error | IMU 配置命令发送失败。 | device, port, current_baud, target_baud, rate_hz, output_format, command, wait_ms, error_code | ui_visibility | COMMAND_WRITE_FAILED |
+| Ground | device.navigation.command | imu_profile_direct_open_failed_saved | Warning | 无法打开 IMU 串口直接配置，已保存供下次连接时应用。 | device, port, current_baud, target_baud, rate_hz, output_format, reason_code | system_error, ui_visibility | PORT_OPEN_FAILED |
+| Ground | device.navigation.command | imu_profile_reconnect_open_failed | Error | 重新打开 IMU 串口失败。 | device, port, current_baud, target_baud, rate_hz, output_format, system_error, error_code | ui_visibility | SERIAL_OPEN_FAILED |
+| Ground | device.navigation.command | imu_profile_reconnect_no_response | Error | 重新打开 IMU 串口后未收到设备响应。 | device, port, current_baud, target_baud, rate_hz, output_format, error_code | ui_visibility | DEVICE_NO_RESPONSE |
+| Ground | device.navigation.command | imu_profile_reconnect_stream_start_failed | Error | 重新启动 IMU 数据流失败。 | device, port, current_baud, target_baud, rate_hz, output_format, error_code | ui_visibility | STREAM_START_FAILED |
+| Ground | device.navigation.command | imu_profile_reconnect_completed | Info | IMU 已按目标配置重新连接。 | device, port, current_baud, target_baud, rate_hz, output_format | ui_visibility |  |
+| Ground | device.navigation.command | imu_profile_reconnect_save_failed | Warning | IMU 重连后保存波特率配置失败。 | device, port, current_baud, target_baud, rate_hz, output_format, command, error_code | ui_visibility | CONFIG_SAVE_FAILED |
+| Ground | device.navigation.command | imu_profile_applied | Info | IMU 配置已应用。 | device, port, current_baud, target_baud, rate_hz, output_format | ui_visibility |  |
 | Ground | configuration.apply | epsilon_packet_profile_custom_enabled | Info | 检测到包频率已偏离分组模式，已自动启用自定义包频率配置。 | device, packet_rate_summary | ui_visibility |  |
 | Ground | configuration.apply | epsilon_packet_profile_saved | Info | 已保存 EPSILON 包频率配置。 | device, packet_rate_profile, packet_rate_summary | ui_visibility |  |
 | Ground | configuration.apply | epsilon_packet_profile_disabled | Info | 已关闭 EPSILON 自定义包频率，后续将使用分组配置。 | device, grouped_rate_hz | ui_visibility |  |
@@ -239,26 +303,38 @@
 | Ground | device.temperature.command | temperature_command_rejected_dependency_unavailable | Warning | 天空端数传链路未连接，无法下发 RD105 温控命令。 | device, command, command_id, execution_path, dependency, reason_code | channel, target, ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
 | Ground | device.temperature.command | temperature_command_ack_timeout | Warning | RD105 温控命令 ACK 等待超时。 | device, command, command_id, execution_path, command_seq, error_code | channel, target, ui_dedupe_key | COMMAND_TIMEOUT |
 | Ground | device.temperature.command | temperature_command_failed | Error | RD105 温控命令执行失败。 | device, command, command_id, execution_path, error_code | channel, target, command_seq, command_error_code, ack_result, ui_dedupe_key | COMMAND_VERIFY_FAILED / INVALID_PAYLOAD / INVALID_DEVICE_ID / CONFIG_INVALID / CONFIG_APPLY_FAILED / INTERNAL_ERROR |
-| Ground | ui.legacy | ground_ui_legacy_log | Info | 地面端界面日志已更新。 | ui_visibility, ui_message, legacy_unclassified, ui_visible |  |  |
-| Ground | ui.progress | ground_ui_progress_updated | Debug | 界面进度日志已更新。 | ui_visibility, ui_message, inline, legacy_unclassified, ui_visible |  |  |
+| Ground | telemetry.wave.tcp | tcp_wave_ui_test_connected | Info | 界面测试 TCP 波形源已连接。 | simulated | ui_visibility |  |
+| Ground | telemetry.wave.tcp | tcp_wave_ui_test_disconnected | Info | 界面测试 TCP 波形源已断开。 | simulated | ui_visibility |  |
+| Ground | telemetry.wave.tcp | tcp_wave_remote_connection_requested | Info | 已请求连接天空端波形 TCP。 | execution_path, requested_connected | ui_visibility |  |
+| Ground | telemetry.wave.tcp | tcp_wave_remote_disconnection_requested | Info | 已请求断开天空端波形 TCP。 | execution_path, requested_connected | ui_visibility |  |
+| Ground | telemetry.wave.tcp | tcp_wave_disconnection_requested | Info | 正在断开 TCP 波形连接。 | reason_code, host, port | ui_visibility | USER_REQUEST |
+| Ground | telemetry.wave.tcp | tcp_wave_connection_rejected_invalid_port | Warning | TCP 波形端口无效，无法建立连接。 | reason_code, input_value | port, ui_visibility | INVALID_PORT |
+| Ground | telemetry.wave.tcp | tcp_wave_connection_started | Info | 正在连接 TCP 波形。 | host, port | ui_visibility |  |
+| Ground | telemetry.wave.tcp | tcp_wave_connected | Info | TCP 波形已连接。 | host, port | ui_visibility |  |
+| Ground | telemetry.wave.tcp | tcp_wave_disconnected | Info | TCP 波形已断开。 | reason_code, system_error, received_frames, buffered_bytes, expected_payload_bytes, host, port | ui_visibility | USER_REQUEST |
+| Ground | telemetry.wave.tcp | tcp_wave_disconnected_unexpectedly | Info/Warning | TCP 波形连接非预期断开。 | reason_code, system_error, received_frames, buffered_bytes, expected_payload_bytes, host, port | ui_visibility | REMOTE_DISCONNECTED |
+| Ground | telemetry.wave.tcp | tcp_wave_receive_backlog | Warning | TCP 波形接收缓冲出现积压，界面处理可能慢于数据流。 | buffered_bytes, backlog_threshold | ui_visibility, ui_dedupe_key |  |
+| Ground | telemetry.wave.tcp | tcp_wave_socket_error | Error | TCP 波形 socket 发生错误。 | error_code, socket_error_code, system_error, host, port, received_frames, buffered_bytes | ui_visibility, ui_dedupe_key | SOCKET_ERROR |
+| Ground | telemetry.wave.tcp | tcp_wave_resynchronized | Debug | TCP 波形重同步已丢弃字节以查找有效帧边界。 | discarded_bytes, total_discarded_bytes, buffered_bytes | ui_visibility, ui_dedupe_key |  |
+| Ground | telemetry.wave.tcp | tcp_wave_invalid_stream_disconnected | Error | TCP 波形数据流无效，已主动断开连接。 | error_code, buffered_bytes, discarded_bytes, backlog_threshold | ui_visibility, ui_dedupe_key | INVALID_WAVE_STREAM |
+| Ground | telemetry.wave.tcp | tcp_wave_payload_order_corrected | Info | 已自动校正反向 TCP 波形负载顺序。 | confidence | ui_visibility |  |
 | Ground | ui.log | ui_log_view_cleared | Info | 日志面板显示已清空。 | ui_visibility |  |  |
 | Ground | ui.log | ui_log_pending_queue_dropped | Info | 桌面日志 UI 队列已满，已丢弃部分待显示记录。 | ui_visibility, dropped_count, pending_limit |  |  |
 | RTK | gga | gga_input_buffer_overflow | Warning | GGA 输入缓冲区超过上限，已丢弃未结束的前缀。 | buffer_limit_bytes |  | GGA_INPUT_BUFFER_LIMIT |
-| RTK | service | rtk_service_log | Info | RTK 服务状态已更新。 | ui_visibility, ui_message, legacy_unclassified, ui_visible |  |  |
+| RTK | service | rtk_service_log | Info | RTK 服务状态已更新。 | ui_visibility, ui_message, ui_visible |  |  |
 | RTK | service.raw | rtk_service_raw_output | Debug | RTK 服务输出了原始诊断信息。 | ui_visibility, external_raw_text, ui_visible |  |  |
 
-新增或调整日志事件时，保持本表作为开发入口。新事件必须使用 `LogRecord` / `LogService` 结构化发布；不得新增 QString 日志 bridge。只有明确的既有 UI 适配入口才可以使用 `legacy_unclassified`，并且必须保留稳定 `event`、`ui_visibility` 和 `ui_message` 字段。当前精确 allowlist 仅登记 `user_issue_reported`、`sky_tui_ui_log`、`ground_ui_progress_updated`、`ground_ui_legacy_log`、`ground_device_connection_status` 和 `rtk_service_log`；新增函数或 event 必须先完成结构化迁移。
+新增或调整日志事件时，保持本表作为开发入口。新事件必须使用 `LogRecord` / `LogService` 结构化发布；不得新增 QString 日志 bridge，不得让 QWidget、Service、Runtime 或 IPC 模块维护自己的字符串日志缓冲。第一方生产代码当前 `legacy_unclassified` 使用量为 0；新增 legacy event 必须先完成结构化迁移，而不是扩大 allowlist。
 
 ## 桌面日志展示迁移清单
 
-本清单记录本轮已经结构化分类的 UI 可见 Info/Debug 入口。`ui_visibility` 只影响桌面日志面板，不影响 JSONL 文件保存。
+本清单记录已经结构化分类的 UI 可见 Info/Debug 入口。`ui_visibility` 只影响桌面日志面板，不影响 JSONL 文件保存。
 
 清单格式使用普通条目，避免被事件目录审计脚本当成第二张事件目录表解析：
 
-- Any / ui.legacy / `user_issue_reported` / Info、Warning、Error / `attention` / 可合并 / 默认键：用户问题上报需要默认进入关注视图，Info 也可作为重要状态确认。
-- Ground / device.connection / `ground_device_connection_status` / Info / `attention` / 可合并 / 默认键：用户点击设备连接后产生的连接进度、结果和 TCP 波形连接状态需要默认进入关注视图。
-- Ground / ui.legacy / `ground_ui_legacy_log` / Info / `details` / 可合并 / 默认键：现有 TcpWavePanel UI 适配入口只保留普通 UI 文本，默认不占用关注视图；Ground 内部业务调用已迁移为 0。
-- Ground / ui.progress / `ground_ui_progress_updated` / Debug / `hidden` / 可合并 / 默认键：回车进度和高频状态只写文件，不进入桌面面板。
+- Any / ui.issue / `user_issue_reported` / Info、Warning、Error / `attention` / 可合并 / 默认键：用户问题上报需要默认进入关注视图，Info 也可作为重要状态确认。
+- Ground / device.connection / LocalConnection* / Info、Warning、Error / `details` 或 `attention` / 可合并 / 默认键：本地连接流程直接产生结构化事件，业务状态继续走业务 signal。
+- Ground / telemetry.wave.tcp / `tcp_wave_*` / Debug、Info、Warning、Error / `hidden`、`details` 或 `attention` / 可合并 / 默认键：TcpWavePanel 在知道业务语义的位置直接发布结构化日志，不再通过 MainWindow 字符串桥接。
 - Ground / ui.log / `ui_log_view_cleared` / Info / `hidden` / 可合并 / 默认键：“清空显示”动作可审计，但清空后不能立即生成可见行。
 - Ground / ui.log / `ui_log_pending_queue_dropped` / Info / `hidden` / 可合并 / 默认键：pending 队列过载只写入 JSONL 统计，不进入桌面关注面板。
 - Ground / telemetry helper / Info / `details` / 可合并 / 默认键：普通遥测状态保留在全部视图；Warning 和 Error 按 helper 回退进入关注。
@@ -269,4 +345,4 @@
 - RTK / service / `rtk_service_log` / Info / `details` / 可合并 / 默认键：RTK 对话框仍本地显示服务状态，桌面主日志默认只在全部视图显示。
 - RTK / service.raw / `rtk_service_raw_output` / Debug / `hidden` / 可合并 / 默认键：原始 RTK 输出只写文件和 RTK 对话框，不进入桌面主日志。
 
-第一方 Ground `MainWindow::log(...)` 业务调用已完成迁移，内部调用数量为 0。仓库内部 `logMessage(QString)` signal/emit bridge 已清零；SkyRuntime、SkyLocalIpcClient/Server、GroundTelemetry 和 SkyDeviceManager 使用结构化 `LogRecord` / `LogEvent`。未显式设置 `ui_visibility` 的结构化旧记录仍由 UI 模型使用兼容回退规则：Warning / Error / Critical -> `attention`，Info -> `details`，Debug -> 调试视图。剩余 `legacy_unclassified` 仅表示明确登记的旧 UI 文本或外部原文，不承担日志等级、category、event 或 UI visibility 的语义推断。
+第一方 Ground `MainWindow::log(QString)` 已删除。仓库内部日志型 QString signal/emit bridge 已清零；`TelemetryLink`、`TcpWavePanel`、SkyRuntime、SkyLocalIpcClient/Server、GroundTelemetry 和 SkyDeviceManager 使用结构化 `LogRecord` / `LogEvent` 或直接 `LogService` 发布。未显式设置 `ui_visibility` 的结构化记录仍由 UI 模型使用回退规则：Warning / Error / Critical -> `attention`，Info -> `details`，Debug -> 调试视图。

@@ -4492,7 +4492,6 @@ void RtkConfigDialog::appendLog(const QString& message)
                            {{QStringLiteral("ui_visible"), true},
                              {QStringLiteral("ui_visibility"), QStringLiteral("details")},
                              {QStringLiteral("event"), QStringLiteral("rtk_service_log")},
-                            {QStringLiteral("legacy_unclassified"), true},
                             {QStringLiteral("ui_message"), message}});
     });
     if (!log_text_edit_) return;

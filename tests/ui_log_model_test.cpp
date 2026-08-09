@@ -103,39 +103,38 @@ void structuredVisibilityDoesNotUseMessageLanguage()
     require(proxyRows(model, LogUiViewMode::Debug) == 2, "explicit hidden does not appear in debug view");
 }
 
-void legacyLogsDoNotInferSeverityFromMessage()
+void detailsLogsDoNotInferSeverityFromMessage()
 {
     using namespace VaporView::Ground::Main;
     UiLogModel model;
-    const QStringList legacyMessages{
+    const QStringList statusMessages{
         QStringLiteral("失败"),
         QStringLiteral("ERROR"),
         QStringLiteral("设备断开"),
         QStringLiteral("connection failed"),
     };
     quint64 sequence = 1;
-    for (const QString& legacyMessage : legacyMessages)
+    for (const QString& statusMessage : statusMessages)
     {
         model.appendRecord(makeRecord(VaporView::LogLevel::Info,
-                                      QStringLiteral("地面端界面日志已更新。"),
-                                      {{QStringLiteral("event"), QStringLiteral("ground_ui_legacy_log")},
-                                       {QStringLiteral("legacy_unclassified"), true},
+                                      QStringLiteral("界面状态已更新。"),
+                                      {{QStringLiteral("event"), QStringLiteral("ui_status_updated")},
                                        {QStringLiteral("ui_visibility"), QStringLiteral("details")},
-                                       {QStringLiteral("ui_message"), legacyMessage}},
+                                       {QStringLiteral("ui_message"), statusMessage}},
                                       QStringLiteral("Ground"),
-                                      QStringLiteral("ui.legacy"),
+                                      QStringLiteral("ui.status"),
                                       sequence,
                                       sequence * 1'000'000));
         ++sequence;
     }
 
     require(proxyRows(model, LogUiViewMode::Attention) == 0,
-            "legacyLogDoesNotInferLevelFromChineseOrEnglishMessage");
-    require(proxyRows(model, LogUiViewMode::All) == legacyMessages.size(),
-            "legacyMainWindowLogDefaultsToInfoDetails");
+            "detailsLogDoesNotInferLevelFromChineseOrEnglishMessage");
+    require(proxyRows(model, LogUiViewMode::All) == statusMessages.size(),
+            "detailsInfoLogDefaultsToAllView");
     require(model.index(0, 0).data(UiLogModel::LevelRole).value<VaporView::LogLevel>() ==
                 VaporView::LogLevel::Info,
-            "legacy string log remains Info");
+            "details status log remains Info");
 }
 
 void searchMatchesStructuredFields()
@@ -398,7 +397,7 @@ int main(int argc, char **argv)
     QCoreApplication app(argc, argv);
     defaultViewIsAttention();
     structuredVisibilityDoesNotUseMessageLanguage();
-    legacyLogsDoNotInferSeverityFromMessage();
+    detailsLogsDoNotInferSeverityFromMessage();
     searchMatchesStructuredFields();
     hideSourceCategoryOnlyChangesDisplayText();
     repeatedWarningsAreAggregated();

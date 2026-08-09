@@ -305,12 +305,27 @@ bool SkyRuntime::start()
                               {{QStringLiteral("reason_code"), QStringLiteral("TELEMETRY_LINK_ERROR")},
                                {QStringLiteral("system_error"), systemError}});
         });
-        connect(link, &TelemetryLink::statusMessage, this, [this](const QString& statusText) {
-            publishRuntimeLog(LogLevel::Info,
-                              QStringLiteral("telemetry.link"),
-                              QStringLiteral("telemetry_link_status"),
-                              QStringLiteral("天空端遥测链路状态已更新。"),
-                              {{QStringLiteral("external_raw_text"), statusText}});
+        connect(link, &TelemetryLink::logRecordGenerated, this, [](LogRecord record) {
+            if (record.source.isEmpty())
+            {
+                record.source = QStringLiteral("TelemetryLink");
+            }
+            if (record.category.isEmpty())
+            {
+                record.category = QStringLiteral("telemetry.link");
+            }
+            if (!record.fields.contains(QStringLiteral("ui_visibility")))
+            {
+                record.fields.insert(QStringLiteral("ui_visibility"),
+                                     record.level >= LogLevel::Warning ? QStringLiteral("attention")
+                                                                       : QStringLiteral("details"));
+            }
+            if (!LogService::withCurrentInstance([&](LogService& logService) {
+                    logService.publish(record);
+                }))
+            {
+                LogService::writeLogFallback(record);
+            }
         });
     };
 

@@ -432,8 +432,9 @@ void MainWindow::onSkyDeviceConfigClicked()
     state_->sky_device_config_dialog_->activateWindow();
     if (isUiTestMode())
     {
-        logUiTest(state_->is_english_ ? QStringLiteral("Opened simulated Sky device configuration")
-                                      : QStringLiteral("已打开模拟天空端设备配置"));
+        publishUiTestEvent(QStringLiteral("ui_test_sky_device_config_opened"),
+                           state_->is_english_ ? QStringLiteral("Opened simulated Sky device configuration")
+                                               : QStringLiteral("已打开模拟天空端设备配置"));
     }
     else
     {

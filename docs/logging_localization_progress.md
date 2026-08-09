@@ -17,9 +17,9 @@
 - `source`、`category`、`event`、`error_code`、`reason_code` 和字段键保持英文。
 - SkyRuntime / IPC / Ground telemetry / RTK / session sink 的 Warning/Error/Critical 补稳定 `event`，错误事件补 `error_code` 或 `reason_code`。
 - 子进程、socket、串口、设备采集器和 UI legacy 文本保留在 `process_output`、`system_error`、`external_raw_text` 或 `ui_message` 字段中。
-- 移除了通过 `message.contains(...)` 判断日志级别或分类的主要路径；旧 UI-only 字符串路径改为 `legacy_unclassified=true`。
+- 移除了通过 `message.contains(...)` 判断日志级别或分类的主要路径；旧 UI-only 字符串日志桥接已迁移为结构化事件，第一方生产代码不再使用 `legacy_unclassified=true`。
 - `log_service_test` 增加同一失败文案在 Warning/Error 下保持显式 level 的回归断言。
-- `diagnosticFailure` 内部故障提示和 SkyCore/SkyTui 运行诊断输出改为中文；SkyTui shutdown 路径改为转发结构化 `LogRecord`，旧字符串信号仅用于终端显示。
+- LogService writer failure 内部提示和 SkyCore/SkyTui 运行诊断输出改为中文；SkyTui shutdown 路径改为转发结构化 `LogRecord`，普通终端显示不再作为跨组件日志协议。
 - `log_service_test` 和 `sky_ipc_log_test` 覆盖中文 IPC 往返、系统原始错误字段和外部原文不丢失。
 
 ## 有意保留英文

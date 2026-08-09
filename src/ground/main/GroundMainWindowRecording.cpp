@@ -27,108 +27,6 @@ void publishPendingUiLogDropNotice(quint64 dropped)
 
 }  // namespace
 
-void MainWindow::log(const QString& message)
-{
-    if (message.startsWith('\r'))
-    {
-        VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
-            logService.publish(VaporView::LogLevel::Debug,
-                               QStringLiteral("Ground"),
-                               QStringLiteral("ui.progress"),
-                               QStringLiteral("界面进度日志已更新。"),
-                               {{QStringLiteral("ui_visibility"), QStringLiteral("hidden")},
-                                {QStringLiteral("ui_visible"), true},
-                                 {QStringLiteral("inline"), true},
-                                 {QStringLiteral("event"), QStringLiteral("ground_ui_progress_updated")},
-                                 {QStringLiteral("legacy_unclassified"), true},
-                                 {QStringLiteral("ui_message"), message.mid(1)}});
-        });
-        return;
-    }
-
-    const QString category = QStringLiteral("ui.legacy");
-    const VaporView::LogLevel level = VaporView::LogLevel::Info;
-    const bool published = VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
-        logService.publish(level,
-                           QStringLiteral("Ground"),
-                           category,
-                           QStringLiteral("地面端界面日志已更新。"),
-                           {{QStringLiteral("ui_visibility"), QStringLiteral("details")},
-                            {QStringLiteral("ui_visible"), true},
-                             {QStringLiteral("event"), QStringLiteral("ground_ui_legacy_log")},
-                             {QStringLiteral("legacy_unclassified"), true},
-                             {QStringLiteral("ui_message"), message}});
-    });
-    if (!published)
-    {
-        VaporView::LogRecord uiRecord;
-        uiRecord.level = level;
-        uiRecord.source = QStringLiteral("Ground");
-        uiRecord.category = category;
-        uiRecord.message = QStringLiteral("地面端界面日志已更新。");
-        uiRecord.fields = {{QStringLiteral("ui_visibility"), QStringLiteral("details")},
-                           {QStringLiteral("event"), QStringLiteral("ground_ui_legacy_log")},
-                           {QStringLiteral("legacy_unclassified"), true},
-                           {QStringLiteral("ui_message"), message}};
-        enqueueUiLogRecord(uiRecord);
-    }
-    state_->has_inline_progress_log_ = false;
-
-    if (!published && state_->recording_service_->isSessionOpen())
-    {
-        state_->recording_service_->appendEvent(QStringLiteral("info"), message);
-    }
-}
-
-void MainWindow::logConnectionInfo(const QString& message)
-{
-    if (message.startsWith('\r'))
-    {
-        publishGroundLog(VaporView::LogLevel::Debug,
-                         QStringLiteral("device.connection"),
-                         QStringLiteral("device_connection_progress_updated"),
-                         QStringLiteral("设备连接进度已更新。"),
-                         {{QStringLiteral("ui_visibility"), QStringLiteral("hidden")},
-                          {QStringLiteral("inline"), true},
-                          {QStringLiteral("ui_message"), message.mid(1)}});
-        return;
-    }
-
-    const QString category = QStringLiteral("device.connection");
-    const VaporView::LogLevel level = VaporView::LogLevel::Info;
-    const bool published = VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
-        logService.publish(level,
-                           QStringLiteral("Ground"),
-                           category,
-                           QStringLiteral("设备连接状态已更新。"),
-                           {{QStringLiteral("ui_visibility"), QStringLiteral("attention")},
-                            {QStringLiteral("ui_visible"), true},
-                             {QStringLiteral("event"), QStringLiteral("ground_device_connection_status")},
-                             {QStringLiteral("legacy_unclassified"), true},
-                             {QStringLiteral("ui_message"), message}});
-    });
-    if (!published)
-    {
-        VaporView::LogRecord uiRecord;
-        uiRecord.level = level;
-        uiRecord.source = QStringLiteral("Ground");
-        uiRecord.category = category;
-        uiRecord.message = QStringLiteral("设备连接状态已更新。");
-        uiRecord.fields = {{QStringLiteral("ui_visibility"), QStringLiteral("attention")},
-                           {QStringLiteral("ui_visible"), true},
-                           {QStringLiteral("event"), QStringLiteral("ground_device_connection_status")},
-                           {QStringLiteral("legacy_unclassified"), true},
-                           {QStringLiteral("ui_message"), message}};
-        enqueueUiLogRecord(uiRecord);
-    }
-    state_->has_inline_progress_log_ = false;
-
-    if (!published && state_->recording_service_->isSessionOpen())
-    {
-        state_->recording_service_->appendEvent(QStringLiteral("info"), message);
-    }
-}
-
 void MainWindow::publishGroundLog(VaporView::LogLevel level,
                                   const QString& category,
                                   const QString& event,
@@ -860,8 +758,9 @@ bool MainWindow::startRecordingSession()
     {
         startOrResumeUiTestRecording();
         updateRecordingStatusLabel();
-        logUiTest(state_->is_english_ ? QStringLiteral("Simulated recording started; no directory or file was created")
-                                      : QStringLiteral("模拟记录已开始；未创建目录或文件"));
+        publishUiTestEvent(QStringLiteral("ui_test_recording_started"),
+                           state_->is_english_ ? QStringLiteral("Simulated recording started; no directory or file was created")
+                                               : QStringLiteral("模拟记录已开始；未创建目录或文件"));
         return true;
     }
     const bool resuming = state_->recording_service_->isSessionOpen() && state_->recording_service_->isPaused();
@@ -1160,8 +1059,9 @@ bool MainWindow::tryStopScheduledRecording()
     {
         resetUiTestRecording();
         updateRecordingStatusLabel();
-        logUiTest(state_->is_english_ ? QStringLiteral("Simulated scheduled recording stopped")
-                                      : QStringLiteral("模拟定时记录已停止"));
+        publishUiTestEvent(QStringLiteral("ui_test_scheduled_recording_stopped"),
+                           state_->is_english_ ? QStringLiteral("Simulated scheduled recording stopped")
+                                               : QStringLiteral("模拟定时记录已停止"));
         return true;
     }
     if (isRemoteSkyMode())
@@ -1657,8 +1557,9 @@ void MainWindow::onPauseRecordingClicked()
         {
             pauseUiTestRecording();
             updateRecordingStatusLabel();
-            logUiTest(state_->is_english_ ? QStringLiteral("Simulated recording paused")
-                                          : QStringLiteral("模拟记录已暂停"));
+            publishUiTestEvent(QStringLiteral("ui_test_recording_paused"),
+                               state_->is_english_ ? QStringLiteral("Simulated recording paused")
+                                                   : QStringLiteral("模拟记录已暂停"));
         }
         return;
     }
@@ -1676,8 +1577,9 @@ void MainWindow::onStopRecordingClicked()
     {
         resetUiTestRecording();
         updateRecordingStatusLabel();
-        logUiTest(state_->is_english_ ? QStringLiteral("Simulated recording stopped")
-                                      : QStringLiteral("模拟记录已停止"));
+        publishUiTestEvent(QStringLiteral("ui_test_recording_stopped"),
+                           state_->is_english_ ? QStringLiteral("Simulated recording stopped")
+                                               : QStringLiteral("模拟记录已停止"));
         return;
     }
     if (isRemoteSkyMode())

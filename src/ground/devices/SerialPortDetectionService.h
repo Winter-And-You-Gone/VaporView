@@ -1,7 +1,10 @@
 #pragma once
 
+#include "LogRecord.h"
+
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
 #include <QVector>
 
 #include <functional>
@@ -46,7 +49,15 @@ class SerialPortDetectionService final
 {
 public:
     using CancelCallback = std::function<bool()>;
-    using LogCallback = std::function<void(const QString&)>;
+    struct LogEntry
+    {
+        VaporView::LogLevel level = VaporView::LogLevel::Info;
+        QString event;
+        QString message;
+        QVariantMap fields;
+    };
+
+    using LogCallback = std::function<void(const LogEntry&)>;
 
     static QStringList availablePorts();
     static SerialPortDetectionOutcome detect(const SerialPortDetectionRequest& request,

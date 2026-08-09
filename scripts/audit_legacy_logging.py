@@ -22,33 +22,27 @@ SKIP_DIRS = {".git", "build", "third_party", "records", "resources", "packaging"
 
 # Keep these sets empty unless a real public API/lifecycle dependency has been
 # reviewed and documented. Keys are (relative path, class/function symbol).
-ALLOWED_LOG_MESSAGE_SIGNAL_DECLARATIONS: set[tuple[str, str]] = set()
-ALLOWED_LOG_MESSAGE_EMITS: set[tuple[str, str]] = set()
+ALLOWED_LOG_LIKE_QSTRING_SIGNAL_DECLARATIONS: set[tuple[str, str, str]] = set()
+ALLOWED_LOG_LIKE_QSTRING_SIGNAL_EMITS: set[tuple[str, str, str]] = set()
 ALLOWED_MAINWINDOW_LEGACY_LOG_CALLS: set[tuple[str, str]] = set()
-# These are the existing, explicitly documented UI/raw-text adapters. The
-# event identifier makes adding a new legacy event inside an old function fail.
-ALLOWED_LEGACY_UNCLASSIFIED: set[tuple[str, str, str]] = {
-    ("src/shared/logging/LogService.cpp", "reportUserIssue", "user_issue_reported"),
-    ("src/sky/tui/SkyTuiApp.cpp", "SkyTuiApp::appendLog", "sky_tui_ui_log"),
-    ("src/ground/main/GroundMainWindowRecording.cpp", "MainWindow::log", "ground_ui_progress_updated"),
-    ("src/ground/main/GroundMainWindowRecording.cpp", "MainWindow::log", "ground_ui_legacy_log"),
-    ("src/ground/main/GroundMainWindowRecording.cpp", "MainWindow::logConnectionInfo", "ground_device_connection_status"),
-    ("src/ground/rtk/RtkConfigDialog.cpp", "RtkConfigDialog::appendLog", "rtk_service_log"),
-}
+# First-party production code must not mark runtime events as legacy.
+ALLOWED_LEGACY_UNCLASSIFIED: set[tuple[str, str, str]] = set()
 
 LEGACY_KINDS = (
-    "logMessage_qstring_signal",
-    "emit_logMessage_qstring",
+    "log_like_qstring_signal",
+    "emit_log_like_qstring",
     "mainwindow_log_calls",
     "message_keyword_level",
     "message_keyword_ui_visibility",
     "legacy_unclassified",
 )
 
-EMIT_LOG_MESSAGE_RE = re.compile(r"\bemit\s+logMessage\s*\(")
-STRING_LOG_MESSAGE_SIGNAL_RE = re.compile(
-    r"\bvoid\s+logMessage\s*\(\s*"
-    r"(?:const\s+)?QString\s*(?:&\s*)?(?:[A-Za-z_]\w*)?\s*\)"
+EMIT_LOG_LIKE_QSTRING_RE = re.compile(
+    r"\bemit\s+(?P<name>[A-Za-z_]\w*)\s*\("
+)
+STRING_LOG_LIKE_SIGNAL_RE = re.compile(
+    r"\bvoid\s+(?P<name>[A-Za-z_]\w*)\s*\([^;]*"
+    r"(?:const\s+)?QString\s*(?:&\s*)?(?:[A-Za-z_]\w*)?"
 )
 MAINWINDOW_LOG_CALL_RE = re.compile(r"(?<![\w:])(?:this\s*->\s*)?log\s*\(")
 MESSAGE_KEYWORD_RE = re.compile(
@@ -82,6 +76,10 @@ FUNCTION_DEFINITION_PREFIX_RE = re.compile(
     r"(?:(?:[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*|[<>{}*&:,~]+)\s+)+$"
 )
 CLASS_RE = re.compile(r"\bclass\s+(?:final\s+)?(?P<name>[A-Za-z_]\w*)")
+SIGNALS_SECTION_RE = re.compile(r"^\s*signals\s*:\s*$")
+ACCESS_SECTION_RE = re.compile(
+    r"^\s*(?:public|private|protected)\s*(?:slots\s*)?:\s*$|^\s*(?:private|public|protected)\s+signals\s*:\s*$"
+)
 
 
 @dataclass(frozen=True)
@@ -184,28 +182,50 @@ def _nearest_event(lines: list[str], index: int) -> str:
     return min(candidates, default=(0, "<missing_event>"))[1]
 
 
+def _is_log_like_qstring_name(name: str) -> bool:
+    lower = name.lower()
+    return (
+        ("log" in lower and "message" in lower) or
+        "diagnostic" in lower or
+        "errormessage" in lower or
+        "statusmessage" in lower or
+        "messagerequested" in lower
+    )
+
+
 def audit_text(relpath: str, text: str) -> list[Location]:
     scan = strip_cpp_comments_keep_lines(text)
     lines = scan.splitlines()
     locations: list[Location] = []
     current_function = "<global>"
     current_class = "<global>"
+    in_signals_section = False
 
     for index, line in enumerate(lines):
         stripped = line.strip()
         class_match = CLASS_RE.search(line)
         if class_match:
             current_class = class_match.group("name")
+            in_signals_section = False
+
+        if SIGNALS_SECTION_RE.match(line):
+            in_signals_section = True
+        elif ACCESS_SECTION_RE.match(line):
+            in_signals_section = False
 
         function_match = _function_match(line)
         if function_match and _is_function_definition(line, function_match):
             current_function = function_match.group("name")
 
         symbol = current_function
-        if EMIT_LOG_MESSAGE_RE.search(line):
-            locations.append(Location("emit_logMessage_qstring", relpath, symbol, index + 1, stripped))
-        if STRING_LOG_MESSAGE_SIGNAL_RE.search(line):
-            locations.append(Location("logMessage_qstring_signal", relpath, current_class, index + 1, stripped))
+        emit_match = EMIT_LOG_LIKE_QSTRING_RE.search(line)
+        if emit_match and _is_log_like_qstring_name(emit_match.group("name")):
+            locations.append(Location("emit_log_like_qstring", relpath, symbol, index + 1, stripped,
+                                      emit_match.group("name")))
+        signal_match = STRING_LOG_LIKE_SIGNAL_RE.search(line)
+        if in_signals_section and signal_match and _is_log_like_qstring_name(signal_match.group("name")):
+            locations.append(Location("log_like_qstring_signal", relpath, current_class, index + 1, stripped,
+                                      signal_match.group("name")))
         is_log_declaration = (
             re.search(r"\bvoid\s+log\s*\(", line) is not None
             or re.search(r"\bMainWindow::log\s*\(", line) is not None
@@ -234,8 +254,8 @@ def collect_locations(root: Path) -> list[Location]:
 
 def allowlists() -> Mapping[str, set[tuple[str, ...]]]:
     return {
-        "logMessage_qstring_signal": ALLOWED_LOG_MESSAGE_SIGNAL_DECLARATIONS,
-        "emit_logMessage_qstring": ALLOWED_LOG_MESSAGE_EMITS,
+        "log_like_qstring_signal": ALLOWED_LOG_LIKE_QSTRING_SIGNAL_DECLARATIONS,
+        "emit_log_like_qstring": ALLOWED_LOG_LIKE_QSTRING_SIGNAL_EMITS,
         "mainwindow_log_calls": ALLOWED_MAINWINDOW_LEGACY_LOG_CALLS,
         "message_keyword_level": set(),
         "message_keyword_ui_visibility": set(),
@@ -249,14 +269,19 @@ def check_allowlists(
 ) -> list[str]:
     failures: list[str] = []
     for kind in LEGACY_KINDS:
+        use_semantic_key = kind in {
+            "log_like_qstring_signal",
+            "emit_log_like_qstring",
+            "legacy_unclassified",
+        }
         actual = {
-            location.semantic_key if kind == "legacy_unclassified" else location.key
+            location.semantic_key if use_semantic_key else location.key
             for location in locations
             if location.kind == kind
         }
         expected = set(allowed.get(kind, set()))
         for location in locations:
-            location_key = location.semantic_key if kind == "legacy_unclassified" else location.key
+            location_key = location.semantic_key if use_semantic_key else location.key
             if location.kind == kind and location_key not in expected:
                 failures.append(f"Unexpected legacy {kind}: {location.render()}")
         for expected_key in sorted(expected - actual):
@@ -281,9 +306,12 @@ def run_self_test() -> None:
 class Foo : public QObject {
 signals:
     void logMessage(const QString& message);
+    void logMessageRequested(const QString& message);
+    void diagnosticMessage(const QString& message);
 };
 void Foo::first() { emit logMessage(QStringLiteral(\"one\")); }
-void Foo::second() { emit logMessage(QStringLiteral(\"two\")); }
+void Foo::second() { emit logMessageRequested(QStringLiteral(\"two\")); }
+void Foo::third() { emit diagnosticMessage(QStringLiteral(\"three\")); }
 """
     locations = audit_text("src/fixture/Foo.cpp", fixture)
     locations.extend(audit_text(
@@ -291,20 +319,49 @@ void Foo::second() { emit logMessage(QStringLiteral(\"two\")); }
         "void Foo::ui() { fields.insert(QStringLiteral(\"event\"), QStringLiteral(\"fixture_ui\")); "
         "fields.insert(QStringLiteral(\"legacy_unclassified\"), true); }",
     ))
-    emit_keys = {location.key for location in locations if location.kind == "emit_logMessage_qstring"}
-    signal_keys = {location.key for location in locations if location.kind == "logMessage_qstring_signal"}
+    emit_keys = {location.semantic_key for location in locations if location.kind == "emit_log_like_qstring"}
+    signal_keys = {location.semantic_key for location in locations if location.kind == "log_like_qstring_signal"}
     exact = {
-        "emit_logMessage_qstring": {("src/fixture/Foo.cpp", "Foo::first"), ("src/fixture/Foo.cpp", "Foo::second")},
-        "logMessage_qstring_signal": {("src/fixture/Foo.cpp", "Foo")},
+        "emit_log_like_qstring": {
+            ("src/fixture/Foo.cpp", "Foo::first", "logMessage"),
+            ("src/fixture/Foo.cpp", "Foo::second", "logMessageRequested"),
+            ("src/fixture/Foo.cpp", "Foo::third", "diagnosticMessage"),
+        },
+        "log_like_qstring_signal": {
+            ("src/fixture/Foo.cpp", "Foo", "logMessage"),
+            ("src/fixture/Foo.cpp", "Foo", "logMessageRequested"),
+            ("src/fixture/Foo.cpp", "Foo", "diagnosticMessage"),
+        },
         "mainwindow_log_calls": set(),
         "message_keyword_level": set(),
         "message_keyword_ui_visibility": set(),
         "legacy_unclassified": {("src/fixture/Foo.cpp", "Foo::ui", "fixture_ui")},
     }
-    if emit_keys != exact["emit_logMessage_qstring"] or signal_keys != exact["logMessage_qstring_signal"]:
+    if emit_keys != exact["emit_log_like_qstring"] or signal_keys != exact["log_like_qstring_signal"]:
         raise AssertionError(f"location extraction failed: emits={emit_keys}, signals={signal_keys}")
     _assert_no_failures("allowlisted locations", locations, exact)
 
+    empty: Mapping[str, set[tuple[str, ...]]] = {kind: set() for kind in LEGACY_KINDS}
+    _assert_no_failures(
+        "ordinary UI QString signal",
+        audit_text("src/fixture/Ui.cpp", "class Ui : public QObject { signals: void titleChanged(const QString& title); };"),
+        empty,
+    )
+    _assert_fail(
+        "logMessageRequested signal",
+        audit_text("src/fixture/Bar.h", "class Bar : public QObject { signals: void logMessageRequested(const QString& message); };"),
+        exact,
+    )
+    _assert_fail(
+        "diagnosticMessage signal",
+        audit_text("src/fixture/Bar.h", "class Bar : public QObject { signals: void diagnosticMessage(const QString& message); };"),
+        exact,
+    )
+    _assert_fail(
+        "renamed log message signal",
+        audit_text("src/fixture/Bar.h", "class Bar : public QObject { signals: void connectionLogMessageRequested(const QString& message); };"),
+        exact,
+    )
     _assert_fail(
         "new file emit",
         audit_text("src/fixture/Bar.cpp", "void Bar::newEvent() { emit logMessage(message); }"),
@@ -312,13 +369,13 @@ void Foo::second() { emit logMessage(QStringLiteral(\"two\")); }
     )
     _assert_fail(
         "same file different function",
-        audit_text("src/fixture/Foo.cpp", "void Foo::third() { emit logMessage(message); }"),
+        audit_text("src/fixture/Foo.cpp", "void Foo::fourth() { emit logMessage(message); }"),
         exact,
     )
     _assert_fail(
         "allowlist replacement with same count",
         audit_text("src/fixture/Foo.cpp", "void Foo::replacement() { emit logMessage(message); }"),
-        {**exact, "emit_logMessage_qstring": {("src/fixture/Foo.cpp", "Foo::first")}},
+        {**exact, "emit_log_like_qstring": {("src/fixture/Foo.cpp", "Foo::first", "logMessage")}},
     )
     _assert_fail(
         "MainWindow legacy call",

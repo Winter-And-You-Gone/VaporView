@@ -6,6 +6,7 @@
 #include <QHostAddress>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QVariantMap>
 
 namespace VaporView
 {
@@ -38,6 +39,10 @@ private slots:
     void onSocketError(QAbstractSocket::SocketError error);
 
 private:
+    void emitTcpLog(LogLevel level,
+                    const QString& event,
+                    const QString& message,
+                    QVariantMap fields = {});
     void attachSocket(QTcpSocket *socket);
     void closeSocket();
     static QHostAddress addressFromString(const QString& host);

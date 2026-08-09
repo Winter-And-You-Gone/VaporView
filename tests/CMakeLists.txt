@@ -156,7 +156,7 @@ target_include_directories(tcp_wave_panel_test PRIVATE
 target_compile_definitions(tcp_wave_panel_test PRIVATE
     VAPORVIEW_MAIN_WINDOW_TESTING=1
 )
-target_link_libraries(tcp_wave_panel_test PRIVATE vaporview_ground_wave)
+target_link_libraries(tcp_wave_panel_test PRIVATE vaporview_ground_wave Qt6::Network)
 add_dependencies(tcp_wave_panel_test VaporViewRuntimeResources)
 add_test(NAME tcp_wave_panel_test COMMAND tcp_wave_panel_test)
 

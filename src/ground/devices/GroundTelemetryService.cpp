@@ -541,12 +541,27 @@ void GroundTelemetryService::attachLinkSignals()
                             {{QStringLiteral("reason_code"), QStringLiteral("GROUND_TELEMETRY_LINK_ERROR")},
                              {QStringLiteral("system_error"), systemError}});
     });
-    connect(link_.get(), &TelemetryLink::statusMessage, this, [this](const QString& statusText) {
-        publishTelemetryLog(LogLevel::Info,
-                            QStringLiteral("telemetry.link"),
-                            QStringLiteral("ground_telemetry_link_status"),
-                            QStringLiteral("地面端遥测链路状态已更新。"),
-                            {{QStringLiteral("external_raw_text"), statusText}});
+    connect(link_.get(), &TelemetryLink::logRecordGenerated, this, [](LogRecord record) {
+        if (record.source.isEmpty())
+        {
+            record.source = QStringLiteral("TelemetryLink");
+        }
+        if (record.category.isEmpty())
+        {
+            record.category = QStringLiteral("telemetry.link");
+        }
+        if (!record.fields.contains(QStringLiteral("ui_visibility")))
+        {
+            record.fields.insert(QStringLiteral("ui_visibility"),
+                                 record.level >= LogLevel::Warning ? QStringLiteral("attention")
+                                                                   : QStringLiteral("details"));
+        }
+        if (!LogService::withCurrentInstance([&](LogService& logService) {
+                logService.publish(record);
+            }))
+        {
+            LogService::writeLogFallback(record);
+        }
     });
 }
 

@@ -4816,10 +4816,6 @@ void MainWindow::setupDataPanels()
     state_->tcp_wave_panel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     connect(state_->tcp_wave_panel_, &TcpWavePanel::rawWaveFrameReady,
             this, &MainWindow::onTcpRawWaveFrameReady);
-    connect(state_->tcp_wave_panel_, &TcpWavePanel::logMessageRequested,
-            this, &MainWindow::log);
-    connect(state_->tcp_wave_panel_, &TcpWavePanel::connectionLogMessageRequested,
-            this, &MainWindow::logConnectionInfo);
     connect(state_->tcp_wave_panel_, &TcpWavePanel::connectionStateChanged, this, [this](bool connected) {
         if (state_->local_connection_coordinator_)
         {

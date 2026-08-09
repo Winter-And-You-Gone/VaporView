@@ -1265,9 +1265,16 @@ void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested)
             state_->tcp_wave_panel_->setRemoteWaveTcpState(
                 connectRequested ? VaporView::DeviceState::Connected : VaporView::DeviceState::Disconnected);
         }
-        logUiTest(connectRequested
-            ? (state_->is_english_ ? QStringLiteral("Simulated Sky waveform connection enabled") : QStringLiteral("模拟天空端波形连接已开启"))
-            : (state_->is_english_ ? QStringLiteral("Simulated Sky waveform connection disabled") : QStringLiteral("模拟天空端波形连接已关闭")));
+        publishUiTestEvent(connectRequested
+                               ? QStringLiteral("ui_test_remote_wave_connection_enabled")
+                               : QStringLiteral("ui_test_remote_wave_connection_disabled"),
+                           connectRequested
+                               ? (state_->is_english_ ? QStringLiteral("Simulated Sky waveform connection enabled")
+                                                      : QStringLiteral("模拟天空端波形连接已开启"))
+                               : (state_->is_english_ ? QStringLiteral("Simulated Sky waveform connection disabled")
+                                                      : QStringLiteral("模拟天空端波形连接已关闭")),
+                           {{QStringLiteral("device_id"), VaporView::skyDeviceIdName(VaporView::SkyDeviceId::WaveTcp)},
+                            {QStringLiteral("requested_connected"), connectRequested}});
         updateConnectionStatus(false);
         return;
     }
@@ -1762,10 +1769,14 @@ void MainWindow::sendRemoteDeviceCommand(VaporView::CommandId command, VaporView
         const bool connected = command != VaporView::CommandId::DisconnectDevice;
         state_->ui_test_model_->setDeviceState(
             device, connected ? VaporView::DeviceState::Connected : VaporView::DeviceState::Disconnected);
-        logUiTest(QString(state_->is_english_ ? "Simulated device command: %1 / %2"
-                                              : "模拟设备命令：%1 / %2")
-                      .arg(VaporView::commandIdName(command), VaporView::deviceStateName(
-                          state_->ui_test_model_->deviceState(device))));
+        publishUiTestEvent(QStringLiteral("ui_test_device_command_applied"),
+                           QString(state_->is_english_ ? "Simulated device command: %1 / %2"
+                                                       : "模拟设备命令：%1 / %2")
+                               .arg(VaporView::commandIdName(command),
+                                    VaporView::deviceStateName(state_->ui_test_model_->deviceState(device))),
+                           {{QStringLiteral("device_id"), VaporView::skyDeviceIdName(device)},
+                            {QStringLiteral("command"), VaporView::commandIdName(command)},
+                            {QStringLiteral("connected"), connected}});
         updateConnectionStatus(false);
         return;
     }
@@ -1793,9 +1804,12 @@ void MainWindow::sendRemotePeakSearchRange(quint32 startIndex, quint32 endIndex)
         {
             state_->tcp_wave_panel_->applyRemotePeakSearchRange(startIndex, endIndex);
         }
-        logUiTest(QString(state_->is_english_ ? "Peak search range applied in memory: [%1, %2)"
-                                              : "峰值搜索区间已在内存中应用：[%1, %2)")
-                      .arg(startIndex).arg(endIndex));
+        publishUiTestEvent(QStringLiteral("ui_test_peak_search_range_applied"),
+                           QString(state_->is_english_ ? "Peak search range applied in memory: [%1, %2)"
+                                                       : "峰值搜索区间已在内存中应用：[%1, %2)")
+                               .arg(startIndex).arg(endIndex),
+                           {{QStringLiteral("start_index"), startIndex},
+                            {QStringLiteral("end_index"), endIndex}});
         return;
     }
     if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
@@ -1843,9 +1857,13 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
             state_->temperature_controller_panel_->setCommandStatus(
                 temperatureCommandStatusText(command, channel, false));
         }
-        logUiTest(QString(state_->is_english_ ? "RD105 command applied in memory: %1"
-                                              : "RD105 命令已在内存中应用：%1")
-                      .arg(VaporView::commandIdName(command)));
+        publishUiTestEvent(QStringLiteral("ui_test_temperature_command_applied"),
+                           QString(state_->is_english_ ? "RD105 command applied in memory: %1"
+                                                       : "RD105 命令已在内存中应用：%1")
+                               .arg(VaporView::commandIdName(command)),
+                           {{QStringLiteral("device"), QStringLiteral("RD105")},
+                            {QStringLiteral("command"), VaporView::commandIdName(command)},
+                            {QStringLiteral("channel"), channel}});
         restoreTemperatureCommandUi(command, channel);
         return;
     }
@@ -2373,9 +2391,13 @@ bool MainWindow::applyImuDeviceProfile(const QString& requestedFormat, int reque
 
     if (isUiTestMode())
     {
-        logUiTest(QString(state_->is_english_ ? "IMU profile applied in memory: %1, %2 baud, %3 Hz"
-                                              : "IMU 配置已在内存中应用：%1，%2 波特，%3 Hz")
-                      .arg(targetFormat).arg(targetBaud).arg(targetRate));
+        publishUiTestEvent(QStringLiteral("ui_test_imu_profile_applied"),
+                           QString(state_->is_english_ ? "IMU profile applied in memory: %1, %2 baud, %3 Hz"
+                                                       : "IMU 配置已在内存中应用：%1，%2 波特，%3 Hz")
+                               .arg(targetFormat).arg(targetBaud).arg(targetRate),
+                           {{QStringLiteral("output_format"), targetFormat},
+                            {QStringLiteral("baud"), targetBaud},
+                            {QStringLiteral("rate_hz"), targetRate}});
         return true;
     }
 

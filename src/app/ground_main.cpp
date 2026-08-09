@@ -198,7 +198,7 @@ int runApplication(int argc, char *argv[])
     VaporView::LogService logService(QStringLiteral("VaporView"));
     logService.installQtMessageHandler();
     VaporView::writeLifecycleBreadcrumb("logging_initialized");
-    QObject::connect(&logService, &VaporView::LogService::diagnosticFailure, &app,
+    QObject::connect(&logService, &VaporView::LogService::writerFailureReported, &app,
                      [](const QString& message) {
                          static bool shown = false;
                          if (shown)
