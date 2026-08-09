@@ -182,15 +182,15 @@ void requireCompactTelemetryPillTextGap(QFrame *pill, const char *message)
         nameLabel->fontMetrics().horizontalAdvance(nameLabel->text());
     const int valueTextLeft = valueLabel->mapTo(pill, QPoint(0, 0)).x();
     const int gap = valueTextLeft - nameTextRight;
-    if (gap < -1 || gap > 6)
+    if (gap < 3 || gap > 10)
     {
         std::cerr << "UI-test telemetry pill text gap: name='"
                   << nameLabel->text().toStdString()
                   << "' value='" << valueLabel->text().toStdString()
                   << "' gap=" << gap << '\n';
     }
-    require(gap >= -1 && gap <= 6,
-            "UI-test home telemetry field/value text gap stays compact");
+    require(gap >= 3 && gap <= 10,
+            "UI-test home telemetry field/value text gap keeps a small reserved space");
 }
 
 void requireUiTestHomeTelemetryCapsulesCovered(QWidget *homeConfigCard, const char *message)
@@ -287,6 +287,15 @@ void requireUiTestHomeTelemetryCapsulesCovered(QWidget *homeConfigCard, const ch
         }
     }
 
+    const QList<QLabel *> rateValueLabels =
+        sections.at(0)->findChildren<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+    require(rateValueLabels.size() >= 6, "UI-test data-stream summary keeps six rate capsules");
+    for (QLabel *valueLabel : rateValueLabels)
+    {
+        require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Hz")),
+                "UI-test data-stream rate capsule reserves the requested 999.9 Hz width");
+    }
+
     const QList<QFrame *> linkPills =
         sections.at(1)->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(linkPills.size() == 3, "UI-test link-rate summary keeps three capsules");
@@ -295,8 +304,8 @@ void requireUiTestHomeTelemetryCapsulesCovered(QWidget *homeConfigCard, const ch
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(valueLabel != nullptr && valueLabel->text().contains(QStringLiteral("kbps")),
                 "UI-test link-rate capsule shows representative kbps data");
-        require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999 kbps")),
-                "UI-test link-rate capsule reserves the requested 999 kbps width");
+        require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 kbps")),
+                "UI-test link-rate capsule reserves the requested 999.9 kbps width");
     }
 }
 

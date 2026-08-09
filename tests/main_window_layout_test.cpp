@@ -2499,15 +2499,15 @@ void requireCompactTelemetryPillTextGap(QFrame *pill, const char *message)
         nameLabel->fontMetrics().horizontalAdvance(nameLabel->text());
     const int valueTextLeft = valueLabel->mapTo(pill, QPoint(0, 0)).x();
     const int gap = valueTextLeft - nameTextRight;
-    if (gap < -1 || gap > 6)
+    if (gap < 3 || gap > 10)
     {
         std::cerr << "Home telemetry pill text gap: name='"
                   << nameLabel->text().toStdString()
                   << "' value='" << valueLabel->text().toStdString()
                   << "' gap=" << gap << '\n';
     }
-    require(gap >= -1 && gap <= 6,
-            "home telemetry field/value text gap stays compact");
+    require(gap >= 3 && gap <= 10,
+            "home telemetry field/value text gap keeps a small reserved space");
 }
 
 void requireTelemetrySummaryPillsOrdered(QWidget *summaryContainer, const char *message)
@@ -5085,6 +5085,10 @@ int main(int argc, char **argv)
     {
         QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+        require(valueLabel != nullptr,
+                "home data-stream telemetry pill has a value label");
+        require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Hz")),
+                "home data-stream rate value label reserves room for 999.9 Hz");
         if (nameLabel && nameLabel->text().contains(QStringLiteral("波形总包")))
         {
             waveformTotalRateVisible = true;
@@ -5136,10 +5140,10 @@ int main(int argc, char **argv)
                 "home link-rate pill has a value label");
         require(valueLabel->fontMetrics().horizontalAdvance(valueLabel->text()) <= valueLabel->width() + 1,
                 "home link-rate value text fits its compact label");
-        const int compactKbpsWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999 kbps"));
+        const int compactKbpsWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 kbps"));
         const int oldMbpsReserveWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Mbps")) + 8;
         require(valueLabel->width() >= compactKbpsWidth,
-                "home link-rate value label reserves room for 999 kbps");
+                "home link-rate value label reserves room for 999.9 kbps");
         require(valueLabel->width() < oldMbpsReserveWidth,
                 "home link-rate value label no longer reserves the wider 999.9 Mbps width");
         requireCompactTelemetryPillTextGap(
