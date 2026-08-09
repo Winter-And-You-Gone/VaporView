@@ -764,7 +764,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                 titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
                 titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
                 titleLabel->ensurePolished();
-                titleLabel->setFixedWidth(titleLabel->fontMetrics().horizontalAdvance(titleLabel->text()) + scalePixels(3));
+                titleLabel->setFixedWidth(titleLabel->fontMetrics().horizontalAdvance(titleLabel->text()) + scalePixels(8));
                 lineLayout->addWidget(titleLabel, 0, Qt::AlignVCenter);
             }
 

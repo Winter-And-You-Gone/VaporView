@@ -2545,6 +2545,10 @@ void requireTelemetrySummaryPillsOrdered(QWidget *summaryContainer, const char *
                               << " first pill width=" << firstPillRect.width() << '\n';
                 }
                 require(firstPillRect.left() > titleRect.right(), message);
+                const int titleTextRight =
+                    titleRect.left() + titleLabel->fontMetrics().horizontalAdvance(titleLabel->text());
+                require(firstPillRect.left() - titleTextRight >= 6,
+                        "home telemetry title text keeps a visible gap before the first pill");
             }
             QRect previousRect;
             bool hasPrevious = false;
