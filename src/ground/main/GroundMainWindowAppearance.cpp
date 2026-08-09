@@ -996,7 +996,10 @@ void MainWindow::updateResponsiveHomeLayout()
                 const int maxLeftWidth = std::max(leftMinimum, availableWidth - rightMinimum);
                 const int leftWidth = std::min(leftMinimum, maxLeftWidth);
                 const int rightWidth = std::max(rightMinimum, availableWidth - leftWidth);
+                state_->home_overview_splitter_->setProperty(kHomeOverviewDeviceProgrammaticResizeProperty, true);
                 state_->home_overview_splitter_->setSizes({leftWidth, rightWidth});
+                state_->home_overview_splitter_->setProperty(kHomeOverviewDeviceProgrammaticResizeProperty, false);
+                state_->home_overview_splitter_->setProperty(kHomeOverviewDeviceAutoManagedWidthProperty, true);
                 state_->home_overview_splitter_->setProperty(kHomeOverviewSplitterInitializedProperty, true);
             }
         }

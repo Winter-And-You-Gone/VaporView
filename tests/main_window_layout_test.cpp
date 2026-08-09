@@ -2805,7 +2805,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
 {
     MainWindow languageOverviewWindow;
     languageOverviewWindow.setWindowTitle(QStringLiteral("VaporView"));
-    languageOverviewWindow.resize(1280, 800);
+    languageOverviewWindow.resize(1600, 800);
     languageOverviewWindow.show();
     require(waitForWindowExposed(&languageOverviewWindow),
             "dedicated language overview window becomes exposed");
@@ -2862,6 +2862,31 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     require(englishHomeOverviewSizes.size() == 2,
             "language overview splitter exposes English device and temperature widths");
     const int englishDeviceOverviewWidth = englishHomeOverviewSizes.at(0);
+    const int englishAvailableWidth = englishHomeOverviewSizes.at(0) + englishHomeOverviewSizes.at(1);
+    const int inflatedEnglishDeviceWidth =
+        std::min(englishDeviceOverviewWidth + 72,
+                 englishAvailableWidth - languageHomeOverviewSplitter->widget(1)->minimumWidth());
+    require(inflatedEnglishDeviceWidth > englishDeviceOverviewWidth,
+            "language overview has room to simulate an auto-expanded English device card");
+    languageHomeOverviewSplitter->setProperty(
+        VaporView::Ground::MainSupport::kHomeOverviewDeviceProgrammaticResizeProperty,
+        true);
+    languageHomeOverviewSplitter->setSizes({
+        inflatedEnglishDeviceWidth,
+        std::max(languageHomeOverviewSplitter->widget(1)->minimumWidth(),
+                 englishAvailableWidth - inflatedEnglishDeviceWidth)
+    });
+    languageHomeOverviewSplitter->setProperty(
+        VaporView::Ground::MainSupport::kHomeOverviewDeviceProgrammaticResizeProperty,
+        false);
+    languageHomeOverviewSplitter->setProperty(
+        VaporView::Ground::MainSupport::kHomeOverviewDeviceAutoManagedWidthProperty,
+        true);
+    activateLayouts(&languageOverviewWindow);
+    const QList<int> inflatedEnglishHomeOverviewSizes = languageHomeOverviewSplitter->sizes();
+    require(inflatedEnglishHomeOverviewSizes.size() == 2 &&
+                inflatedEnglishHomeOverviewSizes.at(0) > englishDeviceOverviewWidth,
+            "language overview reproduces the wider auto-managed English device card");
     requireTelemetrySummaryPillsOrdered(
         languageTelemetrySummaryContainer,
         "language overview telemetry capsules stay ordered in English");
@@ -5065,10 +5090,12 @@ int main(int argc, char **argv)
                 "home link-rate pill has a value label");
         require(valueLabel->fontMetrics().horizontalAdvance(valueLabel->text()) <= valueLabel->width() + 1,
                 "home link-rate value text fits its compact label");
-        const int mbpsWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Mbps"));
         const int compactKbpsWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9kbps"));
-        require(valueLabel->width() >= std::max(mbpsWidth, compactKbpsWidth),
-                "home link-rate value label reserves room for 999.9 Mbps and 999.9kbps");
+        const int oldMbpsReserveWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Mbps")) + 8;
+        require(valueLabel->width() >= compactKbpsWidth,
+                "home link-rate value label reserves room for 999.9kbps");
+        require(valueLabel->width() < oldMbpsReserveWidth,
+                "home link-rate value label no longer reserves the wider 999.9 Mbps width");
     }
     QFrame *homeDataSection = homeTelemetrySections.at(2);
     QLabel *homeDataTitle =

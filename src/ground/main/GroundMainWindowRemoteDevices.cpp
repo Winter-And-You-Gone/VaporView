@@ -184,6 +184,18 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
             kHomeOverviewDeviceAutoMinimumWidthProperty,
             contentMinimumWidth);
     };
+    auto setAutoManagedSizes = [this](int leftWidth, int rightWidth) {
+        state_->home_overview_splitter_->setProperty(
+            kHomeOverviewDeviceProgrammaticResizeProperty,
+            true);
+        state_->home_overview_splitter_->setSizes({leftWidth, rightWidth});
+        state_->home_overview_splitter_->setProperty(
+            kHomeOverviewDeviceProgrammaticResizeProperty,
+            false);
+        state_->home_overview_splitter_->setProperty(
+            kHomeOverviewDeviceAutoManagedWidthProperty,
+            true);
+    };
 
     const QList<int> sizes = state_->home_overview_splitter_->sizes();
     if (sizes.size() < 2)
@@ -207,21 +219,29 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
     const int previousAutoMinimumWidth = state_->home_overview_splitter_
                                              ->property(kHomeOverviewDeviceAutoMinimumWidthProperty)
                                              .toInt(&hadPreviousAutoMinimum);
+    const bool autoManagedWidth = state_->home_overview_splitter_
+                                      ->property(kHomeOverviewDeviceAutoManagedWidthProperty)
+                                      .toBool();
     const bool belowCurrentMinimum = sizes.at(0) < contentMinimumWidth;
-    const bool followsPreviousAutoMinimum =
+    const bool autoMinimumShrank =
+        autoManagedWidth &&
         hadPreviousAutoMinimum &&
+        previousAutoMinimumWidth > contentMinimumWidth;
+    const bool followsPreviousAutoMinimum =
+        autoMinimumShrank &&
         previousAutoMinimumWidth > contentMinimumWidth &&
         std::abs(sizes.at(0) - previousAutoMinimumWidth) <= 1;
-    if (!belowCurrentMinimum && !followsPreviousAutoMinimum)
+    const bool shouldFollowAutoMinimum =
+        autoMinimumShrank &&
+        sizes.at(0) >= contentMinimumWidth;
+    if (!belowCurrentMinimum && !followsPreviousAutoMinimum && !shouldFollowAutoMinimum)
     {
         rememberAutoMinimumWidth();
         return;
     }
 
-    state_->home_overview_splitter_->setSizes({
-        contentMinimumWidth,
-        std::max(rightMinimumWidth, availableWidth - contentMinimumWidth)
-    });
+    setAutoManagedSizes(contentMinimumWidth,
+                        std::max(rightMinimumWidth, availableWidth - contentMinimumWidth));
     rememberAutoMinimumWidth();
 }
 
@@ -454,7 +474,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     QList<RemoteTelemetrySummarySections::Item> linkRows;
     QList<RemoteTelemetrySummarySections::Item> deviceRows;
     const QString frequencyWidthText = QStringLiteral("999.9 Hz");
-    const QString bitRateWidthText = QStringLiteral("999.9 Mbps");
+    const QString bitRateWidthText = QStringLiteral("999.9kbps");
     auto appendPacketRate = [&](VaporView::MsgType type, const QString& label) {
         const double rate = remotePacketRate(type);
         rateRows << makeItem(label, formatFrequencyText(rate), connected && rate > 0.0, frequencyWidthText);
