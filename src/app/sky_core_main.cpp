@@ -198,8 +198,8 @@ int main(int argc, char *argv[])
     startStdinShutdownWatcher();
 
     VaporView::SkyRuntime runtime(options);
-    QObject::connect(&runtime, &VaporView::SkyRuntime::logMessage, [](const QString& message) {
-        QTextStream(stdout) << message << "\n";
+    QObject::connect(&runtime, &VaporView::SkyRuntime::logRecord, [](const VaporView::LogRecord& record) {
+        QTextStream(stdout) << record.message << "\n";
     });
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&runtime]() {
         QTextStream(stdout) << "正在停止 SkyCore 运行时。\n";
@@ -208,8 +208,9 @@ int main(int argc, char *argv[])
     });
 
     VaporView::SkyLocalIpcServer ipcServer(&runtime);
-    QObject::connect(&ipcServer, &VaporView::SkyLocalIpcServer::logMessage, [](const QString& message) {
-        QTextStream(stdout) << message << "\n";
+    QObject::connect(&ipcServer, &VaporView::SkyLocalIpcServer::logRecordGenerated,
+                     [](const VaporView::LogRecord& record) {
+        QTextStream(stdout) << record.message << "\n";
     });
 
     if (!parser.isSet(noIpcOption))

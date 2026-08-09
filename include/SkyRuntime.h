@@ -76,7 +76,6 @@ public:
     void sendOneWaveformNow();
 
 signals:
-    void logMessage(const QString& message);
     void logRecord(const VaporView::LogRecord& record);
     void runningChanged(bool running);
     void telemetryFrameReady(MsgType type, QByteArray payload);

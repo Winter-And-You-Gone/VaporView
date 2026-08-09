@@ -63,7 +63,6 @@
 | SkyCore | device.lidar.command | lidar_standby_command_failed | Error | TFA1005-L 待机命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
 | SkyCore | device.lidar.command | lidar_distance_output_command_failed | Error | TFA1005-L 距离输出命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
 | SkyCore | device.lidar.command | lidar_low_frequency_continuous_command_failed | Error | TFA1005-L 低频连续测距命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
-| SkyCore | device.legacy | legacy_device_log | Info | 设备 legacy 日志已更新。 | legacy_unclassified |  |  |
 | SkyCore | device.wave_tcp | wave_tcp_peak_search_range_updated | Info | Wave TCP 峰值搜索范围已更新。 | start_index, end_index |  |  |
 | SkyCore | device.wave_tcp | wave_tcp_resync_discarded_bytes | Warning | Wave TCP 重新同步时已丢弃部分字节。 | dropped_bytes |  | WAVE_TCP_FRAME_HEADER_NOT_FOUND |
 | SkyCore | device.wave_tcp | wave_tcp_resync_skipped_bytes | Warning | Wave TCP 重新同步时已跳过部分字节。 | skipped_bytes, header_order |  | WAVE_TCP_FRAME_OFFSET |
@@ -161,7 +160,6 @@
 | Ground | telemetry.connection | remote_sky_handshake_confirmed | Info | 天空端握手成功。 |  | ui_visibility |  |
 | Ground | telemetry.connection | remote_sky_disconnection_started | Info | 正在断开天空端数传。 |  | ui_visibility |  |
 | Ground | telemetry.connection | remote_sky_disconnected | Info | 天空端数传已断开。 |  | ui_visibility |  |
-| Ground | telemetry.link | remote_sky_legacy_status | Info | 远程数传状态已更新。 | ui_message, legacy_unclassified | ui_visibility |  |
 | Ground | telemetry.command | remote_command_ack_received | Debug | 远程命令 ACK 已收到。 | command, command_id, command_seq, ack_result, command_error_code | ui_visibility |  |
 | Ground | telemetry.command | remote_command_failed | Error | 远程命令执行失败。 | command, command_id, command_seq, ack_result, command_error_code, error_code | ui_dedupe_key | REMOTE_COMMAND_FAILED / INVALID_PAYLOAD / INVALID_DEVICE_ID / CONFIG_INVALID / CONFIG_APPLY_FAILED / INTERNAL_ERROR |
 | Ground | telemetry.command | peak_search_range_sent | Info | 峰值搜索区间已下发到天空端。 | range_start_index, range_end_index, command_seq | ui_visibility |  |
@@ -249,7 +247,7 @@
 | RTK | service | rtk_service_log | Info | RTK 服务状态已更新。 | ui_visibility, ui_message, legacy_unclassified, ui_visible |  |  |
 | RTK | service.raw | rtk_service_raw_output | Debug | RTK 服务输出了原始诊断信息。 | ui_visibility, external_raw_text, ui_visible |  |  |
 
-新增或调整日志事件时，保持本表作为开发入口；无法立即结构化的旧路径必须在 `event` 中体现 legacy 隔离，并在字段中说明保留原因。
+新增或调整日志事件时，保持本表作为开发入口。新事件必须使用 `LogRecord` / `LogService` 结构化发布；不得新增 QString 日志 bridge。只有明确的既有 UI 适配入口才可以使用 `legacy_unclassified`，并且必须保留稳定 `event`、`ui_visibility` 和 `ui_message` 字段。当前精确 allowlist 仅登记 `user_issue_reported`、`sky_tui_ui_log`、`ground_ui_progress_updated`、`ground_ui_legacy_log`、`ground_device_connection_status` 和 `rtk_service_log`；新增函数或 event 必须先完成结构化迁移。
 
 ## 桌面日志展示迁移清单
 
@@ -259,7 +257,7 @@
 
 - Any / ui.legacy / `user_issue_reported` / Info、Warning、Error / `attention` / 可合并 / 默认键：用户问题上报需要默认进入关注视图，Info 也可作为重要状态确认。
 - Ground / device.connection / `ground_device_connection_status` / Info / `attention` / 可合并 / 默认键：用户点击设备连接后产生的连接进度、结果和 TCP 波形连接状态需要默认进入关注视图。
-- Ground / ui.legacy / `ground_ui_legacy_log` / Info / `details` / 可合并 / 默认键：旧 `log(QString)` 只保留普通 UI 文本，默认不占用关注视图。
+- Ground / ui.legacy / `ground_ui_legacy_log` / Info / `details` / 可合并 / 默认键：现有 TcpWavePanel UI 适配入口只保留普通 UI 文本，默认不占用关注视图；Ground 内部业务调用已迁移为 0。
 - Ground / ui.progress / `ground_ui_progress_updated` / Debug / `hidden` / 可合并 / 默认键：回车进度和高频状态只写文件，不进入桌面面板。
 - Ground / ui.log / `ui_log_view_cleared` / Info / `hidden` / 可合并 / 默认键：“清空显示”动作可审计，但清空后不能立即生成可见行。
 - Ground / ui.log / `ui_log_pending_queue_dropped` / Info / `hidden` / 可合并 / 默认键：pending 队列过载只写入 JSONL 统计，不进入桌面关注面板。
@@ -271,4 +269,4 @@
 - RTK / service / `rtk_service_log` / Info / `details` / 可合并 / 默认键：RTK 对话框仍本地显示服务状态，桌面主日志默认只在全部视图显示。
 - RTK / service.raw / `rtk_service_raw_output` / Debug / `hidden` / 可合并 / 默认键：原始 RTK 输出只写文件和 RTK 对话框，不进入桌面主日志。
 
-尚未逐项迁移的普通 Info 事件：全仓库仍有历史 helper/legacy 路径；缺少 `ui_visibility` 时由桌面模型按级别兼容回退，普通 Info 进入 `details`，Debug 只在调试视图显示。后续新增日志应直接在生产端显式填写 `ui_visibility`。
+第一方 Ground `MainWindow::log(...)` 业务调用已完成迁移，内部调用数量为 0。仓库内部 `logMessage(QString)` signal/emit bridge 已清零；SkyRuntime、SkyLocalIpcClient/Server、GroundTelemetry 和 SkyDeviceManager 使用结构化 `LogRecord` / `LogEvent`。未显式设置 `ui_visibility` 的结构化旧记录仍由 UI 模型使用兼容回退规则：Warning / Error / Critical -> `attention`，Info -> `details`，Debug -> 调试视图。剩余 `legacy_unclassified` 仅表示明确登记的旧 UI 文本或外部原文，不承担日志等级、category、event 或 UI visibility 的语义推断。

@@ -14,9 +14,6 @@ namespace VaporView::Ground::Devices
 RemoteSkyController::RemoteSkyController(QObject *parent)
     : QObject(parent)
 {
-    connect(&service_, &GroundTelemetryService::logMessage,
-            this, &RemoteSkyController::logMessage,
-            Qt::QueuedConnection);
     connect(&service_, &GroundTelemetryService::linkOpenChanged,
             this, [this](bool open) {
                 const quint64 generation = service_.linkGeneration();

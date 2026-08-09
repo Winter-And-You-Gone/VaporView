@@ -57,9 +57,24 @@ int main(int argc, char **argv)
     bool ackReceived = false;
     bool statusReceived = false;
     bool logReceived = false;
+    bool localStructuredLogReceived = false;
     QObject::connect(&client, &VaporView::SkyLocalIpcClient::connectedChanged, [&](bool value) {
         connected = value;
     });
+    QObject::connect(&client, &VaporView::SkyLocalIpcClient::logRecordGenerated,
+                     [&](const VaporView::LogRecord& record) {
+                         if (record.source == QStringLiteral("SkyTui") &&
+                             record.level == VaporView::LogLevel::Info &&
+                             record.category == QStringLiteral("ipc.connection") &&
+                             record.message == QStringLiteral("SkyCore IPC 已连接。") &&
+                             record.fields.value(QStringLiteral("ui_visibility")).toString() ==
+                                 QStringLiteral("details") &&
+                             record.fields.value(QStringLiteral("event")).toString() ==
+                                 QStringLiteral("sky_ipc_connected"))
+                         {
+                             localStructuredLogReceived = true;
+                         }
+                     });
     QObject::connect(&client, &VaporView::SkyLocalIpcClient::ackReceived, [&](const VaporView::CommandAck& ack) {
         ackReceived = ack.command_id == VaporView::CommandId::RequestStatus &&
                       ack.error_code == VaporView::CommandErrorCode::Ok;
@@ -68,12 +83,18 @@ int main(int argc, char **argv)
         statusReceived = status.session_name == QStringLiteral("ipc-test");
     });
     QObject::connect(&client, &VaporView::SkyLocalIpcClient::logRecordReceived, [&](const VaporView::LogRecord& record) {
-        logReceived = record.source == QStringLiteral("SkyCore") &&
-                      record.message == QStringLiteral("IPC log test");
+        logReceived = record.level == VaporView::LogLevel::Warning &&
+                      record.source == QStringLiteral("SkyCore") &&
+                      record.category == QStringLiteral("ipc") &&
+                      record.message == QStringLiteral("IPC log test") &&
+                      record.fields.value(QStringLiteral("event")).toString() ==
+                          QStringLiteral("sky_ipc_test_log");
     });
 
     client.connectToCore(QStringLiteral("127.0.0.1"), server.serverPort());
-    require(waitUntil([&]() { return connected && server.hasPendingConnections(); }), "client connects");
+    require(waitUntil([&]() {
+        return connected && server.hasPendingConnections() && localStructuredLogReceived;
+    }), "client connects and reports structured local log");
 
     QTcpSocket *socket = server.nextPendingConnection();
     require(socket != nullptr, "accept client");
@@ -126,6 +147,7 @@ int main(int argc, char **argv)
     logRecord.source = QStringLiteral("SkyCore");
     logRecord.category = QStringLiteral("ipc");
     logRecord.message = QStringLiteral("IPC log test");
+    logRecord.fields.insert(QStringLiteral("event"), QStringLiteral("sky_ipc_test_log"));
     socket->write(encoder.encodeFrame(VaporView::MsgType::LogEvent,
                                       VaporView::TelemetryCodec::serializeLogRecord(logRecord),
                                       3,
@@ -162,6 +184,10 @@ int main(int argc, char **argv)
     require(waitUntil([&]() { return connected && server.hasPendingConnections(); }), "client reconnects after disconnect");
     QTcpSocket *reconnectedSocket = server.nextPendingConnection();
     require(reconnectedSocket != nullptr, "accept reconnected client");
+
+    client.setAutoReconnectEnabled(false);
+    client.disconnectFromCore();
+    require(waitUntil([&]() { return !connected; }), "client closes after reconnect");
 
     std::cout << "sky_local_ipc_client_test passed\n";
     return 0;

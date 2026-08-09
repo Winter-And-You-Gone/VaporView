@@ -439,7 +439,7 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
             });
             if (!published)
             {
-                emit logMessage(record.message);
+                LogService::writeLogFallback(record);
             }
         }
         else
@@ -594,11 +594,17 @@ void GroundTelemetryService::publishTelemetryLog(LogLevel level,
     {
         fields.insert(QStringLiteral("error_code"), QStringLiteral("GROUND_TELEMETRY_ERROR"));
     }
+    LogRecord record;
+    record.level = level;
+    record.source = QStringLiteral("Ground");
+    record.category = category;
+    record.message = message;
+    record.fields = fields;
     if (!LogService::withCurrentInstance([&](LogService& logService) {
-            logService.publish(level, QStringLiteral("Ground"), category, message, fields);
+            logService.publish(record);
         }))
     {
-        emit logMessage(message);
+        LogService::writeLogFallback(record);
     }
 }
 

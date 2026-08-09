@@ -50,7 +50,6 @@ public:
 
 signals:
     void linkOpenChanged(bool open);
-    void logMessage(const QString& message);
     void basicTelemetryUpdated(const TelemetryBasic& telemetry);
     void waveformUpdated(const DownsampledWaveform& waveform);
     void waveformFeatureUpdated(const WaveformFeature& feature);

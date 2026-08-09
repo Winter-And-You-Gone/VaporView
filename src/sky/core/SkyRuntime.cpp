@@ -147,19 +147,15 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     , codec_(1024u * 1024u)
     , device_manager_(this)
 {
-    connect(&device_manager_, &SkyDeviceManager::logMessage, this, [this](const QString& message) {
-        publishRuntimeLog(LogLevel::Info,
-                          QStringLiteral("device.legacy"),
-                          QStringLiteral("legacy_device_log"),
-                          message,
-                          {{QStringLiteral("legacy_unclassified"), true}});
-    });
     connect(&device_manager_, &SkyDeviceManager::logRecord, this, [this](LogRecord record) {
-        LogService::withCurrentInstance([&](LogService& logService) {
+        const bool published = LogService::withCurrentInstance([&](LogService& logService) {
             logService.publish(record);
         });
+        if (!published)
+        {
+            LogService::writeLogFallback(record);
+        }
         emit logRecord(record);
-        emit logMessage(record.message);
     });
     LogService::withCurrentInstance([this](LogService& logService) {
         connect(&logService, &LogService::recordPublished, this,
@@ -257,11 +253,14 @@ void SkyRuntime::publishRuntimeLog(LogLevel level,
     record.category = category;
     record.message = message;
     record.fields = fields;
-    LogService::withCurrentInstance([&](LogService& logService) {
+    const bool published = LogService::withCurrentInstance([&](LogService& logService) {
         logService.publish(record);
     });
+    if (!published)
+    {
+        LogService::writeLogFallback(record);
+    }
     emit logRecord(record);
-    emit logMessage(message);
 }
 
 bool SkyRuntime::start()

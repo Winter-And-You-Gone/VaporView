@@ -1080,6 +1080,11 @@ bool LogService::withCurrentInstance(const std::function<void(LogService&)>& cal
     return true;
 }
 
+void LogService::writeLogFallback(const LogRecord& record)
+{
+    fallbackWrite(LoggingInternal::serializeBoundedLogRecord(record));
+}
+
 void LogService::installQtMessageHandler()
 {
     if (!qt_message_handler_installed_)

@@ -329,16 +329,6 @@ MainWindow::MainWindow(QWidget *parent)
     using RemoteSkyController = VaporView::Ground::Devices::RemoteSkyController;
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::linkOpenChanged,
             this, &MainWindow::onRemoteLinkOpenChanged);
-    connect(state_->remote_sky_controller_.get(), &RemoteSkyController::logMessage,
-            this, [this](const QString& message) {
-                publishGroundLog(VaporView::LogLevel::Info,
-                                 QStringLiteral("telemetry.link"),
-                                 QStringLiteral("remote_sky_legacy_status"),
-                                 QStringLiteral("远程数传状态已更新。"),
-                                 {{QStringLiteral("ui_message"), message},
-                                  {QStringLiteral("legacy_unclassified"), true},
-                                  {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-            });
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::basicTelemetryUpdated,
             this, &MainWindow::onRemoteBasicTelemetryUpdated);
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::waveformUpdated,

@@ -95,7 +95,6 @@ signals:
                                  QByteArray rawPayload,
                                  QByteArray harmonicPayload,
                                  TcpFloatEncoding floatEncoding);
-    void logMessage(const QString& message);
     void logRecord(const VaporView::LogRecord& record);
 
 private slots:

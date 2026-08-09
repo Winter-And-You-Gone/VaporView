@@ -30,7 +30,7 @@ public:
     quint16 serverPort() const;
 
 signals:
-    void logMessage(const QString& message);
+    void logRecordGenerated(const VaporView::LogRecord& record);
 
 private slots:
     void onNewConnection();

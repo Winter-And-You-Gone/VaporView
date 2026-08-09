@@ -134,6 +134,23 @@ producer that uses it, but the 256 KiB record cap bounds the work for one record
 not lifetime-safe and must not be retained; new callbacks use
 `LogService::withCurrentInstance()`.
 
+## Structured logging path
+
+New business events follow one path:
+
+```text
+business event
+  -> explicit LogLevel
+  -> explicit source/category/event
+  -> LogService / LogRecord
+  -> JSONL + UI + IPC + SkyTui
+```
+
+When `LogService` is unavailable during startup, shutdown, or an isolated
+component test, `LogService::writeLogFallback()` writes one bounded structured
+JSON record to stderr and the Windows debugger. It does not call Qt's global
+message handler, create a second queue, or create a second log file system.
+
 ## 日志语言与自动审计
 
 本节集中记录日志文本语言、机器标识命名和自动审计入口。`docs/logging_localization_progress.md`
@@ -144,15 +161,15 @@ VaporView 第一方运行日志采用“中文可读、英文可检索”的约�
 
 日志级别必须由调用方、状态机、返回值、错误枚举或明确事件分支决定，不能通过 `message.contains(...)` 搜索中文或英文关键词判断。外部库、操作系统、设备驱动、串口/TCP 错误、子进程 stdout/stderr、协议 payload 和设备返回原文必须保留在结构化字段中，例如 `system_error`、`process_output`、`external_raw_text` 或 `payload_hex`，不能覆盖或翻译成第一方描述。直接 Qt 日志调用 `qDebug()`、`qInfo()`、`qWarning()` 和 `qCritical()` 同样纳入审计；第一方文本必须是自然中文，第三方原文只能通过精确 allowlist 或结构化原文字段保留。
 
-旧的仅字符串 UI/控制台日志路径如暂时无法完全结构化，必须使用稳定中文包装 message，并在 `fields` 中标记 `legacy_unclassified=true`，原始 UI 文本放入 `ui_message`。旧路径默认只能进入桌面日志的“全部”视图，应设置 `ui_visibility=details`；高频进度或原始输出设置 `ui_visibility=hidden`。中文 message 保持简洁、稳定，不把大量变量拼进正文；变量、端点、设备名、错误原文和重试参数优先放入 `fields`。允许在中文句子中保留产品名和协议名，例如 SkyCore、SkyTui、IPC、TCP、UDP、JSON、CRC、EPSILON、PTB210、HMP3、TFA1005-L 和 RD105；但 `设备 connect failed and retry later`、`IPC 服务 start failed`、`配置 file loaded successfully` 这类完整英文语法片段视为中英混杂，必须改成自然中文。
+旧的仅字符串 UI 文本如仍因既有 UI 适配入口存在，必须使用稳定中文包装 message，并在 `fields` 中标记 `legacy_unclassified=true`，原始 UI 文本放入 `ui_message`。旧路径默认只能进入桌面日志的“全部”视图，应设置 `ui_visibility=details`；高频进度或原始输出设置 `ui_visibility=hidden`。中文 message 保持简洁、稳定，不把大量变量拼进正文；变量、端点、设备名、错误原文和重试参数优先放入 `fields`。允许在中文句子中保留产品名和协议名，例如 SkyCore、SkyTui、IPC、TCP、UDP、JSON、CRC、EPSILON、PTB210、HMP3、TFA1005-L 和 RD105；但 `设备 connect failed and retry later`、`IPC 服务 start failed`、`配置 file loaded successfully` 这类完整英文语法片段视为中英混杂，必须改成自然中文。
 
 ### Legacy 日志迁移规则
 
-`MainWindow::log(QString)`、仅字符串 `logMessage(QString)` 和无结构 Qt 日志只作为兼容或第三方原文通道；新增第一方业务事件禁止使用这些入口表达语义。业务调用点必须根据程序状态、返回值、ACK、错误枚举或明确分支直接选择 `LogLevel`、`category`、`event`、`error_code` / `reason_code` 和 `ui_visibility`。设备未连接导致用户命令无法执行是 Warning；命令已执行但写入、读回或 ACK 确认失败是 Error；普通成功是 Info/details；协议帧、单次 ACK 内容和高频内部状态是 Debug/hidden；只有无法安全继续运行或严重数据完整性风险才使用 Critical。
+`MainWindow::log(QString)`、仅字符串 `logMessage(QString)` 和无结构 Qt 日志都禁止用于新的第一方业务语义。业务调用点必须根据程序状态、返回值、ACK、错误枚举或明确分支直接选择 `LogLevel`、`category`、`event`、`error_code` / `reason_code` 和 `ui_visibility`。设备未连接导致用户命令无法执行是 Warning；命令已执行但写入、读回或 ACK 确认失败是 Error；普通成功是 Info/details；协议帧、单次 ACK 内容和高频内部状态是 Debug/hidden；只有无法安全继续运行或严重数据完整性风险才使用 Critical。
 
-`scripts/audit_legacy_logging.py` 维护当前剩余 legacy 字符串入口的临时基线，并通过 CTest 的 `logging_legacy_audit_test` 防止新增 `MainWindow::log(QString)` 调用、第一方 `emit logMessage(QString)` 和仅字符串 `logMessage(QString)` 信号。每迁移一个 legacy 调用点后，应同步降低脚本中的基线；不得通过扩大基线来绕过结构化迁移。
+`scripts/audit_legacy_logging.py` 使用相对文件路径加类/函数符号的精确位置 allowlist，防止新增 `MainWindow::log(QString)` 调用、第一方 `emit logMessage(QString)`、仅字符串 `logMessage(QString)` 信号、message 关键词等级/可见性推断和未登记的 `legacy_unclassified` 业务事件。allowlist 不是数量 baseline；删除一个旧位置并在另一个位置新增相同数量也会失败。`legacy_unclassified` 还绑定稳定的 `event` 标识，只允许现有 UI/用户问题适配入口。`--self-test` 覆盖新文件、同文件不同函数、位置替换、MainWindow 调用、等级/可见性关键词检测和新增 legacy 事件。
 
-当前仅保留的 `logMessage(QString)` 入口是 GroundTelemetryService、SkyRuntime、SkyLocalIpcClient、SkyLocalIpcServer 和 SkyDeviceManager 之间的兼容桥接或 LogService 不可用时的兜底通知；这些路径的业务语义已经通过 `LogRecord`、`LogService::publish()` 或结构化 IPC LogEvent 传递。新代码不得只新增 QString 日志信号；如果后续移除这些兼容桥接，必须同步降低 `scripts/audit_legacy_logging.py` 的基线。
+仓库内部 `logMessage(QString)` signal declaration 和 `emit logMessage(QString)` 已清零。GroundTelemetry、SkyRuntime、SkyLocalIpcClient、SkyLocalIpcServer 和 SkyDeviceManager 现在只使用 `LogRecord`、`LogService::publish()`、结构化 IPC `LogEvent` 或结构化 signal。`MainWindow::log(QString)` 仍仅作为现有 TcpWavePanel UI 适配入口，内部业务调用数量必须保持为 0；新代码不得连接或调用它表达业务日志。
 
 RD105 温控命令统一使用 `Ground / device.temperature.command`。典型事件包括 `temperature_command_rejected_not_connected` + `reason_code=DEVICE_NOT_CONNECTED`、`temperature_command_failed` + `error_code=COMMAND_VERIFY_FAILED`、`temperature_command_sent`、`temperature_command_ack_timeout` + `error_code=COMMAND_TIMEOUT` 和 `temperature_command_completed`。重复的未连接、超时和失败事件应设置稳定 `ui_dedupe_key`，例如 `rd105:temperature_command_rejected_not_connected:SetTemperatureTarget:channel_2`，不得包含时间戳或随机值。
 
@@ -252,15 +269,16 @@ emergency 日志：
 
 ### 自动审计
 
-本仓库提供两个轻量 Python 审计入口：
+本仓库提供三个轻量 Python 审计入口：
 
 ```bash
+python scripts/audit_legacy_logging.py --root . --self-test
 python scripts/audit_logging_language.py --root . --self-test
 python scripts/audit_logging_events.py --root . --self-test
 ```
 
-`audit_logging_language.py` 检查第一方日志语言、`qDebug/qInfo/qWarning/qCritical` 字面量、中英混杂句、`category/event/error_code/reason_code/fields key/source` 命名、Error/Critical 缺少具体错误码，以及 `SKY_RUNTIME_ERROR` 是否只作为 SkyRuntime Release 兜底。`audit_logging_events.py` 比对源码可静态识别的 `event` 字面量和 `docs/logging_events.md`，检查遗漏、过期、重复、category/level 冲突、目录命名和错误事件缺少错误码。
+`audit_legacy_logging.py` 检查精确位置 allowlist、MainWindow legacy 调用和 message 关键词等级推断。`audit_logging_language.py` 检查第一方日志语言、`qDebug/qInfo/qWarning/qCritical` 字面量、中英混杂句、`category/event/error_code/reason_code/fields key/source` 命名、Error/Critical 缺少具体错误码，以及 `SKY_RUNTIME_ERROR` 是否只作为 SkyRuntime Release 兜底。`audit_logging_events.py` 比对源码可静态识别的 `event` 字面量和 `docs/logging_events.md`，检查遗漏、过期、重复、category/level 冲突、目录命名和错误事件缺少错误码。
 
-CTest 中注册了 `logging_language_audit_test` 和 `logging_event_catalog_audit_test`；支持 Python 的 CI 必须运行这两个测试。审计失败时优先修正源码 message、机器标识或事件目录。只有第三方原文、测试 sentinel、无法静态结构化的 legacy 文本等明确场景可以进入 allowlist；allowlist 必须精确到文本或调用场景，不能按目录宽泛跳过。
+CTest 中注册了 `logging_language_audit_test`、`logging_event_catalog_audit_test` 和 `logging_legacy_audit_test`；支持 Python 的 CI 必须运行这三个测试。审计失败时优先修正源码 message、机器标识、事件目录或 legacy 位置。只有第三方原文、测试 sentinel 和明确的公开 API 阻塞项可以进入精确 allowlist，不能按目录或数量宽泛跳过。
 
 新增日志或修改日志语义后，应同步更新 `docs/logging_events.md`，并运行上述两个脚本或对应 CTest。

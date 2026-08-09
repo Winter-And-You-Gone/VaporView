@@ -1,5 +1,7 @@
 #include "SkyLocalIpcClient.h"
 
+#include "LogService.h"
+
 #include <QDateTime>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -84,7 +86,10 @@ void SkyLocalIpcClient::publishClientLog(LogLevel level,
     record.message = message;
     record.fields = fields;
     emit logRecordGenerated(record);
-    emit logMessage(message);
+    if (!LogService::withCurrentInstance([](LogService&) {}))
+    {
+        LogService::writeLogFallback(record);
+    }
 }
 
 void SkyLocalIpcClient::connectToCore(const QString& host, quint16 port)

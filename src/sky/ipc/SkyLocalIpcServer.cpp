@@ -82,26 +82,22 @@ void SkyLocalIpcServer::publishIpcLog(LogLevel level,
         fields.insert(QStringLiteral("error_code"), QStringLiteral("SKY_IPC_ERROR"));
     }
 
+    LogRecord record;
+    record.level = level;
+    record.source = QStringLiteral("SkyCore");
+    record.category = QStringLiteral("ipc");
+    record.message = message;
+    record.fields = fields;
     const bool published = LogService::withCurrentInstance([&](LogService& logService) {
-        logService.publish(level,
-                           QStringLiteral("SkyCore"),
-                           QStringLiteral("ipc"),
-                           message,
-                           fields);
+        logService.publish(record);
     });
-    emit logMessage(message);
+    emit logRecordGenerated(record);
     if (published)
     {
         return;
     }
-
-    LogRecord fallback;
-    fallback.level = level;
-    fallback.source = QStringLiteral("SkyCore");
-    fallback.category = QStringLiteral("ipc");
-    fallback.message = message;
-    fallback.fields = fields;
-    broadcastFrame(MsgType::LogEvent, TelemetryCodec::serializeLogRecord(fallback));
+    LogService::writeLogFallback(record);
+    broadcastFrame(MsgType::LogEvent, TelemetryCodec::serializeLogRecord(record));
 }
 
 bool SkyLocalIpcServer::listen(const QString& host, quint16 port)
