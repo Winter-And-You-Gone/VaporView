@@ -541,8 +541,8 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     QList<RemoteTelemetrySummarySections::Item> rateRows;
     QList<RemoteTelemetrySummarySections::Item> linkRows;
     QList<RemoteTelemetrySummarySections::Item> deviceRows;
-    const QString frequencyWidthText = QStringLiteral("999.9 Hz");
-    const QString bitRateWidthText = QStringLiteral("999.9kbps");
+    const QString frequencyWidthText = QStringLiteral("100.0 Hz");
+    const QString bitRateWidthText = QStringLiteral("999 kbps");
     auto appendPacketRate = [&](VaporView::MsgType type, const QString& label) {
         const double rate = packetRate(type);
         rateRows << makeItem(label, formatFrequencyText(rate), connected && rate > 0.0, frequencyWidthText);
@@ -699,9 +699,9 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             pill->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             pill->setMinimumHeight(scalePixels(useSideTitle ? 26 : 28));
             auto *pillLayout = new QHBoxLayout(pill);
-            const int horizontalPadding = scalePixels(useSideTitle ? 4 : 7);
+            const int horizontalPadding = scalePixels(useSideTitle ? 4 : 5);
             pillLayout->setContentsMargins(horizontalPadding, scalePixels(1), horizontalPadding, scalePixels(1));
-            pillLayout->setSpacing(scalePixels(useSideTitle ? 2 : 3));
+            pillLayout->setSpacing(scalePixels(useSideTitle ? 2 : 1));
 
             auto *nameLabel = new QLabel(item.label, pill);
             nameLabel->setObjectName(QStringLiteral("homeTelemetrySummaryNameLabel"));
@@ -714,7 +714,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             const int nameWidth =
                 std::max(nameLabel->sizeHint().width(),
                          nameLabel->fontMetrics().horizontalAdvance(item.label)) +
-                scalePixels(useSideTitle ? 4 : 8);
+                scalePixels(useSideTitle ? 4 : 0);
             nameLabel->setFixedWidth(nameWidth);
             nameLabel->setMinimumHeight(nameLabel->fontMetrics().height() + scalePixels(2));
             pillLayout->addWidget(nameLabel, 0, Qt::AlignVCenter);
@@ -728,7 +728,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             valueLabel->setProperty("deviceConfigLink", useSideTitle);
             valueLabel->setProperty("telemetryAvailable", item.hasData);
             valueLabel->setFont(numericFontFrom(valueLabel->font()));
-            valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            valueLabel->setAlignment((useSideTitle ? Qt::AlignRight : Qt::AlignLeft) | Qt::AlignVCenter);
             valueLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             valueLabel->setTextFormat(Qt::PlainText);
             const bool compactHomeZeroFrequency =
@@ -742,7 +742,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                 std::max(valueLabel->sizeHint().width(),
                          std::max(valueLabel->fontMetrics().horizontalAdvance(widthValue),
                                   valueLabel->fontMetrics().horizontalAdvance(valueText))) +
-                scalePixels(useSideTitle ? 4 : 8);
+                scalePixels(useSideTitle ? 4 : 1);
             const int valueWidth = polishedValueWidth;
             valueLabel->setFixedWidth(valueWidth);
             pillLayout->addWidget(valueLabel, 0, Qt::AlignVCenter);

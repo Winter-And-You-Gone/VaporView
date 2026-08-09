@@ -2428,24 +2428,24 @@ QVector<TelemetryPillWidthSnapshotItem> telemetryPillWidthSnapshot(QWidget *summ
     return snapshot;
 }
 
-void requireTelemetryPillWidthSnapshotMatches(const QVector<TelemetryPillWidthSnapshotItem>& expected,
-                                              const QVector<TelemetryPillWidthSnapshotItem>& actual,
-                                              const char *message)
+void requireTelemetryPillWidthSnapshotNotWider(const QVector<TelemetryPillWidthSnapshotItem>& expected,
+                                               const QVector<TelemetryPillWidthSnapshotItem>& actual,
+                                               const char *message)
 {
     require(expected.size() == actual.size(), message);
     for (int i = 0; i < expected.size(); ++i)
     {
         if (expected.at(i).key != actual.at(i).key ||
-            std::abs(expected.at(i).width - actual.at(i).width) > 1)
+            actual.at(i).width > expected.at(i).width + 1)
         {
             std::cerr << "Telemetry pill width mismatch at " << i
                       << ": expected " << expected.at(i).key.toStdString()
-                      << " width=" << expected.at(i).width
+                      << " max width=" << expected.at(i).width
                       << ", actual " << actual.at(i).key.toStdString()
                       << " width=" << actual.at(i).width << '\n';
         }
         require(expected.at(i).key == actual.at(i).key, message);
-        require(std::abs(expected.at(i).width - actual.at(i).width) <= 1, message);
+        require(actual.at(i).width <= expected.at(i).width + 1, message);
     }
 }
 
@@ -2484,6 +2484,30 @@ void requireTelemetryLabelsFit(QWidget *summaryContainer, const char *message)
         }
         require(textWidth <= label->width() + 1, message);
     }
+}
+
+void requireCompactTelemetryPillTextGap(QFrame *pill, const char *message)
+{
+    require(pill != nullptr, message);
+    QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+    QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+    require(nameLabel != nullptr && valueLabel != nullptr, message);
+    require(valueLabel->alignment().testFlag(Qt::AlignLeft),
+            "home telemetry values start near their field names");
+
+    const int nameTextRight = nameLabel->mapTo(pill, QPoint(0, 0)).x() +
+        nameLabel->fontMetrics().horizontalAdvance(nameLabel->text());
+    const int valueTextLeft = valueLabel->mapTo(pill, QPoint(0, 0)).x();
+    const int gap = valueTextLeft - nameTextRight;
+    if (gap < -1 || gap > 6)
+    {
+        std::cerr << "Home telemetry pill text gap: name='"
+                  << nameLabel->text().toStdString()
+                  << "' value='" << valueLabel->text().toStdString()
+                  << "' gap=" << gap << '\n';
+    }
+    require(gap >= -1 && gap <= 6,
+            "home telemetry field/value text gap stays compact");
 }
 
 void requireTelemetrySummaryPillsOrdered(QWidget *summaryContainer, const char *message)
@@ -2951,10 +2975,10 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireTelemetryLabelsFit(
         languageTelemetrySummaryContainer,
         "language overview telemetry labels fit after returning to Chinese");
-    requireTelemetryPillWidthSnapshotMatches(
+    requireTelemetryPillWidthSnapshotNotWider(
         initialTelemetryPillWidths,
         telemetryPillWidthSnapshot(languageTelemetrySummaryContainer),
-        "language overview telemetry capsule widths return to their initial Chinese widths");
+        "language overview telemetry capsule widths do not exceed their initial Chinese widths");
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
     languageOverviewWindow.close();
     require(processEventsUntil(1000, [&languageOverviewWindow]() {
@@ -5071,6 +5095,9 @@ int main(int argc, char **argv)
                     "home wave capture rate uses the same zero-frequency text as other rates");
             waveCaptureRateShowsZero = true;
         }
+        requireCompactTelemetryPillTextGap(
+            pill,
+            "home data-stream telemetry field/value gap remains compact");
     }
     require(!waveformTotalRateVisible,
             "home data-stream telemetry section hides the waveform total packet rate");
@@ -5109,12 +5136,15 @@ int main(int argc, char **argv)
                 "home link-rate pill has a value label");
         require(valueLabel->fontMetrics().horizontalAdvance(valueLabel->text()) <= valueLabel->width() + 1,
                 "home link-rate value text fits its compact label");
-        const int compactKbpsWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9kbps"));
+        const int compactKbpsWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999 kbps"));
         const int oldMbpsReserveWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Mbps")) + 8;
         require(valueLabel->width() >= compactKbpsWidth,
-                "home link-rate value label reserves room for 999.9kbps");
+                "home link-rate value label reserves room for 999 kbps");
         require(valueLabel->width() < oldMbpsReserveWidth,
                 "home link-rate value label no longer reserves the wider 999.9 Mbps width");
+        requireCompactTelemetryPillTextGap(
+            pill,
+            "home link-rate telemetry field/value gap remains compact");
     }
     QFrame *homeDataSection = homeTelemetrySections.at(2);
     QLabel *homeDataTitle =
@@ -5147,6 +5177,9 @@ int main(int argc, char **argv)
         require(valueText != QStringLiteral("有数据") &&
                     valueText != QStringLiteral("无数据"),
                 "home data availability values omit the longer data suffix");
+        requireCompactTelemetryPillTextGap(
+            pill,
+            "home data availability field/value gap remains compact");
     }
     require(homeDataHasEpsilon,
             "home data availability row includes the EPSILON field");

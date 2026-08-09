@@ -169,6 +169,30 @@ bool homeTelemetrySummaryShowsUiTestRates(QWidget *homeConfigCard)
     return nonZeroHzValues >= 6 && kbpsValues == 3 && sawAvailableData;
 }
 
+void requireCompactTelemetryPillTextGap(QFrame *pill, const char *message)
+{
+    require(pill != nullptr, message);
+    QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+    QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+    require(nameLabel != nullptr && valueLabel != nullptr, message);
+    require(valueLabel->alignment().testFlag(Qt::AlignLeft),
+            "UI-test home telemetry values start near their field names");
+
+    const int nameTextRight = nameLabel->mapTo(pill, QPoint(0, 0)).x() +
+        nameLabel->fontMetrics().horizontalAdvance(nameLabel->text());
+    const int valueTextLeft = valueLabel->mapTo(pill, QPoint(0, 0)).x();
+    const int gap = valueTextLeft - nameTextRight;
+    if (gap < -1 || gap > 6)
+    {
+        std::cerr << "UI-test telemetry pill text gap: name='"
+                  << nameLabel->text().toStdString()
+                  << "' value='" << valueLabel->text().toStdString()
+                  << "' gap=" << gap << '\n';
+    }
+    require(gap >= -1 && gap <= 6,
+            "UI-test home telemetry field/value text gap stays compact");
+}
+
 void requireUiTestHomeTelemetryCapsulesCovered(QWidget *homeConfigCard, const char *message)
 {
     QWidget *summaryContainer = homeTelemetrySummaryContainer(homeConfigCard);
@@ -220,6 +244,9 @@ void requireUiTestHomeTelemetryCapsulesCovered(QWidget *homeConfigCard, const ch
                 require(pill->rect().adjusted(0, 0, 1, 1).contains(labelRect),
                         "UI-test home telemetry summary pill label stays inside its capsule");
             }
+            requireCompactTelemetryPillTextGap(
+                pill,
+                "UI-test home telemetry summary keeps compact field/value spacing");
         }
 
         for (QWidget *line : lines)
@@ -268,8 +295,8 @@ void requireUiTestHomeTelemetryCapsulesCovered(QWidget *homeConfigCard, const ch
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(valueLabel != nullptr && valueLabel->text().contains(QStringLiteral("kbps")),
                 "UI-test link-rate capsule shows representative kbps data");
-        require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9kbps")),
-                "UI-test link-rate capsule reserves the requested 999.9kbps width");
+        require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999 kbps")),
+                "UI-test link-rate capsule reserves the requested 999 kbps width");
     }
 }
 
