@@ -140,22 +140,30 @@ bool homeTelemetrySummaryShowsUiTestRates(QWidget *homeConfigCard)
         return false;
     }
 
-    int nonZeroHzValues = 0;
+    auto numericPrefix = [](const QString& text) {
+        bool ok = false;
+        const double value = text.section(QLatin1Char(' '), 0, 0).toDouble(&ok);
+        return ok ? value : -1.0;
+    };
+
+    int threeDigitHzValues = 0;
     for (QLabel *valueLabel : sections.at(0)->findChildren<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel")))
     {
         const QString text = valueLabel->text();
-        if (text.endsWith(QStringLiteral("Hz")) && text != QStringLiteral("0.0 Hz"))
+        if (text.endsWith(QStringLiteral("Hz")) && numericPrefix(text) >= 100.0)
         {
-            ++nonZeroHzValues;
+            ++threeDigitHzValues;
         }
     }
 
-    int kbpsValues = 0;
+    int threeDigitMbpsValues = 0;
     for (QLabel *valueLabel : sections.at(1)->findChildren<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel")))
     {
-        if (valueLabel->text().contains(QStringLiteral("kbps")))
+        const QString text = valueLabel->text();
+        const double value = numericPrefix(text);
+        if (text.contains(QStringLiteral("Mbps")) && value >= 100.0 && value < 1000.0)
         {
-            ++kbpsValues;
+            ++threeDigitMbpsValues;
         }
     }
 
@@ -166,7 +174,7 @@ bool homeTelemetrySummaryShowsUiTestRates(QWidget *homeConfigCard)
             valueLabel->text() == QStringLiteral("有") ||
             valueLabel->text() == QStringLiteral("Yes");
     }
-    return nonZeroHzValues >= 6 && kbpsValues == 3 && sawAvailableData;
+    return threeDigitHzValues >= 6 && threeDigitMbpsValues == 3 && sawAvailableData;
 }
 
 QStringList homeTelemetryDynamicSummaryValues(QWidget *homeConfigCard)
@@ -343,10 +351,10 @@ void requireUiTestHomeTelemetryCapsulesCovered(QWidget *homeConfigCard, const ch
     for (QFrame *pill : linkPills)
     {
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
-        require(valueLabel != nullptr && valueLabel->text().contains(QStringLiteral("kbps")),
-                "UI-test link-rate capsule shows representative kbps data");
-        require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 kbps")),
-                "UI-test link-rate capsule reserves the requested 999.9 kbps width");
+        require(valueLabel != nullptr && valueLabel->text().contains(QStringLiteral("Mbps")),
+                "UI-test link-rate capsule shows representative Mbps data");
+        require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Mbps")),
+                "UI-test link-rate capsule reserves the requested 999.9 Mbps width");
     }
 }
 

@@ -541,7 +541,9 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     QList<RemoteTelemetrySummarySections::Item> linkRows;
     QList<RemoteTelemetrySummarySections::Item> deviceRows;
     const QString frequencyWidthText = QStringLiteral("999.9 Hz");
-    const QString bitRateWidthText = QStringLiteral("999.9 kbps");
+    const QString bitRateWidthText = uiTestMode
+        ? QStringLiteral("999.9 Mbps")
+        : QStringLiteral("999.9 kbps");
     auto appendPacketRate = [&](VaporView::MsgType type, const QString& label) {
         const double rate = packetRate(type);
         rateRows << makeItem(label, formatFrequencyText(rate), connected && rate > 0.0, frequencyWidthText);

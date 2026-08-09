@@ -51,8 +51,17 @@ int main(int argc, char **argv)
                 firstSnapshot.rawWaveformRateHz != laterSnapshot.rawWaveformRateHz ||
                 firstSnapshot.receiveBitsPerSecond != laterSnapshot.receiveBitsPerSecond,
             "different elapsed times animate UI-test telemetry capsule values");
-    require(laterSnapshot.receiveBitsPerSecond + laterSnapshot.transmitBitsPerSecond < 1'000'000.0,
-            "UI-test link-rate total remains inside the compact kbps capsule range");
+    require(firstSnapshot.epsilonRateHz >= 100.0 &&
+                firstSnapshot.waveformFeatureRateHz >= 100.0 &&
+                firstSnapshot.telemetryStatusRateHz >= 100.0 &&
+                firstSnapshot.rawWaveformRateHz >= 100.0 &&
+                firstSnapshot.harmonicWaveformRateHz >= 100.0 &&
+                firstSnapshot.waveCaptureRateHz >= 100.0,
+            "UI-test home telemetry rates cover three-digit Hz values");
+    require(laterSnapshot.receiveBitsPerSecond >= 100'000'000.0 &&
+                laterSnapshot.transmitBitsPerSecond >= 100'000'000.0 &&
+                laterSnapshot.receiveBitsPerSecond + laterSnapshot.transmitBitsPerSecond < 1'000'000'000.0,
+            "UI-test link-rate values cover three-digit one-decimal Mbps without leaving the compact reserve");
 
     first.setScenario(UiTestScenario::PartialFailure, 2500);
     const UiTestSnapshot partial = first.snapshot(2600);

@@ -358,20 +358,20 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
         scenario_ == UiTestScenario::PartialFailure ? 1u : 0u;
 
     const bool waveFresh = connected(deviceState(SkyDeviceId::WaveTcp)) && !stalled;
-    result.epsilonRateHz = result.epsilon.valid ? boundedRandom(sampleElapsedMs, 1, 96.0, 100.0) : 0.0;
-    result.gnssRateHz = result.gnss.valid ? boundedRandom(sampleElapsedMs, 2, 18.5, 21.5) : 0.0;
-    result.imuRateHz = result.imu.valid ? boundedRandom(sampleElapsedMs, 3, 190.0, 205.0) : 0.0;
-    result.ptbRateHz = result.ptb.valid ? boundedRandom(sampleElapsedMs, 4, 18.0, 22.0) : 0.0;
-    result.hmpRateHz = result.hmp.valid ? boundedRandom(sampleElapsedMs, 5, 18.0, 22.0) : 0.0;
-    result.lidarRateHz = result.lidar.valid ? boundedRandom(sampleElapsedMs, 6, 96.0, 103.0) : 0.0;
-    result.temperatureRateHz = result.temperature.valid ? boundedRandom(sampleElapsedMs, 7, 8.0, 12.0) : 0.0;
-    result.waveformFeatureRateHz = waveFresh ? boundedRandom(sampleElapsedMs, 8, 39.0, 49.0) : 0.0;
-    result.telemetryStatusRateHz = !stalled ? boundedRandom(sampleElapsedMs, 9, 8.0, 12.0) : 0.0;
-    result.rawWaveformRateHz = waveFresh ? boundedRandom(sampleElapsedMs, 10, 32.0, 42.0) : 0.0;
-    result.harmonicWaveformRateHz = waveFresh ? boundedRandom(sampleElapsedMs, 11, 15.0, 23.0) : 0.0;
-    result.waveCaptureRateHz = waveFresh ? boundedRandom(sampleElapsedMs, 12, 26.0, 35.0) : 0.0;
-    result.receiveBitsPerSecond = !stalled ? boundedRandom(sampleElapsedMs, 13, 540'000.0, 650'000.0) : 0.0;
-    result.transmitBitsPerSecond = !stalled ? boundedRandom(sampleElapsedMs, 14, 260'000.0, 335'000.0) : 0.0;
+    result.epsilonRateHz = result.epsilon.valid ? boundedRandom(sampleElapsedMs, 1, 120.0, 180.0) : 0.0;
+    result.gnssRateHz = result.gnss.valid ? boundedRandom(sampleElapsedMs, 2, 100.0, 140.0) : 0.0;
+    result.imuRateHz = result.imu.valid ? boundedRandom(sampleElapsedMs, 3, 190.0, 240.0) : 0.0;
+    result.ptbRateHz = result.ptb.valid ? boundedRandom(sampleElapsedMs, 4, 100.0, 135.0) : 0.0;
+    result.hmpRateHz = result.hmp.valid ? boundedRandom(sampleElapsedMs, 5, 100.0, 135.0) : 0.0;
+    result.lidarRateHz = result.lidar.valid ? boundedRandom(sampleElapsedMs, 6, 120.0, 180.0) : 0.0;
+    result.temperatureRateHz = result.temperature.valid ? boundedRandom(sampleElapsedMs, 7, 100.0, 130.0) : 0.0;
+    result.waveformFeatureRateHz = waveFresh ? boundedRandom(sampleElapsedMs, 8, 110.0, 160.0) : 0.0;
+    result.telemetryStatusRateHz = !stalled ? boundedRandom(sampleElapsedMs, 9, 100.0, 130.0) : 0.0;
+    result.rawWaveformRateHz = waveFresh ? boundedRandom(sampleElapsedMs, 10, 115.0, 170.0) : 0.0;
+    result.harmonicWaveformRateHz = waveFresh ? boundedRandom(sampleElapsedMs, 11, 100.0, 145.0) : 0.0;
+    result.waveCaptureRateHz = waveFresh ? boundedRandom(sampleElapsedMs, 12, 110.0, 165.0) : 0.0;
+    result.receiveBitsPerSecond = !stalled ? boundedRandom(sampleElapsedMs, 13, 140'000'000.0, 360'000'000.0) : 0.0;
+    result.transmitBitsPerSecond = !stalled ? boundedRandom(sampleElapsedMs, 14, 130'000'000.0, 330'000'000.0) : 0.0;
     return result;
 }
 
