@@ -2135,6 +2135,20 @@ void requireRtkSidebarPage(
     const QRect rtcmRectBeforeTheme = widgetRect(rtcmCard);
     const QRect logRectBeforeTheme = widgetRect(logCard);
     const QRect actionRectBeforeTheme = widgetRect(actionCard);
+    const auto rectStableWithinTolerance = [](const QRect& actual, const QRect& expected) {
+        return std::abs(actual.x() - expected.x()) <= 2 &&
+               std::abs(actual.y() - expected.y()) <= 2 &&
+               std::abs(actual.width() - expected.width()) <= 2 &&
+               std::abs(actual.height() - expected.height()) <= 2;
+    };
+    const auto themeCardGeometrySettled = [&]() {
+        activateLayouts(dialog);
+        return rectStableWithinTolerance(widgetRect(ntripCard), ntripRectBeforeTheme) &&
+               rectStableWithinTolerance(widgetRect(ggaCard), ggaRectBeforeTheme) &&
+               rectStableWithinTolerance(widgetRect(rtcmCard), rtcmRectBeforeTheme) &&
+               rectStableWithinTolerance(widgetRect(logCard), logRectBeforeTheme) &&
+               rectStableWithinTolerance(widgetRect(actionCard), actionRectBeforeTheme);
+    };
     require(outputPortLabel->width() >= outputPortLabel->fontMetrics().horizontalAdvance(outputPortLabel->text()) + 4,
             "RTK RTCM output port label has enough width before theme switch");
     require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
@@ -2149,6 +2163,8 @@ void requireRtkSidebarPage(
     require(combinationPage->styleSheet().contains(VaporView::appThemeColorName(
                 VaporView::AppThemeColor::Focus, true)),
             "combination-navigation local style resolves the dark-theme focus token");
+    require(processEventsUntil(1500, themeCardGeometrySettled),
+            "RTK card geometry settles after switching to dark theme");
     requireSameRect(widgetRect(ntripCard), ntripRectBeforeTheme,
                     "RTK NTRIP card geometry stays stable after switching to dark theme");
     requireSameRect(widgetRect(ggaCard), ggaRectBeforeTheme,
@@ -2185,6 +2201,8 @@ void requireRtkSidebarPage(
     require(combinationPage->styleSheet().contains(VaporView::appThemeColorName(
                 VaporView::AppThemeColor::Focus, false)),
             "combination-navigation local style resolves the light-theme focus token");
+    require(processEventsUntil(1500, themeCardGeometrySettled),
+            "RTK card geometry settles after switching back to light theme");
     requireSameRect(widgetRect(ntripCard), ntripRectBeforeTheme,
                     "RTK NTRIP card geometry returns unchanged after switching back to light theme");
     requireSameRect(widgetRect(ggaCard), ggaRectBeforeTheme,
