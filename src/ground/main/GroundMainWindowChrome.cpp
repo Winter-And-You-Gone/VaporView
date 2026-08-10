@@ -426,7 +426,7 @@ void MainWindow::setEnglish(bool english)
     state_->exit_action_->setText(english ? "E&xit" : "退出(&X)");
 
     setNativeMenuTitle(state_->font_menu_, english ? QStringLiteral("Font &Size") : QStringLiteral("字号(&S)"));
-    state_->font_tiny_action_->setText(english ? "Tiny (70%)" : "超小 (70%)");
+    state_->font_tiny_action_->setText(english ? "Tiny (60%)" : "超小 (60%)");
     state_->font_extra_small_action_->setText(english ? "Extra Small (80%)" : "特小 (80%)");
     state_->font_small_action_->setText(english ? "Small (90%)" : "小号 (90%)");
     state_->font_normal_action_->setText(english ? "Normal (100%)" : "标准 (100%)");
@@ -1794,12 +1794,12 @@ void MainWindow::updateFontScaleMenuCheckIcons()
         action->setIcon(state_->font_scale_percent_ >= minPercent && state_->font_scale_percent_ <= maxPercent ? checkIcon : QIcon());
     };
 
-    applyIcon(state_->font_tiny_action_, 70, 75);
+    applyIcon(state_->font_tiny_action_, 60, 75);
     applyIcon(state_->font_extra_small_action_, 76, 85);
     applyIcon(state_->font_small_action_, 86, 95);
     applyIcon(state_->font_normal_action_, 96, 107);
     applyIcon(state_->font_large_action_, 108, 122);
-    applyIcon(state_->font_extra_large_action_, 123, 150);
+    applyIcon(state_->font_extra_large_action_, 123, 180);
 }
 
 QString MainWindow::currentMainPageTitleText() const

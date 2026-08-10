@@ -72,7 +72,7 @@ MainWindow::MainWindow(QWidget *parent)
     state_->font_scale_percent_ = userSettings.value(
         "font_scale_percent",
         VaporView::defaultFontScalePercentForScreen(this)).toInt();
-    if (state_->font_scale_percent_ < 70 || state_->font_scale_percent_ > 150)
+    if (state_->font_scale_percent_ < 60 || state_->font_scale_percent_ > 180)
     {
         state_->font_scale_percent_ = 100;
     }

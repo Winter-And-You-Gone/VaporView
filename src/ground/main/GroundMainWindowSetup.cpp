@@ -453,7 +453,7 @@ void MainWindow::setupMenuBar()
     state_->font_scale_group_->setExclusive(true);
 
     state_->font_tiny_action_ = new QAction(this);
-    state_->font_tiny_action_->setData(70);
+    state_->font_tiny_action_->setData(60);
     state_->font_scale_group_->addAction(state_->font_tiny_action_);
     state_->font_menu_->addAction(state_->font_tiny_action_);
 
@@ -1024,7 +1024,7 @@ void MainWindow::createTitleApplicationMenuPanel()
                state_->font_scale_percent_ <= maxPercent;
     };
     const auto adjustViewSize = [this](int deltaPercent) {
-        setFontScale(std::clamp(state_->font_scale_percent_ + deltaPercent, 70, 150));
+        setFontScale(std::clamp(state_->font_scale_percent_ + deltaPercent, 60, 180));
     };
     TitleMenuSection viewSection{
         state_->is_english_ ? QStringLiteral("View") : QStringLiteral("视图"),
@@ -1032,7 +1032,7 @@ void MainWindow::createTitleApplicationMenuPanel()
             command(QStringLiteral("titleMenuViewSizeIncreaseAction"),
                     state_->is_english_ ? QStringLiteral("Zoom In") : QStringLiteral("放大"),
                     QString(),
-                    state_->font_scale_percent_ < 150,
+                    state_->font_scale_percent_ < 180,
                     false,
                     false,
                     true,
@@ -1048,7 +1048,7 @@ void MainWindow::createTitleApplicationMenuPanel()
             command(QStringLiteral("titleMenuViewSizeDecreaseAction"),
                     state_->is_english_ ? QStringLiteral("Zoom Out") : QStringLiteral("缩小"),
                     QString(),
-                    state_->font_scale_percent_ > 70,
+                    state_->font_scale_percent_ > 60,
                     false,
                     false,
                     false,

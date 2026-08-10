@@ -409,6 +409,27 @@ int main(int argc, char **argv)
     standardViewSizeAction->trigger();
     require(storedFontScalePercent() == 100,
             "Standard resets the view size to one hundred percent");
+    for (int i = 0; i < 9; ++i)
+    {
+        increaseViewSizeAction->trigger();
+    }
+    require(storedFontScalePercent() == 180,
+            "Zoom In clamps the view size at one hundred eighty percent");
+    increaseViewSizeAction->trigger();
+    require(storedFontScalePercent() == 180,
+            "Zoom In keeps the view size at the upper limit");
+    for (int i = 0; i < 13; ++i)
+    {
+        decreaseViewSizeAction->trigger();
+    }
+    require(storedFontScalePercent() == 60,
+            "Zoom Out clamps the view size at sixty percent");
+    decreaseViewSizeAction->trigger();
+    require(storedFontScalePercent() == 60,
+            "Zoom Out keeps the view size at the lower limit");
+    standardViewSizeAction->trigger();
+    require(storedFontScalePercent() == 100,
+            "Standard resets the bounded view size to one hundred percent");
     VaporViewTest::processEventsFor(120);
 
     std::cout << "title_application_menu_test passed\n";

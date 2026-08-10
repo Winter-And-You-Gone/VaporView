@@ -1276,7 +1276,7 @@ void MainWindow::configureComboPopupsIn(QWidget *scope) const
 
 void MainWindow::setFontScale(int percent)
 {
-    if (percent < 70 || percent > 150 || state_->font_scale_percent_ == percent)
+    if (percent < 60 || percent > 180 || state_->font_scale_percent_ == percent)
     {
         return;
     }
