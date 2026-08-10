@@ -237,7 +237,7 @@ void CombinationNavigationPage::setStatusSnapshot(const StatusSnapshot& snapshot
     applyStatusLabel(
         gnss_status_.value,
         snapshot.navigationDataAvailable
-            ? (is_english_ ? QStringLiteral("● Available") : QStringLiteral("● 有效"))
+            ? (is_english_ ? QStringLiteral("● Data available") : QStringLiteral("● 有数据"))
             : (is_english_ ? QStringLiteral("○ No data") : QStringLiteral("○ 暂无数据")),
         snapshot.navigationDataAvailable ? QStringLiteral("healthy") : QStringLiteral("inactive"));
     positioning_mode_.value->setText(

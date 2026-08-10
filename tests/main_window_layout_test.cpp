@@ -1399,7 +1399,10 @@ void requireMenuRowsRespectRoundedVerticalPadding(QFrame *panel,
 
 void requireMainWindowOuterBorder(MainWindow& window, bool dark, const char *message);
 
-void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
+void requireRtkSidebarPage(
+    MainWindow& window,
+    QLabel *customTitleLabel,
+    bool requireStableFirstFrame = true)
 {
     QPushButton *homeButton = nullptr;
     QPushButton *temperatureButton = nullptr;
@@ -1517,15 +1520,40 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                 combinationPage->differentialPage() == preDialog &&
                 combinationStack->indexOf(preDialog) == 2,
             "combination navigation owns exactly the original embedded RTK page");
+    require(window.findChildren<VaporView::Ground::Navigation::CombinationNavigationPage *>().size() == 1 &&
+                window.findChildren<RtkConfigDialog *>().size() == 1,
+            "main window owns exactly one combination-navigation page and one RTK dialog");
+    auto *deviceConfigPageForBoundary =
+        window.findChild<QWidget *>(QStringLiteral("deviceConfigPage"));
+    const QList<QCheckBox *> epsilonPacketChecks =
+        window.findChildren<QCheckBox *>(QStringLiteral("epsilonPacketCustomCheck"));
+    int epsilonPacketRateControlCount = 0;
+    for (QComboBox *combo : window.findChildren<QComboBox *>())
+    {
+        if (combo->property("epsilonPacketId").isValid())
+        {
+            ++epsilonPacketRateControlCount;
+        }
+    }
+    require(deviceConfigPageForBoundary != nullptr && epsilonPacketChecks.size() == 1 &&
+                deviceConfigPageForBoundary->isAncestorOf(epsilonPacketChecks.front()) &&
+                epsilonPacketRateControlCount == 11 &&
+                epsilonPage->findChild<QCheckBox *>(QStringLiteral("epsilonPacketCustomCheck")) == nullptr,
+            "the single detailed EPSILON configuration remains on the Device page");
     auto *rtkServiceStatus = combinationPage->findChild<QLabel *>(
         QStringLiteral("combinationNavigationRtkServiceStatusValue"));
+    auto *gnssStatus = combinationPage->findChild<QLabel *>(
+        QStringLiteral("combinationNavigationGnssStatusValue"));
+    auto *positioningMode = combinationPage->findChild<QLabel *>(
+        QStringLiteral("combinationNavigationPositioningModeValue"));
     auto *ntripStatus = combinationPage->findChild<QLabel *>(
         QStringLiteral("combinationNavigationNtripStatusValue"));
     auto *rtcmStatus = combinationPage->findChild<QLabel *>(
         QStringLiteral("combinationNavigationRtcmStatusValue"));
     auto *longitudeValue = combinationPage->findChild<QLabel *>(
         QStringLiteral("combinationNavigationLongitudeValue"));
-    require(rtkServiceStatus != nullptr && ntripStatus != nullptr && rtcmStatus != nullptr &&
+    require(rtkServiceStatus != nullptr && gnssStatus != nullptr && positioningMode != nullptr &&
+                ntripStatus != nullptr && rtcmStatus != nullptr &&
                 longitudeValue != nullptr && ntripStatus->text() == QStringLiteral("--") &&
                 rtcmStatus->text() == QStringLiteral("--"),
             "status page does not fabricate unavailable NTRIP or RTCM health state");
@@ -1545,6 +1573,18 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                 rtcmStatus->text() == QStringLiteral("--"),
             "status page displays reliable navigation and RTK-service data without inferring connection health");
     combinationPage->refreshStatus();
+    require((gnssStatus->text().contains(QStringLiteral("暂无数据")) ||
+                gnssStatus->text().contains(QStringLiteral("No data"))) &&
+                positioningMode->text() == QStringLiteral("--") &&
+                longitudeValue->text() == QStringLiteral("--"),
+            "status provider keeps GNSS fix and position unavailable without field-level freshness");
+    auto *unsavedRtkServerEdit =
+        preDialog->findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
+    require(unsavedRtkServerEdit != nullptr,
+            "RTK server input exists for page-switch persistence testing");
+    const QString originalRtkServer = unsavedRtkServerEdit->text();
+    const QString unsavedRtkServer = QStringLiteral("unsaved-combination-navigation.test");
+    unsavedRtkServerEdit->setText(unsavedRtkServer);
     epsilonButton->setFocus(Qt::TabFocusReason);
     QKeyEvent epsilonSpacePress(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier);
     QKeyEvent epsilonSpaceRelease(QEvent::KeyRelease, Qt::Key_Space, Qt::NoModifier);
@@ -1560,6 +1600,9 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     auto *dialog = qobject_cast<RtkConfigDialog *>(combinationStack->currentWidget());
     require(dialog == preDialog && differentialButton->isChecked(),
             "combination navigation switches from EPSILON to the original RTK page");
+    require(unsavedRtkServerEdit->text() == unsavedRtkServer,
+            "switching internal pages preserves unsaved RTK input");
+    unsavedRtkServerEdit->setText(originalRtkServer);
     require(dialog->isVisible(), "embedded RTK config page is visible after sidebar click");
     auto *initialGgaCard = findCardByTitle(dialog,
                                            {QStringLiteral("GGA 监视"),
@@ -1569,9 +1612,12 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                                             QStringLiteral("RTK Service Log")});
     require(initialGgaCard != nullptr && initialLogCard != nullptr,
             "RTK GGA and log cards are visible after sidebar click");
-    require(!ggaResizeRecorder.observedWidthDifferentFrom(initialGgaCard->width()) &&
-                !logResizeRecorder.observedWidthDifferentFrom(initialLogCard->width()),
-            "RTK GGA and service log cards keep a stable first-frame width");
+    if (requireStableFirstFrame)
+    {
+        require(!ggaResizeRecorder.observedWidthDifferentFrom(initialGgaCard->width()) &&
+                    !logResizeRecorder.observedWidthDifferentFrom(initialLogCard->width()),
+                "RTK GGA and service log cards keep a stable first-frame width");
+    }
     activateLayouts(dialog);
     processEventsFor(100);
     requireLabelTextOneOf(customTitleLabel,
@@ -3174,6 +3220,31 @@ int main(int argc, char **argv)
     {
         requireHomeOverviewLanguageWidthRoundTrip();
         std::cout << "home_overview_language_layout_test passed\n";
+        return 0;
+    }
+
+    if (app.arguments().contains(QStringLiteral("--combination-navigation-only")))
+    {
+        MainWindow combinationWindow;
+        combinationWindow.setWindowTitle(QStringLiteral("VaporView"));
+        combinationWindow.resize(1280, 800);
+        combinationWindow.show();
+        require(waitForWindowExposed(&combinationWindow),
+                "combination-navigation test window becomes exposed");
+        activateLayouts(&combinationWindow);
+        processEventsFor(500);
+        activateLayouts(&combinationWindow);
+        auto *customTitleLabel =
+            combinationWindow.findChild<QLabel *>(QStringLiteral("customTitleLabel"));
+        require(customTitleLabel != nullptr,
+                "combination-navigation test window exposes its title label");
+        requireRtkSidebarPage(combinationWindow, customTitleLabel, false);
+        combinationWindow.close();
+        require(processEventsUntil(1000, [&combinationWindow]() {
+                    return !combinationWindow.isVisible();
+                }),
+                "combination-navigation test window closes cleanly");
+        std::cout << "combination_navigation_page_test passed\n";
         return 0;
     }
 

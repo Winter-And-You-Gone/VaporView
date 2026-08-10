@@ -547,6 +547,9 @@ add_test(NAME main_window_layout_test COMMAND main_window_layout_test)
 add_test(NAME home_overview_language_layout_test
     COMMAND main_window_layout_test --home-overview-language-only
 )
+add_test(NAME combination_navigation_page_test
+    COMMAND main_window_layout_test --combination-navigation-only
+)
 
 add_executable(title_application_menu_test
     ${CMAKE_CURRENT_SOURCE_DIR}/title_application_menu_test.cpp
@@ -980,6 +983,7 @@ set_property(TEST ${VAPORVIEW_FAST_INTEGRATION_TESTS} PROPERTY LABELS fast integ
 set(VAPORVIEW_SLOW_UI_TESTS
     main_window_layout_test
     home_overview_language_layout_test
+    combination_navigation_page_test
     ui_test_mode_window_test
     main_window_session_viewer_test
     session_viewer_io_test
@@ -1023,6 +1027,7 @@ set_property(TEST
 )
 set_property(TEST main_window_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST home_overview_language_layout_test APPEND PROPERTY LABELS main-window layout)
+set_property(TEST combination_navigation_page_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST ui_test_mode_window_test APPEND PROPERTY LABELS main-window ui-test-mode)
 set_property(TEST main_window_session_viewer_test APPEND PROPERTY LABELS main-window session-viewer)
 set_property(TEST session_viewer_io_test APPEND PROPERTY LABELS session-viewer io)

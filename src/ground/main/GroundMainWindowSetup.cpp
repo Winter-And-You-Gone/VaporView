@@ -2186,8 +2186,11 @@ void MainWindow::setupCentralWidget()
         state_->rtk_config_dialog_, state_->main_page_stack_);
     state_->combination_navigation_page_->setStatusProvider([this]() {
         CombinationNavigationPage::StatusSnapshot snapshot;
-        snapshot.epsilonOnline =
-            !(isRemoteSkyMode() && !isUiTestMode() && !state_->remote_sky_controller_) &&
+        const bool remoteStatusAvailable = !isRemoteSkyMode() || isUiTestMode() ||
+            (state_->remote_sky_controller_ &&
+             state_->remote_sky_controller_->isOpen() &&
+             state_->remote_sky_controller_->statusFresh(QDateTime::currentMSecsSinceEpoch()));
+        snapshot.epsilonOnline = remoteStatusAvailable &&
             homeDeviceConnected(VaporView::SkyDeviceId::Epsilon);
         const VaporView::EpsilonData& epsilon = state_->current_epsilon_;
         bool epsilonDataFresh = false;
@@ -2216,19 +2219,11 @@ void MainWindow::setupCentralWidget()
                 }
             }
         }
-        const QString gnssFixText = QString::fromStdString(epsilon.gnss_fix_text).trimmed();
-        snapshot.navigationDataAvailable = epsilonDataFresh && !gnssFixText.isEmpty();
-        snapshot.gnssFixText = snapshot.navigationDataAvailable ? gnssFixText : QString();
-        snapshot.positionAvailable = snapshot.navigationDataAvailable &&
-            epsilon.gnss_fix_code >= 2 &&
-            std::isfinite(epsilon.longitude_deg) &&
-            std::isfinite(epsilon.latitude_deg) &&
-            std::isfinite(epsilon.height_m) &&
-            epsilon.longitude_deg >= -180.0 && epsilon.longitude_deg <= 180.0 &&
-            epsilon.latitude_deg >= -90.0 && epsilon.latitude_deg <= 90.0;
-        snapshot.longitudeDeg = epsilon.longitude_deg;
-        snapshot.latitudeDeg = epsilon.latitude_deg;
-        snapshot.heightM = epsilon.height_m;
+        // EpsilonData exposes only an aggregate frame timestamp, so a fresh IMU or
+        // attitude frame cannot prove that the cached GNSS fix and LLH are fresh.
+        // Keep these fields unavailable until their producers expose field-level validity.
+        snapshot.navigationDataAvailable = false;
+        snapshot.positionAvailable = false;
         snapshot.attitudeAvailable = epsilonDataFresh &&
             std::isfinite(epsilon.roll_deg) &&
             std::isfinite(epsilon.pitch_deg) &&
