@@ -90,8 +90,8 @@ constexpr int kTemperatureControllerSubTabTextPadding = 28;
 constexpr int kTemperatureControllerTopEnableWidth = 106;
 constexpr int kTemperatureControllerTopEnableHeight = 34;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
-constexpr int kTemperatureControllerModeTextWidthReserve = 48;
-constexpr int kTemperatureControllerAutoPidTextWidthReserve = 48;
+constexpr int kTemperatureControllerModeTextWidthReserve = 18;
+constexpr int kTemperatureControllerAutoPidTextWidthReserve = 36;
 // The 266px common-parameter row is 85 + 6 + 84 + 6 + 85, matching 130 + 6 + 130.
 constexpr int kTemperatureControllerPidSideInputWidth = 85;
 constexpr int kTemperatureControllerPidCenterInputWidth = 84;

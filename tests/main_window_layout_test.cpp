@@ -5990,6 +5990,8 @@ int main(int argc, char **argv)
         temperatureChannelTopBar->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
         temperatureChannelTopBar->size());
     const int commonTopBarToEnableGap = topEnableFieldRect.left() - topBarRectForMode.right() - 1;
+    require(enableToAutoGap >= 0 && autoToControllerModeGap >= 0,
+            "temperature top fields do not overlap when the mode selector keeps its full width");
     require(commonTopBarToEnableGap >= 0 &&
                 std::abs(commonTopBarToEnableGap - enableToAutoGap) <= 1 &&
                 std::abs(enableToAutoGap - autoToControllerModeGap) <= 1,
@@ -6003,7 +6005,7 @@ int main(int argc, char **argv)
             "temperature controller mode combo stays inside its field and top row without right-edge clipping");
     require(std::abs(controllerModeLabelRect.center().y() - controllerModeComboRect.center().y()) <= 2,
             "temperature controller mode label and combo are vertically centered together");
-    require(controllerModeComboEditRect.width() >= longestControllerModeTextWidth + 48,
+    require(controllerModeComboEditRect.width() >= longestControllerModeTextWidth + 18,
             "temperature controller mode combo reserves text padding beyond its longest option");
     int longestAutoPidTextWidth = 0;
     int longestAutoPidIndex = -1;
@@ -6028,7 +6030,7 @@ int main(int argc, char **argv)
         &autoPidComboOption,
         QStyle::SC_ComboBoxEditField,
         autoPidCombo);
-    require(autoPidComboEditRect.width() >= longestAutoPidTextWidth + 48,
+    require(autoPidComboEditRect.width() >= longestAutoPidTextWidth + 36,
             "temperature auto PID combo keeps its longest option fully visible");
     controllerModeCombo->setCurrentIndex(initialControllerModeIndex);
     require(controllerModeFieldRect.right() >= temperatureChannelSelectorRow->width() - 1,
