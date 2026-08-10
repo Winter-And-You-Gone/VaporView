@@ -235,6 +235,9 @@ int main(int argc, char **argv)
         QStringLiteral("titleMenuRecordingFolderAction"),
         QStringLiteral("titleMenuDataViewerAction"),
         QStringLiteral("titleMenuExitAction"),
+        QStringLiteral("titleMenuViewSizeIncreaseAction"),
+        QStringLiteral("titleMenuViewSizeStandardAction"),
+        QStringLiteral("titleMenuViewSizeDecreaseAction"),
         QStringLiteral("titleMenuViewLogPanelAction"),
         QStringLiteral("titleMenuLanguageChineseAction"),
         QStringLiteral("titleMenuLanguageEnglishAction")
@@ -336,6 +339,28 @@ int main(int argc, char **argv)
     viewRootRow->setFocus(Qt::OtherFocusReason);
     sendKey(viewRootRow, Qt::Key_Right);
     require(subMenu->isVisible(), "Right reopens the View submenu");
+    auto *viewSizeIncreaseRow = findRow(subMenu, QStringLiteral("titleMenuViewSizeIncreaseAction"));
+    auto *viewSizeStandardRow = findRow(subMenu, QStringLiteral("titleMenuViewSizeStandardAction"));
+    auto *viewSizeDecreaseRow = findRow(subMenu, QStringLiteral("titleMenuViewSizeDecreaseAction"));
+    require(viewSizeIncreaseRow != nullptr &&
+                viewSizeStandardRow != nullptr &&
+                viewSizeDecreaseRow != nullptr,
+            "View submenu exposes the three view-size choices");
+    require(viewSizeIncreaseRow->defaultAction()->text() == QStringLiteral("放大") &&
+                viewSizeStandardRow->defaultAction()->text() == QStringLiteral("标准") &&
+                viewSizeDecreaseRow->defaultAction()->text() == QStringLiteral("缩小"),
+            "View size choices use simple labels without percentages");
+    require(!viewSizeIncreaseRow->defaultAction()->isChecked() &&
+                viewSizeStandardRow->defaultAction()->isChecked() &&
+                !viewSizeDecreaseRow->defaultAction()->isChecked(),
+            "standard view size is checked at the default 100 percent setting");
+    require(findRow(subMenu, QStringLiteral("titleMenuFontTinyAction")) == nullptr &&
+                findRow(subMenu, QStringLiteral("titleMenuFontExtraSmallAction")) == nullptr &&
+                findRow(subMenu, QStringLiteral("titleMenuFontSmallAction")) == nullptr &&
+                findRow(subMenu, QStringLiteral("titleMenuFontNormalAction")) == nullptr &&
+                findRow(subMenu, QStringLiteral("titleMenuFontLargeAction")) == nullptr &&
+                findRow(subMenu, QStringLiteral("titleMenuFontExtraLargeAction")) == nullptr,
+            "View submenu no longer exposes percentage-based size choices");
     auto *languageRow = findRow(subMenu, QStringLiteral("titleMenuLanguageAction"));
     require(languageRow != nullptr && languageRow->isEnabled(),
             "View submenu exposes the language row as a real button");
