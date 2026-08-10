@@ -22,6 +22,7 @@
 #include <QDoubleSpinBox>
 #include <QDialog>
 #include <QFile>
+#include <QFont>
 #include <QFontMetrics>
 #include <QFrame>
 #include <QFocusEvent>
@@ -4891,6 +4892,10 @@ int main(int argc, char **argv)
                                  QStringLiteral("QToolButton#temperatureOverviewChannelButton::menu-indicator {"),
                                  QStringLiteral("image: none"),
                                  "temperature overview channel selector hides the default dropdown indicator");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QToolButton#temperatureOverviewChannelButton {"),
+                                 QStringLiteral("font-weight: 500"),
+                                 "temperature overview channel selector uses the normal selector font weight");
     require(temperatureChannelButton->menu() != nullptr,
             "temperature overview channel selector menu exists");
     require(temperatureChannelButton->menu()->testAttribute(Qt::WA_TranslucentBackground) &&
@@ -4910,6 +4915,8 @@ int main(int argc, char **argv)
                 "temperature overview channel menu item text is centered while check icon is right-aligned");
         require(row->textLabel() != nullptr && row->checkLabel() != nullptr,
                 "temperature overview channel menu row exposes text and check slots");
+        require(row->font().weight() <= QFont::Medium,
+                "temperature overview channel menu text uses the normal selector weight");
         require(row->textLabel()->alignment() == Qt::AlignCenter,
                 "temperature overview channel menu text label is centered");
         require(row->checkLabel()->geometry().right() > row->textLabel()->geometry().right(),
@@ -5052,9 +5059,10 @@ int main(int argc, char **argv)
         require(pill->height() >= 44,
                 "temperature overview value capsules are taller than the old compact pills");
     }
-    require(temperatureOutputPercentPill->height() == temperatureChannelButton->height(),
-            "temperature overview output percent capsule uses the compact channel-selector height");
-    require(temperatureChannelButton->height() <= 38,
+    require(temperatureOutputPercentPill->height() > temperatureChannelButton->height() &&
+                temperatureOutputPercentPill->height() >= 42,
+            "temperature overview output percent capsule is taller than the compact channel selector");
+    require(temperatureChannelButton->height() <= 30,
             "temperature overview channel selector is shorter than the value and output capsules");
     require(temperatureOutputCapsule->height() == 60 &&
                 temperatureOutputCapsule->width() == temperatureChannelButton->width(),

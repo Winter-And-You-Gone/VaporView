@@ -547,7 +547,7 @@ QToolButton#temperatureOverviewChannelButton {
     border-radius: 10px;
     color: @vv-primary;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 500;
     padding: 1px 8px 1px 8px;
     text-align: center;
 }

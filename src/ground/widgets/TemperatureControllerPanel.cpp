@@ -1116,7 +1116,7 @@ protected:
         painter.setRenderHint(QPainter::Antialiasing, true);
         painter.setPen(palette().color(QPalette::ButtonText));
         QFont textFont = font();
-        textFont.setWeight(QFont::DemiBold);
+        textFont.setWeight(QFont::Medium);
         painter.setFont(textFont);
         painter.drawText(rect().adjusted(18, 0, -18, 0), Qt::AlignCenter, text());
 
@@ -1183,7 +1183,7 @@ public:
         });
         auto configureChannelMenuAction = [this](SingleLevelPopupMenuRow *row, const QString& text, const QString& objectName) {
             QFont rowFont = row->font();
-            rowFont.setWeight(QFont::DemiBold);
+            rowFont.setWeight(QFont::Medium);
             row->setObjectName(objectName);
             row->setFont(rowFont);
             row->setTextAlignment(SingleLevelPopupTextAlignment::Center);
@@ -1399,11 +1399,11 @@ private:
     static constexpr int kOverviewMenuItemWidth = kOverviewControlWidth;
     static constexpr int kOverviewMenuOuterWidth = kOverviewControlWidth + kOverviewMenuShadowMargin * 2;
     static constexpr int kOverviewSummarySpacing = 4;
-    static constexpr int kOverviewChannelHeight = 34;
-    static constexpr int kOverviewOutputPercentHeight = 34;
+    static constexpr int kOverviewChannelHeight = 28;
+    static constexpr int kOverviewOutputPercentHeight = 42;
     static constexpr int kOverviewMinimumValueHeight = 44;
     static constexpr int kOverviewOutputCapsuleHeight = 60;
-    static constexpr int kOverviewOutputSwitchHeight = kOverviewChannelHeight;
+    static constexpr int kOverviewOutputSwitchHeight = 34;
     static constexpr int kOverviewOutputFrameWidth = 1;
     static constexpr int kOverviewOutputHorizontalMargin = 4;
     static constexpr int kOverviewOutputVerticalMargin = 3;
