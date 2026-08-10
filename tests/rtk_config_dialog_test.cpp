@@ -15,9 +15,11 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QPointer>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSettings>
+#include <QStackedWidget>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -600,6 +602,42 @@ int main(int argc, char **argv)
     QApplication::processEvents();
     messageBoxCloser.stop();
     require(applyButton->isEnabled(), "apply button is restored after asynchronous completion");
+
+    {
+        QStackedWidget pageHost;
+        pageHost.resize(960, 720);
+        auto *embeddedDialog = new RtkConfigDialog(&pageHost, true);
+        embeddedDialog->setUiTestMode(true);
+        auto *siblingPage = new QWidget(&pageHost);
+        pageHost.addWidget(embeddedDialog);
+        pageHost.addWidget(siblingPage);
+        pageHost.setCurrentWidget(embeddedDialog);
+        pageHost.show();
+        QApplication::processEvents();
+
+        QPointer<RtkConfigDialog> originalDialog(embeddedDialog);
+        require(QMetaObject::invokeMethod(
+                    embeddedDialog, "onStartClicked", Qt::DirectConnection),
+                "embedded RTK service can start in UI test mode");
+        require(embeddedDialog->isRunning(),
+                "embedded RTK service reports running before an internal page switch");
+
+        pageHost.setCurrentWidget(siblingPage);
+        QApplication::processEvents();
+        require(!originalDialog.isNull() && originalDialog == embeddedDialog &&
+                    !embeddedDialog->isVisible() && embeddedDialog->isRunning(),
+                "hiding the embedded RTK page preserves its instance and running service");
+
+        pageHost.setCurrentWidget(embeddedDialog);
+        QApplication::processEvents();
+        require(embeddedDialog->isVisible() && embeddedDialog->isRunning(),
+                "returning to the embedded RTK page preserves its running service");
+        require(QMetaObject::invokeMethod(
+                    embeddedDialog, "onStopClicked", Qt::DirectConnection),
+                "embedded RTK service can stop after an internal page switch");
+        require(!embeddedDialog->isRunning(),
+                "embedded RTK service stops only when explicitly requested");
+    }
 
     std::cout << "rtk_config_dialog_test passed\n";
     return 0;

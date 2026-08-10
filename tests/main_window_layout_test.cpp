@@ -2,6 +2,7 @@
 #include "shared/theme/TopLevelCardStyle.h"
 #include "ground/main/MainWindow.h"
 #include "ground/main/GroundMainWindowSupport.h"
+#include "ground/navigation/CombinationNavigationPage.h"
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/widgets/TelemetryPanels.h"
 #include "ground/widgets/VisualTextLabel.h"
@@ -60,6 +61,7 @@
 #include <QVariantAnimation>
 #include <QWidget>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -1416,7 +1418,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
         {
             temperatureButton = button;
         }
-        else if (accessibleName == QStringLiteral("RTK配置") || accessibleName == QStringLiteral("RTK Config"))
+        else if (accessibleName == QStringLiteral("组合导航") ||
+                 accessibleName == QStringLiteral("Combination Navigation"))
         {
             rtkButton = button;
         }
@@ -1425,19 +1428,19 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
             deviceButton = button;
         }
     }
-    require(temperatureButton != nullptr, "temperature sidebar button exists for RTK order check");
-    require(rtkButton != nullptr, "RTK sidebar button exists");
-    require(deviceButton != nullptr, "device configuration sidebar button exists for RTK order check");
-    require(homeButton != nullptr, "home sidebar button exists after RTK check");
+    require(temperatureButton != nullptr, "temperature sidebar button exists for combination-navigation order check");
+    require(rtkButton != nullptr, "combination-navigation sidebar button exists");
+    require(deviceButton != nullptr, "device configuration sidebar button exists for combination-navigation order check");
+    require(homeButton != nullptr, "home sidebar button exists after combination-navigation check");
     require(rtkButton->property("_vv_sidebar_icon_name").toString() == QStringLiteral("satellite"),
-            "RTK sidebar button uses satellite icon");
+            "combination-navigation sidebar button uses the existing satellite icon");
     require(homeButton->y() < deviceButton->y() &&
                 deviceButton->y() < temperatureButton->y() &&
                 temperatureButton->y() < rtkButton->y(),
-            "sidebar order is home, device configuration, thermal, RTK configuration");
+            "sidebar order is home, device configuration, thermal, combination navigation");
     require(rtkButton->toolTip().contains(QStringLiteral("未启动")) ||
                 rtkButton->toolTip().contains(QStringLiteral("stopped")),
-            "RTK sidebar button starts with stopped status text");
+            "combination-navigation sidebar button starts with stopped RTK status text");
 
     const QList<QToolButton*> titleButtons = window.findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
     for (QToolButton *button : titleButtons)
@@ -1450,7 +1453,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     const qint64 stoppedIconKey = rtkButton->icon().pixmap(iconSize).cacheKey();
 
     auto *pageStack = window.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
-    require(pageStack != nullptr, "main page stack exists");
+    require(pageStack != nullptr && pageStack->count() == 4,
+            "main page stack keeps the existing four-page order");
     auto *preDialog = window.findChild<RtkConfigDialog *>();
     require(preDialog != nullptr, "embedded RTK dialog exists before sidebar click");
     auto *preGgaCard = findCardByTitle(preDialog,
@@ -1465,12 +1469,97 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     ResizeWidthRecorder logResizeRecorder(preLogCard);
     preGgaCard->installEventFilter(&ggaResizeRecorder);
     preLogCard->installEventFilter(&logResizeRecorder);
-    ggaResizeRecorder.reset();
-    logResizeRecorder.reset();
     clickWidget(rtkButton, 0);
     processEventsFor(150);
-    auto *dialog = qobject_cast<RtkConfigDialog *>(pageStack->currentWidget());
-    require(dialog != nullptr, "RTK config opens as an embedded sidebar page");
+    auto *combinationPage = qobject_cast<VaporView::Ground::Navigation::CombinationNavigationPage *>(
+        pageStack->currentWidget());
+    require(combinationPage != nullptr && pageStack->indexOf(combinationPage) == 3,
+            "combination navigation reuses the former RTK page index");
+    auto *combinationStack = combinationPage->findChild<QStackedWidget *>(
+        QStringLiteral("combinationNavigationStack"));
+    auto *combinationNavigationBar = combinationPage->findChild<QFrame *>(
+        QStringLiteral("combinationNavigationNavigationBar"));
+    auto *statusButton = combinationPage->findChild<QPushButton *>(
+        QStringLiteral("combinationNavigationStatusButton"));
+    auto *epsilonButton = combinationPage->findChild<QPushButton *>(
+        QStringLiteral("combinationNavigationEpsilonButton"));
+    auto *differentialButton = combinationPage->findChild<QPushButton *>(
+        QStringLiteral("combinationNavigationDifferentialButton"));
+    auto *statusPage = combinationPage->findChild<QWidget *>(
+        QStringLiteral("combinationNavigationStatusPage"));
+    auto *epsilonPage = combinationPage->findChild<QWidget *>(
+        QStringLiteral("combinationNavigationEpsilonPage"));
+    require(combinationNavigationBar != nullptr && combinationNavigationBar->layout() != nullptr &&
+                combinationStack != nullptr && combinationStack->count() == 3 &&
+                statusButton != nullptr && epsilonButton != nullptr && differentialButton != nullptr &&
+                statusPage != nullptr && epsilonPage != nullptr,
+            "combination navigation exposes three real buttons and three stacked pages");
+    require(combinationStack->currentWidget() == statusPage && statusButton->isChecked() &&
+                !epsilonButton->isChecked() && !differentialButton->isChecked(),
+            "combination navigation opens on the status page by default");
+    const std::array<std::pair<QPushButton *, QString>, 3> combinationButtons{{
+        {statusButton, QStringLiteral("状态")},
+        {epsilonButton, QStringLiteral("EPSILON")},
+        {differentialButton, QStringLiteral("差分定位")},
+    }};
+    for (const auto& [button, expectedText] : combinationButtons)
+    {
+        require(button->isCheckable() && button->text() == expectedText &&
+                    button->accessibleName() == expectedText &&
+                    button->focusPolicy() == Qt::TabFocus,
+                "combination-navigation buttons are real, named and keyboard-tab focusable");
+    }
+    require(combinationPage->styleSheet().contains(QStringLiteral(":focus")) &&
+                combinationPage->styleSheet().contains(VaporView::appThemeColorName(
+                    VaporView::AppThemeColor::Focus, VaporView::isDarkThemeEnabled())),
+            "combination-navigation buttons keep a visible theme-token focus border");
+    require(combinationPage->findChildren<RtkConfigDialog *>().size() == 1 &&
+                combinationPage->differentialPage() == preDialog &&
+                combinationStack->indexOf(preDialog) == 2,
+            "combination navigation owns exactly the original embedded RTK page");
+    auto *rtkServiceStatus = combinationPage->findChild<QLabel *>(
+        QStringLiteral("combinationNavigationRtkServiceStatusValue"));
+    auto *ntripStatus = combinationPage->findChild<QLabel *>(
+        QStringLiteral("combinationNavigationNtripStatusValue"));
+    auto *rtcmStatus = combinationPage->findChild<QLabel *>(
+        QStringLiteral("combinationNavigationRtcmStatusValue"));
+    auto *longitudeValue = combinationPage->findChild<QLabel *>(
+        QStringLiteral("combinationNavigationLongitudeValue"));
+    require(rtkServiceStatus != nullptr && ntripStatus != nullptr && rtcmStatus != nullptr &&
+                longitudeValue != nullptr && ntripStatus->text() == QStringLiteral("--") &&
+                rtcmStatus->text() == QStringLiteral("--"),
+            "status page does not fabricate unavailable NTRIP or RTCM health state");
+    VaporView::Ground::Navigation::CombinationNavigationPage::StatusSnapshot sampleStatus;
+    sampleStatus.epsilonOnline = true;
+    sampleStatus.navigationDataAvailable = true;
+    sampleStatus.gnssFixText = QStringLiteral("RTK_FIXED");
+    sampleStatus.rtkServiceRunning = true;
+    sampleStatus.positionAvailable = true;
+    sampleStatus.longitudeDeg = 120.14530;
+    sampleStatus.latitudeDeg = 30.24620;
+    sampleStatus.heightM = 42.5;
+    combinationPage->setStatusSnapshot(sampleStatus);
+    require(rtkServiceStatus->text().contains(QStringLiteral("运行中")) &&
+                longitudeValue->text() != QStringLiteral("--") &&
+                ntripStatus->text() == QStringLiteral("--") &&
+                rtcmStatus->text() == QStringLiteral("--"),
+            "status page displays reliable navigation and RTK-service data without inferring connection health");
+    combinationPage->refreshStatus();
+    epsilonButton->setFocus(Qt::TabFocusReason);
+    QKeyEvent epsilonSpacePress(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier);
+    QKeyEvent epsilonSpaceRelease(QEvent::KeyRelease, Qt::Key_Space, Qt::NoModifier);
+    QApplication::sendEvent(epsilonButton, &epsilonSpacePress);
+    QApplication::sendEvent(epsilonButton, &epsilonSpaceRelease);
+    processEventsFor(50);
+    require(combinationStack->currentWidget() == epsilonPage && epsilonButton->isChecked(),
+            "combination navigation switches from status to EPSILON by keyboard");
+    ggaResizeRecorder.reset();
+    logResizeRecorder.reset();
+    clickWidget(differentialButton, 0);
+    processEventsFor(150);
+    auto *dialog = qobject_cast<RtkConfigDialog *>(combinationStack->currentWidget());
+    require(dialog == preDialog && differentialButton->isChecked(),
+            "combination navigation switches from EPSILON to the original RTK page");
     require(dialog->isVisible(), "embedded RTK config page is visible after sidebar click");
     auto *initialGgaCard = findCardByTitle(dialog,
                                            {QStringLiteral("GGA 监视"),
@@ -1486,8 +1575,16 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     activateLayouts(dialog);
     processEventsFor(100);
     requireLabelTextOneOf(customTitleLabel,
-                          {QStringLiteral("RTK配置"), QStringLiteral("RTK Config")},
-                          "custom title bar follows the selected RTK page");
+                          {QStringLiteral("组合导航"), QStringLiteral("Combination Navigation")},
+                          "custom title bar follows the selected combination-navigation page");
+    clickWidget(statusButton, 0);
+    processEventsFor(50);
+    require(combinationStack->currentWidget() == statusPage && statusButton->isChecked(),
+            "combination navigation switches from differential positioning back to status");
+    clickWidget(differentialButton, 0);
+    processEventsFor(100);
+    require(combinationStack->currentWidget() == dialog && differentialButton->isChecked(),
+            "combination navigation returns to the same RTK page instance");
     auto *rtkScrollArea = dialog->findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea"));
     require(rtkScrollArea != nullptr, "RTK config page uses a scroll area");
     require(rtkScrollArea->horizontalScrollBar() != nullptr &&
@@ -1598,13 +1695,13 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
         return rect.top() + rect.height();
     };
     require(std::abs(widgetRectInCentralForRtk(ntripCard).left() -
-                     (widgetRectInCentralForRtk(pageStack).left() +
+                     (widgetRectInCentralForRtk(dialog).left() +
                       kExpectedPageLeftInset)) <= 1,
-            "RTK page keeps the shared 18px sidebar-to-card gap");
+            "RTK differential page keeps its shared 18px card inset without an extra wrapper margin");
     require(std::abs(widgetRectInCentralForRtk(ntripCard).top() -
-                     (widgetRectInCentralForRtk(pageStack).top() +
+                     (widgetRectInCentralForRtk(dialog).top() +
                       kExpectedPageChromeInset)) <= 1,
-            "RTK page keeps the compact top inset that balances the app chrome");
+            "RTK differential page keeps its own compact top inset below the sub-navigation");
     auto *rtkContent = dialog->findChild<QWidget *>(QStringLiteral("rtkConfigContent"));
     require(rtkContent != nullptr && rtkContent->layout() != nullptr,
             "RTK embedded content exposes its page layout");
@@ -1981,6 +2078,12 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     leverHelpPopup->hide();
     processEventsFor(50);
 
+    require(processEventsUntil(1000, [dialog, rtcmCard, logCard]() {
+                activateLayouts(dialog);
+                return std::abs(logCard->height() - rtcmCard->height()) <= 2;
+            }),
+            "RTK card geometry settles after returning to the differential-positioning page");
+
     const QRect ntripRectBeforeTheme = widgetRect(ntripCard);
     const QRect ggaRectBeforeTheme = widgetRect(ggaCard);
     const QRect rtcmRectBeforeTheme = widgetRect(rtcmCard);
@@ -1997,6 +2100,9 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     processEventsFor(100);
     require(qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
             "main window is in dark theme for RTK layout stability checks");
+    require(combinationPage->styleSheet().contains(VaporView::appThemeColorName(
+                VaporView::AppThemeColor::Focus, true)),
+            "combination-navigation local style resolves the dark-theme focus token");
     requireSameRect(widgetRect(ntripCard), ntripRectBeforeTheme,
                     "RTK NTRIP card geometry stays stable after switching to dark theme");
     requireSameRect(widgetRect(ggaCard), ggaRectBeforeTheme,
@@ -2030,6 +2136,9 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     processEventsFor(100);
     require(!qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
             "main window returns to light theme after RTK layout stability checks");
+    require(combinationPage->styleSheet().contains(VaporView::appThemeColorName(
+                VaporView::AppThemeColor::Focus, false)),
+            "combination-navigation local style resolves the light-theme focus token");
     requireSameRect(widgetRect(ntripCard), ntripRectBeforeTheme,
                     "RTK NTRIP card geometry returns unchanged after switching back to light theme");
     requireSameRect(widgetRect(ggaCard), ggaRectBeforeTheme,
@@ -2058,6 +2167,22 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     const qint64 runningIconKey = rtkButton->icon().pixmap(iconSize).cacheKey();
     require(runningIconKey != stoppedIconKey, "RTK sidebar icon changes when service starts");
 
+    clickWidget(statusButton, 0);
+    processEventsFor(50);
+    clickWidget(epsilonButton, 0);
+    processEventsFor(50);
+    require(combinationStack->currentWidget() == epsilonPage &&
+                combinationPage->differentialPage() == dialog &&
+                combinationPage->findChildren<RtkConfigDialog *>().size() == 1 &&
+                (rtkButton->toolTip().contains(QStringLiteral("运行中")) ||
+                 rtkButton->toolTip().contains(QStringLiteral("running"))) &&
+                rtkButton->icon().pixmap(iconSize).cacheKey() == runningIconKey,
+            "switching status and EPSILON pages preserves the same running RTK page and status");
+    clickWidget(differentialButton, 0);
+    processEventsFor(50);
+    require(combinationStack->currentWidget() == dialog,
+            "the running RTK page remains available after internal navigation");
+
     QMetaObject::invokeMethod(dialog, "rtkRunningChanged", Qt::DirectConnection, Q_ARG(bool, false));
     processEventsFor(50);
     require(rtkButton->toolTip().contains(QStringLiteral("未启动")) ||
@@ -2071,6 +2196,32 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     requireLabelTextOneOf(customTitleLabel,
                           {QStringLiteral("首页"), QStringLiteral("Home")},
                           "custom title bar returns to home page after RTK sidebar check");
+    require(QMetaObject::invokeMethod(&window, "onRtkConfigClicked", Qt::DirectConnection),
+            "existing RTK action can open combination navigation");
+    processEventsFor(100);
+    require(pageStack->currentWidget() == combinationPage &&
+                combinationStack->currentWidget() == dialog && differentialButton->isChecked(),
+            "existing RTK action deep-links to the differential-positioning subpage");
+    clickWidget(homeButton);
+    processEventsFor(100);
+    require(QMetaObject::invokeMethod(&window, "onSwitchLanguage", Qt::DirectConnection),
+            "combination-navigation labels can switch to English");
+    processEventsFor(100);
+    require(statusButton->text() == QStringLiteral("Status") &&
+                statusButton->accessibleName() == statusButton->text() &&
+                epsilonButton->text() == QStringLiteral("EPSILON") &&
+                epsilonButton->accessibleName() == epsilonButton->text() &&
+                differentialButton->text() == QStringLiteral("Differential Positioning") &&
+                differentialButton->accessibleName() == differentialButton->text() &&
+                rtkButton->accessibleName() == QStringLiteral("Combination Navigation"),
+            "combination-navigation visible and accessible labels update together in English");
+    require(QMetaObject::invokeMethod(&window, "onSwitchLanguage", Qt::DirectConnection),
+            "combination-navigation labels can return to Chinese");
+    processEventsFor(100);
+    require(statusButton->text() == QStringLiteral("状态") &&
+                differentialButton->text() == QStringLiteral("差分定位") &&
+                rtkButton->accessibleName() == QStringLiteral("组合导航"),
+            "combination-navigation labels return to Chinese without rebuilding the page");
 }
 
 void requireLabelTextOneOf(const QLabel *label, const QStringList& expected, const char *message)

@@ -257,6 +257,7 @@ struct MainWindowState
     bool custom_logo_hovered_;
     QWidget *home_page_;
     QWidget *temperature_page_;
+    VaporView::Ground::Navigation::CombinationNavigationPage *combination_navigation_page_;
     DeviceConfigPageWidgets device_config_;
     QScrollArea *main_cards_scroll_area_;
     QGroupBox *config_group_;

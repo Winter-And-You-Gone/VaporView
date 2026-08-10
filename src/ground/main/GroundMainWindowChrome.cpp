@@ -667,6 +667,10 @@ void MainWindow::setEnglish(bool english)
     {
         state_->rtk_config_dialog_->setEnglish(english);
     }
+    if (state_->combination_navigation_page_)
+    {
+        state_->combination_navigation_page_->setEnglish(english);
+    }
     if (state_->session_viewer_window_)
     {
         state_->session_viewer_window_->setEnglish(english);
@@ -1767,18 +1771,22 @@ void MainWindow::updateThemedIcons()
 
 void MainWindow::updateRtkConfigIcon()
 {
-    const QString baseText = state_->is_english_ ? QStringLiteral("RTK config") : QStringLiteral("RTK配置");
     const QString stateText = state_->rtk_service_running_
         ? (state_->is_english_ ? QStringLiteral("running") : QStringLiteral("运行中"))
         : (state_->is_english_ ? QStringLiteral("stopped") : QStringLiteral("未启动"));
-    const QString toolTip = QStringLiteral("%1 (%2)").arg(baseText, stateText);
     if (state_->rtk_config_action_)
     {
+        const QString toolTip = QStringLiteral("%1 (%2)").arg(
+            state_->is_english_ ? QStringLiteral("RTK config") : QStringLiteral("RTK配置"),
+            stateText);
         state_->rtk_config_action_->setIcon(createRtkSatelliteIcon(state_->rtk_service_running_));
         state_->rtk_config_action_->setToolTip(toolTip);
     }
     if (state_->rtk_config_nav_btn_)
     {
+        const QString toolTip = QStringLiteral("%1 (RTK %2)").arg(
+            state_->is_english_ ? QStringLiteral("Combination Navigation") : QStringLiteral("组合导航"),
+            stateText);
         state_->rtk_config_nav_btn_->setToolTip(toolTip);
     }
 }
@@ -1833,6 +1841,8 @@ QString MainWindow::currentMainPageTitleText() const
         return state_->is_english_ ? QStringLiteral("Device") : QStringLiteral("设备配置");
     case 2:
         return state_->is_english_ ? QStringLiteral("Thermal") : QStringLiteral("温控");
+    case 3:
+        return state_->is_english_ ? QStringLiteral("Combination Navigation") : QStringLiteral("组合导航");
     case 0:
     default:
         return state_->is_english_ ? QStringLiteral("Home") : QStringLiteral("首页");

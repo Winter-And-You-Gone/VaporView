@@ -220,9 +220,15 @@ void MainWindow::syncRtkConfigPageState()
 void MainWindow::onRtkConfigClicked()
 {
     syncRtkConfigPageState();
-    if (state_->main_page_stack_ && state_->rtk_config_dialog_ && state_->main_page_stack_->indexOf(state_->rtk_config_dialog_) >= 0)
+    if (state_->combination_navigation_page_)
     {
-        state_->main_page_stack_->setCurrentWidget(state_->rtk_config_dialog_);
+        state_->combination_navigation_page_->showDifferentialPage();
+    }
+    if (state_->main_page_stack_ &&
+        state_->combination_navigation_page_ &&
+        state_->main_page_stack_->indexOf(state_->combination_navigation_page_) >= 0)
+    {
+        state_->main_page_stack_->setCurrentWidget(state_->combination_navigation_page_);
     }
     if (state_->rtk_config_nav_btn_)
     {

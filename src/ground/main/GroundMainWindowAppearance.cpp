@@ -501,7 +501,7 @@ void MainWindow::updateAppSidebarButtonTexts()
 
     applyButtonText(state_->home_nav_btn_, state_->is_english_ ? QStringLiteral("Home") : QStringLiteral("首页"));
     applyButtonText(state_->temperature_nav_btn_, state_->is_english_ ? QStringLiteral("Thermal") : QStringLiteral("温控"));
-    applyButtonText(state_->rtk_config_nav_btn_, state_->is_english_ ? QStringLiteral("RTK Config") : QStringLiteral("RTK配置"));
+    applyButtonText(state_->rtk_config_nav_btn_, state_->is_english_ ? QStringLiteral("Combination Navigation") : QStringLiteral("组合导航"));
     applyButtonText(state_->device_config_nav_btn_, state_->is_english_ ? QStringLiteral("Device") : QStringLiteral("设备配置"));
     updateRtkConfigIcon();
     updateCustomTitleBarTexts();

@@ -10,6 +10,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <functional>
 #include <utility>
@@ -2041,7 +2042,7 @@ void MainWindow::setupCentralWidget()
     state_->home_nav_btn_ = createNavButton(QStringLiteral("首页"), QStringLiteral("square-activity"));
     state_->device_config_nav_btn_ = createNavButton(QStringLiteral("设备配置"), QStringLiteral("sliders-vertical"));
     state_->temperature_nav_btn_ = createNavButton(QStringLiteral("温控"), QStringLiteral("thermometer"));
-    state_->rtk_config_nav_btn_ = createNavButton(QStringLiteral("RTK配置"), QStringLiteral("satellite"));
+    state_->rtk_config_nav_btn_ = createNavButton(QStringLiteral("组合导航"), QStringLiteral("satellite"));
     state_->app_nav_button_group_->addButton(state_->home_nav_btn_, 0);
     state_->app_nav_button_group_->addButton(state_->device_config_nav_btn_, 1);
     state_->app_nav_button_group_->addButton(state_->temperature_nav_btn_, 2);
@@ -2181,12 +2182,74 @@ void MainWindow::setupCentralWidget()
         updateSidebarNavIcons();
     });
     syncRtkConfigPageState();
-    state_->main_page_stack_->addWidget(state_->rtk_config_dialog_);
+    state_->combination_navigation_page_ = new CombinationNavigationPage(
+        state_->rtk_config_dialog_, state_->main_page_stack_);
+    state_->combination_navigation_page_->setStatusProvider([this]() {
+        CombinationNavigationPage::StatusSnapshot snapshot;
+        snapshot.epsilonOnline =
+            !(isRemoteSkyMode() && !isUiTestMode() && !state_->remote_sky_controller_) &&
+            homeDeviceConnected(VaporView::SkyDeviceId::Epsilon);
+        const VaporView::EpsilonData& epsilon = state_->current_epsilon_;
+        bool epsilonDataFresh = false;
+        if (snapshot.epsilonOnline && epsilon.valid)
+        {
+            if (isUiTestMode())
+            {
+                epsilonDataFresh = true;
+            }
+            else if (isRemoteSkyMode())
+            {
+                epsilonDataFresh = remoteDeviceDataValid(VaporView::SkyDeviceId::Epsilon, 2000);
+            }
+            else
+            {
+                const CollectorSnapshot collectors = snapshotCollectors();
+                if (collectors.epsilon &&
+                    epsilon.timestamp != std::chrono::steady_clock::time_point{})
+                {
+                    const int rate = std::max(1, collectors.epsilon->getSampleRate());
+                    const int timeoutMs = std::max(
+                        250, static_cast<int>(std::ceil(3000.0 / rate)));
+                    const auto ageMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - epsilon.timestamp).count();
+                    epsilonDataFresh = ageMs >= 0 && ageMs <= timeoutMs;
+                }
+            }
+        }
+        const QString gnssFixText = QString::fromStdString(epsilon.gnss_fix_text).trimmed();
+        snapshot.navigationDataAvailable = epsilonDataFresh && !gnssFixText.isEmpty();
+        snapshot.gnssFixText = snapshot.navigationDataAvailable ? gnssFixText : QString();
+        snapshot.positionAvailable = snapshot.navigationDataAvailable &&
+            epsilon.gnss_fix_code >= 2 &&
+            std::isfinite(epsilon.longitude_deg) &&
+            std::isfinite(epsilon.latitude_deg) &&
+            std::isfinite(epsilon.height_m) &&
+            epsilon.longitude_deg >= -180.0 && epsilon.longitude_deg <= 180.0 &&
+            epsilon.latitude_deg >= -90.0 && epsilon.latitude_deg <= 90.0;
+        snapshot.longitudeDeg = epsilon.longitude_deg;
+        snapshot.latitudeDeg = epsilon.latitude_deg;
+        snapshot.heightM = epsilon.height_m;
+        snapshot.attitudeAvailable = epsilonDataFresh &&
+            std::isfinite(epsilon.roll_deg) &&
+            std::isfinite(epsilon.pitch_deg) &&
+            std::isfinite(epsilon.yaw_deg);
+        snapshot.rollDeg = epsilon.roll_deg;
+        snapshot.pitchDeg = epsilon.pitch_deg;
+        snapshot.headingDeg = epsilon.yaw_deg;
+        snapshot.rtkServiceRunning =
+            state_->rtk_config_dialog_ && state_->rtk_config_dialog_->isRunning();
+        return snapshot;
+    });
+    state_->main_page_stack_->addWidget(state_->combination_navigation_page_);
 
     connect(state_->app_nav_button_group_, &QButtonGroup::idClicked, this, [this](int id) {
         if (id == 3)
         {
             syncRtkConfigPageState();
+            if (state_->combination_navigation_page_)
+            {
+                state_->combination_navigation_page_->showStatusPage();
+            }
         }
         if (state_->main_page_stack_)
         {
