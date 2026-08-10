@@ -1023,17 +1023,20 @@ void MainWindow::createTitleApplicationMenuPanel()
         return state_->font_scale_percent_ >= minPercent &&
                state_->font_scale_percent_ <= maxPercent;
     };
+    const auto adjustViewSize = [this](int deltaPercent) {
+        setFontScale(std::clamp(state_->font_scale_percent_ + deltaPercent, 70, 150));
+    };
     TitleMenuSection viewSection{
         state_->is_english_ ? QStringLiteral("View") : QStringLiteral("视图"),
         {
             command(QStringLiteral("titleMenuViewSizeIncreaseAction"),
                     state_->is_english_ ? QStringLiteral("Zoom In") : QStringLiteral("放大"),
                     QString(),
+                    state_->font_scale_percent_ < 150,
+                    false,
+                    false,
                     true,
-                    true,
-                    viewSizeChecked(108, 150),
-                    true,
-                    [this]() { setFontScale(115); }),
+                    [adjustViewSize]() { adjustViewSize(10); }),
             command(QStringLiteral("titleMenuViewSizeStandardAction"),
                     state_->is_english_ ? QStringLiteral("Standard") : QStringLiteral("标准"),
                     QString(),
@@ -1045,11 +1048,11 @@ void MainWindow::createTitleApplicationMenuPanel()
             command(QStringLiteral("titleMenuViewSizeDecreaseAction"),
                     state_->is_english_ ? QStringLiteral("Zoom Out") : QStringLiteral("缩小"),
                     QString(),
-                    true,
-                    true,
-                    viewSizeChecked(70, 95),
+                    state_->font_scale_percent_ > 70,
                     false,
-                    [this]() { setFontScale(90); }),
+                    false,
+                    false,
+                    [adjustViewSize]() { adjustViewSize(-10); }),
             command(QStringLiteral("titleMenuViewLogPanelAction"),
                     state_->is_english_ ? QStringLiteral("Log Panel") : QStringLiteral("日志面板"),
                     QString(),

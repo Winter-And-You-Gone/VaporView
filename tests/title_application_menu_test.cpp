@@ -354,6 +354,10 @@ int main(int argc, char **argv)
                 viewSizeStandardRow->defaultAction()->isChecked() &&
                 !viewSizeDecreaseRow->defaultAction()->isChecked(),
             "standard view size is checked at the default 100 percent setting");
+    require(!viewSizeIncreaseRow->defaultAction()->isCheckable() &&
+                viewSizeStandardRow->defaultAction()->isCheckable() &&
+                !viewSizeDecreaseRow->defaultAction()->isCheckable(),
+            "only the standard view-size command behaves like a checked state");
     require(findRow(subMenu, QStringLiteral("titleMenuFontTinyAction")) == nullptr &&
                 findRow(subMenu, QStringLiteral("titleMenuFontExtraSmallAction")) == nullptr &&
                 findRow(subMenu, QStringLiteral("titleMenuFontSmallAction")) == nullptr &&
@@ -380,6 +384,32 @@ int main(int argc, char **argv)
     sendKey(viewRootRow, Qt::Key_Escape);
     require(!panel->isVisible() && titleMenuButton->hasFocus(),
             "Esc closes the title menu and restores focus to titleBarMenuButton");
+
+    auto storedFontScalePercent = []() {
+        QSettings storedSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        storedSettings.sync();
+        return storedSettings.value(QStringLiteral("font_scale_percent"), 0).toInt();
+    };
+    QAction *increaseViewSizeAction = viewSizeIncreaseRow->defaultAction();
+    QAction *standardViewSizeAction = viewSizeStandardRow->defaultAction();
+    QAction *decreaseViewSizeAction = viewSizeDecreaseRow->defaultAction();
+    require(increaseViewSizeAction != nullptr &&
+                standardViewSizeAction != nullptr &&
+                decreaseViewSizeAction != nullptr,
+            "view-size rows keep their command actions for relative-step regression");
+    increaseViewSizeAction->trigger();
+    require(storedFontScalePercent() == 110,
+            "Zoom In increases the current view size by ten percent");
+    increaseViewSizeAction->trigger();
+    require(storedFontScalePercent() == 120,
+            "Zoom In is relative to the updated view size");
+    decreaseViewSizeAction->trigger();
+    require(storedFontScalePercent() == 110,
+            "Zoom Out decreases the current view size by ten percent");
+    standardViewSizeAction->trigger();
+    require(storedFontScalePercent() == 100,
+            "Standard resets the view size to one hundred percent");
+    VaporViewTest::processEventsFor(120);
 
     std::cout << "title_application_menu_test passed\n";
     return 0;
