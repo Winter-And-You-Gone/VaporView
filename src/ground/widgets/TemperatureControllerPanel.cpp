@@ -968,6 +968,16 @@ QString temperatureOverviewReservedNumberText()
     return QStringLiteral("999.99999");
 }
 
+QString temperatureOverviewOutputPercentText(double value)
+{
+    if (!std::isfinite(value))
+    {
+        return QStringLiteral("---");
+    }
+
+    return QStringLiteral("%1%").arg(QLocale::c().toString(value, 'f', 2));
+}
+
 int temperatureOverviewValueFontSizePx(const QLabel *label, const QString& value)
 {
     constexpr int kFallbackWidth = 99;
@@ -1018,6 +1028,18 @@ void setTemperatureOverviewPillText(QLabel *label, const QString& title, const Q
         .arg(title.toHtmlEscaped(), QString::number(valueFontSize), value.toHtmlEscaped()));
     label->style()->unpolish(label);
     label->style()->polish(label);
+}
+
+void setTemperatureOverviewOutputPercentText(QLabel *label, const QString& title, const QString& value)
+{
+    if (!label)
+    {
+        return;
+    }
+
+    label->setText(QStringLiteral("%1 %2").arg(title, value));
+    label->setToolTip(title);
+    label->setAccessibleName(title);
 }
 
 class TemperatureOverviewSwitchButton final : public SegmentedSwitchButton
@@ -1196,6 +1218,15 @@ public:
         channel_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
         summaryLayout->addWidget(channel_button_, 0);
 
+        output_percent_value_ = new QLabel(summary_widget_);
+        output_percent_value_->setObjectName(QStringLiteral("temperatureOverviewOutputPercentPill"));
+        output_percent_value_->setAlignment(Qt::AlignCenter);
+        output_percent_value_->setWordWrap(false);
+        output_percent_value_->setFixedWidth(kOverviewControlWidth);
+        output_percent_value_->setFixedHeight(kOverviewOutputPercentHeight);
+        output_percent_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        summaryLayout->addWidget(output_percent_value_, 0);
+
         target_temp_value_ = new QLabel(summary_widget_);
         target_temp_value_->setObjectName(QStringLiteral("temperatureOverviewValuePill"));
         target_temp_value_->setAlignment(Qt::AlignCenter);
@@ -1280,6 +1311,7 @@ public:
         is_english_ = english;
         if (channel_action_1_) channel_action_1_->setText(english ? QStringLiteral("CH 1") : QStringLiteral("通道1"));
         if (channel_action_2_) channel_action_2_->setText(english ? QStringLiteral("CH 2") : QStringLiteral("通道2"));
+
         if (output_label_) output_label_->setText(english ? QStringLiteral("Output Enable") : QStringLiteral("输出使能"));
         if (output_switch_button_) output_switch_button_->setEnglish(english);
         if (plot_)
@@ -1362,6 +1394,7 @@ private:
     static constexpr int kOverviewMenuOuterWidth = kOverviewControlWidth + kOverviewMenuShadowMargin * 2;
     static constexpr int kOverviewSummarySpacing = 4;
     static constexpr int kOverviewChannelHeight = 34;
+    static constexpr int kOverviewOutputPercentHeight = 34;
     static constexpr int kOverviewMinimumValueHeight = 44;
     static constexpr int kOverviewOutputCapsuleHeight = 60;
     static constexpr int kOverviewOutputSwitchHeight = kOverviewChannelHeight;
@@ -1501,6 +1534,13 @@ private:
         const VaporView::TemperatureControllerChannelData& channel = latest_data_.channels[index];
         const bool measuredValid = valid && std::isfinite(channel.measured_temperature_c);
         const bool targetValid = valid && std::isfinite(channel.target_temperature_c);
+        const bool outputPercentValid = valid && std::isfinite(channel.output_percent);
+        setTemperatureOverviewOutputPercentText(
+            output_percent_value_,
+            is_english_ ? QStringLiteral("Duty") : QStringLiteral("输出"),
+            temperatureOverviewOutputPercentText(outputPercentValid
+                ? channel.output_percent
+                : std::numeric_limits<double>::quiet_NaN()));
         setTemperatureOverviewPillText(
             target_temp_value_,
             is_english_ ? QStringLiteral("Target Temp °C") : QStringLiteral("目标温度℃"),
@@ -1538,6 +1578,7 @@ private:
     QAction *channel_action_2_ = nullptr;
     SingleLevelPopupMenuRow *channel_menu_row_1_ = nullptr;
     SingleLevelPopupMenuRow *channel_menu_row_2_ = nullptr;
+    QLabel *output_percent_value_ = nullptr;
     QLabel *target_temp_value_ = nullptr;
     QLabel *current_temp_value_ = nullptr;
     QFrame *output_capsule_ = nullptr;

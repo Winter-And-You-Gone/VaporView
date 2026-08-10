@@ -123,6 +123,7 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 600; }"
             "QLabel#homeTelemetrySummaryTitleLabel[skyTelemetryTitle=\"true\"] { color: @vv-primary; }"
             "QLabel#temperatureOverviewValuePill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; padding: 2px 3px; margin: 0px; }"
+            "QLabel#temperatureOverviewOutputPercentPill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; padding: 2px 3px; margin: 0px; }"
             "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; padding: 0px; margin: 0px; color: @vv-text; font-size: 14px; font-weight: 700; }"
             "QToolButton#temperatureOverviewChannelButton { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-primary; font-size: 13px; font-weight: 700; padding: 1px 8px 1px 8px; text-align: center; }"
             "QToolButton#temperatureOverviewChannelButton[available=\"false\"] { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }"
@@ -300,9 +301,9 @@ QString temperatureControllerConfigStyleSheet()
         "QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:focus { border-color: @vv-primary; }"
         "QWidget#ai8TemperatureControllerPanel QWidget[ai8DetailContent=\"true\"] { background-color: transparent; border: none; }"
         "QWidget#ai8TemperatureControllerPanel QFrame#ai8ParameterField { background-color: transparent; border: none; border-radius: 0px; }"
-        "Ai8TemperatureControllerPanel QLabel#ai8ProtocolStatus[protocolReady=\"false\"] { color: @vv-text-muted; font-weight: 500; }"
-        "Ai8TemperatureControllerPanel QLabel#ai8ProtocolStatus[protocolReady=\"true\"] { color: @vv-success; font-weight: 600; }"
-        "Ai8TemperatureControllerPanel QLabel#ai8ProtocolStatus[operationFailed=\"true\"] { color: @vv-danger; font-weight: 600; }"
+        "QLabel#ai8ProtocolStatus[protocolReady=\"false\"] { color: @vv-text-muted; font-weight: 500; }"
+        "QLabel#ai8ProtocolStatus[protocolReady=\"true\"] { color: @vv-success; font-weight: 600; }"
+        "QLabel#ai8ProtocolStatus[operationFailed=\"true\"] { color: @vv-danger; font-weight: 600; }"
         "Ai8TemperatureControllerPanel QPushButton#ai8WriteParametersButton[primaryAction=\"true\"] { background-color: @vv-primary; border-color: @vv-primary; color: @vv-white; }"
         "Ai8TemperatureControllerPanel QPushButton#ai8WriteParametersButton[primaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }");
 }

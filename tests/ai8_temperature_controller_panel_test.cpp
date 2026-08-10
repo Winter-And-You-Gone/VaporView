@@ -41,6 +41,8 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
 
     VaporView::Ground::Widgets::Ai8TemperatureControllerPanel panel;
+    QLabel protocolStatusLabel;
+    panel.setProtocolStatusLabel(&protocolStatusLabel);
     panel.resize(1180, 560);
     panel.show();
     QApplication::processEvents();
@@ -165,7 +167,7 @@ int main(int argc, char **argv)
     require(statusRect.left() > navigationRect.right() &&
                 statusRect.right() <= panel.rect().right() &&
                 statusRect.bottom() < commonStackRect.top(),
-            "AI-8 backend status and page actions sit right of the page selectors");
+            "AI-8 page actions sit right of the page selectors");
     constexpr int kSerialConfigComboSpacingPx = 6;
     QWidget *channelField = channelSpin->parentWidget();
     QWidget *setpointField = setpointSpin->parentWidget();
@@ -500,7 +502,7 @@ int main(int argc, char **argv)
 
     auto *readButton = panel.findChild<QPushButton *>(QStringLiteral("ai8ReadParametersButton"));
     auto *writeButton = panel.findChild<QPushButton *>(QStringLiteral("ai8WriteParametersButton"));
-    auto *statusLabel = panel.findChild<QLabel *>(QStringLiteral("ai8ProtocolStatus"));
+    auto *statusLabel = &protocolStatusLabel;
     require(readButton != nullptr && writeButton != nullptr && statusLabel != nullptr &&
                 !readButton->isEnabled() && !writeButton->isEnabled() &&
                 !statusLabel->property("protocolReady").toBool(),

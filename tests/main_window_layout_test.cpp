@@ -4621,6 +4621,8 @@ int main(int argc, char **argv)
         ai8TemperatureCard->findChild<QToolButton *>(QStringLiteral("ai8TitleActionButton"));
     auto *ai8TitleStatusLabel =
         ai8TemperatureCard->findChild<QLabel *>(QStringLiteral("ai8TitleOutputStatusLabel"));
+    auto *ai8ProtocolStatusLabel =
+        ai8TemperatureCard->findChild<QLabel *>(QStringLiteral("ai8ProtocolStatus"));
     require(ai8TitleActionButton != nullptr &&
             ai8TemperatureCard->findChild<QToolButton *>(QStringLiteral("ai8TitleConnectButton")) == nullptr &&
                 ai8TemperatureCard->findChild<QToolButton *>(QStringLiteral("ai8TitleDisconnectButton")) == nullptr &&
@@ -4638,6 +4640,11 @@ int main(int argc, char **argv)
                     ai8TitleLayout->indexOf(ai8TitleActionButton) + 1 &&
                 ai8TitleStatusLabel->text() == QStringLiteral("输出：--"),
             "AI-8 title shows the selected channel output state after the connection icon");
+    require(ai8ProtocolStatusLabel != nullptr &&
+                ai8TitleLayout->indexOf(ai8ProtocolStatusLabel) == ai8TitleLayout->count() - 1 &&
+                ai8ProtocolStatusLabel->text() == QStringLiteral("通信后端未连接") &&
+                !ai8ProtocolStatusLabel->property("protocolReady").toBool(),
+            "AI-8 communication backend status sits at the far end of the title bar");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QToolButton[temperatureTitleAction=\"true\"] {"),
@@ -4716,7 +4723,7 @@ int main(int argc, char **argv)
                 ai8StatusRect.right() <= ai8Panel->rect().right() &&
                 ai8StatusRect.bottom() < ai8MainContentRect.top() &&
                 ai8TemperaturePlot->property("forceWhiteBackground").toBool(),
-            "AI-8 backend status row is right-aligned beside page selectors and the plot uses a white background");
+            "AI-8 page action row is right-aligned beside page selectors and the plot uses a white background");
     auto *ai8GlobalButton = ai8TemperatureCard->findChild<QPushButton *>(
         QStringLiteral("ai8PageSelectorButton4"));
     auto *ai8ChannelButton = ai8TemperatureCard->findChild<QPushButton *>(
@@ -4969,6 +4976,8 @@ int main(int argc, char **argv)
     }
     auto *temperatureOutputSwitch =
         window.findChild<QPushButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
+    auto *temperatureOutputPercentPill =
+        window.findChild<QLabel *>(QStringLiteral("temperatureOverviewOutputPercentPill"));
     auto *temperatureOutputCapsule =
         window.findChild<QFrame *>(QStringLiteral("temperatureOverviewOutputCapsule"));
     auto *temperatureOutputLabel =
@@ -4977,6 +4986,10 @@ int main(int argc, char **argv)
         window.findChild<QPushButton *>(QStringLiteral("temperatureOutputEnableSwitchChannel1"));
     require(temperatureOutputSwitch != nullptr,
             "temperature overview output enable capsule exists");
+    require(temperatureOutputPercentPill != nullptr,
+            "temperature overview output percent capsule exists");
+    require(temperatureOutputPercentPill->text() == QStringLiteral("输出 ---"),
+            "temperature overview output percent starts unavailable without controller data");
     require(temperatureOutputSwitch->property("segmentedSwitchControl").toBool() &&
                 temperatureOutputSwitch->focusPolicy() == Qt::TabFocus,
             "temperature overview output uses the keyboard-accessible shared segmented switch");
@@ -4998,12 +5011,22 @@ int main(int argc, char **argv)
             "temperature overview summary column exists");
     require(temperatureOverviewSummary->layout() != nullptr,
             "temperature overview summary column has a layout");
+    require(temperatureOverviewSummary->layout()->indexOf(temperatureChannelButton) >= 0 &&
+                temperatureOverviewSummary->layout()->indexOf(temperatureOutputPercentPill) >
+                    temperatureOverviewSummary->layout()->indexOf(temperatureChannelButton) &&
+                temperatureOverviewSummary->layout()->indexOf(temperatureOutputPercentPill) <
+                    temperatureOverviewSummary->layout()->indexOf(temperatureValuePills.first()),
+            "temperature overview output percent capsule sits between channel selection and target temperature");
     processEventsFor(50);
     activateLayouts(&window);
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QLabel#temperatureOverviewValuePill {"),
                                  QStringLiteral("font-size: 13px"),
                                  "temperature overview value pill font matches the other capsules");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QLabel#temperatureOverviewOutputPercentPill {"),
+                                 QStringLiteral("font-size: 13px"),
+                                 "temperature overview output percent pill matches the value capsule typography");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QFrame#temperatureOverviewOutputCapsule {"),
                                  QStringLiteral("border-radius: 10px"),
@@ -5018,14 +5041,16 @@ int main(int argc, char **argv)
                                  "temperature overview output switch font is enlarged for readability");
     const int temperatureSummarySpacing = temperatureOverviewSummary->layout()->spacing();
     int temperatureSummaryControlHeight =
-        temperatureChannelButton->height() + temperatureOutputCapsule->height() +
-        temperatureSummarySpacing * 3;
+        temperatureChannelButton->height() + temperatureOutputPercentPill->height() +
+        temperatureOutputCapsule->height() + temperatureSummarySpacing * 4;
     for (QLabel *pill : temperatureValuePills)
     {
         temperatureSummaryControlHeight += pill->height();
         require(pill->height() >= 44,
                 "temperature overview value capsules are taller than the old compact pills");
     }
+    require(temperatureOutputPercentPill->height() == temperatureChannelButton->height(),
+            "temperature overview output percent capsule uses the compact channel-selector height");
     require(temperatureChannelButton->height() <= 38,
             "temperature overview channel selector is shorter than the value and output capsules");
     require(temperatureOutputCapsule->height() == 60 &&
@@ -5374,6 +5399,10 @@ int main(int argc, char **argv)
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
                                  "dark theme overrides temperature overview value pill background");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
+                                 QStringLiteral("QLabel#temperatureOverviewOutputPercentPill {"),
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
+                                 "dark theme overrides temperature overview output percent pill background");
+    requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QFrame#temperatureOverviewOutputCapsule {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
                                  "dark theme overrides temperature overview output capsule background");
@@ -5472,6 +5501,7 @@ int main(int argc, char **argv)
     validTemperatureData.valid = true;
     validTemperatureData.channels[0].target_temperature_c = 25.0;
     validTemperatureData.channels[0].measured_temperature_c = 24.75;
+    validTemperatureData.channels[0].output_percent = 32.5;
     validTemperatureData.channels[0].output_enabled = true;
     validTemperatureData.channels[0].output_mode = 0;
     validTemperatureData.channels[0].max_output_percent = 70;
@@ -5506,6 +5536,8 @@ int main(int argc, char **argv)
             "temperature overview output enable capsule is enabled with controller data");
     require(temperatureOutputSwitch->isChecked(),
             "temperature overview output enable capsule reflects the confirmed controller output state");
+    require(temperatureOutputPercentPill->text() == QStringLiteral("输出 32.50%"),
+            "temperature overview output percent capsule reflects the selected channel telemetry");
     bool sawTemperatureOverviewTargetValue = false;
     bool sawTemperatureOverviewCurrentValue = false;
     for (QLabel *pill : temperatureValuePills)

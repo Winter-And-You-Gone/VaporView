@@ -1240,6 +1240,17 @@ QLabel#temperatureOverviewValuePill {
     border-radius: 10px;
     color: @vv-text-strong;
 }
+QLabel#temperatureOverviewOutputPercentPill {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+    border-radius: 10px;
+    color: @vv-text-strong;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 2px 3px;
+    margin: 0px;
+}
 QFrame#temperatureOverviewOutputCapsule {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;

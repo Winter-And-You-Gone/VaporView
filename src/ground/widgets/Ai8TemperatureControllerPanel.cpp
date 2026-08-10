@@ -296,12 +296,6 @@ void Ai8TemperatureControllerPanel::setupUi()
     statusLayout->setContentsMargins(0, 0, 0, 0);
     statusLayout->setSpacing(8);
 
-    protocol_status_label_ = new QLabel(statusRow);
-    protocol_status_label_->setObjectName(QStringLiteral("ai8ProtocolStatus"));
-    protocol_status_label_->setProperty("protocolReady", false);
-    protocol_status_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    statusLayout->addWidget(protocol_status_label_, 0, Qt::AlignRight | Qt::AlignVCenter);
-
     auto *readButton = new QPushButton(statusRow);
     read_button_ = readButton;
     readButton->setObjectName(QStringLiteral("ai8ReadParametersButton"));
@@ -1152,6 +1146,21 @@ void Ai8TemperatureControllerPanel::setBackendConnected(bool connected, const QS
     if (write_button_) write_button_->setEnabled(connected);
     updateStatusText();
     emit outputStatusChanged();
+}
+
+void Ai8TemperatureControllerPanel::setProtocolStatusLabel(QLabel *label)
+{
+    protocol_status_label_ = label;
+    if (!protocol_status_label_)
+    {
+        return;
+    }
+    protocol_status_label_->setObjectName(QStringLiteral("ai8ProtocolStatus"));
+    protocol_status_label_->setProperty("protocolReady", backend_connected_);
+    protocol_status_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    protocol_status_label_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    updateStatusText();
+    setEnglish(english_);
 }
 
 void Ai8TemperatureControllerPanel::setOperationStatus(const QString& text, bool success)

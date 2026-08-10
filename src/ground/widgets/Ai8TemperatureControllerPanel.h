@@ -31,6 +31,7 @@ public:
 
     void setEnglish(bool english);
     void setBackendConnected(bool connected, const QString& detail = QString());
+    void setProtocolStatusLabel(QLabel *label);
     void setOperationStatus(const QString& text, bool success);
     QString currentOutputStatusText() const;
     Ai8TemperatureControllerProtocol::PageData currentPageData() const;

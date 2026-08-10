@@ -4750,10 +4750,17 @@ void MainWindow::setupDataPanels()
     state_->ai8_temperature_title_status_lbl_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     ai8TitleLayout->addWidget(state_->ai8_temperature_title_status_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     ai8TitleLayout->addStretch(1);
+    auto *ai8ProtocolStatusLabel = new QLabel(ai8TitleBar);
+    ai8ProtocolStatusLabel->setObjectName(QStringLiteral("ai8ProtocolStatus"));
+    ai8ProtocolStatusLabel->setProperty("protocolReady", false);
+    ai8ProtocolStatusLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    ai8ProtocolStatusLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    ai8TitleLayout->addWidget(ai8ProtocolStatusLabel, 0, Qt::AlignVCenter | Qt::AlignRight);
     ai8Layout->addWidget(ai8TitleBar);
 
     state_->ai8_temperature_controller_panel_ = new Ai8TemperatureControllerPanel(
         state_->ai8_temperature_controller_group_);
+    state_->ai8_temperature_controller_panel_->setProtocolStatusLabel(ai8ProtocolStatusLabel);
     connect(state_->ai8_temperature_controller_panel_,
             &Ai8TemperatureControllerPanel::readPageRequested,
             this,
