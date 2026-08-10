@@ -1037,7 +1037,13 @@ void setTemperatureOverviewOutputPercentText(QLabel *label, const QString& title
         return;
     }
 
-    label->setText(QStringLiteral("%1 %2").arg(title, value));
+    label->setTextFormat(Qt::RichText);
+    label->setText(QStringLiteral(
+        "<div align=\"center\" style=\"line-height: 13px; white-space: nowrap;\">"
+        "<span style=\"font-size: 12px; font-weight: 700;\">%1</span><br/>"
+        "<span style=\"font-size: 14px; font-weight: 700;\">%2</span>"
+        "</div>")
+        .arg(title.toHtmlEscaped(), value.toHtmlEscaped()));
     label->setToolTip(title);
     label->setAccessibleName(title);
 }
@@ -1537,7 +1543,7 @@ private:
         const bool outputPercentValid = valid && std::isfinite(channel.output_percent);
         setTemperatureOverviewOutputPercentText(
             output_percent_value_,
-            is_english_ ? QStringLiteral("Duty") : QStringLiteral("输出"),
+            is_english_ ? QStringLiteral("Output Percent") : QStringLiteral("输出百分比"),
             temperatureOverviewOutputPercentText(outputPercentValid
                 ? channel.output_percent
                 : std::numeric_limits<double>::quiet_NaN()));

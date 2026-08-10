@@ -4988,8 +4988,11 @@ int main(int argc, char **argv)
             "temperature overview output enable capsule exists");
     require(temperatureOutputPercentPill != nullptr,
             "temperature overview output percent capsule exists");
-    require(temperatureOutputPercentPill->text() == QStringLiteral("输出 ---"),
-            "temperature overview output percent starts unavailable without controller data");
+    require(temperatureOutputPercentPill->textFormat() == Qt::RichText &&
+                temperatureOutputPercentPill->text().contains(QStringLiteral("<br/>")) &&
+                temperatureOutputPercentPill->text().contains(QStringLiteral("输出百分比")) &&
+                temperatureOutputPercentPill->text().contains(QStringLiteral("---")),
+            "temperature overview output percent starts as a two-line unavailable capsule");
     require(temperatureOutputSwitch->property("segmentedSwitchControl").toBool() &&
                 temperatureOutputSwitch->focusPolicy() == Qt::TabFocus,
             "temperature overview output uses the keyboard-accessible shared segmented switch");
@@ -5536,8 +5539,11 @@ int main(int argc, char **argv)
             "temperature overview output enable capsule is enabled with controller data");
     require(temperatureOutputSwitch->isChecked(),
             "temperature overview output enable capsule reflects the confirmed controller output state");
-    require(temperatureOutputPercentPill->text() == QStringLiteral("输出 32.50%"),
-            "temperature overview output percent capsule reflects the selected channel telemetry");
+    require(temperatureOutputPercentPill->textFormat() == Qt::RichText &&
+                temperatureOutputPercentPill->text().contains(QStringLiteral("<br/>")) &&
+                temperatureOutputPercentPill->text().contains(QStringLiteral("输出百分比")) &&
+                temperatureOutputPercentPill->text().contains(QStringLiteral("32.50%")),
+            "temperature overview output percent capsule reflects the selected channel telemetry on two lines");
     bool sawTemperatureOverviewTargetValue = false;
     bool sawTemperatureOverviewCurrentValue = false;
     for (QLabel *pill : temperatureValuePills)
