@@ -91,7 +91,7 @@ constexpr int kTemperatureControllerTopEnableWidth = 106;
 constexpr int kTemperatureControllerTopEnableHeight = 34;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
 constexpr int kTemperatureControllerModeTextWidthReserve = 48;
-constexpr int kTemperatureControllerAutoPidTextWidthReserve = 24;
+constexpr int kTemperatureControllerAutoPidTextWidthReserve = 48;
 // The 266px common-parameter row is 85 + 6 + 84 + 6 + 85, matching 130 + 6 + 130.
 constexpr int kTemperatureControllerPidSideInputWidth = 85;
 constexpr int kTemperatureControllerPidCenterInputWidth = 84;
@@ -1682,9 +1682,11 @@ void TemperatureControllerPanel::alignChannelTopControlFields(int channelIndex)
                                                 enableFieldWidth -
                                                 autoPidFieldWidth -
                                                 controllerModeFieldWidth);
-        rowSpacing = availableWidth / 3;
-        pageSpacing = rowSpacing + (availableWidth % 3);
-        middleGap = rowSpacing;
+        const int baseGap = availableWidth / 3;
+        const int extraGapPixels = availableWidth % 3;
+        rowSpacing = baseGap + (extraGapPixels > 0 ? 1 : 0);
+        middleGap = baseGap + (extraGapPixels > 1 ? 1 : 0);
+        pageSpacing = baseGap;
         channel.common_top_controls->setFixedWidth(enableFieldWidth + autoPidFieldWidth + middleGap);
     }
     else if (sensorPageActive)

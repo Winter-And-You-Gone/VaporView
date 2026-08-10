@@ -6006,13 +6006,29 @@ int main(int argc, char **argv)
     require(controllerModeComboEditRect.width() >= longestControllerModeTextWidth + 48,
             "temperature controller mode combo reserves text padding beyond its longest option");
     int longestAutoPidTextWidth = 0;
+    int longestAutoPidIndex = -1;
     for (int index = 0; index < autoPidCombo->count(); ++index)
     {
-        longestAutoPidTextWidth = std::max(longestAutoPidTextWidth,
-                                           autoPidCombo->fontMetrics().horizontalAdvance(
-                                               autoPidCombo->itemText(index)));
+        const int textWidth = autoPidCombo->fontMetrics().horizontalAdvance(
+            autoPidCombo->itemText(index));
+        if (textWidth > longestAutoPidTextWidth)
+        {
+            longestAutoPidTextWidth = textWidth;
+            longestAutoPidIndex = index;
+        }
     }
-    require(autoPidCombo->width() >= longestAutoPidTextWidth + 48,
+    QStyleOptionComboBox autoPidComboOption;
+    autoPidComboOption.initFrom(autoPidCombo);
+    autoPidComboOption.rect = autoPidCombo->rect();
+    autoPidComboOption.currentText = autoPidCombo->itemText(longestAutoPidIndex);
+    autoPidComboOption.editable = autoPidCombo->isEditable();
+    autoPidComboOption.frame = autoPidCombo->hasFrame();
+    const QRect autoPidComboEditRect = autoPidCombo->style()->subControlRect(
+        QStyle::CC_ComboBox,
+        &autoPidComboOption,
+        QStyle::SC_ComboBoxEditField,
+        autoPidCombo);
+    require(autoPidComboEditRect.width() >= longestAutoPidTextWidth + 48,
             "temperature auto PID combo keeps its longest option fully visible");
     controllerModeCombo->setCurrentIndex(initialControllerModeIndex);
     require(controllerModeFieldRect.right() >= temperatureChannelSelectorRow->width() - 1,
