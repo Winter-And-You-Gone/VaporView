@@ -642,13 +642,21 @@ int main(int argc, char **argv)
         window->findChild<QPushButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
     require(temperatureOutputPercentPill != nullptr && temperatureOutputSwitch != nullptr,
             "UI test mode exposes the home temperature output percent capsule and switch");
-    require(VaporViewTest::processEventsUntil(1500, [temperatureOutputPercentPill]() {
-                return temperatureOverviewOutputPercentShows(
-                    temperatureOutputPercentPill, QStringLiteral("0.00%"));
+    require(VaporViewTest::processEventsUntil(1500, [temperatureOutputPercentPill, temperatureOutputSwitch]() {
+                return temperatureOutputSwitch->isChecked() &&
+                    temperatureOverviewOutputPercentShowsNonZero(temperatureOutputPercentPill);
             }),
-            "UI test mode feeds the home temperature output percent capsule while RD105 output is off");
-    require(temperatureOutputSwitch->isEnabled() && !temperatureOutputSwitch->isChecked(),
-            "UI test mode starts the home temperature output switch enabled and off");
+            "UI test mode feeds a non-zero home temperature output percent capsule by default");
+    require(temperatureOutputSwitch->isEnabled() && temperatureOutputSwitch->isChecked(),
+            "UI test mode starts the home temperature output switch enabled and on");
+    temperatureOutputSwitch->click();
+    require(VaporViewTest::processEventsUntil(1500, [temperatureOutputPercentPill, temperatureOutputSwitch]() {
+                return !temperatureOutputSwitch->isChecked() &&
+                    temperatureOverviewOutputPercentShows(
+                        temperatureOutputPercentPill, QStringLiteral("0.00%"));
+            }),
+            "UI test mode returns the home temperature output percent capsule to zero after disabling RD105 output");
+
     bool sawTemperatureOutputPrompt = false;
     QTimer temperatureOutputPromptCloser;
     QObject::connect(&temperatureOutputPromptCloser, &QTimer::timeout, [&sawTemperatureOutputPrompt]() {
@@ -659,7 +667,7 @@ int main(int argc, char **argv)
     temperatureOutputSwitch->click();
     temperatureOutputPromptCloser.stop();
     require(sawTemperatureOutputPrompt,
-            "UI test mode confirms the home temperature output enable prompt");
+            "UI test mode confirms the home temperature output re-enable prompt");
     const bool temperatureOutputPercentBecameNonZero =
         VaporViewTest::processEventsUntil(1500, [temperatureOutputPercentPill, temperatureOutputSwitch]() {
                 return temperatureOutputSwitch->isChecked() &&
@@ -675,14 +683,6 @@ int main(int argc, char **argv)
     }
     require(temperatureOutputPercentBecameNonZero,
             "UI test mode drives the home temperature output percent capsule after enabling RD105 output");
-    temperatureOutputSwitch->click();
-    require(VaporViewTest::processEventsUntil(1500, [temperatureOutputPercentPill, temperatureOutputSwitch]() {
-                return !temperatureOutputSwitch->isChecked() &&
-                    temperatureOverviewOutputPercentShows(
-                        temperatureOutputPercentPill, QStringLiteral("0.00%"));
-            }),
-            "UI test mode returns the home temperature output percent capsule to zero after disabling RD105 output");
-
     auto findTitleMenuRow = [](QWidget *menu, const QStringList& texts) -> QWidget * {
         if (!menu)
         {

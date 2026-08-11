@@ -67,7 +67,7 @@ public:
 
 private:
     static int deviceIndex(SkyDeviceId device);
-    void resetTemperatureState();
+    void resetTemperatureState(bool outputEnabled = true);
 
     UiTestScenario scenario_ = UiTestScenario::Normal;
     qint64 scenario_started_ms_ = 0;

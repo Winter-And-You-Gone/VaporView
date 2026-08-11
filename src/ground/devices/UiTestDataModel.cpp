@@ -164,7 +164,7 @@ void UiTestDataModel::applyTemperatureCommand(
         temperature_state_.overtemp_output_mode = payload.overtemp_output_mode;
         break;
     case CommandId::RestoreTemperatureFactoryDefaults:
-        resetTemperatureState();
+        resetTemperatureState(false);
         break;
     default:
         break;
@@ -391,7 +391,7 @@ int UiTestDataModel::deviceIndex(SkyDeviceId device)
     return -1;
 }
 
-void UiTestDataModel::resetTemperatureState()
+void UiTestDataModel::resetTemperatureState(bool outputEnabled)
 {
     temperature_state_ = TemperatureControllerData();
     temperature_state_.valid = true;
@@ -404,10 +404,10 @@ void UiTestDataModel::resetTemperatureState()
         TemperatureControllerChannelData& channel = temperature_state_.channels[index];
         channel.target_temperature_c = index == 0 ? 25.0 : 27.0;
         channel.measured_temperature_c = channel.target_temperature_c;
-        channel.output_percent = 0.0;
-        channel.output_current_a = 0.0;
+        channel.output_percent = outputEnabled ? 32.0 : 0.0;
+        channel.output_current_a = outputEnabled ? channel.output_percent * 0.012 : 0.0;
         channel.output_mode = 1;
-        channel.output_enabled = false;
+        channel.output_enabled = outputEnabled;
         channel.max_output_percent = 80;
         channel.auto_pid_mode = 1;
         channel.overtemp_upper_c = 45.0;
