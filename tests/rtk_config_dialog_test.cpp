@@ -10,8 +10,10 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFileInfo>
+#include <QGroupBox>
 #include <QHostAddress>
 #include <QImage>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -19,6 +21,8 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSettings>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QStackedWidget>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -57,6 +61,20 @@ bool processEventsUntil(int timeoutMs, Predicate predicate)
         }
     }
     return predicate();
+}
+
+QGroupBox *ancestorCard(QWidget *widget)
+{
+    QWidget *current = widget;
+    while (current)
+    {
+        if (auto *card = qobject_cast<QGroupBox *>(current))
+        {
+            return card;
+        }
+        current = current->parentWidget();
+    }
+    return nullptr;
 }
 }
 
@@ -201,6 +219,80 @@ int main(int argc, char **argv)
     require(serverEdit->text() == QStringLiteral("127.0.0.1") &&
                 portEdit->text() == QString::number(caster.serverPort()),
             "saved real caster settings are loaded before startup mountpoint detection");
+    auto *usernameEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkUsernameEdit"));
+    auto *passwordEdit = dialog.findChild<QLineEdit *>(QStringLiteral("rtkPasswordEdit"));
+    auto *timeoutCombo = dialog.findChild<QComboBox *>(QStringLiteral("rtkTimeoutCombo"));
+    auto *reconnectCombo = dialog.findChild<QComboBox *>(QStringLiteral("rtkReconnectCombo"));
+    auto *testConnectionButton =
+        dialog.findChild<QPushButton *>(QStringLiteral("rtkTestConnectionButton"));
+    auto *startButton = dialog.findChild<QPushButton *>(QStringLiteral("rtkStartButton"));
+    auto *stopButton = dialog.findChild<QPushButton *>(QStringLiteral("rtkStopButton"));
+    auto *clearLogButton = dialog.findChild<QPushButton *>(QStringLiteral("rtkClearLogButton"));
+    auto *ntripPanel = dialog.findChild<QWidget *>(QStringLiteral("rtkNtripConfigPanel"));
+    auto *streamPanel = dialog.findChild<QWidget *>(QStringLiteral("rtkStreamStatusPanel"));
+    auto *epsilonPanel = dialog.findChild<QWidget *>(QStringLiteral("rtkEpsilonDataPathPanel"));
+    auto *messageArea = dialog.findChild<QWidget *>(QStringLiteral("rtkStatusMessageArea"));
+    auto *streamInputValue =
+        dialog.findChild<QLabel *>(QStringLiteral("rtkStreamInputStatusValue"));
+    auto *rtcmOutputValue =
+        dialog.findChild<QLabel *>(QStringLiteral("rtkRtcmOutputStatusValue"));
+    auto *scrollArea = dialog.findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea"));
+    require(usernameEdit && passwordEdit && timeoutCombo && reconnectCombo &&
+                testConnectionButton && startButton && stopButton && clearLogButton &&
+                ntripPanel && streamPanel && epsilonPanel && messageArea &&
+                streamInputValue && rtcmOutputValue && scrollArea,
+            "Stage 5 RTK panels, controls, status values, and scroll area exist");
+    require(dialog.findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox")).size() == 4,
+            "Stage 5 keeps four top-level RTK cards");
+    require(ntripPanel->isAncestorOf(serverEdit) && ntripPanel->isAncestorOf(portEdit) &&
+                ntripPanel->isAncestorOf(mountpointCombo) && ntripPanel->isAncestorOf(usernameEdit) &&
+                ntripPanel->isAncestorOf(passwordEdit) && ntripPanel->isAncestorOf(timeoutCombo) &&
+                ntripPanel->isAncestorOf(reconnectCombo) &&
+                ntripPanel->isAncestorOf(testConnectionButton) &&
+                ntripPanel->isAncestorOf(startButton) && ntripPanel->isAncestorOf(stopButton),
+            "all NTRIP inputs and connection actions belong to the NTRIP service panel");
+    require(streamPanel->isAncestorOf(streamInputValue) &&
+                epsilonPanel->isAncestorOf(outputPortCombo) &&
+                epsilonPanel->isAncestorOf(rtcmOutputValue),
+            "reliable stream and RTCM output status belong to their business panels");
+    require(streamInputValue->text() == QStringLiteral("--") &&
+                rtcmOutputValue->text() == QStringLiteral("--"),
+            "inactive stream statistics stay unavailable instead of being inferred");
+    require(scrollArea->horizontalScrollBarPolicy() == Qt::ScrollBarAlwaysOff &&
+                scrollArea->horizontalScrollBar()->maximum() == 0,
+            "embedded-capable RTK content never exposes a horizontal scrollbar");
+    require(passwordEdit->echoMode() == QLineEdit::Normal,
+            "Stage 5 preserves the existing password echo behavior");
+
+    const QList<QWidget *> accessibleControls = {
+        serverEdit, portEdit, mountpointCombo, usernameEdit, passwordEdit,
+        timeoutCombo, reconnectCombo, testConnectionButton, startButton, stopButton,
+        outputPortCombo, streamInputValue, rtcmOutputValue,
+    };
+    for (QWidget *control : accessibleControls)
+    {
+        require(!control->accessibleName().trimmed().isEmpty(),
+                "Stage 5 key controls expose accessible names");
+    }
+
+    const QList<QWidget *> initialTabOrder = {
+        serverEdit, portEdit, mountpointCombo, usernameEdit, passwordEdit,
+        timeoutCombo, reconnectCombo,
+    };
+    serverEdit->setFocus(Qt::TabFocusReason);
+    for (int index = 1; index < initialTabOrder.size(); ++index)
+    {
+        QWidget *focused = QApplication::focusWidget();
+        QKeyEvent tabPress(QEvent::KeyPress, Qt::Key_Tab, Qt::NoModifier);
+        QKeyEvent tabRelease(QEvent::KeyRelease, Qt::Key_Tab, Qt::NoModifier);
+        QApplication::sendEvent(focused, &tabPress);
+        QApplication::sendEvent(QApplication::focusWidget(), &tabRelease);
+        QApplication::processEvents();
+        QWidget *expected = initialTabOrder.at(index);
+        QWidget *actual = QApplication::focusWidget();
+        require(actual == expected || expected->isAncestorOf(actual) || expected->focusProxy() == actual,
+                "NTRIP tab order follows the visual field order");
+    }
     dialog.setPreferredOutputPortAndBaud(QStringLiteral("COM77"), QStringLiteral("115200"));
     const int rememberedPortIndex = outputPortCombo->findText(QStringLiteral("COM77"));
     require(rememberedPortIndex >= 0 &&
@@ -224,8 +316,8 @@ int main(int argc, char **argv)
                 QStringLiteral("PERSISTED_MOUNTPOINT") &&
                 rtkSettings.value(QStringLiteral("mountpoint_confirmed")).toBool(),
             "startup mountpoint detection persists the matched mountpoint");
-    require(std::abs(mountpointComboWidth - detectButtonWidth) <= 2,
-            "mountpoint combo and detect button have the same width");
+    require(mountpointComboWidth >= 220 && mountpointComboWidth > detectButtonWidth,
+            "mountpoint field receives more horizontal space than its adjacent detect action");
     require(!fetchMountpointsButton->icon().isNull(),
             "mountpoint detect button uses the lucide radar icon");
     require(fetchMountpointsButton->iconSize() == QSize(20, 20),
@@ -253,11 +345,13 @@ int main(int argc, char **argv)
     auto *ggaClearLogButton =
         dialog.findChild<QToolButton *>(QStringLiteral("rtkGgaClearLogButton"));
     auto *ggaMonitorLog = dialog.findChild<QTextEdit *>(QStringLiteral("rtkGgaTextEdit"));
-    QWidget *ggaCard = ggaMonitorLog && ggaMonitorLog->parentWidget()
-        ? ggaMonitorLog->parentWidget()->parentWidget()
-        : nullptr;
+    QGroupBox *ggaCard = ancestorCard(ggaMonitorLog);
     require(ggaToggleButton && ggaSourceCombo && ggaClearLogButton && ggaMonitorLog && ggaCard,
             "GGA monitor controls, internal log, and card exist");
+    require(streamPanel->isAncestorOf(ggaSourceCombo) &&
+                streamPanel->isAncestorOf(ggaToggleButton) &&
+                streamPanel->isAncestorOf(ggaMonitorLog),
+            "GGA source and reminder output stay inside the differential-link panel");
     const QFontMetrics ggaSourceMetrics(ggaSourceCombo->font());
     const int ggaSourceExtraWidth =
         ggaSourceCombo->width() - ggaSourceMetrics.horizontalAdvance(ggaSourceCombo->currentText());
@@ -265,15 +359,14 @@ int main(int argc, char **argv)
             "GGA source combo uses the widened compact width");
     const QPoint ggaSourceTopLeft = ggaSourceCombo->mapTo(&dialog, QPoint(0, 0));
     const QPoint ggaClearTopLeft = ggaClearLogButton->mapTo(&dialog, QPoint(0, 0));
-    require(ggaClearTopLeft.x() >= ggaSourceTopLeft.x() + ggaSourceCombo->width() &&
-                ggaClearTopLeft.x() <= ggaSourceTopLeft.x() + ggaSourceCombo->width() + 12 &&
-                std::abs((ggaClearTopLeft.y() + ggaClearLogButton->height() / 2) -
-                         (ggaSourceTopLeft.y() + ggaSourceCombo->height() / 2)) <= 1,
-            "GGA clear-log action sits directly to the right of the source combo");
+    require(ggaClearTopLeft.y() > ggaSourceTopLeft.y() &&
+                ggaClearTopLeft.x() + ggaClearLogButton->width() <=
+                    ggaSourceTopLeft.x() + ggaSourceCombo->width() + 2,
+            "GGA clear-log action sits on the compact control row below the source selector");
     const int clearButtonRightGap = ggaClearLogButton->parentWidget()->width() -
         ggaClearLogButton->geometry().right() - 1;
     require(clearButtonRightGap >= 0 && clearButtonRightGap <= 12,
-            "GGA clear-log action follows the card title-bar right margin");
+            "GGA clear-log action follows the compact control-column right margin");
     require(!ggaClearLogButton->icon().isNull() &&
                 ggaClearLogButton->iconSize() == QSize(24, 24) &&
                 ggaClearLogButton->size() == QSize(34, 34) &&
@@ -407,9 +500,8 @@ int main(int argc, char **argv)
             "missing mountpoint selection is persisted as an empty unconfirmed mountpoint");
     require(mountpointCombo->width() == mountpointComboWidth,
             "mountpoint combo keeps its widened width after fetching long mountpoints");
-    require(fetchMountpointsButton->width() == detectButtonWidth &&
-                std::abs(fetchMountpointsButton->width() - mountpointCombo->width()) <= 2,
-            "mountpoint detect button stays aligned with the widened combo width");
+    require(fetchMountpointsButton->width() == detectButtonWidth,
+            "mountpoint detect button keeps its stable action width after fetching long names");
     auto *singleLevelMountpointCombo =
         dynamic_cast<VaporView::SingleLevelPopupComboBox *>(mountpointCombo);
     require(singleLevelMountpointCombo != nullptr,
@@ -489,6 +581,9 @@ int main(int argc, char **argv)
         dialog.findChild<QToolButton *>(QStringLiteral("rtkServiceLogClearButton"));
     require(testButton && serviceLog && serviceLogClearButton,
             "RTK test button, service log, and title-bar clear action exist");
+    require(messageArea->isAncestorOf(serviceLog) &&
+                ancestorCard(serviceLogClearButton) == ancestorCard(serviceLog),
+            "RTK service messages and their clear action belong to the status/message area");
     require(serviceLog->styleSheet().contains(expectedLogBackground, Qt::CaseInsensitive),
             "RTK service log uses the raised log-panel background");
     require(!serviceLogClearButton->icon().isNull() &&
@@ -546,6 +641,9 @@ int main(int argc, char **argv)
     auto *applyButton = dialog.findChild<QPushButton *>(QStringLiteral("rtkApplyLeverArmButton"));
     auto *leverHelpButton = dialog.findChild<QToolButton *>(QStringLiteral("rtkLeverHelpButton"));
     require(xEdit && yEdit && zEdit && applyButton && leverHelpButton, "lever-arm controls exist");
+    require(epsilonPanel->isAncestorOf(xEdit) && epsilonPanel->isAncestorOf(yEdit) &&
+                epsilonPanel->isAncestorOf(zEdit) && epsilonPanel->isAncestorOf(applyButton),
+            "existing RTCM target and lever-arm controls stay inside the EPSILON data-path panel");
     require(leverHelpButton->iconSize() == QSize(24, 24),
             "lever-arm help icon matches the standard title-bar icon size");
     const QString leverHelpButtonStyle = leverHelpButton->styleSheet();

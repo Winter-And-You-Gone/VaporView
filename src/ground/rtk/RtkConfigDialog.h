@@ -121,6 +121,9 @@ private:
     void scheduleStartupMountpointFetch();
     void setServiceStatus(const QString& text, const QString& iconName, VaporView::AppThemeColor color);
     void refreshServiceStatusAppearance();
+    void updateStreamStatusFields(const RtkStreamStats *stats = nullptr);
+    void updateAccessibleNames();
+    void configureTabOrder();
     QVBoxLayout *createCardLayout(QGroupBox *group,
                                   QLabel *&titleLabel,
                                   const QString& iconName,
@@ -135,6 +138,7 @@ private:
     QHBoxLayout *gga_layout_;
     QVBoxLayout *gga_controls_layout_;
     QGridLayout *gga_header_layout_;
+    QGridLayout *stream_status_layout_;
     QVBoxLayout *gga_text_container_layout_;
     QVBoxLayout *log_text_container_layout_;
     QSpacerItem *gga_button_spacer_;
@@ -142,12 +146,10 @@ private:
     QGroupBox *output_group_;
     QGroupBox *gga_group_;
     QGroupBox *log_group_;
-    QGroupBox *action_group_;
     QLabel *config_title_label_;
     QLabel *output_title_label_;
     QLabel *gga_title_label_;
     QLabel *log_title_label_;
-    QLabel *action_title_label_;
     QWidget *action_status_widget_;
     QWidget *gga_text_container_;
     QWidget *gga_controls_container_;
@@ -164,6 +166,10 @@ private:
     QLabel *reconnect_label_;
     QLabel *gga_port_info_label_;
     QLabel *gga_frequency_label_;
+    QLabel *stream_input_label_;
+    QLabel *stream_input_value_;
+    QLabel *rtcm_output_status_label_;
+    QLabel *rtcm_output_status_value_;
     QLineEdit *server_edit_;
     QLineEdit *port_edit_;
     QLineEdit *username_edit_;
