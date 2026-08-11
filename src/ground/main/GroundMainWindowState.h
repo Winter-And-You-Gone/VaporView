@@ -384,6 +384,7 @@ struct MainWindowState
     QTimer *home_device_action_spinner_timer_;
 
     VaporView::EpsilonData current_epsilon_;
+    quint32 current_remote_epsilon_validity_flags_ = 0;
     VaporView::GnssData current_gnss_;
     VaporView::ImuData current_imu_;
     VaporView::PtbData current_ptb_;

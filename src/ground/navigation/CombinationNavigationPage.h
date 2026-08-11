@@ -1,6 +1,8 @@
 #ifndef VAPORVIEW_COMBINATION_NAVIGATION_PAGE_H_
 #define VAPORVIEW_COMBINATION_NAVIGATION_PAGE_H_
 
+#include "ground/navigation/NavigationStatusPanel.h"
+
 #include <QPointer>
 #include <QWidget>
 
@@ -8,9 +10,6 @@
 
 class QButtonGroup;
 class QEvent;
-class QFrame;
-class QGridLayout;
-class QLabel;
 class QPushButton;
 class QStackedWidget;
 class QTimer;
@@ -33,21 +32,7 @@ public:
     };
     Q_ENUM(Section)
 
-    struct StatusSnapshot
-    {
-        bool epsilonOnline = false;
-        bool navigationDataAvailable = false;
-        QString gnssFixText;
-        bool rtkServiceRunning = false;
-        bool positionAvailable = false;
-        double longitudeDeg = 0.0;
-        double latitudeDeg = 0.0;
-        double heightM = 0.0;
-        bool attitudeAvailable = false;
-        double rollDeg = 0.0;
-        double pitchDeg = 0.0;
-        double headingDeg = 0.0;
-    };
+    using StatusSnapshot = NavigationStatusSnapshot;
 
     using StatusProvider = std::function<StatusSnapshot()>;
 
@@ -71,21 +56,9 @@ protected:
     void changeEvent(QEvent *event) override;
 
 private:
-    struct FieldWidgets
-    {
-        QLabel *name = nullptr;
-        QLabel *value = nullptr;
-    };
-
     QWidget *createStatusPage();
-    FieldWidgets addField(QGridLayout *layout,
-                          int row,
-                          QWidget *parent,
-                          const QString& valueObjectName);
     void updateTexts();
     void applyAppearance();
-    void applyStatusLabel(QLabel *label, const QString& text, const QString& kind);
-    QString unavailableText() const;
 
     bool is_english_ = false;
     QButtonGroup *section_group_ = nullptr;
@@ -94,29 +67,14 @@ private:
     QPushButton *differential_button_ = nullptr;
     QStackedWidget *stack_ = nullptr;
     QWidget *status_page_ = nullptr;
+    NavigationStatusPanel *status_panel_ = nullptr;
     QWidget *epsilon_page_ = nullptr;
     QPointer<QWidget> differential_page_;
     QTimer *status_refresh_timer_ = nullptr;
     StatusProvider status_provider_;
     StatusSnapshot status_snapshot_;
 
-    QLabel *navigation_status_title_ = nullptr;
-    QLabel *position_title_ = nullptr;
-    QLabel *attitude_title_ = nullptr;
     EpsilonConfigPanel *epsilon_config_panel_ = nullptr;
-
-    FieldWidgets epsilon_status_;
-    FieldWidgets gnss_status_;
-    FieldWidgets positioning_mode_;
-    FieldWidgets rtk_status_;
-    FieldWidgets ntrip_status_;
-    FieldWidgets rtcm_status_;
-    FieldWidgets longitude_;
-    FieldWidgets latitude_;
-    FieldWidgets height_;
-    FieldWidgets roll_;
-    FieldWidgets pitch_;
-    FieldWidgets heading_;
 };
 
 } // namespace VaporView::Ground::Navigation

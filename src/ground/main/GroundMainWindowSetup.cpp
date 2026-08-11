@@ -2223,15 +2223,16 @@ void MainWindow::setupCentralWidget()
             (state_->remote_sky_controller_ &&
              state_->remote_sky_controller_->isOpen() &&
              state_->remote_sky_controller_->statusFresh(QDateTime::currentMSecsSinceEpoch()));
-        snapshot.epsilonOnline = remoteStatusAvailable &&
+        const bool epsilonLinkOnline = remoteStatusAvailable &&
             homeDeviceConnected(VaporView::SkyDeviceId::Epsilon);
         const VaporView::EpsilonData& epsilon = state_->current_epsilon_;
         bool epsilonDataFresh = false;
-        if (snapshot.epsilonOnline && epsilon.valid)
+        if (epsilonLinkOnline && epsilon.valid)
         {
             if (isUiTestMode())
             {
                 epsilonDataFresh = true;
+                snapshot.epsilonDataAgeMs = 0;
             }
             else if (isRemoteSkyMode())
             {
@@ -2249,15 +2250,67 @@ void MainWindow::setupCentralWidget()
                     const auto ageMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now() - epsilon.timestamp).count();
                     epsilonDataFresh = ageMs >= 0 && ageMs <= timeoutMs;
+                    if (ageMs >= 0 && ageMs <= std::numeric_limits<int>::max())
+                    {
+                        snapshot.epsilonDataAgeMs = static_cast<int>(ageMs);
+                    }
                 }
             }
         }
-        // EpsilonData exposes only an aggregate frame timestamp, so a fresh IMU or
-        // attitude frame cannot prove that the cached GNSS fix and LLH are fresh.
-        // Keep these fields unavailable until their producers expose field-level validity.
-        snapshot.navigationDataAvailable = false;
-        snapshot.positionAvailable = false;
-        snapshot.attitudeAvailable = epsilonDataFresh &&
+        snapshot.epsilonOnline = epsilonLinkOnline && epsilonDataFresh;
+        snapshot.epsilonDataFresh = epsilonDataFresh;
+
+        const auto remoteHasFlag = [this](quint32 flag) {
+            return (state_->current_remote_epsilon_validity_flags_ & flag) != 0;
+        };
+        const bool useRemoteFieldValidity =
+            epsilonDataFresh && isRemoteSkyMode() && !isUiTestMode();
+        const bool useUiTestFields = epsilonDataFresh && isUiTestMode();
+
+        if (useRemoteFieldValidity)
+        {
+            snapshot.navigationDataAvailable = remoteHasFlag(VaporView::BasicHasGnssQuality);
+            snapshot.gnssQualityAvailable = snapshot.navigationDataAvailable;
+            snapshot.positionAvailable = remoteHasFlag(VaporView::BasicHasPosition);
+            snapshot.speedAvailable = remoteHasFlag(VaporView::BasicHasNedVelocity) &&
+                std::isfinite(epsilon.vel_n_mps) && std::isfinite(epsilon.vel_e_mps);
+            snapshot.attitudeAvailable = remoteHasFlag(VaporView::BasicHasAttitude);
+        }
+        else if (useUiTestFields)
+        {
+            snapshot.navigationDataAvailable = true;
+            snapshot.gnssQualityAvailable = true;
+            snapshot.positionAvailable = true;
+            snapshot.speedAvailable = std::isfinite(epsilon.vel_n_mps) &&
+                std::isfinite(epsilon.vel_e_mps);
+            snapshot.attitudeAvailable = epsilon.ahrs_attitude_valid ||
+                epsilon.euler_orien_valid || epsilon.quat_orien_valid ||
+                epsilon.system_state_attitude_valid;
+        }
+        else
+        {
+            // Local EpsilonData has only an aggregate frame timestamp for GNSS,
+            // position and velocity. A fresh unrelated packet must not revive them.
+            snapshot.navigationDataAvailable = false;
+            snapshot.gnssQualityAvailable = false;
+            snapshot.positionAvailable = false;
+            snapshot.speedAvailable = false;
+            snapshot.attitudeAvailable = epsilonDataFresh &&
+                (epsilon.ahrs_attitude_valid || epsilon.euler_orien_valid ||
+                 epsilon.quat_orien_valid || epsilon.system_state_attitude_valid);
+        }
+
+        snapshot.gnssFixText = QString::fromStdString(epsilon.gnss_fix_text);
+        snapshot.satelliteCount = epsilon.gnss_satellites;
+        snapshot.horizontalAccuracyM = epsilon.hacc_m;
+        snapshot.longitudeDeg = epsilon.longitude_deg;
+        snapshot.latitudeDeg = epsilon.latitude_deg;
+        snapshot.heightM = epsilon.height_m;
+        if (snapshot.speedAvailable)
+        {
+            snapshot.speedMps = std::hypot(epsilon.vel_n_mps, epsilon.vel_e_mps);
+        }
+        snapshot.attitudeAvailable = snapshot.attitudeAvailable &&
             std::isfinite(epsilon.roll_deg) &&
             std::isfinite(epsilon.pitch_deg) &&
             std::isfinite(epsilon.yaw_deg);

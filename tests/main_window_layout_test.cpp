@@ -1554,26 +1554,33 @@ void requireRtkSidebarPage(
                 deviceConfigPageForBoundary->findChild<QCheckBox *>(QStringLiteral("epsilonPacketCustomCheck")) == nullptr,
             "the single detailed EPSILON configuration now belongs to Combination Navigation");
     auto *rtkServiceStatus = combinationPage->findChild<QLabel *>(
-        QStringLiteral("combinationNavigationRtkServiceStatusValue"));
+        QStringLiteral("navigationStatusRtkServiceValue"));
     auto *gnssStatus = combinationPage->findChild<QLabel *>(
-        QStringLiteral("combinationNavigationGnssStatusValue"));
+        QStringLiteral("navigationStatusGnssValue"));
     auto *positioningMode = combinationPage->findChild<QLabel *>(
-        QStringLiteral("combinationNavigationPositioningModeValue"));
+        QStringLiteral("navigationStatusFixValue"));
     auto *ntripStatus = combinationPage->findChild<QLabel *>(
-        QStringLiteral("combinationNavigationNtripStatusValue"));
+        QStringLiteral("navigationStatusNtripValue"));
     auto *rtcmStatus = combinationPage->findChild<QLabel *>(
-        QStringLiteral("combinationNavigationRtcmStatusValue"));
+        QStringLiteral("navigationStatusRtcmValue"));
     auto *longitudeValue = combinationPage->findChild<QLabel *>(
-        QStringLiteral("combinationNavigationLongitudeValue"));
+        QStringLiteral("navigationStatusLongitudeValue"));
+    auto *differentialStatusCard = combinationPage->findChild<QFrame *>(
+        QStringLiteral("navigationStatusDifferentialCard"));
     require(rtkServiceStatus != nullptr && gnssStatus != nullptr && positioningMode != nullptr &&
                 ntripStatus != nullptr && rtcmStatus != nullptr &&
-                longitudeValue != nullptr && ntripStatus->text() == QStringLiteral("--") &&
-                rtcmStatus->text() == QStringLiteral("--"),
+                longitudeValue != nullptr && differentialStatusCard != nullptr &&
+                differentialStatusCard->isHidden() &&
+                ntripStatus->text() == QStringLiteral("--") && rtcmStatus->text() == QStringLiteral("--"),
             "status page does not fabricate unavailable NTRIP or RTCM health state");
     VaporView::Ground::Navigation::CombinationNavigationPage::StatusSnapshot sampleStatus;
     sampleStatus.epsilonOnline = true;
+    sampleStatus.epsilonDataFresh = true;
     sampleStatus.navigationDataAvailable = true;
     sampleStatus.gnssFixText = QStringLiteral("RTK_FIXED");
+    sampleStatus.gnssQualityAvailable = true;
+    sampleStatus.satelliteCount = 24;
+    sampleStatus.horizontalAccuracyM = 0.015;
     sampleStatus.rtkServiceRunning = true;
     sampleStatus.positionAvailable = true;
     sampleStatus.longitudeDeg = 120.14530;
@@ -1586,11 +1593,10 @@ void requireRtkSidebarPage(
                 rtcmStatus->text() == QStringLiteral("--"),
             "status page displays reliable navigation and RTK-service data without inferring connection health");
     combinationPage->refreshStatus();
-    require((gnssStatus->text().contains(QStringLiteral("暂无数据")) ||
-                gnssStatus->text().contains(QStringLiteral("No data"))) &&
+    require(gnssStatus->text() == QStringLiteral("--") &&
                 positioningMode->text() == QStringLiteral("--") &&
                 longitudeValue->text() == QStringLiteral("--"),
-            "status provider keeps GNSS fix and position unavailable without field-level freshness");
+            "local provider keeps GNSS fix and position unavailable without field-level freshness");
     auto *unsavedRtkServerEdit =
         preDialog->findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
     require(unsavedRtkServerEdit != nullptr,

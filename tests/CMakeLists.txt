@@ -561,6 +561,16 @@ target_include_directories(epsilon_config_panel_test PRIVATE
 target_link_libraries(epsilon_config_panel_test PRIVATE vaporview_main_window)
 add_test(NAME epsilon_config_panel_test COMMAND epsilon_config_panel_test)
 
+add_executable(navigation_status_panel_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/navigation_status_panel_test.cpp
+)
+target_include_directories(navigation_status_panel_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(navigation_status_panel_test PRIVATE vaporview_main_window)
+add_test(NAME navigation_status_panel_test COMMAND navigation_status_panel_test)
+
 add_executable(title_application_menu_test
     ${CMAKE_CURRENT_SOURCE_DIR}/title_application_menu_test.cpp
 )
@@ -994,6 +1004,7 @@ set(VAPORVIEW_SLOW_UI_TESTS
     main_window_layout_test
     home_overview_language_layout_test
     combination_navigation_page_test
+    navigation_status_panel_test
     ui_test_mode_window_test
     main_window_session_viewer_test
     session_viewer_io_test
@@ -1038,6 +1049,7 @@ set_property(TEST
 set_property(TEST main_window_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST home_overview_language_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST combination_navigation_page_test APPEND PROPERTY LABELS main-window layout)
+set_property(TEST navigation_status_panel_test APPEND PROPERTY LABELS navigation-status ui layout)
 set_property(TEST ui_test_mode_window_test APPEND PROPERTY LABELS main-window ui-test-mode)
 set_property(TEST main_window_session_viewer_test APPEND PROPERTY LABELS main-window session-viewer)
 set_property(TEST session_viewer_io_test APPEND PROPERTY LABELS session-viewer io)

@@ -10,6 +10,7 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
     const VaporView::Ground::RemoteEpsilonTelemetry remoteEpsilon =
         VaporView::Ground::decodeRemoteEpsilonTelemetry(telemetry, now);
     state_->current_epsilon_ = remoteEpsilon.data;
+    state_->current_remote_epsilon_validity_flags_ = telemetry.validity_flags;
     if (remoteEpsilon.available)
     {
 #ifdef VAPORVIEW_HAS_OSGEARTH
@@ -192,6 +193,7 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
             if (item.device_id == VaporView::SkyDeviceId::Epsilon)
             {
                 state_->current_epsilon_ = VaporView::EpsilonData();
+                state_->current_remote_epsilon_validity_flags_ = 0;
             }
             else if (item.device_id == VaporView::SkyDeviceId::Ptb)
             {
