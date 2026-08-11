@@ -248,13 +248,16 @@ void NavigationStatusPanel::setSnapshot(const NavigationStatusSnapshot& snapshot
 {
     snapshot_ = snapshot;
     const QLocale locale;
-    const bool positionUsable = usablePosition(snapshot);
-    const bool speedUsable = usableSpeed(snapshot);
-    const bool attitudeUsable = usableAttitude(snapshot);
+    const bool realtimeDataFresh = snapshot.epsilonDataFresh;
+    const bool positionUsable = realtimeDataFresh && usablePosition(snapshot);
+    const bool speedUsable = realtimeDataFresh && usableSpeed(snapshot);
+    const bool attitudeUsable = realtimeDataFresh && usableAttitude(snapshot);
     const QString fixText = snapshot.gnssFixText.trimmed();
-    const bool fixUsable = snapshot.navigationDataAvailable && !fixText.isEmpty();
-    const bool satellitesUsable = snapshot.gnssQualityAvailable && snapshot.satelliteCount >= 0;
-    const bool accuracyUsable = snapshot.gnssQualityAvailable &&
+    const bool navigationDataUsable = realtimeDataFresh && snapshot.navigationDataAvailable;
+    const bool fixUsable = navigationDataUsable && !fixText.isEmpty();
+    const bool satellitesUsable = realtimeDataFresh && snapshot.gnssQualityAvailable &&
+        snapshot.satelliteCount >= 0;
+    const bool accuracyUsable = realtimeDataFresh && snapshot.gnssQualityAvailable &&
         std::isfinite(snapshot.horizontalAccuracyM) && snapshot.horizontalAccuracyM >= 0.0;
     const QString ntripText = snapshot.ntripStatusText.trimmed();
     const QString rtcmText = snapshot.rtcmStatusText.trimmed();
@@ -265,16 +268,16 @@ void NavigationStatusPanel::setSnapshot(const NavigationStatusSnapshot& snapshot
 
     applyStatusLabel(
         epsilon_status_.value,
-        snapshot.epsilonOnline
+        (snapshot.epsilonOnline && realtimeDataFresh)
             ? (is_english_ ? QStringLiteral("● Online") : QStringLiteral("● 在线"))
             : (is_english_ ? QStringLiteral("○ Offline") : QStringLiteral("○ 离线")),
-        snapshot.epsilonOnline ? QStringLiteral("healthy") : QStringLiteral("inactive"));
+        (snapshot.epsilonOnline && realtimeDataFresh) ? QStringLiteral("healthy") : QStringLiteral("inactive"));
     applyStatusLabel(
         gnss_status_.value,
-        snapshot.navigationDataAvailable
+        navigationDataUsable
             ? (is_english_ ? QStringLiteral("● Available") : QStringLiteral("● 可用"))
             : unavailableText(),
-        snapshot.navigationDataAvailable ? QStringLiteral("healthy") : QStringLiteral("inactive"));
+        navigationDataUsable ? QStringLiteral("healthy") : QStringLiteral("inactive"));
     applyStatusLabel(
         ins_status_.value,
         attitudeUsable

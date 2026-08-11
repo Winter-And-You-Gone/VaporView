@@ -166,6 +166,20 @@ void testStateVisibilityAndFormatting()
                 label(panel, "navigationStatusSatellitesValue")->text() == QStringLiteral("24"),
             "overview and GNSS quality reflect explicit reliable snapshot fields");
 
+    NavigationStatusSnapshot stale = reliable;
+    stale.epsilonDataFresh = false;
+    panel.setSnapshot(stale);
+    processEventsFor(30);
+    require(label(panel, "navigationStatusEpsilonValue")->text() == QStringLiteral("○ 离线") &&
+                label(panel, "navigationStatusFreshnessValue")->text() == QStringLiteral("--") &&
+                label(panel, "navigationStatusGnssValue")->text() == QStringLiteral("--") &&
+                label(panel, "navigationStatusLongitudeValue")->text() == QStringLiteral("--") &&
+                label(panel, "navigationStatusRollValue")->text() == QStringLiteral("--") &&
+                label(panel, "navigationStatusGnssFixValue")->text() == QStringLiteral("--") &&
+                label(panel, "navigationStatusSatellitesValue")->text() == QStringLiteral("--") &&
+                positionCard->isHidden() && attitudeCard->isHidden() && gnssCard->isHidden(),
+            "stale snapshots never render cached navigation values");
+
     NavigationStatusSnapshot partial;
     partial.epsilonOnline = true;
     partial.epsilonDataFresh = true;
