@@ -250,9 +250,11 @@ int main(int argc, char **argv)
             "differential-positioning page keeps five business cards including service operations");
     require(ntripPanel->isAncestorOf(serverEdit) && ntripPanel->isAncestorOf(portEdit) &&
                 ntripPanel->isAncestorOf(mountpointCombo) && ntripPanel->isAncestorOf(usernameEdit) &&
-                ntripPanel->isAncestorOf(passwordEdit) && ntripPanel->isAncestorOf(timeoutCombo) &&
-                ntripPanel->isAncestorOf(reconnectCombo),
-            "all NTRIP inputs belong to the top NTRIP service panel");
+                ntripPanel->isAncestorOf(passwordEdit) &&
+                epsilonPanel->isAncestorOf(outputPortCombo) &&
+                epsilonPanel->isAncestorOf(timeoutCombo) &&
+                epsilonPanel->isAncestorOf(reconnectCombo),
+            "NTRIP credentials stay in the top panel while output timing stays with RTCM output");
     require(serviceOperationsPanel->isAncestorOf(startButton) &&
                 serviceOperationsPanel->isAncestorOf(stopButton) &&
                 serviceOperationsPanel->isAncestorOf(testConnectionButton) &&
@@ -265,16 +267,16 @@ int main(int argc, char **argv)
     require(streamInputValue->text() == QStringLiteral("--") &&
                 rtcmOutputValue->text() == QStringLiteral("--"),
             "inactive stream statistics stay unavailable instead of being inferred");
+    QGroupBox *configCard = ancestorCard(ntripPanel);
+    QGroupBox *streamCard = ancestorCard(streamPanel);
+    QGroupBox *epsilonCard = ancestorCard(epsilonPanel);
+    QGroupBox *messageCard = ancestorCard(messageArea);
     require(scrollArea->horizontalScrollBarPolicy() == Qt::ScrollBarAlwaysOff &&
                 scrollArea->horizontalScrollBar()->maximum() == 0,
             "embedded-capable RTK content never exposes a horizontal scrollbar");
     require(passwordEdit->echoMode() == QLineEdit::Normal,
             "Stage 5 preserves the existing password echo behavior");
 
-    QGroupBox *configCard = ancestorCard(ntripPanel);
-    QGroupBox *streamCard = ancestorCard(streamPanel);
-    QGroupBox *epsilonCard = ancestorCard(epsilonPanel);
-    QGroupBox *messageCard = ancestorCard(messageArea);
     QGroupBox *operationsCard = ancestorCard(serviceOperationsPanel);
     require(configCard && streamCard && epsilonCard && messageCard && operationsCard,
             "each differential-positioning business region has a top-level card");
@@ -283,11 +285,15 @@ int main(int argc, char **argv)
     const QRect epsilonBounds(epsilonCard->mapTo(&dialog, QPoint(0, 0)), epsilonCard->size());
     const QRect messageBounds(messageCard->mapTo(&dialog, QPoint(0, 0)), messageCard->size());
     const QRect operationsBounds(operationsCard->mapTo(&dialog, QPoint(0, 0)), operationsCard->size());
-    require(configBounds.top() < streamBounds.top() &&
-                std::abs(streamBounds.top() - epsilonBounds.top()) <= 1 &&
-                messageBounds.top() > std::max(streamBounds.bottom(), epsilonBounds.bottom()) &&
-                operationsBounds.top() > messageBounds.bottom(),
-            "page follows top configuration, middle two-column, log, and bottom operations order");
+    require(std::abs(configBounds.top() - streamBounds.top()) <= 1 &&
+                configBounds.left() < streamBounds.left() &&
+                configBounds.width() > streamBounds.width() &&
+                std::abs(epsilonBounds.top() - messageBounds.top()) <= 1 &&
+                epsilonBounds.left() < messageBounds.left() &&
+                messageBounds.width() > epsilonBounds.width() &&
+                epsilonBounds.top() > std::max(configBounds.bottom(), streamBounds.bottom()) &&
+                operationsBounds.top() > std::max(epsilonBounds.bottom(), messageBounds.bottom()),
+            "page follows NTRIP/GGA, RTCM/log, and full-width operations rows");
 
     const QList<QWidget *> accessibleControls = {
         serverEdit, portEdit, mountpointCombo, usernameEdit, passwordEdit,
@@ -302,7 +308,7 @@ int main(int argc, char **argv)
 
     const QList<QWidget *> initialTabOrder = {
         serverEdit, portEdit, mountpointCombo, usernameEdit, passwordEdit,
-        timeoutCombo, reconnectCombo,
+        dialog.findChild<QPushButton *>(QStringLiteral("rtkFetchMountpointsButton")),
     };
     serverEdit->setFocus(Qt::TabFocusReason);
     for (int index = 1; index < initialTabOrder.size(); ++index)
@@ -341,7 +347,7 @@ int main(int argc, char **argv)
                 QStringLiteral("PERSISTED_MOUNTPOINT") &&
                 rtkSettings.value(QStringLiteral("mountpoint_confirmed")).toBool(),
             "startup mountpoint detection persists the matched mountpoint");
-    require(mountpointComboWidth >= 220 && mountpointComboWidth > detectButtonWidth,
+    require(mountpointComboWidth >= 150 && mountpointComboWidth > detectButtonWidth,
             "mountpoint field receives more horizontal space than its adjacent detect action");
     require(!fetchMountpointsButton->icon().isNull(),
             "mountpoint detect button uses the lucide radar icon");
@@ -373,25 +379,26 @@ int main(int argc, char **argv)
     QGroupBox *ggaCard = ancestorCard(ggaMonitorLog);
     require(ggaToggleButton && ggaSourceCombo && ggaClearLogButton && ggaMonitorLog && ggaCard,
             "GGA monitor controls, internal log, and card exist");
-    require(streamPanel->isAncestorOf(ggaSourceCombo) &&
+    require(ancestorCard(ggaSourceCombo) == ggaCard &&
+                ancestorCard(ggaClearLogButton) == ggaCard &&
                 streamPanel->isAncestorOf(ggaToggleButton) &&
                 streamPanel->isAncestorOf(ggaMonitorLog),
-            "GGA source and reminder output stay inside the differential-link panel");
+            "GGA source, controls, and reminder output stay inside the GGA monitor card");
     const QFontMetrics ggaSourceMetrics(ggaSourceCombo->font());
     const int ggaSourceExtraWidth =
         ggaSourceCombo->width() - ggaSourceMetrics.horizontalAdvance(ggaSourceCombo->currentText());
-    require(ggaSourceExtraWidth >= 50 && ggaSourceExtraWidth <= 62,
-            "GGA source combo uses the widened compact width");
+    require(ggaSourceExtraWidth >= 32,
+            "GGA source combo leaves usable room for its generated source label");
     const QPoint ggaSourceTopLeft = ggaSourceCombo->mapTo(&dialog, QPoint(0, 0));
     const QPoint ggaClearTopLeft = ggaClearLogButton->mapTo(&dialog, QPoint(0, 0));
-    require(ggaClearTopLeft.y() > ggaSourceTopLeft.y() &&
-                ggaClearTopLeft.x() + ggaClearLogButton->width() <=
-                    ggaSourceTopLeft.x() + ggaSourceCombo->width() + 2,
-            "GGA clear-log action sits on the compact control row below the source selector");
+    require(std::abs((ggaClearTopLeft.y() + ggaClearLogButton->height() / 2) -
+                     (ggaSourceTopLeft.y() + ggaSourceCombo->height() / 2)) <= 2 &&
+                ggaClearTopLeft.x() >= ggaSourceTopLeft.x() + ggaSourceCombo->width(),
+            "GGA clear-log action remains at the title bar's upper-right edge");
     const int clearButtonRightGap = ggaClearLogButton->parentWidget()->width() -
         ggaClearLogButton->geometry().right() - 1;
     require(clearButtonRightGap >= 0 && clearButtonRightGap <= 12,
-            "GGA clear-log action follows the compact control-column right margin");
+            "GGA clear-log action follows the card-title right margin");
     require(!ggaClearLogButton->icon().isNull() &&
                 ggaClearLogButton->iconSize() == QSize(24, 24) &&
                 ggaClearLogButton->size() == QSize(34, 34) &&

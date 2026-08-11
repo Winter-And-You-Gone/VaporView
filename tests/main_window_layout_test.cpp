@@ -1462,11 +1462,11 @@ void requireRtkSidebarPage(
     auto *preDialog = window.findChild<RtkConfigDialog *>();
     require(preDialog != nullptr, "embedded RTK dialog exists before sidebar click");
     auto *preGgaCard = findCardByTitle(preDialog,
-                                       {QStringLiteral("差分链路"),
-                                        QStringLiteral("Differential Link")});
+                                       {QStringLiteral("GGA 监视"),
+                                        QStringLiteral("GGA Monitor")});
     auto *preLogCard = findCardByTitle(preDialog,
-                                       {QStringLiteral("状态 / 提示"),
-                                        QStringLiteral("Status / Messages")});
+                                       {QStringLiteral("RTK 服务日志"),
+                                        QStringLiteral("RTK Service Log")});
     require(preGgaCard != nullptr && preLogCard != nullptr,
             "RTK cards exist before sidebar click for resize sampling");
     ResizeWidthRecorder ggaResizeRecorder(preGgaCard);
@@ -1634,11 +1634,11 @@ void requireRtkSidebarPage(
     unsavedRtkServerEdit->setText(originalRtkServer);
     require(dialog->isVisible(), "embedded RTK config page is visible after sidebar click");
     auto *initialGgaCard = findCardByTitle(dialog,
-                                           {QStringLiteral("差分链路"),
-                                            QStringLiteral("Differential Link")});
+                                           {QStringLiteral("GGA 监视"),
+                                            QStringLiteral("GGA Monitor")});
     auto *initialLogCard = findCardByTitle(dialog,
-                                           {QStringLiteral("状态 / 提示"),
-                                            QStringLiteral("Status / Messages")});
+                                           {QStringLiteral("RTK 服务日志"),
+                                            QStringLiteral("RTK Service Log")});
     require(initialGgaCard != nullptr && initialLogCard != nullptr,
             "RTK GGA and log cards are visible after sidebar click");
     if (requireStableFirstFrame)
@@ -1681,19 +1681,6 @@ void requireRtkSidebarPage(
             "combination navigation returns to the same RTK page instance");
     auto *rtkScrollArea = dialog->findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea"));
     require(rtkScrollArea != nullptr, "RTK config page uses a scroll area");
-    if (rtkScrollArea->horizontalScrollBar() && rtkScrollArea->horizontalScrollBar()->maximum() != 0)
-    {
-        auto *runtimeRow = dialog->findChild<QWidget *>(QStringLiteral("rtkRuntimeStatusRow"));
-        std::cerr << "RTK horizontal overflow: maximum="
-                  << rtkScrollArea->horizontalScrollBar()->maximum()
-                  << " viewport=" << rtkScrollArea->viewport()->width()
-                  << " content=" << (rtkScrollArea->widget() ? rtkScrollArea->widget()->width() : -1)
-                  << " contentHint=" << (rtkScrollArea->widget() ? rtkScrollArea->widget()->sizeHint().width() : -1)
-                  << " runtimeHint=" << (runtimeRow ? runtimeRow->sizeHint().width() : -1)
-                  << " differentialHint=" << (preGgaCard ? preGgaCard->sizeHint().width() : -1)
-                  << " messageHint=" << (preLogCard ? preLogCard->sizeHint().width() : -1)
-                  << '\n';
-    }
     require(rtkScrollArea->horizontalScrollBar() != nullptr &&
                 rtkScrollArea->horizontalScrollBar()->maximum() == 0,
             "RTK config page avoids a horizontal scrollbar at the default window size");
@@ -1715,9 +1702,9 @@ void requireRtkSidebarPage(
                 "RTK combo width stays compact");
     }
     const std::vector<std::pair<QString, int>> usableLineEdits = {
-        {QStringLiteral("rtkServerEdit"), 180},
-        {QStringLiteral("rtkUsernameEdit"), 140},
-        {QStringLiteral("rtkPasswordEdit"), 180},
+        {QStringLiteral("rtkServerEdit"), 110},
+        {QStringLiteral("rtkUsernameEdit"), 100},
+        {QStringLiteral("rtkPasswordEdit"), 110},
     };
     for (const auto& [objectName, minWidth] : usableLineEdits)
     {
@@ -1743,18 +1730,18 @@ void requireRtkSidebarPage(
                 message);
     };
     const std::vector<std::tuple<QStringList, QString, const char*>> rtkCards = {
-        {{QStringLiteral("NTRIP 服务"), QStringLiteral("NTRIP Service")},
-         QStringLiteral("satellite"),
-         "RTK NTRIP card uses the standard icon title bar"},
-        {{QStringLiteral("EPSILON 数据链"), QStringLiteral("EPSILON Data Path")},
-         QStringLiteral("usb"),
-         "RTK EPSILON data-path card uses the standard icon title bar"},
-        {{QStringLiteral("差分链路"), QStringLiteral("Differential Link")},
-         QStringLiteral("activity"),
-         "RTK differential-link card uses the standard icon title bar"},
-        {{QStringLiteral("状态 / 提示"), QStringLiteral("Status / Messages")},
-         QStringLiteral("scroll-text"),
-         "RTK status/message card uses the standard icon title bar"},
+        {{QStringLiteral("NTRIP 服务器配置"), QStringLiteral("NTRIP Server Configuration")},
+          QStringLiteral("satellite"),
+          "RTK NTRIP card uses the standard icon title bar"},
+        {{QStringLiteral("RTCM 输出配置"), QStringLiteral("RTCM Output Configuration")},
+          QStringLiteral("usb"),
+          "RTK RTCM output card uses the standard icon title bar"},
+        {{QStringLiteral("GGA 监视"), QStringLiteral("GGA Monitor")},
+          QStringLiteral("activity"),
+          "RTK GGA monitor card uses the standard icon title bar"},
+        {{QStringLiteral("RTK 服务日志"), QStringLiteral("RTK Service Log")},
+          QStringLiteral("scroll-text"),
+          "RTK service-log card uses the standard icon title bar"},
     };
     for (const auto& [titles, iconName, message] : rtkCards)
     {
@@ -1766,11 +1753,11 @@ void requireRtkSidebarPage(
         requireCardTitleBar(card, titles, iconName, message);
     }
     auto *ntripCard = findCardByTitle(dialog,
-                                      {QStringLiteral("NTRIP 服务"),
-                                       QStringLiteral("NTRIP Service")});
+                                      {QStringLiteral("NTRIP 服务器配置"),
+                                       QStringLiteral("NTRIP Server Configuration")});
     auto *rtcmCard = findCardByTitle(dialog,
-                                     {QStringLiteral("EPSILON 数据链"),
-                                      QStringLiteral("EPSILON Data Path")});
+                                     {QStringLiteral("RTCM 输出配置"),
+                                      QStringLiteral("RTCM Output Configuration")});
     require(ntripCard != nullptr && rtcmCard != nullptr,
             "RTK NTRIP and EPSILON data-path cards exist for layout checks");
     constexpr int kExpectedPageLeftInset =
@@ -1821,11 +1808,11 @@ void requireRtkSidebarPage(
     require(rtkContent->layout()->spacing() == kExpectedTopLevelCardGap,
             "RTK embedded page uses the shared top-level card gap");
     auto *ggaCard = findCardByTitle(dialog,
-                                    {QStringLiteral("差分链路"),
-                                     QStringLiteral("Differential Link")});
+                                    {QStringLiteral("GGA 监视"),
+                                     QStringLiteral("GGA Monitor")});
     auto *logCard = findCardByTitle(dialog,
-                                    {QStringLiteral("状态 / 提示"),
-                                     QStringLiteral("Status / Messages")});
+                                    {QStringLiteral("RTK 服务日志"),
+                                     QStringLiteral("RTK Service Log")});
     auto *actionCard = findCardByTitle(dialog,
                                       {QStringLiteral("服务操作"),
                                        QStringLiteral("Service Operations")});
@@ -1837,30 +1824,30 @@ void requireRtkSidebarPage(
     const QRect rtcmCardRect = widgetRectInCentralForRtk(rtcmCard);
     const QRect logCardRect = widgetRectInCentralForRtk(logCard);
     const QRect actionCardRect = widgetRectInCentralForRtk(actionCard);
-    require(std::abs((ggaCardRect.top() - bottomEdgeForRtk(ntripCardRect)) -
-                     kExpectedTopLevelCardGap) <= 1,
-            "RTK runtime status row follows the NTRIP service card at the shared gap");
-    require(std::abs(ggaCardRect.top() - rtcmCardRect.top()) <= 1 &&
-                std::abs((rtcmCardRect.left() - rightEdgeForRtk(ggaCardRect)) -
+    require(std::abs(ggaCardRect.top() - ntripCardRect.top()) <= 1 &&
+                std::abs((ggaCardRect.left() - rightEdgeForRtk(ntripCardRect)) -
+                         kExpectedTopLevelCardGap) <= 1 &&
+                ntripCardRect.width() > ggaCardRect.width() &&
+                ntripCardRect.width() >= ggaCardRect.width() * 1.25,
+            "RTK NTRIP and GGA cards share the wide-left first row");
+    require(std::abs(logCardRect.top() - rtcmCardRect.top()) <= 1 &&
+                std::abs((logCardRect.left() - rightEdgeForRtk(rtcmCardRect)) -
+                         kExpectedTopLevelCardGap) <= 1 &&
+                logCardRect.width() > rtcmCardRect.width() &&
+                logCardRect.width() >= rtcmCardRect.width() * 1.25 &&
+                std::abs((rtcmCardRect.top() - bottomEdgeForRtk(ntripCardRect)) -
                          kExpectedTopLevelCardGap) <= 1,
-            "RTK differential and EPSILON data-path cards share one aligned row");
-    require(std::abs(ggaCardRect.height() - rtcmCardRect.height()) <= 1,
-            "RTK differential and EPSILON data-path cards use equal heights");
-    require(std::abs((logCardRect.top() -
-                      std::max(bottomEdgeForRtk(ggaCardRect), bottomEdgeForRtk(rtcmCardRect))) -
-                     kExpectedTopLevelCardGap) <= 1,
-            "RTK status/message area follows the runtime cards at the shared gap");
-    require(std::abs(ntripCardRect.left() - logCardRect.left()) <= 1 &&
-                std::abs(ntripCardRect.width() - logCardRect.width()) <= 1,
-            "RTK NTRIP and status/message cards use the full available page width");
-    require(std::abs((actionCardRect.top() - bottomEdgeForRtk(logCardRect)) -
+            "RTK RTCM and service-log cards share the wide-right second row");
+    require(std::abs(ggaCardRect.height() - ntripCardRect.height()) <= 1 &&
+                std::abs(logCardRect.height() - rtcmCardRect.height()) <= 1,
+            "RTK cards in each visual row use equal heights");
+    require(std::abs((actionCardRect.top() -
+                      std::max(bottomEdgeForRtk(rtcmCardRect), bottomEdgeForRtk(logCardRect))) -
                      kExpectedTopLevelCardGap) <= 1 &&
                 std::abs(ntripCardRect.left() - actionCardRect.left()) <= 1 &&
-                std::abs(ntripCardRect.width() - actionCardRect.width()) <= 1,
-            "RTK service operations form a full-width final row after the log card");
-    require(ggaCardRect.width() >= ntripCardRect.width() / 3 &&
-                rtcmCardRect.width() >= ntripCardRect.width() / 3,
-            "RTK runtime cards both retain useful horizontal space");
+                std::abs((ntripCardRect.width() + kExpectedTopLevelCardGap + ggaCardRect.width()) -
+                         actionCardRect.width()) <= 1,
+            "RTK service operations form a full-width final row after RTCM and the log");
     auto *rtkServiceLogText = dialog->findChild<QTextEdit *>(QStringLiteral("rtkServiceLogTextEdit"));
     require(rtkServiceLogText != nullptr, "RTK service log text area exists");
     require(rtkServiceLogText->lineWrapMode() == QTextEdit::WidgetWidth,
@@ -1964,19 +1951,19 @@ void requireRtkSidebarPage(
         require(std::abs(button->height() - rtkInputHeight) <= 1,
                 "RTK tool buttons match the input field height");
     }
-    require(std::abs(widgetX(serverEdit) - widgetX(usernameEdit)) <= 2,
-            "RTK NTRIP server and username fields align vertically");
-    require(std::abs(widgetX(portEdit) - widgetX(passwordEdit)) <= 2,
-            "RTK NTRIP port and password fields align vertically");
     require(std::abs(widgetY(serverEdit) - widgetY(portEdit)) <= 2 &&
-                widgetY(mountpointCombo) > widgetY(serverEdit) &&
-                widgetY(usernameEdit) > widgetY(mountpointCombo),
-            "RTK NTRIP fields follow server, mountpoint, and credential rows");
-    require(passwordEdit->width() >= 180 && mountpointCombo->width() > passwordEdit->width(),
+                std::abs(widgetY(serverEdit) - widgetY(mountpointCombo)) <= 2 &&
+                widgetX(serverEdit) < widgetX(portEdit) &&
+                widgetX(portEdit) < widgetX(mountpointCombo),
+            "RTK NTRIP server, port, and mountpoint fields share the first row");
+    require(widgetY(usernameEdit) > widgetY(serverEdit) &&
+                std::abs(widgetY(usernameEdit) - widgetY(passwordEdit)) <= 2 &&
+                std::abs(widgetY(usernameEdit) - widgetY(fetchMountpointsButton)) <= 2 &&
+                widgetX(usernameEdit) < widgetX(passwordEdit) &&
+                widgetX(fetchMountpointsButton) > widgetX(passwordEdit) + passwordEdit->width(),
+            "RTK NTRIP credentials and mountpoint detection share the second row");
+    require(passwordEdit->width() >= 110 && mountpointCombo->width() >= 150,
             "RTK NTRIP password and mountpoint fields keep useful horizontal space");
-    require(std::abs(widgetY(fetchMountpointsButton) - widgetY(mountpointCombo)) <= 2 &&
-                widgetX(fetchMountpointsButton) > widgetX(mountpointCombo) + mountpointCombo->width(),
-            "RTK mountpoint detection action sits beside the mountpoint field");
     auto *ntripPanel = dialog->findChild<QWidget *>(QStringLiteral("rtkNtripConfigPanel"));
     auto *testConnectionButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkTestConnectionButton"));
     auto *startButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkStartButton"));
@@ -2030,9 +2017,11 @@ void requireRtkSidebarPage(
                 "RTK GGA source combo does not include blank separator rows");
     }
     const int compactGgaSourceWidth =
-        ggaSourceCombo->fontMetrics().horizontalAdvance(ggaSourceCombo->currentText()) + 84;
-    require(ggaSourceCombo->width() <= compactGgaSourceWidth,
-            "RTK GGA source combo width hugs the Epsilon generated label");
+        ggaSourceCombo->fontMetrics().horizontalAdvance(ggaSourceCombo->currentText()) + 120;
+    require(ggaSourceCombo->width() <= compactGgaSourceWidth &&
+                ggaSourceCombo->width() >= ggaSourceCombo->fontMetrics().horizontalAdvance(
+                    ggaSourceCombo->currentText()) + 32,
+            "RTK GGA source combo keeps usable compact title-row width");
     require(ggaSourceCombo->lineEdit() != nullptr,
             "RTK GGA source combo exposes its editable text field");
     const int ggaSourceTextWidth =
@@ -2058,17 +2047,20 @@ void requireRtkSidebarPage(
             "RTK GGA read controls no longer reserve the legacy prefixed frequency width");
     auto *streamPanel = dialog->findChild<QWidget *>(QStringLiteral("rtkStreamStatusPanel"));
     auto *ggaClearButton = dialog->findChild<QToolButton *>(QStringLiteral("rtkGgaClearLogButton"));
-    require(streamPanel && ggaClearButton && streamPanel->isAncestorOf(ggaSourceLabel) &&
-                streamPanel->isAncestorOf(ggaSourceCombo) &&
+    require(streamPanel && ggaClearButton && ggaCard->isAncestorOf(ggaSourceLabel) &&
+                ggaCard->isAncestorOf(ggaSourceCombo) &&
+                ggaCard->isAncestorOf(ggaClearButton) &&
+                streamPanel->isAncestorOf(ggaToggleButton) &&
+                streamPanel->isAncestorOf(ggaOutputText) &&
                 widgetY(ggaSourceCombo) < widgetY(ggaToggleButton),
-            "RTK GGA source selector sits in the differential-link body above its actions");
+            "RTK GGA source selector sits in the title row above its monitor actions");
     const bool ggaActionRowAligned =
         std::abs((widgetY(ggaFrequencyLabel) + ggaFrequencyLabel->height() / 2) -
                  (widgetY(ggaToggleButton) + ggaToggleButton->height() / 2)) <= 2 &&
         std::abs((widgetY(ggaClearButton) + ggaClearButton->height() / 2) -
-                 (widgetY(ggaToggleButton) + ggaToggleButton->height() / 2)) <= 2 &&
+                 (widgetY(ggaSourceCombo) + ggaSourceCombo->height() / 2)) <= 2 &&
         widgetX(ggaToggleButton) < widgetX(ggaFrequencyLabel) &&
-        widgetX(ggaFrequencyLabel) < widgetX(ggaClearButton);
+        widgetX(ggaClearButton) > widgetX(ggaSourceCombo);
     if (!ggaActionRowAligned)
     {
         std::cerr << "GGA action row: toggle=" << widgetRect(ggaToggleButton).x() << ','
@@ -2082,10 +2074,10 @@ void requireRtkSidebarPage(
                   << 'x' << widgetRect(ggaClearButton).height() << '\n';
     }
     require(ggaActionRowAligned,
-            "RTK GGA read, frequency, and clear controls share one ordered row");
+            "RTK GGA title-row source/clear and body read/frequency controls stay ordered");
     require(widgetX(ggaOutputText) >= widgetX(ggaToggleButton) + ggaToggleButton->width(),
             "RTK GGA output text area sits to the right of the read controls");
-    const int controlsTop = widgetY(ggaSourceCombo);
+    const int controlsTop = widgetY(ggaToggleButton);
     const int controlsBottom = widgetY(ggaToggleButton) + ggaToggleButton->height();
     const int outputTop = widgetY(ggaOutputText);
     const int outputBottom = outputTop + ggaOutputText->height();
@@ -2110,10 +2102,11 @@ void requireRtkSidebarPage(
     auto *refreshPortsButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkRefreshPortsButton"));
     auto *autoDetectPortsButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkAutoDetectPortsButton"));
     auto *leverHelpButton = dialog->findChild<QToolButton *>(QStringLiteral("rtkLeverHelpButton"));
+    auto *rtcmOutputPanel = dialog->findChild<QWidget *>(QStringLiteral("rtkEpsilonDataPathPanel"));
     QLabel *outputPortLabel = findLabelByText(dialog,
                                               {QStringLiteral("RTCM 输出串口:"),
                                                QStringLiteral("RTCM Output Port:")});
-    require(outputPortCombo != nullptr && baudrateCombo != nullptr && timeoutCombo != nullptr &&
+    require(rtcmOutputPanel != nullptr && outputPortCombo != nullptr && baudrateCombo != nullptr && timeoutCombo != nullptr &&
                 reconnectCombo != nullptr && applyLeverButton != nullptr && refreshPortsButton != nullptr &&
                 autoDetectPortsButton != nullptr && leverHelpButton != nullptr && outputPortLabel != nullptr,
             "RTK RTCM output controls exist");
@@ -2130,21 +2123,25 @@ void requireRtkSidebarPage(
     require(outputPortCombo->width() <= 100 &&
                 outputPortCombo->width() >= outputPortCombo->fontMetrics().horizontalAdvance(QStringLiteral("COM999")) + 34,
             "RTK RTCM output port combo is fixed around COM999 width");
-    require(widgetY(baudrateCombo) > widgetY(outputPortCombo) &&
-                widgetX(baudrateCombo) > widgetX(outputPortLabel),
-            "RTK RTCM baudrate uses its own compact row below the output port");
-    require(ntripPanel->isAncestorOf(timeoutCombo) && ntripPanel->isAncestorOf(reconnectCombo) &&
-                widgetY(timeoutCombo) > widgetY(usernameEdit) &&
-                std::abs(widgetY(reconnectCombo) - widgetY(timeoutCombo)) <= 2 &&
-                widgetX(reconnectCombo) > widgetX(timeoutCombo),
-            "RTK NTRIP timeout and reconnect interval share the final configuration row");
+    require(std::abs(widgetY(baudrateCombo) - widgetY(outputPortCombo)) <= 2 &&
+                widgetX(baudrateCombo) > widgetX(outputPortCombo),
+            "RTK RTCM baudrate shares the first compact output row");
+    const bool timingRowAligned =
+        rtcmOutputPanel->isAncestorOf(timeoutCombo) && rtcmOutputPanel->isAncestorOf(reconnectCombo) &&
+        widgetY(timeoutCombo) > widgetY(baudrateCombo) &&
+        std::abs(widgetY(reconnectCombo) - widgetY(timeoutCombo)) <= 2 &&
+        widgetX(reconnectCombo) > widgetX(timeoutCombo);
+    require(timingRowAligned,
+            "RTK timeout and reconnect interval share the second RTCM output row");
     auto *leverXEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkLeverXEdit"));
     auto *leverYEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkLeverYEdit"));
     auto *leverZEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkLeverZEdit"));
     require(leverXEdit != nullptr && leverYEdit != nullptr && leverZEdit != nullptr,
             "RTK RTCM lever-arm XYZ edits exist");
-    require(widgetY(leverXEdit) > widgetY(baudrateCombo),
-            "RTK RTCM lever-arm XYZ controls sit below the output target rows");
+    require(widgetY(leverXEdit) > widgetY(timeoutCombo) &&
+                std::abs(widgetY(leverYEdit) - widgetY(leverXEdit)) <= 2 &&
+                std::abs(widgetY(leverZEdit) - widgetY(leverXEdit)) <= 2,
+            "RTK RTCM lever-arm XYZ controls share the third output row");
     require(widgetX(leverYEdit) - (widgetX(leverXEdit) + leverXEdit->width()) <= 42 &&
                 widgetX(leverZEdit) - (widgetX(leverYEdit) + leverYEdit->width()) <= 42,
             "RTK RTCM lever-arm XYZ controls stay tightly grouped");
@@ -2181,11 +2178,12 @@ void requireRtkSidebarPage(
     leverHelpPopup->hide();
     processEventsFor(50);
 
-    require(processEventsUntil(1000, [dialog, rtcmCard, ggaCard]() {
+    require(processEventsUntil(1000, [dialog, ntripCard, ggaCard, rtcmCard, logCard]() {
                 activateLayouts(dialog);
-                return std::abs(ggaCard->height() - rtcmCard->height()) <= 2;
+                return std::abs(ntripCard->height() - ggaCard->height()) <= 2 &&
+                    std::abs(rtcmCard->height() - logCard->height()) <= 2;
             }),
-            "RTK runtime-card geometry settles after returning to the differential-positioning page");
+            "RTK cards settle to equal heights within each visual row after page return");
 
     const QRect ntripRectBeforeTheme = widgetRect(ntripCard);
     const QRect ggaRectBeforeTheme = widgetRect(ggaCard);
@@ -2242,8 +2240,9 @@ void requireRtkSidebarPage(
                     "RTK EPSILON data-path card geometry stays stable after switching to dark theme");
     requireSameRect(widgetRect(logCard), logRectBeforeTheme,
                     "RTK status/message card geometry stays stable after switching to dark theme");
-    require(std::abs(ggaCard->height() - rtcmCard->height()) <= 2,
-            "RTK runtime cards remain equal-height in dark theme");
+    require(std::abs(ntripCard->height() - ggaCard->height()) <= 2 &&
+                std::abs(rtcmCard->height() - logCard->height()) <= 2,
+            "RTK cards remain equal-height within each visual row in dark theme");
     requireColorNear(averageVisibleIconColor(leverHelpButton->icon()),
                      VaporView::appThemeColor(VaporView::AppThemeColor::Primary, true),
                      6,
@@ -3347,6 +3346,50 @@ int main(int argc, char **argv)
         require(customTitleLabel != nullptr,
                 "combination-navigation test window exposes its title label");
         requireRtkSidebarPage(combinationWindow, customTitleLabel, false);
+        auto *embeddedRtk = combinationWindow.findChild<RtkConfigDialog *>();
+        auto *rtkScrollArea = embeddedRtk
+            ? embeddedRtk->findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea"))
+            : nullptr;
+        auto *rtkNtripCard = embeddedRtk
+            ? findCardByTitle(embeddedRtk,
+                              {QStringLiteral("NTRIP 服务器配置"),
+                               QStringLiteral("NTRIP Server Configuration")})
+            : nullptr;
+        auto *rtkGgaCard = embeddedRtk
+            ? findCardByTitle(embeddedRtk,
+                              {QStringLiteral("GGA 监视"), QStringLiteral("GGA Monitor")})
+            : nullptr;
+        auto *rtkRtcmCard = embeddedRtk
+            ? findCardByTitle(embeddedRtk,
+                              {QStringLiteral("RTCM 输出配置"),
+                               QStringLiteral("RTCM Output Configuration")})
+            : nullptr;
+        auto *rtkLogCard = embeddedRtk
+            ? findCardByTitle(embeddedRtk,
+                              {QStringLiteral("RTK 服务日志"),
+                               QStringLiteral("RTK Service Log")})
+            : nullptr;
+        require(embeddedRtk && rtkScrollArea && rtkNtripCard && rtkGgaCard && rtkRtcmCard && rtkLogCard,
+                "combination-navigation test finds the responsive RTK card grid");
+        combinationWindow.resize(1024, 800);
+        processEventsFor(200);
+        activateLayouts(embeddedRtk);
+        processEventsFor(100);
+        require(rtkScrollArea->horizontalScrollBar()->maximum() == 0,
+                "RTK embedded page remains free of horizontal scrolling at 1024px");
+        const QRect narrowViewport = rtkScrollArea->viewport()->rect();
+        const QRect narrowGgaRect(rtkGgaCard->mapTo(rtkScrollArea->viewport(), QPoint(0, 0)),
+                                  rtkGgaCard->size());
+        const QRect narrowLogRect(rtkLogCard->mapTo(rtkScrollArea->viewport(), QPoint(0, 0)),
+                                  rtkLogCard->size());
+        require(narrowGgaRect.right() < narrowViewport.right() + 1 &&
+                    narrowLogRect.right() < narrowViewport.right() + 1 &&
+                    std::abs(rtkNtripCard->geometry().top() - rtkGgaCard->geometry().top()) <= 2 &&
+                    std::abs(rtkRtcmCard->geometry().top() - rtkLogCard->geometry().top()) <= 2,
+                "RTK cards stay in two compact rows without narrow-window clipping");
+        combinationWindow.resize(1280, 800);
+        processEventsFor(150);
+        activateLayouts(embeddedRtk);
         combinationWindow.close();
         require(processEventsUntil(1000, [&combinationWindow]() {
                     return !combinationWindow.isVisible();

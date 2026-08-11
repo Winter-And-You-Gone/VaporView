@@ -30,6 +30,7 @@
 
 class QCloseEvent;
 class QEvent;
+class QResizeEvent;
 
 namespace VaporView { class SingleLevelPopupMenu; }
 
@@ -61,6 +62,7 @@ signals:
 protected:
     void closeEvent(QCloseEvent *event) override;
     void changeEvent(QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
 private slots:
     void onStartClicked();
@@ -207,6 +209,7 @@ private:
     VaporView::AppThemeColor service_status_color_;
 
     bool embedded_;
+    bool compact_layout_;
     std::unique_ptr<RtkStreamService> rtk_service_;
     bool is_running_;
     bool is_english_;
