@@ -7,13 +7,16 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QEvent>
 #include <QFontMetrics>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLayout>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QSignalBlocker>
-#include <QSpacerItem>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -23,10 +26,79 @@ namespace VaporView::Ground::Navigation
 namespace
 {
 
-constexpr int kPacketColumnCount = 2;
-constexpr int kPacketGroupGapColumn = 2;
-constexpr int kPacketRightLabelColumn = 3;
-constexpr int kPacketTrailingColumn = 5;
+constexpr int kTwoColumnMinimumWidth = 620;
+
+struct SectionCard
+{
+    QFrame *card = nullptr;
+    QLabel *title = nullptr;
+    QVBoxLayout *body_layout = nullptr;
+};
+
+SectionCard createSectionCard(QWidget *parent,
+                              const QString& objectName,
+                              const QString& iconName)
+{
+    SectionCard result;
+    result.card = new QFrame(parent);
+    result.card->setObjectName(objectName);
+    result.card->setProperty("epsilonConfigCard", true);
+    result.card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    configureTopLevelCard(result.card);
+
+    auto *cardLayout = new QVBoxLayout(result.card);
+    cardLayout->setContentsMargins(1, 0, 1, 1);
+    cardLayout->setSpacing(0);
+
+    auto *titleBar = new QWidget(result.card);
+    titleBar->setObjectName(QStringLiteral("sectionTitleBar"));
+    titleBar->setFixedHeight(VaporView::Ground::MainSupport::kMainPageTitleBarHeight);
+    auto *titleLayout = new QHBoxLayout(titleBar);
+    titleLayout->setContentsMargins(10, 2, 10, 2);
+    titleLayout->setSpacing(8);
+    QWidget *titleCluster = nullptr;
+    result.title = VaporView::Ground::MainSupport::createSectionTitleCluster(
+        titleBar, iconName,
+        VaporView::Ground::MainSupport::kMainPageButtonHeight, &titleCluster);
+    titleLayout->addWidget(titleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    titleLayout->addStretch(1);
+    cardLayout->addWidget(titleBar);
+
+    auto *body = new QWidget(result.card);
+    body->setObjectName(objectName + QStringLiteral("Body"));
+    body->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    result.body_layout = new QVBoxLayout(body);
+    result.body_layout->setContentsMargins(12, 10, 12, 12);
+    result.body_layout->setSpacing(10);
+    cardLayout->addWidget(body);
+    return result;
+}
+
+struct SummaryField
+{
+    QWidget *field = nullptr;
+    QLabel *name = nullptr;
+    QLabel *value = nullptr;
+};
+
+SummaryField createSummaryField(QWidget *parent, const QString& objectName)
+{
+    SummaryField result;
+    result.field = new QWidget(parent);
+    result.field->setObjectName(objectName);
+    result.field->setProperty("epsilonSummaryField", true);
+    result.field->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    auto *layout = new QVBoxLayout(result.field);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(2);
+    result.name = new QLabel(result.field);
+    result.name->setProperty("epsilonSummaryName", true);
+    result.value = new QLabel(result.field);
+    result.value->setProperty("epsilonSummaryValue", true);
+    layout->addWidget(result.name);
+    layout->addWidget(result.value);
+    return result;
+}
 
 QComboBox *createPacketRateCombo(QWidget *parent, int width)
 {
@@ -53,50 +125,79 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     : QFrame(parent)
 {
     setObjectName(QStringLiteral("epsilonSectionCard"));
-    setMinimumWidth(520);
+    setMinimumWidth(0);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
-    configureTopLevelCard(this);
+    setAttribute(Qt::WA_StyledBackground, true);
 
     auto *panelLayout = new QVBoxLayout(this);
-    panelLayout->setContentsMargins(1, 0, 1, 1);
-    panelLayout->setSpacing(0);
+    panelLayout->setContentsMargins(0, 0, 0, 0);
+    panelLayout->setSpacing(12);
 
-    auto *titleBar = new QWidget(this);
-    titleBar->setObjectName(QStringLiteral("sectionTitleBar"));
-    titleBar->setFixedHeight(VaporView::Ground::MainSupport::kMainPageTitleBarHeight);
-    auto *titleLayout = new QHBoxLayout(titleBar);
-    titleLayout->setContentsMargins(8, 2, 8, 2);
-    titleLayout->setSpacing(8);
-    QWidget *titleCluster = nullptr;
-    title_label_ = VaporView::Ground::MainSupport::createSectionTitleCluster(
-        titleBar, QStringLiteral("sliders-vertical"),
-        VaporView::Ground::MainSupport::kMainPageButtonHeight, &titleCluster);
-    titleLayout->addWidget(titleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    titleLayout->addStretch(1);
-    panelLayout->addWidget(titleBar);
+    const SectionCard summaryCard = createSectionCard(
+        this, QStringLiteral("epsilonStatusCard"), QStringLiteral("satellite"));
+    summary_title_label_ = summaryCard.title;
+    auto *summaryFields = new QWidget(summaryCard.card);
+    summaryFields->setObjectName(QStringLiteral("epsilonSummaryFields"));
+    auto *summaryFieldsLayout = new QHBoxLayout(summaryFields);
+    summaryFieldsLayout->setContentsMargins(0, 0, 0, 0);
+    summaryFieldsLayout->setSpacing(24);
+    const SummaryField availabilityField = createSummaryField(
+        summaryFields, QStringLiteral("epsilonAvailabilitySummary"));
+    availability_name_label_ = availabilityField.name;
+    availability_value_label_ = availabilityField.value;
+    availability_name_label_->setObjectName(QStringLiteral("epsilonAvailabilitySummaryName"));
+    availability_value_label_->setObjectName(QStringLiteral("epsilonAvailabilitySummaryValue"));
+    const SummaryField profileField = createSummaryField(
+        summaryFields, QStringLiteral("epsilonProfileSummary"));
+    profile_name_label_ = profileField.name;
+    profile_value_label_ = profileField.value;
+    profile_name_label_->setObjectName(QStringLiteral("epsilonProfileSummaryName"));
+    profile_value_label_->setObjectName(QStringLiteral("epsilonProfileSummaryValue"));
+    const SummaryField packetCountField = createSummaryField(
+        summaryFields, QStringLiteral("epsilonPacketCountSummary"));
+    packet_count_name_label_ = packetCountField.name;
+    packet_count_value_label_ = packetCountField.value;
+    packet_count_name_label_->setObjectName(QStringLiteral("epsilonPacketCountSummaryName"));
+    packet_count_value_label_->setObjectName(QStringLiteral("epsilonPacketCountSummaryValue"));
+    summaryFieldsLayout->addWidget(availabilityField.field, 1);
+    summaryFieldsLayout->addWidget(profileField.field, 1);
+    summaryFieldsLayout->addWidget(packetCountField.field, 1);
+    summaryCard.body_layout->addWidget(summaryFields);
 
-    auto *body = new QWidget(this);
-    auto *bodyLayout = new QVBoxLayout(body);
-    bodyLayout->setContentsMargins(8, 8, 8, 8);
-    bodyLayout->setSpacing(7);
-
-    hint_label_ = new QLabel(body);
+    auto *summaryFooter = new QWidget(summaryCard.card);
+    summaryFooter->setObjectName(QStringLiteral("epsilonSummaryActions"));
+    auto *summaryFooterLayout = new QHBoxLayout(summaryFooter);
+    summaryFooterLayout->setContentsMargins(0, 0, 0, 0);
+    summaryFooterLayout->setSpacing(12);
+    hint_label_ = new QLabel(summaryFooter);
     hint_label_->setObjectName(QStringLiteral("epsilonConfigHint"));
     hint_label_->setWordWrap(true);
-    hint_label_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
-    bodyLayout->addWidget(hint_label_);
+    hint_label_->setProperty("epsilonSecondaryText", true);
+    hint_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    recommended_button_ = createActionButton(summaryFooter);
+    recommended_button_->setObjectName(QStringLiteral("epsilonRecommendedConfigButton"));
+    recommended_button_->setProperty("epsilonSecondaryAction", true);
+    summaryFooterLayout->addWidget(hint_label_, 1);
+    summaryFooterLayout->addWidget(recommended_button_, 0, Qt::AlignRight | Qt::AlignVCenter);
+    summaryCard.body_layout->addWidget(summaryFooter);
+    panelLayout->addWidget(summaryCard.card);
 
-    custom_packet_check_ = VaporView::Ground::MainSupport::createTitleBarFeedbackCheckBox(body);
+    const SectionCard outputCard = createSectionCard(
+        this, QStringLiteral("epsilonOutputCard"), QStringLiteral("activity"));
+    output_title_label_ = outputCard.title;
+    custom_packet_check_ = VaporView::Ground::MainSupport::createTitleBarFeedbackCheckBox(outputCard.card);
     custom_packet_check_->setObjectName(QStringLiteral("epsilonPacketCustomCheck"));
     custom_packet_check_->setFocusPolicy(Qt::TabFocus);
     custom_packet_check_->setAccessibleName(QStringLiteral("EPSILON custom packet-rate profile"));
-    bodyLayout->addWidget(custom_packet_check_);
+    outputCard.body_layout->addWidget(custom_packet_check_);
 
-    auto *packetGridWidget = new QWidget(body);
-    auto *packetGrid = new QGridLayout(packetGridWidget);
-    packetGrid->setContentsMargins(0, 0, 0, 0);
-    packetGrid->setHorizontalSpacing(8);
-    packetGrid->setVerticalSpacing(4);
+    auto *packetGridWidget = new QWidget(outputCard.card);
+    packetGridWidget->setObjectName(QStringLiteral("epsilonPacketGrid"));
+    packetGridWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    packet_grid_ = new QGridLayout(packetGridWidget);
+    packet_grid_->setContentsMargins(0, 0, 0, 0);
+    packet_grid_->setHorizontalSpacing(0);
+    packet_grid_->setVerticalSpacing(6);
 
     int comboWidth = 0;
     {
@@ -116,27 +217,27 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     }
     comboWidth = std::clamp(comboWidth + 50, 126, 160);
 
-    int packetIndex = 0;
     for (const auto &option : VaporView::Ground::DeviceRates::epsilonPacketConfigOptions())
     {
-        const int row = packetIndex / kPacketColumnCount;
-        const int side = packetIndex % kPacketColumnCount;
-        const int labelColumn = side == 0 ? 0 : kPacketRightLabelColumn;
-        const int comboColumn = labelColumn + 1;
+        auto *field = new QWidget(packetGridWidget);
+        field->setObjectName(QStringLiteral("epsilonPacketField_%1").arg(
+            option.packet_id, 2, 16, QLatin1Char('0')));
+        field->setProperty("epsilonPacketId", static_cast<uint>(option.packet_id));
+        field->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+        auto *fieldLayout = new QHBoxLayout(field);
+        fieldLayout->setContentsMargins(0, 0, 0, 0);
+        fieldLayout->setSpacing(12);
 
-        auto *label = new QLabel(packetGridWidget);
+        auto *label = new QLabel(field);
         label->setObjectName(QStringLiteral("epsilonPacketRateLabel_%1").arg(option.packet_id, 2, 16, QLatin1Char('0')));
         label->setProperty("epsilonPacketId", static_cast<uint>(option.packet_id));
-        label->setProperty("epsilonPacketGridColumn", side);
         label->setWordWrap(false);
         label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         label->setFocusPolicy(Qt::NoFocus);
-        packetGrid->addWidget(label, row, labelColumn, Qt::AlignLeft | Qt::AlignVCenter);
 
-        auto *combo = createPacketRateCombo(packetGridWidget, comboWidth);
+        auto *combo = createPacketRateCombo(field, comboWidth);
         combo->setObjectName(QStringLiteral("epsilonPacketRateCombo_%1").arg(option.packet_id, 2, 16, QLatin1Char('0')));
         combo->setProperty("epsilonPacketId", static_cast<uint>(option.packet_id));
-        combo->setProperty("epsilonPacketGridColumn", side);
         combo->setFocusPolicy(Qt::TabFocus);
         for (int rateHz : option.supported_rates_hz)
         {
@@ -145,48 +246,93 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
                 rateHz);
         }
         combo->setAccessibleName(QStringLiteral("EPSILON packet %1 rate").arg(option.packet_id, 2, 16, QLatin1Char('0')));
-        packetGrid->addWidget(combo, row, comboColumn, Qt::AlignLeft | Qt::AlignVCenter);
+        fieldLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        fieldLayout->addStretch(1);
+        fieldLayout->addWidget(combo, 0, Qt::AlignRight | Qt::AlignVCenter);
 
+        packet_rate_fields_.append(field);
         packet_rate_labels_.append(label);
         packet_rate_combos_.append(combo);
-        ++packetIndex;
     }
-    packetGrid->setColumnMinimumWidth(kPacketGroupGapColumn, 20);
-    packetGrid->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum),
-                        0, kPacketTrailingColumn);
-    packetGrid->setColumnStretch(kPacketTrailingColumn, 1);
+    arrangePacketFields(true);
+    outputCard.body_layout->addWidget(packetGridWidget);
 
-    auto *buttonPanel = new QWidget(packetGridWidget);
+    auto *buttonPanel = new QWidget(outputCard.card);
     buttonPanel->setObjectName(QStringLiteral("epsilonPacketActionPanel"));
-    buttonPanel->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Minimum);
-    auto *buttonLayout = new QGridLayout(buttonPanel);
+    buttonPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    auto *buttonLayout = new QHBoxLayout(buttonPanel);
     buttonLayout->setContentsMargins(0, 0, 0, 0);
-    buttonLayout->setHorizontalSpacing(4);
-    buttonLayout->setVerticalSpacing(4);
-
-    recommended_button_ = createActionButton(buttonPanel);
-    recommended_button_->setObjectName(QStringLiteral("epsilonRecommendedConfigButton"));
+    buttonLayout->setSpacing(12);
+    grouped_description_label_ = new QLabel(buttonPanel);
+    grouped_description_label_->setObjectName(QStringLiteral("epsilonGroupedConfigDescription"));
+    grouped_description_label_->setProperty("epsilonSecondaryText", true);
+    grouped_description_label_->setWordWrap(true);
+    grouped_description_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     grouped_button_ = createActionButton(buttonPanel);
     grouped_button_->setObjectName(QStringLiteral("epsilonGroupedConfigButton"));
-    save_button_ = createActionButton(buttonPanel);
-    save_button_->setObjectName(QStringLiteral("epsilonSaveButton"));
-    rtcm_port_button_ = createActionButton(buttonPanel);
-    rtcm_port_button_->setObjectName(QStringLiteral("epsilonRtcmPortButton"));
-    reconfigure_button_ = createActionButton(buttonPanel);
-    reconfigure_button_->setObjectName(QStringLiteral("epsilonReconfigureButton"));
-    rtk_config_button_ = createActionButton(buttonPanel);
-    rtk_config_button_->setObjectName(QStringLiteral("epsilonRtkConfigButton"));
+    grouped_button_->setProperty("epsilonSecondaryAction", true);
+    buttonLayout->addWidget(grouped_description_label_, 1);
+    buttonLayout->addWidget(grouped_button_, 0, Qt::AlignRight | Qt::AlignVCenter);
+    outputCard.body_layout->addWidget(buttonPanel);
+    panelLayout->addWidget(outputCard.card);
 
-    buttonLayout->addWidget(recommended_button_, 0, 0);
-    buttonLayout->addWidget(grouped_button_, 0, 1);
-    buttonLayout->addWidget(save_button_, 1, 0);
-    buttonLayout->addWidget(rtcm_port_button_, 1, 1);
-    buttonLayout->addWidget(reconfigure_button_, 2, 0);
-    buttonLayout->addWidget(rtk_config_button_, 2, 1);
-    packetGrid->addWidget(buttonPanel, 0, kPacketTrailingColumn, 4, 1,
-                          Qt::AlignLeft | Qt::AlignTop);
-    bodyLayout->addWidget(packetGridWidget);
-    panelLayout->addWidget(body);
+    const SectionCard deviceSettingsCard = createSectionCard(
+        this, QStringLiteral("epsilonDeviceSettingsCard"), QStringLiteral("sliders-vertical"));
+    device_settings_title_label_ = deviceSettingsCard.title;
+    auto *deviceGrid = new QGridLayout();
+    deviceGrid->setContentsMargins(0, 0, 0, 0);
+    deviceGrid->setHorizontalSpacing(16);
+    deviceGrid->setVerticalSpacing(10);
+    deviceGrid->setColumnStretch(1, 1);
+    auto addDeviceAction = [deviceGrid, card = deviceSettingsCard.card](
+                               int row,
+                               QLabel **nameOut,
+                               QLabel **descriptionOut,
+                               QPushButton **buttonOut,
+                               const QString& nameObjectName,
+                               const QString& descriptionObjectName,
+                               const QString& buttonObjectName) {
+        *nameOut = new QLabel(card);
+        (*nameOut)->setObjectName(nameObjectName);
+        (*nameOut)->setProperty("epsilonSettingName", true);
+        (*nameOut)->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        *descriptionOut = new QLabel(card);
+        (*descriptionOut)->setObjectName(descriptionObjectName);
+        (*descriptionOut)->setProperty("epsilonSecondaryText", true);
+        (*descriptionOut)->setWordWrap(true);
+        (*descriptionOut)->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        *buttonOut = createActionButton(card);
+        (*buttonOut)->setObjectName(buttonObjectName);
+        (*buttonOut)->setProperty("epsilonSecondaryAction", true);
+        deviceGrid->addWidget(*nameOut, row, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        deviceGrid->addWidget(*descriptionOut, row, 1, Qt::AlignLeft | Qt::AlignVCenter);
+        deviceGrid->addWidget(*buttonOut, row, 2, Qt::AlignRight | Qt::AlignVCenter);
+    };
+    addDeviceAction(0, &rtcm_name_label_, &rtcm_description_label_, &rtcm_port_button_,
+                    QStringLiteral("epsilonRtcmSettingName"),
+                    QStringLiteral("epsilonRtcmSettingDescription"),
+                    QStringLiteral("epsilonRtcmPortButton"));
+    addDeviceAction(1, &reconfigure_name_label_, &reconfigure_description_label_, &reconfigure_button_,
+                    QStringLiteral("epsilonReconfigureSettingName"),
+                    QStringLiteral("epsilonReconfigureSettingDescription"),
+                    QStringLiteral("epsilonReconfigureButton"));
+    addDeviceAction(2, &rtk_name_label_, &rtk_description_label_, &rtk_config_button_,
+                    QStringLiteral("epsilonRtkSettingName"),
+                    QStringLiteral("epsilonRtkSettingDescription"),
+                    QStringLiteral("epsilonRtkConfigButton"));
+    deviceSettingsCard.body_layout->addLayout(deviceGrid);
+    panelLayout->addWidget(deviceSettingsCard.card);
+
+    auto *actionsContainer = new QWidget(this);
+    actionsContainer->setObjectName(QStringLiteral("epsilonActionsContainer"));
+    auto *actionsLayout = new QHBoxLayout(actionsContainer);
+    actionsLayout->setContentsMargins(0, 0, 0, 2);
+    actionsLayout->setSpacing(8);
+    save_button_ = createActionButton(actionsContainer);
+    save_button_->setObjectName(QStringLiteral("epsilonSaveButton"));
+    actionsLayout->addStretch(1);
+    actionsLayout->addWidget(save_button_, 0, Qt::AlignRight | Qt::AlignVCenter);
+    panelLayout->addWidget(actionsContainer);
 
     connect(recommended_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::recommendedProfileRequested);
     connect(grouped_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::groupedProfileRequested);
@@ -194,20 +340,23 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     connect(rtcm_port_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::rtcmPortRequested);
     connect(reconfigure_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::reconfigureRequested);
     connect(rtk_config_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::rtkConfigRequested);
+    connect(custom_packet_check_, &QCheckBox::toggled,
+            this, [this]() { updateSummaryTexts(); });
 
+    QWidget::setTabOrder(recommended_button_, custom_packet_check_);
     QWidget::setTabOrder(custom_packet_check_, packet_rate_combos_.value(0));
     for (int i = 0; i + 1 < packet_rate_combos_.size(); ++i)
     {
         QWidget::setTabOrder(packet_rate_combos_.at(i), packet_rate_combos_.at(i + 1));
     }
-    QWidget::setTabOrder(packet_rate_combos_.last(), recommended_button_);
-    QWidget::setTabOrder(recommended_button_, grouped_button_);
-    QWidget::setTabOrder(grouped_button_, save_button_);
-    QWidget::setTabOrder(save_button_, rtcm_port_button_);
+    QWidget::setTabOrder(packet_rate_combos_.last(), grouped_button_);
+    QWidget::setTabOrder(grouped_button_, rtcm_port_button_);
     QWidget::setTabOrder(rtcm_port_button_, reconfigure_button_);
     QWidget::setTabOrder(reconfigure_button_, rtk_config_button_);
+    QWidget::setTabOrder(rtk_config_button_, save_button_);
 
     updateTexts();
+    applyAppearance();
 }
 
 void EpsilonConfigPanel::setEnglish(bool english)
@@ -218,6 +367,8 @@ void EpsilonConfigPanel::setEnglish(bool english)
 
 void EpsilonConfigPanel::setAvailable(bool available)
 {
+    is_available_ = available;
+    updateSummaryTexts();
     setEnabled(available);
 }
 
@@ -225,6 +376,7 @@ void EpsilonConfigPanel::setCustomPacketProfileEnabled(bool enabled)
 {
     const QSignalBlocker blocker(custom_packet_check_);
     custom_packet_check_->setChecked(enabled);
+    updateSummaryTexts();
 }
 
 bool EpsilonConfigPanel::customPacketProfileEnabled() const
@@ -270,12 +422,143 @@ std::map<uint8_t, int> EpsilonConfigPanel::packetRates() const
     return packetRates;
 }
 
+void EpsilonConfigPanel::changeEvent(QEvent *event)
+{
+    QFrame::changeEvent(event);
+    if (event && (event->type() == QEvent::ApplicationPaletteChange ||
+                  event->type() == QEvent::PaletteChange))
+    {
+        applyAppearance();
+    }
+}
+
+void EpsilonConfigPanel::resizeEvent(QResizeEvent *event)
+{
+    QFrame::resizeEvent(event);
+    arrangePacketFields(event && event->size().width() >= kTwoColumnMinimumWidth);
+}
+
+void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
+{
+    if (!packet_grid_ ||
+        (packet_layout_initialized_ && twoColumns == two_column_layout_))
+    {
+        return;
+    }
+
+    for (QWidget *field : packet_rate_fields_)
+    {
+        packet_grid_->removeWidget(field);
+    }
+    for (int column = 0; column < 3; ++column)
+    {
+        packet_grid_->setColumnMinimumWidth(column, 0);
+        packet_grid_->setColumnStretch(column, 0);
+    }
+
+    two_column_layout_ = twoColumns;
+    packet_layout_initialized_ = true;
+    if (twoColumns)
+    {
+        packet_grid_->setColumnStretch(0, 1);
+        packet_grid_->setColumnMinimumWidth(1, 24);
+        packet_grid_->setColumnStretch(2, 1);
+    }
+    else
+    {
+        packet_grid_->setColumnStretch(0, 1);
+    }
+
+    for (int index = 0; index < packet_rate_fields_.size(); ++index)
+    {
+        const int visualColumn = twoColumns ? index % 2 : 0;
+        const int row = twoColumns ? index / 2 : index;
+        const int gridColumn = twoColumns ? visualColumn * 2 : 0;
+        QWidget *field = packet_rate_fields_.at(index);
+        field->setProperty("epsilonPacketGridColumn", visualColumn);
+        packet_rate_labels_.at(index)->setProperty("epsilonPacketGridColumn", visualColumn);
+        packet_rate_combos_.at(index)->setProperty("epsilonPacketGridColumn", visualColumn);
+        packet_grid_->addWidget(field, row, gridColumn);
+    }
+    packet_grid_->invalidate();
+    packet_grid_->activate();
+    QTimer::singleShot(0, this, [this]() {
+        for (QWidget *widget = this; widget; widget = widget->parentWidget())
+        {
+            if (widget->layout())
+            {
+                widget->layout()->invalidate();
+                widget->layout()->activate();
+            }
+            widget->updateGeometry();
+            if (widget->objectName() == QStringLiteral("epsilonConfigScrollArea"))
+            {
+                break;
+            }
+        }
+    });
+}
+
+void EpsilonConfigPanel::applyAppearance()
+{
+    const QString style = QStringLiteral(
+        "QFrame#epsilonSectionCard { background-color: transparent; border: none; }"
+        "QFrame[epsilonConfigCard=\"true\"] { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 12px; }"
+        "QFrame[epsilonConfigCard=\"true\"] > QWidget#sectionTitleBar { background-color: @vv-surface-raised; border-top-left-radius: 11px; border-top-right-radius: 11px; }"
+        "QLabel[epsilonSummaryName=\"true\"] { color: @vv-text-secondary; font-weight: 400; }"
+        "QLabel[epsilonSummaryValue=\"true\"], QLabel[epsilonSettingName=\"true\"] { color: @vv-text-strong; font-weight: 600; }"
+        "QLabel[epsilonSecondaryText=\"true\"] { color: @vv-text-secondary; font-weight: 400; }"
+        "QPushButton[epsilonSecondaryAction=\"true\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; color: @vv-text; }"
+        "QPushButton[epsilonSecondaryAction=\"true\"]:hover { background-color: @vv-primary-subtle; border-color: @vv-primary; color: @vv-primary; }"
+        "QPushButton[epsilonSecondaryAction=\"true\"]:focus { border-color: @vv-focus; }"
+        "QPushButton[epsilonSecondaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }"
+        "QWidget#epsilonActionsContainer, QWidget#epsilonSummaryFields, QWidget#epsilonSummaryActions, QWidget#epsilonPacketActionPanel, QWidget#epsilonPacketGrid { background-color: transparent; border: none; }");
+    const QString resolvedStyle = VaporView::applyAppThemeTokens(
+        style, VaporView::isDarkThemeEnabled());
+    if (styleSheet() != resolvedStyle)
+    {
+        setStyleSheet(resolvedStyle);
+    }
+}
+
+void EpsilonConfigPanel::updateSummaryTexts()
+{
+    availability_value_label_->setText(
+        is_available_
+            ? (is_english_ ? QStringLiteral("Available") : QStringLiteral("可用"))
+            : (is_english_ ? QStringLiteral("Unavailable") : QStringLiteral("不可用")));
+    profile_value_label_->setText(
+        custom_packet_check_->isChecked()
+            ? (is_english_ ? QStringLiteral("Custom") : QStringLiteral("自定义"))
+            : (is_english_ ? QStringLiteral("Grouped") : QStringLiteral("分组模式")));
+    packet_count_value_label_->setText(
+        is_english_ ? QStringLiteral("11 packet outputs") : QStringLiteral("11 项报文"));
+    availability_value_label_->setAccessibleName(
+        QStringLiteral("%1 %2").arg(availability_name_label_->text(), availability_value_label_->text()));
+    profile_value_label_->setAccessibleName(
+        QStringLiteral("%1 %2").arg(profile_name_label_->text(), profile_value_label_->text()));
+    packet_count_value_label_->setAccessibleName(
+        QStringLiteral("%1 %2").arg(packet_count_name_label_->text(), packet_count_value_label_->text()));
+}
+
 void EpsilonConfigPanel::updateTexts()
 {
     const auto &options = VaporView::Ground::DeviceRates::epsilonPacketConfigOptions();
-    title_label_->setText(is_english_ ? QStringLiteral("EPSILON Configuration") : QStringLiteral("EPSILON 配置"));
-    title_label_->setAccessibleName(title_label_->text());
-    setAccessibleName(title_label_->text());
+    summary_title_label_->setText(is_english_ ? QStringLiteral("Configuration Summary") : QStringLiteral("配置摘要"));
+    output_title_label_->setText(is_english_ ? QStringLiteral("Packet Output") : QStringLiteral("报文输出"));
+    device_settings_title_label_->setText(is_english_ ? QStringLiteral("Device Settings") : QStringLiteral("设备设置"));
+    for (QLabel *title : {summary_title_label_, output_title_label_, device_settings_title_label_})
+    {
+        title->setAccessibleName(title->text());
+    }
+    setAccessibleName(is_english_ ? QStringLiteral("EPSILON Configuration") : QStringLiteral("EPSILON 配置"));
+    availability_name_label_->setText(is_english_ ? QStringLiteral("Configuration") : QStringLiteral("配置操作"));
+    profile_name_label_->setText(is_english_ ? QStringLiteral("Output Profile") : QStringLiteral("配置方式"));
+    packet_count_name_label_->setText(is_english_ ? QStringLiteral("Packet Items") : QStringLiteral("报文项数"));
+    for (QLabel *label : {availability_name_label_, profile_name_label_, packet_count_name_label_})
+    {
+        label->setAccessibleName(label->text());
+    }
     hint_label_->setText(
         is_english_
             ? QStringLiteral("Packet rates are saved for future connect/reconfigure operations. Save applies the profile immediately when an EPSILON port is selected.")
@@ -285,6 +568,29 @@ void EpsilonConfigPanel::updateTexts()
         is_english_ ? QStringLiteral("Use this custom EPSILON packet-rate profile")
                     : QStringLiteral("使用这组自定义 EPSILON 包频率"));
     custom_packet_check_->setAccessibleName(custom_packet_check_->text());
+    grouped_description_label_->setText(
+        is_english_ ? QStringLiteral("Use the current grouped profile for packet output rates.")
+                    : QStringLiteral("按当前分组模式设置报文输出频率。"));
+    grouped_description_label_->setAccessibleName(grouped_description_label_->text());
+
+    rtcm_name_label_->setText(is_english_ ? QStringLiteral("RTCM Input") : QStringLiteral("RTCM 输入"));
+    rtcm_description_label_->setText(
+        is_english_ ? QStringLiteral("Configure EPSILON communication port 2 as the RTCM input.")
+                    : QStringLiteral("配置 EPSILON 第二通信串口为 RTCM 输入口。"));
+    reconfigure_name_label_->setText(is_english_ ? QStringLiteral("Output Reconfiguration") : QStringLiteral("输出重配"));
+    reconfigure_description_label_->setText(
+        is_english_ ? QStringLiteral("Apply the current EPSILON output profile to the device.")
+                    : QStringLiteral("将当前 EPSILON 输出配置应用到设备。"));
+    rtk_name_label_->setText(is_english_ ? QStringLiteral("Differential Positioning") : QStringLiteral("差分定位"));
+    rtk_description_label_->setText(
+        is_english_ ? QStringLiteral("Open the differential-positioning page in Combination Navigation.")
+                    : QStringLiteral("进入组合导航中的差分定位页面。"));
+    for (QLabel *label : {rtcm_name_label_, rtcm_description_label_,
+                          reconfigure_name_label_, reconfigure_description_label_,
+                          rtk_name_label_, rtk_description_label_})
+    {
+        label->setAccessibleName(label->text());
+    }
 
     for (int i = 0; i < packet_rate_labels_.size() && i < static_cast<int>(options.size()); ++i)
     {
@@ -338,6 +644,7 @@ void EpsilonConfigPanel::updateTexts()
             button->setAccessibleName(button->text());
         }
     }
+    updateSummaryTexts();
 }
 
 } // namespace VaporView::Ground::Navigation

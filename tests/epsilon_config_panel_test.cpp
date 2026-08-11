@@ -4,7 +4,10 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QFrame>
+#include <QLabel>
 #include <QPushButton>
+#include <QSet>
 
 #include <algorithm>
 #include <cstdlib>
@@ -47,12 +50,39 @@ int main(int argc, char *argv[])
     using namespace VaporView::Ground::DeviceRates;
 
     EpsilonConfigPanel panel;
-    panel.resize(1100, panel.sizeHint().height());
+    panel.resize(1100, 420);
+    panel.show();
+    QApplication::processEvents();
+
+    int sectionCardCount = 0;
+    for (QFrame *card : panel.findChildren<QFrame *>())
+    {
+        if (card->property("epsilonConfigCard").toBool())
+        {
+            ++sectionCardCount;
+        }
+    }
+    require(panel.findChild<QFrame *>(QStringLiteral("epsilonStatusCard")) != nullptr &&
+                panel.findChild<QFrame *>(QStringLiteral("epsilonOutputCard")) != nullptr &&
+                panel.findChild<QFrame *>(QStringLiteral("epsilonDeviceSettingsCard")) != nullptr &&
+                sectionCardCount == 3,
+            "panel exposes exactly three EPSILON business section cards");
+    require(panel.findChild<QWidget *>(QStringLiteral("epsilonActionsContainer")) != nullptr &&
+                panel.findChild<QWidget *>(QStringLiteral("epsilonPacketActionPanel")) != nullptr,
+            "panel keeps separate grouped and primary action containers");
 
     const auto &options = epsilonPacketConfigOptions();
     const QList<QComboBox *> combos = packetRateCombos(panel);
     require(options.size() == 11, "EPSILON policy exposes exactly 11 packet options");
     require(combos.size() == 11, "panel exposes exactly 11 packet-rate controls");
+
+    QSet<int> wideColumns;
+    for (QComboBox *combo : combos)
+    {
+        wideColumns.insert(combo->property("epsilonPacketGridColumn").toInt());
+    }
+    require(wideColumns == QSet<int>{0, 1},
+            "wide panel lays packet-rate fields out in two visual columns");
 
     std::set<uint8_t> packetIds;
     std::set<QString> objectNames;
@@ -82,8 +112,13 @@ int main(int argc, char *argv[])
     require(panel.packetRates() == defaults, "semantic packet-rate setter and getter preserve all 11 values");
     panel.setCustomPacketProfileEnabled(true);
     require(panel.customPacketProfileEnabled(), "semantic custom-profile state enables");
+    auto *profileSummary = panel.findChild<QLabel *>(QStringLiteral("epsilonProfileSummaryValue"));
+    require(profileSummary != nullptr && profileSummary->text() == QStringLiteral("自定义"),
+            "configuration summary reflects the real custom-profile state");
     panel.setCustomPacketProfileEnabled(false);
     require(!panel.customPacketProfileEnabled(), "semantic custom-profile state disables");
+    require(profileSummary->text() == QStringLiteral("分组模式"),
+            "configuration summary reflects the real grouped-profile state");
 
     auto *customCheck = panel.findChild<QCheckBox *>(QStringLiteral("epsilonPacketCustomCheck"));
     require(customCheck != nullptr && customCheck->focusPolicy() == Qt::TabFocus &&
@@ -127,11 +162,35 @@ int main(int argc, char *argv[])
     }
 
     panel.setAvailable(false);
+    auto *availabilitySummary = panel.findChild<QLabel *>(
+        QStringLiteral("epsilonAvailabilitySummaryValue"));
     require(!customCheck->isEnabled() && !combos.front()->isEnabled(),
             "panel unavailable state disables interactive controls");
+    require(availabilitySummary != nullptr && availabilitySummary->text() == QStringLiteral("不可用"),
+            "configuration summary reports unavailable operations without fabricating device state");
     panel.setAvailable(true);
     require(customCheck->isEnabled() && combos.front()->isEnabled(),
             "panel available state re-enables interactive controls");
+
+    panel.resize(560, 900);
+    QApplication::processEvents();
+    for (QComboBox *combo : combos)
+    {
+        require(combo->property("epsilonPacketGridColumn").toInt() == 0,
+                "narrow panel collapses packet-rate fields to one visual column");
+        const QRect comboRect(combo->mapTo(&panel, QPoint(0, 0)), combo->size());
+        require(panel.rect().contains(comboRect),
+                "narrow packet-rate controls remain inside the panel");
+    }
+    panel.resize(1100, 420);
+    QApplication::processEvents();
+    wideColumns.clear();
+    for (QComboBox *combo : combos)
+    {
+        wideColumns.insert(combo->property("epsilonPacketGridColumn").toInt());
+    }
+    require(wideColumns == QSet<int>{0, 1},
+            "wide panel restores the two-column packet-rate layout");
 
     panel.setEnglish(true);
     require(panel.accessibleName() == QStringLiteral("EPSILON Configuration"),

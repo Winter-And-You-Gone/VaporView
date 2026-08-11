@@ -9,8 +9,12 @@
 
 class QCheckBox;
 class QComboBox;
+class QEvent;
+class QGridLayout;
 class QLabel;
 class QPushButton;
+class QResizeEvent;
+class QWidget;
 
 namespace VaporView::Ground::Navigation
 {
@@ -37,13 +41,40 @@ signals:
     void reconfigureRequested();
     void rtkConfigRequested();
 
+protected:
+    void changeEvent(QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
+
 private:
+    void arrangePacketFields(bool twoColumns);
+    void applyAppearance();
+    void updateSummaryTexts();
     void updateTexts();
 
     bool is_english_ = false;
-    QLabel *title_label_ = nullptr;
+    bool is_available_ = true;
+    bool packet_layout_initialized_ = false;
+    bool two_column_layout_ = true;
+    QGridLayout *packet_grid_ = nullptr;
+    QLabel *summary_title_label_ = nullptr;
+    QLabel *output_title_label_ = nullptr;
+    QLabel *device_settings_title_label_ = nullptr;
     QLabel *hint_label_ = nullptr;
+    QLabel *availability_name_label_ = nullptr;
+    QLabel *availability_value_label_ = nullptr;
+    QLabel *profile_name_label_ = nullptr;
+    QLabel *profile_value_label_ = nullptr;
+    QLabel *packet_count_name_label_ = nullptr;
+    QLabel *packet_count_value_label_ = nullptr;
+    QLabel *grouped_description_label_ = nullptr;
+    QLabel *rtcm_name_label_ = nullptr;
+    QLabel *rtcm_description_label_ = nullptr;
+    QLabel *reconfigure_name_label_ = nullptr;
+    QLabel *reconfigure_description_label_ = nullptr;
+    QLabel *rtk_name_label_ = nullptr;
+    QLabel *rtk_description_label_ = nullptr;
     QCheckBox *custom_packet_check_ = nullptr;
+    QVector<QWidget *> packet_rate_fields_;
     QVector<QLabel *> packet_rate_labels_;
     QVector<QComboBox *> packet_rate_combos_;
     QPushButton *recommended_button_ = nullptr;

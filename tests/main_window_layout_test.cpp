@@ -1615,6 +1615,16 @@ void requireRtkSidebarPage(
             "combination navigation switches from EPSILON to the original RTK page");
     require(unsavedRtkServerEdit->text() == unsavedRtkServer,
             "switching internal pages preserves unsaved RTK input");
+    clickWidget(epsilonButton, 0);
+    processEventsFor(50);
+    require(combinationStack->currentWidget() == epsilonPage &&
+                combinationPage->epsilonConfigPanel() == epsilonPanel,
+            "returning from differential positioning reuses the same EPSILON panel instance");
+    clickWidget(differentialButton, 0);
+    processEventsFor(50);
+    require(combinationStack->currentWidget() == preDialog &&
+                unsavedRtkServerEdit->text() == unsavedRtkServer,
+            "status, EPSILON, differential and EPSILON switching preserves the original RTK page");
     unsavedRtkServerEdit->setText(originalRtkServer);
     require(dialog->isVisible(), "embedded RTK config page is visible after sidebar click");
     auto *initialGgaCard = findCardByTitle(dialog,
@@ -8709,13 +8719,37 @@ int main(int argc, char **argv)
     require(epsilonPacketCustomCheck != nullptr,
             "combination navigation exposes the EPSILON custom packet-rate checkbox");
     QFrame *epsilonConfigCard = epsilonPanelForGeometry;
+    auto *epsilonStatusCard = epsilonPanelForGeometry->findChild<QFrame *>(
+        QStringLiteral("epsilonStatusCard"));
+    auto *epsilonOutputCard = epsilonPanelForGeometry->findChild<QFrame *>(
+        QStringLiteral("epsilonOutputCard"));
+    auto *epsilonDeviceSettingsCard = epsilonPanelForGeometry->findChild<QFrame *>(
+        QStringLiteral("epsilonDeviceSettingsCard"));
     require(epsilonConfigCard != nullptr &&
                 combinationPageForEpsilonGeometry->isAncestorOf(epsilonConfigCard) &&
-                !deviceConfigPage->isAncestorOf(epsilonConfigCard),
+                !deviceConfigPage->isAncestorOf(epsilonConfigCard) &&
+                epsilonStatusCard != nullptr && epsilonOutputCard != nullptr &&
+                epsilonDeviceSettingsCard != nullptr,
             "combination navigation owns the EPSILON packet-rate panel exclusively");
-    requireTopLevelCardElevation(epsilonConfigCard,
-                                 1.0,
-                                 "EPSILON configuration panel uses the shared soft elevation");
+    require(!epsilonConfigCard->property(VaporView::kTopLevelCardProperty).toBool(),
+            "EPSILON panel root is an unframed layout container");
+    for (QFrame *sectionCard : {epsilonStatusCard, epsilonOutputCard, epsilonDeviceSettingsCard})
+    {
+        requireTopLevelCardElevation(sectionCard, 1.0,
+                                     "EPSILON business section uses the shared soft elevation");
+    }
+    requireCardTitleBar(epsilonStatusCard,
+                        QStringList{QStringLiteral("配置摘要"), QStringLiteral("Configuration Summary")},
+                        QStringLiteral("satellite"),
+                        "EPSILON summary uses the standard icon title bar");
+    requireCardTitleBar(epsilonOutputCard,
+                        QStringList{QStringLiteral("报文输出"), QStringLiteral("Packet Output")},
+                        QStringLiteral("activity"),
+                        "EPSILON output uses the standard icon title bar");
+    requireCardTitleBar(epsilonDeviceSettingsCard,
+                        QStringList{QStringLiteral("设备设置"), QStringLiteral("Device Settings")},
+                        QStringLiteral("sliders-vertical"),
+                        "EPSILON device settings use the standard icon title bar");
     QList<uint> packetRateIds;
     for (QComboBox *combo : epsilonConfigCard->findChildren<QComboBox *>())
     {
@@ -8730,10 +8764,12 @@ int main(int argc, char **argv)
     require(packetRateIds == expectedPacketRateIds,
             "EPSILON configuration panel exposes all 11 packet-rate controls");
     require(epsilonConfigCard->isVisible(), "EPSILON configuration panel is visible in local mode");
-    requireCardTitleBar(epsilonConfigCard,
-                        QStringList{QStringLiteral("EPSILON 配置"), QStringLiteral("EPSILON Configuration")},
-                        QStringLiteral("sliders-vertical"),
-                        "EPSILON configuration panel uses the standard icon title bar");
+    require(epsilonPanelForGeometry->styleSheet().contains(
+                QStringLiteral("QFrame[epsilonConfigCard=\"true\"]")) &&
+                epsilonPanelForGeometry->styleSheet().contains(
+                    VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised,
+                                                  VaporView::isDarkThemeEnabled())),
+            "EPSILON section styling uses local theme tokens without a parallel color system");
     require(epsilonPacketCustomCheck != nullptr &&
                 epsilonPacketCustomCheck->focusPolicy() == Qt::TabFocus,
             "EPSILON custom packet-rate checkbox keeps keyboard focus without retaining mouse-click focus");
@@ -8784,32 +8820,47 @@ int main(int argc, char **argv)
     clickWidgetAt(epsilonPacketCustomCheck, epsilonCheckIndicatorRect.center());
     require(epsilonPacketCustomCheck->isChecked() == epsilonCheckInitiallyChecked,
             "EPSILON custom packet-rate checkbox test restores the original checked state");
-    const int epsilonCardStyleIndex = appStyleSheet.indexOf(
-        QStringLiteral("QFrame#epsilonSectionCard[vaporViewTopLevelCard=\"true\"]"));
-    require(epsilonCardStyleIndex >= 0 &&
-                appStyleSheet.mid(epsilonCardStyleIndex, 500).contains(QStringLiteral("border-radius: 12px")),
-            "EPSILON and telemetry cards use the shared 12px card radius");
-    const QRect epsilonConfigBounds = epsilonConfigCard->rect().adjusted(-1, -1, 1, 1);
+    const QRect epsilonStatusBounds(epsilonStatusCard->mapTo(epsilonConfigCard, QPoint(0, 0)),
+                                    epsilonStatusCard->size());
+    const QRect epsilonOutputBounds(epsilonOutputCard->mapTo(epsilonConfigCard, QPoint(0, 0)),
+                                    epsilonOutputCard->size());
+    const QRect epsilonDeviceSettingsBounds(
+        epsilonDeviceSettingsCard->mapTo(epsilonConfigCard, QPoint(0, 0)),
+        epsilonDeviceSettingsCard->size());
+    require(epsilonStatusBounds.top() < epsilonOutputBounds.top() &&
+                epsilonOutputBounds.top() < epsilonDeviceSettingsBounds.top(),
+            "EPSILON section cards follow summary, output, device-settings order");
+    auto *epsilonActionsContainer = epsilonConfigCard->findChild<QWidget *>(
+        QStringLiteral("epsilonActionsContainer"));
+    require(epsilonActionsContainer != nullptr,
+            "EPSILON panel exposes a separate primary-actions footer");
+    const QRect epsilonActionsBounds(
+        epsilonActionsContainer->mapTo(epsilonConfigCard, QPoint(0, 0)),
+        epsilonActionsContainer->size());
+    require(epsilonActionsBounds.top() > epsilonDeviceSettingsBounds.bottom(),
+            "EPSILON primary-actions footer follows device settings");
+    auto *epsilonConfigScrollArea = combinationPageForEpsilonGeometry->findChild<QScrollArea *>(
+        QStringLiteral("epsilonConfigScrollArea"));
+    require(epsilonConfigScrollArea != nullptr &&
+                epsilonConfigScrollArea->horizontalScrollBar()->maximum() == 0,
+            "EPSILON page avoids a horizontal scrollbar at the default window size");
     int leftPacketComboColumn = -1;
     int rightPacketComboColumn = -1;
-    int rightPacketComboRight = -1;
-    int packetComboTop = epsilonConfigCard->height();
     int packetComboBottom = -1;
-    for (QComboBox *combo : epsilonConfigCard->findChildren<QComboBox *>())
+    for (QComboBox *combo : epsilonOutputCard->findChildren<QComboBox *>())
     {
         if (!combo->isVisible() || !combo->property("epsilonPacketId").isValid())
         {
             continue;
         }
-        const QRect comboRect(combo->mapTo(epsilonConfigCard, QPoint(0, 0)), combo->size());
-        packetComboTop = std::min(packetComboTop, comboRect.top());
+        const QRect comboRect(combo->mapTo(epsilonOutputCard, QPoint(0, 0)), combo->size());
         packetComboBottom = std::max(packetComboBottom, comboRect.bottom());
-        require(epsilonConfigBounds.contains(comboRect),
+        require(QRect(QPoint(0, 0), epsilonOutputCard->size()).contains(comboRect),
                 "EPSILON packet-rate combos stay inside the panel");
         require(combo->width() >= combo->fontMetrics().horizontalAdvance(combo->currentText()) + 44,
                 "EPSILON packet-rate combo text is not clipped");
         QLabel *packetLabel = nullptr;
-        for (QLabel *label : epsilonConfigCard->findChildren<QLabel *>())
+        for (QLabel *label : epsilonOutputCard->findChildren<QLabel *>())
         {
             if (label->property("epsilonPacketId").isValid() &&
                 label->property("epsilonPacketId").toUInt() == combo->property("epsilonPacketId").toUInt())
@@ -8823,7 +8874,7 @@ int main(int argc, char **argv)
         require(!packetLabel->text().contains(QStringLiteral("最大")) &&
                     !packetLabel->text().contains(QStringLiteral("Max")),
                 "EPSILON packet-rate labels omit max-rate text");
-        const QRect labelRect(packetLabel->mapTo(epsilonConfigCard, QPoint(0, 0)),
+        const QRect labelRect(packetLabel->mapTo(epsilonOutputCard, QPoint(0, 0)),
                               packetLabel->size());
         require(comboRect.left() > labelRect.right(),
                 "EPSILON packet-rate combo sits to the right of its label");
@@ -8835,10 +8886,6 @@ int main(int argc, char **argv)
         require(visualColumn == 0 || visualColumn == 1,
                 "EPSILON packet-rate combo column is valid");
         int& expectedColumnLeft = visualColumn == 0 ? leftPacketComboColumn : rightPacketComboColumn;
-        if (visualColumn == 1)
-        {
-            rightPacketComboRight = std::max(rightPacketComboRight, comboRect.right());
-        }
         if (expectedColumnLeft < 0)
         {
             expectedColumnLeft = comboRect.left();
@@ -8851,55 +8898,61 @@ int main(int argc, char **argv)
     }
     require(leftPacketComboColumn >= 0 && rightPacketComboColumn > leftPacketComboColumn,
             "EPSILON packet-rate layout exposes two aligned combo columns");
-    require(rightPacketComboRight > 0,
-            "EPSILON packet-rate grid has measurable right-side blank space");
-    int actionButtonColumnA = -1;
-    int actionButtonColumnB = -1;
-    int actionButtonTop = epsilonConfigCard->height();
-    int actionButtonBottom = -1;
-    for (const QString& buttonText : {QStringLiteral("恢复推荐"),
-                                      QStringLiteral("分组模式"),
-                                      QStringLiteral("保存并应用"),
-                                      QStringLiteral("配置RTCM串口"),
-                                      QStringLiteral("重新配置输出"),
-                                      QStringLiteral("RTK配置")})
-    {
-        bool foundButton = false;
-        for (QPushButton *button : epsilonConfigCard->findChildren<QPushButton *>())
-        {
-            if (button->isVisible() && button->text() == buttonText)
-            {
-                const QRect buttonRect(button->mapTo(epsilonConfigCard, QPoint(0, 0)), button->size());
-                require(epsilonConfigBounds.contains(buttonRect),
-                        "EPSILON command buttons stay inside the panel");
-                require(button->width() >= button->fontMetrics().horizontalAdvance(button->text()) + 32,
-                        "EPSILON command button text is not clipped");
-                require(buttonRect.left() > rightPacketComboRight,
-                        "EPSILON command buttons sit to the right of the second packet-rate combo column");
-                actionButtonTop = std::min(actionButtonTop, buttonRect.top());
-                actionButtonBottom = std::max(actionButtonBottom, buttonRect.bottom());
-                if (actionButtonColumnA < 0 || std::abs(buttonRect.left() - actionButtonColumnA) <= 2)
-                {
-                    actionButtonColumnA = actionButtonColumnA < 0 ? buttonRect.left() : actionButtonColumnA;
-                }
-                else if (actionButtonColumnB < 0 || std::abs(buttonRect.left() - actionButtonColumnB) <= 2)
-                {
-                    actionButtonColumnB = actionButtonColumnB < 0 ? buttonRect.left() : actionButtonColumnB;
-                }
-                else
-                {
-                    require(false, "EPSILON command buttons use exactly two visual columns");
-                }
-                foundButton = true;
-                break;
-            }
-        }
-        require(foundButton, "EPSILON configuration panel exposes expected command buttons");
-    }
-    require(actionButtonColumnA >= 0 && actionButtonColumnB > actionButtonColumnA,
-            "EPSILON command buttons are split into two columns");
-    require(actionButtonTop >= packetComboTop - 2 && actionButtonBottom <= packetComboBottom + 4,
-            "EPSILON command buttons do not increase the packet-rate grid height");
+    auto requireActionButton = [](QWidget *owner,
+                                  const QString& objectName,
+                                  const QStringList& expectedTexts,
+                                  const QRect& ownerBounds,
+                                  const char *message) {
+        auto *button = owner->findChild<QPushButton *>(objectName);
+        require(button != nullptr && button->isVisible(), message);
+        require(expectedTexts.contains(button->text()), message);
+        const QRect buttonRect(button->mapTo(owner, QPoint(0, 0)), button->size());
+        require(ownerBounds.contains(buttonRect), message);
+        require(button->width() >= button->fontMetrics().horizontalAdvance(button->text()) + 32,
+                "EPSILON action button text is not clipped");
+        require(button->focusPolicy() == Qt::TabFocus && !button->accessibleName().isEmpty(),
+                "EPSILON action button remains keyboard accessible");
+        return buttonRect;
+    };
+    const QRect epsilonStatusLocalBounds(QPoint(0, 0), epsilonStatusCard->size());
+    const QRect epsilonOutputLocalBounds(QPoint(0, 0), epsilonOutputCard->size());
+    const QRect epsilonDeviceLocalBounds(QPoint(0, 0), epsilonDeviceSettingsCard->size());
+    const QRect recommendedRect = requireActionButton(
+        epsilonStatusCard, QStringLiteral("epsilonRecommendedConfigButton"),
+        {QStringLiteral("恢复推荐"), QStringLiteral("Recommended")},
+        epsilonStatusLocalBounds, "EPSILON summary exposes the recommended action");
+    const QRect groupedRect = requireActionButton(
+        epsilonOutputCard, QStringLiteral("epsilonGroupedConfigButton"),
+        {QStringLiteral("分组模式"), QStringLiteral("Grouped")},
+        epsilonOutputLocalBounds, "EPSILON output exposes the grouped action");
+    const QRect rtcmRect = requireActionButton(
+        epsilonDeviceSettingsCard, QStringLiteral("epsilonRtcmPortButton"),
+        {QStringLiteral("配置RTCM串口"), QStringLiteral("RTCM Port")},
+        epsilonDeviceLocalBounds, "EPSILON device settings expose the RTCM action");
+    const QRect reconfigureRect = requireActionButton(
+        epsilonDeviceSettingsCard, QStringLiteral("epsilonReconfigureButton"),
+        {QStringLiteral("重新配置输出"), QStringLiteral("Reconfigure Output")},
+        epsilonDeviceLocalBounds, "EPSILON device settings expose the reconfigure action");
+    const QRect rtkRect = requireActionButton(
+        epsilonDeviceSettingsCard, QStringLiteral("epsilonRtkConfigButton"),
+        {QStringLiteral("RTK配置"), QStringLiteral("RTK Config")},
+        epsilonDeviceLocalBounds, "EPSILON device settings expose the differential-navigation action");
+    const QRect saveRect = requireActionButton(
+        epsilonActionsContainer, QStringLiteral("epsilonSaveButton"),
+        {QStringLiteral("保存并应用"), QStringLiteral("Save + Apply")},
+        QRect(QPoint(0, 0), epsilonActionsContainer->size()),
+        "EPSILON footer exposes the save-and-apply primary action");
+    Q_UNUSED(recommendedRect);
+    Q_UNUSED(rtcmRect);
+    Q_UNUSED(reconfigureRect);
+    Q_UNUSED(rtkRect);
+    require(groupedRect.top() > packetComboBottom,
+            "EPSILON grouped action follows the packet-rate fields");
+    require(saveRect.top() + epsilonActionsBounds.top() > epsilonDeviceSettingsBounds.bottom(),
+            "EPSILON save-and-apply action follows device settings");
+    require(epsilonOutputCard->findChild<QPushButton *>(QStringLiteral("epsilonSaveButton")) == nullptr &&
+                epsilonStatusCard->findChild<QPushButton *>(QStringLiteral("epsilonGroupedConfigButton")) == nullptr,
+            "EPSILON actions remain in their business sections");
 
     mainPageStackForScroll->setCurrentWidget(pageBeforeEpsilonGeometryCheck);
     processEventsFor(80);
