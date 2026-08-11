@@ -1570,9 +1570,9 @@ void requireRtkSidebarPage(
     require(rtkServiceStatus != nullptr && gnssStatus != nullptr && positioningMode != nullptr &&
                 ntripStatus != nullptr && rtcmStatus != nullptr &&
                 longitudeValue != nullptr && differentialStatusCard != nullptr &&
-                differentialStatusCard->isHidden() &&
+                differentialStatusCard->isVisible() &&
                 ntripStatus->text() == QStringLiteral("--") && rtcmStatus->text() == QStringLiteral("--"),
-            "status page does not fabricate unavailable NTRIP or RTCM health state");
+            "status page keeps its differential region without fabricating NTRIP or RTCM health state");
     VaporView::Ground::Navigation::CombinationNavigationPage::StatusSnapshot sampleStatus;
     sampleStatus.epsilonOnline = true;
     sampleStatus.epsilonDataFresh = true;
@@ -1826,13 +1826,17 @@ void requireRtkSidebarPage(
     auto *logCard = findCardByTitle(dialog,
                                     {QStringLiteral("状态 / 提示"),
                                      QStringLiteral("Status / Messages")});
-    require(ggaCard != nullptr && logCard != nullptr &&
-                dialog->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox")).size() == 4,
-            "RTK page exposes exactly four business-level cards");
+    auto *actionCard = findCardByTitle(dialog,
+                                      {QStringLiteral("服务操作"),
+                                       QStringLiteral("Service Operations")});
+    require(ggaCard != nullptr && logCard != nullptr && actionCard != nullptr &&
+                dialog->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox")).size() == 5,
+            "RTK page exposes five business-level cards including service operations");
     const QRect ntripCardRect = widgetRectInCentralForRtk(ntripCard);
     const QRect ggaCardRect = widgetRectInCentralForRtk(ggaCard);
     const QRect rtcmCardRect = widgetRectInCentralForRtk(rtcmCard);
     const QRect logCardRect = widgetRectInCentralForRtk(logCard);
+    const QRect actionCardRect = widgetRectInCentralForRtk(actionCard);
     require(std::abs((ggaCardRect.top() - bottomEdgeForRtk(ntripCardRect)) -
                      kExpectedTopLevelCardGap) <= 1,
             "RTK runtime status row follows the NTRIP service card at the shared gap");
@@ -1849,6 +1853,11 @@ void requireRtkSidebarPage(
     require(std::abs(ntripCardRect.left() - logCardRect.left()) <= 1 &&
                 std::abs(ntripCardRect.width() - logCardRect.width()) <= 1,
             "RTK NTRIP and status/message cards use the full available page width");
+    require(std::abs((actionCardRect.top() - bottomEdgeForRtk(logCardRect)) -
+                     kExpectedTopLevelCardGap) <= 1 &&
+                std::abs(ntripCardRect.left() - actionCardRect.left()) <= 1 &&
+                std::abs(ntripCardRect.width() - actionCardRect.width()) <= 1,
+            "RTK service operations form a full-width final row after the log card");
     require(ggaCardRect.width() >= ntripCardRect.width() / 3 &&
                 rtcmCardRect.width() >= ntripCardRect.width() / 3,
             "RTK runtime cards both retain useful horizontal space");
@@ -1884,11 +1893,11 @@ void requireRtkSidebarPage(
             "RTK service log keeps RTCM diagnostic details on separate indented lines");
     auto *rtkActionStatusLabel = dialog->findChild<QLabel *>(QStringLiteral("rtkStatusLabel"));
     auto *rtkActionStatusIcon = dialog->findChild<QLabel *>(QStringLiteral("rtkStatusIcon"));
-    QLabel *actionTitleLabel = findLabelByText(ggaCard,
-                                               {QStringLiteral("差分链路"),
-                                                QStringLiteral("Differential Link")});
+    QLabel *actionTitleLabel = findLabelByText(actionCard,
+                                               {QStringLiteral("服务操作"),
+                                                QStringLiteral("Service Operations")});
     QWidget *actionTitleBar = nullptr;
-    for (QWidget *titleBar : ggaCard->findChildren<QWidget *>(QStringLiteral("sectionTitleBar")))
+    for (QWidget *titleBar : actionCard->findChildren<QWidget *>(QStringLiteral("sectionTitleBar")))
     {
         if (actionTitleLabel && titleBar->isAncestorOf(actionTitleLabel))
         {
@@ -1898,13 +1907,13 @@ void requireRtkSidebarPage(
     }
     require(rtkActionStatusLabel != nullptr && rtkActionStatusIcon != nullptr &&
                 actionTitleLabel != nullptr && actionTitleBar != nullptr,
-            "RTK differential-link title bar contains service status text and icon");
+            "RTK service-operations title bar contains service status text and icon");
     require(actionTitleBar->isAncestorOf(rtkActionStatusLabel) &&
                 actionTitleBar->isAncestorOf(rtkActionStatusIcon),
-            "RTK service status is placed in the differential-link title bar");
+            "RTK service status is placed in the service-operations title bar");
     require(widgetX(rtkActionStatusIcon) > widgetX(actionTitleLabel) + actionTitleLabel->width() &&
                 widgetX(rtkActionStatusLabel) > widgetX(rtkActionStatusIcon),
-            "RTK service status sits to the right of the differential-link title");
+            "RTK service status sits to the right of the service-operations title");
     require(rtkActionStatusLabel->text().startsWith(QStringLiteral("状态:")) ||
                 rtkActionStatusLabel->text().startsWith(QStringLiteral("Status:")),
             "RTK service status text remains visible in the title bar");
@@ -1972,15 +1981,23 @@ void requireRtkSidebarPage(
     auto *testConnectionButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkTestConnectionButton"));
     auto *startButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkStartButton"));
     auto *stopButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkStopButton"));
-    require(ntripPanel && testConnectionButton && startButton && stopButton &&
-                ntripPanel->isAncestorOf(testConnectionButton) &&
-                ntripPanel->isAncestorOf(startButton) && ntripPanel->isAncestorOf(stopButton),
-            "RTK connection actions are collected inside the NTRIP service panel");
+    auto *clearLogButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkClearLogButton"));
+    auto *serviceOperationsPanel =
+        dialog->findChild<QWidget *>(QStringLiteral("rtkServiceOperationsPanel"));
+    require(ntripPanel && serviceOperationsPanel && testConnectionButton && startButton &&
+                stopButton && clearLogButton &&
+                serviceOperationsPanel->isAncestorOf(startButton) &&
+                serviceOperationsPanel->isAncestorOf(stopButton) &&
+                serviceOperationsPanel->isAncestorOf(testConnectionButton) &&
+                serviceOperationsPanel->isAncestorOf(clearLogButton),
+            "RTK connection actions are collected inside the bottom service-operations panel");
     require(std::abs(widgetY(testConnectionButton) - widgetY(startButton)) <= 2 &&
                 std::abs(widgetY(startButton) - widgetY(stopButton)) <= 2 &&
-                widgetX(testConnectionButton) < widgetX(startButton) &&
-                widgetX(startButton) < widgetX(stopButton),
-            "RTK test, start, and stop actions form one ordered operation group");
+                std::abs(widgetY(stopButton) - widgetY(clearLogButton)) <= 2 &&
+                widgetX(startButton) < widgetX(stopButton) &&
+                widgetX(stopButton) < widgetX(testConnectionButton) &&
+                widgetX(testConnectionButton) < widgetX(clearLogButton),
+            "RTK start, stop, test, and clear actions form one ordered operation group");
     auto *ggaSourceCombo = dialog->findChild<QComboBox *>(QStringLiteral("rtkGgaPortCombo"));
     auto *ggaToggleButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkGgaToggleButton"));
     auto *ggaOutputText = dialog->findChild<QTextEdit *>(QStringLiteral("rtkGgaTextEdit"));
@@ -8867,6 +8884,7 @@ int main(int argc, char **argv)
     auto *epsilonConfigScrollArea = combinationPageForEpsilonGeometry->findChild<QScrollArea *>(
         QStringLiteral("epsilonConfigScrollArea"));
     require(epsilonConfigScrollArea != nullptr &&
+                epsilonConfigScrollArea->horizontalScrollBarPolicy() == Qt::ScrollBarAlwaysOff &&
                 epsilonConfigScrollArea->horizontalScrollBar()->maximum() == 0,
             "EPSILON page avoids a horizontal scrollbar at the default window size");
     int leftPacketComboColumn = -1;

@@ -1096,10 +1096,12 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     , output_group_(nullptr)
     , gga_group_(nullptr)
     , log_group_(nullptr)
+    , action_group_(nullptr)
     , config_title_label_(nullptr)
     , output_title_label_(nullptr)
     , gga_title_label_(nullptr)
     , log_title_label_(nullptr)
+    , action_title_label_(nullptr)
     , action_status_widget_(nullptr)
     , gga_text_container_(nullptr)
     , gga_controls_container_(nullptr)
@@ -1437,6 +1439,8 @@ void RtkConfigDialog::updateAccessibleNames()
             textFor("EPSILON RTCM data path", "EPSILON RTCM 数据链"));
     setName(findChild<QWidget *>(QStringLiteral("rtkStatusMessageArea")),
             textFor("RTK status and messages", "RTK 状态与提示"));
+    setName(findChild<QWidget *>(QStringLiteral("rtkServiceOperationsPanel")),
+            textFor("RTK service operations", "RTK 服务操作"));
 
     setName(server_edit_, textFor("NTRIP server address", "NTRIP 服务地址"));
     setName(port_edit_, textFor("NTRIP server port", "NTRIP 服务端口"));
@@ -1479,10 +1483,9 @@ void RtkConfigDialog::configureTabOrder()
         timeout_combo_,
         reconnect_combo_,
         fetch_mountpoints_btn_,
-        test_btn_,
-        start_btn_,
-        stop_btn_,
-        clear_log_btn_,
+        gga_port_combo_,
+        gga_toggle_btn_,
+        gga_clear_log_btn_,
         output_port_combo_,
         baudrate_combo_,
         main_antenna_lever_x_edit_,
@@ -1492,10 +1495,11 @@ void RtkConfigDialog::configureTabOrder()
         apply_main_antenna_lever_btn_,
         refresh_ports_btn_,
         auto_detect_ports_btn_,
-        gga_port_combo_,
-        gga_toggle_btn_,
-        gga_clear_log_btn_,
         service_log_clear_btn_,
+        start_btn_,
+        stop_btn_,
+        test_btn_,
+        clear_log_btn_,
     };
     for (int index = 1; index < order.size(); ++index)
     {
@@ -1621,10 +1625,6 @@ void RtkConfigDialog::setupUi()
     reconnect_combo_->setObjectName(QStringLiteral("rtkReconnectCombo"));
     config_layout_->addWidget(reconnect_combo_, row, 3, Qt::AlignLeft);
 
-    button_layout_ = new QHBoxLayout();
-    button_layout_->setSpacing(6);
-    button_layout_->setContentsMargins(8, 4, 8, 8);
-
     start_btn_ = new QPushButton(this);
     start_btn_->setObjectName(QStringLiteral("rtkStartButton"));
     connect(start_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onStartClicked);
@@ -1641,13 +1641,6 @@ void RtkConfigDialog::setupUi()
     clear_log_btn_ = new QPushButton(this);
     clear_log_btn_->setObjectName(QStringLiteral("rtkClearLogButton"));
     connect(clear_log_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onClearLogClicked);
-
-    button_layout_->addWidget(clear_log_btn_);
-    button_layout_->addStretch(1);
-    button_layout_->addWidget(test_btn_);
-    button_layout_->addWidget(start_btn_);
-    button_layout_->addWidget(stop_btn_);
-    configPanelLayout->addLayout(button_layout_);
 
     server_label_->setBuddy(server_edit_);
     port_label_->setBuddy(port_edit_);
@@ -1792,9 +1785,8 @@ void RtkConfigDialog::setupUi()
     main_antenna_lever_label_->setBuddy(main_antenna_lever_x_edit_);
 
     gga_group_ = new QGroupBox(this);
-    QWidget *ggaTitleBar = nullptr;
     auto *ggaCardLayout = createCardLayout(
-        gga_group_, gga_title_label_, QStringLiteral("activity"), &ggaTitleBar);
+        gga_group_, gga_title_label_, QStringLiteral("activity"));
     auto *ggaPanel = new QWidget(gga_group_);
     ggaPanel->setObjectName(QStringLiteral("rtkStreamStatusPanel"));
     auto *ggaPanelLayout = new QVBoxLayout(ggaPanel);
@@ -1802,30 +1794,6 @@ void RtkConfigDialog::setupUi()
     ggaPanelLayout->setSpacing(0);
     ggaPanelLayout->setAlignment(Qt::AlignTop);
     ggaCardLayout->addWidget(ggaPanel);
-
-    action_status_widget_ = new QWidget(ggaTitleBar);
-    action_status_widget_->setObjectName(QStringLiteral("rtkActionStatusGroup"));
-    action_status_widget_->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-    action_status_widget_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    auto *actionStatusLayout = new QHBoxLayout(action_status_widget_);
-    actionStatusLayout->setContentsMargins(0, 0, 0, 0);
-    actionStatusLayout->setSpacing(4);
-    status_icon_label_ = new QLabel(action_status_widget_);
-    status_icon_label_->setObjectName(QStringLiteral("rtkStatusIcon"));
-    status_icon_label_->setAlignment(Qt::AlignCenter);
-    actionStatusLayout->addWidget(status_icon_label_, 0, Qt::AlignVCenter);
-    status_label_ = new QLabel(action_status_widget_);
-    status_label_->setObjectName(QStringLiteral("rtkStatusLabel"));
-    status_label_->setWordWrap(false);
-    status_label_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    actionStatusLayout->addWidget(status_label_, 0, Qt::AlignVCenter);
-    if (auto *titleLayout = ggaTitleBar ? qobject_cast<QHBoxLayout *>(ggaTitleBar->layout()) : nullptr)
-    {
-        titleLayout->insertWidget(std::max(1, titleLayout->count() - 1),
-                                  action_status_widget_,
-                                  0,
-                                  Qt::AlignVCenter | Qt::AlignLeft);
-    }
 
     stream_status_layout_ = new QGridLayout();
     stream_status_layout_->setContentsMargins(8, 6, 8, 2);
@@ -1981,6 +1949,57 @@ void RtkConfigDialog::setupUi()
     log_layout_->addWidget(log_text_container_);
     main_layout_->addWidget(log_group_);
 
+    action_group_ = new QGroupBox(this);
+    QWidget *actionTitleBar = nullptr;
+    auto *actionCardLayout = createCardLayout(action_group_,
+                                              action_title_label_,
+                                              QStringLiteral("play"),
+                                              &actionTitleBar);
+    action_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+
+    action_status_widget_ = new QWidget(actionTitleBar);
+    action_status_widget_->setObjectName(QStringLiteral("rtkActionStatusGroup"));
+    action_status_widget_->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    action_status_widget_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    auto *actionStatusLayout = new QHBoxLayout(action_status_widget_);
+    actionStatusLayout->setContentsMargins(0, 0, 0, 0);
+    actionStatusLayout->setSpacing(4);
+    status_icon_label_ = new QLabel(action_status_widget_);
+    status_icon_label_->setObjectName(QStringLiteral("rtkStatusIcon"));
+    status_icon_label_->setAlignment(Qt::AlignCenter);
+    actionStatusLayout->addWidget(status_icon_label_, 0, Qt::AlignVCenter);
+    status_label_ = new QLabel(action_status_widget_);
+    status_label_->setObjectName(QStringLiteral("rtkStatusLabel"));
+    status_label_->setWordWrap(false);
+    status_label_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    actionStatusLayout->addWidget(status_label_, 0, Qt::AlignVCenter);
+    if (auto *titleLayout = actionTitleBar
+            ? qobject_cast<QHBoxLayout *>(actionTitleBar->layout())
+            : nullptr)
+    {
+        titleLayout->insertWidget(std::max(1, titleLayout->count() - 1),
+                                  action_status_widget_,
+                                  0,
+                                  Qt::AlignVCenter | Qt::AlignLeft);
+    }
+
+    auto *actionPanel = new QWidget(action_group_);
+    actionPanel->setObjectName(QStringLiteral("rtkServiceOperationsPanel"));
+    auto *actionPanelLayout = new QVBoxLayout(actionPanel);
+    actionPanelLayout->setContentsMargins(0, 0, 0, 0);
+    actionPanelLayout->setSpacing(0);
+    button_layout_ = new QHBoxLayout();
+    button_layout_->setSpacing(6);
+    button_layout_->setContentsMargins(8, 8, 8, 8);
+    button_layout_->addWidget(start_btn_);
+    button_layout_->addWidget(stop_btn_);
+    button_layout_->addWidget(test_btn_);
+    button_layout_->addWidget(clear_log_btn_);
+    button_layout_->addStretch(1);
+    actionPanelLayout->addLayout(button_layout_);
+    actionCardLayout->addWidget(actionPanel);
+    main_layout_->addWidget(action_group_);
+
     updateStreamStatusFields();
     configureTabOrder();
 }
@@ -2000,6 +2019,7 @@ void RtkConfigDialog::setEnglish(bool english)
     if (output_title_label_) output_title_label_->setText(textFor("EPSILON Data Path", "EPSILON 数据链"));
     if (gga_title_label_) gga_title_label_->setText(textFor("Differential Link", "差分链路"));
     if (log_title_label_) log_title_label_->setText(textFor("Status / Messages", "状态 / 提示"));
+    if (action_title_label_) action_title_label_->setText(textFor("Service Operations", "服务操作"));
 
     server_label_->setText(textFor("Server Address:", "服务器地址:"));
     port_label_->setText(textFor("Port:", "端口:"));
@@ -2163,7 +2183,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (button_layout_)
     {
         button_layout_->setSpacing(scalePixels(6));
-        button_layout_->setContentsMargins(scalePixels(8), scalePixels(4), scalePixels(8), scalePixels(8));
+        button_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(8));
     }
 
     if (gga_layout_)

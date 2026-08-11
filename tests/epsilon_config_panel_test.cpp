@@ -1,5 +1,6 @@
 #include "ground/devices/DeviceRatePolicy.h"
 #include "ground/navigation/EpsilonConfigPanel.h"
+#include "shared/theme/AppTheme.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -70,6 +71,22 @@ int main(int argc, char *argv[])
     require(panel.findChild<QWidget *>(QStringLiteral("epsilonActionsContainer")) != nullptr &&
                 panel.findChild<QWidget *>(QStringLiteral("epsilonPacketActionPanel")) != nullptr,
             "panel keeps separate grouped and primary action containers");
+    const QString panelStyle = panel.styleSheet();
+    require(panel.testAttribute(Qt::WA_StyledBackground) &&
+                panelStyle.contains(QStringLiteral(
+                    "QFrame#epsilonSectionCard { background-color:")) &&
+                panelStyle.contains(QStringLiteral(
+                    "QWidget[epsilonConfigCardBody=\"true\"] { background-color:")) &&
+                !panelStyle.contains(QStringLiteral("QFrame#epsilonSectionCard { background-color: transparent")),
+            "panel root, card bodies, and action footer resolve to the shared theme surfaces");
+    for (QWidget *body : panel.findChildren<QWidget *>())
+    {
+        if (body->property("epsilonConfigCardBody").toBool())
+        {
+            require(body->testAttribute(Qt::WA_StyledBackground),
+                    "each EPSILON card body paints its raised theme surface");
+        }
+    }
 
     const auto &options = epsilonPacketConfigOptions();
     const QList<QComboBox *> combos = packetRateCombos(panel);

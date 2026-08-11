@@ -32,6 +32,8 @@
 #include <QTimer>
 #include <QToolButton>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <functional>
 #include <iostream>
@@ -232,6 +234,8 @@ int main(int argc, char **argv)
     auto *streamPanel = dialog.findChild<QWidget *>(QStringLiteral("rtkStreamStatusPanel"));
     auto *epsilonPanel = dialog.findChild<QWidget *>(QStringLiteral("rtkEpsilonDataPathPanel"));
     auto *messageArea = dialog.findChild<QWidget *>(QStringLiteral("rtkStatusMessageArea"));
+    auto *serviceOperationsPanel =
+        dialog.findChild<QWidget *>(QStringLiteral("rtkServiceOperationsPanel"));
     auto *streamInputValue =
         dialog.findChild<QLabel *>(QStringLiteral("rtkStreamInputStatusValue"));
     auto *rtcmOutputValue =
@@ -239,18 +243,21 @@ int main(int argc, char **argv)
     auto *scrollArea = dialog.findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea"));
     require(usernameEdit && passwordEdit && timeoutCombo && reconnectCombo &&
                 testConnectionButton && startButton && stopButton && clearLogButton &&
-                ntripPanel && streamPanel && epsilonPanel && messageArea &&
+                ntripPanel && streamPanel && epsilonPanel && messageArea && serviceOperationsPanel &&
                 streamInputValue && rtcmOutputValue && scrollArea,
             "Stage 5 RTK panels, controls, status values, and scroll area exist");
-    require(dialog.findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox")).size() == 4,
-            "Stage 5 keeps four top-level RTK cards");
+    require(dialog.findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox")).size() == 5,
+            "differential-positioning page keeps five business cards including service operations");
     require(ntripPanel->isAncestorOf(serverEdit) && ntripPanel->isAncestorOf(portEdit) &&
                 ntripPanel->isAncestorOf(mountpointCombo) && ntripPanel->isAncestorOf(usernameEdit) &&
                 ntripPanel->isAncestorOf(passwordEdit) && ntripPanel->isAncestorOf(timeoutCombo) &&
-                ntripPanel->isAncestorOf(reconnectCombo) &&
-                ntripPanel->isAncestorOf(testConnectionButton) &&
-                ntripPanel->isAncestorOf(startButton) && ntripPanel->isAncestorOf(stopButton),
-            "all NTRIP inputs and connection actions belong to the NTRIP service panel");
+                ntripPanel->isAncestorOf(reconnectCombo),
+            "all NTRIP inputs belong to the top NTRIP service panel");
+    require(serviceOperationsPanel->isAncestorOf(startButton) &&
+                serviceOperationsPanel->isAncestorOf(stopButton) &&
+                serviceOperationsPanel->isAncestorOf(testConnectionButton) &&
+                serviceOperationsPanel->isAncestorOf(clearLogButton),
+            "start, stop, test, and clear actions belong to the bottom service-operations panel");
     require(streamPanel->isAncestorOf(streamInputValue) &&
                 epsilonPanel->isAncestorOf(outputPortCombo) &&
                 epsilonPanel->isAncestorOf(rtcmOutputValue),
@@ -263,6 +270,24 @@ int main(int argc, char **argv)
             "embedded-capable RTK content never exposes a horizontal scrollbar");
     require(passwordEdit->echoMode() == QLineEdit::Normal,
             "Stage 5 preserves the existing password echo behavior");
+
+    QGroupBox *configCard = ancestorCard(ntripPanel);
+    QGroupBox *streamCard = ancestorCard(streamPanel);
+    QGroupBox *epsilonCard = ancestorCard(epsilonPanel);
+    QGroupBox *messageCard = ancestorCard(messageArea);
+    QGroupBox *operationsCard = ancestorCard(serviceOperationsPanel);
+    require(configCard && streamCard && epsilonCard && messageCard && operationsCard,
+            "each differential-positioning business region has a top-level card");
+    const QRect configBounds(configCard->mapTo(&dialog, QPoint(0, 0)), configCard->size());
+    const QRect streamBounds(streamCard->mapTo(&dialog, QPoint(0, 0)), streamCard->size());
+    const QRect epsilonBounds(epsilonCard->mapTo(&dialog, QPoint(0, 0)), epsilonCard->size());
+    const QRect messageBounds(messageCard->mapTo(&dialog, QPoint(0, 0)), messageCard->size());
+    const QRect operationsBounds(operationsCard->mapTo(&dialog, QPoint(0, 0)), operationsCard->size());
+    require(configBounds.top() < streamBounds.top() &&
+                std::abs(streamBounds.top() - epsilonBounds.top()) <= 1 &&
+                messageBounds.top() > std::max(streamBounds.bottom(), epsilonBounds.bottom()) &&
+                operationsBounds.top() > messageBounds.bottom(),
+            "page follows top configuration, middle two-column, log, and bottom operations order");
 
     const QList<QWidget *> accessibleControls = {
         serverEdit, portEdit, mountpointCombo, usernameEdit, passwordEdit,

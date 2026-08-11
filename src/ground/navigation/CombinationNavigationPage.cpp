@@ -110,13 +110,16 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     epsilonPageLayout->setSpacing(0);
     auto *epsilonScrollArea = new QScrollArea(epsilon_page_);
     epsilonScrollArea->setObjectName(QStringLiteral("epsilonConfigScrollArea"));
+    epsilonScrollArea->viewport()->setObjectName(QStringLiteral("epsilonConfigViewport"));
+    prepareStyledBackground(epsilonScrollArea->viewport());
     epsilonScrollArea->setWidgetResizable(true);
-    epsilonScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    epsilonScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     epsilonScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     epsilonScrollArea->setFrameShape(QFrame::NoFrame);
     epsilonScrollArea->setMinimumWidth(0);
     epsilonScrollArea->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
     auto *epsilonContent = new QWidget(epsilonScrollArea);
+    epsilonContent->setObjectName(QStringLiteral("epsilonConfigContent"));
     prepareStyledBackground(epsilonContent);
     auto *epsilonContentLayout = new QVBoxLayout(epsilonContent);
     epsilonContentLayout->setContentsMargins(kPageHorizontalInset,
@@ -313,8 +316,10 @@ void CombinationNavigationPage::applyAppearance()
     const QString style = QStringLiteral(
         "QWidget#combinationNavigationPage, QWidget#combinationNavigationNavigationRow, "
         "QWidget#combinationNavigationStatusPage, QWidget#navigationStatusContent, "
-        "QWidget#combinationNavigationEpsilonPage, QStackedWidget#combinationNavigationStack, "
-        "QScrollArea#navigationStatusScrollArea, QScrollArea#navigationStatusScrollArea > QWidget > QWidget { "
+        "QWidget#combinationNavigationEpsilonPage, QWidget#epsilonConfigContent, QWidget#epsilonConfigViewport, "
+        "QStackedWidget#combinationNavigationStack, QScrollArea#navigationStatusScrollArea, "
+        "QScrollArea#navigationStatusScrollArea > QWidget > QWidget, QScrollArea#epsilonConfigScrollArea, "
+        "QScrollArea#epsilonConfigScrollArea > QWidget > QWidget { "
         "background-color: @vv-surface; border: none; }"
         "QFrame#combinationNavigationNavigationBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
         "QPushButton#combinationNavigationStatusButton, QPushButton#combinationNavigationEpsilonButton, "

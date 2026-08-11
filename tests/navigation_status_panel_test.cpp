@@ -135,9 +135,9 @@ void testStateVisibilityAndFormatting()
                 gnssCard->property(VaporView::kTopLevelCardProperty).toBool() &&
                 differentialCard->property(VaporView::kTopLevelCardProperty).toBool(),
             "status dashboard uses the shared top-level card system");
-    require(positionCard->isHidden() && attitudeCard->isHidden() &&
-                gnssCard->isHidden() && differentialCard->isHidden(),
-            "no-data state omits detail cards that would contain only unavailable values");
+    require(positionCard->isVisible() && attitudeCard->isVisible() &&
+                gnssCard->isVisible() && differentialCard->isVisible(),
+            "no-data state keeps the four dashboard regions visible with unavailable values");
     require(emptyState != nullptr && emptyState->isVisible(),
             "no-data state provides an explicit compact trust boundary instead of a blank canvas");
     require(label(panel, "navigationStatusFixValue")->text() == QStringLiteral("--") &&
@@ -154,8 +154,10 @@ void testStateVisibilityAndFormatting()
             "reliable fields reveal their corresponding detail cards");
     require(emptyState->isHidden(),
             "reliable detail data removes the no-data state");
-    require(differentialCard->isHidden(),
-            "differential card stays hidden without a reliable NTRIP or RTCM provider");
+    require(differentialCard->isVisible() &&
+                label(panel, "navigationStatusNtripValue")->text() == QStringLiteral("--") &&
+                label(panel, "navigationStatusRtcmValue")->text() == QStringLiteral("--"),
+            "differential card stays visible without inferring NTRIP or RTCM health");
     require(label(panel, "navigationStatusLongitudeValue")->text().endsWith(QStringLiteral("°")) &&
                 label(panel, "navigationStatusHeightValue")->text().endsWith(QStringLiteral(" m")) &&
                 label(panel, "navigationStatusSpeedValue")->text().endsWith(QStringLiteral(" m/s")) &&
@@ -177,7 +179,7 @@ void testStateVisibilityAndFormatting()
                 label(panel, "navigationStatusRollValue")->text() == QStringLiteral("--") &&
                 label(panel, "navigationStatusGnssFixValue")->text() == QStringLiteral("--") &&
                 label(panel, "navigationStatusSatellitesValue")->text() == QStringLiteral("--") &&
-                positionCard->isHidden() && attitudeCard->isHidden() && gnssCard->isHidden(),
+                positionCard->isVisible() && attitudeCard->isVisible() && gnssCard->isVisible(),
             "stale snapshots never render cached navigation values");
 
     NavigationStatusSnapshot partial;
@@ -202,8 +204,10 @@ void testStateVisibilityAndFormatting()
     invalid.speedMps = -1.0;
     panel.setSnapshot(invalid);
     processEventsFor(30);
-    require(positionCard->isHidden() && attitudeCard->isHidden(),
-            "invalid and non-finite navigation groups are not displayed");
+    require(positionCard->isVisible() && attitudeCard->isVisible() &&
+                label(panel, "navigationStatusLongitudeValue")->text() == QStringLiteral("--") &&
+                label(panel, "navigationStatusRollValue")->text() == QStringLiteral("--"),
+            "invalid and non-finite navigation groups remain explicit unavailable placeholders");
     for (QLabel *value : panel.findChildren<QLabel *>())
     {
         if (!value->objectName().startsWith(QStringLiteral("navigationStatus")))

@@ -66,6 +66,8 @@ SectionCard createSectionCard(QWidget *parent,
 
     auto *body = new QWidget(result.card);
     body->setObjectName(objectName + QStringLiteral("Body"));
+    body->setProperty("epsilonConfigCardBody", true);
+    body->setAttribute(Qt::WA_StyledBackground, true);
     body->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     result.body_layout = new QVBoxLayout(body);
     result.body_layout->setContentsMargins(12, 10, 12, 12);
@@ -128,6 +130,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     setMinimumWidth(0);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     setAttribute(Qt::WA_StyledBackground, true);
+    setAutoFillBackground(true);
 
     auto *panelLayout = new QVBoxLayout(this);
     panelLayout->setContentsMargins(0, 0, 0, 0);
@@ -325,6 +328,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
 
     auto *actionsContainer = new QWidget(this);
     actionsContainer->setObjectName(QStringLiteral("epsilonActionsContainer"));
+    actionsContainer->setAttribute(Qt::WA_StyledBackground, true);
     auto *actionsLayout = new QHBoxLayout(actionsContainer);
     actionsLayout->setContentsMargins(0, 0, 0, 2);
     actionsLayout->setSpacing(8);
@@ -502,9 +506,10 @@ void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
 void EpsilonConfigPanel::applyAppearance()
 {
     const QString style = QStringLiteral(
-        "QFrame#epsilonSectionCard { background-color: transparent; border: none; }"
+        "QFrame#epsilonSectionCard { background-color: @vv-surface; border: none; }"
         "QFrame[epsilonConfigCard=\"true\"] { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 12px; }"
         "QFrame[epsilonConfigCard=\"true\"] > QWidget#sectionTitleBar { background-color: @vv-surface-raised; border-top-left-radius: 11px; border-top-right-radius: 11px; }"
+        "QWidget[epsilonConfigCardBody=\"true\"] { background-color: @vv-surface-raised; border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }"
         "QLabel[epsilonSummaryName=\"true\"] { color: @vv-text-secondary; font-weight: 400; }"
         "QLabel[epsilonSummaryValue=\"true\"], QLabel[epsilonSettingName=\"true\"] { color: @vv-text-strong; font-weight: 600; }"
         "QLabel[epsilonSecondaryText=\"true\"] { color: @vv-text-secondary; font-weight: 400; }"
@@ -512,7 +517,8 @@ void EpsilonConfigPanel::applyAppearance()
         "QPushButton[epsilonSecondaryAction=\"true\"]:hover { background-color: @vv-primary-subtle; border-color: @vv-primary; color: @vv-primary; }"
         "QPushButton[epsilonSecondaryAction=\"true\"]:focus { border-color: @vv-focus; }"
         "QPushButton[epsilonSecondaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }"
-        "QWidget#epsilonActionsContainer, QWidget#epsilonSummaryFields, QWidget#epsilonSummaryActions, QWidget#epsilonPacketActionPanel, QWidget#epsilonPacketGrid { background-color: transparent; border: none; }");
+        "QWidget#epsilonActionsContainer { background-color: @vv-surface; border: none; }"
+        "QWidget#epsilonSummaryFields, QWidget#epsilonSummaryActions, QWidget#epsilonPacketActionPanel, QWidget#epsilonPacketGrid { background-color: transparent; border: none; }");
     const QString resolvedStyle = VaporView::applyAppThemeTokens(
         style, VaporView::isDarkThemeEnabled());
     if (styleSheet() != resolvedStyle)

@@ -347,17 +347,9 @@ void NavigationStatusPanel::setSnapshot(const NavigationStatusSnapshot& snapshot
         ? QStringLiteral("%1 s").arg(locale.toString(snapshot.differentialAgeS, 'f', 1))
         : unavailableText());
 
-    const bool positionCardVisible = positionUsable || speedUsable;
-    const bool gnssCardVisible = fixUsable || satellitesUsable || accuracyUsable;
-    position_card_->setVisible(positionCardVisible);
-    attitude_card_->setVisible(attitudeUsable);
-    gnss_card_->setVisible(gnssCardVisible);
-    differential_card_->setVisible(differentialUsable);
-    const bool detailsVisible = positionCardVisible || attitudeUsable;
-    const bool qualityVisible = gnssCardVisible || differentialUsable;
-    details_row_->setVisible(detailsVisible);
-    quality_row_->setVisible(qualityVisible);
-    empty_state_->setVisible(!detailsVisible && !qualityVisible);
+    const bool anyFieldDataUsable = positionUsable || speedUsable || attitudeUsable ||
+        fixUsable || satellitesUsable || accuracyUsable || differentialUsable;
+    empty_state_->setVisible(!anyFieldDataUsable);
     scheduleShadowUpdate();
 }
 
@@ -451,8 +443,8 @@ void NavigationStatusPanel::updateTexts()
         ? QStringLiteral("No confirmed field-level navigation data")
         : QStringLiteral("暂无可确认的字段级导航数据"));
     empty_state_detail_->setText(is_english_
-        ? QStringLiteral("Position, attitude, and GNSS quality appear only when their validity and freshness are confirmed.")
-        : QStringLiteral("位置、姿态与 GNSS 质量仅在字段有效且新鲜时显示。"));
+        ? QStringLiteral("Position, attitude, and GNSS quality stay at -- until their validity and freshness are confirmed.")
+        : QStringLiteral("字段有效性与新鲜度确认前，位置、姿态与 GNSS 质量均保持为 --。"));
 
     epsilon_status_.name->setText(QStringLiteral("EPSILON"));
     gnss_status_.name->setText(QStringLiteral("GNSS"));
