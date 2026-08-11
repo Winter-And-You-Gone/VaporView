@@ -291,10 +291,14 @@ QString TemperatureTrendPlotWidget::timeAxisTickLabel(double value)
         return QStringLiteral("---");
     }
 
-    const QString number = std::abs(value - std::round(value)) < 0.05
-        ? QString::number(qRound(value))
-        : QString::number(value, 'f', 1);
-    return number + QStringLiteral("s");
+    const qint64 totalSeconds = std::max<qint64>(0, static_cast<qint64>(std::llround(value)));
+    const qint64 hours = totalSeconds / 3600;
+    const qint64 minutes = (totalSeconds % 3600) / 60;
+    const qint64 seconds = totalSeconds % 60;
+    return QStringLiteral("%1:%2:%3")
+        .arg(hours, 2, 10, QLatin1Char('0'))
+        .arg(minutes, 2, 10, QLatin1Char('0'))
+        .arg(seconds, 2, 10, QLatin1Char('0'));
 }
 
 std::pair<double, double> TemperatureTrendPlotWidget::temperatureAxisRange(
@@ -341,6 +345,8 @@ void TemperatureTrendPlotWidget::updateSampleProperties()
     setProperty("xAxisTickCount", 5);
     setProperty("xAxisTimeMode", time_axis_enabled_);
     setProperty("xAxisTimeSampleCount", time_axis_enabled_ ? sample_times_.size() : 0);
+    setProperty("xAxisTimeLabelFormat",
+                time_axis_enabled_ ? QStringLiteral("hh:mm:ss") : QString());
 }
 
 void TemperatureTrendPlotWidget::applyPlotSizing()

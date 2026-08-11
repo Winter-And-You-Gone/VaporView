@@ -701,6 +701,8 @@ int main(int argc, char **argv)
             "UI test mode exposes the home temperature overview trend plot");
     require(VaporViewTest::processEventsUntil(1500, [temperatureOverviewPlot]() {
                 return temperatureOverviewPlot->property("xAxisTimeMode").toBool() &&
+                    temperatureOverviewPlot->property("xAxisTimeLabelFormat").toString() ==
+                        QStringLiteral("hh:mm:ss") &&
                     temperatureOverviewPlot->property("sampleCount").toInt() >= 2 &&
                     temperatureOverviewPlot->property("xAxisTimeSampleCount").toInt() ==
                         temperatureOverviewPlot->property("sampleCount").toInt();
