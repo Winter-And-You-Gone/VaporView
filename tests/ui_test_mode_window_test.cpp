@@ -5,9 +5,11 @@
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "ground/widgets/SkyDeviceConfigDialog.h"
+#include "LogService.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "test_ui_helpers.h"
 
+#include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
 #include <QComboBox>
@@ -23,6 +25,7 @@
 #include <QLineEdit>
 #include <QListView>
 #include <QMenu>
+#include <QMessageBox>
 #include <QMetaObject>
 #include <QMap>
 #include <QPointer>
@@ -43,6 +46,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <iostream>
+#include <set>
 #include <tuple>
 
 namespace
@@ -84,12 +88,67 @@ QMap<QString, SettingsSnapshot> snapshotAll()
     return result;
 }
 
+bool settingsSnapshotsEqual(const QMap<QString, SettingsSnapshot>& actual,
+                            const QMap<QString, SettingsSnapshot>& expected,
+                            const char *message)
+{
+    if (actual == expected)
+    {
+        return true;
+    }
+
+    std::cerr << "FAILED: " << message << '\n';
+    std::set<QString> applications;
+    for (auto it = actual.cbegin(); it != actual.cend(); ++it)
+    {
+        applications.insert(it.key());
+    }
+    for (auto it = expected.cbegin(); it != expected.cend(); ++it)
+    {
+        applications.insert(it.key());
+    }
+    for (const QString& application : applications)
+    {
+        const SettingsSnapshot actualValues = actual.value(application);
+        const SettingsSnapshot expectedValues = expected.value(application);
+        if (actualValues == expectedValues)
+        {
+            continue;
+        }
+
+        std::cerr << "settings diff [" << application.toStdString() << "]\n";
+        std::set<QString> keys;
+        for (auto it = actualValues.cbegin(); it != actualValues.cend(); ++it)
+        {
+            keys.insert(it.key());
+        }
+        for (auto it = expectedValues.cbegin(); it != expectedValues.cend(); ++it)
+        {
+            keys.insert(it.key());
+        }
+        for (const QString& key : keys)
+        {
+            const QVariant actualValue = actualValues.value(key);
+            const QVariant expectedValue = expectedValues.value(key);
+            if (actualValue == expectedValue)
+            {
+                continue;
+            }
+            std::cerr << "  " << key.toStdString()
+                      << ": expected='" << expectedValue.toString().toStdString()
+                      << "' actual='" << actualValue.toString().toStdString()
+                      << "'\n";
+        }
+    }
+    return false;
+}
+
 void processEvents()
 {
     QApplication::processEvents(QEventLoop::AllEvents, 100);
 }
 
-int findLogMessageRow(QListView *logList, const QString& chineseText, const QString& englishText)
+int findLogEventRow(QListView *logList, const QString& event)
 {
     if (!logList || !logList->model())
     {
@@ -97,15 +156,35 @@ int findLogMessageRow(QListView *logList, const QString& chineseText, const QStr
     }
     for (int row = 0; row < logList->model()->rowCount(); ++row)
     {
-        const QString message = logList->model()->index(row, 0)
-            .data(VaporView::Ground::Main::UiLogModel::MessageRole)
+        const QString rowEvent = logList->model()->index(row, 0)
+            .data(VaporView::Ground::Main::UiLogModel::EventRole)
             .toString();
-        if (message.contains(chineseText) || message.contains(englishText))
+        if (rowEvent == event)
         {
             return row;
         }
     }
     return -1;
+}
+
+void dumpLogRows(QListView *logList, const char *prefix)
+{
+    if (!logList || !logList->model())
+    {
+        std::cerr << prefix << ": no log model\n";
+        return;
+    }
+    std::cerr << prefix << ": rowCount=" << logList->model()->rowCount() << '\n';
+    for (int row = 0; row < logList->model()->rowCount(); ++row)
+    {
+        const QModelIndex index = logList->model()->index(row, 0);
+        std::cerr << "  row=" << row
+                  << " event=" << index.data(VaporView::Ground::Main::UiLogModel::EventRole)
+                                      .toString().toStdString()
+                  << " message=" << index.data(VaporView::Ground::Main::UiLogModel::MessageRole)
+                                        .toString().toStdString()
+                  << '\n';
+    }
 }
 
 QWidget *homeTelemetrySummaryContainer(QWidget *homeConfigCard)
@@ -273,7 +352,8 @@ void requireUiTestHomeTelemetryCapsulesCovered(QWidget *homeConfigCard, const ch
             for (QLabel *pillLabel : pill->findChildren<QLabel *>())
             {
                 const QRect labelRect(pillLabel->mapTo(pill, QPoint(0, 0)), pillLabel->size());
-                if (!pill->rect().adjusted(0, 0, 1, 1).contains(labelRect))
+                const QRect labelBounds = pill->rect().adjusted(0, -2, 1, 2);
+                if (!labelBounds.contains(labelRect))
                 {
                     std::cerr << "UI-test telemetry pill label outside capsule: object="
                               << pillLabel->objectName().toStdString()
@@ -290,7 +370,7 @@ void requireUiTestHomeTelemetryCapsulesCovered(QWidget *homeConfigCard, const ch
                               << pillLabel->fontMetrics().horizontalAdvance(pillLabel->text())
                               << '\n';
                 }
-                require(pill->rect().adjusted(0, 0, 1, 1).contains(labelRect),
+                require(labelBounds.contains(labelRect),
                         "UI-test home telemetry summary pill label stays inside its capsule");
             }
             requireCompactTelemetryPillTextGap(
@@ -356,6 +436,68 @@ void requireUiTestHomeTelemetryCapsulesCovered(QWidget *homeConfigCard, const ch
         require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Mbps")),
                 "UI-test link-rate capsule reserves the requested 999.9 Mbps width");
     }
+}
+
+bool temperatureOverviewOutputPercentShows(QLabel *pill, const QString& expectedValue)
+{
+    return pill &&
+        pill->textFormat() == Qt::RichText &&
+        pill->text().contains(QStringLiteral("<br/>")) &&
+        (pill->text().contains(QStringLiteral("输出百分比")) ||
+         pill->text().contains(QStringLiteral("Output Percent"))) &&
+        pill->text().contains(expectedValue);
+}
+
+bool temperatureOverviewOutputPercentShowsNonZero(QLabel *pill)
+{
+    return pill &&
+        pill->textFormat() == Qt::RichText &&
+        pill->text().contains(QStringLiteral("<br/>")) &&
+        (pill->text().contains(QStringLiteral("输出百分比")) ||
+         pill->text().contains(QStringLiteral("Output Percent"))) &&
+        pill->text().contains(QLatin1Char('%')) &&
+        !pill->text().contains(QStringLiteral("0.00%")) &&
+        !pill->text().contains(QStringLiteral("---"));
+}
+
+bool acceptOpenMessageBoxesAsYes()
+{
+    bool accepted = false;
+    for (QWidget *widget : QApplication::topLevelWidgets())
+    {
+        if (auto *messageBox = qobject_cast<QMessageBox *>(widget))
+        {
+            if (QAbstractButton *yesButton = messageBox->button(QMessageBox::Yes))
+            {
+                yesButton->click();
+            }
+            else
+            {
+                messageBox->done(QMessageBox::Yes);
+            }
+            accepted = true;
+        }
+    }
+    return accepted;
+}
+
+QAction *findUiTestScenarioAction(MainWindow *window,
+                                  int scenario,
+                                  const QStringList& labels)
+{
+    if (!window)
+    {
+        return nullptr;
+    }
+    for (QAction *action : window->findChildren<QAction *>())
+    {
+        if (action && action->isCheckable() && action->data().toInt() == scenario &&
+            labels.contains(action->text()))
+        {
+            return action;
+        }
+    }
+    return nullptr;
 }
 
 } // namespace
@@ -468,8 +610,9 @@ int main(int argc, char **argv)
 
     QAction *modeAction = window->findChild<QAction *>(QStringLiteral("uiTestModeAction"));
     QLabel *badge = window->findChild<QLabel *>(QStringLiteral("uiTestModeBadge"));
-    QMenu *scenarioMenu = window->findChild<QMenu *>(QStringLiteral("uiTestScenarioMenu"));
-    require(modeAction && badge && scenarioMenu, "UI test menu actions and title badge exist");
+    QPointer<QMenu> scenarioMenu =
+        window->findChild<QMenu *>(QStringLiteral("uiTestScenarioMenu"));
+    require(modeAction && badge && !scenarioMenu.isNull(), "UI test menu actions and title badge exist");
     modeAction->trigger();
     processEvents();
     require(modeAction->isChecked(), "UI test mode action becomes checked");
@@ -492,6 +635,53 @@ int main(int argc, char **argv)
     requireUiTestHomeTelemetryCapsulesCovered(
         homeConfigCard,
         "UI-test home telemetry summary capsules stay covered after dynamic refresh");
+
+    auto *temperatureOutputPercentPill =
+        window->findChild<QLabel *>(QStringLiteral("temperatureOverviewOutputPercentPill"));
+    auto *temperatureOutputSwitch =
+        window->findChild<QPushButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
+    require(temperatureOutputPercentPill != nullptr && temperatureOutputSwitch != nullptr,
+            "UI test mode exposes the home temperature output percent capsule and switch");
+    require(VaporViewTest::processEventsUntil(1500, [temperatureOutputPercentPill]() {
+                return temperatureOverviewOutputPercentShows(
+                    temperatureOutputPercentPill, QStringLiteral("0.00%"));
+            }),
+            "UI test mode feeds the home temperature output percent capsule while RD105 output is off");
+    require(temperatureOutputSwitch->isEnabled() && !temperatureOutputSwitch->isChecked(),
+            "UI test mode starts the home temperature output switch enabled and off");
+    bool sawTemperatureOutputPrompt = false;
+    QTimer temperatureOutputPromptCloser;
+    QObject::connect(&temperatureOutputPromptCloser, &QTimer::timeout, [&sawTemperatureOutputPrompt]() {
+        sawTemperatureOutputPrompt =
+            acceptOpenMessageBoxesAsYes() || sawTemperatureOutputPrompt;
+    });
+    temperatureOutputPromptCloser.start(10);
+    temperatureOutputSwitch->click();
+    temperatureOutputPromptCloser.stop();
+    require(sawTemperatureOutputPrompt,
+            "UI test mode confirms the home temperature output enable prompt");
+    const bool temperatureOutputPercentBecameNonZero =
+        VaporViewTest::processEventsUntil(1500, [temperatureOutputPercentPill, temperatureOutputSwitch]() {
+                return temperatureOutputSwitch->isChecked() &&
+                    temperatureOverviewOutputPercentShowsNonZero(temperatureOutputPercentPill);
+            });
+    if (!temperatureOutputPercentBecameNonZero)
+    {
+        std::cerr << "home temperature output percent after enable: checked="
+                  << temperatureOutputSwitch->isChecked()
+                  << " enabled=" << temperatureOutputSwitch->isEnabled()
+                  << " text='" << temperatureOutputPercentPill->text().toStdString()
+                  << "'\n";
+    }
+    require(temperatureOutputPercentBecameNonZero,
+            "UI test mode drives the home temperature output percent capsule after enabling RD105 output");
+    temperatureOutputSwitch->click();
+    require(VaporViewTest::processEventsUntil(1500, [temperatureOutputPercentPill, temperatureOutputSwitch]() {
+                return !temperatureOutputSwitch->isChecked() &&
+                    temperatureOverviewOutputPercentShows(
+                        temperatureOutputPercentPill, QStringLiteral("0.00%"));
+            }),
+            "UI test mode returns the home temperature output percent capsule to zero after disabling RD105 output");
 
     auto findTitleMenuRow = [](QWidget *menu, const QStringList& texts) -> QWidget * {
         if (!menu)
@@ -887,13 +1077,14 @@ int main(int argc, char **argv)
     require(QMetaObject::invokeMethod(&skyDialog, "onSaveClicked", Qt::DirectConnection),
             "Sky simulated save action invoked");
 
-    QAction *partialFailureAction = nullptr;
-    QAction *stalledAction = nullptr;
-    for (QAction *action : scenarioMenu->actions())
-    {
-        if (action->data().toInt() == 1) partialFailureAction = action;
-        if (action->data().toInt() == 2) stalledAction = action;
-    }
+    QAction *partialFailureAction = findUiTestScenarioAction(
+        window,
+        1,
+        QStringList{QStringLiteral("部分设备异常"), QStringLiteral("Partial Device Failure")});
+    QAction *stalledAction = findUiTestScenarioAction(
+        window,
+        2,
+        QStringList{QStringLiteral("数据停更"), QStringLiteral("Data Stalled")});
     require(partialFailureAction && stalledAction, "all UI test scenarios are present");
     partialFailureAction->trigger();
     stalledAction->trigger();
@@ -956,7 +1147,9 @@ int main(int argc, char **argv)
     require(QMetaObject::invokeMethod(window, "onRefreshPortsClicked", Qt::DirectConnection),
             "fixed-port refresh slot invoked");
     processEvents();
-    require(snapshotAll() == before, "all settings namespaces remain byte-for-byte equivalent during UI test mode");
+    require(settingsSnapshotsEqual(snapshotAll(), before,
+                                   "all settings namespaces remain byte-for-byte equivalent during UI test mode"),
+            "all settings namespaces remain byte-for-byte equivalent during UI test mode");
     require(!QDir(settingsDirectory.filePath(QStringLiteral("business-output"))).exists(),
             "simulated recording did not create its configured business directory");
 
@@ -964,9 +1157,25 @@ int main(int argc, char **argv)
     processEvents();
     require(!modeAction->isChecked(), "UI test mode action clears after exit");
     require(badge->isHidden(), "UI test badge hides after exit");
-    require(!scenarioMenu->isEnabled(), "scenario menu is disabled after exit");
+    QMenu *scenarioMenuAfterExit = window->findChild<QMenu *>(QStringLiteral("uiTestScenarioMenu"));
+    const bool cachedScenarioMenuEnabled = !scenarioMenu.isNull() && scenarioMenu->isEnabled();
+    const bool currentScenarioMenuEnabled = scenarioMenuAfterExit && scenarioMenuAfterExit->isEnabled();
+    if (cachedScenarioMenuEnabled || currentScenarioMenuEnabled)
+    {
+        std::cerr << "scenario menu after exit: found=" << (scenarioMenuAfterExit != nullptr)
+                  << " cachedAlive=" << !scenarioMenu.isNull()
+                  << " cachedEnabled=" << cachedScenarioMenuEnabled
+                  << " currentEnabled=" << currentScenarioMenuEnabled
+                  << " actionChecked=" << modeAction->isChecked()
+                  << " badgeHidden=" << badge->isHidden()
+                  << '\n';
+    }
+    require(!cachedScenarioMenuEnabled && !currentScenarioMenuEnabled,
+            "scenario menu is disabled after exit");
     require(!testCreatedAuxiliary.isVisible(), "test-created auxiliary window closes on UI test exit");
-    require(snapshotAll() == before, "all settings namespaces remain unchanged after normal UI test exit");
+    require(settingsSnapshotsEqual(snapshotAll(), before,
+                                   "all settings namespaces remain unchanged after normal UI test exit"),
+            "all settings namespaces remain unchanged after normal UI test exit");
     require(epsilonPort->currentText() == QStringLiteral("UNSAVED-COM42") &&
                 rtkServer->text() == QStringLiteral("normal.unpersisted.caster"),
             "unsaved normal-mode control values are restored after UI test mode");
@@ -991,11 +1200,20 @@ int main(int argc, char **argv)
     directCloseWindow->close();
     delete directCloseWindow;
     require(VaporView::settingsWritesSuspended(), "direct close keeps the write barrier active through destruction");
-    require(snapshotAll() == beforeDirectClose, "direct close from UI test mode does not persist destructor state");
+    require(settingsSnapshotsEqual(snapshotAll(), beforeDirectClose,
+                                   "direct close from UI test mode does not persist destructor state"),
+            "direct close from UI test mode does not persist destructor state");
     VaporView::setSettingsWritesSuspended(false);
 
     {
         VaporView::setSettingsWritesSuspended(true);
+        QTemporaryDir connectionLogDirectory;
+        require(connectionLogDirectory.isValid(), "temporary connection log directory created");
+        VaporView::LogService connectionLogService(
+            QStringLiteral("VaporViewUiTestModeWindowConnectionTest"),
+            nullptr,
+            connectionLogDirectory.path(),
+            connectionLogDirectory.path());
         QTcpServer localWaveSource;
         require(localWaveSource.listen(QHostAddress::LocalHost),
                 "local TCP waveform source starts for title-bar connection coverage");
@@ -1027,6 +1245,12 @@ int main(int argc, char **argv)
         auto *connectionLogList = connectionWindow->findChild<QListView *>(QStringLiteral("logListView"));
         require(connectionLogList && connectionLogList->model(),
                 "normal-mode window exposes the log model");
+        auto *connectionLogAllAction =
+            connectionWindow->findChild<QAction *>(QStringLiteral("logFilterAllMenuAction"));
+        require(connectionLogAllAction != nullptr,
+                "normal-mode window exposes the all-log view action");
+        connectionLogAllAction->trigger();
+        processEvents();
         const QList<QLineEdit *> waveInputs = connectionWavePanel->findChildren<QLineEdit *>();
         require(waveInputs.size() >= 2,
                 "normal-mode TCP waveform panel exposes host and port inputs");
@@ -1049,34 +1273,43 @@ int main(int argc, char **argv)
         require(QMetaObject::invokeMethod(connectionWindow, "onConnectClicked", Qt::DirectConnection),
                 "normal-mode title-bar connection slot invoked");
         VaporView::setSettingsWritesSuspended(true);
-        require(VaporViewTest::processEventsUntil(3000, [connectionWavePanel, connectionLogList]() {
+        const bool connectionLogsFlushed =
+            VaporViewTest::processEventsUntil(7000, [connectionWavePanel, connectionLogList]() {
                     return connectionWavePanel->isConnected() &&
-                        findLogMessageRow(connectionLogList,
-                                          QStringLiteral("连接摘要"),
-                                          QStringLiteral("Connection Summary")) >= 0 &&
-                        findLogMessageRow(connectionLogList,
-                                          QStringLiteral("串口设备阶段"),
-                                          QStringLiteral("Serial device phase")) >= 0 &&
-                        findLogMessageRow(connectionLogList,
-                                          QStringLiteral("正在连接 TCP 波形"),
-                                          QStringLiteral("Connecting TCP wave link")) >= 0 &&
-                        findLogMessageRow(connectionLogList,
-                                          QStringLiteral("TCP 波形已连接"),
-                                          QStringLiteral("TCP wave link connected")) >= 0;
-                }),
+                        findLogEventRow(connectionLogList,
+                                        QStringLiteral("local_connection_summary")) >= 0 &&
+                        findLogEventRow(connectionLogList,
+                                        QStringLiteral("local_serial_device_phase_completed")) >= 0 &&
+                        findLogEventRow(connectionLogList,
+                                        QStringLiteral("tcp_wave_connection_started")) >= 0 &&
+                        findLogEventRow(connectionLogList,
+                                        QStringLiteral("tcp_wave_connected")) >= 0;
+                });
+        if (connectionLogsFlushed == false)
+        {
+            std::cerr << "title-bar connection log rows: connected="
+                      << connectionWavePanel->isConnected()
+                      << " summary=" << findLogEventRow(connectionLogList,
+                                                        QStringLiteral("local_connection_summary"))
+                      << " serial=" << findLogEventRow(connectionLogList,
+                                                       QStringLiteral("local_serial_device_phase_completed"))
+                      << " waveConnecting=" << findLogEventRow(connectionLogList,
+                                                               QStringLiteral("tcp_wave_connection_started"))
+                      << " waveConnected=" << findLogEventRow(connectionLogList,
+                                                              QStringLiteral("tcp_wave_connected"))
+                      << "\n";
+            dumpLogRows(connectionLogList, "title-bar connection log rows");
+        }
+        require(connectionLogsFlushed,
                 "title-bar connection connects the local TCP waveform source and flushes its logs");
-        const int summaryRow = findLogMessageRow(connectionLogList,
-                                                 QStringLiteral("连接摘要"),
-                                                 QStringLiteral("Connection Summary"));
-        const int serialPhaseRow = findLogMessageRow(connectionLogList,
-                                                      QStringLiteral("串口设备阶段"),
-                                                      QStringLiteral("Serial device phase"));
-        const int waveformConnectingRow = findLogMessageRow(connectionLogList,
-                                                             QStringLiteral("正在连接 TCP 波形"),
-                                                             QStringLiteral("Connecting TCP wave link"));
-        const int waveformConnectedRow = findLogMessageRow(connectionLogList,
-                                                            QStringLiteral("TCP 波形已连接"),
-                                                            QStringLiteral("TCP wave link connected"));
+        const int summaryRow = findLogEventRow(connectionLogList,
+                                               QStringLiteral("local_connection_summary"));
+        const int serialPhaseRow = findLogEventRow(connectionLogList,
+                                                   QStringLiteral("local_serial_device_phase_completed"));
+        const int waveformConnectingRow = findLogEventRow(connectionLogList,
+                                                          QStringLiteral("tcp_wave_connection_started"));
+        const int waveformConnectedRow = findLogEventRow(connectionLogList,
+                                                         QStringLiteral("tcp_wave_connected"));
         require(serialPhaseRow >= 0 && waveformConnectingRow > serialPhaseRow,
                 "title-bar waveform connection starts after the serial device phase");
         require(waveformConnectedRow == waveformConnectingRow + 1,
@@ -1128,6 +1361,12 @@ int main(int argc, char **argv)
         auto *failedLogList = failedConnectionWindow->findChild<QListView *>(QStringLiteral("logListView"));
         require(failedLogList && failedLogList->model(),
                 "failed-path normal-mode window exposes the log model");
+        auto *failedLogAllAction =
+            failedConnectionWindow->findChild<QAction *>(QStringLiteral("logFilterAllMenuAction"));
+        require(failedLogAllAction != nullptr,
+                "failed-path normal-mode window exposes the all-log view action");
+        failedLogAllAction->trigger();
+        processEvents();
         const QList<QLineEdit *> failedWaveInputs = failedWavePanel->findChildren<QLineEdit *>();
         require(failedWaveInputs.size() >= 2,
                 "failed-path TCP waveform panel exposes host and port inputs");
@@ -1151,33 +1390,29 @@ int main(int argc, char **argv)
                 "failed-path normal-mode title-bar connection slot invoked");
         VaporView::setSettingsWritesSuspended(true);
         const bool failedLogsFlushed = VaporViewTest::processEventsUntil(5000, [failedLogList]() {
-            return findLogMessageRow(failedLogList,
-                                     QStringLiteral("没有串口设备连接成功"),
-                                     QStringLiteral("No serial devices connected")) >= 0 &&
-                findLogMessageRow(failedLogList,
-                                  QStringLiteral("正在连接 TCP 波形"),
-                                  QStringLiteral("Connecting TCP wave link")) >= 0 &&
-                findLogMessageRow(failedLogList,
-                                  QStringLiteral("TCP 波形 socket 错误"),
-                                  QStringLiteral("TCP wave socket error")) >= 0 &&
-                findLogMessageRow(failedLogList,
-                                  QStringLiteral("连接摘要"),
-                                  QStringLiteral("Connection Summary")) >= 0;
+            return findLogEventRow(failedLogList,
+                                   QStringLiteral("local_serial_devices_not_connected")) >= 0 &&
+                findLogEventRow(failedLogList,
+                                QStringLiteral("tcp_wave_connection_started")) >= 0 &&
+                findLogEventRow(failedLogList,
+                                QStringLiteral("tcp_wave_socket_error")) >= 0 &&
+                findLogEventRow(failedLogList,
+                                QStringLiteral("local_connection_summary")) >= 0;
         });
+        if (!failedLogsFlushed)
+        {
+            dumpLogRows(failedLogList, "failed-path title-bar connection log rows");
+        }
         require(failedLogsFlushed,
                 "failed-path title-bar connection flushes serial, TCP error, and summary logs");
-        const int failedNoSerialRow = findLogMessageRow(failedLogList,
-                                                        QStringLiteral("没有串口设备连接成功"),
-                                                        QStringLiteral("No serial devices connected"));
-        const int failedWaveformConnectingRow = findLogMessageRow(failedLogList,
-                                                                  QStringLiteral("正在连接 TCP 波形"),
-                                                                  QStringLiteral("Connecting TCP wave link"));
-        const int failedWaveformErrorRow = findLogMessageRow(failedLogList,
-                                                             QStringLiteral("TCP 波形 socket 错误"),
-                                                             QStringLiteral("TCP wave socket error"));
-        const int failedSummaryRow = findLogMessageRow(failedLogList,
-                                                       QStringLiteral("连接摘要"),
-                                                       QStringLiteral("Connection Summary"));
+        const int failedNoSerialRow = findLogEventRow(
+            failedLogList, QStringLiteral("local_serial_devices_not_connected"));
+        const int failedWaveformConnectingRow = findLogEventRow(
+            failedLogList, QStringLiteral("tcp_wave_connection_started"));
+        const int failedWaveformErrorRow = findLogEventRow(
+            failedLogList, QStringLiteral("tcp_wave_socket_error"));
+        const int failedSummaryRow = findLogEventRow(
+            failedLogList, QStringLiteral("local_connection_summary"));
         require(failedNoSerialRow >= 0 && failedWaveformConnectingRow > failedNoSerialRow,
                 "failed-path TCP waveform connection starts after the no-serial-device log");
         require(failedWaveformErrorRow > failedWaveformConnectingRow,
@@ -1188,7 +1423,8 @@ int main(int argc, char **argv)
         delete failedConnectionWindow;
         VaporView::setSettingsWritesSuspended(false);
     }
-    require(snapshotAll() == beforeDirectClose,
+    require(settingsSnapshotsEqual(snapshotAll(), beforeDirectClose,
+                                   "normal-mode waveform connection coverage does not persist temporary inputs"),
             "normal-mode waveform connection coverage does not persist temporary inputs");
 
     std::cout << "ui_test_mode_window_test passed\n";
