@@ -74,6 +74,24 @@ void TemperatureTrendPlotWidget::setSamples(const QVector<double>& samples)
     update();
 }
 
+void TemperatureTrendPlotWidget::setSampleTimes(const QVector<double>& sampleTimes)
+{
+    sample_times_ = sampleTimes;
+    updateSampleProperties();
+    update();
+}
+
+void TemperatureTrendPlotWidget::setTimeAxisEnabled(bool enabled)
+{
+    if (time_axis_enabled_ == enabled)
+    {
+        return;
+    }
+    time_axis_enabled_ = enabled;
+    updateSampleProperties();
+    update();
+}
+
 void TemperatureTrendPlotWidget::setTargetTemperature(double celsius)
 {
     target_temperature_c_ = std::isfinite(celsius)
@@ -110,7 +128,31 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     const qreal leftAxisWidth = axisFm.horizontalAdvance(QStringLiteral("999")) + 6.0;
     constexpr qreal kBottomAxisHeight = 18.0;
     const QRectF plotRect = rect().adjusted(leftAxisWidth, 4.0, -4.0, -kBottomAxisHeight);
-    auto drawGridAndAxes = [&](double minValue, double maxValue, int sampleCount) {
+    auto xAxisRange = [this](const QVector<double>& xValues, int sampleCount) {
+        if (!time_axis_enabled_)
+        {
+            return std::pair<double, double>{0.0, static_cast<double>(std::max(1, sampleCount - 1))};
+        }
+        if (xValues.isEmpty())
+        {
+            return std::pair<double, double>{0.0, 1.0};
+        }
+        const auto [minIt, maxIt] = std::minmax_element(xValues.cbegin(), xValues.cend());
+        if (!std::isfinite(*minIt) || !std::isfinite(*maxIt))
+        {
+            return std::pair<double, double>{0.0, 1.0};
+        }
+        if (*maxIt - *minIt <= 1e-6)
+        {
+            return std::pair<double, double>{*minIt, *minIt + 1.0};
+        }
+        return std::pair<double, double>{*minIt, *maxIt};
+    };
+    auto drawGridAndAxes = [&](double minValue,
+                               double maxValue,
+                               const QVector<double>& xValues,
+                               int sampleCount) {
+        const auto [xMin, xMax] = xAxisRange(xValues, sampleCount);
         painter.setPen(QPen(grid, 1));
         for (int i = 0; i <= kXAxisTicks; ++i)
         {
@@ -140,11 +182,13 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
         }
         for (int i = 0; i <= kXAxisTicks; ++i)
         {
-            const int sampleIndex = sampleCount <= 1
-                ? 0
-                : qRound((sampleCount - 1) * i / static_cast<double>(kXAxisTicks));
             const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(kXAxisTicks);
-            const QString label = QString::number(sampleIndex);
+            const double xValue = xMin + (xMax - xMin) * i / static_cast<double>(kXAxisTicks);
+            const QString label = time_axis_enabled_
+                ? timeAxisTickLabel(xValue)
+                : QString::number(sampleCount <= 1
+                                      ? 0
+                                      : qRound((sampleCount - 1) * i / static_cast<double>(kXAxisTicks)));
             const qreal labelWidth = std::max<qreal>(36.0, axisFm.horizontalAdvance(label) + 8.0);
             const qreal labelLeft = std::clamp(x - labelWidth / 2.0,
                                                plotRect.left(),
@@ -159,19 +203,28 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     };
 
     QVector<double> finiteSamples;
+    QVector<double> finiteSampleTimes;
     finiteSamples.reserve(samples_.size());
-    for (double value : samples_)
+    finiteSampleTimes.reserve(samples_.size());
+    for (int index = 0; index < samples_.size(); ++index)
     {
+        const double value = samples_.at(index);
         if (std::isfinite(value))
         {
             finiteSamples.append(value);
+            const double sampleTime = time_axis_enabled_ && index < sample_times_.size()
+                ? sample_times_.at(index)
+                : static_cast<double>(index);
+            finiteSampleTimes.append(std::isfinite(sampleTime)
+                                         ? sampleTime
+                                         : static_cast<double>(index));
         }
     }
 
     if (finiteSamples.isEmpty() || plotRect.width() <= 1.0 || plotRect.height() <= 1.0)
     {
         const auto [minValue, maxValue] = temperatureAxisRange(QVector<double>(), target_temperature_c_);
-        drawGridAndAxes(minValue, maxValue, 0);
+        drawGridAndAxes(minValue, maxValue, QVector<double>(), 0);
         painter.setPen(muted);
         QRectF visiblePlotRect = plotRect.intersected(QRectF(visibleRegion().boundingRect()));
         if (!visiblePlotRect.isValid() || visiblePlotRect.width() <= 1.0 || visiblePlotRect.height() <= 1.0)
@@ -192,14 +245,26 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     }
 
     const auto [minValue, maxValue] = temperatureAxisRange(finiteSamples, target_temperature_c_);
-    drawGridAndAxes(minValue, maxValue, finiteSamples.size());
+    drawGridAndAxes(minValue, maxValue, finiteSampleTimes, finiteSamples.size());
 
     QPolygonF polyline;
     polyline.reserve(finiteSamples.size());
     const int count = finiteSamples.size();
+    const auto [xMin, xMax] = xAxisRange(finiteSampleTimes, count);
+    const bool useTimeCoordinates = time_axis_enabled_ &&
+        finiteSampleTimes.size() > 1 &&
+        xMax - xMin > 1e-6;
+    const double xSpan = useTimeCoordinates
+        ? xMax - xMin
+        : static_cast<double>(std::max(1, count - 1));
     for (int i = 0; i < count; ++i)
     {
-        const double ratio = count == 1 ? 0.0 : static_cast<double>(i) / static_cast<double>(count - 1);
+        const double xValue = useTimeCoordinates
+            ? finiteSampleTimes.at(i)
+            : static_cast<double>(i);
+        const double ratio = count == 1
+            ? 0.0
+            : (xValue - (useTimeCoordinates ? xMin : 0.0)) / xSpan;
         const double normalized = (finiteSamples.at(i) - minValue) / std::max(1e-6, maxValue - minValue);
         polyline.append(QPointF(plotRect.left() + ratio * plotRect.width(),
                                 plotRect.bottom() - normalized * plotRect.height()));
@@ -217,6 +282,19 @@ QString TemperatureTrendPlotWidget::axisTickLabel(double value)
     return std::abs(value - std::round(value)) < 0.05
         ? QString::number(qRound(value))
         : QString::number(value, 'f', 1);
+}
+
+QString TemperatureTrendPlotWidget::timeAxisTickLabel(double value)
+{
+    if (!std::isfinite(value))
+    {
+        return QStringLiteral("---");
+    }
+
+    const QString number = std::abs(value - std::round(value)) < 0.05
+        ? QString::number(qRound(value))
+        : QString::number(value, 'f', 1);
+    return number + QStringLiteral("s");
 }
 
 std::pair<double, double> TemperatureTrendPlotWidget::temperatureAxisRange(
@@ -261,6 +339,8 @@ void TemperatureTrendPlotWidget::updateSampleProperties()
     setProperty("axisLabelsVisible", true);
     setProperty("yAxisTickCount", 7);
     setProperty("xAxisTickCount", 5);
+    setProperty("xAxisTimeMode", time_axis_enabled_);
+    setProperty("xAxisTimeSampleCount", time_axis_enabled_ ? sample_times_.size() : 0);
 }
 
 void TemperatureTrendPlotWidget::applyPlotSizing()

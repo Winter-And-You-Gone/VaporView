@@ -7,6 +7,7 @@
 #include <QDateTime>
 #include <QJsonDocument>
 #include <algorithm>
+#include <chrono>
 #include <memory>
 
 namespace VaporView
@@ -410,6 +411,7 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         TemperatureControllerData data;
         if (TelemetryCodec::parseTemperatureControllerStatus(frame.payload, data))
         {
+            data.timestamp = std::chrono::steady_clock::now();
             emit temperatureControllerStatusUpdated(data);
         }
         else

@@ -256,6 +256,44 @@ bool homeTelemetrySummaryShowsUiTestRates(QWidget *homeConfigCard)
     return threeDigitHzValues >= 6 && threeDigitMbpsValues == 3 && sawAvailableData;
 }
 
+bool homeTelemetrySummaryHasStableCompactTextGaps(QWidget *homeConfigCard)
+{
+    QWidget *summaryContainer = homeTelemetrySummaryContainer(homeConfigCard);
+    const QList<QFrame *> sections = sortedHomeTelemetrySections(summaryContainer);
+    if (sections.size() < 3)
+    {
+        return false;
+    }
+
+    for (QFrame *section : sections)
+    {
+        const QList<QFrame *> pills =
+            section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+        if (pills.isEmpty())
+        {
+            return false;
+        }
+        for (QFrame *pill : pills)
+        {
+            QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+            QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+            if (!nameLabel || !valueLabel)
+            {
+                return false;
+            }
+            const int nameTextRight = nameLabel->mapTo(pill, QPoint(0, 0)).x() +
+                nameLabel->fontMetrics().horizontalAdvance(nameLabel->text());
+            const int valueTextLeft = valueLabel->mapTo(pill, QPoint(0, 0)).x();
+            const int gap = valueTextLeft - nameTextRight;
+            if (gap < 3 || gap > 10)
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 QStringList homeTelemetryDynamicSummaryValues(QWidget *homeConfigCard)
 {
     QWidget *summaryContainer = homeTelemetrySummaryContainer(homeConfigCard);
@@ -622,6 +660,10 @@ int main(int argc, char **argv)
                 return homeTelemetrySummaryShowsUiTestRates(homeConfigCard);
             }),
             "UI test mode feeds representative home telemetry summary capsules");
+    require(VaporViewTest::processEventsUntil(1500, [homeConfigCard]() {
+                return homeTelemetrySummaryHasStableCompactTextGaps(homeConfigCard);
+            }),
+            "UI test mode settles home telemetry capsule layout after dynamic data arrives");
     requireUiTestHomeTelemetryCapsulesCovered(
         homeConfigCard,
         "UI-test home telemetry summary capsules are covered in Chinese");
@@ -632,6 +674,10 @@ int main(int argc, char **argv)
                 return homeTelemetryDynamicSummaryValues(homeConfigCard) != dynamicValuesBefore;
             }),
             "UI test mode refreshes home telemetry capsule values over time");
+    require(VaporViewTest::processEventsUntil(1500, [homeConfigCard]() {
+                return homeTelemetrySummaryHasStableCompactTextGaps(homeConfigCard);
+            }),
+            "UI test mode settles home telemetry capsule layout after dynamic refresh");
     requireUiTestHomeTelemetryCapsulesCovered(
         homeConfigCard,
         "UI-test home telemetry summary capsules stay covered after dynamic refresh");
@@ -640,8 +686,26 @@ int main(int argc, char **argv)
         window->findChild<QLabel *>(QStringLiteral("temperatureOverviewOutputPercentPill"));
     auto *temperatureOutputSwitch =
         window->findChild<QPushButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
+    QWidget *temperatureOverviewPlot = nullptr;
+    for (QWidget *plot : window->findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot")))
+    {
+        if (plot && plot->property("temperatureOverviewPlot").toBool())
+        {
+            temperatureOverviewPlot = plot;
+            break;
+        }
+    }
     require(temperatureOutputPercentPill != nullptr && temperatureOutputSwitch != nullptr,
             "UI test mode exposes the home temperature output percent capsule and switch");
+    require(temperatureOverviewPlot != nullptr,
+            "UI test mode exposes the home temperature overview trend plot");
+    require(VaporViewTest::processEventsUntil(1500, [temperatureOverviewPlot]() {
+                return temperatureOverviewPlot->property("xAxisTimeMode").toBool() &&
+                    temperatureOverviewPlot->property("sampleCount").toInt() >= 2 &&
+                    temperatureOverviewPlot->property("xAxisTimeSampleCount").toInt() ==
+                        temperatureOverviewPlot->property("sampleCount").toInt();
+            }),
+            "UI test mode feeds timestamped samples into the home temperature overview time axis");
     require(VaporViewTest::processEventsUntil(1500, [temperatureOutputPercentPill, temperatureOutputSwitch]() {
                 return temperatureOutputSwitch->isChecked() &&
                     temperatureOverviewOutputPercentShowsNonZero(temperatureOutputPercentPill);

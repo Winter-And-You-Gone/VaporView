@@ -49,6 +49,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <utility>
@@ -1300,7 +1301,9 @@ public:
         plotSectionLayout->setSpacing(0);
 
         plot_ = new TemperatureTrendPlotWidget(this);
+        plot_->setProperty("temperatureOverviewPlot", true);
         plot_->setCompactMode(true);
+        plot_->setTimeAxisEnabled(true);
         plot_->setMinimumHeight(136);
         plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         plotSectionLayout->addWidget(plot_, 1);
@@ -1334,6 +1337,22 @@ public:
         latest_data_ = sample;
         if (sample.valid)
         {
+            const auto sampleTimestamp = sample.timestamp == std::chrono::steady_clock::time_point{}
+                ? std::chrono::steady_clock::now()
+                : sample.timestamp;
+            if (!temperature_history_origin_valid_ ||
+                sampleTimestamp < temperature_history_origin_)
+            {
+                temperature_history_origin_ = sampleTimestamp;
+                temperature_history_origin_valid_ = true;
+                for (int i = 0; i < static_cast<int>(measured_temperature_history_.size()); ++i)
+                {
+                    measured_temperature_history_[i].clear();
+                    measured_temperature_time_history_[i].clear();
+                }
+            }
+            const double sampleTimeSeconds = std::chrono::duration<double>(
+                sampleTimestamp - temperature_history_origin_).count();
             for (int i = 0; i < static_cast<int>(measured_temperature_history_.size()); ++i)
             {
                 const double target = sample.channels[i].target_temperature_c;
@@ -1345,10 +1364,13 @@ public:
                 if (std::isfinite(measured))
                 {
                     auto& history = measured_temperature_history_[i];
+                    auto& timeHistory = measured_temperature_time_history_[i];
                     history.append(measured);
+                    timeHistory.append(std::isfinite(sampleTimeSeconds) ? sampleTimeSeconds : 0.0);
                     while (history.size() > kTemperatureControllerHistoryLimit)
                     {
                         history.removeFirst();
+                        timeHistory.removeFirst();
                     }
                 }
             }
@@ -1574,6 +1596,7 @@ private:
             plot_->setChannelIndex(index);
             plot_->setTargetTemperature(target_temperature_by_channel_[index]);
             plot_->setSamples(measured_temperature_history_[index]);
+            plot_->setSampleTimes(measured_temperature_time_history_[index]);
         }
     }
 
@@ -1593,12 +1616,15 @@ private:
     TemperatureTrendPlotWidget *plot_ = nullptr;
     VaporView::TemperatureControllerData latest_data_;
     std::array<QVector<double>, 2> measured_temperature_history_{};
+    std::array<QVector<double>, 2> measured_temperature_time_history_{};
     std::array<double, 2> target_temperature_by_channel_{
         std::numeric_limits<double>::quiet_NaN(),
         std::numeric_limits<double>::quiet_NaN()};
+    std::chrono::steady_clock::time_point temperature_history_origin_{};
     std::function<void(quint8, bool)> output_enabled_callback_;
     int selected_channel_index_ = 0;
     bool summary_height_update_pending_ = false;
+    bool temperature_history_origin_valid_ = false;
     bool is_english_ = false;
 };
 
