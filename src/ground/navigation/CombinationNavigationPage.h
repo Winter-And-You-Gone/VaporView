@@ -18,6 +18,8 @@ class QTimer;
 namespace VaporView::Ground::Navigation
 {
 
+class EpsilonConfigPanel;
+
 class CombinationNavigationPage final : public QWidget
 {
     Q_OBJECT
@@ -53,6 +55,7 @@ public:
 
     Section currentSection() const;
     QWidget *differentialPage() const;
+    EpsilonConfigPanel *epsilonConfigPanel() const;
     void setCurrentSection(Section section);
     void showStatusPage();
     void showDifferentialPage();
@@ -75,7 +78,6 @@ private:
     };
 
     QWidget *createStatusPage();
-    QWidget *createEpsilonPage();
     FieldWidgets addField(QGridLayout *layout,
                           int row,
                           QWidget *parent,
@@ -101,8 +103,7 @@ private:
     QLabel *navigation_status_title_ = nullptr;
     QLabel *position_title_ = nullptr;
     QLabel *attitude_title_ = nullptr;
-    QLabel *epsilon_page_title_ = nullptr;
-    QLabel *epsilon_page_description_ = nullptr;
+    EpsilonConfigPanel *epsilon_config_panel_ = nullptr;
 
     FieldWidgets epsilon_status_;
     FieldWidgets gnss_status_;
@@ -116,7 +117,6 @@ private:
     FieldWidgets roll_;
     FieldWidgets pitch_;
     FieldWidgets heading_;
-    FieldWidgets epsilon_page_status_;
 };
 
 } // namespace VaporView::Ground::Navigation

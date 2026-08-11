@@ -2184,6 +2184,39 @@ void MainWindow::setupCentralWidget()
     syncRtkConfigPageState();
     state_->combination_navigation_page_ = new CombinationNavigationPage(
         state_->rtk_config_dialog_, state_->main_page_stack_);
+    state_->epsilon_config_panel_ = state_->combination_navigation_page_->epsilonConfigPanel();
+    if (state_->epsilon_config_panel_)
+    {
+        connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::recommendedProfileRequested,
+                this, [this]() {
+            if (state_->epsilon_config_panel_)
+            {
+                state_->epsilon_config_panel_->setCustomPacketProfileEnabled(true);
+            }
+            setDeviceConfigEpsilonPacketRates(defaultEpsilonPacketRates());
+        });
+        connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::groupedProfileRequested,
+                this, [this]() {
+            const QString epsilonRateText = state_->epsilon_rate_combo_
+                ? state_->epsilon_rate_combo_->currentText()
+                : QStringLiteral("100");
+            const int groupedRateHz = effectiveRateOrDefault(
+                epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
+            state_->epsilon_config_panel_->setCustomPacketProfileEnabled(false);
+            setDeviceConfigEpsilonPacketRates(groupedEpsilonPacketRates(groupedRateHz));
+        });
+        connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::saveRequested,
+                this, [this]() { saveDeviceConfigEpsilonPacketRates(true); });
+        connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::rtcmPortRequested,
+                this, &MainWindow::onConfigureEpsilonRtcmPortClicked);
+        connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::reconfigureRequested,
+                this, &MainWindow::onReconfigureEpsilonClicked);
+        connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::rtkConfigRequested,
+                this, &MainWindow::onRtkConfigClicked);
+        state_->epsilon_config_panel_->setEnglish(state_->is_english_);
+        syncDeviceConfigEpsilonPanelFromSettings();
+        updateDeviceConfigState();
+    }
     state_->combination_navigation_page_->setStatusProvider([this]() {
         CombinationNavigationPage::StatusSnapshot snapshot;
         const bool remoteStatusAvailable = !isRemoteSkyMode() || isUiTestMode() ||
@@ -2641,173 +2674,6 @@ void MainWindow::setupDeviceConfigPage()
                            state_->device_config_.ai8_temperature_remote_action_btn,
                            VaporView::SkyDeviceId::Ai8TemperatureController);
 
-    state_->device_config_.epsilon_config_card = new QFrame(content);
-    state_->device_config_.epsilon_config_card->setObjectName(QStringLiteral("epsilonSectionCard"));
-    configureTopLevelCard(state_->device_config_.epsilon_config_card);
-    state_->device_config_.epsilon_config_card->setMinimumWidth(520);
-    state_->device_config_.epsilon_config_card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
-    auto *epsilonConfigLayout = new QVBoxLayout(state_->device_config_.epsilon_config_card);
-    epsilonConfigLayout->setContentsMargins(1, 0, 1, 1);
-    epsilonConfigLayout->setSpacing(0);
-    auto *epsilonTitleBar = new QWidget(state_->device_config_.epsilon_config_card);
-    epsilonTitleBar->setObjectName(QStringLiteral("sectionTitleBar"));
-    epsilonTitleBar->setFixedHeight(kMainPageTitleBarHeight);
-    auto *epsilonTitleLayout = new QHBoxLayout(epsilonTitleBar);
-    epsilonTitleLayout->setContentsMargins(8, 2, 8, 2);
-    epsilonTitleLayout->setSpacing(8);
-    QWidget *epsilonTitleCluster = nullptr;
-    state_->device_config_.epsilon_config_title_lbl = createSectionTitleCluster(epsilonTitleBar,
-                                                                        QStringLiteral("sliders-vertical"),
-                                                                        kMainPageButtonHeight,
-                                                                        &epsilonTitleCluster);
-    epsilonTitleLayout->addWidget(epsilonTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    epsilonTitleLayout->addStretch(1);
-    epsilonConfigLayout->addWidget(epsilonTitleBar);
-
-    auto *epsilonBodyWidget = new QWidget(state_->device_config_.epsilon_config_card);
-    auto *epsilonBodyLayout = new QVBoxLayout(epsilonBodyWidget);
-    epsilonBodyLayout->setContentsMargins(8, 8, 8, 8);
-    epsilonBodyLayout->setSpacing(7);
-
-    state_->device_config_.epsilon_config_hint_lbl = new QLabel(epsilonBodyWidget);
-    state_->device_config_.epsilon_config_hint_lbl->setObjectName(QStringLiteral("fieldLabel"));
-    state_->device_config_.epsilon_config_hint_lbl->setWordWrap(true);
-    state_->device_config_.epsilon_config_hint_lbl->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
-    epsilonBodyLayout->addWidget(state_->device_config_.epsilon_config_hint_lbl);
-
-    state_->device_config_.epsilon_packet_custom_check =
-        createTitleBarFeedbackCheckBox(epsilonBodyWidget);
-    state_->device_config_.epsilon_packet_custom_check->setObjectName(
-        QStringLiteral("epsilonPacketCustomCheck"));
-    state_->device_config_.epsilon_packet_custom_check->setFocusPolicy(Qt::TabFocus);
-    epsilonBodyLayout->addWidget(state_->device_config_.epsilon_packet_custom_check);
-
-    auto *packetGridWidget = new QWidget(epsilonBodyWidget);
-    auto *packetGrid = new QGridLayout(packetGridWidget);
-    packetGrid->setContentsMargins(0, 0, 0, 0);
-    packetGrid->setHorizontalSpacing(8);
-    packetGrid->setVerticalSpacing(4);
-    constexpr int kDeviceConfigPacketColumnCount = 2;
-    constexpr int kDeviceConfigPacketGroupGapColumn = 2;
-    constexpr int kDeviceConfigPacketRightLabelColumn = 3;
-    constexpr int kDeviceConfigPacketTrailingColumn = 5;
-    int packetComboWidth = 0;
-    {
-        QComboBox comboProbe(state_->device_config_.epsilon_config_card);
-        const QFontMetrics metrics(comboProbe.font());
-        for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
-        {
-            for (int rateHz : option.supported_rates_hz)
-            {
-                packetComboWidth = std::max(packetComboWidth,
-                                            metrics.horizontalAdvance(epsilonPacketRateDisplayText(rateHz, state_->is_english_)));
-            }
-        }
-    }
-    packetComboWidth = std::clamp(packetComboWidth + 50, 126, 160);
-    state_->device_config_.epsilon_packet_rate_labels.clear();
-    state_->device_config_.epsilon_packet_rate_combos.clear();
-    int packetIndex = 0;
-    for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
-    {
-        const int row = packetIndex / kDeviceConfigPacketColumnCount;
-        const int side = packetIndex % kDeviceConfigPacketColumnCount;
-        const int labelColumn = side == 0 ? 0 : kDeviceConfigPacketRightLabelColumn;
-        const int comboColumn = labelColumn + 1;
-
-        auto *label = new QLabel(packetGridWidget);
-        label->setObjectName(QStringLiteral("fieldLabel"));
-        label->setProperty("epsilonPacketId", static_cast<uint>(option.packet_id));
-        label->setProperty("epsilonPacketGridColumn", side);
-        label->setWordWrap(false);
-        label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-        packetGrid->addWidget(label, row, labelColumn, Qt::AlignLeft | Qt::AlignVCenter);
-
-        auto *combo = new QComboBox(packetGridWidget);
-        combo->setProperty("epsilonPacketId", static_cast<uint>(option.packet_id));
-        combo->setProperty("epsilonPacketGridColumn", side);
-        combo->setFixedHeight(kMainPageInputHeight);
-        combo->setFixedWidth(packetComboWidth);
-        combo->setMaxVisibleItems(15);
-        for (int rateHz : option.supported_rates_hz)
-        {
-            combo->addItem(epsilonPacketRateDisplayText(rateHz, state_->is_english_), rateHz);
-        }
-        packetGrid->addWidget(combo, row, comboColumn, Qt::AlignLeft | Qt::AlignVCenter);
-
-        state_->device_config_.epsilon_packet_rate_labels.append(label);
-        state_->device_config_.epsilon_packet_rate_combos.append(combo);
-
-        ++packetIndex;
-    }
-    packetGrid->setColumnMinimumWidth(kDeviceConfigPacketGroupGapColumn, 20);
-    packetGrid->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum),
-                        0,
-                        kDeviceConfigPacketTrailingColumn);
-    packetGrid->setColumnStretch(0, 0);
-    packetGrid->setColumnStretch(1, 0);
-    packetGrid->setColumnStretch(kDeviceConfigPacketGroupGapColumn, 0);
-    packetGrid->setColumnStretch(kDeviceConfigPacketRightLabelColumn, 0);
-    packetGrid->setColumnStretch(kDeviceConfigPacketRightLabelColumn + 1, 0);
-    packetGrid->setColumnStretch(kDeviceConfigPacketTrailingColumn, 1);
-
-    auto createInlineButton = [this](QWidget *parent) {
-        auto *button = new QPushButton(parent);
-        button->setFixedHeight(kMainPageButtonHeight);
-        button->setFocusPolicy(Qt::TabFocus);
-        button->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-        return button;
-    };
-    auto *packetButtonPanel = new QWidget(packetGridWidget);
-    packetButtonPanel->setObjectName(QStringLiteral("epsilonPacketActionPanel"));
-    packetButtonPanel->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Minimum);
-    auto *packetButtonLayout = new QGridLayout(packetButtonPanel);
-    packetButtonLayout->setContentsMargins(0, 0, 0, 0);
-    packetButtonLayout->setHorizontalSpacing(4);
-    packetButtonLayout->setVerticalSpacing(4);
-    state_->device_config_.epsilon_packet_defaults_btn = createInlineButton(packetButtonPanel);
-    state_->device_config_.epsilon_packet_grouped_btn = createInlineButton(packetButtonPanel);
-    state_->device_config_.epsilon_packet_save_btn = createInlineButton(packetButtonPanel);
-    state_->device_config_.epsilon_rtcm_port_btn = createInlineButton(packetButtonPanel);
-    state_->device_config_.epsilon_reconfigure_btn = createInlineButton(packetButtonPanel);
-    state_->device_config_.rtk_config_btn = createInlineButton(packetButtonPanel);
-    packetButtonLayout->addWidget(state_->device_config_.epsilon_packet_defaults_btn, 0, 0);
-    packetButtonLayout->addWidget(state_->device_config_.epsilon_packet_grouped_btn, 0, 1);
-    packetButtonLayout->addWidget(state_->device_config_.epsilon_packet_save_btn, 1, 0);
-    packetButtonLayout->addWidget(state_->device_config_.epsilon_rtcm_port_btn, 1, 1);
-    packetButtonLayout->addWidget(state_->device_config_.epsilon_reconfigure_btn, 2, 0);
-    packetButtonLayout->addWidget(state_->device_config_.rtk_config_btn, 2, 1);
-    packetGrid->addWidget(packetButtonPanel,
-                          0,
-                          kDeviceConfigPacketTrailingColumn,
-                          4,
-                          1,
-                          Qt::AlignLeft | Qt::AlignTop);
-
-    connect(state_->device_config_.epsilon_packet_defaults_btn, &QPushButton::clicked, this, [this]() {
-        if (state_->device_config_.epsilon_packet_custom_check)
-        {
-            state_->device_config_.epsilon_packet_custom_check->setChecked(true);
-        }
-        setDeviceConfigEpsilonPacketRates(defaultEpsilonPacketRates());
-    });
-    connect(state_->device_config_.epsilon_packet_grouped_btn, &QPushButton::clicked, this, [this]() {
-        const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
-        const int groupedRateHz = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
-        if (state_->device_config_.epsilon_packet_custom_check)
-        {
-            state_->device_config_.epsilon_packet_custom_check->setChecked(false);
-        }
-        setDeviceConfigEpsilonPacketRates(groupedEpsilonPacketRates(groupedRateHz));
-    });
-    connect(state_->device_config_.epsilon_packet_save_btn, &QPushButton::clicked, this, [this]() {
-        saveDeviceConfigEpsilonPacketRates(true);
-    });
-    connect(state_->device_config_.epsilon_rtcm_port_btn, &QPushButton::clicked, this, &MainWindow::onConfigureEpsilonRtcmPortClicked);
-    connect(state_->device_config_.epsilon_reconfigure_btn, &QPushButton::clicked, this, &MainWindow::onReconfigureEpsilonClicked);
-    connect(state_->device_config_.rtk_config_btn, &QPushButton::clicked, this, &MainWindow::onRtkConfigClicked);
-    epsilonBodyLayout->addWidget(packetGridWidget);
-    epsilonConfigLayout->addWidget(epsilonBodyWidget);
     formRowLayout->addWidget(formWidget, 0, Qt::AlignTop | Qt::AlignLeft);
     serialLayout->addWidget(formRowWidget, 0, Qt::AlignTop);
 
@@ -2856,7 +2722,6 @@ void MainWindow::setupDeviceConfigPage()
     topRowLayout->addWidget(serialCard, 0, Qt::AlignTop | Qt::AlignLeft);
     topRowLayout->addWidget(state_->device_config_.data_telemetry_summary_card, 1, Qt::AlignTop);
     contentLayout->addLayout(topRowLayout);
-    contentLayout->addWidget(state_->device_config_.epsilon_config_card, 0, Qt::AlignTop);
     contentLayout->addStretch(1);
 
     scrollArea->setWidget(content);
@@ -3187,9 +3052,9 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.lidar_rate_lbl) state_->device_config_.lidar_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
     if (state_->device_config_.temperature_rate_lbl) state_->device_config_.temperature_rate_lbl->setText(state_->is_english_ ? "Poll:" : "轮询:");
     if (state_->device_config_.ai8_temperature_rate_lbl) state_->device_config_.ai8_temperature_rate_lbl->setText(state_->is_english_ ? "Poll:" : "轮询:");
-    if (state_->device_config_.epsilon_config_title_lbl)
+    if (state_->epsilon_config_panel_)
     {
-        state_->device_config_.epsilon_config_title_lbl->setText(state_->is_english_ ? "EPSILON Configuration" : "EPSILON 配置");
+        state_->epsilon_config_panel_->setEnglish(state_->is_english_);
     }
     if (state_->device_config_.data_telemetry_summary_title_lbl)
     {
@@ -3197,78 +3062,6 @@ void MainWindow::updateDeviceConfigTexts()
             ? "Sky-ground Communication Link Status"
             : "天地通信链路状态");
     }
-    if (state_->device_config_.epsilon_config_hint_lbl)
-    {
-        state_->device_config_.epsilon_config_hint_lbl->setText(state_->is_english_
-            ? "Packet rates are saved for future connect/reconfigure operations. Save applies the profile immediately when an EPSILON port is selected."
-            : "包频率会用于后续连接和重配；已选择 EPSILON 串口时，保存后会立即应用。");
-    }
-    if (state_->device_config_.epsilon_packet_custom_check)
-    {
-        state_->device_config_.epsilon_packet_custom_check->setText(state_->is_english_
-            ? "Use this custom EPSILON packet-rate profile"
-            : "使用这组自定义 EPSILON 包频率");
-    }
-    for (int i = 0;
-         i < state_->device_config_.epsilon_packet_rate_labels.size() &&
-         i < static_cast<int>(epsilonPacketConfigOptions().size());
-         ++i)
-    {
-        if (QLabel *label = state_->device_config_.epsilon_packet_rate_labels.at(i))
-        {
-            label->setText(epsilonPacketDialogRowLabel(epsilonPacketConfigOptions().at(i), state_->is_english_));
-            label->setToolTip(label->text());
-        }
-    }
-    for (QComboBox *combo : state_->device_config_.epsilon_packet_rate_combos)
-    {
-        if (!combo)
-        {
-            continue;
-        }
-        const QSignalBlocker blocker(combo);
-        for (int i = 0; i < combo->count(); ++i)
-        {
-            combo->setItemText(i, epsilonPacketRateDisplayText(combo->itemData(i).toInt(), state_->is_english_));
-        }
-    }
-    if (state_->device_config_.epsilon_packet_defaults_btn)
-    {
-        state_->device_config_.epsilon_packet_defaults_btn->setText(state_->is_english_ ? "Recommended" : "恢复推荐");
-        state_->device_config_.epsilon_packet_defaults_btn->setToolTip(state_->is_english_ ? "Use the recommended default packet rates" : "恢复推荐默认包频率");
-        fitButtonMinimumWidth(state_->device_config_.epsilon_packet_defaults_btn, 100);
-    }
-    if (state_->device_config_.epsilon_packet_grouped_btn)
-    {
-        state_->device_config_.epsilon_packet_grouped_btn->setText(state_->is_english_ ? "Grouped" : "分组模式");
-        state_->device_config_.epsilon_packet_grouped_btn->setToolTip(state_->is_english_ ? "Use the grouped output-rate profile" : "切换到分组输出频率模式");
-        fitButtonMinimumWidth(state_->device_config_.epsilon_packet_grouped_btn, 100);
-    }
-    if (state_->device_config_.epsilon_packet_save_btn)
-    {
-        state_->device_config_.epsilon_packet_save_btn->setText(state_->is_english_ ? "Save + Apply" : "保存并应用");
-        state_->device_config_.epsilon_packet_save_btn->setToolTip(state_->is_english_ ? "Save the packet-rate profile and apply it now when possible" : "保存包频率配置，并在可用时立即应用");
-        fitButtonMinimumWidth(state_->device_config_.epsilon_packet_save_btn, 118);
-    }
-    if (state_->device_config_.epsilon_rtcm_port_btn)
-    {
-        state_->device_config_.epsilon_rtcm_port_btn->setText(state_->is_english_ ? "RTCM Port" : "配置RTCM串口");
-        state_->device_config_.epsilon_rtcm_port_btn->setToolTip(state_->is_english_ ? "Configure EPSILON communication port 2 as RTCM input" : "配置 EPSILON 第二通信串口为 RTCM 输入口");
-        fitButtonMinimumWidth(state_->device_config_.epsilon_rtcm_port_btn, 128);
-    }
-    if (state_->device_config_.epsilon_reconfigure_btn)
-    {
-        state_->device_config_.epsilon_reconfigure_btn->setText(state_->is_english_ ? "Reconfigure Output" : "重新配置输出");
-        state_->device_config_.epsilon_reconfigure_btn->setToolTip(state_->is_english_ ? "Apply the current EPSILON output profile" : "应用当前 EPSILON 输出配置");
-        fitButtonMinimumWidth(state_->device_config_.epsilon_reconfigure_btn, 128);
-    }
-    if (state_->device_config_.rtk_config_btn)
-    {
-        state_->device_config_.rtk_config_btn->setText(state_->is_english_ ? "RTK Config" : "RTK配置");
-        state_->device_config_.rtk_config_btn->setToolTip(state_->is_english_ ? "Open RTK config" : "打开 RTK 配置");
-        fitButtonMinimumWidth(state_->device_config_.rtk_config_btn, 100);
-    }
-
     for (VaporView::SkyDeviceId device : {VaporView::SkyDeviceId::Epsilon,
                                           VaporView::SkyDeviceId::Ptb,
                                           VaporView::SkyDeviceId::Hmp,
@@ -3311,10 +3104,9 @@ void MainWindow::updateDeviceConfigState()
         state_->device_config_.sky_device_config_btn->setEnabled(state_->sky_device_config_btn_ && state_->sky_device_config_btn_->isEnabled());
         state_->device_config_.sky_device_config_btn->setToolTip(state_->sky_device_config_btn_ ? state_->sky_device_config_btn_->toolTip() : QString());
     }
-    if (state_->device_config_.epsilon_config_card)
+    if (state_->epsilon_config_panel_)
     {
-        state_->device_config_.epsilon_config_card->setVisible(true);
-        state_->device_config_.epsilon_config_card->setEnabled(epsilonConfigEnabled);
+        state_->epsilon_config_panel_->setAvailable(epsilonConfigEnabled);
     }
 
     const QList<QWidget *> localWidgets = {

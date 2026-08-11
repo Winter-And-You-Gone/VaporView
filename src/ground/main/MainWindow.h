@@ -72,6 +72,7 @@ namespace VaporView::Ground::Widgets { class DevicePanelCoordinator; }
 namespace VaporView::Ground::Widgets { class SourceModeOverviewSwitchButton; }
 namespace VaporView::Ground::Widgets { class TemperatureControllerOverviewPanel; }
 namespace VaporView::Ground::Navigation { class CombinationNavigationPage; }
+namespace VaporView::Ground::Navigation { class EpsilonConfigPanel; }
 #ifdef VAPORVIEW_HAS_OSGEARTH
 namespace VaporView::Ground { class Map3DController; }
 #endif

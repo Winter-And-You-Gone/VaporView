@@ -66,20 +66,8 @@ struct DeviceConfigPageWidgets
     QVBoxLayout *data_telemetry_rate_summary_layout = nullptr;
     QVBoxLayout *data_telemetry_link_summary_layout = nullptr;
     QVBoxLayout *data_telemetry_device_summary_layout = nullptr;
-    QFrame *epsilon_config_card = nullptr;
-    QLabel *epsilon_config_title_lbl = nullptr;
-    QLabel *epsilon_config_hint_lbl = nullptr;
-    QCheckBox *epsilon_packet_custom_check = nullptr;
-    QVector<QLabel *> epsilon_packet_rate_labels;
-    QVector<QComboBox *> epsilon_packet_rate_combos;
-    QPushButton *epsilon_packet_defaults_btn = nullptr;
-    QPushButton *epsilon_packet_grouped_btn = nullptr;
-    QPushButton *epsilon_packet_save_btn = nullptr;
     QPushButton *auto_detect_ports_btn = nullptr;
     QPushButton *sky_device_config_btn = nullptr;
-    QPushButton *epsilon_rtcm_port_btn = nullptr;
-    QPushButton *epsilon_reconfigure_btn = nullptr;
-    QPushButton *rtk_config_btn = nullptr;
     QComboBox *data_source_mode_combo = nullptr;
     QComboBox *sky_telemetry_transport_combo = nullptr;
     QComboBox *sky_telemetry_port_combo = nullptr;
@@ -258,6 +246,7 @@ struct MainWindowState
     QWidget *home_page_;
     QWidget *temperature_page_;
     VaporView::Ground::Navigation::CombinationNavigationPage *combination_navigation_page_;
+    VaporView::Ground::Navigation::EpsilonConfigPanel *epsilon_config_panel_;
     DeviceConfigPageWidgets device_config_;
     QScrollArea *main_cards_scroll_area_;
     QGroupBox *config_group_;

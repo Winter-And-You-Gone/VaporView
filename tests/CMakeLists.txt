@@ -551,6 +551,16 @@ add_test(NAME combination_navigation_page_test
     COMMAND main_window_layout_test --combination-navigation-only
 )
 
+add_executable(epsilon_config_panel_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/epsilon_config_panel_test.cpp
+)
+target_include_directories(epsilon_config_panel_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(epsilon_config_panel_test PRIVATE vaporview_main_window)
+add_test(NAME epsilon_config_panel_test COMMAND epsilon_config_panel_test)
+
 add_executable(title_application_menu_test
     ${CMAKE_CURRENT_SOURCE_DIR}/title_application_menu_test.cpp
 )

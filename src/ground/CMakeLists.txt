@@ -42,6 +42,7 @@ add_subdirectory(session)
 
 set(NAV_WINDOW_SOURCES
     ${CMAKE_SOURCE_DIR}/src/ground/navigation/CombinationNavigationPage.cpp
+    ${CMAKE_SOURCE_DIR}/src/ground/navigation/EpsilonConfigPanel.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/MainWindow.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowAppearance.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowChrome.cpp
@@ -64,6 +65,7 @@ set(NAV_HEADERS
     ${CMAKE_SOURCE_DIR}/src/shared/theme/AppTheme.h
     ${CMAKE_SOURCE_DIR}/src/shared/theme/SingleLevelPopupMenu.h
     ${CMAKE_SOURCE_DIR}/src/ground/navigation/CombinationNavigationPage.h
+    ${CMAKE_SOURCE_DIR}/src/ground/navigation/EpsilonConfigPanel.h
     ${CMAKE_SOURCE_DIR}/src/ground/main/MainWindow.h
     ${CMAKE_SOURCE_DIR}/src/ground/widgets/SkyDeviceConfigDialog.h
     ${CMAKE_SOURCE_DIR}/src/ground/widgets/CustomTitleBar.h

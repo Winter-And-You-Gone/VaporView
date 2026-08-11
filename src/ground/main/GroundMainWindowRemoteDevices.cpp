@@ -998,25 +998,11 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
 
 void MainWindow::setDeviceConfigEpsilonPacketRates(const std::map<uint8_t, int>& packetRates)
 {
-    for (QComboBox *combo : state_->device_config_.epsilon_packet_rate_combos)
+    if (!state_->epsilon_config_panel_)
     {
-        if (!combo)
-        {
-            continue;
-        }
-        const auto packetId = static_cast<uint8_t>(combo->property("epsilonPacketId").toUInt());
-        const auto it = packetRates.find(packetId);
-        if (it == packetRates.end())
-        {
-            continue;
-        }
-        const int index = combo->findData(it->second);
-        if (index >= 0)
-        {
-            const QSignalBlocker blocker(combo);
-            combo->setCurrentIndex(index);
-        }
+        return;
     }
+    state_->epsilon_config_panel_->setPacketRates(packetRates);
 }
 
 std::map<uint8_t, int> MainWindow::deviceConfigEpsilonPacketRates() const
@@ -1024,25 +1010,20 @@ std::map<uint8_t, int> MainWindow::deviceConfigEpsilonPacketRates() const
     const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
     const int groupedRateHz = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
     std::map<uint8_t, int> packetRates = groupedEpsilonPacketRates(groupedRateHz);
-    for (QComboBox *combo : state_->device_config_.epsilon_packet_rate_combos)
+    if (!state_->epsilon_config_panel_)
     {
-        if (!combo)
-        {
-            continue;
-        }
-        const auto packetId = static_cast<uint8_t>(combo->property("epsilonPacketId").toUInt());
-        const QVariant rateValue = combo->currentData();
-        if (rateValue.isValid())
-        {
-            packetRates[packetId] = rateValue.toInt();
-        }
+        return packetRates;
+    }
+    for (const auto& entry : state_->epsilon_config_panel_->packetRates())
+    {
+        packetRates[entry.first] = entry.second;
     }
     return packetRates;
 }
 
 void MainWindow::syncDeviceConfigEpsilonPanelFromSettings()
 {
-    if (!state_->device_config_.epsilon_config_card)
+    if (!state_->epsilon_config_panel_)
     {
         return;
     }
@@ -1055,17 +1036,13 @@ void MainWindow::syncDeviceConfigEpsilonPanelFromSettings()
     const std::map<uint8_t, int> packetRates = customEnabled
         ? loadCustomEpsilonPacketRates(settings, groupedRateHz)
         : groupedEpsilonPacketRates(groupedRateHz);
-    if (state_->device_config_.epsilon_packet_custom_check)
-    {
-        const QSignalBlocker blocker(state_->device_config_.epsilon_packet_custom_check);
-        state_->device_config_.epsilon_packet_custom_check->setChecked(customEnabled);
-    }
+    state_->epsilon_config_panel_->setCustomPacketProfileEnabled(customEnabled);
     setDeviceConfigEpsilonPacketRates(packetRates);
 }
 
 void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
 {
-    if (!state_->device_config_.epsilon_config_card ||
+    if (!state_->epsilon_config_panel_ ||
         state_->connection_attempt_in_progress_ ||
         state_->port_detection_in_progress_ ||
         state_->epsilon_reconfigure_in_progress_)
@@ -1106,20 +1083,16 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
         }
     }
     const bool effectiveCustomEnabled =
-        (state_->device_config_.epsilon_packet_custom_check && state_->device_config_.epsilon_packet_custom_check->isChecked()) ||
-        hasCustomOverrides;
+        state_->epsilon_config_panel_->customPacketProfileEnabled() || hasCustomOverrides;
     VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_custom_packet_rates_enabled"), effectiveCustomEnabled);
     VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_custom_packet_rates_user_saved"), effectiveCustomEnabled);
     VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_signature"));
     VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_apply_version"));
     const QString packetRateSummary = epsilonPacketRatesSummary(savedPacketRates);
 
-    if (hasCustomOverrides &&
-        state_->device_config_.epsilon_packet_custom_check &&
-        !state_->device_config_.epsilon_packet_custom_check->isChecked())
+    if (hasCustomOverrides && !state_->epsilon_config_panel_->customPacketProfileEnabled())
     {
-        const QSignalBlocker blocker(state_->device_config_.epsilon_packet_custom_check);
-        state_->device_config_.epsilon_packet_custom_check->setChecked(true);
+        state_->epsilon_config_panel_->setCustomPacketProfileEnabled(true);
         publishGroundLog(VaporView::LogLevel::Info,
                          QStringLiteral("configuration.apply"),
                          QStringLiteral("epsilon_packet_profile_custom_enabled"),

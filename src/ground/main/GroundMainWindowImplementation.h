@@ -31,6 +31,7 @@
 #include "ground/widgets/TelemetryPanels.h"
 #include "ground/widgets/TemperatureControllerWidgets.h"
 #include "ground/navigation/CombinationNavigationPage.h"
+#include "ground/navigation/EpsilonConfigPanel.h"
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/session/SessionViewerWindow.h"
 #include "ground/widgets/SkyDeviceConfigDialog.h"
@@ -173,6 +174,7 @@ using VaporView::Ground::Widgets::createSingleLevelPopupComboBox;
 using VaporView::Ground::Widgets::createSourceModeOverviewSwitchButton;
 using VaporView::Ground::Widgets::createTemperatureControllerOverviewPanel;
 using VaporView::Ground::Navigation::CombinationNavigationPage;
+using VaporView::Ground::Navigation::EpsilonConfigPanel;
 using CollectorSnapshot = VaporView::Ground::Devices::CollectorSet;
 using VaporView::Ground::Devices::LocalSampleRateConfiguration;
 using VaporView::Ground::Devices::LocalSampleRateApplyResult;

@@ -1,5 +1,6 @@
 #include "ground/navigation/CombinationNavigationPage.h"
 
+#include "ground/navigation/EpsilonConfigPanel.h"
 #include "shared/theme/AppTheme.h"
 
 #include <QButtonGroup>
@@ -10,6 +11,7 @@
 #include <QLabel>
 #include <QLocale>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSignalBlocker>
 #include <QStackedWidget>
 #include <QStyle>
@@ -130,7 +132,33 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     prepareStyledBackground(stack_);
     stack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     status_page_ = createStatusPage();
-    epsilon_page_ = createEpsilonPage();
+    epsilon_page_ = new QWidget(stack_);
+    epsilon_page_->setObjectName(QStringLiteral("combinationNavigationEpsilonPage"));
+    prepareStyledBackground(epsilon_page_);
+    auto *epsilonPageLayout = new QVBoxLayout(epsilon_page_);
+    epsilonPageLayout->setContentsMargins(0, 0, 0, 0);
+    epsilonPageLayout->setSpacing(0);
+    auto *epsilonScrollArea = new QScrollArea(epsilon_page_);
+    epsilonScrollArea->setObjectName(QStringLiteral("epsilonConfigScrollArea"));
+    epsilonScrollArea->setWidgetResizable(true);
+    epsilonScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    epsilonScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    epsilonScrollArea->setFrameShape(QFrame::NoFrame);
+    epsilonScrollArea->setMinimumWidth(0);
+    epsilonScrollArea->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
+    auto *epsilonContent = new QWidget(epsilonScrollArea);
+    prepareStyledBackground(epsilonContent);
+    auto *epsilonContentLayout = new QVBoxLayout(epsilonContent);
+    epsilonContentLayout->setContentsMargins(kPageHorizontalInset,
+                                             kPageVerticalInset,
+                                             kPageHorizontalInset,
+                                             kPageVerticalInset);
+    epsilonContentLayout->setSpacing(kSectionGap);
+    epsilon_config_panel_ = new EpsilonConfigPanel(epsilonContent);
+    epsilonContentLayout->addWidget(epsilon_config_panel_, 0);
+    epsilonContentLayout->addStretch(1);
+    epsilonScrollArea->setWidget(epsilonContent);
+    epsilonPageLayout->addWidget(epsilonScrollArea, 1);
     stack_->addWidget(status_page_);
     stack_->addWidget(epsilon_page_);
     stack_->addWidget(differential_page_);
@@ -163,6 +191,11 @@ CombinationNavigationPage::Section CombinationNavigationPage::currentSection() c
 QWidget *CombinationNavigationPage::differentialPage() const
 {
     return differential_page_.data();
+}
+
+EpsilonConfigPanel *CombinationNavigationPage::epsilonConfigPanel() const
+{
+    return epsilon_config_panel_;
 }
 
 void CombinationNavigationPage::setCurrentSection(Section section)
@@ -224,12 +257,6 @@ void CombinationNavigationPage::setStatusSnapshot(const StatusSnapshot& snapshot
 
     applyStatusLabel(
         epsilon_status_.value,
-        snapshot.epsilonOnline
-            ? (is_english_ ? QStringLiteral("● Online") : QStringLiteral("● 在线"))
-            : (is_english_ ? QStringLiteral("○ Offline") : QStringLiteral("○ 离线")),
-        snapshot.epsilonOnline ? QStringLiteral("healthy") : QStringLiteral("inactive"));
-    applyStatusLabel(
-        epsilon_page_status_.value,
         snapshot.epsilonOnline
             ? (is_english_ ? QStringLiteral("● Online") : QStringLiteral("● 在线"))
             : (is_english_ ? QStringLiteral("○ Offline") : QStringLiteral("○ 离线")),
@@ -397,45 +424,6 @@ CombinationNavigationPage::FieldWidgets CombinationNavigationPage::addField(
     return field;
 }
 
-QWidget *CombinationNavigationPage::createEpsilonPage()
-{
-    auto *page = new QWidget(stack_);
-    page->setObjectName(QStringLiteral("combinationNavigationEpsilonPage"));
-    prepareStyledBackground(page);
-    auto *pageLayout = new QVBoxLayout(page);
-    pageLayout->setContentsMargins(kPageHorizontalInset,
-                                   kPageVerticalInset,
-                                   kPageHorizontalInset,
-                                   kPageVerticalInset);
-    pageLayout->setSpacing(kSectionGap);
-
-    QVBoxLayout *cardLayout = nullptr;
-    QFrame *card = createCard(
-        page, QStringLiteral("combinationNavigationEpsilonCard"), &cardLayout);
-    epsilon_page_title_ = createSectionTitle(
-        card, QStringLiteral("combinationNavigationEpsilonTitle"));
-    cardLayout->addWidget(epsilon_page_title_);
-
-    auto *statusGrid = new QGridLayout();
-    statusGrid->setContentsMargins(0, 0, 0, 0);
-    statusGrid->setHorizontalSpacing(28);
-    statusGrid->setVerticalSpacing(10);
-    statusGrid->setColumnStretch(1, 1);
-    epsilon_page_status_ = addField(
-        statusGrid, 0, card, QStringLiteral("combinationNavigationEpsilonPageStatusValue"));
-    cardLayout->addLayout(statusGrid);
-
-    epsilon_page_description_ = new QLabel(card);
-    epsilon_page_description_->setObjectName(QStringLiteral("combinationNavigationEpsilonDescription"));
-    epsilon_page_description_->setWordWrap(true);
-    epsilon_page_description_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    cardLayout->addWidget(epsilon_page_description_);
-
-    pageLayout->addWidget(card, 0);
-    pageLayout->addStretch(1);
-    return page;
-}
-
 void CombinationNavigationPage::updateTexts()
 {
     const QString pageName = is_english_
@@ -460,11 +448,10 @@ void CombinationNavigationPage::updateTexts()
                                                    : QStringLiteral("导航状态"));
     position_title_->setText(is_english_ ? QStringLiteral("Position") : QStringLiteral("位置"));
     attitude_title_->setText(is_english_ ? QStringLiteral("Attitude") : QStringLiteral("姿态"));
-    epsilon_page_title_->setText(QStringLiteral("EPSILON"));
-    epsilon_page_description_->setText(
-        is_english_
-            ? QStringLiteral("Detailed EPSILON parameters will be managed here in a later stage. The current Device page configuration remains unchanged.")
-            : QStringLiteral("EPSILON 详细参数将在后续阶段集中到此页面管理。当前设备配置页中的配置保持不变。"));
+    if (epsilon_config_panel_)
+    {
+        epsilon_config_panel_->setEnglish(is_english_);
+    }
 
     epsilon_status_.name->setText(QStringLiteral("EPSILON"));
     gnss_status_.name->setText(QStringLiteral("GNSS"));
@@ -480,12 +467,10 @@ void CombinationNavigationPage::updateTexts()
     roll_.name->setText(QStringLiteral("Roll"));
     pitch_.name->setText(QStringLiteral("Pitch"));
     heading_.name->setText(QStringLiteral("Heading"));
-    epsilon_page_status_.name->setText(is_english_ ? QStringLiteral("Device Status")
-                                                   : QStringLiteral("设备状态"));
 
-    const std::array<FieldWidgets *, 13> fields{{
+    const std::array<FieldWidgets *, 12> fields{{
         &epsilon_status_, &gnss_status_, &positioning_mode_, &rtk_status_, &ntrip_status_, &rtcm_status_,
-        &longitude_, &latitude_, &height_, &roll_, &pitch_, &heading_, &epsilon_page_status_,
+        &longitude_, &latitude_, &height_, &roll_, &pitch_, &heading_,
     }};
     for (FieldWidgets *field : fields)
     {
@@ -493,9 +478,6 @@ void CombinationNavigationPage::updateTexts()
         field->name->setAccessibleName(accessibleName);
         field->value->setAccessibleName(accessibleName);
     }
-    epsilon_page_description_->setAccessibleName(
-        is_english_ ? QStringLiteral("EPSILON configuration migration note")
-                    : QStringLiteral("EPSILON 配置迁移说明"));
 }
 
 void CombinationNavigationPage::applyAppearance()
@@ -529,8 +511,7 @@ void CombinationNavigationPage::applyAppearance()
         "QLabel[combinationNavigationValue=\"true\"] { color: @vv-text-strong; font-weight: 600; }"
         "QLabel[combinationNavigationStatusKind=\"healthy\"] { color: @vv-success; }"
         "QLabel[combinationNavigationStatusKind=\"active\"] { color: @vv-primary; }"
-        "QLabel[combinationNavigationStatusKind=\"inactive\"] { color: @vv-text-muted; }"
-        "QLabel#combinationNavigationEpsilonDescription { color: @vv-text-secondary; font-weight: 400; }");
+        "QLabel[combinationNavigationStatusKind=\"inactive\"] { color: @vv-text-muted; }");
     const QString resolvedStyle =
         VaporView::applyAppThemeTokens(style, VaporView::isDarkThemeEnabled());
     if (styleSheet() != resolvedStyle)
