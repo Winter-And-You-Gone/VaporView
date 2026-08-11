@@ -20,6 +20,28 @@ namespace
 {
 constexpr int kTemperatureControllerPlotWidth = 260;
 constexpr int kTemperatureControllerPlotMinHeight = 190;
+constexpr int kDefaultXAxisLabelCount = 5;
+constexpr int kMinTimeXAxisLabelCount = 2;
+constexpr int kMaxTimeXAxisLabelCount = 8;
+constexpr qreal kXAxisLabelGap = 8.0;
+
+int xAxisLabelCountForWidth(qreal plotWidth,
+                            const QFontMetrics& axisFontMetrics,
+                            bool timeAxisEnabled)
+{
+    if (!timeAxisEnabled)
+    {
+        return kDefaultXAxisLabelCount;
+    }
+
+    const qreal labelWidth = std::max<qreal>(
+        36.0,
+        axisFontMetrics.horizontalAdvance(QStringLiteral("00:00:00")) + 8.0);
+    const int count = static_cast<int>(std::floor(
+        (std::max<qreal>(0.0, plotWidth) + kXAxisLabelGap) /
+        (labelWidth + kXAxisLabelGap)));
+    return std::clamp(count, kMinTimeXAxisLabelCount, kMaxTimeXAxisLabelCount);
+}
 
 QFont numericFontFrom(const QFont& base)
 {
@@ -124,10 +146,12 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     const QFontMetrics axisFm(axisFont);
     painter.setPen(text);
     constexpr int kYAxisTicks = 6;
-    constexpr int kXAxisTicks = 4;
     const qreal leftAxisWidth = axisFm.horizontalAdvance(QStringLiteral("999")) + 6.0;
     constexpr qreal kBottomAxisHeight = 18.0;
     const QRectF plotRect = rect().adjusted(leftAxisWidth, 4.0, -4.0, -kBottomAxisHeight);
+    const int xAxisLabelCount = xAxisLabelCountForWidth(plotRect.width(), axisFm, time_axis_enabled_);
+    const int xAxisIntervals = std::max(1, xAxisLabelCount - 1);
+    setProperty("xAxisTickCount", xAxisLabelCount);
     auto xAxisRange = [this](const QVector<double>& xValues, int sampleCount) {
         if (!time_axis_enabled_)
         {
@@ -154,9 +178,9 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
                                int sampleCount) {
         const auto [xMin, xMax] = xAxisRange(xValues, sampleCount);
         painter.setPen(QPen(grid, 1));
-        for (int i = 0; i <= kXAxisTicks; ++i)
+        for (int i = 0; i < xAxisLabelCount; ++i)
         {
-            const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(kXAxisTicks);
+            const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(xAxisIntervals);
             painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
         }
         for (int i = 0; i <= kYAxisTicks; ++i)
@@ -180,15 +204,15 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
                                    axisFm.height());
             painter.drawText(labelRect, Qt::AlignRight | Qt::AlignVCenter, label);
         }
-        for (int i = 0; i <= kXAxisTicks; ++i)
+        for (int i = 0; i < xAxisLabelCount; ++i)
         {
-            const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(kXAxisTicks);
-            const double xValue = xMin + (xMax - xMin) * i / static_cast<double>(kXAxisTicks);
+            const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(xAxisIntervals);
+            const double xValue = xMin + (xMax - xMin) * i / static_cast<double>(xAxisIntervals);
             const QString label = time_axis_enabled_
                 ? timeAxisTickLabel(xValue)
                 : QString::number(sampleCount <= 1
                                       ? 0
-                                      : qRound((sampleCount - 1) * i / static_cast<double>(kXAxisTicks)));
+                                      : qRound((sampleCount - 1) * i / static_cast<double>(xAxisIntervals)));
             const qreal labelWidth = std::max<qreal>(36.0, axisFm.horizontalAdvance(label) + 8.0);
             const qreal labelLeft = std::clamp(x - labelWidth / 2.0,
                                                plotRect.left(),
@@ -342,7 +366,10 @@ void TemperatureTrendPlotWidget::updateSampleProperties()
     setProperty("yAxisMaxC", maxValue);
     setProperty("axisLabelsVisible", true);
     setProperty("yAxisTickCount", 7);
-    setProperty("xAxisTickCount", 5);
+    if (!time_axis_enabled_)
+    {
+        setProperty("xAxisTickCount", kDefaultXAxisLabelCount);
+    }
     setProperty("xAxisTimeMode", time_axis_enabled_);
     setProperty("xAxisTimeSampleCount", time_axis_enabled_ ? sample_times_.size() : 0);
     setProperty("xAxisTimeLabelFormat",

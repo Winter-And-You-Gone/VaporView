@@ -7889,8 +7889,12 @@ int main(int argc, char **argv)
                 "temperature trend plot centers the default axis range around the target temperature");
         require(plot->property("axisLabelsVisible").toBool(),
                 "temperature trend plot exposes visible axis labels");
+        const int xAxisTickCount = plot->property("xAxisTickCount").toInt();
+        const bool xAxisTickCountIsValid = plot->property("xAxisTimeMode").toBool()
+            ? xAxisTickCount >= 2 && xAxisTickCount <= 8
+            : xAxisTickCount == 5;
         require(plot->property("yAxisTickCount").toInt() == 7 &&
-                    plot->property("xAxisTickCount").toInt() == 5,
+                    xAxisTickCountIsValid,
                 "temperature trend plot shows numeric ticks on both axes");
     }
 

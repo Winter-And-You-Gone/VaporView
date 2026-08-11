@@ -5,6 +5,7 @@
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "ground/widgets/SkyDeviceConfigDialog.h"
+#include "ground/widgets/TemperatureTrendPlotWidget.h"
 #include "LogService.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "test_ui_helpers.h"
@@ -708,6 +709,25 @@ int main(int argc, char **argv)
                         temperatureOverviewPlot->property("sampleCount").toInt();
             }),
             "UI test mode feeds timestamped samples into the home temperature overview time axis");
+
+    TemperatureTrendPlotWidget adaptiveTimePlot;
+    adaptiveTimePlot.setTimeAxisEnabled(true);
+    adaptiveTimePlot.setSamples({25.0, 25.5});
+    adaptiveTimePlot.setSampleTimes({0.0, 300.0});
+    adaptiveTimePlot.resize(240, 180);
+    adaptiveTimePlot.show();
+    adaptiveTimePlot.repaint();
+    processEvents();
+    const int narrowTimeTickCount = adaptiveTimePlot.property("xAxisTickCount").toInt();
+    adaptiveTimePlot.resize(520, 180);
+    adaptiveTimePlot.repaint();
+    processEvents();
+    const int wideTimeTickCount = adaptiveTimePlot.property("xAxisTickCount").toInt();
+    adaptiveTimePlot.close();
+    require(narrowTimeTickCount >= 2 && narrowTimeTickCount <= 8 &&
+                wideTimeTickCount > narrowTimeTickCount && wideTimeTickCount <= 8,
+            "temperature overview time-axis tick count adapts to available plot width");
+
     require(VaporViewTest::processEventsUntil(1500, [temperatureOutputPercentPill, temperatureOutputSwitch]() {
                 return temperatureOutputSwitch->isChecked() &&
                     temperatureOverviewOutputPercentShowsNonZero(temperatureOutputPercentPill);
