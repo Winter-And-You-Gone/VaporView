@@ -2184,6 +2184,26 @@ void MainWindow::setupCentralWidget()
     syncRtkConfigPageState();
     state_->combination_navigation_page_ = new CombinationNavigationPage(
         state_->rtk_config_dialog_, state_->main_page_stack_);
+    auto *combinationStatusScrollArea =
+        state_->combination_navigation_page_->findChild<QScrollArea *>(
+            QStringLiteral("navigationStatusScrollArea"));
+    auto *combinationStatusContent =
+        state_->combination_navigation_page_->findChild<QWidget *>(
+            QStringLiteral("navigationStatusContent"));
+    installScrollAreaRightInsetSynchronizer(
+        combinationStatusScrollArea,
+        combinationStatusContent ? combinationStatusContent->layout() : nullptr,
+        [this]() { return topLevelCardShadowSafeRightInset(state_->font_scale_percent_); });
+    auto *combinationEpsilonScrollArea =
+        state_->combination_navigation_page_->findChild<QScrollArea *>(
+            QStringLiteral("epsilonConfigScrollArea"));
+    auto *combinationEpsilonContent =
+        state_->combination_navigation_page_->findChild<QWidget *>(
+            QStringLiteral("epsilonConfigContent"));
+    installScrollAreaRightInsetSynchronizer(
+        combinationEpsilonScrollArea,
+        combinationEpsilonContent ? combinationEpsilonContent->layout() : nullptr,
+        [this]() { return topLevelCardShadowSafeRightInset(state_->font_scale_percent_); });
     state_->epsilon_config_panel_ = state_->combination_navigation_page_->epsilonConfigPanel();
     if (state_->epsilon_config_panel_)
     {

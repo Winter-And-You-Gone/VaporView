@@ -1494,10 +1494,20 @@ void requireRtkSidebarPage(
     auto *epsilonPanel = combinationPage->epsilonConfigPanel();
     auto *epsilonPage = combinationPage->findChild<QWidget *>(
         QStringLiteral("combinationNavigationEpsilonPage"));
+    auto *statusScrollArea = combinationPage->findChild<QScrollArea *>(
+        QStringLiteral("navigationStatusScrollArea"));
+    auto *statusContent = combinationPage->findChild<QWidget *>(
+        QStringLiteral("navigationStatusContent"));
+    auto *epsilonScrollArea = combinationPage->findChild<QScrollArea *>(
+        QStringLiteral("epsilonConfigScrollArea"));
+    auto *epsilonContent = combinationPage->findChild<QWidget *>(
+        QStringLiteral("epsilonConfigContent"));
     require(combinationNavigationBar != nullptr && combinationNavigationBar->layout() != nullptr &&
                 combinationStack != nullptr && combinationStack->count() == 3 &&
                 statusButton != nullptr && epsilonButton != nullptr && differentialButton != nullptr &&
-                statusPage != nullptr && epsilonPage != nullptr,
+                statusPage != nullptr && epsilonPage != nullptr &&
+                statusScrollArea != nullptr && statusContent != nullptr && statusContent->layout() != nullptr &&
+                epsilonScrollArea != nullptr && epsilonContent != nullptr && epsilonContent->layout() != nullptr,
             "combination navigation exposes three real buttons and three stacked pages");
     require(combinationStack->currentWidget() == statusPage && statusButton->isChecked() &&
                 !epsilonButton->isChecked() && !differentialButton->isChecked(),
@@ -1774,6 +1784,22 @@ void requireRtkSidebarPage(
         VaporView::Ground::MainSupport::kTopLevelCardGap;
     require(kExpectedTopLevelCardGap == 12,
             "top-level cards keep the requested 12px spacing rhythm");
+    const auto requireCombinationPageRightInset =
+        [&](QScrollArea *scrollArea, QWidget *content, const char *message) {
+            const int expectedRightInset = scrollArea->verticalScrollBar()->maximum() > 0
+                ? kExpectedPageRightGap
+                : kExpectedPageRightInsetWithoutScrollBar;
+            require(content->layout()->contentsMargins().right() == expectedRightInset,
+                    message);
+        };
+    requireCombinationPageRightInset(
+        statusScrollArea,
+        statusContent,
+        "combination-navigation status page uses the RTK right inset for its scrollbar state");
+    requireCombinationPageRightInset(
+        epsilonScrollArea,
+        epsilonContent,
+        "combination-navigation EPSILON page uses the RTK right inset for its scrollbar state");
     auto widgetRectInCentralForRtk = [&window](QWidget *widget) {
         return QRect(widget->mapTo(window.centralWidget(), QPoint(0, 0)), widget->size());
     };
