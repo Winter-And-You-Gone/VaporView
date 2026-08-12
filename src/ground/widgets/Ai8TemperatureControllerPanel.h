@@ -119,6 +119,8 @@ private:
     QVector<DetailSectionBinding> detail_section_bindings_;
     std::array<QVector<double>, Ai8TemperatureControllerProtocol::kChannelCount>
         measured_temperature_history_{};
+    std::array<QVector<double>, Ai8TemperatureControllerProtocol::kChannelCount>
+        measured_temperature_time_history_{};
     Ai8TemperatureControllerProtocol::LiveData latest_live_data_;
     QString backend_detail_;
     QString operation_status_;

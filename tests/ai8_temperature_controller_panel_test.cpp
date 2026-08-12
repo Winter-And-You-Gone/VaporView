@@ -1,4 +1,5 @@
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
+#include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 
@@ -18,6 +19,7 @@
 #include <QStackedWidget>
 #include <QToolButton>
 
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
@@ -61,6 +63,8 @@ int main(int argc, char **argv)
             "AI-8 panel builds the side-by-side common-parameter and plot layout");
     require(temperaturePlot->property("forceWhiteBackground").toBool(),
             "AI-8 temperature plot uses the same white background as the parameter area");
+    require(temperaturePlot->property("xAxisTimeMode").toBool(),
+            "AI-8 temperature plot uses a clock-time x axis");
     require(temperaturePlot->testAttribute(Qt::WA_OpaquePaintEvent) &&
                 temperaturePlot->minimumHeight() == temperaturePlot->maximumHeight(),
             "AI-8 temperature plot has a stable opaque paint area");
@@ -537,6 +541,17 @@ int main(int argc, char **argv)
     require(temperaturePlot->property("yAxisMinC").toDouble() == 22.0 &&
                 temperaturePlot->property("yAxisMaxC").toDouble() == 24.0,
             "AI-8 temperature plot uses a one-degree target-centered axis range");
+    temperaturePlot->repaint();
+    const double targetGuideLineY = temperaturePlot->property("targetGuideLineY").toDouble();
+    require(temperaturePlot->property("xAxisTimeSampleCount").toInt() ==
+                    temperaturePlot->property("sampleCount").toInt() &&
+                temperaturePlot->property("targetGuideLineVisible").toBool() &&
+                temperaturePlot->property("targetGuideLineColor").toString() ==
+                    VaporView::appThemeColor(VaporView::AppThemeColor::ToolbarGreen,
+                                             VaporView::isDarkThemeEnabled()).name(QColor::HexRgb) &&
+                std::abs(temperaturePlot->property("targetGuideLineWidth").toDouble() - 1.0) < 0.001 &&
+                std::isfinite(targetGuideLineY),
+            "AI-8 temperature plot exposes timestamped samples and the bright green target guide");
     require(panel.currentOutputStatusText() == QStringLiteral("通道1：APID输出"),
             "AI-8 title status reports the selected channel output state");
 

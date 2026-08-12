@@ -153,7 +153,7 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     const QColor text = VaporView::appThemeColor(VaporView::AppThemeColor::PlotText, dark);
     const QColor muted = VaporView::appThemeColor(VaporView::AppThemeColor::PlotMutedText, dark);
     const QColor line = VaporView::appThemeColor(VaporView::AppThemeColor::PlotSeriesTemperature, dark);
-    const QColor targetGuideLine = VaporView::appThemeColor(VaporView::AppThemeColor::PlotPositive, dark);
+    const QColor targetGuideLine = VaporView::appThemeColor(VaporView::AppThemeColor::ToolbarGreen, dark);
 
     painter.fillRect(rect(), background);
     QFont axisFont = font();

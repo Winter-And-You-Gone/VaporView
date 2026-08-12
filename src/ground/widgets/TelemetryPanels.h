@@ -402,6 +402,7 @@ private:
     CommonWidgets common_{};
     std::array<ChannelWidgets, 2> channels_{};
     std::array<QVector<double>, 2> measured_temperature_history_{};
+    std::array<QVector<double>, 2> measured_temperature_time_history_{};
     std::array<double, 2> target_temperature_by_channel_{
         std::numeric_limits<double>::quiet_NaN(),
         std::numeric_limits<double>::quiet_NaN()};

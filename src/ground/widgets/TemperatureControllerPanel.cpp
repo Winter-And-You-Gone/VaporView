@@ -2163,6 +2163,7 @@ void TemperatureControllerPanel::setupUi()
     temperature_plot_ = new TemperatureTrendPlotWidget(temperature_plot_container_);
     temperature_plot_->setProperty("temperatureConfigPlot", true);
     temperature_plot_->setCompactMode(true);
+    temperature_plot_->setTimeAxisEnabled(true);
     temperature_plot_->setFixedHeight(kTemperatureControllerConfigPlotHeight);
     temperature_plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     temperaturePlotLayout->addWidget(temperature_plot_, 0, 0);
@@ -3181,6 +3182,7 @@ void TemperatureControllerPanel::selectChannel(int index)
         temperature_plot_->setChannelIndex(channelIndex);
         temperature_plot_->setTargetTemperature(target_temperature_by_channel_[channelIndex]);
         temperature_plot_->setSamples(measured_temperature_history_[channelIndex]);
+        temperature_plot_->setSampleTimes(measured_temperature_time_history_[channelIndex]);
     }
     updateCalibrationDrawerVisibility();
 }
@@ -4174,6 +4176,7 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
     }
     if (controllerData.valid)
     {
+        const double sampleTimeSeconds = localClockSeconds();
         for (int i = 0; i < static_cast<int>(measured_temperature_history_.size()); ++i)
         {
             const double target = controllerData.channels[i].target_temperature_c;
@@ -4185,10 +4188,13 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
             if (std::isfinite(measured))
             {
                 auto& history = measured_temperature_history_[i];
+                auto& timeHistory = measured_temperature_time_history_[i];
                 history.append(measured);
+                timeHistory.append(sampleTimeSeconds);
                 while (history.size() > kTemperatureControllerHistoryLimit)
                 {
                     history.removeFirst();
+                    timeHistory.removeFirst();
                 }
             }
         }
@@ -4201,6 +4207,7 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
         temperature_plot_->setChannelIndex(channelIndex);
         temperature_plot_->setTargetTemperature(target_temperature_by_channel_[channelIndex]);
         temperature_plot_->setSamples(measured_temperature_history_[channelIndex]);
+        temperature_plot_->setSampleTimes(measured_temperature_time_history_[channelIndex]);
     }
 }
 
