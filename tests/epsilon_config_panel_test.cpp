@@ -122,6 +122,7 @@ int main(int argc, char *argv[])
     std::vector<QRect> groupRects(packetGroups.size());
     std::vector<int> groupFieldBottoms(packetGroups.size(), -1);
     std::vector<std::map<std::pair<int, int>, QRect>> groupFieldCells(packetGroups.size());
+    std::map<int, int> inputColumnLefts;
     for (int groupIndex = 0; groupIndex < static_cast<int>(packetGroups.size()); ++groupIndex)
     {
         const PacketGroupExpectation& group = packetGroups.at(groupIndex);
@@ -137,6 +138,13 @@ int main(int argc, char *argv[])
                 continue;
             }
             const QRect comboRect(combo->mapTo(outputCard, QPoint(0, 0)), combo->size());
+            const int visualColumn = combo->property("epsilonPacketGridColumn").toInt();
+            const auto [columnLeft, inserted] = inputColumnLefts.emplace(visualColumn, comboRect.left());
+            if (!inserted)
+            {
+                require(std::abs(columnLeft->second - comboRect.left()) <= 2,
+                        "wide packet-rate input controls align within each visual column");
+            }
             firstPacketTop = std::min(firstPacketTop, comboRect.top());
             groupFieldBottoms.at(groupIndex) = std::max(groupFieldBottoms.at(groupIndex), comboRect.bottom());
             const int groupFieldRow = combo->property("epsilonPacketGroupFieldRow").toInt();

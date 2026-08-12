@@ -30,6 +30,7 @@ constexpr int kTwoColumnMinimumWidth = 980;
 constexpr int kPacketWideGridColumnCount = 5;
 constexpr int kPacketOuterGroupColumns = 2;
 constexpr int kPacketInnerFieldColumns = 2;
+constexpr int kPacketVisualColumnCount = kPacketOuterGroupColumns * kPacketInnerFieldColumns;
 
 enum class PacketRateGroup
 {
@@ -668,6 +669,7 @@ void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
             }
         }
     }
+    updatePacketLabelWidths();
     packet_grid_->invalidate();
     packet_grid_->activate();
     QTimer::singleShot(0, this, [this]() {
@@ -689,13 +691,35 @@ void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
 
 void EpsilonConfigPanel::updatePacketLabelWidths()
 {
+    QVector<int> columnLabelWidths(kPacketVisualColumnCount, 0);
     for (QLabel *label : packet_rate_labels_)
     {
         if (!label)
         {
             continue;
         }
-        const int labelWidth = label->fontMetrics().horizontalAdvance(label->text()) + 4;
+        int visualColumn = label->property("epsilonPacketGridColumn").toInt();
+        if (visualColumn < 0 || visualColumn >= kPacketVisualColumnCount)
+        {
+            visualColumn = 0;
+        }
+        columnLabelWidths[visualColumn] = std::max(
+            columnLabelWidths.at(visualColumn),
+            label->fontMetrics().horizontalAdvance(label->text()) + 4);
+    }
+    for (QLabel *label : packet_rate_labels_)
+    {
+        if (!label)
+        {
+            continue;
+        }
+        int visualColumn = label->property("epsilonPacketGridColumn").toInt();
+        if (visualColumn < 0 || visualColumn >= kPacketVisualColumnCount)
+        {
+            visualColumn = 0;
+        }
+        const int fallbackWidth = label->fontMetrics().horizontalAdvance(label->text()) + 4;
+        const int labelWidth = std::max(columnLabelWidths.at(visualColumn), fallbackWidth);
         label->setMinimumWidth(labelWidth);
         label->setMaximumWidth(labelWidth);
         label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
