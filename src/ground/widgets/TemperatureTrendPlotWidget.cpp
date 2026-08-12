@@ -24,6 +24,7 @@ constexpr int kDefaultXAxisLabelCount = 5;
 constexpr int kMinTimeXAxisLabelCount = 2;
 constexpr int kMaxTimeXAxisLabelCount = 8;
 constexpr qreal kXAxisLabelGap = 8.0;
+constexpr double kTimeAxisSecondsPerInterval = 1.0;
 
 int xAxisLabelCountForWidth(qreal plotWidth,
                             const QFontMetrics& axisFontMetrics,
@@ -152,31 +153,35 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     const int xAxisLabelCount = xAxisLabelCountForWidth(plotRect.width(), axisFm, time_axis_enabled_);
     const int xAxisIntervals = std::max(1, xAxisLabelCount - 1);
     setProperty("xAxisTickCount", xAxisLabelCount);
-    auto xAxisRange = [this](const QVector<double>& xValues, int sampleCount) {
+    auto xAxisRange = [this, xAxisIntervals](const QVector<double>& xValues, int sampleCount) {
         if (!time_axis_enabled_)
         {
             return std::pair<double, double>{0.0, static_cast<double>(std::max(1, sampleCount - 1))};
         }
+        const double visibleSpan = static_cast<double>(xAxisIntervals) * kTimeAxisSecondsPerInterval;
         if (xValues.isEmpty())
         {
-            return std::pair<double, double>{0.0, 1.0};
+            return std::pair<double, double>{0.0, visibleSpan};
         }
-        const auto [minIt, maxIt] = std::minmax_element(xValues.cbegin(), xValues.cend());
-        if (!std::isfinite(*minIt) || !std::isfinite(*maxIt))
+        const auto maxIt = std::max_element(xValues.cbegin(), xValues.cend());
+        if (maxIt == xValues.cend() || !std::isfinite(*maxIt))
         {
-            return std::pair<double, double>{0.0, 1.0};
+            return std::pair<double, double>{0.0, visibleSpan};
         }
-        if (*maxIt - *minIt <= 1e-6)
-        {
-            return std::pair<double, double>{*minIt, *minIt + 1.0};
-        }
-        return std::pair<double, double>{*minIt, *maxIt};
+        const double xMax = std::max(visibleSpan, std::max(0.0, *maxIt));
+        return std::pair<double, double>{xMax - visibleSpan, xMax};
     };
     auto drawGridAndAxes = [&](double minValue,
                                double maxValue,
                                const QVector<double>& xValues,
                                int sampleCount) {
         const auto [xMin, xMax] = xAxisRange(xValues, sampleCount);
+        if (time_axis_enabled_)
+        {
+            setProperty("xAxisTimeMinSeconds", xMin);
+            setProperty("xAxisTimeMaxSeconds", xMax);
+            setProperty("xAxisTimeSpanSeconds", xMax - xMin);
+        }
         painter.setPen(QPen(grid, 1));
         for (int i = 0; i < xAxisLabelCount; ++i)
         {

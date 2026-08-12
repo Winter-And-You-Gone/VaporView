@@ -713,20 +713,26 @@ int main(int argc, char **argv)
     TemperatureTrendPlotWidget adaptiveTimePlot;
     adaptiveTimePlot.setTimeAxisEnabled(true);
     adaptiveTimePlot.setSamples({25.0, 25.5});
-    adaptiveTimePlot.setSampleTimes({0.0, 300.0});
+    adaptiveTimePlot.setSampleTimes({3.0, 29.0});
     adaptiveTimePlot.resize(240, 180);
     adaptiveTimePlot.show();
     adaptiveTimePlot.repaint();
     processEvents();
     const int narrowTimeTickCount = adaptiveTimePlot.property("xAxisTickCount").toInt();
+    const double narrowTimeSpan = adaptiveTimePlot.property("xAxisTimeSpanSeconds").toDouble();
     adaptiveTimePlot.resize(520, 180);
     adaptiveTimePlot.repaint();
     processEvents();
     const int wideTimeTickCount = adaptiveTimePlot.property("xAxisTickCount").toInt();
+    const double wideTimeSpan = adaptiveTimePlot.property("xAxisTimeSpanSeconds").toDouble();
+    const double wideTimeMax = adaptiveTimePlot.property("xAxisTimeMaxSeconds").toDouble();
     adaptiveTimePlot.close();
     require(narrowTimeTickCount >= 2 && narrowTimeTickCount <= 8 &&
-                wideTimeTickCount > narrowTimeTickCount && wideTimeTickCount <= 8,
-            "temperature overview time-axis tick count adapts to available plot width");
+                wideTimeTickCount > narrowTimeTickCount && wideTimeTickCount <= 8 &&
+                std::abs(narrowTimeSpan - (narrowTimeTickCount - 1)) < 1e-6 &&
+                std::abs(wideTimeSpan - (wideTimeTickCount - 1)) < 1e-6 &&
+                std::abs(wideTimeMax - 29.0) < 1e-6,
+            "temperature overview time axis keeps one-second spacing over the latest visible window");
 
     require(VaporViewTest::processEventsUntil(1500, [temperatureOutputPercentPill, temperatureOutputSwitch]() {
                 return temperatureOutputSwitch->isChecked() &&
