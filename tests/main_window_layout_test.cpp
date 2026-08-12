@@ -7959,8 +7959,11 @@ int main(int argc, char **argv)
         require(plot->property("axisLabelsVisible").toBool(),
                 "temperature trend plot exposes visible axis labels");
         const int xAxisTickCount = plot->property("xAxisTickCount").toInt();
-        const bool xAxisTickCountIsValid = plot->property("xAxisTimeMode").toBool()
-            ? xAxisTickCount >= 2 && xAxisTickCount <= 8
+        const bool timeAxisMode = plot->property("xAxisTimeMode").toBool();
+        const bool xAxisTickCountIsValid = timeAxisMode
+            ? xAxisTickCount >= 2 &&
+                std::abs(plot->property("xAxisTimeSpanSeconds").toDouble() -
+                         static_cast<double>(xAxisTickCount - 1)) < 1e-6
             : xAxisTickCount == 5;
         require(plot->property("yAxisTickCount").toInt() == 7 &&
                     xAxisTickCountIsValid,
@@ -8358,11 +8361,11 @@ int main(int argc, char **argv)
                 deviceConfigScrollArea->horizontalScrollBar()->maximum() == 0,
             "device configuration page fits horizontally at default window size");
     auto *deviceFirstCard =
-        deviceConfigPage->findChild<QGroupBox *>(QStringLiteral("sensorGroupBox"));
+        deviceConfigPage->findChild<QFrame *>(QStringLiteral("epsilonSectionCard"));
     require(deviceFirstCard != nullptr &&
                 std::abs(widgetRectInCentral(deviceFirstCard).top() -
                          homePrimaryCardRect.top()) <= 1,
-            "device configuration page aligns its first card with the home page 12px top gap");
+            "device configuration page places the link-status card on the first row");
 
     const QStringList removedDevicePageActions = {
         QStringLiteral("刷新"),
@@ -8765,14 +8768,20 @@ int main(int argc, char **argv)
     requireTopLevelCardElevation(serialConfigCard,
                                  1.0,
                                  "device serial configuration card uses the shared soft elevation");
-    require(serialConfigCard->sizePolicy().horizontalPolicy() == QSizePolicy::Maximum,
-            "device configuration serial card width follows its contents");
+    require(serialConfigCard->sizePolicy().horizontalPolicy() == QSizePolicy::Expanding,
+            "device configuration serial card expands to fill its row");
     const QRect serialConfigPageRect(serialConfigCard->mapTo(deviceConfigPage, QPoint(0, 0)),
                                      serialConfigCard->size());
     require(std::abs(widgetRectInCentral(serialConfigCard).left() - homePrimaryCardLeft) <= 1,
-            "device configuration page aligns its first card with the home page card left edge");
-    require(serialConfigCard->width() <= serialConfigCard->sizeHint().width() + 4,
-            "device configuration serial card does not expand to fill the whole row");
+            "device configuration page aligns the serial card with the home page card left edge");
+    const int expectedDeviceConfigCardWidth =
+        deviceConfigScrollArea->viewport()->width() -
+        kExpectedPageLeftInset -
+        (deviceConfigPageScrollable
+             ? kExpectedHomeShadowSafeRightInset
+             : kExpectedNoScrollPageRightInset);
+    require(std::abs(serialConfigCard->width() - expectedDeviceConfigCardWidth) <= 4,
+            "device configuration serial card fills the main content row");
     requireCardTitleBar(serialConfigCard,
                         QStringList{QStringLiteral("串口配置"), QStringLiteral("Serial Port Configuration")},
                         QStringLiteral("usb"),
@@ -8788,7 +8797,6 @@ int main(int argc, char **argv)
     const QRect deviceRateRect(deviceRateCombo->mapTo(deviceConfigPage, QPoint(0, 0)),
                                deviceRateCombo->size());
     bool foundRemoteButtonsToRightOfRate = false;
-    int rightmostRemoteButtonRight = -1;
     for (QToolButton *button : deviceConfigPage->findChildren<QToolButton *>())
     {
         if (!button->isVisible())
@@ -8803,7 +8811,6 @@ int main(int argc, char **argv)
         const QRect buttonRect(button->mapTo(deviceConfigPage, QPoint(0, 0)), button->size());
         require(remoteAction != QStringLiteral("reconnect"),
                 "device configuration omits reconnect remote actions to keep the serial card compact");
-        rightmostRemoteButtonRight = std::max(rightmostRemoteButtonRight, buttonRect.right());
         if (buttonRect.left() > deviceRateRect.right() &&
             std::abs(buttonRect.center().y() - deviceRateRect.center().y()) <= 2)
         {
@@ -8812,9 +8819,6 @@ int main(int argc, char **argv)
     }
     require(foundRemoteButtonsToRightOfRate,
             "device configuration remote actions sit to the right of the rate selector");
-    require(rightmostRemoteButtonRight > 0 &&
-                serialConfigPageRect.right() - rightmostRemoteButtonRight <= 32,
-            "device configuration serial card right edge stays close to the compact remote buttons");
 
     auto *combinationPageForEpsilonGeometry =
         window.findChild<VaporView::Ground::Navigation::CombinationNavigationPage *>();
@@ -8960,8 +8964,9 @@ int main(int argc, char **argv)
                 epsilonConfigScrollArea->horizontalScrollBarPolicy() == Qt::ScrollBarAlwaysOff &&
                 epsilonConfigScrollArea->horizontalScrollBar()->maximum() == 0,
             "EPSILON page avoids a horizontal scrollbar at the default window size");
-    int leftPacketComboColumn = -1;
-    int rightPacketComboColumn = -1;
+    constexpr int kEpsilonPacketVisualColumnCount = 4;
+    std::array<int, kEpsilonPacketVisualColumnCount> packetComboColumnLefts;
+    packetComboColumnLefts.fill(-1);
     int packetComboBottom = -1;
     for (QComboBox *combo : epsilonOutputCard->findChildren<QComboBox *>())
     {
@@ -8999,9 +9004,9 @@ int main(int argc, char **argv)
         require(combo->property("epsilonPacketGridColumn").isValid(),
                 "EPSILON packet-rate combo reports its visual column");
         const int visualColumn = combo->property("epsilonPacketGridColumn").toInt();
-        require(visualColumn == 0 || visualColumn == 1,
+        require(visualColumn >= 0 && visualColumn < kEpsilonPacketVisualColumnCount,
                 "EPSILON packet-rate combo column is valid");
-        int& expectedColumnLeft = visualColumn == 0 ? leftPacketComboColumn : rightPacketComboColumn;
+        int& expectedColumnLeft = packetComboColumnLefts[visualColumn];
         if (expectedColumnLeft < 0)
         {
             expectedColumnLeft = comboRect.left();
@@ -9012,8 +9017,21 @@ int main(int argc, char **argv)
                     "EPSILON packet-rate combos align vertically within each column");
         }
     }
-    require(leftPacketComboColumn >= 0 && rightPacketComboColumn > leftPacketComboColumn,
-            "EPSILON packet-rate layout exposes two aligned combo columns");
+    int visiblePacketColumns = 0;
+    int previousPacketColumnLeft = -1;
+    for (int columnLeft : packetComboColumnLefts)
+    {
+        if (columnLeft < 0)
+        {
+            continue;
+        }
+        require(previousPacketColumnLeft < 0 || columnLeft > previousPacketColumnLeft,
+                "EPSILON packet-rate visual columns progress left-to-right");
+        previousPacketColumnLeft = columnLeft;
+        ++visiblePacketColumns;
+    }
+    require(visiblePacketColumns >= 2,
+            "EPSILON packet-rate layout exposes multiple aligned visual columns");
     auto requireActionButton = [](QWidget *owner,
                                   const QString& objectName,
                                   const QStringList& expectedTexts,
@@ -9132,27 +9150,27 @@ int main(int argc, char **argv)
     require(telemetrySubCards.size() == 3,
             "device telemetry summary card splits content into three home-style subcards");
     std::sort(telemetrySubCards.begin(), telemetrySubCards.end(), [](QFrame *a, QFrame *b) {
-        return a->mapTo(a->parentWidget(), QPoint(0, 0)).y() <
-               b->mapTo(b->parentWidget(), QPoint(0, 0)).y();
+        return a->mapTo(a->parentWidget(), QPoint(0, 0)).x() <
+               b->mapTo(b->parentWidget(), QPoint(0, 0)).x();
     });
     const QVector<QStringList> expectedTelemetrySubCardTitles = {
         {QStringLiteral("数据频率"), QStringLiteral("Data stream rates")},
         {QStringLiteral("链路速率"), QStringLiteral("Link rate")},
         {QStringLiteral("数据"), QStringLiteral("Data")},
     };
-    int previousSubCardBottom = -1;
-    int previousSubCardLeft = -1;
+    int previousSubCardRight = -1;
+    int previousSubCardTop = -1;
     int previousTitleLeft = -1;
     for (int i = 0; i < telemetrySubCards.size(); ++i)
     {
         QFrame *subCard = telemetrySubCards.at(i);
         const QRect subCardRect(subCard->mapTo(deviceTelemetrySummaryCard, QPoint(0, 0)), subCard->size());
-        require(previousSubCardBottom < 0 || subCardRect.top() > previousSubCardBottom,
-                "device telemetry summary subcards are stacked vertically");
-        require(previousSubCardLeft < 0 || std::abs(subCardRect.left() - previousSubCardLeft) <= 2,
-                "device telemetry summary subcards align on the left edge");
-        previousSubCardBottom = subCardRect.bottom();
-        previousSubCardLeft = subCardRect.left();
+        require(previousSubCardRight < 0 || subCardRect.left() > previousSubCardRight,
+                "device telemetry summary subcards are arranged horizontally");
+        require(previousSubCardTop < 0 || std::abs(subCardRect.top() - previousSubCardTop) <= 2,
+                "device telemetry summary subcards align on the top edge");
+        previousSubCardRight = subCardRect.right();
+        previousSubCardTop = subCardRect.top();
 
         QFrame *titlePane = subCard->findChild<QFrame *>(QStringLiteral("deviceTelemetrySectionTitlePane"));
         require(titlePane != nullptr,
@@ -9238,10 +9256,17 @@ int main(int argc, char **argv)
     }
     const QRect telemetrySummaryPageRect(deviceTelemetrySummaryCard->mapTo(deviceConfigPage, QPoint(0, 0)),
                                          deviceTelemetrySummaryCard->size());
-    require(std::abs(telemetrySummaryPageRect.top() - serialConfigPageRect.top()) <= 2,
-            "device telemetry summary card is aligned with the serial configuration card row");
-    require(telemetrySummaryPageRect.left() > serialConfigPageRect.right(),
-            "device telemetry summary card sits to the right of the serial configuration card");
+    require(std::abs(widgetRectInCentral(deviceTelemetrySummaryCard).left() - homePrimaryCardLeft) <= 1,
+            "device telemetry summary card aligns with the home page card left edge");
+    require(std::abs(deviceTelemetrySummaryCard->width() - expectedDeviceConfigCardWidth) <= 4,
+            "device telemetry summary card fills the main content row");
+    require(telemetrySummaryPageRect.top() < serialConfigPageRect.top() &&
+                serialConfigPageRect.top() - telemetrySummaryPageRect.bottom() <=
+                    kExpectedTopLevelCardGap + 2,
+            "device telemetry summary card sits on the first row above the serial configuration card");
+    require(std::abs(telemetrySummaryPageRect.left() - serialConfigPageRect.left()) <= 2 &&
+                std::abs(telemetrySummaryPageRect.right() - serialConfigPageRect.right()) <= 2,
+            "device telemetry summary and serial configuration cards share the full-row width");
     const QRect localEpsilonConfigRect = epsilonConfigCard->geometry();
     const QRect localTelemetrySummaryRect = deviceTelemetrySummaryCard->geometry();
     for (const QFrame *summaryCard : deviceSummaryCards)

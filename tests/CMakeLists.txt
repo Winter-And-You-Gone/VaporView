@@ -564,6 +564,20 @@ add_test(NAME combination_navigation_page_test
     COMMAND main_window_layout_test --combination-navigation-only
 )
 
+add_executable(device_config_layout_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/device_config_layout_test.cpp
+)
+target_include_directories(device_config_layout_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_compile_definitions(device_config_layout_test PRIVATE
+    VAPORVIEW_MAIN_WINDOW_TESTING=1
+)
+target_link_libraries(device_config_layout_test PRIVATE vaporview_main_window)
+add_dependencies(device_config_layout_test VaporViewRuntimeResources)
+add_test(NAME device_config_layout_test COMMAND device_config_layout_test)
+
 add_executable(epsilon_config_panel_test
     ${CMAKE_CURRENT_SOURCE_DIR}/epsilon_config_panel_test.cpp
 )
@@ -1015,6 +1029,7 @@ set_tests_properties(${VAPORVIEW_FAST_INTEGRATION_TESTS} PROPERTIES TIMEOUT 60)
 set_property(TEST ${VAPORVIEW_FAST_INTEGRATION_TESTS} PROPERTY LABELS fast integration)
 
 set(VAPORVIEW_SLOW_UI_TESTS
+    device_config_layout_test
     main_window_layout_test
     home_overview_language_layout_test
     combination_navigation_page_test
@@ -1050,6 +1065,7 @@ set_property(TEST
 )
 set_property(TEST
     main_window_layout_test
+    device_config_layout_test
     home_overview_language_layout_test
     session_viewer_io_test
     session_viewer_window_state_test
@@ -1061,6 +1077,7 @@ set_property(TEST
     APPEND PROPERTY LABELS ui
 )
 set_property(TEST main_window_layout_test APPEND PROPERTY LABELS main-window layout)
+set_property(TEST device_config_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST home_overview_language_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST combination_navigation_page_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST navigation_status_panel_test APPEND PROPERTY LABELS navigation-status ui layout)

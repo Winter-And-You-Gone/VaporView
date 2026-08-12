@@ -2386,11 +2386,6 @@ void MainWindow::setupDeviceConfigPage()
                                       kMainContentRightCardInset,
                                       kMainContentBottomShadowSafeInset);
     contentLayout->setSpacing(kTopLevelCardGap);
-    auto *topRowLayout = new QHBoxLayout;
-    topRowLayout->setContentsMargins(0, 0, 0, 0);
-    topRowLayout->setSpacing(kTopLevelCardGap);
-    topRowLayout->setAlignment(Qt::AlignTop);
-
     auto createCard = [](QWidget *parent) {
         auto *card = new QGroupBox(parent);
         card->setObjectName(QStringLiteral("sensorGroupBox"));
@@ -2403,7 +2398,7 @@ void MainWindow::setupDeviceConfigPage()
     };
 
     auto *serialCard = createCard(content);
-    serialCard->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+    serialCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *serialLayout = qobject_cast<QVBoxLayout *>(serialCard->layout());
     auto *serialTitleBar = new QWidget(serialCard);
     serialTitleBar->setObjectName(QStringLiteral("sectionTitleBar"));
@@ -2754,7 +2749,7 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.data_telemetry_summary_card->setObjectName(QStringLiteral("epsilonSectionCard"));
     configureTopLevelCard(state_->device_config_.data_telemetry_summary_card);
     state_->device_config_.data_telemetry_summary_card->setMinimumWidth(0);
-    state_->device_config_.data_telemetry_summary_card->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
+    state_->device_config_.data_telemetry_summary_card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     auto *summaryLayout = new QVBoxLayout(state_->device_config_.data_telemetry_summary_card);
     summaryLayout->setContentsMargins(1, 0, 1, 1);
     summaryLayout->setSpacing(0);
@@ -2775,9 +2770,9 @@ void MainWindow::setupDeviceConfigPage()
 
     auto *summaryBodyWidget = new QWidget(state_->device_config_.data_telemetry_summary_card);
     summaryBodyWidget->setObjectName(QStringLiteral("homeTelemetrySummaryContainer"));
-    auto *summaryBodyLayout = new QVBoxLayout(summaryBodyWidget);
+    auto *summaryBodyLayout = new QHBoxLayout(summaryBodyWidget);
     summaryBodyLayout->setContentsMargins(8, 6, 8, 6);
-    summaryBodyLayout->setSpacing(2);
+    summaryBodyLayout->setSpacing(8);
     auto createDeviceTelemetrySection = [summaryBodyWidget, summaryBodyLayout](QVBoxLayout *&sectionContentLayout) {
         auto *section = new QFrame(summaryBodyWidget);
         section->setObjectName(QStringLiteral("homeTelemetrySectionCard"));
@@ -2786,15 +2781,14 @@ void MainWindow::setupDeviceConfigPage()
         sectionContentLayout = new QVBoxLayout(section);
         sectionContentLayout->setContentsMargins(0, 0, 0, 0);
         sectionContentLayout->setSpacing(0);
-        summaryBodyLayout->addWidget(section, 0);
+        summaryBodyLayout->addWidget(section, 1, Qt::AlignTop);
     };
     createDeviceTelemetrySection(state_->device_config_.data_telemetry_rate_summary_layout);
     createDeviceTelemetrySection(state_->device_config_.data_telemetry_link_summary_layout);
     createDeviceTelemetrySection(state_->device_config_.data_telemetry_device_summary_layout);
     summaryLayout->addWidget(summaryBodyWidget);
-    topRowLayout->addWidget(serialCard, 0, Qt::AlignTop | Qt::AlignLeft);
-    topRowLayout->addWidget(state_->device_config_.data_telemetry_summary_card, 1, Qt::AlignTop);
-    contentLayout->addLayout(topRowLayout);
+    contentLayout->addWidget(state_->device_config_.data_telemetry_summary_card, 0);
+    contentLayout->addWidget(serialCard, 0);
     contentLayout->addStretch(1);
 
     scrollArea->setWidget(content);
