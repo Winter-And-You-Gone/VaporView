@@ -54,7 +54,6 @@ struct LocalConnectionRequest
     int epsilonConfiguredRateHz = 100;
     QString epsilonPacketRateSignature;
     QString epsilonPacketRateSummary;
-    bool epsilonUsesCustomPacketRates = false;
     bool epsilonConfigLikelyMatches = false;
 };
 

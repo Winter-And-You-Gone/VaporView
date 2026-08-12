@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <map>
 
-class QCheckBox;
 class QComboBox;
 class QEvent;
 class QGridLayout;
@@ -28,14 +27,11 @@ public:
 
     void setEnglish(bool english);
     void setAvailable(bool available);
-    void setCustomPacketProfileEnabled(bool enabled);
-    bool customPacketProfileEnabled() const;
     void setPacketRates(const std::map<uint8_t, int>& packetRates);
     std::map<uint8_t, int> packetRates() const;
 
 signals:
     void recommendedProfileRequested();
-    void groupedProfileRequested();
     void saveRequested();
     void rtcmPortRequested();
     void reconfigureRequested();
@@ -67,21 +63,18 @@ private:
     QLabel *profile_value_label_ = nullptr;
     QLabel *packet_count_name_label_ = nullptr;
     QLabel *packet_count_value_label_ = nullptr;
-    QLabel *grouped_description_label_ = nullptr;
     QLabel *rtcm_name_label_ = nullptr;
     QLabel *rtcm_description_label_ = nullptr;
     QLabel *reconfigure_name_label_ = nullptr;
     QLabel *reconfigure_description_label_ = nullptr;
     QLabel *rtk_name_label_ = nullptr;
     QLabel *rtk_description_label_ = nullptr;
-    QCheckBox *custom_packet_check_ = nullptr;
     QVector<QLabel *> packet_group_labels_;
     QVector<QWidget *> packet_rate_fields_;
     QVector<QLabel *> packet_rate_labels_;
     QVector<QComboBox *> packet_rate_combos_;
     QVector<int> packet_rate_group_ids_;
     QPushButton *recommended_button_ = nullptr;
-    QPushButton *grouped_button_ = nullptr;
     QPushButton *save_button_ = nullptr;
     QPushButton *rtcm_port_button_ = nullptr;
     QPushButton *reconfigure_button_ = nullptr;

@@ -1537,8 +1537,6 @@ void requireRtkSidebarPage(
             "main window owns exactly one combination-navigation page and one RTK dialog");
     auto *deviceConfigPageForBoundary =
         window.findChild<QWidget *>(QStringLiteral("deviceConfigPage"));
-    const QList<QCheckBox *> epsilonPacketChecks =
-        window.findChildren<QCheckBox *>(QStringLiteral("epsilonPacketCustomCheck"));
     int epsilonPacketRateControlCount = 0;
     for (QComboBox *combo : window.findChildren<QComboBox *>())
     {
@@ -1559,9 +1557,8 @@ void requireRtkSidebarPage(
         }
     }
     require(deviceConfigPageForBoundary != nullptr && epsilonPanel != nullptr &&
-                epsilonPacketChecks.size() == 1 && epsilonPage->isAncestorOf(epsilonPacketChecks.front()) &&
                 epsilonPacketRateControlCount == 11 && deviceConfigPacketRateControlCount == 0 &&
-                deviceConfigPageForBoundary->findChild<QCheckBox *>(QStringLiteral("epsilonPacketCustomCheck")) == nullptr,
+                epsilonPage->isAncestorOf(epsilonPanel),
             "the single detailed EPSILON configuration now belongs to Combination Navigation");
     auto *rtkServiceStatus = combinationPage->findChild<QLabel *>(
         QStringLiteral("navigationStatusRtkServiceValue"));
@@ -8833,10 +8830,6 @@ int main(int argc, char **argv)
     mainPageStackForScroll->setCurrentWidget(combinationPageForEpsilonGeometry);
     processEventsFor(120);
     activateLayouts(epsilonPanelForGeometry);
-    auto *epsilonPacketCustomCheck =
-        epsilonPanelForGeometry->findChild<QCheckBox *>(QStringLiteral("epsilonPacketCustomCheck"));
-    require(epsilonPacketCustomCheck != nullptr,
-            "combination navigation exposes the EPSILON custom packet-rate checkbox");
     QFrame *epsilonConfigCard = epsilonPanelForGeometry;
     auto *epsilonStatusCard = epsilonPanelForGeometry->findChild<QFrame *>(
         QStringLiteral("epsilonStatusCard"));
@@ -8889,56 +8882,6 @@ int main(int argc, char **argv)
                     VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised,
                                                   VaporView::isDarkThemeEnabled())),
             "EPSILON section styling uses local theme tokens without a parallel color system");
-    require(epsilonPacketCustomCheck != nullptr &&
-                epsilonPacketCustomCheck->focusPolicy() == Qt::TabFocus,
-            "EPSILON custom packet-rate checkbox keeps keyboard focus without retaining mouse-click focus");
-    require(epsilonPacketCustomCheck->property("indicatorCanvasSize").toInt() == 34 &&
-                epsilonPacketCustomCheck->property("indicatorIconSize").toInt() == 24 &&
-                epsilonPacketCustomCheck->property("indicatorCanvasSize").toInt() >
-                    epsilonPacketCustomCheck->property("indicatorIconSize").toInt() &&
-                epsilonPacketCustomCheck->property("indicatorFeedbackColorRole").toString() ==
-                    QStringLiteral("TitleBarHover"),
-            "EPSILON custom packet-rate checkbox uses the title-bar 34px canvas with a 24px icon");
-    const int epsilonCustomCheckStyleIndex = appStyleSheet.indexOf(
-        QStringLiteral("QCheckBox#epsilonPacketCustomCheck::indicator {"));
-    require(epsilonCustomCheckStyleIndex >= 0 &&
-                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 700).contains(
-                    QStringLiteral("width: 34px")) &&
-                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 700).contains(
-                    QStringLiteral("height: 34px")) &&
-                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 700).contains(
-                    QStringLiteral("image: none")) &&
-                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 700).contains(
-                    QStringLiteral("background-color: transparent")),
-            "EPSILON custom packet-rate checkbox separates the title-bar hover canvas from its icon");
-    QStyleOptionButton epsilonCheckOption;
-    epsilonCheckOption.initFrom(epsilonPacketCustomCheck);
-    epsilonCheckOption.text = epsilonPacketCustomCheck->text();
-    const QRect epsilonCheckIndicatorRect = epsilonPacketCustomCheck->style()->subElementRect(
-        QStyle::SE_CheckBoxIndicator,
-        &epsilonCheckOption,
-        epsilonPacketCustomCheck);
-    require(epsilonCheckIndicatorRect.isValid(),
-            "EPSILON custom packet-rate checkbox exposes a valid icon hit area");
-    const QPoint epsilonCheckTextPoint(
-        std::min(epsilonPacketCustomCheck->width() - 1, epsilonCheckIndicatorRect.right() + 24),
-        epsilonCheckIndicatorRect.center().y());
-    const bool epsilonCheckInitiallyChecked = epsilonPacketCustomCheck->isChecked();
-    clickWidgetAt(epsilonPacketCustomCheck, epsilonCheckTextPoint);
-    require(epsilonPacketCustomCheck->isChecked() == epsilonCheckInitiallyChecked,
-            "EPSILON custom packet-rate checkbox ignores clicks on its descriptive text");
-    clickWidgetAt(epsilonPacketCustomCheck, epsilonCheckIndicatorRect.center());
-    require(epsilonPacketCustomCheck->isChecked() != epsilonCheckInitiallyChecked,
-            "EPSILON custom packet-rate checkbox toggles from its icon area");
-    moveMouseOverWidgetAt(epsilonPacketCustomCheck, epsilonCheckIndicatorRect.center());
-    require(epsilonPacketCustomCheck->property("indicatorHovered").toBool(),
-            "EPSILON custom packet-rate checkbox highlights only while its icon is hovered");
-    moveMouseOverWidgetAt(epsilonPacketCustomCheck, epsilonCheckTextPoint);
-    require(!epsilonPacketCustomCheck->property("indicatorHovered").toBool(),
-            "EPSILON custom packet-rate checkbox clears hover feedback outside the icon area");
-    clickWidgetAt(epsilonPacketCustomCheck, epsilonCheckIndicatorRect.center());
-    require(epsilonPacketCustomCheck->isChecked() == epsilonCheckInitiallyChecked,
-            "EPSILON custom packet-rate checkbox test restores the original checked state");
     const QRect epsilonStatusBounds(epsilonStatusCard->mapTo(epsilonConfigCard, QPoint(0, 0)),
                                     epsilonStatusCard->size());
     const QRect epsilonOutputBounds(epsilonOutputCard->mapTo(epsilonConfigCard, QPoint(0, 0)),
@@ -8967,7 +8910,6 @@ int main(int argc, char **argv)
     constexpr int kEpsilonPacketVisualColumnCount = 4;
     std::array<int, kEpsilonPacketVisualColumnCount> packetComboColumnLefts;
     packetComboColumnLefts.fill(-1);
-    int packetComboBottom = -1;
     for (QComboBox *combo : epsilonOutputCard->findChildren<QComboBox *>())
     {
         if (!combo->isVisible() || !combo->property("epsilonPacketId").isValid())
@@ -8975,7 +8917,6 @@ int main(int argc, char **argv)
             continue;
         }
         const QRect comboRect(combo->mapTo(epsilonOutputCard, QPoint(0, 0)), combo->size());
-        packetComboBottom = std::max(packetComboBottom, comboRect.bottom());
         require(QRect(QPoint(0, 0), epsilonOutputCard->size()).contains(comboRect),
                 "EPSILON packet-rate combos stay inside the panel");
         require(combo->width() >= combo->fontMetrics().horizontalAdvance(combo->currentText()) + 44,
@@ -9049,16 +8990,11 @@ int main(int argc, char **argv)
         return buttonRect;
     };
     const QRect epsilonStatusLocalBounds(QPoint(0, 0), epsilonStatusCard->size());
-    const QRect epsilonOutputLocalBounds(QPoint(0, 0), epsilonOutputCard->size());
     const QRect epsilonDeviceLocalBounds(QPoint(0, 0), epsilonDeviceSettingsCard->size());
     const QRect recommendedRect = requireActionButton(
         epsilonStatusCard, QStringLiteral("epsilonRecommendedConfigButton"),
         {QStringLiteral("恢复推荐"), QStringLiteral("Recommended")},
         epsilonStatusLocalBounds, "EPSILON summary exposes the recommended action");
-    const QRect groupedRect = requireActionButton(
-        epsilonOutputCard, QStringLiteral("epsilonGroupedConfigButton"),
-        {QStringLiteral("分组模式"), QStringLiteral("Grouped")},
-        epsilonOutputLocalBounds, "EPSILON output exposes the grouped action");
     const QRect rtcmRect = requireActionButton(
         epsilonDeviceSettingsCard, QStringLiteral("epsilonRtcmPortButton"),
         {QStringLiteral("配置RTCM串口"), QStringLiteral("RTCM Port")},
@@ -9080,12 +9016,9 @@ int main(int argc, char **argv)
     Q_UNUSED(rtcmRect);
     Q_UNUSED(reconfigureRect);
     Q_UNUSED(rtkRect);
-    require(groupedRect.top() > packetComboBottom,
-            "EPSILON grouped action follows the packet-rate fields");
     require(saveRect.top() + epsilonActionsBounds.top() > epsilonDeviceSettingsBounds.bottom(),
             "EPSILON save-and-apply action follows device settings");
-    require(epsilonOutputCard->findChild<QPushButton *>(QStringLiteral("epsilonSaveButton")) == nullptr &&
-                epsilonStatusCard->findChild<QPushButton *>(QStringLiteral("epsilonGroupedConfigButton")) == nullptr,
+    require(epsilonOutputCard->findChild<QPushButton *>(QStringLiteral("epsilonSaveButton")) == nullptr,
             "EPSILON actions remain in their business sections");
 
     mainPageStackForScroll->setCurrentWidget(pageBeforeEpsilonGeometryCheck);

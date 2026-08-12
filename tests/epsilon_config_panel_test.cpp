@@ -3,7 +3,6 @@
 #include "shared/theme/AppTheme.h"
 
 #include <QApplication>
-#include <QCheckBox>
 #include <QComboBox>
 #include <QFrame>
 #include <QLabel>
@@ -70,9 +69,8 @@ int main(int argc, char *argv[])
                 panel.findChild<QFrame *>(QStringLiteral("epsilonDeviceSettingsCard")) != nullptr &&
                 sectionCardCount == 3,
             "panel exposes exactly three EPSILON business section cards");
-    require(panel.findChild<QWidget *>(QStringLiteral("epsilonActionsContainer")) != nullptr &&
-                panel.findChild<QWidget *>(QStringLiteral("epsilonPacketActionPanel")) != nullptr,
-            "panel keeps separate grouped and primary action containers");
+    require(panel.findChild<QWidget *>(QStringLiteral("epsilonActionsContainer")) != nullptr,
+            "panel keeps a separate primary action container");
     const QString panelStyle = panel.styleSheet();
     require(panel.testAttribute(Qt::WA_StyledBackground) &&
                 panelStyle.contains(QStringLiteral(
@@ -237,20 +235,9 @@ int main(int argc, char *argv[])
     const std::map<uint8_t, int> defaults = defaultEpsilonPacketRates();
     panel.setPacketRates(defaults);
     require(panel.packetRates() == defaults, "semantic packet-rate setter and getter preserve all 11 values");
-    panel.setCustomPacketProfileEnabled(true);
-    require(panel.customPacketProfileEnabled(), "semantic custom-profile state enables");
     auto *profileSummary = panel.findChild<QLabel *>(QStringLiteral("epsilonProfileSummaryValue"));
-    require(profileSummary != nullptr && profileSummary->text() == QStringLiteral("自定义"),
-            "configuration summary reflects the real custom-profile state");
-    panel.setCustomPacketProfileEnabled(false);
-    require(!panel.customPacketProfileEnabled(), "semantic custom-profile state disables");
-    require(profileSummary->text() == QStringLiteral("分组模式"),
-            "configuration summary reflects the real grouped-profile state");
-
-    auto *customCheck = panel.findChild<QCheckBox *>(QStringLiteral("epsilonPacketCustomCheck"));
-    require(customCheck != nullptr && customCheck->focusPolicy() == Qt::TabFocus &&
-                !customCheck->accessibleName().isEmpty(),
-            "custom-profile control is accessible and keyboard focusable");
+    require(profileSummary != nullptr && profileSummary->text() == QStringLiteral("逐项设置"),
+            "configuration summary reflects the packet-rate editor state");
 
     struct ActionProbe
     {
@@ -258,15 +245,12 @@ int main(int argc, char *argv[])
         bool emitted = false;
     };
     ActionProbe recommended{"epsilonRecommendedConfigButton"};
-    ActionProbe grouped{"epsilonGroupedConfigButton"};
     ActionProbe save{"epsilonSaveButton"};
     ActionProbe rtcm{"epsilonRtcmPortButton"};
     ActionProbe reconfigure{"epsilonReconfigureButton"};
     ActionProbe rtk{"epsilonRtkConfigButton"};
     QObject::connect(&panel, &EpsilonConfigPanel::recommendedProfileRequested,
                      &panel, [&recommended]() { recommended.emitted = true; });
-    QObject::connect(&panel, &EpsilonConfigPanel::groupedProfileRequested,
-                     &panel, [&grouped]() { grouped.emitted = true; });
     QObject::connect(&panel, &EpsilonConfigPanel::saveRequested,
                      &panel, [&save]() { save.emitted = true; });
     QObject::connect(&panel, &EpsilonConfigPanel::rtcmPortRequested,
@@ -276,7 +260,7 @@ int main(int argc, char *argv[])
     QObject::connect(&panel, &EpsilonConfigPanel::rtkConfigRequested,
                      &panel, [&rtk]() { rtk.emitted = true; });
 
-    for (ActionProbe *probe : {&recommended, &grouped, &save, &rtcm, &reconfigure, &rtk})
+    for (ActionProbe *probe : {&recommended, &save, &rtcm, &reconfigure, &rtk})
     {
         auto *button = panel.findChild<QPushButton *>(QString::fromLatin1(probe->objectName));
         require(button != nullptr, "EPSILON operation button exists");
@@ -291,12 +275,12 @@ int main(int argc, char *argv[])
     panel.setAvailable(false);
     auto *availabilitySummary = panel.findChild<QLabel *>(
         QStringLiteral("epsilonAvailabilitySummaryValue"));
-    require(!customCheck->isEnabled() && !combos.front()->isEnabled(),
+    require(!combos.front()->isEnabled(),
             "panel unavailable state disables interactive controls");
     require(availabilitySummary != nullptr && availabilitySummary->text() == QStringLiteral("不可用"),
             "configuration summary reports unavailable operations without fabricating device state");
     panel.setAvailable(true);
-    require(customCheck->isEnabled() && combos.front()->isEnabled(),
+    require(combos.front()->isEnabled(),
             "panel available state re-enables interactive controls");
 
     panel.resize(560, 900);

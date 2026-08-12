@@ -1181,9 +1181,8 @@ void MainWindow::onConnectClicked()
     const int ai8TemperatureRate = effectiveRateOrDefault(ai8TemperatureRateText, 5, 20);
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
-    bool epsilonUsesCustomPacketRates = false;
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
-        effectiveEpsilonPacketRates(settings, epsilonRate, &epsilonUsesCustomPacketRates);
+        effectiveEpsilonPacketRates(settings);
     if (!skipEpsilonDeviceRate &&
         !epsilonPort.isEmpty() &&
         epsilonPort != selectText &&
@@ -1241,7 +1240,6 @@ void MainWindow::onConnectClicked()
     request.epsilonConfiguredRateHz = epsilonRate;
     request.epsilonPacketRateSignature = epsilonDesiredPacketSignature;
     request.epsilonPacketRateSummary = epsilonDesiredPacketSummary;
-    request.epsilonUsesCustomPacketRates = epsilonUsesCustomPacketRates;
     request.epsilonConfigLikelyMatches = epsilonConfigLikelyMatches;
     if (!state_->local_connection_coordinator_->begin(std::move(request)))
     {

@@ -53,13 +53,10 @@ int clampPtbSampleRate(int hz);
 const std::vector<EpsilonPacketConfigOption>& epsilonPacketConfigOptions();
 QString epsilonPacketRateSettingsKey(quint8 packetId);
 int nearestSupportedEpsilonPacketRate(const EpsilonPacketConfigOption& option, int desiredRateHz);
-std::map<uint8_t, int> groupedEpsilonPacketRates(int baseRateHz);
 std::map<uint8_t, int> defaultEpsilonPacketRates();
 bool epsilonPacketRateSupported(const EpsilonPacketConfigOption& option, int rateHz);
-std::map<uint8_t, int> loadCustomEpsilonPacketRates(QSettings& settings, int fallbackBaseRateHz);
-std::map<uint8_t, int> effectiveEpsilonPacketRates(QSettings& settings,
-                                                   int baseRateHz,
-                                                   bool *usingCustomProfile = nullptr);
+std::map<uint8_t, int> loadCustomEpsilonPacketRates(QSettings& settings);
+std::map<uint8_t, int> effectiveEpsilonPacketRates(QSettings& settings);
 QString epsilonPacketRatesSignature(const std::map<uint8_t, int>& packetRates);
 QString epsilonPacketRatesSummary(const std::map<uint8_t, int>& packetRates);
 int epsilonPacketCallbackRate(const std::map<uint8_t, int>& packetRates, int fallbackRateHz);

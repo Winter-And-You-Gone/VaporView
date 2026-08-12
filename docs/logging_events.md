@@ -167,7 +167,7 @@
 | Ground | device.connection | local_device_stream_start_failed | Error | 本地设备数据流启动失败。 | device, error_code | ui_visibility | STREAM_START_FAILED |
 | Ground | device.connection | local_device_collector_diagnostic | Debug | 本地设备采集器输出了诊断信息。 | external_raw_text | ui_visibility |  |
 | Ground | device.connection | epsilon_output_rate_command_skipped | Info | 已跳过 EPSILON 输出频率下发，使用设备当前输出。 | device, reason_code | ui_visibility | RATE_UNSPECIFIED |
-| Ground | device.connection | epsilon_output_reconfigure_skipped_config_unchanged | Info | EPSILON 输出配置与上次保存配置一致，已跳过自动重配。 | device, epsilon_packet_profile, custom_packet_rates, reason_code | ui_visibility | CONFIG_UNCHANGED |
+| Ground | device.connection | epsilon_output_reconfigure_skipped_config_unchanged | Info | EPSILON 输出配置与上次保存配置一致，已跳过自动重配。 | device, epsilon_packet_profile, reason_code | ui_visibility | CONFIG_UNCHANGED |
 | Ground | device.connection | ptb_sample_rate_command_skipped | Info | 已跳过 PTB210 采样频率下发，使用设备当前输出。 | device, reason_code | ui_visibility | RATE_UNSPECIFIED |
 | Ground | device.connection | ptb_sample_rate_update_failed | Warning | PTB210 采样频率下发失败。 | device, requested_rate_hz, error_code | ui_visibility | SAMPLE_RATE_UPDATE_FAILED |
 | Ground | device.connection | lidar_output_rate_command_skipped | Info | 已跳过激光测距仪输出频率下发，使用设备默认或自适应输出。 | device, reason_code | ui_visibility | RATE_UNSPECIFIED |
@@ -248,14 +248,13 @@
 | Ground | device.navigation.command | epsilon_output_reconfigure_rejected_missing_port | Warning | 请先选择 EPSILON 串口。 | device, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | device.navigation.command | epsilon_output_reconfigure_rejected_invalid_baud | Warning | EPSILON 波特率无效。 | device, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
 | Ground | device.navigation.command | epsilon_output_reconfigure_skipped_rate_unspecified | Info | EPSILON 频率为“不设定”，已跳过输出频率下发。 | device, reason_code | ui_visibility | COMMAND_NOT_SUPPORTED |
-| Ground | device.navigation.command | epsilon_output_reconfigure_started | Info | 开始手动重配 EPSILON 输出。 | device, port, baud, packet_rate_profile, packet_rate_summary | ui_visibility |  |
+| Ground | device.navigation.command | epsilon_output_reconfigure_started | Info | 开始手动重配 EPSILON 输出。 | device, port, baud, packet_rate_summary | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_output_reconfigure_open_failed | Error | 打开 EPSILON 串口进行手动重配失败。 | device, operation, port, baud, system_error, error_code | ui_dedupe_key | SERIAL_OPEN_FAILED |
 | Ground | device.navigation.command | epsilon_output_reconfigure_failed | Error | EPSILON 输出手动重配失败。 | device, operation, port, baud, output_rate_hz, callback_rate_hz, packet_rate_signature, error_code | ui_dedupe_key | CONFIG_APPLY_FAILED |
 | Ground | device.navigation.command | epsilon_output_reconfigure_completed | Info | EPSILON 输出手动重配已完成。 | device, operation, port, output_rate_hz, callback_rate_hz, packet_rate_signature | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_output_rate_command_disabled | Info | 已禁用 EPSILON 输出频率下发，使用设备当前输出。 | device, apply_device_rate | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_output_rate_command_failed | Error | EPSILON 输出频率下发失败。 | device, requested_rate_hz, error_code | ui_dedupe_key | COMMAND_VERIFY_FAILED |
 | Ground | device.navigation.command | epsilon_output_rate_saved_deferred | Info | EPSILON 输出频率已保存，将在下次连接时应用。 | device, requested_rate_hz | ui_visibility |  |
-| Ground | device.navigation.command | epsilon_output_rate_updated_custom_profile_retained | Info | EPSILON 分组频率已更新，但仍使用已保存的自定义包频率配置。 | device, requested_rate_hz, epsilon_packet_profile | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_output_rate_updated | Info | EPSILON 输出频率已更新。 | device, requested_rate_hz | ui_visibility |  |
 | Ground | device.navigation.command | imu_profile_apply_rejected_missing_port | Warning | 请先选择 IMU 串口。 | device, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | device.navigation.command | imu_profile_apply_rejected_unsupported | Warning | IMU 输出格式或频率不受支持。 | device, reason_code, output_format, rate_hz | ui_dedupe_key | COMMAND_NOT_SUPPORTED |
@@ -268,9 +267,7 @@
 | Ground | device.navigation.command | imu_profile_reconnect_completed | Info | IMU 已按目标配置重新连接。 | device, port, current_baud, target_baud, rate_hz, output_format | ui_visibility |  |
 | Ground | device.navigation.command | imu_profile_reconnect_save_failed | Warning | IMU 重连后保存波特率配置失败。 | device, port, current_baud, target_baud, rate_hz, output_format, command, error_code | ui_visibility | CONFIG_SAVE_FAILED |
 | Ground | device.navigation.command | imu_profile_applied | Info | IMU 配置已应用。 | device, port, current_baud, target_baud, rate_hz, output_format | ui_visibility |  |
-| Ground | configuration.apply | epsilon_packet_profile_custom_enabled | Info | 检测到包频率已偏离分组模式，已自动启用自定义包频率配置。 | device, packet_rate_summary | ui_visibility |  |
 | Ground | configuration.apply | epsilon_packet_profile_saved | Info | 已保存 EPSILON 包频率配置。 | device, packet_rate_profile, packet_rate_summary | ui_visibility |  |
-| Ground | configuration.apply | epsilon_packet_profile_disabled | Info | 已关闭 EPSILON 自定义包频率，后续将使用分组配置。 | device, grouped_rate_hz | ui_visibility |  |
 | Ground | configuration.apply | epsilon_packet_profile_apply_requested | Info | 正在应用刚保存的 EPSILON 包频率配置。 | device, port, packet_rate_summary | ui_visibility |  |
 | Ground | configuration.apply | epsilon_packet_profile_saved_deferred | Info | EPSILON 包频率配置已保存，将在下次连接或重配时生效。 | device, packet_rate_summary | ui_visibility |  |
 | Ground | configuration.apply | recording_directory_updated | Info | 记录目录已更新。 | recording_directory | ui_visibility |  |
@@ -282,7 +279,6 @@
 | Ground | device.lidar.command | lidar_output_rate_command_disabled | Info | 已禁用激光测距仪输出频率下发，使用设备默认或自适应输出。 | device, apply_device_rate | ui_visibility |  |
 | Ground | device.rate | sample_rate_apply_partial_failure | Warning | 主机侧频率已更新，但一个或多个设备输出频率命令失败。 | requested_rate_hz, epsilon_command_failed, ptb_command_failed, reason_code | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
 | Ground | device.rate | sample_rates_updated | Info | 所有频率已更新。 | requested_rate_hz, epsilon_rate_hz, ptb_rate_hz, hmp_rate_hz, lidar_rate_hz, temperature_rate_hz | ui_visibility |  |
-| Ground | device.rate | sample_rates_updated_custom_epsilon_profile | Info | 所有频率已更新，EPSILON 仍保留自定义包频率配置。 | requested_rate_hz, epsilon_rate_hz, ptb_rate_hz, hmp_rate_hz, lidar_rate_hz, temperature_rate_hz, epsilon_packet_profile | ui_visibility |  |
 | Ground | device.rate | sample_rate_device_commands_skipped_unspecified | Info | 已选择“不设定”的设备保持不下发输出频率命令。 | epsilon_skipped, ptb_skipped, hmp_skipped, lidar_skipped, temperature_skipped | ui_visibility |  |
 | Ground | device.rate | ptb_sample_rate_capped | Info | PTB210 采样频率已按设备上限限制。 | device, requested_rate_hz, effective_rate_hz | ui_visibility |  |
 | Ground | device.rate | ptb_sample_rate_updated_capped | Info | PTB210 采样频率已更新，并按设备上限限制。 | device, requested_rate_hz, effective_rate_hz | ui_visibility |  |

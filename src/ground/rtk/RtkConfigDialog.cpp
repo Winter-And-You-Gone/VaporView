@@ -2547,7 +2547,14 @@ void RtkConfigDialog::applyScaledUiMetrics()
         + outputRowCount * scalePixels(kRtkInputHeight)
         + std::max(0, outputRowCount - 1) * (output_layout_ ? output_layout_->spacing() : 0)
         + 1;
-    const int configNaturalHeight = config_group_ ? config_group_->sizeHint().height() : 0;
+    const QMargins configMargins = config_layout_ ? config_layout_->contentsMargins() : QMargins();
+    const int configRowCount = 2;
+    const int configNaturalHeight = cardTitleBarHeight
+        + configMargins.top()
+        + configMargins.bottom()
+        + configRowCount * scalePixels(34)
+        + std::max(0, configRowCount - 1) * (config_layout_ ? config_layout_->verticalSpacing() : 0)
+        + scalePixels(4);
     const int topCardHeight = std::max(configNaturalHeight, ggaNaturalHeight);
     if (config_group_)
     {

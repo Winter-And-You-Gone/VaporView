@@ -486,15 +486,10 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     }
 
     const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
-    const int groupedRateHz = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
-    const bool customEnabled = settings.value("epsilon_custom_packet_rates_enabled", false).toBool();
     const std::map<uint8_t, int> defaultRates = defaultEpsilonPacketRates();
-    const std::map<uint8_t, int> groupedRates = groupedEpsilonPacketRates(groupedRateHz);
-    const std::map<uint8_t, int> initialRates = customEnabled
-        ? loadCustomEpsilonPacketRates(settings, groupedRateHz)
-        : groupedRates;
+    const std::map<uint8_t, int> initialRates = loadCustomEpsilonPacketRates(settings);
 
     QDialog dialog(this);
     dialog.setObjectName(QStringLiteral("epsilonPacketRatesDialog"));
@@ -513,20 +508,12 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
 
     auto *hintLabel = new QLabel(
         state_->is_english_
-            ? QStringLiteral("Configured from the local EPSILON ground-station profile. The recommended default profile prioritizes stable time and 3D navigation output. Rate limits are reflected by each selector's available options. If any packet differs from the grouped profile, the custom profile will be enabled automatically when you save.")
-            : QStringLiteral("配置范围来自本地 EPSILON 官方地面站配置。推荐默认配置优先保证稳定的时间与三维导航输出。频率上限由各选择框的可选项体现。只要任一数据包偏离分组模式，保存时就会自动启用自定义配置。"),
+            ? QStringLiteral("Configured from the local EPSILON ground-station profile. The recommended default profile prioritizes stable time and 3D navigation output. Rate limits are reflected by each selector's available options.")
+            : QStringLiteral("配置范围来自本地 EPSILON 官方地面站配置。推荐默认配置优先保证稳定的时间与三维导航输出。频率上限由各选择框的可选项体现。"),
         &dialog);
     hintLabel->setWordWrap(true);
     hintLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
     layout->addWidget(hintLabel);
-
-    auto *enableCustomCheck = new QCheckBox(
-        state_->is_english_
-            ? QStringLiteral("Use custom EPSILON packet rates for future connect/reconfigure operations")
-            : QStringLiteral("后续连接和重配时使用这组自定义 EPSILON 包频率"),
-        &dialog);
-    enableCustomCheck->setChecked(customEnabled);
-    layout->addWidget(enableCustomCheck);
 
     auto *formWidget = new QWidget(&dialog);
     formWidget->setObjectName(QStringLiteral("epsilonPacketRatesContent"));
@@ -585,7 +572,7 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
             combo->addItem(packetRateText(rateHz), rateHz);
         }
         configureComboPopup(combo);
-        const int initialRateHz = initialRates.count(option.packet_id) ? initialRates.at(option.packet_id) : groupedRates.at(option.packet_id);
+        const int initialRateHz = initialRates.count(option.packet_id) ? initialRates.at(option.packet_id) : defaultRates.at(option.packet_id);
         const int comboIndex = combo->findData(initialRateHz);
         if (comboIndex >= 0)
         {
@@ -603,32 +590,11 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     QPushButton *recommendedDefaultsButton = buttonBox->addButton(
         state_->is_english_ ? QStringLiteral("Use Recommended Defaults") : QStringLiteral("恢复推荐默认值"),
         QDialogButtonBox::ResetRole);
-    connect(recommendedDefaultsButton, &QPushButton::clicked, &dialog, [&packetCombos, defaultRates, enableCustomCheck]() {
-        enableCustomCheck->setChecked(true);
+    connect(recommendedDefaultsButton, &QPushButton::clicked, &dialog, [&packetCombos, defaultRates]() {
         for (const auto& entry : packetCombos)
         {
             const auto it = defaultRates.find(entry.first);
             if (it == defaultRates.end())
-            {
-                continue;
-            }
-            QComboBox *combo = entry.second;
-            const int index = combo ? combo->findData(it->second) : -1;
-            if (combo && index >= 0)
-            {
-                combo->setCurrentIndex(index);
-            }
-        }
-    });
-    QPushButton *groupedDefaultsButton = buttonBox->addButton(
-        state_->is_english_ ? QStringLiteral("Use Grouped Profile") : QStringLiteral("切换到分组模式"),
-        QDialogButtonBox::ActionRole);
-    connect(groupedDefaultsButton, &QPushButton::clicked, &dialog, [&packetCombos, groupedRates, enableCustomCheck]() {
-        enableCustomCheck->setChecked(false);
-        for (const auto& entry : packetCombos)
-        {
-            const auto it = groupedRates.find(entry.first);
-            if (it == groupedRates.end())
             {
                 continue;
             }
@@ -668,7 +634,7 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
     {
         QComboBox *combo = packetCombos[option.packet_id];
-        const int rateHz = combo ? combo->currentData().toInt() : groupedRates.at(option.packet_id);
+        const int rateHz = combo ? combo->currentData().toInt() : defaultRates.at(option.packet_id);
         savedPacketRates[option.packet_id] = rateHz;
     }
     const QString epsilonBaudText = state_->epsilon_baud_combo_
@@ -682,59 +648,22 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     {
         VaporView::setPersistentSetting(settings, epsilonPacketRateSettingsKey(entry.first), entry.second);
     }
-    bool hasCustomOverrides = false;
-    for (const auto& entry : savedPacketRates)
-    {
-        const auto groupedIt = groupedRates.find(entry.first);
-        if (groupedIt != groupedRates.end() && groupedIt->second != entry.second)
-        {
-            hasCustomOverrides = true;
-            break;
-        }
-    }
-    const bool effectiveCustomEnabled = enableCustomCheck->isChecked() || hasCustomOverrides;
-    VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_custom_packet_rates_enabled"), effectiveCustomEnabled);
-    VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_custom_packet_rates_user_saved"), effectiveCustomEnabled);
     VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_signature"));
     VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_apply_version"));
     const QString packetRateSummary = epsilonPacketRatesSummary(savedPacketRates);
 
-    if (hasCustomOverrides && !enableCustomCheck->isChecked())
-    {
-        publishGroundLog(VaporView::LogLevel::Info,
-                         QStringLiteral("configuration.apply"),
-                         QStringLiteral("epsilon_packet_profile_custom_enabled"),
-                         QStringLiteral("检测到包频率已偏离分组模式，已自动启用自定义包频率配置。"),
-                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
-                          {QStringLiteral("packet_rate_summary"), packetRateSummary},
-                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-    }
-
-    if (effectiveCustomEnabled)
-    {
-        publishGroundLog(VaporView::LogLevel::Info,
-                         QStringLiteral("configuration.apply"),
-                         QStringLiteral("epsilon_packet_profile_saved"),
-                         (savedPacketRates == defaultRates)
-                             ? QStringLiteral("已保存 EPSILON 推荐默认包频率配置。")
-                             : QStringLiteral("已保存 EPSILON 自定义包频率配置。"),
-                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
-                          {QStringLiteral("packet_rate_profile"), savedPacketRates == defaultRates
-                              ? QStringLiteral("recommended_default")
-                              : QStringLiteral("custom")},
-                          {QStringLiteral("packet_rate_summary"), packetRateSummary},
-                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-    }
-    else
-    {
-        publishGroundLog(VaporView::LogLevel::Info,
-                         QStringLiteral("configuration.apply"),
-                         QStringLiteral("epsilon_packet_profile_disabled"),
-                         QStringLiteral("已关闭 EPSILON 自定义包频率，后续将使用分组配置。"),
-                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
-                          {QStringLiteral("grouped_rate_hz"), groupedRateHz},
-                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-    }
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("configuration.apply"),
+                     QStringLiteral("epsilon_packet_profile_saved"),
+                     (savedPacketRates == defaultRates)
+                         ? QStringLiteral("已保存 EPSILON 推荐默认包频率配置。")
+                         : QStringLiteral("已保存 EPSILON 包频率配置。"),
+                     {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                      {QStringLiteral("packet_rate_profile"), savedPacketRates == defaultRates
+                          ? QStringLiteral("recommended_default")
+                          : QStringLiteral("custom")},
+                      {QStringLiteral("packet_rate_summary"), packetRateSummary},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 
     const QString selectText = state_->is_english_ ? "-- Select --" : "未选择";
     const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
@@ -840,8 +769,7 @@ void MainWindow::onReconfigureEpsilonClicked()
     state_->epsilon_sample_rate_ = epsilonRate;
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
-    bool usingCustomPacketProfile = false;
-    const std::map<uint8_t, int> desiredPacketRates = effectiveEpsilonPacketRates(settings, epsilonRate, &usingCustomPacketProfile);
+    const std::map<uint8_t, int> desiredPacketRates = effectiveEpsilonPacketRates(settings);
     if (!validateEpsilonPacketBandwidth(desiredPacketRates, epsilonBaudText, true))
     {
         return;
@@ -868,8 +796,6 @@ void MainWindow::onReconfigureEpsilonClicked()
                      {{QStringLiteral("device"), QStringLiteral("EPSILON")},
                       {QStringLiteral("port"), epsilonPort},
                       {QStringLiteral("baud"), epsilonBaud},
-                      {QStringLiteral("packet_rate_profile"), usingCustomPacketProfile ? QStringLiteral("custom")
-                                                                                       : QStringLiteral("grouped")},
                       {QStringLiteral("packet_rate_summary"), desiredPacketRateSummary},
                       {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 

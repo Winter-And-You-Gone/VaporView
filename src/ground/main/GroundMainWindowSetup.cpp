@@ -2209,21 +2209,7 @@ void MainWindow::setupCentralWidget()
     {
         connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::recommendedProfileRequested,
                 this, [this]() {
-            if (state_->epsilon_config_panel_)
-            {
-                state_->epsilon_config_panel_->setCustomPacketProfileEnabled(true);
-            }
             setDeviceConfigEpsilonPacketRates(defaultEpsilonPacketRates());
-        });
-        connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::groupedProfileRequested,
-                this, [this]() {
-            const QString epsilonRateText = state_->epsilon_rate_combo_
-                ? state_->epsilon_rate_combo_->currentText()
-                : QStringLiteral("100");
-            const int groupedRateHz = effectiveRateOrDefault(
-                epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
-            state_->epsilon_config_panel_->setCustomPacketProfileEnabled(false);
-            setDeviceConfigEpsilonPacketRates(groupedEpsilonPacketRates(groupedRateHz));
         });
         connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::saveRequested,
                 this, [this]() { saveDeviceConfigEpsilonPacketRates(true); });

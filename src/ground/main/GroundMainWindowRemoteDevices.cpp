@@ -1007,9 +1007,7 @@ void MainWindow::setDeviceConfigEpsilonPacketRates(const std::map<uint8_t, int>&
 
 std::map<uint8_t, int> MainWindow::deviceConfigEpsilonPacketRates() const
 {
-    const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
-    const int groupedRateHz = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
-    std::map<uint8_t, int> packetRates = groupedEpsilonPacketRates(groupedRateHz);
+    std::map<uint8_t, int> packetRates = defaultEpsilonPacketRates();
     if (!state_->epsilon_config_panel_)
     {
         return packetRates;
@@ -1028,16 +1026,9 @@ void MainWindow::syncDeviceConfigEpsilonPanelFromSettings()
         return;
     }
 
-    const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
-    const int groupedRateHz = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
-    const bool customEnabled = settings.value("epsilon_custom_packet_rates_enabled", false).toBool();
-    const std::map<uint8_t, int> packetRates = customEnabled
-        ? loadCustomEpsilonPacketRates(settings, groupedRateHz)
-        : groupedEpsilonPacketRates(groupedRateHz);
-    state_->epsilon_config_panel_->setCustomPacketProfileEnabled(customEnabled);
-    setDeviceConfigEpsilonPacketRates(packetRates);
+    setDeviceConfigEpsilonPacketRates(loadCustomEpsilonPacketRates(settings));
 }
 
 void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
@@ -1051,8 +1042,6 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
     }
 
     const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
-    const int groupedRateHz = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
-    const std::map<uint8_t, int> groupedRates = groupedEpsilonPacketRates(groupedRateHz);
     const std::map<uint8_t, int> defaultRates = defaultEpsilonPacketRates();
     const std::map<uint8_t, int> savedPacketRates = deviceConfigEpsilonPacketRates();
     const QString epsilonBaudText = state_->epsilon_baud_combo_
@@ -1069,64 +1058,25 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
     {
         const auto it = savedPacketRates.find(option.packet_id);
         VaporView::setPersistentSetting(settings, epsilonPacketRateSettingsKey(option.packet_id),
-                          it != savedPacketRates.end() ? it->second : groupedRates.at(option.packet_id));
+                          it != savedPacketRates.end() ? it->second : defaultRates.at(option.packet_id));
     }
 
-    bool hasCustomOverrides = false;
-    for (const auto& entry : savedPacketRates)
-    {
-        const auto groupedIt = groupedRates.find(entry.first);
-        if (groupedIt != groupedRates.end() && groupedIt->second != entry.second)
-        {
-            hasCustomOverrides = true;
-            break;
-        }
-    }
-    const bool effectiveCustomEnabled =
-        state_->epsilon_config_panel_->customPacketProfileEnabled() || hasCustomOverrides;
-    VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_custom_packet_rates_enabled"), effectiveCustomEnabled);
-    VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_custom_packet_rates_user_saved"), effectiveCustomEnabled);
     VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_signature"));
     VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_apply_version"));
     const QString packetRateSummary = epsilonPacketRatesSummary(savedPacketRates);
 
-    if (hasCustomOverrides && !state_->epsilon_config_panel_->customPacketProfileEnabled())
-    {
-        state_->epsilon_config_panel_->setCustomPacketProfileEnabled(true);
-        publishGroundLog(VaporView::LogLevel::Info,
-                         QStringLiteral("configuration.apply"),
-                         QStringLiteral("epsilon_packet_profile_custom_enabled"),
-                         QStringLiteral("检测到包频率已偏离分组模式，已自动启用自定义包频率配置。"),
-                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
-                          {QStringLiteral("packet_rate_summary"), packetRateSummary},
-                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-    }
-
-    if (effectiveCustomEnabled)
-    {
-        publishGroundLog(VaporView::LogLevel::Info,
-                         QStringLiteral("configuration.apply"),
-                         QStringLiteral("epsilon_packet_profile_saved"),
-                         savedPacketRates == defaultRates
-                             ? QStringLiteral("已保存 EPSILON 推荐默认包频率配置。")
-                             : QStringLiteral("已保存 EPSILON 自定义包频率配置。"),
-                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
-                          {QStringLiteral("packet_rate_profile"), savedPacketRates == defaultRates
-                              ? QStringLiteral("recommended_default")
-                              : QStringLiteral("custom")},
-                          {QStringLiteral("packet_rate_summary"), packetRateSummary},
-                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-    }
-    else
-    {
-        publishGroundLog(VaporView::LogLevel::Info,
-                         QStringLiteral("configuration.apply"),
-                         QStringLiteral("epsilon_packet_profile_disabled"),
-                         QStringLiteral("已关闭 EPSILON 自定义包频率，后续将使用分组配置。"),
-                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
-                          {QStringLiteral("grouped_rate_hz"), groupedRateHz},
-                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-    }
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("configuration.apply"),
+                     QStringLiteral("epsilon_packet_profile_saved"),
+                     savedPacketRates == defaultRates
+                         ? QStringLiteral("已保存 EPSILON 推荐默认包频率配置。")
+                         : QStringLiteral("已保存 EPSILON 包频率配置。"),
+                     {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                      {QStringLiteral("packet_rate_profile"), savedPacketRates == defaultRates
+                          ? QStringLiteral("recommended_default")
+                          : QStringLiteral("custom")},
+                      {QStringLiteral("packet_rate_summary"), packetRateSummary},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 
     const QString selectText = state_->is_english_ ? "-- Select --" : "未选择";
     const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);

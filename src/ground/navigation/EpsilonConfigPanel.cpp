@@ -5,7 +5,6 @@
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"
 
-#include <QCheckBox>
 #include <QComboBox>
 #include <QEvent>
 #include <QFontMetrics>
@@ -263,12 +262,6 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     const SectionCard outputCard = createSectionCard(
         this, QStringLiteral("epsilonOutputCard"), QStringLiteral("activity"));
     output_title_label_ = outputCard.title;
-    custom_packet_check_ = VaporView::Ground::MainSupport::createTitleBarFeedbackCheckBox(outputCard.card);
-    custom_packet_check_->setObjectName(QStringLiteral("epsilonPacketCustomCheck"));
-    custom_packet_check_->setFocusPolicy(Qt::TabFocus);
-    custom_packet_check_->setAccessibleName(QStringLiteral("EPSILON custom packet-rate profile"));
-    outputCard.body_layout->addWidget(custom_packet_check_);
-
     auto *packetGridWidget = new QWidget(outputCard.card);
     packetGridWidget->setObjectName(QStringLiteral("epsilonPacketGrid"));
     packetGridWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
@@ -351,23 +344,6 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     arrangePacketFields(true);
     outputCard.body_layout->addWidget(packetGridWidget);
 
-    auto *buttonPanel = new QWidget(outputCard.card);
-    buttonPanel->setObjectName(QStringLiteral("epsilonPacketActionPanel"));
-    buttonPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
-    auto *buttonLayout = new QHBoxLayout(buttonPanel);
-    buttonLayout->setContentsMargins(0, 0, 0, 0);
-    buttonLayout->setSpacing(12);
-    grouped_description_label_ = new QLabel(buttonPanel);
-    grouped_description_label_->setObjectName(QStringLiteral("epsilonGroupedConfigDescription"));
-    grouped_description_label_->setProperty("epsilonSecondaryText", true);
-    grouped_description_label_->setWordWrap(true);
-    grouped_description_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    grouped_button_ = createActionButton(buttonPanel);
-    grouped_button_->setObjectName(QStringLiteral("epsilonGroupedConfigButton"));
-    grouped_button_->setProperty("epsilonSecondaryAction", true);
-    buttonLayout->addWidget(grouped_description_label_, 1);
-    buttonLayout->addWidget(grouped_button_, 0, Qt::AlignRight | Qt::AlignVCenter);
-    outputCard.body_layout->addWidget(buttonPanel);
     panelLayout->addWidget(outputCard.card);
 
     const SectionCard deviceSettingsCard = createSectionCard(
@@ -430,22 +406,17 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     panelLayout->addWidget(actionsContainer);
 
     connect(recommended_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::recommendedProfileRequested);
-    connect(grouped_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::groupedProfileRequested);
     connect(save_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::saveRequested);
     connect(rtcm_port_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::rtcmPortRequested);
     connect(reconfigure_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::reconfigureRequested);
     connect(rtk_config_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::rtkConfigRequested);
-    connect(custom_packet_check_, &QCheckBox::toggled,
-            this, [this]() { updateSummaryTexts(); });
 
-    QWidget::setTabOrder(recommended_button_, custom_packet_check_);
-    QWidget::setTabOrder(custom_packet_check_, packet_rate_combos_.value(0));
+    QWidget::setTabOrder(recommended_button_, packet_rate_combos_.value(0));
     for (int i = 0; i + 1 < packet_rate_combos_.size(); ++i)
     {
         QWidget::setTabOrder(packet_rate_combos_.at(i), packet_rate_combos_.at(i + 1));
     }
-    QWidget::setTabOrder(packet_rate_combos_.last(), grouped_button_);
-    QWidget::setTabOrder(grouped_button_, rtcm_port_button_);
+    QWidget::setTabOrder(packet_rate_combos_.last(), rtcm_port_button_);
     QWidget::setTabOrder(rtcm_port_button_, reconfigure_button_);
     QWidget::setTabOrder(reconfigure_button_, rtk_config_button_);
     QWidget::setTabOrder(rtk_config_button_, save_button_);
@@ -465,18 +436,6 @@ void EpsilonConfigPanel::setAvailable(bool available)
     is_available_ = available;
     updateSummaryTexts();
     setEnabled(available);
-}
-
-void EpsilonConfigPanel::setCustomPacketProfileEnabled(bool enabled)
-{
-    const QSignalBlocker blocker(custom_packet_check_);
-    custom_packet_check_->setChecked(enabled);
-    updateSummaryTexts();
-}
-
-bool EpsilonConfigPanel::customPacketProfileEnabled() const
-{
-    return custom_packet_check_->isChecked();
 }
 
 void EpsilonConfigPanel::setPacketRates(const std::map<uint8_t, int>& packetRates)
@@ -742,7 +701,7 @@ void EpsilonConfigPanel::applyAppearance()
         "QPushButton[epsilonSecondaryAction=\"true\"]:focus { border-color: @vv-focus; }"
         "QPushButton[epsilonSecondaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }"
         "QWidget#epsilonActionsContainer { background-color: @vv-surface; border: none; }"
-        "QWidget#epsilonSummaryFields, QWidget#epsilonSummaryActions, QWidget#epsilonPacketActionPanel, QWidget#epsilonPacketGrid { background-color: transparent; border: none; }");
+        "QWidget#epsilonSummaryFields, QWidget#epsilonSummaryActions, QWidget#epsilonPacketGrid { background-color: transparent; border: none; }");
     const QString resolvedStyle = VaporView::applyAppThemeTokens(
         style, VaporView::isDarkThemeEnabled());
     if (styleSheet() != resolvedStyle)
@@ -758,9 +717,7 @@ void EpsilonConfigPanel::updateSummaryTexts()
             ? (is_english_ ? QStringLiteral("Available") : QStringLiteral("可用"))
             : (is_english_ ? QStringLiteral("Unavailable") : QStringLiteral("不可用")));
     profile_value_label_->setText(
-        custom_packet_check_->isChecked()
-            ? (is_english_ ? QStringLiteral("Custom") : QStringLiteral("自定义"))
-            : (is_english_ ? QStringLiteral("Grouped") : QStringLiteral("分组模式")));
+        is_english_ ? QStringLiteral("Per-packet") : QStringLiteral("逐项设置"));
     packet_count_value_label_->setText(
         is_english_ ? QStringLiteral("11 packet outputs") : QStringLiteral("11 项报文"));
     availability_value_label_->setAccessibleName(
@@ -783,7 +740,7 @@ void EpsilonConfigPanel::updateTexts()
     }
     setAccessibleName(is_english_ ? QStringLiteral("EPSILON Configuration") : QStringLiteral("EPSILON 配置"));
     availability_name_label_->setText(is_english_ ? QStringLiteral("Configuration") : QStringLiteral("配置操作"));
-    profile_name_label_->setText(is_english_ ? QStringLiteral("Output Profile") : QStringLiteral("配置方式"));
+    profile_name_label_->setText(is_english_ ? QStringLiteral("Packet Rates") : QStringLiteral("频率配置"));
     packet_count_name_label_->setText(is_english_ ? QStringLiteral("Packet Items") : QStringLiteral("报文项数"));
     for (QLabel *label : {availability_name_label_, profile_name_label_, packet_count_name_label_})
     {
@@ -794,15 +751,6 @@ void EpsilonConfigPanel::updateTexts()
             ? QStringLiteral("Packet rates are saved for future connect/reconfigure operations. Save applies the profile immediately when an EPSILON port is selected.")
             : QStringLiteral("包频率会用于后续连接和重配；已选择 EPSILON 串口时，保存后会立即应用。"));
     hint_label_->setAccessibleName(is_english_ ? QStringLiteral("EPSILON configuration hint") : QStringLiteral("EPSILON 配置提示"));
-    custom_packet_check_->setText(
-        is_english_ ? QStringLiteral("Use this custom EPSILON packet-rate profile")
-                    : QStringLiteral("使用这组自定义 EPSILON 包频率"));
-    custom_packet_check_->setAccessibleName(custom_packet_check_->text());
-    grouped_description_label_->setText(
-        is_english_ ? QStringLiteral("Use the current grouped profile for packet output rates.")
-                    : QStringLiteral("按当前分组模式设置报文输出频率。"));
-    grouped_description_label_->setAccessibleName(grouped_description_label_->text());
-
     rtcm_name_label_->setText(is_english_ ? QStringLiteral("RTCM Input") : QStringLiteral("RTCM 输入"));
     rtcm_description_label_->setText(
         is_english_ ? QStringLiteral("Configure EPSILON communication port 2 as the RTCM input.")
@@ -864,8 +812,6 @@ void EpsilonConfigPanel::updateTexts()
 
     recommended_button_->setText(is_english_ ? QStringLiteral("Recommended") : QStringLiteral("恢复推荐"));
     recommended_button_->setToolTip(is_english_ ? QStringLiteral("Use the recommended default packet rates") : QStringLiteral("恢复推荐默认包频率"));
-    grouped_button_->setText(is_english_ ? QStringLiteral("Grouped") : QStringLiteral("分组模式"));
-    grouped_button_->setToolTip(is_english_ ? QStringLiteral("Use the grouped output-rate profile") : QStringLiteral("切换到分组输出频率模式"));
     save_button_->setText(is_english_ ? QStringLiteral("Save + Apply") : QStringLiteral("保存并应用"));
     save_button_->setToolTip(is_english_ ? QStringLiteral("Save the packet-rate profile and apply it now when possible") : QStringLiteral("保存包频率配置，并在可用时立即应用"));
     rtcm_port_button_->setText(is_english_ ? QStringLiteral("RTCM Port") : QStringLiteral("配置RTCM串口"));
@@ -875,12 +821,11 @@ void EpsilonConfigPanel::updateTexts()
     rtk_config_button_->setText(is_english_ ? QStringLiteral("RTK Config") : QStringLiteral("RTK配置"));
     rtk_config_button_->setToolTip(is_english_ ? QStringLiteral("Open RTK config") : QStringLiteral("打开 RTK 配置"));
     VaporView::Ground::MainSupport::fitButtonMinimumWidth(recommended_button_, 100);
-    VaporView::Ground::MainSupport::fitButtonMinimumWidth(grouped_button_, 100);
     VaporView::Ground::MainSupport::fitButtonMinimumWidth(save_button_, 118);
     VaporView::Ground::MainSupport::fitButtonMinimumWidth(rtcm_port_button_, 128);
     VaporView::Ground::MainSupport::fitButtonMinimumWidth(reconfigure_button_, 128);
     VaporView::Ground::MainSupport::fitButtonMinimumWidth(rtk_config_button_, 100);
-    for (QPushButton *button : {recommended_button_, grouped_button_, save_button_, rtcm_port_button_, reconfigure_button_, rtk_config_button_})
+    for (QPushButton *button : {recommended_button_, save_button_, rtcm_port_button_, reconfigure_button_, rtk_config_button_})
     {
         if (button)
         {

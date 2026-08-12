@@ -702,7 +702,6 @@ private:
                         QStringLiteral("EPSILON 输出配置与上次保存配置一致，已跳过自动重配。"),
                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
                          {QStringLiteral("epsilon_packet_profile"), request.epsilonPacketRateSummary},
-                         {QStringLiteral("custom_packet_rates"), request.epsilonUsesCustomPacketRates},
                          {QStringLiteral("reason_code"), QStringLiteral("CONFIG_UNCHANGED")}});
             }
             else if (!collectors.epsilon->setOutputPacketRates(request.epsilonPacketRates))
@@ -712,7 +711,6 @@ private:
                         QStringLiteral("EPSILON 输出配置下发失败。"),
                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
                          {QStringLiteral("epsilon_packet_profile"), request.epsilonPacketRateSummary},
-                         {QStringLiteral("custom_packet_rates"), request.epsilonUsesCustomPacketRates},
                          {QStringLiteral("error_code"), QStringLiteral("CONFIG_APPLY_FAILED")}});
                 return false;
             }
@@ -723,8 +721,7 @@ private:
                         QStringLiteral("epsilon_output_reconfigure_completed"),
                         QStringLiteral("EPSILON 输出配置已应用。"),
                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
-                         {QStringLiteral("epsilon_packet_profile"), request.epsilonPacketRateSummary},
-                         {QStringLiteral("custom_packet_rates"), request.epsilonUsesCustomPacketRates}});
+                         {QStringLiteral("epsilon_packet_profile"), request.epsilonPacketRateSummary}});
             }
             if (collectors.epsilon->startStreaming()) return true;
             postConnectionLog(VaporView::LogLevel::Error,

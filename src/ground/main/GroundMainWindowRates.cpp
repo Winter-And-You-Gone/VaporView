@@ -36,9 +36,8 @@ void MainWindow::onGlobalRateChanged(const QString& text)
 
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
-    bool epsilonUsesCustomPacketRates = false;
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
-        effectiveEpsilonPacketRates(settings, state_->epsilon_sample_rate_, &epsilonUsesCustomPacketRates);
+        effectiveEpsilonPacketRates(settings);
     const int epsilonCallbackRate = epsilonPacketCallbackRate(epsilonDesiredPacketRates, state_->epsilon_sample_rate_);
     LocalSampleRateConfiguration configuration;
     configuration.epsilonCallbackRateHz = epsilonCallbackRate;
@@ -93,21 +92,6 @@ void MainWindow::onGlobalRateChanged(const QString& text)
                           {QStringLiteral("ptb_command_failed"), ptbDeviceRateFailed},
                           {QStringLiteral("reason_code"), QStringLiteral("DEPENDENCY_UNAVAILABLE")},
                           {QStringLiteral("ui_dedupe_key"), QStringLiteral("sample_rate:apply:partial_failure")}});
-    }
-    else if (epsilonUsesCustomPacketRates)
-    {
-        publishGroundLog(VaporView::LogLevel::Info,
-                         QStringLiteral("device.rate"),
-                         QStringLiteral("sample_rates_updated_custom_epsilon_profile"),
-                         QStringLiteral("所有频率已更新，EPSILON 保持已保存的自定义包频率配置。"),
-                         {{QStringLiteral("requested_rate_hz"), rate},
-                          {QStringLiteral("epsilon_rate_hz"), state_->epsilon_sample_rate_},
-                          {QStringLiteral("ptb_rate_hz"), state_->ptb_sample_rate_},
-                          {QStringLiteral("hmp_rate_hz"), state_->hmp_sample_rate_},
-                          {QStringLiteral("lidar_rate_hz"), state_->lidar_sample_rate_},
-                          {QStringLiteral("temperature_rate_hz"), state_->temperature_sample_rate_},
-                          {QStringLiteral("epsilon_packet_profile"), QStringLiteral("custom")},
-                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     else
     {
@@ -166,9 +150,8 @@ void MainWindow::onGnssRateChanged(const QString& text)
     state_->epsilon_sample_rate_ = effectiveRateOrDefault(text, kDefaultEpsilonSampleRateHz, 200);
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
-    bool epsilonUsesCustomPacketRates = false;
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
-        effectiveEpsilonPacketRates(settings, state_->epsilon_sample_rate_, &epsilonUsesCustomPacketRates);
+        effectiveEpsilonPacketRates(settings);
     const int epsilonCallbackRate = epsilonPacketCallbackRate(epsilonDesiredPacketRates, state_->epsilon_sample_rate_);
     const LocalSampleRateApplyResult rateResult =
         state_->local_connection_controller_->setEpsilonSampleRate(
@@ -204,17 +187,6 @@ void MainWindow::onGnssRateChanged(const QString& text)
                          QStringLiteral("EPSILON 输出频率已保存，将在下次连接时应用。"),
                          {{QStringLiteral("device"), QStringLiteral("EPSILON")},
                           {QStringLiteral("requested_rate_hz"), state_->epsilon_sample_rate_},
-                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-    }
-    else if (epsilonUsesCustomPacketRates)
-    {
-        publishGroundLog(VaporView::LogLevel::Info,
-                         QStringLiteral("device.navigation.command"),
-                         QStringLiteral("epsilon_output_rate_updated_custom_profile_retained"),
-                         QStringLiteral("EPSILON 分组频率已更新，但仍使用已保存的自定义包频率配置。"),
-                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
-                          {QStringLiteral("requested_rate_hz"), state_->epsilon_sample_rate_},
-                          {QStringLiteral("epsilon_packet_profile"), QStringLiteral("custom")},
                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     else
@@ -393,14 +365,13 @@ void MainWindow::applyAllSampleRates()
     const bool skipTemperatureDeviceRate = state_->temperature_rate_combo_ && isRateUnspecified(state_->temperature_rate_combo_->currentText());
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
-    bool epsilonUsesCustomPacketRates = false;
     const int epsilonRate = skipEpsilonDeviceRate ? kDefaultEpsilonSampleRateHz : std::clamp(rate, 20, 200);
     const int ptbRate = skipPtbDeviceRate ? kDefaultPtbSampleRateHz : clampPtbSampleRate(rate);
     const int hmpRate = skipHmpDeviceRate ? kDefaultHmpSampleRateHz : rate;
     const int lidarRate = skipLidarDeviceRate ? kDefaultLidarSampleRateHz : std::min(rate, 100);
     const int temperatureRate = skipTemperatureDeviceRate ? kDefaultTemperatureSampleRateHz : std::min(rate, kMaxTemperatureSampleRateHz);
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
-        effectiveEpsilonPacketRates(settings, epsilonRate, &epsilonUsesCustomPacketRates);
+        effectiveEpsilonPacketRates(settings);
     const int epsilonCallbackRate = epsilonPacketCallbackRate(epsilonDesiredPacketRates, epsilonRate);
 
     LocalSampleRateConfiguration configuration;
