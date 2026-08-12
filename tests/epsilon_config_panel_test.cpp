@@ -121,6 +121,7 @@ int main(int argc, char *argv[])
     require(outputCard != nullptr, "EPSILON output card exists for packet group geometry");
     std::vector<QRect> groupRects(packetGroups.size());
     std::vector<int> groupFieldBottoms(packetGroups.size(), -1);
+    std::vector<std::map<std::pair<int, int>, QRect>> groupFieldCells(packetGroups.size());
     for (int groupIndex = 0; groupIndex < static_cast<int>(packetGroups.size()); ++groupIndex)
     {
         const PacketGroupExpectation& group = packetGroups.at(groupIndex);
@@ -138,11 +139,45 @@ int main(int argc, char *argv[])
             const QRect comboRect(combo->mapTo(outputCard, QPoint(0, 0)), combo->size());
             firstPacketTop = std::min(firstPacketTop, comboRect.top());
             groupFieldBottoms.at(groupIndex) = std::max(groupFieldBottoms.at(groupIndex), comboRect.bottom());
+            const int groupFieldRow = combo->property("epsilonPacketGroupFieldRow").toInt();
+            const int groupFieldColumn = combo->property("epsilonPacketGroupFieldColumn").toInt();
+            require(groupFieldRow >= 0 && groupFieldColumn >= 0 && groupFieldColumn <= 1,
+                    "wide packet-rate controls expose compact in-group row and column positions");
+            require(groupFieldCells.at(groupIndex)
+                        .emplace(std::make_pair(groupFieldRow, groupFieldColumn), comboRect)
+                        .second,
+                    "wide packet-rate controls occupy unique in-group grid cells");
             require(group.packetIds.find(packetId) != group.packetIds.end(),
                     "packet group geometry contains only its assigned packet controls");
         }
         require(firstPacketTop > groupRect.bottom(),
                 "EPSILON packet group header precedes its fields");
+    }
+    for (int groupIndex = 0; groupIndex < static_cast<int>(packetGroups.size()); ++groupIndex)
+    {
+        const auto& cells = groupFieldCells.at(groupIndex);
+        const int expectedRows = (static_cast<int>(packetGroups.at(groupIndex).packetIds.size()) + 1) / 2;
+        require(static_cast<int>(cells.size()) == static_cast<int>(packetGroups.at(groupIndex).packetIds.size()),
+                "wide packet group keeps every assigned packet in its compact subgrid");
+        for (int row = 0; row < expectedRows; ++row)
+        {
+            const auto left = cells.find(std::make_pair(row, 0));
+            require(left != cells.end(), "wide packet group fills the left cell of each internal row");
+            const auto right = cells.find(std::make_pair(row, 1));
+            if (right != cells.end())
+            {
+                require(right->second.left() > left->second.right(),
+                        "wide packet group places two fields side-by-side inside the category");
+                require(std::abs(right->second.top() - left->second.top()) <= 2,
+                        "wide packet group aligns paired internal fields on the same row");
+            }
+            if (row > 0)
+            {
+                const auto previous = cells.find(std::make_pair(row - 1, 0));
+                require(previous != cells.end() && left->second.top() > previous->second.bottom(),
+                        "wide packet group wraps internal fields onto a second row");
+            }
+        }
     }
     require(std::abs(groupRects.at(0).top() - groupRects.at(1).top()) <= 2 &&
                 groupRects.at(1).left() > groupRects.at(0).right(),
@@ -160,8 +195,8 @@ int main(int argc, char *argv[])
     {
         wideColumns.insert(combo->property("epsilonPacketGridColumn").toInt());
     }
-    require(wideColumns == QSet<int>{0, 1},
-            "wide panel lays packet-rate fields out in two visual columns");
+    require(wideColumns == QSet<int>{0, 1, 2, 3},
+            "wide panel lays packet-rate fields out in four compact visual columns");
 
     std::set<uint8_t> packetIds;
     std::set<QString> objectNames;
@@ -262,6 +297,8 @@ int main(int argc, char *argv[])
     {
         require(combo->property("epsilonPacketGridColumn").toInt() == 0,
                 "narrow panel collapses packet-rate fields to one visual column");
+        require(combo->property("epsilonPacketGroupFieldColumn").toInt() == 0,
+                "narrow panel keeps packet-rate fields in one internal category column");
         const QRect comboRect(combo->mapTo(&panel, QPoint(0, 0)), combo->size());
         require(panel.rect().contains(comboRect),
                 "narrow packet-rate controls remain inside the panel");
@@ -273,8 +310,8 @@ int main(int argc, char *argv[])
     {
         wideColumns.insert(combo->property("epsilonPacketGridColumn").toInt());
     }
-    require(wideColumns == QSet<int>{0, 1},
-            "wide panel restores the two-column packet-rate layout");
+    require(wideColumns == QSet<int>{0, 1, 2, 3},
+            "wide panel restores the outer two-by-two and inner two-column packet-rate layout");
 
     panel.setEnglish(true);
     require(panel.accessibleName() == QStringLiteral("EPSILON Configuration"),

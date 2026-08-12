@@ -26,7 +26,10 @@ namespace VaporView::Ground::Navigation
 namespace
 {
 
-constexpr int kTwoColumnMinimumWidth = 620;
+constexpr int kTwoColumnMinimumWidth = 980;
+constexpr int kPacketWideGridColumnCount = 5;
+constexpr int kPacketOuterGroupColumns = 2;
+constexpr int kPacketInnerFieldColumns = 2;
 
 enum class PacketRateGroup
 {
@@ -270,7 +273,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     packetGridWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     packet_grid_ = new QGridLayout(packetGridWidget);
     packet_grid_->setContentsMargins(0, 0, 0, 0);
-    packet_grid_->setHorizontalSpacing(0);
+    packet_grid_->setHorizontalSpacing(12);
     packet_grid_->setVerticalSpacing(6);
 
     int comboWidth = 0;
@@ -289,7 +292,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
             }
         }
     }
-    comboWidth = std::clamp(comboWidth + 50, 126, 160);
+    comboWidth = std::clamp(comboWidth + 42, 116, 148);
 
     for (const auto &option : VaporView::Ground::DeviceRates::epsilonPacketConfigOptions())
     {
@@ -300,10 +303,10 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
             option.packet_id, 2, 16, QLatin1Char('0')));
         field->setProperty("epsilonPacketId", static_cast<uint>(option.packet_id));
         field->setProperty("epsilonPacketGroup", groupIndex);
-        field->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+        field->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
         auto *fieldLayout = new QHBoxLayout(field);
         fieldLayout->setContentsMargins(0, 0, 0, 0);
-        fieldLayout->setSpacing(8);
+        fieldLayout->setSpacing(6);
 
         auto *label = new QLabel(field);
         label->setObjectName(QStringLiteral("epsilonPacketRateLabel_%1").arg(option.packet_id, 2, 16, QLatin1Char('0')));
@@ -545,7 +548,7 @@ void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
     {
         packet_grid_->removeWidget(field);
     }
-    for (int column = 0; column < 3; ++column)
+    for (int column = 0; column < kPacketWideGridColumnCount; ++column)
     {
         packet_grid_->setColumnMinimumWidth(column, 0);
         packet_grid_->setColumnStretch(column, 0);
@@ -555,8 +558,7 @@ void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
     packet_layout_initialized_ = true;
     if (twoColumns)
     {
-        packet_grid_->setColumnStretch(0, 1);
-        packet_grid_->setColumnMinimumWidth(1, 28);
+        packet_grid_->setColumnMinimumWidth(2, 24);
         packet_grid_->setColumnStretch(2, 1);
     }
     else
@@ -573,18 +575,29 @@ void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
         }
     }
 
-    auto addField = [this](int index, int row, int gridColumn, int visualColumn) {
+    auto addField = [this](int index,
+                           int row,
+                           int gridColumn,
+                           int visualColumn,
+                           int groupFieldRow,
+                           int groupFieldColumn) {
         QWidget *field = packet_rate_fields_.at(index);
         field->setProperty("epsilonPacketGridColumn", visualColumn);
+        field->setProperty("epsilonPacketGroupFieldRow", groupFieldRow);
+        field->setProperty("epsilonPacketGroupFieldColumn", groupFieldColumn);
         packet_rate_labels_.at(index)->setProperty("epsilonPacketGridColumn", visualColumn);
+        packet_rate_labels_.at(index)->setProperty("epsilonPacketGroupFieldRow", groupFieldRow);
+        packet_rate_labels_.at(index)->setProperty("epsilonPacketGroupFieldColumn", groupFieldColumn);
         packet_rate_combos_.at(index)->setProperty("epsilonPacketGridColumn", visualColumn);
+        packet_rate_combos_.at(index)->setProperty("epsilonPacketGroupFieldRow", groupFieldRow);
+        packet_rate_combos_.at(index)->setProperty("epsilonPacketGroupFieldColumn", groupFieldColumn);
         packet_grid_->addWidget(field, row, gridColumn, Qt::AlignLeft | Qt::AlignVCenter);
     };
 
     if (twoColumns)
     {
         int gridRow = 0;
-        const int groupColumns = 2;
+        const int groupColumns = kPacketOuterGroupColumns;
         for (int groupRow = 0;
              groupRow * groupColumns < packet_group_labels_.size();
              ++groupRow)
@@ -599,21 +612,32 @@ void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
                 {
                     continue;
                 }
-                const int gridColumn = groupColumn * 2;
-                packet_grid_->addWidget(packet_group_labels_.at(groupIndex), gridRow, gridColumn,
+                const int gridColumn = groupColumn == 0 ? 0 : 3;
+                packet_grid_->addWidget(packet_group_labels_.at(groupIndex), gridRow, gridColumn, 1,
+                                        kPacketInnerFieldColumns,
                                         Qt::AlignLeft | Qt::AlignVCenter);
 
-                int fieldRow = gridRow + 1;
+                int localFieldIndex = 0;
                 for (int index = 0; index < packet_rate_fields_.size(); ++index)
                 {
                     if (packet_rate_group_ids_.at(index) != groupIndex)
                     {
                         continue;
                     }
-                    addField(index, fieldRow, gridColumn, groupColumn);
-                    ++fieldRow;
+                    const int fieldRowInGroup = localFieldIndex / kPacketInnerFieldColumns;
+                    const int fieldColumnInGroup = localFieldIndex % kPacketInnerFieldColumns;
+                    addField(index,
+                             gridRow + 1 + fieldRowInGroup,
+                             gridColumn + fieldColumnInGroup,
+                             groupColumn * kPacketInnerFieldColumns + fieldColumnInGroup,
+                             fieldRowInGroup,
+                             fieldColumnInGroup);
+                    ++localFieldIndex;
                 }
-                rowSpan = std::max(rowSpan, 1 + groupFieldCounts[groupIndex]);
+                rowSpan = std::max(
+                    rowSpan,
+                    1 + (groupFieldCounts[groupIndex] + kPacketInnerFieldColumns - 1) /
+                            kPacketInnerFieldColumns);
             }
             gridRow += rowSpan;
         }
@@ -631,13 +655,15 @@ void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
                                     Qt::AlignLeft | Qt::AlignVCenter);
             ++gridRow;
 
+            int localFieldIndex = 0;
             for (int index = 0; index < packet_rate_fields_.size(); ++index)
             {
                 if (packet_rate_group_ids_.at(index) != groupIndex)
                 {
                     continue;
                 }
-                addField(index, gridRow, 0, 0);
+                addField(index, gridRow, 0, 0, localFieldIndex, 0);
+                ++localFieldIndex;
                 ++gridRow;
             }
         }
@@ -663,22 +689,13 @@ void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
 
 void EpsilonConfigPanel::updatePacketLabelWidths()
 {
-    int labelWidth = 0;
     for (QLabel *label : packet_rate_labels_)
     {
         if (!label)
         {
             continue;
         }
-        labelWidth = std::max(labelWidth, label->fontMetrics().horizontalAdvance(label->text()));
-    }
-    labelWidth += 4;
-    for (QLabel *label : packet_rate_labels_)
-    {
-        if (!label)
-        {
-            continue;
-        }
+        const int labelWidth = label->fontMetrics().horizontalAdvance(label->text()) + 4;
         label->setMinimumWidth(labelWidth);
         label->setMaximumWidth(labelWidth);
         label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
