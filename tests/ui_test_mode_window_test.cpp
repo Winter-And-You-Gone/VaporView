@@ -718,13 +718,25 @@ int main(int argc, char **argv)
         temperatureOverviewPlot->property("xAxisTimeFirstLabelCenterX").toDouble();
     const double defaultOverviewTimeLastLabelCenter =
         temperatureOverviewPlot->property("xAxisTimeLastLabelCenterX").toDouble();
+    const double defaultOverviewTimePlotBottom =
+        temperatureOverviewPlot->property("xAxisPlotBottomY").toDouble();
+    const double defaultOverviewTimeLabelTop =
+        temperatureOverviewPlot->property("xAxisLabelTopY").toDouble();
+    const double defaultOverviewTimeLabelGap =
+        temperatureOverviewPlot->property("xAxisLabelGapFromPlot").toDouble();
+    const double defaultOverviewTimeTickLength =
+        temperatureOverviewPlot->property("xAxisTickLength").toDouble();
     require(defaultOverviewTimeTickCount >= 8 &&
                 std::abs(defaultOverviewTimeSpan - (defaultOverviewTimeTickCount - 1)) < 1e-6 &&
                 std::abs(defaultOverviewTimeFirstTick - defaultOverviewTimeFirstLabelCenter) < 1e-6 &&
                 std::abs(defaultOverviewTimeLastTick - defaultOverviewTimeLastLabelCenter) < 1e-6 &&
                 defaultOverviewTimeLastTick < temperatureOverviewPlot->width() - 4.0,
             "default home temperature overview centers endpoint times on their ticks");
-
+    require(defaultOverviewTimeLabelGap >= 6.0 &&
+                std::abs(defaultOverviewTimeLabelTop - defaultOverviewTimePlotBottom -
+                         defaultOverviewTimeLabelGap) < 1e-6 &&
+                defaultOverviewTimeTickLength >= 4.0,
+            "default home temperature overview separates x-axis labels and draws aligned ticks");
     TemperatureTrendPlotWidget adaptiveTimePlot;
     adaptiveTimePlot.setTimeAxisEnabled(true);
     adaptiveTimePlot.setSamples({25.0, 25.5});

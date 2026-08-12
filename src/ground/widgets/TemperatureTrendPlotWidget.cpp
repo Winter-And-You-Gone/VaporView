@@ -26,6 +26,8 @@ constexpr int kMinTimeXAxisLabelCount = 2;
 constexpr int kMaxTimeXAxisLabelCount = 8;
 constexpr qreal kXAxisLabelGap = 8.0;
 constexpr qreal kXAxisLabelRightInset = 2.0;
+constexpr qreal kXAxisTickLength = 4.0;
+constexpr qreal kXAxisLabelGapAfterTick = 2.0;
 constexpr double kTimeAxisSecondsPerInterval = 1.0;
 
 double localClockSeconds()
@@ -159,7 +161,7 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     painter.setPen(text);
     constexpr int kYAxisTicks = 6;
     const qreal leftAxisWidth = axisFm.horizontalAdvance(QStringLiteral("999")) + 6.0;
-    constexpr qreal kBottomAxisHeight = 18.0;
+    constexpr qreal kBottomAxisHeight = 24.0;
     const QRectF basePlotRect = rect().adjusted(leftAxisWidth, 4.0, -4.0, -kBottomAxisHeight);
     QRectF plotRect = basePlotRect;
     if (time_axis_enabled_)
@@ -190,6 +192,12 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
                                double maxValue,
                                int sampleCount) {
         const auto [xMin, xMax] = xAxisRange(sampleCount);
+        const qreal xAxisLabelTop = plotRect.bottom() +
+            kXAxisTickLength + kXAxisLabelGapAfterTick;
+        setProperty("xAxisPlotBottomY", plotRect.bottom());
+        setProperty("xAxisTickLength", kXAxisTickLength);
+        setProperty("xAxisLabelTopY", xAxisLabelTop);
+        setProperty("xAxisLabelGapFromPlot", xAxisLabelTop - plotRect.bottom());
         if (time_axis_enabled_)
         {
             setProperty("xAxisTimeMinSeconds", xMin);
@@ -212,6 +220,12 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
         }
         painter.setPen(QPen(border, 1));
         painter.drawRect(plotRect);
+        for (int i = 0; i < xAxisLabelCount; ++i)
+        {
+            const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(xAxisIntervals);
+            painter.drawLine(QPointF(x, plotRect.bottom()),
+                             QPointF(x, plotRect.bottom() + kXAxisTickLength));
+        }
 
         painter.setFont(axisFont);
         painter.setPen(muted);
@@ -246,7 +260,7 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
                              plotRect.left(),
                              std::max(plotRect.left(), width() - labelWidth - kXAxisLabelRightInset));
             const QRectF labelRect(labelLeft,
-                                   plotRect.bottom() + 2.0,
+                                   xAxisLabelTop,
                                    labelWidth,
                                    axisFm.height());
             painter.drawText(labelRect, Qt::AlignHCenter | Qt::AlignTop, label);
