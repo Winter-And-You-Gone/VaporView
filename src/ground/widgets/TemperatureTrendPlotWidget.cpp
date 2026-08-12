@@ -28,6 +28,7 @@ constexpr qreal kXAxisLabelGap = 8.0;
 constexpr qreal kXAxisLabelRightInset = 2.0;
 constexpr qreal kXAxisTickLength = 4.0;
 constexpr qreal kXAxisLabelGapAfterTick = 2.0;
+constexpr qreal kTargetTemperatureGuideLineWidth = 1.0;
 constexpr double kTimeAxisSecondsPerInterval = 1.0;
 
 double localClockSeconds()
@@ -152,6 +153,7 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     const QColor text = VaporView::appThemeColor(VaporView::AppThemeColor::PlotText, dark);
     const QColor muted = VaporView::appThemeColor(VaporView::AppThemeColor::PlotMutedText, dark);
     const QColor line = VaporView::appThemeColor(VaporView::AppThemeColor::PlotSeriesTemperature, dark);
+    const QColor targetGuideLine = VaporView::appThemeColor(VaporView::AppThemeColor::PlotPositive, dark);
 
     painter.fillRect(rect(), background);
     QFont axisFont = font();
@@ -275,6 +277,39 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
         }
         painter.setFont(font());
     };
+    auto drawTargetTemperatureGuide = [&](double minValue,
+                                          double maxValue) {
+        const bool visible = std::isfinite(target_temperature_c_) &&
+            maxValue > minValue &&
+            target_temperature_c_ >= minValue &&
+            target_temperature_c_ <= maxValue;
+        setProperty("targetGuideLineVisible", visible);
+        setProperty("targetGuideLineColor", visible
+                        ? targetGuideLine.name(QColor::HexRgb)
+                        : QString());
+        setProperty("targetGuideLineWidth", kTargetTemperatureGuideLineWidth);
+        if (!visible)
+        {
+            setProperty("targetGuideLineY", std::numeric_limits<double>::quiet_NaN());
+            return;
+        }
+
+        const double normalized = (target_temperature_c_ - minValue) /
+            std::max(1e-6, maxValue - minValue);
+        const qreal y = plotRect.bottom() -
+            normalized * plotRect.height();
+        setProperty("targetGuideLineY", y);
+
+        painter.save();
+        painter.setClipRect(plotRect);
+        painter.setPen(QPen(targetGuideLine,
+                            kTargetTemperatureGuideLineWidth,
+                            Qt::SolidLine,
+                            Qt::FlatCap));
+        painter.drawLine(QPointF(plotRect.left(), y),
+                         QPointF(plotRect.right(), y));
+        painter.restore();
+    };
 
     QVector<double> finiteSamples;
     QVector<double> finiteSampleTimes;
@@ -299,6 +334,7 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     {
         const auto [minValue, maxValue] = temperatureAxisRange(QVector<double>(), target_temperature_c_);
         drawGridAndAxes(minValue, maxValue, 0);
+        drawTargetTemperatureGuide(minValue, maxValue);
         painter.setPen(muted);
         QRectF visiblePlotRect = plotRect.intersected(QRectF(visibleRegion().boundingRect()));
         if (!visiblePlotRect.isValid() || visiblePlotRect.width() <= 1.0 || visiblePlotRect.height() <= 1.0)
@@ -320,6 +356,7 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
 
     const auto [minValue, maxValue] = temperatureAxisRange(finiteSamples, target_temperature_c_);
     drawGridAndAxes(minValue, maxValue, finiteSamples.size());
+    drawTargetTemperatureGuide(minValue, maxValue);
 
     QPolygonF polyline;
     polyline.reserve(finiteSamples.size());

@@ -8,6 +8,7 @@
 #include "ground/widgets/TemperatureTrendPlotWidget.h"
 #include "LogService.h"
 #include "shared/config/SettingsWriteBarrier.h"
+#include "shared/theme/AppTheme.h"
 #include "test_ui_helpers.h"
 
 #include <QAbstractButton>
@@ -710,6 +711,18 @@ int main(int argc, char **argv)
                         temperatureOverviewPlot->property("sampleCount").toInt();
             }),
             "UI test mode feeds timestamped samples into the home temperature overview time axis");
+    temperatureOverviewPlot->repaint();
+    const double overviewTargetGuideLineY =
+        temperatureOverviewPlot->property("targetGuideLineY").toDouble();
+    require(temperatureOverviewPlot->property("targetGuideLineVisible").toBool() &&
+                temperatureOverviewPlot->property("targetGuideLineColor").toString() ==
+                    VaporView::appThemeColor(VaporView::AppThemeColor::PlotPositive,
+                                             VaporView::isDarkThemeEnabled()).name(QColor::HexRgb) &&
+                std::abs(temperatureOverviewPlot->property("targetGuideLineWidth").toDouble() - 1.0) < 0.001 &&
+                std::isfinite(overviewTargetGuideLineY) &&
+                overviewTargetGuideLineY > 0.0 &&
+                overviewTargetGuideLineY < temperatureOverviewPlot->height(),
+            "UI test mode draws a thin green target-temperature guide line in the home overview plot");
     const int defaultOverviewTimeTickCount = temperatureOverviewPlot->property("xAxisTickCount").toInt();
     const double defaultOverviewTimeSpan = temperatureOverviewPlot->property("xAxisTimeSpanSeconds").toDouble();
     const double defaultOverviewTimeFirstTick = temperatureOverviewPlot->property("xAxisTimeFirstTickX").toDouble();
