@@ -710,6 +710,11 @@ int main(int argc, char **argv)
                         temperatureOverviewPlot->property("sampleCount").toInt();
             }),
             "UI test mode feeds timestamped samples into the home temperature overview time axis");
+    const int defaultOverviewTimeTickCount = temperatureOverviewPlot->property("xAxisTickCount").toInt();
+    const double defaultOverviewTimeSpan = temperatureOverviewPlot->property("xAxisTimeSpanSeconds").toDouble();
+    require(defaultOverviewTimeTickCount >= 7 &&
+                std::abs(defaultOverviewTimeSpan - (defaultOverviewTimeTickCount - 1)) < 1e-6,
+            "default home temperature overview uses every available one-second time-axis slot");
 
     TemperatureTrendPlotWidget adaptiveTimePlot;
     adaptiveTimePlot.setTimeAxisEnabled(true);

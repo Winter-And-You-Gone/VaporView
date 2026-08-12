@@ -43,7 +43,7 @@ int xAxisLabelCountForWidth(qreal plotWidth,
 
     const qreal labelWidth = std::max<qreal>(
         36.0,
-        axisFontMetrics.horizontalAdvance(QStringLiteral("00:00:00")) + 8.0);
+        axisFontMetrics.horizontalAdvance(QStringLiteral("00:00:00")));
     const int count = static_cast<int>(std::floor(
         (std::max<qreal>(0.0, plotWidth) + kXAxisLabelGap) /
         (labelWidth + kXAxisLabelGap)));
@@ -215,7 +215,9 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
                 : QString::number(sampleCount <= 1
                                       ? 0
                                       : qRound((sampleCount - 1) * i / static_cast<double>(xAxisIntervals)));
-            const qreal labelWidth = std::max<qreal>(36.0, axisFm.horizontalAdvance(label) + 8.0);
+            const qreal labelWidth = std::max<qreal>(
+                36.0,
+                axisFm.horizontalAdvance(label) + (time_axis_enabled_ ? 0.0 : 8.0));
             const qreal labelLeft = std::clamp(x - labelWidth / 2.0,
                                                plotRect.left(),
                                                std::max(plotRect.left(), width() - labelWidth - 2.0));
