@@ -716,7 +716,7 @@ int main(int argc, char **argv)
         temperatureOverviewPlot->property("targetGuideLineY").toDouble();
     require(temperatureOverviewPlot->property("targetGuideLineVisible").toBool() &&
                 temperatureOverviewPlot->property("targetGuideLineColor").toString() ==
-                    VaporView::appThemeColor(VaporView::AppThemeColor::PlotPositive,
+                    VaporView::appThemeColor(VaporView::AppThemeColor::ToolbarGreen,
                                              VaporView::isDarkThemeEnabled()).name(QColor::HexRgb) &&
                 std::abs(temperatureOverviewPlot->property("targetGuideLineWidth").toDouble() - 1.0) < 0.001 &&
                 std::isfinite(overviewTargetGuideLineY) &&
@@ -1040,9 +1040,26 @@ int main(int argc, char **argv)
     require(ai8Plot->property("sampleCount").toInt() >= 2 &&
                 ai8Plot->property("axisLabelsVisible").toBool() &&
                 ai8Plot->property("yAxisTickCount").toInt() == 7 &&
-                ai8Plot->property("xAxisTickCount").toInt() == 5 &&
+                ai8Plot->property("xAxisTimeMode").toBool() &&
+                ai8Plot->property("xAxisTimeSampleCount").toInt() ==
+                    ai8Plot->property("sampleCount").toInt() &&
+                ai8Plot->property("xAxisTimeLabelFormat").toString() ==
+                    QStringLiteral("hh:mm:ss") &&
+                ai8Plot->property("xAxisTickCount").toInt() >= 2 &&
+                ai8Plot->property("xAxisTickCount").toInt() <= 8 &&
                 ai8Plot->property("yAxisMaxC").toDouble() > ai8Plot->property("yAxisMinC").toDouble(),
-            "AI-8 trend plot exposes populated samples and numeric axes in UI test mode");
+            "AI-8 trend plot exposes populated samples and a time axis in UI test mode");
+    ai8Plot->repaint();
+    const double ai8TargetGuideLineY = ai8Plot->property("targetGuideLineY").toDouble();
+    require(ai8Plot->property("targetGuideLineVisible").toBool() &&
+                ai8Plot->property("targetGuideLineColor").toString() ==
+                    VaporView::appThemeColor(VaporView::AppThemeColor::ToolbarGreen,
+                                             VaporView::isDarkThemeEnabled()).name(QColor::HexRgb) &&
+                std::abs(ai8Plot->property("targetGuideLineWidth").toDouble() - 1.0) < 0.001 &&
+                std::isfinite(ai8TargetGuideLineY) &&
+                ai8TargetGuideLineY > 0.0 &&
+                ai8TargetGuideLineY < ai8Plot->height(),
+            "AI-8 trend plot draws the same bright green target-temperature guide line");
     ai8ChannelSpin->setValue(8);
     processEvents();
     require(ai8MeasuredTemperature->text() != QStringLiteral("---") &&

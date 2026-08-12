@@ -5,6 +5,7 @@
 #include <QAbstractButton>
 #include <QButtonGroup>
 #include <QComboBox>
+#include <QDateTime>
 #include <QDoubleSpinBox>
 #include <QFrame>
 #include <QGridLayout>
@@ -356,6 +357,7 @@ void Ai8TemperatureControllerPanel::setupUi()
     temperature_plot_->setProperty("ai8TemperaturePlot", true);
     temperature_plot_->setProperty("forceWhiteBackground", true);
     temperature_plot_->setCompactMode(true);
+    temperature_plot_->setTimeAxisEnabled(true);
     temperature_plot_->setFixedHeight(
         std::max(kAi8TemperaturePlotMinimumHeight,
                  page_stack_->sizeHint().height() - kAi8TemperaturePlotBottomTrim));
@@ -1418,11 +1420,17 @@ void Ai8TemperatureControllerPanel::applyPageData(
             pageData.selection.channel, 1, Ai8TemperatureControllerProtocol::kChannelCount) - 1;
         if (std::isfinite(pageData.channel.measuredC))
         {
+            const double sampleTimeSeconds =
+                static_cast<double>(QDateTime::currentMSecsSinceEpoch()) / 1000.0;
             auto& history = measured_temperature_history_[static_cast<size_t>(channelIndex)];
+            auto& timeHistory =
+                measured_temperature_time_history_[static_cast<size_t>(channelIndex)];
             history.append(pageData.channel.measuredC);
+            timeHistory.append(sampleTimeSeconds);
             while (history.size() > kAi8TemperatureHistoryLimit)
             {
                 history.removeFirst();
+                timeHistory.removeFirst();
             }
         }
     }
@@ -1436,6 +1444,8 @@ void Ai8TemperatureControllerPanel::applyLiveData(
     latest_live_data_ = liveData;
     if (liveData.valid)
     {
+        const double sampleTimeSeconds =
+            static_cast<double>(QDateTime::currentMSecsSinceEpoch()) / 1000.0;
         for (int index = 0; index < Ai8TemperatureControllerProtocol::kChannelCount; ++index)
         {
             const double measured = liveData.measuredC[static_cast<size_t>(index)];
@@ -1444,10 +1454,14 @@ void Ai8TemperatureControllerPanel::applyLiveData(
                 continue;
             }
             auto& history = measured_temperature_history_[static_cast<size_t>(index)];
+            auto& timeHistory =
+                measured_temperature_time_history_[static_cast<size_t>(index)];
             history.append(measured);
+            timeHistory.append(sampleTimeSeconds);
             while (history.size() > kAi8TemperatureHistoryLimit)
             {
                 history.removeFirst();
+                timeHistory.removeFirst();
             }
         }
     }
@@ -1513,6 +1527,8 @@ void Ai8TemperatureControllerPanel::updateTemperaturePlot()
     temperature_plot_->setTargetTemperature(
         setpointSpin ? setpointSpin->value() : std::numeric_limits<double>::quiet_NaN());
     temperature_plot_->setSamples(measured_temperature_history_[static_cast<size_t>(channelIndex)]);
+    temperature_plot_->setSampleTimes(
+        measured_temperature_time_history_[static_cast<size_t>(channelIndex)]);
 }
 
 } // namespace VaporView::Ground::Widgets
