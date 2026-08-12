@@ -712,9 +712,18 @@ int main(int argc, char **argv)
             "UI test mode feeds timestamped samples into the home temperature overview time axis");
     const int defaultOverviewTimeTickCount = temperatureOverviewPlot->property("xAxisTickCount").toInt();
     const double defaultOverviewTimeSpan = temperatureOverviewPlot->property("xAxisTimeSpanSeconds").toDouble();
-    require(defaultOverviewTimeTickCount >= 7 &&
-                std::abs(defaultOverviewTimeSpan - (defaultOverviewTimeTickCount - 1)) < 1e-6,
-            "default home temperature overview uses every available one-second time-axis slot");
+    const double defaultOverviewTimeFirstTick = temperatureOverviewPlot->property("xAxisTimeFirstTickX").toDouble();
+    const double defaultOverviewTimeLastTick = temperatureOverviewPlot->property("xAxisTimeLastTickX").toDouble();
+    const double defaultOverviewTimeFirstLabelCenter =
+        temperatureOverviewPlot->property("xAxisTimeFirstLabelCenterX").toDouble();
+    const double defaultOverviewTimeLastLabelCenter =
+        temperatureOverviewPlot->property("xAxisTimeLastLabelCenterX").toDouble();
+    require(defaultOverviewTimeTickCount >= 8 &&
+                std::abs(defaultOverviewTimeSpan - (defaultOverviewTimeTickCount - 1)) < 1e-6 &&
+                std::abs(defaultOverviewTimeFirstTick - defaultOverviewTimeFirstLabelCenter) < 1e-6 &&
+                std::abs(defaultOverviewTimeLastTick - defaultOverviewTimeLastLabelCenter) < 1e-6 &&
+                defaultOverviewTimeLastTick < temperatureOverviewPlot->width() - 4.0,
+            "default home temperature overview centers endpoint times on their ticks");
 
     TemperatureTrendPlotWidget adaptiveTimePlot;
     adaptiveTimePlot.setTimeAxisEnabled(true);

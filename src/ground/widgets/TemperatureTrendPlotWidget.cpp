@@ -25,11 +25,19 @@ constexpr int kDefaultXAxisLabelCount = 5;
 constexpr int kMinTimeXAxisLabelCount = 2;
 constexpr int kMaxTimeXAxisLabelCount = 8;
 constexpr qreal kXAxisLabelGap = 8.0;
+constexpr qreal kXAxisLabelRightInset = 2.0;
 constexpr double kTimeAxisSecondsPerInterval = 1.0;
 
 double localClockSeconds()
 {
     return static_cast<double>(QDateTime::currentMSecsSinceEpoch()) / 1000.0;
+}
+
+qreal timeAxisLabelWidth(const QFontMetrics& axisFontMetrics)
+{
+    return std::max<qreal>(
+        36.0,
+        axisFontMetrics.horizontalAdvance(QStringLiteral("00:00:00")));
 }
 
 int xAxisLabelCountForWidth(qreal plotWidth,
@@ -41,13 +49,10 @@ int xAxisLabelCountForWidth(qreal plotWidth,
         return kDefaultXAxisLabelCount;
     }
 
-    const qreal labelWidth = std::max<qreal>(
-        36.0,
-        axisFontMetrics.horizontalAdvance(QStringLiteral("00:00:00")));
-    const int count = static_cast<int>(std::floor(
-        (std::max<qreal>(0.0, plotWidth) + kXAxisLabelGap) /
-        (labelWidth + kXAxisLabelGap)));
-    return std::clamp(count, kMinTimeXAxisLabelCount, kMaxTimeXAxisLabelCount);
+    const int intervals = static_cast<int>(std::floor(
+        std::max<qreal>(0.0, plotWidth) /
+        (timeAxisLabelWidth(axisFontMetrics) + kXAxisLabelGap)));
+    return std::clamp(intervals + 1, kMinTimeXAxisLabelCount, kMaxTimeXAxisLabelCount);
 }
 
 QFont numericFontFrom(const QFont& base)
@@ -155,7 +160,20 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     constexpr int kYAxisTicks = 6;
     const qreal leftAxisWidth = axisFm.horizontalAdvance(QStringLiteral("999")) + 6.0;
     constexpr qreal kBottomAxisHeight = 18.0;
-    const QRectF plotRect = rect().adjusted(leftAxisWidth, 4.0, -4.0, -kBottomAxisHeight);
+    const QRectF basePlotRect = rect().adjusted(leftAxisWidth, 4.0, -4.0, -kBottomAxisHeight);
+    QRectF plotRect = basePlotRect;
+    if (time_axis_enabled_)
+    {
+        const qreal labelHalfWidth = timeAxisLabelWidth(axisFm) / 2.0;
+        const qreal timeAxisLeft = std::max(basePlotRect.left(), labelHalfWidth);
+        const qreal timeAxisRight = std::min(basePlotRect.right(),
+                                             width() - labelHalfWidth - kXAxisLabelRightInset);
+        if (timeAxisRight > timeAxisLeft + 1.0)
+        {
+            plotRect.setLeft(timeAxisLeft);
+            plotRect.setRight(timeAxisRight);
+        }
+    }
     const int xAxisLabelCount = xAxisLabelCountForWidth(plotRect.width(), axisFm, time_axis_enabled_);
     const int xAxisIntervals = std::max(1, xAxisLabelCount - 1);
     setProperty("xAxisTickCount", xAxisLabelCount);
@@ -178,6 +196,8 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
             setProperty("xAxisTimeMaxSeconds", xMax);
             setProperty("xAxisTimeSpanSeconds", xMax - xMin);
             setProperty("xAxisTimeRightLabel", timeAxisTickLabel(xMax));
+            setProperty("xAxisTimeFirstTickX", plotRect.left());
+            setProperty("xAxisTimeLastTickX", plotRect.right());
         }
         painter.setPen(QPen(grid, 1));
         for (int i = 0; i < xAxisLabelCount; ++i)
@@ -218,14 +238,26 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
             const qreal labelWidth = std::max<qreal>(
                 36.0,
                 axisFm.horizontalAdvance(label) + (time_axis_enabled_ ? 0.0 : 8.0));
-            const qreal labelLeft = std::clamp(x - labelWidth / 2.0,
-                                               plotRect.left(),
-                                               std::max(plotRect.left(), width() - labelWidth - 2.0));
+            const qreal labelLeft = time_axis_enabled_
+                ? std::clamp(x - labelWidth / 2.0,
+                             0.0,
+                             std::max<qreal>(0.0, width() - labelWidth - kXAxisLabelRightInset))
+                : std::clamp(x - labelWidth / 2.0,
+                             plotRect.left(),
+                             std::max(plotRect.left(), width() - labelWidth - kXAxisLabelRightInset));
             const QRectF labelRect(labelLeft,
                                    plotRect.bottom() + 2.0,
                                    labelWidth,
                                    axisFm.height());
             painter.drawText(labelRect, Qt::AlignHCenter | Qt::AlignTop, label);
+            if (time_axis_enabled_ && i == 0)
+            {
+                setProperty("xAxisTimeFirstLabelCenterX", labelRect.center().x());
+            }
+            else if (time_axis_enabled_ && i == xAxisLabelCount - 1)
+            {
+                setProperty("xAxisTimeLastLabelCenterX", labelRect.center().x());
+            }
         }
         painter.setFont(font());
     };
