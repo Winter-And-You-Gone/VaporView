@@ -74,9 +74,11 @@ private:
     QLabel *rtk_name_label_ = nullptr;
     QLabel *rtk_description_label_ = nullptr;
     QCheckBox *custom_packet_check_ = nullptr;
+    QVector<QLabel *> packet_group_labels_;
     QVector<QWidget *> packet_rate_fields_;
     QVector<QLabel *> packet_rate_labels_;
     QVector<QComboBox *> packet_rate_combos_;
+    QVector<int> packet_rate_group_ids_;
     QPushButton *recommended_button_ = nullptr;
     QPushButton *grouped_button_ = nullptr;
     QPushButton *save_button_ = nullptr;

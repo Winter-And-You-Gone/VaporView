@@ -28,6 +28,77 @@ namespace
 
 constexpr int kTwoColumnMinimumWidth = 620;
 
+enum class PacketRateGroup
+{
+    InertialAndFusion,
+    SystemAndDiagnostics,
+    GnssAndPosition,
+    AttitudeRepresentation,
+};
+
+constexpr int kPacketRateGroupCount = 4;
+
+PacketRateGroup packetRateGroupForId(quint8 packetId)
+{
+    switch (packetId)
+    {
+    case 0x40:
+    case 0x41:
+    case 0x42:
+        return PacketRateGroup::InertialAndFusion;
+    case 0x50:
+    case 0x53:
+        return PacketRateGroup::SystemAndDiagnostics;
+    case 0x59:
+    case 0x5A:
+    case 0x5C:
+    case 0x5D:
+        return PacketRateGroup::GnssAndPosition;
+    case 0x63:
+    case 0x64:
+        return PacketRateGroup::AttitudeRepresentation;
+    default:
+        return PacketRateGroup::InertialAndFusion;
+    }
+}
+
+int packetRateGroupIndex(PacketRateGroup group)
+{
+    return static_cast<int>(group);
+}
+
+QString packetRateGroupObjectName(PacketRateGroup group)
+{
+    switch (group)
+    {
+    case PacketRateGroup::InertialAndFusion:
+        return QStringLiteral("epsilonPacketGroupInertialFusion");
+    case PacketRateGroup::SystemAndDiagnostics:
+        return QStringLiteral("epsilonPacketGroupSystemDiagnostics");
+    case PacketRateGroup::GnssAndPosition:
+        return QStringLiteral("epsilonPacketGroupGnssPosition");
+    case PacketRateGroup::AttitudeRepresentation:
+        return QStringLiteral("epsilonPacketGroupAttitudeRepresentation");
+    }
+    return QString();
+}
+
+QString packetRateGroupTitle(PacketRateGroup group, bool english)
+{
+    switch (group)
+    {
+    case PacketRateGroup::InertialAndFusion:
+        return english ? QStringLiteral("Inertial and Fusion") : QStringLiteral("惯导与融合");
+    case PacketRateGroup::SystemAndDiagnostics:
+        return english ? QStringLiteral("System and Diagnostics") : QStringLiteral("系统与诊断");
+    case PacketRateGroup::GnssAndPosition:
+        return english ? QStringLiteral("GNSS and Position") : QStringLiteral("GNSS 与位置");
+    case PacketRateGroup::AttitudeRepresentation:
+        return english ? QStringLiteral("Attitude Representation") : QStringLiteral("姿态表示");
+    }
+    return QString();
+}
+
 struct SectionCard
 {
     QFrame *card = nullptr;
@@ -222,10 +293,13 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
 
     for (const auto &option : VaporView::Ground::DeviceRates::epsilonPacketConfigOptions())
     {
+        const PacketRateGroup group = packetRateGroupForId(option.packet_id);
+        const int groupIndex = packetRateGroupIndex(group);
         auto *field = new QWidget(packetGridWidget);
         field->setObjectName(QStringLiteral("epsilonPacketField_%1").arg(
             option.packet_id, 2, 16, QLatin1Char('0')));
         field->setProperty("epsilonPacketId", static_cast<uint>(option.packet_id));
+        field->setProperty("epsilonPacketGroup", groupIndex);
         field->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
         auto *fieldLayout = new QHBoxLayout(field);
         fieldLayout->setContentsMargins(0, 0, 0, 0);
@@ -234,6 +308,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
         auto *label = new QLabel(field);
         label->setObjectName(QStringLiteral("epsilonPacketRateLabel_%1").arg(option.packet_id, 2, 16, QLatin1Char('0')));
         label->setProperty("epsilonPacketId", static_cast<uint>(option.packet_id));
+        label->setProperty("epsilonPacketGroup", groupIndex);
         label->setWordWrap(false);
         label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         label->setFocusPolicy(Qt::NoFocus);
@@ -241,6 +316,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
         auto *combo = createPacketRateCombo(field, comboWidth);
         combo->setObjectName(QStringLiteral("epsilonPacketRateCombo_%1").arg(option.packet_id, 2, 16, QLatin1Char('0')));
         combo->setProperty("epsilonPacketId", static_cast<uint>(option.packet_id));
+        combo->setProperty("epsilonPacketGroup", groupIndex);
         combo->setFocusPolicy(Qt::TabFocus);
         for (int rateHz : option.supported_rates_hz)
         {
@@ -256,6 +332,18 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
         packet_rate_fields_.append(field);
         packet_rate_labels_.append(label);
         packet_rate_combos_.append(combo);
+        packet_rate_group_ids_.append(groupIndex);
+    }
+    for (int groupIndex = 0; groupIndex < kPacketRateGroupCount; ++groupIndex)
+    {
+        const PacketRateGroup group = static_cast<PacketRateGroup>(groupIndex);
+        auto *groupLabel = new QLabel(packetGridWidget);
+        groupLabel->setObjectName(packetRateGroupObjectName(group));
+        groupLabel->setProperty("epsilonPacketGroupHeader", true);
+        groupLabel->setProperty("epsilonPacketGroup", groupIndex);
+        groupLabel->setFocusPolicy(Qt::NoFocus);
+        groupLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        packet_group_labels_.append(groupLabel);
     }
     arrangePacketFields(true);
     outputCard.body_layout->addWidget(packetGridWidget);
@@ -450,6 +538,10 @@ void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
         return;
     }
 
+    for (QLabel *groupLabel : packet_group_labels_)
+    {
+        packet_grid_->removeWidget(groupLabel);
+    }
     for (QWidget *field : packet_rate_fields_)
     {
         packet_grid_->removeWidget(field);
@@ -473,16 +565,45 @@ void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
         packet_grid_->setColumnStretch(0, 1);
     }
 
-    for (int index = 0; index < packet_rate_fields_.size(); ++index)
+    const int fieldColumns = twoColumns ? 2 : 1;
+    int gridRow = 0;
+    for (int groupIndex = 0; groupIndex < packet_group_labels_.size(); ++groupIndex)
     {
-        const int visualColumn = twoColumns ? index % 2 : 0;
-        const int row = twoColumns ? index / 2 : index;
-        const int gridColumn = twoColumns ? visualColumn * 2 : 0;
-        QWidget *field = packet_rate_fields_.at(index);
-        field->setProperty("epsilonPacketGridColumn", visualColumn);
-        packet_rate_labels_.at(index)->setProperty("epsilonPacketGridColumn", visualColumn);
-        packet_rate_combos_.at(index)->setProperty("epsilonPacketGridColumn", visualColumn);
-        packet_grid_->addWidget(field, row, gridColumn);
+        bool hasPacketFields = false;
+        for (int fieldIndex = 0; fieldIndex < packet_rate_group_ids_.size(); ++fieldIndex)
+        {
+            if (packet_rate_group_ids_.at(fieldIndex) == groupIndex)
+            {
+                hasPacketFields = true;
+                break;
+            }
+        }
+        if (!hasPacketFields)
+        {
+            continue;
+        }
+        packet_grid_->addWidget(packet_group_labels_.at(groupIndex), gridRow, 0, 1,
+                                twoColumns ? 3 : 1, Qt::AlignLeft | Qt::AlignVCenter);
+        ++gridRow;
+
+        int fieldIndexInGroup = 0;
+        for (int index = 0; index < packet_rate_fields_.size(); ++index)
+        {
+            if (packet_rate_group_ids_.at(index) != groupIndex)
+            {
+                continue;
+            }
+            const int visualColumn = twoColumns ? fieldIndexInGroup % fieldColumns : 0;
+            const int row = gridRow + fieldIndexInGroup / fieldColumns;
+            const int gridColumn = twoColumns ? visualColumn * 2 : 0;
+            QWidget *field = packet_rate_fields_.at(index);
+            field->setProperty("epsilonPacketGridColumn", visualColumn);
+            packet_rate_labels_.at(index)->setProperty("epsilonPacketGridColumn", visualColumn);
+            packet_rate_combos_.at(index)->setProperty("epsilonPacketGridColumn", visualColumn);
+            packet_grid_->addWidget(field, row, gridColumn);
+            ++fieldIndexInGroup;
+        }
+        gridRow += (fieldIndexInGroup + fieldColumns - 1) / fieldColumns;
     }
     packet_grid_->invalidate();
     packet_grid_->activate();
@@ -512,6 +633,7 @@ void EpsilonConfigPanel::applyAppearance()
         "QWidget[epsilonConfigCardBody=\"true\"] { background-color: @vv-surface-raised; border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }"
         "QLabel[epsilonSummaryName=\"true\"] { color: @vv-text-secondary; font-weight: 400; }"
         "QLabel[epsilonSummaryValue=\"true\"], QLabel[epsilonSettingName=\"true\"] { color: @vv-text-strong; font-weight: 600; }"
+        "QLabel[epsilonPacketGroupHeader=\"true\"] { color: @vv-text-strong; font-weight: 600; padding-top: 2px; }"
         "QLabel[epsilonSecondaryText=\"true\"] { color: @vv-text-secondary; font-weight: 400; }"
         "QPushButton[epsilonSecondaryAction=\"true\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; color: @vv-text; }"
         "QPushButton[epsilonSecondaryAction=\"true\"]:hover { background-color: @vv-primary-subtle; border-color: @vv-primary; color: @vv-primary; }"
@@ -608,6 +730,18 @@ void EpsilonConfigPanel::updateTexts()
         label->setText(VaporView::Ground::DeviceRates::epsilonPacketDialogRowLabel(options.at(i), is_english_));
         label->setToolTip(label->text());
         label->setAccessibleName(label->text());
+    }
+    for (int groupIndex = 0; groupIndex < packet_group_labels_.size(); ++groupIndex)
+    {
+        QLabel *groupLabel = packet_group_labels_.at(groupIndex);
+        if (!groupLabel)
+        {
+            continue;
+        }
+        const QString title = packetRateGroupTitle(static_cast<PacketRateGroup>(groupIndex), is_english_);
+        groupLabel->setText(title);
+        groupLabel->setToolTip(title);
+        groupLabel->setAccessibleName(title);
     }
     for (QComboBox *combo : packet_rate_combos_)
     {

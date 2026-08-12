@@ -13,8 +13,10 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <set>
+#include <vector>
 
 namespace
 {
@@ -93,6 +95,54 @@ int main(int argc, char *argv[])
     require(options.size() == 11, "EPSILON policy exposes exactly 11 packet options");
     require(combos.size() == 11, "panel exposes exactly 11 packet-rate controls");
 
+    struct PacketGroupExpectation
+    {
+        const char *objectName;
+        const char *title;
+        std::set<uint8_t> packetIds;
+    };
+    const std::vector<PacketGroupExpectation> packetGroups = {
+        {"epsilonPacketGroupInertialFusion", "惯导与融合", {0x40, 0x41, 0x42}},
+        {"epsilonPacketGroupSystemDiagnostics", "系统与诊断", {0x50, 0x53}},
+        {"epsilonPacketGroupGnssPosition", "GNSS 与位置", {0x59, 0x5A, 0x5C, 0x5D}},
+        {"epsilonPacketGroupAttitudeRepresentation", "姿态表示", {0x63, 0x64}},
+    };
+    for (int groupIndex = 0; groupIndex < static_cast<int>(packetGroups.size()); ++groupIndex)
+    {
+        const PacketGroupExpectation& group = packetGroups.at(groupIndex);
+        auto *groupLabel = panel.findChild<QLabel *>(QString::fromLatin1(group.objectName));
+        require(groupLabel != nullptr && groupLabel->text() == QString::fromUtf8(group.title) &&
+                    groupLabel->property("epsilonPacketGroupHeader").toBool() &&
+                    groupLabel->accessibleName() == groupLabel->text(),
+                "EPSILON packet group header is visible, named, and accessible");
+    }
+
+    auto *outputCard = panel.findChild<QFrame *>(QStringLiteral("epsilonOutputCard"));
+    require(outputCard != nullptr, "EPSILON output card exists for packet group geometry");
+    int previousGroupHeaderBottom = -1;
+    for (int groupIndex = 0; groupIndex < static_cast<int>(packetGroups.size()); ++groupIndex)
+    {
+        const PacketGroupExpectation& group = packetGroups.at(groupIndex);
+        auto *groupLabel = panel.findChild<QLabel *>(QString::fromLatin1(group.objectName));
+        const QRect groupRect(groupLabel->mapTo(outputCard, QPoint(0, 0)), groupLabel->size());
+        int firstPacketTop = std::numeric_limits<int>::max();
+        for (QComboBox *combo : combos)
+        {
+            const auto packetId = static_cast<uint8_t>(combo->property("epsilonPacketId").toUInt());
+            if (combo->property("epsilonPacketGroup").toInt() != groupIndex)
+            {
+                continue;
+            }
+            const QRect comboRect(combo->mapTo(outputCard, QPoint(0, 0)), combo->size());
+            firstPacketTop = std::min(firstPacketTop, comboRect.top());
+            require(group.packetIds.find(packetId) != group.packetIds.end(),
+                    "packet group geometry contains only its assigned packet controls");
+        }
+        require(firstPacketTop > groupRect.bottom() && groupRect.top() > previousGroupHeaderBottom,
+                "EPSILON packet group header precedes its fields and follows the previous group");
+        previousGroupHeaderBottom = groupRect.bottom();
+    }
+
     QSet<int> wideColumns;
     for (QComboBox *combo : combos)
     {
@@ -122,6 +172,11 @@ int main(int argc, char *argv[])
                 "packet-rate control objectName is non-empty and unique");
         require(!combo->accessibleName().isEmpty(), "packet-rate control has accessibleName");
         require(combo->focusPolicy() == Qt::TabFocus, "packet-rate control uses TabFocus");
+        const int groupIndex = combo->property("epsilonPacketGroup").toInt();
+        require(groupIndex >= 0 && groupIndex < static_cast<int>(packetGroups.size()) &&
+                    packetGroups.at(groupIndex).packetIds.find(packetId) !=
+                        packetGroups.at(groupIndex).packetIds.end(),
+                "packet-rate control belongs to its documented output category");
     }
 
     const std::map<uint8_t, int> defaults = defaultEpsilonPacketRates();
@@ -212,6 +267,11 @@ int main(int argc, char *argv[])
     panel.setEnglish(true);
     require(panel.accessibleName() == QStringLiteral("EPSILON Configuration"),
             "English accessible name follows panel language");
+    require(panel.findChild<QLabel *>(QStringLiteral("epsilonPacketGroupInertialFusion"))->text() ==
+                QStringLiteral("Inertial and Fusion") &&
+                panel.findChild<QLabel *>(QStringLiteral("epsilonPacketGroupGnssPosition"))->text() ==
+                    QStringLiteral("GNSS and Position"),
+            "EPSILON packet group titles follow the active language");
     panel.setEnglish(false);
     require(!panel.accessibleName().isEmpty(), "Chinese accessible name remains available");
 
