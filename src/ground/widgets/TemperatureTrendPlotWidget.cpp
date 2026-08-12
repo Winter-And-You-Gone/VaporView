@@ -23,8 +23,7 @@ constexpr int kTemperatureControllerPlotWidth = 260;
 constexpr int kTemperatureControllerPlotMinHeight = 190;
 constexpr int kDefaultXAxisLabelCount = 5;
 constexpr int kMinTimeXAxisLabelCount = 2;
-constexpr qreal kXAxisLabelGap = 8.0;
-constexpr qreal kTimeXAxisTargetTickSpacing = 88.0;
+constexpr qreal kTimeXAxisLabelGap = 4.0;
 constexpr qreal kXAxisLabelRightInset = 2.0;
 constexpr qreal kXAxisTickLength = 4.0;
 constexpr qreal kXAxisLabelGapAfterTick = 2.0;
@@ -52,8 +51,7 @@ int xAxisLabelCountForWidth(qreal plotWidth,
         return kDefaultXAxisLabelCount;
     }
 
-    const qreal targetSpacing = std::max(kTimeXAxisTargetTickSpacing,
-                                         timeAxisLabelWidth(axisFontMetrics) + kXAxisLabelGap);
+    const qreal targetSpacing = timeAxisLabelWidth(axisFontMetrics) + kTimeXAxisLabelGap;
     const int intervals = static_cast<int>(std::floor(
         std::max<qreal>(0.0, plotWidth) / targetSpacing));
     return std::max(kMinTimeXAxisLabelCount, intervals + 1);
@@ -179,9 +177,12 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
             plotRect.setRight(timeAxisRight);
         }
     }
+    const qreal timeAxisMinimumTickSpacing = timeAxisLabelWidth(axisFm) + kTimeXAxisLabelGap;
     const int xAxisLabelCount = xAxisLabelCountForWidth(plotRect.width(), axisFm, time_axis_enabled_);
     const int xAxisIntervals = std::max(1, xAxisLabelCount - 1);
     setProperty("xAxisTickCount", xAxisLabelCount);
+    setProperty("xAxisTimeMinimumTickSpacing",
+                time_axis_enabled_ ? timeAxisMinimumTickSpacing : 0.0);
     auto xAxisRange = [this, xAxisIntervals](int sampleCount) {
         if (!time_axis_enabled_)
         {

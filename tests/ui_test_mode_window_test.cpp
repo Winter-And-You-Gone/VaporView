@@ -763,6 +763,8 @@ int main(int argc, char **argv)
     const double defaultTimeSpan = adaptiveTimePlot.property("xAxisTimeSpanSeconds").toDouble();
     const double defaultTimeFirstTick = adaptiveTimePlot.property("xAxisTimeFirstTickX").toDouble();
     const double defaultTimeLastTick = adaptiveTimePlot.property("xAxisTimeLastTickX").toDouble();
+    const double defaultMinimumTickSpacing =
+        adaptiveTimePlot.property("xAxisTimeMinimumTickSpacing").toDouble();
     adaptiveTimePlot.resize(1600, 180);
     adaptiveTimePlot.repaint();
     processEvents();
@@ -770,6 +772,8 @@ int main(int argc, char **argv)
     const double wideTimeSpan = adaptiveTimePlot.property("xAxisTimeSpanSeconds").toDouble();
     const double wideTimeFirstTick = adaptiveTimePlot.property("xAxisTimeFirstTickX").toDouble();
     const double wideTimeLastTick = adaptiveTimePlot.property("xAxisTimeLastTickX").toDouble();
+    const double wideMinimumTickSpacing =
+        adaptiveTimePlot.property("xAxisTimeMinimumTickSpacing").toDouble();
     const double wideTimeMax = adaptiveTimePlot.property("xAxisTimeMaxSeconds").toDouble();
     const QString wideTimeRightLabel = adaptiveTimePlot.property("xAxisTimeRightLabel").toString();
     const QString expectedWideTimeRightLabel = QDateTime::fromSecsSinceEpoch(
@@ -781,16 +785,20 @@ int main(int argc, char **argv)
         (defaultTimeLastTick - defaultTimeFirstTick) / std::max(1, defaultTimeTickCount - 1);
     const double wideTimeTickSpacing =
         (wideTimeLastTick - wideTimeFirstTick) / std::max(1, wideTimeTickCount - 1);
-    require(defaultTimeTickCount >= 7 &&
-                wideTimeTickCount > defaultTimeTickCount + 6 &&
+    require(defaultTimeTickCount >= 10 &&
+                wideTimeTickCount >= defaultTimeTickCount * 2 - 2 &&
                 std::abs(defaultTimeSpan - (defaultTimeTickCount - 1)) < 1e-6 &&
                 std::abs(wideTimeSpan - (wideTimeTickCount - 1)) < 1e-6 &&
-                defaultTimeTickSpacing >= 80.0 &&
-                defaultTimeTickSpacing <= 104.0 &&
-                std::abs(defaultTimeTickSpacing - wideTimeTickSpacing) <= 16.0 &&
+                defaultMinimumTickSpacing > 0.0 &&
+                wideMinimumTickSpacing > 0.0 &&
+                defaultTimeTickSpacing >= defaultMinimumTickSpacing - 1.0 &&
+                defaultTimeTickSpacing <= defaultMinimumTickSpacing + 8.0 &&
+                wideTimeTickSpacing >= wideMinimumTickSpacing - 1.0 &&
+                wideTimeTickSpacing <= wideMinimumTickSpacing + 8.0 &&
+                std::abs(defaultTimeTickSpacing - wideTimeTickSpacing) <= 8.0 &&
                 std::abs(wideTimeMax - localTimeSeconds) <= 1.0 &&
                 wideTimeRightLabel == expectedWideTimeRightLabel,
-            "temperature overview time axis keeps a consistent tick density as the plot widens");
+            "temperature overview time axis packs the densest stable tick spacing as the plot widens");
 
     require(VaporViewTest::processEventsUntil(1500, [temperatureOutputPercentPill, temperatureOutputSwitch]() {
                 return temperatureOutputSwitch->isChecked() &&
