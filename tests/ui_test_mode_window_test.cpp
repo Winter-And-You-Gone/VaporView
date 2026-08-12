@@ -15,6 +15,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QColor>
+#include <QDateTime>
 #include <QDir>
 #include <QDialog>
 #include <QEventLoop>
@@ -713,7 +714,8 @@ int main(int argc, char **argv)
     TemperatureTrendPlotWidget adaptiveTimePlot;
     adaptiveTimePlot.setTimeAxisEnabled(true);
     adaptiveTimePlot.setSamples({25.0, 25.5});
-    adaptiveTimePlot.setSampleTimes({3.0, 29.0});
+    const double localTimeSeconds = static_cast<double>(QDateTime::currentMSecsSinceEpoch()) / 1000.0;
+    adaptiveTimePlot.setSampleTimes({localTimeSeconds - 26.0, localTimeSeconds});
     adaptiveTimePlot.resize(240, 180);
     adaptiveTimePlot.show();
     adaptiveTimePlot.repaint();
@@ -726,13 +728,19 @@ int main(int argc, char **argv)
     const int wideTimeTickCount = adaptiveTimePlot.property("xAxisTickCount").toInt();
     const double wideTimeSpan = adaptiveTimePlot.property("xAxisTimeSpanSeconds").toDouble();
     const double wideTimeMax = adaptiveTimePlot.property("xAxisTimeMaxSeconds").toDouble();
+    const QString wideTimeRightLabel = adaptiveTimePlot.property("xAxisTimeRightLabel").toString();
+    const QString expectedWideTimeRightLabel = QDateTime::fromSecsSinceEpoch(
+        static_cast<qint64>(std::floor(wideTimeMax)))
+        .toLocalTime()
+        .toString(QStringLiteral("hh:mm:ss"));
     adaptiveTimePlot.close();
     require(narrowTimeTickCount >= 2 && narrowTimeTickCount <= 8 &&
                 wideTimeTickCount > narrowTimeTickCount && wideTimeTickCount <= 8 &&
                 std::abs(narrowTimeSpan - (narrowTimeTickCount - 1)) < 1e-6 &&
                 std::abs(wideTimeSpan - (wideTimeTickCount - 1)) < 1e-6 &&
-                std::abs(wideTimeMax - 29.0) < 1e-6,
-            "temperature overview time axis keeps one-second spacing over the latest visible window");
+                std::abs(wideTimeMax - localTimeSeconds) <= 1.0 &&
+                wideTimeRightLabel == expectedWideTimeRightLabel,
+            "temperature overview time axis keeps one-second spacing at the local clock time");
 
     require(VaporViewTest::processEventsUntil(1500, [temperatureOutputPercentPill, temperatureOutputSwitch]() {
                 return temperatureOutputSwitch->isChecked() &&

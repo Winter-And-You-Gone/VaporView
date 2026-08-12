@@ -13,6 +13,7 @@
 #include <QApplication>
 #include <QButtonGroup>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QDoubleValidator>
 #include <QEvent>
@@ -115,6 +116,11 @@ constexpr int kTemperatureControllerConfigPlotHeight =
     kTemperatureControllerCompactColumnGap +
     kTemperatureControllerConfigRowHeight;
 constexpr int kTemperatureControllerHistoryLimit = 240;
+
+double localClockSeconds()
+{
+    return static_cast<double>(QDateTime::currentMSecsSinceEpoch()) / 1000.0;
+}
 constexpr const char *kTextWidthCandidatesProperty = "_vv_text_width_candidates";
 constexpr const char *kTextWidthPaddingProperty = "_vv_text_width_padding";
 constexpr const char *kNumericWidthCandidatesProperty = "_vv_numeric_width_candidates";
@@ -1344,6 +1350,7 @@ public:
                 sampleTimestamp < temperature_history_origin_)
             {
                 temperature_history_origin_ = sampleTimestamp;
+                temperature_history_origin_local_seconds_ = localClockSeconds();
                 temperature_history_origin_valid_ = true;
                 for (int i = 0; i < static_cast<int>(measured_temperature_history_.size()); ++i)
                 {
@@ -1351,8 +1358,8 @@ public:
                     measured_temperature_time_history_[i].clear();
                 }
             }
-            const double sampleTimeSeconds = std::chrono::duration<double>(
-                sampleTimestamp - temperature_history_origin_).count();
+            const double sampleTimeSeconds = temperature_history_origin_local_seconds_ +
+                std::chrono::duration<double>(sampleTimestamp - temperature_history_origin_).count();
             for (int i = 0; i < static_cast<int>(measured_temperature_history_.size()); ++i)
             {
                 const double target = sample.channels[i].target_temperature_c;
@@ -1366,7 +1373,7 @@ public:
                     auto& history = measured_temperature_history_[i];
                     auto& timeHistory = measured_temperature_time_history_[i];
                     history.append(measured);
-                    timeHistory.append(std::isfinite(sampleTimeSeconds) ? sampleTimeSeconds : 0.0);
+                    timeHistory.append(sampleTimeSeconds);
                     while (history.size() > kTemperatureControllerHistoryLimit)
                     {
                         history.removeFirst();
@@ -1621,6 +1628,7 @@ private:
         std::numeric_limits<double>::quiet_NaN(),
         std::numeric_limits<double>::quiet_NaN()};
     std::chrono::steady_clock::time_point temperature_history_origin_{};
+    double temperature_history_origin_local_seconds_ = 0.0;
     std::function<void(quint8, bool)> output_enabled_callback_;
     int selected_channel_index_ = 0;
     bool summary_height_update_pending_ = false;

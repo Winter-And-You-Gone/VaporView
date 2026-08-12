@@ -2,6 +2,7 @@
 
 #include "shared/theme/AppTheme.h"
 
+#include <QDateTime>
 #include <QFontMetrics>
 #include <QPainter>
 #include <QPaintEvent>
@@ -25,6 +26,11 @@ constexpr int kMinTimeXAxisLabelCount = 2;
 constexpr int kMaxTimeXAxisLabelCount = 8;
 constexpr qreal kXAxisLabelGap = 8.0;
 constexpr double kTimeAxisSecondsPerInterval = 1.0;
+
+double localClockSeconds()
+{
+    return static_cast<double>(QDateTime::currentMSecsSinceEpoch()) / 1000.0;
+}
 
 int xAxisLabelCountForWidth(qreal plotWidth,
                             const QFontMetrics& axisFontMetrics,
@@ -153,34 +159,25 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     const int xAxisLabelCount = xAxisLabelCountForWidth(plotRect.width(), axisFm, time_axis_enabled_);
     const int xAxisIntervals = std::max(1, xAxisLabelCount - 1);
     setProperty("xAxisTickCount", xAxisLabelCount);
-    auto xAxisRange = [this, xAxisIntervals](const QVector<double>& xValues, int sampleCount) {
+    auto xAxisRange = [this, xAxisIntervals](int sampleCount) {
         if (!time_axis_enabled_)
         {
             return std::pair<double, double>{0.0, static_cast<double>(std::max(1, sampleCount - 1))};
         }
         const double visibleSpan = static_cast<double>(xAxisIntervals) * kTimeAxisSecondsPerInterval;
-        if (xValues.isEmpty())
-        {
-            return std::pair<double, double>{0.0, visibleSpan};
-        }
-        const auto maxIt = std::max_element(xValues.cbegin(), xValues.cend());
-        if (maxIt == xValues.cend() || !std::isfinite(*maxIt))
-        {
-            return std::pair<double, double>{0.0, visibleSpan};
-        }
-        const double xMax = std::max(visibleSpan, std::max(0.0, *maxIt));
+        const double xMax = localClockSeconds();
         return std::pair<double, double>{xMax - visibleSpan, xMax};
     };
     auto drawGridAndAxes = [&](double minValue,
                                double maxValue,
-                               const QVector<double>& xValues,
                                int sampleCount) {
-        const auto [xMin, xMax] = xAxisRange(xValues, sampleCount);
+        const auto [xMin, xMax] = xAxisRange(sampleCount);
         if (time_axis_enabled_)
         {
             setProperty("xAxisTimeMinSeconds", xMin);
             setProperty("xAxisTimeMaxSeconds", xMax);
             setProperty("xAxisTimeSpanSeconds", xMax - xMin);
+            setProperty("xAxisTimeRightLabel", timeAxisTickLabel(xMax));
         }
         painter.setPen(QPen(grid, 1));
         for (int i = 0; i < xAxisLabelCount; ++i)
@@ -253,7 +250,7 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     if (finiteSamples.isEmpty() || plotRect.width() <= 1.0 || plotRect.height() <= 1.0)
     {
         const auto [minValue, maxValue] = temperatureAxisRange(QVector<double>(), target_temperature_c_);
-        drawGridAndAxes(minValue, maxValue, QVector<double>(), 0);
+        drawGridAndAxes(minValue, maxValue, 0);
         painter.setPen(muted);
         QRectF visiblePlotRect = plotRect.intersected(QRectF(visibleRegion().boundingRect()));
         if (!visiblePlotRect.isValid() || visiblePlotRect.width() <= 1.0 || visiblePlotRect.height() <= 1.0)
@@ -274,12 +271,12 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     }
 
     const auto [minValue, maxValue] = temperatureAxisRange(finiteSamples, target_temperature_c_);
-    drawGridAndAxes(minValue, maxValue, finiteSampleTimes, finiteSamples.size());
+    drawGridAndAxes(minValue, maxValue, finiteSamples.size());
 
     QPolygonF polyline;
     polyline.reserve(finiteSamples.size());
     const int count = finiteSamples.size();
-    const auto [xMin, xMax] = xAxisRange(finiteSampleTimes, count);
+    const auto [xMin, xMax] = xAxisRange(count);
     const bool useTimeCoordinates = time_axis_enabled_ &&
         finiteSampleTimes.size() > 1 &&
         xMax - xMin > 1e-6;
@@ -299,11 +296,14 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
                                 plotRect.bottom() - normalized * plotRect.height()));
     }
 
+    painter.save();
+    painter.setClipRect(plotRect);
     painter.setPen(QPen(line, 1.6));
     painter.drawPolyline(polyline);
     painter.setBrush(line);
     painter.setPen(Qt::NoPen);
     painter.drawEllipse(polyline.last(), 3.0, 3.0);
+    painter.restore();
 }
 
 QString TemperatureTrendPlotWidget::axisTickLabel(double value)
@@ -320,14 +320,9 @@ QString TemperatureTrendPlotWidget::timeAxisTickLabel(double value)
         return QStringLiteral("---");
     }
 
-    const qint64 totalSeconds = std::max<qint64>(0, static_cast<qint64>(std::llround(value)));
-    const qint64 hours = totalSeconds / 3600;
-    const qint64 minutes = (totalSeconds % 3600) / 60;
-    const qint64 seconds = totalSeconds % 60;
-    return QStringLiteral("%1:%2:%3")
-        .arg(hours, 2, 10, QLatin1Char('0'))
-        .arg(minutes, 2, 10, QLatin1Char('0'))
-        .arg(seconds, 2, 10, QLatin1Char('0'));
+    return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(std::floor(value)))
+        .toLocalTime()
+        .toString(QStringLiteral("hh:mm:ss"));
 }
 
 std::pair<double, double> TemperatureTrendPlotWidget::temperatureAxisRange(
