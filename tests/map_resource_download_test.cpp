@@ -61,6 +61,46 @@ bool waitForOperation(VaporView::Map3D::MapResourceManager& manager,
     return completed;
 }
 
+bool refreshManifestAndWait(VaporView::Map3D::MapResourceManager& manager,
+                            bool* success,
+                            QString* message)
+{
+    bool completed = false;
+    QEventLoop loop;
+    QTimer timeout;
+    timeout.setSingleShot(true);
+
+    const QMetaObject::Connection operationConnection = QObject::connect(
+        &manager,
+        &VaporView::Map3D::MapResourceManager::operationFinished,
+        &loop,
+        [&](const QString& id, bool operationSuccess, const QString& operationMessage) {
+            if (!id.isEmpty())
+            {
+                return;
+            }
+            completed = true;
+            if (success)
+            {
+                *success = operationSuccess;
+            }
+            if (message)
+            {
+                *message = operationMessage;
+            }
+            loop.quit();
+        });
+    manager.refreshManifest();
+    if (!completed)
+    {
+        QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+        timeout.start(10000);
+        loop.exec();
+    }
+    QObject::disconnect(operationConnection);
+    return completed;
+}
+
 bool removePackageAndWait(VaporView::Map3D::MapResourceManager& manager,
                           const QString& packageId,
                           bool* success,
@@ -191,13 +231,18 @@ int main(int argc, char** argv)
     });
 
     VaporView::Map3D::MapResourceManager manager;
-    const QString manifestUrl = QStringLiteral("http://127.0.0.1:%1/manifest.json").arg(server.serverPort());
-    manager.setManifestUrl(manifestUrl);
-    manager.refreshManifest();
-
     bool operationSuccess = false;
     QString operationMessage;
-    if (!waitForOperation(manager, {}, &operationSuccess, &operationMessage) || !operationSuccess)
+    manager.setManifestUrl(QStringLiteral("http://example.test/manifest.json"));
+    if (!refreshManifestAndWait(manager, &operationSuccess, &operationMessage) || operationSuccess)
+    {
+        return fail(QStringLiteral("remote HTTP manifest was not rejected: %1").arg(operationMessage));
+    }
+
+    const QString manifestUrl = QStringLiteral("http://127.0.0.1:%1/manifest.json").arg(server.serverPort());
+    manager.setManifestUrl(manifestUrl);
+
+    if (!refreshManifestAndWait(manager, &operationSuccess, &operationMessage) || !operationSuccess)
     {
         return fail(QStringLiteral("manifest download failed: %1").arg(operationMessage));
     }
