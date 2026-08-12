@@ -303,7 +303,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
         field->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
         auto *fieldLayout = new QHBoxLayout(field);
         fieldLayout->setContentsMargins(0, 0, 0, 0);
-        fieldLayout->setSpacing(12);
+        fieldLayout->setSpacing(8);
 
         auto *label = new QLabel(field);
         label->setObjectName(QStringLiteral("epsilonPacketRateLabel_%1").arg(option.packet_id, 2, 16, QLatin1Char('0')));
@@ -326,8 +326,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
         }
         combo->setAccessibleName(QStringLiteral("EPSILON packet %1 rate").arg(option.packet_id, 2, 16, QLatin1Char('0')));
         fieldLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
-        fieldLayout->addStretch(1);
-        fieldLayout->addWidget(combo, 0, Qt::AlignRight | Qt::AlignVCenter);
+        fieldLayout->addWidget(combo, 0, Qt::AlignLeft | Qt::AlignVCenter);
 
         packet_rate_fields_.append(field);
         packet_rate_labels_.append(label);
@@ -557,7 +556,7 @@ void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
     if (twoColumns)
     {
         packet_grid_->setColumnStretch(0, 1);
-        packet_grid_->setColumnMinimumWidth(1, 24);
+        packet_grid_->setColumnMinimumWidth(1, 28);
         packet_grid_->setColumnStretch(2, 1);
     }
     else
@@ -565,45 +564,83 @@ void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
         packet_grid_->setColumnStretch(0, 1);
     }
 
-    const int fieldColumns = twoColumns ? 2 : 1;
-    int gridRow = 0;
-    for (int groupIndex = 0; groupIndex < packet_group_labels_.size(); ++groupIndex)
+    int groupFieldCounts[kPacketRateGroupCount] = {};
+    for (int groupId : packet_rate_group_ids_)
     {
-        bool hasPacketFields = false;
-        for (int fieldIndex = 0; fieldIndex < packet_rate_group_ids_.size(); ++fieldIndex)
+        if (groupId >= 0 && groupId < kPacketRateGroupCount)
         {
-            if (packet_rate_group_ids_.at(fieldIndex) == groupIndex)
-            {
-                hasPacketFields = true;
-                break;
-            }
+            ++groupFieldCounts[groupId];
         }
-        if (!hasPacketFields)
-        {
-            continue;
-        }
-        packet_grid_->addWidget(packet_group_labels_.at(groupIndex), gridRow, 0, 1,
-                                twoColumns ? 3 : 1, Qt::AlignLeft | Qt::AlignVCenter);
-        ++gridRow;
+    }
 
-        int fieldIndexInGroup = 0;
-        for (int index = 0; index < packet_rate_fields_.size(); ++index)
+    auto addField = [this](int index, int row, int gridColumn, int visualColumn) {
+        QWidget *field = packet_rate_fields_.at(index);
+        field->setProperty("epsilonPacketGridColumn", visualColumn);
+        packet_rate_labels_.at(index)->setProperty("epsilonPacketGridColumn", visualColumn);
+        packet_rate_combos_.at(index)->setProperty("epsilonPacketGridColumn", visualColumn);
+        packet_grid_->addWidget(field, row, gridColumn, Qt::AlignLeft | Qt::AlignVCenter);
+    };
+
+    if (twoColumns)
+    {
+        int gridRow = 0;
+        const int groupColumns = 2;
+        for (int groupRow = 0;
+             groupRow * groupColumns < packet_group_labels_.size();
+             ++groupRow)
         {
-            if (packet_rate_group_ids_.at(index) != groupIndex)
+            int rowSpan = 0;
+            for (int groupColumn = 0; groupColumn < groupColumns; ++groupColumn)
+            {
+                const int groupIndex = groupRow * groupColumns + groupColumn;
+                if (groupIndex >= packet_group_labels_.size() ||
+                    groupIndex >= kPacketRateGroupCount ||
+                    groupFieldCounts[groupIndex] <= 0)
+                {
+                    continue;
+                }
+                const int gridColumn = groupColumn * 2;
+                packet_grid_->addWidget(packet_group_labels_.at(groupIndex), gridRow, gridColumn,
+                                        Qt::AlignLeft | Qt::AlignVCenter);
+
+                int fieldRow = gridRow + 1;
+                for (int index = 0; index < packet_rate_fields_.size(); ++index)
+                {
+                    if (packet_rate_group_ids_.at(index) != groupIndex)
+                    {
+                        continue;
+                    }
+                    addField(index, fieldRow, gridColumn, groupColumn);
+                    ++fieldRow;
+                }
+                rowSpan = std::max(rowSpan, 1 + groupFieldCounts[groupIndex]);
+            }
+            gridRow += rowSpan;
+        }
+    }
+    else
+    {
+        int gridRow = 0;
+        for (int groupIndex = 0; groupIndex < packet_group_labels_.size(); ++groupIndex)
+        {
+            if (groupIndex >= kPacketRateGroupCount || groupFieldCounts[groupIndex] <= 0)
             {
                 continue;
             }
-            const int visualColumn = twoColumns ? fieldIndexInGroup % fieldColumns : 0;
-            const int row = gridRow + fieldIndexInGroup / fieldColumns;
-            const int gridColumn = twoColumns ? visualColumn * 2 : 0;
-            QWidget *field = packet_rate_fields_.at(index);
-            field->setProperty("epsilonPacketGridColumn", visualColumn);
-            packet_rate_labels_.at(index)->setProperty("epsilonPacketGridColumn", visualColumn);
-            packet_rate_combos_.at(index)->setProperty("epsilonPacketGridColumn", visualColumn);
-            packet_grid_->addWidget(field, row, gridColumn);
-            ++fieldIndexInGroup;
+            packet_grid_->addWidget(packet_group_labels_.at(groupIndex), gridRow, 0,
+                                    Qt::AlignLeft | Qt::AlignVCenter);
+            ++gridRow;
+
+            for (int index = 0; index < packet_rate_fields_.size(); ++index)
+            {
+                if (packet_rate_group_ids_.at(index) != groupIndex)
+                {
+                    continue;
+                }
+                addField(index, gridRow, 0, 0);
+                ++gridRow;
+            }
         }
-        gridRow += (fieldIndexInGroup + fieldColumns - 1) / fieldColumns;
     }
     packet_grid_->invalidate();
     packet_grid_->activate();
@@ -622,6 +659,30 @@ void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
             }
         }
     });
+}
+
+void EpsilonConfigPanel::updatePacketLabelWidths()
+{
+    int labelWidth = 0;
+    for (QLabel *label : packet_rate_labels_)
+    {
+        if (!label)
+        {
+            continue;
+        }
+        labelWidth = std::max(labelWidth, label->fontMetrics().horizontalAdvance(label->text()));
+    }
+    labelWidth += 4;
+    for (QLabel *label : packet_rate_labels_)
+    {
+        if (!label)
+        {
+            continue;
+        }
+        label->setMinimumWidth(labelWidth);
+        label->setMaximumWidth(labelWidth);
+        label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    }
 }
 
 void EpsilonConfigPanel::applyAppearance()
@@ -731,6 +792,7 @@ void EpsilonConfigPanel::updateTexts()
         label->setToolTip(label->text());
         label->setAccessibleName(label->text());
     }
+    updatePacketLabelWidths();
     for (int groupIndex = 0; groupIndex < packet_group_labels_.size(); ++groupIndex)
     {
         QLabel *groupLabel = packet_group_labels_.at(groupIndex);

@@ -119,12 +119,14 @@ int main(int argc, char *argv[])
 
     auto *outputCard = panel.findChild<QFrame *>(QStringLiteral("epsilonOutputCard"));
     require(outputCard != nullptr, "EPSILON output card exists for packet group geometry");
-    int previousGroupHeaderBottom = -1;
+    std::vector<QRect> groupRects(packetGroups.size());
+    std::vector<int> groupFieldBottoms(packetGroups.size(), -1);
     for (int groupIndex = 0; groupIndex < static_cast<int>(packetGroups.size()); ++groupIndex)
     {
         const PacketGroupExpectation& group = packetGroups.at(groupIndex);
         auto *groupLabel = panel.findChild<QLabel *>(QString::fromLatin1(group.objectName));
         const QRect groupRect(groupLabel->mapTo(outputCard, QPoint(0, 0)), groupLabel->size());
+        groupRects.at(groupIndex) = groupRect;
         int firstPacketTop = std::numeric_limits<int>::max();
         for (QComboBox *combo : combos)
         {
@@ -135,13 +137,23 @@ int main(int argc, char *argv[])
             }
             const QRect comboRect(combo->mapTo(outputCard, QPoint(0, 0)), combo->size());
             firstPacketTop = std::min(firstPacketTop, comboRect.top());
+            groupFieldBottoms.at(groupIndex) = std::max(groupFieldBottoms.at(groupIndex), comboRect.bottom());
             require(group.packetIds.find(packetId) != group.packetIds.end(),
                     "packet group geometry contains only its assigned packet controls");
         }
-        require(firstPacketTop > groupRect.bottom() && groupRect.top() > previousGroupHeaderBottom,
-                "EPSILON packet group header precedes its fields and follows the previous group");
-        previousGroupHeaderBottom = groupRect.bottom();
+        require(firstPacketTop > groupRect.bottom(),
+                "EPSILON packet group header precedes its fields");
     }
+    require(std::abs(groupRects.at(0).top() - groupRects.at(1).top()) <= 2 &&
+                groupRects.at(1).left() > groupRects.at(0).right(),
+            "wide EPSILON packet groups place inertial/fusion and system/diagnostics on the first row");
+    require(std::abs(groupRects.at(2).top() - groupRects.at(3).top()) <= 2 &&
+                groupRects.at(3).left() > groupRects.at(2).right(),
+            "wide EPSILON packet groups place GNSS/position and attitude representation on the second row");
+    require(groupRects.at(2).top() > std::max(groupFieldBottoms.at(0), groupFieldBottoms.at(1)) &&
+                std::abs(groupRects.at(0).left() - groupRects.at(2).left()) <= 2 &&
+                std::abs(groupRects.at(1).left() - groupRects.at(3).left()) <= 2,
+            "wide EPSILON packet group columns align as a two-by-two layout");
 
     QSet<int> wideColumns;
     for (QComboBox *combo : combos)

@@ -48,6 +48,7 @@ protected:
 private:
     void arrangePacketFields(bool twoColumns);
     void applyAppearance();
+    void updatePacketLabelWidths();
     void updateSummaryTexts();
     void updateTexts();
 
