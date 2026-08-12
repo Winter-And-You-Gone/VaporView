@@ -9170,19 +9170,43 @@ int main(int argc, char **argv)
                 "device telemetry summary field name uses device-config text styling");
         if (i == 2)
         {
-            const QList<QLabel*> availabilityValues =
-                subCard->findChildren<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
-            require(!availabilityValues.isEmpty(),
-                    "device telemetry availability subcard has value labels");
-            for (QLabel *valueLabel : availabilityValues)
+            QStringList dataFieldNames;
+            const QList<QFrame*> dataPills =
+                subCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+            require(!dataPills.isEmpty(),
+                    "device telemetry availability subcard has value pills");
+            for (QFrame *pill : dataPills)
             {
+                QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+                QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+                require(nameLabel != nullptr && valueLabel != nullptr,
+                        "device telemetry data pill has a name and value");
+                dataFieldNames << nameLabel->text();
+                const QString name = nameLabel->text();
                 const QString text = valueLabel->text();
-                require(text == QStringLiteral("有") ||
-                            text == QStringLiteral("无") ||
-                            text == QStringLiteral("Yes") ||
-                            text == QStringLiteral("No"),
-                        "device telemetry availability values use compact yes/no text");
+                const bool statusField =
+                    name == QStringLiteral("记录") ||
+                    name == QStringLiteral("Record") ||
+                    name == QStringLiteral("磁盘") ||
+                    name == QStringLiteral("Disk") ||
+                    name == QStringLiteral("CRC");
+                if (!statusField)
+                {
+                    require(text == QStringLiteral("有") ||
+                                text == QStringLiteral("无") ||
+                                text == QStringLiteral("Yes") ||
+                                text == QStringLiteral("No"),
+                            "device telemetry availability values use compact yes/no text");
+                }
             }
+            require(dataFieldNames.contains(QStringLiteral("记录")) ||
+                        dataFieldNames.contains(QStringLiteral("Record")),
+                    "device telemetry data subcard shows the remote recording state");
+            require(dataFieldNames.contains(QStringLiteral("磁盘")) ||
+                        dataFieldNames.contains(QStringLiteral("Disk")),
+                    "device telemetry data subcard shows remaining sky disk capacity");
+            require(dataFieldNames.contains(QStringLiteral("CRC")),
+                    "device telemetry data subcard shows CRC error count");
         }
         require(leftmostPillLeft > titlePaneRect.right(),
                 "device telemetry summary subcard title sits in a separate left area");

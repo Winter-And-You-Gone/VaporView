@@ -1,6 +1,37 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
 
+namespace
+{
+
+QString remoteSummaryRecordingStateText(quint8 state, bool english)
+{
+    switch (state)
+    {
+    case 1:
+        return english ? QStringLiteral("Recording") : QStringLiteral("记录中");
+    case 2:
+        return english ? QStringLiteral("Paused") : QStringLiteral("已暂停");
+    default:
+        return english ? QStringLiteral("Idle") : QStringLiteral("未记录");
+    }
+}
+
+QString remoteSummaryBytesText(quint64 bytes)
+{
+    static const char *units[] = {"B", "KB", "MB", "GB", "TB"};
+    double value = static_cast<double>(bytes);
+    int unit = 0;
+    while (value >= 1024.0 && unit < 4)
+    {
+        value /= 1024.0;
+        ++unit;
+    }
+    return QStringLiteral("%1 %2").arg(value, 0, 'f', unit == 0 ? 0 : 1).arg(units[unit]);
+}
+
+} // namespace
+
 bool MainWindow::isRemoteSkyMode() const
 {
     return state_->remote_sky_mode_;
@@ -527,18 +558,33 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     const double txBps = connected
         ? (uiTestMode ? uiTestSnapshot.transmitBitsPerSecond : state_->remote_sky_controller_->transmitBitsPerSecond())
         : 0.0;
+    const bool statusFresh = connected && (uiTestMode ||
+        (state_->remote_sky_controller_ &&
+         state_->remote_sky_controller_->statusFresh(QDateTime::currentMSecsSinceEpoch())));
+    const quint8 recordingState = uiTestMode ? 0 : state_->remote_status_.recording_state;
+    const quint64 diskFreeBytes = uiTestMode
+        ? static_cast<quint64>(128) * 1024ULL * 1024ULL * 1024ULL
+        : state_->remote_status_.disk_free_bytes;
+    const quint32 crcErrorCount = uiTestMode ? 0U : state_->remote_status_.crc_error_count;
+    const QString unavailableText = QStringLiteral("--");
 
-    auto makeItem = [](const QString& label, const QString& value, bool hasData, const QString& valueWidthText = QString()) {
+    auto makeItem = [](const QString& label,
+                       const QString& value,
+                       bool hasData,
+                       const QString& valueWidthText = QString(),
+                       bool compactAvailabilityValue = false) {
         RemoteTelemetrySummarySections::Item item;
         item.label = label;
         item.value = value;
         item.valueWidthText = valueWidthText;
         item.hasData = hasData;
+        item.compactAvailabilityValue = compactAvailabilityValue;
         return item;
     };
 
     QList<RemoteTelemetrySummarySections::Item> rateRows;
     QList<RemoteTelemetrySummarySections::Item> linkRows;
+    QList<RemoteTelemetrySummarySections::Item> linkStatusRows;
     QList<RemoteTelemetrySummarySections::Item> deviceRows;
     const QString frequencyWidthText = QStringLiteral("999.9 Hz");
     const QString bitRateWidthText = uiTestMode
@@ -554,7 +600,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     };
     auto appendDevice = [&](VaporView::SkyDeviceId device, qint64 timeoutMs, const QString& label) {
         const bool hasData = uiTestMode ? hasUiTestDeviceData(device) : hasDeviceData(device, timeoutMs);
-        deviceRows << makeItem(label, hasText(hasData), hasData);
+        deviceRows << makeItem(label, hasText(hasData), hasData, QString(), true);
     };
     if (state_->is_english_)
     {
@@ -567,6 +613,18 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         linkRows << makeItem(QStringLiteral("Sky->Ground"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("Ground->Sky"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("Total"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
+        linkStatusRows << makeItem(QStringLiteral("Record"),
+                                   statusFresh ? remoteSummaryRecordingStateText(recordingState, true) : unavailableText,
+                                   statusFresh,
+                                   QStringLiteral("Recording"));
+        linkStatusRows << makeItem(QStringLiteral("Disk"),
+                                   statusFresh && diskFreeBytes > 0 ? remoteSummaryBytesText(diskFreeBytes) : unavailableText,
+                                   statusFresh && diskFreeBytes > 0,
+                                   QStringLiteral("999.9 GB"));
+        linkStatusRows << makeItem(QStringLiteral("CRC"),
+                                   statusFresh ? QString::number(crcErrorCount) : unavailableText,
+                                   statusFresh && crcErrorCount == 0,
+                                   QStringLiteral("999999"));
         appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON"));
         appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB"));
         appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP"));
@@ -584,6 +642,18 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         linkRows << makeItem(QStringLiteral("天→地"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("地→天"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("合"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
+        linkStatusRows << makeItem(QStringLiteral("记录"),
+                                   statusFresh ? remoteSummaryRecordingStateText(recordingState, false) : unavailableText,
+                                   statusFresh,
+                                   QStringLiteral("记录中"));
+        linkStatusRows << makeItem(QStringLiteral("磁盘"),
+                                   statusFresh && diskFreeBytes > 0 ? remoteSummaryBytesText(diskFreeBytes) : unavailableText,
+                                   statusFresh && diskFreeBytes > 0,
+                                   QStringLiteral("999.9 GB"));
+        linkStatusRows << makeItem(QStringLiteral("CRC"),
+                                   statusFresh ? QString::number(crcErrorCount) : unavailableText,
+                                   statusFresh && crcErrorCount == 0,
+                                   QStringLiteral("999999"));
         appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON"));
         appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB"));
         appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP"));
@@ -594,6 +664,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     RemoteTelemetrySummarySections sections;
     sections.rateItems = rateRows;
     sections.linkItems = linkRows;
+    sections.linkStatusItems = linkStatusRows;
     sections.deviceItems = deviceRows;
     return sections;
 }
@@ -622,6 +693,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     };
     appendSummaryRenderTokens(sections.rateItems);
     appendSummaryRenderTokens(sections.linkItems);
+    appendSummaryRenderTokens(sections.linkStatusItems);
     appendSummaryRenderTokens(sections.deviceItems);
     const QString summaryRenderKey = summaryRenderTokens.join(QChar(0x1f));
     constexpr auto kSummaryRenderKeyProperty = "vaporViewTelemetrySummaryRenderKey";
@@ -700,9 +772,9 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             pill->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             pill->setMinimumHeight(scalePixels(useSideTitle ? 26 : 28));
             auto *pillLayout = new QHBoxLayout(pill);
-            const int horizontalPadding = scalePixels(useSideTitle ? 4 : 5);
+            const int horizontalPadding = scalePixels(useSideTitle ? 2 : 5);
             pillLayout->setContentsMargins(horizontalPadding, scalePixels(1), horizontalPadding, scalePixels(1));
-            pillLayout->setSpacing(scalePixels(useSideTitle ? 2 : 4));
+            pillLayout->setSpacing(scalePixels(useSideTitle ? 1 : 4));
 
             auto *nameLabel = new QLabel(item.label, pill);
             nameLabel->setObjectName(QStringLiteral("homeTelemetrySummaryNameLabel"));
@@ -715,7 +787,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             const int nameWidth =
                 std::max(nameLabel->sizeHint().width(),
                          nameLabel->fontMetrics().horizontalAdvance(item.label)) +
-                scalePixels(useSideTitle ? 4 : 2);
+                scalePixels(useSideTitle ? 2 : 2);
             nameLabel->setFixedWidth(nameWidth);
             nameLabel->setMinimumHeight(nameLabel->fontMetrics().height() + scalePixels(2));
             pillLayout->addWidget(nameLabel, 0, Qt::AlignVCenter);
@@ -723,7 +795,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             const QString compactValue = item.hasData
                 ? (state_->is_english_ ? QStringLiteral("Yes") : QStringLiteral("有"))
                 : (state_->is_english_ ? QStringLiteral("No") : QStringLiteral("无"));
-            const QString valueText = compactAvailabilityValues ? compactValue : item.value;
+            const bool useCompactValue = compactAvailabilityValues && item.compactAvailabilityValue;
+            const QString valueText = useCompactValue ? compactValue : item.value;
             auto *valueLabel = new QLabel(valueText, pill);
             valueLabel->setObjectName(QStringLiteral("homeTelemetrySummaryValueLabel"));
             valueLabel->setProperty("deviceConfigLink", useSideTitle);
@@ -734,14 +807,14 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             valueLabel->setTextFormat(Qt::PlainText);
             valueLabel->ensurePolished();
             valueLabel->setMinimumHeight(valueLabel->fontMetrics().height() + scalePixels(2));
-            const QString widthValue = compactAvailabilityValues
+            const QString widthValue = useCompactValue
                 ? (state_->is_english_ ? QStringLiteral("Yes") : QStringLiteral("有"))
                 : (item.valueWidthText.isEmpty() ? valueText : item.valueWidthText);
             const int polishedValueWidth =
                 std::max(valueLabel->sizeHint().width(),
                          std::max(valueLabel->fontMetrics().horizontalAdvance(widthValue),
                                   valueLabel->fontMetrics().horizontalAdvance(valueText))) +
-                scalePixels(useSideTitle ? 4 : 2);
+                scalePixels(useSideTitle ? 2 : 2);
             const int valueWidth = polishedValueWidth;
             valueLabel->setFixedWidth(valueWidth);
             pillLayout->addWidget(valueLabel, 0, Qt::AlignVCenter);
@@ -820,7 +893,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             line->setFixedHeight(scalePixels(useSideTitle ? 26 : 28));
             auto *lineLayout = new QHBoxLayout(line);
             lineLayout->setContentsMargins(0, 0, 0, 0);
-            lineLayout->setSpacing(scalePixels(useSideTitle ? 4 : 2));
+            lineLayout->setSpacing(scalePixels(useSideTitle ? 2 : 2));
 
             if (!useSideTitle && includeTitle && !title.isEmpty())
             {
@@ -960,6 +1033,11 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     }
     if (state_->device_config_.data_telemetry_summary_card)
     {
+        QList<RemoteTelemetrySummarySections::Item> deviceConfigDataItems = sections.deviceItems;
+        for (const RemoteTelemetrySummarySections::Item& item : sections.linkStatusItems)
+        {
+            deviceConfigDataItems << item;
+        }
         renderSummarySection(state_->device_config_.data_telemetry_summary_card,
                              state_->device_config_.data_telemetry_rate_summary_layout,
                              state_->is_english_ ? QStringLiteral("Data stream rates") : QStringLiteral("数据频率"),
@@ -977,7 +1055,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         renderSummarySection(state_->device_config_.data_telemetry_summary_card,
                              state_->device_config_.data_telemetry_device_summary_layout,
                              state_->is_english_ ? QStringLiteral("Data") : QStringLiteral("数据"),
-                             sections.deviceItems,
+                             deviceConfigDataItems,
                              3,
                              3,
                              true,

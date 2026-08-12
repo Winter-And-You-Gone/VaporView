@@ -2757,8 +2757,8 @@ void MainWindow::setupDeviceConfigPage()
     auto *summaryBodyWidget = new QWidget(state_->device_config_.data_telemetry_summary_card);
     summaryBodyWidget->setObjectName(QStringLiteral("homeTelemetrySummaryContainer"));
     auto *summaryBodyLayout = new QHBoxLayout(summaryBodyWidget);
-    summaryBodyLayout->setContentsMargins(8, 6, 8, 6);
-    summaryBodyLayout->setSpacing(8);
+    summaryBodyLayout->setContentsMargins(4, 6, 4, 6);
+    summaryBodyLayout->setSpacing(4);
     auto createDeviceTelemetrySection = [summaryBodyWidget, summaryBodyLayout](QVBoxLayout *&sectionContentLayout) {
         auto *section = new QFrame(summaryBodyWidget);
         section->setObjectName(QStringLiteral("homeTelemetrySectionCard"));

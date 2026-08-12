@@ -12,6 +12,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSettings>
+#include <QStringList>
 #include <QTemporaryDir>
 
 #include <algorithm>
@@ -98,6 +99,22 @@ QRect rectInPage(QWidget *widget, QWidget *page)
     return QRect(widget->mapTo(page, QPoint(0, 0)), widget->size());
 }
 
+bool cardHasAnyLabel(QFrame *card, const QStringList& candidates)
+{
+    if (!card)
+    {
+        return false;
+    }
+    for (QLabel *label : card->findChildren<QLabel *>())
+    {
+        if (candidates.contains(label->text()))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -132,8 +149,19 @@ int main(int argc, char **argv)
         deviceConfigPage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
     require(scrollArea != nullptr && scrollArea->widget() != nullptr,
             "device configuration scroll area exists");
+    const int horizontalMaximum = scrollArea->horizontalScrollBar()
+        ? scrollArea->horizontalScrollBar()->maximum()
+        : -1;
+    if (horizontalMaximum != 0)
+    {
+        std::cerr << "Device configuration horizontal overflow: max=" << horizontalMaximum
+                  << " viewport=" << scrollArea->viewport()->width()
+                  << " content=" << scrollArea->widget()->width()
+                  << " contentMin=" << scrollArea->widget()->minimumWidth()
+                  << '\n';
+    }
     require(scrollArea->horizontalScrollBar() != nullptr &&
-                scrollArea->horizontalScrollBar()->maximum() == 0,
+                horizontalMaximum == 0,
             "device configuration page has no horizontal overflow");
 
     QFrame *linkStatusCard = findLinkStatusCard(deviceConfigPage);
@@ -159,6 +187,14 @@ int main(int argc, char **argv)
     require(std::abs(linkStatusCard->width() - expectedCardWidth) <= 4 &&
                 std::abs(serialCard->width() - expectedCardWidth) <= 4,
             "both device configuration cards fill the main content width");
+    require(cardHasAnyLabel(linkStatusCard,
+                            QStringList() << QStringLiteral("记录") << QStringLiteral("Record")),
+            "link-status card includes the remote recording state field");
+    require(cardHasAnyLabel(linkStatusCard,
+                            QStringList() << QStringLiteral("磁盘") << QStringLiteral("Disk")),
+            "link-status card includes the remaining sky disk field");
+    require(cardHasAnyLabel(linkStatusCard, QStringList() << QStringLiteral("CRC")),
+            "link-status card includes the CRC error field");
 
     QWidget *summaryContainer =
         linkStatusCard->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer"));

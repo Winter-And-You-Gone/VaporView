@@ -25,10 +25,12 @@ struct RemoteTelemetrySummarySections
         QString value;
         QString valueWidthText;
         bool hasData = false;
+        bool compactAvailabilityValue = false;
     };
 
     QList<Item> rateItems;
     QList<Item> linkItems;
+    QList<Item> linkStatusItems;
     QList<Item> deviceItems;
 };
 
