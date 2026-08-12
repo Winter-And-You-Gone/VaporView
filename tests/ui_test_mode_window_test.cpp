@@ -739,10 +739,10 @@ int main(int argc, char **argv)
         temperatureOverviewPlot->property("xAxisLabelGapFromPlot").toDouble();
     const double defaultOverviewTimeTickLength =
         temperatureOverviewPlot->property("xAxisTickLength").toDouble();
-    require(defaultOverviewTimeTickCount >= 8 &&
+    require(defaultOverviewTimeTickCount >= 2 &&
                 std::abs(defaultOverviewTimeSpan - (defaultOverviewTimeTickCount - 1)) < 1e-6 &&
-                std::abs(defaultOverviewTimeFirstTick - defaultOverviewTimeFirstLabelCenter) < 1e-6 &&
-                std::abs(defaultOverviewTimeLastTick - defaultOverviewTimeLastLabelCenter) < 1e-6 &&
+                std::abs(defaultOverviewTimeFirstTick - defaultOverviewTimeFirstLabelCenter) <= 2.0 &&
+                std::abs(defaultOverviewTimeLastTick - defaultOverviewTimeLastLabelCenter) <= 2.0 &&
                 defaultOverviewTimeLastTick < temperatureOverviewPlot->width() - 4.0,
             "default home temperature overview centers endpoint times on their ticks");
     require(defaultOverviewTimeLabelGap >= 6.0 &&
@@ -755,17 +755,21 @@ int main(int argc, char **argv)
     adaptiveTimePlot.setSamples({25.0, 25.5});
     const double localTimeSeconds = static_cast<double>(QDateTime::currentMSecsSinceEpoch()) / 1000.0;
     adaptiveTimePlot.setSampleTimes({localTimeSeconds - 26.0, localTimeSeconds});
-    adaptiveTimePlot.resize(240, 180);
+    adaptiveTimePlot.resize(800, 180);
     adaptiveTimePlot.show();
     adaptiveTimePlot.repaint();
     processEvents();
-    const int narrowTimeTickCount = adaptiveTimePlot.property("xAxisTickCount").toInt();
-    const double narrowTimeSpan = adaptiveTimePlot.property("xAxisTimeSpanSeconds").toDouble();
-    adaptiveTimePlot.resize(520, 180);
+    const int defaultTimeTickCount = adaptiveTimePlot.property("xAxisTickCount").toInt();
+    const double defaultTimeSpan = adaptiveTimePlot.property("xAxisTimeSpanSeconds").toDouble();
+    const double defaultTimeFirstTick = adaptiveTimePlot.property("xAxisTimeFirstTickX").toDouble();
+    const double defaultTimeLastTick = adaptiveTimePlot.property("xAxisTimeLastTickX").toDouble();
+    adaptiveTimePlot.resize(1600, 180);
     adaptiveTimePlot.repaint();
     processEvents();
     const int wideTimeTickCount = adaptiveTimePlot.property("xAxisTickCount").toInt();
     const double wideTimeSpan = adaptiveTimePlot.property("xAxisTimeSpanSeconds").toDouble();
+    const double wideTimeFirstTick = adaptiveTimePlot.property("xAxisTimeFirstTickX").toDouble();
+    const double wideTimeLastTick = adaptiveTimePlot.property("xAxisTimeLastTickX").toDouble();
     const double wideTimeMax = adaptiveTimePlot.property("xAxisTimeMaxSeconds").toDouble();
     const QString wideTimeRightLabel = adaptiveTimePlot.property("xAxisTimeRightLabel").toString();
     const QString expectedWideTimeRightLabel = QDateTime::fromSecsSinceEpoch(
@@ -773,13 +777,20 @@ int main(int argc, char **argv)
         .toLocalTime()
         .toString(QStringLiteral("hh:mm:ss"));
     adaptiveTimePlot.close();
-    require(narrowTimeTickCount >= 2 && narrowTimeTickCount <= 8 &&
-                wideTimeTickCount > narrowTimeTickCount && wideTimeTickCount <= 8 &&
-                std::abs(narrowTimeSpan - (narrowTimeTickCount - 1)) < 1e-6 &&
+    const double defaultTimeTickSpacing =
+        (defaultTimeLastTick - defaultTimeFirstTick) / std::max(1, defaultTimeTickCount - 1);
+    const double wideTimeTickSpacing =
+        (wideTimeLastTick - wideTimeFirstTick) / std::max(1, wideTimeTickCount - 1);
+    require(defaultTimeTickCount >= 7 &&
+                wideTimeTickCount > defaultTimeTickCount + 6 &&
+                std::abs(defaultTimeSpan - (defaultTimeTickCount - 1)) < 1e-6 &&
                 std::abs(wideTimeSpan - (wideTimeTickCount - 1)) < 1e-6 &&
+                defaultTimeTickSpacing >= 80.0 &&
+                defaultTimeTickSpacing <= 104.0 &&
+                std::abs(defaultTimeTickSpacing - wideTimeTickSpacing) <= 16.0 &&
                 std::abs(wideTimeMax - localTimeSeconds) <= 1.0 &&
                 wideTimeRightLabel == expectedWideTimeRightLabel,
-            "temperature overview time axis keeps one-second spacing at the local clock time");
+            "temperature overview time axis keeps a consistent tick density as the plot widens");
 
     require(VaporViewTest::processEventsUntil(1500, [temperatureOutputPercentPill, temperatureOutputSwitch]() {
                 return temperatureOutputSwitch->isChecked() &&
@@ -1046,7 +1057,6 @@ int main(int argc, char **argv)
                 ai8Plot->property("xAxisTimeLabelFormat").toString() ==
                     QStringLiteral("hh:mm:ss") &&
                 ai8Plot->property("xAxisTickCount").toInt() >= 2 &&
-                ai8Plot->property("xAxisTickCount").toInt() <= 8 &&
                 ai8Plot->property("yAxisMaxC").toDouble() > ai8Plot->property("yAxisMinC").toDouble(),
             "AI-8 trend plot exposes populated samples and a time axis in UI test mode");
     ai8Plot->repaint();

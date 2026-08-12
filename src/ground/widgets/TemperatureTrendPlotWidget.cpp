@@ -23,8 +23,8 @@ constexpr int kTemperatureControllerPlotWidth = 260;
 constexpr int kTemperatureControllerPlotMinHeight = 190;
 constexpr int kDefaultXAxisLabelCount = 5;
 constexpr int kMinTimeXAxisLabelCount = 2;
-constexpr int kMaxTimeXAxisLabelCount = 8;
 constexpr qreal kXAxisLabelGap = 8.0;
+constexpr qreal kTimeXAxisTargetTickSpacing = 88.0;
 constexpr qreal kXAxisLabelRightInset = 2.0;
 constexpr qreal kXAxisTickLength = 4.0;
 constexpr qreal kXAxisLabelGapAfterTick = 2.0;
@@ -52,10 +52,11 @@ int xAxisLabelCountForWidth(qreal plotWidth,
         return kDefaultXAxisLabelCount;
     }
 
+    const qreal targetSpacing = std::max(kTimeXAxisTargetTickSpacing,
+                                         timeAxisLabelWidth(axisFontMetrics) + kXAxisLabelGap);
     const int intervals = static_cast<int>(std::floor(
-        std::max<qreal>(0.0, plotWidth) /
-        (timeAxisLabelWidth(axisFontMetrics) + kXAxisLabelGap)));
-    return std::clamp(intervals + 1, kMinTimeXAxisLabelCount, kMaxTimeXAxisLabelCount);
+        std::max<qreal>(0.0, plotWidth) / targetSpacing));
+    return std::max(kMinTimeXAxisLabelCount, intervals + 1);
 }
 
 QFont numericFontFrom(const QFont& base)
