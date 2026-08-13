@@ -560,20 +560,13 @@ int main(int argc, char **argv)
     QApplication::processEvents();
     const auto popupRows = singleLevelMountpointCombo->popupMenu()->rows();
     require(!popupRows.isEmpty(), "mountpoint popup builds rows");
-    int selectedMountpointRows = 0;
     for (const VaporView::SingleLevelPopupMenuRow *row : popupRows)
     {
         require(!row->property("hovered").toBool(),
                 "mountpoint popup clears stale hover highlight when reopened");
-        if (row->property("selected").toBool())
-        {
-            ++selectedMountpointRows;
-            require(row->text() == QStringLiteral("AUTO"),
-                    "mountpoint popup highlights the current mountpoint row");
-        }
+        require(!row->property("selected").toBool(),
+                "mountpoint popup opens without a default selected-row highlight");
     }
-    require(selectedMountpointRows == 1,
-            "mountpoint popup keeps exactly one current-row highlight when reopened");
     singleLevelMountpointCombo->hidePopup();
 
     QTcpServer ntripTestCaster;

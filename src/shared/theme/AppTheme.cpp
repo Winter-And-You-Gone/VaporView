@@ -865,22 +865,22 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
     QPalette popupPalette = view->palette();
     popupPalette.setColor(QPalette::Base, popupBase);
     popupPalette.setColor(QPalette::Text, popupText);
-    popupPalette.setColor(QPalette::Highlight, popupHighlight);
-    popupPalette.setColor(QPalette::HighlightedText, popupHighlightText);
+    popupPalette.setColor(QPalette::Highlight, popupBase);
+    popupPalette.setColor(QPalette::HighlightedText, popupText);
     popupPalette.setColor(QPalette::Disabled, QPalette::Text, disabledText);
     view->setPalette(popupPalette);
     view->setStyleSheet(QStringLiteral(
         "QAbstractItemView#vaporViewComboPopupView { "
         "background-color: %1; border: none; "
         "color: %2; outline: 0px; padding: 12px 0px; "
-        "selection-background-color: %3; selection-color: %4; }"
+        "selection-background-color: transparent; selection-color: %2; }"
         "QAbstractItemView#vaporViewComboPopupView::item { "
         "background-color: transparent; border: 0px; border-radius: 0px; "
         "min-height: 30px; padding: 7px 14px; }"
         "QAbstractItemView#vaporViewComboPopupView::item:selected, "
         "QAbstractItemView#vaporViewComboPopupView::item:selected:active, "
         "QAbstractItemView#vaporViewComboPopupView::item:selected:!active { "
-        "background-color: %3; color: %4; }"
+        "background-color: transparent; color: %2; }"
         "QAbstractItemView#vaporViewComboPopupView::item:hover { "
         "background-color: %3; color: %4; }"
         "QAbstractItemView#vaporViewComboPopupView::item:disabled { "

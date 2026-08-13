@@ -95,12 +95,12 @@ inline void requireComboPopupStyled(QComboBox *combo,
                 popupStyle.contains(QStringLiteral("padding: 12px 0px")) &&
                 popupStyle.contains(QStringLiteral("padding: 7px 14px")) &&
                 popupStyle.contains(QStringLiteral("min-height: 30px")) &&
-                popupStyle.contains(QStringLiteral("selection-background-color: %1").arg(hoverColor)) &&
+                popupStyle.contains(QStringLiteral("selection-background-color: transparent")) &&
                 popupStyle.contains(QStringLiteral("::item:selected")) &&
-                popupStyle.contains(QStringLiteral("::item:selected:!active { background-color: %1").arg(hoverColor)) &&
+                popupStyle.contains(QStringLiteral("::item:selected:!active { background-color: transparent")) &&
                 popupStyle.contains(QStringLiteral("::item:hover { background-color: %1").arg(hoverColor)) &&
                 !popupStyle.contains(QStringLiteral("padding: 12px 4px")),
-            "combo popup stylesheet highlights the selected row with the shared gray hover background");
+            "combo popup stylesheet opens without a default selected-row fill and keeps gray hover feedback");
 }
 
 }  // namespace VaporViewTest
