@@ -1483,6 +1483,8 @@ void requireRtkSidebarPage(
         QStringLiteral("combinationNavigationStack"));
     auto *combinationNavigationBar = combinationPage->findChild<QFrame *>(
         QStringLiteral("combinationNavigationNavigationBar"));
+    auto *combinationNavigationTrack = combinationPage->findChild<QFrame *>(
+        QStringLiteral("combinationNavigationNavigationTrack"));
     auto *statusButton = combinationPage->findChild<QPushButton *>(
         QStringLiteral("combinationNavigationStatusButton"));
     auto *epsilonButton = combinationPage->findChild<QPushButton *>(
@@ -1503,12 +1505,23 @@ void requireRtkSidebarPage(
     auto *epsilonContent = combinationPage->findChild<QWidget *>(
         QStringLiteral("epsilonConfigContent"));
     require(combinationNavigationBar != nullptr && combinationNavigationBar->layout() != nullptr &&
+                combinationNavigationTrack != nullptr && combinationNavigationTrack->layout() != nullptr &&
                 combinationStack != nullptr && combinationStack->count() == 3 &&
                 statusButton != nullptr && epsilonButton != nullptr && differentialButton != nullptr &&
                 statusPage != nullptr && epsilonPage != nullptr &&
                 statusScrollArea != nullptr && statusContent != nullptr && statusContent->layout() != nullptr &&
                 epsilonScrollArea != nullptr && epsilonContent != nullptr && epsilonContent->layout() != nullptr,
             "combination navigation exposes three real buttons and three stacked pages");
+    require(combinationNavigationBar->height() == 36 &&
+                combinationNavigationTrack->parentWidget() == combinationNavigationBar &&
+                statusButton->parentWidget() == combinationNavigationTrack &&
+                epsilonButton->parentWidget() == combinationNavigationTrack &&
+                differentialButton->parentWidget() == combinationNavigationTrack &&
+                statusButton->height() == epsilonButton->height() &&
+                epsilonButton->height() == differentialButton->height() &&
+                statusButton->width() == epsilonButton->width() &&
+                epsilonButton->width() == differentialButton->width(),
+            "combination navigation uses an equal three-segment capsule layout");
     require(combinationStack->currentWidget() == statusPage && statusButton->isChecked() &&
                 !epsilonButton->isChecked() && !differentialButton->isChecked(),
             "combination navigation opens on the status page by default");
@@ -1524,10 +1537,13 @@ void requireRtkSidebarPage(
                     button->focusPolicy() == Qt::TabFocus,
                 "combination-navigation buttons are real, named and keyboard-tab focusable");
     }
-    require(combinationPage->styleSheet().contains(QStringLiteral(":focus")) &&
+    require(combinationPage->styleSheet().contains(
+                QStringLiteral("QFrame#combinationNavigationNavigationTrack")) &&
+                combinationPage->styleSheet().contains(QStringLiteral(":checked")) &&
+                combinationPage->styleSheet().contains(QStringLiteral(":focus")) &&
                 combinationPage->styleSheet().contains(VaporView::appThemeColorName(
                     VaporView::AppThemeColor::Focus, VaporView::isDarkThemeEnabled())),
-            "combination-navigation buttons keep a visible theme-token focus border");
+            "combination-navigation capsule keeps checked and focus theme styling");
     require(combinationPage->findChildren<RtkConfigDialog *>().size() == 1 &&
                 combinationPage->differentialPage() == preDialog &&
                 combinationStack->indexOf(preDialog) == 2,

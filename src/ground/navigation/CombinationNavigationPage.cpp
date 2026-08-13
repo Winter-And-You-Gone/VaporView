@@ -24,6 +24,7 @@ namespace
 constexpr int kPageHorizontalInset = 18;
 constexpr int kPageVerticalInset = 4;
 constexpr int kSectionGap = 12;
+constexpr int kNavigationBarHeight = 36;
 
 void prepareStyledBackground(QWidget *widget)
 {
@@ -63,16 +64,28 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     auto *navigationBar = new QFrame(navigationRow);
     navigationBar->setObjectName(QStringLiteral("combinationNavigationNavigationBar"));
     prepareStyledBackground(navigationBar);
-    auto *navigationLayout = new QHBoxLayout(navigationBar);
+    navigationBar->setFixedHeight(kNavigationBarHeight);
+    navigationBar->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    auto *navigationBarLayout = new QHBoxLayout(navigationBar);
+    navigationBarLayout->setContentsMargins(2, 2, 2, 2);
+    navigationBarLayout->setSpacing(0);
+
+    auto *navigationTrack = new QFrame(navigationBar);
+    navigationTrack->setObjectName(QStringLiteral("combinationNavigationNavigationTrack"));
+    prepareStyledBackground(navigationTrack);
+    navigationTrack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    navigationBarLayout->addWidget(navigationTrack);
+
+    auto *navigationLayout = new QHBoxLayout(navigationTrack);
     navigationLayout->setContentsMargins(2, 2, 2, 2);
     navigationLayout->setSpacing(2);
 
     section_group_ = new QButtonGroup(this);
     section_group_->setExclusive(true);
-    auto createSectionButton = [this, navigationBar, navigationLayout](
+    auto createSectionButton = [this, navigationTrack, navigationLayout](
                                    const QString& objectName,
                                    Section section) {
-        auto *button = new QPushButton(navigationBar);
+        auto *button = new QPushButton(navigationTrack);
         button->setObjectName(objectName);
         button->setCheckable(true);
         button->setAutoDefault(false);
@@ -80,9 +93,9 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
         button->setFocusPolicy(Qt::TabFocus);
         button->setCursor(Qt::PointingHandCursor);
         button->setMinimumWidth(92);
-        button->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         section_group_->addButton(button, static_cast<int>(section));
-        navigationLayout->addWidget(button);
+        navigationLayout->addWidget(button, 1);
         return button;
     };
 
@@ -313,6 +326,10 @@ void CombinationNavigationPage::updateTexts()
 
 void CombinationNavigationPage::applyAppearance()
 {
+    const bool dark = VaporView::isDarkThemeEnabled();
+    const QString trackOutline = VaporView::appThemeColorName(
+        dark ? VaporView::AppThemeColor::BorderStrong : VaporView::AppThemeColor::White,
+        dark);
     const QString style = QStringLiteral(
         "QWidget#combinationNavigationPage, QWidget#combinationNavigationNavigationRow, "
         "QWidget#combinationNavigationStatusPage, QWidget#navigationStatusContent, "
@@ -321,19 +338,21 @@ void CombinationNavigationPage::applyAppearance()
         "QScrollArea#navigationStatusScrollArea > QWidget > QWidget, QScrollArea#epsilonConfigScrollArea, "
         "QScrollArea#epsilonConfigScrollArea > QWidget > QWidget { "
         "background-color: @vv-surface; border: none; }"
-        "QFrame#combinationNavigationNavigationBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
+        "QFrame#combinationNavigationNavigationBar { background-color: @vv-primary-subtle; border: 1px solid @vv-border-strong; border-radius: 18px; }"
+        "QFrame#combinationNavigationNavigationTrack { background-color: @vv-primary; border: 1px solid %1; border-radius: 15px; }"
         "QPushButton#combinationNavigationStatusButton, QPushButton#combinationNavigationEpsilonButton, "
-        "QPushButton#combinationNavigationDifferentialButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-weight: 500; padding: 6px 12px; outline: none; }"
+        "QPushButton#combinationNavigationDifferentialButton { background-color: transparent; border: 1px solid transparent; border-radius: 13px; color: @vv-white; font-weight: 600; padding: 0 10px; outline: none; }"
         "QPushButton#combinationNavigationStatusButton:checked, QPushButton#combinationNavigationEpsilonButton:checked, "
         "QPushButton#combinationNavigationDifferentialButton:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
         "QPushButton#combinationNavigationStatusButton:!checked:hover, QPushButton#combinationNavigationEpsilonButton:!checked:hover, "
-        "QPushButton#combinationNavigationDifferentialButton:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
+        "QPushButton#combinationNavigationDifferentialButton:!checked:hover { background-color: @vv-primary-subtle-pressed; color: @vv-white; }"
         "QPushButton#combinationNavigationStatusButton:pressed, QPushButton#combinationNavigationEpsilonButton:pressed, "
         "QPushButton#combinationNavigationDifferentialButton:pressed { background-color: @vv-primary-subtle-pressed; }"
         "QPushButton#combinationNavigationStatusButton:focus, QPushButton#combinationNavigationEpsilonButton:focus, "
-        "QPushButton#combinationNavigationDifferentialButton:focus { border-color: @vv-focus; }");
+        "QPushButton#combinationNavigationDifferentialButton:focus { border-color: @vv-focus; }")
+            .arg(trackOutline);
     const QString resolvedStyle =
-        VaporView::applyAppThemeTokens(style, VaporView::isDarkThemeEnabled());
+        VaporView::applyAppThemeTokens(style, dark);
     if (styleSheet() != resolvedStyle)
     {
         setStyleSheet(resolvedStyle);
