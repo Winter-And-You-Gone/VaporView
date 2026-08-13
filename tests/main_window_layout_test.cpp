@@ -3323,6 +3323,7 @@ int main(int argc, char **argv)
     require(settingsDir.isValid(), "temporary settings directory");
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
+    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
 
     QApplication app(argc, argv);
     app.setOrganizationName(QStringLiteral("VaporViewLayoutTest"));
@@ -9559,6 +9560,8 @@ int main(int argc, char **argv)
         settings.sync();
 
         MainWindow scaledWindow;
+        settings.setValue(QStringLiteral("font_scale_percent"), 100);
+        settings.sync();
         scaledWindow.resize(1664, 1040);
         scaledWindow.show();
         require(waitForWindowExposed(&scaledWindow),
@@ -9660,8 +9663,6 @@ int main(int argc, char **argv)
         }
         scaledWindow.close();
         processEventsFor(100);
-        settings.setValue(QStringLiteral("font_scale_percent"), 100);
-        settings.sync();
     }
 
     window.close();
