@@ -54,6 +54,12 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
     require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"), message);
     require(combo->view()->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupBorderOverlay")) == nullptr,
             message);
+    require(combo->view()->hasMouseTracking() &&
+                combo->view()->testAttribute(Qt::WA_Hover) &&
+                combo->view()->viewport() &&
+                combo->view()->viewport()->hasMouseTracking() &&
+                combo->view()->viewport()->testAttribute(Qt::WA_Hover),
+            message);
     const QString popupStyle = combo->view()->styleSheet();
     const QString hoverColor = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuHover,
                                                             VaporView::isDarkThemeEnabled());
@@ -64,7 +70,10 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
                 popupStyle.contains(QStringLiteral("padding: 12px 0px")) &&
                 popupStyle.contains(QStringLiteral("padding: 7px 14px")) &&
                 popupStyle.contains(QStringLiteral("min-height: 30px")) &&
-                popupStyle.contains(QStringLiteral("background-color: %1").arg(hoverColor)) &&
+                popupStyle.contains(QStringLiteral("::item:hover,")) &&
+                popupStyle.contains(QStringLiteral("::item:selected:hover")) &&
+                popupStyle.contains(QStringLiteral("::item:selected:active:hover")) &&
+                popupStyle.contains(QStringLiteral("::item:selected:!active:hover { background-color: %1").arg(hoverColor)) &&
                 !popupStyle.contains(QStringLiteral("padding: 12px 4px")),
             message);
 }

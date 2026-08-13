@@ -310,7 +310,7 @@ QString skyDeviceConfigStyleSheet(bool dark)
         "QDialog#skyDeviceConfigDialog QComboBox QAbstractItemView { background-color: @vv-menu-panel; border: none; border-radius: 10px; color: @vv-menu-text; selection-background-color: transparent; selection-color: @vv-menu-text; padding: 12px 0px; outline: none; }"
         "QDialog#skyDeviceConfigDialog QComboBox QAbstractItemView::item { background-color: transparent; color: @vv-menu-text; padding: 7px 14px; min-height: 30px; border: 0px; border-radius: 0px; }"
         "QDialog#skyDeviceConfigDialog QComboBox QAbstractItemView::item:selected, QDialog#skyDeviceConfigDialog QComboBox QAbstractItemView::item:selected:active, QDialog#skyDeviceConfigDialog QComboBox QAbstractItemView::item:selected:!active { background-color: transparent; color: @vv-menu-text; }"
-        "QDialog#skyDeviceConfigDialog QComboBox QAbstractItemView::item:hover { background-color: @vv-menu-hover; color: @vv-menu-text; }"
+        "QDialog#skyDeviceConfigDialog QComboBox QAbstractItemView::item:hover, QDialog#skyDeviceConfigDialog QComboBox QAbstractItemView::item:selected:hover, QDialog#skyDeviceConfigDialog QComboBox QAbstractItemView::item:selected:active:hover, QDialog#skyDeviceConfigDialog QComboBox QAbstractItemView::item:selected:!active:hover { background-color: @vv-menu-hover; color: @vv-menu-text; }"
         "QDialog#skyDeviceConfigDialog QPushButton { background-color: @vv-primary; color: @vv-white; border: none; }"
         "QDialog#skyDeviceConfigDialog QPushButton:hover { background-color: @vv-primary-hover; color: @vv-white; }"
         "QDialog#skyDeviceConfigDialog QPushButton:pressed,"

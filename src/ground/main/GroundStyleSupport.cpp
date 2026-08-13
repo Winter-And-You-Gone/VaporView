@@ -750,7 +750,10 @@ QComboBox QAbstractItemView::item:selected:!active {
     background-color: transparent;
     color: @vv-menu-text;
 }
-QComboBox QAbstractItemView::item:hover {
+QComboBox QAbstractItemView::item:hover,
+QComboBox QAbstractItemView::item:selected:hover,
+QComboBox QAbstractItemView::item:selected:active:hover,
+QComboBox QAbstractItemView::item:selected:!active:hover {
     background-color: @vv-menu-hover;
     color: @vv-menu-text;
 }

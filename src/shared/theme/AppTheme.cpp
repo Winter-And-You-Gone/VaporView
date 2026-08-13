@@ -852,6 +852,12 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
     view->setProperty("vaporViewComboPopupDarkTheme", dark);
     view->setProperty(kComboPopupOwnerProperty, QVariant::fromValue<QObject *>(combo));
     view->setMouseTracking(true);
+    view->setAttribute(Qt::WA_Hover, true);
+    if (QWidget *viewport = view->viewport())
+    {
+        viewport->setMouseTracking(true);
+        viewport->setAttribute(Qt::WA_Hover, true);
+    }
     view->setFrameShape(QFrame::NoFrame);
     view->setLineWidth(0);
     view->setAutoFillBackground(true);
@@ -881,7 +887,10 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
         "QAbstractItemView#vaporViewComboPopupView::item:selected:active, "
         "QAbstractItemView#vaporViewComboPopupView::item:selected:!active { "
         "background-color: transparent; color: %2; }"
-        "QAbstractItemView#vaporViewComboPopupView::item:hover { "
+        "QAbstractItemView#vaporViewComboPopupView::item:hover, "
+        "QAbstractItemView#vaporViewComboPopupView::item:selected:hover, "
+        "QAbstractItemView#vaporViewComboPopupView::item:selected:active:hover, "
+        "QAbstractItemView#vaporViewComboPopupView::item:selected:!active:hover { "
         "background-color: %3; color: %4; }"
         "QAbstractItemView#vaporViewComboPopupView::item:disabled { "
         "background-color: transparent; color: %5; }"

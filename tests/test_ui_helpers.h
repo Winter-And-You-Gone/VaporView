@@ -74,6 +74,11 @@ inline void requireComboPopupStyled(QComboBox *combo,
                 !combo->view()->viewport()->testAttribute(Qt::WA_TranslucentBackground) &&
                 !combo->view()->viewport()->testAttribute(Qt::WA_NoSystemBackground),
             "combo popup viewport avoids transparent backing-store attributes");
+    require(combo->view()->hasMouseTracking() &&
+                combo->view()->testAttribute(Qt::WA_Hover) &&
+                combo->view()->viewport()->hasMouseTracking() &&
+                combo->view()->viewport()->testAttribute(Qt::WA_Hover),
+            "combo popup view and viewport accept hover tracking");
     require(combo->view()->viewport()->styleSheet().contains(QStringLiteral("background-color:")) &&
                 combo->view()->viewport()->styleSheet().contains(QStringLiteral("border: none")),
             "combo popup viewport has an explicit filled background without drawing its own border");
@@ -98,7 +103,10 @@ inline void requireComboPopupStyled(QComboBox *combo,
                 popupStyle.contains(QStringLiteral("selection-background-color: transparent")) &&
                 popupStyle.contains(QStringLiteral("::item:selected")) &&
                 popupStyle.contains(QStringLiteral("::item:selected:!active { background-color: transparent")) &&
-                popupStyle.contains(QStringLiteral("::item:hover { background-color: %1").arg(hoverColor)) &&
+                popupStyle.contains(QStringLiteral("::item:hover,")) &&
+                popupStyle.contains(QStringLiteral("::item:selected:hover")) &&
+                popupStyle.contains(QStringLiteral("::item:selected:active:hover")) &&
+                popupStyle.contains(QStringLiteral("::item:selected:!active:hover { background-color: %1").arg(hoverColor)) &&
                 !popupStyle.contains(QStringLiteral("padding: 12px 4px")),
             "combo popup stylesheet opens without a default selected-row fill and keeps gray hover feedback");
 }
