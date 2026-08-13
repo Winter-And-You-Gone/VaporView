@@ -2492,6 +2492,7 @@ void MainWindow::setupDeviceConfigPage()
     constexpr int kDeviceConfigBaudComboWidth = 100;
     constexpr int kDeviceConfigRateComboWidth = 88;
     constexpr int kDeviceConfigSourceComboWidth = 108;
+    constexpr int kDeviceConfigDeviceLabelWidth = 220;
 
     auto createCombo = [this, formWidget](int width, bool editable = false) {
         auto *combo = new QComboBox(formWidget);
@@ -2513,7 +2514,7 @@ void MainWindow::setupDeviceConfigPage()
         label = new QLabel(formWidget);
         label->setObjectName(QStringLiteral("fieldLabel"));
         label->setFixedHeight(kMainPageInputHeight);
-        label->setFixedWidth(76);
+        label->setFixedWidth(kDeviceConfigDeviceLabelWidth);
         formLayout->addWidget(label, row, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
         portCombo = createCombo(kDeviceConfigPortComboWidth);
@@ -3077,9 +3078,9 @@ void MainWindow::updateDeviceConfigTexts()
     fitButtonFixedWidth(state_->device_config_.sky_device_config_btn,
                         kDeviceConfigSkyDeviceButtonMinWidth,
                         kDeviceConfigTopButtonPadding);
-    if (state_->device_config_.epsilon_lbl) state_->device_config_.epsilon_lbl->setText(QStringLiteral("EPSILON:"));
-    if (state_->device_config_.ptb_lbl) state_->device_config_.ptb_lbl->setText(state_->is_english_ ? QStringLiteral("Pressure:") : QStringLiteral("气压:"));
-    if (state_->device_config_.hmp_lbl) state_->device_config_.hmp_lbl->setText(state_->is_english_ ? QStringLiteral("Temp/RH:") : QStringLiteral("温湿度:"));
+    if (state_->device_config_.epsilon_lbl) state_->device_config_.epsilon_lbl->setText(state_->is_english_ ? QStringLiteral("EPSILON2-D4G Integrated Navigation") : QStringLiteral("EPSILON2-D4G 组合导航"));
+    if (state_->device_config_.ptb_lbl) state_->device_config_.ptb_lbl->setText(state_->is_english_ ? QStringLiteral("PTB210 Barometer") : QStringLiteral("PTB210 气压计"));
+    if (state_->device_config_.hmp_lbl) state_->device_config_.hmp_lbl->setText(state_->is_english_ ? QStringLiteral("HMP3 Temperature/Humidity Sensor") : QStringLiteral("HMP3 温湿度计"));
     if (state_->device_config_.ptb_source_combo)
     {
         const QVariant sourceData = state_->device_config_.ptb_source_combo->currentData();
@@ -3096,9 +3097,9 @@ void MainWindow::updateDeviceConfigTexts()
         state_->device_config_.hmp_source_combo->setItemText(1, QStringLiteral("SHT45"));
         state_->device_config_.hmp_source_combo->setCurrentIndex(std::max(0, state_->device_config_.hmp_source_combo->findData(sourceData)));
     }
-    if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(QStringLiteral("TFA1005-L:"));
-    if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(QStringLiteral("RD105:"));
-    if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(QStringLiteral("AI-8288:"));
+    if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(state_->is_english_ ? QStringLiteral("TFA1005-L LiDAR") : QStringLiteral("TFA1005-L 激光雷达"));
+    if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(state_->is_english_ ? QStringLiteral("RD105 Laser Driver Temperature Controller") : QStringLiteral("RD105 激光驱动板温控器"));
+    if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(state_->is_english_ ? QStringLiteral("AI-8288 8-Channel Temperature Controller") : QStringLiteral("AI-8288 八路温控器"));
     if (state_->device_config_.epsilon_rate_lbl) state_->device_config_.epsilon_rate_lbl->setText(QString());
     if (state_->device_config_.ptb_rate_lbl) state_->device_config_.ptb_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
     if (state_->device_config_.hmp_rate_lbl) state_->device_config_.hmp_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");

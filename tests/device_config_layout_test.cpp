@@ -116,6 +116,36 @@ bool cardHasAnyLabel(QFrame *card, const QStringList& candidates)
     return false;
 }
 
+QLabel *findExactLabel(QWidget *parent, const QString& text)
+{
+    if (!parent)
+    {
+        return nullptr;
+    }
+    for (QLabel *label : parent->findChildren<QLabel *>())
+    {
+        if (label && label->text() == text)
+        {
+            return label;
+        }
+    }
+    return nullptr;
+}
+
+void requireLabelFits(QLabel *label, const char *message)
+{
+    require(label != nullptr, message);
+    const int textWidth = label->fontMetrics().horizontalAdvance(label->text());
+    if (textWidth > label->width() + 1)
+    {
+        std::cerr << "Label clipped: text='"
+                  << label->text().toStdString()
+                  << "' textWidth=" << textWidth
+                  << " labelWidth=" << label->width() << '\n';
+    }
+    require(textWidth <= label->width() + 1, message);
+}
+
 QString pillName(QFrame *pill)
 {
     QLabel *nameLabel =
@@ -343,6 +373,10 @@ int main(int argc, char **argv)
                                      "data-rate subcard uses its widest pill as every column width");
     requirePillLabelsFit(subCards.at(0),
                          "data-rate subcard pill labels fit without clipping");
+    requirePillsUseWidestColumnWidth(subCards.at(1),
+                                     "link-rate subcard uses its widest pill as every column width");
+    requirePillLabelsFit(subCards.at(1),
+                         "link-rate subcard pill labels fit without clipping");
 
     const QList<QList<QFrame *>> dataRows = pillRows(subCards.at(2));
     const QStringList firstDataRow = dataRows.isEmpty() ? QStringList() : pillNames(dataRows.first());
@@ -377,6 +411,20 @@ int main(int argc, char **argv)
                 "link-status subcards stay inside the summary container");
         previousRight = subRect.right();
         top = subRect.top();
+    }
+
+    const QStringList detailedDeviceLabels{
+        QStringLiteral("EPSILON2-D4G 组合导航"),
+        QStringLiteral("PTB210 气压计"),
+        QStringLiteral("HMP3 温湿度计"),
+        QStringLiteral("TFA1005-L 激光雷达"),
+        QStringLiteral("RD105 激光驱动板温控器"),
+        QStringLiteral("AI-8288 八路温控器"),
+    };
+    for (const QString& labelText : detailedDeviceLabels)
+    {
+        requireLabelFits(findExactLabel(serialCard, labelText),
+                         "serial configuration uses detailed device labels without clipping");
     }
 
     window.close();

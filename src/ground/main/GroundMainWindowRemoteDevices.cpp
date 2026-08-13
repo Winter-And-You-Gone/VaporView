@@ -943,7 +943,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             }
         }
 
-        if (useSideTitle && firstLineCount > 1)
+        if (useSideTitle)
         {
             int widestPillWidth = 0;
             for (const RenderedSummaryLine& renderedLine : renderedLines)
