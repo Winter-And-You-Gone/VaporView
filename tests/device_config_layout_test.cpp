@@ -453,6 +453,24 @@ int main(int argc, char **argv)
         requireLabelFits(findExactLabel(serialCard, labelText),
                          "serial configuration uses detailed device labels without clipping");
     }
+    int widestDeviceLabelText = 0;
+    int deviceLabelWidth = -1;
+    for (const QString& labelText : detailedDeviceLabels)
+    {
+        QLabel *label = findExactLabel(serialCard, labelText);
+        require(label != nullptr, "serial configuration device label exists for width measurement");
+        widestDeviceLabelText = std::max(widestDeviceLabelText,
+                                         label->fontMetrics().horizontalAdvance(labelText));
+        if (deviceLabelWidth < 0)
+        {
+            deviceLabelWidth = label->width();
+        }
+        require(std::abs(label->width() - deviceLabelWidth) <= 1,
+                "serial configuration device labels share one content-driven column width");
+    }
+    require(deviceLabelWidth >= widestDeviceLabelText &&
+                deviceLabelWidth <= widestDeviceLabelText + 2,
+            "serial configuration device column uses the widest device label without extra width");
     const QStringList serialColumnHeaders{
         QStringLiteral("设备"),
         QStringLiteral("串口"),

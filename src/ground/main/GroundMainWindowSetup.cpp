@@ -2492,7 +2492,6 @@ void MainWindow::setupDeviceConfigPage()
     constexpr int kDeviceConfigBaudComboWidth = 100;
     constexpr int kDeviceConfigRateComboWidth = 88;
     constexpr int kDeviceConfigSourceComboWidth = 108;
-    constexpr int kDeviceConfigDeviceLabelWidth = 340;
 
     auto createCombo = [this, formWidget](int width, bool editable = false) {
         auto *combo = new QComboBox(formWidget);
@@ -2513,6 +2512,7 @@ void MainWindow::setupDeviceConfigPage()
         label->setObjectName(QStringLiteral("fieldLabel"));
         label->setProperty("deviceConfigColumnHeader", true);
         label->setFixedHeight(20);
+        label->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
         label->setAlignment(Qt::AlignCenter);
         if (fixedWidth > 0)
         {
@@ -2520,7 +2520,7 @@ void MainWindow::setupDeviceConfigPage()
         }
         formLayout->addWidget(label, 0, column, 1, columnSpan, Qt::AlignCenter);
     };
-    createColumnHeader(state_->device_config_.device_header_lbl, 0, 1, kDeviceConfigDeviceLabelWidth);
+    createColumnHeader(state_->device_config_.device_header_lbl, 0, 1);
     createColumnHeader(state_->device_config_.port_header_lbl, 1, 1, kDeviceConfigPortComboWidth);
     createColumnHeader(state_->device_config_.baud_header_lbl, 2, 1, kDeviceConfigBaudComboWidth);
     createColumnHeader(state_->device_config_.rate_header_lbl, 3, 2);
@@ -2538,8 +2538,8 @@ void MainWindow::setupDeviceConfigPage()
         label = new QLabel(formWidget);
         label->setObjectName(QStringLiteral("fieldLabel"));
         label->setFixedHeight(kMainPageInputHeight);
-        label->setFixedWidth(kDeviceConfigDeviceLabelWidth);
-        formLayout->addWidget(label, gridRow, 0, Qt::AlignVCenter | Qt::AlignLeft);
+        label->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+        formLayout->addWidget(label, gridRow, 0);
 
         portCombo = createCombo(kDeviceConfigPortComboWidth);
         installLocalSerialPortComboBehavior(portCombo);
