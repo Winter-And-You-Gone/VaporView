@@ -271,6 +271,11 @@ int main(int argc, char *argv[])
         button->click();
         require(probe->emitted, "EPSILON operation button emits its semantic request");
     }
+    auto *rtcmButton = panel.findChild<QPushButton *>(QStringLiteral("epsilonRtcmPortButton"));
+    require(rtcmButton != nullptr &&
+                !rtcmButton->toolTip().contains(QStringLiteral("port 2"), Qt::CaseInsensitive) &&
+                !rtcmButton->toolTip().contains(QStringLiteral("第二通信")),
+            "RTCM input action no longer hardcodes COMM2 in user-facing help text");
 
     panel.setAvailable(false);
     auto *availabilitySummary = panel.findChild<QLabel *>(
@@ -313,6 +318,9 @@ int main(int argc, char *argv[])
                 panel.findChild<QLabel *>(QStringLiteral("epsilonPacketGroupGnssPosition"))->text() ==
                     QStringLiteral("GNSS and Position"),
             "EPSILON packet group titles follow the active language");
+    require(rtcmButton->toolTip().contains(QStringLiteral("communication port")) &&
+                !rtcmButton->toolTip().contains(QStringLiteral("port 2"), Qt::CaseInsensitive),
+            "English RTCM action help keeps the selectable device-port wording");
     panel.setEnglish(false);
     require(!panel.accessibleName().isEmpty(), "Chinese accessible name remains available");
 

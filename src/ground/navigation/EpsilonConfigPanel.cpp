@@ -753,8 +753,8 @@ void EpsilonConfigPanel::updateTexts()
     hint_label_->setAccessibleName(is_english_ ? QStringLiteral("EPSILON configuration hint") : QStringLiteral("EPSILON 配置提示"));
     rtcm_name_label_->setText(is_english_ ? QStringLiteral("RTCM Input") : QStringLiteral("RTCM 输入"));
     rtcm_description_label_->setText(
-        is_english_ ? QStringLiteral("Configure EPSILON communication port 2 as the RTCM input.")
-                    : QStringLiteral("配置 EPSILON 第二通信串口为 RTCM 输入口。"));
+        is_english_ ? QStringLiteral("Configure an EPSILON communication port as the RTCM input.")
+                    : QStringLiteral("配置 EPSILON 通信串口为 RTCM 输入口。"));
     reconfigure_name_label_->setText(is_english_ ? QStringLiteral("Output Reconfiguration") : QStringLiteral("输出重配"));
     reconfigure_description_label_->setText(
         is_english_ ? QStringLiteral("Apply the current EPSILON output profile to the device.")
@@ -815,7 +815,7 @@ void EpsilonConfigPanel::updateTexts()
     save_button_->setText(is_english_ ? QStringLiteral("Save + Apply") : QStringLiteral("保存并应用"));
     save_button_->setToolTip(is_english_ ? QStringLiteral("Save the packet-rate profile and apply it now when possible") : QStringLiteral("保存包频率配置，并在可用时立即应用"));
     rtcm_port_button_->setText(is_english_ ? QStringLiteral("RTCM Port") : QStringLiteral("配置RTCM串口"));
-    rtcm_port_button_->setToolTip(is_english_ ? QStringLiteral("Configure EPSILON communication port 2 as RTCM input") : QStringLiteral("配置 EPSILON 第二通信串口为 RTCM 输入口"));
+    rtcm_port_button_->setToolTip(is_english_ ? QStringLiteral("Configure an EPSILON communication port as RTCM input") : QStringLiteral("配置 EPSILON 通信串口为 RTCM 输入口"));
     reconfigure_button_->setText(is_english_ ? QStringLiteral("Reconfigure Output") : QStringLiteral("重新配置输出"));
     reconfigure_button_->setToolTip(is_english_ ? QStringLiteral("Apply the current EPSILON output profile") : QStringLiteral("应用当前 EPSILON 输出配置"));
     rtk_config_button_->setText(is_english_ ? QStringLiteral("RTK Config") : QStringLiteral("RTK配置"));

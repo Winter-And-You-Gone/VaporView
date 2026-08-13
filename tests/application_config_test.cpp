@@ -39,6 +39,7 @@ int main(int argc, char **argv)
     mainSettings.setValue(QStringLiteral("telemetry/tcp_host"), QStringLiteral("192.168.1.2"));
     mainSettings.setValue(QStringLiteral("recording_export_rate_hz"), 50);
     mainSettings.setValue(QStringLiteral("epsilon_custom_packet_rate_40"), 250);
+    mainSettings.setValue(QStringLiteral("epsilon_rtcm_device_port_index"), 3);
     mainSettings.sync();
 
     QSettings waveSettings(QStringLiteral("VaporView"), QStringLiteral("TcpWavePanel"));
@@ -77,6 +78,8 @@ int main(int argc, char **argv)
             "recording policy migrated to application config");
     require(applicationSettings.value(QStringLiteral("MainWindow/epsilon_custom_packet_rate_40")).toInt() == 250,
             "EPSILON packet-rate value migrated to application config");
+    require(applicationSettings.value(QStringLiteral("MainWindow/epsilon_rtcm_device_port_index")).toInt() == 3,
+            "EPSILON RTCM device input port selection migrated to application config");
     require(applicationSettings.value(QStringLiteral("TcpWavePanel/connection/host")).toString() ==
                 QStringLiteral("10.0.0.8"),
             "wave connection migrated to application config");
@@ -97,7 +100,8 @@ int main(int argc, char **argv)
     require(!mainSettings.contains(QStringLiteral("serial/epsilon_port")) &&
                 !mainSettings.contains(QStringLiteral("telemetry/tcp_host")) &&
                 !mainSettings.contains(QStringLiteral("recording_export_rate_hz")) &&
-                !mainSettings.contains(QStringLiteral("epsilon_custom_packet_rate_40")),
+                !mainSettings.contains(QStringLiteral("epsilon_custom_packet_rate_40")) &&
+                !mainSettings.contains(QStringLiteral("epsilon_rtcm_device_port_index")),
             "migrated application settings are removed from the legacy scope");
     require(waveSettings.value(QStringLiteral("peak_filter/mode")).toString() == QStringLiteral("iqr") &&
                 !waveSettings.contains(QStringLiteral("connection/host")),

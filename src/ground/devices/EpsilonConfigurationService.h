@@ -65,6 +65,7 @@ public:
 
     static EpsilonConfigurationResult configureRtcmPort(
         const EpsilonDeviceOperation& operation,
+        int device_port_index,
         const QString& forward_port,
         int forward_baud,
         const QString& forward_baud_text,

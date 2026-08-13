@@ -207,6 +207,7 @@ EpsilonConfigurationResult EpsilonConfigurationService::applyMainAntennaLeverArm
 
 EpsilonConfigurationResult EpsilonConfigurationService::configureRtcmPort(
     const EpsilonDeviceOperation& operation,
+    int device_port_index,
     const QString& forward_port,
     int forward_baud,
     const QString& forward_baud_text,
@@ -252,11 +253,12 @@ EpsilonConfigurationResult EpsilonConfigurationService::configureRtcmPort(
         return finishOperation(operation, QStringLiteral("rtcm_port"), collector, std::move(result), log);
     }
 
-    if (!collector->configureRtcmPort(2, forward_baud))
+    if (!collector->configureRtcmPort(device_port_index, forward_baud))
     {
         result.error_message = QString(english
-                ? "[EPSILON] Failed to configure communication port 2 as RTCM on %1 @ %2."
-                : "[EPSILON] 在 %1 @ %2 上把第二通信串口配置为 RTCM 失败。")
+                ? "[EPSILON] Failed to configure communication port %1 as RTCM on %2 @ %3."
+                : "[EPSILON] 在 %2 @ %3 上把通信串口 %1 配置为 RTCM 失败。")
+            .arg(device_port_index)
             .arg(operation.port, operation.baud_text);
         emitLog(log,
                 LogLevel::Error,
@@ -267,6 +269,7 @@ EpsilonConfigurationResult EpsilonConfigurationService::configureRtcmPort(
                  {QStringLiteral("operation"), QStringLiteral("rtcm_port")},
                  {QStringLiteral("port"), operation.port},
                  {QStringLiteral("baud"), operation.baud},
+                 {QStringLiteral("device_port"), device_port_index},
                  {QStringLiteral("forward_port"), forward_port},
                  {QStringLiteral("forward_baud"), forward_baud},
                  {QStringLiteral("error_code"), QStringLiteral("CONFIG_APPLY_FAILED")},
@@ -278,6 +281,7 @@ EpsilonConfigurationResult EpsilonConfigurationService::configureRtcmPort(
     {
         QSettings main_settings = VaporView::applicationConfigSettings();
         main_settings.beginGroup(QStringLiteral("MainWindow"));
+        VaporView::setPersistentSetting(main_settings, QStringLiteral("epsilon_rtcm_device_port_index"), device_port_index);
         VaporView::setPersistentSetting(main_settings, QStringLiteral("epsilon_rtcm_forward_port"), forward_port);
         VaporView::setPersistentSetting(main_settings, QStringLiteral("epsilon_rtcm_forward_baud"), forward_baud_text);
     }
@@ -290,6 +294,7 @@ EpsilonConfigurationResult EpsilonConfigurationService::configureRtcmPort(
             {{QStringLiteral("device"), QStringLiteral("EPSILON")},
              {QStringLiteral("operation"), QStringLiteral("rtcm_port")},
              {QStringLiteral("port"), operation.port},
+             {QStringLiteral("device_port"), device_port_index},
              {QStringLiteral("forward_port"), forward_port},
              {QStringLiteral("forward_baud"), forward_baud},
              {QStringLiteral("ui_visibility"), QStringLiteral("details")}});

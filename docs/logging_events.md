@@ -229,13 +229,13 @@
 | Ground | device.navigation.command | epsilon_rtcm_config_rejected_recording_active | Warning | 请先结束记录，再配置 EPSILON RTCM 串口。 | device, reason_code | ui_dedupe_key | INVALID_STATE |
 | Ground | device.navigation.command | epsilon_rtcm_config_rejected_missing_main_port | Warning | 请先选择 EPSILON 主串口。 | device, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | device.navigation.command | epsilon_rtcm_config_rejected_invalid_main_baud | Warning | EPSILON 波特率无效。 | device, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
-| Ground | device.navigation.command | epsilon_rtcm_config_rejected_missing_forward_port | Warning | 请选择连接到 EPSILON 第二串口的本机串口。 | device, reason_code, main_port | ui_dedupe_key | MISSING_ENDPOINT |
-| Ground | device.navigation.command | epsilon_rtcm_config_rejected_port_conflict | Warning | RTCM 转发串口不能与 EPSILON 主串口相同。 | device, reason_code, main_port, forward_port, details | ui_dedupe_key | CONFIG_INVALID |
+| Ground | device.navigation.command | epsilon_rtcm_config_rejected_missing_forward_port | Warning | 请选择连接到 EPSILON RTCM 输入口的本机串口。 | device, reason_code, main_port, device_port | ui_dedupe_key | MISSING_ENDPOINT |
+| Ground | device.navigation.command | epsilon_rtcm_config_rejected_port_conflict | Warning | RTCM 转发串口不能与 EPSILON 主串口相同。 | device, reason_code, main_port, device_port, forward_port, details | ui_dedupe_key | CONFIG_INVALID |
 | Ground | device.navigation.command | epsilon_rtcm_config_rejected_invalid_forward_baud | Warning | RTCM 转发波特率无效。 | device, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
-| Ground | device.navigation.command | epsilon_rtcm_config_started | Info | 正在把 EPSILON 第二通信串口配置为 RTCM。 | device, main_port, main_baud, forward_port, forward_baud | ui_visibility |  |
+| Ground | device.navigation.command | epsilon_rtcm_config_started | Info | 正在把 EPSILON 通信串口配置为 RTCM。 | device, main_port, main_baud, device_port, forward_port, forward_baud | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_rtcm_port_open_failed | Error | 打开 EPSILON 串口进行 RTCM 配置失败。 | device, operation, port, baud, system_error, error_code | ui_dedupe_key | SERIAL_OPEN_FAILED |
-| Ground | device.navigation.command | epsilon_rtcm_port_config_failed | Error | EPSILON RTCM 串口配置失败。 | device, operation, port, baud, forward_port, forward_baud, error_code | ui_dedupe_key | CONFIG_APPLY_FAILED |
-| Ground | device.navigation.command | epsilon_rtcm_port_config_completed | Info | EPSILON RTCM 串口配置已完成，RTK 转发配置已预填。 | device, operation, port, forward_port, forward_baud | ui_visibility |  |
+| Ground | device.navigation.command | epsilon_rtcm_port_config_failed | Error | EPSILON RTCM 串口配置失败。 | device, operation, port, baud, device_port, forward_port, forward_baud, error_code | ui_dedupe_key | CONFIG_APPLY_FAILED |
+| Ground | device.navigation.command | epsilon_rtcm_port_config_completed | Info | EPSILON RTCM 串口配置已完成，RTK 转发配置已预填。 | device, operation, port, device_port, forward_port, forward_baud | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_live_stream_pause_for_configuration | Info | 为配置 EPSILON 临时停止当前数据流。 | device, operation | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_configuration_completed_live_stream_restored | Info | EPSILON 配置已完成，实时导航流已恢复。 | device, operation | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_configuration_failed_live_stream_restored | Error | EPSILON 配置失败，但原实时导航流已恢复。 | device, operation, error_code | ui_visibility | CONFIG_APPLY_FAILED |

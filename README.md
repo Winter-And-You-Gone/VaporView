@@ -460,6 +460,7 @@ EPSILON 包频率配置：
 EPSILON RTCM 与杆臂配置：
 
 - `EpsilonCollector::configureRtcmPort` 允许配置 EPSILON 通信端口 `2` 到 `5`；端口 `1` 被明确拒绝，因为它必须保持 Main port。
+- UI 默认选择 `COMM2` 作为 EPSILON RTCM 输入口，也可选择 `COMM3`～`COMM5`；该设备端设置通常只需配置一次，除非更换设备、端口或波特率。
 - RTCM 串口配置会写入 `COMM_STREAM_TYP<n>=3` 和 `COMM_BAUD<n>`，保存后重启并等待导航流恢复。
 - 主天线杆臂通过 `#fantearm X Y Z` 写入，单位为米，保存后退出配置模式并等待导航流恢复。
 

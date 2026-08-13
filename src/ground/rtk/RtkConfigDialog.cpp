@@ -2922,8 +2922,8 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config,
         if (validationError)
         {
             *validationError = textFor(
-                "The RTCM forwarding port must differ from the EPSILON main port. The main port reads real GNSS/FDILink data for NTRIP GGA, while a separate PC serial port must write RTCM to EPSILON COMM2.",
-                "RTCM 转发串口不能与 EPSILON 主串口相同。主串口用于读取真实 GNSS/FDILink 数据并生成 NTRIP GGA，另一条本机串口必须连接 EPSILON COMM2 写入 RTCM。");
+                "The RTCM forwarding port must differ from the EPSILON main port. The main port reads real GNSS/FDILink data for NTRIP GGA, while a separate PC serial port must write RTCM to the configured EPSILON RTCM input port.",
+                "RTCM 转发串口不能与 EPSILON 主串口相同。主串口用于读取真实 GNSS/FDILink 数据并生成 NTRIP GGA，另一条本机串口必须连接已配置的 EPSILON RTCM 输入口。");
         }
         return false;
     }

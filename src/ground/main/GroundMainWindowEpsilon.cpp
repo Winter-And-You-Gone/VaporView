@@ -306,8 +306,8 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     auto *layout = new QVBoxLayout(&dialog);
     auto *hintLabel = new QLabel(
         state_->is_english_
-            ? QStringLiteral("This configures EPSILON communication port 2 as an RTCM input port, saves the output-forwarding serial port on this PC, and prepares the RTK dialog to stream RTCM continuously into EPSILON.")
-            : QStringLiteral("这个功能会把 EPSILON 的第二通信串口配置为 RTCM 输入口，同时保存本机用于转发 RTCM 的串口与波特率，并为后续 RTK 配置对话框做好预填。"),
+            ? QStringLiteral("This configures the selected EPSILON communication port as an RTCM input, saves the PC forwarding serial port, and prepares the RTK dialog to stream RTCM continuously into EPSILON. This device-port setting is normally needed only once unless the device, port, or baud rate changes.")
+            : QStringLiteral("这个功能会把所选 EPSILON 通信串口配置为 RTCM 输入口，同时保存本机用于转发 RTCM 的串口与波特率，并为后续 RTK 配置对话框做好预填。设备端口通常只需设置一次，除非更换设备、端口或波特率。"),
         &dialog);
     hintLabel->setWordWrap(true);
     layout->addWidget(hintLabel);
@@ -319,8 +319,34 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     auto *mainPortValue = new QLabel(QStringLiteral("%1 @ %2").arg(epsilonPort, epsilonBaudText), &dialog);
     formLayout->addRow(state_->is_english_ ? "EPSILON Main Port:" : "EPSILON 主串口：", mainPortValue);
 
-    auto *deviceRtcmPortValue = new QLabel(state_->is_english_ ? "COMM2 (RTCM)" : "串口2（RTCM）", &dialog);
-    formLayout->addRow(state_->is_english_ ? "Device RTCM Port:" : "设备 RTCM 串口：", deviceRtcmPortValue);
+    auto *deviceRtcmPortCombo = new QComboBox(&dialog);
+    deviceRtcmPortCombo->setObjectName(QStringLiteral("epsilonRtcmDevicePortCombo"));
+    deviceRtcmPortCombo->setAccessibleName(
+        state_->is_english_ ? QStringLiteral("EPSILON RTCM input port")
+                            : QStringLiteral("EPSILON RTCM 输入口"));
+    deviceRtcmPortCombo->setToolTip(
+        state_->is_english_
+            ? QStringLiteral("Select the EPSILON device communication port that will receive RTCM. COMM2 is the default.")
+            : QStringLiteral("选择 EPSILON 设备端接收 RTCM 的通信串口，默认 COMM2。"));
+    int savedDevicePortIndex = settings.value(QStringLiteral("epsilon_rtcm_device_port_index"), 2).toInt();
+    if (savedDevicePortIndex < 2 || savedDevicePortIndex > 5)
+    {
+        savedDevicePortIndex = 2;
+    }
+    for (int portIndex = 2; portIndex <= 5; ++portIndex)
+    {
+        deviceRtcmPortCombo->addItem(state_->is_english_
+                                         ? QStringLiteral("COMM%1 (RTCM input)").arg(portIndex)
+                                         : QStringLiteral("串口%1（RTCM 输入）").arg(portIndex),
+                                     portIndex);
+    }
+    const int savedDevicePortComboIndex = deviceRtcmPortCombo->findData(savedDevicePortIndex);
+    if (savedDevicePortComboIndex >= 0)
+    {
+        deviceRtcmPortCombo->setCurrentIndex(savedDevicePortComboIndex);
+    }
+    configureComboPopup(deviceRtcmPortCombo);
+    formLayout->addRow(state_->is_english_ ? "EPSILON RTCM Input Port:" : "EPSILON RTCM 输入口：", deviceRtcmPortCombo);
 
     auto *forwardPortCombo = new QComboBox(&dialog);
     const QString savedForwardPort = settings.value("epsilon_rtcm_forward_port").toString().trimmed();
@@ -354,16 +380,18 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         return;
     }
 
+    const int deviceRtcmPortIndex = deviceRtcmPortCombo->currentData().toInt();
     const QString forwardPort = localSerialPortComboValue(forwardPortCombo);
     if (forwardPort.isEmpty())
     {
         publishGroundLog(VaporView::LogLevel::Warning,
                          QStringLiteral("device.navigation.command"),
                          QStringLiteral("epsilon_rtcm_config_rejected_missing_forward_port"),
-                         QStringLiteral("请选择连接到 EPSILON 第二串口的本机串口。"),
+                         QStringLiteral("请选择连接到 EPSILON RTCM 输入口的本机串口。"),
                          {{QStringLiteral("device"), QStringLiteral("EPSILON")},
                           {QStringLiteral("reason_code"), QStringLiteral("MISSING_ENDPOINT")},
                           {QStringLiteral("main_port"), epsilonPort},
+                          {QStringLiteral("device_port"), deviceRtcmPortIndex},
                           {QStringLiteral("ui_dedupe_key"), QStringLiteral("epsilon:rtcm_config:missing_forward_port")}});
         return;
     }
@@ -371,8 +399,8 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     if (serialPortNamesReferToSamePort(forwardPort, epsilonPort))
     {
         const QString message = state_->is_english_
-            ? QStringLiteral("The RTCM forwarding port must differ from the EPSILON main port. The main port reads real GNSS/FDILink data for NTRIP GGA; connect another PC serial port to EPSILON COMM2 for RTCM input.")
-            : QStringLiteral("RTCM 转发串口不能与 EPSILON 主串口相同。主串口用于读取真实 GNSS/FDILink 数据并生成 NTRIP GGA；请用另一条本机串口连接 EPSILON COMM2 写入 RTCM。");
+            ? QStringLiteral("The RTCM forwarding port must differ from the EPSILON main port. The main port reads real GNSS/FDILink data for NTRIP GGA; connect another PC serial port to the selected EPSILON RTCM input port.")
+            : QStringLiteral("RTCM 转发串口不能与 EPSILON 主串口相同。主串口用于读取真实 GNSS/FDILink 数据并生成 NTRIP GGA；请用另一条本机串口连接所选 EPSILON RTCM 输入口。");
         publishGroundLog(VaporView::LogLevel::Warning,
                          QStringLiteral("device.navigation.command"),
                          QStringLiteral("epsilon_rtcm_config_rejected_port_conflict"),
@@ -380,6 +408,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
                          {{QStringLiteral("device"), QStringLiteral("EPSILON")},
                           {QStringLiteral("reason_code"), QStringLiteral("CONFIG_INVALID")},
                           {QStringLiteral("main_port"), epsilonPort},
+                          {QStringLiteral("device_port"), deviceRtcmPortIndex},
                           {QStringLiteral("forward_port"), forwardPort},
                           {QStringLiteral("details"), message},
                           {QStringLiteral("ui_dedupe_key"), QStringLiteral("epsilon:rtcm_config:port_conflict")}});
@@ -420,10 +449,11 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     publishGroundLog(VaporView::LogLevel::Info,
                      QStringLiteral("device.navigation.command"),
                      QStringLiteral("epsilon_rtcm_config_started"),
-                     QStringLiteral("正在把 EPSILON 第二通信串口配置为 RTCM。"),
+                     QStringLiteral("正在把 EPSILON 通信串口配置为 RTCM。"),
                      {{QStringLiteral("device"), QStringLiteral("EPSILON")},
                       {QStringLiteral("main_port"), epsilonPort},
                       {QStringLiteral("main_baud"), epsilonBaud},
+                      {QStringLiteral("device_port"), deviceRtcmPortIndex},
                       {QStringLiteral("forward_port"), forwardPort},
                       {QStringLiteral("forward_baud"), forwardBaud},
                       {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
@@ -433,6 +463,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
                                                epsilonPort,
                                                epsilonBaud,
                                                epsilonBaudText,
+                                               deviceRtcmPortIndex,
                                                forwardPort,
                                                forwardBaud,
                                                forwardBaudText,
@@ -470,6 +501,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         const VaporView::Ground::EpsilonConfigurationResult result =
             VaporView::Ground::EpsilonConfigurationService::configureRtcmPort(
                 operation,
+                deviceRtcmPortIndex,
                 forwardPort,
                 forwardBaud,
                 forwardBaudText,
