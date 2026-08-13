@@ -298,6 +298,13 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
     const QStringList availablePorts = getAvailablePorts();
+    int deviceRtcmPortIndex = state_->epsilon_config_panel_
+        ? state_->epsilon_config_panel_->rtcmDevicePortIndex()
+        : settings.value(QStringLiteral("epsilon_rtcm_device_port_index"), 2).toInt();
+    if (deviceRtcmPortIndex < 2 || deviceRtcmPortIndex > 5)
+    {
+        deviceRtcmPortIndex = 2;
+    }
 
     QDialog dialog(this);
     dialog.setModal(true);
@@ -319,34 +326,12 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     auto *mainPortValue = new QLabel(QStringLiteral("%1 @ %2").arg(epsilonPort, epsilonBaudText), &dialog);
     formLayout->addRow(state_->is_english_ ? "EPSILON Main Port:" : "EPSILON 主串口：", mainPortValue);
 
-    auto *deviceRtcmPortCombo = new QComboBox(&dialog);
-    deviceRtcmPortCombo->setObjectName(QStringLiteral("epsilonRtcmDevicePortCombo"));
-    deviceRtcmPortCombo->setAccessibleName(
-        state_->is_english_ ? QStringLiteral("EPSILON RTCM input port")
-                            : QStringLiteral("EPSILON RTCM 输入口"));
-    deviceRtcmPortCombo->setToolTip(
+    auto *deviceRtcmPortValue = new QLabel(
         state_->is_english_
-            ? QStringLiteral("Select the EPSILON device communication port that will receive RTCM. COMM2 is the default.")
-            : QStringLiteral("选择 EPSILON 设备端接收 RTCM 的通信串口，默认 COMM2。"));
-    int savedDevicePortIndex = settings.value(QStringLiteral("epsilon_rtcm_device_port_index"), 2).toInt();
-    if (savedDevicePortIndex < 2 || savedDevicePortIndex > 5)
-    {
-        savedDevicePortIndex = 2;
-    }
-    for (int portIndex = 2; portIndex <= 5; ++portIndex)
-    {
-        deviceRtcmPortCombo->addItem(state_->is_english_
-                                         ? QStringLiteral("COMM%1 (RTCM input)").arg(portIndex)
-                                         : QStringLiteral("串口%1（RTCM 输入）").arg(portIndex),
-                                     portIndex);
-    }
-    const int savedDevicePortComboIndex = deviceRtcmPortCombo->findData(savedDevicePortIndex);
-    if (savedDevicePortComboIndex >= 0)
-    {
-        deviceRtcmPortCombo->setCurrentIndex(savedDevicePortComboIndex);
-    }
-    configureComboPopup(deviceRtcmPortCombo);
-    formLayout->addRow(state_->is_english_ ? "EPSILON RTCM Input Port:" : "EPSILON RTCM 输入口：", deviceRtcmPortCombo);
+            ? QStringLiteral("COMM%1 (selected on card)").arg(deviceRtcmPortIndex)
+            : QStringLiteral("串口%1（卡片内选择）").arg(deviceRtcmPortIndex),
+        &dialog);
+    formLayout->addRow(state_->is_english_ ? "EPSILON RTCM Input Port:" : "EPSILON RTCM 输入口：", deviceRtcmPortValue);
 
     auto *forwardPortCombo = new QComboBox(&dialog);
     const QString savedForwardPort = settings.value("epsilon_rtcm_forward_port").toString().trimmed();
@@ -380,7 +365,6 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         return;
     }
 
-    const int deviceRtcmPortIndex = deviceRtcmPortCombo->currentData().toInt();
     const QString forwardPort = localSerialPortComboValue(forwardPortCombo);
     if (forwardPort.isEmpty())
     {

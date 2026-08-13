@@ -29,6 +29,8 @@ public:
     void setAvailable(bool available);
     void setPacketRates(const std::map<uint8_t, int>& packetRates);
     std::map<uint8_t, int> packetRates() const;
+    void setRtcmDevicePortIndex(int portIndex);
+    int rtcmDevicePortIndex() const;
 
 signals:
     void recommendedProfileRequested();
@@ -65,6 +67,7 @@ private:
     QLabel *packet_count_value_label_ = nullptr;
     QLabel *rtcm_name_label_ = nullptr;
     QLabel *rtcm_description_label_ = nullptr;
+    QComboBox *rtcm_device_port_combo_ = nullptr;
     QLabel *reconfigure_name_label_ = nullptr;
     QLabel *reconfigure_description_label_ = nullptr;
     QLabel *rtk_name_label_ = nullptr;

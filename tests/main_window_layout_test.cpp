@@ -3347,6 +3347,19 @@ int main(int argc, char **argv)
         settings.sync();
     }
 
+    auto triggerFontScaleAction = [](MainWindow& target, int percent) {
+        for (QAction *action : target.findChildren<QAction *>())
+        {
+            if (action && action->data().toInt() == percent)
+            {
+                action->trigger();
+                processEventsFor(50);
+                return;
+            }
+        }
+        require(false, "main window exposes requested font-scale action");
+    };
+
     if (app.arguments().contains(QStringLiteral("--home-overview-language-only")))
     {
         requireHomeOverviewLanguageWidthRoundTrip();
@@ -3577,6 +3590,7 @@ int main(int argc, char **argv)
     }
 
     MainWindow window;
+    triggerFontScaleAction(window, 100);
     window.setWindowTitle(QStringLiteral("VaporView"));
     window.resize(1280, 800);
     window.show();
@@ -9000,6 +9014,21 @@ int main(int argc, char **argv)
         epsilonDeviceSettingsCard, QStringLiteral("epsilonRtcmPortButton"),
         {QStringLiteral("配置RTCM串口"), QStringLiteral("RTCM Port")},
         epsilonDeviceLocalBounds, "EPSILON device settings expose the RTCM action");
+    auto *epsilonRtcmDevicePortCombo =
+        epsilonDeviceSettingsCard->findChild<QComboBox *>(QStringLiteral("epsilonRtcmDevicePortCombo"));
+    require(epsilonRtcmDevicePortCombo != nullptr &&
+                epsilonRtcmDevicePortCombo->property("epsilonRtcmDevicePortControl").toBool() &&
+                epsilonRtcmDevicePortCombo->count() == 4,
+            "EPSILON device settings expose the RTCM input selector directly on the card");
+    const QRect epsilonRtcmDevicePortRect(
+        epsilonRtcmDevicePortCombo->mapTo(epsilonDeviceSettingsCard, QPoint(0, 0)),
+        epsilonRtcmDevicePortCombo->size());
+    require(epsilonDeviceLocalBounds.contains(epsilonRtcmDevicePortRect) &&
+                epsilonRtcmDevicePortRect.right() < rtcmRect.left(),
+            "EPSILON RTCM input selector stays inline before the configure action");
+    require(epsilonRtcmDevicePortCombo->focusPolicy() == Qt::TabFocus &&
+                !epsilonRtcmDevicePortCombo->accessibleName().isEmpty(),
+            "EPSILON RTCM input selector remains keyboard accessible");
     const QRect reconfigureRect = requireActionButton(
         epsilonDeviceSettingsCard, QStringLiteral("epsilonReconfigureButton"),
         {QStringLiteral("重新配置输出"), QStringLiteral("Reconfigure Output")},
@@ -9560,8 +9589,7 @@ int main(int argc, char **argv)
         settings.sync();
 
         MainWindow scaledWindow;
-        settings.setValue(QStringLiteral("font_scale_percent"), 100);
-        settings.sync();
+        triggerFontScaleAction(scaledWindow, 130);
         scaledWindow.resize(1664, 1040);
         scaledWindow.show();
         require(waitForWindowExposed(&scaledWindow),
@@ -9661,8 +9689,11 @@ int main(int argc, char **argv)
                         editorRect.left() <= 1,
                     "scaled temperature common label keeps its last character clear above the editor");
         }
+        triggerFontScaleAction(scaledWindow, 100);
         scaledWindow.close();
         processEventsFor(100);
+        settings.setValue(QStringLiteral("font_scale_percent"), 100);
+        settings.sync();
     }
 
     window.close();

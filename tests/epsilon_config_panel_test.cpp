@@ -92,6 +92,19 @@ int main(int argc, char *argv[])
     const QList<QComboBox *> combos = packetRateCombos(panel);
     require(options.size() == 11, "EPSILON policy exposes exactly 11 packet options");
     require(combos.size() == 11, "panel exposes exactly 11 packet-rate controls");
+    auto *rtcmDevicePortCombo = panel.findChild<QComboBox *>(QStringLiteral("epsilonRtcmDevicePortCombo"));
+    require(rtcmDevicePortCombo != nullptr &&
+                rtcmDevicePortCombo->property("epsilonRtcmDevicePortControl").toBool() &&
+                !rtcmDevicePortCombo->property("epsilonPacketId").isValid(),
+            "RTCM input port selector lives in the device settings card, not the packet-rate grid");
+    require(rtcmDevicePortCombo->count() == 4 &&
+                rtcmDevicePortCombo->itemData(0).toInt() == 2 &&
+                rtcmDevicePortCombo->itemData(3).toInt() == 5 &&
+                panel.rtcmDevicePortIndex() == 2,
+            "RTCM input selector exposes COMM2-COMM5 with COMM2 as the default");
+    panel.setRtcmDevicePortIndex(3);
+    require(panel.rtcmDevicePortIndex() == 3,
+            "RTCM input selector setter and getter preserve the selected device port");
 
     struct PacketGroupExpectation
     {
@@ -276,12 +289,18 @@ int main(int argc, char *argv[])
                 !rtcmButton->toolTip().contains(QStringLiteral("port 2"), Qt::CaseInsensitive) &&
                 !rtcmButton->toolTip().contains(QStringLiteral("第二通信")),
             "RTCM input action no longer hardcodes COMM2 in user-facing help text");
+    require(rtcmDevicePortCombo->focusPolicy() == Qt::TabFocus &&
+                !rtcmDevicePortCombo->accessibleName().isEmpty() &&
+                !rtcmDevicePortCombo->toolTip().isEmpty(),
+            "RTCM input selector is accessible and keyboard focusable");
 
     panel.setAvailable(false);
     auto *availabilitySummary = panel.findChild<QLabel *>(
         QStringLiteral("epsilonAvailabilitySummaryValue"));
     require(!combos.front()->isEnabled(),
             "panel unavailable state disables interactive controls");
+    require(!rtcmDevicePortCombo->isEnabled(),
+            "panel unavailable state disables the RTCM input selector");
     require(availabilitySummary != nullptr && availabilitySummary->text() == QStringLiteral("不可用"),
             "configuration summary reports unavailable operations without fabricating device state");
     panel.setAvailable(true);
@@ -313,6 +332,10 @@ int main(int argc, char *argv[])
     panel.setEnglish(true);
     require(panel.accessibleName() == QStringLiteral("EPSILON Configuration"),
             "English accessible name follows panel language");
+    require(rtcmDevicePortCombo->currentData().toInt() == 3 &&
+                rtcmDevicePortCombo->currentText().contains(QStringLiteral("COMM3")) &&
+                rtcmDevicePortCombo->accessibleName() == QStringLiteral("EPSILON RTCM input port"),
+            "English RTCM input selector keeps the selected device port on the visible card");
     require(panel.findChild<QLabel *>(QStringLiteral("epsilonPacketGroupInertialFusion"))->text() ==
                 QStringLiteral("Inertial and Fusion") &&
                 panel.findChild<QLabel *>(QStringLiteral("epsilonPacketGroupGnssPosition"))->text() ==

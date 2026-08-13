@@ -186,6 +186,22 @@ QComboBox *createPacketRateCombo(QWidget *parent, int width)
     return combo;
 }
 
+QComboBox *createRtcmDevicePortCombo(QWidget *parent)
+{
+    auto *combo = new QComboBox(parent);
+    combo->setFixedHeight(VaporView::Ground::MainSupport::kMainPageInputHeight);
+    combo->setMinimumWidth(156);
+    combo->setMaximumWidth(190);
+    combo->setFocusPolicy(Qt::TabFocus);
+    combo->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    for (int portIndex = 2; portIndex <= 5; ++portIndex)
+    {
+        combo->addItem(QStringLiteral("COMM%1").arg(portIndex), portIndex);
+    }
+    VaporView::configureComboBoxPopup(combo, VaporView::isDarkThemeEnabled());
+    return combo;
+}
+
 QPushButton *createActionButton(QWidget *parent)
 {
     auto *button = new QPushButton(parent);
@@ -351,9 +367,11 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     device_settings_title_label_ = deviceSettingsCard.title;
     auto *deviceGrid = new QGridLayout();
     deviceGrid->setContentsMargins(0, 0, 0, 0);
-    deviceGrid->setHorizontalSpacing(16);
+    deviceGrid->setHorizontalSpacing(12);
     deviceGrid->setVerticalSpacing(10);
     deviceGrid->setColumnStretch(1, 1);
+    deviceGrid->setColumnStretch(2, 0);
+    deviceGrid->setColumnStretch(3, 0);
     auto addDeviceAction = [deviceGrid, card = deviceSettingsCard.card](
                                int row,
                                QLabel **nameOut,
@@ -376,12 +394,16 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
         (*buttonOut)->setProperty("epsilonSecondaryAction", true);
         deviceGrid->addWidget(*nameOut, row, 0, Qt::AlignLeft | Qt::AlignVCenter);
         deviceGrid->addWidget(*descriptionOut, row, 1, Qt::AlignLeft | Qt::AlignVCenter);
-        deviceGrid->addWidget(*buttonOut, row, 2, Qt::AlignRight | Qt::AlignVCenter);
+        deviceGrid->addWidget(*buttonOut, row, 3, Qt::AlignRight | Qt::AlignVCenter);
     };
     addDeviceAction(0, &rtcm_name_label_, &rtcm_description_label_, &rtcm_port_button_,
                     QStringLiteral("epsilonRtcmSettingName"),
                     QStringLiteral("epsilonRtcmSettingDescription"),
                     QStringLiteral("epsilonRtcmPortButton"));
+    rtcm_device_port_combo_ = createRtcmDevicePortCombo(deviceSettingsCard.card);
+    rtcm_device_port_combo_->setObjectName(QStringLiteral("epsilonRtcmDevicePortCombo"));
+    rtcm_device_port_combo_->setProperty("epsilonRtcmDevicePortControl", true);
+    deviceGrid->addWidget(rtcm_device_port_combo_, 0, 2, Qt::AlignLeft | Qt::AlignVCenter);
     addDeviceAction(1, &reconfigure_name_label_, &reconfigure_description_label_, &reconfigure_button_,
                     QStringLiteral("epsilonReconfigureSettingName"),
                     QStringLiteral("epsilonReconfigureSettingDescription"),
@@ -416,7 +438,8 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     {
         QWidget::setTabOrder(packet_rate_combos_.at(i), packet_rate_combos_.at(i + 1));
     }
-    QWidget::setTabOrder(packet_rate_combos_.last(), rtcm_port_button_);
+    QWidget::setTabOrder(packet_rate_combos_.last(), rtcm_device_port_combo_);
+    QWidget::setTabOrder(rtcm_device_port_combo_, rtcm_port_button_);
     QWidget::setTabOrder(rtcm_port_button_, reconfigure_button_);
     QWidget::setTabOrder(reconfigure_button_, rtk_config_button_);
     QWidget::setTabOrder(rtk_config_button_, save_button_);
@@ -474,6 +497,35 @@ std::map<uint8_t, int> EpsilonConfigPanel::packetRates() const
         packetRates[packetId] = combo->currentData().toInt();
     }
     return packetRates;
+}
+
+void EpsilonConfigPanel::setRtcmDevicePortIndex(int portIndex)
+{
+    if (!rtcm_device_port_combo_)
+    {
+        return;
+    }
+    if (portIndex < 2 || portIndex > 5)
+    {
+        portIndex = 2;
+    }
+    const int index = rtcm_device_port_combo_->findData(portIndex);
+    if (index >= 0)
+    {
+        const QSignalBlocker blocker(rtcm_device_port_combo_);
+        rtcm_device_port_combo_->setCurrentIndex(index);
+    }
+}
+
+int EpsilonConfigPanel::rtcmDevicePortIndex() const
+{
+    if (!rtcm_device_port_combo_ ||
+        !rtcm_device_port_combo_->currentData().isValid())
+    {
+        return 2;
+    }
+    const int portIndex = rtcm_device_port_combo_->currentData().toInt();
+    return (portIndex >= 2 && portIndex <= 5) ? portIndex : 2;
 }
 
 void EpsilonConfigPanel::changeEvent(QEvent *event)
@@ -701,7 +753,8 @@ void EpsilonConfigPanel::applyAppearance()
         "QPushButton[epsilonSecondaryAction=\"true\"]:focus { border-color: @vv-focus; }"
         "QPushButton[epsilonSecondaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }"
         "QWidget#epsilonActionsContainer { background-color: @vv-surface; border: none; }"
-        "QWidget#epsilonSummaryFields, QWidget#epsilonSummaryActions, QWidget#epsilonPacketGrid { background-color: transparent; border: none; }");
+        "QWidget#epsilonSummaryFields, QWidget#epsilonSummaryActions, QWidget#epsilonPacketGrid { background-color: transparent; border: none; }"
+        "QComboBox[epsilonRtcmDevicePortControl=\"true\"] { background-color: @vv-surface; }");
     const QString resolvedStyle = VaporView::applyAppThemeTokens(
         style, VaporView::isDarkThemeEnabled());
     if (styleSheet() != resolvedStyle)
@@ -755,6 +808,26 @@ void EpsilonConfigPanel::updateTexts()
     rtcm_description_label_->setText(
         is_english_ ? QStringLiteral("Configure an EPSILON communication port as the RTCM input.")
                     : QStringLiteral("配置 EPSILON 通信串口为 RTCM 输入口。"));
+    if (rtcm_device_port_combo_)
+    {
+        const QSignalBlocker blocker(rtcm_device_port_combo_);
+        for (int i = 0; i < rtcm_device_port_combo_->count(); ++i)
+        {
+            const int portIndex = rtcm_device_port_combo_->itemData(i).toInt();
+            rtcm_device_port_combo_->setItemText(
+                i,
+                is_english_
+                    ? QStringLiteral("COMM%1 input").arg(portIndex)
+                    : QStringLiteral("串口%1输入").arg(portIndex));
+        }
+        rtcm_device_port_combo_->setAccessibleName(
+            is_english_ ? QStringLiteral("EPSILON RTCM input port")
+                        : QStringLiteral("EPSILON RTCM 输入口"));
+        rtcm_device_port_combo_->setToolTip(
+            is_english_
+                ? QStringLiteral("Select the EPSILON communication port that receives RTCM corrections. COMM2 is the default.")
+                : QStringLiteral("选择 EPSILON 设备端接收 RTCM 差分数据的通信串口，默认 COMM2。"));
+    }
     reconfigure_name_label_->setText(is_english_ ? QStringLiteral("Output Reconfiguration") : QStringLiteral("输出重配"));
     reconfigure_description_label_->setText(
         is_english_ ? QStringLiteral("Apply the current EPSILON output profile to the device.")

@@ -1153,6 +1153,8 @@ void MainWindow::syncDeviceConfigEpsilonPanelFromSettings()
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
     setDeviceConfigEpsilonPacketRates(loadCustomEpsilonPacketRates(settings));
+    state_->epsilon_config_panel_->setRtcmDevicePortIndex(
+        settings.value(QStringLiteral("epsilon_rtcm_device_port_index"), 2).toInt());
 }
 
 void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
