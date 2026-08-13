@@ -2700,6 +2700,7 @@ void MainWindow::setupDeviceConfigPage()
             applyComboText(deviceBaudCombo, baud);
             sourceCombo->setProperty(kSensorBaudSourceProperty, currentSource);
             saveRememberedInputState();
+            updateDeviceConfigTexts();
         });
     };
     bindSensorSourceBaud(
@@ -3113,8 +3114,6 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.source_header_lbl) state_->device_config_.source_header_lbl->setText(state_->is_english_ ? QStringLiteral("Source") : QStringLiteral("来源"));
     if (state_->device_config_.action_header_lbl) state_->device_config_.action_header_lbl->setText(state_->is_english_ ? QStringLiteral("Link") : QStringLiteral("链路操作"));
     if (state_->device_config_.epsilon_lbl) state_->device_config_.epsilon_lbl->setText(state_->is_english_ ? QStringLiteral("EPSILON2-D4G Integrated Navigation") : QStringLiteral("EPSILON2-D4G 组合导航"));
-    if (state_->device_config_.ptb_lbl) state_->device_config_.ptb_lbl->setText(state_->is_english_ ? QStringLiteral("PTB210 Barometer") : QStringLiteral("PTB210 气压计"));
-    if (state_->device_config_.hmp_lbl) state_->device_config_.hmp_lbl->setText(state_->is_english_ ? QStringLiteral("HMP3 Temperature/Humidity Sensor") : QStringLiteral("HMP3 温湿度计"));
     if (state_->device_config_.ptb_source_combo)
     {
         const QVariant sourceData = state_->device_config_.ptb_source_combo->currentData();
@@ -3130,6 +3129,26 @@ void MainWindow::updateDeviceConfigTexts()
         state_->device_config_.hmp_source_combo->setItemText(0, QStringLiteral("HMP3"));
         state_->device_config_.hmp_source_combo->setItemText(1, QStringLiteral("SHT45"));
         state_->device_config_.hmp_source_combo->setCurrentIndex(std::max(0, state_->device_config_.hmp_source_combo->findData(sourceData)));
+    }
+    const QString pressureSource = state_->device_config_.ptb_source_combo
+        ? state_->device_config_.ptb_source_combo->currentData().toString()
+        : QStringLiteral("ptb210");
+    const QString humiditySource = state_->device_config_.hmp_source_combo
+        ? state_->device_config_.hmp_source_combo->currentData().toString()
+        : QStringLiteral("hmp3");
+    if (state_->device_config_.ptb_lbl)
+    {
+        state_->device_config_.ptb_lbl->setText(
+            pressureSource == QStringLiteral("bmp390")
+                ? (state_->is_english_ ? QStringLiteral("BMP390 Barometer") : QStringLiteral("BMP390 气压计"))
+                : (state_->is_english_ ? QStringLiteral("PTB210 Barometer") : QStringLiteral("PTB210 气压计")));
+    }
+    if (state_->device_config_.hmp_lbl)
+    {
+        state_->device_config_.hmp_lbl->setText(
+            humiditySource == QStringLiteral("sht45")
+                ? (state_->is_english_ ? QStringLiteral("SHT45 Temperature/Humidity Sensor") : QStringLiteral("SHT45 温湿度计"))
+                : (state_->is_english_ ? QStringLiteral("HMP3 Temperature/Humidity Sensor") : QStringLiteral("HMP3 温湿度计")));
     }
     if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(state_->is_english_ ? QStringLiteral("TFA1005-L LiDAR") : QStringLiteral("TFA1005-L 激光雷达"));
     if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(state_->is_english_ ? QStringLiteral("RD105 Laser Driver Temperature Controller") : QStringLiteral("RD105 激光驱动板温控器"));

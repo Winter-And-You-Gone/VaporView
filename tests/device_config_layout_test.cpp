@@ -3,6 +3,7 @@
 #include "test_ui_helpers.h"
 
 #include <QApplication>
+#include <QComboBox>
 #include <QFrame>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -162,6 +163,14 @@ void requireHeaderAboveWidget(QWidget *container, QLabel *header, QWidget *widge
     require(headerRect.center().x() >= widgetRect.left() - 8 &&
                 headerRect.center().x() <= widgetRect.right() + 8,
             message);
+}
+
+void selectComboData(QComboBox *combo, const QString& data, const char *message)
+{
+    require(combo != nullptr, message);
+    const int index = combo->findData(data);
+    require(index >= 0, message);
+    combo->setCurrentIndex(index);
 }
 
 QString pillName(QFrame *pill)
@@ -477,6 +486,20 @@ int main(int argc, char **argv)
                              findExactLabel(serialCard, QStringLiteral("来源")),
                              serialCard->findChild<QWidget *>(QStringLiteral("devicePressureSourceCombo")),
                              "source column header sits above source selectors");
+    auto *pressureSourceCombo =
+        serialCard->findChild<QComboBox *>(QStringLiteral("devicePressureSourceCombo"));
+    auto *humiditySourceCombo =
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceHumiditySourceCombo"));
+    selectComboData(pressureSourceCombo, QStringLiteral("bmp390"),
+                    "pressure source combo exposes BMP390");
+    selectComboData(humiditySourceCombo, QStringLiteral("sht45"),
+                    "humidity source combo exposes SHT45");
+    VaporViewTest::processEventsFor(120);
+    activateLayouts(&window);
+    requireLabelFits(findExactLabel(serialCard, QStringLiteral("BMP390 气压计")),
+                     "pressure device label follows the selected source");
+    requireLabelFits(findExactLabel(serialCard, QStringLiteral("SHT45 温湿度计")),
+                     "humidity device label follows the selected source");
 
     window.close();
     VaporView::setSettingsWritesSuspended(false);
