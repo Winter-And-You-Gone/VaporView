@@ -497,7 +497,6 @@ void MainWindow::setEnglish(bool english)
     if (state_->sky_telemetry_tcp_port_lbl_) state_->sky_telemetry_tcp_port_lbl_->setText(english ? "Port:" : "端口:");
     if (state_->sky_telemetry_port_lbl_) state_->sky_telemetry_port_lbl_->setText(english ? "Serial:" : "串口:");
     if (state_->sky_telemetry_baud_lbl_) state_->sky_telemetry_baud_lbl_->setText(english ? "Baud:" : "波特率:");
-    if (state_->sky_device_config_btn_) state_->sky_device_config_btn_->setText(english ? "Sky Device Config" : "天空端设备配置");
     if (state_->data_source_mode_combo_)
     {
         const QSignalBlocker blocker(state_->data_source_mode_combo_);
@@ -652,7 +651,6 @@ void MainWindow::setEnglish(bool english)
     if (state_->hmp_panel_) state_->hmp_panel_->setEnglish(english);
     if (state_->lidar_panel_) state_->lidar_panel_->setEnglish(english);
     if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setEnglish(english);
-    if (state_->sky_device_config_dialog_) state_->sky_device_config_dialog_->setEnglish(english);
 
     const CollectorSnapshot collectors = snapshotCollectors();
     if (collectors.epsilon) collectors.epsilon->setEnglish(english);

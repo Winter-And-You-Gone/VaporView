@@ -308,7 +308,6 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         state_->ui_test_saved_dark_theme_enabled_ = state_->dark_theme_enabled_;
         state_->ui_test_saved_recording_directory_ = state_->recording_directory_;
         state_->ui_test_session_viewer_existed_ = state_->session_viewer_window_ != nullptr;
-        state_->ui_test_sky_dialog_existed_ = state_->sky_device_config_dialog_ != nullptr;
 #ifdef VAPORVIEW_HAS_OSGEARTH
         state_->ui_test_map3d_window_existed_ =
             state_->map3d_controller_ && state_->map3d_controller_->window() != nullptr;
@@ -326,10 +325,6 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         if (state_->rtk_config_dialog_)
         {
             state_->rtk_config_dialog_->setUiTestMode(true);
-        }
-        if (state_->sky_device_config_dialog_)
-        {
-            state_->sky_device_config_dialog_->setUiTestMode(true);
         }
         if (state_->session_viewer_window_)
         {
@@ -401,16 +396,6 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
     if (state_->rtk_config_dialog_)
     {
         state_->rtk_config_dialog_->setUiTestMode(false);
-    }
-    if (state_->sky_device_config_dialog_)
-    {
-        state_->sky_device_config_dialog_->setUiTestMode(false);
-        if (!state_->ui_test_sky_dialog_existed_)
-        {
-            state_->sky_device_config_dialog_->close();
-            delete state_->sky_device_config_dialog_;
-            state_->sky_device_config_dialog_ = nullptr;
-        }
     }
     if (state_->session_viewer_window_ && !state_->ui_test_session_viewer_existed_)
     {

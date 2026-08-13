@@ -1306,10 +1306,6 @@ void MainWindow::setFontScale(int percent)
     {
         state_->rtk_config_dialog_->setFontScale(state_->font_scale_percent_);
     }
-    if (state_->sky_device_config_dialog_)
-    {
-        state_->sky_device_config_dialog_->setFontScale(state_->font_scale_percent_);
-    }
 
     QSettings settings("VaporView", "MainWindow");
     VaporView::setPersistentSetting(settings, QStringLiteral("font_scale_percent"), state_->font_scale_percent_);

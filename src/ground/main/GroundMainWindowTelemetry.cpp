@@ -276,6 +276,49 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
         }
     }
 
+    if (ack.command_id == VaporView::CommandId::GetSkyConfig &&
+        ack.command_seq == state_->remote_sky_config_read_seq_ &&
+        !(ok && noError))
+    {
+        state_->remote_sky_config_loading_ = false;
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("Remote Sky config read was rejected: %1").arg(errorText)
+            : QStringLiteral("读取天空端配置被拒绝：%1").arg(errorText),
+            true);
+        updateRemoteSkyConfigControlsState();
+    }
+    else if (ack.command_id == VaporView::CommandId::SetSkyConfig &&
+             ack.command_seq == state_->remote_sky_config_apply_seq_)
+    {
+        if (ok && noError)
+        {
+            setRemoteSkyConfigStatus(state_->is_english_
+                ? QStringLiteral("Remote Sky config ACK received; waiting for apply result...")
+                : QStringLiteral("天空端配置 ACK 已收到，等待应用结果..."));
+        }
+        else
+        {
+            state_->remote_sky_config_applying_ = false;
+            state_->remote_sky_config_dirty_ = true;
+            setRemoteSkyConfigStatus(state_->is_english_
+                ? QStringLiteral("Remote Sky config apply was rejected: %1").arg(errorText)
+                : QStringLiteral("天空端配置应用被拒绝：%1").arg(errorText),
+                true);
+        }
+        updateRemoteSkyConfigControlsState();
+    }
+    else if (ack.command_id == VaporView::CommandId::SaveSkyConfig &&
+             ack.command_seq == state_->remote_sky_config_save_seq_)
+    {
+        state_->remote_sky_config_saving_ = false;
+        setRemoteSkyConfigStatus(ok && noError
+            ? (state_->is_english_ ? QStringLiteral("Remote Sky config saved on sky.") : QStringLiteral("天空端配置已保存。"))
+            : (state_->is_english_ ? QStringLiteral("Remote Sky config save failed: %1").arg(errorText)
+                                  : QStringLiteral("天空端配置保存失败：%1").arg(errorText)),
+            !(ok && noError));
+        updateRemoteSkyConfigControlsState();
+    }
+
     if (ack.command_id == VaporView::CommandId::EnableWaveformStreaming)
     {
         state_->remote_wave_stream_enable_pending_ = false;
@@ -402,45 +445,11 @@ void MainWindow::onRemoteLinkOpenChanged(bool open)
         {
             markRemoteSkyLinkClosed();
         }
+        else
+        {
+            requestRemoteSkyConfigIfAvailable(false);
+        }
         updateConnectionStatus(open);
-    }
-}
-
-void MainWindow::onSkyDeviceConfigClicked()
-{
-    if (!isUiTestMode() && (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen()))
-    {
-        publishGroundLog(VaporView::LogLevel::Warning,
-                         QStringLiteral("ui.action"),
-                         QStringLiteral("sky_device_config_rejected_not_connected"),
-                         QStringLiteral("打开天空端设备配置前，请先连接天空端数传。"),
-                         {{QStringLiteral("reason_code"), QStringLiteral("DEPENDENCY_UNAVAILABLE")},
-                          {QStringLiteral("dependency"), QStringLiteral("remote_sky_telemetry")},
-                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("sky_device_config:not_connected")}});
-        return;
-    }
-    if (!state_->sky_device_config_dialog_)
-    {
-        state_->sky_device_config_dialog_ = new VaporView::SkyDeviceConfigDialog(
-            state_->remote_sky_controller_->telemetryService());
-        state_->sky_device_config_dialog_->setAttribute(Qt::WA_QuitOnClose, false);
-        state_->sky_device_config_dialog_->setEnglish(state_->is_english_);
-        state_->sky_device_config_dialog_->setFontScale(state_->font_scale_percent_);
-    }
-    state_->sky_device_config_dialog_->setUiTestMode(isUiTestMode());
-    VaporView::centerWindowOnScreen(state_->sky_device_config_dialog_, this);
-    state_->sky_device_config_dialog_->show();
-    state_->sky_device_config_dialog_->raise();
-    state_->sky_device_config_dialog_->activateWindow();
-    if (isUiTestMode())
-    {
-        publishUiTestEvent(QStringLiteral("ui_test_sky_device_config_opened"),
-                           state_->is_english_ ? QStringLiteral("Opened simulated Sky device configuration")
-                                               : QStringLiteral("已打开模拟天空端设备配置"));
-    }
-    else
-    {
-        state_->remote_sky_controller_->requestSkyConfig();
     }
 }
 

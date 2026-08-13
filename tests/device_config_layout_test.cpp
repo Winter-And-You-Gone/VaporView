@@ -1,5 +1,6 @@
 #include "ground/main/MainWindow.h"
 #include "shared/config/SettingsWriteBarrier.h"
+#include "SkyConfig.h"
 #include "test_ui_helpers.h"
 
 #include <QApplication>
@@ -9,6 +10,10 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLayout>
+#include <QLineEdit>
+#include <QJsonObject>
+#include <QKeyEvent>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -174,6 +179,19 @@ void selectComboData(QComboBox *combo, const QString& data, const char *message)
     combo->setCurrentIndex(index);
 }
 
+void selectComboText(QComboBox *combo, const QString& text, const char *message)
+{
+    require(combo != nullptr, message);
+    int index = combo->findText(text);
+    if (index < 0)
+    {
+        combo->addItem(text, text);
+        index = combo->findText(text);
+    }
+    require(index >= 0, message);
+    combo->setCurrentIndex(index);
+}
+
 QString pillName(QFrame *pill)
 {
     QLabel *nameLabel =
@@ -308,6 +326,9 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("VaporView"));
     app.setOrganizationName(QStringLiteral("VaporView"));
+    QSettings historySettings(QStringLiteral("VaporView"), QStringLiteral("SerialPortHistory"));
+    historySettings.setValue(QStringLiteral("ports"), QStringList{QStringLiteral("COM7")});
+    historySettings.sync();
     VaporView::setSettingsWritesSuspended(true);
 
     MainWindow window;
@@ -559,6 +580,149 @@ int main(int argc, char **argv)
                      "pressure device label follows the selected source");
     requireLabelFits(findExactLabel(serialCard, QStringLiteral("SHT45 温湿度计")),
                      "humidity device label follows the selected source");
+
+    auto *dataSourceModeCombo =
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceDataSourceModeCombo"));
+    auto *epsilonPortCombo =
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
+    auto *epsilonBaudCombo =
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceEpsilonBaudCombo"));
+    auto *epsilonRateCombo =
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceEpsilonRateCombo"));
+    auto *remoteCard =
+        deviceConfigPage->findChild<QGroupBox *>(QStringLiteral("deviceRemoteSkyConfigCard"));
+    auto *remoteStatus =
+        deviceConfigPage->findChild<QLabel *>(QStringLiteral("deviceRemoteSkyConfigStatus"));
+    auto *remoteApplyButton =
+        deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkyApplyButton"));
+    auto *remoteSaveButton =
+        deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkySaveButton"));
+    auto *rawModeButton =
+        deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkyRawModeButton"));
+    auto *rawJsonEdit =
+        deviceConfigPage->findChild<QPlainTextEdit *>(QStringLiteral("deviceRemoteSkyRawJsonEdit"));
+    auto *rd105SlaveSpin =
+        deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyRd105SlaveSpin"));
+    auto *ai8PortCombo =
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperaturePortCombo"));
+    require(dataSourceModeCombo && epsilonPortCombo && epsilonBaudCombo && epsilonRateCombo,
+            "shared device config controls exist for target switching");
+    require(remoteCard && remoteStatus && remoteApplyButton && remoteSaveButton &&
+                rawModeButton && rawJsonEdit && rd105SlaveSpin,
+            "remote sky advanced controls exist on the unified page");
+
+    selectComboText(epsilonPortCombo, QStringLiteral("COM7"),
+                    "local EPSILON port can be set before switching targets");
+    VaporViewTest::processEventsFor(120);
+    require(epsilonPortCombo->currentText() == QStringLiteral("COM7"),
+            "local EPSILON port is visible before remote switch");
+
+    dataSourceModeCombo->setCurrentIndex(1);
+    VaporViewTest::processEventsFor(160);
+    require(remoteCard->isVisible(), "remote sky advanced card appears in remote mode");
+    require(!pressureSourceCombo->isVisible() && !humiditySourceCombo->isVisible(),
+            "local PTB/HMP source selectors are hidden in remote mode");
+    require(ai8PortCombo && !ai8PortCombo->isVisible(),
+            "AI-8 persistent serial fields are hidden because SkyConfig does not support AI-8");
+    bool ai8UnsupportedVisible = false;
+    for (QLabel *label : serialCard->findChildren<QLabel *>(QStringLiteral("fieldLabel")))
+    {
+        if (label->isVisible() &&
+            (label->text() == QStringLiteral("不支持") ||
+             label->text() == QStringLiteral("Unsupported")))
+        {
+            ai8UnsupportedVisible = true;
+            break;
+        }
+    }
+    require(ai8UnsupportedVisible,
+            "remote mode marks AI-8 as unsupported instead of serializing fake SkyConfig fields");
+    require(!remoteApplyButton->isEnabled() && !remoteSaveButton->isEnabled(),
+            "disconnected remote mode disables apply and save operations");
+
+    VaporView::SkyConfig remoteConfig = VaporView::SkyConfig::defaults();
+    remoteConfig.epsilon = {true, QStringLiteral("/dev/ttyEPSILON"), 921600, 100.0};
+    remoteConfig.ptb = {true, QStringLiteral("/dev/ttyPTB210"), 9600, 20.0};
+    remoteConfig.hmp = {true, QStringLiteral("/dev/ttyHMP3"), 19200, 20.0};
+    remoteConfig.lidar = {true, QStringLiteral("/dev/ttyLIDAR"), 500000, 100.0};
+    remoteConfig.temperature_controller = {true, QStringLiteral("/dev/ttyRD105"), 38400, 5.0, 9};
+    remoteConfig.wave_tcp = {true, QStringLiteral("10.0.0.2"), 8899, 12, 0, 0};
+    remoteConfig.telemetry = {11.0, 12.0, 2.0, 1.0, 3.0};
+    window.testInjectRemoteSkyConfig(remoteConfig.toJson());
+    VaporViewTest::processEventsFor(160);
+    require(epsilonPortCombo->currentText() == QStringLiteral("/dev/ttyEPSILON"),
+            "remote SkyConfig updates the same EPSILON port combo");
+    require(epsilonPortCombo->findText(QStringLiteral("COM7")) < 0,
+            "remote sky device port options do not reuse the ground PC serial list");
+    require(epsilonPortCombo->findText(QStringLiteral("手动添加")) >= 0 ||
+                epsilonPortCombo->findText(QStringLiteral("Add Port")) >= 0,
+            "remote sky port combo keeps manual entry available");
+    require(rd105SlaveSpin->value() == 9,
+            "remote-only RD105 slave address is loaded into the unified page");
+
+    const int manualIndex = std::max(epsilonPortCombo->findText(QStringLiteral("手动添加")),
+                                     epsilonPortCombo->findText(QStringLiteral("Add Port")));
+    require(manualIndex >= 0, "manual remote sky port option exists");
+    epsilonPortCombo->setCurrentIndex(manualIndex);
+    VaporViewTest::processEventsFor(40);
+    require(epsilonPortCombo->isEditable() && epsilonPortCombo->lineEdit(),
+            "remote sky manual port entry enables inline editing");
+    epsilonPortCombo->lineEdit()->setText(QStringLiteral("/dev/ttyEPSILON_ALT"));
+    QKeyEvent acceptManualPort(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(epsilonPortCombo->lineEdit(), &acceptManualPort);
+    VaporViewTest::processEventsFor(80);
+    epsilonBaudCombo->setCurrentText(QStringLiteral("115200"));
+    epsilonRateCombo->setCurrentText(QStringLiteral("88"));
+    rd105SlaveSpin->setValue(17);
+    VaporViewTest::processEventsFor(120);
+
+    QString remoteError;
+    const QJsonObject uiJson = window.testRemoteSkyConfigFromDeviceConfigUi(&remoteError);
+    require(remoteError.isEmpty(), "remote SkyConfig can be serialized from unified UI");
+    require(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("port")).toString() ==
+                QStringLiteral("/dev/ttyEPSILON_ALT"),
+            "remote edited port is serialized into SetSkyConfig JSON");
+    require(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toInt() == 115200,
+            "remote edited baud is serialized into SetSkyConfig JSON");
+    require(std::abs(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("frequency_hz")).toDouble() - 88.0) < 0.01,
+            "remote edited frequency is serialized into SetSkyConfig JSON");
+    require(uiJson.value(QStringLiteral("temperature_controller")).toObject().value(QStringLiteral("slave_address")).toInt() == 17,
+            "remote-only RD105 field is serialized into SkyConfig JSON");
+    require(uiJson.contains(QStringLiteral("wave_tcp")) && uiJson.contains(QStringLiteral("telemetry")),
+            "remote-only Wave TCP and telemetry sections are preserved");
+    require(!uiJson.contains(QStringLiteral("ai8")) &&
+                !uiJson.contains(QStringLiteral("pressure_source")) &&
+                !uiJson.contains(QStringLiteral("humidity_source")),
+            "unsupported AI-8 and local source fields are not serialized to SkyConfig");
+
+    rawModeButton->click();
+    VaporViewTest::processEventsFor(120);
+    require(rawJsonEdit->isVisible() &&
+                rawJsonEdit->toPlainText().contains(QStringLiteral("/dev/ttyEPSILON_ALT")) &&
+                rawJsonEdit->toPlainText().contains(QStringLiteral("\"wave_tcp\"")),
+            "remote raw JSON mode is hosted in the unified Device Config page");
+    window.testInjectRemoteSkyApplyResult(QJsonObject{
+        {QStringLiteral("success"), false},
+        {QStringLiteral("error"), QStringLiteral("mock reject")}
+    });
+    VaporViewTest::processEventsFor(80);
+    require(window.testRemoteSkyConfigStatusText().contains(QStringLiteral("mock reject")),
+            "remote apply failure is displayed inline");
+    QString afterFailureError;
+    const QJsonObject afterFailureJson = window.testRemoteSkyConfigFromDeviceConfigUi(&afterFailureError);
+    require(afterFailureError.isEmpty() &&
+                afterFailureJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("port")).toString() ==
+                    QStringLiteral("/dev/ttyEPSILON_ALT"),
+            "remote apply failure preserves the user's edited remote values");
+    rawModeButton->click();
+    VaporViewTest::processEventsFor(120);
+
+    dataSourceModeCombo->setCurrentIndex(0);
+    VaporViewTest::processEventsFor(160);
+    require(epsilonPortCombo->currentText() == QStringLiteral("COM7"),
+            "switching back to Local restores the local EPSILON serial port");
+    require(pressureSourceCombo->isVisible() && humiditySourceCombo->isVisible(),
+            "local source selectors reappear after returning from remote mode");
 
     window.close();
     VaporView::setSettingsWritesSuspended(false);

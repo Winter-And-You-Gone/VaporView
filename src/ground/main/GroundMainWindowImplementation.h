@@ -34,7 +34,6 @@
 #include "ground/navigation/EpsilonConfigPanel.h"
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/session/SessionViewerWindow.h"
-#include "ground/widgets/SkyDeviceConfigDialog.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "LogService.h"
 #include "TcpWaveEncoding.h"
@@ -110,6 +109,7 @@
 #include <QSvgRenderer>
 #include <QSet>
 #include <QSignalBlocker>
+#include <QScopeGuard>
 #include <QSettings>
 #include <QStackedWidget>
 #include <QStandardItemModel>
@@ -118,6 +118,7 @@
 #include <QStyleOptionButton>
 #include <QStyleOptionSpinBox>
 #include <QStyleOptionToolButton>
+#include <QPlainTextEdit>
 #include <QTextDocument>
 #include <QThread>
 #include <QToolButton>

@@ -2,11 +2,13 @@
 #define VaporView_MAIN_WINDOW_H_
 
 #include "LogRecord.h"
+#include "SkyConfig.h"
 #include "data_collector.h"
 #include "data_types.h"
 #include "TelemetryTypes.h"
 #include "TcpWaveEncoding.h"
 #include <QByteArray>
+#include <QJsonObject>
 #include <QMainWindow>
 #include <QLabel>
 #include <QVBoxLayout>
@@ -55,6 +57,7 @@ class QRadioButton;
 class QStackedWidget;
 class QCheckBox;
 class QListView;
+class QPlainTextEdit;
 class TcpWavePanel;
 class SessionViewerWindow;
 class GnssPanel;
@@ -65,7 +68,6 @@ class LidarPanel;
 class TemperatureControllerPanel;
 class TemperatureTrendPlotWidget;
 namespace VaporView { class SingleLevelPopupMenu; }
-namespace VaporView { class SkyDeviceConfigDialog; }
 namespace VaporView::Ground::Widgets { class EpsilonPanel; }
 namespace VaporView::Ground::Widgets { class Ai8TemperatureControllerPanel; }
 namespace VaporView::Ground::Widgets { class DevicePanelCoordinator; }
@@ -101,6 +103,10 @@ public:
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
     void testSetLocalTemperatureCommandObserver(std::function<void(VaporView::CommandId)> observer);
+    void testInjectRemoteSkyConfig(const QJsonObject& object);
+    void testInjectRemoteSkyApplyResult(const QJsonObject& result);
+    QJsonObject testRemoteSkyConfigFromDeviceConfigUi(QString *errorMessage = nullptr) const;
+    QString testRemoteSkyConfigStatusText() const;
 #endif
 
 #if defined(VAPORVIEW_HAS_OSGEARTH) && defined(VAPORVIEW_MAIN_WINDOW_TESTING)
@@ -166,7 +172,6 @@ private slots:
     void onPauseRecordingClicked();
     void onStopRecordingClicked();
     void onDataSourceModeChanged(int index);
-    void onSkyDeviceConfigClicked();
     void onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& telemetry);
     void onRemoteWaveformUpdated(const VaporView::DownsampledWaveform& waveform);
     void onRemoteWaveformFeatureUpdated(const VaporView::WaveformFeature& feature);
@@ -174,6 +179,9 @@ private slots:
     void onRemoteTemperatureControllerStatusUpdated(const VaporView::TemperatureControllerData& controllerData);
     void onRemoteCommandAckReceived(const VaporView::CommandAck& ack);
     void onRemoteLinkOpenChanged(bool open);
+    void onRemoteSkyConfigReadClicked();
+    void onRemoteSkyConfigApplyClicked();
+    void onRemoteSkyConfigSaveClicked();
     void onUiTestModeTriggered(bool enabled);
     void onUiTestScenarioTriggered(QAction *action);
 
@@ -197,13 +205,24 @@ private:
     QString localSerialPortComboValue(const QComboBox *combo) const;
     QString localSerialPortItemValue(const QComboBox *combo, int index) const;
     QString normalizedLocalSerialPortText(const QString& text) const;
+    void installRemoteSkySerialPortComboBehavior(QComboBox *combo);
+    void refreshRemoteSkySerialPortComboOptions(QComboBox *combo, const QString& preferredText = QString());
+    void setRemoteSkySerialPortComboText(QComboBox *combo, const QString& text);
+    QString remoteSkySerialPortComboValue(const QComboBox *combo) const;
+    QString remoteSkySerialPortItemValue(const QComboBox *combo, int index) const;
     void beginManualLocalSerialPortEntry(QComboBox *combo);
     void finishManualLocalSerialPortEntry(QComboBox *combo, bool accept);
     bool handleLocalSerialPortManualEntryEvent(QObject *watched, QEvent *event);
+    void beginManualRemoteSkySerialPortEntry(QComboBox *combo);
+    void finishManualRemoteSkySerialPortEntry(QComboBox *combo, bool accept);
+    bool handleRemoteSkySerialPortManualEntryEvent(QObject *watched, QEvent *event);
     bool isLocalSerialPortManualOption(const QComboBox *combo, int index) const;
     bool isLocalSerialPortManualOptionText(const QString& text) const;
+    bool isRemoteSkySerialPortManualOption(const QComboBox *combo, int index) const;
     QString manualLocalSerialPortOptionText() const;
+    QString remoteSkySerialPortManualOptionText() const;
     void refreshLocalSerialPortManualOptionTexts();
+    void refreshRemoteSkySerialPortManualOptionTexts();
     void loadModernStyleSheet();
     void publishGroundLog(VaporView::LogLevel level,
                           const QString& category,
@@ -349,6 +368,22 @@ private:
     bool isRemoteSkyMode() const;
     bool isRemoteSkyTcpMode() const;
     void updateSourceModeUi();
+    void syncDeviceConfigPageForCurrentTarget();
+    void enterLocalDeviceConfigMode();
+    void enterRemoteSkyDeviceConfigMode();
+    void setRemoteSkyConfigUi(const VaporView::SkyConfig& config);
+    VaporView::SkyConfig remoteSkyConfigFromDeviceConfigUi(QString *errorMessage = nullptr) const;
+    void refreshRemoteSkyConfigRawFromVisual();
+    bool applyRemoteSkyConfigRawToVisual(QString *errorMessage = nullptr);
+    void onRemoteSkyConfigRawModeToggled(bool checked);
+    void markRemoteSkyConfigDirty();
+    void setRemoteSkyConfigStatus(const QString& text, bool error = false);
+    void updateRemoteSkyConfigControlsState();
+    void requestRemoteSkyConfigIfAvailable(bool force = false);
+    void onRemoteSkyConfigReceived(const QJsonObject& object);
+    void onRemoteSkyConfigApplyResultReceived(const QJsonObject& result);
+    void handleRemoteSkyConfigReceived(const QJsonObject& object, bool bypassGenerationGuard);
+    void handleRemoteSkyConfigApplyResultReceived(const QJsonObject& result, bool bypassGenerationGuard);
     int scaledConfiguredHeight(QWidget *widget, int baseHeight) const;
     int homeDeviceOverviewContentMinimumWidth() const;
     void updateHomeDeviceOverviewMinimumWidth();

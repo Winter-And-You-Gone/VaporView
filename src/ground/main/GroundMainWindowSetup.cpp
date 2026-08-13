@@ -1966,6 +1966,13 @@ void MainWindow::setupCentralWidget()
     state_->main_page_stack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     connect(state_->main_page_stack_, &QStackedWidget::currentChanged, this, [this]() {
         updateCustomTitleBarTexts();
+        if (state_->main_page_stack_ &&
+            state_->device_config_.page &&
+            state_->main_page_stack_->currentWidget() == state_->device_config_.page)
+        {
+            syncDeviceConfigPageForCurrentTarget();
+            requestRemoteSkyConfigIfAvailable(false);
+        }
     });
 
     auto *left_widget = new QWidget(this);
@@ -2409,18 +2416,12 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.data_source_mode_lbl = new QLabel(serialTitleBar);
     state_->device_config_.data_source_mode_lbl->setObjectName(QStringLiteral("fieldLabel"));
     state_->device_config_.data_source_mode_combo = createSingleLevelPopupComboBox(serialTitleBar);
+    state_->device_config_.data_source_mode_combo->setObjectName(QStringLiteral("deviceDataSourceModeCombo"));
     state_->device_config_.data_source_mode_combo->setFixedHeight(kMainPageInputHeight);
     state_->device_config_.data_source_mode_combo->setFixedWidth(kDeviceConfigSourceModeComboWidth);
     state_->device_config_.data_source_mode_combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     serialTitleLayout->addWidget(state_->device_config_.data_source_mode_lbl, 0, Qt::AlignVCenter | Qt::AlignRight);
     serialTitleLayout->addWidget(state_->device_config_.data_source_mode_combo, 0, Qt::AlignVCenter);
-
-    state_->device_config_.sky_device_config_btn = new QPushButton(serialTitleBar);
-    state_->device_config_.sky_device_config_btn->setFixedHeight(kMainPageButtonHeight);
-    state_->device_config_.sky_device_config_btn->setFocusPolicy(Qt::TabFocus);
-    state_->device_config_.sky_device_config_btn->setMinimumWidth(kDeviceConfigSkyDeviceButtonMinWidth);
-    connect(state_->device_config_.sky_device_config_btn, &QPushButton::clicked, this, &MainWindow::onSkyDeviceConfigClicked);
-    serialTitleLayout->addWidget(state_->device_config_.sky_device_config_btn, 0, Qt::AlignVCenter | Qt::AlignLeft);
     serialTitleLayout->addStretch(1);
     serialLayout->addWidget(serialTitleBar);
 
@@ -2433,12 +2434,14 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.sky_telemetry_transport_lbl = new QLabel(skyTelemetryRow);
     state_->device_config_.sky_telemetry_transport_lbl->setObjectName(QStringLiteral("fieldLabel"));
     state_->device_config_.sky_telemetry_transport_combo = new QComboBox(skyTelemetryRow);
+    state_->device_config_.sky_telemetry_transport_combo->setObjectName(QStringLiteral("deviceSkyTelemetryTransportCombo"));
     state_->device_config_.sky_telemetry_transport_combo->setFixedHeight(kMainPageInputHeight);
     state_->device_config_.sky_telemetry_transport_combo->setFixedWidth(110);
 
     state_->device_config_.sky_telemetry_tcp_host_lbl = new QLabel(skyTelemetryRow);
     state_->device_config_.sky_telemetry_tcp_host_lbl->setObjectName(QStringLiteral("fieldLabel"));
     state_->device_config_.sky_telemetry_tcp_host_edit = new QLineEdit(skyTelemetryRow);
+    state_->device_config_.sky_telemetry_tcp_host_edit->setObjectName(QStringLiteral("deviceSkyTelemetryTcpHostEdit"));
     state_->device_config_.sky_telemetry_tcp_host_edit->setFixedHeight(kMainPageInputHeight);
     state_->device_config_.sky_telemetry_tcp_host_edit->setMinimumWidth(132);
     state_->device_config_.sky_telemetry_tcp_host_edit->setMaximumWidth(160);
@@ -2446,6 +2449,7 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.sky_telemetry_tcp_port_lbl = new QLabel(skyTelemetryRow);
     state_->device_config_.sky_telemetry_tcp_port_lbl->setObjectName(QStringLiteral("fieldLabel"));
     state_->device_config_.sky_telemetry_tcp_port_spin = new QSpinBox(skyTelemetryRow);
+    state_->device_config_.sky_telemetry_tcp_port_spin->setObjectName(QStringLiteral("deviceSkyTelemetryTcpPortSpin"));
     state_->device_config_.sky_telemetry_tcp_port_spin->setRange(1, 65535);
     state_->device_config_.sky_telemetry_tcp_port_spin->setFixedHeight(kMainPageInputHeight);
     state_->device_config_.sky_telemetry_tcp_port_spin->setFixedWidth(100);
@@ -2543,11 +2547,13 @@ void MainWindow::setupDeviceConfigPage()
 
         portCombo = createCombo(kDeviceConfigPortComboWidth);
         installLocalSerialPortComboBehavior(portCombo);
+        portCombo->setProperty(kDeviceConfigLocalMirrorOnlyProperty, true);
         portCombo->setMinimumContentsLength(6);
         portCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         formLayout->addWidget(portCombo, gridRow, 1, Qt::AlignVCenter);
 
         baudCombo = createCombo(kDeviceConfigBaudComboWidth);
+        baudCombo->setProperty(kDeviceConfigLocalMirrorOnlyProperty, true);
         formLayout->addWidget(baudCombo, gridRow, 2, Qt::AlignVCenter);
 
         rateLabel = new QLabel(formWidget);
@@ -2555,22 +2561,20 @@ void MainWindow::setupDeviceConfigPage()
         rateLabel->setFixedHeight(kMainPageInputHeight);
         formLayout->addWidget(rateLabel, gridRow, 3, Qt::AlignVCenter | Qt::AlignRight);
 
+        rateCombo = createCombo(kDeviceConfigRateComboWidth, true);
+        rateCombo->setProperty(kDeviceConfigLocalMirrorOnlyProperty, true);
+        rateCombo->setMinimumContentsLength(4);
+        rateCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+        formLayout->addWidget(rateCombo, gridRow, 4, Qt::AlignVCenter);
         if (row == 0)
         {
             rateLabel->setVisible(false);
-        }
-        else
-        {
-            rateCombo = createCombo(kDeviceConfigRateComboWidth, true);
-            rateCombo->setMinimumContentsLength(4);
-            rateCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-            formLayout->addWidget(rateCombo, gridRow, 4, Qt::AlignVCenter);
+            rateCombo->setVisible(false);
         }
     };
 
-    QComboBox *unusedEpsilonRateCombo = nullptr;
     addPortRow(state_->device_config_.epsilon_lbl, state_->device_config_.epsilon_port_combo, state_->device_config_.epsilon_baud_combo,
-               state_->device_config_.epsilon_rate_lbl, unusedEpsilonRateCombo, 0);
+               state_->device_config_.epsilon_rate_lbl, state_->device_config_.epsilon_rate_combo, 0);
     addPortRow(state_->device_config_.ptb_lbl, state_->device_config_.ptb_port_combo, state_->device_config_.ptb_baud_combo,
                state_->device_config_.ptb_rate_lbl, state_->device_config_.ptb_rate_combo, 1);
     addPortRow(state_->device_config_.hmp_lbl, state_->device_config_.hmp_port_combo, state_->device_config_.hmp_baud_combo,
@@ -2649,6 +2653,10 @@ void MainWindow::setupDeviceConfigPage()
     {
         state_->device_config_.epsilon_baud_combo->setObjectName(QStringLiteral("deviceEpsilonBaudCombo"));
     }
+    if (state_->device_config_.epsilon_rate_combo)
+    {
+        state_->device_config_.epsilon_rate_combo->setObjectName(QStringLiteral("deviceEpsilonRateCombo"));
+    }
     if (state_->device_config_.epsilon_port_combo)
     {
         state_->device_config_.epsilon_port_combo->setObjectName(QStringLiteral("deviceEpsilonPortCombo"));
@@ -2661,12 +2669,33 @@ void MainWindow::setupDeviceConfigPage()
     {
         state_->device_config_.hmp_port_combo->setObjectName(QStringLiteral("deviceHumidityPortCombo"));
     }
+    if (state_->device_config_.ptb_rate_combo)
+    {
+        state_->device_config_.ptb_rate_combo->setObjectName(QStringLiteral("devicePressureRateCombo"));
+    }
+    if (state_->device_config_.hmp_rate_combo)
+    {
+        state_->device_config_.hmp_rate_combo->setObjectName(QStringLiteral("deviceHumidityRateCombo"));
+    }
     if (state_->device_config_.lidar_port_combo)
     {
         state_->device_config_.lidar_port_combo->setObjectName(QStringLiteral("deviceLidarPortCombo"));
     }
+    if (state_->device_config_.lidar_baud_combo)
+    {
+        state_->device_config_.lidar_baud_combo->setObjectName(QStringLiteral("deviceLidarBaudCombo"));
+    }
+    if (state_->device_config_.lidar_rate_combo)
+    {
+        state_->device_config_.lidar_rate_combo->setObjectName(QStringLiteral("deviceLidarRateCombo"));
+    }
+    if (state_->device_config_.temperature_rate_combo)
+    {
+        state_->device_config_.temperature_rate_combo->setObjectName(QStringLiteral("deviceTemperatureRateCombo"));
+    }
     state_->device_config_.ptb_source_combo = createCombo(kDeviceConfigSourceComboWidth);
     state_->device_config_.ptb_source_combo->setObjectName(QStringLiteral("devicePressureSourceCombo"));
+    state_->device_config_.ptb_source_combo->setProperty(kDeviceConfigLocalMirrorOnlyProperty, true);
     state_->device_config_.ptb_source_combo->addItem(QStringLiteral("PTB210"), QStringLiteral("ptb210"));
     state_->device_config_.ptb_source_combo->addItem(QStringLiteral("BMP390"), QStringLiteral("bmp390"));
     state_->device_config_.ptb_source_combo->setToolTip(state_->is_english_
@@ -2676,6 +2705,7 @@ void MainWindow::setupDeviceConfigPage()
 
     state_->device_config_.hmp_source_combo = createCombo(kDeviceConfigSourceComboWidth);
     state_->device_config_.hmp_source_combo->setObjectName(QStringLiteral("deviceHumiditySourceCombo"));
+    state_->device_config_.hmp_source_combo->setProperty(kDeviceConfigLocalMirrorOnlyProperty, true);
     state_->device_config_.hmp_source_combo->addItem(QStringLiteral("HMP3"), QStringLiteral("hmp3"));
     state_->device_config_.hmp_source_combo->addItem(QStringLiteral("SHT45"), QStringLiteral("sht45"));
     state_->device_config_.hmp_source_combo->setToolTip(state_->is_english_
@@ -2715,6 +2745,39 @@ void MainWindow::setupDeviceConfigPage()
     {
         state_->device_config_.temperature_baud_combo->setObjectName(QStringLiteral("deviceTemperatureBaudCombo"));
     }
+
+    auto addRemoteEnabledCheck = [this, formLayout, formWidget](
+            QCheckBox *&checkBox,
+            int row,
+            const QString& objectName) {
+        checkBox = new QCheckBox(formWidget);
+        checkBox->setObjectName(objectName);
+        checkBox->setFocusPolicy(Qt::TabFocus);
+        checkBox->setText(QString());
+        checkBox->setVisible(false);
+        formLayout->addWidget(checkBox, row + 1, 5, Qt::AlignVCenter | Qt::AlignHCenter);
+        connect(checkBox, &QCheckBox::toggled, this, [this](bool) {
+            markRemoteSkyConfigDirty();
+        });
+    };
+    addRemoteEnabledCheck(state_->device_config_.epsilon_enabled_check, 0,
+                          QStringLiteral("deviceRemoteEpsilonEnabledCheck"));
+    addRemoteEnabledCheck(state_->device_config_.ptb_enabled_check, 1,
+                          QStringLiteral("deviceRemotePressureEnabledCheck"));
+    addRemoteEnabledCheck(state_->device_config_.hmp_enabled_check, 2,
+                          QStringLiteral("deviceRemoteHumidityEnabledCheck"));
+    addRemoteEnabledCheck(state_->device_config_.lidar_enabled_check, 3,
+                          QStringLiteral("deviceRemoteLidarEnabledCheck"));
+    addRemoteEnabledCheck(state_->device_config_.temperature_enabled_check, 4,
+                          QStringLiteral("deviceRemoteTemperatureEnabledCheck"));
+    state_->device_config_.ai8_remote_unsupported_lbl = new QLabel(formWidget);
+    state_->device_config_.ai8_remote_unsupported_lbl->setObjectName(QStringLiteral("fieldLabel"));
+    state_->device_config_.ai8_remote_unsupported_lbl->setAlignment(Qt::AlignCenter);
+    state_->device_config_.ai8_remote_unsupported_lbl->setVisible(false);
+    formLayout->addWidget(state_->device_config_.ai8_remote_unsupported_lbl,
+                          6,
+                          5,
+                          Qt::AlignVCenter | Qt::AlignHCenter);
 
     auto addDeviceRemoteButton = [this, formLayout, formWidget](
             int row,
@@ -2803,8 +2866,228 @@ void MainWindow::setupDeviceConfigPage()
     createDeviceTelemetrySection(state_->device_config_.data_telemetry_link_summary_layout);
     createDeviceTelemetrySection(state_->device_config_.data_telemetry_device_summary_layout);
     summaryLayout->addWidget(summaryBodyWidget);
+
+    auto *remoteConfigCard = createCard(content);
+    remoteConfigCard->setObjectName(QStringLiteral("deviceRemoteSkyConfigCard"));
+    remoteConfigCard->setProperty("remoteSkyConfigCard", true);
+    remoteConfigCard->setVisible(false);
+    state_->device_config_.remote_sky_config_card = remoteConfigCard;
+    auto *remoteConfigLayout = qobject_cast<QVBoxLayout *>(remoteConfigCard->layout());
+    auto *remoteTitleBar = new QWidget(remoteConfigCard);
+    remoteTitleBar->setObjectName(QStringLiteral("sectionTitleBar"));
+    remoteTitleBar->setFixedHeight(kMainPageTitleBarHeight);
+    auto *remoteTitleLayout = new QHBoxLayout(remoteTitleBar);
+    remoteTitleLayout->setContentsMargins(8, 2, 8, 2);
+    remoteTitleLayout->setSpacing(8);
+    QWidget *remoteTitleCluster = nullptr;
+    state_->device_config_.remote_sky_config_title_lbl = createSectionTitleCluster(remoteTitleBar,
+                                                                                    QStringLiteral("server-cog"),
+                                                                                    kMainPageButtonHeight,
+                                                                                    &remoteTitleCluster);
+    remoteTitleLayout->addWidget(remoteTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    remoteTitleLayout->addStretch(1);
+    state_->device_config_.remote_sky_raw_mode_btn = new QPushButton(remoteTitleBar);
+    state_->device_config_.remote_sky_raw_mode_btn->setObjectName(QStringLiteral("deviceRemoteSkyRawModeButton"));
+    state_->device_config_.remote_sky_raw_mode_btn->setCheckable(true);
+    state_->device_config_.remote_sky_raw_mode_btn->setFixedHeight(kMainPageButtonHeight);
+    state_->device_config_.remote_sky_raw_mode_btn->setFocusPolicy(Qt::TabFocus);
+    connect(state_->device_config_.remote_sky_raw_mode_btn,
+            &QPushButton::toggled,
+            this,
+            &MainWindow::onRemoteSkyConfigRawModeToggled);
+    remoteTitleLayout->addWidget(state_->device_config_.remote_sky_raw_mode_btn, 0, Qt::AlignVCenter);
+    remoteConfigLayout->addWidget(remoteTitleBar);
+
+    auto *remoteBody = new QWidget(remoteConfigCard);
+    auto *remoteGrid = new QGridLayout(remoteBody);
+    remoteGrid->setContentsMargins(8, 8, 8, 8);
+    remoteGrid->setHorizontalSpacing(8);
+    remoteGrid->setVerticalSpacing(6);
+    remoteGrid->setColumnStretch(1, 1);
+    remoteGrid->setColumnStretch(3, 1);
+    remoteGrid->setColumnStretch(5, 1);
+
+    auto createFieldLabel = [remoteBody](const QString& objectName = QString()) {
+        auto *label = new QLabel(remoteBody);
+        label->setObjectName(objectName.isEmpty() ? QStringLiteral("fieldLabel") : objectName);
+        label->setFixedHeight(kMainPageInputHeight);
+        return label;
+    };
+    auto createRateSpin = [remoteBody]() {
+        auto *spin = new QDoubleSpinBox(remoteBody);
+        spin->setRange(0.1, 200.0);
+        spin->setDecimals(1);
+        spin->setFixedHeight(kMainPageInputHeight);
+        spin->setFixedWidth(92);
+        return spin;
+    };
+    auto addPair = [remoteGrid](QLabel *label, QWidget *field, int row, int labelColumn, int fieldColumn) {
+        remoteGrid->addWidget(label, row, labelColumn, Qt::AlignVCenter | Qt::AlignRight);
+        remoteGrid->addWidget(field, row, fieldColumn, Qt::AlignVCenter | Qt::AlignLeft);
+    };
+
+    state_->device_config_.remote_sky_config_status_lbl = createFieldLabel(QStringLiteral("deviceRemoteSkyConfigStatus"));
+    state_->device_config_.remote_sky_config_status_lbl->setWordWrap(true);
+    state_->device_config_.remote_sky_config_status_lbl->setFixedHeight(QWIDGETSIZE_MAX);
+    remoteGrid->addWidget(state_->device_config_.remote_sky_config_status_lbl, 0, 0, 1, 6);
+
+    state_->device_config_.remote_sky_rd105_slave_lbl = createFieldLabel();
+    state_->device_config_.remote_sky_rd105_slave_spin = new QSpinBox(remoteBody);
+    state_->device_config_.remote_sky_rd105_slave_spin->setObjectName(QStringLiteral("deviceRemoteSkyRd105SlaveSpin"));
+    state_->device_config_.remote_sky_rd105_slave_spin->setRange(1, 247);
+    state_->device_config_.remote_sky_rd105_slave_spin->setFixedHeight(kMainPageInputHeight);
+    state_->device_config_.remote_sky_rd105_slave_spin->setFixedWidth(80);
+    addPair(state_->device_config_.remote_sky_rd105_slave_lbl,
+            state_->device_config_.remote_sky_rd105_slave_spin,
+            1,
+            0,
+            1);
+
+    state_->device_config_.remote_sky_wave_enabled_lbl = createFieldLabel();
+    state_->device_config_.remote_sky_wave_enabled_check = new QCheckBox(remoteBody);
+    state_->device_config_.remote_sky_wave_enabled_check->setObjectName(QStringLiteral("deviceRemoteSkyWaveEnabledCheck"));
+    addPair(state_->device_config_.remote_sky_wave_enabled_lbl,
+            state_->device_config_.remote_sky_wave_enabled_check,
+            1,
+            2,
+            3);
+
+    state_->device_config_.remote_sky_wave_host_lbl = createFieldLabel();
+    state_->device_config_.remote_sky_wave_host_edit = new QLineEdit(remoteBody);
+    state_->device_config_.remote_sky_wave_host_edit->setObjectName(QStringLiteral("deviceRemoteSkyWaveHostEdit"));
+    state_->device_config_.remote_sky_wave_host_edit->setFixedHeight(kMainPageInputHeight);
+    state_->device_config_.remote_sky_wave_host_edit->setMinimumWidth(132);
+    state_->device_config_.remote_sky_wave_host_edit->setMaximumWidth(180);
+    addPair(state_->device_config_.remote_sky_wave_host_lbl,
+            state_->device_config_.remote_sky_wave_host_edit,
+            1,
+            4,
+            5);
+
+    state_->device_config_.remote_sky_wave_port_lbl = createFieldLabel();
+    state_->device_config_.remote_sky_wave_port_spin = new QSpinBox(remoteBody);
+    state_->device_config_.remote_sky_wave_port_spin->setObjectName(QStringLiteral("deviceRemoteSkyWavePortSpin"));
+    state_->device_config_.remote_sky_wave_port_spin->setRange(1, 65535);
+    state_->device_config_.remote_sky_wave_port_spin->setFixedHeight(kMainPageInputHeight);
+    state_->device_config_.remote_sky_wave_port_spin->setFixedWidth(92);
+    addPair(state_->device_config_.remote_sky_wave_port_lbl,
+            state_->device_config_.remote_sky_wave_port_spin,
+            2,
+            0,
+            1);
+
+    state_->device_config_.remote_sky_wave_downsample_lbl = createFieldLabel();
+    state_->device_config_.remote_sky_wave_downsample_spin = new QSpinBox(remoteBody);
+    state_->device_config_.remote_sky_wave_downsample_spin->setObjectName(QStringLiteral("deviceRemoteSkyWaveDownsampleSpin"));
+    state_->device_config_.remote_sky_wave_downsample_spin->setRange(1, 1000);
+    state_->device_config_.remote_sky_wave_downsample_spin->setFixedHeight(kMainPageInputHeight);
+    state_->device_config_.remote_sky_wave_downsample_spin->setFixedWidth(92);
+    addPair(state_->device_config_.remote_sky_wave_downsample_lbl,
+            state_->device_config_.remote_sky_wave_downsample_spin,
+            2,
+            2,
+            3);
+
+    state_->device_config_.remote_sky_telemetry_basic_lbl = createFieldLabel();
+    state_->device_config_.remote_sky_telemetry_feature_lbl = createFieldLabel();
+    state_->device_config_.remote_sky_telemetry_waveform_lbl = createFieldLabel();
+    state_->device_config_.remote_sky_telemetry_heartbeat_lbl = createFieldLabel();
+    state_->device_config_.remote_sky_telemetry_status_lbl = createFieldLabel();
+    state_->device_config_.remote_sky_telemetry_basic_spin = createRateSpin();
+    state_->device_config_.remote_sky_telemetry_basic_spin->setObjectName(QStringLiteral("deviceRemoteSkyTelemetryBasicSpin"));
+    state_->device_config_.remote_sky_telemetry_feature_spin = createRateSpin();
+    state_->device_config_.remote_sky_telemetry_feature_spin->setObjectName(QStringLiteral("deviceRemoteSkyTelemetryFeatureSpin"));
+    state_->device_config_.remote_sky_telemetry_waveform_spin = createRateSpin();
+    state_->device_config_.remote_sky_telemetry_waveform_spin->setObjectName(QStringLiteral("deviceRemoteSkyTelemetryWaveformSpin"));
+    state_->device_config_.remote_sky_telemetry_heartbeat_spin = createRateSpin();
+    state_->device_config_.remote_sky_telemetry_heartbeat_spin->setObjectName(QStringLiteral("deviceRemoteSkyTelemetryHeartbeatSpin"));
+    state_->device_config_.remote_sky_telemetry_status_spin = createRateSpin();
+    state_->device_config_.remote_sky_telemetry_status_spin->setObjectName(QStringLiteral("deviceRemoteSkyTelemetryStatusSpin"));
+    addPair(state_->device_config_.remote_sky_telemetry_basic_lbl,
+            state_->device_config_.remote_sky_telemetry_basic_spin,
+            3,
+            0,
+            1);
+    addPair(state_->device_config_.remote_sky_telemetry_feature_lbl,
+            state_->device_config_.remote_sky_telemetry_feature_spin,
+            3,
+            2,
+            3);
+    addPair(state_->device_config_.remote_sky_telemetry_waveform_lbl,
+            state_->device_config_.remote_sky_telemetry_waveform_spin,
+            3,
+            4,
+            5);
+    addPair(state_->device_config_.remote_sky_telemetry_heartbeat_lbl,
+            state_->device_config_.remote_sky_telemetry_heartbeat_spin,
+            4,
+            0,
+            1);
+    addPair(state_->device_config_.remote_sky_telemetry_status_lbl,
+            state_->device_config_.remote_sky_telemetry_status_spin,
+            4,
+            2,
+            3);
+
+    auto *remoteActionRow = new QWidget(remoteBody);
+    auto *remoteActionLayout = new QHBoxLayout(remoteActionRow);
+    remoteActionLayout->setContentsMargins(0, 0, 0, 0);
+    remoteActionLayout->setSpacing(8);
+    state_->device_config_.remote_sky_read_btn = new QPushButton(remoteActionRow);
+    state_->device_config_.remote_sky_read_btn->setObjectName(QStringLiteral("deviceRemoteSkyReadButton"));
+    state_->device_config_.remote_sky_apply_btn = new QPushButton(remoteActionRow);
+    state_->device_config_.remote_sky_apply_btn->setObjectName(QStringLiteral("deviceRemoteSkyApplyButton"));
+    state_->device_config_.remote_sky_save_btn = new QPushButton(remoteActionRow);
+    state_->device_config_.remote_sky_save_btn->setObjectName(QStringLiteral("deviceRemoteSkySaveButton"));
+    for (QPushButton *button : {state_->device_config_.remote_sky_read_btn,
+                                state_->device_config_.remote_sky_apply_btn,
+                                state_->device_config_.remote_sky_save_btn})
+    {
+        button->setFixedHeight(kMainPageButtonHeight);
+        button->setFocusPolicy(Qt::TabFocus);
+        remoteActionLayout->addWidget(button);
+    }
+    remoteActionLayout->addStretch(1);
+    remoteGrid->addWidget(remoteActionRow, 4, 4, 1, 2);
+    connect(state_->device_config_.remote_sky_read_btn, &QPushButton::clicked, this, &MainWindow::onRemoteSkyConfigReadClicked);
+    connect(state_->device_config_.remote_sky_apply_btn, &QPushButton::clicked, this, &MainWindow::onRemoteSkyConfigApplyClicked);
+    connect(state_->device_config_.remote_sky_save_btn, &QPushButton::clicked, this, &MainWindow::onRemoteSkyConfigSaveClicked);
+
+    state_->device_config_.remote_sky_raw_json_edit = new QPlainTextEdit(remoteBody);
+    state_->device_config_.remote_sky_raw_json_edit->setObjectName(QStringLiteral("deviceRemoteSkyRawJsonEdit"));
+    state_->device_config_.remote_sky_raw_json_edit->setLineWrapMode(QPlainTextEdit::NoWrap);
+    state_->device_config_.remote_sky_raw_json_edit->setMinimumHeight(220);
+    state_->device_config_.remote_sky_raw_json_edit->setVisible(false);
+    remoteGrid->addWidget(state_->device_config_.remote_sky_raw_json_edit, 5, 0, 1, 6);
+    remoteConfigLayout->addWidget(remoteBody);
+
+    const auto markRemoteDirty = [this]() { markRemoteSkyConfigDirty(); };
+    for (QSpinBox *spin : {state_->device_config_.remote_sky_rd105_slave_spin,
+                           state_->device_config_.remote_sky_wave_port_spin,
+                           state_->device_config_.remote_sky_wave_downsample_spin})
+    {
+        connect(spin, QOverload<int>::of(&QSpinBox::valueChanged), this, markRemoteDirty);
+    }
+    for (QDoubleSpinBox *spin : {state_->device_config_.remote_sky_telemetry_basic_spin,
+                                 state_->device_config_.remote_sky_telemetry_feature_spin,
+                                 state_->device_config_.remote_sky_telemetry_waveform_spin,
+                                 state_->device_config_.remote_sky_telemetry_heartbeat_spin,
+                                 state_->device_config_.remote_sky_telemetry_status_spin})
+    {
+        connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, markRemoteDirty);
+    }
+    connect(state_->device_config_.remote_sky_wave_enabled_check, &QCheckBox::toggled, this, markRemoteDirty);
+    connect(state_->device_config_.remote_sky_wave_host_edit, &QLineEdit::textEdited, this, markRemoteDirty);
+    connect(state_->device_config_.remote_sky_raw_json_edit, &QPlainTextEdit::textChanged, this, [this]() {
+        if (state_->remote_sky_config_raw_mode_)
+        {
+            markRemoteSkyConfigDirty();
+        }
+    });
+
     contentLayout->addWidget(state_->device_config_.data_telemetry_summary_card, 0);
     contentLayout->addWidget(serialCard, 0);
+    contentLayout->addWidget(remoteConfigCard, 0);
     contentLayout->addStretch(1);
 
     scrollArea->setWidget(content);
@@ -2842,6 +3125,12 @@ void MainWindow::setupDeviceConfigPage()
             {
                 return;
             }
+            if (isRemoteSkyMode() &&
+                deviceCombo->property(kDeviceConfigLocalMirrorOnlyProperty).toBool())
+            {
+                markRemoteSkyConfigDirty();
+                return;
+            }
             if (deviceCombo->property(kLocalSerialPortComboProperty).toBool() &&
                 isLocalSerialPortManualOption(deviceCombo, index))
             {
@@ -2866,6 +3155,12 @@ void MainWindow::setupDeviceConfigPage()
         connect(deviceCombo, &QComboBox::currentTextChanged, this, [this, deviceCombo, homeCombo](const QString& text) {
             if (!homeCombo || homeCombo->currentText() == text)
             {
+                return;
+            }
+            if (isRemoteSkyMode() &&
+                deviceCombo->property(kDeviceConfigLocalMirrorOnlyProperty).toBool())
+            {
+                markRemoteSkyConfigDirty();
                 return;
             }
             if (deviceCombo->property(kLocalSerialPortComboProperty).toBool())
@@ -2927,6 +3222,7 @@ void MainWindow::setupDeviceConfigPage()
             this,
             [this](const QString&) {
                 if (!state_->device_config_.ai8_temperature_port_combo ||
+                    isRemoteSkyMode() ||
                     state_->device_config_.ai8_temperature_port_combo->property(
                         kLocalSerialPortManualEntryProperty).toBool())
                 {
@@ -3052,20 +3348,24 @@ void MainWindow::syncDeviceConfigPageFromHome()
     copyCombo(state_->sky_telemetry_transport_combo_, state_->device_config_.sky_telemetry_transport_combo);
     copyCombo(state_->sky_telemetry_port_combo_, state_->device_config_.sky_telemetry_port_combo);
     copyCombo(state_->sky_telemetry_baud_combo_, state_->device_config_.sky_telemetry_baud_combo);
-    copyCombo(state_->epsilon_port_combo_, state_->device_config_.epsilon_port_combo);
-    copyCombo(state_->epsilon_baud_combo_, state_->device_config_.epsilon_baud_combo);
-    copyCombo(state_->ptb_port_combo_, state_->device_config_.ptb_port_combo);
-    copyCombo(state_->ptb_baud_combo_, state_->device_config_.ptb_baud_combo);
-    copyCombo(state_->hmp_port_combo_, state_->device_config_.hmp_port_combo);
-    copyCombo(state_->hmp_baud_combo_, state_->device_config_.hmp_baud_combo);
-    copyCombo(state_->lidar_port_combo_, state_->device_config_.lidar_port_combo);
-    copyCombo(state_->lidar_baud_combo_, state_->device_config_.lidar_baud_combo);
-    copyCombo(state_->temperature_port_combo_, state_->device_config_.temperature_port_combo);
-    copyCombo(state_->temperature_baud_combo_, state_->device_config_.temperature_baud_combo);
-    copyCombo(state_->ptb_rate_combo_, state_->device_config_.ptb_rate_combo);
-    copyCombo(state_->hmp_rate_combo_, state_->device_config_.hmp_rate_combo);
-    copyCombo(state_->lidar_rate_combo_, state_->device_config_.lidar_rate_combo);
-    copyCombo(state_->temperature_rate_combo_, state_->device_config_.temperature_rate_combo);
+    if (!isRemoteSkyMode())
+    {
+        copyCombo(state_->epsilon_port_combo_, state_->device_config_.epsilon_port_combo);
+        copyCombo(state_->epsilon_baud_combo_, state_->device_config_.epsilon_baud_combo);
+        copyCombo(state_->ptb_port_combo_, state_->device_config_.ptb_port_combo);
+        copyCombo(state_->ptb_baud_combo_, state_->device_config_.ptb_baud_combo);
+        copyCombo(state_->hmp_port_combo_, state_->device_config_.hmp_port_combo);
+        copyCombo(state_->hmp_baud_combo_, state_->device_config_.hmp_baud_combo);
+        copyCombo(state_->lidar_port_combo_, state_->device_config_.lidar_port_combo);
+        copyCombo(state_->lidar_baud_combo_, state_->device_config_.lidar_baud_combo);
+        copyCombo(state_->temperature_port_combo_, state_->device_config_.temperature_port_combo);
+        copyCombo(state_->temperature_baud_combo_, state_->device_config_.temperature_baud_combo);
+        copyCombo(state_->ptb_rate_combo_, state_->device_config_.ptb_rate_combo);
+        copyCombo(state_->hmp_rate_combo_, state_->device_config_.hmp_rate_combo);
+        copyCombo(state_->lidar_rate_combo_, state_->device_config_.lidar_rate_combo);
+        copyCombo(state_->temperature_rate_combo_, state_->device_config_.temperature_rate_combo);
+    }
+    syncDeviceConfigPageForCurrentTarget();
 
     if (state_->sky_telemetry_tcp_host_edit_ && state_->device_config_.sky_telemetry_tcp_host_edit)
     {
@@ -3095,7 +3395,14 @@ void MainWindow::updateDeviceConfigTexts()
     }
 
     refreshLocalSerialPortManualOptionTexts();
-    if (state_->device_config_.serial_title_lbl) state_->device_config_.serial_title_lbl->setText(state_->is_english_ ? "Serial Port Configuration" : "串口配置");
+    refreshRemoteSkySerialPortManualOptionTexts();
+    const bool remote = isRemoteSkyMode();
+    if (state_->device_config_.serial_title_lbl)
+    {
+        state_->device_config_.serial_title_lbl->setText(remote
+            ? (state_->is_english_ ? "Remote Sky Device Configuration" : "天空端设备配置")
+            : (state_->is_english_ ? "Serial Port Configuration" : "串口配置"));
+    }
     if (state_->device_config_.data_source_mode_lbl) state_->device_config_.data_source_mode_lbl->setText(state_->is_english_ ? "Source:" : "数据源:");
     if (state_->device_config_.sky_telemetry_transport_lbl) state_->device_config_.sky_telemetry_transport_lbl->setText(state_->is_english_ ? "Link:" : "链路:");
     updateSkyTelemetryTransportComboTexts(state_->device_config_.sky_telemetry_transport_combo, state_->is_english_);
@@ -3103,15 +3410,13 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.sky_telemetry_tcp_port_lbl) state_->device_config_.sky_telemetry_tcp_port_lbl->setText(state_->is_english_ ? "Port:" : "端口:");
     if (state_->device_config_.sky_telemetry_port_lbl) state_->device_config_.sky_telemetry_port_lbl->setText(state_->is_english_ ? "Serial:" : "串口:");
     if (state_->device_config_.sky_telemetry_baud_lbl) state_->device_config_.sky_telemetry_baud_lbl->setText(state_->is_english_ ? "Baud:" : "波特率:");
-    if (state_->device_config_.sky_device_config_btn) state_->device_config_.sky_device_config_btn->setText(state_->is_english_ ? "Sky Device Config" : "天空端设备配置");
-    fitButtonFixedWidth(state_->device_config_.sky_device_config_btn,
-                        kDeviceConfigSkyDeviceButtonMinWidth,
-                        kDeviceConfigTopButtonPadding);
     if (state_->device_config_.device_header_lbl) state_->device_config_.device_header_lbl->setText(state_->is_english_ ? QStringLiteral("Device") : QStringLiteral("设备"));
     if (state_->device_config_.port_header_lbl) state_->device_config_.port_header_lbl->setText(state_->is_english_ ? QStringLiteral("Serial Port") : QStringLiteral("串口"));
     if (state_->device_config_.baud_header_lbl) state_->device_config_.baud_header_lbl->setText(state_->is_english_ ? QStringLiteral("Baud Rate") : QStringLiteral("波特率"));
     if (state_->device_config_.rate_header_lbl) state_->device_config_.rate_header_lbl->setText(state_->is_english_ ? QStringLiteral("Rate / Poll") : QStringLiteral("频率/轮询"));
-    if (state_->device_config_.source_header_lbl) state_->device_config_.source_header_lbl->setText(state_->is_english_ ? QStringLiteral("Source") : QStringLiteral("来源"));
+    if (state_->device_config_.source_header_lbl) state_->device_config_.source_header_lbl->setText(remote
+        ? (state_->is_english_ ? QStringLiteral("Enabled") : QStringLiteral("启用"))
+        : (state_->is_english_ ? QStringLiteral("Source") : QStringLiteral("来源")));
     if (state_->device_config_.action_header_lbl) state_->device_config_.action_header_lbl->setText(state_->is_english_ ? QStringLiteral("Link") : QStringLiteral("链路操作"));
     if (state_->device_config_.epsilon_lbl) state_->device_config_.epsilon_lbl->setText(state_->is_english_ ? QStringLiteral("EPSILON2-D4G Integrated Navigation") : QStringLiteral("EPSILON2-D4G 组合导航"));
     if (state_->device_config_.ptb_source_combo)
@@ -3175,7 +3480,7 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(state_->is_english_ ? QStringLiteral("TFA1005-L LiDAR") : QStringLiteral("TFA1005-L 激光雷达"));
     if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(state_->is_english_ ? QStringLiteral("RD105 Laser Driver Temperature Controller") : QStringLiteral("RD105 激光驱动板温控器"));
     if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(state_->is_english_ ? QStringLiteral("AI-8288D92J0 8-Channel Temperature Controller") : QStringLiteral("AI-8288D92J0 八路温控器"));
-    if (state_->device_config_.epsilon_rate_lbl) state_->device_config_.epsilon_rate_lbl->setText(QString());
+    if (state_->device_config_.epsilon_rate_lbl) state_->device_config_.epsilon_rate_lbl->setText(remote ? (state_->is_english_ ? "Rate:" : "频率:") : QString());
     if (state_->device_config_.ptb_rate_lbl) state_->device_config_.ptb_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
     if (state_->device_config_.hmp_rate_lbl) state_->device_config_.hmp_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
     if (state_->device_config_.lidar_rate_lbl) state_->device_config_.lidar_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
@@ -3190,6 +3495,32 @@ void MainWindow::updateDeviceConfigTexts()
         state_->device_config_.data_telemetry_summary_title_lbl->setText(state_->is_english_
             ? "Sky-ground Communication Link Status"
             : "天地通信链路状态");
+    }
+    if (state_->device_config_.remote_sky_config_title_lbl)
+    {
+        state_->device_config_.remote_sky_config_title_lbl->setText(state_->is_english_
+            ? "Remote Sky Advanced Configuration"
+            : "天空端高级配置");
+    }
+    if (state_->device_config_.remote_sky_rd105_slave_lbl) state_->device_config_.remote_sky_rd105_slave_lbl->setText(state_->is_english_ ? "RD105 Addr:" : "RD105 站号:");
+    if (state_->device_config_.remote_sky_wave_enabled_lbl) state_->device_config_.remote_sky_wave_enabled_lbl->setText(state_->is_english_ ? "Wave TCP:" : "Wave TCP:");
+    if (state_->device_config_.remote_sky_wave_host_lbl) state_->device_config_.remote_sky_wave_host_lbl->setText(state_->is_english_ ? "Wave Host:" : "波形主机:");
+    if (state_->device_config_.remote_sky_wave_port_lbl) state_->device_config_.remote_sky_wave_port_lbl->setText(state_->is_english_ ? "Wave Port:" : "波形端口:");
+    if (state_->device_config_.remote_sky_wave_downsample_lbl) state_->device_config_.remote_sky_wave_downsample_lbl->setText(state_->is_english_ ? "Downsample:" : "降采样:");
+    if (state_->device_config_.remote_sky_telemetry_basic_lbl) state_->device_config_.remote_sky_telemetry_basic_lbl->setText(state_->is_english_ ? "Basic Hz:" : "基础 Hz:");
+    if (state_->device_config_.remote_sky_telemetry_feature_lbl) state_->device_config_.remote_sky_telemetry_feature_lbl->setText(state_->is_english_ ? "Feature Hz:" : "特征 Hz:");
+    if (state_->device_config_.remote_sky_telemetry_waveform_lbl) state_->device_config_.remote_sky_telemetry_waveform_lbl->setText(state_->is_english_ ? "Waveform Hz:" : "波形 Hz:");
+    if (state_->device_config_.remote_sky_telemetry_heartbeat_lbl) state_->device_config_.remote_sky_telemetry_heartbeat_lbl->setText(state_->is_english_ ? "Heartbeat Hz:" : "心跳 Hz:");
+    if (state_->device_config_.remote_sky_telemetry_status_lbl) state_->device_config_.remote_sky_telemetry_status_lbl->setText(state_->is_english_ ? "Status Hz:" : "状态 Hz:");
+    if (state_->device_config_.remote_sky_read_btn) state_->device_config_.remote_sky_read_btn->setText(state_->is_english_ ? "Read Sky Config" : "读取天空端配置");
+    if (state_->device_config_.remote_sky_apply_btn) state_->device_config_.remote_sky_apply_btn->setText(state_->is_english_ ? "Apply to Sky" : "应用到天空端");
+    if (state_->device_config_.remote_sky_save_btn) state_->device_config_.remote_sky_save_btn->setText(state_->is_english_ ? "Save on Sky" : "保存到天空端");
+    if (state_->device_config_.remote_sky_raw_mode_btn) state_->device_config_.remote_sky_raw_mode_btn->setText(state_->remote_sky_config_raw_mode_
+        ? (state_->is_english_ ? "Visual" : "可视化")
+        : (state_->is_english_ ? "JSON" : "JSON"));
+    if (state_->device_config_.ai8_remote_unsupported_lbl)
+    {
+        state_->device_config_.ai8_remote_unsupported_lbl->setText(state_->is_english_ ? "Unsupported" : "不支持");
     }
     for (VaporView::SkyDeviceId device : {VaporView::SkyDeviceId::Epsilon,
                                           VaporView::SkyDeviceId::Ptb,
@@ -3222,16 +3553,12 @@ void MainWindow::updateDeviceConfigState()
     if (state_->device_config_.auto_detect_ports_btn)
     {
         state_->device_config_.auto_detect_ports_btn->setEnabled(state_->auto_detect_ports_btn_ && state_->auto_detect_ports_btn_->isEnabled());
+        state_->device_config_.auto_detect_ports_btn->setVisible(!remote);
         state_->device_config_.auto_detect_ports_btn->setText(state_->auto_detect_ports_btn_ ? state_->auto_detect_ports_btn_->text() : QString());
         state_->device_config_.auto_detect_ports_btn->setToolTip(state_->auto_detect_ports_btn_ ? state_->auto_detect_ports_btn_->toolTip() : QString());
         fitButtonFixedWidth(state_->device_config_.auto_detect_ports_btn,
                             kDeviceConfigAutoDetectButtonMinWidth,
                             kDeviceConfigTopButtonPadding);
-    }
-    if (state_->device_config_.sky_device_config_btn)
-    {
-        state_->device_config_.sky_device_config_btn->setEnabled(state_->sky_device_config_btn_ && state_->sky_device_config_btn_->isEnabled());
-        state_->device_config_.sky_device_config_btn->setToolTip(state_->sky_device_config_btn_ ? state_->sky_device_config_btn_->toolTip() : QString());
     }
     if (state_->epsilon_config_panel_)
     {
@@ -3241,6 +3568,7 @@ void MainWindow::updateDeviceConfigState()
     const QList<QWidget *> localWidgets = {
         state_->device_config_.epsilon_port_combo,
         state_->device_config_.epsilon_baud_combo,
+        state_->device_config_.epsilon_rate_combo,
         state_->device_config_.ptb_port_combo,
         state_->device_config_.ptb_baud_combo,
         state_->device_config_.ptb_source_combo,
@@ -3286,6 +3614,43 @@ void MainWindow::updateDeviceConfigState()
     if (state_->device_config_.sky_telemetry_tcp_port_lbl) state_->device_config_.sky_telemetry_tcp_port_lbl->setVisible(tcpTelemetry);
     if (state_->device_config_.sky_telemetry_tcp_port_spin) state_->device_config_.sky_telemetry_tcp_port_spin->setVisible(tcpTelemetry);
 
+    if (state_->device_config_.epsilon_rate_lbl) state_->device_config_.epsilon_rate_lbl->setVisible(remote);
+    if (state_->device_config_.epsilon_rate_combo) state_->device_config_.epsilon_rate_combo->setVisible(remote);
+    if (state_->device_config_.ptb_source_combo) state_->device_config_.ptb_source_combo->setVisible(!remote);
+    if (state_->device_config_.hmp_source_combo) state_->device_config_.hmp_source_combo->setVisible(!remote);
+    for (QCheckBox *check : {state_->device_config_.epsilon_enabled_check,
+                             state_->device_config_.ptb_enabled_check,
+                             state_->device_config_.hmp_enabled_check,
+                             state_->device_config_.lidar_enabled_check,
+                             state_->device_config_.temperature_enabled_check})
+    {
+        if (check)
+        {
+            check->setVisible(remote);
+        }
+    }
+    if (state_->device_config_.ai8_remote_unsupported_lbl)
+    {
+        state_->device_config_.ai8_remote_unsupported_lbl->setVisible(remote);
+    }
+    const QList<QWidget *> ai8Widgets = {
+        state_->device_config_.ai8_temperature_port_combo,
+        state_->device_config_.ai8_temperature_baud_combo,
+        state_->device_config_.ai8_temperature_rate_lbl,
+        state_->device_config_.ai8_temperature_rate_combo
+    };
+    for (QWidget *widget : ai8Widgets)
+    {
+        if (widget)
+        {
+            widget->setVisible(!remote);
+        }
+    }
+    if (state_->device_config_.remote_sky_config_card)
+    {
+        state_->device_config_.remote_sky_config_card->setVisible(remote);
+    }
+
     for (QWidget *widget : {state_->device_config_.epsilon_remote_buttons_widget,
                             state_->device_config_.ptb_remote_buttons_widget,
                             state_->device_config_.hmp_remote_buttons_widget,
@@ -3307,6 +3672,7 @@ void MainWindow::updateDeviceConfigState()
     {
         updateDeviceConfigRemoteActionButton(device);
     }
+    updateRemoteSkyConfigControlsState();
 }
 
 QStringList MainWindow::getAvailablePorts()
@@ -3943,11 +4309,6 @@ void MainWindow::setupConfigPanel()
     state_->data_source_mode_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     connect(state_->data_source_mode_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onDataSourceModeChanged);
-
-    state_->sky_device_config_btn_ = new QPushButton(config_form_widget);
-    state_->sky_device_config_btn_->setFixedHeight(kMainPageButtonHeight);
-    state_->sky_device_config_btn_->setMinimumWidth(150);
-    connect(state_->sky_device_config_btn_, &QPushButton::clicked, this, &MainWindow::onSkyDeviceConfigClicked);
     config_root_layout->addWidget(configTitleBar);
 
     state_->sky_telemetry_row_widget_ = new QWidget(config_form_widget);

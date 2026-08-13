@@ -4,7 +4,6 @@
 #include "ground/wave/TcpWavePanel.h"
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
-#include "ground/widgets/SkyDeviceConfigDialog.h"
 #include "ground/widgets/TemperatureTrendPlotWidget.h"
 #include "LogService.h"
 #include "shared/config/SettingsWriteBarrier.h"
@@ -32,6 +31,7 @@
 #include <QMetaObject>
 #include <QMap>
 #include <QPointer>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSettings>
@@ -1243,14 +1243,82 @@ int main(int argc, char **argv)
     require(QMetaObject::invokeMethod(rtkDialog, "onStopClicked", Qt::DirectConnection),
             "RTK simulated stop action invoked");
 
-    VaporView::SkyDeviceConfigDialog skyDialog(nullptr);
-    skyDialog.setUiTestMode(true);
-    require(QMetaObject::invokeMethod(&skyDialog, "onReadClicked", Qt::DirectConnection),
-            "Sky fixed configuration read action invoked");
-    require(QMetaObject::invokeMethod(&skyDialog, "onApplyClicked", Qt::DirectConnection),
-            "Sky configuration validation action invoked");
-    require(QMetaObject::invokeMethod(&skyDialog, "onSaveClicked", Qt::DirectConnection),
-            "Sky simulated save action invoked");
+    QPushButton *deviceConfigNav = nullptr;
+    for (QPushButton *button : window->findChildren<QPushButton *>())
+    {
+        if (button &&
+            (button->accessibleName() == QStringLiteral("设备配置") ||
+             button->accessibleName() == QStringLiteral("Device")))
+        {
+            deviceConfigNav = button;
+            break;
+        }
+    }
+    require(deviceConfigNav, "device configuration navigation exists in UI test mode");
+    deviceConfigNav->click();
+    processEvents();
+    QWidget *deviceConfigPage = window->findChild<QWidget *>(QStringLiteral("deviceConfigPage"));
+    require(deviceConfigPage && deviceConfigPage->isVisible(),
+            "unified device configuration page is visible in UI test mode");
+    QComboBox *deviceSourceMode =
+        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceDataSourceModeCombo"));
+    require(deviceSourceMode && deviceSourceMode->count() >= 2,
+            "unified device configuration page exposes the source-mode selector");
+    deviceSourceMode->setCurrentIndex(1);
+    processEvents();
+    auto *deviceRemoteCard =
+        deviceConfigPage->findChild<QGroupBox *>(QStringLiteral("deviceRemoteSkyConfigCard"));
+    auto *deviceRemoteRead =
+        deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkyReadButton"));
+    auto *deviceRemoteApply =
+        deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkyApplyButton"));
+    auto *deviceRemoteSave =
+        deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkySaveButton"));
+    auto *deviceRemoteRaw =
+        deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkyRawModeButton"));
+    auto *deviceRemoteRawJson =
+        deviceConfigPage->findChild<QPlainTextEdit *>(QStringLiteral("deviceRemoteSkyRawJsonEdit"));
+    auto *deviceRemoteStatus =
+        deviceConfigPage->findChild<QLabel *>(QStringLiteral("deviceRemoteSkyConfigStatus"));
+    auto *deviceRemoteRd105Slave =
+        deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyRd105SlaveSpin"));
+    auto *deviceEpsilonPort =
+        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
+    require(deviceRemoteCard && deviceRemoteCard->isVisible() &&
+                deviceRemoteRead && deviceRemoteApply && deviceRemoteSave &&
+                deviceRemoteRaw && deviceRemoteRawJson && deviceRemoteStatus &&
+                deviceRemoteRd105Slave && deviceEpsilonPort,
+            "remote sky configuration controls live on the unified device configuration page");
+    deviceRemoteRead->click();
+    require(VaporViewTest::processEventsUntil(1500, [deviceEpsilonPort]() {
+                return deviceEpsilonPort->currentText() == QStringLiteral("UI-TEST-EPSILON");
+            }),
+            "UI-test Remote Sky read loads a fixed config into the shared device rows");
+    deviceRemoteRd105Slave->setValue(23);
+    processEvents();
+    require(deviceRemoteApply->isEnabled(),
+            "editing Remote Sky fields marks the unified page dirty and enables Apply in UI test mode");
+    deviceRemoteRaw->click();
+    require(VaporViewTest::processEventsUntil(800, [deviceRemoteRawJson]() {
+                return deviceRemoteRawJson->isVisible() &&
+                    deviceRemoteRawJson->toPlainText().contains(QStringLiteral("\"wave_tcp\"")) &&
+                    deviceRemoteRawJson->toPlainText().contains(QStringLiteral("\"slave_address\": 23"));
+            }),
+            "unified device configuration exposes Remote Sky Raw JSON round-trip");
+    deviceRemoteApply->click();
+    require(VaporViewTest::processEventsUntil(800, [deviceRemoteStatus]() {
+                const QString text = deviceRemoteStatus->text();
+                return text.contains(QStringLiteral("已验证")) ||
+                    text.contains(QStringLiteral("validated"));
+            }),
+            "UI-test Remote Sky apply validates and applies on the unified page");
+    deviceRemoteSave->click();
+    require(VaporViewTest::processEventsUntil(800, [deviceRemoteStatus]() {
+                const QString text = deviceRemoteStatus->text();
+                return text.contains(QStringLiteral("模拟保存")) ||
+                    text.contains(QStringLiteral("Simulated"));
+            }),
+            "UI-test Remote Sky save is simulated from the unified page");
 
     QAction *partialFailureAction = findUiTestScenarioAction(
         window,

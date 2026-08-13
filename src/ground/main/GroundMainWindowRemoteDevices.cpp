@@ -55,7 +55,16 @@ void MainWindow::onDataSourceModeChanged(int index)
     {
         state_->tcp_wave_panel_->setRemoteSkyMode(state_->remote_sky_mode_);
     }
+    if (state_->remote_sky_mode_)
+    {
+        syncDeviceConfigPageForCurrentTarget();
+    }
+    else
+    {
+        syncDeviceConfigPageFromHome();
+    }
     updateSourceModeUi();
+    requestRemoteSkyConfigIfAvailable(false);
     updateRecordingActionStates();
 }
 
@@ -106,7 +115,6 @@ void MainWindow::updateSourceModeUi()
     if (state_->sky_telemetry_tcp_port_spin_) state_->sky_telemetry_tcp_port_spin_->setVisible(tcpTelemetry);
     const bool remoteActionsAvailable = remote && (isUiTestMode() ||
         (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen()));
-    if (state_->sky_device_config_btn_) state_->sky_device_config_btn_->setEnabled(remoteActionsAvailable);
     setRemoteDeviceButtonsEnabled(remoteActionsAvailable);
     updateTemperatureControllerTitleText();
     updateTemperatureTitleButtonsState();
@@ -401,6 +409,23 @@ void MainWindow::markRemoteSkyLinkClosed()
     state_->remote_sky_online_ = false;
     state_->remote_wave_stream_requested_ = false;
     state_->remote_wave_stream_enable_pending_ = false;
+    state_->remote_sky_config_loading_ = false;
+    state_->remote_sky_config_applying_ = false;
+    state_->remote_sky_config_saving_ = false;
+    state_->remote_sky_config_read_generation_ = 0;
+    state_->remote_sky_config_apply_generation_ = 0;
+    if (state_->remote_sky_config_loaded_)
+    {
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("Telemetry link closed. Showing last loaded Remote Sky config.")
+            : QStringLiteral("天地数传已断开，当前显示上次读取到的天空端配置。"));
+    }
+    else
+    {
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("Telemetry link closed. Remote Sky config is not loaded.")
+            : QStringLiteral("天地数传已断开，尚未读取天空端配置。"));
+    }
     state_->remote_temperature_commands_.clear();
     state_->remote_recording_state_ = 0;
     state_->remote_status_.recording_state = 0;

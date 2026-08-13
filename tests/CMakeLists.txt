@@ -274,19 +274,6 @@ target_include_directories(telemetry_tcp_link_test PRIVATE
 target_link_libraries(telemetry_tcp_link_test PRIVATE vaporview_sky_core)
 add_test(NAME telemetry_tcp_link_test COMMAND telemetry_tcp_link_test)
 
-add_executable(sky_device_config_dialog_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/sky_device_config_dialog_test.cpp
-    ${CMAKE_SOURCE_DIR}/src/ground/widgets/SkyDeviceConfigDialog.h
-)
-target_include_directories(sky_device_config_dialog_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
-)
-target_link_libraries(sky_device_config_dialog_test PRIVATE
-    vaporview_ground_ui_support
-)
-add_test(NAME sky_device_config_dialog_test COMMAND sky_device_config_dialog_test)
-
 add_executable(sky_session_recorder_test
     ${CMAKE_CURRENT_SOURCE_DIR}/sky_session_recorder_test.cpp
 )
@@ -1021,7 +1008,6 @@ set(VAPORVIEW_FAST_INTEGRATION_TESTS
     map_data_script_test
     device_panel_coordinator_test
     tcp_wave_panel_test
-    sky_device_config_dialog_test
     startup_splash_test
     vaporview_startup_test
 )
