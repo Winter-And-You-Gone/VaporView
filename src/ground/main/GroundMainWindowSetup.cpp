@@ -2737,7 +2737,7 @@ void MainWindow::setupDeviceConfigPage()
             triggerHomeDeviceAction(device);
         });
         layout->addWidget(actionButton);
-        formLayout->addWidget(buttonsWidget, row + 1, 6, Qt::AlignVCenter | Qt::AlignLeft);
+        formLayout->addWidget(buttonsWidget, row + 1, 6, Qt::AlignVCenter | Qt::AlignHCenter);
     };
     addDeviceRemoteButton(0, state_->device_config_.epsilon_remote_buttons_widget,
                            state_->device_config_.epsilon_remote_action_btn,

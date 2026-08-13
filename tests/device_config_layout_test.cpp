@@ -15,6 +15,7 @@
 #include <QSettings>
 #include <QStringList>
 #include <QTemporaryDir>
+#include <QToolButton>
 #include <QVector>
 
 #include <algorithm>
@@ -504,6 +505,29 @@ int main(int argc, char **argv)
                              findExactLabel(serialCard, QStringLiteral("来源")),
                              serialCard->findChild<QWidget *>(QStringLiteral("devicePressureSourceCombo")),
                              "source column header sits above source selectors");
+    QLabel *actionHeader = findExactLabel(serialCard, QStringLiteral("链路操作"));
+    require(actionHeader != nullptr, "link-action column header exists");
+    int centeredActionCount = 0;
+    const QRect actionHeaderRect(actionHeader->mapTo(serialCard, QPoint(0, 0)), actionHeader->size());
+    for (QToolButton *button : serialCard->findChildren<QToolButton *>())
+    {
+        if (!button->isVisible() || button->property("deviceConfigRemoteAction").toString().isEmpty())
+        {
+            continue;
+        }
+        const QRect buttonRect(button->mapTo(serialCard, QPoint(0, 0)), button->size());
+        if (std::abs(buttonRect.center().x() - actionHeaderRect.center().x()) > 1)
+        {
+            std::cerr << "Link-action icon is not centered: headerCenter="
+                      << actionHeaderRect.center().x()
+                      << " buttonCenter=" << buttonRect.center().x() << '\n';
+        }
+        require(std::abs(buttonRect.center().x() - actionHeaderRect.center().x()) <= 1,
+                "link-action icons are centered under the link-action column header");
+        ++centeredActionCount;
+    }
+    require(centeredActionCount == 6,
+            "serial configuration exposes all six centered link-action icons");
     auto *pressureSourceCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("devicePressureSourceCombo"));
     auto *humiditySourceCombo =
