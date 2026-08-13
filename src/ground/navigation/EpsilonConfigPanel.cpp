@@ -102,6 +102,18 @@ QString packetRateGroupTitle(PacketRateGroup group, bool english)
     return QString();
 }
 
+QString rtcmDevicePortText(int portIndex, bool english)
+{
+    QString text = english
+        ? QStringLiteral("COMM%1 input").arg(portIndex)
+        : QStringLiteral("串口%1输入").arg(portIndex);
+    if (portIndex == 2)
+    {
+        text += english ? QStringLiteral(" (default)") : QStringLiteral("（默认）");
+    }
+    return text;
+}
+
 struct SectionCard
 {
     QFrame *card = nullptr;
@@ -814,11 +826,7 @@ void EpsilonConfigPanel::updateTexts()
         for (int i = 0; i < rtcm_device_port_combo_->count(); ++i)
         {
             const int portIndex = rtcm_device_port_combo_->itemData(i).toInt();
-            rtcm_device_port_combo_->setItemText(
-                i,
-                is_english_
-                    ? QStringLiteral("COMM%1 input").arg(portIndex)
-                    : QStringLiteral("串口%1输入").arg(portIndex));
+            rtcm_device_port_combo_->setItemText(i, rtcmDevicePortText(portIndex, is_english_));
         }
         rtcm_device_port_combo_->setAccessibleName(
             is_english_ ? QStringLiteral("EPSILON RTCM input port")

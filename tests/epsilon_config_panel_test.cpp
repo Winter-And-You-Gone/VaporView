@@ -99,6 +99,7 @@ int main(int argc, char *argv[])
             "RTCM input port selector lives in the device settings card, not the packet-rate grid");
     require(rtcmDevicePortCombo->count() == 4 &&
                 rtcmDevicePortCombo->itemData(0).toInt() == 2 &&
+                rtcmDevicePortCombo->itemText(0).contains(QStringLiteral("（默认）")) &&
                 rtcmDevicePortCombo->itemData(3).toInt() == 5 &&
                 panel.rtcmDevicePortIndex() == 2,
             "RTCM input selector exposes COMM2-COMM5 with COMM2 as the default");
@@ -334,6 +335,7 @@ int main(int argc, char *argv[])
             "English accessible name follows panel language");
     require(rtcmDevicePortCombo->currentData().toInt() == 3 &&
                 rtcmDevicePortCombo->currentText().contains(QStringLiteral("COMM3")) &&
+                rtcmDevicePortCombo->itemText(0).contains(QStringLiteral("(default)")) &&
                 rtcmDevicePortCombo->accessibleName() == QStringLiteral("EPSILON RTCM input port"),
             "English RTCM input selector keeps the selected device port on the visible card");
     require(panel.findChild<QLabel *>(QStringLiteral("epsilonPacketGroupInertialFusion"))->text() ==
