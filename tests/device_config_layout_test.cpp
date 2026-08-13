@@ -508,12 +508,29 @@ int main(int argc, char **argv)
         serialCard->findChild<QComboBox *>(QStringLiteral("devicePressureSourceCombo"));
     auto *humiditySourceCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceHumiditySourceCombo"));
+    selectComboData(pressureSourceCombo, QStringLiteral("ptb210"),
+                    "pressure source combo exposes PTB210");
+    selectComboData(humiditySourceCombo, QStringLiteral("hmp3"),
+                    "humidity source combo exposes HMP3");
+    VaporViewTest::processEventsFor(120);
+    require(pressureSourceCombo->toolTip().contains(QStringLiteral("PTB210")) &&
+                !pressureSourceCombo->toolTip().contains(QStringLiteral("BMP390")),
+            "pressure source tooltip follows PTB210 selection");
+    require(humiditySourceCombo->toolTip().contains(QStringLiteral("HMP3")) &&
+                !humiditySourceCombo->toolTip().contains(QStringLiteral("SHT45")),
+            "humidity source tooltip follows HMP3 selection");
     selectComboData(pressureSourceCombo, QStringLiteral("bmp390"),
                     "pressure source combo exposes BMP390");
     selectComboData(humiditySourceCombo, QStringLiteral("sht45"),
                     "humidity source combo exposes SHT45");
     VaporViewTest::processEventsFor(120);
     activateLayouts(&window);
+    require(pressureSourceCombo->toolTip().contains(QStringLiteral("BMP390")) &&
+                !pressureSourceCombo->toolTip().contains(QStringLiteral("PTB210")),
+            "pressure source tooltip follows BMP390 selection");
+    require(humiditySourceCombo->toolTip().contains(QStringLiteral("SHT45")) &&
+                !humiditySourceCombo->toolTip().contains(QStringLiteral("HMP3")),
+            "humidity source tooltip follows SHT45 selection");
     requireLabelFits(findExactLabel(serialCard, QStringLiteral("BMP390 气压计")),
                      "pressure device label follows the selected source");
     requireLabelFits(findExactLabel(serialCard, QStringLiteral("SHT45 温湿度计")),

@@ -3136,6 +3136,28 @@ void MainWindow::updateDeviceConfigTexts()
     const QString humiditySource = state_->device_config_.hmp_source_combo
         ? state_->device_config_.hmp_source_combo->currentData().toString()
         : QStringLiteral("hmp3");
+    if (state_->device_config_.ptb_source_combo)
+    {
+        state_->device_config_.ptb_source_combo->setToolTip(
+            pressureSource == QStringLiteral("bmp390")
+                ? (state_->is_english_
+                    ? QStringLiteral("Pressure source. BMP390 expects the Waveshare example serial output at 115200 8N1.")
+                    : QStringLiteral("气压来源。BMP390 使用微雪示例程序通过 115200 8N1 串口输出。"))
+                : (state_->is_english_
+                    ? QStringLiteral("Pressure source. PTB210 uses 9600 8N1 serial output.")
+                    : QStringLiteral("气压来源。PTB210 使用 9600 8N1 串口输出。")));
+    }
+    if (state_->device_config_.hmp_source_combo)
+    {
+        state_->device_config_.hmp_source_combo->setToolTip(
+            humiditySource == QStringLiteral("sht45")
+                ? (state_->is_english_
+                    ? QStringLiteral("Temperature/humidity source. SHT45 expects Adafruit example serial output at 115200 8N1.")
+                    : QStringLiteral("温湿度来源。SHT45 使用 Adafruit 示例程序通过 115200 8N1 串口输出。"))
+                : (state_->is_english_
+                    ? QStringLiteral("Temperature/humidity source. HMP3 uses 19200 8N1 serial output.")
+                    : QStringLiteral("温湿度来源。HMP3 使用 19200 8N1 串口输出。")));
+    }
     if (state_->device_config_.ptb_lbl)
     {
         state_->device_config_.ptb_lbl->setText(
