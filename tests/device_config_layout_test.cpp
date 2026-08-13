@@ -14,6 +14,7 @@
 #include <QSettings>
 #include <QStringList>
 #include <QTemporaryDir>
+#include <QVector>
 
 #include <algorithm>
 #include <cmath>
@@ -115,6 +116,76 @@ bool cardHasAnyLabel(QFrame *card, const QStringList& candidates)
     return false;
 }
 
+QString pillName(QFrame *pill)
+{
+    QLabel *nameLabel =
+        pill ? pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel")) : nullptr;
+    return nameLabel ? nameLabel->text() : QString();
+}
+
+QList<QList<QFrame *>> pillRows(QFrame *subCard)
+{
+    QList<QFrame *> pills =
+        subCard ? subCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")) : QList<QFrame *>();
+    std::sort(pills.begin(), pills.end(), [subCard](QFrame *left, QFrame *right) {
+        const QRect leftRect(left->mapTo(subCard, QPoint(0, 0)), left->size());
+        const QRect rightRect(right->mapTo(subCard, QPoint(0, 0)), right->size());
+        if (std::abs(leftRect.top() - rightRect.top()) > 2)
+        {
+            return leftRect.top() < rightRect.top();
+        }
+        return leftRect.left() < rightRect.left();
+    });
+
+    QList<QList<QFrame *>> rows;
+    QList<int> rowTops;
+    for (QFrame *pill : pills)
+    {
+        const QRect rect(pill->mapTo(subCard, QPoint(0, 0)), pill->size());
+        if (rows.isEmpty() || std::abs(rect.top() - rowTops.last()) > 2)
+        {
+            rows << QList<QFrame *>();
+            rowTops << rect.top();
+        }
+        rows.last() << pill;
+    }
+    return rows;
+}
+
+QStringList pillNames(const QList<QFrame *>& row)
+{
+    QStringList names;
+    for (QFrame *pill : row)
+    {
+        names << pillName(pill);
+    }
+    return names;
+}
+
+void requireAlignedColumns(QFrame *subCard, int columnCount, const char *message)
+{
+    const QList<QList<QFrame *>> rows = pillRows(subCard);
+    QVector<int> lefts(columnCount, -1);
+    QVector<int> widths(columnCount, -1);
+    for (const QList<QFrame *>& row : rows)
+    {
+        require(row.size() <= columnCount, message);
+        for (int column = 0; column < row.size(); ++column)
+        {
+            const QRect rect(row.at(column)->mapTo(subCard, QPoint(0, 0)), row.at(column)->size());
+            if (lefts.at(column) < 0)
+            {
+                lefts[column] = rect.left();
+                widths[column] = rect.width();
+                continue;
+            }
+            require(std::abs(rect.left() - lefts.at(column)) <= 2 &&
+                        std::abs(rect.width() - widths.at(column)) <= 2,
+                    message);
+        }
+    }
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -209,6 +280,30 @@ int main(int argc, char **argv)
         return left->mapTo(summaryContainer, QPoint(0, 0)).x() <
                right->mapTo(summaryContainer, QPoint(0, 0)).x();
     });
+    const QList<QList<QFrame *>> rateRows = pillRows(subCards.at(0));
+    require(rateRows.size() == 3 &&
+                rateRows.at(0).size() == 2 &&
+                rateRows.at(1).size() == 2 &&
+                rateRows.at(2).size() == 2,
+            "data-rate subcard arranges its pills as two aligned columns");
+    requireAlignedColumns(subCards.at(0), 2,
+                          "data-rate subcard keeps all rows aligned to two columns");
+
+    const QList<QList<QFrame *>> dataRows = pillRows(subCards.at(2));
+    const QStringList firstDataRow = dataRows.isEmpty() ? QStringList() : pillNames(dataRows.first());
+    const bool chineseStatusRow =
+        firstDataRow == (QStringList() << QStringLiteral("磁盘") << QStringLiteral("记录") << QStringLiteral("CRC"));
+    const bool englishStatusRow =
+        firstDataRow == (QStringList() << QStringLiteral("Disk") << QStringLiteral("Record") << QStringLiteral("CRC"));
+    require(dataRows.size() == 3 &&
+                dataRows.at(0).size() == 3 &&
+                dataRows.at(1).size() == 3 &&
+                dataRows.at(2).size() == 2 &&
+                (chineseStatusRow || englishStatusRow),
+            "data subcard places disk, recording state, and CRC on the first row");
+    requireAlignedColumns(subCards.at(2), 3,
+                          "data subcard keeps all rows aligned to the same three columns");
+
     int previousRight = -1;
     int top = -1;
     for (QFrame *subCard : subCards)

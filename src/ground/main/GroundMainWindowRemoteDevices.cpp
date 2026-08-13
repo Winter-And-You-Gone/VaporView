@@ -613,14 +613,14 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         linkRows << makeItem(QStringLiteral("Sky->Ground"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("Ground->Sky"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("Total"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
-        linkStatusRows << makeItem(QStringLiteral("Record"),
-                                   statusFresh ? remoteSummaryRecordingStateText(recordingState, true) : unavailableText,
-                                   statusFresh,
-                                   QStringLiteral("Recording"));
         linkStatusRows << makeItem(QStringLiteral("Disk"),
                                    statusFresh && diskFreeBytes > 0 ? remoteSummaryBytesText(diskFreeBytes) : unavailableText,
                                    statusFresh && diskFreeBytes > 0,
                                    QStringLiteral("999.9 GB"));
+        linkStatusRows << makeItem(QStringLiteral("Record"),
+                                   statusFresh ? remoteSummaryRecordingStateText(recordingState, true) : unavailableText,
+                                   statusFresh,
+                                   QStringLiteral("Recording"));
         linkStatusRows << makeItem(QStringLiteral("CRC"),
                                    statusFresh ? QString::number(crcErrorCount) : unavailableText,
                                    statusFresh && crcErrorCount == 0,
@@ -642,14 +642,14 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         linkRows << makeItem(QStringLiteral("天→地"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("地→天"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("合"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
-        linkStatusRows << makeItem(QStringLiteral("记录"),
-                                   statusFresh ? remoteSummaryRecordingStateText(recordingState, false) : unavailableText,
-                                   statusFresh,
-                                   QStringLiteral("记录中"));
         linkStatusRows << makeItem(QStringLiteral("磁盘"),
                                    statusFresh && diskFreeBytes > 0 ? remoteSummaryBytesText(diskFreeBytes) : unavailableText,
                                    statusFresh && diskFreeBytes > 0,
                                    QStringLiteral("999.9 GB"));
+        linkStatusRows << makeItem(QStringLiteral("记录"),
+                                   statusFresh ? remoteSummaryRecordingStateText(recordingState, false) : unavailableText,
+                                   statusFresh,
+                                   QStringLiteral("记录中"));
         linkStatusRows << makeItem(QStringLiteral("CRC"),
                                    statusFresh ? QString::number(crcErrorCount) : unavailableText,
                                    statusFresh && crcErrorCount == 0,
@@ -829,6 +829,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             }
 
             lineLayout->addWidget(pill, 0, Qt::AlignVCenter);
+            return pill;
         };
 
         auto *lineParent = summaryParent;
@@ -887,6 +888,13 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
 
         int renderedLineCount = 0;
         int explicitSectionMinimumWidth = 0;
+        struct RenderedSummaryLine
+        {
+            QWidget *line = nullptr;
+            QHBoxLayout *layout = nullptr;
+            QVector<QFrame *> pills;
+        };
+        QVector<RenderedSummaryLine> renderedLines;
         auto addLine = [&](int begin, int end, bool includeTitle) {
             ++renderedLineCount;
             auto *line = new QWidget(lineParent);
@@ -894,6 +902,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             auto *lineLayout = new QHBoxLayout(line);
             lineLayout->setContentsMargins(0, 0, 0, 0);
             lineLayout->setSpacing(scalePixels(useSideTitle ? 2 : 2));
+            QVector<QFrame *> linePills;
 
             if (!useSideTitle && includeTitle && !title.isEmpty())
             {
@@ -910,37 +919,10 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
 
             for (int i = begin; i < end; ++i)
             {
-                addItemLabel(lineLayout, line, items.at(i));
+                linePills << addItemLabel(lineLayout, line, items.at(i));
             }
             lineLayout->addStretch(1);
-            lineLayout->invalidate();
-            lineLayout->activate();
-            const QMargins lineMargins = lineLayout->contentsMargins();
-            int lineMinimumWidth = lineMargins.left() + lineMargins.right();
-            int lineWidgetCount = 0;
-            for (int i = 0; i < lineLayout->count(); ++i)
-            {
-                QWidget *widget = lineLayout->itemAt(i) ? lineLayout->itemAt(i)->widget() : nullptr;
-                if (!widget)
-                {
-                    continue;
-                }
-                if (lineWidgetCount > 0)
-                {
-                    lineMinimumWidth += lineLayout->spacing();
-                }
-                lineMinimumWidth += std::max(widget->minimumWidth(),
-                                             std::max(widget->minimumSizeHint().width(), widget->sizeHint().width()));
-                ++lineWidgetCount;
-            }
-            line->setMinimumWidth(lineMinimumWidth);
-            line->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
-            if (!useSideTitle)
-            {
-                const QMargins sectionMargins = sectionLayout->contentsMargins();
-                explicitSectionMinimumWidth = std::max(explicitSectionMinimumWidth,
-                                                       lineMinimumWidth + sectionMargins.left() + sectionMargins.right());
-            }
+            renderedLines.push_back({line, lineLayout, linePills});
             linesLayout->addWidget(line, 0, Qt::AlignLeft | Qt::AlignTop);
         };
 
@@ -958,6 +940,70 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             for (int begin = firstLineCount; begin < itemCount; begin += remainingLineCount)
             {
                 addLine(begin, std::min(begin + remainingLineCount, itemCount), false);
+            }
+        }
+
+        if (useSideTitle && firstLineCount > 1)
+        {
+            int columnCount = 0;
+            for (const RenderedSummaryLine& renderedLine : renderedLines)
+            {
+                columnCount = std::max(columnCount, static_cast<int>(renderedLine.pills.size()));
+            }
+            QVector<int> columnWidths(columnCount, 0);
+            for (const RenderedSummaryLine& renderedLine : renderedLines)
+            {
+                for (int column = 0; column < renderedLine.pills.size(); ++column)
+                {
+                    QFrame *pill = renderedLine.pills.at(column);
+                    columnWidths[column] = std::max(
+                        columnWidths.at(column),
+                        std::max(pill->minimumWidth(),
+                                 std::max(pill->minimumSizeHint().width(), pill->sizeHint().width())));
+                }
+            }
+            for (const RenderedSummaryLine& renderedLine : renderedLines)
+            {
+                for (int column = 0; column < renderedLine.pills.size(); ++column)
+                {
+                    renderedLine.pills.at(column)->setFixedWidth(columnWidths.at(column));
+                }
+            }
+        }
+
+        for (RenderedSummaryLine& renderedLine : renderedLines)
+        {
+            renderedLine.layout->invalidate();
+            renderedLine.layout->activate();
+            const QMargins lineMargins = renderedLine.layout->contentsMargins();
+            int lineMinimumWidth = lineMargins.left() + lineMargins.right();
+            int lineWidgetCount = 0;
+            for (int i = 0; i < renderedLine.layout->count(); ++i)
+            {
+                QWidget *widget = renderedLine.layout->itemAt(i)
+                    ? renderedLine.layout->itemAt(i)->widget()
+                    : nullptr;
+                if (!widget)
+                {
+                    continue;
+                }
+                if (lineWidgetCount > 0)
+                {
+                    lineMinimumWidth += renderedLine.layout->spacing();
+                }
+                lineMinimumWidth += std::max(
+                    widget->minimumWidth(),
+                    std::max(widget->minimumSizeHint().width(), widget->sizeHint().width()));
+                ++lineWidgetCount;
+            }
+            renderedLine.line->setMinimumWidth(lineMinimumWidth);
+            renderedLine.line->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+            if (!useSideTitle)
+            {
+                const QMargins sectionMargins = sectionLayout->contentsMargins();
+                explicitSectionMinimumWidth = std::max(
+                    explicitSectionMinimumWidth,
+                    lineMinimumWidth + sectionMargins.left() + sectionMargins.right());
             }
         }
 
@@ -1033,8 +1079,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     }
     if (state_->device_config_.data_telemetry_summary_card)
     {
-        QList<RemoteTelemetrySummarySections::Item> deviceConfigDataItems = sections.deviceItems;
-        for (const RemoteTelemetrySummarySections::Item& item : sections.linkStatusItems)
+        QList<RemoteTelemetrySummarySections::Item> deviceConfigDataItems = sections.linkStatusItems;
+        for (const RemoteTelemetrySummarySections::Item& item : sections.deviceItems)
         {
             deviceConfigDataItems << item;
         }
