@@ -4,7 +4,9 @@
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QThread>
+#include <QTemporaryDir>
 
 #include <cstdlib>
 #include <iostream>
@@ -183,9 +185,18 @@ int main(int argc, char **argv)
     const QString exePath = QDir::toNativeSeparators(mainExecutablePath());
     require(QFileInfo::exists(exePath), QStringLiteral("main executable not found at %1").arg(exePath));
 
+    QTemporaryDir settingsDirectory;
+    require(settingsDirectory.isValid(),
+            QStringLiteral("temporary settings directory created for startup smoke test"));
+
     QProcess process;
     process.setProgram(exePath);
     process.setWorkingDirectory(QDir::toNativeSeparators(QFileInfo(exePath).absolutePath()));
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.insert(QStringLiteral("VAPORVIEW_SETTINGS_DIR"), settingsDirectory.path());
+    environment.insert(QStringLiteral("VAPORVIEW_CONFIG_FILE"),
+                       QDir(settingsDirectory.path()).filePath(QStringLiteral("vaporview.ini")));
+    process.setProcessEnvironment(environment);
 #ifdef Q_OS_WIN
     process.setProcessChannelMode(QProcess::SeparateChannels);
 #else

@@ -132,6 +132,7 @@ int main(int argc, char** argv)
     require(settingsDir.isValid(), "temporary settings directory is valid");
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
+    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
 
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("VaporViewTest"));

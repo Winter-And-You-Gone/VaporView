@@ -29,6 +29,7 @@ int main(int argc, char **argv)
     require(settingsDirectory.isValid(), "temporary settings directory created");
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDirectory.path());
+    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDirectory.path());
 
     QCoreApplication application(argc, argv);
 

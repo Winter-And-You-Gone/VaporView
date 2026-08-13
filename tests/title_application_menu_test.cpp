@@ -74,9 +74,20 @@ QToolButton *findRow(QWidget *menu, const QString& objectName)
 
 void sendKey(QWidget *receiver, int key)
 {
+    require(receiver != nullptr, "key receiver exists");
+    if (QWidget *ownerWindow = receiver->window())
+    {
+        ownerWindow->raise();
+        ownerWindow->activateWindow();
+    }
+    if (receiver->focusPolicy() != Qt::NoFocus && !receiver->hasFocus())
+    {
+        receiver->setFocus(Qt::OtherFocusReason);
+    }
+    VaporViewTest::processEventsFor(40);
     QKeyEvent event(QEvent::KeyPress, key, Qt::NoModifier);
     QApplication::sendEvent(receiver, &event);
-    VaporViewTest::processEventsFor(30);
+    VaporViewTest::processEventsFor(50);
 }
 
 void sendMouseClick(QWidget *receiver)
@@ -112,6 +123,32 @@ void sendMouseEnter(QWidget *receiver)
     VaporViewTest::processEventsFor(80);
 }
 
+void resetToRootKeyboardMenu(QWidget *panel, QWidget *subMenu, QWidget *nestedMenu)
+{
+    require(panel != nullptr, "title menu panel exists for root reset");
+    if (nestedMenu)
+    {
+        nestedMenu->hide();
+        if (QWidget *nestedWindow = nestedMenu->window())
+        {
+            nestedWindow->hide();
+        }
+    }
+    if (subMenu)
+    {
+        subMenu->hide();
+        if (QWidget *subWindow = subMenu->window())
+        {
+            subWindow->hide();
+        }
+    }
+    panel->show();
+    panel->raise();
+    panel->activateWindow();
+    panel->setFocus(Qt::OtherFocusReason);
+    VaporViewTest::processEventsFor(80);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -120,6 +157,7 @@ int main(int argc, char **argv)
     require(settingsDirectory.isValid(), "temporary settings directory created");
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDirectory.path());
+    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDirectory.path());
 
     QApplication application(argc, argv);
     application.setOrganizationName(QStringLiteral("VaporViewTitleApplicationMenuTest"));
@@ -207,6 +245,7 @@ int main(int argc, char **argv)
                 "root menu row is bound to the QAction with the same command ID");
     }
 
+    resetToRootKeyboardMenu(panel, subMenu, nestedMenu);
     auto *firstRow = rootRows.first();
     sendKey(panel, Qt::Key_Down);
     require(QApplication::focusWidget() == firstRow,

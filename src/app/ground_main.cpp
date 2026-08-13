@@ -129,6 +129,21 @@ bool startupDarkThemeEnabled()
     return settings.value(QStringLiteral("dark_theme_enabled"), false).toBool();
 }
 
+void configureSettingsDirectoryFromEnvironment()
+{
+    const QString settingsDirectory = qEnvironmentVariable("VAPORVIEW_SETTINGS_DIR").trimmed();
+    if (settingsDirectory.isEmpty())
+    {
+        return;
+    }
+
+    QDir directory(settingsDirectory);
+    directory.mkpath(QStringLiteral("."));
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, directory.absolutePath());
+    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, directory.absolutePath());
+}
+
 void applyStartupTheme(QApplication& app, bool darkThemeEnabled)
 {
     if (!darkThemeEnabled)
@@ -173,6 +188,7 @@ void showMainWindow(MainWindow& window, VaporView::StartupSplash *splash)
 int runApplication(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    configureSettingsDirectoryFromEnvironment();
     VaporView::writeLifecycleBreadcrumb("qapplication_constructed");
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, []() {
         VaporView::writeLifecycleBreadcrumb("about_to_quit");
