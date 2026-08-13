@@ -945,28 +945,22 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
 
         if (useSideTitle && firstLineCount > 1)
         {
-            int columnCount = 0;
+            int widestPillWidth = 0;
             for (const RenderedSummaryLine& renderedLine : renderedLines)
             {
-                columnCount = std::max(columnCount, static_cast<int>(renderedLine.pills.size()));
-            }
-            QVector<int> columnWidths(columnCount, 0);
-            for (const RenderedSummaryLine& renderedLine : renderedLines)
-            {
-                for (int column = 0; column < renderedLine.pills.size(); ++column)
+                for (QFrame *pill : renderedLine.pills)
                 {
-                    QFrame *pill = renderedLine.pills.at(column);
-                    columnWidths[column] = std::max(
-                        columnWidths.at(column),
+                    widestPillWidth = std::max(
+                        widestPillWidth,
                         std::max(pill->minimumWidth(),
                                  std::max(pill->minimumSizeHint().width(), pill->sizeHint().width())));
                 }
             }
             for (const RenderedSummaryLine& renderedLine : renderedLines)
             {
-                for (int column = 0; column < renderedLine.pills.size(); ++column)
+                for (QFrame *pill : renderedLine.pills)
                 {
-                    renderedLine.pills.at(column)->setFixedWidth(columnWidths.at(column));
+                    pill->setFixedWidth(widestPillWidth);
                 }
             }
         }

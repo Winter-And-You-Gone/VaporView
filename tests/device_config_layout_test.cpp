@@ -186,6 +186,57 @@ void requireAlignedColumns(QFrame *subCard, int columnCount, const char *message
     }
 }
 
+void requirePillsUseWidestColumnWidth(QFrame *subCard, const char *message)
+{
+    const QList<QList<QFrame *>> rows = pillRows(subCard);
+    int widestWidth = 0;
+    int pillCount = 0;
+    for (const QList<QFrame *>& row : rows)
+    {
+        for (QFrame *pill : row)
+        {
+            widestWidth = std::max(widestWidth, pill->width());
+            ++pillCount;
+        }
+    }
+    require(pillCount > 0 && widestWidth > 0, message);
+    for (const QList<QFrame *>& row : rows)
+    {
+        for (QFrame *pill : row)
+        {
+            require(std::abs(pill->width() - widestWidth) <= 2, message);
+        }
+    }
+}
+
+void requirePillLabelsFit(QFrame *subCard, const char *message)
+{
+    const QList<QFrame *> pills =
+        subCard ? subCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")) : QList<QFrame *>();
+    require(!pills.isEmpty(), message);
+    for (QFrame *pill : pills)
+    {
+        const QList<QLabel *> labels = pill->findChildren<QLabel *>();
+        for (QLabel *label : labels)
+        {
+            if (!label || label->text().isEmpty())
+            {
+                continue;
+            }
+            const int textWidth = label->fontMetrics().horizontalAdvance(label->text());
+            if (textWidth > label->width() + 1)
+            {
+                std::cerr << "Telemetry pill label clipped: text='"
+                          << label->text().toStdString()
+                          << "' textWidth=" << textWidth
+                          << " labelWidth=" << label->width()
+                          << " pillWidth=" << pill->width() << '\n';
+            }
+            require(textWidth <= label->width() + 1, message);
+        }
+    }
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -288,6 +339,10 @@ int main(int argc, char **argv)
             "data-rate subcard arranges its pills as two aligned columns");
     requireAlignedColumns(subCards.at(0), 2,
                           "data-rate subcard keeps all rows aligned to two columns");
+    requirePillsUseWidestColumnWidth(subCards.at(0),
+                                     "data-rate subcard uses its widest pill as every column width");
+    requirePillLabelsFit(subCards.at(0),
+                         "data-rate subcard pill labels fit without clipping");
 
     const QList<QList<QFrame *>> dataRows = pillRows(subCards.at(2));
     const QStringList firstDataRow = dataRows.isEmpty() ? QStringList() : pillNames(dataRows.first());
@@ -303,6 +358,10 @@ int main(int argc, char **argv)
             "data subcard places disk, recording state, and CRC on the first row");
     requireAlignedColumns(subCards.at(2), 3,
                           "data subcard keeps all rows aligned to the same three columns");
+    requirePillsUseWidestColumnWidth(subCards.at(2),
+                                     "data subcard uses its widest pill as every column width");
+    requirePillLabelsFit(subCards.at(2),
+                         "data subcard pill labels fit without clipping");
 
     int previousRight = -1;
     int top = -1;
