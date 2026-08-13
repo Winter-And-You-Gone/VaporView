@@ -146,6 +146,24 @@ void requireLabelFits(QLabel *label, const char *message)
     require(textWidth <= label->width() + 1, message);
 }
 
+void requireHeaderAboveWidget(QWidget *container, QLabel *header, QWidget *widget, const char *message)
+{
+    require(container != nullptr && header != nullptr && widget != nullptr, message);
+    const QRect headerRect(header->mapTo(container, QPoint(0, 0)), header->size());
+    const QRect widgetRect(widget->mapTo(container, QPoint(0, 0)), widget->size());
+    if (headerRect.bottom() >= widgetRect.top())
+    {
+        std::cerr << "Column header is not above widget: header='"
+                  << header->text().toStdString()
+                  << "' headerBottom=" << headerRect.bottom()
+                  << " widgetTop=" << widgetRect.top() << '\n';
+    }
+    require(headerRect.bottom() < widgetRect.top(), message);
+    require(headerRect.center().x() >= widgetRect.left() - 8 &&
+                headerRect.center().x() <= widgetRect.right() + 8,
+            message);
+}
+
 QString pillName(QFrame *pill)
 {
     QLabel *nameLabel =
@@ -419,13 +437,46 @@ int main(int argc, char **argv)
         QStringLiteral("HMP3 温湿度计"),
         QStringLiteral("TFA1005-L 激光雷达"),
         QStringLiteral("RD105 激光驱动板温控器"),
-        QStringLiteral("AI-8288 八路温控器"),
+        QStringLiteral("AI-8288D92J0 八路温控器"),
     };
     for (const QString& labelText : detailedDeviceLabels)
     {
         requireLabelFits(findExactLabel(serialCard, labelText),
                          "serial configuration uses detailed device labels without clipping");
     }
+    const QStringList serialColumnHeaders{
+        QStringLiteral("设备"),
+        QStringLiteral("串口"),
+        QStringLiteral("波特率"),
+        QStringLiteral("频率/轮询"),
+        QStringLiteral("来源"),
+        QStringLiteral("链路操作"),
+    };
+    for (const QString& headerText : serialColumnHeaders)
+    {
+        requireLabelFits(findExactLabel(serialCard, headerText),
+                         "serial configuration column headers are visible and fit");
+    }
+    requireHeaderAboveWidget(serialCard,
+                             findExactLabel(serialCard, QStringLiteral("设备")),
+                             findExactLabel(serialCard, QStringLiteral("EPSILON2-D4G 组合导航")),
+                             "device column header sits above the device names");
+    requireHeaderAboveWidget(serialCard,
+                             findExactLabel(serialCard, QStringLiteral("串口")),
+                             serialCard->findChild<QWidget *>(QStringLiteral("deviceEpsilonPortCombo")),
+                             "serial-port column header sits above port selectors");
+    requireHeaderAboveWidget(serialCard,
+                             findExactLabel(serialCard, QStringLiteral("波特率")),
+                             serialCard->findChild<QWidget *>(QStringLiteral("deviceEpsilonBaudCombo")),
+                             "baud-rate column header sits above baud selectors");
+    requireHeaderAboveWidget(serialCard,
+                             findExactLabel(serialCard, QStringLiteral("频率/轮询")),
+                             serialCard->findChild<QWidget *>(QStringLiteral("deviceAi8TemperatureRateCombo")),
+                             "rate column header sits above rate selectors");
+    requireHeaderAboveWidget(serialCard,
+                             findExactLabel(serialCard, QStringLiteral("来源")),
+                             serialCard->findChild<QWidget *>(QStringLiteral("devicePressureSourceCombo")),
+                             "source column header sits above source selectors");
 
     window.close();
     VaporView::setSettingsWritesSuspended(false);

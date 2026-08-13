@@ -56,6 +56,12 @@ struct DeviceConfigPageWidgets
     QLabel *lidar_lbl = nullptr;
     QLabel *temperature_lbl = nullptr;
     QLabel *ai8_temperature_lbl = nullptr;
+    QLabel *device_header_lbl = nullptr;
+    QLabel *port_header_lbl = nullptr;
+    QLabel *baud_header_lbl = nullptr;
+    QLabel *rate_header_lbl = nullptr;
+    QLabel *source_header_lbl = nullptr;
+    QLabel *action_header_lbl = nullptr;
     QLabel *epsilon_rate_lbl = nullptr;
     QLabel *ptb_rate_lbl = nullptr;
     QLabel *hmp_rate_lbl = nullptr;

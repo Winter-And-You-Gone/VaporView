@@ -2492,7 +2492,7 @@ void MainWindow::setupDeviceConfigPage()
     constexpr int kDeviceConfigBaudComboWidth = 100;
     constexpr int kDeviceConfigRateComboWidth = 88;
     constexpr int kDeviceConfigSourceComboWidth = 108;
-    constexpr int kDeviceConfigDeviceLabelWidth = 220;
+    constexpr int kDeviceConfigDeviceLabelWidth = 340;
 
     auto createCombo = [this, formWidget](int width, bool editable = false) {
         auto *combo = new QComboBox(formWidget);
@@ -2504,6 +2504,29 @@ void MainWindow::setupDeviceConfigPage()
         return combo;
     };
 
+    auto createColumnHeader = [formLayout, formWidget](
+            QLabel *&label,
+            int column,
+            int columnSpan,
+            int fixedWidth = 0) {
+        label = new QLabel(formWidget);
+        label->setObjectName(QStringLiteral("fieldLabel"));
+        label->setProperty("deviceConfigColumnHeader", true);
+        label->setFixedHeight(20);
+        label->setAlignment(Qt::AlignCenter);
+        if (fixedWidth > 0)
+        {
+            label->setFixedWidth(fixedWidth);
+        }
+        formLayout->addWidget(label, 0, column, 1, columnSpan, Qt::AlignCenter);
+    };
+    createColumnHeader(state_->device_config_.device_header_lbl, 0, 1, kDeviceConfigDeviceLabelWidth);
+    createColumnHeader(state_->device_config_.port_header_lbl, 1, 1, kDeviceConfigPortComboWidth);
+    createColumnHeader(state_->device_config_.baud_header_lbl, 2, 1, kDeviceConfigBaudComboWidth);
+    createColumnHeader(state_->device_config_.rate_header_lbl, 3, 2);
+    createColumnHeader(state_->device_config_.source_header_lbl, 5, 1, kDeviceConfigSourceComboWidth);
+    createColumnHeader(state_->device_config_.action_header_lbl, 6, 1);
+
     auto addPortRow = [this, formLayout, formWidget, &createCombo](
             QLabel *&label,
             QComboBox *&portCombo,
@@ -2511,25 +2534,26 @@ void MainWindow::setupDeviceConfigPage()
             QLabel *&rateLabel,
             QComboBox *&rateCombo,
             int row) {
+        const int gridRow = row + 1;
         label = new QLabel(formWidget);
         label->setObjectName(QStringLiteral("fieldLabel"));
         label->setFixedHeight(kMainPageInputHeight);
         label->setFixedWidth(kDeviceConfigDeviceLabelWidth);
-        formLayout->addWidget(label, row, 0, Qt::AlignVCenter | Qt::AlignLeft);
+        formLayout->addWidget(label, gridRow, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
         portCombo = createCombo(kDeviceConfigPortComboWidth);
         installLocalSerialPortComboBehavior(portCombo);
         portCombo->setMinimumContentsLength(6);
         portCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-        formLayout->addWidget(portCombo, row, 1, Qt::AlignVCenter);
+        formLayout->addWidget(portCombo, gridRow, 1, Qt::AlignVCenter);
 
         baudCombo = createCombo(kDeviceConfigBaudComboWidth);
-        formLayout->addWidget(baudCombo, row, 2, Qt::AlignVCenter);
+        formLayout->addWidget(baudCombo, gridRow, 2, Qt::AlignVCenter);
 
         rateLabel = new QLabel(formWidget);
         rateLabel->setObjectName(QStringLiteral("fieldLabel"));
         rateLabel->setFixedHeight(kMainPageInputHeight);
-        formLayout->addWidget(rateLabel, row, 3, Qt::AlignVCenter | Qt::AlignRight);
+        formLayout->addWidget(rateLabel, gridRow, 3, Qt::AlignVCenter | Qt::AlignRight);
 
         if (row == 0)
         {
@@ -2540,7 +2564,7 @@ void MainWindow::setupDeviceConfigPage()
             rateCombo = createCombo(kDeviceConfigRateComboWidth, true);
             rateCombo->setMinimumContentsLength(4);
             rateCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-            formLayout->addWidget(rateCombo, row, 4, Qt::AlignVCenter);
+            formLayout->addWidget(rateCombo, gridRow, 4, Qt::AlignVCenter);
         }
     };
 
@@ -2621,6 +2645,10 @@ void MainWindow::setupDeviceConfigPage()
     }
     state_->device_config_.ptb_baud_combo->setObjectName(QStringLiteral("devicePressureBaudCombo"));
     state_->device_config_.hmp_baud_combo->setObjectName(QStringLiteral("deviceHumidityBaudCombo"));
+    if (state_->device_config_.epsilon_baud_combo)
+    {
+        state_->device_config_.epsilon_baud_combo->setObjectName(QStringLiteral("deviceEpsilonBaudCombo"));
+    }
     if (state_->device_config_.epsilon_port_combo)
     {
         state_->device_config_.epsilon_port_combo->setObjectName(QStringLiteral("deviceEpsilonPortCombo"));
@@ -2644,7 +2672,7 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.ptb_source_combo->setToolTip(state_->is_english_
         ? QStringLiteral("Pressure source. BMP390 expects the Waveshare example serial output at 115200 8N1.")
         : QStringLiteral("气压来源。BMP390 使用微雪示例程序通过 115200 8N1 串口输出。"));
-    formLayout->addWidget(state_->device_config_.ptb_source_combo, 1, 5, Qt::AlignVCenter);
+    formLayout->addWidget(state_->device_config_.ptb_source_combo, 2, 5, Qt::AlignVCenter);
 
     state_->device_config_.hmp_source_combo = createCombo(kDeviceConfigSourceComboWidth);
     state_->device_config_.hmp_source_combo->setObjectName(QStringLiteral("deviceHumiditySourceCombo"));
@@ -2653,7 +2681,7 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.hmp_source_combo->setToolTip(state_->is_english_
         ? QStringLiteral("Temperature/humidity source. SHT45 expects Adafruit example serial output at 115200 8N1.")
         : QStringLiteral("温湿度来源。SHT45 使用 Adafruit 示例程序通过 115200 8N1 串口输出。"));
-    formLayout->addWidget(state_->device_config_.hmp_source_combo, 2, 5, Qt::AlignVCenter);
+    formLayout->addWidget(state_->device_config_.hmp_source_combo, 3, 5, Qt::AlignVCenter);
     auto bindSensorSourceBaud = [this](QComboBox *sourceCombo,
                                        QComboBox *deviceBaudCombo,
                                        QComboBox *homeBaudCombo) {
@@ -2708,7 +2736,7 @@ void MainWindow::setupDeviceConfigPage()
             triggerHomeDeviceAction(device);
         });
         layout->addWidget(actionButton);
-        formLayout->addWidget(buttonsWidget, row, 6, Qt::AlignVCenter | Qt::AlignLeft);
+        formLayout->addWidget(buttonsWidget, row + 1, 6, Qt::AlignVCenter | Qt::AlignLeft);
     };
     addDeviceRemoteButton(0, state_->device_config_.epsilon_remote_buttons_widget,
                            state_->device_config_.epsilon_remote_action_btn,
@@ -3078,6 +3106,12 @@ void MainWindow::updateDeviceConfigTexts()
     fitButtonFixedWidth(state_->device_config_.sky_device_config_btn,
                         kDeviceConfigSkyDeviceButtonMinWidth,
                         kDeviceConfigTopButtonPadding);
+    if (state_->device_config_.device_header_lbl) state_->device_config_.device_header_lbl->setText(state_->is_english_ ? QStringLiteral("Device") : QStringLiteral("设备"));
+    if (state_->device_config_.port_header_lbl) state_->device_config_.port_header_lbl->setText(state_->is_english_ ? QStringLiteral("Serial Port") : QStringLiteral("串口"));
+    if (state_->device_config_.baud_header_lbl) state_->device_config_.baud_header_lbl->setText(state_->is_english_ ? QStringLiteral("Baud Rate") : QStringLiteral("波特率"));
+    if (state_->device_config_.rate_header_lbl) state_->device_config_.rate_header_lbl->setText(state_->is_english_ ? QStringLiteral("Rate / Poll") : QStringLiteral("频率/轮询"));
+    if (state_->device_config_.source_header_lbl) state_->device_config_.source_header_lbl->setText(state_->is_english_ ? QStringLiteral("Source") : QStringLiteral("来源"));
+    if (state_->device_config_.action_header_lbl) state_->device_config_.action_header_lbl->setText(state_->is_english_ ? QStringLiteral("Link") : QStringLiteral("链路操作"));
     if (state_->device_config_.epsilon_lbl) state_->device_config_.epsilon_lbl->setText(state_->is_english_ ? QStringLiteral("EPSILON2-D4G Integrated Navigation") : QStringLiteral("EPSILON2-D4G 组合导航"));
     if (state_->device_config_.ptb_lbl) state_->device_config_.ptb_lbl->setText(state_->is_english_ ? QStringLiteral("PTB210 Barometer") : QStringLiteral("PTB210 气压计"));
     if (state_->device_config_.hmp_lbl) state_->device_config_.hmp_lbl->setText(state_->is_english_ ? QStringLiteral("HMP3 Temperature/Humidity Sensor") : QStringLiteral("HMP3 温湿度计"));
@@ -3099,7 +3133,7 @@ void MainWindow::updateDeviceConfigTexts()
     }
     if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(state_->is_english_ ? QStringLiteral("TFA1005-L LiDAR") : QStringLiteral("TFA1005-L 激光雷达"));
     if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(state_->is_english_ ? QStringLiteral("RD105 Laser Driver Temperature Controller") : QStringLiteral("RD105 激光驱动板温控器"));
-    if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(state_->is_english_ ? QStringLiteral("AI-8288 8-Channel Temperature Controller") : QStringLiteral("AI-8288 八路温控器"));
+    if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(state_->is_english_ ? QStringLiteral("AI-8288D92J0 8-Channel Temperature Controller") : QStringLiteral("AI-8288D92J0 八路温控器"));
     if (state_->device_config_.epsilon_rate_lbl) state_->device_config_.epsilon_rate_lbl->setText(QString());
     if (state_->device_config_.ptb_rate_lbl) state_->device_config_.ptb_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
     if (state_->device_config_.hmp_rate_lbl) state_->device_config_.hmp_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
