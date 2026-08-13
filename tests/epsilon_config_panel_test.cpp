@@ -1,6 +1,7 @@
 #include "ground/devices/DeviceRatePolicy.h"
 #include "ground/navigation/EpsilonConfigPanel.h"
 #include "shared/theme/AppTheme.h"
+#include "test_ui_helpers.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -97,12 +98,21 @@ int main(int argc, char *argv[])
                 rtcmDevicePortCombo->property("epsilonRtcmDevicePortControl").toBool() &&
                 !rtcmDevicePortCombo->property("epsilonPacketId").isValid(),
             "RTCM input port selector lives in the device settings card, not the packet-rate grid");
+    VaporViewTest::requireComboPopupStyled(rtcmDevicePortCombo,
+                                           "EPSILON RTCM input selector has the shared popup highlight",
+                                           require);
     require(rtcmDevicePortCombo->count() == 4 &&
                 rtcmDevicePortCombo->itemData(0).toInt() == 2 &&
                 rtcmDevicePortCombo->itemText(0).contains(QStringLiteral("（默认）")) &&
                 rtcmDevicePortCombo->itemData(3).toInt() == 5 &&
                 panel.rtcmDevicePortIndex() == 2,
             "RTCM input selector exposes COMM2-COMM5 with COMM2 as the default");
+    for (QComboBox *combo : combos)
+    {
+        VaporViewTest::requireComboPopupStyled(combo,
+                                               "EPSILON packet-rate selector has the shared popup highlight",
+                                               require);
+    }
     panel.setRtcmDevicePortIndex(3);
     require(panel.rtcmDevicePortIndex() == 3,
             "RTCM input selector setter and getter preserve the selected device port");

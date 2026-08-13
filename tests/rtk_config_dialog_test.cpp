@@ -3,6 +3,7 @@
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
+#include "test_ui_helpers.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -209,6 +210,9 @@ int main(int argc, char **argv)
     QApplication::processEvents();
     auto *outputPortCombo = dialog.findChild<QComboBox *>(QStringLiteral("rtkOutputPortCombo"));
     require(outputPortCombo != nullptr, "RTK output-port combo exists");
+    VaporViewTest::requireComboPopupStyled(outputPortCombo,
+                                           "RTK output-port selector has the shared popup highlight",
+                                           require);
     require(outputPortCombo->findText(QStringLiteral("__missing_serial_port__")) < 0 &&
                 outputPortCombo->currentText() == QStringLiteral("未选择"),
             "unavailable legacy RTK output port shows the Chinese unselected placeholder");
@@ -380,6 +384,9 @@ int main(int argc, char **argv)
     QGroupBox *ggaCard = ancestorCard(ggaMonitorLog);
     require(ggaToggleButton && ggaSourceCombo && ggaClearLogButton && ggaMonitorLog && ggaCard,
             "GGA monitor controls, internal log, and card exist");
+    VaporViewTest::requireComboPopupStyled(ggaSourceCombo,
+                                           "RTK GGA source selector has the shared popup highlight",
+                                           require);
     require(ancestorCard(ggaSourceCombo) == ggaCard &&
                 ancestorCard(ggaClearLogButton) == ggaCard &&
                 streamPanel->isAncestorOf(ggaToggleButton) &&
@@ -553,13 +560,20 @@ int main(int argc, char **argv)
     QApplication::processEvents();
     const auto popupRows = singleLevelMountpointCombo->popupMenu()->rows();
     require(!popupRows.isEmpty(), "mountpoint popup builds rows");
+    int selectedMountpointRows = 0;
     for (const VaporView::SingleLevelPopupMenuRow *row : popupRows)
     {
         require(!row->property("hovered").toBool(),
                 "mountpoint popup clears stale hover highlight when reopened");
-        require(!row->property("selected").toBool(),
-                "mountpoint popup clears stale selected highlight when reopened");
+        if (row->property("selected").toBool())
+        {
+            ++selectedMountpointRows;
+            require(row->text() == QStringLiteral("AUTO"),
+                    "mountpoint popup highlights the current mountpoint row");
+        }
     }
+    require(selectedMountpointRows == 1,
+            "mountpoint popup keeps exactly one current-row highlight when reopened");
     singleLevelMountpointCombo->hidePopup();
 
     QTcpServer ntripTestCaster;

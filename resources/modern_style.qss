@@ -746,7 +746,7 @@ QComboBox QAbstractItemView {
     border: none;
     border-radius: 10px;
     color: @vv-menu-text;
-    selection-background-color: transparent;
+    selection-background-color: @vv-menu-hover;
     selection-color: @vv-menu-text;
     padding: 12px 0px;
     outline: none;
@@ -762,7 +762,7 @@ QComboBox QAbstractItemView::item {
 QComboBox QAbstractItemView::item:selected,
 QComboBox QAbstractItemView::item:selected:active,
 QComboBox QAbstractItemView::item:selected:!active {
-    background-color: transparent;
+    background-color: @vv-menu-hover;
     color: @vv-menu-text;
 }
 
