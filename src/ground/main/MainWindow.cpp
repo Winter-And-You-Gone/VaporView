@@ -336,8 +336,8 @@ MainWindow::MainWindow(QWidget *parent)
         return controller->readAi8Page(page, selection);
     };
     ai8LocalAdapter.writePage = [controller = state_->local_connection_controller_.get()](
-                                    const VaporView::Ai8TemperatureControllerProtocol::PageData& data) {
-        return controller->writeAi8Page(data);
+                                    const VaporView::Ai8TemperatureControllerProtocol::PageData& pageData) {
+        return controller->writeAi8Page(pageData);
     };
     state_->ai8_device_session_ =
         std::make_unique<VaporView::Ground::Devices::Ai8DeviceSession>(

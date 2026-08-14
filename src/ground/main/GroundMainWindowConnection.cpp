@@ -1575,11 +1575,11 @@ void MainWindow::onAi8SessionOperationFinished(
 }
 
 void MainWindow::onAi8SessionPageDataAvailable(
-    const VaporView::Ai8TemperatureControllerProtocol::PageData& data)
+    const VaporView::Ai8TemperatureControllerProtocol::PageData& pageData)
 {
     if (state_->ai8_temperature_controller_panel_)
     {
-        state_->ai8_temperature_controller_panel_->applyPageData(data);
+        state_->ai8_temperature_controller_panel_->applyPageData(pageData);
     }
 }
 
