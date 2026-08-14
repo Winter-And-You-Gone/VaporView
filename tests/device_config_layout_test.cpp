@@ -617,6 +617,17 @@ int main(int argc, char **argv)
     require(remoteCard && remoteStatus && remoteApplyButton && remoteSaveButton &&
                 rawModeButton && rawJsonEdit && rd105SlaveSpin,
             "remote sky advanced controls exist on the unified page");
+    QLabel *remoteTitleIcon = nullptr;
+    for (QLabel *iconLabel : remoteCard->findChildren<QLabel *>(QStringLiteral("sectionTitleIcon")))
+    {
+        if (iconLabel->property("_vv_section_title_icon_name").toString() == QStringLiteral("server-cog"))
+        {
+            remoteTitleIcon = iconLabel;
+            break;
+        }
+    }
+    require(remoteTitleIcon && !remoteTitleIcon->pixmap().isNull(),
+            "remote sky advanced card renders its server configuration icon");
 
     selectComboText(epsilonPortCombo, QStringLiteral("COM7"),
                     "local EPSILON port can be set before switching targets");

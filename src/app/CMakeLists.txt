@@ -67,8 +67,9 @@ set(LUCIDE_RESOURCES
     ${CMAKE_SOURCE_DIR}/resources/lucide/radar.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/refresh-cw.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/satellite.svg
-    ${CMAKE_SOURCE_DIR}/resources/lucide/sliders-vertical.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/scroll-text.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/server-cog.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/sliders-vertical.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/square-activity.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/square-check-big.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/square.svg
