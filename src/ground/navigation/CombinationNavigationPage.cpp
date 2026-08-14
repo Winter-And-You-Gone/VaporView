@@ -58,6 +58,23 @@ protected:
         initStyleOption(&option);
         const QString buttonText = option.text;
         option.text.clear();
+
+        const bool interactiveHighlight =
+            !isChecked() && isEnabled() &&
+            (option.state.testFlag(QStyle::State_MouseOver) ||
+             option.state.testFlag(QStyle::State_Sunken));
+        if (interactiveHighlight)
+        {
+            const QRectF highlightBounds = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(VaporView::appThemeColor(
+                VaporView::AppThemeColor::PrimarySubtlePressed,
+                VaporView::isDarkThemeEnabled()));
+            painter.drawRoundedRect(highlightBounds,
+                                    highlightBounds.height() / 2.0,
+                                    highlightBounds.height() / 2.0);
+        }
+
         style()->drawControl(QStyle::CE_PushButton, &option, &painter, this);
         if (buttonText.isEmpty())
         {
@@ -492,9 +509,9 @@ void CombinationNavigationPage::applyAppearance()
         "QPushButton#combinationNavigationStatusButton:checked, QPushButton#combinationNavigationEpsilonButton:checked, "
         "QPushButton#combinationNavigationDifferentialButton:checked { background-color: transparent; color: @vv-primary; font-weight: 600; }"
         "QPushButton#combinationNavigationStatusButton:!checked:hover, QPushButton#combinationNavigationEpsilonButton:!checked:hover, "
-        "QPushButton#combinationNavigationDifferentialButton:!checked:hover { background-color: @vv-primary-subtle-pressed; color: @vv-white; }"
+        "QPushButton#combinationNavigationDifferentialButton:!checked:hover { background-color: transparent; color: @vv-white; }"
         "QPushButton#combinationNavigationStatusButton:pressed, QPushButton#combinationNavigationEpsilonButton:pressed, "
-        "QPushButton#combinationNavigationDifferentialButton:pressed { background-color: @vv-primary-subtle-pressed; }"
+        "QPushButton#combinationNavigationDifferentialButton:pressed { background-color: transparent; }"
         "QPushButton#combinationNavigationStatusButton:checked:pressed, QPushButton#combinationNavigationEpsilonButton:checked:pressed, "
         "QPushButton#combinationNavigationDifferentialButton:checked:pressed { background-color: transparent; }"
         "QPushButton#combinationNavigationStatusButton:focus, QPushButton#combinationNavigationEpsilonButton:focus, "

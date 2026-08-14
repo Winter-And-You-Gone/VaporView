@@ -1534,6 +1534,41 @@ void requireRtkSidebarPage(
                 combinationNavigationSelectionAnimation->targetObject() == combinationNavigationSelectionThumb &&
                 combinationNavigationSelectionAnimation->duration() == 240,
             "combination navigation centers the selected thumb and configures its slide animation");
+    const QPoint hoverPoint = epsilonButton->rect().center();
+    epsilonButton->setAttribute(Qt::WA_UnderMouse, true);
+    QEvent enterEvent(QEvent::Enter);
+    QCoreApplication::sendEvent(epsilonButton, &enterEvent);
+    moveMouseOverWidgetAt(epsilonButton, hoverPoint, 80);
+    const QImage hoverImage =
+        combinationNavigationBar->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    const qreal devicePixelRatio = hoverImage.devicePixelRatio();
+    const QPoint epsilonTopLeft =
+        epsilonButton->mapTo(combinationNavigationBar, QPoint(0, 0));
+    const QRect epsilonPixelRect(
+        qRound(epsilonTopLeft.x() * devicePixelRatio),
+        qRound(epsilonTopLeft.y() * devicePixelRatio),
+        qRound(epsilonButton->width() * devicePixelRatio),
+        qRound(epsilonButton->height() * devicePixelRatio));
+    const QColor hoverFill = VaporView::appThemeColor(
+        VaporView::AppThemeColor::PrimarySubtlePressed,
+        VaporView::isDarkThemeEnabled());
+    const int hoverInset = qMax(1, qRound(6.0 * devicePixelRatio));
+    const QRect hoverInterior = epsilonPixelRect.adjusted(
+        hoverInset, hoverInset, -hoverInset, -hoverInset);
+    require(countPixelsNearColor(hoverImage, hoverInterior, hoverFill, 12) >=
+                hoverInterior.width() * hoverInterior.height() / 3,
+            "combination navigation hover fill is visible inside the hovered segment");
+    const int cornerInset = qMax(1, qRound(2.0 * devicePixelRatio));
+    const QColor hoverCorner = hoverImage.pixelColor(
+        epsilonPixelRect.left() + cornerInset,
+        epsilonPixelRect.top() + cornerInset);
+    require(std::abs(hoverCorner.red() - hoverFill.red()) > 20 ||
+                std::abs(hoverCorner.green() - hoverFill.green()) > 20 ||
+                std::abs(hoverCorner.blue() - hoverFill.blue()) > 20,
+            "combination navigation hover fill keeps rounded corners");
+    QEvent leaveEvent(QEvent::Leave);
+    QCoreApplication::sendEvent(epsilonButton, &leaveEvent);
+    epsilonButton->setAttribute(Qt::WA_UnderMouse, false);
     require(combinationStack->currentWidget() == statusPage && statusButton->isChecked() &&
                 !epsilonButton->isChecked() && !differentialButton->isChecked(),
             "combination navigation opens on the status page by default");
