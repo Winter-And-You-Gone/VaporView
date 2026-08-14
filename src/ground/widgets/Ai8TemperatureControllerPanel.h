@@ -31,6 +31,7 @@ public:
 
     void setEnglish(bool english);
     void setBackendConnected(bool connected, const QString& detail = QString());
+    void setPageCommandsEnabled(bool enabled, const QString& disabledToolTip = QString());
     void setProtocolStatusLabel(QLabel *label);
     void setOperationStatus(const QString& text, bool success);
     QString currentOutputStatusText() const;
@@ -101,6 +102,7 @@ private:
     void updateMeasuredValue();
     void updateAlarmStatusDisplay();
     void updateTemperaturePlot();
+    void refreshPageCommandControls();
     void adjustTemperaturePlotHeight();
     void setDetailSectionsExpanded(bool expanded);
     void syncDetailStackHeight();
@@ -130,6 +132,8 @@ private:
     bool run_state_write_requested_ = false;
     bool english_ = false;
     bool backend_connected_ = false;
+    bool page_commands_enabled_ = true;
+    QString page_commands_disabled_tooltip_;
     bool operation_succeeded_ = true;
     bool detail_sections_expanded_ = false;
 };

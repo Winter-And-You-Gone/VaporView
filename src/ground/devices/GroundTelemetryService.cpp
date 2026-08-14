@@ -424,6 +424,23 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         }
         break;
     }
+    case MsgType::Ai8TemperatureControllerStatus:
+    {
+        Ai8TemperatureControllerProtocol::LiveData data;
+        if (TelemetryCodec::parseAi8TemperatureControllerStatus(frame.payload, data))
+        {
+            emit ai8TemperatureControllerStatusUpdated(data);
+        }
+        else
+        {
+            reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
+                                     QStringLiteral("ai8_temperature_controller_status_parse_failed"),
+                                     QStringLiteral("无法解析 AI-8288 遥测载荷。"),
+                                     {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                      {QStringLiteral("payload_bytes"), frame.payload.size()}});
+        }
+        break;
+    }
     case MsgType::LogEvent:
     {
         LogRecord record;

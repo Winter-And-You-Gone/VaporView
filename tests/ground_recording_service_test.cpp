@@ -154,11 +154,16 @@ int main(int argc, char **argv)
     require(paths.value(QStringLiteral("temperature_controller_csv")).toString()
                 == QStringLiteral("sensors/temperature_controller.csv"),
             "metadata temperature controller path");
+    require(paths.value(QStringLiteral("ai8_temperature_controller_csv")).toString()
+                == QStringLiteral("sensors/ai8_temperature_controller.csv"),
+            "metadata AI-8 temperature controller path");
     require(paths.value(QStringLiteral("waveform_features_csv")).toString()
                 == QStringLiteral("sensors/waveform_features.csv"),
             "metadata waveform features path");
     require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/temperature_controller.csv"))),
             "temperature controller csv exists");
+    require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/ai8_temperature_controller.csv"))),
+            "AI-8 temperature controller csv exists");
     require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/waveform_features.csv"))),
             "waveform features csv exists");
 

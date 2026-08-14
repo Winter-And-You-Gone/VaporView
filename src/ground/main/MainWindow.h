@@ -2,6 +2,7 @@
 #define VaporView_MAIN_WINDOW_H_
 
 #include "LogRecord.h"
+#include "Ai8TemperatureControllerProtocol.h"
 #include "SkyConfig.h"
 #include "data_collector.h"
 #include "data_types.h"
@@ -177,6 +178,8 @@ private slots:
     void onRemoteWaveformFeatureUpdated(const VaporView::WaveformFeature& feature);
     void onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus& status);
     void onRemoteTemperatureControllerStatusUpdated(const VaporView::TemperatureControllerData& controllerData);
+    void onRemoteAi8TemperatureControllerStatusUpdated(
+        const VaporView::Ai8TemperatureControllerProtocol::LiveData& data);
     void onRemoteCommandAckReceived(const VaporView::CommandAck& ack);
     void onRemoteLinkOpenChanged(bool open);
     void onRemoteSkyConfigReadClicked();

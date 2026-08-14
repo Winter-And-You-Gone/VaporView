@@ -87,6 +87,8 @@
 | SkyTui | ipc.protocol | sky_ipc_waveform_downsampled_parse_failed | Warning | 无法解析 SkyCore WaveformDownsampled 载荷。 | message_type, payload_bytes |  |  |
 | SkyTui | ipc.protocol | sky_ipc_waveform_feature_parse_failed | Warning | 无法解析 SkyCore WaveformFeature 载荷。 | message_type, payload_bytes |  |  |
 | SkyTui | ipc.protocol | sky_ipc_telemetry_status_parse_failed | Warning | 无法解析 SkyCore TelemetryStatus 载荷。 | message_type, payload_bytes |  |  |
+| SkyTui | ipc.protocol | sky_ipc_temperature_controller_status_parse_failed | Warning | 无法解析 SkyCore RD105 温控状态载荷。 | message_type, payload_bytes |  |  |
+| SkyTui | ipc.protocol | sky_ipc_ai8_temperature_controller_status_parse_failed | Warning | 无法解析 SkyCore AI-8288 温控状态载荷。 | message_type, payload_bytes |  |  |
 | SkyTui | ipc.protocol | sky_ipc_command_ack_parse_failed | Warning | 无法解析 SkyCore CommandAck 载荷。 | message_type, payload_bytes |  |  |
 | SkyTui | ipc.protocol | sky_ipc_config_parse_failed | Warning | 无法解析 SkyCore 返回的配置。 | payload_bytes | system_error | SKY_IPC_CONFIG_PARSE_FAILED |
 | SkyTui | ipc.config | sky_ipc_config_apply_result_received | Info | 已收到 SkyCore 配置应用结果。 | config_apply_result |  |  |
@@ -107,6 +109,7 @@
 | Ground | protocol.parse | sky_config_parse_failed | Warning | 无法解析 SkyConfig JSON 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | sky_config_apply_result_parse_failed | Warning | 无法解析 SkyConfigApplyResult JSON 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | temperature_controller_status_parse_failed | Warning | 无法解析 TemperatureControllerStatus 遥测载荷。 | message_type, payload_bytes |  |  |
+| Ground | protocol.parse | ai8_temperature_controller_status_parse_failed | Warning | 无法解析 AI-8288 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | log_event_parse_failed | Warning | 无法解析 LogEvent 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.error | telemetry_error_frame_received | Error | 已收到遥测 Error 帧。 | payload_hex, payload_bytes |  | TELEMETRY_ERROR_FRAME |
 | Ground | protocol.unknown | unknown_telemetry_message_type | Warning | 已收到未知遥测消息类型。 | message_type, payload_bytes |  |  |
@@ -197,7 +200,7 @@
 | Ground | telemetry.command | peak_search_range_applied | Info | 峰值搜索区间已生效，旧远程峰值趋势已清空。 | command, command_id, command_seq, range_start_index, range_end_index | ui_visibility |  |
 | Ground | telemetry.command | peak_search_range_rejected_dependency_unavailable | Warning | 天空端数传链路未连接，无法下发峰值搜索区间。 | reason_code, dependency, range_start_index, range_end_index | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
 | Ground | device.command | remote_device_command_rejected_dependency_unavailable | Warning | 天空端数传链路未连接，无法下发设备命令。 | reason_code, dependency, device_id, command | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
-| Ground | ui.action | sky_device_config_rejected_not_connected | Warning | 打开天空端设备配置前，请先连接天空端数传。 | reason_code, dependency | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
+| Ground | ui.action | sky_device_config_rejected_not_connected | deprecated | 打开天空端设备配置前，请先连接天空端数传。 | reason_code, dependency | ui_dedupe_key, status=deprecated | DEPENDENCY_UNAVAILABLE |
 | Ground | ui.action | language_switched | Info | 界面语言已切换。 | language | ui_visibility |  |
 | Ground | ui.action | theme_switched | Info | 界面主题已切换。 | theme | ui_visibility |  |
 | Ground | ui.action | font_scale_updated | Info | 界面字号已更新。 | font_scale_percent | ui_visibility |  |
@@ -225,7 +228,7 @@
 | Ground | ui.test | ui_test_peak_search_range_applied | Info | 界面测试日志已更新。 | execution_path, ui_message, start_index, end_index | ui_visibility |  |
 | Ground | ui.test | ui_test_temperature_command_applied | Info | 界面测试日志已更新。 | execution_path, ui_message, device, command, channel | ui_visibility |  |
 | Ground | ui.test | ui_test_imu_profile_applied | Info | 界面测试日志已更新。 | execution_path, ui_message, output_format, baud, rate_hz | ui_visibility |  |
-| Ground | ui.test | ui_test_sky_device_config_opened | Info | 界面测试日志已更新。 | execution_path, ui_message | ui_visibility |  |
+| Ground | ui.test | ui_test_sky_device_config_opened | deprecated | 界面测试日志已更新。 | execution_path, ui_message | ui_visibility, status=deprecated |  |
 | Ground | device.navigation.command | epsilon_rtcm_config_rejected_recording_active | Warning | 请先结束记录，再配置 EPSILON RTCM 串口。 | device, reason_code | ui_dedupe_key | INVALID_STATE |
 | Ground | device.navigation.command | epsilon_rtcm_config_rejected_missing_main_port | Warning | 请先选择 EPSILON 主串口。 | device, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | device.navigation.command | epsilon_rtcm_config_rejected_invalid_main_baud | Warning | EPSILON 波特率无效。 | device, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |

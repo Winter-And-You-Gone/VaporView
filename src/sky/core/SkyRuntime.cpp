@@ -213,6 +213,10 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
             [this](const TemperatureControllerData&) {
                 sendTemperatureControllerStatus();
             });
+    connect(&device_manager_, &SkyDeviceManager::ai8TemperatureControllerDataUpdated, this,
+            [this](const Ai8TemperatureControllerProtocol::LiveData&) {
+                sendAi8TemperatureControllerStatus();
+            });
     connect(&basic_timer_, &QTimer::timeout, this, &SkyRuntime::sendBasicTelemetry);
     connect(&feature_timer_, &QTimer::timeout, this, &SkyRuntime::sendWaveformFeature);
     connect(&waveform_timer_, &QTimer::timeout, this, &SkyRuntime::sendDownsampledWaveform);
@@ -579,7 +583,10 @@ TelemetryStatus SkyRuntime::currentStatus() const
     status.recording_start_time_us = session_recorder_.recordingStartTimeUs();
     status.recording_elapsed_ms = session_recorder_.recordingElapsedMs();
     status.telemetry_record_count = session_recorder_.telemetryRecordCount();
-    status.waveform_feature_record_count = session_recorder_.waveformFeatureRecordCount() + session_recorder_.temperatureControllerRecordCount();
+    status.waveform_feature_record_count =
+        session_recorder_.waveformFeatureRecordCount() +
+        session_recorder_.temperatureControllerRecordCount() +
+        session_recorder_.ai8TemperatureControllerRecordCount();
     status.waveform_snapshot_record_count = session_recorder_.waveformSnapshotRecordCount();
     status.raw_navigation_record_count = session_recorder_.rawNavigationRecordCount();
     status.raw_pressure_record_count = session_recorder_.rawPressureRecordCount();
@@ -605,6 +612,8 @@ SkyDashboardSnapshot SkyRuntime::dashboardSnapshot() const
     snapshot.ptb = device_manager_.latestPtb();
     snapshot.hmp = device_manager_.latestHmp();
     snapshot.lidar = device_manager_.latestLidar();
+    snapshot.temperature_controller = device_manager_.latestTemperatureController();
+    snapshot.ai8_temperature_controller = device_manager_.latestAi8TemperatureController();
     snapshot.waveform_feature = device_manager_.latestWaveformFeature();
     const QVector<float> rawWaveform = device_manager_.latestRawWaveform();
     const QVector<float> harmonicWaveform = device_manager_.latestWaveform();
@@ -628,6 +637,8 @@ SkyDashboardSnapshot SkyRuntime::dashboardSnapshot() const
     snapshot.ptb_stale = deviceStale(SkyDeviceId::Ptb, nowUs, 3'000'000ULL);
     snapshot.hmp_stale = deviceStale(SkyDeviceId::Hmp, nowUs, 3'000'000ULL);
     snapshot.lidar_stale = deviceStale(SkyDeviceId::Lidar, nowUs, 2'000'000ULL);
+    snapshot.temperature_controller_stale = deviceStale(SkyDeviceId::TemperatureController, nowUs, 3'000'000ULL);
+    snapshot.ai8_temperature_controller_stale = deviceStale(SkyDeviceId::Ai8TemperatureController, nowUs, 3'000'000ULL);
     snapshot.waveform_stale = deviceStale(SkyDeviceId::WaveTcp, nowUs, 3'000'000ULL);
     return snapshot;
 }
@@ -891,6 +902,20 @@ void SkyRuntime::sendTemperatureControllerStatus()
     const TemperatureControllerData data = device_manager_.latestTemperatureController();
     session_recorder_.recordTemperatureControllerStatus(nowUs, data);
     sendFrame(MsgType::TemperatureControllerStatus, TelemetryCodec::serializeTemperatureControllerStatus(data));
+}
+
+void SkyRuntime::sendAi8TemperatureControllerStatus()
+{
+    const DeviceStatusItem status = device_manager_.status(SkyDeviceId::Ai8TemperatureController);
+    const quint64 nowUs = currentTimestampUs();
+    if (!connectedAndFresh(status, nowUs, 3'000'000ULL))
+    {
+        return;
+    }
+    const Ai8TemperatureControllerProtocol::LiveData data = device_manager_.latestAi8TemperatureController();
+    session_recorder_.recordAi8TemperatureControllerStatus(nowUs, data);
+    sendFrame(MsgType::Ai8TemperatureControllerStatus,
+              TelemetryCodec::serializeAi8TemperatureControllerStatus(data));
 }
 
 void SkyRuntime::dispatchFrame(const TelemetryFrame& frame)

@@ -167,6 +167,23 @@ QString applicationSoftwareVersion()
         : QCoreApplication::applicationVersion();
 }
 
+QString ai8ControlStateText(Ai8TemperatureControllerProtocol::ChannelControlState state)
+{
+    using State = Ai8TemperatureControllerProtocol::ChannelControlState;
+    switch (state)
+    {
+    case State::ApidOutput:
+        return QStringLiteral("apid_output");
+    case State::AutoTuning:
+        return QStringLiteral("auto_tuning");
+    case State::Stopped:
+        return QStringLiteral("stopped");
+    case State::Unknown:
+        break;
+    }
+    return QStringLiteral("unknown");
+}
+
 }  // namespace
 
 bool SkySessionRecorder::start(const QString& baseDirectory,
@@ -239,9 +256,11 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     sensor_summary_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.sensorSummaryCsvPath);
     feature_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.waveformFeaturesCsvPath);
     temperature_controller_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.temperatureControllerCsvPath);
+    ai8_temperature_controller_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.ai8TemperatureControllerCsvPath);
     basic_record_file_.setFileName(sensor_summary_filename_);
     feature_record_file_.setFileName(feature_filename_);
     temperature_controller_record_file_.setFileName(temperature_controller_filename_);
+    ai8_temperature_controller_record_file_.setFileName(ai8_temperature_controller_filename_);
     navigation_raw_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.navigationRawPath);
     pressure_raw_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.pressureRawPath);
     temperature_humidity_raw_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.temperatureHumidityRawPath);
@@ -257,6 +276,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     if (!basic_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !feature_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !temperature_controller_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
+        !ai8_temperature_controller_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !waveform_peaks_file_.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
         !event_log_file_.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append) ||
         !error_log_file_.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append) ||
@@ -280,6 +300,9 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     QTextStream temperatureOut(&temperature_controller_record_file_);
     temperatureOut << VaporView::Session::temperatureControllerCsvHeader();
 
+    QTextStream ai8TemperatureOut(&ai8_temperature_controller_record_file_);
+    ai8TemperatureOut << VaporView::Session::ai8TemperatureControllerCsvHeader();
+
     QTextStream peakIndexOut(&waveform_peaks_file_);
     peakIndexOut << VaporView::Session::waveformPeaksCsvHeader();
     peakIndexOut.flush();
@@ -288,6 +311,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     telemetry_row_count_ = 0;
     waveform_feature_count_ = 0;
     temperature_controller_count_ = 0;
+    ai8_temperature_controller_count_ = 0;
     waveform_file_count_ = 0;
     waveform_points_per_frame_ = 0;
     raw_navigation_record_count_ = 0;
@@ -384,6 +408,11 @@ quint64 SkySessionRecorder::waveformFeatureRecordCount() const
 quint64 SkySessionRecorder::temperatureControllerRecordCount() const
 {
     return temperature_controller_count_;
+}
+
+quint64 SkySessionRecorder::ai8TemperatureControllerRecordCount() const
+{
+    return ai8_temperature_controller_count_;
 }
 
 quint64 SkySessionRecorder::waveformSnapshotRecordCount() const
@@ -612,6 +641,49 @@ void SkySessionRecorder::recordTemperatureControllerStatus(quint64 hostTimeUs, c
     }
     out << '\n';
     ++temperature_controller_count_;
+}
+
+void SkySessionRecorder::recordAi8TemperatureControllerStatus(
+    quint64 hostTimeUs,
+    const Ai8TemperatureControllerProtocol::LiveData& data)
+{
+    if (!isRecording() || !ai8_temperature_controller_record_file_.isOpen())
+    {
+        return;
+    }
+
+    QStringList row;
+    row.reserve(26);
+    row << QString::number(hostTimeUs)
+        << boolText(data.valid)
+        << boolText(data.controlStatesValid)
+        << boolText(data.alarmStatusValid)
+        << boolText(data.mainStatusValid)
+        << QString::number(data.mainStatusRaw);
+    for (double measured : data.measuredC)
+    {
+        row << (std::isfinite(measured) ? QString::number(measured, 'f', 6) : QString());
+    }
+    for (Ai8TemperatureControllerProtocol::ChannelControlState state : data.controlStates)
+    {
+        row << ai8ControlStateText(state);
+    }
+    for (quint16 alarmRegister : data.alarmStatusRegisters)
+    {
+        row << QString::number(alarmRegister);
+    }
+
+    QTextStream out(&ai8_temperature_controller_record_file_);
+    for (int i = 0; i < row.size(); ++i)
+    {
+        if (i > 0)
+        {
+            out << ',';
+        }
+        out << csvEscape(row.at(i));
+    }
+    out << '\n';
+    ++ai8_temperature_controller_count_;
 }
 
 void SkySessionRecorder::recordWaveformSnapshot(quint64 hostTimeUs,
@@ -852,6 +924,7 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
     manifest.capture.telemetryBaud = telemetry_baud_ > 0 ? QString::number(telemetry_baud_) : QString();
     manifest.counts.sensorRows = telemetry_row_count_;
     manifest.counts.temperatureControllerRows = temperature_controller_count_;
+    manifest.counts.ai8TemperatureControllerRows = ai8_temperature_controller_count_;
     manifest.counts.waveformFrames = raw_waveform_record_count_;
     manifest.counts.waveformFeatureRows = waveform_feature_count_;
     manifest.counts.eventRows = event_row_count_;
@@ -872,6 +945,7 @@ void SkySessionRecorder::closeFiles()
     for (QFile *file : {&basic_record_file_,
                         &feature_record_file_,
                         &temperature_controller_record_file_,
+                        &ai8_temperature_controller_record_file_,
                         &navigation_raw_file_,
                         &pressure_raw_file_,
                         &temperature_humidity_raw_file_,

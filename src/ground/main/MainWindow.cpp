@@ -345,6 +345,8 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onRemoteTelemetryStatusUpdated);
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::temperatureControllerStatusUpdated,
             this, &MainWindow::onRemoteTemperatureControllerStatusUpdated);
+    connect(state_->remote_sky_controller_.get(), &RemoteSkyController::ai8TemperatureControllerStatusUpdated,
+            this, &MainWindow::onRemoteAi8TemperatureControllerStatusUpdated);
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::commandAckReceived,
             this, &MainWindow::onRemoteCommandAckReceived);
     if (auto *telemetryService = state_->remote_sky_controller_->telemetryService())

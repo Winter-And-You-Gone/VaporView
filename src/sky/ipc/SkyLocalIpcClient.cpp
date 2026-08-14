@@ -455,6 +455,44 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
         }
         break;
     }
+    case MsgType::TemperatureControllerStatus:
+    {
+        TemperatureControllerData data;
+        if (TelemetryCodec::parseTemperatureControllerStatus(frame.payload, data))
+        {
+            dashboard_.temperature_controller = data;
+            emit dashboardUpdated();
+        }
+        else
+        {
+            publishClientLog(LogLevel::Warning,
+                             QStringLiteral("ipc.protocol"),
+                             QStringLiteral("sky_ipc_temperature_controller_status_parse_failed"),
+                             QStringLiteral("无法解析 SkyCore RD105 温控状态载荷。"),
+                             {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                              {QStringLiteral("payload_bytes"), frame.payload.size()}});
+        }
+        break;
+    }
+    case MsgType::Ai8TemperatureControllerStatus:
+    {
+        Ai8TemperatureControllerProtocol::LiveData data;
+        if (TelemetryCodec::parseAi8TemperatureControllerStatus(frame.payload, data))
+        {
+            dashboard_.ai8_temperature_controller = data;
+            emit dashboardUpdated();
+        }
+        else
+        {
+            publishClientLog(LogLevel::Warning,
+                             QStringLiteral("ipc.protocol"),
+                             QStringLiteral("sky_ipc_ai8_temperature_controller_status_parse_failed"),
+                             QStringLiteral("无法解析 SkyCore AI-8288 温控状态载荷。"),
+                             {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                              {QStringLiteral("payload_bytes"), frame.payload.size()}});
+        }
+        break;
+    }
     case MsgType::CommandAck:
     {
         CommandAck ack;

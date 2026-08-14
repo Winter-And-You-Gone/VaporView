@@ -60,6 +60,7 @@ struct DeviceConfigPageWidgets
     QLabel *port_header_lbl = nullptr;
     QLabel *baud_header_lbl = nullptr;
     QLabel *rate_header_lbl = nullptr;
+    QLabel *enabled_header_lbl = nullptr;
     QLabel *source_header_lbl = nullptr;
     QLabel *action_header_lbl = nullptr;
     QLabel *epsilon_rate_lbl = nullptr;
@@ -119,7 +120,7 @@ struct DeviceConfigPageWidgets
     QCheckBox *hmp_enabled_check = nullptr;
     QCheckBox *lidar_enabled_check = nullptr;
     QCheckBox *temperature_enabled_check = nullptr;
-    QLabel *ai8_remote_unsupported_lbl = nullptr;
+    QCheckBox *ai8_temperature_enabled_check = nullptr;
     QSpinBox *remote_sky_rd105_slave_spin = nullptr;
     QCheckBox *remote_sky_wave_enabled_check = nullptr;
     QLineEdit *remote_sky_wave_host_edit = nullptr;

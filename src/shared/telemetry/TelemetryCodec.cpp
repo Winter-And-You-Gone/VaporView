@@ -17,6 +17,7 @@ constexpr char kSof0 = static_cast<char>(0xAA);
 constexpr char kSof1 = static_cast<char>(0x55);
 constexpr int kSofSize = 2;
 constexpr int kCrcSize = 2;
+constexpr quint8 kAi8TemperatureStatusPayloadVersion = 1;
 
 template <typename T>
 void appendLe(QByteArray& out, T value)
@@ -256,6 +257,9 @@ bool skyDeviceIdFromValue(quint8 value, SkyDeviceId& id)
         return true;
     case 6:
         id = SkyDeviceId::TemperatureController;
+        return true;
+    case 7:
+        id = SkyDeviceId::Ai8TemperatureController;
         return true;
     case 255:
         id = SkyDeviceId::All;
@@ -1118,6 +1122,92 @@ bool TelemetryCodec::parseTemperatureControllerStatus(const QByteArray& payload,
         channel.startup_delay_s = startupDelay;
     }
     return true;
+}
+
+QByteArray TelemetryCodec::serializeAi8TemperatureControllerStatus(
+    const Ai8TemperatureControllerProtocol::LiveData& data)
+{
+    QByteArray payload;
+    payload.reserve(86);
+    payload.append(static_cast<char>(kAi8TemperatureStatusPayloadVersion));
+    quint8 flags = 0;
+    if (data.valid) flags |= 0x01;
+    if (data.controlStatesValid) flags |= 0x02;
+    if (data.alarmStatusValid) flags |= 0x04;
+    if (data.mainStatusValid) flags |= 0x08;
+    payload.append(static_cast<char>(flags));
+    appendLe<quint16>(payload, 0);
+    for (double value : data.measuredC)
+    {
+        appendDoubleLe(payload, value);
+    }
+    for (Ai8TemperatureControllerProtocol::ChannelControlState state : data.controlStates)
+    {
+        payload.append(static_cast<char>(state));
+    }
+    for (quint16 value : data.alarmStatusRegisters)
+    {
+        appendLe<quint16>(payload, value);
+    }
+    appendLe<quint16>(payload, data.mainStatusRaw);
+    return payload;
+}
+
+bool TelemetryCodec::parseAi8TemperatureControllerStatus(
+    const QByteArray& payload,
+    Ai8TemperatureControllerProtocol::LiveData& data)
+{
+    data = Ai8TemperatureControllerProtocol::LiveData();
+    qsizetype offset = 0;
+    constexpr qsizetype kExpectedPayloadSize =
+        1 + 1 + 2 +
+        Ai8TemperatureControllerProtocol::kChannelCount * static_cast<int>(sizeof(double)) +
+        Ai8TemperatureControllerProtocol::kChannelCount +
+        Ai8TemperatureControllerProtocol::kAlarmStatusRegisterCount * static_cast<int>(sizeof(quint16)) +
+        static_cast<int>(sizeof(quint16));
+    if (payload.size() != kExpectedPayloadSize)
+    {
+        return false;
+    }
+    const quint8 version = static_cast<quint8>(payload.at(offset++));
+    if (version != kAi8TemperatureStatusPayloadVersion)
+    {
+        return false;
+    }
+    const quint8 flags = static_cast<quint8>(payload.at(offset++));
+    quint16 reserved = 0;
+    if (!readLe(payload, offset, reserved))
+    {
+        return false;
+    }
+    data.valid = (flags & 0x01) != 0;
+    data.controlStatesValid = (flags & 0x02) != 0;
+    data.alarmStatusValid = (flags & 0x04) != 0;
+    data.mainStatusValid = (flags & 0x08) != 0;
+    for (double& value : data.measuredC)
+    {
+        if (!readDoubleLe(payload, offset, value))
+        {
+            return false;
+        }
+    }
+    for (Ai8TemperatureControllerProtocol::ChannelControlState& state : data.controlStates)
+    {
+        const quint8 raw = static_cast<quint8>(payload.at(offset++));
+        if (raw > static_cast<quint8>(Ai8TemperatureControllerProtocol::ChannelControlState::Stopped))
+        {
+            return false;
+        }
+        state = static_cast<Ai8TemperatureControllerProtocol::ChannelControlState>(raw);
+    }
+    for (quint16& value : data.alarmStatusRegisters)
+    {
+        if (!readLe(payload, offset, value))
+        {
+            return false;
+        }
+    }
+    return readLe(payload, offset, data.mainStatusRaw) && offset == payload.size();
 }
 
 QByteArray TelemetryCodec::serializeTemperatureControllerCommand(const TemperatureControllerCommand& command)

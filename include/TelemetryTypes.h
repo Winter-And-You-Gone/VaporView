@@ -34,6 +34,7 @@ enum class MsgType : quint8
     SkyConfig = 0x05,
     SkyConfigApplyResult = 0x06,
     TemperatureControllerStatus = 0x07,
+    Ai8TemperatureControllerStatus = 0x08,
     Command = 0x10,
     CommandAck = 0x11,
     Heartbeat = 0x20,

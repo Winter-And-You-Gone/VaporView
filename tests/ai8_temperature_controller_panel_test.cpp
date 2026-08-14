@@ -517,6 +517,16 @@ int main(int argc, char **argv)
     require(readButton->isEnabled() && writeButton->isEnabled() &&
                 statusLabel->property("protocolReady").toBool(),
             "AI-8 read and write become available after connection");
+    panel.setPageCommandsEnabled(false, QStringLiteral("remote-readonly"));
+    QApplication::processEvents();
+    require(!readButton->isEnabled() && !writeButton->isEnabled() &&
+                readButton->toolTip() == QStringLiteral("remote-readonly") &&
+                writeButton->toolTip() == QStringLiteral("remote-readonly"),
+            "AI-8 page read/write commands can be disabled for Remote Sky read-only data");
+    panel.setPageCommandsEnabled(true);
+    QApplication::processEvents();
+    require(readButton->isEnabled() && writeButton->isEnabled(),
+            "AI-8 page read/write commands recover after returning to local control");
 
     setpointSpin->setValue(23.0);
     VaporView::Ai8TemperatureControllerProtocol::LiveData liveData;

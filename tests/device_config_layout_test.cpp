@@ -4,6 +4,7 @@
 #include "test_ui_helpers.h"
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QFrame>
 #include <QGroupBox>
@@ -603,8 +604,14 @@ int main(int argc, char **argv)
         deviceConfigPage->findChild<QPlainTextEdit *>(QStringLiteral("deviceRemoteSkyRawJsonEdit"));
     auto *rd105SlaveSpin =
         deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyRd105SlaveSpin"));
+    auto *ai8EnabledCheck =
+        serialCard->findChild<QCheckBox *>(QStringLiteral("deviceRemoteAi8TemperatureEnabledCheck"));
     auto *ai8PortCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperaturePortCombo"));
+    auto *ai8BaudCombo =
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureBaudCombo"));
+    auto *ai8RateCombo =
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureRateCombo"));
     require(dataSourceModeCombo && epsilonPortCombo && epsilonBaudCombo && epsilonRateCombo,
             "shared device config controls exist for target switching");
     require(remoteCard && remoteStatus && remoteApplyButton && remoteSaveButton &&
@@ -620,32 +627,25 @@ int main(int argc, char **argv)
     dataSourceModeCombo->setCurrentIndex(1);
     VaporViewTest::processEventsFor(160);
     require(remoteCard->isVisible(), "remote sky advanced card appears in remote mode");
-    require(!pressureSourceCombo->isVisible() && !humiditySourceCombo->isVisible(),
-            "local PTB/HMP source selectors are hidden in remote mode");
-    require(ai8PortCombo && !ai8PortCombo->isVisible(),
-            "AI-8 persistent serial fields are hidden because SkyConfig does not support AI-8");
-    bool ai8UnsupportedVisible = false;
-    for (QLabel *label : serialCard->findChildren<QLabel *>(QStringLiteral("fieldLabel")))
-    {
-        if (label->isVisible() &&
-            (label->text() == QStringLiteral("不支持") ||
-             label->text() == QStringLiteral("Unsupported")))
-        {
-            ai8UnsupportedVisible = true;
-            break;
-        }
-    }
-    require(ai8UnsupportedVisible,
-            "remote mode marks AI-8 as unsupported instead of serializing fake SkyConfig fields");
+    require(pressureSourceCombo->isVisible() && humiditySourceCombo->isVisible(),
+            "remote mode keeps PTB/BMP390 and HMP/SHT45 source selectors visible");
+    require(ai8EnabledCheck && ai8EnabledCheck->isVisible() &&
+                ai8PortCombo && ai8PortCombo->isVisible() &&
+                ai8BaudCombo && ai8BaudCombo->isVisible() &&
+                ai8RateCombo && ai8RateCombo->isVisible(),
+            "remote mode exposes AI-8 SkyConfig serial fields");
     require(!remoteApplyButton->isEnabled() && !remoteSaveButton->isEnabled(),
             "disconnected remote mode disables apply and save operations");
 
     VaporView::SkyConfig remoteConfig = VaporView::SkyConfig::defaults();
     remoteConfig.epsilon = {true, QStringLiteral("/dev/ttyEPSILON"), 921600, 100.0};
     remoteConfig.ptb = {true, QStringLiteral("/dev/ttyPTB210"), 9600, 20.0};
+    remoteConfig.ptb.source = QStringLiteral("ptb210");
     remoteConfig.hmp = {true, QStringLiteral("/dev/ttyHMP3"), 19200, 20.0};
+    remoteConfig.hmp.source = QStringLiteral("hmp3");
     remoteConfig.lidar = {true, QStringLiteral("/dev/ttyLIDAR"), 500000, 100.0};
     remoteConfig.temperature_controller = {true, QStringLiteral("/dev/ttyRD105"), 38400, 5.0, 9};
+    remoteConfig.ai8_temperature_controller = {true, QStringLiteral("/dev/ttyAI8"), 19200, 5.0, 5};
     remoteConfig.wave_tcp = {true, QStringLiteral("10.0.0.2"), 8899, 12, 0, 0};
     remoteConfig.telemetry = {11.0, 12.0, 2.0, 1.0, 3.0};
     window.testInjectRemoteSkyConfig(remoteConfig.toJson());
@@ -659,6 +659,14 @@ int main(int argc, char **argv)
             "remote sky port combo keeps manual entry available");
     require(rd105SlaveSpin->value() == 9,
             "remote-only RD105 slave address is loaded into the unified page");
+    require(pressureSourceCombo->currentData().toString() == QStringLiteral("ptb210") &&
+                humiditySourceCombo->currentData().toString() == QStringLiteral("hmp3"),
+            "remote SkyConfig restores pressure and humidity source selections");
+    require(ai8EnabledCheck->isChecked() &&
+                ai8PortCombo->currentText() == QStringLiteral("/dev/ttyAI8") &&
+                ai8BaudCombo->currentText() == QStringLiteral("19200") &&
+                ai8RateCombo->currentText() == QStringLiteral("5"),
+            "remote SkyConfig restores AI-8 enabled, port, baud, and polling rate");
 
     const int manualIndex = std::max(epsilonPortCombo->findText(QStringLiteral("手动添加")),
                                      epsilonPortCombo->findText(QStringLiteral("Add Port")));
@@ -674,6 +682,14 @@ int main(int argc, char **argv)
     epsilonBaudCombo->setCurrentText(QStringLiteral("115200"));
     epsilonRateCombo->setCurrentText(QStringLiteral("88"));
     rd105SlaveSpin->setValue(17);
+    selectComboData(pressureSourceCombo, QStringLiteral("bmp390"),
+                    "remote pressure source can be edited to BMP390");
+    selectComboData(humiditySourceCombo, QStringLiteral("sht45"),
+                    "remote humidity source can be edited to SHT45");
+    selectComboText(ai8PortCombo, QStringLiteral("/dev/ttyAI8_ALT"),
+                    "remote AI-8 port can be edited independently");
+    ai8BaudCombo->setCurrentText(QStringLiteral("115200"));
+    ai8RateCombo->setCurrentText(QStringLiteral("12"));
     VaporViewTest::processEventsFor(120);
 
     QString remoteError;
@@ -688,12 +704,25 @@ int main(int argc, char **argv)
             "remote edited frequency is serialized into SetSkyConfig JSON");
     require(uiJson.value(QStringLiteral("temperature_controller")).toObject().value(QStringLiteral("slave_address")).toInt() == 17,
             "remote-only RD105 field is serialized into SkyConfig JSON");
+    require(uiJson.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("source")).toString() ==
+                QStringLiteral("bmp390"),
+            "remote edited pressure source is serialized into SkyConfig JSON");
+    require(uiJson.value(QStringLiteral("hmp")).toObject().value(QStringLiteral("source")).toString() ==
+                QStringLiteral("sht45"),
+            "remote edited humidity source is serialized into SkyConfig JSON");
+    const QJsonObject ai8Json =
+        uiJson.value(QStringLiteral("ai8_temperature_controller")).toObject();
+    require(ai8Json.value(QStringLiteral("enabled")).toBool(false) &&
+                ai8Json.value(QStringLiteral("port")).toString() == QStringLiteral("/dev/ttyAI8_ALT") &&
+                ai8Json.value(QStringLiteral("baud")).toInt() == 115200 &&
+                std::abs(ai8Json.value(QStringLiteral("frequency_hz")).toDouble() - 12.0) < 0.01,
+            "remote edited AI-8 fields are serialized into SkyConfig JSON");
     require(uiJson.contains(QStringLiteral("wave_tcp")) && uiJson.contains(QStringLiteral("telemetry")),
             "remote-only Wave TCP and telemetry sections are preserved");
     require(!uiJson.contains(QStringLiteral("ai8")) &&
                 !uiJson.contains(QStringLiteral("pressure_source")) &&
                 !uiJson.contains(QStringLiteral("humidity_source")),
-            "unsupported AI-8 and local source fields are not serialized to SkyConfig");
+            "remote SkyConfig uses canonical nested source fields and AI-8 section");
 
     rawModeButton->click();
     VaporViewTest::processEventsFor(120);
@@ -723,6 +752,9 @@ int main(int argc, char **argv)
             "switching back to Local restores the local EPSILON serial port");
     require(pressureSourceCombo->isVisible() && humiditySourceCombo->isVisible(),
             "local source selectors reappear after returning from remote mode");
+    require(pressureSourceCombo->currentData().toString() == QStringLiteral("bmp390") &&
+                humiditySourceCombo->currentData().toString() == QStringLiteral("sht45"),
+            "switching back to Local restores local pressure and humidity sources");
 
     window.close();
     VaporView::setSettingsWritesSuspended(false);

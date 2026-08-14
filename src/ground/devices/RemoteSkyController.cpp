@@ -76,6 +76,17 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
                     emit temperatureControllerStatusUpdated(data);
                 }, Qt::QueuedConnection);
             }, Qt::DirectConnection);
+    connect(&service_, &GroundTelemetryService::ai8TemperatureControllerStatusUpdated,
+            this, [this](const Ai8TemperatureControllerProtocol::LiveData& data) {
+                const quint64 generation = service_.linkGeneration();
+                QMetaObject::invokeMethod(this, [this, generation, data]() {
+                    if (!isCurrentOpenEvent(generation)) return;
+                    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+                    state_.notePacket(MsgType::Ai8TemperatureControllerStatus, nowMs);
+                    state_.noteDeviceData(SkyDeviceId::Ai8TemperatureController, nowMs);
+                    emit ai8TemperatureControllerStatusUpdated(data);
+                }, Qt::QueuedConnection);
+            }, Qt::DirectConnection);
     connect(&service_, &GroundTelemetryService::commandAckReceived,
             this, [this](const CommandAck& ack) {
                 const quint64 generation = service_.linkGeneration();

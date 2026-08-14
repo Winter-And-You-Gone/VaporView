@@ -1,6 +1,7 @@
 #ifndef VaporView_TELEMETRY_CODEC_H_
 #define VaporView_TELEMETRY_CODEC_H_
 
+#include "Ai8TemperatureControllerProtocol.h"
 #include "TelemetryTypes.h"
 #include "data_types.h"
 #include "LogRecord.h"
@@ -53,6 +54,11 @@ public:
     static bool parsePeakSearchRange(const QByteArray& payload, PeakSearchRange& range);
     static QByteArray serializeTemperatureControllerStatus(const TemperatureControllerData& data);
     static bool parseTemperatureControllerStatus(const QByteArray& payload, TemperatureControllerData& data);
+    static QByteArray serializeAi8TemperatureControllerStatus(
+        const Ai8TemperatureControllerProtocol::LiveData& data);
+    static bool parseAi8TemperatureControllerStatus(
+        const QByteArray& payload,
+        Ai8TemperatureControllerProtocol::LiveData& data);
     static QByteArray serializeTemperatureControllerCommand(const TemperatureControllerCommand& command);
     static bool parseTemperatureControllerCommand(const QByteArray& payload, TemperatureControllerCommand& command);
     static QByteArray serializeLogRecord(const LogRecord& record);

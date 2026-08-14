@@ -1109,25 +1109,7 @@ void Ai8TemperatureControllerPanel::setEnglish(bool english)
     updateRunStateAccessibility();
 
     updateStatusText();
-    const QString backendToolTip = backend_connected_
-        ? (english
-               ? QStringLiteral("Read and write use Modbus-RTU; every write is confirmed by read-back.")
-               : QStringLiteral("读写使用 Modbus-RTU；每次写入后都会回读确认。"))
-        : (english
-               ? QStringLiteral("Select the AI-8288 serial port and connect first.")
-               : QStringLiteral("请先选择 AI-8288 串口并执行连接。"));
-    if (protocol_status_label_)
-    {
-        protocol_status_label_->setToolTip(backendToolTip);
-    }
-    if (read_button_)
-    {
-        read_button_->setToolTip(backendToolTip);
-    }
-    if (write_button_)
-    {
-        write_button_->setToolTip(backendToolTip);
-    }
+    refreshPageCommandControls();
     if (temperature_plot_)
     {
         temperature_plot_->setEnglish(english);
@@ -1144,10 +1126,44 @@ void Ai8TemperatureControllerPanel::setBackendConnected(bool connected, const QS
     {
         operation_status_.clear();
     }
-    if (read_button_) read_button_->setEnabled(connected);
-    if (write_button_) write_button_->setEnabled(connected);
+    refreshPageCommandControls();
     updateStatusText();
     emit outputStatusChanged();
+}
+
+void Ai8TemperatureControllerPanel::setPageCommandsEnabled(bool enabled, const QString& disabledToolTip)
+{
+    page_commands_enabled_ = enabled;
+    page_commands_disabled_tooltip_ = disabledToolTip;
+    refreshPageCommandControls();
+}
+
+void Ai8TemperatureControllerPanel::refreshPageCommandControls()
+{
+    const bool commandsEnabled = backend_connected_ && page_commands_enabled_;
+    const QString backendToolTip = !page_commands_enabled_ && !page_commands_disabled_tooltip_.isEmpty()
+        ? page_commands_disabled_tooltip_
+        : (backend_connected_
+               ? (english_
+                      ? QStringLiteral("Read and write use Modbus-RTU; every write is confirmed by read-back.")
+                      : QStringLiteral("读写使用 Modbus-RTU；每次写入后都会回读确认。"))
+               : (english_
+                      ? QStringLiteral("Select the AI-8288 serial port and connect first.")
+                      : QStringLiteral("请先选择 AI-8288 串口并执行连接。")));
+    if (protocol_status_label_)
+    {
+        protocol_status_label_->setToolTip(backendToolTip);
+    }
+    if (read_button_)
+    {
+        read_button_->setEnabled(commandsEnabled);
+        read_button_->setToolTip(backendToolTip);
+    }
+    if (write_button_)
+    {
+        write_button_->setEnabled(commandsEnabled);
+        write_button_->setToolTip(backendToolTip);
+    }
 }
 
 void Ai8TemperatureControllerPanel::setProtocolStatusLabel(QLabel *label)

@@ -88,6 +88,7 @@ private slots:
     void sendHeartbeat();
     void sendTelemetryStatus();
     void sendTemperatureControllerStatus();
+    void sendAi8TemperatureControllerStatus();
 
 private:
     void dispatchFrame(const TelemetryFrame& frame);

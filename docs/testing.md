@@ -57,6 +57,13 @@ cmake --build build/Release --config Release --target temperature_controller_pro
 ctest --test-dir build/Release -C Release -L protocol --output-on-failure
 ```
 
+Sky 设备覆盖、模拟模式、本地 IPC/TUI 和统一 Device Config：
+
+```powershell
+cmake --build build/Release --config Release --target telemetry_codec_test sky_device_manager_simulation_test sky_ground_simulation_e2e_test sky_session_recorder_test sky_local_ipc_client_test sky_tui_controller_device_test device_config_layout_test
+ctest --test-dir build/Release -C Release -R "^(telemetry_codec_test|sky_device_manager_simulation_test|sky_ground_simulation_e2e_test|sky_session_recorder_test|sky_local_ipc_client_test|sky_tui_controller_device_test|device_config_layout_test)$" --output-on-failure
+```
+
 ## 标签
 
 | 标签 | 用途 |

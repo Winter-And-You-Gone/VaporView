@@ -57,6 +57,7 @@ int main(int argc, char **argv)
     bool ackReceived = false;
     bool statusReceived = false;
     bool logReceived = false;
+    bool dashboardDeviceDataReceived = false;
     bool localStructuredLogReceived = false;
     QObject::connect(&client, &VaporView::SkyLocalIpcClient::connectedChanged, [&](bool value) {
         connected = value;
@@ -89,6 +90,14 @@ int main(int argc, char **argv)
                       record.message == QStringLiteral("IPC log test") &&
                       record.fields.value(QStringLiteral("event")).toString() ==
                           QStringLiteral("sky_ipc_test_log");
+    });
+    QObject::connect(&client, &VaporView::SkyLocalIpcClient::dashboardUpdated, [&]() {
+        const VaporView::SkyDashboardSnapshot dashboard = client.dashboardSnapshot();
+        dashboardDeviceDataReceived =
+            dashboard.temperature_controller.valid &&
+            std::abs(dashboard.temperature_controller.channels[0].target_temperature_c - 31.0) < 0.001 &&
+            dashboard.ai8_temperature_controller.valid &&
+            std::abs(dashboard.ai8_temperature_controller.measuredC[7] - 27.5) < 0.001;
     });
 
     client.connectToCore(QStringLiteral("127.0.0.1"), server.serverPort());
@@ -152,9 +161,29 @@ int main(int argc, char **argv)
                                       VaporView::TelemetryCodec::serializeLogRecord(logRecord),
                                       3,
                                       nowUs()));
+    VaporView::TemperatureControllerData rd105;
+    rd105.valid = true;
+    rd105.channels[0].target_temperature_c = 31.0;
+    rd105.channels[0].measured_temperature_c = 29.5;
+    socket->write(encoder.encodeFrame(VaporView::MsgType::TemperatureControllerStatus,
+                                      VaporView::TelemetryCodec::serializeTemperatureControllerStatus(rd105),
+                                      4,
+                                      nowUs()));
+    VaporView::Ai8TemperatureControllerProtocol::LiveData ai8;
+    ai8.valid = true;
+    ai8.controlStatesValid = true;
+    for (int index = 0; index < VaporView::Ai8TemperatureControllerProtocol::kChannelCount; ++index)
+    {
+        ai8.measuredC[static_cast<size_t>(index)] = 20.5 + index;
+    }
+    socket->write(encoder.encodeFrame(VaporView::MsgType::Ai8TemperatureControllerStatus,
+                                      VaporView::TelemetryCodec::serializeAi8TemperatureControllerStatus(ai8),
+                                      5,
+                                      nowUs()));
     socket->flush();
 
-    require(waitUntil([&]() { return ackReceived && statusReceived && logReceived; }), "client parses ack, status and log");
+    require(waitUntil([&]() { return ackReceived && statusReceived && logReceived && dashboardDeviceDataReceived; }),
+            "client parses ack, status, log and temperature dashboard frames");
 
     const quint16 shutdownSeq = client.requestCoreShutdown();
     require(shutdownSeq != 0, "client sends shutdown request");

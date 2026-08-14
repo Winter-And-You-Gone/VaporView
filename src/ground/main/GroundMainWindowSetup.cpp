@@ -2528,8 +2528,9 @@ void MainWindow::setupDeviceConfigPage()
     createColumnHeader(state_->device_config_.port_header_lbl, 1, 1, kDeviceConfigPortComboWidth);
     createColumnHeader(state_->device_config_.baud_header_lbl, 2, 1, kDeviceConfigBaudComboWidth);
     createColumnHeader(state_->device_config_.rate_header_lbl, 3, 2);
-    createColumnHeader(state_->device_config_.source_header_lbl, 5, 1, kDeviceConfigSourceComboWidth);
-    createColumnHeader(state_->device_config_.action_header_lbl, 6, 1);
+    createColumnHeader(state_->device_config_.enabled_header_lbl, 5, 1);
+    createColumnHeader(state_->device_config_.source_header_lbl, 6, 1, kDeviceConfigSourceComboWidth);
+    createColumnHeader(state_->device_config_.action_header_lbl, 7, 1);
 
     auto addPortRow = [this, formLayout, formWidget, &createCombo](
             QLabel *&label,
@@ -2701,7 +2702,7 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.ptb_source_combo->setToolTip(state_->is_english_
         ? QStringLiteral("Pressure source. BMP390 expects the Waveshare example serial output at 115200 8N1.")
         : QStringLiteral("气压来源。BMP390 使用微雪示例程序通过 115200 8N1 串口输出。"));
-    formLayout->addWidget(state_->device_config_.ptb_source_combo, 2, 5, Qt::AlignVCenter);
+    formLayout->addWidget(state_->device_config_.ptb_source_combo, 2, 6, Qt::AlignVCenter);
 
     state_->device_config_.hmp_source_combo = createCombo(kDeviceConfigSourceComboWidth);
     state_->device_config_.hmp_source_combo->setObjectName(QStringLiteral("deviceHumiditySourceCombo"));
@@ -2711,13 +2712,20 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.hmp_source_combo->setToolTip(state_->is_english_
         ? QStringLiteral("Temperature/humidity source. SHT45 expects Adafruit example serial output at 115200 8N1.")
         : QStringLiteral("温湿度来源。SHT45 使用 Adafruit 示例程序通过 115200 8N1 串口输出。"));
-    formLayout->addWidget(state_->device_config_.hmp_source_combo, 3, 5, Qt::AlignVCenter);
+    formLayout->addWidget(state_->device_config_.hmp_source_combo, 3, 6, Qt::AlignVCenter);
     auto bindSensorSourceBaud = [this](QComboBox *sourceCombo,
                                        QComboBox *deviceBaudCombo,
                                        QComboBox *homeBaudCombo) {
         sourceCombo->setProperty(kSensorBaudSourceProperty, sourceCombo->currentData().toString());
         connect(sourceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
                 [this, sourceCombo, deviceBaudCombo, homeBaudCombo](int) {
+            if (isRemoteSkyMode())
+            {
+                sourceCombo->setProperty(kSensorBaudSourceProperty, sourceCombo->currentData().toString());
+                updateDeviceConfigTexts();
+                markRemoteSkyConfigDirty();
+                return;
+            }
             QSettings settings = VaporView::applicationConfigSettings();
             settings.beginGroup(QStringLiteral("MainWindow"));
             const QString previousSource = sourceCombo->property(kSensorBaudSourceProperty).toString();
@@ -2770,14 +2778,8 @@ void MainWindow::setupDeviceConfigPage()
                           QStringLiteral("deviceRemoteLidarEnabledCheck"));
     addRemoteEnabledCheck(state_->device_config_.temperature_enabled_check, 4,
                           QStringLiteral("deviceRemoteTemperatureEnabledCheck"));
-    state_->device_config_.ai8_remote_unsupported_lbl = new QLabel(formWidget);
-    state_->device_config_.ai8_remote_unsupported_lbl->setObjectName(QStringLiteral("fieldLabel"));
-    state_->device_config_.ai8_remote_unsupported_lbl->setAlignment(Qt::AlignCenter);
-    state_->device_config_.ai8_remote_unsupported_lbl->setVisible(false);
-    formLayout->addWidget(state_->device_config_.ai8_remote_unsupported_lbl,
-                          6,
-                          5,
-                          Qt::AlignVCenter | Qt::AlignHCenter);
+    addRemoteEnabledCheck(state_->device_config_.ai8_temperature_enabled_check, 5,
+                          QStringLiteral("deviceRemoteAi8TemperatureEnabledCheck"));
 
     auto addDeviceRemoteButton = [this, formLayout, formWidget](
             int row,
@@ -2800,7 +2802,7 @@ void MainWindow::setupDeviceConfigPage()
             triggerHomeDeviceAction(device);
         });
         layout->addWidget(actionButton);
-        formLayout->addWidget(buttonsWidget, row + 1, 6, Qt::AlignVCenter | Qt::AlignHCenter);
+        formLayout->addWidget(buttonsWidget, row + 1, 7, Qt::AlignVCenter | Qt::AlignHCenter);
     };
     addDeviceRemoteButton(0, state_->device_config_.epsilon_remote_buttons_widget,
                            state_->device_config_.epsilon_remote_action_btn,
@@ -3078,6 +3080,17 @@ void MainWindow::setupDeviceConfigPage()
     }
     connect(state_->device_config_.remote_sky_wave_enabled_check, &QCheckBox::toggled, this, markRemoteDirty);
     connect(state_->device_config_.remote_sky_wave_host_edit, &QLineEdit::textEdited, this, markRemoteDirty);
+    for (QComboBox *combo : {state_->device_config_.ai8_temperature_port_combo,
+                             state_->device_config_.ai8_temperature_baud_combo,
+                             state_->device_config_.ai8_temperature_rate_combo})
+    {
+        connect(combo, &QComboBox::currentTextChanged, this, [this]() {
+            if (isRemoteSkyMode())
+            {
+                markRemoteSkyConfigDirty();
+            }
+        });
+    }
     connect(state_->device_config_.remote_sky_raw_json_edit, &QPlainTextEdit::textChanged, this, [this]() {
         if (state_->remote_sky_config_raw_mode_)
         {
@@ -3414,9 +3427,8 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.port_header_lbl) state_->device_config_.port_header_lbl->setText(state_->is_english_ ? QStringLiteral("Serial Port") : QStringLiteral("串口"));
     if (state_->device_config_.baud_header_lbl) state_->device_config_.baud_header_lbl->setText(state_->is_english_ ? QStringLiteral("Baud Rate") : QStringLiteral("波特率"));
     if (state_->device_config_.rate_header_lbl) state_->device_config_.rate_header_lbl->setText(state_->is_english_ ? QStringLiteral("Rate / Poll") : QStringLiteral("频率/轮询"));
-    if (state_->device_config_.source_header_lbl) state_->device_config_.source_header_lbl->setText(remote
-        ? (state_->is_english_ ? QStringLiteral("Enabled") : QStringLiteral("启用"))
-        : (state_->is_english_ ? QStringLiteral("Source") : QStringLiteral("来源")));
+    if (state_->device_config_.enabled_header_lbl) state_->device_config_.enabled_header_lbl->setText(state_->is_english_ ? QStringLiteral("Enabled") : QStringLiteral("启用"));
+    if (state_->device_config_.source_header_lbl) state_->device_config_.source_header_lbl->setText(state_->is_english_ ? QStringLiteral("Source") : QStringLiteral("来源"));
     if (state_->device_config_.action_header_lbl) state_->device_config_.action_header_lbl->setText(state_->is_english_ ? QStringLiteral("Link") : QStringLiteral("链路操作"));
     if (state_->device_config_.epsilon_lbl) state_->device_config_.epsilon_lbl->setText(state_->is_english_ ? QStringLiteral("EPSILON2-D4G Integrated Navigation") : QStringLiteral("EPSILON2-D4G 组合导航"));
     if (state_->device_config_.ptb_source_combo)
@@ -3518,10 +3530,6 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.remote_sky_raw_mode_btn) state_->device_config_.remote_sky_raw_mode_btn->setText(state_->remote_sky_config_raw_mode_
         ? (state_->is_english_ ? "Visual" : "可视化")
         : (state_->is_english_ ? "JSON" : "JSON"));
-    if (state_->device_config_.ai8_remote_unsupported_lbl)
-    {
-        state_->device_config_.ai8_remote_unsupported_lbl->setText(state_->is_english_ ? "Unsupported" : "不支持");
-    }
     for (VaporView::SkyDeviceId device : {VaporView::SkyDeviceId::Epsilon,
                                           VaporView::SkyDeviceId::Ptb,
                                           VaporView::SkyDeviceId::Hmp,
@@ -3616,22 +3624,21 @@ void MainWindow::updateDeviceConfigState()
 
     if (state_->device_config_.epsilon_rate_lbl) state_->device_config_.epsilon_rate_lbl->setVisible(remote);
     if (state_->device_config_.epsilon_rate_combo) state_->device_config_.epsilon_rate_combo->setVisible(remote);
-    if (state_->device_config_.ptb_source_combo) state_->device_config_.ptb_source_combo->setVisible(!remote);
-    if (state_->device_config_.hmp_source_combo) state_->device_config_.hmp_source_combo->setVisible(!remote);
+    if (state_->device_config_.enabled_header_lbl) state_->device_config_.enabled_header_lbl->setVisible(remote);
+    if (state_->device_config_.source_header_lbl) state_->device_config_.source_header_lbl->setVisible(true);
+    if (state_->device_config_.ptb_source_combo) state_->device_config_.ptb_source_combo->setVisible(true);
+    if (state_->device_config_.hmp_source_combo) state_->device_config_.hmp_source_combo->setVisible(true);
     for (QCheckBox *check : {state_->device_config_.epsilon_enabled_check,
                              state_->device_config_.ptb_enabled_check,
                              state_->device_config_.hmp_enabled_check,
                              state_->device_config_.lidar_enabled_check,
-                             state_->device_config_.temperature_enabled_check})
+                             state_->device_config_.temperature_enabled_check,
+                             state_->device_config_.ai8_temperature_enabled_check})
     {
         if (check)
         {
             check->setVisible(remote);
         }
-    }
-    if (state_->device_config_.ai8_remote_unsupported_lbl)
-    {
-        state_->device_config_.ai8_remote_unsupported_lbl->setVisible(remote);
     }
     const QList<QWidget *> ai8Widgets = {
         state_->device_config_.ai8_temperature_port_combo,
@@ -3643,7 +3650,7 @@ void MainWindow::updateDeviceConfigState()
     {
         if (widget)
         {
-            widget->setVisible(!remote);
+            widget->setVisible(true);
         }
     }
     if (state_->device_config_.remote_sky_config_card)

@@ -13,6 +13,7 @@ struct SerialDeviceConfig
     QString port;
     int baud_rate = 115200;
     double frequency_hz = 10.0;
+    QString source;
 
     bool operator==(const SerialDeviceConfig& other) const;
     bool operator!=(const SerialDeviceConfig& other) const;
@@ -62,6 +63,7 @@ struct SkyConfigDiff
     bool hmp_changed = false;
     bool lidar_changed = false;
     bool temperature_controller_changed = false;
+    bool ai8_temperature_controller_changed = false;
     bool wave_tcp_changed = false;
     bool telemetry_changed = false;
 };
@@ -73,6 +75,7 @@ struct SkyConfig
     SerialDeviceConfig hmp;
     SerialDeviceConfig lidar;
     TemperatureControllerConfig temperature_controller;
+    TemperatureControllerConfig ai8_temperature_controller;
     WaveTcpConfig wave_tcp;
     TelemetryRateConfig telemetry;
 

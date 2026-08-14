@@ -1,6 +1,7 @@
 #ifndef VaporView_SKY_DEVICE_MANAGER_H_
 #define VaporView_SKY_DEVICE_MANAGER_H_
 
+#include "Ai8TemperatureControllerCollector.h"
 #include "LogRecord.h"
 #include "SkyConfig.h"
 #include "TelemetryTypes.h"
@@ -73,6 +74,7 @@ public:
     HmpData latestHmp() const;
     LidarData latestLidar() const;
     TemperatureControllerData latestTemperatureController() const;
+    Ai8TemperatureControllerProtocol::LiveData latestAi8TemperatureController() const;
     QVector<float> latestRawWaveform() const;
     QVector<float> latestWaveform() const;
     WaveformFeature latestWaveformFeature() const;
@@ -85,6 +87,7 @@ signals:
     void hmpDataUpdated(const HmpData& data);
     void lidarDataUpdated(const LidarData& data);
     void temperatureControllerDataUpdated(const TemperatureControllerData& data);
+    void ai8TemperatureControllerDataUpdated(const Ai8TemperatureControllerProtocol::LiveData& data);
     void waveformUpdated(quint64 timestampUs, QVector<float> samples);
     void waveformFeatureUpdated(const WaveformFeature& feature);
     void epsilonRawFrameReceived(quint64 timestampUs, quint8 packetId, quint8 serialNumber, QByteArray frame);
@@ -124,6 +127,7 @@ private:
     void handleHmpData(const HmpData& data);
     void handleLidarData(const LidarData& data);
     void handleTemperatureControllerData(const TemperatureControllerData& data);
+    void handleAi8TemperatureControllerData(const Ai8TemperatureControllerProtocol::LiveData& data);
     struct PendingRawEvent
     {
         SkyDeviceId deviceId = SkyDeviceId::All;
@@ -150,12 +154,14 @@ private:
     DeviceStatusItem lidar_status_;
     DeviceStatusItem wave_tcp_status_;
     DeviceStatusItem temperature_controller_status_;
+    DeviceStatusItem ai8_temperature_controller_status_;
 
     std::shared_ptr<EpsilonCollector> epsilon_;
     std::shared_ptr<PtbCollector> ptb_;
     std::shared_ptr<HmpCollector> hmp_;
     std::shared_ptr<LidarCollector> lidar_;
     std::shared_ptr<TemperatureControllerCollector> temperature_controller_;
+    std::shared_ptr<Ai8TemperatureControllerCollector> ai8_temperature_controller_;
 
     QTcpSocket *wave_socket_ = nullptr;
     QByteArray wave_buffer_;
@@ -170,6 +176,7 @@ private:
     HmpData latest_hmp_;
     LidarData latest_lidar_;
     TemperatureControllerData latest_temperature_controller_;
+    Ai8TemperatureControllerProtocol::LiveData latest_ai8_temperature_controller_;
     QVector<float> latest_raw_waveform_;
     QVector<float> latest_waveform_;
     WaveformFeature latest_feature_;

@@ -180,10 +180,6 @@ VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId 
     }
     if (isRemoteSkyMode())
     {
-        if (device == VaporView::SkyDeviceId::Ai8TemperatureController)
-        {
-            return VaporView::DeviceState::Disabled;
-        }
         if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
         {
             return VaporView::DeviceState::Disabled;
@@ -274,10 +270,6 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
     }
     if (isRemoteSkyMode())
     {
-        if (device == VaporView::SkyDeviceId::Ai8TemperatureController)
-        {
-            return;
-        }
         if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
         {
             return;
@@ -739,6 +731,7 @@ void MainWindow::finishConnectionAttempt(bool connected)
                            : QStringLiteral("19200"))
             : QString();
         state_->ai8_temperature_controller_panel_->setBackendConnected(ai8Connected, detail);
+        state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(true);
     }
     updateAi8TemperatureTitleStatus();
     if (ai8Connected)
@@ -1432,7 +1425,20 @@ void MainWindow::onAi8TemperatureControllerDataReady()
 
 void MainWindow::onAi8ReadPageRequested()
 {
-    if (!state_->ai8_temperature_controller_panel_ || !state_->local_connection_controller_)
+    if (!state_->ai8_temperature_controller_panel_)
+    {
+        return;
+    }
+    if (isRemoteSkyMode())
+    {
+        state_->ai8_temperature_controller_panel_->setOperationStatus(
+            state_->is_english_
+                ? QStringLiteral("Remote Sky AI-8288 parameter read is not wired yet.")
+                : QStringLiteral("Remote Sky AI-8288 参数读取尚未接入远程命令。"),
+            false);
+        return;
+    }
+    if (!state_->local_connection_controller_)
     {
         return;
     }
@@ -1483,7 +1489,20 @@ void MainWindow::onAi8ReadPageRequested()
 
 void MainWindow::onAi8WritePageRequested()
 {
-    if (!state_->ai8_temperature_controller_panel_ || !state_->local_connection_controller_)
+    if (!state_->ai8_temperature_controller_panel_)
+    {
+        return;
+    }
+    if (isRemoteSkyMode())
+    {
+        state_->ai8_temperature_controller_panel_->setOperationStatus(
+            state_->is_english_
+                ? QStringLiteral("Remote Sky AI-8288 parameter write is not wired yet.")
+                : QStringLiteral("Remote Sky AI-8288 参数写入尚未接入远程命令。"),
+            false);
+        return;
+    }
+    if (!state_->local_connection_controller_)
     {
         return;
     }

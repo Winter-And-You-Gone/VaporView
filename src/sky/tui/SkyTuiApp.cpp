@@ -1516,6 +1516,14 @@ void SkyTuiApp::drawDeviceOverview(SkyTuiScreenBuffer& output, int top, int bott
                                                 freshnessText(d.ptb_stale, d.ptb.valid))
         << QStringLiteral("激光测距：%1 m  %2").arg(d.lidar.valid ? QString::number(d.lidar.distance_m, 'f', 2) : QStringLiteral("---"),
                                                    freshnessText(d.lidar_stale, d.lidar.valid))
+        << QStringLiteral("RD105：CH1 %1 -> %2 °C  %3")
+               .arg(d.temperature_controller.valid ? QString::number(d.temperature_controller.channels[0].measured_temperature_c, 'f', 1) : QStringLiteral("---"),
+                    d.temperature_controller.valid ? QString::number(d.temperature_controller.channels[0].target_temperature_c, 'f', 1) : QStringLiteral("---"),
+                    freshnessText(d.temperature_controller_stale, d.temperature_controller.valid))
+        << QStringLiteral("AI-8：CH1 %1 °C / CH8 %2 °C  %3")
+               .arg(d.ai8_temperature_controller.valid ? QString::number(d.ai8_temperature_controller.measuredC[0], 'f', 1) : QStringLiteral("---"),
+                    d.ai8_temperature_controller.valid ? QString::number(d.ai8_temperature_controller.measuredC[7], 'f', 1) : QStringLiteral("---"),
+                    freshnessText(d.ai8_temperature_controller_stale, d.ai8_temperature_controller.valid))
         << QStringLiteral("Roll/Pitch/Yaw: %1 / %2 / %3")
                .arg(d.epsilon.valid ? QString::number(d.epsilon.roll_deg, 'f', 1) : QStringLiteral("---"),
                     d.epsilon.valid ? QString::number(d.epsilon.pitch_deg, 'f', 1) : QStringLiteral("---"),
@@ -1543,6 +1551,9 @@ void SkyTuiApp::drawDeviceOverview(SkyTuiScreenBuffer& output, int top, int bott
                      d.ptb.valid ? QString::number(d.ptb.pressure_hpa, 'f', 1) : QStringLiteral("---")),
             QStringLiteral("Lidar: %1 m")
                 .arg(d.lidar.valid ? QString::number(d.lidar.distance_m, 'f', 2) : QStringLiteral("---")),
+            QStringLiteral("温控: RD105 %1 / AI-8 CH1 %2")
+                .arg(d.temperature_controller.valid ? QString::number(d.temperature_controller.channels[0].measured_temperature_c, 'f', 1) : QStringLiteral("---"),
+                     d.ai8_temperature_controller.valid ? QString::number(d.ai8_temperature_controller.measuredC[0], 'f', 1) : QStringLiteral("---")),
             QStringLiteral("姿态: Roll/Pitch/Yaw %1 / %2 / %3")
                 .arg(d.epsilon.valid ? QString::number(d.epsilon.roll_deg, 'f', 1) : QStringLiteral("---"),
                      d.epsilon.valid ? QString::number(d.epsilon.pitch_deg, 'f', 1) : QStringLiteral("---"),
@@ -1871,16 +1882,30 @@ QString SkyTuiApp::deviceEndpointText(SkyDeviceId id) const
         return QStringLiteral("串口 %1 @ %2").arg(model_.config.epsilon.port.isEmpty() ? QStringLiteral("-") : model_.config.epsilon.port)
                                            .arg(model_.config.epsilon.baud_rate);
     case SkyDeviceId::Ptb:
-        return QStringLiteral("串口 %1 @ %2").arg(model_.config.ptb.port.isEmpty() ? QStringLiteral("-") : model_.config.ptb.port)
-                                           .arg(model_.config.ptb.baud_rate);
+        return QStringLiteral("%1 串口 %2 @ %3")
+            .arg(model_.config.ptb.source.isEmpty() ? QStringLiteral("ptb210") : model_.config.ptb.source,
+                 model_.config.ptb.port.isEmpty() ? QStringLiteral("-") : model_.config.ptb.port)
+            .arg(model_.config.ptb.baud_rate);
     case SkyDeviceId::Hmp:
-        return QStringLiteral("串口 %1 @ %2").arg(model_.config.hmp.port.isEmpty() ? QStringLiteral("-") : model_.config.hmp.port)
-                                           .arg(model_.config.hmp.baud_rate);
+        return QStringLiteral("%1 串口 %2 @ %3")
+            .arg(model_.config.hmp.source.isEmpty() ? QStringLiteral("hmp3") : model_.config.hmp.source,
+                 model_.config.hmp.port.isEmpty() ? QStringLiteral("-") : model_.config.hmp.port)
+            .arg(model_.config.hmp.baud_rate);
     case SkyDeviceId::Lidar:
         return QStringLiteral("串口 %1 @ %2").arg(model_.config.lidar.port.isEmpty() ? QStringLiteral("-") : model_.config.lidar.port)
                                            .arg(model_.config.lidar.baud_rate);
     case SkyDeviceId::WaveTcp:
         return QStringLiteral("波形源 %1:%2").arg(model_.config.wave_tcp.host).arg(model_.config.wave_tcp.port);
+    case SkyDeviceId::TemperatureController:
+        return QStringLiteral("RD105 串口 %1 @ %2 addr %3")
+            .arg(model_.config.temperature_controller.port.isEmpty() ? QStringLiteral("-") : model_.config.temperature_controller.port)
+            .arg(model_.config.temperature_controller.baud_rate)
+            .arg(model_.config.temperature_controller.slave_address);
+    case SkyDeviceId::Ai8TemperatureController:
+        return QStringLiteral("AI-8 串口 %1 @ %2 addr %3")
+            .arg(model_.config.ai8_temperature_controller.port.isEmpty() ? QStringLiteral("-") : model_.config.ai8_temperature_controller.port)
+            .arg(model_.config.ai8_temperature_controller.baud_rate)
+            .arg(model_.config.ai8_temperature_controller.slave_address);
     default:
         return QStringLiteral("端点 -");
     }

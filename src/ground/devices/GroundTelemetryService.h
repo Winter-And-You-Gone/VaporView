@@ -53,6 +53,7 @@ signals:
     void waveformFeatureUpdated(const WaveformFeature& feature);
     void statusUpdated(const TelemetryStatus& status);
     void temperatureControllerStatusUpdated(const TemperatureControllerData& data);
+    void ai8TemperatureControllerStatusUpdated(const Ai8TemperatureControllerProtocol::LiveData& data);
     void commandAckReceived(const CommandAck& ack);
     void commandTimedOut(CommandId commandId, quint16 commandSeq);
     void skyConfigReceived(const QJsonObject& config);

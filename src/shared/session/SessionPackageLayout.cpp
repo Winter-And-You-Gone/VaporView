@@ -13,6 +13,7 @@ const SessionPackageLayout& standardSessionPackageLayout()
         QStringLiteral("session.json"),
         QStringLiteral("sensors/sensor_summary.csv"),
         QStringLiteral("sensors/temperature_controller.csv"),
+        QStringLiteral("sensors/ai8_temperature_controller.csv"),
         QStringLiteral("sensors/waveform_features.csv"),
         QStringLiteral("raw/navigation.dat"),
         QStringLiteral("raw/pressure.dat"),
@@ -46,6 +47,7 @@ QStringList standardSessionFiles()
         layout.rawFormatDocumentPath,
         layout.sensorSummaryCsvPath,
         layout.temperatureControllerCsvPath,
+        layout.ai8TemperatureControllerCsvPath,
         layout.waveformFeaturesCsvPath,
         layout.navigationRawPath,
         layout.pressureRawPath,
@@ -87,6 +89,10 @@ const SessionPathAliases& sessionPathAliases(SessionFileKind kind)
         {layout.temperatureControllerCsvPath,
          {QStringLiteral("sensors/rd105_temperature_controller.csv")},
          {QStringLiteral("temperature_controller_csv")},
+         {}},
+        {layout.ai8TemperatureControllerCsvPath,
+         {},
+         {QStringLiteral("ai8_temperature_controller_csv")},
          {}},
         {layout.waveformFeaturesCsvPath,
          {},
@@ -142,6 +148,17 @@ QString temperatureControllerCsvHeader()
         "ch1_mode,ch1_max_output_percent,ch1_kp,ch1_ki,ch1_kd,"
         "ch2_target_c,ch2_measured_c,ch2_output_percent,ch2_output_current_a,ch2_enabled,"
         "ch2_mode,ch2_max_output_percent,ch2_kp,ch2_ki,ch2_kd\n");
+}
+
+QString ai8TemperatureControllerCsvHeader()
+{
+    return QStringLiteral(
+        "host_time_us,valid,control_states_valid,alarm_status_valid,main_status_valid,main_status_raw,"
+        "ch1_measured_c,ch2_measured_c,ch3_measured_c,ch4_measured_c,"
+        "ch5_measured_c,ch6_measured_c,ch7_measured_c,ch8_measured_c,"
+        "ch1_control_state,ch2_control_state,ch3_control_state,ch4_control_state,"
+        "ch5_control_state,ch6_control_state,ch7_control_state,ch8_control_state,"
+        "alarm_status_1,alarm_status_2,alarm_status_3,alarm_status_4\n");
 }
 
 QString waveformPeaksCsvHeader()

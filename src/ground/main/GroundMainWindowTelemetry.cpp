@@ -214,6 +214,13 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
             {
                 invalidateTemperatureControllerDataUi();
             }
+            else if (item.device_id == VaporView::SkyDeviceId::Ai8TemperatureController &&
+                     state_->ai8_temperature_controller_panel_)
+            {
+                state_->ai8_temperature_controller_panel_->setBackendConnected(false);
+                state_->ai8_temperature_controller_panel_->applyLiveData({});
+                updateAi8TemperatureTitleStatus();
+            }
         }
     }
     if (state_->remote_wave_stream_auto_start_ &&
@@ -237,6 +244,26 @@ void MainWindow::onRemoteTemperatureControllerStatusUpdated(const VaporView::Tem
     {
         state_->device_panel_coordinator_->updateTemperatureData(state_->current_temperature_controller_);
     }
+}
+
+void MainWindow::onRemoteAi8TemperatureControllerStatusUpdated(
+    const VaporView::Ai8TemperatureControllerProtocol::LiveData& liveData)
+{
+    if (!state_->ai8_temperature_controller_panel_)
+    {
+        return;
+    }
+    const QString detail = state_->is_english_
+        ? QStringLiteral("Remote Sky")
+        : QStringLiteral("天空端远程");
+    state_->ai8_temperature_controller_panel_->setBackendConnected(true, detail);
+    state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(
+        false,
+        state_->is_english_
+            ? QStringLiteral("Remote Sky AI-8288 parameter read/write is not wired to remote commands yet.")
+            : QStringLiteral("Remote Sky AI-8288 参数读写尚未接入远程命令，不会操作本地设备。"));
+    state_->ai8_temperature_controller_panel_->applyLiveData(liveData);
+    updateAi8TemperatureTitleStatus();
 }
 
 void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)

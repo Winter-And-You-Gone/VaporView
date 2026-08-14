@@ -1,6 +1,7 @@
 #ifndef VaporView_SKY_SESSION_RECORDER_H_
 #define VaporView_SKY_SESSION_RECORDER_H_
 
+#include "Ai8TemperatureControllerProtocol.h"
 #include "TelemetryTypes.h"
 #include "LogRecord.h"
 #include "data_types.h"
@@ -42,6 +43,7 @@ public:
     quint64 waveformFeatureRecordCount() const;
     quint64 waveformSnapshotRecordCount() const;
     quint64 temperatureControllerRecordCount() const;
+    quint64 ai8TemperatureControllerRecordCount() const;
     quint64 rawNavigationRecordCount() const;
     quint64 rawPressureRecordCount() const;
     quint64 rawTemperatureHumidityRecordCount() const;
@@ -68,6 +70,8 @@ public:
                                 const QVector<float>& rawSamples,
                                 const QVector<float>& harmonicSamples);
     void recordTemperatureControllerStatus(quint64 hostTimeUs, const TemperatureControllerData& data);
+    void recordAi8TemperatureControllerStatus(quint64 hostTimeUs,
+                                              const Ai8TemperatureControllerProtocol::LiveData& data);
     void recordRawEpsilonFrame(quint64 hostTimeUs,
                                quint8 packetId,
                                quint8 serialNumber,
@@ -107,6 +111,7 @@ private:
     QString sensor_summary_filename_;
     QString feature_filename_;
     QString temperature_controller_filename_;
+    QString ai8_temperature_controller_filename_;
     QString navigation_raw_filename_;
     QString pressure_raw_filename_;
     QString temperature_humidity_raw_filename_;
@@ -118,6 +123,7 @@ private:
     QFile basic_record_file_;
     QFile feature_record_file_;
     QFile temperature_controller_record_file_;
+    QFile ai8_temperature_controller_record_file_;
     QFile navigation_raw_file_;
     QFile pressure_raw_file_;
     QFile temperature_humidity_raw_file_;
@@ -137,6 +143,7 @@ private:
     quint64 telemetry_row_count_ = 0;
     quint64 waveform_feature_count_ = 0;
     quint64 temperature_controller_count_ = 0;
+    quint64 ai8_temperature_controller_count_ = 0;
     quint64 waveform_file_count_ = 0;
     quint64 waveform_points_per_frame_ = 0;
     quint64 raw_navigation_record_count_ = 0;

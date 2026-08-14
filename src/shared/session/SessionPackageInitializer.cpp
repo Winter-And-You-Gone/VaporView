@@ -146,6 +146,12 @@ SessionPackageInitResult initializeSessionPackage(const SessionPackageInitOption
     {
         return fail(QStringLiteral("cannot create temperature_controller.csv: %1").arg(error));
     }
+    if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.ai8TemperatureControllerCsvPath),
+                       ai8TemperatureControllerCsvHeader(),
+                       &error))
+    {
+        return fail(QStringLiteral("cannot create ai8_temperature_controller.csv: %1").arg(error));
+    }
     if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.waveformFeaturesCsvPath),
                        waveformFeaturesCsvHeader(),
                        &error))

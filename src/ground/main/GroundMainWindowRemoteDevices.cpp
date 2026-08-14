@@ -388,6 +388,11 @@ void MainWindow::clearRemoteSkyDataUi()
     {
         state_->tcp_wave_panel_->setRemoteWaveTcpState(VaporView::DeviceState::Disconnected);
     }
+    if (state_->ai8_temperature_controller_panel_)
+    {
+        state_->ai8_temperature_controller_panel_->setBackendConnected(false);
+        state_->ai8_temperature_controller_panel_->applyLiveData({});
+    }
 
     if (state_->device_panel_coordinator_)
     {
@@ -432,6 +437,11 @@ void MainWindow::markRemoteSkyLinkClosed()
     if (state_->tcp_wave_panel_)
     {
         state_->tcp_wave_panel_->setRemoteWaveTcpState(VaporView::DeviceState::Disconnected);
+    }
+    if (state_->ai8_temperature_controller_panel_)
+    {
+        state_->ai8_temperature_controller_panel_->setBackendConnected(false);
+        state_->ai8_temperature_controller_panel_->applyLiveData({});
     }
     refreshRemoteSkyDataUi();
     updateSourceModeUi();
@@ -1535,8 +1545,7 @@ void MainWindow::updateTemperatureTitleButtonsState()
             }
             else if (remoteMode)
             {
-                enabled = device != VaporView::SkyDeviceId::Ai8TemperatureController &&
-                    linkOpen;
+                enabled = linkOpen;
             }
             else if (device == VaporView::SkyDeviceId::TemperatureController)
             {
@@ -2278,7 +2287,7 @@ void MainWindow::updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, Vap
         connectButton = state_->temperature_remote_connect_btn_; disconnectButton = state_->temperature_remote_disconnect_btn_; reconnectButton = state_->temperature_remote_reconnect_btn_;
         break;
     case VaporView::SkyDeviceId::Ai8TemperatureController:
-        return;
+        break;
     case VaporView::SkyDeviceId::WaveTcp:
         if (state_->tcp_wave_panel_)
         {

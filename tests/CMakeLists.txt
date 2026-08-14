@@ -274,6 +274,33 @@ target_include_directories(telemetry_tcp_link_test PRIVATE
 target_link_libraries(telemetry_tcp_link_test PRIVATE vaporview_sky_core)
 add_test(NAME telemetry_tcp_link_test COMMAND telemetry_tcp_link_test)
 
+add_executable(sky_ground_simulation_e2e_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/sky_ground_simulation_e2e_test.cpp
+)
+target_include_directories(sky_ground_simulation_e2e_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(sky_ground_simulation_e2e_test PRIVATE
+    vaporview_ground_device_core
+    Qt6::Network
+)
+add_dependencies(sky_ground_simulation_e2e_test VaporViewSkyCore)
+add_test(NAME sky_ground_simulation_e2e_test COMMAND sky_ground_simulation_e2e_test)
+set_tests_properties(sky_ground_simulation_e2e_test PROPERTIES
+    TIMEOUT 45
+    LABELS "integration;sky;tcp"
+)
+
+add_executable(sky_device_manager_simulation_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/sky_device_manager_simulation_test.cpp
+)
+target_include_directories(sky_device_manager_simulation_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+target_link_libraries(sky_device_manager_simulation_test PRIVATE vaporview_sky_core)
+add_test(NAME sky_device_manager_simulation_test COMMAND sky_device_manager_simulation_test)
+
 add_executable(sky_session_recorder_test
     ${CMAKE_CURRENT_SOURCE_DIR}/sky_session_recorder_test.cpp
 )
@@ -291,6 +318,15 @@ target_include_directories(sky_local_ipc_client_test PRIVATE
 )
 target_link_libraries(sky_local_ipc_client_test PRIVATE vaporview_sky_tui)
 add_test(NAME sky_local_ipc_client_test COMMAND sky_local_ipc_client_test)
+
+add_executable(sky_tui_controller_device_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/sky_tui_controller_device_test.cpp
+)
+target_include_directories(sky_tui_controller_device_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+target_link_libraries(sky_tui_controller_device_test PRIVATE vaporview_sky_tui)
+add_test(NAME sky_tui_controller_device_test COMMAND sky_tui_controller_device_test)
 
 add_executable(sky_ipc_log_test
     ${CMAKE_CURRENT_SOURCE_DIR}/sky_ipc_log_test.cpp
@@ -973,8 +1009,10 @@ set(VAPORVIEW_FAST_UNIT_TESTS
     lifecycle_breadcrumb_test
     telemetry_codec_test
     telemetry_tcp_link_test
+    sky_device_manager_simulation_test
     sky_session_recorder_test
     sky_local_ipc_client_test
+    sky_tui_controller_device_test
     visual_text_label_test
     segmented_switch_button_test
     session_time_format_test

@@ -165,7 +165,7 @@ QList<SkyTuiCommandItem> SkyTuiController::commandPalette() const
         {QStringLiteral("/overview"), QStringLiteral("打开设备总览")},
         {QStringLiteral("/home"), QStringLiteral("返回天空端首页")},
         {QStringLiteral("/status"), QStringLiteral("查看天空端运行状态、记录状态和链路统计")},
-        {QStringLiteral("/devices"), QStringLiteral("查看 EPSILON/PTB/HMP/Lidar/Wave TCP 设备状态")},
+        {QStringLiteral("/devices"), QStringLiteral("查看 EPSILON/PTB/HMP/Lidar/RD105/AI-8/Wave TCP 设备状态")},
         {QStringLiteral("/connect epsilon"), QStringLiteral("请求天空端连接 EPSILON")},
         {QStringLiteral("/disconnect epsilon"), QStringLiteral("请求天空端断开 EPSILON")},
         {QStringLiteral("/reconnect epsilon"), QStringLiteral("请求天空端重连 EPSILON")},
@@ -178,6 +178,12 @@ QList<SkyTuiCommandItem> SkyTuiController::commandPalette() const
         {QStringLiteral("/connect lidar"), QStringLiteral("请求天空端连接激光测距模块")},
         {QStringLiteral("/disconnect lidar"), QStringLiteral("请求天空端断开激光测距模块")},
         {QStringLiteral("/reconnect lidar"), QStringLiteral("请求天空端重连激光测距模块")},
+        {QStringLiteral("/connect rd105"), QStringLiteral("请求天空端连接 RD105 温控器")},
+        {QStringLiteral("/disconnect rd105"), QStringLiteral("请求天空端断开 RD105 温控器")},
+        {QStringLiteral("/reconnect rd105"), QStringLiteral("请求天空端重连 RD105 温控器")},
+        {QStringLiteral("/connect ai8"), QStringLiteral("请求天空端连接 AI-8288 八路温控器")},
+        {QStringLiteral("/disconnect ai8"), QStringLiteral("请求天空端断开 AI-8288 八路温控器")},
+        {QStringLiteral("/reconnect ai8"), QStringLiteral("请求天空端重连 AI-8288 八路温控器")},
         {QStringLiteral("/connect wave"), QStringLiteral("请求天空端连接二次谐波 TCP 波形源")},
         {QStringLiteral("/disconnect wave"), QStringLiteral("请求天空端断开二次谐波 TCP 波形源")},
         {QStringLiteral("/reconnect wave"), QStringLiteral("请求天空端重连二次谐波 TCP 波形源")},
@@ -205,7 +211,7 @@ QStringList SkyTuiController::helpLines() const
         QStringLiteral("  devices, /devices              # 查看设备状态"),
         QStringLiteral("  /device overview, /overview    # 打开设备总览页面"),
         QStringLiteral("  /home                          # 返回首页"),
-        QStringLiteral("  connect <device>               # 连接设备：epsilon/ptb/hmp/lidar/wave/all"),
+        QStringLiteral("  connect <device>               # 连接设备：epsilon/ptb/hmp/lidar/rd105/ai8/wave/all"),
         QStringLiteral("  disconnect <device>            # 断开设备"),
         QStringLiteral("  reconnect <device>             # 重连设备"),
         QStringLiteral("  record start|pause|stop        # 控制天空端本地记录"),
@@ -237,6 +243,21 @@ bool SkyTuiController::parseDeviceName(const QString& name, SkyDeviceId& id) con
     {
         id = SkyDeviceId::Lidar;
     }
+    else if (key == QStringLiteral("temperature") ||
+             key == QStringLiteral("temperature_controller") ||
+             key == QStringLiteral("temp") ||
+             key == QStringLiteral("rd105"))
+    {
+        id = SkyDeviceId::TemperatureController;
+    }
+    else if (key == QStringLiteral("ai8") ||
+             key == QStringLiteral("ai-8") ||
+             key == QStringLiteral("ai8288") ||
+             key == QStringLiteral("ai-8288") ||
+             key == QStringLiteral("ai8_temperature_controller"))
+    {
+        id = SkyDeviceId::Ai8TemperatureController;
+    }
     else if (key == QStringLiteral("wave") || key == QStringLiteral("wavetcp") || key == QStringLiteral("tcp"))
     {
         id = SkyDeviceId::WaveTcp;
@@ -252,6 +273,13 @@ bool SkyTuiController::parseDeviceName(const QString& name, SkyDeviceId& id) con
     return true;
 }
 
+#ifdef VAPORVIEW_SKY_TUI_TESTING
+bool SkyTuiController::parseDeviceNameForTest(const QString& name, SkyDeviceId& id) const
+{
+    return parseDeviceName(name, id);
+}
+#endif
+
 SkyTuiCommandResult SkyTuiController::handleDeviceCommand(const QString& action, const QString& deviceName)
 {
     SkyTuiCommandResult result;
@@ -264,7 +292,7 @@ SkyTuiCommandResult SkyTuiController::handleDeviceCommand(const QString& action,
     SkyDeviceId id = SkyDeviceId::All;
     if (!parseDeviceName(deviceName, id))
     {
-        result.messages << QStringLiteral("设备名无效。可用：epsilon、ptb、hmp、lidar、wave、all。");
+        result.messages << QStringLiteral("设备名无效。可用：epsilon、ptb、hmp、lidar、rd105、ai8、wave、all。");
         return result;
     }
 

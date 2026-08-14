@@ -12,6 +12,7 @@ enum class SessionFileKind
 {
     SensorSummaryCsv,
     TemperatureControllerCsv,
+    Ai8TemperatureControllerCsv,
     WaveformFeaturesCsv,
     NavigationRaw,
     PressureRaw,
@@ -26,6 +27,7 @@ struct SessionPackageLayout
     QString manifestPath;
     QString sensorSummaryCsvPath;
     QString temperatureControllerCsvPath;
+    QString ai8TemperatureControllerCsvPath;
     QString waveformFeaturesCsvPath;
     QString navigationRawPath;
     QString pressureRawPath;
@@ -65,6 +67,7 @@ QString sessionPackageFilePath(const QString& sessionDirectory, const QString& r
 
 QString waveformFeaturesCsvHeader();
 QString temperatureControllerCsvHeader();
+QString ai8TemperatureControllerCsvHeader();
 QString waveformPeaksCsvHeader();
 QString eventLogCsvHeader();
 QString rawDatFormatDocumentText();

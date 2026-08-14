@@ -517,6 +517,9 @@ void testSessionPackageInitializerCreatesIdenticalGroundAndSkyPackages()
     require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.temperatureControllerCsvPath)))
                 == headerLine(temperatureControllerCsvHeader()),
             "standard temperature controller header exists");
+    require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.ai8TemperatureControllerCsvPath)))
+                == headerLine(ai8TemperatureControllerCsvHeader()),
+            "standard AI-8 temperature controller header exists");
     require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.waveformFeaturesCsvPath)))
                 == headerLine(waveformFeaturesCsvHeader()),
             "standard waveform features header exists");
@@ -616,6 +619,7 @@ void testSessionManifestSchemaAndOriginCompatibility()
                       skyJson.value(QStringLiteral("raw_files")).toObject(),
                       "manifest raw_files key sets match");
     require(groundJson.value(QStringLiteral("paths")).toObject().keys() == QStringList{
+                QStringLiteral("ai8_temperature_controller_csv"),
                 QStringLiteral("device_config"),
                 QStringLiteral("distance_raw"),
                 QStringLiteral("error_log"),

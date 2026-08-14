@@ -29,6 +29,8 @@ VaporView::SkyConfig unloadedSkyConfig()
     config.lidar.port.clear();
     config.temperature_controller.enabled = false;
     config.temperature_controller.port.clear();
+    config.ai8_temperature_controller.enabled = false;
+    config.ai8_temperature_controller.port.clear();
     return config;
 }
 
@@ -265,7 +267,8 @@ void MainWindow::refreshRemoteSkySerialPortManualOptionTexts()
                              state_->device_config_.ptb_port_combo,
                              state_->device_config_.hmp_port_combo,
                              state_->device_config_.lidar_port_combo,
-                             state_->device_config_.temperature_port_combo})
+                             state_->device_config_.temperature_port_combo,
+                             state_->device_config_.ai8_temperature_port_combo})
     {
         if (!combo || !combo->property(kRemoteSkySerialPortComboProperty).toBool())
         {
@@ -420,6 +423,28 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
               config.temperature_controller.port,
               config.temperature_controller.baud_rate,
               config.temperature_controller.frequency_hz);
+    setSerial(state_->device_config_.ai8_temperature_enabled_check,
+              state_->device_config_.ai8_temperature_port_combo,
+              state_->device_config_.ai8_temperature_baud_combo,
+              state_->device_config_.ai8_temperature_rate_combo,
+              config.ai8_temperature_controller.enabled,
+              config.ai8_temperature_controller.port,
+              config.ai8_temperature_controller.baud_rate,
+              config.ai8_temperature_controller.frequency_hz);
+    auto setComboData = [](QComboBox *combo, const QString& sourceValue) {
+        if (!combo)
+        {
+            return;
+        }
+        const QSignalBlocker blocker(combo);
+        const int index = combo->findData(sourceValue);
+        combo->setCurrentIndex(index >= 0 ? index : 0);
+        combo->setProperty(kSensorBaudSourceProperty, combo->currentData().toString());
+    };
+    setComboData(state_->device_config_.ptb_source_combo,
+                 config.ptb.source.isEmpty() ? QStringLiteral("ptb210") : config.ptb.source);
+    setComboData(state_->device_config_.hmp_source_combo,
+                 config.hmp.source.isEmpty() ? QStringLiteral("hmp3") : config.hmp.source);
 
     const QList<QPair<QSpinBox *, int>> intSpins = {
         {state_->device_config_.remote_sky_rd105_slave_spin, config.temperature_controller.slave_address},
@@ -530,6 +555,14 @@ VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *erro
                state_->device_config_.hmp_baud_combo,
                state_->device_config_.hmp_rate_combo,
                config.hmp);
+    if (state_->device_config_.ptb_source_combo)
+    {
+        config.ptb.source = state_->device_config_.ptb_source_combo->currentData().toString();
+    }
+    if (state_->device_config_.hmp_source_combo)
+    {
+        config.hmp.source = state_->device_config_.hmp_source_combo->currentData().toString();
+    }
     readSerial(state_->device_config_.lidar_enabled_check,
                state_->device_config_.lidar_port_combo,
                state_->device_config_.lidar_baud_combo,
@@ -549,6 +582,25 @@ VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *erro
     config.temperature_controller.port = temperatureSerial.port;
     config.temperature_controller.baud_rate = temperatureSerial.baud_rate;
     config.temperature_controller.frequency_hz = temperatureSerial.frequency_hz;
+    VaporView::SerialDeviceConfig ai8TemperatureSerial;
+    ai8TemperatureSerial.enabled = config.ai8_temperature_controller.enabled;
+    ai8TemperatureSerial.port = config.ai8_temperature_controller.port;
+    ai8TemperatureSerial.baud_rate = config.ai8_temperature_controller.baud_rate;
+    ai8TemperatureSerial.frequency_hz = config.ai8_temperature_controller.frequency_hz;
+    readSerial(state_->device_config_.ai8_temperature_enabled_check,
+               state_->device_config_.ai8_temperature_port_combo,
+               state_->device_config_.ai8_temperature_baud_combo,
+               state_->device_config_.ai8_temperature_rate_combo,
+               ai8TemperatureSerial);
+    config.ai8_temperature_controller.enabled = ai8TemperatureSerial.enabled;
+    config.ai8_temperature_controller.port = ai8TemperatureSerial.port;
+    config.ai8_temperature_controller.baud_rate = ai8TemperatureSerial.baud_rate;
+    config.ai8_temperature_controller.frequency_hz = ai8TemperatureSerial.frequency_hz;
+    if (state_->ai8_temperature_controller_panel_)
+    {
+        config.ai8_temperature_controller.slave_address =
+            state_->ai8_temperature_controller_panel_->currentPageData().global.address;
+    }
     if (state_->device_config_.remote_sky_rd105_slave_spin)
     {
         config.temperature_controller.slave_address =
@@ -700,20 +752,26 @@ void MainWindow::updateRemoteSkyConfigControlsState()
                             static_cast<QWidget *>(state_->device_config_.ptb_port_combo),
                             static_cast<QWidget *>(state_->device_config_.ptb_baud_combo),
                             static_cast<QWidget *>(state_->device_config_.ptb_rate_combo),
+                            static_cast<QWidget *>(state_->device_config_.ptb_source_combo),
                             static_cast<QWidget *>(state_->device_config_.hmp_port_combo),
                             static_cast<QWidget *>(state_->device_config_.hmp_baud_combo),
                             static_cast<QWidget *>(state_->device_config_.hmp_rate_combo),
+                            static_cast<QWidget *>(state_->device_config_.hmp_source_combo),
                             static_cast<QWidget *>(state_->device_config_.lidar_port_combo),
                             static_cast<QWidget *>(state_->device_config_.lidar_baud_combo),
                             static_cast<QWidget *>(state_->device_config_.lidar_rate_combo),
                             static_cast<QWidget *>(state_->device_config_.temperature_port_combo),
                             static_cast<QWidget *>(state_->device_config_.temperature_baud_combo),
                             static_cast<QWidget *>(state_->device_config_.temperature_rate_combo),
+                            static_cast<QWidget *>(state_->device_config_.ai8_temperature_port_combo),
+                            static_cast<QWidget *>(state_->device_config_.ai8_temperature_baud_combo),
+                            static_cast<QWidget *>(state_->device_config_.ai8_temperature_rate_combo),
                             static_cast<QWidget *>(state_->device_config_.epsilon_enabled_check),
                             static_cast<QWidget *>(state_->device_config_.ptb_enabled_check),
                             static_cast<QWidget *>(state_->device_config_.hmp_enabled_check),
                             static_cast<QWidget *>(state_->device_config_.lidar_enabled_check),
                             static_cast<QWidget *>(state_->device_config_.temperature_enabled_check),
+                            static_cast<QWidget *>(state_->device_config_.ai8_temperature_enabled_check),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_rd105_slave_spin),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_wave_enabled_check),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_wave_host_edit),

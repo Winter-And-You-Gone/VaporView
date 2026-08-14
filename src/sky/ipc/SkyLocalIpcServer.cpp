@@ -24,6 +24,8 @@ bool shouldBroadcastRuntimeFrame(MsgType type)
     case MsgType::TelemetryStatus:
     case MsgType::SkyConfig:
     case MsgType::SkyConfigApplyResult:
+    case MsgType::TemperatureControllerStatus:
+    case MsgType::Ai8TemperatureControllerStatus:
     case MsgType::Heartbeat:
     case MsgType::LogEvent:
     case MsgType::Error:

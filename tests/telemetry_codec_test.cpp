@@ -26,6 +26,8 @@ void testProtocolEnumValues()
     require(static_cast<quint8>(VaporView::MsgType::WaveformDownsampled) == 0x02, "MsgType WaveformDownsampled value");
     require(static_cast<quint8>(VaporView::MsgType::WaveformFeature) == 0x03, "MsgType WaveformFeature value");
     require(static_cast<quint8>(VaporView::MsgType::TelemetryStatus) == 0x04, "MsgType TelemetryStatus value");
+    require(static_cast<quint8>(VaporView::MsgType::TemperatureControllerStatus) == 0x07, "MsgType TemperatureControllerStatus value");
+    require(static_cast<quint8>(VaporView::MsgType::Ai8TemperatureControllerStatus) == 0x08, "MsgType Ai8TemperatureControllerStatus value");
     require(static_cast<quint8>(VaporView::MsgType::Command) == 0x10, "MsgType Command value");
     require(static_cast<quint8>(VaporView::MsgType::CommandAck) == 0x11, "MsgType CommandAck value");
     require(static_cast<quint16>(VaporView::CommandId::StartRecording) == 1, "CommandId StartRecording value");
@@ -43,6 +45,7 @@ void testProtocolEnumValues()
     require(static_cast<quint16>(VaporView::CommandId::SetTemperatureOvertempUpper) == 52, "CommandId SetTemperatureOvertempUpper value");
     require(static_cast<quint16>(VaporView::CommandId::SetTemperatureStartupDelay) == 55, "CommandId SetTemperatureStartupDelay value");
     require(static_cast<quint16>(VaporView::CommandId::ShutdownCore) == 90, "CommandId ShutdownCore value");
+    require(static_cast<quint8>(VaporView::SkyDeviceId::Ai8TemperatureController) == 7, "SkyDeviceId AI-8 value");
 }
 
 void testFrameRoundTrip()
@@ -153,13 +156,13 @@ void testCommandAndDevicePayload()
     VaporView::CommandMessage command;
     command.command_id = VaporView::CommandId::ConnectDevice;
     command.command_seq = 42;
-    command.payload = VaporView::TelemetryCodec::serializeDeviceCommand(VaporView::SkyDeviceId::Lidar);
+    command.payload = VaporView::TelemetryCodec::serializeDeviceCommand(VaporView::SkyDeviceId::Ai8TemperatureController);
     VaporView::CommandMessage parsed;
     require(VaporView::TelemetryCodec::parseCommand(VaporView::TelemetryCodec::serializeCommand(command), parsed), "parse command");
     require(parsed.command_id == VaporView::CommandId::ConnectDevice, "command id");
     VaporView::SkyDeviceId id = VaporView::SkyDeviceId::All;
     require(VaporView::TelemetryCodec::parseDeviceCommand(parsed.payload, id), "parse device payload");
-    require(id == VaporView::SkyDeviceId::Lidar, "device id");
+    require(id == VaporView::SkyDeviceId::Ai8TemperatureController, "AI-8 device id");
 
     VaporView::CommandAck ack;
     ack.command_id = command.command_id;
@@ -368,10 +371,70 @@ void testWaveform()
             "temperature status channel two polynomial config");
 }
 
+void testAi8TemperatureControllerStatus()
+{
+    namespace Ai8 = VaporView::Ai8TemperatureControllerProtocol;
+
+    Ai8::LiveData status;
+    status.valid = true;
+    status.controlStatesValid = true;
+    status.alarmStatusValid = true;
+    status.mainStatusValid = true;
+    status.mainStatusRaw = 0x1234;
+    for (int index = 0; index < Ai8::kChannelCount; ++index)
+    {
+        status.measuredC[static_cast<size_t>(index)] = 20.0 + index * 1.25;
+        status.controlStates[static_cast<size_t>(index)] =
+            index % 3 == 0 ? Ai8::ChannelControlState::AutoTuning :
+            index % 3 == 1 ? Ai8::ChannelControlState::ApidOutput :
+                             Ai8::ChannelControlState::Stopped;
+    }
+    for (int index = 0; index < Ai8::kAlarmStatusRegisterCount; ++index)
+    {
+        status.alarmStatusRegisters[static_cast<size_t>(index)] =
+            static_cast<quint16>(0x0100 + index);
+    }
+
+    const QByteArray payload =
+        VaporView::TelemetryCodec::serializeAi8TemperatureControllerStatus(status);
+    Ai8::LiveData parsed;
+    require(VaporView::TelemetryCodec::parseAi8TemperatureControllerStatus(payload, parsed),
+            "parse AI-8 status");
+    require(parsed.valid && parsed.controlStatesValid && parsed.alarmStatusValid &&
+                parsed.mainStatusValid,
+            "AI-8 status validity flags");
+    require(parsed.mainStatusRaw == 0x1234, "AI-8 main status raw");
+    require(std::fabs(parsed.measuredC[7] - status.measuredC[7]) < 0.000001,
+            "AI-8 channel temperature round-trip");
+    require(parsed.controlStates[0] == Ai8::ChannelControlState::AutoTuning &&
+                parsed.controlStates[1] == Ai8::ChannelControlState::ApidOutput &&
+                parsed.controlStates[2] == Ai8::ChannelControlState::Stopped,
+            "AI-8 channel control states round-trip");
+    require(parsed.alarmStatusRegisters[3] == 0x0103, "AI-8 alarm registers round-trip");
+
+    Ai8::LiveData ignored;
+    require(!VaporView::TelemetryCodec::parseAi8TemperatureControllerStatus(payload.left(payload.size() - 1), ignored),
+            "AI-8 status rejects truncated payload");
+    QByteArray badVersion = payload;
+    badVersion[0] = static_cast<char>(2);
+    require(!VaporView::TelemetryCodec::parseAi8TemperatureControllerStatus(badVersion, ignored),
+            "AI-8 status rejects unknown version");
+    QByteArray badState = payload;
+    constexpr qsizetype kFirstControlStateOffset =
+        1 + 1 + 2 + Ai8::kChannelCount * static_cast<int>(sizeof(double));
+    badState[kFirstControlStateOffset] = static_cast<char>(0xFE);
+    require(!VaporView::TelemetryCodec::parseAi8TemperatureControllerStatus(badState, ignored),
+            "AI-8 status rejects invalid control state");
+}
+
 void testSkyConfigDiff()
 {
     VaporView::SkyConfig a = VaporView::SkyConfig::defaults();
     require(a.temperature_controller.baud_rate == 38400, "sky config RD105 default baud");
+    require(a.ptb.source == QStringLiteral("ptb210") &&
+                a.hmp.source == QStringLiteral("hmp3") &&
+                !a.ai8_temperature_controller.enabled,
+            "sky config source and AI-8 defaults");
     VaporView::SkyConfig b = a;
     require(!a.diff(b).epsilon_changed, "unchanged epsilon");
     b.epsilon.baud_rate = 115200;
@@ -379,11 +442,40 @@ void testSkyConfigDiff()
     require(diff.epsilon_changed, "epsilon changed");
     require(!diff.ptb_changed && !diff.telemetry_changed, "other config unchanged");
 
+    b.ptb.source = QStringLiteral("bmp390");
+    b.hmp.source = QStringLiteral("sht45");
+    b.ai8_temperature_controller = {true, QStringLiteral("/dev/ttyAI8"), 115200, 12.0, 7};
+    const VaporView::SkyConfigDiff sourceDiff = a.diff(b);
+    require(sourceDiff.ptb_changed && sourceDiff.hmp_changed &&
+                sourceDiff.ai8_temperature_controller_changed,
+            "sky config diff detects source and AI-8 changes");
+
     const QJsonObject json = b.toJson();
     VaporView::SkyConfig parsed;
     QString error;
     require(VaporView::SkyConfig::fromJson(json, parsed, &error), "sky config parse");
     require(parsed.epsilon.baud_rate == 115200, "sky config baud");
+    require(parsed.ptb.source == QStringLiteral("bmp390") &&
+                parsed.hmp.source == QStringLiteral("sht45") &&
+                parsed.ai8_temperature_controller.enabled &&
+                parsed.ai8_temperature_controller.port == QStringLiteral("/dev/ttyAI8") &&
+                parsed.ai8_temperature_controller.slave_address == 7,
+            "sky config source and AI-8 round-trip");
+
+    QJsonObject legacy = a.toJson();
+    QJsonObject legacyPtb = legacy.value(QStringLiteral("ptb")).toObject();
+    legacyPtb.remove(QStringLiteral("source"));
+    legacy.insert(QStringLiteral("ptb"), legacyPtb);
+    QJsonObject legacyHmp = legacy.value(QStringLiteral("hmp")).toObject();
+    legacyHmp.remove(QStringLiteral("source"));
+    legacy.insert(QStringLiteral("hmp"), legacyHmp);
+    legacy.remove(QStringLiteral("ai8_temperature_controller"));
+    error.clear();
+    require(VaporView::SkyConfig::fromJson(legacy, parsed, &error), "sky config legacy parse");
+    require(parsed.ptb.source == QStringLiteral("ptb210") &&
+                parsed.hmp.source == QStringLiteral("hmp3") &&
+                !parsed.ai8_temperature_controller.enabled,
+            "sky config legacy source and AI-8 defaults");
 }
 
 void testSkyConfigRejectsInvalidJsonTypes()
@@ -414,6 +506,15 @@ void testSkyConfigRejectsInvalidJsonTypes()
     require(!VaporView::SkyConfig::fromJson(badEnabled, parsed, &error), "sky config rejects string bool");
     require(error.contains(QStringLiteral("wave_tcp.enabled")) && error.contains(QStringLiteral("boolean")),
             "sky config bool type error message");
+
+    QJsonObject badSource = VaporView::SkyConfig::defaults().toJson();
+    QJsonObject ptb = badSource.value(QStringLiteral("ptb")).toObject();
+    ptb.insert(QStringLiteral("source"), QStringLiteral("bmp180"));
+    badSource.insert(QStringLiteral("ptb"), ptb);
+    error.clear();
+    require(!VaporView::SkyConfig::fromJson(badSource, parsed, &error),
+            "sky config rejects invalid pressure source");
+    require(error.contains(QStringLiteral("ptb source")), "sky config source error message");
 }
 
 void testTelemetryStatus()
@@ -438,17 +539,17 @@ void testTelemetryStatus()
     status.raw_temperature_humidity_record_count = 30;
     status.raw_distance_record_count = 40;
     status.raw_waveform_record_count = 50;
-    VaporView::DeviceStatusItem wave;
-    wave.device_id = VaporView::SkyDeviceId::WaveTcp;
-    wave.state = VaporView::DeviceState::Connected;
-    wave.rx_count = 42;
-    status.devices.push_back(wave);
+    VaporView::DeviceStatusItem ai8;
+    ai8.device_id = VaporView::SkyDeviceId::Ai8TemperatureController;
+    ai8.state = VaporView::DeviceState::Connected;
+    ai8.rx_count = 42;
+    status.devices.push_back(ai8);
 
     VaporView::TelemetryStatus parsed;
     require(VaporView::TelemetryCodec::parseTelemetryStatus(VaporView::TelemetryCodec::serializeTelemetryStatus(status), parsed),
             "parse telemetry status");
     require(parsed.session_name == status.session_name, "status session");
-    require(parsed.devices.size() == 1 && parsed.devices.front().device_id == VaporView::SkyDeviceId::WaveTcp, "status device");
+    require(parsed.devices.size() == 1 && parsed.devices.front().device_id == VaporView::SkyDeviceId::Ai8TemperatureController, "status AI-8 device");
     require(std::fabs(parsed.wave_tcp_actual_rate_hz - status.wave_tcp_actual_rate_hz) < 0.001f,
             "status wave tcp actual rate");
     require(parsed.recording_elapsed_ms == status.recording_elapsed_ms, "status recording elapsed");
@@ -466,6 +567,7 @@ int main(int argc, char **argv)
     testCrcError();
     testCommandAndDevicePayload();
     testWaveform();
+    testAi8TemperatureControllerStatus();
     testSkyConfigDiff();
     testSkyConfigRejectsInvalidJsonTypes();
     testTelemetryStatus();
