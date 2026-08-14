@@ -8,6 +8,7 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QPainter>
+#include <QPaintEvent>
 #include <QPropertyAnimation>
 #include <QPushButton>
 #include <QScrollArea>
@@ -79,6 +80,31 @@ protected:
     }
 };
 
+class CombinationNavigationSelectionThumb final : public QFrame
+{
+public:
+    using QFrame::QFrame;
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        Q_UNUSED(event);
+
+        const QRectF bounds = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        if (bounds.width() <= 0.0 || bounds.height() <= 0.0)
+        {
+            return;
+        }
+
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(VaporView::appThemeColor(
+            VaporView::AppThemeColor::Surface, VaporView::isDarkThemeEnabled()));
+        painter.drawRoundedRect(bounds, bounds.height() / 2.0, bounds.height() / 2.0);
+    }
+};
+
 } // namespace
 
 CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, QWidget *parent)
@@ -125,12 +151,13 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     navigationLayout->setContentsMargins(2, 2, 2, 2);
     navigationLayout->setSpacing(0);
 
-    navigation_selection_thumb_ = new QFrame(navigationTrack);
+    navigation_selection_thumb_ = new CombinationNavigationSelectionThumb(navigationTrack);
     navigation_selection_thumb_->setObjectName(
         QStringLiteral("combinationNavigationNavigationSelectionThumb"));
     navigation_selection_thumb_->setFrameShape(QFrame::NoFrame);
     navigation_selection_thumb_->setAttribute(Qt::WA_TransparentForMouseEvents);
-    prepareStyledBackground(navigation_selection_thumb_);
+    navigation_selection_thumb_->setAttribute(Qt::WA_TranslucentBackground);
+    navigation_selection_thumb_->setAutoFillBackground(false);
     navigation_selection_animation_ =
         new QPropertyAnimation(navigation_selection_thumb_, "geometry", this);
     navigation_selection_animation_->setObjectName(
@@ -460,7 +487,6 @@ void CombinationNavigationPage::applyAppearance()
         "background-color: @vv-surface; border: none; }"
         "QFrame#combinationNavigationNavigationBar { background-color: @vv-primary-subtle; border: 1px solid @vv-border-strong; border-radius: 18px; }"
         "QFrame#combinationNavigationNavigationTrack { background-color: @vv-primary; border: 1px solid %1; border-radius: 15px; }"
-        "QFrame#combinationNavigationNavigationSelectionThumb { background-color: @vv-surface; border: none; border-radius: 13px; }"
         "QPushButton#combinationNavigationStatusButton, QPushButton#combinationNavigationEpsilonButton, "
         "QPushButton#combinationNavigationDifferentialButton { background-color: transparent; border: 1px solid transparent; border-radius: 13px; color: @vv-white; font-weight: 600; margin: 0; min-height: 0; padding: 0 10px; outline: none; }"
         "QPushButton#combinationNavigationStatusButton:checked, QPushButton#combinationNavigationEpsilonButton:checked, "
