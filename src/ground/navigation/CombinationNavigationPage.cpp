@@ -59,22 +59,6 @@ protected:
         const QString buttonText = option.text;
         option.text.clear();
 
-        const bool interactiveHighlight =
-            !isChecked() && isEnabled() &&
-            (option.state.testFlag(QStyle::State_MouseOver) ||
-             option.state.testFlag(QStyle::State_Sunken));
-        if (interactiveHighlight)
-        {
-            const QRectF highlightBounds = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(VaporView::appThemeColor(
-                VaporView::AppThemeColor::PrimarySubtlePressed,
-                VaporView::isDarkThemeEnabled()));
-            painter.drawRoundedRect(highlightBounds,
-                                    highlightBounds.height() / 2.0,
-                                    highlightBounds.height() / 2.0);
-        }
-
         style()->drawControl(QStyle::CE_PushButton, &option, &painter, this);
         if (buttonText.isEmpty())
         {
@@ -214,8 +198,7 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     status_button_->raise();
     epsilon_button_->raise();
     differential_button_->raise();
-    navigationRowLayout->addWidget(navigationBar, 0, Qt::AlignLeft | Qt::AlignVCenter);
-    navigationRowLayout->addStretch(1);
+    navigationRowLayout->addWidget(navigationBar, 0, Qt::AlignHCenter | Qt::AlignVCenter);
     rootLayout->addWidget(navigationRow);
 
     stack_ = new QStackedWidget(this);

@@ -1482,6 +1482,8 @@ void requireRtkSidebarPage(
             "combination navigation reuses the former RTK page index");
     auto *combinationStack = combinationPage->findChild<QStackedWidget *>(
         QStringLiteral("combinationNavigationStack"));
+    auto *combinationNavigationRow = combinationPage->findChild<QWidget *>(
+        QStringLiteral("combinationNavigationNavigationRow"));
     auto *combinationNavigationBar = combinationPage->findChild<QFrame *>(
         QStringLiteral("combinationNavigationNavigationBar"));
     auto *combinationNavigationTrack = combinationPage->findChild<QFrame *>(
@@ -1509,7 +1511,8 @@ void requireRtkSidebarPage(
         QStringLiteral("epsilonConfigScrollArea"));
     auto *epsilonContent = combinationPage->findChild<QWidget *>(
         QStringLiteral("epsilonConfigContent"));
-    require(combinationNavigationBar != nullptr && combinationNavigationBar->layout() != nullptr &&
+    require(combinationNavigationRow != nullptr &&
+                combinationNavigationBar != nullptr && combinationNavigationBar->layout() != nullptr &&
                 combinationNavigationTrack != nullptr && combinationNavigationTrack->layout() != nullptr &&
                 combinationNavigationSelectionThumb != nullptr &&
                 combinationNavigationSelectionAnimation != nullptr &&
@@ -1529,6 +1532,9 @@ void requireRtkSidebarPage(
                 statusButton->width() == epsilonButton->width() &&
                 epsilonButton->width() == differentialButton->width(),
             "combination navigation uses an equal three-segment capsule layout");
+    require(std::abs(combinationNavigationBar->geometry().center().x() -
+                     combinationNavigationRow->rect().center().x()) <= 1,
+            "combination navigation bar is horizontally centered in its page row");
     require(combinationNavigationSelectionThumb->parentWidget() == combinationNavigationTrack &&
                 combinationNavigationSelectionThumb->geometry() == statusButton->geometry() &&
                 combinationNavigationSelectionAnimation->targetObject() == combinationNavigationSelectionThumb &&
@@ -1555,17 +1561,9 @@ void requireRtkSidebarPage(
     const int hoverInset = qMax(1, qRound(6.0 * devicePixelRatio));
     const QRect hoverInterior = epsilonPixelRect.adjusted(
         hoverInset, hoverInset, -hoverInset, -hoverInset);
-    require(countPixelsNearColor(hoverImage, hoverInterior, hoverFill, 12) >=
-                hoverInterior.width() * hoverInterior.height() / 3,
-            "combination navigation hover fill is visible inside the hovered segment");
-    const int cornerInset = qMax(1, qRound(2.0 * devicePixelRatio));
-    const QColor hoverCorner = hoverImage.pixelColor(
-        epsilonPixelRect.left() + cornerInset,
-        epsilonPixelRect.top() + cornerInset);
-    require(std::abs(hoverCorner.red() - hoverFill.red()) > 20 ||
-                std::abs(hoverCorner.green() - hoverFill.green()) > 20 ||
-                std::abs(hoverCorner.blue() - hoverFill.blue()) > 20,
-            "combination navigation hover fill keeps rounded corners");
+    require(countPixelsNearColor(hoverImage, hoverInterior, hoverFill, 12) <
+                qMax(1, hoverInterior.width() * hoverInterior.height() / 20),
+            "combination navigation hover does not add a background fill");
     QEvent leaveEvent(QEvent::Leave);
     QCoreApplication::sendEvent(epsilonButton, &leaveEvent);
     epsilonButton->setAttribute(Qt::WA_UnderMouse, false);
