@@ -124,10 +124,10 @@ int main(int argc, char *argv[])
         std::set<uint8_t> packetIds;
     };
     const std::vector<PacketGroupExpectation> packetGroups = {
-        {"epsilonPacketGroupInertialFusion", "惯导与融合", {0x40, 0x41, 0x42}},
         {"epsilonPacketGroupSystemDiagnostics", "系统与诊断", {0x50, 0x53}},
-        {"epsilonPacketGroupGnssPosition", "GNSS 与位置", {0x59, 0x5A, 0x5C, 0x5D}},
         {"epsilonPacketGroupAttitudeRepresentation", "姿态表示", {0x63, 0x64}},
+        {"epsilonPacketGroupInertialFusion", "惯导与融合", {0x40, 0x41, 0x42}},
+        {"epsilonPacketGroupGnssPosition", "GNSS 与位置", {0x59, 0x5A, 0x5C, 0x5D}},
     };
     for (int groupIndex = 0; groupIndex < static_cast<int>(packetGroups.size()); ++groupIndex)
     {
@@ -211,10 +211,10 @@ int main(int argc, char *argv[])
     }
     require(std::abs(groupRects.at(0).top() - groupRects.at(1).top()) <= 2 &&
                 groupRects.at(1).left() > groupRects.at(0).right(),
-            "wide EPSILON packet groups place inertial/fusion and system/diagnostics on the first row");
+            "wide EPSILON packet groups place system/diagnostics and attitude representation on the first row");
     require(std::abs(groupRects.at(2).top() - groupRects.at(3).top()) <= 2 &&
                 groupRects.at(3).left() > groupRects.at(2).right(),
-            "wide EPSILON packet groups place GNSS/position and attitude representation on the second row");
+            "wide EPSILON packet groups place inertial/fusion and GNSS/position on the second row");
     require(groupRects.at(2).top() > std::max(groupFieldBottoms.at(0), groupFieldBottoms.at(1)) &&
                 std::abs(groupRects.at(0).left() - groupRects.at(2).left()) <= 2 &&
                 std::abs(groupRects.at(1).left() - groupRects.at(3).left()) <= 2,

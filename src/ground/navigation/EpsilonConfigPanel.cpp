@@ -33,10 +33,10 @@ constexpr int kPacketVisualColumnCount = kPacketOuterGroupColumns * kPacketInner
 
 enum class PacketRateGroup
 {
-    InertialAndFusion,
     SystemAndDiagnostics,
-    GnssAndPosition,
     AttitudeRepresentation,
+    InertialAndFusion,
+    GnssAndPosition,
 };
 
 constexpr int kPacketRateGroupCount = 4;
