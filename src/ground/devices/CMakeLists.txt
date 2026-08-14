@@ -28,6 +28,8 @@ target_link_libraries(vaporview_ground_temperature_command_state PUBLIC
 )
 
 add_library(vaporview_ground_device_core STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Ai8DeviceSession.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Ai8DeviceSession.h
     ${CMAKE_CURRENT_SOURCE_DIR}/GroundTelemetryService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/GroundTelemetryService.h
     ${CMAKE_CURRENT_SOURCE_DIR}/ImuConfigurationService.cpp

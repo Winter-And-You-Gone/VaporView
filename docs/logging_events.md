@@ -110,6 +110,7 @@
 | Ground | protocol.parse | sky_config_apply_result_parse_failed | Warning | 无法解析 SkyConfigApplyResult JSON 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | temperature_controller_status_parse_failed | Warning | 无法解析 TemperatureControllerStatus 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | ai8_temperature_controller_status_parse_failed | Warning | 无法解析 AI-8288 遥测载荷。 | message_type, payload_bytes |  |  |
+| Ground | protocol.parse | device_operation_response_parse_failed | Warning | 无法解析 DeviceOperationResponse 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | log_event_parse_failed | Warning | 无法解析 LogEvent 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.error | telemetry_error_frame_received | Error | 已收到遥测 Error 帧。 | payload_hex, payload_bytes |  | TELEMETRY_ERROR_FRAME |
 | Ground | protocol.unknown | unknown_telemetry_message_type | Warning | 已收到未知遥测消息类型。 | message_type, payload_bytes |  |  |
@@ -292,10 +293,8 @@
 | Ground | device.rate | temperature_polling_rate_defaulted | Info | RD105 轮询频率保持不设定，使用默认主机轮询频率。 | device, effective_rate_hz | ui_visibility |  |
 | Ground | device.rate | temperature_polling_rate_updated | Info | RD105 轮询频率已更新。 | device, requested_rate_hz | ui_visibility |  |
 | Ground | device.rate | temperature_polling_rate_capped | Info | RD105 轮询频率已按设备上限限制。 | device, requested_rate_hz, effective_rate_hz | ui_visibility |  |
-| Ground | device.temperature.command | ai8_page_read_completed | Info | AI-8288 参数页读取完成。 | device, device_id, page, channel, input_group, output_group, details | ui_visibility |  |
-| Ground | device.temperature.command | ai8_page_read_failed | Error | AI-8288 参数页读取失败。 | device, device_id, page, channel, input_group, output_group, details, error_code | ui_dedupe_key | AI8_PAGE_READ_FAILED |
-| Ground | device.temperature.command | ai8_page_write_completed | Info | AI-8288 参数页写入完成。 | device, device_id, page, channel, input_group, output_group, details | ui_visibility |  |
-| Ground | device.temperature.command | ai8_page_write_failed | Error | AI-8288 参数页写入失败。 | device, device_id, page, channel, input_group, output_group, details, error_code | ui_dedupe_key | AI8_PAGE_WRITE_FAILED |
+| Ground | device.temperature.command | ai8_operation_completed | Info | AI-8288 参数操作完成。 | device, device_id, request_id, operation, outcome, page, channel, input_group, output_group, command_error_code, details | ui_visibility |  |
+| Ground | device.temperature.command | ai8_operation_failed | Info/Error | AI-8288 参数操作失败。 | device, device_id, request_id, operation, outcome, page, channel, input_group, output_group, command_error_code, details, error_code | ui_dedupe_key | AI8_OPERATION_FAILED |
 | Ground | device.temperature.command | temperature_command_sent | Info | RD105 温控命令已下发到天空端。 | device, command, command_id, execution_path, command_seq | channel, target, ui_visibility |  |
 | Ground | device.temperature.command | temperature_command_completed | Info | RD105 温控命令执行成功。 | device, command, command_id, execution_path | channel, target, command_seq, ui_visibility |  |
 | Ground | device.temperature.command | temperature_command_rejected_not_connected | Warning | 本地 RD105 温控器未连接，无法下发温控命令。 | device, command, command_id, execution_path, reason_code | channel, target, command_seq, command_error_code, ui_dedupe_key | DEVICE_NOT_CONNECTED |

@@ -61,6 +61,15 @@ public:
         Ai8TemperatureControllerProtocol::LiveData& data);
     static QByteArray serializeTemperatureControllerCommand(const TemperatureControllerCommand& command);
     static bool parseTemperatureControllerCommand(const QByteArray& payload, TemperatureControllerCommand& command);
+    static QByteArray serializeAi8PageData(const Ai8TemperatureControllerProtocol::PageData& data);
+    static bool parseAi8PageData(const QByteArray& payload,
+                                 Ai8TemperatureControllerProtocol::PageData& data);
+    static QByteArray serializeDeviceOperationRequest(const DeviceOperationRequest& request);
+    static bool parseDeviceOperationRequest(const QByteArray& payload,
+                                            DeviceOperationRequest& request);
+    static QByteArray serializeDeviceOperationResponse(const DeviceOperationResponse& response);
+    static bool parseDeviceOperationResponse(const QByteArray& payload,
+                                             DeviceOperationResponse& response);
     static QByteArray serializeLogRecord(const LogRecord& record);
     static bool parseLogRecord(const QByteArray& payload, LogRecord& record);
 

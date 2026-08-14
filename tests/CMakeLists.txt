@@ -200,6 +200,18 @@ target_link_libraries(ai8_temperature_controller_panel_test PRIVATE
 add_dependencies(ai8_temperature_controller_panel_test VaporViewRuntimeResources)
 add_test(NAME ai8_temperature_controller_panel_test COMMAND ai8_temperature_controller_panel_test)
 
+add_executable(ai8_device_session_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/ai8_device_session_test.cpp
+)
+target_include_directories(ai8_device_session_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(ai8_device_session_test PRIVATE
+    vaporview_ground_device_core
+)
+add_test(NAME ai8_device_session_test COMMAND ai8_device_session_test)
+
 add_executable(temperature_controller_panel_test
     ${CMAKE_CURRENT_SOURCE_DIR}/temperature_controller_panel_test.cpp
 )

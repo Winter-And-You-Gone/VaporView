@@ -111,6 +111,95 @@ int main(int argc, char **argv)
                 rd105.channels[0].output_enabled,
             "RD105 simulated telemetry reflects commands");
 
+    VaporView::Ai8TemperatureControllerProtocol::Selection ai8Selection;
+    ai8Selection.channel = 2;
+    ai8Selection.inputGroup = 2;
+    ai8Selection.outputGroup = 2;
+    VaporView::Ai8TemperatureControllerProtocol::PageData ai8Page;
+    QString operationMessage;
+    require(manager.readAi8Page(VaporView::Ai8TemperatureControllerProtocol::Page::Channel,
+                                ai8Selection,
+                                ai8Page,
+                                &error,
+                                &operationMessage) &&
+                error == VaporView::CommandErrorCode::Ok &&
+                std::fabs(ai8Page.channel.setpointC - 25.0) < 0.000001,
+            "AI-8 simulated page read succeeds");
+    ai8Page.channel.setpointC = 37.5;
+    VaporView::Ai8TemperatureControllerProtocol::PageData confirmedAi8Page;
+    require(manager.writeAi8Page(ai8Page, confirmedAi8Page, &error, &operationMessage) &&
+                error == VaporView::CommandErrorCode::Ok &&
+                std::fabs(confirmedAi8Page.channel.setpointC - 37.5) < 0.000001,
+            "AI-8 simulated page write and read-back succeeds");
+    VaporView::Ai8TemperatureControllerProtocol::PageData readBackAi8Page;
+    require(manager.readAi8Page(VaporView::Ai8TemperatureControllerProtocol::Page::Channel,
+                                ai8Selection,
+                                readBackAi8Page,
+                                &error,
+                                &operationMessage) &&
+                std::fabs(readBackAi8Page.channel.setpointC - 37.5) < 0.000001,
+            "AI-8 simulated read reflects written value");
+    VaporView::Ai8TemperatureControllerProtocol::Selection otherChannel = ai8Selection;
+    otherChannel.channel = 3;
+    require(manager.readAi8Page(VaporView::Ai8TemperatureControllerProtocol::Page::Channel,
+                                otherChannel,
+                                readBackAi8Page,
+                                &error,
+                                &operationMessage) &&
+                std::fabs(readBackAi8Page.channel.setpointC - 25.0) < 0.000001,
+            "AI-8 simulated channel state is isolated by selection");
+
+    VaporView::Ai8TemperatureControllerProtocol::PageData inputPage;
+    require(manager.readAi8Page(VaporView::Ai8TemperatureControllerProtocol::Page::InputGroup,
+                                ai8Selection,
+                                inputPage,
+                                &error,
+                                &operationMessage),
+            "AI-8 simulated input-group page read succeeds");
+    inputPage.input.filter = 7;
+    require(manager.writeAi8Page(inputPage, confirmedAi8Page, &error, &operationMessage) &&
+                confirmedAi8Page.input.filter == 7,
+            "AI-8 simulated input-group write and read-back succeeds");
+
+    VaporView::Ai8TemperatureControllerProtocol::PageData outputPage;
+    require(manager.readAi8Page(VaporView::Ai8TemperatureControllerProtocol::Page::OutputGroup,
+                                ai8Selection,
+                                outputPage,
+                                &error,
+                                &operationMessage),
+            "AI-8 simulated output-group page read succeeds");
+    outputPage.output.outputHighPercent = 101;
+    require(manager.writeAi8Page(outputPage, confirmedAi8Page, &error, &operationMessage) &&
+                confirmedAi8Page.output.outputHighPercent == 101,
+            "AI-8 simulated output-group write and read-back succeeds");
+
+    VaporView::Ai8TemperatureControllerProtocol::PageData globalPage;
+    require(manager.readAi8Page(VaporView::Ai8TemperatureControllerProtocol::Page::Global,
+                                ai8Selection,
+                                globalPage,
+                                &error,
+                                &operationMessage),
+            "AI-8 simulated global page read succeeds");
+    globalPage.global.address = 7;
+    require(manager.writeAi8Page(globalPage, confirmedAi8Page, &error, &operationMessage) &&
+                confirmedAi8Page.global.address == 7,
+            "AI-8 simulated global write and read-back succeeds");
+
+    auto invalidAi8Page = ai8Page;
+    invalidAi8Page.output.outputHighPercent = 106;
+    require(!manager.writeAi8Page(invalidAi8Page, confirmedAi8Page, &error, &operationMessage) &&
+                error == VaporView::CommandErrorCode::InvalidPayload,
+            "AI-8 simulated write rejects invalid values");
+    require(manager.restoreAi8FactoryDefaults(
+                VaporView::Ai8TemperatureControllerProtocol::Page::Channel,
+                ai8Selection,
+                confirmedAi8Page,
+                &error,
+                &operationMessage) &&
+                error == VaporView::CommandErrorCode::Ok &&
+                std::fabs(confirmedAi8Page.channel.setpointC - 25.0) < 0.000001,
+            "AI-8 simulated factory reset restores defaults");
+
     require(manager.disconnectDevice(VaporView::SkyDeviceId::Ai8TemperatureController, &error) &&
                 error == VaporView::CommandErrorCode::Ok,
             "AI-8 simulated disconnect succeeds");

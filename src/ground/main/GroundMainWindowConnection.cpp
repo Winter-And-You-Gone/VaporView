@@ -704,6 +704,10 @@ void MainWindow::stopAllCollectors()
         state_->ai8_temperature_controller_panel_->setBackendConnected(false);
         state_->ai8_temperature_controller_panel_->applyLiveData({});
     }
+    if (state_->ai8_device_session_)
+    {
+        state_->ai8_device_session_->setLocalAvailable(false);
+    }
     updateAi8TemperatureTitleStatus();
 }
 
@@ -731,7 +735,10 @@ void MainWindow::finishConnectionAttempt(bool connected)
                            : QStringLiteral("19200"))
             : QString();
         state_->ai8_temperature_controller_panel_->setBackendConnected(ai8Connected, detail);
-        state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(true);
+        if (state_->ai8_device_session_)
+        {
+            state_->ai8_device_session_->setLocalAvailable(ai8Connected, detail);
+        }
     }
     updateAi8TemperatureTitleStatus();
     if (ai8Connected)
@@ -1415,7 +1422,20 @@ void MainWindow::onTemperatureControllerDataReady()
 void MainWindow::onAi8TemperatureControllerDataReady()
 {
     const CollectorSnapshot collectors = snapshotCollectors();
-    if (collectors.ai8_temperature_controller && state_->ai8_temperature_controller_panel_)
+    const bool available = collectors.ai8_temperature_controller &&
+        collectors.ai8_temperature_controller->isRunning();
+    if (state_->ai8_device_session_ && !isRemoteSkyMode())
+    {
+        const QString detail = available
+            ? QStringLiteral("%1 @ %2")
+                  .arg(localSerialPortComboValue(state_->device_config_.ai8_temperature_port_combo),
+                       state_->device_config_.ai8_temperature_baud_combo
+                           ? state_->device_config_.ai8_temperature_baud_combo->currentText()
+                           : QStringLiteral("19200"))
+            : QString();
+        state_->ai8_device_session_->setLocalAvailable(available, detail);
+    }
+    if (available && state_->ai8_temperature_controller_panel_)
     {
         state_->ai8_temperature_controller_panel_->applyLiveData(
             collectors.ai8_temperature_controller->getLatestData());
@@ -1425,127 +1445,141 @@ void MainWindow::onAi8TemperatureControllerDataReady()
 
 void MainWindow::onAi8ReadPageRequested()
 {
-    if (!state_->ai8_temperature_controller_panel_)
-    {
-        return;
-    }
-    if (isRemoteSkyMode())
-    {
-        state_->ai8_temperature_controller_panel_->setOperationStatus(
-            state_->is_english_
-                ? QStringLiteral("Remote Sky AI-8288 parameter read is not wired yet.")
-                : QStringLiteral("Remote Sky AI-8288 参数读取尚未接入远程命令。"),
-            false);
-        return;
-    }
-    if (!state_->local_connection_controller_)
+    if (!state_->ai8_temperature_controller_panel_ || !state_->ai8_device_session_)
     {
         return;
     }
     const auto requested = state_->ai8_temperature_controller_panel_->currentPageData();
-    state_->ai8_temperature_controller_panel_->setOperationStatus(
-        state_->is_english_ ? QStringLiteral("Reading current page...")
-                            : QStringLiteral("正在读取当前页…"),
-        true);
-    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-    const auto result = state_->local_connection_controller_->readAi8Page(
-        requested.page,
-        requested.selection);
-    if (result.success)
-    {
-        state_->ai8_temperature_controller_panel_->applyPageData(result.data);
-    }
-    state_->ai8_temperature_controller_panel_->setOperationStatus(result.message, result.success);
-    QVariantMap fields{{QStringLiteral("device"), QStringLiteral("AI-8288")},
-                       {QStringLiteral("device_id"), QStringLiteral("ai8_temperature_controller")},
-                       {QStringLiteral("page"), static_cast<int>(requested.page)},
-                       {QStringLiteral("channel"), requested.selection.channel},
-                       {QStringLiteral("input_group"), requested.selection.inputGroup},
-                       {QStringLiteral("output_group"), requested.selection.outputGroup},
-                       {QStringLiteral("ui_visibility"), result.success ? QStringLiteral("details") : QStringLiteral("attention")},
-                       {QStringLiteral("details"), result.message}};
-    if (!result.success)
-    {
-        fields.insert(QStringLiteral("error_code"), QStringLiteral("AI8_PAGE_READ_FAILED"));
-        fields.insert(QStringLiteral("ui_dedupe_key"), QStringLiteral("ai8:read_page:failed"));
-    }
-    if (result.success)
-    {
-        publishGroundLog(VaporView::LogLevel::Info,
-                         QStringLiteral("device.temperature.command"),
-                         QStringLiteral("ai8_page_read_completed"),
-                         QStringLiteral("AI-8288 参数页读取完成。"),
-                         fields);
-    }
-    else
-    {
-        publishGroundLog(VaporView::LogLevel::Error,
-                         QStringLiteral("device.temperature.command"),
-                         QStringLiteral("ai8_page_read_failed"),
-                         QStringLiteral("AI-8288 参数页读取失败。"),
-                         fields);
-    }
+    state_->ai8_device_session_->activatePage(requested.page, requested.selection);
+    state_->ai8_device_session_->readPage(requested.page, requested.selection);
 }
 
 void MainWindow::onAi8WritePageRequested()
+{
+    if (!state_->ai8_temperature_controller_panel_ || !state_->ai8_device_session_)
+    {
+        return;
+    }
+    const auto requested = state_->ai8_temperature_controller_panel_->currentPageData();
+    state_->ai8_device_session_->activatePage(requested.page, requested.selection);
+    state_->ai8_device_session_->writePage(requested);
+}
+
+void MainWindow::onAi8SessionAvailabilityChanged(bool available, const QString& reason)
 {
     if (!state_->ai8_temperature_controller_panel_)
     {
         return;
     }
-    if (isRemoteSkyMode())
+    state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(
+        available, available ? QString() : reason);
+}
+
+void MainWindow::onAi8SessionOperationStarted(
+    quint64 requestId, VaporView::Ground::Devices::Ai8Operation operation)
+{
+    Q_UNUSED(requestId);
+    if (!state_->ai8_temperature_controller_panel_)
     {
-        state_->ai8_temperature_controller_panel_->setOperationStatus(
-            state_->is_english_
-                ? QStringLiteral("Remote Sky AI-8288 parameter write is not wired yet.")
-                : QStringLiteral("Remote Sky AI-8288 参数写入尚未接入远程命令。"),
-            false);
         return;
     }
-    if (!state_->local_connection_controller_)
-    {
-        return;
-    }
-    const auto requested = state_->ai8_temperature_controller_panel_->currentPageData();
+    const bool writing = operation != VaporView::Ground::Devices::Ai8Operation::Read;
     state_->ai8_temperature_controller_panel_->setOperationStatus(
-        state_->is_english_ ? QStringLiteral("Writing and reading back...")
-                            : QStringLiteral("正在写入并回读确认…"),
+        writing
+            ? (state_->is_english_ ? QStringLiteral("Writing and reading back...")
+                                   : QStringLiteral("正在写入并回读确认…"))
+            : (state_->is_english_ ? QStringLiteral("Reading current page...")
+                                   : QStringLiteral("正在读取当前页…")),
         true);
-    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-    const auto result = state_->local_connection_controller_->writeAi8Page(requested);
-    if (result.success)
+    state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(
+        false,
+        state_->is_english_ ? QStringLiteral("Waiting for the device backend...")
+                            : QStringLiteral("正在等待设备后端响应…"));
+}
+
+void MainWindow::onAi8SessionOperationFinished(
+    const VaporView::Ground::Devices::Ai8SessionResult& result)
+{
+    if (!state_->ai8_temperature_controller_panel_ || !state_->ai8_device_session_)
     {
-        state_->ai8_temperature_controller_panel_->applyPageData(result.data);
+        return;
     }
-    state_->ai8_temperature_controller_panel_->setOperationStatus(result.message, result.success);
+
+    using Operation = VaporView::Ground::Devices::Ai8Operation;
+    using Outcome = VaporView::Ground::Devices::Ai8OperationOutcome;
+    QString statusText = result.message;
+    if (result.success())
+    {
+        statusText = result.operation == Operation::Read
+            ? (state_->is_english_ ? QStringLiteral("Parameters were read.")
+                                   : QStringLiteral("参数读取完成。"))
+            : (state_->is_english_
+                   ? QStringLiteral("Parameters were written and confirmed by read-back.")
+                   : QStringLiteral("参数已写入并回读确认。"));
+    }
+    else if (statusText.isEmpty())
+    {
+        statusText = state_->is_english_ ? QStringLiteral("AI-8 operation failed.")
+                                         : QStringLiteral("AI-8 操作失败。");
+    }
+
+    state_->ai8_temperature_controller_panel_->setOperationStatus(
+        statusText, result.success());
+    state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(
+        state_->ai8_device_session_->operationsAvailable(),
+        state_->ai8_device_session_->operationsAvailable() ? QString() : statusText);
+
+    QString operationName;
+    switch (result.operation)
+    {
+    case Operation::Read: operationName = QStringLiteral("read"); break;
+    case Operation::Write: operationName = QStringLiteral("write"); break;
+    case Operation::FactoryReset: operationName = QStringLiteral("factory_reset"); break;
+    }
+    QString outcomeName;
+    switch (result.outcome)
+    {
+    case Outcome::Success: outcomeName = QStringLiteral("success"); break;
+    case Outcome::Failed: outcomeName = QStringLiteral("failed"); break;
+    case Outcome::Timeout: outcomeName = QStringLiteral("timeout"); break;
+    case Outcome::Disconnected: outcomeName = QStringLiteral("disconnected"); break;
+    case Outcome::Unsupported: outcomeName = QStringLiteral("unsupported"); break;
+    }
     QVariantMap fields{{QStringLiteral("device"), QStringLiteral("AI-8288")},
                        {QStringLiteral("device_id"), QStringLiteral("ai8_temperature_controller")},
-                       {QStringLiteral("page"), static_cast<int>(requested.page)},
-                       {QStringLiteral("channel"), requested.selection.channel},
-                       {QStringLiteral("input_group"), requested.selection.inputGroup},
-                       {QStringLiteral("output_group"), requested.selection.outputGroup},
-                       {QStringLiteral("ui_visibility"), result.success ? QStringLiteral("details") : QStringLiteral("attention")},
-                       {QStringLiteral("details"), result.message}};
-    if (!result.success)
+                       {QStringLiteral("request_id"), result.request_id},
+                       {QStringLiteral("operation"), operationName},
+                       {QStringLiteral("outcome"), outcomeName},
+                       {QStringLiteral("page"), static_cast<int>(result.requested.page)},
+                       {QStringLiteral("channel"), result.requested.selection.channel},
+                       {QStringLiteral("input_group"), result.requested.selection.inputGroup},
+                       {QStringLiteral("output_group"), result.requested.selection.outputGroup},
+                       {QStringLiteral("command_error_code"),
+                        commandErrorCodeIdentifier(result.error_code)},
+                       {QStringLiteral("ui_visibility"), result.success()
+                            ? QStringLiteral("details") : QStringLiteral("attention")},
+                       {QStringLiteral("details"), statusText}};
+    if (!result.success())
     {
-        fields.insert(QStringLiteral("error_code"), QStringLiteral("AI8_PAGE_WRITE_FAILED"));
-        fields.insert(QStringLiteral("ui_dedupe_key"), QStringLiteral("ai8:write_page:failed"));
+        fields.insert(QStringLiteral("error_code"), QStringLiteral("AI8_OPERATION_FAILED"));
+        fields.insert(QStringLiteral("ui_dedupe_key"),
+                      QStringLiteral("ai8:%1:%2").arg(operationName, outcomeName));
     }
-    if (result.success)
+    publishGroundLog(result.success() ? VaporView::LogLevel::Info : VaporView::LogLevel::Error,
+                     QStringLiteral("device.temperature.command"),
+                     result.success() ? QStringLiteral("ai8_operation_completed")
+                                      : QStringLiteral("ai8_operation_failed"),
+                     result.success() ? QStringLiteral("AI-8288 参数操作完成。")
+                                      : QStringLiteral("AI-8288 参数操作失败。"),
+                     fields);
+}
+
+void MainWindow::onAi8SessionPageDataAvailable(
+    const VaporView::Ai8TemperatureControllerProtocol::PageData& data)
+{
+    if (state_->ai8_temperature_controller_panel_)
     {
-        publishGroundLog(VaporView::LogLevel::Info,
-                         QStringLiteral("device.temperature.command"),
-                         QStringLiteral("ai8_page_write_completed"),
-                         QStringLiteral("AI-8288 参数页写入完成。"),
-                         fields);
-    }
-    else
-    {
-        publishGroundLog(VaporView::LogLevel::Error,
-                         QStringLiteral("device.temperature.command"),
-                         QStringLiteral("ai8_page_write_failed"),
-                         QStringLiteral("AI-8288 参数页写入失败。"),
-                         fields);
+        state_->ai8_temperature_controller_panel_->applyPageData(data);
     }
 }
 

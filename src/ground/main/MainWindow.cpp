@@ -329,6 +329,32 @@ MainWindow::MainWindow(QWidget *parent)
     setupToolBar();
     state_->remote_sky_controller_ = std::make_unique<VaporView::Ground::Devices::RemoteSkyController>();
     setupCentralWidget();
+    VaporView::Ground::Devices::Ai8DeviceSession::LocalAdapter ai8LocalAdapter;
+    ai8LocalAdapter.readPage = [controller = state_->local_connection_controller_.get()](
+                                   VaporView::Ai8TemperatureControllerProtocol::Page page,
+                                   const VaporView::Ai8TemperatureControllerProtocol::Selection& selection) {
+        return controller->readAi8Page(page, selection);
+    };
+    ai8LocalAdapter.writePage = [controller = state_->local_connection_controller_.get()](
+                                    const VaporView::Ai8TemperatureControllerProtocol::PageData& data) {
+        return controller->writeAi8Page(data);
+    };
+    state_->ai8_device_session_ =
+        std::make_unique<VaporView::Ground::Devices::Ai8DeviceSession>(
+            std::move(ai8LocalAdapter), state_->remote_sky_controller_.get());
+    state_->ai8_device_session_->setEnglish(state_->is_english_);
+    connect(state_->ai8_device_session_.get(),
+            &VaporView::Ground::Devices::Ai8DeviceSession::availabilityChanged,
+            this, &MainWindow::onAi8SessionAvailabilityChanged);
+    connect(state_->ai8_device_session_.get(),
+            &VaporView::Ground::Devices::Ai8DeviceSession::operationStarted,
+            this, &MainWindow::onAi8SessionOperationStarted);
+    connect(state_->ai8_device_session_.get(),
+            &VaporView::Ground::Devices::Ai8DeviceSession::operationFinished,
+            this, &MainWindow::onAi8SessionOperationFinished);
+    connect(state_->ai8_device_session_.get(),
+            &VaporView::Ground::Devices::Ai8DeviceSession::pageDataAvailable,
+            this, &MainWindow::onAi8SessionPageDataAvailable);
     configureLocalConnectionCoordinator();
     setupWindowBorderFrames();
     setupWindowResizeHandles();

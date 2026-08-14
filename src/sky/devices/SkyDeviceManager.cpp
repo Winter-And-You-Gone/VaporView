@@ -207,6 +207,164 @@ void initializeSimulatedTemperatureController(TemperatureControllerData& data)
     }
 }
 
+void initializeSimulatedAi8State(
+    std::array<Ai8TemperatureControllerProtocol::ChannelParameters,
+               Ai8TemperatureControllerProtocol::kChannelCount>& channels,
+    std::array<Ai8TemperatureControllerProtocol::InputParameters,
+               Ai8TemperatureControllerProtocol::kParameterGroupCount>& inputs,
+    std::array<Ai8TemperatureControllerProtocol::OutputParameters,
+               Ai8TemperatureControllerProtocol::kParameterGroupCount>& outputs,
+    Ai8TemperatureControllerProtocol::GlobalParameters& global)
+{
+    using namespace Ai8TemperatureControllerProtocol;
+    for (int index = 0; index < kChannelCount; ++index)
+    {
+        auto& channel = channels[static_cast<size_t>(index)];
+        channel = ChannelParameters{};
+        channel.setpointC = 25.0;
+        channel.measuredC = 24.5;
+        channel.proportionalBand = 10.0;
+        channel.integralTimeS = 20.0;
+        channel.derivativeTimeS = 5.0;
+        channel.channelInputGroup = 1;
+        channel.channelOutputGroupRaw = 1;
+        channel.highAlarmC = 80.0;
+        channel.lowAlarmC = -20.0;
+        channel.displayedSetpointC = channel.setpointC;
+    }
+    for (int index = 0; index < kParameterGroupCount; ++index)
+    {
+        auto& input = inputs[static_cast<size_t>(index)];
+        input = InputParameters{};
+        input.inputType = 1;
+        input.scaleLow = 0.0;
+        input.scaleHigh = 100.0;
+        input.filter = 1;
+        input.channelInputGroup = 1;
+
+        auto& output = outputs[static_cast<size_t>(index)];
+        output = OutputParameters{};
+        output.controlAction = 0;
+        output.deviationHighAlarm = 80.0;
+        output.deviationLowAlarm = -20.0;
+        output.outputLowPercent = 0;
+        output.outputHighPercent = 100;
+        output.outputHighThreshold = 100.0;
+    }
+    global = GlobalParameters{};
+    global.address = 1;
+    global.baudRate = 19200;
+    global.localInputChannelCount = kChannelCount;
+    global.expansionInputChannelCount = kChannelCount;
+    global.controlChannelCount = kChannelCount;
+    global.controlCycleS = 1.0;
+    global.runStateIsDocumented = true;
+    global.decimalPoint = 1;
+}
+
+Ai8TemperatureControllerProtocol::PageData simulatedAi8Page(
+    Ai8TemperatureControllerProtocol::Page page,
+    const Ai8TemperatureControllerProtocol::Selection& selection,
+    const std::array<Ai8TemperatureControllerProtocol::ChannelParameters,
+                     Ai8TemperatureControllerProtocol::kChannelCount>& channels,
+    const std::array<Ai8TemperatureControllerProtocol::InputParameters,
+                     Ai8TemperatureControllerProtocol::kParameterGroupCount>& inputs,
+    const std::array<Ai8TemperatureControllerProtocol::OutputParameters,
+                     Ai8TemperatureControllerProtocol::kParameterGroupCount>& outputs,
+    const Ai8TemperatureControllerProtocol::GlobalParameters& global)
+{
+    using namespace Ai8TemperatureControllerProtocol;
+    PageData data;
+    data.page = page;
+    data.selection = selection;
+    data.channel = channels[static_cast<size_t>(selection.channel - 1)];
+    data.input = inputs[static_cast<size_t>(selection.inputGroup - 1)];
+    data.output = outputs[static_cast<size_t>(selection.outputGroup - 1)];
+    data.global = global;
+    return data;
+}
+
+bool finiteAi8PageValues(const Ai8TemperatureControllerProtocol::PageData& data)
+{
+    using namespace Ai8TemperatureControllerProtocol;
+    const auto finite = [](double value) { return std::isfinite(value); };
+    return finite(data.channel.setpointC) && finite(data.channel.measuredC) &&
+           finite(data.channel.proportionalBand) && finite(data.channel.integralTimeS) &&
+           finite(data.channel.derivativeTimeS) && finite(data.channel.measurementOffset) &&
+           finite(data.channel.manualOutputPercent) && finite(data.channel.highAlarmC) &&
+           finite(data.channel.lowAlarmC) && finite(data.channel.displayedSetpointC) &&
+           finite(data.input.scaleLow) && finite(data.input.scaleHigh) &&
+           finite(data.input.measurementOffset) && finite(data.output.deviationHighAlarm) &&
+           finite(data.output.deviationLowAlarm) && finite(data.output.hysteresis) &&
+           finite(data.output.outputHighThreshold) && finite(data.output.riseSlope) &&
+           finite(data.output.fallSlope) && finite(data.output.setpointLowLimit) &&
+           finite(data.output.setpointHighLimit);
+}
+
+bool validAi8PageValues(const Ai8TemperatureControllerProtocol::PageData& data)
+{
+    using namespace Ai8TemperatureControllerProtocol;
+    return finiteAi8PageValues(data) &&
+           data.channel.setpointC >= -999.0 && data.channel.setpointC <= 3200.0 &&
+           data.channel.proportionalBand >= 0.0 && data.channel.proportionalBand <= 3200.0 &&
+           data.channel.integralTimeS >= 0.0 && data.channel.integralTimeS <= 3200.0 &&
+           data.channel.derivativeTimeS >= -327.6 && data.channel.derivativeTimeS <= 327.6 &&
+           data.channel.channelInputGroup >= 0 && data.channel.channelInputGroup <= 4 &&
+           data.channel.channelOutputGroupRaw >= 0 && data.channel.channelOutputGroupRaw <= 4 &&
+           data.channel.programNumber >= 0 && data.channel.programNumber <= 9999 &&
+           data.channel.workMode >= 0 && data.channel.workMode <= 5 &&
+           data.channel.manualOutputPercent >= 0.0 && data.channel.manualOutputPercent <= 100.0 &&
+           data.channel.highAlarmC >= -999.0 && data.channel.highAlarmC <= 3200.0 &&
+           data.channel.lowAlarmC >= -999.0 && data.channel.lowAlarmC <= 3200.0 &&
+           data.input.inputType >= 0 && data.input.inputType <= 51 &&
+           data.input.scaleLow >= -999.0 && data.input.scaleLow <= 3200.0 &&
+           data.input.scaleHigh >= -999.0 && data.input.scaleHigh <= 3200.0 &&
+           data.input.filter >= 0 && data.input.filter <= 999 &&
+           data.input.channelInputGroup >= 0 && data.input.channelInputGroup <= 4 &&
+           data.input.measurementOffset >= -999.0 && data.input.measurementOffset <= 3200.0 &&
+           data.input.correctionEntry >= 0 && data.input.correctionEntry <= 999 &&
+           data.output.controlAction >= 0 && data.output.controlAction <= 1 &&
+           data.output.deviationHighAlarm >= -999.0 && data.output.deviationHighAlarm <= 3200.0 &&
+           data.output.deviationLowAlarm >= -999.0 && data.output.deviationLowAlarm <= 3200.0 &&
+           data.output.hysteresis >= -999.0 && data.output.hysteresis <= 3200.0 &&
+           data.output.outputLowPercent >= 0 && data.output.outputLowPercent <= 100 &&
+           data.output.outputHighPercent >= 0 && data.output.outputHighPercent <= 105 &&
+           data.output.outputHighThreshold >= -999.0 && data.output.outputHighThreshold <= 3200.0 &&
+           data.output.riseSlope >= 0.0 && data.output.riseSlope <= 3200.0 &&
+           data.output.fallSlope >= 0.0 && data.output.fallSlope <= 3200.0 &&
+           data.output.setpointLowLimit >= -999.0 && data.output.setpointLowLimit <= 3200.0 &&
+           data.output.setpointHighLimit >= -999.0 && data.output.setpointHighLimit <= 3200.0 &&
+           data.output.alarmResetFlags >= 0 && data.output.alarmResetFlags <= 31 &&
+           data.global.address >= 1 && data.global.address <= 247 &&
+           isSupportedBaudRate(data.global.baudRate) &&
+           data.global.controlChannelCount >= 1 && data.global.controlChannelCount <= kChannelCount &&
+           data.global.controlCycleS >= 0.0 && data.global.controlCycleS <= 50.0 &&
+           data.global.sampleMode >= 0 && data.global.sampleMode <= 3 &&
+           data.global.decimalPoint >= 0 && data.global.decimalPoint <= 3 &&
+           (!data.global.runStateWriteRequested || isDocumentedRunState(data.global.runStateWriteValue));
+}
+
+bool validAi8Selection(const Ai8TemperatureControllerProtocol::Selection& selection)
+{
+    using namespace Ai8TemperatureControllerProtocol;
+    return selection.channel >= 1 && selection.channel <= kChannelCount &&
+           selection.inputGroup >= 1 && selection.inputGroup <= kParameterGroupCount &&
+           selection.outputGroup >= 1 && selection.outputGroup <= kParameterGroupCount;
+}
+
+bool validAi8Page(Ai8TemperatureControllerProtocol::Page page)
+{
+    return static_cast<int>(page) >= static_cast<int>(Ai8TemperatureControllerProtocol::Page::Channel) &&
+           static_cast<int>(page) <= static_cast<int>(Ai8TemperatureControllerProtocol::Page::Global);
+}
+
+void setAi8Error(CommandErrorCode *errorCode, QString *errorMessage,
+                 CommandErrorCode code, const QString& message)
+{
+    if (errorCode) *errorCode = code;
+    if (errorMessage) *errorMessage = message;
+}
+
 bool validTemperatureChannel(quint8 channel)
 {
     return channel >= 1 && channel <= 2;
@@ -991,6 +1149,173 @@ bool SkyDeviceManager::restoreTemperatureFactoryDefaults(CommandErrorCode *error
     }
     if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
     return ok;
+}
+
+bool SkyDeviceManager::readAi8Page(Ai8TemperatureControllerProtocol::Page page,
+                                   const Ai8TemperatureControllerProtocol::Selection& selection,
+                                   Ai8TemperatureControllerProtocol::PageData& data,
+                                   CommandErrorCode *errorCode,
+                                   QString *errorMessage)
+{
+    if (!validAi8Page(page) || !validAi8Selection(selection))
+    {
+        setAi8Error(errorCode, errorMessage, CommandErrorCode::InvalidPayload,
+                    QStringLiteral("AI-8 page or selection is invalid."));
+        return false;
+    }
+    if (ai8_temperature_controller_status_.state != DeviceState::Connected)
+    {
+        setAi8Error(errorCode, errorMessage, CommandErrorCode::DeviceNotConnected,
+                    QStringLiteral("AI-8 is not connected."));
+        return false;
+    }
+    if (simulate_data_)
+    {
+        if (!simulated_ai8_pages_initialized_)
+        {
+            initializeSimulatedAi8State(simulated_ai8_channels_,
+                                        simulated_ai8_inputs_,
+                                        simulated_ai8_outputs_,
+                                        simulated_ai8_global_);
+            simulated_ai8_pages_initialized_ = true;
+        }
+        data = simulatedAi8Page(page,
+                                selection,
+                                simulated_ai8_channels_,
+                                simulated_ai8_inputs_,
+                                simulated_ai8_outputs_,
+                                simulated_ai8_global_);
+        setAi8Error(errorCode, errorMessage, CommandErrorCode::Ok,
+                    QStringLiteral("AI-8 parameters were read from simulation."));
+        return true;
+    }
+    if (!ai8_temperature_controller_ || !ai8_temperature_controller_->isRunning())
+    {
+        setAi8Error(errorCode, errorMessage, CommandErrorCode::DeviceNotConnected,
+                    QStringLiteral("AI-8 collector is not running."));
+        return false;
+    }
+    QString collectorError;
+    const bool ok = ai8_temperature_controller_->readPage(page, selection, data, &collectorError);
+    setAi8Error(errorCode, errorMessage,
+                ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed,
+                ok ? QStringLiteral("AI-8 parameters were read.") : collectorError);
+    return ok;
+}
+
+bool SkyDeviceManager::writeAi8Page(const Ai8TemperatureControllerProtocol::PageData& requested,
+                                    Ai8TemperatureControllerProtocol::PageData& confirmed,
+                                    CommandErrorCode *errorCode,
+                                    QString *errorMessage)
+{
+    if (!validAi8Page(requested.page) || !validAi8Selection(requested.selection) ||
+        !validAi8PageValues(requested))
+    {
+        setAi8Error(errorCode, errorMessage, CommandErrorCode::InvalidPayload,
+                    QStringLiteral("AI-8 page values are invalid."));
+        return false;
+    }
+    if (ai8_temperature_controller_status_.state != DeviceState::Connected)
+    {
+        setAi8Error(errorCode, errorMessage, CommandErrorCode::DeviceNotConnected,
+                    QStringLiteral("AI-8 is not connected."));
+        return false;
+    }
+    if (simulate_data_)
+    {
+        if (!simulated_ai8_pages_initialized_)
+        {
+            initializeSimulatedAi8State(simulated_ai8_channels_,
+                                        simulated_ai8_inputs_,
+                                        simulated_ai8_outputs_,
+                                        simulated_ai8_global_);
+            simulated_ai8_pages_initialized_ = true;
+        }
+        switch (requested.page)
+        {
+        case Ai8TemperatureControllerProtocol::Page::Channel:
+            simulated_ai8_channels_[static_cast<size_t>(requested.selection.channel - 1)] = requested.channel;
+            break;
+        case Ai8TemperatureControllerProtocol::Page::InputGroup:
+            simulated_ai8_inputs_[static_cast<size_t>(requested.selection.inputGroup - 1)] = requested.input;
+            break;
+        case Ai8TemperatureControllerProtocol::Page::OutputGroup:
+            simulated_ai8_outputs_[static_cast<size_t>(requested.selection.outputGroup - 1)] = requested.output;
+            break;
+        case Ai8TemperatureControllerProtocol::Page::Global:
+            simulated_ai8_global_ = requested.global;
+            break;
+        }
+        confirmed = simulatedAi8Page(requested.page,
+                                     requested.selection,
+                                     simulated_ai8_channels_,
+                                     simulated_ai8_inputs_,
+                                     simulated_ai8_outputs_,
+                                     simulated_ai8_global_);
+        setAi8Error(errorCode, errorMessage, CommandErrorCode::Ok,
+                    QStringLiteral("AI-8 parameters were written and read back from simulation."));
+        return true;
+    }
+    if (!ai8_temperature_controller_ || !ai8_temperature_controller_->isRunning())
+    {
+        setAi8Error(errorCode, errorMessage, CommandErrorCode::DeviceNotConnected,
+                    QStringLiteral("AI-8 collector is not running."));
+        return false;
+    }
+    QString collectorError;
+    if (!ai8_temperature_controller_->writePage(requested, &collectorError))
+    {
+        setAi8Error(errorCode, errorMessage, CommandErrorCode::ConfigApplyFailed, collectorError);
+        return false;
+    }
+    const bool ok = ai8_temperature_controller_->readPage(requested.page,
+                                                           requested.selection,
+                                                           confirmed,
+                                                           &collectorError);
+    setAi8Error(errorCode, errorMessage,
+                ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed,
+                ok ? QStringLiteral("AI-8 parameters were written and read back.") : collectorError);
+    return ok;
+}
+
+bool SkyDeviceManager::restoreAi8FactoryDefaults(Ai8TemperatureControllerProtocol::Page page,
+                                                 const Ai8TemperatureControllerProtocol::Selection& selection,
+                                                 Ai8TemperatureControllerProtocol::PageData& data,
+                                                 CommandErrorCode *errorCode,
+                                                 QString *errorMessage)
+{
+    if (!validAi8Page(page) || !validAi8Selection(selection))
+    {
+        setAi8Error(errorCode, errorMessage, CommandErrorCode::InvalidPayload,
+                    QStringLiteral("AI-8 page or selection is invalid."));
+        return false;
+    }
+    if (ai8_temperature_controller_status_.state != DeviceState::Connected)
+    {
+        setAi8Error(errorCode, errorMessage, CommandErrorCode::DeviceNotConnected,
+                    QStringLiteral("AI-8 is not connected."));
+        return false;
+    }
+    if (!simulate_data_)
+    {
+        setAi8Error(errorCode, errorMessage, CommandErrorCode::ConfigApplyFailed,
+                    QStringLiteral("AI-8 factory reset is not supported by the collector."));
+        return false;
+    }
+    initializeSimulatedAi8State(simulated_ai8_channels_,
+                                simulated_ai8_inputs_,
+                                simulated_ai8_outputs_,
+                                simulated_ai8_global_);
+    simulated_ai8_pages_initialized_ = true;
+    data = simulatedAi8Page(page,
+                            selection,
+                            simulated_ai8_channels_,
+                            simulated_ai8_inputs_,
+                            simulated_ai8_outputs_,
+                            simulated_ai8_global_);
+    setAi8Error(errorCode, errorMessage, CommandErrorCode::Ok,
+                QStringLiteral("AI-8 simulation parameters were restored to factory defaults."));
+    return true;
 }
 
 EpsilonData SkyDeviceManager::latestEpsilon() const

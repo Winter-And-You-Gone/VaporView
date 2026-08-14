@@ -5,6 +5,7 @@
 #include <QCommandLineParser>
 #include <QComboBox>
 #include <QDebug>
+#include <QDateTime>
 #include <QEasingCurve>
 #include <QEvent>
 #include <QEventLoop>
@@ -16,9 +17,13 @@
 #include <QWidget>
 #include <QIcon>
 #include <QDir>
+#include <QDoubleSpinBox>
+#include <QFile>
 #include <QFileInfo>
+#include <QLabel>
 #include <QPalette>
 #include <QPointer>
+#include <QPushButton>
 #include <QPropertyAnimation>
 #include <QSettings>
 #include <QTimer>
@@ -30,6 +35,7 @@
 #include "SkyRuntime.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string_view>
 
 namespace
@@ -185,6 +191,103 @@ void showMainWindow(MainWindow& window, VaporView::StartupSplash *splash)
     mainWindowFade->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
+void startAi8RemoteE2e(QApplication& app, MainWindow& window, const QString& outputPath)
+{
+    auto *pollTimer = new QTimer(&window);
+    pollTimer->setInterval(50);
+    auto *step = new int(0);
+    auto *startedMs = new qint64(QDateTime::currentMSecsSinceEpoch());
+    auto finish = [&app, outputPath, pollTimer, step, startedMs](bool success, const QString& detail) {
+        QFile output(outputPath);
+        if (output.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        {
+            output.write(success ? QByteArrayLiteral("PASS\n") : QByteArrayLiteral("FAIL\n"));
+            output.write(detail.toUtf8());
+            output.write("\n");
+        }
+        pollTimer->stop();
+        delete step;
+        delete startedMs;
+        QTimer::singleShot(0, &app, [&app, success]() { app.exit(success ? 0 : 1); });
+    };
+    QObject::connect(pollTimer, &QTimer::timeout, &window,
+                     [&app, &window, pollTimer, step, startedMs, finish]() mutable {
+        const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - *startedMs;
+        if (elapsed > 30000)
+        {
+            const auto *readButton = window.findChild<QPushButton *>(
+                QStringLiteral("ai8ReadParametersButton"));
+            const auto *writeButton = window.findChild<QPushButton *>(
+                QStringLiteral("ai8WriteParametersButton"));
+            const auto *status = window.findChild<QLabel *>(QStringLiteral("ai8ProtocolStatus"));
+            finish(false,
+                   QStringLiteral("AI-8 remote UI E2E timed out at step %1; read=%2; write=%3; status=%4")
+                       .arg(*step)
+                       .arg(readButton && readButton->isEnabled())
+                       .arg(writeButton && writeButton->isEnabled())
+                       .arg(status ? status->text() : QStringLiteral("<missing>")));
+            return;
+        }
+        if (*step == 0)
+        {
+            if (!QMetaObject::invokeMethod(&window, "onConnectClicked", Qt::DirectConnection))
+            {
+                finish(false, QStringLiteral("MainWindow connect action is unavailable"));
+                return;
+            }
+            *step = 1;
+            return;
+        }
+        auto *panel = window.findChild<QWidget *>(QStringLiteral("ai8TemperatureControllerPanel"));
+        auto *readButton = window.findChild<QPushButton *>(QStringLiteral("ai8ReadParametersButton"));
+        auto *writeButton = window.findChild<QPushButton *>(QStringLiteral("ai8WriteParametersButton"));
+        auto *status = window.findChild<QLabel *>(QStringLiteral("ai8ProtocolStatus"));
+        if (!panel || !readButton || !writeButton || !status)
+        {
+            finish(false, QStringLiteral("AI-8 parameter page controls are unavailable"));
+            return;
+        }
+        const QString statusText = status->text();
+        if (*step == 1 && readButton->isEnabled())
+        {
+            readButton->click();
+            *step = 2;
+            return;
+        }
+        if (*step == 2 && (statusText.contains(QStringLiteral("读取完成")) ||
+                           statusText.contains(QStringLiteral("Parameters were read"))))
+        {
+            auto *setpoint = panel->findChild<QDoubleSpinBox *>(QStringLiteral("ai8SetpointSpin"));
+            if (!setpoint || std::fabs(setpoint->value() - 25.0) > 0.001)
+            {
+                finish(false, QStringLiteral("AI-8 remote read did not load the simulated default"));
+                return;
+            }
+            setpoint->setValue(36.5);
+            if (!writeButton->isEnabled())
+            {
+                finish(false, QStringLiteral("AI-8 write action stayed disabled after read"));
+                return;
+            }
+            writeButton->click();
+            *step = 3;
+            return;
+        }
+        if (*step == 3 && (statusText.contains(QStringLiteral("回读确认")) ||
+                           statusText.contains(QStringLiteral("confirmed by read-back"))))
+        {
+            auto *setpoint = panel->findChild<QDoubleSpinBox *>(QStringLiteral("ai8SetpointSpin"));
+            if (!setpoint || std::fabs(setpoint->value() - 36.5) > 0.001)
+            {
+                finish(false, QStringLiteral("AI-8 remote write was not confirmed in the shared UI"));
+                return;
+            }
+            finish(true, QStringLiteral("AI-8 remote read/write/read-back passed"));
+        }
+    });
+    QTimer::singleShot(1200, pollTimer, [pollTimer]() { pollTimer->start(); });
+}
+
 int runApplication(int argc, char *argv[])
 {
     QApplication app(argc, argv);
@@ -255,10 +358,14 @@ int runApplication(int argc, char *argv[])
     QCommandLineOption skySimulateOption(QStringLiteral("sky-simulate-data"), QStringLiteral("Generate simulated sky data"));
     QCommandLineOption skyWaveHostOption(QStringLiteral("sky-wave-host"), QStringLiteral("Sky TCP wave host"), QStringLiteral("host"), QStringLiteral("127.0.0.1"));
     QCommandLineOption skyWavePortOption(QStringLiteral("sky-wave-port"), QStringLiteral("Sky TCP wave port"), QStringLiteral("port"), QStringLiteral("8888"));
+    QCommandLineOption ai8RemoteE2eOption(QStringLiteral("ai8-remote-e2e-output"),
+                                           QStringLiteral("Run the AI-8 remote UI E2E and write a result file"),
+                                           QStringLiteral("path"));
     parser.addOptions({modeOption, sourceOption, telemetryPortOption, telemetryBaudOption,
                        telemetryTransportOption, telemetryHostOption, telemetryTcpPortOption,
                        skyConfigOption,
-                       skySimulateOption, skyWaveHostOption, skyWavePortOption});
+                       skySimulateOption, skyWaveHostOption, skyWavePortOption,
+                       ai8RemoteE2eOption});
     parser.process(app);
 
     if (parser.value(modeOption).compare(QStringLiteral("sky"), Qt::CaseInsensitive) == 0)
@@ -398,6 +505,11 @@ int runApplication(int argc, char *argv[])
             });
         });
     });
+
+    if (parser.isSet(ai8RemoteE2eOption))
+    {
+        startAi8RemoteE2e(app, mainWindow, parser.value(ai8RemoteE2eOption));
+    }
 
     return runEventLoop();
 }

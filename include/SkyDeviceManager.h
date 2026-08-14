@@ -12,6 +12,7 @@
 #include <QTcpSocket>
 #include <QTimer>
 #include <atomic>
+#include <array>
 #include <cstdint>
 #include <deque>
 #include <memory>
@@ -68,6 +69,20 @@ public:
     bool setTemperatureOvertempOutputMode(quint16 mode, CommandErrorCode *errorCode = nullptr);
     bool setTemperatureSensorConfig(const TemperatureControllerCommand& command, CommandErrorCode *errorCode = nullptr);
     bool restoreTemperatureFactoryDefaults(CommandErrorCode *errorCode = nullptr);
+    bool readAi8Page(Ai8TemperatureControllerProtocol::Page page,
+                     const Ai8TemperatureControllerProtocol::Selection& selection,
+                     Ai8TemperatureControllerProtocol::PageData& data,
+                     CommandErrorCode *errorCode = nullptr,
+                     QString *errorMessage = nullptr);
+    bool writeAi8Page(const Ai8TemperatureControllerProtocol::PageData& requested,
+                      Ai8TemperatureControllerProtocol::PageData& confirmed,
+                      CommandErrorCode *errorCode = nullptr,
+                      QString *errorMessage = nullptr);
+    bool restoreAi8FactoryDefaults(Ai8TemperatureControllerProtocol::Page page,
+                                   const Ai8TemperatureControllerProtocol::Selection& selection,
+                                   Ai8TemperatureControllerProtocol::PageData& data,
+                                   CommandErrorCode *errorCode = nullptr,
+                                   QString *errorMessage = nullptr);
 
     EpsilonData latestEpsilon() const;
     PtbData latestPtb() const;
@@ -162,6 +177,14 @@ private:
     std::shared_ptr<LidarCollector> lidar_;
     std::shared_ptr<TemperatureControllerCollector> temperature_controller_;
     std::shared_ptr<Ai8TemperatureControllerCollector> ai8_temperature_controller_;
+    std::array<Ai8TemperatureControllerProtocol::ChannelParameters,
+               Ai8TemperatureControllerProtocol::kChannelCount> simulated_ai8_channels_{};
+    std::array<Ai8TemperatureControllerProtocol::InputParameters,
+               Ai8TemperatureControllerProtocol::kParameterGroupCount> simulated_ai8_inputs_{};
+    std::array<Ai8TemperatureControllerProtocol::OutputParameters,
+               Ai8TemperatureControllerProtocol::kParameterGroupCount> simulated_ai8_outputs_{};
+    Ai8TemperatureControllerProtocol::GlobalParameters simulated_ai8_global_{};
+    bool simulated_ai8_pages_initialized_ = false;
 
     QTcpSocket *wave_socket_ = nullptr;
     QByteArray wave_buffer_;

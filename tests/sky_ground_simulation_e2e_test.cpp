@@ -67,6 +67,17 @@ QString skyCoreExecutablePath()
     return path;
 }
 
+QString vaporViewExecutablePath()
+{
+    QString fileName = QStringLiteral("VaporView");
+#ifdef Q_OS_WIN
+    fileName += QStringLiteral(".exe");
+#endif
+    const QString path = QCoreApplication::applicationDirPath() + QLatin1Char('/') + fileName;
+    require(QFileInfo::exists(path), "VaporView executable exists beside test binary");
+    return path;
+}
+
 void stopSkyCore(QProcess& process)
 {
     if (process.state() == QProcess::NotRunning)
@@ -140,6 +151,7 @@ int main(int argc, char **argv)
     qRegisterMetaType<VaporView::Ai8TemperatureControllerProtocol::LiveData>(
         "VaporView::Ai8TemperatureControllerProtocol::LiveData");
     qRegisterMetaType<VaporView::CommandAck>("VaporView::CommandAck");
+    qRegisterMetaType<VaporView::DeviceOperationResponse>("VaporView::DeviceOperationResponse");
     qRegisterMetaType<VaporView::CommandId>("VaporView::CommandId");
 
     QTemporaryDir tempDir;
@@ -165,6 +177,7 @@ int main(int argc, char **argv)
     int rd105Count = 0;
     int ai8Count = 0;
     QHash<quint16, VaporView::CommandAck> acks;
+    QHash<quint32, VaporView::DeviceOperationResponse> ai8Responses;
 
     QObject::connect(&controller, &VaporView::Ground::Devices::RemoteSkyController::linkOpenChanged,
                      [&](bool open) { linkOpen = open; });
@@ -190,6 +203,10 @@ int main(int argc, char **argv)
                      [&](const VaporView::Ai8TemperatureControllerProtocol::LiveData& data) {
                          lastAi8 = data;
                          ++ai8Count;
+                     });
+    QObject::connect(&controller, &VaporView::Ground::Devices::RemoteSkyController::deviceOperationResponseReceived,
+                     [&](const VaporView::DeviceOperationResponse& response) {
+                         ai8Responses.insert(response.request_id, response);
                      });
 
     require(waitUntil([&]() {
@@ -286,6 +303,189 @@ int main(int argc, char **argv)
                        std::fabs(lastRd105.channels[0].target_temperature_c - 31.0) < 0.001;
             }, &process, 10000),
             "RD105 simulated telemetry reflects target command");
+
+    VaporView::Ai8TemperatureControllerProtocol::Selection ai8Selection;
+    ai8Selection.channel = 3;
+    ai8Selection.inputGroup = 2;
+    ai8Selection.outputGroup = 2;
+    quint32 requestId = controller.readAi8Page(
+        VaporView::Ai8TemperatureControllerProtocol::Page::Channel, ai8Selection);
+    require(requestId != 0 &&
+                waitUntil([&]() { return ai8Responses.contains(requestId); }, &process),
+            "AI-8 remote page read returns response");
+    require(ai8Responses.value(requestId).error_code == VaporView::CommandErrorCode::Ok,
+            "AI-8 remote page read succeeds");
+    require(controller.deviceOperationSupport() ==
+                VaporView::Ground::Devices::DeviceOperationSupport::Supported,
+            "AI-8 remote operation capability is learned from the response");
+    VaporView::Ai8TemperatureControllerProtocol::PageData ai8Page;
+    require(VaporView::TelemetryCodec::parseAi8PageData(
+                ai8Responses.value(requestId).payload, ai8Page) &&
+                std::fabs(ai8Page.channel.setpointC - 25.0) < 0.001,
+            "AI-8 remote page read returns simulation defaults");
+
+    ai8Page.channel.setpointC = 36.5;
+    requestId = controller.writeAi8Page(ai8Page);
+    require(requestId != 0 &&
+                waitUntil([&]() { return ai8Responses.contains(requestId); }, &process),
+            "AI-8 remote page write returns response");
+    VaporView::Ai8TemperatureControllerProtocol::PageData confirmedAi8Page;
+    require(ai8Responses.value(requestId).error_code == VaporView::CommandErrorCode::Ok &&
+                VaporView::TelemetryCodec::parseAi8PageData(
+                    ai8Responses.value(requestId).payload, confirmedAi8Page) &&
+                std::fabs(confirmedAi8Page.channel.setpointC - 36.5) < 0.001,
+            "AI-8 remote page write is confirmed by read-back");
+
+    requestId = controller.readAi8Page(
+        VaporView::Ai8TemperatureControllerProtocol::Page::Channel, ai8Selection);
+    require(requestId != 0 &&
+                waitUntil([&]() { return ai8Responses.contains(requestId); }, &process),
+            "AI-8 remote read-back returns response");
+    require(VaporView::TelemetryCodec::parseAi8PageData(
+                ai8Responses.value(requestId).payload, confirmedAi8Page) &&
+                std::fabs(confirmedAi8Page.channel.setpointC - 36.5) < 0.001,
+            "AI-8 remote read-back persists written value");
+
+    requestId = controller.readAi8Page(
+        VaporView::Ai8TemperatureControllerProtocol::Page::InputGroup, ai8Selection);
+    require(requestId != 0 &&
+                waitUntil([&]() { return ai8Responses.contains(requestId); }, &process),
+            "AI-8 remote input-group read returns response");
+    VaporView::Ai8TemperatureControllerProtocol::PageData inputPage;
+    require(ai8Responses.value(requestId).error_code == VaporView::CommandErrorCode::Ok &&
+                VaporView::TelemetryCodec::parseAi8PageData(
+                    ai8Responses.value(requestId).payload, inputPage),
+            "AI-8 remote input-group read succeeds");
+    inputPage.input.filter = 7;
+    requestId = controller.writeAi8Page(inputPage);
+    require(requestId != 0 &&
+                waitUntil([&]() { return ai8Responses.contains(requestId); }, &process),
+            "AI-8 remote input-group write returns response");
+    require(ai8Responses.value(requestId).error_code == VaporView::CommandErrorCode::Ok &&
+                VaporView::TelemetryCodec::parseAi8PageData(
+                    ai8Responses.value(requestId).payload, confirmedAi8Page) &&
+                confirmedAi8Page.input.filter == 7,
+            "AI-8 remote input-group write is confirmed by read-back");
+
+    requestId = controller.readAi8Page(
+        VaporView::Ai8TemperatureControllerProtocol::Page::OutputGroup, ai8Selection);
+    require(requestId != 0 &&
+                waitUntil([&]() { return ai8Responses.contains(requestId); }, &process),
+            "AI-8 remote output-group read returns response");
+    VaporView::Ai8TemperatureControllerProtocol::PageData outputPage;
+    require(ai8Responses.value(requestId).error_code == VaporView::CommandErrorCode::Ok &&
+                VaporView::TelemetryCodec::parseAi8PageData(
+                    ai8Responses.value(requestId).payload, outputPage),
+            "AI-8 remote output-group read succeeds");
+    outputPage.output.outputHighPercent = 101;
+    requestId = controller.writeAi8Page(outputPage);
+    require(requestId != 0 &&
+                waitUntil([&]() { return ai8Responses.contains(requestId); }, &process),
+            "AI-8 remote output-group write returns response");
+    require(ai8Responses.value(requestId).error_code == VaporView::CommandErrorCode::Ok &&
+                VaporView::TelemetryCodec::parseAi8PageData(
+                    ai8Responses.value(requestId).payload, confirmedAi8Page) &&
+                confirmedAi8Page.output.outputHighPercent == 101,
+            "AI-8 remote output-group write is confirmed by read-back");
+
+    requestId = controller.readAi8Page(
+        VaporView::Ai8TemperatureControllerProtocol::Page::Global, ai8Selection);
+    require(requestId != 0 &&
+                waitUntil([&]() { return ai8Responses.contains(requestId); }, &process),
+            "AI-8 remote global read returns response");
+    VaporView::Ai8TemperatureControllerProtocol::PageData globalPage;
+    require(ai8Responses.value(requestId).error_code == VaporView::CommandErrorCode::Ok &&
+                VaporView::TelemetryCodec::parseAi8PageData(
+                    ai8Responses.value(requestId).payload, globalPage),
+            "AI-8 remote global read succeeds");
+    globalPage.global.address = 7;
+    requestId = controller.writeAi8Page(globalPage);
+    require(requestId != 0 &&
+                waitUntil([&]() { return ai8Responses.contains(requestId); }, &process),
+            "AI-8 remote global write returns response");
+    require(ai8Responses.value(requestId).error_code == VaporView::CommandErrorCode::Ok &&
+                VaporView::TelemetryCodec::parseAi8PageData(
+                    ai8Responses.value(requestId).payload, confirmedAi8Page) &&
+                confirmedAi8Page.global.address == 7,
+            "AI-8 remote global write is confirmed by read-back");
+
+    auto invalidAi8Page = ai8Page;
+    invalidAi8Page.output.outputHighPercent = 106;
+    requestId = controller.writeAi8Page(invalidAi8Page);
+    require(requestId != 0 &&
+                waitUntil([&]() { return ai8Responses.contains(requestId); }, &process),
+            "AI-8 invalid remote write returns response");
+    require(ai8Responses.value(requestId).error_code == VaporView::CommandErrorCode::InvalidPayload,
+            "AI-8 invalid remote write is rejected");
+
+    requestId = controller.restoreAi8FactoryDefaults(
+        VaporView::Ai8TemperatureControllerProtocol::Page::Channel, ai8Selection);
+    require(requestId != 0 &&
+                waitUntil([&]() { return ai8Responses.contains(requestId); }, &process),
+            "AI-8 simulation factory reset returns response");
+    require(ai8Responses.value(requestId).error_code == VaporView::CommandErrorCode::Ok &&
+                VaporView::TelemetryCodec::parseAi8PageData(
+                    ai8Responses.value(requestId).payload, confirmedAi8Page) &&
+                std::fabs(confirmedAi8Page.channel.setpointC - 25.0) < 0.001,
+            "AI-8 simulation factory reset restores defaults");
+
+    controller.close();
+    QTemporaryDir groundUiTempDir;
+    require(groundUiTempDir.isValid(), "temporary Ground UI E2E directory");
+    const QString groundUiResultPath = groundUiTempDir.filePath(QStringLiteral("ai8_remote_ui_e2e.txt"));
+    QProcess groundUi;
+    groundUi.setProgram(vaporViewExecutablePath());
+    groundUi.setArguments({
+        QStringLiteral("--source"), QStringLiteral("remote"),
+        QStringLiteral("--telemetry-transport"), QStringLiteral("tcp"),
+        QStringLiteral("--telemetry-host"), QStringLiteral("127.0.0.1"),
+        QStringLiteral("--telemetry-tcp-port"), QString::number(port),
+        QStringLiteral("--ai8-remote-e2e-output"), groundUiResultPath,
+    });
+    groundUi.setProcessChannelMode(QProcess::MergedChannels);
+    groundUi.start();
+    require(groundUi.waitForStarted(5000), "VaporView Ground UI E2E process starts");
+    require(waitUntil([&]() {
+                return QFileInfo::exists(groundUiResultPath) ||
+                       groundUi.state() == QProcess::NotRunning;
+            }, &groundUi, 35000),
+            "VaporView Ground UI E2E process writes a result");
+    if (!QFileInfo::exists(groundUiResultPath))
+    {
+        const QByteArray diagnostics = groundUi.readAllStandardOutput();
+        std::cerr << "VaporView Ground UI E2E output:\n"
+                  << diagnostics.constData() << '\n';
+    }
+    if (groundUi.state() != QProcess::NotRunning)
+    {
+        groundUi.terminate();
+        groundUi.waitForFinished(5000);
+    }
+    if (groundUi.state() != QProcess::NotRunning)
+    {
+        groundUi.kill();
+        groundUi.waitForFinished(5000);
+    }
+    QFile groundUiResult(groundUiResultPath);
+    require(groundUiResult.open(QIODevice::ReadOnly), "VaporView Ground UI E2E result opens");
+    const QByteArray groundUiResultText = groundUiResult.readAll();
+    if (!groundUiResultText.startsWith("PASS\n"))
+    {
+        std::cerr << "VaporView Ground UI E2E result:\n"
+                  << groundUiResultText.constData() << '\n';
+    }
+    require(groundUiResultText.startsWith("PASS\n"),
+            "VaporView Ground UI E2E shared AI-8 page passes");
+
+    linkOpen = false;
+    require(waitUntil([&]() {
+                if (!linkOpen)
+                {
+                    controller.openTcp(QStringLiteral("127.0.0.1"), port);
+                }
+                return linkOpen;
+            }, &process),
+            "Ground backend reconnects after the real VaporView UI E2E");
 
     seq = controller.telemetryService()->saveSkyConfig();
     require(waitUntil([&]() {

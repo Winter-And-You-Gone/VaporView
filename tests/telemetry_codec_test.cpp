@@ -28,6 +28,7 @@ void testProtocolEnumValues()
     require(static_cast<quint8>(VaporView::MsgType::TelemetryStatus) == 0x04, "MsgType TelemetryStatus value");
     require(static_cast<quint8>(VaporView::MsgType::TemperatureControllerStatus) == 0x07, "MsgType TemperatureControllerStatus value");
     require(static_cast<quint8>(VaporView::MsgType::Ai8TemperatureControllerStatus) == 0x08, "MsgType Ai8TemperatureControllerStatus value");
+    require(static_cast<quint8>(VaporView::MsgType::DeviceOperationResponse) == 0x09, "MsgType DeviceOperationResponse value");
     require(static_cast<quint8>(VaporView::MsgType::Command) == 0x10, "MsgType Command value");
     require(static_cast<quint8>(VaporView::MsgType::CommandAck) == 0x11, "MsgType CommandAck value");
     require(static_cast<quint16>(VaporView::CommandId::StartRecording) == 1, "CommandId StartRecording value");
@@ -44,6 +45,7 @@ void testProtocolEnumValues()
     require(static_cast<quint16>(VaporView::CommandId::RestoreTemperatureFactoryDefaults) == 50, "CommandId RestoreTemperatureFactoryDefaults value");
     require(static_cast<quint16>(VaporView::CommandId::SetTemperatureOvertempUpper) == 52, "CommandId SetTemperatureOvertempUpper value");
     require(static_cast<quint16>(VaporView::CommandId::SetTemperatureStartupDelay) == 55, "CommandId SetTemperatureStartupDelay value");
+    require(static_cast<quint16>(VaporView::CommandId::DeviceOperation) == 60, "CommandId DeviceOperation value");
     require(static_cast<quint16>(VaporView::CommandId::ShutdownCore) == 90, "CommandId ShutdownCore value");
     require(static_cast<quint8>(VaporView::SkyDeviceId::Ai8TemperatureController) == 7, "SkyDeviceId AI-8 value");
 }
@@ -557,6 +559,76 @@ void testTelemetryStatus()
     require(parsed.raw_waveform_record_count == status.raw_waveform_record_count, "status raw tcp wave count");
 }
 
+void testAi8DeviceOperation()
+{
+    using namespace VaporView;
+    Ai8TemperatureControllerProtocol::PageData page;
+    page.page = Ai8TemperatureControllerProtocol::Page::Global;
+    page.selection = {7, 3, 4};
+    page.channel.setpointC = 42.5;
+    page.channel.proportionalBand = 12.5;
+    page.input.scaleLow = -40.0;
+    page.input.scaleHigh = 120.0;
+    page.output.outputLowPercent = 5;
+    page.output.outputHighPercent = 95;
+    page.global.address = 7;
+    page.global.baudRate = 115200;
+    page.global.runStateWriteRequested = true;
+    page.global.runStateWriteValue = 1;
+    page.global.serialNumber = 12345678;
+
+    const QByteArray pagePayload = TelemetryCodec::serializeAi8PageData(page);
+    Ai8TemperatureControllerProtocol::PageData parsedPage;
+    require(TelemetryCodec::parseAi8PageData(pagePayload, parsedPage),
+            "parse AI-8 page data");
+    require(parsedPage.page == page.page && parsedPage.selection.channel == 7 &&
+                parsedPage.selection.inputGroup == 3 && parsedPage.selection.outputGroup == 4,
+            "AI-8 page identity round-trip");
+    require(std::fabs(parsedPage.channel.setpointC - 42.5) < 0.000001 &&
+                parsedPage.output.outputHighPercent == 95 &&
+                parsedPage.global.baudRate == 115200 &&
+                parsedPage.global.serialNumber == 12345678,
+            "AI-8 page values round-trip");
+
+    DeviceOperationRequest request;
+    request.request_id = 0x12345678;
+    request.device_id = SkyDeviceId::Ai8TemperatureController;
+    request.operation = DeviceOperation::WriteParameters;
+    request.payload = pagePayload;
+    const QByteArray requestPayload = TelemetryCodec::serializeDeviceOperationRequest(request);
+    DeviceOperationRequest parsedRequest;
+    require(TelemetryCodec::parseDeviceOperationRequest(requestPayload, parsedRequest),
+            "parse DeviceOperation request");
+    require(parsedRequest.request_id == request.request_id &&
+                parsedRequest.device_id == request.device_id &&
+                parsedRequest.operation == request.operation &&
+                parsedRequest.payload == request.payload,
+            "DeviceOperation request round-trip");
+    QByteArray invalidOperation = requestPayload;
+    invalidOperation[5] = static_cast<char>(99);
+    require(!TelemetryCodec::parseDeviceOperationRequest(invalidOperation, parsedRequest),
+            "reject unknown DeviceOperation value");
+    require(!TelemetryCodec::parseDeviceOperationRequest(requestPayload.chopped(1), parsedRequest),
+            "reject truncated DeviceOperation request");
+
+    DeviceOperationResponse response;
+    response.request_id = request.request_id;
+    response.device_id = request.device_id;
+    response.operation = request.operation;
+    response.error_code = CommandErrorCode::ConfigApplyFailed;
+    response.error_message = QStringLiteral("write failed");
+    response.payload = pagePayload;
+    DeviceOperationResponse parsedResponse;
+    require(TelemetryCodec::parseDeviceOperationResponse(
+                TelemetryCodec::serializeDeviceOperationResponse(response), parsedResponse),
+            "parse DeviceOperation response");
+    require(parsedResponse.request_id == response.request_id &&
+                parsedResponse.error_code == response.error_code &&
+                parsedResponse.error_message == response.error_message &&
+                parsedResponse.payload == response.payload,
+            "DeviceOperation response round-trip");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -571,6 +643,7 @@ int main(int argc, char **argv)
     testSkyConfigDiff();
     testSkyConfigRejectsInvalidJsonTypes();
     testTelemetryStatus();
+    testAi8DeviceOperation();
     std::cout << "telemetry_codec_test passed\n";
     return 0;
 }

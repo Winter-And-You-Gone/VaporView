@@ -327,6 +327,13 @@ void SkyLocalIpcServer::sendCommandResultFrames(QTcpSocket *socket, const SkyCom
     {
         sendCurrentWaveforms(socket);
     }
+    if (result.send_device_operation_response)
+    {
+        sendFrame(socket,
+                  MsgType::DeviceOperationResponse,
+                  TelemetryCodec::serializeDeviceOperationResponse(
+                      result.device_operation_response));
+    }
 }
 
 void SkyLocalIpcServer::sendStatus(QTcpSocket *socket)

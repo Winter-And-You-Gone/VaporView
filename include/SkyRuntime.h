@@ -38,6 +38,8 @@ struct SkyCommandResult
     bool send_config_apply_result = false;
     QJsonObject config_apply_result;
     bool send_one_waveform = false;
+    bool send_device_operation_response = false;
+    DeviceOperationResponse device_operation_response;
 };
 
 class SkyRuntime : public QObject

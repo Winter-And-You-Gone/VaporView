@@ -49,6 +49,18 @@ bool MainWindow::isRemoteSkyTcpMode() const
 void MainWindow::onDataSourceModeChanged(int index)
 {
     state_->remote_sky_mode_ = index == 1;
+    if (state_->ai8_device_session_)
+    {
+        state_->ai8_device_session_->setBackend(
+            state_->remote_sky_mode_
+                ? VaporView::Ground::Devices::Ai8Backend::Remote
+                : VaporView::Ground::Devices::Ai8Backend::Local);
+        if (state_->ai8_temperature_controller_panel_)
+        {
+            const auto page = state_->ai8_temperature_controller_panel_->currentPageData();
+            state_->ai8_device_session_->activatePage(page.page, page.selection);
+        }
+    }
     saveRememberedInputState();
     clearRemoteSkyDataUi();
     if (state_->tcp_wave_panel_)
@@ -366,6 +378,10 @@ void MainWindow::clearRemoteSkyDataUi()
 {
     state_->remote_sky_controller_->reset();
     state_->remote_temperature_commands_.clear();
+    if (state_->ai8_device_session_)
+    {
+        state_->ai8_device_session_->setRemoteAvailable(false);
+    }
     state_->remote_sky_online_ = false;
     state_->remote_wave_stream_requested_ = false;
     state_->remote_wave_stream_enable_pending_ = false;
@@ -432,6 +448,10 @@ void MainWindow::markRemoteSkyLinkClosed()
             : QStringLiteral("天地数传已断开，尚未读取天空端配置。"));
     }
     state_->remote_temperature_commands_.clear();
+    if (state_->ai8_device_session_)
+    {
+        state_->ai8_device_session_->setRemoteAvailable(false);
+    }
     state_->remote_recording_state_ = 0;
     state_->remote_status_.recording_state = 0;
     if (state_->tcp_wave_panel_)

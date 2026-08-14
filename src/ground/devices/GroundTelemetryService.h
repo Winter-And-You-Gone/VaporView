@@ -39,6 +39,7 @@ public:
     quint64 totalTransmittedBytes() const;
 
     quint16 sendCommand(CommandId commandId, const QByteArray& payload = QByteArray());
+    quint16 sendDeviceOperation(const DeviceOperationRequest& request);
     quint16 sendDeviceCommand(CommandId commandId, SkyDeviceId deviceId);
     quint16 sendRateCommand(CommandId commandId, quint16 hz);
     quint16 sendPeakSearchRangeCommand(quint32 startIndex, quint32 endIndex);
@@ -54,6 +55,7 @@ signals:
     void statusUpdated(const TelemetryStatus& status);
     void temperatureControllerStatusUpdated(const TemperatureControllerData& data);
     void ai8TemperatureControllerStatusUpdated(const Ai8TemperatureControllerProtocol::LiveData& data);
+    void deviceOperationResponseReceived(const DeviceOperationResponse& response);
     void commandAckReceived(const CommandAck& ack);
     void commandTimedOut(CommandId commandId, quint16 commandSeq);
     void skyConfigReceived(const QJsonObject& config);

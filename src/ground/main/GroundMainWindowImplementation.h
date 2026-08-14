@@ -18,6 +18,7 @@
 #include "ground/devices/ImuConfigurationService.h"
 #include "ground/devices/DeviceRatePolicy.h"
 #include "ground/devices/LocalDeviceConnectionController.h"
+#include "ground/devices/Ai8DeviceSession.h"
 #include "ground/devices/LocalConnectionCoordinator.h"
 #include "ground/devices/RemoteSkyController.h"
 #include "ground/devices/SerialPortDetectionService.h"

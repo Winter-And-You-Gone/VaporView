@@ -1070,6 +1070,73 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         result.send_status = true;
         break;
     }
+    case CommandId::DeviceOperation:
+    {
+        DeviceOperationRequest request;
+        DeviceOperationResponse response;
+        if (!TelemetryCodec::parseDeviceOperationRequest(command.payload, request))
+        {
+            result.ack = makeAck(command, CommandErrorCode::InvalidPayload);
+            break;
+        }
+        response.request_id = request.request_id;
+        response.device_id = request.device_id;
+        response.operation = request.operation;
+        result.send_device_operation_response = true;
+        if (request.device_id != SkyDeviceId::Ai8TemperatureController)
+        {
+            response.error_code = CommandErrorCode::InvalidDeviceId;
+            response.error_message = QStringLiteral("DeviceOperation only supports AI-8.");
+            result.ack = makeAck(command, response.error_code);
+            result.device_operation_response = response;
+            break;
+        }
+        Ai8TemperatureControllerProtocol::PageData requestData;
+        if (!TelemetryCodec::parseAi8PageData(request.payload, requestData))
+        {
+            response.error_code = CommandErrorCode::InvalidPayload;
+            response.error_message = QStringLiteral("AI-8 page payload is invalid.");
+            result.ack = makeAck(command, response.error_code);
+            result.device_operation_response = response;
+            break;
+        }
+        CommandErrorCode error = CommandErrorCode::Ok;
+        QString errorMessage;
+        Ai8TemperatureControllerProtocol::PageData responseData;
+        bool ok = false;
+        switch (request.operation)
+        {
+        case DeviceOperation::ReadParameters:
+            ok = device_manager_.readAi8Page(requestData.page,
+                                              requestData.selection,
+                                              responseData,
+                                              &error,
+                                              &errorMessage);
+            break;
+        case DeviceOperation::WriteParameters:
+            ok = device_manager_.writeAi8Page(requestData,
+                                               responseData,
+                                               &error,
+                                               &errorMessage);
+            break;
+        case DeviceOperation::FactoryReset:
+            ok = device_manager_.restoreAi8FactoryDefaults(requestData.page,
+                                                            requestData.selection,
+                                                            responseData,
+                                                            &error,
+                                                            &errorMessage);
+            break;
+        }
+        response.error_code = ok ? CommandErrorCode::Ok : error;
+        response.error_message = errorMessage;
+        if (ok)
+        {
+            response.payload = TelemetryCodec::serializeAi8PageData(responseData);
+        }
+        result.ack = makeAck(command, response.error_code);
+        result.device_operation_response = response;
+        break;
+    }
     case CommandId::SetTemperatureTarget:
         return temperatureCommand([this](const TemperatureControllerCommand& request) {
             CommandErrorCode error = CommandErrorCode::Ok;
@@ -1267,6 +1334,11 @@ void SkyRuntime::sendCommandResultFrames(const SkyCommandResult& result)
     if (result.send_one_waveform)
     {
         sendOneWaveformNow();
+    }
+    if (result.send_device_operation_response)
+    {
+        sendFrame(MsgType::DeviceOperationResponse,
+                  TelemetryCodec::serializeDeviceOperationResponse(result.device_operation_response));
     }
 }
 

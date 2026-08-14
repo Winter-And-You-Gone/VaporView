@@ -217,6 +217,10 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
             else if (item.device_id == VaporView::SkyDeviceId::Ai8TemperatureController &&
                      state_->ai8_temperature_controller_panel_)
             {
+                if (state_->ai8_device_session_)
+                {
+                    state_->ai8_device_session_->setRemoteAvailable(false);
+                }
                 state_->ai8_temperature_controller_panel_->setBackendConnected(false);
                 state_->ai8_temperature_controller_panel_->applyLiveData({});
                 updateAi8TemperatureTitleStatus();
@@ -257,11 +261,12 @@ void MainWindow::onRemoteAi8TemperatureControllerStatusUpdated(
         ? QStringLiteral("Remote Sky")
         : QStringLiteral("天空端远程");
     state_->ai8_temperature_controller_panel_->setBackendConnected(true, detail);
-    state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(
-        false,
-        state_->is_english_
-            ? QStringLiteral("Remote Sky AI-8288 parameter read/write is not wired to remote commands yet.")
-            : QStringLiteral("Remote Sky AI-8288 参数读写尚未接入远程命令，不会操作本地设备。"));
+    if (state_->ai8_device_session_)
+    {
+        state_->ai8_device_session_->setRemoteAvailable(
+            remoteDeviceDataValid(VaporView::SkyDeviceId::Ai8TemperatureController, 3000),
+            detail);
+    }
     state_->ai8_temperature_controller_panel_->applyLiveData(liveData);
     updateAi8TemperatureTitleStatus();
 }
@@ -272,7 +277,8 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
     const QString commandName = VaporView::commandIdName(ack.command_id);
     const QString errorText = VaporView::commandErrorCodeText(ack.error_code, state_->is_english_);
     const bool noError = ack.error_code == VaporView::CommandErrorCode::Ok;
-    if (!isTemperatureCommand(ack.command_id))
+    if (!isTemperatureCommand(ack.command_id) &&
+        ack.command_id != VaporView::CommandId::DeviceOperation)
     {
         QVariantMap fields{{QStringLiteral("command"), commandName},
                            {QStringLiteral("command_id"), static_cast<quint16>(ack.command_id)},

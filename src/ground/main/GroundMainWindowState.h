@@ -499,6 +499,7 @@ struct MainWindowState
     QHash<VaporView::SkyDeviceId, qint64> home_device_action_spinner_until_ms_;
     QHash<VaporView::SkyDeviceId, qint64> home_device_action_spinner_started_ms_;
     std::unique_ptr<VaporView::Ground::Devices::RemoteSkyController> remote_sky_controller_;
+    std::unique_ptr<VaporView::Ground::Devices::Ai8DeviceSession> ai8_device_session_;
     QHash<quint16, VaporView::TemperatureControllerCommand> remote_temperature_commands_;
     QHash<quint16, VaporView::PeakSearchRange> remote_peak_search_commands_;
 #ifdef VAPORVIEW_HAS_OSGEARTH

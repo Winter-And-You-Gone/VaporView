@@ -176,6 +176,12 @@ quint16 GroundTelemetryService::sendCommand(CommandId commandId, const QByteArra
     return command.command_seq;
 }
 
+quint16 GroundTelemetryService::sendDeviceOperation(const DeviceOperationRequest& request)
+{
+    return sendCommand(CommandId::DeviceOperation,
+                        TelemetryCodec::serializeDeviceOperationRequest(request));
+}
+
 quint16 GroundTelemetryService::sendDeviceCommand(CommandId commandId, SkyDeviceId deviceId)
 {
     return sendCommand(commandId, TelemetryCodec::serializeDeviceCommand(deviceId));
@@ -419,6 +425,23 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
             reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
                                      QStringLiteral("temperature_controller_status_parse_failed"),
                                      QStringLiteral("无法解析 TemperatureControllerStatus 遥测载荷。"),
+                                     {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                      {QStringLiteral("payload_bytes"), frame.payload.size()}});
+        }
+        break;
+    }
+    case MsgType::DeviceOperationResponse:
+    {
+        DeviceOperationResponse response;
+        if (TelemetryCodec::parseDeviceOperationResponse(frame.payload, response))
+        {
+            emit deviceOperationResponseReceived(response);
+        }
+        else
+        {
+            reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
+                                     QStringLiteral("device_operation_response_parse_failed"),
+                                     QStringLiteral("无法解析 DeviceOperationResponse 遥测载荷。"),
                                      {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
                                       {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }

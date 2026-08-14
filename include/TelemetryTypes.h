@@ -35,6 +35,7 @@ enum class MsgType : quint8
     SkyConfigApplyResult = 0x06,
     TemperatureControllerStatus = 0x07,
     Ai8TemperatureControllerStatus = 0x08,
+    DeviceOperationResponse = 0x09,
     Command = 0x10,
     CommandAck = 0x11,
     Heartbeat = 0x20,
@@ -83,7 +84,15 @@ enum class CommandId : quint16
     SetTemperatureOvertempLower = 53,
     SetTemperatureSlope = 54,
     SetTemperatureStartupDelay = 55,
+    DeviceOperation = 60,
     ShutdownCore = 90,
+};
+
+enum class DeviceOperation : quint8
+{
+    ReadParameters = 1,
+    WriteParameters = 2,
+    FactoryReset = 3,
 };
 
 enum class SkyDeviceId : quint8
@@ -324,6 +333,24 @@ struct CommandAck
     CommandErrorCode error_code = CommandErrorCode::Ok;
 };
 
+struct DeviceOperationRequest
+{
+    quint32 request_id = 0;
+    SkyDeviceId device_id = SkyDeviceId::All;
+    DeviceOperation operation = DeviceOperation::ReadParameters;
+    QByteArray payload;
+};
+
+struct DeviceOperationResponse
+{
+    quint32 request_id = 0;
+    SkyDeviceId device_id = SkyDeviceId::All;
+    DeviceOperation operation = DeviceOperation::ReadParameters;
+    CommandErrorCode error_code = CommandErrorCode::Ok;
+    QString error_message;
+    QByteArray payload;
+};
+
 QString skyDeviceIdName(SkyDeviceId id);
 QString deviceStateName(DeviceState state);
 QString commandIdName(CommandId id);
@@ -338,6 +365,7 @@ Q_DECLARE_METATYPE(VaporView::WaveformFeature)
 Q_DECLARE_METATYPE(VaporView::DeviceStatusItem)
 Q_DECLARE_METATYPE(VaporView::TelemetryStatus)
 Q_DECLARE_METATYPE(VaporView::CommandAck)
+Q_DECLARE_METATYPE(VaporView::DeviceOperationResponse)
 Q_DECLARE_METATYPE(VaporView::CommandId)
 Q_DECLARE_METATYPE(VaporView::SkyDeviceId)
 

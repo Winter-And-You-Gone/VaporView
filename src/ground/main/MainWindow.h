@@ -83,6 +83,8 @@ namespace VaporView::Ground::Devices { struct CollectorSet; }
 namespace VaporView::Ground::Devices { class LocalDeviceConnectionController; }
 namespace VaporView::Ground::Devices { class LocalConnectionCoordinator; }
 namespace VaporView::Ground::Devices { class RemoteSkyController; }
+namespace VaporView::Ground::Devices { class Ai8DeviceSession; }
+namespace VaporView::Ground::Devices { enum class Ai8Operation; struct Ai8SessionResult; }
 namespace VaporView::Ground::Devices { class UiTestDataModel; enum class UiTestScenario; }
 namespace VaporView::Ground::Session { class GroundRecordingService; }
 namespace VaporView::Ground::Session { class RecordingScheduleController; }
@@ -180,6 +182,13 @@ private slots:
     void onRemoteTemperatureControllerStatusUpdated(const VaporView::TemperatureControllerData& controllerData);
     void onRemoteAi8TemperatureControllerStatusUpdated(
         const VaporView::Ai8TemperatureControllerProtocol::LiveData& data);
+    void onAi8SessionAvailabilityChanged(bool available, const QString& reason);
+    void onAi8SessionOperationStarted(
+        quint64 requestId, VaporView::Ground::Devices::Ai8Operation operation);
+    void onAi8SessionOperationFinished(
+        const VaporView::Ground::Devices::Ai8SessionResult& result);
+    void onAi8SessionPageDataAvailable(
+        const VaporView::Ai8TemperatureControllerProtocol::PageData& data);
     void onRemoteCommandAckReceived(const VaporView::CommandAck& ack);
     void onRemoteLinkOpenChanged(bool open);
     void onRemoteSkyConfigReadClicked();
