@@ -7,9 +7,12 @@
 #include <QEvent>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QPainter>
+#include <QPropertyAnimation>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QStyleOptionButton>
 #include <QStackedWidget>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -25,6 +28,7 @@ constexpr int kPageHorizontalInset = 18;
 constexpr int kPageVerticalInset = 4;
 constexpr int kSectionGap = 12;
 constexpr int kNavigationBarHeight = 36;
+constexpr int kNavigationSelectionAnimationDurationMs = 240;
 
 void prepareStyledBackground(QWidget *widget)
 {
@@ -35,6 +39,45 @@ void prepareStyledBackground(QWidget *widget)
     widget->setAttribute(Qt::WA_StyledBackground, true);
     widget->setAutoFillBackground(true);
 }
+
+class CombinationNavigationSectionButton final : public QPushButton
+{
+public:
+    using QPushButton::QPushButton;
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        Q_UNUSED(event);
+
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+
+        QStyleOptionButton option;
+        initStyleOption(&option);
+        const QString buttonText = option.text;
+        option.text.clear();
+        style()->drawControl(QStyle::CE_PushButton, &option, &painter, this);
+        if (buttonText.isEmpty())
+        {
+            return;
+        }
+
+        const QFontMetricsF metrics(painter.font());
+        const QRectF textBounds = metrics.tightBoundingRect(buttonText);
+        const QRectF buttonRect(rect());
+        const QPointF baseline(buttonRect.center().x() - textBounds.center().x(),
+                               buttonRect.center().y() - textBounds.center().y());
+        const bool dark = VaporView::isDarkThemeEnabled();
+        const auto textColor = !isEnabled()
+            ? VaporView::appThemeColor(VaporView::AppThemeColor::TextDisabled, dark)
+            : VaporView::appThemeColor(
+                isChecked() ? VaporView::AppThemeColor::Primary : VaporView::AppThemeColor::White,
+                dark);
+        painter.setPen(textColor);
+        painter.drawText(baseline, buttonText);
+    }
+};
 
 } // namespace
 
@@ -74,25 +117,43 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     navigationTrack->setObjectName(QStringLiteral("combinationNavigationNavigationTrack"));
     prepareStyledBackground(navigationTrack);
     navigationTrack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    navigation_track_ = navigationTrack;
+    navigationTrack->installEventFilter(this);
     navigationBarLayout->addWidget(navigationTrack);
 
     auto *navigationLayout = new QHBoxLayout(navigationTrack);
     navigationLayout->setContentsMargins(2, 2, 2, 2);
-    navigationLayout->setSpacing(2);
+    navigationLayout->setSpacing(0);
+
+    navigation_selection_thumb_ = new QFrame(navigationTrack);
+    navigation_selection_thumb_->setObjectName(
+        QStringLiteral("combinationNavigationNavigationSelectionThumb"));
+    navigation_selection_thumb_->setFrameShape(QFrame::NoFrame);
+    navigation_selection_thumb_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    prepareStyledBackground(navigation_selection_thumb_);
+    navigation_selection_animation_ =
+        new QPropertyAnimation(navigation_selection_thumb_, "geometry", this);
+    navigation_selection_animation_->setObjectName(
+        QStringLiteral("combinationNavigationNavigationSelectionAnimation"));
+    navigation_selection_animation_->setDuration(kNavigationSelectionAnimationDurationMs);
+    navigation_selection_animation_->setEasingCurve(QEasingCurve::OutCubic);
 
     section_group_ = new QButtonGroup(this);
     section_group_->setExclusive(true);
     auto createSectionButton = [this, navigationTrack, navigationLayout](
                                    const QString& objectName,
                                    Section section) {
-        auto *button = new QPushButton(navigationTrack);
+        auto *button = new CombinationNavigationSectionButton(navigationTrack);
         button->setObjectName(objectName);
         button->setCheckable(true);
         button->setAutoDefault(false);
         button->setDefault(false);
+        button->setFlat(true);
         button->setFocusPolicy(Qt::TabFocus);
         button->setCursor(Qt::PointingHandCursor);
         button->setMinimumWidth(92);
+        button->setMinimumHeight(0);
+        button->setContentsMargins(0, 0, 0, 0);
         button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         section_group_->addButton(button, static_cast<int>(section));
         navigationLayout->addWidget(button, 1);
@@ -105,6 +166,10 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
         QStringLiteral("combinationNavigationEpsilonButton"), Section::Epsilon);
     differential_button_ = createSectionButton(
         QStringLiteral("combinationNavigationDifferentialButton"), Section::Differential);
+    navigation_selection_thumb_->lower();
+    status_button_->raise();
+    epsilon_button_->raise();
+    differential_button_->raise();
     navigationRowLayout->addWidget(navigationBar, 0, Qt::AlignLeft | Qt::AlignVCenter);
     navigationRowLayout->addStretch(1);
     rootLayout->addWidget(navigationRow);
@@ -168,6 +233,7 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     updateTexts();
     applyAppearance();
     setStatusSnapshot(StatusSnapshot{});
+    QTimer::singleShot(0, this, [this]() { syncNavigationSelectionThumb(false); });
 }
 
 CombinationNavigationPage::Section CombinationNavigationPage::currentSection() const
@@ -200,6 +266,7 @@ void CombinationNavigationPage::setCurrentSection(Section section)
         const QSignalBlocker blocker(button);
         button->setChecked(true);
     }
+    syncNavigationSelectionThumb(changed);
     if (section == Section::Status || section == Section::Epsilon)
     {
         refreshStatus();
@@ -258,6 +325,59 @@ void CombinationNavigationPage::changeEvent(QEvent *event)
     {
         QTimer::singleShot(0, this, [this]() { applyAppearance(); });
     }
+}
+
+bool CombinationNavigationPage::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == navigation_track_ && event &&
+        (event->type() == QEvent::Resize || event->type() == QEvent::LayoutRequest ||
+         event->type() == QEvent::Show))
+    {
+        QTimer::singleShot(0, this, [this]() { syncNavigationSelectionThumb(false); });
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
+void CombinationNavigationPage::syncNavigationSelectionThumb(bool animated)
+{
+    if (!navigation_selection_thumb_ || !navigation_selection_animation_ || !section_group_ ||
+        !stack_)
+    {
+        return;
+    }
+
+    auto *button = qobject_cast<QPushButton *>(section_group_->button(stack_->currentIndex()));
+    if (!button)
+    {
+        return;
+    }
+
+    const QRect targetGeometry = button->geometry();
+    if (targetGeometry.width() <= 0 || targetGeometry.height() <= 0)
+    {
+        QTimer::singleShot(0, this, [this]() { syncNavigationSelectionThumb(false); });
+        return;
+    }
+
+    navigation_selection_thumb_->show();
+    navigation_selection_thumb_->lower();
+    const QRect currentGeometry = navigation_selection_thumb_->geometry();
+    if (!animated || currentGeometry.isNull())
+    {
+        navigation_selection_animation_->stop();
+        navigation_selection_thumb_->setGeometry(targetGeometry);
+        return;
+    }
+
+    if (currentGeometry == targetGeometry)
+    {
+        return;
+    }
+
+    navigation_selection_animation_->stop();
+    navigation_selection_animation_->setStartValue(currentGeometry);
+    navigation_selection_animation_->setEndValue(targetGeometry);
+    navigation_selection_animation_->start();
 }
 
 QWidget *CombinationNavigationPage::createStatusPage()
@@ -340,14 +460,17 @@ void CombinationNavigationPage::applyAppearance()
         "background-color: @vv-surface; border: none; }"
         "QFrame#combinationNavigationNavigationBar { background-color: @vv-primary-subtle; border: 1px solid @vv-border-strong; border-radius: 18px; }"
         "QFrame#combinationNavigationNavigationTrack { background-color: @vv-primary; border: 1px solid %1; border-radius: 15px; }"
+        "QFrame#combinationNavigationNavigationSelectionThumb { background-color: @vv-surface; border: none; border-radius: 13px; }"
         "QPushButton#combinationNavigationStatusButton, QPushButton#combinationNavigationEpsilonButton, "
-        "QPushButton#combinationNavigationDifferentialButton { background-color: transparent; border: 1px solid transparent; border-radius: 13px; color: @vv-white; font-weight: 600; padding: 0 10px; outline: none; }"
+        "QPushButton#combinationNavigationDifferentialButton { background-color: transparent; border: 1px solid transparent; border-radius: 13px; color: @vv-white; font-weight: 600; margin: 0; min-height: 0; padding: 0 10px; outline: none; }"
         "QPushButton#combinationNavigationStatusButton:checked, QPushButton#combinationNavigationEpsilonButton:checked, "
-        "QPushButton#combinationNavigationDifferentialButton:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
+        "QPushButton#combinationNavigationDifferentialButton:checked { background-color: transparent; color: @vv-primary; font-weight: 600; }"
         "QPushButton#combinationNavigationStatusButton:!checked:hover, QPushButton#combinationNavigationEpsilonButton:!checked:hover, "
         "QPushButton#combinationNavigationDifferentialButton:!checked:hover { background-color: @vv-primary-subtle-pressed; color: @vv-white; }"
         "QPushButton#combinationNavigationStatusButton:pressed, QPushButton#combinationNavigationEpsilonButton:pressed, "
         "QPushButton#combinationNavigationDifferentialButton:pressed { background-color: @vv-primary-subtle-pressed; }"
+        "QPushButton#combinationNavigationStatusButton:checked:pressed, QPushButton#combinationNavigationEpsilonButton:checked:pressed, "
+        "QPushButton#combinationNavigationDifferentialButton:checked:pressed { background-color: transparent; }"
         "QPushButton#combinationNavigationStatusButton:focus, QPushButton#combinationNavigationEpsilonButton:focus, "
         "QPushButton#combinationNavigationDifferentialButton:focus { border-color: @vv-focus; }")
             .arg(trackOutline);

@@ -49,6 +49,7 @@
 #include <QStyleOptionFrame>
 #include <QStyleOptionSpinBox>
 #include <QPixmap>
+#include <QPropertyAnimation>
 #include <QSplitter>
 #include <QSpinBox>
 #include <QStackedWidget>
@@ -1485,6 +1486,10 @@ void requireRtkSidebarPage(
         QStringLiteral("combinationNavigationNavigationBar"));
     auto *combinationNavigationTrack = combinationPage->findChild<QFrame *>(
         QStringLiteral("combinationNavigationNavigationTrack"));
+    auto *combinationNavigationSelectionThumb = combinationPage->findChild<QFrame *>(
+        QStringLiteral("combinationNavigationNavigationSelectionThumb"));
+    auto *combinationNavigationSelectionAnimation = combinationPage->findChild<QPropertyAnimation *>(
+        QStringLiteral("combinationNavigationNavigationSelectionAnimation"));
     auto *statusButton = combinationPage->findChild<QPushButton *>(
         QStringLiteral("combinationNavigationStatusButton"));
     auto *epsilonButton = combinationPage->findChild<QPushButton *>(
@@ -1506,6 +1511,8 @@ void requireRtkSidebarPage(
         QStringLiteral("epsilonConfigContent"));
     require(combinationNavigationBar != nullptr && combinationNavigationBar->layout() != nullptr &&
                 combinationNavigationTrack != nullptr && combinationNavigationTrack->layout() != nullptr &&
+                combinationNavigationSelectionThumb != nullptr &&
+                combinationNavigationSelectionAnimation != nullptr &&
                 combinationStack != nullptr && combinationStack->count() == 3 &&
                 statusButton != nullptr && epsilonButton != nullptr && differentialButton != nullptr &&
                 statusPage != nullptr && epsilonPage != nullptr &&
@@ -1522,6 +1529,11 @@ void requireRtkSidebarPage(
                 statusButton->width() == epsilonButton->width() &&
                 epsilonButton->width() == differentialButton->width(),
             "combination navigation uses an equal three-segment capsule layout");
+    require(combinationNavigationSelectionThumb->parentWidget() == combinationNavigationTrack &&
+                combinationNavigationSelectionThumb->geometry() == statusButton->geometry() &&
+                combinationNavigationSelectionAnimation->targetObject() == combinationNavigationSelectionThumb &&
+                combinationNavigationSelectionAnimation->duration() == 240,
+            "combination navigation centers the selected thumb and configures its slide animation");
     require(combinationStack->currentWidget() == statusPage && statusButton->isChecked() &&
                 !epsilonButton->isChecked() && !differentialButton->isChecked(),
             "combination navigation opens on the status page by default");
@@ -1635,6 +1647,11 @@ void requireRtkSidebarPage(
     processEventsFor(50);
     require(combinationStack->currentWidget() == epsilonPage && epsilonButton->isChecked(),
             "combination navigation switches from status to EPSILON by keyboard");
+    require(combinationNavigationSelectionAnimation->state() == QAbstractAnimation::Running,
+            "combination navigation starts the selected-thumb animation when switching sections");
+    processEventsFor(250);
+    require(combinationNavigationSelectionThumb->geometry() == epsilonButton->geometry(),
+            "combination navigation settles the selected thumb on the new section");
     ggaResizeRecorder.reset();
     logResizeRecorder.reset();
     clickWidget(differentialButton, 0);

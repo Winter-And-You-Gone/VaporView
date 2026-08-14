@@ -10,6 +10,8 @@
 
 class QButtonGroup;
 class QEvent;
+class QFrame;
+class QPropertyAnimation;
 class QPushButton;
 class QStackedWidget;
 class QTimer;
@@ -54,17 +56,22 @@ signals:
 
 protected:
     void changeEvent(QEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
     QWidget *createStatusPage();
     void updateTexts();
     void applyAppearance();
+    void syncNavigationSelectionThumb(bool animated);
 
     bool is_english_ = false;
     QButtonGroup *section_group_ = nullptr;
     QPushButton *status_button_ = nullptr;
     QPushButton *epsilon_button_ = nullptr;
     QPushButton *differential_button_ = nullptr;
+    QWidget *navigation_track_ = nullptr;
+    QFrame *navigation_selection_thumb_ = nullptr;
+    QPropertyAnimation *navigation_selection_animation_ = nullptr;
     QStackedWidget *stack_ = nullptr;
     QWidget *status_page_ = nullptr;
     NavigationStatusPanel *status_panel_ = nullptr;
