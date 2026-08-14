@@ -1,7 +1,11 @@
 #include "ground/devices/Ai8DeviceSession.h"
+#include "ground/devices/RemoteSkyController.h"
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QHostAddress>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QThread>
 
 #include <cmath>
@@ -124,6 +128,44 @@ int main(int argc, char **argv)
     app.processEvents(QEventLoop::AllEvents, 50);
     require(results.size() == resultCountAfterSwitch,
             "stale local completion is ignored after backend generation changes");
+
+    QTcpServer timeoutServer;
+    require(timeoutServer.listen(QHostAddress::LocalHost),
+            "timeout server listens on localhost");
+    QTcpSocket *timeoutSocket = nullptr;
+    QObject::connect(&timeoutServer, &QTcpServer::newConnection, [&]() {
+        timeoutSocket = timeoutServer.nextPendingConnection();
+    });
+    RemoteSkyController remoteController;
+    Ai8DeviceSession remoteSession({}, &remoteController);
+    remoteSession.setBackend(Ai8Backend::Remote);
+    remoteSession.setRemoteAvailable(true, QStringLiteral("simulated remote AI-8"));
+    QVector<Ai8SessionResult> timeoutResults;
+    QObject::connect(&remoteSession, &Ai8DeviceSession::operationFinished,
+                     [&timeoutResults](const Ai8SessionResult& result) {
+                         timeoutResults.push_back(result);
+                     });
+    require(remoteController.openTcp(QStringLiteral("127.0.0.1"), timeoutServer.serverPort()),
+            "remote timeout controller opens TCP link");
+    QElapsedTimer linkTimer;
+    linkTimer.start();
+    while ((!remoteController.isOpen() || timeoutSocket == nullptr) && linkTimer.elapsed() < 3000)
+    {
+        app.processEvents(QEventLoop::AllEvents, 20);
+    }
+    require(remoteController.isOpen() && timeoutSocket != nullptr,
+            "remote timeout TCP link is established");
+    const quint64 timeoutId = remoteSession.readPage(Page::Channel, selection);
+    require(timeoutId != 0 && waitForResult(app, timeoutResults, 5000) &&
+                timeoutResults.back().request_id == timeoutId &&
+                timeoutResults.back().outcome == Ai8OperationOutcome::Timeout,
+            "remote operation reports timeout when Sky returns no response");
+    remoteController.close();
+    timeoutServer.close();
+    if (timeoutSocket)
+    {
+        timeoutSocket->deleteLater();
+    }
 
     std::cout << "ai8_device_session_test passed\n";
     return 0;

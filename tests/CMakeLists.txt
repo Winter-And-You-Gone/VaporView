@@ -209,6 +209,7 @@ target_include_directories(ai8_device_session_test PRIVATE
 )
 target_link_libraries(ai8_device_session_test PRIVATE
     vaporview_ground_device_core
+    Qt6::Network
 )
 add_test(NAME ai8_device_session_test COMMAND ai8_device_session_test)
 
