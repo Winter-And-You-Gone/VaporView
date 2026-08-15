@@ -4822,9 +4822,17 @@ bool TemperatureControllerCollector::setRs485BaudIndex(uint16_t baud_index)
     return false;
   }
   const QVector<uint16_t> values = encodeUInt16(baud_index);
-  return writeRegisters(static_cast<uint16_t>(Register::Rs485Baud),
-                        std::vector<uint16_t>(values.cbegin(), values.cend()),
-                        500);
+  const std::vector<uint16_t> registers(values.cbegin(), values.cend());
+  std::lock_guard<std::mutex> lock(modbus_mutex_);
+  if (!writeRegistersUnlocked(static_cast<uint16_t>(Register::Rs485Baud),
+                              registers,
+                              500))
+  {
+    return false;
+  }
+  std::vector<uint16_t> read_back;
+  return readRegistersUnlocked(static_cast<uint16_t>(Register::Rs485Baud), 1, read_back, 500) &&
+         read_back == registers;
 }
 
 bool TemperatureControllerCollector::setOvertempOutputMode(uint16_t mode)

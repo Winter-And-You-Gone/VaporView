@@ -323,6 +323,8 @@ MainWindowState::MainWindowState()
     , remote_recording_state_(0)
     , remote_sky_controller_(nullptr)
     , ai8_device_session_(nullptr)
+    , epsilon_device_session_(nullptr)
+    , rd105_device_session_(nullptr)
 #ifdef VAPORVIEW_HAS_OSGEARTH
     , map3d_controller_(std::make_unique<VaporView::Ground::Map3DController>())
 #endif

@@ -304,11 +304,59 @@ int main(int argc, char **argv)
             }, &process, 10000),
             "RD105 simulated telemetry reflects target command");
 
+    VaporView::EpsilonPacketRatesOperation epsilonPacketRates;
+    epsilonPacketRates.output_rate_hz = 100;
+    epsilonPacketRates.callback_rate_hz = 250;
+    epsilonPacketRates.packet_rates = {{0x40, 250}, {0x50, 100}, {0x5C, 10}};
+    epsilonPacketRates.packet_rate_signature = QStringLiteral("40=250;50=100;5C=10");
+    quint32 requestId = controller.configureEpsilonPacketRates(epsilonPacketRates);
+    require(requestId != 0 &&
+                waitUntil([&]() { return ai8Responses.contains(requestId); }, &process),
+            "EPSILON remote packet-rate operation returns response");
+    require(ai8Responses.value(requestId).error_code == VaporView::CommandErrorCode::Ok,
+            "EPSILON remote packet-rate operation succeeds");
+    require(controller.deviceOperationSupport() ==
+                VaporView::Ground::Devices::DeviceOperationSupport::Supported,
+            "EPSILON remote operation capability is learned from the response");
+
+    VaporView::EpsilonMainAntennaLeverArmOperation leverArm;
+    leverArm.x_m = 1.25;
+    leverArm.y_m = -0.5;
+    leverArm.z_m = 0.75;
+    requestId = controller.configureEpsilonMainAntennaLeverArm(leverArm);
+    require(requestId != 0 &&
+                waitUntil([&]() { return ai8Responses.contains(requestId); }, &process),
+            "EPSILON remote lever-arm operation returns response");
+    require(ai8Responses.value(requestId).error_code == VaporView::CommandErrorCode::Ok,
+            "EPSILON remote lever-arm operation succeeds");
+
+    VaporView::EpsilonRtcmInputOperation rtcmInput;
+    rtcmInput.device_port_index = 3;
+    rtcmInput.forward_port = QStringLiteral("/dev/e2e-rtcm");
+    rtcmInput.forward_baud = 230400;
+    requestId = controller.configureEpsilonRtcmInput(rtcmInput);
+    require(requestId != 0 &&
+                waitUntil([&]() { return ai8Responses.contains(requestId); }, &process),
+            "EPSILON remote RTCM input operation returns response");
+    require(ai8Responses.value(requestId).error_code == VaporView::CommandErrorCode::Ok,
+            "EPSILON remote RTCM input operation succeeds");
+
+    const QByteArray rtcmBytes = QByteArray::fromHex("D30000123456");
+    require(controller.sendRtcmCorrectionData(rtcmBytes),
+            "Ground sends RTCM correction data over the Sky link");
+    require(waitUntil([&]() {
+                return lastStatus.rtcm_correction_bytes_received >=
+                           static_cast<quint64>(rtcmBytes.size()) &&
+                       lastStatus.rtcm_correction_chunks_received > 0 &&
+                       lastStatus.rtcm_correction_last_receive_time_us > 0;
+            }, &process, 10000),
+            "SkyCore receives RTCM correction data over the telemetry link");
+
     VaporView::Ai8TemperatureControllerProtocol::Selection ai8Selection;
     ai8Selection.channel = 3;
     ai8Selection.inputGroup = 2;
     ai8Selection.outputGroup = 2;
-    quint32 requestId = controller.readAi8Page(
+    requestId = controller.readAi8Page(
         VaporView::Ai8TemperatureControllerProtocol::Page::Channel, ai8Selection);
     require(requestId != 0 &&
                 waitUntil([&]() { return ai8Responses.contains(requestId); }, &process),
@@ -432,7 +480,7 @@ int main(int argc, char **argv)
     controller.close();
     QTemporaryDir groundUiTempDir;
     require(groundUiTempDir.isValid(), "temporary Ground UI E2E directory");
-    const QString groundUiResultPath = groundUiTempDir.filePath(QStringLiteral("ai8_remote_ui_e2e.txt"));
+    const QString groundUiResultPath = groundUiTempDir.filePath(QStringLiteral("remote_device_ui_e2e.txt"));
     QProcess groundUi;
     groundUi.setProgram(vaporViewExecutablePath());
     groundUi.setArguments({
@@ -440,7 +488,7 @@ int main(int argc, char **argv)
         QStringLiteral("--telemetry-transport"), QStringLiteral("tcp"),
         QStringLiteral("--telemetry-host"), QStringLiteral("127.0.0.1"),
         QStringLiteral("--telemetry-tcp-port"), QString::number(port),
-        QStringLiteral("--ai8-remote-e2e-output"), groundUiResultPath,
+        QStringLiteral("--remote-device-e2e-output"), groundUiResultPath,
     });
     groundUi.setProcessChannelMode(QProcess::MergedChannels);
     groundUi.start();
@@ -448,7 +496,7 @@ int main(int argc, char **argv)
     require(waitUntil([&]() {
                 return QFileInfo::exists(groundUiResultPath) ||
                        groundUi.state() == QProcess::NotRunning;
-            }, &groundUi, 35000),
+            }, &groundUi, 55000),
             "VaporView Ground UI E2E process writes a result");
     if (!QFileInfo::exists(groundUiResultPath))
     {
@@ -473,9 +521,15 @@ int main(int argc, char **argv)
     {
         std::cerr << "VaporView Ground UI E2E result:\n"
                   << groundUiResultText.constData() << '\n';
+        const QByteArray diagnostics = groundUi.readAllStandardOutput();
+        if (!diagnostics.isEmpty())
+        {
+            std::cerr << "VaporView Ground UI E2E output:\n"
+                      << diagnostics.constData() << '\n';
+        }
     }
     require(groundUiResultText.startsWith("PASS\n"),
-            "VaporView Ground UI E2E shared AI-8 page passes");
+            "VaporView Ground UI E2E remote EPSILON, RTCM, RD105, and AI-8 paths pass");
 
     linkOpen = false;
     require(waitUntil([&]() {
@@ -522,6 +576,16 @@ int main(int argc, char **argv)
     require(receivedConfig.value(QStringLiteral("ai8_temperature_controller")).toObject()
                 .value(QStringLiteral("port")).toString() == QStringLiteral("/dev/test-ai8-updated"),
             "Restarted SkyCore reloads saved AI-8 config");
+    const QJsonObject restartedEpsilon =
+        receivedConfig.value(QStringLiteral("epsilon")).toObject();
+    const QJsonObject restartedRtcm =
+        restartedEpsilon.value(QStringLiteral("rtcm")).toObject();
+    require(restartedRtcm.value(QStringLiteral("enabled")).toBool() &&
+                restartedRtcm.value(QStringLiteral("device_port_index")).toInt() == 3 &&
+                restartedRtcm.value(QStringLiteral("forward_port")).toString() ==
+                    QStringLiteral("/dev/ui-e2e-rtcm") &&
+                restartedRtcm.value(QStringLiteral("baud")).toInt() == 230400,
+            "Restarted SkyCore reloads saved EPSILON RTCM config");
     require(acks.contains(seq) && acks.value(seq).error_code == VaporView::CommandErrorCode::Ok,
             "restart GetSkyConfig acknowledged");
 

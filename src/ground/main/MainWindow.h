@@ -85,6 +85,10 @@ namespace VaporView::Ground::Devices { class LocalConnectionCoordinator; }
 namespace VaporView::Ground::Devices { class RemoteSkyController; }
 namespace VaporView::Ground::Devices { class Ai8DeviceSession; }
 namespace VaporView::Ground::Devices { enum class Ai8Operation; struct Ai8SessionResult; }
+namespace VaporView::Ground::Devices { class EpsilonDeviceSession; }
+namespace VaporView::Ground::Devices { enum class EpsilonOperation; struct EpsilonSessionResult; }
+namespace VaporView::Ground::Devices { class Rd105DeviceSession; }
+namespace VaporView::Ground::Devices { struct Rd105SessionResult; }
 namespace VaporView::Ground::Devices { class UiTestDataModel; enum class UiTestScenario; }
 namespace VaporView::Ground::Session { class GroundRecordingService; }
 namespace VaporView::Ground::Session { class RecordingScheduleController; }
@@ -189,6 +193,18 @@ private slots:
         const VaporView::Ground::Devices::Ai8SessionResult& result);
     void onAi8SessionPageDataAvailable(
         const VaporView::Ai8TemperatureControllerProtocol::PageData& data);
+    void onEpsilonSessionAvailabilityChanged(bool available, const QString& reason);
+    void onEpsilonSessionOperationStarted(
+        quint64 requestId, VaporView::Ground::Devices::EpsilonOperation operation);
+    void onEpsilonSessionOperationFinished(
+        const VaporView::Ground::Devices::EpsilonSessionResult& result);
+    void onRd105SessionAvailabilityChanged(bool available, const QString& reason);
+    void onRd105SessionOperationStarted(
+        quint64 requestId,
+        VaporView::CommandId command,
+        VaporView::TemperatureControllerCommand payload);
+    void onRd105SessionOperationFinished(
+        const VaporView::Ground::Devices::Rd105SessionResult& result);
     void onRemoteCommandAckReceived(const VaporView::CommandAck& ack);
     void onRemoteLinkOpenChanged(bool open);
     void onRemoteSkyConfigReadClicked();
@@ -442,7 +458,6 @@ private:
     void noteMap3DSampleDrop(const QString& source, const QString& reason, quint64 recordTimestampUs = 0);
 #endif
     void sendTemperatureCommand(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload);
-    void sendRemoteTemperatureCommand(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload);
     void restoreTemperatureCommandUi(VaporView::CommandId command, quint8 channel);
     bool isTemperatureCommand(VaporView::CommandId command) const;
     QString temperatureCommandStatusText(VaporView::CommandId command, quint8 channel, bool pending, const QString& detail = QString()) const;

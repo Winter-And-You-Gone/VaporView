@@ -38,6 +38,11 @@ public:
     quint32 writeAi8Page(const Ai8TemperatureControllerProtocol::PageData& data);
     quint32 restoreAi8FactoryDefaults(Ai8TemperatureControllerProtocol::Page page,
                                       const Ai8TemperatureControllerProtocol::Selection& selection);
+    quint32 configureEpsilonPacketRates(const EpsilonPacketRatesOperation& operation);
+    quint32 configureEpsilonMainAntennaLeverArm(
+        const EpsilonMainAntennaLeverArmOperation& operation);
+    quint32 configureEpsilonRtcmInput(const EpsilonRtcmInputOperation& operation);
+    bool sendRtcmCorrectionData(const QByteArray& data);
     DeviceOperationSupport deviceOperationSupport() const;
     quint16 sendDeviceCommand(CommandId command, SkyDeviceId device);
     quint16 sendRateCommand(CommandId command, quint16 rateHz);
@@ -82,6 +87,9 @@ private:
     bool isCurrentOpenEvent(quint64 generation) const;
     void updateBasicState(const TelemetryBasic& telemetry);
     void updateStatusState(const TelemetryStatus& status);
+    quint32 sendDeviceOperation(SkyDeviceId device,
+                                DeviceOperation operation,
+                                const QByteArray& payload);
     quint32 sendAi8Operation(DeviceOperation operation,
                              const Ai8TemperatureControllerProtocol::PageData& data);
 

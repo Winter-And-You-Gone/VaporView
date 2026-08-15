@@ -593,6 +593,12 @@ TelemetryStatus SkyRuntime::currentStatus() const
     status.raw_temperature_humidity_record_count = session_recorder_.rawTemperatureHumidityRecordCount();
     status.raw_distance_record_count = session_recorder_.rawDistanceRecordCount();
     status.raw_waveform_record_count = session_recorder_.rawWaveformRecordCount();
+    const RtcmCorrectionStats rtcmStats = device_manager_.rtcmCorrectionStats();
+    status.rtcm_correction_bytes_received = rtcmStats.bytes_received;
+    status.rtcm_correction_chunks_received = rtcmStats.chunks_received;
+    status.rtcm_correction_dropped_bytes = rtcmStats.dropped_bytes;
+    status.rtcm_correction_dropped_chunks = rtcmStats.dropped_chunks;
+    status.rtcm_correction_last_receive_time_us = rtcmStats.last_receive_time_us;
     return status;
 }
 
@@ -930,6 +936,15 @@ void SkyRuntime::dispatchFrame(const TelemetryFrame& frame)
             handleCommand(command);
         }
     }
+    else if (frame.type == MsgType::RtcmCorrectionData)
+    {
+        QByteArray data;
+        CommandErrorCode ignored = CommandErrorCode::Ok;
+        if (TelemetryCodec::parseRtcmCorrectionData(frame.payload, data))
+        {
+            device_manager_.receiveRtcmCorrectionData(data, &ignored);
+        }
+    }
 }
 
 void SkyRuntime::handleCommand(const CommandMessage& command)
@@ -1083,10 +1098,69 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         response.device_id = request.device_id;
         response.operation = request.operation;
         result.send_device_operation_response = true;
+        if (request.device_id == SkyDeviceId::Epsilon)
+        {
+            CommandErrorCode error = CommandErrorCode::Ok;
+            QString errorMessage;
+            bool ok = false;
+            switch (request.operation)
+            {
+            case DeviceOperation::ConfigureEpsilonPacketRates:
+            {
+                EpsilonPacketRatesOperation operation;
+                if (!TelemetryCodec::parseEpsilonPacketRatesOperation(request.payload, operation))
+                {
+                    error = CommandErrorCode::InvalidPayload;
+                    errorMessage = QStringLiteral("EPSILON packet-rate payload is invalid.");
+                    break;
+                }
+                ok = device_manager_.configureEpsilonPacketRates(
+                    operation, &error, &errorMessage);
+                break;
+            }
+            case DeviceOperation::ConfigureEpsilonMainAntennaLeverArm:
+            {
+                EpsilonMainAntennaLeverArmOperation operation;
+                if (!TelemetryCodec::parseEpsilonMainAntennaLeverArmOperation(request.payload, operation))
+                {
+                    error = CommandErrorCode::InvalidPayload;
+                    errorMessage = QStringLiteral("EPSILON lever-arm payload is invalid.");
+                    break;
+                }
+                ok = device_manager_.configureEpsilonMainAntennaLeverArm(
+                    operation, &error, &errorMessage);
+                break;
+            }
+            case DeviceOperation::ConfigureEpsilonRtcmInput:
+            {
+                EpsilonRtcmInputOperation operation;
+                if (!TelemetryCodec::parseEpsilonRtcmInputOperation(request.payload, operation))
+                {
+                    error = CommandErrorCode::InvalidPayload;
+                    errorMessage = QStringLiteral("EPSILON RTCM payload is invalid.");
+                    break;
+                }
+                ok = device_manager_.configureEpsilonRtcmInput(
+                    operation, &error, &errorMessage);
+                break;
+            }
+            case DeviceOperation::ReadParameters:
+            case DeviceOperation::WriteParameters:
+            case DeviceOperation::FactoryReset:
+                error = CommandErrorCode::InvalidPayload;
+                errorMessage = QStringLiteral("EPSILON does not support this DeviceOperation.");
+                break;
+            }
+            response.error_code = ok ? CommandErrorCode::Ok : error;
+            response.error_message = errorMessage;
+            result.ack = makeAck(command, response.error_code);
+            result.device_operation_response = response;
+            break;
+        }
         if (request.device_id != SkyDeviceId::Ai8TemperatureController)
         {
             response.error_code = CommandErrorCode::InvalidDeviceId;
-            response.error_message = QStringLiteral("DeviceOperation only supports AI-8.");
+            response.error_message = QStringLiteral("DeviceOperation only supports AI-8 and EPSILON.");
             result.ack = makeAck(command, response.error_code);
             result.device_operation_response = response;
             break;
@@ -1125,6 +1199,12 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
                                                             responseData,
                                                             &error,
                                                             &errorMessage);
+            break;
+        case DeviceOperation::ConfigureEpsilonPacketRates:
+        case DeviceOperation::ConfigureEpsilonMainAntennaLeverArm:
+        case DeviceOperation::ConfigureEpsilonRtcmInput:
+            error = CommandErrorCode::InvalidPayload;
+            errorMessage = QStringLiteral("AI-8 does not support EPSILON DeviceOperation values.");
             break;
         }
         response.error_code = ok ? CommandErrorCode::Ok : error;

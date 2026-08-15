@@ -1,6 +1,7 @@
 #include "TelemetryCodec.h"
 #include "logging/BoundedLogRecord.h"
 
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QVector>
@@ -8,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <utility>
 
 namespace VaporView
@@ -744,6 +746,11 @@ QByteArray TelemetryCodec::serializeTelemetryStatus(const TelemetryStatus& statu
     appendLe<quint64>(payload, status.raw_temperature_humidity_record_count);
     appendLe<quint64>(payload, status.raw_distance_record_count);
     appendLe<quint64>(payload, status.raw_waveform_record_count);
+    appendLe<quint64>(payload, status.rtcm_correction_bytes_received);
+    appendLe<quint64>(payload, status.rtcm_correction_chunks_received);
+    appendLe<quint64>(payload, status.rtcm_correction_dropped_bytes);
+    appendLe<quint64>(payload, status.rtcm_correction_dropped_chunks);
+    appendLe<quint64>(payload, status.rtcm_correction_last_receive_time_us);
     return payload;
 }
 
@@ -818,7 +825,12 @@ bool TelemetryCodec::parseTelemetryStatus(const QByteArray& payload, TelemetrySt
            readOptionalU64(status.raw_pressure_record_count) &&
            readOptionalU64(status.raw_temperature_humidity_record_count) &&
            readOptionalU64(status.raw_distance_record_count) &&
-           readOptionalU64(status.raw_waveform_record_count);
+           readOptionalU64(status.raw_waveform_record_count) &&
+           readOptionalU64(status.rtcm_correction_bytes_received) &&
+           readOptionalU64(status.rtcm_correction_chunks_received) &&
+           readOptionalU64(status.rtcm_correction_dropped_bytes) &&
+           readOptionalU64(status.rtcm_correction_dropped_chunks) &&
+           readOptionalU64(status.rtcm_correction_last_receive_time_us);
 }
 
 QByteArray TelemetryCodec::serializeCommand(const CommandMessage& command)
@@ -1345,7 +1357,10 @@ bool validDeviceOperation(DeviceOperation operation)
 {
     return operation == DeviceOperation::ReadParameters ||
            operation == DeviceOperation::WriteParameters ||
-           operation == DeviceOperation::FactoryReset;
+           operation == DeviceOperation::FactoryReset ||
+           operation == DeviceOperation::ConfigureEpsilonPacketRates ||
+           operation == DeviceOperation::ConfigureEpsilonMainAntennaLeverArm ||
+           operation == DeviceOperation::ConfigureEpsilonRtcmInput;
 }
 
 QByteArray TelemetryCodec::serializeAi8TemperatureControllerStatus(
@@ -1575,6 +1590,227 @@ bool TelemetryCodec::parseAi8PageData(
 {
     const QJsonDocument document = QJsonDocument::fromJson(payload);
     return document.isObject() && ai8PageDataFromJson(document.object(), data);
+}
+
+namespace
+{
+
+bool readRequiredJsonInt(const QJsonObject& object, const QString& key, int& target)
+{
+    const QJsonValue value = object.value(key);
+    if (!value.isDouble())
+    {
+        return false;
+    }
+    const double numeric = value.toDouble();
+    if (!std::isfinite(numeric) || std::floor(numeric) != numeric ||
+        numeric < static_cast<double>(std::numeric_limits<int>::min()) ||
+        numeric > static_cast<double>(std::numeric_limits<int>::max()))
+    {
+        return false;
+    }
+    target = static_cast<int>(numeric);
+    return true;
+}
+
+bool readRequiredJsonDouble(const QJsonObject& object, const QString& key, double& target)
+{
+    const QJsonValue value = object.value(key);
+    if (!value.isDouble() || !std::isfinite(value.toDouble()))
+    {
+        return false;
+    }
+    target = value.toDouble();
+    return true;
+}
+
+}  // namespace
+
+QByteArray TelemetryCodec::serializeEpsilonPacketRatesOperation(
+    const EpsilonPacketRatesOperation& operation)
+{
+    QJsonArray rates;
+    for (const auto& entry : operation.packet_rates)
+    {
+        rates.append(QJsonObject{
+            {QStringLiteral("packet_id"), static_cast<int>(entry.first)},
+            {QStringLiteral("rate_hz"), entry.second},
+        });
+    }
+    const QJsonObject object{
+        {QStringLiteral("version"), 1},
+        {QStringLiteral("output_rate_hz"), operation.output_rate_hz},
+        {QStringLiteral("callback_rate_hz"), operation.callback_rate_hz},
+        {QStringLiteral("packet_rate_signature"), operation.packet_rate_signature},
+        {QStringLiteral("packet_rates"), rates},
+    };
+    return QJsonDocument(object).toJson(QJsonDocument::Compact);
+}
+
+bool TelemetryCodec::parseEpsilonPacketRatesOperation(
+    const QByteArray& payload,
+    EpsilonPacketRatesOperation& operation)
+{
+    const QJsonDocument document = QJsonDocument::fromJson(payload);
+    if (!document.isObject())
+    {
+        return false;
+    }
+    const QJsonObject object = document.object();
+    int version = 0;
+    int outputRate = 0;
+    int callbackRate = 0;
+    if (!readRequiredJsonInt(object, QStringLiteral("version"), version) ||
+        version != 1 ||
+        !readRequiredJsonInt(object, QStringLiteral("output_rate_hz"), outputRate) ||
+        !readRequiredJsonInt(object, QStringLiteral("callback_rate_hz"), callbackRate) ||
+        outputRate <= 0 ||
+        callbackRate <= 0)
+    {
+        return false;
+    }
+    const QJsonValue ratesValue = object.value(QStringLiteral("packet_rates"));
+    if (!ratesValue.isArray())
+    {
+        return false;
+    }
+    std::map<uint8_t, int> packetRates;
+    for (const QJsonValue& itemValue : ratesValue.toArray())
+    {
+        if (!itemValue.isObject())
+        {
+            return false;
+        }
+        const QJsonObject item = itemValue.toObject();
+        int packetId = 0;
+        int rateHz = 0;
+        if (!readRequiredJsonInt(item, QStringLiteral("packet_id"), packetId) ||
+            !readRequiredJsonInt(item, QStringLiteral("rate_hz"), rateHz) ||
+            packetId < 0 ||
+            packetId > 255 ||
+            rateHz < 0)
+        {
+            return false;
+        }
+        packetRates[static_cast<uint8_t>(packetId)] = rateHz;
+    }
+    if (packetRates.empty())
+    {
+        return false;
+    }
+    operation = EpsilonPacketRatesOperation{};
+    operation.output_rate_hz = outputRate;
+    operation.callback_rate_hz = callbackRate;
+    operation.packet_rates = std::move(packetRates);
+    operation.packet_rate_signature =
+        object.value(QStringLiteral("packet_rate_signature")).toString();
+    return true;
+}
+
+QByteArray TelemetryCodec::serializeEpsilonMainAntennaLeverArmOperation(
+    const EpsilonMainAntennaLeverArmOperation& operation)
+{
+    const QJsonObject object{
+        {QStringLiteral("version"), 1},
+        {QStringLiteral("x_m"), operation.x_m},
+        {QStringLiteral("y_m"), operation.y_m},
+        {QStringLiteral("z_m"), operation.z_m},
+    };
+    return QJsonDocument(object).toJson(QJsonDocument::Compact);
+}
+
+bool TelemetryCodec::parseEpsilonMainAntennaLeverArmOperation(
+    const QByteArray& payload,
+    EpsilonMainAntennaLeverArmOperation& operation)
+{
+    const QJsonDocument document = QJsonDocument::fromJson(payload);
+    if (!document.isObject())
+    {
+        return false;
+    }
+    const QJsonObject object = document.object();
+    int version = 0;
+    double x = 0.0;
+    double y = 0.0;
+    double z = 0.0;
+    if (!readRequiredJsonInt(object, QStringLiteral("version"), version) ||
+        version != 1 ||
+        !readRequiredJsonDouble(object, QStringLiteral("x_m"), x) ||
+        !readRequiredJsonDouble(object, QStringLiteral("y_m"), y) ||
+        !readRequiredJsonDouble(object, QStringLiteral("z_m"), z) ||
+        std::abs(x) > 100.0 ||
+        std::abs(y) > 100.0 ||
+        std::abs(z) > 100.0)
+    {
+        return false;
+    }
+    operation = EpsilonMainAntennaLeverArmOperation{x, y, z};
+    return true;
+}
+
+QByteArray TelemetryCodec::serializeEpsilonRtcmInputOperation(
+    const EpsilonRtcmInputOperation& operation)
+{
+    const QJsonObject object{
+        {QStringLiteral("version"), 1},
+        {QStringLiteral("device_port_index"), operation.device_port_index},
+        {QStringLiteral("forward_port"), operation.forward_port},
+        {QStringLiteral("forward_baud"), operation.forward_baud},
+    };
+    return QJsonDocument(object).toJson(QJsonDocument::Compact);
+}
+
+bool TelemetryCodec::parseEpsilonRtcmInputOperation(
+    const QByteArray& payload,
+    EpsilonRtcmInputOperation& operation)
+{
+    const QJsonDocument document = QJsonDocument::fromJson(payload);
+    if (!document.isObject())
+    {
+        return false;
+    }
+    const QJsonObject object = document.object();
+    int version = 0;
+    int devicePortIndex = 0;
+    int forwardBaud = 0;
+    if (!readRequiredJsonInt(object, QStringLiteral("version"), version) ||
+        version != 1 ||
+        !readRequiredJsonInt(object, QStringLiteral("device_port_index"), devicePortIndex) ||
+        !readRequiredJsonInt(object, QStringLiteral("forward_baud"), forwardBaud) ||
+        devicePortIndex < 2 ||
+        devicePortIndex > 5 ||
+        forwardBaud <= 0)
+    {
+        return false;
+    }
+    operation = EpsilonRtcmInputOperation{};
+    operation.device_port_index = devicePortIndex;
+    operation.forward_port = object.value(QStringLiteral("forward_port")).toString().trimmed();
+    operation.forward_baud = forwardBaud;
+    return true;
+}
+
+QByteArray TelemetryCodec::serializeRtcmCorrectionData(const QByteArray& data)
+{
+    QByteArray payload;
+    appendLe<quint32>(payload, static_cast<quint32>(data.size()));
+    payload.append(data);
+    return payload;
+}
+
+bool TelemetryCodec::parseRtcmCorrectionData(const QByteArray& payload, QByteArray& data)
+{
+    qsizetype offset = 0;
+    quint32 size = 0;
+    if (!readLe(payload, offset, size) ||
+        size == 0 ||
+        size > 4096 ||
+        offset + static_cast<qsizetype>(size) != payload.size())
+    {
+        return false;
+    }
+    data = payload.mid(offset, static_cast<int>(size));
+    return true;
 }
 
 QByteArray TelemetryCodec::serializeDeviceOperationRequest(const DeviceOperationRequest& request)

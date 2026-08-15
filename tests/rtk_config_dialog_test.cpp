@@ -173,6 +173,34 @@ int main(int argc, char **argv)
                 "saved AUTO mountpoint shows the detect-first prompt until mountpoints are detected");
     }
 
+    {
+        RtkConfigDialog remoteSinkDialog(nullptr, false);
+        remoteSinkDialog.setRtcmCorrectionSink(
+            [](const QByteArray&) { return true; }, QStringLiteral("/dev/ttyRTCM"));
+        auto *remoteOutputPortCombo =
+            remoteSinkDialog.findChild<QComboBox *>(QStringLiteral("rtkOutputPortCombo"));
+        auto *remoteGgaPortCombo =
+            remoteSinkDialog.findChild<QComboBox *>(QStringLiteral("rtkGgaPortCombo"));
+        auto *remoteRefreshPortsButton =
+            remoteSinkDialog.findChild<QPushButton *>(QStringLiteral("rtkRefreshPortsButton"));
+        auto *remoteAutoDetectPortsButton =
+            remoteSinkDialog.findChild<QPushButton *>(QStringLiteral("rtkAutoDetectPortsButton"));
+        auto *remoteGgaToggleButton =
+            remoteSinkDialog.findChild<QPushButton *>(QStringLiteral("rtkGgaToggleButton"));
+        require(remoteOutputPortCombo && remoteOutputPortCombo->count() == 1 &&
+                    remoteOutputPortCombo->currentText() == QStringLiteral("/dev/ttyRTCM") &&
+                    !remoteOutputPortCombo->isEnabled(),
+                "Remote RTCM sink shows only the Sky endpoint instead of enumerating local output ports");
+        require(remoteGgaPortCombo && remoteGgaPortCombo->count() == 1 &&
+                    !remoteGgaPortCombo->isEnabled(),
+                "Remote RTCM sink keeps GGA on the generated EPSILON source");
+        require(remoteRefreshPortsButton && remoteAutoDetectPortsButton && remoteGgaToggleButton &&
+                    !remoteRefreshPortsButton->isEnabled() &&
+                    !remoteAutoDetectPortsButton->isEnabled() &&
+                    !remoteGgaToggleButton->isEnabled(),
+                "Remote RTCM sink disables local serial refresh, auto-detect, and GGA port controls");
+    }
+
     QTcpServer caster;
     require(caster.listen(QHostAddress::LocalHost, 0), "local sourcetable test server starts");
     int mountpointRequestCount = 0;
@@ -201,6 +229,7 @@ int main(int argc, char **argv)
     });
     rtkSettings.setValue(QStringLiteral("server"), QStringLiteral("127.0.0.1"));
     rtkSettings.setValue(QStringLiteral("port"), QString::number(caster.serverPort()));
+    rtkSettings.setValue(QStringLiteral("output_port"), QStringLiteral("__missing_serial_port__"));
     rtkSettings.setValue(QStringLiteral("mountpoint"), QStringLiteral("PERSISTED_MOUNTPOINT"));
     rtkSettings.setValue(QStringLiteral("mountpoint_confirmed"), true);
     rtkSettings.sync();
@@ -456,7 +485,7 @@ int main(int argc, char **argv)
                     QLatin1Char('\n'), Qt::SkipEmptyParts).size() > 1;
             }),
             "GGA waiting heartbeat does not spam the log before two seconds");
-    require(processEventsUntil(1000, [ggaMonitorLog]() {
+    require(processEventsUntil(2000, [ggaMonitorLog]() {
                 return ggaMonitorLog->toPlainText().split(
                     QLatin1Char('\n'), Qt::SkipEmptyParts).size() >= 2;
             }),

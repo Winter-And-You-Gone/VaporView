@@ -3584,10 +3584,10 @@ void MainWindow::updateDeviceConfigState()
 
     const bool remote = isRemoteSkyMode();
     const bool tcpTelemetry = isRemoteSkyTcpMode();
-    const bool localInputsEnabled = !remote && !state_->is_connected_ &&
+    const bool localInputsEnabled = !remote && (isUiTestMode() || !state_->is_connected_) &&
         !state_->connection_attempt_in_progress_ && !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
-    const bool remoteInputsEnabled = remote && !state_->is_connected_ && !state_->connection_attempt_in_progress_;
-    const bool epsilonConfigEnabled = !remote && !state_->connection_attempt_in_progress_ &&
+    const bool remoteInputsEnabled = remote && (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_;
+    const bool epsilonConfigEnabled = !state_->connection_attempt_in_progress_ &&
         !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
 
     if (state_->device_config_.auto_detect_ports_btn)
@@ -3602,7 +3602,9 @@ void MainWindow::updateDeviceConfigState()
     }
     if (state_->epsilon_config_panel_)
     {
-        state_->epsilon_config_panel_->setAvailable(epsilonConfigEnabled);
+        const bool operationPending = state_->epsilon_device_session_ &&
+                                      state_->epsilon_device_session_->operationPending();
+        state_->epsilon_config_panel_->setAvailable(epsilonConfigEnabled && !operationPending);
     }
 
     const QList<QWidget *> localWidgets = {

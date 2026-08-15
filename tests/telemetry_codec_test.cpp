@@ -29,6 +29,7 @@ void testProtocolEnumValues()
     require(static_cast<quint8>(VaporView::MsgType::TemperatureControllerStatus) == 0x07, "MsgType TemperatureControllerStatus value");
     require(static_cast<quint8>(VaporView::MsgType::Ai8TemperatureControllerStatus) == 0x08, "MsgType Ai8TemperatureControllerStatus value");
     require(static_cast<quint8>(VaporView::MsgType::DeviceOperationResponse) == 0x09, "MsgType DeviceOperationResponse value");
+    require(static_cast<quint8>(VaporView::MsgType::RtcmCorrectionData) == 0x0A, "MsgType RtcmCorrectionData value");
     require(static_cast<quint8>(VaporView::MsgType::Command) == 0x10, "MsgType Command value");
     require(static_cast<quint8>(VaporView::MsgType::CommandAck) == 0x11, "MsgType CommandAck value");
     require(static_cast<quint16>(VaporView::CommandId::StartRecording) == 1, "CommandId StartRecording value");
@@ -47,6 +48,12 @@ void testProtocolEnumValues()
     require(static_cast<quint16>(VaporView::CommandId::SetTemperatureStartupDelay) == 55, "CommandId SetTemperatureStartupDelay value");
     require(static_cast<quint16>(VaporView::CommandId::DeviceOperation) == 60, "CommandId DeviceOperation value");
     require(static_cast<quint16>(VaporView::CommandId::ShutdownCore) == 90, "CommandId ShutdownCore value");
+    require(static_cast<quint8>(VaporView::DeviceOperation::ReadParameters) == 1, "DeviceOperation ReadParameters value");
+    require(static_cast<quint8>(VaporView::DeviceOperation::WriteParameters) == 2, "DeviceOperation WriteParameters value");
+    require(static_cast<quint8>(VaporView::DeviceOperation::FactoryReset) == 3, "DeviceOperation FactoryReset value");
+    require(static_cast<quint8>(VaporView::DeviceOperation::ConfigureEpsilonPacketRates) == 10, "DeviceOperation ConfigureEpsilonPacketRates value");
+    require(static_cast<quint8>(VaporView::DeviceOperation::ConfigureEpsilonMainAntennaLeverArm) == 11, "DeviceOperation ConfigureEpsilonMainAntennaLeverArm value");
+    require(static_cast<quint8>(VaporView::DeviceOperation::ConfigureEpsilonRtcmInput) == 12, "DeviceOperation ConfigureEpsilonRtcmInput value");
     require(static_cast<quint8>(VaporView::SkyDeviceId::Ai8TemperatureController) == 7, "SkyDeviceId AI-8 value");
 }
 
@@ -447,10 +454,12 @@ void testSkyConfigDiff()
     b.ptb.source = QStringLiteral("bmp390");
     b.hmp.source = QStringLiteral("sht45");
     b.ai8_temperature_controller = {true, QStringLiteral("/dev/ttyAI8"), 115200, 12.0, 7};
+    b.epsilon_rtcm = {true, 3, QStringLiteral("/dev/ttyRTCM"), 230400};
     const VaporView::SkyConfigDiff sourceDiff = a.diff(b);
     require(sourceDiff.ptb_changed && sourceDiff.hmp_changed &&
-                sourceDiff.ai8_temperature_controller_changed,
-            "sky config diff detects source and AI-8 changes");
+                sourceDiff.ai8_temperature_controller_changed &&
+                sourceDiff.epsilon_rtcm_changed,
+            "sky config diff detects source, AI-8, and EPSILON RTCM changes");
 
     const QJsonObject json = b.toJson();
     VaporView::SkyConfig parsed;
@@ -461,8 +470,12 @@ void testSkyConfigDiff()
                 parsed.hmp.source == QStringLiteral("sht45") &&
                 parsed.ai8_temperature_controller.enabled &&
                 parsed.ai8_temperature_controller.port == QStringLiteral("/dev/ttyAI8") &&
-                parsed.ai8_temperature_controller.slave_address == 7,
-            "sky config source and AI-8 round-trip");
+                parsed.ai8_temperature_controller.slave_address == 7 &&
+                parsed.epsilon_rtcm.enabled &&
+                parsed.epsilon_rtcm.device_port_index == 3 &&
+                parsed.epsilon_rtcm.forward_port == QStringLiteral("/dev/ttyRTCM") &&
+                parsed.epsilon_rtcm.baud_rate == 230400,
+            "sky config source, AI-8, and EPSILON RTCM round-trip");
 
     QJsonObject legacy = a.toJson();
     QJsonObject legacyPtb = legacy.value(QStringLiteral("ptb")).toObject();
@@ -472,12 +485,18 @@ void testSkyConfigDiff()
     legacyHmp.remove(QStringLiteral("source"));
     legacy.insert(QStringLiteral("hmp"), legacyHmp);
     legacy.remove(QStringLiteral("ai8_temperature_controller"));
+    QJsonObject legacyEpsilon = legacy.value(QStringLiteral("epsilon")).toObject();
+    legacyEpsilon.remove(QStringLiteral("rtcm"));
+    legacy.insert(QStringLiteral("epsilon"), legacyEpsilon);
+    legacy.remove(QStringLiteral("epsilon_rtcm"));
     error.clear();
     require(VaporView::SkyConfig::fromJson(legacy, parsed, &error), "sky config legacy parse");
     require(parsed.ptb.source == QStringLiteral("ptb210") &&
                 parsed.hmp.source == QStringLiteral("hmp3") &&
-                !parsed.ai8_temperature_controller.enabled,
-            "sky config legacy source and AI-8 defaults");
+                !parsed.ai8_temperature_controller.enabled &&
+                !parsed.epsilon_rtcm.enabled &&
+                parsed.epsilon_rtcm.device_port_index == 2,
+            "sky config legacy source, AI-8, and EPSILON RTCM defaults");
 }
 
 void testSkyConfigRejectsInvalidJsonTypes()
@@ -541,6 +560,11 @@ void testTelemetryStatus()
     status.raw_temperature_humidity_record_count = 30;
     status.raw_distance_record_count = 40;
     status.raw_waveform_record_count = 50;
+    status.rtcm_correction_bytes_received = 4096;
+    status.rtcm_correction_chunks_received = 7;
+    status.rtcm_correction_dropped_bytes = 128;
+    status.rtcm_correction_dropped_chunks = 2;
+    status.rtcm_correction_last_receive_time_us = 987654321;
     VaporView::DeviceStatusItem ai8;
     ai8.device_id = VaporView::SkyDeviceId::Ai8TemperatureController;
     ai8.state = VaporView::DeviceState::Connected;
@@ -557,6 +581,12 @@ void testTelemetryStatus()
     require(parsed.recording_elapsed_ms == status.recording_elapsed_ms, "status recording elapsed");
     require(parsed.raw_navigation_record_count == status.raw_navigation_record_count, "status raw epsilon count");
     require(parsed.raw_waveform_record_count == status.raw_waveform_record_count, "status raw tcp wave count");
+    require(parsed.rtcm_correction_bytes_received == status.rtcm_correction_bytes_received &&
+                parsed.rtcm_correction_chunks_received == status.rtcm_correction_chunks_received &&
+                parsed.rtcm_correction_dropped_bytes == status.rtcm_correction_dropped_bytes &&
+                parsed.rtcm_correction_dropped_chunks == status.rtcm_correction_dropped_chunks &&
+                parsed.rtcm_correction_last_receive_time_us == status.rtcm_correction_last_receive_time_us,
+            "status RTCM correction counters");
 }
 
 void testAi8DeviceOperation()
@@ -629,6 +659,79 @@ void testAi8DeviceOperation()
             "DeviceOperation response round-trip");
 }
 
+void testEpsilonDeviceOperationPayloads()
+{
+    using namespace VaporView;
+
+    EpsilonPacketRatesOperation packetRates;
+    packetRates.output_rate_hz = 100;
+    packetRates.callback_rate_hz = 250;
+    packetRates.packet_rates = {{0x40, 250}, {0x50, 100}, {0x5C, 10}};
+    packetRates.packet_rate_signature = QStringLiteral("40=250;50=100;5C=10");
+    EpsilonPacketRatesOperation parsedPacketRates;
+    require(TelemetryCodec::parseEpsilonPacketRatesOperation(
+                TelemetryCodec::serializeEpsilonPacketRatesOperation(packetRates),
+                parsedPacketRates),
+            "parse EPSILON packet-rate operation");
+    require(parsedPacketRates.output_rate_hz == packetRates.output_rate_hz &&
+                parsedPacketRates.callback_rate_hz == packetRates.callback_rate_hz &&
+                parsedPacketRates.packet_rates == packetRates.packet_rates &&
+                parsedPacketRates.packet_rate_signature == packetRates.packet_rate_signature,
+            "EPSILON packet-rate operation round-trip");
+    require(!TelemetryCodec::parseEpsilonPacketRatesOperation(QByteArrayLiteral("{}"), parsedPacketRates),
+            "reject invalid EPSILON packet-rate operation");
+
+    EpsilonMainAntennaLeverArmOperation leverArm{1.25, -0.5, 0.75};
+    EpsilonMainAntennaLeverArmOperation parsedLeverArm;
+    require(TelemetryCodec::parseEpsilonMainAntennaLeverArmOperation(
+                TelemetryCodec::serializeEpsilonMainAntennaLeverArmOperation(leverArm),
+                parsedLeverArm),
+            "parse EPSILON lever-arm operation");
+    require(std::fabs(parsedLeverArm.x_m - leverArm.x_m) < 0.000001 &&
+                std::fabs(parsedLeverArm.y_m - leverArm.y_m) < 0.000001 &&
+                std::fabs(parsedLeverArm.z_m - leverArm.z_m) < 0.000001,
+            "EPSILON lever-arm operation round-trip");
+
+    EpsilonRtcmInputOperation rtcmInput;
+    rtcmInput.device_port_index = 3;
+    rtcmInput.forward_port = QStringLiteral("/dev/ttyRTCM");
+    rtcmInput.forward_baud = 230400;
+    EpsilonRtcmInputOperation parsedRtcmInput;
+    require(TelemetryCodec::parseEpsilonRtcmInputOperation(
+                TelemetryCodec::serializeEpsilonRtcmInputOperation(rtcmInput),
+                parsedRtcmInput),
+            "parse EPSILON RTCM operation");
+    require(parsedRtcmInput.device_port_index == rtcmInput.device_port_index &&
+                parsedRtcmInput.forward_port == rtcmInput.forward_port &&
+                parsedRtcmInput.forward_baud == rtcmInput.forward_baud,
+            "EPSILON RTCM operation round-trip");
+
+    const QByteArray rtcmBytes = QByteArray::fromHex("D30000123456");
+    QByteArray parsedRtcmBytes;
+    require(TelemetryCodec::parseRtcmCorrectionData(
+                TelemetryCodec::serializeRtcmCorrectionData(rtcmBytes),
+                parsedRtcmBytes),
+            "parse RTCM correction data");
+    require(parsedRtcmBytes == rtcmBytes, "RTCM correction data round-trip");
+    require(!TelemetryCodec::parseRtcmCorrectionData(QByteArray(), parsedRtcmBytes),
+            "reject empty RTCM correction payload");
+
+    DeviceOperationRequest request;
+    request.request_id = 0x5555;
+    request.device_id = SkyDeviceId::Epsilon;
+    request.operation = DeviceOperation::ConfigureEpsilonRtcmInput;
+    request.payload = TelemetryCodec::serializeEpsilonRtcmInputOperation(rtcmInput);
+    DeviceOperationRequest parsedRequest;
+    require(TelemetryCodec::parseDeviceOperationRequest(
+                TelemetryCodec::serializeDeviceOperationRequest(request),
+                parsedRequest),
+            "parse EPSILON DeviceOperation request");
+    require(parsedRequest.device_id == SkyDeviceId::Epsilon &&
+                parsedRequest.operation == DeviceOperation::ConfigureEpsilonRtcmInput &&
+                parsedRequest.payload == request.payload,
+            "EPSILON DeviceOperation request round-trip");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -644,6 +747,7 @@ int main(int argc, char **argv)
     testSkyConfigRejectsInvalidJsonTypes();
     testTelemetryStatus();
     testAi8DeviceOperation();
+    testEpsilonDeviceOperationPayloads();
     std::cout << "telemetry_codec_test passed\n";
     return 0;
 }

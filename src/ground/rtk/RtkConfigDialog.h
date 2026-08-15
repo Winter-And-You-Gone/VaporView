@@ -31,6 +31,7 @@
 class QCloseEvent;
 class QEvent;
 class QResizeEvent;
+class QTcpServer;
 
 namespace VaporView { class SingleLevelPopupMenu; }
 
@@ -56,6 +57,8 @@ public:
     using EpsilonLeverArmCompletion = std::function<void(bool, const QString&)>;
     using EpsilonLeverArmApplier = std::function<void(double, double, double, EpsilonLeverArmCompletion)>;
     void setEpsilonMainAntennaLeverArmApplier(EpsilonLeverArmApplier applier);
+    using RtcmCorrectionSink = std::function<bool(const QByteArray&)>;
+    void setRtcmCorrectionSink(RtcmCorrectionSink sink, const QString& label);
 
 signals:
     void rtkRunningChanged(bool running);
@@ -84,6 +87,8 @@ private:
     void loadSettings();
     void saveSettings();
     void saveMountpointSetting(const QString& mountpoint);
+    bool startRtcmCorrectionSinkServer(RtkStreamConfig *config, QString *errorMessage);
+    void stopRtcmCorrectionSinkServer();
     bool buildRtkStreamConfig(RtkStreamConfig *config,
                               QString *description = nullptr,
                               QString *validationError = nullptr,
@@ -218,6 +223,9 @@ private:
     int font_scale_percent_;
     std::function<VaporView::EpsilonData()> epsilon_data_provider_;
     EpsilonLeverArmApplier epsilon_main_antenna_lever_arm_applier_;
+    RtcmCorrectionSink rtcm_correction_sink_;
+    QString rtcm_correction_sink_label_;
+    std::unique_ptr<QTcpServer> rtcm_correction_sink_server_;
     QString epsilon_main_port_;
     QString saved_mountpoint_;
     int epsilon_main_baudrate_;

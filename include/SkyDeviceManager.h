@@ -17,6 +17,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <thread>
 
 #include "shared/concurrency/BoundedByteQueue.h"
 
@@ -28,6 +29,15 @@ struct ApplyConfigResult
     bool success = true;
     CommandErrorCode error_code = CommandErrorCode::Ok;
     QJsonObject json;
+};
+
+struct RtcmCorrectionStats
+{
+    quint64 bytes_received = 0;
+    quint64 chunks_received = 0;
+    quint64 dropped_bytes = 0;
+    quint64 dropped_chunks = 0;
+    quint64 last_receive_time_us = 0;
 };
 
 class SkyDeviceManager : public QObject
@@ -53,6 +63,19 @@ public:
     QVector<DeviceStatusItem> allStatuses() const;
     ApplyConfigResult applyConfig(const SkyConfig& newConfig);
     bool setPeakSearchRange(quint32 startIndex, quint32 endIndex, CommandErrorCode *errorCode = nullptr);
+    bool configureEpsilonPacketRates(const EpsilonPacketRatesOperation& operation,
+                                     CommandErrorCode *errorCode = nullptr,
+                                     QString *errorMessage = nullptr);
+    bool configureEpsilonMainAntennaLeverArm(
+        const EpsilonMainAntennaLeverArmOperation& operation,
+        CommandErrorCode *errorCode = nullptr,
+        QString *errorMessage = nullptr);
+    bool configureEpsilonRtcmInput(const EpsilonRtcmInputOperation& operation,
+                                   CommandErrorCode *errorCode = nullptr,
+                                   QString *errorMessage = nullptr);
+    bool receiveRtcmCorrectionData(const QByteArray& data,
+                                   CommandErrorCode *errorCode = nullptr);
+    RtcmCorrectionStats rtcmCorrectionStats() const;
     bool setTemperatureTarget(quint8 channel, double celsius, CommandErrorCode *errorCode = nullptr);
     bool setTemperatureOutputEnabled(quint8 channel, bool enabled, CommandErrorCode *errorCode = nullptr);
     bool setTemperatureOutputMode(quint8 channel, quint16 mode, CommandErrorCode *errorCode = nullptr);
@@ -157,6 +180,9 @@ private:
     void scheduleRawEventDrain();
     void recordWaveTcpFrameTime(quint64 timestampUs);
     void invalidateDeviceData(SkyDeviceId id);
+    void restartRtcmWriter();
+    void stopRtcmWriter();
+    void rtcmWriterLoop(QString port, int baudRate);
 
     SkyConfig config_ = SkyConfig::defaults();
     bool simulate_data_ = false;
@@ -207,6 +233,17 @@ private:
     BoundedByteQueue<PendingRawEvent> pending_raw_events_{4ULL * 1024ULL * 1024ULL, 2048};
     std::atomic<bool> raw_event_drain_scheduled_{false};
     quint64 raw_event_drops_reported_ = 0;
+
+    BoundedByteQueue<QByteArray> pending_rtcm_corrections_{512ULL * 1024ULL, 256};
+    std::thread rtcm_writer_thread_;
+    std::atomic<quint64> rtcm_correction_bytes_received_{0};
+    std::atomic<quint64> rtcm_correction_chunks_received_{0};
+    std::atomic<quint64> rtcm_correction_dropped_bytes_{0};
+    std::atomic<quint64> rtcm_correction_dropped_chunks_{0};
+    std::atomic<quint64> rtcm_correction_last_receive_time_us_{0};
+    std::map<uint8_t, int> simulated_epsilon_packet_rates_;
+    EpsilonMainAntennaLeverArmOperation simulated_epsilon_lever_arm_;
+    EpsilonRtcmInputOperation simulated_epsilon_rtcm_input_;
 };
 
 }  // namespace VaporView

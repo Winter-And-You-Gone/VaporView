@@ -231,10 +231,12 @@
 | Ground | ui.test | ui_test_imu_profile_applied | Info | 界面测试日志已更新。 | execution_path, ui_message, output_format, baud, rate_hz | ui_visibility |  |
 | Ground | ui.test | ui_test_sky_device_config_opened | deprecated | 界面测试日志已更新。 | execution_path, ui_message | ui_visibility, status=deprecated |  |
 | Ground | device.navigation.command | epsilon_rtcm_config_rejected_recording_active | Warning | 请先结束记录，再配置 EPSILON RTCM 串口。 | device, reason_code | ui_dedupe_key | INVALID_STATE |
+| Ground | device.navigation.command | epsilon_rtcm_config_rejected_dependency_unavailable | Warning | EPSILON 当前不可用，无法配置 RTCM。 | device, execution_path, reason_code | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
 | Ground | device.navigation.command | epsilon_rtcm_config_rejected_missing_main_port | Warning | 请先选择 EPSILON 主串口。 | device, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | device.navigation.command | epsilon_rtcm_config_rejected_invalid_main_baud | Warning | EPSILON 波特率无效。 | device, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
 | Ground | device.navigation.command | epsilon_rtcm_config_rejected_missing_forward_port | Warning | 请选择连接到 EPSILON RTCM 输入口的本机串口。 | device, reason_code, main_port, device_port | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | device.navigation.command | epsilon_rtcm_config_rejected_port_conflict | Warning | RTCM 转发串口不能与 EPSILON 主串口相同。 | device, reason_code, main_port, device_port, forward_port, details | ui_dedupe_key | CONFIG_INVALID |
+| Ground | device.navigation.command | epsilon_rtcm_config_rejected_invalid_remote_forward | Warning | 天空端 RTCM 转发串口或波特率无效。 | device, execution_path, reason_code | ui_dedupe_key | CONFIG_INVALID |
 | Ground | device.navigation.command | epsilon_rtcm_config_rejected_invalid_forward_baud | Warning | RTCM 转发波特率无效。 | device, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
 | Ground | device.navigation.command | epsilon_rtcm_config_started | Info | 正在把 EPSILON 通信串口配置为 RTCM。 | device, main_port, main_baud, device_port, forward_port, forward_baud | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_rtcm_port_open_failed | Error | 打开 EPSILON 串口进行 RTCM 配置失败。 | device, operation, port, baud, system_error, error_code | ui_dedupe_key | SERIAL_OPEN_FAILED |
@@ -247,8 +249,11 @@
 | Ground | device.navigation.command | epsilon_main_antenna_lever_arm_config_started | Info | 正在通过临时连接下发 EPSILON 主天线杆臂配置。 | device, operation, port, baud, values | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_main_antenna_lever_arm_open_failed | Error | 打开 EPSILON 串口进行主天线杆臂配置失败。 | device, operation, port, baud, system_error, error_code | ui_dedupe_key | SERIAL_OPEN_FAILED |
 | Ground | device.navigation.command | epsilon_main_antenna_lever_arm_config_failed | Error | EPSILON 主天线杆臂配置失败。 | device, operation, port, baud, x_m, y_m, z_m, error_code | ui_dedupe_key | CONFIG_APPLY_FAILED |
+| Ground | device.navigation.command | epsilon_operation_completed | Info | EPSILON 设备操作已完成。 | device, request_id, operation, execution_path, outcome, command_error_code | details, ui_visibility |  |
+| Ground | device.navigation.command | epsilon_operation_failed | Info/Error | EPSILON 设备操作失败。 | device, request_id, operation, execution_path, outcome, command_error_code, error_code | details, ui_visibility, ui_dedupe_key | EPSILON_OPERATION_FAILED |
 | Ground | device.navigation.command | epsilon_packet_profile_rejected_bandwidth | Warning | EPSILON 包频率超过当前波特率安全带宽。 | device, baud_text, required_kbps, limit_kbps, reason_code | details, ui_dedupe_key | CONFIG_INVALID |
 | Ground | device.navigation.command | epsilon_output_reconfigure_rejected_recording_active | Warning | 请先结束记录，再重新配置 EPSILON 输出。 | device, reason_code | ui_dedupe_key | INVALID_STATE |
+| Ground | device.navigation.command | epsilon_output_reconfigure_rejected_dependency_unavailable | Warning | EPSILON 当前不可用，无法重新配置输出。 | device, execution_path, reason_code | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
 | Ground | device.navigation.command | epsilon_output_reconfigure_rejected_missing_port | Warning | 请先选择 EPSILON 串口。 | device, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | device.navigation.command | epsilon_output_reconfigure_rejected_invalid_baud | Warning | EPSILON 波特率无效。 | device, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
 | Ground | device.navigation.command | epsilon_output_reconfigure_skipped_rate_unspecified | Info | EPSILON 频率为“不设定”，已跳过输出频率下发。 | device, reason_code | ui_visibility | COMMAND_NOT_SUPPORTED |
@@ -298,7 +303,6 @@
 | Ground | device.temperature.command | temperature_command_sent | Info | RD105 温控命令已下发到天空端。 | device, command, command_id, execution_path, command_seq | channel, target, ui_visibility |  |
 | Ground | device.temperature.command | temperature_command_completed | Info | RD105 温控命令执行成功。 | device, command, command_id, execution_path | channel, target, command_seq, ui_visibility |  |
 | Ground | device.temperature.command | temperature_command_rejected_not_connected | Warning | 本地 RD105 温控器未连接，无法下发温控命令。 | device, command, command_id, execution_path, reason_code | channel, target, command_seq, command_error_code, ui_dedupe_key | DEVICE_NOT_CONNECTED |
-| Ground | device.temperature.command | temperature_command_rejected_dependency_unavailable | Warning | 天空端数传链路未连接，无法下发 RD105 温控命令。 | device, command, command_id, execution_path, dependency, reason_code | channel, target, ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
 | Ground | device.temperature.command | temperature_command_ack_timeout | Warning | RD105 温控命令 ACK 等待超时。 | device, command, command_id, execution_path, command_seq, error_code | channel, target, ui_dedupe_key | COMMAND_TIMEOUT |
 | Ground | device.temperature.command | temperature_command_failed | Error | RD105 温控命令执行失败。 | device, command, command_id, execution_path, error_code | channel, target, command_seq, command_error_code, ack_result, ui_dedupe_key | COMMAND_VERIFY_FAILED / INVALID_PAYLOAD / INVALID_DEVICE_ID / CONFIG_INVALID / CONFIG_APPLY_FAILED / INTERNAL_ERROR |
 | Ground | telemetry.wave.tcp | tcp_wave_ui_test_connected | Info | 界面测试 TCP 波形源已连接。 | simulated | ui_visibility |  |

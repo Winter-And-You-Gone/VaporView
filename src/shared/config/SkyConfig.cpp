@@ -172,6 +172,43 @@ QJsonObject serialToJson(const SerialDeviceConfig& config)
     return object;
 }
 
+QJsonObject epsilonRtcmToJson(const EpsilonRtcmConfig& config)
+{
+    QJsonObject object;
+    object["enabled"] = config.enabled;
+    object["device_port_index"] = config.device_port_index;
+    object["forward_port"] = config.forward_port;
+    object["baud"] = config.baud_rate;
+    return object;
+}
+
+bool epsilonRtcmFromJson(const QJsonObject& object, EpsilonRtcmConfig& config, QString *errorMessage)
+{
+    EpsilonRtcmConfig next = config;
+    const QString section = QStringLiteral("epsilon.rtcm");
+    if (!readBoolField(object, section, QStringLiteral("enabled"), next.enabled, errorMessage) ||
+        !readIntField(object, section, QStringLiteral("device_port_index"), next.device_port_index, errorMessage) ||
+        !readStringField(object, section, QStringLiteral("forward_port"), next.forward_port, errorMessage) ||
+        !readIntField(object, section, QStringLiteral("baud"), next.baud_rate, errorMessage) ||
+        !readIntField(object, section, QStringLiteral("baud_rate"), next.baud_rate, errorMessage))
+    {
+        return false;
+    }
+    if (next.device_port_index < 2 || next.device_port_index > 5 || next.baud_rate <= 0)
+    {
+        if (errorMessage) *errorMessage = QStringLiteral("epsilon.rtcm device_port_index/baud is invalid");
+        return false;
+    }
+    if (next.enabled && next.forward_port.trimmed().isEmpty())
+    {
+        if (errorMessage) *errorMessage = QStringLiteral("epsilon.rtcm forward_port is empty");
+        return false;
+    }
+    next.forward_port = next.forward_port.trimmed();
+    config = next;
+    return true;
+}
+
 bool serialFromJson(const QJsonObject& object, SerialDeviceConfig& config, const QString& name, QString *errorMessage)
 {
     SerialDeviceConfig next = config;
@@ -375,6 +412,19 @@ bool SerialDeviceConfig::operator!=(const SerialDeviceConfig& other) const
     return !(*this == other);
 }
 
+bool EpsilonRtcmConfig::operator==(const EpsilonRtcmConfig& other) const
+{
+    return enabled == other.enabled &&
+           device_port_index == other.device_port_index &&
+           forward_port == other.forward_port &&
+           baud_rate == other.baud_rate;
+}
+
+bool EpsilonRtcmConfig::operator!=(const EpsilonRtcmConfig& other) const
+{
+    return !(*this == other);
+}
+
 bool TemperatureControllerConfig::operator==(const TemperatureControllerConfig& other) const
 {
     return enabled == other.enabled &&
@@ -423,6 +473,7 @@ SkyConfig SkyConfig::defaults()
     SkyConfig config;
 #ifdef _WIN32
     config.epsilon = {true, QStringLiteral("COM3"), 921600, 100.0};
+    config.epsilon_rtcm = {false, 2, QString(), 115200};
     config.ptb = {true, QStringLiteral("COM5"), 9600, 20.0};
     config.ptb.source = QStringLiteral("ptb210");
     config.hmp = {true, QStringLiteral("COM6"), 19200, 20.0};
@@ -432,6 +483,7 @@ SkyConfig SkyConfig::defaults()
     config.ai8_temperature_controller = {false, QStringLiteral("COM10"), 19200, 5.0, 1};
 #else
     config.epsilon = {true, QStringLiteral("/dev/ttyEPSILON"), 921600, 100.0};
+    config.epsilon_rtcm = {false, 2, QString(), 115200};
     config.ptb = {true, QStringLiteral("/dev/ttyBARO"), 9600, 20.0};
     config.ptb.source = QStringLiteral("ptb210");
     config.hmp = {true, QStringLiteral("/dev/ttyHMP"), 19200, 20.0};
@@ -476,9 +528,26 @@ bool SkyConfig::fromJson(const QJsonObject& object, SkyConfig& config, QString *
 {
     SkyConfig next = SkyConfig::defaults();
     QJsonObject section;
-    if (object.contains("epsilon") &&
-        (!readSectionObject(object, QStringLiteral("epsilon"), section, errorMessage) ||
-         !serialFromJson(section, next.epsilon, QStringLiteral("epsilon"), errorMessage))) return false;
+    if (object.contains("epsilon"))
+    {
+        if (!readSectionObject(object, QStringLiteral("epsilon"), section, errorMessage) ||
+            !serialFromJson(section, next.epsilon, QStringLiteral("epsilon"), errorMessage))
+        {
+            return false;
+        }
+        if (section.contains(QStringLiteral("rtcm")))
+        {
+            QJsonObject rtcmSection;
+            if (!readSectionObject(section, QStringLiteral("rtcm"), rtcmSection, errorMessage) ||
+                !epsilonRtcmFromJson(rtcmSection, next.epsilon_rtcm, errorMessage))
+            {
+                return false;
+            }
+        }
+    }
+    if (object.contains("epsilon_rtcm") &&
+        (!readSectionObject(object, QStringLiteral("epsilon_rtcm"), section, errorMessage) ||
+         !epsilonRtcmFromJson(section, next.epsilon_rtcm, errorMessage))) return false;
     if (object.contains("ptb") &&
         (!readSectionObject(object, QStringLiteral("ptb"), section, errorMessage) ||
          !serialFromJson(section, next.ptb, QStringLiteral("ptb"), errorMessage))) return false;
@@ -513,7 +582,9 @@ bool SkyConfig::fromJson(const QJsonObject& object, SkyConfig& config, QString *
 QJsonObject SkyConfig::toJson() const
 {
     QJsonObject root;
-    root["epsilon"] = serialToJson(epsilon);
+    QJsonObject epsilonObject = serialToJson(epsilon);
+    epsilonObject["rtcm"] = epsilonRtcmToJson(epsilon_rtcm);
+    root["epsilon"] = epsilonObject;
     root["ptb"] = serialToJson(ptb);
     root["hmp"] = serialToJson(hmp);
     root["lidar"] = serialToJson(lidar);
@@ -538,6 +609,7 @@ bool SkyConfig::validate(QString *errorMessage) const
                           {QStringLiteral("hmp3"), QStringLiteral("sht45")},
                           errorMessage) &&
            serialFromJson(serialToJson(epsilon), copy.epsilon, QStringLiteral("epsilon"), errorMessage) &&
+           epsilonRtcmFromJson(epsilonRtcmToJson(epsilon_rtcm), copy.epsilon_rtcm, errorMessage) &&
            serialFromJson(serialToJson(ptb), copy.ptb, QStringLiteral("ptb"), errorMessage) &&
            serialFromJson(serialToJson(hmp), copy.hmp, QStringLiteral("hmp"), errorMessage) &&
            serialFromJson(serialToJson(lidar), copy.lidar, QStringLiteral("lidar"), errorMessage) &&
@@ -551,6 +623,7 @@ SkyConfigDiff SkyConfig::diff(const SkyConfig& other) const
 {
     SkyConfigDiff result;
     result.epsilon_changed = epsilon != other.epsilon;
+    result.epsilon_rtcm_changed = epsilon_rtcm != other.epsilon_rtcm;
     result.ptb_changed = ptb != other.ptb;
     result.hmp_changed = hmp != other.hmp;
     result.lidar_changed = lidar != other.lidar;

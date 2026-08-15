@@ -111,12 +111,60 @@ int main(int argc, char **argv)
                 rd105.channels[0].output_enabled,
             "RD105 simulated telemetry reflects commands");
 
+    VaporView::EpsilonPacketRatesOperation epsilonPacketRates;
+    epsilonPacketRates.output_rate_hz = 100;
+    epsilonPacketRates.callback_rate_hz = 250;
+    epsilonPacketRates.packet_rates = {{0x40, 250}, {0x50, 100}, {0x5C, 10}};
+    epsilonPacketRates.packet_rate_signature = QStringLiteral("40=250;50=100;5C=10");
+    QString operationMessage;
+    require(manager.configureEpsilonPacketRates(epsilonPacketRates, &error, &operationMessage) &&
+                error == VaporView::CommandErrorCode::Ok &&
+                std::fabs(manager.config().epsilon.frequency_hz - 250.0) < 0.000001,
+            "EPSILON simulated packet-rate operation succeeds");
+    auto invalidPacketRates = epsilonPacketRates;
+    invalidPacketRates.packet_rates[0xFF] = 100;
+    require(!manager.configureEpsilonPacketRates(invalidPacketRates, &error, &operationMessage) &&
+                error == VaporView::CommandErrorCode::ConfigInvalid,
+            "EPSILON simulated packet-rate operation rejects unsupported packet id");
+
+    VaporView::EpsilonMainAntennaLeverArmOperation leverArm;
+    leverArm.x_m = 1.25;
+    leverArm.y_m = -0.5;
+    leverArm.z_m = 0.75;
+    require(manager.configureEpsilonMainAntennaLeverArm(leverArm, &error, &operationMessage) &&
+                error == VaporView::CommandErrorCode::Ok,
+            "EPSILON simulated lever-arm operation succeeds");
+    leverArm.x_m = 101.0;
+    require(!manager.configureEpsilonMainAntennaLeverArm(leverArm, &error, &operationMessage) &&
+                error == VaporView::CommandErrorCode::InvalidPayload,
+            "EPSILON simulated lever-arm operation rejects invalid range");
+
+    VaporView::EpsilonRtcmInputOperation rtcmInput;
+    rtcmInput.device_port_index = 3;
+    rtcmInput.forward_port = QStringLiteral("/dev/test-rtcm");
+    rtcmInput.forward_baud = 230400;
+    require(manager.configureEpsilonRtcmInput(rtcmInput, &error, &operationMessage) &&
+                error == VaporView::CommandErrorCode::Ok &&
+                manager.config().epsilon_rtcm.enabled &&
+                manager.config().epsilon_rtcm.device_port_index == 3 &&
+                manager.config().epsilon_rtcm.forward_port == QStringLiteral("/dev/test-rtcm") &&
+                manager.config().epsilon_rtcm.baud_rate == 230400,
+            "EPSILON simulated RTCM input operation updates Sky config");
+    const QByteArray rtcmBytes = QByteArray::fromHex("D30000123456");
+    require(manager.receiveRtcmCorrectionData(rtcmBytes, &error) &&
+                error == VaporView::CommandErrorCode::Ok,
+            "EPSILON simulated RTCM correction receive succeeds");
+    const VaporView::RtcmCorrectionStats rtcmStats = manager.rtcmCorrectionStats();
+    require(rtcmStats.bytes_received >= static_cast<quint64>(rtcmBytes.size()) &&
+                rtcmStats.chunks_received > 0 &&
+                rtcmStats.last_receive_time_us > 0,
+            "EPSILON simulated RTCM correction counters update");
+
     VaporView::Ai8TemperatureControllerProtocol::Selection ai8Selection;
     ai8Selection.channel = 2;
     ai8Selection.inputGroup = 2;
     ai8Selection.outputGroup = 2;
     VaporView::Ai8TemperatureControllerProtocol::PageData ai8Page;
-    QString operationMessage;
     require(manager.readAi8Page(VaporView::Ai8TemperatureControllerProtocol::Page::Channel,
                                 ai8Selection,
                                 ai8Page,

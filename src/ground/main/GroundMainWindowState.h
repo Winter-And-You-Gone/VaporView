@@ -500,7 +500,8 @@ struct MainWindowState
     QHash<VaporView::SkyDeviceId, qint64> home_device_action_spinner_started_ms_;
     std::unique_ptr<VaporView::Ground::Devices::RemoteSkyController> remote_sky_controller_;
     std::unique_ptr<VaporView::Ground::Devices::Ai8DeviceSession> ai8_device_session_;
-    QHash<quint16, VaporView::TemperatureControllerCommand> remote_temperature_commands_;
+    std::unique_ptr<VaporView::Ground::Devices::EpsilonDeviceSession> epsilon_device_session_;
+    std::unique_ptr<VaporView::Ground::Devices::Rd105DeviceSession> rd105_device_session_;
     QHash<quint16, VaporView::PeakSearchRange> remote_peak_search_commands_;
 #ifdef VAPORVIEW_HAS_OSGEARTH
     std::unique_ptr<VaporView::Ground::Map3DController> map3d_controller_;
@@ -511,7 +512,6 @@ struct MainWindowState
     std::atomic<bool> cancel_connection_requested_;
     std::function<void(VaporView::CommandId)> local_temperature_command_test_observer_;
     std::thread port_detection_thread_;
-    std::thread epsilon_reconfigure_thread_;
     int font_scale_percent_;
     bool dark_theme_enabled_;
     double base_font_point_size_;

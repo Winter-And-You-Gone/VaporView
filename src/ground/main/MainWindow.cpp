@@ -328,6 +328,9 @@ MainWindow::MainWindow(QWidget *parent)
     setupMenuBar();
     setupToolBar();
     state_->remote_sky_controller_ = std::make_unique<VaporView::Ground::Devices::RemoteSkyController>();
+    state_->remote_sky_controller_->setObjectName(QStringLiteral("remoteSkyController"));
+    setProperty("remoteSkyController",
+                QVariant::fromValue(static_cast<QObject *>(state_->remote_sky_controller_.get())));
     setupCentralWidget();
     VaporView::Ground::Devices::Ai8DeviceSession::LocalAdapter ai8LocalAdapter;
     ai8LocalAdapter.readPage = [controller = state_->local_connection_controller_.get()](
@@ -355,6 +358,84 @@ MainWindow::MainWindow(QWidget *parent)
     connect(state_->ai8_device_session_.get(),
             &VaporView::Ground::Devices::Ai8DeviceSession::pageDataAvailable,
             this, &MainWindow::onAi8SessionPageDataAvailable);
+    VaporView::Ground::Devices::Rd105DeviceSession::LocalAdapter rd105LocalAdapter;
+    rd105LocalAdapter.sendCommand =
+        [controller = state_->local_connection_controller_.get()](
+            VaporView::CommandId command,
+            const VaporView::TemperatureControllerCommand& payload) {
+            return controller->sendTemperatureCommand(command, payload);
+        };
+    state_->rd105_device_session_ =
+        std::make_unique<VaporView::Ground::Devices::Rd105DeviceSession>(
+            std::move(rd105LocalAdapter), state_->remote_sky_controller_.get());
+    state_->rd105_device_session_->setEnglish(state_->is_english_);
+    connect(state_->rd105_device_session_.get(),
+            &VaporView::Ground::Devices::Rd105DeviceSession::availabilityChanged,
+            this, &MainWindow::onRd105SessionAvailabilityChanged);
+    connect(state_->rd105_device_session_.get(),
+            &VaporView::Ground::Devices::Rd105DeviceSession::operationStarted,
+            this, &MainWindow::onRd105SessionOperationStarted);
+    connect(state_->rd105_device_session_.get(),
+            &VaporView::Ground::Devices::Rd105DeviceSession::operationFinished,
+            this, &MainWindow::onRd105SessionOperationFinished);
+    VaporView::Ground::Devices::EpsilonDeviceSession::LocalAdapter epsilonLocalAdapter;
+    auto epsilonLogCallback = [this](const VaporView::Ground::EpsilonConfigurationLogEntry& entry) {
+        QMetaObject::invokeMethod(this, [this, entry]() mutable {
+            publishGroundLog(entry.level,
+                             entry.category,
+                             entry.event,
+                             entry.message,
+                             entry.fields);
+        }, Qt::QueuedConnection);
+    };
+    epsilonLocalAdapter.configurePacketRates =
+        [epsilonLogCallback](
+            const VaporView::EpsilonPacketRatesOperation& operation,
+            const VaporView::Ground::EpsilonDeviceOperation& deviceOperation) {
+            return VaporView::Ground::EpsilonConfigurationService::configurePacketRates(
+                deviceOperation,
+                operation.output_rate_hz,
+                operation.callback_rate_hz,
+                operation.packet_rates,
+                operation.packet_rate_signature,
+                epsilonLogCallback);
+        };
+    epsilonLocalAdapter.configureMainAntennaLeverArm =
+        [epsilonLogCallback](
+            const VaporView::EpsilonMainAntennaLeverArmOperation& operation,
+            const VaporView::Ground::EpsilonDeviceOperation& deviceOperation) {
+            return VaporView::Ground::EpsilonConfigurationService::applyMainAntennaLeverArm(
+                deviceOperation,
+                operation.x_m,
+                operation.y_m,
+                operation.z_m,
+                epsilonLogCallback);
+        };
+    epsilonLocalAdapter.configureRtcmInput =
+        [epsilonLogCallback](
+            const VaporView::EpsilonRtcmInputOperation& operation,
+            const VaporView::Ground::EpsilonDeviceOperation& deviceOperation) {
+            return VaporView::Ground::EpsilonConfigurationService::configureRtcmPort(
+                deviceOperation,
+                operation.device_port_index,
+                operation.forward_port,
+                operation.forward_baud,
+                QString::number(operation.forward_baud),
+                epsilonLogCallback);
+        };
+    state_->epsilon_device_session_ =
+        std::make_unique<VaporView::Ground::Devices::EpsilonDeviceSession>(
+            std::move(epsilonLocalAdapter), state_->remote_sky_controller_.get());
+    state_->epsilon_device_session_->setEnglish(state_->is_english_);
+    connect(state_->epsilon_device_session_.get(),
+            &VaporView::Ground::Devices::EpsilonDeviceSession::availabilityChanged,
+            this, &MainWindow::onEpsilonSessionAvailabilityChanged);
+    connect(state_->epsilon_device_session_.get(),
+            &VaporView::Ground::Devices::EpsilonDeviceSession::operationStarted,
+            this, &MainWindow::onEpsilonSessionOperationStarted);
+    connect(state_->epsilon_device_session_.get(),
+            &VaporView::Ground::Devices::EpsilonDeviceSession::operationFinished,
+            this, &MainWindow::onEpsilonSessionOperationFinished);
     configureLocalConnectionCoordinator();
     setupWindowBorderFrames();
     setupWindowResizeHandles();
@@ -427,37 +508,6 @@ MainWindow::MainWindow(QWidget *parent)
                 state_->tcp_wave_panel_->rejectRemotePeakSearchRange(
                     state_->is_english_ ? QStringLiteral("ACK timed out") : QStringLiteral("ACK 超时"));
             }
-        }
-        else if (isTemperatureCommand(commandId))
-        {
-            const VaporView::TemperatureControllerCommand request =
-                state_->remote_temperature_commands_.take(commandSeq);
-            const quint8 channel = request.channel == 0 ? 1 : request.channel;
-            QVariantMap fields = temperatureCommandLogFields(commandId, request, channel);
-            fields.insert(QStringLiteral("execution_path"), QStringLiteral("remote_sky"));
-            fields.insert(QStringLiteral("command_seq"), commandSeq);
-            fields.insert(QStringLiteral("error_code"), QStringLiteral("COMMAND_TIMEOUT"));
-            fields.insert(QStringLiteral("ui_dedupe_key"),
-                          temperatureCommandDedupeKey(
-                              QStringLiteral("temperature_command_ack_timeout"),
-                              commandId,
-                              channel));
-            publishTemperatureCommandLog(VaporView::LogLevel::Warning,
-                                         QStringLiteral("temperature_command_ack_timeout"),
-                                         QStringLiteral("RD105 温控命令 ACK 等待超时。"),
-                                         fields);
-            if (state_->temperature_controller_panel_)
-            {
-                state_->temperature_controller_panel_->clearCommandPending(commandId, channel);
-                state_->temperature_controller_panel_->setCommandStatus(
-                    temperatureCommandStatusText(
-                        commandId,
-                        channel,
-                        false,
-                        state_->is_english_ ? QStringLiteral("ACK timed out") : QStringLiteral("ACK 超时")),
-                    true);
-            }
-            restoreTemperatureCommandUi(commandId, channel);
         }
         else if (commandId == VaporView::CommandId::EnableWaveformStreaming ||
                  commandId == VaporView::CommandId::DisableWaveformStreaming)
@@ -551,10 +601,6 @@ MainWindow::~MainWindow()
     if (state_->port_detection_thread_.joinable())
     {
         state_->port_detection_thread_.join();
-    }
-    if (state_->epsilon_reconfigure_thread_.joinable())
-    {
-        state_->epsilon_reconfigure_thread_.join();
     }
     stopRecording(false);
     state_->recording_service_->setStatusCallback({});

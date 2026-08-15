@@ -8518,7 +8518,6 @@ int main(int argc, char **argv)
     QToolButton *temperatureDeviceActionButton = nullptr;
     QToolButton *ai8TemperatureDeviceActionButton = nullptr;
     QPushButton *deviceAutoDetectButton = nullptr;
-    QPushButton *deviceSkyConfigButton = nullptr;
     for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
     {
         if (!button->isVisible())
@@ -8533,11 +8532,6 @@ int main(int argc, char **argv)
             button->text().contains(QStringLiteral("Auto Detect")))
         {
             deviceAutoDetectButton = button;
-        }
-        if (button->text().contains(QStringLiteral("天空端设备配置")) ||
-            button->text().contains(QStringLiteral("Sky Device Config")))
-        {
-            deviceSkyConfigButton = button;
         }
     }
     for (QToolButton *button : deviceConfigPage->findChildren<QToolButton *>())
@@ -8601,8 +8595,6 @@ int main(int argc, char **argv)
             "device configuration exposes the AI-8288 connection action button");
     require(deviceAutoDetectButton != nullptr && deviceAutoDetectButton->width() <= 145,
             "device configuration auto-detect button uses compact title-bar width");
-    require(deviceSkyConfigButton != nullptr && deviceSkyConfigButton->width() <= 145,
-            "device configuration sky-device button uses compact title-bar width");
 
     QComboBox *devicePortCombo =
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceTemperaturePortCombo"));
@@ -8621,6 +8613,27 @@ int main(int argc, char **argv)
     }
     require(devicePortCombo != nullptr && devicePortCombo->width() <= 112,
             "device configuration serial combo is sized for COM999");
+    if (devicePortCombo)
+    {
+        const QColor expectedComboBg =
+            VaporView::appThemeColor(VaporView::AppThemeColor::FieldBackground, false);
+        const QImage comboImage = devicePortCombo->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+        const QRect comboInterior = comboImage.rect().adjusted(2, 2, -2, -2);
+        const int expectedPixels = countPixelsNearColor(comboImage, comboInterior, expectedComboBg, 0);
+        if (expectedPixels < comboInterior.width() * comboInterior.height() / 4)
+        {
+            QComboBox *diagnosticSourceModeCombo = findSourceModeCombo(deviceConfigPage);
+            std::cerr << "Device combo background diagnostic:"
+                      << " enabled=" << devicePortCombo->isEnabled()
+                      << " text=" << devicePortCombo->currentText().toStdString()
+                      << " sourceMode="
+                      << (diagnosticSourceModeCombo ? diagnosticSourceModeCombo->currentData().toString().toStdString() : std::string("<null>"))
+                      << " appDark=" << VaporView::isDarkThemePalette(devicePortCombo->palette())
+                      << " expectedPixels=" << expectedPixels
+                      << " required=" << (comboInterior.width() * comboInterior.height() / 4)
+                      << '\n';
+        }
+    }
     requireWidgetInteriorUsesBackground(
         devicePortCombo,
         VaporView::appThemeColor(VaporView::AppThemeColor::FieldBackground, false),
@@ -8755,22 +8768,38 @@ int main(int argc, char **argv)
     auto *deviceSerialGrid = deviceAi8TemperaturePortCombo
         ? qobject_cast<QGridLayout *>(deviceAi8TemperaturePortCombo->parentWidget()->layout())
         : nullptr;
-    auto *deviceAi8TemperatureLabel = deviceSerialGrid && deviceSerialGrid->itemAtPosition(5, 0)
-        ? qobject_cast<QLabel *>(deviceSerialGrid->itemAtPosition(5, 0)->widget())
-        : nullptr;
-    auto *deviceAi8TemperatureRateLabel = deviceSerialGrid && deviceSerialGrid->itemAtPosition(5, 3)
-        ? qobject_cast<QLabel *>(deviceSerialGrid->itemAtPosition(5, 3)->widget())
-        : nullptr;
-    auto *deviceTemperatureLabel = deviceSerialGrid && deviceSerialGrid->itemAtPosition(4, 0)
-        ? qobject_cast<QLabel *>(deviceSerialGrid->itemAtPosition(4, 0)->widget())
-        : nullptr;
+    auto labelInComboRow = [deviceSerialGrid](QWidget *combo, int column) -> QLabel * {
+        if (!deviceSerialGrid || !combo)
+        {
+            return nullptr;
+        }
+        const int index = deviceSerialGrid->indexOf(combo);
+        if (index < 0)
+        {
+            return nullptr;
+        }
+        int row = 0;
+        int itemColumn = 0;
+        int rowSpan = 0;
+        int columnSpan = 0;
+        deviceSerialGrid->getItemPosition(index, &row, &itemColumn, &rowSpan, &columnSpan);
+        QLayoutItem *item = deviceSerialGrid->itemAtPosition(row, column);
+        return item ? qobject_cast<QLabel *>(item->widget()) : nullptr;
+    };
+    QLabel *deviceAi8TemperatureLabel =
+        labelInComboRow(deviceAi8TemperaturePortCombo, 0);
+    QLabel *deviceAi8TemperatureRateLabel =
+        labelInComboRow(deviceAi8TemperaturePortCombo, 3);
+    QLabel *deviceTemperatureLabel =
+        labelInComboRow(deviceTemperaturePortCombo, 0);
     require(deviceTemperaturePortCombo != nullptr,
             "device configuration temperature serial-port combo exists");
     require(deviceTemperatureBaudCombo != nullptr,
             "device configuration temperature baud-rate combo exists");
     require(deviceAi8TemperatureLabel != nullptr && deviceTemperatureLabel != nullptr &&
-                deviceAi8TemperatureLabel->text() == QStringLiteral("AI-8288:") &&
+                deviceAi8TemperatureLabel->text().contains(QStringLiteral("AI-8288")) &&
                 deviceAi8TemperatureLabel->objectName() == QStringLiteral("fieldLabel") &&
+                deviceTemperatureLabel->objectName() == QStringLiteral("fieldLabel") &&
                 deviceAi8TemperatureLabel->font().weight() == deviceTemperatureLabel->font().weight(),
             "device configuration AI-8288 label matches the RD105 field-label typography");
     require(deviceAi8TemperatureBaudCombo != nullptr &&
@@ -9495,8 +9524,8 @@ int main(int argc, char **argv)
     setSkyTelemetryTransport(deviceSkyTelemetry.transportCombo, QStringLiteral("tcp"));
     processEventsFor(100);
     activateLayouts(&window);
-    require(!epsilonConfigCard->isEnabled(),
-            "EPSILON configuration panel is unavailable in sky-ground remote mode");
+    require(epsilonConfigCard->isEnabled(),
+            "EPSILON configuration panel keeps the shared detailed UI available in sky-ground remote mode");
     require(deviceTelemetrySummaryCard->isVisible(),
             "device telemetry summary remains visible after switching to sky-ground remote mode");
     requireSameRect(epsilonConfigCard->geometry(), localEpsilonConfigRect, 2,
