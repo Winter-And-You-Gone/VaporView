@@ -557,6 +557,73 @@ int main()
                 && slidingHeatLayer.heatRangeIncrementalAppendCount() == 3,
             "sliding heat append and eviction use incremental statistics");
 
+    VaporView::Map3D::Trajectory3DLayer smallWindowHeatLayer;
+    smallWindowHeatLayer.setMaxVisibleSamples(4);
+    smallWindowHeatLayer.appendRenderSamples({
+        heatSample(0, 1.0), heatSample(1, 4.0), heatSample(2, 2.0), heatSample(3, 3.0)});
+    require(smallWindowHeatLayer.sampleCount() == 4
+                && nearlyEqual(smallWindowHeatLayer.heatRange().minimum, 1.0)
+                && nearlyEqual(smallWindowHeatLayer.heatRange().maximum, 4.0),
+            "four-sample heat window starts with the expected extrema");
+    smallWindowHeatLayer.appendRenderSample(heatSample(4, 5.0));
+    require(smallWindowHeatLayer.sampleCount() == 4
+                && nearlyEqual(smallWindowHeatLayer.heatRange().minimum, 2.0)
+                && nearlyEqual(smallWindowHeatLayer.heatRange().maximum, 5.0),
+            "four-sample eviction updates both extrema immediately");
+    smallWindowHeatLayer.appendRenderSample(heatSample(5, std::numeric_limits<double>::quiet_NaN()));
+    require(nearlyEqual(smallWindowHeatLayer.heatRange().minimum, 2.0)
+                && nearlyEqual(smallWindowHeatLayer.heatRange().maximum, 5.0),
+            "inserting an invalid heat sample leaves extrema unchanged");
+    smallWindowHeatLayer.appendRenderSample(heatSample(6, 6.0));
+    require(nearlyEqual(smallWindowHeatLayer.heatRange().minimum, 3.0)
+                && nearlyEqual(smallWindowHeatLayer.heatRange().maximum, 6.0),
+            "evicting a valid sample after invalid data keeps extrema correct");
+    smallWindowHeatLayer.appendRenderSample(heatSample(7, 7.0));
+    smallWindowHeatLayer.appendRenderSample(heatSample(8, 8.0));
+    require(nearlyEqual(smallWindowHeatLayer.heatRange().minimum, 6.0)
+                && nearlyEqual(smallWindowHeatLayer.heatRange().maximum, 8.0),
+            "invalid sample eviction does not rebuild or corrupt extrema");
+    smallWindowHeatLayer.appendRenderSample(heatSample(9, 9.0));
+    require(nearlyEqual(smallWindowHeatLayer.heatRange().minimum, 6.0)
+                && nearlyEqual(smallWindowHeatLayer.heatRange().maximum, 9.0),
+            "range remains correct after the invalid sample leaves the window");
+
+    VaporView::Map3D::Trajectory3DLayer duplicateHeatLayer;
+    duplicateHeatLayer.setMaxVisibleSamples(4);
+    duplicateHeatLayer.appendRenderSamples({
+        heatSample(0, 1.0), heatSample(1, 1.0), heatSample(2, 3.0), heatSample(3, 3.0)});
+    duplicateHeatLayer.appendRenderSample(heatSample(4, 4.0));
+    require(nearlyEqual(duplicateHeatLayer.heatRange().minimum, 1.0)
+                && nearlyEqual(duplicateHeatLayer.heatRange().maximum, 4.0),
+            "duplicate extrema survive eviction of only one duplicate");
+    duplicateHeatLayer.appendRenderSample(heatSample(5, 5.0));
+    require(nearlyEqual(duplicateHeatLayer.heatRange().minimum, 3.0)
+                && nearlyEqual(duplicateHeatLayer.heatRange().maximum, 5.0),
+            "duplicate extrema are removed only after both samples leave");
+
+    VaporView::Map3D::Trajectory3DLayer switchingHeatLayer;
+    switchingHeatLayer.setMaxVisibleSamples(4);
+    auto switchingSample = [](int index, double peak, double humidity) {
+        auto value = heatSample(index, peak);
+        value.heat.humidityRh = humidity;
+        return value;
+    };
+    switchingHeatLayer.appendRenderSamples({
+        switchingSample(0, 1.0, 10.0),
+        switchingSample(1, 4.0, 40.0),
+        switchingSample(2, 2.0, 20.0),
+        switchingSample(3, 3.0, 30.0)});
+    switchingHeatLayer.appendRenderSample(switchingSample(4, 5.0, 50.0));
+    switchingHeatLayer.setHeatMetric(VaporView::Geo::HeatMetric::Humidity);
+    switchingHeatLayer.appendRenderSample(switchingSample(5, 6.0, 60.0));
+    require(nearlyEqual(switchingHeatLayer.heatRange().minimum, 20.0)
+                && nearlyEqual(switchingHeatLayer.heatRange().maximum, 60.0),
+            "switching to a second metric keeps its sliding range current");
+    switchingHeatLayer.setHeatMetric(VaporView::Geo::HeatMetric::Peak);
+    require(nearlyEqual(switchingHeatLayer.heatRange().minimum, 2.0)
+                && nearlyEqual(switchingHeatLayer.heatRange().maximum, 6.0),
+            "switching back restores the first metric without stale extrema");
+
     VaporView::Map3D::Trajectory3DLayer consecutiveOutlierLayer;
     consecutiveOutlierLayer.appendNavigationSample(sample(0));
     for (int index = 1; index <= 5000; ++index)

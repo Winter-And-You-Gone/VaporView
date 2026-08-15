@@ -402,7 +402,7 @@ void Trajectory3DLayer::clearWorldOrigin()
 
 void Trajectory3DLayer::setMaxVisibleSamples(int maxVisibleSamples)
 {
-    const int sanitized = (std::max)(1000, maxVisibleSamples);
+    const int sanitized = (std::max)(1, maxVisibleSamples);
     if (max_visible_samples_ == sanitized)
     {
         return;
