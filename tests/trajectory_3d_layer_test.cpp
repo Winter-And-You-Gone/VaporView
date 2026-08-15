@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <vector>
 
@@ -507,6 +508,54 @@ int main()
     heatLayer.clear();
     require(heatLayer.sampleCount() == 0 && heatGeode->getNumDrawables() == 0,
             "clearing heat trajectory removes line and point geometry");
+
+    VaporView::Map3D::Trajectory3DLayer slidingHeatLayer;
+    slidingHeatLayer.setMaxVisibleSamples(1000);
+    std::vector<VaporView::Geo::TrajectoryRenderSample> slidingSamples;
+    slidingSamples.reserve(1000);
+    for (int index = 0; index < 1000; ++index)
+    {
+        auto value = heatSample(index, 10.0 + static_cast<double>(index));
+        value.heat.humidityRh = 100.0 - static_cast<double>(index);
+        slidingSamples.push_back(value);
+    }
+    slidingSamples[0].heat.peak = 1.0;
+    slidingSamples[1].heat.peak = 1.0;
+    slidingSamples[2].heat.peak = 3.0;
+    slidingSamples[3].heat.peak = 3.0;
+    slidingSamples[4].heat.peak = std::numeric_limits<double>::quiet_NaN();
+    slidingHeatLayer.appendRenderSamples(slidingSamples);
+    slidingHeatLayer.resetHeatRangeInstrumentation();
+    require(slidingHeatLayer.heatRange().valid
+                && nearlyEqual(slidingHeatLayer.heatRange().minimum, 1.0)
+                && nearlyEqual(slidingHeatLayer.heatRange().maximum, 1009.0),
+            "sliding heat range starts with valid extrema and ignores invalid values");
+    slidingHeatLayer.appendRenderSample(heatSample(1000, 5.0));
+    require(slidingHeatLayer.heatRange().valid
+                && nearlyEqual(slidingHeatLayer.heatRange().minimum, 1.0)
+                && nearlyEqual(slidingHeatLayer.heatRange().maximum, 1009.0),
+            "evicting a non-extreme sample preserves the extrema");
+    slidingHeatLayer.appendRenderSample(heatSample(1001, 6.0));
+    require(slidingHeatLayer.heatRange().valid
+                && nearlyEqual(slidingHeatLayer.heatRange().minimum, 3.0)
+                && nearlyEqual(slidingHeatLayer.heatRange().maximum, 1009.0),
+            "evicting duplicate minima updates the range only after both duplicates leave");
+    slidingHeatLayer.setHeatMetric(VaporView::Geo::HeatMetric::Humidity);
+    require(slidingHeatLayer.heatRange().valid
+                && nearlyEqual(slidingHeatLayer.heatRange().minimum, -899.0)
+                && nearlyEqual(slidingHeatLayer.heatRange().maximum, 98.0),
+            "metric switching rebuilds the active range once");
+    slidingHeatLayer.setHeatRange(manualHeatRange);
+    slidingHeatLayer.appendRenderSample(heatSample(1002, 7.0));
+    slidingHeatLayer.clearHeatRangeOverride();
+    require(slidingHeatLayer.heatRange().valid
+                && nearlyEqual(slidingHeatLayer.heatRange().minimum, -899.0)
+                && nearlyEqual(slidingHeatLayer.heatRange().maximum, 97.0),
+            "manual range does not corrupt auto statistics after eviction");
+    require(slidingHeatLayer.heatRangeFullScanCount() == 2
+                && slidingHeatLayer.heatRangeEvictionCount() == 3
+                && slidingHeatLayer.heatRangeIncrementalAppendCount() == 3,
+            "sliding heat append and eviction use incremental statistics");
 
     VaporView::Map3D::Trajectory3DLayer consecutiveOutlierLayer;
     consecutiveOutlierLayer.appendNavigationSample(sample(0));

@@ -11,6 +11,7 @@
 #include <osg/Uniform>
 #include <osg/ref_ptr>
 #include <deque>
+#include <cstdint>
 #include <optional>
 #include <vector>
 
@@ -74,6 +75,10 @@ public:
     int segmentSize() const;
     int fullRebuildCount() const;
     int segmentGeometryRebuildCount() const;
+    int heatRangeFullScanCount() const;
+    int heatRangeIncrementalAppendCount() const;
+    int heatRangeEvictionCount() const;
+    void resetHeatRangeInstrumentation();
     bool heatRenderingEnabled() const;
     int sphereMarkerCount() const;
     int selectedSampleIndex() const;
@@ -115,6 +120,11 @@ private:
     void trimToVisibleLimit();
     void removeOldestSample();
     void adjustQualityStats(int index, int delta);
+    void appendHeatStatistics(const VaporView::Geo::TrajectoryRenderSample& sample,
+                              std::uint64_t sequence);
+    void evictHeatStatistics(std::uint64_t sequence, bool hasValidValue);
+    void updateHeatRangeCacheFromExtrema();
+    void resetHeatStatistics();
     int firstVisibleIndex() const;
     int sphereMarkerStride() const;
     bool shouldUseAsLineSample(int index) const;
@@ -133,6 +143,7 @@ private:
     osg::ref_ptr<osg::Geode> geode_;
     osg::ref_ptr<osg::Geometry> selected_marker_geometry_;
     std::deque<VaporView::Geo::TrajectoryRenderSample> samples_;
+    std::deque<std::uint64_t> sample_sequences_;
     std::deque<char> line_sample_flags_;
     int last_line_sample_index_ = -1;
     int selected_sample_index_ = -1;
@@ -149,6 +160,18 @@ private:
     std::optional<VaporView::Geo::HeatRange> heat_range_override_;
     VaporView::Geo::HeatRange heat_range_cache_;
     bool heat_range_cache_valid_ = false;
+    struct HeatExtremaEntry
+    {
+        std::uint64_t sequence = 0;
+        double value = 0.0;
+    };
+    std::deque<HeatExtremaEntry> heat_min_deque_;
+    std::deque<HeatExtremaEntry> heat_max_deque_;
+    std::size_t heat_valid_count_ = 0;
+    std::uint64_t next_sample_sequence_ = 0;
+    int heat_range_full_scan_count_ = 0;
+    int heat_range_incremental_append_count_ = 0;
+    int heat_range_eviction_count_ = 0;
     int full_rebuild_count_ = 0;
     int segment_geometry_rebuild_count_ = 0;
     osg::ref_ptr<osg::Program> heat_program_;
