@@ -85,8 +85,12 @@ int main(int argc, char *argv[])
             "packet-rate hint and recommended action live in the packet communication title bar");
     require(hintLabel->isVisible() && !hintLabel->text().isEmpty() && hintLabel->width() > 0,
             "packet-rate hint remains visible beside the title-bar action");
-    require(recommendedButton->height() < outputTitleBar->height() &&
-                outputTitleBar->rect().contains(recommendedButton->geometry()),
+    const QRect recommendedGeometry(recommendedButton->mapTo(outputTitleBar, QPoint(0, 0)),
+                                    recommendedButton->size());
+    require(recommendedButton->height() <= outputTitleBar->height() - 8 &&
+                recommendedGeometry.top() >= 4 &&
+                recommendedGeometry.bottom() <= outputTitleBar->height() - 5 &&
+                outputTitleBar->rect().contains(recommendedGeometry),
             "recommended action fits fully inside the title bar");
     const QString panelStyle = panel.styleSheet();
     require(panel.testAttribute(Qt::WA_StyledBackground) &&
