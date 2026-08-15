@@ -83,6 +83,11 @@ int main(int argc, char *argv[])
                 panel.findChild<QFrame *>(QStringLiteral("epsilonStatusCard"))->findChild<QLabel *>(
                     QStringLiteral("epsilonConfigHint")) == nullptr,
             "packet-rate hint and recommended action live in the packet communication title bar");
+    require(hintLabel->isVisible() && !hintLabel->text().isEmpty() && hintLabel->width() > 0,
+            "packet-rate hint remains visible beside the title-bar action");
+    require(recommendedButton->height() < outputTitleBar->height() &&
+                outputTitleBar->rect().contains(recommendedButton->geometry()),
+            "recommended action fits fully inside the title bar");
     const QString panelStyle = panel.styleSheet();
     require(panel.testAttribute(Qt::WA_StyledBackground) &&
                 panelStyle.contains(QStringLiteral(

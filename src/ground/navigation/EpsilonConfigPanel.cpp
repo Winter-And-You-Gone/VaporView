@@ -288,9 +288,10 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     hint_label_->setObjectName(QStringLiteral("epsilonConfigHint"));
     hint_label_->setWordWrap(false);
     hint_label_->setProperty("epsilonSecondaryText", true);
-    hint_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    hint_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     hint_label_->setToolTip(QStringLiteral("包频率会用于后续连接和重配；已选择 EPSILON 串口时，保存后会立即应用。"));
     recommended_button_ = createActionButton(outputTitleActions);
+    recommended_button_->setFixedHeight(VaporView::Ground::MainSupport::kMainPageButtonHeight - 4);
     recommended_button_->setObjectName(QStringLiteral("epsilonRecommendedConfigButton"));
     recommended_button_->setProperty("epsilonSecondaryAction", true);
     outputTitleActionsLayout->addWidget(hint_label_, 1, Qt::AlignVCenter | Qt::AlignRight);
