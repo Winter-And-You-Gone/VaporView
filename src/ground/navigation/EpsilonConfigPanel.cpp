@@ -760,7 +760,7 @@ void EpsilonConfigPanel::updatePacketLabelWidths()
 void EpsilonConfigPanel::applyAppearance()
 {
     const QString style = QStringLiteral(
-        "QFrame#epsilonSectionCard { background-color: @vv-surface; border: none; }"
+        "QFrame#epsilonSectionCard { background-color: @vv-window; border: none; }"
         "QFrame[epsilonConfigCard=\"true\"] { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 12px; }"
         "QFrame[epsilonConfigCard=\"true\"] > QWidget#sectionTitleBar { background-color: @vv-surface-raised; border-top-left-radius: 11px; border-top-right-radius: 11px; }"
         "QWidget[epsilonConfigCardBody=\"true\"] { background-color: @vv-surface-raised; border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }"
@@ -773,7 +773,7 @@ void EpsilonConfigPanel::applyAppearance()
         "QPushButton[epsilonSecondaryAction=\"true\"]:focus { border-color: @vv-focus; }"
         "QPushButton[epsilonSecondaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }"
         "QPushButton#epsilonRecommendedConfigButton { min-height: 28px; max-height: 28px; padding-top: 0px; padding-bottom: 0px; }"
-        "QWidget#epsilonActionsContainer { background-color: @vv-surface; border: none; }"
+        "QWidget#epsilonActionsContainer { background-color: @vv-window; border: none; }"
         "QWidget#epsilonSummaryFields, QWidget#epsilonOutputTitleActions, QWidget#epsilonPacketGrid { background-color: transparent; border: none; }"
         "QComboBox[epsilonRtcmDevicePortControl=\"true\"] { background-color: @vv-surface; }");
     const QString resolvedStyle = VaporView::applyAppThemeTokens(

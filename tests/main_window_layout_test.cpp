@@ -2353,11 +2353,19 @@ void requireRtkSidebarPage(
                 VaporView::AppThemeColor::Focus, true)),
             "combination-navigation local style resolves the dark-theme focus token");
     require(combinationPage->styleSheet().contains(
-                VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, true)) &&
+                VaporView::appThemeColorName(VaporView::AppThemeColor::Window, true)) &&
                 combinationPage->styleSheet().contains(
                     QStringLiteral("QScrollArea#navigationStatusScrollArea QScrollBar:vertical")) &&
                 combinationPage->styleSheet().contains(QStringLiteral("margin: 0px")),
-            "combination-navigation scrollbar rail follows the dark surface and reaches the page top");
+            "combination-navigation outer background and scrollbar rail use the dark window color");
+    auto *statusPanel = combinationPage->findChild<QWidget *>(
+        QStringLiteral("navigationStatusPanel"));
+    require(statusPanel != nullptr &&
+                statusPanel->styleSheet().contains(
+                    VaporView::appThemeColorName(VaporView::AppThemeColor::Window, true)) &&
+                epsilonPanel->styleSheet().contains(
+                    VaporView::appThemeColorName(VaporView::AppThemeColor::Window, true)),
+            "status and EPSILON card containers use the dark window color outside cards");
     const bool darkThemeGeometrySettled = processEventsUntil(1500, themeCardGeometrySettled);
     if (!darkThemeGeometrySettled)
     {
