@@ -46,11 +46,14 @@
 #include <QWidget>
 #include <QWidgetAction>
 #include <QSvgRenderer>
+#include <QFutureWatcher>
+#include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 namespace VaporView::Map3D {
 namespace {
@@ -982,6 +985,17 @@ Map3DWindow::Map3DWindow(QWidget* parent)
 
 Map3DWindow::~Map3DWindow()
 {
+    invalidateSessionLoadRequest();
+    if (session_load_watcher_)
+    {
+        auto* watcher = static_cast<QFutureWatcher<
+            VaporView::Ground::Session::SessionTrajectoryRenderLoadResult>*>(session_load_watcher_);
+        QObject::disconnect(watcher, nullptr, this, nullptr);
+        watcher->cancel();
+        watcher->setParent(nullptr);
+        watcher->deleteLater();
+        session_load_watcher_ = nullptr;
+    }
     if (sentinel2_auto_load_timer_)
     {
         sentinel2_auto_load_timer_->stop();
@@ -1243,6 +1257,8 @@ void Map3DWindow::updateHeatLegend()
 
 void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
 {
+    invalidateSessionLoadRequest();
+    track_data_mode_ = TrackDataMode::Live;
     if (replay_.isPlaying())
     {
         stopReplay();
@@ -1252,7 +1268,7 @@ void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
     rendered_replay_index_ = -1;
     if (view_)
     {
-        view_->appendSample(sample);
+        view_->appendNavigationSample(sample);
     }
     if (headless_view_)
     {
@@ -1268,6 +1284,8 @@ void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
 
 void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& samples)
 {
+    invalidateSessionLoadRequest();
+    track_data_mode_ = TrackDataMode::Live;
     if (replay_.isPlaying())
     {
         stopReplay();
@@ -1277,7 +1295,7 @@ void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& sa
     rendered_replay_index_ = -1;
     if (view_)
     {
-        view_->appendSamples(samples);
+        view_->appendNavigationSamples(samples);
     }
     if (headless_view_)
     {
@@ -1298,6 +1316,8 @@ void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& sa
 
 void Map3DWindow::clearTrack()
 {
+    invalidateSessionLoadRequest();
+    track_data_mode_ = TrackDataMode::Live;
     replay_timer_->stop();
     replay_.clear();
     replay_render_storage_.reset();
@@ -1327,85 +1347,141 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
         statusBar()->showMessage(QStringLiteral("[界面测试] 已模拟会话轨迹加载；未读取业务文件。"), 6000);
         return;
     }
-    VaporView::Ground::Session::SessionTrajectoryRenderLoadResult result =
-        VaporView::Ground::Session::SessionTrajectoryRenderLoader::loadSessionDirectory(sessionDir);
-    if (!result.success)
+    const quint64 generation = ++session_load_generation_;
+    if (session_load_watcher_)
     {
-        QMessageBox::warning(this,
-                             QStringLiteral("Session Track"),
-                             QStringLiteral("无法读取轨迹: %1").arg(result.error));
+        pending_session_directory_ = sessionDir;
+        statusBar()->showMessage(QStringLiteral("Queued latest session track request..."), 3000);
         return;
     }
+    startSessionLoad(sessionDir, generation);
+}
 
-    QSettings settings = map3DSettings();
-    VaporView::setPersistentSetting(settings, QStringLiteral("lastSessionDir"), QFileInfo(sessionDir).absoluteFilePath());
+void Map3DWindow::invalidateSessionLoadRequest()
+{
+    if (!session_load_watcher_ && pending_session_directory_.isEmpty())
+    {
+        return;
+    }
+    ++session_load_generation_;
+    pending_session_directory_.clear();
+    if (session_load_watcher_)
+    {
+        session_load_watcher_->cancel();
+    }
+}
 
-    const QString sourceCsvPath = result.sourceCsvPath;
-    std::vector<VaporView::Geo::NavSample> replaySamples;
-    replaySamples.reserve(result.samples.size());
-    for (const VaporView::Geo::TrajectoryRenderSample& sample : result.samples)
+void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation)
+{
+    if (session_load_watcher_)
     {
-        replaySamples.push_back(sample.navigation);
+        return;
     }
-    const auto renderSamples =
-        std::make_shared<const std::vector<VaporView::Geo::TrajectoryRenderSample>>(
-            std::move(result.samples));
-    const auto samples = std::make_shared<const std::vector<VaporView::Geo::NavSample>>(
-        std::move(replaySamples));
-    const QString trackNote = result.warning.isEmpty()
-        ? sourceCsvPath
-        : QStringLiteral("%1 | %2").arg(sourceCsvPath, result.warning);
-    const QString loadWarning = result.warning;
-
-    replay_timer_->stop();
-    clearSelectedTrajectorySample();
-    if (view_)
-    {
-        view_->setSamples(renderSamples);
-    }
-    if (headless_view_)
-    {
-        headless_sample_count_ = static_cast<int>(samples->size());
-        headless_samples_ = *samples;
-        headless_render_samples_ = *renderSamples;
-    }
-    replay_.setSamples(samples);
-    replay_render_storage_ = renderSamples;
-    rendered_replay_index_ = -1;
-    latest_drop_source_.clear();
-    latest_drop_reason_.clear();
-    latest_drop_record_timestamp_us_ = 0;
-    recordTrackSource(QStringLiteral("Session"),
-                      replay_.currentSample(),
-                      trackNote);
-    resetAutomaticSentinel2Imagery();
-    applyHeatControlsToView();
-    updateHeatLegend();
-    const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
-    applyConfiguredTiandituSatelliteImagery(false);
-    updateReplayUi();
-    updateStatus(replay_.currentSample());
-    if (sentinel2_auto_load_timer_
-        && !tianditu_satellite_imagery_loaded_
-        && !isSentinel2ImageryActive())
-    {
-        sentinel2_auto_load_timer_->start();
-        QTimer::singleShot(0, this, [this]() {
-            if (view_)
+    statusBar()->showMessage(QStringLiteral("Loading session track..."), 3000);
+    auto* watcher = new QFutureWatcher<
+        VaporView::Ground::Session::SessionTrajectoryRenderLoadResult>(this);
+    session_load_watcher_ = watcher;
+    connect(watcher,
+            &QFutureWatcher<VaporView::Ground::Session::SessionTrajectoryRenderLoadResult>::finished,
+            this,
+            [this, watcher, generation, sessionDir]() {
+        auto result = watcher->result();
+        if (session_load_watcher_ == watcher)
+        {
+            session_load_watcher_ = nullptr;
+        }
+        watcher->deleteLater();
+        if (generation != session_load_generation_)
+        {
+            const QString pendingSessionDirectory = std::exchange(pending_session_directory_, {});
+            if (!pendingSessionDirectory.isEmpty())
             {
-                maybeLoadSentinel2ImageryForRange(view_->earthCameraRangeM());
+                // Start the newest request in this completed callback.  A queued
+                // single-shot could otherwise run after a newer user request and
+                // turn an older directory back into the pending request.
+                startSessionLoad(pendingSessionDirectory, session_load_generation_);
             }
-        });
-    }
-    const QString warningSuffix = loadWarning.isEmpty()
-        ? QString()
-        : QStringLiteral("；%1").arg(loadWarning);
-    statusBar()->showMessage(QStringLiteral("Loaded %1 samples from %2%3%4")
-                                 .arg(samples->size())
-                                 .arg(sourceCsvPath,
-                                      focusedTrack ? QStringLiteral(" (auto-focused track)") : QString(),
-                                      warningSuffix),
-                             5000);
+            return;
+        }
+        if (!result.success)
+        {
+            QMessageBox::warning(this,
+                                 QStringLiteral("Session Track"),
+                                 QStringLiteral("无法读取轨迹: %1").arg(result.error));
+            return;
+        }
+
+        QSettings settings = map3DSettings();
+        VaporView::setPersistentSetting(settings, QStringLiteral("lastSessionDir"), QFileInfo(sessionDir).absoluteFilePath());
+
+        const QString sourceCsvPath = result.sourceCsvPath;
+        const auto renderSamples =
+            std::make_shared<const std::vector<VaporView::Geo::TrajectoryRenderSample>>(
+                std::move(result.samples));
+        const QString trackNote = result.warning.isEmpty()
+            ? sourceCsvPath
+            : QStringLiteral("%1 | %2").arg(sourceCsvPath, result.warning);
+        const QString loadWarning = result.warning;
+
+        replay_timer_->stop();
+        clearSelectedTrajectorySample();
+        if (view_)
+        {
+            view_->setSamples(renderSamples);
+        }
+        if (headless_view_)
+        {
+            headless_sample_count_ = static_cast<int>(renderSamples->size());
+            headless_samples_.clear();
+            headless_samples_.reserve(renderSamples->size());
+            for (const VaporView::Geo::TrajectoryRenderSample& sample : *renderSamples)
+            {
+                headless_samples_.push_back(sample.navigation);
+            }
+            headless_render_samples_ = *renderSamples;
+        }
+        replay_.setRenderSamples(renderSamples);
+        track_data_mode_ = TrackDataMode::Session;
+        replay_render_storage_ = renderSamples;
+        rendered_replay_index_ = -1;
+        latest_drop_source_.clear();
+        latest_drop_reason_.clear();
+        latest_drop_record_timestamp_us_ = 0;
+        recordTrackSource(QStringLiteral("Session"),
+                          replay_.currentSample(),
+                          trackNote);
+        resetAutomaticSentinel2Imagery();
+        applyHeatControlsToView();
+        updateHeatLegend();
+        const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
+        applyConfiguredTiandituSatelliteImagery(false);
+        updateReplayUi();
+        updateStatus(replay_.currentSample());
+        if (sentinel2_auto_load_timer_
+            && !tianditu_satellite_imagery_loaded_
+            && !isSentinel2ImageryActive())
+        {
+            sentinel2_auto_load_timer_->start();
+            QTimer::singleShot(0, this, [this]() {
+                if (view_)
+                {
+                    maybeLoadSentinel2ImageryForRange(view_->earthCameraRangeM());
+                }
+            });
+        }
+        const QString warningSuffix = loadWarning.isEmpty()
+            ? QString()
+            : QStringLiteral("；%1").arg(loadWarning);
+        statusBar()->showMessage(QStringLiteral("Loaded %1 samples from %2%3%4")
+                                     .arg(renderSamples->size())
+                                     .arg(sourceCsvPath,
+                                          focusedTrack ? QStringLiteral(" (auto-focused track)") : QString(),
+                                          warningSuffix),
+                                 5000);
+    });
+    watcher->setFuture(QtConcurrent::run([sessionDir]() {
+        return VaporView::Ground::Session::SessionTrajectoryRenderLoader::loadSessionDirectory(sessionDir);
+    }));
 }
 
 void Map3DWindow::noteLiveSampleDrop(const QString& source, const QString& reason, qint64 recordTimestampUs)
@@ -2231,12 +2307,20 @@ void Map3DWindow::renderReplayAtCurrentPosition(bool forceStatus)
     }
 
     const int targetIndex = replay_.currentIndex();
-    const std::vector<VaporView::Geo::NavSample>& replaySamples = replay_.samples();
+    track_data_mode_ = TrackDataMode::Replay;
     const auto replayStorage = replay_.sampleStorage();
-    if (targetIndex < 0 || targetIndex >= static_cast<int>(replaySamples.size()))
+    if (targetIndex < 0 || targetIndex >= replay_.sampleCount())
     {
         return;
     }
+    const auto navigationAt = [this, &replayStorage](int index)
+        -> const VaporView::Geo::NavSample& {
+        if (replay_render_storage_)
+        {
+            return (*replay_render_storage_)[static_cast<std::size_t>(index)].navigation;
+        }
+        return (*replayStorage)[static_cast<std::size_t>(index)];
+    };
 
     if (rendered_replay_index_ < 0 || targetIndex < rendered_replay_index_)
     {
@@ -2253,31 +2337,37 @@ void Map3DWindow::renderReplayAtCurrentPosition(bool forceStatus)
         }
         if (headless_view_)
         {
-            const auto end = replaySamples.cbegin() + targetIndex + 1;
-            const std::vector<VaporView::Geo::NavSample> visibleSamples(replaySamples.cbegin(), end);
-            headless_samples_ = visibleSamples;
-            headless_sample_count_ = static_cast<int>(visibleSamples.size());
             if (replay_render_storage_)
             {
+                headless_samples_.clear();
+                headless_samples_.reserve(static_cast<std::size_t>(targetIndex + 1));
+                for (int index = 0; index <= targetIndex; ++index)
+                {
+                    headless_samples_.push_back(navigationAt(index));
+                }
                 headless_render_samples_.assign(replay_render_storage_->cbegin(),
                                                 replay_render_storage_->cbegin() + targetIndex + 1);
             }
             else
             {
+                const auto& replaySamples = replay_.samples();
+                const auto end = replaySamples.cbegin() + targetIndex + 1;
+                headless_samples_.assign(replaySamples.cbegin(), end);
                 headless_render_samples_.clear();
-                headless_render_samples_.reserve(visibleSamples.size());
-                for (const VaporView::Geo::NavSample& sample : visibleSamples)
+                headless_render_samples_.reserve(headless_samples_.size());
+                for (const VaporView::Geo::NavSample& sample : headless_samples_)
                 {
                     headless_render_samples_.push_back(renderSampleFromNavSample(sample));
                 }
             }
+            headless_sample_count_ = static_cast<int>(headless_samples_.size());
         }
     }
     else if (targetIndex > rendered_replay_index_)
     {
         for (int index = rendered_replay_index_ + 1; index <= targetIndex; ++index)
         {
-            const VaporView::Geo::NavSample& sample = replaySamples[static_cast<std::size_t>(index)];
+            const VaporView::Geo::NavSample& sample = navigationAt(index);
             if (view_)
             {
                 if (replay_render_storage_)
@@ -2307,7 +2397,7 @@ void Map3DWindow::renderReplayAtCurrentPosition(bool forceStatus)
     }
 
     rendered_replay_index_ = targetIndex;
-    const VaporView::Geo::NavSample& currentSample = replaySamples[static_cast<std::size_t>(targetIndex)];
+    const VaporView::Geo::NavSample& currentSample = navigationAt(targetIndex);
     recordTrackSource(QStringLiteral("Replay"),
                       &currentSample);
     updateHeatLegend();

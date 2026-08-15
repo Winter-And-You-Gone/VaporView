@@ -131,6 +131,23 @@ QSettings map3DTestSettings()
                      QStringLiteral("Map3D"));
 }
 
+bool waitForSessionDirectory(const QString& path, int timeoutMs)
+{
+    QElapsedTimer timer;
+    timer.start();
+    const QString expected = QFileInfo(path).absoluteFilePath();
+    while (timer.elapsed() < timeoutMs)
+    {
+        QCoreApplication::processEvents();
+        if (map3DTestSettings().value(QStringLiteral("lastSessionDir")).toString() == expected)
+        {
+            return true;
+        }
+        QThread::msleep(10);
+    }
+    return map3DTestSettings().value(QStringLiteral("lastSessionDir")).toString() == expected;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -461,7 +478,8 @@ int main(int argc, char** argv)
     QTemporaryDir sessionDir;
     writeSessionTrack(sessionDir);
     window.loadSessionDirectory(sessionDir.path());
-    QCoreApplication::processEvents();
+    require(waitForText(label, QStringLiteral("Source Session"), 3000),
+            "asynchronous session load completes without blocking the window");
     {
         QSettings settings = map3DTestSettings();
         require(settings.value(QStringLiteral("lastSessionDir")).toString()
@@ -631,6 +649,22 @@ int main(int argc, char** argv)
     QCoreApplication::processEvents();
     require(!replayAction->isChecked(), "stop clears replay playing state");
     require(label->text().contains(QStringLiteral("Replay stopped 1/2")), "stop rewinds replay to first sample and reports stopped state");
+
+    QTemporaryDir supersededSessionDir;
+    QTemporaryDir latestSessionDir;
+    writeSessionTrack(supersededSessionDir);
+    writeSessionTrack(latestSessionDir);
+    window.loadSessionDirectory(supersededSessionDir.path());
+    window.loadSessionDirectory(latestSessionDir.path());
+    require(waitForSessionDirectory(latestSessionDir.path(), 3000),
+            "the latest asynchronous session request wins over an older completed request");
+    require(waitForText(label, QStringLiteral("Source Session"), 1000),
+            "the newest asynchronous session request applies its track on the GUI thread");
+
+    auto* closingWindow = new VaporView::Map3D::Map3DWindow;
+    closingWindow->loadSessionDirectory(latestSessionDir.path());
+    delete closingWindow;
+    QCoreApplication::processEvents();
 
     return 0;
 }

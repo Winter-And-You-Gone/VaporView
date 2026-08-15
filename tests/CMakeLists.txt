@@ -870,6 +870,14 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
     target_link_libraries(trajectory_3d_layer_test PRIVATE vaporview_map3d_osgearth)
     add_test(NAME trajectory_3d_layer_test COMMAND trajectory_3d_layer_test)
 
+    add_executable(trajectory_3d_layer_benchmark
+        ${CMAKE_CURRENT_SOURCE_DIR}/trajectory_3d_layer_benchmark.cpp
+    )
+    target_include_directories(trajectory_3d_layer_benchmark PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
+    target_link_libraries(trajectory_3d_layer_benchmark PRIVATE vaporview_map3d_osgearth)
+
     add_executable(aircraft_3d_layer_test
         ${CMAKE_CURRENT_SOURCE_DIR}/aircraft_3d_layer_test.cpp
     )
@@ -895,7 +903,10 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
     )
-    target_link_libraries(map3d_window_smoke_test PRIVATE vaporview_map3d_osgearth)
+    target_link_libraries(map3d_window_smoke_test PRIVATE
+        vaporview_map3d_osgearth
+        vaporview_ground_map
+    )
     if(WIN32)
         vaporview_stage_osgearth_runtime(map3d_window_smoke_test)
     endif()
@@ -928,7 +939,10 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
     target_compile_definitions(map3d_real_window_close_test PRIVATE
         VAPORVIEW_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
-    target_link_libraries(map3d_real_window_close_test PRIVATE vaporview_map3d_osgearth)
+    target_link_libraries(map3d_real_window_close_test PRIVATE
+        vaporview_map3d_osgearth
+        vaporview_ground_map
+    )
     if(WIN32)
         vaporview_stage_osgearth_runtime(map3d_real_window_close_test)
     endif()

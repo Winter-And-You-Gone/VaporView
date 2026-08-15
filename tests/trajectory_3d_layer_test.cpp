@@ -8,6 +8,7 @@
 #include <osg/Point>
 #include <osg/PrimitiveSet>
 #include <osg/StateSet>
+#include <osg/Texture1D>
 
 #include <algorithm>
 #include <cmath>
@@ -126,8 +127,10 @@ int main()
         samples.push_back(sample(index));
     }
 
-    layer.appendSamples(samples);
+    layer.appendNavigationSamples(samples);
     require(layer.sampleCount() == 9000, "layer keeps total sample count");
+    require(!layer.heatRenderingEnabled(),
+            "navigation samples do not activate heat rendering");
     require(layer.visibleSampleCount() == 9000, "all samples visible by default");
     require(layer.segmentCount() == 3, "9000 samples are split into three segments");
 
@@ -160,7 +163,7 @@ int main()
     require(boundaryGeometry->getVertexArray()->getNumElements() == 4096,
             "retained boundary segment contains its full sample block");
 
-    layer.appendSample(sample(9000));
+    layer.appendNavigationSample(sample(9000));
     require(layer.sampleCount() == 5000, "appendSample keeps retained sample count bounded");
     require(layer.segmentCount() == 2, "appendSample reuses current retained segments");
     require(boundaryGeometry->getVertexArray()->getNumElements() == 4095,
@@ -183,7 +186,7 @@ int main()
         longSamples.push_back(sample(index));
     }
 
-    longLayer.appendSamples(longSamples);
+    longLayer.appendNavigationSamples(longSamples);
     require(longLayer.sampleCount() == kLongTrackSampleCount, "long layer keeps 100000 samples");
     require(longLayer.visibleSampleCount() == kLongTrackSampleCount, "long layer shows all samples under default cap");
     const int expectedLongSegments =
@@ -206,6 +209,15 @@ int main()
             "long layer releases old segment drawables outside the retained window");
     require(visibleDrawableCount(*longGeode) == 6,
             "all retained long-track line and sphere drawables remain visible");
+    const int longRebuildsBeforeTailAppend = longLayer.fullRebuildCount();
+    const int longSegmentRebuildsBeforeTailAppend = longLayer.segmentGeometryRebuildCount();
+    longLayer.appendNavigationSample(sample(kLongTrackSampleCount));
+    require(longLayer.sampleCount() == 10000,
+            "navigation tail append preserves the retained sample cap");
+    require(longLayer.fullRebuildCount() == longRebuildsBeforeTailAppend,
+            "single navigation append does not rebuild the full trajectory");
+    require(longLayer.segmentGeometryRebuildCount() <= longSegmentRebuildsBeforeTailAppend + 2,
+            "single navigation append only touches the tail and trim boundary segments");
 
     auto* longBoundaryGeometry =
         dynamic_cast<osg::Geometry*>(longGeode->getDrawable(0));
@@ -222,7 +234,7 @@ int main()
     {
         boundarySamples.push_back(sample(index));
     }
-    boundaryLayer.appendSamples(boundarySamples);
+    boundaryLayer.appendNavigationSamples(boundarySamples);
     auto* boundaryGeode = dynamic_cast<osg::Geode*>(boundaryLayer.node());
     require(boundaryGeode != nullptr && boundaryGeode->getNumDrawables() == 4,
             "4097 samples span two trajectory segments with sphere drawables");
@@ -291,7 +303,7 @@ int main()
             "large Earth tracks expand beyond the minimum focus range");
 
     VaporView::Map3D::Trajectory3DLayer sampledCircleLayer;
-    sampledCircleLayer.appendSamples(sampledCircle);
+    sampledCircleLayer.appendNavigationSamples(sampledCircle);
     const VaporView::Map3D::TrajectoryQualityStats sampledCircleStats =
         sampledCircleLayer.qualityStats();
     require(sampledCircleStats.lineSamples == kCircleVisibleSamples,
@@ -308,7 +320,7 @@ int main()
     qualitySamples[2].fixQuality = VaporView::Geo::FixQuality::Invalid;
     qualitySamples[5].recordTimestampUs = qualitySamples[4].recordTimestampUs - 1;
 
-    qualityLayer.appendSamples(qualitySamples);
+    qualityLayer.appendNavigationSamples(qualitySamples);
     auto* qualityGeode = dynamic_cast<osg::Geode*>(qualityLayer.node());
     require(qualityGeode != nullptr, "quality trajectory node is a geode");
     require(qualityGeode->getNumDrawables() == 2, "quality trajectory fits in one segment with sphere markers");
@@ -350,7 +362,7 @@ int main()
     }
     outlierSamples[2].nedNM = 10000.0;
     outlierSamples[2].nedEM = 10000.0;
-    outlierLayer.appendSamples(outlierSamples);
+    outlierLayer.appendNavigationSamples(outlierSamples);
     auto* outlierGeode = dynamic_cast<osg::Geode*>(outlierLayer.node());
     require(outlierGeode != nullptr, "outlier trajectory node is a geode");
     require(outlierGeode->getNumDrawables() == 2, "outlier trajectory fits in one segment with sphere markers");
@@ -378,7 +390,9 @@ int main()
     heatSamples[0].heat.temperatureC = 10.0;
     heatSamples[1].heat.temperatureC = 20.0;
     heatSamples[2].heat.temperatureC = 30.0;
-    heatLayer.appendSamples(heatSamples);
+    heatLayer.appendRenderSamples(heatSamples);
+    require(heatLayer.heatRenderingEnabled(),
+            "render samples explicitly activate heat rendering");
     auto* heatGeode = dynamic_cast<osg::Geode*>(heatLayer.node());
     require(heatGeode != nullptr && heatGeode->getNumDrawables() == 2,
             "heat trajectory creates separate line and point drawables");
@@ -409,23 +423,61 @@ int main()
                 && nearlyEqual((*heatPointColors)[1].g(), neutral.g)
                 && nearlyEqual((*heatPointColors)[1].b(), neutral.b),
             "missing heat values use the neutral fallback color");
-    const osg::Vec4 candyColor = (*heatPointColors)[0];
+    const int heatFullRebuildsBeforeAppend = heatLayer.fullRebuildCount();
+    const int heatSegmentRebuildsBeforeAppend = heatLayer.segmentGeometryRebuildCount();
+    heatLayer.appendRenderSample(heatSample(3, 5.0));
+    const VaporView::Geo::HeatRange appendedPeakRange = heatLayer.heatRange();
+    require(appendedPeakRange.valid && appendedPeakRange.validCount == 3
+                && nearlyEqual(appendedPeakRange.maximum, 5.0),
+            "heat range extends from incremental statistics without a full scan");
+    require(heatLayer.fullRebuildCount() == heatFullRebuildsBeforeAppend,
+            "heat append updates only the tail geometry when the range changes");
+    require(heatLayer.segmentGeometryRebuildCount() == heatSegmentRebuildsBeforeAppend + 1,
+            "heat append rebuilds exactly the affected tail segment");
     heatLayer.setHeatMetric(VaporView::Geo::HeatMetric::Temperature);
     require(heatLayer.heatRange().validCount == 3
                 && nearlyEqual(heatLayer.heatRange().minimum, 10.0)
                 && nearlyEqual(heatLayer.heatRange().maximum, 30.0),
             "switching heat metrics recomputes the range");
+    const int heatFullRebuildsBeforePalette = heatLayer.fullRebuildCount();
     heatLayer.setHeatPalette(VaporView::Geo::HeatPalette::BlueRedFast);
     heatPointGeometry = dynamic_cast<osg::Geometry*>(heatGeode->getDrawable(1));
-    const auto* switchedPointColors =
-        heatPointGeometry
-            ? dynamic_cast<const osg::Vec4Array*>(heatPointGeometry->getColorArray())
-            : nullptr;
-    require(switchedPointColors != nullptr
-                && (!nearlyEqual((*switchedPointColors)[0].r(), candyColor.r(), 1.0e-5)
-                    || !nearlyEqual((*switchedPointColors)[0].g(), candyColor.g(), 1.0e-5)
-                    || !nearlyEqual((*switchedPointColors)[0].b(), candyColor.b(), 1.0e-5)),
-            "switching heat palette updates point colors");
+    const auto* paletteTexture = heatPointGeometry
+        ? dynamic_cast<const osg::Texture1D*>(
+              heatPointGeometry->getStateSet()->getTextureAttribute(0, osg::StateAttribute::TEXTURE))
+        : nullptr;
+    const auto expectedPaletteStart = VaporView::Geo::heatPaletteColor(
+        0.0, VaporView::Geo::HeatPalette::BlueRedFast);
+    const osg::Image* paletteImage = paletteTexture ? paletteTexture->getImage() : nullptr;
+    const unsigned char* paletteStart = paletteImage ? paletteImage->data(0, 0) : nullptr;
+    require(heatLayer.fullRebuildCount() == heatFullRebuildsBeforePalette,
+            "switching a heat palette does not rebuild historical geometry");
+    require(paletteStart != nullptr
+                && nearlyEqual(static_cast<double>(paletteStart[0]) / 255.0,
+                               expectedPaletteStart.r,
+                               0.01)
+                && nearlyEqual(static_cast<double>(paletteStart[1]) / 255.0,
+                               expectedPaletteStart.g,
+                               0.01)
+                && nearlyEqual(static_cast<double>(paletteStart[2]) / 255.0,
+                               expectedPaletteStart.b,
+                               0.01),
+            "switching heat palette updates the shader palette texture");
+
+    VaporView::Geo::HeatRange manualHeatRange;
+    manualHeatRange.minimum = 12.0;
+    manualHeatRange.maximum = 28.0;
+    manualHeatRange.validCount = 2;
+    manualHeatRange.valid = true;
+    const int heatFullRebuildsBeforeRangeOverride = heatLayer.fullRebuildCount();
+    heatLayer.setHeatRange(manualHeatRange);
+    require(heatLayer.fullRebuildCount() == heatFullRebuildsBeforeRangeOverride
+                && nearlyEqual(heatLayer.heatRange().minimum, 12.0)
+                && nearlyEqual(heatLayer.heatRange().maximum, 28.0),
+            "changing heat range updates uniforms without rebuilding history");
+    heatLayer.clearHeatRangeOverride();
+    require(heatLayer.fullRebuildCount() == heatFullRebuildsBeforeRangeOverride,
+            "clearing heat range override does not rebuild historical geometry");
 
     heatLayer.setTrackLineVisible(false);
     require(heatGeode->getDrawable(0)->getNodeMask() == 0u
@@ -457,15 +509,15 @@ int main()
             "clearing heat trajectory removes line and point geometry");
 
     VaporView::Map3D::Trajectory3DLayer consecutiveOutlierLayer;
-    consecutiveOutlierLayer.appendSample(sample(0));
+    consecutiveOutlierLayer.appendNavigationSample(sample(0));
     for (int index = 1; index <= 5000; ++index)
     {
         VaporView::Geo::NavSample outlier = sample(index);
         outlier.nedNM += 1000000.0 + static_cast<double>(index) * 1000.0;
         outlier.nedEM += 1000000.0 + static_cast<double>(index) * 1000.0;
-        consecutiveOutlierLayer.appendSample(outlier);
+        consecutiveOutlierLayer.appendNavigationSample(outlier);
     }
-    consecutiveOutlierLayer.appendSample(sample(1));
+    consecutiveOutlierLayer.appendNavigationSample(sample(1));
     const VaporView::Map3D::TrajectoryQualityStats consecutiveOutlierStats =
         consecutiveOutlierLayer.qualityStats();
     require(consecutiveOutlierStats.jumpSamples == 5000,
@@ -486,7 +538,7 @@ int main()
     worldSamples[1].ecefZM = 4079876.876543211;
     const osg::Vec3d worldOrigin(worldSamples[0].ecefXM, worldSamples[0].ecefYM, worldSamples[0].ecefZM);
     worldLayer.setWorldOrigin(worldOrigin);
-    worldLayer.appendSamples(worldSamples);
+    worldLayer.appendNavigationSamples(worldSamples);
     auto* worldGeode = dynamic_cast<osg::Geode*>(worldLayer.node());
     require(worldGeode != nullptr, "world trajectory node is a geode");
     require(worldGeode->getNumDrawables() == 2, "world trajectory fits in one segment with sphere markers");
@@ -506,7 +558,7 @@ int main()
             "world trajectory stores small local offsets instead of ECEF-scale vertices");
 
     VaporView::Map3D::Trajectory3DLayer selectionLayer;
-    selectionLayer.appendSamples({sample(0), sample(1), sample(2)});
+    selectionLayer.appendNavigationSamples({sample(0), sample(1), sample(2)});
     auto* selectionGeode = dynamic_cast<osg::Geode*>(selectionLayer.node());
     require(selectionLayer.selectedSampleIndex() == -1, "trajectory starts with no selected sample");
     require(selectionGeode != nullptr && selectionGeode->getNumDrawables() == 2,
