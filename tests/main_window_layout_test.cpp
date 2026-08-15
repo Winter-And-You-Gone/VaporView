@@ -28,6 +28,7 @@
 #include <QFontMetrics>
 #include <QFrame>
 #include <QFocusEvent>
+#include <QGraphicsOpacityEffect>
 #include <QGroupBox>
 #include <QHoverEvent>
 #include <QIcon>
@@ -1535,6 +1536,9 @@ void requireRtkSidebarPage(
     require(std::abs(combinationNavigationBar->geometry().center().x() -
                      combinationNavigationRow->rect().center().x()) <= 1,
             "combination navigation bar is horizontally centered in its page row");
+    require(statusScrollArea->mapTo(combinationPage, QPoint(0, 0)).y() == 0 &&
+                epsilonScrollArea->mapTo(combinationPage, QPoint(0, 0)).y() == 0,
+            "combination-navigation scroll areas start at the page top behind the floating navigation");
     require(combinationNavigationSelectionThumb->parentWidget() == combinationNavigationTrack &&
                 combinationNavigationSelectionThumb->geometry() == statusButton->geometry() &&
                 combinationNavigationSelectionAnimation->targetObject() == combinationNavigationSelectionThumb &&
@@ -1635,6 +1639,19 @@ void requireRtkSidebarPage(
         QStringLiteral("navigationStatusLongitudeValue"));
     auto *differentialStatusCard = combinationPage->findChild<QFrame *>(
         QStringLiteral("navigationStatusDifferentialCard"));
+    auto *statusSummaryCard = combinationPage->findChild<QFrame *>(
+        QStringLiteral("navigationStatusSummaryCard"));
+    auto *epsilonOutputCard = epsilonPanel
+        ? epsilonPanel->findChild<QFrame *>(QStringLiteral("epsilonOutputCard"))
+        : nullptr;
+    require(statusSummaryCard != nullptr && epsilonOutputCard != nullptr,
+            "combination-navigation exposes stable status and EPSILON card anchors");
+    ResizeWidthRecorder statusSummaryResizeRecorder(statusSummaryCard);
+    ResizeWidthRecorder epsilonOutputResizeRecorder(epsilonOutputCard);
+    ResizeWidthRecorder differentialGgaResizeRecorder(preGgaCard);
+    statusSummaryCard->installEventFilter(&statusSummaryResizeRecorder);
+    epsilonOutputCard->installEventFilter(&epsilonOutputResizeRecorder);
+    preGgaCard->installEventFilter(&differentialGgaResizeRecorder);
     require(rtkServiceStatus != nullptr && gnssStatus != nullptr && positioningMode != nullptr &&
                 ntripStatus != nullptr && rtcmStatus != nullptr &&
                 longitudeValue != nullptr && differentialStatusCard != nullptr &&
@@ -1672,6 +1689,9 @@ void requireRtkSidebarPage(
     const QString originalRtkServer = unsavedRtkServerEdit->text();
     const QString unsavedRtkServer = QStringLiteral("unsaved-combination-navigation.test");
     unsavedRtkServerEdit->setText(unsavedRtkServer);
+    statusSummaryResizeRecorder.reset();
+    epsilonOutputResizeRecorder.reset();
+    differentialGgaResizeRecorder.reset();
     epsilonButton->setFocus(Qt::TabFocusReason);
     QKeyEvent epsilonSpacePress(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier);
     QKeyEvent epsilonSpaceRelease(QEvent::KeyRelease, Qt::Key_Space, Qt::NoModifier);
@@ -1680,6 +1700,8 @@ void requireRtkSidebarPage(
     processEventsFor(50);
     require(combinationStack->currentWidget() == epsilonPage && epsilonButton->isChecked(),
             "combination navigation switches from status to EPSILON by keyboard");
+    require(!epsilonOutputResizeRecorder.observedWidthDifferentFrom(epsilonOutputCard->width()),
+            "status to EPSILON switching keeps the packet-rate card width stable");
     require(combinationNavigationSelectionAnimation->state() == QAbstractAnimation::Running,
             "combination navigation starts the selected-thumb animation when switching sections");
     processEventsFor(250);
@@ -1687,11 +1709,16 @@ void requireRtkSidebarPage(
             "combination navigation settles the selected thumb on the new section");
     ggaResizeRecorder.reset();
     logResizeRecorder.reset();
+    statusSummaryResizeRecorder.reset();
+    epsilonOutputResizeRecorder.reset();
+    differentialGgaResizeRecorder.reset();
     clickWidget(differentialButton, 0);
     processEventsFor(150);
     auto *dialog = qobject_cast<RtkConfigDialog *>(combinationStack->currentWidget());
     require(dialog == preDialog && differentialButton->isChecked(),
             "combination navigation switches from EPSILON to the original RTK page");
+    require(!differentialGgaResizeRecorder.observedWidthDifferentFrom(preGgaCard->width()),
+            "EPSILON to differential switching keeps the RTK card width stable");
     require(unsavedRtkServerEdit->text() == unsavedRtkServer,
             "switching internal pages preserves unsaved RTK input");
     clickWidget(epsilonButton, 0);
@@ -1744,22 +1771,27 @@ void requireRtkSidebarPage(
     requireLabelTextOneOf(customTitleLabel,
                           {QStringLiteral("组合导航"), QStringLiteral("Combination Navigation")},
                           "custom title bar follows the selected combination-navigation page");
+    statusSummaryResizeRecorder.reset();
     clickWidget(statusButton, 0);
     processEventsFor(50);
     require(combinationStack->currentWidget() == statusPage && statusButton->isChecked(),
             "combination navigation switches from differential positioning back to status");
+    require(!statusSummaryResizeRecorder.observedWidthDifferentFrom(statusSummaryCard->width()),
+            "differential to status switching keeps the status card width stable");
     clickWidget(differentialButton, 0);
     processEventsFor(100);
     require(combinationStack->currentWidget() == dialog && differentialButton->isChecked(),
             "combination navigation returns to the same RTK page instance");
     auto *rtkScrollArea = dialog->findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea"));
     require(rtkScrollArea != nullptr, "RTK config page uses a scroll area");
+    require(rtkScrollArea->mapTo(combinationPage, QPoint(0, 0)).y() == 0,
+            "RTK differential scroll area starts at the page top behind the floating navigation");
     require(rtkScrollArea->horizontalScrollBar() != nullptr &&
                 rtkScrollArea->horizontalScrollBar()->maximum() == 0,
             "RTK config page avoids a horizontal scrollbar at the default window size");
     require(rtkScrollArea->horizontalScrollBarPolicy() == Qt::ScrollBarAlwaysOff &&
-                rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAsNeeded,
-            "RTK config page forbids horizontal scrolling and only enables vertical scrolling when needed");
+                rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
+            "RTK config page forbids horizontal scrolling and reserves a stable vertical rail");
     const std::vector<std::pair<QString, int>> compactCombos = {
         {QStringLiteral("rtkOutputPortCombo"), 100},
         {QStringLiteral("rtkBaudrateCombo"), 130},
@@ -1837,32 +1869,46 @@ void requireRtkSidebarPage(
         VaporView::Ground::MainSupport::kMainContentLeftCardInset;
     constexpr int kExpectedPageRightGap =
         VaporView::Ground::MainSupport::kMainContentRightCardInset;
-    constexpr int kExpectedVerticalScrollBarWidth =
-        VaporView::Ground::MainSupport::kMainContentVerticalScrollBarWidth;
-    constexpr int kExpectedPageRightInsetWithoutScrollBar =
-        kExpectedPageRightGap + kExpectedVerticalScrollBarWidth;
     constexpr int kExpectedPageChromeInset =
         VaporView::Ground::MainSupport::kTopLevelCardOuterVerticalInset;
     constexpr int kExpectedTopLevelCardGap =
         VaporView::Ground::MainSupport::kTopLevelCardGap;
+    const int expectedCombinationNavigationTopInset = combinationNavigationRow->height();
     require(kExpectedTopLevelCardGap == 12,
             "top-level cards keep the requested 12px spacing rhythm");
     const auto requireCombinationPageRightInset =
         [&](QScrollArea *scrollArea, QWidget *content, const char *message) {
-            const int expectedRightInset = scrollArea->verticalScrollBar()->maximum() > 0
-                ? kExpectedPageRightGap
-                : kExpectedPageRightInsetWithoutScrollBar;
-            require(content->layout()->contentsMargins().right() == expectedRightInset,
+            require(scrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn &&
+                        content->layout()->contentsMargins().right() == kExpectedPageRightGap,
+                    message);
+        };
+    const auto requireStableVerticalScrollBarVisibility =
+        [](QScrollArea *scrollArea, const char *message) {
+            auto *effect = qobject_cast<QGraphicsOpacityEffect *>(
+                scrollArea->verticalScrollBar()->graphicsEffect());
+            const qreal expectedOpacity =
+                scrollArea->verticalScrollBar()->maximum() >
+                        scrollArea->verticalScrollBar()->minimum()
+                    ? 1.0
+                    : 0.0;
+            require(effect != nullptr &&
+                        std::abs(effect->opacity() - expectedOpacity) < 0.01,
                     message);
         };
     requireCombinationPageRightInset(
         statusScrollArea,
         statusContent,
-        "combination-navigation status page uses the RTK right inset for its scrollbar state");
+        "combination-navigation status page reserves a stable scrollbar rail and right inset");
     requireCombinationPageRightInset(
         epsilonScrollArea,
         epsilonContent,
-        "combination-navigation EPSILON page uses the RTK right inset for its scrollbar state");
+        "combination-navigation EPSILON page reserves a stable scrollbar rail and right inset");
+    requireStableVerticalScrollBarVisibility(
+        statusScrollArea,
+        "combination-navigation status scrollbar is transparent when no scrolling is needed");
+    requireStableVerticalScrollBarVisibility(
+        epsilonScrollArea,
+        "combination-navigation EPSILON scrollbar is transparent when no scrolling is needed");
     auto widgetRectInCentralForRtk = [&window](QWidget *widget) {
         return QRect(widget->mapTo(window.centralWidget(), QPoint(0, 0)), widget->size());
     };
@@ -1878,22 +1924,23 @@ void requireRtkSidebarPage(
             "RTK differential page keeps its shared 18px card inset without an extra wrapper margin");
     require(std::abs(widgetRectInCentralForRtk(ntripCard).top() -
                      (widgetRectInCentralForRtk(dialog).top() +
+                      expectedCombinationNavigationTopInset +
                       kExpectedPageChromeInset)) <= 1,
-            "RTK differential page keeps its own compact top inset below the sub-navigation");
+            "RTK differential page keeps its own compact top inset below the floating sub-navigation");
     auto *rtkContent = dialog->findChild<QWidget *>(QStringLiteral("rtkConfigContent"));
     require(rtkContent != nullptr && rtkContent->layout() != nullptr,
             "RTK embedded content exposes its page layout");
-    require(rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAsNeeded,
-            "RTK embedded page only shows its scrollbar when content needs it");
-    const int expectedRtkRightInset = rtkScrollArea->verticalScrollBar()->maximum() > 0
-        ? kExpectedPageRightGap
-        : kExpectedPageRightInsetWithoutScrollBar;
+    require(rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
+            "RTK embedded page reserves the same stable scrollbar rail as its sibling pages");
+    requireStableVerticalScrollBarVisibility(
+        rtkScrollArea,
+        "RTK embedded scrollbar is transparent when no scrolling is needed");
     require(rtkContent->layout()->contentsMargins() ==
                 QMargins(kExpectedPageLeftInset,
-                         kExpectedPageChromeInset,
-                         expectedRtkRightInset,
+                         expectedCombinationNavigationTopInset + kExpectedPageChromeInset,
+                         kExpectedPageRightGap,
                          kExpectedPageChromeInset),
-            "RTK embedded page keeps the shared right inset for the current scrollbar state");
+            "RTK embedded page keeps the shared insets below the floating sub-navigation");
     require(rtkContent->layout()->spacing() == kExpectedTopLevelCardGap,
             "RTK embedded page uses the shared top-level card gap");
     auto *ggaCard = findCardByTitle(dialog,
@@ -2305,6 +2352,20 @@ void requireRtkSidebarPage(
     require(combinationPage->styleSheet().contains(VaporView::appThemeColorName(
                 VaporView::AppThemeColor::Focus, true)),
             "combination-navigation local style resolves the dark-theme focus token");
+    require(combinationPage->styleSheet().contains(
+                VaporView::appThemeColorName(VaporView::AppThemeColor::Window, true)) &&
+                combinationPage->styleSheet().contains(
+                    QStringLiteral("QScrollArea#navigationStatusScrollArea QScrollBar:vertical")) &&
+                combinationPage->styleSheet().contains(QStringLiteral("margin: 0px")),
+            "combination-navigation outer background and scrollbar rail use the dark window color");
+    auto *statusPanel = combinationPage->findChild<QWidget *>(
+        QStringLiteral("navigationStatusPanel"));
+    require(statusPanel != nullptr &&
+                statusPanel->styleSheet().contains(
+                    VaporView::appThemeColorName(VaporView::AppThemeColor::Window, true)) &&
+                epsilonPanel->styleSheet().contains(
+                    VaporView::appThemeColorName(VaporView::AppThemeColor::Window, true)),
+            "status and EPSILON card containers use the dark window color outside cards");
     const bool darkThemeGeometrySettled = processEventsUntil(1500, themeCardGeometrySettled);
     if (!darkThemeGeometrySettled)
     {
@@ -2342,7 +2403,7 @@ void requireRtkSidebarPage(
     require(outputPortLabel->width() >= outputPortLabel->fontMetrics().horizontalAdvance(outputPortLabel->text()) + 4,
             "RTK RTCM output port label has enough width after switching to dark theme");
     require(rtkScrollArea->horizontalScrollBar()->maximum() == 0 &&
-                rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAsNeeded,
+                rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
             "RTK config page remains free of horizontal scrolling after switching to dark theme");
     require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
             "main window can switch back to light theme from the RTK page");
@@ -8457,7 +8518,6 @@ int main(int argc, char **argv)
     QToolButton *temperatureDeviceActionButton = nullptr;
     QToolButton *ai8TemperatureDeviceActionButton = nullptr;
     QPushButton *deviceAutoDetectButton = nullptr;
-    QPushButton *deviceSkyConfigButton = nullptr;
     for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
     {
         if (!button->isVisible())
@@ -8472,11 +8532,6 @@ int main(int argc, char **argv)
             button->text().contains(QStringLiteral("Auto Detect")))
         {
             deviceAutoDetectButton = button;
-        }
-        if (button->text().contains(QStringLiteral("天空端设备配置")) ||
-            button->text().contains(QStringLiteral("Sky Device Config")))
-        {
-            deviceSkyConfigButton = button;
         }
     }
     for (QToolButton *button : deviceConfigPage->findChildren<QToolButton *>())
@@ -8540,8 +8595,6 @@ int main(int argc, char **argv)
             "device configuration exposes the AI-8288 connection action button");
     require(deviceAutoDetectButton != nullptr && deviceAutoDetectButton->width() <= 145,
             "device configuration auto-detect button uses compact title-bar width");
-    require(deviceSkyConfigButton != nullptr && deviceSkyConfigButton->width() <= 145,
-            "device configuration sky-device button uses compact title-bar width");
 
     QComboBox *devicePortCombo =
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceTemperaturePortCombo"));
@@ -8560,6 +8613,27 @@ int main(int argc, char **argv)
     }
     require(devicePortCombo != nullptr && devicePortCombo->width() <= 112,
             "device configuration serial combo is sized for COM999");
+    if (devicePortCombo)
+    {
+        const QColor expectedComboBg =
+            VaporView::appThemeColor(VaporView::AppThemeColor::FieldBackground, false);
+        const QImage comboImage = devicePortCombo->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+        const QRect comboInterior = comboImage.rect().adjusted(2, 2, -2, -2);
+        const int expectedPixels = countPixelsNearColor(comboImage, comboInterior, expectedComboBg, 0);
+        if (expectedPixels < comboInterior.width() * comboInterior.height() / 4)
+        {
+            QComboBox *diagnosticSourceModeCombo = findSourceModeCombo(deviceConfigPage);
+            std::cerr << "Device combo background diagnostic:"
+                      << " enabled=" << devicePortCombo->isEnabled()
+                      << " text=" << devicePortCombo->currentText().toStdString()
+                      << " sourceMode="
+                      << (diagnosticSourceModeCombo ? diagnosticSourceModeCombo->currentData().toString().toStdString() : std::string("<null>"))
+                      << " appDark=" << VaporView::isDarkThemePalette(devicePortCombo->palette())
+                      << " expectedPixels=" << expectedPixels
+                      << " required=" << (comboInterior.width() * comboInterior.height() / 4)
+                      << '\n';
+        }
+    }
     requireWidgetInteriorUsesBackground(
         devicePortCombo,
         VaporView::appThemeColor(VaporView::AppThemeColor::FieldBackground, false),
@@ -8694,22 +8768,38 @@ int main(int argc, char **argv)
     auto *deviceSerialGrid = deviceAi8TemperaturePortCombo
         ? qobject_cast<QGridLayout *>(deviceAi8TemperaturePortCombo->parentWidget()->layout())
         : nullptr;
-    auto *deviceAi8TemperatureLabel = deviceSerialGrid && deviceSerialGrid->itemAtPosition(5, 0)
-        ? qobject_cast<QLabel *>(deviceSerialGrid->itemAtPosition(5, 0)->widget())
-        : nullptr;
-    auto *deviceAi8TemperatureRateLabel = deviceSerialGrid && deviceSerialGrid->itemAtPosition(5, 3)
-        ? qobject_cast<QLabel *>(deviceSerialGrid->itemAtPosition(5, 3)->widget())
-        : nullptr;
-    auto *deviceTemperatureLabel = deviceSerialGrid && deviceSerialGrid->itemAtPosition(4, 0)
-        ? qobject_cast<QLabel *>(deviceSerialGrid->itemAtPosition(4, 0)->widget())
-        : nullptr;
+    auto labelInComboRow = [deviceSerialGrid](QWidget *combo, int column) -> QLabel * {
+        if (!deviceSerialGrid || !combo)
+        {
+            return nullptr;
+        }
+        const int index = deviceSerialGrid->indexOf(combo);
+        if (index < 0)
+        {
+            return nullptr;
+        }
+        int row = 0;
+        int itemColumn = 0;
+        int rowSpan = 0;
+        int columnSpan = 0;
+        deviceSerialGrid->getItemPosition(index, &row, &itemColumn, &rowSpan, &columnSpan);
+        QLayoutItem *item = deviceSerialGrid->itemAtPosition(row, column);
+        return item ? qobject_cast<QLabel *>(item->widget()) : nullptr;
+    };
+    QLabel *deviceAi8TemperatureLabel =
+        labelInComboRow(deviceAi8TemperaturePortCombo, 0);
+    QLabel *deviceAi8TemperatureRateLabel =
+        labelInComboRow(deviceAi8TemperaturePortCombo, 3);
+    QLabel *deviceTemperatureLabel =
+        labelInComboRow(deviceTemperaturePortCombo, 0);
     require(deviceTemperaturePortCombo != nullptr,
             "device configuration temperature serial-port combo exists");
     require(deviceTemperatureBaudCombo != nullptr,
             "device configuration temperature baud-rate combo exists");
     require(deviceAi8TemperatureLabel != nullptr && deviceTemperatureLabel != nullptr &&
-                deviceAi8TemperatureLabel->text() == QStringLiteral("AI-8288:") &&
+                deviceAi8TemperatureLabel->text().contains(QStringLiteral("AI-8288")) &&
                 deviceAi8TemperatureLabel->objectName() == QStringLiteral("fieldLabel") &&
+                deviceTemperatureLabel->objectName() == QStringLiteral("fieldLabel") &&
                 deviceAi8TemperatureLabel->font().weight() == deviceTemperatureLabel->font().weight(),
             "device configuration AI-8288 label matches the RD105 field-label typography");
     require(deviceAi8TemperatureBaudCombo != nullptr &&
@@ -9434,8 +9524,8 @@ int main(int argc, char **argv)
     setSkyTelemetryTransport(deviceSkyTelemetry.transportCombo, QStringLiteral("tcp"));
     processEventsFor(100);
     activateLayouts(&window);
-    require(!epsilonConfigCard->isEnabled(),
-            "EPSILON configuration panel is unavailable in sky-ground remote mode");
+    require(epsilonConfigCard->isEnabled(),
+            "EPSILON configuration panel keeps the shared detailed UI available in sky-ground remote mode");
     require(deviceTelemetrySummaryCard->isVisible(),
             "device telemetry summary remains visible after switching to sky-ground remote mode");
     requireSameRect(epsilonConfigCard->geometry(), localEpsilonConfigRect, 2,

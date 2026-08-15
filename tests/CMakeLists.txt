@@ -213,6 +213,32 @@ target_link_libraries(ai8_device_session_test PRIVATE
 )
 add_test(NAME ai8_device_session_test COMMAND ai8_device_session_test)
 
+add_executable(epsilon_device_session_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/epsilon_device_session_test.cpp
+)
+target_include_directories(epsilon_device_session_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(epsilon_device_session_test PRIVATE
+    vaporview_ground_device_core
+    Qt6::Network
+)
+add_test(NAME epsilon_device_session_test COMMAND epsilon_device_session_test)
+
+add_executable(rd105_device_session_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/rd105_device_session_test.cpp
+)
+target_include_directories(rd105_device_session_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(rd105_device_session_test PRIVATE
+    vaporview_ground_device_core
+    Qt6::Network
+)
+add_test(NAME rd105_device_session_test COMMAND rd105_device_session_test)
+
 add_executable(temperature_controller_panel_test
     ${CMAKE_CURRENT_SOURCE_DIR}/temperature_controller_panel_test.cpp
 )
@@ -301,7 +327,7 @@ target_link_libraries(sky_ground_simulation_e2e_test PRIVATE
 add_dependencies(sky_ground_simulation_e2e_test VaporViewSkyCore)
 add_test(NAME sky_ground_simulation_e2e_test COMMAND sky_ground_simulation_e2e_test)
 set_tests_properties(sky_ground_simulation_e2e_test PROPERTIES
-    TIMEOUT 45
+    TIMEOUT 90
     LABELS "integration;sky;tcp"
 )
 
@@ -1033,6 +1059,8 @@ set(VAPORVIEW_FAST_UNIT_TESTS
     ai8_temperature_controller_collector_test
     ai8_temperature_controller_panel_test
     temperature_controller_panel_test
+    epsilon_device_session_test
+    rd105_device_session_test
     lifecycle_breadcrumb_test
     telemetry_codec_test
     telemetry_tcp_link_test

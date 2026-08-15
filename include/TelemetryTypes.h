@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cstdint>
+#include <map>
 
 namespace VaporView
 {
@@ -36,6 +37,7 @@ enum class MsgType : quint8
     TemperatureControllerStatus = 0x07,
     Ai8TemperatureControllerStatus = 0x08,
     DeviceOperationResponse = 0x09,
+    RtcmCorrectionData = 0x0A,
     Command = 0x10,
     CommandAck = 0x11,
     Heartbeat = 0x20,
@@ -93,6 +95,9 @@ enum class DeviceOperation : quint8
     ReadParameters = 1,
     WriteParameters = 2,
     FactoryReset = 3,
+    ConfigureEpsilonPacketRates = 10,
+    ConfigureEpsilonMainAntennaLeverArm = 11,
+    ConfigureEpsilonRtcmInput = 12,
 };
 
 enum class SkyDeviceId : quint8
@@ -280,6 +285,28 @@ struct TemperatureControllerCommand
     std::array<int16_t, 8> polynomial_exponents{};
 };
 
+struct EpsilonPacketRatesOperation
+{
+    int output_rate_hz = 0;
+    int callback_rate_hz = 0;
+    std::map<uint8_t, int> packet_rates;
+    QString packet_rate_signature;
+};
+
+struct EpsilonMainAntennaLeverArmOperation
+{
+    double x_m = 0.0;
+    double y_m = 0.0;
+    double z_m = 0.0;
+};
+
+struct EpsilonRtcmInputOperation
+{
+    int device_port_index = 2;
+    QString forward_port;
+    int forward_baud = 115200;
+};
+
 struct DeviceStatusItem
 {
     SkyDeviceId device_id = SkyDeviceId::Epsilon;
@@ -316,6 +343,11 @@ struct TelemetryStatus
     quint64 raw_temperature_humidity_record_count = 0;
     quint64 raw_distance_record_count = 0;
     quint64 raw_waveform_record_count = 0;
+    quint64 rtcm_correction_bytes_received = 0;
+    quint64 rtcm_correction_chunks_received = 0;
+    quint64 rtcm_correction_dropped_bytes = 0;
+    quint64 rtcm_correction_dropped_chunks = 0;
+    quint64 rtcm_correction_last_receive_time_us = 0;
 };
 
 struct CommandMessage

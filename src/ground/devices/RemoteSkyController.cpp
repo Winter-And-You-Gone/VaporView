@@ -214,6 +214,42 @@ quint32 RemoteSkyController::restoreAi8FactoryDefaults(
     return sendAi8Operation(DeviceOperation::FactoryReset, data);
 }
 
+quint32 RemoteSkyController::configureEpsilonPacketRates(
+    const EpsilonPacketRatesOperation& operation)
+{
+    return sendDeviceOperation(
+        SkyDeviceId::Epsilon,
+        DeviceOperation::ConfigureEpsilonPacketRates,
+        TelemetryCodec::serializeEpsilonPacketRatesOperation(operation));
+}
+
+quint32 RemoteSkyController::configureEpsilonMainAntennaLeverArm(
+    const EpsilonMainAntennaLeverArmOperation& operation)
+{
+    return sendDeviceOperation(
+        SkyDeviceId::Epsilon,
+        DeviceOperation::ConfigureEpsilonMainAntennaLeverArm,
+        TelemetryCodec::serializeEpsilonMainAntennaLeverArmOperation(operation));
+}
+
+quint32 RemoteSkyController::configureEpsilonRtcmInput(
+    const EpsilonRtcmInputOperation& operation)
+{
+    return sendDeviceOperation(
+        SkyDeviceId::Epsilon,
+        DeviceOperation::ConfigureEpsilonRtcmInput,
+        TelemetryCodec::serializeEpsilonRtcmInputOperation(operation));
+}
+
+bool RemoteSkyController::sendRtcmCorrectionData(const QByteArray& data)
+{
+    if (VaporView::settingsWritesSuspended())
+    {
+        return false;
+    }
+    return service_.sendRtcmCorrectionData(data);
+}
+
 quint16 RemoteSkyController::sendDeviceCommand(CommandId command, SkyDeviceId device)
 {
     if (VaporView::settingsWritesSuspended()) return 0;
@@ -380,9 +416,10 @@ void RemoteSkyController::updateStatusState(const TelemetryStatus& status)
     }
 }
 
-quint32 RemoteSkyController::sendAi8Operation(
+quint32 RemoteSkyController::sendDeviceOperation(
+    SkyDeviceId device,
     DeviceOperation operation,
-    const Ai8TemperatureControllerProtocol::PageData& data)
+    const QByteArray& payload)
 {
     if (VaporView::settingsWritesSuspended() || !service_.isOpen() ||
         device_operation_support_ == DeviceOperationSupport::Unsupported)
@@ -395,9 +432,9 @@ quint32 RemoteSkyController::sendAi8Operation(
     {
         request.request_id = next_device_operation_request_id_++;
     }
-    request.device_id = SkyDeviceId::Ai8TemperatureController;
+    request.device_id = device;
     request.operation = operation;
-    request.payload = TelemetryCodec::serializeAi8PageData(data);
+    request.payload = payload;
     const quint16 commandSequence = service_.sendDeviceOperation(request);
     if (commandSequence == 0)
     {
@@ -406,6 +443,15 @@ quint32 RemoteSkyController::sendAi8Operation(
     device_operation_requests_.insert(commandSequence, request.request_id);
     device_operation_commands_.insert(request.request_id, commandSequence);
     return request.request_id;
+}
+
+quint32 RemoteSkyController::sendAi8Operation(
+    DeviceOperation operation,
+    const Ai8TemperatureControllerProtocol::PageData& data)
+{
+    return sendDeviceOperation(SkyDeviceId::Ai8TemperatureController,
+                               operation,
+                               TelemetryCodec::serializeAi8PageData(data));
 }
 
 }  // namespace VaporView::Ground::Devices

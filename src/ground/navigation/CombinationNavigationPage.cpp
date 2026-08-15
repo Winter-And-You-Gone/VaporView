@@ -1,11 +1,13 @@
 #include "ground/navigation/CombinationNavigationPage.h"
 
 #include "ground/navigation/EpsilonConfigPanel.h"
+#include "ground/rtk/RtkConfigDialog.h"
 #include "shared/theme/AppTheme.h"
 
 #include <QButtonGroup>
 #include <QEvent>
 #include <QFrame>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QPainter>
 #include <QPaintEvent>
@@ -29,6 +31,7 @@ constexpr int kPageHorizontalInset = 18;
 constexpr int kPageVerticalInset = 4;
 constexpr int kSectionGap = 12;
 constexpr int kNavigationBarHeight = 36;
+constexpr int kNavigationRowHeight = kNavigationBarHeight + (kPageVerticalInset * 2);
 constexpr int kNavigationSelectionAnimationDurationMs = 240;
 
 void prepareStyledBackground(QWidget *widget)
@@ -117,13 +120,14 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     prepareStyledBackground(this);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-    auto *rootLayout = new QVBoxLayout(this);
+    auto *rootLayout = new QGridLayout(this);
     rootLayout->setContentsMargins(0, 0, 0, 0);
     rootLayout->setSpacing(0);
 
     auto *navigationRow = new QWidget(this);
     navigationRow->setObjectName(QStringLiteral("combinationNavigationNavigationRow"));
     prepareStyledBackground(navigationRow);
+    navigationRow->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto *navigationRowLayout = new QHBoxLayout(navigationRow);
     navigationRowLayout->setContentsMargins(kPageHorizontalInset,
                                             kPageVerticalInset,
@@ -199,7 +203,6 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     epsilon_button_->raise();
     differential_button_->raise();
     navigationRowLayout->addWidget(navigationBar, 0, Qt::AlignHCenter | Qt::AlignVCenter);
-    rootLayout->addWidget(navigationRow);
 
     stack_ = new QStackedWidget(this);
     stack_->setObjectName(QStringLiteral("combinationNavigationStack"));
@@ -219,7 +222,9 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     prepareStyledBackground(epsilonScrollArea->viewport());
     epsilonScrollArea->setWidgetResizable(true);
     epsilonScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    epsilonScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    // Reserve the rail across all sub-pages so switching pages never changes
+    // the available card width for a frame while the scrollbar range settles.
+    epsilonScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
     epsilonScrollArea->setFrameShape(QFrame::NoFrame);
     epsilonScrollArea->setMinimumWidth(0);
     epsilonScrollArea->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
@@ -228,7 +233,7 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     prepareStyledBackground(epsilonContent);
     auto *epsilonContentLayout = new QVBoxLayout(epsilonContent);
     epsilonContentLayout->setContentsMargins(kPageHorizontalInset,
-                                             kPageVerticalInset,
+                                             kNavigationRowHeight + kPageVerticalInset,
                                              kPageHorizontalInset,
                                              kPageVerticalInset);
     epsilonContentLayout->setSpacing(kSectionGap);
@@ -241,7 +246,13 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     stack_->addWidget(status_page_);
     stack_->addWidget(epsilon_page_);
     stack_->addWidget(differential_page_);
-    rootLayout->addWidget(stack_, 1);
+    if (auto *rtkPage = qobject_cast<RtkConfigDialog *>(differential_page_.data()))
+    {
+        rtkPage->setCombinationNavigationTopInset(kNavigationRowHeight);
+    }
+    rootLayout->addWidget(stack_, 0, 0);
+    rootLayout->addWidget(navigationRow, 0, 0, Qt::AlignHCenter | Qt::AlignTop);
+    navigationRow->raise();
 
     connect(section_group_, &QButtonGroup::idClicked, this, [this](int id) {
         setCurrentSection(static_cast<Section>(id));
@@ -420,7 +431,7 @@ QWidget *CombinationNavigationPage::createStatusPage()
     scrollArea->setObjectName(QStringLiteral("navigationStatusScrollArea"));
     scrollArea->setWidgetResizable(true);
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
     scrollArea->setFrameShape(QFrame::NoFrame);
     scrollArea->setMinimumWidth(0);
     scrollArea->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
@@ -430,7 +441,7 @@ QWidget *CombinationNavigationPage::createStatusPage()
     prepareStyledBackground(content);
     auto *contentLayout = new QVBoxLayout(content);
     contentLayout->setContentsMargins(kPageHorizontalInset,
-                                      kPageVerticalInset,
+                                      kNavigationRowHeight + kPageVerticalInset,
                                       kPageHorizontalInset,
                                       kPageVerticalInset);
     contentLayout->setSpacing(0);
@@ -478,13 +489,40 @@ void CombinationNavigationPage::applyAppearance()
         dark ? VaporView::AppThemeColor::BorderStrong : VaporView::AppThemeColor::White,
         dark);
     const QString style = QStringLiteral(
-        "QWidget#combinationNavigationPage, QWidget#combinationNavigationNavigationRow, "
-        "QWidget#combinationNavigationStatusPage, QWidget#navigationStatusContent, "
+        "QWidget#combinationNavigationPage, QWidget#combinationNavigationStatusPage, "
+        "QWidget#navigationStatusContent, "
         "QWidget#combinationNavigationEpsilonPage, QWidget#epsilonConfigContent, QWidget#epsilonConfigViewport, "
         "QStackedWidget#combinationNavigationStack, QScrollArea#navigationStatusScrollArea, "
         "QScrollArea#navigationStatusScrollArea > QWidget > QWidget, QScrollArea#epsilonConfigScrollArea, "
         "QScrollArea#epsilonConfigScrollArea > QWidget > QWidget { "
-        "background-color: @vv-surface; border: none; }"
+        "background-color: @vv-window; border: none; }"
+        "QWidget#combinationNavigationNavigationRow { background-color: transparent; border: none; }"
+        "QScrollArea#navigationStatusScrollArea QScrollBar:vertical, "
+        "QScrollArea#epsilonConfigScrollArea QScrollBar:vertical, "
+        "QScrollArea#rtkConfigScrollArea QScrollBar:vertical { "
+        "background-color: @vv-window; width: 8px; border: none; border-radius: 4px; margin: 0px; }"
+        "QScrollArea#navigationStatusScrollArea QScrollBar::handle:vertical, "
+        "QScrollArea#epsilonConfigScrollArea QScrollBar::handle:vertical, "
+        "QScrollArea#rtkConfigScrollArea QScrollBar::handle:vertical { "
+        "background-color: @vv-scrollbar-handle; min-height: 30px; border: none; border-radius: 4px; margin: 0px; }"
+        "QScrollArea#navigationStatusScrollArea QScrollBar::handle:vertical:hover, "
+        "QScrollArea#epsilonConfigScrollArea QScrollBar::handle:vertical:hover, "
+        "QScrollArea#rtkConfigScrollArea QScrollBar::handle:vertical:hover { "
+        "background-color: @vv-scrollbar-handle-hover; }"
+        "QScrollArea#navigationStatusScrollArea QScrollBar::add-page:vertical, "
+        "QScrollArea#navigationStatusScrollArea QScrollBar::sub-page:vertical, "
+        "QScrollArea#epsilonConfigScrollArea QScrollBar::add-page:vertical, "
+        "QScrollArea#epsilonConfigScrollArea QScrollBar::sub-page:vertical, "
+        "QScrollArea#rtkConfigScrollArea QScrollBar::add-page:vertical, "
+        "QScrollArea#rtkConfigScrollArea QScrollBar::sub-page:vertical { "
+        "background-color: @vv-window; border-radius: 4px; }"
+        "QScrollArea#navigationStatusScrollArea QScrollBar::add-line:vertical, "
+        "QScrollArea#navigationStatusScrollArea QScrollBar::sub-line:vertical, "
+        "QScrollArea#epsilonConfigScrollArea QScrollBar::add-line:vertical, "
+        "QScrollArea#epsilonConfigScrollArea QScrollBar::sub-line:vertical, "
+        "QScrollArea#rtkConfigScrollArea QScrollBar::add-line:vertical, "
+        "QScrollArea#rtkConfigScrollArea QScrollBar::sub-line:vertical { "
+        "background-color: @vv-window; border: none; height: 0px; }"
         "QFrame#combinationNavigationNavigationBar { background-color: @vv-primary-subtle; border: 1px solid @vv-border-strong; border-radius: 18px; }"
         "QFrame#combinationNavigationNavigationTrack { background-color: @vv-primary; border: 1px solid %1; border-radius: 15px; }"
         "QPushButton#combinationNavigationStatusButton, QPushButton#combinationNavigationEpsilonButton, "

@@ -3,6 +3,7 @@
 #include "ground/widgets/SerialPortComboSupport.h"
 
 #include <QEvent>
+#include <QGraphicsOpacityEffect>
 #include <QLayout>
 #include <QLinearGradient>
 #include <QPointer>
@@ -26,6 +27,26 @@ int topLevelCardShadowSafeRightInset(int fontScalePercent)
     return static_cast<int>(std::ceil(
                VaporView::kTopLevelCardShadowBlurRadius * shadowScale * 0.6)) +
            1;
+}
+
+void installStableVerticalScrollBarVisibility(QScrollArea *scrollArea)
+{
+    if (!scrollArea || !scrollArea->verticalScrollBar())
+    {
+        return;
+    }
+
+    auto *scrollBar = scrollArea->verticalScrollBar();
+    auto *opacityEffect = new QGraphicsOpacityEffect(scrollBar);
+    scrollBar->setGraphicsEffect(opacityEffect);
+
+    const auto syncVisibility = [scrollBar, opacityEffect]() {
+        opacityEffect->setOpacity(
+            scrollBar->maximum() > scrollBar->minimum() ? 1.0 : 0.0);
+    };
+    QObject::connect(scrollBar, &QScrollBar::rangeChanged,
+                     scrollBar, [syncVisibility](int, int) { syncVisibility(); });
+    syncVisibility();
 }
 
 class ScrollAreaBottomFadeOverlay final : public QWidget
@@ -195,7 +216,11 @@ private:
             return;
         }
 
+        const bool reservesVerticalScrollBar =
+            scroll_area_ &&
+            scroll_area_->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn;
         const bool needsVerticalScrollBar =
+            reservesVerticalScrollBar ||
             vertical_scroll_bar_->maximum() > vertical_scroll_bar_->minimum();
         const int targetRightInset = std::max(0, scroll_bar_right_inset_()) +
             (needsVerticalScrollBar ? 0 : kMainContentVerticalScrollBarWidth);
@@ -2176,6 +2201,11 @@ void MainWindow::setupCentralWidget()
     state_->rtk_config_dialog_->setAttribute(Qt::WA_QuitOnClose, false);
     auto *rtkScrollArea =
         state_->rtk_config_dialog_->findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea"));
+    if (rtkScrollArea)
+    {
+        rtkScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+        installStableVerticalScrollBarVisibility(rtkScrollArea);
+    }
     installScrollAreaBottomFade(rtkScrollArea);
     auto *rtkContent =
         state_->rtk_config_dialog_->findChild<QWidget *>(QStringLiteral("rtkConfigContent"));
@@ -2197,6 +2227,7 @@ void MainWindow::setupCentralWidget()
     auto *combinationStatusContent =
         state_->combination_navigation_page_->findChild<QWidget *>(
             QStringLiteral("navigationStatusContent"));
+    installStableVerticalScrollBarVisibility(combinationStatusScrollArea);
     installScrollAreaRightInsetSynchronizer(
         combinationStatusScrollArea,
         combinationStatusContent ? combinationStatusContent->layout() : nullptr,
@@ -2207,6 +2238,7 @@ void MainWindow::setupCentralWidget()
     auto *combinationEpsilonContent =
         state_->combination_navigation_page_->findChild<QWidget *>(
             QStringLiteral("epsilonConfigContent"));
+    installStableVerticalScrollBarVisibility(combinationEpsilonScrollArea);
     installScrollAreaRightInsetSynchronizer(
         combinationEpsilonScrollArea,
         combinationEpsilonContent ? combinationEpsilonContent->layout() : nullptr,
@@ -3552,10 +3584,10 @@ void MainWindow::updateDeviceConfigState()
 
     const bool remote = isRemoteSkyMode();
     const bool tcpTelemetry = isRemoteSkyTcpMode();
-    const bool localInputsEnabled = !remote && !state_->is_connected_ &&
+    const bool localInputsEnabled = !remote && (isUiTestMode() || !state_->is_connected_) &&
         !state_->connection_attempt_in_progress_ && !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
-    const bool remoteInputsEnabled = remote && !state_->is_connected_ && !state_->connection_attempt_in_progress_;
-    const bool epsilonConfigEnabled = !remote && !state_->connection_attempt_in_progress_ &&
+    const bool remoteInputsEnabled = remote && (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_;
+    const bool epsilonConfigEnabled = !state_->connection_attempt_in_progress_ &&
         !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
 
     if (state_->device_config_.auto_detect_ports_btn)
@@ -3570,7 +3602,9 @@ void MainWindow::updateDeviceConfigState()
     }
     if (state_->epsilon_config_panel_)
     {
-        state_->epsilon_config_panel_->setAvailable(epsilonConfigEnabled);
+        const bool operationPending = state_->epsilon_device_session_ &&
+                                      state_->epsilon_device_session_->operationPending();
+        state_->epsilon_config_panel_->setAvailable(epsilonConfigEnabled && !operationPending);
     }
 
     const QList<QWidget *> localWidgets = {

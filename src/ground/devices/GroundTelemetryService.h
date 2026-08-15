@@ -40,6 +40,7 @@ public:
 
     quint16 sendCommand(CommandId commandId, const QByteArray& payload = QByteArray());
     quint16 sendDeviceOperation(const DeviceOperationRequest& request);
+    bool sendRtcmCorrectionData(const QByteArray& data);
     quint16 sendDeviceCommand(CommandId commandId, SkyDeviceId deviceId);
     quint16 sendRateCommand(CommandId commandId, quint16 hz);
     quint16 sendPeakSearchRangeCommand(quint32 startIndex, quint32 endIndex);

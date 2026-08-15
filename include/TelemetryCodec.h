@@ -64,6 +64,23 @@ public:
     static QByteArray serializeAi8PageData(const Ai8TemperatureControllerProtocol::PageData& data);
     static bool parseAi8PageData(const QByteArray& payload,
                                  Ai8TemperatureControllerProtocol::PageData& data);
+    static QByteArray serializeEpsilonPacketRatesOperation(
+        const EpsilonPacketRatesOperation& operation);
+    static bool parseEpsilonPacketRatesOperation(
+        const QByteArray& payload,
+        EpsilonPacketRatesOperation& operation);
+    static QByteArray serializeEpsilonMainAntennaLeverArmOperation(
+        const EpsilonMainAntennaLeverArmOperation& operation);
+    static bool parseEpsilonMainAntennaLeverArmOperation(
+        const QByteArray& payload,
+        EpsilonMainAntennaLeverArmOperation& operation);
+    static QByteArray serializeEpsilonRtcmInputOperation(
+        const EpsilonRtcmInputOperation& operation);
+    static bool parseEpsilonRtcmInputOperation(
+        const QByteArray& payload,
+        EpsilonRtcmInputOperation& operation);
+    static QByteArray serializeRtcmCorrectionData(const QByteArray& data);
+    static bool parseRtcmCorrectionData(const QByteArray& payload, QByteArray& data);
     static QByteArray serializeDeviceOperationRequest(const DeviceOperationRequest& request);
     static bool parseDeviceOperationRequest(const QByteArray& payload,
                                             DeviceOperationRequest& request);

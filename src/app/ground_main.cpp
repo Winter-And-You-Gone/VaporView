@@ -27,15 +27,19 @@
 #include <QPropertyAnimation>
 #include <QSettings>
 #include <QTimer>
+#include <QVariant>
 #include "shared/theme/AppTheme.h"
 #include "LogService.h"
+#include "TelemetryCodec.h"
 #include "app/LifecycleBreadcrumb.h"
 #include "app/StartupSplash.h"
+#include "ground/devices/RemoteSkyController.h"
 #include "ground/main/MainWindow.h"
 #include "SkyRuntime.h"
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <string_view>
 
 namespace
@@ -288,6 +292,316 @@ void startAi8RemoteE2e(QApplication& app, MainWindow& window, const QString& out
     QTimer::singleShot(1200, pollTimer, [pollTimer]() { pollTimer->start(); });
 }
 
+struct RemoteDeviceE2eState
+{
+    int step = 0;
+    qint64 startedMs = QDateTime::currentMSecsSinceEpoch();
+    quint32 pendingDeviceRequest = 0;
+    quint16 pendingCommandSequence = 0;
+    VaporView::TelemetryStatus lastStatus;
+    VaporView::TemperatureControllerData lastTemperatureController;
+    QHash<quint32, VaporView::DeviceOperationResponse> deviceResponses;
+    QHash<quint16, VaporView::CommandAck> commandAcks;
+};
+
+void startRemoteDeviceE2e(QApplication& app, MainWindow& window, const QString& outputPath)
+{
+    using VaporView::Ground::Devices::RemoteSkyController;
+
+    auto *controllerObject = window.property("remoteSkyController").value<QObject *>();
+    auto *controller = qobject_cast<RemoteSkyController *>(controllerObject);
+    auto *pollTimer = new QTimer(&window);
+    pollTimer->setInterval(50);
+    auto state = std::make_shared<RemoteDeviceE2eState>();
+    auto finish = [&app, outputPath, pollTimer, state](bool success, const QString& detail) {
+        QFile output(outputPath);
+        if (output.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        {
+            output.write(success ? QByteArrayLiteral("PASS\n") : QByteArrayLiteral("FAIL\n"));
+            output.write(detail.toUtf8());
+            output.write("\n");
+        }
+        pollTimer->stop();
+        QTimer::singleShot(0, &app, [&app, success]() { app.exit(success ? 0 : 1); });
+    };
+    if (!controller)
+    {
+        finish(false, QStringLiteral("RemoteSkyController test handle is unavailable"));
+        return;
+    }
+
+    QObject::connect(controller, &RemoteSkyController::deviceOperationResponseReceived,
+                     &window, [state](const VaporView::DeviceOperationResponse& response) {
+        state->deviceResponses.insert(response.request_id, response);
+    });
+    QObject::connect(controller, &RemoteSkyController::commandAckReceived,
+                     &window, [state](const VaporView::CommandAck& ack) {
+        state->commandAcks.insert(ack.command_seq, ack);
+    });
+    QObject::connect(controller, &RemoteSkyController::statusUpdated,
+                     &window, [state](const VaporView::TelemetryStatus& status) {
+        state->lastStatus = status;
+    });
+    QObject::connect(controller, &RemoteSkyController::temperatureControllerStatusUpdated,
+                     &window, [state](const VaporView::TemperatureControllerData& data) {
+        state->lastTemperatureController = data;
+    });
+
+    auto requireDeviceResponse =
+        [state, finish](quint32 requestId, const char *label) -> bool {
+            if (!state->deviceResponses.contains(requestId))
+            {
+                return false;
+            }
+            const VaporView::DeviceOperationResponse response =
+                state->deviceResponses.take(requestId);
+            if (response.error_code != VaporView::CommandErrorCode::Ok)
+            {
+                finish(false, QStringLiteral("%1 failed with %2")
+                                .arg(QString::fromLatin1(label),
+                                     VaporView::commandErrorCodeText(response.error_code)));
+                return false;
+            }
+            return true;
+        };
+    auto requireCommandAck =
+        [state, finish](quint16 sequence, const char *label) -> bool {
+            if (!state->commandAcks.contains(sequence))
+            {
+                return false;
+            }
+            const VaporView::CommandAck ack = state->commandAcks.take(sequence);
+            if (ack.error_code != VaporView::CommandErrorCode::Ok || ack.result != 0)
+            {
+                finish(false, QStringLiteral("%1 failed with %2")
+                                .arg(QString::fromLatin1(label),
+                                     VaporView::commandErrorCodeText(ack.error_code)));
+                return false;
+            }
+            return true;
+        };
+
+    QObject::connect(pollTimer, &QTimer::timeout, &window,
+                     [&window,
+                      controller,
+                      state,
+                      finish,
+                      requireDeviceResponse,
+                      requireCommandAck]() mutable {
+        const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - state->startedMs;
+        if (elapsed > 45000)
+        {
+            finish(false, QStringLiteral("Remote device UI E2E timed out at step %1; open=%2; support=%3; pending_request=%4; pending_seq=%5; ack_seen=%6; temp_valid=%7; temp_target=%8; rtcm_bytes=%9")
+                            .arg(state->step)
+                            .arg(controller->isOpen())
+                            .arg(static_cast<int>(controller->deviceOperationSupport()))
+                            .arg(state->pendingDeviceRequest)
+                            .arg(state->pendingCommandSequence)
+                            .arg(state->commandAcks.contains(state->pendingCommandSequence))
+                            .arg(state->lastTemperatureController.valid)
+                            .arg(state->lastTemperatureController.channels[0].target_temperature_c)
+                            .arg(state->lastStatus.rtcm_correction_bytes_received));
+            return;
+        }
+
+        if (state->step == 0)
+        {
+            if (!QMetaObject::invokeMethod(&window, "onConnectClicked", Qt::DirectConnection))
+            {
+                finish(false, QStringLiteral("MainWindow connect action is unavailable"));
+                return;
+            }
+            state->step = 1;
+            return;
+        }
+
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        if (state->step == 1)
+        {
+            if (!controller->isOpen() ||
+                !controller->statusFresh(nowMs) ||
+                controller->deviceState(VaporView::SkyDeviceId::Epsilon) != VaporView::DeviceState::Connected ||
+                controller->deviceState(VaporView::SkyDeviceId::TemperatureController) != VaporView::DeviceState::Connected ||
+                controller->deviceState(VaporView::SkyDeviceId::Ai8TemperatureController) != VaporView::DeviceState::Connected)
+            {
+                return;
+            }
+            state->step = 2;
+        }
+
+        if (state->step == 2)
+        {
+            VaporView::EpsilonPacketRatesOperation operation;
+            operation.output_rate_hz = 100;
+            operation.callback_rate_hz = 250;
+            operation.packet_rates = {{0x40, 250}, {0x50, 100}, {0x5C, 10}};
+            operation.packet_rate_signature = QStringLiteral("40=250;50=100;5C=10");
+            state->pendingDeviceRequest = controller->configureEpsilonPacketRates(operation);
+            if (state->pendingDeviceRequest == 0)
+            {
+                finish(false, QStringLiteral("EPSILON packet-rate request was not sent"));
+                return;
+            }
+            state->step = 3;
+            return;
+        }
+        if (state->step == 3)
+        {
+            if (!requireDeviceResponse(state->pendingDeviceRequest, "EPSILON packet-rate operation"))
+            {
+                return;
+            }
+            VaporView::EpsilonMainAntennaLeverArmOperation operation;
+            operation.x_m = 1.25;
+            operation.y_m = -0.5;
+            operation.z_m = 0.75;
+            state->pendingDeviceRequest = controller->configureEpsilonMainAntennaLeverArm(operation);
+            if (state->pendingDeviceRequest == 0)
+            {
+                finish(false, QStringLiteral("EPSILON lever-arm request was not sent"));
+                return;
+            }
+            state->step = 4;
+            return;
+        }
+        if (state->step == 4)
+        {
+            if (!requireDeviceResponse(state->pendingDeviceRequest, "EPSILON lever-arm operation"))
+            {
+                return;
+            }
+            VaporView::EpsilonRtcmInputOperation operation;
+            operation.device_port_index = 3;
+            operation.forward_port = QStringLiteral("/dev/ui-e2e-rtcm");
+            operation.forward_baud = 230400;
+            state->pendingDeviceRequest = controller->configureEpsilonRtcmInput(operation);
+            if (state->pendingDeviceRequest == 0)
+            {
+                finish(false, QStringLiteral("EPSILON RTCM request was not sent"));
+                return;
+            }
+            state->step = 5;
+            return;
+        }
+        if (state->step == 5)
+        {
+            if (!requireDeviceResponse(state->pendingDeviceRequest, "EPSILON RTCM operation"))
+            {
+                return;
+            }
+            const QByteArray rtcmBytes = QByteArray::fromHex("D30000123456");
+            if (!controller->sendRtcmCorrectionData(rtcmBytes))
+            {
+                finish(false, QStringLiteral("RTCM correction uplink was rejected"));
+                return;
+            }
+            state->step = 6;
+            return;
+        }
+        if (state->step == 6)
+        {
+            if (state->lastStatus.rtcm_correction_bytes_received < 6 ||
+                state->lastStatus.rtcm_correction_chunks_received == 0 ||
+                state->lastStatus.rtcm_correction_last_receive_time_us == 0)
+            {
+                return;
+            }
+            VaporView::TemperatureControllerCommand command;
+            command.channel = 1;
+            command.target_temperature_c = 33.0;
+            state->pendingCommandSequence = controller->sendCommand(
+                VaporView::CommandId::SetTemperatureTarget,
+                VaporView::TelemetryCodec::serializeTemperatureControllerCommand(command));
+            if (state->pendingCommandSequence == 0)
+            {
+                finish(false, QStringLiteral("RD105 target request was not sent"));
+                return;
+            }
+            state->step = 7;
+            return;
+        }
+        if (state->step == 7)
+        {
+            const bool targetReadBack =
+                state->lastTemperatureController.valid &&
+                std::fabs(state->lastTemperatureController.channels[0].target_temperature_c - 33.0) <= 0.001;
+            if (state->commandAcks.contains(state->pendingCommandSequence) &&
+                !requireCommandAck(state->pendingCommandSequence, "RD105 target command"))
+            {
+                return;
+            }
+            if (!targetReadBack)
+            {
+                return;
+            }
+            VaporView::TemperatureControllerCommand command;
+            command.channel = 1;
+            command.kp = 1200;
+            command.ki = 120;
+            command.kd = 12;
+            state->pendingCommandSequence = controller->sendCommand(
+                VaporView::CommandId::SetTemperaturePid,
+                VaporView::TelemetryCodec::serializeTemperatureControllerCommand(command));
+            if (state->pendingCommandSequence == 0)
+            {
+                finish(false, QStringLiteral("RD105 PID request was not sent"));
+                return;
+            }
+            state->step = 8;
+            return;
+        }
+        if (state->step == 8)
+        {
+            const bool pidReadBack =
+                state->lastTemperatureController.valid &&
+                state->lastTemperatureController.channels[0].kp == 1200 &&
+                state->lastTemperatureController.channels[0].ki == 120 &&
+                state->lastTemperatureController.channels[0].kd == 12;
+            if (state->commandAcks.contains(state->pendingCommandSequence) &&
+                !requireCommandAck(state->pendingCommandSequence, "RD105 PID command"))
+            {
+                return;
+            }
+            if (!pidReadBack)
+            {
+                return;
+            }
+            VaporView::Ai8TemperatureControllerProtocol::Selection selection;
+            selection.channel = 3;
+            selection.inputGroup = 2;
+            selection.outputGroup = 2;
+            state->pendingDeviceRequest = controller->readAi8Page(
+                VaporView::Ai8TemperatureControllerProtocol::Page::Channel, selection);
+            if (state->pendingDeviceRequest == 0)
+            {
+                finish(false, QStringLiteral("AI-8 read request was not sent"));
+                return;
+            }
+            state->step = 9;
+            return;
+        }
+        if (state->step == 9)
+        {
+            if (!state->deviceResponses.contains(state->pendingDeviceRequest))
+            {
+                return;
+            }
+            const VaporView::DeviceOperationResponse response =
+                state->deviceResponses.take(state->pendingDeviceRequest);
+            VaporView::Ai8TemperatureControllerProtocol::PageData page;
+            if (response.error_code != VaporView::CommandErrorCode::Ok ||
+                !VaporView::TelemetryCodec::parseAi8PageData(response.payload, page) ||
+                std::fabs(page.channel.setpointC - 25.0) > 0.001)
+            {
+                finish(false, QStringLiteral("AI-8 remote read did not return simulation defaults"));
+                return;
+            }
+            finish(true, QStringLiteral("Remote EPSILON, RTCM, RD105, and AI-8 E2E passed"));
+        }
+    });
+    QTimer::singleShot(1200, pollTimer, [pollTimer]() { pollTimer->start(); });
+}
+
 int runApplication(int argc, char *argv[])
 {
     QApplication app(argc, argv);
@@ -339,6 +653,10 @@ int runApplication(int argc, char *argv[])
     qRegisterMetaType<VaporView::WaveformFeature>("VaporView::WaveformFeature");
     qRegisterMetaType<VaporView::DeviceStatusItem>("VaporView::DeviceStatusItem");
     qRegisterMetaType<VaporView::TelemetryStatus>("VaporView::TelemetryStatus");
+    qRegisterMetaType<VaporView::TemperatureControllerData>("VaporView::TemperatureControllerData");
+    qRegisterMetaType<VaporView::Ai8TemperatureControllerProtocol::LiveData>(
+        "VaporView::Ai8TemperatureControllerProtocol::LiveData");
+    qRegisterMetaType<VaporView::DeviceOperationResponse>("VaporView::DeviceOperationResponse");
     qRegisterMetaType<VaporView::CommandAck>("VaporView::CommandAck");
     qRegisterMetaType<VaporView::CommandId>("VaporView::CommandId");
     qRegisterMetaType<VaporView::SkyDeviceId>("VaporView::SkyDeviceId");
@@ -361,11 +679,14 @@ int runApplication(int argc, char *argv[])
     QCommandLineOption ai8RemoteE2eOption(QStringLiteral("ai8-remote-e2e-output"),
                                            QStringLiteral("Run the AI-8 remote UI E2E and write a result file"),
                                            QStringLiteral("path"));
+    QCommandLineOption remoteDeviceE2eOption(QStringLiteral("remote-device-e2e-output"),
+                                             QStringLiteral("Run the remote device E2E and write a result file"),
+                                             QStringLiteral("path"));
     parser.addOptions({modeOption, sourceOption, telemetryPortOption, telemetryBaudOption,
                        telemetryTransportOption, telemetryHostOption, telemetryTcpPortOption,
                        skyConfigOption,
                        skySimulateOption, skyWaveHostOption, skyWavePortOption,
-                       ai8RemoteE2eOption});
+                       ai8RemoteE2eOption, remoteDeviceE2eOption});
     parser.process(app);
 
     if (parser.value(modeOption).compare(QStringLiteral("sky"), Qt::CaseInsensitive) == 0)
@@ -509,6 +830,10 @@ int runApplication(int argc, char *argv[])
     if (parser.isSet(ai8RemoteE2eOption))
     {
         startAi8RemoteE2e(app, mainWindow, parser.value(ai8RemoteE2eOption));
+    }
+    if (parser.isSet(remoteDeviceE2eOption))
+    {
+        startRemoteDeviceE2e(app, mainWindow, parser.value(remoteDeviceE2eOption));
     }
 
     return runEventLoop();

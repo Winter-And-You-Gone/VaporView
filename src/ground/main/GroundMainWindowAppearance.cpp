@@ -1636,49 +1636,52 @@ void MainWindow::saveRememberedInputState() const
         }
     };
 
-    saveCombo(QStringLiteral("serial/epsilon_port"), state_->epsilon_port_combo_);
-    saveCombo(QStringLiteral("serial/ptb_port"), state_->ptb_port_combo_);
-    saveCombo(QStringLiteral("serial/hmp_port"), state_->hmp_port_combo_);
-    saveCombo(QStringLiteral("serial/lidar_port"), state_->lidar_port_combo_);
-    saveCombo(QStringLiteral("serial/temperature_port"), state_->temperature_port_combo_);
-    saveCombo(QStringLiteral("serial/ai8_temperature_port"),
-              state_->device_config_.ai8_temperature_port_combo);
-    saveCombo(QStringLiteral("serial/ai8_temperature_baud"),
-              state_->device_config_.ai8_temperature_baud_combo);
-    saveCombo(QStringLiteral("rate/ai8_temperature"),
-              state_->device_config_.ai8_temperature_rate_combo);
-
-    saveCombo(QStringLiteral("serial/epsilon_baud"), state_->epsilon_baud_combo_);
-    saveCombo(QStringLiteral("serial/ptb_baud"), state_->ptb_baud_combo_);
-    saveCombo(QStringLiteral("serial/hmp_baud"), state_->hmp_baud_combo_);
-    saveCombo(QStringLiteral("serial/lidar_baud"), state_->lidar_baud_combo_);
-    saveCombo(QStringLiteral("serial/temperature_baud"), state_->temperature_baud_combo_);
-    saveRememberedSensorBaud(
-        settings,
-        state_->device_config_.ptb_source_combo
-            ? state_->device_config_.ptb_source_combo->currentData().toString()
-            : QStringLiteral("ptb210"),
-        state_->ptb_baud_combo_ ? state_->ptb_baud_combo_ : state_->device_config_.ptb_baud_combo);
-    saveRememberedSensorBaud(
-        settings,
-        state_->device_config_.hmp_source_combo
-            ? state_->device_config_.hmp_source_combo->currentData().toString()
-            : QStringLiteral("hmp3"),
-        state_->hmp_baud_combo_ ? state_->hmp_baud_combo_ : state_->device_config_.hmp_baud_combo);
-
-    saveCombo(QStringLiteral("rate/global"), state_->global_rate_combo_);
-    saveCombo(QStringLiteral("rate/epsilon"), state_->epsilon_rate_combo_);
-    saveCombo(QStringLiteral("rate/ptb"), state_->ptb_rate_combo_);
-    saveCombo(QStringLiteral("rate/hmp"), state_->hmp_rate_combo_);
-    saveCombo(QStringLiteral("rate/lidar"), state_->lidar_rate_combo_);
-    saveCombo(QStringLiteral("rate/temperature"), state_->temperature_rate_combo_);
-    if (state_->device_config_.ptb_source_combo)
+    if (!isRemoteSkyMode())
     {
-        VaporView::setPersistentSetting(settings, QStringLiteral("sensor/pressure_source"), state_->device_config_.ptb_source_combo->currentData());
-    }
-    if (state_->device_config_.hmp_source_combo)
-    {
-        VaporView::setPersistentSetting(settings, QStringLiteral("sensor/humidity_source"), state_->device_config_.hmp_source_combo->currentData());
+        saveCombo(QStringLiteral("serial/epsilon_port"), state_->epsilon_port_combo_);
+        saveCombo(QStringLiteral("serial/ptb_port"), state_->ptb_port_combo_);
+        saveCombo(QStringLiteral("serial/hmp_port"), state_->hmp_port_combo_);
+        saveCombo(QStringLiteral("serial/lidar_port"), state_->lidar_port_combo_);
+        saveCombo(QStringLiteral("serial/temperature_port"), state_->temperature_port_combo_);
+        saveCombo(QStringLiteral("serial/ai8_temperature_port"),
+                  state_->device_config_.ai8_temperature_port_combo);
+        saveCombo(QStringLiteral("serial/ai8_temperature_baud"),
+                  state_->device_config_.ai8_temperature_baud_combo);
+        saveCombo(QStringLiteral("rate/ai8_temperature"),
+                  state_->device_config_.ai8_temperature_rate_combo);
+
+        saveCombo(QStringLiteral("serial/epsilon_baud"), state_->epsilon_baud_combo_);
+        saveCombo(QStringLiteral("serial/ptb_baud"), state_->ptb_baud_combo_);
+        saveCombo(QStringLiteral("serial/hmp_baud"), state_->hmp_baud_combo_);
+        saveCombo(QStringLiteral("serial/lidar_baud"), state_->lidar_baud_combo_);
+        saveCombo(QStringLiteral("serial/temperature_baud"), state_->temperature_baud_combo_);
+        saveRememberedSensorBaud(
+            settings,
+            state_->device_config_.ptb_source_combo
+                ? state_->device_config_.ptb_source_combo->currentData().toString()
+                : QStringLiteral("ptb210"),
+            state_->ptb_baud_combo_ ? state_->ptb_baud_combo_ : state_->device_config_.ptb_baud_combo);
+        saveRememberedSensorBaud(
+            settings,
+            state_->device_config_.hmp_source_combo
+                ? state_->device_config_.hmp_source_combo->currentData().toString()
+                : QStringLiteral("hmp3"),
+            state_->hmp_baud_combo_ ? state_->hmp_baud_combo_ : state_->device_config_.hmp_baud_combo);
+
+        saveCombo(QStringLiteral("rate/global"), state_->global_rate_combo_);
+        saveCombo(QStringLiteral("rate/epsilon"), state_->epsilon_rate_combo_);
+        saveCombo(QStringLiteral("rate/ptb"), state_->ptb_rate_combo_);
+        saveCombo(QStringLiteral("rate/hmp"), state_->hmp_rate_combo_);
+        saveCombo(QStringLiteral("rate/lidar"), state_->lidar_rate_combo_);
+        saveCombo(QStringLiteral("rate/temperature"), state_->temperature_rate_combo_);
+        if (state_->device_config_.ptb_source_combo)
+        {
+            VaporView::setPersistentSetting(settings, QStringLiteral("sensor/pressure_source"), state_->device_config_.ptb_source_combo->currentData());
+        }
+        if (state_->device_config_.hmp_source_combo)
+        {
+            VaporView::setPersistentSetting(settings, QStringLiteral("sensor/humidity_source"), state_->device_config_.hmp_source_combo->currentData());
+        }
     }
     if (state_->data_source_mode_combo_)
     {

@@ -484,7 +484,7 @@ void NavigationStatusPanel::applyAppearance()
 {
     const QString style = QStringLiteral(
         "QWidget#navigationStatusPanel, QWidget#navigationStatusDetailsRow, "
-        "QWidget#navigationStatusQualityRow { background-color: @vv-surface; border: none; }"
+        "QWidget#navigationStatusQualityRow { background-color: @vv-window; border: none; }"
         "QFrame[navigationStatusCard=\"true\"] { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 12px; }"
         "QLabel[navigationStatusSectionTitle=\"true\"] { color: @vv-text-strong; font-weight: 600; }"
         "QLabel[navigationStatusFieldName=\"true\"] { color: @vv-text-secondary; font-weight: 500; }"

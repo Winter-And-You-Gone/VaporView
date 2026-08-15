@@ -182,6 +182,26 @@ quint16 GroundTelemetryService::sendDeviceOperation(const DeviceOperationRequest
                         TelemetryCodec::serializeDeviceOperationRequest(request));
 }
 
+bool GroundTelemetryService::sendRtcmCorrectionData(const QByteArray& data)
+{
+    if (!link_ || !link_->isOpen() || data.isEmpty() || data.size() > 4096)
+    {
+        return false;
+    }
+    const QByteArray payload = TelemetryCodec::serializeRtcmCorrectionData(data);
+    const QByteArray frame = codec_.encodeFrame(
+        MsgType::RtcmCorrectionData,
+        payload,
+        next_frame_seq_++,
+        nowUs());
+    const qint64 written = link_->writeBytes(frame);
+    if (written > 0)
+    {
+        noteTransmittedBytes(written);
+    }
+    return written == frame.size();
+}
+
 quint16 GroundTelemetryService::sendDeviceCommand(CommandId commandId, SkyDeviceId deviceId)
 {
     return sendCommand(commandId, TelemetryCodec::serializeDeviceCommand(deviceId));

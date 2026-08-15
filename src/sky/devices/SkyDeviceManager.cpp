@@ -1,5 +1,7 @@
 #include "SkyDeviceManager.h"
 
+#include "serial_port.h"
+
 #include <QDateTime>
 #include <QJsonObject>
 #include <QMetaObject>
@@ -10,6 +12,7 @@
 #include <limits>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace VaporView
 {
@@ -19,6 +22,7 @@ constexpr int kWaveTcpHeaderSize = 4;
 constexpr int kWaveTcpFloatSize = 4;
 constexpr quint32 kMaxWaveTcpPayloadBytes = 16u * 1024u * 1024u;
 constexpr int kRawEventDrainBatchSize = 64;
+constexpr int kMaxRtcmCorrectionPayloadBytes = 4096;
 constexpr double kPi = 3.14159265358979323846;
 
 enum class WaveTcpHeaderOrder
@@ -370,6 +374,52 @@ bool validTemperatureChannel(quint8 channel)
     return channel >= 1 && channel <= 2;
 }
 
+const std::map<uint8_t, std::vector<int>>& supportedRemoteEpsilonPacketRates()
+{
+    static const std::map<uint8_t, std::vector<int>> kRates = {
+        {0x40, {0, 1, 2, 5, 10, 20, 50, 100, 200, 250, 500, 1000}},
+        {0x41, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x42, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x50, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x53, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x59, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x5A, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x5C, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x5D, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x63, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x64, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+    };
+    return kRates;
+}
+
+bool supportedRemoteEpsilonPacketRate(uint8_t packetId, int rateHz)
+{
+    const auto it = supportedRemoteEpsilonPacketRates().find(packetId);
+    return it != supportedRemoteEpsilonPacketRates().end() &&
+           std::find(it->second.cbegin(), it->second.cend(), rateHz) != it->second.cend();
+}
+
+bool supportedEpsilonRtcmBaud(int baudRate)
+{
+    switch (baudRate)
+    {
+    case 9600:
+    case 19200:
+    case 38400:
+    case 76800:
+    case 115200:
+    case 230400:
+    case 460800:
+    case 921600:
+    case 2625000:
+    case 5250000:
+    case 10500000:
+        return true;
+    default:
+        return false;
+    }
+}
+
 TemperatureControllerChannelData *simulatedTemperatureChannel(TemperatureControllerData& data, quint8 channel)
 {
     if (!validTemperatureChannel(channel))
@@ -393,6 +443,7 @@ SkyDeviceManager::SkyDeviceManager(QObject *parent)
 SkyDeviceManager::~SkyDeviceManager()
 {
     disconnectAll();
+    stopRtcmWriter();
     pending_raw_events_.close();
 }
 
@@ -514,17 +565,20 @@ void SkyDeviceManager::setSimulateData(bool simulate)
     simulate_data_ = simulate;
     if (simulate_data_)
     {
+        stopRtcmWriter();
         simulate_timer_.start(100);
     }
     else
     {
         simulate_timer_.stop();
+        restartRtcmWriter();
     }
 }
 
 void SkyDeviceManager::loadConfig(const SkyConfig& config)
 {
     config_ = config;
+    restartRtcmWriter();
 }
 
 const SkyConfig& SkyDeviceManager::config() const
@@ -737,6 +791,10 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& newConfig)
     const bool temperatureControllerReconfigured = reconfigureDevice(SkyDeviceId::TemperatureController, diff.temperature_controller_changed, config_.temperature_controller.enabled);
     const bool ai8TemperatureControllerReconfigured = reconfigureDevice(SkyDeviceId::Ai8TemperatureController, diff.ai8_temperature_controller_changed, config_.ai8_temperature_controller.enabled);
     const bool waveReconfigured = reconfigureDevice(SkyDeviceId::WaveTcp, diff.wave_tcp_changed, config_.wave_tcp.enabled);
+    if (diff.epsilon_rtcm_changed)
+    {
+        restartRtcmWriter();
+    }
 
     QJsonObject devices;
     devices["epsilon"] = resultItem(diff.epsilon_changed, epsilonReconfigured, epsilon_status_);
@@ -751,11 +809,19 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& newConfig)
     telemetry["changed"] = diff.telemetry_changed;
     telemetry["timers_updated"] = diff.telemetry_changed;
 
+    QJsonObject epsilonRtcm;
+    epsilonRtcm["changed"] = diff.epsilon_rtcm_changed;
+    epsilonRtcm["enabled"] = config_.epsilon_rtcm.enabled;
+    epsilonRtcm["device_port_index"] = config_.epsilon_rtcm.device_port_index;
+    epsilonRtcm["forward_port"] = config_.epsilon_rtcm.forward_port;
+    epsilonRtcm["baud"] = config_.epsilon_rtcm.baud_rate;
+
     result.json["success"] = result.success;
     result.json["error_code"] = static_cast<int>(result.error_code);
     result.json["error"] = commandErrorCodeText(result.error_code);
     result.json["devices"] = devices;
     result.json["telemetry"] = telemetry;
+    result.json["epsilon_rtcm"] = epsilonRtcm;
     return result;
 }
 
@@ -778,6 +844,296 @@ bool SkyDeviceManager::setPeakSearchRange(quint32 startIndex, quint32 endIndex, 
                       {QStringLiteral("end_index"), endIndex}});
     if (errorCode) *errorCode = CommandErrorCode::Ok;
     return true;
+}
+
+bool SkyDeviceManager::configureEpsilonPacketRates(
+    const EpsilonPacketRatesOperation& operation,
+    CommandErrorCode *errorCode,
+    QString *errorMessage)
+{
+    if (operation.output_rate_hz <= 0 || operation.output_rate_hz > 1000 ||
+        operation.callback_rate_hz <= 0 || operation.callback_rate_hz > 1000 ||
+        operation.packet_rates.empty())
+    {
+        if (errorCode) *errorCode = CommandErrorCode::InvalidPayload;
+        if (errorMessage) *errorMessage = QStringLiteral("EPSILON packet-rate payload is invalid.");
+        return false;
+    }
+    for (const auto& entry : operation.packet_rates)
+    {
+        if (!supportedRemoteEpsilonPacketRate(entry.first, entry.second))
+        {
+            if (errorCode) *errorCode = CommandErrorCode::ConfigInvalid;
+            if (errorMessage) *errorMessage = QStringLiteral("EPSILON packet id or rate is unsupported.");
+            return false;
+        }
+    }
+    if (epsilon_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        if (errorMessage) *errorMessage = QStringLiteral("EPSILON is not connected.");
+        return false;
+    }
+    if (simulate_data_)
+    {
+        simulated_epsilon_packet_rates_ = operation.packet_rates;
+        config_.epsilon.frequency_hz = operation.callback_rate_hz;
+        if (errorCode) *errorCode = CommandErrorCode::Ok;
+        if (errorMessage) *errorMessage = QStringLiteral("EPSILON packet rates were applied in simulation.");
+        return true;
+    }
+    if (!epsilon_ || !epsilon_->isRunning())
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        if (errorMessage) *errorMessage = QStringLiteral("EPSILON collector is not running.");
+        return false;
+    }
+    const bool ok = epsilon_->setOutputPacketRates(operation.packet_rates, true);
+    if (ok)
+    {
+        config_.epsilon.frequency_hz = operation.callback_rate_hz;
+    }
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    if (errorMessage && !ok) *errorMessage = QStringLiteral("EPSILON packet-rate configuration failed.");
+    return ok;
+}
+
+bool SkyDeviceManager::configureEpsilonMainAntennaLeverArm(
+    const EpsilonMainAntennaLeverArmOperation& operation,
+    CommandErrorCode *errorCode,
+    QString *errorMessage)
+{
+    if (!std::isfinite(operation.x_m) || !std::isfinite(operation.y_m) ||
+        !std::isfinite(operation.z_m) || std::abs(operation.x_m) > 100.0 ||
+        std::abs(operation.y_m) > 100.0 || std::abs(operation.z_m) > 100.0)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::InvalidPayload;
+        if (errorMessage) *errorMessage = QStringLiteral("EPSILON lever-arm payload is invalid.");
+        return false;
+    }
+    if (epsilon_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        if (errorMessage) *errorMessage = QStringLiteral("EPSILON is not connected.");
+        return false;
+    }
+    if (simulate_data_)
+    {
+        simulated_epsilon_lever_arm_ = operation;
+        if (errorCode) *errorCode = CommandErrorCode::Ok;
+        if (errorMessage) *errorMessage = QStringLiteral("EPSILON lever arm was applied in simulation.");
+        return true;
+    }
+    if (!epsilon_ || !epsilon_->isRunning())
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        if (errorMessage) *errorMessage = QStringLiteral("EPSILON collector is not running.");
+        return false;
+    }
+    const QString port = config_.epsilon.port;
+    const int baudRate = config_.epsilon.baud_rate;
+    epsilon_->stop();
+    if (!epsilon_->start(port.toStdString(), SerialConfig::N81(baudRate)))
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceConnectFailed;
+        if (errorMessage) *errorMessage = QStringLiteral("EPSILON serial port could not be reopened for lever-arm configuration.");
+        return false;
+    }
+    const bool ok = epsilon_->configureMainAntennaLeverArm(
+        operation.x_m, operation.y_m, operation.z_m);
+    epsilon_->stop();
+    const bool restored = epsilon_->start(port.toStdString(), SerialConfig::N81(baudRate)) &&
+                          epsilon_->checkDeviceResponse() &&
+                          epsilon_->startStreaming();
+    if (!restored)
+    {
+        setState(SkyDeviceId::Epsilon, DeviceState::Error,
+                 static_cast<quint16>(CommandErrorCode::InternalError));
+        if (errorCode) *errorCode = CommandErrorCode::InternalError;
+        if (errorMessage) *errorMessage = QStringLiteral("EPSILON lever-arm operation finished but live stream restore failed.");
+        return false;
+    }
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    if (errorMessage && !ok) *errorMessage = QStringLiteral("EPSILON lever-arm configuration failed.");
+    return ok;
+}
+
+bool SkyDeviceManager::configureEpsilonRtcmInput(
+    const EpsilonRtcmInputOperation& operation,
+    CommandErrorCode *errorCode,
+    QString *errorMessage)
+{
+    if (operation.device_port_index < 2 || operation.device_port_index > 5 ||
+        !supportedEpsilonRtcmBaud(operation.forward_baud))
+    {
+        if (errorCode) *errorCode = CommandErrorCode::InvalidPayload;
+        if (errorMessage) *errorMessage = QStringLiteral("EPSILON RTCM input payload is invalid.");
+        return false;
+    }
+    if (epsilon_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        if (errorMessage) *errorMessage = QStringLiteral("EPSILON is not connected.");
+        return false;
+    }
+    if (simulate_data_)
+    {
+        simulated_epsilon_rtcm_input_ = operation;
+        config_.epsilon_rtcm.enabled = true;
+        config_.epsilon_rtcm.device_port_index = operation.device_port_index;
+        config_.epsilon_rtcm.forward_port = operation.forward_port.trimmed();
+        config_.epsilon_rtcm.baud_rate = operation.forward_baud;
+        if (errorCode) *errorCode = CommandErrorCode::Ok;
+        if (errorMessage) *errorMessage = QStringLiteral("EPSILON RTCM input was applied in simulation.");
+        return true;
+    }
+    if (!epsilon_ || !epsilon_->isRunning())
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        if (errorMessage) *errorMessage = QStringLiteral("EPSILON collector is not running.");
+        return false;
+    }
+    const QString port = config_.epsilon.port;
+    const int baudRate = config_.epsilon.baud_rate;
+    epsilon_->stop();
+    if (!epsilon_->start(port.toStdString(), SerialConfig::N81(baudRate)))
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceConnectFailed;
+        if (errorMessage) *errorMessage = QStringLiteral("EPSILON serial port could not be reopened for RTCM configuration.");
+        return false;
+    }
+    const bool ok = epsilon_->configureRtcmPort(
+        operation.device_port_index, operation.forward_baud);
+    epsilon_->stop();
+    const bool restored = epsilon_->start(port.toStdString(), SerialConfig::N81(baudRate)) &&
+                          epsilon_->checkDeviceResponse() &&
+                          epsilon_->startStreaming();
+    if (!restored)
+    {
+        setState(SkyDeviceId::Epsilon, DeviceState::Error,
+                 static_cast<quint16>(CommandErrorCode::InternalError));
+        if (errorCode) *errorCode = CommandErrorCode::InternalError;
+        if (errorMessage) *errorMessage = QStringLiteral("EPSILON RTCM operation finished but live stream restore failed.");
+        return false;
+    }
+    if (ok)
+    {
+        config_.epsilon_rtcm.enabled = !operation.forward_port.trimmed().isEmpty();
+        config_.epsilon_rtcm.device_port_index = operation.device_port_index;
+        config_.epsilon_rtcm.forward_port = operation.forward_port.trimmed();
+        config_.epsilon_rtcm.baud_rate = operation.forward_baud;
+        restartRtcmWriter();
+    }
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    if (errorMessage && !ok) *errorMessage = QStringLiteral("EPSILON RTCM input configuration failed.");
+    return ok;
+}
+
+bool SkyDeviceManager::receiveRtcmCorrectionData(
+    const QByteArray& data,
+    CommandErrorCode *errorCode)
+{
+    if (data.isEmpty() || data.size() > kMaxRtcmCorrectionPayloadBytes)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::InvalidPayload;
+        return false;
+    }
+    if (simulate_data_)
+    {
+        rtcm_correction_bytes_received_.fetch_add(static_cast<quint64>(data.size()));
+        rtcm_correction_chunks_received_.fetch_add(1);
+        rtcm_correction_last_receive_time_us_.store(nowUs());
+        if (errorCode) *errorCode = CommandErrorCode::Ok;
+        return true;
+    }
+    if (!config_.epsilon_rtcm.enabled || config_.epsilon_rtcm.forward_port.trimmed().isEmpty())
+    {
+        rtcm_correction_dropped_bytes_.fetch_add(static_cast<quint64>(data.size()));
+        rtcm_correction_dropped_chunks_.fetch_add(1);
+        if (errorCode) *errorCode = CommandErrorCode::ConfigInvalid;
+        return false;
+    }
+    const auto push = pending_rtcm_corrections_.push(data, static_cast<quint64>(data.size()));
+    if (push.status != BoundedByteQueue<QByteArray>::PushStatus::Enqueued)
+    {
+        rtcm_correction_dropped_bytes_.fetch_add(static_cast<quint64>(data.size()));
+        rtcm_correction_dropped_chunks_.fetch_add(1);
+        if (errorCode) *errorCode = CommandErrorCode::ConfigApplyFailed;
+        return false;
+    }
+    rtcm_correction_bytes_received_.fetch_add(static_cast<quint64>(data.size()));
+    rtcm_correction_chunks_received_.fetch_add(1);
+    rtcm_correction_last_receive_time_us_.store(nowUs());
+    if (errorCode) *errorCode = CommandErrorCode::Ok;
+    return true;
+}
+
+RtcmCorrectionStats SkyDeviceManager::rtcmCorrectionStats() const
+{
+    RtcmCorrectionStats stats;
+    stats.bytes_received = rtcm_correction_bytes_received_.load();
+    stats.chunks_received = rtcm_correction_chunks_received_.load();
+    stats.dropped_bytes = rtcm_correction_dropped_bytes_.load();
+    stats.dropped_chunks = rtcm_correction_dropped_chunks_.load();
+    stats.last_receive_time_us = rtcm_correction_last_receive_time_us_.load();
+    return stats;
+}
+
+void SkyDeviceManager::restartRtcmWriter()
+{
+    stopRtcmWriter();
+    if (simulate_data_ ||
+        !config_.epsilon_rtcm.enabled ||
+        config_.epsilon_rtcm.forward_port.trimmed().isEmpty() ||
+        config_.epsilon_rtcm.baud_rate <= 0)
+    {
+        return;
+    }
+    pending_rtcm_corrections_.reset(true);
+    rtcm_writer_thread_ = std::thread([this,
+                                       port = config_.epsilon_rtcm.forward_port.trimmed(),
+                                       baud = config_.epsilon_rtcm.baud_rate]() {
+        rtcmWriterLoop(port, baud);
+    });
+}
+
+void SkyDeviceManager::stopRtcmWriter()
+{
+    pending_rtcm_corrections_.close();
+    if (rtcm_writer_thread_.joinable())
+    {
+        rtcm_writer_thread_.join();
+    }
+    pending_rtcm_corrections_.reset(false);
+}
+
+void SkyDeviceManager::rtcmWriterLoop(QString port, int baudRate)
+{
+    SerialPort serial;
+    bool opened = false;
+    QByteArray payload;
+    while (pending_rtcm_corrections_.waitPop(&payload))
+    {
+        if (!opened)
+        {
+            opened = serial.open(port.toStdString(), SerialConfig::N81(baudRate));
+        }
+        if (!opened)
+        {
+            rtcm_correction_dropped_bytes_.fetch_add(static_cast<quint64>(payload.size()));
+            rtcm_correction_dropped_chunks_.fetch_add(1);
+            continue;
+        }
+        const ssize_t written = serial.write(payload.constData(), static_cast<size_t>(payload.size()));
+        if (written != payload.size())
+        {
+            rtcm_correction_dropped_bytes_.fetch_add(static_cast<quint64>(payload.size()));
+            rtcm_correction_dropped_chunks_.fetch_add(1);
+            serial.close();
+            opened = false;
+        }
+    }
+    serial.close();
 }
 
 bool SkyDeviceManager::setTemperatureTarget(quint8 channel, double celsius, CommandErrorCode *errorCode)

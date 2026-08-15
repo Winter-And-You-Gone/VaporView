@@ -708,6 +708,14 @@ void MainWindow::stopAllCollectors()
     {
         state_->ai8_device_session_->setLocalAvailable(false);
     }
+    if (state_->epsilon_device_session_)
+    {
+        state_->epsilon_device_session_->setLocalAvailable(false);
+    }
+    if (state_->rd105_device_session_)
+    {
+        state_->rd105_device_session_->setLocalAvailable(false);
+    }
     updateAi8TemperatureTitleStatus();
 }
 
@@ -739,6 +747,33 @@ void MainWindow::finishConnectionAttempt(bool connected)
         {
             state_->ai8_device_session_->setLocalAvailable(ai8Connected, detail);
         }
+    }
+    if (state_->epsilon_device_session_)
+    {
+        const CollectorSnapshot collectors = snapshotCollectors();
+        const bool epsilonConnected = collectors.epsilon && collectors.epsilon->isRunning();
+        const QString detail = epsilonConnected
+            ? QStringLiteral("%1 @ %2")
+                  .arg(localSerialPortComboValue(state_->epsilon_port_combo_),
+                       state_->epsilon_baud_combo_
+                           ? state_->epsilon_baud_combo_->currentText()
+                           : QStringLiteral("921600"))
+            : QString();
+        state_->epsilon_device_session_->setLocalAvailable(epsilonConnected, detail);
+    }
+    if (state_->rd105_device_session_)
+    {
+        const CollectorSnapshot collectors = snapshotCollectors();
+        const bool rd105Connected = collectors.temperature_controller &&
+                                    collectors.temperature_controller->isRunning();
+        const QString detail = rd105Connected
+            ? QStringLiteral("%1 @ %2")
+                  .arg(localSerialPortComboValue(state_->device_config_.temperature_port_combo),
+                       state_->device_config_.temperature_baud_combo
+                           ? state_->device_config_.temperature_baud_combo->currentText()
+                           : QStringLiteral("38400"))
+            : QString();
+        state_->rd105_device_session_->setLocalAvailable(rd105Connected, detail);
     }
     updateAi8TemperatureTitleStatus();
     if (ai8Connected)
@@ -1361,6 +1396,16 @@ void MainWindow::onEpsilonDataReady()
     if (collectors.epsilon)
     {
         state_->current_epsilon_ = collectors.epsilon->getLatestData();
+        if (state_->epsilon_device_session_ && !isRemoteSkyMode())
+        {
+            const QString detail = QStringLiteral("%1 @ %2")
+                .arg(localSerialPortComboValue(state_->epsilon_port_combo_),
+                     state_->epsilon_baud_combo_
+                         ? state_->epsilon_baud_combo_->currentText()
+                         : QStringLiteral("921600"));
+            state_->epsilon_device_session_->setLocalAvailable(
+                collectors.epsilon->isRunning(), detail);
+        }
     }
 #ifdef VAPORVIEW_HAS_OSGEARTH
     maybeForwardMap3DSample(
@@ -1416,6 +1461,18 @@ void MainWindow::onTemperatureControllerDataReady()
             return;
         }
         state_->current_temperature_controller_ = latest;
+        if (state_->rd105_device_session_ && !isRemoteSkyMode())
+        {
+            const bool available = collectors.temperature_controller->isRunning();
+            const QString detail = available
+                ? QStringLiteral("%1 @ %2")
+                      .arg(localSerialPortComboValue(state_->device_config_.temperature_port_combo),
+                           state_->device_config_.temperature_baud_combo
+                               ? state_->device_config_.temperature_baud_combo->currentText()
+                               : QStringLiteral("38400"))
+                : QString();
+            state_->rd105_device_session_->setLocalAvailable(available, detail);
+        }
     }
 }
 

@@ -19,6 +19,17 @@ struct SerialDeviceConfig
     bool operator!=(const SerialDeviceConfig& other) const;
 };
 
+struct EpsilonRtcmConfig
+{
+    bool enabled = false;
+    int device_port_index = 2;
+    QString forward_port;
+    int baud_rate = 115200;
+
+    bool operator==(const EpsilonRtcmConfig& other) const;
+    bool operator!=(const EpsilonRtcmConfig& other) const;
+};
+
 struct TemperatureControllerConfig
 {
     bool enabled = false;
@@ -59,6 +70,7 @@ struct TelemetryRateConfig
 struct SkyConfigDiff
 {
     bool epsilon_changed = false;
+    bool epsilon_rtcm_changed = false;
     bool ptb_changed = false;
     bool hmp_changed = false;
     bool lidar_changed = false;
@@ -71,6 +83,7 @@ struct SkyConfigDiff
 struct SkyConfig
 {
     SerialDeviceConfig epsilon;
+    EpsilonRtcmConfig epsilon_rtcm;
     SerialDeviceConfig ptb;
     SerialDeviceConfig hmp;
     SerialDeviceConfig lidar;

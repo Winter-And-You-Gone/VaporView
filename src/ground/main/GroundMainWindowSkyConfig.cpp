@@ -332,9 +332,29 @@ void MainWindow::enterRemoteSkyDeviceConfigMode()
             installRemoteSkySerialPortComboBehavior(combo);
         }
     }
-    setRemoteSkyConfigUi(state_->remote_sky_config_loaded_
+    VaporView::SkyConfig config = state_->remote_sky_config_loaded_
         ? state_->remote_sky_config_
-        : unloadedSkyConfig());
+        : unloadedSkyConfig();
+    if (!state_->remote_sky_config_loaded_)
+    {
+        QSettings settings = VaporView::applicationConfigSettings();
+        settings.beginGroup(QStringLiteral("MainWindow"));
+        auto rememberedBaud = [&settings](const QString& source, const QString& legacyKey) {
+            bool ok = false;
+            const int baud = VaporView::Ground::MainSupport::rememberedSensorBaud(
+                settings, source, legacyKey).toInt(&ok);
+            return ok && baud > 0 ? baud : VaporView::Ground::MainSupport::sensorDefaultBaud(source).toInt();
+        };
+        config.ptb.source = settings.value(
+            QStringLiteral("sensor/pressure_source"), QStringLiteral("ptb210")).toString();
+        config.ptb.baud_rate = rememberedBaud(
+            config.ptb.source, QStringLiteral("serial/ptb_baud"));
+        config.hmp.source = settings.value(
+            QStringLiteral("sensor/humidity_source"), QStringLiteral("hmp3")).toString();
+        config.hmp.baud_rate = rememberedBaud(
+            config.hmp.source, QStringLiteral("serial/hmp_baud"));
+    }
+    setRemoteSkyConfigUi(config);
     updateRemoteSkyConfigControlsState();
 }
 
@@ -746,27 +766,40 @@ void MainWindow::updateRemoteSkyConfigControlsState()
                          state_->remote_sky_config_applying_ ||
                          state_->remote_sky_config_saving_;
     const bool fieldsEnabled = hasConfig && !pending;
-    for (QWidget *widget : {static_cast<QWidget *>(state_->device_config_.epsilon_port_combo),
-                            static_cast<QWidget *>(state_->device_config_.epsilon_baud_combo),
-                            static_cast<QWidget *>(state_->device_config_.epsilon_rate_combo),
-                            static_cast<QWidget *>(state_->device_config_.ptb_port_combo),
-                            static_cast<QWidget *>(state_->device_config_.ptb_baud_combo),
-                            static_cast<QWidget *>(state_->device_config_.ptb_rate_combo),
-                            static_cast<QWidget *>(state_->device_config_.ptb_source_combo),
-                            static_cast<QWidget *>(state_->device_config_.hmp_port_combo),
-                            static_cast<QWidget *>(state_->device_config_.hmp_baud_combo),
-                            static_cast<QWidget *>(state_->device_config_.hmp_rate_combo),
-                            static_cast<QWidget *>(state_->device_config_.hmp_source_combo),
-                            static_cast<QWidget *>(state_->device_config_.lidar_port_combo),
-                            static_cast<QWidget *>(state_->device_config_.lidar_baud_combo),
-                            static_cast<QWidget *>(state_->device_config_.lidar_rate_combo),
-                            static_cast<QWidget *>(state_->device_config_.temperature_port_combo),
-                            static_cast<QWidget *>(state_->device_config_.temperature_baud_combo),
-                            static_cast<QWidget *>(state_->device_config_.temperature_rate_combo),
-                            static_cast<QWidget *>(state_->device_config_.ai8_temperature_port_combo),
-                            static_cast<QWidget *>(state_->device_config_.ai8_temperature_baud_combo),
-                            static_cast<QWidget *>(state_->device_config_.ai8_temperature_rate_combo),
-                            static_cast<QWidget *>(state_->device_config_.epsilon_enabled_check),
+    const QList<QWidget *> targetWidgets = {
+        state_->device_config_.epsilon_port_combo,
+        state_->device_config_.epsilon_baud_combo,
+        state_->device_config_.epsilon_rate_combo,
+        state_->device_config_.ptb_port_combo,
+        state_->device_config_.ptb_baud_combo,
+        state_->device_config_.ptb_rate_combo,
+        state_->device_config_.ptb_source_combo,
+        state_->device_config_.hmp_port_combo,
+        state_->device_config_.hmp_baud_combo,
+        state_->device_config_.hmp_rate_combo,
+        state_->device_config_.hmp_source_combo,
+        state_->device_config_.lidar_port_combo,
+        state_->device_config_.lidar_baud_combo,
+        state_->device_config_.lidar_rate_combo,
+        state_->device_config_.temperature_port_combo,
+        state_->device_config_.temperature_baud_combo,
+        state_->device_config_.temperature_rate_combo,
+        state_->device_config_.ai8_temperature_port_combo,
+        state_->device_config_.ai8_temperature_baud_combo,
+        state_->device_config_.ai8_temperature_rate_combo,
+    };
+    if (remote)
+    {
+        for (QWidget *widget : targetWidgets)
+        {
+            if (widget)
+            {
+                widget->setEnabled(fieldsEnabled);
+            }
+        }
+    }
+
+    for (QWidget *widget : {static_cast<QWidget *>(state_->device_config_.epsilon_enabled_check),
                             static_cast<QWidget *>(state_->device_config_.ptb_enabled_check),
                             static_cast<QWidget *>(state_->device_config_.hmp_enabled_check),
                             static_cast<QWidget *>(state_->device_config_.lidar_enabled_check),
@@ -786,7 +819,7 @@ void MainWindow::updateRemoteSkyConfigControlsState()
     {
         if (widget)
         {
-            widget->setEnabled(fieldsEnabled);
+            widget->setEnabled(remote && fieldsEnabled);
         }
     }
     if (state_->device_config_.remote_sky_read_btn)

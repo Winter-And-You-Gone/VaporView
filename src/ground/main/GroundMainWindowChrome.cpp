@@ -375,6 +375,14 @@ void MainWindow::setEnglish(bool english)
     {
         state_->ai8_device_session_->setEnglish(english);
     }
+    if (state_->epsilon_device_session_)
+    {
+        state_->epsilon_device_session_->setEnglish(english);
+    }
+    if (state_->rd105_device_session_)
+    {
+        state_->rd105_device_session_->setEnglish(english);
+    }
     if (qApp)
     {
         qApp->setProperty(kEnglishProperty, state_->is_english_);

@@ -1238,6 +1238,7 @@ RtkConfigDialog::~RtkConfigDialog()
         is_running_ = false;
         rtk_service_->stop();
     }
+    stopRtcmCorrectionSinkServer();
     stopGgaMonitor();
     joinBackgroundTasks();
     saveSettings();
@@ -2128,6 +2129,13 @@ void RtkConfigDialog::setEnglish(bool english)
     updateButtonStates();
 }
 
+void RtkConfigDialog::setCombinationNavigationTopInset(int pixels)
+{
+    combination_navigation_top_inset_ = std::max(0, pixels);
+    applyScaledUiMetrics();
+    updateGeometry();
+}
+
 int RtkConfigDialog::scalePixels(int pixels) const
 {
     return static_cast<int>(std::lround(pixels * font_scale_percent_ / 100.0));
@@ -2188,6 +2196,11 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     if (main_layout_)
     {
+        const int embeddedTopInset = scalePixels(kEmbeddedTopLevelCardOuterVerticalInset) +
+            (embedded_ ? combination_navigation_top_inset_ : 0);
+        const int contentTopInset = embedded_
+            ? embeddedTopInset
+            : scalePixels(kEmbeddedTopLevelCardChromeInset);
         const int embeddedLeftInset = compactLayout ? 4 : kEmbeddedMainContentLeftCardInset;
         const int embeddedRightInset = compactLayout
             ? 0
@@ -2196,9 +2209,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
         main_layout_->setContentsMargins(scalePixels(embedded_
                                              ? embeddedLeftInset
                                              : kEmbeddedTopLevelCardChromeInset),
-                                         scalePixels(embedded_
-                                             ? kEmbeddedTopLevelCardOuterVerticalInset
-                                             : kEmbeddedTopLevelCardChromeInset),
+                                         contentTopInset,
                                          scalePixels(embedded_
                                              ? embeddedRightInset
                                              : kEmbeddedTopLevelCardChromeInset),
@@ -2864,6 +2875,82 @@ void RtkConfigDialog::setEpsilonMainAntennaLeverArmApplier(EpsilonLeverArmApplie
     epsilon_main_antenna_lever_arm_applier_ = std::move(applier);
 }
 
+void RtkConfigDialog::setRtcmCorrectionSink(RtcmCorrectionSink sink, const QString& label)
+{
+    if (is_running_)
+    {
+        onStopClicked();
+    }
+    rtcm_correction_sink_ = std::move(sink);
+    rtcm_correction_sink_label_ = label.trimmed();
+    refreshPortCombos();
+    updateButtonStates();
+}
+
+bool RtkConfigDialog::startRtcmCorrectionSinkServer(RtkStreamConfig *config, QString *errorMessage)
+{
+    stopRtcmCorrectionSinkServer();
+    if (!rtcm_correction_sink_)
+    {
+        return true;
+    }
+    rtcm_correction_sink_server_ = std::make_unique<QTcpServer>();
+    if (!rtcm_correction_sink_server_->listen(QHostAddress::LocalHost))
+    {
+        if (errorMessage)
+        {
+            *errorMessage = rtcm_correction_sink_server_->errorString();
+        }
+        rtcm_correction_sink_server_.reset();
+        return false;
+    }
+
+    connect(rtcm_correction_sink_server_.get(), &QTcpServer::newConnection, this, [this]() {
+        while (rtcm_correction_sink_server_ && rtcm_correction_sink_server_->hasPendingConnections())
+        {
+            QTcpSocket *socket = rtcm_correction_sink_server_->nextPendingConnection();
+            if (!socket)
+            {
+                continue;
+            }
+            socket->setParent(this);
+            connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
+                const QByteArray payload = socket->readAll();
+                if (payload.isEmpty() || !rtcm_correction_sink_)
+                {
+                    return;
+                }
+                if (!rtcm_correction_sink_(payload))
+                {
+                    appendLog(textFor("RTCM correction sink rejected a payload; check the Remote Sky link.",
+                                      "RTCM 差分转发被接收端拒绝，请检查天空端链路。"));
+                }
+            });
+            connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+        }
+    });
+
+    if (config)
+    {
+        config->outputMode = RtkStreamConfig::OutputMode::TcpClient;
+        config->outputPathOverride = QStringLiteral("127.0.0.1:%1")
+            .arg(rtcm_correction_sink_server_->serverPort());
+        config->outputPort = rtcm_correction_sink_label_.isEmpty()
+            ? QStringLiteral("Remote Sky")
+            : rtcm_correction_sink_label_;
+        config->relayBack = 0;
+    }
+    return true;
+}
+
+void RtkConfigDialog::stopRtcmCorrectionSinkServer()
+{
+    if (rtcm_correction_sink_server_)
+    {
+        rtcm_correction_sink_server_->close();
+        rtcm_correction_sink_server_.reset();
+    }
+}
 bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config,
                                            QString *description,
                                            QString *validationError,
@@ -3000,14 +3087,15 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config,
 void RtkConfigDialog::updateButtonStates()
 {
     const bool busy = isBackgroundTaskRunning();
+    const bool usingCorrectionSink = static_cast<bool>(rtcm_correction_sink_);
     start_btn_->setEnabled(!is_running_ && !busy);
     stop_btn_->setEnabled(is_running_ && !busy);
     test_btn_->setEnabled(!is_running_ && !busy);
     apply_main_antenna_lever_btn_->setEnabled(!is_running_ && !busy);
     fetch_mountpoints_btn_->setEnabled(!busy);
-    refresh_ports_btn_->setEnabled(!busy);
-    auto_detect_ports_btn_->setEnabled(!busy);
-    gga_toggle_btn_->setEnabled(!busy);
+    refresh_ports_btn_->setEnabled(!busy && !usingCorrectionSink);
+    auto_detect_ports_btn_->setEnabled(!busy && !usingCorrectionSink);
+    gga_toggle_btn_->setEnabled(!busy && !usingCorrectionSink);
     if (!is_running_)
     {
         updateStreamStatusFields();
@@ -4065,7 +4153,8 @@ void RtkConfigDialog::onGgaPollTimer()
 
 void RtkConfigDialog::refreshPortCombos()
 {
-    const QStringList ports = getAvailablePorts();
+    const bool usingCorrectionSink = static_cast<bool>(rtcm_correction_sink_);
+    const QStringList ports = usingCorrectionSink ? QStringList{} : getAvailablePorts();
     const QString currentOutput = selectedSerialPortText(output_port_combo_);
     const QString currentGga = isMainGgaSourceSelected() ? QString() : ggaPortName();
 
@@ -4073,31 +4162,44 @@ void RtkConfigDialog::refreshPortCombos()
     {
         const QSignalBlocker blocker(output_port_combo_);
         output_port_combo_->clear();
-        output_port_combo_->addItem(textFor("-- Select --", "未选择"));
-        for (const QString& port : ports)
+        if (usingCorrectionSink)
         {
-            output_port_combo_->addItem(port, port);
+            const QString sinkLabel = rtcm_correction_sink_label_.isEmpty()
+                ? QStringLiteral("Remote Sky")
+                : rtcm_correction_sink_label_;
+            output_port_combo_->addItem(sinkLabel, sinkLabel);
+            output_port_combo_->setCurrentIndex(0);
+            output_port_combo_->setEnabled(false);
         }
-
-        int selectedIndex = -1;
-        for (int index = 1; index < output_port_combo_->count(); ++index)
+        else
         {
-            if (VaporView::serialPortNamesMatch(output_port_combo_->itemText(index), currentOutput))
+            output_port_combo_->setEnabled(true);
+            output_port_combo_->addItem(textFor("-- Select --", "未选择"));
+            for (const QString& port : ports)
             {
-                selectedIndex = index;
-                break;
+                output_port_combo_->addItem(port, port);
             }
+
+            int selectedIndex = -1;
+            for (int index = 1; index < output_port_combo_->count(); ++index)
+            {
+                if (VaporView::serialPortNamesMatch(output_port_combo_->itemText(index), currentOutput))
+                {
+                    selectedIndex = index;
+                    break;
+                }
+            }
+            if (selectedIndex < 0 && VaporView::isRememberedSerialPort(currentOutput))
+            {
+                selectedIndex = output_port_combo_->count();
+                output_port_combo_->addItem(currentOutput, currentOutput);
+                output_port_combo_->setItemData(
+                    selectedIndex,
+                    true,
+                    VaporView::kSerialPortHistoryItemRole);
+            }
+            output_port_combo_->setCurrentIndex(selectedIndex >= 0 ? selectedIndex : 0);
         }
-        if (selectedIndex < 0 && VaporView::isRememberedSerialPort(currentOutput))
-        {
-            selectedIndex = output_port_combo_->count();
-            output_port_combo_->addItem(currentOutput, currentOutput);
-            output_port_combo_->setItemData(
-                selectedIndex,
-                true,
-                VaporView::kSerialPortHistoryItemRole);
-        }
-        output_port_combo_->setCurrentIndex(selectedIndex >= 0 ? selectedIndex : 0);
     }
 
     if (gga_port_combo_)
@@ -4110,6 +4212,7 @@ void RtkConfigDialog::refreshPortCombos()
             gga_port_combo_->addItem(port, port);
         }
         applySavedGgaSource(currentGga);
+        gga_port_combo_->setEnabled(!usingCorrectionSink);
     }
 }
 
@@ -4427,10 +4530,24 @@ void RtkConfigDialog::onStartClicked()
     RtkStreamConfig config;
     QString description;
     QString validationError;
-    if (!buildRtkStreamConfig(&config, &description, &validationError))
+    const bool usingCorrectionSink = static_cast<bool>(rtcm_correction_sink_);
+    if (!buildRtkStreamConfig(&config, &description, &validationError, !usingCorrectionSink))
     {
         QMessageBox::warning(this, textFor("Error", "错误"), validationError);
         return;
+    }
+
+    if (usingCorrectionSink)
+    {
+        QString sinkError;
+        if (!startRtcmCorrectionSinkServer(&config, &sinkError))
+        {
+            QMessageBox::warning(this, textFor("Error", "错误"), sinkError);
+            return;
+        }
+        description = textFor("Embedded RTK stream: NTRIP -> Remote Sky RTCM sink (%1)",
+                              "内嵌 RTK 流服务: NTRIP -> 天空端 RTCM 接收端（%1）")
+            .arg(config.outputPort);
     }
 
     appendLog(textFor("Starting RTK service...", "正在启动 RTK 服务..."));
@@ -4463,6 +4580,7 @@ void RtkConfigDialog::onStartClicked()
     }
     else
     {
+        stopRtcmCorrectionSinkServer();
         appendLog(textFor("Failed to start RTK service: %1", "RTK 服务启动失败: %1")
             .arg(errorMessage.isEmpty() ? textFor("Unknown error", "未知错误") : errorMessage));
     }
@@ -4487,6 +4605,7 @@ void RtkConfigDialog::onStopClicked()
     {
         appendLog(textFor("Stopping RTK service...", "正在停止 RTK 服务..."));
         rtk_service_->stop();
+        stopRtcmCorrectionSinkServer();
         if (rtk_status_timer_ && rtk_status_timer_->isActive())
         {
             rtk_status_timer_->stop();

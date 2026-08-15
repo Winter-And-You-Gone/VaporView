@@ -11,6 +11,13 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
         VaporView::Ground::decodeRemoteEpsilonTelemetry(telemetry, now);
     state_->current_epsilon_ = remoteEpsilon.data;
     state_->current_remote_epsilon_validity_flags_ = telemetry.validity_flags;
+    if (state_->epsilon_device_session_)
+    {
+        state_->epsilon_device_session_->setRemoteAvailable(
+            remoteEpsilon.available,
+            state_->is_english_ ? QStringLiteral("Remote Sky")
+                                : QStringLiteral("天空端远程"));
+    }
     if (remoteEpsilon.available)
     {
 #ifdef VAPORVIEW_HAS_OSGEARTH
@@ -194,6 +201,10 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
             {
                 state_->current_epsilon_ = VaporView::EpsilonData();
                 state_->current_remote_epsilon_validity_flags_ = 0;
+                if (state_->epsilon_device_session_)
+                {
+                    state_->epsilon_device_session_->setRemoteAvailable(false);
+                }
             }
             else if (item.device_id == VaporView::SkyDeviceId::Ptb)
             {
@@ -212,6 +223,10 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
             }
             else if (item.device_id == VaporView::SkyDeviceId::TemperatureController)
             {
+                if (state_->rd105_device_session_)
+                {
+                    state_->rd105_device_session_->setRemoteAvailable(false);
+                }
                 invalidateTemperatureControllerDataUi();
             }
             else if (item.device_id == VaporView::SkyDeviceId::Ai8TemperatureController &&
@@ -244,6 +259,13 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
 void MainWindow::onRemoteTemperatureControllerStatusUpdated(const VaporView::TemperatureControllerData& controllerData)
 {
     state_->current_temperature_controller_ = controllerData;
+    if (state_->rd105_device_session_)
+    {
+        state_->rd105_device_session_->setRemoteAvailable(
+            controllerData.valid,
+            state_->is_english_ ? QStringLiteral("Remote Sky")
+                                : QStringLiteral("天空端远程"));
+    }
     if (state_->device_panel_coordinator_)
     {
         state_->device_panel_coordinator_->updateTemperatureData(state_->current_temperature_controller_);
@@ -396,77 +418,6 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
                 }
             }
         }
-    }
-    else if (isTemperatureCommand(ack.command_id))
-    {
-        const auto it = state_->remote_temperature_commands_.find(ack.command_seq);
-        const VaporView::TemperatureControllerCommand request = it != state_->remote_temperature_commands_.end()
-            ? it.value()
-            : VaporView::TemperatureControllerCommand();
-        if (it != state_->remote_temperature_commands_.end())
-        {
-            state_->remote_temperature_commands_.erase(it);
-        }
-        const quint8 channel = request.channel == 0 ? 1 : request.channel;
-        QVariantMap fields = temperatureCommandLogFields(ack.command_id, request, channel);
-        fields.insert(QStringLiteral("execution_path"), QStringLiteral("remote_sky"));
-        fields.insert(QStringLiteral("command_seq"), ack.command_seq);
-        fields.insert(QStringLiteral("ack_result"), ack.result);
-        fields.insert(QStringLiteral("command_error_code"), commandErrorCodeIdentifier(ack.error_code));
-        if (ok && noError)
-        {
-            fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("details"));
-            publishTemperatureCommandLog(
-                VaporView::LogLevel::Info,
-                QStringLiteral("temperature_command_completed"),
-                QStringLiteral("RD105 温控命令执行成功。"),
-                fields);
-        }
-        else if (ack.error_code == VaporView::CommandErrorCode::DeviceNotConnected)
-        {
-            fields.insert(QStringLiteral("reason_code"), QStringLiteral("DEVICE_NOT_CONNECTED"));
-            fields.insert(QStringLiteral("ui_dedupe_key"),
-                          temperatureCommandDedupeKey(
-                              QStringLiteral("temperature_command_rejected_not_connected"),
-                              ack.command_id,
-                              channel));
-            publishTemperatureCommandLog(
-                VaporView::LogLevel::Warning,
-                QStringLiteral("temperature_command_rejected_not_connected"),
-                QStringLiteral("天空端 RD105 温控器不可用，无法下发温控命令。"),
-                fields);
-        }
-        else
-        {
-            fields.insert(QStringLiteral("error_code"),
-                          ack.error_code == VaporView::CommandErrorCode::ConfigApplyFailed
-                              ? QStringLiteral("COMMAND_VERIFY_FAILED")
-                              : commandErrorCodeIdentifier(ack.error_code));
-            fields.insert(QStringLiteral("ui_dedupe_key"),
-                          temperatureCommandDedupeKey(
-                              QStringLiteral("temperature_command_failed"),
-                              ack.command_id,
-                              channel));
-            publishTemperatureCommandLog(
-                VaporView::LogLevel::Error,
-                QStringLiteral("temperature_command_failed"),
-                QStringLiteral("RD105 温控命令执行失败。"),
-                fields);
-        }
-        if (state_->temperature_controller_panel_)
-        {
-            if (!(ok && noError))
-            {
-                state_->temperature_controller_panel_->clearCommandPending(ack.command_id, channel);
-            }
-            state_->temperature_controller_panel_->setCommandStatus(
-                temperatureCommandStatusText(ack.command_id,
-                                             channel,
-                                             ok && noError,
-                                             ok && noError ? QString() : errorText),
-                !(ok && noError));
-        }
-        restoreTemperatureCommandUi(ack.command_id, channel);
     }
 }
 
