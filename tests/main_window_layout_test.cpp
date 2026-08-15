@@ -1536,6 +1536,9 @@ void requireRtkSidebarPage(
     require(std::abs(combinationNavigationBar->geometry().center().x() -
                      combinationNavigationRow->rect().center().x()) <= 1,
             "combination navigation bar is horizontally centered in its page row");
+    require(statusScrollArea->mapTo(combinationPage, QPoint(0, 0)).y() == 0 &&
+                epsilonScrollArea->mapTo(combinationPage, QPoint(0, 0)).y() == 0,
+            "combination-navigation scroll areas start at the page top behind the floating navigation");
     require(combinationNavigationSelectionThumb->parentWidget() == combinationNavigationTrack &&
                 combinationNavigationSelectionThumb->geometry() == statusButton->geometry() &&
                 combinationNavigationSelectionAnimation->targetObject() == combinationNavigationSelectionThumb &&
@@ -1781,6 +1784,8 @@ void requireRtkSidebarPage(
             "combination navigation returns to the same RTK page instance");
     auto *rtkScrollArea = dialog->findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea"));
     require(rtkScrollArea != nullptr, "RTK config page uses a scroll area");
+    require(rtkScrollArea->mapTo(combinationPage, QPoint(0, 0)).y() == 0,
+            "RTK differential scroll area starts at the page top behind the floating navigation");
     require(rtkScrollArea->horizontalScrollBar() != nullptr &&
                 rtkScrollArea->horizontalScrollBar()->maximum() == 0,
             "RTK config page avoids a horizontal scrollbar at the default window size");
@@ -1868,6 +1873,7 @@ void requireRtkSidebarPage(
         VaporView::Ground::MainSupport::kTopLevelCardOuterVerticalInset;
     constexpr int kExpectedTopLevelCardGap =
         VaporView::Ground::MainSupport::kTopLevelCardGap;
+    const int expectedCombinationNavigationTopInset = combinationNavigationRow->height();
     require(kExpectedTopLevelCardGap == 12,
             "top-level cards keep the requested 12px spacing rhythm");
     const auto requireCombinationPageRightInset =
@@ -1918,8 +1924,9 @@ void requireRtkSidebarPage(
             "RTK differential page keeps its shared 18px card inset without an extra wrapper margin");
     require(std::abs(widgetRectInCentralForRtk(ntripCard).top() -
                      (widgetRectInCentralForRtk(dialog).top() +
+                      expectedCombinationNavigationTopInset +
                       kExpectedPageChromeInset)) <= 1,
-            "RTK differential page keeps its own compact top inset below the sub-navigation");
+            "RTK differential page keeps its own compact top inset below the floating sub-navigation");
     auto *rtkContent = dialog->findChild<QWidget *>(QStringLiteral("rtkConfigContent"));
     require(rtkContent != nullptr && rtkContent->layout() != nullptr,
             "RTK embedded content exposes its page layout");
@@ -1930,10 +1937,10 @@ void requireRtkSidebarPage(
         "RTK embedded scrollbar is transparent when no scrolling is needed");
     require(rtkContent->layout()->contentsMargins() ==
                 QMargins(kExpectedPageLeftInset,
-                         kExpectedPageChromeInset,
+                         expectedCombinationNavigationTopInset + kExpectedPageChromeInset,
                          kExpectedPageRightGap,
                          kExpectedPageChromeInset),
-            "RTK embedded page keeps the shared right inset beside its reserved rail");
+            "RTK embedded page keeps the shared insets below the floating sub-navigation");
     require(rtkContent->layout()->spacing() == kExpectedTopLevelCardGap,
             "RTK embedded page uses the shared top-level card gap");
     auto *ggaCard = findCardByTitle(dialog,
@@ -2345,6 +2352,12 @@ void requireRtkSidebarPage(
     require(combinationPage->styleSheet().contains(VaporView::appThemeColorName(
                 VaporView::AppThemeColor::Focus, true)),
             "combination-navigation local style resolves the dark-theme focus token");
+    require(combinationPage->styleSheet().contains(
+                VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, true)) &&
+                combinationPage->styleSheet().contains(
+                    QStringLiteral("QScrollArea#navigationStatusScrollArea QScrollBar:vertical")) &&
+                combinationPage->styleSheet().contains(QStringLiteral("margin: 0px")),
+            "combination-navigation scrollbar rail follows the dark surface and reaches the page top");
     const bool darkThemeGeometrySettled = processEventsUntil(1500, themeCardGeometrySettled);
     if (!darkThemeGeometrySettled)
     {

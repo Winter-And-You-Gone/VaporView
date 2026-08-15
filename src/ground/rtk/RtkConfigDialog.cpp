@@ -2128,6 +2128,13 @@ void RtkConfigDialog::setEnglish(bool english)
     updateButtonStates();
 }
 
+void RtkConfigDialog::setCombinationNavigationTopInset(int pixels)
+{
+    combination_navigation_top_inset_ = std::max(0, pixels);
+    applyScaledUiMetrics();
+    updateGeometry();
+}
+
 int RtkConfigDialog::scalePixels(int pixels) const
 {
     return static_cast<int>(std::lround(pixels * font_scale_percent_ / 100.0));
@@ -2188,6 +2195,11 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     if (main_layout_)
     {
+        const int embeddedTopInset = scalePixels(kEmbeddedTopLevelCardOuterVerticalInset) +
+            (embedded_ ? combination_navigation_top_inset_ : 0);
+        const int contentTopInset = embedded_
+            ? embeddedTopInset
+            : scalePixels(kEmbeddedTopLevelCardChromeInset);
         const int embeddedLeftInset = compactLayout ? 4 : kEmbeddedMainContentLeftCardInset;
         const int embeddedRightInset = compactLayout
             ? 0
@@ -2196,9 +2208,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
         main_layout_->setContentsMargins(scalePixels(embedded_
                                              ? embeddedLeftInset
                                              : kEmbeddedTopLevelCardChromeInset),
-                                         scalePixels(embedded_
-                                             ? kEmbeddedTopLevelCardOuterVerticalInset
-                                             : kEmbeddedTopLevelCardChromeInset),
+                                         contentTopInset,
                                          scalePixels(embedded_
                                              ? embeddedRightInset
                                              : kEmbeddedTopLevelCardChromeInset),

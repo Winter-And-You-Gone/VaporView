@@ -49,6 +49,7 @@ public:
     void setUiTestMode(bool enabled);
     void setEnglish(bool english);
     void setFontScale(int percent);
+    void setCombinationNavigationTopInset(int pixels);
     void setPreferredOutputPortAndBaud(const QString& portName, const QString& baudText);
     void setEpsilonMainPortAndBaud(const QString& portName, const QString& baudText);
     void setEpsilonDataProvider(std::function<VaporView::EpsilonData()> provider);
@@ -210,6 +211,7 @@ private:
 
     bool embedded_;
     bool compact_layout_;
+    int combination_navigation_top_inset_ = 0;
     std::unique_ptr<RtkStreamService> rtk_service_;
     bool is_running_;
     bool is_english_;
