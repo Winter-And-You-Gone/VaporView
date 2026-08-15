@@ -28,6 +28,7 @@
 #include <QFontMetrics>
 #include <QFrame>
 #include <QFocusEvent>
+#include <QGraphicsOpacityEffect>
 #include <QGroupBox>
 #include <QHoverEvent>
 #include <QIcon>
@@ -1875,6 +1876,19 @@ void requireRtkSidebarPage(
                         content->layout()->contentsMargins().right() == kExpectedPageRightGap,
                     message);
         };
+    const auto requireStableVerticalScrollBarVisibility =
+        [](QScrollArea *scrollArea, const char *message) {
+            auto *effect = qobject_cast<QGraphicsOpacityEffect *>(
+                scrollArea->verticalScrollBar()->graphicsEffect());
+            const qreal expectedOpacity =
+                scrollArea->verticalScrollBar()->maximum() >
+                        scrollArea->verticalScrollBar()->minimum()
+                    ? 1.0
+                    : 0.0;
+            require(effect != nullptr &&
+                        std::abs(effect->opacity() - expectedOpacity) < 0.01,
+                    message);
+        };
     requireCombinationPageRightInset(
         statusScrollArea,
         statusContent,
@@ -1883,6 +1897,12 @@ void requireRtkSidebarPage(
         epsilonScrollArea,
         epsilonContent,
         "combination-navigation EPSILON page reserves a stable scrollbar rail and right inset");
+    requireStableVerticalScrollBarVisibility(
+        statusScrollArea,
+        "combination-navigation status scrollbar is transparent when no scrolling is needed");
+    requireStableVerticalScrollBarVisibility(
+        epsilonScrollArea,
+        "combination-navigation EPSILON scrollbar is transparent when no scrolling is needed");
     auto widgetRectInCentralForRtk = [&window](QWidget *widget) {
         return QRect(widget->mapTo(window.centralWidget(), QPoint(0, 0)), widget->size());
     };
@@ -1905,6 +1925,9 @@ void requireRtkSidebarPage(
             "RTK embedded content exposes its page layout");
     require(rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
             "RTK embedded page reserves the same stable scrollbar rail as its sibling pages");
+    requireStableVerticalScrollBarVisibility(
+        rtkScrollArea,
+        "RTK embedded scrollbar is transparent when no scrolling is needed");
     require(rtkContent->layout()->contentsMargins() ==
                 QMargins(kExpectedPageLeftInset,
                          kExpectedPageChromeInset,

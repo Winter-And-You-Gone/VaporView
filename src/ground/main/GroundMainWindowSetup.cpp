@@ -3,6 +3,7 @@
 #include "ground/widgets/SerialPortComboSupport.h"
 
 #include <QEvent>
+#include <QGraphicsOpacityEffect>
 #include <QLayout>
 #include <QLinearGradient>
 #include <QPointer>
@@ -26,6 +27,26 @@ int topLevelCardShadowSafeRightInset(int fontScalePercent)
     return static_cast<int>(std::ceil(
                VaporView::kTopLevelCardShadowBlurRadius * shadowScale * 0.6)) +
            1;
+}
+
+void installStableVerticalScrollBarVisibility(QScrollArea *scrollArea)
+{
+    if (!scrollArea || !scrollArea->verticalScrollBar())
+    {
+        return;
+    }
+
+    auto *scrollBar = scrollArea->verticalScrollBar();
+    auto *opacityEffect = new QGraphicsOpacityEffect(scrollBar);
+    scrollBar->setGraphicsEffect(opacityEffect);
+
+    const auto syncVisibility = [scrollBar, opacityEffect]() {
+        opacityEffect->setOpacity(
+            scrollBar->maximum() > scrollBar->minimum() ? 1.0 : 0.0);
+    };
+    QObject::connect(scrollBar, &QScrollBar::rangeChanged,
+                     scrollBar, [syncVisibility](int, int) { syncVisibility(); });
+    syncVisibility();
 }
 
 class ScrollAreaBottomFadeOverlay final : public QWidget
@@ -2183,6 +2204,7 @@ void MainWindow::setupCentralWidget()
     if (rtkScrollArea)
     {
         rtkScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+        installStableVerticalScrollBarVisibility(rtkScrollArea);
     }
     installScrollAreaBottomFade(rtkScrollArea);
     auto *rtkContent =
@@ -2205,6 +2227,7 @@ void MainWindow::setupCentralWidget()
     auto *combinationStatusContent =
         state_->combination_navigation_page_->findChild<QWidget *>(
             QStringLiteral("navigationStatusContent"));
+    installStableVerticalScrollBarVisibility(combinationStatusScrollArea);
     installScrollAreaRightInsetSynchronizer(
         combinationStatusScrollArea,
         combinationStatusContent ? combinationStatusContent->layout() : nullptr,
@@ -2215,6 +2238,7 @@ void MainWindow::setupCentralWidget()
     auto *combinationEpsilonContent =
         state_->combination_navigation_page_->findChild<QWidget *>(
             QStringLiteral("epsilonConfigContent"));
+    installStableVerticalScrollBarVisibility(combinationEpsilonScrollArea);
     installScrollAreaRightInsetSynchronizer(
         combinationEpsilonScrollArea,
         combinationEpsilonContent ? combinationEpsilonContent->layout() : nullptr,
