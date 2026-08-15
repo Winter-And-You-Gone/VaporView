@@ -1635,6 +1635,19 @@ void requireRtkSidebarPage(
         QStringLiteral("navigationStatusLongitudeValue"));
     auto *differentialStatusCard = combinationPage->findChild<QFrame *>(
         QStringLiteral("navigationStatusDifferentialCard"));
+    auto *statusSummaryCard = combinationPage->findChild<QFrame *>(
+        QStringLiteral("navigationStatusSummaryCard"));
+    auto *epsilonOutputCard = epsilonPanel
+        ? epsilonPanel->findChild<QFrame *>(QStringLiteral("epsilonOutputCard"))
+        : nullptr;
+    require(statusSummaryCard != nullptr && epsilonOutputCard != nullptr,
+            "combination-navigation exposes stable status and EPSILON card anchors");
+    ResizeWidthRecorder statusSummaryResizeRecorder(statusSummaryCard);
+    ResizeWidthRecorder epsilonOutputResizeRecorder(epsilonOutputCard);
+    ResizeWidthRecorder differentialGgaResizeRecorder(preGgaCard);
+    statusSummaryCard->installEventFilter(&statusSummaryResizeRecorder);
+    epsilonOutputCard->installEventFilter(&epsilonOutputResizeRecorder);
+    preGgaCard->installEventFilter(&differentialGgaResizeRecorder);
     require(rtkServiceStatus != nullptr && gnssStatus != nullptr && positioningMode != nullptr &&
                 ntripStatus != nullptr && rtcmStatus != nullptr &&
                 longitudeValue != nullptr && differentialStatusCard != nullptr &&
@@ -1672,6 +1685,9 @@ void requireRtkSidebarPage(
     const QString originalRtkServer = unsavedRtkServerEdit->text();
     const QString unsavedRtkServer = QStringLiteral("unsaved-combination-navigation.test");
     unsavedRtkServerEdit->setText(unsavedRtkServer);
+    statusSummaryResizeRecorder.reset();
+    epsilonOutputResizeRecorder.reset();
+    differentialGgaResizeRecorder.reset();
     epsilonButton->setFocus(Qt::TabFocusReason);
     QKeyEvent epsilonSpacePress(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier);
     QKeyEvent epsilonSpaceRelease(QEvent::KeyRelease, Qt::Key_Space, Qt::NoModifier);
@@ -1680,6 +1696,8 @@ void requireRtkSidebarPage(
     processEventsFor(50);
     require(combinationStack->currentWidget() == epsilonPage && epsilonButton->isChecked(),
             "combination navigation switches from status to EPSILON by keyboard");
+    require(!epsilonOutputResizeRecorder.observedWidthDifferentFrom(epsilonOutputCard->width()),
+            "status to EPSILON switching keeps the packet-rate card width stable");
     require(combinationNavigationSelectionAnimation->state() == QAbstractAnimation::Running,
             "combination navigation starts the selected-thumb animation when switching sections");
     processEventsFor(250);
@@ -1687,11 +1705,16 @@ void requireRtkSidebarPage(
             "combination navigation settles the selected thumb on the new section");
     ggaResizeRecorder.reset();
     logResizeRecorder.reset();
+    statusSummaryResizeRecorder.reset();
+    epsilonOutputResizeRecorder.reset();
+    differentialGgaResizeRecorder.reset();
     clickWidget(differentialButton, 0);
     processEventsFor(150);
     auto *dialog = qobject_cast<RtkConfigDialog *>(combinationStack->currentWidget());
     require(dialog == preDialog && differentialButton->isChecked(),
             "combination navigation switches from EPSILON to the original RTK page");
+    require(!differentialGgaResizeRecorder.observedWidthDifferentFrom(preGgaCard->width()),
+            "EPSILON to differential switching keeps the RTK card width stable");
     require(unsavedRtkServerEdit->text() == unsavedRtkServer,
             "switching internal pages preserves unsaved RTK input");
     clickWidget(epsilonButton, 0);
@@ -1744,10 +1767,13 @@ void requireRtkSidebarPage(
     requireLabelTextOneOf(customTitleLabel,
                           {QStringLiteral("组合导航"), QStringLiteral("Combination Navigation")},
                           "custom title bar follows the selected combination-navigation page");
+    statusSummaryResizeRecorder.reset();
     clickWidget(statusButton, 0);
     processEventsFor(50);
     require(combinationStack->currentWidget() == statusPage && statusButton->isChecked(),
             "combination navigation switches from differential positioning back to status");
+    require(!statusSummaryResizeRecorder.observedWidthDifferentFrom(statusSummaryCard->width()),
+            "differential to status switching keeps the status card width stable");
     clickWidget(differentialButton, 0);
     processEventsFor(100);
     require(combinationStack->currentWidget() == dialog && differentialButton->isChecked(),
@@ -1758,8 +1784,8 @@ void requireRtkSidebarPage(
                 rtkScrollArea->horizontalScrollBar()->maximum() == 0,
             "RTK config page avoids a horizontal scrollbar at the default window size");
     require(rtkScrollArea->horizontalScrollBarPolicy() == Qt::ScrollBarAlwaysOff &&
-                rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAsNeeded,
-            "RTK config page forbids horizontal scrolling and only enables vertical scrolling when needed");
+                rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
+            "RTK config page forbids horizontal scrolling and reserves a stable vertical rail");
     const std::vector<std::pair<QString, int>> compactCombos = {
         {QStringLiteral("rtkOutputPortCombo"), 100},
         {QStringLiteral("rtkBaudrateCombo"), 130},
@@ -1837,10 +1863,6 @@ void requireRtkSidebarPage(
         VaporView::Ground::MainSupport::kMainContentLeftCardInset;
     constexpr int kExpectedPageRightGap =
         VaporView::Ground::MainSupport::kMainContentRightCardInset;
-    constexpr int kExpectedVerticalScrollBarWidth =
-        VaporView::Ground::MainSupport::kMainContentVerticalScrollBarWidth;
-    constexpr int kExpectedPageRightInsetWithoutScrollBar =
-        kExpectedPageRightGap + kExpectedVerticalScrollBarWidth;
     constexpr int kExpectedPageChromeInset =
         VaporView::Ground::MainSupport::kTopLevelCardOuterVerticalInset;
     constexpr int kExpectedTopLevelCardGap =
@@ -1849,20 +1871,18 @@ void requireRtkSidebarPage(
             "top-level cards keep the requested 12px spacing rhythm");
     const auto requireCombinationPageRightInset =
         [&](QScrollArea *scrollArea, QWidget *content, const char *message) {
-            const int expectedRightInset = scrollArea->verticalScrollBar()->maximum() > 0
-                ? kExpectedPageRightGap
-                : kExpectedPageRightInsetWithoutScrollBar;
-            require(content->layout()->contentsMargins().right() == expectedRightInset,
+            require(scrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn &&
+                        content->layout()->contentsMargins().right() == kExpectedPageRightGap,
                     message);
         };
     requireCombinationPageRightInset(
         statusScrollArea,
         statusContent,
-        "combination-navigation status page uses the RTK right inset for its scrollbar state");
+        "combination-navigation status page reserves a stable scrollbar rail and right inset");
     requireCombinationPageRightInset(
         epsilonScrollArea,
         epsilonContent,
-        "combination-navigation EPSILON page uses the RTK right inset for its scrollbar state");
+        "combination-navigation EPSILON page reserves a stable scrollbar rail and right inset");
     auto widgetRectInCentralForRtk = [&window](QWidget *widget) {
         return QRect(widget->mapTo(window.centralWidget(), QPoint(0, 0)), widget->size());
     };
@@ -1883,17 +1903,14 @@ void requireRtkSidebarPage(
     auto *rtkContent = dialog->findChild<QWidget *>(QStringLiteral("rtkConfigContent"));
     require(rtkContent != nullptr && rtkContent->layout() != nullptr,
             "RTK embedded content exposes its page layout");
-    require(rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAsNeeded,
-            "RTK embedded page only shows its scrollbar when content needs it");
-    const int expectedRtkRightInset = rtkScrollArea->verticalScrollBar()->maximum() > 0
-        ? kExpectedPageRightGap
-        : kExpectedPageRightInsetWithoutScrollBar;
+    require(rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
+            "RTK embedded page reserves the same stable scrollbar rail as its sibling pages");
     require(rtkContent->layout()->contentsMargins() ==
                 QMargins(kExpectedPageLeftInset,
                          kExpectedPageChromeInset,
-                         expectedRtkRightInset,
+                         kExpectedPageRightGap,
                          kExpectedPageChromeInset),
-            "RTK embedded page keeps the shared right inset for the current scrollbar state");
+            "RTK embedded page keeps the shared right inset beside its reserved rail");
     require(rtkContent->layout()->spacing() == kExpectedTopLevelCardGap,
             "RTK embedded page uses the shared top-level card gap");
     auto *ggaCard = findCardByTitle(dialog,
@@ -2342,7 +2359,7 @@ void requireRtkSidebarPage(
     require(outputPortLabel->width() >= outputPortLabel->fontMetrics().horizontalAdvance(outputPortLabel->text()) + 4,
             "RTK RTCM output port label has enough width after switching to dark theme");
     require(rtkScrollArea->horizontalScrollBar()->maximum() == 0 &&
-                rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAsNeeded,
+                rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
             "RTK config page remains free of horizontal scrolling after switching to dark theme");
     require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
             "main window can switch back to light theme from the RTK page");

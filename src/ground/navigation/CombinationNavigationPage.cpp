@@ -219,7 +219,9 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     prepareStyledBackground(epsilonScrollArea->viewport());
     epsilonScrollArea->setWidgetResizable(true);
     epsilonScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    epsilonScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    // Reserve the rail across all sub-pages so switching pages never changes
+    // the available card width for a frame while the scrollbar range settles.
+    epsilonScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
     epsilonScrollArea->setFrameShape(QFrame::NoFrame);
     epsilonScrollArea->setMinimumWidth(0);
     epsilonScrollArea->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
@@ -420,7 +422,7 @@ QWidget *CombinationNavigationPage::createStatusPage()
     scrollArea->setObjectName(QStringLiteral("navigationStatusScrollArea"));
     scrollArea->setWidgetResizable(true);
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
     scrollArea->setFrameShape(QFrame::NoFrame);
     scrollArea->setMinimumWidth(0);
     scrollArea->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);

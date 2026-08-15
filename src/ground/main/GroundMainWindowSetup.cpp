@@ -195,7 +195,11 @@ private:
             return;
         }
 
+        const bool reservesVerticalScrollBar =
+            scroll_area_ &&
+            scroll_area_->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn;
         const bool needsVerticalScrollBar =
+            reservesVerticalScrollBar ||
             vertical_scroll_bar_->maximum() > vertical_scroll_bar_->minimum();
         const int targetRightInset = std::max(0, scroll_bar_right_inset_()) +
             (needsVerticalScrollBar ? 0 : kMainContentVerticalScrollBarWidth);
@@ -2176,6 +2180,10 @@ void MainWindow::setupCentralWidget()
     state_->rtk_config_dialog_->setAttribute(Qt::WA_QuitOnClose, false);
     auto *rtkScrollArea =
         state_->rtk_config_dialog_->findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea"));
+    if (rtkScrollArea)
+    {
+        rtkScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    }
     installScrollAreaBottomFade(rtkScrollArea);
     auto *rtkContent =
         state_->rtk_config_dialog_->findChild<QWidget *>(QStringLiteral("rtkConfigContent"));
