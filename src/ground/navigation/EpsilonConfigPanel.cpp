@@ -117,6 +117,8 @@ QString rtcmDevicePortText(int portIndex, bool english)
 struct SectionCard
 {
     QFrame *card = nullptr;
+    QWidget *title_bar = nullptr;
+    QHBoxLayout *title_layout = nullptr;
     QLabel *title = nullptr;
     QVBoxLayout *body_layout = nullptr;
 };
@@ -149,6 +151,8 @@ SectionCard createSectionCard(QWidget *parent,
     titleLayout->addWidget(titleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
     titleLayout->addStretch(1);
     cardLayout->addWidget(titleBar);
+    result.title_bar = titleBar;
+    result.title_layout = titleLayout;
 
     auto *body = new QWidget(result.card);
     body->setObjectName(objectName + QStringLiteral("Body"));
@@ -269,27 +273,30 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     summaryFieldsLayout->addWidget(packetCountField.field, 1);
     summaryCard.body_layout->addWidget(summaryFields);
 
-    auto *summaryFooter = new QWidget(summaryCard.card);
-    summaryFooter->setObjectName(QStringLiteral("epsilonSummaryActions"));
-    auto *summaryFooterLayout = new QHBoxLayout(summaryFooter);
-    summaryFooterLayout->setContentsMargins(0, 0, 0, 0);
-    summaryFooterLayout->setSpacing(12);
-    hint_label_ = new QLabel(summaryFooter);
-    hint_label_->setObjectName(QStringLiteral("epsilonConfigHint"));
-    hint_label_->setWordWrap(true);
-    hint_label_->setProperty("epsilonSecondaryText", true);
-    hint_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    recommended_button_ = createActionButton(summaryFooter);
-    recommended_button_->setObjectName(QStringLiteral("epsilonRecommendedConfigButton"));
-    recommended_button_->setProperty("epsilonSecondaryAction", true);
-    summaryFooterLayout->addWidget(hint_label_, 1);
-    summaryFooterLayout->addWidget(recommended_button_, 0, Qt::AlignRight | Qt::AlignVCenter);
-    summaryCard.body_layout->addWidget(summaryFooter);
     panelLayout->addWidget(summaryCard.card);
 
     const SectionCard outputCard = createSectionCard(
         this, QStringLiteral("epsilonOutputCard"), QStringLiteral("activity"));
     output_title_label_ = outputCard.title;
+    auto *outputTitleActions = new QWidget(outputCard.title_bar);
+    outputTitleActions->setObjectName(QStringLiteral("epsilonOutputTitleActions"));
+    outputTitleActions->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    auto *outputTitleActionsLayout = new QHBoxLayout(outputTitleActions);
+    outputTitleActionsLayout->setContentsMargins(0, 0, 0, 0);
+    outputTitleActionsLayout->setSpacing(12);
+    hint_label_ = new QLabel(outputTitleActions);
+    hint_label_->setObjectName(QStringLiteral("epsilonConfigHint"));
+    hint_label_->setWordWrap(false);
+    hint_label_->setProperty("epsilonSecondaryText", true);
+    hint_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    hint_label_->setToolTip(QStringLiteral("包频率会用于后续连接和重配；已选择 EPSILON 串口时，保存后会立即应用。"));
+    recommended_button_ = createActionButton(outputTitleActions);
+    recommended_button_->setObjectName(QStringLiteral("epsilonRecommendedConfigButton"));
+    recommended_button_->setProperty("epsilonSecondaryAction", true);
+    outputTitleActionsLayout->addWidget(hint_label_, 1, Qt::AlignVCenter | Qt::AlignRight);
+    outputTitleActionsLayout->addWidget(recommended_button_, 0, Qt::AlignVCenter | Qt::AlignRight);
+    outputTitleActions->setMinimumWidth(0);
+    outputCard.title_layout->addWidget(outputTitleActions, 1, Qt::AlignVCenter | Qt::AlignRight);
     auto *packetGridWidget = new QWidget(outputCard.card);
     packetGridWidget->setObjectName(QStringLiteral("epsilonPacketGrid"));
     packetGridWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
@@ -765,7 +772,7 @@ void EpsilonConfigPanel::applyAppearance()
         "QPushButton[epsilonSecondaryAction=\"true\"]:focus { border-color: @vv-focus; }"
         "QPushButton[epsilonSecondaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }"
         "QWidget#epsilonActionsContainer { background-color: @vv-surface; border: none; }"
-        "QWidget#epsilonSummaryFields, QWidget#epsilonSummaryActions, QWidget#epsilonPacketGrid { background-color: transparent; border: none; }"
+        "QWidget#epsilonSummaryFields, QWidget#epsilonOutputTitleActions, QWidget#epsilonPacketGrid { background-color: transparent; border: none; }"
         "QComboBox[epsilonRtcmDevicePortControl=\"true\"] { background-color: @vv-surface; }");
     const QString resolvedStyle = VaporView::applyAppThemeTokens(
         style, VaporView::isDarkThemeEnabled());
@@ -797,7 +804,7 @@ void EpsilonConfigPanel::updateTexts()
 {
     const auto &options = VaporView::Ground::DeviceRates::epsilonPacketConfigOptions();
     summary_title_label_->setText(is_english_ ? QStringLiteral("Configuration Summary") : QStringLiteral("配置摘要"));
-    output_title_label_->setText(is_english_ ? QStringLiteral("Packet Output") : QStringLiteral("报文输出"));
+    output_title_label_->setText(is_english_ ? QStringLiteral("Packet Communication Rates") : QStringLiteral("报文通信频率"));
     device_settings_title_label_->setText(is_english_ ? QStringLiteral("Device Settings") : QStringLiteral("设备设置"));
     for (QLabel *title : {summary_title_label_, output_title_label_, device_settings_title_label_})
     {
@@ -811,10 +818,11 @@ void EpsilonConfigPanel::updateTexts()
     {
         label->setAccessibleName(label->text());
     }
-    hint_label_->setText(
-        is_english_
-            ? QStringLiteral("Packet rates are saved for future connect/reconfigure operations. Save applies the profile immediately when an EPSILON port is selected.")
-            : QStringLiteral("包频率会用于后续连接和重配；已选择 EPSILON 串口时，保存后会立即应用。"));
+    const QString hintText = is_english_
+        ? QStringLiteral("Packet rates are saved for future connect/reconfigure operations. Save applies the profile immediately when an EPSILON port is selected.")
+        : QStringLiteral("包频率会用于后续连接和重配；已选择 EPSILON 串口时，保存后会立即应用。");
+    hint_label_->setText(hintText);
+    hint_label_->setToolTip(hintText);
     hint_label_->setAccessibleName(is_english_ ? QStringLiteral("EPSILON configuration hint") : QStringLiteral("EPSILON 配置提示"));
     rtcm_name_label_->setText(is_english_ ? QStringLiteral("RTCM Input") : QStringLiteral("RTCM 输入"));
     rtcm_description_label_->setText(

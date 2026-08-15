@@ -8936,7 +8936,7 @@ int main(int argc, char **argv)
                         QStringLiteral("satellite"),
                         "EPSILON summary uses the standard icon title bar");
     requireCardTitleBar(epsilonOutputCard,
-                        QStringList{QStringLiteral("报文输出"), QStringLiteral("Packet Output")},
+                        QStringList{QStringLiteral("报文通信频率"), QStringLiteral("Packet Communication Rates")},
                         QStringLiteral("activity"),
                         "EPSILON output uses the standard icon title bar");
     requireCardTitleBar(epsilonDeviceSettingsCard,
@@ -9070,12 +9070,11 @@ int main(int argc, char **argv)
                 "EPSILON action button remains keyboard accessible");
         return buttonRect;
     };
-    const QRect epsilonStatusLocalBounds(QPoint(0, 0), epsilonStatusCard->size());
     const QRect epsilonDeviceLocalBounds(QPoint(0, 0), epsilonDeviceSettingsCard->size());
     const QRect recommendedRect = requireActionButton(
-        epsilonStatusCard, QStringLiteral("epsilonRecommendedConfigButton"),
+        epsilonOutputCard, QStringLiteral("epsilonRecommendedConfigButton"),
         {QStringLiteral("恢复推荐"), QStringLiteral("Recommended")},
-        epsilonStatusLocalBounds, "EPSILON summary exposes the recommended action");
+        QRect(QPoint(0, 0), epsilonOutputCard->size()), "EPSILON packet communication title bar exposes the recommended action");
     const QRect rtcmRect = requireActionButton(
         epsilonDeviceSettingsCard, QStringLiteral("epsilonRtcmPortButton"),
         {QStringLiteral("配置RTCM串口"), QStringLiteral("RTCM Port")},

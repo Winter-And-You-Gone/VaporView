@@ -72,6 +72,17 @@ int main(int argc, char *argv[])
             "panel exposes exactly three EPSILON business section cards");
     require(panel.findChild<QWidget *>(QStringLiteral("epsilonActionsContainer")) != nullptr,
             "panel keeps a separate primary action container");
+    auto *outputCard = panel.findChild<QFrame *>(QStringLiteral("epsilonOutputCard"));
+    auto *outputTitleBar = outputCard
+        ? outputCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"))
+        : nullptr;
+    auto *hintLabel = panel.findChild<QLabel *>(QStringLiteral("epsilonConfigHint"));
+    auto *recommendedButton = panel.findChild<QPushButton *>(QStringLiteral("epsilonRecommendedConfigButton"));
+    require(outputTitleBar != nullptr && hintLabel != nullptr && recommendedButton != nullptr &&
+                outputTitleBar->isAncestorOf(hintLabel) && outputTitleBar->isAncestorOf(recommendedButton) &&
+                panel.findChild<QFrame *>(QStringLiteral("epsilonStatusCard"))->findChild<QLabel *>(
+                    QStringLiteral("epsilonConfigHint")) == nullptr,
+            "packet-rate hint and recommended action live in the packet communication title bar");
     const QString panelStyle = panel.styleSheet();
     require(panel.testAttribute(Qt::WA_StyledBackground) &&
                 panelStyle.contains(QStringLiteral(
@@ -139,7 +150,6 @@ int main(int argc, char *argv[])
                 "EPSILON packet group header is visible, named, and accessible");
     }
 
-    auto *outputCard = panel.findChild<QFrame *>(QStringLiteral("epsilonOutputCard"));
     require(outputCard != nullptr, "EPSILON output card exists for packet group geometry");
     std::vector<QRect> groupRects(packetGroups.size());
     std::vector<int> groupFieldBottoms(packetGroups.size(), -1);
