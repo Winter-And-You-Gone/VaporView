@@ -492,7 +492,7 @@ void NavigationStatusPanel::applyAppearance()
         "QFrame[navigationStatusEmptyState=\"true\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
         "QLabel[navigationStatusEmptyStateTitle=\"true\"] { color: @vv-text-strong; font-weight: 600; }"
         "QLabel[navigationStatusEmptyStateDetail=\"true\"] { color: @vv-text-muted; font-weight: 400; }"
-        "QLabel[navigationStatusKind=\"healthy\"] { color: @vv-success; }"
+        "QLabel[navigationStatusKind=\"healthy\"] { color: @vv-hd-ok; }"
         "QLabel[navigationStatusKind=\"active\"] { color: @vv-primary; }"
         "QLabel[navigationStatusKind=\"inactive\"] { color: @vv-text-muted; }");
     const QString resolvedStyle =

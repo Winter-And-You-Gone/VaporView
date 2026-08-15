@@ -86,6 +86,16 @@ void applyTheme(QApplication& app, bool dark)
     processEventsFor(30);
 }
 
+void requireHealthyStatusColor(NavigationStatusPanel& panel, bool dark)
+{
+    const QString expectedColor =
+        VaporView::appThemeColorName(VaporView::AppThemeColor::HomeDeviceSuccess, dark);
+    require(panel.styleSheet().contains(
+                QStringLiteral("QLabel[navigationStatusKind=\"healthy\"] { color: %1; }")
+                    .arg(expectedColor)),
+            "status overview healthy values use the bright success color for the active theme");
+}
+
 void requireGrabHasContent(const QPixmap& pixmap, const char *message)
 {
     require(!pixmap.isNull() && pixmap.width() > 0 && pixmap.height() > 0, message);
@@ -120,6 +130,7 @@ void testStateVisibilityAndFormatting()
     panel.resize(1100, 680);
     panel.show();
     processEventsFor(60);
+    requireHealthyStatusColor(panel, false);
 
     QFrame *summaryCard = card(panel, "navigationStatusSummaryCard");
     QFrame *positionCard = card(panel, "navigationStatusPositionCard");
@@ -261,6 +272,7 @@ void testGrabs(QApplication& app)
         for (bool withData : themes)
         {
             NavigationStatusPanel panel;
+            requireHealthyStatusColor(panel, dark);
             panel.setSnapshot(withData ? reliableSnapshot() : NavigationStatusSnapshot{});
             panel.resize(withData ? QSize(1180, 700) : QSize(820, 560));
             panel.show();
