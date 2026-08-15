@@ -291,7 +291,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     hint_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     hint_label_->setToolTip(QStringLiteral("包频率会用于后续连接和重配；已选择 EPSILON 串口时，保存后会立即应用。"));
     recommended_button_ = createActionButton(outputTitleActions);
-    recommended_button_->setFixedHeight(VaporView::Ground::MainSupport::kMainPageButtonHeight - 8);
+    recommended_button_->setFixedHeight(28);
     recommended_button_->setObjectName(QStringLiteral("epsilonRecommendedConfigButton"));
     recommended_button_->setProperty("epsilonSecondaryAction", true);
     outputTitleActionsLayout->addWidget(hint_label_, 1, Qt::AlignVCenter | Qt::AlignRight);
@@ -772,6 +772,7 @@ void EpsilonConfigPanel::applyAppearance()
         "QPushButton[epsilonSecondaryAction=\"true\"]:hover { background-color: @vv-primary-subtle; border-color: @vv-primary; color: @vv-primary; }"
         "QPushButton[epsilonSecondaryAction=\"true\"]:focus { border-color: @vv-focus; }"
         "QPushButton[epsilonSecondaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }"
+        "QPushButton#epsilonRecommendedConfigButton { min-height: 28px; max-height: 28px; padding-top: 0px; padding-bottom: 0px; }"
         "QWidget#epsilonActionsContainer { background-color: @vv-surface; border: none; }"
         "QWidget#epsilonSummaryFields, QWidget#epsilonOutputTitleActions, QWidget#epsilonPacketGrid { background-color: transparent; border: none; }"
         "QComboBox[epsilonRtcmDevicePortControl=\"true\"] { background-color: @vv-surface; }");

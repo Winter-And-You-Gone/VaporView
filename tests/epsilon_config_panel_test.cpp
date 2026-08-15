@@ -98,6 +98,8 @@ int main(int argc, char *argv[])
                     "QFrame#epsilonSectionCard { background-color:")) &&
                 panelStyle.contains(QStringLiteral(
                     "QWidget[epsilonConfigCardBody=\"true\"] { background-color:")) &&
+                panelStyle.contains(QStringLiteral(
+                    "QPushButton#epsilonRecommendedConfigButton { min-height: 28px; max-height: 28px;")) &&
                 !panelStyle.contains(QStringLiteral("QFrame#epsilonSectionCard { background-color: transparent")),
             "panel root, card bodies, and action footer resolve to the shared theme surfaces");
     for (QWidget *body : panel.findChildren<QWidget *>())
