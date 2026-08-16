@@ -309,7 +309,7 @@ bool SkyRuntime::start()
                               {{QStringLiteral("reason_code"), QStringLiteral("TELEMETRY_LINK_ERROR")},
                                {QStringLiteral("system_error"), systemError}});
         });
-        connect(link, &TelemetryLink::logRecordGenerated, this, [](LogRecord record) {
+        connect(link, &TelemetryLink::logRecordGenerated, this, [this](LogRecord record) {
             if (record.source.isEmpty())
             {
                 record.source = QStringLiteral("TelemetryLink");
@@ -330,6 +330,7 @@ bool SkyRuntime::start()
             {
                 LogService::writeLogFallback(record);
             }
+            emit logRecord(record);
         });
     };
 
