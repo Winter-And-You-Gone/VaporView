@@ -1444,6 +1444,22 @@ void requireRtkSidebarPage(
                 deviceButton->y() < temperatureButton->y() &&
                 temperatureButton->y() < rtkButton->y(),
             "sidebar order is home, device configuration, thermal, combination navigation");
+    require(homeButton->focusPolicy() == Qt::TabFocus &&
+                deviceButton->focusPolicy() == Qt::TabFocus &&
+                temperatureButton->focusPolicy() == Qt::TabFocus &&
+                rtkButton->focusPolicy() == Qt::TabFocus,
+            "sidebar navigation buttons are reachable by keyboard tab focus");
+    homeButton->setFocus(Qt::OtherFocusReason);
+    QKeyEvent sidebarDown(QEvent::KeyPress, Qt::Key_Down, Qt::NoModifier);
+    QApplication::sendEvent(homeButton, &sidebarDown);
+    processEventsFor(60);
+    require(deviceButton->isChecked(),
+            "sidebar Down arrow moves page selection to device configuration");
+    QKeyEvent sidebarUp(QEvent::KeyPress, Qt::Key_Up, Qt::NoModifier);
+    QApplication::sendEvent(deviceButton, &sidebarUp);
+    processEventsFor(60);
+    require(homeButton->isChecked(),
+            "sidebar Up arrow moves page selection back to home");
     require(rtkButton->toolTip().contains(QStringLiteral("未启动")) ||
                 rtkButton->toolTip().contains(QStringLiteral("stopped")),
             "combination-navigation sidebar button starts with stopped RTK status text");
@@ -2911,6 +2927,10 @@ void requireTelemetryLabelsHaveNoColon(QWidget *summaryContainer, const char *me
     require(!labels.isEmpty(), message);
     for (QLabel *label : labels)
     {
+        if (label && label->objectName() == QStringLiteral("homeTelemetrySummaryValueLabel"))
+        {
+            continue;
+        }
         require(label != nullptr &&
                     !label->text().contains(QLatin1Char(':')) &&
                     !label->text().contains(QStringLiteral("：")),
@@ -4246,8 +4266,8 @@ int main(int argc, char **argv)
     require(checkedSidebarButton->iconSize().width() >= 28 &&
                 checkedSidebarButton->iconSize().height() >= 28,
             "compact sidebar lucide icon is visually larger");
-    require(checkedSidebarButton->focusPolicy() == Qt::NoFocus,
-            "compact sidebar selected icon does not draw a keyboard focus frame");
+    require(checkedSidebarButton->focusPolicy() == Qt::TabFocus,
+            "compact sidebar remains keyboard reachable after collapsing");
     QPushButton *temperatureNavButton = nullptr;
     for (QPushButton *button : sidebarButtons)
     {
@@ -5645,10 +5665,11 @@ int main(int argc, char **argv)
             linkRateNames << nameLabel->text();
         }
     }
-    require(linkRateNames == QStringList{QStringLiteral("天→地"),
+    require(linkRateNames == QStringList{QStringLiteral("目标"),
+                                         QStringLiteral("天→地"),
                                          QStringLiteral("地→天"),
                                          QStringLiteral("合")},
-            "home link-rate pills use the compact Chinese field names");
+            "home link-rate pills expose target plus compact Chinese field names");
     const QList<QFrame*> ratePills =
         homeRateSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(!ratePills.isEmpty(),
@@ -5705,10 +5726,17 @@ int main(int argc, char **argv)
     QFrame *homeLinkSection = homeTelemetrySections.at(1);
     const QList<QFrame*> linkRatePills =
         homeLinkSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
-    require(linkRatePills.size() == 3,
-            "home link-rate telemetry section keeps three link pills");
+    require(linkRatePills.size() == 4,
+            "home link-rate telemetry section includes target plus three link-rate pills");
+    QFrame *targetPill = findTelemetryPillByName(homeLinkSection, QStringLiteral("目标"));
+    require(targetPill != nullptr,
+            "home link-rate telemetry section exposes the current Local/Remote target");
     for (QFrame *pill : linkRatePills)
     {
+        if (pill == targetPill)
+        {
+            continue;
+        }
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(valueLabel != nullptr,
                 "home link-rate pill has a value label");
@@ -8951,7 +8979,7 @@ int main(int argc, char **argv)
     require(std::abs(serialConfigCard->width() - expectedDeviceConfigCardWidth) <= 4,
             "device configuration serial card fills the main content row");
     requireCardTitleBar(serialConfigCard,
-                        QStringList{QStringLiteral("串口配置"), QStringLiteral("Serial Port Configuration")},
+                        QStringList{QStringLiteral("设备配置 [本机]"), QStringLiteral("Device Configuration [Local]")},
                         QStringLiteral("usb"),
                         "device serial configuration card uses the standard icon title bar");
     const QString appStyleSheet = qApp->styleSheet();
@@ -9220,8 +9248,8 @@ int main(int argc, char **argv)
         const QList<QLabel*> labels = summaryCard->findChildren<QLabel *>();
         for (QLabel *label : labels)
         {
-            if (label->text().contains(QStringLiteral("天地通信链路状态")) ||
-                label->text().contains(QStringLiteral("Sky-ground Communication Link Status")))
+            if (label->text().contains(QStringLiteral("数据源与天地链路")) ||
+                label->text().contains(QStringLiteral("Data Source / Sky Link")))
             {
                 deviceTelemetrySummaryCard = summaryCard;
                 break;
@@ -9241,7 +9269,7 @@ int main(int argc, char **argv)
     require(!serialConfigCard->isAncestorOf(deviceTelemetrySummaryCard),
             "device telemetry summary card is not nested inside the serial configuration card");
     requireCardTitleBar(deviceTelemetrySummaryCard,
-                        QStringList{QStringLiteral("天地通信链路状态"), QStringLiteral("Sky-ground Communication Link Status")},
+                        QStringList{QStringLiteral("数据源与天地链路"), QStringLiteral("Data Source / Sky Link")},
                         QStringLiteral("satellite"),
                         "device telemetry summary card uses the standard icon title bar");
     const int titlePaneStyleIndex = appStyleSheet.indexOf(QStringLiteral("QFrame#deviceTelemetrySectionTitlePane"));
@@ -9265,27 +9293,27 @@ int main(int argc, char **argv)
     require(telemetrySubCards.size() == 3,
             "device telemetry summary card splits content into three home-style subcards");
     std::sort(telemetrySubCards.begin(), telemetrySubCards.end(), [](QFrame *a, QFrame *b) {
-        return a->mapTo(a->parentWidget(), QPoint(0, 0)).x() <
-               b->mapTo(b->parentWidget(), QPoint(0, 0)).x();
+        return a->mapTo(a->parentWidget(), QPoint(0, 0)).y() <
+               b->mapTo(b->parentWidget(), QPoint(0, 0)).y();
     });
     const QVector<QStringList> expectedTelemetrySubCardTitles = {
         {QStringLiteral("数据频率"), QStringLiteral("Data stream rates")},
         {QStringLiteral("链路速率"), QStringLiteral("Link rate")},
         {QStringLiteral("数据"), QStringLiteral("Data")},
     };
-    int previousSubCardRight = -1;
-    int previousSubCardTop = -1;
+    int previousSubCardBottom = -1;
+    int previousSubCardLeft = -1;
     int previousTitleLeft = -1;
     for (int i = 0; i < telemetrySubCards.size(); ++i)
     {
         QFrame *subCard = telemetrySubCards.at(i);
         const QRect subCardRect(subCard->mapTo(deviceTelemetrySummaryCard, QPoint(0, 0)), subCard->size());
-        require(previousSubCardRight < 0 || subCardRect.left() > previousSubCardRight,
-                "device telemetry summary subcards are arranged horizontally");
-        require(previousSubCardTop < 0 || std::abs(subCardRect.top() - previousSubCardTop) <= 2,
-                "device telemetry summary subcards align on the top edge");
-        previousSubCardRight = subCardRect.right();
-        previousSubCardTop = subCardRect.top();
+        require(previousSubCardBottom < 0 || subCardRect.top() > previousSubCardBottom,
+                "device telemetry summary subcards are arranged vertically");
+        require(previousSubCardLeft < 0 || std::abs(subCardRect.left() - previousSubCardLeft) <= 2,
+                "device telemetry summary subcards align on the left edge");
+        previousSubCardBottom = subCardRect.bottom();
+        previousSubCardLeft = subCardRect.left();
 
         QFrame *titlePane = subCard->findChild<QFrame *>(QStringLiteral("deviceTelemetrySectionTitlePane"));
         require(titlePane != nullptr,
@@ -9499,9 +9527,13 @@ int main(int argc, char **argv)
     require(deviceSkyTelemetry.transportCombo != nullptr,
             "device configuration sky telemetry transport combo exists");
     requireSkyTelemetryTransportLabels(deviceSkyTelemetry, false);
+    require(deviceSkyTelemetry.row && !deviceSkyTelemetry.row->isVisible(),
+            "local device configuration hides sky-ground telemetry edit controls");
     deviceSourceModeCombo->setCurrentIndex(1);
     processEventsFor(150);
     activateLayouts(&window);
+    require(deviceSkyTelemetry.row->isVisible(),
+            "remote device configuration shows sky-ground telemetry edit controls");
     setSkyTelemetryTransport(deviceSkyTelemetry.transportCombo, QStringLiteral("tcp"));
     processEventsFor(100);
     activateLayouts(&window);

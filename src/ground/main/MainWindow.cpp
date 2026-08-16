@@ -695,6 +695,46 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     {
         return true;
     }
+    if (eventType == QEvent::KeyPress)
+    {
+        auto *sidebarButton = qobject_cast<QPushButton *>(watched);
+        if (sidebarButton && sidebarButton->objectName() == QStringLiteral("appSidebarButton"))
+        {
+            auto *keyEvent = static_cast<QKeyEvent *>(event);
+            const QList<QPushButton *> buttons = {
+                state_->home_nav_btn_,
+                state_->device_config_nav_btn_,
+                state_->temperature_nav_btn_,
+                state_->rtk_config_nav_btn_,
+            };
+            const int currentIndex = buttons.indexOf(sidebarButton);
+            if (currentIndex >= 0)
+            {
+                if (keyEvent->key() == Qt::Key_Return ||
+                    keyEvent->key() == Qt::Key_Enter ||
+                    keyEvent->key() == Qt::Key_Space)
+                {
+                    sidebarButton->click();
+                    return true;
+                }
+                const bool previous = keyEvent->key() == Qt::Key_Up ||
+                                      keyEvent->key() == Qt::Key_Left;
+                const bool next = keyEvent->key() == Qt::Key_Down ||
+                                  keyEvent->key() == Qt::Key_Right;
+                if (previous || next)
+                {
+                    const int step = previous ? -1 : 1;
+                    const int nextIndex = (currentIndex + step + buttons.size()) % buttons.size();
+                    if (QPushButton *target = buttons.at(nextIndex))
+                    {
+                        target->setFocus(Qt::OtherFocusReason);
+                        target->click();
+                    }
+                    return true;
+                }
+            }
+        }
+    }
 
     if (state_->log_list_view_ &&
         watched == state_->log_list_view_->viewport() &&

@@ -266,6 +266,14 @@ void Trajectory3DLayer::appendRenderSample(const VaporView::Geo::TrajectoryRende
 void Trajectory3DLayer::appendSampleInternal(const VaporView::Geo::TrajectoryRenderSample& sample,
                                               bool enableHeatRendering)
 {
+    if (enableHeatRendering
+        && !heat_rendering_enabled_
+        && !VaporView::Geo::metricValue(sample, heat_metric_).has_value())
+    {
+        appendSampleInternal(sample, false);
+        return;
+    }
+
     const int previousSphereMarkerStride = sphere_marker_stride_;
     const bool wasHeatRenderingEnabled = heat_rendering_enabled_;
     if (enableHeatRendering)
@@ -421,14 +429,21 @@ void Trajectory3DLayer::setHeatMetric(VaporView::Geo::HeatMetric metric)
     }
     heat_metric_ = metric;
     invalidateHeatRange();
+    const bool hasMetricData = std::any_of(
+        samples_.cbegin(),
+        samples_.cend(),
+        [this](const VaporView::Geo::TrajectoryRenderSample& sample) {
+            return VaporView::Geo::metricValue(sample, heat_metric_).has_value();
+        });
+    heat_rendering_enabled_ = hasMetricData;
     if (heat_rendering_enabled_)
     {
         recomputeHeatRange();
-        // The metric changes the per-vertex scalar, so this is a deliberate
-        // user-driven geometry refresh rather than a live append cost.
         updateHeatRenderingState();
-        rebuildSegments();
     }
+    // The metric changes the per-vertex scalar and can also move an empty
+    // metric back to the ordinary trajectory renderer.
+    rebuildSegments();
 }
 
 VaporView::Geo::HeatMetric Trajectory3DLayer::heatMetric() const

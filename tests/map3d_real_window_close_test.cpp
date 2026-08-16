@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
@@ -18,6 +19,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 
 namespace {
@@ -39,6 +41,18 @@ void processEventsFor(int timeoutMs)
         QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
         QThread::msleep(5);
     }
+}
+
+bool waitUntil(const std::function<bool()>& predicate, int timeoutMs)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (!predicate() && timer.elapsed() < timeoutMs)
+    {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        QThread::msleep(5);
+    }
+    return predicate();
 }
 
 bool hasVisibleMapSurface(const QImage& frame)
@@ -120,6 +134,7 @@ int main(int argc, char** argv)
     require(tileDiagnostics.loadedPayloadCount == 55,
             QStringLiteral("real window loads all 55 building payloads, got %1")
                 .arg(tileDiagnostics.loadedPayloadCount));
+    view->setMaxVisibleSamples(5000);
 
     QTemporaryDir failedLoadDir;
     require(failedLoadDir.isValid(), QStringLiteral("temporary failed-load directory"));
@@ -189,8 +204,10 @@ int main(int argc, char** argv)
     devicesCsv.close();
 
     window->loadSessionDirectory(sessionDir.path());
-    processEventsFor(250);
-    require(view->sampleCount() == kSessionSampleCount,
+    require(waitUntil([&]() {
+                return view->sampleCount() == kSessionSampleCount;
+            },
+            30000),
             QStringLiteral("real window loads corrupt-ECEF session through LLH fallback"));
     require(view->hasEarthMap(),
             QStringLiteral("loading corrupt-ECEF session preserves the Earth map"));

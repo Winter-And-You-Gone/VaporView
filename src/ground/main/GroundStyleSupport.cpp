@@ -495,6 +495,8 @@ QPushButton#appSidebarButton {
     outline: none;
 }
 QPushButton#appSidebarButton:focus {
+    background-color: @vv-primary-subtle;
+    border-color: @vv-primary;
     outline: none;
 }
 QPushButton#appSidebarButton[_vv_sidebar_compact="true"] {
@@ -986,8 +988,8 @@ QToolButton#homeDeviceActionButton[state="connecting"] {
     border-color: @vv-hd-ok;
 }
 QToolButton#homeDeviceActionButton[state="connected"] {
-    background-color: @vv-hd-bad-bg;
-    border-color: @vv-hd-bad;
+    background-color: @vv-surface-alt;
+    border-color: @vv-border-strong;
 }
 QToolButton#homeDeviceActionButton:hover {
     background-color: @vv-primary-subtle;
@@ -1236,6 +1238,50 @@ QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink="true"] {
 }
 QLabel#homeTelemetrySummaryTitleLabel[skyTelemetryTitle="true"] {
     color: @vv-primary;
+}
+QLabel#deviceConfigSubsectionLabel {
+    background-color: transparent;
+    border: none;
+    color: @vv-text-strong;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 2px 0px 0px 0px;
+}
+QLabel#deviceRemoteSkyConfigStatus {
+    background-color: @vv-field-bg;
+    border: 1px solid @vv-border;
+    border-radius: 8px;
+    color: @vv-text-strong;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 8px;
+}
+QLabel#deviceRemoteSkyConfigStatus[status="success"] {
+    background-color: @vv-success-bg;
+    border-color: @vv-success;
+    color: @vv-success;
+}
+QLabel#deviceRemoteSkyConfigStatus[status="pending"],
+QLabel#deviceRemoteSkyConfigStatus[status="normal"] {
+    background-color: @vv-primary-subtle;
+    border-color: @vv-primary;
+    color: @vv-primary;
+}
+QLabel#deviceRemoteSkyConfigStatus[status="warning"],
+QLabel#deviceRemoteSkyConfigStatus[status="dirty"] {
+    background-color: @vv-warning-bg;
+    border-color: @vv-warning;
+    color: @vv-warning;
+}
+QLabel#deviceRemoteSkyConfigStatus[status="error"] {
+    background-color: @vv-danger-bg;
+    border-color: @vv-danger;
+    color: @vv-danger;
+}
+QLabel#deviceRemoteSkyConfigStatus[status="disabled"] {
+    background-color: @vv-surface-alt;
+    border-color: @vv-border;
+    color: @vv-text-muted;
 }
 QLabel#temperatureOverviewValuePill {
     background-color: @vv-surface-alt;

@@ -321,6 +321,23 @@ QStringList homeTelemetryDynamicSummaryValues(QWidget *homeConfigCard)
     return values;
 }
 
+QString homeTelemetryPillValue(QWidget *homeConfigCard, const QString& name)
+{
+    QWidget *summaryContainer = homeTelemetrySummaryContainer(homeConfigCard);
+    for (QFrame *pill : summaryContainer
+             ? summaryContainer->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"))
+             : QList<QFrame *>())
+    {
+        QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+        QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+        if (nameLabel && valueLabel && nameLabel->text() == name)
+        {
+            return valueLabel->text();
+        }
+    }
+    return QString();
+}
+
 void requireCompactTelemetryPillTextGap(QFrame *pill, const char *message)
 {
     require(pill != nullptr, message);
@@ -468,9 +485,15 @@ void requireUiTestHomeTelemetryCapsulesCovered(QWidget *homeConfigCard, const ch
 
     const QList<QFrame *> linkPills =
         sections.at(1)->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
-    require(linkPills.size() == 3, "UI-test link-rate summary keeps three capsules");
+    require(linkPills.size() == 4, "UI-test link-rate summary keeps target plus three rate capsules");
     for (QFrame *pill : linkPills)
     {
+        QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+        if (nameLabel && (nameLabel->text() == QStringLiteral("目标") ||
+                          nameLabel->text() == QStringLiteral("Target")))
+        {
+            continue;
+        }
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(valueLabel != nullptr && valueLabel->text().contains(QStringLiteral("Mbps")),
                 "UI-test link-rate capsule shows representative Mbps data");
@@ -618,27 +641,26 @@ int main(int argc, char **argv)
         homeConfigCard = qobject_cast<QGroupBox *>(ancestor);
     }
     require(homeConfigCard, "home device overview card exists");
-    QList<QPointer<QFrame>> telemetryPillsBeforeModeSwitch;
-    for (QFrame *pill : homeConfigCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")))
-    {
-        telemetryPillsBeforeModeSwitch.append(pill);
-    }
-    require(!telemetryPillsBeforeModeSwitch.isEmpty(),
+    const int telemetryPillCountBeforeModeSwitch =
+        homeConfigCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")).size();
+    require(telemetryPillCountBeforeModeSwitch > 0,
             "home telemetry summary contains persistent pills before source-mode switching");
+    require(homeTelemetryPillValue(homeConfigCard, QStringLiteral("目标")) == QStringLiteral("本机"),
+            "home telemetry target starts as the local host");
     sourceModeSwitch->click();
     processEvents();
-    for (const QPointer<QFrame>& pill : telemetryPillsBeforeModeSwitch)
-    {
-        require(!pill.isNull(),
-                "unchanged home telemetry summary pills survive switching to remote mode");
-    }
+    require(homeTelemetryPillValue(homeConfigCard, QStringLiteral("目标")).startsWith(QStringLiteral("TCP ")),
+            "home telemetry target updates to the remote Sky TCP endpoint");
+    require(homeConfigCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")).size() ==
+                telemetryPillCountBeforeModeSwitch,
+            "home telemetry summary keeps the same pill count when switching to remote mode");
     sourceModeSwitch->click();
     processEvents();
-    for (const QPointer<QFrame>& pill : telemetryPillsBeforeModeSwitch)
-    {
-        require(!pill.isNull(),
-                "unchanged home telemetry summary pills survive switching back to local mode");
-    }
+    require(homeTelemetryPillValue(homeConfigCard, QStringLiteral("目标")) == QStringLiteral("本机"),
+            "home telemetry target returns to the local host");
+    require(homeConfigCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")).size() ==
+                telemetryPillCountBeforeModeSwitch,
+            "home telemetry summary keeps the same pill count when switching back to local mode");
 
     epsilonPort->addItem(QStringLiteral("UNSAVED-COM42"), QStringLiteral("UNSAVED-COM42"));
     epsilonPort->setCurrentIndex(epsilonPort->count() - 1);
@@ -1294,10 +1316,14 @@ int main(int argc, char **argv)
                 return deviceEpsilonPort->currentText() == QStringLiteral("UI-TEST-EPSILON");
             }),
             "UI-test Remote Sky read loads a fixed config into the shared device rows");
+    require(deviceRemoteStatus->property("status").toString() == QStringLiteral("success"),
+            "UI-test Remote Sky read uses the synced/success status vocabulary");
     deviceRemoteRd105Slave->setValue(23);
     processEvents();
     require(deviceRemoteApply->isEnabled(),
             "editing Remote Sky fields marks the unified page dirty and enables Apply in UI test mode");
+    require(deviceRemoteStatus->property("status").toString() == QStringLiteral("dirty"),
+            "UI-test Remote Sky edit uses the dirty status vocabulary");
     deviceRemoteRaw->click();
     require(VaporViewTest::processEventsUntil(800, [deviceRemoteRawJson]() {
                 return deviceRemoteRawJson->isVisible() &&
@@ -1312,6 +1338,8 @@ int main(int argc, char **argv)
                     text.contains(QStringLiteral("validated"));
             }),
             "UI-test Remote Sky apply validates and applies on the unified page");
+    require(deviceRemoteStatus->property("status").toString() == QStringLiteral("success"),
+            "UI-test Remote Sky apply returns to the synced/success status vocabulary");
     deviceRemoteSave->click();
     require(VaporViewTest::processEventsUntil(800, [deviceRemoteStatus]() {
                 const QString text = deviceRemoteStatus->text();
@@ -1319,6 +1347,8 @@ int main(int argc, char **argv)
                     text.contains(QStringLiteral("Simulated"));
             }),
             "UI-test Remote Sky save is simulated from the unified page");
+    require(deviceRemoteStatus->property("status").toString() == QStringLiteral("success"),
+            "UI-test Remote Sky save keeps the saved/success status vocabulary");
 
     QAction *partialFailureAction = findUiTestScenarioAction(
         window,

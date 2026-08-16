@@ -70,6 +70,8 @@ namespace VaporView::Map3D {
 namespace {
 
 constexpr double kEarthRadiusM = 6378137.0;
+constexpr double kWgs84FirstEccentricitySquared = 6.6943799901413165e-3;
+constexpr double kDegreesToRadians = 0.017453292519943295;
 constexpr unsigned kTiandituMaxZoom = 18;
 constexpr const char* kTiandituSatelliteLayerName = "Tianditu Satellite imagery";
 constexpr const char* kTiandituBrowserUserAgent =
@@ -593,6 +595,34 @@ osg::Vec3d samplePosition(const VaporView::Geo::NavSample& sample)
     return osg::Vec3d(sample.lonDeg * 100000.0, sample.latDeg * 100000.0, sample.heightM);
 }
 
+bool llhToWgs84Ecef(const VaporView::Geo::NavSample& sample, osg::Vec3d& world)
+{
+    if (!std::isfinite(sample.latDeg) ||
+        !std::isfinite(sample.lonDeg) ||
+        !std::isfinite(sample.heightM) ||
+        std::abs(sample.latDeg) > 90.0 ||
+        std::abs(sample.lonDeg) > 180.0)
+    {
+        return false;
+    }
+
+    const double latitude = sample.latDeg * kDegreesToRadians;
+    const double longitude = sample.lonDeg * kDegreesToRadians;
+    const double sinLatitude = std::sin(latitude);
+    const double cosLatitude = std::cos(latitude);
+    const double radiusOfCurvature =
+        kEarthRadiusM /
+        std::sqrt(1.0 - kWgs84FirstEccentricitySquared * sinLatitude * sinLatitude);
+    world.set((radiusOfCurvature + sample.heightM) * cosLatitude * std::cos(longitude),
+              (radiusOfCurvature + sample.heightM) * cosLatitude * std::sin(longitude),
+              (radiusOfCurvature * (1.0 - kWgs84FirstEccentricitySquared) +
+               sample.heightM) *
+                  sinLatitude);
+    return std::isfinite(world.x()) &&
+           std::isfinite(world.y()) &&
+           std::isfinite(world.z());
+}
+
 bool sampleWorldFocusPosition(const VaporView::Geo::NavSample& sample, osg::Vec3d& world)
 {
     if (sample.hasEcef())
@@ -605,16 +635,20 @@ bool sampleWorldFocusPosition(const VaporView::Geo::NavSample& sample, osg::Vec3
         return false;
     }
 
-    const osgEarth::SpatialReference* wgs84 = osgEarth::SpatialReference::get("wgs84");
-    if (!wgs84)
+    if (const osgEarth::SpatialReference* wgs84 =
+            osgEarth::SpatialReference::get("wgs84"))
     {
-        return false;
+        osgEarth::GeoPoint geo(
+            wgs84, sample.lonDeg, sample.latDeg, sample.heightM, osgEarth::ALTMODE_ABSOLUTE);
+        if (geo.toWorld(world) &&
+            std::isfinite(world.x()) &&
+            std::isfinite(world.y()) &&
+            std::isfinite(world.z()))
+        {
+            return true;
+        }
     }
-    osgEarth::GeoPoint geo(wgs84, sample.lonDeg, sample.latDeg, sample.heightM, osgEarth::ALTMODE_ABSOLUTE);
-    return geo.toWorld(world)
-        && std::isfinite(world.x())
-        && std::isfinite(world.y())
-        && std::isfinite(world.z());
+    return llhToWgs84Ecef(sample, world);
 }
 
 std::optional<osgEarth::Viewpoint> currentEarthViewpoint(osgViewer::Viewer* viewer)
@@ -1732,8 +1766,16 @@ bool OsgEarthViewWidget::flyToTrack()
     initializeSceneIfNeeded();
 
     osg::BoundingSphere bounds;
+    std::vector<VaporView::Geo::NavSample> focusNavigationSamples;
     std::vector<VaporView::Geo::TrajectoryRenderSample> focusSamples;
-    if (shared_samples_)
+    if (shared_nav_samples_)
+    {
+        focusNavigationSamples = uniformlySampleTrack(
+            *shared_nav_samples_,
+            static_cast<std::size_t>(shared_sample_count_),
+            maxVisibleSamples());
+    }
+    else if (shared_samples_)
     {
         focusSamples = uniformlySampleTrack(*shared_samples_,
                                             static_cast<std::size_t>(shared_sample_count_),
@@ -1745,6 +1787,14 @@ bool OsgEarthViewWidget::flyToTrack()
     }
     if (earth_node_ && map_node_)
     {
+        for (const VaporView::Geo::NavSample& sample : focusNavigationSamples)
+        {
+            osg::Vec3d world;
+            if (sampleWorldFocusPosition(sample, world))
+            {
+                bounds.expandBy(world);
+            }
+        }
         for (const VaporView::Geo::TrajectoryRenderSample& sample : focusSamples)
         {
             osg::Vec3d world;
@@ -1756,6 +1806,10 @@ bool OsgEarthViewWidget::flyToTrack()
     }
     else
     {
+        for (const VaporView::Geo::NavSample& sample : focusNavigationSamples)
+        {
+            bounds.expandBy(samplePosition(toDisplaySample(sample)));
+        }
         for (const VaporView::Geo::TrajectoryRenderSample& sample : focusSamples)
         {
             bounds.expandBy(samplePosition(toDisplaySample(sample.navigation)));
@@ -1785,7 +1839,9 @@ void OsgEarthViewWidget::resetView()
 
 int OsgEarthViewWidget::sampleCount() const
 {
-    return shared_samples_ ? shared_sample_count_ : static_cast<int>(raw_samples_.size());
+    return (shared_samples_ || shared_nav_samples_)
+        ? shared_sample_count_
+        : static_cast<int>(raw_samples_.size());
 }
 
 int OsgEarthViewWidget::visibleSampleCount() const
@@ -2767,15 +2823,23 @@ VaporView::Geo::NavSample OsgEarthViewWidget::toWorldSample(const VaporView::Geo
 
     height_reference_status_ = QStringLiteral("WGS84 ellipsoid height applied.");
 
-    const osgEarth::SpatialReference* wgs84 = osgEarth::SpatialReference::get("wgs84");
-    if (!wgs84)
-    {
-        return sample;
-    }
-
-    osgEarth::GeoPoint geo(wgs84, sample.lonDeg, sample.latDeg, sample.heightM, osgEarth::ALTMODE_ABSOLUTE);
     osg::Vec3d world;
-    if (!geo.toWorld(world))
+    bool converted = false;
+    if (const osgEarth::SpatialReference* wgs84 =
+            osgEarth::SpatialReference::get("wgs84"))
+    {
+        osgEarth::GeoPoint geo(
+            wgs84, sample.lonDeg, sample.latDeg, sample.heightM, osgEarth::ALTMODE_ABSOLUTE);
+        converted = geo.toWorld(world) &&
+                    std::isfinite(world.x()) &&
+                    std::isfinite(world.y()) &&
+                    std::isfinite(world.z());
+    }
+    if (!converted)
+    {
+        converted = llhToWgs84Ecef(sample, world);
+    }
+    if (!converted)
     {
         return sample;
     }

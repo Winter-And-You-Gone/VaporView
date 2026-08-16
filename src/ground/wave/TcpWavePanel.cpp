@@ -1876,8 +1876,12 @@ void TcpWavePanel::setEnglish(bool english)
         wave_display_button_->setToolTip(tooltip);
         wave_display_button_->setAccessibleName(tooltip);
     }
-    host_label_->setText(english ? "TCP Host:" : "TCP主机:");
-    port_label_->setText(english ? "Port:" : "端口:");
+    host_label_->setText(remote_sky_mode_
+        ? (english ? "Sky Wave Host:" : "天空端波形主机:")
+        : (english ? "TCP Host:" : "TCP主机:"));
+    port_label_->setText(remote_sky_mode_
+        ? (english ? "Sky Wave Port:" : "天空端波形端口:")
+        : (english ? "Port:" : "端口:"));
     connect_button_->setText(remote_sky_mode_
         ? (remote_wave_tcp_connected_ ? (english ? "Disconnect Sky Wave" : "断开天空波形")
                                       : (english ? "Connect Sky Wave" : "连接天空波形"))
@@ -2325,6 +2329,18 @@ void TcpWavePanel::toggleConnection()
 void TcpWavePanel::setRemoteSkyMode(bool enabled)
 {
     remote_sky_mode_ = enabled;
+    if (host_label_)
+    {
+        host_label_->setText(enabled
+            ? (is_english_ ? "Sky Wave Host:" : "天空端波形主机:")
+            : (is_english_ ? "TCP Host:" : "TCP主机:"));
+    }
+    if (port_label_)
+    {
+        port_label_->setText(enabled
+            ? (is_english_ ? "Sky Wave Port:" : "天空端波形端口:")
+            : (is_english_ ? "Port:" : "端口:"));
+    }
     if (host_edit_) host_edit_->setEnabled(!enabled);
     if (port_edit_) port_edit_->setEnabled(!enabled);
     if (enabled && socket_ && socket_->state() != QAbstractSocket::UnconnectedState)

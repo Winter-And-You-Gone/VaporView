@@ -456,7 +456,7 @@ void MainWindow::updateRecordingStatusLabel()
             ? QStringLiteral("--")
             : QStringLiteral("UI-TEST-SESSION");
         const QString detail = state_->is_english_
-            ? QStringLiteral("Session: %1\nElapsed: %2\nSensor rows: %3\nWaveform frames: %4\nRaw EPSILON: %5\nRaw PTB: %6\nRaw HMP: %7\nRaw Lidar: %8\nRaw TCP wave: %9\nFile output: none (memory only)")
+            ? QStringLiteral("Session: %1\nElapsed: %2\nSensor rows: %3\nWaveform frames: %4\nRecorded RAW EPSILON: %5\nRecorded RAW PTB: %6\nRecorded RAW HMP: %7\nRecorded RAW Lidar: %8\nRecorded RAW TCP wave: %9\nFile output: none (memory only)")
                   .arg(session)
                   .arg(formatElapsedCompact(static_cast<quint64>(std::max<qint64>(0, elapsedMs))))
                   .arg(countAtRate(20))
@@ -466,7 +466,7 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(countAtRate(2))
                   .arg(countAtRate(20))
                   .arg(countAtRate(10))
-            : QStringLiteral("会话：%1\n时长：%2\n设备行数：%3\n波形帧数：%4\nRaw EPSILON：%5\nRaw PTB：%6\nRaw HMP：%7\nRaw Lidar：%8\nRaw TCP 波形：%9\n文件写入：无（仅内存模拟）")
+            : QStringLiteral("会话：%1\n时长：%2\n设备行数：%3\n波形帧数：%4\n已记录 RAW EPSILON：%5\n已记录 RAW PTB：%6\n已记录 RAW HMP：%7\n已记录 RAW Lidar：%8\n已记录 RAW TCP 波形：%9\n文件写入：无（仅内存模拟）")
                   .arg(session)
                   .arg(formatElapsedCompact(static_cast<quint64>(std::max<qint64>(0, elapsedMs))))
                   .arg(countAtRate(20))
@@ -532,7 +532,7 @@ void MainWindow::updateRecordingStatusLabel()
                                   qulonglong rawLidar,
                                   qulonglong rawWaveform) {
         return state_->is_english_
-            ? QStringLiteral("Session: %1\nSensor rows: %2\nWaveform frames: %3\nRaw EPSILON: %4\nRaw PTB: %5\nRaw HMP: %6\nRaw Lidar: %7\nRaw TCP wave: %8")
+            ? QStringLiteral("Session: %1\nSensor rows: %2\nWaveform frames: %3\nRecorded RAW EPSILON: %4\nRecorded RAW PTB: %5\nRecorded RAW HMP: %6\nRecorded RAW Lidar: %7\nRecorded RAW TCP wave: %8")
                   .arg(session)
                   .arg(sensorRows)
                   .arg(waveformFrames)
@@ -541,7 +541,7 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(rawHmp)
                   .arg(rawLidar)
                   .arg(rawWaveform)
-            : QStringLiteral("会话：%1\n设备行数：%2\n波形帧数：%3\nRaw EPSILON：%4\nRaw PTB：%5\nRaw HMP：%6\nRaw Lidar：%7\nRaw TCP 波形：%8")
+            : QStringLiteral("会话：%1\n设备行数：%2\n波形帧数：%3\n已记录 RAW EPSILON：%4\n已记录 RAW PTB：%5\n已记录 RAW HMP：%6\n已记录 RAW Lidar：%7\n已记录 RAW TCP 波形：%8")
                   .arg(session)
                   .arg(sensorRows)
                   .arg(waveformFrames)
@@ -584,7 +584,7 @@ void MainWindow::updateRecordingStatusLabel()
             ? QStringLiteral("--")
             : displayStatus.session_name;
         const QString detail = state_->is_english_
-            ? QStringLiteral("Session: %1\nElapsed: %2\nTelemetry rows: %3\nWave features: %4\nWave snapshots: %5\nRaw EPSILON: %6\nRaw PTB: %7\nRaw HMP: %8\nRaw Lidar: %9\nRaw TCP wave: %10")
+            ? QStringLiteral("Session: %1\nElapsed: %2\nTelemetry rows: %3\nWave features: %4\nWave snapshots: %5\nRecorded RAW EPSILON: %6\nRecorded RAW PTB: %7\nRecorded RAW HMP: %8\nRecorded RAW Lidar: %9\nRecorded RAW TCP wave: %10")
                   .arg(session)
                   .arg(elapsed)
                   .arg(displayStatus.telemetry_record_count)
@@ -595,7 +595,7 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(displayStatus.raw_temperature_humidity_record_count)
                   .arg(displayStatus.raw_distance_record_count)
                   .arg(displayStatus.raw_waveform_record_count)
-            : QStringLiteral("会话：%1\n时长：%2\n遥测行数：%3\n波形特征：%4\n波形快照：%5\nRaw EPSILON：%6\nRaw PTB：%7\nRaw HMP：%8\nRaw Lidar：%9\nRaw TCP 波形：%10")
+            : QStringLiteral("会话：%1\n时长：%2\n遥测行数：%3\n波形特征：%4\n波形快照：%5\n已记录 RAW EPSILON：%6\n已记录 RAW PTB：%7\n已记录 RAW HMP：%8\n已记录 RAW Lidar：%9\n已记录 RAW TCP 波形：%10")
                   .arg(session)
                   .arg(elapsed)
                   .arg(displayStatus.telemetry_record_count)
@@ -616,8 +616,8 @@ void MainWindow::updateRecordingStatusLabel()
         {
             setRecordingTitleIcon(true);
             state_->recording_status_label_->setText(
-                QString(state_->is_english_ ? "Sky Recording: On\n%1\nRaw total: %2"
-                                    : "天空端记录：进行中\n%1\nRaw 总数：%2")
+                QString(state_->is_english_ ? "Sky Recording: On\n%1\nRecorded RAW total: %2"
+                                    : "天空端记录：进行中\n%1\nRAW 记录总数：%2")
                     .arg(detailWithSchedule)
                     .arg(rawTotal));
             setVisualStatus("connected");
@@ -626,8 +626,8 @@ void MainWindow::updateRecordingStatusLabel()
         {
             setRecordingTitleIcon(false);
             state_->recording_status_label_->setText(
-                QString(state_->is_english_ ? "Sky Recording: Paused\n%1\nRaw total: %2"
-                                    : "天空端记录：已暂停\n%1\nRaw 总数：%2")
+                QString(state_->is_english_ ? "Sky Recording: Paused\n%1\nRecorded RAW total: %2"
+                                    : "天空端记录：已暂停\n%1\nRAW 记录总数：%2")
                     .arg(detailWithSchedule)
                     .arg(rawTotal));
             setVisualStatus("connecting");
@@ -636,8 +636,8 @@ void MainWindow::updateRecordingStatusLabel()
         {
             setRecordingTitleIcon(false);
             state_->recording_status_label_->setText(
-                QString(state_->is_english_ ? "Sky Recording: Off\n%1\nRaw total: %2"
-                                    : "天空端记录：未记录\n%1\nRaw 总数：%2")
+                QString(state_->is_english_ ? "Sky Recording: Off\n%1\nRecorded RAW total: %2"
+                                    : "天空端记录：未记录\n%1\nRAW 记录总数：%2")
                     .arg(detailWithSchedule)
                     .arg(rawTotal));
             setVisualStatus("disconnected");

@@ -111,6 +111,7 @@ void MainWindow::onDataSourceModeChanged(int index)
     {
         syncDeviceConfigPageFromHome();
     }
+    updateDeviceConfigTexts();
     updateSourceModeUi();
     requestRemoteSkyConfigIfAvailable(false);
     updateRecordingActionStates();
@@ -672,6 +673,33 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         : state_->remote_status_.disk_free_bytes;
     const quint32 crcErrorCount = uiTestMode ? 0U : state_->remote_status_.crc_error_count;
     const QString unavailableText = QStringLiteral("--");
+    const QString targetText = [this]() {
+        if (!isRemoteSkyMode())
+        {
+            return state_->is_english_
+                ? QStringLiteral("Local host")
+                : QStringLiteral("本机");
+        }
+        if (isRemoteSkyTcpMode())
+        {
+            const QString host = state_->sky_telemetry_tcp_host_edit_
+                ? state_->sky_telemetry_tcp_host_edit_->text().trimmed()
+                : QString();
+            const int port = state_->sky_telemetry_tcp_port_spin_
+                ? state_->sky_telemetry_tcp_port_spin_->value()
+                : 0;
+            return QStringLiteral("TCP %1:%2")
+                .arg(host.isEmpty() ? QStringLiteral("--") : host)
+                .arg(port > 0 ? QString::number(port) : QStringLiteral("--"));
+        }
+        const QString serialPort = localSerialPortComboValue(state_->sky_telemetry_port_combo_);
+        const QString baud = state_->sky_telemetry_baud_combo_
+            ? state_->sky_telemetry_baud_combo_->currentText().trimmed()
+            : QString();
+        return QStringLiteral("Serial %1 %2")
+            .arg(serialPort.isEmpty() ? QStringLiteral("--") : serialPort,
+                 baud.isEmpty() ? QStringLiteral("--") : baud);
+    }();
 
     auto makeItem = [](const QString& label,
                        const QString& value,
@@ -715,6 +743,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendWaveformRate(1, QStringLiteral("Wave raw"));
         appendWaveformRate(4, QStringLiteral("Wave harm."));
         rateRows << makeItem(QStringLiteral("Wave capture"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
+        linkRows << makeItem(QStringLiteral("Target"), targetText, true);
         linkRows << makeItem(QStringLiteral("Sky->Ground"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("Ground->Sky"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("Total"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
@@ -744,6 +773,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendWaveformRate(1, QStringLiteral("原始波形"));
         appendWaveformRate(4, QStringLiteral("谐波波形"));
         rateRows << makeItem(QStringLiteral("波形采集"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
+        linkRows << makeItem(QStringLiteral("目标"), targetText, true);
         linkRows << makeItem(QStringLiteral("天→地"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("地→天"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("合"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
@@ -1157,7 +1187,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                              state_->data_telemetry_link_summary_layout_,
                              state_->is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"),
                              sections.linkItems,
-                             -1);
+                             2,
+                             2);
         renderSummarySection(state_->data_telemetry_summary_card_,
                              state_->data_telemetry_device_summary_layout_,
                              state_->is_english_ ? QStringLiteral("Data") : QStringLiteral("数据"),
@@ -1657,7 +1688,7 @@ void MainWindow::updateTemperatureTitleButtonsState()
         else
         {
             const QColor iconColor = connected
-                ? toolbarColor(AppThemeColor::HomeDeviceDanger)
+                ? toolbarColor(AppThemeColor::ToolbarBlue)
                 : deviceState == VaporView::DeviceState::Disabled
                     ? toolbarColor(AppThemeColor::ToolbarDisabled)
                     : toolbarColor(AppThemeColor::HomeDeviceSuccess);

@@ -5,6 +5,7 @@
 #include <QByteArray>
 #include <QElapsedTimer>
 #include <QHostAddress>
+#include <QLabel>
 #include <QSettings>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -379,6 +380,46 @@ void testWavePlotXAxisLabelsDefaultToChinese()
             "peak trend x-axis still supports English range text");
 }
 
+bool hasLabelText(QWidget *root, const QString& text)
+{
+    if (!root)
+    {
+        return false;
+    }
+    for (QLabel *label : root->findChildren<QLabel *>())
+    {
+        if (label && label->text() == text)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void testRemoteSkyModeUsesSkyWaveEndpointLabels()
+{
+    TcpWavePanel panel;
+    panel.setEnglish(false);
+    require(hasLabelText(&panel, QStringLiteral("TCP主机:")) &&
+                hasLabelText(&panel, QStringLiteral("端口:")),
+            "local TCP wave labels describe the local TCP endpoint");
+
+    panel.setRemoteSkyMode(true);
+    require(hasLabelText(&panel, QStringLiteral("天空端波形主机:")) &&
+                hasLabelText(&panel, QStringLiteral("天空端波形端口:")),
+            "remote TCP wave labels describe the Sky Wave TCP source");
+
+    panel.setEnglish(true);
+    require(hasLabelText(&panel, QStringLiteral("Sky Wave Host:")) &&
+                hasLabelText(&panel, QStringLiteral("Sky Wave Port:")),
+            "remote TCP wave labels support English Sky wording");
+
+    panel.setRemoteSkyMode(false);
+    require(hasLabelText(&panel, QStringLiteral("TCP Host:")) &&
+                hasLabelText(&panel, QStringLiteral("Port:")),
+            "local TCP wave labels are restored when leaving remote mode");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -399,6 +440,7 @@ int main(int argc, char **argv)
     testInvalidStreamAndPayloadCorrectionPublishStructuredLogs();
     testInvalidTcpStreamDoesNotGrowBacklog();
     testWavePlotXAxisLabelsDefaultToChinese();
+    testRemoteSkyModeUsesSkyWaveEndpointLabels();
     std::cout << "tcp_wave_panel_test passed\n";
     return 0;
 }

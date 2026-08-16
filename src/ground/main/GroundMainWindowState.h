@@ -74,6 +74,9 @@ struct DeviceConfigPageWidgets
     QLabel *data_telemetry_summary_title_lbl = nullptr;
     QGroupBox *remote_sky_config_card = nullptr;
     QLabel *remote_sky_config_title_lbl = nullptr;
+    QLabel *remote_sky_services_title_lbl = nullptr;
+    QLabel *remote_sky_sync_title_lbl = nullptr;
+    QLabel *remote_sky_advanced_title_lbl = nullptr;
     QLabel *remote_sky_config_status_lbl = nullptr;
     QLabel *remote_sky_rd105_slave_lbl = nullptr;
     QLabel *remote_sky_wave_enabled_lbl = nullptr;

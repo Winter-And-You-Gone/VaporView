@@ -93,8 +93,8 @@ QFrame *findLinkStatusCard(QWidget *deviceConfigPage)
         for (QLabel *label : card->findChildren<QLabel *>())
         {
             const QString text = label->text();
-            if (text.contains(QStringLiteral("天地通信链路状态")) ||
-                text.contains(QStringLiteral("Sky-ground Communication Link Status")))
+            if (text.contains(QStringLiteral("数据源与天地链路")) ||
+                text.contains(QStringLiteral("Data Source / Sky Link")))
             {
                 return card;
             }
@@ -108,7 +108,7 @@ QRect rectInPage(QWidget *widget, QWidget *page)
     return QRect(widget->mapTo(page, QPoint(0, 0)), widget->size());
 }
 
-bool cardHasAnyLabel(QFrame *card, const QStringList& candidates)
+bool cardHasAnyLabel(QWidget *card, const QStringList& candidates)
 {
     if (!card)
     {
@@ -133,6 +133,22 @@ QLabel *findExactLabel(QWidget *parent, const QString& text)
     for (QLabel *label : parent->findChildren<QLabel *>())
     {
         if (label && label->text() == text)
+        {
+            return label;
+        }
+    }
+    return nullptr;
+}
+
+QLabel *findSubsectionLabel(QWidget *parent, const QString& sectionKey)
+{
+    if (!parent)
+    {
+        return nullptr;
+    }
+    for (QLabel *label : parent->findChildren<QLabel *>(QStringLiteral("deviceConfigSubsectionLabel")))
+    {
+        if (label && label->property("deviceConfigSubsection").toString() == sectionKey)
         {
             return label;
         }
@@ -401,15 +417,15 @@ int main(int argc, char **argv)
     QWidget *summaryContainer =
         linkStatusCard->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer"));
     require(summaryContainer != nullptr, "link-status card exposes its summary container");
-    require(qobject_cast<QHBoxLayout *>(summaryContainer->layout()) != nullptr,
-            "link-status summary sections use a horizontal layout");
+    require(qobject_cast<QVBoxLayout *>(summaryContainer->layout()) != nullptr,
+            "link-status summary sections stack vertically to avoid horizontal overflow");
     QList<QFrame *> subCards =
         summaryContainer->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
     require(subCards.size() == 3,
             "link-status card keeps the three telemetry summary subcards");
     std::sort(subCards.begin(), subCards.end(), [summaryContainer](QFrame *left, QFrame *right) {
-        return left->mapTo(summaryContainer, QPoint(0, 0)).x() <
-               right->mapTo(summaryContainer, QPoint(0, 0)).x();
+        return left->mapTo(summaryContainer, QPoint(0, 0)).y() <
+               right->mapTo(summaryContainer, QPoint(0, 0)).y();
     });
     const QList<QList<QFrame *>> rateRows = pillRows(subCards.at(0));
     require(rateRows.size() == 3 &&
@@ -447,38 +463,38 @@ int main(int argc, char **argv)
     requirePillLabelsFit(subCards.at(2),
                          "data subcard pill labels fit without clipping");
 
-    int previousRight = -1;
-    int top = -1;
+    int previousBottom = -1;
+    int left = -1;
     for (QFrame *subCard : subCards)
     {
         const QRect subRect(subCard->mapTo(summaryContainer, QPoint(0, 0)), subCard->size());
-        require(previousRight < 0 || subRect.left() > previousRight,
-                "link-status subcards are arranged left-to-right");
-        require(top < 0 || std::abs(subRect.top() - top) <= 2,
-                "link-status subcards share a top baseline");
+        require(previousBottom < 0 || subRect.top() > previousBottom,
+                "link-status subcards are arranged top-to-bottom");
+        require(left < 0 || std::abs(subRect.left() - left) <= 2,
+                "link-status subcards share a left edge");
         require(subRect.right() <= summaryContainer->width() &&
                     subRect.bottom() <= summaryContainer->height(),
                 "link-status subcards stay inside the summary container");
-        previousRight = subRect.right();
-        top = subRect.top();
+        previousBottom = subRect.bottom();
+        left = subRect.left();
     }
 
-    const QStringList detailedDeviceLabels{
-        QStringLiteral("EPSILON2-D4G 组合导航"),
-        QStringLiteral("PTB210 气压计"),
-        QStringLiteral("HMP3 温湿度计"),
-        QStringLiteral("TFA1005-L 激光雷达"),
-        QStringLiteral("RD105 激光驱动板温控器"),
-        QStringLiteral("AI-8288D92J0 八路温控器"),
+    const QStringList compactDeviceLabels{
+        QStringLiteral("EPSILON"),
+        QStringLiteral("气压"),
+        QStringLiteral("温湿度"),
+        QStringLiteral("TFA1005-L"),
+        QStringLiteral("RD105"),
+        QStringLiteral("AI-8288"),
     };
-    for (const QString& labelText : detailedDeviceLabels)
+    for (const QString& labelText : compactDeviceLabels)
     {
         requireLabelFits(findExactLabel(serialCard, labelText),
-                         "serial configuration uses detailed device labels without clipping");
+                         "serial configuration uses compact target-neutral device labels without clipping");
     }
     int widestDeviceLabelText = 0;
     int deviceLabelWidth = -1;
-    for (const QString& labelText : detailedDeviceLabels)
+    for (const QString& labelText : compactDeviceLabels)
     {
         QLabel *label = findExactLabel(serialCard, labelText);
         require(label != nullptr, "serial configuration device label exists for width measurement");
@@ -493,14 +509,14 @@ int main(int argc, char **argv)
     }
     require(deviceLabelWidth >= widestDeviceLabelText &&
                 deviceLabelWidth <= widestDeviceLabelText + 2,
-            "serial configuration device column uses the widest device label without extra width");
+            "serial configuration device column uses the widest compact label without extra width");
     const QStringList serialColumnHeaders{
         QStringLiteral("设备"),
         QStringLiteral("串口"),
         QStringLiteral("波特率"),
         QStringLiteral("频率/轮询"),
         QStringLiteral("来源"),
-        QStringLiteral("链路操作"),
+        QStringLiteral("操作"),
     };
     for (const QString& headerText : serialColumnHeaders)
     {
@@ -509,7 +525,7 @@ int main(int argc, char **argv)
     }
     requireHeaderAboveWidget(serialCard,
                              findExactLabel(serialCard, QStringLiteral("设备")),
-                             findExactLabel(serialCard, QStringLiteral("EPSILON2-D4G 组合导航")),
+                             findExactLabel(serialCard, QStringLiteral("EPSILON")),
                              "device column header sits above the device names");
     requireHeaderAboveWidget(serialCard,
                              findExactLabel(serialCard, QStringLiteral("串口")),
@@ -527,7 +543,7 @@ int main(int argc, char **argv)
                              findExactLabel(serialCard, QStringLiteral("来源")),
                              serialCard->findChild<QWidget *>(QStringLiteral("devicePressureSourceCombo")),
                              "source column header sits above source selectors");
-    QLabel *actionHeader = findExactLabel(serialCard, QStringLiteral("链路操作"));
+    QLabel *actionHeader = findExactLabel(serialCard, QStringLiteral("操作"));
     require(actionHeader != nullptr, "link-action column header exists");
     int centeredActionCount = 0;
     const QRect actionHeaderRect(actionHeader->mapTo(serialCard, QPoint(0, 0)), actionHeader->size());
@@ -577,10 +593,10 @@ int main(int argc, char **argv)
     require(humiditySourceCombo->toolTip().contains(QStringLiteral("SHT45")) &&
                 !humiditySourceCombo->toolTip().contains(QStringLiteral("HMP3")),
             "humidity source tooltip follows SHT45 selection");
-    requireLabelFits(findExactLabel(serialCard, QStringLiteral("BMP390 气压计")),
-                     "pressure device label follows the selected source");
-    requireLabelFits(findExactLabel(serialCard, QStringLiteral("SHT45 温湿度计")),
-                     "humidity device label follows the selected source");
+    requireLabelFits(findExactLabel(serialCard, QStringLiteral("气压")),
+                     "pressure device row remains target-neutral while the source field carries the model");
+    requireLabelFits(findExactLabel(serialCard, QStringLiteral("温湿度")),
+                     "humidity device row remains target-neutral while the source field carries the model");
 
     auto *dataSourceModeCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceDataSourceModeCombo"));
@@ -614,9 +630,18 @@ int main(int argc, char **argv)
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureRateCombo"));
     require(dataSourceModeCombo && epsilonPortCombo && epsilonBaudCombo && epsilonRateCombo,
             "shared device config controls exist for target switching");
+    auto *skyTelemetryTransportCombo =
+        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceSkyTelemetryTransportCombo"));
+    QWidget *skyTelemetryRow = skyTelemetryTransportCombo ? skyTelemetryTransportCombo->parentWidget() : nullptr;
+    require(skyTelemetryRow && !skyTelemetryRow->isVisible(),
+            "local mode hides sky-ground link editing controls from the unified device table");
+    QLabel *servicesLabel = findSubsectionLabel(remoteCard, QStringLiteral("services"));
+    QLabel *syncLabel = findSubsectionLabel(remoteCard, QStringLiteral("sync"));
+    QLabel *advancedLabel = findSubsectionLabel(remoteCard, QStringLiteral("advanced"));
     require(remoteCard && remoteStatus && remoteApplyButton && remoteSaveButton &&
-                rawModeButton && rawJsonEdit && rd105SlaveSpin,
-            "remote sky advanced controls exist on the unified page");
+                rawModeButton && rawJsonEdit && rd105SlaveSpin &&
+                servicesLabel && syncLabel && advancedLabel,
+            "remote sky service, sync, and diagnostics controls exist on the unified page");
     QLabel *remoteTitleIcon = nullptr;
     for (QLabel *iconLabel : remoteCard->findChildren<QLabel *>(QStringLiteral("sectionTitleIcon")))
     {
@@ -627,7 +652,11 @@ int main(int argc, char **argv)
         }
     }
     require(remoteTitleIcon && !remoteTitleIcon->pixmap().isNull(),
-            "remote sky advanced card renders its server configuration icon");
+            "remote sky service/config card renders its server configuration icon");
+    require(!remoteCard->isVisible(),
+            "local mode hides the remote-only Sky services/config card");
+    require(!rawJsonEdit->isVisible(),
+            "SkyConfig JSON starts hidden instead of acting as a primary configuration area");
 
     selectComboText(epsilonPortCombo, QStringLiteral("COM7"),
                     "local EPSILON port can be set before switching targets");
@@ -637,7 +666,24 @@ int main(int argc, char **argv)
 
     dataSourceModeCombo->setCurrentIndex(1);
     VaporViewTest::processEventsFor(160);
-    require(remoteCard->isVisible(), "remote sky advanced card appears in remote mode");
+    activateLayouts(&window);
+    require(scrollArea->horizontalScrollBar() &&
+                scrollArea->horizontalScrollBar()->maximum() == 0 &&
+                !scrollArea->horizontalScrollBar()->isVisible(),
+            "remote device configuration page has no horizontal overflow");
+    require(cardHasAnyLabel(serialCard,
+                            QStringList() << QStringLiteral("设备配置 [天空端]")
+                                          << QStringLiteral("Device Configuration [Sky]")),
+            "remote mode retitles the shared device configuration card for the Sky target");
+    require(skyTelemetryRow->isVisible(),
+            "remote mode shows sky-ground link editing controls in the target section");
+    require(remoteCard->isVisible(), "remote sky service/config card appears in remote mode");
+    require(servicesLabel->isVisible() && syncLabel->isVisible() && advancedLabel->isVisible(),
+            "remote mode separates Sky services, config sync, and advanced diagnostics");
+    require(!rawJsonEdit->isVisible(),
+            "advanced SkyConfig JSON remains collapsed until requested");
+    require(remoteStatus->property("status").toString() == QStringLiteral("disabled"),
+            "disconnected remote mode explains the config state with a disabled status chip");
     require(pressureSourceCombo->isVisible() && humiditySourceCombo->isVisible(),
             "remote mode keeps PTB/BMP390 and HMP/SHT45 source selectors visible");
     require(ai8EnabledCheck && ai8EnabledCheck->isVisible() &&
@@ -661,6 +707,13 @@ int main(int argc, char **argv)
     remoteConfig.telemetry = {11.0, 12.0, 2.0, 1.0, 3.0};
     window.testInjectRemoteSkyConfig(remoteConfig.toJson());
     VaporViewTest::processEventsFor(160);
+    activateLayouts(&window);
+    require(scrollArea->horizontalScrollBar() &&
+                scrollArea->horizontalScrollBar()->maximum() == 0 &&
+                !scrollArea->horizontalScrollBar()->isVisible(),
+            "loaded remote SkyConfig still fits horizontally");
+    require(remoteStatus->property("status").toString() == QStringLiteral("disabled"),
+            "loaded remote SkyConfig remains viewable but marked offline when the sky link is disconnected");
     require(epsilonPortCombo->currentText() == QStringLiteral("/dev/ttyEPSILON"),
             "remote SkyConfig updates the same EPSILON port combo");
     require(epsilonPortCombo->findText(QStringLiteral("COM7")) < 0,
@@ -702,6 +755,8 @@ int main(int argc, char **argv)
     ai8BaudCombo->setCurrentText(QStringLiteral("115200"));
     ai8RateCombo->setCurrentText(QStringLiteral("12"));
     VaporViewTest::processEventsFor(120);
+    require(remoteStatus->property("status").toString() == QStringLiteral("dirty"),
+            "editing remote SkyConfig fields uses the dirty status vocabulary");
 
     QString remoteError;
     const QJsonObject uiJson = window.testRemoteSkyConfigFromDeviceConfigUi(&remoteError);
@@ -748,6 +803,8 @@ int main(int argc, char **argv)
     VaporViewTest::processEventsFor(80);
     require(window.testRemoteSkyConfigStatusText().contains(QStringLiteral("mock reject")),
             "remote apply failure is displayed inline");
+    require(remoteStatus->property("status").toString() == QStringLiteral("error"),
+            "remote apply failure uses the error status vocabulary");
     QString afterFailureError;
     const QJsonObject afterFailureJson = window.testRemoteSkyConfigFromDeviceConfigUi(&afterFailureError);
     require(afterFailureError.isEmpty() &&

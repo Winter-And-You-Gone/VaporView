@@ -747,9 +747,34 @@ void MainWindow::setRemoteSkyConfigStatus(const QString& text, bool error)
     }
     state_->device_config_.remote_sky_config_status_lbl->setText(text);
     state_->device_config_.remote_sky_config_status_lbl->setToolTip(text);
+    const bool linkOpen = isUiTestMode() ||
+        (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen());
+    QString status = QStringLiteral("normal");
+    if (error)
+    {
+        status = QStringLiteral("error");
+    }
+    else if (state_->remote_sky_config_loading_ ||
+             state_->remote_sky_config_applying_ ||
+             state_->remote_sky_config_saving_)
+    {
+        status = QStringLiteral("pending");
+    }
+    else if (state_->remote_sky_config_dirty_)
+    {
+        status = QStringLiteral("dirty");
+    }
+    else if (isRemoteSkyMode() && !linkOpen)
+    {
+        status = QStringLiteral("disabled");
+    }
+    else if (state_->remote_sky_config_loaded_)
+    {
+        status = QStringLiteral("success");
+    }
     state_->device_config_.remote_sky_config_status_lbl->setProperty(
         "status",
-        error ? QStringLiteral("error") : QStringLiteral("normal"));
+        status);
     state_->device_config_.remote_sky_config_status_lbl->style()->unpolish(
         state_->device_config_.remote_sky_config_status_lbl);
     state_->device_config_.remote_sky_config_status_lbl->style()->polish(
@@ -843,10 +868,10 @@ void MainWindow::updateRemoteSkyConfigControlsState()
     {
         setRemoteSkyConfigStatus(linkOpen
             ? (state_->is_english_
-                ? QStringLiteral("Remote Sky config is not loaded. Click Read Sky Config.")
-                : QStringLiteral("尚未读取天空端配置，请点击“读取天空端配置”。"))
+                ? QStringLiteral("Sky config is not loaded. Use Refresh to read it.")
+                : QStringLiteral("尚未读取天空端配置，请使用“刷新”读取。"))
             : (state_->is_english_
-                ? QStringLiteral("Connect the sky-ground telemetry link to read Remote Sky config.")
+                ? QStringLiteral("Connect the sky-ground telemetry link before refreshing Sky config.")
                 : QStringLiteral("请先连接天地数传链路，再读取天空端配置。")),
             false);
     }
@@ -887,7 +912,7 @@ void MainWindow::requestRemoteSkyConfigIfAvailable(bool force)
                 ? QStringLiteral("Telemetry link is disconnected. Showing last loaded Remote Sky config.")
                 : QStringLiteral("天地数传已断开，当前显示上次读取到的天空端配置。"))
             : (state_->is_english_
-                ? QStringLiteral("Connect the sky-ground telemetry link to read Remote Sky config.")
+                ? QStringLiteral("Connect the sky-ground telemetry link before refreshing Sky config.")
                 : QStringLiteral("请先连接天地数传链路，再读取天空端配置。")),
             false);
         updateRemoteSkyConfigControlsState();
