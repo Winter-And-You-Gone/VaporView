@@ -1,6 +1,11 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
 
+#include <QStyle>
+
+#include <algorithm>
+#include <tuple>
+
 namespace
 {
 
@@ -28,6 +33,112 @@ QString remoteSummaryBytesText(quint64 bytes)
         ++unit;
     }
     return QStringLiteral("%1 %2").arg(value, 0, 'f', unit == 0 ? 0 : 1).arg(units[unit]);
+}
+
+QString compactAvailabilityText(bool hasData, bool english)
+{
+    return hasData
+        ? (english ? QStringLiteral("Yes") : QStringLiteral("有"))
+        : (english ? QStringLiteral("No") : QStringLiteral("无"));
+}
+
+QString compactAvailabilityWidthText(bool english)
+{
+    return english ? QStringLiteral("Yes") : QStringLiteral("有");
+}
+
+QString summaryItemValueText(const VaporView::Ground::Main::RemoteTelemetrySummarySections::Item& item,
+                             bool compactAvailabilityValues,
+                             bool english)
+{
+    if (compactAvailabilityValues && item.compactAvailabilityValue)
+    {
+        return compactAvailabilityText(item.hasData, english);
+    }
+    return item.value;
+}
+
+QString summaryItemWidthText(const VaporView::Ground::Main::RemoteTelemetrySummarySections::Item& item,
+                             bool compactAvailabilityValues,
+                             bool english)
+{
+    if (compactAvailabilityValues && item.compactAvailabilityValue)
+    {
+        return compactAvailabilityWidthText(english);
+    }
+    return item.valueWidthText.isEmpty() ? item.value : item.valueWidthText;
+}
+
+void setTelemetryAvailability(QWidget *widget, bool available)
+{
+    if (!widget || widget->property("telemetryAvailable").toBool() == available)
+    {
+        return;
+    }
+    widget->setProperty("telemetryAvailable", available);
+    if (QStyle *style = widget->style())
+    {
+        style->unpolish(widget);
+        style->polish(widget);
+    }
+    widget->update();
+}
+
+bool updateSummarySectionValues(QVBoxLayout *sectionLayout,
+                                const QList<VaporView::Ground::Main::RemoteTelemetrySummarySections::Item>& items,
+                                bool compactAvailabilityValues,
+                                bool english)
+{
+    auto *section = sectionLayout ? qobject_cast<QWidget *>(sectionLayout->parent()) : nullptr;
+    if (!section)
+    {
+        return false;
+    }
+
+    QList<QFrame *> pills =
+        section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+    std::stable_sort(pills.begin(), pills.end(), [section](QFrame *left, QFrame *right) {
+        const QPoint leftPos = left->mapTo(section, QPoint(0, 0));
+        const QPoint rightPos = right->mapTo(section, QPoint(0, 0));
+        return std::make_tuple(leftPos.y(), leftPos.x()) <
+               std::make_tuple(rightPos.y(), rightPos.x());
+    });
+    if (pills.size() != items.size())
+    {
+        return false;
+    }
+
+    for (int index = 0; index < items.size(); ++index)
+    {
+        const auto& item = items.at(index);
+        QFrame *pill = pills.at(index);
+        auto *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+        auto *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+        if (!nameLabel || !valueLabel || nameLabel->text() != item.label)
+        {
+            return false;
+        }
+
+        const QString valueText = summaryItemValueText(item, compactAvailabilityValues, english);
+        const QString widthText = summaryItemWidthText(item, compactAvailabilityValues, english);
+        const int requiredValueWidth = std::max(valueLabel->fontMetrics().horizontalAdvance(valueText),
+                                               valueLabel->fontMetrics().horizontalAdvance(widthText));
+        const int availableValueWidth = std::max(
+            valueLabel->width(),
+            std::max(valueLabel->minimumWidth(), valueLabel->sizeHint().width()));
+        if (requiredValueWidth > availableValueWidth + 1)
+        {
+            return false;
+        }
+
+        if (valueLabel->text() != valueText)
+        {
+            valueLabel->setText(valueText);
+        }
+        setTelemetryAvailability(nameLabel, item.hasData);
+        setTelemetryAvailability(valueLabel, item.hasData);
+    }
+    return true;
 }
 
 QString rd105OutcomeName(VaporView::Ground::Devices::Rd105OperationOutcome outcome)
@@ -811,27 +922,26 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         return;
     }
     const RemoteTelemetrySummarySections sections = remoteTelemetrySummarySections();
-    QStringList summaryRenderTokens{
+    QStringList summaryStructureTokens{
         QString::number(state_->font_scale_percent_),
         state_->is_english_ ? QStringLiteral("en") : QStringLiteral("zh"),
         qApp && !qApp->styleSheet().isEmpty() ? QStringLiteral("styled") : QStringLiteral("unstyled")};
-    const auto appendSummaryRenderTokens = [&summaryRenderTokens](
-                                               const QList<RemoteTelemetrySummarySections::Item>& items) {
-        summaryRenderTokens << QString::number(items.size());
+    const auto appendSummaryStructureTokens = [&summaryStructureTokens](
+                                                  const QList<RemoteTelemetrySummarySections::Item>& items) {
+        summaryStructureTokens << QString::number(items.size());
         for (const RemoteTelemetrySummarySections::Item& item : items)
         {
-            summaryRenderTokens << item.label
-                                << item.value
-                                << item.valueWidthText
-                                << (item.hasData ? QStringLiteral("1") : QStringLiteral("0"));
+            summaryStructureTokens << item.label
+                                   << item.valueWidthText
+                                   << (item.compactAvailabilityValue ? QStringLiteral("compact") : QStringLiteral("value"));
         }
     };
-    appendSummaryRenderTokens(sections.rateItems);
-    appendSummaryRenderTokens(sections.linkItems);
-    appendSummaryRenderTokens(sections.linkStatusItems);
-    appendSummaryRenderTokens(sections.deviceItems);
-    const QString summaryRenderKey = summaryRenderTokens.join(QChar(0x1f));
-    constexpr auto kSummaryRenderKeyProperty = "vaporViewTelemetrySummaryRenderKey";
+    appendSummaryStructureTokens(sections.rateItems);
+    appendSummaryStructureTokens(sections.linkItems);
+    appendSummaryStructureTokens(sections.linkStatusItems);
+    appendSummaryStructureTokens(sections.deviceItems);
+    const QString summaryStructureKey = summaryStructureTokens.join(QChar(0x1f));
+    constexpr auto kSummaryStructureKeyProperty = "vaporViewTelemetrySummaryStructureKey";
 
     if (state_->data_telemetry_summary_card_)
     {
@@ -841,11 +951,59 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     {
         state_->device_config_.data_telemetry_summary_card->setVisible(true);
     }
-    const bool homeSummaryCurrent = !state_->data_telemetry_summary_card_ ||
-        state_->data_telemetry_summary_card_->property(kSummaryRenderKeyProperty).toString() == summaryRenderKey;
-    const bool deviceConfigSummaryCurrent = !state_->device_config_.data_telemetry_summary_card ||
-        state_->device_config_.data_telemetry_summary_card->property(kSummaryRenderKeyProperty).toString() == summaryRenderKey;
-    if (homeSummaryCurrent && deviceConfigSummaryCurrent)
+    QList<RemoteTelemetrySummarySections::Item> deviceConfigDataItems = sections.linkStatusItems;
+    for (const RemoteTelemetrySummarySections::Item& item : sections.deviceItems)
+    {
+        deviceConfigDataItems << item;
+    }
+
+    bool homeSummaryNeedsRender = false;
+    if (state_->data_telemetry_summary_card_)
+    {
+        homeSummaryNeedsRender = !(
+            updateSummarySectionValues(state_->data_telemetry_summary_layout_,
+                                       sections.rateItems,
+                                       false,
+                                       state_->is_english_) &&
+            updateSummarySectionValues(state_->data_telemetry_link_summary_layout_,
+                                       sections.linkItems,
+                                       false,
+                                       state_->is_english_) &&
+            updateSummarySectionValues(state_->data_telemetry_device_summary_layout_,
+                                       sections.deviceItems,
+                                       true,
+                                       state_->is_english_));
+        if (!homeSummaryNeedsRender)
+        {
+            state_->data_telemetry_summary_card_->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
+            state_->data_telemetry_summary_card_->update();
+        }
+    }
+
+    bool deviceConfigSummaryNeedsRender = false;
+    if (state_->device_config_.data_telemetry_summary_card)
+    {
+        deviceConfigSummaryNeedsRender = !(
+            updateSummarySectionValues(state_->device_config_.data_telemetry_rate_summary_layout,
+                                       sections.rateItems,
+                                       false,
+                                       state_->is_english_) &&
+            updateSummarySectionValues(state_->device_config_.data_telemetry_link_summary_layout,
+                                       sections.linkItems,
+                                       false,
+                                       state_->is_english_) &&
+            updateSummarySectionValues(state_->device_config_.data_telemetry_device_summary_layout,
+                                       deviceConfigDataItems,
+                                       true,
+                                       state_->is_english_));
+        if (!deviceConfigSummaryNeedsRender)
+        {
+            state_->device_config_.data_telemetry_summary_card->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
+            state_->device_config_.data_telemetry_summary_card->update();
+        }
+    }
+
+    if (!homeSummaryNeedsRender && !deviceConfigSummaryNeedsRender)
     {
         if (state_->home_overview_splitter_)
         {
@@ -853,7 +1011,6 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         }
         return;
     }
-
     auto clearLayout = [](QLayout *layout) {
         if (!layout)
         {
@@ -927,11 +1084,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             nameLabel->setMinimumHeight(nameLabel->fontMetrics().height() + scalePixels(2));
             pillLayout->addWidget(nameLabel, 0, Qt::AlignVCenter);
 
-            const QString compactValue = item.hasData
-                ? (state_->is_english_ ? QStringLiteral("Yes") : QStringLiteral("有"))
-                : (state_->is_english_ ? QStringLiteral("No") : QStringLiteral("无"));
-            const bool useCompactValue = compactAvailabilityValues && item.compactAvailabilityValue;
-            const QString valueText = useCompactValue ? compactValue : item.value;
+            const QString valueText = summaryItemValueText(item, compactAvailabilityValues, state_->is_english_);
             auto *valueLabel = new QLabel(valueText, pill);
             valueLabel->setObjectName(QStringLiteral("homeTelemetrySummaryValueLabel"));
             valueLabel->setProperty("deviceConfigLink", useSideTitle);
@@ -942,9 +1095,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             valueLabel->setTextFormat(Qt::PlainText);
             valueLabel->ensurePolished();
             valueLabel->setMinimumHeight(valueLabel->fontMetrics().height() + scalePixels(2));
-            const QString widthValue = useCompactValue
-                ? (state_->is_english_ ? QStringLiteral("Yes") : QStringLiteral("有"))
-                : (item.valueWidthText.isEmpty() ? valueText : item.valueWidthText);
+            const QString widthValue = summaryItemWidthText(item, compactAvailabilityValues, state_->is_english_);
             const int polishedValueWidth =
                 std::max(valueLabel->sizeHint().width(),
                          std::max(valueLabel->fontMetrics().horizontalAdvance(widthValue),
@@ -1175,7 +1326,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         summaryWidget->setMinimumWidth(sectionMinimumWidth + margins.left() + margins.right());
         summaryWidget->updateGeometry();
     };
-    if (state_->data_telemetry_summary_card_)
+    if (homeSummaryNeedsRender && state_->data_telemetry_summary_card_)
     {
         renderSummarySection(state_->data_telemetry_summary_card_,
                              state_->data_telemetry_summary_layout_,
@@ -1205,15 +1356,10 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         updateSummaryMinimumWidth(state_->data_telemetry_summary_card_);
         state_->data_telemetry_summary_card_->updateGeometry();
         updateHomeDeviceOverviewMinimumWidth();
-        state_->data_telemetry_summary_card_->setProperty(kSummaryRenderKeyProperty, summaryRenderKey);
+        state_->data_telemetry_summary_card_->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
     }
-    if (state_->device_config_.data_telemetry_summary_card)
+    if (deviceConfigSummaryNeedsRender && state_->device_config_.data_telemetry_summary_card)
     {
-        QList<RemoteTelemetrySummarySections::Item> deviceConfigDataItems = sections.linkStatusItems;
-        for (const RemoteTelemetrySummarySections::Item& item : sections.deviceItems)
-        {
-            deviceConfigDataItems << item;
-        }
         renderSummarySection(state_->device_config_.data_telemetry_summary_card,
                              state_->device_config_.data_telemetry_rate_summary_layout,
                              state_->is_english_ ? QStringLiteral("Data stream rates") : QStringLiteral("数据频率"),
@@ -1242,7 +1388,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             summaryLayout->activate();
         }
         state_->device_config_.data_telemetry_summary_card->updateGeometry();
-        state_->device_config_.data_telemetry_summary_card->setProperty(kSummaryRenderKeyProperty, summaryRenderKey);
+        state_->device_config_.data_telemetry_summary_card->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
     }
     if (state_->home_overview_splitter_)
     {
