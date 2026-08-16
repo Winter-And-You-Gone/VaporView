@@ -297,6 +297,41 @@ bool homeTelemetrySummaryHasStableCompactTextGaps(QWidget *homeConfigCard)
     return true;
 }
 
+QList<QFrame *> sortedHomeTelemetryPills(QWidget *homeConfigCard)
+{
+    QWidget *summaryContainer = homeTelemetrySummaryContainer(homeConfigCard);
+    QList<QFrame *> result;
+    for (QFrame *section : sortedHomeTelemetrySections(summaryContainer))
+    {
+        QList<QFrame *> sectionPills =
+            section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+        std::sort(sectionPills.begin(), sectionPills.end(), [section](QFrame *lhs, QFrame *rhs) {
+            const QPoint lhsPos = lhs->mapTo(section, QPoint(0, 0));
+            const QPoint rhsPos = rhs->mapTo(section, QPoint(0, 0));
+            return std::make_tuple(lhsPos.y(), lhsPos.x()) <
+                   std::make_tuple(rhsPos.y(), rhsPos.x());
+        });
+        result.append(sectionPills);
+    }
+    return result;
+}
+
+bool sameWidgetSet(const QList<QFrame *>& actual, const QList<QFrame *>& expected)
+{
+    if (actual.size() != expected.size())
+    {
+        return false;
+    }
+    for (QFrame *widget : expected)
+    {
+        if (!actual.contains(widget))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 QStringList homeTelemetryDynamicSummaryValues(QWidget *homeConfigCard)
 {
     QWidget *summaryContainer = homeTelemetrySummaryContainer(homeConfigCard);
@@ -696,10 +731,15 @@ int main(int argc, char **argv)
     const QStringList dynamicValuesBefore = homeTelemetryDynamicSummaryValues(homeConfigCard);
     require(!dynamicValuesBefore.isEmpty(),
             "UI test mode exposes dynamic home telemetry capsule values");
+    const QList<QFrame *> telemetryPillsBeforeRefresh = sortedHomeTelemetryPills(homeConfigCard);
+    require(!telemetryPillsBeforeRefresh.isEmpty(),
+            "UI test mode exposes home telemetry capsule widgets before dynamic refresh");
     require(VaporViewTest::processEventsUntil(1600, [homeConfigCard, dynamicValuesBefore]() {
                 return homeTelemetryDynamicSummaryValues(homeConfigCard) != dynamicValuesBefore;
             }),
             "UI test mode refreshes home telemetry capsule values over time");
+    require(sameWidgetSet(sortedHomeTelemetryPills(homeConfigCard), telemetryPillsBeforeRefresh),
+            "UI test mode refreshes home telemetry values without rebuilding capsule widgets");
     require(VaporViewTest::processEventsUntil(1500, [homeConfigCard]() {
                 return homeTelemetrySummaryHasStableCompactTextGaps(homeConfigCard);
             }),
