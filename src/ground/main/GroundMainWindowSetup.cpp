@@ -2256,8 +2256,6 @@ void MainWindow::setupCentralWidget()
                 this, &MainWindow::onConfigureEpsilonRtcmPortClicked);
         connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::reconfigureRequested,
                 this, &MainWindow::onReconfigureEpsilonClicked);
-        connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::rtkConfigRequested,
-                this, &MainWindow::onRtkConfigClicked);
         state_->epsilon_config_panel_->setEnglish(state_->is_english_);
         syncDeviceConfigEpsilonPanelFromSettings();
         updateDeviceConfigState();

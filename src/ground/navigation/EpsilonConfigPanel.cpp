@@ -428,10 +428,6 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
                     QStringLiteral("epsilonReconfigureSettingName"),
                     QStringLiteral("epsilonReconfigureSettingDescription"),
                     QStringLiteral("epsilonReconfigureButton"));
-    addDeviceAction(2, &rtk_name_label_, &rtk_description_label_, &rtk_config_button_,
-                    QStringLiteral("epsilonRtkSettingName"),
-                    QStringLiteral("epsilonRtkSettingDescription"),
-                    QStringLiteral("epsilonRtkConfigButton"));
     deviceSettingsCard.body_layout->addLayout(deviceGrid);
     panelLayout->addWidget(deviceSettingsCard.card);
 
@@ -451,7 +447,6 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     connect(save_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::saveRequested);
     connect(rtcm_port_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::rtcmPortRequested);
     connect(reconfigure_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::reconfigureRequested);
-    connect(rtk_config_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::rtkConfigRequested);
 
     QWidget::setTabOrder(recommended_button_, packet_rate_combos_.value(0));
     for (int i = 0; i + 1 < packet_rate_combos_.size(); ++i)
@@ -461,8 +456,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     QWidget::setTabOrder(packet_rate_combos_.last(), rtcm_device_port_combo_);
     QWidget::setTabOrder(rtcm_device_port_combo_, rtcm_port_button_);
     QWidget::setTabOrder(rtcm_port_button_, reconfigure_button_);
-    QWidget::setTabOrder(reconfigure_button_, rtk_config_button_);
-    QWidget::setTabOrder(rtk_config_button_, save_button_);
+    QWidget::setTabOrder(reconfigure_button_, save_button_);
 
     updateTexts();
     applyAppearance();
@@ -850,13 +844,8 @@ void EpsilonConfigPanel::updateTexts()
     reconfigure_description_label_->setText(
         is_english_ ? QStringLiteral("Apply the current EPSILON output profile to the device.")
                     : QStringLiteral("将当前 EPSILON 输出配置应用到设备。"));
-    rtk_name_label_->setText(is_english_ ? QStringLiteral("Differential Positioning") : QStringLiteral("差分定位"));
-    rtk_description_label_->setText(
-        is_english_ ? QStringLiteral("Open the differential-positioning page in Combination Navigation.")
-                    : QStringLiteral("进入组合导航中的差分定位页面。"));
     for (QLabel *label : {rtcm_name_label_, rtcm_description_label_,
-                          reconfigure_name_label_, reconfigure_description_label_,
-                          rtk_name_label_, rtk_description_label_})
+                          reconfigure_name_label_, reconfigure_description_label_})
     {
         label->setAccessibleName(label->text());
     }
@@ -909,14 +898,11 @@ void EpsilonConfigPanel::updateTexts()
     rtcm_port_button_->setToolTip(is_english_ ? QStringLiteral("Configure an EPSILON communication port as RTCM input") : QStringLiteral("配置 EPSILON 通信串口为 RTCM 输入口"));
     reconfigure_button_->setText(is_english_ ? QStringLiteral("Reconfigure Output") : QStringLiteral("重新配置输出"));
     reconfigure_button_->setToolTip(is_english_ ? QStringLiteral("Apply the current EPSILON output profile") : QStringLiteral("应用当前 EPSILON 输出配置"));
-    rtk_config_button_->setText(is_english_ ? QStringLiteral("RTK Config") : QStringLiteral("RTK配置"));
-    rtk_config_button_->setToolTip(is_english_ ? QStringLiteral("Open RTK config") : QStringLiteral("打开 RTK 配置"));
     VaporView::Ground::MainSupport::fitButtonMinimumWidth(recommended_button_, 100);
     VaporView::Ground::MainSupport::fitButtonMinimumWidth(save_button_, 118);
     VaporView::Ground::MainSupport::fitButtonMinimumWidth(rtcm_port_button_, 128);
     VaporView::Ground::MainSupport::fitButtonMinimumWidth(reconfigure_button_, 128);
-    VaporView::Ground::MainSupport::fitButtonMinimumWidth(rtk_config_button_, 100);
-    for (QPushButton *button : {recommended_button_, save_button_, rtcm_port_button_, reconfigure_button_, rtk_config_button_})
+    for (QPushButton *button : {recommended_button_, save_button_, rtcm_port_button_, reconfigure_button_})
     {
         if (button)
         {

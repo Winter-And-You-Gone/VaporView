@@ -293,7 +293,6 @@ int main(int argc, char *argv[])
     ActionProbe save{"epsilonSaveButton"};
     ActionProbe rtcm{"epsilonRtcmPortButton"};
     ActionProbe reconfigure{"epsilonReconfigureButton"};
-    ActionProbe rtk{"epsilonRtkConfigButton"};
     QObject::connect(&panel, &EpsilonConfigPanel::recommendedProfileRequested,
                      &panel, [&recommended]() { recommended.emitted = true; });
     QObject::connect(&panel, &EpsilonConfigPanel::saveRequested,
@@ -302,10 +301,8 @@ int main(int argc, char *argv[])
                      &panel, [&rtcm]() { rtcm.emitted = true; });
     QObject::connect(&panel, &EpsilonConfigPanel::reconfigureRequested,
                      &panel, [&reconfigure]() { reconfigure.emitted = true; });
-    QObject::connect(&panel, &EpsilonConfigPanel::rtkConfigRequested,
-                     &panel, [&rtk]() { rtk.emitted = true; });
 
-    for (ActionProbe *probe : {&recommended, &save, &rtcm, &reconfigure, &rtk})
+    for (ActionProbe *probe : {&recommended, &save, &rtcm, &reconfigure})
     {
         auto *button = panel.findChild<QPushButton *>(QString::fromLatin1(probe->objectName));
         require(button != nullptr, "EPSILON operation button exists");
@@ -316,6 +313,10 @@ int main(int argc, char *argv[])
         button->click();
         require(probe->emitted, "EPSILON operation button emits its semantic request");
     }
+    require(panel.findChild<QPushButton *>(QStringLiteral("epsilonRtkConfigButton")) == nullptr &&
+                panel.findChild<QLabel *>(QStringLiteral("epsilonRtkSettingName")) == nullptr &&
+                panel.findChild<QLabel *>(QStringLiteral("epsilonRtkSettingDescription")) == nullptr,
+            "EPSILON device settings route differential positioning through the navigation bar");
     auto *rtcmButton = panel.findChild<QPushButton *>(QStringLiteral("epsilonRtcmPortButton"));
     require(rtcmButton != nullptr &&
                 !rtcmButton->toolTip().contains(QStringLiteral("port 2"), Qt::CaseInsensitive) &&

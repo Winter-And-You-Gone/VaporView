@@ -37,7 +37,6 @@ signals:
     void saveRequested();
     void rtcmPortRequested();
     void reconfigureRequested();
-    void rtkConfigRequested();
 
 protected:
     void changeEvent(QEvent *event) override;
@@ -70,8 +69,6 @@ private:
     QComboBox *rtcm_device_port_combo_ = nullptr;
     QLabel *reconfigure_name_label_ = nullptr;
     QLabel *reconfigure_description_label_ = nullptr;
-    QLabel *rtk_name_label_ = nullptr;
-    QLabel *rtk_description_label_ = nullptr;
     QVector<QLabel *> packet_group_labels_;
     QVector<QWidget *> packet_rate_fields_;
     QVector<QLabel *> packet_rate_labels_;
@@ -81,7 +78,6 @@ private:
     QPushButton *save_button_ = nullptr;
     QPushButton *rtcm_port_button_ = nullptr;
     QPushButton *reconfigure_button_ = nullptr;
-    QPushButton *rtk_config_button_ = nullptr;
 };
 
 } // namespace VaporView::Ground::Navigation

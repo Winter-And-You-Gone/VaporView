@@ -9188,10 +9188,8 @@ int main(int argc, char **argv)
         epsilonDeviceSettingsCard, QStringLiteral("epsilonReconfigureButton"),
         {QStringLiteral("重新配置输出"), QStringLiteral("Reconfigure Output")},
         epsilonDeviceLocalBounds, "EPSILON device settings expose the reconfigure action");
-    const QRect rtkRect = requireActionButton(
-        epsilonDeviceSettingsCard, QStringLiteral("epsilonRtkConfigButton"),
-        {QStringLiteral("RTK配置"), QStringLiteral("RTK Config")},
-        epsilonDeviceLocalBounds, "EPSILON device settings expose the differential-navigation action");
+    require(epsilonDeviceSettingsCard->findChild<QPushButton *>(QStringLiteral("epsilonRtkConfigButton")) == nullptr,
+            "EPSILON device settings route differential navigation through the top navigation bar");
     const QRect saveRect = requireActionButton(
         epsilonActionsContainer, QStringLiteral("epsilonSaveButton"),
         {QStringLiteral("保存并应用"), QStringLiteral("Save + Apply")},
@@ -9200,7 +9198,6 @@ int main(int argc, char **argv)
     Q_UNUSED(recommendedRect);
     Q_UNUSED(rtcmRect);
     Q_UNUSED(reconfigureRect);
-    Q_UNUSED(rtkRect);
     require(saveRect.top() + epsilonActionsBounds.top() > epsilonDeviceSettingsBounds.bottom(),
             "EPSILON save-and-apply action follows device settings");
     require(epsilonOutputCard->findChild<QPushButton *>(QStringLiteral("epsilonSaveButton")) == nullptr,
