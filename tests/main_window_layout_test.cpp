@@ -3338,7 +3338,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
 {
     MainWindow languageOverviewWindow;
     languageOverviewWindow.setWindowTitle(QStringLiteral("VaporView"));
-    languageOverviewWindow.resize(1600, 800);
+    languageOverviewWindow.resize(1280, 800);
     languageOverviewWindow.show();
     require(waitForWindowExposed(&languageOverviewWindow),
             "dedicated language overview window becomes exposed");
@@ -3442,7 +3442,6 @@ void requireHomeOverviewLanguageWidthRoundTrip()
                                                                   languageHomeOverviewSplitter,
                                                                   languageDeviceOverviewCard,
                                                                   inflatedEnglishDeviceWidth]() {
-                activateLayouts(&languageOverviewWindow);
                 const QList<int> sizes = languageHomeOverviewSplitter->sizes();
                 return sizes.size() == 2 &&
                        sizes.at(0) < inflatedEnglishDeviceWidth &&
@@ -3460,6 +3459,8 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     }
     require(returnedToChineseWidth,
             "language overview device card returns to the Chinese minimum width after language toggles");
+    processEventsFor(50);
+    activateLayouts(languageDeviceOverviewCard);
     requireTelemetrySummaryPillsOrdered(
         languageTelemetrySummaryContainer,
         "language overview telemetry capsules stay ordered after returning to Chinese");
