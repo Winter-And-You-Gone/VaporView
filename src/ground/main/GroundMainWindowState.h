@@ -488,6 +488,9 @@ struct MainWindowState
     bool remote_sky_config_saving_;
     bool remote_sky_config_raw_mode_;
     bool remote_sky_config_updating_ui_;
+    bool remote_serial_detection_pending_ = false;
+    quint16 remote_serial_detection_seq_ = 0;
+    quint16 remote_serial_detection_cancel_seq_ = 0;
     QString remote_sky_config_status_text_;
     bool remote_sky_config_status_error_;
     quint16 remote_sky_config_read_seq_;

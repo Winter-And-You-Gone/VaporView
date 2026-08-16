@@ -180,6 +180,8 @@ QString commandIdName(CommandId id)
     case CommandId::SaveSkyConfig: return QStringLiteral("SaveSkyConfig");
     case CommandId::ReloadSkyConfig: return QStringLiteral("ReloadSkyConfig");
     case CommandId::SetPeakSearchRange: return QStringLiteral("SetPeakSearchRange");
+    case CommandId::AutoDetectSerialPorts: return QStringLiteral("AutoDetectSerialPorts");
+    case CommandId::CancelSerialPortDetection: return QStringLiteral("CancelSerialPortDetection");
     case CommandId::SetTemperatureTarget: return QStringLiteral("SetTemperatureTarget");
     case CommandId::SetTemperatureOutputEnabled: return QStringLiteral("SetTemperatureOutputEnabled");
     case CommandId::SetTemperatureOutputMode: return QStringLiteral("SetTemperatureOutputMode");
@@ -234,6 +236,10 @@ QString commandErrorCodeText(CommandErrorCode error, bool english)
         return english ? QStringLiteral("Recording already started") : QStringLiteral("记录已开始");
     case CommandErrorCode::RecordingNotStarted:
         return english ? QStringLiteral("Recording not started") : QStringLiteral("记录未开始");
+    case CommandErrorCode::SerialPortDetectionInProgress:
+        return english ? QStringLiteral("Serial-port detection is already running") : QStringLiteral("串口自动识别正在进行");
+    case CommandErrorCode::SerialPortDetectionNotRunning:
+        return english ? QStringLiteral("Serial-port detection is not running") : QStringLiteral("当前没有正在运行的串口自动识别任务");
     case CommandErrorCode::InternalError:
         return english ? QStringLiteral("Internal error") : QStringLiteral("内部错误");
     }

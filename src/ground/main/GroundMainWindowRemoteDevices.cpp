@@ -248,7 +248,11 @@ void MainWindow::updateSourceModeUi()
     }
     if (state_->auto_detect_ports_btn_)
     {
-        state_->auto_detect_ports_btn_->setEnabled(!remote && (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_);
+        const bool remoteDetectionAvailable = remote && (isUiTestMode() ||
+            (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen()));
+        state_->auto_detect_ports_btn_->setEnabled(remote
+            ? remoteDetectionAvailable
+            : (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_);
     }
     if (state_->source_mode_switch_)
     {
@@ -583,6 +587,10 @@ void MainWindow::clearRemoteSkyDataUi()
 void MainWindow::markRemoteSkyLinkClosed()
 {
     state_->remote_sky_controller_->markLinkClosed();
+    state_->remote_serial_detection_pending_ = false;
+    state_->port_detection_in_progress_ = false;
+    state_->remote_serial_detection_seq_ = 0;
+    state_->remote_serial_detection_cancel_seq_ = 0;
     state_->remote_sky_online_ = false;
     state_->remote_wave_stream_requested_ = false;
     state_->remote_wave_stream_enable_pending_ = false;

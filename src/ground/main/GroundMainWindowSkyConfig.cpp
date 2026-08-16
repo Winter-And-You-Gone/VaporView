@@ -1089,6 +1089,11 @@ void MainWindow::handleRemoteSkyConfigReceived(const QJsonObject& object, bool b
         ? QStringLiteral("Remote Sky config read from sky.")
         : QStringLiteral("已读取天空端配置。"));
     updateRemoteSkyConfigControlsState();
+    if (state_->remote_serial_detection_pending_)
+    {
+        state_->remote_serial_detection_pending_ = false;
+        startRemoteSerialPortDetection();
+    }
     if (state_->remote_wave_connect_after_config_read_)
     {
         const QString pendingHost = state_->remote_wave_pending_host_;

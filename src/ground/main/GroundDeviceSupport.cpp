@@ -800,7 +800,7 @@ void saveRememberedSensorBaud(QSettings& settings,
 QString sourceModeDisplayText(bool english, int index)
 {
     return index == 1
-        ? (english ? QStringLiteral("Sky-Ground Remote Mode") : QStringLiteral("天地远程模式"))
+        ? (english ? QStringLiteral("Remote") : QStringLiteral("远程"))
         : (english ? QStringLiteral("Local") : QStringLiteral("本地"));
 }
 

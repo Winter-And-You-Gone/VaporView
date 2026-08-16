@@ -466,6 +466,10 @@ MainWindow::MainWindow(QWidget *parent)
                 &VaporView::GroundTelemetryService::skyConfigApplyResultReceived,
                 this,
                 &MainWindow::onRemoteSkyConfigApplyResultReceived);
+        connect(telemetryService,
+                &VaporView::GroundTelemetryService::serialPortDetectionResultReceived,
+                this,
+                &MainWindow::onRemoteSerialPortDetectionResult);
     }
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::commandTimedOut,
             this, [this](VaporView::CommandId commandId, quint16 commandSeq) {
@@ -501,6 +505,16 @@ MainWindow::MainWindow(QWidget *parent)
                 : QStringLiteral("保存天空端配置超时。"),
                 true);
             updateRemoteSkyConfigControlsState();
+        }
+        else if (commandId == VaporView::CommandId::AutoDetectSerialPorts &&
+                 commandSeq == state_->remote_serial_detection_seq_)
+        {
+            state_->port_detection_in_progress_ = false;
+            state_->remote_serial_detection_seq_ = 0;
+            setRemoteSkyConfigStatus(state_->is_english_
+                ? QStringLiteral("Remote serial-port detection timed out.")
+                : QStringLiteral("远程串口自动识别超时。"), true);
+            updateConnectionStatus(state_->is_connected_);
         }
         else if (commandId == VaporView::CommandId::SetPeakSearchRange)
         {
