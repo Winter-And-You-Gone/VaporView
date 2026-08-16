@@ -777,6 +777,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     const double txBps = connected
         ? (uiTestMode ? uiTestSnapshot.transmitBitsPerSecond : state_->remote_sky_controller_->transmitBitsPerSecond())
         : 0.0;
+    const bool linkRateAvailable = connected;
     const bool statusFresh = connected && (uiTestMode ||
         (state_->remote_sky_controller_ &&
          state_->remote_sky_controller_->statusFresh(QDateTime::currentMSecsSinceEpoch())));
@@ -857,9 +858,9 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendWaveformRate(4, QStringLiteral("Wave harm."));
         rateRows << makeItem(QStringLiteral("Wave capture"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
         linkRows << makeItem(QStringLiteral("Target"), targetText, true);
-        linkRows << makeItem(QStringLiteral("Sky->Ground"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("Ground->Sky"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("Total"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("Sky->Ground"), formatBitRate(rxBps), linkRateAvailable, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("Ground->Sky"), formatBitRate(txBps), linkRateAvailable, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("Total"), formatBitRate(rxBps + txBps), linkRateAvailable, bitRateWidthText);
         linkStatusRows << makeItem(QStringLiteral("Disk"),
                                    statusFresh && diskFreeBytes > 0 ? remoteSummaryBytesText(diskFreeBytes) : unavailableText,
                                    statusFresh && diskFreeBytes > 0,
@@ -887,9 +888,9 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendWaveformRate(4, QStringLiteral("谐波波形"));
         rateRows << makeItem(QStringLiteral("波形采集"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
         linkRows << makeItem(QStringLiteral("目标"), targetText, true);
-        linkRows << makeItem(QStringLiteral("天→地"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("地→天"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("合"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("天→地"), formatBitRate(rxBps), linkRateAvailable, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("地→天"), formatBitRate(txBps), linkRateAvailable, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("合"), formatBitRate(rxBps + txBps), linkRateAvailable, bitRateWidthText);
         linkStatusRows << makeItem(QStringLiteral("磁盘"),
                                    statusFresh && diskFreeBytes > 0 ? remoteSummaryBytesText(diskFreeBytes) : unavailableText,
                                    statusFresh && diskFreeBytes > 0,

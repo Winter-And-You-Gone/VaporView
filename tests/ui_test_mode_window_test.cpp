@@ -1,4 +1,5 @@
 #include "ground/main/MainWindow.h"
+#include "ground/devices/RemoteSkyController.h"
 #include "ground/main/UiLogModel.h"
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/wave/TcpWavePanel.h"
@@ -356,7 +357,7 @@ QStringList homeTelemetryDynamicSummaryValues(QWidget *homeConfigCard)
     return values;
 }
 
-QString homeTelemetryPillValue(QWidget *homeConfigCard, const QString& name)
+QFrame *homeTelemetryPill(QWidget *homeConfigCard, const QString& name)
 {
     QWidget *summaryContainer = homeTelemetrySummaryContainer(homeConfigCard);
     for (QFrame *pill : summaryContainer
@@ -364,13 +365,21 @@ QString homeTelemetryPillValue(QWidget *homeConfigCard, const QString& name)
              : QList<QFrame *>())
     {
         QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
-        QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
-        if (nameLabel && valueLabel && nameLabel->text() == name)
+        if (nameLabel && nameLabel->text() == name)
         {
-            return valueLabel->text();
+            return pill;
         }
     }
-    return QString();
+    return nullptr;
+}
+
+QString homeTelemetryPillValue(QWidget *homeConfigCard, const QString& name)
+{
+    QFrame *pill = homeTelemetryPill(homeConfigCard, name);
+    QLabel *valueLabel = pill
+        ? pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"))
+        : nullptr;
+    return valueLabel ? valueLabel->text() : QString();
 }
 
 void requireCompactTelemetryPillTextGap(QFrame *pill, const char *message)
@@ -1552,6 +1561,49 @@ int main(int argc, char **argv)
             connectionSourceModeSwitch->click();
             processEvents();
         }
+
+        QTcpServer remoteIdleSource;
+        require(remoteIdleSource.listen(QHostAddress::LocalHost),
+                "idle TCP telemetry source starts for zero-rate link coverage");
+        auto *remoteController = qobject_cast<VaporView::Ground::Devices::RemoteSkyController *>(
+            connectionWindow->property("remoteSkyController").value<QObject *>());
+        require(remoteController != nullptr,
+                "normal-mode window exposes its remote Sky controller");
+        VaporView::setSettingsWritesSuspended(false);
+        require(remoteController->openTcp(QStringLiteral("127.0.0.1"), remoteIdleSource.serverPort()),
+                "remote Sky controller connects to the idle TCP telemetry source");
+        VaporView::setSettingsWritesSuspended(true);
+        connectionSourceModeSwitch->click();
+        processEvents();
+        QGroupBox *remoteHomeConfigCard = nullptr;
+        for (QWidget *ancestor = connectionSourceModeSwitch->parentWidget();
+             ancestor && !remoteHomeConfigCard;
+             ancestor = ancestor->parentWidget())
+        {
+            remoteHomeConfigCard = qobject_cast<QGroupBox *>(ancestor);
+        }
+        require(remoteHomeConfigCard != nullptr && connectionSourceModeSwitch->switchChecked(),
+                "remote source mode is active for zero-rate link coverage");
+        for (const QString& name : {QStringLiteral("天→地"), QStringLiteral("地→天"), QStringLiteral("合")})
+        {
+            QFrame *pill = homeTelemetryPill(remoteHomeConfigCard, name);
+            require(pill != nullptr,
+                    "remote zero-rate link summary exposes the expected rate pill");
+            QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+            QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+            require(nameLabel && valueLabel && valueLabel->text() == QStringLiteral("0 bps"),
+                    "remote zero-rate link summary shows 0 bps");
+            require(nameLabel->property("telemetryAvailable").toBool() &&
+                        valueLabel->property("telemetryAvailable").toBool(),
+                    "remote zero-rate link summary remains visually available while connected");
+        }
+        remoteController->close();
+        processEvents();
+        require(!remoteController->isOpen(),
+                "remote zero-rate link coverage closes the remote telemetry connection");
+        connectionSourceModeSwitch->click();
+        processEvents();
+
         auto *connectionWavePanel = connectionWindow->findChild<TcpWavePanel *>();
         require(connectionWavePanel != nullptr,
                 "normal-mode window exposes its TCP waveform panel");
