@@ -5731,12 +5731,23 @@ int main(int argc, char **argv)
     QFrame *targetPill = findTelemetryPillByName(homeLinkSection, QStringLiteral("目标"));
     require(targetPill != nullptr,
             "home link-rate telemetry section exposes the current Local/Remote target");
+    const int targetPillY = targetPill->mapTo(homeLinkSection, QPoint(0, 0)).y();
+    int linkRatePillY = -1;
     for (QFrame *pill : linkRatePills)
     {
         if (pill == targetPill)
         {
             continue;
         }
+        const int pillY = pill->mapTo(homeLinkSection, QPoint(0, 0)).y();
+        require(pillY > targetPillY,
+                "home link-rate target is alone on the first telemetry line");
+        if (linkRatePillY < 0)
+        {
+            linkRatePillY = pillY;
+        }
+        require(std::abs(pillY - linkRatePillY) <= 2,
+                "home link-rate direction and total pills share the second telemetry line");
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(valueLabel != nullptr,
                 "home link-rate pill has a value label");

@@ -1349,8 +1349,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                              state_->data_telemetry_link_summary_layout_,
                              state_->is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"),
                              sections.linkItems,
-                             2,
-                             2);
+                             1,
+                             3);
         renderSummarySection(state_->data_telemetry_summary_card_,
                              state_->data_telemetry_device_summary_layout_,
                              state_->is_english_ ? QStringLiteral("Data") : QStringLiteral("数据"),
