@@ -4,6 +4,7 @@
 
 #include "ground/session/SessionTrajectoryRenderLoader.h"
 #include "shared/theme/AppTheme.h"
+#include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "geo/TrajectoryQuality.h"
 #include "Map3DRuntime.h"
@@ -729,7 +730,10 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         updateStatus(nullptr);
     });
 
-    heat_metric_combo_ = new QComboBox(toolbar);
+    auto *heatMetricCombo = new VaporView::SingleLevelPopupComboBox(toolbar);
+    heatMetricCombo->setShowSelectionCheck(false);
+    heatMetricCombo->setPopupFitContents(true);
+    heat_metric_combo_ = heatMetricCombo;
     heat_metric_combo_->setObjectName(QStringLiteral("map3DHeatMetricCombo"));
     heat_metric_combo_->addItems({VaporView::Geo::heatMetricName(VaporView::Geo::HeatMetric::Peak, false),
                                   VaporView::Geo::heatMetricName(VaporView::Geo::HeatMetric::Humidity, false),
@@ -737,7 +741,6 @@ Map3DWindow::Map3DWindow(QWidget* parent)
                                   VaporView::Geo::heatMetricName(VaporView::Geo::HeatMetric::Pressure, false)});
     heat_metric_combo_->setCurrentIndex(heatMetricComboIndex(heat_metric_));
     heat_metric_combo_->setToolTip(QStringLiteral("3D 轨迹热力指标"));
-    VaporView::configureComboBoxPopup(heat_metric_combo_, VaporView::isDarkThemeEnabled());
     toolbar->addWidget(heat_metric_combo_);
     connect(heat_metric_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         heat_metric_ = heatMetricFromComboIndex(index);
@@ -748,14 +751,16 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         updateStatus(nullptr);
     });
 
-    heat_palette_combo_ = new QComboBox(toolbar);
+    auto *heatPaletteCombo = new VaporView::SingleLevelPopupComboBox(toolbar);
+    heatPaletteCombo->setShowSelectionCheck(false);
+    heatPaletteCombo->setPopupFitContents(true);
+    heat_palette_combo_ = heatPaletteCombo;
     heat_palette_combo_->setObjectName(QStringLiteral("map3DHeatPaletteCombo"));
     heat_palette_combo_->addItems({QStringLiteral("Candy"),
                                    QStringLiteral("BlueRedFast"),
                                    QStringLiteral("SpectralReverse")});
     heat_palette_combo_->setCurrentIndex(heatPaletteComboIndex(heat_palette_));
     heat_palette_combo_->setToolTip(QStringLiteral("3D 轨迹热力调色板"));
-    VaporView::configureComboBoxPopup(heat_palette_combo_, VaporView::isDarkThemeEnabled());
     toolbar->addWidget(heat_palette_combo_);
     connect(heat_palette_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         heat_palette_ = heatPaletteFromComboIndex(index);

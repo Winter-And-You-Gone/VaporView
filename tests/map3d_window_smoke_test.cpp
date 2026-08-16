@@ -2,6 +2,7 @@
 #include "geo/GeoTypes.h"
 #include "map3d/Map3DWindow.h"
 #include "map3d/Map3DRuntime.h"
+#include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 
 #include <QAbstractItemView>
@@ -76,6 +77,40 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
                 popupStyle.contains(QStringLiteral("::item:selected:!active:hover { background-color: %1").arg(hoverColor)) &&
                 !popupStyle.contains(QStringLiteral("padding: 12px 4px")),
             message);
+}
+
+void requireSingleLevelComboPopup(QComboBox *combo, const char *message)
+{
+    require(combo != nullptr, message);
+    auto *singleLevelCombo = dynamic_cast<VaporView::SingleLevelPopupComboBox *>(combo);
+    require(singleLevelCombo != nullptr, message);
+    require(combo->property("usesSingleLevelPopupMenu").toBool(), message);
+    VaporView::SingleLevelPopupMenu *popupMenu = singleLevelCombo->popupMenu();
+    require(popupMenu != nullptr, message);
+
+    singleLevelCombo->showPopup();
+    QCoreApplication::processEvents();
+    require(popupMenu->isVisible(), message);
+    const QList<VaporView::SingleLevelPopupMenuRow *> rows = popupMenu->rows();
+    require(rows.size() == combo->count(), message);
+
+    int previousBottom = -1;
+    for (int i = 0; i < rows.size(); ++i)
+    {
+        const auto *row = rows.at(i);
+        require(row != nullptr, message);
+        require(row->text() == combo->itemText(i), message);
+        require(row->height() >= 32, message);
+        if (previousBottom >= 0)
+        {
+            require(row->y() >= previousBottom, message);
+        }
+        previousBottom = row->y() + row->height();
+    }
+
+    singleLevelCombo->hidePopup();
+    QCoreApplication::processEvents();
+    require(!popupMenu->isVisible(), message);
 }
 
 void writeSessionTrack(QTemporaryDir& sessionDir)
@@ -310,10 +345,10 @@ int main(int argc, char** argv)
     require(heatPaletteCombo != nullptr && heatPaletteCombo->count() == 3
                 && heatPaletteCombo->itemText(2) == QStringLiteral("SpectralReverse"),
             "heat palette combo exposes the three shared palette names");
-    requireComboPopupStyled(heatMetricCombo,
-                            "heat metric combo uses the shared popup styling helper");
-    requireComboPopupStyled(heatPaletteCombo,
-                            "heat palette combo uses the shared popup styling helper");
+    requireSingleLevelComboPopup(heatMetricCombo,
+                                 "heat metric combo uses the shared single-level popup without overlapping rows");
+    requireSingleLevelComboPopup(heatPaletteCombo,
+                                 "heat palette combo uses the shared single-level popup without overlapping rows");
     require(trackLineVisibleAction->isCheckable() && trackLineVisibleAction->isChecked(),
             "track line visibility action starts enabled");
     require(trackPointsVisibleAction->isCheckable() && trackPointsVisibleAction->isChecked(),
