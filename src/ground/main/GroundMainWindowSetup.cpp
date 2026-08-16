@@ -3471,7 +3471,7 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.serial_title_lbl)
     {
         state_->device_config_.serial_title_lbl->setText(remote
-            ? (state_->is_english_ ? "Device Configuration [Sky]" : "设备配置 [天空端]")
+            ? (state_->is_english_ ? "Device Configuration [Remote]" : "设备配置 [远程]")
             : (state_->is_english_ ? "Device Configuration [Local]" : "设备配置 [本机]"));
     }
     if (state_->device_config_.data_source_mode_lbl) state_->device_config_.data_source_mode_lbl->setText(state_->is_english_ ? "Target:" : "目标:");
@@ -3620,7 +3620,7 @@ void MainWindow::updateDeviceConfigState()
     if (state_->device_config_.auto_detect_ports_btn)
     {
         state_->device_config_.auto_detect_ports_btn->setEnabled(state_->auto_detect_ports_btn_ && state_->auto_detect_ports_btn_->isEnabled());
-        state_->device_config_.auto_detect_ports_btn->setVisible(!remote);
+        state_->device_config_.auto_detect_ports_btn->setVisible(true);
         state_->device_config_.auto_detect_ports_btn->setText(state_->auto_detect_ports_btn_ ? state_->auto_detect_ports_btn_->text() : QString());
         state_->device_config_.auto_detect_ports_btn->setToolTip(state_->auto_detect_ports_btn_ ? state_->auto_detect_ports_btn_->toolTip() : QString());
         fitButtonFixedWidth(state_->device_config_.auto_detect_ports_btn,

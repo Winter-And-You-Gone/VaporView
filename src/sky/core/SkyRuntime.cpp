@@ -1,5 +1,6 @@
 #include "SkyRuntime.h"
 #include "LogService.h"
+#include "ground/devices/SerialPortDetectionService.h"
 #include "geo/CoordinateTransform.h"
 #include "geo/GeoTypes.h"
 
@@ -10,6 +11,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
@@ -399,6 +401,13 @@ bool SkyRuntime::start()
 
 void SkyRuntime::stop()
 {
+    serial_port_detection_cancel_requested_.store(true);
+    if (serial_port_detection_thread_.joinable())
+    {
+        serial_port_detection_thread_.join();
+    }
+    serial_port_detection_in_progress_.store(false);
+
     if (!running_)
     {
         return;
@@ -994,6 +1003,20 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
 
     switch (command.command_id)
     {
+    case CommandId::AutoDetectSerialPorts:
+        result.ack = makeAck(command,
+                             startSerialPortDetection()
+                                 ? CommandErrorCode::Ok
+                                 : (serial_port_detection_in_progress_.load()
+                                        ? CommandErrorCode::SerialPortDetectionInProgress
+                                        : CommandErrorCode::InternalError));
+        break;
+    case CommandId::CancelSerialPortDetection:
+        result.ack = makeAck(command,
+                             cancelSerialPortDetection()
+                                 ? CommandErrorCode::Ok
+                                 : CommandErrorCode::SerialPortDetectionNotRunning);
+        break;
     case CommandId::StartRecording:
         if (session_recorder_.isRecording())
         {
@@ -1395,6 +1418,104 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         break;
     }
     return result;
+}
+
+bool SkyRuntime::startSerialPortDetection()
+{
+    if (!running_)
+    {
+        return false;
+    }
+
+    bool expected = false;
+    if (!serial_port_detection_in_progress_.compare_exchange_strong(expected, true))
+    {
+        return false;
+    }
+    if (serial_port_detection_thread_.joinable())
+    {
+        serial_port_detection_thread_.join();
+    }
+
+    VaporView::Ground::Devices::SerialPortDetectionRequest request;
+    const SkyConfig config = device_manager_.config();
+    request.epsilon = {config.epsilon.port, QString::number(config.epsilon.baud_rate)};
+    request.ptb = {config.ptb.port, QString::number(config.ptb.baud_rate)};
+    request.hmp = {config.hmp.port, QString::number(config.hmp.baud_rate)};
+    request.lidar = {config.lidar.port, QString::number(config.lidar.baud_rate)};
+    request.temperatureController = {
+        config.temperature_controller.port, QString::number(config.temperature_controller.baud_rate)};
+    request.ai8TemperatureController = {
+        config.ai8_temperature_controller.port, QString::number(config.ai8_temperature_controller.baud_rate)};
+    request.temperatureSlaveAddress = config.temperature_controller.slave_address;
+    request.ai8SlaveAddress = config.ai8_temperature_controller.slave_address;
+    serial_port_detection_cancel_requested_.store(false);
+
+    serial_port_detection_thread_ = std::thread([this, request = std::move(request)]() mutable {
+        request.availablePorts =
+            VaporView::Ground::Devices::SerialPortDetectionService::availablePorts();
+        const auto outcome =
+            VaporView::Ground::Devices::SerialPortDetectionService::detect(
+                request,
+                [this]() { return serial_port_detection_cancel_requested_.load(); },
+                [this](const VaporView::Ground::Devices::SerialPortDetectionService::LogEntry& entry) {
+                    QMetaObject::invokeMethod(this, [this, entry]() {
+                        publishRuntimeLog(entry.level,
+                                          QStringLiteral("device.connection"),
+                                          entry.event,
+                                          entry.message,
+                                          entry.fields);
+                    }, Qt::QueuedConnection);
+                });
+
+        QMetaObject::invokeMethod(this, [this, outcome]() {
+            QJsonObject result;
+            result.insert(QStringLiteral("success"), !outcome.canceled);
+            result.insert(QStringLiteral("canceled"), outcome.canceled);
+            QJsonArray detections;
+            for (const auto& detection : outcome.detections)
+            {
+                detections.append(QJsonObject{
+                    {QStringLiteral("device_key"), detection.deviceKey},
+                    {QStringLiteral("port"), detection.port},
+                    {QStringLiteral("baud"), detection.baud}});
+            }
+            result.insert(QStringLiteral("detections"), detections);
+            serial_port_detection_in_progress_.store(false);
+            serial_port_detection_cancel_requested_.store(false);
+            sendSerialPortDetectionResult(result);
+            publishRuntimeLog(LogLevel::Info,
+                              QStringLiteral("device.connection"),
+                              QStringLiteral("serial_port_detection_completed"),
+                              outcome.canceled ? QStringLiteral("天空端串口自动识别已取消。")
+                                               : QStringLiteral("天空端串口自动识别已完成。"),
+                              {{QStringLiteral("detected_devices"), outcome.detections.size()},
+                               {QStringLiteral("canceled"), outcome.canceled},
+                               {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+        }, Qt::QueuedConnection);
+    });
+    publishRuntimeLog(LogLevel::Info,
+                      QStringLiteral("device.connection"),
+                      QStringLiteral("serial_port_detection_started"),
+                      QStringLiteral("已开始天空端串口自动识别。"),
+                      {{QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+    return true;
+}
+
+bool SkyRuntime::cancelSerialPortDetection()
+{
+    if (!serial_port_detection_in_progress_.load())
+    {
+        return false;
+    }
+    serial_port_detection_cancel_requested_.store(true);
+    return true;
+}
+
+void SkyRuntime::sendSerialPortDetectionResult(const QJsonObject& result)
+{
+    sendFrame(MsgType::SerialPortDetectionResult,
+              QJsonDocument(result).toJson(QJsonDocument::Compact));
 }
 
 void SkyRuntime::sendCommandResultFrames(const SkyCommandResult& result)

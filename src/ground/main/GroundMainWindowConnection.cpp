@@ -2,6 +2,8 @@
 #include "ground/devices/DeviceRatePolicy.h"
 #include "ground/widgets/SerialPortComboSupport.h"
 
+#include <QJsonArray>
+
 void MainWindow::updateConnectionStatus(bool connected)
 {
     if (isUiTestMode())
@@ -62,7 +64,11 @@ void MainWindow::updateConnectionStatus(bool connected)
     }
     if (state_->auto_detect_ports_btn_)
     {
-        state_->auto_detect_ports_btn_->setEnabled(!connected && !state_->connection_attempt_in_progress_ && !state_->epsilon_reconfigure_in_progress_);
+        const bool remoteDetectionAvailable = isRemoteSkyMode() &&
+            (isUiTestMode() || (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen()));
+        state_->auto_detect_ports_btn_->setEnabled(isRemoteSkyMode()
+            ? remoteDetectionAvailable
+            : (!connected && !state_->connection_attempt_in_progress_ && !state_->epsilon_reconfigure_in_progress_));
         state_->auto_detect_ports_btn_->setText(state_->port_detection_in_progress_
             ? (state_->is_english_ ? "Cancel Auto Detect" : "取消自动识别")
             : (state_->is_english_ ? "Auto Detect Ports" : "自动识别串口"));
@@ -837,6 +843,90 @@ void MainWindow::onRefreshPortsClicked()
                       {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 }
 
+void MainWindow::startRemoteSerialPortDetection()
+{
+    if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen() ||
+        state_->port_detection_in_progress_)
+    {
+        return;
+    }
+    state_->port_detection_in_progress_ = true;
+    state_->remote_serial_detection_seq_ =
+        state_->remote_sky_controller_->sendCommand(VaporView::CommandId::AutoDetectSerialPorts);
+    if (state_->remote_serial_detection_seq_ == 0)
+    {
+        state_->port_detection_in_progress_ = false;
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("Remote serial-port detection was not sent.")
+            : QStringLiteral("未发送远程串口自动识别命令。"), true);
+        updateConnectionStatus(state_->is_connected_);
+        return;
+    }
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("device.connection"),
+                     QStringLiteral("remote_serial_port_detection_started"),
+                     QStringLiteral("已请求天空端自动识别串口。"),
+                     {{QStringLiteral("command_seq"), state_->remote_serial_detection_seq_},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+    setRemoteSkyConfigStatus(state_->is_english_
+        ? QStringLiteral("Sky is detecting serial ports...")
+        : QStringLiteral("天空端正在自动识别串口..."));
+    updateConnectionStatus(state_->is_connected_);
+}
+
+void MainWindow::onRemoteSerialPortDetectionResult(const QJsonObject& result)
+{
+    if (!isRemoteSkyMode() || !state_->remote_sky_controller_ ||
+        !state_->remote_sky_controller_->isOpen())
+    {
+        return;
+    }
+    state_->port_detection_in_progress_ = false;
+    state_->remote_serial_detection_seq_ = 0;
+    state_->remote_serial_detection_cancel_seq_ = 0;
+    const bool canceled = result.value(QStringLiteral("canceled")).toBool();
+    const bool success = result.value(QStringLiteral("success")).toBool();
+    if (success && !canceled)
+    {
+        VaporView::SkyConfig config = state_->remote_sky_config_;
+        const QJsonArray detections = result.value(QStringLiteral("detections")).toArray();
+        for (const QJsonValue& value : detections)
+        {
+            const QJsonObject item = value.toObject();
+            const QString key = item.value(QStringLiteral("device_key")).toString();
+            const QString port = item.value(QStringLiteral("port")).toString().trimmed();
+            const int baud = item.value(QStringLiteral("baud")).toString().toInt();
+            if (port.isEmpty() || baud <= 0)
+            {
+                continue;
+            }
+            if (key == QStringLiteral("epsilon")) { config.epsilon.port = port; config.epsilon.baud_rate = baud; }
+            else if (key == QStringLiteral("ptb")) { config.ptb.port = port; config.ptb.baud_rate = baud; }
+            else if (key == QStringLiteral("hmp")) { config.hmp.port = port; config.hmp.baud_rate = baud; }
+            else if (key == QStringLiteral("lidar")) { config.lidar.port = port; config.lidar.baud_rate = baud; }
+            else if (key == QStringLiteral("temperature")) { config.temperature_controller.port = port; config.temperature_controller.baud_rate = baud; }
+            else if (key == QStringLiteral("ai8")) { config.ai8_temperature_controller.port = port; config.ai8_temperature_controller.baud_rate = baud; }
+        }
+        state_->remote_sky_config_ = config;
+        state_->remote_sky_config_loaded_ = true;
+        state_->remote_sky_config_dirty_ = true;
+        setRemoteSkyConfigUi(config);
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("Remote detection completed; review and apply/save the detected ports.")
+            : QStringLiteral("远程串口自动识别完成，结果已填入配置，请检查后点击应用/保存。"));
+    }
+    else
+    {
+        setRemoteSkyConfigStatus(canceled
+            ? (state_->is_english_ ? QStringLiteral("Remote serial-port detection canceled.")
+                                   : QStringLiteral("远程串口自动识别已取消。"))
+            : (state_->is_english_ ? QStringLiteral("Remote serial-port detection failed.")
+                                   : QStringLiteral("远程串口自动识别失败。")),
+            !canceled);
+    }
+    updateConnectionStatus(state_->is_connected_);
+}
+
 void MainWindow::onAutoDetectPortsClicked()
 {
     if (isUiTestMode())
@@ -859,6 +949,40 @@ void MainWindow::onAutoDetectPortsClicked()
                            state_->is_english_ ? QStringLiteral("Automatic detection completed with fixed test devices")
                                                : QStringLiteral("自动识别已完成，已填入固定测试设备"),
                            {{QStringLiteral("detected_devices"), detected.size()}});
+        return;
+    }
+    if (isRemoteSkyMode())
+    {
+        if (state_->port_detection_in_progress_)
+        {
+            if (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen())
+            {
+                state_->remote_serial_detection_cancel_seq_ =
+                    state_->remote_sky_controller_->sendCommand(
+                        VaporView::CommandId::CancelSerialPortDetection);
+                publishGroundLog(VaporView::LogLevel::Info,
+                                 QStringLiteral("device.connection"),
+                                 QStringLiteral("serial_port_detection_cancel_requested"),
+                                 QStringLiteral("已请求天空端取消自动识别串口。"),
+                                 {{QStringLiteral("reason_code"), QStringLiteral("USER_CANCELLED")},
+                                  {QStringLiteral("ui_visibility"), QStringLiteral("attention")} });
+            }
+            return;
+        }
+        if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
+        {
+            return;
+        }
+        if (!state_->remote_sky_config_loaded_)
+        {
+            state_->remote_serial_detection_pending_ = true;
+            requestRemoteSkyConfigIfAvailable(false);
+            setRemoteSkyConfigStatus(state_->is_english_
+                ? QStringLiteral("Reading Remote Sky config before detection...")
+                : QStringLiteral("正在读取远程配置，读取完成后开始自动识别串口..."));
+            return;
+        }
+        startRemoteSerialPortDetection();
         return;
     }
     if (state_->port_detection_in_progress_)

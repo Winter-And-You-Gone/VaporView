@@ -206,6 +206,7 @@ private slots:
     void onRd105SessionOperationFinished(
         const VaporView::Ground::Devices::Rd105SessionResult& result);
     void onRemoteCommandAckReceived(const VaporView::CommandAck& ack);
+    void onRemoteSerialPortDetectionResult(const QJsonObject& result);
     void onRemoteLinkOpenChanged(bool open);
     void onRemoteSkyConfigReadClicked();
     void onRemoteSkyConfigApplyClicked();
@@ -408,6 +409,7 @@ private:
     void setRemoteSkyConfigStatus(const QString& text, bool error = false);
     void updateRemoteSkyConfigControlsState();
     void requestRemoteSkyConfigIfAvailable(bool force = false);
+    void startRemoteSerialPortDetection();
     void onRemoteSkyConfigReceived(const QJsonObject& object);
     void onRemoteSkyConfigApplyResultReceived(const QJsonObject& result);
     void handleRemoteSkyConfigReceived(const QJsonObject& object, bool bypassGenerationGuard);

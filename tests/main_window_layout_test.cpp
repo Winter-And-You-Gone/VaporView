@@ -3592,8 +3592,8 @@ int main(int argc, char **argv)
         QComboBox *rememberedSourceModeCombo = findSourceModeCombo(&rememberedModeWindow);
         require(rememberedSourceModeCombo != nullptr,
                 "remembered source mode combo exists on startup");
-        require(rememberedSourceModeCombo->itemText(1) == QStringLiteral("天地远程模式") ||
-                    rememberedSourceModeCombo->itemText(1) == QStringLiteral("Sky-Ground Remote Mode"),
+        require(rememberedSourceModeCombo->itemText(1) == QStringLiteral("远程") ||
+                    rememberedSourceModeCombo->itemText(1) == QStringLiteral("Remote"),
                 "source mode combo uses the new remote-mode label");
         require(rememberedSourceModeCombo->property("usesSingleLevelPopupMenu").toBool(),
                 "source mode combo uses the shared single-level popup");

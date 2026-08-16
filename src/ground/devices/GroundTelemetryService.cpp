@@ -451,6 +451,23 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         }
         break;
     }
+    case MsgType::SerialPortDetectionResult:
+    {
+        const QJsonDocument document = QJsonDocument::fromJson(frame.payload);
+        if (document.isObject())
+        {
+            emit serialPortDetectionResultReceived(document.object());
+        }
+        else
+        {
+            reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
+                                     QStringLiteral("serial_port_detection_result_parse_failed"),
+                                     QStringLiteral("无法解析串口自动识别结果遥测载荷。"),
+                                     {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                      {QStringLiteral("payload_bytes"), frame.payload.size()}});
+        }
+        break;
+    }
     case MsgType::TemperatureControllerStatus:
     {
         TemperatureControllerData data;

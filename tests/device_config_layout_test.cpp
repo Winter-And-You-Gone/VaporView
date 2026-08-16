@@ -674,9 +674,9 @@ int main(int argc, char **argv)
                 !scrollArea->horizontalScrollBar()->isVisible(),
             "remote device configuration page has no horizontal overflow");
     require(cardHasAnyLabel(serialCard,
-                            QStringList() << QStringLiteral("设备配置 [天空端]")
-                                          << QStringLiteral("Device Configuration [Sky]")),
-            "remote mode retitles the shared device configuration card for the Sky target");
+                            QStringList() << QStringLiteral("设备配置 [远程]")
+                                          << QStringLiteral("Device Configuration [Remote]")),
+            "remote mode retitles the shared device configuration card for the Remote target");
     require(skyTelemetryRow->isVisible(),
             "remote mode shows sky-ground link editing controls in the target section");
     require(remoteCard->isVisible(), "remote sky service/config card appears in remote mode");

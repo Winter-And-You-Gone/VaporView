@@ -376,6 +376,30 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
         updateRemoteSkyConfigControlsState();
     }
 
+    if (ack.command_id == VaporView::CommandId::AutoDetectSerialPorts &&
+        ack.command_seq == state_->remote_serial_detection_seq_ &&
+        !(ok && noError))
+    {
+        state_->port_detection_in_progress_ = false;
+        state_->remote_serial_detection_seq_ = 0;
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("Remote serial-port detection was rejected: %1").arg(errorText)
+            : QStringLiteral("远程串口自动识别被拒绝：%1").arg(errorText), true);
+        updateConnectionStatus(state_->is_connected_);
+    }
+    else if (ack.command_id == VaporView::CommandId::CancelSerialPortDetection &&
+             ack.command_seq == state_->remote_serial_detection_cancel_seq_ &&
+             !(ok && noError))
+    {
+        state_->remote_serial_detection_cancel_seq_ = 0;
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.connection"),
+                         QStringLiteral("remote_serial_port_detection_cancel_failed"),
+                         QStringLiteral("天空端取消串口自动识别失败。"),
+                         {{QStringLiteral("error_code"), commandErrorCodeIdentifier(ack.error_code)},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("attention")} });
+    }
+
     if (ack.command_id == VaporView::CommandId::EnableWaveformStreaming)
     {
         state_->remote_wave_stream_enable_pending_ = false;

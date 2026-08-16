@@ -38,6 +38,7 @@ enum class MsgType : quint8
     Ai8TemperatureControllerStatus = 0x08,
     DeviceOperationResponse = 0x09,
     RtcmCorrectionData = 0x0A,
+    SerialPortDetectionResult = 0x0B,
     Command = 0x10,
     CommandAck = 0x11,
     Heartbeat = 0x20,
@@ -70,6 +71,8 @@ enum class CommandId : quint16
     SaveSkyConfig = 32,
     ReloadSkyConfig = 33,
     SetPeakSearchRange = 34,
+    AutoDetectSerialPorts = 35,
+    CancelSerialPortDetection = 36,
     SetTemperatureTarget = 40,
     SetTemperatureOutputEnabled = 41,
     SetTemperatureOutputMode = 42,
@@ -138,6 +141,8 @@ enum class CommandErrorCode : quint32
     ConfigSaveFailed = 11,
     RecordingAlreadyStarted = 12,
     RecordingNotStarted = 13,
+    SerialPortDetectionInProgress = 14,
+    SerialPortDetectionNotRunning = 15,
     InternalError = 100,
 };
 
