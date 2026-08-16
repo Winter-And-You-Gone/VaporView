@@ -317,6 +317,13 @@ int main(int argc, char *argv[])
                 panel.findChild<QLabel *>(QStringLiteral("epsilonRtkSettingName")) == nullptr &&
                 panel.findChild<QLabel *>(QStringLiteral("epsilonRtkSettingDescription")) == nullptr,
             "EPSILON device settings route differential positioning through the navigation bar");
+    auto *reconfigureName = panel.findChild<QLabel *>(QStringLiteral("epsilonReconfigureSettingName"));
+    auto *reconfigureDescription = panel.findChild<QLabel *>(QStringLiteral("epsilonReconfigureSettingDescription"));
+    require(reconfigureName != nullptr && reconfigureName->text() == QStringLiteral("应用已保存配置") &&
+                reconfigureDescription != nullptr &&
+                reconfigureDescription->text().contains(QStringLiteral("本机已保存")) &&
+                reconfigureDescription->text().contains(QStringLiteral("不会保存")),
+            "EPSILON saved-configuration action explains its local source and unsaved-change behavior");
     auto *rtcmButton = panel.findChild<QPushButton *>(QStringLiteral("epsilonRtcmPortButton"));
     require(rtcmButton != nullptr &&
                 !rtcmButton->toolTip().contains(QStringLiteral("port 2"), Qt::CaseInsensitive) &&
