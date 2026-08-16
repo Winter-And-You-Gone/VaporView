@@ -442,8 +442,7 @@ SkyDeviceManager::SkyDeviceManager(QObject *parent)
 
 SkyDeviceManager::~SkyDeviceManager()
 {
-    disconnectAll(false);
-    stopRtcmWriter();
+    shutdown(false);
     pending_raw_events_.close();
 }
 
@@ -733,6 +732,14 @@ void SkyDeviceManager::reconnectAll()
 {
     disconnectAll();
     connectAll();
+}
+
+void SkyDeviceManager::shutdown(bool publishLogs)
+{
+    simulate_timer_.stop();
+    simulate_data_ = false;
+    disconnectAll(publishLogs);
+    stopRtcmWriter();
 }
 
 DeviceStatusItem SkyDeviceManager::status(SkyDeviceId id) const

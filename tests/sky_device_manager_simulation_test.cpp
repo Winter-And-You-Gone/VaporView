@@ -286,10 +286,11 @@ int main(int argc, char **argv)
     requireConnectedWithData(manager, VaporView::SkyDeviceId::Ai8TemperatureController);
     require(manager.latestAi8TemperatureController().valid,
             "AI-8 simulated data resumes after reconnect");
-    const int logCountBeforeSilentDisconnect = ai8DisconnectLogCount;
-    manager.disconnectAll(false);
-    require(ai8DisconnectLogCount == logCountBeforeSilentDisconnect,
-            "silent disconnectAll suppresses per-device disconnect logs");
+    const int logCountBeforeShutdown = ai8DisconnectLogCount;
+    manager.setSimulateData(false);
+    manager.shutdown(false);
+    require(ai8DisconnectLogCount == logCountBeforeShutdown,
+            "silent shutdown suppresses per-device disconnect logs");
 
     VaporView::SkyConfig disabledAi8 = manager.config();
     disabledAi8.ai8_temperature_controller.enabled = false;
@@ -301,7 +302,7 @@ int main(int argc, char **argv)
     require(!manager.latestAi8TemperatureController().valid,
             "AI-8 simulated apply disable invalidates data");
 
-    manager.setSimulateData(false);
+    manager.shutdown(false);
     std::cout << "sky_device_manager_simulation_test passed\n";
     return 0;
 }

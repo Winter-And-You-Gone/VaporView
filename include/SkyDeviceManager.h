@@ -58,6 +58,7 @@ public:
     void connectAll();
     void disconnectAll(bool publishLogs = true);
     void reconnectAll();
+    void shutdown(bool publishLogs = false);
 
     DeviceStatusItem status(SkyDeviceId id) const;
     QVector<DeviceStatusItem> allStatuses() const;
