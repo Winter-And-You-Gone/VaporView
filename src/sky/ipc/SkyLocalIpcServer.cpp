@@ -125,11 +125,15 @@ bool SkyLocalIpcServer::listen(const QString& host, quint16 port)
     }
 
     status_timer_.start();
+    const QString listeningHost = server_->serverAddress().toString();
+    const quint16 listeningPort = server_->serverPort();
     publishIpcLog(LogLevel::Info,
                   QStringLiteral("sky_ipc_listening"),
-                  QStringLiteral("本地 IPC 服务已开始监听。"),
-                  {{QStringLiteral("host"), server_->serverAddress().toString()},
-                   {QStringLiteral("port"), server_->serverPort()}});
+                  QStringLiteral("本地 IPC 服务已开始监听：%1:%2。")
+                      .arg(listeningHost)
+                      .arg(listeningPort),
+                  {{QStringLiteral("host"), listeningHost},
+                   {QStringLiteral("port"), listeningPort}});
     return true;
 }
 

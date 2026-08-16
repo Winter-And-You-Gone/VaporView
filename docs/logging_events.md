@@ -27,7 +27,7 @@
 | SkyCore | telemetry.serial | telemetry_serial_open_failed | Error | 无法打开天空端遥测串口。 | port, baud | system_error | TELEMETRY_SERIAL_OPEN_FAILED |
 | SkyCore | telemetry.tcp | telemetry_tcp_listen_failed | Error | 无法监听天空端 TCP 遥测端点。 | host, port | system_error | TELEMETRY_TCP_LISTEN_FAILED |
 | SkyCore | telemetry.link | telemetry_link_error | Warning | 天空端遥测链路异常。 | system_error |  | TELEMETRY_LINK_ERROR |
-| TelemetryLink | telemetry.link | telemetry_tcp_server_listening | Info | TCP 遥测服务端已开始监听。 | role, host, requested_port, local_port | ui_visibility |  |
+| TelemetryLink | telemetry.link | telemetry_tcp_server_listening | Info | TCP 遥测服务端已开始监听：{host}:{local_port}。 | role, host, requested_port, local_port | ui_visibility |  |
 | TelemetryLink | telemetry.link | telemetry_tcp_connected | Info | TCP 遥测客户端已连接。 | role, host, port | ui_visibility |  |
 | TelemetryLink | telemetry.link | telemetry_tcp_client_replaced | Info | TCP 遥测客户端连接已被新连接替换。 | role, peer_host, peer_port | ui_visibility |  |
 | TelemetryLink | telemetry.link | telemetry_tcp_client_connected | Info | TCP 遥测客户端已接入。 | role, peer_host, peer_port | ui_visibility |  |
@@ -71,7 +71,7 @@
 | SkyCore | device.wave_tcp | wave_tcp_resync_discarded_bytes | Warning | Wave TCP 重新同步时已丢弃部分字节。 | dropped_bytes |  | WAVE_TCP_FRAME_HEADER_NOT_FOUND |
 | SkyCore | device.wave_tcp | wave_tcp_resync_skipped_bytes | Warning | Wave TCP 重新同步时已跳过部分字节。 | skipped_bytes, header_order |  | WAVE_TCP_FRAME_OFFSET |
 | SkyCore | device.wave_tcp | wave_tcp_payload_format_locked | Info | Wave TCP 载荷格式已锁定。 | header_order, float_encoding |  |  |
-| SkyCore | ipc | sky_ipc_listening | Info | 本地 IPC 服务已开始监听。 | host, port |  |  |
+| SkyCore | ipc | sky_ipc_listening | Info | 本地 IPC 服务已开始监听：{host}:{port}。 | host, port |  |  |
 | SkyCore | ipc | sky_ipc_listen_failed | Error | 本地 IPC 服务监听失败。 | host, port, system_error |  | SKY_IPC_LISTEN_FAILED |
 | SkyCore | ipc | sky_ipc_client_connected | Info | 本地 IPC 客户端已连接。 | peer_host, peer_port |  |  |
 | SkyCore | ipc | sky_ipc_client_disconnected | Info | 本地 IPC 客户端已断开。 |  |  |  |
