@@ -7,6 +7,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QTemporaryDir>
 #include <QTcpServer>
 
@@ -490,6 +491,9 @@ int main(int argc, char **argv)
         QStringLiteral("--telemetry-tcp-port"), QString::number(port),
         QStringLiteral("--remote-device-e2e-output"), groundUiResultPath,
     });
+    QProcessEnvironment groundUiEnvironment = QProcessEnvironment::systemEnvironment();
+    groundUiEnvironment.insert(QStringLiteral("VAPORVIEW_SETTINGS_DIR"), groundUiTempDir.path());
+    groundUi.setProcessEnvironment(groundUiEnvironment);
     groundUi.setProcessChannelMode(QProcess::MergedChannels);
     groundUi.start();
     require(groundUi.waitForStarted(5000), "VaporView Ground UI E2E process starts");
