@@ -434,7 +434,7 @@ void SkyRuntime::stop()
     }
 
     device_manager_.setSimulateData(false);
-    device_manager_.disconnectAll();
+    device_manager_.disconnectAll(false);
     if (link_)
     {
         link_->close();

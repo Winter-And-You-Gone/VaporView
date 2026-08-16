@@ -442,7 +442,7 @@ SkyDeviceManager::SkyDeviceManager(QObject *parent)
 
 SkyDeviceManager::~SkyDeviceManager()
 {
-    disconnectAll();
+    disconnectAll(false);
     stopRtcmWriter();
     pending_raw_events_.close();
 }
@@ -635,12 +635,23 @@ bool SkyDeviceManager::connectDevice(SkyDeviceId id, CommandErrorCode *errorCode
 
 bool SkyDeviceManager::disconnectDevice(SkyDeviceId id, CommandErrorCode *errorCode)
 {
+    return disconnectDeviceInternal(id, errorCode, true);
+}
+
+bool SkyDeviceManager::disconnectDeviceInternal(SkyDeviceId id,
+                                                CommandErrorCode *errorCode,
+                                                bool publishLog)
+{
     if (id == SkyDeviceId::All)
     {
-        disconnectAll();
+        disconnectAll(publishLog);
         if (errorCode) *errorCode = CommandErrorCode::Ok;
         return true;
     }
+    const DeviceStatusItem previousStatus = status(id);
+    const bool shouldPublishDisconnectLog =
+        previousStatus.state != DeviceState::Disconnected &&
+        previousStatus.state != DeviceState::Disabled;
     switch (id)
     {
     case SkyDeviceId::Epsilon:
@@ -669,11 +680,14 @@ bool SkyDeviceManager::disconnectDevice(SkyDeviceId id, CommandErrorCode *errorC
     }
     invalidateDeviceData(id);
     setState(id, DeviceState::Disconnected);
-    publishDeviceLog(LogLevel::Info,
-                     QStringLiteral("device.connection"),
-                     QStringLiteral("device_disconnected"),
-                     QStringLiteral("设备已断开，缓存数据已失效。"),
-                     {{QStringLiteral("device_id"), skyDeviceIdName(id)}});
+    if (publishLog && shouldPublishDisconnectLog)
+    {
+        publishDeviceLog(LogLevel::Info,
+                         QStringLiteral("device.connection"),
+                         QStringLiteral("device_disconnected"),
+                         QStringLiteral("设备已断开，缓存数据已失效。"),
+                         {{QStringLiteral("device_id"), skyDeviceIdName(id)}});
+    }
     if (errorCode) *errorCode = CommandErrorCode::Ok;
     return true;
 }
@@ -707,11 +721,11 @@ void SkyDeviceManager::connectAll()
     }
 }
 
-void SkyDeviceManager::disconnectAll()
+void SkyDeviceManager::disconnectAll(bool publishLogs)
 {
     for (SkyDeviceId id : {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hmp, SkyDeviceId::Lidar, SkyDeviceId::TemperatureController, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::WaveTcp})
     {
-        disconnectDevice(id);
+        disconnectDeviceInternal(id, nullptr, publishLogs);
     }
 }
 

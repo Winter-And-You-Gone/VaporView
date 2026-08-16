@@ -248,9 +248,28 @@ int main(int argc, char **argv)
                 std::fabs(confirmedAi8Page.channel.setpointC - 25.0) < 0.000001,
             "AI-8 simulated factory reset restores defaults");
 
+    int ai8DisconnectLogCount = 0;
+    QObject::connect(&manager, &VaporView::SkyDeviceManager::logRecord,
+                     [&](const VaporView::LogRecord& record) {
+                         if (record.fields.value(QStringLiteral("event")).toString() ==
+                                 QStringLiteral("device_disconnected") &&
+                             record.fields.value(QStringLiteral("device_id")).toString() ==
+                                 VaporView::skyDeviceIdName(VaporView::SkyDeviceId::Ai8TemperatureController))
+                         {
+                             ++ai8DisconnectLogCount;
+                         }
+                     });
+
     require(manager.disconnectDevice(VaporView::SkyDeviceId::Ai8TemperatureController, &error) &&
                 error == VaporView::CommandErrorCode::Ok,
             "AI-8 simulated disconnect succeeds");
+    require(ai8DisconnectLogCount == 1,
+            "AI-8 simulated disconnect publishes one disconnect log");
+    require(manager.disconnectDevice(VaporView::SkyDeviceId::Ai8TemperatureController, &error) &&
+                error == VaporView::CommandErrorCode::Ok,
+            "AI-8 simulated repeated disconnect succeeds");
+    require(ai8DisconnectLogCount == 1,
+            "AI-8 simulated repeated disconnect is log-idempotent");
     require(manager.status(VaporView::SkyDeviceId::Ai8TemperatureController).state ==
                 VaporView::DeviceState::Disconnected,
             "AI-8 simulated status is disconnected");
@@ -267,6 +286,10 @@ int main(int argc, char **argv)
     requireConnectedWithData(manager, VaporView::SkyDeviceId::Ai8TemperatureController);
     require(manager.latestAi8TemperatureController().valid,
             "AI-8 simulated data resumes after reconnect");
+    const int logCountBeforeSilentDisconnect = ai8DisconnectLogCount;
+    manager.disconnectAll(false);
+    require(ai8DisconnectLogCount == logCountBeforeSilentDisconnect,
+            "silent disconnectAll suppresses per-device disconnect logs");
 
     VaporView::SkyConfig disabledAi8 = manager.config();
     disabledAi8.ai8_temperature_controller.enabled = false;

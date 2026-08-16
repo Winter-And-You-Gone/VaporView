@@ -56,7 +56,7 @@ public:
     bool disconnectDevice(SkyDeviceId id, CommandErrorCode *errorCode = nullptr);
     bool reconnectDevice(SkyDeviceId id, CommandErrorCode *errorCode = nullptr);
     void connectAll();
-    void disconnectAll();
+    void disconnectAll(bool publishLogs = true);
     void reconnectAll();
 
     DeviceStatusItem status(SkyDeviceId id) const;
@@ -147,6 +147,7 @@ private slots:
 
 private:
     void initializeStatuses();
+    bool disconnectDeviceInternal(SkyDeviceId id, CommandErrorCode *errorCode, bool publishLog);
     void setState(SkyDeviceId id, DeviceState state, quint16 errorCode = 0);
     DeviceStatusItem& mutableStatus(SkyDeviceId id);
     const SerialDeviceConfig& serialConfigFor(SkyDeviceId id) const;
