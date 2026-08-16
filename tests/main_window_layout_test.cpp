@@ -9488,8 +9488,8 @@ int main(int argc, char **argv)
             "device configuration source mode combo exists");
     require(deviceSourceModeCombo->property("usesSingleLevelPopupMenu").toBool(),
             "device configuration source mode combo uses the shared single-level popup");
-    require(deviceSourceModeCombo->width() <= 160,
-            "device configuration source mode combo uses compact width");
+    require(deviceSourceModeCombo->width() == 94,
+            "device configuration source mode combo uses the requested three-fifths width");
     QComboBox *pressureSourceCombo =
         findComboWithData(deviceConfigPage, QStringLiteral("bmp390"));
     QComboBox *humiditySourceCombo =
