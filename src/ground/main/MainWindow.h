@@ -438,7 +438,8 @@ private:
     std::map<uint8_t, int> deviceConfigEpsilonPacketRates() const;
     void saveDeviceConfigEpsilonPacketRates(bool applyAfterSave);
     void sendRemoteDeviceCommand(VaporView::CommandId command, VaporView::SkyDeviceId device);
-    void requestRemoteWaveTcpConnection(bool connectRequested);
+    void requestRemoteWaveTcpConnection(bool connectRequested, const QString& host = QString(), int port = 0);
+    void clearPendingRemoteWaveTcpConnection();
     void sendRemotePeakSearchRange(quint32 startIndex, quint32 endIndex);
     QPushButton *createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device);
     void setRemoteDeviceButtonsEnabled(bool enabled);

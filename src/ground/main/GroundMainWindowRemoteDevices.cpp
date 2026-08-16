@@ -541,6 +541,7 @@ void MainWindow::clearRemoteSkyDataUi()
     state_->remote_wave_stream_requested_ = false;
     state_->remote_wave_stream_enable_pending_ = false;
     state_->remote_wave_stream_auto_start_ = true;
+    clearPendingRemoteWaveTcpConnection();
     state_->remote_status_ = VaporView::TelemetryStatus();
     state_->remote_recording_state_ = 0;
 
@@ -585,6 +586,7 @@ void MainWindow::markRemoteSkyLinkClosed()
     state_->remote_sky_online_ = false;
     state_->remote_wave_stream_requested_ = false;
     state_->remote_wave_stream_enable_pending_ = false;
+    clearPendingRemoteWaveTcpConnection();
     state_->remote_sky_config_loading_ = false;
     state_->remote_sky_config_applying_ = false;
     state_->remote_sky_config_saving_ = false;
@@ -1593,8 +1595,123 @@ void MainWindow::refreshRemoteSkyDataUi()
     updateHomeDeviceStatusCapsules();
 }
 
-void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested)
+void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested, const QString& host, int port)
 {
+    const bool endpointProvided = !host.isNull() || port > 0;
+    const QString endpointHost = host.trimmed();
+    const bool endpointValid = !endpointHost.isEmpty() && port >= 1 && port <= 65535;
+    if (!connectRequested)
+    {
+        clearPendingRemoteWaveTcpConnection();
+    }
+    else if (endpointProvided && !endpointValid)
+    {
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("Enter a TCP wave host and a port from 1 to 65535.")
+            : QStringLiteral("请输入 TCP 波形主机和 1 到 65535 之间的端口。"),
+            true);
+        return;
+    }
+
+    if (connectRequested && endpointValid)
+    {
+        if (!state_->remote_sky_config_loaded_ && !isUiTestMode())
+        {
+            if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
+            {
+                setRemoteSkyConfigStatus(state_->is_english_
+                    ? QStringLiteral("Telemetry link is disconnected; TCP wave endpoint was not sent.")
+                    : QStringLiteral("天地数传已断开，未发送 TCP 波形地址。"),
+                    true);
+                return;
+            }
+            state_->remote_wave_connect_after_config_read_ = true;
+            state_->remote_wave_pending_host_ = endpointHost;
+            state_->remote_wave_pending_port_ = port;
+            requestRemoteSkyConfigIfAvailable(true);
+            if (!state_->remote_sky_config_loading_)
+            {
+                clearPendingRemoteWaveTcpConnection();
+                return;
+            }
+            setRemoteSkyConfigStatus(state_->is_english_
+                ? QStringLiteral("Reading Remote Sky config before applying the TCP wave endpoint...")
+                : QStringLiteral("正在读取天空端配置，然后应用 TCP 波形地址..."));
+            return;
+        }
+
+        VaporView::SkyConfig config = state_->remote_sky_config_loaded_
+            ? state_->remote_sky_config_
+            : VaporView::SkyConfig::defaults();
+        const bool endpointChanged =
+            config.wave_tcp.host.trimmed() != endpointHost ||
+            config.wave_tcp.port != port ||
+            !config.wave_tcp.enabled;
+        if (endpointChanged)
+        {
+            if (state_->remote_sky_config_applying_)
+            {
+                setRemoteSkyConfigStatus(state_->is_english_
+                    ? QStringLiteral("Remote Sky config is already applying; TCP wave connection was not started.")
+                    : QStringLiteral("天空端配置正在应用，暂未发起 TCP 波形连接。"),
+                    true);
+                return;
+            }
+            config.wave_tcp.enabled = true;
+            config.wave_tcp.host = endpointHost;
+            config.wave_tcp.port = port;
+            QString error;
+            if (!config.validate(&error))
+            {
+                setRemoteSkyConfigStatus(error, true);
+                return;
+            }
+            state_->remote_sky_config_ = config;
+            state_->remote_sky_config_loaded_ = true;
+            state_->remote_sky_config_dirty_ = true;
+            setRemoteSkyConfigUi(config);
+            if (isUiTestMode())
+            {
+                state_->remote_sky_baseline_config_ = config;
+                state_->remote_sky_config_dirty_ = false;
+            }
+            else
+            {
+                if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
+                {
+                    setRemoteSkyConfigStatus(state_->is_english_
+                        ? QStringLiteral("Telemetry link is disconnected; TCP wave endpoint was not sent.")
+                        : QStringLiteral("天地数传已断开，未发送 TCP 波形地址。"),
+                        true);
+                    return;
+                }
+                state_->remote_wave_connect_after_config_apply_ = true;
+                state_->remote_sky_config_applying_ = true;
+                state_->remote_sky_config_apply_generation_ = state_->remote_sky_controller_->linkGeneration();
+                state_->remote_sky_config_apply_seq_ =
+                    state_->remote_sky_controller_->telemetryService()->setSkyConfig(config.toJson());
+                if (state_->remote_sky_config_apply_seq_ == 0)
+                {
+                    state_->remote_sky_config_applying_ = false;
+                    state_->remote_sky_config_apply_generation_ = 0;
+                    clearPendingRemoteWaveTcpConnection();
+                    setRemoteSkyConfigStatus(state_->is_english_
+                        ? QStringLiteral("TCP wave endpoint was not sent.")
+                        : QStringLiteral("未发送 TCP 波形地址。"),
+                        true);
+                }
+                else
+                {
+                    setRemoteSkyConfigStatus(state_->is_english_
+                        ? QStringLiteral("TCP wave endpoint sent; connecting after it is applied...")
+                        : QStringLiteral("TCP 波形地址已发送，应用成功后自动连接..."));
+                }
+                updateRemoteSkyConfigControlsState();
+                return;
+            }
+        }
+    }
+
     if (isUiTestMode())
     {
         state_->ui_test_model_->setDeviceState(
@@ -1635,15 +1752,26 @@ void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested)
     }
     if (!connectRequested && state_->tcp_wave_panel_)
     {
-        state_->remote_sky_controller_->setDeviceState(VaporView::SkyDeviceId::WaveTcp,
-                                                VaporView::DeviceState::Disconnected);
-        state_->remote_sky_controller_->clearDeviceData(VaporView::SkyDeviceId::WaveTcp);
+        if (state_->remote_sky_controller_)
+        {
+            state_->remote_sky_controller_->setDeviceState(VaporView::SkyDeviceId::WaveTcp,
+                                                    VaporView::DeviceState::Disconnected);
+            state_->remote_sky_controller_->clearDeviceData(VaporView::SkyDeviceId::WaveTcp);
+        }
         state_->tcp_wave_panel_->setRemoteWaveTcpState(VaporView::DeviceState::Disconnected);
         updateRemoteTelemetrySummaryLabel();
     }
     sendRemoteDeviceCommand(connectRequested ? VaporView::CommandId::ConnectDevice : VaporView::CommandId::DisconnectDevice,
                             VaporView::SkyDeviceId::WaveTcp);
     updateHomeDeviceStatusCapsules();
+}
+
+void MainWindow::clearPendingRemoteWaveTcpConnection()
+{
+    state_->remote_wave_connect_after_config_read_ = false;
+    state_->remote_wave_connect_after_config_apply_ = false;
+    state_->remote_wave_pending_host_.clear();
+    state_->remote_wave_pending_port_ = 0;
 }
 
 QPushButton *MainWindow::createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device)

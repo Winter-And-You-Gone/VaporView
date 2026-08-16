@@ -5232,7 +5232,9 @@ void MainWindow::setupDataPanels()
         updateHomeDeviceStatusCapsules();
     });
     connect(state_->tcp_wave_panel_, &TcpWavePanel::remoteWaveTcpConnectionRequested, this, [this](bool connectRequested) {
-        requestRemoteWaveTcpConnection(connectRequested);
+        requestRemoteWaveTcpConnection(connectRequested,
+                                       state_->tcp_wave_panel_->host(),
+                                       state_->tcp_wave_panel_->port());
     });
     connect(state_->tcp_wave_panel_, &TcpWavePanel::remotePeakSearchRangeRequested,
             this, &MainWindow::sendRemotePeakSearchRange);

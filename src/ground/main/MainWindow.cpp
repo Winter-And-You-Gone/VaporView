@@ -473,6 +473,7 @@ MainWindow::MainWindow(QWidget *parent)
             commandSeq == state_->remote_sky_config_read_seq_)
         {
             state_->remote_sky_config_loading_ = false;
+            clearPendingRemoteWaveTcpConnection();
             setRemoteSkyConfigStatus(state_->is_english_
                 ? QStringLiteral("Remote Sky config read timed out.")
                 : QStringLiteral("读取天空端配置超时。"),
@@ -483,6 +484,7 @@ MainWindow::MainWindow(QWidget *parent)
                  commandSeq == state_->remote_sky_config_apply_seq_)
         {
             state_->remote_sky_config_applying_ = false;
+            clearPendingRemoteWaveTcpConnection();
             state_->remote_sky_config_dirty_ = true;
             setRemoteSkyConfigStatus(state_->is_english_
                 ? QStringLiteral("Remote Sky config apply timed out.")

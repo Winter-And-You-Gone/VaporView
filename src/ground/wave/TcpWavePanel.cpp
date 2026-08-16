@@ -1590,6 +1590,7 @@ void TcpWavePanel::setupUi()
     hostRowLayout->addWidget(host_label_, 0, Qt::AlignVCenter | Qt::AlignRight);
 
     host_edit_ = new QLineEdit(this);
+    host_edit_->setObjectName(QStringLiteral("tcpWaveHostEdit"));
     host_edit_->setText("127.0.0.1");
     host_edit_->setFixedHeight(kTcpControlHeight);
     host_edit_->setMinimumWidth(90);
@@ -1606,6 +1607,7 @@ void TcpWavePanel::setupUi()
     portRowLayout->addWidget(port_label_, 0, Qt::AlignVCenter | Qt::AlignRight);
 
     port_edit_ = new QLineEdit(this);
+    port_edit_->setObjectName(QStringLiteral("tcpWavePortEdit"));
     port_edit_->setText(QStringLiteral("8888"));
     port_edit_->setValidator(new QIntValidator(1, 65535, port_edit_));
     port_edit_->setAlignment(Qt::AlignCenter);
@@ -2287,6 +2289,22 @@ int TcpWavePanel::port() const
     return ok && value >= 1 && value <= 65535 ? value : 8888;
 }
 
+void TcpWavePanel::setConnectionEndpoint(const QString& host, int port)
+{
+    if (host_edit_)
+    {
+        const QSignalBlocker blocker(host_edit_);
+        const QString trimmedHost = host.trimmed();
+        host_edit_->setText(trimmedHost.isEmpty() ? QStringLiteral("127.0.0.1") : trimmedHost);
+    }
+    if (port_edit_)
+    {
+        const QSignalBlocker blocker(port_edit_);
+        const int boundedPort = port >= 1 && port <= 65535 ? port : 8888;
+        port_edit_->setText(QString::number(boundedPort));
+    }
+}
+
 bool TcpWavePanel::isConnected() const
 {
     if (ui_test_mode_)
@@ -2330,8 +2348,7 @@ void TcpWavePanel::setRemoteSkyMode(bool enabled)
     {
         port_label_->setText(is_english_ ? "Port:" : "端口:");
     }
-    if (host_edit_) host_edit_->setEnabled(!enabled);
-    if (port_edit_) port_edit_->setEnabled(!enabled);
+    updateEndpointEditorState();
     if (enabled && socket_ && socket_->state() != QAbstractSocket::UnconnectedState)
     {
         requestGracefulDisconnect();
@@ -2366,6 +2383,7 @@ void TcpWavePanel::setRemoteWaveTcpState(VaporView::DeviceState state)
     }
     if (remote_sky_mode_)
     {
+        updateEndpointEditorState();
         const bool hasRemoteDataStatus = !remote_waveform_status_text_.isEmpty() || !remote_feature_status_text_.isEmpty();
         if (remote_wave_tcp_connected_ && hasRemoteDataStatus)
         {
@@ -3073,6 +3091,12 @@ void TcpWavePanel::onSocketStateChanged()
         return;
     }
 
+    if (remote_sky_mode_)
+    {
+        updateEndpointEditorState();
+        return;
+    }
+
     switch (socket_->state())
     {
     case QAbstractSocket::HostLookupState:
@@ -3134,9 +3158,21 @@ void TcpWavePanel::onSocketError()
 
 void TcpWavePanel::setConnectedUiState(bool connected)
 {
+    if (remote_sky_mode_)
+    {
+        updateEndpointEditorState();
+        if (connect_button_)
+        {
+            connect_button_->setEnabled(true);
+            connect_button_->setText(remote_wave_tcp_connected_
+                ? (is_english_ ? "Disconnect" : "断开")
+                : (is_english_ ? "Connect" : "连接"));
+        }
+        return;
+    }
+
     const bool active = connected && socket_ && socket_->state() != QAbstractSocket::UnconnectedState;
-    host_edit_->setEnabled(!active);
-    port_edit_->setEnabled(!active);
+    updateEndpointEditorState();
     if (socket_ && socket_->state() == QAbstractSocket::ClosingState)
     {
         connect_button_->setText(is_english_ ? "Disconnecting..." : "正在断开...");
@@ -3146,6 +3182,25 @@ void TcpWavePanel::setConnectedUiState(bool connected)
 
     connect_button_->setEnabled(true);
     connect_button_->setText(active ? (is_english_ ? "Disconnect" : "断开") : (is_english_ ? "Connect" : "连接"));
+}
+
+void TcpWavePanel::updateEndpointEditorState()
+{
+    const bool localActive =
+        !remote_sky_mode_ &&
+        socket_ &&
+        socket_->state() != QAbstractSocket::UnconnectedState;
+    const bool endpointEditable = remote_sky_mode_
+        ? !remote_wave_tcp_connected_
+        : !localActive;
+    if (host_edit_)
+    {
+        host_edit_->setEnabled(endpointEditable);
+    }
+    if (port_edit_)
+    {
+        port_edit_->setEnabled(endpointEditable);
+    }
 }
 
 void TcpWavePanel::setStatusText(const QString& text)

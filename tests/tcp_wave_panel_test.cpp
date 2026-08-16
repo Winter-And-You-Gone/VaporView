@@ -6,6 +6,7 @@
 #include <QElapsedTimer>
 #include <QHostAddress>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QSettings>
 #include <QTcpServer>
@@ -413,6 +414,23 @@ bool hasButtonText(QWidget *root, const QString& text)
     return false;
 }
 
+bool endpointEditorsEnabled(QWidget *root, bool expectedEnabled)
+{
+    const QList<QLineEdit *> editors = root ? root->findChildren<QLineEdit *>() : QList<QLineEdit *>();
+    if (editors.size() < 2)
+    {
+        return false;
+    }
+    for (QLineEdit *editor : editors)
+    {
+        if (!editor || editor->isEnabled() != expectedEnabled)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 void testRemoteSkyModeKeepsLocalEndpointText()
 {
     TcpWavePanel panel;
@@ -432,10 +450,18 @@ void testRemoteSkyModeKeepsLocalEndpointText()
             "remote TCP wave mode does not expose separate Sky endpoint wording");
     require(hasButtonText(&panel, QStringLiteral("连接")),
             "remote TCP wave mode keeps the shared connect text");
+    require(endpointEditorsEnabled(&panel, true),
+            "remote TCP wave disconnected mode keeps endpoint editors usable");
 
     panel.setRemoteWaveTcpState(VaporView::DeviceState::Connected);
     require(hasButtonText(&panel, QStringLiteral("断开")),
             "remote TCP wave connected state keeps the shared disconnect text");
+    require(endpointEditorsEnabled(&panel, false),
+            "remote TCP wave connected state locks endpoint editors like local mode");
+
+    panel.setRemoteWaveTcpState(VaporView::DeviceState::Disconnected);
+    require(endpointEditorsEnabled(&panel, true),
+            "remote TCP wave disconnected state restores endpoint editing");
 
     panel.setEnglish(true);
     require(hasLabelText(&panel, QStringLiteral("TCP Host:")) &&
@@ -444,8 +470,8 @@ void testRemoteSkyModeKeepsLocalEndpointText()
     require(!hasLabelText(&panel, QStringLiteral("Sky Wave Host:")) &&
                 !hasLabelText(&panel, QStringLiteral("Sky Wave Port:")),
             "remote TCP wave mode does not expose separate English Sky endpoint wording");
-    require(hasButtonText(&panel, QStringLiteral("Disconnect")),
-            "remote TCP wave connected state keeps the shared English disconnect text");
+    require(hasButtonText(&panel, QStringLiteral("Connect")),
+            "remote TCP wave disconnected state keeps the shared English connect text");
 
     panel.setRemoteSkyMode(false);
     require(hasLabelText(&panel, QStringLiteral("TCP Host:")) &&

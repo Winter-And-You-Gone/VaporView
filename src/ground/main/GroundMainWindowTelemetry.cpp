@@ -245,8 +245,8 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
     if (state_->remote_wave_stream_auto_start_ &&
         !state_->remote_wave_stream_requested_ &&
         !state_->remote_wave_stream_enable_pending_ &&
-        state_->remote_sky_controller_->deviceState(VaporView::SkyDeviceId::WaveTcp) == VaporView::DeviceState::Connected &&
-        state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen())
+        state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen() &&
+        state_->remote_sky_controller_->deviceState(VaporView::SkyDeviceId::WaveTcp) == VaporView::DeviceState::Connected)
     {
         state_->remote_wave_stream_enable_pending_ = true;
         state_->remote_sky_controller_->sendCommand(VaporView::CommandId::EnableWaveformStreaming);
@@ -336,6 +336,7 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
         !(ok && noError))
     {
         state_->remote_sky_config_loading_ = false;
+        clearPendingRemoteWaveTcpConnection();
         setRemoteSkyConfigStatus(state_->is_english_
             ? QStringLiteral("Remote Sky config read was rejected: %1").arg(errorText)
             : QStringLiteral("读取天空端配置被拒绝：%1").arg(errorText),
@@ -354,6 +355,7 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
         else
         {
             state_->remote_sky_config_applying_ = false;
+            clearPendingRemoteWaveTcpConnection();
             state_->remote_sky_config_dirty_ = true;
             setRemoteSkyConfigStatus(state_->is_english_
                 ? QStringLiteral("Remote Sky config apply was rejected: %1").arg(errorText)

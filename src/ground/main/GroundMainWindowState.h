@@ -498,6 +498,10 @@ struct MainWindowState
     bool remote_wave_stream_requested_;
     bool remote_wave_stream_enable_pending_;
     bool remote_wave_stream_auto_start_;
+    bool remote_wave_connect_after_config_read_;
+    bool remote_wave_connect_after_config_apply_;
+    QString remote_wave_pending_host_;
+    int remote_wave_pending_port_;
     int remote_recording_state_;
     QHash<VaporView::SkyDeviceId, qint64> home_device_action_spinner_until_ms_;
     QHash<VaporView::SkyDeviceId, qint64> home_device_action_spinner_started_ms_;

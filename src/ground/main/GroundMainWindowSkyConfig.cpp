@@ -489,6 +489,11 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
         const QSignalBlocker blocker(state_->device_config_.remote_sky_wave_host_edit);
         state_->device_config_.remote_sky_wave_host_edit->setText(config.wave_tcp.host);
     }
+    if (isRemoteSkyMode() && state_->tcp_wave_panel_)
+    {
+        state_->tcp_wave_panel_->setConnectionEndpoint(config.wave_tcp.host,
+                                                       config.wave_tcp.port);
+    }
     const QList<QPair<QDoubleSpinBox *, double>> doubleSpins = {
         {state_->device_config_.remote_sky_telemetry_basic_spin, config.telemetry.basic_rate_hz},
         {state_->device_config_.remote_sky_telemetry_feature_spin, config.telemetry.feature_rate_hz},
@@ -1048,6 +1053,7 @@ void MainWindow::handleRemoteSkyConfigReceived(const QJsonObject& object, bool b
          state_->remote_sky_controller_->linkGeneration() != state_->remote_sky_config_read_generation_))
     {
         state_->remote_sky_config_loading_ = false;
+        clearPendingRemoteWaveTcpConnection();
         updateRemoteSkyConfigControlsState();
         return;
     }
@@ -1070,6 +1076,7 @@ void MainWindow::handleRemoteSkyConfigReceived(const QJsonObject& object, bool b
             state_->device_config_.remote_sky_raw_mode_btn->setChecked(true);
         }
         setRemoteSkyConfigStatus(QStringLiteral("Invalid config from sky: %1").arg(error), true);
+        clearPendingRemoteWaveTcpConnection();
         updateRemoteSkyConfigControlsState();
         return;
     }
@@ -1082,6 +1089,15 @@ void MainWindow::handleRemoteSkyConfigReceived(const QJsonObject& object, bool b
         ? QStringLiteral("Remote Sky config read from sky.")
         : QStringLiteral("已读取天空端配置。"));
     updateRemoteSkyConfigControlsState();
+    if (state_->remote_wave_connect_after_config_read_)
+    {
+        const QString pendingHost = state_->remote_wave_pending_host_;
+        const int pendingPort = state_->remote_wave_pending_port_;
+        state_->remote_wave_connect_after_config_read_ = false;
+        state_->remote_wave_pending_host_.clear();
+        state_->remote_wave_pending_port_ = 0;
+        requestRemoteWaveTcpConnection(true, pendingHost, pendingPort);
+    }
 }
 
 void MainWindow::onRemoteSkyConfigApplyResultReceived(const QJsonObject& result)
@@ -1098,12 +1114,15 @@ void MainWindow::handleRemoteSkyConfigApplyResultReceived(const QJsonObject& res
          state_->remote_sky_controller_->linkGeneration() != state_->remote_sky_config_apply_generation_))
     {
         state_->remote_sky_config_applying_ = false;
+        clearPendingRemoteWaveTcpConnection();
         updateRemoteSkyConfigControlsState();
         return;
     }
     state_->remote_sky_config_applying_ = false;
     const bool success = result.value(QStringLiteral("success")).toBool(false);
     const QString error = result.value(QStringLiteral("error")).toString();
+    const bool connectWaveAfterApply = state_->remote_wave_connect_after_config_apply_;
+    state_->remote_wave_connect_after_config_apply_ = false;
     if (success)
     {
         state_->remote_sky_baseline_config_ = state_->remote_sky_config_;
@@ -1115,6 +1134,7 @@ void MainWindow::handleRemoteSkyConfigApplyResultReceived(const QJsonObject& res
     }
     else
     {
+        clearPendingRemoteWaveTcpConnection();
         state_->remote_sky_config_dirty_ = true;
         setRemoteSkyConfigStatus(error.isEmpty()
             ? (state_->is_english_ ? QStringLiteral("Sky failed to apply the config.") : QStringLiteral("天空端应用配置失败。"))
@@ -1128,6 +1148,10 @@ void MainWindow::handleRemoteSkyConfigApplyResultReceived(const QJsonObject& res
             QJsonDocument(result).toJson(QJsonDocument::Indented));
     }
     updateRemoteSkyConfigControlsState();
+    if (success && connectWaveAfterApply)
+    {
+        requestRemoteWaveTcpConnection(true);
+    }
 }
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING

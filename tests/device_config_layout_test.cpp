@@ -693,6 +693,13 @@ int main(int argc, char **argv)
             "remote mode exposes AI-8 SkyConfig serial fields");
     require(!remoteApplyButton->isEnabled() && !remoteSaveButton->isEnabled(),
             "disconnected remote mode disables apply and save operations");
+    auto *tcpWaveHostEdit = window.findChild<QLineEdit *>(QStringLiteral("tcpWaveHostEdit"));
+    auto *tcpWavePortEdit = window.findChild<QLineEdit *>(QStringLiteral("tcpWavePortEdit"));
+    auto *tcpWaveConnectButton = window.findChild<QPushButton *>(QStringLiteral("compactTcpStartButton"));
+    require(tcpWaveHostEdit != nullptr && tcpWavePortEdit != nullptr && tcpWaveConnectButton != nullptr,
+            "home TCP wave source controls are reachable in remote mode");
+    require(tcpWaveHostEdit->isEnabled() && tcpWavePortEdit->isEnabled(),
+            "remote TCP wave disconnected mode leaves host and port editable");
 
     VaporView::SkyConfig remoteConfig = VaporView::SkyConfig::defaults();
     remoteConfig.epsilon = {true, QStringLiteral("/dev/ttyEPSILON"), 921600, 100.0};
@@ -731,6 +738,22 @@ int main(int argc, char **argv)
                 ai8BaudCombo->currentText() == QStringLiteral("19200") &&
                 ai8RateCombo->currentText() == QStringLiteral("5"),
             "remote SkyConfig restores AI-8 enabled, port, baud, and polling rate");
+    require(tcpWaveHostEdit->text() == QStringLiteral("10.0.0.2") &&
+                tcpWavePortEdit->text() == QStringLiteral("8899"),
+            "remote SkyConfig mirrors Wave TCP endpoint into the home TCP wave card");
+
+    tcpWaveHostEdit->setText(QStringLiteral("10.0.0.9"));
+    tcpWavePortEdit->setText(QStringLiteral("9901"));
+    tcpWaveConnectButton->click();
+    VaporViewTest::processEventsFor(120);
+    QString endpointError;
+    const QJsonObject endpointJson = window.testRemoteSkyConfigFromDeviceConfigUi(&endpointError);
+    const QJsonObject endpointWaveJson = endpointJson.value(QStringLiteral("wave_tcp")).toObject();
+    require(endpointError.isEmpty() &&
+                endpointWaveJson.value(QStringLiteral("enabled")).toBool(false) &&
+                endpointWaveJson.value(QStringLiteral("host")).toString() == QStringLiteral("10.0.0.9") &&
+                endpointWaveJson.value(QStringLiteral("port")).toInt() == 9901,
+            "remote TCP wave connect applies the home card endpoint to SkyConfig");
 
     const int manualIndex = std::max(epsilonPortCombo->findText(QStringLiteral("手动添加")),
                                      epsilonPortCombo->findText(QStringLiteral("Add Port")));
