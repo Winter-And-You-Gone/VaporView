@@ -9214,7 +9214,7 @@ int main(int argc, char **argv)
             "EPSILON RTCM input selector remains keyboard accessible");
     const QRect reconfigureRect = requireActionButton(
         epsilonDeviceSettingsCard, QStringLiteral("epsilonReconfigureButton"),
-        {QStringLiteral("重新配置输出"), QStringLiteral("Reconfigure Output")},
+        {QStringLiteral("应用已保存配置"), QStringLiteral("Apply Saved Configuration")},
         epsilonDeviceLocalBounds, "EPSILON device settings expose the reconfigure action");
     require(epsilonDeviceSettingsCard->findChild<QPushButton *>(QStringLiteral("epsilonRtkConfigButton")) == nullptr,
             "EPSILON device settings route differential navigation through the top navigation bar");

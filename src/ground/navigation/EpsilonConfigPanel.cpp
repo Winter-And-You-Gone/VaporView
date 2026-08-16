@@ -840,10 +840,11 @@ void EpsilonConfigPanel::updateTexts()
                 ? QStringLiteral("Select the EPSILON communication port that receives RTCM corrections. COMM2 is the default.")
                 : QStringLiteral("选择 EPSILON 设备端接收 RTCM 差分数据的通信串口，默认 COMM2。"));
     }
-    reconfigure_name_label_->setText(is_english_ ? QStringLiteral("Output Reconfiguration") : QStringLiteral("输出重配"));
+    reconfigure_name_label_->setText(is_english_ ? QStringLiteral("Apply Saved Configuration") : QStringLiteral("应用已保存配置"));
     reconfigure_description_label_->setText(
-        is_english_ ? QStringLiteral("Apply the current EPSILON output profile to the device.")
-                    : QStringLiteral("将当前 EPSILON 输出配置应用到设备。"));
+        is_english_
+            ? QStringLiteral("Read the saved EPSILON packet-rate and output settings from this computer and send them to the device again. Unsaved page changes are not stored.")
+            : QStringLiteral("从本机已保存的 EPSILON 包频率和输出配置读取，并重新下发到设备；不会保存当前页面未提交的修改。"));
     for (QLabel *label : {rtcm_name_label_, rtcm_description_label_,
                           reconfigure_name_label_, reconfigure_description_label_})
     {
@@ -896,8 +897,11 @@ void EpsilonConfigPanel::updateTexts()
     save_button_->setToolTip(is_english_ ? QStringLiteral("Save the packet-rate profile and apply it now when possible") : QStringLiteral("保存包频率配置，并在可用时立即应用"));
     rtcm_port_button_->setText(is_english_ ? QStringLiteral("RTCM Port") : QStringLiteral("配置RTCM串口"));
     rtcm_port_button_->setToolTip(is_english_ ? QStringLiteral("Configure an EPSILON communication port as RTCM input") : QStringLiteral("配置 EPSILON 通信串口为 RTCM 输入口"));
-    reconfigure_button_->setText(is_english_ ? QStringLiteral("Reconfigure Output") : QStringLiteral("重新配置输出"));
-    reconfigure_button_->setToolTip(is_english_ ? QStringLiteral("Apply the current EPSILON output profile") : QStringLiteral("应用当前 EPSILON 输出配置"));
+    reconfigure_button_->setText(is_english_ ? QStringLiteral("Apply Saved Configuration") : QStringLiteral("应用已保存配置"));
+    reconfigure_button_->setToolTip(
+        is_english_
+            ? QStringLiteral("Read the saved EPSILON output configuration from this computer and send it to the device again")
+            : QStringLiteral("读取本机已保存的 EPSILON 输出配置并重新下发到设备"));
     VaporView::Ground::MainSupport::fitButtonMinimumWidth(recommended_button_, 100);
     VaporView::Ground::MainSupport::fitButtonMinimumWidth(save_button_, 118);
     VaporView::Ground::MainSupport::fitButtonMinimumWidth(rtcm_port_button_, 128);
