@@ -9293,27 +9293,29 @@ int main(int argc, char **argv)
     require(telemetrySubCards.size() == 3,
             "device telemetry summary card splits content into three home-style subcards");
     std::sort(telemetrySubCards.begin(), telemetrySubCards.end(), [](QFrame *a, QFrame *b) {
-        return a->mapTo(a->parentWidget(), QPoint(0, 0)).y() <
-               b->mapTo(b->parentWidget(), QPoint(0, 0)).y();
+        return a->mapTo(a->parentWidget(), QPoint(0, 0)).x() <
+               b->mapTo(b->parentWidget(), QPoint(0, 0)).x();
     });
     const QVector<QStringList> expectedTelemetrySubCardTitles = {
         {QStringLiteral("数据频率"), QStringLiteral("Data stream rates")},
         {QStringLiteral("链路速率"), QStringLiteral("Link rate")},
         {QStringLiteral("数据"), QStringLiteral("Data")},
     };
-    int previousSubCardBottom = -1;
-    int previousSubCardLeft = -1;
-    int previousTitleLeft = -1;
+    int previousSubCardRight = -1;
+    int previousSubCardTop = -1;
     for (int i = 0; i < telemetrySubCards.size(); ++i)
     {
         QFrame *subCard = telemetrySubCards.at(i);
         const QRect subCardRect(subCard->mapTo(deviceTelemetrySummaryCard, QPoint(0, 0)), subCard->size());
-        require(previousSubCardBottom < 0 || subCardRect.top() > previousSubCardBottom,
-                "device telemetry summary subcards are arranged vertically");
-        require(previousSubCardLeft < 0 || std::abs(subCardRect.left() - previousSubCardLeft) <= 2,
-                "device telemetry summary subcards align on the left edge");
-        previousSubCardBottom = subCardRect.bottom();
-        previousSubCardLeft = subCardRect.left();
+        require(previousSubCardRight < 0 || subCardRect.left() > previousSubCardRight,
+                "device telemetry summary subcards are arranged horizontally");
+        require(previousSubCardTop < 0 || std::abs(subCardRect.top() - previousSubCardTop) <= 2,
+                "device telemetry summary subcards share a top edge");
+        require(subCard->sizePolicy().horizontalPolicy() == QSizePolicy::Fixed &&
+                    std::abs(subCardRect.width() - subCard->sizeHint().width()) <= 2,
+                "device telemetry summary subcard width follows its widest content row");
+        previousSubCardRight = subCardRect.right();
+        previousSubCardTop = subCardRect.top();
 
         QFrame *titlePane = subCard->findChild<QFrame *>(QStringLiteral("deviceTelemetrySectionTitlePane"));
         require(titlePane != nullptr,
@@ -9342,9 +9344,9 @@ int main(int argc, char **argv)
                 "device telemetry summary subcard title pane matches the compact EPSILON title width");
         const QRect titleRect(expectedTitleLabel->mapTo(subCard, QPoint(0, 0)),
                               expectedTitleLabel->size());
-        require(previousTitleLeft < 0 || std::abs(titleRect.left() - previousTitleLeft) <= 2,
-                "device telemetry summary subcard titles align in a left-side column");
-        previousTitleLeft = titleRect.left();
+        require(titleRect.left() >= titlePaneRect.left() &&
+                    titleRect.right() <= titlePaneRect.right(),
+                "device telemetry summary subcard title fits its left-side pane");
         require(titlePaneRect.left() <= 2 &&
                     titlePaneRect.height() >= subCardRect.height() - 4,
                 "device telemetry summary subcard title pane spans the left side");

@@ -2883,22 +2883,23 @@ void MainWindow::setupDeviceConfigPage()
 
     auto *summaryBodyWidget = new QWidget(state_->device_config_.data_telemetry_summary_card);
     summaryBodyWidget->setObjectName(QStringLiteral("homeTelemetrySummaryContainer"));
-    auto *summaryBodyLayout = new QVBoxLayout(summaryBodyWidget);
+    auto *summaryBodyLayout = new QHBoxLayout(summaryBodyWidget);
     summaryBodyLayout->setContentsMargins(4, 6, 4, 6);
     summaryBodyLayout->setSpacing(4);
     auto createDeviceTelemetrySection = [summaryBodyWidget, summaryBodyLayout](QVBoxLayout *&sectionContentLayout) {
         auto *section = new QFrame(summaryBodyWidget);
         section->setObjectName(QStringLiteral("homeTelemetrySectionCard"));
-        section->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        section->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         section->setToolTip(QString());
         sectionContentLayout = new QVBoxLayout(section);
         sectionContentLayout->setContentsMargins(0, 0, 0, 0);
         sectionContentLayout->setSpacing(0);
-        summaryBodyLayout->addWidget(section, 0, Qt::AlignTop);
+        summaryBodyLayout->addWidget(section, 0, Qt::AlignLeft | Qt::AlignTop);
     };
     createDeviceTelemetrySection(state_->device_config_.data_telemetry_rate_summary_layout);
     createDeviceTelemetrySection(state_->device_config_.data_telemetry_link_summary_layout);
     createDeviceTelemetrySection(state_->device_config_.data_telemetry_device_summary_layout);
+    summaryBodyLayout->addStretch(1);
     summaryLayout->addWidget(summaryBodyWidget);
 
     auto *remoteConfigCard = createCard(content);

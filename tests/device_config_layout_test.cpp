@@ -417,15 +417,15 @@ int main(int argc, char **argv)
     QWidget *summaryContainer =
         linkStatusCard->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer"));
     require(summaryContainer != nullptr, "link-status card exposes its summary container");
-    require(qobject_cast<QVBoxLayout *>(summaryContainer->layout()) != nullptr,
-            "link-status summary sections stack vertically to avoid horizontal overflow");
+    require(qobject_cast<QHBoxLayout *>(summaryContainer->layout()) != nullptr,
+            "link-status summary sections are arranged horizontally");
     QList<QFrame *> subCards =
         summaryContainer->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
     require(subCards.size() == 3,
             "link-status card keeps the three telemetry summary subcards");
     std::sort(subCards.begin(), subCards.end(), [summaryContainer](QFrame *left, QFrame *right) {
-        return left->mapTo(summaryContainer, QPoint(0, 0)).y() <
-               right->mapTo(summaryContainer, QPoint(0, 0)).y();
+        return left->mapTo(summaryContainer, QPoint(0, 0)).x() <
+               right->mapTo(summaryContainer, QPoint(0, 0)).x();
     });
     const QList<QList<QFrame *>> rateRows = pillRows(subCards.at(0));
     require(rateRows.size() == 3 &&
@@ -463,20 +463,22 @@ int main(int argc, char **argv)
     requirePillLabelsFit(subCards.at(2),
                          "data subcard pill labels fit without clipping");
 
-    int previousBottom = -1;
-    int left = -1;
+    const int summaryTop = summaryContainer->layout()->contentsMargins().top();
+    int previousRight = -1;
     for (QFrame *subCard : subCards)
     {
         const QRect subRect(subCard->mapTo(summaryContainer, QPoint(0, 0)), subCard->size());
-        require(previousBottom < 0 || subRect.top() > previousBottom,
-                "link-status subcards are arranged top-to-bottom");
-        require(left < 0 || std::abs(subRect.left() - left) <= 2,
-                "link-status subcards share a left edge");
+        require(previousRight < 0 || subRect.left() > previousRight,
+                "link-status subcards are arranged left-to-right");
+        require(std::abs(subRect.top() - summaryTop) <= 2,
+                "link-status subcards share a top edge");
         require(subRect.right() <= summaryContainer->width() &&
                     subRect.bottom() <= summaryContainer->height(),
                 "link-status subcards stay inside the summary container");
-        previousBottom = subRect.bottom();
-        left = subRect.left();
+        require(subCard->sizePolicy().horizontalPolicy() == QSizePolicy::Fixed &&
+                    std::abs(subRect.width() - subCard->sizeHint().width()) <= 2,
+                "link-status subcard width follows its widest content row");
+        previousRight = subRect.right();
     }
 
     const QStringList compactDeviceLabels{
