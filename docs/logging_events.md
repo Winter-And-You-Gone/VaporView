@@ -96,7 +96,7 @@
 | SkyTui | ipc.protocol | sky_ipc_error_frame_received | Error | 已收到 SkyCore telemetry Error 帧。 | payload_hex, payload_bytes |  | SKY_IPC_ERROR_FRAME |
 | SkyTui | ui | sky_tui_ui_log | Info | SkyTui 界面日志已更新。 | ui_visibility, ui_visible |  |  |
 | Ground | telemetry.serial | ground_telemetry_serial_open_failed | Error | 无法打开地面端遥测串口。 | port, baud | system_error | GROUND_TELEMETRY_SERIAL_OPEN_FAILED |
-| Ground | telemetry.tcp | ground_telemetry_tcp_connect_failed | Error | 无法连接地面端 TCP 遥测端点。 | host, port | system_error | GROUND_TELEMETRY_TCP_CONNECT_FAILED |
+| Ground | telemetry.tcp | ground_telemetry_tcp_connect_failed | Error | 无法连接天空端 TCP 数传端点。 | endpoint, host, port | system_error, ui_message, ui_visibility | GROUND_TELEMETRY_TCP_CONNECT_FAILED |
 | Ground | telemetry.link | ground_telemetry_link_error | Warning | 地面端遥测链路异常。 | system_error |  | GROUND_TELEMETRY_LINK_ERROR |
 | Ground | telemetry.command | telemetry_command_ack_timeout | Warning | 天空端命令 ACK 等待超时。 | command_id, command_value, command_seq |  | TELEMETRY_COMMAND_ACK_TIMEOUT |
 | Ground | protocol.crc | telemetry_crc_or_version_error | Warning | 遥测解码器拒绝了 CRC 或协议版本错误的数据帧。 | total_errors, delta |  |  |
@@ -191,7 +191,7 @@
 | Ground | telemetry.connection | remote_sky_connection_rejected_missing_port | Warning | 请先选择天空端数传串口。 | reason_code, transport | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | telemetry.connection | remote_sky_connection_started | Info | 正在连接天空端数传。 | transport, endpoint | ui_visibility |  |
 | Ground | telemetry.connection | remote_sky_connection_opened | Info | 数传链路已打开，正在等待天空端握手。 | endpoint, transport | ui_visibility |  |
-| Ground | telemetry.connection | remote_sky_connection_open_failed | Error | 打开天空端数传链路失败。 | error_code, endpoint, transport | ui_dedupe_key | TELEMETRY_LINK_OPEN_FAILED |
+| Ground | telemetry.connection | remote_sky_connection_open_failed | Error | 打开天空端数传链路失败。 | error_code, endpoint, transport | ui_dedupe_key, ui_message | TELEMETRY_LINK_OPEN_FAILED |
 | Ground | telemetry.connection | remote_sky_handshake_confirmed | Info | 天空端握手成功。 |  | ui_visibility |  |
 | Ground | telemetry.connection | remote_sky_disconnection_started | Info | 正在断开天空端数传。 |  | ui_visibility |  |
 | Ground | telemetry.connection | remote_sky_disconnected | Info | 天空端数传已断开。 |  | ui_visibility |  |

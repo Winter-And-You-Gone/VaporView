@@ -1135,6 +1135,9 @@ void MainWindow::onConnectClicked()
                              {{QStringLiteral("error_code"), QStringLiteral("TELEMETRY_LINK_OPEN_FAILED")},
                               {QStringLiteral("endpoint"), openedText},
                               {QStringLiteral("transport"), tcpTelemetry ? QStringLiteral("tcp") : QStringLiteral("serial")},
+                              {QStringLiteral("ui_message"),
+                               QStringLiteral("无法打开天空端数传链路（%1）。请确认 SkyCore 已启动并监听该地址。")
+                                   .arg(openedText)},
                               {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_sky:connection_open_failed")}});
         }
         return;

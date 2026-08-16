@@ -86,16 +86,35 @@ bool GroundTelemetryService::open(const QString& portName, int baudRate)
 bool GroundTelemetryService::openTcp(const QString& host, quint16 port)
 {
     auto link = std::make_unique<TcpTelemetryLink>();
+    QString systemError;
+    const QMetaObject::Connection errorConnection =
+        QObject::connect(link.get(), &TelemetryLink::errorOccurred,
+                         [&systemError](const QString& error) {
+                             systemError = error;
+                         });
     const bool ok = link->connectToHost(host, port);
+    QObject::disconnect(errorConnection);
     if (!ok)
     {
+        const QString endpoint = QStringLiteral("%1:%2").arg(host.trimmed()).arg(port);
+        QVariantMap fields{
+            {QStringLiteral("error_code"), QStringLiteral("GROUND_TELEMETRY_TCP_CONNECT_FAILED")},
+            {QStringLiteral("endpoint"), endpoint},
+            {QStringLiteral("host"), host},
+            {QStringLiteral("port"), port},
+            {QStringLiteral("ui_message"),
+             QStringLiteral("无法连接天空端 TCP 数传端点（%1）。").arg(endpoint)},
+            {QStringLiteral("ui_visibility"), QStringLiteral("details")},
+        };
+        if (!systemError.isEmpty())
+        {
+            fields.insert(QStringLiteral("system_error"), systemError);
+        }
         publishTelemetryLog(LogLevel::Error,
                             QStringLiteral("telemetry.tcp"),
                             QStringLiteral("ground_telemetry_tcp_connect_failed"),
-                            QStringLiteral("无法连接地面端 TCP 遥测端点。"),
-                            {{QStringLiteral("error_code"), QStringLiteral("GROUND_TELEMETRY_TCP_CONNECT_FAILED")},
-                             {QStringLiteral("host"), host},
-                             {QStringLiteral("port"), port}});
+                            QStringLiteral("无法连接天空端 TCP 数传端点。"),
+                            fields);
         return false;
     }
     transport_type_ = TelemetryTransportType::Tcp;
