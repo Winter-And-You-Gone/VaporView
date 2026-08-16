@@ -3317,6 +3317,23 @@ bool epsilonSectionTitlesContain(QWidget *epsilonPanel, const QString& token)
     });
 }
 
+bool epsilonSectionCardsShareRow(QWidget *epsilonPanel)
+{
+    if (!epsilonPanel)
+    {
+        return false;
+    }
+    const QList<QFrame*> cards = epsilonPanel->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
+    if (cards.size() != 3)
+    {
+        return false;
+    }
+    const int firstTop = cards.first()->mapTo(epsilonPanel, QPoint(0, 0)).y();
+    return std::all_of(cards.cbegin(), cards.cend(), [epsilonPanel, firstTop](const QFrame *card) {
+        return card && std::abs(card->mapTo(epsilonPanel, QPoint(0, 0)).y() - firstTop) <= 2;
+    });
+}
+
 void requireHomeOverviewLanguageWidthRoundTrip()
 {
     MainWindow languageOverviewWindow;
@@ -3351,6 +3368,8 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     const QVector<TelemetryPillWidthSnapshotItem> initialTelemetryPillWidths =
         telemetryPillWidthSnapshot(languageTelemetrySummaryContainer);
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
+    require(epsilonSectionCardsShareRow(languageEpsilonPanel),
+            "language overview EPSILON Chinese cards start in one row");
     requireHomeDeviceColumnsAligned(&languageOverviewWindow);
     requireHomeDeviceMinimumWidthMatchesControls(&languageOverviewWindow);
 
@@ -3455,6 +3474,8 @@ void requireHomeOverviewLanguageWidthRoundTrip()
         telemetryPillWidthSnapshot(languageTelemetrySummaryContainer),
         "language overview telemetry capsule widths do not exceed their initial Chinese widths");
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
+    require(epsilonSectionCardsShareRow(languageEpsilonPanel),
+            "language overview EPSILON cards return to one row after switching back to Chinese");
     languageOverviewWindow.close();
     require(processEventsUntil(1000, [&languageOverviewWindow]() {
                 return !languageOverviewWindow.isVisible();

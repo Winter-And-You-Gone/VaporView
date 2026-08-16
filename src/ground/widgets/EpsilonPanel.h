@@ -94,6 +94,9 @@ public:
             it.value()->setText(formatSectionTitle(text, english));
         }
         updateCardGridLayout(true);
+        QTimer::singleShot(0, this, [this]() {
+            updateCardGridLayout(true);
+        });
     }
 
     void setCompactLayout(bool compact)
