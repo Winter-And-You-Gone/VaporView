@@ -6240,6 +6240,12 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QSpinBox *>(QStringLiteral("temperaturePidKdSpinChannel1"));
     auto *autoPidCombo =
         temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureAutoPidComboChannel1"));
+    QLabel *autoPidLabel = nullptr;
+    if (autoPidCombo && autoPidCombo->parentWidget())
+    {
+        autoPidLabel =
+            autoPidCombo->parentWidget()->findChild<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
+    }
     auto *addressSpin =
         temperaturePanel->findChild<QSpinBox *>(QStringLiteral("temperatureDeviceAddressSpin"));
     auto *rs485BaudCombo =
@@ -6263,7 +6269,7 @@ int main(int argc, char **argv)
     require(controllerModeCombo != nullptr && controllerModeLabel != nullptr && temperatureStatusRateLabel != nullptr &&
                 targetSpin != nullptr && enableSwitch != nullptr && enableSwitch2 != nullptr && modeCombo != nullptr &&
                 maxOutputSpin != nullptr && kpSpin != nullptr && kiSpin != nullptr &&
-                kdSpin != nullptr && autoPidCombo != nullptr &&
+                kdSpin != nullptr && autoPidCombo != nullptr && autoPidLabel != nullptr &&
                 addressSpin != nullptr && rs485BaudCombo != nullptr && overtempOutputCombo != nullptr &&
                 commonInternalTemperatureEdit != nullptr && factoryResetButton != nullptr &&
                 sensorModelSelector1 != nullptr && sensorModelBValueRadio != nullptr &&
@@ -6614,6 +6620,10 @@ int main(int argc, char **argv)
     const QRect autoPidFieldRectForMode(
         autoPidCombo->parentWidget()->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
         autoPidCombo->parentWidget()->size());
+    const QRect autoPidLabelRect(autoPidLabel->mapTo(autoPidCombo->parentWidget(), QPoint(0, 0)),
+                                 autoPidLabel->size());
+    const QRect autoPidComboRect(autoPidCombo->mapTo(autoPidCombo->parentWidget(), QPoint(0, 0)),
+                                 autoPidCombo->size());
     const QRect controllerModeLabelRect(controllerModeLabel->mapTo(temperatureControllerModeField, QPoint(0, 0)),
                                         controllerModeLabel->size());
     const QRect controllerModeComboRect(controllerModeCombo->mapTo(temperatureControllerModeField, QPoint(0, 0)),
@@ -6664,9 +6674,12 @@ int main(int argc, char **argv)
                 std::abs(enableToAutoGap - autoToControllerModeGap) <= 1,
             "temperature common-page top controls use one evenly distributed gap");
     require(controllerModeLabelRect.right() < controllerModeComboRect.left(),
-            "temperature controller mode label sits immediately before the combo");
-    require(controllerModeComboRect.left() - controllerModeLabelRect.right() - 1 <= 1,
-            "temperature controller mode label removes the gap before its combo");
+            "temperature controller mode label sits before the combo");
+    const int autoPidLabelToComboGap = autoPidComboRect.left() - autoPidLabelRect.right() - 1;
+    const int controllerModeLabelToComboGap = controllerModeComboRect.left() - controllerModeLabelRect.right() - 1;
+    require(autoPidLabelToComboGap >= 4 && autoPidLabelToComboGap <= 8 &&
+                std::abs(controllerModeLabelToComboGap - autoPidLabelToComboGap) <= 1,
+            "temperature controller mode label keeps the same few-pixel gap as Auto PID");
     require(controllerModeComboRectInTopRow.right() <= controllerModeFieldRect.right() &&
                 controllerModeComboRectInTopRow.right() < temperatureChannelSelectorRow->width(),
             "temperature controller mode combo stays inside its field and top row without right-edge clipping");

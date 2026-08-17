@@ -92,6 +92,7 @@ constexpr int kTemperatureControllerSubTabTextPadding = 28;
 constexpr int kTemperatureControllerTopEnableWidth = 106;
 constexpr int kTemperatureControllerTopEnableHeight = 34;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
+constexpr int kTemperatureControllerInlineLabelSpacing = 6;
 constexpr int kTemperatureControllerModeTextWidthReserve = 18;
 constexpr int kTemperatureControllerAutoPidTextWidthReserve = 36;
 // The 266px common-parameter row is 85 + 6 + 84 + 6 + 85, matching 130 + 6 + 130.
@@ -2014,7 +2015,7 @@ void TemperatureControllerPanel::setupUi()
     controller_mode_field_->setFixedHeight(kTemperatureControllerTopControlsHeight);
     auto *controllerModeLayout = new QHBoxLayout(controller_mode_field_);
     controllerModeLayout->setContentsMargins(0, 0, 0, 0);
-    controllerModeLayout->setSpacing(0);
+    controllerModeLayout->setSpacing(kTemperatureControllerInlineLabelSpacing);
     controllerModeLayout->addWidget(controller_mode_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     controllerModeLayout->addWidget(controller_mode_combo_, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
@@ -2226,7 +2227,7 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
         field->setFixedHeight(kTemperatureControllerTopControlsHeight);
         auto *fieldLayout = new QHBoxLayout(field);
         fieldLayout->setContentsMargins(0, 0, 0, 0);
-        fieldLayout->setSpacing(6);
+        fieldLayout->setSpacing(kTemperatureControllerInlineLabelSpacing);
         label = new QLabel(text, field);
         label->setObjectName(QStringLiteral("fieldLabel"));
         label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
