@@ -626,7 +626,7 @@ int runApplication(int argc, char *argv[])
     app.installEventFilter(&wheelValueChangeFilter);
 
     app.setApplicationName("VaporView");
-    app.setApplicationVersion("1.0.21");
+    app.setApplicationVersion("1.0.22");
     app.setOrganizationName("VaporView");
     VaporView::LogService logService(QStringLiteral("VaporView"));
     logService.installQtMessageHandler();
