@@ -650,13 +650,15 @@ private:
             else if (!collectors.epsilon->setOutputPacketRates(request.epsilonPacketRates))
             {
                 postLog(QString(useEnglish
-                    ? "[EPSILON] Failed to configure the %1 profile: %2"
-                    : "[EPSILON] 配置%1失败：%2")
+                    ? "[EPSILON] Failed to configure the %1 profile: %2; continuing with the current device output."
+                    : "[EPSILON] 配置%1失败：%2；继续使用设备当前输出。")
                         .arg(request.epsilonUsesCustomPacketRates
                             ? (useEnglish ? "custom packet-rate" : "自定义包频率")
                             : (useEnglish ? "grouped output-rate" : "分组输出频率"))
                         .arg(request.epsilonPacketRateSummary));
-                return false;
+                postLog(useEnglish
+                    ? QStringLiteral("[EPSILON] If this port only outputs FDILink, connect the MAIN/Primary RS232 port to allow configuration commands.")
+                    : QStringLiteral("[EPSILON] 如果该串口只输出 FDILink，请接入 MAIN/Primary RS232 主口后再下发配置命令。"));
             }
             else
             {
