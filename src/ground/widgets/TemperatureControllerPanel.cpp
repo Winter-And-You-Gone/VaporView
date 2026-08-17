@@ -288,7 +288,7 @@ QStringList temperatureControllerStatusLabelWidthCandidates()
             QStringLiteral("Controller Mode:"),
             QStringLiteral("自身温度:"),
             QStringLiteral("错误码:"),
-            QStringLiteral("温控器模式:")};
+            QStringLiteral("温控器模式")};
 }
 
 QStringList temperatureControllerCompactStatusLabelWidthCandidates()
@@ -3694,7 +3694,7 @@ void TemperatureControllerPanel::updateChannelTexts()
     if (internal_temperature_lbl_) internal_temperature_lbl_->setText(is_english_ ? QStringLiteral("Internal:") : QStringLiteral("自身温度:"));
     if (error_code_lbl_) error_code_lbl_->setText(is_english_ ? QStringLiteral("Error:") : QStringLiteral("错误码:"));
     if (rate_title_lbl_) rate_title_lbl_->setText(is_english_ ? QStringLiteral("Polling rate:") : QStringLiteral("轮询频率:"));
-    if (controller_mode_lbl_) controller_mode_lbl_->setText(is_english_ ? QStringLiteral("Mode:") : QStringLiteral("温控器模式:"));
+    if (controller_mode_lbl_) controller_mode_lbl_->setText(is_english_ ? QStringLiteral("Mode:") : QStringLiteral("温控器模式"));
     refreshFixedTextLabelWidth(internal_temperature_lbl_);
     refreshFixedTextLabelWidth(error_code_lbl_);
     refreshFixedTextLabelWidth(rate_title_lbl_);

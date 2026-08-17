@@ -427,7 +427,7 @@ QStringList temperatureControllerStatusLabelWidthCandidates()
         QStringLiteral("Controller Mode:"),
         QStringLiteral("自身温度:"),
         QStringLiteral("错误码:"),
-        QStringLiteral("温控器模式:")
+        QStringLiteral("温控器模式")
     };
 }
 

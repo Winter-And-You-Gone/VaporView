@@ -6269,6 +6269,8 @@ int main(int argc, char **argv)
                 sensorModelSelector1 != nullptr && sensorModelBValueRadio != nullptr &&
                 sensorModelPtRadio != nullptr && sensorModelShRadio != nullptr && sensorModelMf501Radio != nullptr,
             "temperature controller editable controls are discoverable for stale telemetry checks");
+    require(controllerModeLabel->text() == QStringLiteral("温控器模式"),
+            "RD105 controller mode label omits the trailing Chinese colon");
     for (QLabel *fieldLabel : temperaturePanel->findChildren<QLabel *>(QStringLiteral("fieldLabel")))
     {
         if (fieldLabel->wordWrap())
