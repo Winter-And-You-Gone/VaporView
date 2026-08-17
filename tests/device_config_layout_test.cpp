@@ -1,5 +1,6 @@
 #include "ground/main/MainWindow.h"
 #include "ground/devices/RemoteSkyController.h"
+#include "ground/navigation/CombinationNavigationPage.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "SkyConfig.h"
 #include "TelemetryCodec.h"
@@ -23,6 +24,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSettings>
+#include <QStackedWidget>
 #include <QStringList>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -531,6 +533,8 @@ int main(int argc, char **argv)
         requireLabelFits(findExactLabel(serialCard, headerText),
                          "serial configuration column headers are visible and fit");
     }
+    auto *epsilonPacketRatesButton =
+        serialCard->findChild<QPushButton *>(QStringLiteral("deviceEpsilonPacketRatesButton"));
     requireHeaderAboveWidget(serialCard,
                              findExactLabel(serialCard, QStringLiteral("设备")),
                              findExactLabel(serialCard, QStringLiteral("EPSILON")),
@@ -545,8 +549,8 @@ int main(int argc, char **argv)
                              "baud-rate column header sits above baud selectors");
     requireHeaderAboveWidget(serialCard,
                              findExactLabel(serialCard, QStringLiteral("频率/轮询")),
-                             serialCard->findChild<QWidget *>(QStringLiteral("deviceAi8TemperatureRateCombo")),
-                             "rate column header sits above rate selectors");
+                             epsilonPacketRatesButton,
+                             "rate column header sits above the EPSILON packet-rate entry");
     requireHeaderAboveWidget(serialCard,
                              findExactLabel(serialCard, QStringLiteral("来源")),
                              serialCard->findChild<QWidget *>(QStringLiteral("devicePressureSourceCombo")),
@@ -636,8 +640,27 @@ int main(int argc, char **argv)
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureBaudCombo"));
     auto *ai8RateCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureRateCombo"));
-    require(dataSourceModeCombo && epsilonPortCombo && epsilonBaudCombo && epsilonRateCombo,
+    require(dataSourceModeCombo && epsilonPortCombo && epsilonBaudCombo && epsilonRateCombo &&
+                epsilonPacketRatesButton,
             "shared device config controls exist for target switching");
+    require(!epsilonRateCombo->isVisible() &&
+                epsilonPacketRatesButton->isVisible() &&
+                epsilonPacketRatesButton->text() == QStringLiteral("包频率设置"),
+            "EPSILON frequency column uses a packet-rate navigation button instead of a single rate selector");
+    auto *mainPageStackForEpsilonButton =
+        window.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
+    auto *combinationPageForEpsilonButton =
+        window.findChild<VaporView::Ground::Navigation::CombinationNavigationPage *>();
+    require(mainPageStackForEpsilonButton && combinationPageForEpsilonButton,
+            "combination navigation page is available for the EPSILON packet-rate jump");
+    epsilonPacketRatesButton->click();
+    VaporViewTest::processEventsFor(120);
+    require(mainPageStackForEpsilonButton->currentWidget() == combinationPageForEpsilonButton &&
+                combinationPageForEpsilonButton->currentSection() ==
+                    VaporView::Ground::Navigation::CombinationNavigationPage::Section::Epsilon,
+            "EPSILON packet-rate button jumps to Combination Navigation EPSILON settings");
+    mainPageStackForEpsilonButton->setCurrentWidget(deviceConfigPage);
+    VaporViewTest::processEventsFor(80);
     auto *skyTelemetryTransportCombo =
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceSkyTelemetryTransportCombo"));
     QWidget *skyTelemetryRow = skyTelemetryTransportCombo ? skyTelemetryTransportCombo->parentWidget() : nullptr;
@@ -902,7 +925,6 @@ int main(int argc, char **argv)
     QApplication::sendEvent(epsilonPortCombo->lineEdit(), &acceptManualPort);
     VaporViewTest::processEventsFor(80);
     epsilonBaudCombo->setCurrentText(QStringLiteral("115200"));
-    epsilonRateCombo->setCurrentText(QStringLiteral("88"));
     rd105SlaveSpin->setValue(17);
     selectComboData(pressureSourceCombo, QStringLiteral("bmp390"),
                     "remote pressure source can be edited to BMP390");
@@ -924,8 +946,8 @@ int main(int argc, char **argv)
             "remote edited port is serialized into SetSkyConfig JSON");
     require(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toInt() == 115200,
             "remote edited baud is serialized into SetSkyConfig JSON");
-    require(std::abs(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("frequency_hz")).toDouble() - 88.0) < 0.01,
-            "remote edited frequency is serialized into SetSkyConfig JSON");
+    require(std::abs(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("frequency_hz")).toDouble() - 100.0) < 0.01,
+            "remote EPSILON SkyConfig frequency stays on the loaded value while packet rates are edited in Combination Navigation");
     require(uiJson.value(QStringLiteral("temperature_controller")).toObject().value(QStringLiteral("slave_address")).toInt() == 17,
             "remote-only RD105 field is serialized into SkyConfig JSON");
     require(uiJson.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("source")).toString() ==

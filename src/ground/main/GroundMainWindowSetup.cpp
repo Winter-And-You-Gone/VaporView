@@ -20,6 +20,7 @@ namespace
 {
 
 constexpr int kMainContentBottomFadeHeight = 36;
+constexpr int kDeviceConfigEpsilonPacketRatesButtonMinWidth = 194;
 
 int topLevelCardShadowSafeRightInset(int fontScalePercent)
 {
@@ -2690,6 +2691,38 @@ void MainWindow::setupDeviceConfigPage()
     {
         state_->device_config_.epsilon_rate_combo->setObjectName(QStringLiteral("deviceEpsilonRateCombo"));
     }
+    state_->device_config_.epsilon_packet_rates_btn = new QPushButton(formWidget);
+    state_->device_config_.epsilon_packet_rates_btn->setObjectName(
+        QStringLiteral("deviceEpsilonPacketRatesButton"));
+    state_->device_config_.epsilon_packet_rates_btn->setFixedHeight(kMainPageInputHeight);
+    state_->device_config_.epsilon_packet_rates_btn->setMinimumWidth(
+        kDeviceConfigEpsilonPacketRatesButtonMinWidth);
+    state_->device_config_.epsilon_packet_rates_btn->setFocusPolicy(Qt::TabFocus);
+    state_->device_config_.epsilon_packet_rates_btn->setCursor(Qt::PointingHandCursor);
+    connect(state_->device_config_.epsilon_packet_rates_btn,
+            &QPushButton::clicked,
+            this,
+            [this]() {
+        if (!state_->combination_navigation_page_ || !state_->main_page_stack_)
+        {
+            return;
+        }
+        syncDeviceConfigEpsilonPanelFromSettings();
+        state_->combination_navigation_page_->setCurrentSection(
+            CombinationNavigationPage::Section::Epsilon);
+        state_->main_page_stack_->setCurrentWidget(state_->combination_navigation_page_);
+        if (state_->rtk_config_nav_btn_)
+        {
+            state_->rtk_config_nav_btn_->setChecked(true);
+        }
+        updateCustomTitleBarTexts();
+    });
+    formLayout->addWidget(state_->device_config_.epsilon_packet_rates_btn,
+                          1,
+                          3,
+                          1,
+                          2,
+                          Qt::AlignVCenter | Qt::AlignLeft);
     if (state_->device_config_.epsilon_port_combo)
     {
         state_->device_config_.epsilon_port_combo->setObjectName(QStringLiteral("deviceEpsilonPortCombo"));
@@ -3548,7 +3581,21 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(QStringLiteral("TFA1005-L"));
     if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(QStringLiteral("RD105"));
     if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(QStringLiteral("AI-8288"));
-    if (state_->device_config_.epsilon_rate_lbl) state_->device_config_.epsilon_rate_lbl->setText(remote ? (state_->is_english_ ? "Rate:" : "频率:") : QString());
+    if (state_->device_config_.epsilon_rate_lbl) state_->device_config_.epsilon_rate_lbl->setText(QString());
+    if (state_->device_config_.epsilon_packet_rates_btn)
+    {
+        state_->device_config_.epsilon_packet_rates_btn->setText(
+            state_->is_english_ ? QStringLiteral("Packet Rates") : QStringLiteral("包频率设置"));
+        state_->device_config_.epsilon_packet_rates_btn->setToolTip(
+            state_->is_english_
+                ? QStringLiteral("Open Combination Navigation > EPSILON packet-rate settings.")
+                : QStringLiteral("跳转到组合导航 > EPSILON 的详细包频率设置。"));
+        state_->device_config_.epsilon_packet_rates_btn->setAccessibleName(
+            state_->device_config_.epsilon_packet_rates_btn->text());
+        fitButtonFixedWidth(state_->device_config_.epsilon_packet_rates_btn,
+                            kDeviceConfigEpsilonPacketRatesButtonMinWidth,
+                            kDeviceConfigTopButtonPadding);
+    }
     if (state_->device_config_.ptb_rate_lbl) state_->device_config_.ptb_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
     if (state_->device_config_.hmp_rate_lbl) state_->device_config_.hmp_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
     if (state_->device_config_.lidar_rate_lbl) state_->device_config_.lidar_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
@@ -3637,7 +3684,6 @@ void MainWindow::updateDeviceConfigState()
     const QList<QWidget *> localWidgets = {
         state_->device_config_.epsilon_port_combo,
         state_->device_config_.epsilon_baud_combo,
-        state_->device_config_.epsilon_rate_combo,
         state_->device_config_.ptb_port_combo,
         state_->device_config_.ptb_baud_combo,
         state_->device_config_.ptb_source_combo,
@@ -3683,8 +3729,13 @@ void MainWindow::updateDeviceConfigState()
     if (state_->device_config_.sky_telemetry_tcp_port_lbl) state_->device_config_.sky_telemetry_tcp_port_lbl->setVisible(tcpTelemetry);
     if (state_->device_config_.sky_telemetry_tcp_port_spin) state_->device_config_.sky_telemetry_tcp_port_spin->setVisible(tcpTelemetry);
 
-    if (state_->device_config_.epsilon_rate_lbl) state_->device_config_.epsilon_rate_lbl->setVisible(remote);
-    if (state_->device_config_.epsilon_rate_combo) state_->device_config_.epsilon_rate_combo->setVisible(remote);
+    if (state_->device_config_.epsilon_rate_lbl) state_->device_config_.epsilon_rate_lbl->setVisible(false);
+    if (state_->device_config_.epsilon_rate_combo) state_->device_config_.epsilon_rate_combo->setVisible(false);
+    if (state_->device_config_.epsilon_packet_rates_btn)
+    {
+        state_->device_config_.epsilon_packet_rates_btn->setVisible(true);
+        state_->device_config_.epsilon_packet_rates_btn->setEnabled(epsilonConfigEnabled);
+    }
     if (state_->device_config_.enabled_header_lbl) state_->device_config_.enabled_header_lbl->setVisible(remote);
     if (state_->device_config_.source_header_lbl) state_->device_config_.source_header_lbl->setVisible(true);
     if (state_->device_config_.ptb_source_combo) state_->device_config_.ptb_source_combo->setVisible(true);

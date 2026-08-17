@@ -800,7 +800,6 @@ void MainWindow::updateRemoteSkyConfigControlsState()
     const QList<QWidget *> targetWidgets = {
         state_->device_config_.epsilon_port_combo,
         state_->device_config_.epsilon_baud_combo,
-        state_->device_config_.epsilon_rate_combo,
         state_->device_config_.ptb_port_combo,
         state_->device_config_.ptb_baud_combo,
         state_->device_config_.ptb_rate_combo,

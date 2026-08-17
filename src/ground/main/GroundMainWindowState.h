@@ -101,6 +101,7 @@ struct DeviceConfigPageWidgets
     QComboBox *epsilon_port_combo = nullptr;
     QComboBox *epsilon_baud_combo = nullptr;
     QComboBox *epsilon_rate_combo = nullptr;
+    QPushButton *epsilon_packet_rates_btn = nullptr;
     QComboBox *ptb_port_combo = nullptr;
     QComboBox *ptb_baud_combo = nullptr;
     QComboBox *ptb_source_combo = nullptr;
