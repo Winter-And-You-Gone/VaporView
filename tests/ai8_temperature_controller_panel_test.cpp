@@ -5,6 +5,7 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QColor>
 #include <QDoubleSpinBox>
 #include <QFrame>
 #include <QGridLayout>
@@ -61,8 +62,19 @@ int main(int argc, char **argv)
                 mainContentCard != nullptr && temperaturePlot != nullptr &&
                 navigationBar != nullptr && statusRow != nullptr,
             "AI-8 panel builds the side-by-side common-parameter and plot layout");
-    require(temperaturePlot->property("forceWhiteBackground").toBool(),
-            "AI-8 temperature plot uses the same white background as the parameter area");
+    require(!temperaturePlot->property("forceWhiteBackground").toBool(),
+            "AI-8 temperature plot follows the active theme background");
+    qApp->setProperty(VaporView::kAppDarkThemeProperty, true);
+    temperaturePlot->repaint();
+    const QImage darkPlotSnapshot =
+        temperaturePlot->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    require(!darkPlotSnapshot.isNull() &&
+                darkPlotSnapshot.pixelColor(1, 1) ==
+                    VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceRaised, true),
+            "AI-8 temperature plot uses the raised dark surface instead of a white panel");
+    qApp->setProperty(VaporView::kAppDarkThemeProperty, false);
+    temperaturePlot->update();
+    QApplication::processEvents();
     require(temperaturePlot->property("xAxisTimeMode").toBool(),
             "AI-8 temperature plot uses a clock-time x axis");
     require(temperaturePlot->testAttribute(Qt::WA_OpaquePaintEvent) &&

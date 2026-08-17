@@ -5303,8 +5303,8 @@ int main(int argc, char **argv)
     require(ai8StatusRect.left() > ai8NavigationRect.right() &&
                 ai8StatusRect.right() <= ai8Panel->rect().right() &&
                 ai8StatusRect.bottom() < ai8MainContentRect.top() &&
-                ai8TemperaturePlot->property("forceWhiteBackground").toBool(),
-            "AI-8 page action row is right-aligned beside page selectors and the plot uses a white background");
+                !ai8TemperaturePlot->property("forceWhiteBackground").toBool(),
+            "AI-8 page action row is right-aligned beside page selectors and the plot follows the active theme");
     auto *ai8GlobalButton = ai8TemperatureCard->findChild<QPushButton *>(
         QStringLiteral("ai8PageSelectorButton4"));
     auto *ai8ChannelButton = ai8TemperatureCard->findChild<QPushButton *>(
@@ -5338,6 +5338,14 @@ int main(int argc, char **argv)
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8NavigationBar QPushButton:checked {"),
                                  QStringLiteral("font-weight: 600"),
                                  "AI-8 page selector marks the selected parameter group like the temperature tabs");
+    const bool ai8StyleDark =
+        qApp->property(VaporView::kAppDarkThemeProperty).toBool();
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8MainContentCard {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised, ai8StyleDark)),
+        "AI-8 common parameters and trend plot use the raised theme surface");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8MainContentCard {"),
                                  QStringLiteral("border-radius: 8px"),
@@ -5346,7 +5354,7 @@ int main(int argc, char **argv)
         qApp->styleSheet(),
         QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8DetailParametersCard {"),
         QStringLiteral("background-color: %1").arg(
-            VaporView::appThemeColorName(VaporView::AppThemeColor::White, false)),
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised, ai8StyleDark)),
         "AI-8 detail parameter cards use the same background as the common parameter card");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8ParameterField {"),
@@ -6036,6 +6044,18 @@ int main(int argc, char **argv)
         *visibleDarkTemperaturePlot,
         VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceRaised, true),
         "dark temperature trend plot matches its raised card background");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8MainContentCard {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised, true)),
+        "dark AI-8 common parameters and trend plot use the raised surface background");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8DetailParametersCard {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised, true)),
+        "dark AI-8 detail parameter cards use the raised surface background");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QToolButton#temperatureOverviewChannelButton[available=\"false\"] {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
