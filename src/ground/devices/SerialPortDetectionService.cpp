@@ -308,14 +308,14 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
         {
             QVariantMap fields = probeFields(selectedProbe.probe, selectedProbe.port);
             fields.insert(QStringLiteral("probe_phase"), QStringLiteral("selected"));
-            fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("hidden"));
+            fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("details"));
             fields.insert(QStringLiteral("ui_message"),
                           QString(english
                               ? "[Auto Detect] Probing selected %1 on %2 @ %3..."
                               : "[自动识别] 正在探测已选 %1: %2 @ %3 ...")
                               .arg(selectedProbe.probe.label, selectedProbe.port, selectedProbe.probe.baud));
             postSerialPortDetectionLog(log,
-                                       LogLevel::Debug,
+                                       LogLevel::Info,
                                        QStringLiteral("serial_port_detection_probe_started"),
                                        QStringLiteral("开始探测串口设备。"),
                                        std::move(fields));
@@ -357,13 +357,13 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
             {
                 QVariantMap fields = probeFields(probe, port);
                 fields.insert(QStringLiteral("probe_phase"), QStringLiteral("default"));
-                fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("hidden"));
+                fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("details"));
                 fields.insert(QStringLiteral("ui_message"),
                               QString(english ? "[Auto Detect] Probing %1 on %2 @ %3..."
                                               : "[自动识别] 正在探测 %1: %2 @ %3 ...")
                                   .arg(probe.label, port, probe.baud));
                 postSerialPortDetectionLog(log,
-                                           LogLevel::Debug,
+                                           LogLevel::Info,
                                            QStringLiteral("serial_port_detection_probe_started"),
                                            QStringLiteral("开始探测串口设备。"),
                                            std::move(fields));
