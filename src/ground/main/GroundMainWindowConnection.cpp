@@ -1402,6 +1402,8 @@ void MainWindow::onConnectClicked()
     request.epsilonConfiguredRateHz = epsilonRate;
     request.epsilonPacketRateSignature = epsilonDesiredPacketSignature;
     request.epsilonPacketRateSummary = epsilonDesiredPacketSummary;
+    request.epsilonPacketRatesMatchDefault =
+        VaporView::Ground::DeviceRates::epsilonPacketRatesMatchDefault(epsilonDesiredPacketRates);
     request.epsilonConfigLikelyMatches = epsilonConfigLikelyMatches;
     if (!state_->local_connection_coordinator_->begin(std::move(request)))
     {

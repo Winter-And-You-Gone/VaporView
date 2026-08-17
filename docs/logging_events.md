@@ -172,6 +172,7 @@
 | Ground | device.connection | local_device_collector_diagnostic | Debug | 本地设备采集器输出了诊断信息。 | external_raw_text | ui_visibility |  |
 | Ground | device.connection | epsilon_output_rate_command_skipped | Info | 已跳过 EPSILON 输出频率下发，使用设备当前输出。 | device, reason_code | ui_visibility | RATE_UNSPECIFIED |
 | Ground | device.connection | epsilon_output_reconfigure_skipped_config_unchanged | Info | EPSILON 输出配置与上次保存配置一致，已跳过自动重配。 | device, epsilon_packet_profile, reason_code | ui_visibility | CONFIG_UNCHANGED |
+| Ground | device.connection | epsilon_output_reconfigure_skipped_fdilink_detected | Info | 已检测到 EPSILON FDILink 数据流，跳过默认输出配置下发。 | device, epsilon_packet_profile, reason_code | ui_visibility | FDILINK_STREAM_DETECTED |
 | Ground | device.connection | ptb_sample_rate_command_skipped | Info | 已跳过 PTB210 采样频率下发，使用设备当前输出。 | device, reason_code | ui_visibility | RATE_UNSPECIFIED |
 | Ground | device.connection | ptb_sample_rate_update_failed | Warning | PTB210 采样频率下发失败。 | device, requested_rate_hz, error_code | ui_visibility | SAMPLE_RATE_UPDATE_FAILED |
 | Ground | device.connection | lidar_output_rate_command_skipped | Info | 已跳过激光测距仪输出频率下发，使用设备默认或自适应输出。 | device, reason_code | ui_visibility | RATE_UNSPECIFIED |

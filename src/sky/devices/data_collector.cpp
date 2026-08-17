@@ -2010,6 +2010,11 @@ EpsilonData EpsilonCollector::getLatestData()
   return latest_data_;
 }
 
+bool EpsilonCollector::lastDeviceResponseHadFdilinkFrame() const
+{
+  return last_device_response_had_fdilink_frame_;
+}
+
 void EpsilonCollector::setRawFrameCallback(RawFrameCallback callback)
 {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -2019,6 +2024,7 @@ void EpsilonCollector::setRawFrameCallback(RawFrameCallback callback)
 bool EpsilonCollector::checkDeviceResponse()
 {
   const bool english = isEnglishLog();
+  last_device_response_had_fdilink_frame_ = false;
   std::vector<uint8_t> buffer;
   std::vector<uint8_t> frame;
   uint8_t packetId = 0;
@@ -2081,6 +2087,7 @@ bool EpsilonCollector::checkDeviceResponse()
     sendCommandForProbe("#fdeconfig\r\n", 1500);
     if (readValidFdilinkFrame(serial_, buffer, &frame, 2500, &packetId, nullptr))
     {
+      last_device_response_had_fdilink_frame_ = true;
       log(std::string(english
                           ? "EPSILON: recovered navigation stream with FDILink frame "
                           : "EPSILON：已恢复导航数据流，FDILink 数据包 ") +
@@ -2094,6 +2101,7 @@ bool EpsilonCollector::checkDeviceResponse()
     return false;
   }
 
+  last_device_response_had_fdilink_frame_ = true;
   log(std::string(english ? "EPSILON: detected FDILink frame " : "EPSILON：检测到 FDILink 数据包 ") +
       std::to_string(packetId));
   return true;

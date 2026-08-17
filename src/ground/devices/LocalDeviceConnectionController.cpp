@@ -1,5 +1,6 @@
 #include "ground/devices/LocalDeviceConnectionController.h"
 
+#include "ground/devices/EpsilonConfigurationService.h"
 #include "ground/devices/ImuConfigurationService.h"
 
 #include <QSettings>
@@ -492,7 +493,10 @@ private:
             VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_baud"), request.epsilon.baudText);
             VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_rate_hz"), request.epsilonConfiguredRateHz);
             VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_signature"), request.epsilonPacketRateSignature);
-            VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_apply_version"), 2);
+            VaporView::setPersistentSetting(
+                settings,
+                QStringLiteral("epsilon_last_config_apply_version"),
+                VaporView::Ground::EpsilonConfigurationService::PacketConfigurationVersion);
         };
 
         CollectorSet collectors;
@@ -703,6 +707,16 @@ private:
                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
                          {QStringLiteral("epsilon_packet_profile"), request.epsilonPacketRateSummary},
                          {QStringLiteral("reason_code"), QStringLiteral("CONFIG_UNCHANGED")}});
+            }
+            else if (request.epsilonPacketRatesMatchDefault &&
+                     collectors.epsilon->lastDeviceResponseHadFdilinkFrame())
+            {
+                postConnectionLog(VaporView::LogLevel::Info,
+                        QStringLiteral("epsilon_output_reconfigure_skipped_fdilink_detected"),
+                        QStringLiteral("已检测到 EPSILON FDILink 数据流，跳过默认输出配置下发。"),
+                        {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                         {QStringLiteral("epsilon_packet_profile"), request.epsilonPacketRateSummary},
+                         {QStringLiteral("reason_code"), QStringLiteral("FDILINK_STREAM_DETECTED")}});
             }
             else if (!collectors.epsilon->setOutputPacketRates(request.epsilonPacketRates))
             {

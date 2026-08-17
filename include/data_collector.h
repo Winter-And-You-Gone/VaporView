@@ -149,6 +149,7 @@ public:
   bool configureRtcmPort(int port_index, int baud_rate);
   bool configureMainAntennaLeverArm(double x_m, double y_m, double z_m);
   bool checkDeviceResponse() override;
+  bool lastDeviceResponseHadFdilinkFrame() const;
   void setRawFrameCallback(RawFrameCallback callback);
 
 protected:
@@ -157,6 +158,7 @@ protected:
 private:
   EpsilonData latest_data_;
   RawFrameCallback raw_frame_callback_;
+  bool last_device_response_had_fdilink_frame_ = false;
 };
 
 class ImuCollector : public DataCollector
