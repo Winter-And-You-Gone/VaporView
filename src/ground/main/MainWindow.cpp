@@ -754,6 +754,21 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 
     if (state_->log_list_view_ &&
         watched == state_->log_list_view_->viewport() &&
+        eventType == QEvent::Resize)
+    {
+        QListView *logListView = state_->log_list_view_;
+        logListView->doItemsLayout();
+        QTimer::singleShot(0, logListView, [logListView]() {
+            logListView->doItemsLayout();
+            if (logListView->viewport())
+            {
+                logListView->viewport()->update();
+            }
+        });
+    }
+
+    if (state_->log_list_view_ &&
+        watched == state_->log_list_view_->viewport() &&
         eventType == QEvent::MouseButtonPress)
     {
         auto *mouseEvent = static_cast<QMouseEvent *>(event);

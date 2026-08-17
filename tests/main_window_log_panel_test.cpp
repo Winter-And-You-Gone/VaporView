@@ -357,6 +357,35 @@ int main(int argc, char **argv)
     VaporViewTest::processEventsFor(30);
     require(logList->visualRect(wrappedLogIndex).height() > logList->fontMetrics().height() * 2,
             "long log details wrap into multiple visible lines");
+    require(logList->resizeMode() == QListView::Adjust,
+            "log list recalculates variable row heights when its width changes");
+    require(logList->wordWrap(), "log list keeps word wrapping enabled for multi-line rows");
+    auto wrappedRowHeight = [&]() {
+        logList->scrollTo(wrappedLogIndex, QAbstractItemView::PositionAtCenter);
+        VaporViewTest::processEventsFor(90);
+        const QRect rowRect = logList->visualRect(wrappedLogIndex);
+        require(rowRect.isValid() && !rowRect.isEmpty(), "wrapped log row remains visible after resize");
+        require(rowRect.height() >= logList->fontMetrics().height(),
+                "wrapped log row height remains at least one text line");
+        return rowRect.height();
+    };
+    const int originalMinimumWidth = logList->minimumWidth();
+    const int originalMaximumWidth = logList->maximumWidth();
+    const int narrowLogWidth = std::max(220, logList->width() / 2);
+    const int wideLogWidth = std::max(narrowLogWidth + 180, narrowLogWidth * 2);
+    logList->setFixedWidth(narrowLogWidth);
+    const int narrowRowHeight = wrappedRowHeight();
+    logList->setFixedWidth(wideLogWidth);
+    const int wideRowHeight = wrappedRowHeight();
+    require(wideRowHeight <= narrowRowHeight,
+            "wider log list does not keep a stale taller wrapped row height");
+    logList->setFixedWidth(narrowLogWidth);
+    const int restoredNarrowRowHeight = wrappedRowHeight();
+    require(std::abs(restoredNarrowRowHeight - narrowRowHeight) <= logList->fontMetrics().height(),
+            "log row height is stable after narrow-wide-narrow resize");
+    logList->setMinimumWidth(originalMinimumWidth);
+    logList->setMaximumWidth(originalMaximumWidth);
+    VaporViewTest::processEventsFor(90);
 
     searchEdit->setText(QStringLiteral("DEVICE_CONNECTION_FAILED"));
     VaporViewTest::processEventsFor(30);

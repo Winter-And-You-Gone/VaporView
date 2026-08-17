@@ -5491,8 +5491,10 @@ void MainWindow::setupLogPanel()
     state_->log_list_view_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     state_->log_list_view_->setSelectionMode(QAbstractItemView::SingleSelection);
     state_->log_list_view_->setUniformItemSizes(false);
+    state_->log_list_view_->setResizeMode(QListView::Adjust);
     state_->log_list_view_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     state_->log_list_view_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    state_->log_list_view_->setWordWrap(true);
     state_->log_list_view_->setMinimumWidth(0);
     state_->log_list_view_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
     if (state_->log_list_view_->viewport())
