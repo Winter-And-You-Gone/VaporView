@@ -711,6 +711,21 @@ QWidget#logNewEntriesRow {
     background-color: @vv-surface;
     border: none;
 }
+QPushButton#logNewEntriesButton {
+    background-color: @vv-primary-subtle;
+    border: 1px solid @vv-primary;
+    color: @vv-primary;
+}
+QPushButton#logNewEntriesButton:hover {
+    background-color: @vv-primary-subtle;
+    border-color: @vv-primary;
+    color: @vv-primary;
+}
+QPushButton#logNewEntriesButton:pressed {
+    background-color: @vv-primary-subtle-pressed;
+    border-color: @vv-primary;
+    color: @vv-primary;
+}
 QComboBox:hover,
 QLineEdit:hover,
 QAbstractSpinBox:hover {

@@ -2,6 +2,7 @@
 #include "ground/main/MainWindow.h"
 #include "ground/main/UiLogModel.h"
 #include "shared/config/SettingsWriteBarrier.h"
+#include "shared/theme/AppTheme.h"
 #include "test_ui_helpers.h"
 
 #include <QAbstractItemModel>
@@ -11,6 +12,7 @@
 #include <QLineEdit>
 #include <QListView>
 #include <QMenu>
+#include <QMetaObject>
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollBar>
@@ -99,6 +101,18 @@ void require(bool condition, const char *message)
     {
         fail(message);
     }
+}
+
+void requireLastRuleContains(const QString& styleSheet,
+                             const QString& selector,
+                             const QString& expected,
+                             const char *message)
+{
+    const qsizetype selectorPos = styleSheet.lastIndexOf(selector);
+    require(selectorPos >= 0, message);
+    const qsizetype ruleEnd = styleSheet.indexOf(QLatin1Char('}'), selectorPos);
+    require(ruleEnd > selectorPos, message);
+    require(styleSheet.mid(selectorPos, ruleEnd - selectorPos).contains(expected), message);
 }
 
 void publishRecord(VaporView::LogService& logService,
@@ -473,6 +487,40 @@ int main(int argc, char **argv)
     require(logScrollBar->value() == beforeNewLogScrollValue,
             "new log does not jump when auto follow is enabled but the user is viewing history");
     require(newEntriesButton->isVisible(), "new log indicator appears while viewing history with auto follow enabled");
+    const bool startedDark = qApp->property(VaporView::kAppDarkThemeProperty).toBool();
+    if (!startedDark)
+    {
+        require(QMetaObject::invokeMethod(window.get(), "onToggleTheme", Qt::DirectConnection),
+                "main window can switch to dark theme for new log indicator style checks");
+        VaporViewTest::processEventsFor(90);
+    }
+    require(qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
+            "main window is in dark theme for new log indicator style checks");
+    const QString darkStyleSheet = qApp->styleSheet();
+    requireLastRuleContains(
+        darkStyleSheet,
+        QStringLiteral("QPushButton#logNewEntriesButton {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtle, true)),
+        "dark new log indicator uses the orange theme background");
+    requireLastRuleContains(
+        darkStyleSheet,
+        QStringLiteral("QPushButton#logNewEntriesButton {"),
+        QStringLiteral("border: 1px solid %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::Primary, true)),
+        "dark new log indicator border uses the orange theme color");
+    requireLastRuleContains(
+        darkStyleSheet,
+        QStringLiteral("QPushButton#logNewEntriesButton {"),
+        QStringLiteral("color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::Primary, true)),
+        "dark new log indicator text uses the orange theme color");
+    if (!startedDark)
+    {
+        require(QMetaObject::invokeMethod(window.get(), "onToggleTheme", Qt::DirectConnection),
+                "main window can restore the original light theme after new log indicator style checks");
+        VaporViewTest::processEventsFor(90);
+    }
 
     window.reset();
     VaporView::setSettingsWritesSuspended(false);
