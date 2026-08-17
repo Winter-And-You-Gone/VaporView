@@ -19,6 +19,77 @@ writer switches to the platform-local VaporView log directory. Runtime code can
 query the actual location through `LogService::logDirectory()` and
 `LogService::logFilePath()`.
 
+## Lifecycle breadcrumb
+
+VaporView also writes a minimal lifecycle breadcrumb file named
+`lifecycle-breadcrumb.jsonl` in the log directory. This file is independent of
+`LogService`: it can record `process_entry` before the normal logging service is
+constructed, and each event is appended synchronously as one compact JSON object
+per line. Breadcrumb writes are best-effort; a path or disk failure must not
+block startup, runtime behavior, or shutdown.
+
+The normal ground UI process records these lifecycle events in the true runtime
+order:
+
+- `process_entry`
+- `qapplication_constructed`
+- `logging_initialized`
+- `main_window_created`
+- `app_exec_enter`
+- `about_to_quit`
+- `app_exec_returned`
+- `normal_process_exit`
+
+`about_to_quit` means Qt has started its normal quit flow. `app_exec_returned`
+means the Qt event loop has returned and includes the original `exit_code` from
+`QApplication::exec()`. `normal_process_exit` means the normal VaporView/Qt
+lifecycle objects owned by the application runner have already been destroyed,
+and the outermost `main()` is about to return with the same `exit_code`. Explicit
+early-return startup paths record `process_exit_requested` with `exit_code` and a
+narrow `reason_code`.
+
+Interpretation is deliberately limited. If the final breadcrumb is
+`app_exec_enter`, the process disappeared while the Qt event loop was running,
+but this file alone cannot distinguish a crash, `ExitProcess`, or external
+termination. If the file contains `about_to_quit` and `app_exec_returned` but no
+`normal_process_exit`, the process did not reach the normal outer `main()` return
+point during the shutdown/destructor phase after `app.exec()` returned; the
+breadcrumb does not by itself distinguish crash, abort, or external termination.
+If the file contains `about_to_quit`, `app_exec_returned` with `exit_code=1`, and
+`normal_process_exit` with `exit_code=1`, then `main()` reached the normal return
+path after cleanup and propagated exit code 1.
+
+Breadcrumb records include UTC timestamp, process ID, thread ID, sequence,
+event, and optional exit/reason fields. They must not contain command lines,
+environment variables, passwords, serial payloads, device data, or window text.
+
+## Windows LocalDumps
+
+For development or field diagnosis, WER LocalDumps for `VaporView.exe` can be
+configured manually with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\diagnostics\configure-vaporview-localdumps.ps1 -Enable
+powershell -ExecutionPolicy Bypass -File scripts\diagnostics\configure-vaporview-localdumps.ps1 -Status
+powershell -ExecutionPolicy Bypass -File scripts\diagnostics\configure-vaporview-localdumps.ps1 -Disable
+```
+
+`-Enable` accepts `-DumpFolder`, `-DumpCount`, and `-DumpType`; for example:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\diagnostics\configure-vaporview-localdumps.ps1 -Enable -DumpFolder X:\Debug\VaporViewDumps
+```
+
+The script writes
+`HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\VaporView.exe`
+and therefore requires an elevated PowerShell session for `-Enable` and
+`-Disable`. It does not silently elevate, and VaporView does not run it from the
+application, installer, or updater.
+
+Full dumps may contain runtime memory such as device data, local paths,
+connection details, credentials, or other sensitive content. Do not commit or
+push dump files or dump directories to GitHub.
+
 Main and emergency files rotate at 10 MiB. Rotated generations are bounded, and
 the normal cleanup pass retains at most 10 matching application log files with a
 target total size of about 100 MiB. Emergency output is also sent to `stderr`
@@ -63,6 +134,23 @@ producer that uses it, but the 256 KiB record cap bounds the work for one record
 not lifetime-safe and must not be retained; new callbacks use
 `LogService::withCurrentInstance()`.
 
+## Structured logging path
+
+New business events follow one path:
+
+```text
+business event
+  -> explicit LogLevel
+  -> explicit source/category/event
+  -> LogService / LogRecord
+  -> JSONL + UI + IPC + SkyTui
+```
+
+When `LogService` is unavailable during startup, shutdown, or an isolated
+component test, `LogService::writeLogFallback()` writes one bounded structured
+JSON record to stderr and the Windows debugger. It does not call Qt's global
+message handler, create a second queue, or create a second log file system.
+
 ## 日志语言与自动审计
 
 本节集中记录日志文本语言、机器标识命名和自动审计入口。`docs/logging_localization_progress.md`
@@ -73,7 +161,16 @@ VaporView 第一方运行日志采用“中文可读、英文可检索”的约�
 
 日志级别必须由调用方、状态机、返回值、错误枚举或明确事件分支决定，不能通过 `message.contains(...)` 搜索中文或英文关键词判断。外部库、操作系统、设备驱动、串口/TCP 错误、子进程 stdout/stderr、协议 payload 和设备返回原文必须保留在结构化字段中，例如 `system_error`、`process_output`、`external_raw_text` 或 `payload_hex`，不能覆盖或翻译成第一方描述。直接 Qt 日志调用 `qDebug()`、`qInfo()`、`qWarning()` 和 `qCritical()` 同样纳入审计；第一方文本必须是自然中文，第三方原文只能通过精确 allowlist 或结构化原文字段保留。
 
-旧的仅字符串 UI/控制台日志路径如暂时无法完全结构化，必须使用稳定中文包装 message，并在 `fields` 中标记 `legacy_unclassified=true`，原始 UI 文本放入 `ui_message`。旧路径默认只能进入桌面日志的“全部”视图，应设置 `ui_visibility=details`；高频进度或原始输出设置 `ui_visibility=hidden`。中文 message 保持简洁、稳定，不把大量变量拼进正文；变量、端点、设备名、错误原文和重试参数优先放入 `fields`。允许在中文句子中保留产品名和协议名，例如 SkyCore、SkyTui、IPC、TCP、UDP、JSON、CRC、EPSILON、PTB210、HMP3、TFA1500-L 和 RD105；但 `设备 connect failed and retry later`、`IPC 服务 start failed`、`配置 file loaded successfully` 这类完整英文语法片段视为中英混杂，必须改成自然中文。
+新代码不得新增仅字符串日志通道。普通 UI 文本、标签刷新、进度条状态和业务状态通知应继续走 UI 或业务 signal；只有具备运行诊断价值的事件才进入日志系统。第一方日志 message 保持简洁、稳定，不把大量变量拼进正文；变量、端点、设备名、错误原文和重试参数优先放入 `fields`。允许在中文句子中保留产品名和协议名，例如 SkyCore、SkyTui、IPC、TCP、UDP、JSON、CRC、EPSILON、PTB210、HMP3、TFA1005-L 和 RD105；但 `设备 connect failed and retry later`、`IPC 服务 start failed`、`配置 file loaded successfully` 这类完整英文语法片段视为中英混杂，必须改成自然中文。
+
+### Legacy 日志迁移规则
+
+`MainWindow::log(QString)`、日志型 `logMessage(QString)` / `*MessageRequested(QString)` / `diagnosticMessage(QString)` / `statusMessage(QString)` signal、独立 QString 日志 buffer 和无结构 Qt 日志都禁止用于第一方业务语义。业务调用点必须根据程序状态、返回值、ACK、错误枚举或明确分支直接选择 `LogLevel`、`category`、`event`、`error_code` / `reason_code` 和 `ui_visibility`。设备未连接导致用户命令无法执行是 Warning；命令已执行但写入、读回或 ACK 确认失败是 Error；普通成功是 Info/details；协议帧、单次 ACK 内容和高频内部状态是 Debug/hidden；只有无法安全继续运行或严重数据完整性风险才使用 Critical。
+
+`scripts/audit_legacy_logging.py` 使用相对文件路径加类/函数符号/identifier 的精确位置 allowlist，防止新增 `MainWindow::log(QString)` 调用、第一方日志型 QString signal/emit、message 关键词等级/可见性推断和任何 `legacy_unclassified` 业务事件。allowlist 不是数量 baseline；删除一个旧位置并在另一个位置新增相同数量也会失败。`--self-test` 覆盖 `logMessage(QString)`、`logMessageRequested(QString)`、`diagnosticMessage(QString)`、换名字绕过、普通 UI QString signal 排除、MainWindow 调用、等级/可见性关键词检测和新增 legacy event。
+
+仓库内部日志型 QString signal/emit bridge 已清零。`MainWindow::log(QString)` 已删除；TcpWavePanel、TelemetryLink、GroundTelemetry、SkyRuntime、SkyLocalIpcClient、SkyLocalIpcServer 和 SkyDeviceManager 现在只使用 `LogRecord`、`LogService::publish()`、结构化 IPC `LogEvent` 或结构化业务 signal。第一方生产代码 `legacy_unclassified` 当前为 0；新增 legacy 标记应视为审计失败并完成结构化迁移。
+RD105 温控命令统一使用 `Ground / device.temperature.command`。典型事件包括 `temperature_command_rejected_not_connected` + `reason_code=DEVICE_NOT_CONNECTED`、`temperature_command_failed` + `error_code=COMMAND_VERIFY_FAILED`、`temperature_command_sent`、`temperature_command_ack_timeout` + `error_code=COMMAND_TIMEOUT` 和 `temperature_command_completed`。重复的未连接、超时和失败事件应设置稳定 `ui_dedupe_key`，例如 `rd105:temperature_command_rejected_not_connected:SetTemperatureTarget:channel_2`，不得包含时间戳或随机值。
 
 ### 桌面日志面板展示策略
 
@@ -171,15 +268,16 @@ emergency 日志：
 
 ### 自动审计
 
-本仓库提供两个轻量 Python 审计入口：
+本仓库提供三个轻量 Python 审计入口：
 
 ```bash
+python scripts/audit_legacy_logging.py --root . --self-test
 python scripts/audit_logging_language.py --root . --self-test
 python scripts/audit_logging_events.py --root . --self-test
 ```
 
-`audit_logging_language.py` 检查第一方日志语言、`qDebug/qInfo/qWarning/qCritical` 字面量、中英混杂句、`category/event/error_code/reason_code/fields key/source` 命名、Error/Critical 缺少具体错误码，以及 `SKY_RUNTIME_ERROR` 是否只作为 SkyRuntime Release 兜底。`audit_logging_events.py` 比对源码可静态识别的 `event` 字面量和 `docs/logging_events.md`，检查遗漏、过期、重复、category/level 冲突、目录命名和错误事件缺少错误码。
+`audit_legacy_logging.py` 检查精确位置 allowlist、MainWindow legacy 调用和 message 关键词等级推断。`audit_logging_language.py` 检查第一方日志语言、`qDebug/qInfo/qWarning/qCritical` 字面量、中英混杂句、`category/event/error_code/reason_code/fields key/source` 命名、Error/Critical 缺少具体错误码，以及 `SKY_RUNTIME_ERROR` 是否只作为 SkyRuntime Release 兜底。`audit_logging_events.py` 比对源码可静态识别的 `event` 字面量和 `docs/logging_events.md`，检查遗漏、过期、重复、category/level 冲突、目录命名和错误事件缺少错误码。
 
-CTest 中注册了 `logging_language_audit_test` 和 `logging_event_catalog_audit_test`；支持 Python 的 CI 必须运行这两个测试。审计失败时优先修正源码 message、机器标识或事件目录。只有第三方原文、测试 sentinel、无法静态结构化的 legacy 文本等明确场景可以进入 allowlist；allowlist 必须精确到文本或调用场景，不能按目录宽泛跳过。
+CTest 中注册了 `logging_language_audit_test`、`logging_event_catalog_audit_test` 和 `logging_legacy_audit_test`；支持 Python 的 CI 必须运行这三个测试。审计失败时优先修正源码 message、机器标识、事件目录或 legacy 位置。只有第三方原文、测试 sentinel 和明确的公开 API 阻塞项可以进入精确 allowlist，不能按目录或数量宽泛跳过。
 
 新增日志或修改日志语义后，应同步更新 `docs/logging_events.md`，并运行上述两个脚本或对应 CTest。

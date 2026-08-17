@@ -1,4 +1,5 @@
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
+#include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 
@@ -18,6 +19,7 @@
 #include <QStackedWidget>
 #include <QToolButton>
 
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
@@ -41,6 +43,8 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
 
     VaporView::Ground::Widgets::Ai8TemperatureControllerPanel panel;
+    QLabel protocolStatusLabel;
+    panel.setProtocolStatusLabel(&protocolStatusLabel);
     panel.resize(1180, 560);
     panel.show();
     QApplication::processEvents();
@@ -59,6 +63,8 @@ int main(int argc, char **argv)
             "AI-8 panel builds the side-by-side common-parameter and plot layout");
     require(temperaturePlot->property("forceWhiteBackground").toBool(),
             "AI-8 temperature plot uses the same white background as the parameter area");
+    require(temperaturePlot->property("xAxisTimeMode").toBool(),
+            "AI-8 temperature plot uses a clock-time x axis");
     require(temperaturePlot->testAttribute(Qt::WA_OpaquePaintEvent) &&
                 temperaturePlot->minimumHeight() == temperaturePlot->maximumHeight(),
             "AI-8 temperature plot has a stable opaque paint area");
@@ -126,21 +132,27 @@ int main(int argc, char **argv)
         panel.findChild<QLineEdit *>(QStringLiteral("ai8ChannelInputGroupEdit"));
     auto *channelAlarmStatusEdit =
         panel.findChild<QLineEdit *>(QStringLiteral("ai8ChannelAlarmStatusEdit"));
-    require(channelDetailToggle != nullptr && inputDetailToggle != nullptr &&
+    auto *correctionEntrySpin =
+        panel.findChild<QSpinBox *>(QStringLiteral("ai8CorrectionEntrySpin"));
+    require(channelDetailToggle != nullptr && inputDetailToggle == nullptr &&
                 outputDetailToggle != nullptr && globalDetailToggle != nullptr &&
                 channelDetailContent != nullptr && globalDetailContent != nullptr &&
                 channelInputGroupEdit != nullptr &&
                 channelAlarmStatusEdit != nullptr && !channelInputGroupEdit->isVisible() &&
                 channelCommonLayout != nullptr && channelCommonLayout->count() == 8 &&
                 channelCommonLayout->columnCount() == 2 &&
-                inputCommonLayout != nullptr && inputCommonLayout->count() == 7 &&
+                inputCommonLayout != nullptr && inputCommonLayout->count() == 8 &&
                 inputCommonLayout->columnCount() == 2 &&
+                correctionEntrySpin != nullptr &&
+                inputCommonLayout->indexOf(correctionEntrySpin->parentWidget()) >= 0 &&
+                detailStack->widget(1)->findChild<QSpinBox *>(
+                    QStringLiteral("ai8CorrectionEntrySpin")) == nullptr &&
                 outputCommonLayout != nullptr && outputCommonLayout->count() == 8 &&
                 outputCommonLayout->columnCount() == 2 &&
                 globalCommonLayout != nullptr && globalCommonLayout->count() == 8 &&
                 globalCommonLayout->columnCount() == 2 &&
                 !channelAlarmStatusEdit->isVisible() && !channelDetailToggle->isChecked() &&
-                !inputDetailToggle->isChecked() && !outputDetailToggle->isChecked() &&
+                !outputDetailToggle->isChecked() &&
                 !globalDetailToggle->isChecked() && !channelDetailContent->isVisible() &&
                 channelDetailToggle->arrowType() == Qt::RightArrow,
             "AI-8 detailed parameter cards start collapsed with right arrows");
@@ -159,7 +171,7 @@ int main(int argc, char **argv)
     require(statusRect.left() > navigationRect.right() &&
                 statusRect.right() <= panel.rect().right() &&
                 statusRect.bottom() < commonStackRect.top(),
-            "AI-8 backend status and page actions sit right of the page selectors");
+            "AI-8 page actions sit right of the page selectors");
     constexpr int kSerialConfigComboSpacingPx = 6;
     QWidget *channelField = channelSpin->parentWidget();
     QWidget *setpointField = setpointSpin->parentWidget();
@@ -295,9 +307,9 @@ int main(int argc, char **argv)
                 "AI-8 channel detail fields fill each compact detail column");
     }
     const int channelExpandedDetailHeight = detailStack->height();
-    require(channelDetailToggle->isChecked() && inputDetailToggle->isChecked() &&
-                outputDetailToggle->isChecked() && globalDetailToggle->isChecked(),
-            "AI-8 detail expansion is shared by every parameter page");
+    require(channelDetailToggle->isChecked() && outputDetailToggle->isChecked() &&
+                globalDetailToggle->isChecked(),
+            "AI-8 detail expansion is shared by every page with detail parameters");
     globalButton->click();
     QApplication::processEvents();
     QApplication::processEvents();
@@ -310,7 +322,7 @@ int main(int argc, char **argv)
     QApplication::processEvents();
     QApplication::processEvents();
     require(!globalDetailToggle->isChecked() && !channelDetailToggle->isChecked() &&
-                !inputDetailToggle->isChecked() && !outputDetailToggle->isChecked() &&
+                !outputDetailToggle->isChecked() &&
                 !globalDetailContent->isVisible(),
             "AI-8 collapsing one detail page collapses every parameter page");
     channelButton->click();
@@ -334,7 +346,7 @@ int main(int argc, char **argv)
     channelDetailToggle->click();
     QApplication::processEvents();
     require(!channelDetailToggle->isChecked() && !channelDetailContent->isVisible() &&
-                !inputDetailToggle->isChecked() && !outputDetailToggle->isChecked() &&
+                !outputDetailToggle->isChecked() &&
                 !globalDetailToggle->isChecked() &&
                 channelDetailToggle->arrowType() == Qt::RightArrow,
             "AI-8 detailed parameters collapse without changing their values");
@@ -494,7 +506,7 @@ int main(int argc, char **argv)
 
     auto *readButton = panel.findChild<QPushButton *>(QStringLiteral("ai8ReadParametersButton"));
     auto *writeButton = panel.findChild<QPushButton *>(QStringLiteral("ai8WriteParametersButton"));
-    auto *statusLabel = panel.findChild<QLabel *>(QStringLiteral("ai8ProtocolStatus"));
+    auto *statusLabel = &protocolStatusLabel;
     require(readButton != nullptr && writeButton != nullptr && statusLabel != nullptr &&
                 !readButton->isEnabled() && !writeButton->isEnabled() &&
                 !statusLabel->property("protocolReady").toBool(),
@@ -505,6 +517,16 @@ int main(int argc, char **argv)
     require(readButton->isEnabled() && writeButton->isEnabled() &&
                 statusLabel->property("protocolReady").toBool(),
             "AI-8 read and write become available after connection");
+    panel.setPageCommandsEnabled(false, QStringLiteral("remote-readonly"));
+    QApplication::processEvents();
+    require(!readButton->isEnabled() && !writeButton->isEnabled() &&
+                readButton->toolTip() == QStringLiteral("remote-readonly") &&
+                writeButton->toolTip() == QStringLiteral("remote-readonly"),
+            "AI-8 page read/write commands can be disabled for Remote Sky read-only data");
+    panel.setPageCommandsEnabled(true);
+    QApplication::processEvents();
+    require(readButton->isEnabled() && writeButton->isEnabled(),
+            "AI-8 page read/write commands recover after returning to local control");
 
     setpointSpin->setValue(23.0);
     VaporView::Ai8TemperatureControllerProtocol::LiveData liveData;
@@ -529,6 +551,17 @@ int main(int argc, char **argv)
     require(temperaturePlot->property("yAxisMinC").toDouble() == 22.0 &&
                 temperaturePlot->property("yAxisMaxC").toDouble() == 24.0,
             "AI-8 temperature plot uses a one-degree target-centered axis range");
+    temperaturePlot->repaint();
+    const double targetGuideLineY = temperaturePlot->property("targetGuideLineY").toDouble();
+    require(temperaturePlot->property("xAxisTimeSampleCount").toInt() ==
+                    temperaturePlot->property("sampleCount").toInt() &&
+                temperaturePlot->property("targetGuideLineVisible").toBool() &&
+                temperaturePlot->property("targetGuideLineColor").toString() ==
+                    VaporView::appThemeColor(VaporView::AppThemeColor::ToolbarGreen,
+                                             VaporView::isDarkThemeEnabled()).name(QColor::HexRgb) &&
+                std::abs(temperaturePlot->property("targetGuideLineWidth").toDouble() - 1.0) < 0.001 &&
+                std::isfinite(targetGuideLineY),
+            "AI-8 temperature plot exposes timestamped samples and the bright green target guide");
     require(panel.currentOutputStatusText() == QStringLiteral("通道1：APID输出"),
             "AI-8 title status reports the selected channel output state");
 

@@ -20,7 +20,6 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         ${CMAKE_SOURCE_DIR}/src/map3d/Map3DAssetLoader.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/Map3DDiagnosticsFormatter.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/Map3DRuntime.cpp
-        ${CMAKE_SOURCE_DIR}/src/map3d/Map3DWindow.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/MapResourceDialog.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/MapResourceManager.cpp
         ${CMAKE_SOURCE_DIR}/src/map3d/OsgEarthViewWidget.cpp
@@ -32,7 +31,6 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
 
     set(MAP3D_HEADERS
         ${CMAKE_SOURCE_DIR}/include/map3d/MapDataManager.h
-        ${CMAKE_SOURCE_DIR}/include/map3d/Map3DWindow.h
         ${CMAKE_SOURCE_DIR}/include/map3d/MapResourceDialog.h
         ${CMAKE_SOURCE_DIR}/include/map3d/MapResourceManager.h
         ${CMAKE_SOURCE_DIR}/include/map3d/OsgEarthViewWidget.h
@@ -66,7 +64,6 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
             vaporview_app_config
             vaporview_app_theme
             vaporview_geo_core
-            vaporview_ground_session_core
             Qt6::Widgets
             Qt6::OpenGLWidgets
             Qt6::Network

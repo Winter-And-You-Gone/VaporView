@@ -29,6 +29,19 @@ void require(bool condition, const char *message)
     }
 }
 
+void requireSamePath(const QString& actual, const QString& expected, const char *message)
+{
+    const QString actualPath = QFileInfo(actual).absoluteFilePath();
+    const QString expectedPath = QFileInfo(expected).absoluteFilePath();
+    if (actualPath != expectedPath)
+    {
+        std::cerr << "FAIL: " << message << "\n"
+                  << "  actual: " << actualPath.toStdString() << "\n"
+                  << "  expected: " << expectedPath.toStdString() << '\n';
+        std::exit(1);
+    }
+}
+
 SessionViewerWindow *visibleSessionViewerWindow()
 {
     for (QWidget *widget : QApplication::topLevelWidgets())
@@ -40,6 +53,24 @@ SessionViewerWindow *visibleSessionViewerWindow()
         }
     }
     return nullptr;
+}
+
+QString expectedDataSelectionDirectory()
+{
+    const QString defaultDirectory =
+        VaporView::Ground::Session::GroundRecordingService::defaultRecordingDirectory();
+    return QFileInfo(defaultDirectory).isDir()
+        ? QFileInfo(defaultDirectory).absoluteFilePath()
+        : QFileInfo(QDir::currentPath()).absoluteFilePath();
+}
+
+QString expectedRecordingDirectoryDialogFallback()
+{
+    const QFileInfo defaultDirectory(
+        VaporView::Ground::Session::GroundRecordingService::defaultRecordingDirectory());
+    return defaultDirectory.isDir()
+        ? defaultDirectory.absoluteFilePath()
+        : defaultDirectory.absoluteDir().absolutePath();
 }
 
 void testMainWindowDataViewerOpenCanReopen()
@@ -61,22 +92,21 @@ void testMainWindowDataViewerOpenCanReopen()
         QSettings mainSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
         mainSettings.remove(QStringLiteral("recording_directory"));
         SessionViewerWindow viewerWithDefaultDirectory;
-        require(QFileInfo(viewerWithDefaultDirectory.dataSelectionDirectory()).absoluteFilePath() ==
-                    QFileInfo(VaporView::Ground::Session::GroundRecordingService::defaultRecordingDirectory())
-                        .absoluteFilePath(),
-                "data viewer defaults to the project data directory");
+        requireSamePath(viewerWithDefaultDirectory.dataSelectionDirectory(),
+                        expectedDataSelectionDirectory(),
+                        "data viewer defaults to the available recording directory");
 
         QString providedDirectory = recordingDir.path();
         viewerWithDefaultDirectory.setRecordingDirectoryProvider([&providedDirectory]() {
             return providedDirectory;
         });
-        require(QFileInfo(viewerWithDefaultDirectory.dataSelectionDirectory()).absoluteFilePath() ==
-                    QFileInfo(recordingDir.path()).absoluteFilePath(),
-                "data viewer reads its directory from the configured provider");
+        requireSamePath(viewerWithDefaultDirectory.dataSelectionDirectory(),
+                        recordingDir.path(),
+                        "data viewer reads its directory from the configured provider");
         providedDirectory = updatedRecordingDir.path();
-        require(QFileInfo(viewerWithDefaultDirectory.dataSelectionDirectory()).absoluteFilePath() ==
-                    QFileInfo(updatedRecordingDir.path()).absoluteFilePath(),
-                "data viewer reads a changed recording directory without reopening");
+        requireSamePath(viewerWithDefaultDirectory.dataSelectionDirectory(),
+                        updatedRecordingDir.path(),
+                        "data viewer reads a changed recording directory without reopening");
 
         mainSettings.setValue(QStringLiteral("recording_directory"), recordingDir.path());
         mainSettings.sync();
@@ -120,16 +150,15 @@ void testMainWindowDataViewerOpenCanReopen()
         settings.setValue(QStringLiteral("recording_directory"),
                           menuRecordingDir.filePath(QStringLiteral("missing")));
         settings.sync();
-        require(QFileInfo(openRecordingDirectoryDialog()).absoluteFilePath() ==
-                    QFileInfo(VaporView::Ground::Session::GroundRecordingService::defaultRecordingDirectory())
-                        .absoluteFilePath(),
-                "recording directory action falls back to the project data directory for a missing setting");
+        requireSamePath(openRecordingDirectoryDialog(),
+                        expectedRecordingDirectoryDialogFallback(),
+                        "recording directory action falls back to the available recording directory for a missing setting");
 
         settings.setValue(QStringLiteral("recording_directory"), menuRecordingDir.path());
         settings.sync();
-        require(QFileInfo(openRecordingDirectoryDialog()).absoluteFilePath() ==
-                    QFileInfo(menuRecordingDir.path()).absoluteFilePath(),
-                "recording directory action opens the directory currently stored in settings");
+        requireSamePath(openRecordingDirectoryDialog(),
+                        menuRecordingDir.path(),
+                        "recording directory action opens the directory currently stored in settings");
     }
 
     require(QMetaObject::invokeMethod(&window, "onOpenSessionViewerClicked", Qt::DirectConnection),
@@ -141,9 +170,9 @@ void testMainWindowDataViewerOpenCanReopen()
 
     auto *viewer = visibleSessionViewerWindow();
     require(viewer != nullptr, "active data viewer is available");
-    require(QFileInfo(viewer->dataSelectionDirectory()).absoluteFilePath() ==
-                QFileInfo(menuRecordingDir.path()).absoluteFilePath(),
-            "data viewer uses the recording directory configured by the main menu");
+    requireSamePath(viewer->dataSelectionDirectory(),
+                    menuRecordingDir.path(),
+                    "data viewer uses the recording directory configured by the main menu");
     auto *minimizeButton = viewer->findChild<QToolButton *>(QStringLiteral("windowMinimizeButton"));
     require(minimizeButton != nullptr, "data viewer minimize button exists before reopen");
     minimizeButton->click();
@@ -180,6 +209,7 @@ int main(int argc, char **argv)
     require(settingsDir.isValid(), "temporary settings directory");
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
+    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
 
     QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     QApplication app(argc, argv);

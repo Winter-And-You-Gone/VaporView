@@ -5,6 +5,7 @@
 #include "data_types.h"
 
 #include <QDateTime>
+#include <QFontMetrics>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHash>
@@ -25,6 +26,7 @@
 namespace VaporView::Ground::Widgets
 {
 constexpr int kEpsilonSideTitleWidth = 24;
+constexpr int kEpsilonSideTitleHorizontalPadding = 8;
 constexpr int kEpsilonTitleColumnWidth = 90;
 constexpr int kEpsilonMotionTitleColumnWidth = 180;
 constexpr int kEpsilonLeftValueColumnWidth = 130;
@@ -92,6 +94,9 @@ public:
             it.value()->setText(formatSectionTitle(text, english));
         }
         updateCardGridLayout(true);
+        QTimer::singleShot(0, this, [this]() {
+            updateCardGridLayout(true);
+        });
     }
 
     void setCompactLayout(bool compact)
@@ -357,6 +362,24 @@ private:
         return chars.join(QChar('\n'));
     }
 
+    static int sectionTitleWidthForLabel(const QLabel *label)
+    {
+        if (!label)
+        {
+            return kEpsilonSideTitleWidth;
+        }
+
+        const QFontMetrics metrics(label->font());
+        int textWidth = 0;
+        const QStringList lines = label->text().split(QChar('\n'));
+        for (const QString& line : lines)
+        {
+            textWidth = std::max(textWidth, metrics.horizontalAdvance(line));
+        }
+        return std::max(kEpsilonSideTitleWidth,
+                        textWidth + kEpsilonSideTitleHorizontalPadding);
+    }
+
     void registerSectionLabel(QLabel *label,
                               const QString& key,
                               const QString& zhTitle,
@@ -454,6 +477,36 @@ private:
             : kEpsilonFieldBaseSpacing;
     }
 
+    int sectionTitleWidthForCard(int cardIndex) const
+    {
+        const QString key = cardIndex >= 0 && cardIndex < section_card_keys_.size()
+            ? section_card_keys_.at(cardIndex)
+            : QString();
+        return sectionTitleWidthForLabel(section_labels_.value(key, nullptr));
+    }
+
+    int sectionChromeWidthForCard(int cardIndex) const
+    {
+        int chromeWidth = sectionTitleWidthForCard(cardIndex);
+        if (cardIndex >= 0 && cardIndex < section_cards_.size())
+        {
+            if (const QLayout *outerLayout = section_cards_.at(cardIndex)->layout())
+            {
+                const QMargins margins = outerLayout->contentsMargins();
+                chromeWidth += margins.left() + margins.right() + outerLayout->spacing();
+            }
+        }
+        if (cardIndex >= 0 && cardIndex < section_card_grids_.size())
+        {
+            if (const QGridLayout *grid = section_card_grids_.at(cardIndex))
+            {
+                const QMargins margins = grid->contentsMargins();
+                chromeWidth += margins.left() + margins.right();
+            }
+        }
+        return chromeWidth;
+    }
+
     int fieldSpacingForCard(int cardIndex) const
     {
         const QString key = cardIndex >= 0 && cardIndex < section_card_keys_.size()
@@ -496,13 +549,41 @@ private:
         return {};
     }
 
+    bool syncSectionTitleWidths()
+    {
+        bool changed = false;
+        for (int i = 0; i < section_card_keys_.size(); ++i)
+        {
+            QLabel *label = section_labels_.value(section_card_keys_.at(i), nullptr);
+            const int titleWidth = sectionTitleWidthForLabel(label);
+            if (label &&
+                (label->width() != titleWidth ||
+                 label->minimumWidth() != titleWidth ||
+                 label->maximumWidth() != titleWidth))
+            {
+                label->setFixedWidth(titleWidth);
+                changed = true;
+            }
+            if (i < section_card_chrome_widths_.size())
+            {
+                const int chromeWidth = sectionChromeWidthForCard(i);
+                if (section_card_chrome_widths_.at(i) != chromeWidth)
+                {
+                    section_card_chrome_widths_[i] = chromeWidth;
+                    changed = true;
+                }
+            }
+        }
+        return changed;
+    }
+
     bool syncSectionColumnWidths()
     {
         const int count = std::min(section_card_grids_.size(), section_card_title_labels_.size());
         bool changed = false;
         for (int i = 0; i < count; ++i)
         {
-            int titleWidth = 0;
+            int titleWidth = section_card_title_widths_.value(i, 0);
             for (QLabel *label : section_card_title_labels_.at(i))
             {
                 if (!label)
@@ -510,8 +591,7 @@ private:
                     continue;
                 }
                 titleWidth = std::max(titleWidth,
-                                      std::max(label->sizeHint().width(),
-                                               QFontMetrics(label->font()).horizontalAdvance(label->text())));
+                                      QFontMetrics(label->font()).horizontalAdvance(label->text()));
             }
             int valueWidth = 0;
             if (i < section_card_value_labels_.size())
@@ -702,7 +782,9 @@ private:
 
         cards_layout_->setHorizontalSpacing(compact_layout_ ? 4 : 2);
         cards_layout_->setVerticalSpacing(compact_layout_ ? 4 : 2);
-        const bool widthsChanged = syncSectionColumnWidths();
+        const bool titleWidthsChanged = syncSectionTitleWidths();
+        const bool columnWidthsChanged = syncSectionColumnWidths();
+        const bool widthsChanged = titleWidthsChanged || columnWidthsChanged;
         syncCardMinimumHeights();
         const QVector<int> widths = standardCardWidths();
 
@@ -794,6 +876,7 @@ private:
         outerLayout->addLayout(cardLayout, 1);
         section_card_grids_.push_back(cardLayout);
         section_card_keys_.push_back(key);
+        section_card_title_widths_.push_back(titleColumnWidth);
         section_card_title_labels_.push_back({});
         section_card_value_labels_.push_back({});
         const int chromeWidth = kEpsilonSideTitleWidth + outerLayout->contentsMargins().left() +
@@ -920,6 +1003,7 @@ private:
     QVector<QFrame*> section_cards_;
     QVector<QGridLayout*> section_card_grids_;
     QVector<QString> section_card_keys_;
+    QVector<int> section_card_title_widths_;
     QVector<int> section_card_standard_widths_;
     QVector<int> section_card_chrome_widths_;
     QVector<int> section_card_value_widths_;

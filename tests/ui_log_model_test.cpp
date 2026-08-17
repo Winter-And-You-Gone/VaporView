@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 #include <QModelIndex>
+#include <QStringList>
 #include <QTimeZone>
 #include <QVariantMap>
 
@@ -102,6 +103,40 @@ void structuredVisibilityDoesNotUseMessageLanguage()
     require(proxyRows(model, LogUiViewMode::Debug) == 2, "explicit hidden does not appear in debug view");
 }
 
+void detailsLogsDoNotInferSeverityFromMessage()
+{
+    using namespace VaporView::Ground::Main;
+    UiLogModel model;
+    const QStringList statusMessages{
+        QStringLiteral("失败"),
+        QStringLiteral("ERROR"),
+        QStringLiteral("设备断开"),
+        QStringLiteral("connection failed"),
+    };
+    quint64 sequence = 1;
+    for (const QString& statusMessage : statusMessages)
+    {
+        model.appendRecord(makeRecord(VaporView::LogLevel::Info,
+                                      QStringLiteral("界面状态已更新。"),
+                                      {{QStringLiteral("event"), QStringLiteral("ui_status_updated")},
+                                       {QStringLiteral("ui_visibility"), QStringLiteral("details")},
+                                       {QStringLiteral("ui_message"), statusMessage}},
+                                      QStringLiteral("Ground"),
+                                      QStringLiteral("ui.status"),
+                                      sequence,
+                                      sequence * 1'000'000));
+        ++sequence;
+    }
+
+    require(proxyRows(model, LogUiViewMode::Attention) == 0,
+            "detailsLogDoesNotInferLevelFromChineseOrEnglishMessage");
+    require(proxyRows(model, LogUiViewMode::All) == statusMessages.size(),
+            "detailsInfoLogDefaultsToAllView");
+    require(model.index(0, 0).data(UiLogModel::LevelRole).value<VaporView::LogLevel>() ==
+                VaporView::LogLevel::Info,
+            "details status log remains Info");
+}
+
 void searchMatchesStructuredFields()
 {
     using namespace VaporView::Ground::Main;
@@ -117,6 +152,40 @@ void searchMatchesStructuredFields()
     require(proxyRows(model, LogUiViewMode::Attention, QStringLiteral("device.connection")) == 1, "search matches category");
     require(proxyRows(model, LogUiViewMode::Attention, QStringLiteral("DEVICE_LINK_LOST")) == 1, "search matches error_code");
     require(proxyRows(model, LogUiViewMode::Attention, QStringLiteral("epsilon")) == 1, "search matches field values");
+}
+
+void hideSourceCategoryOnlyChangesDisplayText()
+{
+    using namespace VaporView::Ground::Main;
+    UiLogModel model;
+    model.appendRecord(makeRecord(VaporView::LogLevel::Info,
+                                  QStringLiteral("设备连接信息"),
+                                  {{QStringLiteral("event"), QStringLiteral("device_connection_status")},
+                                   {QStringLiteral("ui_visibility"), QStringLiteral("attention")}},
+                                  QStringLiteral("Ground"),
+                                  QStringLiteral("device.connection")));
+
+    const QModelIndex index = model.index(0, 0);
+    require(index.isValid(), "hide source/category test has one log row");
+    require(!model.hideSourceCategory(), "source/category display is visible by default");
+    require(index.data(Qt::DisplayRole).toString().contains(QStringLiteral("Ground/device.connection")),
+            "default display includes source/category");
+
+    model.setHideSourceCategory(true);
+    require(model.hideSourceCategory(), "source/category display toggle is enabled");
+    require(!index.data(Qt::DisplayRole).toString().contains(QStringLiteral("Ground/device.connection")),
+            "hidden source/category is removed from display text");
+    require(index.data(Qt::DisplayRole).toString().contains(QStringLiteral("设备连接信息")),
+            "hidden source/category display keeps the log message");
+    require(index.data(UiLogModel::SourceRole).toString() == QStringLiteral("Ground") &&
+                index.data(UiLogModel::CategoryRole).toString() == QStringLiteral("device.connection"),
+            "hidden source/category keeps structured roles");
+    require(proxyRows(model, LogUiViewMode::Attention, QStringLiteral("device.connection")) == 1,
+            "hidden source/category keeps structured search text");
+
+    model.setHideSourceCategory(false);
+    require(index.data(Qt::DisplayRole).toString().contains(QStringLiteral("Ground/device.connection")),
+            "source/category display can be restored");
 }
 
 void repeatedWarningsAreAggregated()
@@ -328,7 +397,9 @@ int main(int argc, char **argv)
     QCoreApplication app(argc, argv);
     defaultViewIsAttention();
     structuredVisibilityDoesNotUseMessageLanguage();
+    detailsLogsDoNotInferSeverityFromMessage();
     searchMatchesStructuredFields();
+    hideSourceCategoryOnlyChangesDisplayText();
     repeatedWarningsAreAggregated();
     aggregationPromotesVisibility();
     pendingAttentionInfoDoesNotEvictWarning();

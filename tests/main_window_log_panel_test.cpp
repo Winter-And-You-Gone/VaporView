@@ -11,6 +11,7 @@
 #include <QLineEdit>
 #include <QListView>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QSettings>
@@ -33,8 +34,11 @@ struct MainWindowSettingsBackup
         logAutoFollow = settings.value(QStringLiteral("log_auto_follow"));
         hadLogViewMode = settings.contains(QStringLiteral("log_view_mode"));
         logViewMode = settings.value(QStringLiteral("log_view_mode"));
+        hadLogHideSourceCategory = settings.contains(QStringLiteral("log_hide_source_category"));
+        logHideSourceCategory = settings.value(QStringLiteral("log_hide_source_category"));
         settings.remove(QStringLiteral("log_auto_follow"));
         settings.remove(QStringLiteral("log_view_mode"));
+        settings.remove(QStringLiteral("log_hide_source_category"));
         settings.sync();
     }
 
@@ -57,6 +61,14 @@ struct MainWindowSettingsBackup
         {
             settings.remove(QStringLiteral("log_view_mode"));
         }
+        if (hadLogHideSourceCategory)
+        {
+            settings.setValue(QStringLiteral("log_hide_source_category"), logHideSourceCategory);
+        }
+        else
+        {
+            settings.remove(QStringLiteral("log_hide_source_category"));
+        }
         settings.sync();
     }
 
@@ -64,6 +76,8 @@ struct MainWindowSettingsBackup
     QVariant logAutoFollow;
     bool hadLogViewMode = false;
     QVariant logViewMode;
+    bool hadLogHideSourceCategory = false;
+    QVariant logHideSourceCategory;
 };
 
 MainWindowSettingsBackup *settingsBackup = nullptr;
@@ -142,6 +156,33 @@ QToolButton *findActionButton(MainWindow& window, const QString& actionText, con
     return nullptr;
 }
 
+void clickLogRow(QListView *logList, const QModelIndex& index)
+{
+    require(logList != nullptr && logList->viewport() != nullptr, "log list viewport exists");
+    require(index.isValid(), "clicked log index is valid");
+    logList->scrollTo(index, QAbstractItemView::PositionAtCenter);
+    VaporViewTest::processEventsFor(30);
+    const QRect rowRect = logList->visualRect(index);
+    require(rowRect.isValid() && !rowRect.isEmpty(), "clicked log row is visible");
+    const QPoint localPos = rowRect.center();
+    const QPoint globalPos = logList->viewport()->mapToGlobal(localPos);
+    QMouseEvent press(QEvent::MouseButtonPress,
+                      localPos,
+                      globalPos,
+                      Qt::LeftButton,
+                      Qt::LeftButton,
+                      Qt::NoModifier);
+    QApplication::sendEvent(logList->viewport(), &press);
+    QMouseEvent release(QEvent::MouseButtonRelease,
+                        localPos,
+                        globalPos,
+                        Qt::LeftButton,
+                        Qt::NoButton,
+                        Qt::NoModifier);
+    QApplication::sendEvent(logList->viewport(), &release);
+    VaporViewTest::processEventsFor(30);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -182,6 +223,7 @@ int main(int argc, char **argv)
     auto *allAction = window->findChild<QAction *>(QStringLiteral("logFilterAllMenuAction"));
     auto *debugAction = window->findChild<QAction *>(QStringLiteral("logFilterDebugMenuAction"));
     auto *followAction = window->findChild<QAction *>(QStringLiteral("logFilterAutoFollowMenuAction"));
+    auto *hideSourceCategoryAction = window->findChild<QAction *>(QStringLiteral("logFilterSourceCategoryMenuAction"));
     auto *clearButton = findActionButton(*window,
                                          QStringLiteral("清空显示"),
                                          QStringLiteral("仅清空当前显示，不删除日志文件"));
@@ -204,7 +246,8 @@ int main(int argc, char **argv)
             "positive log view buttons are not duplicated outside the filter menu");
     require(window->findChild<QToolButton *>(QStringLiteral("logAutoFollowButton")) == nullptr,
             "auto-follow is not duplicated outside the filter menu");
-    require(attentionAction && allAction && debugAction && followAction, "log filter menu actions exist");
+    require(attentionAction && allAction && debugAction && followAction && hideSourceCategoryAction,
+            "log filter menu actions exist");
     require(clearButton != nullptr, "clear display button exists");
     require(searchButton->parentWidget() == logTitleActions &&
                 clearButton->parentWidget() == logTitleActions,
@@ -243,17 +286,65 @@ int main(int argc, char **argv)
                   QStringLiteral("记录已开始。"),
                   {{QStringLiteral("event"), QStringLiteral("recording_started")},
                    {QStringLiteral("ui_visibility"), QStringLiteral("attention")}});
+    publishRecord(logService,
+                  VaporView::LogLevel::Warning,
+                  QStringLiteral("Ground"),
+                  QStringLiteral("device.connection"),
+                  QStringLiteral("打开本地设备串口失败。"),
+                  {{QStringLiteral("event"), QStringLiteral("local_device_port_open_failed")},
+                   {QStringLiteral("device"), QStringLiteral("EPSILON")},
+                   {QStringLiteral("error_code"), QStringLiteral("PORT_OPEN_FAILED")},
+                   {QStringLiteral("ui_visibility"), QStringLiteral("attention")},
+                   {QStringLiteral("system_error"), QStringLiteral("Access denied")}});
 
+    require(logList->model()->rowCount() == 3,
+            "attention view shows warnings and explicit attention Info");
+    QModelIndex connectionLogIndex;
+    for (int row = 0; row < logList->model()->rowCount(); ++row)
+    {
+        const QModelIndex index = logList->model()->index(row, 0);
+        if (index.data(VaporView::Ground::Main::UiLogModel::MessageRole)
+                .toString()
+                .contains(QStringLiteral("打开本地设备串口失败")))
+        {
+            connectionLogIndex = index;
+            break;
+        }
+    }
+    require(connectionLogIndex.isValid(), "connection log row is visible in attention view");
+    clickLogRow(logList, connectionLogIndex);
+    require(logList->selectionModel() &&
+                logList->selectionModel()->isSelected(connectionLogIndex),
+            "clicking a log row selects it");
+    clickLogRow(logList, connectionLogIndex);
+    require(logList->selectionModel() && !logList->selectionModel()->hasSelection(),
+            "clicking the selected log row again clears the highlight");
+    require(connectionLogIndex.data(Qt::DisplayRole).toString().contains(QStringLiteral("Ground/device.connection")),
+            "connection row shows source/category by default");
+    hideSourceCategoryAction->trigger();
+    VaporViewTest::processEventsFor(30);
+    connectionLogIndex = logList->model()->index(connectionLogIndex.row(), 0);
+    require(!connectionLogIndex.data(Qt::DisplayRole).toString().contains(QStringLiteral("Ground/device.connection")),
+            "source/category filter hides source/category from the visible row text");
+    require(connectionLogIndex.data(VaporView::Ground::Main::UiLogModel::SourceRole).toString() == QStringLiteral("Ground") &&
+                connectionLogIndex.data(VaporView::Ground::Main::UiLogModel::CategoryRole).toString() == QStringLiteral("device.connection"),
+            "source/category filter keeps structured source and category roles intact");
+    searchEdit->setText(QStringLiteral("device.connection"));
+    VaporViewTest::processEventsFor(30);
     require(logList->model()->rowCount() == 2,
-            "attention view shows warning and explicit attention Info only");
+            "source/category filter does not remove source/category from structured search");
+    searchEdit->clear();
+    VaporViewTest::processEventsFor(30);
+    hideSourceCategoryAction->trigger();
+    VaporViewTest::processEventsFor(30);
 
     allAction->trigger();
     VaporViewTest::processEventsFor(30);
-    require(logList->model()->rowCount() == 3, "all view includes ordinary Info but keeps Debug hidden");
+    require(logList->model()->rowCount() == 4, "all view includes ordinary Info but keeps Debug hidden");
 
     debugAction->trigger();
     VaporViewTest::processEventsFor(30);
-    require(logList->model()->rowCount() == 4, "debug view includes Debug records");
+    require(logList->model()->rowCount() == 5, "debug view includes Debug records");
 
     publishRecord(logService,
                   VaporView::LogLevel::Warning,

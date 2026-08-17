@@ -1,6 +1,7 @@
 #ifndef VaporView_SKY_DEVICE_MANAGER_H_
 #define VaporView_SKY_DEVICE_MANAGER_H_
 
+#include "Ai8TemperatureControllerCollector.h"
 #include "LogRecord.h"
 #include "SkyConfig.h"
 #include "TelemetryTypes.h"
@@ -11,10 +12,12 @@
 #include <QTcpSocket>
 #include <QTimer>
 #include <atomic>
+#include <array>
 #include <cstdint>
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <thread>
 
 #include "shared/concurrency/BoundedByteQueue.h"
 
@@ -26,6 +29,15 @@ struct ApplyConfigResult
     bool success = true;
     CommandErrorCode error_code = CommandErrorCode::Ok;
     QJsonObject json;
+};
+
+struct RtcmCorrectionStats
+{
+    quint64 bytes_received = 0;
+    quint64 chunks_received = 0;
+    quint64 dropped_bytes = 0;
+    quint64 dropped_chunks = 0;
+    quint64 last_receive_time_us = 0;
 };
 
 class SkyDeviceManager : public QObject
@@ -44,13 +56,27 @@ public:
     bool disconnectDevice(SkyDeviceId id, CommandErrorCode *errorCode = nullptr);
     bool reconnectDevice(SkyDeviceId id, CommandErrorCode *errorCode = nullptr);
     void connectAll();
-    void disconnectAll();
+    void disconnectAll(bool publishLogs = true);
     void reconnectAll();
+    void shutdown(bool publishLogs = false);
 
     DeviceStatusItem status(SkyDeviceId id) const;
     QVector<DeviceStatusItem> allStatuses() const;
     ApplyConfigResult applyConfig(const SkyConfig& newConfig);
     bool setPeakSearchRange(quint32 startIndex, quint32 endIndex, CommandErrorCode *errorCode = nullptr);
+    bool configureEpsilonPacketRates(const EpsilonPacketRatesOperation& operation,
+                                     CommandErrorCode *errorCode = nullptr,
+                                     QString *errorMessage = nullptr);
+    bool configureEpsilonMainAntennaLeverArm(
+        const EpsilonMainAntennaLeverArmOperation& operation,
+        CommandErrorCode *errorCode = nullptr,
+        QString *errorMessage = nullptr);
+    bool configureEpsilonRtcmInput(const EpsilonRtcmInputOperation& operation,
+                                   CommandErrorCode *errorCode = nullptr,
+                                   QString *errorMessage = nullptr);
+    bool receiveRtcmCorrectionData(const QByteArray& data,
+                                   CommandErrorCode *errorCode = nullptr);
+    RtcmCorrectionStats rtcmCorrectionStats() const;
     bool setTemperatureTarget(quint8 channel, double celsius, CommandErrorCode *errorCode = nullptr);
     bool setTemperatureOutputEnabled(quint8 channel, bool enabled, CommandErrorCode *errorCode = nullptr);
     bool setTemperatureOutputMode(quint8 channel, quint16 mode, CommandErrorCode *errorCode = nullptr);
@@ -67,12 +93,27 @@ public:
     bool setTemperatureOvertempOutputMode(quint16 mode, CommandErrorCode *errorCode = nullptr);
     bool setTemperatureSensorConfig(const TemperatureControllerCommand& command, CommandErrorCode *errorCode = nullptr);
     bool restoreTemperatureFactoryDefaults(CommandErrorCode *errorCode = nullptr);
+    bool readAi8Page(Ai8TemperatureControllerProtocol::Page page,
+                     const Ai8TemperatureControllerProtocol::Selection& selection,
+                     Ai8TemperatureControllerProtocol::PageData& data,
+                     CommandErrorCode *errorCode = nullptr,
+                     QString *errorMessage = nullptr);
+    bool writeAi8Page(const Ai8TemperatureControllerProtocol::PageData& requested,
+                      Ai8TemperatureControllerProtocol::PageData& confirmed,
+                      CommandErrorCode *errorCode = nullptr,
+                      QString *errorMessage = nullptr);
+    bool restoreAi8FactoryDefaults(Ai8TemperatureControllerProtocol::Page page,
+                                   const Ai8TemperatureControllerProtocol::Selection& selection,
+                                   Ai8TemperatureControllerProtocol::PageData& data,
+                                   CommandErrorCode *errorCode = nullptr,
+                                   QString *errorMessage = nullptr);
 
     EpsilonData latestEpsilon() const;
     PtbData latestPtb() const;
     HmpData latestHmp() const;
     LidarData latestLidar() const;
     TemperatureControllerData latestTemperatureController() const;
+    Ai8TemperatureControllerProtocol::LiveData latestAi8TemperatureController() const;
     QVector<float> latestRawWaveform() const;
     QVector<float> latestWaveform() const;
     WaveformFeature latestWaveformFeature() const;
@@ -85,6 +126,7 @@ signals:
     void hmpDataUpdated(const HmpData& data);
     void lidarDataUpdated(const LidarData& data);
     void temperatureControllerDataUpdated(const TemperatureControllerData& data);
+    void ai8TemperatureControllerDataUpdated(const Ai8TemperatureControllerProtocol::LiveData& data);
     void waveformUpdated(quint64 timestampUs, QVector<float> samples);
     void waveformFeatureUpdated(const WaveformFeature& feature);
     void epsilonRawFrameReceived(quint64 timestampUs, quint8 packetId, quint8 serialNumber, QByteArray frame);
@@ -95,7 +137,6 @@ signals:
                                  QByteArray rawPayload,
                                  QByteArray harmonicPayload,
                                  TcpFloatEncoding floatEncoding);
-    void logMessage(const QString& message);
     void logRecord(const VaporView::LogRecord& record);
 
 private slots:
@@ -107,6 +148,7 @@ private slots:
 
 private:
     void initializeStatuses();
+    bool disconnectDeviceInternal(SkyDeviceId id, CommandErrorCode *errorCode, bool publishLog);
     void setState(SkyDeviceId id, DeviceState state, quint16 errorCode = 0);
     DeviceStatusItem& mutableStatus(SkyDeviceId id);
     const SerialDeviceConfig& serialConfigFor(SkyDeviceId id) const;
@@ -125,6 +167,7 @@ private:
     void handleHmpData(const HmpData& data);
     void handleLidarData(const LidarData& data);
     void handleTemperatureControllerData(const TemperatureControllerData& data);
+    void handleAi8TemperatureControllerData(const Ai8TemperatureControllerProtocol::LiveData& data);
     struct PendingRawEvent
     {
         SkyDeviceId deviceId = SkyDeviceId::All;
@@ -139,6 +182,9 @@ private:
     void scheduleRawEventDrain();
     void recordWaveTcpFrameTime(quint64 timestampUs);
     void invalidateDeviceData(SkyDeviceId id);
+    void restartRtcmWriter();
+    void stopRtcmWriter();
+    void rtcmWriterLoop(QString port, int baudRate);
 
     SkyConfig config_ = SkyConfig::defaults();
     bool simulate_data_ = false;
@@ -151,12 +197,22 @@ private:
     DeviceStatusItem lidar_status_;
     DeviceStatusItem wave_tcp_status_;
     DeviceStatusItem temperature_controller_status_;
+    DeviceStatusItem ai8_temperature_controller_status_;
 
     std::shared_ptr<EpsilonCollector> epsilon_;
     std::shared_ptr<PtbCollector> ptb_;
     std::shared_ptr<HmpCollector> hmp_;
     std::shared_ptr<LidarCollector> lidar_;
     std::shared_ptr<TemperatureControllerCollector> temperature_controller_;
+    std::shared_ptr<Ai8TemperatureControllerCollector> ai8_temperature_controller_;
+    std::array<Ai8TemperatureControllerProtocol::ChannelParameters,
+               Ai8TemperatureControllerProtocol::kChannelCount> simulated_ai8_channels_{};
+    std::array<Ai8TemperatureControllerProtocol::InputParameters,
+               Ai8TemperatureControllerProtocol::kParameterGroupCount> simulated_ai8_inputs_{};
+    std::array<Ai8TemperatureControllerProtocol::OutputParameters,
+               Ai8TemperatureControllerProtocol::kParameterGroupCount> simulated_ai8_outputs_{};
+    Ai8TemperatureControllerProtocol::GlobalParameters simulated_ai8_global_{};
+    bool simulated_ai8_pages_initialized_ = false;
 
     QTcpSocket *wave_socket_ = nullptr;
     QByteArray wave_buffer_;
@@ -171,6 +227,7 @@ private:
     HmpData latest_hmp_;
     LidarData latest_lidar_;
     TemperatureControllerData latest_temperature_controller_;
+    Ai8TemperatureControllerProtocol::LiveData latest_ai8_temperature_controller_;
     QVector<float> latest_raw_waveform_;
     QVector<float> latest_waveform_;
     WaveformFeature latest_feature_;
@@ -178,6 +235,17 @@ private:
     BoundedByteQueue<PendingRawEvent> pending_raw_events_{4ULL * 1024ULL * 1024ULL, 2048};
     std::atomic<bool> raw_event_drain_scheduled_{false};
     quint64 raw_event_drops_reported_ = 0;
+
+    BoundedByteQueue<QByteArray> pending_rtcm_corrections_{512ULL * 1024ULL, 256};
+    std::thread rtcm_writer_thread_;
+    std::atomic<quint64> rtcm_correction_bytes_received_{0};
+    std::atomic<quint64> rtcm_correction_chunks_received_{0};
+    std::atomic<quint64> rtcm_correction_dropped_bytes_{0};
+    std::atomic<quint64> rtcm_correction_dropped_chunks_{0};
+    std::atomic<quint64> rtcm_correction_last_receive_time_us_{0};
+    std::map<uint8_t, int> simulated_epsilon_packet_rates_;
+    EpsilonMainAntennaLeverArmOperation simulated_epsilon_lever_arm_;
+    EpsilonRtcmInputOperation simulated_epsilon_rtcm_input_;
 };
 
 }  // namespace VaporView

@@ -134,12 +134,22 @@ void SingleLevelPopupComboBox::rebuildPopupRows()
     const QIcon checkIcon = show_selection_check_ && selection_check_icon_provider_
         ? selection_check_icon_provider_()
         : QIcon();
+    int selectedIndex = currentIndex();
+    const QString visibleText = currentText();
+    if (!visibleText.isEmpty())
+    {
+        const int visibleTextIndex = findText(visibleText);
+        if (visibleTextIndex >= 0)
+        {
+            selectedIndex = visibleTextIndex;
+        }
+    }
     for (int i = 0; i < count(); ++i)
     {
         auto *row = new SingleLevelPopupMenuRow(popup_menu_);
         row->setFont(font());
         row->setText(itemText(i));
-        row->setChecked(show_selection_check_ && i == currentIndex());
+        row->setChecked(show_selection_check_ && i == selectedIndex);
         if (show_selection_check_)
         {
             row->setCheckIcon(checkIcon);

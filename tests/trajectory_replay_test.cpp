@@ -59,6 +59,28 @@ int main()
     require(replay.duration() == ReplayDuration(200000), "replay reports timestamp duration");
     require(replay.elapsed() == ReplayDuration(200000), "full-track replay reports elapsed duration");
 
+    auto renderSamples = std::make_shared<std::vector<VaporView::Geo::TrajectoryRenderSample>>();
+    renderSamples->reserve(samples.size());
+    for (const VaporView::Geo::NavSample& navigation : samples)
+    {
+        VaporView::Geo::TrajectoryRenderSample render;
+        render.navigation = navigation;
+        render.heat.peak = navigation.latDeg;
+        renderSamples->push_back(render);
+    }
+    replay.setRenderSamples(renderSamples);
+    require(replay.sampleCount() == 3,
+            "render-sample replay keeps the original immutable sample count");
+    require(!replay.sampleStorage(),
+            "render-sample replay does not create a duplicate NavSample trajectory");
+    require(replay.currentSample()
+                && replay.currentSample()->recordTimestampUs == 1200000,
+            "render-sample replay exposes the navigation view of the final sample");
+    replay.seekElapsed(ReplayDuration(150000));
+    require(replay.currentIndex() == 1 && replay.visibleSamples().size() == 2,
+            "render-sample replay preserves timestamp seek and visible-track behavior");
+    replay.setSamples(samples);
+
     replay.play();
     require(replay.isPlaying(), "play starts replay");
     require(replay.currentIndex() == 0, "play rewinds from end");

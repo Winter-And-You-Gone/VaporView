@@ -12,7 +12,9 @@
 #include <QJsonObject>
 #include <QObject>
 #include <QTimer>
+#include <atomic>
 #include <memory>
+#include <thread>
 
 namespace VaporView
 {
@@ -38,6 +40,8 @@ struct SkyCommandResult
     bool send_config_apply_result = false;
     QJsonObject config_apply_result;
     bool send_one_waveform = false;
+    bool send_device_operation_response = false;
+    DeviceOperationResponse device_operation_response;
 };
 
 class SkyRuntime : public QObject
@@ -76,7 +80,6 @@ public:
     void sendOneWaveformNow();
 
 signals:
-    void logMessage(const QString& message);
     void logRecord(const VaporView::LogRecord& record);
     void runningChanged(bool running);
     void telemetryFrameReady(MsgType type, QByteArray payload);
@@ -89,6 +92,7 @@ private slots:
     void sendHeartbeat();
     void sendTelemetryStatus();
     void sendTemperatureControllerStatus();
+    void sendAi8TemperatureControllerStatus();
 
 private:
     void dispatchFrame(const TelemetryFrame& frame);
@@ -98,6 +102,9 @@ private:
     void sendAck(const CommandAck& ack);
     void sendSkyConfig();
     void sendSkyConfigApplyResult(const QJsonObject& result);
+    bool startSerialPortDetection();
+    bool cancelSerialPortDetection();
+    void sendSerialPortDetectionResult(const QJsonObject& result);
     void sendDownsampledWaveformFrame(bool honorStreamingEnabled);
     void publishRuntimeLog(LogLevel level,
                            const QString& category,
@@ -127,6 +134,9 @@ private:
     quint64 started_time_us_ = 0;
     quint64 last_sent_feature_time_us_ = 0;
     QVector<float> peak_trend_;
+    std::atomic_bool serial_port_detection_in_progress_{false};
+    std::atomic_bool serial_port_detection_cancel_requested_{false};
+    std::thread serial_port_detection_thread_;
 };
 
 }  // namespace VaporView

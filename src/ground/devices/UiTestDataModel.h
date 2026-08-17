@@ -38,6 +38,13 @@ struct UiTestSnapshot
     double hmpRateHz = 0.0;
     double lidarRateHz = 0.0;
     double temperatureRateHz = 0.0;
+    double waveformFeatureRateHz = 0.0;
+    double telemetryStatusRateHz = 0.0;
+    double rawWaveformRateHz = 0.0;
+    double harmonicWaveformRateHz = 0.0;
+    double waveCaptureRateHz = 0.0;
+    double receiveBitsPerSecond = 0.0;
+    double transmitBitsPerSecond = 0.0;
     bool dataStalled = false;
 };
 
@@ -60,7 +67,7 @@ public:
 
 private:
     static int deviceIndex(SkyDeviceId device);
-    void resetTemperatureState();
+    void resetTemperatureState(bool outputEnabled = true);
 
     UiTestScenario scenario_ = UiTestScenario::Normal;
     qint64 scenario_started_ms_ = 0;

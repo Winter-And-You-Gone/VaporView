@@ -8,10 +8,8 @@ endif()
 
 add_library(vaporview_ground_ui_support STATIC
     ${CMAKE_SOURCE_DIR}/src/ground/widgets/CustomTitleBar.cpp
-    ${CMAKE_SOURCE_DIR}/src/ground/widgets/SkyDeviceConfigDialog.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/widgets/WindowSizing.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/widgets/CustomTitleBar.h
-    ${CMAKE_SOURCE_DIR}/src/ground/widgets/SkyDeviceConfigDialog.h
     ${CMAKE_SOURCE_DIR}/src/ground/widgets/WindowSizing.h
 )
 
@@ -41,6 +39,9 @@ add_subdirectory(wave)
 add_subdirectory(session)
 
 set(NAV_WINDOW_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/ground/navigation/CombinationNavigationPage.cpp
+    ${CMAKE_SOURCE_DIR}/src/ground/navigation/NavigationStatusPanel.cpp
+    ${CMAKE_SOURCE_DIR}/src/ground/navigation/EpsilonConfigPanel.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/MainWindow.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowAppearance.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowChrome.cpp
@@ -49,6 +50,7 @@ set(NAV_WINDOW_SOURCES
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowRates.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowRecording.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowRemoteDevices.cpp
+    ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowSkyConfig.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowSetup.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowState.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowState.h
@@ -62,8 +64,10 @@ set(NAV_WINDOW_SOURCES
 set(NAV_HEADERS
     ${CMAKE_SOURCE_DIR}/src/shared/theme/AppTheme.h
     ${CMAKE_SOURCE_DIR}/src/shared/theme/SingleLevelPopupMenu.h
+    ${CMAKE_SOURCE_DIR}/src/ground/navigation/CombinationNavigationPage.h
+    ${CMAKE_SOURCE_DIR}/src/ground/navigation/NavigationStatusPanel.h
+    ${CMAKE_SOURCE_DIR}/src/ground/navigation/EpsilonConfigPanel.h
     ${CMAKE_SOURCE_DIR}/src/ground/main/MainWindow.h
-    ${CMAKE_SOURCE_DIR}/src/ground/widgets/SkyDeviceConfigDialog.h
     ${CMAKE_SOURCE_DIR}/src/ground/widgets/CustomTitleBar.h
     ${CMAKE_SOURCE_DIR}/src/ground/widgets/VisualTextLabel.h
     ${CMAKE_SOURCE_DIR}/src/ground/widgets/WindowSizing.h

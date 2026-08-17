@@ -25,10 +25,12 @@ struct RemoteTelemetrySummarySections
         QString value;
         QString valueWidthText;
         bool hasData = false;
+        bool compactAvailabilityValue = false;
     };
 
     QList<Item> rateItems;
     QList<Item> linkItems;
+    QList<Item> linkStatusItems;
     QList<Item> deviceItems;
 };
 
@@ -54,6 +56,13 @@ struct DeviceConfigPageWidgets
     QLabel *lidar_lbl = nullptr;
     QLabel *temperature_lbl = nullptr;
     QLabel *ai8_temperature_lbl = nullptr;
+    QLabel *device_header_lbl = nullptr;
+    QLabel *port_header_lbl = nullptr;
+    QLabel *baud_header_lbl = nullptr;
+    QLabel *rate_header_lbl = nullptr;
+    QLabel *enabled_header_lbl = nullptr;
+    QLabel *source_header_lbl = nullptr;
+    QLabel *action_header_lbl = nullptr;
     QLabel *epsilon_rate_lbl = nullptr;
     QLabel *ptb_rate_lbl = nullptr;
     QLabel *hmp_rate_lbl = nullptr;
@@ -63,23 +72,26 @@ struct DeviceConfigPageWidgets
     QWidget *sky_telemetry_row_widget = nullptr;
     QFrame *data_telemetry_summary_card = nullptr;
     QLabel *data_telemetry_summary_title_lbl = nullptr;
+    QGroupBox *remote_sky_config_card = nullptr;
+    QLabel *remote_sky_config_title_lbl = nullptr;
+    QLabel *remote_sky_services_title_lbl = nullptr;
+    QLabel *remote_sky_sync_title_lbl = nullptr;
+    QLabel *remote_sky_advanced_title_lbl = nullptr;
+    QLabel *remote_sky_config_status_lbl = nullptr;
+    QLabel *remote_sky_rd105_slave_lbl = nullptr;
+    QLabel *remote_sky_wave_enabled_lbl = nullptr;
+    QLabel *remote_sky_wave_host_lbl = nullptr;
+    QLabel *remote_sky_wave_port_lbl = nullptr;
+    QLabel *remote_sky_wave_downsample_lbl = nullptr;
+    QLabel *remote_sky_telemetry_basic_lbl = nullptr;
+    QLabel *remote_sky_telemetry_feature_lbl = nullptr;
+    QLabel *remote_sky_telemetry_waveform_lbl = nullptr;
+    QLabel *remote_sky_telemetry_heartbeat_lbl = nullptr;
+    QLabel *remote_sky_telemetry_status_lbl = nullptr;
     QVBoxLayout *data_telemetry_rate_summary_layout = nullptr;
     QVBoxLayout *data_telemetry_link_summary_layout = nullptr;
     QVBoxLayout *data_telemetry_device_summary_layout = nullptr;
-    QFrame *epsilon_config_card = nullptr;
-    QLabel *epsilon_config_title_lbl = nullptr;
-    QLabel *epsilon_config_hint_lbl = nullptr;
-    QCheckBox *epsilon_packet_custom_check = nullptr;
-    QVector<QLabel *> epsilon_packet_rate_labels;
-    QVector<QComboBox *> epsilon_packet_rate_combos;
-    QPushButton *epsilon_packet_defaults_btn = nullptr;
-    QPushButton *epsilon_packet_grouped_btn = nullptr;
-    QPushButton *epsilon_packet_save_btn = nullptr;
     QPushButton *auto_detect_ports_btn = nullptr;
-    QPushButton *sky_device_config_btn = nullptr;
-    QPushButton *epsilon_rtcm_port_btn = nullptr;
-    QPushButton *epsilon_reconfigure_btn = nullptr;
-    QPushButton *rtk_config_btn = nullptr;
     QComboBox *data_source_mode_combo = nullptr;
     QComboBox *sky_telemetry_transport_combo = nullptr;
     QComboBox *sky_telemetry_port_combo = nullptr;
@@ -88,6 +100,7 @@ struct DeviceConfigPageWidgets
     QSpinBox *sky_telemetry_tcp_port_spin = nullptr;
     QComboBox *epsilon_port_combo = nullptr;
     QComboBox *epsilon_baud_combo = nullptr;
+    QComboBox *epsilon_rate_combo = nullptr;
     QComboBox *ptb_port_combo = nullptr;
     QComboBox *ptb_baud_combo = nullptr;
     QComboBox *ptb_source_combo = nullptr;
@@ -105,6 +118,27 @@ struct DeviceConfigPageWidgets
     QComboBox *lidar_rate_combo = nullptr;
     QComboBox *temperature_rate_combo = nullptr;
     QComboBox *ai8_temperature_rate_combo = nullptr;
+    QCheckBox *epsilon_enabled_check = nullptr;
+    QCheckBox *ptb_enabled_check = nullptr;
+    QCheckBox *hmp_enabled_check = nullptr;
+    QCheckBox *lidar_enabled_check = nullptr;
+    QCheckBox *temperature_enabled_check = nullptr;
+    QCheckBox *ai8_temperature_enabled_check = nullptr;
+    QSpinBox *remote_sky_rd105_slave_spin = nullptr;
+    QCheckBox *remote_sky_wave_enabled_check = nullptr;
+    QLineEdit *remote_sky_wave_host_edit = nullptr;
+    QSpinBox *remote_sky_wave_port_spin = nullptr;
+    QSpinBox *remote_sky_wave_downsample_spin = nullptr;
+    QDoubleSpinBox *remote_sky_telemetry_basic_spin = nullptr;
+    QDoubleSpinBox *remote_sky_telemetry_feature_spin = nullptr;
+    QDoubleSpinBox *remote_sky_telemetry_waveform_spin = nullptr;
+    QDoubleSpinBox *remote_sky_telemetry_heartbeat_spin = nullptr;
+    QDoubleSpinBox *remote_sky_telemetry_status_spin = nullptr;
+    QPushButton *remote_sky_read_btn = nullptr;
+    QPushButton *remote_sky_apply_btn = nullptr;
+    QPushButton *remote_sky_save_btn = nullptr;
+    QPushButton *remote_sky_raw_mode_btn = nullptr;
+    QPlainTextEdit *remote_sky_raw_json_edit = nullptr;
     QToolButton *epsilon_remote_action_btn = nullptr;
     QWidget *epsilon_remote_buttons_widget = nullptr;
     QToolButton *ptb_remote_action_btn = nullptr;
@@ -197,6 +231,7 @@ struct MainWindowState
     QAction *log_filter_config_action_;
     QAction *log_filter_connection_action_;
     QAction *log_filter_recording_action_;
+    QAction *log_filter_source_category_action_;
     QAction *log_filter_debug_action_;
     QAction *log_filter_warning_action_;
     QAction *log_filter_qt_action_;
@@ -256,6 +291,8 @@ struct MainWindowState
     bool custom_logo_hovered_;
     QWidget *home_page_;
     QWidget *temperature_page_;
+    VaporView::Ground::Navigation::CombinationNavigationPage *combination_navigation_page_;
+    VaporView::Ground::Navigation::EpsilonConfigPanel *epsilon_config_panel_;
     DeviceConfigPageWidgets device_config_;
     QScrollArea *main_cards_scroll_area_;
     QGroupBox *config_group_;
@@ -352,7 +389,6 @@ struct MainWindowState
     QSpinBox *sky_telemetry_tcp_port_spin_;
     QComboBox *imu_format_combo_;
     QPushButton *epsilon_packet_rates_btn_;
-    QPushButton *sky_device_config_btn_;
     QPushButton *epsilon_remote_connect_btn_;
     QPushButton *epsilon_remote_disconnect_btn_;
     QPushButton *epsilon_remote_reconnect_btn_;
@@ -384,6 +420,7 @@ struct MainWindowState
     QPushButton *imu_rate_1000_btn_;
 
     std::unique_ptr<VaporView::Ground::Devices::LocalDeviceConnectionController> local_connection_controller_;
+    std::unique_ptr<VaporView::Ground::Devices::LocalConnectionCoordinator> local_connection_coordinator_;
     std::unique_ptr<VaporView::Ground::Session::GroundRecordingService> recording_service_;
     std::unique_ptr<VaporView::Ground::Session::RecordingScheduleController> recording_schedule_controller_;
 
@@ -392,6 +429,7 @@ struct MainWindowState
     QTimer *home_device_action_spinner_timer_;
 
     VaporView::EpsilonData current_epsilon_;
+    quint32 current_remote_epsilon_validity_flags_ = 0;
     VaporView::GnssData current_gnss_;
     VaporView::ImuData current_imu_;
     VaporView::PtbData current_ptb_;
@@ -402,6 +440,7 @@ struct MainWindowState
     bool is_english_;
     LogUiViewMode log_view_mode_;
     bool log_auto_follow_enabled_;
+    bool log_hide_source_category_enabled_;
     int log_new_visible_count_;
     int log_unread_warning_count_;
     int log_unread_error_count_;
@@ -426,7 +465,6 @@ struct MainWindowState
     int ui_test_saved_font_scale_percent_;
     bool ui_test_saved_dark_theme_enabled_;
     bool ui_test_session_viewer_existed_;
-    bool ui_test_sky_dialog_existed_;
 #ifdef VAPORVIEW_HAS_OSGEARTH
     bool ui_test_map3d_window_existed_;
 #endif
@@ -441,14 +479,39 @@ struct MainWindowState
     int last_log_side_panel_width_;
     bool remote_sky_mode_;
     bool remote_sky_online_;
+    VaporView::SkyConfig remote_sky_config_;
+    VaporView::SkyConfig remote_sky_baseline_config_;
+    bool remote_sky_config_loaded_;
+    bool remote_sky_config_dirty_;
+    bool remote_sky_config_loading_;
+    bool remote_sky_config_applying_;
+    bool remote_sky_config_saving_;
+    bool remote_sky_config_raw_mode_;
+    bool remote_sky_config_updating_ui_;
+    bool remote_serial_detection_pending_ = false;
+    quint16 remote_serial_detection_seq_ = 0;
+    quint16 remote_serial_detection_cancel_seq_ = 0;
+    QString remote_sky_config_status_text_;
+    bool remote_sky_config_status_error_;
+    quint16 remote_sky_config_read_seq_;
+    quint16 remote_sky_config_apply_seq_;
+    quint16 remote_sky_config_save_seq_;
+    quint64 remote_sky_config_read_generation_;
+    quint64 remote_sky_config_apply_generation_;
     bool remote_wave_stream_requested_;
     bool remote_wave_stream_enable_pending_;
     bool remote_wave_stream_auto_start_;
+    bool remote_wave_connect_after_config_read_;
+    bool remote_wave_connect_after_config_apply_;
+    QString remote_wave_pending_host_;
+    int remote_wave_pending_port_;
     int remote_recording_state_;
     QHash<VaporView::SkyDeviceId, qint64> home_device_action_spinner_until_ms_;
     QHash<VaporView::SkyDeviceId, qint64> home_device_action_spinner_started_ms_;
     std::unique_ptr<VaporView::Ground::Devices::RemoteSkyController> remote_sky_controller_;
-    QHash<quint16, VaporView::TemperatureControllerCommand> remote_temperature_commands_;
+    std::unique_ptr<VaporView::Ground::Devices::Ai8DeviceSession> ai8_device_session_;
+    std::unique_ptr<VaporView::Ground::Devices::EpsilonDeviceSession> epsilon_device_session_;
+    std::unique_ptr<VaporView::Ground::Devices::Rd105DeviceSession> rd105_device_session_;
     QHash<quint16, VaporView::PeakSearchRange> remote_peak_search_commands_;
 #ifdef VAPORVIEW_HAS_OSGEARTH
     std::unique_ptr<VaporView::Ground::Map3DController> map3d_controller_;
@@ -459,7 +522,6 @@ struct MainWindowState
     std::atomic<bool> cancel_connection_requested_;
     std::function<void(VaporView::CommandId)> local_temperature_command_test_observer_;
     std::thread port_detection_thread_;
-    std::thread epsilon_reconfigure_thread_;
     int font_scale_percent_;
     bool dark_theme_enabled_;
     double base_font_point_size_;
@@ -485,7 +547,6 @@ struct MainWindowState
     bool rtk_service_running_;
     TcpWavePanel *tcp_wave_panel_;
     SessionViewerWindow *session_viewer_window_;
-    VaporView::SkyDeviceConfigDialog *sky_device_config_dialog_;
 };
 
 } // namespace VaporView::Ground::Main

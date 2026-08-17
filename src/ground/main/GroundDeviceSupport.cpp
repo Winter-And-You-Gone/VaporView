@@ -30,6 +30,153 @@ bool isTemperatureCommonCommand(VaporView::CommandId command)
            command == VaporView::CommandId::RestoreTemperatureFactoryDefaults;
 }
 
+QString commandErrorCodeIdentifier(VaporView::CommandErrorCode error)
+{
+    switch (error)
+    {
+    case VaporView::CommandErrorCode::Ok:
+        return QStringLiteral("OK");
+    case VaporView::CommandErrorCode::UnknownCommand:
+        return QStringLiteral("UNKNOWN_COMMAND");
+    case VaporView::CommandErrorCode::InvalidPayload:
+        return QStringLiteral("INVALID_PAYLOAD");
+    case VaporView::CommandErrorCode::InvalidDeviceId:
+        return QStringLiteral("INVALID_DEVICE_ID");
+    case VaporView::CommandErrorCode::DeviceAlreadyConnected:
+        return QStringLiteral("DEVICE_ALREADY_CONNECTED");
+    case VaporView::CommandErrorCode::DeviceNotConnected:
+        return QStringLiteral("DEVICE_NOT_CONNECTED");
+    case VaporView::CommandErrorCode::DeviceConnectFailed:
+        return QStringLiteral("DEVICE_CONNECT_FAILED");
+    case VaporView::CommandErrorCode::DeviceDisconnectFailed:
+        return QStringLiteral("DEVICE_DISCONNECT_FAILED");
+    case VaporView::CommandErrorCode::DeviceReconnectFailed:
+        return QStringLiteral("DEVICE_RECONNECT_FAILED");
+    case VaporView::CommandErrorCode::ConfigInvalid:
+        return QStringLiteral("CONFIG_INVALID");
+    case VaporView::CommandErrorCode::ConfigApplyFailed:
+        return QStringLiteral("CONFIG_APPLY_FAILED");
+    case VaporView::CommandErrorCode::ConfigSaveFailed:
+        return QStringLiteral("CONFIG_SAVE_FAILED");
+    case VaporView::CommandErrorCode::RecordingAlreadyStarted:
+        return QStringLiteral("RECORDING_ALREADY_STARTED");
+    case VaporView::CommandErrorCode::RecordingNotStarted:
+        return QStringLiteral("RECORDING_NOT_STARTED");
+    case VaporView::CommandErrorCode::InternalError:
+        return QStringLiteral("INTERNAL_ERROR");
+    }
+    return QStringLiteral("UNKNOWN_COMMAND_ERROR");
+}
+
+QVariantMap temperatureCommandLogFields(VaporView::CommandId command,
+                                        const VaporView::TemperatureControllerCommand& payload,
+                                        quint8 channel)
+{
+    QVariantMap fields;
+    fields.insert(QStringLiteral("device"), QStringLiteral("RD105"));
+    fields.insert(QStringLiteral("device_id"), QStringLiteral("temperature_controller"));
+    fields.insert(QStringLiteral("command"), VaporView::commandIdName(command));
+    fields.insert(QStringLiteral("command_id"), static_cast<quint16>(command));
+    if (!isTemperatureCommonCommand(command))
+    {
+        fields.insert(QStringLiteral("channel"), channel == 0 ? payload.channel : channel);
+    }
+
+    switch (command)
+    {
+    case VaporView::CommandId::SetTemperatureTarget:
+        fields.insert(QStringLiteral("target"), payload.target_temperature_c);
+        break;
+    case VaporView::CommandId::SetTemperatureOutputEnabled:
+        fields.insert(QStringLiteral("output_enabled"), payload.output_enabled);
+        break;
+    case VaporView::CommandId::SetTemperatureOutputMode:
+        fields.insert(QStringLiteral("output_mode"), payload.output_mode);
+        break;
+    case VaporView::CommandId::SetTemperatureMaxOutputPercent:
+        fields.insert(QStringLiteral("max_output_percent"), payload.max_output_percent);
+        break;
+    case VaporView::CommandId::SetTemperaturePid:
+        fields.insert(QStringLiteral("kp"), payload.kp);
+        fields.insert(QStringLiteral("ki"), payload.ki);
+        fields.insert(QStringLiteral("kd"), payload.kd);
+        break;
+    case VaporView::CommandId::SetTemperatureAutoPid:
+        fields.insert(QStringLiteral("auto_pid_mode"), payload.auto_pid_mode);
+        break;
+    case VaporView::CommandId::SetTemperatureControllerMode:
+        fields.insert(QStringLiteral("controller_mode"), payload.controller_mode);
+        break;
+    case VaporView::CommandId::SetTemperatureDeviceAddress:
+        fields.insert(QStringLiteral("device_address"), payload.device_address);
+        break;
+    case VaporView::CommandId::SetTemperatureRs485Baud:
+        fields.insert(QStringLiteral("rs485_baud_index"), payload.rs485_baud_index);
+        break;
+    case VaporView::CommandId::SetTemperatureOvertempOutputMode:
+        fields.insert(QStringLiteral("overtemp_output_mode"), payload.overtemp_output_mode);
+        break;
+    case VaporView::CommandId::SetTemperatureOvertempUpper:
+        fields.insert(QStringLiteral("overtemp_upper_c"), payload.overtemp_upper_c);
+        break;
+    case VaporView::CommandId::SetTemperatureOvertempLower:
+        fields.insert(QStringLiteral("overtemp_lower_c"), payload.overtemp_lower_c);
+        break;
+    case VaporView::CommandId::SetTemperatureSlope:
+        fields.insert(QStringLiteral("temperature_slope_c_per_s"), payload.temperature_slope_c_per_s);
+        break;
+    case VaporView::CommandId::SetTemperatureStartupDelay:
+        fields.insert(QStringLiteral("startup_delay_s"), payload.startup_delay_s);
+        break;
+    case VaporView::CommandId::SetTemperatureSensorConfig:
+        fields.insert(QStringLiteral("sensor_model"), payload.sensor_model);
+        break;
+    case VaporView::CommandId::RestoreTemperatureFactoryDefaults:
+        fields.insert(QStringLiteral("factory_defaults"), true);
+        break;
+    default:
+        break;
+    }
+
+    return fields;
+}
+
+QString temperatureCommandDedupeKey(const QString& event,
+                                    VaporView::CommandId command,
+                                    quint8 channel)
+{
+    QString key = QStringLiteral("rd105:%1:%2")
+        .arg(event, VaporView::commandIdName(command));
+    if (channel != 0 && !isTemperatureCommonCommand(command))
+    {
+        key += QStringLiteral(":channel_%1").arg(channel);
+    }
+    return key;
+}
+
+VaporView::LogRecord makeTemperatureCommandLogRecord(VaporView::LogLevel level,
+                                                     const QString& event,
+                                                     const QString& message,
+                                                     QVariantMap fields)
+{
+    fields.insert(QStringLiteral("event"), event);
+    fields.insert(QStringLiteral("ui_visible"), true);
+    if (!fields.contains(QStringLiteral("ui_visibility")))
+    {
+        fields.insert(QStringLiteral("ui_visibility"),
+                      level >= VaporView::LogLevel::Warning ? QStringLiteral("attention")
+                                                            : QStringLiteral("details"));
+    }
+
+    VaporView::LogRecord record;
+    record.level = level;
+    record.source = QStringLiteral("Ground");
+    record.category = QStringLiteral("device.temperature.command");
+    record.message = message;
+    record.fields = fields;
+    return record;
+}
+
 int rememberedTemperatureSlaveAddress()
 {
     QSettings settings = VaporView::applicationConfigSettings();
@@ -338,7 +485,7 @@ QString skyDeviceDisplayName(VaporView::SkyDeviceId device)
     case VaporView::SkyDeviceId::Epsilon: return QStringLiteral("EPSILON");
     case VaporView::SkyDeviceId::Ptb: return QStringLiteral("PTB210");
     case VaporView::SkyDeviceId::Hmp: return QStringLiteral("HMP3");
-    case VaporView::SkyDeviceId::Lidar: return QStringLiteral("TFA1500-L");
+    case VaporView::SkyDeviceId::Lidar: return QStringLiteral("TFA1005-L");
     case VaporView::SkyDeviceId::TemperatureController: return QStringLiteral("RD105");
     case VaporView::SkyDeviceId::Ai8TemperatureController: return QStringLiteral("AI-8288");
     case VaporView::SkyDeviceId::WaveTcp: return QStringLiteral("Wave TCP");
@@ -358,7 +505,7 @@ QString homeDeviceDisplayName(VaporView::SkyDeviceId device, bool english)
     case VaporView::SkyDeviceId::Hmp:
         return english ? QStringLiteral("HMP Temp/Humidity") : QStringLiteral("HMP 温湿度");
     case VaporView::SkyDeviceId::Lidar:
-        return english ? QStringLiteral("TFA1500-L LiDAR") : QStringLiteral("TFA1500-L 激光测距");
+        return english ? QStringLiteral("TFA1005-L LiDAR") : QStringLiteral("TFA1005-L 激光测距");
     case VaporView::SkyDeviceId::TemperatureController:
         return english ? QStringLiteral("RD105 Thermal") : QStringLiteral("RD105 激光温控");
     case VaporView::SkyDeviceId::Ai8TemperatureController:
@@ -493,7 +640,7 @@ QColor deviceConfigRemoteIconColor(VaporView::CommandId command)
     case VaporView::CommandId::ConnectDevice:
         return toolbarColor(AppThemeColor::ToolbarGreen);
     case VaporView::CommandId::DisconnectDevice:
-        return toolbarColor(AppThemeColor::ToolbarRed);
+        return toolbarColor(AppThemeColor::ToolbarBlue);
     case VaporView::CommandId::ReconnectDevice:
         return toolbarColor(AppThemeColor::ToolbarBlue);
     default:
@@ -653,7 +800,7 @@ void saveRememberedSensorBaud(QSettings& settings,
 QString sourceModeDisplayText(bool english, int index)
 {
     return index == 1
-        ? (english ? QStringLiteral("Sky-Ground Remote Mode") : QStringLiteral("天地远程模式"))
+        ? (english ? QStringLiteral("Remote") : QStringLiteral("远程"))
         : (english ? QStringLiteral("Local") : QStringLiteral("本地"));
 }
 

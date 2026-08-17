@@ -1,14 +1,15 @@
 #pragma once
 
 #include <QFile>
-#include <QNetworkReply>
 #include <QObject>
 #include <QStringList>
 #include <QUrl>
 #include <QVector>
-#include <QPair>
+
+#include <utility>
 
 class QNetworkAccessManager;
+class QNetworkReply;
 
 namespace VaporView::Map3D {
 
@@ -93,8 +94,9 @@ private:
     int active_file_index_ = -1;
     QString active_temp_root_;
     QString active_error_;
+    QStringList active_network_ssl_errors_;
     QStringList active_installed_files_;
-    QVector<QPair<QString, QString>> active_backups_;
+    QVector<std::pair<QString, QString>> active_backups_;
 };
 
 } // namespace VaporView::Map3D

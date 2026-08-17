@@ -32,6 +32,8 @@ inline constexpr const char *kShadowUsesOpaqueScrollBarTrackProperty =
     "vaporViewTopLevelCardShadowUsesOpaqueScrollBarTrack";
 inline constexpr const char *kShadowClipsScrollBarTrackProperty =
     "vaporViewTopLevelCardShadowClipsScrollBarTrack";
+inline constexpr const char *kShadowUiScaleProperty =
+    "vaporViewTopLevelCardShadowUiScale";
 
 class TopLevelCardShadowLayer final : public QWidget
 {
@@ -338,6 +340,16 @@ void updateTopLevelCardShadows(QWidget *scope, qreal uiScale)
     if (!window)
     {
         return;
+    }
+
+    if (uiScale <= 0.0)
+    {
+        const double storedScale = window->property(kShadowUiScaleProperty).toDouble();
+        uiScale = storedScale > 0.0 ? storedScale : 1.0;
+    }
+    else
+    {
+        window->setProperty(kShadowUiScaleProperty, uiScale);
     }
 
     QList<QWidget *> cards = window->findChildren<QWidget *>();

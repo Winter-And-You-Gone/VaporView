@@ -14,9 +14,6 @@ namespace VaporView::Ground::Devices
 RemoteSkyController::RemoteSkyController(QObject *parent)
     : QObject(parent)
 {
-    connect(&service_, &GroundTelemetryService::logMessage,
-            this, &RemoteSkyController::logMessage,
-            Qt::QueuedConnection);
     connect(&service_, &GroundTelemetryService::linkOpenChanged,
             this, [this](bool open) {
                 const quint64 generation = service_.linkGeneration();
@@ -79,18 +76,73 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
                     emit temperatureControllerStatusUpdated(data);
                 }, Qt::QueuedConnection);
             }, Qt::DirectConnection);
+    connect(&service_, &GroundTelemetryService::ai8TemperatureControllerStatusUpdated,
+            this, [this](const Ai8TemperatureControllerProtocol::LiveData& data) {
+                const quint64 generation = service_.linkGeneration();
+                QMetaObject::invokeMethod(this, [this, generation, data]() {
+                    if (!isCurrentOpenEvent(generation)) return;
+                    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+                    state_.notePacket(MsgType::Ai8TemperatureControllerStatus, nowMs);
+                    state_.noteDeviceData(SkyDeviceId::Ai8TemperatureController, nowMs);
+                    emit ai8TemperatureControllerStatusUpdated(data);
+                }, Qt::QueuedConnection);
+            }, Qt::DirectConnection);
+    connect(&service_, &GroundTelemetryService::deviceOperationResponseReceived,
+            this, [this](const DeviceOperationResponse& response) {
+                const quint64 generation = service_.linkGeneration();
+                QMetaObject::invokeMethod(this, [this, generation, response]() {
+                    if (!isCurrentOpenEvent(generation)) return;
+                    if (device_operation_support_ != DeviceOperationSupport::Supported)
+                    {
+                        device_operation_support_ = DeviceOperationSupport::Supported;
+                        emit deviceOperationSupportChanged(device_operation_support_);
+                    }
+                    const quint16 sequence = device_operation_commands_.take(response.request_id);
+                    if (sequence != 0)
+                    {
+                        device_operation_requests_.remove(sequence);
+                    }
+                    emit deviceOperationResponseReceived(response);
+                }, Qt::QueuedConnection);
+            }, Qt::DirectConnection);
     connect(&service_, &GroundTelemetryService::commandAckReceived,
             this, [this](const CommandAck& ack) {
                 const quint64 generation = service_.linkGeneration();
                 QMetaObject::invokeMethod(this, [this, generation, ack]() {
-                    if (isCurrentOpenEvent(generation)) emit commandAckReceived(ack);
+                    if (!isCurrentOpenEvent(generation)) return;
+                    if (ack.command_id == CommandId::DeviceOperation && ack.error_code != CommandErrorCode::Ok)
+                    {
+                        if (ack.error_code == CommandErrorCode::UnknownCommand &&
+                            device_operation_support_ != DeviceOperationSupport::Unsupported)
+                        {
+                            device_operation_support_ = DeviceOperationSupport::Unsupported;
+                            emit deviceOperationSupportChanged(device_operation_support_);
+                        }
+                        const quint32 requestId = device_operation_requests_.take(ack.command_seq);
+                        if (requestId != 0)
+                        {
+                            device_operation_commands_.remove(requestId);
+                            emit deviceOperationRejected(requestId, ack);
+                        }
+                    }
+                    emit commandAckReceived(ack);
                 }, Qt::QueuedConnection);
             }, Qt::DirectConnection);
     connect(&service_, &GroundTelemetryService::commandTimedOut,
             this, [this](CommandId command, quint16 sequence) {
                 const quint64 generation = service_.linkGeneration();
                 QMetaObject::invokeMethod(this, [this, generation, command, sequence]() {
-                    if (isCurrentEvent(generation)) emit commandTimedOut(command, sequence);
+                    if (!isCurrentEvent(generation)) return;
+                    if (command == CommandId::DeviceOperation)
+                    {
+                        const quint32 requestId = device_operation_requests_.take(sequence);
+                        if (requestId != 0)
+                        {
+                            device_operation_commands_.remove(requestId);
+                            emit deviceOperationTimedOut(requestId);
+                        }
+                    }
+                    emit commandTimedOut(command, sequence);
                 }, Qt::QueuedConnection);
             }, Qt::DirectConnection);
 }
@@ -138,6 +190,66 @@ quint16 RemoteSkyController::sendCommand(CommandId command, const QByteArray& pa
     return service_.sendCommand(command, payload);
 }
 
+quint32 RemoteSkyController::readAi8Page(Ai8TemperatureControllerProtocol::Page page,
+                                         const Ai8TemperatureControllerProtocol::Selection& selection)
+{
+    Ai8TemperatureControllerProtocol::PageData data;
+    data.page = page;
+    data.selection = selection;
+    return sendAi8Operation(DeviceOperation::ReadParameters, data);
+}
+
+quint32 RemoteSkyController::writeAi8Page(const Ai8TemperatureControllerProtocol::PageData& data)
+{
+    return sendAi8Operation(DeviceOperation::WriteParameters, data);
+}
+
+quint32 RemoteSkyController::restoreAi8FactoryDefaults(
+    Ai8TemperatureControllerProtocol::Page page,
+    const Ai8TemperatureControllerProtocol::Selection& selection)
+{
+    Ai8TemperatureControllerProtocol::PageData data;
+    data.page = page;
+    data.selection = selection;
+    return sendAi8Operation(DeviceOperation::FactoryReset, data);
+}
+
+quint32 RemoteSkyController::configureEpsilonPacketRates(
+    const EpsilonPacketRatesOperation& operation)
+{
+    return sendDeviceOperation(
+        SkyDeviceId::Epsilon,
+        DeviceOperation::ConfigureEpsilonPacketRates,
+        TelemetryCodec::serializeEpsilonPacketRatesOperation(operation));
+}
+
+quint32 RemoteSkyController::configureEpsilonMainAntennaLeverArm(
+    const EpsilonMainAntennaLeverArmOperation& operation)
+{
+    return sendDeviceOperation(
+        SkyDeviceId::Epsilon,
+        DeviceOperation::ConfigureEpsilonMainAntennaLeverArm,
+        TelemetryCodec::serializeEpsilonMainAntennaLeverArmOperation(operation));
+}
+
+quint32 RemoteSkyController::configureEpsilonRtcmInput(
+    const EpsilonRtcmInputOperation& operation)
+{
+    return sendDeviceOperation(
+        SkyDeviceId::Epsilon,
+        DeviceOperation::ConfigureEpsilonRtcmInput,
+        TelemetryCodec::serializeEpsilonRtcmInputOperation(operation));
+}
+
+bool RemoteSkyController::sendRtcmCorrectionData(const QByteArray& data)
+{
+    if (VaporView::settingsWritesSuspended())
+    {
+        return false;
+    }
+    return service_.sendRtcmCorrectionData(data);
+}
+
 quint16 RemoteSkyController::sendDeviceCommand(CommandId command, SkyDeviceId device)
 {
     if (VaporView::settingsWritesSuspended()) return 0;
@@ -170,11 +282,22 @@ GroundTelemetryService *RemoteSkyController::telemetryService()
 void RemoteSkyController::resetState()
 {
     state_.reset();
+    device_operation_requests_.clear();
+    device_operation_commands_.clear();
+    device_operation_support_ = DeviceOperationSupport::Unknown;
 }
 
 void RemoteSkyController::markLinkClosed()
 {
     state_.markLinkClosed();
+    device_operation_requests_.clear();
+    device_operation_commands_.clear();
+    device_operation_support_ = DeviceOperationSupport::Unknown;
+}
+
+DeviceOperationSupport RemoteSkyController::deviceOperationSupport() const
+{
+    return device_operation_support_;
 }
 
 void RemoteSkyController::setDeviceState(SkyDeviceId device, DeviceState state)
@@ -291,6 +414,44 @@ void RemoteSkyController::updateStatusState(const TelemetryStatus& status)
             state_.clearDeviceData(item.device_id);
         }
     }
+}
+
+quint32 RemoteSkyController::sendDeviceOperation(
+    SkyDeviceId device,
+    DeviceOperation operation,
+    const QByteArray& payload)
+{
+    if (VaporView::settingsWritesSuspended() || !service_.isOpen() ||
+        device_operation_support_ == DeviceOperationSupport::Unsupported)
+    {
+        return 0;
+    }
+    DeviceOperationRequest request;
+    request.request_id = next_device_operation_request_id_++;
+    if (request.request_id == 0)
+    {
+        request.request_id = next_device_operation_request_id_++;
+    }
+    request.device_id = device;
+    request.operation = operation;
+    request.payload = payload;
+    const quint16 commandSequence = service_.sendDeviceOperation(request);
+    if (commandSequence == 0)
+    {
+        return 0;
+    }
+    device_operation_requests_.insert(commandSequence, request.request_id);
+    device_operation_commands_.insert(request.request_id, commandSequence);
+    return request.request_id;
+}
+
+quint32 RemoteSkyController::sendAi8Operation(
+    DeviceOperation operation,
+    const Ai8TemperatureControllerProtocol::PageData& data)
+{
+    return sendDeviceOperation(SkyDeviceId::Ai8TemperatureController,
+                               operation,
+                               TelemetryCodec::serializeAi8PageData(data));
 }
 
 }  // namespace VaporView::Ground::Devices

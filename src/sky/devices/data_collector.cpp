@@ -956,11 +956,11 @@ const char* lidarProtocolName(LidarProtocol protocol)
   switch (protocol)
   {
   case LidarProtocol::TFA1500DistanceFrame:
-    return "TFA1500-L";
+    return "TFA1005-L";
   case LidarProtocol::TFA1500LowFrequencyFrame:
-    return "TFA1500-L 低频";
+    return "TFA1005-L 低频";
   case LidarProtocol::TFA1500HighFrequency:
-    return "TFA1500-L 高频";
+    return "TFA1005-L 高频";
   case LidarProtocol::ObservedAaB7Frame:
     return "AA-B7 激光测距帧";
   case LidarProtocol::Unknown:
@@ -1658,6 +1658,12 @@ void DataCollector::setLogCallback(LogCallback callback)
   log_callback_ = std::move(callback);
 }
 
+void DataCollector::setStructuredLogCallback(StructuredLogCallback callback)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  structured_log_callback_ = std::move(callback);
+}
+
 void DataCollector::setCancelCallback(CancelCallback callback)
 {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -1680,6 +1686,25 @@ void DataCollector::log(const std::string& message)
   {
     callback(message);
   }
+}
+
+void DataCollector::logStructured(LogLevel level,
+                                  const std::string& category,
+                                  const std::string& event,
+                                  const std::string& message,
+                                  StructuredLogFields fields)
+{
+  StructuredLogCallback callback;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    callback = structured_log_callback_;
+  }
+  if (callback)
+  {
+    callback(level, category, event, message, std::move(fields));
+    return;
+  }
+  log(message);
 }
 
 bool DataCollector::isEnglishLog() const
@@ -1783,7 +1808,13 @@ bool GnssCollector::setDeviceSampleRate(int hz)
   ssize_t written = serial_.write(cmd.c_str(), cmd.length());
   if (written != static_cast<ssize_t>(cmd.length()))
   {
-    log("[RTK 发送] 命令发送失败");
+    logStructured(LogLevel::Error,
+                  "device.navigation.command",
+                  "rtk_command_write_failed",
+                  "RTK 命令发送失败。",
+                  {{"command", "PVTSLNA"},
+                   {"requested_rate_hz", std::to_string(hz)},
+                   {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
   }
   
@@ -1823,7 +1854,13 @@ bool GnssCollector::setDeviceSampleRate(int hz)
   }
   else
   {
-    log("[RTK 接收] 未收到响应（命令可能已生效）");
+    logStructured(LogLevel::Warning,
+                  "device.navigation.command",
+                  "rtk_command_response_timeout",
+                  "RTK 命令未收到响应。",
+                  {{"command", "PVTSLNA"},
+                   {"requested_rate_hz", std::to_string(hz)},
+                   {"error_code", "COMMAND_TIMEOUT"}});
   }
   
   return true;
@@ -2066,8 +2103,13 @@ bool EpsilonCollector::setDeviceSampleRate(int hz)
 {
   if (!isSupportedEpsilonRate(hz))
   {
-    log(std::string(isEnglishLog() ? "EPSILON: unsupported output rate " : "EPSILON：不支持的输出频率 ") +
-        std::to_string(hz) + " Hz");
+    logStructured(LogLevel::Warning,
+                  "device.navigation.command",
+                  "epsilon_output_rate_rejected_unsupported",
+                  "EPSILON 输出频率不受支持。",
+                  {{"device", "EPSILON"},
+                   {"requested_rate_hz", std::to_string(hz)},
+                   {"reason_code", "COMMAND_NOT_SUPPORTED"}});
     return false;
   }
   if (!setOutputPacketRates(desiredEpsilonPacketRates(hz)))
@@ -3055,7 +3097,13 @@ bool ImuCollector::setOutputMessageType(const std::string& message_type)
 {
   if (!isSupportedImuMessageType(message_type))
   {
-    log("IMU: 不支持的输出消息类型: " + message_type);
+    logStructured(LogLevel::Warning,
+                  "device.navigation.command",
+                  "imu_output_message_rejected_unsupported",
+                  "IMU 输出消息类型不受支持。",
+                  {{"device", "IMU"},
+                   {"message_type", message_type},
+                   {"reason_code", "COMMAND_NOT_SUPPORTED"}});
     return false;
   }
 
@@ -3074,14 +3122,25 @@ bool ImuCollector::sendAsciiCommand(const std::string& command, int wait_ms)
 {
   if (!serial_.isOpen())
   {
-    log("IMU: 串口未打开");
+    logStructured(LogLevel::Warning,
+                  "device.navigation.command",
+                  "imu_command_rejected_serial_closed",
+                  "IMU 串口未打开，无法发送命令。",
+                  {{"device", "IMU"},
+                   {"reason_code", "DEVICE_NOT_CONNECTED"}});
     return false;
   }
 
   const ssize_t written = serial_.write(command.c_str(), command.size());
   if (written != static_cast<ssize_t>(command.size()))
   {
-    log("IMU: 命令发送失败: " + command);
+    logStructured(LogLevel::Error,
+                  "device.navigation.command",
+                  "imu_command_write_failed",
+                  "IMU 命令发送失败。",
+                  {{"device", "IMU"},
+                   {"command", command},
+                   {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
   }
 
@@ -3097,7 +3156,13 @@ bool ImuCollector::setDeviceSampleRate(int hz)
   double period = 0.0;
   if (!imuSampleRateToPeriod(hz, period))
   {
-    log("IMU: 不支持的采样频率: " + std::to_string(hz) + " Hz");
+    logStructured(LogLevel::Warning,
+                  "device.navigation.command",
+                  "imu_sample_rate_rejected_unsupported",
+                  "IMU 采样频率不受支持。",
+                  {{"device", "IMU"},
+                   {"requested_rate_hz", std::to_string(hz)},
+                   {"reason_code", "COMMAND_NOT_SUPPORTED"}});
     return false;
   }
 
@@ -3115,7 +3180,14 @@ bool ImuCollector::setDeviceSampleRate(int hz)
   std::snprintf(cmd, sizeof(cmd), "LOG %s ONTIME %.3f\r\n", message_type.c_str(), period);
   if (!sendAsciiCommand(cmd))
   {
-    log("IMU: 采样频率命令发送失败");
+    logStructured(LogLevel::Error,
+                  "device.navigation.command",
+                  "imu_sample_rate_command_failed",
+                  "IMU 采样频率命令发送失败。",
+                  {{"device", "IMU"},
+                   {"message_type", message_type},
+                   {"requested_rate_hz", std::to_string(hz)},
+                   {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
   }
 
@@ -3350,7 +3422,13 @@ bool PtbCollector::setDeviceSampleRate(int hz)
 
   if (hz < 1 || hz > 70)
   {
-    log("PTB210: 不支持的采样频率: " + std::to_string(hz) + " Hz（有效范围: 1-70 Hz）");
+    logStructured(LogLevel::Warning,
+                  "device.pressure.command",
+                  "ptb_sample_rate_rejected_unsupported",
+                  "PTB210 采样频率不受支持。",
+                  {{"device", "PTB210"},
+                   {"requested_rate_hz", std::to_string(hz)},
+                   {"reason_code", "COMMAND_NOT_SUPPORTED"}});
     return false;
   }
 
@@ -3365,7 +3443,13 @@ bool PtbCollector::setDeviceSampleRate(int hz)
   ssize_t written = serial_.write(average_cmd, std::strlen(average_cmd));
   if (written != static_cast<ssize_t>(std::strlen(average_cmd)))
   {
-    log("PTB210: 发送 AVRG 命令失败");
+    logStructured(LogLevel::Error,
+                  "device.pressure.command",
+                  "ptb_average_command_write_failed",
+                  "PTB210 AVRG 命令发送失败。",
+                  {{"device", "PTB210"},
+                   {"command", "AVRG"},
+                   {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
   }
 
@@ -3377,7 +3461,14 @@ bool PtbCollector::setDeviceSampleRate(int hz)
   written = serial_.write(cmd, strlen(cmd));
   if (written != static_cast<ssize_t>(std::strlen(cmd)))
   {
-    log("PTB210: 发送 MPM 命令失败");
+    logStructured(LogLevel::Error,
+                  "device.pressure.command",
+                  "ptb_mpm_command_write_failed",
+                  "PTB210 MPM 命令发送失败。",
+                  {{"device", "PTB210"},
+                   {"command", "MPM"},
+                   {"mpm", std::to_string(mpm)},
+                   {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
   }
 
@@ -3387,7 +3478,13 @@ bool PtbCollector::setDeviceSampleRate(int hz)
   written = serial_.write(reset_cmd, strlen(reset_cmd));
   if (written != static_cast<ssize_t>(std::strlen(reset_cmd)))
   {
-    log("PTB210: 发送 RESET 命令失败");
+    logStructured(LogLevel::Error,
+                  "device.pressure.command",
+                  "ptb_reset_command_write_failed",
+                  "PTB210 RESET 命令发送失败。",
+                  {{"device", "PTB210"},
+                   {"command", "RESET"},
+                   {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
   }
 
@@ -3398,7 +3495,13 @@ bool PtbCollector::setDeviceSampleRate(int hz)
     written = serial_.write(PTB_CMD_CONTINUOUS, std::strlen(PTB_CMD_CONTINUOUS));
     if (written != static_cast<ssize_t>(std::strlen(PTB_CMD_CONTINUOUS)))
     {
-      log("PTB210: 恢复连续输出失败");
+      logStructured(LogLevel::Error,
+                    "device.pressure.command",
+                    "ptb_continuous_restore_failed",
+                    "PTB210 恢复连续输出失败。",
+                    {{"device", "PTB210"},
+                     {"command", "continuous"},
+                     {"error_code", "SERIAL_WRITE_FAILED"}});
       return false;
     }
   }
@@ -3510,7 +3613,14 @@ bool PtbCollector::checkDeviceResponse()
     serial_.flush();
     if (serial_.write(PTB_CMD_PRESSURE, std::strlen(PTB_CMD_PRESSURE)) != static_cast<ssize_t>(std::strlen(PTB_CMD_PRESSURE)))
     {
-      log("PTB210: 发送压力探测命令失败");
+      logStructured(LogLevel::Error,
+                    "device.pressure.command",
+                    "ptb_pressure_probe_write_failed",
+                    "PTB210 压力探测命令发送失败。",
+                    {{"device", "PTB210"},
+                     {"command", "BP"},
+                     {"attempt", std::to_string(i + 1)},
+                     {"error_code", "SERIAL_WRITE_FAILED"}});
       continue;
     }
 
@@ -3632,7 +3742,13 @@ void PtbCollector::run()
     ssize_t written = serial_.write(PTB_CMD_CONTINUOUS, std::strlen(PTB_CMD_CONTINUOUS));
     if (written != static_cast<ssize_t>(std::strlen(PTB_CMD_CONTINUOUS)))
     {
-      log("PTB210: 启动连续输出失败");
+      logStructured(LogLevel::Error,
+                    "device.pressure.command",
+                    "ptb_continuous_start_failed",
+                    "PTB210 启动连续输出失败。",
+                    {{"device", "PTB210"},
+                     {"command", "continuous"},
+                     {"error_code", "SERIAL_WRITE_FAILED"}});
       return false;
     }
     return true;
@@ -4496,8 +4612,13 @@ bool TemperatureControllerCollector::checkDeviceResponse()
   std::string model_name;
   if (!queryWithRetry("TEC=?@", response) || !decimalValue(response, "TEC=", model_name))
   {
-    log(isEnglishLog() ? "Failed to read the temperature controller model."
-                       : "温控器型号读取失败。");
+    logStructured(LogLevel::Error,
+                  "device.temperature.state",
+                  "temperature_controller_model_read_failed",
+                  "RD105 温控器型号读取失败。",
+                  {{"device", "RD105"},
+                   {"command", "TEC"},
+                   {"error_code", "COMMAND_VERIFY_FAILED"}});
     return false;
   }
   log(isEnglishLog() ? "Temperature controller model: " + model_name
@@ -4506,8 +4627,13 @@ bool TemperatureControllerCollector::checkDeviceResponse()
   std::string firmware_version;
   if (!queryWithRetry("FPV=?@", response) || !decimalValue(response, "FPV=", firmware_version))
   {
-    log(isEnglishLog() ? "Failed to read the temperature controller firmware version."
-                       : "温控器版本号读取失败。");
+    logStructured(LogLevel::Error,
+                  "device.temperature.state",
+                  "temperature_controller_firmware_read_failed",
+                  "RD105 温控器版本号读取失败。",
+                  {{"device", "RD105"},
+                   {"command", "FPV"},
+                   {"error_code", "COMMAND_VERIFY_FAILED"}});
     return false;
   }
   log(isEnglishLog() ? "Temperature controller firmware version: " + firmware_version
@@ -4516,8 +4642,13 @@ bool TemperatureControllerCollector::checkDeviceResponse()
   log(isEnglishLog() ? "Reading parameters..." : "参数读取中...");
   if (!queryWithRetry("INQUIRE=1@", response))
   {
-    log(isEnglishLog() ? "Failed to read temperature controller parameters."
-                       : "参数读取失败。");
+    logStructured(LogLevel::Error,
+                  "device.temperature.state",
+                  "temperature_controller_parameters_read_failed",
+                  "RD105 温控器参数读取失败。",
+                  {{"device", "RD105"},
+                   {"command", "INQUIRE"},
+                   {"error_code", "COMMAND_VERIFY_FAILED"}});
     return false;
   }
   channel_count_ = response.find("TC2:TG=") == std::string::npos ? 1 : 2;
@@ -4535,8 +4666,13 @@ bool TemperatureControllerCollector::checkDeviceResponse()
                                     });
   if (isCancelRequested() || !complete)
   {
-    log(isEnglishLog() ? "Failed to read temperature controller parameters."
-                       : "参数读取失败。");
+    logStructured(LogLevel::Error,
+                  "device.temperature.state",
+                  "temperature_controller_parameters_incomplete",
+                  "RD105 温控器参数读取不完整。",
+                  {{"device", "RD105"},
+                   {"command", "INQUIRE"},
+                   {"error_code", "COMMAND_VERIFY_FAILED"}});
     return false;
   }
   log(isEnglishLog() ? "Parameter reading complete." : "参数读取完成。");
@@ -4686,9 +4822,17 @@ bool TemperatureControllerCollector::setRs485BaudIndex(uint16_t baud_index)
     return false;
   }
   const QVector<uint16_t> values = encodeUInt16(baud_index);
-  return writeRegisters(static_cast<uint16_t>(Register::Rs485Baud),
-                        std::vector<uint16_t>(values.cbegin(), values.cend()),
-                        500);
+  const std::vector<uint16_t> registers(values.cbegin(), values.cend());
+  std::lock_guard<std::mutex> lock(modbus_mutex_);
+  if (!writeRegistersUnlocked(static_cast<uint16_t>(Register::Rs485Baud),
+                              registers,
+                              500))
+  {
+    return false;
+  }
+  std::vector<uint16_t> read_back;
+  return readRegistersUnlocked(static_cast<uint16_t>(Register::Rs485Baud), 1, read_back, 500) &&
+         read_back == registers;
 }
 
 bool TemperatureControllerCollector::setOvertempOutputMode(uint16_t mode)
@@ -4851,7 +4995,13 @@ bool LidarCollector::ensureTfa1500Streaming()
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
   {
-    log("TFA1500-L: 发送高频测距启动命令失败");
+    logStructured(LogLevel::Error,
+                  "device.lidar.command",
+                  "lidar_high_frequency_start_failed",
+                  "TFA1005-L 高频测距启动命令发送失败。",
+                  {{"device", "TFA1005-L"},
+                   {"command", "high_frequency_start"},
+                   {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
   }
 
@@ -4865,7 +5015,13 @@ bool LidarCollector::ensureTfa1500Standby()
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
   {
-    log("TFA1500-L: 发送待机命令失败");
+    logStructured(LogLevel::Error,
+                  "device.lidar.command",
+                  "lidar_standby_command_failed",
+                  "TFA1005-L 待机命令发送失败。",
+                  {{"device", "TFA1005-L"},
+                   {"command", "standby"},
+                   {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
   }
 
@@ -4879,7 +5035,13 @@ bool LidarCollector::ensureTfa1500DistanceOutput()
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
   {
-    log("TFA1500-L: 发送距离输出命令失败");
+    logStructured(LogLevel::Error,
+                  "device.lidar.command",
+                  "lidar_distance_output_command_failed",
+                  "TFA1005-L 距离输出命令发送失败。",
+                  {{"device", "TFA1005-L"},
+                   {"command", "distance_output"},
+                   {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
   }
 
@@ -4892,7 +5054,13 @@ bool LidarCollector::ensureTfa1500LowFrequencyContinuous()
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
   {
-    log("TFA1500-L: 发送低频连续测距命令失败");
+    logStructured(LogLevel::Error,
+                  "device.lidar.command",
+                  "lidar_low_frequency_continuous_command_failed",
+                  "TFA1005-L 低频连续测距命令发送失败。",
+                  {{"device", "TFA1005-L"},
+                   {"command", "low_frequency_continuous"},
+                   {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
   }
 
@@ -4926,7 +5094,7 @@ bool LidarCollector::setDeviceSampleRate(int hz)
     }
 
     sample_rate_hz_.store(std::min(hz, 1000));
-    log("TFA1500-L: 高频模式使用设备自适应输出；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
+    log("TFA1005-L: 高频模式使用设备自适应输出；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
     return true;
   }
 
@@ -4934,7 +5102,7 @@ bool LidarCollector::setDeviceSampleRate(int hz)
   {
     ensureTfa1500DistanceOutput();
     sample_rate_hz_.store(std::min(hz, 100));
-    log("TFA1500-L: 距离输出模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
+    log("TFA1005-L: 距离输出模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
     return true;
   }
 
@@ -4942,13 +5110,13 @@ bool LidarCollector::setDeviceSampleRate(int hz)
   {
     ensureTfa1500LowFrequencyContinuous();
     sample_rate_hz_.store(std::min(hz, 100));
-    log("TFA1500-L: 低频模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
+    log("TFA1005-L: 低频模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
     return true;
   }
 
   ensureTfa1500DistanceOutput();
   sample_rate_hz_.store(std::min(hz, 100));
-  log("TFA1500-L: 未识别具体输出模式，已使用距离输出命令并将主机采样率限制设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
+  log("TFA1005-L: 未识别具体输出模式，已使用距离输出命令并将主机采样率限制设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
   return true;
 }
 

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 
 namespace VaporView::Ground::Devices
@@ -20,6 +21,22 @@ std::chrono::steady_clock::time_point sampleTimestamp(qint64 elapsedMs)
 bool connected(DeviceState state)
 {
     return state == DeviceState::Connected;
+}
+
+double boundedRandom(qint64 elapsedMs, int salt, double minimum, double maximum)
+{
+    const qint64 bucket = std::max<qint64>(0, elapsedMs) / 350;
+    std::uint64_t value =
+        static_cast<std::uint64_t>(bucket + 1) * 0x9E3779B185EBCA87ull;
+    value ^= static_cast<std::uint64_t>(salt + 1) * 0xC2B2AE3D27D4EB4Full;
+    value ^= value >> 33;
+    value *= 0xff51afd7ed558ccdull;
+    value ^= value >> 33;
+    value *= 0xc4ceb9fe1a85ec53ull;
+    value ^= value >> 33;
+    const double unit =
+        static_cast<double>(value & 0xFFFFFFull) / static_cast<double>(0xFFFFFFull);
+    return minimum + ((maximum - minimum) * unit);
 }
 
 } // namespace
@@ -147,7 +164,7 @@ void UiTestDataModel::applyTemperatureCommand(
         temperature_state_.overtemp_output_mode = payload.overtemp_output_mode;
         break;
     case CommandId::RestoreTemperatureFactoryDefaults:
-        resetTemperatureState();
+        resetTemperatureState(false);
         break;
     default:
         break;
@@ -340,13 +357,21 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
     result.waveformFeature.quality_flags =
         scenario_ == UiTestScenario::PartialFailure ? 1u : 0u;
 
-    result.epsilonRateHz = result.epsilon.valid ? 100.0 : 0.0;
-    result.gnssRateHz = result.gnss.valid ? 20.0 : 0.0;
-    result.imuRateHz = result.imu.valid ? 200.0 : 0.0;
-    result.ptbRateHz = result.ptb.valid ? 20.0 : 0.0;
-    result.hmpRateHz = result.hmp.valid ? 20.0 : 0.0;
-    result.lidarRateHz = result.lidar.valid ? 100.0 : 0.0;
-    result.temperatureRateHz = result.temperature.valid ? 10.0 : 0.0;
+    const bool waveFresh = connected(deviceState(SkyDeviceId::WaveTcp)) && !stalled;
+    result.epsilonRateHz = result.epsilon.valid ? boundedRandom(sampleElapsedMs, 1, 120.0, 180.0) : 0.0;
+    result.gnssRateHz = result.gnss.valid ? boundedRandom(sampleElapsedMs, 2, 100.0, 140.0) : 0.0;
+    result.imuRateHz = result.imu.valid ? boundedRandom(sampleElapsedMs, 3, 190.0, 240.0) : 0.0;
+    result.ptbRateHz = result.ptb.valid ? boundedRandom(sampleElapsedMs, 4, 100.0, 135.0) : 0.0;
+    result.hmpRateHz = result.hmp.valid ? boundedRandom(sampleElapsedMs, 5, 100.0, 135.0) : 0.0;
+    result.lidarRateHz = result.lidar.valid ? boundedRandom(sampleElapsedMs, 6, 120.0, 180.0) : 0.0;
+    result.temperatureRateHz = result.temperature.valid ? boundedRandom(sampleElapsedMs, 7, 100.0, 130.0) : 0.0;
+    result.waveformFeatureRateHz = waveFresh ? boundedRandom(sampleElapsedMs, 8, 110.0, 160.0) : 0.0;
+    result.telemetryStatusRateHz = !stalled ? boundedRandom(sampleElapsedMs, 9, 100.0, 130.0) : 0.0;
+    result.rawWaveformRateHz = waveFresh ? boundedRandom(sampleElapsedMs, 10, 115.0, 170.0) : 0.0;
+    result.harmonicWaveformRateHz = waveFresh ? boundedRandom(sampleElapsedMs, 11, 100.0, 145.0) : 0.0;
+    result.waveCaptureRateHz = waveFresh ? boundedRandom(sampleElapsedMs, 12, 110.0, 165.0) : 0.0;
+    result.receiveBitsPerSecond = !stalled ? boundedRandom(sampleElapsedMs, 13, 140'000'000.0, 360'000'000.0) : 0.0;
+    result.transmitBitsPerSecond = !stalled ? boundedRandom(sampleElapsedMs, 14, 130'000'000.0, 330'000'000.0) : 0.0;
     return result;
 }
 
@@ -366,7 +391,7 @@ int UiTestDataModel::deviceIndex(SkyDeviceId device)
     return -1;
 }
 
-void UiTestDataModel::resetTemperatureState()
+void UiTestDataModel::resetTemperatureState(bool outputEnabled)
 {
     temperature_state_ = TemperatureControllerData();
     temperature_state_.valid = true;
@@ -379,10 +404,10 @@ void UiTestDataModel::resetTemperatureState()
         TemperatureControllerChannelData& channel = temperature_state_.channels[index];
         channel.target_temperature_c = index == 0 ? 25.0 : 27.0;
         channel.measured_temperature_c = channel.target_temperature_c;
-        channel.output_percent = 0.0;
-        channel.output_current_a = 0.0;
+        channel.output_percent = outputEnabled ? 32.0 : 0.0;
+        channel.output_current_a = outputEnabled ? channel.output_percent * 0.012 : 0.0;
         channel.output_mode = 1;
-        channel.output_enabled = false;
+        channel.output_enabled = outputEnabled;
         channel.max_output_percent = 80;
         channel.auto_pid_mode = 1;
         channel.overtemp_upper_c = 45.0;

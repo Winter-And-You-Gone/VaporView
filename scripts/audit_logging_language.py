@@ -50,10 +50,40 @@ LOG_CALLS = {
     "reportUserIssue": {"source": 1, "category": 2, "message": 3, "fields": 4},
     "publishRuntimeLog": {"source_literal": "SkyCore", "category": 1, "event": 2, "message": 3, "fields": 4},
     "publishDeviceLog": {"source_literal": "SkyCore", "category": 1, "event": 2, "message": 3, "fields": 4},
+    "logStructured": {"source_literal": "SkyCore", "category": 1, "event": 2, "message": 3, "fields": 4},
     "publishIpcLog": {"source_literal": "SkyCore", "category_literal": "ipc", "event": 1, "message": 2, "fields": 3},
     "publishClientLog": {"source_literal": "SkyTui", "category": 1, "event": 2, "message": 3, "fields": 4},
     "publishTelemetryLog": {"source_literal": "Ground", "category": 1, "event": 2, "message": 3, "fields": 4},
     "reportProtocolDiagnostic": {"source_literal": "Ground", "category": 1, "event": 2, "message": 3, "fields": 4},
+    "publishGroundLog": {"source_literal": "Ground", "category": 1, "event": 2, "message": 3, "fields": 4},
+    "publishUiTestEvent": {
+        "source_literal": "Ground",
+        "category_literal": "ui.test",
+        "event": 0,
+        "message_literal": "界面测试日志已更新。",
+        "fields": 2,
+    },
+    "publishTcpWaveLog": {"source_literal": "Ground", "category_literal": "telemetry.wave.tcp", "event": 1, "message": 2, "fields": 3},
+    "emitTcpLog": {"source_literal": "TelemetryLink", "category_literal": "telemetry.link", "event": 1, "message": 2, "fields": 3},
+    "postConnectionLog": {"source_literal": "Ground", "category_literal": "device.connection", "event": 1, "message": 2, "fields": 3},
+    "postImuLog": {
+        "source_literal": "Ground",
+        "category_literal": "device.navigation.command",
+        "level": 1,
+        "event": 2,
+        "message": 3,
+        "fields": 4,
+    },
+    "postSerialPortDetectionLog": {
+        "source_literal": "Ground",
+        "category_literal": "device.connection",
+        "level": 1,
+        "event": 2,
+        "message": 3,
+        "fields": 4,
+    },
+    "publishTemperatureCommandLog": {"source_literal": "Ground", "category_literal": "device.temperature.command", "event": 1, "message": 2, "fields": 3},
+    "emitLog": {"source_literal": "Ground", "category": 2, "event": 3, "message": 4, "fields": 5},
 }
 
 LEVEL_NAMES = ("LogLevel::Warning", "LogLevel::Error", "LogLevel::Critical")
@@ -516,6 +546,9 @@ def source_literal_for_call(call: Call) -> str | None:
 
 
 def message_literal_for_call(call: Call) -> str | None:
+    literal = LOG_CALLS[call.name].get("message_literal")
+    if isinstance(literal, str):
+        return literal
     message_index = LOG_CALLS[call.name]["message"]
     if isinstance(message_index, int) and len(call.args) > message_index:
         return literal_from_arg(call.args[message_index])
@@ -530,6 +563,9 @@ def fields_arg_is_dynamic(call: Call) -> bool:
 
 
 def level_text(call: Call) -> str:
+    level_index = LOG_CALLS[call.name].get("level", 0)
+    if isinstance(level_index, int) and len(call.args) > level_index:
+        return call.args[level_index]
     return call.args[0] if call.args else ""
 
 
@@ -647,7 +683,7 @@ def audit_text(path_label: str, text: str) -> List[Issue]:
                 f"{language}-diagnostic-failure",
                 path_label,
                 line_for_offset(scan_text, match.start()),
-                f"diagnosticFailure 内部诊断应使用简体中文: {literal}",
+                f"LogService writer failure 内部提示应使用简体中文: {literal}",
                 "改为中文固定文案，系统原始错误放入结构化字段。",
             ))
 

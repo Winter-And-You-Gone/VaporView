@@ -215,6 +215,7 @@ class TemperatureControllerPanel : public QWidget
 
 public:
     explicit TemperatureControllerPanel(QWidget *parent = nullptr);
+    QWidget *titleStatusWidget() const;
     void updateData(const VaporView::TemperatureControllerData& controllerData);
     void updateRate(double hz);
     void setEnglish(bool english);
@@ -279,6 +280,7 @@ private:
         QWidget *common_top_controls = nullptr;
         QWidget *common_top_leading_spacer = nullptr;
         QWidget *common_top_middle_spacer = nullptr;
+        QWidget *common_top_mode_spacer = nullptr;
         QWidget *enable_field = nullptr;
         QWidget *auto_pid_field = nullptr;
         QWidget *sensor_model_field = nullptr;
@@ -292,11 +294,15 @@ private:
         QLineEdit *pt_b_edit = nullptr;
         QLineEdit *pt_c_edit = nullptr;
         std::array<QLineEdit *, 8> polynomial_edits{};
+        QWidget *sensor_config_page = nullptr;
+        QFrame *sensor_calibration_overlay = nullptr;
+        QWidget *sensor_calibration_drawer = nullptr;
         QFrame *sensor_config_top_bar = nullptr;
         QPushButton *common_params_button = nullptr;
         QPushButton *advanced_params_button = nullptr;
         QPushButton *sensor_config_button = nullptr;
         QStackedWidget *config_sub_stack = nullptr;
+        QWidget *sub_page_row = nullptr;
     };
     struct PendingChannelEdits
     {
@@ -334,6 +340,10 @@ private:
         QComboBox *overtemp_output_combo = nullptr;
         QLineEdit *internal_temperature_edit = nullptr;
         QPushButton *factory_reset_button = nullptr;
+        QFrame *sub_top_bar = nullptr;
+        QPushButton *common_params_button = nullptr;
+        QPushButton *advanced_params_button = nullptr;
+        QPushButton *sensor_config_button = nullptr;
     };
     struct PendingCommonEdits
     {
@@ -355,11 +365,14 @@ private:
     void selectChannel(int index);
     void selectChannelSubPage(int channelIndex, int subPageIndex);
     bool eventFilter(QObject *watched, QEvent *event) override;
-    void alignSensorTopPolynomialFields(int channelIndex);
     void alignChannelTopControlFields(int channelIndex);
+    void placeControllerModeFieldInTopControls(int channelIndex, int subPageIndex);
     void alignCommonSettingsColumns(int channelIndex);
+    void alignSensorCalibrationOverlay(int channelIndex);
+    void updateCalibrationDrawerVisibility();
     void updateChannelStackMinimumHeight();
     void emitSensorConfigRequest(int index);
+    void fitControllerModeComboWidth();
     void updateChannelTexts();
     void updateChannelData(int index, const VaporView::TemperatureControllerChannelData& channel, bool valid);
     int channelIndex(quint8 channel) const;
@@ -369,8 +382,13 @@ private:
     QPushButton *channel_button_2_ = nullptr;
     QPushButton *common_settings_button_ = nullptr;
     QStackedWidget *channel_top_controls_stack_ = nullptr;
+    QWidget *controller_mode_top_controls_ = nullptr;
     QStackedWidget *channel_stack_ = nullptr;
+    QStackedWidget *sub_page_bar_stack_ = nullptr;
     TemperatureTrendPlotWidget *temperature_plot_ = nullptr;
+    QWidget *temperature_plot_container_ = nullptr;
+    QWidget *title_status_strip_ = nullptr;
+    QWidget *controller_mode_field_ = nullptr;
     QLabel *rate_title_lbl_ = nullptr;
     QLabel *rate_label_ = nullptr;
     QLabel *internal_temperature_label_ = nullptr;
@@ -384,6 +402,7 @@ private:
     CommonWidgets common_{};
     std::array<ChannelWidgets, 2> channels_{};
     std::array<QVector<double>, 2> measured_temperature_history_{};
+    std::array<QVector<double>, 2> measured_temperature_time_history_{};
     std::array<double, 2> target_temperature_by_channel_{
         std::numeric_limits<double>::quiet_NaN(),
         std::numeric_limits<double>::quiet_NaN()};

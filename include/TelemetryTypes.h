@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cstdint>
+#include <map>
 
 namespace VaporView
 {
@@ -34,6 +35,10 @@ enum class MsgType : quint8
     SkyConfig = 0x05,
     SkyConfigApplyResult = 0x06,
     TemperatureControllerStatus = 0x07,
+    Ai8TemperatureControllerStatus = 0x08,
+    DeviceOperationResponse = 0x09,
+    RtcmCorrectionData = 0x0A,
+    SerialPortDetectionResult = 0x0B,
     Command = 0x10,
     CommandAck = 0x11,
     Heartbeat = 0x20,
@@ -66,6 +71,8 @@ enum class CommandId : quint16
     SaveSkyConfig = 32,
     ReloadSkyConfig = 33,
     SetPeakSearchRange = 34,
+    AutoDetectSerialPorts = 35,
+    CancelSerialPortDetection = 36,
     SetTemperatureTarget = 40,
     SetTemperatureOutputEnabled = 41,
     SetTemperatureOutputMode = 42,
@@ -82,7 +89,18 @@ enum class CommandId : quint16
     SetTemperatureOvertempLower = 53,
     SetTemperatureSlope = 54,
     SetTemperatureStartupDelay = 55,
+    DeviceOperation = 60,
     ShutdownCore = 90,
+};
+
+enum class DeviceOperation : quint8
+{
+    ReadParameters = 1,
+    WriteParameters = 2,
+    FactoryReset = 3,
+    ConfigureEpsilonPacketRates = 10,
+    ConfigureEpsilonMainAntennaLeverArm = 11,
+    ConfigureEpsilonRtcmInput = 12,
 };
 
 enum class SkyDeviceId : quint8
@@ -123,6 +141,8 @@ enum class CommandErrorCode : quint32
     ConfigSaveFailed = 11,
     RecordingAlreadyStarted = 12,
     RecordingNotStarted = 13,
+    SerialPortDetectionInProgress = 14,
+    SerialPortDetectionNotRunning = 15,
     InternalError = 100,
 };
 
@@ -270,6 +290,28 @@ struct TemperatureControllerCommand
     std::array<int16_t, 8> polynomial_exponents{};
 };
 
+struct EpsilonPacketRatesOperation
+{
+    int output_rate_hz = 0;
+    int callback_rate_hz = 0;
+    std::map<uint8_t, int> packet_rates;
+    QString packet_rate_signature;
+};
+
+struct EpsilonMainAntennaLeverArmOperation
+{
+    double x_m = 0.0;
+    double y_m = 0.0;
+    double z_m = 0.0;
+};
+
+struct EpsilonRtcmInputOperation
+{
+    int device_port_index = 2;
+    QString forward_port;
+    int forward_baud = 115200;
+};
+
 struct DeviceStatusItem
 {
     SkyDeviceId device_id = SkyDeviceId::Epsilon;
@@ -306,6 +348,11 @@ struct TelemetryStatus
     quint64 raw_temperature_humidity_record_count = 0;
     quint64 raw_distance_record_count = 0;
     quint64 raw_waveform_record_count = 0;
+    quint64 rtcm_correction_bytes_received = 0;
+    quint64 rtcm_correction_chunks_received = 0;
+    quint64 rtcm_correction_dropped_bytes = 0;
+    quint64 rtcm_correction_dropped_chunks = 0;
+    quint64 rtcm_correction_last_receive_time_us = 0;
 };
 
 struct CommandMessage
@@ -323,6 +370,24 @@ struct CommandAck
     CommandErrorCode error_code = CommandErrorCode::Ok;
 };
 
+struct DeviceOperationRequest
+{
+    quint32 request_id = 0;
+    SkyDeviceId device_id = SkyDeviceId::All;
+    DeviceOperation operation = DeviceOperation::ReadParameters;
+    QByteArray payload;
+};
+
+struct DeviceOperationResponse
+{
+    quint32 request_id = 0;
+    SkyDeviceId device_id = SkyDeviceId::All;
+    DeviceOperation operation = DeviceOperation::ReadParameters;
+    CommandErrorCode error_code = CommandErrorCode::Ok;
+    QString error_message;
+    QByteArray payload;
+};
+
 QString skyDeviceIdName(SkyDeviceId id);
 QString deviceStateName(DeviceState state);
 QString commandIdName(CommandId id);
@@ -337,6 +402,7 @@ Q_DECLARE_METATYPE(VaporView::WaveformFeature)
 Q_DECLARE_METATYPE(VaporView::DeviceStatusItem)
 Q_DECLARE_METATYPE(VaporView::TelemetryStatus)
 Q_DECLARE_METATYPE(VaporView::CommandAck)
+Q_DECLARE_METATYPE(VaporView::DeviceOperationResponse)
 Q_DECLARE_METATYPE(VaporView::CommandId)
 Q_DECLARE_METATYPE(VaporView::SkyDeviceId)
 

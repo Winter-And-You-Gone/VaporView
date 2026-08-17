@@ -971,7 +971,7 @@ LogService::LogService(const QString& applicationName,
             : fallbackDirectoryOverride,
         [this](const QString& message) {
             QMetaObject::invokeMethod(this,
-                                      [this, message]() { emit diagnosticFailure(message); },
+                                      [this, message]() { emit writerFailureReported(message); },
                                       Qt::QueuedConnection);
         },
         [this]() { return nextSequence(); });
@@ -1080,6 +1080,11 @@ bool LogService::withCurrentInstance(const std::function<void(LogService&)>& cal
     return true;
 }
 
+void LogService::writeLogFallback(const LogRecord& record)
+{
+    fallbackWrite(LoggingInternal::serializeBoundedLogRecord(record));
+}
+
 void LogService::installQtMessageHandler()
 {
     if (!qt_message_handler_installed_)
@@ -1175,7 +1180,6 @@ void reportUserIssue(LogLevel level,
         if (!fields.contains(QStringLiteral("event")))
         {
             fields.insert(QStringLiteral("event"), QStringLiteral("user_issue_reported"));
-            fields.insert(QStringLiteral("legacy_unclassified"), true);
         }
         if (level >= LogLevel::Error &&
             !fields.contains(QStringLiteral("error_code")) &&

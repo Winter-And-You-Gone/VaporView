@@ -72,7 +72,7 @@ MainWindow::MainWindow(QWidget *parent)
     state_->font_scale_percent_ = userSettings.value(
         "font_scale_percent",
         VaporView::defaultFontScalePercentForScreen(this)).toInt();
-    if (state_->font_scale_percent_ < 70 || state_->font_scale_percent_ > 150)
+    if (state_->font_scale_percent_ < 60 || state_->font_scale_percent_ > 180)
     {
         state_->font_scale_percent_ = 100;
     }
@@ -80,6 +80,8 @@ MainWindow::MainWindow(QWidget *parent)
     state_->log_view_mode_ = VaporView::Ground::Main::uiLogViewModeFromSetting(
         userSettings.value(QStringLiteral("log_view_mode"), QStringLiteral("attention")).toString());
     state_->log_auto_follow_enabled_ = userSettings.value(QStringLiteral("log_auto_follow"), true).toBool();
+    state_->log_hide_source_category_enabled_ =
+        userSettings.value(QStringLiteral("log_hide_source_category"), false).toBool();
     if (qApp)
     {
         qApp->setProperty(kAppDarkThemeProperty, state_->dark_theme_enabled_);
@@ -148,67 +150,103 @@ MainWindow::MainWindow(QWidget *parent)
             switch (warning)
             {
             case Warning::RawFormatDocumentCopyFailed:
-                log(state_->is_english_
-                    ? QStringLiteral("Warning: failed to copy unified raw DAT format document into session folder")
-                    : QStringLiteral("警告：未能将统一 raw DAT 格式说明复制到当前会话目录"));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("raw_format_document_copy_failed"),
+                                 QStringLiteral("未能将统一 raw DAT 格式说明复制到当前会话目录。"),
+                                 {{QStringLiteral("error_code"), QStringLiteral("RAW_FORMAT_DOCUMENT_COPY_FAILED")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:raw_format_document_copy_failed")}});
                 break;
             case Warning::DeviceConfigSnapshotFailed:
-                log(state_->is_english_
-                    ? QStringLiteral("Warning: failed to save device configuration snapshot")
-                    : QStringLiteral("警告：保存设备配置快照失败"));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("device_config_snapshot_failed"),
+                                 QStringLiteral("保存设备配置快照失败。"),
+                                 {{QStringLiteral("error_code"), QStringLiteral("DEVICE_CONFIG_SNAPSHOT_FAILED")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:device_config_snapshot_failed")}});
                 break;
             case Warning::MetadataUpdateFailed:
-                log(state_->is_english_
-                    ? QStringLiteral("Warning: failed to update session metadata")
-                    : QStringLiteral("警告：更新会话元数据失败"));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("session_metadata_update_failed"),
+                                 QStringLiteral("更新会话元数据失败。"),
+                                 {{QStringLiteral("error_code"), QStringLiteral("SESSION_METADATA_UPDATE_FAILED")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:metadata_update_failed")}});
                 break;
             case Warning::TcpQueueBacklog:
-                log(QString(state_->is_english_
-                    ? "TCP raw recording queue backlog is %1 MiB. Disk writes may be slower than the incoming stream."
-                    : "TCP 原始记录队列积压 %1 MiB，磁盘写入可能慢于数据流。")
-                        .arg(value));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("tcp_raw_recording_queue_backlog"),
+                                 QStringLiteral("TCP 原始记录队列出现积压，磁盘写入可能慢于数据流。"),
+                                 {{QStringLiteral("backlog_mib"), static_cast<qulonglong>(value)},
+                                  {QStringLiteral("reason_code"), QStringLiteral("BACKPRESSURE")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:tcp_raw_queue_backlog")}});
                 break;
             case Warning::TcpQueueFull:
-                log(QString(state_->is_english_
-                    ? "TCP raw recording queue is full (%1 MiB). Dropping incoming raw frames to keep the TCP link responsive."
-                    : "TCP 原始记录队列已满（%1 MiB）。为保持 TCP 链路响应，正在丢弃新到原始帧。")
-                        .arg(value));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("tcp_raw_recording_queue_full"),
+                                 QStringLiteral("TCP 原始记录队列已满，正在丢弃新到原始帧以保持链路响应。"),
+                                 {{QStringLiteral("queue_mib"), static_cast<qulonglong>(value)},
+                                  {QStringLiteral("error_code"), QStringLiteral("TCP_RAW_QUEUE_FULL")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:tcp_raw_queue_full")}});
                 break;
             case Warning::TcpFramesDropped:
-                log(QString(state_->is_english_
-                    ? "Warning: dropped %1 TCP raw frames because the recording queue was full."
-                    : "警告：TCP 原始记录队列已满，已丢弃 %1 帧。")
-                        .arg(value));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("tcp_raw_frames_dropped"),
+                                 QStringLiteral("TCP 原始记录队列已满，已丢弃部分帧。"),
+                                 {{QStringLiteral("dropped_frames"), static_cast<qulonglong>(value)},
+                                  {QStringLiteral("error_code"), QStringLiteral("TCP_RAW_FRAMES_DROPPED")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:tcp_raw_frames_dropped")}});
                 break;
             case Warning::DeviceRawQueueBacklog:
-                log(QString(state_->is_english_
-                    ? "Device raw recording queue backlog is %1 MiB. Disk writes may be slower than the serial streams."
-                    : "设备原始记录队列积压 %1 MiB，磁盘写入可能慢于串口数据流。")
-                        .arg(value));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("device_raw_recording_queue_backlog"),
+                                 QStringLiteral("设备原始记录队列出现积压，磁盘写入可能慢于串口数据流。"),
+                                 {{QStringLiteral("backlog_mib"), static_cast<qulonglong>(value)},
+                                  {QStringLiteral("reason_code"), QStringLiteral("BACKPRESSURE")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:device_raw_queue_backlog")}});
                 break;
             case Warning::DeviceRawQueueFull:
-                log(QString(state_->is_english_
-                    ? "Device raw recording queue is full (%1 MiB). Dropping incoming raw frames to keep collectors responsive."
-                    : "设备原始记录队列已满（%1 MiB）。为保持采集线程响应，正在丢弃新到原始帧。")
-                        .arg(value));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("device_raw_recording_queue_full"),
+                                 QStringLiteral("设备原始记录队列已满，正在丢弃新到原始帧以保持采集线程响应。"),
+                                 {{QStringLiteral("queue_mib"), static_cast<qulonglong>(value)},
+                                  {QStringLiteral("error_code"), QStringLiteral("DEVICE_RAW_QUEUE_FULL")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:device_raw_queue_full")}});
                 break;
             case Warning::DeviceRawFramesDropped:
-                log(QString(state_->is_english_
-                    ? "Warning: dropped %1 device raw frames because the recording queue was full."
-                    : "警告：设备原始记录队列已满，已丢弃 %1 帧。")
-                        .arg(value));
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("device_raw_frames_dropped"),
+                                 QStringLiteral("设备原始记录队列已满，已丢弃部分帧。"),
+                                 {{QStringLiteral("dropped_frames"), static_cast<qulonglong>(value)},
+                                  {QStringLiteral("error_code"), QStringLiteral("DEVICE_RAW_FRAMES_DROPPED")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("session:device_raw_frames_dropped")}});
                 break;
             }
         }, Qt::QueuedConnection);
     });
 
     VaporView::Ground::Devices::LocalConnectionCallbacks connectionCallbacks;
-    connectionCallbacks.log = [this](const QString& message) {
-        QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
+    connectionCallbacks.log = [this](const VaporView::Ground::Devices::LocalConnectionLogEntry& entry) {
+        QMetaObject::invokeMethod(this, [this, entry]() {
+            publishGroundLog(entry.level,
+                             entry.category,
+                             entry.event,
+                             entry.message,
+                             entry.fields);
+        }, Qt::QueuedConnection);
     };
     connectionCallbacks.finished = [this](bool connected) {
         QMetaObject::invokeMethod(this, [this, connected]() {
-            finishConnectionAttempt(connected);
+            if (state_->local_connection_coordinator_)
+            {
+                state_->local_connection_coordinator_->serialFinished(connected);
+            }
         }, Qt::QueuedConnection);
     };
     connectionCallbacks.dataReady = [this](VaporView::Ground::Devices::LocalDeviceKind device) {
@@ -264,8 +302,12 @@ MainWindow::MainWindow(QWidget *parent)
     scheduleHooks.sessionOpen = [this]() {
         return scheduledRecordingSessionOpen();
     };
-    scheduleHooks.log = [this](const QString& english, const QString& chinese) {
-        log(state_->is_english_ ? english : chinese);
+    scheduleHooks.log = [this](const RecordingScheduleController::LogEntry& entry) {
+        publishGroundLog(entry.level,
+                         QStringLiteral("session.recording"),
+                         entry.event,
+                         entry.message,
+                         entry.fields);
     };
     scheduleHooks.stateChanged = [this]() {
         if (state_->scheduled_recording_timer_)
@@ -286,14 +328,120 @@ MainWindow::MainWindow(QWidget *parent)
     setupMenuBar();
     setupToolBar();
     state_->remote_sky_controller_ = std::make_unique<VaporView::Ground::Devices::RemoteSkyController>();
+    state_->remote_sky_controller_->setObjectName(QStringLiteral("remoteSkyController"));
+    setProperty("remoteSkyController",
+                QVariant::fromValue(static_cast<QObject *>(state_->remote_sky_controller_.get())));
     setupCentralWidget();
+    VaporView::Ground::Devices::Ai8DeviceSession::LocalAdapter ai8LocalAdapter;
+    ai8LocalAdapter.readPage = [controller = state_->local_connection_controller_.get()](
+                                   VaporView::Ai8TemperatureControllerProtocol::Page page,
+                                   const VaporView::Ai8TemperatureControllerProtocol::Selection& selection) {
+        return controller->readAi8Page(page, selection);
+    };
+    ai8LocalAdapter.writePage = [controller = state_->local_connection_controller_.get()](
+                                    const VaporView::Ai8TemperatureControllerProtocol::PageData& pageData) {
+        return controller->writeAi8Page(pageData);
+    };
+    state_->ai8_device_session_ =
+        std::make_unique<VaporView::Ground::Devices::Ai8DeviceSession>(
+            std::move(ai8LocalAdapter), state_->remote_sky_controller_.get());
+    state_->ai8_device_session_->setEnglish(state_->is_english_);
+    connect(state_->ai8_device_session_.get(),
+            &VaporView::Ground::Devices::Ai8DeviceSession::availabilityChanged,
+            this, &MainWindow::onAi8SessionAvailabilityChanged);
+    connect(state_->ai8_device_session_.get(),
+            &VaporView::Ground::Devices::Ai8DeviceSession::operationStarted,
+            this, &MainWindow::onAi8SessionOperationStarted);
+    connect(state_->ai8_device_session_.get(),
+            &VaporView::Ground::Devices::Ai8DeviceSession::operationFinished,
+            this, &MainWindow::onAi8SessionOperationFinished);
+    connect(state_->ai8_device_session_.get(),
+            &VaporView::Ground::Devices::Ai8DeviceSession::pageDataAvailable,
+            this, &MainWindow::onAi8SessionPageDataAvailable);
+    VaporView::Ground::Devices::Rd105DeviceSession::LocalAdapter rd105LocalAdapter;
+    rd105LocalAdapter.sendCommand =
+        [controller = state_->local_connection_controller_.get()](
+            VaporView::CommandId command,
+            const VaporView::TemperatureControllerCommand& payload) {
+            return controller->sendTemperatureCommand(command, payload);
+        };
+    state_->rd105_device_session_ =
+        std::make_unique<VaporView::Ground::Devices::Rd105DeviceSession>(
+            std::move(rd105LocalAdapter), state_->remote_sky_controller_.get());
+    state_->rd105_device_session_->setEnglish(state_->is_english_);
+    connect(state_->rd105_device_session_.get(),
+            &VaporView::Ground::Devices::Rd105DeviceSession::availabilityChanged,
+            this, &MainWindow::onRd105SessionAvailabilityChanged);
+    connect(state_->rd105_device_session_.get(),
+            &VaporView::Ground::Devices::Rd105DeviceSession::operationStarted,
+            this, &MainWindow::onRd105SessionOperationStarted);
+    connect(state_->rd105_device_session_.get(),
+            &VaporView::Ground::Devices::Rd105DeviceSession::operationFinished,
+            this, &MainWindow::onRd105SessionOperationFinished);
+    VaporView::Ground::Devices::EpsilonDeviceSession::LocalAdapter epsilonLocalAdapter;
+    auto epsilonLogCallback = [this](const VaporView::Ground::EpsilonConfigurationLogEntry& entry) {
+        QMetaObject::invokeMethod(this, [this, entry]() mutable {
+            publishGroundLog(entry.level,
+                             entry.category,
+                             entry.event,
+                             entry.message,
+                             entry.fields);
+        }, Qt::QueuedConnection);
+    };
+    epsilonLocalAdapter.configurePacketRates =
+        [epsilonLogCallback](
+            const VaporView::EpsilonPacketRatesOperation& operation,
+            const VaporView::Ground::EpsilonDeviceOperation& deviceOperation) {
+            return VaporView::Ground::EpsilonConfigurationService::configurePacketRates(
+                deviceOperation,
+                operation.output_rate_hz,
+                operation.callback_rate_hz,
+                operation.packet_rates,
+                operation.packet_rate_signature,
+                epsilonLogCallback);
+        };
+    epsilonLocalAdapter.configureMainAntennaLeverArm =
+        [epsilonLogCallback](
+            const VaporView::EpsilonMainAntennaLeverArmOperation& operation,
+            const VaporView::Ground::EpsilonDeviceOperation& deviceOperation) {
+            return VaporView::Ground::EpsilonConfigurationService::applyMainAntennaLeverArm(
+                deviceOperation,
+                operation.x_m,
+                operation.y_m,
+                operation.z_m,
+                epsilonLogCallback);
+        };
+    epsilonLocalAdapter.configureRtcmInput =
+        [epsilonLogCallback](
+            const VaporView::EpsilonRtcmInputOperation& operation,
+            const VaporView::Ground::EpsilonDeviceOperation& deviceOperation) {
+            return VaporView::Ground::EpsilonConfigurationService::configureRtcmPort(
+                deviceOperation,
+                operation.device_port_index,
+                operation.forward_port,
+                operation.forward_baud,
+                QString::number(operation.forward_baud),
+                epsilonLogCallback);
+        };
+    state_->epsilon_device_session_ =
+        std::make_unique<VaporView::Ground::Devices::EpsilonDeviceSession>(
+            std::move(epsilonLocalAdapter), state_->remote_sky_controller_.get());
+    state_->epsilon_device_session_->setEnglish(state_->is_english_);
+    connect(state_->epsilon_device_session_.get(),
+            &VaporView::Ground::Devices::EpsilonDeviceSession::availabilityChanged,
+            this, &MainWindow::onEpsilonSessionAvailabilityChanged);
+    connect(state_->epsilon_device_session_.get(),
+            &VaporView::Ground::Devices::EpsilonDeviceSession::operationStarted,
+            this, &MainWindow::onEpsilonSessionOperationStarted);
+    connect(state_->epsilon_device_session_.get(),
+            &VaporView::Ground::Devices::EpsilonDeviceSession::operationFinished,
+            this, &MainWindow::onEpsilonSessionOperationFinished);
+    configureLocalConnectionCoordinator();
     setupWindowBorderFrames();
     setupWindowResizeHandles();
     using RemoteSkyController = VaporView::Ground::Devices::RemoteSkyController;
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::linkOpenChanged,
             this, &MainWindow::onRemoteLinkOpenChanged);
-    connect(state_->remote_sky_controller_.get(), &RemoteSkyController::logMessage,
-            this, [this](const QString& message) { log(message); });
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::basicTelemetryUpdated,
             this, &MainWindow::onRemoteBasicTelemetryUpdated);
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::waveformUpdated,
@@ -304,11 +452,71 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onRemoteTelemetryStatusUpdated);
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::temperatureControllerStatusUpdated,
             this, &MainWindow::onRemoteTemperatureControllerStatusUpdated);
+    connect(state_->remote_sky_controller_.get(), &RemoteSkyController::ai8TemperatureControllerStatusUpdated,
+            this, &MainWindow::onRemoteAi8TemperatureControllerStatusUpdated);
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::commandAckReceived,
             this, &MainWindow::onRemoteCommandAckReceived);
+    if (auto *telemetryService = state_->remote_sky_controller_->telemetryService())
+    {
+        connect(telemetryService,
+                &VaporView::GroundTelemetryService::skyConfigReceived,
+                this,
+                &MainWindow::onRemoteSkyConfigReceived);
+        connect(telemetryService,
+                &VaporView::GroundTelemetryService::skyConfigApplyResultReceived,
+                this,
+                &MainWindow::onRemoteSkyConfigApplyResultReceived);
+        connect(telemetryService,
+                &VaporView::GroundTelemetryService::serialPortDetectionResultReceived,
+                this,
+                &MainWindow::onRemoteSerialPortDetectionResult);
+    }
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::commandTimedOut,
             this, [this](VaporView::CommandId commandId, quint16 commandSeq) {
-        if (commandId == VaporView::CommandId::SetPeakSearchRange)
+        if (commandId == VaporView::CommandId::GetSkyConfig &&
+            commandSeq == state_->remote_sky_config_read_seq_)
+        {
+            state_->remote_sky_config_loading_ = false;
+            clearPendingRemoteWaveTcpConnection();
+            setRemoteSkyConfigStatus(state_->is_english_
+                ? QStringLiteral("Remote Sky config read timed out.")
+                : QStringLiteral("读取天空端配置超时。"),
+                true);
+            updateRemoteSkyConfigControlsState();
+        }
+        else if (commandId == VaporView::CommandId::SetSkyConfig &&
+                 commandSeq == state_->remote_sky_config_apply_seq_)
+        {
+            state_->remote_sky_config_applying_ = false;
+            clearPendingRemoteWaveTcpConnection();
+            state_->remote_sky_config_dirty_ = true;
+            setRemoteSkyConfigStatus(state_->is_english_
+                ? QStringLiteral("Remote Sky config apply timed out.")
+                : QStringLiteral("应用天空端配置超时。"),
+                true);
+            updateRemoteSkyConfigControlsState();
+        }
+        else if (commandId == VaporView::CommandId::SaveSkyConfig &&
+                 commandSeq == state_->remote_sky_config_save_seq_)
+        {
+            state_->remote_sky_config_saving_ = false;
+            setRemoteSkyConfigStatus(state_->is_english_
+                ? QStringLiteral("Remote Sky config save timed out.")
+                : QStringLiteral("保存天空端配置超时。"),
+                true);
+            updateRemoteSkyConfigControlsState();
+        }
+        else if (commandId == VaporView::CommandId::AutoDetectSerialPorts &&
+                 commandSeq == state_->remote_serial_detection_seq_)
+        {
+            state_->port_detection_in_progress_ = false;
+            state_->remote_serial_detection_seq_ = 0;
+            setRemoteSkyConfigStatus(state_->is_english_
+                ? QStringLiteral("Remote serial-port detection timed out.")
+                : QStringLiteral("远程串口自动识别超时。"), true);
+            updateConnectionStatus(state_->is_connected_);
+        }
+        else if (commandId == VaporView::CommandId::SetPeakSearchRange)
         {
             state_->remote_peak_search_commands_.remove(commandSeq);
             if (state_->tcp_wave_panel_)
@@ -316,24 +524,6 @@ MainWindow::MainWindow(QWidget *parent)
                 state_->tcp_wave_panel_->rejectRemotePeakSearchRange(
                     state_->is_english_ ? QStringLiteral("ACK timed out") : QStringLiteral("ACK 超时"));
             }
-        }
-        else if (isTemperatureCommand(commandId))
-        {
-            const VaporView::TemperatureControllerCommand request =
-                state_->remote_temperature_commands_.take(commandSeq);
-            const quint8 channel = request.channel == 0 ? 1 : request.channel;
-            if (state_->temperature_controller_panel_)
-            {
-                state_->temperature_controller_panel_->clearCommandPending(commandId, channel);
-                state_->temperature_controller_panel_->setCommandStatus(
-                    temperatureCommandStatusText(
-                        commandId,
-                        channel,
-                        false,
-                        state_->is_english_ ? QStringLiteral("ACK timed out") : QStringLiteral("ACK 超时")),
-                    true);
-            }
-            restoreTemperatureCommandUi(commandId, channel);
         }
         else if (commandId == VaporView::CommandId::EnableWaveformStreaming ||
                  commandId == VaporView::CommandId::DisableWaveformStreaming)
@@ -383,12 +573,6 @@ MainWindow::~MainWindow()
 {
     qApp->removeEventFilter(this);
     saveAppSidebarWidth();
-
-    if (state_->sky_device_config_dialog_)
-    {
-        delete state_->sky_device_config_dialog_;
-        state_->sky_device_config_dialog_ = nullptr;
-    }
     if (state_->rtk_config_dialog_)
     {
         delete state_->rtk_config_dialog_;
@@ -434,15 +618,15 @@ MainWindow::~MainWindow()
     {
         state_->port_detection_thread_.join();
     }
-    if (state_->epsilon_reconfigure_thread_.joinable())
-    {
-        state_->epsilon_reconfigure_thread_.join();
-    }
     stopRecording(false);
     state_->recording_service_->setStatusCallback({});
     state_->recording_service_->setWarningCallback({});
     state_->recording_service_->setSensorSnapshotProvider({});
     stopAllCollectors();
+    if (state_->local_connection_coordinator_)
+    {
+        state_->local_connection_coordinator_->disconnect();
+    }
 }
 
 bool MainWindow::shouldStartWindowMove(QObject *watched) const
@@ -522,6 +706,68 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     if (handleLocalSerialPortManualEntryEvent(watched, event))
     {
         return true;
+    }
+    if (handleRemoteSkySerialPortManualEntryEvent(watched, event))
+    {
+        return true;
+    }
+    if (eventType == QEvent::KeyPress)
+    {
+        auto *sidebarButton = qobject_cast<QPushButton *>(watched);
+        if (sidebarButton && sidebarButton->objectName() == QStringLiteral("appSidebarButton"))
+        {
+            auto *keyEvent = static_cast<QKeyEvent *>(event);
+            const QList<QPushButton *> buttons = {
+                state_->home_nav_btn_,
+                state_->device_config_nav_btn_,
+                state_->temperature_nav_btn_,
+                state_->rtk_config_nav_btn_,
+            };
+            const int currentIndex = buttons.indexOf(sidebarButton);
+            if (currentIndex >= 0)
+            {
+                if (keyEvent->key() == Qt::Key_Return ||
+                    keyEvent->key() == Qt::Key_Enter ||
+                    keyEvent->key() == Qt::Key_Space)
+                {
+                    sidebarButton->click();
+                    return true;
+                }
+                const bool previous = keyEvent->key() == Qt::Key_Up ||
+                                      keyEvent->key() == Qt::Key_Left;
+                const bool next = keyEvent->key() == Qt::Key_Down ||
+                                  keyEvent->key() == Qt::Key_Right;
+                if (previous || next)
+                {
+                    const int step = previous ? -1 : 1;
+                    const int nextIndex = (currentIndex + step + buttons.size()) % buttons.size();
+                    if (QPushButton *target = buttons.at(nextIndex))
+                    {
+                        target->setFocus(Qt::OtherFocusReason);
+                        target->click();
+                    }
+                    return true;
+                }
+            }
+        }
+    }
+
+    if (state_->log_list_view_ &&
+        watched == state_->log_list_view_->viewport() &&
+        eventType == QEvent::MouseButtonPress)
+    {
+        auto *mouseEvent = static_cast<QMouseEvent *>(event);
+        if (mouseEvent->button() == Qt::LeftButton)
+        {
+            const QModelIndex index =
+                state_->log_list_view_->indexAt(mouseEvent->position().toPoint());
+            const bool selected = index.isValid() &&
+                                  state_->log_list_view_->selectionModel() &&
+                                  state_->log_list_view_->selectionModel()->isSelected(index);
+            state_->log_list_view_->setProperty("vaporViewLogPressedRow",
+                                                index.isValid() ? index.row() : -1);
+            state_->log_list_view_->setProperty("vaporViewLogPressedWasSelected", selected);
+        }
     }
 
     if (eventType == QEvent::ApplicationActivate ||

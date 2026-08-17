@@ -1,6 +1,7 @@
 #include "SkySessionRecorder.h"
 #include "geo/CoordinateTransform.h"
 #include "shared/session/SessionDeviceConfig.h"
+#include "shared/session/SessionPackageLayout.h"
 #include "shared/session/SessionSensorCsv.h"
 #include "shared/session/UnifiedRawDat.h"
 
@@ -155,11 +156,32 @@ int main(int argc, char *argv[])
                                     900,
                                     QVector<float>{10.0f, 11.0f},
                                     QVector<float>{1.0f, 2.0f, 3.0f, 4.0f});
+    VaporView::Ai8TemperatureControllerProtocol::LiveData ai8;
+    ai8.valid = true;
+    ai8.controlStatesValid = true;
+    ai8.alarmStatusValid = true;
+    ai8.mainStatusValid = true;
+    ai8.mainStatusRaw = 0x1234;
+    for (int index = 0; index < VaporView::Ai8TemperatureControllerProtocol::kChannelCount; ++index)
+    {
+        ai8.measuredC[static_cast<size_t>(index)] = 20.0 + index;
+        ai8.controlStates[static_cast<size_t>(index)] =
+            index % 2 == 0
+                ? VaporView::Ai8TemperatureControllerProtocol::ChannelControlState::ApidOutput
+                : VaporView::Ai8TemperatureControllerProtocol::ChannelControlState::Stopped;
+    }
+    for (int index = 0; index < VaporView::Ai8TemperatureControllerProtocol::kAlarmStatusRegisterCount; ++index)
+    {
+        ai8.alarmStatusRegisters[static_cast<size_t>(index)] = static_cast<quint16>(index + 1);
+    }
+    recorder.recordAi8TemperatureControllerStatus(1300, ai8);
 
     const QString sessionDir = recorder.sessionDirectory();
     require(QFileInfo::exists(sessionDir), "session directory");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/session.json")), "session metadata");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/sensor_summary.csv")), "sensor summary csv");
+    require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/ai8_temperature_controller.csv")),
+            "AI-8 temperature controller csv");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/waveform_features.csv")), "waveform features csv");
     require(!QFileInfo::exists(sessionDir + QStringLiteral("/waveform_index.csv")), "no waveform index csv");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/logs/event_log.csv")), "event log");
@@ -238,6 +260,28 @@ int main(int argc, char *argv[])
     require(featureCells.at(11) == QStringLiteral("-0.750000"), "feature min csv precision");
     require(featureCells.at(12) == QStringLiteral("1.250000"), "feature max csv precision");
 
+    QFile ai8File(sessionDir + QStringLiteral("/sensors/ai8_temperature_controller.csv"));
+    require(ai8File.open(QIODevice::ReadOnly | QIODevice::Text), "open AI-8 temperature controller csv");
+    const QStringList ai8Lines = QString::fromUtf8(ai8File.readAll()).trimmed().split('\n');
+    require(ai8Lines.size() == 2, "AI-8 temperature controller csv row count");
+    require(ai8Lines.at(0) + QLatin1Char('\n') == VaporView::Session::ai8TemperatureControllerCsvHeader(),
+            "AI-8 temperature controller csv header");
+    const QStringList ai8Cells = ai8Lines.at(1).split(',');
+    require(ai8Cells.size() == 26, "AI-8 temperature controller csv column count");
+    require(ai8Cells.at(0) == QStringLiteral("1300") &&
+                ai8Cells.at(1) == QStringLiteral("true") &&
+                ai8Cells.at(5) == QStringLiteral("4660"),
+            "AI-8 temperature controller status fields");
+    require(ai8Cells.at(6) == QStringLiteral("20.000000") &&
+                ai8Cells.at(13) == QStringLiteral("27.000000"),
+            "AI-8 temperature controller measured channels");
+    require(ai8Cells.at(14) == QStringLiteral("apid_output") &&
+                ai8Cells.at(15) == QStringLiteral("stopped"),
+            "AI-8 temperature controller control states");
+    require(ai8Cells.at(22) == QStringLiteral("1") &&
+                ai8Cells.at(25) == QStringLiteral("4"),
+            "AI-8 temperature controller alarm registers");
+
     QFile peakIndexFile(sessionDir + QStringLiteral("/raw/waveform_peaks.csv"));
     require(peakIndexFile.open(QIODevice::ReadOnly | QIODevice::Text), "open waveform peaks csv");
     const QStringList peakIndexLines = QString::fromUtf8(peakIndexFile.readAll()).trimmed().split('\n');
@@ -276,6 +320,8 @@ int main(int argc, char *argv[])
             "waveform frame count");
     require(counts.value(QStringLiteral("waveform_feature_rows")).toString().toULongLong() == 1,
             "waveform feature row count");
+    require(counts.value(QStringLiteral("ai8_temperature_controller_rows")).toString().toULongLong() == 1,
+            "AI-8 temperature controller row count");
     require(root.value(QStringLiteral("waveform_file_count")).toString().toULongLong() == 1,
             "waveform file count");
     const QJsonObject rawFiles = root.value(QStringLiteral("raw_files")).toObject();
@@ -284,6 +330,9 @@ int main(int argc, char *argv[])
     const QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
     require(paths.value(QStringLiteral("waveform_peaks_csv")).toString() == QStringLiteral("raw/waveform_peaks.csv"),
             "metadata waveform peaks path");
+    require(paths.value(QStringLiteral("ai8_temperature_controller_csv")).toString() ==
+                QStringLiteral("sensors/ai8_temperature_controller.csv"),
+            "metadata AI-8 temperature controller path");
 
     QFile eventFile(sessionDir + QStringLiteral("/logs/event_log.csv"));
     require(eventFile.open(QIODevice::ReadOnly | QIODevice::Text), "open event log");

@@ -1,6 +1,8 @@
 #ifndef VaporView_TELEMETRY_LINK_H_
 #define VaporView_TELEMETRY_LINK_H_
 
+#include "LogRecord.h"
+
 #include <QByteArray>
 #include <QObject>
 #include <QString>
@@ -31,7 +33,7 @@ signals:
     void bytesReceived(const QByteArray& bytes);
     void openChanged(bool open);
     void errorOccurred(const QString& error);
-    void statusMessage(const QString& message);
+    void logRecordGenerated(const VaporView::LogRecord& record);
 };
 
 QString telemetryTransportName(TelemetryTransportType type);

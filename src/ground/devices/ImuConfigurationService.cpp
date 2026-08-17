@@ -5,6 +5,7 @@
 #include <QThread>
 
 #include <string>
+#include <utility>
 
 namespace VaporView::Ground::Devices
 {
@@ -30,27 +31,72 @@ QString periodText(int hz)
     }
 }
 
-void postLog(const ImuConfigurationService::LogCallback& log, const QString& message)
+QVariantMap profileFields(const ImuProfileRequest& request)
+{
+    return {{QStringLiteral("device"), QStringLiteral("IMU")},
+            {QStringLiteral("port"), request.port},
+            {QStringLiteral("current_baud"), request.currentBaud},
+            {QStringLiteral("target_baud"), request.targetBaud},
+            {QStringLiteral("rate_hz"), request.targetRateHz},
+            {QStringLiteral("output_format"), request.outputFormat}};
+}
+
+void postImuLog(const ImuConfigurationService::LogCallback& log,
+             ImuConfigurationService::LogEntry entry)
 {
     if (log)
     {
-        log(message);
+        log(entry);
     }
+}
+
+void postImuLog(const ImuConfigurationService::LogCallback& log,
+             LogLevel level,
+             const QString& event,
+             const QString& message,
+             QVariantMap fields = QVariantMap())
+{
+    if (!fields.contains(QStringLiteral("ui_visibility")))
+    {
+        fields.insert(QStringLiteral("ui_visibility"),
+                      level >= LogLevel::Warning ? QStringLiteral("attention")
+                                                 : QStringLiteral("details"));
+    }
+    postImuLog(log, {level,
+                  QStringLiteral("device.navigation.command"),
+                  event,
+                  message,
+                  std::move(fields)});
 }
 
 template <typename Sender>
 bool sendCommand(
     Sender&& sender,
+    const ImuProfileRequest& request,
     const QString& command,
     const ImuConfigurationService::LogCallback& log,
     int waitMs = 80)
 {
     const std::string bytes = command.toStdString();
+    QVariantMap fields = profileFields(request);
+    fields.insert(QStringLiteral("command"), command.trimmed());
+    fields.insert(QStringLiteral("wait_ms"), waitMs);
     if (!sender(bytes, waitMs))
     {
+        fields.insert(QStringLiteral("error_code"), QStringLiteral("COMMAND_WRITE_FAILED"));
+        postImuLog(log,
+                LogLevel::Error,
+                QStringLiteral("imu_profile_command_write_failed"),
+                QStringLiteral("IMU 配置命令发送失败。"),
+                fields);
         return false;
     }
-    postLog(log, QStringLiteral("[IMU 发送] %1").arg(command.trimmed()));
+    fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("hidden"));
+    postImuLog(log,
+            LogLevel::Debug,
+            QStringLiteral("imu_profile_command_sent"),
+            QStringLiteral("已向 IMU 发送配置命令。"),
+            fields);
     return true;
 }
 
@@ -64,35 +110,46 @@ bool restartCollector(
             request.port.toStdString(),
             SerialConfig::N81(request.targetBaud)))
     {
-        postLog(log, QString(request.english
-                ? "[IMU] Failed to reopen IMU port: %1"
-                : "[IMU] 重新打开 IMU 串口失败: %1")
-            .arg(QString::fromStdString(collector->getLastError())));
+        QVariantMap fields = profileFields(request);
+        fields.insert(QStringLiteral("system_error"), QString::fromStdString(collector->getLastError()));
+        fields.insert(QStringLiteral("error_code"), QStringLiteral("SERIAL_OPEN_FAILED"));
+        postImuLog(log,
+                LogLevel::Error,
+                QStringLiteral("imu_profile_reconnect_open_failed"),
+                QStringLiteral("重新打开 IMU 串口失败。"),
+                fields);
         return false;
     }
     collector->setOutputMessageType(request.outputFormat.toStdString());
     if (!collector->checkDeviceResponse())
     {
-        postLog(log, request.english
-            ? QStringLiteral("[IMU] No response after reopening IMU port")
-            : QStringLiteral("[IMU] 重新打开 IMU 串口后未收到设备响应"));
+        QVariantMap fields = profileFields(request);
+        fields.insert(QStringLiteral("error_code"), QStringLiteral("DEVICE_NO_RESPONSE"));
+        postImuLog(log,
+                LogLevel::Error,
+                QStringLiteral("imu_profile_reconnect_no_response"),
+                QStringLiteral("重新打开 IMU 串口后未收到设备响应。"),
+                fields);
         collector->stop();
         return false;
     }
     if (!collector->startStreaming())
     {
-        postLog(log, request.english
-            ? QStringLiteral("[IMU] Failed to restart IMU data stream")
-            : QStringLiteral("[IMU] 重新启动 IMU 数据流失败"));
+        QVariantMap fields = profileFields(request);
+        fields.insert(QStringLiteral("error_code"), QStringLiteral("STREAM_START_FAILED"));
+        postImuLog(log,
+                LogLevel::Error,
+                QStringLiteral("imu_profile_reconnect_stream_start_failed"),
+                QStringLiteral("重新启动 IMU 数据流失败。"),
+                fields);
         collector->stop();
         return false;
     }
-    postLog(log, QString(request.english
-            ? "[IMU] Reconnected at %1 baud, %2 Hz, %3"
-            : "[IMU] 已按 %1 波特率、%2 Hz、%3 重新连接")
-        .arg(request.targetBaud)
-        .arg(request.targetRateHz)
-        .arg(request.outputFormat));
+    postImuLog(log,
+            LogLevel::Info,
+            QStringLiteral("imu_profile_reconnect_completed"),
+            QStringLiteral("IMU 已按目标配置重新连接。"),
+            profileFields(request));
     return true;
 }
 
@@ -113,9 +170,13 @@ bool ImuConfigurationService::apply(
     const QString targetPeriod = periodText(request.targetRateHz);
     if (!isSupported(request.outputFormat, request.targetRateHz))
     {
-        postLog(log, request.english
-            ? QStringLiteral("Unsupported IMU format or rate")
-            : QStringLiteral("IMU 输出格式或频率不受支持"));
+        QVariantMap fields = profileFields(request);
+        fields.insert(QStringLiteral("reason_code"), QStringLiteral("COMMAND_NOT_SUPPORTED"));
+        postImuLog(log,
+                LogLevel::Warning,
+                QStringLiteral("imu_profile_apply_rejected_unsupported"),
+                QStringLiteral("IMU 输出格式或频率不受支持。"),
+                fields);
         return false;
     }
 
@@ -129,14 +190,15 @@ bool ImuConfigurationService::apply(
         auto collectorSend = [&collector](const std::string& command, int waitMs) {
             return collector->sendAsciiCommand(command, waitMs);
         };
-        if (!sendCommand(collectorSend, QStringLiteral("LOG HI91 ONTIME 0\r\n"), log) ||
-            !sendCommand(collectorSend, QStringLiteral("LOG HI92 ONTIME 0\r\n"), log) ||
+        if (!sendCommand(collectorSend, request, QStringLiteral("LOG HI91 ONTIME 0\r\n"), log) ||
+            !sendCommand(collectorSend, request, QStringLiteral("LOG HI92 ONTIME 0\r\n"), log) ||
             !sendCommand(
                 collectorSend,
+                request,
                 QStringLiteral("LOG %1 ONTIME %2\r\n")
                     .arg(request.outputFormat, targetPeriod),
                 log) ||
-            !sendCommand(collectorSend, QStringLiteral("SAVECONFIG\r\n"), log, 120))
+            !sendCommand(collectorSend, request, QStringLiteral("SAVECONFIG\r\n"), log, 120))
         {
             return false;
         }
@@ -146,6 +208,7 @@ bool ImuConfigurationService::apply(
         {
             if (!sendCommand(
                     collectorSend,
+                    request,
                     QStringLiteral("SERIALCONFIG %1\r\n").arg(request.targetBaud),
                     log,
                     150))
@@ -162,10 +225,14 @@ bool ImuConfigurationService::apply(
                 request.port.toStdString(),
                 SerialConfig::N81(request.currentBaud)))
         {
-            postLog(log, QString(request.english
-                    ? "[IMU] Unable to open %1 for direct configuration, saved for next connection"
-                    : "[IMU] 无法打开 %1 直接配置，已保存到下次连接时应用")
-                .arg(request.port));
+            QVariantMap fields = profileFields(request);
+            fields.insert(QStringLiteral("system_error"), QString::fromStdString(port.lastError()));
+            fields.insert(QStringLiteral("reason_code"), QStringLiteral("PORT_OPEN_FAILED"));
+            postImuLog(log,
+                    LogLevel::Warning,
+                    QStringLiteral("imu_profile_direct_open_failed_saved"),
+                    QStringLiteral("无法打开 IMU 串口直接配置，已保存供下次连接时应用。"),
+                    fields);
             return true;
         }
 
@@ -179,14 +246,15 @@ bool ImuConfigurationService::apply(
             return ok;
         };
 
-        if (!sendCommand(directSend, QStringLiteral("LOG HI91 ONTIME 0\r\n"), log) ||
-            !sendCommand(directSend, QStringLiteral("LOG HI92 ONTIME 0\r\n"), log) ||
+        if (!sendCommand(directSend, request, QStringLiteral("LOG HI91 ONTIME 0\r\n"), log) ||
+            !sendCommand(directSend, request, QStringLiteral("LOG HI92 ONTIME 0\r\n"), log) ||
             !sendCommand(
                 directSend,
+                request,
                 QStringLiteral("LOG %1 ONTIME %2\r\n")
                     .arg(request.outputFormat, targetPeriod),
                 log) ||
-            !sendCommand(directSend, QStringLiteral("SAVECONFIG\r\n"), log, 120))
+            !sendCommand(directSend, request, QStringLiteral("SAVECONFIG\r\n"), log, 120))
         {
             return false;
         }
@@ -195,6 +263,7 @@ bool ImuConfigurationService::apply(
         {
             if (!sendCommand(
                     directSend,
+                    request,
                     QStringLiteral("SERIALCONFIG %1\r\n").arg(request.targetBaud),
                     log,
                     150))
@@ -205,7 +274,7 @@ bool ImuConfigurationService::apply(
             if (port.open(
                     request.port.toStdString(),
                     SerialConfig::N81(request.targetBaud)) &&
-                !sendCommand(directSend, QStringLiteral("SAVECONFIG\r\n"), log, 120))
+                !sendCommand(directSend, request, QStringLiteral("SAVECONFIG\r\n"), log, 120))
             {
                 return false;
             }
@@ -222,9 +291,14 @@ bool ImuConfigurationService::apply(
         }
         if (!collector->sendAsciiCommand("SAVECONFIG\r\n", 120))
         {
-            postLog(log, request.english
-                ? QStringLiteral("[IMU] Failed to persist baud rate after reconnect")
-                : QStringLiteral("[IMU] 重连后保存波特率配置失败"));
+            QVariantMap fields = profileFields(request);
+            fields.insert(QStringLiteral("command"), QStringLiteral("SAVECONFIG"));
+            fields.insert(QStringLiteral("error_code"), QStringLiteral("CONFIG_SAVE_FAILED"));
+            postImuLog(log,
+                    LogLevel::Warning,
+                    QStringLiteral("imu_profile_reconnect_save_failed"),
+                    QStringLiteral("IMU 重连后保存波特率配置失败。"),
+                    fields);
         }
     }
     else if (collectorRunning)
@@ -234,12 +308,11 @@ bool ImuConfigurationService::apply(
 
     if (configured)
     {
-        postLog(log, QString(request.english
-                ? "IMU profile applied: %1, %2 baud, %3 Hz"
-                : "IMU 配置已应用: %1, %2 波特率, %3 Hz")
-            .arg(request.outputFormat)
-            .arg(request.targetBaud)
-            .arg(request.targetRateHz));
+        postImuLog(log,
+                LogLevel::Info,
+                QStringLiteral("imu_profile_applied"),
+                QStringLiteral("IMU 配置已应用。"),
+                profileFields(request));
     }
     return configured;
 }

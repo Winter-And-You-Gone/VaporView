@@ -25,6 +25,14 @@ namespace
 {
 std::atomic_bool g_shutdownRequested = false;
 
+void configureConsoleEncoding()
+{
+#ifdef Q_OS_WIN
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+#endif
+}
+
 void handleProcessSignal(int)
 {
     g_shutdownRequested.store(true, std::memory_order_relaxed);
@@ -97,6 +105,8 @@ void registerTelemetryMetaTypes()
 
 int main(int argc, char *argv[])
 {
+    configureConsoleEncoding();
+
     QCoreApplication app(argc, argv);
     std::signal(SIGINT, handleProcessSignal);
     std::signal(SIGTERM, handleProcessSignal);
@@ -108,7 +118,7 @@ int main(int argc, char *argv[])
 #endif
 
     app.setApplicationName("VaporViewSkyCore");
-    app.setApplicationVersion("1.0.20");
+    app.setApplicationVersion("1.0.22");
     app.setOrganizationName("VaporView");
     VaporView::LogService logService(QStringLiteral("VaporViewSkyCore"));
     logService.installQtMessageHandler();
@@ -198,8 +208,8 @@ int main(int argc, char *argv[])
     startStdinShutdownWatcher();
 
     VaporView::SkyRuntime runtime(options);
-    QObject::connect(&runtime, &VaporView::SkyRuntime::logMessage, [](const QString& message) {
-        QTextStream(stdout) << message << "\n";
+    QObject::connect(&runtime, &VaporView::SkyRuntime::logRecord, [](const VaporView::LogRecord& record) {
+        QTextStream(stdout) << record.message << "\n";
     });
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&runtime]() {
         QTextStream(stdout) << "正在停止 SkyCore 运行时。\n";
@@ -208,8 +218,9 @@ int main(int argc, char *argv[])
     });
 
     VaporView::SkyLocalIpcServer ipcServer(&runtime);
-    QObject::connect(&ipcServer, &VaporView::SkyLocalIpcServer::logMessage, [](const QString& message) {
-        QTextStream(stdout) << message << "\n";
+    QObject::connect(&ipcServer, &VaporView::SkyLocalIpcServer::logRecordGenerated,
+                     [](const VaporView::LogRecord& record) {
+        QTextStream(stdout) << record.message << "\n";
     });
 
     if (!parser.isSet(noIpcOption))

@@ -32,6 +32,7 @@ struct SessionRecordCounts
 {
     quint64 sensorRows = 0;
     quint64 temperatureControllerRows = 0;
+    quint64 ai8TemperatureControllerRows = 0;
     quint64 waveformFrames = 0;
     quint64 waveformFeatureRows = 0;
     quint64 eventRows = 0;

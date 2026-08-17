@@ -40,6 +40,10 @@ public:
     // Safe access for callbacks that may race with application shutdown.
     static bool withCurrentInstance(const std::function<void(LogService&)>& callback);
 
+    // Write one bounded structured record directly to stderr/debugger when no
+    // LogService instance is available. This path must not call Qt logging.
+    static void writeLogFallback(const LogRecord& record);
+
     void installQtMessageHandler();
     void publish(LogRecord record);
     LogRecord publish(LogLevel level,
@@ -65,7 +69,7 @@ public:
 
 signals:
     void recordPublished(const VaporView::LogRecord& record);
-    void diagnosticFailure(const QString& message);
+    void writerFailureReported(const QString& message);
 
 private:
     static void qtMessageHandler(QtMsgType type,

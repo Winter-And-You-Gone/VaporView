@@ -1,5 +1,6 @@
 #pragma once
 
+#include "LogRecord.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"
 #include "TelemetryTypes.h"
@@ -17,6 +18,7 @@
 #include <QSize>
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
 #include <Qt>
 
 #include <cstdint>
@@ -65,11 +67,16 @@ inline constexpr const char *kLocalSerialPortManualHandlerProperty = "_vv_local_
 inline constexpr const char *kLocalSerialPortManualEntryProperty = "_vv_local_serial_manual_entry";
 inline constexpr const char *kLocalSerialPortManualPreviousTextProperty = "_vv_local_serial_manual_previous_text";
 inline constexpr const char *kLocalSerialPortManualOptionData = "__vv_manual_serial_port__";
+inline constexpr const char *kRemoteSkySerialPortComboProperty = "_vv_remote_sky_serial_port_combo";
+inline constexpr const char *kRemoteSkySerialPortManualHandlerProperty = "_vv_remote_sky_serial_manual_handler";
+inline constexpr const char *kRemoteSkySerialPortManualEntryProperty = "_vv_remote_sky_serial_manual_entry";
+inline constexpr const char *kRemoteSkySerialPortManualPreviousTextProperty = "_vv_remote_sky_serial_manual_previous_text";
+inline constexpr const char *kDeviceConfigLocalMirrorOnlyProperty = "_vv_device_config_local_mirror_only";
 inline constexpr int kLocalSerialPortHistoryItemRole = Qt::UserRole + 1;
 inline constexpr int kMainPageInputHeight = 36;
 inline constexpr int kMainPageButtonHeight = kMainPageInputHeight;
 inline constexpr int kDeviceConfigAutoDetectButtonMinWidth = 124;
-inline constexpr int kDeviceConfigSourceModeComboWidth = 156;
+inline constexpr int kDeviceConfigSourceModeComboWidth = 94;
 inline constexpr int kDeviceConfigSkyDeviceButtonMinWidth = 132;
 inline constexpr int kDeviceConfigTopButtonPadding = 24;
 inline constexpr int kHomeDeviceButtonSize = 32;
@@ -79,7 +86,7 @@ inline constexpr int kHomeDeviceRowHeight = kHomeDeviceButtonSize;
 inline constexpr int kHomeDeviceGridColumns = 3;
 inline constexpr int kHomeDeviceGridRows = 3;
 inline constexpr int kHomeDeviceGridRowGap = 2;
-inline constexpr int kHomeDeviceItemGap = 12;
+inline constexpr int kHomeDeviceItemGap = 6;
 inline constexpr int kHomeDeviceActionSpinnerFrames = 30;
 inline constexpr int kHomeDeviceActionSpinnerIntervalMs = 25;
 inline constexpr int kHomeDeviceActionSpinnerMinimumMs = 1000;
@@ -96,6 +103,9 @@ inline constexpr int kConfigCardMinHeight =
 inline constexpr int kHomeOverviewTemperatureMinWidth = 380;
 inline constexpr int kHomeOverviewSplitterHandleWidth = 12;
 inline constexpr const char *kHomeOverviewSplitterInitializedProperty = "_vv_home_overview_splitter_initialized";
+inline constexpr const char *kHomeOverviewDeviceAutoMinimumWidthProperty = "_vv_home_overview_device_auto_minimum_width";
+inline constexpr const char *kHomeOverviewDeviceAutoManagedWidthProperty = "_vv_home_overview_device_auto_managed_width";
+inline constexpr const char *kHomeOverviewDeviceProgrammaticResizeProperty = "_vv_home_overview_device_programmatic_resize";
 inline constexpr int kSensorNavigationStretch = 4;
 inline constexpr int kSensorEnvironmentStretch = 1;
 inline constexpr int kTcpWaveCardMinHeight = 430;
@@ -205,6 +215,15 @@ inline constexpr int kSectionTitleIconSize = 22;
 inline constexpr char kSensorBaudSourceProperty[] = "sensorBaudSource";
 
 bool isTemperatureCommonCommand(CommandId command);
+QString commandErrorCodeIdentifier(CommandErrorCode error);
+QVariantMap temperatureCommandLogFields(CommandId command,
+                                        const TemperatureControllerCommand& payload,
+                                        quint8 channel);
+QString temperatureCommandDedupeKey(const QString& event, CommandId command, quint8 channel);
+LogRecord makeTemperatureCommandLogRecord(LogLevel level,
+                                          const QString& event,
+                                          const QString& message,
+                                          QVariantMap fields = {});
 int rememberedTemperatureSlaveAddress();
 QString formatTemperaturePolynomial(qint64 mantissa, int exponent);
 bool parseTemperaturePolynomial(const QString& text, qint64& mantissa, qint16& exponent);

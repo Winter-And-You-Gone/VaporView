@@ -258,7 +258,13 @@ public:
         return ImuConfigurationService::apply(
             request,
             registry.snapshot().imu,
-            [this](const QString& message) { postLog(message); });
+            [this](const ImuConfigurationService::LogEntry& entry) {
+                postConnectionLog(entry.level,
+                                  entry.event,
+                                  entry.message,
+                                  entry.fields,
+                                  entry.category);
+            });
     }
 
     LocalTemperatureCommandResult sendTemperatureCommand(
@@ -346,12 +352,35 @@ public:
     }
 
 private:
-    void postLog(const QString& message) const
+    void postConnectionLog(VaporView::LogLevel level,
+                 const QString& event,
+                 const QString& message,
+                 QVariantMap fields = {},
+                 const QString& category = QStringLiteral("device.connection")) const
     {
         if (callbacks.log)
         {
-            callbacks.log(message);
+            fields.insert(QStringLiteral("ui_visibility"),
+                          fields.value(QStringLiteral("ui_visibility"),
+                                       level >= VaporView::LogLevel::Warning ? QStringLiteral("attention")
+                                                                             : QStringLiteral("details")));
+            LocalConnectionLogEntry entry;
+            entry.level = level;
+            entry.category = category;
+            entry.event = event;
+            entry.message = message;
+            entry.fields = std::move(fields);
+            callbacks.log(std::move(entry));
         }
+    }
+
+    void postCollectorDiagnostic(const std::string& message) const
+    {
+        postConnectionLog(VaporView::LogLevel::Debug,
+                QStringLiteral("local_device_collector_diagnostic"),
+                QStringLiteral("本地设备采集器输出了诊断信息。"),
+                {{QStringLiteral("external_raw_text"), QString::fromStdString(message)},
+                 {QStringLiteral("ui_visibility"), QStringLiteral("hidden")}});
     }
 
     void finish(bool connected)
@@ -384,7 +413,7 @@ private:
             notifyData(LocalDeviceKind::TemperatureController);
         });
         collector->setLogCallback([this](const std::string& message) {
-            postLog(QString::fromStdString(message));
+            postCollectorDiagnostic(message);
         });
         collector->setCancelCallback([this]() { return cancel.load(); });
 
@@ -478,7 +507,7 @@ private:
         registry.replaceAll(collectors, useEnglish);
 
         auto collectorLog = [this](const std::string& message) {
-            postLog(QString::fromStdString(message));
+            postCollectorDiagnostic(message);
         };
         auto cancelRequested = [this]() {
             return cancel.load();
@@ -548,8 +577,10 @@ private:
         int connectedDevices = 0;
         auto cancelAttempt = [&]() {
             registry.stopAll();
-            postLog(useEnglish ? QStringLiteral("Connection canceled")
-                               : QStringLiteral("连接已取消"));
+            postConnectionLog(VaporView::LogLevel::Info,
+                    QStringLiteral("local_device_connection_cancelled"),
+                    QStringLiteral("本地设备连接已取消。"),
+                    {{QStringLiteral("reason_code"), QStringLiteral("USER_CANCELLED")}});
             finish(false);
         };
         auto abortIfRequested = [&]() {
@@ -567,52 +598,74 @@ private:
                                     auto&& onReady) -> int {
             if (settings.port == request.selectText || settings.port.isEmpty())
             {
-                postLog(QString(useEnglish ? "[%1] Skipped (not selected)" : "[%1] 跳过 (未选择)").arg(tag));
+                postConnectionLog(VaporView::LogLevel::Info,
+                        QStringLiteral("local_device_connection_skipped"),
+                        QStringLiteral("本地设备未选择端口，已跳过连接。"),
+                        {{QStringLiteral("device"), tag},
+                         {QStringLiteral("reason_code"), QStringLiteral("PORT_NOT_SELECTED")}});
                 return 0;
             }
 
             ++totalDevices;
-            postLog(QString(useEnglish ? "[%1] Checking port: %2" : "[%1] 检查端口: %2")
-                        .arg(tag, settings.port));
+            postConnectionLog(VaporView::LogLevel::Info,
+                    QStringLiteral("local_device_port_check_started"),
+                    QStringLiteral("开始检查本地设备串口。"),
+                    {{QStringLiteral("device"), tag},
+                     {QStringLiteral("port"), settings.port},
+                     {QStringLiteral("baud"), settings.baudText}});
             if (abortIfRequested()) return -1;
 
-            postLog(QString(useEnglish ? "[%1] Port selected, connecting..." : "[%1] 已选择端口，正在连接...").arg(tag));
+            postConnectionLog(VaporView::LogLevel::Info,
+                    QStringLiteral("local_device_connection_started"),
+                    QStringLiteral("正在连接本地设备。"),
+                    {{QStringLiteral("device"), tag},
+                     {QStringLiteral("port"), settings.port},
+                     {QStringLiteral("baud"), settings.baudText}});
             if (abortIfRequested()) return -1;
 
             if (!collector->start(settings.port.toStdString(), serialConfig))
             {
-                postLog(QString(useEnglish ? "[%1] Failed to open port: %2" : "[%1] 打开端口失败: %2")
-                            .arg(tag, QString::fromStdString(collector->getLastError())));
+                postConnectionLog(VaporView::LogLevel::Warning,
+                        QStringLiteral("local_device_port_open_failed"),
+                        QStringLiteral("打开本地设备串口失败。"),
+                        {{QStringLiteral("device"), tag},
+                         {QStringLiteral("port"), settings.port},
+                         {QStringLiteral("baud"), settings.baudText},
+                         {QStringLiteral("error_code"), QStringLiteral("PORT_OPEN_FAILED")},
+                         {QStringLiteral("system_error"), QString::fromStdString(collector->getLastError())}});
                 return 0;
             }
 
-            postLog(QString(useEnglish ? "[%1] Serial port opened, checking device response..."
-                                       : "[%1] 串口已打开，正在检测设备响应...").arg(tag));
+            postConnectionLog(VaporView::LogLevel::Info,
+                    QStringLiteral("local_device_response_check_started"),
+                    QStringLiteral("本地设备串口已打开，正在检测设备响应。"),
+                    {{QStringLiteral("device"), tag},
+                     {QStringLiteral("port"), settings.port},
+                     {QStringLiteral("baud"), settings.baudText}});
             if (abortIfRequested()) return -1;
 
             if (!collector->checkDeviceResponse())
             {
                 if (abortIfRequested()) return -1;
-                if (tag == QStringLiteral("RD105"))
-                {
-                    postLog(useEnglish
-                        ? QStringLiteral("[RD105] Initialization failed; see the preceding log for details.")
-                        : QStringLiteral("[RD105] 初始化失败，请查看上方日志。"));
-                }
-                else
-                {
-                    postLog(QString(useEnglish
-                        ? "[%1] Device not responding! Check power and cables."
-                        : "[%1] 设备无响应！请检查电源和连接线。").arg(tag));
-                }
+                postConnectionLog(VaporView::LogLevel::Warning,
+                        QStringLiteral("local_device_no_response"),
+                        tag == QStringLiteral("RD105")
+                            ? QStringLiteral("RD105 初始化失败，未通过设备响应检测。")
+                            : QStringLiteral("本地设备无响应，请检查电源和连接线。"),
+                        {{QStringLiteral("device"), tag},
+                         {QStringLiteral("port"), settings.port},
+                         {QStringLiteral("baud"), settings.baudText},
+                         {QStringLiteral("reason_code"), QStringLiteral("NO_RESPONSE")}});
                 collector->stop();
                 return 0;
             }
 
-            postLog(QString(useEnglish
-                ? "[%1] Device responding, connected: %2 @ %3 baud"
-                : "[%1] 设备响应正常，连接成功: %2 @ %3 波特率")
-                    .arg(tag, settings.port, settings.baudText));
+            postConnectionLog(VaporView::LogLevel::Info,
+                    QStringLiteral("local_device_connected"),
+                    QStringLiteral("本地设备响应正常，连接成功。"),
+                    {{QStringLiteral("device"), tag},
+                     {QStringLiteral("port"), settings.port},
+                     {QStringLiteral("baud"), settings.baudText}});
             if (!onReady())
             {
                 collector->stop();
@@ -622,8 +675,10 @@ private:
             return 1;
         };
 
-        postLog(useEnglish ? QStringLiteral("========== Starting Connection ==========")
-                           : QStringLiteral("========== 开始连接 =========="));
+        postConnectionLog(VaporView::LogLevel::Info,
+                QStringLiteral("local_connection_phase_started"),
+                QStringLiteral("开始本地连接流程。"),
+                {{QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         if (abortIfRequested()) return;
 
         if (connectCollector(QStringLiteral("EPSILON"),
@@ -634,46 +689,47 @@ private:
             collectors.epsilon->setDataCallback([this]() { notifyData(LocalDeviceKind::Epsilon); });
             if (request.epsilon.skipDeviceRate)
             {
-                postLog(useEnglish
-                    ? QStringLiteral("[EPSILON] Skip output-rate command; using the current device output.")
-                    : QStringLiteral("[EPSILON] 跳过输出频率下发，使用设备当前输出。"));
+                postConnectionLog(VaporView::LogLevel::Info,
+                        QStringLiteral("epsilon_output_rate_command_skipped"),
+                        QStringLiteral("已跳过 EPSILON 输出频率下发，使用设备当前输出。"),
+                        {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                         {QStringLiteral("reason_code"), QStringLiteral("RATE_UNSPECIFIED")}});
             }
             else if (request.epsilonConfigLikelyMatches)
             {
-                postLog(QString(useEnglish
-                    ? "[EPSILON] Using the last saved %1 profile; skipping automatic reconfiguration."
-                    : "[EPSILON] 使用上次已保存的%1配置，跳过自动重配。")
-                        .arg(request.epsilonUsesCustomPacketRates
-                            ? (useEnglish ? "custom packet-rate" : "自定义包频率")
-                            : (useEnglish ? "grouped output-rate" : "分组输出频率")));
+                postConnectionLog(VaporView::LogLevel::Info,
+                        QStringLiteral("epsilon_output_reconfigure_skipped_config_unchanged"),
+                        QStringLiteral("EPSILON 输出配置与上次保存配置一致，已跳过自动重配。"),
+                        {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                         {QStringLiteral("epsilon_packet_profile"), request.epsilonPacketRateSummary},
+                         {QStringLiteral("reason_code"), QStringLiteral("CONFIG_UNCHANGED")}});
             }
             else if (!collectors.epsilon->setOutputPacketRates(request.epsilonPacketRates))
             {
-                postLog(QString(useEnglish
-                    ? "[EPSILON] Failed to configure the %1 profile: %2; continuing with the current device output."
-                    : "[EPSILON] 配置%1失败：%2；继续使用设备当前输出。")
-                        .arg(request.epsilonUsesCustomPacketRates
-                            ? (useEnglish ? "custom packet-rate" : "自定义包频率")
-                            : (useEnglish ? "grouped output-rate" : "分组输出频率"))
-                        .arg(request.epsilonPacketRateSummary));
-                postLog(useEnglish
-                    ? QStringLiteral("[EPSILON] If this port only outputs FDILink, connect the MAIN/Primary RS232 port to allow configuration commands.")
-                    : QStringLiteral("[EPSILON] 如果该串口只输出 FDILink，请接入 MAIN/Primary RS232 主口后再下发配置命令。"));
+                postConnectionLog(VaporView::LogLevel::Warning,
+                        QStringLiteral("epsilon_output_reconfigure_failed"),
+                        QStringLiteral("EPSILON 输出配置下发失败，继续使用设备当前输出。"),
+                        {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                         {QStringLiteral("epsilon_packet_profile"), request.epsilonPacketRateSummary},
+                         {QStringLiteral("error_code"), QStringLiteral("CONFIG_APPLY_FAILED")},
+                         {QStringLiteral("fallback_action"), QStringLiteral("CURRENT_DEVICE_OUTPUT")},
+                         {QStringLiteral("wiring_hint"), QStringLiteral("MAIN_PRIMARY_RS232_REQUIRED_FOR_CONFIGURATION")}});
             }
             else
             {
                 persistEpsilonConfig();
-                postLog(QString(useEnglish
-                    ? "[EPSILON] Applied %1 profile: %2"
-                    : "[EPSILON] 已应用%1配置：%2")
-                        .arg(request.epsilonUsesCustomPacketRates
-                            ? (useEnglish ? "custom packet-rate" : "自定义包频率")
-                            : (useEnglish ? "grouped output-rate" : "分组输出频率"))
-                        .arg(request.epsilonPacketRateSummary));
+                postConnectionLog(VaporView::LogLevel::Info,
+                        QStringLiteral("epsilon_output_reconfigure_completed"),
+                        QStringLiteral("EPSILON 输出配置已应用。"),
+                        {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                         {QStringLiteral("epsilon_packet_profile"), request.epsilonPacketRateSummary}});
             }
             if (collectors.epsilon->startStreaming()) return true;
-            postLog(useEnglish ? QStringLiteral("[EPSILON] Failed to start navigation stream.")
-                               : QStringLiteral("[EPSILON] 启动导航数据流失败。"));
+            postConnectionLog(VaporView::LogLevel::Error,
+                    QStringLiteral("local_device_stream_start_failed"),
+                    QStringLiteral("本地设备数据流启动失败。"),
+                    {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                     {QStringLiteral("error_code"), QStringLiteral("STREAM_START_FAILED")}});
             return false;
         }) < 0) return;
 
@@ -688,25 +744,36 @@ private:
             collectors.ptb->setDataCallback([this]() { notifyData(LocalDeviceKind::Ptb); });
             if (request.ptb.skipDeviceRate)
             {
-                postLog(useEnglish ? QStringLiteral("[PTB] Skip sample-rate command; using the current device output.")
-                                   : QStringLiteral("[PTB] 跳过采样频率下发，使用设备当前输出。"));
+                postConnectionLog(VaporView::LogLevel::Info,
+                        QStringLiteral("ptb_sample_rate_command_skipped"),
+                        QStringLiteral("已跳过 PTB210 采样频率下发，使用设备当前输出。"),
+                        {{QStringLiteral("device"), pressureName},
+                         {QStringLiteral("reason_code"), QStringLiteral("RATE_UNSPECIFIED")}});
             }
             else if (!collectors.ptb->setDeviceSampleRate(request.ptb.sampleRateHz))
             {
-                postLog(QString(useEnglish ? "[PTB] Failed to set sample rate to %1 Hz."
-                                           : "[PTB] 采样频率设置为 %1 Hz 失败。")
-                            .arg(request.ptb.sampleRateHz));
+                postConnectionLog(VaporView::LogLevel::Warning,
+                        QStringLiteral("ptb_sample_rate_update_failed"),
+                        QStringLiteral("PTB210 采样频率下发失败。"),
+                        {{QStringLiteral("device"), pressureName},
+                         {QStringLiteral("requested_rate_hz"), request.ptb.sampleRateHz},
+                         {QStringLiteral("error_code"), QStringLiteral("SAMPLE_RATE_UPDATE_FAILED")}});
                 return false;
             }
             else
             {
-                postLog(QString(useEnglish ? "[PTB] Sample rate set to %1 Hz"
-                                           : "[PTB] 采样频率设置为 %1 Hz")
-                            .arg(request.ptb.sampleRateHz));
+                postConnectionLog(VaporView::LogLevel::Info,
+                        QStringLiteral("ptb_sample_rate_updated"),
+                        QStringLiteral("PTB210 采样频率已更新。"),
+                        {{QStringLiteral("device"), pressureName},
+                         {QStringLiteral("requested_rate_hz"), request.ptb.sampleRateHz}});
             }
             if (collectors.ptb->startStreaming()) return true;
-            postLog(useEnglish ? QStringLiteral("[PTB] Failed to start data stream.")
-                               : QStringLiteral("[PTB] 启动数据流失败。"));
+            postConnectionLog(VaporView::LogLevel::Error,
+                    QStringLiteral("local_device_stream_start_failed"),
+                    QStringLiteral("本地设备数据流启动失败。"),
+                    {{QStringLiteral("device"), pressureName},
+                     {QStringLiteral("error_code"), QStringLiteral("STREAM_START_FAILED")}});
             return false;
         }) < 0) return;
 
@@ -721,23 +788,30 @@ private:
             collectors.hmp->setDataCallback([this]() { notifyData(LocalDeviceKind::Hmp); });
             if (request.hmp.skipDeviceRate)
             {
-                postLog(useEnglish
-                    ? QStringLiteral("[HMP] Polling-rate selection left unset; using the default host polling rate.")
-                    : QStringLiteral("[HMP] 轮询频率保持不设定，使用默认主机轮询频率。"));
+                postConnectionLog(VaporView::LogLevel::Info,
+                        QStringLiteral("hmp_polling_rate_defaulted"),
+                        QStringLiteral("HMP3 轮询频率保持不设定，使用默认主机轮询频率。"),
+                        {{QStringLiteral("device"), humidityName},
+                         {QStringLiteral("effective_rate_hz"), request.hmp.sampleRateHz}});
             }
             else
             {
-                postLog(QString(useEnglish ? "[HMP] Sample rate set to %1 Hz"
-                                           : "[HMP] 采样频率设置为 %1 Hz")
-                            .arg(request.hmp.sampleRateHz));
+                postConnectionLog(VaporView::LogLevel::Info,
+                        QStringLiteral("hmp_sample_rate_updated"),
+                        QStringLiteral("HMP3 采样频率已更新。"),
+                        {{QStringLiteral("device"), humidityName},
+                         {QStringLiteral("requested_rate_hz"), request.hmp.sampleRateHz}});
             }
             if (collectors.hmp->startStreaming()) return true;
-            postLog(useEnglish ? QStringLiteral("[HMP] Failed to start data stream.")
-                               : QStringLiteral("[HMP] 启动数据流失败。"));
+            postConnectionLog(VaporView::LogLevel::Error,
+                    QStringLiteral("local_device_stream_start_failed"),
+                    QStringLiteral("本地设备数据流启动失败。"),
+                    {{QStringLiteral("device"), humidityName},
+                     {QStringLiteral("error_code"), QStringLiteral("STREAM_START_FAILED")}});
             return false;
         }) < 0) return;
 
-        if (connectCollector(QStringLiteral("LIDAR"),
+        if (connectCollector(QStringLiteral("TFA1005-L"),
                              request.lidar,
                              collectors.lidar.get(),
                              SerialConfig::N81(request.lidar.baudText.toInt()),
@@ -745,27 +819,35 @@ private:
             collectors.lidar->setDataCallback([this]() { notifyData(LocalDeviceKind::Lidar); });
             if (request.lidar.skipDeviceRate)
             {
-                postLog(useEnglish
-                    ? QStringLiteral("[Lidar] Skip output-rate command; using device default/adaptive output.")
-                    : QStringLiteral("[Lidar] 跳过输出频率下发，使用设备默认/自适应输出。"));
+                postConnectionLog(VaporView::LogLevel::Info,
+                        QStringLiteral("lidar_output_rate_command_skipped"),
+                        QStringLiteral("已跳过激光测距仪输出频率下发，使用设备默认或自适应输出。"),
+                        {{QStringLiteral("device"), QStringLiteral("TFA1005-L")},
+                         {QStringLiteral("reason_code"), QStringLiteral("RATE_UNSPECIFIED")}});
             }
             else if (!collectors.lidar->setDeviceSampleRate(request.lidar.sampleRateHz))
             {
-                postLog(QString(useEnglish
-                    ? "[Lidar] Failed to apply output rate %1 Hz, using device default."
-                    : "[Lidar] 应用 %1 Hz 输出频率失败，使用设备默认输出。")
-                        .arg(request.lidar.sampleRateHz));
+                postConnectionLog(VaporView::LogLevel::Warning,
+                        QStringLiteral("lidar_output_rate_update_failed"),
+                        QStringLiteral("激光测距仪输出频率下发失败，使用设备默认输出。"),
+                        {{QStringLiteral("device"), QStringLiteral("TFA1005-L")},
+                         {QStringLiteral("requested_rate_hz"), request.lidar.sampleRateHz},
+                         {QStringLiteral("error_code"), QStringLiteral("OUTPUT_RATE_UPDATE_FAILED")}});
             }
             else
             {
-                postLog(QString(useEnglish
-                    ? "[Lidar] Output rate set to %1 Hz or host-side limit updated"
-                    : "[Lidar] 输出频率已设置为 %1 Hz，或已更新主机侧限频")
-                        .arg(request.lidar.sampleRateHz));
+                postConnectionLog(VaporView::LogLevel::Info,
+                        QStringLiteral("lidar_output_rate_updated"),
+                        QStringLiteral("激光测距仪输出频率已更新。"),
+                        {{QStringLiteral("device"), QStringLiteral("TFA1005-L")},
+                         {QStringLiteral("requested_rate_hz"), request.lidar.sampleRateHz}});
             }
             if (collectors.lidar->startStreaming()) return true;
-            postLog(useEnglish ? QStringLiteral("[Lidar] Failed to start data stream.")
-                               : QStringLiteral("[Lidar] 启动数据流失败。"));
+            postConnectionLog(VaporView::LogLevel::Error,
+                    QStringLiteral("local_device_stream_start_failed"),
+                    QStringLiteral("本地设备数据流启动失败。"),
+                    {{QStringLiteral("device"), QStringLiteral("TFA1005-L")},
+                     {QStringLiteral("error_code"), QStringLiteral("STREAM_START_FAILED")}});
             return false;
         }) < 0) return;
 
@@ -778,20 +860,26 @@ private:
                 [this]() { notifyData(LocalDeviceKind::TemperatureController); });
             if (request.temperatureController.skipDeviceRate)
             {
-                postLog(useEnglish
-                    ? QStringLiteral("[RD105] Polling-rate selection left unset; using the default host polling rate.")
-                    : QStringLiteral("[RD105] 轮询频率保持不设定，使用默认主机轮询频率。"));
+                postConnectionLog(VaporView::LogLevel::Info,
+                        QStringLiteral("temperature_polling_rate_defaulted"),
+                        QStringLiteral("RD105 轮询频率保持不设定，使用默认主机轮询频率。"),
+                        {{QStringLiteral("device"), QStringLiteral("RD105")},
+                         {QStringLiteral("effective_rate_hz"), request.temperatureController.sampleRateHz}});
             }
             else
             {
-                postLog(QString(useEnglish ? "[RD105] Polling rate set to %1 Hz"
-                                           : "[RD105] 轮询频率设置为 %1 Hz")
-                            .arg(request.temperatureController.sampleRateHz));
+                postConnectionLog(VaporView::LogLevel::Info,
+                        QStringLiteral("temperature_polling_rate_updated"),
+                        QStringLiteral("RD105 轮询频率已更新。"),
+                        {{QStringLiteral("device"), QStringLiteral("RD105")},
+                         {QStringLiteral("requested_rate_hz"), request.temperatureController.sampleRateHz}});
             }
             if (collectors.temperature_controller->startStreaming()) return true;
-            postLog(useEnglish
-                ? QStringLiteral("[RD105] Failed to start temperature controller polling.")
-                : QStringLiteral("[RD105] 启动温控器轮询失败。"));
+            postConnectionLog(VaporView::LogLevel::Error,
+                    QStringLiteral("local_device_stream_start_failed"),
+                    QStringLiteral("本地设备数据流启动失败。"),
+                    {{QStringLiteral("device"), QStringLiteral("RD105")},
+                     {QStringLiteral("error_code"), QStringLiteral("STREAM_START_FAILED")}});
             return false;
         }) < 0) return;
 
@@ -802,26 +890,33 @@ private:
                              [&]() {
             collectors.ai8_temperature_controller->setDataCallback(
                 [this]() { notifyData(LocalDeviceKind::Ai8TemperatureController); });
-            postLog(QString(useEnglish
-                ? "[AI-8288] Host polling rate set to %1 Hz"
-                : "[AI-8288] 主机轮询频率设置为 %1 Hz")
-                    .arg(request.ai8TemperatureController.sampleRateHz));
+            postConnectionLog(VaporView::LogLevel::Info,
+                    QStringLiteral("ai8_temperature_polling_rate_updated"),
+                    QStringLiteral("AI-8288 主机轮询频率已更新。"),
+                    {{QStringLiteral("device"), QStringLiteral("AI-8288")},
+                     {QStringLiteral("requested_rate_hz"), request.ai8TemperatureController.sampleRateHz}});
             if (collectors.ai8_temperature_controller->startStreaming()) return true;
-            postLog(useEnglish
-                ? QStringLiteral("[AI-8288] Failed to start Modbus polling.")
-                : QStringLiteral("[AI-8288] 启动 Modbus 轮询失败。"));
+            postConnectionLog(VaporView::LogLevel::Error,
+                    QStringLiteral("local_device_stream_start_failed"),
+                    QStringLiteral("本地设备数据流启动失败。"),
+                    {{QStringLiteral("device"), QStringLiteral("AI-8288")},
+                     {QStringLiteral("error_code"), QStringLiteral("STREAM_START_FAILED")}});
             return false;
         }) < 0) return;
 
-        postLog(QString(useEnglish
-            ? "========== Connection Summary: %1/%2 devices connected =========="
-            : "========== 连接摘要: %1/%2 设备已连接 ==========")
-                .arg(connectedDevices)
-                .arg(totalDevices));
+        postConnectionLog(VaporView::LogLevel::Info,
+                QStringLiteral("local_serial_device_phase_completed"),
+                QStringLiteral("本地串口设备连接阶段已完成。"),
+                {{QStringLiteral("connected_devices"), connectedDevices},
+                 {QStringLiteral("total_devices"), totalDevices}});
         if (connectedDevices == 0)
         {
-            postLog(useEnglish ? QStringLiteral("No ports connected")
-                               : QStringLiteral("没有端口连接成功"));
+            postConnectionLog(VaporView::LogLevel::Warning,
+                    QStringLiteral("local_serial_devices_not_connected"),
+                    QStringLiteral("没有串口设备连接成功。"),
+                    {{QStringLiteral("connected_devices"), connectedDevices},
+                     {QStringLiteral("total_devices"), totalDevices},
+                     {QStringLiteral("reason_code"), QStringLiteral("NO_DEVICE_CONNECTED")}});
             finish(false);
             return;
         }

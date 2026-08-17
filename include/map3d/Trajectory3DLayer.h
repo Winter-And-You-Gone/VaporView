@@ -6,6 +6,9 @@
 #include <osg/Geode>
 #include <osg/Geometry>
 #include <osg/Matrixd>
+#include <osg/Program>
+#include <osg/Texture1D>
+#include <osg/Uniform>
 #include <osg/ref_ptr>
 #include <deque>
 #include <optional>
@@ -40,10 +43,10 @@ public:
     Trajectory3DLayer();
 
     void clear();
-    void appendSample(const VaporView::Geo::NavSample& sample);
-    void appendSample(const VaporView::Geo::TrajectoryRenderSample& sample);
-    void appendSamples(const std::vector<VaporView::Geo::NavSample>& samples);
-    void appendSamples(const std::vector<VaporView::Geo::TrajectoryRenderSample>& samples);
+    void appendNavigationSample(const VaporView::Geo::NavSample& sample);
+    void appendRenderSample(const VaporView::Geo::TrajectoryRenderSample& sample);
+    void appendNavigationSamples(const std::vector<VaporView::Geo::NavSample>& samples);
+    void appendRenderSamples(const std::vector<VaporView::Geo::TrajectoryRenderSample>& samples);
     void setUseWorldCoordinates(bool enabled);
     void setWorldOrigin(const osg::Vec3d& origin);
     void clearWorldOrigin();
@@ -69,6 +72,9 @@ public:
     int maxVisibleSamples() const;
     int segmentCount() const;
     int segmentSize() const;
+    int fullRebuildCount() const;
+    int segmentGeometryRebuildCount() const;
+    bool heatRenderingEnabled() const;
     int sphereMarkerCount() const;
     int selectedSampleIndex() const;
     TrajectoryQualityStats qualityStats() const;
@@ -87,13 +93,14 @@ private:
         int firstSampleIndex = 0;
         int sampleCount = 0;
         int sphereMarkerCount = 0;
+        bool hasLineDiscontinuity = false;
         osg::ref_ptr<osg::Geometry> geometry;
         osg::ref_ptr<osg::Geometry> sphereGeometry;
     };
 
-    void appendRenderSample(const VaporView::Geo::TrajectoryRenderSample& sample,
-                            bool enableHeatRendering);
-    void appendRenderSamples(
+    void appendSampleInternal(const VaporView::Geo::TrajectoryRenderSample& sample,
+                              bool enableHeatRendering);
+    void appendSamplesInternal(
         const std::vector<VaporView::Geo::TrajectoryRenderSample>& samples,
         bool enableHeatRendering);
     void rebuildSegments();
@@ -118,6 +125,10 @@ private:
     bool segmentIsVisible(const TrajectorySegment& segment) const;
     void applySegmentVisibility();
     VaporView::Geo::HeatRange resolvedHeatRange() const;
+    void invalidateHeatRange();
+    void recomputeHeatRange();
+    void updateHeatRenderingState();
+    void configureHeatRenderingState(osg::Geometry& geometry);
 
     osg::ref_ptr<osg::Geode> geode_;
     osg::ref_ptr<osg::Geometry> selected_marker_geometry_;
@@ -136,6 +147,16 @@ private:
     VaporView::Geo::HeatMetric heat_metric_ = VaporView::Geo::HeatMetric::Peak;
     VaporView::Geo::HeatPalette heat_palette_ = VaporView::Geo::HeatPalette::Candy;
     std::optional<VaporView::Geo::HeatRange> heat_range_override_;
+    VaporView::Geo::HeatRange heat_range_cache_;
+    bool heat_range_cache_valid_ = false;
+    int full_rebuild_count_ = 0;
+    int segment_geometry_rebuild_count_ = 0;
+    osg::ref_ptr<osg::Program> heat_program_;
+    osg::ref_ptr<osg::Texture1D> heat_palette_texture_;
+    osg::ref_ptr<osg::Uniform> heat_minimum_uniform_;
+    osg::ref_ptr<osg::Uniform> heat_maximum_uniform_;
+    osg::ref_ptr<osg::Uniform> heat_palette_uniform_;
+    bool heat_palette_texture_dirty_ = true;
     bool track_line_visible_ = true;
     bool track_points_visible_ = true;
     float track_line_width_ = 5.0f;

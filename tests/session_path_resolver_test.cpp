@@ -57,6 +57,9 @@ const Mapping kMappings[] = {
     {VaporView::Session::SessionFileKind::TemperatureControllerCsv,
      "sensors/temperature_controller.csv", "sensors/rd105_temperature_controller.csv",
      "temperature_controller_csv", "temperature_controller_csv", nullptr, nullptr},
+    {VaporView::Session::SessionFileKind::Ai8TemperatureControllerCsv,
+     "sensors/ai8_temperature_controller.csv", nullptr,
+     "ai8_temperature_controller_csv", nullptr, nullptr, nullptr},
     {VaporView::Session::SessionFileKind::NavigationRaw,
      "raw/navigation.dat", "raw/epsilon.dat",
      "navigation_raw", "epsilon_raw", "navigation", "epsilon"},
@@ -81,6 +84,10 @@ void testDefaultAndLegacyResolution()
 {
     for (const Mapping& mapping : kMappings)
     {
+        if (!mapping.legacyPath)
+        {
+            continue;
+        }
         QTemporaryDir session;
         require(session.isValid(), "temporary session is available");
         const QString preferred = session.filePath(QString::fromLatin1(mapping.preferredPath));
@@ -111,6 +118,10 @@ void testManifestDeclaredLegacyPaths()
 {
     for (const Mapping& mapping : kMappings)
     {
+        if (!mapping.legacyPath)
+        {
+            continue;
+        }
         QTemporaryDir session;
         require(session.isValid(), "temporary manifest session is available");
         const QString legacyRelative = QString::fromLatin1(mapping.legacyPath);

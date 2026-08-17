@@ -1,6 +1,169 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
 
+#include <QStyle>
+
+#include <algorithm>
+#include <tuple>
+
+namespace
+{
+
+QString remoteSummaryRecordingStateText(quint8 state, bool english)
+{
+    switch (state)
+    {
+    case 1:
+        return english ? QStringLiteral("Recording") : QStringLiteral("记录中");
+    case 2:
+        return english ? QStringLiteral("Paused") : QStringLiteral("已暂停");
+    default:
+        return english ? QStringLiteral("Idle") : QStringLiteral("未记录");
+    }
+}
+
+QString remoteSummaryBytesText(quint64 bytes)
+{
+    static const char *units[] = {"B", "KB", "MB", "GB", "TB"};
+    double value = static_cast<double>(bytes);
+    int unit = 0;
+    while (value >= 1024.0 && unit < 4)
+    {
+        value /= 1024.0;
+        ++unit;
+    }
+    return QStringLiteral("%1 %2").arg(value, 0, 'f', unit == 0 ? 0 : 1).arg(units[unit]);
+}
+
+QString compactAvailabilityText(bool hasData, bool english)
+{
+    return hasData
+        ? (english ? QStringLiteral("Yes") : QStringLiteral("有"))
+        : (english ? QStringLiteral("No") : QStringLiteral("无"));
+}
+
+QString compactAvailabilityWidthText(bool english)
+{
+    return english ? QStringLiteral("Yes") : QStringLiteral("有");
+}
+
+QString summaryItemValueText(const VaporView::Ground::Main::RemoteTelemetrySummarySections::Item& item,
+                             bool compactAvailabilityValues,
+                             bool english)
+{
+    if (compactAvailabilityValues && item.compactAvailabilityValue)
+    {
+        return compactAvailabilityText(item.hasData, english);
+    }
+    return item.value;
+}
+
+QString summaryItemWidthText(const VaporView::Ground::Main::RemoteTelemetrySummarySections::Item& item,
+                             bool compactAvailabilityValues,
+                             bool english)
+{
+    if (compactAvailabilityValues && item.compactAvailabilityValue)
+    {
+        return compactAvailabilityWidthText(english);
+    }
+    return item.valueWidthText.isEmpty() ? item.value : item.valueWidthText;
+}
+
+void setTelemetryAvailability(QWidget *widget, bool available)
+{
+    if (!widget || widget->property("telemetryAvailable").toBool() == available)
+    {
+        return;
+    }
+    widget->setProperty("telemetryAvailable", available);
+    if (QStyle *style = widget->style())
+    {
+        style->unpolish(widget);
+        style->polish(widget);
+    }
+    widget->update();
+}
+
+bool updateSummarySectionValues(QVBoxLayout *sectionLayout,
+                                const QList<VaporView::Ground::Main::RemoteTelemetrySummarySections::Item>& items,
+                                bool compactAvailabilityValues,
+                                bool english)
+{
+    auto *section = sectionLayout ? qobject_cast<QWidget *>(sectionLayout->parent()) : nullptr;
+    if (!section)
+    {
+        return false;
+    }
+
+    QList<QFrame *> pills =
+        section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+    std::stable_sort(pills.begin(), pills.end(), [section](QFrame *left, QFrame *right) {
+        const QPoint leftPos = left->mapTo(section, QPoint(0, 0));
+        const QPoint rightPos = right->mapTo(section, QPoint(0, 0));
+        return std::make_tuple(leftPos.y(), leftPos.x()) <
+               std::make_tuple(rightPos.y(), rightPos.x());
+    });
+    if (pills.size() != items.size())
+    {
+        return false;
+    }
+
+    for (int index = 0; index < items.size(); ++index)
+    {
+        const auto& item = items.at(index);
+        QFrame *pill = pills.at(index);
+        auto *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+        auto *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+        if (!nameLabel || !valueLabel || nameLabel->text() != item.label)
+        {
+            return false;
+        }
+
+        const QString valueText = summaryItemValueText(item, compactAvailabilityValues, english);
+        const QString widthText = summaryItemWidthText(item, compactAvailabilityValues, english);
+        const int requiredValueWidth = std::max(valueLabel->fontMetrics().horizontalAdvance(valueText),
+                                               valueLabel->fontMetrics().horizontalAdvance(widthText));
+        const int availableValueWidth = std::max(
+            valueLabel->width(),
+            std::max(valueLabel->minimumWidth(), valueLabel->sizeHint().width()));
+        if (requiredValueWidth > availableValueWidth + 1)
+        {
+            return false;
+        }
+
+        if (valueLabel->text() != valueText)
+        {
+            valueLabel->setText(valueText);
+        }
+        setTelemetryAvailability(nameLabel, item.hasData);
+        setTelemetryAvailability(valueLabel, item.hasData);
+    }
+    return true;
+}
+
+QString rd105OutcomeName(VaporView::Ground::Devices::Rd105OperationOutcome outcome)
+{
+    using Outcome = VaporView::Ground::Devices::Rd105OperationOutcome;
+    switch (outcome)
+    {
+    case Outcome::Success: return QStringLiteral("success");
+    case Outcome::Failed: return QStringLiteral("failed");
+    case Outcome::Timeout: return QStringLiteral("timeout");
+    case Outcome::Disconnected: return QStringLiteral("disconnected");
+    case Outcome::Unsupported: return QStringLiteral("unsupported");
+    }
+    return QStringLiteral("unknown");
+}
+
+QString rd105ExecutionPath(VaporView::Ground::Devices::Rd105Backend backend)
+{
+    return backend == VaporView::Ground::Devices::Rd105Backend::Remote
+        ? QStringLiteral("remote_sky")
+        : QStringLiteral("local");
+}
+
+} // namespace
+
 bool MainWindow::isRemoteSkyMode() const
 {
     return state_->remote_sky_mode_;
@@ -18,13 +181,50 @@ bool MainWindow::isRemoteSkyTcpMode() const
 void MainWindow::onDataSourceModeChanged(int index)
 {
     state_->remote_sky_mode_ = index == 1;
+    if (state_->ai8_device_session_)
+    {
+        state_->ai8_device_session_->setBackend(
+            state_->remote_sky_mode_
+                ? VaporView::Ground::Devices::Ai8Backend::Remote
+                : VaporView::Ground::Devices::Ai8Backend::Local);
+        if (state_->ai8_temperature_controller_panel_)
+        {
+            const auto page = state_->ai8_temperature_controller_panel_->currentPageData();
+            state_->ai8_device_session_->activatePage(page.page, page.selection);
+        }
+    }
+    if (state_->epsilon_device_session_)
+    {
+        state_->epsilon_device_session_->setBackend(
+            state_->remote_sky_mode_
+                ? VaporView::Ground::Devices::EpsilonBackend::Remote
+                : VaporView::Ground::Devices::EpsilonBackend::Local);
+    }
+    if (state_->rd105_device_session_)
+    {
+        state_->rd105_device_session_->setBackend(
+            state_->remote_sky_mode_
+                ? VaporView::Ground::Devices::Rd105Backend::Remote
+                : VaporView::Ground::Devices::Rd105Backend::Local);
+    }
     saveRememberedInputState();
     clearRemoteSkyDataUi();
+    syncDeviceConfigEpsilonPanelFromSettings();
     if (state_->tcp_wave_panel_)
     {
         state_->tcp_wave_panel_->setRemoteSkyMode(state_->remote_sky_mode_);
     }
+    if (state_->remote_sky_mode_)
+    {
+        syncDeviceConfigPageForCurrentTarget();
+    }
+    else
+    {
+        syncDeviceConfigPageFromHome();
+    }
+    updateDeviceConfigTexts();
     updateSourceModeUi();
+    requestRemoteSkyConfigIfAvailable(false);
     updateRecordingActionStates();
 }
 
@@ -48,7 +248,11 @@ void MainWindow::updateSourceModeUi()
     }
     if (state_->auto_detect_ports_btn_)
     {
-        state_->auto_detect_ports_btn_->setEnabled(!remote && (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_);
+        const bool remoteDetectionAvailable = remote && (isUiTestMode() ||
+            (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen()));
+        state_->auto_detect_ports_btn_->setEnabled(remote
+            ? remoteDetectionAvailable
+            : (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_);
     }
     if (state_->source_mode_switch_)
     {
@@ -75,7 +279,6 @@ void MainWindow::updateSourceModeUi()
     if (state_->sky_telemetry_tcp_port_spin_) state_->sky_telemetry_tcp_port_spin_->setVisible(tcpTelemetry);
     const bool remoteActionsAvailable = remote && (isUiTestMode() ||
         (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen()));
-    if (state_->sky_device_config_btn_) state_->sky_device_config_btn_->setEnabled(remoteActionsAvailable);
     setRemoteDeviceButtonsEnabled(remoteActionsAvailable);
     updateTemperatureControllerTitleText();
     updateTemperatureTitleButtonsState();
@@ -121,7 +324,19 @@ int MainWindow::homeDeviceOverviewContentMinimumWidth() const
     const int deviceControlsWidth = std::max(
         homeDevices->minimumWidth(),
         std::max(homeDevices->minimumSizeHint().width(), homeDevices->sizeHint().width()));
-    return deviceControlsWidth +
+    int telemetrySummaryWidth = 0;
+    if (state_->data_telemetry_summary_card_)
+    {
+        telemetrySummaryWidth = state_->data_telemetry_summary_card_->minimumWidth();
+        if (QLayout *summaryLayout = state_->data_telemetry_summary_card_->layout())
+        {
+            summaryLayout->invalidate();
+            telemetrySummaryWidth = std::max(telemetrySummaryWidth,
+                                             summaryLayout->minimumSize().width());
+        }
+    }
+    const int contentWidth = std::max(deviceControlsWidth, telemetrySummaryWidth);
+    return contentWidth +
            cardMargins.left() +
            cardMargins.right() +
            bodyMargins.left() +
@@ -147,11 +362,15 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
             if (QLayout *columnLayout = column->layout())
             {
                 columnLayout->setSizeConstraint(QLayout::SetFixedSize);
+                columnLayout->invalidate();
+                columnLayout->activate();
             }
         }
         if (QLayout *deviceLayout = homeDevices->layout())
         {
             deviceLayout->setSizeConstraint(QLayout::SetFixedSize);
+            deviceLayout->invalidate();
+            deviceLayout->activate();
         }
     }
 
@@ -163,9 +382,28 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
         return;
     }
 
+    auto rememberAutoMinimumWidth = [this, contentMinimumWidth]() {
+        state_->home_overview_splitter_->setProperty(
+            kHomeOverviewDeviceAutoMinimumWidthProperty,
+            contentMinimumWidth);
+    };
+    auto setAutoManagedSizes = [this](int leftWidth, int rightWidth) {
+        state_->home_overview_splitter_->setProperty(
+            kHomeOverviewDeviceProgrammaticResizeProperty,
+            true);
+        state_->home_overview_splitter_->setSizes({leftWidth, rightWidth});
+        state_->home_overview_splitter_->setProperty(
+            kHomeOverviewDeviceProgrammaticResizeProperty,
+            false);
+        state_->home_overview_splitter_->setProperty(
+            kHomeOverviewDeviceAutoManagedWidthProperty,
+            true);
+    };
+
     const QList<int> sizes = state_->home_overview_splitter_->sizes();
-    if (sizes.size() < 2 || sizes.at(0) >= contentMinimumWidth)
+    if (sizes.size() < 2)
     {
+        rememberAutoMinimumWidth();
         return;
     }
 
@@ -176,13 +414,38 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
     const int rightMinimumWidth = state_->temperature_overview_group_->minimumWidth();
     if (availableWidth < contentMinimumWidth + rightMinimumWidth)
     {
+        rememberAutoMinimumWidth();
         return;
     }
 
-    state_->home_overview_splitter_->setSizes({
-        contentMinimumWidth,
-        std::max(rightMinimumWidth, availableWidth - contentMinimumWidth)
-    });
+    bool hadPreviousAutoMinimum = false;
+    const int previousAutoMinimumWidth = state_->home_overview_splitter_
+                                             ->property(kHomeOverviewDeviceAutoMinimumWidthProperty)
+                                             .toInt(&hadPreviousAutoMinimum);
+    const bool autoManagedWidth = state_->home_overview_splitter_
+                                      ->property(kHomeOverviewDeviceAutoManagedWidthProperty)
+                                      .toBool();
+    const bool belowCurrentMinimum = sizes.at(0) < contentMinimumWidth;
+    const bool autoMinimumShrank =
+        autoManagedWidth &&
+        hadPreviousAutoMinimum &&
+        previousAutoMinimumWidth > contentMinimumWidth;
+    const bool followsPreviousAutoMinimum =
+        autoMinimumShrank &&
+        previousAutoMinimumWidth > contentMinimumWidth &&
+        std::abs(sizes.at(0) - previousAutoMinimumWidth) <= 1;
+    const bool shouldFollowAutoMinimum =
+        autoMinimumShrank &&
+        sizes.at(0) >= contentMinimumWidth;
+    if (!belowCurrentMinimum && !followsPreviousAutoMinimum && !shouldFollowAutoMinimum)
+    {
+        rememberAutoMinimumWidth();
+        return;
+    }
+
+    setAutoManagedSizes(contentMinimumWidth,
+                        std::max(rightMinimumWidth, availableWidth - contentMinimumWidth));
+    rememberAutoMinimumWidth();
 }
 
 void MainWindow::updateConfigCardHeightForSourceMode()
@@ -254,6 +517,7 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         {
             state_->home_overview_splitter_->setFixedHeight(targetHeight);
         }
+        updateHomeDeviceOverviewMinimumWidth();
         return;
     }
     if (state_->config_group_->height() < minimumHeight)
@@ -265,11 +529,23 @@ void MainWindow::updateConfigCardHeightForSourceMode()
 void MainWindow::clearRemoteSkyDataUi()
 {
     state_->remote_sky_controller_->reset();
-    state_->remote_temperature_commands_.clear();
+    if (state_->ai8_device_session_)
+    {
+        state_->ai8_device_session_->setRemoteAvailable(false);
+    }
+    if (state_->epsilon_device_session_)
+    {
+        state_->epsilon_device_session_->setRemoteAvailable(false);
+    }
+    if (state_->rd105_device_session_)
+    {
+        state_->rd105_device_session_->setRemoteAvailable(false);
+    }
     state_->remote_sky_online_ = false;
     state_->remote_wave_stream_requested_ = false;
     state_->remote_wave_stream_enable_pending_ = false;
     state_->remote_wave_stream_auto_start_ = true;
+    clearPendingRemoteWaveTcpConnection();
     state_->remote_status_ = VaporView::TelemetryStatus();
     state_->remote_recording_state_ = 0;
 
@@ -287,6 +563,11 @@ void MainWindow::clearRemoteSkyDataUi()
     if (state_->tcp_wave_panel_)
     {
         state_->tcp_wave_panel_->setRemoteWaveTcpState(VaporView::DeviceState::Disconnected);
+    }
+    if (state_->ai8_temperature_controller_panel_)
+    {
+        state_->ai8_temperature_controller_panel_->setBackendConnected(false);
+        state_->ai8_temperature_controller_panel_->applyLiveData({});
     }
 
     if (state_->device_panel_coordinator_)
@@ -306,15 +587,53 @@ void MainWindow::clearRemoteSkyDataUi()
 void MainWindow::markRemoteSkyLinkClosed()
 {
     state_->remote_sky_controller_->markLinkClosed();
+    state_->remote_serial_detection_pending_ = false;
+    state_->port_detection_in_progress_ = false;
+    state_->remote_serial_detection_seq_ = 0;
+    state_->remote_serial_detection_cancel_seq_ = 0;
     state_->remote_sky_online_ = false;
     state_->remote_wave_stream_requested_ = false;
     state_->remote_wave_stream_enable_pending_ = false;
-    state_->remote_temperature_commands_.clear();
+    clearPendingRemoteWaveTcpConnection();
+    state_->remote_sky_config_loading_ = false;
+    state_->remote_sky_config_applying_ = false;
+    state_->remote_sky_config_saving_ = false;
+    state_->remote_sky_config_read_generation_ = 0;
+    state_->remote_sky_config_apply_generation_ = 0;
+    if (state_->remote_sky_config_loaded_)
+    {
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("Telemetry link closed. Showing last loaded Remote Sky config.")
+            : QStringLiteral("天地数传已断开，当前显示上次读取到的天空端配置。"));
+    }
+    else
+    {
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("Telemetry link closed. Remote Sky config is not loaded.")
+            : QStringLiteral("天地数传已断开，尚未读取天空端配置。"));
+    }
+    if (state_->ai8_device_session_)
+    {
+        state_->ai8_device_session_->setRemoteAvailable(false);
+    }
+    if (state_->epsilon_device_session_)
+    {
+        state_->epsilon_device_session_->setRemoteAvailable(false);
+    }
+    if (state_->rd105_device_session_)
+    {
+        state_->rd105_device_session_->setRemoteAvailable(false);
+    }
     state_->remote_recording_state_ = 0;
     state_->remote_status_.recording_state = 0;
     if (state_->tcp_wave_panel_)
     {
         state_->tcp_wave_panel_->setRemoteWaveTcpState(VaporView::DeviceState::Disconnected);
+    }
+    if (state_->ai8_temperature_controller_panel_)
+    {
+        state_->ai8_temperature_controller_panel_->setBackendConnected(false);
+        state_->ai8_temperature_controller_panel_->applyLiveData({});
     }
     refreshRemoteSkyDataUi();
     updateSourceModeUi();
@@ -383,10 +702,43 @@ double MainWindow::remoteWaveformPacketRate(quint16 channelId) const
 
 MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySections() const
 {
-    const bool connected = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
+    const bool uiTestMode = isUiTestMode() && state_->ui_test_model_;
+    VaporView::Ground::Devices::UiTestSnapshot uiTestSnapshot;
+    if (uiTestMode)
+    {
+        const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - state_->ui_test_started_ms_;
+        uiTestSnapshot = state_->ui_test_model_->snapshot(elapsed);
+    }
+    const bool connected = uiTestMode
+        ? !uiTestSnapshot.dataStalled
+        : (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen());
 
     auto hasDeviceData = [this, connected](VaporView::SkyDeviceId device, qint64 timeoutMs) {
         return connected && remoteDeviceDataValid(device, timeoutMs);
+    };
+    auto hasUiTestDeviceData = [this, &uiTestSnapshot](VaporView::SkyDeviceId device) {
+        switch (device)
+        {
+        case VaporView::SkyDeviceId::Epsilon:
+            return uiTestSnapshot.epsilon.valid;
+        case VaporView::SkyDeviceId::Ptb:
+            return uiTestSnapshot.ptb.valid;
+        case VaporView::SkyDeviceId::Hmp:
+            return uiTestSnapshot.hmp.valid;
+        case VaporView::SkyDeviceId::Lidar:
+            return uiTestSnapshot.lidar.valid;
+        case VaporView::SkyDeviceId::TemperatureController:
+            return uiTestSnapshot.temperature.valid;
+        case VaporView::SkyDeviceId::Ai8TemperatureController:
+            return uiTestSnapshot.ai8Temperature.valid;
+        case VaporView::SkyDeviceId::WaveTcp:
+            return state_->ui_test_model_->deviceState(VaporView::SkyDeviceId::WaveTcp) ==
+                       VaporView::DeviceState::Connected &&
+                   !uiTestSnapshot.rawWaveform.isEmpty();
+        case VaporView::SkyDeviceId::All:
+            return false;
+        }
+        return false;
     };
 
     auto hasText = [this](bool hasData) {
@@ -395,75 +747,181 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
             : (state_->is_english_ ? QStringLiteral("none") : QStringLiteral("无数据"));
     };
 
-    const QString actualWaveRate = formatFrequencyText(
-        connected ? static_cast<double>(state_->remote_status_.wave_tcp_actual_rate_hz) : 0.0);
-    const double rxBps = connected ? state_->remote_sky_controller_->receiveBitsPerSecond() : 0.0;
-    const double txBps = connected ? state_->remote_sky_controller_->transmitBitsPerSecond() : 0.0;
+    auto packetRate = [this, uiTestMode, &uiTestSnapshot](VaporView::MsgType type) {
+        if (!uiTestMode)
+        {
+            return remotePacketRate(type);
+        }
+        switch (type)
+        {
+        case VaporView::MsgType::TelemetryBasic:
+            return uiTestSnapshot.epsilonRateHz;
+        case VaporView::MsgType::WaveformFeature:
+            return uiTestSnapshot.waveformFeatureRateHz;
+        case VaporView::MsgType::TelemetryStatus:
+            return uiTestSnapshot.telemetryStatusRateHz;
+        default:
+            return 0.0;
+        }
+    };
+    auto waveformRate = [this, uiTestMode, &uiTestSnapshot](quint16 channelId) {
+        if (!uiTestMode)
+        {
+            return remoteWaveformPacketRate(channelId);
+        }
+        return channelId == 1
+            ? uiTestSnapshot.rawWaveformRateHz
+            : uiTestSnapshot.harmonicWaveformRateHz;
+    };
 
-    auto makeItem = [](const QString& label, const QString& value, bool hasData, const QString& valueWidthText = QString()) {
+    const double waveCaptureRateHz = uiTestMode
+        ? uiTestSnapshot.waveCaptureRateHz
+        : static_cast<double>(state_->remote_status_.wave_tcp_actual_rate_hz);
+    const QString actualWaveRate = formatFrequencyText(
+        connected ? waveCaptureRateHz : 0.0);
+    const double rxBps = connected
+        ? (uiTestMode ? uiTestSnapshot.receiveBitsPerSecond : state_->remote_sky_controller_->receiveBitsPerSecond())
+        : 0.0;
+    const double txBps = connected
+        ? (uiTestMode ? uiTestSnapshot.transmitBitsPerSecond : state_->remote_sky_controller_->transmitBitsPerSecond())
+        : 0.0;
+    const bool linkRateAvailable = connected;
+    const bool statusFresh = connected && (uiTestMode ||
+        (state_->remote_sky_controller_ &&
+         state_->remote_sky_controller_->statusFresh(QDateTime::currentMSecsSinceEpoch())));
+    const quint8 recordingState = uiTestMode ? 0 : state_->remote_status_.recording_state;
+    const quint64 diskFreeBytes = uiTestMode
+        ? static_cast<quint64>(128) * 1024ULL * 1024ULL * 1024ULL
+        : state_->remote_status_.disk_free_bytes;
+    const quint32 crcErrorCount = uiTestMode ? 0U : state_->remote_status_.crc_error_count;
+    const QString unavailableText = QStringLiteral("--");
+    const QString targetText = [this]() {
+        if (!isRemoteSkyMode())
+        {
+            return state_->is_english_
+                ? QStringLiteral("Local host")
+                : QStringLiteral("本机");
+        }
+        if (isRemoteSkyTcpMode())
+        {
+            const QString host = state_->sky_telemetry_tcp_host_edit_
+                ? state_->sky_telemetry_tcp_host_edit_->text().trimmed()
+                : QString();
+            const int port = state_->sky_telemetry_tcp_port_spin_
+                ? state_->sky_telemetry_tcp_port_spin_->value()
+                : 0;
+            return QStringLiteral("TCP %1:%2")
+                .arg(host.isEmpty() ? QStringLiteral("--") : host)
+                .arg(port > 0 ? QString::number(port) : QStringLiteral("--"));
+        }
+        const QString serialPort = localSerialPortComboValue(state_->sky_telemetry_port_combo_);
+        const QString baud = state_->sky_telemetry_baud_combo_
+            ? state_->sky_telemetry_baud_combo_->currentText().trimmed()
+            : QString();
+        return QStringLiteral("Serial %1 %2")
+            .arg(serialPort.isEmpty() ? QStringLiteral("--") : serialPort,
+                 baud.isEmpty() ? QStringLiteral("--") : baud);
+    }();
+
+    auto makeItem = [](const QString& label,
+                       const QString& value,
+                       bool hasData,
+                       const QString& valueWidthText = QString(),
+                       bool compactAvailabilityValue = false) {
         RemoteTelemetrySummarySections::Item item;
         item.label = label;
         item.value = value;
         item.valueWidthText = valueWidthText;
         item.hasData = hasData;
+        item.compactAvailabilityValue = compactAvailabilityValue;
         return item;
     };
 
     QList<RemoteTelemetrySummarySections::Item> rateRows;
     QList<RemoteTelemetrySummarySections::Item> linkRows;
+    QList<RemoteTelemetrySummarySections::Item> linkStatusRows;
     QList<RemoteTelemetrySummarySections::Item> deviceRows;
     const QString frequencyWidthText = QStringLiteral("999.9 Hz");
-    const QString bitRateWidthText = QStringLiteral("999.9 Mbps");
+    const QString bitRateWidthText = uiTestMode
+        ? QStringLiteral("999.9 Mbps")
+        : QStringLiteral("999.9 kbps");
     auto appendPacketRate = [&](VaporView::MsgType type, const QString& label) {
-        const double rate = remotePacketRate(type);
+        const double rate = packetRate(type);
         rateRows << makeItem(label, formatFrequencyText(rate), connected && rate > 0.0, frequencyWidthText);
     };
     auto appendWaveformRate = [&](quint16 channelId, const QString& label) {
-        const double rate = remoteWaveformPacketRate(channelId);
+        const double rate = waveformRate(channelId);
         rateRows << makeItem(label, formatFrequencyText(rate), connected && rate > 0.0, frequencyWidthText);
     };
     auto appendDevice = [&](VaporView::SkyDeviceId device, qint64 timeoutMs, const QString& label) {
-        const bool hasData = hasDeviceData(device, timeoutMs);
-        deviceRows << makeItem(label, hasText(hasData), hasData);
+        const bool hasData = uiTestMode ? hasUiTestDeviceData(device) : hasDeviceData(device, timeoutMs);
+        deviceRows << makeItem(label, hasText(hasData), hasData, QString(), true);
     };
     if (state_->is_english_)
     {
-        appendPacketRate(VaporView::MsgType::TelemetryBasic, QStringLiteral("Basic:"));
-        appendPacketRate(VaporView::MsgType::WaveformFeature, QStringLiteral("Feature:"));
-        appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("Status:"));
-        appendWaveformRate(1, QStringLiteral("Wave raw:"));
-        appendWaveformRate(4, QStringLiteral("Wave harm.:"));
-        rateRows << makeItem(QStringLiteral("Wave capture:"), actualWaveRate, connected && state_->remote_status_.wave_tcp_actual_rate_hz > 0.0f, frequencyWidthText);
-        linkRows << makeItem(QStringLiteral("Sky->Ground:"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("Ground->Sky:"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("Total:"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
-        appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON:"));
-        appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB:"));
-        appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP:"));
-        appendDevice(VaporView::SkyDeviceId::Lidar, 2000, QStringLiteral("Lidar:"));
-        appendDevice(VaporView::SkyDeviceId::WaveTcp, 3000, QStringLiteral("Wave:"));
+        appendPacketRate(VaporView::MsgType::TelemetryBasic, QStringLiteral("Basic"));
+        appendPacketRate(VaporView::MsgType::WaveformFeature, QStringLiteral("Feature"));
+        appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("Status"));
+        appendWaveformRate(1, QStringLiteral("Wave raw"));
+        appendWaveformRate(4, QStringLiteral("Wave harm."));
+        rateRows << makeItem(QStringLiteral("Wave capture"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
+        linkRows << makeItem(QStringLiteral("Target"), targetText, true);
+        linkRows << makeItem(QStringLiteral("Sky->Ground"), formatBitRate(rxBps), linkRateAvailable, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("Ground->Sky"), formatBitRate(txBps), linkRateAvailable, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("Total"), formatBitRate(rxBps + txBps), linkRateAvailable, bitRateWidthText);
+        linkStatusRows << makeItem(QStringLiteral("Disk"),
+                                   statusFresh && diskFreeBytes > 0 ? remoteSummaryBytesText(diskFreeBytes) : unavailableText,
+                                   statusFresh && diskFreeBytes > 0,
+                                   QStringLiteral("999.9 GB"));
+        linkStatusRows << makeItem(QStringLiteral("Record"),
+                                   statusFresh ? remoteSummaryRecordingStateText(recordingState, true) : unavailableText,
+                                   statusFresh,
+                                   QStringLiteral("Recording"));
+        linkStatusRows << makeItem(QStringLiteral("CRC"),
+                                   statusFresh ? QString::number(crcErrorCount) : unavailableText,
+                                   statusFresh && crcErrorCount == 0,
+                                   QStringLiteral("999999"));
+        appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON"));
+        appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB"));
+        appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP"));
+        appendDevice(VaporView::SkyDeviceId::Lidar, 2000, QStringLiteral("Lidar"));
+        appendDevice(VaporView::SkyDeviceId::WaveTcp, 3000, QStringLiteral("Wave"));
     }
     else
     {
-        appendPacketRate(VaporView::MsgType::TelemetryBasic, QStringLiteral("基础:"));
-        appendPacketRate(VaporView::MsgType::WaveformFeature, QStringLiteral("特征值:"));
-        appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("状态:"));
-        appendWaveformRate(1, QStringLiteral("原始波形:"));
-        appendWaveformRate(4, QStringLiteral("谐波波形:"));
-        rateRows << makeItem(QStringLiteral("波形采集:"), actualWaveRate, connected && state_->remote_status_.wave_tcp_actual_rate_hz > 0.0f, frequencyWidthText);
-        linkRows << makeItem(QStringLiteral("天→地"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("地→天"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("合"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
-        appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON："));
-        appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB："));
-        appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP："));
-        appendDevice(VaporView::SkyDeviceId::Lidar, 2000, QStringLiteral("Lidar："));
-        appendDevice(VaporView::SkyDeviceId::WaveTcp, 3000, QStringLiteral("波形："));
+        appendPacketRate(VaporView::MsgType::TelemetryBasic, QStringLiteral("基础"));
+        appendPacketRate(VaporView::MsgType::WaveformFeature, QStringLiteral("特征值"));
+        appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("状态"));
+        appendWaveformRate(1, QStringLiteral("原始波形"));
+        appendWaveformRate(4, QStringLiteral("谐波波形"));
+        rateRows << makeItem(QStringLiteral("波形采集"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
+        linkRows << makeItem(QStringLiteral("目标"), targetText, true);
+        linkRows << makeItem(QStringLiteral("天→地"), formatBitRate(rxBps), linkRateAvailable, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("地→天"), formatBitRate(txBps), linkRateAvailable, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("合"), formatBitRate(rxBps + txBps), linkRateAvailable, bitRateWidthText);
+        linkStatusRows << makeItem(QStringLiteral("磁盘"),
+                                   statusFresh && diskFreeBytes > 0 ? remoteSummaryBytesText(diskFreeBytes) : unavailableText,
+                                   statusFresh && diskFreeBytes > 0,
+                                   QStringLiteral("999.9 GB"));
+        linkStatusRows << makeItem(QStringLiteral("记录"),
+                                   statusFresh ? remoteSummaryRecordingStateText(recordingState, false) : unavailableText,
+                                   statusFresh,
+                                   QStringLiteral("记录中"));
+        linkStatusRows << makeItem(QStringLiteral("CRC"),
+                                   statusFresh ? QString::number(crcErrorCount) : unavailableText,
+                                   statusFresh && crcErrorCount == 0,
+                                   QStringLiteral("999999"));
+        appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON"));
+        appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB"));
+        appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP"));
+        appendDevice(VaporView::SkyDeviceId::Lidar, 2000, QStringLiteral("Lidar"));
+        appendDevice(VaporView::SkyDeviceId::WaveTcp, 3000, QStringLiteral("波形"));
     }
 
     RemoteTelemetrySummarySections sections;
     sections.rateItems = rateRows;
     sections.linkItems = linkRows;
+    sections.linkStatusItems = linkStatusRows;
     sections.deviceItems = deviceRows;
     return sections;
 }
@@ -475,25 +933,26 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         return;
     }
     const RemoteTelemetrySummarySections sections = remoteTelemetrySummarySections();
-    QStringList summaryRenderTokens{
+    QStringList summaryStructureTokens{
         QString::number(state_->font_scale_percent_),
-        state_->is_english_ ? QStringLiteral("en") : QStringLiteral("zh")};
-    const auto appendSummaryRenderTokens = [&summaryRenderTokens](
-                                               const QList<RemoteTelemetrySummarySections::Item>& items) {
-        summaryRenderTokens << QString::number(items.size());
+        state_->is_english_ ? QStringLiteral("en") : QStringLiteral("zh"),
+        qApp && !qApp->styleSheet().isEmpty() ? QStringLiteral("styled") : QStringLiteral("unstyled")};
+    const auto appendSummaryStructureTokens = [&summaryStructureTokens](
+                                                  const QList<RemoteTelemetrySummarySections::Item>& items) {
+        summaryStructureTokens << QString::number(items.size());
         for (const RemoteTelemetrySummarySections::Item& item : items)
         {
-            summaryRenderTokens << item.label
-                                << item.value
-                                << item.valueWidthText
-                                << (item.hasData ? QStringLiteral("1") : QStringLiteral("0"));
+            summaryStructureTokens << item.label
+                                   << item.valueWidthText
+                                   << (item.compactAvailabilityValue ? QStringLiteral("compact") : QStringLiteral("value"));
         }
     };
-    appendSummaryRenderTokens(sections.rateItems);
-    appendSummaryRenderTokens(sections.linkItems);
-    appendSummaryRenderTokens(sections.deviceItems);
-    const QString summaryRenderKey = summaryRenderTokens.join(QChar(0x1f));
-    constexpr auto kSummaryRenderKeyProperty = "vaporViewTelemetrySummaryRenderKey";
+    appendSummaryStructureTokens(sections.rateItems);
+    appendSummaryStructureTokens(sections.linkItems);
+    appendSummaryStructureTokens(sections.linkStatusItems);
+    appendSummaryStructureTokens(sections.deviceItems);
+    const QString summaryStructureKey = summaryStructureTokens.join(QChar(0x1f));
+    constexpr auto kSummaryStructureKeyProperty = "vaporViewTelemetrySummaryStructureKey";
 
     if (state_->data_telemetry_summary_card_)
     {
@@ -503,11 +962,59 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     {
         state_->device_config_.data_telemetry_summary_card->setVisible(true);
     }
-    const bool homeSummaryCurrent = !state_->data_telemetry_summary_card_ ||
-        state_->data_telemetry_summary_card_->property(kSummaryRenderKeyProperty).toString() == summaryRenderKey;
-    const bool deviceConfigSummaryCurrent = !state_->device_config_.data_telemetry_summary_card ||
-        state_->device_config_.data_telemetry_summary_card->property(kSummaryRenderKeyProperty).toString() == summaryRenderKey;
-    if (homeSummaryCurrent && deviceConfigSummaryCurrent)
+    QList<RemoteTelemetrySummarySections::Item> deviceConfigDataItems = sections.linkStatusItems;
+    for (const RemoteTelemetrySummarySections::Item& item : sections.deviceItems)
+    {
+        deviceConfigDataItems << item;
+    }
+
+    bool homeSummaryNeedsRender = false;
+    if (state_->data_telemetry_summary_card_)
+    {
+        homeSummaryNeedsRender = !(
+            updateSummarySectionValues(state_->data_telemetry_summary_layout_,
+                                       sections.rateItems,
+                                       false,
+                                       state_->is_english_) &&
+            updateSummarySectionValues(state_->data_telemetry_link_summary_layout_,
+                                       sections.linkItems,
+                                       false,
+                                       state_->is_english_) &&
+            updateSummarySectionValues(state_->data_telemetry_device_summary_layout_,
+                                       sections.deviceItems,
+                                       true,
+                                       state_->is_english_));
+        if (!homeSummaryNeedsRender)
+        {
+            state_->data_telemetry_summary_card_->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
+            state_->data_telemetry_summary_card_->update();
+        }
+    }
+
+    bool deviceConfigSummaryNeedsRender = false;
+    if (state_->device_config_.data_telemetry_summary_card)
+    {
+        deviceConfigSummaryNeedsRender = !(
+            updateSummarySectionValues(state_->device_config_.data_telemetry_rate_summary_layout,
+                                       sections.rateItems,
+                                       false,
+                                       state_->is_english_) &&
+            updateSummarySectionValues(state_->device_config_.data_telemetry_link_summary_layout,
+                                       sections.linkItems,
+                                       false,
+                                       state_->is_english_) &&
+            updateSummarySectionValues(state_->device_config_.data_telemetry_device_summary_layout,
+                                       deviceConfigDataItems,
+                                       true,
+                                       state_->is_english_));
+        if (!deviceConfigSummaryNeedsRender)
+        {
+            state_->device_config_.data_telemetry_summary_card->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
+            state_->device_config_.data_telemetry_summary_card->update();
+        }
+    }
+
+    if (!homeSummaryNeedsRender && !deviceConfigSummaryNeedsRender)
     {
         if (state_->home_overview_splitter_)
         {
@@ -515,7 +1022,6 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         }
         return;
     }
-
     auto clearLayout = [](QLayout *layout) {
         if (!layout)
         {
@@ -555,6 +1061,10 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             return;
         }
         clearLayout(sectionLayout);
+        if (QWidget *section = qobject_cast<QWidget *>(sectionLayout->parent()))
+        {
+            section->setMinimumWidth(0);
+        }
 
         auto addItemLabel = [this, useSideTitle, compactAvailabilityValues](QHBoxLayout *lineLayout,
                                                                             QWidget *lineWidget,
@@ -565,9 +1075,9 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             pill->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             pill->setMinimumHeight(scalePixels(useSideTitle ? 26 : 28));
             auto *pillLayout = new QHBoxLayout(pill);
-            const int horizontalPadding = scalePixels(useSideTitle ? 4 : 7);
+            const int horizontalPadding = scalePixels(useSideTitle ? 2 : 5);
             pillLayout->setContentsMargins(horizontalPadding, scalePixels(1), horizontalPadding, scalePixels(1));
-            pillLayout->setSpacing(scalePixels(useSideTitle ? 2 : 3));
+            pillLayout->setSpacing(scalePixels(useSideTitle ? 1 : 4));
 
             auto *nameLabel = new QLabel(item.label, pill);
             nameLabel->setObjectName(QStringLiteral("homeTelemetrySummaryNameLabel"));
@@ -577,31 +1087,33 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             nameLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             nameLabel->setTextFormat(Qt::PlainText);
             nameLabel->ensurePolished();
-            nameLabel->setMinimumWidth(nameLabel->fontMetrics().horizontalAdvance(item.label) + scalePixels(1));
+            const int nameWidth =
+                std::max(nameLabel->sizeHint().width(),
+                         nameLabel->fontMetrics().horizontalAdvance(item.label)) +
+                scalePixels(useSideTitle ? 2 : 2);
+            nameLabel->setFixedWidth(nameWidth);
             nameLabel->setMinimumHeight(nameLabel->fontMetrics().height() + scalePixels(2));
             pillLayout->addWidget(nameLabel, 0, Qt::AlignVCenter);
 
-            const QString compactValue = item.hasData
-                ? (state_->is_english_ ? QStringLiteral("Yes") : QStringLiteral("有"))
-                : (state_->is_english_ ? QStringLiteral("No") : QStringLiteral("无"));
-            const QString valueText = compactAvailabilityValues ? compactValue : item.value;
+            const QString valueText = summaryItemValueText(item, compactAvailabilityValues, state_->is_english_);
             auto *valueLabel = new QLabel(valueText, pill);
             valueLabel->setObjectName(QStringLiteral("homeTelemetrySummaryValueLabel"));
             valueLabel->setProperty("deviceConfigLink", useSideTitle);
             valueLabel->setProperty("telemetryAvailable", item.hasData);
             valueLabel->setFont(numericFontFrom(valueLabel->font()));
-            valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            valueLabel->setAlignment((useSideTitle ? Qt::AlignRight : Qt::AlignLeft) | Qt::AlignVCenter);
             valueLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             valueLabel->setTextFormat(Qt::PlainText);
             valueLabel->ensurePolished();
             valueLabel->setMinimumHeight(valueLabel->fontMetrics().height() + scalePixels(2));
-            const QString widthValue = compactAvailabilityValues
-                ? (state_->is_english_ ? QStringLiteral("Yes") : QStringLiteral("有"))
-                : (item.valueWidthText.isEmpty() ? valueText : item.valueWidthText);
-            const int valueWidth = std::max(valueLabel->fontMetrics().horizontalAdvance(widthValue),
-                                            valueLabel->fontMetrics().horizontalAdvance(valueText)) + scalePixels(2);
-            valueLabel->setMinimumWidth(valueWidth);
-            valueLabel->setMaximumWidth(valueWidth);
+            const QString widthValue = summaryItemWidthText(item, compactAvailabilityValues, state_->is_english_);
+            const int polishedValueWidth =
+                std::max(valueLabel->sizeHint().width(),
+                         std::max(valueLabel->fontMetrics().horizontalAdvance(widthValue),
+                                  valueLabel->fontMetrics().horizontalAdvance(valueText))) +
+                scalePixels(useSideTitle ? 2 : 2);
+            const int valueWidth = polishedValueWidth;
+            valueLabel->setFixedWidth(valueWidth);
             pillLayout->addWidget(valueLabel, 0, Qt::AlignVCenter);
             if (!useSideTitle)
             {
@@ -614,6 +1126,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             }
 
             lineLayout->addWidget(pill, 0, Qt::AlignVCenter);
+            return pill;
         };
 
         auto *lineParent = summaryParent;
@@ -671,31 +1184,42 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         }
 
         int renderedLineCount = 0;
+        int explicitSectionMinimumWidth = 0;
+        struct RenderedSummaryLine
+        {
+            QWidget *line = nullptr;
+            QHBoxLayout *layout = nullptr;
+            QVector<QFrame *> pills;
+        };
+        QVector<RenderedSummaryLine> renderedLines;
         auto addLine = [&](int begin, int end, bool includeTitle) {
             ++renderedLineCount;
             auto *line = new QWidget(lineParent);
             line->setFixedHeight(scalePixels(useSideTitle ? 26 : 28));
             auto *lineLayout = new QHBoxLayout(line);
             lineLayout->setContentsMargins(0, 0, 0, 0);
-            lineLayout->setSpacing(scalePixels(useSideTitle ? 4 : 2));
+            lineLayout->setSpacing(scalePixels(useSideTitle ? 2 : 2));
+            QVector<QFrame *> linePills;
 
             if (!useSideTitle && includeTitle && !title.isEmpty())
             {
                 auto *titleLabel = new QLabel(line);
                 titleLabel->setObjectName(QStringLiteral("homeTelemetrySummaryTitleLabel"));
                 titleLabel->setProperty("skyTelemetryTitle", true);
-                titleLabel->setText(title + (state_->is_english_ ? QStringLiteral(":") : QStringLiteral("：")));
+                titleLabel->setText(title);
                 titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
                 titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-                titleLabel->setMinimumWidth(titleLabel->fontMetrics().horizontalAdvance(titleLabel->text()) + scalePixels(4));
+                titleLabel->ensurePolished();
+                titleLabel->setFixedWidth(titleLabel->fontMetrics().horizontalAdvance(titleLabel->text()) + scalePixels(8));
                 lineLayout->addWidget(titleLabel, 0, Qt::AlignVCenter);
             }
 
             for (int i = begin; i < end; ++i)
             {
-                addItemLabel(lineLayout, line, items.at(i));
+                linePills << addItemLabel(lineLayout, line, items.at(i));
             }
             lineLayout->addStretch(1);
+            renderedLines.push_back({line, lineLayout, linePills});
             linesLayout->addWidget(line, 0, Qt::AlignLeft | Qt::AlignTop);
         };
 
@@ -716,6 +1240,64 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             }
         }
 
+        if (useSideTitle)
+        {
+            int widestPillWidth = 0;
+            for (const RenderedSummaryLine& renderedLine : renderedLines)
+            {
+                for (QFrame *pill : renderedLine.pills)
+                {
+                    widestPillWidth = std::max(
+                        widestPillWidth,
+                        std::max(pill->minimumWidth(),
+                                 std::max(pill->minimumSizeHint().width(), pill->sizeHint().width())));
+                }
+            }
+            for (const RenderedSummaryLine& renderedLine : renderedLines)
+            {
+                for (QFrame *pill : renderedLine.pills)
+                {
+                    pill->setFixedWidth(widestPillWidth);
+                }
+            }
+        }
+
+        for (RenderedSummaryLine& renderedLine : renderedLines)
+        {
+            renderedLine.layout->invalidate();
+            renderedLine.layout->activate();
+            const QMargins lineMargins = renderedLine.layout->contentsMargins();
+            int lineMinimumWidth = lineMargins.left() + lineMargins.right();
+            int lineWidgetCount = 0;
+            for (int i = 0; i < renderedLine.layout->count(); ++i)
+            {
+                QWidget *widget = renderedLine.layout->itemAt(i)
+                    ? renderedLine.layout->itemAt(i)->widget()
+                    : nullptr;
+                if (!widget)
+                {
+                    continue;
+                }
+                if (lineWidgetCount > 0)
+                {
+                    lineMinimumWidth += renderedLine.layout->spacing();
+                }
+                lineMinimumWidth += std::max(
+                    widget->minimumWidth(),
+                    std::max(widget->minimumSizeHint().width(), widget->sizeHint().width()));
+                ++lineWidgetCount;
+            }
+            renderedLine.line->setMinimumWidth(lineMinimumWidth);
+            renderedLine.line->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+            if (!useSideTitle)
+            {
+                const QMargins sectionMargins = sectionLayout->contentsMargins();
+                explicitSectionMinimumWidth = std::max(
+                    explicitSectionMinimumWidth,
+                    lineMinimumWidth + sectionMargins.left() + sectionMargins.right());
+            }
+        }
+
         sectionLayout->invalidate();
         sectionLayout->activate();
         if (QWidget *section = qobject_cast<QWidget *>(sectionLayout->parent()))
@@ -730,12 +1312,32 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                                       (renderedLineCount * rowHeight) +
                                       (std::max(0, renderedLineCount - 1) * rowSpacing) +
                                       borderAllowance;
+            const int sectionMinimumWidth = std::max(sectionLayout->minimumSize().width(), explicitSectionMinimumWidth);
+            section->setMinimumWidth(sectionMinimumWidth);
             section->setFixedHeight(sectionHeight);
             section->adjustSize();
             section->updateGeometry();
         }
     };
-    if (state_->data_telemetry_summary_card_)
+    auto updateSummaryMinimumWidth = [](QWidget *summaryWidget) {
+        if (!summaryWidget)
+        {
+            return;
+        }
+        int sectionMinimumWidth = 0;
+        const QList<QFrame*> sections =
+            summaryWidget->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
+        for (const QFrame *section : sections)
+        {
+            sectionMinimumWidth = std::max(sectionMinimumWidth, section->minimumWidth());
+        }
+        const QMargins margins = summaryWidget->layout()
+            ? summaryWidget->layout()->contentsMargins()
+            : QMargins();
+        summaryWidget->setMinimumWidth(sectionMinimumWidth + margins.left() + margins.right());
+        summaryWidget->updateGeometry();
+    };
+    if (homeSummaryNeedsRender && state_->data_telemetry_summary_card_)
     {
         renderSummarySection(state_->data_telemetry_summary_card_,
                              state_->data_telemetry_summary_layout_,
@@ -747,7 +1349,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                              state_->data_telemetry_link_summary_layout_,
                              state_->is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"),
                              sections.linkItems,
-                             -1);
+                             1,
+                             3);
         renderSummarySection(state_->data_telemetry_summary_card_,
                              state_->data_telemetry_device_summary_layout_,
                              state_->is_english_ ? QStringLiteral("Data") : QStringLiteral("数据"),
@@ -761,11 +1364,12 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             summaryLayout->invalidate();
             summaryLayout->activate();
         }
+        updateSummaryMinimumWidth(state_->data_telemetry_summary_card_);
         state_->data_telemetry_summary_card_->updateGeometry();
         updateHomeDeviceOverviewMinimumWidth();
-        state_->data_telemetry_summary_card_->setProperty(kSummaryRenderKeyProperty, summaryRenderKey);
+        state_->data_telemetry_summary_card_->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
     }
-    if (state_->device_config_.data_telemetry_summary_card)
+    if (deviceConfigSummaryNeedsRender && state_->device_config_.data_telemetry_summary_card)
     {
         renderSummarySection(state_->device_config_.data_telemetry_summary_card,
                              state_->device_config_.data_telemetry_rate_summary_layout,
@@ -784,7 +1388,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         renderSummarySection(state_->device_config_.data_telemetry_summary_card,
                              state_->device_config_.data_telemetry_device_summary_layout,
                              state_->is_english_ ? QStringLiteral("Data") : QStringLiteral("数据"),
-                             sections.deviceItems,
+                             deviceConfigDataItems,
                              3,
                              3,
                              true,
@@ -795,7 +1399,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             summaryLayout->activate();
         }
         state_->device_config_.data_telemetry_summary_card->updateGeometry();
-        state_->device_config_.data_telemetry_summary_card->setProperty(kSummaryRenderKeyProperty, summaryRenderKey);
+        state_->device_config_.data_telemetry_summary_card->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
     }
     if (state_->home_overview_splitter_)
     {
@@ -805,74 +1409,50 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
 
 void MainWindow::setDeviceConfigEpsilonPacketRates(const std::map<uint8_t, int>& packetRates)
 {
-    for (QComboBox *combo : state_->device_config_.epsilon_packet_rate_combos)
+    if (!state_->epsilon_config_panel_)
     {
-        if (!combo)
-        {
-            continue;
-        }
-        const auto packetId = static_cast<uint8_t>(combo->property("epsilonPacketId").toUInt());
-        const auto it = packetRates.find(packetId);
-        if (it == packetRates.end())
-        {
-            continue;
-        }
-        const int index = combo->findData(it->second);
-        if (index >= 0)
-        {
-            const QSignalBlocker blocker(combo);
-            combo->setCurrentIndex(index);
-        }
+        return;
     }
+    state_->epsilon_config_panel_->setPacketRates(packetRates);
 }
 
 std::map<uint8_t, int> MainWindow::deviceConfigEpsilonPacketRates() const
 {
-    const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
-    const int groupedRateHz = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
-    std::map<uint8_t, int> packetRates = groupedEpsilonPacketRates(groupedRateHz);
-    for (QComboBox *combo : state_->device_config_.epsilon_packet_rate_combos)
+    std::map<uint8_t, int> packetRates = defaultEpsilonPacketRates();
+    if (!state_->epsilon_config_panel_)
     {
-        if (!combo)
-        {
-            continue;
-        }
-        const auto packetId = static_cast<uint8_t>(combo->property("epsilonPacketId").toUInt());
-        const QVariant rateValue = combo->currentData();
-        if (rateValue.isValid())
-        {
-            packetRates[packetId] = rateValue.toInt();
-        }
+        return packetRates;
+    }
+    for (const auto& entry : state_->epsilon_config_panel_->packetRates())
+    {
+        packetRates[entry.first] = entry.second;
     }
     return packetRates;
 }
 
 void MainWindow::syncDeviceConfigEpsilonPanelFromSettings()
 {
-    if (!state_->device_config_.epsilon_config_card)
+    if (!state_->epsilon_config_panel_)
     {
         return;
     }
 
-    const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
-    const int groupedRateHz = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
-    const bool customEnabled = settings.value("epsilon_custom_packet_rates_enabled", false).toBool();
-    const std::map<uint8_t, int> packetRates = customEnabled
-        ? loadCustomEpsilonPacketRates(settings, groupedRateHz)
-        : groupedEpsilonPacketRates(groupedRateHz);
-    if (state_->device_config_.epsilon_packet_custom_check)
+    if (isRemoteSkyMode())
     {
-        const QSignalBlocker blocker(state_->device_config_.epsilon_packet_custom_check);
-        state_->device_config_.epsilon_packet_custom_check->setChecked(customEnabled);
+        settings.beginGroup(QStringLiteral("RemoteEpsilonPacketProfile"));
     }
-    setDeviceConfigEpsilonPacketRates(packetRates);
+    setDeviceConfigEpsilonPacketRates(loadCustomEpsilonPacketRates(settings));
+    state_->epsilon_config_panel_->setRtcmDevicePortIndex(
+        isRemoteSkyMode()
+            ? state_->remote_sky_config_.epsilon_rtcm.device_port_index
+            : settings.value(QStringLiteral("epsilon_rtcm_device_port_index"), 2).toInt());
 }
 
 void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
 {
-    if (!state_->device_config_.epsilon_config_card ||
+    if (!state_->epsilon_config_panel_ ||
         state_->connection_attempt_in_progress_ ||
         state_->port_detection_in_progress_ ||
         state_->epsilon_reconfigure_in_progress_)
@@ -881,13 +1461,15 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
     }
 
     const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
-    const int groupedRateHz = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
-    const std::map<uint8_t, int> groupedRates = groupedEpsilonPacketRates(groupedRateHz);
     const std::map<uint8_t, int> defaultRates = defaultEpsilonPacketRates();
     const std::map<uint8_t, int> savedPacketRates = deviceConfigEpsilonPacketRates();
-    const QString epsilonBaudText = state_->epsilon_baud_combo_
-        ? state_->epsilon_baud_combo_->currentText().trimmed()
-        : QStringLiteral("921600");
+    const QString epsilonBaudText = isRemoteSkyMode()
+        ? QString::number(state_->remote_sky_config_.epsilon.baud_rate > 0
+              ? state_->remote_sky_config_.epsilon.baud_rate
+              : 921600)
+        : (state_->epsilon_baud_combo_
+              ? state_->epsilon_baud_combo_->currentText().trimmed()
+              : QStringLiteral("921600"));
     if (!validateEpsilonPacketBandwidth(savedPacketRates, epsilonBaudText, true))
     {
         return;
@@ -895,79 +1477,62 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
 
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
+    if (isRemoteSkyMode())
+    {
+        settings.beginGroup(QStringLiteral("RemoteEpsilonPacketProfile"));
+    }
     for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
     {
         const auto it = savedPacketRates.find(option.packet_id);
         VaporView::setPersistentSetting(settings, epsilonPacketRateSettingsKey(option.packet_id),
-                          it != savedPacketRates.end() ? it->second : groupedRates.at(option.packet_id));
+                          it != savedPacketRates.end() ? it->second : defaultRates.at(option.packet_id));
     }
 
-    bool hasCustomOverrides = false;
-    for (const auto& entry : savedPacketRates)
-    {
-        const auto groupedIt = groupedRates.find(entry.first);
-        if (groupedIt != groupedRates.end() && groupedIt->second != entry.second)
-        {
-            hasCustomOverrides = true;
-            break;
-        }
-    }
-    const bool effectiveCustomEnabled =
-        (state_->device_config_.epsilon_packet_custom_check && state_->device_config_.epsilon_packet_custom_check->isChecked()) ||
-        hasCustomOverrides;
-    VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_custom_packet_rates_enabled"), effectiveCustomEnabled);
-    VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_custom_packet_rates_user_saved"), effectiveCustomEnabled);
     VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_signature"));
     VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_apply_version"));
+    const QString packetRateSummary = epsilonPacketRatesSummary(savedPacketRates);
 
-    if (hasCustomOverrides &&
-        state_->device_config_.epsilon_packet_custom_check &&
-        !state_->device_config_.epsilon_packet_custom_check->isChecked())
-    {
-        const QSignalBlocker blocker(state_->device_config_.epsilon_packet_custom_check);
-        state_->device_config_.epsilon_packet_custom_check->setChecked(true);
-        log(state_->is_english_
-                ? "[EPSILON] Packet-rate overrides detected, so the custom packet-rate profile has been enabled automatically."
-                : "[EPSILON] 检测到包频率已偏离分组模式，已自动启用自定义包频率配置。");
-    }
-
-    if (effectiveCustomEnabled)
-    {
-        log(QString(state_->is_english_
-                        ? ((savedPacketRates == defaultRates)
-                               ? "[EPSILON] Recommended default packet-rate profile saved: %1"
-                               : "[EPSILON] Custom packet-rate profile saved: %1")
-                        : ((savedPacketRates == defaultRates)
-                               ? "[EPSILON] 已保存推荐默认包频率配置: %1"
-                               : "[EPSILON] 已保存自定义包频率配置: %1"))
-                .arg(epsilonPacketRatesSummary(savedPacketRates)));
-    }
-    else
-    {
-        log(QString(state_->is_english_
-                        ? "[EPSILON] Custom packet-rate profile disabled. The grouped %1 Hz profile will be used."
-                        : "[EPSILON] 已关闭自定义包频率，后续将使用分组 %1 Hz 配置。")
-                .arg(groupedRateHz));
-    }
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("configuration.apply"),
+                     QStringLiteral("epsilon_packet_profile_saved"),
+                     savedPacketRates == defaultRates
+                         ? QStringLiteral("已保存 EPSILON 推荐默认包频率配置。")
+                         : QStringLiteral("已保存 EPSILON 包频率配置。"),
+                     {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                      {QStringLiteral("packet_rate_profile"), savedPacketRates == defaultRates
+                          ? QStringLiteral("recommended_default")
+                          : QStringLiteral("custom")},
+                      {QStringLiteral("packet_rate_summary"), packetRateSummary},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 
     const QString selectText = state_->is_english_ ? "-- Select --" : "未选择";
     const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
+    const bool targetReadyForApply = isRemoteSkyMode() ||
+        (!epsilonPort.isEmpty() && epsilonPort != selectText);
     if (applyAfterSave &&
         !state_->recording_service_->isActive() &&
-        !epsilonPort.isEmpty() &&
-        epsilonPort != selectText &&
+        targetReadyForApply &&
         !isRateUnspecified(epsilonRateText))
     {
-        log(state_->is_english_
-                ? "[EPSILON] Applying the saved packet-rate profile now..."
-                : "[EPSILON] 正在应用刚保存的包频率配置...");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("epsilon_packet_profile_apply_requested"),
+                         QStringLiteral("正在应用刚保存的 EPSILON 包频率配置。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("port"), isRemoteSkyMode() ? state_->remote_sky_config_.epsilon.port : epsilonPort},
+                          {QStringLiteral("packet_rate_summary"), packetRateSummary},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         onReconfigureEpsilonClicked();
     }
     else
     {
-        log(state_->is_english_
-                ? "[EPSILON] Packet-rate profile saved. It will be used on the next connect/reconfigure."
-                : "[EPSILON] 包频率配置已保存，将在下次连接或重配时生效。");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("epsilon_packet_profile_saved_deferred"),
+                         QStringLiteral("EPSILON 包频率配置已保存，将在下次连接或重配时生效。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("packet_rate_summary"), packetRateSummary},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }
 
@@ -1039,8 +1604,123 @@ void MainWindow::refreshRemoteSkyDataUi()
     updateHomeDeviceStatusCapsules();
 }
 
-void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested)
+void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested, const QString& host, int port)
 {
+    const bool endpointProvided = !host.isNull() || port > 0;
+    const QString endpointHost = host.trimmed();
+    const bool endpointValid = !endpointHost.isEmpty() && port >= 1 && port <= 65535;
+    if (!connectRequested)
+    {
+        clearPendingRemoteWaveTcpConnection();
+    }
+    else if (endpointProvided && !endpointValid)
+    {
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("Enter a TCP wave host and a port from 1 to 65535.")
+            : QStringLiteral("请输入 TCP 波形主机和 1 到 65535 之间的端口。"),
+            true);
+        return;
+    }
+
+    if (connectRequested && endpointValid)
+    {
+        if (!state_->remote_sky_config_loaded_ && !isUiTestMode())
+        {
+            if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
+            {
+                setRemoteSkyConfigStatus(state_->is_english_
+                    ? QStringLiteral("Telemetry link is disconnected; TCP wave endpoint was not sent.")
+                    : QStringLiteral("天地数传已断开，未发送 TCP 波形地址。"),
+                    true);
+                return;
+            }
+            state_->remote_wave_connect_after_config_read_ = true;
+            state_->remote_wave_pending_host_ = endpointHost;
+            state_->remote_wave_pending_port_ = port;
+            requestRemoteSkyConfigIfAvailable(true);
+            if (!state_->remote_sky_config_loading_)
+            {
+                clearPendingRemoteWaveTcpConnection();
+                return;
+            }
+            setRemoteSkyConfigStatus(state_->is_english_
+                ? QStringLiteral("Reading Remote Sky config before applying the TCP wave endpoint...")
+                : QStringLiteral("正在读取天空端配置，然后应用 TCP 波形地址..."));
+            return;
+        }
+
+        VaporView::SkyConfig config = state_->remote_sky_config_loaded_
+            ? state_->remote_sky_config_
+            : VaporView::SkyConfig::defaults();
+        const bool endpointChanged =
+            config.wave_tcp.host.trimmed() != endpointHost ||
+            config.wave_tcp.port != port ||
+            !config.wave_tcp.enabled;
+        if (endpointChanged)
+        {
+            if (state_->remote_sky_config_applying_)
+            {
+                setRemoteSkyConfigStatus(state_->is_english_
+                    ? QStringLiteral("Remote Sky config is already applying; TCP wave connection was not started.")
+                    : QStringLiteral("天空端配置正在应用，暂未发起 TCP 波形连接。"),
+                    true);
+                return;
+            }
+            config.wave_tcp.enabled = true;
+            config.wave_tcp.host = endpointHost;
+            config.wave_tcp.port = port;
+            QString error;
+            if (!config.validate(&error))
+            {
+                setRemoteSkyConfigStatus(error, true);
+                return;
+            }
+            state_->remote_sky_config_ = config;
+            state_->remote_sky_config_loaded_ = true;
+            state_->remote_sky_config_dirty_ = true;
+            setRemoteSkyConfigUi(config);
+            if (isUiTestMode())
+            {
+                state_->remote_sky_baseline_config_ = config;
+                state_->remote_sky_config_dirty_ = false;
+            }
+            else
+            {
+                if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
+                {
+                    setRemoteSkyConfigStatus(state_->is_english_
+                        ? QStringLiteral("Telemetry link is disconnected; TCP wave endpoint was not sent.")
+                        : QStringLiteral("天地数传已断开，未发送 TCP 波形地址。"),
+                        true);
+                    return;
+                }
+                state_->remote_wave_connect_after_config_apply_ = true;
+                state_->remote_sky_config_applying_ = true;
+                state_->remote_sky_config_apply_generation_ = state_->remote_sky_controller_->linkGeneration();
+                state_->remote_sky_config_apply_seq_ =
+                    state_->remote_sky_controller_->telemetryService()->setSkyConfig(config.toJson());
+                if (state_->remote_sky_config_apply_seq_ == 0)
+                {
+                    state_->remote_sky_config_applying_ = false;
+                    state_->remote_sky_config_apply_generation_ = 0;
+                    clearPendingRemoteWaveTcpConnection();
+                    setRemoteSkyConfigStatus(state_->is_english_
+                        ? QStringLiteral("TCP wave endpoint was not sent.")
+                        : QStringLiteral("未发送 TCP 波形地址。"),
+                        true);
+                }
+                else
+                {
+                    setRemoteSkyConfigStatus(state_->is_english_
+                        ? QStringLiteral("TCP wave endpoint sent; connecting after it is applied...")
+                        : QStringLiteral("TCP 波形地址已发送，应用成功后自动连接..."));
+                }
+                updateRemoteSkyConfigControlsState();
+                return;
+            }
+        }
+    }
+
     if (isUiTestMode())
     {
         state_->ui_test_model_->setDeviceState(
@@ -1051,9 +1731,16 @@ void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested)
             state_->tcp_wave_panel_->setRemoteWaveTcpState(
                 connectRequested ? VaporView::DeviceState::Connected : VaporView::DeviceState::Disconnected);
         }
-        logUiTest(connectRequested
-            ? (state_->is_english_ ? QStringLiteral("Simulated Sky waveform connection enabled") : QStringLiteral("模拟天空端波形连接已开启"))
-            : (state_->is_english_ ? QStringLiteral("Simulated Sky waveform connection disabled") : QStringLiteral("模拟天空端波形连接已关闭")));
+        publishUiTestEvent(connectRequested
+                               ? QStringLiteral("ui_test_remote_wave_connection_enabled")
+                               : QStringLiteral("ui_test_remote_wave_connection_disabled"),
+                           connectRequested
+                               ? (state_->is_english_ ? QStringLiteral("Simulated Sky waveform connection enabled")
+                                                      : QStringLiteral("模拟天空端波形连接已开启"))
+                               : (state_->is_english_ ? QStringLiteral("Simulated Sky waveform connection disabled")
+                                                      : QStringLiteral("模拟天空端波形连接已关闭")),
+                           {{QStringLiteral("device_id"), VaporView::skyDeviceIdName(VaporView::SkyDeviceId::WaveTcp)},
+                            {QStringLiteral("requested_connected"), connectRequested}});
         updateConnectionStatus(false);
         return;
     }
@@ -1074,15 +1761,26 @@ void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested)
     }
     if (!connectRequested && state_->tcp_wave_panel_)
     {
-        state_->remote_sky_controller_->setDeviceState(VaporView::SkyDeviceId::WaveTcp,
-                                                VaporView::DeviceState::Disconnected);
-        state_->remote_sky_controller_->clearDeviceData(VaporView::SkyDeviceId::WaveTcp);
+        if (state_->remote_sky_controller_)
+        {
+            state_->remote_sky_controller_->setDeviceState(VaporView::SkyDeviceId::WaveTcp,
+                                                    VaporView::DeviceState::Disconnected);
+            state_->remote_sky_controller_->clearDeviceData(VaporView::SkyDeviceId::WaveTcp);
+        }
         state_->tcp_wave_panel_->setRemoteWaveTcpState(VaporView::DeviceState::Disconnected);
         updateRemoteTelemetrySummaryLabel();
     }
     sendRemoteDeviceCommand(connectRequested ? VaporView::CommandId::ConnectDevice : VaporView::CommandId::DisconnectDevice,
                             VaporView::SkyDeviceId::WaveTcp);
     updateHomeDeviceStatusCapsules();
+}
+
+void MainWindow::clearPendingRemoteWaveTcpConnection()
+{
+    state_->remote_wave_connect_after_config_read_ = false;
+    state_->remote_wave_connect_after_config_apply_ = false;
+    state_->remote_wave_pending_host_.clear();
+    state_->remote_wave_pending_port_ = 0;
 }
 
 QPushButton *MainWindow::createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device)
@@ -1246,8 +1944,7 @@ void MainWindow::updateTemperatureTitleButtonsState()
             }
             else if (remoteMode)
             {
-                enabled = device != VaporView::SkyDeviceId::Ai8TemperatureController &&
-                    linkOpen;
+                enabled = linkOpen;
             }
             else if (device == VaporView::SkyDeviceId::TemperatureController)
             {
@@ -1274,7 +1971,7 @@ void MainWindow::updateTemperatureTitleButtonsState()
         else
         {
             const QColor iconColor = connected
-                ? toolbarColor(AppThemeColor::HomeDeviceDanger)
+                ? toolbarColor(AppThemeColor::ToolbarBlue)
                 : deviceState == VaporView::DeviceState::Disabled
                     ? toolbarColor(AppThemeColor::ToolbarDisabled)
                     : toolbarColor(AppThemeColor::HomeDeviceSuccess);
@@ -1367,7 +2064,14 @@ void MainWindow::connectLocalTemperatureController()
     const QString selectText = state_->is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("未选择");
     if (port.isEmpty() || port == selectText || port.startsWith(QStringLiteral("--")))
     {
-        log(state_->is_english_ ? "Select the local RD105 serial port first." : "请先选择本地 RD105 串口。");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.connection"),
+                         QStringLiteral("temperature_controller_connection_rejected_missing_port"),
+                         QStringLiteral("请先选择本地 RD105 串口。"),
+                         {{QStringLiteral("device"), QStringLiteral("RD105")},
+                          {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
+                          {QStringLiteral("reason_code"), QStringLiteral("MISSING_ENDPOINT")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("rd105:connect:missing_port")}});
         updateTemperatureTitleButtonsState();
         return;
     }
@@ -1379,7 +2083,15 @@ void MainWindow::connectLocalTemperatureController()
     const int baud = baudText.toInt(&baudOk);
     if (!baudOk || baud <= 0)
     {
-        log(QString(state_->is_english_ ? "Invalid RD105 baud rate: %1" : "RD105 波特率无效：%1").arg(baudText));
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.connection"),
+                         QStringLiteral("temperature_controller_connection_rejected_invalid_baud"),
+                         QStringLiteral("RD105 波特率无效。"),
+                         {{QStringLiteral("device"), QStringLiteral("RD105")},
+                          {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
+                          {QStringLiteral("reason_code"), QStringLiteral("CONFIG_INVALID")},
+                          {QStringLiteral("baud_text"), baudText},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("rd105:connect:invalid_baud")}});
         return;
     }
 
@@ -1398,8 +2110,16 @@ void MainWindow::connectLocalTemperatureController()
     invalidateTemperatureControllerDataUi();
     startHomeDeviceActionSpinner(VaporView::SkyDeviceId::TemperatureController);
     updateConnectionStatus(anyCollectorRunning());
-    log(QString(english ? "[RD105] Connecting %1 @ %2..." : "[RD105] 正在连接 %1 @ %2...")
-            .arg(port, baudText));
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("device.connection"),
+                     QStringLiteral("temperature_controller_connection_started"),
+                     QStringLiteral("正在连接本地 RD105 温控器。"),
+                     {{QStringLiteral("device"), QStringLiteral("RD105")},
+                      {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
+                      {QStringLiteral("port"), port},
+                      {QStringLiteral("baud"), baud},
+                      {QStringLiteral("sample_rate_hz"), rate},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 
     VaporView::Ground::Devices::LocalTemperatureConnectionRequest request;
     request.english = english;
@@ -1413,7 +2133,36 @@ void MainWindow::connectLocalTemperatureController()
         std::move(request),
         [this](bool connected, const QString& resultText) {
             QMetaObject::invokeMethod(this, [this, connected, resultText]() {
-                log(resultText);
+                QVariantMap fields{{QStringLiteral("device"), QStringLiteral("RD105")},
+                                   {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
+                                   {QStringLiteral("ui_visibility"),
+                                    connected ? QStringLiteral("details") : QStringLiteral("attention")}};
+                if (!resultText.isEmpty())
+                {
+                    fields.insert(connected ? QStringLiteral("details") : QStringLiteral("system_error"),
+                                  resultText);
+                }
+                if (!connected)
+                {
+                    fields.insert(QStringLiteral("error_code"), QStringLiteral("SERIAL_OPEN_FAILED"));
+                    fields.insert(QStringLiteral("ui_dedupe_key"), QStringLiteral("rd105:connect:failed"));
+                }
+                if (connected)
+                {
+                    publishGroundLog(VaporView::LogLevel::Info,
+                                     QStringLiteral("device.connection"),
+                                     QStringLiteral("temperature_controller_connected"),
+                                     QStringLiteral("本地 RD105 温控器已连接。"),
+                                     fields);
+                }
+                else
+                {
+                    publishGroundLog(VaporView::LogLevel::Error,
+                                     QStringLiteral("device.connection"),
+                                     QStringLiteral("temperature_controller_connection_failed"),
+                                     QStringLiteral("本地 RD105 温控器连接失败。"),
+                                     fields);
+                }
                 state_->connection_attempt_in_progress_ = false;
                 state_->cancel_connection_requested_.store(false);
                 if (!connected)
@@ -1428,9 +2177,14 @@ void MainWindow::connectLocalTemperatureController()
     {
         state_->connection_attempt_in_progress_ = false;
         updateTemperatureTitleButtonsState();
-        log(english
-            ? QStringLiteral("Another local connection operation is already running.")
-            : QStringLiteral("另一个本地连接操作正在进行中。"));
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.connection"),
+                         QStringLiteral("temperature_controller_connection_rejected_busy"),
+                         QStringLiteral("另一个本地连接操作正在进行中。"),
+                         {{QStringLiteral("device"), QStringLiteral("RD105")},
+                          {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
+                          {QStringLiteral("reason_code"), QStringLiteral("INVALID_STATE")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("rd105:connect:busy")}});
     }
 }
 
@@ -1451,10 +2205,13 @@ void MainWindow::disconnectLocalTemperatureController()
 
     if (state_->local_connection_controller_->disconnectTemperatureController())
     {
-        log(state_->is_english_ ? "[RD105] Disconnecting local controller..."
-                        : "[RD105] 正在断开本地温控器...");
-        log(state_->is_english_ ? "[RD105] Local controller disconnected."
-                        : "[RD105] 本地温控器已断开。");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.connection"),
+                         QStringLiteral("temperature_controller_disconnected"),
+                         QStringLiteral("本地 RD105 温控器已断开。"),
+                         {{QStringLiteral("device"), QStringLiteral("RD105")},
+                          {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     invalidateTemperatureControllerDataUi();
     updateConnectionStatus(anyCollectorRunning());
@@ -1488,16 +2245,28 @@ void MainWindow::sendRemoteDeviceCommand(VaporView::CommandId command, VaporView
         const bool connected = command != VaporView::CommandId::DisconnectDevice;
         state_->ui_test_model_->setDeviceState(
             device, connected ? VaporView::DeviceState::Connected : VaporView::DeviceState::Disconnected);
-        logUiTest(QString(state_->is_english_ ? "Simulated device command: %1 / %2"
-                                              : "模拟设备命令：%1 / %2")
-                      .arg(VaporView::commandIdName(command), VaporView::deviceStateName(
-                          state_->ui_test_model_->deviceState(device))));
+        publishUiTestEvent(QStringLiteral("ui_test_device_command_applied"),
+                           QString(state_->is_english_ ? "Simulated device command: %1 / %2"
+                                                       : "模拟设备命令：%1 / %2")
+                               .arg(VaporView::commandIdName(command),
+                                    VaporView::deviceStateName(state_->ui_test_model_->deviceState(device))),
+                           {{QStringLiteral("device_id"), VaporView::skyDeviceIdName(device)},
+                            {QStringLiteral("command"), VaporView::commandIdName(command)},
+                            {QStringLiteral("connected"), connected}});
         updateConnectionStatus(false);
         return;
     }
     if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
     {
-        log(state_->is_english_ ? "Remote Sky telemetry link is not connected" : "天空端数传链路未连接");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.command"),
+                         QStringLiteral("remote_device_command_rejected_dependency_unavailable"),
+                         QStringLiteral("天空端数传链路未连接，无法下发设备命令。"),
+                         {{QStringLiteral("reason_code"), QStringLiteral("DEPENDENCY_UNAVAILABLE")},
+                          {QStringLiteral("dependency"), QStringLiteral("remote_sky_telemetry")},
+                          {QStringLiteral("device_id"), VaporView::skyDeviceIdName(device)},
+                          {QStringLiteral("command"), VaporView::commandIdName(command)},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_device_command:not_connected")}});
         return;
     }
     state_->remote_sky_controller_->sendDeviceCommand(command, device);
@@ -1511,14 +2280,25 @@ void MainWindow::sendRemotePeakSearchRange(quint32 startIndex, quint32 endIndex)
         {
             state_->tcp_wave_panel_->applyRemotePeakSearchRange(startIndex, endIndex);
         }
-        logUiTest(QString(state_->is_english_ ? "Peak search range applied in memory: [%1, %2)"
-                                              : "峰值搜索区间已在内存中应用：[%1, %2)")
-                      .arg(startIndex).arg(endIndex));
+        publishUiTestEvent(QStringLiteral("ui_test_peak_search_range_applied"),
+                           QString(state_->is_english_ ? "Peak search range applied in memory: [%1, %2)"
+                                                       : "峰值搜索区间已在内存中应用：[%1, %2)")
+                               .arg(startIndex).arg(endIndex),
+                           {{QStringLiteral("start_index"), startIndex},
+                            {QStringLiteral("end_index"), endIndex}});
         return;
     }
     if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
     {
-        log(state_->is_english_ ? "Remote Sky telemetry link is not connected" : "天空端数传链路未连接");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("telemetry.command"),
+                         QStringLiteral("peak_search_range_rejected_dependency_unavailable"),
+                         QStringLiteral("天空端数传链路未连接，无法下发峰值搜索区间。"),
+                         {{QStringLiteral("reason_code"), QStringLiteral("DEPENDENCY_UNAVAILABLE")},
+                          {QStringLiteral("dependency"), QStringLiteral("remote_sky_telemetry")},
+                          {QStringLiteral("range_start_index"), startIndex},
+                          {QStringLiteral("range_end_index"), endIndex},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("peak_search:not_connected")}});
         if (state_->tcp_wave_panel_)
         {
             state_->tcp_wave_panel_->rejectRemotePeakSearchRange(state_->is_english_ ? QStringLiteral("link is not connected") : QStringLiteral("数传链路未连接"));
@@ -1530,15 +2310,182 @@ void MainWindow::sendRemotePeakSearchRange(quint32 startIndex, quint32 endIndex)
     range.start_index = startIndex;
     range.end_index = endIndex;
     state_->remote_peak_search_commands_.insert(seq, range);
-    log(QString(state_->is_english_
-            ? "Peak search range sent to sky: [%1, %2), seq=%3"
-            : "峰值搜索区间已下发到天空端：[%1, %2)，序号=%3")
-            .arg(startIndex)
-            .arg(endIndex == 0 ? QStringLiteral("end") : QString::number(endIndex))
-            .arg(seq));
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("telemetry.command"),
+                     QStringLiteral("peak_search_range_sent"),
+                     QStringLiteral("峰值搜索区间已下发到天空端。"),
+                     {{QStringLiteral("range_start_index"), startIndex},
+                      {QStringLiteral("range_end_index"), endIndex},
+                      {QStringLiteral("command_seq"), seq},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 }
 
-void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload)
+void MainWindow::onRd105SessionAvailabilityChanged(bool available, const QString& reason)
+{
+    Q_UNUSED(available);
+    Q_UNUSED(reason);
+    updateTemperatureTitleButtonsState();
+}
+
+void MainWindow::onRd105SessionOperationStarted(
+    quint64 requestId,
+    VaporView::CommandId command,
+    VaporView::TemperatureControllerCommand payload)
+{
+    const quint8 channel = payload.channel == 0 ? 1 : payload.channel;
+    if (state_->temperature_controller_panel_)
+    {
+        state_->temperature_controller_panel_->markCommandPending(command, payload);
+        state_->temperature_controller_panel_->setCommandStatus(
+            temperatureCommandStatusText(command, channel, true));
+    }
+    QVariantMap fields = temperatureCommandLogFields(command, payload, channel);
+    fields.insert(QStringLiteral("device"), QStringLiteral("RD105"));
+    fields.insert(QStringLiteral("execution_path"),
+                  rd105ExecutionPath(state_->rd105_device_session_
+                      ? state_->rd105_device_session_->backend()
+                      : VaporView::Ground::Devices::Rd105Backend::Local));
+    fields.insert(QStringLiteral("request_id"), requestId);
+    fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("details"));
+    publishTemperatureCommandLog(VaporView::LogLevel::Info,
+                                 QStringLiteral("temperature_command_sent"),
+                                 QStringLiteral("RD105 温控命令已提交。"),
+                                 fields);
+    restoreTemperatureCommandUi(command, channel);
+}
+
+void MainWindow::onRd105SessionOperationFinished(
+    const VaporView::Ground::Devices::Rd105SessionResult& result)
+{
+    const quint8 channel = result.payload.channel == 0 ? 1 : result.payload.channel;
+    QString detail = result.message;
+    if (detail.isEmpty() && !result.success())
+    {
+        if (result.outcome == VaporView::Ground::Devices::Rd105OperationOutcome::Timeout)
+        {
+            detail = state_->is_english_ ? QStringLiteral("ACK timed out")
+                                         : QStringLiteral("ACK 超时");
+        }
+        else if (result.error_code != VaporView::CommandErrorCode::Ok)
+        {
+            detail = VaporView::commandErrorCodeText(result.error_code, state_->is_english_);
+        }
+        else
+        {
+            detail = state_->is_english_ ? QStringLiteral("write/read-back confirmation failed")
+                                         : QStringLiteral("写入或读回确认失败");
+        }
+    }
+
+    if (result.backend == VaporView::Ground::Devices::Rd105Backend::Local)
+    {
+        if (result.has_latest_data &&
+            result.latest_data.timestamp >= state_->current_temperature_controller_.timestamp)
+        {
+            state_->current_temperature_controller_ = result.latest_data;
+        }
+        if (result.success())
+        {
+            const auto settingsUpdate =
+                VaporView::Ground::Devices::applyConfirmedTemperatureCommand(
+                    state_->current_temperature_controller_,
+                    result.command,
+                    result.payload);
+            VaporView::Ground::Devices::persistTemperatureSerialSettings(settingsUpdate);
+            if (settingsUpdate.baudRate && state_->temperature_baud_combo_)
+            {
+                const QString baudText = QString::number(*settingsUpdate.baudRate);
+                const QSignalBlocker blocker(state_->temperature_baud_combo_);
+                if (state_->temperature_baud_combo_->findText(baudText) < 0)
+                {
+                    state_->temperature_baud_combo_->addItem(baudText);
+                }
+                state_->temperature_baud_combo_->setCurrentText(baudText);
+            }
+        }
+        if (state_->device_panel_coordinator_)
+        {
+            state_->device_panel_coordinator_->updateTemperatureData(
+                state_->current_temperature_controller_);
+        }
+    }
+
+    QVariantMap fields = temperatureCommandLogFields(result.command, result.payload, channel);
+    fields.insert(QStringLiteral("device"), QStringLiteral("RD105"));
+    fields.insert(QStringLiteral("execution_path"), rd105ExecutionPath(result.backend));
+    fields.insert(QStringLiteral("request_id"), result.request_id);
+    fields.insert(QStringLiteral("outcome"), rd105OutcomeName(result.outcome));
+    fields.insert(QStringLiteral("command_error_code"),
+                  commandErrorCodeIdentifier(result.error_code));
+
+    if (result.success())
+    {
+        fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("details"));
+        publishTemperatureCommandLog(VaporView::LogLevel::Info,
+                                     QStringLiteral("temperature_command_completed"),
+                                     QStringLiteral("RD105 温控命令执行成功。"),
+                                     fields);
+    }
+    else if (result.error_code == VaporView::CommandErrorCode::DeviceNotConnected ||
+             result.outcome == VaporView::Ground::Devices::Rd105OperationOutcome::Disconnected)
+    {
+        fields.insert(QStringLiteral("reason_code"), QStringLiteral("DEVICE_NOT_CONNECTED"));
+        fields.insert(QStringLiteral("ui_dedupe_key"),
+                      temperatureCommandDedupeKey(
+                          QStringLiteral("temperature_command_rejected_not_connected"),
+                          result.command,
+                          channel));
+        publishTemperatureCommandLog(
+            VaporView::LogLevel::Warning,
+            QStringLiteral("temperature_command_rejected_not_connected"),
+            result.backend == VaporView::Ground::Devices::Rd105Backend::Remote
+                ? QStringLiteral("天空端 RD105 温控器不可用，无法下发温控命令。")
+                : QStringLiteral("本地 RD105 温控器未连接，无法下发温控命令。"),
+            fields);
+    }
+    else if (result.outcome == VaporView::Ground::Devices::Rd105OperationOutcome::Timeout)
+    {
+        fields.insert(QStringLiteral("error_code"), QStringLiteral("COMMAND_TIMEOUT"));
+        fields.insert(QStringLiteral("ui_dedupe_key"),
+                      temperatureCommandDedupeKey(
+                          QStringLiteral("temperature_command_ack_timeout"),
+                          result.command,
+                          channel));
+        publishTemperatureCommandLog(VaporView::LogLevel::Warning,
+                                     QStringLiteral("temperature_command_ack_timeout"),
+                                     QStringLiteral("RD105 温控命令 ACK 等待超时。"),
+                                     fields);
+    }
+    else
+    {
+        fields.insert(QStringLiteral("error_code"),
+                      result.error_code == VaporView::CommandErrorCode::ConfigApplyFailed
+                          ? QStringLiteral("COMMAND_VERIFY_FAILED")
+                          : commandErrorCodeIdentifier(result.error_code));
+        fields.insert(QStringLiteral("ui_dedupe_key"),
+                      temperatureCommandDedupeKey(
+                          QStringLiteral("temperature_command_failed"),
+                          result.command,
+                          channel));
+        publishTemperatureCommandLog(VaporView::LogLevel::Error,
+                                     QStringLiteral("temperature_command_failed"),
+                                     QStringLiteral("RD105 温控命令执行失败。"),
+                                     fields);
+    }
+
+    if (state_->temperature_controller_panel_)
+    {
+        state_->temperature_controller_panel_->clearCommandPending(result.command, channel);
+        state_->temperature_controller_panel_->setCommandStatus(
+            temperatureCommandStatusText(result.command, channel, false, detail),
+            !result.success());
+    }
+    restoreTemperatureCommandUi(result.command, channel);
+}
+
+void MainWindow::sendTemperatureCommand(
+    VaporView::CommandId command,
+    const VaporView::TemperatureControllerCommand& payload)
 {
     if (isUiTestMode())
     {
@@ -1551,164 +2498,35 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
             state_->temperature_controller_panel_->setCommandStatus(
                 temperatureCommandStatusText(command, channel, false));
         }
-        logUiTest(QString(state_->is_english_ ? "RD105 command applied in memory: %1"
-                                              : "RD105 命令已在内存中应用：%1")
-                      .arg(VaporView::commandIdName(command)));
-        restoreTemperatureCommandUi(command, channel);
-        return;
-    }
-    if (isRemoteSkyMode())
-    {
-        sendRemoteTemperatureCommand(command, payload);
-        return;
-    }
-
-    const quint8 channel = payload.channel == 0 ? 1 : payload.channel;
-    const auto commandResult =
-        state_->local_connection_controller_->sendTemperatureCommand(command, payload);
-    if (commandResult.status != LocalTemperatureCommandStatus::NotConnected)
-    {
-        if (state_->temperature_controller_panel_)
-        {
-            state_->temperature_controller_panel_->markCommandPending(command, payload);
-        }
-        auto applyConfirmedLocalCommand = [this, command, &payload]() {
-            const auto settingsUpdate =
-                VaporView::Ground::Devices::applyConfirmedTemperatureCommand(
-                    state_->current_temperature_controller_,
-                    command,
-                    payload);
-            VaporView::Ground::Devices::persistTemperatureSerialSettings(settingsUpdate);
-            if (settingsUpdate.baudRate && state_->temperature_baud_combo_)
-            {
-                const QString baudText = QString::number(*settingsUpdate.baudRate);
-                const QSignalBlocker blocker(state_->temperature_baud_combo_);
-                if (state_->temperature_baud_combo_->findText(baudText) < 0)
-                {
-                    state_->temperature_baud_combo_->addItem(baudText);
-                }
-                state_->temperature_baud_combo_->setCurrentText(baudText);
-            }
-        };
-
-        if (commandResult.status == LocalTemperatureCommandStatus::Confirmed)
-        {
-            const VaporView::TemperatureControllerData& latest = commandResult.latestData;
-            if (latest.valid && latest.timestamp >= state_->current_temperature_controller_.timestamp)
-            {
-                state_->current_temperature_controller_ = latest;
-            }
-            applyConfirmedLocalCommand();
-            if (state_->temperature_controller_panel_)
-            {
-                state_->temperature_controller_panel_->clearCommandPending(command, channel);
-                state_->temperature_controller_panel_->setCommandStatus(temperatureCommandStatusText(command, channel, false));
-            }
-            if (state_->device_panel_coordinator_)
-            {
-                state_->device_panel_coordinator_->updateTemperatureData(state_->current_temperature_controller_);
-            }
-            log(isTemperatureCommonCommand(command)
-                    ? QString(state_->is_english_
-                          ? "RD105 local command confirmed: %1"
-                          : "RD105 本地命令已确认：%1")
-                          .arg(VaporView::commandIdName(command))
-                    : QString(state_->is_english_
-                          ? "RD105 local command confirmed: %1 channel=%2"
-                          : "RD105 本地命令已确认：%1 通道=%2")
-                          .arg(VaporView::commandIdName(command))
-                          .arg(channel));
-            restoreTemperatureCommandUi(command, channel);
-            return;
-        }
-
-        const QString failedDetail = state_->is_english_
-            ? QStringLiteral("write/read-back confirmation failed")
-            : QStringLiteral("写入或读回确认失败");
-        log(state_->is_english_
-            ? QStringLiteral("RD105 local command failed: write/read-back confirmation failed")
-            : QStringLiteral("RD105 本地命令失败：写入或读回确认失败"));
-        if (state_->temperature_controller_panel_)
-        {
-            state_->temperature_controller_panel_->clearCommandPending(command, channel);
-            state_->temperature_controller_panel_->setCommandStatus(
-                temperatureCommandStatusText(command, channel, false, failedDetail),
-                true);
-        }
-        const VaporView::TemperatureControllerData& latest = commandResult.latestData;
-        if (latest.timestamp >= state_->current_temperature_controller_.timestamp)
-        {
-            state_->current_temperature_controller_ = latest;
-        }
+        publishUiTestEvent(QStringLiteral("ui_test_temperature_command_applied"),
+                           QString(state_->is_english_
+                                       ? "RD105 command applied in memory: %1"
+                                       : "RD105 命令已在内存中应用：%1")
+                               .arg(VaporView::commandIdName(command)),
+                           {{QStringLiteral("device"), QStringLiteral("RD105")},
+                            {QStringLiteral("command"), VaporView::commandIdName(command)},
+                            {QStringLiteral("channel"), channel}});
         restoreTemperatureCommandUi(command, channel);
         return;
     }
 
-    const QString detail = state_->is_english_
-        ? QStringLiteral("local RD105 controller is not connected")
-        : QStringLiteral("本地 RD105 温控器未连接");
-    log(state_->is_english_
-        ? QStringLiteral("Local RD105 temperature controller is not connected")
-        : QStringLiteral("本地 RD105 温控器未连接，无法下发温控命令"));
-    if (state_->temperature_controller_panel_)
+    if (state_->rd105_device_session_)
     {
-        state_->temperature_controller_panel_->clearCommandPending(command, channel);
-        state_->temperature_controller_panel_->setCommandStatus(
-            temperatureCommandStatusText(command, channel, false, detail),
-            true);
+        state_->rd105_device_session_->sendCommand(command, payload);
+        return;
     }
-    restoreTemperatureCommandUi(command, channel);
-}
 
-void MainWindow::sendRemoteTemperatureCommand(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload)
-{
-    if (isUiTestMode())
-    {
-        sendTemperatureCommand(command, payload);
-        return;
-    }
-    if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
-    {
-        log(state_->is_english_ ? "Remote Sky telemetry link is not connected" : "天空端数传链路未连接");
-        const quint8 channel = payload.channel == 0 ? 1 : payload.channel;
-        if (state_->temperature_controller_panel_)
-        {
-            state_->temperature_controller_panel_->setCommandStatus(
-                temperatureCommandStatusText(command,
-                                             channel,
-                                             false,
-                                             state_->is_english_ ? QStringLiteral("Remote Sky telemetry link is not connected")
-                                                         : QStringLiteral("天空端数传链路未连接")),
-                true);
-        }
-        restoreTemperatureCommandUi(command, channel);
-        return;
-    }
-    const quint16 seq = state_->remote_sky_controller_->sendCommand(command, VaporView::TelemetryCodec::serializeTemperatureControllerCommand(payload));
-    state_->remote_temperature_commands_.insert(seq, payload);
-    if (state_->temperature_controller_panel_)
-    {
-        state_->temperature_controller_panel_->markCommandPending(command, payload);
-        state_->temperature_controller_panel_->setCommandStatus(temperatureCommandStatusText(command, payload.channel, true));
-    }
-    restoreTemperatureCommandUi(command, payload.channel == 0 ? 1 : payload.channel);
-    if (isTemperatureCommonCommand(command))
-    {
-        log(QString(state_->is_english_
-                ? "RD105 command sent: %1 seq=%2"
-                : "RD105 命令已下发：%1 序号=%2")
-                .arg(VaporView::commandIdName(command))
-                .arg(seq));
-    }
-    else
-    {
-        log(QString(state_->is_english_
-                ? "RD105 command sent: %1 channel=%2 seq=%3"
-                : "RD105 命令已下发：%1 通道=%2 序号=%3")
-                .arg(VaporView::commandIdName(command))
-                .arg(payload.channel)
-                .arg(seq));
-    }
+    VaporView::Ground::Devices::Rd105SessionResult result;
+    result.command = command;
+    result.payload = payload;
+    result.backend = isRemoteSkyMode()
+        ? VaporView::Ground::Devices::Rd105Backend::Remote
+        : VaporView::Ground::Devices::Rd105Backend::Local;
+    result.outcome = VaporView::Ground::Devices::Rd105OperationOutcome::Disconnected;
+    result.error_code = VaporView::CommandErrorCode::DeviceNotConnected;
+    result.message = state_->is_english_ ? QStringLiteral("RD105 session is not initialized.")
+                                         : QStringLiteral("RD105 会话尚未初始化。");
+    onRd105SessionOperationFinished(result);
 }
 
 void MainWindow::restoreTemperatureCommandUi(VaporView::CommandId command, quint8 channel)
@@ -1872,7 +2690,7 @@ void MainWindow::updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, Vap
         connectButton = state_->temperature_remote_connect_btn_; disconnectButton = state_->temperature_remote_disconnect_btn_; reconnectButton = state_->temperature_remote_reconnect_btn_;
         break;
     case VaporView::SkyDeviceId::Ai8TemperatureController:
-        return;
+        break;
     case VaporView::SkyDeviceId::WaveTcp:
         if (state_->tcp_wave_panel_)
         {
@@ -2010,7 +2828,13 @@ bool MainWindow::applyImuDeviceProfile(const QString& requestedFormat, int reque
     const QString port = state_->imu_port_combo_ ? state_->imu_port_combo_->currentText().trimmed() : QString();
     if (port.isEmpty() || port == selectText)
     {
-        log(state_->is_english_ ? "Select an IMU serial port first" : "请先选择 IMU 串口");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("imu_profile_apply_rejected_missing_port"),
+                         QStringLiteral("请先选择 IMU 串口。"),
+                         {{QStringLiteral("device"), QStringLiteral("IMU")},
+                          {QStringLiteral("reason_code"), QStringLiteral("MISSING_ENDPOINT")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("imu:profile_apply:missing_port")}});
         return false;
     }
 
@@ -2028,7 +2852,15 @@ bool MainWindow::applyImuDeviceProfile(const QString& requestedFormat, int reque
             targetFormat,
             targetRate))
     {
-        log(state_->is_english_ ? "Unsupported IMU format or rate" : "IMU 输出格式或频率不受支持");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("imu_profile_apply_rejected_unsupported"),
+                         QStringLiteral("IMU 输出格式或频率不受支持。"),
+                         {{QStringLiteral("device"), QStringLiteral("IMU")},
+                          {QStringLiteral("reason_code"), QStringLiteral("COMMAND_NOT_SUPPORTED")},
+                          {QStringLiteral("output_format"), targetFormat},
+                          {QStringLiteral("rate_hz"), targetRate},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("imu:profile_apply:unsupported")}});
         return false;
     }
 
@@ -2039,9 +2871,13 @@ bool MainWindow::applyImuDeviceProfile(const QString& requestedFormat, int reque
 
     if (isUiTestMode())
     {
-        logUiTest(QString(state_->is_english_ ? "IMU profile applied in memory: %1, %2 baud, %3 Hz"
-                                              : "IMU 配置已在内存中应用：%1，%2 波特，%3 Hz")
-                      .arg(targetFormat).arg(targetBaud).arg(targetRate));
+        publishUiTestEvent(QStringLiteral("ui_test_imu_profile_applied"),
+                           QString(state_->is_english_ ? "IMU profile applied in memory: %1, %2 baud, %3 Hz"
+                                                       : "IMU 配置已在内存中应用：%1，%2 波特，%3 Hz")
+                               .arg(targetFormat).arg(targetBaud).arg(targetRate),
+                           {{QStringLiteral("output_format"), targetFormat},
+                            {QStringLiteral("baud"), targetBaud},
+                            {QStringLiteral("rate_hz"), targetRate}});
         return true;
     }
 

@@ -4,8 +4,10 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QStringList>
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <vector>
 
 namespace
 {
@@ -44,7 +46,7 @@ int main(int argc, char **argv)
     VaporView::TcpTelemetryLink server;
     bool serverOpen = false;
     bool serverClosed = false;
-    QStringList serverStatusMessages;
+    std::vector<VaporView::LogRecord> serverRecords;
     QObject::connect(&server, &VaporView::TelemetryLink::openChanged, [&](bool open) {
         serverOpen = open;
         if (!open)
@@ -52,13 +54,21 @@ int main(int argc, char **argv)
             serverClosed = true;
         }
     });
-    QObject::connect(&server, &VaporView::TelemetryLink::statusMessage, [&](const QString& message) {
-        serverStatusMessages.push_back(message);
+    QObject::connect(&server, &VaporView::TelemetryLink::logRecordGenerated, [&](const VaporView::LogRecord& record) {
+        serverRecords.push_back(record);
     });
     require(server.listen(QStringLiteral("127.0.0.1"), 0), "server listen");
     const quint16 port = server.localPort();
     require(port > 0, "server test port");
     require(serverOpen, "server open signal");
+    const QString expectedListenMessage =
+        QStringLiteral("TCP 遥测服务端已开始监听：127.0.0.1:%1。").arg(port);
+    require(std::any_of(serverRecords.begin(), serverRecords.end(), [&](const VaporView::LogRecord& record) {
+        return record.fields.value(QStringLiteral("event")).toString() ==
+                   QStringLiteral("telemetry_tcp_server_listening") &&
+               record.message == expectedListenMessage &&
+               record.fields.value(QStringLiteral("local_port")).toUInt() == port;
+    }), "server startup log shows the actual listen endpoint");
 
     VaporView::TcpTelemetryLink client;
     bool clientOpen = false;
@@ -77,14 +87,12 @@ int main(int argc, char **argv)
     require(client.connectToHost(QStringLiteral("127.0.0.1"), port), "client connect");
     require(waitUntil([&]() { return clientOpen; }), "client open signal");
     require(waitUntil([&]() {
-        for (const QString& message : serverStatusMessages)
-        {
-            if (message.contains(QStringLiteral("client connected")))
-            {
-                return true;
-            }
-        }
-        return false;
+        return std::any_of(serverRecords.begin(), serverRecords.end(), [](const VaporView::LogRecord& record) {
+            return record.source == QStringLiteral("TelemetryLink") &&
+                   record.category == QStringLiteral("telemetry.link") &&
+                   record.fields.value(QStringLiteral("event")).toString() ==
+                       QStringLiteral("telemetry_tcp_client_connected");
+        });
     }), "server logs client connect");
     require(waitUntil([&]() { return server.writeBytes(QByteArrayLiteral("sky")) > 0; }), "server write");
     require(waitUntil([&]() { return clientBytes == QByteArrayLiteral("sky"); }), "client receives bytes");
@@ -133,14 +141,12 @@ int main(int argc, char **argv)
     require(waitUntil([&]() { return replacementOpen; }), "replacement open signal");
     require(waitUntil([&]() { return !clientOpen; }), "old client closed on replacement");
     require(waitUntil([&]() {
-        for (const QString& message : serverStatusMessages)
-        {
-            if (message.contains(QStringLiteral("client replaced")))
-            {
-                return true;
-            }
-        }
-        return false;
+        return std::any_of(serverRecords.begin(), serverRecords.end(), [](const VaporView::LogRecord& record) {
+            return record.source == QStringLiteral("TelemetryLink") &&
+                   record.category == QStringLiteral("telemetry.link") &&
+                   record.fields.value(QStringLiteral("event")).toString() ==
+                       QStringLiteral("telemetry_tcp_client_replaced");
+        });
     }), "server logs client replacement");
     require(waitUntil([&]() { return server.writeBytes(QByteArrayLiteral("probe")) > 0; }), "replacement attached");
     replacementBytes.clear();

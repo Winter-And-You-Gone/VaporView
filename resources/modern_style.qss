@@ -186,6 +186,8 @@ QPushButton#appSidebarButton {
 }
 
 QPushButton#appSidebarButton:focus {
+    background-color: @vv-primary-subtle;
+    border-color: @vv-primary;
     outline: none;
 }
 
@@ -490,7 +492,69 @@ QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink="true"] {
     font-weight: 600;
 }
 
+QLabel#deviceConfigSubsectionLabel {
+    background-color: transparent;
+    border: none;
+    color: @vv-text-strong;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 2px 0px 0px 0px;
+}
+
+QLabel#deviceRemoteSkyConfigStatus {
+    background-color: @vv-field-bg;
+    border: 1px solid @vv-border;
+    border-radius: 8px;
+    color: @vv-text-strong;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 8px;
+}
+
+QLabel#deviceRemoteSkyConfigStatus[status="success"] {
+    background-color: @vv-success-bg;
+    border-color: @vv-success;
+    color: @vv-success;
+}
+
+QLabel#deviceRemoteSkyConfigStatus[status="pending"],
+QLabel#deviceRemoteSkyConfigStatus[status="normal"] {
+    background-color: @vv-primary-subtle;
+    border-color: @vv-primary;
+    color: @vv-primary;
+}
+
+QLabel#deviceRemoteSkyConfigStatus[status="warning"],
+QLabel#deviceRemoteSkyConfigStatus[status="dirty"] {
+    background-color: @vv-warning-bg;
+    border-color: @vv-warning;
+    color: @vv-warning;
+}
+
+QLabel#deviceRemoteSkyConfigStatus[status="error"] {
+    background-color: @vv-danger-bg;
+    border-color: @vv-danger;
+    color: @vv-danger;
+}
+
+QLabel#deviceRemoteSkyConfigStatus[status="disabled"] {
+    background-color: @vv-surface-alt;
+    border-color: @vv-border;
+    color: @vv-text-muted;
+}
 QLabel#temperatureOverviewValuePill {
+    background-color: @vv-surface;
+    border: 1px solid @vv-border;
+    border-radius: 10px;
+    color: @vv-text-strong;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 2px 3px;
+    margin: 0px;
+}
+
+QLabel#temperatureOverviewOutputPercentPill {
     background-color: @vv-surface;
     border: 1px solid @vv-border;
     border-radius: 10px;
@@ -535,7 +599,7 @@ QToolButton#temperatureOverviewChannelButton {
     border-radius: 10px;
     color: @vv-primary;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 500;
     padding: 1px 8px 1px 8px;
     text-align: center;
 }
@@ -754,7 +818,10 @@ QComboBox QAbstractItemView::item:selected:!active {
     color: @vv-menu-text;
 }
 
-QComboBox QAbstractItemView::item:hover {
+QComboBox QAbstractItemView::item:hover,
+QComboBox QAbstractItemView::item:selected:hover,
+QComboBox QAbstractItemView::item:selected:active:hover,
+QComboBox QAbstractItemView::item:selected:!active:hover {
     background-color: @vv-menu-hover;
     color: @vv-menu-text;
 }
@@ -782,6 +849,11 @@ QListView#logListView {
 
 QListView#logListView::item {
     padding: 2px 8px;
+}
+
+QListView#logListView::item:hover {
+    background-color: @vv-menu-hover;
+    color: @vv-text;
 }
 
 QListView#logListView::item:selected {
@@ -1365,7 +1437,7 @@ TemperatureControllerPanel QLabel#highlightedValue {
 }
 
 TemperatureControllerPanel QFrame#temperatureConfigCard {
-    background-color: @vv-surface;
+    background-color: @vv-surface-raised;
     border: 1px solid @vv-border;
     border-radius: 8px;
 }
@@ -1474,8 +1546,8 @@ QToolButton#homeDeviceActionButton[state="connecting"] {
 }
 
 QToolButton#homeDeviceActionButton[state="connected"] {
-    background-color: @vv-hd-bad-bg;
-    border-color: @vv-hd-bad;
+    background-color: @vv-surface-alt;
+    border-color: @vv-border-strong;
 }
 
 QToolButton#homeDeviceActionButton:hover {

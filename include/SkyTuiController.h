@@ -39,6 +39,9 @@ public:
     SkyTuiCommandResult executeCommand(const QString& line);
     QList<SkyTuiCommandItem> commandPalette() const;
     QStringList helpLines() const;
+#ifdef VAPORVIEW_SKY_TUI_TESTING
+    bool parseDeviceNameForTest(const QString& name, SkyDeviceId& id) const;
+#endif
 
 private:
     bool parseDeviceName(const QString& name, SkyDeviceId& id) const;

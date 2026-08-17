@@ -7,6 +7,7 @@
 #include <QDateTime>
 #include <QJsonDocument>
 #include <algorithm>
+#include <chrono>
 #include <memory>
 
 namespace VaporView
@@ -85,16 +86,35 @@ bool GroundTelemetryService::open(const QString& portName, int baudRate)
 bool GroundTelemetryService::openTcp(const QString& host, quint16 port)
 {
     auto link = std::make_unique<TcpTelemetryLink>();
+    QString systemError;
+    const QMetaObject::Connection errorConnection =
+        QObject::connect(link.get(), &TelemetryLink::errorOccurred,
+                         [&systemError](const QString& error) {
+                             systemError = error;
+                         });
     const bool ok = link->connectToHost(host, port);
+    QObject::disconnect(errorConnection);
     if (!ok)
     {
+        const QString endpoint = QStringLiteral("%1:%2").arg(host.trimmed()).arg(port);
+        QVariantMap fields{
+            {QStringLiteral("error_code"), QStringLiteral("GROUND_TELEMETRY_TCP_CONNECT_FAILED")},
+            {QStringLiteral("endpoint"), endpoint},
+            {QStringLiteral("host"), host},
+            {QStringLiteral("port"), port},
+            {QStringLiteral("ui_message"),
+             QStringLiteral("无法连接天空端 TCP 数传端点（%1）。").arg(endpoint)},
+            {QStringLiteral("ui_visibility"), QStringLiteral("details")},
+        };
+        if (!systemError.isEmpty())
+        {
+            fields.insert(QStringLiteral("system_error"), systemError);
+        }
         publishTelemetryLog(LogLevel::Error,
                             QStringLiteral("telemetry.tcp"),
                             QStringLiteral("ground_telemetry_tcp_connect_failed"),
-                            QStringLiteral("无法连接地面端 TCP 遥测端点。"),
-                            {{QStringLiteral("error_code"), QStringLiteral("GROUND_TELEMETRY_TCP_CONNECT_FAILED")},
-                             {QStringLiteral("host"), host},
-                             {QStringLiteral("port"), port}});
+                            QStringLiteral("无法连接天空端 TCP 数传端点。"),
+                            fields);
         return false;
     }
     transport_type_ = TelemetryTransportType::Tcp;
@@ -173,6 +193,32 @@ quint16 GroundTelemetryService::sendCommand(CommandId commandId, const QByteArra
     sendCommandPayload(pending);
     pending_commands_.insert(command.command_seq, pending);
     return command.command_seq;
+}
+
+quint16 GroundTelemetryService::sendDeviceOperation(const DeviceOperationRequest& request)
+{
+    return sendCommand(CommandId::DeviceOperation,
+                        TelemetryCodec::serializeDeviceOperationRequest(request));
+}
+
+bool GroundTelemetryService::sendRtcmCorrectionData(const QByteArray& data)
+{
+    if (!link_ || !link_->isOpen() || data.isEmpty() || data.size() > 4096)
+    {
+        return false;
+    }
+    const QByteArray payload = TelemetryCodec::serializeRtcmCorrectionData(data);
+    const QByteArray frame = codec_.encodeFrame(
+        MsgType::RtcmCorrectionData,
+        payload,
+        next_frame_seq_++,
+        nowUs());
+    const qint64 written = link_->writeBytes(frame);
+    if (written > 0)
+    {
+        noteTransmittedBytes(written);
+    }
+    return written == frame.size();
 }
 
 quint16 GroundTelemetryService::sendDeviceCommand(CommandId commandId, SkyDeviceId deviceId)
@@ -405,11 +451,29 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         }
         break;
     }
+    case MsgType::SerialPortDetectionResult:
+    {
+        const QJsonDocument document = QJsonDocument::fromJson(frame.payload);
+        if (document.isObject())
+        {
+            emit serialPortDetectionResultReceived(document.object());
+        }
+        else
+        {
+            reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
+                                     QStringLiteral("serial_port_detection_result_parse_failed"),
+                                     QStringLiteral("无法解析串口自动识别结果遥测载荷。"),
+                                     {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                      {QStringLiteral("payload_bytes"), frame.payload.size()}});
+        }
+        break;
+    }
     case MsgType::TemperatureControllerStatus:
     {
         TemperatureControllerData data;
         if (TelemetryCodec::parseTemperatureControllerStatus(frame.payload, data))
         {
+            data.timestamp = std::chrono::steady_clock::now();
             emit temperatureControllerStatusUpdated(data);
         }
         else
@@ -417,6 +481,40 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
             reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
                                      QStringLiteral("temperature_controller_status_parse_failed"),
                                      QStringLiteral("无法解析 TemperatureControllerStatus 遥测载荷。"),
+                                     {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                      {QStringLiteral("payload_bytes"), frame.payload.size()}});
+        }
+        break;
+    }
+    case MsgType::DeviceOperationResponse:
+    {
+        DeviceOperationResponse response;
+        if (TelemetryCodec::parseDeviceOperationResponse(frame.payload, response))
+        {
+            emit deviceOperationResponseReceived(response);
+        }
+        else
+        {
+            reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
+                                     QStringLiteral("device_operation_response_parse_failed"),
+                                     QStringLiteral("无法解析 DeviceOperationResponse 遥测载荷。"),
+                                     {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                      {QStringLiteral("payload_bytes"), frame.payload.size()}});
+        }
+        break;
+    }
+    case MsgType::Ai8TemperatureControllerStatus:
+    {
+        Ai8TemperatureControllerProtocol::LiveData data;
+        if (TelemetryCodec::parseAi8TemperatureControllerStatus(frame.payload, data))
+        {
+            emit ai8TemperatureControllerStatusUpdated(data);
+        }
+        else
+        {
+            reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
+                                     QStringLiteral("ai8_temperature_controller_status_parse_failed"),
+                                     QStringLiteral("无法解析 AI-8288 遥测载荷。"),
                                      {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
                                       {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
@@ -439,7 +537,7 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
             });
             if (!published)
             {
-                emit logMessage(record.message);
+                LogService::writeLogFallback(record);
             }
         }
         else
@@ -541,12 +639,27 @@ void GroundTelemetryService::attachLinkSignals()
                             {{QStringLiteral("reason_code"), QStringLiteral("GROUND_TELEMETRY_LINK_ERROR")},
                              {QStringLiteral("system_error"), systemError}});
     });
-    connect(link_.get(), &TelemetryLink::statusMessage, this, [this](const QString& statusText) {
-        publishTelemetryLog(LogLevel::Info,
-                            QStringLiteral("telemetry.link"),
-                            QStringLiteral("ground_telemetry_link_status"),
-                            QStringLiteral("地面端遥测链路状态已更新。"),
-                            {{QStringLiteral("external_raw_text"), statusText}});
+    connect(link_.get(), &TelemetryLink::logRecordGenerated, this, [](LogRecord record) {
+        if (record.source.isEmpty())
+        {
+            record.source = QStringLiteral("TelemetryLink");
+        }
+        if (record.category.isEmpty())
+        {
+            record.category = QStringLiteral("telemetry.link");
+        }
+        if (!record.fields.contains(QStringLiteral("ui_visibility")))
+        {
+            record.fields.insert(QStringLiteral("ui_visibility"),
+                                 record.level >= LogLevel::Warning ? QStringLiteral("attention")
+                                                                   : QStringLiteral("details"));
+        }
+        if (!LogService::withCurrentInstance([&](LogService& logService) {
+                logService.publish(record);
+            }))
+        {
+            LogService::writeLogFallback(record);
+        }
     });
 }
 
@@ -594,11 +707,17 @@ void GroundTelemetryService::publishTelemetryLog(LogLevel level,
     {
         fields.insert(QStringLiteral("error_code"), QStringLiteral("GROUND_TELEMETRY_ERROR"));
     }
+    LogRecord record;
+    record.level = level;
+    record.source = QStringLiteral("Ground");
+    record.category = category;
+    record.message = message;
+    record.fields = fields;
     if (!LogService::withCurrentInstance([&](LogService& logService) {
-            logService.publish(level, QStringLiteral("Ground"), category, message, fields);
+            logService.publish(record);
         }))
     {
-        emit logMessage(message);
+        LogService::writeLogFallback(record);
     }
 }
 

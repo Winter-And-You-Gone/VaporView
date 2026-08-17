@@ -1,6 +1,7 @@
 #ifndef VaporView_DATA_COLLECTOR_H
 #define VaporView_DATA_COLLECTOR_H
 
+#include "LogRecord.h"
 #include "data_types.h"
 #include "serial_port.h"
 #include <array>
@@ -53,6 +54,12 @@ class DataCollector
 public:
   using DataCallback = std::function<void()>;
   using LogCallback = std::function<void(const std::string&)>;
+  using StructuredLogFields = std::map<std::string, std::string>;
+  using StructuredLogCallback = std::function<void(LogLevel,
+                                                   const std::string&,
+                                                   const std::string&,
+                                                   const std::string&,
+                                                   StructuredLogFields)>;
   using CancelCallback = std::function<bool()>;
 
   DataCollector();
@@ -68,6 +75,7 @@ public:
 
   void setDataCallback(DataCallback callback);
   void setLogCallback(LogCallback callback);
+  void setStructuredLogCallback(StructuredLogCallback callback);
   void setCancelCallback(CancelCallback callback);
   void setEnglish(bool english);
   void setSampleRate(int hz);
@@ -85,6 +93,11 @@ protected:
   void updateLastEmitTime();
   void recordDataReceived();
   void log(const std::string& message);
+  void logStructured(LogLevel level,
+                     const std::string& category,
+                     const std::string& event,
+                     const std::string& message,
+                     StructuredLogFields fields = {});
   bool isEnglishLog() const;
   bool isCancelRequested() const;
 
@@ -95,6 +108,7 @@ protected:
   mutable std::mutex mutex_;
   DataCallback data_callback_;
   LogCallback log_callback_;
+  StructuredLogCallback structured_log_callback_;
   CancelCallback cancel_callback_;
   SerialConfig serial_config_;
   std::atomic<bool> log_english_{false};

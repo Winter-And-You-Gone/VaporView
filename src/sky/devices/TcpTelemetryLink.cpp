@@ -1,5 +1,7 @@
 #include "TcpTelemetryLink.h"
 
+#include <utility>
+
 namespace VaporView
 {
 
@@ -22,7 +24,17 @@ bool TcpTelemetryLink::listen(const QString& host, quint16 port)
     }
     open_emitted_ = true;
     emit openChanged(true);
-    emit statusMessage(QStringLiteral("TCP telemetry server listening on %1:%2").arg(host_).arg(server_.serverPort()));
+    const quint16 listeningPort = server_.serverPort();
+    emitTcpLog(LogLevel::Info,
+               QStringLiteral("telemetry_tcp_server_listening"),
+               QStringLiteral("TCP 遥测服务端已开始监听：%1:%2。")
+                   .arg(host_)
+                   .arg(listeningPort),
+               {{QStringLiteral("role"), QStringLiteral("server")},
+                {QStringLiteral("host"), host_},
+                {QStringLiteral("requested_port"), port_},
+                {QStringLiteral("local_port"), listeningPort},
+                {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     return true;
 }
 
@@ -46,7 +58,13 @@ bool TcpTelemetryLink::connectToHost(const QString& host, quint16 port)
         open_emitted_ = true;
         emit openChanged(true);
     }
-    emit statusMessage(QStringLiteral("TCP telemetry connected to %1:%2").arg(host_).arg(port_));
+    emitTcpLog(LogLevel::Info,
+               QStringLiteral("telemetry_tcp_connected"),
+               QStringLiteral("TCP 遥测客户端已连接。"),
+               {{QStringLiteral("role"), QStringLiteral("client")},
+                {QStringLiteral("host"), host_},
+                {QStringLiteral("port"), port_},
+                {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     return true;
 }
 
@@ -115,15 +133,23 @@ void TcpTelemetryLink::onNewConnection()
         const bool hadClient = socket_ && socket_->state() == QAbstractSocket::ConnectedState;
         if (hadClient)
         {
-            emit statusMessage(QStringLiteral("TCP telemetry client replaced by %1:%2")
-                                   .arg(next->peerAddress().toString())
-                                   .arg(next->peerPort()));
+            emitTcpLog(LogLevel::Info,
+                       QStringLiteral("telemetry_tcp_client_replaced"),
+                       QStringLiteral("TCP 遥测客户端连接已被新连接替换。"),
+                       {{QStringLiteral("role"), QStringLiteral("server")},
+                        {QStringLiteral("peer_host"), next->peerAddress().toString()},
+                        {QStringLiteral("peer_port"), next->peerPort()},
+                        {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         }
         closeSocket();
         attachSocket(next);
-        emit statusMessage(QStringLiteral("TCP telemetry client connected from %1:%2")
-                               .arg(next->peerAddress().toString())
-                               .arg(next->peerPort()));
+        emitTcpLog(LogLevel::Info,
+                   QStringLiteral("telemetry_tcp_client_connected"),
+                   QStringLiteral("TCP 遥测客户端已接入。"),
+                   {{QStringLiteral("role"), QStringLiteral("server")},
+                    {QStringLiteral("peer_host"), next->peerAddress().toString()},
+                    {QStringLiteral("peer_port"), next->peerPort()},
+                    {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }
 
@@ -151,12 +177,34 @@ void TcpTelemetryLink::onSocketDisconnected()
     const QString peer = QStringLiteral("%1:%2").arg(socket_->peerAddress().toString()).arg(socket_->peerPort());
     socket_->deleteLater();
     socket_ = nullptr;
-    emit statusMessage(QStringLiteral("TCP telemetry client disconnected from %1").arg(peer));
+    emitTcpLog(LogLevel::Info,
+               QStringLiteral("telemetry_tcp_client_disconnected"),
+               QStringLiteral("TCP 遥测客户端已断开。"),
+               {{QStringLiteral("role"), role_ == Role::Server ? QStringLiteral("server") : QStringLiteral("client")},
+                {QStringLiteral("peer"), peer},
+                {QStringLiteral("reason_code"), QStringLiteral("REMOTE_DISCONNECTED")},
+                {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     if (role_ == Role::Client && open_emitted_)
     {
         open_emitted_ = false;
         emit openChanged(false);
     }
+}
+
+void TcpTelemetryLink::emitTcpLog(LogLevel level,
+                                  const QString& event,
+                                  const QString& message,
+                                  QVariantMap fields)
+{
+    fields.insert(QStringLiteral("event"), event);
+
+    LogRecord record;
+    record.level = level;
+    record.source = QStringLiteral("TelemetryLink");
+    record.category = QStringLiteral("telemetry.link");
+    record.message = message;
+    record.fields = std::move(fields);
+    emit logRecordGenerated(record);
 }
 
 void TcpTelemetryLink::onSocketError(QAbstractSocket::SocketError error)

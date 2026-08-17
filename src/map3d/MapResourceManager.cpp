@@ -10,17 +10,23 @@
 #include <QJsonParseError>
 #include <QJsonValue>
 #include <QNetworkAccessManager>
+#include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QSettings>
-#include "shared/config/SettingsWriteBarrier.h"
+#include <QSslError>
 #include "shared/config/ApplicationConfig.h"
+#include "shared/config/SettingsWriteBarrier.h"
 #include <QStandardPaths>
 
 #include <algorithm>
+#include <chrono>
 #include <limits>
 
 namespace VaporView::Map3D {
 namespace {
+
+constexpr auto kMapResourceRequestTimeout = std::chrono::seconds(30);
+constexpr auto kLoopbackIpv4Prefix = "127.";
 
 QString normalizedRelativePath(const QString& path)
 {
@@ -47,10 +53,11 @@ bool isSha256Hex(const QString& value)
     {
         return false;
     }
-    return std::all_of(value.cbegin(), value.cend(), [](QChar character) {
-        return (character >= QLatin1Char('0') && character <= QLatin1Char('9')) ||
-               (character >= QLatin1Char('a') && character <= QLatin1Char('f')) ||
-               (character >= QLatin1Char('A') && character <= QLatin1Char('F'));
+    return std::all_of(value.cbegin(), value.cend(), [](auto character) {
+        const ushort code = character.unicode();
+        return (code >= '0' && code <= '9') ||
+               (code >= 'a' && code <= 'f') ||
+               (code >= 'A' && code <= 'F');
     });
 }
 
@@ -87,7 +94,7 @@ bool parseSize(const QJsonObject& object, const char* key, qint64* value, QStrin
         return false;
     }
     const double number = jsonValue.toDouble();
-    if (number < 0.0 || number > static_cast<double>(std::numeric_limits<qint64>::max()))
+    if (number < 0.0 || number > static_cast<double>((std::numeric_limits<qint64>::max)()))
     {
         if (error) *error = QStringLiteral("Manifest field '%1' is out of range.").arg(QString::fromLatin1(key));
         return false;
@@ -100,6 +107,55 @@ QUrl resolveUrl(const QUrl& baseUrl, const QString& value)
 {
     const QUrl url(value);
     return url.isRelative() ? baseUrl.resolved(url) : url;
+}
+
+bool isLoopbackHttpHost(const QString& host)
+{
+    const QString normalized = host.toLower();
+    return normalized == QStringLiteral("localhost") ||
+           normalized == QStringLiteral("::1") ||
+           normalized == QStringLiteral("127.0.0.1") ||
+           normalized.startsWith(QLatin1String(kLoopbackIpv4Prefix));
+}
+
+bool isAllowedNetworkUrl(const QUrl& url)
+{
+    if (!url.isValid())
+    {
+        return false;
+    }
+    if (url.scheme() == QStringLiteral("https"))
+    {
+        return true;
+    }
+    return url.scheme() == QStringLiteral("http") && isLoopbackHttpHost(url.host());
+}
+
+QString networkUrlPolicyText()
+{
+    return QStringLiteral("HTTPS 或本机 loopback HTTP");
+}
+
+QString networkFailureReason(QNetworkReply* reply, const QVariant& status, const QStringList& sslErrors)
+{
+    if (status.isValid() && status.toInt() >= 400)
+    {
+        return QStringLiteral("HTTP %1").arg(status.toInt());
+    }
+
+    QString reason = reply ? reply->errorString() : QString();
+    if (!sslErrors.isEmpty())
+    {
+        const QString sslError = sslErrors.join(QStringLiteral("; "));
+        reason = reason.isEmpty()
+            ? sslError
+            : QStringLiteral("%1 (%2)").arg(reason).arg(sslError);
+    }
+    if (reason.isEmpty())
+    {
+        reason = QStringLiteral("网络请求失败");
+    }
+    return reason;
 }
 
 bool parseFileObject(const QJsonObject& object,
@@ -125,10 +181,13 @@ bool parseFileObject(const QJsonObject& object,
     }
     result->relativePath = normalizedRelativePath(path);
     result->url = resolveUrl(baseUrl, url);
-    if (!result->url.isValid() || (result->url.scheme() != QStringLiteral("http") &&
-                                  result->url.scheme() != QStringLiteral("https")))
+    if (!isAllowedNetworkUrl(result->url))
     {
-        if (error) *error = QStringLiteral("Map resource URL must use http or https: %1").arg(result->url.toString());
+        if (error)
+        {
+            *error = QStringLiteral("Map resource URL must use %1: %2")
+                         .arg(networkUrlPolicyText(), result->url.toString());
+        }
         return false;
     }
     if (!parseSize(object, "sizeBytes", &result->sizeBytes, error))
@@ -214,6 +273,15 @@ bool MapResourceManifest::parse(const QByteArray& payload,
         if (downloadUrlValue.isString())
         {
             package.downloadUrl = resolveUrl(manifestUrl, downloadUrlValue.toString());
+            if (!isAllowedNetworkUrl(package.downloadUrl))
+            {
+                if (errorMessage)
+                {
+                    *errorMessage = QStringLiteral("Map package download URL must use %1: %2")
+                                        .arg(networkUrlPolicyText(), package.downloadUrl.toString());
+                }
+                return false;
+            }
         }
         parseString(object, "installPath", &package.installPath, false, errorMessage);
         if (!package.installPath.isEmpty() && !isSafeRelativePath(package.installPath))
@@ -288,6 +356,19 @@ MapResourceManager::MapResourceManager(QObject* parent)
     : QObject(parent)
     , network_manager_(new QNetworkAccessManager(this))
 {
+    connect(network_manager_, &QNetworkAccessManager::sslErrors,
+            this, [this](QNetworkReply* reply, const QList<QSslError>& errors) {
+        if (reply != active_reply_ || errors.isEmpty())
+        {
+            return;
+        }
+        active_network_ssl_errors_.clear();
+        for (const QSslError& error : errors)
+        {
+            active_network_ssl_errors_.append(error.errorString());
+        }
+        active_network_ssl_errors_.removeDuplicates();
+    });
     const QString environmentUrl = qEnvironmentVariable("VAPORVIEW_MAP_MANIFEST_URL");
     VaporView::migrateLegacyApplicationConfig();
     QSettings settings = VaporView::applicationConfigSettings();
@@ -392,14 +473,17 @@ void MapResourceManager::refreshManifest()
         return;
     }
     const QUrl url(manifest_url_);
-    if (!url.isValid() || (url.scheme() != QStringLiteral("http") && url.scheme() != QStringLiteral("https")))
+    if (!isAllowedNetworkUrl(url))
     {
-        last_manifest_error_ = QStringLiteral("请填写有效的 HTTP/HTTPS 地图资源清单地址。\n环境变量 VAPORVIEW_MAP_MANIFEST_URL 也可提供默认地址。");
+        last_manifest_error_ = QStringLiteral("请填写有效的 %1 地图资源清单地址。\n环境变量 VAPORVIEW_MAP_MANIFEST_URL 也可提供默认地址。")
+                                   .arg(networkUrlPolicyText());
         emit operationFinished(QString(), false, last_manifest_error_);
         return;
     }
     QNetworkRequest request(url);
+    request.setTransferTimeout(kMapResourceRequestTimeout);
     request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("VaporView/%1").arg(QCoreApplication::applicationVersion()));
+    active_network_ssl_errors_.clear();
     active_reply_ = network_manager_->get(request);
     connect(active_reply_, &QNetworkReply::finished, this, &MapResourceManager::finishManifestReply);
 }
@@ -412,35 +496,30 @@ void MapResourceManager::finishManifestReply()
     {
         return;
     }
-    const QByteArray payload = reply->readAll();
     const QVariant status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
     if (reply->error() != QNetworkReply::NoError || (status.isValid() && status.toInt() >= 400))
     {
-        last_manifest_error_ = reply->errorString();
-        if (status.isValid() && status.toInt() >= 400)
-        {
-            last_manifest_error_ = QStringLiteral("HTTP %1").arg(status.toInt());
-        }
-        if (last_manifest_error_.isEmpty())
-        {
-            last_manifest_error_ = QStringLiteral("网络请求失败");
-        }
+        last_manifest_error_ = networkFailureReason(reply, status, active_network_ssl_errors_);
+        active_network_ssl_errors_.clear();
         emit operationFinished(QString(), false, QStringLiteral("读取地图资源清单失败: %1").arg(last_manifest_error_));
         reply->deleteLater();
         return;
     }
 
+    const QByteArray payload = reply->readAll();
     QVector<MapResourcePackage> parsed;
     QString error;
     if (!MapResourceManifest::parse(payload, QUrl(manifest_url_), &parsed, &error))
     {
         last_manifest_error_ = error;
+        active_network_ssl_errors_.clear();
         emit operationFinished(QString(), false, QStringLiteral("地图资源清单无效: %1").arg(error));
         reply->deleteLater();
         return;
     }
     packages_ = parsed;
     last_manifest_error_.clear();
+    active_network_ssl_errors_.clear();
     emit manifestUpdated();
     emit operationFinished(QString(), true, QStringLiteral("已读取 %1 个地图资源包。\n资源目录：%2").arg(packages_.size()).arg(downloadRoot()));
     reply->deleteLater();
@@ -510,18 +589,30 @@ void MapResourceManager::downloadNextFile()
         failOperation(QStringLiteral("地图资源路径不安全：%1").arg(resource.relativePath));
         return;
     }
+    if (!isAllowedNetworkUrl(resource.url))
+    {
+        failOperation(QStringLiteral("地图资源 URL 必须使用 %1：%2")
+                          .arg(networkUrlPolicyText(), resource.url.toString()));
+        return;
+    }
     const QString tempFile = QDir(active_temp_root_).filePath(resource.relativePath + QStringLiteral(".part"));
     active_file_.setFileName(tempFile);
     active_error_.clear();
-    if (!QDir().mkpath(QFileInfo(tempFile).absolutePath()) ||
-        !active_file_.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    if (!QDir().mkpath(QFileInfo(tempFile).absolutePath()))
+    {
+        failOperation(QStringLiteral("无法写入地图临时文件：%1").arg(tempFile));
+        return;
+    }
+    if (!active_file_.open(QIODevice::WriteOnly | QIODevice::Truncate))
     {
         failOperation(QStringLiteral("无法写入地图临时文件：%1").arg(tempFile));
         return;
     }
 
     QNetworkRequest request(resource.url);
+    request.setTransferTimeout(kMapResourceRequestTimeout);
     request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("VaporView/%1").arg(QCoreApplication::applicationVersion()));
+    active_network_ssl_errors_.clear();
     active_reply_ = network_manager_->get(request);
     connect(active_reply_, &QNetworkReply::readyRead, this, [this]() {
         if (active_reply_)
@@ -547,35 +638,35 @@ void MapResourceManager::finishFileReply()
     {
         return;
     }
+    const QVariant status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
+    if (reply->error() != QNetworkReply::NoError || (status.isValid() && status.toInt() >= 400))
+    {
+        const QString reason = networkFailureReason(reply, status, active_network_ssl_errors_);
+        failOperation(QStringLiteral("下载地图资源失败：%1").arg(reason));
+        reply->deleteLater();
+        return;
+    }
+
     const QByteArray tail = reply->readAll();
     if (active_file_.write(tail) != tail.size() && active_error_.isEmpty())
     {
         active_error_ = QStringLiteral("无法写入地图临时文件：磁盘空间不足或文件不可写。");
     }
-    active_file_.flush();
+    if (!active_file_.flush() && active_error_.isEmpty())
+    {
+        active_error_ = QStringLiteral("无法写入地图临时文件：磁盘空间不足或文件不可写。");
+    }
     active_file_.close();
+    if (active_file_.error() != QFile::NoError && active_error_.isEmpty())
+    {
+        active_error_ = QStringLiteral("无法写入地图临时文件：磁盘空间不足或文件不可写。");
+    }
     const MapResourceFile resource = active_package_.files.value(active_file_index_);
     const QString tempFile = QDir(active_temp_root_).filePath(resource.relativePath + QStringLiteral(".part"));
-    const QVariant status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
     if (!active_error_.isEmpty())
     {
         const QString error = active_error_;
         failOperation(error);
-        reply->deleteLater();
-        return;
-    }
-    if (reply->error() != QNetworkReply::NoError || (status.isValid() && status.toInt() >= 400))
-    {
-        QString reason = reply->errorString();
-        if (status.isValid() && status.toInt() >= 400)
-        {
-            reason = QStringLiteral("HTTP %1").arg(status.toInt());
-        }
-        if (reason.isEmpty())
-        {
-            reason = QStringLiteral("网络请求失败");
-        }
-        failOperation(QStringLiteral("下载地图资源失败：%1").arg(reason));
         reply->deleteLater();
         return;
     }
@@ -744,6 +835,7 @@ void MapResourceManager::clearActiveOperation()
     active_file_index_ = -1;
     active_temp_root_.clear();
     active_error_.clear();
+    active_network_ssl_errors_.clear();
     active_installed_files_.clear();
     active_backups_.clear();
 }

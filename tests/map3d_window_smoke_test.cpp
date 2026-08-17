@@ -2,6 +2,7 @@
 #include "geo/GeoTypes.h"
 #include "map3d/Map3DWindow.h"
 #include "map3d/Map3DRuntime.h"
+#include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 
 #include <QAbstractItemView>
@@ -54,6 +55,12 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
     require(combo->view()->objectName() == QStringLiteral("vaporViewComboPopupView"), message);
     require(combo->view()->findChild<QWidget *>(QStringLiteral("vaporViewComboPopupBorderOverlay")) == nullptr,
             message);
+    require(combo->view()->hasMouseTracking() &&
+                combo->view()->testAttribute(Qt::WA_Hover) &&
+                combo->view()->viewport() &&
+                combo->view()->viewport()->hasMouseTracking() &&
+                combo->view()->viewport()->testAttribute(Qt::WA_Hover),
+            message);
     const QString popupStyle = combo->view()->styleSheet();
     const QString hoverColor = VaporView::appThemeColorName(VaporView::AppThemeColor::MenuHover,
                                                             VaporView::isDarkThemeEnabled());
@@ -64,9 +71,46 @@ void requireComboPopupStyled(QComboBox *combo, const char *message)
                 popupStyle.contains(QStringLiteral("padding: 12px 0px")) &&
                 popupStyle.contains(QStringLiteral("padding: 7px 14px")) &&
                 popupStyle.contains(QStringLiteral("min-height: 30px")) &&
-                popupStyle.contains(QStringLiteral("background-color: %1").arg(hoverColor)) &&
+                popupStyle.contains(QStringLiteral("::item:hover,")) &&
+                popupStyle.contains(QStringLiteral("::item:selected:hover")) &&
+                popupStyle.contains(QStringLiteral("::item:selected:active:hover")) &&
+                popupStyle.contains(QStringLiteral("::item:selected:!active:hover { background-color: %1").arg(hoverColor)) &&
                 !popupStyle.contains(QStringLiteral("padding: 12px 4px")),
             message);
+}
+
+void requireSingleLevelComboPopup(QComboBox *combo, const char *message)
+{
+    require(combo != nullptr, message);
+    auto *singleLevelCombo = dynamic_cast<VaporView::SingleLevelPopupComboBox *>(combo);
+    require(singleLevelCombo != nullptr, message);
+    require(combo->property("usesSingleLevelPopupMenu").toBool(), message);
+    VaporView::SingleLevelPopupMenu *popupMenu = singleLevelCombo->popupMenu();
+    require(popupMenu != nullptr, message);
+
+    singleLevelCombo->showPopup();
+    QCoreApplication::processEvents();
+    require(popupMenu->isVisible(), message);
+    const QList<VaporView::SingleLevelPopupMenuRow *> rows = popupMenu->rows();
+    require(rows.size() == combo->count(), message);
+
+    int previousBottom = -1;
+    for (int i = 0; i < rows.size(); ++i)
+    {
+        const auto *row = rows.at(i);
+        require(row != nullptr, message);
+        require(row->text() == combo->itemText(i), message);
+        require(row->height() >= 32, message);
+        if (previousBottom >= 0)
+        {
+            require(row->y() >= previousBottom, message);
+        }
+        previousBottom = row->y() + row->height();
+    }
+
+    singleLevelCombo->hidePopup();
+    QCoreApplication::processEvents();
+    require(!popupMenu->isVisible(), message);
 }
 
 void writeSessionTrack(QTemporaryDir& sessionDir)
@@ -122,6 +166,23 @@ QSettings map3DTestSettings()
                      QStringLiteral("Map3D"));
 }
 
+bool waitForSessionDirectory(const QString& path, int timeoutMs)
+{
+    QElapsedTimer timer;
+    timer.start();
+    const QString expected = QFileInfo(path).absoluteFilePath();
+    while (timer.elapsed() < timeoutMs)
+    {
+        QCoreApplication::processEvents();
+        if (map3DTestSettings().value(QStringLiteral("lastSessionDir")).toString() == expected)
+        {
+            return true;
+        }
+        QThread::msleep(10);
+    }
+    return map3DTestSettings().value(QStringLiteral("lastSessionDir")).toString() == expected;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -132,6 +193,7 @@ int main(int argc, char** argv)
     require(settingsDir.isValid(), "temporary settings directory is valid");
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
+    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
 
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("VaporViewTest"));
@@ -283,10 +345,10 @@ int main(int argc, char** argv)
     require(heatPaletteCombo != nullptr && heatPaletteCombo->count() == 3
                 && heatPaletteCombo->itemText(2) == QStringLiteral("SpectralReverse"),
             "heat palette combo exposes the three shared palette names");
-    requireComboPopupStyled(heatMetricCombo,
-                            "heat metric combo uses the shared popup styling helper");
-    requireComboPopupStyled(heatPaletteCombo,
-                            "heat palette combo uses the shared popup styling helper");
+    requireSingleLevelComboPopup(heatMetricCombo,
+                                 "heat metric combo uses the shared single-level popup without overlapping rows");
+    requireSingleLevelComboPopup(heatPaletteCombo,
+                                 "heat palette combo uses the shared single-level popup without overlapping rows");
     require(trackLineVisibleAction->isCheckable() && trackLineVisibleAction->isChecked(),
             "track line visibility action starts enabled");
     require(trackPointsVisibleAction->isCheckable() && trackPointsVisibleAction->isChecked(),
@@ -451,7 +513,8 @@ int main(int argc, char** argv)
     QTemporaryDir sessionDir;
     writeSessionTrack(sessionDir);
     window.loadSessionDirectory(sessionDir.path());
-    QCoreApplication::processEvents();
+    require(waitForText(label, QStringLiteral("Source Session"), 3000),
+            "asynchronous session load completes without blocking the window");
     {
         QSettings settings = map3DTestSettings();
         require(settings.value(QStringLiteral("lastSessionDir")).toString()
@@ -621,6 +684,22 @@ int main(int argc, char** argv)
     QCoreApplication::processEvents();
     require(!replayAction->isChecked(), "stop clears replay playing state");
     require(label->text().contains(QStringLiteral("Replay stopped 1/2")), "stop rewinds replay to first sample and reports stopped state");
+
+    QTemporaryDir supersededSessionDir;
+    QTemporaryDir latestSessionDir;
+    writeSessionTrack(supersededSessionDir);
+    writeSessionTrack(latestSessionDir);
+    window.loadSessionDirectory(supersededSessionDir.path());
+    window.loadSessionDirectory(latestSessionDir.path());
+    require(waitForSessionDirectory(latestSessionDir.path(), 3000),
+            "the latest asynchronous session request wins over an older completed request");
+    require(waitForText(label, QStringLiteral("Source Session"), 1000),
+            "the newest asynchronous session request applies its track on the GUI thread");
+
+    auto* closingWindow = new VaporView::Map3D::Map3DWindow;
+    closingWindow->loadSessionDirectory(latestSessionDir.path());
+    delete closingWindow;
+    QCoreApplication::processEvents();
 
     return 0;
 }

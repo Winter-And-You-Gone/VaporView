@@ -495,6 +495,8 @@ QPushButton#appSidebarButton {
     outline: none;
 }
 QPushButton#appSidebarButton:focus {
+    background-color: @vv-primary-subtle;
+    border-color: @vv-primary;
     outline: none;
 }
 QPushButton#appSidebarButton[_vv_sidebar_compact="true"] {
@@ -693,6 +695,18 @@ QListView#logListView {
     border: none;
     border-radius: 0px;
 }
+QListView#logListView::item:selected {
+    background-color: @vv-primary-subtle-pressed;
+    color: @vv-white;
+}
+QListView#logListView::item:hover {
+    background-color: @vv-primary-subtle;
+    color: @vv-text;
+}
+QListView#logListView::item:selected:hover {
+    background-color: @vv-primary-subtle-pressed;
+    color: @vv-white;
+}
 QWidget#logNewEntriesRow {
     background-color: @vv-surface;
     border: none;
@@ -738,7 +752,10 @@ QComboBox QAbstractItemView::item:selected:!active {
     background-color: transparent;
     color: @vv-menu-text;
 }
-QComboBox QAbstractItemView::item:hover {
+QComboBox QAbstractItemView::item:hover,
+QComboBox QAbstractItemView::item:selected:hover,
+QComboBox QAbstractItemView::item:selected:active:hover,
+QComboBox QAbstractItemView::item:selected:!active:hover {
     background-color: @vv-menu-hover;
     color: @vv-menu-text;
 }
@@ -971,8 +988,8 @@ QToolButton#homeDeviceActionButton[state="connecting"] {
     border-color: @vv-hd-ok;
 }
 QToolButton#homeDeviceActionButton[state="connected"] {
-    background-color: @vv-hd-bad-bg;
-    border-color: @vv-hd-bad;
+    background-color: @vv-surface-alt;
+    border-color: @vv-border-strong;
 }
 QToolButton#homeDeviceActionButton:hover {
     background-color: @vv-primary-subtle;
@@ -1163,6 +1180,14 @@ QFrame#recordingStatusCard[vaporViewTopLevelCard="true"] > QWidget#recordingStat
 QString darkOverviewStyleSheet()
 {
     return QStringLiteral(R"(
+QListView#logListView::item:hover {
+    background-color: @vv-title-hover;
+    color: @vv-text;
+}
+QListView#logListView::item:selected:hover {
+    background-color: @vv-primary-subtle-pressed;
+    color: @vv-white;
+}
 QFrame#deviceTelemetrySectionTitlePane {
     background-color: @vv-surface-alt;
     border: none;
@@ -1214,11 +1239,66 @@ QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink="true"] {
 QLabel#homeTelemetrySummaryTitleLabel[skyTelemetryTitle="true"] {
     color: @vv-primary;
 }
+QLabel#deviceConfigSubsectionLabel {
+    background-color: transparent;
+    border: none;
+    color: @vv-text-strong;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 2px 0px 0px 0px;
+}
+QLabel#deviceRemoteSkyConfigStatus {
+    background-color: @vv-field-bg;
+    border: 1px solid @vv-border;
+    border-radius: 8px;
+    color: @vv-text-strong;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 8px;
+}
+QLabel#deviceRemoteSkyConfigStatus[status="success"] {
+    background-color: @vv-success-bg;
+    border-color: @vv-success;
+    color: @vv-success;
+}
+QLabel#deviceRemoteSkyConfigStatus[status="pending"],
+QLabel#deviceRemoteSkyConfigStatus[status="normal"] {
+    background-color: @vv-primary-subtle;
+    border-color: @vv-primary;
+    color: @vv-primary;
+}
+QLabel#deviceRemoteSkyConfigStatus[status="warning"],
+QLabel#deviceRemoteSkyConfigStatus[status="dirty"] {
+    background-color: @vv-warning-bg;
+    border-color: @vv-warning;
+    color: @vv-warning;
+}
+QLabel#deviceRemoteSkyConfigStatus[status="error"] {
+    background-color: @vv-danger-bg;
+    border-color: @vv-danger;
+    color: @vv-danger;
+}
+QLabel#deviceRemoteSkyConfigStatus[status="disabled"] {
+    background-color: @vv-surface-alt;
+    border-color: @vv-border;
+    color: @vv-text-muted;
+}
 QLabel#temperatureOverviewValuePill {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
     border-radius: 10px;
     color: @vv-text-strong;
+}
+QLabel#temperatureOverviewOutputPercentPill {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+    border-radius: 10px;
+    color: @vv-text-strong;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 2px 3px;
+    margin: 0px;
 }
 QFrame#temperatureOverviewOutputCapsule {
     background-color: @vv-surface-alt;
@@ -1244,32 +1324,34 @@ QPushButton#temperatureOverviewOutputSwitch {
 )");
 }
 
-QString mainCardsScrollBarBackgroundStyleSheet(bool)
+QString mainCardsScrollBarBackgroundStyleSheet(bool dark)
 {
+    const QString trackBackground = dark ? QStringLiteral("@vv-window") : QStringLiteral("@vv-surface");
     return QStringLiteral(
         "QScrollArea#mainCardsScrollArea QScrollBar:vertical { "
-        "background-color: @vv-surface; width: 8px; border-radius: 4px; margin: 14px 0px 14px 0px; }"
+        "background-color: %1; width: 8px; border-radius: 4px; margin: 14px 0px 14px 0px; }"
         "QScrollArea#mainCardsScrollArea QScrollBar:horizontal { "
-        "background-color: @vv-surface; height: 8px; border-radius: 4px; margin: 0px; }"
+        "background-color: %1; height: 8px; border-radius: 4px; margin: 0px; }"
         "QScrollArea#mainCardsScrollArea QScrollBar::add-page:vertical, "
         "QScrollArea#mainCardsScrollArea QScrollBar::sub-page:vertical, "
         "QScrollArea#mainCardsScrollArea QScrollBar::add-page:horizontal, "
         "QScrollArea#mainCardsScrollArea QScrollBar::sub-page:horizontal { "
-        "background-color: @vv-surface; }"
+        "background-color: %1; }"
         "QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical, "
         "QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical { "
-        "background-color: @vv-surface; border: none; height: 14px; subcontrol-origin: margin; }"
+        "background-color: %1; border: none; height: 14px; subcontrol-origin: margin; }"
         "QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical:hover, "
         "QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical:hover, "
         "QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical:pressed, "
         "QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical:pressed { "
-        "background-color: @vv-surface; }"
+        "background-color: %1; }"
         "QScrollArea#mainCardsScrollArea QScrollBar::add-line:horizontal, "
         "QScrollArea#mainCardsScrollArea QScrollBar::sub-line:horizontal { "
-        "background-color: @vv-surface; border: none; width: 0px; }"
+        "background-color: %1; border: none; width: 0px; }"
         "QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, "
         "QScrollArea#mainCardsScrollArea QScrollBar::handle:horizontal { "
-        "border: none; border-radius: 4px; margin: 0px; }");
+        "border: none; border-radius: 4px; margin: 0px; }")
+        .arg(trackBackground);
 }
 
 QString mainCardsTopLevelCardStyleSheet()
@@ -1280,6 +1362,7 @@ QString mainCardsTopLevelCardStyleSheet()
         "QScrollArea#mainCardsScrollArea QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"], "
         "QScrollArea#mainCardsScrollArea QFrame#logPanelFrame[vaporViewTopLevelCard=\"true\"], "
         "QScrollArea#mainCardsScrollArea QFrame[vaporViewTopLevelCard=\"true\"] { "
+        "background-color: @vv-surface-raised; "
         "border-color: transparent; }");
 }
 

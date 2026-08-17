@@ -318,7 +318,7 @@ QVariant UiLogModel::data(const QModelIndex& index, int role) const
     switch (role)
     {
     case Qt::DisplayRole:
-        return formatEntryDisplay(entry);
+        return formatEntryDisplay(entry, hide_source_category_);
     case TimestampRole:
         return entry.firstTimestamp;
     case LastTimestampRole:
@@ -444,6 +444,24 @@ int UiLogModel::appendRecords(const QVector<VaporView::LogRecord>& records)
     return accepted;
 }
 
+void UiLogModel::setHideSourceCategory(bool hide)
+{
+    if (hide_source_category_ == hide)
+    {
+        return;
+    }
+    hide_source_category_ = hide;
+    if (!entries_.isEmpty())
+    {
+        emit dataChanged(index(0, 0), index(entries_.size() - 1, 0), {Qt::DisplayRole});
+    }
+}
+
+bool UiLogModel::hideSourceCategory() const
+{
+    return hide_source_category_;
+}
+
 void UiLogModel::clearEntries()
 {
     if (entries_.isEmpty())
@@ -541,7 +559,7 @@ QDateTime UiLogModel::recordTimestamp(const VaporView::LogRecord& record)
     return timestamp;
 }
 
-QString UiLogModel::formatEntryDisplay(const UiLogEntry& entry)
+QString UiLogModel::formatEntryDisplay(const UiLogEntry& entry, bool hideSourceCategory)
 {
     const QString first = entry.firstTimestamp.toLocalTime().toString(QStringLiteral("hh:mm:ss"));
     const QString last = entry.lastTimestamp.toLocalTime().toString(QStringLiteral("hh:mm:ss"));
@@ -556,6 +574,14 @@ QString UiLogModel::formatEntryDisplay(const UiLogEntry& entry)
         : (entry.record.category.isEmpty()
             ? entry.record.source
             : QStringLiteral("%1/%2").arg(entry.record.source, entry.record.category));
+    if (hideSourceCategory || context.isEmpty())
+    {
+        return QStringLiteral("%1  %2  %3%4")
+            .arg(timeText,
+                 levelText(entry.record.level),
+                 uiLogDisplayMessage(entry.record),
+                 repeatText);
+    }
     return QStringLiteral("%1  %2  %3  %4%5")
         .arg(timeText,
              levelText(entry.record.level),

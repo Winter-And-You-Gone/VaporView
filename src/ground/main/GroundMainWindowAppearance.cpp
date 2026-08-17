@@ -123,8 +123,9 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 600; }"
             "QLabel#homeTelemetrySummaryTitleLabel[skyTelemetryTitle=\"true\"] { color: @vv-primary; }"
             "QLabel#temperatureOverviewValuePill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; padding: 2px 3px; margin: 0px; }"
+            "QLabel#temperatureOverviewOutputPercentPill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; padding: 2px 3px; margin: 0px; }"
             "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; padding: 0px; margin: 0px; color: @vv-text; font-size: 14px; font-weight: 700; }"
-            "QToolButton#temperatureOverviewChannelButton { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-primary; font-size: 13px; font-weight: 700; padding: 1px 8px 1px 8px; text-align: center; }"
+            "QToolButton#temperatureOverviewChannelButton { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-primary; font-size: 13px; font-weight: 500; padding: 1px 8px 1px 8px; text-align: center; }"
             "QToolButton#temperatureOverviewChannelButton[available=\"false\"] { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }"
             "QToolButton#temperatureOverviewChannelButton:hover, QToolButton#temperatureOverviewChannelButton:pressed { background-color: @vv-surface; border-color: @vv-border-strong; }"
             "QToolButton#temperatureOverviewChannelButton[available=\"false\"]:hover, QToolButton#temperatureOverviewChannelButton[available=\"false\"]:pressed { background-color: @vv-surface-alt; border-color: @vv-border; }"
@@ -143,7 +144,7 @@ void MainWindow::loadModernStyleSheet()
             "QComboBox QAbstractItemView { background-color: @vv-menu-panel; border: none; border-radius: 10px; color: @vv-menu-text; selection-background-color: transparent; selection-color: @vv-menu-text; padding: 12px 0px; outline: none; }"
             "QComboBox QAbstractItemView::item { background-color: transparent; color: @vv-menu-text; padding: 7px 14px; min-height: 30px; border: 0px; border-radius: 0px; }"
             "QComboBox QAbstractItemView::item:selected, QComboBox QAbstractItemView::item:selected:active, QComboBox QAbstractItemView::item:selected:!active { background-color: transparent; color: @vv-menu-text; }"
-            "QComboBox QAbstractItemView::item:hover { background-color: @vv-menu-hover; color: @vv-menu-text; }"
+            "QComboBox QAbstractItemView::item:hover, QComboBox QAbstractItemView::item:selected:hover, QComboBox QAbstractItemView::item:selected:active:hover, QComboBox QAbstractItemView::item:selected:!active:hover { background-color: @vv-menu-hover; color: @vv-menu-text; }"
             "QComboBox QAbstractItemView::item:disabled { background-color: transparent; color: @vv-menu-disabled; }"
             "QComboBox QAbstractItemView::item:selected:disabled { background-color: transparent; color: @vv-menu-disabled; }"
             "QLineEdit { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 6px; padding: 4px 10px; min-height: 26px; max-height: 26px; color: @vv-text; font-size: 14px; }"
@@ -222,12 +223,14 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton:disabled { background-color: @vv-border-strong; color: @vv-white; }"
             "QPushButton#compactTcpButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
             "QPushButton#compactTcpStartButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
-            "TemperatureControllerPanel QFrame#temperatureConfigCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
+            "TemperatureControllerPanel QFrame#temperatureConfigCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
+            "TemperatureControllerPanel QFrame#temperatureControllerControlsCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
             "TemperatureControllerPanel QFrame#temperatureChannelTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
+            "TemperatureControllerPanel QFrame#temperatureCommonSettingsSubTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
             "TemperatureControllerPanel QFrame#temperatureChannelSubTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
             "TemperatureControllerPanel QStackedWidget#temperatureChannelStack { background-color: transparent; border: none; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 30px; max-height: 30px; padding: 0px 10px; text-align: center; outline: none; }"
-            "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 30px; max-height: 30px; padding: 0px 10px; text-align: center; outline: none; }"
+            "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 30px; max-height: 30px; padding: 0px 8px; text-align: center; outline: none; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
@@ -259,12 +262,23 @@ void MainWindow::loadModernStyleSheet()
 QString temperatureControllerConfigStyleSheet()
 {
     return QStringLiteral(
-        "TemperatureControllerPanel QFrame#temperatureConfigCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
+        "QWidget#temperatureTitleStatusStrip { background-color: transparent; border: none; }"
+        "QWidget#temperatureTitleStatusStrip QWidget[temperatureTitleStatusField=\"true\"] { background-color: transparent; border: none; }"
+        "QWidget#temperatureTitleStatusStrip QLabel#fieldLabel { color: @vv-text; font-size: 13px; font-weight: 600; margin: 0px; padding: 0px; }"
+        "QWidget#temperatureTitleStatusStrip QLabel#highlightedValue { color: @vv-text; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 600; background-color: transparent; margin: 0px; padding: 0px; }"
+        "QWidget#temperatureTitleStatusStrip QLabel#rateLabel[temperatureControllerRateValue=\"true\"] { color: @vv-text; font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; font-size: 15px; font-weight: 700; margin: 0px; padding: 0px; }"
+        "TemperatureControllerPanel QFrame#temperatureConfigCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
+        "TemperatureControllerPanel QFrame#temperatureControllerControlsCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
+        "TemperatureControllerPanel QWidget#temperatureConfigPlotContainer { background-color: transparent; border: none; }"
+        "TemperatureControllerPanel QWidget#temperatureControllerModeField { background-color: transparent; border: none; }"
         "TemperatureControllerPanel QFrame#temperatureChannelTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
+        "TemperatureControllerPanel QFrame#temperatureCommonSettingsSubTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
         "TemperatureControllerPanel QFrame#temperatureChannelSubTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
+        "TemperatureControllerPanel QFrame#temperaturePolynomialFieldsChannel1, TemperatureControllerPanel QFrame#temperaturePolynomialFieldsChannel2 { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
+        "TemperatureControllerPanel QWidget[temperatureCalibrationSideDrawer=\"true\"] { background-color: transparent; border: none; }"
         "TemperatureControllerPanel QStackedWidget#temperatureChannelStack { background-color: transparent; border: none; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 30px; max-height: 30px; padding: 0px 10px; text-align: center; outline: none; }"
-        "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 30px; max-height: 30px; padding: 0px 10px; text-align: center; outline: none; }"
+        "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"] { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 30px; max-height: 30px; padding: 0px 8px; text-align: center; outline: none; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
         "TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"]:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
@@ -287,9 +301,9 @@ QString temperatureControllerConfigStyleSheet()
         "QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:focus { border-color: @vv-primary; }"
         "QWidget#ai8TemperatureControllerPanel QWidget[ai8DetailContent=\"true\"] { background-color: transparent; border: none; }"
         "QWidget#ai8TemperatureControllerPanel QFrame#ai8ParameterField { background-color: transparent; border: none; border-radius: 0px; }"
-        "Ai8TemperatureControllerPanel QLabel#ai8ProtocolStatus[protocolReady=\"false\"] { color: @vv-text-muted; font-weight: 500; }"
-        "Ai8TemperatureControllerPanel QLabel#ai8ProtocolStatus[protocolReady=\"true\"] { color: @vv-success; font-weight: 600; }"
-        "Ai8TemperatureControllerPanel QLabel#ai8ProtocolStatus[operationFailed=\"true\"] { color: @vv-danger; font-weight: 600; }"
+        "QLabel#ai8ProtocolStatus[protocolReady=\"false\"] { color: @vv-text-muted; font-weight: 500; }"
+        "QLabel#ai8ProtocolStatus[protocolReady=\"true\"] { color: @vv-success; font-weight: 600; }"
+        "QLabel#ai8ProtocolStatus[operationFailed=\"true\"] { color: @vv-danger; font-weight: 600; }"
         "Ai8TemperatureControllerPanel QPushButton#ai8WriteParametersButton[primaryAction=\"true\"] { background-color: @vv-primary; border-color: @vv-primary; color: @vv-white; }"
         "Ai8TemperatureControllerPanel QPushButton#ai8WriteParametersButton[primaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }");
 }
@@ -317,7 +331,8 @@ QString MainWindow::themedStyleSheet() const
     const QString mainCardsScrollBarStyle =
         applyAppThemeTokens(mainCardsScrollBarBackgroundStyleSheet(state_->dark_theme_enabled_),
                             state_->dark_theme_enabled_);
-    const QString mainCardsTopLevelCardStyle = mainCardsTopLevelCardStyleSheet();
+    const QString mainCardsTopLevelCardStyle =
+        applyAppThemeTokens(mainCardsTopLevelCardStyleSheet(), state_->dark_theme_enabled_);
     const QString rtkConfigCardStyle =
         applyAppThemeTokens(rtkConfigCardStyleSheet(), state_->dark_theme_enabled_);
     return state_->dark_theme_enabled_
@@ -486,7 +501,7 @@ void MainWindow::updateAppSidebarButtonTexts()
 
     applyButtonText(state_->home_nav_btn_, state_->is_english_ ? QStringLiteral("Home") : QStringLiteral("首页"));
     applyButtonText(state_->temperature_nav_btn_, state_->is_english_ ? QStringLiteral("Thermal") : QStringLiteral("温控"));
-    applyButtonText(state_->rtk_config_nav_btn_, state_->is_english_ ? QStringLiteral("RTK Config") : QStringLiteral("RTK配置"));
+    applyButtonText(state_->rtk_config_nav_btn_, state_->is_english_ ? QStringLiteral("Combination Navigation") : QStringLiteral("组合导航"));
     applyButtonText(state_->device_config_nav_btn_, state_->is_english_ ? QStringLiteral("Device") : QStringLiteral("设备配置"));
     updateRtkConfigIcon();
     updateCustomTitleBarTexts();
@@ -982,7 +997,10 @@ void MainWindow::updateResponsiveHomeLayout()
                 const int maxLeftWidth = std::max(leftMinimum, availableWidth - rightMinimum);
                 const int leftWidth = std::min(leftMinimum, maxLeftWidth);
                 const int rightWidth = std::max(rightMinimum, availableWidth - leftWidth);
+                state_->home_overview_splitter_->setProperty(kHomeOverviewDeviceProgrammaticResizeProperty, true);
                 state_->home_overview_splitter_->setSizes({leftWidth, rightWidth});
+                state_->home_overview_splitter_->setProperty(kHomeOverviewDeviceProgrammaticResizeProperty, false);
+                state_->home_overview_splitter_->setProperty(kHomeOverviewDeviceAutoManagedWidthProperty, true);
                 state_->home_overview_splitter_->setProperty(kHomeOverviewSplitterInitializedProperty, true);
             }
         }
@@ -1258,7 +1276,7 @@ void MainWindow::configureComboPopupsIn(QWidget *scope) const
 
 void MainWindow::setFontScale(int percent)
 {
-    if (percent < 70 || percent > 150 || state_->font_scale_percent_ == percent)
+    if (percent < 60 || percent > 180 || state_->font_scale_percent_ == percent)
     {
         return;
     }
@@ -1287,10 +1305,6 @@ void MainWindow::setFontScale(int percent)
     if (state_->rtk_config_dialog_)
     {
         state_->rtk_config_dialog_->setFontScale(state_->font_scale_percent_);
-    }
-    if (state_->sky_device_config_dialog_)
-    {
-        state_->sky_device_config_dialog_->setFontScale(state_->font_scale_percent_);
     }
 
     QSettings settings("VaporView", "MainWindow");
@@ -1379,7 +1393,12 @@ void MainWindow::setRecordingExportRateHz(int rate, bool should_log)
 
     if (changed && should_log)
     {
-        log(QString(state_->is_english_ ? "Other-devices recording rate set to %1 Hz" : "其余设备记录频率已设置为 %1 Hz").arg(state_->recording_export_rate_hz_));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("recording_csv_rate_updated"),
+                         QStringLiteral("其余设备记录频率已更新。"),
+                         {{QStringLiteral("recording_rate_hz"), state_->recording_export_rate_hz_},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }
 
@@ -1395,9 +1414,13 @@ void MainWindow::setImuRecordingRateHz(int rate, bool should_log)
 
     if (changed && should_log)
     {
-        log(state_->is_english_
-            ? QStringLiteral("EPSILON raw recording keeps full verified FDILink frames")
-            : QStringLiteral("EPSILON 原始记录固定保存完整已校验 FDILink 帧"));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("epsilon_raw_recording_full_frames_enabled"),
+                         QStringLiteral("EPSILON 原始记录固定保存完整已校验 FDILink 帧。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("recording_mode"), QStringLiteral("full_verified_fdilink_frames")},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }
 
@@ -1413,9 +1436,13 @@ void MainWindow::setWaveformRecordingRateHz(int rate, bool should_log)
 
     if (changed && should_log)
     {
-        log(state_->is_english_
-            ? QStringLiteral("TCP wave raw recording keeps every complete TCP frame")
-            : QStringLiteral("TCP 波形原始记录固定保存每组完整 TCP 帧"));
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("tcp_wave_raw_recording_full_frames_enabled"),
+                         QStringLiteral("TCP 波形原始记录固定保存每组完整 TCP 帧。"),
+                         {{QStringLiteral("device"), QStringLiteral("Wave TCP")},
+                          {QStringLiteral("recording_mode"), QStringLiteral("full_tcp_frames")},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
 }
 
@@ -1609,49 +1636,52 @@ void MainWindow::saveRememberedInputState() const
         }
     };
 
-    saveCombo(QStringLiteral("serial/epsilon_port"), state_->epsilon_port_combo_);
-    saveCombo(QStringLiteral("serial/ptb_port"), state_->ptb_port_combo_);
-    saveCombo(QStringLiteral("serial/hmp_port"), state_->hmp_port_combo_);
-    saveCombo(QStringLiteral("serial/lidar_port"), state_->lidar_port_combo_);
-    saveCombo(QStringLiteral("serial/temperature_port"), state_->temperature_port_combo_);
-    saveCombo(QStringLiteral("serial/ai8_temperature_port"),
-              state_->device_config_.ai8_temperature_port_combo);
-    saveCombo(QStringLiteral("serial/ai8_temperature_baud"),
-              state_->device_config_.ai8_temperature_baud_combo);
-    saveCombo(QStringLiteral("rate/ai8_temperature"),
-              state_->device_config_.ai8_temperature_rate_combo);
-
-    saveCombo(QStringLiteral("serial/epsilon_baud"), state_->epsilon_baud_combo_);
-    saveCombo(QStringLiteral("serial/ptb_baud"), state_->ptb_baud_combo_);
-    saveCombo(QStringLiteral("serial/hmp_baud"), state_->hmp_baud_combo_);
-    saveCombo(QStringLiteral("serial/lidar_baud"), state_->lidar_baud_combo_);
-    saveCombo(QStringLiteral("serial/temperature_baud"), state_->temperature_baud_combo_);
-    saveRememberedSensorBaud(
-        settings,
-        state_->device_config_.ptb_source_combo
-            ? state_->device_config_.ptb_source_combo->currentData().toString()
-            : QStringLiteral("ptb210"),
-        state_->ptb_baud_combo_ ? state_->ptb_baud_combo_ : state_->device_config_.ptb_baud_combo);
-    saveRememberedSensorBaud(
-        settings,
-        state_->device_config_.hmp_source_combo
-            ? state_->device_config_.hmp_source_combo->currentData().toString()
-            : QStringLiteral("hmp3"),
-        state_->hmp_baud_combo_ ? state_->hmp_baud_combo_ : state_->device_config_.hmp_baud_combo);
-
-    saveCombo(QStringLiteral("rate/global"), state_->global_rate_combo_);
-    saveCombo(QStringLiteral("rate/epsilon"), state_->epsilon_rate_combo_);
-    saveCombo(QStringLiteral("rate/ptb"), state_->ptb_rate_combo_);
-    saveCombo(QStringLiteral("rate/hmp"), state_->hmp_rate_combo_);
-    saveCombo(QStringLiteral("rate/lidar"), state_->lidar_rate_combo_);
-    saveCombo(QStringLiteral("rate/temperature"), state_->temperature_rate_combo_);
-    if (state_->device_config_.ptb_source_combo)
+    if (!isRemoteSkyMode())
     {
-        VaporView::setPersistentSetting(settings, QStringLiteral("sensor/pressure_source"), state_->device_config_.ptb_source_combo->currentData());
-    }
-    if (state_->device_config_.hmp_source_combo)
-    {
-        VaporView::setPersistentSetting(settings, QStringLiteral("sensor/humidity_source"), state_->device_config_.hmp_source_combo->currentData());
+        saveCombo(QStringLiteral("serial/epsilon_port"), state_->epsilon_port_combo_);
+        saveCombo(QStringLiteral("serial/ptb_port"), state_->ptb_port_combo_);
+        saveCombo(QStringLiteral("serial/hmp_port"), state_->hmp_port_combo_);
+        saveCombo(QStringLiteral("serial/lidar_port"), state_->lidar_port_combo_);
+        saveCombo(QStringLiteral("serial/temperature_port"), state_->temperature_port_combo_);
+        saveCombo(QStringLiteral("serial/ai8_temperature_port"),
+                  state_->device_config_.ai8_temperature_port_combo);
+        saveCombo(QStringLiteral("serial/ai8_temperature_baud"),
+                  state_->device_config_.ai8_temperature_baud_combo);
+        saveCombo(QStringLiteral("rate/ai8_temperature"),
+                  state_->device_config_.ai8_temperature_rate_combo);
+
+        saveCombo(QStringLiteral("serial/epsilon_baud"), state_->epsilon_baud_combo_);
+        saveCombo(QStringLiteral("serial/ptb_baud"), state_->ptb_baud_combo_);
+        saveCombo(QStringLiteral("serial/hmp_baud"), state_->hmp_baud_combo_);
+        saveCombo(QStringLiteral("serial/lidar_baud"), state_->lidar_baud_combo_);
+        saveCombo(QStringLiteral("serial/temperature_baud"), state_->temperature_baud_combo_);
+        saveRememberedSensorBaud(
+            settings,
+            state_->device_config_.ptb_source_combo
+                ? state_->device_config_.ptb_source_combo->currentData().toString()
+                : QStringLiteral("ptb210"),
+            state_->ptb_baud_combo_ ? state_->ptb_baud_combo_ : state_->device_config_.ptb_baud_combo);
+        saveRememberedSensorBaud(
+            settings,
+            state_->device_config_.hmp_source_combo
+                ? state_->device_config_.hmp_source_combo->currentData().toString()
+                : QStringLiteral("hmp3"),
+            state_->hmp_baud_combo_ ? state_->hmp_baud_combo_ : state_->device_config_.hmp_baud_combo);
+
+        saveCombo(QStringLiteral("rate/global"), state_->global_rate_combo_);
+        saveCombo(QStringLiteral("rate/epsilon"), state_->epsilon_rate_combo_);
+        saveCombo(QStringLiteral("rate/ptb"), state_->ptb_rate_combo_);
+        saveCombo(QStringLiteral("rate/hmp"), state_->hmp_rate_combo_);
+        saveCombo(QStringLiteral("rate/lidar"), state_->lidar_rate_combo_);
+        saveCombo(QStringLiteral("rate/temperature"), state_->temperature_rate_combo_);
+        if (state_->device_config_.ptb_source_combo)
+        {
+            VaporView::setPersistentSetting(settings, QStringLiteral("sensor/pressure_source"), state_->device_config_.ptb_source_combo->currentData());
+        }
+        if (state_->device_config_.hmp_source_combo)
+        {
+            VaporView::setPersistentSetting(settings, QStringLiteral("sensor/humidity_source"), state_->device_config_.hmp_source_combo->currentData());
+        }
     }
     if (state_->data_source_mode_combo_)
     {

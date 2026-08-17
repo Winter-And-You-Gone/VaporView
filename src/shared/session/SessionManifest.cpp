@@ -64,6 +64,7 @@ QJsonObject countsToJson(const SessionRecordCounts& counts)
     QJsonObject object;
     object.insert(QStringLiteral("sensor_rows"), numberText(counts.sensorRows));
     object.insert(QStringLiteral("temperature_controller_rows"), numberText(counts.temperatureControllerRows));
+    object.insert(QStringLiteral("ai8_temperature_controller_rows"), numberText(counts.ai8TemperatureControllerRows));
     object.insert(QStringLiteral("waveform_frames"), numberText(counts.waveformFrames));
     object.insert(QStringLiteral("waveform_feature_rows"), numberText(counts.waveformFeatureRows));
     object.insert(QStringLiteral("event_rows"), numberText(counts.eventRows));
@@ -77,6 +78,7 @@ QJsonObject pathsToJson()
     QJsonObject object;
     object.insert(QStringLiteral("sensor_summary_csv"), layout.sensorSummaryCsvPath);
     object.insert(QStringLiteral("temperature_controller_csv"), layout.temperatureControllerCsvPath);
+    object.insert(QStringLiteral("ai8_temperature_controller_csv"), layout.ai8TemperatureControllerCsvPath);
     object.insert(QStringLiteral("waveform_features_csv"), layout.waveformFeaturesCsvPath);
     object.insert(QStringLiteral("navigation_raw"), layout.navigationRawPath);
     object.insert(QStringLiteral("pressure_raw"), layout.pressureRawPath);
@@ -306,6 +308,8 @@ SessionManifestParseResult sessionManifestFromJson(const QJsonObject& json)
     manifest.counts.sensorRows = countFromObjects(counts, json, QStringLiteral("sensor_rows"));
     manifest.counts.temperatureControllerRows =
         countFromObjects(counts, json, QStringLiteral("temperature_controller_rows"));
+    manifest.counts.ai8TemperatureControllerRows =
+        countFromObjects(counts, json, QStringLiteral("ai8_temperature_controller_rows"));
     manifest.counts.waveformFrames = countFromObjects(counts, json, QStringLiteral("waveform_frames"));
     manifest.counts.waveformFeatureRows = counts.contains(QStringLiteral("waveform_feature_rows"))
         ? unsignedFromJson(counts.value(QStringLiteral("waveform_feature_rows")))

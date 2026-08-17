@@ -43,6 +43,25 @@ int main(int argc, char **argv)
             "same elapsed time produces deterministic waveform data");
     require(firstSnapshot.ai8Temperature.measuredC == secondSnapshot.ai8Temperature.measuredC,
             "same elapsed time produces deterministic AI-8 temperature data");
+    require(firstSnapshot.receiveBitsPerSecond == secondSnapshot.receiveBitsPerSecond &&
+                firstSnapshot.waveCaptureRateHz == secondSnapshot.waveCaptureRateHz,
+            "same elapsed time produces deterministic UI-test telemetry capsule values");
+    const UiTestSnapshot laterSnapshot = first.snapshot(3900);
+    require(firstSnapshot.waveformFeatureRateHz != laterSnapshot.waveformFeatureRateHz ||
+                firstSnapshot.rawWaveformRateHz != laterSnapshot.rawWaveformRateHz ||
+                firstSnapshot.receiveBitsPerSecond != laterSnapshot.receiveBitsPerSecond,
+            "different elapsed times animate UI-test telemetry capsule values");
+    require(firstSnapshot.epsilonRateHz >= 100.0 &&
+                firstSnapshot.waveformFeatureRateHz >= 100.0 &&
+                firstSnapshot.telemetryStatusRateHz >= 100.0 &&
+                firstSnapshot.rawWaveformRateHz >= 100.0 &&
+                firstSnapshot.harmonicWaveformRateHz >= 100.0 &&
+                firstSnapshot.waveCaptureRateHz >= 100.0,
+            "UI-test home telemetry rates cover three-digit Hz values");
+    require(laterSnapshot.receiveBitsPerSecond >= 100'000'000.0 &&
+                laterSnapshot.transmitBitsPerSecond >= 100'000'000.0 &&
+                laterSnapshot.receiveBitsPerSecond + laterSnapshot.transmitBitsPerSecond < 1'000'000'000.0,
+            "UI-test link-rate values cover three-digit one-decimal Mbps without leaving the compact reserve");
 
     first.setScenario(UiTestScenario::PartialFailure, 2500);
     const UiTestSnapshot partial = first.snapshot(2600);

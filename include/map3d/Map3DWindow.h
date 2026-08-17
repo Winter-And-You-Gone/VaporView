@@ -26,6 +26,7 @@ class QEvent;
 class QHideEvent;
 class QShowEvent;
 class QToolBar;
+class QFutureWatcherBase;
 
 namespace VaporView {
 class SingleLevelPopupMenu;
@@ -37,6 +38,10 @@ namespace VaporView::Map3D {
 class OsgEarthViewWidget;
 class MapResourceDialog;
 class MapResourceManager;
+
+} // namespace VaporView::Map3D
+
+namespace VaporView::Map3D {
 
 class Map3DWindow final : public QMainWindow {
     Q_OBJECT
@@ -62,6 +67,11 @@ protected:
     void hideEvent(QHideEvent* event) override;
 
 private:
+    enum class TrackDataMode {
+        Live,
+        Session,
+        Replay,
+    };
     void loadInitialEarthFile();
     void openSessionDirectory();
     void openEarthFile();
@@ -112,6 +122,8 @@ private:
     void showSelectedTrajectorySample(int sampleIndex, const VaporView::Geo::NavSample& sample);
     void clearSelectedTrajectorySample();
     void updateStatus(const VaporView::Geo::NavSample* latest = nullptr, bool force = true);
+    void invalidateSessionLoadRequest();
+    void startSessionLoad(const QString& sessionDir, quint64 generation);
 
     OsgEarthViewWidget* view_ = nullptr;
     QWidget* headless_view_ = nullptr;
@@ -159,6 +171,7 @@ private:
     MapDataManager map_data_manager_;
     MapDataSelection map_selection_;
     VaporView::Geo::TrajectoryReplay replay_;
+    TrackDataMode track_data_mode_ = TrackDataMode::Live;
     std::shared_ptr<const std::vector<VaporView::Geo::TrajectoryRenderSample>> replay_render_storage_;
     int rendered_replay_index_ = -1;
     QString latest_track_source_;
@@ -190,6 +203,9 @@ private:
     int ui_test_saved_track_point_size_ = 7;
     int ui_test_saved_replay_speed_index_ = 1;
     std::array<bool, kMap3DLayerCount> ui_test_saved_layer_visibility_{};
+    QFutureWatcherBase* session_load_watcher_ = nullptr;
+    quint64 session_load_generation_ = 0;
+    QString pending_session_directory_;
 };
 
 } // namespace VaporView::Map3D

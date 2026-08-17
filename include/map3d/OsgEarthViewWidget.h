@@ -7,6 +7,7 @@
 
 #include <QOpenGLWidget>
 #include <QMetaObject>
+#include <QElapsedTimer>
 #include <QPointF>
 #include <QSet>
 #include <QString>
@@ -113,10 +114,10 @@ public:
     explicit OsgEarthViewWidget(QWidget* parent = nullptr);
     ~OsgEarthViewWidget() override;
 
-    void appendSample(const VaporView::Geo::NavSample& sample);
-    void appendSample(const VaporView::Geo::TrajectoryRenderSample& sample);
-    void appendSamples(const std::vector<VaporView::Geo::NavSample>& samples);
-    void appendSamples(const std::vector<VaporView::Geo::TrajectoryRenderSample>& samples);
+    void appendNavigationSample(const VaporView::Geo::NavSample& sample);
+    void appendRenderSample(const VaporView::Geo::TrajectoryRenderSample& sample);
+    void appendNavigationSamples(const std::vector<VaporView::Geo::NavSample>& samples);
+    void appendRenderSamples(const std::vector<VaporView::Geo::TrajectoryRenderSample>& samples);
     void setSamples(const std::vector<VaporView::Geo::NavSample>& samples);
     void setSamples(const std::vector<VaporView::Geo::TrajectoryRenderSample>& samples);
     void setSamples(std::shared_ptr<const std::vector<VaporView::Geo::NavSample>> samples,
@@ -194,6 +195,10 @@ protected:
     void keyReleaseEvent(QKeyEvent* event) override;
 
 private:
+    enum class TrackDataMode {
+        LiveNavigation,
+        RenderSamples,
+    };
     void registerAsyncWatcher(QFutureWatcherBase* watcher);
     void unregisterAsyncWatcher(QFutureWatcherBase* watcher);
     void cancelAsyncWatchers();
@@ -248,6 +253,8 @@ private:
     double last_frame_ms_ = 0.0;
     double smoothed_frame_ms_ = 0.0;
     double frames_per_second_ = 0.0;
+    QElapsedTimer frame_interval_clock_;
+    double smoothed_frame_interval_ms_ = 0.0;
     double last_track_update_ms_ = 0.0;
     VaporView::Geo::LocalTangentPlane local_frame_;
     bool has_world_overlay_origin_ = false;
@@ -271,6 +278,7 @@ private:
     std::shared_ptr<const std::vector<VaporView::Geo::NavSample>> shared_nav_samples_;
     int shared_sample_count_ = 0;
     bool preserve_full_track_extent_ = false;
+    TrackDataMode track_data_mode_ = TrackDataMode::LiveNavigation;
     QString height_reference_status_;
     std::unique_ptr<Trajectory3DLayer> trajectory_layer_;
     std::unique_ptr<Aircraft3DLayer> aircraft_layer_;

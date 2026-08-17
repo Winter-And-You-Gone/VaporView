@@ -1,4 +1,5 @@
 #include "ground/widgets/CustomTitleBar.h"
+#include "LogService.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "TcpWavePanel.h"
@@ -89,6 +90,7 @@ constexpr int kPeakPlotMinimumHeight = 150;
 constexpr int kPeakPlotMaximumHeight = 190;
 constexpr int kPlotTopMargin = 2;
 constexpr int kPlotRightMargin = 2;
+constexpr int kPlotBottomMarginExtra = 8;
 constexpr int kWavePlotLeftMargin = 72;
 constexpr int kPeakPlotLeftMargin = 72;
 constexpr int kDefaultPeakSearchStartIndex = 0;
@@ -258,7 +260,7 @@ QString fixedStatusFloat(double value, int decimals, int width)
 QString remoteWaveformStatusText(bool english, int sampleCount)
 {
     return QStringLiteral("%1 %2")
-        .arg(english ? QStringLiteral("Remote pts:") : QStringLiteral("远程点:"),
+        .arg(english ? QStringLiteral("Points:") : QStringLiteral("采样点:"),
              fixedStatusField(QString::number(sampleCount), kRemoteStatusCountWidth));
 }
 
@@ -898,17 +900,27 @@ public:
         setMinimumHeight(kWavePlotMinimumHeight);
         setMaximumHeight(kWavePlotMaximumHeight);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        setProperty("xAxisBottomMarginExtra", kPlotBottomMarginExtra);
+        updateXAxisLabelProperty();
     }
 
     void setSamples(const QVector<float>& samples)
     {
         samples_ = samples;
+        updateXAxisLabelProperty();
         update();
     }
 
     void setEmptyText(const QString& text)
     {
         empty_text_ = text;
+        update();
+    }
+
+    void setEnglish(bool english)
+    {
+        is_english_ = english;
+        updateXAxisLabelProperty();
         update();
     }
 
@@ -924,7 +936,7 @@ protected:
 
         const QFontMetrics fm = painter.fontMetrics();
         const int leftMargin = kWavePlotLeftMargin;
-        const int bottomMargin = fm.height() + 2;
+        const int bottomMargin = fm.height() + kPlotBottomMarginExtra;
         const QRectF plotRect = rect().adjusted(leftMargin, kPlotTopMargin, -kPlotRightMargin, -bottomMargin);
         const auto drawGrid = [&]() {
             painter.setPen(QPen(theme.grid, 1));
@@ -995,13 +1007,26 @@ protected:
                              formatWaveValue(value, 3));
         }
         painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 2, plotRect.width(), fm.height()), Qt::AlignRight | Qt::AlignVCenter,
-                         QString("%1 samples").arg(sampleCount));
+                         xAxisLabel(sampleCount));
     }
 
 private:
+    QString xAxisLabel(int sampleCount) const
+    {
+        return is_english_
+            ? QStringLiteral("%1 samples").arg(sampleCount)
+            : QStringLiteral("%1 点").arg(sampleCount);
+    }
+
+    void updateXAxisLabelProperty()
+    {
+        setProperty("xAxisLabelText", xAxisLabel(samples_.size()));
+    }
+
     QColor line_color_;
     QVector<float> samples_;
     QString empty_text_ = QStringLiteral("No data");
+    bool is_english_ = false;
 };
 
 class PeakTrendPlotWidget : public QWidget
@@ -1023,6 +1048,8 @@ public:
         setMinimumHeight(kPeakPlotMinimumHeight);
         setMaximumHeight(kPeakPlotMaximumHeight);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        setProperty("xAxisBottomMarginExtra", kPlotBottomMarginExtra);
+        updateXAxisLabelProperty();
     }
 
     void setPeakValues(const QVector<float>& values)
@@ -1033,6 +1060,7 @@ public:
         peak_values_ = values;
         normalizeView(keepTail);
         notifyViewChanged();
+        updateXAxisLabelProperty();
         update();
     }
 
@@ -1062,6 +1090,7 @@ public:
         }
 
         notifyViewChanged();
+        updateXAxisLabelProperty();
         update();
     }
 
@@ -1077,6 +1106,13 @@ public:
         update();
     }
 
+    void setEnglish(bool english)
+    {
+        is_english_ = english;
+        updateXAxisLabelProperty();
+        update();
+    }
+
 protected:
     void paintEvent(QPaintEvent *event) override
     {
@@ -1089,7 +1125,7 @@ protected:
 
         const QFontMetrics fm = painter.fontMetrics();
         const int leftMargin = kPeakPlotLeftMargin;
-        const int bottomMargin = fm.height() + 2;
+        const int bottomMargin = fm.height() + kPlotBottomMarginExtra;
         const QRectF plotRect = rect().adjusted(leftMargin, kPlotTopMargin, -kPlotRightMargin, -bottomMargin);
         const auto drawGrid = [&]() {
             painter.setPen(QPen(theme.grid, 1));
@@ -1217,14 +1253,25 @@ protected:
                              Qt::AlignRight | Qt::AlignVCenter,
                              formatWaveValue(value, 3));
         }
-        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 2, plotRect.width() * 0.55, fm.height()),
+        const qreal axisLabelTop = plotRect.bottom() + 2;
+        const QString startLabel = xAxisStartLabel(startIndex);
+        const QString rangeLabel = xAxisRangeLabel(startIndex, count);
+        const QString endLabel = xAxisEndLabel(startIndex, count);
+        const qreal startWidth = fm.horizontalAdvance(startLabel) + 8.0;
+        const qreal endWidth = fm.horizontalAdvance(endLabel) + 8.0;
+        painter.drawText(QRectF(plotRect.left(), axisLabelTop, plotRect.width(), fm.height()),
                          Qt::AlignLeft | Qt::AlignVCenter,
-                         QString("%1-%2 / %3")
-                             .arg(startIndex + 1)
-                             .arg(startIndex + count)
-                             .arg(peak_values_.size()));
-        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 2, plotRect.width(), fm.height()), Qt::AlignRight | Qt::AlignVCenter,
-                         QString("%1 frames").arg(count));
+                         startLabel);
+        painter.drawText(QRectF(plotRect.left(), axisLabelTop, plotRect.width(), fm.height()),
+                         Qt::AlignRight | Qt::AlignVCenter,
+                         endLabel);
+        const QRectF rangeRect(plotRect.left() + startWidth,
+                               axisLabelTop,
+                               std::max<qreal>(1.0, plotRect.width() - startWidth - endWidth),
+                               fm.height());
+        painter.drawText(rangeRect,
+                         Qt::AlignCenter | Qt::AlignVCenter,
+                         fm.elidedText(rangeLabel, Qt::ElideRight, static_cast<int>(rangeRect.width())));
     }
 
 private:
@@ -1284,12 +1331,45 @@ private:
         }
     }
 
+    QString xAxisStartLabel(int startIndex) const
+    {
+        return QString::number(startIndex + 1);
+    }
+
+    QString xAxisEndLabel(int startIndex, int count) const
+    {
+        return QString::number(startIndex + count);
+    }
+
+    QString xAxisRangeLabel(int startIndex, int count) const
+    {
+        return is_english_
+            ? QStringLiteral("Visible range %1-%2 / cache %3 pts")
+                  .arg(startIndex + 1)
+                  .arg(startIndex + count)
+                  .arg(peak_values_.size())
+            : QStringLiteral("显示范围%1-%2/缓存%3点")
+                  .arg(startIndex + 1)
+                  .arg(startIndex + count)
+                  .arg(peak_values_.size());
+    }
+
+    void updateXAxisLabelProperty()
+    {
+        const int startIndex = visibleStartIndex();
+        const int count = visibleCount();
+        setProperty("xAxisStartLabelText", xAxisStartLabel(startIndex));
+        setProperty("xAxisRangeLabelText", xAxisRangeLabel(startIndex, count));
+        setProperty("xAxisEndLabelText", xAxisEndLabel(startIndex, count));
+    }
+
     QVector<float> peak_values_;
     PlotMode plot_mode_;
     int view_start_index_;
     int view_count_;
     QString empty_text_ = QStringLiteral("No peak data");
     std::function<void(int, int, int)> on_view_changed_;
+    bool is_english_ = false;
 };
 
 TcpWavePanel::TcpWavePanel(QWidget *parent)
@@ -1352,6 +1432,9 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , live_display_dirty_(false)
     , process_buffer_pending_(false)
     , payload_order_auto_correct_logged_(false)
+    , user_disconnect_requested_(false)
+    , suppress_next_disconnected_log_(false)
+    , socket_error_logged_for_current_connection_(false)
     , is_english_(false)
     , compact_layout_(false)
     , remote_sky_mode_(false)
@@ -1507,6 +1590,7 @@ void TcpWavePanel::setupUi()
     hostRowLayout->addWidget(host_label_, 0, Qt::AlignVCenter | Qt::AlignRight);
 
     host_edit_ = new QLineEdit(this);
+    host_edit_->setObjectName(QStringLiteral("tcpWaveHostEdit"));
     host_edit_->setText("127.0.0.1");
     host_edit_->setFixedHeight(kTcpControlHeight);
     host_edit_->setMinimumWidth(90);
@@ -1523,6 +1607,7 @@ void TcpWavePanel::setupUi()
     portRowLayout->addWidget(port_label_, 0, Qt::AlignVCenter | Qt::AlignRight);
 
     port_edit_ = new QLineEdit(this);
+    port_edit_->setObjectName(QStringLiteral("tcpWavePortEdit"));
     port_edit_->setText(QStringLiteral("8888"));
     port_edit_->setValidator(new QIntValidator(1, 65535, port_edit_));
     port_edit_->setAlignment(Qt::AlignCenter);
@@ -1593,6 +1678,7 @@ void TcpWavePanel::setupUi()
     wave1HeaderLayout->addWidget(wave1_info_label_, 1);
     wave1Layout->addWidget(wave1HeaderBar);
     wave1_plot_ = new WavePlotWidget(appThemeColor(AppThemeColor::PlotSeriesWaveBlue, false), this);
+    wave1_plot_->setObjectName(QStringLiteral("tcpWaveRawPlot"));
     wave1Layout->addWidget(wave1_plot_, 1);
     installTcpWaveCardOutline(wave1_group_);
     plots_layout_->addWidget(wave1_group_, 1);
@@ -1625,6 +1711,7 @@ void TcpWavePanel::setupUi()
     wave4HeaderLayout->addWidget(wave4_info_label_, 1);
     wave4Layout->addWidget(wave4HeaderBar);
     wave4_plot_ = new WavePlotWidget(appThemeColor(AppThemeColor::PlotSeriesWaveOrange, false), this);
+    wave4_plot_->setObjectName(QStringLiteral("tcpWaveHarmonicPlot"));
     wave4Layout->addWidget(wave4_plot_, 1);
     installTcpWaveCardOutline(wave4_group_);
     plots_layout_->addWidget(wave4_group_, 1);
@@ -1680,6 +1767,7 @@ void TcpWavePanel::setupUi()
     peakHeaderLayout->addStretch(1);
     peakLayout->addWidget(peakHeaderBar);
     peak_plot_ = new PeakTrendPlotWidget(this);
+    peak_plot_->setObjectName(QStringLiteral("tcpWavePeakTrendPlot"));
     peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);
     peakLayout->addWidget(peak_plot_);
     installTcpWaveCardOutline(peak_group_);
@@ -1792,12 +1880,9 @@ void TcpWavePanel::setEnglish(bool english)
     }
     host_label_->setText(english ? "TCP Host:" : "TCP主机:");
     port_label_->setText(english ? "Port:" : "端口:");
-    connect_button_->setText(remote_sky_mode_
-        ? (remote_wave_tcp_connected_ ? (english ? "Disconnect Sky Wave" : "断开天空波形")
-                                      : (english ? "Connect Sky Wave" : "连接天空波形"))
-        : (socket_ && socket_->state() == QAbstractSocket::ConnectedState
-            ? (english ? "Disconnect" : "断开")
-            : (english ? "Connect" : "连接")));
+    connect_button_->setText(isConnected()
+        ? (english ? "Disconnect" : "断开")
+        : (english ? "Connect" : "连接"));
     wave1_group_->setTitle(QString());
     wave4_group_->setTitle(QString());
     peak_group_->setTitle(QString());
@@ -1819,14 +1904,17 @@ void TcpWavePanel::setEnglish(bool english)
     }
     if (wave1_plot_)
     {
+        wave1_plot_->setEnglish(english);
         wave1_plot_->setEmptyText(english ? QStringLiteral("No data") : QStringLiteral("暂无数据"));
     }
     if (wave4_plot_)
     {
+        wave4_plot_->setEnglish(english);
         wave4_plot_->setEmptyText(english ? QStringLiteral("No data") : QStringLiteral("暂无数据"));
     }
     if (peak_plot_)
     {
+        peak_plot_->setEnglish(english);
         peak_plot_->setEmptyText(english ? QStringLiteral("No peak data") : QStringLiteral("暂无峰值数据"));
     }
     if (peak_clear_button_)
@@ -2201,6 +2289,22 @@ int TcpWavePanel::port() const
     return ok && value >= 1 && value <= 65535 ? value : 8888;
 }
 
+void TcpWavePanel::setConnectionEndpoint(const QString& host, int port)
+{
+    if (host_edit_)
+    {
+        const QSignalBlocker blocker(host_edit_);
+        const QString trimmedHost = host.trimmed();
+        host_edit_->setText(trimmedHost.isEmpty() ? QStringLiteral("127.0.0.1") : trimmedHost);
+    }
+    if (port_edit_)
+    {
+        const QSignalBlocker blocker(port_edit_);
+        const int boundedPort = port >= 1 && port <= 65535 ? port : 8888;
+        port_edit_->setText(QString::number(boundedPort));
+    }
+}
+
 bool TcpWavePanel::isConnected() const
 {
     if (ui_test_mode_)
@@ -2236,32 +2340,34 @@ void TcpWavePanel::toggleConnection()
 void TcpWavePanel::setRemoteSkyMode(bool enabled)
 {
     remote_sky_mode_ = enabled;
-    if (host_edit_) host_edit_->setEnabled(!enabled);
-    if (port_edit_) port_edit_->setEnabled(!enabled);
+    if (host_label_)
+    {
+        host_label_->setText(is_english_ ? "TCP Host:" : "TCP主机:");
+    }
+    if (port_label_)
+    {
+        port_label_->setText(is_english_ ? "Port:" : "端口:");
+    }
+    updateEndpointEditorState();
     if (enabled && socket_ && socket_->state() != QAbstractSocket::UnconnectedState)
     {
         requestGracefulDisconnect();
     }
     if (connect_button_)
     {
-        connect_button_->setText(enabled
-            ? (remote_wave_tcp_connected_ ? (is_english_ ? "Disconnect Sky Wave" : "断开天空波形")
-                                          : (is_english_ ? "Connect Sky Wave" : "连接天空波形"))
-                             : (isConnected() ? (is_english_ ? "Disconnect" : "断开")
-                             : (is_english_ ? "Connect" : "连接")));
+        connect_button_->setText(isConnected()
+            ? (is_english_ ? "Disconnect" : "断开")
+            : (is_english_ ? "Connect" : "连接"));
     }
     if (status_label_)
     {
-        status_label_->setVisible(enabled);
-        if (!enabled)
-        {
-            status_label_->clear();
-        }
+        status_label_->clear();
+        status_label_->setVisible(false);
     }
     if (enabled && !remote_wave_tcp_connected_)
     {
-        clearRemoteWaveformDisplay(is_english_ ? QStringLiteral("Sky Wave TCP is not connected")
-                                               : QStringLiteral("天空端波形 TCP 未连接"));
+        clearRemoteWaveformDisplay(is_english_ ? QStringLiteral("TCP wave is not connected")
+                                               : QStringLiteral("TCP波形未连接"));
     }
 }
 
@@ -2272,11 +2378,12 @@ void TcpWavePanel::setRemoteWaveTcpState(VaporView::DeviceState state)
     if (remote_sky_mode_ && connect_button_)
     {
         connect_button_->setText(remote_wave_tcp_connected_
-            ? (is_english_ ? "Disconnect Sky Wave" : "断开天空波形")
-            : (is_english_ ? "Connect Sky Wave" : "连接天空波形"));
+            ? (is_english_ ? "Disconnect" : "断开")
+            : (is_english_ ? "Connect" : "连接"));
     }
     if (remote_sky_mode_)
     {
+        updateEndpointEditorState();
         const bool hasRemoteDataStatus = !remote_waveform_status_text_.isEmpty() || !remote_feature_status_text_.isEmpty();
         if (remote_wave_tcp_connected_ && hasRemoteDataStatus)
         {
@@ -2288,14 +2395,14 @@ void TcpWavePanel::setRemoteWaveTcpState(VaporView::DeviceState state)
         }
         else
         {
-            setStatusText(QString(is_english_ ? "Remote Sky wave TCP: %1" : "天空端波形 TCP：%1")
-                              .arg(VaporView::deviceStateName(state)));
+            setStatusText(QString(is_english_ ? "TCP wave: %1" : "TCP波形：%1")
+                               .arg(VaporView::deviceStateName(state)));
         }
         if (!remote_wave_tcp_connected_ && wasConnected)
         {
             last_remote_feature_time_us_ = 0;
-            clearRemoteWaveformDisplay(is_english_ ? QStringLiteral("Sky Wave TCP disconnected")
-                                                   : QStringLiteral("天空端波形 TCP 已断开"));
+            clearRemoteWaveformDisplay(is_english_ ? QStringLiteral("TCP wave disconnected")
+                                                   : QStringLiteral("TCP波形已断开"));
         }
     }
 }
@@ -2320,7 +2427,7 @@ void TcpWavePanel::injectRemoteRawSignalFrame(quint64 timestampUs, const QVector
     }
     const QString sampleCountText = fixedStatusInteger(samples.size(), kRemoteStatusCountWidth);
     wave1_history_ = samples;
-    pending_wave1_info_text_ = QString(is_english_ ? "remote source: %1 samples" : "远程源：%1 点")
+    pending_wave1_info_text_ = QString(is_english_ ? "%1 samples" : "%1 点")
         .arg(sampleCountText);
     remote_waveform_status_text_ = remoteWaveformStatusText(is_english_, samples.size());
     updatePendingRemoteLiveStatus();
@@ -2341,7 +2448,11 @@ void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QV
     ++frame_count_;
     updateFrameRateDisplay(QDateTime::currentMSecsSinceEpoch());
     const QString sampleCountText = fixedStatusInteger(samples.size(), kRemoteStatusCountWidth);
-    pending_wave1_info_text_ = is_english_ ? "Remote Sky source" : "天空端远程源";
+    if (!wave1_history_.isEmpty())
+    {
+        pending_wave1_info_text_ = QString(is_english_ ? "%1 samples" : "%1 点")
+            .arg(fixedStatusInteger(wave1_history_.size(), kRemoteStatusCountWidth));
+    }
     pending_wave4_info_text_ = QString(is_english_ ? "%1 samples" : "%1 点").arg(sampleCountText);
     remote_waveform_status_text_ = remoteWaveformStatusText(is_english_, samples.size());
     updatePendingRemoteLiveStatus();
@@ -2401,15 +2512,15 @@ void TcpWavePanel::applyRemotePeakSearchRange(quint32 startIndex, quint32 endInd
     saveRememberedInputState();
     updatePeakFilterButtonText();
     setStatusText(is_english_
-        ? QStringLiteral("Peak search range accepted by sky. Waiting for the next feature frame.")
-        : QStringLiteral("峰值搜索区间已下发到天空端，等待下一帧特征值。"));
+        ? QStringLiteral("Peak search range accepted. Waiting for the next feature frame.")
+        : QStringLiteral("峰值搜索区间已接受，等待下一帧特征值。"));
 }
 
 void TcpWavePanel::rejectRemotePeakSearchRange(const QString& reason)
 {
     setStatusText(is_english_
-        ? QStringLiteral("Sky rejected peak search range: %1").arg(reason)
-        : QStringLiteral("天空端拒绝峰值搜索区间：%1").arg(reason));
+        ? QStringLiteral("Peak search range rejected: %1").arg(reason)
+        : QStringLiteral("峰值搜索区间被拒绝：%1").arg(reason));
 }
 
 void TcpWavePanel::setUiTestMode(bool enabled)
@@ -2451,12 +2562,65 @@ void TcpWavePanel::setUiTestConnected(bool connected)
 }
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
+void TcpWavePanel::testFlushLiveDisplay()
+{
+    updateLiveDisplay();
+}
+
+QString TcpWavePanel::testRawXAxisLabel() const
+{
+    return wave1_plot_ ? wave1_plot_->property("xAxisLabelText").toString() : QString();
+}
+
+QString TcpWavePanel::testHarmonicXAxisLabel() const
+{
+    return wave4_plot_ ? wave4_plot_->property("xAxisLabelText").toString() : QString();
+}
+
+QString TcpWavePanel::testPeakXAxisLabel() const
+{
+    return peak_plot_ ? peak_plot_->property("xAxisRangeLabelText").toString() : QString();
+}
+
+QString TcpWavePanel::testPeakXAxisStartLabel() const
+{
+    return peak_plot_ ? peak_plot_->property("xAxisStartLabelText").toString() : QString();
+}
+
+QString TcpWavePanel::testPeakXAxisEndLabel() const
+{
+    return peak_plot_ ? peak_plot_->property("xAxisEndLabelText").toString() : QString();
+}
+
+int TcpWavePanel::testWavePlotBottomMarginExtra() const
+{
+    return wave1_plot_ ? wave1_plot_->property("xAxisBottomMarginExtra").toInt() : 0;
+}
+
+int TcpWavePanel::testPeakPlotBottomMarginExtra() const
+{
+    return peak_plot_ ? peak_plot_->property("xAxisBottomMarginExtra").toInt() : 0;
+}
+
 void TcpWavePanel::testFeedSocketBytes(const QByteArray& bytes)
 {
-    buffer_.append(bytes);
-    if (!enforceTcpBufferBacklogLimit())
+    appendIncomingSocketBytes(bytes, false);
+}
+
+void TcpWavePanel::testFeedReadyReadBytes(const QByteArray& bytes)
+{
+    appendIncomingSocketBytes(bytes, true);
+}
+
+void TcpWavePanel::testSetConnectionEndpoint(const QString& host, const QString& portText)
+{
+    if (host_edit_)
     {
-        processBuffer();
+        host_edit_->setText(host);
+    }
+    if (port_edit_)
+    {
+        port_edit_->setText(portText);
     }
 }
 
@@ -2525,27 +2689,40 @@ void TcpWavePanel::onToggleConnectionClicked()
             : (is_english_ ? QStringLiteral("UI test waveform source disconnected")
                             : QStringLiteral("界面测试波形源已断开")));
         emit connectionStateChanged(ui_test_connected_);
-        emit logMessageRequested(ui_test_connected_
-            ? QStringLiteral("[界面测试] TCP wave connected in memory")
-            : QStringLiteral("[界面测试] TCP wave disconnected in memory"));
+        publishTcpWaveLog(VaporView::LogLevel::Info,
+                          ui_test_connected_ ? QStringLiteral("tcp_wave_ui_test_connected")
+                                             : QStringLiteral("tcp_wave_ui_test_disconnected"),
+                          ui_test_connected_ ? QStringLiteral("界面测试 TCP 波形源已连接。")
+                                             : QStringLiteral("界面测试 TCP 波形源已断开。"),
+                          {{QStringLiteral("simulated"), true},
+                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         return;
     }
     if (remote_sky_mode_)
     {
         const bool connectRequested = !remote_wave_tcp_connected_;
-        emit logMessageRequested(connectRequested
-            ? (is_english_ ? QStringLiteral("Requesting Sky wave TCP connection...")
-                           : QStringLiteral("正在请求连接天空端波形 TCP..."))
-            : (is_english_ ? QStringLiteral("Requesting Sky wave TCP disconnection...")
-                           : QStringLiteral("正在请求断开天空端波形 TCP...")));
+        publishTcpWaveLog(VaporView::LogLevel::Info,
+                          connectRequested ? QStringLiteral("tcp_wave_remote_connection_requested")
+                                           : QStringLiteral("tcp_wave_remote_disconnection_requested"),
+                          connectRequested ? QStringLiteral("已请求连接 TCP 波形。")
+                                           : QStringLiteral("已请求断开 TCP 波形。"),
+                          {{QStringLiteral("execution_path"), QStringLiteral("remote_sky")},
+                           {QStringLiteral("requested_connected"), connectRequested},
+                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         emit remoteWaveTcpConnectionRequested(connectRequested);
         return;
     }
 
     if (socket_ && socket_->state() != QAbstractSocket::UnconnectedState)
     {
-        emit logMessageRequested(is_english_ ? QStringLiteral("Disconnecting TCP wave link...")
-                                             : QStringLiteral("正在断开 TCP 波形连接..."));
+        user_disconnect_requested_ = true;
+        publishTcpWaveLog(VaporView::LogLevel::Info,
+                          QStringLiteral("tcp_wave_disconnection_requested"),
+                          QStringLiteral("正在断开 TCP 波形连接。"),
+                          {{QStringLiteral("reason_code"), QStringLiteral("USER_REQUEST")},
+                           {QStringLiteral("host"), host()},
+                           {QStringLiteral("port"), port()},
+                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         requestGracefulDisconnect();
         return;
     }
@@ -2557,7 +2734,12 @@ void TcpWavePanel::onToggleConnectionClicked()
         const QString message = is_english_
             ? QStringLiteral("Enter a TCP port from 1 to 65535.")
             : QStringLiteral("请输入 1 到 65535 之间的 TCP 端口。");
-        emit logMessageRequested(message);
+        publishTcpWaveLog(VaporView::LogLevel::Warning,
+                          QStringLiteral("tcp_wave_connection_rejected_invalid_port"),
+                          QStringLiteral("TCP 波形端口无效，无法建立连接。"),
+                          {{QStringLiteral("reason_code"), QStringLiteral("INVALID_PORT")},
+                           {QStringLiteral("input_value"), port_edit_ ? port_edit_->text().trimmed() : QString()},
+                           {QStringLiteral("ui_visibility"), QStringLiteral("attention")}});
         setStatusText(message);
         if (port_edit_)
         {
@@ -2566,9 +2748,12 @@ void TcpWavePanel::onToggleConnectionClicked()
         return;
     }
 
-    emit logMessageRequested(QString(is_english_ ? "Connecting TCP wave link: %1:%2..."
-                                                 : "正在连接 TCP 波形：%1:%2...")
-        .arg(host_edit_->text()).arg(targetPort));
+    publishTcpWaveLog(VaporView::LogLevel::Info,
+                      QStringLiteral("tcp_wave_connection_started"),
+                      QStringLiteral("正在连接 TCP 波形。"),
+                      {{QStringLiteral("host"), host_edit_ ? host_edit_->text() : QString()},
+                       {QStringLiteral("port"), targetPort},
+                       {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     recreateSocket();
     buffer_.clear();
     wave1_history_.clear();
@@ -2591,6 +2776,9 @@ void TcpWavePanel::onToggleConnectionClicked()
     invalid_resync_discarded_bytes_ = 0;
     process_buffer_pending_ = false;
     payload_order_auto_correct_logged_ = false;
+    user_disconnect_requested_ = false;
+    suppress_next_disconnected_log_ = false;
+    socket_error_logged_for_current_connection_ = false;
     frame_arrival_times_ms_.clear();
     resetFrameRateDisplay();
     setStatusText(QString(is_english_ ? "Connecting to %1:%2..." : "正在连接 %1:%2...")
@@ -2766,8 +2954,8 @@ void TcpWavePanel::onConfigurePeakFilterClicked()
             updatePeakFilterButtonText();
             emit remotePeakSearchRangeRequested(static_cast<quint32>(searchStart), static_cast<quint32>(searchEnd));
             setStatusText(is_english_
-                ? QStringLiteral("Remote Sky: peak search range sent to sky; waiting for ACK.")
-                : QStringLiteral("Remote Sky 模式：峰值搜索区间已发送到天空端，等待 ACK。"));
+                ? QStringLiteral("Peak search range sent; waiting for ACK.")
+                : QStringLiteral("峰值搜索区间已发送，等待 ACK。"));
         }
         else
         {
@@ -2799,10 +2987,12 @@ void TcpWavePanel::onSocketConnected()
 {
     setConnectedUiState(true);
     emit connectionStateChanged(true);
-    emit logMessageRequested(QString(is_english_
-        ? "TCP wave link connected: %1:%2"
-        : "TCP 波形已连接：%1:%2")
-        .arg(host_edit_->text()).arg(port()));
+    publishTcpWaveLog(VaporView::LogLevel::Info,
+                      QStringLiteral("tcp_wave_connected"),
+                      QStringLiteral("TCP 波形已连接。"),
+                      {{QStringLiteral("host"), host_edit_ ? host_edit_->text() : QString()},
+                       {QStringLiteral("port"), port()},
+                       {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     setStatusText(QString(is_english_
         ? "Connected to %1:%2, waiting for the first frame..."
         : "已连接到 %1:%2，正在等待首帧数据...")
@@ -2811,18 +3001,36 @@ void TcpWavePanel::onSocketConnected()
 
 void TcpWavePanel::onSocketDisconnected()
 {
+    const bool suppressLog = suppress_next_disconnected_log_ || socket_error_logged_for_current_connection_;
     const QString reason = socket_ && socket_->error() != QAbstractSocket::UnknownSocketError
         ? socket_->errorString()
         : (is_english_ ? QStringLiteral("connection closed") : QStringLiteral("连接已关闭"));
+    const bool userRequested = user_disconnect_requested_;
     setConnectedUiState(false);
     emit connectionStateChanged(false);
-    emit logMessageRequested(QString(is_english_
-        ? "TCP wave link disconnected: %1; received frames=%2, buffered bytes=%3, expected payload=%4"
-        : "TCP 波形已断开：%1；已接收帧=%2，客户端缓冲=%3 字节，当前期望负载=%4 字节")
-        .arg(reason)
-        .arg(frame_count_)
-        .arg(static_cast<qlonglong>(buffer_.size()))
-        .arg(expected_payload_size_));
+    if (!suppressLog)
+    {
+        publishTcpWaveLog(userRequested ? VaporView::LogLevel::Info : VaporView::LogLevel::Warning,
+                          userRequested ? QStringLiteral("tcp_wave_disconnected")
+                                        : QStringLiteral("tcp_wave_disconnected_unexpectedly"),
+                          userRequested ? QStringLiteral("TCP 波形已断开。")
+                                        : QStringLiteral("TCP 波形连接非预期断开。"),
+                          {{QStringLiteral("reason_code"), userRequested
+                               ? QStringLiteral("USER_REQUEST")
+                               : QStringLiteral("REMOTE_DISCONNECTED")},
+                           {QStringLiteral("system_error"), reason},
+                           {QStringLiteral("received_frames"), static_cast<qlonglong>(frame_count_)},
+                           {QStringLiteral("buffered_bytes"), static_cast<qlonglong>(buffer_.size())},
+                           {QStringLiteral("expected_payload_bytes"), expected_payload_size_},
+                           {QStringLiteral("host"), host_edit_ ? host_edit_->text() : QString()},
+                           {QStringLiteral("port"), port()},
+                           {QStringLiteral("ui_visibility"), userRequested
+                               ? QStringLiteral("details")
+                               : QStringLiteral("attention")}});
+    }
+    user_disconnect_requested_ = false;
+    suppress_next_disconnected_log_ = false;
+    socket_error_logged_for_current_connection_ = false;
     if (frame_count_ > 0)
     {
         setStatusText(QString(is_english_
@@ -2844,21 +3052,30 @@ void TcpWavePanel::onSocketReadyRead()
         return;
     }
 
-    buffer_.append(socket_->readAll());
+    appendIncomingSocketBytes(socket_->readAll(), true);
+}
+
+void TcpWavePanel::appendIncomingSocketBytes(const QByteArray& bytes, bool publishBacklogWarning)
+{
+    buffer_.append(bytes);
     if (enforceTcpBufferBacklogLimit())
     {
         return;
     }
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-    if (buffer_.size() >= kTcpBufferBacklogWarningBytes &&
+    if (publishBacklogWarning &&
+        buffer_.size() >= kTcpBufferBacklogWarningBytes &&
         (last_backlog_warning_ms_ <= 0 ||
          nowMs - last_backlog_warning_ms_ >= kTcpBufferBacklogWarningIntervalMs))
     {
         last_backlog_warning_ms_ = nowMs;
-        emit logMessageRequested(QString(is_english_
-            ? "TCP wave receive backlog is %1 bytes; UI processing may be falling behind."
-            : "TCP 波形接收缓冲已积压 %1 字节；界面处理可能跟不上数据流。")
-            .arg(static_cast<qlonglong>(buffer_.size())));
+        publishTcpWaveLog(VaporView::LogLevel::Warning,
+                          QStringLiteral("tcp_wave_receive_backlog"),
+                          QStringLiteral("TCP 波形接收缓冲出现积压，界面处理可能慢于数据流。"),
+                          {{QStringLiteral("buffered_bytes"), static_cast<qlonglong>(buffer_.size())},
+                           {QStringLiteral("backlog_threshold"), kTcpBufferBacklogWarningBytes},
+                           {QStringLiteral("ui_dedupe_key"), QStringLiteral("tcp_wave:receive_backlog")},
+                           {QStringLiteral("ui_visibility"), QStringLiteral("attention")}});
     }
     if (!process_buffer_pending_)
     {
@@ -2871,6 +3088,12 @@ void TcpWavePanel::onSocketStateChanged()
     if (!socket_)
     {
         setConnectedUiState(false);
+        return;
+    }
+
+    if (remote_sky_mode_)
+    {
+        updateEndpointEditorState();
         return;
     }
 
@@ -2906,24 +3129,50 @@ void TcpWavePanel::onSocketError()
         return;
     }
     const QString errorText = socket_->errorString();
+    const auto socketError = socket_->error();
     setStatusText(errorText);
-    emit logMessageRequested(QString(is_english_
-        ? "TCP wave socket error: %1; received frames=%2, buffered bytes=%3"
-        : "TCP 波形 socket 错误：%1；已接收帧=%2，客户端缓冲=%3 字节")
-        .arg(errorText)
-        .arg(frame_count_)
-        .arg(static_cast<qlonglong>(buffer_.size())));
+    if (socketError == QAbstractSocket::RemoteHostClosedError)
+    {
+        return;
+    }
+    socket_error_logged_for_current_connection_ = true;
+    publishTcpWaveLog(VaporView::LogLevel::Error,
+                      QStringLiteral("tcp_wave_socket_error"),
+                      QStringLiteral("TCP 波形 socket 发生错误。"),
+                      {{QStringLiteral("error_code"), QStringLiteral("SOCKET_ERROR")},
+                       {QStringLiteral("socket_error_code"), static_cast<int>(socketError)},
+                       {QStringLiteral("system_error"), errorText},
+                       {QStringLiteral("host"), host_edit_ ? host_edit_->text() : QString()},
+                       {QStringLiteral("port"), port()},
+                       {QStringLiteral("received_frames"), static_cast<qlonglong>(frame_count_)},
+                       {QStringLiteral("buffered_bytes"), static_cast<qlonglong>(buffer_.size())},
+                       {QStringLiteral("ui_visibility"), QStringLiteral("attention")},
+                       {QStringLiteral("ui_dedupe_key"), QStringLiteral("tcp_wave:socket_error:%1")
+                            .arg(static_cast<int>(socketError))}});
     if (socket_->state() == QAbstractSocket::UnconnectedState)
     {
         setConnectedUiState(false);
+        emit connectionStateChanged(false);
     }
 }
 
 void TcpWavePanel::setConnectedUiState(bool connected)
 {
+    if (remote_sky_mode_)
+    {
+        updateEndpointEditorState();
+        if (connect_button_)
+        {
+            connect_button_->setEnabled(true);
+            connect_button_->setText(remote_wave_tcp_connected_
+                ? (is_english_ ? "Disconnect" : "断开")
+                : (is_english_ ? "Connect" : "连接"));
+        }
+        return;
+    }
+
     const bool active = connected && socket_ && socket_->state() != QAbstractSocket::UnconnectedState;
-    host_edit_->setEnabled(!active);
-    port_edit_->setEnabled(!active);
+    updateEndpointEditorState();
     if (socket_ && socket_->state() == QAbstractSocket::ClosingState)
     {
         connect_button_->setText(is_english_ ? "Disconnecting..." : "正在断开...");
@@ -2935,6 +3184,25 @@ void TcpWavePanel::setConnectedUiState(bool connected)
     connect_button_->setText(active ? (is_english_ ? "Disconnect" : "断开") : (is_english_ ? "Connect" : "连接"));
 }
 
+void TcpWavePanel::updateEndpointEditorState()
+{
+    const bool localActive =
+        !remote_sky_mode_ &&
+        socket_ &&
+        socket_->state() != QAbstractSocket::UnconnectedState;
+    const bool endpointEditable = remote_sky_mode_
+        ? !remote_wave_tcp_connected_
+        : !localActive;
+    if (host_edit_)
+    {
+        host_edit_->setEnabled(endpointEditable);
+    }
+    if (port_edit_)
+    {
+        port_edit_->setEnabled(endpointEditable);
+    }
+}
+
 void TcpWavePanel::setStatusText(const QString& text)
 {
     if (status_label_ && status_label_->text() != text)
@@ -2944,7 +3212,7 @@ void TcpWavePanel::setStatusText(const QString& text)
     }
     if (status_label_)
     {
-        status_label_->setVisible(remote_sky_mode_);
+        status_label_->setVisible(false);
     }
 }
 
@@ -2984,6 +3252,34 @@ void TcpWavePanel::resetParserState()
     expected_payload_size_ = 0;
 }
 
+void TcpWavePanel::publishTcpWaveLog(VaporView::LogLevel level,
+                                     const QString& event,
+                                     const QString& message,
+                                     QVariantMap fields) const
+{
+    fields.insert(QStringLiteral("event"), event);
+    fields.insert(QStringLiteral("ui_visible"), true);
+    if (!fields.contains(QStringLiteral("ui_visibility")))
+    {
+        fields.insert(QStringLiteral("ui_visibility"),
+                      level >= VaporView::LogLevel::Warning ? QStringLiteral("attention")
+                                                            : QStringLiteral("details"));
+    }
+
+    VaporView::LogRecord record;
+    record.level = level;
+    record.source = QStringLiteral("Ground");
+    record.category = QStringLiteral("telemetry.wave.tcp");
+    record.message = message;
+    record.fields = std::move(fields);
+    if (!VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
+            logService.publish(record);
+        }))
+    {
+        VaporView::LogService::writeLogFallback(record);
+    }
+}
+
 void TcpWavePanel::scheduleDeferredProcessBuffer()
 {
     if (process_buffer_pending_)
@@ -3020,10 +3316,14 @@ bool TcpWavePanel::discardInvalidTcpPrefix(qsizetype bytesToDrop)
 
     buffer_.remove(0, bytesToDrop);
     invalid_resync_discarded_bytes_ += bytesToDrop;
-    emit logMessageRequested(QString(is_english_
-        ? "TCP wave resync discarded %1 byte(s) while looking for a valid frame boundary."
-        : "TCP 波形重同步已丢弃 %1 字节，以查找有效帧边界。")
-        .arg(static_cast<qlonglong>(bytesToDrop)));
+    publishTcpWaveLog(VaporView::LogLevel::Debug,
+                      QStringLiteral("tcp_wave_resynchronized"),
+                      QStringLiteral("TCP 波形重同步已丢弃字节以查找有效帧边界。"),
+                      {{QStringLiteral("discarded_bytes"), static_cast<qlonglong>(bytesToDrop)},
+                       {QStringLiteral("total_discarded_bytes"), static_cast<qlonglong>(invalid_resync_discarded_bytes_)},
+                       {QStringLiteral("buffered_bytes"), static_cast<qlonglong>(buffer_.size())},
+                       {QStringLiteral("ui_visibility"), QStringLiteral("hidden")},
+                       {QStringLiteral("ui_dedupe_key"), QStringLiteral("tcp_wave:resynchronized")}});
 
     if (invalid_resync_discarded_bytes_ >= kTcpInvalidResyncDisconnectBytes)
     {
@@ -3036,10 +3336,20 @@ bool TcpWavePanel::discardInvalidTcpPrefix(qsizetype bytesToDrop)
     return false;
 }
 
-void TcpWavePanel::disconnectInvalidTcpStream(const QString& reason)
+void TcpWavePanel::disconnectInvalidTcpStream(const QString& statusText)
 {
-    setStatusText(reason);
-    emit logMessageRequested(reason);
+    const qsizetype bufferedBytes = buffer_.size();
+    const qsizetype discardedBytes = invalid_resync_discarded_bytes_;
+    setStatusText(statusText);
+    publishTcpWaveLog(VaporView::LogLevel::Error,
+                      QStringLiteral("tcp_wave_invalid_stream_disconnected"),
+                      QStringLiteral("TCP 波形数据流无效，已主动断开连接。"),
+                      {{QStringLiteral("error_code"), QStringLiteral("INVALID_WAVE_STREAM")},
+                       {QStringLiteral("buffered_bytes"), static_cast<qlonglong>(bufferedBytes)},
+                       {QStringLiteral("discarded_bytes"), static_cast<qlonglong>(discardedBytes)},
+                       {QStringLiteral("backlog_threshold"), kTcpBufferMaxBacklogBytes},
+                       {QStringLiteral("ui_visibility"), QStringLiteral("attention")},
+                       {QStringLiteral("ui_dedupe_key"), QStringLiteral("tcp_wave:invalid_stream_disconnected")}});
     buffer_.clear();
     pending_wave1_payload_.clear();
     resetParserState();
@@ -3047,6 +3357,7 @@ void TcpWavePanel::disconnectInvalidTcpStream(const QString& reason)
     header_byte_order_ = HeaderByteOrder::Unknown;
     invalid_resync_discarded_bytes_ = 0;
     process_buffer_pending_ = false;
+    suppress_next_disconnected_log_ = true;
 
     if (socket_ && socket_->state() != QAbstractSocket::UnconnectedState)
     {
@@ -3109,10 +3420,11 @@ void TcpWavePanel::processBuffer()
                 if (!payload_order_auto_correct_logged_)
                 {
                     payload_order_auto_correct_logged_ = true;
-                    emit logMessageRequested(QString(is_english_
-                        ? "Auto-corrected reversed TCP waveform payload order (confidence=%1)."
-                        : "已自动校正反向 TCP 波形负载顺序（置信比=%1）。")
-                        .arg(orderAnalysis.confidence, 0, 'f', 1));
+                    publishTcpWaveLog(VaporView::LogLevel::Info,
+                                      QStringLiteral("tcp_wave_payload_order_corrected"),
+                                      QStringLiteral("已自动校正反向 TCP 波形负载顺序。"),
+                                      {{QStringLiteral("confidence"), orderAnalysis.confidence},
+                                       {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
                 }
             }
             emit rawWaveFrameReady(frameTimestampUs, rawSignalPayload, harmonicPayload, float_encoding_);

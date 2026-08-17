@@ -72,11 +72,21 @@ if(Python3_Interpreter_FOUND)
                 --root ${CMAKE_SOURCE_DIR}
                 --self-test
     )
+    add_test(NAME logging_legacy_audit_test
+        COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/scripts/audit_legacy_logging.py
+                --root ${CMAKE_SOURCE_DIR}
+                --self-test
+    )
     set_tests_properties(logging_language_audit_test PROPERTIES
         TIMEOUT 30
         LABELS "fast;unit;logging"
     )
     set_tests_properties(logging_event_catalog_audit_test PROPERTIES
+        TIMEOUT 30
+        LABELS "fast;unit;logging"
+    )
+    set_tests_properties(logging_legacy_audit_test PROPERTIES
         TIMEOUT 30
         LABELS "fast;unit;logging"
     )
@@ -146,7 +156,7 @@ target_include_directories(tcp_wave_panel_test PRIVATE
 target_compile_definitions(tcp_wave_panel_test PRIVATE
     VAPORVIEW_MAIN_WINDOW_TESTING=1
 )
-target_link_libraries(tcp_wave_panel_test PRIVATE vaporview_ground_wave)
+target_link_libraries(tcp_wave_panel_test PRIVATE vaporview_ground_wave Qt6::Network)
 add_dependencies(tcp_wave_panel_test VaporViewRuntimeResources)
 add_test(NAME tcp_wave_panel_test COMMAND tcp_wave_panel_test)
 
@@ -190,6 +200,58 @@ target_link_libraries(ai8_temperature_controller_panel_test PRIVATE
 add_dependencies(ai8_temperature_controller_panel_test VaporViewRuntimeResources)
 add_test(NAME ai8_temperature_controller_panel_test COMMAND ai8_temperature_controller_panel_test)
 
+add_executable(ai8_device_session_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/ai8_device_session_test.cpp
+)
+target_include_directories(ai8_device_session_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(ai8_device_session_test PRIVATE
+    vaporview_ground_device_core
+    Qt6::Network
+)
+add_test(NAME ai8_device_session_test COMMAND ai8_device_session_test)
+
+add_executable(epsilon_device_session_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/epsilon_device_session_test.cpp
+)
+target_include_directories(epsilon_device_session_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(epsilon_device_session_test PRIVATE
+    vaporview_ground_device_core
+    Qt6::Network
+)
+add_test(NAME epsilon_device_session_test COMMAND epsilon_device_session_test)
+
+add_executable(rd105_device_session_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/rd105_device_session_test.cpp
+)
+target_include_directories(rd105_device_session_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(rd105_device_session_test PRIVATE
+    vaporview_ground_device_core
+    Qt6::Network
+)
+add_test(NAME rd105_device_session_test COMMAND rd105_device_session_test)
+
+add_executable(temperature_controller_panel_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/temperature_controller_panel_test.cpp
+)
+target_include_directories(temperature_controller_panel_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(temperature_controller_panel_test PRIVATE
+    vaporview_ground_widgets
+    vaporview_sky_core
+)
+add_dependencies(temperature_controller_panel_test VaporViewRuntimeResources)
+add_test(NAME temperature_controller_panel_test COMMAND temperature_controller_panel_test)
+
 add_executable(telemetry_codec_test
     ${CMAKE_CURRENT_SOURCE_DIR}/telemetry_codec_test.cpp
 )
@@ -214,6 +276,22 @@ target_link_libraries(log_service_test PRIVATE
 add_test(NAME log_service_test COMMAND log_service_test)
 set_tests_properties(log_service_test PROPERTIES TIMEOUT 90)
 
+add_executable(lifecycle_breadcrumb_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/lifecycle_breadcrumb_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/app/LifecycleBreadcrumb.cpp
+)
+target_compile_definitions(lifecycle_breadcrumb_test PRIVATE
+    VAPORVIEW_LIFECYCLE_BREADCRUMB_TESTING=1
+)
+target_include_directories(lifecycle_breadcrumb_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(lifecycle_breadcrumb_test PRIVATE Qt6::Core)
+add_test(NAME lifecycle_breadcrumb_test COMMAND lifecycle_breadcrumb_test)
+set_tests_properties(lifecycle_breadcrumb_test PROPERTIES
+    TIMEOUT 30
+    LABELS "fast;unit;logging"
+)
 add_executable(log_fatal_helper
     ${CMAKE_CURRENT_SOURCE_DIR}/log_fatal_helper.cpp
 )
@@ -235,18 +313,32 @@ target_include_directories(telemetry_tcp_link_test PRIVATE
 target_link_libraries(telemetry_tcp_link_test PRIVATE vaporview_sky_core)
 add_test(NAME telemetry_tcp_link_test COMMAND telemetry_tcp_link_test)
 
-add_executable(sky_device_config_dialog_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/sky_device_config_dialog_test.cpp
-    ${CMAKE_SOURCE_DIR}/src/ground/widgets/SkyDeviceConfigDialog.h
+add_executable(sky_ground_simulation_e2e_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/sky_ground_simulation_e2e_test.cpp
 )
-target_include_directories(sky_device_config_dialog_test PRIVATE
+target_include_directories(sky_ground_simulation_e2e_test PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/src
 )
-target_link_libraries(sky_device_config_dialog_test PRIVATE
-    vaporview_ground_ui_support
+target_link_libraries(sky_ground_simulation_e2e_test PRIVATE
+    vaporview_ground_device_core
+    Qt6::Network
 )
-add_test(NAME sky_device_config_dialog_test COMMAND sky_device_config_dialog_test)
+add_dependencies(sky_ground_simulation_e2e_test VaporViewSkyCore)
+add_test(NAME sky_ground_simulation_e2e_test COMMAND sky_ground_simulation_e2e_test)
+set_tests_properties(sky_ground_simulation_e2e_test PROPERTIES
+    TIMEOUT 90
+    LABELS "integration;sky;tcp"
+)
+
+add_executable(sky_device_manager_simulation_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/sky_device_manager_simulation_test.cpp
+)
+target_include_directories(sky_device_manager_simulation_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+target_link_libraries(sky_device_manager_simulation_test PRIVATE vaporview_sky_core)
+add_test(NAME sky_device_manager_simulation_test COMMAND sky_device_manager_simulation_test)
 
 add_executable(sky_session_recorder_test
     ${CMAKE_CURRENT_SOURCE_DIR}/sky_session_recorder_test.cpp
@@ -265,6 +357,15 @@ target_include_directories(sky_local_ipc_client_test PRIVATE
 )
 target_link_libraries(sky_local_ipc_client_test PRIVATE vaporview_sky_tui)
 add_test(NAME sky_local_ipc_client_test COMMAND sky_local_ipc_client_test)
+
+add_executable(sky_tui_controller_device_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/sky_tui_controller_device_test.cpp
+)
+target_include_directories(sky_tui_controller_device_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+target_link_libraries(sky_tui_controller_device_test PRIVATE vaporview_sky_tui)
+add_test(NAME sky_tui_controller_device_test COMMAND sky_tui_controller_device_test)
 
 add_executable(sky_ipc_log_test
     ${CMAKE_CURRENT_SOURCE_DIR}/sky_ipc_log_test.cpp
@@ -352,8 +453,14 @@ add_test(NAME bounded_byte_queue_test COMMAND bounded_byte_queue_test)
 add_executable(temperature_command_state_test
     ${CMAKE_CURRENT_SOURCE_DIR}/temperature_command_state_test.cpp
 )
+target_include_directories(temperature_command_state_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
 target_link_libraries(temperature_command_state_test PRIVATE
     vaporview_ground_temperature_command_state
+    vaporview_ground_main_support
+    Qt6::Widgets
 )
 add_test(NAME temperature_command_state_test COMMAND temperature_command_state_test)
 
@@ -453,6 +560,12 @@ add_executable(local_device_connection_controller_test
 target_link_libraries(local_device_connection_controller_test PRIVATE vaporview_ground_device_core)
 add_test(NAME local_device_connection_controller_test COMMAND local_device_connection_controller_test)
 
+add_executable(local_connection_coordinator_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/local_connection_coordinator_test.cpp
+)
+target_link_libraries(local_connection_coordinator_test PRIVATE vaporview_ground_device_core Qt6::Core)
+add_test(NAME local_connection_coordinator_test COMMAND local_connection_coordinator_test)
+
 add_executable(ui_test_mode_model_test
     ${CMAKE_CURRENT_SOURCE_DIR}/ui_test_mode_model_test.cpp
 )
@@ -506,6 +619,46 @@ add_custom_command(TARGET main_window_layout_test POST_BUILD
     COMMENT "Copying resources for main_window_layout_test"
 )
 add_test(NAME main_window_layout_test COMMAND main_window_layout_test)
+add_test(NAME home_overview_language_layout_test
+    COMMAND main_window_layout_test --home-overview-language-only
+)
+add_test(NAME combination_navigation_page_test
+    COMMAND main_window_layout_test --combination-navigation-only
+)
+
+add_executable(device_config_layout_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/device_config_layout_test.cpp
+)
+target_include_directories(device_config_layout_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_compile_definitions(device_config_layout_test PRIVATE
+    VAPORVIEW_MAIN_WINDOW_TESTING=1
+)
+target_link_libraries(device_config_layout_test PRIVATE vaporview_main_window)
+add_dependencies(device_config_layout_test VaporViewRuntimeResources)
+add_test(NAME device_config_layout_test COMMAND device_config_layout_test)
+
+add_executable(epsilon_config_panel_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/epsilon_config_panel_test.cpp
+)
+target_include_directories(epsilon_config_panel_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(epsilon_config_panel_test PRIVATE vaporview_main_window)
+add_test(NAME epsilon_config_panel_test COMMAND epsilon_config_panel_test)
+
+add_executable(navigation_status_panel_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/navigation_status_panel_test.cpp
+)
+target_include_directories(navigation_status_panel_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(navigation_status_panel_test PRIVATE vaporview_main_window)
+add_test(NAME navigation_status_panel_test COMMAND navigation_status_panel_test)
 
 add_executable(title_application_menu_test
     ${CMAKE_CURRENT_SOURCE_DIR}/title_application_menu_test.cpp
@@ -743,6 +896,14 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
     target_link_libraries(trajectory_3d_layer_test PRIVATE vaporview_map3d_osgearth)
     add_test(NAME trajectory_3d_layer_test COMMAND trajectory_3d_layer_test)
 
+    add_executable(trajectory_3d_layer_benchmark
+        ${CMAKE_CURRENT_SOURCE_DIR}/trajectory_3d_layer_benchmark.cpp
+    )
+    target_include_directories(trajectory_3d_layer_benchmark PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
+    target_link_libraries(trajectory_3d_layer_benchmark PRIVATE vaporview_map3d_osgearth)
+
     add_executable(aircraft_3d_layer_test
         ${CMAKE_CURRENT_SOURCE_DIR}/aircraft_3d_layer_test.cpp
     )
@@ -768,7 +929,10 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
     )
-    target_link_libraries(map3d_window_smoke_test PRIVATE vaporview_map3d_osgearth)
+    target_link_libraries(map3d_window_smoke_test PRIVATE
+        vaporview_map3d_osgearth
+        vaporview_ground_map
+    )
     if(WIN32)
         vaporview_stage_osgearth_runtime(map3d_window_smoke_test)
     endif()
@@ -801,7 +965,10 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
     target_compile_definitions(map3d_real_window_close_test PRIVATE
         VAPORVIEW_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
-    target_link_libraries(map3d_real_window_close_test PRIVATE vaporview_map3d_osgearth)
+    target_link_libraries(map3d_real_window_close_test PRIVATE
+        vaporview_map3d_osgearth
+        vaporview_ground_map
+    )
     if(WIN32)
         vaporview_stage_osgearth_runtime(map3d_real_window_close_test)
     endif()
@@ -891,10 +1058,16 @@ set(VAPORVIEW_FAST_UNIT_TESTS
     ai8_temperature_controller_protocol_test
     ai8_temperature_controller_collector_test
     ai8_temperature_controller_panel_test
+    temperature_controller_panel_test
+    epsilon_device_session_test
+    rd105_device_session_test
+    lifecycle_breadcrumb_test
     telemetry_codec_test
     telemetry_tcp_link_test
+    sky_device_manager_simulation_test
     sky_session_recorder_test
     sky_local_ipc_client_test
+    sky_tui_controller_device_test
     visual_text_label_test
     segmented_switch_button_test
     session_time_format_test
@@ -922,12 +1095,12 @@ set(VAPORVIEW_FAST_UNIT_TESTS
 )
 set_tests_properties(${VAPORVIEW_FAST_UNIT_TESTS} PROPERTIES TIMEOUT 30)
 set_property(TEST ${VAPORVIEW_FAST_UNIT_TESTS} PROPERTY LABELS fast unit)
+set_property(TEST lifecycle_breadcrumb_test APPEND PROPERTY LABELS logging)
 
 set(VAPORVIEW_FAST_INTEGRATION_TESTS
     map_data_script_test
     device_panel_coordinator_test
     tcp_wave_panel_test
-    sky_device_config_dialog_test
     startup_splash_test
     vaporview_startup_test
 )
@@ -935,7 +1108,11 @@ set_tests_properties(${VAPORVIEW_FAST_INTEGRATION_TESTS} PROPERTIES TIMEOUT 60)
 set_property(TEST ${VAPORVIEW_FAST_INTEGRATION_TESTS} PROPERTY LABELS fast integration)
 
 set(VAPORVIEW_SLOW_UI_TESTS
+    device_config_layout_test
     main_window_layout_test
+    home_overview_language_layout_test
+    combination_navigation_page_test
+    navigation_status_panel_test
     ui_test_mode_window_test
     main_window_session_viewer_test
     session_viewer_io_test
@@ -955,7 +1132,7 @@ set_property(TEST tcp_wave_encoding_test tcp_wave_panel_test APPEND PROPERTY LAB
 set_property(TEST device_panel_coordinator_test APPEND PROPERTY LABELS ground-widgets)
 set_property(TEST segmented_switch_button_test APPEND PROPERTY LABELS ground-widgets ui)
 set_property(TEST single_level_popup_menu_test APPEND PROPERTY LABELS ui menu accessibility)
-set_property(TEST ai8_temperature_controller_panel_test APPEND PROPERTY LABELS ground-widgets ui)
+set_property(TEST ai8_temperature_controller_panel_test temperature_controller_panel_test APPEND PROPERTY LABELS ground-widgets ui)
 set_property(TEST
     temperature_controller_protocol_test
     ai8_temperature_controller_protocol_test
@@ -967,6 +1144,8 @@ set_property(TEST
 )
 set_property(TEST
     main_window_layout_test
+    device_config_layout_test
+    home_overview_language_layout_test
     session_viewer_io_test
     session_viewer_window_state_test
     session_viewer_trajectory_test
@@ -977,6 +1156,10 @@ set_property(TEST
     APPEND PROPERTY LABELS ui
 )
 set_property(TEST main_window_layout_test APPEND PROPERTY LABELS main-window layout)
+set_property(TEST device_config_layout_test APPEND PROPERTY LABELS main-window layout)
+set_property(TEST home_overview_language_layout_test APPEND PROPERTY LABELS main-window layout)
+set_property(TEST combination_navigation_page_test APPEND PROPERTY LABELS main-window layout)
+set_property(TEST navigation_status_panel_test APPEND PROPERTY LABELS navigation-status ui layout)
 set_property(TEST ui_test_mode_window_test APPEND PROPERTY LABELS main-window ui-test-mode)
 set_property(TEST main_window_session_viewer_test APPEND PROPERTY LABELS main-window session-viewer)
 set_property(TEST session_viewer_io_test APPEND PROPERTY LABELS session-viewer io)

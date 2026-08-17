@@ -577,7 +577,7 @@ void SingleLevelPopupMenuRow::paintEvent(QPaintEvent *event)
     painter.setRenderHint(QPainter::Antialiasing, true);
 
     const bool active = isEnabled();
-    if (active && (hovered_ || isDown()))
+    if (active && (hovered_ || keyboard_focus_highlight_ || isDown()))
     {
         QColor fill = appThemeColor(AppThemeColor::MenuHover, isDarkThemeEnabled());
         if (isDown())

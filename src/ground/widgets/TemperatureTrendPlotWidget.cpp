@@ -2,6 +2,7 @@
 
 #include "shared/theme/AppTheme.h"
 
+#include <QDateTime>
 #include <QFontMetrics>
 #include <QPainter>
 #include <QPaintEvent>
@@ -20,6 +21,41 @@ namespace
 {
 constexpr int kTemperatureControllerPlotWidth = 260;
 constexpr int kTemperatureControllerPlotMinHeight = 190;
+constexpr int kDefaultXAxisLabelCount = 5;
+constexpr int kMinTimeXAxisLabelCount = 2;
+constexpr qreal kTimeXAxisLabelGap = 4.0;
+constexpr qreal kXAxisLabelRightInset = 2.0;
+constexpr qreal kXAxisTickLength = 4.0;
+constexpr qreal kXAxisLabelGapAfterTick = 2.0;
+constexpr qreal kTargetTemperatureGuideLineWidth = 1.0;
+constexpr double kTimeAxisSecondsPerInterval = 1.0;
+
+double localClockSeconds()
+{
+    return static_cast<double>(QDateTime::currentMSecsSinceEpoch()) / 1000.0;
+}
+
+qreal timeAxisLabelWidth(const QFontMetrics& axisFontMetrics)
+{
+    return std::max<qreal>(
+        36.0,
+        axisFontMetrics.horizontalAdvance(QStringLiteral("00:00:00")));
+}
+
+int xAxisLabelCountForWidth(qreal plotWidth,
+                            const QFontMetrics& axisFontMetrics,
+                            bool timeAxisEnabled)
+{
+    if (!timeAxisEnabled)
+    {
+        return kDefaultXAxisLabelCount;
+    }
+
+    const qreal targetSpacing = timeAxisLabelWidth(axisFontMetrics) + kTimeXAxisLabelGap;
+    const int intervals = static_cast<int>(std::floor(
+        std::max<qreal>(0.0, plotWidth) / targetSpacing));
+    return std::max(kMinTimeXAxisLabelCount, intervals + 1);
+}
 
 QFont numericFontFrom(const QFont& base)
 {
@@ -74,6 +110,24 @@ void TemperatureTrendPlotWidget::setSamples(const QVector<double>& samples)
     update();
 }
 
+void TemperatureTrendPlotWidget::setSampleTimes(const QVector<double>& sampleTimes)
+{
+    sample_times_ = sampleTimes;
+    updateSampleProperties();
+    update();
+}
+
+void TemperatureTrendPlotWidget::setTimeAxisEnabled(bool enabled)
+{
+    if (time_axis_enabled_ == enabled)
+    {
+        return;
+    }
+    time_axis_enabled_ = enabled;
+    updateSampleProperties();
+    update();
+}
+
 void TemperatureTrendPlotWidget::setTargetTemperature(double celsius)
 {
     target_temperature_c_ = std::isfinite(celsius)
@@ -98,6 +152,7 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     const QColor text = VaporView::appThemeColor(VaporView::AppThemeColor::PlotText, dark);
     const QColor muted = VaporView::appThemeColor(VaporView::AppThemeColor::PlotMutedText, dark);
     const QColor line = VaporView::appThemeColor(VaporView::AppThemeColor::PlotSeriesTemperature, dark);
+    const QColor targetGuideLine = VaporView::appThemeColor(VaporView::AppThemeColor::ToolbarGreen, dark);
 
     painter.fillRect(rect(), background);
     QFont axisFont = font();
@@ -106,15 +161,60 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     const QFontMetrics axisFm(axisFont);
     painter.setPen(text);
     constexpr int kYAxisTicks = 6;
-    constexpr int kXAxisTicks = 4;
     const qreal leftAxisWidth = axisFm.horizontalAdvance(QStringLiteral("999")) + 6.0;
-    constexpr qreal kBottomAxisHeight = 18.0;
-    const QRectF plotRect = rect().adjusted(leftAxisWidth, 4.0, -4.0, -kBottomAxisHeight);
-    auto drawGridAndAxes = [&](double minValue, double maxValue, int sampleCount) {
-        painter.setPen(QPen(grid, 1));
-        for (int i = 0; i <= kXAxisTicks; ++i)
+    constexpr qreal kBottomAxisHeight = 24.0;
+    const QRectF basePlotRect = rect().adjusted(leftAxisWidth, 4.0, -4.0, -kBottomAxisHeight);
+    QRectF plotRect = basePlotRect;
+    if (time_axis_enabled_)
+    {
+        const qreal labelHalfWidth = timeAxisLabelWidth(axisFm) / 2.0;
+        const qreal timeAxisLeft = std::max(basePlotRect.left(), labelHalfWidth);
+        const qreal timeAxisRight = std::min(basePlotRect.right(),
+                                             width() - labelHalfWidth - kXAxisLabelRightInset);
+        if (timeAxisRight > timeAxisLeft + 1.0)
         {
-            const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(kXAxisTicks);
+            plotRect.setLeft(timeAxisLeft);
+            plotRect.setRight(timeAxisRight);
+        }
+    }
+    const qreal timeAxisMinimumTickSpacing = timeAxisLabelWidth(axisFm) + kTimeXAxisLabelGap;
+    const int xAxisLabelCount = xAxisLabelCountForWidth(plotRect.width(), axisFm, time_axis_enabled_);
+    const int xAxisIntervals = std::max(1, xAxisLabelCount - 1);
+    setProperty("xAxisTickCount", xAxisLabelCount);
+    setProperty("xAxisTimeMinimumTickSpacing",
+                time_axis_enabled_ ? timeAxisMinimumTickSpacing : 0.0);
+    auto xAxisRange = [this, xAxisIntervals](int sampleCount) {
+        if (!time_axis_enabled_)
+        {
+            return std::pair<double, double>{0.0, static_cast<double>(std::max(1, sampleCount - 1))};
+        }
+        const double visibleSpan = static_cast<double>(xAxisIntervals) * kTimeAxisSecondsPerInterval;
+        const double xMax = localClockSeconds();
+        return std::pair<double, double>{xMax - visibleSpan, xMax};
+    };
+    auto drawGridAndAxes = [&](double minValue,
+                               double maxValue,
+                               int sampleCount) {
+        const auto [xMin, xMax] = xAxisRange(sampleCount);
+        const qreal xAxisLabelTop = plotRect.bottom() +
+            kXAxisTickLength + kXAxisLabelGapAfterTick;
+        setProperty("xAxisPlotBottomY", plotRect.bottom());
+        setProperty("xAxisTickLength", kXAxisTickLength);
+        setProperty("xAxisLabelTopY", xAxisLabelTop);
+        setProperty("xAxisLabelGapFromPlot", xAxisLabelTop - plotRect.bottom());
+        if (time_axis_enabled_)
+        {
+            setProperty("xAxisTimeMinSeconds", xMin);
+            setProperty("xAxisTimeMaxSeconds", xMax);
+            setProperty("xAxisTimeSpanSeconds", xMax - xMin);
+            setProperty("xAxisTimeRightLabel", timeAxisTickLabel(xMax));
+            setProperty("xAxisTimeFirstTickX", plotRect.left());
+            setProperty("xAxisTimeLastTickX", plotRect.right());
+        }
+        painter.setPen(QPen(grid, 1));
+        for (int i = 0; i < xAxisLabelCount; ++i)
+        {
+            const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(xAxisIntervals);
             painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
         }
         for (int i = 0; i <= kYAxisTicks; ++i)
@@ -124,6 +224,12 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
         }
         painter.setPen(QPen(border, 1));
         painter.drawRect(plotRect);
+        for (int i = 0; i < xAxisLabelCount; ++i)
+        {
+            const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(xAxisIntervals);
+            painter.drawLine(QPointF(x, plotRect.bottom()),
+                             QPointF(x, plotRect.bottom() + kXAxisTickLength));
+        }
 
         painter.setFont(axisFont);
         painter.setPen(muted);
@@ -138,33 +244,91 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
                                    axisFm.height());
             painter.drawText(labelRect, Qt::AlignRight | Qt::AlignVCenter, label);
         }
-        for (int i = 0; i <= kXAxisTicks; ++i)
+        for (int i = 0; i < xAxisLabelCount; ++i)
         {
-            const int sampleIndex = sampleCount <= 1
-                ? 0
-                : qRound((sampleCount - 1) * i / static_cast<double>(kXAxisTicks));
-            const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(kXAxisTicks);
-            const QString label = QString::number(sampleIndex);
-            const qreal labelWidth = std::max<qreal>(36.0, axisFm.horizontalAdvance(label) + 8.0);
-            const qreal labelLeft = std::clamp(x - labelWidth / 2.0,
-                                               plotRect.left(),
-                                               std::max(plotRect.left(), width() - labelWidth - 2.0));
+            const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(xAxisIntervals);
+            const double xValue = xMin + (xMax - xMin) * i / static_cast<double>(xAxisIntervals);
+            const QString label = time_axis_enabled_
+                ? timeAxisTickLabel(xValue)
+                : QString::number(sampleCount <= 1
+                                      ? 0
+                                      : qRound((sampleCount - 1) * i / static_cast<double>(xAxisIntervals)));
+            const qreal labelWidth = std::max<qreal>(
+                36.0,
+                axisFm.horizontalAdvance(label) + (time_axis_enabled_ ? 0.0 : 8.0));
+            const qreal labelLeft = time_axis_enabled_
+                ? std::clamp(x - labelWidth / 2.0,
+                             0.0,
+                             std::max<qreal>(0.0, width() - labelWidth - kXAxisLabelRightInset))
+                : std::clamp(x - labelWidth / 2.0,
+                             plotRect.left(),
+                             std::max(plotRect.left(), width() - labelWidth - kXAxisLabelRightInset));
             const QRectF labelRect(labelLeft,
-                                   plotRect.bottom() + 2.0,
+                                   xAxisLabelTop,
                                    labelWidth,
                                    axisFm.height());
             painter.drawText(labelRect, Qt::AlignHCenter | Qt::AlignTop, label);
+            if (time_axis_enabled_ && i == 0)
+            {
+                setProperty("xAxisTimeFirstLabelCenterX", labelRect.center().x());
+            }
+            else if (time_axis_enabled_ && i == xAxisLabelCount - 1)
+            {
+                setProperty("xAxisTimeLastLabelCenterX", labelRect.center().x());
+            }
         }
         painter.setFont(font());
     };
+    auto drawTargetTemperatureGuide = [&](double minValue,
+                                          double maxValue) {
+        const bool visible = std::isfinite(target_temperature_c_) &&
+            maxValue > minValue &&
+            target_temperature_c_ >= minValue &&
+            target_temperature_c_ <= maxValue;
+        setProperty("targetGuideLineVisible", visible);
+        setProperty("targetGuideLineColor", visible
+                        ? targetGuideLine.name(QColor::HexRgb)
+                        : QString());
+        setProperty("targetGuideLineWidth", kTargetTemperatureGuideLineWidth);
+        if (!visible)
+        {
+            setProperty("targetGuideLineY", std::numeric_limits<double>::quiet_NaN());
+            return;
+        }
+
+        const double normalized = (target_temperature_c_ - minValue) /
+            std::max(1e-6, maxValue - minValue);
+        const qreal y = plotRect.bottom() -
+            normalized * plotRect.height();
+        setProperty("targetGuideLineY", y);
+
+        painter.save();
+        painter.setClipRect(plotRect);
+        painter.setPen(QPen(targetGuideLine,
+                            kTargetTemperatureGuideLineWidth,
+                            Qt::SolidLine,
+                            Qt::FlatCap));
+        painter.drawLine(QPointF(plotRect.left(), y),
+                         QPointF(plotRect.right(), y));
+        painter.restore();
+    };
 
     QVector<double> finiteSamples;
+    QVector<double> finiteSampleTimes;
     finiteSamples.reserve(samples_.size());
-    for (double value : samples_)
+    finiteSampleTimes.reserve(samples_.size());
+    for (int index = 0; index < samples_.size(); ++index)
     {
+        const double value = samples_.at(index);
         if (std::isfinite(value))
         {
             finiteSamples.append(value);
+            const double sampleTime = time_axis_enabled_ && index < sample_times_.size()
+                ? sample_times_.at(index)
+                : static_cast<double>(index);
+            finiteSampleTimes.append(std::isfinite(sampleTime)
+                                         ? sampleTime
+                                         : static_cast<double>(index));
         }
     }
 
@@ -172,6 +336,7 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     {
         const auto [minValue, maxValue] = temperatureAxisRange(QVector<double>(), target_temperature_c_);
         drawGridAndAxes(minValue, maxValue, 0);
+        drawTargetTemperatureGuide(minValue, maxValue);
         painter.setPen(muted);
         QRectF visiblePlotRect = plotRect.intersected(QRectF(visibleRegion().boundingRect()));
         if (!visiblePlotRect.isValid() || visiblePlotRect.width() <= 1.0 || visiblePlotRect.height() <= 1.0)
@@ -193,23 +358,39 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
 
     const auto [minValue, maxValue] = temperatureAxisRange(finiteSamples, target_temperature_c_);
     drawGridAndAxes(minValue, maxValue, finiteSamples.size());
+    drawTargetTemperatureGuide(minValue, maxValue);
 
     QPolygonF polyline;
     polyline.reserve(finiteSamples.size());
     const int count = finiteSamples.size();
+    const auto [xMin, xMax] = xAxisRange(count);
+    const bool useTimeCoordinates = time_axis_enabled_ &&
+        finiteSampleTimes.size() > 1 &&
+        xMax - xMin > 1e-6;
+    const double xSpan = useTimeCoordinates
+        ? xMax - xMin
+        : static_cast<double>(std::max(1, count - 1));
     for (int i = 0; i < count; ++i)
     {
-        const double ratio = count == 1 ? 0.0 : static_cast<double>(i) / static_cast<double>(count - 1);
+        const double xValue = useTimeCoordinates
+            ? finiteSampleTimes.at(i)
+            : static_cast<double>(i);
+        const double ratio = count == 1
+            ? 0.0
+            : (xValue - (useTimeCoordinates ? xMin : 0.0)) / xSpan;
         const double normalized = (finiteSamples.at(i) - minValue) / std::max(1e-6, maxValue - minValue);
         polyline.append(QPointF(plotRect.left() + ratio * plotRect.width(),
                                 plotRect.bottom() - normalized * plotRect.height()));
     }
 
+    painter.save();
+    painter.setClipRect(plotRect);
     painter.setPen(QPen(line, 1.6));
     painter.drawPolyline(polyline);
     painter.setBrush(line);
     painter.setPen(Qt::NoPen);
     painter.drawEllipse(polyline.last(), 3.0, 3.0);
+    painter.restore();
 }
 
 QString TemperatureTrendPlotWidget::axisTickLabel(double value)
@@ -217,6 +398,18 @@ QString TemperatureTrendPlotWidget::axisTickLabel(double value)
     return std::abs(value - std::round(value)) < 0.05
         ? QString::number(qRound(value))
         : QString::number(value, 'f', 1);
+}
+
+QString TemperatureTrendPlotWidget::timeAxisTickLabel(double value)
+{
+    if (!std::isfinite(value))
+    {
+        return QStringLiteral("---");
+    }
+
+    return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(std::floor(value)))
+        .toLocalTime()
+        .toString(QStringLiteral("hh:mm:ss"));
 }
 
 std::pair<double, double> TemperatureTrendPlotWidget::temperatureAxisRange(
@@ -260,7 +453,14 @@ void TemperatureTrendPlotWidget::updateSampleProperties()
     setProperty("yAxisMaxC", maxValue);
     setProperty("axisLabelsVisible", true);
     setProperty("yAxisTickCount", 7);
-    setProperty("xAxisTickCount", 5);
+    if (!time_axis_enabled_)
+    {
+        setProperty("xAxisTickCount", kDefaultXAxisLabelCount);
+    }
+    setProperty("xAxisTimeMode", time_axis_enabled_);
+    setProperty("xAxisTimeSampleCount", time_axis_enabled_ ? sample_times_.size() : 0);
+    setProperty("xAxisTimeLabelFormat",
+                time_axis_enabled_ ? QStringLiteral("hh:mm:ss") : QString());
 }
 
 void TemperatureTrendPlotWidget::applyPlotSizing()

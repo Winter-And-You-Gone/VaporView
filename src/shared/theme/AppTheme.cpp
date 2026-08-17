@@ -315,7 +315,7 @@ constexpr const char *kBrandBlue = "#6A9BCC";
 constexpr const char *kBrandGreen = "#788C5D";
 constexpr const char *kAppDarkCanvas = "#0D0D0D";
 constexpr const char *kAppDarkSurface = "#171717";
-constexpr const char *kAppDarkRaised = "#1F1F1F";
+constexpr const char *kAppDarkRaised = "#181818";
 constexpr const char *kAppDarkAlt = "#242424";
 constexpr const char *kAppDarkSubtle = "#2D2D2D";
 constexpr const char *kAppDarkSunken = "#090909";
@@ -558,9 +558,9 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::ControlArrow:
         return hexColor(dark ? kBrandMidGray : kClaudeLightTextMuted);
     case AppThemeColor::ScrollbarHandle:
-        return hexColor("#E2E2E2");
+        return hexColor(dark ? "#272727" : "#E2E2E2");
     case AppThemeColor::ScrollbarHandleHover:
-        return hexColor("#57595A");
+        return hexColor(dark ? "#BEBEBF" : "#57595A");
     case AppThemeColor::TitleBarHover:
         return hexColor(dark ? kAppDarkAlt : kClaudeLightSubtle);
     case AppThemeColor::CloseHover:
@@ -852,6 +852,12 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
     view->setProperty("vaporViewComboPopupDarkTheme", dark);
     view->setProperty(kComboPopupOwnerProperty, QVariant::fromValue<QObject *>(combo));
     view->setMouseTracking(true);
+    view->setAttribute(Qt::WA_Hover, true);
+    if (QWidget *viewport = view->viewport())
+    {
+        viewport->setMouseTracking(true);
+        viewport->setAttribute(Qt::WA_Hover, true);
+    }
     view->setFrameShape(QFrame::NoFrame);
     view->setLineWidth(0);
     view->setAutoFillBackground(true);
@@ -881,7 +887,10 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
         "QAbstractItemView#vaporViewComboPopupView::item:selected:active, "
         "QAbstractItemView#vaporViewComboPopupView::item:selected:!active { "
         "background-color: transparent; color: %2; }"
-        "QAbstractItemView#vaporViewComboPopupView::item:hover { "
+        "QAbstractItemView#vaporViewComboPopupView::item:hover, "
+        "QAbstractItemView#vaporViewComboPopupView::item:selected:hover, "
+        "QAbstractItemView#vaporViewComboPopupView::item:selected:active:hover, "
+        "QAbstractItemView#vaporViewComboPopupView::item:selected:!active:hover { "
         "background-color: %3; color: %4; }"
         "QAbstractItemView#vaporViewComboPopupView::item:disabled { "
         "background-color: transparent; color: %5; }"

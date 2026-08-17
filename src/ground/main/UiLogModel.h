@@ -95,6 +95,8 @@ public:
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
+    void setHideSourceCategory(bool hide);
+    bool hideSourceCategory() const;
 
     bool appendRecord(const VaporView::LogRecord& record);
     int appendRecords(const QVector<VaporView::LogRecord>& records);
@@ -110,7 +112,7 @@ public:
 
 private:
     static QDateTime recordTimestamp(const VaporView::LogRecord& record);
-    static QString formatEntryDisplay(const UiLogEntry& entry);
+    static QString formatEntryDisplay(const UiLogEntry& entry, bool hideSourceCategory);
     static QString searchableText(const UiLogEntry& entry);
     static bool shouldSkipPanelRecord(const UiLogVisibilityDecision& decision);
 
@@ -122,6 +124,7 @@ private:
     int firstRemovableAttentionRow() const;
 
     QVector<UiLogEntry> entries_;
+    bool hide_source_category_ = false;
     int dropped_hidden_count_ = 0;
     int insert_batch_count_for_test_ = 0;
 };

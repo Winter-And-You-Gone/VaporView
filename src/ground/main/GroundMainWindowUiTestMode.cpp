@@ -308,7 +308,6 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         state_->ui_test_saved_dark_theme_enabled_ = state_->dark_theme_enabled_;
         state_->ui_test_saved_recording_directory_ = state_->recording_directory_;
         state_->ui_test_session_viewer_existed_ = state_->session_viewer_window_ != nullptr;
-        state_->ui_test_sky_dialog_existed_ = state_->sky_device_config_dialog_ != nullptr;
 #ifdef VAPORVIEW_HAS_OSGEARTH
         state_->ui_test_map3d_window_existed_ =
             state_->map3d_controller_ && state_->map3d_controller_->window() != nullptr;
@@ -326,10 +325,6 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         if (state_->rtk_config_dialog_)
         {
             state_->rtk_config_dialog_->setUiTestMode(true);
-        }
-        if (state_->sky_device_config_dialog_)
-        {
-            state_->sky_device_config_dialog_->setUiTestMode(true);
         }
         if (state_->session_viewer_window_)
         {
@@ -380,9 +375,10 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         updateUiTestModeUi();
         updateConnectionStatus(false);
         applyUiTestSnapshot();
-        logUiTest(state_->is_english_
-            ? QStringLiteral("UI Test Mode enabled; device, recording, and settings operations are simulated in memory. RTK mountpoint detection and Test Connection may access the NTRIP network with sandbox settings.")
-            : QStringLiteral("界面测试模式已开启；设备、记录和设置操作仅在内存中模拟；RTK“检测挂载点”和“测试连接”可使用沙箱配置访问 NTRIP 网络。"));
+        publishUiTestEvent(QStringLiteral("ui_test_mode_enabled"),
+                           state_->is_english_
+                               ? QStringLiteral("UI Test Mode enabled; device, recording, and settings operations are simulated in memory. RTK mountpoint detection and Test Connection may access the NTRIP network with sandbox settings.")
+                               : QStringLiteral("界面测试模式已开启；设备、记录和设置操作仅在内存中模拟；RTK“检测挂载点”和“测试连接”可使用沙箱配置访问 NTRIP 网络。"));
         return;
     }
 
@@ -400,16 +396,6 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
     if (state_->rtk_config_dialog_)
     {
         state_->rtk_config_dialog_->setUiTestMode(false);
-    }
-    if (state_->sky_device_config_dialog_)
-    {
-        state_->sky_device_config_dialog_->setUiTestMode(false);
-        if (!state_->ui_test_sky_dialog_existed_)
-        {
-            state_->sky_device_config_dialog_->close();
-            delete state_->sky_device_config_dialog_;
-            state_->sky_device_config_dialog_ = nullptr;
-        }
     }
     if (state_->session_viewer_window_ && !state_->ui_test_session_viewer_existed_)
     {
@@ -477,8 +463,9 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
     updateUiTestModeUi();
     updateConnectionStatus(false);
     VaporView::setSettingsWritesSuspended(false);
-    logUiTest(state_->is_english_ ? QStringLiteral("UI Test Mode disabled")
-                                  : QStringLiteral("界面测试模式已关闭"));
+    publishUiTestEvent(QStringLiteral("ui_test_mode_disabled"),
+                       state_->is_english_ ? QStringLiteral("UI Test Mode disabled")
+                                           : QStringLiteral("界面测试模式已关闭"));
 }
 
 void MainWindow::setUiTestScenario(UiTestScenario scenario)
@@ -495,7 +482,14 @@ void MainWindow::setUiTestScenario(UiTestScenario scenario)
         : scenario == UiTestScenario::PartialFailure
             ? (state_->is_english_ ? QStringLiteral("Partial device failure") : QStringLiteral("部分设备异常"))
             : (state_->is_english_ ? QStringLiteral("Data stalled") : QStringLiteral("数据停更"));
-    logUiTest((state_->is_english_ ? QStringLiteral("Scenario: %1") : QStringLiteral("场景：%1")).arg(name));
+    const QString scenarioCode = scenario == UiTestScenario::Normal
+        ? QStringLiteral("normal")
+        : scenario == UiTestScenario::PartialFailure
+            ? QStringLiteral("partial_failure")
+            : QStringLiteral("data_stalled");
+    publishUiTestEvent(QStringLiteral("ui_test_scenario_selected"),
+                       (state_->is_english_ ? QStringLiteral("Scenario: %1") : QStringLiteral("场景：%1")).arg(name),
+                       {{QStringLiteral("scenario"), scenarioCode}});
     applyUiTestSnapshot();
 }
 
@@ -584,12 +578,25 @@ void MainWindow::applyUiTestSnapshot()
             VaporView::Ground::Session::GroundRecordingService::currentTimestampUs());
     }
 #endif
+    updateRemoteTelemetrySummaryLabel();
     updateHomeDeviceStatusCapsules();
     updateDeviceConfigState();
     updateRecordingStatusLabel();
 }
 
-void MainWindow::logUiTest(const QString& message)
+void MainWindow::publishUiTestEvent(const QString& event,
+                                    const QString& message,
+                                    QVariantMap fields)
 {
-    log(QStringLiteral("[界面测试] %1").arg(message));
+    fields.insert(QStringLiteral("execution_path"), QStringLiteral("ui_test"));
+    if (!fields.contains(QStringLiteral("ui_visibility")))
+    {
+        fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("details"));
+    }
+    fields.insert(QStringLiteral("ui_message"), message);
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("ui.test"),
+                     event,
+                     QStringLiteral("界面测试日志已更新。"),
+                     fields);
 }

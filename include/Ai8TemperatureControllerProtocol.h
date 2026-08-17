@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QByteArray>
+#include <QMetaType>
 #include <QString>
 #include <QVector>
 
@@ -238,3 +239,5 @@ bool isDocumentedRunState(quint16 value);
 QString pageName(Page page, bool english);
 
 } // namespace VaporView::Ai8TemperatureControllerProtocol
+
+Q_DECLARE_METATYPE(VaporView::Ai8TemperatureControllerProtocol::LiveData)

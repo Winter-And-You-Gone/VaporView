@@ -96,8 +96,7 @@ bool isMainWindowApplicationConfigKey(const QString& key)
 
     const QString normalized = key.toLower();
     static const QStringList applicationKeys{
-        QStringLiteral("epsilon_custom_packet_rates_enabled"),
-        QStringLiteral("epsilon_custom_packet_rates_user_saved"),
+        QStringLiteral("epsilon_rtcm_device_port_index"),
         QStringLiteral("epsilon_rtcm_forward_port"),
         QStringLiteral("epsilon_rtcm_forward_baud"),
         QStringLiteral("recording_export_rate_hz"),

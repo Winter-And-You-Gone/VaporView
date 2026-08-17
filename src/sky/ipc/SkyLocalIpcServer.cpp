@@ -24,6 +24,8 @@ bool shouldBroadcastRuntimeFrame(MsgType type)
     case MsgType::TelemetryStatus:
     case MsgType::SkyConfig:
     case MsgType::SkyConfigApplyResult:
+    case MsgType::TemperatureControllerStatus:
+    case MsgType::Ai8TemperatureControllerStatus:
     case MsgType::Heartbeat:
     case MsgType::LogEvent:
     case MsgType::Error:
@@ -82,26 +84,22 @@ void SkyLocalIpcServer::publishIpcLog(LogLevel level,
         fields.insert(QStringLiteral("error_code"), QStringLiteral("SKY_IPC_ERROR"));
     }
 
+    LogRecord record;
+    record.level = level;
+    record.source = QStringLiteral("SkyCore");
+    record.category = QStringLiteral("ipc");
+    record.message = message;
+    record.fields = fields;
     const bool published = LogService::withCurrentInstance([&](LogService& logService) {
-        logService.publish(level,
-                           QStringLiteral("SkyCore"),
-                           QStringLiteral("ipc"),
-                           message,
-                           fields);
+        logService.publish(record);
     });
-    emit logMessage(message);
+    emit logRecordGenerated(record);
     if (published)
     {
         return;
     }
-
-    LogRecord fallback;
-    fallback.level = level;
-    fallback.source = QStringLiteral("SkyCore");
-    fallback.category = QStringLiteral("ipc");
-    fallback.message = message;
-    fallback.fields = fields;
-    broadcastFrame(MsgType::LogEvent, TelemetryCodec::serializeLogRecord(fallback));
+    LogService::writeLogFallback(record);
+    broadcastFrame(MsgType::LogEvent, TelemetryCodec::serializeLogRecord(record));
 }
 
 bool SkyLocalIpcServer::listen(const QString& host, quint16 port)
@@ -127,11 +125,15 @@ bool SkyLocalIpcServer::listen(const QString& host, quint16 port)
     }
 
     status_timer_.start();
+    const QString listeningHost = server_->serverAddress().toString();
+    const quint16 listeningPort = server_->serverPort();
     publishIpcLog(LogLevel::Info,
                   QStringLiteral("sky_ipc_listening"),
-                  QStringLiteral("本地 IPC 服务已开始监听。"),
-                  {{QStringLiteral("host"), server_->serverAddress().toString()},
-                   {QStringLiteral("port"), server_->serverPort()}});
+                  QStringLiteral("本地 IPC 服务已开始监听：%1:%2。")
+                      .arg(listeningHost)
+                      .arg(listeningPort),
+                  {{QStringLiteral("host"), listeningHost},
+                   {QStringLiteral("port"), listeningPort}});
     return true;
 }
 
@@ -328,6 +330,13 @@ void SkyLocalIpcServer::sendCommandResultFrames(QTcpSocket *socket, const SkyCom
     if (result.send_one_waveform)
     {
         sendCurrentWaveforms(socket);
+    }
+    if (result.send_device_operation_response)
+    {
+        sendFrame(socket,
+                  MsgType::DeviceOperationResponse,
+                  TelemetryCodec::serializeDeviceOperationResponse(
+                      result.device_operation_response));
     }
 }
 

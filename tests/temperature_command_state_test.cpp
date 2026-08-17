@@ -1,4 +1,5 @@
 #include "ground/devices/TemperatureCommandState.h"
+#include "ground/main/GroundMainWindowSupport.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -21,6 +22,7 @@ int main()
 {
     using namespace VaporView;
     using namespace VaporView::Ground::Devices;
+    namespace MainSupport = VaporView::Ground::MainSupport;
 
     TemperatureControllerData state;
     TemperatureControllerCommand target;
@@ -66,6 +68,82 @@ int main()
     require(defaultsUpdate.slaveAddress && *defaultsUpdate.slaveAddress == 1, "factory address persistence update");
     require(defaultsUpdate.baudRate && *defaultsUpdate.baudRate == 9600, "factory baud persistence update");
     require(temperatureRs485BaudRateForIndex(99) == 9600, "invalid baud index uses compatible fallback");
+
+    TemperatureControllerCommand logCommand;
+    logCommand.channel = 2;
+    logCommand.target_temperature_c = 35.5;
+    QVariantMap disconnectedFields =
+        MainSupport::temperatureCommandLogFields(CommandId::SetTemperatureTarget,
+                                                 logCommand,
+                                                 logCommand.channel);
+    disconnectedFields.insert(QStringLiteral("reason_code"), QStringLiteral("DEVICE_NOT_CONNECTED"));
+    disconnectedFields.insert(
+        QStringLiteral("ui_dedupe_key"),
+        MainSupport::temperatureCommandDedupeKey(
+            QStringLiteral("temperature_command_rejected_not_connected"),
+            CommandId::SetTemperatureTarget,
+            logCommand.channel));
+    const LogRecord disconnectedRecord = MainSupport::makeTemperatureCommandLogRecord(
+        LogLevel::Warning,
+        QStringLiteral("temperature_command_rejected_not_connected"),
+        QStringLiteral("本地 RD105 温控器未连接，无法下发温控命令。"),
+        disconnectedFields);
+    require(disconnectedRecord.level == LogLevel::Warning,
+            "rd105DisconnectedCommandIsWarning");
+    require(disconnectedRecord.fields.value(QStringLiteral("ui_visibility")).toString() ==
+                QStringLiteral("attention"),
+            "rd105DisconnectedCommandIsAttention");
+    require(disconnectedRecord.fields.value(QStringLiteral("event")).toString() ==
+                QStringLiteral("temperature_command_rejected_not_connected") &&
+                disconnectedRecord.fields.value(QStringLiteral("reason_code")).toString() ==
+                    QStringLiteral("DEVICE_NOT_CONNECTED"),
+            "rd105DisconnectedCommandHasStructuredEvent");
+    require(disconnectedRecord.fields.value(QStringLiteral("command")).toString() ==
+                commandIdName(CommandId::SetTemperatureTarget) &&
+                disconnectedRecord.fields.value(QStringLiteral("channel")).toInt() == 2 &&
+                disconnectedRecord.fields.value(QStringLiteral("target")).toDouble() == 35.5,
+            "rd105DisconnectedCommandCarriesCommandContext");
+
+    QVariantMap failedFields =
+        MainSupport::temperatureCommandLogFields(CommandId::SetTemperatureTarget,
+                                                 logCommand,
+                                                 logCommand.channel);
+    failedFields.insert(QStringLiteral("error_code"), QStringLiteral("COMMAND_VERIFY_FAILED"));
+    const LogRecord failedRecord = MainSupport::makeTemperatureCommandLogRecord(
+        LogLevel::Error,
+        QStringLiteral("temperature_command_failed"),
+        QStringLiteral("RD105 温控命令执行失败：写入或读回确认失败。"),
+        failedFields);
+    require(failedRecord.level == LogLevel::Error &&
+                failedRecord.fields.value(QStringLiteral("error_code")).toString() ==
+                    QStringLiteral("COMMAND_VERIFY_FAILED"),
+            "rd105CommandVerifyFailureIsError");
+
+    QVariantMap successFields =
+        MainSupport::temperatureCommandLogFields(CommandId::SetTemperatureTarget,
+                                                 logCommand,
+                                                 logCommand.channel);
+    const LogRecord successRecord = MainSupport::makeTemperatureCommandLogRecord(
+        LogLevel::Info,
+        QStringLiteral("temperature_command_completed"),
+        QStringLiteral("RD105 温控命令执行成功。"),
+        successFields);
+    require(successRecord.level == LogLevel::Info &&
+                successRecord.fields.value(QStringLiteral("ui_visibility")).toString() ==
+                    QStringLiteral("details"),
+            "rd105SuccessfulCommandIsInfo");
+    require(MainSupport::temperatureCommandDedupeKey(
+                QStringLiteral("temperature_command_rejected_not_connected"),
+                CommandId::SetTemperatureTarget,
+                2) ==
+                MainSupport::temperatureCommandDedupeKey(
+                    QStringLiteral("temperature_command_rejected_not_connected"),
+                    CommandId::SetTemperatureTarget,
+                    2),
+            "rd105RepeatedDisconnectWarningCanDeduplicate");
+    require(MainSupport::commandErrorCodeIdentifier(CommandErrorCode::DeviceNotConnected) ==
+                QStringLiteral("DEVICE_NOT_CONNECTED"),
+            "command error identifiers are stable machine fields");
 
     std::cout << "temperature_command_state_test passed\n";
     return 0;

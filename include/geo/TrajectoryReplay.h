@@ -1,6 +1,7 @@
 #pragma once
 
 #include "geo/GeoTypes.h"
+#include "geo/TrajectoryHeatmap.h"
 
 #include <QtCore/QString>
 
@@ -17,6 +18,7 @@ public:
     void clear();
     void setSamples(std::vector<NavSample> samples);
     void setSamples(std::shared_ptr<const std::vector<NavSample>> samples);
+    void setRenderSamples(std::shared_ptr<const std::vector<TrajectoryRenderSample>> samples);
 
     bool hasSamples() const;
     int sampleCount() const;
@@ -53,8 +55,10 @@ private:
     bool hasTimestampTimeline() const;
     Duration fallbackDuration() const;
     qint64 sampleTimestampUs(int index) const;
+    const NavSample* navigationSampleAt(int index) const;
 
     std::shared_ptr<const std::vector<NavSample>> samples_;
+    std::shared_ptr<const std::vector<TrajectoryRenderSample>> render_samples_;
     bool has_timestamp_timeline_ = false;
     qint64 start_timestamp_us_ = 0;
     qint64 end_timestamp_us_ = 0;

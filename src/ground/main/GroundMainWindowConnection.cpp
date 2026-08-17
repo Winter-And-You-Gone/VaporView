@@ -2,6 +2,8 @@
 #include "ground/devices/DeviceRatePolicy.h"
 #include "ground/widgets/SerialPortComboSupport.h"
 
+#include <QJsonArray>
+
 void MainWindow::updateConnectionStatus(bool connected)
 {
     if (isUiTestMode())
@@ -37,8 +39,11 @@ void MainWindow::updateConnectionStatus(bool connected)
         updateDeviceConfigState();
         return;
     }
+    const bool localWaveformConnected = !isRemoteSkyMode() && state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnected();
+    const bool localWaveformConnecting = !isRemoteSkyMode() && state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnecting();
+    connected = connected || localWaveformConnected;
     state_->is_connected_ = connected;
-    const bool uiBusy = state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_;
+    const bool uiBusy = state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_ || localWaveformConnecting;
     const bool inputsEnabled = !connected && !uiBusy;
 
     state_->connect_btn_->setEnabled(inputsEnabled);
@@ -59,7 +64,11 @@ void MainWindow::updateConnectionStatus(bool connected)
     }
     if (state_->auto_detect_ports_btn_)
     {
-        state_->auto_detect_ports_btn_->setEnabled(!connected && !state_->connection_attempt_in_progress_ && !state_->epsilon_reconfigure_in_progress_);
+        const bool remoteDetectionAvailable = isRemoteSkyMode() &&
+            (isUiTestMode() || (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen()));
+        state_->auto_detect_ports_btn_->setEnabled(isRemoteSkyMode()
+            ? remoteDetectionAvailable
+            : (!connected && !state_->connection_attempt_in_progress_ && !state_->epsilon_reconfigure_in_progress_));
         state_->auto_detect_ports_btn_->setText(state_->port_detection_in_progress_
             ? (state_->is_english_ ? "Cancel Auto Detect" : "取消自动识别")
             : (state_->is_english_ ? "Auto Detect Ports" : "自动识别串口"));
@@ -177,10 +186,6 @@ VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId 
     }
     if (isRemoteSkyMode())
     {
-        if (device == VaporView::SkyDeviceId::Ai8TemperatureController)
-        {
-            return VaporView::DeviceState::Disabled;
-        }
         if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
         {
             return VaporView::DeviceState::Disabled;
@@ -241,8 +246,10 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
             {
                 state_->tcp_wave_panel_->setUiTestConnected(false);
             }
-            logUiTest((state_->is_english_ ? QStringLiteral("Disconnected %1") : QStringLiteral("已断开%1"))
-                          .arg(homeDeviceDisplayName(device, state_->is_english_)));
+            publishUiTestEvent(QStringLiteral("ui_test_device_disconnected"),
+                               (state_->is_english_ ? QStringLiteral("Disconnected %1") : QStringLiteral("已断开%1"))
+                                   .arg(homeDeviceDisplayName(device, state_->is_english_)),
+                               {{QStringLiteral("device_id"), VaporView::skyDeviceIdName(device)}});
             updateConnectionStatus(false);
             return;
         }
@@ -259,18 +266,16 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
             {
                 state_->tcp_wave_panel_->setUiTestConnected(true);
             }
-            logUiTest((state_->is_english_ ? QStringLiteral("Connected %1") : QStringLiteral("已连接%1"))
-                          .arg(homeDeviceDisplayName(device, state_->is_english_)));
+            publishUiTestEvent(QStringLiteral("ui_test_device_connected"),
+                               (state_->is_english_ ? QStringLiteral("Connected %1") : QStringLiteral("已连接%1"))
+                                   .arg(homeDeviceDisplayName(device, state_->is_english_)),
+                               {{QStringLiteral("device_id"), VaporView::skyDeviceIdName(device)}});
             updateConnectionStatus(false);
         });
         return;
     }
     if (isRemoteSkyMode())
     {
-        if (device == VaporView::SkyDeviceId::Ai8TemperatureController)
-        {
-            return;
-        }
         if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
         {
             return;
@@ -401,7 +406,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
                     ? (state_->is_english_ ? QStringLiteral("Not ready") : QStringLiteral("未就绪"))
                     : (state_->is_english_ ? QStringLiteral("Ready to connect") : QStringLiteral("可以连接"));
         const QString deviceName = homeDeviceDisplayName(device, state_->is_english_);
-        label->setText(QStringLiteral("• %1").arg(deviceName));
+        label->setText(deviceName);
         label->setProperty("connected", connected);
         label->setProperty("state", stateKey);
         label->setToolTip(state_->is_english_
@@ -473,7 +478,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         {
             const QString iconName = connected ? QStringLiteral("unlink") : QStringLiteral("link");
             const QColor iconColor = connected
-                ? toolbarColor(AppThemeColor::HomeDeviceDanger)
+                ? toolbarColor(AppThemeColor::ToolbarBlue)
                 : state == VaporView::DeviceState::Disabled
                     ? toolbarColor(AppThemeColor::ToolbarDisabled)
                     : toolbarColor(AppThemeColor::HomeDeviceSuccess);
@@ -586,6 +591,97 @@ bool MainWindow::anyCollectorRunning() const
     return state_->local_connection_controller_ && state_->local_connection_controller_->anyCollectorRunning();
 }
 
+bool MainWindow::anyLocalDeviceConnected() const
+{
+    return anyCollectorRunning() ||
+        (!isRemoteSkyMode() && state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnected());
+}
+
+void MainWindow::configureLocalConnectionCoordinator()
+{
+    VaporView::Ground::Devices::LocalConnectionCoordinatorHooks hooks;
+    hooks.startSerial = [this](VaporView::Ground::Devices::LocalConnectionRequest request) {
+        return state_->local_connection_controller_ &&
+               state_->local_connection_controller_->connectAsync(std::move(request));
+    };
+    hooks.cancelSerial = [this]() {
+        if (state_->local_connection_controller_)
+        {
+            state_->local_connection_controller_->requestCancel();
+        }
+    };
+    hooks.stopSerial = [this]() {
+        if (state_->local_connection_controller_)
+        {
+            state_->local_connection_controller_->disconnect();
+        }
+    };
+    hooks.waveformAvailable = [this]() {
+        return !isRemoteSkyMode() && state_->tcp_wave_panel_ != nullptr;
+    };
+    hooks.waveformConnected = [this]() {
+        return !isRemoteSkyMode() && state_->tcp_wave_panel_ &&
+               state_->tcp_wave_panel_->isConnected();
+    };
+    hooks.startWaveform = [this]() {
+        if (isRemoteSkyMode() || !state_->tcp_wave_panel_ ||
+            state_->tcp_wave_panel_->isConnected() || state_->tcp_wave_panel_->isConnecting())
+        {
+            return false;
+        }
+        state_->tcp_wave_panel_->toggleConnection();
+        updateConnectionStatus(anyLocalDeviceConnected());
+        return state_->tcp_wave_panel_->isConnected() || state_->tcp_wave_panel_->isConnecting();
+    };
+    hooks.cancelWaveform = [this]() {
+        if (isRemoteSkyMode() || !state_->tcp_wave_panel_)
+        {
+            return;
+        }
+        if (state_->tcp_wave_panel_->isConnected() || state_->tcp_wave_panel_->isConnecting())
+        {
+            state_->tcp_wave_panel_->toggleConnection();
+        }
+    };
+    hooks.stopWaveform = hooks.cancelWaveform;
+    hooks.finished = [this](const VaporView::Ground::Devices::LocalConnectionResult& result) {
+        QTimer::singleShot(0, this, [this, result]() {
+            QTimer::singleShot(0, this, [this, result]() {
+                const bool connected = result.connected();
+                auto outcomeCode = [](VaporView::Ground::Devices::LocalConnectionOutcome outcome) {
+                    using Outcome = VaporView::Ground::Devices::LocalConnectionOutcome;
+                    switch (outcome)
+                    {
+                    case Outcome::Completed: return QStringLiteral("COMPLETED");
+                    case Outcome::Failed: return QStringLiteral("FAILED");
+                    case Outcome::Cancelled: return QStringLiteral("CANCELLED");
+                    case Outcome::TimedOut: return QStringLiteral("TIMED_OUT");
+                    case Outcome::Rejected: return QStringLiteral("REJECTED");
+                    }
+                    return QStringLiteral("UNKNOWN");
+                };
+                const QString outcome = outcomeCode(result.outcome);
+                const bool attention =
+                    result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::Failed ||
+                    result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::TimedOut ||
+                    result.outcome == VaporView::Ground::Devices::LocalConnectionOutcome::Rejected;
+                publishGroundLog(attention ? VaporView::LogLevel::Warning : VaporView::LogLevel::Info,
+                                 QStringLiteral("device.connection"),
+                                 QStringLiteral("local_connection_summary"),
+                                 QStringLiteral("本地连接流程已结束。"),
+                                 {{QStringLiteral("serial_connected"), result.serialConnected},
+                                  {QStringLiteral("tcp_wave_connected"), result.waveformConnected},
+                                  {QStringLiteral("outcome"), outcome},
+                                  {QStringLiteral("ui_visibility"), attention
+                                      ? QStringLiteral("attention")
+                                      : QStringLiteral("details")}});
+                finishConnectionAttempt(connected);
+            });
+        });
+    };
+    state_->local_connection_coordinator_->setHooks(std::move(hooks));
+}
+
 CollectorSnapshot MainWindow::snapshotCollectors() const
 {
     return state_->local_connection_controller_
@@ -614,6 +710,18 @@ void MainWindow::stopAllCollectors()
         state_->ai8_temperature_controller_panel_->setBackendConnected(false);
         state_->ai8_temperature_controller_panel_->applyLiveData({});
     }
+    if (state_->ai8_device_session_)
+    {
+        state_->ai8_device_session_->setLocalAvailable(false);
+    }
+    if (state_->epsilon_device_session_)
+    {
+        state_->epsilon_device_session_->setLocalAvailable(false);
+    }
+    if (state_->rd105_device_session_)
+    {
+        state_->rd105_device_session_->setLocalAvailable(false);
+    }
     updateAi8TemperatureTitleStatus();
 }
 
@@ -621,11 +729,12 @@ void MainWindow::finishConnectionAttempt(bool connected)
 {
     state_->connection_attempt_in_progress_ = false;
     state_->cancel_connection_requested_.store(false);
-    if (!connected && state_->recording_service_->isSessionOpen())
+    const bool overallConnected = connected || anyLocalDeviceConnected();
+    if (!overallConnected && state_->recording_service_->isSessionOpen())
     {
         stopRecording(true);
     }
-    updateConnectionStatus(connected);
+    updateConnectionStatus(overallConnected);
     bool ai8Connected = false;
     if (state_->ai8_temperature_controller_panel_)
     {
@@ -640,6 +749,37 @@ void MainWindow::finishConnectionAttempt(bool connected)
                            : QStringLiteral("19200"))
             : QString();
         state_->ai8_temperature_controller_panel_->setBackendConnected(ai8Connected, detail);
+        if (state_->ai8_device_session_)
+        {
+            state_->ai8_device_session_->setLocalAvailable(ai8Connected, detail);
+        }
+    }
+    if (state_->epsilon_device_session_)
+    {
+        const CollectorSnapshot collectors = snapshotCollectors();
+        const bool epsilonConnected = collectors.epsilon && collectors.epsilon->isRunning();
+        const QString detail = epsilonConnected
+            ? QStringLiteral("%1 @ %2")
+                  .arg(localSerialPortComboValue(state_->epsilon_port_combo_),
+                       state_->epsilon_baud_combo_
+                           ? state_->epsilon_baud_combo_->currentText()
+                           : QStringLiteral("921600"))
+            : QString();
+        state_->epsilon_device_session_->setLocalAvailable(epsilonConnected, detail);
+    }
+    if (state_->rd105_device_session_)
+    {
+        const CollectorSnapshot collectors = snapshotCollectors();
+        const bool rd105Connected = collectors.temperature_controller &&
+                                    collectors.temperature_controller->isRunning();
+        const QString detail = rd105Connected
+            ? QStringLiteral("%1 @ %2")
+                  .arg(localSerialPortComboValue(state_->device_config_.temperature_port_combo),
+                       state_->device_config_.temperature_baud_combo
+                           ? state_->device_config_.temperature_baud_combo->currentText()
+                           : QStringLiteral("38400"))
+            : QString();
+        state_->rd105_device_session_->setLocalAvailable(rd105Connected, detail);
     }
     updateAi8TemperatureTitleStatus();
     if (ai8Connected)
@@ -690,13 +830,101 @@ void MainWindow::onRefreshPortsClicked()
 
     if (isUiTestMode())
     {
-        logUiTest(state_->is_english_ ? QStringLiteral("Returned fixed test serial ports")
-                                      : QStringLiteral("已返回固定测试串口"));
+        publishUiTestEvent(QStringLiteral("ui_test_serial_ports_refreshed"),
+                           state_->is_english_ ? QStringLiteral("Returned fixed test serial ports")
+                                               : QStringLiteral("已返回固定测试串口"));
         return;
     }
-    log(QString(state_->is_english_ ? "Ports refreshed: %1 serial ports"
-                            : "端口已刷新: %1 个串口")
-            .arg(ports.size()));
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("device.connection"),
+                     QStringLiteral("serial_ports_refreshed"),
+                     QStringLiteral("串口列表已刷新。"),
+                     {{QStringLiteral("serial_port_count"), ports.size()},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+}
+
+void MainWindow::startRemoteSerialPortDetection()
+{
+    if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen() ||
+        state_->port_detection_in_progress_)
+    {
+        return;
+    }
+    state_->port_detection_in_progress_ = true;
+    state_->remote_serial_detection_seq_ =
+        state_->remote_sky_controller_->sendCommand(VaporView::CommandId::AutoDetectSerialPorts);
+    if (state_->remote_serial_detection_seq_ == 0)
+    {
+        state_->port_detection_in_progress_ = false;
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("Remote serial-port detection was not sent.")
+            : QStringLiteral("未发送远程串口自动识别命令。"), true);
+        updateConnectionStatus(state_->is_connected_);
+        return;
+    }
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("device.connection"),
+                     QStringLiteral("remote_serial_port_detection_started"),
+                     QStringLiteral("已请求天空端自动识别串口。"),
+                     {{QStringLiteral("command_seq"), state_->remote_serial_detection_seq_},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+    setRemoteSkyConfigStatus(state_->is_english_
+        ? QStringLiteral("Sky is detecting serial ports...")
+        : QStringLiteral("天空端正在自动识别串口..."));
+    updateConnectionStatus(state_->is_connected_);
+}
+
+void MainWindow::onRemoteSerialPortDetectionResult(const QJsonObject& result)
+{
+    if (!isRemoteSkyMode() || !state_->remote_sky_controller_ ||
+        !state_->remote_sky_controller_->isOpen())
+    {
+        return;
+    }
+    state_->port_detection_in_progress_ = false;
+    state_->remote_serial_detection_seq_ = 0;
+    state_->remote_serial_detection_cancel_seq_ = 0;
+    const bool canceled = result.value(QStringLiteral("canceled")).toBool();
+    const bool success = result.value(QStringLiteral("success")).toBool();
+    if (success && !canceled)
+    {
+        VaporView::SkyConfig config = state_->remote_sky_config_;
+        const QJsonArray detections = result.value(QStringLiteral("detections")).toArray();
+        for (const QJsonValue& value : detections)
+        {
+            const QJsonObject item = value.toObject();
+            const QString key = item.value(QStringLiteral("device_key")).toString();
+            const QString port = item.value(QStringLiteral("port")).toString().trimmed();
+            const int baud = item.value(QStringLiteral("baud")).toString().toInt();
+            if (port.isEmpty() || baud <= 0)
+            {
+                continue;
+            }
+            if (key == QStringLiteral("epsilon")) { config.epsilon.port = port; config.epsilon.baud_rate = baud; }
+            else if (key == QStringLiteral("ptb")) { config.ptb.port = port; config.ptb.baud_rate = baud; }
+            else if (key == QStringLiteral("hmp")) { config.hmp.port = port; config.hmp.baud_rate = baud; }
+            else if (key == QStringLiteral("lidar")) { config.lidar.port = port; config.lidar.baud_rate = baud; }
+            else if (key == QStringLiteral("temperature")) { config.temperature_controller.port = port; config.temperature_controller.baud_rate = baud; }
+            else if (key == QStringLiteral("ai8")) { config.ai8_temperature_controller.port = port; config.ai8_temperature_controller.baud_rate = baud; }
+        }
+        state_->remote_sky_config_ = config;
+        state_->remote_sky_config_loaded_ = true;
+        state_->remote_sky_config_dirty_ = true;
+        setRemoteSkyConfigUi(config);
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("Remote detection completed; review and apply/save the detected ports.")
+            : QStringLiteral("远程串口自动识别完成，结果已填入配置，请检查后点击应用/保存。"));
+    }
+    else
+    {
+        setRemoteSkyConfigStatus(canceled
+            ? (state_->is_english_ ? QStringLiteral("Remote serial-port detection canceled.")
+                                   : QStringLiteral("远程串口自动识别已取消。"))
+            : (state_->is_english_ ? QStringLiteral("Remote serial-port detection failed.")
+                                   : QStringLiteral("远程串口自动识别失败。")),
+            !canceled);
+    }
+    updateConnectionStatus(state_->is_connected_);
 }
 
 void MainWindow::onAutoDetectPortsClicked()
@@ -717,14 +945,55 @@ void MainWindow::onAutoDetectPortsClicked()
             setLocalSerialPortComboText(item.first, item.second);
         }
         syncDeviceConfigPageFromHome();
-        logUiTest(state_->is_english_ ? QStringLiteral("Automatic detection completed with fixed test devices")
-                                      : QStringLiteral("自动识别已完成，已填入固定测试设备"));
+        publishUiTestEvent(QStringLiteral("ui_test_auto_detection_completed"),
+                           state_->is_english_ ? QStringLiteral("Automatic detection completed with fixed test devices")
+                                               : QStringLiteral("自动识别已完成，已填入固定测试设备"),
+                           {{QStringLiteral("detected_devices"), detected.size()}});
+        return;
+    }
+    if (isRemoteSkyMode())
+    {
+        if (state_->port_detection_in_progress_)
+        {
+            if (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen())
+            {
+                state_->remote_serial_detection_cancel_seq_ =
+                    state_->remote_sky_controller_->sendCommand(
+                        VaporView::CommandId::CancelSerialPortDetection);
+                publishGroundLog(VaporView::LogLevel::Info,
+                                 QStringLiteral("device.connection"),
+                                 QStringLiteral("serial_port_detection_cancel_requested"),
+                                 QStringLiteral("已请求天空端取消自动识别串口。"),
+                                 {{QStringLiteral("reason_code"), QStringLiteral("USER_CANCELLED")},
+                                  {QStringLiteral("ui_visibility"), QStringLiteral("attention")} });
+            }
+            return;
+        }
+        if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
+        {
+            return;
+        }
+        if (!state_->remote_sky_config_loaded_)
+        {
+            state_->remote_serial_detection_pending_ = true;
+            requestRemoteSkyConfigIfAvailable(false);
+            setRemoteSkyConfigStatus(state_->is_english_
+                ? QStringLiteral("Reading Remote Sky config before detection...")
+                : QStringLiteral("正在读取远程配置，读取完成后开始自动识别串口..."));
+            return;
+        }
+        startRemoteSerialPortDetection();
         return;
     }
     if (state_->port_detection_in_progress_)
     {
         state_->cancel_connection_requested_.store(true);
-        log(state_->is_english_ ? "Cancel requested, stopping automatic serial-port detection..." : "已请求取消，正在停止自动识别串口...");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.connection"),
+                         QStringLiteral("serial_port_detection_cancel_requested"),
+                         QStringLiteral("已请求取消，正在停止自动识别串口。"),
+                         {{QStringLiteral("reason_code"), QStringLiteral("USER_CANCELLED")},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("attention")}});
         updateConnectionStatus(state_->is_connected_);
         QApplication::processEvents(QEventLoop::AllEvents);
         return;
@@ -744,7 +1013,11 @@ void MainWindow::onAutoDetectPortsClicked()
     state_->port_detection_in_progress_ = true;
     state_->cancel_connection_requested_.store(false);
     updateConnectionStatus(state_->is_connected_);
-    log(state_->is_english_ ? "Starting automatic serial-port detection..." : "开始自动识别串口...");
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("device.connection"),
+                     QStringLiteral("serial_port_detection_started"),
+                     QStringLiteral("开始自动识别串口。"),
+                     {{QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     const QString selectedEpsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
     const QString selectedPtbPort = localSerialPortComboValue(state_->ptb_port_combo_);
     const QString selectedHmpPort = localSerialPortComboValue(state_->hmp_port_combo_);
@@ -782,9 +1055,14 @@ void MainWindow::onAutoDetectPortsClicked()
             VaporView::Ground::Devices::SerialPortDetectionService::detect(
                 request,
                 [this]() { return state_->cancel_connection_requested_.load(); },
-                [this](const QString& message) {
-                    QMetaObject::invokeMethod(this, [this, message]() { log(message); },
-                                              Qt::QueuedConnection);
+                [this](const VaporView::Ground::Devices::SerialPortDetectionService::LogEntry& entry) {
+                    QMetaObject::invokeMethod(this, [this, entry]() {
+                        publishGroundLog(entry.level,
+                                         QStringLiteral("device.connection"),
+                                         entry.event,
+                                         entry.message,
+                                         entry.fields);
+                    }, Qt::QueuedConnection);
                 });
         QMetaObject::invokeMethod(this, [this, detections = outcome.detections]() {
             const QString selectText = state_->is_english_ ? "-- Select --" : "未选择";
@@ -884,8 +1162,9 @@ void MainWindow::onConnectClicked()
             state_->ui_test_model_->setDeviceState(device, VaporView::DeviceState::Connecting);
         }
         updateConnectionStatus(false);
-        logUiTest(state_->is_english_ ? QStringLiteral("Simulated connection started")
-                                      : QStringLiteral("模拟连接已开始"));
+        publishUiTestEvent(QStringLiteral("ui_test_connection_started"),
+                           state_->is_english_ ? QStringLiteral("Simulated connection started")
+                                               : QStringLiteral("模拟连接已开始"));
         QTimer::singleShot(500, this, [this]() {
             if (!isUiTestMode() || !state_->ui_test_connection_in_progress_)
             {
@@ -895,8 +1174,9 @@ void MainWindow::onConnectClicked()
             state_->ui_test_model_->setAllDevicesConnected(true);
             if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setUiTestConnected(true);
             updateConnectionStatus(false);
-            logUiTest(state_->is_english_ ? QStringLiteral("All simulated devices connected")
-                                          : QStringLiteral("所有模拟设备已连接"));
+            publishUiTestEvent(QStringLiteral("ui_test_all_devices_connected"),
+                               state_->is_english_ ? QStringLiteral("All simulated devices connected")
+                                                   : QStringLiteral("所有模拟设备已连接"));
         });
         return;
     }
@@ -912,11 +1192,23 @@ void MainWindow::onConnectClicked()
             const int tcpPort = state_->sky_telemetry_tcp_port_spin_ ? state_->sky_telemetry_tcp_port_spin_->value() : 39100;
             if (host.isEmpty())
             {
-                log(state_->is_english_ ? "Enter the Sky telemetry IP first" : "请先输入天空端数传 IP");
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("telemetry.connection"),
+                                 QStringLiteral("remote_sky_connection_rejected_missing_host"),
+                                 QStringLiteral("请先输入天空端数传 IP。"),
+                                 {{QStringLiteral("reason_code"), QStringLiteral("MISSING_ENDPOINT")},
+                                  {QStringLiteral("transport"), QStringLiteral("tcp")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_sky:tcp:missing_host")}});
                 return;
             }
             openedText = QStringLiteral("%1:%2").arg(host).arg(tcpPort);
-            log(QString(state_->is_english_ ? "Connecting Sky telemetry TCP: %1" : "正在连接天空端 TCP 数传：%1").arg(openedText));
+            publishGroundLog(VaporView::LogLevel::Info,
+                             QStringLiteral("telemetry.connection"),
+                             QStringLiteral("remote_sky_connection_started"),
+                             QStringLiteral("正在连接天空端 TCP 数传。"),
+                             {{QStringLiteral("transport"), QStringLiteral("tcp")},
+                              {QStringLiteral("endpoint"), openedText},
+                              {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
             opened = state_->remote_sky_controller_ && state_->remote_sky_controller_->openTcp(host, static_cast<quint16>(tcpPort));
         }
         else
@@ -925,11 +1217,23 @@ void MainWindow::onConnectClicked()
             const int baud = state_->sky_telemetry_baud_combo_ ? state_->sky_telemetry_baud_combo_->currentText().toInt() : 921600;
             if (port.isEmpty())
             {
-                log(state_->is_english_ ? "Select the Sky telemetry port first" : "请先选择天空端数传串口");
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("telemetry.connection"),
+                                 QStringLiteral("remote_sky_connection_rejected_missing_port"),
+                                 QStringLiteral("请先选择天空端数传串口。"),
+                                 {{QStringLiteral("reason_code"), QStringLiteral("MISSING_ENDPOINT")},
+                                  {QStringLiteral("transport"), QStringLiteral("serial")},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_sky:serial:missing_port")}});
                 return;
             }
             openedText = QStringLiteral("%1 @ %2").arg(port).arg(baud);
-            log(QString(state_->is_english_ ? "Opening Sky telemetry serial port: %1" : "正在打开天空端数传串口：%1").arg(openedText));
+            publishGroundLog(VaporView::LogLevel::Info,
+                             QStringLiteral("telemetry.connection"),
+                             QStringLiteral("remote_sky_connection_started"),
+                             QStringLiteral("正在打开天空端数传串口。"),
+                             {{QStringLiteral("transport"), QStringLiteral("serial")},
+                              {QStringLiteral("endpoint"), openedText},
+                              {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
             opened = state_->remote_sky_controller_ && state_->remote_sky_controller_->open(port, baud);
         }
         if (opened)
@@ -937,12 +1241,28 @@ void MainWindow::onConnectClicked()
             updateConnectionStatus(true);
             state_->remote_sky_controller_->sendCommand(VaporView::CommandId::DisableWaveformStreaming);
             state_->remote_sky_controller_->sendCommand(VaporView::CommandId::RequestStatus);
-            log(QString(state_->is_english_ ? "Telemetry link opened (%1); waiting for Sky handshake..." : "数传链路已打开（%1），正在等待天空端握手...").arg(openedText));
+            publishGroundLog(VaporView::LogLevel::Info,
+                             QStringLiteral("telemetry.connection"),
+                             QStringLiteral("remote_sky_connection_opened"),
+                             QStringLiteral("数传链路已打开，正在等待天空端握手。"),
+                             {{QStringLiteral("endpoint"), openedText},
+                              {QStringLiteral("transport"), tcpTelemetry ? QStringLiteral("tcp") : QStringLiteral("serial")},
+                              {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         }
         else
         {
             updateConnectionStatus(false);
-            log(state_->is_english_ ? "Failed to open Remote Sky telemetry link" : "打开天空端数传链路失败");
+            publishGroundLog(VaporView::LogLevel::Error,
+                             QStringLiteral("telemetry.connection"),
+                             QStringLiteral("remote_sky_connection_open_failed"),
+                             QStringLiteral("打开天空端数传链路失败。"),
+                             {{QStringLiteral("error_code"), QStringLiteral("TELEMETRY_LINK_OPEN_FAILED")},
+                              {QStringLiteral("endpoint"), openedText},
+                              {QStringLiteral("transport"), tcpTelemetry ? QStringLiteral("tcp") : QStringLiteral("serial")},
+                              {QStringLiteral("ui_message"),
+                               QStringLiteral("无法打开天空端数传链路（%1）。请确认 SkyCore 已启动并监听该地址。")
+                                   .arg(openedText)},
+                              {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_sky:connection_open_failed")}});
         }
         return;
     }
@@ -951,7 +1271,11 @@ void MainWindow::onConnectClicked()
     state_->cancel_connection_requested_.store(false);
     updateConnectionStatus(false);
 
-    log(state_->is_english_ ? "Connecting..." : "正在连接...");
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("device.connection"),
+                     QStringLiteral("device_connection_started"),
+                     QStringLiteral("正在连接本地设备。"),
+                     {{QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 
     state_->current_epsilon_ = VaporView::EpsilonData();
     state_->current_gnss_ = VaporView::GnssData();
@@ -1019,9 +1343,8 @@ void MainWindow::onConnectClicked()
     const int ai8TemperatureRate = effectiveRateOrDefault(ai8TemperatureRateText, 5, 20);
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
-    bool epsilonUsesCustomPacketRates = false;
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
-        effectiveEpsilonPacketRates(settings, epsilonRate, &epsilonUsesCustomPacketRates);
+        effectiveEpsilonPacketRates(settings);
     if (!skipEpsilonDeviceRate &&
         !epsilonPort.isEmpty() &&
         epsilonPort != selectText &&
@@ -1079,14 +1402,18 @@ void MainWindow::onConnectClicked()
     request.epsilonConfiguredRateHz = epsilonRate;
     request.epsilonPacketRateSignature = epsilonDesiredPacketSignature;
     request.epsilonPacketRateSummary = epsilonDesiredPacketSummary;
-    request.epsilonUsesCustomPacketRates = epsilonUsesCustomPacketRates;
     request.epsilonConfigLikelyMatches = epsilonConfigLikelyMatches;
-    if (!state_->local_connection_controller_->connectAsync(std::move(request)))
+    if (!state_->local_connection_coordinator_->begin(std::move(request)))
     {
         state_->connection_attempt_in_progress_ = false;
-        log(state_->is_english_ ? "A device connection attempt is already running."
-                        : "已有设备连接流程正在进行。");
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.connection"),
+                         QStringLiteral("device_connection_rejected_busy"),
+                         QStringLiteral("已有设备连接流程正在进行。"),
+                         {{QStringLiteral("reason_code"), QStringLiteral("INVALID_STATE")},
+                          {QStringLiteral("ui_dedupe_key"), QStringLiteral("device_connection:busy")}});
         updateConnectionStatus(anyCollectorRunning());
+        return;
     }
 }
 void MainWindow::onDisconnectClicked()
@@ -1099,13 +1426,18 @@ void MainWindow::onDisconnectClicked()
         resetUiTestRecording();
         updateConnectionStatus(false);
         updateRecordingStatusLabel();
-        logUiTest(state_->is_english_ ? QStringLiteral("All simulated devices disconnected")
-                                      : QStringLiteral("所有模拟设备已断开"));
+        publishUiTestEvent(QStringLiteral("ui_test_all_devices_disconnected"),
+                           state_->is_english_ ? QStringLiteral("All simulated devices disconnected")
+                                               : QStringLiteral("所有模拟设备已断开"));
         return;
     }
     if (isRemoteSkyMode())
     {
-        log(state_->is_english_ ? "Disconnecting Remote Sky telemetry..." : "正在断开天空端数传...");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("telemetry.connection"),
+                         QStringLiteral("remote_sky_disconnection_started"),
+                         QStringLiteral("正在断开天空端数传。"),
+                         {{QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         if (state_->remote_sky_controller_)
         {
             state_->remote_sky_controller_->close();
@@ -1113,17 +1445,33 @@ void MainWindow::onDisconnectClicked()
         state_->remote_recording_state_ = 0;
         clearRemoteSkyDataUi();
         updateConnectionStatus(false);
-        log(state_->is_english_ ? "Remote Sky disconnected" : "天空端数传已断开");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("telemetry.connection"),
+                         QStringLiteral("remote_sky_disconnected"),
+                         QStringLiteral("天空端数传已断开。"),
+                         {{QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         return;
     }
 
-    log(state_->is_english_ ? "Disconnecting..." : "正在断开...");
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("device.connection"),
+                     QStringLiteral("device_disconnection_started"),
+                     QStringLiteral("正在断开本地设备。"),
+                     {{QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 
     stopRecording(true);
+    if (state_->local_connection_coordinator_)
+    {
+        state_->local_connection_coordinator_->disconnect();
+    }
     stopAllCollectors();
     invalidateTemperatureControllerDataUi();
     finishConnectionAttempt(false);
-    log(state_->is_english_ ? "Disconnected" : "已断开");
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("device.connection"),
+                     QStringLiteral("local_device_disconnected"),
+                     QStringLiteral("本地设备已断开。"),
+                     {{QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 }
 
 void MainWindow::onCancelConnectClicked()
@@ -1138,18 +1486,25 @@ void MainWindow::onCancelConnectClicked()
         state_->ui_test_model_->setAllDevicesConnected(false);
         if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setUiTestConnected(false);
         updateConnectionStatus(false);
-        logUiTest(state_->is_english_ ? QStringLiteral("Simulated connection canceled")
-                                      : QStringLiteral("模拟连接已取消"));
+        publishUiTestEvent(QStringLiteral("ui_test_connection_cancelled"),
+                           state_->is_english_ ? QStringLiteral("Simulated connection canceled")
+                                               : QStringLiteral("模拟连接已取消"),
+                           {{QStringLiteral("reason_code"), QStringLiteral("USER_CANCELLED")}});
         return;
     }
-    if (!state_->connection_attempt_in_progress_)
+    if (!state_->connection_attempt_in_progress_ || !state_->local_connection_coordinator_)
     {
         return;
     }
 
     state_->cancel_connection_requested_.store(true);
-    state_->local_connection_controller_->requestCancel();
-    log(state_->is_english_ ? "Cancel requested, stopping connection attempt..." : "已请求取消，正在停止连接流程...");
+    state_->local_connection_coordinator_->cancel();
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("device.connection"),
+                     QStringLiteral("device_connection_cancel_requested"),
+                     QStringLiteral("已请求取消，正在停止连接流程。"),
+                     {{QStringLiteral("reason_code"), QStringLiteral("USER_CANCELLED")},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("attention")}});
     QApplication::processEvents(QEventLoop::AllEvents);
 }
 
@@ -1168,6 +1523,16 @@ void MainWindow::onEpsilonDataReady()
     if (collectors.epsilon)
     {
         state_->current_epsilon_ = collectors.epsilon->getLatestData();
+        if (state_->epsilon_device_session_ && !isRemoteSkyMode())
+        {
+            const QString detail = QStringLiteral("%1 @ %2")
+                .arg(localSerialPortComboValue(state_->epsilon_port_combo_),
+                     state_->epsilon_baud_combo_
+                         ? state_->epsilon_baud_combo_->currentText()
+                         : QStringLiteral("921600"));
+            state_->epsilon_device_session_->setLocalAvailable(
+                collectors.epsilon->isRunning(), detail);
+        }
     }
 #ifdef VAPORVIEW_HAS_OSGEARTH
     maybeForwardMap3DSample(
@@ -1223,13 +1588,38 @@ void MainWindow::onTemperatureControllerDataReady()
             return;
         }
         state_->current_temperature_controller_ = latest;
+        if (state_->rd105_device_session_ && !isRemoteSkyMode())
+        {
+            const bool available = collectors.temperature_controller->isRunning();
+            const QString detail = available
+                ? QStringLiteral("%1 @ %2")
+                      .arg(localSerialPortComboValue(state_->device_config_.temperature_port_combo),
+                           state_->device_config_.temperature_baud_combo
+                               ? state_->device_config_.temperature_baud_combo->currentText()
+                               : QStringLiteral("38400"))
+                : QString();
+            state_->rd105_device_session_->setLocalAvailable(available, detail);
+        }
     }
 }
 
 void MainWindow::onAi8TemperatureControllerDataReady()
 {
     const CollectorSnapshot collectors = snapshotCollectors();
-    if (collectors.ai8_temperature_controller && state_->ai8_temperature_controller_panel_)
+    const bool available = collectors.ai8_temperature_controller &&
+        collectors.ai8_temperature_controller->isRunning();
+    if (state_->ai8_device_session_ && !isRemoteSkyMode())
+    {
+        const QString detail = available
+            ? QStringLiteral("%1 @ %2")
+                  .arg(localSerialPortComboValue(state_->device_config_.ai8_temperature_port_combo),
+                       state_->device_config_.ai8_temperature_baud_combo
+                           ? state_->device_config_.ai8_temperature_baud_combo->currentText()
+                           : QStringLiteral("19200"))
+            : QString();
+        state_->ai8_device_session_->setLocalAvailable(available, detail);
+    }
+    if (available && state_->ai8_temperature_controller_panel_)
     {
         state_->ai8_temperature_controller_panel_->applyLiveData(
             collectors.ai8_temperature_controller->getLatestData());
@@ -1239,46 +1629,142 @@ void MainWindow::onAi8TemperatureControllerDataReady()
 
 void MainWindow::onAi8ReadPageRequested()
 {
-    if (!state_->ai8_temperature_controller_panel_ || !state_->local_connection_controller_)
+    if (!state_->ai8_temperature_controller_panel_ || !state_->ai8_device_session_)
     {
         return;
     }
     const auto requested = state_->ai8_temperature_controller_panel_->currentPageData();
-    state_->ai8_temperature_controller_panel_->setOperationStatus(
-        state_->is_english_ ? QStringLiteral("Reading current page...")
-                            : QStringLiteral("正在读取当前页…"),
-        true);
-    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-    const auto result = state_->local_connection_controller_->readAi8Page(
-        requested.page,
-        requested.selection);
-    if (result.success)
-    {
-        state_->ai8_temperature_controller_panel_->applyPageData(result.data);
-    }
-    state_->ai8_temperature_controller_panel_->setOperationStatus(result.message, result.success);
-    log(QStringLiteral("[AI-8288] %1").arg(result.message));
+    state_->ai8_device_session_->activatePage(requested.page, requested.selection);
+    state_->ai8_device_session_->readPage(requested.page, requested.selection);
 }
 
 void MainWindow::onAi8WritePageRequested()
 {
-    if (!state_->ai8_temperature_controller_panel_ || !state_->local_connection_controller_)
+    if (!state_->ai8_temperature_controller_panel_ || !state_->ai8_device_session_)
     {
         return;
     }
     const auto requested = state_->ai8_temperature_controller_panel_->currentPageData();
-    state_->ai8_temperature_controller_panel_->setOperationStatus(
-        state_->is_english_ ? QStringLiteral("Writing and reading back...")
-                            : QStringLiteral("正在写入并回读确认…"),
-        true);
-    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-    const auto result = state_->local_connection_controller_->writeAi8Page(requested);
-    if (result.success)
+    state_->ai8_device_session_->activatePage(requested.page, requested.selection);
+    state_->ai8_device_session_->writePage(requested);
+}
+
+void MainWindow::onAi8SessionAvailabilityChanged(bool available, const QString& reason)
+{
+    if (!state_->ai8_temperature_controller_panel_)
     {
-        state_->ai8_temperature_controller_panel_->applyPageData(result.data);
+        return;
     }
-    state_->ai8_temperature_controller_panel_->setOperationStatus(result.message, result.success);
-    log(QStringLiteral("[AI-8288] %1").arg(result.message));
+    state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(
+        available, available ? QString() : reason);
+}
+
+void MainWindow::onAi8SessionOperationStarted(
+    quint64 requestId, VaporView::Ground::Devices::Ai8Operation operation)
+{
+    Q_UNUSED(requestId);
+    if (!state_->ai8_temperature_controller_panel_)
+    {
+        return;
+    }
+    const bool writing = operation != VaporView::Ground::Devices::Ai8Operation::Read;
+    state_->ai8_temperature_controller_panel_->setOperationStatus(
+        writing
+            ? (state_->is_english_ ? QStringLiteral("Writing and reading back...")
+                                   : QStringLiteral("正在写入并回读确认…"))
+            : (state_->is_english_ ? QStringLiteral("Reading current page...")
+                                   : QStringLiteral("正在读取当前页…")),
+        true);
+    state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(
+        false,
+        state_->is_english_ ? QStringLiteral("Waiting for the device backend...")
+                            : QStringLiteral("正在等待设备后端响应…"));
+}
+
+void MainWindow::onAi8SessionOperationFinished(
+    const VaporView::Ground::Devices::Ai8SessionResult& result)
+{
+    if (!state_->ai8_temperature_controller_panel_ || !state_->ai8_device_session_)
+    {
+        return;
+    }
+
+    using Operation = VaporView::Ground::Devices::Ai8Operation;
+    using Outcome = VaporView::Ground::Devices::Ai8OperationOutcome;
+    QString statusText = result.message;
+    if (result.success())
+    {
+        statusText = result.operation == Operation::Read
+            ? (state_->is_english_ ? QStringLiteral("Parameters were read.")
+                                   : QStringLiteral("参数读取完成。"))
+            : (state_->is_english_
+                   ? QStringLiteral("Parameters were written and confirmed by read-back.")
+                   : QStringLiteral("参数已写入并回读确认。"));
+    }
+    else if (statusText.isEmpty())
+    {
+        statusText = state_->is_english_ ? QStringLiteral("AI-8 operation failed.")
+                                         : QStringLiteral("AI-8 操作失败。");
+    }
+
+    state_->ai8_temperature_controller_panel_->setOperationStatus(
+        statusText, result.success());
+    state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(
+        state_->ai8_device_session_->operationsAvailable(),
+        state_->ai8_device_session_->operationsAvailable() ? QString() : statusText);
+
+    QString operationName;
+    switch (result.operation)
+    {
+    case Operation::Read: operationName = QStringLiteral("read"); break;
+    case Operation::Write: operationName = QStringLiteral("write"); break;
+    case Operation::FactoryReset: operationName = QStringLiteral("factory_reset"); break;
+    }
+    QString outcomeName;
+    switch (result.outcome)
+    {
+    case Outcome::Success: outcomeName = QStringLiteral("success"); break;
+    case Outcome::Failed: outcomeName = QStringLiteral("failed"); break;
+    case Outcome::Timeout: outcomeName = QStringLiteral("timeout"); break;
+    case Outcome::Disconnected: outcomeName = QStringLiteral("disconnected"); break;
+    case Outcome::Unsupported: outcomeName = QStringLiteral("unsupported"); break;
+    }
+    QVariantMap fields{{QStringLiteral("device"), QStringLiteral("AI-8288")},
+                       {QStringLiteral("device_id"), QStringLiteral("ai8_temperature_controller")},
+                       {QStringLiteral("request_id"), result.request_id},
+                       {QStringLiteral("operation"), operationName},
+                       {QStringLiteral("outcome"), outcomeName},
+                       {QStringLiteral("page"), static_cast<int>(result.requested.page)},
+                       {QStringLiteral("channel"), result.requested.selection.channel},
+                       {QStringLiteral("input_group"), result.requested.selection.inputGroup},
+                       {QStringLiteral("output_group"), result.requested.selection.outputGroup},
+                       {QStringLiteral("command_error_code"),
+                        commandErrorCodeIdentifier(result.error_code)},
+                       {QStringLiteral("ui_visibility"), result.success()
+                            ? QStringLiteral("details") : QStringLiteral("attention")},
+                       {QStringLiteral("details"), statusText}};
+    if (!result.success())
+    {
+        fields.insert(QStringLiteral("error_code"), QStringLiteral("AI8_OPERATION_FAILED"));
+        fields.insert(QStringLiteral("ui_dedupe_key"),
+                      QStringLiteral("ai8:%1:%2").arg(operationName, outcomeName));
+    }
+    publishGroundLog(result.success() ? VaporView::LogLevel::Info : VaporView::LogLevel::Error,
+                     QStringLiteral("device.temperature.command"),
+                     result.success() ? QStringLiteral("ai8_operation_completed")
+                                      : QStringLiteral("ai8_operation_failed"),
+                     result.success() ? QStringLiteral("AI-8288 参数操作完成。")
+                                      : QStringLiteral("AI-8288 参数操作失败。"),
+                     fields);
+}
+
+void MainWindow::onAi8SessionPageDataAvailable(
+    const VaporView::Ai8TemperatureControllerProtocol::PageData& pageData)
+{
+    if (state_->ai8_temperature_controller_panel_)
+    {
+        state_->ai8_temperature_controller_panel_->applyPageData(pageData);
+    }
 }
 
 void MainWindow::onRefreshTimer()

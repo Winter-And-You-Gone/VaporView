@@ -15,9 +15,13 @@
 #include "ground/devices/RemoteTelemetryDecoder.h"
 #include "ground/devices/UiTestDataModel.h"
 #include "ground/devices/EpsilonConfigurationService.h"
+#include "ground/devices/EpsilonDeviceSession.h"
 #include "ground/devices/ImuConfigurationService.h"
+#include "ground/devices/Rd105DeviceSession.h"
 #include "ground/devices/DeviceRatePolicy.h"
 #include "ground/devices/LocalDeviceConnectionController.h"
+#include "ground/devices/Ai8DeviceSession.h"
+#include "ground/devices/LocalConnectionCoordinator.h"
 #include "ground/devices/RemoteSkyController.h"
 #include "ground/devices/SerialPortDetectionService.h"
 #include "ground/devices/TemperatureCommandState.h"
@@ -29,9 +33,10 @@
 #include "ground/widgets/DevicePanelCoordinator.h"
 #include "ground/widgets/TelemetryPanels.h"
 #include "ground/widgets/TemperatureControllerWidgets.h"
+#include "ground/navigation/CombinationNavigationPage.h"
+#include "ground/navigation/EpsilonConfigPanel.h"
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/session/SessionViewerWindow.h"
-#include "ground/widgets/SkyDeviceConfigDialog.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "LogService.h"
 #include "TcpWaveEncoding.h"
@@ -107,6 +112,7 @@
 #include <QSvgRenderer>
 #include <QSet>
 #include <QSignalBlocker>
+#include <QScopeGuard>
 #include <QSettings>
 #include <QStackedWidget>
 #include <QStandardItemModel>
@@ -115,6 +121,7 @@
 #include <QStyleOptionButton>
 #include <QStyleOptionSpinBox>
 #include <QStyleOptionToolButton>
+#include <QPlainTextEdit>
 #include <QTextDocument>
 #include <QThread>
 #include <QToolButton>
@@ -170,6 +177,8 @@ using VaporView::Ground::Widgets::DevicePanelRates;
 using VaporView::Ground::Widgets::createSingleLevelPopupComboBox;
 using VaporView::Ground::Widgets::createSourceModeOverviewSwitchButton;
 using VaporView::Ground::Widgets::createTemperatureControllerOverviewPanel;
+using VaporView::Ground::Navigation::CombinationNavigationPage;
+using VaporView::Ground::Navigation::EpsilonConfigPanel;
 using CollectorSnapshot = VaporView::Ground::Devices::CollectorSet;
 using VaporView::Ground::Devices::LocalSampleRateConfiguration;
 using VaporView::Ground::Devices::LocalSampleRateApplyResult;

@@ -2,6 +2,8 @@
 #include "shared/theme/TopLevelCardStyle.h"
 #include "ground/main/MainWindow.h"
 #include "ground/main/GroundMainWindowSupport.h"
+#include "ground/navigation/CombinationNavigationPage.h"
+#include "ground/navigation/EpsilonConfigPanel.h"
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/widgets/TelemetryPanels.h"
 #include "ground/widgets/VisualTextLabel.h"
@@ -21,9 +23,12 @@
 #include <QCoreApplication>
 #include <QDoubleSpinBox>
 #include <QDialog>
+#include <QFile>
+#include <QFont>
 #include <QFontMetrics>
 #include <QFrame>
 #include <QFocusEvent>
+#include <QGraphicsOpacityEffect>
 #include <QGroupBox>
 #include <QHoverEvent>
 #include <QIcon>
@@ -45,6 +50,7 @@
 #include <QStyleOptionFrame>
 #include <QStyleOptionSpinBox>
 #include <QPixmap>
+#include <QPropertyAnimation>
 #include <QSplitter>
 #include <QSpinBox>
 #include <QStackedWidget>
@@ -55,8 +61,10 @@
 #include <QTextOption>
 #include <QTimer>
 #include <QToolButton>
+#include <QVariantAnimation>
 #include <QWidget>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -1053,7 +1061,16 @@ void requireHomeDeviceColumnsAligned(QWidget *scope)
         {
             require(capsule->alignment().testFlag(Qt::AlignHCenter),
                     "home device capsule text is horizontally centered");
+            require(!capsule->text().startsWith(QChar(0x2022)),
+                    "home device capsule names omit the leading bullet");
         }
+    }
+
+    for (int i = 1; i < columns.size(); ++i)
+    {
+        const int gap = columns.at(i)->geometry().left() - columns.at(i - 1)->geometry().right() - 1;
+        require(gap == 6,
+                "home device columns keep a 6px gap between the previous action and next capsule");
     }
 }
 
@@ -1079,15 +1096,28 @@ void requireHomeDeviceMinimumWidthMatchesControls(QWidget *scope)
     const int controlsWidth = std::max(
         deviceGrid->minimumWidth(),
         std::max(deviceGrid->minimumSizeHint().width(), deviceGrid->sizeHint().width()));
+    auto *telemetrySummary = deviceBody->findChild<QWidget *>(
+        QStringLiteral("homeTelemetrySummaryContainer"));
+    int telemetrySummaryWidth = 0;
+    if (telemetrySummary)
+    {
+        telemetrySummaryWidth = telemetrySummary->minimumWidth();
+        if (QLayout *summaryLayout = telemetrySummary->layout())
+        {
+            summaryLayout->invalidate();
+            telemetrySummaryWidth = std::max(telemetrySummaryWidth,
+                                             summaryLayout->minimumSize().width());
+        }
+    }
     const QMargins cardMargins = deviceCard->layout()->contentsMargins();
     const QMargins bodyMargins = deviceBody->layout()->contentsMargins();
-    const int expectedMinimumWidth = controlsWidth +
+    const int expectedMinimumWidth = std::max(controlsWidth, telemetrySummaryWidth) +
                                      cardMargins.left() +
                                      cardMargins.right() +
                                      bodyMargins.left() +
                                      bodyMargins.right();
     require(deviceCard->minimumWidth() == expectedMinimumWidth,
-            "home device card minimum width follows only its seven capsules and action icons");
+            "home device card minimum width covers its controls and telemetry summary capsules");
 }
 
 void requireHomeDeviceGeometryStableAcrossCardResize(QWidget *scope,
@@ -1372,7 +1402,10 @@ void requireMenuRowsRespectRoundedVerticalPadding(QFrame *panel,
 
 void requireMainWindowOuterBorder(MainWindow& window, bool dark, const char *message);
 
-void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
+void requireRtkSidebarPage(
+    MainWindow& window,
+    QLabel *customTitleLabel,
+    bool requireStableFirstFrame = true)
 {
     QPushButton *homeButton = nullptr;
     QPushButton *temperatureButton = nullptr;
@@ -1391,7 +1424,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
         {
             temperatureButton = button;
         }
-        else if (accessibleName == QStringLiteral("RTK配置") || accessibleName == QStringLiteral("RTK Config"))
+        else if (accessibleName == QStringLiteral("组合导航") ||
+                 accessibleName == QStringLiteral("Combination Navigation"))
         {
             rtkButton = button;
         }
@@ -1400,19 +1434,35 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
             deviceButton = button;
         }
     }
-    require(temperatureButton != nullptr, "temperature sidebar button exists for RTK order check");
-    require(rtkButton != nullptr, "RTK sidebar button exists");
-    require(deviceButton != nullptr, "device configuration sidebar button exists for RTK order check");
-    require(homeButton != nullptr, "home sidebar button exists after RTK check");
+    require(temperatureButton != nullptr, "temperature sidebar button exists for combination-navigation order check");
+    require(rtkButton != nullptr, "combination-navigation sidebar button exists");
+    require(deviceButton != nullptr, "device configuration sidebar button exists for combination-navigation order check");
+    require(homeButton != nullptr, "home sidebar button exists after combination-navigation check");
     require(rtkButton->property("_vv_sidebar_icon_name").toString() == QStringLiteral("satellite"),
-            "RTK sidebar button uses satellite icon");
+            "combination-navigation sidebar button uses the existing satellite icon");
     require(homeButton->y() < deviceButton->y() &&
                 deviceButton->y() < temperatureButton->y() &&
                 temperatureButton->y() < rtkButton->y(),
-            "sidebar order is home, device configuration, thermal, RTK configuration");
+            "sidebar order is home, device configuration, thermal, combination navigation");
+    require(homeButton->focusPolicy() == Qt::TabFocus &&
+                deviceButton->focusPolicy() == Qt::TabFocus &&
+                temperatureButton->focusPolicy() == Qt::TabFocus &&
+                rtkButton->focusPolicy() == Qt::TabFocus,
+            "sidebar navigation buttons are reachable by keyboard tab focus");
+    homeButton->setFocus(Qt::OtherFocusReason);
+    QKeyEvent sidebarDown(QEvent::KeyPress, Qt::Key_Down, Qt::NoModifier);
+    QApplication::sendEvent(homeButton, &sidebarDown);
+    processEventsFor(60);
+    require(deviceButton->isChecked(),
+            "sidebar Down arrow moves page selection to device configuration");
+    QKeyEvent sidebarUp(QEvent::KeyPress, Qt::Key_Up, Qt::NoModifier);
+    QApplication::sendEvent(deviceButton, &sidebarUp);
+    processEventsFor(60);
+    require(homeButton->isChecked(),
+            "sidebar Up arrow moves page selection back to home");
     require(rtkButton->toolTip().contains(QStringLiteral("未启动")) ||
                 rtkButton->toolTip().contains(QStringLiteral("stopped")),
-            "RTK sidebar button starts with stopped status text");
+            "combination-navigation sidebar button starts with stopped RTK status text");
 
     const QList<QToolButton*> titleButtons = window.findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
     for (QToolButton *button : titleButtons)
@@ -1425,7 +1475,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     const qint64 stoppedIconKey = rtkButton->icon().pixmap(iconSize).cacheKey();
 
     auto *pageStack = window.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
-    require(pageStack != nullptr, "main page stack exists");
+    require(pageStack != nullptr && pageStack->count() == 4,
+            "main page stack keeps the existing four-page order");
     auto *preDialog = window.findChild<RtkConfigDialog *>();
     require(preDialog != nullptr, "embedded RTK dialog exists before sidebar click");
     auto *preGgaCard = findCardByTitle(preDialog,
@@ -1440,12 +1491,263 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     ResizeWidthRecorder logResizeRecorder(preLogCard);
     preGgaCard->installEventFilter(&ggaResizeRecorder);
     preLogCard->installEventFilter(&logResizeRecorder);
-    ggaResizeRecorder.reset();
-    logResizeRecorder.reset();
     clickWidget(rtkButton, 0);
     processEventsFor(150);
-    auto *dialog = qobject_cast<RtkConfigDialog *>(pageStack->currentWidget());
-    require(dialog != nullptr, "RTK config opens as an embedded sidebar page");
+    auto *combinationPage = qobject_cast<VaporView::Ground::Navigation::CombinationNavigationPage *>(
+        pageStack->currentWidget());
+    require(combinationPage != nullptr && pageStack->indexOf(combinationPage) == 3,
+            "combination navigation reuses the former RTK page index");
+    auto *combinationStack = combinationPage->findChild<QStackedWidget *>(
+        QStringLiteral("combinationNavigationStack"));
+    auto *combinationNavigationRow = combinationPage->findChild<QWidget *>(
+        QStringLiteral("combinationNavigationNavigationRow"));
+    auto *combinationNavigationBar = combinationPage->findChild<QFrame *>(
+        QStringLiteral("combinationNavigationNavigationBar"));
+    auto *combinationNavigationTrack = combinationPage->findChild<QFrame *>(
+        QStringLiteral("combinationNavigationNavigationTrack"));
+    auto *combinationNavigationSelectionThumb = combinationPage->findChild<QFrame *>(
+        QStringLiteral("combinationNavigationNavigationSelectionThumb"));
+    auto *combinationNavigationSelectionAnimation = combinationPage->findChild<QPropertyAnimation *>(
+        QStringLiteral("combinationNavigationNavigationSelectionAnimation"));
+    auto *statusButton = combinationPage->findChild<QPushButton *>(
+        QStringLiteral("combinationNavigationStatusButton"));
+    auto *epsilonButton = combinationPage->findChild<QPushButton *>(
+        QStringLiteral("combinationNavigationEpsilonButton"));
+    auto *differentialButton = combinationPage->findChild<QPushButton *>(
+        QStringLiteral("combinationNavigationDifferentialButton"));
+    auto *statusPage = combinationPage->findChild<QWidget *>(
+        QStringLiteral("combinationNavigationStatusPage"));
+    auto *epsilonPanel = combinationPage->epsilonConfigPanel();
+    auto *epsilonPage = combinationPage->findChild<QWidget *>(
+        QStringLiteral("combinationNavigationEpsilonPage"));
+    auto *statusScrollArea = combinationPage->findChild<QScrollArea *>(
+        QStringLiteral("navigationStatusScrollArea"));
+    auto *statusContent = combinationPage->findChild<QWidget *>(
+        QStringLiteral("navigationStatusContent"));
+    auto *epsilonScrollArea = combinationPage->findChild<QScrollArea *>(
+        QStringLiteral("epsilonConfigScrollArea"));
+    auto *epsilonContent = combinationPage->findChild<QWidget *>(
+        QStringLiteral("epsilonConfigContent"));
+    require(combinationNavigationRow != nullptr &&
+                combinationNavigationBar != nullptr && combinationNavigationBar->layout() != nullptr &&
+                combinationNavigationTrack != nullptr && combinationNavigationTrack->layout() != nullptr &&
+                combinationNavigationSelectionThumb != nullptr &&
+                combinationNavigationSelectionAnimation != nullptr &&
+                combinationStack != nullptr && combinationStack->count() == 3 &&
+                statusButton != nullptr && epsilonButton != nullptr && differentialButton != nullptr &&
+                statusPage != nullptr && epsilonPage != nullptr &&
+                statusScrollArea != nullptr && statusContent != nullptr && statusContent->layout() != nullptr &&
+                epsilonScrollArea != nullptr && epsilonContent != nullptr && epsilonContent->layout() != nullptr,
+            "combination navigation exposes three real buttons and three stacked pages");
+    require(combinationNavigationBar->height() == 36 &&
+                combinationNavigationTrack->parentWidget() == combinationNavigationBar &&
+                statusButton->parentWidget() == combinationNavigationTrack &&
+                epsilonButton->parentWidget() == combinationNavigationTrack &&
+                differentialButton->parentWidget() == combinationNavigationTrack &&
+                statusButton->height() == epsilonButton->height() &&
+                epsilonButton->height() == differentialButton->height() &&
+                statusButton->width() == epsilonButton->width() &&
+                epsilonButton->width() == differentialButton->width(),
+            "combination navigation uses an equal three-segment capsule layout");
+    require(std::abs(combinationNavigationBar->geometry().center().x() -
+                     combinationNavigationRow->rect().center().x()) <= 1,
+            "combination navigation bar is horizontally centered in its page row");
+    require(statusScrollArea->mapTo(combinationPage, QPoint(0, 0)).y() == 0 &&
+                epsilonScrollArea->mapTo(combinationPage, QPoint(0, 0)).y() == 0,
+            "combination-navigation scroll areas start at the page top behind the floating navigation");
+    require(combinationNavigationSelectionThumb->parentWidget() == combinationNavigationTrack &&
+                combinationNavigationSelectionThumb->geometry() == statusButton->geometry() &&
+                combinationNavigationSelectionAnimation->targetObject() == combinationNavigationSelectionThumb &&
+                combinationNavigationSelectionAnimation->duration() == 240,
+            "combination navigation centers the selected thumb and configures its slide animation");
+    const QPoint hoverPoint = epsilonButton->rect().center();
+    epsilonButton->setAttribute(Qt::WA_UnderMouse, true);
+    QEvent enterEvent(QEvent::Enter);
+    QCoreApplication::sendEvent(epsilonButton, &enterEvent);
+    moveMouseOverWidgetAt(epsilonButton, hoverPoint, 80);
+    const QImage hoverImage =
+        combinationNavigationBar->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    const qreal devicePixelRatio = hoverImage.devicePixelRatio();
+    const QPoint epsilonTopLeft =
+        epsilonButton->mapTo(combinationNavigationBar, QPoint(0, 0));
+    const QRect epsilonPixelRect(
+        qRound(epsilonTopLeft.x() * devicePixelRatio),
+        qRound(epsilonTopLeft.y() * devicePixelRatio),
+        qRound(epsilonButton->width() * devicePixelRatio),
+        qRound(epsilonButton->height() * devicePixelRatio));
+    const QColor hoverFill = VaporView::appThemeColor(
+        VaporView::AppThemeColor::PrimarySubtlePressed,
+        VaporView::isDarkThemeEnabled());
+    const int hoverInset = qMax(1, qRound(6.0 * devicePixelRatio));
+    const QRect hoverInterior = epsilonPixelRect.adjusted(
+        hoverInset, hoverInset, -hoverInset, -hoverInset);
+    require(countPixelsNearColor(hoverImage, hoverInterior, hoverFill, 12) <
+                qMax(1, hoverInterior.width() * hoverInterior.height() / 20),
+            "combination navigation hover does not add a background fill");
+    QEvent leaveEvent(QEvent::Leave);
+    QCoreApplication::sendEvent(epsilonButton, &leaveEvent);
+    epsilonButton->setAttribute(Qt::WA_UnderMouse, false);
+    require(combinationStack->currentWidget() == statusPage && statusButton->isChecked() &&
+                !epsilonButton->isChecked() && !differentialButton->isChecked(),
+            "combination navigation opens on the status page by default");
+    const std::array<std::pair<QPushButton *, QString>, 3> combinationButtons{{
+        {statusButton, QStringLiteral("状态")},
+        {epsilonButton, QStringLiteral("EPSILON")},
+        {differentialButton, QStringLiteral("差分定位")},
+    }};
+    for (const auto& [button, expectedText] : combinationButtons)
+    {
+        require(button->isCheckable() && button->text() == expectedText &&
+                    button->accessibleName() == expectedText &&
+                    button->focusPolicy() == Qt::TabFocus,
+                "combination-navigation buttons are real, named and keyboard-tab focusable");
+    }
+    require(combinationPage->styleSheet().contains(
+                QStringLiteral("QFrame#combinationNavigationNavigationTrack")) &&
+                combinationPage->styleSheet().contains(QStringLiteral(":checked")) &&
+                combinationPage->styleSheet().contains(QStringLiteral(":focus")) &&
+                combinationPage->styleSheet().contains(VaporView::appThemeColorName(
+                    VaporView::AppThemeColor::Focus, VaporView::isDarkThemeEnabled())),
+            "combination-navigation capsule keeps checked and focus theme styling");
+    require(combinationPage->findChildren<RtkConfigDialog *>().size() == 1 &&
+                combinationPage->differentialPage() == preDialog &&
+                combinationStack->indexOf(preDialog) == 2,
+            "combination navigation owns exactly the original embedded RTK page");
+    require(window.findChildren<VaporView::Ground::Navigation::CombinationNavigationPage *>().size() == 1 &&
+                window.findChildren<RtkConfigDialog *>().size() == 1,
+            "main window owns exactly one combination-navigation page and one RTK dialog");
+    auto *deviceConfigPageForBoundary =
+        window.findChild<QWidget *>(QStringLiteral("deviceConfigPage"));
+    int epsilonPacketRateControlCount = 0;
+    for (QComboBox *combo : window.findChildren<QComboBox *>())
+    {
+        if (combo->property("epsilonPacketId").isValid())
+        {
+            ++epsilonPacketRateControlCount;
+        }
+    }
+    int deviceConfigPacketRateControlCount = 0;
+    if (deviceConfigPageForBoundary)
+    {
+        for (QComboBox *combo : deviceConfigPageForBoundary->findChildren<QComboBox *>())
+        {
+            if (combo->property("epsilonPacketId").isValid())
+            {
+                ++deviceConfigPacketRateControlCount;
+            }
+        }
+    }
+    require(deviceConfigPageForBoundary != nullptr && epsilonPanel != nullptr &&
+                epsilonPacketRateControlCount == 11 && deviceConfigPacketRateControlCount == 0 &&
+                epsilonPage->isAncestorOf(epsilonPanel),
+            "the single detailed EPSILON configuration now belongs to Combination Navigation");
+    auto *rtkServiceStatus = combinationPage->findChild<QLabel *>(
+        QStringLiteral("navigationStatusRtkServiceValue"));
+    auto *gnssStatus = combinationPage->findChild<QLabel *>(
+        QStringLiteral("navigationStatusGnssValue"));
+    auto *positioningMode = combinationPage->findChild<QLabel *>(
+        QStringLiteral("navigationStatusFixValue"));
+    auto *ntripStatus = combinationPage->findChild<QLabel *>(
+        QStringLiteral("navigationStatusNtripValue"));
+    auto *rtcmStatus = combinationPage->findChild<QLabel *>(
+        QStringLiteral("navigationStatusRtcmValue"));
+    auto *longitudeValue = combinationPage->findChild<QLabel *>(
+        QStringLiteral("navigationStatusLongitudeValue"));
+    auto *differentialStatusCard = combinationPage->findChild<QFrame *>(
+        QStringLiteral("navigationStatusDifferentialCard"));
+    auto *statusSummaryCard = combinationPage->findChild<QFrame *>(
+        QStringLiteral("navigationStatusSummaryCard"));
+    auto *epsilonOutputCard = epsilonPanel
+        ? epsilonPanel->findChild<QFrame *>(QStringLiteral("epsilonOutputCard"))
+        : nullptr;
+    require(statusSummaryCard != nullptr && epsilonOutputCard != nullptr,
+            "combination-navigation exposes stable status and EPSILON card anchors");
+    ResizeWidthRecorder statusSummaryResizeRecorder(statusSummaryCard);
+    ResizeWidthRecorder epsilonOutputResizeRecorder(epsilonOutputCard);
+    ResizeWidthRecorder differentialGgaResizeRecorder(preGgaCard);
+    statusSummaryCard->installEventFilter(&statusSummaryResizeRecorder);
+    epsilonOutputCard->installEventFilter(&epsilonOutputResizeRecorder);
+    preGgaCard->installEventFilter(&differentialGgaResizeRecorder);
+    require(rtkServiceStatus != nullptr && gnssStatus != nullptr && positioningMode != nullptr &&
+                ntripStatus != nullptr && rtcmStatus != nullptr &&
+                longitudeValue != nullptr && differentialStatusCard != nullptr &&
+                differentialStatusCard->isVisible() &&
+                ntripStatus->text() == QStringLiteral("--") && rtcmStatus->text() == QStringLiteral("--"),
+            "status page keeps its differential region without fabricating NTRIP or RTCM health state");
+    VaporView::Ground::Navigation::CombinationNavigationPage::StatusSnapshot sampleStatus;
+    sampleStatus.epsilonOnline = true;
+    sampleStatus.epsilonDataFresh = true;
+    sampleStatus.navigationDataAvailable = true;
+    sampleStatus.gnssFixText = QStringLiteral("RTK_FIXED");
+    sampleStatus.gnssQualityAvailable = true;
+    sampleStatus.satelliteCount = 24;
+    sampleStatus.horizontalAccuracyM = 0.015;
+    sampleStatus.rtkServiceRunning = true;
+    sampleStatus.positionAvailable = true;
+    sampleStatus.longitudeDeg = 120.14530;
+    sampleStatus.latitudeDeg = 30.24620;
+    sampleStatus.heightM = 42.5;
+    combinationPage->setStatusSnapshot(sampleStatus);
+    require(rtkServiceStatus->text().contains(QStringLiteral("运行中")) &&
+                longitudeValue->text() != QStringLiteral("--") &&
+                ntripStatus->text() == QStringLiteral("--") &&
+                rtcmStatus->text() == QStringLiteral("--"),
+            "status page displays reliable navigation and RTK-service data without inferring connection health");
+    combinationPage->refreshStatus();
+    require(gnssStatus->text() == QStringLiteral("--") &&
+                positioningMode->text() == QStringLiteral("--") &&
+                longitudeValue->text() == QStringLiteral("--"),
+            "local provider keeps GNSS fix and position unavailable without field-level freshness");
+    auto *unsavedRtkServerEdit =
+        preDialog->findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
+    require(unsavedRtkServerEdit != nullptr,
+            "RTK server input exists for page-switch persistence testing");
+    const QString originalRtkServer = unsavedRtkServerEdit->text();
+    const QString unsavedRtkServer = QStringLiteral("unsaved-combination-navigation.test");
+    unsavedRtkServerEdit->setText(unsavedRtkServer);
+    statusSummaryResizeRecorder.reset();
+    epsilonOutputResizeRecorder.reset();
+    differentialGgaResizeRecorder.reset();
+    epsilonButton->setFocus(Qt::TabFocusReason);
+    QKeyEvent epsilonSpacePress(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier);
+    QKeyEvent epsilonSpaceRelease(QEvent::KeyRelease, Qt::Key_Space, Qt::NoModifier);
+    QApplication::sendEvent(epsilonButton, &epsilonSpacePress);
+    QApplication::sendEvent(epsilonButton, &epsilonSpaceRelease);
+    processEventsFor(50);
+    require(combinationStack->currentWidget() == epsilonPage && epsilonButton->isChecked(),
+            "combination navigation switches from status to EPSILON by keyboard");
+    require(!epsilonOutputResizeRecorder.observedWidthDifferentFrom(epsilonOutputCard->width()),
+            "status to EPSILON switching keeps the packet-rate card width stable");
+    require(combinationNavigationSelectionAnimation->state() == QAbstractAnimation::Running,
+            "combination navigation starts the selected-thumb animation when switching sections");
+    processEventsFor(250);
+    require(combinationNavigationSelectionThumb->geometry() == epsilonButton->geometry(),
+            "combination navigation settles the selected thumb on the new section");
+    ggaResizeRecorder.reset();
+    logResizeRecorder.reset();
+    statusSummaryResizeRecorder.reset();
+    epsilonOutputResizeRecorder.reset();
+    differentialGgaResizeRecorder.reset();
+    clickWidget(differentialButton, 0);
+    processEventsFor(150);
+    auto *dialog = qobject_cast<RtkConfigDialog *>(combinationStack->currentWidget());
+    require(dialog == preDialog && differentialButton->isChecked(),
+            "combination navigation switches from EPSILON to the original RTK page");
+    require(!differentialGgaResizeRecorder.observedWidthDifferentFrom(preGgaCard->width()),
+            "EPSILON to differential switching keeps the RTK card width stable");
+    require(unsavedRtkServerEdit->text() == unsavedRtkServer,
+            "switching internal pages preserves unsaved RTK input");
+    clickWidget(epsilonButton, 0);
+    processEventsFor(50);
+    require(combinationStack->currentWidget() == epsilonPage &&
+                combinationPage->epsilonConfigPanel() == epsilonPanel,
+            "returning from differential positioning reuses the same EPSILON panel instance");
+    clickWidget(differentialButton, 0);
+    processEventsFor(50);
+    require(combinationStack->currentWidget() == preDialog &&
+                unsavedRtkServerEdit->text() == unsavedRtkServer,
+            "status, EPSILON, differential and EPSILON switching preserves the original RTK page");
+    unsavedRtkServerEdit->setText(originalRtkServer);
     require(dialog->isVisible(), "embedded RTK config page is visible after sidebar click");
     auto *initialGgaCard = findCardByTitle(dialog,
                                            {QStringLiteral("GGA 监视"),
@@ -1455,25 +1757,58 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                                             QStringLiteral("RTK Service Log")});
     require(initialGgaCard != nullptr && initialLogCard != nullptr,
             "RTK GGA and log cards are visible after sidebar click");
-    require(!ggaResizeRecorder.observedWidthDifferentFrom(initialGgaCard->width()) &&
-                !logResizeRecorder.observedWidthDifferentFrom(initialLogCard->width()),
-            "RTK GGA and service log cards keep a stable first-frame width");
+    if (requireStableFirstFrame)
+    {
+        const bool firstFrameWidthsStable =
+            !ggaResizeRecorder.observedWidthDifferentFrom(initialGgaCard->width()) &&
+            !logResizeRecorder.observedWidthDifferentFrom(initialLogCard->width());
+        if (!firstFrameWidthsStable)
+        {
+            auto *firstFrameScroll = dialog->findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea"));
+            std::cerr << "RTK first-frame width change: viewport="
+                      << (firstFrameScroll ? firstFrameScroll->viewport()->size().width() : -1)
+                      << 'x' << (firstFrameScroll ? firstFrameScroll->viewport()->size().height() : -1)
+                      << " content="
+                      << (firstFrameScroll && firstFrameScroll->widget()
+                              ? firstFrameScroll->widget()->size().width()
+                              : -1)
+                      << 'x' << (firstFrameScroll && firstFrameScroll->widget()
+                              ? firstFrameScroll->widget()->size().height()
+                              : -1)
+                      << " verticalMaximum="
+                      << (firstFrameScroll ? firstFrameScroll->verticalScrollBar()->maximum() : -1)
+                      << '\n';
+        }
+        require(firstFrameWidthsStable,
+                "RTK GGA and service log cards keep a stable first-frame width");
+    }
     activateLayouts(dialog);
     processEventsFor(100);
     requireLabelTextOneOf(customTitleLabel,
-                          {QStringLiteral("RTK配置"), QStringLiteral("RTK Config")},
-                          "custom title bar follows the selected RTK page");
+                          {QStringLiteral("组合导航"), QStringLiteral("Combination Navigation")},
+                          "custom title bar follows the selected combination-navigation page");
+    statusSummaryResizeRecorder.reset();
+    clickWidget(statusButton, 0);
+    processEventsFor(50);
+    require(combinationStack->currentWidget() == statusPage && statusButton->isChecked(),
+            "combination navigation switches from differential positioning back to status");
+    require(!statusSummaryResizeRecorder.observedWidthDifferentFrom(statusSummaryCard->width()),
+            "differential to status switching keeps the status card width stable");
+    clickWidget(differentialButton, 0);
+    processEventsFor(100);
+    require(combinationStack->currentWidget() == dialog && differentialButton->isChecked(),
+            "combination navigation returns to the same RTK page instance");
     auto *rtkScrollArea = dialog->findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea"));
     require(rtkScrollArea != nullptr, "RTK config page uses a scroll area");
+    require(rtkScrollArea->mapTo(combinationPage, QPoint(0, 0)).y() == 0,
+            "RTK differential scroll area starts at the page top behind the floating navigation");
     require(rtkScrollArea->horizontalScrollBar() != nullptr &&
                 rtkScrollArea->horizontalScrollBar()->maximum() == 0,
             "RTK config page avoids a horizontal scrollbar at the default window size");
-    require(rtkScrollArea->verticalScrollBar() != nullptr &&
-                rtkScrollArea->verticalScrollBar()->maximum() == 0 &&
-                !rtkScrollArea->verticalScrollBar()->isVisible(),
-            "RTK config page hides its unused vertical scrollbar at the default window size");
+    require(rtkScrollArea->horizontalScrollBarPolicy() == Qt::ScrollBarAlwaysOff &&
+                rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
+            "RTK config page forbids horizontal scrolling and reserves a stable vertical rail");
     const std::vector<std::pair<QString, int>> compactCombos = {
-        {QStringLiteral("rtkMountpointCombo"), 180},
         {QStringLiteral("rtkOutputPortCombo"), 100},
         {QStringLiteral("rtkBaudrateCombo"), 130},
         {QStringLiteral("rtkTimeoutCombo"), 115},
@@ -1487,17 +1822,17 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
         require(combo->width() <= maxWidth,
                 "RTK combo width stays compact");
     }
-    const std::vector<std::pair<QString, int>> compactLineEdits = {
-        {QStringLiteral("rtkServerEdit"), 170},
-        {QStringLiteral("rtkUsernameEdit"), 170},
-        {QStringLiteral("rtkPasswordEdit"), 170},
+    const std::vector<std::pair<QString, int>> usableLineEdits = {
+        {QStringLiteral("rtkServerEdit"), 110},
+        {QStringLiteral("rtkUsernameEdit"), 100},
+        {QStringLiteral("rtkPasswordEdit"), 110},
     };
-    for (const auto& [objectName, maxWidth] : compactLineEdits)
+    for (const auto& [objectName, minWidth] : usableLineEdits)
     {
         auto *lineEdit = dialog->findChild<QLineEdit *>(objectName);
-        require(lineEdit != nullptr, "compact RTK line edit exists");
-        require(lineEdit->width() <= maxWidth,
-                "RTK server/account line edit width stays compact");
+        require(lineEdit != nullptr, "usable RTK line edit exists");
+        require(lineEdit->width() >= minWidth,
+                "RTK server/account line edit keeps usable horizontal space");
     }
     auto widgetX = [dialog](QWidget *widget) {
         return widget->mapTo(dialog, QPoint(0, 0)).x();
@@ -1517,20 +1852,17 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     };
     const std::vector<std::tuple<QStringList, QString, const char*>> rtkCards = {
         {{QStringLiteral("NTRIP 服务器配置"), QStringLiteral("NTRIP Server Configuration")},
-         QStringLiteral("satellite"),
-         "RTK NTRIP card uses the standard icon title bar"},
+          QStringLiteral("satellite"),
+          "RTK NTRIP card uses the standard icon title bar"},
         {{QStringLiteral("RTCM 输出配置"), QStringLiteral("RTCM Output Configuration")},
-         QStringLiteral("usb"),
-         "RTK RTCM output card uses the standard icon title bar"},
+          QStringLiteral("usb"),
+          "RTK RTCM output card uses the standard icon title bar"},
         {{QStringLiteral("GGA 监视"), QStringLiteral("GGA Monitor")},
-         QStringLiteral("activity"),
-         "RTK GGA monitor card uses the standard icon title bar"},
+          QStringLiteral("activity"),
+          "RTK GGA monitor card uses the standard icon title bar"},
         {{QStringLiteral("RTK 服务日志"), QStringLiteral("RTK Service Log")},
-         QStringLiteral("scroll-text"),
-         "RTK service log card uses the standard icon title bar"},
-        {{QStringLiteral("服务操作"), QStringLiteral("Service Actions")},
-         QStringLiteral("play"),
-         "RTK service action card uses the standard icon title bar"},
+          QStringLiteral("scroll-text"),
+          "RTK service-log card uses the standard icon title bar"},
     };
     for (const auto& [titles, iconName, message] : rtkCards)
     {
@@ -1548,21 +1880,51 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                                      {QStringLiteral("RTCM 输出配置"),
                                       QStringLiteral("RTCM Output Configuration")});
     require(ntripCard != nullptr && rtcmCard != nullptr,
-            "RTK NTRIP and RTCM cards exist for compact width checks");
+            "RTK NTRIP and EPSILON data-path cards exist for layout checks");
     constexpr int kExpectedPageLeftInset =
         VaporView::Ground::MainSupport::kMainContentLeftCardInset;
     constexpr int kExpectedPageRightGap =
         VaporView::Ground::MainSupport::kMainContentRightCardInset;
-    constexpr int kExpectedVerticalScrollBarWidth =
-        VaporView::Ground::MainSupport::kMainContentVerticalScrollBarWidth;
-    constexpr int kExpectedPageRightInsetWithoutScrollBar =
-        kExpectedPageRightGap + kExpectedVerticalScrollBarWidth;
     constexpr int kExpectedPageChromeInset =
         VaporView::Ground::MainSupport::kTopLevelCardOuterVerticalInset;
     constexpr int kExpectedTopLevelCardGap =
         VaporView::Ground::MainSupport::kTopLevelCardGap;
+    const int expectedCombinationNavigationTopInset = combinationNavigationRow->height();
     require(kExpectedTopLevelCardGap == 12,
             "top-level cards keep the requested 12px spacing rhythm");
+    const auto requireCombinationPageRightInset =
+        [&](QScrollArea *scrollArea, QWidget *content, const char *message) {
+            require(scrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn &&
+                        content->layout()->contentsMargins().right() == kExpectedPageRightGap,
+                    message);
+        };
+    const auto requireStableVerticalScrollBarVisibility =
+        [](QScrollArea *scrollArea, const char *message) {
+            auto *effect = qobject_cast<QGraphicsOpacityEffect *>(
+                scrollArea->verticalScrollBar()->graphicsEffect());
+            const qreal expectedOpacity =
+                scrollArea->verticalScrollBar()->maximum() >
+                        scrollArea->verticalScrollBar()->minimum()
+                    ? 1.0
+                    : 0.0;
+            require(effect != nullptr &&
+                        std::abs(effect->opacity() - expectedOpacity) < 0.01,
+                    message);
+        };
+    requireCombinationPageRightInset(
+        statusScrollArea,
+        statusContent,
+        "combination-navigation status page reserves a stable scrollbar rail and right inset");
+    requireCombinationPageRightInset(
+        epsilonScrollArea,
+        epsilonContent,
+        "combination-navigation EPSILON page reserves a stable scrollbar rail and right inset");
+    requireStableVerticalScrollBarVisibility(
+        statusScrollArea,
+        "combination-navigation status scrollbar is transparent when no scrolling is needed");
+    requireStableVerticalScrollBarVisibility(
+        epsilonScrollArea,
+        "combination-navigation EPSILON scrollbar is transparent when no scrolling is needed");
     auto widgetRectInCentralForRtk = [&window](QWidget *widget) {
         return QRect(widget->mapTo(window.centralWidget(), QPoint(0, 0)), widget->size());
     };
@@ -1573,24 +1935,28 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
         return rect.top() + rect.height();
     };
     require(std::abs(widgetRectInCentralForRtk(ntripCard).left() -
-                     (widgetRectInCentralForRtk(pageStack).left() +
+                     (widgetRectInCentralForRtk(dialog).left() +
                       kExpectedPageLeftInset)) <= 1,
-            "RTK page keeps the shared 18px sidebar-to-card gap");
+            "RTK differential page keeps its shared 18px card inset without an extra wrapper margin");
     require(std::abs(widgetRectInCentralForRtk(ntripCard).top() -
-                     (widgetRectInCentralForRtk(pageStack).top() +
+                     (widgetRectInCentralForRtk(dialog).top() +
+                      expectedCombinationNavigationTopInset +
                       kExpectedPageChromeInset)) <= 1,
-            "RTK page keeps the compact top inset that balances the app chrome");
+            "RTK differential page keeps its own compact top inset below the floating sub-navigation");
     auto *rtkContent = dialog->findChild<QWidget *>(QStringLiteral("rtkConfigContent"));
     require(rtkContent != nullptr && rtkContent->layout() != nullptr,
             "RTK embedded content exposes its page layout");
-    require(rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAsNeeded,
-            "RTK embedded page only shows its scrollbar when content needs it");
+    require(rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
+            "RTK embedded page reserves the same stable scrollbar rail as its sibling pages");
+    requireStableVerticalScrollBarVisibility(
+        rtkScrollArea,
+        "RTK embedded scrollbar is transparent when no scrolling is needed");
     require(rtkContent->layout()->contentsMargins() ==
                 QMargins(kExpectedPageLeftInset,
-                         kExpectedPageChromeInset,
-                         kExpectedPageRightInsetWithoutScrollBar,
+                         expectedCombinationNavigationTopInset + kExpectedPageChromeInset,
+                         kExpectedPageRightGap,
                          kExpectedPageChromeInset),
-            "RTK embedded page reserves the hidden-scrollbar width in its right card inset");
+            "RTK embedded page keeps the shared insets below the floating sub-navigation");
     require(rtkContent->layout()->spacing() == kExpectedTopLevelCardGap,
             "RTK embedded page uses the shared top-level card gap");
     auto *ggaCard = findCardByTitle(dialog,
@@ -1600,55 +1966,40 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                                     {QStringLiteral("RTK 服务日志"),
                                      QStringLiteral("RTK Service Log")});
     auto *actionCard = findCardByTitle(dialog,
-                                       {QStringLiteral("服务操作"),
-                                        QStringLiteral("Service Actions")});
-    require(ggaCard != nullptr && logCard != nullptr && actionCard != nullptr,
-            "RTK GGA, log, and service action cards exist for compact stacking checks");
+                                      {QStringLiteral("服务操作"),
+                                       QStringLiteral("Service Operations")});
+    require(ggaCard != nullptr && logCard != nullptr && actionCard != nullptr &&
+                dialog->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox")).size() == 5,
+            "RTK page exposes five business-level cards including service operations");
     const QRect ntripCardRect = widgetRectInCentralForRtk(ntripCard);
     const QRect ggaCardRect = widgetRectInCentralForRtk(ggaCard);
     const QRect rtcmCardRect = widgetRectInCentralForRtk(rtcmCard);
     const QRect logCardRect = widgetRectInCentralForRtk(logCard);
     const QRect actionCardRect = widgetRectInCentralForRtk(actionCard);
-    require(std::abs((ggaCardRect.left() - rightEdgeForRtk(ntripCardRect)) -
-                     kExpectedTopLevelCardGap) <= 1,
-            "RTK top row cards keep the shared horizontal gap");
-    require(std::abs((rtcmCardRect.top() -
-                      std::max(bottomEdgeForRtk(ntripCardRect), bottomEdgeForRtk(ggaCardRect))) -
-                     kExpectedTopLevelCardGap) <= 1,
-            "RTK second row keeps the shared vertical gap");
-    require(std::abs((logCardRect.left() - rightEdgeForRtk(rtcmCardRect)) -
-                     kExpectedTopLevelCardGap) <= 1,
-            "RTK RTCM and log cards keep the shared horizontal gap");
+    require(std::abs(ggaCardRect.top() - ntripCardRect.top()) <= 1 &&
+                std::abs((ggaCardRect.left() - rightEdgeForRtk(ntripCardRect)) -
+                         kExpectedTopLevelCardGap) <= 1 &&
+                ntripCardRect.width() > ggaCardRect.width() &&
+                ntripCardRect.width() >= ggaCardRect.width() * 1.25,
+            "RTK NTRIP and GGA cards share the wide-left first row");
+    require(std::abs(logCardRect.top() - rtcmCardRect.top()) <= 1 &&
+                std::abs((logCardRect.left() - rightEdgeForRtk(rtcmCardRect)) -
+                         kExpectedTopLevelCardGap) <= 1 &&
+                logCardRect.width() > rtcmCardRect.width() &&
+                logCardRect.width() >= rtcmCardRect.width() * 1.25 &&
+                std::abs((rtcmCardRect.top() - bottomEdgeForRtk(ntripCardRect)) -
+                         kExpectedTopLevelCardGap) <= 1,
+            "RTK RTCM and service-log cards share the wide-right second row");
+    require(std::abs(ggaCardRect.height() - ntripCardRect.height()) <= 1 &&
+                std::abs(logCardRect.height() - rtcmCardRect.height()) <= 1,
+            "RTK cards in each visual row use equal heights");
     require(std::abs((actionCardRect.top() -
                       std::max(bottomEdgeForRtk(rtcmCardRect), bottomEdgeForRtk(logCardRect))) -
-                     kExpectedTopLevelCardGap) <= 1,
-            "RTK service action card keeps the shared vertical gap");
-    require(ntripCard->width() <= ntripCard->sizeHint().width() + 4 &&
-                ntripCard->width() <= 760,
-            "RTK NTRIP card width hugs its compact form contents");
-    require(rtcmCard->width() <= rtcmCard->sizeHint().width() + 4,
-            "RTK RTCM output card width hugs its compact form contents");
-    require(std::abs(widgetY(ggaCard) - widgetY(ntripCard)) <= 2 &&
-                widgetX(ggaCard) >= widgetX(ntripCard) + ntripCard->width(),
-            "RTK GGA monitor card sits in the first row to the right of NTRIP");
-    require(widgetY(rtcmCard) >= widgetY(ntripCard) + ntripCard->height() - 2,
-            "RTK RTCM output card sits below the first row");
-    if (!(std::abs(widgetY(logCard) - widgetY(rtcmCard)) <= 2 &&
-          widgetX(logCard) >= widgetX(rtcmCard) + rtcmCard->width()))
-    {
-        std::cerr << "RTCM card: x=" << widgetX(rtcmCard) << " y=" << widgetY(rtcmCard)
-                  << " w=" << rtcmCard->width() << " h=" << rtcmCard->height()
-                  << " sizeHint=" << rtcmCard->sizeHint().width() << 'x' << rtcmCard->sizeHint().height()
-                  << " log card: x=" << widgetX(logCard) << " y=" << widgetY(logCard)
-                  << " w=" << logCard->width() << " h=" << logCard->height()
-                  << " sizeHint=" << logCard->sizeHint().width() << 'x' << logCard->sizeHint().height()
-                  << " dialog=" << dialog->width() << 'x' << dialog->height() << '\n';
-    }
-    require(std::abs(widgetY(logCard) - widgetY(rtcmCard)) <= 2 &&
-                widgetX(logCard) >= widgetX(rtcmCard) + rtcmCard->width(),
-            "RTK service log card sits to the right of the RTCM card");
-    require(std::abs(logCard->height() - rtcmCard->height()) <= 2,
-            "RTK service log card matches the RTCM output card height");
+                     kExpectedTopLevelCardGap) <= 1 &&
+                std::abs(ntripCardRect.left() - actionCardRect.left()) <= 1 &&
+                std::abs((ntripCardRect.width() + kExpectedTopLevelCardGap + ggaCardRect.width()) -
+                         actionCardRect.width()) <= 1,
+            "RTK service operations form a full-width final row after RTCM and the log");
     auto *rtkServiceLogText = dialog->findChild<QTextEdit *>(QStringLiteral("rtkServiceLogTextEdit"));
     require(rtkServiceLogText != nullptr, "RTK service log text area exists");
     require(rtkServiceLogText->lineWrapMode() == QTextEdit::WidgetWidth,
@@ -1679,13 +2030,11 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                 logPlainText.contains(QStringLiteral("    - 已检查 5500 B")) &&
                 logPlainText.contains(QStringLiteral("    - 首字节 0D 0A D3 00 13")),
             "RTK service log keeps RTCM diagnostic details on separate indented lines");
-    require(actionCard->width() >= dialog->width() - 40,
-            "RTK bottom actions are collected in a full-width service card");
     auto *rtkActionStatusLabel = dialog->findChild<QLabel *>(QStringLiteral("rtkStatusLabel"));
     auto *rtkActionStatusIcon = dialog->findChild<QLabel *>(QStringLiteral("rtkStatusIcon"));
     QLabel *actionTitleLabel = findLabelByText(actionCard,
                                                {QStringLiteral("服务操作"),
-                                                QStringLiteral("Service Actions")});
+                                                QStringLiteral("Service Operations")});
     QWidget *actionTitleBar = nullptr;
     for (QWidget *titleBar : actionCard->findChildren<QWidget *>(QStringLiteral("sectionTitleBar")))
     {
@@ -1697,13 +2046,13 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     }
     require(rtkActionStatusLabel != nullptr && rtkActionStatusIcon != nullptr &&
                 actionTitleLabel != nullptr && actionTitleBar != nullptr,
-            "RTK service action title bar contains status text and icon");
+            "RTK service-operations title bar contains service status text and icon");
     require(actionTitleBar->isAncestorOf(rtkActionStatusLabel) &&
                 actionTitleBar->isAncestorOf(rtkActionStatusIcon),
-            "RTK service status is placed in the service action title bar");
+            "RTK service status is placed in the service-operations title bar");
     require(widgetX(rtkActionStatusIcon) > widgetX(actionTitleLabel) + actionTitleLabel->width() &&
                 widgetX(rtkActionStatusLabel) > widgetX(rtkActionStatusIcon),
-            "RTK service status sits to the right of the service action title");
+            "RTK service status sits to the right of the service-operations title");
     require(rtkActionStatusLabel->text().startsWith(QStringLiteral("状态:")) ||
                 rtkActionStatusLabel->text().startsWith(QStringLiteral("Status:")),
             "RTK service status text remains visible in the title bar");
@@ -1754,24 +2103,40 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
         require(std::abs(button->height() - rtkInputHeight) <= 1,
                 "RTK tool buttons match the input field height");
     }
-    require(std::abs(widgetX(serverEdit) - widgetX(usernameEdit)) <= 2,
-            "RTK NTRIP server and username fields align vertically");
-    require(std::abs(serverEdit->width() - usernameEdit->width()) <= 1,
-            "RTK NTRIP server address field matches the username field width");
-    require(std::abs(widgetX(portEdit) - widgetX(passwordEdit)) <= 2,
-            "RTK NTRIP port and password fields align vertically");
-    require(passwordEdit->width() > portEdit->width() + 40,
-            "RTK NTRIP staggered password field keeps a usable width");
-    require(std::abs((widgetX(passwordEdit) + passwordEdit->width()) - widgetX(mountpointCombo)) <= 10,
-            "RTK NTRIP staggered password field spans under the port field and mountpoint label");
-    require(widgetX(mountpointCombo) > widgetX(portEdit) &&
-                widgetX(mountpointCombo) - (widgetX(portEdit) + portEdit->width()) <= 90,
-            "RTK NTRIP mountpoint field follows closely after the port field");
-    require(std::abs(widgetX(fetchMountpointsButton) - widgetX(mountpointCombo)) <= 2 &&
-                widgetY(fetchMountpointsButton) > widgetY(mountpointCombo),
-            "RTK NTRIP mountpoint detection button sits below and aligns with the mountpoint combo");
-    require(std::abs(fetchMountpointsButton->width() - mountpointCombo->width()) <= 2,
-            "RTK NTRIP mountpoint combo matches the detect button width");
+    require(std::abs(widgetY(serverEdit) - widgetY(portEdit)) <= 2 &&
+                std::abs(widgetY(serverEdit) - widgetY(mountpointCombo)) <= 2 &&
+                widgetX(serverEdit) < widgetX(portEdit) &&
+                widgetX(portEdit) < widgetX(mountpointCombo),
+            "RTK NTRIP server, port, and mountpoint fields share the first row");
+    require(widgetY(usernameEdit) > widgetY(serverEdit) &&
+                std::abs(widgetY(usernameEdit) - widgetY(passwordEdit)) <= 2 &&
+                std::abs(widgetY(usernameEdit) - widgetY(fetchMountpointsButton)) <= 2 &&
+                widgetX(usernameEdit) < widgetX(passwordEdit) &&
+                widgetX(fetchMountpointsButton) > widgetX(passwordEdit) + passwordEdit->width(),
+            "RTK NTRIP credentials and mountpoint detection share the second row");
+    require(passwordEdit->width() >= 110 && mountpointCombo->width() >= 150,
+            "RTK NTRIP password and mountpoint fields keep useful horizontal space");
+    auto *ntripPanel = dialog->findChild<QWidget *>(QStringLiteral("rtkNtripConfigPanel"));
+    auto *testConnectionButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkTestConnectionButton"));
+    auto *startButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkStartButton"));
+    auto *stopButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkStopButton"));
+    auto *clearLogButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkClearLogButton"));
+    auto *serviceOperationsPanel =
+        dialog->findChild<QWidget *>(QStringLiteral("rtkServiceOperationsPanel"));
+    require(ntripPanel && serviceOperationsPanel && testConnectionButton && startButton &&
+                stopButton && clearLogButton &&
+                serviceOperationsPanel->isAncestorOf(startButton) &&
+                serviceOperationsPanel->isAncestorOf(stopButton) &&
+                serviceOperationsPanel->isAncestorOf(testConnectionButton) &&
+                serviceOperationsPanel->isAncestorOf(clearLogButton),
+            "RTK connection actions are collected inside the bottom service-operations panel");
+    require(std::abs(widgetY(testConnectionButton) - widgetY(startButton)) <= 2 &&
+                std::abs(widgetY(startButton) - widgetY(stopButton)) <= 2 &&
+                std::abs(widgetY(stopButton) - widgetY(clearLogButton)) <= 2 &&
+                widgetX(startButton) < widgetX(stopButton) &&
+                widgetX(stopButton) < widgetX(testConnectionButton) &&
+                widgetX(testConnectionButton) < widgetX(clearLogButton),
+            "RTK start, stop, test, and clear actions form one ordered operation group");
     auto *ggaSourceCombo = dialog->findChild<QComboBox *>(QStringLiteral("rtkGgaPortCombo"));
     auto *ggaToggleButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkGgaToggleButton"));
     auto *ggaOutputText = dialog->findChild<QTextEdit *>(QStringLiteral("rtkGgaTextEdit"));
@@ -1804,9 +2169,11 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                 "RTK GGA source combo does not include blank separator rows");
     }
     const int compactGgaSourceWidth =
-        ggaSourceCombo->fontMetrics().horizontalAdvance(ggaSourceCombo->currentText()) + 84;
-    require(ggaSourceCombo->width() <= compactGgaSourceWidth,
-            "RTK GGA source combo width hugs the Epsilon generated label");
+        ggaSourceCombo->fontMetrics().horizontalAdvance(ggaSourceCombo->currentText()) + 120;
+    require(ggaSourceCombo->width() <= compactGgaSourceWidth &&
+                ggaSourceCombo->width() >= ggaSourceCombo->fontMetrics().horizontalAdvance(
+                    ggaSourceCombo->currentText()) + 32,
+            "RTK GGA source combo keeps usable compact title-row width");
     require(ggaSourceCombo->lineEdit() != nullptr,
             "RTK GGA source combo exposes its editable text field");
     const int ggaSourceTextWidth =
@@ -1816,8 +2183,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(ggaToggleButton->text() == QStringLiteral("读取") ||
                 ggaToggleButton->text() == QStringLiteral("Read"),
             "RTK GGA idle action uses a compact read label");
-    require(ggaToggleButton->focusPolicy() == Qt::NoFocus,
-            "RTK GGA read button does not retain a focus outline after clicking");
+    require(ggaToggleButton->focusPolicy() == Qt::TabFocus,
+            "RTK GGA read button remains keyboard reachable");
     require(ggaFrequencyLabel->text() == QStringLiteral("0.00 Hz") &&
                 !ggaFrequencyLabel->text().contains(QStringLiteral("频率")) &&
                 !ggaFrequencyLabel->text().contains(QStringLiteral("Rate")),
@@ -1830,44 +2197,46 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(ggaToggleButton->width() < legacyFrequencyWidth &&
                 ggaFrequencyLabel->width() < legacyFrequencyWidth,
             "RTK GGA read controls no longer reserve the legacy prefixed frequency width");
-    auto *ggaTitleBar = ggaSourceLabel->parentWidget();
-    auto *ggaTitleLayout = ggaTitleBar
-        ? qobject_cast<QHBoxLayout *>(ggaTitleBar->layout())
-        : nullptr;
-    require(ggaTitleBar && ggaTitleBar->objectName() == QStringLiteral("sectionTitleBar") &&
-                ggaSourceCombo->parentWidget() == ggaTitleBar && ggaTitleLayout &&
-                ggaTitleLayout->indexOf(ggaSourceLabel) > 0 &&
-                ggaTitleLayout->indexOf(ggaSourceCombo) > ggaTitleLayout->indexOf(ggaSourceLabel),
-            "RTK GGA source label and combo sit after the title in the GGA card title bar");
-    require(ggaToggleButton->parentWidget() == ggaFrequencyLabel->parentWidget() &&
-                widgetY(ggaFrequencyLabel) > widgetY(ggaToggleButton) &&
-                std::abs((widgetX(ggaFrequencyLabel) + ggaFrequencyLabel->width() / 2) -
-                         (widgetX(ggaToggleButton) + ggaToggleButton->width() / 2)) <= 2 &&
-                ggaToggleButton->width() < ggaFrequencyLabel->width(),
-            "RTK GGA compact read button and frequency readout share a horizontal center");
-    QWidget *ggaControls = ggaToggleButton->parentWidget();
-    const int buttonLeftInset = ggaToggleButton->mapTo(ggaControls, QPoint(0, 0)).x();
-    const int buttonRightInset =
-        ggaControls->width() - buttonLeftInset - ggaToggleButton->width();
-    require(std::abs(buttonLeftInset - buttonRightInset) <= 2,
-            "RTK GGA read button keeps equal left and right insets in its control column");
-    const int cardToButtonInset = widgetX(ggaToggleButton) - widgetX(ggaCard);
-    const int buttonToOutputInset =
-        widgetX(ggaOutputText) - widgetX(ggaToggleButton) - ggaToggleButton->width();
-    require(std::abs(cardToButtonInset - buttonToOutputInset) <= 2,
-            "RTK GGA read button keeps balanced outer spacing beside the output area");
+    auto *streamPanel = dialog->findChild<QWidget *>(QStringLiteral("rtkStreamStatusPanel"));
+    auto *ggaClearButton = dialog->findChild<QToolButton *>(QStringLiteral("rtkGgaClearLogButton"));
+    require(streamPanel && ggaClearButton && ggaCard->isAncestorOf(ggaSourceLabel) &&
+                ggaCard->isAncestorOf(ggaSourceCombo) &&
+                ggaCard->isAncestorOf(ggaClearButton) &&
+                streamPanel->isAncestorOf(ggaToggleButton) &&
+                streamPanel->isAncestorOf(ggaOutputText) &&
+                widgetY(ggaSourceCombo) < widgetY(ggaToggleButton),
+            "RTK GGA source selector sits in the title row above its monitor actions");
+    const bool ggaActionRowAligned =
+        std::abs((widgetY(ggaFrequencyLabel) + ggaFrequencyLabel->height() / 2) -
+                 (widgetY(ggaToggleButton) + ggaToggleButton->height() / 2)) <= 2 &&
+        std::abs((widgetY(ggaClearButton) + ggaClearButton->height() / 2) -
+                 (widgetY(ggaSourceCombo) + ggaSourceCombo->height() / 2)) <= 2 &&
+        widgetX(ggaToggleButton) < widgetX(ggaFrequencyLabel) &&
+        widgetX(ggaClearButton) > widgetX(ggaSourceCombo);
+    if (!ggaActionRowAligned)
+    {
+        std::cerr << "GGA action row: toggle=" << widgetRect(ggaToggleButton).x() << ','
+                  << widgetRect(ggaToggleButton).y() << ' ' << widgetRect(ggaToggleButton).width()
+                  << 'x' << widgetRect(ggaToggleButton).height()
+                  << " frequency=" << widgetRect(ggaFrequencyLabel).x() << ','
+                  << widgetRect(ggaFrequencyLabel).y() << ' ' << widgetRect(ggaFrequencyLabel).width()
+                  << 'x' << widgetRect(ggaFrequencyLabel).height()
+                  << " clear=" << widgetRect(ggaClearButton).x() << ','
+                  << widgetRect(ggaClearButton).y() << ' ' << widgetRect(ggaClearButton).width()
+                  << 'x' << widgetRect(ggaClearButton).height() << '\n';
+    }
+    require(ggaActionRowAligned,
+            "RTK GGA title-row source/clear and body read/frequency controls stay ordered");
     require(widgetX(ggaOutputText) >= widgetX(ggaToggleButton) + ggaToggleButton->width(),
             "RTK GGA output text area sits to the right of the read controls");
     const int controlsTop = widgetY(ggaToggleButton);
-    const int controlsBottom = widgetY(ggaFrequencyLabel) + ggaFrequencyLabel->height();
+    const int controlsBottom = widgetY(ggaToggleButton) + ggaToggleButton->height();
     const int outputTop = widgetY(ggaOutputText);
     const int outputBottom = outputTop + ggaOutputText->height();
     require(std::abs((controlsTop + controlsBottom) - (outputTop + outputBottom)) <= 4,
             "RTK GGA read controls are vertically centered beside the output text area");
-    require(ggaOutputText->width() > ggaCard->width() / 2,
-            "RTK GGA output text area receives most of the card body width");
-    require(std::abs(ggaCard->height() - ntripCard->height()) <= 24,
-            "RTK GGA monitor card height matches the NTRIP card height closely");
+    require(ggaOutputText->width() >= 120,
+            "RTK GGA reminder output keeps a usable minimum width");
     require(dialog->findChild<QLabel *>(QStringLiteral("rtkGgaStatusLabel")) == nullptr,
             "RTK GGA monitor does not use a standalone status label");
     require(!ggaOutputText->toPlainText().contains(QStringLiteral("状态:")) &&
@@ -1885,10 +2254,11 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     auto *refreshPortsButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkRefreshPortsButton"));
     auto *autoDetectPortsButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkAutoDetectPortsButton"));
     auto *leverHelpButton = dialog->findChild<QToolButton *>(QStringLiteral("rtkLeverHelpButton"));
+    auto *rtcmOutputPanel = dialog->findChild<QWidget *>(QStringLiteral("rtkEpsilonDataPathPanel"));
     QLabel *outputPortLabel = findLabelByText(dialog,
-                                              {QStringLiteral("输出串口:"),
-                                               QStringLiteral("Output Port:")});
-    require(outputPortCombo != nullptr && baudrateCombo != nullptr && timeoutCombo != nullptr &&
+                                              {QStringLiteral("RTCM 输出串口:"),
+                                               QStringLiteral("RTCM Output Port:")});
+    require(rtcmOutputPanel != nullptr && outputPortCombo != nullptr && baudrateCombo != nullptr && timeoutCombo != nullptr &&
                 reconnectCombo != nullptr && applyLeverButton != nullptr && refreshPortsButton != nullptr &&
                 autoDetectPortsButton != nullptr && leverHelpButton != nullptr && outputPortLabel != nullptr,
             "RTK RTCM output controls exist");
@@ -1907,19 +2277,23 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
             "RTK RTCM output port combo is fixed around COM999 width");
     require(std::abs(widgetY(baudrateCombo) - widgetY(outputPortCombo)) <= 2 &&
                 widgetX(baudrateCombo) > widgetX(outputPortCombo),
-            "RTK RTCM output port and baudrate share the first row");
-    require(widgetY(timeoutCombo) > widgetY(outputPortCombo) &&
-                std::abs(widgetY(reconnectCombo) - widgetY(timeoutCombo)) <= 2 &&
-                widgetX(reconnectCombo) > widgetX(timeoutCombo),
-            "RTK RTCM timeout and reconnect interval share the second row");
+            "RTK RTCM baudrate shares the first compact output row");
+    const bool timingRowAligned =
+        rtcmOutputPanel->isAncestorOf(timeoutCombo) && rtcmOutputPanel->isAncestorOf(reconnectCombo) &&
+        widgetY(timeoutCombo) > widgetY(baudrateCombo) &&
+        std::abs(widgetY(reconnectCombo) - widgetY(timeoutCombo)) <= 2 &&
+        widgetX(reconnectCombo) > widgetX(timeoutCombo);
+    require(timingRowAligned,
+            "RTK timeout and reconnect interval share the second RTCM output row");
     auto *leverXEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkLeverXEdit"));
     auto *leverYEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkLeverYEdit"));
     auto *leverZEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkLeverZEdit"));
     require(leverXEdit != nullptr && leverYEdit != nullptr && leverZEdit != nullptr,
             "RTK RTCM lever-arm XYZ edits exist");
     require(widgetY(leverXEdit) > widgetY(timeoutCombo) &&
-                widgetX(leverXEdit) > widgetX(outputPortLabel),
-            "RTK RTCM lever-arm XYZ controls sit on the third row");
+                std::abs(widgetY(leverYEdit) - widgetY(leverXEdit)) <= 2 &&
+                std::abs(widgetY(leverZEdit) - widgetY(leverXEdit)) <= 2,
+            "RTK RTCM lever-arm XYZ controls share the third output row");
     require(widgetX(leverYEdit) - (widgetX(leverXEdit) + leverXEdit->width()) <= 42 &&
                 widgetX(leverZEdit) - (widgetX(leverYEdit) + leverYEdit->width()) <= 42,
             "RTK RTCM lever-arm XYZ controls stay tightly grouped");
@@ -1956,11 +2330,30 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     leverHelpPopup->hide();
     processEventsFor(50);
 
+    require(processEventsUntil(1000, [dialog, ntripCard, ggaCard, rtcmCard, logCard]() {
+                activateLayouts(dialog);
+                return std::abs(ntripCard->height() - ggaCard->height()) <= 2 &&
+                    std::abs(rtcmCard->height() - logCard->height()) <= 2;
+            }),
+            "RTK cards settle to equal heights within each visual row after page return");
+
     const QRect ntripRectBeforeTheme = widgetRect(ntripCard);
     const QRect ggaRectBeforeTheme = widgetRect(ggaCard);
     const QRect rtcmRectBeforeTheme = widgetRect(rtcmCard);
     const QRect logRectBeforeTheme = widgetRect(logCard);
-    const QRect actionRectBeforeTheme = widgetRect(actionCard);
+    const auto rectStableWithinTolerance = [](const QRect& actual, const QRect& expected) {
+        return std::abs(actual.x() - expected.x()) <= 2 &&
+               std::abs(actual.y() - expected.y()) <= 2 &&
+               std::abs(actual.width() - expected.width()) <= 2 &&
+               std::abs(actual.height() - expected.height()) <= 2;
+    };
+    const auto themeCardGeometrySettled = [&]() {
+        activateLayouts(dialog);
+        return rectStableWithinTolerance(widgetRect(ntripCard), ntripRectBeforeTheme) &&
+               rectStableWithinTolerance(widgetRect(ggaCard), ggaRectBeforeTheme) &&
+               rectStableWithinTolerance(widgetRect(rtcmCard), rtcmRectBeforeTheme) &&
+               rectStableWithinTolerance(widgetRect(logCard), logRectBeforeTheme);
+    };
     require(outputPortLabel->width() >= outputPortLabel->fontMetrics().horizontalAdvance(outputPortLabel->text()) + 4,
             "RTK RTCM output port label has enough width before theme switch");
     require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
@@ -1972,18 +2365,50 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     processEventsFor(100);
     require(qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
             "main window is in dark theme for RTK layout stability checks");
+    require(combinationPage->styleSheet().contains(VaporView::appThemeColorName(
+                VaporView::AppThemeColor::Focus, true)),
+            "combination-navigation local style resolves the dark-theme focus token");
+    require(combinationPage->styleSheet().contains(
+                VaporView::appThemeColorName(VaporView::AppThemeColor::Window, true)) &&
+                combinationPage->styleSheet().contains(
+                    QStringLiteral("QScrollArea#navigationStatusScrollArea QScrollBar:vertical")) &&
+                combinationPage->styleSheet().contains(QStringLiteral("margin: 0px")),
+            "combination-navigation outer background and scrollbar rail use the dark window color");
+    auto *statusPanel = combinationPage->findChild<QWidget *>(
+        QStringLiteral("navigationStatusPanel"));
+    require(statusPanel != nullptr &&
+                statusPanel->styleSheet().contains(
+                    VaporView::appThemeColorName(VaporView::AppThemeColor::Window, true)) &&
+                epsilonPanel->styleSheet().contains(
+                    VaporView::appThemeColorName(VaporView::AppThemeColor::Window, true)),
+            "status and EPSILON card containers use the dark window color outside cards");
+    const bool darkThemeGeometrySettled = processEventsUntil(1500, themeCardGeometrySettled);
+    if (!darkThemeGeometrySettled)
+    {
+        const auto printRect = [](const char *name, const QRect& before, const QRect& after) {
+            std::cerr << name << " before=" << before.x() << ',' << before.y() << ' '
+                      << before.width() << 'x' << before.height()
+                      << " after=" << after.x() << ',' << after.y() << ' '
+                      << after.width() << 'x' << after.height() << '\n';
+        };
+        printRect("NTRIP", ntripRectBeforeTheme, widgetRect(ntripCard));
+        printRect("Differential", ggaRectBeforeTheme, widgetRect(ggaCard));
+        printRect("EPSILON", rtcmRectBeforeTheme, widgetRect(rtcmCard));
+        printRect("Messages", logRectBeforeTheme, widgetRect(logCard));
+    }
+    require(darkThemeGeometrySettled,
+            "RTK card geometry settles after switching to dark theme");
     requireSameRect(widgetRect(ntripCard), ntripRectBeforeTheme,
                     "RTK NTRIP card geometry stays stable after switching to dark theme");
     requireSameRect(widgetRect(ggaCard), ggaRectBeforeTheme,
-                    "RTK GGA card geometry stays stable after switching to dark theme");
+                    "RTK differential-link card geometry stays stable after switching to dark theme");
     requireSameRect(widgetRect(rtcmCard), rtcmRectBeforeTheme,
-                    "RTK RTCM card geometry stays stable after switching to dark theme");
+                    "RTK EPSILON data-path card geometry stays stable after switching to dark theme");
     requireSameRect(widgetRect(logCard), logRectBeforeTheme,
-                    "RTK service log card geometry stays stable after switching to dark theme");
-    requireSameRect(widgetRect(actionCard), actionRectBeforeTheme,
-                    "RTK service action card geometry stays stable after switching to dark theme");
-    require(std::abs(logCard->height() - rtcmCard->height()) <= 2,
-            "RTK service log card remains equal-height with RTCM in dark theme");
+                    "RTK status/message card geometry stays stable after switching to dark theme");
+    require(std::abs(ntripCard->height() - ggaCard->height()) <= 2 &&
+                std::abs(rtcmCard->height() - logCard->height()) <= 2,
+            "RTK cards remain equal-height within each visual row in dark theme");
     requireColorNear(averageVisibleIconColor(leverHelpButton->icon()),
                      VaporView::appThemeColor(VaporView::AppThemeColor::Primary, true),
                      6,
@@ -1994,8 +2419,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(outputPortLabel->width() >= outputPortLabel->fontMetrics().horizontalAdvance(outputPortLabel->text()) + 4,
             "RTK RTCM output port label has enough width after switching to dark theme");
     require(rtkScrollArea->horizontalScrollBar()->maximum() == 0 &&
-                rtkScrollArea->verticalScrollBar()->maximum() == 0,
-            "RTK config page remains scrollbar-free after switching to dark theme");
+                rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
+            "RTK config page remains free of horizontal scrolling after switching to dark theme");
     require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
             "main window can switch back to light theme from the RTK page");
     processEventsFor(250);
@@ -2005,16 +2430,19 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     processEventsFor(100);
     require(!qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
             "main window returns to light theme after RTK layout stability checks");
+    require(combinationPage->styleSheet().contains(VaporView::appThemeColorName(
+                VaporView::AppThemeColor::Focus, false)),
+            "combination-navigation local style resolves the light-theme focus token");
+    require(processEventsUntil(1500, themeCardGeometrySettled),
+            "RTK card geometry settles after switching back to light theme");
     requireSameRect(widgetRect(ntripCard), ntripRectBeforeTheme,
                     "RTK NTRIP card geometry returns unchanged after switching back to light theme");
     requireSameRect(widgetRect(ggaCard), ggaRectBeforeTheme,
-                    "RTK GGA card geometry returns unchanged after switching back to light theme");
+                    "RTK differential-link card geometry returns unchanged after switching back to light theme");
     requireSameRect(widgetRect(rtcmCard), rtcmRectBeforeTheme,
-                    "RTK RTCM card geometry returns unchanged after switching back to light theme");
+                    "RTK EPSILON data-path card geometry returns unchanged after switching back to light theme");
     requireSameRect(widgetRect(logCard), logRectBeforeTheme,
-                    "RTK service log card geometry returns unchanged after switching back to light theme");
-    requireSameRect(widgetRect(actionCard), actionRectBeforeTheme,
-                    "RTK service action card geometry returns unchanged after switching back to light theme");
+                    "RTK status/message card geometry returns unchanged after switching back to light theme");
     requireColorNear(averageVisibleIconColor(leverHelpButton->icon()),
                      VaporView::appThemeColor(VaporView::AppThemeColor::Primary, false),
                      6,
@@ -2033,6 +2461,47 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     const qint64 runningIconKey = rtkButton->icon().pixmap(iconSize).cacheKey();
     require(runningIconKey != stoppedIconKey, "RTK sidebar icon changes when service starts");
 
+    clickWidget(statusButton, 0);
+    processEventsFor(50);
+    clickWidget(epsilonButton, 0);
+    processEventsFor(50);
+    require(combinationStack->currentWidget() == epsilonPage &&
+                combinationPage->differentialPage() == dialog &&
+                combinationPage->epsilonConfigPanel() == epsilonPanel &&
+                combinationPage->findChildren<RtkConfigDialog *>().size() == 1 &&
+                (rtkButton->toolTip().contains(QStringLiteral("运行中")) ||
+                 rtkButton->toolTip().contains(QStringLiteral("running"))) &&
+                rtkButton->icon().pixmap(iconSize).cacheKey() == runningIconKey,
+            "switching status and EPSILON pages preserves the same running RTK page and status");
+    QComboBox *unsavedPacketRateCombo = nullptr;
+    for (QComboBox *combo : epsilonPanel->findChildren<QComboBox *>())
+    {
+        if (combo->property("epsilonPacketId").isValid() && combo->count() > 1)
+        {
+            unsavedPacketRateCombo = combo;
+            break;
+        }
+    }
+    require(unsavedPacketRateCombo != nullptr,
+            "EPSILON page exposes a packet-rate input for state-persistence testing");
+    const int originalPacketRateIndex = unsavedPacketRateCombo->currentIndex();
+    const int unsavedPacketRateIndex = (originalPacketRateIndex + 1) % unsavedPacketRateCombo->count();
+    unsavedPacketRateCombo->setCurrentIndex(unsavedPacketRateIndex);
+    clickWidget(differentialButton, 0);
+    processEventsFor(50);
+    require(combinationStack->currentWidget() == dialog,
+            "the running RTK page remains available after internal navigation");
+    clickWidget(statusButton, 0);
+    processEventsFor(50);
+    clickWidget(epsilonButton, 0);
+    processEventsFor(50);
+    require(combinationPage->epsilonConfigPanel() == epsilonPanel &&
+                unsavedPacketRateCombo->currentIndex() == unsavedPacketRateIndex,
+            "switching status, differential and EPSILON pages preserves the same panel and unsaved input");
+    unsavedPacketRateCombo->setCurrentIndex(originalPacketRateIndex);
+    clickWidget(differentialButton, 0);
+    processEventsFor(50);
+
     QMetaObject::invokeMethod(dialog, "rtkRunningChanged", Qt::DirectConnection, Q_ARG(bool, false));
     processEventsFor(50);
     require(rtkButton->toolTip().contains(QStringLiteral("未启动")) ||
@@ -2046,6 +2515,32 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     requireLabelTextOneOf(customTitleLabel,
                           {QStringLiteral("首页"), QStringLiteral("Home")},
                           "custom title bar returns to home page after RTK sidebar check");
+    require(QMetaObject::invokeMethod(&window, "onRtkConfigClicked", Qt::DirectConnection),
+            "existing RTK action can open combination navigation");
+    processEventsFor(100);
+    require(pageStack->currentWidget() == combinationPage &&
+                combinationStack->currentWidget() == dialog && differentialButton->isChecked(),
+            "existing RTK action deep-links to the differential-positioning subpage");
+    clickWidget(homeButton);
+    processEventsFor(100);
+    require(QMetaObject::invokeMethod(&window, "onSwitchLanguage", Qt::DirectConnection),
+            "combination-navigation labels can switch to English");
+    processEventsFor(100);
+    require(statusButton->text() == QStringLiteral("Status") &&
+                statusButton->accessibleName() == statusButton->text() &&
+                epsilonButton->text() == QStringLiteral("EPSILON") &&
+                epsilonButton->accessibleName() == epsilonButton->text() &&
+                differentialButton->text() == QStringLiteral("Differential Positioning") &&
+                differentialButton->accessibleName() == differentialButton->text() &&
+                rtkButton->accessibleName() == QStringLiteral("Combination Navigation"),
+            "combination-navigation visible and accessible labels update together in English");
+    require(QMetaObject::invokeMethod(&window, "onSwitchLanguage", Qt::DirectConnection),
+            "combination-navigation labels can return to Chinese");
+    processEventsFor(100);
+    require(statusButton->text() == QStringLiteral("状态") &&
+                differentialButton->text() == QStringLiteral("差分定位") &&
+                rtkButton->accessibleName() == QStringLiteral("组合导航"),
+            "combination-navigation labels return to Chinese without rebuilding the page");
 }
 
 void requireLabelTextOneOf(const QLabel *label, const QStringList& expected, const char *message)
@@ -2353,6 +2848,227 @@ QFrame *findTelemetryPillByName(QFrame *section, const QString& text)
     return nullptr;
 }
 
+struct TelemetryPillWidthSnapshotItem
+{
+    QString key;
+    int width = 0;
+};
+
+QVector<TelemetryPillWidthSnapshotItem> telemetryPillWidthSnapshot(QWidget *summaryContainer)
+{
+    QVector<TelemetryPillWidthSnapshotItem> snapshot;
+    const QList<QFrame*> sections = sortedTelemetrySections(summaryContainer);
+    for (int sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex)
+    {
+        QFrame *section = sections.at(sectionIndex);
+        const QList<QFrame*> sectionPills =
+            section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+        QList<QWidget*> lines;
+        for (QFrame *pill : sectionPills)
+        {
+            if (QWidget *line = pill->parentWidget(); line && !lines.contains(line))
+            {
+                lines.append(line);
+            }
+        }
+        std::sort(lines.begin(), lines.end(), [section](QWidget *a, QWidget *b) {
+            const QPoint aPos = a->mapTo(section, QPoint(0, 0));
+            const QPoint bPos = b->mapTo(section, QPoint(0, 0));
+            return std::make_tuple(aPos.y(), aPos.x()) < std::make_tuple(bPos.y(), bPos.x());
+        });
+        for (QWidget *line : lines)
+        {
+            QList<QFrame*> linePills =
+                line->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"),
+                                             Qt::FindDirectChildrenOnly);
+            std::sort(linePills.begin(), linePills.end(), [section](QFrame *a, QFrame *b) {
+                return a->mapTo(section, QPoint(0, 0)).x() < b->mapTo(section, QPoint(0, 0)).x();
+            });
+            for (QFrame *pill : linePills)
+            {
+                QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+                QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+                snapshot.append({
+                    QStringLiteral("%1:%2=%3").arg(sectionIndex)
+                                             .arg(nameLabel ? nameLabel->text() : QString())
+                                             .arg(valueLabel ? valueLabel->text() : QString()),
+                    pill->width()});
+            }
+        }
+    }
+    return snapshot;
+}
+
+void requireTelemetryPillWidthSnapshotNotWider(const QVector<TelemetryPillWidthSnapshotItem>& expected,
+                                               const QVector<TelemetryPillWidthSnapshotItem>& actual,
+                                               const char *message)
+{
+    require(expected.size() == actual.size(), message);
+    for (int i = 0; i < expected.size(); ++i)
+    {
+        if (expected.at(i).key != actual.at(i).key ||
+            actual.at(i).width > expected.at(i).width + 1)
+        {
+            std::cerr << "Telemetry pill width mismatch at " << i
+                      << ": expected " << expected.at(i).key.toStdString()
+                      << " max width=" << expected.at(i).width
+                      << ", actual " << actual.at(i).key.toStdString()
+                      << " width=" << actual.at(i).width << '\n';
+        }
+        require(expected.at(i).key == actual.at(i).key, message);
+        require(actual.at(i).width <= expected.at(i).width + 1, message);
+    }
+}
+
+void requireTelemetryLabelsHaveNoColon(QWidget *summaryContainer, const char *message)
+{
+    require(summaryContainer != nullptr, message);
+    const QList<QLabel*> labels = summaryContainer->findChildren<QLabel *>();
+    require(!labels.isEmpty(), message);
+    for (QLabel *label : labels)
+    {
+        if (label && label->objectName() == QStringLiteral("homeTelemetrySummaryValueLabel"))
+        {
+            continue;
+        }
+        require(label != nullptr &&
+                    !label->text().contains(QLatin1Char(':')) &&
+                    !label->text().contains(QStringLiteral("：")),
+                message);
+    }
+}
+
+void requireTelemetryLabelsFit(QWidget *summaryContainer, const char *message)
+{
+    require(summaryContainer != nullptr, message);
+    const QList<QLabel*> labels = summaryContainer->findChildren<QLabel *>();
+    require(!labels.isEmpty(), message);
+    for (QLabel *label : labels)
+    {
+        if (label->text().isEmpty())
+        {
+            continue;
+        }
+        const int textWidth = label->fontMetrics().horizontalAdvance(label->text());
+        if (textWidth > label->width() + 1)
+        {
+            std::cerr << "Telemetry label clipped: object=" << label->objectName().toStdString()
+                      << " text='" << label->text().toStdString()
+                      << "' textWidth=" << textWidth
+                      << " labelWidth=" << label->width() << '\n';
+        }
+        require(textWidth <= label->width() + 1, message);
+    }
+}
+
+void requireCompactTelemetryPillTextGap(QFrame *pill, const char *message)
+{
+    require(pill != nullptr, message);
+    QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+    QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+    require(nameLabel != nullptr && valueLabel != nullptr, message);
+    require(valueLabel->alignment().testFlag(Qt::AlignLeft),
+            "home telemetry values start near their field names");
+
+    const int nameTextRight = nameLabel->mapTo(pill, QPoint(0, 0)).x() +
+        nameLabel->fontMetrics().horizontalAdvance(nameLabel->text());
+    const int valueTextLeft = valueLabel->mapTo(pill, QPoint(0, 0)).x();
+    const int gap = valueTextLeft - nameTextRight;
+    if (gap < 3 || gap > 10)
+    {
+        std::cerr << "Home telemetry pill text gap: name='"
+                  << nameLabel->text().toStdString()
+                  << "' value='" << valueLabel->text().toStdString()
+                  << "' gap=" << gap << '\n';
+    }
+    require(gap >= 3 && gap <= 10,
+            "home telemetry field/value text gap keeps a small reserved space");
+}
+
+void requireTelemetrySummaryPillsOrdered(QWidget *summaryContainer, const char *message)
+{
+    const QList<QFrame*> sections = sortedTelemetrySections(summaryContainer);
+    require(sections.size() >= 3, message);
+    for (QFrame *section : sections)
+    {
+        const QList<QFrame*> pills =
+            section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+        require(!pills.isEmpty(), message);
+        QList<QWidget*> lines;
+        for (QFrame *pill : pills)
+        {
+            if (QWidget *line = pill->parentWidget(); line && !lines.contains(line))
+            {
+                lines.append(line);
+            }
+            const QRect pillRect(pill->mapTo(section, QPoint(0, 0)), pill->size());
+            if (!section->rect().adjusted(0, 0, 1, 1).contains(pillRect))
+            {
+                QGroupBox *deviceCard = nullptr;
+                for (QWidget *ancestor = section; ancestor && !deviceCard; ancestor = ancestor->parentWidget())
+                {
+                    deviceCard = qobject_cast<QGroupBox *>(ancestor);
+                }
+                std::cerr << "Telemetry pill outside section: section=" << section->rect().width()
+                          << " section min=" << section->minimumWidth()
+                          << " card width=" << (deviceCard ? deviceCard->width() : 0)
+                          << " card min=" << (deviceCard ? deviceCard->minimumWidth() : 0)
+                          << " pill x=" << pillRect.x()
+                          << " width=" << pillRect.width()
+                          << " right=" << pillRect.right() << '\n';
+            }
+            require(section->rect().adjusted(0, 0, 1, 1).contains(pillRect), message);
+        }
+
+        for (QWidget *line : lines)
+        {
+            QLabel *titleLabel = line->findChild<QLabel *>(
+                QStringLiteral("homeTelemetrySummaryTitleLabel"),
+                Qt::FindDirectChildrenOnly);
+            QList<QFrame*> linePills =
+                line->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"),
+                                             Qt::FindDirectChildrenOnly);
+            std::sort(linePills.begin(), linePills.end(), [section](QFrame *a, QFrame *b) {
+                return a->mapTo(section, QPoint(0, 0)).x() < b->mapTo(section, QPoint(0, 0)).x();
+            });
+            if (titleLabel && !linePills.isEmpty())
+            {
+                const QRect titleRect(titleLabel->mapTo(section, QPoint(0, 0)), titleLabel->size());
+                const QRect firstPillRect(linePills.first()->mapTo(section, QPoint(0, 0)),
+                                          linePills.first()->size());
+                if (firstPillRect.left() <= titleRect.right())
+                {
+                    std::cerr << "Telemetry title overlap: title='" << titleLabel->text().toStdString()
+                              << "' title right=" << titleRect.right()
+                              << " first pill left=" << firstPillRect.left()
+                              << " first pill width=" << firstPillRect.width() << '\n';
+                }
+                require(firstPillRect.left() > titleRect.right(), message);
+                const int titleTextRight =
+                    titleRect.left() + titleLabel->fontMetrics().horizontalAdvance(titleLabel->text());
+                require(firstPillRect.left() - titleTextRight >= 6,
+                        "home telemetry title text keeps a visible gap before the first pill");
+            }
+            QRect previousRect;
+            bool hasPrevious = false;
+            for (QFrame *pill : linePills)
+            {
+                const QRect pillRect(pill->mapTo(section, QPoint(0, 0)), pill->size());
+                if (hasPrevious && pillRect.left() <= previousRect.right())
+                {
+                    std::cerr << "Telemetry pill overlap: section=" << section->rect().width()
+                              << " previous right=" << previousRect.right()
+                              << " current left=" << pillRect.left()
+                              << " current width=" << pillRect.width() << '\n';
+                }
+                require(!hasPrevious || pillRect.left() > previousRect.right(), message);
+                previousRect = pillRect;
+                hasPrevious = true;
+            }
+        }
+    }
+}
+
 bool isRemoteSourceModeText(const QString& text)
 {
     return text.contains(QStringLiteral("天地远程")) ||
@@ -2550,6 +3266,224 @@ void requireMainWindowOuterBorder(MainWindow& window, bool dark, const char *mes
             message);
 }
 
+void requireEpsilonSectionTitleWidths(QWidget *epsilonPanel, bool english)
+{
+    require(epsilonPanel != nullptr, "language overview EPSILON panel exists");
+    const QList<QLabel*> sectionLabels =
+        epsilonPanel->findChildren<QLabel *>(QStringLiteral("epsilonSectionLabel"));
+    require(sectionLabels.size() == 3,
+            "language overview EPSILON panel exposes three section title labels");
+
+    bool sawWideEnglishTitle = false;
+    for (const QLabel *label : sectionLabels)
+    {
+        require(label != nullptr, "language overview EPSILON section title label exists");
+        const QFontMetrics metrics(label->font());
+        int maxLineWidth = 0;
+        const QStringList lines = label->text().split(QChar('\n'));
+        for (const QString& line : lines)
+        {
+            maxLineWidth = std::max(maxLineWidth, metrics.horizontalAdvance(line));
+        }
+        require(label->width() >= maxLineWidth + 4,
+                "language overview EPSILON section title fits its widest line");
+        if (english)
+        {
+            sawWideEnglishTitle = sawWideEnglishTitle || label->width() > 24;
+        }
+        else
+        {
+            require(label->width() <= 30,
+                    "language overview EPSILON Chinese section title stays compact");
+        }
+    }
+    if (english)
+    {
+        require(sawWideEnglishTitle,
+                "language overview EPSILON English section titles widen beyond the compact Chinese rail");
+    }
+}
+
+bool epsilonSectionTitlesContain(QWidget *epsilonPanel, const QString& token)
+{
+    if (!epsilonPanel)
+    {
+        return false;
+    }
+    const QList<QLabel*> sectionLabels =
+        epsilonPanel->findChildren<QLabel *>(QStringLiteral("epsilonSectionLabel"));
+    return std::any_of(sectionLabels.cbegin(), sectionLabels.cend(), [&token](const QLabel *label) {
+        return label && label->text().contains(token);
+    });
+}
+
+bool epsilonSectionCardsShareRow(QWidget *epsilonPanel)
+{
+    if (!epsilonPanel)
+    {
+        return false;
+    }
+    const QList<QFrame*> cards = epsilonPanel->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
+    if (cards.size() != 3)
+    {
+        return false;
+    }
+    const int firstTop = cards.first()->mapTo(epsilonPanel, QPoint(0, 0)).y();
+    return std::all_of(cards.cbegin(), cards.cend(), [epsilonPanel, firstTop](const QFrame *card) {
+        return card && std::abs(card->mapTo(epsilonPanel, QPoint(0, 0)).y() - firstTop) <= 2;
+    });
+}
+
+void requireHomeOverviewLanguageWidthRoundTrip()
+{
+    MainWindow languageOverviewWindow;
+    languageOverviewWindow.setWindowTitle(QStringLiteral("VaporView"));
+    languageOverviewWindow.resize(1280, 800);
+    languageOverviewWindow.show();
+    require(waitForWindowExposed(&languageOverviewWindow),
+            "dedicated language overview window becomes exposed");
+
+    auto *languageHomeOverviewSplitter =
+        languageOverviewWindow.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
+    require(languageHomeOverviewSplitter != nullptr &&
+                languageHomeOverviewSplitter->count() == 2,
+            "language overview window exposes the home overview splitter");
+    auto *languageDeviceOverviewCard =
+        qobject_cast<QGroupBox *>(languageHomeOverviewSplitter->widget(0));
+    require(languageDeviceOverviewCard != nullptr,
+            "language overview window exposes the device overview card");
+    auto *languageEpsilonPanel =
+        languageOverviewWindow.findChild<QWidget *>(QStringLiteral("epsilonPanel"));
+    auto *languageTelemetrySummaryContainer = languageDeviceOverviewCard->findChild<QWidget *>(
+        QStringLiteral("homeTelemetrySummaryContainer"));
+    requireTelemetrySummaryPillsOrdered(
+        languageTelemetrySummaryContainer,
+        "language overview telemetry capsules start without overlap");
+    requireTelemetryLabelsHaveNoColon(
+        languageTelemetrySummaryContainer,
+        "language overview Chinese waveform telemetry labels start without ASCII colons");
+    requireTelemetryLabelsFit(
+        languageTelemetrySummaryContainer,
+        "language overview telemetry labels fit at startup");
+    const QVector<TelemetryPillWidthSnapshotItem> initialTelemetryPillWidths =
+        telemetryPillWidthSnapshot(languageTelemetrySummaryContainer);
+    requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
+    require(epsilonSectionCardsShareRow(languageEpsilonPanel),
+            "language overview EPSILON Chinese cards start in one row");
+    requireHomeDeviceColumnsAligned(&languageOverviewWindow);
+    requireHomeDeviceMinimumWidthMatchesControls(&languageOverviewWindow);
+
+    const QList<int> initialHomeOverviewSizes = languageHomeOverviewSplitter->sizes();
+    require(initialHomeOverviewSizes.size() == 2,
+            "language overview splitter exposes initial device and temperature widths");
+    const int initialDeviceOverviewWidth = initialHomeOverviewSizes.at(0);
+    require(std::abs(initialDeviceOverviewWidth -
+                     languageDeviceOverviewCard->minimumWidth()) <= 1,
+            "language overview device card starts at its Chinese minimum width");
+    require(QMetaObject::invokeMethod(&languageOverviewWindow,
+                                      "onSwitchLanguage",
+                                      Qt::DirectConnection),
+            "language overview window switches to English");
+    require(processEventsUntil(1000, [&languageOverviewWindow,
+                                      languageHomeOverviewSplitter,
+                                      languageDeviceOverviewCard,
+                                      languageEpsilonPanel]() {
+                activateLayouts(&languageOverviewWindow);
+                const QList<int> sizes = languageHomeOverviewSplitter->sizes();
+                return sizes.size() == 2 &&
+                       epsilonSectionTitlesContain(languageEpsilonPanel, QStringLiteral("Overall")) &&
+                       std::abs(sizes.at(0) - languageDeviceOverviewCard->minimumWidth()) <= 1;
+            }),
+            "language overview device card settles at its English minimum width");
+    const QList<int> englishHomeOverviewSizes = languageHomeOverviewSplitter->sizes();
+    require(englishHomeOverviewSizes.size() == 2,
+            "language overview splitter exposes English device and temperature widths");
+    const int englishDeviceOverviewWidth = englishHomeOverviewSizes.at(0);
+    const int englishAvailableWidth = englishHomeOverviewSizes.at(0) + englishHomeOverviewSizes.at(1);
+    const int inflatedEnglishDeviceWidth =
+        std::min(englishDeviceOverviewWidth + 72,
+                 englishAvailableWidth - languageHomeOverviewSplitter->widget(1)->minimumWidth());
+    require(inflatedEnglishDeviceWidth > englishDeviceOverviewWidth,
+            "language overview has room to simulate an auto-expanded English device card");
+    languageHomeOverviewSplitter->setProperty(
+        VaporView::Ground::MainSupport::kHomeOverviewDeviceProgrammaticResizeProperty,
+        true);
+    languageHomeOverviewSplitter->setSizes({
+        inflatedEnglishDeviceWidth,
+        std::max(languageHomeOverviewSplitter->widget(1)->minimumWidth(),
+                 englishAvailableWidth - inflatedEnglishDeviceWidth)
+    });
+    languageHomeOverviewSplitter->setProperty(
+        VaporView::Ground::MainSupport::kHomeOverviewDeviceProgrammaticResizeProperty,
+        false);
+    languageHomeOverviewSplitter->setProperty(
+        VaporView::Ground::MainSupport::kHomeOverviewDeviceAutoManagedWidthProperty,
+        true);
+    activateLayouts(&languageOverviewWindow);
+    const QList<int> inflatedEnglishHomeOverviewSizes = languageHomeOverviewSplitter->sizes();
+    require(inflatedEnglishHomeOverviewSizes.size() == 2 &&
+                inflatedEnglishHomeOverviewSizes.at(0) > englishDeviceOverviewWidth,
+            "language overview reproduces the wider auto-managed English device card");
+    requireTelemetrySummaryPillsOrdered(
+        languageTelemetrySummaryContainer,
+        "language overview telemetry capsules stay ordered in English");
+    requireTelemetryLabelsHaveNoColon(
+        languageTelemetrySummaryContainer,
+        "language overview English telemetry labels stay without colons");
+    requireTelemetryLabelsFit(
+        languageTelemetrySummaryContainer,
+        "language overview telemetry labels fit in English");
+    requireEpsilonSectionTitleWidths(languageEpsilonPanel, true);
+    require(QMetaObject::invokeMethod(&languageOverviewWindow,
+                                      "onSwitchLanguage",
+                                      Qt::DirectConnection),
+            "language overview window switches back to Chinese");
+    const bool returnedToChineseWidth = processEventsUntil(1000, [&languageOverviewWindow,
+                                                                  languageHomeOverviewSplitter,
+                                                                  languageDeviceOverviewCard,
+                                                                  inflatedEnglishDeviceWidth]() {
+                const QList<int> sizes = languageHomeOverviewSplitter->sizes();
+                return sizes.size() == 2 &&
+                       sizes.at(0) < inflatedEnglishDeviceWidth &&
+                       std::abs(sizes.at(0) - languageDeviceOverviewCard->minimumWidth()) <= 1;
+            });
+    if (!returnedToChineseWidth)
+    {
+        const QList<int> sizes = languageHomeOverviewSplitter->sizes();
+        std::cerr << "Language overview splitter width after Chinese: initial="
+                  << initialDeviceOverviewWidth
+                  << " current=" << (sizes.size() == 2 ? sizes.at(0) : -1)
+                  << " english=" << englishDeviceOverviewWidth
+                  << " card min=" << languageDeviceOverviewCard->minimumWidth()
+                  << '\n';
+    }
+    require(returnedToChineseWidth,
+            "language overview device card returns to the Chinese minimum width after language toggles");
+    processEventsFor(50);
+    activateLayouts(languageDeviceOverviewCard);
+    requireTelemetrySummaryPillsOrdered(
+        languageTelemetrySummaryContainer,
+        "language overview telemetry capsules stay ordered after returning to Chinese");
+    requireTelemetryLabelsHaveNoColon(
+        languageTelemetrySummaryContainer,
+        "language overview Chinese waveform telemetry labels stay without ASCII colons after language toggles");
+    requireTelemetryLabelsFit(
+        languageTelemetrySummaryContainer,
+        "language overview telemetry labels fit after returning to Chinese");
+    requireTelemetryPillWidthSnapshotNotWider(
+        initialTelemetryPillWidths,
+        telemetryPillWidthSnapshot(languageTelemetrySummaryContainer),
+        "language overview telemetry capsule widths do not exceed their initial Chinese widths");
+    requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
+    require(epsilonSectionCardsShareRow(languageEpsilonPanel),
+            "language overview EPSILON cards return to one row after switching back to Chinese");
+    languageOverviewWindow.close();
+    require(processEventsUntil(1000, [&languageOverviewWindow]() {
+                return !languageOverviewWindow.isVisible();
+            }),
+            "dedicated language overview test window closes cleanly");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -2558,6 +3492,7 @@ int main(int argc, char **argv)
     require(settingsDir.isValid(), "temporary settings directory");
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
+    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
 
     QApplication app(argc, argv);
     app.setOrganizationName(QStringLiteral("VaporViewLayoutTest"));
@@ -2581,6 +3516,95 @@ int main(int argc, char **argv)
         settings.sync();
     }
 
+    auto triggerFontScaleAction = [](MainWindow& target, int percent) {
+        for (QAction *action : target.findChildren<QAction *>())
+        {
+            if (action && action->data().toInt() == percent)
+            {
+                action->trigger();
+                processEventsFor(50);
+                return;
+            }
+        }
+        require(false, "main window exposes requested font-scale action");
+    };
+
+    if (app.arguments().contains(QStringLiteral("--home-overview-language-only")))
+    {
+        requireHomeOverviewLanguageWidthRoundTrip();
+        std::cout << "home_overview_language_layout_test passed\n";
+        return 0;
+    }
+
+    if (app.arguments().contains(QStringLiteral("--combination-navigation-only")))
+    {
+        MainWindow combinationWindow;
+        combinationWindow.setWindowTitle(QStringLiteral("VaporView"));
+        combinationWindow.resize(1280, 800);
+        combinationWindow.show();
+        require(waitForWindowExposed(&combinationWindow),
+                "combination-navigation test window becomes exposed");
+        activateLayouts(&combinationWindow);
+        processEventsFor(500);
+        activateLayouts(&combinationWindow);
+        auto *customTitleLabel =
+            combinationWindow.findChild<QLabel *>(QStringLiteral("customTitleLabel"));
+        require(customTitleLabel != nullptr,
+                "combination-navigation test window exposes its title label");
+        requireRtkSidebarPage(combinationWindow, customTitleLabel, false);
+        auto *embeddedRtk = combinationWindow.findChild<RtkConfigDialog *>();
+        auto *rtkScrollArea = embeddedRtk
+            ? embeddedRtk->findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea"))
+            : nullptr;
+        auto *rtkNtripCard = embeddedRtk
+            ? findCardByTitle(embeddedRtk,
+                              {QStringLiteral("NTRIP 服务器配置"),
+                               QStringLiteral("NTRIP Server Configuration")})
+            : nullptr;
+        auto *rtkGgaCard = embeddedRtk
+            ? findCardByTitle(embeddedRtk,
+                              {QStringLiteral("GGA 监视"), QStringLiteral("GGA Monitor")})
+            : nullptr;
+        auto *rtkRtcmCard = embeddedRtk
+            ? findCardByTitle(embeddedRtk,
+                              {QStringLiteral("RTCM 输出配置"),
+                               QStringLiteral("RTCM Output Configuration")})
+            : nullptr;
+        auto *rtkLogCard = embeddedRtk
+            ? findCardByTitle(embeddedRtk,
+                              {QStringLiteral("RTK 服务日志"),
+                               QStringLiteral("RTK Service Log")})
+            : nullptr;
+        require(embeddedRtk && rtkScrollArea && rtkNtripCard && rtkGgaCard && rtkRtcmCard && rtkLogCard,
+                "combination-navigation test finds the responsive RTK card grid");
+        combinationWindow.resize(1024, 800);
+        processEventsFor(200);
+        activateLayouts(embeddedRtk);
+        processEventsFor(100);
+        require(rtkScrollArea->horizontalScrollBar()->maximum() == 0,
+                "RTK embedded page remains free of horizontal scrolling at 1024px");
+        const QRect narrowViewport = rtkScrollArea->viewport()->rect();
+        const QRect narrowGgaRect(rtkGgaCard->mapTo(rtkScrollArea->viewport(), QPoint(0, 0)),
+                                  rtkGgaCard->size());
+        const QRect narrowLogRect(rtkLogCard->mapTo(rtkScrollArea->viewport(), QPoint(0, 0)),
+                                  rtkLogCard->size());
+        require(narrowGgaRect.right() < narrowViewport.right() + 1 &&
+                    narrowLogRect.right() < narrowViewport.right() + 1 &&
+                    std::abs(rtkNtripCard->geometry().top() - rtkGgaCard->geometry().top()) <= 2 &&
+                    std::abs(rtkRtcmCard->geometry().top() - rtkLogCard->geometry().top()) <= 2,
+                "RTK cards stay in two compact rows without narrow-window clipping");
+        combinationWindow.resize(1280, 800);
+        processEventsFor(150);
+        activateLayouts(embeddedRtk);
+        combinationWindow.close();
+        require(processEventsUntil(1000, [&combinationWindow]() {
+                    return !combinationWindow.isVisible();
+                }),
+                "combination-navigation test window closes cleanly");
+        std::cout << "combination_navigation_page_test passed\n";
+        return 0;
+    }
+
     {
         MainWindow rememberedModeWindow;
         rememberedModeWindow.resize(1000, 700);
@@ -2590,8 +3614,8 @@ int main(int argc, char **argv)
         QComboBox *rememberedSourceModeCombo = findSourceModeCombo(&rememberedModeWindow);
         require(rememberedSourceModeCombo != nullptr,
                 "remembered source mode combo exists on startup");
-        require(rememberedSourceModeCombo->itemText(1) == QStringLiteral("天地远程模式") ||
-                    rememberedSourceModeCombo->itemText(1) == QStringLiteral("Sky-Ground Remote Mode"),
+        require(rememberedSourceModeCombo->itemText(1) == QStringLiteral("远程") ||
+                    rememberedSourceModeCombo->itemText(1) == QStringLiteral("Remote"),
                 "source mode combo uses the new remote-mode label");
         require(rememberedSourceModeCombo->property("usesSingleLevelPopupMenu").toBool(),
                 "source mode combo uses the shared single-level popup");
@@ -2716,7 +3740,7 @@ int main(int argc, char **argv)
                     checkUpdatesAction->toolTip() == QStringLiteral("Check for VaporView updates"),
                 "check updates action updates to English");
         app.setApplicationVersion(QString());
-        requireAboutDialogLayout(&aboutWindow, aboutAction, true, QStringLiteral("1.0.20"));
+        requireAboutDialogLayout(&aboutWindow, aboutAction, true, QStringLiteral("1.0.22"));
         require(QMetaObject::invokeMethod(&aboutWindow, "onSwitchLanguage", Qt::DirectConnection),
                 "main window switches back to Chinese after about dialog coverage");
         require(processEventsUntil(1000, [aboutAction]() {
@@ -2735,6 +3759,7 @@ int main(int argc, char **argv)
     }
 
     MainWindow window;
+    triggerFontScaleAction(window, 100);
     window.setWindowTitle(QStringLiteral("VaporView"));
     window.resize(1280, 800);
     window.show();
@@ -3263,8 +4288,8 @@ int main(int argc, char **argv)
     require(checkedSidebarButton->iconSize().width() >= 28 &&
                 checkedSidebarButton->iconSize().height() >= 28,
             "compact sidebar lucide icon is visually larger");
-    require(checkedSidebarButton->focusPolicy() == Qt::NoFocus,
-            "compact sidebar selected icon does not draw a keyboard focus frame");
+    require(checkedSidebarButton->focusPolicy() == Qt::TabFocus,
+            "compact sidebar remains keyboard reachable after collapsing");
     QPushButton *temperatureNavButton = nullptr;
     for (QPushButton *button : sidebarButtons)
     {
@@ -3636,8 +4661,8 @@ int main(int argc, char **argv)
         }
     }
     require(logFilterMenu != nullptr, "log filter menu uses the shared single-level popup");
-    require(logFilterMenu->rows().size() == 4,
-            "log view menu exposes attention, all, debug, and follow rows");
+    require(logFilterMenu->rows().size() == 5,
+            "log view menu exposes attention, all, debug, follow, and source/category rows");
     QStringList logFilterTexts;
     for (VaporView::SingleLevelPopupMenuRow *row : logFilterMenu->rows())
     {
@@ -3649,7 +4674,8 @@ int main(int argc, char **argv)
     require(logFilterTexts.contains(QStringLiteral("关注")) &&
                 logFilterTexts.contains(QStringLiteral("全部")) &&
                 logFilterTexts.contains(QStringLiteral("调试")) &&
-                logFilterTexts.contains(QStringLiteral("自动跟随")),
+                logFilterTexts.contains(QStringLiteral("自动跟随")) &&
+                logFilterTexts.contains(QStringLiteral("过滤[来源/分类]")),
             "log view menu exposes positive view choices");
     require(logFilterMenu->cornerRadius() == 10,
             "log filter menu uses the shared 10px popup corner radius");
@@ -4176,6 +5202,8 @@ int main(int argc, char **argv)
         ai8TemperatureCard->findChild<QToolButton *>(QStringLiteral("ai8TitleActionButton"));
     auto *ai8TitleStatusLabel =
         ai8TemperatureCard->findChild<QLabel *>(QStringLiteral("ai8TitleOutputStatusLabel"));
+    auto *ai8ProtocolStatusLabel =
+        ai8TemperatureCard->findChild<QLabel *>(QStringLiteral("ai8ProtocolStatus"));
     require(ai8TitleActionButton != nullptr &&
             ai8TemperatureCard->findChild<QToolButton *>(QStringLiteral("ai8TitleConnectButton")) == nullptr &&
                 ai8TemperatureCard->findChild<QToolButton *>(QStringLiteral("ai8TitleDisconnectButton")) == nullptr &&
@@ -4193,6 +5221,11 @@ int main(int argc, char **argv)
                     ai8TitleLayout->indexOf(ai8TitleActionButton) + 1 &&
                 ai8TitleStatusLabel->text() == QStringLiteral("输出：--"),
             "AI-8 title shows the selected channel output state after the connection icon");
+    require(ai8ProtocolStatusLabel != nullptr &&
+                ai8TitleLayout->indexOf(ai8ProtocolStatusLabel) == ai8TitleLayout->count() - 1 &&
+                ai8ProtocolStatusLabel->text() == QStringLiteral("通信后端未连接") &&
+                !ai8ProtocolStatusLabel->property("protocolReady").toBool(),
+            "AI-8 communication backend status sits at the far end of the title bar");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QToolButton[temperatureTitleAction=\"true\"] {"),
@@ -4271,7 +5304,7 @@ int main(int argc, char **argv)
                 ai8StatusRect.right() <= ai8Panel->rect().right() &&
                 ai8StatusRect.bottom() < ai8MainContentRect.top() &&
                 ai8TemperaturePlot->property("forceWhiteBackground").toBool(),
-            "AI-8 backend status row is right-aligned beside page selectors and the plot uses a white background");
+            "AI-8 page action row is right-aligned beside page selectors and the plot uses a white background");
     auto *ai8GlobalButton = ai8TemperatureCard->findChild<QPushButton *>(
         QStringLiteral("ai8PageSelectorButton4"));
     auto *ai8ChannelButton = ai8TemperatureCard->findChild<QPushButton *>(
@@ -4439,6 +5472,10 @@ int main(int argc, char **argv)
                                  QStringLiteral("QToolButton#temperatureOverviewChannelButton::menu-indicator {"),
                                  QStringLiteral("image: none"),
                                  "temperature overview channel selector hides the default dropdown indicator");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QToolButton#temperatureOverviewChannelButton {"),
+                                 QStringLiteral("font-weight: 500"),
+                                 "temperature overview channel selector uses the normal selector font weight");
     require(temperatureChannelButton->menu() != nullptr,
             "temperature overview channel selector menu exists");
     require(temperatureChannelButton->menu()->testAttribute(Qt::WA_TranslucentBackground) &&
@@ -4458,6 +5495,8 @@ int main(int argc, char **argv)
                 "temperature overview channel menu item text is centered while check icon is right-aligned");
         require(row->textLabel() != nullptr && row->checkLabel() != nullptr,
                 "temperature overview channel menu row exposes text and check slots");
+        require(row->font().weight() <= QFont::Medium,
+                "temperature overview channel menu text uses the normal selector weight");
         require(row->textLabel()->alignment() == Qt::AlignCenter,
                 "temperature overview channel menu text label is centered");
         require(row->checkLabel()->geometry().right() > row->textLabel()->geometry().right(),
@@ -4524,6 +5563,8 @@ int main(int argc, char **argv)
     }
     auto *temperatureOutputSwitch =
         window.findChild<QPushButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
+    auto *temperatureOutputPercentPill =
+        window.findChild<QLabel *>(QStringLiteral("temperatureOverviewOutputPercentPill"));
     auto *temperatureOutputCapsule =
         window.findChild<QFrame *>(QStringLiteral("temperatureOverviewOutputCapsule"));
     auto *temperatureOutputLabel =
@@ -4532,6 +5573,13 @@ int main(int argc, char **argv)
         window.findChild<QPushButton *>(QStringLiteral("temperatureOutputEnableSwitchChannel1"));
     require(temperatureOutputSwitch != nullptr,
             "temperature overview output enable capsule exists");
+    require(temperatureOutputPercentPill != nullptr,
+            "temperature overview output percent capsule exists");
+    require(temperatureOutputPercentPill->textFormat() == Qt::RichText &&
+                temperatureOutputPercentPill->text().contains(QStringLiteral("<br/>")) &&
+                temperatureOutputPercentPill->text().contains(QStringLiteral("输出百分比")) &&
+                temperatureOutputPercentPill->text().contains(QStringLiteral("---")),
+            "temperature overview output percent starts as a two-line unavailable capsule");
     require(temperatureOutputSwitch->property("segmentedSwitchControl").toBool() &&
                 temperatureOutputSwitch->focusPolicy() == Qt::TabFocus,
             "temperature overview output uses the keyboard-accessible shared segmented switch");
@@ -4553,12 +5601,22 @@ int main(int argc, char **argv)
             "temperature overview summary column exists");
     require(temperatureOverviewSummary->layout() != nullptr,
             "temperature overview summary column has a layout");
+    require(temperatureOverviewSummary->layout()->indexOf(temperatureChannelButton) >= 0 &&
+                temperatureOverviewSummary->layout()->indexOf(temperatureOutputPercentPill) >
+                    temperatureOverviewSummary->layout()->indexOf(temperatureChannelButton) &&
+                temperatureOverviewSummary->layout()->indexOf(temperatureOutputPercentPill) <
+                    temperatureOverviewSummary->layout()->indexOf(temperatureValuePills.first()),
+            "temperature overview output percent capsule sits between channel selection and target temperature");
     processEventsFor(50);
     activateLayouts(&window);
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QLabel#temperatureOverviewValuePill {"),
                                  QStringLiteral("font-size: 13px"),
                                  "temperature overview value pill font matches the other capsules");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QLabel#temperatureOverviewOutputPercentPill {"),
+                                 QStringLiteral("font-size: 13px"),
+                                 "temperature overview output percent pill matches the value capsule typography");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QFrame#temperatureOverviewOutputCapsule {"),
                                  QStringLiteral("border-radius: 10px"),
@@ -4573,15 +5631,18 @@ int main(int argc, char **argv)
                                  "temperature overview output switch font is enlarged for readability");
     const int temperatureSummarySpacing = temperatureOverviewSummary->layout()->spacing();
     int temperatureSummaryControlHeight =
-        temperatureChannelButton->height() + temperatureOutputCapsule->height() +
-        temperatureSummarySpacing * 3;
+        temperatureChannelButton->height() + temperatureOutputPercentPill->height() +
+        temperatureOutputCapsule->height() + temperatureSummarySpacing * 4;
     for (QLabel *pill : temperatureValuePills)
     {
         temperatureSummaryControlHeight += pill->height();
         require(pill->height() >= 44,
                 "temperature overview value capsules are taller than the old compact pills");
     }
-    require(temperatureChannelButton->height() <= 38,
+    require(temperatureOutputPercentPill->height() > temperatureChannelButton->height() &&
+                temperatureOutputPercentPill->height() >= 42,
+            "temperature overview output percent capsule is taller than the compact channel selector");
+    require(temperatureChannelButton->height() <= 30,
             "temperature overview channel selector is shorter than the value and output capsules");
     require(temperatureOutputCapsule->height() == 60 &&
                 temperatureOutputCapsule->width() == temperatureChannelButton->width(),
@@ -4626,10 +5687,11 @@ int main(int argc, char **argv)
             linkRateNames << nameLabel->text();
         }
     }
-    require(linkRateNames == QStringList{QStringLiteral("天→地"),
+    require(linkRateNames == QStringList{QStringLiteral("目标"),
+                                         QStringLiteral("天→地"),
                                          QStringLiteral("地→天"),
                                          QStringLiteral("合")},
-            "home link-rate pills use the compact Chinese field names");
+            "home link-rate pills expose target plus compact Chinese field names");
     const QList<QFrame*> ratePills =
         homeRateSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(!ratePills.isEmpty(),
@@ -4640,6 +5702,10 @@ int main(int argc, char **argv)
     {
         QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+        require(valueLabel != nullptr,
+                "home data-stream telemetry pill has a value label");
+        require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Hz")),
+                "home data-stream rate value label reserves room for 999.9 Hz");
         if (nameLabel && nameLabel->text().contains(QStringLiteral("波形总包")))
         {
             waveformTotalRateVisible = true;
@@ -4650,6 +5716,9 @@ int main(int argc, char **argv)
                     "home wave capture rate uses the same zero-frequency text as other rates");
             waveCaptureRateShowsZero = true;
         }
+        requireCompactTelemetryPillTextGap(
+            pill,
+            "home data-stream telemetry field/value gap remains compact");
     }
     require(!waveformTotalRateVisible,
             "home data-stream telemetry section hides the waveform total packet rate");
@@ -4679,26 +5748,49 @@ int main(int argc, char **argv)
     QFrame *homeLinkSection = homeTelemetrySections.at(1);
     const QList<QFrame*> linkRatePills =
         homeLinkSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
-    require(linkRatePills.size() == 3,
-            "home link-rate telemetry section keeps three link pills");
+    require(linkRatePills.size() == 4,
+            "home link-rate telemetry section includes target plus three link-rate pills");
+    QFrame *targetPill = findTelemetryPillByName(homeLinkSection, QStringLiteral("目标"));
+    require(targetPill != nullptr,
+            "home link-rate telemetry section exposes the current Local/Remote target");
+    const int targetPillY = targetPill->mapTo(homeLinkSection, QPoint(0, 0)).y();
+    int linkRatePillY = -1;
     for (QFrame *pill : linkRatePills)
     {
+        if (pill == targetPill)
+        {
+            continue;
+        }
+        const int pillY = pill->mapTo(homeLinkSection, QPoint(0, 0)).y();
+        require(pillY > targetPillY,
+                "home link-rate target is alone on the first telemetry line");
+        if (linkRatePillY < 0)
+        {
+            linkRatePillY = pillY;
+        }
+        require(std::abs(pillY - linkRatePillY) <= 2,
+                "home link-rate direction and total pills share the second telemetry line");
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(valueLabel != nullptr,
                 "home link-rate pill has a value label");
         require(valueLabel->fontMetrics().horizontalAdvance(valueLabel->text()) <= valueLabel->width() + 1,
                 "home link-rate value text fits its compact label");
-        const int mbpsWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Mbps"));
-        const int compactKbpsWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9kbps"));
-        require(valueLabel->width() >= std::max(mbpsWidth, compactKbpsWidth),
-                "home link-rate value label reserves room for 999.9 Mbps and 999.9kbps");
+        const int compactKbpsWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 kbps"));
+        const int oldMbpsReserveWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Mbps")) + 8;
+        require(valueLabel->width() >= compactKbpsWidth,
+                "home link-rate value label reserves room for 999.9 kbps");
+        require(valueLabel->width() < oldMbpsReserveWidth,
+                "home link-rate value label no longer reserves the wider 999.9 Mbps width");
+        requireCompactTelemetryPillTextGap(
+            pill,
+            "home link-rate telemetry field/value gap remains compact");
     }
     QFrame *homeDataSection = homeTelemetrySections.at(2);
     QLabel *homeDataTitle =
         homeDataSection->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryTitleLabel"));
     require(homeDataTitle != nullptr &&
-                (homeDataTitle->text() == QStringLiteral("数据：") ||
-                 homeDataTitle->text() == QStringLiteral("Data:")),
+                (homeDataTitle->text() == QStringLiteral("数据") ||
+                 homeDataTitle->text() == QStringLiteral("Data")),
             "home data availability row starts with a data title");
     bool homeDataHasEpsilon = false;
     const QList<QFrame*> dataPills =
@@ -4724,6 +5816,9 @@ int main(int argc, char **argv)
         require(valueText != QStringLiteral("有数据") &&
                     valueText != QStringLiteral("无数据"),
                 "home data availability values omit the longer data suffix");
+        requireCompactTelemetryPillTextGap(
+            pill,
+            "home data availability field/value gap remains compact");
     }
     require(homeDataHasEpsilon,
             "home data availability row includes the EPSILON field");
@@ -4749,7 +5844,46 @@ int main(int argc, char **argv)
     require(VaporView::appThemeColor(VaporView::AppThemeColor::Focus, true) ==
                 VaporView::appThemeColor(VaporView::AppThemeColor::Primary, true),
             "dark theme focus token uses the orange primary color");
+    require(VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceRaised, true) ==
+                QColor(24, 24, 24),
+            "dark top-level card background uses the requested rgb(24, 24, 24) surface");
     const QString darkOverviewStyleSheet = qApp->styleSheet();
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"],"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised, true)),
+        "dark top-level cards use the shared raised surface background");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar,"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised, true)),
+        "dark top-level card title bars use the shared raised surface background");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QListView#logListView::item:selected {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtlePressed, true)),
+        "dark log selection uses the dark primary selection background");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QListView#logListView::item:selected {"),
+        QStringLiteral("color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::White, true)),
+        "dark log selection keeps the text readable");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QListView#logListView::item:hover {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover, true)),
+        "dark log hover uses the neutral gray hover background");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QListView#logListView::item:selected:hover {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtlePressed, true)),
+        "dark selected log hover keeps the pressed selection background");
     requireLastStyleRuleContains(
         darkOverviewStyleSheet,
         QStringLiteral("QMessageBox QLabel {"),
@@ -4848,6 +5982,12 @@ int main(int argc, char **argv)
         QStringLiteral("QSplitter#homeOverviewSplitter::handle:horizontal:pressed {"),
         darkHomeOverviewSplitterBackground,
         "dark home overview splitter keeps its background while pressed");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical {"),
+        QStringLiteral("background-color: ") +
+            VaporView::appThemeColorName(VaporView::AppThemeColor::Window, true),
+        "dark main card scrollbar track blends into the adjacent window background");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QWidget#tcpWaveCardOutline {"),
                                  QStringLiteral("border: 1px solid %1")
@@ -4868,6 +6008,10 @@ int main(int argc, char **argv)
                                  QStringLiteral("QLabel#temperatureOverviewValuePill {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
                                  "dark theme overrides temperature overview value pill background");
+    requireLastStyleRuleContains(darkOverviewStyleSheet,
+                                 QStringLiteral("QLabel#temperatureOverviewOutputPercentPill {"),
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
+                                 "dark theme overrides temperature overview output percent pill background");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QFrame#temperatureOverviewOutputCapsule {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
@@ -4967,6 +6111,7 @@ int main(int argc, char **argv)
     validTemperatureData.valid = true;
     validTemperatureData.channels[0].target_temperature_c = 25.0;
     validTemperatureData.channels[0].measured_temperature_c = 24.75;
+    validTemperatureData.channels[0].output_percent = 32.5;
     validTemperatureData.channels[0].output_enabled = true;
     validTemperatureData.channels[0].output_mode = 0;
     validTemperatureData.channels[0].max_output_percent = 70;
@@ -5001,6 +6146,11 @@ int main(int argc, char **argv)
             "temperature overview output enable capsule is enabled with controller data");
     require(temperatureOutputSwitch->isChecked(),
             "temperature overview output enable capsule reflects the confirmed controller output state");
+    require(temperatureOutputPercentPill->textFormat() == Qt::RichText &&
+                temperatureOutputPercentPill->text().contains(QStringLiteral("<br/>")) &&
+                temperatureOutputPercentPill->text().contains(QStringLiteral("输出百分比")) &&
+                temperatureOutputPercentPill->text().contains(QStringLiteral("32.50%")),
+            "temperature overview output percent capsule reflects the selected channel telemetry on two lines");
     bool sawTemperatureOverviewTargetValue = false;
     bool sawTemperatureOverviewCurrentValue = false;
     for (QLabel *pill : temperatureValuePills)
@@ -5026,6 +6176,19 @@ int main(int argc, char **argv)
     auto *temperaturePanel = window.findChild<TemperatureControllerPanel *>();
     require(temperaturePanel != nullptr,
             "temperature controller panel exists for pending command refresh checks");
+    auto *temperaturePageForLayout = window.findChild<QWidget *>(QStringLiteral("temperaturePage"));
+    require(temperaturePageForLayout != nullptr,
+            "temperature page exists for controller layout checks");
+    auto findTemperatureStatusLabel = [&window](const char *propertyName) -> QLabel * {
+        for (QLabel *label : window.findChildren<QLabel *>())
+        {
+            if (label->property(propertyName).toBool())
+            {
+                return label;
+            }
+        }
+        return nullptr;
+    };
     auto *controllerModeCombo =
         temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureControllerModeCombo"));
     QLabel *controllerModeLabel = nullptr;
@@ -5038,7 +6201,7 @@ int main(int argc, char **argv)
         }
     }
     auto *temperatureStatusRateLabel =
-        temperaturePanel->findChild<QLabel *>(QStringLiteral("rateLabel"));
+        findTemperatureStatusLabel("temperatureControllerRateValue");
     auto *targetSpin =
         temperaturePanel->findChild<QDoubleSpinBox *>(QStringLiteral("temperatureTargetSpinChannel1"));
     auto *enableSwitch =
@@ -5086,6 +6249,17 @@ int main(int argc, char **argv)
                 sensorModelSelector1 != nullptr && sensorModelBValueRadio != nullptr &&
                 sensorModelPtRadio != nullptr && sensorModelShRadio != nullptr && sensorModelMf501Radio != nullptr,
             "temperature controller editable controls are discoverable for stale telemetry checks");
+    for (QLabel *fieldLabel : temperaturePanel->findChildren<QLabel *>(QStringLiteral("fieldLabel")))
+    {
+        if (fieldLabel->wordWrap())
+        {
+            continue;
+        }
+        requireSelectableCardTitle(fieldLabel,
+                                   "RD105 temperature-controller field names are selectable and copyable");
+        require(fieldLabel->focusPolicy() == Qt::ClickFocus,
+                "RD105 temperature-controller field names accept mouse focus for selection");
+    }
     require(sensorModelBValueRadio->property("temperatureSensorModelOption").toBool() &&
                 sensorModelPtRadio->property("temperatureSensorModelOption").toBool() &&
                 sensorModelShRadio->property("temperatureSensorModelOption").toBool() &&
@@ -5105,33 +6279,40 @@ int main(int argc, char **argv)
 
     clickWidget(temperatureNavButton, 150);
     activateLayouts(&window);
-    auto *temperaturePageForLayout = window.findChild<QWidget *>(QStringLiteral("temperaturePage"));
+    requireCardTitleMouseSelectionAndCopy(controllerModeLabel);
     require(temperaturePageForLayout != nullptr && temperaturePageForLayout->isVisible(),
             "temperature page is visible for controller layout checks");
-    auto *temperatureStatusLayout = qobject_cast<QGridLayout *>(
-        temperaturePanel->layout() ? temperaturePanel->layout()->itemAt(0)->layout() : nullptr);
-    auto statusLabelAt = [temperatureStatusLayout](int column) {
-        return temperatureStatusLayout
-            ? qobject_cast<QLabel *>(temperatureStatusLayout->itemAtPosition(0, column)->widget())
-            : nullptr;
-    };
-    QLabel *internalTemperatureStatusLabel = statusLabelAt(0);
-    QLabel *internalTemperatureStatusValue = statusLabelAt(1);
-    QLabel *errorCodeStatusLabel = statusLabelAt(2);
-    QLabel *errorCodeStatusValue = statusLabelAt(3);
-    QLabel *pollingRateStatusLabel = statusLabelAt(4);
-    QLabel *pollingRateStatusValue = statusLabelAt(5);
+    auto *temperatureTitleStatusStrip =
+        temperaturePageForLayout->findChild<QWidget *>(QStringLiteral("temperatureTitleStatusStrip"));
+    QLabel *internalTemperatureStatusLabel =
+        findTemperatureStatusLabel("temperatureControllerInternalTemperatureTitle");
+    QLabel *internalTemperatureStatusValue =
+        findTemperatureStatusLabel("temperatureControllerInternalTemperatureValue");
+    QLabel *errorCodeStatusLabel =
+        findTemperatureStatusLabel("temperatureControllerErrorCodeTitle");
+    QLabel *errorCodeStatusValue =
+        findTemperatureStatusLabel("temperatureControllerErrorCodeValue");
+    QLabel *pollingRateStatusLabel =
+        findTemperatureStatusLabel("temperatureControllerRateTitle");
+    QLabel *pollingRateStatusValue = temperatureStatusRateLabel;
     require(internalTemperatureStatusLabel != nullptr && internalTemperatureStatusValue != nullptr &&
                 errorCodeStatusLabel != nullptr && errorCodeStatusValue != nullptr &&
-                pollingRateStatusLabel != nullptr && pollingRateStatusValue != nullptr,
-            "temperature, error, and polling-rate fields exist in the top status row");
+                pollingRateStatusLabel != nullptr && pollingRateStatusValue != nullptr &&
+                temperatureTitleStatusStrip != nullptr && temperatureTitleStatusStrip->isVisible(),
+            "temperature, error, and polling-rate fields exist in the title-bar status strip");
     require((internalTemperatureStatusValue->alignment() & Qt::AlignHorizontal_Mask) == Qt::AlignLeft &&
                 (errorCodeStatusValue->alignment() & Qt::AlignHorizontal_Mask) == Qt::AlignLeft &&
                 (pollingRateStatusValue->alignment() & Qt::AlignHorizontal_Mask) == Qt::AlignLeft,
-            "temperature status values align toward their labels");
+            "temperature title status values align toward their labels");
     require(internalTemperatureStatusLabel->width() < controllerModeLabel->width() &&
                 errorCodeStatusLabel->width() < controllerModeLabel->width(),
             "temperature and error labels do not reserve controller-mode label width");
+    auto leftInTitleStatus = [temperatureTitleStatusStrip](QWidget *widget) {
+        return widget->mapTo(temperatureTitleStatusStrip, QPoint(0, 0)).x();
+    };
+    auto rightInTitleStatus = [temperatureTitleStatusStrip](QWidget *widget) {
+        return widget->mapTo(temperatureTitleStatusStrip, QPoint(0, 0)).x() + widget->width();
+    };
     require(internalTemperatureStatusValue->x() -
                     (internalTemperatureStatusLabel->x() + internalTemperatureStatusLabel->width()) <= 12 &&
                 errorCodeStatusValue->x() -
@@ -5141,15 +6322,20 @@ int main(int argc, char **argv)
                 pollingRateStatusLabel->property("temperatureControllerRateTitle").toBool() &&
                 pollingRateStatusValue == temperatureStatusRateLabel &&
                 pollingRateStatusValue->property("temperatureControllerRateValue").toBool(),
-            "temperature status row describes the Hz value as polling rate");
-    require(pollingRateStatusLabel->x() -
-                    (errorCodeStatusValue->x() + errorCodeStatusValue->width()) <= 12 &&
+            "temperature title status strip describes the Hz value as polling rate");
+    require(leftInTitleStatus(pollingRateStatusLabel) -
+                    rightInTitleStatus(errorCodeStatusValue) <= 16 &&
                 pollingRateStatusValue->x() -
                     (pollingRateStatusLabel->x() + pollingRateStatusLabel->width()) <= 12,
-            "polling-rate label and value follow the error code without stretch spacing");
+            "polling-rate label and value follow the error code in the title bar");
     require(pollingRateStatusValue->fontMetrics().height() >
                 errorCodeStatusValue->fontMetrics().height(),
             "temperature polling-rate value and Hz unit use a larger font");
+    for (QLabel *titleStatusLabel : {internalTemperatureStatusLabel, errorCodeStatusLabel, pollingRateStatusLabel})
+    {
+        requireSelectableCardTitle(titleStatusLabel,
+                                   "RD105 title-bar status field names remain selectable and copyable");
+    }
     QLabel *temperatureControllerTitleLabel = nullptr;
     const QList<QLabel*> temperaturePageTitleLabels =
         temperaturePageForLayout->findChildren<QLabel *>(QStringLiteral("sectionTitleLabel"));
@@ -5259,13 +6445,15 @@ int main(int argc, char **argv)
                 temperatureTitleLayout != nullptr &&
                 temperatureTitleLayout->indexOf(temperatureTitleActionButton) ==
                     temperatureTitleLayout->indexOf(temperatureTitlePortCombo) + 1 &&
+                temperatureTitleLayout->indexOf(temperatureTitleStatusStrip) ==
+                    temperatureTitleLayout->indexOf(temperatureTitleActionButton) + 1 &&
                 temperatureTitleActionButton->property("temperatureTitleAction").toBool() &&
                 temperatureTitleActionButton->property("temperatureTitleCommand").toString() == QStringLiteral("connect") &&
                 temperatureTitleActionButton->text().isEmpty() &&
                 !temperatureTitleActionButton->icon().isNull() &&
                 temperatureTitleActionButton->iconSize() == QSize(18, 18) &&
                 temperatureTitleActionButton->size() == QSize(32, 32),
-            "temperature controller title-bar connection action is one icon-only state button after the serial selector");
+            "temperature controller title bar places status fields after the icon-only connection action");
     require(temperatureTitleActionButton->isEnabled(),
             "temperature controller title-bar state action is usable in local serial mode");
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
@@ -5294,8 +6482,20 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelTopControlsStack"));
     auto *temperatureChannelCommonTopControls1 =
         temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureChannelCommonTopControlsChannel1"));
+    auto *temperatureChannelCommonTopControls2 =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureChannelCommonTopControlsChannel2"));
+    auto *temperatureControllerModeTopControls =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureControllerModeTopControls"));
     auto *temperatureChannelStack =
         temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelStack"));
+    auto *temperatureControllerContentRow =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureControllerContentRow"));
+    auto *temperatureControllerLeftConfigColumn =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureControllerLeftConfigColumn"));
+    auto *temperatureControllerControlsCard =
+        temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureControllerControlsCard"));
+    auto *temperatureSubPageBarStack =
+        temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureSubPageBarStack"));
     auto *temperatureCommonSettingsPage =
         temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureCommonSettingsPage"));
     auto *temperatureConfigChannelButton1 =
@@ -5304,6 +6504,10 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureChannelSelectorButton2"));
     auto *temperatureCommonSettingsButton =
         temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureCommonSettingsButton"));
+    auto *temperatureConfigPlotContainer =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureConfigPlotContainer"));
+    auto *temperatureControllerModeField =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureControllerModeField"));
     QWidget *temperatureConfigPlot = nullptr;
     const QList<QWidget*> controllerTrendPlots =
         temperaturePanel->findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot"));
@@ -5321,21 +6525,39 @@ int main(int argc, char **argv)
                 temperatureChannelTopBar != nullptr &&
                 temperatureChannelTopControlsStack != nullptr &&
                 temperatureChannelCommonTopControls1 != nullptr &&
+                temperatureChannelCommonTopControls2 != nullptr &&
+                temperatureControllerModeTopControls != nullptr &&
                 temperatureChannelStack != nullptr &&
+                temperatureControllerContentRow != nullptr &&
+                temperatureControllerLeftConfigColumn != nullptr &&
+                temperatureControllerControlsCard != nullptr &&
+                temperatureSubPageBarStack != nullptr &&
                 temperatureCommonSettingsPage != nullptr &&
                 temperatureConfigChannelButton1 != nullptr &&
                 temperatureConfigChannelButton2 != nullptr &&
                 temperatureCommonSettingsButton != nullptr &&
+                temperatureConfigPlotContainer != nullptr &&
+                temperatureControllerModeField != nullptr &&
                 temperatureConfigPlot != nullptr,
-            "temperature controller page exposes a top channel selector and a full-width trend plot");
+            "temperature controller page exposes a top channel selector and a trend plot with inline mode controls");
+    require(temperatureConfigPlot->sizePolicy().verticalPolicy() == QSizePolicy::Fixed &&
+                temperatureControllerContentRow->sizePolicy().verticalPolicy() == QSizePolicy::Fixed,
+            "temperature controller config plot and content row do not expand vertically with the page");
     require(temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureConfigTabs")) == nullptr,
             "temperature controller no longer uses the native tab widget that drew the gray base bar");
     require(temperatureChannelTopRow->parentWidget() == temperatureConfigCard &&
                 temperatureChannelSelectorRow->parentWidget() == temperatureChannelTopRow &&
                 temperatureChannelTopBar->parentWidget() == temperatureChannelSelectorRow &&
                 temperatureChannelTopControlsStack->parentWidget() == temperatureChannelSelectorRow &&
-                temperatureChannelStack->parentWidget() == temperatureConfigCard,
-            "temperature top selector row and page stack live in the internal config card");
+                temperatureControllerContentRow->parentWidget() == temperatureConfigCard &&
+                temperatureControllerLeftConfigColumn->parentWidget() == temperatureControllerContentRow &&
+                temperatureSubPageBarStack->parentWidget() == temperatureControllerLeftConfigColumn &&
+                temperatureControllerControlsCard->parentWidget() == temperatureControllerLeftConfigColumn &&
+                temperatureChannelStack->parentWidget() == temperatureControllerControlsCard &&
+                temperatureConfigPlotContainer->parentWidget() == temperatureControllerContentRow &&
+                temperatureConfigPlot->parentWidget() == temperatureConfigPlotContainer &&
+                temperatureControllerModeField->parentWidget() == temperatureChannelTopControlsStack->currentWidget(),
+            "temperature card keeps the controller mode field in the shared top-controls row");
     require(temperatureConfigChannelButton1->parentWidget() == temperatureChannelTopBar &&
                 temperatureConfigChannelButton2->parentWidget() == temperatureChannelTopBar &&
                 temperatureCommonSettingsButton->parentWidget() == temperatureChannelTopBar,
@@ -5361,17 +6583,103 @@ int main(int argc, char **argv)
                 temperatureConfigCard->minimumWidth() == 0 &&
                 temperatureConfigCard->sizePolicy().horizontalPolicy() == QSizePolicy::Ignored,
             "temperature controller card width follows the available page width instead of the active page size hint");
-    const QRect temperatureHeaderRateRect(temperatureStatusRateLabel->mapTo(temperaturePanel, QPoint(0, 0)),
-                                          temperatureStatusRateLabel->size());
-    const QRect controllerModeLabelRect(controllerModeLabel->mapTo(temperaturePanel, QPoint(0, 0)),
+    const QRect controllerModeFieldRect(
+        temperatureControllerModeField->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
+        temperatureControllerModeField->size());
+    const QRect topEnableFieldRect(
+        enableSwitch->parentWidget()->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
+        enableSwitch->parentWidget()->size());
+    const QRect autoPidFieldRectForMode(
+        autoPidCombo->parentWidget()->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
+        autoPidCombo->parentWidget()->size());
+    const QRect controllerModeLabelRect(controllerModeLabel->mapTo(temperatureControllerModeField, QPoint(0, 0)),
                                         controllerModeLabel->size());
-    const QRect controllerModeComboRect(controllerModeCombo->mapTo(temperaturePanel, QPoint(0, 0)),
+    const QRect controllerModeComboRect(controllerModeCombo->mapTo(temperatureControllerModeField, QPoint(0, 0)),
                                         controllerModeCombo->size());
-    require(temperatureHeaderRateRect.right() < controllerModeLabelRect.left() &&
-                controllerModeLabelRect.right() < controllerModeComboRect.left() &&
-                std::abs(temperatureHeaderRateRect.center().y() - controllerModeLabelRect.center().y()) <= 2 &&
-                std::abs(controllerModeLabelRect.center().y() - controllerModeComboRect.center().y()) <= 2,
-            "temperature controller mode label and combo sit on the status row to the right of Hz");
+    const QRect controllerModeComboRectInTopRow(
+        controllerModeCombo->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
+        controllerModeCombo->size());
+    int longestControllerModeTextWidth = 0;
+    int longestControllerModeIndex = -1;
+    for (int index = 0; index < controllerModeCombo->count(); ++index)
+    {
+        const int textWidth = controllerModeCombo->fontMetrics().horizontalAdvance(
+            controllerModeCombo->itemText(index));
+        if (textWidth > longestControllerModeTextWidth)
+        {
+            longestControllerModeTextWidth = textWidth;
+            longestControllerModeIndex = index;
+        }
+    }
+    const int initialControllerModeIndex = controllerModeCombo->currentIndex();
+    controllerModeCombo->setCurrentIndex(longestControllerModeIndex);
+    processEventsFor(20);
+    QStyleOptionComboBox controllerModeComboOption;
+    controllerModeComboOption.initFrom(controllerModeCombo);
+    controllerModeComboOption.rect = controllerModeCombo->rect();
+    controllerModeComboOption.currentText = controllerModeCombo->currentText();
+    controllerModeComboOption.editable = controllerModeCombo->isEditable();
+    controllerModeComboOption.frame = controllerModeCombo->hasFrame();
+    const QRect controllerModeComboEditRect = controllerModeCombo->style()->subControlRect(
+        QStyle::CC_ComboBox,
+        &controllerModeComboOption,
+        QStyle::SC_ComboBoxEditField,
+        controllerModeCombo);
+    require(std::abs(controllerModeFieldRect.top() - autoPidFieldRectForMode.top()) <= 2,
+            "temperature controller mode field shares the top row with auto PID");
+    const int enableToAutoGap = autoPidFieldRectForMode.left() - topEnableFieldRect.right() - 1;
+    const int autoToControllerModeGap = controllerModeFieldRect.left() - autoPidFieldRectForMode.right() - 1;
+    require(enableToAutoGap >= 0 && autoToControllerModeGap >= 0,
+            "temperature top fields do not overlap when the mode selector keeps its full width");
+    const QRect topBarRectForMode(
+        temperatureChannelTopBar->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
+        temperatureChannelTopBar->size());
+    const int commonTopBarToEnableGap = topEnableFieldRect.left() - topBarRectForMode.right() - 1;
+    require(enableToAutoGap >= 0 && autoToControllerModeGap >= 0,
+            "temperature top fields do not overlap when the mode selector keeps its full width");
+    require(commonTopBarToEnableGap >= 0 &&
+                std::abs(commonTopBarToEnableGap - enableToAutoGap) <= 1 &&
+                std::abs(enableToAutoGap - autoToControllerModeGap) <= 1,
+            "temperature common-page top controls use one evenly distributed gap");
+    require(controllerModeLabelRect.right() < controllerModeComboRect.left(),
+            "temperature controller mode label sits immediately before the combo");
+    require(controllerModeComboRect.left() - controllerModeLabelRect.right() - 1 <= 1,
+            "temperature controller mode label removes the gap before its combo");
+    require(controllerModeComboRectInTopRow.right() <= controllerModeFieldRect.right() &&
+                controllerModeComboRectInTopRow.right() < temperatureChannelSelectorRow->width(),
+            "temperature controller mode combo stays inside its field and top row without right-edge clipping");
+    require(std::abs(controllerModeLabelRect.center().y() - controllerModeComboRect.center().y()) <= 2,
+            "temperature controller mode label and combo are vertically centered together");
+    require(controllerModeComboEditRect.width() >= longestControllerModeTextWidth + 18,
+            "temperature controller mode combo reserves text padding beyond its longest option");
+    int longestAutoPidTextWidth = 0;
+    int longestAutoPidIndex = -1;
+    for (int index = 0; index < autoPidCombo->count(); ++index)
+    {
+        const int textWidth = autoPidCombo->fontMetrics().horizontalAdvance(
+            autoPidCombo->itemText(index));
+        if (textWidth > longestAutoPidTextWidth)
+        {
+            longestAutoPidTextWidth = textWidth;
+            longestAutoPidIndex = index;
+        }
+    }
+    QStyleOptionComboBox autoPidComboOption;
+    autoPidComboOption.initFrom(autoPidCombo);
+    autoPidComboOption.rect = autoPidCombo->rect();
+    autoPidComboOption.currentText = autoPidCombo->itemText(longestAutoPidIndex);
+    autoPidComboOption.editable = autoPidCombo->isEditable();
+    autoPidComboOption.frame = autoPidCombo->hasFrame();
+    const QRect autoPidComboEditRect = autoPidCombo->style()->subControlRect(
+        QStyle::CC_ComboBox,
+        &autoPidComboOption,
+        QStyle::SC_ComboBoxEditField,
+        autoPidCombo);
+    require(autoPidComboEditRect.width() >= longestAutoPidTextWidth + 36,
+            "temperature auto PID combo keeps its longest option fully visible");
+    controllerModeCombo->setCurrentIndex(initialControllerModeIndex);
+    require(controllerModeFieldRect.right() >= temperatureChannelSelectorRow->width() - 1,
+            "temperature controller mode field and combo are right aligned in the shared top row");
     const QRect topRowRectInCard(temperatureChannelTopRow->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                  temperatureChannelTopRow->size());
     const QRect selectorRowRectInTopRow(temperatureChannelSelectorRow->mapTo(temperatureChannelTopRow, QPoint(0, 0)),
@@ -5380,6 +6688,21 @@ int main(int argc, char **argv)
                                 temperatureChannelTopBar->size());
     const QRect stackRectInCard(temperatureChannelStack->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                  temperatureChannelStack->size());
+    const QRect stackRectInControlsCard(
+        temperatureChannelStack->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
+        temperatureChannelStack->size());
+    auto *temperatureControllerLeftConfigColumnLayout =
+        qobject_cast<QVBoxLayout *>(temperatureControllerLeftConfigColumn->layout());
+    auto *temperatureControllerControlsCardLayout =
+        qobject_cast<QVBoxLayout *>(temperatureControllerControlsCard->layout());
+    require(temperatureControllerControlsCard->width() <= 280 &&
+                temperatureControllerLeftConfigColumnLayout != nullptr &&
+                temperatureControllerLeftConfigColumnLayout->spacing() == 6 &&
+                temperatureControllerControlsCardLayout != nullptr &&
+                temperatureChannelStack->frameShape() == QFrame::NoFrame &&
+                stackRectInControlsCard.left() <= 8 &&
+                temperatureControllerControlsCard->width() - stackRectInControlsCard.right() - 1 <= 8,
+            "temperature parameter card removes the stacked-page frame and trims the outer horizontal padding");
     require(topRowRectInCard.bottom() < stackRectInCard.top() &&
                 topRowRectInCard.left() <= stackRectInCard.left() + 1 &&
                 topBarRectInRow.width() < stackRectInCard.width(),
@@ -5428,6 +6751,16 @@ int main(int argc, char **argv)
                 !factoryResetButton->isVisible() &&
                 !factoryResetButton->icon().isNull(),
             "temperature factory reset button belongs to the common settings page and starts hidden");
+    const QColor plotBackgroundColor = VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceRaised, false);
+    const QImage plotSnapshot = temperatureConfigPlot->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    const QImage configCardSnapshot = temperatureConfigCard->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    const QImage controlsCardSnapshot =
+        temperatureControllerControlsCard->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    require(!plotSnapshot.isNull() && !configCardSnapshot.isNull() && !controlsCardSnapshot.isNull() &&
+                plotSnapshot.pixelColor(0, 0) == plotBackgroundColor &&
+                configCardSnapshot.pixelColor(4, configCardSnapshot.height() / 2) == plotBackgroundColor &&
+                controlsCardSnapshot.pixelColor(4, controlsCardSnapshot.height() / 2) == plotBackgroundColor,
+            "temperature cards use the same raised white background as the trend plot");
     require(enableSwitch->height() == 34 &&
                 enableSwitch->width() == 106 &&
                 enableSwitch2->height() == 34 &&
@@ -5444,7 +6777,9 @@ int main(int argc, char **argv)
     activateLayouts(&window);
     require(temperatureChannelTopControlsStack->currentIndex() == 1 &&
                 temperatureChannelTopControlsStack->isVisible() &&
+                temperatureControllerModeField->parentWidget() == temperatureChannelTopControlsStack->currentWidget() &&
                 temperatureChannelStack->currentIndex() == 1 &&
+                temperatureSubPageBarStack->currentIndex() == 1 &&
                 std::abs(temperatureChannelStack->height() - channel1StackHeight) <= 1 &&
                 std::abs(temperatureChannelTopRow->height() - channel1TopRowHeight) <= 1 &&
                 std::abs(temperatureConfigCard->height() - channel1ConfigCardHeight) <= 1 &&
@@ -5455,8 +6790,11 @@ int main(int argc, char **argv)
     clickWidget(temperatureCommonSettingsButton, 150);
     activateLayouts(&window);
     const int commonStackHeight = temperatureChannelStack->height();
-    require(!temperatureChannelTopControlsStack->isVisible() &&
+    require(temperatureChannelTopControlsStack->isVisible() &&
+                temperatureChannelTopControlsStack->currentWidget() == temperatureControllerModeTopControls &&
+                temperatureControllerModeField->parentWidget() == temperatureControllerModeTopControls &&
                 temperatureChannelStack->currentIndex() == 2 &&
+                temperatureSubPageBarStack->currentIndex() == 2 &&
                 std::abs(commonStackHeight - channel1StackHeight) <= 1 &&
                 std::abs(temperatureChannelTopRow->height() - channel1TopRowHeight) <= 1 &&
                 std::abs(temperatureConfigCard->height() - channel1ConfigCardHeight) <= 1 &&
@@ -5465,37 +6803,53 @@ int main(int argc, char **argv)
                 !temperatureConfigChannelButton2->isChecked() &&
                 temperatureCommonSettingsButton->isChecked(),
             "temperature top bar switches to a compact three-column common settings page");
+    const QRect modeOnlyControllerModeFieldRect(
+        temperatureControllerModeField->mapTo(temperatureControllerModeTopControls, QPoint(0, 0)),
+        temperatureControllerModeField->size());
+    require(modeOnlyControllerModeFieldRect.right() >= temperatureControllerModeTopControls->width() - 1,
+            "temperature controller mode field stays right aligned on the mode-only top row");
     require(std::abs(temperatureChannelTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)).x() -
-                     temperatureChannelStack->mapTo(temperatureConfigCard, QPoint(0, 0)).x()) <= 1,
-            "temperature top navigation stays left aligned on the common settings page");
-    auto *commonSettingsGrid = qobject_cast<QGridLayout *>(temperatureCommonSettingsPage->layout());
-    require(commonSettingsGrid != nullptr &&
-                commonSettingsGrid->columnCount() >= 4 &&
-                commonSettingsGrid->columnStretch(3) > 0 &&
+                     temperatureControllerContentRow->mapTo(temperatureConfigCard, QPoint(0, 0)).x()) <= 1,
+            "temperature top navigation stays aligned with the left control card on the common settings page");
+    auto *commonSettingsFields =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureCommonSettingsFields"));
+    auto *commonSettingsGrid =
+        commonSettingsFields ? qobject_cast<QGridLayout *>(commonSettingsFields->layout()) : nullptr;
+    require(commonSettingsFields != nullptr &&
+                commonSettingsGrid != nullptr &&
+                commonSettingsGrid->horizontalSpacing() == 6 &&
+                commonSettingsGrid->verticalSpacing() == 10 &&
                 commonSettingsGrid->itemAtPosition(0, 0) != nullptr &&
                 commonSettingsGrid->itemAtPosition(0, 0)->widget() == addressSpin->parentWidget() &&
-                commonSettingsGrid->itemAtPosition(0, 2) != nullptr &&
-                commonSettingsGrid->itemAtPosition(0, 2)->widget() == rs485BaudCombo->parentWidget() &&
+                commonSettingsGrid->itemAtPosition(0, 1) != nullptr &&
+                commonSettingsGrid->itemAtPosition(0, 1)->widget() == rs485BaudCombo->parentWidget() &&
                 commonSettingsGrid->itemAtPosition(1, 0) != nullptr &&
                 commonSettingsGrid->itemAtPosition(1, 0)->widget() == overtempOutputCombo->parentWidget() &&
-                commonSettingsGrid->itemAtPosition(1, 2) != nullptr &&
-                commonSettingsGrid->itemAtPosition(1, 2)->widget() == commonInternalTemperatureEdit->parentWidget() &&
-                commonSettingsGrid->itemAtPosition(2, 0) != nullptr &&
-                commonSettingsGrid->itemAtPosition(2, 0)->widget() == factoryResetButton,
-            "temperature common settings reserve a shared anchor before the second data column");
+                commonSettingsGrid->itemAtPosition(1, 1) != nullptr &&
+                commonSettingsGrid->itemAtPosition(1, 1)->widget() == commonInternalTemperatureEdit->parentWidget(),
+            "temperature common settings use a compact two-column stacked form");
+    QWidget *commonSettingsPage = commonSettingsFields->parentWidget();
+    auto *commonSettingsPageLayout = qobject_cast<QVBoxLayout *>(commonSettingsPage->layout());
+    const QRect commonSettingsFieldsRectInPage(
+        commonSettingsFields->mapTo(commonSettingsPage, QPoint(0, 0)), commonSettingsFields->size());
+    require(commonSettingsPageLayout != nullptr &&
+                commonSettingsPageLayout->contentsMargins() == QMargins(0, 0, 0, 6) &&
+                addressSpin->width() == 130 &&
+                rs485BaudCombo->width() == 130 &&
+                overtempOutputCombo->width() == 130 &&
+                commonInternalTemperatureEdit->width() == 130 &&
+                commonSettingsFields->width() ==
+                    addressSpin->width() * 2 + commonSettingsGrid->horizontalSpacing() &&
+                commonSettingsFieldsRectInPage.left() == commonSettingsPageLayout->contentsMargins().left() &&
+                commonSettingsPage->width() - 1 - commonSettingsFieldsRectInPage.right() ==
+                    commonSettingsPageLayout->contentsMargins().right(),
+            "temperature common settings leave the shared 6px inset to the outer parameter card");
+    const QMargins commonSettingsPageMargins = commonSettingsPageLayout->contentsMargins();
     auto *selectedChannelCommonParamsPage = temperaturePanel->findChild<QWidget *>(
         QStringLiteral("temperatureChannelCommonParamsPageChannel2"));
     auto *selectedChannelCommonParamsGrid = selectedChannelCommonParamsPage
         ? qobject_cast<QGridLayout *>(selectedChannelCommonParamsPage->layout())
         : nullptr;
-    QLayoutItem *selectedSecondColumnItem = selectedChannelCommonParamsGrid
-        ? selectedChannelCommonParamsGrid->itemAtPosition(0, 3)
-        : nullptr;
-    QWidget *selectedSecondColumnLabel = selectedSecondColumnItem
-        ? selectedSecondColumnItem->widget()
-        : nullptr;
-    require(selectedSecondColumnLabel != nullptr,
-            "temperature channel common parameters expose the shared second-column anchor");
     const QRect selectorBarRectInCard(temperatureChannelTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                       temperatureChannelTopBar->size());
     const QRect commonAddressRowRect(addressSpin->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
@@ -5508,6 +6862,8 @@ int main(int argc, char **argv)
                                       commonInternalTemperatureEdit->parentWidget()->size());
     const QRect factoryResetRectInCard(factoryResetButton->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                        factoryResetButton->size());
+    const QRect factoryResetRectInPage(factoryResetButton->mapTo(commonSettingsPage, QPoint(0, 0)),
+                                       factoryResetButton->size());
     const QRect commonBaudComboRectInCard(rs485BaudCombo->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                           rs485BaudCombo->size());
     const QRect commonAddressInputRectInCard(addressSpin->mapTo(temperatureConfigCard, QPoint(0, 0)),
@@ -5516,29 +6872,68 @@ int main(int argc, char **argv)
                                               overtempOutputCombo->size());
     const QRect commonInternalInputRectInCard(commonInternalTemperatureEdit->mapTo(temperatureConfigCard, QPoint(0, 0)),
                                               commonInternalTemperatureEdit->size());
+    auto *commonSettingsSubTopBar =
+        temperaturePanel->findChild<QFrame *>(QStringLiteral("temperatureCommonSettingsSubTopBar"));
+    auto *commonSettingsCommonParamsButton =
+        temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureCommonSettingsCommonParamsButton"));
+    auto *commonSettingsAdvancedParamsButton =
+        temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureCommonSettingsAdvancedParamsButton"));
+    auto *commonSettingsSensorConfigButton =
+        temperaturePanel->findChild<QPushButton *>(QStringLiteral("temperatureCommonSettingsSensorConfigButton"));
+    require(commonSettingsSubTopBar != nullptr &&
+                commonSettingsCommonParamsButton != nullptr &&
+                commonSettingsAdvancedParamsButton != nullptr &&
+                commonSettingsSensorConfigButton != nullptr &&
+                temperatureSubPageBarStack->isAncestorOf(commonSettingsSubTopBar) &&
+                !temperatureControllerControlsCard->isAncestorOf(commonSettingsSubTopBar) &&
+                !temperatureChannelStack->isAncestorOf(commonSettingsSubTopBar) &&
+                commonSettingsCommonParamsButton->isChecked() &&
+                commonSettingsCommonParamsButton->property("temperatureChannelSubSelector").toBool() &&
+                commonSettingsAdvancedParamsButton->property("temperatureChannelSubSelector").toBool() &&
+                commonSettingsSensorConfigButton->property("temperatureChannelSubSelector").toBool(),
+            "temperature common settings page keeps the lower common/professional/sensor selector outside the left card");
+    const QRect commonSubBarRectInCard(commonSettingsSubTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                       commonSettingsSubTopBar->size());
+    const QRect controlsCardRectInCard(
+        temperatureControllerControlsCard->mapTo(temperatureConfigCard, QPoint(0, 0)),
+        temperatureControllerControlsCard->size());
+    const QRect contentRowRectInCard(temperatureControllerContentRow->mapTo(temperatureConfigCard, QPoint(0, 0)),
+                                     temperatureControllerContentRow->size());
     require(commonAddressRowRect.top() > selectorBarRectInCard.bottom() &&
                 commonAddressRowRect.right() < commonBaudRowRect.left() &&
+                commonBaudRowRect.left() - commonAddressRowRect.right() - 1 <= 8 &&
                 std::abs(commonAddressRowRect.center().y() - commonBaudRowRect.center().y()) <= 2 &&
                 commonOvertempRowRect.top() > commonAddressRowRect.bottom() &&
                 commonOvertempRowRect.right() < commonInternalRowRect.left() &&
+                commonInternalRowRect.left() - commonOvertempRowRect.right() - 1 <= 8 &&
                 std::abs(commonOvertempRowRect.center().y() - commonInternalRowRect.center().y()) <= 2 &&
                 factoryResetRectInCard.top() > commonOvertempRowRect.bottom() &&
+                commonSubBarRectInCard.top() > controlsCardRectInCard.bottom() &&
+                commonSubBarRectInCard.top() - controlsCardRectInCard.bottom() - 1 ==
+                    commonSettingsGrid->horizontalSpacing() &&
                 std::abs(commonAddressRowRect.left() - commonOvertempRowRect.left()) <= 2 &&
-                std::abs(commonOvertempRowRect.left() - factoryResetRectInCard.left()) <= 2,
-            "temperature common settings follow selector, RS485, values, and factory-reset rows");
+                factoryResetRectInPage.left() ==
+                    commonSettingsPageMargins.left() +
+                        (commonSettingsPage->width() - commonSettingsPageMargins.left() -
+                         commonSettingsPageMargins.right() - factoryResetButton->width()) /
+                            2 &&
+                std::abs(commonSubBarRectInCard.left() - contentRowRectInCard.left()) <= 2,
+            "temperature common settings center the factory reset action and keep the lower-tab row outside the parameter card");
     require(std::abs(commonAddressInputRectInCard.left() - commonOvertempInputRectInCard.left()) <= 1 &&
                 std::abs(commonBaudComboRectInCard.left() - commonInternalInputRectInCard.left()) <= 1 &&
+                commonBaudComboRectInCard.left() - commonAddressInputRectInCard.right() - 1 <= 8 &&
+                commonInternalInputRectInCard.left() - commonOvertempInputRectInCard.right() - 1 <= 8 &&
                 addressSpin->width() == overtempOutputCombo->width() &&
                 rs485BaudCombo->width() == commonInternalTemperatureEdit->width(),
-            "temperature common settings align equal-width field editors within each data column");
-    const QRect selectedSecondColumnRectInCard(
-        selectedSecondColumnLabel->mapTo(temperatureConfigCard, QPoint(0, 0)),
-        selectedSecondColumnLabel->size());
-    require(std::abs(commonBaudRowRect.left() - selectedSecondColumnRectInCard.left()) <= 1 &&
-                std::abs(commonInternalRowRect.left() - selectedSecondColumnRectInCard.left()) <= 1,
-            "temperature common settings align their second column with channel parameter pages");
-    require(commonBaudComboRectInCard.right() <= temperatureConfigCard->rect().right() - 12,
-            "temperature common RS485 baud combo leaves room for its right border");
+            "temperature common settings align equal-width field editors with compact adjacent gaps");
+    require(selectedChannelCommonParamsPage != nullptr && selectedChannelCommonParamsGrid != nullptr,
+            "temperature channel common parameters remain available after switching into common settings");
+    const int controlsCardLeftInCard =
+        temperatureControllerControlsCard->mapTo(temperatureConfigCard, QPoint(0, 0)).x();
+    const int commonBaudRightInset =
+        controlsCardLeftInCard + temperatureControllerControlsCard->width() - 2 - commonBaudComboRectInCard.right();
+    require(commonBaudRightInset == 6,
+            "temperature common RS485 baud combo keeps the shared right inset inside the left control card");
     auto *overtempOutputMenu = overtempOutputCombo->findChild<VaporView::SingleLevelPopupMenu *>(
         QStringLiteral("singleLevelComboPopupMenu"));
     require(overtempOutputMenu != nullptr,
@@ -5562,19 +6957,33 @@ int main(int argc, char **argv)
                 overtempLabels.first()->palette().color(QPalette::WindowText) ==
                     VaporView::appThemeColor(VaporView::AppThemeColor::Danger, false),
             "temperature over-temperature output label is rendered in danger red");
-    const QRect commonCardRectInPanel(temperatureConfigCard->mapTo(temperaturePanel, QPoint(0, 0)),
-                                      temperatureConfigCard->size());
-    const QRect commonPlotRectInPanel(temperatureConfigPlot->mapTo(temperaturePanel, QPoint(0, 0)),
-                                      temperatureConfigPlot->size());
-    require(commonCardRectInPanel.right() <= temperaturePanel->rect().right() - 12 &&
-                std::abs(commonCardRectInPanel.left() - commonPlotRectInPanel.left()) <= 2 &&
-                std::abs(commonCardRectInPanel.right() - commonPlotRectInPanel.right()) <= 2,
-            "temperature common settings keep the controller card right edge visible and aligned with the plot");
+    const QRect controlsCardRectInContent(
+        temperatureControllerControlsCard->mapTo(temperatureControllerContentRow, QPoint(0, 0)),
+        temperatureControllerControlsCard->size());
+    const QRect plotRectInContent(temperatureConfigPlot->mapTo(temperatureControllerContentRow, QPoint(0, 0)),
+                                  temperatureConfigPlot->size());
+    const QMargins controlsCardMargins = temperatureControllerControlsCardLayout->contentsMargins();
+    const int controlsCardBorderHeight =
+        controlsCardRectInContent.height() -
+        controlsCardMargins.top() -
+        controlsCardMargins.bottom() -
+        temperatureChannelStack->height();
+    require(controlsCardRectInContent.right() < plotRectInContent.left() &&
+                std::abs(controlsCardRectInContent.top() - plotRectInContent.top()) <= 2 &&
+                plotRectInContent.right() <= temperatureControllerContentRow->rect().right() &&
+                controlsCardRectInContent.height() < plotRectInContent.height() &&
+                plotRectInContent.height() == 268 &&
+                temperatureControllerLeftConfigColumn->height() == plotRectInContent.height() &&
+                temperatureControllerContentRow->height() == plotRectInContent.height() &&
+                controlsCardBorderHeight >= 0 &&
+                controlsCardBorderHeight <= 2,
+            "temperature common settings keep the lowered trend plot flush with the compact left configuration column");
     clickWidget(temperatureConfigChannelButton1, 150);
     activateLayouts(&window);
     require(temperatureChannelTopControlsStack->currentIndex() == 0 &&
                 temperatureChannelTopControlsStack->isVisible() &&
                 temperatureChannelStack->currentIndex() == 0 &&
+                temperatureSubPageBarStack->currentIndex() == 0 &&
                 std::abs(temperatureChannelStack->height() - channel1StackHeight) <= 1 &&
                 std::abs(temperatureChannelTopRow->height() - channel1TopRowHeight) <= 1 &&
                 std::abs(temperatureConfigCard->height() - channel1ConfigCardHeight) <= 1 &&
@@ -5585,17 +6994,26 @@ int main(int argc, char **argv)
                 !temperatureConfigChannelButton2->isChecked() &&
                 !temperatureCommonSettingsButton->isChecked(),
             "temperature channel top bar can switch back to channel 1");
-    const QRect cardRectInPanel(temperatureConfigCard->mapTo(temperaturePanel, QPoint(0, 0)),
-                                temperatureConfigCard->size());
-    const QRect plotRectInPanel(temperatureConfigPlot->mapTo(temperaturePanel, QPoint(0, 0)),
-                                temperatureConfigPlot->size());
-    require(cardRectInPanel.bottom() < plotRectInPanel.top(),
-            "temperature trend plot is laid out below the channel configuration card");
-    require(std::abs(cardRectInPanel.left() - plotRectInPanel.left()) <= 2 &&
-                std::abs(cardRectInPanel.width() - plotRectInPanel.width()) <= 2,
-            "temperature trend plot follows the full channel configuration card width");
-    require(plotRectInPanel.width() >= temperaturePanel->width() - 32,
-            "temperature trend plot expands to the controller panel width");
+    const QRect controlsCardRectAfterChannelSwitch(
+        temperatureControllerControlsCard->mapTo(temperatureControllerContentRow, QPoint(0, 0)),
+        temperatureControllerControlsCard->size());
+    const QRect plotRectAfterChannelSwitch(
+        temperatureConfigPlot->mapTo(temperatureControllerContentRow, QPoint(0, 0)),
+        temperatureConfigPlot->size());
+    require(controlsCardRectAfterChannelSwitch.right() < plotRectAfterChannelSwitch.left(),
+            "temperature trend plot is laid out to the right of the channel configuration card");
+    require(std::abs(controlsCardRectAfterChannelSwitch.top() - plotRectAfterChannelSwitch.top()) <= 2 &&
+                plotRectAfterChannelSwitch.right() <= temperatureControllerContentRow->rect().right() &&
+                controlsCardRectAfterChannelSwitch.height() < plotRectAfterChannelSwitch.height() &&
+                plotRectAfterChannelSwitch.height() == 268 &&
+                temperatureControllerLeftConfigColumn->height() == plotRectAfterChannelSwitch.height(),
+            "temperature trend plot follows the compact side-by-side layout with the selector below the control card");
+    require(plotRectAfterChannelSwitch.width() > 0 &&
+                plotRectAfterChannelSwitch.right() >= temperatureControllerContentRow->rect().right() - 1,
+            "temperature trend plot expands to the right edge of the remaining controller panel width");
+    require(controlsCardRectAfterChannelSwitch.width() <= 280 &&
+                plotRectAfterChannelSwitch.width() > controlsCardRectAfterChannelSwitch.width(),
+            "temperature controller gives the narrowed parameter card less width than the trend plot");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QFrame#temperatureConfigCard {"),
                                  QStringLiteral("border-radius: 8px"),
@@ -5655,12 +7073,12 @@ int main(int argc, char **argv)
     require(VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandle, false) ==
                     QColor(226, 226, 226) &&
                 VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandle, true) ==
-                    QColor(226, 226, 226) &&
+                    QColor(39, 39, 39) &&
                 VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandleHover, false) ==
                     QColor(87, 89, 90) &&
                 VaporView::appThemeColor(VaporView::AppThemeColor::ScrollbarHandleHover, true) ==
-                    QColor(87, 89, 90),
-            "scrollbar handles use the requested default and highlighted colors in both themes");
+                    QColor(190, 190, 191),
+            "dark theme scrollbar handles use the requested dim default and light hover colors");
     for (const QString& arrowFile : {QStringLiteral("combo_arrow_up.xpm"),
                                      QStringLiteral("combo_arrow_down.xpm")})
     {
@@ -5719,8 +7137,6 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QStackedWidget *>(QStringLiteral("temperatureChannelConfigSubStackChannel2"));
     auto *temperatureChannelSubTopBar =
         qobject_cast<QFrame *>(temperatureChannelCommonParamsButton->parentWidget());
-    auto *temperatureSensorTopPolynomialFields = temperaturePanel->findChild<QWidget *>(
-        QStringLiteral("temperatureSensorTopPolynomialFieldsChannel1"));
     require(temperatureChannelCommonParamsButton != nullptr &&
                 temperatureChannelAdvancedParamsButton != nullptr &&
                 temperatureChannelSensorConfigButton != nullptr &&
@@ -5728,8 +7144,7 @@ int main(int argc, char **argv)
                 temperatureChannelAdvancedParamsButton2 != nullptr &&
                 temperatureChannelCommonParamsButton2 != nullptr &&
                 temperatureChannelConfigSubStack2 != nullptr &&
-                temperatureChannelSubTopBar != nullptr &&
-                temperatureSensorTopPolynomialFields != nullptr,
+                temperatureChannelSubTopBar != nullptr,
             "temperature channel exposes lower common, advanced, and sensor config tabs");
     require(temperatureChannelCommonParamsButton->focusPolicy() == Qt::TabFocus &&
                 temperatureChannelAdvancedParamsButton->focusPolicy() == Qt::TabFocus &&
@@ -5737,67 +7152,104 @@ int main(int argc, char **argv)
             "temperature lower parameter tabs keep keyboard tab focus without mouse-click focus frames");
     auto lowerTabHasTextPadding = [](QPushButton *button) {
         return button != nullptr &&
-            button->width() >= button->fontMetrics().horizontalAdvance(button->text()) + 32;
+            button->width() >= button->fontMetrics().horizontalAdvance(button->text()) + 28;
     };
     require(lowerTabHasTextPadding(temperatureChannelCommonParamsButton) &&
                 lowerTabHasTextPadding(temperatureChannelAdvancedParamsButton) &&
                 lowerTabHasTextPadding(temperatureChannelSensorConfigButton),
             "temperature lower parameter tabs reserve horizontal padding for their full labels");
+    auto *temperatureChannelSubTopBarLayout =
+        qobject_cast<QHBoxLayout *>(temperatureChannelSubTopBar->layout());
+    require(temperatureChannelSubTopBarLayout != nullptr &&
+                temperatureChannelSubTopBarLayout->contentsMargins() == QMargins(2, 3, 2, 3) &&
+                temperatureChannelSubTopBarLayout->spacing() == 2,
+            "temperature lower parameter tabs reserve text width without excess outer gaps");
     std::array<QGridLayout *, 3> channelContentGrids{};
     for (int pageIndex = 0; pageIndex < temperatureChannelConfigSubStack->count(); ++pageIndex)
     {
         channelContentGrids[static_cast<size_t>(pageIndex)] =
             qobject_cast<QGridLayout *>(temperatureChannelConfigSubStack->widget(pageIndex)->layout());
     }
+    std::array<QGridLayout *, 3> channel2ContentGrids{};
+    for (int pageIndex = 0; pageIndex < temperatureChannelConfigSubStack2->count(); ++pageIndex)
+    {
+        channel2ContentGrids[static_cast<size_t>(pageIndex)] =
+            qobject_cast<QGridLayout *>(temperatureChannelConfigSubStack2->widget(pageIndex)->layout());
+    }
     require(channelContentGrids[0] != nullptr &&
                 channelContentGrids[1] != nullptr &&
-                channelContentGrids[2] != nullptr,
-            "temperature channel sub-pages share grid-based two-row content controls");
-    const int sharedContentHeight = channelContentGrids[0]->rowMinimumHeight(0) +
-        channelContentGrids[0]->verticalSpacing() +
-        channelContentGrids[0]->rowMinimumHeight(1);
-    for (QGridLayout *contentGrid : channelContentGrids)
-    {
-        require(contentGrid->rowCount() == 2 &&
-                    contentGrid->alignment() == Qt::AlignTop &&
-                    contentGrid->verticalSpacing() == 8 &&
-                    contentGrid->rowMinimumHeight(0) == contentGrid->rowMinimumHeight(1) &&
-                    contentGrid->rowMinimumHeight(0) > 0,
-                "temperature channel sub-pages use the shared two-row layout contract");
-    }
-    require(temperatureChannelConfigSubStack->minimumHeight() == sharedContentHeight &&
-                temperatureChannelConfigSubStack->maximumHeight() == sharedContentHeight &&
-                temperatureChannelConfigSubStack->height() == sharedContentHeight,
-            "temperature channel keeps top navigation, two content rows, and bottom navigation as four stable rows");
+                channelContentGrids[2] != nullptr &&
+                channel2ContentGrids[0] != nullptr &&
+                channel2ContentGrids[1] != nullptr &&
+                channel2ContentGrids[2] != nullptr,
+            "temperature channel sub-pages share grid-based screenshot layouts on both channels");
+    require(channelContentGrids[0]->alignment() == (Qt::AlignTop | Qt::AlignLeft) &&
+                channelContentGrids[1]->alignment() == (Qt::AlignTop | Qt::AlignLeft) &&
+                channelContentGrids[2]->alignment() == (Qt::AlignTop | Qt::AlignLeft) &&
+                channel2ContentGrids[0]->alignment() == (Qt::AlignTop | Qt::AlignLeft) &&
+                channel2ContentGrids[1]->alignment() == (Qt::AlignTop | Qt::AlignLeft) &&
+                channel2ContentGrids[2]->alignment() == (Qt::AlignTop | Qt::AlignLeft),
+            "temperature channel sub-pages top-align their stacked form controls on both channels");
+    require(channelContentGrids[0]->verticalSpacing() == 10 &&
+                channelContentGrids[1]->verticalSpacing() == 10 &&
+                channelContentGrids[2]->verticalSpacing() == 10 &&
+                channel2ContentGrids[0]->verticalSpacing() == 10 &&
+                channel2ContentGrids[1]->verticalSpacing() == 10 &&
+                channel2ContentGrids[2]->verticalSpacing() == 10,
+            "temperature channel sub-pages share the sensor-config vertical rhythm on both channels");
+    require(channelContentGrids[0]->contentsMargins() == QMargins(0, 0, 0, 6) &&
+                channelContentGrids[1]->contentsMargins() == QMargins(0, 0, 0, 6) &&
+                channelContentGrids[2]->contentsMargins() == QMargins(0, 0, 0, 6) &&
+                channel2ContentGrids[0]->contentsMargins() == QMargins(0, 0, 0, 6) &&
+                channel2ContentGrids[1]->contentsMargins() == QMargins(0, 0, 0, 6) &&
+                channel2ContentGrids[2]->contentsMargins() == QMargins(0, 0, 0, 6),
+            "temperature channel sub-pages leave the shared horizontal inset to the parameter card on both channels");
+    require(temperatureChannelConfigSubStack->minimumHeight() == temperatureChannelConfigSubStack->maximumHeight() &&
+                temperatureChannelConfigSubStack->height() == temperatureChannelConfigSubStack->minimumHeight() &&
+                temperatureChannelConfigSubStack->height() >=
+                    temperatureChannelConfigSubStack->currentWidget()->sizeHint().height(),
+            "temperature channel content stack reserves stable height for the tallest screenshot page");
     auto *temperatureConfigCardLayout = qobject_cast<QVBoxLayout *>(temperatureConfigCard->layout());
     auto *temperatureChannelPageLayout =
         qobject_cast<QVBoxLayout *>(temperatureChannelStack->currentWidget()->layout());
-    const int sharedRowSpacing = channelContentGrids[0]->verticalSpacing();
-    require(sharedRowSpacing > 0 &&
-                temperatureConfigCardLayout != nullptr &&
-                temperatureConfigCardLayout->spacing() == sharedRowSpacing &&
+    require(temperatureConfigCardLayout != nullptr &&
+                temperatureConfigCardLayout->spacing() == 6 &&
+                temperatureConfigCardLayout->contentsMargins().bottom() == 6 &&
+                contentRowRectInCard.top() - topRowRectInCard.bottom() - 1 ==
+                    temperatureConfigCardLayout->spacing() &&
                 temperatureChannelPageLayout != nullptr &&
-                temperatureChannelPageLayout->spacing() == sharedRowSpacing,
-            "temperature four-row layout uses one shared gap above, within, and below the content rows");
+                temperatureChannelPageLayout->count() == 1,
+            "temperature screenshot layout keeps the upper selector and lower card at the shared compact spacing");
     require(temperatureChannelTopBar->height() == temperatureChannelSubTopBar->height() &&
-                temperatureChannelTopBar->height() == channelContentGrids[0]->rowMinimumHeight(0) &&
                 temperatureConfigChannelButton1->height() == temperatureChannelCommonParamsButton->height(),
-            "temperature four-row layout keeps both navigation bars and content rows at one shared height");
+            "temperature screenshot layout keeps the upper and lower segmented bars visually matched");
     require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
                 temperatureChannelConfigSubStack->currentWidget()->objectName() ==
                     QStringLiteral("temperatureChannelCommonParamsPageChannel1") &&
                 temperatureChannelCommonParamsButton->isChecked(),
             "temperature channel defaults to the lower common-params page");
-    const QRect subTopBarRectInChannelPage(
-        temperatureChannelSubTopBar->mapTo(temperatureChannelStack->currentWidget(), QPoint(0, 0)),
+    const QRect subTopBarRectInCard(
+        temperatureChannelSubTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)),
         temperatureChannelSubTopBar->size());
-    const int subTopBarBottomGap =
-        temperatureChannelStack->currentWidget()->rect().bottom() - subTopBarRectInChannelPage.bottom();
-    require(temperatureChannelStack->height() >= temperatureChannelStack->currentWidget()->sizeHint().height() &&
+    const int lowerSelectorToConfigCardBottom =
+        temperatureConfigCard->height() - 1 - subTopBarRectInCard.bottom();
+    QWidget *initialChannelSubPageRow = temperatureChannelSubTopBar->parentWidget();
+    require(initialChannelSubPageRow != nullptr &&
+                temperatureSubPageBarStack->isAncestorOf(temperatureChannelSubTopBar) &&
+                !temperatureControllerControlsCard->isAncestorOf(temperatureChannelSubTopBar) &&
+                !temperatureChannelStack->isAncestorOf(temperatureChannelSubTopBar) &&
+                subTopBarRectInCard.top() > controlsCardRectInCard.bottom() &&
+                subTopBarRectInCard.top() - controlsCardRectInCard.bottom() - 1 ==
+                    temperatureControllerLeftConfigColumnLayout->spacing() &&
+                std::abs(subTopBarRectInCard.left() - contentRowRectInCard.left()) <= 2 &&
+                subTopBarRectInCard.bottom() == contentRowRectInCard.bottom() &&
+                std::abs(lowerSelectorToConfigCardBottom -
+                         temperatureConfigCardLayout->contentsMargins().bottom()) <= 1 &&
+                temperatureChannelStack->height() >= temperatureChannelStack->currentWidget()->sizeHint().height() &&
                 temperatureChannelConfigSubStack->height() >=
                     temperatureChannelConfigSubStack->currentWidget()->sizeHint().height() &&
-                subTopBarBottomGap == 0,
-            "temperature lower parameter tabs reserve enough height for their tallest content page");
+                std::abs(temperatureChannelConfigSubStack->height() - temperatureChannelStack->height()) <= 1,
+            "temperature lower selector stays outside the left parameter card with the shared compact bottom inset");
     clickWidget(temperatureChannelAdvancedParamsButton, 150);
     activateLayouts(&window);
     auto *overtempUpperSpin = temperaturePanel->findChild<QDoubleSpinBox *>(
@@ -5814,16 +7266,21 @@ int main(int argc, char **argv)
                 temperatureChannelConfigSubStack->currentWidget()->objectName() ==
                     QStringLiteral("temperatureChannelAdvancedParamsPageChannel1") &&
                 temperatureChannelAdvancedParamsButton->isChecked() &&
-                !temperatureChannelTopControlsStack->isVisible() &&
+                temperatureChannelTopControlsStack->isVisible() &&
+                temperatureChannelTopControlsStack->currentWidget() == temperatureControllerModeTopControls &&
+                temperatureControllerModeField->parentWidget() == temperatureControllerModeTopControls &&
                 overtempUpperSpin != nullptr &&
                 overtempLowerSpin != nullptr &&
                 temperatureSlopeSpin != nullptr &&
                 startupDelaySpin != nullptr &&
                 sensorResistanceEdit != nullptr,
             "temperature lower advanced tab exposes all RD105 professional parameters");
+    const QRect professionalControllerModeFieldRect(
+        temperatureControllerModeField->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
+        temperatureControllerModeField->size());
     require(std::abs(temperatureChannelTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)).x() -
-                     temperatureChannelStack->mapTo(temperatureConfigCard, QPoint(0, 0)).x()) <= 1,
-            "temperature top navigation stays left aligned on the professional parameters page");
+                     temperatureControllerContentRow->mapTo(temperatureConfigCard, QPoint(0, 0)).x()) <= 1,
+            "temperature top navigation stays aligned with the left control-card region on the professional parameters page");
     require(overtempUpperSpin->minimum() == -3000.0 &&
                 overtempUpperSpin->maximum() == 5000.0 &&
                 overtempUpperSpin->decimals() == 5 &&
@@ -5846,32 +7303,42 @@ int main(int argc, char **argv)
     QWidget *advancedParamsPage = temperatureChannelConfigSubStack->currentWidget();
     auto *advancedParamsGrid = qobject_cast<QGridLayout *>(advancedParamsPage->layout());
     require(advancedParamsGrid != nullptr &&
+                advancedParamsGrid->horizontalSpacing() == 6 &&
+                advancedParamsGrid->itemAtPosition(0, 0) != nullptr &&
+                advancedParamsGrid->itemAtPosition(0, 0)->widget() == overtempUpperSpin->parentWidget() &&
                 advancedParamsGrid->itemAtPosition(0, 1) != nullptr &&
-                advancedParamsGrid->itemAtPosition(0, 1)->widget() == overtempUpperSpin &&
-                advancedParamsGrid->itemAtPosition(0, 4) != nullptr &&
-                advancedParamsGrid->itemAtPosition(0, 4)->widget() == overtempLowerSpin &&
+                advancedParamsGrid->itemAtPosition(0, 1)->widget() == overtempLowerSpin->parentWidget() &&
+                advancedParamsGrid->itemAtPosition(1, 0) != nullptr &&
+                advancedParamsGrid->itemAtPosition(1, 0)->widget() == temperatureSlopeSpin->parentWidget() &&
                 advancedParamsGrid->itemAtPosition(1, 1) != nullptr &&
-                advancedParamsGrid->itemAtPosition(1, 1)->widget() == temperatureSlopeSpin &&
-                advancedParamsGrid->itemAtPosition(1, 4) != nullptr &&
-                advancedParamsGrid->itemAtPosition(1, 4)->widget() == startupDelaySpin &&
-                advancedParamsGrid->itemAtPosition(1, 7) != nullptr &&
-                advancedParamsGrid->itemAtPosition(1, 7)->widget() == sensorResistanceEdit,
-            "temperature professional parameters use two fields on row one and three fields on row two");
+                advancedParamsGrid->itemAtPosition(1, 1)->widget() == startupDelaySpin->parentWidget() &&
+                advancedParamsGrid->itemAtPosition(2, 0) != nullptr &&
+                advancedParamsGrid->itemAtPosition(2, 0)->widget() == sensorResistanceEdit->parentWidget(),
+            "temperature professional parameters use the two-column stacked form from the screenshot");
     const QRect overtempUpperRect(overtempUpperSpin->mapTo(advancedParamsPage, QPoint(0, 0)), overtempUpperSpin->size());
     const QRect overtempLowerRect(overtempLowerSpin->mapTo(advancedParamsPage, QPoint(0, 0)), overtempLowerSpin->size());
     const QRect temperatureSlopeRect(temperatureSlopeSpin->mapTo(advancedParamsPage, QPoint(0, 0)), temperatureSlopeSpin->size());
     const QRect startupDelayRect(startupDelaySpin->mapTo(advancedParamsPage, QPoint(0, 0)), startupDelaySpin->size());
     const QRect sensorResistanceRect(sensorResistanceEdit->mapTo(advancedParamsPage, QPoint(0, 0)), sensorResistanceEdit->size());
+    const QMargins advancedParamsMargins = advancedParamsGrid->contentsMargins();
     require(overtempUpperRect.left() == temperatureSlopeRect.left() &&
                 overtempLowerRect.left() == startupDelayRect.left() &&
                 overtempUpperRect.width() == overtempLowerRect.width() &&
                 overtempUpperRect.width() == temperatureSlopeRect.width() &&
                 overtempUpperRect.width() == startupDelayRect.width() &&
                 overtempUpperRect.width() == sensorResistanceRect.width() &&
+                overtempUpperRect.width() == 130 &&
                 overtempUpperRect.top() == overtempLowerRect.top() &&
                 temperatureSlopeRect.top() == startupDelayRect.top() &&
-                temperatureSlopeRect.top() == sensorResistanceRect.top(),
-            "temperature professional input fields align by column and use one shared width");
+                sensorResistanceRect.top() > temperatureSlopeRect.bottom() &&
+                sensorResistanceRect.left() == overtempUpperRect.left() &&
+                overtempUpperRect.left() == advancedParamsMargins.left() &&
+                advancedParamsPage->width() - 1 - overtempLowerRect.right() == advancedParamsMargins.right() &&
+                advancedParamsPage->width() - 1 - startupDelayRect.right() == advancedParamsMargins.right(),
+            "temperature professional input fields fill the two-column parameter area");
+    require(overtempLowerRect.left() - overtempUpperRect.right() - 1 == advancedParamsGrid->horizontalSpacing() &&
+                startupDelayRect.left() - temperatureSlopeRect.right() - 1 == advancedParamsGrid->horizontalSpacing(),
+            "temperature professional adjacent inputs keep the compact reference horizontal gap");
     clickWidget(temperatureChannelCommonParamsButton, 150);
     activateLayouts(&window);
     require(temperatureChannelConfigSubStack->currentWidget() != nullptr &&
@@ -5881,35 +7348,61 @@ int main(int argc, char **argv)
                 temperatureChannelTopControlsStack->isVisible() &&
                 temperatureChannelCommonTopControls1->isVisible(),
             "temperature lower common tab switches back to channel controls");
+    const QRect commonControllerModeFieldRect(
+        temperatureControllerModeField->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
+        temperatureControllerModeField->size());
+    require(commonControllerModeFieldRect == professionalControllerModeFieldRect,
+            "temperature common-parameter mode field matches the professional-parameter reference position");
 
     auto *commonParamsGrid = qobject_cast<QGridLayout *>(temperatureChannelConfigSubStack->currentWidget()->layout());
     require(commonParamsGrid != nullptr,
             "temperature lower common tab uses a shared grid for cross-row input alignment");
-    auto requireCompactChannelFieldLayout = [commonParamsGrid](QWidget *editor,
-                                                               int row,
-                                                               int editorColumn,
-                                                               const char *message) {
-        require(editor != nullptr && editorColumn > 0, message);
-        QLayoutItem *labelItem = commonParamsGrid->itemAtPosition(row, editorColumn - 1);
-        QLayoutItem *editorItem = commonParamsGrid->itemAtPosition(row, editorColumn);
-        auto *label = labelItem ? qobject_cast<QLabel *>(labelItem->widget()) : nullptr;
-        require(label != nullptr && editorItem != nullptr && editorItem->widget() == editor, message);
-        const QRect labelRect(label->mapTo(commonParamsGrid->parentWidget(), QPoint(0, 0)), label->size());
-        const QRect editorRect(editor->mapTo(commonParamsGrid->parentWidget(), QPoint(0, 0)), editor->size());
-        require(labelRect.right() < editorRect.left(),
+    auto *pidFields = temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePidFieldsChannel1"));
+    auto *outputTargetFields =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureOutputTargetFieldsChannel1"));
+    require(pidFields != nullptr &&
+                outputTargetFields != nullptr &&
+                qobject_cast<QHBoxLayout *>(pidFields->layout()) != nullptr &&
+                qobject_cast<QHBoxLayout *>(outputTargetFields->layout()) != nullptr &&
+                qobject_cast<QHBoxLayout *>(pidFields->layout())->spacing() == 6 &&
+                qobject_cast<QHBoxLayout *>(outputTargetFields->layout())->spacing() == 6 &&
+                commonParamsGrid->itemAtPosition(0, 0) != nullptr &&
+                commonParamsGrid->itemAtPosition(0, 0)->widget() == pidFields &&
+                commonParamsGrid->itemAtPosition(1, 0) != nullptr &&
+                commonParamsGrid->itemAtPosition(1, 0)->widget() == outputTargetFields &&
+                commonParamsGrid->itemAtPosition(2, 0) != nullptr &&
+                commonParamsGrid->itemAtPosition(2, 0)->widget() == maxOutputSpin->parentWidget(),
+            "temperature lower common tab groups adjacent input columns into compact row containers");
+    auto requireStackedChannelFieldLayout = [](QWidget *editor,
+                                               const char *message) {
+        require(editor != nullptr && editor->parentWidget() != nullptr, message);
+        QWidget *cell = editor->parentWidget();
+        auto *cellLayout = qobject_cast<QVBoxLayout *>(cell->layout());
+        const QList<QLabel*> labels =
+            cell->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
+        require(cell->objectName() == QStringLiteral("temperatureConfigFieldColumn") &&
+                    cellLayout != nullptr &&
+                    cellLayout->spacing() == 6 &&
+                    !labels.isEmpty(),
+                message);
+        const QRect labelRect(labels.first()->mapTo(cell, QPoint(0, 0)), labels.first()->size());
+        const QRect editorRect(editor->mapTo(cell, QPoint(0, 0)), editor->size());
+        require(labelRect.left() <= 1 &&
+                    editorRect.left() <= 1 &&
+                    labelRect.bottom() < editorRect.top(),
                 message);
     };
-    requireCompactChannelFieldLayout(modeCombo, 1, 1,
+    requireStackedChannelFieldLayout(modeCombo,
                                      "temperature output mode field lives in the lower common-params page");
-    requireCompactChannelFieldLayout(targetSpin, 1, 4,
+    requireStackedChannelFieldLayout(targetSpin,
                                      "temperature target temperature field lives in the lower common-params page");
-    requireCompactChannelFieldLayout(maxOutputSpin, 1, 7,
+    requireStackedChannelFieldLayout(maxOutputSpin,
                                      "temperature max output field lives in the lower common-params page");
-    requireCompactChannelFieldLayout(kpSpin, 0, 1,
+    requireStackedChannelFieldLayout(kpSpin,
                                      "temperature PID P field lives in the lower common-params page");
-    requireCompactChannelFieldLayout(kiSpin, 0, 4,
+    requireStackedChannelFieldLayout(kiSpin,
                                      "temperature PID I field lives in the lower common-params page");
-    requireCompactChannelFieldLayout(kdSpin, 0, 7,
+    requireStackedChannelFieldLayout(kdSpin,
                                      "temperature PID D field lives in the lower common-params page");
     auto requirePidTextFits = [](QSpinBox *spin, const char *message) {
         QLineEdit *lineEdit = spin ? spin->findChild<QLineEdit *>(QString(), Qt::FindDirectChildrenOnly) : nullptr;
@@ -5935,21 +7428,51 @@ int main(int argc, char **argv)
     const QRect kpRowRect(kpSpin->mapTo(temperatureChannelStack, QPoint(0, 0)), kpSpin->size());
     const QRect kiRowRect(kiSpin->mapTo(temperatureChannelStack, QPoint(0, 0)), kiSpin->size());
     const QRect kdRowRect(kdSpin->mapTo(temperatureChannelStack, QPoint(0, 0)), kdSpin->size());
+    QWidget *commonParamsPage = temperatureChannelConfigSubStack->currentWidget();
+    const QRect pidFieldsRectInCommonParamsPage(pidFields->mapTo(commonParamsPage, QPoint(0, 0)), pidFields->size());
+    const QRect outputTargetFieldsRectInCommonParamsPage(
+        outputTargetFields->mapTo(commonParamsPage, QPoint(0, 0)), outputTargetFields->size());
+    const QMargins commonParamsMargins = commonParamsGrid->contentsMargins();
+    const QRect pidFieldsRectInControlsCard(
+        pidFields->mapTo(temperatureControllerControlsCard, QPoint(0, 0)), pidFields->size());
+    require(kpRowRect.left() == commonParamsMargins.left() &&
+                pidFieldsRectInCommonParamsPage.left() == commonParamsMargins.left() &&
+                outputTargetFieldsRectInCommonParamsPage.left() == commonParamsMargins.left() &&
+                commonParamsPage->width() - 1 - pidFieldsRectInCommonParamsPage.right() == commonParamsMargins.right() &&
+                commonParamsPage->width() - 1 - outputTargetFieldsRectInCommonParamsPage.right() ==
+                    commonParamsMargins.right(),
+            "temperature lower common tab fills the parameter area while preserving the shared card inset");
+    const QRect maxOutputFieldRectInControlsCard(
+        maxOutputSpin->parentWidget()->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
+        maxOutputSpin->parentWidget()->size());
+    require(controlsCardMargins == QMargins(6, 6, 6, 0) &&
+                std::abs(pidFieldsRectInControlsCard.left() - 6) <= 1 &&
+                std::abs(temperatureControllerControlsCard->width() - 1 - pidFieldsRectInControlsCard.right() - 6) <= 1 &&
+                std::abs(pidFieldsRectInControlsCard.top() - 6) <= 1 &&
+                std::abs(temperatureControllerControlsCard->height() - 1 - maxOutputFieldRectInControlsCard.bottom() - 6) <= 1,
+            "temperature common parameters keep one visible 6px inset on all four card edges");
     require(std::abs(kpRowRect.top() - kiRowRect.top()) <= 2 &&
                 std::abs(kiRowRect.top() - kdRowRect.top()) <= 2 &&
                 kpRowRect.right() < kiRowRect.left() &&
-                kiRowRect.right() < kdRowRect.left(),
-            "temperature lower common tab lays P, I, and D on the first row without a redundant PID heading");
-    require(modeRowRect.top() > kdRowRect.bottom() &&
-                std::abs(modeRowRect.top() - targetRowRect.top()) <= 2 &&
-                std::abs(targetRowRect.top() - maxOutputRowRect.top()) <= 2 &&
-                modeRowRect.right() < targetRowRect.left() &&
-                targetRowRect.right() < maxOutputRowRect.left(),
-            "temperature lower common tab lays output mode, target, and max output on the second row");
+                kiRowRect.right() < kdRowRect.left() &&
+                kiRowRect.left() - kpRowRect.right() - 1 <= 8 &&
+                kdRowRect.left() - kiRowRect.right() - 1 <= 8,
+            "temperature lower common tab lays P, I, and D on the first row with compact adjacent gaps");
+    require(modeRowRect.top() > kdRowRect.bottom(),
+            "temperature lower common tab places output mode below the PID row");
+    require(std::abs(modeRowRect.top() - targetRowRect.top()) <= 2,
+            "temperature lower common tab aligns output mode and target on the same row");
+    require(maxOutputRowRect.top() > modeRowRect.bottom(),
+            "temperature lower common tab places max output below the output/target row");
+    require(modeRowRect.right() < targetRowRect.left(),
+            "temperature lower common tab keeps target to the right of output mode");
+    require(targetRowRect.left() - modeRowRect.right() - 1 <= 8,
+            "temperature output mode and target inputs use the compact reference horizontal gap");
+    require(maxOutputRowRect.left() == modeRowRect.left(),
+            "temperature lower common tab keeps max output aligned under output mode");
     require(std::abs(kpRowRect.left() - modeRowRect.left()) <= 1 &&
-                std::abs(kiRowRect.left() - targetRowRect.left()) <= 1 &&
-                std::abs(kdRowRect.left() - maxOutputRowRect.left()) <= 1,
-            "temperature common-parameter inputs align vertically by column");
+                std::abs(modeRowRect.left() - maxOutputRowRect.left()) <= 1,
+            "temperature common-parameter rows align their first input column while keeping row-local compact gaps");
     require(temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePidHeadingChannel1")) == nullptr,
             "temperature common parameters omit the redundant PID heading");
     require(modeRowRect.bottom() <= temperatureChannelStack->rect().bottom() &&
@@ -5963,7 +7486,7 @@ int main(int argc, char **argv)
             "temperature max output value carries warning styling");
     QList<QLabel*> maxOutputLabels;
     for (QLabel *label : temperatureChannelConfigSubStack->currentWidget()->findChildren<QLabel *>(
-             QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly))
+             QStringLiteral("fieldLabel")))
     {
         if (label->property("temperatureMaxOutputWarning").toBool())
         {
@@ -5975,14 +7498,20 @@ int main(int argc, char **argv)
                 maxOutputLabels.first()->text() == QStringLiteral("最大输出电压百分比(%)") &&
                 maxOutputLabels.first()->property("temperatureMaxOutputWarning").toBool(),
             "temperature max output label is renamed and marked red");
+    require(maxOutputSpin->parentWidget()->width() == 266 &&
+                maxOutputLabels.first()->width() >=
+                    maxOutputLabels.first()->fontMetrics().horizontalAdvance(maxOutputLabels.first()->text()),
+            "temperature max output label uses the full parameter row without narrowing its input");
     require(maxOutputSpin->palette().color(QPalette::Text) == warningTextColor,
             "temperature max output value palette is actually painted red");
-    require(targetSpin->width() >= 170,
-            "temperature target spin reserves enough width for five decimals");
-    require(kpSpin->width() >= 80 &&
-                kiSpin->width() >= 80 &&
-                kdSpin->width() >= 80,
-            "temperature PID spin boxes reserve visible value width");
+    require(modeCombo->width() == 130 &&
+                targetSpin->width() == 130 &&
+                maxOutputSpin->width() == 130,
+            "temperature common parameter inputs use the widened field width");
+    require(kpSpin->width() == 85 &&
+                kiSpin->width() == 84 &&
+                kdSpin->width() == 85,
+            "temperature PID spin boxes divide the widened row across three fields");
     auto requireTopBarFieldLayout = [temperatureChannelTopControlsStack](QWidget *editor, const char *message) {
         require(editor != nullptr && editor->parentWidget() != nullptr, message);
         QWidget *row = editor->parentWidget();
@@ -5998,6 +7527,9 @@ int main(int argc, char **argv)
                               "temperature output enable switch lives beside the channel selectors");
     requireTopBarFieldLayout(autoPidCombo,
                              "temperature auto PID field lives beside the output enable switch");
+    require(temperatureChannelTopControlsStack->isAncestorOf(temperatureControllerModeField) &&
+                temperatureControllerModeField->parentWidget() == temperatureChannelTopControlsStack->currentWidget(),
+            "temperature controller mode field lives in the shared top-controls row");
     const QRect enableFieldRect(enableSwitch->parentWidget()->mapTo(temperatureChannelTopControlsStack, QPoint(0, 0)),
                                 enableSwitch->parentWidget()->size());
     const QRect autoPidFieldRect(autoPidCombo->parentWidget()->mapTo(temperatureChannelTopControlsStack, QPoint(0, 0)),
@@ -6005,25 +7537,6 @@ int main(int argc, char **argv)
     require(std::abs(enableFieldRect.top() - autoPidFieldRect.top()) <= 2 &&
                 enableFieldRect.right() < autoPidFieldRect.left(),
             "temperature output enable and auto PID share the channel selector top row");
-    QLayoutItem *secondColumnLabelItem = commonParamsGrid->itemAtPosition(0, 3);
-    QLayoutItem *thirdColumnLabelItem = commonParamsGrid->itemAtPosition(0, 6);
-    QWidget *secondColumnLabel = secondColumnLabelItem ? secondColumnLabelItem->widget() : nullptr;
-    QWidget *thirdColumnLabel = thirdColumnLabelItem ? thirdColumnLabelItem->widget() : nullptr;
-    require(secondColumnLabel != nullptr && thirdColumnLabel != nullptr,
-            "temperature common parameters expose second and third column anchors");
-    const QRect enableFieldRectInCard(
-        enableSwitch->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
-        enableSwitch->parentWidget()->size());
-    const QRect autoPidFieldRectInCard(
-        autoPidCombo->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
-        autoPidCombo->parentWidget()->size());
-    const QRect secondColumnRectInCard(secondColumnLabel->mapTo(temperatureConfigCard, QPoint(0, 0)),
-                                       secondColumnLabel->size());
-    const QRect thirdColumnRectInCard(thirdColumnLabel->mapTo(temperatureConfigCard, QPoint(0, 0)),
-                                      thirdColumnLabel->size());
-    require(std::abs(enableFieldRectInCard.left() - secondColumnRectInCard.left()) <= 1 &&
-                std::abs(autoPidFieldRectInCard.left() - thirdColumnRectInCard.left()) <= 1,
-            "temperature output enable and auto PID align with the second and third parameter columns");
     requireTopBarFieldLayout(sensorModelSelector1,
                              "temperature sensor model radio selector lives in the channel top row");
     require(addressSpin->parentWidget() != nullptr &&
@@ -6040,17 +7553,20 @@ int main(int argc, char **argv)
         QWidget *row = editor->parentWidget();
         require(row->objectName() == QStringLiteral("temperatureCommonFieldRow"), message);
         require(temperatureChannelStack->isAncestorOf(row), message);
+        auto *rowLayout = qobject_cast<QVBoxLayout *>(row->layout());
         const QList<QLabel*> labels =
             row->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
-        require(!labels.isEmpty(), message);
+        require(rowLayout != nullptr &&
+                    rowLayout->spacing() == 6 &&
+                    !labels.isEmpty(),
+                message);
         const QRect labelRect(labels.first()->mapTo(row, QPoint(0, 0)), labels.first()->size());
         const QRect editorRect(editor->mapTo(row, QPoint(0, 0)), editor->size());
         require(labelRect.left() <= 1 &&
-                    labelRect.width() >=
-                        labels.first()->fontMetrics().horizontalAdvance(labels.first()->text()) + 12 &&
-                    labelRect.right() < editorRect.left() &&
-                    editorRect.left() - labelRect.right() <= 10 &&
-                    editorRect.right() >= row->rect().right() - 1,
+                    labelRect.right() <= row->rect().right() &&
+                    editorRect.left() <= 1 &&
+                    labelRect.bottom() < editorRect.top() &&
+                    editorRect.right() <= row->rect().right(),
                 message);
     };
     requireCommonFieldRowLayout(addressSpin,
@@ -6098,8 +7614,22 @@ int main(int argc, char **argv)
                 temperatureChannelSensorConfigButton->isChecked() &&
                 temperatureChannelTopControlsStack->isVisible() &&
                 !temperatureChannelCommonTopControls1->isVisible() &&
+                temperatureControllerModeField->parentWidget() == temperatureChannelTopControlsStack->currentWidget() &&
                 sensorModelSelector1->parentWidget()->isVisible(),
             "temperature sensor config tab switches to the sensor config page");
+    const QRect sensorControllerModeFieldRect(
+        temperatureControllerModeField->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
+        temperatureControllerModeField->size());
+    require(sensorControllerModeFieldRect == professionalControllerModeFieldRect,
+            "temperature sensor-config mode field matches the professional-parameter reference position");
+    const QRect sensorModelFieldRect(
+        sensorModelSelector1->parentWidget()->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
+        sensorModelSelector1->parentWidget()->size());
+    const int sensorTopBarToModelGap = sensorModelFieldRect.left() - topBarRectForMode.right() - 1;
+    const int sensorModelToModeGap = sensorControllerModeFieldRect.left() - sensorModelFieldRect.right() - 1;
+    require(sensorTopBarToModelGap >= 0 && sensorModelToModeGap >= 0 &&
+                std::abs(sensorTopBarToModelGap - sensorModelToModeGap) <= 1,
+            "temperature sensor-page top controls use one evenly distributed gap");
 
     auto *ntcR0Edit =
         temperaturePanel->findChild<QLineEdit *>(QStringLiteral("temperatureNtcR0EditChannel1"));
@@ -6133,73 +7663,278 @@ int main(int argc, char **argv)
                 temperatureChannelConfigSubStack->currentWidget()->findChildren<QSpinBox *>().isEmpty() &&
                 temperatureChannelConfigSubStack->currentWidget()->findChildren<QDoubleSpinBox *>().isEmpty(),
             "temperature sensor config page uses text inputs instead of dropdowns or spin boxes");
-    auto requireCompactSensorFieldLayout = [](QWidget *editor, const char *message) {
-        require(editor != nullptr && editor->parentWidget() != nullptr, message);
-        QWidget *row = editor->parentWidget();
-        require(row->objectName() == QStringLiteral("temperatureConfigFieldRow"), message);
-        const QList<QLabel*> labels =
-            row->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
-        require(!labels.isEmpty(), message);
-        const QRect labelRect(labels.first()->mapTo(row, QPoint(0, 0)), labels.first()->size());
-        const QRect editorRect(editor->mapTo(row, QPoint(0, 0)), editor->size());
-        auto *fieldLayout = qobject_cast<QHBoxLayout *>(row->layout());
-        const int requiredRowWidth = labels.first()->width() + editor->width() + 6;
-        const bool layoutIsValid = labelRect.left() <= 1 &&
-            labelRect.right() < editorRect.left() &&
-            fieldLayout != nullptr &&
-            fieldLayout->spacing() == 6 &&
-            row->minimumWidth() == requiredRowWidth &&
-            row->maximumWidth() == requiredRowWidth;
-        require(layoutIsValid, message);
-    };
-    requireCompactSensorFieldLayout(ntcR0Edit,
-                                    "temperature NTC R0 field keeps label and input tightly grouped");
-    requireCompactSensorFieldLayout(ntcBEdit,
-                                    "temperature NTC B field keeps label and input tightly grouped");
-    requireCompactSensorFieldLayout(ptR0Edit,
-                                    "temperature PT R0 field keeps label and input tightly grouped");
-    requireCompactSensorFieldLayout(polynomialA0Edit,
-                                    "temperature polynomial field keeps label and input tightly grouped");
+    auto *sensorConfigGrid = qobject_cast<QGridLayout *>(temperatureChannelConfigSubStack->currentWidget()->layout());
+    auto *polynomialFields =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePolynomialFieldsChannel1"));
+    auto *polynomialFieldsGrid =
+        polynomialFields ? qobject_cast<QGridLayout *>(polynomialFields->layout()) : nullptr;
+    auto *temperatureCalibrationDrawer =
+        temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureCalibrationSideDrawerChannel1"));
+    auto *temperatureCalibrationOverlay =
+        qobject_cast<QFrame *>(temperaturePanel->findChild<QWidget *>(
+            QStringLiteral("temperaturePolynomialFieldsChannel1")));
+    auto *ntcFields = temperaturePanel->findChild<QWidget *>(QStringLiteral("temperatureNtcFieldsChannel1"));
+    auto *ptR0Fields = temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePtR0FieldsChannel1"));
+    auto *ptBFields = temperaturePanel->findChild<QWidget *>(QStringLiteral("temperaturePtBFieldsChannel1"));
+    require(sensorConfigGrid != nullptr &&
+                sensorConfigGrid->horizontalSpacing() == 6 &&
+                ntcFields != nullptr &&
+                ptR0Fields != nullptr &&
+                ptBFields != nullptr &&
+                qobject_cast<QHBoxLayout *>(ntcFields->layout()) != nullptr &&
+                qobject_cast<QHBoxLayout *>(ptR0Fields->layout()) != nullptr &&
+                qobject_cast<QHBoxLayout *>(ptBFields->layout()) != nullptr &&
+                qobject_cast<QHBoxLayout *>(ntcFields->layout())->spacing() == 6 &&
+                qobject_cast<QHBoxLayout *>(ptR0Fields->layout())->spacing() == 6 &&
+                qobject_cast<QHBoxLayout *>(ptBFields->layout())->spacing() == 6 &&
+                sensorConfigGrid->itemAtPosition(0, 0) != nullptr &&
+                sensorConfigGrid->itemAtPosition(0, 0)->widget() == ntcFields &&
+                sensorConfigGrid->itemAtPosition(1, 0) != nullptr &&
+                sensorConfigGrid->itemAtPosition(1, 0)->widget() == ptR0Fields &&
+                sensorConfigGrid->itemAtPosition(2, 0) != nullptr &&
+                sensorConfigGrid->itemAtPosition(2, 0)->widget() == ptBFields &&
+                sensorConfigGrid->itemAtPosition(3, 0) == nullptr &&
+                polynomialFields != nullptr &&
+                polynomialFieldsGrid != nullptr &&
+                polynomialFieldsGrid->horizontalSpacing() == 6 &&
+                polynomialFieldsGrid->contentsMargins().left() == 6 &&
+                polynomialFieldsGrid->contentsMargins().right() == 6 &&
+                temperatureCalibrationDrawer != nullptr &&
+                temperatureCalibrationOverlay != nullptr &&
+                temperatureCalibrationDrawer->parentWidget() == temperatureControllerControlsCard &&
+                temperatureCalibrationDrawer->focusPolicy() == Qt::TabFocus &&
+                temperatureCalibrationDrawer->width() ==
+                    temperatureCalibrationDrawer->property("temperatureCalibrationHandleWidth").toInt() &&
+                temperatureCalibrationDrawer->height() ==
+                    temperatureCalibrationDrawer->property("temperatureCalibrationHandleHeight").toInt() &&
+                temperatureCalibrationDrawer->property("temperatureCalibrationSideDrawer").toBool() &&
+                temperatureCalibrationDrawer->property("temperatureCalibrationHandleText").toString() ==
+                    QStringLiteral("校\n准\n系\n数\nA0\nA7") &&
+                !temperatureCalibrationDrawer->property("temperatureCalibrationHandleText").toString().contains(
+                    QLatin1Char('-')) &&
+                temperatureCalibrationDrawer->property("temperatureCalibrationHandleChevronIconName").toString() ==
+                    QStringLiteral("chevron-left") &&
+                QFile::exists(QCoreApplication::applicationDirPath() +
+                              QStringLiteral("/resources/lucide/chevron-left.svg")) &&
+                temperaturePanel->findChild<QPushButton *>(
+                    QStringLiteral("temperatureCalibrationPullButtonChannel1")) == nullptr &&
+                temperatureCalibrationOverlay->property("temperatureSensorCalibrationOverlay").toBool() &&
+                !temperatureCalibrationOverlay->isVisible(),
+            "temperature sensor config keeps the six primary fields in the base grid and hides A0-A7 in an edge calibration drawer");
+    temperatureCalibrationDrawer->setFocus(Qt::MouseFocusReason);
+    processEventsFor(20);
+    require(temperatureCalibrationDrawer->hasFocus(),
+            "temperature calibration handle accepts focus after selection");
+    const QImage focusedCalibrationHandleImage =
+        temperatureCalibrationDrawer->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    require(countPixelsNearColor(
+                focusedCalibrationHandleImage,
+                focusedCalibrationHandleImage.rect(),
+                VaporView::appThemeColor(VaporView::AppThemeColor::Focus,
+                                          VaporView::isDarkThemeEnabled()),
+                0) == 0,
+            "temperature calibration handle does not draw a focus-colored border after selection");
     auto sensorFieldLabel = [](QWidget *editor) -> QLabel * {
         return editor && editor->parentWidget()
             ? editor->parentWidget()->findChild<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly)
             : nullptr;
     };
+    auto requireStackedSensorFieldLayout = [sensorConfigGrid](QWidget *editor,
+                                                              int expectedWidth,
+                                                              const char *message) {
+        require(sensorConfigGrid != nullptr && editor != nullptr && editor->parentWidget() != nullptr, message);
+        QWidget *cell = editor->parentWidget();
+        auto *cellLayout = qobject_cast<QVBoxLayout *>(cell->layout());
+        const QList<QLabel*> labels =
+            cell->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
+        require(cell->objectName() == QStringLiteral("temperatureConfigFieldRow") &&
+                    cellLayout != nullptr &&
+                    cellLayout->spacing() == 6 &&
+                    !labels.isEmpty() &&
+                    cell->width() == expectedWidth &&
+                    editor->width() == expectedWidth,
+                message);
+        const QRect labelRect(labels.first()->mapTo(cell, QPoint(0, 0)), labels.first()->size());
+        const QRect editorRect(editor->mapTo(cell, QPoint(0, 0)), editor->size());
+        require(labelRect.left() <= 1 &&
+                    editorRect.left() <= 1 &&
+                    labelRect.bottom() < editorRect.top(),
+                message);
+    };
+    auto requirePolynomialFieldLayout = [polynomialFieldsGrid](QWidget *editor,
+                                                               int row,
+                                                               int column,
+                                                               int expectedWidth,
+                                                               const char *message) {
+        require(polynomialFieldsGrid != nullptr && editor != nullptr && editor->parentWidget() != nullptr, message);
+        QWidget *cell = editor->parentWidget();
+        QLayoutItem *cellItem = polynomialFieldsGrid->itemAtPosition(row, column);
+        auto *cellLayout = qobject_cast<QVBoxLayout *>(cell->layout());
+        const QList<QLabel*> labels =
+            cell->findChildren<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
+        require(cell->objectName() == QStringLiteral("temperatureConfigFieldRow") &&
+                    cellItem != nullptr &&
+                    cellItem->widget() == cell &&
+                    cellLayout != nullptr &&
+                    cellLayout->spacing() == 6 &&
+                    !labels.isEmpty() &&
+                    cell->width() == expectedWidth &&
+                    editor->width() == expectedWidth,
+                message);
+        const QRect labelRect(labels.first()->mapTo(cell, QPoint(0, 0)), labels.first()->size());
+        const QRect editorRect(editor->mapTo(cell, QPoint(0, 0)), editor->size());
+        require(labelRect.left() <= 1 &&
+                    editorRect.left() <= 1 &&
+                    labelRect.bottom() < editorRect.top(),
+                message);
+    };
+    requireStackedSensorFieldLayout(ntcR0Edit, 110,
+                                    "temperature NTC R0 field uses the narrowed stacked layout");
+    requireStackedSensorFieldLayout(ntcBEdit, 110,
+                                    "temperature NTC B field uses the narrowed stacked layout");
+    requireStackedSensorFieldLayout(ptR0Edit, 110,
+                                    "temperature PT R0 field uses the narrowed stacked layout");
+    requireStackedSensorFieldLayout(ptAEdit, 110,
+                                    "temperature PT A field uses the narrowed stacked layout");
+    requireStackedSensorFieldLayout(ptBEdit, 110,
+                                    "temperature PT B field uses the narrowed stacked layout");
+    requireStackedSensorFieldLayout(ptCEdit, 110,
+                                    "temperature PT C field uses the narrowed stacked layout");
+    requirePolynomialFieldLayout(polynomialA0Edit, 0, 0, 58,
+                                 "temperature polynomial field uses the compact nested stacked layout");
     require(sensorFieldLabel(ntcR0Edit) && sensorFieldLabel(ntcR0Edit)->text() == QStringLiteral("NTC R0(Ohm)") &&
+                sensorFieldLabel(ntcBEdit) && sensorFieldLabel(ntcBEdit)->text() == QStringLiteral("NTC B") &&
                 sensorFieldLabel(ptR0Edit) && sensorFieldLabel(ptR0Edit)->text() == QStringLiteral("PT R0(Ohm)") &&
                 sensorFieldLabel(ptAEdit) && sensorFieldLabel(ptAEdit)->text() == QStringLiteral("PT A(E-3)") &&
                 sensorFieldLabel(ptBEdit) && sensorFieldLabel(ptBEdit)->text() == QStringLiteral("PT B(E-7)") &&
                 sensorFieldLabel(ptCEdit) && sensorFieldLabel(ptCEdit)->text() == QStringLiteral("PT C(E-12)"),
-            "temperature compact sensor fields retain their unit and exponent annotations");
-    auto sensorLabelHasTrailingPadding = [](QLabel *label, int padding) {
-        return label != nullptr &&
-            label->width() >= label->fontMetrics().boundingRect(label->text()).width() + padding;
+            "temperature sensor fields retain their unit and exponent annotations");
+    require(ntcR0Edit->width() == 110 &&
+                ntcBEdit->width() == 110 &&
+                ptR0Edit->width() == 110 &&
+                ptAEdit->width() == 110 &&
+                ptBEdit->width() == 110 &&
+                ptCEdit->width() == 110,
+            "temperature primary sensor inputs use the narrowed half-width fields");
+    require(temperatureCalibrationOverlay->isAncestorOf(polynomialA0Edit) &&
+                temperatureCalibrationOverlay->isAncestorOf(ntcR0Edit) == false,
+            "temperature calibration coefficients share the overlay without moving the six primary sensor fields");
+    auto requireCompactHorizontalInputGap = [](QWidget *left,
+                                               QWidget *right,
+                                               QWidget *host,
+                                               const char *message) {
+        require(left != nullptr && right != nullptr && host != nullptr, message);
+        const QRect leftRect(left->mapTo(host, QPoint(0, 0)), left->size());
+        const QRect rightRect(right->mapTo(host, QPoint(0, 0)), right->size());
+        require(std::abs(leftRect.top() - rightRect.top()) <= 2 &&
+                    leftRect.right() < rightRect.left() &&
+                    rightRect.left() - leftRect.right() - 1 <= 8,
+                message);
     };
-    require(sensorLabelHasTrailingPadding(sensorFieldLabel(ntcR0Edit), 16) &&
-                sensorLabelHasTrailingPadding(sensorFieldLabel(ptR0Edit), 16) &&
-                sensorLabelHasTrailingPadding(sensorFieldLabel(ptAEdit), 16) &&
-                sensorLabelHasTrailingPadding(sensorFieldLabel(ptBEdit), 16) &&
-                sensorLabelHasTrailingPadding(sensorFieldLabel(ptCEdit), 16),
-            "temperature sensor labels reserve enough trailing width to render closing parentheses");
-    require(ntcR0Edit->width() <= 82 &&
-                ntcBEdit->width() <= 82 &&
-                ptR0Edit->width() <= 82 &&
-                ptAEdit->width() == 104 &&
-                ptBEdit->width() == 104 &&
-                ptCEdit->width() == 104,
-            "temperature PT coefficient inputs show full precision while the other RD105 fields stay compact");
-    auto *sensorConfigGrid = qobject_cast<QGridLayout *>(temperatureChannelConfigSubStack->currentWidget()->layout());
-    auto requireSensorGridPosition = [sensorConfigGrid](QWidget *editor, int row, int column, const char *message) {
-        require(sensorConfigGrid != nullptr && editor != nullptr && editor->parentWidget() != nullptr, message);
-        QLayoutItem *item = sensorConfigGrid->itemAtPosition(row, column * 2);
-        require(item != nullptr && item->widget() == editor->parentWidget(), message);
+    requireCompactHorizontalInputGap(ntcR0Edit,
+                                     ntcBEdit,
+                                     temperatureChannelConfigSubStack->currentWidget(),
+                                     "temperature NTC adjacent inputs use the compact reference horizontal gap");
+    requireCompactHorizontalInputGap(ptR0Edit,
+                                     ptAEdit,
+                                     temperatureChannelConfigSubStack->currentWidget(),
+                                     "temperature PT R0/PT A adjacent inputs use the compact reference horizontal gap");
+    requireCompactHorizontalInputGap(ptBEdit,
+                                     ptCEdit,
+                                     temperatureChannelConfigSubStack->currentWidget(),
+                                     "temperature PT B/PT C adjacent inputs use the compact reference horizontal gap");
+
+    const QRect sensorPageRectInControlsCard(
+        temperatureChannelConfigSubStack->currentWidget()->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
+        temperatureChannelConfigSubStack->currentWidget()->size());
+    const QRect collapsedDrawerRectInControlsCard(
+        temperatureCalibrationDrawer->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
+        temperatureCalibrationDrawer->size());
+    const int calibrationHandleHeight =
+        temperatureCalibrationDrawer->property("temperatureCalibrationHandleHeight").toInt();
+    require(calibrationHandleHeight > 0 &&
+                calibrationHandleHeight < sensorPageRectInControlsCard.height() &&
+                temperatureCalibrationDrawer->height() == calibrationHandleHeight &&
+                std::abs(collapsedDrawerRectInControlsCard.center().y() -
+                         temperatureControllerControlsCard->rect().center().y()) <= 1 &&
+                collapsedDrawerRectInControlsCard.right() == temperatureControllerControlsCard->width() - 1,
+            "temperature calibration handle fits its seven rows, stays vertically centered, and touches the controls-card edge");
+
+    const int calibrationHandleWidth =
+        temperatureCalibrationDrawer->property("temperatureCalibrationHandleWidth").toInt();
+    auto clickCalibrationHandle = [temperatureCalibrationDrawer, calibrationHandleWidth](int waitMs) {
+        clickWidgetAt(temperatureCalibrationDrawer,
+                      QPoint(calibrationHandleWidth / 2,
+                             temperatureCalibrationDrawer->height() / 2),
+                      waitMs);
     };
-    requireSensorGridPosition(ntcR0Edit, 0, 0, "temperature sensor grid places NTC R0 at row 1 column 1");
-    requireSensorGridPosition(ptR0Edit, 0, 1, "temperature sensor grid places PT R0 at row 1 column 2");
-    requireSensorGridPosition(ptAEdit, 0, 2, "temperature sensor grid places PT A at row 1 column 3");
-    requireSensorGridPosition(ptBEdit, 0, 3, "temperature sensor grid places PT B at row 1 column 4");
-    requireSensorGridPosition(ptCEdit, 0, 4, "temperature sensor grid places PT C at row 1 column 5");
-    requireSensorGridPosition(ntcBEdit, 1, 0, "temperature sensor grid places NTC B at row 2 column 1");
+    auto *calibrationAnimation = temperatureCalibrationDrawer->findChild<QVariantAnimation *>(
+        QStringLiteral("temperatureCalibrationDrawerAnimation"));
+    require(calibrationAnimation != nullptr && calibrationAnimation->duration() == 320,
+            "temperature calibration drawer owns the smooth 320 ms animation");
+    const int collapsedHandleCenterY = collapsedDrawerRectInControlsCard.center().y();
+
+    clickCalibrationHandle(0);
+    activateLayouts(&window);
+    calibrationAnimation->setCurrentTime(qRound(calibrationAnimation->duration() * 0.36));
+    const int expandingWidth = temperatureCalibrationDrawer->width();
+    const QRect expandingDrawerRectInControlsCard(
+        temperatureCalibrationDrawer->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
+        temperatureCalibrationDrawer->size());
+    require(temperatureCalibrationDrawer->property("expanded").toBool() &&
+                expandingWidth > calibrationHandleWidth &&
+                temperatureCalibrationDrawer->property("temperatureCalibrationHandleChevronIconName").toString() ==
+                    QStringLiteral("chevron-right") &&
+                expandingWidth < temperatureChannelConfigSubStack->currentWidget()->width(),
+            "temperature calibration drawer starts expanding from the handle without occupying the full page immediately");
+    require(std::abs(expandingDrawerRectInControlsCard.center().y() - collapsedHandleCenterY) <= 1,
+            "temperature calibration handle keeps a fixed vertical center during expansion");
+    clickCalibrationHandle(0);
+    calibrationAnimation->setCurrentTime(qRound(calibrationAnimation->duration() * 0.20));
+    const QRect reversingDrawerRectInControlsCard(
+        temperatureCalibrationDrawer->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
+        temperatureCalibrationDrawer->size());
+    require(!temperatureCalibrationDrawer->property("expanded").toBool() &&
+                temperatureCalibrationDrawer->property("temperatureCalibrationHandleChevronIconName").toString() ==
+                    QStringLiteral("chevron-left") &&
+                temperatureCalibrationDrawer->width() < expandingWidth,
+            "temperature calibration drawer reverses smoothly from its current visual width");
+    require(std::abs(reversingDrawerRectInControlsCard.center().y() - collapsedHandleCenterY) <= 1,
+            "temperature calibration handle keeps a fixed vertical center during reversal");
+    clickCalibrationHandle(0);
+    calibrationAnimation->setCurrentTime(calibrationAnimation->duration());
+    const QRect calibrationDrawerRect(
+        temperatureCalibrationDrawer->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
+        temperatureCalibrationDrawer->size());
+    require(temperatureCalibrationDrawer->property("expanded").toBool() &&
+                temperatureCalibrationOverlay->isVisible() &&
+                calibrationDrawerRect.width() > calibrationHandleWidth &&
+                calibrationDrawerRect.left() >= 0 &&
+                calibrationDrawerRect.top() == 0 &&
+                calibrationDrawerRect.bottom() == temperatureControllerControlsCard->height() - 1 &&
+                temperatureCalibrationOverlay->geometry().left() == calibrationHandleWidth &&
+                temperatureCalibrationOverlay->geometry().top() == 0 &&
+                temperatureCalibrationOverlay->geometry().bottom() ==
+                    temperatureCalibrationDrawer->height() - 1 &&
+                temperatureCalibrationOverlay->geometry().right() <
+                    temperatureCalibrationDrawer->width() &&
+                calibrationDrawerRect.right() ==
+                    temperatureControllerControlsCard->width() - 1,
+            "temperature calibration drawer expands left inside the sensor-config page while its right edge stays anchored");
+    clickCalibrationHandle(0);
+    calibrationAnimation->setCurrentTime(calibrationAnimation->duration());
+    const QRect collapsedCalibrationDrawerRect(
+        temperatureCalibrationDrawer->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
+        temperatureCalibrationDrawer->size());
+    require(!temperatureCalibrationDrawer->property("expanded").toBool() &&
+                !temperatureCalibrationOverlay->isVisible() &&
+                collapsedCalibrationDrawerRect.width() == calibrationHandleWidth &&
+                collapsedCalibrationDrawerRect.right() ==
+                    temperatureControllerControlsCard->width() - 1 &&
+                !collapsedCalibrationDrawerRect.contains(
+                    ntcR0Edit->mapTo(temperatureChannelConfigSubStack->currentWidget(),
+                                     ntcR0Edit->rect().center())),
+            "temperature calibration drawer collapses back to its edge handle without blocking primary sensor input");
     std::array<QLineEdit *, 8> polynomialEdits{};
     for (int coefficient = 0; coefficient < 8; ++coefficient)
     {
@@ -6208,88 +7943,30 @@ int main(int argc, char **argv)
         polynomialEdits[static_cast<size_t>(coefficient)] = edit;
         require(edit != nullptr,
                 "temperature polynomial inputs all exist");
-        if (coefficient < 4)
+        requirePolynomialFieldLayout(edit,
+                                     coefficient / 3,
+                                     coefficient % 3,
+                                     58,
+                                     "temperature polynomial inputs stay in three compact rows inside the drawer");
+    }
+    for (int coefficient = 0; coefficient < 6; ++coefficient)
+    {
+        if (coefficient == 2 || coefficient == 5)
         {
-            requireSensorGridPosition(edit,
-                                      1,
-                                      1 + coefficient,
-                                      "temperature polynomial A0-A3 inputs stay on the second sensor grid row");
+            continue;
         }
-        else
-        {
-            require(temperatureSensorTopPolynomialFields->isAncestorOf(edit) &&
-                        !temperatureChannelSubTopBar->isAncestorOf(edit) &&
-                        edit->parentWidget() != nullptr &&
-                        edit->parentWidget()->objectName() ==
-                            QStringLiteral("temperatureSensorTopPolynomialA%1FieldChannel1").arg(coefficient) &&
-                        edit->parentWidget()->isVisible(),
-                    "temperature polynomial A4-A7 inputs live beside but outside the sensor navigation bar");
-        }
+        QWidget *leftCell = polynomialEdits[static_cast<size_t>(coefficient)]->parentWidget();
+        QWidget *rightCell = polynomialEdits[static_cast<size_t>(coefficient + 1)]->parentWidget();
+        const QRect leftRect(leftCell->mapTo(polynomialFields, QPoint(0, 0)), leftCell->size());
+        const QRect rightRect(rightCell->mapTo(polynomialFields, QPoint(0, 0)), rightCell->size());
+        require(rightRect.left() - leftRect.right() - 1 <= 8,
+                "temperature polynomial A0-A7 inputs use the compact AI-8-style horizontal gap");
     }
     QWidget *temperatureChannelSubPageRow = temperatureChannelSubTopBar->parentWidget();
     require(temperatureChannelSubPageRow != nullptr &&
-                temperatureSensorTopPolynomialFields->parentWidget() == temperatureChannelSubPageRow,
-            "temperature sensor navigation and A4-A7 fields share an outer row");
-    const QRect sensorConfigButtonRectInSubPageRow(
-        temperatureChannelSensorConfigButton->mapTo(temperatureChannelSubPageRow, QPoint(0, 0)),
-        temperatureChannelSensorConfigButton->size());
-    const QRect polynomialFieldsRectInSubPageRow(
-        temperatureSensorTopPolynomialFields->mapTo(temperatureChannelSubPageRow, QPoint(0, 0)),
-        temperatureSensorTopPolynomialFields->size());
-    const QRect subTopBarRectInSubPageRow(
-        temperatureChannelSubTopBar->mapTo(temperatureChannelSubPageRow, QPoint(0, 0)),
-        temperatureChannelSubTopBar->size());
-    const QRect topBarRectInSelectorRow(
-        temperatureChannelTopBar->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
-        temperatureChannelTopBar->size());
-    const QRect topControlsRectInSelectorRow(
-        temperatureChannelTopControlsStack->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
-        temperatureChannelTopControlsStack->size());
-    const int topNavigationGap =
-        topControlsRectInSelectorRow.left() - topBarRectInSelectorRow.right() - 1;
-    const int lowerNavigationGap =
-        polynomialFieldsRectInSubPageRow.left() - subTopBarRectInSubPageRow.right() - 1;
-    require(temperatureChannelSubTopBar->width() >= temperatureChannelSubTopBar->sizeHint().width() &&
-                lowerNavigationGap == topNavigationGap,
-            "temperature lower navigation keeps its full width before the A4-A7 fields");
-    require(polynomialFieldsRectInSubPageRow.left() > sensorConfigButtonRectInSubPageRow.right() &&
-                std::abs(polynomialFieldsRectInSubPageRow.right() -
-                         temperatureChannelSubPageRow->rect().right()) <= 1,
-            "temperature polynomial A4-A7 group fills the row to the right of the navigation bar");
-    int previousTopFieldRight = sensorConfigButtonRectInSubPageRow.right();
-    int topFieldWidth = -1;
-    int topInputWidth = -1;
-    for (int coefficient = 4; coefficient < 8; ++coefficient)
-    {
-        QWidget *field = polynomialEdits[static_cast<size_t>(coefficient)]->parentWidget();
-        const QRect fieldRect(field->mapTo(temperatureChannelSubPageRow, QPoint(0, 0)), field->size());
-        const QRect lowerInputRect(
-            temperatureChannelSubPageRow->mapFromGlobal(
-                polynomialEdits[static_cast<size_t>(coefficient)]->mapToGlobal(QPoint(0, 0))),
-            polynomialEdits[static_cast<size_t>(coefficient)]->size());
-        if (topFieldWidth < 0)
-        {
-            topFieldWidth = fieldRect.width();
-            topInputWidth = lowerInputRect.width();
-        }
-        require(fieldRect.left() > previousTopFieldRight,
-                "temperature polynomial A4-A7 fields remain ordered without overlap");
-        require(std::abs(fieldRect.center().y() - sensorConfigButtonRectInSubPageRow.center().y()) <= 2,
-                "temperature polynomial A4-A7 fields stay vertically aligned with the navigation bar");
-        require(std::abs(fieldRect.width() - topFieldWidth) <= 1 &&
-                    std::abs(lowerInputRect.width() - topInputWidth) <= 1,
-                "temperature polynomial A4-A7 fields keep equal spacing and equal input widths");
-        require(field->height() >= polynomialEdits[static_cast<size_t>(coefficient)]->sizeHint().height() &&
-                    lowerInputRect.top() >= fieldRect.top() &&
-                    lowerInputRect.bottom() <= fieldRect.bottom(),
-                "temperature polynomial A4-A7 inputs are not clipped by their lower-row field containers");
-        require(polynomialEdits[static_cast<size_t>(coefficient)]->width() ==
-                    polynomialEdits[1]->width() &&
-                    polynomialEdits[static_cast<size_t>(coefficient)]->sizePolicy().horizontalPolicy() ==
-                        QSizePolicy::Fixed,
-                "temperature polynomial A4-A7 inputs match the fixed A1-A3 width");
-        previousTopFieldRight = fieldRect.right();
-    }
+                temperaturePanel->findChild<QWidget *>(
+                    QStringLiteral("temperatureSensorTopPolynomialFieldsChannel1")) == nullptr,
+            "temperature sensor navigation no longer owns a separate A4-A7 top-row container");
     clickWidget(temperatureConfigChannelButton2, 100);
     activateLayouts(&window);
     require(temperatureChannelConfigSubStack2->currentWidget() != nullptr &&
@@ -6323,76 +8000,18 @@ int main(int argc, char **argv)
     for (int coefficient = 4; coefficient < 8; ++coefficient)
     {
         require(!polynomialEdits[static_cast<size_t>(coefficient)]->parentWidget()->isVisible(),
-                "temperature top polynomial fields hide outside the sensor config tab");
+                "temperature polynomial fields hide outside the sensor config tab");
     }
     clickWidget(temperatureChannelSensorConfigButton, 100);
     activateLayouts(&window);
-    auto fieldLeftInSensorPage = [temperatureChannelConfigSubStack](QWidget *editor) {
-        return editor->parentWidget()->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)).x();
-    };
-    auto inputLeftInSensorPage = [temperatureChannelConfigSubStack](QWidget *editor) {
-        return editor->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)).x();
-    };
-    auto requireSensorColumnAlignment = [&fieldLeftInSensorPage, &inputLeftInSensorPage](
-                                            const QList<QWidget *>& fields,
-                                            const char *message) {
-        require(!fields.isEmpty() && fields.first() != nullptr, message);
-        const int fieldLeft = fieldLeftInSensorPage(fields.first());
-        const int inputLeft = inputLeftInSensorPage(fields.first());
-        for (QWidget *field : fields)
-        {
-            require(field != nullptr &&
-                        fieldLeftInSensorPage(field) == fieldLeft &&
-                        inputLeftInSensorPage(field) == inputLeft &&
-                        field->width() == fields.first()->width(),
-                    message);
-        }
-    };
-    requireSensorColumnAlignment({ntcR0Edit, ntcBEdit},
-                                 "temperature sensor column 1 aligns labels and inputs");
-    requireSensorColumnAlignment({ptR0Edit, polynomialEdits[0]},
-                                 "temperature sensor column 2 aligns labels and inputs");
-    requireSensorColumnAlignment({ptAEdit, polynomialEdits[1]},
-                                 "temperature sensor column 3 aligns labels and inputs");
-    requireSensorColumnAlignment({ptBEdit, polynomialEdits[2]},
-                                 "temperature sensor column 4 aligns labels and inputs");
-    requireSensorColumnAlignment({ptCEdit, polynomialEdits[3]},
-                                 "temperature sensor column 5 aligns labels and inputs");
-    const std::array<QWidget *, 5> firstRowFields{
-        ntcR0Edit, ptR0Edit, ptAEdit, ptBEdit, ptCEdit};
-    int adaptiveColumnGap = -1;
-    for (size_t column = 1; column < firstRowFields.size(); ++column)
-    {
-        QWidget *previousCell = firstRowFields[column - 1]->parentWidget();
-        QWidget *currentCell = firstRowFields[column]->parentWidget();
-        const QRect previousRect(previousCell->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
-                                 previousCell->size());
-        const QRect currentRect(currentCell->mapTo(temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
-                                currentCell->size());
-        const int gap = currentRect.left() - previousRect.right() - 1;
-        if (adaptiveColumnGap < 0)
-        {
-            adaptiveColumnGap = gap;
-        }
-        require(gap >= 0 && std::abs(gap - adaptiveColumnGap) <= 1,
-                "temperature sensor grid distributes available card width evenly between columns");
-    }
     require(sensorConfigGrid != nullptr &&
-                sensorConfigGrid->horizontalSpacing() == 0 &&
-                sensorConfigGrid->verticalSpacing() == 8 &&
-                sensorConfigGrid->columnStretch(1) == 1 &&
-                sensorConfigGrid->columnStretch(3) == 1 &&
-                sensorConfigGrid->columnStretch(5) == 1 &&
-                sensorConfigGrid->columnStretch(7) == 1,
-            "temperature sensor grid uses four adaptive spacer columns");
-    const QMargins temperatureChannelPageMargins =
-        temperatureChannelStack->currentWidget()->layout()->contentsMargins();
-    require(temperatureChannelPageMargins.left() == 0 &&
-                temperatureChannelPageMargins.right() == 0,
-            "temperature channel page releases horizontal margins for the five sensor columns");
-    require(sensorConfigGrid != nullptr && sensorConfigGrid->rowCount() == 2,
-            "temperature sensor grid contains exactly two parameter rows");
-    QWidget *sensorLastRow = polynomialEdits[3] ? polynomialEdits[3]->parentWidget() : nullptr;
+                sensorConfigGrid->horizontalSpacing() == 6 &&
+                sensorConfigGrid->verticalSpacing() == 10 &&
+                sensorConfigGrid->itemAtPosition(3, 0) == nullptr &&
+                temperatureCalibrationDrawer->isVisible() &&
+                !polynomialFields->isVisible(),
+            "temperature sensor grid keeps the primary rows visible while A0-A7 stays in the collapsed calibration card");
+    QWidget *sensorLastRow = ptCEdit ? ptCEdit->parentWidget() : nullptr;
     const QRect sensorFirstRowRect(ntcR0Edit->parentWidget()->mapTo(
                                        temperatureChannelConfigSubStack->currentWidget(), QPoint(0, 0)),
                                    ntcR0Edit->parentWidget()->size());
@@ -6402,28 +8021,32 @@ int main(int argc, char **argv)
         : QRect();
     const int sensorPageBottomUnusedHeight =
         temperatureChannelConfigSubStack->currentWidget()->height() - 1 - sensorLastRowRect.bottom();
-    const QRect sensorLastTopInputRectInCard(
-        polynomialEdits[7]->mapTo(temperatureConfigCard, QPoint(0, 0)),
-        polynomialEdits[7]->size());
-    const QRect sensorLastTopFieldRectInCard(
-        polynomialEdits[7]->parentWidget()->mapTo(temperatureConfigCard, QPoint(0, 0)),
-        polynomialEdits[7]->parentWidget()->size());
-    require(polynomialEdits[7] != nullptr,
-            "temperature sensor config exposes the final polynomial input");
+    const QRect lowerBarRectForSensor(
+        temperatureChannelSubTopBar->mapTo(temperatureConfigCard, QPoint(0, 0)),
+        temperatureChannelSubTopBar->size());
+    const QRect sensorLastRowRectInControlsCard(
+        sensorLastRow->mapTo(temperatureControllerControlsCard, QPoint(0, 0)),
+        sensorLastRow->size());
+    const int sensorCardBottomGap =
+        temperatureControllerControlsCard->height() - 1 - sensorLastRowRectInControlsCard.bottom();
+    const int sensorLowerBarGap = lowerBarRectForSensor.top() - controlsCardRectInCard.bottom() - 1;
+    require(polynomialEdits[7] != nullptr &&
+                temperatureCalibrationOverlay->isAncestorOf(polynomialEdits[7]),
+            "temperature sensor config retains the final polynomial input in the calibration card");
     require(temperatureChannelStack->height() >= temperatureChannelStack->currentWidget()->sizeHint().height() &&
                 temperatureConfigCard->height() >= temperatureConfigCard->sizeHint().height(),
-            "temperature four-row card reserves enough total height");
-    require(sensorConfigGrid->alignment() == Qt::AlignTop &&
+            "temperature primary sensor card reserves enough total height");
+    require(sensorPageBottomUnusedHeight == sensorConfigGrid->horizontalSpacing() &&
+                sensorCardBottomGap <= sensorConfigGrid->horizontalSpacing() + 2 &&
+                sensorLowerBarGap == sensorConfigGrid->horizontalSpacing(),
+            "temperature sensor card and lower selector keep the shared compact spacing");
+    require(sensorConfigGrid->alignment() == (Qt::AlignTop | Qt::AlignLeft) &&
                 sensorFirstRowRect.top() >= 0 &&
                 sensorFirstRowRect.top() <= 4,
             "temperature sensor content starts at the shared first content row");
     require(sensorLastRowRect.bottom() < temperatureChannelConfigSubStack->currentWidget()->height() &&
-                sensorPageBottomUnusedHeight >= 0 &&
-                sensorPageBottomUnusedHeight <= 4,
-            "temperature sensor second content row fills the shared content height");
-    require(sensorLastTopInputRectInCard.bottom() <= sensorLastTopFieldRectInCard.bottom() &&
-                sensorLastTopInputRectInCard.bottom() <= temperatureConfigCard->contentsRect().bottom(),
-            "temperature sensor polynomial inputs remain inside their row and card");
+                sensorPageBottomUnusedHeight >= 0,
+            "temperature sensor primary rows remain inside the reserved content height");
     require(temperatureChannelStack->isAncestorOf(factoryResetButton) &&
                 !temperatureChannelSelectorRow->isAncestorOf(factoryResetButton),
             "temperature factory reset button lives on the last common-settings row");
@@ -6535,8 +8158,15 @@ int main(int argc, char **argv)
                 "temperature trend plot centers the default axis range around the target temperature");
         require(plot->property("axisLabelsVisible").toBool(),
                 "temperature trend plot exposes visible axis labels");
+        const int xAxisTickCount = plot->property("xAxisTickCount").toInt();
+        const bool timeAxisMode = plot->property("xAxisTimeMode").toBool();
+        const bool xAxisTickCountIsValid = timeAxisMode
+            ? xAxisTickCount >= 2 &&
+                std::abs(plot->property("xAxisTimeSpanSeconds").toDouble() -
+                         static_cast<double>(xAxisTickCount - 1)) < 1e-6
+            : xAxisTickCount == 5;
         require(plot->property("yAxisTickCount").toInt() == 7 &&
-                    plot->property("xAxisTickCount").toInt() == 5,
+                    xAxisTickCountIsValid,
                 "temperature trend plot shows numeric ticks on both axes");
     }
 
@@ -6844,6 +8474,13 @@ int main(int argc, char **argv)
     auto *temperaturePage = window.findChild<QWidget *>(QStringLiteral("temperaturePage"));
     require(temperaturePage != nullptr && temperaturePage->isVisible(),
             "temperature page can be opened");
+    auto *temperatureScrollAreaForTopGap =
+        temperaturePage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
+    if (temperatureScrollAreaForTopGap && temperatureScrollAreaForTopGap->verticalScrollBar())
+    {
+        temperatureScrollAreaForTopGap->verticalScrollBar()->setValue(0);
+        activateLayouts(&window);
+    }
     QWidget *temperatureControllerCard = sensorGroupAncestor(temperaturePanel);
     require(temperatureControllerCard != nullptr,
             "temperature controller card can be identified from the controller panel");
@@ -6901,10 +8538,10 @@ int main(int argc, char **argv)
     auto *deviceConfigScrollArea =
         deviceConfigPage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
     require(deviceConfigScrollArea != nullptr, "device configuration scroll area exists");
+    const bool deviceConfigPageScrollable = deviceConfigScrollArea->verticalScrollBar()->maximum() > 0;
     require(deviceConfigScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAsNeeded &&
-                deviceConfigScrollArea->verticalScrollBar()->maximum() > 0 &&
-                deviceConfigScrollArea->verticalScrollBar()->isVisible(),
-            "device configuration page exposes scrolling for the expanded serial configuration");
+                (!deviceConfigPageScrollable || deviceConfigScrollArea->verticalScrollBar()->isVisible()),
+            "device configuration page only exposes scrolling when the remaining content needs it");
     const QRect deviceConfigScrollRect = widgetRectInCentral(deviceConfigScrollArea);
     require(std::abs(deviceConfigScrollRect.left() - mainPageStackCentralRect.left()) <= 1 &&
                 std::abs(deviceConfigScrollRect.top() - mainPageStackCentralRect.top()) <= 1 &&
@@ -6915,18 +8552,20 @@ int main(int argc, char **argv)
                 deviceConfigScrollArea->widget()->layout()->contentsMargins() ==
                     QMargins(kExpectedPageLeftInset,
                              kExpectedPageTopInset,
-                             kExpectedHomeShadowSafeRightInset,
+                             deviceConfigPageScrollable
+                                 ? kExpectedHomeShadowSafeRightInset
+                                 : kExpectedNoScrollPageRightInset,
                              VaporView::Ground::MainSupport::kMainContentBottomShadowSafeInset),
-            "device configuration page keeps the card shadow inset ahead of its visible scrollbar");
+            "device configuration page keeps the card shadow inset when its scrollbar is visible");
     require(deviceConfigScrollArea->horizontalScrollBar() != nullptr &&
                 deviceConfigScrollArea->horizontalScrollBar()->maximum() == 0,
             "device configuration page fits horizontally at default window size");
     auto *deviceFirstCard =
-        deviceConfigPage->findChild<QGroupBox *>(QStringLiteral("sensorGroupBox"));
+        deviceConfigPage->findChild<QFrame *>(QStringLiteral("epsilonSectionCard"));
     require(deviceFirstCard != nullptr &&
                 std::abs(widgetRectInCentral(deviceFirstCard).top() -
                          homePrimaryCardRect.top()) <= 1,
-            "device configuration page aligns its first card with the home page 12px top gap");
+            "device configuration page places the link-status card on the first row");
 
     const QStringList removedDevicePageActions = {
         QStringLiteral("刷新"),
@@ -6940,7 +8579,6 @@ int main(int argc, char **argv)
     QToolButton *temperatureDeviceActionButton = nullptr;
     QToolButton *ai8TemperatureDeviceActionButton = nullptr;
     QPushButton *deviceAutoDetectButton = nullptr;
-    QPushButton *deviceSkyConfigButton = nullptr;
     for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
     {
         if (!button->isVisible())
@@ -6955,11 +8593,6 @@ int main(int argc, char **argv)
             button->text().contains(QStringLiteral("Auto Detect")))
         {
             deviceAutoDetectButton = button;
-        }
-        if (button->text().contains(QStringLiteral("天空端设备配置")) ||
-            button->text().contains(QStringLiteral("Sky Device Config")))
-        {
-            deviceSkyConfigButton = button;
         }
     }
     for (QToolButton *button : deviceConfigPage->findChildren<QToolButton *>())
@@ -7023,8 +8656,6 @@ int main(int argc, char **argv)
             "device configuration exposes the AI-8288 connection action button");
     require(deviceAutoDetectButton != nullptr && deviceAutoDetectButton->width() <= 145,
             "device configuration auto-detect button uses compact title-bar width");
-    require(deviceSkyConfigButton != nullptr && deviceSkyConfigButton->width() <= 145,
-            "device configuration sky-device button uses compact title-bar width");
 
     QComboBox *devicePortCombo =
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceTemperaturePortCombo"));
@@ -7043,6 +8674,27 @@ int main(int argc, char **argv)
     }
     require(devicePortCombo != nullptr && devicePortCombo->width() <= 112,
             "device configuration serial combo is sized for COM999");
+    if (devicePortCombo)
+    {
+        const QColor expectedComboBg =
+            VaporView::appThemeColor(VaporView::AppThemeColor::FieldBackground, false);
+        const QImage comboImage = devicePortCombo->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+        const QRect comboInterior = comboImage.rect().adjusted(2, 2, -2, -2);
+        const int expectedPixels = countPixelsNearColor(comboImage, comboInterior, expectedComboBg, 0);
+        if (expectedPixels < comboInterior.width() * comboInterior.height() / 4)
+        {
+            QComboBox *diagnosticSourceModeCombo = findSourceModeCombo(deviceConfigPage);
+            std::cerr << "Device combo background diagnostic:"
+                      << " enabled=" << devicePortCombo->isEnabled()
+                      << " text=" << devicePortCombo->currentText().toStdString()
+                      << " sourceMode="
+                      << (diagnosticSourceModeCombo ? diagnosticSourceModeCombo->currentData().toString().toStdString() : std::string("<null>"))
+                      << " appDark=" << VaporView::isDarkThemePalette(devicePortCombo->palette())
+                      << " expectedPixels=" << expectedPixels
+                      << " required=" << (comboInterior.width() * comboInterior.height() / 4)
+                      << '\n';
+        }
+    }
     requireWidgetInteriorUsesBackground(
         devicePortCombo,
         VaporView::appThemeColor(VaporView::AppThemeColor::FieldBackground, false),
@@ -7177,22 +8829,38 @@ int main(int argc, char **argv)
     auto *deviceSerialGrid = deviceAi8TemperaturePortCombo
         ? qobject_cast<QGridLayout *>(deviceAi8TemperaturePortCombo->parentWidget()->layout())
         : nullptr;
-    auto *deviceAi8TemperatureLabel = deviceSerialGrid && deviceSerialGrid->itemAtPosition(5, 0)
-        ? qobject_cast<QLabel *>(deviceSerialGrid->itemAtPosition(5, 0)->widget())
-        : nullptr;
-    auto *deviceAi8TemperatureRateLabel = deviceSerialGrid && deviceSerialGrid->itemAtPosition(5, 3)
-        ? qobject_cast<QLabel *>(deviceSerialGrid->itemAtPosition(5, 3)->widget())
-        : nullptr;
-    auto *deviceTemperatureLabel = deviceSerialGrid && deviceSerialGrid->itemAtPosition(4, 0)
-        ? qobject_cast<QLabel *>(deviceSerialGrid->itemAtPosition(4, 0)->widget())
-        : nullptr;
+    auto labelInComboRow = [deviceSerialGrid](QWidget *combo, int column) -> QLabel * {
+        if (!deviceSerialGrid || !combo)
+        {
+            return nullptr;
+        }
+        const int index = deviceSerialGrid->indexOf(combo);
+        if (index < 0)
+        {
+            return nullptr;
+        }
+        int row = 0;
+        int itemColumn = 0;
+        int rowSpan = 0;
+        int columnSpan = 0;
+        deviceSerialGrid->getItemPosition(index, &row, &itemColumn, &rowSpan, &columnSpan);
+        QLayoutItem *item = deviceSerialGrid->itemAtPosition(row, column);
+        return item ? qobject_cast<QLabel *>(item->widget()) : nullptr;
+    };
+    QLabel *deviceAi8TemperatureLabel =
+        labelInComboRow(deviceAi8TemperaturePortCombo, 0);
+    QLabel *deviceAi8TemperatureRateLabel =
+        labelInComboRow(deviceAi8TemperaturePortCombo, 3);
+    QLabel *deviceTemperatureLabel =
+        labelInComboRow(deviceTemperaturePortCombo, 0);
     require(deviceTemperaturePortCombo != nullptr,
             "device configuration temperature serial-port combo exists");
     require(deviceTemperatureBaudCombo != nullptr,
             "device configuration temperature baud-rate combo exists");
     require(deviceAi8TemperatureLabel != nullptr && deviceTemperatureLabel != nullptr &&
-                deviceAi8TemperatureLabel->text() == QStringLiteral("AI-8288:") &&
+                deviceAi8TemperatureLabel->text().contains(QStringLiteral("AI-8288")) &&
                 deviceAi8TemperatureLabel->objectName() == QStringLiteral("fieldLabel") &&
+                deviceTemperatureLabel->objectName() == QStringLiteral("fieldLabel") &&
                 deviceAi8TemperatureLabel->font().weight() == deviceTemperatureLabel->font().weight(),
             "device configuration AI-8288 label matches the RD105 field-label typography");
     require(deviceAi8TemperatureBaudCombo != nullptr &&
@@ -7329,16 +8997,22 @@ int main(int argc, char **argv)
     requireTopLevelCardElevation(serialConfigCard,
                                  1.0,
                                  "device serial configuration card uses the shared soft elevation");
-    require(serialConfigCard->sizePolicy().horizontalPolicy() == QSizePolicy::Maximum,
-            "device configuration serial card width follows its contents");
+    require(serialConfigCard->sizePolicy().horizontalPolicy() == QSizePolicy::Expanding,
+            "device configuration serial card expands to fill its row");
     const QRect serialConfigPageRect(serialConfigCard->mapTo(deviceConfigPage, QPoint(0, 0)),
                                      serialConfigCard->size());
     require(std::abs(widgetRectInCentral(serialConfigCard).left() - homePrimaryCardLeft) <= 1,
-            "device configuration page aligns its first card with the home page card left edge");
-    require(serialConfigCard->width() <= serialConfigCard->sizeHint().width() + 4,
-            "device configuration serial card does not expand to fill the whole row");
+            "device configuration page aligns the serial card with the home page card left edge");
+    const int expectedDeviceConfigCardWidth =
+        deviceConfigScrollArea->viewport()->width() -
+        kExpectedPageLeftInset -
+        (deviceConfigPageScrollable
+             ? kExpectedHomeShadowSafeRightInset
+             : kExpectedNoScrollPageRightInset);
+    require(std::abs(serialConfigCard->width() - expectedDeviceConfigCardWidth) <= 4,
+            "device configuration serial card fills the main content row");
     requireCardTitleBar(serialConfigCard,
-                        QStringList{QStringLiteral("串口配置"), QStringLiteral("Serial Port Configuration")},
+                        QStringList{QStringLiteral("设备配置 [本机]"), QStringLiteral("Device Configuration [Local]")},
                         QStringLiteral("usb"),
                         "device serial configuration card uses the standard icon title bar");
     const QString appStyleSheet = qApp->styleSheet();
@@ -7352,7 +9026,6 @@ int main(int argc, char **argv)
     const QRect deviceRateRect(deviceRateCombo->mapTo(deviceConfigPage, QPoint(0, 0)),
                                deviceRateCombo->size());
     bool foundRemoteButtonsToRightOfRate = false;
-    int rightmostRemoteButtonRight = -1;
     for (QToolButton *button : deviceConfigPage->findChildren<QToolButton *>())
     {
         if (!button->isVisible())
@@ -7367,7 +9040,6 @@ int main(int argc, char **argv)
         const QRect buttonRect(button->mapTo(deviceConfigPage, QPoint(0, 0)), button->size());
         require(remoteAction != QStringLiteral("reconnect"),
                 "device configuration omits reconnect remote actions to keep the serial card compact");
-        rightmostRemoteButtonRight = std::max(rightmostRemoteButtonRight, buttonRect.right());
         if (buttonRect.left() > deviceRateRect.right() &&
             std::abs(buttonRect.center().y() - deviceRateRect.center().y()) <= 2)
         {
@@ -7376,29 +9048,52 @@ int main(int argc, char **argv)
     }
     require(foundRemoteButtonsToRightOfRate,
             "device configuration remote actions sit to the right of the rate selector");
-    require(rightmostRemoteButtonRight > 0 &&
-                serialConfigPageRect.right() - rightmostRemoteButtonRight <= 32,
-            "device configuration serial card right edge stays close to the compact remote buttons");
 
-    auto *epsilonPacketCustomCheck =
-        deviceConfigPage->findChild<QCheckBox *>(QStringLiteral("epsilonPacketCustomCheck"));
-    require(epsilonPacketCustomCheck != nullptr,
-            "device configuration page exposes the EPSILON custom packet-rate checkbox");
-    QFrame *epsilonConfigCard = nullptr;
-    for (QWidget *ancestor = epsilonPacketCustomCheck; ancestor; ancestor = ancestor->parentWidget())
+    auto *combinationPageForEpsilonGeometry =
+        window.findChild<VaporView::Ground::Navigation::CombinationNavigationPage *>();
+    auto *epsilonPanelForGeometry = combinationPageForEpsilonGeometry
+        ? combinationPageForEpsilonGeometry->epsilonConfigPanel()
+        : nullptr;
+    require(combinationPageForEpsilonGeometry != nullptr && epsilonPanelForGeometry != nullptr,
+            "combination navigation exposes its EPSILON configuration panel for geometry checks");
+    QWidget *pageBeforeEpsilonGeometryCheck = mainPageStackForScroll->currentWidget();
+    combinationPageForEpsilonGeometry->setCurrentSection(
+        VaporView::Ground::Navigation::CombinationNavigationPage::Section::Epsilon);
+    mainPageStackForScroll->setCurrentWidget(combinationPageForEpsilonGeometry);
+    processEventsFor(120);
+    activateLayouts(epsilonPanelForGeometry);
+    QFrame *epsilonConfigCard = epsilonPanelForGeometry;
+    auto *epsilonStatusCard = epsilonPanelForGeometry->findChild<QFrame *>(
+        QStringLiteral("epsilonStatusCard"));
+    auto *epsilonOutputCard = epsilonPanelForGeometry->findChild<QFrame *>(
+        QStringLiteral("epsilonOutputCard"));
+    auto *epsilonDeviceSettingsCard = epsilonPanelForGeometry->findChild<QFrame *>(
+        QStringLiteral("epsilonDeviceSettingsCard"));
+    require(epsilonConfigCard != nullptr &&
+                combinationPageForEpsilonGeometry->isAncestorOf(epsilonConfigCard) &&
+                !deviceConfigPage->isAncestorOf(epsilonConfigCard) &&
+                epsilonStatusCard != nullptr && epsilonOutputCard != nullptr &&
+                epsilonDeviceSettingsCard != nullptr,
+            "combination navigation owns the EPSILON packet-rate panel exclusively");
+    require(!epsilonConfigCard->property(VaporView::kTopLevelCardProperty).toBool(),
+            "EPSILON panel root is an unframed layout container");
+    for (QFrame *sectionCard : {epsilonStatusCard, epsilonOutputCard, epsilonDeviceSettingsCard})
     {
-        auto *card = qobject_cast<QFrame *>(ancestor);
-        if (card && card->objectName() == QStringLiteral("epsilonSectionCard"))
-        {
-            epsilonConfigCard = card;
-            break;
-        }
+        requireTopLevelCardElevation(sectionCard, 1.0,
+                                     "EPSILON business section uses the shared soft elevation");
     }
-    require(epsilonConfigCard != nullptr,
-            "device configuration page embeds the EPSILON packet-rate card");
-    requireTopLevelCardElevation(epsilonConfigCard,
-                                 1.0,
-                                 "device EPSILON configuration card uses the shared soft elevation");
+    requireCardTitleBar(epsilonStatusCard,
+                        QStringList{QStringLiteral("配置摘要"), QStringLiteral("Configuration Summary")},
+                        QStringLiteral("satellite"),
+                        "EPSILON summary uses the standard icon title bar");
+    requireCardTitleBar(epsilonOutputCard,
+                        QStringList{QStringLiteral("报文通信频率"), QStringLiteral("Packet Communication Rates")},
+                        QStringLiteral("activity"),
+                        "EPSILON output uses the standard icon title bar");
+    requireCardTitleBar(epsilonDeviceSettingsCard,
+                        QStringList{QStringLiteral("设备设置"), QStringLiteral("Device Settings")},
+                        QStringLiteral("sliders-vertical"),
+                        "EPSILON device settings use the standard icon title bar");
     QList<uint> packetRateIds;
     for (QComboBox *combo : epsilonConfigCard->findChildren<QComboBox *>())
     {
@@ -7411,108 +9106,55 @@ int main(int argc, char **argv)
     const QList<uint> expectedPacketRateIds = {
         0x40, 0x41, 0x42, 0x50, 0x53, 0x59, 0x5A, 0x5C, 0x5D, 0x63, 0x64};
     require(packetRateIds == expectedPacketRateIds,
-            "device EPSILON configuration card exposes all 11 packet-rate controls");
-    require(epsilonConfigCard->isVisible(), "device EPSILON configuration card is visible in local mode");
-    require(epsilonConfigCard->parentWidget() == serialConfigCard->parentWidget(),
-            "device EPSILON configuration card is a sibling of the serial configuration card");
-    require(!serialConfigCard->isAncestorOf(epsilonConfigCard),
-            "device EPSILON configuration card is not nested inside the serial configuration card");
-    requireCardTitleBar(epsilonConfigCard,
-                        QStringList{QStringLiteral("EPSILON 配置"), QStringLiteral("EPSILON Configuration")},
-                        QStringLiteral("sliders-vertical"),
-                        "device EPSILON configuration card uses the standard icon title bar");
-    require(epsilonPacketCustomCheck != nullptr &&
-                epsilonPacketCustomCheck->focusPolicy() == Qt::TabFocus,
-            "device EPSILON custom packet-rate checkbox keeps keyboard focus without retaining mouse-click focus");
-    require(epsilonPacketCustomCheck->property("indicatorCanvasSize").toInt() == 34 &&
-                epsilonPacketCustomCheck->property("indicatorIconSize").toInt() == 24 &&
-                epsilonPacketCustomCheck->property("indicatorCanvasSize").toInt() >
-                    epsilonPacketCustomCheck->property("indicatorIconSize").toInt() &&
-                epsilonPacketCustomCheck->property("indicatorFeedbackColorRole").toString() ==
-                    QStringLiteral("TitleBarHover"),
-            "device EPSILON custom packet-rate checkbox uses the title-bar 34px canvas with a 24px icon");
-    const int epsilonCustomCheckStyleIndex = appStyleSheet.indexOf(
-        QStringLiteral("QCheckBox#epsilonPacketCustomCheck::indicator {"));
-    require(epsilonCustomCheckStyleIndex >= 0 &&
-                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 700).contains(
-                    QStringLiteral("width: 34px")) &&
-                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 700).contains(
-                    QStringLiteral("height: 34px")) &&
-                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 700).contains(
-                    QStringLiteral("image: none")) &&
-                appStyleSheet.mid(epsilonCustomCheckStyleIndex, 700).contains(
-                    QStringLiteral("background-color: transparent")),
-            "device EPSILON custom packet-rate checkbox separates the title-bar hover canvas from its icon");
-    QStyleOptionButton epsilonCheckOption;
-    epsilonCheckOption.initFrom(epsilonPacketCustomCheck);
-    epsilonCheckOption.text = epsilonPacketCustomCheck->text();
-    const QRect epsilonCheckIndicatorRect = epsilonPacketCustomCheck->style()->subElementRect(
-        QStyle::SE_CheckBoxIndicator,
-        &epsilonCheckOption,
-        epsilonPacketCustomCheck);
-    require(epsilonCheckIndicatorRect.isValid(),
-            "device EPSILON custom packet-rate checkbox exposes a valid icon hit area");
-    const QPoint epsilonCheckTextPoint(
-        std::min(epsilonPacketCustomCheck->width() - 1, epsilonCheckIndicatorRect.right() + 24),
-        epsilonCheckIndicatorRect.center().y());
-    const bool epsilonCheckInitiallyChecked = epsilonPacketCustomCheck->isChecked();
-    clickWidgetAt(epsilonPacketCustomCheck, epsilonCheckTextPoint);
-    require(epsilonPacketCustomCheck->isChecked() == epsilonCheckInitiallyChecked,
-            "device EPSILON custom packet-rate checkbox ignores clicks on its descriptive text");
-    clickWidgetAt(epsilonPacketCustomCheck, epsilonCheckIndicatorRect.center());
-    require(epsilonPacketCustomCheck->isChecked() != epsilonCheckInitiallyChecked,
-            "device EPSILON custom packet-rate checkbox toggles from its icon area");
-    moveMouseOverWidgetAt(epsilonPacketCustomCheck, epsilonCheckIndicatorRect.center());
-    require(epsilonPacketCustomCheck->property("indicatorHovered").toBool(),
-            "device EPSILON custom packet-rate checkbox highlights only while its icon is hovered");
-    moveMouseOverWidgetAt(epsilonPacketCustomCheck, epsilonCheckTextPoint);
-    require(!epsilonPacketCustomCheck->property("indicatorHovered").toBool(),
-            "device EPSILON custom packet-rate checkbox clears hover feedback outside the icon area");
-    clickWidgetAt(epsilonPacketCustomCheck, epsilonCheckIndicatorRect.center());
-    require(epsilonPacketCustomCheck->isChecked() == epsilonCheckInitiallyChecked,
-            "device EPSILON custom packet-rate checkbox test restores the original checked state");
-    const int epsilonCardStyleIndex = appStyleSheet.indexOf(
-        QStringLiteral("QFrame#epsilonSectionCard[vaporViewTopLevelCard=\"true\"]"));
-    require(epsilonCardStyleIndex >= 0 &&
-                appStyleSheet.mid(epsilonCardStyleIndex, 500).contains(QStringLiteral("border-radius: 12px")),
-            "device EPSILON and telemetry cards use the shared 12px card radius");
-    int serialControlBottom = 0;
-    for (QComboBox *combo : deviceConfigPage->findChildren<QComboBox *>())
-    {
-        if (!combo->isVisible() ||
-            epsilonConfigCard->isAncestorOf(combo) ||
-            combo->property("epsilonPacketId").isValid())
-        {
-            continue;
-        }
-        const QRect comboRect(combo->mapTo(deviceConfigPage, QPoint(0, 0)), combo->size());
-        serialControlBottom = std::max(serialControlBottom, comboRect.bottom());
-    }
-    const QRect epsilonConfigPageRect(epsilonConfigCard->mapTo(deviceConfigPage, QPoint(0, 0)),
-                                      epsilonConfigCard->size());
-    require(epsilonConfigPageRect.top() > serialControlBottom,
-            "device EPSILON configuration card sits below the serial and rate selectors");
-    const QRect epsilonConfigBounds = epsilonConfigCard->rect().adjusted(-1, -1, 1, 1);
-    int leftPacketComboColumn = -1;
-    int rightPacketComboColumn = -1;
-    int rightPacketComboRight = -1;
-    int packetComboTop = epsilonConfigCard->height();
-    int packetComboBottom = -1;
-    for (QComboBox *combo : epsilonConfigCard->findChildren<QComboBox *>())
+            "EPSILON configuration panel exposes all 11 packet-rate controls");
+    require(epsilonConfigCard->isVisible(), "EPSILON configuration panel is visible in local mode");
+    require(epsilonPanelForGeometry->styleSheet().contains(
+                QStringLiteral("QFrame[epsilonConfigCard=\"true\"]")) &&
+                epsilonPanelForGeometry->styleSheet().contains(
+                    VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised,
+                                                  VaporView::isDarkThemeEnabled())),
+            "EPSILON section styling uses local theme tokens without a parallel color system");
+    const QRect epsilonStatusBounds(epsilonStatusCard->mapTo(epsilonConfigCard, QPoint(0, 0)),
+                                    epsilonStatusCard->size());
+    const QRect epsilonOutputBounds(epsilonOutputCard->mapTo(epsilonConfigCard, QPoint(0, 0)),
+                                    epsilonOutputCard->size());
+    const QRect epsilonDeviceSettingsBounds(
+        epsilonDeviceSettingsCard->mapTo(epsilonConfigCard, QPoint(0, 0)),
+        epsilonDeviceSettingsCard->size());
+    require(epsilonStatusBounds.top() < epsilonOutputBounds.top() &&
+                epsilonOutputBounds.top() < epsilonDeviceSettingsBounds.top(),
+            "EPSILON section cards follow summary, output, device-settings order");
+    auto *epsilonActionsContainer = epsilonConfigCard->findChild<QWidget *>(
+        QStringLiteral("epsilonActionsContainer"));
+    require(epsilonActionsContainer != nullptr,
+            "EPSILON panel exposes a separate primary-actions footer");
+    const QRect epsilonActionsBounds(
+        epsilonActionsContainer->mapTo(epsilonConfigCard, QPoint(0, 0)),
+        epsilonActionsContainer->size());
+    require(epsilonActionsBounds.top() > epsilonDeviceSettingsBounds.bottom(),
+            "EPSILON primary-actions footer follows device settings");
+    auto *epsilonConfigScrollArea = combinationPageForEpsilonGeometry->findChild<QScrollArea *>(
+        QStringLiteral("epsilonConfigScrollArea"));
+    require(epsilonConfigScrollArea != nullptr &&
+                epsilonConfigScrollArea->horizontalScrollBarPolicy() == Qt::ScrollBarAlwaysOff &&
+                epsilonConfigScrollArea->horizontalScrollBar()->maximum() == 0,
+            "EPSILON page avoids a horizontal scrollbar at the default window size");
+    constexpr int kEpsilonPacketVisualColumnCount = 4;
+    std::array<int, kEpsilonPacketVisualColumnCount> packetComboColumnLefts;
+    packetComboColumnLefts.fill(-1);
+    for (QComboBox *combo : epsilonOutputCard->findChildren<QComboBox *>())
     {
         if (!combo->isVisible() || !combo->property("epsilonPacketId").isValid())
         {
             continue;
         }
-        const QRect comboRect(combo->mapTo(epsilonConfigCard, QPoint(0, 0)), combo->size());
-        packetComboTop = std::min(packetComboTop, comboRect.top());
-        packetComboBottom = std::max(packetComboBottom, comboRect.bottom());
-        require(epsilonConfigBounds.contains(comboRect),
-                "device EPSILON packet-rate combos stay inside the embedded card");
+        const QRect comboRect(combo->mapTo(epsilonOutputCard, QPoint(0, 0)), combo->size());
+        require(QRect(QPoint(0, 0), epsilonOutputCard->size()).contains(comboRect),
+                "EPSILON packet-rate combos stay inside the panel");
         require(combo->width() >= combo->fontMetrics().horizontalAdvance(combo->currentText()) + 44,
-                "device EPSILON packet-rate combo text is not clipped");
+                "EPSILON packet-rate combo text is not clipped");
         QLabel *packetLabel = nullptr;
-        for (QLabel *label : epsilonConfigCard->findChildren<QLabel *>())
+        for (QLabel *label : epsilonOutputCard->findChildren<QLabel *>())
         {
             if (label->property("epsilonPacketId").isValid() &&
                 label->property("epsilonPacketId").toUInt() == combo->property("epsilonPacketId").toUInt())
@@ -7522,26 +9164,22 @@ int main(int argc, char **argv)
             }
         }
         require(packetLabel != nullptr && packetLabel->isVisible(),
-                "device EPSILON packet-rate row has a matching label");
+                "EPSILON packet-rate row has a matching label");
         require(!packetLabel->text().contains(QStringLiteral("最大")) &&
                     !packetLabel->text().contains(QStringLiteral("Max")),
-                "device EPSILON packet-rate labels omit max-rate text");
-        const QRect labelRect(packetLabel->mapTo(epsilonConfigCard, QPoint(0, 0)),
+                "EPSILON packet-rate labels omit max-rate text");
+        const QRect labelRect(packetLabel->mapTo(epsilonOutputCard, QPoint(0, 0)),
                               packetLabel->size());
         require(comboRect.left() > labelRect.right(),
-                "device EPSILON packet-rate combo sits to the right of its label");
+                "EPSILON packet-rate combo sits to the right of its label");
         require(std::abs(comboRect.center().y() - labelRect.center().y()) <= 3,
-                "device EPSILON packet-rate label and combo are vertically aligned");
+                "EPSILON packet-rate label and combo are vertically aligned");
         require(combo->property("epsilonPacketGridColumn").isValid(),
-                "device EPSILON packet-rate combo reports its visual column");
+                "EPSILON packet-rate combo reports its visual column");
         const int visualColumn = combo->property("epsilonPacketGridColumn").toInt();
-        require(visualColumn == 0 || visualColumn == 1,
-                "device EPSILON packet-rate combo column is valid");
-        int& expectedColumnLeft = visualColumn == 0 ? leftPacketComboColumn : rightPacketComboColumn;
-        if (visualColumn == 1)
-        {
-            rightPacketComboRight = std::max(rightPacketComboRight, comboRect.right());
-        }
+        require(visualColumn >= 0 && visualColumn < kEpsilonPacketVisualColumnCount,
+                "EPSILON packet-rate combo column is valid");
+        int& expectedColumnLeft = packetComboColumnLefts[visualColumn];
         if (expectedColumnLeft < 0)
         {
             expectedColumnLeft = comboRect.left();
@@ -7549,60 +9187,85 @@ int main(int argc, char **argv)
         else
         {
             require(std::abs(comboRect.left() - expectedColumnLeft) <= 2,
-                    "device EPSILON packet-rate combos align vertically within each column");
+                    "EPSILON packet-rate combos align vertically within each column");
         }
     }
-    require(leftPacketComboColumn >= 0 && rightPacketComboColumn > leftPacketComboColumn,
-            "device EPSILON packet-rate layout exposes two aligned combo columns");
-    require(rightPacketComboRight > 0,
-            "device EPSILON packet-rate grid has measurable right-side blank space");
-    int actionButtonColumnA = -1;
-    int actionButtonColumnB = -1;
-    int actionButtonTop = epsilonConfigCard->height();
-    int actionButtonBottom = -1;
-    for (const QString& buttonText : {QStringLiteral("恢复推荐"),
-                                      QStringLiteral("分组模式"),
-                                      QStringLiteral("保存并应用"),
-                                      QStringLiteral("配置RTCM串口"),
-                                      QStringLiteral("重新配置输出"),
-                                      QStringLiteral("RTK配置")})
+    int visiblePacketColumns = 0;
+    int previousPacketColumnLeft = -1;
+    for (int columnLeft : packetComboColumnLefts)
     {
-        bool foundButton = false;
-        for (QPushButton *button : epsilonConfigCard->findChildren<QPushButton *>())
+        if (columnLeft < 0)
         {
-            if (button->isVisible() && button->text() == buttonText)
-            {
-                const QRect buttonRect(button->mapTo(epsilonConfigCard, QPoint(0, 0)), button->size());
-                require(epsilonConfigBounds.contains(buttonRect),
-                        "device EPSILON command buttons stay inside the embedded card");
-                require(button->width() >= button->fontMetrics().horizontalAdvance(button->text()) + 32,
-                        "device EPSILON command button text is not clipped");
-                require(buttonRect.left() > rightPacketComboRight,
-                        "device EPSILON command buttons sit to the right of the second packet-rate combo column");
-                actionButtonTop = std::min(actionButtonTop, buttonRect.top());
-                actionButtonBottom = std::max(actionButtonBottom, buttonRect.bottom());
-                if (actionButtonColumnA < 0 || std::abs(buttonRect.left() - actionButtonColumnA) <= 2)
-                {
-                    actionButtonColumnA = actionButtonColumnA < 0 ? buttonRect.left() : actionButtonColumnA;
-                }
-                else if (actionButtonColumnB < 0 || std::abs(buttonRect.left() - actionButtonColumnB) <= 2)
-                {
-                    actionButtonColumnB = actionButtonColumnB < 0 ? buttonRect.left() : actionButtonColumnB;
-                }
-                else
-                {
-                    require(false, "device EPSILON command buttons use exactly two visual columns");
-                }
-                foundButton = true;
-                break;
-            }
+            continue;
         }
-        require(foundButton, "device EPSILON configuration card exposes expected command buttons");
+        require(previousPacketColumnLeft < 0 || columnLeft > previousPacketColumnLeft,
+                "EPSILON packet-rate visual columns progress left-to-right");
+        previousPacketColumnLeft = columnLeft;
+        ++visiblePacketColumns;
     }
-    require(actionButtonColumnA >= 0 && actionButtonColumnB > actionButtonColumnA,
-            "device EPSILON command buttons are split into two columns");
-    require(actionButtonTop >= packetComboTop - 2 && actionButtonBottom <= packetComboBottom + 4,
-            "device EPSILON command buttons do not increase the packet-rate grid height");
+    require(visiblePacketColumns >= 2,
+            "EPSILON packet-rate layout exposes multiple aligned visual columns");
+    auto requireActionButton = [](QWidget *owner,
+                                  const QString& objectName,
+                                  const QStringList& expectedTexts,
+                                  const QRect& ownerBounds,
+                                  const char *message) {
+        auto *button = owner->findChild<QPushButton *>(objectName);
+        require(button != nullptr && button->isVisible(), message);
+        require(expectedTexts.contains(button->text()), message);
+        const QRect buttonRect(button->mapTo(owner, QPoint(0, 0)), button->size());
+        require(ownerBounds.contains(buttonRect), message);
+        require(button->width() >= button->fontMetrics().horizontalAdvance(button->text()) + 32,
+                "EPSILON action button text is not clipped");
+        require(button->focusPolicy() == Qt::TabFocus && !button->accessibleName().isEmpty(),
+                "EPSILON action button remains keyboard accessible");
+        return buttonRect;
+    };
+    const QRect epsilonDeviceLocalBounds(QPoint(0, 0), epsilonDeviceSettingsCard->size());
+    const QRect recommendedRect = requireActionButton(
+        epsilonOutputCard, QStringLiteral("epsilonRecommendedConfigButton"),
+        {QStringLiteral("恢复推荐"), QStringLiteral("Recommended")},
+        QRect(QPoint(0, 0), epsilonOutputCard->size()), "EPSILON packet communication title bar exposes the recommended action");
+    const QRect rtcmRect = requireActionButton(
+        epsilonDeviceSettingsCard, QStringLiteral("epsilonRtcmPortButton"),
+        {QStringLiteral("配置RTCM串口"), QStringLiteral("RTCM Port")},
+        epsilonDeviceLocalBounds, "EPSILON device settings expose the RTCM action");
+    auto *epsilonRtcmDevicePortCombo =
+        epsilonDeviceSettingsCard->findChild<QComboBox *>(QStringLiteral("epsilonRtcmDevicePortCombo"));
+    require(epsilonRtcmDevicePortCombo != nullptr &&
+                epsilonRtcmDevicePortCombo->property("epsilonRtcmDevicePortControl").toBool() &&
+                epsilonRtcmDevicePortCombo->count() == 4,
+            "EPSILON device settings expose the RTCM input selector directly on the card");
+    const QRect epsilonRtcmDevicePortRect(
+        epsilonRtcmDevicePortCombo->mapTo(epsilonDeviceSettingsCard, QPoint(0, 0)),
+        epsilonRtcmDevicePortCombo->size());
+    require(epsilonDeviceLocalBounds.contains(epsilonRtcmDevicePortRect) &&
+                epsilonRtcmDevicePortRect.right() < rtcmRect.left(),
+            "EPSILON RTCM input selector stays inline before the configure action");
+    require(epsilonRtcmDevicePortCombo->focusPolicy() == Qt::TabFocus &&
+                !epsilonRtcmDevicePortCombo->accessibleName().isEmpty(),
+            "EPSILON RTCM input selector remains keyboard accessible");
+    const QRect reconfigureRect = requireActionButton(
+        epsilonDeviceSettingsCard, QStringLiteral("epsilonReconfigureButton"),
+        {QStringLiteral("应用已保存配置"), QStringLiteral("Apply Saved Configuration")},
+        epsilonDeviceLocalBounds, "EPSILON device settings expose the reconfigure action");
+    require(epsilonDeviceSettingsCard->findChild<QPushButton *>(QStringLiteral("epsilonRtkConfigButton")) == nullptr,
+            "EPSILON device settings route differential navigation through the top navigation bar");
+    const QRect saveRect = requireActionButton(
+        epsilonActionsContainer, QStringLiteral("epsilonSaveButton"),
+        {QStringLiteral("保存并应用"), QStringLiteral("Save + Apply")},
+        QRect(QPoint(0, 0), epsilonActionsContainer->size()),
+        "EPSILON footer exposes the save-and-apply primary action");
+    Q_UNUSED(recommendedRect);
+    Q_UNUSED(rtcmRect);
+    Q_UNUSED(reconfigureRect);
+    require(saveRect.top() + epsilonActionsBounds.top() > epsilonDeviceSettingsBounds.bottom(),
+            "EPSILON save-and-apply action follows device settings");
+    require(epsilonOutputCard->findChild<QPushButton *>(QStringLiteral("epsilonSaveButton")) == nullptr,
+            "EPSILON actions remain in their business sections");
+
+    mainPageStackForScroll->setCurrentWidget(pageBeforeEpsilonGeometryCheck);
+    processEventsFor(80);
 
     const QList<QFrame*> deviceSummaryCards =
         deviceConfigPage->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
@@ -7618,8 +9281,8 @@ int main(int argc, char **argv)
         const QList<QLabel*> labels = summaryCard->findChildren<QLabel *>();
         for (QLabel *label : labels)
         {
-            if (label->text().contains(QStringLiteral("天地通信链路状态")) ||
-                label->text().contains(QStringLiteral("Sky-ground Communication Link Status")))
+            if (label->text().contains(QStringLiteral("数据源与天地链路")) ||
+                label->text().contains(QStringLiteral("Data Source / Sky Link")))
             {
                 deviceTelemetrySummaryCard = summaryCard;
                 break;
@@ -7639,7 +9302,7 @@ int main(int argc, char **argv)
     require(!serialConfigCard->isAncestorOf(deviceTelemetrySummaryCard),
             "device telemetry summary card is not nested inside the serial configuration card");
     requireCardTitleBar(deviceTelemetrySummaryCard,
-                        QStringList{QStringLiteral("天地通信链路状态"), QStringLiteral("Sky-ground Communication Link Status")},
+                        QStringList{QStringLiteral("数据源与天地链路"), QStringLiteral("Data Source / Sky Link")},
                         QStringLiteral("satellite"),
                         "device telemetry summary card uses the standard icon title bar");
     const int titlePaneStyleIndex = appStyleSheet.indexOf(QStringLiteral("QFrame#deviceTelemetrySectionTitlePane"));
@@ -7663,27 +9326,29 @@ int main(int argc, char **argv)
     require(telemetrySubCards.size() == 3,
             "device telemetry summary card splits content into three home-style subcards");
     std::sort(telemetrySubCards.begin(), telemetrySubCards.end(), [](QFrame *a, QFrame *b) {
-        return a->mapTo(a->parentWidget(), QPoint(0, 0)).y() <
-               b->mapTo(b->parentWidget(), QPoint(0, 0)).y();
+        return a->mapTo(a->parentWidget(), QPoint(0, 0)).x() <
+               b->mapTo(b->parentWidget(), QPoint(0, 0)).x();
     });
     const QVector<QStringList> expectedTelemetrySubCardTitles = {
         {QStringLiteral("数据频率"), QStringLiteral("Data stream rates")},
         {QStringLiteral("链路速率"), QStringLiteral("Link rate")},
         {QStringLiteral("数据"), QStringLiteral("Data")},
     };
-    int previousSubCardBottom = -1;
-    int previousSubCardLeft = -1;
-    int previousTitleLeft = -1;
+    int previousSubCardRight = -1;
+    int previousSubCardTop = -1;
     for (int i = 0; i < telemetrySubCards.size(); ++i)
     {
         QFrame *subCard = telemetrySubCards.at(i);
         const QRect subCardRect(subCard->mapTo(deviceTelemetrySummaryCard, QPoint(0, 0)), subCard->size());
-        require(previousSubCardBottom < 0 || subCardRect.top() > previousSubCardBottom,
-                "device telemetry summary subcards are stacked vertically");
-        require(previousSubCardLeft < 0 || std::abs(subCardRect.left() - previousSubCardLeft) <= 2,
-                "device telemetry summary subcards align on the left edge");
-        previousSubCardBottom = subCardRect.bottom();
-        previousSubCardLeft = subCardRect.left();
+        require(previousSubCardRight < 0 || subCardRect.left() > previousSubCardRight,
+                "device telemetry summary subcards are arranged horizontally");
+        require(previousSubCardTop < 0 || std::abs(subCardRect.top() - previousSubCardTop) <= 2,
+                "device telemetry summary subcards share a top edge");
+        require(subCard->sizePolicy().horizontalPolicy() == QSizePolicy::Fixed &&
+                    std::abs(subCardRect.width() - subCard->sizeHint().width()) <= 2,
+                "device telemetry summary subcard width follows its widest content row");
+        previousSubCardRight = subCardRect.right();
+        previousSubCardTop = subCardRect.top();
 
         QFrame *titlePane = subCard->findChild<QFrame *>(QStringLiteral("deviceTelemetrySectionTitlePane"));
         require(titlePane != nullptr,
@@ -7712,9 +9377,9 @@ int main(int argc, char **argv)
                 "device telemetry summary subcard title pane matches the compact EPSILON title width");
         const QRect titleRect(expectedTitleLabel->mapTo(subCard, QPoint(0, 0)),
                               expectedTitleLabel->size());
-        require(previousTitleLeft < 0 || std::abs(titleRect.left() - previousTitleLeft) <= 2,
-                "device telemetry summary subcard titles align in a left-side column");
-        previousTitleLeft = titleRect.left();
+        require(titleRect.left() >= titlePaneRect.left() &&
+                    titleRect.right() <= titlePaneRect.right(),
+                "device telemetry summary subcard title fits its left-side pane");
         require(titlePaneRect.left() <= 2 &&
                     titlePaneRect.height() >= subCardRect.height() - 4,
                 "device telemetry summary subcard title pane spans the left side");
@@ -7750,29 +9415,60 @@ int main(int argc, char **argv)
                 "device telemetry summary field name uses device-config text styling");
         if (i == 2)
         {
-            const QList<QLabel*> availabilityValues =
-                subCard->findChildren<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
-            require(!availabilityValues.isEmpty(),
-                    "device telemetry availability subcard has value labels");
-            for (QLabel *valueLabel : availabilityValues)
+            QStringList dataFieldNames;
+            const QList<QFrame*> dataPills =
+                subCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+            require(!dataPills.isEmpty(),
+                    "device telemetry availability subcard has value pills");
+            for (QFrame *pill : dataPills)
             {
+                QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+                QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+                require(nameLabel != nullptr && valueLabel != nullptr,
+                        "device telemetry data pill has a name and value");
+                dataFieldNames << nameLabel->text();
+                const QString name = nameLabel->text();
                 const QString text = valueLabel->text();
-                require(text == QStringLiteral("有") ||
-                            text == QStringLiteral("无") ||
-                            text == QStringLiteral("Yes") ||
-                            text == QStringLiteral("No"),
-                        "device telemetry availability values use compact yes/no text");
+                const bool statusField =
+                    name == QStringLiteral("记录") ||
+                    name == QStringLiteral("Record") ||
+                    name == QStringLiteral("磁盘") ||
+                    name == QStringLiteral("Disk") ||
+                    name == QStringLiteral("CRC");
+                if (!statusField)
+                {
+                    require(text == QStringLiteral("有") ||
+                                text == QStringLiteral("无") ||
+                                text == QStringLiteral("Yes") ||
+                                text == QStringLiteral("No"),
+                            "device telemetry availability values use compact yes/no text");
+                }
             }
+            require(dataFieldNames.contains(QStringLiteral("记录")) ||
+                        dataFieldNames.contains(QStringLiteral("Record")),
+                    "device telemetry data subcard shows the remote recording state");
+            require(dataFieldNames.contains(QStringLiteral("磁盘")) ||
+                        dataFieldNames.contains(QStringLiteral("Disk")),
+                    "device telemetry data subcard shows remaining sky disk capacity");
+            require(dataFieldNames.contains(QStringLiteral("CRC")),
+                    "device telemetry data subcard shows CRC error count");
         }
         require(leftmostPillLeft > titlePaneRect.right(),
                 "device telemetry summary subcard title sits in a separate left area");
     }
     const QRect telemetrySummaryPageRect(deviceTelemetrySummaryCard->mapTo(deviceConfigPage, QPoint(0, 0)),
                                          deviceTelemetrySummaryCard->size());
-    require(std::abs(telemetrySummaryPageRect.top() - serialConfigPageRect.top()) <= 2,
-            "device telemetry summary card is aligned with the serial configuration card row");
-    require(telemetrySummaryPageRect.left() > serialConfigPageRect.right(),
-            "device telemetry summary card sits to the right of the serial configuration card");
+    require(std::abs(widgetRectInCentral(deviceTelemetrySummaryCard).left() - homePrimaryCardLeft) <= 1,
+            "device telemetry summary card aligns with the home page card left edge");
+    require(std::abs(deviceTelemetrySummaryCard->width() - expectedDeviceConfigCardWidth) <= 4,
+            "device telemetry summary card fills the main content row");
+    require(telemetrySummaryPageRect.top() < serialConfigPageRect.top() &&
+                serialConfigPageRect.top() - telemetrySummaryPageRect.bottom() <=
+                    kExpectedTopLevelCardGap + 2,
+            "device telemetry summary card sits on the first row above the serial configuration card");
+    require(std::abs(telemetrySummaryPageRect.left() - serialConfigPageRect.left()) <= 2 &&
+                std::abs(telemetrySummaryPageRect.right() - serialConfigPageRect.right()) <= 2,
+            "device telemetry summary and serial configuration cards share the full-row width");
     const QRect localEpsilonConfigRect = epsilonConfigCard->geometry();
     const QRect localTelemetrySummaryRect = deviceTelemetrySummaryCard->geometry();
     for (const QFrame *summaryCard : deviceSummaryCards)
@@ -7792,8 +9488,8 @@ int main(int argc, char **argv)
             "device configuration source mode combo exists");
     require(deviceSourceModeCombo->property("usesSingleLevelPopupMenu").toBool(),
             "device configuration source mode combo uses the shared single-level popup");
-    require(deviceSourceModeCombo->width() <= 160,
-            "device configuration source mode combo uses compact width");
+    require(deviceSourceModeCombo->width() == 94,
+            "device configuration source mode combo uses the requested three-fifths width");
     QComboBox *pressureSourceCombo =
         findComboWithData(deviceConfigPage, QStringLiteral("bmp390"));
     QComboBox *humiditySourceCombo =
@@ -7866,9 +9562,13 @@ int main(int argc, char **argv)
     require(deviceSkyTelemetry.transportCombo != nullptr,
             "device configuration sky telemetry transport combo exists");
     requireSkyTelemetryTransportLabels(deviceSkyTelemetry, false);
+    require(deviceSkyTelemetry.row && !deviceSkyTelemetry.row->isVisible(),
+            "local device configuration hides sky-ground telemetry edit controls");
     deviceSourceModeCombo->setCurrentIndex(1);
     processEventsFor(150);
     activateLayouts(&window);
+    require(deviceSkyTelemetry.row->isVisible(),
+            "remote device configuration shows sky-ground telemetry edit controls");
     setSkyTelemetryTransport(deviceSkyTelemetry.transportCombo, QStringLiteral("tcp"));
     processEventsFor(100);
     activateLayouts(&window);
@@ -7888,23 +9588,23 @@ int main(int argc, char **argv)
     setSkyTelemetryTransport(deviceSkyTelemetry.transportCombo, QStringLiteral("tcp"));
     processEventsFor(100);
     activateLayouts(&window);
-    require(epsilonConfigCard->isVisible(),
-            "device EPSILON configuration card stays visible in sky-ground remote mode");
+    require(epsilonConfigCard->isEnabled(),
+            "EPSILON configuration panel keeps the shared detailed UI available in sky-ground remote mode");
     require(deviceTelemetrySummaryCard->isVisible(),
             "device telemetry summary remains visible after switching to sky-ground remote mode");
     requireSameRect(epsilonConfigCard->geometry(), localEpsilonConfigRect, 2,
-                    "device EPSILON configuration card geometry is stable in sky-ground remote mode");
+                    "EPSILON configuration panel geometry is stable in sky-ground remote mode");
     requireSameRect(deviceTelemetrySummaryCard->geometry(), localTelemetrySummaryRect, 2,
                     "device telemetry summary geometry is stable in sky-ground remote mode");
     deviceSourceModeCombo->setCurrentIndex(0);
     processEventsFor(150);
     activateLayouts(&window);
-    require(epsilonConfigCard->isVisible(),
-            "device EPSILON configuration card stays visible after switching back to local mode");
+    require(epsilonConfigCard->isEnabled(),
+            "EPSILON configuration panel is available after switching back to local mode");
     require(deviceTelemetrySummaryCard->isVisible(),
             "device telemetry summary remains visible after switching back to local mode");
     requireSameRect(epsilonConfigCard->geometry(), localEpsilonConfigRect, 2,
-                    "device EPSILON configuration card geometry is stable after switching back to local mode");
+                    "EPSILON configuration panel geometry is stable after switching back to local mode");
     requireSameRect(deviceTelemetrySummaryCard->geometry(), localTelemetrySummaryRect, 2,
                     "device telemetry summary geometry is stable after switching back to local mode");
 
@@ -8108,6 +9808,7 @@ int main(int argc, char **argv)
         settings.sync();
 
         MainWindow scaledWindow;
+        triggerFontScaleAction(scaledWindow, 130);
         scaledWindow.resize(1664, 1040);
         scaledWindow.show();
         require(waitForWindowExposed(&scaledWindow),
@@ -8202,9 +9903,12 @@ int main(int argc, char **argv)
                                            metrics.boundingRect(label->text()).width());
             const QRect labelRect(label->mapTo(row, QPoint(0, 0)), label->size());
             const QRect editorRect(editor->mapTo(row, QPoint(0, 0)), editor->size());
-            require(label->width() >= textWidth + 12 && labelRect.right() < editorRect.left(),
-                    "scaled temperature common label keeps its last character clear of the editor");
+            require(label->width() >= textWidth &&
+                        labelRect.bottom() < editorRect.top() &&
+                        editorRect.left() <= 1,
+                    "scaled temperature common label keeps its last character clear above the editor");
         }
+        triggerFontScaleAction(scaledWindow, 100);
         scaledWindow.close();
         processEventsFor(100);
         settings.setValue(QStringLiteral("font_scale_percent"), 100);
@@ -8213,6 +9917,9 @@ int main(int argc, char **argv)
 
     window.close();
     processEventsFor(100);
+
+    requireHomeOverviewLanguageWidthRoundTrip();
+
     std::cout << "main_window_layout_test passed\n";
     return 0;
 }

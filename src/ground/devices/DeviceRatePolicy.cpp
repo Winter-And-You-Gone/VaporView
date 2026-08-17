@@ -79,22 +79,6 @@ int nearestSupportedEpsilonPacketRate(const EpsilonPacketConfigOption& option, i
     return fallbackRateHz;
 }
 
-std::map<uint8_t, int> groupedEpsilonPacketRates(int baseRateHz)
-{
-    const int lowRateHz = std::min(baseRateHz, 20);
-    std::map<uint8_t, int> rates;
-    for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
-    {
-        const int desiredRateHz =
-            (option.packet_id == 0x53 || option.packet_id == 0x59 || option.packet_id == 0x5A ||
-             option.packet_id == 0x5C || option.packet_id == 0x5D)
-                ? lowRateHz
-                : baseRateHz;
-        rates[option.packet_id] = nearestSupportedEpsilonPacketRate(option, desiredRateHz);
-    }
-    return rates;
-}
-
 std::map<uint8_t, int> defaultEpsilonPacketRates()
 {
     return {
@@ -117,9 +101,9 @@ bool epsilonPacketRateSupported(const EpsilonPacketConfigOption& option, int rat
     return std::find(option.supported_rates_hz.cbegin(), option.supported_rates_hz.cend(), rateHz) != option.supported_rates_hz.cend();
 }
 
-std::map<uint8_t, int> loadCustomEpsilonPacketRates(QSettings& settings, int fallbackBaseRateHz)
+std::map<uint8_t, int> loadCustomEpsilonPacketRates(QSettings& settings)
 {
-    std::map<uint8_t, int> packetRates = groupedEpsilonPacketRates(fallbackBaseRateHz);
+    std::map<uint8_t, int> packetRates = defaultEpsilonPacketRates();
     for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
     {
         const int fallbackRate = packetRates[option.packet_id];
@@ -129,20 +113,9 @@ std::map<uint8_t, int> loadCustomEpsilonPacketRates(QSettings& settings, int fal
     return packetRates;
 }
 
-std::map<uint8_t, int> effectiveEpsilonPacketRates(QSettings& settings, int baseRateHz, bool *usingCustomProfile)
+std::map<uint8_t, int> effectiveEpsilonPacketRates(QSettings& settings)
 {
-    bool useCustomProfile = settings.value("epsilon_custom_packet_rates_enabled", false).toBool();
-    if (useCustomProfile &&
-        !settings.value("epsilon_custom_packet_rates_user_saved", false).toBool() &&
-        loadCustomEpsilonPacketRates(settings, baseRateHz) == defaultEpsilonPacketRates())
-    {
-        useCustomProfile = false;
-    }
-    if (usingCustomProfile)
-    {
-        *usingCustomProfile = useCustomProfile;
-    }
-    return useCustomProfile ? loadCustomEpsilonPacketRates(settings, baseRateHz) : groupedEpsilonPacketRates(baseRateHz);
+    return loadCustomEpsilonPacketRates(settings);
 }
 
 QString epsilonPacketRatesSignature(const std::map<uint8_t, int>& packetRates)

@@ -1,12 +1,15 @@
 #include "TelemetryCodec.h"
 #include "logging/BoundedLogRecord.h"
 
+#include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QVector>
 #include <QtEndian>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <utility>
 
 namespace VaporView
@@ -17,6 +20,7 @@ constexpr char kSof0 = static_cast<char>(0xAA);
 constexpr char kSof1 = static_cast<char>(0x55);
 constexpr int kSofSize = 2;
 constexpr int kCrcSize = 2;
+constexpr quint8 kAi8TemperatureStatusPayloadVersion = 1;
 
 template <typename T>
 void appendLe(QByteArray& out, T value)
@@ -176,6 +180,8 @@ QString commandIdName(CommandId id)
     case CommandId::SaveSkyConfig: return QStringLiteral("SaveSkyConfig");
     case CommandId::ReloadSkyConfig: return QStringLiteral("ReloadSkyConfig");
     case CommandId::SetPeakSearchRange: return QStringLiteral("SetPeakSearchRange");
+    case CommandId::AutoDetectSerialPorts: return QStringLiteral("AutoDetectSerialPorts");
+    case CommandId::CancelSerialPortDetection: return QStringLiteral("CancelSerialPortDetection");
     case CommandId::SetTemperatureTarget: return QStringLiteral("SetTemperatureTarget");
     case CommandId::SetTemperatureOutputEnabled: return QStringLiteral("SetTemperatureOutputEnabled");
     case CommandId::SetTemperatureOutputMode: return QStringLiteral("SetTemperatureOutputMode");
@@ -192,6 +198,7 @@ QString commandIdName(CommandId id)
     case CommandId::SetTemperatureOvertempLower: return QStringLiteral("SetTemperatureOvertempLower");
     case CommandId::SetTemperatureSlope: return QStringLiteral("SetTemperatureSlope");
     case CommandId::SetTemperatureStartupDelay: return QStringLiteral("SetTemperatureStartupDelay");
+    case CommandId::DeviceOperation: return QStringLiteral("DeviceOperation");
     case CommandId::ShutdownCore: return QStringLiteral("ShutdownCore");
     }
     return QStringLiteral("UnknownCommand");
@@ -229,6 +236,10 @@ QString commandErrorCodeText(CommandErrorCode error, bool english)
         return english ? QStringLiteral("Recording already started") : QStringLiteral("记录已开始");
     case CommandErrorCode::RecordingNotStarted:
         return english ? QStringLiteral("Recording not started") : QStringLiteral("记录未开始");
+    case CommandErrorCode::SerialPortDetectionInProgress:
+        return english ? QStringLiteral("Serial-port detection is already running") : QStringLiteral("串口自动识别正在进行");
+    case CommandErrorCode::SerialPortDetectionNotRunning:
+        return english ? QStringLiteral("Serial-port detection is not running") : QStringLiteral("当前没有正在运行的串口自动识别任务");
     case CommandErrorCode::InternalError:
         return english ? QStringLiteral("Internal error") : QStringLiteral("内部错误");
     }
@@ -256,6 +267,9 @@ bool skyDeviceIdFromValue(quint8 value, SkyDeviceId& id)
         return true;
     case 6:
         id = SkyDeviceId::TemperatureController;
+        return true;
+    case 7:
+        id = SkyDeviceId::Ai8TemperatureController;
         return true;
     case 255:
         id = SkyDeviceId::All;
@@ -738,6 +752,11 @@ QByteArray TelemetryCodec::serializeTelemetryStatus(const TelemetryStatus& statu
     appendLe<quint64>(payload, status.raw_temperature_humidity_record_count);
     appendLe<quint64>(payload, status.raw_distance_record_count);
     appendLe<quint64>(payload, status.raw_waveform_record_count);
+    appendLe<quint64>(payload, status.rtcm_correction_bytes_received);
+    appendLe<quint64>(payload, status.rtcm_correction_chunks_received);
+    appendLe<quint64>(payload, status.rtcm_correction_dropped_bytes);
+    appendLe<quint64>(payload, status.rtcm_correction_dropped_chunks);
+    appendLe<quint64>(payload, status.rtcm_correction_last_receive_time_us);
     return payload;
 }
 
@@ -812,7 +831,12 @@ bool TelemetryCodec::parseTelemetryStatus(const QByteArray& payload, TelemetrySt
            readOptionalU64(status.raw_pressure_record_count) &&
            readOptionalU64(status.raw_temperature_humidity_record_count) &&
            readOptionalU64(status.raw_distance_record_count) &&
-           readOptionalU64(status.raw_waveform_record_count);
+           readOptionalU64(status.raw_waveform_record_count) &&
+           readOptionalU64(status.rtcm_correction_bytes_received) &&
+           readOptionalU64(status.rtcm_correction_chunks_received) &&
+           readOptionalU64(status.rtcm_correction_dropped_bytes) &&
+           readOptionalU64(status.rtcm_correction_dropped_chunks) &&
+           readOptionalU64(status.rtcm_correction_last_receive_time_us);
 }
 
 QByteArray TelemetryCodec::serializeCommand(const CommandMessage& command)
@@ -1120,6 +1144,317 @@ bool TelemetryCodec::parseTemperatureControllerStatus(const QByteArray& payload,
     return true;
 }
 
+QJsonObject ai8PageDataToJson(const Ai8TemperatureControllerProtocol::PageData& data)
+{
+    const auto &c = data.channel;
+    const auto &i = data.input;
+    const auto &o = data.output;
+    const auto &g = data.global;
+    QJsonObject channel{{QStringLiteral("setpoint_c"), c.setpointC},
+                        {QStringLiteral("measured_c"), c.measuredC},
+                        {QStringLiteral("proportional_band"), c.proportionalBand},
+                        {QStringLiteral("integral_time_s"), c.integralTimeS},
+                        {QStringLiteral("derivative_time_s"), c.derivativeTimeS},
+                        {QStringLiteral("channel_input_group"), c.channelInputGroup},
+                        {QStringLiteral("correction_entry"), c.correctionEntry},
+                        {QStringLiteral("measurement_offset"), c.measurementOffset},
+                        {QStringLiteral("channel_output_group_raw"), c.channelOutputGroupRaw},
+                        {QStringLiteral("program_number"), c.programNumber},
+                        {QStringLiteral("work_mode"), c.workMode},
+                        {QStringLiteral("manual_output_percent"), c.manualOutputPercent},
+                        {QStringLiteral("high_alarm_c"), c.highAlarmC},
+                        {QStringLiteral("low_alarm_c"), c.lowAlarmC},
+                        {QStringLiteral("displayed_setpoint_c"), c.displayedSetpointC},
+                        {QStringLiteral("alarm_status_raw"), c.alarmStatusRaw},
+                        {QStringLiteral("alarm_status_valid"), c.alarmStatusValid}};
+    QJsonObject input{{QStringLiteral("input_type"), i.inputType},
+                      {QStringLiteral("scale_low"), i.scaleLow},
+                      {QStringLiteral("scale_high"), i.scaleHigh},
+                      {QStringLiteral("filter"), i.filter},
+                      {QStringLiteral("channel_input_group"), i.channelInputGroup},
+                      {QStringLiteral("measurement_offset"), i.measurementOffset},
+                      {QStringLiteral("correction_entry"), i.correctionEntry}};
+    QJsonObject output{{QStringLiteral("control_action"), o.controlAction},
+                       {QStringLiteral("deviation_high_alarm"), o.deviationHighAlarm},
+                       {QStringLiteral("deviation_low_alarm"), o.deviationLowAlarm},
+                       {QStringLiteral("hysteresis"), o.hysteresis},
+                       {QStringLiteral("output_low_percent"), o.outputLowPercent},
+                       {QStringLiteral("output_high_percent"), o.outputHighPercent},
+                       {QStringLiteral("output_high_threshold"), o.outputHighThreshold},
+                       {QStringLiteral("rise_slope"), o.riseSlope},
+                       {QStringLiteral("fall_slope"), o.fallSlope},
+                       {QStringLiteral("setpoint_low_limit"), o.setpointLowLimit},
+                       {QStringLiteral("setpoint_high_limit"), o.setpointHighLimit},
+                       {QStringLiteral("alarm_reset_flags"), o.alarmResetFlags}};
+    QJsonObject global{{QStringLiteral("address"), g.address},
+                       {QStringLiteral("baud_rate"), g.baudRate},
+                       {QStringLiteral("local_input_channel_count"), g.localInputChannelCount},
+                       {QStringLiteral("expansion_input_channel_count"), g.expansionInputChannelCount},
+                       {QStringLiteral("control_channel_count"), g.controlChannelCount},
+                       {QStringLiteral("control_cycle_s"), g.controlCycleS},
+                       {QStringLiteral("run_state_raw"), g.runStateRaw},
+                       {QStringLiteral("run_state_is_documented"), g.runStateIsDocumented},
+                       {QStringLiteral("run_state_write_requested"), g.runStateWriteRequested},
+                       {QStringLiteral("run_state_write_value"), g.runStateWriteValue},
+                       {QStringLiteral("common_alarm_output"), g.commonAlarmOutput},
+                       {QStringLiteral("independent_alarm_channel_count"), g.independentAlarmChannelCount},
+                       {QStringLiteral("independent_alarm_mask"), g.independentAlarmMask},
+                       {QStringLiteral("alarm_function_a"), g.alarmFunctionA},
+                       {QStringLiteral("alarm_function_b"), g.alarmFunctionB},
+                       {QStringLiteral("parameter_lock"), g.parameterLock},
+                       {QStringLiteral("sample_mode"), g.sampleMode},
+                       {QStringLiteral("decimal_point"), g.decimalPoint},
+                       {QStringLiteral("parity_flags"), g.parityFlags},
+                       {QStringLiteral("alarm_polarity"), g.alarmPolarity},
+                       {QStringLiteral("extra_hysteresis"), g.extraHysteresis},
+                       {QStringLiteral("main_status_raw"), g.mainStatusRaw},
+                       {QStringLiteral("model_feature"), g.modelFeature},
+                       {QStringLiteral("serial_number"), static_cast<qint64>(g.serialNumber)},
+                       {QStringLiteral("output_start_channel"), g.outputStartChannel},
+                       {QStringLiteral("high_resolution_filter"), g.highResolutionFilter},
+                       {QStringLiteral("aif1"), g.aif1},
+                       {QStringLiteral("aif2"), g.aif2},
+                       {QStringLiteral("p1fa_aif3"), g.p1faAif3},
+                       {QStringLiteral("difa"), g.difa},
+                       {QStringLiteral("spsr"), g.spsr},
+                       {QStringLiteral("at_function"), g.atFunction},
+                       {QStringLiteral("aifl_p1pr"), g.aiflP1pr},
+                       {QStringLiteral("p1ti_opsn"), g.p1tiOpsn}};
+    return QJsonObject{{QStringLiteral("page"), static_cast<int>(data.page)},
+                       {QStringLiteral("selection"), QJsonObject{
+                           {QStringLiteral("channel"), data.selection.channel},
+                           {QStringLiteral("input_group"), data.selection.inputGroup},
+                           {QStringLiteral("output_group"), data.selection.outputGroup}}},
+                       {QStringLiteral("channel"), channel},
+                       {QStringLiteral("input"), input},
+                       {QStringLiteral("output"), output},
+                       {QStringLiteral("global"), global}};
+}
+
+template <typename T>
+void readJsonInt(const QJsonObject& object, const char *key, T& target)
+{
+    const QJsonValue value = object.value(QLatin1String(key));
+    if (value.isDouble())
+    {
+        target = static_cast<T>(value.toInt());
+    }
+}
+
+void readJsonDouble(const QJsonObject& object, const char *key, double& target)
+{
+    const QJsonValue value = object.value(QLatin1String(key));
+    if (value.isDouble())
+    {
+        target = value.toDouble();
+    }
+}
+
+void readJsonBool(const QJsonObject& object, const char *key, bool& target)
+{
+    const QJsonValue value = object.value(QLatin1String(key));
+    if (value.isBool())
+    {
+        target = value.toBool();
+    }
+}
+
+bool ai8PageDataFromJson(const QJsonObject& root, Ai8TemperatureControllerProtocol::PageData& data)
+{
+    const int page = root.value(QStringLiteral("page")).toInt(-1);
+    if (page < 0 || page > static_cast<int>(Ai8TemperatureControllerProtocol::Page::Global))
+    {
+        return false;
+    }
+    data = Ai8TemperatureControllerProtocol::PageData{};
+    data.page = static_cast<Ai8TemperatureControllerProtocol::Page>(page);
+    const QJsonObject selection = root.value(QStringLiteral("selection")).toObject();
+    readJsonInt(selection, "channel", data.selection.channel);
+    readJsonInt(selection, "input_group", data.selection.inputGroup);
+    readJsonInt(selection, "output_group", data.selection.outputGroup);
+    if (data.selection.channel < 1 || data.selection.channel > Ai8TemperatureControllerProtocol::kChannelCount ||
+        data.selection.inputGroup < 1 || data.selection.inputGroup > Ai8TemperatureControllerProtocol::kParameterGroupCount ||
+        data.selection.outputGroup < 1 || data.selection.outputGroup > Ai8TemperatureControllerProtocol::kParameterGroupCount)
+    {
+        return false;
+    }
+
+    const QJsonObject channel = root.value(QStringLiteral("channel")).toObject();
+    readJsonDouble(channel, "setpoint_c", data.channel.setpointC);
+    readJsonDouble(channel, "measured_c", data.channel.measuredC);
+    readJsonDouble(channel, "proportional_band", data.channel.proportionalBand);
+    readJsonDouble(channel, "integral_time_s", data.channel.integralTimeS);
+    readJsonDouble(channel, "derivative_time_s", data.channel.derivativeTimeS);
+    readJsonInt(channel, "channel_input_group", data.channel.channelInputGroup);
+    readJsonInt(channel, "correction_entry", data.channel.correctionEntry);
+    readJsonDouble(channel, "measurement_offset", data.channel.measurementOffset);
+    readJsonInt(channel, "channel_output_group_raw", data.channel.channelOutputGroupRaw);
+    readJsonInt(channel, "program_number", data.channel.programNumber);
+    readJsonInt(channel, "work_mode", data.channel.workMode);
+    readJsonDouble(channel, "manual_output_percent", data.channel.manualOutputPercent);
+    readJsonDouble(channel, "high_alarm_c", data.channel.highAlarmC);
+    readJsonDouble(channel, "low_alarm_c", data.channel.lowAlarmC);
+    readJsonDouble(channel, "displayed_setpoint_c", data.channel.displayedSetpointC);
+    readJsonInt(channel, "alarm_status_raw", data.channel.alarmStatusRaw);
+    readJsonBool(channel, "alarm_status_valid", data.channel.alarmStatusValid);
+
+    const QJsonObject input = root.value(QStringLiteral("input")).toObject();
+    readJsonInt(input, "input_type", data.input.inputType);
+    readJsonDouble(input, "scale_low", data.input.scaleLow);
+    readJsonDouble(input, "scale_high", data.input.scaleHigh);
+    readJsonInt(input, "filter", data.input.filter);
+    readJsonInt(input, "channel_input_group", data.input.channelInputGroup);
+    readJsonDouble(input, "measurement_offset", data.input.measurementOffset);
+    readJsonInt(input, "correction_entry", data.input.correctionEntry);
+
+    const QJsonObject output = root.value(QStringLiteral("output")).toObject();
+    readJsonInt(output, "control_action", data.output.controlAction);
+    readJsonDouble(output, "deviation_high_alarm", data.output.deviationHighAlarm);
+    readJsonDouble(output, "deviation_low_alarm", data.output.deviationLowAlarm);
+    readJsonDouble(output, "hysteresis", data.output.hysteresis);
+    readJsonInt(output, "output_low_percent", data.output.outputLowPercent);
+    readJsonInt(output, "output_high_percent", data.output.outputHighPercent);
+    readJsonDouble(output, "output_high_threshold", data.output.outputHighThreshold);
+    readJsonDouble(output, "rise_slope", data.output.riseSlope);
+    readJsonDouble(output, "fall_slope", data.output.fallSlope);
+    readJsonDouble(output, "setpoint_low_limit", data.output.setpointLowLimit);
+    readJsonDouble(output, "setpoint_high_limit", data.output.setpointHighLimit);
+    readJsonInt(output, "alarm_reset_flags", data.output.alarmResetFlags);
+
+    const QJsonObject global = root.value(QStringLiteral("global")).toObject();
+    readJsonInt(global, "address", data.global.address);
+    readJsonInt(global, "baud_rate", data.global.baudRate);
+    readJsonInt(global, "local_input_channel_count", data.global.localInputChannelCount);
+    readJsonInt(global, "expansion_input_channel_count", data.global.expansionInputChannelCount);
+    readJsonInt(global, "control_channel_count", data.global.controlChannelCount);
+    readJsonDouble(global, "control_cycle_s", data.global.controlCycleS);
+    readJsonInt(global, "run_state_raw", data.global.runStateRaw);
+    readJsonBool(global, "run_state_is_documented", data.global.runStateIsDocumented);
+    readJsonBool(global, "run_state_write_requested", data.global.runStateWriteRequested);
+    readJsonInt(global, "run_state_write_value", data.global.runStateWriteValue);
+    readJsonInt(global, "common_alarm_output", data.global.commonAlarmOutput);
+    readJsonInt(global, "independent_alarm_channel_count", data.global.independentAlarmChannelCount);
+    readJsonInt(global, "independent_alarm_mask", data.global.independentAlarmMask);
+    readJsonInt(global, "alarm_function_a", data.global.alarmFunctionA);
+    readJsonInt(global, "alarm_function_b", data.global.alarmFunctionB);
+    readJsonInt(global, "parameter_lock", data.global.parameterLock);
+    readJsonInt(global, "sample_mode", data.global.sampleMode);
+    readJsonInt(global, "decimal_point", data.global.decimalPoint);
+    readJsonInt(global, "parity_flags", data.global.parityFlags);
+    readJsonInt(global, "alarm_polarity", data.global.alarmPolarity);
+    readJsonDouble(global, "extra_hysteresis", data.global.extraHysteresis);
+    readJsonInt(global, "main_status_raw", data.global.mainStatusRaw);
+    readJsonInt(global, "model_feature", data.global.modelFeature);
+    readJsonInt(global, "serial_number", data.global.serialNumber);
+    readJsonInt(global, "output_start_channel", data.global.outputStartChannel);
+    readJsonInt(global, "high_resolution_filter", data.global.highResolutionFilter);
+    readJsonInt(global, "aif1", data.global.aif1);
+    readJsonInt(global, "aif2", data.global.aif2);
+    readJsonInt(global, "p1fa_aif3", data.global.p1faAif3);
+    readJsonInt(global, "difa", data.global.difa);
+    readJsonInt(global, "spsr", data.global.spsr);
+    readJsonInt(global, "at_function", data.global.atFunction);
+    readJsonInt(global, "aifl_p1pr", data.global.aiflP1pr);
+    readJsonInt(global, "p1ti_opsn", data.global.p1tiOpsn);
+    return true;
+}
+
+bool validDeviceOperation(DeviceOperation operation)
+{
+    return operation == DeviceOperation::ReadParameters ||
+           operation == DeviceOperation::WriteParameters ||
+           operation == DeviceOperation::FactoryReset ||
+           operation == DeviceOperation::ConfigureEpsilonPacketRates ||
+           operation == DeviceOperation::ConfigureEpsilonMainAntennaLeverArm ||
+           operation == DeviceOperation::ConfigureEpsilonRtcmInput;
+}
+
+QByteArray TelemetryCodec::serializeAi8TemperatureControllerStatus(
+    const Ai8TemperatureControllerProtocol::LiveData& data)
+{
+    QByteArray payload;
+    payload.reserve(86);
+    payload.append(static_cast<char>(kAi8TemperatureStatusPayloadVersion));
+    quint8 flags = 0;
+    if (data.valid) flags |= 0x01;
+    if (data.controlStatesValid) flags |= 0x02;
+    if (data.alarmStatusValid) flags |= 0x04;
+    if (data.mainStatusValid) flags |= 0x08;
+    payload.append(static_cast<char>(flags));
+    appendLe<quint16>(payload, 0);
+    for (double value : data.measuredC)
+    {
+        appendDoubleLe(payload, value);
+    }
+    for (Ai8TemperatureControllerProtocol::ChannelControlState state : data.controlStates)
+    {
+        payload.append(static_cast<char>(state));
+    }
+    for (quint16 value : data.alarmStatusRegisters)
+    {
+        appendLe<quint16>(payload, value);
+    }
+    appendLe<quint16>(payload, data.mainStatusRaw);
+    return payload;
+}
+
+bool TelemetryCodec::parseAi8TemperatureControllerStatus(
+    const QByteArray& payload,
+    Ai8TemperatureControllerProtocol::LiveData& data)
+{
+    data = Ai8TemperatureControllerProtocol::LiveData();
+    qsizetype offset = 0;
+    constexpr qsizetype kExpectedPayloadSize =
+        1 + 1 + 2 +
+        Ai8TemperatureControllerProtocol::kChannelCount * static_cast<int>(sizeof(double)) +
+        Ai8TemperatureControllerProtocol::kChannelCount +
+        Ai8TemperatureControllerProtocol::kAlarmStatusRegisterCount * static_cast<int>(sizeof(quint16)) +
+        static_cast<int>(sizeof(quint16));
+    if (payload.size() != kExpectedPayloadSize)
+    {
+        return false;
+    }
+    const quint8 version = static_cast<quint8>(payload.at(offset++));
+    if (version != kAi8TemperatureStatusPayloadVersion)
+    {
+        return false;
+    }
+    const quint8 flags = static_cast<quint8>(payload.at(offset++));
+    quint16 reserved = 0;
+    if (!readLe(payload, offset, reserved))
+    {
+        return false;
+    }
+    data.valid = (flags & 0x01) != 0;
+    data.controlStatesValid = (flags & 0x02) != 0;
+    data.alarmStatusValid = (flags & 0x04) != 0;
+    data.mainStatusValid = (flags & 0x08) != 0;
+    for (double& value : data.measuredC)
+    {
+        if (!readDoubleLe(payload, offset, value))
+        {
+            return false;
+        }
+    }
+    for (Ai8TemperatureControllerProtocol::ChannelControlState& state : data.controlStates)
+    {
+        const quint8 raw = static_cast<quint8>(payload.at(offset++));
+        if (raw > static_cast<quint8>(Ai8TemperatureControllerProtocol::ChannelControlState::Stopped))
+        {
+            return false;
+        }
+        state = static_cast<Ai8TemperatureControllerProtocol::ChannelControlState>(raw);
+    }
+    for (quint16& value : data.alarmStatusRegisters)
+    {
+        if (!readLe(payload, offset, value))
+        {
+            return false;
+        }
+    }
+    return readLe(payload, offset, data.mainStatusRaw) && offset == payload.size();
+}
+
 QByteArray TelemetryCodec::serializeTemperatureControllerCommand(const TemperatureControllerCommand& command)
 {
     QByteArray payload;
@@ -1246,6 +1581,339 @@ bool TelemetryCodec::parseTemperatureControllerCommand(const QByteArray& payload
             }
         }
     }
+    return true;
+}
+
+QByteArray TelemetryCodec::serializeAi8PageData(
+    const Ai8TemperatureControllerProtocol::PageData& data)
+{
+    return QJsonDocument(ai8PageDataToJson(data)).toJson(QJsonDocument::Compact);
+}
+
+bool TelemetryCodec::parseAi8PageData(
+    const QByteArray& payload,
+    Ai8TemperatureControllerProtocol::PageData& data)
+{
+    const QJsonDocument document = QJsonDocument::fromJson(payload);
+    return document.isObject() && ai8PageDataFromJson(document.object(), data);
+}
+
+namespace
+{
+
+bool readRequiredJsonInt(const QJsonObject& object, const QString& key, int& target)
+{
+    const QJsonValue value = object.value(key);
+    if (!value.isDouble())
+    {
+        return false;
+    }
+    const double numeric = value.toDouble();
+    if (!std::isfinite(numeric) || std::floor(numeric) != numeric ||
+        numeric < static_cast<double>(std::numeric_limits<int>::min()) ||
+        numeric > static_cast<double>(std::numeric_limits<int>::max()))
+    {
+        return false;
+    }
+    target = static_cast<int>(numeric);
+    return true;
+}
+
+bool readRequiredJsonDouble(const QJsonObject& object, const QString& key, double& target)
+{
+    const QJsonValue value = object.value(key);
+    if (!value.isDouble() || !std::isfinite(value.toDouble()))
+    {
+        return false;
+    }
+    target = value.toDouble();
+    return true;
+}
+
+}  // namespace
+
+QByteArray TelemetryCodec::serializeEpsilonPacketRatesOperation(
+    const EpsilonPacketRatesOperation& operation)
+{
+    QJsonArray rates;
+    for (const auto& entry : operation.packet_rates)
+    {
+        rates.append(QJsonObject{
+            {QStringLiteral("packet_id"), static_cast<int>(entry.first)},
+            {QStringLiteral("rate_hz"), entry.second},
+        });
+    }
+    const QJsonObject object{
+        {QStringLiteral("version"), 1},
+        {QStringLiteral("output_rate_hz"), operation.output_rate_hz},
+        {QStringLiteral("callback_rate_hz"), operation.callback_rate_hz},
+        {QStringLiteral("packet_rate_signature"), operation.packet_rate_signature},
+        {QStringLiteral("packet_rates"), rates},
+    };
+    return QJsonDocument(object).toJson(QJsonDocument::Compact);
+}
+
+bool TelemetryCodec::parseEpsilonPacketRatesOperation(
+    const QByteArray& payload,
+    EpsilonPacketRatesOperation& operation)
+{
+    const QJsonDocument document = QJsonDocument::fromJson(payload);
+    if (!document.isObject())
+    {
+        return false;
+    }
+    const QJsonObject object = document.object();
+    int version = 0;
+    int outputRate = 0;
+    int callbackRate = 0;
+    if (!readRequiredJsonInt(object, QStringLiteral("version"), version) ||
+        version != 1 ||
+        !readRequiredJsonInt(object, QStringLiteral("output_rate_hz"), outputRate) ||
+        !readRequiredJsonInt(object, QStringLiteral("callback_rate_hz"), callbackRate) ||
+        outputRate <= 0 ||
+        callbackRate <= 0)
+    {
+        return false;
+    }
+    const QJsonValue ratesValue = object.value(QStringLiteral("packet_rates"));
+    if (!ratesValue.isArray())
+    {
+        return false;
+    }
+    std::map<uint8_t, int> packetRates;
+    for (const QJsonValue& itemValue : ratesValue.toArray())
+    {
+        if (!itemValue.isObject())
+        {
+            return false;
+        }
+        const QJsonObject item = itemValue.toObject();
+        int packetId = 0;
+        int rateHz = 0;
+        if (!readRequiredJsonInt(item, QStringLiteral("packet_id"), packetId) ||
+            !readRequiredJsonInt(item, QStringLiteral("rate_hz"), rateHz) ||
+            packetId < 0 ||
+            packetId > 255 ||
+            rateHz < 0)
+        {
+            return false;
+        }
+        packetRates[static_cast<uint8_t>(packetId)] = rateHz;
+    }
+    if (packetRates.empty())
+    {
+        return false;
+    }
+    operation = EpsilonPacketRatesOperation{};
+    operation.output_rate_hz = outputRate;
+    operation.callback_rate_hz = callbackRate;
+    operation.packet_rates = std::move(packetRates);
+    operation.packet_rate_signature =
+        object.value(QStringLiteral("packet_rate_signature")).toString();
+    return true;
+}
+
+QByteArray TelemetryCodec::serializeEpsilonMainAntennaLeverArmOperation(
+    const EpsilonMainAntennaLeverArmOperation& operation)
+{
+    const QJsonObject object{
+        {QStringLiteral("version"), 1},
+        {QStringLiteral("x_m"), operation.x_m},
+        {QStringLiteral("y_m"), operation.y_m},
+        {QStringLiteral("z_m"), operation.z_m},
+    };
+    return QJsonDocument(object).toJson(QJsonDocument::Compact);
+}
+
+bool TelemetryCodec::parseEpsilonMainAntennaLeverArmOperation(
+    const QByteArray& payload,
+    EpsilonMainAntennaLeverArmOperation& operation)
+{
+    const QJsonDocument document = QJsonDocument::fromJson(payload);
+    if (!document.isObject())
+    {
+        return false;
+    }
+    const QJsonObject object = document.object();
+    int version = 0;
+    double x = 0.0;
+    double y = 0.0;
+    double z = 0.0;
+    if (!readRequiredJsonInt(object, QStringLiteral("version"), version) ||
+        version != 1 ||
+        !readRequiredJsonDouble(object, QStringLiteral("x_m"), x) ||
+        !readRequiredJsonDouble(object, QStringLiteral("y_m"), y) ||
+        !readRequiredJsonDouble(object, QStringLiteral("z_m"), z) ||
+        std::abs(x) > 100.0 ||
+        std::abs(y) > 100.0 ||
+        std::abs(z) > 100.0)
+    {
+        return false;
+    }
+    operation = EpsilonMainAntennaLeverArmOperation{x, y, z};
+    return true;
+}
+
+QByteArray TelemetryCodec::serializeEpsilonRtcmInputOperation(
+    const EpsilonRtcmInputOperation& operation)
+{
+    const QJsonObject object{
+        {QStringLiteral("version"), 1},
+        {QStringLiteral("device_port_index"), operation.device_port_index},
+        {QStringLiteral("forward_port"), operation.forward_port},
+        {QStringLiteral("forward_baud"), operation.forward_baud},
+    };
+    return QJsonDocument(object).toJson(QJsonDocument::Compact);
+}
+
+bool TelemetryCodec::parseEpsilonRtcmInputOperation(
+    const QByteArray& payload,
+    EpsilonRtcmInputOperation& operation)
+{
+    const QJsonDocument document = QJsonDocument::fromJson(payload);
+    if (!document.isObject())
+    {
+        return false;
+    }
+    const QJsonObject object = document.object();
+    int version = 0;
+    int devicePortIndex = 0;
+    int forwardBaud = 0;
+    if (!readRequiredJsonInt(object, QStringLiteral("version"), version) ||
+        version != 1 ||
+        !readRequiredJsonInt(object, QStringLiteral("device_port_index"), devicePortIndex) ||
+        !readRequiredJsonInt(object, QStringLiteral("forward_baud"), forwardBaud) ||
+        devicePortIndex < 2 ||
+        devicePortIndex > 5 ||
+        forwardBaud <= 0)
+    {
+        return false;
+    }
+    operation = EpsilonRtcmInputOperation{};
+    operation.device_port_index = devicePortIndex;
+    operation.forward_port = object.value(QStringLiteral("forward_port")).toString().trimmed();
+    operation.forward_baud = forwardBaud;
+    return true;
+}
+
+QByteArray TelemetryCodec::serializeRtcmCorrectionData(const QByteArray& data)
+{
+    QByteArray payload;
+    appendLe<quint32>(payload, static_cast<quint32>(data.size()));
+    payload.append(data);
+    return payload;
+}
+
+bool TelemetryCodec::parseRtcmCorrectionData(const QByteArray& payload, QByteArray& data)
+{
+    qsizetype offset = 0;
+    quint32 size = 0;
+    if (!readLe(payload, offset, size) ||
+        size == 0 ||
+        size > 4096 ||
+        offset + static_cast<qsizetype>(size) != payload.size())
+    {
+        return false;
+    }
+    data = payload.mid(offset, static_cast<int>(size));
+    return true;
+}
+
+QByteArray TelemetryCodec::serializeDeviceOperationRequest(const DeviceOperationRequest& request)
+{
+    QByteArray payload;
+    appendLe<quint32>(payload, request.request_id);
+    payload.append(static_cast<char>(request.device_id));
+    payload.append(static_cast<char>(request.operation));
+    appendLe<quint16>(payload, 0);
+    appendLe<quint32>(payload, static_cast<quint32>(request.payload.size()));
+    payload.append(request.payload);
+    return payload;
+}
+
+bool TelemetryCodec::parseDeviceOperationRequest(const QByteArray& payload,
+                                                 DeviceOperationRequest& request)
+{
+    qsizetype offset = 0;
+    quint8 deviceValue = 0;
+    quint8 operationValue = 0;
+    quint16 reserved = 0;
+    quint32 payloadSize = 0;
+    if (!readLe(payload, offset, request.request_id) ||
+        offset + 2 > payload.size())
+    {
+        return false;
+    }
+    deviceValue = static_cast<quint8>(payload.at(offset++));
+    operationValue = static_cast<quint8>(payload.at(offset++));
+    if (!readLe(payload, offset, reserved) || !readLe(payload, offset, payloadSize) ||
+        payloadSize > static_cast<quint32>(payload.size() - offset) ||
+        offset + static_cast<qsizetype>(payloadSize) != payload.size() ||
+        !skyDeviceIdFromValue(deviceValue, request.device_id) ||
+        !validDeviceOperation(static_cast<DeviceOperation>(operationValue)))
+    {
+        return false;
+    }
+    Q_UNUSED(reserved);
+    request.operation = static_cast<DeviceOperation>(operationValue);
+    request.payload = payload.mid(offset, static_cast<int>(payloadSize));
+    return true;
+}
+
+QByteArray TelemetryCodec::serializeDeviceOperationResponse(const DeviceOperationResponse& response)
+{
+    const QByteArray message = response.error_message.toUtf8();
+    const int messageSize = std::min<int>(static_cast<int>(message.size()), 65535);
+    QByteArray payload;
+    appendLe<quint32>(payload, response.request_id);
+    payload.append(static_cast<char>(response.device_id));
+    payload.append(static_cast<char>(response.operation));
+    appendLe<quint16>(payload, 0);
+    appendLe<quint32>(payload, static_cast<quint32>(response.error_code));
+    appendLe<quint16>(payload, static_cast<quint16>(messageSize));
+    payload.append(message.constData(), messageSize);
+    appendLe<quint32>(payload, static_cast<quint32>(response.payload.size()));
+    payload.append(response.payload);
+    return payload;
+}
+
+bool TelemetryCodec::parseDeviceOperationResponse(const QByteArray& payload,
+                                                  DeviceOperationResponse& response)
+{
+    qsizetype offset = 0;
+    quint8 deviceValue = 0;
+    quint8 operationValue = 0;
+    quint16 reserved = 0;
+    quint32 errorValue = 0;
+    quint16 messageSize = 0;
+    quint32 payloadSize = 0;
+    if (!readLe(payload, offset, response.request_id) || offset + 2 > payload.size())
+    {
+        return false;
+    }
+    deviceValue = static_cast<quint8>(payload.at(offset++));
+    operationValue = static_cast<quint8>(payload.at(offset++));
+    if (!readLe(payload, offset, reserved) ||
+        !readLe(payload, offset, errorValue) ||
+        !readLe(payload, offset, messageSize) ||
+        offset + static_cast<qsizetype>(messageSize) > payload.size())
+    {
+        return false;
+    }
+    response.error_message = QString::fromUtf8(payload.constData() + offset, messageSize);
+    offset += messageSize;
+    if (!readLe(payload, offset, payloadSize) ||
+        payloadSize > static_cast<quint32>(payload.size() - offset) ||
+        offset + static_cast<qsizetype>(payloadSize) != payload.size() ||
+        !skyDeviceIdFromValue(deviceValue, response.device_id) ||
+        !validDeviceOperation(static_cast<DeviceOperation>(operationValue)))
+    {
+        return false;
+    }
+    Q_UNUSED(reserved);
+    response.operation = static_cast<DeviceOperation>(operationValue);
+    response.error_code = static_cast<CommandErrorCode>(errorValue);
+    response.payload = payload.mid(offset, static_cast<int>(payloadSize));
     return true;
 }
 

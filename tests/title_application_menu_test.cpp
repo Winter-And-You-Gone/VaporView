@@ -74,9 +74,20 @@ QToolButton *findRow(QWidget *menu, const QString& objectName)
 
 void sendKey(QWidget *receiver, int key)
 {
+    require(receiver != nullptr, "key receiver exists");
+    if (QWidget *ownerWindow = receiver->window())
+    {
+        ownerWindow->raise();
+        ownerWindow->activateWindow();
+    }
+    if (receiver->focusPolicy() != Qt::NoFocus && !receiver->hasFocus())
+    {
+        receiver->setFocus(Qt::OtherFocusReason);
+    }
+    VaporViewTest::processEventsFor(40);
     QKeyEvent event(QEvent::KeyPress, key, Qt::NoModifier);
     QApplication::sendEvent(receiver, &event);
-    VaporViewTest::processEventsFor(30);
+    VaporViewTest::processEventsFor(50);
 }
 
 void sendMouseClick(QWidget *receiver)
@@ -104,6 +115,40 @@ void sendMouseClick(QWidget *receiver)
     VaporViewTest::processEventsFor(80);
 }
 
+void sendMouseEnter(QWidget *receiver)
+{
+    require(receiver != nullptr, "mouse enter receiver exists");
+    QEvent event(QEvent::Enter);
+    QApplication::sendEvent(receiver, &event);
+    VaporViewTest::processEventsFor(80);
+}
+
+void resetToRootKeyboardMenu(QWidget *panel, QWidget *subMenu, QWidget *nestedMenu)
+{
+    require(panel != nullptr, "title menu panel exists for root reset");
+    if (nestedMenu)
+    {
+        nestedMenu->hide();
+        if (QWidget *nestedWindow = nestedMenu->window())
+        {
+            nestedWindow->hide();
+        }
+    }
+    if (subMenu)
+    {
+        subMenu->hide();
+        if (QWidget *subWindow = subMenu->window())
+        {
+            subWindow->hide();
+        }
+    }
+    panel->show();
+    panel->raise();
+    panel->activateWindow();
+    panel->setFocus(Qt::OtherFocusReason);
+    VaporViewTest::processEventsFor(80);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -112,6 +157,7 @@ int main(int argc, char **argv)
     require(settingsDirectory.isValid(), "temporary settings directory created");
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDirectory.path());
+    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDirectory.path());
 
     QApplication application(argc, argv);
     application.setOrganizationName(QStringLiteral("VaporViewTitleApplicationMenuTest"));
@@ -157,6 +203,35 @@ int main(int argc, char **argv)
                 "opening title application menu leaves root rows unhighlighted");
     }
 
+    QToolButton *mouseFileRootRow = rootRows.first();
+    sendMouseEnter(mouseFileRootRow);
+    require(subMenu->isVisible(), "mouse hover opens the File submenu");
+    const QList<QToolButton *> fileSubmenuRows = visibleMenuRows(subMenu);
+    require(!fileSubmenuRows.isEmpty(), "File submenu exposes command rows");
+    require(!fileSubmenuRows.first()->hasFocus() &&
+                !fileSubmenuRows.first()->property("keyboardFocus").toBool(),
+            "mouse-opened submenu leaves its first row unhighlighted");
+
+    QToolButton *developerRootRow = rootRows.value(2);
+    sendMouseEnter(developerRootRow);
+    require(subMenu->isVisible(), "mouse hover opens the Developer submenu");
+    QToolButton *csvRateRow = findRow(subMenu, QStringLiteral("titleMenuDeviceCsvRecordingRateAction"));
+    require(csvRateRow != nullptr, "Developer submenu exposes the CSV-rate nested row");
+    sendMouseEnter(csvRateRow);
+    require(nestedMenu->isVisible(), "mouse hover opens the CSV-rate nested submenu");
+    const QList<QToolButton *> csvRateRows = visibleMenuRows(nestedMenu);
+    require(!csvRateRows.isEmpty(), "CSV-rate nested submenu exposes command rows");
+    require(!csvRateRows.first()->hasFocus() &&
+                !csvRateRows.first()->property("keyboardFocus").toBool(),
+            "mouse-opened nested submenu leaves its first row unhighlighted");
+
+    panel->hide();
+    subMenu->window()->hide();
+    nestedMenu->window()->hide();
+    VaporViewTest::processEventsFor(30);
+    titleMenuButton->click();
+    VaporViewTest::processEventsFor(80);
+
     QSet<QString> objectNames;
     for (QToolButton *row : rootRows)
     {
@@ -170,6 +245,7 @@ int main(int argc, char **argv)
                 "root menu row is bound to the QAction with the same command ID");
     }
 
+    resetToRootKeyboardMenu(panel, subMenu, nestedMenu);
     auto *firstRow = rootRows.first();
     sendKey(panel, Qt::Key_Down);
     require(QApplication::focusWidget() == firstRow,
@@ -198,6 +274,9 @@ int main(int argc, char **argv)
         QStringLiteral("titleMenuRecordingFolderAction"),
         QStringLiteral("titleMenuDataViewerAction"),
         QStringLiteral("titleMenuExitAction"),
+        QStringLiteral("titleMenuViewSizeIncreaseAction"),
+        QStringLiteral("titleMenuViewSizeStandardAction"),
+        QStringLiteral("titleMenuViewSizeDecreaseAction"),
         QStringLiteral("titleMenuViewLogPanelAction"),
         QStringLiteral("titleMenuLanguageChineseAction"),
         QStringLiteral("titleMenuLanguageEnglishAction")
@@ -299,6 +378,32 @@ int main(int argc, char **argv)
     viewRootRow->setFocus(Qt::OtherFocusReason);
     sendKey(viewRootRow, Qt::Key_Right);
     require(subMenu->isVisible(), "Right reopens the View submenu");
+    auto *viewSizeIncreaseRow = findRow(subMenu, QStringLiteral("titleMenuViewSizeIncreaseAction"));
+    auto *viewSizeStandardRow = findRow(subMenu, QStringLiteral("titleMenuViewSizeStandardAction"));
+    auto *viewSizeDecreaseRow = findRow(subMenu, QStringLiteral("titleMenuViewSizeDecreaseAction"));
+    require(viewSizeIncreaseRow != nullptr &&
+                viewSizeStandardRow != nullptr &&
+                viewSizeDecreaseRow != nullptr,
+            "View submenu exposes the three view-size choices");
+    require(viewSizeIncreaseRow->defaultAction()->text() == QStringLiteral("放大") &&
+                viewSizeStandardRow->defaultAction()->text() == QStringLiteral("标准") &&
+                viewSizeDecreaseRow->defaultAction()->text() == QStringLiteral("缩小"),
+            "View size choices use simple labels without percentages");
+    require(!viewSizeIncreaseRow->defaultAction()->isChecked() &&
+                viewSizeStandardRow->defaultAction()->isChecked() &&
+                !viewSizeDecreaseRow->defaultAction()->isChecked(),
+            "standard view size is checked at the default 100 percent setting");
+    require(!viewSizeIncreaseRow->defaultAction()->isCheckable() &&
+                viewSizeStandardRow->defaultAction()->isCheckable() &&
+                !viewSizeDecreaseRow->defaultAction()->isCheckable(),
+            "only the standard view-size command behaves like a checked state");
+    require(findRow(subMenu, QStringLiteral("titleMenuFontTinyAction")) == nullptr &&
+                findRow(subMenu, QStringLiteral("titleMenuFontExtraSmallAction")) == nullptr &&
+                findRow(subMenu, QStringLiteral("titleMenuFontSmallAction")) == nullptr &&
+                findRow(subMenu, QStringLiteral("titleMenuFontNormalAction")) == nullptr &&
+                findRow(subMenu, QStringLiteral("titleMenuFontLargeAction")) == nullptr &&
+                findRow(subMenu, QStringLiteral("titleMenuFontExtraLargeAction")) == nullptr,
+            "View submenu no longer exposes percentage-based size choices");
     auto *languageRow = findRow(subMenu, QStringLiteral("titleMenuLanguageAction"));
     require(languageRow != nullptr && languageRow->isEnabled(),
             "View submenu exposes the language row as a real button");
@@ -318,6 +423,53 @@ int main(int argc, char **argv)
     sendKey(viewRootRow, Qt::Key_Escape);
     require(!panel->isVisible() && titleMenuButton->hasFocus(),
             "Esc closes the title menu and restores focus to titleBarMenuButton");
+
+    auto storedFontScalePercent = []() {
+        QSettings storedSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        storedSettings.sync();
+        return storedSettings.value(QStringLiteral("font_scale_percent"), 0).toInt();
+    };
+    QAction *increaseViewSizeAction = viewSizeIncreaseRow->defaultAction();
+    QAction *standardViewSizeAction = viewSizeStandardRow->defaultAction();
+    QAction *decreaseViewSizeAction = viewSizeDecreaseRow->defaultAction();
+    require(increaseViewSizeAction != nullptr &&
+                standardViewSizeAction != nullptr &&
+                decreaseViewSizeAction != nullptr,
+            "view-size rows keep their command actions for relative-step regression");
+    increaseViewSizeAction->trigger();
+    require(storedFontScalePercent() == 110,
+            "Zoom In increases the current view size by ten percent");
+    increaseViewSizeAction->trigger();
+    require(storedFontScalePercent() == 120,
+            "Zoom In is relative to the updated view size");
+    decreaseViewSizeAction->trigger();
+    require(storedFontScalePercent() == 110,
+            "Zoom Out decreases the current view size by ten percent");
+    standardViewSizeAction->trigger();
+    require(storedFontScalePercent() == 100,
+            "Standard resets the view size to one hundred percent");
+    for (int i = 0; i < 9; ++i)
+    {
+        increaseViewSizeAction->trigger();
+    }
+    require(storedFontScalePercent() == 180,
+            "Zoom In clamps the view size at one hundred eighty percent");
+    increaseViewSizeAction->trigger();
+    require(storedFontScalePercent() == 180,
+            "Zoom In keeps the view size at the upper limit");
+    for (int i = 0; i < 13; ++i)
+    {
+        decreaseViewSizeAction->trigger();
+    }
+    require(storedFontScalePercent() == 60,
+            "Zoom Out clamps the view size at sixty percent");
+    decreaseViewSizeAction->trigger();
+    require(storedFontScalePercent() == 60,
+            "Zoom Out keeps the view size at the lower limit");
+    standardViewSizeAction->trigger();
+    require(storedFontScalePercent() == 100,
+            "Standard resets the bounded view size to one hundred percent");
+    VaporViewTest::processEventsFor(120);
 
     std::cout << "title_application_menu_test passed\n";
     return 0;

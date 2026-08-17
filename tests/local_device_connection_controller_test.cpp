@@ -25,13 +25,13 @@ int main()
 
     LocalDeviceConnectionController controller;
     std::mutex mutex;
-    std::vector<QString> logs;
+    std::vector<LocalConnectionLogEntry> logs;
     bool finished = false;
     bool connected = true;
     LocalConnectionCallbacks callbacks;
-    callbacks.log = [&](const QString& message) {
+    callbacks.log = [&](const LocalConnectionLogEntry& entry) {
         std::lock_guard<std::mutex> lock(mutex);
-        logs.push_back(message);
+        logs.push_back(entry);
     };
     callbacks.finished = [&](bool result) {
         connected = result;
@@ -40,8 +40,8 @@ int main()
     controller.setCallbacks(std::move(callbacks));
 
     LocalConnectionRequest request;
-    request.english = true;
-    request.selectText = QStringLiteral("-- Select --");
+    request.english = false;
+    request.selectText = QStringLiteral("未选择");
     request.epsilon.port = request.selectText;
     request.ptb.port = request.selectText;
     request.hmp.port = request.selectText;
@@ -57,11 +57,20 @@ int main()
     {
         std::lock_guard<std::mutex> lock(mutex);
         bool foundSummary = false;
-        for (const QString& line : logs)
+        bool foundLidarSkip = false;
+        for (const LocalConnectionLogEntry& entry : logs)
         {
-            foundSummary = foundSummary || line.contains(QStringLiteral("No ports connected"));
+            foundSummary = foundSummary ||
+                (entry.event == QStringLiteral("local_serial_devices_not_connected") &&
+                 entry.level == VaporView::LogLevel::Warning &&
+                 entry.fields.value(QStringLiteral("reason_code")).toString() == QStringLiteral("NO_DEVICE_CONNECTED"));
+            foundLidarSkip = foundLidarSkip ||
+                (entry.event == QStringLiteral("local_device_connection_skipped") &&
+                 entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("TFA1005-L") &&
+                 entry.fields.value(QStringLiteral("reason_code")).toString() == QStringLiteral("PORT_NOT_SELECTED"));
         }
-        require(foundSummary, "no-port result logged");
+        require(foundSummary, "no-port result logged as structured warning");
+        require(foundLidarSkip, "lidar skip log uses structured device field");
     }
 
     controller.disconnect();

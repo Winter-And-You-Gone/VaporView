@@ -10,6 +10,14 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
     const VaporView::Ground::RemoteEpsilonTelemetry remoteEpsilon =
         VaporView::Ground::decodeRemoteEpsilonTelemetry(telemetry, now);
     state_->current_epsilon_ = remoteEpsilon.data;
+    state_->current_remote_epsilon_validity_flags_ = telemetry.validity_flags;
+    if (state_->epsilon_device_session_)
+    {
+        state_->epsilon_device_session_->setRemoteAvailable(
+            remoteEpsilon.available,
+            state_->is_english_ ? QStringLiteral("Remote Sky")
+                                : QStringLiteral("天空端远程"));
+    }
     if (remoteEpsilon.available)
     {
 #ifdef VAPORVIEW_HAS_OSGEARTH
@@ -157,7 +165,11 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
     if (!state_->remote_sky_online_)
     {
         state_->remote_sky_online_ = true;
-        log(state_->is_english_ ? "Remote Sky handshake confirmed" : "天空端握手成功");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("telemetry.connection"),
+                         QStringLiteral("remote_sky_handshake_confirmed"),
+                         QStringLiteral("天空端握手成功。"),
+                         {{QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     state_->remote_status_ = status;
     const quint64 rawTotal =
@@ -188,6 +200,11 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
             if (item.device_id == VaporView::SkyDeviceId::Epsilon)
             {
                 state_->current_epsilon_ = VaporView::EpsilonData();
+                state_->current_remote_epsilon_validity_flags_ = 0;
+                if (state_->epsilon_device_session_)
+                {
+                    state_->epsilon_device_session_->setRemoteAvailable(false);
+                }
             }
             else if (item.device_id == VaporView::SkyDeviceId::Ptb)
             {
@@ -206,15 +223,30 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
             }
             else if (item.device_id == VaporView::SkyDeviceId::TemperatureController)
             {
+                if (state_->rd105_device_session_)
+                {
+                    state_->rd105_device_session_->setRemoteAvailable(false);
+                }
                 invalidateTemperatureControllerDataUi();
+            }
+            else if (item.device_id == VaporView::SkyDeviceId::Ai8TemperatureController &&
+                     state_->ai8_temperature_controller_panel_)
+            {
+                if (state_->ai8_device_session_)
+                {
+                    state_->ai8_device_session_->setRemoteAvailable(false);
+                }
+                state_->ai8_temperature_controller_panel_->setBackendConnected(false);
+                state_->ai8_temperature_controller_panel_->applyLiveData({});
+                updateAi8TemperatureTitleStatus();
             }
         }
     }
     if (state_->remote_wave_stream_auto_start_ &&
         !state_->remote_wave_stream_requested_ &&
         !state_->remote_wave_stream_enable_pending_ &&
-        state_->remote_sky_controller_->deviceState(VaporView::SkyDeviceId::WaveTcp) == VaporView::DeviceState::Connected &&
-        state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen())
+        state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen() &&
+        state_->remote_sky_controller_->deviceState(VaporView::SkyDeviceId::WaveTcp) == VaporView::DeviceState::Connected)
     {
         state_->remote_wave_stream_enable_pending_ = true;
         state_->remote_sky_controller_->sendCommand(VaporView::CommandId::EnableWaveformStreaming);
@@ -227,10 +259,38 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
 void MainWindow::onRemoteTemperatureControllerStatusUpdated(const VaporView::TemperatureControllerData& controllerData)
 {
     state_->current_temperature_controller_ = controllerData;
+    if (state_->rd105_device_session_)
+    {
+        state_->rd105_device_session_->setRemoteAvailable(
+            controllerData.valid,
+            state_->is_english_ ? QStringLiteral("Remote Sky")
+                                : QStringLiteral("天空端远程"));
+    }
     if (state_->device_panel_coordinator_)
     {
         state_->device_panel_coordinator_->updateTemperatureData(state_->current_temperature_controller_);
     }
+}
+
+void MainWindow::onRemoteAi8TemperatureControllerStatusUpdated(
+    const VaporView::Ai8TemperatureControllerProtocol::LiveData& liveData)
+{
+    if (!state_->ai8_temperature_controller_panel_)
+    {
+        return;
+    }
+    const QString detail = state_->is_english_
+        ? QStringLiteral("Remote Sky")
+        : QStringLiteral("天空端远程");
+    state_->ai8_temperature_controller_panel_->setBackendConnected(true, detail);
+    if (state_->ai8_device_session_)
+    {
+        state_->ai8_device_session_->setRemoteAvailable(
+            remoteDeviceDataValid(VaporView::SkyDeviceId::Ai8TemperatureController, 3000),
+            detail);
+    }
+    state_->ai8_temperature_controller_panel_->applyLiveData(liveData);
+    updateAi8TemperatureTitleStatus();
 }
 
 void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
@@ -239,22 +299,106 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
     const QString commandName = VaporView::commandIdName(ack.command_id);
     const QString errorText = VaporView::commandErrorCodeText(ack.error_code, state_->is_english_);
     const bool noError = ack.error_code == VaporView::CommandErrorCode::Ok;
-    const QString detailLabel = ok && noError
-        ? (state_->is_english_ ? QStringLiteral("detail") : QStringLiteral("详情"))
-        : (state_->is_english_ ? QStringLiteral("error") : QStringLiteral("错误"));
-    const QString detailText = ok && noError
-        ? (state_->is_english_ ? QStringLiteral("no error") : QStringLiteral("无错误"))
-        : errorText;
-    log(QString(state_->is_english_ ? "Remote ACK command=%1(%2) seq=%3 result=%4 %5=%6(%7)"
-                            : "远程ACK 命令=%1(%2) 序号=%3 结果=%4 %5=%6(%7)")
-            .arg(commandName)
-            .arg(static_cast<quint16>(ack.command_id))
-            .arg(ack.command_seq)
-            .arg(ok ? (state_->is_english_ ? QStringLiteral("ok") : QStringLiteral("成功"))
-                    : (state_->is_english_ ? QStringLiteral("error") : QStringLiteral("失败")))
-            .arg(detailLabel)
-            .arg(detailText)
-            .arg(static_cast<quint32>(ack.error_code)));
+    if (!isTemperatureCommand(ack.command_id) &&
+        ack.command_id != VaporView::CommandId::DeviceOperation)
+    {
+        QVariantMap fields{{QStringLiteral("command"), commandName},
+                           {QStringLiteral("command_id"), static_cast<quint16>(ack.command_id)},
+                           {QStringLiteral("command_seq"), ack.command_seq},
+                           {QStringLiteral("ack_result"), ack.result},
+                           {QStringLiteral("command_error_code"), commandErrorCodeIdentifier(ack.error_code)}};
+        if (ok && noError)
+        {
+            fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("hidden"));
+            publishGroundLog(VaporView::LogLevel::Debug,
+                             QStringLiteral("telemetry.command"),
+                             QStringLiteral("remote_command_ack_received"),
+                             QStringLiteral("远程命令 ACK 已收到。"),
+                             fields);
+        }
+        else
+        {
+            fields.insert(QStringLiteral("error_code"),
+                          noError ? QStringLiteral("REMOTE_COMMAND_FAILED")
+                                  : commandErrorCodeIdentifier(ack.error_code));
+            fields.insert(QStringLiteral("ui_dedupe_key"),
+                          QStringLiteral("remote_command:%1:failed").arg(commandName));
+            publishGroundLog(VaporView::LogLevel::Error,
+                             QStringLiteral("telemetry.command"),
+                             QStringLiteral("remote_command_failed"),
+                             QStringLiteral("远程命令执行失败。"),
+                             fields);
+        }
+    }
+
+    if (ack.command_id == VaporView::CommandId::GetSkyConfig &&
+        ack.command_seq == state_->remote_sky_config_read_seq_ &&
+        !(ok && noError))
+    {
+        state_->remote_sky_config_loading_ = false;
+        clearPendingRemoteWaveTcpConnection();
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("Remote Sky config read was rejected: %1").arg(errorText)
+            : QStringLiteral("读取天空端配置被拒绝：%1").arg(errorText),
+            true);
+        updateRemoteSkyConfigControlsState();
+    }
+    else if (ack.command_id == VaporView::CommandId::SetSkyConfig &&
+             ack.command_seq == state_->remote_sky_config_apply_seq_)
+    {
+        if (ok && noError)
+        {
+            setRemoteSkyConfigStatus(state_->is_english_
+                ? QStringLiteral("Remote Sky config ACK received; waiting for apply result...")
+                : QStringLiteral("天空端配置 ACK 已收到，等待应用结果..."));
+        }
+        else
+        {
+            state_->remote_sky_config_applying_ = false;
+            clearPendingRemoteWaveTcpConnection();
+            state_->remote_sky_config_dirty_ = true;
+            setRemoteSkyConfigStatus(state_->is_english_
+                ? QStringLiteral("Remote Sky config apply was rejected: %1").arg(errorText)
+                : QStringLiteral("天空端配置应用被拒绝：%1").arg(errorText),
+                true);
+        }
+        updateRemoteSkyConfigControlsState();
+    }
+    else if (ack.command_id == VaporView::CommandId::SaveSkyConfig &&
+             ack.command_seq == state_->remote_sky_config_save_seq_)
+    {
+        state_->remote_sky_config_saving_ = false;
+        setRemoteSkyConfigStatus(ok && noError
+            ? (state_->is_english_ ? QStringLiteral("Remote Sky config saved on sky.") : QStringLiteral("天空端配置已保存。"))
+            : (state_->is_english_ ? QStringLiteral("Remote Sky config save failed: %1").arg(errorText)
+                                  : QStringLiteral("天空端配置保存失败：%1").arg(errorText)),
+            !(ok && noError));
+        updateRemoteSkyConfigControlsState();
+    }
+
+    if (ack.command_id == VaporView::CommandId::AutoDetectSerialPorts &&
+        ack.command_seq == state_->remote_serial_detection_seq_ &&
+        !(ok && noError))
+    {
+        state_->port_detection_in_progress_ = false;
+        state_->remote_serial_detection_seq_ = 0;
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("Remote serial-port detection was rejected: %1").arg(errorText)
+            : QStringLiteral("远程串口自动识别被拒绝：%1").arg(errorText), true);
+        updateConnectionStatus(state_->is_connected_);
+    }
+    else if (ack.command_id == VaporView::CommandId::CancelSerialPortDetection &&
+             ack.command_seq == state_->remote_serial_detection_cancel_seq_ &&
+             !(ok && noError))
+    {
+        state_->remote_serial_detection_cancel_seq_ = 0;
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.connection"),
+                         QStringLiteral("remote_serial_port_detection_cancel_failed"),
+                         QStringLiteral("天空端取消串口自动识别失败。"),
+                         {{QStringLiteral("error_code"), commandErrorCodeIdentifier(ack.error_code)},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("attention")} });
+    }
 
     if (ack.command_id == VaporView::CommandId::EnableWaveformStreaming)
     {
@@ -262,10 +406,6 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
         state_->remote_wave_stream_requested_ = ok;
         updateRemoteDeviceButtonText(VaporView::SkyDeviceId::WaveTcp,
                                      state_->remote_sky_controller_->deviceState(VaporView::SkyDeviceId::WaveTcp));
-        if (!ok)
-        {
-            log(state_->is_english_ ? "Remote waveform stream was not enabled" : "远程波形流启用失败");
-        }
     }
     else if (ack.command_id == VaporView::CommandId::DisableWaveformStreaming)
     {
@@ -287,9 +427,16 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
                 if (ok)
                 {
                     state_->tcp_wave_panel_->applyRemotePeakSearchRange(range.start_index, range.end_index);
-                    log(state_->is_english_
-                            ? QStringLiteral("Peak search range accepted. Old remote peak trend was cleared.")
-                            : QStringLiteral("峰值搜索区间已生效，旧远程峰值趋势已清空。"));
+                    publishGroundLog(VaporView::LogLevel::Info,
+                                     QStringLiteral("telemetry.command"),
+                                     QStringLiteral("peak_search_range_applied"),
+                                     QStringLiteral("峰值搜索区间已生效，旧远程峰值趋势已清空。"),
+                                     {{QStringLiteral("command"), commandName},
+                                      {QStringLiteral("command_id"), static_cast<quint16>(ack.command_id)},
+                                      {QStringLiteral("command_seq"), ack.command_seq},
+                                      {QStringLiteral("range_start_index"), range.start_index},
+                                      {QStringLiteral("range_end_index"), range.end_index},
+                                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
                 }
                 else
                 {
@@ -297,31 +444,6 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
                 }
             }
         }
-    }
-    else if (isTemperatureCommand(ack.command_id))
-    {
-        const auto it = state_->remote_temperature_commands_.find(ack.command_seq);
-        const VaporView::TemperatureControllerCommand request = it != state_->remote_temperature_commands_.end()
-            ? it.value()
-            : VaporView::TemperatureControllerCommand();
-        if (it != state_->remote_temperature_commands_.end())
-        {
-            state_->remote_temperature_commands_.erase(it);
-        }
-        if (state_->temperature_controller_panel_)
-        {
-            if (!(ok && noError))
-            {
-                state_->temperature_controller_panel_->clearCommandPending(ack.command_id, request.channel == 0 ? 1 : request.channel);
-            }
-            state_->temperature_controller_panel_->setCommandStatus(
-                temperatureCommandStatusText(ack.command_id,
-                                             request.channel == 0 ? 1 : request.channel,
-                                             ok && noError,
-                                             ok && noError ? QString() : errorText),
-                !(ok && noError));
-        }
-        restoreTemperatureCommandUi(ack.command_id, request.channel == 0 ? 1 : request.channel);
     }
 }
 
@@ -333,39 +455,11 @@ void MainWindow::onRemoteLinkOpenChanged(bool open)
         {
             markRemoteSkyLinkClosed();
         }
+        else
+        {
+            requestRemoteSkyConfigIfAvailable(false);
+        }
         updateConnectionStatus(open);
-    }
-}
-
-void MainWindow::onSkyDeviceConfigClicked()
-{
-    if (!isUiTestMode() && (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen()))
-    {
-        log(state_->is_english_ ? "Connect Remote Sky telemetry before opening the Sky Device Config dialog"
-                        : "打开天空端设备配置前，请先连接天空端数传");
-        return;
-    }
-    if (!state_->sky_device_config_dialog_)
-    {
-        state_->sky_device_config_dialog_ = new VaporView::SkyDeviceConfigDialog(
-            state_->remote_sky_controller_->telemetryService());
-        state_->sky_device_config_dialog_->setAttribute(Qt::WA_QuitOnClose, false);
-        state_->sky_device_config_dialog_->setEnglish(state_->is_english_);
-        state_->sky_device_config_dialog_->setFontScale(state_->font_scale_percent_);
-    }
-    state_->sky_device_config_dialog_->setUiTestMode(isUiTestMode());
-    VaporView::centerWindowOnScreen(state_->sky_device_config_dialog_, this);
-    state_->sky_device_config_dialog_->show();
-    state_->sky_device_config_dialog_->raise();
-    state_->sky_device_config_dialog_->activateWindow();
-    if (isUiTestMode())
-    {
-        logUiTest(state_->is_english_ ? QStringLiteral("Opened simulated Sky device configuration")
-                                      : QStringLiteral("已打开模拟天空端设备配置"));
-    }
-    else
-    {
-        state_->remote_sky_controller_->requestSkyConfig();
     }
 }
 

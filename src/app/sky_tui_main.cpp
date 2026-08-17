@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
     app.setApplicationName("VaporViewSkyTui");
-    app.setApplicationVersion("1.0.20");
+    app.setApplicationVersion("1.0.22");
     app.setOrganizationName("VaporView");
     VaporView::LogService logService(QStringLiteral("VaporViewSkyTui"));
     logService.installQtMessageHandler();
@@ -87,10 +87,7 @@ int main(int argc, char *argv[])
         QObject::connect(&client, &VaporView::SkyLocalIpcClient::logRecordGenerated,
                          &logService, [&logService](const VaporView::LogRecord& record) {
             logService.publish(record);
-        });
-        QObject::connect(&client, &VaporView::SkyLocalIpcClient::logMessage, &app,
-                         [](const QString& message) {
-            QTextStream(stderr) << message << "\n";
+            QTextStream(stderr) << record.message << "\n";
         });
         QObject::connect(&client, &VaporView::SkyLocalIpcClient::connectedChanged, &app, [&client](bool connected) {
             if (connected)

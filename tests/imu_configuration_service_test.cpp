@@ -34,15 +34,23 @@ int main()
     request.currentBaud = 921600;
     request.targetBaud = 921600;
     request.targetRateHz = 200;
-    std::vector<QString> logs;
+    std::vector<ImuConfigurationService::LogEntry> logs;
     require(
         ImuConfigurationService::apply(
             request,
             {},
-            [&](const QString& message) { logs.push_back(message); }),
+            [&](const ImuConfigurationService::LogEntry& entry) { logs.push_back(entry); }),
         "offline profile remains saved when the direct port cannot be opened");
-    require(!logs.empty() && logs.back().contains(QStringLiteral("saved for next connection")),
-            "offline profile result is explained");
+    require(!logs.empty(), "offline profile emits structured log");
+    const ImuConfigurationService::LogEntry& entry = logs.back();
+    require(entry.level == VaporView::LogLevel::Warning, "offline profile uses warning level");
+    require(entry.category == QStringLiteral("device.navigation.command"), "offline profile category");
+    require(entry.event == QStringLiteral("imu_profile_direct_open_failed_saved"),
+            "offline profile event is explicit");
+    require(entry.fields.value(QStringLiteral("reason_code")).toString() == QStringLiteral("PORT_OPEN_FAILED"),
+            "offline profile reason_code");
+    require(entry.fields.value(QStringLiteral("port")).toString() == request.port,
+            "offline profile preserves port");
 
     std::cout << "imu_configuration_service_test passed\n";
     return 0;

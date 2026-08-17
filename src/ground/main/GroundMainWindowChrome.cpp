@@ -72,7 +72,7 @@ QString vaporViewUpdateRepositoryUrl()
 QString vaporViewApplicationVersion()
 {
     const QString applicationVersion = QCoreApplication::applicationVersion().trimmed();
-    return applicationVersion.isEmpty() ? QStringLiteral("1.0.20") : applicationVersion;
+    return applicationVersion.isEmpty() ? QStringLiteral("1.0.22") : applicationVersion;
 }
 
 QString vaporViewUpdateRepositoryDisplayName(const QString& repositoryUrl, bool english)
@@ -371,6 +371,18 @@ void MainWindow::setEnglish(bool english)
     };
 
     state_->is_english_ = english;
+    if (state_->ai8_device_session_)
+    {
+        state_->ai8_device_session_->setEnglish(english);
+    }
+    if (state_->epsilon_device_session_)
+    {
+        state_->epsilon_device_session_->setEnglish(english);
+    }
+    if (state_->rd105_device_session_)
+    {
+        state_->rd105_device_session_->setEnglish(english);
+    }
     if (qApp)
     {
         qApp->setProperty(kEnglishProperty, state_->is_english_);
@@ -426,7 +438,7 @@ void MainWindow::setEnglish(bool english)
     state_->exit_action_->setText(english ? "E&xit" : "退出(&X)");
 
     setNativeMenuTitle(state_->font_menu_, english ? QStringLiteral("Font &Size") : QStringLiteral("字号(&S)"));
-    state_->font_tiny_action_->setText(english ? "Tiny (70%)" : "超小 (70%)");
+    state_->font_tiny_action_->setText(english ? "Tiny (60%)" : "超小 (60%)");
     state_->font_extra_small_action_->setText(english ? "Extra Small (80%)" : "特小 (80%)");
     state_->font_small_action_->setText(english ? "Small (90%)" : "小号 (90%)");
     state_->font_normal_action_->setText(english ? "Normal (100%)" : "标准 (100%)");
@@ -482,7 +494,7 @@ void MainWindow::setEnglish(bool english)
     if (state_->imu_lbl_) state_->imu_lbl_->setText(english ? "IMU:" : "IMU:");
     if (state_->ptb_lbl_) state_->ptb_lbl_->setText(english ? "PTB210:" : "PTB210:");
     if (state_->hmp_lbl_) state_->hmp_lbl_->setText(english ? "HMP3:" : "HMP3:");
-    if (state_->lidar_lbl_) state_->lidar_lbl_->setText(english ? "TFA1500-L:" : "TFA1500-L:");
+    if (state_->lidar_lbl_) state_->lidar_lbl_->setText(english ? "TFA1005-L:" : "TFA1005-L:");
     if (state_->temperature_lbl_) state_->temperature_lbl_->setText(QStringLiteral("RD105:"));
 
     if (state_->config_inline_title_lbl_)
@@ -497,7 +509,6 @@ void MainWindow::setEnglish(bool english)
     if (state_->sky_telemetry_tcp_port_lbl_) state_->sky_telemetry_tcp_port_lbl_->setText(english ? "Port:" : "端口:");
     if (state_->sky_telemetry_port_lbl_) state_->sky_telemetry_port_lbl_->setText(english ? "Serial:" : "串口:");
     if (state_->sky_telemetry_baud_lbl_) state_->sky_telemetry_baud_lbl_->setText(english ? "Baud:" : "波特率:");
-    if (state_->sky_device_config_btn_) state_->sky_device_config_btn_->setText(english ? "Sky Device Config" : "天空端设备配置");
     if (state_->data_source_mode_combo_)
     {
         const QSignalBlocker blocker(state_->data_source_mode_combo_);
@@ -652,7 +663,6 @@ void MainWindow::setEnglish(bool english)
     if (state_->hmp_panel_) state_->hmp_panel_->setEnglish(english);
     if (state_->lidar_panel_) state_->lidar_panel_->setEnglish(english);
     if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setEnglish(english);
-    if (state_->sky_device_config_dialog_) state_->sky_device_config_dialog_->setEnglish(english);
 
     const CollectorSnapshot collectors = snapshotCollectors();
     if (collectors.epsilon) collectors.epsilon->setEnglish(english);
@@ -666,6 +676,10 @@ void MainWindow::setEnglish(bool english)
     if (state_->rtk_config_dialog_)
     {
         state_->rtk_config_dialog_->setEnglish(english);
+    }
+    if (state_->combination_navigation_page_)
+    {
+        state_->combination_navigation_page_->setEnglish(english);
     }
     if (state_->session_viewer_window_)
     {
@@ -681,6 +695,8 @@ void MainWindow::setEnglish(bool english)
         updateEnvironmentStatusIcons(state_->current_lidar_.valid, state_->current_ptb_.valid, state_->current_hmp_.valid);
     }
     updateSourceModeUi();
+    updateHomeDeviceOverviewMinimumWidth();
+    updateResponsiveHomeLayout();
     updateDeviceConfigTexts();
     updateSidebarNavIcons();
     updateRecordingStatusLabel();
@@ -1487,7 +1503,12 @@ void MainWindow::onSwitchLanguage()
     QTimer::singleShot(0, this, [this]() {
         state_->is_english_ = !state_->is_english_;
         setEnglish(state_->is_english_);
-        log(state_->is_english_ ? "Language switched to English" : "语言已切换为中文");
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("ui.action"),
+                         QStringLiteral("language_switched"),
+                         QStringLiteral("界面语言已切换。"),
+                         {{QStringLiteral("language"), state_->is_english_ ? QStringLiteral("en") : QStringLiteral("zh_CN")},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         state_->language_switch_in_progress_ = false;
     });
 }
@@ -1760,18 +1781,22 @@ void MainWindow::updateThemedIcons()
 
 void MainWindow::updateRtkConfigIcon()
 {
-    const QString baseText = state_->is_english_ ? QStringLiteral("RTK config") : QStringLiteral("RTK配置");
     const QString stateText = state_->rtk_service_running_
         ? (state_->is_english_ ? QStringLiteral("running") : QStringLiteral("运行中"))
         : (state_->is_english_ ? QStringLiteral("stopped") : QStringLiteral("未启动"));
-    const QString toolTip = QStringLiteral("%1 (%2)").arg(baseText, stateText);
     if (state_->rtk_config_action_)
     {
+        const QString toolTip = QStringLiteral("%1 (%2)").arg(
+            state_->is_english_ ? QStringLiteral("RTK config") : QStringLiteral("RTK配置"),
+            stateText);
         state_->rtk_config_action_->setIcon(createRtkSatelliteIcon(state_->rtk_service_running_));
         state_->rtk_config_action_->setToolTip(toolTip);
     }
     if (state_->rtk_config_nav_btn_)
     {
+        const QString toolTip = QStringLiteral("%1 (RTK %2)").arg(
+            state_->is_english_ ? QStringLiteral("Combination Navigation") : QStringLiteral("组合导航"),
+            stateText);
         state_->rtk_config_nav_btn_->setToolTip(toolTip);
     }
 }
@@ -1787,12 +1812,12 @@ void MainWindow::updateFontScaleMenuCheckIcons()
         action->setIcon(state_->font_scale_percent_ >= minPercent && state_->font_scale_percent_ <= maxPercent ? checkIcon : QIcon());
     };
 
-    applyIcon(state_->font_tiny_action_, 70, 75);
+    applyIcon(state_->font_tiny_action_, 60, 75);
     applyIcon(state_->font_extra_small_action_, 76, 85);
     applyIcon(state_->font_small_action_, 86, 95);
     applyIcon(state_->font_normal_action_, 96, 107);
     applyIcon(state_->font_large_action_, 108, 122);
-    applyIcon(state_->font_extra_large_action_, 123, 150);
+    applyIcon(state_->font_extra_large_action_, 123, 180);
 }
 
 QString MainWindow::currentMainPageTitleText() const
@@ -1826,6 +1851,8 @@ QString MainWindow::currentMainPageTitleText() const
         return state_->is_english_ ? QStringLiteral("Device") : QStringLiteral("设备配置");
     case 2:
         return state_->is_english_ ? QStringLiteral("Thermal") : QStringLiteral("温控");
+    case 3:
+        return state_->is_english_ ? QStringLiteral("Combination Navigation") : QStringLiteral("组合导航");
     case 0:
     default:
         return state_->is_english_ ? QStringLiteral("Home") : QStringLiteral("首页");
@@ -2256,9 +2283,12 @@ void MainWindow::onToggleTheme()
     QSettings settings("VaporView", "MainWindow");
     VaporView::setPersistentSetting(settings, QStringLiteral("dark_theme_enabled"), state_->dark_theme_enabled_);
 
-    log(state_->dark_theme_enabled_
-        ? (state_->is_english_ ? "Theme switched to dark" : "已切换为暗色模式")
-        : (state_->is_english_ ? "Theme switched to light" : "已切换为亮色模式"));
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("ui.action"),
+                     QStringLiteral("theme_switched"),
+                     QStringLiteral("界面主题已切换。"),
+                     {{QStringLiteral("theme"), state_->dark_theme_enabled_ ? QStringLiteral("dark") : QStringLiteral("light")},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 }
 
 void MainWindow::onFontScaleTriggered(QAction *action)
@@ -2275,5 +2305,10 @@ void MainWindow::onFontScaleTriggered(QAction *action)
     }
 
     setFontScale(percent);
-    log(QString(state_->is_english_ ? "Font size set to %1%" : "字体大小已设置为 %1%").arg(percent));
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("ui.action"),
+                     QStringLiteral("font_scale_updated"),
+                     QStringLiteral("界面字号已更新。"),
+                     {{QStringLiteral("font_scale_percent"), percent},
+                      {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 }

@@ -5,6 +5,7 @@
 #include <QAbstractButton>
 #include <QButtonGroup>
 #include <QComboBox>
+#include <QDateTime>
 #include <QDoubleSpinBox>
 #include <QFrame>
 #include <QGridLayout>
@@ -296,12 +297,6 @@ void Ai8TemperatureControllerPanel::setupUi()
     statusLayout->setContentsMargins(0, 0, 0, 0);
     statusLayout->setSpacing(8);
 
-    protocol_status_label_ = new QLabel(statusRow);
-    protocol_status_label_->setObjectName(QStringLiteral("ai8ProtocolStatus"));
-    protocol_status_label_->setProperty("protocolReady", false);
-    protocol_status_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    statusLayout->addWidget(protocol_status_label_, 0, Qt::AlignRight | Qt::AlignVCenter);
-
     auto *readButton = new QPushButton(statusRow);
     read_button_ = readButton;
     readButton->setObjectName(QStringLiteral("ai8ReadParametersButton"));
@@ -362,6 +357,7 @@ void Ai8TemperatureControllerPanel::setupUi()
     temperature_plot_->setProperty("ai8TemperaturePlot", true);
     temperature_plot_->setProperty("forceWhiteBackground", true);
     temperature_plot_->setCompactMode(true);
+    temperature_plot_->setTimeAxisEnabled(true);
     temperature_plot_->setFixedHeight(
         std::max(kAi8TemperaturePlotMinimumHeight,
                  page_stack_->sizeHint().height() - kAi8TemperaturePlotBottomTrim));
@@ -584,17 +580,15 @@ QWidget *Ai8TemperatureControllerPanel::createInputPage()
                      createParameterField(QStringLiteral("定标上限 ScH"), QStringLiteral("Scale High ScH"), scaleHighSpin, page),
                      createParameterField(QStringLiteral("数字滤波 FIL"), QStringLiteral("Digital Filter FIL"), filterSpin, page),
                      createParameterField(QStringLiteral("通道输入组 In"), QStringLiteral("Channel Input Group In"), channelInputSpin, page),
-                     createParameterField(QStringLiteral("测量平移 Sc"), QStringLiteral("Measurement Offset Sc"), offsetSpin, page)});
+                     createParameterField(QStringLiteral("测量平移 Sc"), QStringLiteral("Measurement Offset Sc"), offsetSpin, page),
+                     createParameterField(QStringLiteral("校正表入口"), QStringLiteral("Correction Entry"), correctionEntrySpin, page)});
     applyCompactCommonEditorWidth(commonLayout);
     pageLayout->addLayout(commonLayout);
     if (detail_stack_)
     {
-        detail_stack_->addWidget(createDetailSection(
-            QStringLiteral("ai8InputDetailParameters"),
-            QStringLiteral("详细参数"),
-            QStringLiteral("Detailed Parameters"),
-            {createParameterField(QStringLiteral("校正表入口"), QStringLiteral("Correction Entry"), correctionEntrySpin, page)},
-            detail_stack_));
+        auto *emptyDetailPage = new QWidget(detail_stack_);
+        emptyDetailPage->setObjectName(QStringLiteral("ai8InputDetailParametersPage"));
+        detail_stack_->addWidget(emptyDetailPage);
     }
     pageLayout->addStretch(1);
     return page;
@@ -1115,25 +1109,7 @@ void Ai8TemperatureControllerPanel::setEnglish(bool english)
     updateRunStateAccessibility();
 
     updateStatusText();
-    const QString backendToolTip = backend_connected_
-        ? (english
-               ? QStringLiteral("Read and write use Modbus-RTU; every write is confirmed by read-back.")
-               : QStringLiteral("读写使用 Modbus-RTU；每次写入后都会回读确认。"))
-        : (english
-               ? QStringLiteral("Select the AI-8288 serial port and connect first.")
-               : QStringLiteral("请先选择 AI-8288 串口并执行连接。"));
-    if (protocol_status_label_)
-    {
-        protocol_status_label_->setToolTip(backendToolTip);
-    }
-    if (read_button_)
-    {
-        read_button_->setToolTip(backendToolTip);
-    }
-    if (write_button_)
-    {
-        write_button_->setToolTip(backendToolTip);
-    }
+    refreshPageCommandControls();
     if (temperature_plot_)
     {
         temperature_plot_->setEnglish(english);
@@ -1150,10 +1126,59 @@ void Ai8TemperatureControllerPanel::setBackendConnected(bool connected, const QS
     {
         operation_status_.clear();
     }
-    if (read_button_) read_button_->setEnabled(connected);
-    if (write_button_) write_button_->setEnabled(connected);
+    refreshPageCommandControls();
     updateStatusText();
     emit outputStatusChanged();
+}
+
+void Ai8TemperatureControllerPanel::setPageCommandsEnabled(bool enabled, const QString& disabledToolTip)
+{
+    page_commands_enabled_ = enabled;
+    page_commands_disabled_tooltip_ = disabledToolTip;
+    refreshPageCommandControls();
+}
+
+void Ai8TemperatureControllerPanel::refreshPageCommandControls()
+{
+    const bool commandsEnabled = backend_connected_ && page_commands_enabled_;
+    const QString backendToolTip = !page_commands_enabled_ && !page_commands_disabled_tooltip_.isEmpty()
+        ? page_commands_disabled_tooltip_
+        : (backend_connected_
+               ? (english_
+                      ? QStringLiteral("Read and write use Modbus-RTU; every write is confirmed by read-back.")
+                      : QStringLiteral("读写使用 Modbus-RTU；每次写入后都会回读确认。"))
+               : (english_
+                      ? QStringLiteral("Select the AI-8288 serial port and connect first.")
+                      : QStringLiteral("请先选择 AI-8288 串口并执行连接。")));
+    if (protocol_status_label_)
+    {
+        protocol_status_label_->setToolTip(backendToolTip);
+    }
+    if (read_button_)
+    {
+        read_button_->setEnabled(commandsEnabled);
+        read_button_->setToolTip(backendToolTip);
+    }
+    if (write_button_)
+    {
+        write_button_->setEnabled(commandsEnabled);
+        write_button_->setToolTip(backendToolTip);
+    }
+}
+
+void Ai8TemperatureControllerPanel::setProtocolStatusLabel(QLabel *label)
+{
+    protocol_status_label_ = label;
+    if (!protocol_status_label_)
+    {
+        return;
+    }
+    protocol_status_label_->setObjectName(QStringLiteral("ai8ProtocolStatus"));
+    protocol_status_label_->setProperty("protocolReady", backend_connected_);
+    protocol_status_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    protocol_status_label_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    updateStatusText();
+    setEnglish(english_);
 }
 
 void Ai8TemperatureControllerPanel::setOperationStatus(const QString& text, bool success)
@@ -1411,11 +1436,17 @@ void Ai8TemperatureControllerPanel::applyPageData(
             pageData.selection.channel, 1, Ai8TemperatureControllerProtocol::kChannelCount) - 1;
         if (std::isfinite(pageData.channel.measuredC))
         {
+            const double sampleTimeSeconds =
+                static_cast<double>(QDateTime::currentMSecsSinceEpoch()) / 1000.0;
             auto& history = measured_temperature_history_[static_cast<size_t>(channelIndex)];
+            auto& timeHistory =
+                measured_temperature_time_history_[static_cast<size_t>(channelIndex)];
             history.append(pageData.channel.measuredC);
+            timeHistory.append(sampleTimeSeconds);
             while (history.size() > kAi8TemperatureHistoryLimit)
             {
                 history.removeFirst();
+                timeHistory.removeFirst();
             }
         }
     }
@@ -1429,6 +1460,8 @@ void Ai8TemperatureControllerPanel::applyLiveData(
     latest_live_data_ = liveData;
     if (liveData.valid)
     {
+        const double sampleTimeSeconds =
+            static_cast<double>(QDateTime::currentMSecsSinceEpoch()) / 1000.0;
         for (int index = 0; index < Ai8TemperatureControllerProtocol::kChannelCount; ++index)
         {
             const double measured = liveData.measuredC[static_cast<size_t>(index)];
@@ -1437,10 +1470,14 @@ void Ai8TemperatureControllerPanel::applyLiveData(
                 continue;
             }
             auto& history = measured_temperature_history_[static_cast<size_t>(index)];
+            auto& timeHistory =
+                measured_temperature_time_history_[static_cast<size_t>(index)];
             history.append(measured);
+            timeHistory.append(sampleTimeSeconds);
             while (history.size() > kAi8TemperatureHistoryLimit)
             {
                 history.removeFirst();
+                timeHistory.removeFirst();
             }
         }
     }
@@ -1506,6 +1543,8 @@ void Ai8TemperatureControllerPanel::updateTemperaturePlot()
     temperature_plot_->setTargetTemperature(
         setpointSpin ? setpointSpin->value() : std::numeric_limits<double>::quiet_NaN());
     temperature_plot_->setSamples(measured_temperature_history_[static_cast<size_t>(channelIndex)]);
+    temperature_plot_->setSampleTimes(
+        measured_temperature_time_history_[static_cast<size_t>(channelIndex)]);
 }
 
 } // namespace VaporView::Ground::Widgets

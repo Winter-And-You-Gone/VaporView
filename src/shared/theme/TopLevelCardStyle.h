@@ -16,6 +16,6 @@ inline constexpr qreal kTopLevelCardShadowVerticalSpreadExtra = 2.0;
 inline constexpr int kTopLevelCardShadowAlpha = 12;
 
 void configureTopLevelCard(QWidget *card);
-void updateTopLevelCardShadows(QWidget *scope, qreal uiScale = 1.0);
+void updateTopLevelCardShadows(QWidget *scope, qreal uiScale = -1.0);
 
 } // namespace VaporView

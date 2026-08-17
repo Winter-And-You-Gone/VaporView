@@ -1,10 +1,12 @@
 #ifndef VaporView_TCP_WAVE_PANEL_H_
 #define VaporView_TCP_WAVE_PANEL_H_
 
+#include "LogRecord.h"
 #include "TcpWaveEncoding.h"
 #include "TelemetryTypes.h"
 
 #include <QByteArray>
+#include <QVariantMap>
 #include <QWidget>
 #include <QVector>
 
@@ -36,6 +38,7 @@ public:
     bool isConnected() const;
     bool isConnecting() const;
     void toggleConnection();
+    void setConnectionEndpoint(const QString& host, int port);
     void attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox);
     void setCompactLayout(bool compact);
     int preferredPanelHeight() const;
@@ -53,7 +56,17 @@ public:
     void rejectRemotePeakSearchRange(const QString& reason);
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
     void testFeedSocketBytes(const QByteArray& bytes);
+    void testFeedReadyReadBytes(const QByteArray& bytes);
+    void testSetConnectionEndpoint(const QString& host, const QString& portText);
     qsizetype testBufferedByteCount() const;
+    void testFlushLiveDisplay();
+    QString testRawXAxisLabel() const;
+    QString testHarmonicXAxisLabel() const;
+    QString testPeakXAxisLabel() const;
+    QString testPeakXAxisStartLabel() const;
+    QString testPeakXAxisEndLabel() const;
+    int testWavePlotBottomMarginExtra() const;
+    int testPeakPlotBottomMarginExtra() const;
 #endif
 
     enum class ParseMode
@@ -86,7 +99,6 @@ signals:
     void normalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples);
     void rawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload, VaporView::TcpFloatEncoding floatEncoding);
     void connectionStateChanged(bool connected);
-    void logMessageRequested(const QString& message);
     void remoteWaveTcpConnectionRequested(bool connectRequested);
     void remotePeakSearchRangeRequested(quint32 startIndex, quint32 endIndex);
     void preferredPanelHeightChanged();
@@ -122,6 +134,7 @@ private:
     void setupSocket();
     void recreateSocket();
     void requestGracefulDisconnect();
+    void updateEndpointEditorState();
     void setConnectedUiState(bool connected);
     void loadRememberedInputState();
     void saveRememberedInputState() const;
@@ -138,12 +151,17 @@ private:
     void setStatusText(const QString& text);
     void clearRemoteWaveformDisplay(const QString& statusText = QString());
     void resetParserState();
+    void appendIncomingSocketBytes(const QByteArray& bytes, bool publishBacklogWarning);
     void scheduleDeferredProcessBuffer();
     void processBuffer();
     bool trySynchronizeLengthPrefixedStream();
     bool enforceTcpBufferBacklogLimit();
     bool discardInvalidTcpPrefix(qsizetype bytesToDrop);
-    void disconnectInvalidTcpStream(const QString& reason);
+    void disconnectInvalidTcpStream(const QString& statusText);
+    void publishTcpWaveLog(VaporView::LogLevel level,
+                           const QString& event,
+                           const QString& message,
+                           QVariantMap fields = {}) const;
     bool isValidPayloadSize(qint32 candidate) const;
     qint32 decodeHeaderValue(const char *raw, HeaderByteOrder order) const;
     bool tryConsumeHeader();
@@ -215,6 +233,9 @@ private:
     bool live_display_dirty_;
     bool process_buffer_pending_;
     bool payload_order_auto_correct_logged_;
+    bool user_disconnect_requested_;
+    bool suppress_next_disconnected_log_;
+    bool socket_error_logged_for_current_connection_;
     bool is_english_;
     bool compact_layout_;
     bool remote_sky_mode_;

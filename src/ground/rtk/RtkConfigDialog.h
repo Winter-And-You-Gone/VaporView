@@ -30,6 +30,8 @@
 
 class QCloseEvent;
 class QEvent;
+class QResizeEvent;
+class QTcpServer;
 
 namespace VaporView { class SingleLevelPopupMenu; }
 
@@ -48,12 +50,15 @@ public:
     void setUiTestMode(bool enabled);
     void setEnglish(bool english);
     void setFontScale(int percent);
+    void setCombinationNavigationTopInset(int pixels);
     void setPreferredOutputPortAndBaud(const QString& portName, const QString& baudText);
     void setEpsilonMainPortAndBaud(const QString& portName, const QString& baudText);
     void setEpsilonDataProvider(std::function<VaporView::EpsilonData()> provider);
     using EpsilonLeverArmCompletion = std::function<void(bool, const QString&)>;
     using EpsilonLeverArmApplier = std::function<void(double, double, double, EpsilonLeverArmCompletion)>;
     void setEpsilonMainAntennaLeverArmApplier(EpsilonLeverArmApplier applier);
+    using RtcmCorrectionSink = std::function<bool(const QByteArray&)>;
+    void setRtcmCorrectionSink(RtcmCorrectionSink sink, const QString& label);
 
 signals:
     void rtkRunningChanged(bool running);
@@ -61,6 +66,7 @@ signals:
 protected:
     void closeEvent(QCloseEvent *event) override;
     void changeEvent(QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
 private slots:
     void onStartClicked();
@@ -80,6 +86,9 @@ private:
     void setupUi();
     void loadSettings();
     void saveSettings();
+    void saveMountpointSetting(const QString& mountpoint);
+    bool startRtcmCorrectionSinkServer(RtkStreamConfig *config, QString *errorMessage);
+    void stopRtcmCorrectionSinkServer();
     bool buildRtkStreamConfig(RtkStreamConfig *config,
                               QString *description = nullptr,
                               QString *validationError = nullptr,
@@ -117,8 +126,12 @@ private:
     bool parseMainAntennaLeverArm(double *x, double *y, double *z, QString *errorMessage = nullptr) const;
     QString mainAntennaLeverArmHelpText() const;
     void applyDetectedOutputAndGgaPort(const QString& portName, const QString& baudText);
+    void scheduleStartupMountpointFetch();
     void setServiceStatus(const QString& text, const QString& iconName, VaporView::AppThemeColor color);
     void refreshServiceStatusAppearance();
+    void updateStreamStatusFields(const RtkStreamStats *stats = nullptr);
+    void updateAccessibleNames();
+    void configureTabOrder();
     QVBoxLayout *createCardLayout(QGroupBox *group,
                                   QLabel *&titleLabel,
                                   const QString& iconName,
@@ -133,6 +146,7 @@ private:
     QHBoxLayout *gga_layout_;
     QVBoxLayout *gga_controls_layout_;
     QGridLayout *gga_header_layout_;
+    QGridLayout *stream_status_layout_;
     QVBoxLayout *gga_text_container_layout_;
     QVBoxLayout *log_text_container_layout_;
     QSpacerItem *gga_button_spacer_;
@@ -162,6 +176,10 @@ private:
     QLabel *reconnect_label_;
     QLabel *gga_port_info_label_;
     QLabel *gga_frequency_label_;
+    QLabel *stream_input_label_;
+    QLabel *stream_input_value_;
+    QLabel *rtcm_output_status_label_;
+    QLabel *rtcm_output_status_value_;
     QLineEdit *server_edit_;
     QLineEdit *port_edit_;
     QLineEdit *username_edit_;
@@ -197,13 +215,19 @@ private:
     VaporView::AppThemeColor service_status_color_;
 
     bool embedded_;
+    bool compact_layout_;
+    int combination_navigation_top_inset_ = 0;
     std::unique_ptr<RtkStreamService> rtk_service_;
     bool is_running_;
     bool is_english_;
     int font_scale_percent_;
     std::function<VaporView::EpsilonData()> epsilon_data_provider_;
     EpsilonLeverArmApplier epsilon_main_antenna_lever_arm_applier_;
+    RtcmCorrectionSink rtcm_correction_sink_;
+    QString rtcm_correction_sink_label_;
+    std::unique_ptr<QTcpServer> rtcm_correction_sink_server_;
     QString epsilon_main_port_;
+    QString saved_mountpoint_;
     int epsilon_main_baudrate_;
     QSize base_dialog_size_;
     QSize base_minimum_dialog_size_;

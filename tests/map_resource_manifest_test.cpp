@@ -63,5 +63,37 @@ int main(int argc, char** argv)
         return fail(QStringLiteral("unsafe relative path was accepted"));
     }
 
+    const QByteArray insecureFileUrl = R"json({
+        "resources": [{
+            "id": "insecure-file",
+            "displayName": "Insecure File",
+            "version": "1.0.0",
+            "files": [{
+                "relativePath": "resources/maps/file.tif",
+                "url": "http://example.test/file.tif"
+            }]
+        }]
+    })json";
+    packages.clear();
+    if (VaporView::Map3D::MapResourceManifest::parse(insecureFileUrl, manifestUrl, &packages, &error))
+    {
+        return fail(QStringLiteral("remote HTTP file URL was accepted"));
+    }
+
+    const QByteArray insecurePackageUrl = R"json({
+        "resources": [{
+            "id": "insecure-package",
+            "displayName": "Insecure Package",
+            "version": "1.0.0",
+            "downloadUrl": "http://example.test/package.7z",
+            "installPath": "resources/maps/package.7z"
+        }]
+    })json";
+    packages.clear();
+    if (VaporView::Map3D::MapResourceManifest::parse(insecurePackageUrl, manifestUrl, &packages, &error))
+    {
+        return fail(QStringLiteral("remote HTTP package URL was accepted"));
+    }
+
     return 0;
 }

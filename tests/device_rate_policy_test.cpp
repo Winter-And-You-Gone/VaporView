@@ -34,17 +34,13 @@ int main()
             "effective rate respects maximum");
     require(clampPtbSampleRate(200) == kPtbMaxSampleRateHz, "PTB rate is capped");
 
-    const std::map<uint8_t, int> grouped = groupedEpsilonPacketRates(100);
-    require(grouped.at(0x40) == 100, "high-rate EPSILON packet follows grouped rate");
-    require(grouped.at(0x53) == 20, "status EPSILON packet uses low-rate group");
-    require(epsilonPacketCallbackRate(grouped, 10) == 100,
+    const std::map<uint8_t, int> defaultRates = defaultEpsilonPacketRates();
+    require(defaultRates.at(0x40) == 250 && defaultRates.at(0x5A) == 1,
+            "recommended EPSILON packet-rate defaults are stable");
+    require(epsilonPacketCallbackRate(defaultRates, 10) == 250,
             "callback rate follows fastest configured packet");
-    const EpsilonSerialBandwidth groupedBandwidth = epsilonSerialBandwidth(grouped);
-    require(groupedBandwidth.required_bits_per_second == 390600,
-            "grouped 100 Hz profile includes FDILink and 8N1 overhead");
-    require(groupedBandwidth.fits(), "grouped 100 Hz profile fits 921600 baud with headroom");
 
-    const EpsilonSerialBandwidth defaultBandwidth = epsilonSerialBandwidth(defaultEpsilonPacketRates());
+    const EpsilonSerialBandwidth defaultBandwidth = epsilonSerialBandwidth(defaultRates);
     require(defaultBandwidth.required_bits_per_second == 427570,
             "recommended profile bandwidth matches documented packet sizes");
     require(defaultBandwidth.fits(), "recommended profile fits 921600 baud with headroom");
@@ -62,13 +58,12 @@ int main()
     QTemporaryDir temporaryDir;
     require(temporaryDir.isValid(), "temporary settings directory created");
     QSettings settings(temporaryDir.filePath(QStringLiteral("rates.ini")), QSettings::IniFormat);
-    settings.setValue(QStringLiteral("epsilon_custom_packet_rates_enabled"), true);
-    settings.setValue(QStringLiteral("epsilon_custom_packet_rates_user_saved"), true);
-    settings.setValue(epsilonPacketRateSettingsKey(0x40), 250);
-    bool custom = false;
-    const std::map<uint8_t, int> effective = effectiveEpsilonPacketRates(settings, 100, &custom);
-    require(custom, "saved custom EPSILON profile is selected");
-    require(effective.at(0x40) == 250, "custom EPSILON packet rate is loaded");
+    require(effectiveEpsilonPacketRates(settings) == defaultRates,
+            "missing EPSILON packet-rate settings fall back to recommended defaults");
+    settings.setValue(epsilonPacketRateSettingsKey(0x40), 500);
+    const std::map<uint8_t, int> effective = effectiveEpsilonPacketRates(settings);
+    require(effective.at(0x40) == 500 && effective.at(0x41) == defaultRates.at(0x41),
+            "saved EPSILON packet rates override individual recommended defaults");
     require(!epsilonPacketRatesSignature(effective).isEmpty(), "packet-rate signature is stable");
 
     std::cout << "device rate policy tests passed\n";

@@ -1,5 +1,7 @@
 set(NAV_SOURCES
     ${CMAKE_SOURCE_DIR}/src/app/ground_main.cpp
+    ${CMAKE_SOURCE_DIR}/src/app/LifecycleBreadcrumb.cpp
+    ${CMAKE_SOURCE_DIR}/src/app/LifecycleBreadcrumb.h
     ${CMAKE_SOURCE_DIR}/src/app/StartupSplash.cpp
     ${CMAKE_SOURCE_DIR}/src/app/StartupSplash.h
 )
@@ -32,6 +34,7 @@ set(LUCIDE_RESOURCES
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-down-dark.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-down-primary-dark.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-down-primary.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-left.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-right.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-up.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-up-dark.svg
@@ -64,8 +67,9 @@ set(LUCIDE_RESOURCES
     ${CMAKE_SOURCE_DIR}/resources/lucide/radar.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/refresh-cw.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/satellite.svg
-    ${CMAKE_SOURCE_DIR}/resources/lucide/sliders-vertical.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/scroll-text.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/server-cog.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/sliders-vertical.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/square-activity.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/square-check-big.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/square.svg

@@ -28,24 +28,30 @@ target_link_libraries(vaporview_ground_temperature_command_state PUBLIC
 )
 
 add_library(vaporview_ground_device_core STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Ai8DeviceSession.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Ai8DeviceSession.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/EpsilonDeviceSession.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/EpsilonDeviceSession.h
     ${CMAKE_CURRENT_SOURCE_DIR}/GroundTelemetryService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/GroundTelemetryService.h
     ${CMAKE_CURRENT_SOURCE_DIR}/ImuConfigurationService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ImuConfigurationService.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/Rd105DeviceSession.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Rd105DeviceSession.h
     ${CMAKE_CURRENT_SOURCE_DIR}/CollectorRegistry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/CollectorRegistry.h
     ${CMAKE_CURRENT_SOURCE_DIR}/EpsilonConfigurationService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/EpsilonConfigurationService.h
     ${CMAKE_CURRENT_SOURCE_DIR}/LocalDeviceConnectionController.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/LocalDeviceConnectionController.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/LocalConnectionCoordinator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/LocalConnectionCoordinator.h
     ${CMAKE_CURRENT_SOURCE_DIR}/RemoteTelemetryDecoder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/RemoteTelemetryDecoder.h
     ${CMAKE_CURRENT_SOURCE_DIR}/RemoteTelemetryState.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/RemoteTelemetryState.h
     ${CMAKE_CURRENT_SOURCE_DIR}/RemoteSkyController.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/RemoteSkyController.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/SerialPortDetectionService.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/SerialPortDetectionService.h
     ${CMAKE_CURRENT_SOURCE_DIR}/UiTestDataModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UiTestDataModel.h
 )

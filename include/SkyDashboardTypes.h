@@ -1,6 +1,7 @@
 #ifndef VaporView_SKY_DASHBOARD_TYPES_H_
 #define VaporView_SKY_DASHBOARD_TYPES_H_
 
+#include "Ai8TemperatureControllerProtocol.h"
 #include "TelemetryTypes.h"
 #include "data_types.h"
 
@@ -17,6 +18,8 @@ struct SkyDashboardSnapshot
     PtbData ptb;
     HmpData hmp;
     LidarData lidar;
+    TemperatureControllerData temperature_controller;
+    Ai8TemperatureControllerProtocol::LiveData ai8_temperature_controller;
     WaveformFeature waveform_feature;
     QVector<float> latest_raw_waveform_preview;
     QVector<float> latest_harmonic_waveform_preview;
@@ -36,6 +39,8 @@ struct SkyDashboardSnapshot
     bool ptb_stale = true;
     bool hmp_stale = true;
     bool lidar_stale = true;
+    bool temperature_controller_stale = true;
+    bool ai8_temperature_controller_stale = true;
     bool waveform_stale = true;
 };
 
