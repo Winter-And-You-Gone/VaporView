@@ -325,7 +325,8 @@ void MainWindow::enterRemoteSkyDeviceConfigMode()
                              state_->device_config_.ptb_port_combo,
                              state_->device_config_.hmp_port_combo,
                              state_->device_config_.lidar_port_combo,
-                             state_->device_config_.temperature_port_combo})
+                             state_->device_config_.temperature_port_combo,
+                             state_->device_config_.ai8_temperature_port_combo})
     {
         if (combo)
         {
@@ -765,13 +766,13 @@ void MainWindow::setRemoteSkyConfigStatus(const QString& text, bool error)
     {
         status = QStringLiteral("pending");
     }
-    else if (state_->remote_sky_config_dirty_)
-    {
-        status = QStringLiteral("dirty");
-    }
     else if (isRemoteSkyMode() && !linkOpen)
     {
         status = QStringLiteral("disabled");
+    }
+    else if (state_->remote_sky_config_dirty_)
+    {
+        status = QStringLiteral("dirty");
     }
     else if (state_->remote_sky_config_loaded_)
     {
@@ -795,7 +796,7 @@ void MainWindow::updateRemoteSkyConfigControlsState()
     const bool pending = state_->remote_sky_config_loading_ ||
                          state_->remote_sky_config_applying_ ||
                          state_->remote_sky_config_saving_;
-    const bool fieldsEnabled = hasConfig && !pending;
+    const bool fieldsEnabled = hasConfig && linkOpen && !pending;
     const QList<QWidget *> targetWidgets = {
         state_->device_config_.epsilon_port_combo,
         state_->device_config_.epsilon_baud_combo,
@@ -897,9 +898,12 @@ void MainWindow::requestRemoteSkyConfigIfAvailable(bool force)
         config.lidar.port = QStringLiteral("UI-TEST-LIDAR");
         config.temperature_controller.enabled = true;
         config.temperature_controller.port = QStringLiteral("UI-TEST-RD105");
+        config.ai8_temperature_controller.enabled = true;
+        config.ai8_temperature_controller.port = QStringLiteral("UI-TEST-AI8");
         state_->remote_sky_config_ = config;
         state_->remote_sky_baseline_config_ = config;
         state_->remote_sky_config_loaded_ = true;
+        state_->remote_sky_config_loaded_generation_ = 0;
         state_->remote_sky_config_dirty_ = false;
         state_->remote_sky_config_loading_ = false;
         setRemoteSkyConfigUi(config);
@@ -923,12 +927,25 @@ void MainWindow::requestRemoteSkyConfigIfAvailable(bool force)
         updateRemoteSkyConfigControlsState();
         return;
     }
-    if (state_->remote_sky_config_loading_ && !force)
+
+    const quint64 linkGeneration = state_->remote_sky_controller_->linkGeneration();
+    const bool pending = state_->remote_sky_config_loading_ ||
+                         state_->remote_sky_config_applying_ ||
+                         state_->remote_sky_config_saving_;
+    if (pending)
     {
+        updateRemoteSkyConfigControlsState();
+        return;
+    }
+    if (!force &&
+        state_->remote_sky_config_loaded_ &&
+        state_->remote_sky_config_loaded_generation_ == linkGeneration)
+    {
+        updateRemoteSkyConfigControlsState();
         return;
     }
     state_->remote_sky_config_loading_ = true;
-    state_->remote_sky_config_read_generation_ = state_->remote_sky_controller_->linkGeneration();
+    state_->remote_sky_config_read_generation_ = linkGeneration;
     state_->remote_sky_config_read_seq_ = state_->remote_sky_controller_->requestSkyConfig();
     if (state_->remote_sky_config_read_seq_ == 0)
     {
@@ -1083,6 +1100,9 @@ void MainWindow::handleRemoteSkyConfigReceived(const QJsonObject& object, bool b
     state_->remote_sky_config_ = config;
     state_->remote_sky_baseline_config_ = config;
     state_->remote_sky_config_loaded_ = true;
+    state_->remote_sky_config_loaded_generation_ = bypassGenerationGuard || isUiTestMode()
+        ? 0
+        : state_->remote_sky_config_read_generation_;
     state_->remote_sky_config_dirty_ = false;
     setRemoteSkyConfigUi(config);
     setRemoteSkyConfigStatus(state_->is_english_
@@ -1132,6 +1152,9 @@ void MainWindow::handleRemoteSkyConfigApplyResultReceived(const QJsonObject& res
     {
         state_->remote_sky_baseline_config_ = state_->remote_sky_config_;
         state_->remote_sky_config_loaded_ = true;
+        state_->remote_sky_config_loaded_generation_ = bypassGenerationGuard || isUiTestMode()
+            ? 0
+            : state_->remote_sky_config_apply_generation_;
         state_->remote_sky_config_dirty_ = false;
         setRemoteSkyConfigStatus(state_->is_english_
             ? QStringLiteral("Sky accepted the Remote Sky config.")

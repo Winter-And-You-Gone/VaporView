@@ -909,6 +909,8 @@ void MainWindow::onRemoteSerialPortDetectionResult(const QJsonObject& result)
         }
         state_->remote_sky_config_ = config;
         state_->remote_sky_config_loaded_ = true;
+        state_->remote_sky_config_loaded_generation_ =
+            state_->remote_sky_controller_ ? state_->remote_sky_controller_->linkGeneration() : 0;
         state_->remote_sky_config_dirty_ = true;
         setRemoteSkyConfigUi(config);
         setRemoteSkyConfigStatus(state_->is_english_

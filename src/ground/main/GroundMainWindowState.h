@@ -498,6 +498,7 @@ struct MainWindowState
     quint16 remote_sky_config_save_seq_;
     quint64 remote_sky_config_read_generation_;
     quint64 remote_sky_config_apply_generation_;
+    quint64 remote_sky_config_loaded_generation_;
     bool remote_wave_stream_requested_;
     bool remote_wave_stream_enable_pending_;
     bool remote_wave_stream_auto_start_;

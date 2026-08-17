@@ -26,6 +26,7 @@
 #include <QPushButton>
 #include <QPropertyAnimation>
 #include <QSettings>
+#include <QStackedWidget>
 #include <QTimer>
 #include <QVariant>
 #include "shared/theme/AppTheme.h"
@@ -298,6 +299,7 @@ struct RemoteDeviceE2eState
     qint64 startedMs = QDateTime::currentMSecsSinceEpoch();
     quint32 pendingDeviceRequest = 0;
     quint16 pendingCommandSequence = 0;
+    bool deviceConfigAutoLoaded = false;
     VaporView::TelemetryStatus lastStatus;
     VaporView::TemperatureControllerData lastTemperatureController;
     QHash<quint32, VaporView::DeviceOperationResponse> deviceResponses;
@@ -391,10 +393,11 @@ void startRemoteDeviceE2e(QApplication& app, MainWindow& window, const QString& 
         const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - state->startedMs;
         if (elapsed > 45000)
         {
-            finish(false, QStringLiteral("Remote device UI E2E timed out at step %1; open=%2; support=%3; pending_request=%4; pending_seq=%5; ack_seen=%6; temp_valid=%7; temp_target=%8; rtcm_bytes=%9")
+            finish(false, QStringLiteral("Remote device UI E2E timed out at step %1; open=%2; support=%3; config_auto_loaded=%4; pending_request=%5; pending_seq=%6; ack_seen=%7; temp_valid=%8; temp_target=%9; rtcm_bytes=%10")
                             .arg(state->step)
                             .arg(controller->isOpen())
                             .arg(static_cast<int>(controller->deviceOperationSupport()))
+                            .arg(state->deviceConfigAutoLoaded)
                             .arg(state->pendingDeviceRequest)
                             .arg(state->pendingCommandSequence)
                             .arg(state->commandAcks.contains(state->pendingCommandSequence))
@@ -406,6 +409,35 @@ void startRemoteDeviceE2e(QApplication& app, MainWindow& window, const QString& 
 
         if (state->step == 0)
         {
+            auto *pageStack = window.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
+            auto *deviceConfigPage = window.findChild<QWidget *>(QStringLiteral("deviceConfigPage"));
+            auto *statusLabel = window.findChild<QLabel *>(QStringLiteral("deviceRemoteSkyConfigStatus"));
+            auto *epsilonPort = window.findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
+            auto *epsilonBaud = window.findChild<QComboBox *>(QStringLiteral("deviceEpsilonBaudCombo"));
+            auto *epsilonRate = window.findChild<QComboBox *>(QStringLiteral("deviceEpsilonRateCombo"));
+            auto *ai8Port = window.findChild<QComboBox *>(QStringLiteral("deviceAi8TemperaturePortCombo"));
+            auto *ai8Baud = window.findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureBaudCombo"));
+            auto *ai8Rate = window.findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureRateCombo"));
+            if (!pageStack || !deviceConfigPage || !statusLabel ||
+                !epsilonPort || !epsilonBaud || !epsilonRate ||
+                !ai8Port || !ai8Baud || !ai8Rate)
+            {
+                finish(false, QStringLiteral("Remote Device Config widgets are unavailable"));
+                return;
+            }
+            pageStack->setCurrentWidget(deviceConfigPage);
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (epsilonPort->isEnabled() || epsilonBaud->isEnabled() || epsilonRate->isEnabled() ||
+                ai8Port->isEnabled() || ai8Baud->isEnabled() || ai8Rate->isEnabled())
+            {
+                finish(false, QStringLiteral("Remote Device Config fields were editable before SkyConfig was loaded"));
+                return;
+            }
+            if (statusLabel->text().trimmed().isEmpty())
+            {
+                finish(false, QStringLiteral("Remote Device Config did not explain the unloaded SkyConfig state"));
+                return;
+            }
             if (!QMetaObject::invokeMethod(&window, "onConnectClicked", Qt::DirectConnection))
             {
                 finish(false, QStringLiteral("MainWindow connect action is unavailable"));
@@ -418,7 +450,27 @@ void startRemoteDeviceE2e(QApplication& app, MainWindow& window, const QString& 
         const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
         if (state->step == 1)
         {
+            auto *statusLabel = window.findChild<QLabel *>(QStringLiteral("deviceRemoteSkyConfigStatus"));
+            auto *epsilonPort = window.findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
+            auto *epsilonBaud = window.findChild<QComboBox *>(QStringLiteral("deviceEpsilonBaudCombo"));
+            auto *epsilonRate = window.findChild<QComboBox *>(QStringLiteral("deviceEpsilonRateCombo"));
+            auto *ai8Port = window.findChild<QComboBox *>(QStringLiteral("deviceAi8TemperaturePortCombo"));
+            auto *ai8Baud = window.findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureBaudCombo"));
+            auto *ai8Rate = window.findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureRateCombo"));
+            const bool configAutoLoaded =
+                statusLabel &&
+                statusLabel->property("status").toString() == QStringLiteral("success") &&
+                epsilonPort && epsilonPort->isEnabled() &&
+                epsilonBaud && epsilonBaud->isEnabled() &&
+                epsilonRate && epsilonRate->isEnabled() &&
+                ai8Port && ai8Port->isEnabled() &&
+                ai8Baud && ai8Baud->isEnabled() &&
+                ai8Rate && ai8Rate->isEnabled() &&
+                !epsilonPort->currentText().trimmed().isEmpty() &&
+                !ai8Port->currentText().trimmed().isEmpty();
+            state->deviceConfigAutoLoaded = state->deviceConfigAutoLoaded || configAutoLoaded;
             if (!controller->isOpen() ||
+                !configAutoLoaded ||
                 !controller->statusFresh(nowMs) ||
                 controller->deviceState(VaporView::SkyDeviceId::Epsilon) != VaporView::DeviceState::Connected ||
                 controller->deviceState(VaporView::SkyDeviceId::TemperatureController) != VaporView::DeviceState::Connected ||

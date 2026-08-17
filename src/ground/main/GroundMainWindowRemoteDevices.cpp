@@ -1677,6 +1677,8 @@ void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested, const QSt
             }
             state_->remote_sky_config_ = config;
             state_->remote_sky_config_loaded_ = true;
+            state_->remote_sky_config_loaded_generation_ =
+                state_->remote_sky_controller_ ? state_->remote_sky_controller_->linkGeneration() : 0;
             state_->remote_sky_config_dirty_ = true;
             setRemoteSkyConfigUi(config);
             if (isUiTestMode())

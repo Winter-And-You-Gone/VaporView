@@ -108,6 +108,7 @@
 | Ground | protocol.parse | command_ack_parse_failed | Warning | 无法解析 CommandAck 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | sky_config_parse_failed | Warning | 无法解析 SkyConfig JSON 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | sky_config_apply_result_parse_failed | Warning | 无法解析 SkyConfigApplyResult JSON 遥测载荷。 | message_type, payload_bytes |  |  |
+| Ground | protocol.parse | serial_port_detection_result_parse_failed | Warning | 无法解析串口自动识别结果遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | temperature_controller_status_parse_failed | Warning | 无法解析 TemperatureControllerStatus 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | ai8_temperature_controller_status_parse_failed | Warning | 无法解析 AI-8288 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | device_operation_response_parse_failed | Warning | 无法解析 DeviceOperationResponse 遥测载荷。 | message_type, payload_bytes |  |  |
@@ -143,12 +144,14 @@
 | Ground | session.recording | scheduled_recording_stop_command_sent | Info | 定时记录停止命令已发送。 | execution_path, command, command_seq | ui_visibility |  |
 | Ground | device.connection | serial_ports_refreshed | Info | 串口列表已刷新。 | serial_port_count | ui_visibility |  |
 | Ground | device.connection | serial_port_detection_started | Info | 开始自动识别串口。 |  | ui_visibility |  |
+| Ground | device.connection | remote_serial_port_detection_started | Info | 已请求天空端自动识别串口。 | command_seq | ui_visibility |  |
 | Ground | device.connection | serial_port_detection_cancel_requested | Info | 已请求取消，正在停止自动识别串口。 | reason_code | ui_visibility | USER_CANCELLED |
+| Ground | device.connection | remote_serial_port_detection_cancel_failed | Warning | 天空端取消串口自动识别失败。 | error_code | ui_visibility |  |
 | Ground | device.connection | serial_port_detection_no_ports | Warning | 自动识别结束，当前没有发现可用串口。 | reason_code, serial_port_count, selected_candidates | ui_message, ui_visibility | NO_SERIAL_PORTS |
 | Ground | device.connection | serial_port_detection_plan_created | Info | 串口自动识别计划已创建。 | serial_port_count, selected_candidates, default_probe_count | ui_message, ui_visibility |  |
 | Ground | device.connection | serial_port_detection_selected_pass_started | Info | 开始按已选串口和波特率探测设备。 | selected_candidates | ui_message, ui_visibility |  |
 | Ground | device.connection | serial_port_detection_default_pass_started | Info | 开始按默认波特率探测剩余设备。 | serial_port_count, default_probe_count | ui_message, ui_visibility |  |
-| Ground | device.connection | serial_port_detection_probe_started | Debug | 开始探测串口设备。 | device_key, device, port, baud, probe_phase | ui_message, ui_visibility |  |
+| Ground | device.connection | serial_port_detection_probe_started | Info | 开始探测串口设备。 | device_key, device, port, baud, probe_phase | ui_message, ui_visibility |  |
 | Ground | device.connection | serial_port_detection_device_identified | Info | 串口自动识别已识别设备。 | device_key, device, port, baud, detected_devices | ui_message, ui_visibility |  |
 | Ground | device.connection | serial_port_detection_cancelled | Info | 串口自动识别已取消。 | reason_code, detected_devices | ui_message, ui_visibility | USER_CANCELLED |
 | Ground | device.connection | serial_port_detection_device_not_found | Info | 串口自动识别未找到设备。 | device_key, device | ui_message, ui_visibility |  |
@@ -260,7 +263,7 @@
 | Ground | device.navigation.command | epsilon_output_reconfigure_skipped_rate_unspecified | Info | EPSILON 频率为“不设定”，已跳过输出频率下发。 | device, reason_code | ui_visibility | COMMAND_NOT_SUPPORTED |
 | Ground | device.navigation.command | epsilon_output_reconfigure_started | Info | 开始手动重配 EPSILON 输出。 | device, port, baud, packet_rate_summary | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_output_reconfigure_open_failed | Error | 打开 EPSILON 串口进行手动重配失败。 | device, operation, port, baud, system_error, error_code | ui_dedupe_key | SERIAL_OPEN_FAILED |
-| Ground | device.navigation.command | epsilon_output_reconfigure_failed | Error | EPSILON 输出手动重配失败。 | device, operation, port, baud, output_rate_hz, callback_rate_hz, packet_rate_signature, error_code | ui_dedupe_key | CONFIG_APPLY_FAILED |
+| Ground | device.navigation.command | epsilon_output_reconfigure_failed | Warning/Error | EPSILON 输出手动重配失败。 | device, operation, port, baud, output_rate_hz, callback_rate_hz, packet_rate_signature, error_code | ui_dedupe_key | CONFIG_APPLY_FAILED |
 | Ground | device.navigation.command | epsilon_output_reconfigure_completed | Info | EPSILON 输出手动重配已完成。 | device, operation, port, output_rate_hz, callback_rate_hz, packet_rate_signature | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_output_rate_command_disabled | Info | 已禁用 EPSILON 输出频率下发，使用设备当前输出。 | device, apply_device_rate | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_output_rate_command_failed | Error | EPSILON 输出频率下发失败。 | device, requested_rate_hz, error_code | ui_dedupe_key | COMMAND_VERIFY_FAILED |

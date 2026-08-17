@@ -619,10 +619,19 @@ void GroundTelemetryService::attachLinkSignals()
     {
         return;
     }
-    connect(link_.get(), &TelemetryLink::bytesReceived, this, [this](const QByteArray& bytes) {
+    TelemetryLink *activeLink = link_.get();
+    connect(activeLink, &TelemetryLink::bytesReceived, this, [this, activeLink](const QByteArray& bytes) {
+        if (link_.get() != activeLink)
+        {
+            return;
+        }
         onBytesReceived(bytes);
     });
-    connect(link_.get(), &TelemetryLink::openChanged, this, [this](bool open) {
+    connect(activeLink, &TelemetryLink::openChanged, this, [this, activeLink](bool open) {
+        if (link_.get() != activeLink)
+        {
+            return;
+        }
         if (!open)
         {
             retry_timer_.stop();
@@ -631,7 +640,11 @@ void GroundTelemetryService::attachLinkSignals()
         }
         emit linkOpenChanged(open);
     });
-    connect(link_.get(), &TelemetryLink::errorOccurred, this, [this](const QString& systemError) {
+    connect(activeLink, &TelemetryLink::errorOccurred, this, [this, activeLink](const QString& systemError) {
+        if (link_.get() != activeLink)
+        {
+            return;
+        }
         publishTelemetryLog(LogLevel::Warning,
                             QStringLiteral("telemetry.link"),
                             QStringLiteral("ground_telemetry_link_error"),
@@ -639,7 +652,11 @@ void GroundTelemetryService::attachLinkSignals()
                             {{QStringLiteral("reason_code"), QStringLiteral("GROUND_TELEMETRY_LINK_ERROR")},
                              {QStringLiteral("system_error"), systemError}});
     });
-    connect(link_.get(), &TelemetryLink::logRecordGenerated, this, [](LogRecord record) {
+    connect(activeLink, &TelemetryLink::logRecordGenerated, this, [this, activeLink](LogRecord record) {
+        if (link_.get() != activeLink)
+        {
+            return;
+        }
         if (record.source.isEmpty())
         {
             record.source = QStringLiteral("TelemetryLink");

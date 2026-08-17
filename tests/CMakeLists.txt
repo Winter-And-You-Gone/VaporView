@@ -636,7 +636,7 @@ target_include_directories(device_config_layout_test PRIVATE
 target_compile_definitions(device_config_layout_test PRIVATE
     VAPORVIEW_MAIN_WINDOW_TESTING=1
 )
-target_link_libraries(device_config_layout_test PRIVATE vaporview_main_window)
+target_link_libraries(device_config_layout_test PRIVATE vaporview_main_window Qt6::Network)
 add_dependencies(device_config_layout_test VaporViewRuntimeResources)
 add_test(NAME device_config_layout_test COMMAND device_config_layout_test)
 

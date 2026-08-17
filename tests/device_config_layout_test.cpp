@@ -1,6 +1,8 @@
 #include "ground/main/MainWindow.h"
+#include "ground/devices/RemoteSkyController.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "SkyConfig.h"
+#include "TelemetryCodec.h"
 #include "test_ui_helpers.h"
 
 #include <QApplication>
@@ -9,6 +11,8 @@
 #include <QFrame>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QHostAddress>
+#include <QJsonDocument>
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
@@ -20,6 +24,8 @@
 #include <QScrollBar>
 #include <QSettings>
 #include <QStringList>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QToolButton>
 #include <QVector>
@@ -695,6 +701,9 @@ int main(int argc, char **argv)
             "remote mode exposes AI-8 SkyConfig serial fields");
     require(!remoteApplyButton->isEnabled() && !remoteSaveButton->isEnabled(),
             "disconnected remote mode disables apply and save operations");
+    require(!epsilonPortCombo->isEnabled() &&
+                ai8PortCombo && !ai8PortCombo->isEnabled(),
+            "remote config fields wait for a loaded SkyConfig while the link is disconnected");
     auto *tcpWaveHostEdit = window.findChild<QLineEdit *>(QStringLiteral("tcpWaveHostEdit"));
     auto *tcpWavePortEdit = window.findChild<QLineEdit *>(QStringLiteral("tcpWavePortEdit"));
     auto *tcpWaveConnectButton = window.findChild<QPushButton *>(QStringLiteral("compactTcpStartButton"));
@@ -714,15 +723,135 @@ int main(int argc, char **argv)
     remoteConfig.ai8_temperature_controller = {true, QStringLiteral("/dev/ttyAI8"), 19200, 5.0, 5};
     remoteConfig.wave_tcp = {true, QStringLiteral("10.0.0.2"), 8899, 12, 0, 0};
     remoteConfig.telemetry = {11.0, 12.0, 2.0, 1.0, 3.0};
-    window.testInjectRemoteSkyConfig(remoteConfig.toJson());
+
+    auto *remoteController = qobject_cast<VaporView::Ground::Devices::RemoteSkyController *>(
+        window.property("remoteSkyController").value<QObject *>());
+    require(remoteController != nullptr,
+            "normal-mode device config test can access the Remote Sky controller");
+    QTcpServer fakeSkyServer;
+    require(fakeSkyServer.listen(QHostAddress::LocalHost),
+            "fake SkyConfig TCP server starts after the remote page is already open");
+    QTcpSocket *fakeSkySocket = nullptr;
+    VaporView::TelemetryCodec inboundCodec;
+    VaporView::TelemetryCodec outboundCodec;
+    int getSkyConfigRequests = 0;
+    int setSkyConfigRequests = 0;
+    bool skyConfigFrameSent = false;
+    bool skyConfigApplyResultSent = false;
+    QObject::connect(&fakeSkyServer, &QTcpServer::newConnection, [&]() {
+        fakeSkySocket = fakeSkyServer.nextPendingConnection();
+        require(fakeSkySocket != nullptr, "fake SkyConfig server accepts the Ground link");
+        QObject::connect(fakeSkySocket, &QTcpSocket::readyRead, [&]() {
+            const QVector<VaporView::TelemetryFrame> frames =
+                inboundCodec.feedBytes(fakeSkySocket->readAll());
+            for (const VaporView::TelemetryFrame& frame : frames)
+            {
+                if (frame.type != VaporView::MsgType::Command)
+                {
+                    continue;
+                }
+                VaporView::CommandMessage command;
+                if (!VaporView::TelemetryCodec::parseCommand(frame.payload, command) ||
+                    (command.command_id != VaporView::CommandId::GetSkyConfig &&
+                     command.command_id != VaporView::CommandId::SetSkyConfig))
+                {
+                    continue;
+                }
+                VaporView::CommandAck ack;
+                ack.command_id = command.command_id;
+                ack.command_seq = command.command_seq;
+                ack.error_code = VaporView::CommandErrorCode::Ok;
+                if (command.command_id == VaporView::CommandId::GetSkyConfig)
+                {
+                    ++getSkyConfigRequests;
+                }
+                else
+                {
+                    ++setSkyConfigRequests;
+                    VaporView::SkyConfig parsedConfig;
+                    QString parseError;
+                    const QJsonDocument document = QJsonDocument::fromJson(command.payload);
+                    if (document.isObject() &&
+                        VaporView::SkyConfig::fromJson(document.object(), parsedConfig, &parseError))
+                    {
+                        remoteConfig = parsedConfig;
+                    }
+                }
+                fakeSkySocket->write(outboundCodec.encodeFrame(
+                    VaporView::MsgType::CommandAck,
+                    VaporView::TelemetryCodec::serializeCommandAck(ack),
+                    static_cast<quint16>(100 + getSkyConfigRequests * 2),
+                    1));
+                if (command.command_id == VaporView::CommandId::GetSkyConfig)
+                {
+                    fakeSkySocket->write(outboundCodec.encodeFrame(
+                        VaporView::MsgType::SkyConfig,
+                        QJsonDocument(remoteConfig.toJson()).toJson(QJsonDocument::Compact),
+                        static_cast<quint16>(101 + getSkyConfigRequests * 2),
+                        2));
+                    skyConfigFrameSent = true;
+                }
+                else
+                {
+                    fakeSkySocket->write(outboundCodec.encodeFrame(
+                        VaporView::MsgType::SkyConfigApplyResult,
+                        QJsonDocument(QJsonObject{{QStringLiteral("success"), true}})
+                            .toJson(QJsonDocument::Compact),
+                        static_cast<quint16>(180 + setSkyConfigRequests),
+                        3));
+                    skyConfigApplyResultSent = true;
+                }
+            }
+        });
+    });
+    VaporView::setSettingsWritesSuspended(false);
+    const bool remoteOpened = remoteController->openTcp(
+        QStringLiteral("127.0.0.1"), fakeSkyServer.serverPort());
+    if (!remoteOpened)
+    {
+        VaporView::setSettingsWritesSuspended(true);
+    }
+    require(remoteOpened,
+            "Ground opens the fake Sky TCP link after entering the Remote Device Config page");
+    const bool remoteConfigAutoLoaded = VaporViewTest::processEventsUntil(3000, [&]() {
+                return skyConfigFrameSent &&
+                    getSkyConfigRequests == 1 &&
+                    remoteStatus->property("status").toString() == QStringLiteral("success") &&
+                    epsilonPortCombo->isEnabled() &&
+                    epsilonBaudCombo->isEnabled() &&
+                    epsilonRateCombo->isEnabled() &&
+                    ai8PortCombo->isEnabled() &&
+                    ai8BaudCombo->isEnabled() &&
+                    ai8RateCombo->isEnabled() &&
+                    epsilonPortCombo->currentText() == QStringLiteral("/dev/ttyEPSILON") &&
+                    ai8PortCombo->currentText() == QStringLiteral("/dev/ttyAI8");
+            });
+    VaporView::setSettingsWritesSuspended(true);
+    if (!remoteConfigAutoLoaded)
+    {
+        std::cerr << "remote lifecycle state: opened=" << remoteController->isOpen()
+                  << " getRequests=" << getSkyConfigRequests
+                  << " frameSent=" << skyConfigFrameSent
+                  << " status=" << remoteStatus->property("status").toString().toStdString()
+                  << " text=" << remoteStatus->text().toStdString()
+                  << " epsilonEnabled=" << epsilonPortCombo->isEnabled()
+                  << " epsilonText=" << epsilonPortCombo->currentText().toStdString()
+                  << " ai8Enabled=" << ai8PortCombo->isEnabled()
+                  << " ai8Text=" << ai8PortCombo->currentText().toStdString()
+                  << "\n";
+    }
+    require(remoteConfigAutoLoaded,
+            "page-open-before-Sky lifecycle auto-reads SkyConfig and enables remote serial fields");
     VaporViewTest::processEventsFor(160);
+    require(getSkyConfigRequests == 1,
+            "Remote link-open lifecycle sends one automatic GetSkyConfig request");
     activateLayouts(&window);
     require(scrollArea->horizontalScrollBar() &&
                 scrollArea->horizontalScrollBar()->maximum() == 0 &&
                 !scrollArea->horizontalScrollBar()->isVisible(),
             "loaded remote SkyConfig still fits horizontally");
-    require(remoteStatus->property("status").toString() == QStringLiteral("disabled"),
-            "loaded remote SkyConfig remains viewable but marked offline when the sky link is disconnected");
+    require(remoteStatus->property("status").toString() == QStringLiteral("success"),
+            "loaded remote SkyConfig is marked successful while the sky link is connected");
     require(epsilonPortCombo->currentText() == QStringLiteral("/dev/ttyEPSILON"),
             "remote SkyConfig updates the same EPSILON port combo");
     require(epsilonPortCombo->findText(QStringLiteral("COM7")) < 0,
@@ -747,7 +876,11 @@ int main(int argc, char **argv)
     tcpWaveHostEdit->setText(QStringLiteral("10.0.0.9"));
     tcpWavePortEdit->setText(QStringLiteral("9901"));
     tcpWaveConnectButton->click();
-    VaporViewTest::processEventsFor(120);
+    require(VaporViewTest::processEventsUntil(1500, [&]() {
+                return skyConfigApplyResultSent &&
+                    remoteStatus->property("status").toString() == QStringLiteral("success");
+            }),
+            "remote TCP wave endpoint edit clears SetSkyConfig pending state");
     QString endpointError;
     const QJsonObject endpointJson = window.testRemoteSkyConfigFromDeviceConfigUi(&endpointError);
     const QJsonObject endpointWaveJson = endpointJson.value(QStringLiteral("wave_tcp")).toObject();
@@ -830,6 +963,10 @@ int main(int argc, char **argv)
             "remote apply failure is displayed inline");
     require(remoteStatus->property("status").toString() == QStringLiteral("error"),
             "remote apply failure uses the error status vocabulary");
+    require(remoteApplyButton->isEnabled() &&
+                epsilonPortCombo->isEnabled() &&
+                ai8PortCombo->isEnabled(),
+            "remote apply failure restores editing controls for dirty retry");
     QString afterFailureError;
     const QJsonObject afterFailureJson = window.testRemoteSkyConfigFromDeviceConfigUi(&afterFailureError);
     require(afterFailureError.isEmpty() &&
@@ -838,6 +975,15 @@ int main(int argc, char **argv)
             "remote apply failure preserves the user's edited remote values");
     rawModeButton->click();
     VaporViewTest::processEventsFor(120);
+
+    remoteController->close();
+    require(VaporViewTest::processEventsUntil(1500, [&]() {
+                return !remoteController->isOpen() &&
+                    remoteStatus->property("status").toString() == QStringLiteral("disabled") &&
+                    !epsilonPortCombo->isEnabled() &&
+                    !ai8PortCombo->isEnabled();
+            }),
+            "remote link close keeps loaded values visible but makes remote fields non-writable");
 
     dataSourceModeCombo->setCurrentIndex(0);
     VaporViewTest::processEventsFor(160);
