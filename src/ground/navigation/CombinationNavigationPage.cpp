@@ -4,13 +4,17 @@
 #include "ground/rtk/RtkConfigDialog.h"
 #include "shared/theme/AppTheme.h"
 
+#include <QApplication>
 #include <QButtonGroup>
 #include <QEvent>
+#include <QFocusEvent>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
+#include <QPen>
 #include <QPropertyAnimation>
 #include <QPushButton>
 #include <QScrollArea>
@@ -59,6 +63,7 @@ protected:
 
         QStyleOptionButton option;
         initStyleOption(&option);
+        option.state &= ~QStyle::State_HasFocus;
         const QString buttonText = option.text;
         option.text.clear();
 
@@ -81,7 +86,66 @@ protected:
                 dark);
         painter.setPen(textColor);
         painter.drawText(baseline, buttonText);
+
+        if (isEnabled() && keyboard_focus_indicator_visible_)
+        {
+            painter.setPen(QPen(VaporView::appThemeColor(VaporView::AppThemeColor::Focus, dark), 1.0));
+            painter.setBrush(Qt::NoBrush);
+            const QRectF focusRect = buttonRect.adjusted(1.5, 1.5, -1.5, -1.5);
+            painter.drawRoundedRect(focusRect, 12.5, 12.5);
+        }
     }
+
+    void focusInEvent(QFocusEvent *event) override
+    {
+        QPushButton::focusInEvent(event);
+        const Qt::FocusReason reason = event ? event->reason() : Qt::OtherFocusReason;
+        setKeyboardFocusIndicatorVisible(reason == Qt::TabFocusReason ||
+                                         reason == Qt::BacktabFocusReason ||
+                                         reason == Qt::ShortcutFocusReason);
+    }
+
+    void focusOutEvent(QFocusEvent *event) override
+    {
+        QPushButton::focusOutEvent(event);
+        setKeyboardFocusIndicatorVisible(false);
+    }
+
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        if (QWidget *focusWidget = QApplication::focusWidget();
+            focusWidget && focusWidget != this && focusWidget->window() == window())
+        {
+            focusWidget->clearFocus();
+        }
+        if (QWidget *track = parentWidget())
+        {
+            const auto children = track->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly);
+            for (QWidget *child : children)
+            {
+                if (auto *button = dynamic_cast<CombinationNavigationSectionButton *>(child))
+                {
+                    button->setKeyboardFocusIndicatorVisible(false);
+                }
+            }
+        }
+        setKeyboardFocusIndicatorVisible(false);
+        QPushButton::mousePressEvent(event);
+    }
+
+private:
+    void setKeyboardFocusIndicatorVisible(bool visible)
+    {
+        if (keyboard_focus_indicator_visible_ == visible)
+        {
+            return;
+        }
+        keyboard_focus_indicator_visible_ = visible;
+        setProperty("combinationNavigationKeyboardFocus", visible);
+        update();
+    }
+
+    bool keyboard_focus_indicator_visible_ = false;
 };
 
 class CombinationNavigationSelectionThumb final : public QFrame
@@ -534,9 +598,7 @@ void CombinationNavigationPage::applyAppearance()
         "QPushButton#combinationNavigationStatusButton:pressed, QPushButton#combinationNavigationEpsilonButton:pressed, "
         "QPushButton#combinationNavigationDifferentialButton:pressed { background-color: transparent; }"
         "QPushButton#combinationNavigationStatusButton:checked:pressed, QPushButton#combinationNavigationEpsilonButton:checked:pressed, "
-        "QPushButton#combinationNavigationDifferentialButton:checked:pressed { background-color: transparent; }"
-        "QPushButton#combinationNavigationStatusButton:focus, QPushButton#combinationNavigationEpsilonButton:focus, "
-        "QPushButton#combinationNavigationDifferentialButton:focus { border-color: @vv-focus; }")
+        "QPushButton#combinationNavigationDifferentialButton:checked:pressed { background-color: transparent; }")
             .arg(trackOutline);
     const QString resolvedStyle =
         VaporView::applyAppThemeTokens(style, dark);

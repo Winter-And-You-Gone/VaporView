@@ -1599,16 +1599,15 @@ void requireRtkSidebarPage(
     {
         require(button->isCheckable() && button->text() == expectedText &&
                     button->accessibleName() == expectedText &&
-                    button->focusPolicy() == Qt::TabFocus,
-                "combination-navigation buttons are real, named and keyboard-tab focusable");
+                    button->focusPolicy() == Qt::TabFocus &&
+                    !button->property("combinationNavigationKeyboardFocus").toBool(),
+                "combination-navigation buttons are real, named and keyboard-tab focusable without mouse-open focus rings");
     }
     require(combinationPage->styleSheet().contains(
                 QStringLiteral("QFrame#combinationNavigationNavigationTrack")) &&
                 combinationPage->styleSheet().contains(QStringLiteral(":checked")) &&
-                combinationPage->styleSheet().contains(QStringLiteral(":focus")) &&
-                combinationPage->styleSheet().contains(VaporView::appThemeColorName(
-                    VaporView::AppThemeColor::Focus, VaporView::isDarkThemeEnabled())),
-            "combination-navigation capsule keeps checked and focus theme styling");
+                !combinationPage->styleSheet().contains(QStringLiteral(":focus")),
+            "combination-navigation capsule keeps checked styling without stylesheet/native focus rings");
     require(combinationPage->findChildren<RtkConfigDialog *>().size() == 1 &&
                 combinationPage->differentialPage() == preDialog &&
                 combinationStack->indexOf(preDialog) == 2,
@@ -1730,6 +1729,9 @@ void requireRtkSidebarPage(
     differentialGgaResizeRecorder.reset();
     clickWidget(differentialButton, 0);
     processEventsFor(150);
+    require(!epsilonButton->property("combinationNavigationKeyboardFocus").toBool() &&
+                !differentialButton->property("combinationNavigationKeyboardFocus").toBool(),
+            "combination navigation pointer switching clears keyboard-only focus borders");
     auto *dialog = qobject_cast<RtkConfigDialog *>(combinationStack->currentWidget());
     require(dialog == preDialog && differentialButton->isChecked(),
             "combination navigation switches from EPSILON to the original RTK page");
@@ -2365,9 +2367,8 @@ void requireRtkSidebarPage(
     processEventsFor(100);
     require(qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
             "main window is in dark theme for RTK layout stability checks");
-    require(combinationPage->styleSheet().contains(VaporView::appThemeColorName(
-                VaporView::AppThemeColor::Focus, true)),
-            "combination-navigation local style resolves the dark-theme focus token");
+    require(!combinationPage->styleSheet().contains(QStringLiteral(":focus")),
+            "combination-navigation dark-theme style keeps focus rings out of stylesheet/native painting");
     require(combinationPage->styleSheet().contains(
                 VaporView::appThemeColorName(VaporView::AppThemeColor::Window, true)) &&
                 combinationPage->styleSheet().contains(
@@ -2430,9 +2431,8 @@ void requireRtkSidebarPage(
     processEventsFor(100);
     require(!qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
             "main window returns to light theme after RTK layout stability checks");
-    require(combinationPage->styleSheet().contains(VaporView::appThemeColorName(
-                VaporView::AppThemeColor::Focus, false)),
-            "combination-navigation local style resolves the light-theme focus token");
+    require(!combinationPage->styleSheet().contains(QStringLiteral(":focus")),
+            "combination-navigation light-theme style keeps focus rings out of stylesheet/native painting");
     require(processEventsUntil(1500, themeCardGeometrySettled),
             "RTK card geometry settles after switching back to light theme");
     requireSameRect(widgetRect(ntripCard), ntripRectBeforeTheme,
