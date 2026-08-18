@@ -399,7 +399,8 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
                                QPushButton **buttonOut,
                                const QString& nameObjectName,
                                const QString& descriptionObjectName,
-                               const QString& buttonObjectName) {
+                               const QString& buttonObjectName,
+                               int descriptionColumnSpan) {
         *nameOut = new QLabel(card);
         (*nameOut)->setObjectName(nameObjectName);
         (*nameOut)->setProperty("epsilonSettingName", true);
@@ -413,13 +414,13 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
         (*buttonOut)->setObjectName(buttonObjectName);
         (*buttonOut)->setProperty("epsilonSecondaryAction", true);
         deviceGrid->addWidget(*nameOut, row, 0, Qt::AlignLeft | Qt::AlignVCenter);
-        deviceGrid->addWidget(*descriptionOut, row, 1, Qt::AlignLeft | Qt::AlignVCenter);
+        deviceGrid->addWidget(*descriptionOut, row, 1, 1, descriptionColumnSpan);
         deviceGrid->addWidget(*buttonOut, row, 3, Qt::AlignRight | Qt::AlignVCenter);
     };
     addDeviceAction(0, &rtcm_name_label_, &rtcm_description_label_, &rtcm_port_button_,
                     QStringLiteral("epsilonRtcmSettingName"),
                     QStringLiteral("epsilonRtcmSettingDescription"),
-                    QStringLiteral("epsilonRtcmPortButton"));
+                    QStringLiteral("epsilonRtcmPortButton"), 1);
     rtcm_device_port_combo_ = createRtcmDevicePortCombo(deviceSettingsCard.card);
     rtcm_device_port_combo_->setObjectName(QStringLiteral("epsilonRtcmDevicePortCombo"));
     rtcm_device_port_combo_->setProperty("epsilonRtcmDevicePortControl", true);
@@ -427,7 +428,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     addDeviceAction(1, &reconfigure_name_label_, &reconfigure_description_label_, &reconfigure_button_,
                     QStringLiteral("epsilonReconfigureSettingName"),
                     QStringLiteral("epsilonReconfigureSettingDescription"),
-                    QStringLiteral("epsilonReconfigureButton"));
+                    QStringLiteral("epsilonReconfigureButton"), 2);
     deviceSettingsCard.body_layout->addLayout(deviceGrid);
     panelLayout->addWidget(deviceSettingsCard.card);
 

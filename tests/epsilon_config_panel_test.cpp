@@ -324,6 +324,28 @@ int main(int argc, char *argv[])
                 reconfigureDescription->text().contains(QStringLiteral("本机已保存")) &&
                 reconfigureDescription->text().contains(QStringLiteral("不会保存")),
             "EPSILON saved-configuration action explains its local source and unsaved-change behavior");
+    auto *deviceSettingsCard = panel.findChild<QFrame *>(QStringLiteral("epsilonDeviceSettingsCard"));
+    auto *rtcmDescription = panel.findChild<QLabel *>(QStringLiteral("epsilonRtcmSettingDescription"));
+    auto *reconfigureButton = panel.findChild<QPushButton *>(QStringLiteral("epsilonReconfigureButton"));
+    require(deviceSettingsCard != nullptr && rtcmDescription != nullptr && reconfigureButton != nullptr,
+            "EPSILON device settings exposes labels and actions for geometry checks");
+    const QRect rtcmDescriptionRect(rtcmDescription->mapTo(deviceSettingsCard, QPoint(0, 0)),
+                                    rtcmDescription->size());
+    const QRect rtcmDevicePortRect(rtcmDevicePortCombo->mapTo(deviceSettingsCard, QPoint(0, 0)),
+                                   rtcmDevicePortCombo->size());
+    const QRect reconfigureDescriptionRect(
+        reconfigureDescription->mapTo(deviceSettingsCard, QPoint(0, 0)),
+        reconfigureDescription->size());
+    const QRect reconfigureButtonRect(reconfigureButton->mapTo(deviceSettingsCard, QPoint(0, 0)),
+                                      reconfigureButton->size());
+    const int reconfigureDescriptionRequiredHeight =
+        reconfigureDescription->heightForWidth(reconfigureDescription->width());
+    require(reconfigureDescriptionRect.width() > rtcmDescriptionRect.width() + 120 &&
+                reconfigureDescriptionRect.right() >= rtcmDevicePortRect.right() - 2 &&
+                reconfigureDescriptionRect.right() < reconfigureButtonRect.left() &&
+                (reconfigureDescriptionRequiredHeight <= 0 ||
+                 reconfigureDescriptionRequiredHeight <= reconfigureDescriptionRect.height()),
+            "EPSILON saved-configuration description uses the empty selector column without clipping wrapped text");
     auto *rtcmButton = panel.findChild<QPushButton *>(QStringLiteral("epsilonRtcmPortButton"));
     require(rtcmButton != nullptr &&
                 !rtcmButton->toolTip().contains(QStringLiteral("port 2"), Qt::CaseInsensitive) &&
