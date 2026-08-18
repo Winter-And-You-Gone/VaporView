@@ -63,10 +63,10 @@
 | SkyCore | device.temperature.state | temperature_controller_firmware_read_failed | Error | RD105 温控器版本号读取失败。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
 | SkyCore | device.temperature.state | temperature_controller_parameters_read_failed | Error | RD105 温控器参数读取失败。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
 | SkyCore | device.temperature.state | temperature_controller_parameters_incomplete | Error | RD105 温控器参数读取不完整。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
-| SkyCore | device.lidar.command | lidar_high_frequency_start_failed | Error | TFA1005-L 高频测距启动命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
-| SkyCore | device.lidar.command | lidar_standby_command_failed | Error | TFA1005-L 待机命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
-| SkyCore | device.lidar.command | lidar_distance_output_command_failed | Error | TFA1005-L 距离输出命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
-| SkyCore | device.lidar.command | lidar_low_frequency_continuous_command_failed | Error | TFA1005-L 低频连续测距命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.lidar.command | lidar_high_frequency_start_failed | Error | TFA1500-L 高频测距启动命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.lidar.command | lidar_standby_command_failed | Error | TFA1500-L 待机命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.lidar.command | lidar_distance_output_command_failed | Error | TFA1500-L 距离输出命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.lidar.command | lidar_low_frequency_continuous_command_failed | Error | TFA1500-L 低频连续测距命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
 | SkyCore | device.wave_tcp | wave_tcp_peak_search_range_updated | Info | Wave TCP 峰值搜索范围已更新。 | start_index, end_index |  |  |
 | SkyCore | device.wave_tcp | wave_tcp_resync_discarded_bytes | Warning | Wave TCP 重新同步时已丢弃部分字节。 | dropped_bytes |  | WAVE_TCP_FRAME_HEADER_NOT_FOUND |
 | SkyCore | device.wave_tcp | wave_tcp_resync_skipped_bytes | Warning | Wave TCP 重新同步时已跳过部分字节。 | skipped_bytes, header_order |  | WAVE_TCP_FRAME_OFFSET |

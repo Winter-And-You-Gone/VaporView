@@ -66,7 +66,7 @@ int main()
                  entry.fields.value(QStringLiteral("reason_code")).toString() == QStringLiteral("NO_DEVICE_CONNECTED"));
             foundLidarSkip = foundLidarSkip ||
                 (entry.event == QStringLiteral("local_device_connection_skipped") &&
-                 entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("TFA1005-L") &&
+                 entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("TFA1500-L") &&
                  entry.fields.value(QStringLiteral("reason_code")).toString() == QStringLiteral("PORT_NOT_SELECTED"));
         }
         require(foundSummary, "no-port result logged as structured warning");

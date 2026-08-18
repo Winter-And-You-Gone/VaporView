@@ -306,9 +306,9 @@ QString lidarProtocolName(quint16 recordType, bool english)
 {
     switch (recordType)
     {
-    case 2: return QStringLiteral("TFA1500 Distance");
-    case 3: return english ? QStringLiteral("TFA1500 Low Frequency") : QStringLiteral("TFA1500低频");
-    case 4: return english ? QStringLiteral("TFA1500 High Frequency") : QStringLiteral("TFA1500高频");
+    case 2: return QStringLiteral("TFA1500-L Distance");
+    case 3: return english ? QStringLiteral("TFA1500-L Low Frequency") : QStringLiteral("TFA1500-L 低频");
+    case 4: return english ? QStringLiteral("TFA1500-L High Frequency") : QStringLiteral("TFA1500-L 高频");
     case 5: return QStringLiteral("AA-B7");
     default: return english ? QStringLiteral("Unknown Lidar") : QStringLiteral("未知激光协议");
     }
@@ -2423,9 +2423,9 @@ void decodeLidarPayload(RawDecodedRecord& decoded, const QByteArray& payload, qu
         const uint8_t checksum = static_cast<uint8_t>(~sum);
         const bool crcOk = checksum == bytes[4];
         const uint32_t distanceCm = static_cast<uint32_t>(bytes[1]) | (static_cast<uint32_t>(bytes[2]) << 8) | (static_cast<uint32_t>(bytes[3]) << 16);
-        addField(decoded, QStringLiteral("TFA1500"), QStringLiteral("header"), formatHex(bytes[0]), bytes[0] == 0x5C ? QStringLiteral("OK") : QStringLiteral("BAD"), QString(), 0, 1, QString(), bytes[0] != 0x5C);
-        addField(decoded, QStringLiteral("TFA1500"), QStringLiteral("distance_raw"), QString::number(distanceCm), QString::number(distanceCm / 100.0, 'f', 3), QStringLiteral("m"), 1, 3);
-        addField(decoded, QStringLiteral("TFA1500"), QStringLiteral("checksum"), formatHex(bytes[4]), crcOk ? QStringLiteral("OK") : QStringLiteral("BAD"), QString(), 4, 1, QString(), !crcOk);
+        addField(decoded, QStringLiteral("TFA1500-L"), QStringLiteral("header"), formatHex(bytes[0]), bytes[0] == 0x5C ? QStringLiteral("OK") : QStringLiteral("BAD"), QString(), 0, 1, QString(), bytes[0] != 0x5C);
+        addField(decoded, QStringLiteral("TFA1500-L"), QStringLiteral("distance_raw"), QString::number(distanceCm), QString::number(distanceCm / 100.0, 'f', 3), QStringLiteral("m"), 1, 3);
+        addField(decoded, QStringLiteral("TFA1500-L"), QStringLiteral("checksum"), formatHex(bytes[4]), crcOk ? QStringLiteral("OK") : QStringLiteral("BAD"), QString(), 4, 1, QString(), !crcOk);
         decoded.summary = QStringLiteral("%1 m").arg(QString::number(distanceCm / 100.0, 'f', 3));
     }
     else if (recordType == 3 && payload.size() >= 6)
@@ -2439,15 +2439,15 @@ void decodeLidarPayload(RawDecodedRecord& decoded, const QByteArray& payload, qu
             checksum ^= bytes[i];
         }
         const bool crcOk = frameLen <= payload.size() && checksum == bytes[frameLen - 1];
-        addField(decoded, QStringLiteral("TFA1500 Low Frequency"), QStringLiteral("header"), formatHex(bytes[0]), bytes[0] == 0x55 ? QStringLiteral("OK") : QStringLiteral("BAD"), QString(), 0, 1, QString(), bytes[0] != 0x55);
-        addField(decoded, QStringLiteral("TFA1500 Low Frequency"), QStringLiteral("payload_len"), QString::number(payloadLen), QString(), QStringLiteral("bytes"), 2, 1);
+        addField(decoded, QStringLiteral("TFA1500-L Low Frequency"), QStringLiteral("header"), formatHex(bytes[0]), bytes[0] == 0x55 ? QStringLiteral("OK") : QStringLiteral("BAD"), QString(), 0, 1, QString(), bytes[0] != 0x55);
+        addField(decoded, QStringLiteral("TFA1500-L Low Frequency"), QStringLiteral("payload_len"), QString::number(payloadLen), QString(), QStringLiteral("bytes"), 2, 1);
         if (payloadLen >= 7 && payload.size() >= 7)
         {
             const uint32_t distanceDm = (static_cast<uint32_t>(bytes[4]) << 16) | (static_cast<uint32_t>(bytes[5]) << 8) | bytes[6];
-            addField(decoded, QStringLiteral("TFA1500 Low Frequency"), QStringLiteral("distance_raw"), QString::number(distanceDm), QString::number(distanceDm / 10.0, 'f', 3), QStringLiteral("m"), 4, 3);
+            addField(decoded, QStringLiteral("TFA1500-L Low Frequency"), QStringLiteral("distance_raw"), QString::number(distanceDm), QString::number(distanceDm / 10.0, 'f', 3), QStringLiteral("m"), 4, 3);
             decoded.summary = QStringLiteral("%1 m").arg(QString::number(distanceDm / 10.0, 'f', 3));
         }
-        addField(decoded, QStringLiteral("TFA1500 Low Frequency"), QStringLiteral("checksum"), frameLen <= payload.size() ? formatHex(bytes[frameLen - 1]) : QStringLiteral("---"), crcOk ? QStringLiteral("OK") : QStringLiteral("BAD"), QString(), frameLen <= payload.size() ? frameLen - 1 : -1, frameLen <= payload.size() ? 1 : 0, QString(), !crcOk);
+        addField(decoded, QStringLiteral("TFA1500-L Low Frequency"), QStringLiteral("checksum"), frameLen <= payload.size() ? formatHex(bytes[frameLen - 1]) : QStringLiteral("---"), crcOk ? QStringLiteral("OK") : QStringLiteral("BAD"), QString(), frameLen <= payload.size() ? frameLen - 1 : -1, frameLen <= payload.size() ? 1 : 0, QString(), !crcOk);
     }
     else if (recordType == 5 && payload.size() >= 10)
     {

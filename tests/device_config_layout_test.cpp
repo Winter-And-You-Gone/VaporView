@@ -493,7 +493,7 @@ int main(int argc, char **argv)
         QStringLiteral("EPSILON"),
         QStringLiteral("气压"),
         QStringLiteral("温湿度"),
-        QStringLiteral("TFA1005-L"),
+        QStringLiteral("TFA1500-L"),
         QStringLiteral("RD105"),
         QStringLiteral("AI-8288"),
     };

@@ -3578,7 +3578,7 @@ void MainWindow::updateDeviceConfigTexts()
             ? QStringLiteral("Humidity")
             : QStringLiteral("温湿度"));
     }
-    if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(QStringLiteral("TFA1005-L"));
+    if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(QStringLiteral("TFA1500-L"));
     if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(QStringLiteral("RD105"));
     if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(QStringLiteral("AI-8288"));
     if (state_->device_config_.epsilon_rate_lbl) state_->device_config_.epsilon_rate_lbl->setText(QString());

@@ -293,7 +293,7 @@ void MainWindow::onLidarRateChanged(const QString& text)
                          QStringLiteral("device.lidar.command"),
                          QStringLiteral("lidar_output_rate_command_disabled"),
                          QStringLiteral("已禁用激光测距仪输出频率下发，使用设备默认或自适应输出。"),
-                         {{QStringLiteral("device"), QStringLiteral("TFA1005-L")},
+                         {{QStringLiteral("device"), QStringLiteral("TFA1500-L")},
                           {QStringLiteral("apply_device_rate"), false},
                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
@@ -303,7 +303,7 @@ void MainWindow::onLidarRateChanged(const QString& text)
                          QStringLiteral("device.rate"),
                          QStringLiteral("lidar_sample_rate_updated"),
                          QStringLiteral("激光测距仪采样频率已更新。"),
-                         {{QStringLiteral("device"), QStringLiteral("TFA1005-L")},
+                         {{QStringLiteral("device"), QStringLiteral("TFA1500-L")},
                           {QStringLiteral("requested_rate_hz"), state_->lidar_sample_rate_},
                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }

@@ -956,11 +956,11 @@ const char* lidarProtocolName(LidarProtocol protocol)
   switch (protocol)
   {
   case LidarProtocol::TFA1500DistanceFrame:
-    return "TFA1005-L";
+    return "TFA1500-L";
   case LidarProtocol::TFA1500LowFrequencyFrame:
-    return "TFA1005-L 低频";
+    return "TFA1500-L 低频";
   case LidarProtocol::TFA1500HighFrequency:
-    return "TFA1005-L 高频";
+    return "TFA1500-L 高频";
   case LidarProtocol::ObservedAaB7Frame:
     return "AA-B7 激光测距帧";
   case LidarProtocol::Unknown:
@@ -5006,8 +5006,8 @@ bool LidarCollector::ensureTfa1500Streaming()
     logStructured(LogLevel::Error,
                   "device.lidar.command",
                   "lidar_high_frequency_start_failed",
-                  "TFA1005-L 高频测距启动命令发送失败。",
-                  {{"device", "TFA1005-L"},
+                  "TFA1500-L 高频测距启动命令发送失败。",
+                  {{"device", "TFA1500-L"},
                    {"command", "high_frequency_start"},
                    {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
@@ -5026,8 +5026,8 @@ bool LidarCollector::ensureTfa1500Standby()
     logStructured(LogLevel::Error,
                   "device.lidar.command",
                   "lidar_standby_command_failed",
-                  "TFA1005-L 待机命令发送失败。",
-                  {{"device", "TFA1005-L"},
+                  "TFA1500-L 待机命令发送失败。",
+                  {{"device", "TFA1500-L"},
                    {"command", "standby"},
                    {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
@@ -5046,8 +5046,8 @@ bool LidarCollector::ensureTfa1500DistanceOutput()
     logStructured(LogLevel::Error,
                   "device.lidar.command",
                   "lidar_distance_output_command_failed",
-                  "TFA1005-L 距离输出命令发送失败。",
-                  {{"device", "TFA1005-L"},
+                  "TFA1500-L 距离输出命令发送失败。",
+                  {{"device", "TFA1500-L"},
                    {"command", "distance_output"},
                    {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
@@ -5065,8 +5065,8 @@ bool LidarCollector::ensureTfa1500LowFrequencyContinuous()
     logStructured(LogLevel::Error,
                   "device.lidar.command",
                   "lidar_low_frequency_continuous_command_failed",
-                  "TFA1005-L 低频连续测距命令发送失败。",
-                  {{"device", "TFA1005-L"},
+                  "TFA1500-L 低频连续测距命令发送失败。",
+                  {{"device", "TFA1500-L"},
                    {"command", "low_frequency_continuous"},
                    {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
@@ -5102,7 +5102,7 @@ bool LidarCollector::setDeviceSampleRate(int hz)
     }
 
     sample_rate_hz_.store(std::min(hz, 1000));
-    log("TFA1005-L: 高频模式使用设备自适应输出；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
+    log("TFA1500-L: 高频模式使用设备自适应输出；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
     return true;
   }
 
@@ -5110,7 +5110,7 @@ bool LidarCollector::setDeviceSampleRate(int hz)
   {
     ensureTfa1500DistanceOutput();
     sample_rate_hz_.store(std::min(hz, 100));
-    log("TFA1005-L: 距离输出模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
+    log("TFA1500-L: 距离输出模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
     return true;
   }
 
@@ -5118,13 +5118,13 @@ bool LidarCollector::setDeviceSampleRate(int hz)
   {
     ensureTfa1500LowFrequencyContinuous();
     sample_rate_hz_.store(std::min(hz, 100));
-    log("TFA1005-L: 低频模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
+    log("TFA1500-L: 低频模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
     return true;
   }
 
   ensureTfa1500DistanceOutput();
   sample_rate_hz_.store(std::min(hz, 100));
-  log("TFA1005-L: 未识别具体输出模式，已使用距离输出命令并将主机采样率限制设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
+  log("TFA1500-L: 未识别具体输出模式，已使用距离输出命令并将主机采样率限制设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
   return true;
 }
 
