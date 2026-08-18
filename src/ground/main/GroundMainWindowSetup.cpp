@@ -4346,7 +4346,7 @@ void MainWindow::setupConfigPanel()
         combo->setValidator(nullptr);
     };
 
-    auto createPortRow = [this, config_form_widget, config_layout, &baudRates, &ports, &createRateCombo](QLabel*& lbl, QComboBox*& portCombo, QComboBox*& baudCombo, QLabel*& rateLbl, QComboBox*& rateCombo, const QString& defaultBaud, int row, int maxRate = 500) {
+    auto createPortRow = [this, config_form_widget, config_layout, &baudRates, &ports, &createRateCombo](QLabel*& lbl, QComboBox*& portCombo, QComboBox*& baudCombo, QLabel*& rateLbl, QComboBox*& rateCombo, const QString& defaultBaud, int row, int maxRate = 500, bool createRateSelector = true) {
         lbl = new QLabel(config_form_widget);
         lbl->setObjectName("fieldLabel");
         lbl->setFixedHeight(kMainPageInputHeight);
@@ -4378,8 +4378,11 @@ void MainWindow::setupConfigPanel()
         rateLbl->setFixedHeight(kMainPageInputHeight);
         config_layout->addWidget(rateLbl, row, 3, Qt::AlignVCenter | Qt::AlignRight);
 
-        rateCombo = createRateCombo(maxRate);
-        config_layout->addWidget(rateCombo, row, 4, Qt::AlignVCenter);
+        rateCombo = createRateSelector ? createRateCombo(maxRate) : nullptr;
+        if (rateCombo)
+        {
+            config_layout->addWidget(rateCombo, row, 4, Qt::AlignVCenter);
+        }
     };
 
     auto *configTitleBar = new QWidget(state_->config_group_);
@@ -4493,7 +4496,16 @@ void MainWindow::setupConfigPanel()
 
     int row = 0;
 
-    createPortRow(state_->epsilon_lbl_, state_->epsilon_port_combo_, state_->epsilon_baud_combo_, state_->epsilon_rate_lbl_, state_->epsilon_rate_combo_, "921600", row++, 200);
+    QComboBox *epsilonRateCombo = nullptr;
+    createPortRow(state_->epsilon_lbl_,
+                  state_->epsilon_port_combo_,
+                  state_->epsilon_baud_combo_,
+                  state_->epsilon_rate_lbl_,
+                  epsilonRateCombo,
+                  "921600",
+                  row++,
+                  200,
+                  false);
     createPortRow(state_->ptb_lbl_, state_->ptb_port_combo_, state_->ptb_baud_combo_, state_->ptb_rate_lbl_, state_->ptb_rate_combo_, "9600", row++, kPtbMaxSampleRateHz);
     createPortRow(state_->hmp_lbl_, state_->hmp_port_combo_, state_->hmp_baud_combo_, state_->hmp_rate_lbl_, state_->hmp_rate_combo_, "19200", row++);
     createPortRow(state_->lidar_lbl_, state_->lidar_port_combo_, state_->lidar_baud_combo_, state_->lidar_rate_lbl_, state_->lidar_rate_combo_, "500000", row++, 100);
@@ -4536,17 +4548,11 @@ void MainWindow::setupConfigPanel()
     addRemoteButtons(3, state_->lidar_remote_buttons_widget_, state_->lidar_remote_connect_btn_, state_->lidar_remote_disconnect_btn_, state_->lidar_remote_reconnect_btn_, VaporView::SkyDeviceId::Lidar);
     addRemoteButtons(4, state_->temperature_remote_buttons_widget_, state_->temperature_remote_connect_btn_, state_->temperature_remote_disconnect_btn_, state_->temperature_remote_reconnect_btn_, VaporView::SkyDeviceId::TemperatureController);
 
-    if (state_->epsilon_rate_combo_)
-    {
-        config_layout->removeWidget(state_->epsilon_rate_combo_);
-        delete state_->epsilon_rate_combo_;
-        state_->epsilon_rate_combo_ = nullptr;
-        state_->epsilon_packet_rates_btn_ = new QPushButton(config_form_widget);
-        state_->epsilon_packet_rates_btn_->setFixedHeight(kMainPageButtonHeight);
-        state_->epsilon_packet_rates_btn_->setMinimumWidth(140);
-        connect(state_->epsilon_packet_rates_btn_, &QPushButton::clicked, this, &MainWindow::onConfigureEpsilonPacketRatesClicked);
-        config_layout->addWidget(state_->epsilon_packet_rates_btn_, 0, 4, Qt::AlignVCenter);
-    }
+    state_->epsilon_packet_rates_btn_ = new QPushButton(config_form_widget);
+    state_->epsilon_packet_rates_btn_->setFixedHeight(kMainPageButtonHeight);
+    state_->epsilon_packet_rates_btn_->setMinimumWidth(140);
+    connect(state_->epsilon_packet_rates_btn_, &QPushButton::clicked, this, &MainWindow::onConfigureEpsilonPacketRatesClicked);
+    config_layout->addWidget(state_->epsilon_packet_rates_btn_, 0, 4, Qt::AlignVCenter);
 
     for (QComboBox *combo : {state_->ptb_rate_combo_, state_->hmp_rate_combo_, state_->lidar_rate_combo_, state_->temperature_rate_combo_})
     {

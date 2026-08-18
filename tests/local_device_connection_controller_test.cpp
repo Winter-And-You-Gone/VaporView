@@ -81,7 +81,7 @@ int main()
     require(!allRateResult.epsilonDeviceRateAttempted,
             "epsilon device rate is not reported as attempted without a running collector");
     const LocalSampleRateApplyResult epsilonRateResult =
-        controller.setEpsilonSampleRate(100, {{0x40u, 100}}, true);
+        controller.setEpsilonSampleRate(100, {{0x40u, 100}});
     require(!epsilonRateResult.epsilonDeviceRateAttempted,
             "single epsilon rate change is not reported as applied without a running collector");
 

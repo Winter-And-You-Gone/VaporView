@@ -88,12 +88,9 @@ public:
         if (collectors.epsilon && collectors.epsilon->isRunning())
         {
             collectors.epsilon->setSampleRate(configuration.epsilonCallbackRateHz);
-            if (configuration.applyEpsilonDeviceRate)
-            {
-                result.epsilonDeviceRateAttempted = true;
-                result.epsilonDeviceRateSucceeded =
-                    collectors.epsilon->setOutputPacketRates(configuration.epsilonPacketRates);
-            }
+            result.epsilonDeviceRateAttempted = true;
+            result.epsilonDeviceRateSucceeded =
+                collectors.epsilon->setOutputPacketRates(configuration.epsilonPacketRates);
         }
         if (collectors.ptb && collectors.ptb->isRunning())
         {
@@ -130,8 +127,7 @@ public:
 
     LocalSampleRateApplyResult setEpsilonSampleRate(
         int callbackRateHz,
-        const std::map<uint8_t, int>& packetRates,
-        bool applyDeviceRate)
+        const std::map<uint8_t, int>& packetRates)
     {
         LocalSampleRateApplyResult result;
         const auto collector = registry.snapshot().epsilon;
@@ -140,7 +136,7 @@ public:
             return result;
         }
         collector->setSampleRate(callbackRateHz);
-        if (collector->isRunning() && applyDeviceRate)
+        if (collector->isRunning())
         {
             result.epsilonDeviceRateAttempted = true;
             result.epsilonDeviceRateSucceeded = collector->setOutputPacketRates(packetRates);
@@ -691,15 +687,7 @@ private:
                              SerialConfig::N81(request.epsilon.baudText.toInt()),
                              [&]() {
             collectors.epsilon->setDataCallback([this]() { notifyData(LocalDeviceKind::Epsilon); });
-            if (request.epsilon.skipDeviceRate)
-            {
-                postConnectionLog(VaporView::LogLevel::Info,
-                        QStringLiteral("epsilon_output_rate_command_skipped"),
-                        QStringLiteral("已跳过 EPSILON 输出频率下发，使用设备当前输出。"),
-                        {{QStringLiteral("device"), QStringLiteral("EPSILON")},
-                         {QStringLiteral("reason_code"), QStringLiteral("RATE_UNSPECIFIED")}});
-            }
-            else if (request.epsilonConfigLikelyMatches)
+            if (request.epsilonConfigLikelyMatches)
             {
                 postConnectionLog(VaporView::LogLevel::Info,
                         QStringLiteral("epsilon_output_reconfigure_skipped_config_unchanged"),
@@ -1024,10 +1012,9 @@ LocalSampleRateApplyResult LocalDeviceConnectionController::applyRunningSampleRa
 
 LocalSampleRateApplyResult LocalDeviceConnectionController::setEpsilonSampleRate(
     int callbackRateHz,
-    const std::map<uint8_t, int>& packetRates,
-    bool applyDeviceRate)
+    const std::map<uint8_t, int>& packetRates)
 {
-    return impl_->setEpsilonSampleRate(callbackRateHz, packetRates, applyDeviceRate);
+    return impl_->setEpsilonSampleRate(callbackRateHz, packetRates);
 }
 
 LocalSampleRateApplyResult LocalDeviceConnectionController::setPtbSampleRate(

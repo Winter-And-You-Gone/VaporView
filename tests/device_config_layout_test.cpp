@@ -647,6 +647,9 @@ int main(int argc, char **argv)
                 epsilonPacketRatesButton->isVisible() &&
                 epsilonPacketRatesButton->text() == QStringLiteral("包频率设置"),
             "EPSILON frequency column uses a packet-rate navigation button instead of a single rate selector");
+    require(epsilonRateCombo->findText(QStringLiteral("No Set")) < 0 &&
+                epsilonRateCombo->findText(QStringLiteral("不设定")) < 0,
+            "EPSILON compatibility rate combo does not expose an unspecified option");
     auto *mainPageStackForEpsilonButton =
         window.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
     auto *combinationPageForEpsilonButton =

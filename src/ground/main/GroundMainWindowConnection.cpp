@@ -1314,7 +1314,6 @@ void MainWindow::onConnectClicked()
     const QString ai8TemperatureBaudText = state_->device_config_.ai8_temperature_baud_combo
         ? state_->device_config_.ai8_temperature_baud_combo->currentText().trimmed()
         : QStringLiteral("19200");
-    const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
     const QString ptbRateText = state_->ptb_rate_combo_ ? state_->ptb_rate_combo_->currentText() : QStringLiteral("20");
     const QString hmpRateText = state_->hmp_rate_combo_ ? state_->hmp_rate_combo_->currentText() : QStringLiteral("20");
     const VaporView::PressureSensorProtocol pressureProtocol =
@@ -1332,12 +1331,11 @@ void MainWindow::onConnectClicked()
     const QString ai8TemperatureRateText = state_->device_config_.ai8_temperature_rate_combo
         ? state_->device_config_.ai8_temperature_rate_combo->currentText()
         : QStringLiteral("5");
-    const bool skipEpsilonDeviceRate = isRateUnspecified(epsilonRateText);
     const bool skipPtbDeviceRate = isRateUnspecified(ptbRateText);
     const bool skipHmpDeviceRate = isRateUnspecified(hmpRateText);
     const bool skipLidarDeviceRate = isRateUnspecified(lidarRateText);
     const bool skipTemperatureDeviceRate = isRateUnspecified(temperatureRateText);
-    const int epsilonRate = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
+    const int epsilonRate = std::clamp(state_->epsilon_sample_rate_, 20, 200);
     const int ptbRate = clampPtbSampleRate(effectiveRateOrDefault(ptbRateText, kDefaultPtbSampleRateHz, kPtbMaxSampleRateHz));
     const int hmpRate = effectiveRateOrDefault(hmpRateText, kDefaultHmpSampleRateHz);
     const int lidarRate = effectiveRateOrDefault(lidarRateText, kDefaultLidarSampleRateHz, 100);
@@ -1347,8 +1345,7 @@ void MainWindow::onConnectClicked()
     settings.beginGroup(QStringLiteral("MainWindow"));
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
         effectiveEpsilonPacketRates(settings);
-    if (!skipEpsilonDeviceRate &&
-        !epsilonPort.isEmpty() &&
+    if (!epsilonPort.isEmpty() &&
         epsilonPort != selectText &&
         !validateEpsilonPacketBandwidth(epsilonDesiredPacketRates, epsilonBaudText, true))
     {
@@ -1378,7 +1375,7 @@ void MainWindow::onConnectClicked()
     VaporView::Ground::Devices::LocalConnectionRequest request;
     request.english = english;
     request.selectText = selectText;
-    request.epsilon = {epsilonPort, epsilonBaudText, epsilonCallbackRate, skipEpsilonDeviceRate};
+    request.epsilon = {epsilonPort, epsilonBaudText, epsilonCallbackRate, false};
     request.ptb = {ptbPort, ptbBaudText, ptbRate, skipPtbDeviceRate};
     request.hmp = {hmpPort, hmpBaudText, hmpRate, skipHmpDeviceRate};
     request.lidar = {lidarPort, lidarBaudText, lidarRate, skipLidarDeviceRate};

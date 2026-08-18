@@ -375,7 +375,6 @@ struct MainWindowState
     QWidget *sky_telemetry_row_widget_;
 
     QComboBox *global_rate_combo_;
-    QComboBox *epsilon_rate_combo_;
     QComboBox *gnss_rate_combo_;
     QComboBox *imu_rate_combo_;
     QComboBox *ptb_rate_combo_;

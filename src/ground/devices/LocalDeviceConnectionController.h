@@ -93,7 +93,6 @@ struct LocalSampleRateConfiguration
 {
     int epsilonCallbackRateHz = 100;
     std::map<uint8_t, int> epsilonPacketRates;
-    bool applyEpsilonDeviceRate = true;
     int ptbRateHz = 1;
     bool applyPtbDeviceRate = true;
     int hmpRateHz = 1;
@@ -157,8 +156,7 @@ public:
         const LocalSampleRateConfiguration& configuration);
     LocalSampleRateApplyResult setEpsilonSampleRate(
         int callbackRateHz,
-        const std::map<uint8_t, int>& packetRates,
-        bool applyDeviceRate);
+        const std::map<uint8_t, int>& packetRates);
     LocalSampleRateApplyResult setPtbSampleRate(int rateHz, bool applyDeviceRate);
     void setHmpSampleRate(int rateHz);
     void setLidarSampleRate(int rateHz, bool applyDeviceRate);

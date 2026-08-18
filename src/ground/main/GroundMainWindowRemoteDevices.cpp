@@ -1460,7 +1460,6 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
         return;
     }
 
-    const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
     const std::map<uint8_t, int> defaultRates = defaultEpsilonPacketRates();
     const std::map<uint8_t, int> savedPacketRates = deviceConfigEpsilonPacketRates();
     const QString epsilonBaudText = isRemoteSkyMode()
@@ -1511,8 +1510,7 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
         (!epsilonPort.isEmpty() && epsilonPort != selectText);
     if (applyAfterSave &&
         !state_->recording_service_->isActive() &&
-        targetReadyForApply &&
-        !isRateUnspecified(epsilonRateText))
+        targetReadyForApply)
     {
         publishGroundLog(VaporView::LogLevel::Info,
                          QStringLiteral("configuration.apply"),

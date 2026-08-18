@@ -774,7 +774,6 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
         return;
     }
 
-    const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
     if (isRemoteSkyMode())
@@ -972,8 +971,7 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     const bool targetReadyForApply = isRemoteSkyMode() ||
         (!epsilonPort.isEmpty() && epsilonPort != selectText);
     if (!state_->recording_service_->isActive() &&
-        targetReadyForApply &&
-        !isRateUnspecified(epsilonRateText))
+        targetReadyForApply)
     {
         publishGroundLog(VaporView::LogLevel::Info,
                          QStringLiteral("configuration.apply"),
@@ -1027,24 +1025,7 @@ void MainWindow::onReconfigureEpsilonClicked()
 
     if (isRemoteSkyMode())
     {
-        const QString epsilonRateText = state_->epsilon_rate_combo_
-            ? state_->epsilon_rate_combo_->currentText()
-            : QStringLiteral("100");
-        if (isRateUnspecified(epsilonRateText))
-        {
-            publishGroundLog(VaporView::LogLevel::Info,
-                             QStringLiteral("device.navigation.command"),
-                             QStringLiteral("epsilon_output_reconfigure_skipped_rate_unspecified"),
-                             QStringLiteral("EPSILON 频率为“不设定”，已跳过输出频率下发。"),
-                             {{QStringLiteral("device"), QStringLiteral("EPSILON")},
-                              {QStringLiteral("execution_path"), QStringLiteral("remote_sky")},
-                              {QStringLiteral("reason_code"), QStringLiteral("COMMAND_NOT_SUPPORTED")},
-                              {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-            return;
-        }
-
-        const int epsilonRate = effectiveRateOrDefault(
-            epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
+        const int epsilonRate = std::clamp(state_->epsilon_sample_rate_, 20, 200);
         QSettings settings = VaporView::applicationConfigSettings();
         settings.beginGroup(QStringLiteral("MainWindow"));
         settings.beginGroup(QStringLiteral("RemoteEpsilonPacketProfile"));
@@ -1112,20 +1093,7 @@ void MainWindow::onReconfigureEpsilonClicked()
         return;
     }
 
-    const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
-    if (isRateUnspecified(epsilonRateText))
-    {
-        publishGroundLog(VaporView::LogLevel::Info,
-                         QStringLiteral("device.navigation.command"),
-                         QStringLiteral("epsilon_output_reconfigure_skipped_rate_unspecified"),
-                         QStringLiteral("EPSILON 频率为“不设定”，已跳过输出频率下发。"),
-                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
-                          {QStringLiteral("reason_code"), QStringLiteral("COMMAND_NOT_SUPPORTED")},
-                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-        return;
-    }
-
-    const int epsilonRate = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
+    const int epsilonRate = std::clamp(state_->epsilon_sample_rate_, 20, 200);
     state_->epsilon_sample_rate_ = epsilonRate;
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));

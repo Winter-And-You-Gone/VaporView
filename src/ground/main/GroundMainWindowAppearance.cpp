@@ -1499,7 +1499,6 @@ void MainWindow::loadRememberedInputState()
     loadCombo(state_->temperature_baud_combo_, QStringLiteral("serial/temperature_baud"));
 
     loadCombo(state_->global_rate_combo_, QStringLiteral("rate/global"));
-    loadCombo(state_->epsilon_rate_combo_, QStringLiteral("rate/epsilon"), QStringLiteral("rate/gnss"));
     loadCombo(state_->ptb_rate_combo_, QStringLiteral("rate/ptb"));
     loadCombo(state_->hmp_rate_combo_, QStringLiteral("rate/hmp"));
     loadCombo(state_->lidar_rate_combo_, QStringLiteral("rate/lidar"));
@@ -1669,7 +1668,6 @@ void MainWindow::saveRememberedInputState() const
             state_->hmp_baud_combo_ ? state_->hmp_baud_combo_ : state_->device_config_.hmp_baud_combo);
 
         saveCombo(QStringLiteral("rate/global"), state_->global_rate_combo_);
-        saveCombo(QStringLiteral("rate/epsilon"), state_->epsilon_rate_combo_);
         saveCombo(QStringLiteral("rate/ptb"), state_->ptb_rate_combo_);
         saveCombo(QStringLiteral("rate/hmp"), state_->hmp_rate_combo_);
         saveCombo(QStringLiteral("rate/lidar"), state_->lidar_rate_combo_);
@@ -1736,7 +1734,6 @@ void MainWindow::bindRememberedInputState()
     bindCombo(state_->lidar_baud_combo_);
     bindCombo(state_->temperature_baud_combo_);
     bindCombo(state_->global_rate_combo_);
-    bindCombo(state_->epsilon_rate_combo_);
     bindCombo(state_->ptb_rate_combo_);
     bindCombo(state_->hmp_rate_combo_);
     bindCombo(state_->lidar_rate_combo_);
