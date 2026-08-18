@@ -172,6 +172,15 @@ QJsonObject serialToJson(const SerialDeviceConfig& config)
     return object;
 }
 
+QJsonObject epsilonToJson(const EpsilonSerialConfig& config)
+{
+    QJsonObject object;
+    object["enabled"] = config.enabled;
+    object["port"] = config.port;
+    object["baud"] = config.baud_rate;
+    return object;
+}
+
 QJsonObject epsilonRtcmToJson(const EpsilonRtcmConfig& config)
 {
     QJsonObject object;
@@ -205,6 +214,31 @@ bool epsilonRtcmFromJson(const QJsonObject& object, EpsilonRtcmConfig& config, Q
         return false;
     }
     next.forward_port = next.forward_port.trimmed();
+    config = next;
+    return true;
+}
+
+bool epsilonFromJson(const QJsonObject& object, EpsilonSerialConfig& config, QString *errorMessage)
+{
+    EpsilonSerialConfig next = config;
+    const QString section = QStringLiteral("epsilon");
+    if (!readBoolField(object, section, QStringLiteral("enabled"), next.enabled, errorMessage) ||
+        !readStringField(object, section, QStringLiteral("port"), next.port, errorMessage) ||
+        !readIntField(object, section, QStringLiteral("baud"), next.baud_rate, errorMessage) ||
+        !readIntField(object, section, QStringLiteral("baud_rate"), next.baud_rate, errorMessage))
+    {
+        return false;
+    }
+    if (next.enabled && next.port.trimmed().isEmpty())
+    {
+        if (errorMessage) *errorMessage = QStringLiteral("epsilon port is empty");
+        return false;
+    }
+    if (next.baud_rate <= 0)
+    {
+        if (errorMessage) *errorMessage = QStringLiteral("epsilon baud is invalid");
+        return false;
+    }
     config = next;
     return true;
 }
@@ -412,6 +446,18 @@ bool SerialDeviceConfig::operator!=(const SerialDeviceConfig& other) const
     return !(*this == other);
 }
 
+bool EpsilonSerialConfig::operator==(const EpsilonSerialConfig& other) const
+{
+    return enabled == other.enabled &&
+           port == other.port &&
+           baud_rate == other.baud_rate;
+}
+
+bool EpsilonSerialConfig::operator!=(const EpsilonSerialConfig& other) const
+{
+    return !(*this == other);
+}
+
 bool EpsilonRtcmConfig::operator==(const EpsilonRtcmConfig& other) const
 {
     return enabled == other.enabled &&
@@ -472,7 +518,7 @@ SkyConfig SkyConfig::defaults()
 {
     SkyConfig config;
 #ifdef _WIN32
-    config.epsilon = {true, QStringLiteral("COM3"), 921600, 100.0};
+    config.epsilon = {true, QStringLiteral("COM3"), 921600};
     config.epsilon_rtcm = {false, 2, QString(), 115200};
     config.ptb = {true, QStringLiteral("COM5"), 9600, 20.0};
     config.ptb.source = QStringLiteral("ptb210");
@@ -482,7 +528,7 @@ SkyConfig SkyConfig::defaults()
     config.temperature_controller = {false, QStringLiteral("COM9"), 38400, 5.0, 1};
     config.ai8_temperature_controller = {false, QStringLiteral("COM10"), 19200, 5.0, 1};
 #else
-    config.epsilon = {true, QStringLiteral("/dev/ttyEPSILON"), 921600, 100.0};
+    config.epsilon = {true, QStringLiteral("/dev/ttyEPSILON"), 921600};
     config.epsilon_rtcm = {false, 2, QString(), 115200};
     config.ptb = {true, QStringLiteral("/dev/ttyBARO"), 9600, 20.0};
     config.ptb.source = QStringLiteral("ptb210");
@@ -531,7 +577,7 @@ bool SkyConfig::fromJson(const QJsonObject& object, SkyConfig& config, QString *
     if (object.contains("epsilon"))
     {
         if (!readSectionObject(object, QStringLiteral("epsilon"), section, errorMessage) ||
-            !serialFromJson(section, next.epsilon, QStringLiteral("epsilon"), errorMessage))
+            !epsilonFromJson(section, next.epsilon, errorMessage))
         {
             return false;
         }
@@ -582,7 +628,7 @@ bool SkyConfig::fromJson(const QJsonObject& object, SkyConfig& config, QString *
 QJsonObject SkyConfig::toJson() const
 {
     QJsonObject root;
-    QJsonObject epsilonObject = serialToJson(epsilon);
+    QJsonObject epsilonObject = epsilonToJson(epsilon);
     epsilonObject["rtcm"] = epsilonRtcmToJson(epsilon_rtcm);
     root["epsilon"] = epsilonObject;
     root["ptb"] = serialToJson(ptb);
@@ -608,7 +654,7 @@ bool SkyConfig::validate(QString *errorMessage) const
                           QStringLiteral("hmp3"),
                           {QStringLiteral("hmp3"), QStringLiteral("sht45")},
                           errorMessage) &&
-           serialFromJson(serialToJson(epsilon), copy.epsilon, QStringLiteral("epsilon"), errorMessage) &&
+           epsilonFromJson(epsilonToJson(epsilon), copy.epsilon, errorMessage) &&
            epsilonRtcmFromJson(epsilonRtcmToJson(epsilon_rtcm), copy.epsilon_rtcm, errorMessage) &&
            serialFromJson(serialToJson(ptb), copy.ptb, QStringLiteral("ptb"), errorMessage) &&
            serialFromJson(serialToJson(hmp), copy.hmp, QStringLiteral("hmp"), errorMessage) &&

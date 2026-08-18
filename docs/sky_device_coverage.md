@@ -86,6 +86,7 @@ collector   |
 
 ## SkyConfig
 
+- `epsilon` stores only `enabled`, `port`, and `baud`; legacy `frequency_hz` is accepted when reading older files but is no longer serialized. EPSILON packet rates are configured through the packet-rate profile workflow instead of a single SkyConfig frequency.
 - Pressure and humidity keep the existing logical sections: `ptb` means the pressure slot and `hmp` means the temperature/humidity slot.
 - `ptb.source` accepts `ptb210` or `bmp390`; missing legacy values default to `ptb210`.
 - `hmp.source` accepts `hmp3` or `sht45`; missing legacy values default to `hmp3`.

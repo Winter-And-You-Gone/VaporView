@@ -462,6 +462,8 @@ void testSkyConfigDiff()
             "sky config diff detects source, AI-8, and EPSILON RTCM changes");
 
     const QJsonObject json = b.toJson();
+    require(!json.value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
+            "sky config no longer serializes a single EPSILON frequency");
     VaporView::SkyConfig parsed;
     QString error;
     require(VaporView::SkyConfig::fromJson(json, parsed, &error), "sky config parse");
@@ -487,6 +489,7 @@ void testSkyConfigDiff()
     legacy.remove(QStringLiteral("ai8_temperature_controller"));
     QJsonObject legacyEpsilon = legacy.value(QStringLiteral("epsilon")).toObject();
     legacyEpsilon.remove(QStringLiteral("rtcm"));
+    legacyEpsilon.insert(QStringLiteral("frequency_hz"), 100.0);
     legacy.insert(QStringLiteral("epsilon"), legacyEpsilon);
     legacy.remove(QStringLiteral("epsilon_rtcm"));
     error.clear();
@@ -495,8 +498,9 @@ void testSkyConfigDiff()
                 parsed.hmp.source == QStringLiteral("hmp3") &&
                 !parsed.ai8_temperature_controller.enabled &&
                 !parsed.epsilon_rtcm.enabled &&
-                parsed.epsilon_rtcm.device_port_index == 2,
-            "sky config legacy source, AI-8, and EPSILON RTCM defaults");
+                parsed.epsilon_rtcm.device_port_index == 2 &&
+                !parsed.toJson().value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
+            "sky config legacy source, AI-8, EPSILON frequency, and EPSILON RTCM defaults");
 }
 
 void testSkyConfigRejectsInvalidJsonTypes()

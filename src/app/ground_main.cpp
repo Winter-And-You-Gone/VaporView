@@ -414,12 +414,11 @@ void startRemoteDeviceE2e(QApplication& app, MainWindow& window, const QString& 
             auto *statusLabel = window.findChild<QLabel *>(QStringLiteral("deviceRemoteSkyConfigStatus"));
             auto *epsilonPort = window.findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
             auto *epsilonBaud = window.findChild<QComboBox *>(QStringLiteral("deviceEpsilonBaudCombo"));
-            auto *epsilonRate = window.findChild<QComboBox *>(QStringLiteral("deviceEpsilonRateCombo"));
             auto *ai8Port = window.findChild<QComboBox *>(QStringLiteral("deviceAi8TemperaturePortCombo"));
             auto *ai8Baud = window.findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureBaudCombo"));
             auto *ai8Rate = window.findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureRateCombo"));
             if (!pageStack || !deviceConfigPage || !statusLabel ||
-                !epsilonPort || !epsilonBaud || !epsilonRate ||
+                !epsilonPort || !epsilonBaud ||
                 !ai8Port || !ai8Baud || !ai8Rate)
             {
                 finish(false, QStringLiteral("Remote Device Config widgets are unavailable"));
@@ -427,7 +426,7 @@ void startRemoteDeviceE2e(QApplication& app, MainWindow& window, const QString& 
             }
             pageStack->setCurrentWidget(deviceConfigPage);
             QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
-            if (epsilonPort->isEnabled() || epsilonBaud->isEnabled() || epsilonRate->isEnabled() ||
+            if (epsilonPort->isEnabled() || epsilonBaud->isEnabled() ||
                 ai8Port->isEnabled() || ai8Baud->isEnabled() || ai8Rate->isEnabled())
             {
                 finish(false, QStringLiteral("Remote Device Config fields were editable before SkyConfig was loaded"));
@@ -453,7 +452,6 @@ void startRemoteDeviceE2e(QApplication& app, MainWindow& window, const QString& 
             auto *statusLabel = window.findChild<QLabel *>(QStringLiteral("deviceRemoteSkyConfigStatus"));
             auto *epsilonPort = window.findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
             auto *epsilonBaud = window.findChild<QComboBox *>(QStringLiteral("deviceEpsilonBaudCombo"));
-            auto *epsilonRate = window.findChild<QComboBox *>(QStringLiteral("deviceEpsilonRateCombo"));
             auto *ai8Port = window.findChild<QComboBox *>(QStringLiteral("deviceAi8TemperaturePortCombo"));
             auto *ai8Baud = window.findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureBaudCombo"));
             auto *ai8Rate = window.findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureRateCombo"));
@@ -462,7 +460,6 @@ void startRemoteDeviceE2e(QApplication& app, MainWindow& window, const QString& 
                 statusLabel->property("status").toString() == QStringLiteral("success") &&
                 epsilonPort && epsilonPort->isEnabled() &&
                 epsilonBaud && epsilonBaud->isEnabled() &&
-                epsilonRate && epsilonRate->isEnabled() &&
                 ai8Port && ai8Port->isEnabled() &&
                 ai8Baud && ai8Baud->isEnabled() &&
                 ai8Rate && ai8Rate->isEnabled() &&

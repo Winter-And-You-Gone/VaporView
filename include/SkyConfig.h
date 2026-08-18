@@ -7,6 +7,8 @@
 namespace VaporView
 {
 
+constexpr double kDefaultEpsilonCallbackRateHz = 250.0;
+
 struct SerialDeviceConfig
 {
     bool enabled = true;
@@ -17,6 +19,16 @@ struct SerialDeviceConfig
 
     bool operator==(const SerialDeviceConfig& other) const;
     bool operator!=(const SerialDeviceConfig& other) const;
+};
+
+struct EpsilonSerialConfig
+{
+    bool enabled = true;
+    QString port;
+    int baud_rate = 921600;
+
+    bool operator==(const EpsilonSerialConfig& other) const;
+    bool operator!=(const EpsilonSerialConfig& other) const;
 };
 
 struct EpsilonRtcmConfig
@@ -82,7 +94,7 @@ struct SkyConfigDiff
 
 struct SkyConfig
 {
-    SerialDeviceConfig epsilon;
+    EpsilonSerialConfig epsilon;
     EpsilonRtcmConfig epsilon_rtcm;
     SerialDeviceConfig ptb;
     SerialDeviceConfig hmp;

@@ -644,6 +644,7 @@ int main(int argc, char **argv)
                 epsilonPacketRatesButton,
             "shared device config controls exist for target switching");
     require(!epsilonRateCombo->isVisible() &&
+                !epsilonRateCombo->isEnabled() &&
                 epsilonPacketRatesButton->isVisible() &&
                 epsilonPacketRatesButton->text() == QStringLiteral("包频率设置"),
             "EPSILON frequency column uses a packet-rate navigation button instead of a single rate selector");
@@ -739,7 +740,7 @@ int main(int argc, char **argv)
             "remote TCP wave disconnected mode leaves host and port editable");
 
     VaporView::SkyConfig remoteConfig = VaporView::SkyConfig::defaults();
-    remoteConfig.epsilon = {true, QStringLiteral("/dev/ttyEPSILON"), 921600, 100.0};
+    remoteConfig.epsilon = {true, QStringLiteral("/dev/ttyEPSILON"), 921600};
     remoteConfig.ptb = {true, QStringLiteral("/dev/ttyPTB210"), 9600, 20.0};
     remoteConfig.ptb.source = QStringLiteral("ptb210");
     remoteConfig.hmp = {true, QStringLiteral("/dev/ttyHMP3"), 19200, 20.0};
@@ -845,7 +846,6 @@ int main(int argc, char **argv)
                     remoteStatus->property("status").toString() == QStringLiteral("success") &&
                     epsilonPortCombo->isEnabled() &&
                     epsilonBaudCombo->isEnabled() &&
-                    epsilonRateCombo->isEnabled() &&
                     ai8PortCombo->isEnabled() &&
                     ai8BaudCombo->isEnabled() &&
                     ai8RateCombo->isEnabled() &&
@@ -949,8 +949,8 @@ int main(int argc, char **argv)
             "remote edited port is serialized into SetSkyConfig JSON");
     require(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toInt() == 115200,
             "remote edited baud is serialized into SetSkyConfig JSON");
-    require(std::abs(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("frequency_hz")).toDouble() - 100.0) < 0.01,
-            "remote EPSILON SkyConfig frequency stays on the loaded value while packet rates are edited in Combination Navigation");
+    require(!uiJson.value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
+            "remote EPSILON SkyConfig omits the legacy single frequency while packet rates are edited in Combination Navigation");
     require(uiJson.value(QStringLiteral("temperature_controller")).toObject().value(QStringLiteral("slave_address")).toInt() == 17,
             "remote-only RD105 field is serialized into SkyConfig JSON");
     require(uiJson.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("source")).toString() ==

@@ -151,7 +151,7 @@ private:
     bool disconnectDeviceInternal(SkyDeviceId id, CommandErrorCode *errorCode, bool publishLog);
     void setState(SkyDeviceId id, DeviceState state, quint16 errorCode = 0);
     DeviceStatusItem& mutableStatus(SkyDeviceId id);
-    const SerialDeviceConfig& serialConfigFor(SkyDeviceId id) const;
+    SerialDeviceConfig serialConfigFor(SkyDeviceId id) const;
     bool connectSerialCollector(SkyDeviceId id, const SerialDeviceConfig& config, CommandErrorCode *errorCode);
     bool connectWaveTcp(CommandErrorCode *errorCode);
     void disconnectWaveTcp();

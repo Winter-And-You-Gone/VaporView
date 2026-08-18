@@ -656,7 +656,7 @@ void SkyLocalIpcClient::updateFromBasic(const TelemetryBasic& basic)
         dashboard_.epsilon.update_status_bits = basic.update_status_bits;
         dashboard_.epsilon_acquisition_rate_hz = basic.imu_packet_rate_hz > 0.0f
                                                      ? basic.imu_packet_rate_hz
-                                                     : config_.epsilon.frequency_hz;
+                                                     : kDefaultEpsilonCallbackRateHz;
     }
     if ((basic.validity_flags & BasicHasLidar) != 0)
     {

@@ -119,8 +119,13 @@ int main(int argc, char **argv)
     QString operationMessage;
     require(manager.configureEpsilonPacketRates(epsilonPacketRates, &error, &operationMessage) &&
                 error == VaporView::CommandErrorCode::Ok &&
-                std::fabs(manager.config().epsilon.frequency_hz - 250.0) < 0.000001,
+                !manager.config().toJson().value(QStringLiteral("epsilon")).toObject()
+                    .contains(QStringLiteral("frequency_hz")),
             "EPSILON simulated packet-rate operation succeeds");
+    generateSimulatedData(manager);
+    require(std::fabs(manager.latestEpsilon().imu_packet_rate_hz - 250.0) < 0.000001 &&
+                std::fabs(manager.latestEpsilon().sys_state_packet_rate_hz - 100.0) < 0.000001,
+            "EPSILON simulated packet-rate operation updates packet profile rates");
     auto invalidPacketRates = epsilonPacketRates;
     invalidPacketRates.packet_rates[0xFF] = 100;
     require(!manager.configureEpsilonPacketRates(invalidPacketRates, &error, &operationMessage) &&

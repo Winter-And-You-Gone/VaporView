@@ -2604,6 +2604,7 @@ void MainWindow::setupDeviceConfigPage()
         {
             rateLabel->setVisible(false);
             rateCombo->setVisible(false);
+            rateCombo->setEnabled(false);
         }
     };
 

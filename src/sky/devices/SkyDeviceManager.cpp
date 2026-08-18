@@ -176,6 +176,16 @@ SerialDeviceConfig serialConfigFromTemperatureConfig(const TemperatureController
     return serial;
 }
 
+SerialDeviceConfig serialConfigFromEpsilonConfig(const EpsilonSerialConfig& config)
+{
+    SerialDeviceConfig serial;
+    serial.enabled = config.enabled;
+    serial.port = config.port;
+    serial.baud_rate = config.baud_rate;
+    serial.frequency_hz = kDefaultEpsilonCallbackRateHz;
+    return serial;
+}
+
 void initializeSimulatedTemperatureController(TemperatureControllerData& data)
 {
     if (data.valid)
@@ -898,7 +908,6 @@ bool SkyDeviceManager::configureEpsilonPacketRates(
     if (simulate_data_)
     {
         simulated_epsilon_packet_rates_ = operation.packet_rates;
-        config_.epsilon.frequency_hz = operation.callback_rate_hz;
         if (errorCode) *errorCode = CommandErrorCode::Ok;
         if (errorMessage) *errorMessage = QStringLiteral("EPSILON packet rates were applied in simulation.");
         return true;
@@ -912,7 +921,7 @@ bool SkyDeviceManager::configureEpsilonPacketRates(
     const bool ok = epsilon_->setOutputPacketRates(operation.packet_rates, true);
     if (ok)
     {
-        config_.epsilon.frequency_hz = operation.callback_rate_hz;
+        epsilon_->setSampleRate(operation.callback_rate_hz);
     }
     if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
     if (errorMessage && !ok) *errorMessage = QStringLiteral("EPSILON packet-rate configuration failed.");
@@ -1837,14 +1846,20 @@ void SkyDeviceManager::generateSimulatedData()
         latest_epsilon_.diff_age_s = 0.8 + std::abs(std::sin(simulate_phase_ * 0.15)) * 0.4;
         latest_epsilon_.heading_valid = true;
         latest_epsilon_.raw_frame_count++;
-        latest_epsilon_.imu_packet_rate_hz = 100.0;
-        latest_epsilon_.ahrs_packet_rate_hz = 50.0;
-        latest_epsilon_.insgps_packet_rate_hz = 50.0;
-        latest_epsilon_.sys_state_packet_rate_hz = 10.0;
-        latest_epsilon_.raw_gnss_packet_rate_hz = 1.0;
-        latest_epsilon_.satellite_packet_rate_hz = 1.0;
-        latest_epsilon_.geodetic_packet_rate_hz = 10.0;
-        latest_epsilon_.ecef_packet_rate_hz = 10.0;
+        const auto simulatedPacketRate = [this](uint8_t packetId, double fallbackHz) {
+            const auto it = simulated_epsilon_packet_rates_.find(packetId);
+            return it != simulated_epsilon_packet_rates_.end()
+                ? static_cast<double>(it->second)
+                : fallbackHz;
+        };
+        latest_epsilon_.imu_packet_rate_hz = simulatedPacketRate(0x40, 100.0);
+        latest_epsilon_.ahrs_packet_rate_hz = simulatedPacketRate(0x41, 50.0);
+        latest_epsilon_.insgps_packet_rate_hz = simulatedPacketRate(0x42, 50.0);
+        latest_epsilon_.sys_state_packet_rate_hz = simulatedPacketRate(0x50, 10.0);
+        latest_epsilon_.raw_gnss_packet_rate_hz = simulatedPacketRate(0x59, 1.0);
+        latest_epsilon_.satellite_packet_rate_hz = simulatedPacketRate(0x5A, 1.0);
+        latest_epsilon_.geodetic_packet_rate_hz = simulatedPacketRate(0x5C, 10.0);
+        latest_epsilon_.ecef_packet_rate_hz = simulatedPacketRate(0x5D, 10.0);
         epsilon_status_.rx_count++;
         epsilon_status_.last_data_time_us = t;
         emit epsilonDataUpdated(latest_epsilon_);
@@ -2044,13 +2059,12 @@ DeviceStatusItem& SkyDeviceManager::mutableStatus(SkyDeviceId id)
     return epsilon_status_;
 }
 
-const SerialDeviceConfig& SkyDeviceManager::serialConfigFor(SkyDeviceId id) const
+SerialDeviceConfig SkyDeviceManager::serialConfigFor(SkyDeviceId id) const
 {
-    static const SerialDeviceConfig kInvalidSerialConfig;
     switch (id)
     {
     case SkyDeviceId::Epsilon:
-        return config_.epsilon;
+        return serialConfigFromEpsilonConfig(config_.epsilon);
     case SkyDeviceId::Ptb:
         return config_.ptb;
     case SkyDeviceId::Hmp:
@@ -2063,7 +2077,7 @@ const SerialDeviceConfig& SkyDeviceManager::serialConfigFor(SkyDeviceId id) cons
     case SkyDeviceId::All:
         break;
     }
-    return kInvalidSerialConfig;
+    return SerialDeviceConfig();
 }
 
 bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDeviceConfig& config, CommandErrorCode *errorCode)
@@ -2182,7 +2196,6 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
         });
         if (!epsilon_->start(config.port.toStdString(), SerialConfig::N81(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!epsilon_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
-        if (!epsilon_->setDeviceSampleRate(static_cast<int>(config.frequency_hz))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!epsilon_->startStreaming()) return fail(CommandErrorCode::DeviceConnectFailed);
         break;
     case SkyDeviceId::Ptb:

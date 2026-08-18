@@ -638,7 +638,7 @@ SkyDashboardSnapshot SkyRuntime::dashboardSnapshot() const
     snapshot.telemetry_status = currentStatus();
     snapshot.epsilon_acquisition_rate_hz = snapshot.epsilon.imu_packet_rate_hz > 0.0
                                                ? snapshot.epsilon.imu_packet_rate_hz
-                                               : config.epsilon.frequency_hz;
+                                               : kDefaultEpsilonCallbackRateHz;
     snapshot.ptb_acquisition_rate_hz = config.ptb.frequency_hz;
     snapshot.hmp_acquisition_rate_hz = config.hmp.frequency_hz;
     snapshot.lidar_acquisition_rate_hz = config.lidar.frequency_hz;

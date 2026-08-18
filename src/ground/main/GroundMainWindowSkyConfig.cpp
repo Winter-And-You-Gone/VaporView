@@ -407,11 +407,11 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
     setSerial(state_->device_config_.epsilon_enabled_check,
               state_->device_config_.epsilon_port_combo,
               state_->device_config_.epsilon_baud_combo,
-              state_->device_config_.epsilon_rate_combo,
+              nullptr,
               config.epsilon.enabled,
               config.epsilon.port,
               config.epsilon.baud_rate,
-              config.epsilon.frequency_hz);
+              0.0);
     setSerial(state_->device_config_.ptb_enabled_check,
               state_->device_config_.ptb_port_combo,
               state_->device_config_.ptb_baud_combo,
@@ -566,11 +566,13 @@ VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *erro
         target.baud_rate = baud ? baud->currentText().trimmed().toInt() : target.baud_rate;
         target.frequency_hz = rate ? rate->currentText().trimmed().toDouble() : target.frequency_hz;
     };
-    readSerial(state_->device_config_.epsilon_enabled_check,
-               state_->device_config_.epsilon_port_combo,
-               state_->device_config_.epsilon_baud_combo,
-               state_->device_config_.epsilon_rate_combo,
-               config.epsilon);
+    config.epsilon.enabled = state_->device_config_.epsilon_enabled_check
+        ? state_->device_config_.epsilon_enabled_check->isChecked()
+        : config.epsilon.enabled;
+    config.epsilon.port = remoteSkySerialPortComboValue(state_->device_config_.epsilon_port_combo);
+    config.epsilon.baud_rate = state_->device_config_.epsilon_baud_combo
+        ? state_->device_config_.epsilon_baud_combo->currentText().trimmed().toInt()
+        : config.epsilon.baud_rate;
     readSerial(state_->device_config_.ptb_enabled_check,
                state_->device_config_.ptb_port_combo,
                state_->device_config_.ptb_baud_combo,
@@ -827,6 +829,10 @@ void MainWindow::updateRemoteSkyConfigControlsState()
                 widget->setEnabled(fieldsEnabled);
             }
         }
+    }
+    if (state_->device_config_.epsilon_rate_combo)
+    {
+        state_->device_config_.epsilon_rate_combo->setEnabled(false);
     }
 
     for (QWidget *widget : {static_cast<QWidget *>(state_->device_config_.epsilon_enabled_check),
