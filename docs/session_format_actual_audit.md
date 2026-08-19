@@ -761,3 +761,96 @@ host_time_us,peak_value,peak_index,point_count,search_start_index,search_end_ind
 ### C.12 是否可以冻结 v1.0
 
 **当前不建议冻结完整 v1.0 数据格式。** RAW DAT 外层、waveform 子 payload、时间字段的 manifest 算术、CSV 表头和跨 Ground/Sky 的实际 waveform 点数规则已经有较强证据；但至少 A-1 的录制边界问题仍是真实 session 数据一致性问题，且 B 类字段/日志/零记录和 Sky 配置快照语义尚未正式定义。待确认 A-1 的修复方向、决定 Sky `device_config` 是否需要真实配置快照，并补齐六类协议 RAW 的端到端验证或明确 capability boundary 后，再冻结完整规范更稳妥。
+
+### C.13 Recording boundary verification
+
+#### C.13.1 修复范围和代码基线
+
+本轮修复提交为 `cd9890e9531597cc09fc2ee834982cb45551031f`（`Enforce session feature recording boundaries`）。修复前，`SkyDeviceManager` 在录制开始前已经持续计算并缓存 waveform feature；`SkyRuntime::sendWaveformFeature()` 在 Start 后取得 `latestWaveformFeature()` 时，可能把 Start 前生成但尚未发送的缓存对象交给 recorder。原 `SkySessionRecorder::recordWaveformFeature()` 只检查 recording 状态和文件是否打开，没有检查 feature 自带的 `host_time_us`，因此旧数据可能进入新 session。
+
+修复位于 `include/SkySessionRecorder.h` 和 `src/sky/recording/SkySessionRecorder.cpp`：recorder 保存本次 `recording_start_time_us_` 和 Stop 开始时固定的 `recording_end_time_us_`，并在 waveform feature 最终写盘前执行闭区间判断：
+
+```text
+host_time_us >= recording_start_time_us_
+&& (recording_end_time_us_ == 0 || host_time_us <= recording_end_time_us_)
+```
+
+本轮没有清空 `SkyDeviceManager` 的 feature cache，也没有修改 feature timestamp。旧 feature 即使在 Start 后才到 recorder，仍会按原始 timestamp 被最终 sink 丢弃。Stop 先固定业务截止时间，再用同一个值写 manifest；在文件关闭前到达、且产生时间 `<= end` 的合法 feature 可继续写入，产生时间 `> end` 的 feature 被过滤。Pause 仍由既有 `isRecording()` 语义阻止写入，Resume 后恢复；没有新增 pause schema，也没有改变 Pause/Resume 的既有设计。
+
+Ground recorder 当前只创建 `sensors/waveform_features.csv` 并写表头，没有 waveform feature 数据生产或追加路径，所以本轮没有修改 Ground 业务代码。`waveform_peaks.csv` 仍只在 waveform RAW 成功写入后同步生成，未改变 peak 算法、表头、point count 或搜索范围。
+
+#### C.13.2 自动化验证
+
+`tests/sky_session_recorder_test.cpp` 新增/扩展了以下边界验证：Start 前 30,000 us 的 feature、等于 Start、Start 后、Stop 前、等于 Stop、Stop 后、Start 后才到达 recorder 的旧缓存模拟、多个正常 feature，以及 Pause/Resume。测试直接检查窗口闭区间和最终 `waveform_features.csv`，证明实现不依赖 queue/cache clear。
+
+定向测试结果：
+
+```text
+sky_session_recorder_test             Passed
+ground_recording_service_test         Passed
+session_format_test                   Passed
+waveform_points_per_frame_test        Passed
+recording_schedule_controller_test    Passed
+```
+
+完整 `ctest --test-dir build\Release --output-on-failure` 结果为 96 项中 95 Passed、0 Failed、1 Skipped；Skip 是测试自身条件控制的 `update_relauncher_standard_parent_test`。`main_window_layout_test` 本轮也通过，没有为本次 session 修改调整任何 UI 代码。
+
+#### C.13.3 新 Release 和真实 recording 生命周期
+
+| 项目 | 实际值 |
+|---|---|
+| 修复提交 | `cd9890e9531597cc09fc2ee834982cb45551031f` |
+| Release 构建目录 | `X:\Project\GPS\VaporView\build\Release` |
+| 构建命令 | `cmd.exe /d /s /c 'chcp 65001 >NUL && "F:\VisualStudio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64 >NUL && cmake --build build\Release --config Release -- -j1'` |
+| 构建结果 | 成功，`VaporViewSkyCore.exe` 生成时间 2026-08-20 03:28:09（本机时间） |
+| 模式 | 当前 Release `VaporViewSkyCore.exe --sky-simulate-data` |
+| 生命周期 | IPC `ConnectAllDevices` -> `StartRecording` -> 9 秒持续模拟数据 -> `StopRecording` -> `ShutdownCore`；四个命令 ACK 均成功，使用正常 Stop |
+| 新 session | `X:\Project\GPS\VaporView\data\session_2026-08-20_03-41-12` |
+| `start_time_utc/us` | `2026-08-19T19:41:12.105Z` / `1787168472105000` |
+| `end_time_utc/us` | `2026-08-19T19:41:21.612Z` / `1787168481612000` |
+| `elapsed_ms` | `9507`；与 `(end_time_us - start_time_us) / 1000` 精确一致，余数 0 us |
+
+新 session 共 17 个文件；除 waveform 外的六个 RAW DAT 均为合法的 20-byte 零记录文件。结构化数据行数为 sensor summary 96、laser temperature controller 87、system temperature controller 87、waveform features 86；waveform RAW 和 peaks 均为 20 records/rows。新 session 是本地审计产物，不纳入 Git。
+
+#### C.13.4 业务数据时间边界
+
+以下全部使用 recorder host timestamp；不使用 EPSILON device timestamp 做业务边界判断：
+
+| 业务文件/字段 | records/rows | 最小 host timestamp | 最大 host timestamp | 是否在 `[start,end]` |
+|---|---:|---:|---:|---|
+| `sensors/sensor_summary.csv:record_timestamp_us` | 96 | 1787168472131000 | 1787168481611000 | 是 |
+| `sensors/laser_temperature_controller.csv:host_time_us` | 87 | 1787168472200000 | 1787168481602000 | 是 |
+| `sensors/system_temperature_controller.csv:host_time_us` | 87 | 1787168472200000 | 1787168481602000 | 是 |
+| `sensors/waveform_features.csv:host_time_us` | 86 | 1787168472202000 | 1787168481604000 | 是 |
+| `raw/waveform_peaks.csv:host_time_us` | 20 | 1787168472131000 | 1787168481611000 | 是 |
+| `raw/waveform.dat:host_timestamp_us` | 20 | 1787168472131000 | 1787168481611000 | 是 |
+| `raw/navigation.dat` | 0 | 无 | 无 | 合法零记录文件 |
+| `raw/pressure.dat` | 0 | 无 | 无 | 合法零记录文件 |
+| `raw/temperature_humidity.dat` | 0 | 无 | 无 | 合法零记录文件 |
+| `raw/distance.dat` | 0 | 无 | 无 | 合法零记录文件 |
+| `raw/laser_temperature_controller.dat` | 0 | 无 | 无 | 合法零记录文件 |
+| `raw/system_temperature_controller.dat` | 0 | 无 | 无 | 合法零记录文件 |
+
+`waveform_features.csv` 的首行现在比 manifest start 晚 97,000 us，不再出现修复前的 `-30,000 us` 越界。所有四个结构化业务 CSV、waveform peaks 和全部 20 条 waveform RAW 均通过时间范围检查。
+
+七个 RAW 文件的 magic 均为 `VVRAWDAT`、version=2、file header=20、source ID=1..7、reserved=0，没有截断。20 条 waveform record 的 record header 均为 36 bytes，marker=`0x44525756`、source ID=5、record type=1、flags=`0x101`，sequence=0..19 连续；每条 payload 都是 raw 200,000 bytes/50,000 Float32 点加 harmonic 200,000 bytes/50,000 Float32 点。manifest `waveform_points_per_frame=50000` 与最后一条合法 harmonic frame 一致。`waveform_peaks.csv` 的 20 行 `point_count` 均为 50,000，`peak_index` 范围 23,802..24,631，全部满足 `0 <= peak_index < point_count`，并与同 timestamp 的 harmonic 输入点数一致。
+
+#### C.13.5 生命周期日志边界
+
+`logs/event_log.csv` 有 2 行。最早事件“天空端会话记录已开始。”比 session start 晚 23,569 us；最晚事件“天空端会话记录已请求停止。”比 session end 晚 602 us，是本轮唯一位于业务区间外的 event。`logs/error_log.txt` 为空，这是合法的诊断文本状态。
+
+该 event 越界不是数据格式错误，也不需要通过延长 manifest end 来消除。正式语义应为：
+
+```text
+session start/end = 业务数据采集有效区间
+sensors/*.csv + raw/*.dat = 业务数据，必须受该区间约束
+logs/* = 运行生命周期诊断信息，可包含 Start/Stop/flush/close/cleanup 等区间外事件
+```
+
+因此 `session.json.end_time_us` 不追随 event log 的最后时间；业务数据和运行日志保持不同的时间边界契约。
+
+#### C.13.6 结论
+
+本轮没有发现新的 A 类业务数据边界问题。已确认的 waveform feature Start 边界问题已修复，Stop 端使用固定截止时间和同一闭区间规则；其它实际生成的结构化业务数据、waveform peaks 和 RAW waveform 均落在 manifest 有效区间内。零记录 RAW 的协议 payload 能力边界和 C.11 已记录的正式文档缺项仍然存在，但它们不是本次 recorder 边界 bug。
+
+基于当前实际 session，**可以进入 v1.0 数据格式冻结阶段**；冻结时应把本节的业务数据/生命周期日志边界定义写入正式规范，并继续保留六类零记录 RAW 的硬件或 protocol-to-session fixture 验证项。
