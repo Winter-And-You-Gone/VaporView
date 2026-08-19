@@ -353,6 +353,8 @@ struct TelemetryStatus
     quint64 rtcm_correction_dropped_bytes = 0;
     quint64 rtcm_correction_dropped_chunks = 0;
     quint64 rtcm_correction_last_receive_time_us = 0;
+    quint64 raw_laser_temperature_controller_record_count = 0;
+    quint64 raw_system_temperature_controller_record_count = 0;
 };
 
 struct CommandMessage

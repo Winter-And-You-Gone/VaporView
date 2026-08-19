@@ -175,6 +175,19 @@ int main(int argc, char *argv[])
         ai8.alarmStatusRegisters[static_cast<size_t>(index)] = static_cast<quint16>(index + 1);
     }
     recorder.recordAi8TemperatureControllerStatus(1300, ai8);
+    const QByteArray laserResponse = QByteArray::fromHex("01030411223344");
+    const QByteArray systemResponse = QByteArray::fromHex("0103080001000200030004");
+    recorder.recordRawLaserTemperatureControllerResponse(
+        1400,
+        0x0120,
+        laserResponse);
+    for (quint16 recordType = 1; recordType <= 4; ++recordType)
+    {
+        recorder.recordRawSystemTemperatureControllerResponse(
+            1500 + recordType,
+            recordType,
+            systemResponse);
+    }
 
     const QString sessionDir = recorder.sessionDirectory();
     require(QFileInfo::exists(sessionDir), "session directory");
@@ -331,9 +344,15 @@ int main(int argc, char *argv[])
             "waveform feature row count");
     require(counts.value(QStringLiteral("system_temperature_controller_rows")).toString().toULongLong() == 1,
             "system temperature controller row count");
+    const QJsonObject rawFiles = root.value(QStringLiteral("raw_files")).toObject();
+    require(rawFiles.value(QStringLiteral("laser_temperature_controller"))
+                .toObject().value(QStringLiteral("records")).toString().toULongLong() == 1,
+            "laser temperature controller raw record count");
+    require(rawFiles.value(QStringLiteral("system_temperature_controller"))
+                .toObject().value(QStringLiteral("records")).toString().toULongLong() == 4,
+            "system temperature controller raw record count");
     require(root.value(QStringLiteral("waveform_file_count")).toString().toULongLong() == 1,
             "waveform file count");
-    const QJsonObject rawFiles = root.value(QStringLiteral("raw_files")).toObject();
     require(rawFiles.value(QStringLiteral("waveform")).toObject().value(QStringLiteral("records")).toString().toULongLong() == 1,
             "waveform raw record count");
     const QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
@@ -438,5 +457,37 @@ int main(int argc, char *argv[])
     require(decoded.size() == 4, "decoded harmonic sample count");
     require(decoded[0] == 1.0f && decoded[1] == 2.0f && decoded[2] == 3.0f && decoded[3] == 4.0f,
             "decoded harmonic samples");
+
+    auto verifyTemperatureRaw = [&](const QString& filename,
+                                    quint16 sourceId,
+                                    int expectedCount,
+                                    quint16 firstRecordType,
+                                    const QByteArray& expectedPayload) {
+        QFile file(filename);
+        require(file.open(QIODevice::ReadOnly), "open temperature raw dat");
+        VaporView::SessionRawDat::RawScanOptions options;
+        options.expectedSourceId = sourceId;
+        const auto result = VaporView::SessionRawDat::scan(file, options);
+        require(result.success() && result.records.size() == expectedCount,
+                "temperature raw dat record count");
+        require(result.records.first().header.recordType == firstRecordType,
+                "temperature raw dat record type");
+        require(file.seek(static_cast<qint64>(result.records.first().payloadOffset)),
+                "seek temperature raw dat payload");
+        require(file.read(result.records.first().header.payloadSize) == expectedPayload,
+                "temperature raw dat payload is byte-for-byte equal");
+    };
+    verifyTemperatureRaw(
+        sessionDir + QStringLiteral("/raw/laser_temperature_controller.dat"),
+        VaporView::SessionRawDat::kSourceLaserTemperatureController,
+        1,
+        0x0120,
+        laserResponse);
+    verifyTemperatureRaw(
+        sessionDir + QStringLiteral("/raw/system_temperature_controller.dat"),
+        VaporView::SessionRawDat::kSourceSystemTemperatureController,
+        4,
+        VaporView::SessionRawDat::kRecordTypeSystemTemperatureMeasuredValues,
+        systemResponse);
     return 0;
 }

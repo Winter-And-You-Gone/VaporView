@@ -569,6 +569,8 @@ void testTelemetryStatus()
     status.rtcm_correction_dropped_bytes = 128;
     status.rtcm_correction_dropped_chunks = 2;
     status.rtcm_correction_last_receive_time_us = 987654321;
+    status.raw_laser_temperature_controller_record_count = 60;
+    status.raw_system_temperature_controller_record_count = 70;
     VaporView::DeviceStatusItem ai8;
     ai8.device_id = VaporView::SkyDeviceId::Ai8TemperatureController;
     ai8.state = VaporView::DeviceState::Connected;
@@ -585,6 +587,11 @@ void testTelemetryStatus()
     require(parsed.recording_elapsed_ms == status.recording_elapsed_ms, "status recording elapsed");
     require(parsed.raw_navigation_record_count == status.raw_navigation_record_count, "status raw epsilon count");
     require(parsed.raw_waveform_record_count == status.raw_waveform_record_count, "status raw tcp wave count");
+    require(parsed.raw_laser_temperature_controller_record_count ==
+                status.raw_laser_temperature_controller_record_count &&
+                parsed.raw_system_temperature_controller_record_count ==
+                status.raw_system_temperature_controller_record_count,
+            "status raw temperature controller counts");
     require(parsed.rtcm_correction_bytes_received == status.rtcm_correction_bytes_received &&
                 parsed.rtcm_correction_chunks_received == status.rtcm_correction_chunks_received &&
                 parsed.rtcm_correction_dropped_bytes == status.rtcm_correction_dropped_bytes &&

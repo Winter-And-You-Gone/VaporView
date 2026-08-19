@@ -572,6 +572,32 @@ private:
                                             size);
                 }
             });
+        collectors.temperature_controller->setRawFrameCallback(
+            [this](uint64_t timestampUs,
+                   uint16_t recordType,
+                   const uint8_t *data,
+                   size_t size) {
+                if (callbacks.rawLaserTemperatureControllerResponse)
+                {
+                    callbacks.rawLaserTemperatureControllerResponse(timestampUs,
+                                                                     recordType,
+                                                                     data,
+                                                                     size);
+                }
+            });
+        collectors.ai8_temperature_controller->setRawFrameCallback(
+            [this](uint64_t timestampUs,
+                   quint16 recordType,
+                   const quint8 *data,
+                   size_t size) {
+                if (callbacks.rawSystemTemperatureControllerResponse)
+                {
+                    callbacks.rawSystemTemperatureControllerResponse(timestampUs,
+                                                                      recordType,
+                                                                      data,
+                                                                      size);
+                }
+            });
 
         int totalDevices = 0;
         int connectedDevices = 0;

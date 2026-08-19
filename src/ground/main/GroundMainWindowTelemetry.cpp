@@ -177,7 +177,9 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
         status.raw_pressure_record_count +
         status.raw_temperature_humidity_record_count +
         status.raw_distance_record_count +
-        status.raw_waveform_record_count;
+        status.raw_waveform_record_count +
+        status.raw_laser_temperature_controller_record_count +
+        status.raw_system_temperature_controller_record_count;
     if (!status.session_name.isEmpty() ||
         status.telemetry_record_count > 0 ||
         status.waveform_feature_record_count > 0 ||

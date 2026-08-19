@@ -276,7 +276,10 @@ private:
 class TemperatureControllerCollector : public DataCollector
 {
 public:
-  using RawFrameCallback = std::function<void(uint64_t host_timestamp_us, const uint8_t* frame, size_t size)>;
+  using RawFrameCallback = std::function<void(uint64_t host_timestamp_us,
+                                              uint16_t record_type,
+                                              const uint8_t* frame,
+                                              size_t size)>;
 
   TemperatureControllerData getLatestData();
   bool checkDeviceResponse() override;
@@ -324,13 +327,17 @@ private:
   bool readSnapshot(TemperatureControllerData& sample);
   bool readChannel(uint8_t channel, TemperatureControllerChannelData& channel_data);
   bool readRegisters(uint16_t address, uint16_t count, std::vector<uint16_t>& registers, int wait_ms = 200);
-  bool readRegistersUnlocked(uint16_t address, uint16_t count, std::vector<uint16_t>& registers, int wait_ms);
+  bool readRegistersUnlocked(uint16_t address,
+                             uint16_t count,
+                             std::vector<uint16_t>& registers,
+                             int wait_ms,
+                             bool record_raw = true);
   bool queryAscii(const std::string& command, std::string& response, int wait_ms = 1200);
   bool writeRegisters(uint16_t address, const std::vector<uint16_t>& registers, int wait_ms = 200);
   bool writeRegistersUnlocked(uint16_t address, const std::vector<uint16_t>& registers, int wait_ms);
   bool writeAndConfirm(uint8_t channel, uint16_t address, const std::vector<uint16_t>& registers);
   bool readResponseFrame(uint8_t function_code, std::vector<uint8_t>& frame, int wait_ms);
-  void publishRawFrame(const std::vector<uint8_t>& frame);
+  void publishRawFrame(uint16_t record_type, const std::vector<uint8_t>& frame);
 };
 
 }

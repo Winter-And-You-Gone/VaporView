@@ -199,6 +199,22 @@ void testFormatConstantsAndGoldenBytes()
     require(kSourceNavigation == 1u && kSourcePressure == 2u && kSourceTemperatureHumidity == 3u &&
                 kSourceDistance == 4u && kSourceWaveform == 5u,
             "raw DAT source IDs are unchanged");
+    require(kSourceLaserTemperatureController == 6u &&
+                kSourceSystemTemperatureController == 7u,
+            "semantic temperature controller source IDs are appended as 6 and 7");
+    require(!isValidRecordType(kSourceLaserTemperatureController, 0u) &&
+                isValidRecordType(kSourceLaserTemperatureController, 0x0120u) &&
+                !isValidRecordType(kSourceSystemTemperatureController, 0u) &&
+                isValidRecordType(kSourceSystemTemperatureController,
+                                  kRecordTypeSystemTemperatureMeasuredValues) &&
+                isValidRecordType(kSourceSystemTemperatureController,
+                                  kRecordTypeSystemTemperatureAlarmStatus) &&
+                isValidRecordType(kSourceSystemTemperatureController,
+                                  kRecordTypeSystemTemperatureMainStatus) &&
+                isValidRecordType(kSourceSystemTemperatureController,
+                                  kRecordTypeSystemTemperatureControlStatus) &&
+                !isValidRecordType(kSourceSystemTemperatureController, 5u),
+            "temperature controller record types use semantic source rules");
 
     QByteArray bytes;
     QBuffer buffer(&bytes);

@@ -288,6 +288,28 @@ MainWindow::MainWindow(QWidget *parent)
                                                 size_t size) {
         state_->recording_service_->recordRawLidarFrame(timestampUs, protocol, payload, size);
     };
+    connectionCallbacks.rawLaserTemperatureControllerResponse =
+        [this](quint64 timestampUs,
+               quint16 recordType,
+               const void *payload,
+               size_t size) {
+        state_->recording_service_->recordRawLaserTemperatureControllerResponse(
+            timestampUs,
+            recordType,
+            payload,
+            size);
+    };
+    connectionCallbacks.rawSystemTemperatureControllerResponse =
+        [this](quint64 timestampUs,
+               quint16 recordType,
+               const void *payload,
+               size_t size) {
+        state_->recording_service_->recordRawSystemTemperatureControllerResponse(
+            timestampUs,
+            recordType,
+            payload,
+            size);
+    };
     state_->local_connection_controller_->setCallbacks(std::move(connectionCallbacks));
 
     RecordingScheduleController::Hooks scheduleHooks;

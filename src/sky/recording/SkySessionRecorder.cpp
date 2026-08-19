@@ -253,6 +253,12 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     temperature_humidity_raw_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.temperatureHumidityRawPath);
     distance_raw_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.distanceRawPath);
     waveform_raw_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.waveformRawPath);
+    laser_temperature_controller_raw_filename_ = VaporView::Session::sessionPackageFilePath(
+        session_directory_,
+        packageLayout.laserTemperatureControllerRawPath);
+    system_temperature_controller_raw_filename_ = VaporView::Session::sessionPackageFilePath(
+        session_directory_,
+        packageLayout.systemTemperatureControllerRawPath);
     waveform_peaks_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.waveformPeaksCsvPath);
     waveform_peaks_file_.setFileName(waveform_peaks_filename_);
     event_log_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.eventLogPath);
@@ -271,7 +277,15 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
         !openRawDatFile(pressure_raw_file_, pressure_raw_filename_, SessionRawDat::kSourcePressure, errorMessage) ||
         !openRawDatFile(temperature_humidity_raw_file_, temperature_humidity_raw_filename_, SessionRawDat::kSourceTemperatureHumidity, errorMessage) ||
         !openRawDatFile(distance_raw_file_, distance_raw_filename_, SessionRawDat::kSourceDistance, errorMessage) ||
-        !openRawDatFile(waveform_raw_file_, waveform_raw_filename_, SessionRawDat::kSourceWaveform, errorMessage))
+        !openRawDatFile(waveform_raw_file_, waveform_raw_filename_, SessionRawDat::kSourceWaveform, errorMessage) ||
+        !openRawDatFile(laser_temperature_controller_raw_file_,
+                        laser_temperature_controller_raw_filename_,
+                        SessionRawDat::kSourceLaserTemperatureController,
+                        errorMessage) ||
+        !openRawDatFile(system_temperature_controller_raw_file_,
+                        system_temperature_controller_raw_filename_,
+                        SessionRawDat::kSourceSystemTemperatureController,
+                        errorMessage))
     {
         if (errorMessage && errorMessage->isEmpty()) *errorMessage = QStringLiteral("cannot open session files");
         closeFiles();
@@ -306,6 +320,8 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     raw_temperature_humidity_record_count_ = 0;
     raw_distance_record_count_ = 0;
     raw_waveform_record_count_ = 0;
+    raw_laser_temperature_controller_record_count_ = 0;
+    raw_system_temperature_controller_record_count_ = 0;
     native_raw_waveform_record_count_ = 0;
     event_row_count_ = 0;
     error_row_count_ = 0;
@@ -430,6 +446,16 @@ quint64 SkySessionRecorder::rawDistanceRecordCount() const
 quint64 SkySessionRecorder::rawWaveformRecordCount() const
 {
     return raw_waveform_record_count_;
+}
+
+quint64 SkySessionRecorder::rawLaserTemperatureControllerRecordCount() const
+{
+    return raw_laser_temperature_controller_record_count_;
+}
+
+quint64 SkySessionRecorder::rawSystemTemperatureControllerRecordCount() const
+{
+    return raw_system_temperature_controller_record_count_;
 }
 
 bool SkySessionRecorder::appendEvent(const LogRecord& record)
@@ -750,6 +776,34 @@ void SkySessionRecorder::recordRawLidarFrame(quint64 hostTimeUs, quint16 protoco
                    frame.size());
 }
 
+void SkySessionRecorder::recordRawLaserTemperatureControllerResponse(quint64 hostTimeUs,
+                                                                     quint16 recordType,
+                                                                     const QByteArray& response)
+{
+    writeRawRecord(laser_temperature_controller_raw_file_,
+                   raw_laser_temperature_controller_record_count_,
+                   SessionRawDat::kSourceLaserTemperatureController,
+                   recordType,
+                   0u,
+                   hostTimeUs,
+                   response.constData(),
+                   response.size());
+}
+
+void SkySessionRecorder::recordRawSystemTemperatureControllerResponse(quint64 hostTimeUs,
+                                                                      quint16 recordType,
+                                                                      const QByteArray& response)
+{
+    writeRawRecord(system_temperature_controller_raw_file_,
+                   raw_system_temperature_controller_record_count_,
+                   SessionRawDat::kSourceSystemTemperatureController,
+                   recordType,
+                   0u,
+                   hostTimeUs,
+                   response.constData(),
+                   response.size());
+}
+
 void SkySessionRecorder::recordRawTcpWaveFrame(quint64 hostTimeUs,
                                                const QByteArray& rawPayload,
                                                const QByteArray& harmonicPayload,
@@ -922,6 +976,8 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
     manifest.rawRecords.temperatureHumidity = raw_temperature_humidity_record_count_;
     manifest.rawRecords.distance = raw_distance_record_count_;
     manifest.rawRecords.waveform = raw_waveform_record_count_;
+    manifest.rawRecords.laserTemperatureController = raw_laser_temperature_controller_record_count_;
+    manifest.rawRecords.systemTemperatureController = raw_system_temperature_controller_record_count_;
     return VaporView::Session::writeSessionManifestAtomically(session_metadata_filename_,
                                                               manifest,
                                                               errorMessage);
@@ -939,6 +995,8 @@ void SkySessionRecorder::closeFiles()
                         &temperature_humidity_raw_file_,
                         &distance_raw_file_,
                         &waveform_raw_file_,
+                        &laser_temperature_controller_raw_file_,
+                        &system_temperature_controller_raw_file_,
                         &waveform_peaks_file_,
                         &event_log_file_,
                         &error_log_file_})

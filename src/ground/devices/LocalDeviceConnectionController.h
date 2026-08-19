@@ -87,6 +87,8 @@ struct LocalConnectionCallbacks
     std::function<void(quint64, const void *, size_t)> rawPtbResponse;
     std::function<void(quint64, const void *, size_t)> rawHmpResponse;
     std::function<void(quint64, quint16, const void *, size_t)> rawLidarFrame;
+    std::function<void(quint64, quint16, const void *, size_t)> rawLaserTemperatureControllerResponse;
+    std::function<void(quint64, quint16, const void *, size_t)> rawSystemTemperatureControllerResponse;
 };
 
 struct LocalSampleRateConfiguration

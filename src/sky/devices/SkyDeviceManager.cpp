@@ -541,7 +541,21 @@ void SkyDeviceManager::drainRawEvents()
             }
             break;
         case SkyDeviceId::TemperatureController:
+            if (temperature_controller_.get() == event.collectorIdentity)
+            {
+                emit laserTemperatureControllerRawResponseReceived(event.timestampUs,
+                                                                   event.metadata,
+                                                                   event.payload);
+            }
+            break;
         case SkyDeviceId::Ai8TemperatureController:
+            if (ai8_temperature_controller_.get() == event.collectorIdentity)
+            {
+                emit systemTemperatureControllerRawResponseReceived(event.timestampUs,
+                                                                    event.metadata,
+                                                                    event.payload);
+            }
+            break;
         case SkyDeviceId::WaveTcp:
         case SkyDeviceId::All:
             break;
@@ -2379,6 +2393,30 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
                 self->handleTemperatureControllerData(data);
             }, Qt::QueuedConnection);
         });
+        temperature_controller_->setRawFrameCallback(
+            [self = QPointer<SkyDeviceManager>(this),
+             weakCollector = std::weak_ptr<TemperatureControllerCollector>(temperature_controller_)](
+                uint64_t hostTimestampUs,
+                uint16_t recordType,
+                const uint8_t* frameData,
+                size_t size) {
+            if (!self || !frameData || size > static_cast<size_t>(std::numeric_limits<int>::max()))
+            {
+                return;
+            }
+            const std::shared_ptr<TemperatureControllerCollector> collector = weakCollector.lock();
+            if (!collector)
+            {
+                return;
+            }
+            PendingRawEvent event;
+            event.deviceId = SkyDeviceId::TemperatureController;
+            event.collectorIdentity = collector.get();
+            event.timestampUs = static_cast<quint64>(hostTimestampUs);
+            event.metadata = recordType;
+            event.payload = QByteArray(reinterpret_cast<const char*>(frameData), static_cast<int>(size));
+            self->enqueueRawEvent(std::move(event));
+        });
         if (!temperature_controller_->start(config.port.toStdString(), SerialConfig::N81(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!temperature_controller_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!temperature_controller_->startStreaming()) return fail(CommandErrorCode::DeviceConnectFailed);
@@ -2408,6 +2446,30 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
                 }
                 self->handleAi8TemperatureControllerData(data);
             }, Qt::QueuedConnection);
+        });
+        ai8_temperature_controller_->setRawFrameCallback(
+            [self = QPointer<SkyDeviceManager>(this),
+             weakCollector = std::weak_ptr<Ai8TemperatureControllerCollector>(ai8_temperature_controller_)](
+                uint64_t hostTimestampUs,
+                uint16_t recordType,
+                const uint8_t* frameData,
+                size_t size) {
+            if (!self || !frameData || size > static_cast<size_t>(std::numeric_limits<int>::max()))
+            {
+                return;
+            }
+            const std::shared_ptr<Ai8TemperatureControllerCollector> collector = weakCollector.lock();
+            if (!collector)
+            {
+                return;
+            }
+            PendingRawEvent event;
+            event.deviceId = SkyDeviceId::Ai8TemperatureController;
+            event.collectorIdentity = collector.get();
+            event.timestampUs = static_cast<quint64>(hostTimestampUs);
+            event.metadata = recordType;
+            event.payload = QByteArray(reinterpret_cast<const char*>(frameData), static_cast<int>(size));
+            self->enqueueRawEvent(std::move(event));
         });
         if (!ai8_temperature_controller_->start(config.port.toStdString(), SerialConfig::N81(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!ai8_temperature_controller_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);

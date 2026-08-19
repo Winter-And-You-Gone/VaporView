@@ -4278,16 +4278,16 @@ bool TemperatureControllerCollector::initialize()
   return true;
 }
 
-void TemperatureControllerCollector::publishRawFrame(const std::vector<uint8_t>& frame)
+void TemperatureControllerCollector::publishRawFrame(uint16_t record_type, const std::vector<uint8_t>& frame)
 {
   RawFrameCallback raw_callback;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     raw_callback = raw_frame_callback_;
   }
-  if (raw_callback && !frame.empty())
+  if (raw_callback && record_type != 0 && !frame.empty())
   {
-    raw_callback(systemTimestampUs(), frame.data(), frame.size());
+    raw_callback(systemTimestampUs(), record_type, frame.data(), frame.size());
   }
 }
 
@@ -4352,7 +4352,6 @@ bool TemperatureControllerCollector::readResponseFrame(uint8_t function_code, st
           break;
         }
         frame.assign(buffer.begin(), buffer.begin() + static_cast<std::ptrdiff_t>(frame_size));
-        publishRawFrame(frame);
         return true;
       }
     }
@@ -4370,7 +4369,11 @@ bool TemperatureControllerCollector::readRegisters(uint16_t address, uint16_t co
   return readRegistersUnlocked(address, count, registers, wait_ms);
 }
 
-bool TemperatureControllerCollector::readRegistersUnlocked(uint16_t address, uint16_t count, std::vector<uint16_t>& registers, int wait_ms)
+bool TemperatureControllerCollector::readRegistersUnlocked(uint16_t address,
+                                                           uint16_t count,
+                                                           std::vector<uint16_t>& registers,
+                                                           int wait_ms,
+                                                           bool record_raw)
 {
   using namespace TemperatureControllerProtocol;
   const QByteArray request = buildReadRegistersRequest(slave_address_, address, count);
@@ -4392,6 +4395,10 @@ bool TemperatureControllerCollector::readRegistersUnlocked(uint16_t address, uin
     return false;
   }
   registers.assign(parsed.registers.cbegin(), parsed.registers.cend());
+  if (record_raw)
+  {
+    publishRawFrame(address, frame);
+  }
   return true;
 }
 
@@ -4430,10 +4437,6 @@ bool TemperatureControllerCollector::queryAscii(const std::string& command, std:
     }
   }
 
-  if (!response.empty())
-  {
-    publishRawFrame(std::vector<uint8_t>(response.cbegin(), response.cend()));
-  }
   return !response.empty();
 }
 
@@ -4472,7 +4475,7 @@ bool TemperatureControllerCollector::writeAndConfirm(uint8_t channel, uint16_t a
     return false;
   }
   std::vector<uint16_t> read_back;
-  if (!readRegistersUnlocked(address, static_cast<uint16_t>(registers.size()), read_back, 200))
+  if (!readRegistersUnlocked(address, static_cast<uint16_t>(registers.size()), read_back, 200, false))
   {
     return false;
   }
@@ -4817,7 +4820,7 @@ bool TemperatureControllerCollector::setDeviceAddress(uint16_t address)
   }
   slave_address_ = static_cast<uint8_t>(address);
   std::vector<uint16_t> read_back;
-  return readRegistersUnlocked(static_cast<uint16_t>(Register::DeviceAddress), 1, read_back, 500) &&
+  return readRegistersUnlocked(static_cast<uint16_t>(Register::DeviceAddress), 1, read_back, 500, false) &&
          !read_back.empty() &&
          read_back[0] == address;
 }
@@ -4839,7 +4842,7 @@ bool TemperatureControllerCollector::setRs485BaudIndex(uint16_t baud_index)
     return false;
   }
   std::vector<uint16_t> read_back;
-  return readRegistersUnlocked(static_cast<uint16_t>(Register::Rs485Baud), 1, read_back, 500) &&
+  return readRegistersUnlocked(static_cast<uint16_t>(Register::Rs485Baud), 1, read_back, 500, false) &&
          read_back == registers;
 }
 

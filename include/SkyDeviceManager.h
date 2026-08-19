@@ -133,6 +133,12 @@ signals:
     void ptbRawResponseReceived(quint64 timestampUs, QByteArray response);
     void hmpRawResponseReceived(quint64 timestampUs, QByteArray response);
     void lidarRawFrameReceived(quint64 timestampUs, quint16 protocol, QByteArray frame);
+    void laserTemperatureControllerRawResponseReceived(quint64 timestampUs,
+                                                       quint16 recordType,
+                                                       QByteArray response);
+    void systemTemperatureControllerRawResponseReceived(quint64 timestampUs,
+                                                        quint16 recordType,
+                                                        QByteArray response);
     void tcpRawWaveFrameReceived(quint64 timestampUs,
                                  QByteArray rawPayload,
                                  QByteArray harmonicPayload,

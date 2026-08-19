@@ -531,9 +531,11 @@ void MainWindow::updateRecordingStatusLabel()
                                   qulonglong rawPtb,
                                   qulonglong rawHmp,
                                   qulonglong rawLidar,
-                                  qulonglong rawWaveform) {
+                                  qulonglong rawWaveform,
+                                  qulonglong rawLaserTemperature,
+                                  qulonglong rawSystemTemperature) {
         return state_->is_english_
-            ? QStringLiteral("Session: %1\nSensor rows: %2\nWaveform frames: %3\nRecorded RAW EPSILON: %4\nRecorded RAW PTB: %5\nRecorded RAW HMP: %6\nRecorded RAW Lidar: %7\nRecorded RAW TCP wave: %8")
+            ? QStringLiteral("Session: %1\nSensor rows: %2\nWaveform frames: %3\nRecorded RAW EPSILON: %4\nRecorded RAW PTB: %5\nRecorded RAW HMP: %6\nRecorded RAW Lidar: %7\nRecorded RAW TCP wave: %8\nRecorded RAW laser thermal: %9\nRecorded RAW system thermal: %10")
                   .arg(session)
                   .arg(sensorRows)
                   .arg(waveformFrames)
@@ -542,7 +544,9 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(rawHmp)
                   .arg(rawLidar)
                   .arg(rawWaveform)
-            : QStringLiteral("会话：%1\n设备行数：%2\n波形帧数：%3\n已记录 RAW EPSILON：%4\n已记录 RAW PTB：%5\n已记录 RAW HMP：%6\n已记录 RAW Lidar：%7\n已记录 RAW TCP 波形：%8")
+                  .arg(rawLaserTemperature)
+                  .arg(rawSystemTemperature)
+            : QStringLiteral("会话：%1\n设备行数：%2\n波形帧数：%3\n已记录 RAW EPSILON：%4\n已记录 RAW PTB：%5\n已记录 RAW HMP：%6\n已记录 RAW Lidar：%7\n已记录 RAW TCP 波形：%8\n已记录 RAW 激光温控：%9\n已记录 RAW 系统温控：%10")
                   .arg(session)
                   .arg(sensorRows)
                   .arg(waveformFrames)
@@ -550,7 +554,9 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(rawPtb)
                   .arg(rawHmp)
                   .arg(rawLidar)
-                  .arg(rawWaveform);
+                  .arg(rawWaveform)
+                  .arg(rawLaserTemperature)
+                  .arg(rawSystemTemperature);
     };
     auto appendScheduledLine = [this](const QString& text) {
         const QString scheduledLine = state_->recording_schedule_controller_
@@ -579,13 +585,15 @@ void MainWindow::updateRecordingStatusLabel()
             displayStatus.raw_pressure_record_count +
             displayStatus.raw_temperature_humidity_record_count +
             displayStatus.raw_distance_record_count +
-            displayStatus.raw_waveform_record_count;
+            displayStatus.raw_waveform_record_count +
+            displayStatus.raw_laser_temperature_controller_record_count +
+            displayStatus.raw_system_temperature_controller_record_count;
         const QString elapsed = formatElapsedCompact(displayStatus.recording_elapsed_ms);
         const QString session = displayStatus.session_name.isEmpty()
             ? QStringLiteral("--")
             : displayStatus.session_name;
         const QString detail = state_->is_english_
-            ? QStringLiteral("Session: %1\nElapsed: %2\nTelemetry rows: %3\nWave features: %4\nWave snapshots: %5\nRecorded RAW EPSILON: %6\nRecorded RAW PTB: %7\nRecorded RAW HMP: %8\nRecorded RAW Lidar: %9\nRecorded RAW TCP wave: %10")
+            ? QStringLiteral("Session: %1\nElapsed: %2\nTelemetry rows: %3\nWave features: %4\nWave snapshots: %5\nRecorded RAW EPSILON: %6\nRecorded RAW PTB: %7\nRecorded RAW HMP: %8\nRecorded RAW Lidar: %9\nRecorded RAW TCP wave: %10\nRecorded RAW laser thermal: %11\nRecorded RAW system thermal: %12")
                   .arg(session)
                   .arg(elapsed)
                   .arg(displayStatus.telemetry_record_count)
@@ -596,7 +604,9 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(displayStatus.raw_temperature_humidity_record_count)
                   .arg(displayStatus.raw_distance_record_count)
                   .arg(displayStatus.raw_waveform_record_count)
-            : QStringLiteral("会话：%1\n时长：%2\n遥测行数：%3\n波形特征：%4\n波形快照：%5\n已记录 RAW EPSILON：%6\n已记录 RAW PTB：%7\n已记录 RAW HMP：%8\n已记录 RAW Lidar：%9\n已记录 RAW TCP 波形：%10")
+                  .arg(displayStatus.raw_laser_temperature_controller_record_count)
+                  .arg(displayStatus.raw_system_temperature_controller_record_count)
+            : QStringLiteral("会话：%1\n时长：%2\n遥测行数：%3\n波形特征：%4\n波形快照：%5\n已记录 RAW EPSILON：%6\n已记录 RAW PTB：%7\n已记录 RAW HMP：%8\n已记录 RAW Lidar：%9\n已记录 RAW TCP 波形：%10\n已记录 RAW 激光温控：%11\n已记录 RAW 系统温控：%12")
                   .arg(session)
                   .arg(elapsed)
                   .arg(displayStatus.telemetry_record_count)
@@ -606,7 +616,9 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(displayStatus.raw_pressure_record_count)
                   .arg(displayStatus.raw_temperature_humidity_record_count)
                   .arg(displayStatus.raw_distance_record_count)
-                  .arg(displayStatus.raw_waveform_record_count);
+                  .arg(displayStatus.raw_waveform_record_count)
+                  .arg(displayStatus.raw_laser_temperature_controller_record_count)
+                  .arg(displayStatus.raw_system_temperature_controller_record_count);
         const QString detailWithSchedule = appendScheduledLine(detail);
         state_->recording_status_label_->setToolTip(detailWithSchedule);
         if (state_->recording_status_card_)
@@ -660,7 +672,9 @@ void MainWindow::updateRecordingStatusLabel()
         static_cast<qulonglong>(recordingStatus.rawPressureRecords),
         static_cast<qulonglong>(recordingStatus.rawTemperatureHumidityRecords),
         static_cast<qulonglong>(recordingStatus.rawDistanceRecords),
-        static_cast<qulonglong>(recordingStatus.rawWaveformRecords));
+        static_cast<qulonglong>(recordingStatus.rawWaveformRecords),
+        static_cast<qulonglong>(recordingStatus.rawLaserTemperatureControllerRecords),
+        static_cast<qulonglong>(recordingStatus.rawSystemTemperatureControllerRecords));
     if (recordingStatus.sessionOpen)
     {
         if (recordingStatus.paused)

@@ -1,6 +1,7 @@
 #include "Ai8TemperatureControllerCollector.h"
 
 #include "TemperatureControllerProtocol.h"
+#include "shared/session/UnifiedRawDat.h"
 
 #include <algorithm>
 #include <chrono>
@@ -17,6 +18,12 @@ using namespace Ai8TemperatureControllerProtocol;
 void sleepMs(int milliseconds)
 {
     std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+}
+
+uint64_t systemTimestampUs()
+{
+    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count());
 }
 
 QString registerError(quint16 address, bool english)
@@ -45,6 +52,12 @@ quint8 Ai8TemperatureControllerCollector::slaveAddress() const
     return slaveAddress_.load();
 }
 
+void Ai8TemperatureControllerCollector::setRawFrameCallback(RawFrameCallback callback)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    rawFrameCallback_ = std::move(callback);
+}
+
 void Ai8TemperatureControllerCollector::setRegisterBackendForTest(
     RegisterReadBackendForTest readBackend,
     RegisterWriteBackendForTest writeBackend)
@@ -57,6 +70,20 @@ bool Ai8TemperatureControllerCollector::initialize()
 {
     serial_.setNonBlocking(true);
     return true;
+}
+
+void Ai8TemperatureControllerCollector::publishRawFrame(quint16 recordType,
+                                                         const std::vector<quint8>& frame)
+{
+    RawFrameCallback callback;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        callback = rawFrameCallback_;
+    }
+    if (callback && recordType != 0 && !frame.empty())
+    {
+        callback(systemTimestampUs(), recordType, frame.data(), frame.size());
+    }
 }
 
 bool Ai8TemperatureControllerCollector::readResponseFrame(quint8 functionCode,
@@ -125,20 +152,22 @@ bool Ai8TemperatureControllerCollector::readResponseFrame(quint8 functionCode,
 bool Ai8TemperatureControllerCollector::readRegisters(quint16 address,
                                                        quint16 count,
                                                        std::vector<quint16>& values,
-                                                       int waitMs)
+                                                       int waitMs,
+                                                       quint16 rawRecordType)
 {
     std::lock_guard<std::mutex> lock(modbusMutex_);
     if (readBackendForTest_)
     {
         return readBackendForTest_(address, count, values);
     }
-    return readRegistersUnlocked(address, count, values, waitMs);
+    return readRegistersUnlocked(address, count, values, waitMs, rawRecordType);
 }
 
 bool Ai8TemperatureControllerCollector::readRegistersUnlocked(quint16 address,
                                                                quint16 count,
                                                                std::vector<quint16>& values,
-                                                               int waitMs)
+                                                               int waitMs,
+                                                               quint16 rawRecordType)
 {
     using namespace TemperatureControllerProtocol;
     if (count == 0 || count > 32)
@@ -165,6 +194,10 @@ bool Ai8TemperatureControllerCollector::readRegistersUnlocked(quint16 address,
         return false;
     }
     values.assign(parsed.registers.cbegin(), parsed.registers.cend());
+    if (rawRecordType != 0)
+    {
+        publishRawFrame(rawRecordType, response);
+    }
     return true;
 }
 
@@ -652,7 +685,11 @@ bool Ai8TemperatureControllerCollector::writePage(const PageData& data, QString 
 bool Ai8TemperatureControllerCollector::readLiveData(LiveData& data)
 {
     std::vector<quint16> values;
-    if (!readRegisters(static_cast<quint16>(Register::MeasuredValueBase), kChannelCount, values, 250) ||
+    if (!readRegisters(static_cast<quint16>(Register::MeasuredValueBase),
+                       kChannelCount,
+                       values,
+                       250,
+                       SessionRawDat::kRecordTypeSystemTemperatureMeasuredValues) ||
         values.size() != kChannelCount)
     {
         data.valid = false;
@@ -671,7 +708,8 @@ bool Ai8TemperatureControllerCollector::readLiveData(LiveData& data)
     if (readRegisters(static_cast<quint16>(Register::AlarmStatusBase),
                       kAlarmStatusRegisterCount,
                       alarmValues,
-                      250) &&
+                      250,
+                      SessionRawDat::kRecordTypeSystemTemperatureAlarmStatus) &&
         alarmValues.size() == kAlarmStatusRegisterCount)
     {
         for (int index = 0; index < kAlarmStatusRegisterCount; ++index)
@@ -681,10 +719,15 @@ bool Ai8TemperatureControllerCollector::readLiveData(LiveData& data)
         }
         data.alarmStatusValid = true;
     }
-    quint16 mainStatus = 0;
-    if (readRegisterValue(static_cast<quint16>(Register::MainStatus), mainStatus))
+    std::vector<quint16> mainStatusValues;
+    if (readRegisters(static_cast<quint16>(Register::MainStatus),
+                      1,
+                      mainStatusValues,
+                      250,
+                      SessionRawDat::kRecordTypeSystemTemperatureMainStatus) &&
+        !mainStatusValues.empty())
     {
-        data.mainStatusRaw = mainStatus;
+        data.mainStatusRaw = mainStatusValues.front();
         data.mainStatusValid = true;
     }
 
@@ -692,7 +735,8 @@ bool Ai8TemperatureControllerCollector::readLiveData(LiveData& data)
     if (!readRegisters(static_cast<quint16>(Register::ControlStatusBase),
                        kControlStatusRegisterCount,
                        statusValues,
-                       250) ||
+                       250,
+                       SessionRawDat::kRecordTypeSystemTemperatureControlStatus) ||
         statusValues.size() != kControlStatusRegisterCount)
     {
         data.controlStatesValid = false;

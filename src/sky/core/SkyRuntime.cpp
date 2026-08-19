@@ -204,6 +204,18 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
             [this](quint64 timestampUs, quint16 protocol, const QByteArray& frame) {
                 session_recorder_.recordRawLidarFrame(timestampUs, protocol, frame);
             });
+    connect(&device_manager_, &SkyDeviceManager::laserTemperatureControllerRawResponseReceived, this,
+            [this](quint64 timestampUs, quint16 recordType, const QByteArray& response) {
+                session_recorder_.recordRawLaserTemperatureControllerResponse(timestampUs,
+                                                                              recordType,
+                                                                              response);
+            });
+    connect(&device_manager_, &SkyDeviceManager::systemTemperatureControllerRawResponseReceived, this,
+            [this](quint64 timestampUs, quint16 recordType, const QByteArray& response) {
+                session_recorder_.recordRawSystemTemperatureControllerResponse(timestampUs,
+                                                                               recordType,
+                                                                               response);
+            });
     connect(&device_manager_, &SkyDeviceManager::tcpRawWaveFrameReceived, this,
             [this](quint64 timestampUs,
                    const QByteArray& rawPayload,
@@ -602,6 +614,10 @@ TelemetryStatus SkyRuntime::currentStatus() const
     status.raw_temperature_humidity_record_count = session_recorder_.rawTemperatureHumidityRecordCount();
     status.raw_distance_record_count = session_recorder_.rawDistanceRecordCount();
     status.raw_waveform_record_count = session_recorder_.rawWaveformRecordCount();
+    status.raw_laser_temperature_controller_record_count =
+        session_recorder_.rawLaserTemperatureControllerRecordCount();
+    status.raw_system_temperature_controller_record_count =
+        session_recorder_.rawSystemTemperatureControllerRecordCount();
     const RtcmCorrectionStats rtcmStats = device_manager_.rtcmCorrectionStats();
     status.rtcm_correction_bytes_received = rtcmStats.bytes_received;
     status.rtcm_correction_chunks_received = rtcmStats.chunks_received;

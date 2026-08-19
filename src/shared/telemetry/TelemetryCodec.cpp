@@ -757,6 +757,8 @@ QByteArray TelemetryCodec::serializeTelemetryStatus(const TelemetryStatus& statu
     appendLe<quint64>(payload, status.rtcm_correction_dropped_bytes);
     appendLe<quint64>(payload, status.rtcm_correction_dropped_chunks);
     appendLe<quint64>(payload, status.rtcm_correction_last_receive_time_us);
+    appendLe<quint64>(payload, status.raw_laser_temperature_controller_record_count);
+    appendLe<quint64>(payload, status.raw_system_temperature_controller_record_count);
     return payload;
 }
 
@@ -836,7 +838,9 @@ bool TelemetryCodec::parseTelemetryStatus(const QByteArray& payload, TelemetrySt
            readOptionalU64(status.rtcm_correction_chunks_received) &&
            readOptionalU64(status.rtcm_correction_dropped_bytes) &&
            readOptionalU64(status.rtcm_correction_dropped_chunks) &&
-           readOptionalU64(status.rtcm_correction_last_receive_time_us);
+           readOptionalU64(status.rtcm_correction_last_receive_time_us) &&
+           readOptionalU64(status.raw_laser_temperature_controller_record_count) &&
+           readOptionalU64(status.raw_system_temperature_controller_record_count);
 }
 
 QByteArray TelemetryCodec::serializeCommand(const CommandMessage& command)
