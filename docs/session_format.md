@@ -1,5 +1,11 @@
 # VaporView session package format
 
+For a file-by-file audit of the real `data\对比1` package against the v1.0
+offline-session specification, see
+[`session_format_actual_audit.md`](session_format_actual_audit.md). That audit
+is based on the bytes and fields actually present in the sample package; it is
+not inferred from production source code.
+
 New Ground and Sky recordings use the same session package layout, file set,
 CSV schemas, RAW DAT format, `session.json` schema, and `device_config.json`
 schema. The origin value is explicit in both JSON metadata files:
