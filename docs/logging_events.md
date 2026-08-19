@@ -59,10 +59,10 @@
 | SkyCore | device.pressure.command | ptb_continuous_restore_failed | Error | PTB210 恢复连续输出失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
 | SkyCore | device.pressure.command | ptb_pressure_probe_write_failed | Error | PTB210 压力探测命令发送失败。 | device_id, device, command, attempt, error_code |  | SERIAL_WRITE_FAILED |
 | SkyCore | device.pressure.command | ptb_continuous_start_failed | Error | PTB210 启动连续输出失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
-| SkyCore | device.temperature.state | temperature_controller_model_read_failed | Error | 激光温控型号读取失败。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
-| SkyCore | device.temperature.state | temperature_controller_firmware_read_failed | Error | 激光温控版本号读取失败。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
-| SkyCore | device.temperature.state | temperature_controller_parameters_read_failed | Error | 激光温控参数读取失败。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
-| SkyCore | device.temperature.state | temperature_controller_parameters_incomplete | Error | 激光温控参数读取不完整。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
+| SkyCore | device.temperature.state | temperature_controller_model_read_failed | Error | RD105 温控器型号读取失败。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
+| SkyCore | device.temperature.state | temperature_controller_firmware_read_failed | Error | RD105 温控器版本号读取失败。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
+| SkyCore | device.temperature.state | temperature_controller_parameters_read_failed | Error | RD105 温控器参数读取失败。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
+| SkyCore | device.temperature.state | temperature_controller_parameters_incomplete | Error | RD105 温控器参数读取不完整。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
 | SkyCore | device.lidar.command | lidar_high_frequency_start_failed | Error | TFA1500-L 高频测距启动命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
 | SkyCore | device.lidar.command | lidar_standby_command_failed | Error | TFA1500-L 待机命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
 | SkyCore | device.lidar.command | lidar_distance_output_command_failed | Error | TFA1500-L 距离输出命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
@@ -87,8 +87,8 @@
 | SkyTui | ipc.protocol | sky_ipc_waveform_downsampled_parse_failed | Warning | 无法解析 SkyCore WaveformDownsampled 载荷。 | message_type, payload_bytes |  |  |
 | SkyTui | ipc.protocol | sky_ipc_waveform_feature_parse_failed | Warning | 无法解析 SkyCore WaveformFeature 载荷。 | message_type, payload_bytes |  |  |
 | SkyTui | ipc.protocol | sky_ipc_telemetry_status_parse_failed | Warning | 无法解析 SkyCore TelemetryStatus 载荷。 | message_type, payload_bytes |  |  |
-| SkyTui | ipc.protocol | sky_ipc_temperature_controller_status_parse_failed | Warning | 无法解析 SkyCore 激光温控状态载荷。 | message_type, payload_bytes |  |  |
-| SkyTui | ipc.protocol | sky_ipc_ai8_temperature_controller_status_parse_failed | Warning | 无法解析 SkyCore 系统温控状态载荷。 | message_type, payload_bytes |  |  |
+| SkyTui | ipc.protocol | sky_ipc_temperature_controller_status_parse_failed | Warning | 无法解析 SkyCore RD105 温控状态载荷。 | message_type, payload_bytes |  |  |
+| SkyTui | ipc.protocol | sky_ipc_ai8_temperature_controller_status_parse_failed | Warning | 无法解析 SkyCore AI-8288 温控状态载荷。 | message_type, payload_bytes |  |  |
 | SkyTui | ipc.protocol | sky_ipc_command_ack_parse_failed | Warning | 无法解析 SkyCore CommandAck 载荷。 | message_type, payload_bytes |  |  |
 | SkyTui | ipc.protocol | sky_ipc_config_parse_failed | Warning | 无法解析 SkyCore 返回的配置。 | payload_bytes | system_error | SKY_IPC_CONFIG_PARSE_FAILED |
 | SkyTui | ipc.config | sky_ipc_config_apply_result_received | Info | 已收到 SkyCore 配置应用结果。 | config_apply_result |  |  |
@@ -110,7 +110,7 @@
 | Ground | protocol.parse | sky_config_apply_result_parse_failed | Warning | 无法解析 SkyConfigApplyResult JSON 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | serial_port_detection_result_parse_failed | Warning | 无法解析串口自动识别结果遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | temperature_controller_status_parse_failed | Warning | 无法解析 TemperatureControllerStatus 遥测载荷。 | message_type, payload_bytes |  |  |
-| Ground | protocol.parse | ai8_temperature_controller_status_parse_failed | Warning | 无法解析系统温控遥测载荷。 | message_type, payload_bytes |  |  |
+| Ground | protocol.parse | ai8_temperature_controller_status_parse_failed | Warning | 无法解析 AI-8288 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | device_operation_response_parse_failed | Warning | 无法解析 DeviceOperationResponse 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | log_event_parse_failed | Warning | 无法解析 LogEvent 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.error | telemetry_error_frame_received | Error | 已收到遥测 Error 帧。 | payload_hex, payload_bytes |  | TELEMETRY_ERROR_FRAME |
@@ -180,16 +180,16 @@
 | Ground | device.connection | lidar_output_rate_command_skipped | Info | 已跳过激光测距仪输出频率下发，使用设备默认或自适应输出。 | device, reason_code | ui_visibility | RATE_UNSPECIFIED |
 | Ground | device.connection | lidar_output_rate_update_failed | Warning | 激光测距仪输出频率下发失败，使用设备默认输出。 | device, requested_rate_hz, error_code | ui_visibility | OUTPUT_RATE_UPDATE_FAILED |
 | Ground | device.connection | lidar_output_rate_updated | Info | 激光测距仪输出频率已更新。 | device, requested_rate_hz | ui_visibility |  |
-| Ground | device.connection | ai8_temperature_polling_rate_updated | Info | 系统温控主机轮询频率已更新。 | device, requested_rate_hz | ui_visibility |  |
+| Ground | device.connection | ai8_temperature_polling_rate_updated | Info | AI-8288 主机轮询频率已更新。 | device, requested_rate_hz | ui_visibility |  |
 | Ground | device.connection | local_serial_device_phase_completed | Info | 本地串口设备连接阶段已完成。 | connected_devices, total_devices | ui_visibility |  |
 | Ground | device.connection | local_serial_devices_not_connected | Warning | 没有串口设备连接成功。 | connected_devices, total_devices, reason_code | ui_visibility | NO_DEVICE_CONNECTED |
-| Ground | device.connection | temperature_controller_connection_rejected_missing_port | Warning | 请先选择本地激光温控串口。 | device, device_id, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
-| Ground | device.connection | temperature_controller_connection_rejected_invalid_baud | Warning | 激光温控波特率无效。 | device, device_id, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
-| Ground | device.connection | temperature_controller_connection_started | Info | 正在连接本地激光温控。 | device, device_id, port, baud, sample_rate_hz | ui_visibility |  |
-| Ground | device.connection | temperature_controller_connected | Info | 本地激光温控已连接。 | device, device_id | details, ui_visibility |  |
-| Ground | device.connection | temperature_controller_connection_failed | Error | 本地激光温控连接失败。 | device, device_id, error_code | system_error, ui_dedupe_key | SERIAL_OPEN_FAILED |
+| Ground | device.connection | temperature_controller_connection_rejected_missing_port | Warning | 请先选择本地 RD105 串口。 | device, device_id, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
+| Ground | device.connection | temperature_controller_connection_rejected_invalid_baud | Warning | RD105 波特率无效。 | device, device_id, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
+| Ground | device.connection | temperature_controller_connection_started | Info | 正在连接本地 RD105 温控器。 | device, device_id, port, baud, sample_rate_hz | ui_visibility |  |
+| Ground | device.connection | temperature_controller_connected | Info | 本地 RD105 温控器已连接。 | device, device_id | details, ui_visibility |  |
+| Ground | device.connection | temperature_controller_connection_failed | Error | 本地 RD105 温控器连接失败。 | device, device_id, error_code | system_error, ui_dedupe_key | SERIAL_OPEN_FAILED |
 | Ground | device.connection | temperature_controller_connection_rejected_busy | Warning | 另一个本地连接操作正在进行中。 | device, device_id, reason_code | ui_dedupe_key | INVALID_STATE |
-| Ground | device.connection | temperature_controller_disconnected | Info | 本地激光温控已断开。 | device, device_id | ui_visibility |  |
+| Ground | device.connection | temperature_controller_disconnected | Info | 本地 RD105 温控器已断开。 | device, device_id | ui_visibility |  |
 | Ground | telemetry.connection | remote_sky_connection_rejected_missing_host | Warning | 请先输入天空端数传 IP。 | reason_code, transport | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | telemetry.connection | remote_sky_connection_rejected_missing_port | Warning | 请先选择天空端数传串口。 | reason_code, transport | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | telemetry.connection | remote_sky_connection_started | Info | 正在连接天空端数传。 | transport, endpoint | ui_visibility |  |
@@ -296,16 +296,16 @@
 | Ground | device.rate | hmp_polling_rate_defaulted | Info | HMP3 轮询频率保持不设定，使用默认主机轮询频率。 | device, effective_rate_hz | ui_visibility |  |
 | Ground | device.rate | hmp_sample_rate_updated | Info | HMP3 采样频率已更新。 | device, requested_rate_hz | ui_visibility |  |
 | Ground | device.rate | lidar_sample_rate_updated | Info | 激光测距仪采样频率已更新。 | device, requested_rate_hz | ui_visibility |  |
-| Ground | device.rate | temperature_polling_rate_defaulted | Info | 激光温控轮询频率保持不设定，使用默认主机轮询频率。 | device, effective_rate_hz | ui_visibility |  |
-| Ground | device.rate | temperature_polling_rate_updated | Info | 激光温控轮询频率已更新。 | device, requested_rate_hz | ui_visibility |  |
-| Ground | device.rate | temperature_polling_rate_capped | Info | 激光温控轮询频率已按设备上限限制。 | device, requested_rate_hz, effective_rate_hz | ui_visibility |  |
-| Ground | device.temperature.command | ai8_operation_completed | Info | 系统温控参数操作完成。 | device, device_id, request_id, operation, outcome, page, channel, input_group, output_group, command_error_code, details | ui_visibility |  |
-| Ground | device.temperature.command | ai8_operation_failed | Info/Error | 系统温控参数操作失败。 | device, device_id, request_id, operation, outcome, page, channel, input_group, output_group, command_error_code, details, error_code | ui_dedupe_key | AI8_OPERATION_FAILED |
-| Ground | device.temperature.command | temperature_command_sent | Info | 激光温控命令已下发到天空端。 | device, command, command_id, execution_path, command_seq | channel, target, ui_visibility |  |
-| Ground | device.temperature.command | temperature_command_completed | Info | 激光温控命令执行成功。 | device, command, command_id, execution_path | channel, target, command_seq, ui_visibility |  |
-| Ground | device.temperature.command | temperature_command_rejected_not_connected | Warning | 本地激光温控未连接，无法下发温控命令。 | device, command, command_id, execution_path, reason_code | channel, target, command_seq, command_error_code, ui_dedupe_key | DEVICE_NOT_CONNECTED |
-| Ground | device.temperature.command | temperature_command_ack_timeout | Warning | 激光温控命令 ACK 等待超时。 | device, command, command_id, execution_path, command_seq, error_code | channel, target, ui_dedupe_key | COMMAND_TIMEOUT |
-| Ground | device.temperature.command | temperature_command_failed | Error | 激光温控命令执行失败。 | device, command, command_id, execution_path, error_code | channel, target, command_seq, command_error_code, ack_result, ui_dedupe_key | COMMAND_VERIFY_FAILED / INVALID_PAYLOAD / INVALID_DEVICE_ID / CONFIG_INVALID / CONFIG_APPLY_FAILED / INTERNAL_ERROR |
+| Ground | device.rate | temperature_polling_rate_defaulted | Info | RD105 轮询频率保持不设定，使用默认主机轮询频率。 | device, effective_rate_hz | ui_visibility |  |
+| Ground | device.rate | temperature_polling_rate_updated | Info | RD105 轮询频率已更新。 | device, requested_rate_hz | ui_visibility |  |
+| Ground | device.rate | temperature_polling_rate_capped | Info | RD105 轮询频率已按设备上限限制。 | device, requested_rate_hz, effective_rate_hz | ui_visibility |  |
+| Ground | device.temperature.command | ai8_operation_completed | Info | AI-8288 参数操作完成。 | device, device_id, request_id, operation, outcome, page, channel, input_group, output_group, command_error_code, details | ui_visibility |  |
+| Ground | device.temperature.command | ai8_operation_failed | Info/Error | AI-8288 参数操作失败。 | device, device_id, request_id, operation, outcome, page, channel, input_group, output_group, command_error_code, details, error_code | ui_dedupe_key | AI8_OPERATION_FAILED |
+| Ground | device.temperature.command | temperature_command_sent | Info | RD105 温控命令已下发到天空端。 | device, command, command_id, execution_path, command_seq | channel, target, ui_visibility |  |
+| Ground | device.temperature.command | temperature_command_completed | Info | RD105 温控命令执行成功。 | device, command, command_id, execution_path | channel, target, command_seq, ui_visibility |  |
+| Ground | device.temperature.command | temperature_command_rejected_not_connected | Warning | 本地 RD105 温控器未连接，无法下发温控命令。 | device, command, command_id, execution_path, reason_code | channel, target, command_seq, command_error_code, ui_dedupe_key | DEVICE_NOT_CONNECTED |
+| Ground | device.temperature.command | temperature_command_ack_timeout | Warning | RD105 温控命令 ACK 等待超时。 | device, command, command_id, execution_path, command_seq, error_code | channel, target, ui_dedupe_key | COMMAND_TIMEOUT |
+| Ground | device.temperature.command | temperature_command_failed | Error | RD105 温控命令执行失败。 | device, command, command_id, execution_path, error_code | channel, target, command_seq, command_error_code, ack_result, ui_dedupe_key | COMMAND_VERIFY_FAILED / INVALID_PAYLOAD / INVALID_DEVICE_ID / CONFIG_INVALID / CONFIG_APPLY_FAILED / INTERNAL_ERROR |
 | Ground | telemetry.wave.tcp | tcp_wave_ui_test_connected | Info | 界面测试 TCP 波形源已连接。 | simulated | ui_visibility |  |
 | Ground | telemetry.wave.tcp | tcp_wave_ui_test_disconnected | Info | 界面测试 TCP 波形源已断开。 | simulated | ui_visibility |  |
 | Ground | telemetry.wave.tcp | tcp_wave_remote_connection_requested | Info | 已请求连接天空端波形 TCP。 | execution_path, requested_connected | ui_visibility |  |

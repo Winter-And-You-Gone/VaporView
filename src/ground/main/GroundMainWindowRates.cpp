@@ -130,8 +130,8 @@ void MainWindow::onGlobalRateChanged(const QString& text)
         publishGroundLog(VaporView::LogLevel::Info,
                          QStringLiteral("device.rate"),
                          QStringLiteral("temperature_polling_rate_capped"),
-                         QStringLiteral("激光温控轮询频率已按设备上限限制。"),
-                         {{QStringLiteral("device"), QStringLiteral("laser_temperature_controller")},
+                         QStringLiteral("RD105 轮询频率已按设备上限限制。"),
+                         {{QStringLiteral("device"), QStringLiteral("RD105")},
                           {QStringLiteral("requested_rate_hz"), rate},
                           {QStringLiteral("effective_rate_hz"), state_->temperature_sample_rate_},
                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
@@ -320,8 +320,8 @@ void MainWindow::onTemperatureRateChanged(const QString& text)
         publishGroundLog(VaporView::LogLevel::Info,
                          QStringLiteral("device.rate"),
                          QStringLiteral("temperature_polling_rate_defaulted"),
-                         QStringLiteral("激光温控轮询频率保持不设定，使用默认主机轮询频率。"),
-                         {{QStringLiteral("device"), QStringLiteral("laser_temperature_controller")},
+                         QStringLiteral("RD105 轮询频率保持不设定，使用默认主机轮询频率。"),
+                         {{QStringLiteral("device"), QStringLiteral("RD105")},
                           {QStringLiteral("effective_rate_hz"), state_->temperature_sample_rate_},
                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
@@ -330,8 +330,8 @@ void MainWindow::onTemperatureRateChanged(const QString& text)
         publishGroundLog(VaporView::LogLevel::Info,
                          QStringLiteral("device.rate"),
                          QStringLiteral("temperature_polling_rate_updated"),
-                         QStringLiteral("激光温控轮询频率已更新。"),
-                         {{QStringLiteral("device"), QStringLiteral("laser_temperature_controller")},
+                         QStringLiteral("RD105 轮询频率已更新。"),
+                         {{QStringLiteral("device"), QStringLiteral("RD105")},
                           {QStringLiteral("requested_rate_hz"), state_->temperature_sample_rate_},
                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
@@ -472,8 +472,8 @@ void MainWindow::applyAllSampleRates()
         publishGroundLog(VaporView::LogLevel::Info,
                          QStringLiteral("device.rate"),
                          QStringLiteral("temperature_polling_rate_capped"),
-                         QStringLiteral("激光温控轮询频率已按设备上限限制。"),
-                         {{QStringLiteral("device"), QStringLiteral("laser_temperature_controller")},
+                         QStringLiteral("RD105 轮询频率已按设备上限限制。"),
+                         {{QStringLiteral("device"), QStringLiteral("RD105")},
                           {QStringLiteral("requested_rate_hz"), rate},
                           {QStringLiteral("effective_rate_hz"), temperatureRate},
                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});

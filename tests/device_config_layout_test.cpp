@@ -494,8 +494,8 @@ int main(int argc, char **argv)
         QStringLiteral("气压"),
         QStringLiteral("温湿度"),
         QStringLiteral("TFA1500-L"),
-        QStringLiteral("激光温控"),
-        QStringLiteral("系统温控"),
+        QStringLiteral("RD105"),
+        QStringLiteral("AI-8288"),
     };
     for (const QString& labelText : compactDeviceLabels)
     {

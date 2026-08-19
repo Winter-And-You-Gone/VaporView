@@ -44,18 +44,12 @@ int main(int argc, char **argv)
     require(controller.parseDeviceNameForTest(QStringLiteral("temperature_controller"), id) &&
                 id == VaporView::SkyDeviceId::TemperatureController,
             "TUI parses temperature_controller alias");
-    require(controller.parseDeviceNameForTest(QStringLiteral("激光温控"), id) &&
-                id == VaporView::SkyDeviceId::TemperatureController,
-            "TUI parses laser thermal display name");
     require(controller.parseDeviceNameForTest(QStringLiteral("ai8"), id) &&
                 id == VaporView::SkyDeviceId::Ai8TemperatureController,
             "TUI parses AI-8 device alias");
     require(controller.parseDeviceNameForTest(QStringLiteral("ai-8288"), id) &&
                 id == VaporView::SkyDeviceId::Ai8TemperatureController,
             "TUI parses AI-8288 device alias");
-    require(controller.parseDeviceNameForTest(QStringLiteral("系统温控"), id) &&
-                id == VaporView::SkyDeviceId::Ai8TemperatureController,
-            "TUI parses system thermal display name");
 
     const QList<VaporView::SkyTuiCommandItem> palette = controller.commandPalette();
     require(hasPaletteCommand(palette, QStringLiteral("/connect rd105")) &&

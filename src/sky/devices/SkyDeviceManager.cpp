@@ -1560,13 +1560,13 @@ bool SkyDeviceManager::readAi8Page(Ai8TemperatureControllerProtocol::Page page,
     if (!validAi8Page(page) || !validAi8Selection(selection))
     {
         setAi8Error(errorCode, errorMessage, CommandErrorCode::InvalidPayload,
-                    QStringLiteral("System temperature controller page or selection is invalid."));
+                    QStringLiteral("AI-8 page or selection is invalid."));
         return false;
     }
     if (ai8_temperature_controller_status_.state != DeviceState::Connected)
     {
         setAi8Error(errorCode, errorMessage, CommandErrorCode::DeviceNotConnected,
-                    QStringLiteral("System temperature controller is not connected."));
+                    QStringLiteral("AI-8 is not connected."));
         return false;
     }
     if (simulate_data_)
@@ -1586,20 +1586,20 @@ bool SkyDeviceManager::readAi8Page(Ai8TemperatureControllerProtocol::Page page,
                                 simulated_ai8_outputs_,
                                 simulated_ai8_global_);
         setAi8Error(errorCode, errorMessage, CommandErrorCode::Ok,
-                    QStringLiteral("System temperature controller parameters were read from simulation."));
+                    QStringLiteral("AI-8 parameters were read from simulation."));
         return true;
     }
     if (!ai8_temperature_controller_ || !ai8_temperature_controller_->isRunning())
     {
         setAi8Error(errorCode, errorMessage, CommandErrorCode::DeviceNotConnected,
-                    QStringLiteral("System temperature controller collector is not running."));
+                    QStringLiteral("AI-8 collector is not running."));
         return false;
     }
     QString collectorError;
     const bool ok = ai8_temperature_controller_->readPage(page, selection, data, &collectorError);
     setAi8Error(errorCode, errorMessage,
                 ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed,
-                ok ? QStringLiteral("System temperature controller parameters were read.") : collectorError);
+                ok ? QStringLiteral("AI-8 parameters were read.") : collectorError);
     return ok;
 }
 
@@ -1612,13 +1612,13 @@ bool SkyDeviceManager::writeAi8Page(const Ai8TemperatureControllerProtocol::Page
         !validAi8PageValues(requested))
     {
         setAi8Error(errorCode, errorMessage, CommandErrorCode::InvalidPayload,
-                    QStringLiteral("System temperature controller page values are invalid."));
+                    QStringLiteral("AI-8 page values are invalid."));
         return false;
     }
     if (ai8_temperature_controller_status_.state != DeviceState::Connected)
     {
         setAi8Error(errorCode, errorMessage, CommandErrorCode::DeviceNotConnected,
-                    QStringLiteral("System temperature controller is not connected."));
+                    QStringLiteral("AI-8 is not connected."));
         return false;
     }
     if (simulate_data_)
@@ -1653,13 +1653,13 @@ bool SkyDeviceManager::writeAi8Page(const Ai8TemperatureControllerProtocol::Page
                                      simulated_ai8_outputs_,
                                      simulated_ai8_global_);
         setAi8Error(errorCode, errorMessage, CommandErrorCode::Ok,
-                    QStringLiteral("System temperature controller parameters were written and read back from simulation."));
+                    QStringLiteral("AI-8 parameters were written and read back from simulation."));
         return true;
     }
     if (!ai8_temperature_controller_ || !ai8_temperature_controller_->isRunning())
     {
         setAi8Error(errorCode, errorMessage, CommandErrorCode::DeviceNotConnected,
-                    QStringLiteral("System temperature controller collector is not running."));
+                    QStringLiteral("AI-8 collector is not running."));
         return false;
     }
     QString collectorError;
@@ -1674,7 +1674,7 @@ bool SkyDeviceManager::writeAi8Page(const Ai8TemperatureControllerProtocol::Page
                                                            &collectorError);
     setAi8Error(errorCode, errorMessage,
                 ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed,
-                ok ? QStringLiteral("System temperature controller parameters were written and read back.") : collectorError);
+                ok ? QStringLiteral("AI-8 parameters were written and read back.") : collectorError);
     return ok;
 }
 
@@ -1687,19 +1687,19 @@ bool SkyDeviceManager::restoreAi8FactoryDefaults(Ai8TemperatureControllerProtoco
     if (!validAi8Page(page) || !validAi8Selection(selection))
     {
         setAi8Error(errorCode, errorMessage, CommandErrorCode::InvalidPayload,
-                    QStringLiteral("System temperature controller page or selection is invalid."));
+                    QStringLiteral("AI-8 page or selection is invalid."));
         return false;
     }
     if (ai8_temperature_controller_status_.state != DeviceState::Connected)
     {
         setAi8Error(errorCode, errorMessage, CommandErrorCode::DeviceNotConnected,
-                    QStringLiteral("System temperature controller is not connected."));
+                    QStringLiteral("AI-8 is not connected."));
         return false;
     }
     if (!simulate_data_)
     {
         setAi8Error(errorCode, errorMessage, CommandErrorCode::ConfigApplyFailed,
-                    QStringLiteral("System temperature controller factory reset is not supported by the collector."));
+                    QStringLiteral("AI-8 factory reset is not supported by the collector."));
         return false;
     }
     initializeSimulatedAi8State(simulated_ai8_channels_,
@@ -1714,7 +1714,7 @@ bool SkyDeviceManager::restoreAi8FactoryDefaults(Ai8TemperatureControllerProtoco
                             simulated_ai8_outputs_,
                             simulated_ai8_global_);
     setAi8Error(errorCode, errorMessage, CommandErrorCode::Ok,
-                QStringLiteral("System temperature controller simulation parameters were restored to factory defaults."));
+                QStringLiteral("AI-8 simulation parameters were restored to factory defaults."));
     return true;
 }
 

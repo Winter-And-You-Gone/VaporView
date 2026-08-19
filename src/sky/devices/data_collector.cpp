@@ -4626,8 +4626,8 @@ bool TemperatureControllerCollector::checkDeviceResponse()
     logStructured(LogLevel::Error,
                   "device.temperature.state",
                   "temperature_controller_model_read_failed",
-                  "激光温控型号读取失败。",
-                  {{"device", "laser_temperature_controller"},
+                  "RD105 温控器型号读取失败。",
+                  {{"device", "RD105"},
                    {"command", "TEC"},
                    {"error_code", "COMMAND_VERIFY_FAILED"}});
     return false;
@@ -4641,8 +4641,8 @@ bool TemperatureControllerCollector::checkDeviceResponse()
     logStructured(LogLevel::Error,
                   "device.temperature.state",
                   "temperature_controller_firmware_read_failed",
-                  "激光温控版本号读取失败。",
-                  {{"device", "laser_temperature_controller"},
+                  "RD105 温控器版本号读取失败。",
+                  {{"device", "RD105"},
                    {"command", "FPV"},
                    {"error_code", "COMMAND_VERIFY_FAILED"}});
     return false;
@@ -4656,8 +4656,8 @@ bool TemperatureControllerCollector::checkDeviceResponse()
     logStructured(LogLevel::Error,
                   "device.temperature.state",
                   "temperature_controller_parameters_read_failed",
-                  "激光温控参数读取失败。",
-                  {{"device", "laser_temperature_controller"},
+                  "RD105 温控器参数读取失败。",
+                  {{"device", "RD105"},
                    {"command", "INQUIRE"},
                    {"error_code", "COMMAND_VERIFY_FAILED"}});
     return false;
@@ -4680,8 +4680,8 @@ bool TemperatureControllerCollector::checkDeviceResponse()
     logStructured(LogLevel::Error,
                   "device.temperature.state",
                   "temperature_controller_parameters_incomplete",
-                  "激光温控参数读取不完整。",
-                  {{"device", "laser_temperature_controller"},
+                  "RD105 温控器参数读取不完整。",
+                  {{"device", "RD105"},
                    {"command", "INQUIRE"},
                    {"error_code", "COMMAND_VERIFY_FAILED"}});
     return false;
@@ -4956,7 +4956,7 @@ void TemperatureControllerCollector::run()
     {
       std::lock_guard<std::mutex> lock(mutex_);
       latest_data_.valid = false;
-      latest_data_.error_message = "激光温控读取失败";
+      latest_data_.error_message = "RD105温控器读取失败";
     }
 
     const int interval_ms = std::max(1, 1000 / std::max(1, getSampleRate()));

@@ -29,8 +29,8 @@ uint64_t systemTimestampUs()
 QString registerError(quint16 address, bool english)
 {
     return QString(english
-        ? "System thermal register 0x%1 did not pass write/read-back confirmation. Check Loc and wiring."
-        : "系统温控寄存器 0x%1 写入后回读不一致，请检查 Loc 参数锁和接线。")
+        ? "AI-8288 register 0x%1 did not pass write/read-back confirmation. Check Loc and wiring."
+        : "AI-8288 寄存器 0x%1 写入后回读不一致，请检查 Loc 参数锁和接线。")
         .arg(address, 4, 16, QLatin1Char('0')).toUpper();
 }
 
@@ -222,8 +222,8 @@ bool Ai8TemperatureControllerCollector::readRegisterValueUnlocked(quint16 addres
         if (errorMessage)
         {
             *errorMessage = QString(isEnglishLog()
-                ? "Failed to read system thermal register 0x%1."
-                : "读取系统温控寄存器 0x%1 失败。")
+                ? "Failed to read AI-8288 register 0x%1."
+                : "读取 AI-8288 寄存器 0x%1 失败。")
                 .arg(address, 4, 16, QLatin1Char('0')).toUpper();
         }
         return false;
@@ -286,13 +286,13 @@ bool Ai8TemperatureControllerCollector::checkDeviceResponse()
     if (!readRegisterValue(static_cast<quint16>(Register::ModelFeature), modelFeature))
     {
         log(isEnglishLog()
-            ? "[System Thermal] No valid Modbus response. Check RS485 A/B, station address, baud and 8N1."
-            : "[系统温控] 未收到有效 Modbus 应答，请检查 RS485 A/B、站号、波特率和 8N1。" );
+            ? "[AI-8288] No valid Modbus response. Check RS485 A/B, station address, baud and 8N1."
+            : "[AI-8288] 未收到有效 Modbus 应答，请检查 RS485 A/B、站号、波特率和 8N1。" );
         return false;
     }
     log((isEnglishLog()
-            ? "[System Thermal] Modbus response confirmed; model feature word: "
-            : "[系统温控] Modbus 应答正常，型号特征字：") + std::to_string(modelFeature));
+            ? "[AI-8288] Modbus response confirmed; model feature word: "
+            : "[AI-8288] Modbus 应答正常，型号特征字：") + std::to_string(modelFeature));
     return true;
 }
 
@@ -417,8 +417,8 @@ bool Ai8TemperatureControllerCollector::readGlobalPage(const Selection&,
         if (errorMessage)
         {
             *errorMessage = isEnglishLog()
-                ? QStringLiteral("Failed to read the system thermal global register block.")
-                : QStringLiteral("读取系统温控全局寄存器块失败。");
+                ? QStringLiteral("Failed to read the AI-8288 global register block.")
+                : QStringLiteral("读取 AI-8288 全局寄存器块失败。");
         }
         return false;
     }
@@ -694,8 +694,8 @@ bool Ai8TemperatureControllerCollector::readLiveData(LiveData& data)
     {
         data.valid = false;
         data.errorMessage = isEnglishLog()
-            ? QStringLiteral("System thermal PV polling failed")
-            : QStringLiteral("系统温控测量值轮询失败");
+            ? QStringLiteral("AI-8288 PV polling failed")
+            : QStringLiteral("AI-8288 测量值轮询失败");
         return false;
     }
     for (int index = 0; index < kChannelCount; ++index)
@@ -741,8 +741,8 @@ bool Ai8TemperatureControllerCollector::readLiveData(LiveData& data)
     {
         data.controlStatesValid = false;
         data.errorMessage = isEnglishLog()
-            ? QStringLiteral("System thermal control status polling failed")
-            : QStringLiteral("系统温控输出状态轮询失败");
+            ? QStringLiteral("AI-8288 control status polling failed")
+            : QStringLiteral("AI-8288 输出状态轮询失败");
         return true;
     }
     for (int index = 0; index < kChannelCount; ++index)

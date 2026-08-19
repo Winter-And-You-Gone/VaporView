@@ -50,7 +50,7 @@ cmake --build build/Release --config Release --target session_viewer_theme_test
 ctest --test-dir build/Release -C Release -R "^session_viewer_theme_test$" --output-on-failure
 ```
 
-协议、Telemetry 或激光温控：
+协议、Telemetry 或 RD105：
 
 ```powershell
 cmake --build build/Release --config Release --target temperature_controller_protocol_test telemetry_codec_test telemetry_tcp_link_test

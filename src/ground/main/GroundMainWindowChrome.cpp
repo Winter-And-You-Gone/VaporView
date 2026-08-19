@@ -495,7 +495,7 @@ void MainWindow::setEnglish(bool english)
     if (state_->ptb_lbl_) state_->ptb_lbl_->setText(english ? "PTB210:" : "PTB210:");
     if (state_->hmp_lbl_) state_->hmp_lbl_->setText(english ? "HMP3:" : "HMP3:");
     if (state_->lidar_lbl_) state_->lidar_lbl_->setText(english ? "TFA1500-L:" : "TFA1500-L:");
-    if (state_->temperature_lbl_) state_->temperature_lbl_->setText(english ? QStringLiteral("Laser Thermal:") : QStringLiteral("激光温控:"));
+    if (state_->temperature_lbl_) state_->temperature_lbl_->setText(QStringLiteral("RD105:"));
 
     if (state_->config_inline_title_lbl_)
     {
@@ -571,8 +571,8 @@ void MainWindow::setEnglish(bool english)
     {
         state_->ai8_temperature_controller_inline_title_lbl_->setText(
             english
-                ? QStringLiteral("System Temperature Controller ·")
-                : QStringLiteral("系统温控 ·"));
+                ? QStringLiteral("AI-8 Series Multi-loop Temperature Controller ·")
+                : QStringLiteral("AI-8 系列多回路智能温控器 ·"));
     }
     if (state_->ai8_temperature_controller_panel_)
     {

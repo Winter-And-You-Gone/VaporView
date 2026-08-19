@@ -64,8 +64,7 @@ void MainWindow::publishTemperatureCommandLog(VaporView::LogLevel level,
                                               const QString& message,
                                               QVariantMap fields)
 {
-    fields.insert(QStringLiteral("device"),
-                  fields.value(QStringLiteral("device"), QStringLiteral("laser_temperature_controller")));
+    fields.insert(QStringLiteral("device"), fields.value(QStringLiteral("device"), QStringLiteral("RD105")));
     fields.insert(QStringLiteral("device_id"),
                   fields.value(QStringLiteral("device_id"), QStringLiteral("temperature_controller")));
     publishGroundLog(level,
@@ -535,7 +534,7 @@ void MainWindow::updateRecordingStatusLabel()
                                   qulonglong rawLaserTemperature,
                                   qulonglong rawSystemTemperature) {
         return state_->is_english_
-            ? QStringLiteral("Session: %1\nSensor rows: %2\nWaveform frames: %3\nRecorded RAW EPSILON: %4\nRecorded RAW PTB: %5\nRecorded RAW HMP: %6\nRecorded RAW Lidar: %7\nRecorded RAW TCP wave: %8\nRecorded RAW laser thermal: %9\nRecorded RAW system thermal: %10")
+            ? QStringLiteral("Session: %1\nSensor rows: %2\nWaveform frames: %3\nRecorded RAW EPSILON: %4\nRecorded RAW PTB: %5\nRecorded RAW HMP: %6\nRecorded RAW Lidar: %7\nRecorded RAW TCP wave: %8\nRecorded RAW RD105 dual-channel precision temperature controller: %9\nRecorded RAW AI-8288D92J0 8-channel temperature controller: %10")
                   .arg(session)
                   .arg(sensorRows)
                   .arg(waveformFrames)
@@ -546,7 +545,7 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(rawWaveform)
                   .arg(rawLaserTemperature)
                   .arg(rawSystemTemperature)
-            : QStringLiteral("会话：%1\n设备行数：%2\n波形帧数：%3\n已记录 RAW EPSILON：%4\n已记录 RAW PTB：%5\n已记录 RAW HMP：%6\n已记录 RAW Lidar：%7\n已记录 RAW TCP 波形：%8\n已记录 RAW 激光温控：%9\n已记录 RAW 系统温控：%10")
+            : QStringLiteral("会话：%1\n设备行数：%2\n波形帧数：%3\n已记录 RAW EPSILON：%4\n已记录 RAW PTB：%5\n已记录 RAW HMP：%6\n已记录 RAW Lidar：%7\n已记录 RAW TCP 波形：%8\n已记录 RAW RD105 双路精密温控器：%9\n已记录 RAW AI-8288D92J0 8路温控器：%10")
                   .arg(session)
                   .arg(sensorRows)
                   .arg(waveformFrames)
@@ -593,7 +592,7 @@ void MainWindow::updateRecordingStatusLabel()
             ? QStringLiteral("--")
             : displayStatus.session_name;
         const QString detail = state_->is_english_
-            ? QStringLiteral("Session: %1\nElapsed: %2\nTelemetry rows: %3\nWave features: %4\nWave snapshots: %5\nRecorded RAW EPSILON: %6\nRecorded RAW PTB: %7\nRecorded RAW HMP: %8\nRecorded RAW Lidar: %9\nRecorded RAW TCP wave: %10\nRecorded RAW laser thermal: %11\nRecorded RAW system thermal: %12")
+            ? QStringLiteral("Session: %1\nElapsed: %2\nTelemetry rows: %3\nWave features: %4\nWave snapshots: %5\nRecorded RAW EPSILON: %6\nRecorded RAW PTB: %7\nRecorded RAW HMP: %8\nRecorded RAW Lidar: %9\nRecorded RAW TCP wave: %10\nRecorded RAW RD105 dual-channel precision temperature controller: %11\nRecorded RAW AI-8288D92J0 8-channel temperature controller: %12")
                   .arg(session)
                   .arg(elapsed)
                   .arg(displayStatus.telemetry_record_count)
@@ -606,7 +605,7 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(displayStatus.raw_waveform_record_count)
                   .arg(displayStatus.raw_laser_temperature_controller_record_count)
                   .arg(displayStatus.raw_system_temperature_controller_record_count)
-            : QStringLiteral("会话：%1\n时长：%2\n遥测行数：%3\n波形特征：%4\n波形快照：%5\n已记录 RAW EPSILON：%6\n已记录 RAW PTB：%7\n已记录 RAW HMP：%8\n已记录 RAW Lidar：%9\n已记录 RAW TCP 波形：%10\n已记录 RAW 激光温控：%11\n已记录 RAW 系统温控：%12")
+            : QStringLiteral("会话：%1\n时长：%2\n遥测行数：%3\n波形特征：%4\n波形快照：%5\n已记录 RAW EPSILON：%6\n已记录 RAW PTB：%7\n已记录 RAW HMP：%8\n已记录 RAW Lidar：%9\n已记录 RAW TCP 波形：%10\n已记录 RAW RD105 双路精密温控器：%11\n已记录 RAW AI-8288D92J0 8路温控器：%12")
                   .arg(session)
                   .arg(elapsed)
                   .arg(displayStatus.telemetry_record_count)

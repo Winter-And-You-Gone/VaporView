@@ -514,7 +514,7 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         {
             reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
                                      QStringLiteral("ai8_temperature_controller_status_parse_failed"),
-                                     QStringLiteral("无法解析系统温控遥测载荷。"),
+                                     QStringLiteral("无法解析 AI-8288 遥测载荷。"),
                                      {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
                                       {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }

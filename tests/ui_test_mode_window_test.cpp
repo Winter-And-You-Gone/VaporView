@@ -1016,7 +1016,7 @@ int main(int argc, char **argv)
     QLabel *ai8HomeCapsule = nullptr;
     for (QLabel *capsule : window->findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule")))
     {
-        if (capsule->text().contains(QStringLiteral("系统温控")))
+        if (capsule->text().contains(QStringLiteral("AI-8288八路温控")))
         {
             ai8HomeCapsule = capsule;
             break;
@@ -1027,13 +1027,13 @@ int main(int argc, char **argv)
     for (QToolButton *button : window->findChildren<QToolButton *>())
     {
         if (button->property("deviceConfigAction").toBool() &&
-            button->toolTip().contains(QStringLiteral("系统温控")))
+            button->toolTip().contains(QStringLiteral("AI-8288")))
         {
             ai8DeviceAction = button;
         }
         if (!button->property("deviceConfigAction").toBool() &&
             button->objectName() == QStringLiteral("homeDeviceActionButton") &&
-            button->toolTip().contains(QStringLiteral("系统温控")))
+            button->toolTip().contains(QStringLiteral("AI-8288")))
         {
             ai8HomeAction = button;
         }

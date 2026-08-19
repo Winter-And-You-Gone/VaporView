@@ -226,7 +226,7 @@ void startAi8RemoteE2e(QApplication& app, MainWindow& window, const QString& out
                 QStringLiteral("ai8WriteParametersButton"));
             const auto *status = window.findChild<QLabel *>(QStringLiteral("ai8ProtocolStatus"));
             finish(false,
-                   QStringLiteral("System temperature controller remote UI E2E timed out at step %1; read=%2; write=%3; status=%4")
+                   QStringLiteral("AI-8 remote UI E2E timed out at step %1; read=%2; write=%3; status=%4")
                        .arg(*step)
                        .arg(readButton && readButton->isEnabled())
                        .arg(writeButton && writeButton->isEnabled())
@@ -249,7 +249,7 @@ void startAi8RemoteE2e(QApplication& app, MainWindow& window, const QString& out
         auto *status = window.findChild<QLabel *>(QStringLiteral("ai8ProtocolStatus"));
         if (!panel || !readButton || !writeButton || !status)
         {
-            finish(false, QStringLiteral("System temperature controller parameter page controls are unavailable"));
+            finish(false, QStringLiteral("AI-8 parameter page controls are unavailable"));
             return;
         }
         const QString statusText = status->text();
@@ -265,13 +265,13 @@ void startAi8RemoteE2e(QApplication& app, MainWindow& window, const QString& out
             auto *setpoint = panel->findChild<QDoubleSpinBox *>(QStringLiteral("ai8SetpointSpin"));
             if (!setpoint || std::fabs(setpoint->value() - 25.0) > 0.001)
             {
-                finish(false, QStringLiteral("System temperature controller remote read did not load the simulated default"));
+                finish(false, QStringLiteral("AI-8 remote read did not load the simulated default"));
                 return;
             }
             setpoint->setValue(36.5);
             if (!writeButton->isEnabled())
             {
-                finish(false, QStringLiteral("System temperature controller write action stayed disabled after read"));
+                finish(false, QStringLiteral("AI-8 write action stayed disabled after read"));
                 return;
             }
             writeButton->click();
@@ -284,10 +284,10 @@ void startAi8RemoteE2e(QApplication& app, MainWindow& window, const QString& out
             auto *setpoint = panel->findChild<QDoubleSpinBox *>(QStringLiteral("ai8SetpointSpin"));
             if (!setpoint || std::fabs(setpoint->value() - 36.5) > 0.001)
             {
-                finish(false, QStringLiteral("System temperature controller remote write was not confirmed in the shared UI"));
+                finish(false, QStringLiteral("AI-8 remote write was not confirmed in the shared UI"));
                 return;
             }
-            finish(true, QStringLiteral("System temperature controller remote read/write/read-back passed"));
+            finish(true, QStringLiteral("AI-8 remote read/write/read-back passed"));
         }
     });
     QTimer::singleShot(1200, pollTimer, [pollTimer]() { pollTimer->start(); });
@@ -563,7 +563,7 @@ void startRemoteDeviceE2e(QApplication& app, MainWindow& window, const QString& 
                 VaporView::TelemetryCodec::serializeTemperatureControllerCommand(command));
             if (state->pendingCommandSequence == 0)
             {
-                finish(false, QStringLiteral("Laser temperature controller target request was not sent"));
+                finish(false, QStringLiteral("RD105 target request was not sent"));
                 return;
             }
             state->step = 7;
@@ -575,7 +575,7 @@ void startRemoteDeviceE2e(QApplication& app, MainWindow& window, const QString& 
                 state->lastTemperatureController.valid &&
                 std::fabs(state->lastTemperatureController.channels[0].target_temperature_c - 33.0) <= 0.001;
             if (state->commandAcks.contains(state->pendingCommandSequence) &&
-                !requireCommandAck(state->pendingCommandSequence, "laser temperature controller target command"))
+                !requireCommandAck(state->pendingCommandSequence, "RD105 target command"))
             {
                 return;
             }
@@ -593,7 +593,7 @@ void startRemoteDeviceE2e(QApplication& app, MainWindow& window, const QString& 
                 VaporView::TelemetryCodec::serializeTemperatureControllerCommand(command));
             if (state->pendingCommandSequence == 0)
             {
-                finish(false, QStringLiteral("Laser temperature controller PID request was not sent"));
+                finish(false, QStringLiteral("RD105 PID request was not sent"));
                 return;
             }
             state->step = 8;
@@ -607,7 +607,7 @@ void startRemoteDeviceE2e(QApplication& app, MainWindow& window, const QString& 
                 state->lastTemperatureController.channels[0].ki == 120 &&
                 state->lastTemperatureController.channels[0].kd == 12;
             if (state->commandAcks.contains(state->pendingCommandSequence) &&
-                !requireCommandAck(state->pendingCommandSequence, "laser temperature controller PID command"))
+                !requireCommandAck(state->pendingCommandSequence, "RD105 PID command"))
             {
                 return;
             }
@@ -623,7 +623,7 @@ void startRemoteDeviceE2e(QApplication& app, MainWindow& window, const QString& 
                 VaporView::Ai8TemperatureControllerProtocol::Page::Channel, selection);
             if (state->pendingDeviceRequest == 0)
             {
-                finish(false, QStringLiteral("System temperature controller read request was not sent"));
+                finish(false, QStringLiteral("AI-8 read request was not sent"));
                 return;
             }
             state->step = 9;
@@ -642,10 +642,10 @@ void startRemoteDeviceE2e(QApplication& app, MainWindow& window, const QString& 
                 !VaporView::TelemetryCodec::parseAi8PageData(response.payload, page) ||
                 std::fabs(page.channel.setpointC - 25.0) > 0.001)
             {
-                finish(false, QStringLiteral("System temperature controller remote read did not return simulation defaults"));
+                finish(false, QStringLiteral("AI-8 remote read did not return simulation defaults"));
                 return;
             }
-            finish(true, QStringLiteral("Remote EPSILON, RTCM, laser temperature controller, and system temperature controller E2E passed"));
+            finish(true, QStringLiteral("Remote EPSILON, RTCM, RD105, and AI-8 E2E passed"));
         }
     });
     QTimer::singleShot(1200, pollTimer, [pollTimer]() { pollTimer->start(); });
@@ -726,7 +726,7 @@ int runApplication(int argc, char *argv[])
     QCommandLineOption skyWaveHostOption(QStringLiteral("sky-wave-host"), QStringLiteral("Sky TCP wave host"), QStringLiteral("host"), QStringLiteral("127.0.0.1"));
     QCommandLineOption skyWavePortOption(QStringLiteral("sky-wave-port"), QStringLiteral("Sky TCP wave port"), QStringLiteral("port"), QStringLiteral("8888"));
     QCommandLineOption ai8RemoteE2eOption(QStringLiteral("ai8-remote-e2e-output"),
-                                           QStringLiteral("Run the system temperature controller remote UI E2E and write a result file"),
+                                           QStringLiteral("Run the AI-8 remote UI E2E and write a result file"),
                                            QStringLiteral("path"));
     QCommandLineOption remoteDeviceE2eOption(QStringLiteral("remote-device-e2e-output"),
                                              QStringLiteral("Run the remote device E2E and write a result file"),

@@ -468,7 +468,7 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
             publishClientLog(LogLevel::Warning,
                              QStringLiteral("ipc.protocol"),
                              QStringLiteral("sky_ipc_temperature_controller_status_parse_failed"),
-                             QStringLiteral("无法解析 SkyCore 激光温控状态载荷。"),
+                             QStringLiteral("无法解析 SkyCore RD105 温控状态载荷。"),
                              {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
                               {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
@@ -487,7 +487,7 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
             publishClientLog(LogLevel::Warning,
                              QStringLiteral("ipc.protocol"),
                              QStringLiteral("sky_ipc_ai8_temperature_controller_status_parse_failed"),
-                             QStringLiteral("无法解析 SkyCore 系统温控状态载荷。"),
+                             QStringLiteral("无法解析 SkyCore AI-8288 温控状态载荷。"),
                              {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
                               {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }

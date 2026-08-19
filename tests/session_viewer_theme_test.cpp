@@ -513,7 +513,7 @@ void testRawDataParserRejectsTruncatedFdilinkFrame()
     processEventsFor(100);
 }
 
-void testRawDataParserUsesSemanticTemperatureSourceNames()
+void testRawDataParserUsesHardwareTemperatureSourceNames()
 {
     QTemporaryDir sessionDir;
     require(sessionDir.isValid(), "temporary temperature raw parser session directory");
@@ -548,12 +548,9 @@ void testRawDataParserUsesSemanticTemperatureSourceNames()
 
     auto *deviceCombo = parser.findChild<QComboBox *>();
     require(deviceCombo != nullptr, "raw parser exposes the device filter combo");
-    require(deviceCombo->findText(QStringLiteral("激光温控")) >= 0 &&
-                deviceCombo->findText(QStringLiteral("系统温控")) >= 0,
-            "raw parser lists semantic temperature source names");
-    require(deviceCombo->findText(QStringLiteral("RD105")) < 0 &&
-                deviceCombo->findText(QStringLiteral("AI-8288")) < 0,
-            "raw parser does not expose hard-coded temperature model names");
+    require(deviceCombo->findText(QStringLiteral("RD105")) >= 0 &&
+                deviceCombo->findText(QStringLiteral("AI-8288")) >= 0,
+            "raw parser lists temperature controller model names");
 
     const int systemIndex = deviceCombo->findData(
         static_cast<int>(VaporView::SessionRawDat::kSourceSystemTemperatureController));
@@ -563,9 +560,9 @@ void testRawDataParserUsesSemanticTemperatureSourceNames()
                 return table->model() && table->model()->rowCount() == 1;
             }),
             "system temperature source filter applies");
-    require(table->model()->index(0, 2).data().toString() == QStringLiteral("系统温控") &&
-                table->model()->index(0, 3).data().toString() == QStringLiteral("系统温控测量值"),
-            "system temperature raw record uses semantic display names");
+    require(table->model()->index(0, 2).data().toString() == QStringLiteral("AI-8288") &&
+                table->model()->index(0, 3).data().toString() == QStringLiteral("AI-8288 测量值"),
+            "system temperature raw record uses the hardware model name");
 
     const int laserIndex = deviceCombo->findData(
         static_cast<int>(VaporView::SessionRawDat::kSourceLaserTemperatureController));
@@ -576,10 +573,9 @@ void testRawDataParserUsesSemanticTemperatureSourceNames()
             }),
             "laser temperature source filter applies");
     const QString laserType = table->model()->index(0, 3).data().toString();
-    require(table->model()->index(0, 2).data().toString() == QStringLiteral("激光温控") &&
-                laserType.contains(QStringLiteral("激光温控")) &&
-                !laserType.contains(QStringLiteral("RD105")),
-            "laser temperature raw record uses semantic display names");
+    require(table->model()->index(0, 2).data().toString() == QStringLiteral("RD105") &&
+                laserType.contains(QStringLiteral("RD105")),
+            "laser temperature raw record uses the hardware model name");
 
     parser.close();
     processEventsFor(100);
@@ -1513,7 +1509,7 @@ int main(int argc, char **argv)
     {
         testRawDataParserOpenIsNonBlocking();
         testRawDataParserRejectsTruncatedFdilinkFrame();
-        testRawDataParserUsesSemanticTemperatureSourceNames();
+        testRawDataParserUsesHardwareTemperatureSourceNames();
         testSessionViewerShowsRecoveredWaveformCatalogWarning();
         testSessionViewerTrajectoryActionLifetime();
     }

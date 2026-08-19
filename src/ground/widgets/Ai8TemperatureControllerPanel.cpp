@@ -1147,8 +1147,8 @@ void Ai8TemperatureControllerPanel::refreshPageCommandControls()
                       ? QStringLiteral("Read and write use Modbus-RTU; every write is confirmed by read-back.")
                       : QStringLiteral("读写使用 Modbus-RTU；每次写入后都会回读确认。"))
                : (english_
-                      ? QStringLiteral("Select the system thermal serial port and connect first.")
-                      : QStringLiteral("请先选择系统温控串口并执行连接。")));
+                      ? QStringLiteral("Select the AI-8288 serial port and connect first.")
+                      : QStringLiteral("请先选择 AI-8288 串口并执行连接。")));
     if (protocol_status_label_)
     {
         protocol_status_label_->setToolTip(backendToolTip);

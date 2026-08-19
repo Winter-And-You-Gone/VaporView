@@ -1,6 +1,6 @@
 # VaporView
 
-`VaporView` 是一个基于 Qt Widgets 的桌面程序。当前主界面面向 EPSILON 组合导航、PTB210/BMP390 气压来源、HMP3/SHT45 温湿度来源、TFA1500-L 激光测距模块、激光温控、系统温控和本地 TCP 波形流，提供串口接入、实时数据显示、RTK/NTRIP 转发、会话记录、离线查看和轨迹查看能力。
+`VaporView` 是一个基于 Qt Widgets 的桌面程序。当前主界面面向 EPSILON 组合导航、PTB210/BMP390 气压来源、HMP3/SHT45 温湿度来源、TFA1500-L 激光测距模块、RD105 温控器、AI-8288 八路温控器和本地 TCP 波形流，提供串口接入、实时数据显示、RTK/NTRIP 转发、会话记录、离线查看和轨迹查看能力。
 
 ## 快速开始
 
@@ -119,7 +119,7 @@ Sky 端正式设备、遥测、记录和模拟覆盖见 [docs/sky_device_coverag
 
 频率含义：
 
-- `Acquisition Rate`：天空端真实设备采集频率，例如 EPSILON、气压槽、温湿度槽、Lidar、激光温控、系统温控和 Wave TCP 的采集/接收频率。
+- `Acquisition Rate`：天空端真实设备采集频率，例如 EPSILON、气压槽、温湿度槽、Lidar、RD105、AI-8 和 Wave TCP 的采集/接收频率。
 - `Recording Rate`：天空端本地 session 写盘频率，例如 CSV 摘要和原始波形记录频率。
 - `Telemetry Rate`：天空端通过数传下发给地面端的频率，例如 `TelemetryBasic`、`WaveformFeature`、`WaveformDownsampled`。
 - `TUI Render Rate`：终端显示刷新频率。TUI 使用 screen buffer diff 局部刷新，布局不变时不会持续 clear screen 全屏重绘。
@@ -160,7 +160,7 @@ H300 网桥使用说明：
 - 电脑和天空端设备需要手动配置到同一网段的静态 IP，例如天空端 `192.168.1.2`、地面端 `192.168.1.5`。H300 不负责替应用层自动分配 VaporView 的 TCP 端点。
 - 串口数传仍可用，但 H300 模块 TTL 串口固定 `115200 bps`。如果通过 H300 TTL 串口做兼容链路，需要同时把天空端和地面端串口遥测波特率改为 `115200`。
 
-天空-地面接收模式下，地面端工具栏的“开始记录 / 暂停记录 / 结束记录”会通过数传下发到天空端。天空端收到开始记录命令后在普通模式同一个默认 `data/` 目录下创建 `session_yyyy-MM-dd_HH-mm-ss`，并把 EPSILON、气压槽、温湿度槽、Lidar、TCP 波形、激光温控和系统温控的原始数据写入统一 `raw/*.dat`；激光温控和系统温控同时写入结构化温控 CSV。天空端状态包会同步回传记录状态、时长、遥测行数和各 raw/CSV 文件记录条数，地面端右侧记录状态卡实时显示这些关键计数。
+天空-地面接收模式下，地面端工具栏的“开始记录 / 暂停记录 / 结束记录”会通过数传下发到天空端。天空端收到开始记录命令后在普通模式同一个默认 `data/` 目录下创建 `session_yyyy-MM-dd_HH-mm-ss`，并把 EPSILON、气压槽、温湿度槽、Lidar 和 TCP 波形的原始数据写入统一 `raw/*.dat`；RD105 和 AI-8288 写入结构化温控 CSV。天空端状态包会同步回传记录状态、时长、遥测行数和各 raw/CSV 文件记录条数，地面端右侧记录状态卡实时显示这些关键计数。
 
 本文档只描述当前仓库中可以直接从代码、构建脚本和随仓库文档确认的内容。对应代码入口主要是：
 
@@ -175,10 +175,10 @@ H300 网桥使用说明：
 
 - Qt Widgets 图形界面，应用名和窗口标题为 `VaporView`，应用版本为 `1.0.1`。
 - 中英文界面切换、F11 全屏、70% / 80% / 90% / 100% / 115% / 130% 字号缩放。
-- 串口刷新、手动端口输入与自动识别；正式设备配置覆盖 EPSILON、PTB210/BMP390、HMP3/SHT45、TFA1500-L、激光温控、系统温控和 Wave TCP。
+- 串口刷新、手动端口输入与自动识别；正式设备配置覆盖 EPSILON、PTB210/BMP390、HMP3/SHT45、TFA1500-L、RD105、AI-8288 和 Wave TCP。
 - EPSILON `FDILink` 组合导航数据解析、包频率配置、RTCM 串口配置、主天线杆臂配置。
 - PTB210/BMP390 气压、HMP3/SHT45 温湿度、TFA1500-L 距离数据显示与频率统计。
-- 激光温控双通道与系统温控八路数据显示、参数页面和当前产品化控制入口。
+- RD105 双通道温控与 AI-8288 八路温控数据显示、参数页面和当前产品化控制入口。
 - TCP 波形监视，默认连接 `127.0.0.1:8888`，显示原始信号、归一化二次谐波和峰值趋势。
 - RTK NTRIP 配置对话框，基于内置 RTKLIB `strsvr` 把 NTRIP 输入转发到串口或 TCP Client 输出。
 - 会话记录：手动开始、暂停、结束，按配置写入 `session_*` 目录。
@@ -657,7 +657,7 @@ data/
 - 格式版本、`recording_origin`、当前记录目录和 session 目录
 - 遥测 transport / endpoint / port / baud；不适用项保留为 `null`
 - 波形主机、端口、记录模式、每帧点数和值类型
-- EPSILON、PTB、HMP、Lidar、激光温控、系统温控的串口、波特率、频率文本和从站地址；天空端无法提供的
+- EPSILON、PTB、HMP、Lidar、RD105、AI-8288 的串口、波特率、频率文本和从站地址；天空端无法提供的
   逐设备配置保留为 `null`
 
 ## 数据文件格式

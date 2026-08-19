@@ -161,7 +161,7 @@ VaporView 第一方运行日志采用“中文可读、英文可检索”的约�
 
 日志级别必须由调用方、状态机、返回值、错误枚举或明确事件分支决定，不能通过 `message.contains(...)` 搜索中文或英文关键词判断。外部库、操作系统、设备驱动、串口/TCP 错误、子进程 stdout/stderr、协议 payload 和设备返回原文必须保留在结构化字段中，例如 `system_error`、`process_output`、`external_raw_text` 或 `payload_hex`，不能覆盖或翻译成第一方描述。直接 Qt 日志调用 `qDebug()`、`qInfo()`、`qWarning()` 和 `qCritical()` 同样纳入审计；第一方文本必须是自然中文，第三方原文只能通过精确 allowlist 或结构化原文字段保留。
 
-新代码不得新增仅字符串日志通道。普通 UI 文本、标签刷新、进度条状态和业务状态通知应继续走 UI 或业务 signal；只有具备运行诊断价值的事件才进入日志系统。第一方日志 message 保持简洁、稳定，不把大量变量拼进正文；变量、端点、设备名、错误原文和重试参数优先放入 `fields`。允许在协议、手册或硬件型号上下文中保留产品名和协议名，例如 SkyCore、SkyTui、IPC、TCP、UDP、JSON、CRC、EPSILON、PTB210、HMP3、TFA1500-L 和 RD105；面向用户的温控设备显示优先使用“激光温控 / 系统温控”。`设备 connect failed and retry later`、`IPC 服务 start failed`、`配置 file loaded successfully` 这类完整英文语法片段视为中英混杂，必须改成自然中文。
+新代码不得新增仅字符串日志通道。普通 UI 文本、标签刷新、进度条状态和业务状态通知应继续走 UI 或业务 signal；只有具备运行诊断价值的事件才进入日志系统。第一方日志 message 保持简洁、稳定，不把大量变量拼进正文；变量、端点、设备名、错误原文和重试参数优先放入 `fields`。允许在中文句子中保留产品名和协议名，例如 SkyCore、SkyTui、IPC、TCP、UDP、JSON、CRC、EPSILON、PTB210、HMP3、TFA1500-L 和 RD105；但 `设备 connect failed and retry later`、`IPC 服务 start failed`、`配置 file loaded successfully` 这类完整英文语法片段视为中英混杂，必须改成自然中文。
 
 ### Legacy 日志迁移规则
 
@@ -170,7 +170,7 @@ VaporView 第一方运行日志采用“中文可读、英文可检索”的约�
 `scripts/audit_legacy_logging.py` 使用相对文件路径加类/函数符号/identifier 的精确位置 allowlist，防止新增 `MainWindow::log(QString)` 调用、第一方日志型 QString signal/emit、message 关键词等级/可见性推断和任何 `legacy_unclassified` 业务事件。allowlist 不是数量 baseline；删除一个旧位置并在另一个位置新增相同数量也会失败。`--self-test` 覆盖 `logMessage(QString)`、`logMessageRequested(QString)`、`diagnosticMessage(QString)`、换名字绕过、普通 UI QString signal 排除、MainWindow 调用、等级/可见性关键词检测和新增 legacy event。
 
 仓库内部日志型 QString signal/emit bridge 已清零。`MainWindow::log(QString)` 已删除；TcpWavePanel、TelemetryLink、GroundTelemetry、SkyRuntime、SkyLocalIpcClient、SkyLocalIpcServer 和 SkyDeviceManager 现在只使用 `LogRecord`、`LogService::publish()`、结构化 IPC `LogEvent` 或结构化业务 signal。第一方生产代码 `legacy_unclassified` 当前为 0；新增 legacy 标记应视为审计失败并完成结构化迁移。
-激光温控命令统一使用 `Ground / device.temperature.command`。典型事件包括 `temperature_command_rejected_not_connected` + `reason_code=DEVICE_NOT_CONNECTED`、`temperature_command_failed` + `error_code=COMMAND_VERIFY_FAILED`、`temperature_command_sent`、`temperature_command_ack_timeout` + `error_code=COMMAND_TIMEOUT` 和 `temperature_command_completed`。重复的未连接、超时和失败事件应设置稳定 `ui_dedupe_key`，例如 `laser_temperature_controller:temperature_command_rejected_not_connected:SetTemperatureTarget:channel_2`，不得包含时间戳或随机值。
+RD105 温控命令统一使用 `Ground / device.temperature.command`。典型事件包括 `temperature_command_rejected_not_connected` + `reason_code=DEVICE_NOT_CONNECTED`、`temperature_command_failed` + `error_code=COMMAND_VERIFY_FAILED`、`temperature_command_sent`、`temperature_command_ack_timeout` + `error_code=COMMAND_TIMEOUT` 和 `temperature_command_completed`。重复的未连接、超时和失败事件应设置稳定 `ui_dedupe_key`，例如 `rd105:temperature_command_rejected_not_connected:SetTemperatureTarget:channel_2`，不得包含时间戳或随机值。
 
 ### 桌面日志面板展示策略
 

@@ -186,30 +186,6 @@ QString deviceStateText(DeviceState state)
     return QStringLiteral("未知");
 }
 
-QString deviceDisplayName(SkyDeviceId id)
-{
-    switch (id)
-    {
-    case SkyDeviceId::Epsilon:
-        return QStringLiteral("EPSILON");
-    case SkyDeviceId::Ptb:
-        return QStringLiteral("PTB");
-    case SkyDeviceId::Hmp:
-        return QStringLiteral("HMP");
-    case SkyDeviceId::Lidar:
-        return QStringLiteral("Lidar");
-    case SkyDeviceId::TemperatureController:
-        return QStringLiteral("激光温控");
-    case SkyDeviceId::Ai8TemperatureController:
-        return QStringLiteral("系统温控");
-    case SkyDeviceId::WaveTcp:
-        return QStringLiteral("Wave TCP");
-    case SkyDeviceId::All:
-        return QStringLiteral("全部设备");
-    }
-    return QStringLiteral("未知设备");
-}
-
 }  // namespace
 
 class SkyTuiScreenBuffer
@@ -1540,11 +1516,11 @@ void SkyTuiApp::drawDeviceOverview(SkyTuiScreenBuffer& output, int top, int bott
                                                 freshnessText(d.ptb_stale, d.ptb.valid))
         << QStringLiteral("激光测距：%1 m  %2").arg(d.lidar.valid ? QString::number(d.lidar.distance_m, 'f', 2) : QStringLiteral("---"),
                                                    freshnessText(d.lidar_stale, d.lidar.valid))
-        << QStringLiteral("激光温控：CH1 %1 -> %2 °C  %3")
+        << QStringLiteral("RD105：CH1 %1 -> %2 °C  %3")
                .arg(d.temperature_controller.valid ? QString::number(d.temperature_controller.channels[0].measured_temperature_c, 'f', 1) : QStringLiteral("---"),
                     d.temperature_controller.valid ? QString::number(d.temperature_controller.channels[0].target_temperature_c, 'f', 1) : QStringLiteral("---"),
                     freshnessText(d.temperature_controller_stale, d.temperature_controller.valid))
-        << QStringLiteral("系统温控：CH1 %1 °C / CH8 %2 °C  %3")
+        << QStringLiteral("AI-8：CH1 %1 °C / CH8 %2 °C  %3")
                .arg(d.ai8_temperature_controller.valid ? QString::number(d.ai8_temperature_controller.measuredC[0], 'f', 1) : QStringLiteral("---"),
                     d.ai8_temperature_controller.valid ? QString::number(d.ai8_temperature_controller.measuredC[7], 'f', 1) : QStringLiteral("---"),
                     freshnessText(d.ai8_temperature_controller_stale, d.ai8_temperature_controller.valid))
@@ -1575,7 +1551,7 @@ void SkyTuiApp::drawDeviceOverview(SkyTuiScreenBuffer& output, int top, int bott
                      d.ptb.valid ? QString::number(d.ptb.pressure_hpa, 'f', 1) : QStringLiteral("---")),
             QStringLiteral("Lidar: %1 m")
                 .arg(d.lidar.valid ? QString::number(d.lidar.distance_m, 'f', 2) : QStringLiteral("---")),
-            QStringLiteral("温控: 激光温控 %1 / 系统温控 CH1 %2")
+            QStringLiteral("温控: RD105 %1 / AI-8 CH1 %2")
                 .arg(d.temperature_controller.valid ? QString::number(d.temperature_controller.channels[0].measured_temperature_c, 'f', 1) : QStringLiteral("---"),
                      d.ai8_temperature_controller.valid ? QString::number(d.ai8_temperature_controller.measuredC[0], 'f', 1) : QStringLiteral("---")),
             QStringLiteral("姿态: Roll/Pitch/Yaw %1 / %2 / %3")
@@ -1886,7 +1862,7 @@ QStringList SkyTuiApp::statusPanelLines() const
     for (const DeviceStatusItem& item : model_.status.devices)
     {
         lines << QStringLiteral("%1: %2")
-                     .arg(deviceDisplayName(item.device_id), deviceStateColored(item.state));
+                     .arg(skyDeviceIdName(item.device_id), deviceStateColored(item.state));
         lines << QStringLiteral("  %1").arg(deviceEndpointText(item.device_id));
         lines << QStringLiteral("  接收 %1  错误 %2").arg(item.rx_count).arg(item.error_count);
         lines << QStringLiteral("  最近 %1  错误码 %2").arg(item.last_data_time_us).arg(item.error_code);
@@ -1921,12 +1897,12 @@ QString SkyTuiApp::deviceEndpointText(SkyDeviceId id) const
     case SkyDeviceId::WaveTcp:
         return QStringLiteral("波形源 %1:%2").arg(model_.config.wave_tcp.host).arg(model_.config.wave_tcp.port);
     case SkyDeviceId::TemperatureController:
-        return QStringLiteral("激光温控串口 %1 @ %2 addr %3")
+        return QStringLiteral("RD105 串口 %1 @ %2 addr %3")
             .arg(model_.config.temperature_controller.port.isEmpty() ? QStringLiteral("-") : model_.config.temperature_controller.port)
             .arg(model_.config.temperature_controller.baud_rate)
             .arg(model_.config.temperature_controller.slave_address);
     case SkyDeviceId::Ai8TemperatureController:
-        return QStringLiteral("系统温控串口 %1 @ %2 addr %3")
+        return QStringLiteral("AI-8 串口 %1 @ %2 addr %3")
             .arg(model_.config.ai8_temperature_controller.port.isEmpty() ? QStringLiteral("-") : model_.config.ai8_temperature_controller.port)
             .arg(model_.config.ai8_temperature_controller.baud_rate)
             .arg(model_.config.ai8_temperature_controller.slave_address);

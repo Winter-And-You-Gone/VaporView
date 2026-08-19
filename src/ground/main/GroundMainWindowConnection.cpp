@@ -1704,8 +1704,8 @@ void MainWindow::onAi8SessionOperationFinished(
     }
     else if (statusText.isEmpty())
     {
-        statusText = state_->is_english_ ? QStringLiteral("System temperature operation failed.")
-                                         : QStringLiteral("系统温控操作失败。");
+        statusText = state_->is_english_ ? QStringLiteral("AI-8 operation failed.")
+                                         : QStringLiteral("AI-8 操作失败。");
     }
 
     state_->ai8_temperature_controller_panel_->setOperationStatus(
@@ -1730,7 +1730,7 @@ void MainWindow::onAi8SessionOperationFinished(
     case Outcome::Disconnected: outcomeName = QStringLiteral("disconnected"); break;
     case Outcome::Unsupported: outcomeName = QStringLiteral("unsupported"); break;
     }
-    QVariantMap fields{{QStringLiteral("device"), QStringLiteral("system_temperature_controller")},
+    QVariantMap fields{{QStringLiteral("device"), QStringLiteral("AI-8288")},
                        {QStringLiteral("device_id"), QStringLiteral("ai8_temperature_controller")},
                        {QStringLiteral("request_id"), result.request_id},
                        {QStringLiteral("operation"), operationName},
@@ -1754,8 +1754,8 @@ void MainWindow::onAi8SessionOperationFinished(
                      QStringLiteral("device.temperature.command"),
                      result.success() ? QStringLiteral("ai8_operation_completed")
                                       : QStringLiteral("ai8_operation_failed"),
-                     result.success() ? QStringLiteral("系统温控参数操作完成。")
-                                      : QStringLiteral("系统温控参数操作失败。"),
+                     result.success() ? QStringLiteral("AI-8288 参数操作完成。")
+                                      : QStringLiteral("AI-8288 参数操作失败。"),
                      fields);
 }
 

@@ -211,8 +211,8 @@ public:
         if (!collector || !collector->isRunning())
         {
             result.message = english.load()
-                ? QStringLiteral("System thermal is not connected.")
-                : QStringLiteral("系统温控尚未连接。");
+                ? QStringLiteral("AI-8288 is not connected.")
+                : QStringLiteral("AI-8288 尚未连接。");
             return result;
         }
         result.success = collector->readPage(page, selection, result.data, &result.message);
@@ -233,8 +233,8 @@ public:
         if (!collector || !collector->isRunning())
         {
             result.message = english.load()
-                ? QStringLiteral("System thermal is not connected.")
-                : QStringLiteral("系统温控尚未连接。");
+                ? QStringLiteral("AI-8288 is not connected.")
+                : QStringLiteral("AI-8288 尚未连接。");
             return result;
         }
         result.success = collector->writePage(data, &result.message);
@@ -422,31 +422,31 @@ private:
         if (!opened)
         {
             resultText = QString(request.english
-                    ? "[Laser Thermal] Failed to open %1: %2"
-                    : "[激光温控] 打开 %1 失败：%2")
+                    ? "[RD105] Failed to open %1: %2"
+                    : "[RD105] 打开 %1 失败：%2")
                 .arg(request.port, QString::fromStdString(collector->getLastError()));
         }
         else if (cancel.load())
         {
             resultText = request.english
-                ? QStringLiteral("[Laser Thermal] Connection canceled.")
-                : QStringLiteral("[激光温控] 已取消连接。");
+                ? QStringLiteral("[RD105] Connection canceled.")
+                : QStringLiteral("[RD105] 已取消连接。");
         }
         else if (!collector->checkDeviceResponse())
         {
             resultText = cancel.load()
                 ? (request.english
-                        ? QStringLiteral("[Laser Thermal] Connection canceled.")
-                        : QStringLiteral("[激光温控] 已取消连接。"))
+                       ? QStringLiteral("[RD105] Connection canceled.")
+                       : QStringLiteral("[RD105] 已取消连接。"))
                 : (request.english
-                        ? QStringLiteral("[Laser Thermal] Initialization failed; see the preceding log for details.")
-                        : QStringLiteral("[激光温控] 初始化失败，请查看上方日志。"));
+                       ? QStringLiteral("[RD105] Initialization failed; see the preceding log for details.")
+                       : QStringLiteral("[RD105] 初始化失败，请查看上方日志。"));
         }
         else if (!collector->startStreaming())
         {
             resultText = request.english
-                ? QStringLiteral("[Laser Thermal] Failed to start polling.")
-                : QStringLiteral("[激光温控] 启动轮询失败。");
+                ? QStringLiteral("[RD105] Failed to start polling.")
+                : QStringLiteral("[RD105] 启动轮询失败。");
         }
         else
         {
@@ -457,8 +457,8 @@ private:
             }
             connected = true;
             resultText = QString(request.english
-                    ? "[Laser Thermal] Connected: %1 @ %2, address %3, polling %4 Hz%5"
-                    : "[激光温控] 已连接：%1 @ %2，站号 %3，轮询 %4 Hz%5")
+                    ? "[RD105] Connected: %1 @ %2, address %3, polling %4 Hz%5"
+                    : "[RD105] 已连接：%1 @ %2，站号 %3，轮询 %4 Hz%5")
                 .arg(request.port, request.baudText)
                 .arg(request.slaveAddress)
                 .arg(request.sampleRateHz)
@@ -675,8 +675,8 @@ private:
                 if (abortIfRequested()) return -1;
                 postConnectionLog(VaporView::LogLevel::Warning,
                         QStringLiteral("local_device_no_response"),
-                        tag == QStringLiteral("laser_temperature_controller")
-                            ? QStringLiteral("激光温控初始化失败，未通过设备响应检测。")
+                        tag == QStringLiteral("RD105")
+                            ? QStringLiteral("RD105 初始化失败，未通过设备响应检测。")
                             : QStringLiteral("本地设备无响应，请检查电源和连接线。"),
                         {{QStringLiteral("device"), tag},
                          {QStringLiteral("port"), settings.port},
@@ -879,7 +879,7 @@ private:
             return false;
         }) < 0) return;
 
-        if (connectCollector(QStringLiteral("laser_temperature_controller"),
+        if (connectCollector(QStringLiteral("RD105"),
                              request.temperatureController,
                              collectors.temperature_controller.get(),
                              SerialConfig::N81(request.temperatureController.baudText.toInt()),
@@ -890,28 +890,28 @@ private:
             {
                 postConnectionLog(VaporView::LogLevel::Info,
                         QStringLiteral("temperature_polling_rate_defaulted"),
-                        QStringLiteral("激光温控轮询频率保持不设定，使用默认主机轮询频率。"),
-                        {{QStringLiteral("device"), QStringLiteral("laser_temperature_controller")},
+                        QStringLiteral("RD105 轮询频率保持不设定，使用默认主机轮询频率。"),
+                        {{QStringLiteral("device"), QStringLiteral("RD105")},
                          {QStringLiteral("effective_rate_hz"), request.temperatureController.sampleRateHz}});
             }
             else
             {
                 postConnectionLog(VaporView::LogLevel::Info,
                         QStringLiteral("temperature_polling_rate_updated"),
-                        QStringLiteral("激光温控轮询频率已更新。"),
-                        {{QStringLiteral("device"), QStringLiteral("laser_temperature_controller")},
+                        QStringLiteral("RD105 轮询频率已更新。"),
+                        {{QStringLiteral("device"), QStringLiteral("RD105")},
                          {QStringLiteral("requested_rate_hz"), request.temperatureController.sampleRateHz}});
             }
             if (collectors.temperature_controller->startStreaming()) return true;
             postConnectionLog(VaporView::LogLevel::Error,
                     QStringLiteral("local_device_stream_start_failed"),
                     QStringLiteral("本地设备数据流启动失败。"),
-                    {{QStringLiteral("device"), QStringLiteral("laser_temperature_controller")},
+                    {{QStringLiteral("device"), QStringLiteral("RD105")},
                      {QStringLiteral("error_code"), QStringLiteral("STREAM_START_FAILED")}});
             return false;
         }) < 0) return;
 
-        if (connectCollector(QStringLiteral("system_temperature_controller"),
+        if (connectCollector(QStringLiteral("AI-8288"),
                              request.ai8TemperatureController,
                              collectors.ai8_temperature_controller.get(),
                              SerialConfig::N81(request.ai8TemperatureController.baudText.toInt()),
@@ -920,14 +920,14 @@ private:
                 [this]() { notifyData(LocalDeviceKind::Ai8TemperatureController); });
             postConnectionLog(VaporView::LogLevel::Info,
                     QStringLiteral("ai8_temperature_polling_rate_updated"),
-                    QStringLiteral("系统温控主机轮询频率已更新。"),
-                    {{QStringLiteral("device"), QStringLiteral("system_temperature_controller")},
+                    QStringLiteral("AI-8288 主机轮询频率已更新。"),
+                    {{QStringLiteral("device"), QStringLiteral("AI-8288")},
                      {QStringLiteral("requested_rate_hz"), request.ai8TemperatureController.sampleRateHz}});
             if (collectors.ai8_temperature_controller->startStreaming()) return true;
             postConnectionLog(VaporView::LogLevel::Error,
                     QStringLiteral("local_device_stream_start_failed"),
                     QStringLiteral("本地设备数据流启动失败。"),
-                    {{QStringLiteral("device"), QStringLiteral("system_temperature_controller")},
+                    {{QStringLiteral("device"), QStringLiteral("AI-8288")},
                      {QStringLiteral("error_code"), QStringLiteral("STREAM_START_FAILED")}});
             return false;
         }) < 0) return;
