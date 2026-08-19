@@ -31,6 +31,7 @@ struct GroundRecordingSerialConfig
     QString port;
     QString baud;
     QString rateHz;
+    QString slaveAddress;
 };
 
 struct GroundRecordingDeviceConfig
@@ -41,7 +42,8 @@ struct GroundRecordingDeviceConfig
     GroundRecordingSerialConfig ptb;
     GroundRecordingSerialConfig hmp;
     GroundRecordingSerialConfig lidar;
-    GroundRecordingSerialConfig temperatureController;
+    GroundRecordingSerialConfig laserTemperatureController;
+    GroundRecordingSerialConfig systemTemperatureController;
 };
 
 struct GroundRecordingOptions
@@ -65,6 +67,8 @@ struct GroundRecordingStatus
     quint64 rawTemperatureHumidityRecords = 0;
     quint64 rawDistanceRecords = 0;
     quint64 rawWaveformRecords = 0;
+    quint64 rawLaserTemperatureControllerRecords = 0;
+    quint64 rawSystemTemperatureControllerRecords = 0;
 };
 
 struct GroundRecordingStopSummary
@@ -135,6 +139,14 @@ public:
                              quint16 protocol,
                              const void *data,
                              size_t size);
+    bool recordRawLaserTemperatureControllerResponse(quint64 hostTimestampUs,
+                                                     quint16 recordType,
+                                                     const void *data,
+                                                     size_t size);
+    bool recordRawSystemTemperatureControllerResponse(quint64 hostTimestampUs,
+                                                      quint16 recordType,
+                                                      const void *data,
+                                                      size_t size);
     bool recordTcpWaveFrame(quint64 hostTimestampUs,
                             const QByteArray& rawSignalPayload,
                             const QByteArray& harmonicPayload,

@@ -496,11 +496,17 @@ void testSessionPackageInitializerCreatesIdenticalGroundAndSkyPackages()
     require(groundFiles == skyFiles, "ground and sky file sets match");
     const QStringList legacyStandardFiles = {
         QStringLiteral("sensors/devices.csv"),
+        QStringLiteral("sensors/temperature_controller.csv"),
+        QStringLiteral("sensors/ai8_temperature_controller.csv"),
+        QStringLiteral("sensors/ai8288_temperature_controller.csv"),
         QStringLiteral("sensors/rd105_temperature_controller.csv"),
         QStringLiteral("raw/epsilon.dat"),
         QStringLiteral("raw/ptb.dat"),
         QStringLiteral("raw/hmp.dat"),
         QStringLiteral("raw/lidar.dat"),
+        QStringLiteral("raw/rd105.dat"),
+        QStringLiteral("raw/ai8.dat"),
+        QStringLiteral("raw/ai8288.dat"),
         QStringLiteral("raw/tcp_wave.dat"),
         QStringLiteral("raw/tcp_wave_peaks.csv")
     };
@@ -514,12 +520,12 @@ void testSessionPackageInitializerCreatesIdenticalGroundAndSkyPackages()
     require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.sensorSummaryCsvPath)))
                 == headerLine(VaporView::SessionSensorCsv::header()),
             "standard devices.csv header exists");
-    require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.temperatureControllerCsvPath)))
-                == headerLine(temperatureControllerCsvHeader()),
-            "standard temperature controller header exists");
-    require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.ai8TemperatureControllerCsvPath)))
-                == headerLine(ai8TemperatureControllerCsvHeader()),
-            "standard AI-8 temperature controller header exists");
+    require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.laserTemperatureControllerCsvPath)))
+                == headerLine(laserTemperatureControllerCsvHeader()),
+            "standard laser temperature controller header exists");
+    require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.systemTemperatureControllerCsvPath)))
+                == headerLine(systemTemperatureControllerCsvHeader()),
+            "standard system temperature controller header exists");
     require(firstTextLine(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.waveformFeaturesCsvPath)))
                 == headerLine(waveformFeaturesCsvHeader()),
             "standard waveform features header exists");
@@ -561,7 +567,7 @@ void testSessionPackageInitializerCreatesIdenticalGroundAndSkyPackages()
     require(groundSensors.value(QStringLiteral("epsilon")).toObject()
                 .value(QStringLiteral("port")).toString() == QStringLiteral("COM7"),
             "device config keeps populated sensor settings");
-    require(groundSensors.value(QStringLiteral("rd105")).toObject()
+    require(groundSensors.value(QStringLiteral("laser_temperature_controller")).toObject()
                 .value(QStringLiteral("port")).isNull(),
             "device config unused sensor settings are explicit nulls");
     require(readFileBytes(sessionPackageFilePath(ground.sessionDirectory, layout.rawFormatDocumentPath))
@@ -619,16 +625,18 @@ void testSessionManifestSchemaAndOriginCompatibility()
                       skyJson.value(QStringLiteral("raw_files")).toObject(),
                       "manifest raw_files key sets match");
     require(groundJson.value(QStringLiteral("paths")).toObject().keys() == QStringList{
-                QStringLiteral("ai8_temperature_controller_csv"),
                 QStringLiteral("device_config"),
                 QStringLiteral("distance_raw"),
                 QStringLiteral("error_log"),
                 QStringLiteral("event_log"),
+                QStringLiteral("laser_temperature_controller_csv"),
+                QStringLiteral("laser_temperature_controller_raw"),
                 QStringLiteral("navigation_raw"),
                 QStringLiteral("pressure_raw"),
                 QStringLiteral("raw_format_document"),
                 QStringLiteral("sensor_summary_csv"),
-                QStringLiteral("temperature_controller_csv"),
+                QStringLiteral("system_temperature_controller_csv"),
+                QStringLiteral("system_temperature_controller_raw"),
                 QStringLiteral("temperature_humidity_raw"),
                 QStringLiteral("waveform_features_csv"),
                 QStringLiteral("waveform_peaks_csv"),
@@ -660,7 +668,8 @@ void testSessionManifestSchemaAndOriginCompatibility()
             "empty capture fields are explicit nulls");
     const QJsonObject counts = groundJson.value(QStringLiteral("counts")).toObject();
     require(counts.value(QStringLiteral("sensor_rows")).toString() == QStringLiteral("0") &&
-                counts.value(QStringLiteral("temperature_controller_rows")).toString() == QStringLiteral("0") &&
+                counts.value(QStringLiteral("laser_temperature_controller_rows")).toString() == QStringLiteral("0") &&
+                counts.value(QStringLiteral("system_temperature_controller_rows")).toString() == QStringLiteral("0") &&
                 counts.value(QStringLiteral("waveform_frames")).toString() == QStringLiteral("0") &&
                 counts.value(QStringLiteral("waveform_feature_rows")).toString() == QStringLiteral("0") &&
                 counts.value(QStringLiteral("event_rows")).toString() == QStringLiteral("0") &&

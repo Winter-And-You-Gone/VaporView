@@ -5124,25 +5124,25 @@ int main(int argc, char **argv)
     bool hasTemperatureHomeCapsule = false;
     for (QLabel *capsule : homeDeviceCapsules)
     {
-        if (capsule->text().contains(QStringLiteral("RD105")))
+        if (capsule->text().contains(QStringLiteral("激光温控")))
         {
             hasTemperatureHomeCapsule = true;
             break;
         }
     }
     require(hasTemperatureHomeCapsule,
-            "home device overview includes the RD105 laser temperature controller");
+            "home device overview includes the laser temperature controller");
     bool hasAi8HomeCapsule = false;
     for (QLabel *capsule : homeDeviceCapsules)
     {
-        if (capsule->text().contains(QStringLiteral("AI-8288八路温控")))
+        if (capsule->text().contains(QStringLiteral("系统温控")))
         {
             hasAi8HomeCapsule = true;
             break;
         }
     }
     require(hasAi8HomeCapsule,
-            "home device overview includes the AI-8288 eight-channel temperature controller");
+            "home device overview includes the system temperature controller");
 
     auto *ai8TemperaturePage = window.findChild<QWidget *>(QStringLiteral("temperaturePage"));
     require(ai8TemperaturePage != nullptr, "temperature page exists");
@@ -5187,8 +5187,8 @@ int main(int argc, char **argv)
                 ai8TitlePortCombo->focusPolicy() == Qt::TabFocus,
             "AI-8 title is followed by the detected serial-port selector");
     require(ai8TitleLabel != nullptr &&
-                ai8TitleLabel->text() == QStringLiteral("AI-8 系列多回路智能温控器 ·"),
-            "AI-8 title uses the same separator as the RD105 title");
+                ai8TitleLabel->text() == QStringLiteral("系统温控 ·"),
+            "system temperature title uses the same separator as the laser temperature title");
     require(rd105TitlePortCombo != nullptr &&
                 ai8TitlePortCombo->font().weight() == rd105TitlePortCombo->font().weight() &&
                 ai8TitlePortCombo->font().pointSizeF() == rd105TitlePortCombo->font().pointSizeF(),
@@ -6369,7 +6369,7 @@ int main(int argc, char **argv)
         temperaturePageForLayout->findChildren<QLabel *>(QStringLiteral("sectionTitleLabel"));
     for (QLabel *label : temperaturePageTitleLabels)
     {
-        if (label->text().contains(QStringLiteral("RD105激光驱动板温控器")))
+        if (label->text().contains(QStringLiteral("激光温控")))
         {
             temperatureControllerTitleLabel = label;
             break;
@@ -6384,8 +6384,8 @@ int main(int argc, char **argv)
         temperaturePageForLayout->findChild<QComboBox *>(QStringLiteral("temperatureTitlePortCombo"));
     require(temperatureControllerTitleLabel != nullptr &&
                 !temperatureControllerTitleLabel->text().contains(expectedTemperaturePortText) &&
-                !temperatureControllerTitleLabel->text().contains(QStringLiteral("RD105温控器")),
-            "temperature controller title keeps the laser driver board name separate from the serial selector");
+                !temperatureControllerTitleLabel->text().contains(QStringLiteral("RD105")),
+            "temperature controller title keeps the semantic name separate from the serial selector");
     require(temperatureTitlePortCombo != nullptr &&
                 temperatureTitlePortCombo->currentText() == expectedTemperaturePortText &&
                 !temperatureTitlePortCombo->isEditable() &&
@@ -8893,11 +8893,11 @@ int main(int argc, char **argv)
     require(deviceTemperatureBaudCombo != nullptr,
             "device configuration temperature baud-rate combo exists");
     require(deviceAi8TemperatureLabel != nullptr && deviceTemperatureLabel != nullptr &&
-                deviceAi8TemperatureLabel->text().contains(QStringLiteral("AI-8288")) &&
+                deviceAi8TemperatureLabel->text().contains(QStringLiteral("系统温控")) &&
                 deviceAi8TemperatureLabel->objectName() == QStringLiteral("fieldLabel") &&
                 deviceTemperatureLabel->objectName() == QStringLiteral("fieldLabel") &&
                 deviceAi8TemperatureLabel->font().weight() == deviceTemperatureLabel->font().weight(),
-            "device configuration AI-8288 label matches the RD105 field-label typography");
+            "device configuration system temperature label matches the laser temperature field-label typography");
     require(deviceAi8TemperatureBaudCombo != nullptr &&
                 deviceAi8TemperatureBaudCombo->count() == 6 &&
                 deviceAi8TemperatureBaudCombo->currentData().toInt() == 19200 &&

@@ -140,17 +140,17 @@ SessionPackageInitResult initializeSessionPackage(const SessionPackageInitOption
     {
         return fail(QStringLiteral("cannot create sensor_summary.csv: %1").arg(error));
     }
-    if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.temperatureControllerCsvPath),
-                       temperatureControllerCsvHeader(),
+    if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.laserTemperatureControllerCsvPath),
+                       laserTemperatureControllerCsvHeader(),
                        &error))
     {
-        return fail(QStringLiteral("cannot create temperature_controller.csv: %1").arg(error));
+        return fail(QStringLiteral("cannot create laser_temperature_controller.csv: %1").arg(error));
     }
-    if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.ai8TemperatureControllerCsvPath),
-                       ai8TemperatureControllerCsvHeader(),
+    if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.systemTemperatureControllerCsvPath),
+                       systemTemperatureControllerCsvHeader(),
                        &error))
     {
-        return fail(QStringLiteral("cannot create ai8_temperature_controller.csv: %1").arg(error));
+        return fail(QStringLiteral("cannot create system_temperature_controller.csv: %1").arg(error));
     }
     if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.waveformFeaturesCsvPath),
                        waveformFeaturesCsvHeader(),

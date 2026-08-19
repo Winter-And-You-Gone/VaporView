@@ -153,6 +153,8 @@ VaporView::Session::DeviceConnectionConfig sessionDeviceConnectionConfig(
     result.port = config.port;
     result.baud = config.baud;
     result.rateHz = config.rateHz;
+    result.slaveAddress = config.slaveAddress;
+    result.configured = !config.port.trimmed().isEmpty();
     return result;
 }
 
@@ -170,13 +172,24 @@ RecordingSessionLayout groundLayoutFromPackage(const VaporView::Session::Session
     layout.sessionName = init.sessionName;
     layout.sessionDirectory = init.sessionDirectory;
     layout.sensorSummaryFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.sensorSummaryCsvPath);
-    layout.temperatureControllerFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.temperatureControllerCsvPath);
+    layout.laserTemperatureControllerFilename = VaporView::Session::sessionPackageFilePath(
+        init.sessionDirectory,
+        packageLayout.laserTemperatureControllerCsvPath);
+    layout.systemTemperatureControllerFilename = VaporView::Session::sessionPackageFilePath(
+        init.sessionDirectory,
+        packageLayout.systemTemperatureControllerCsvPath);
     layout.waveformFeaturesFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.waveformFeaturesCsvPath);
     layout.navigationRawFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.navigationRawPath);
     layout.pressureRawFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.pressureRawPath);
     layout.temperatureHumidityRawFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.temperatureHumidityRawPath);
     layout.distanceRawFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.distanceRawPath);
     layout.waveformRawFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.waveformRawPath);
+    layout.laserTemperatureControllerRawFilename = VaporView::Session::sessionPackageFilePath(
+        init.sessionDirectory,
+        packageLayout.laserTemperatureControllerRawPath);
+    layout.systemTemperatureControllerRawFilename = VaporView::Session::sessionPackageFilePath(
+        init.sessionDirectory,
+        packageLayout.systemTemperatureControllerRawPath);
     layout.waveformPeaksFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.waveformPeaksCsvPath);
     layout.rawDatDocumentFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.rawFormatDocumentPath);
     layout.sessionMetadataFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.manifestPath);
@@ -244,8 +257,10 @@ public:
         initOptions.deviceConfig.ptb = sessionDeviceConnectionConfig(options.deviceConfig.ptb);
         initOptions.deviceConfig.hmp = sessionDeviceConnectionConfig(options.deviceConfig.hmp);
         initOptions.deviceConfig.lidar = sessionDeviceConnectionConfig(options.deviceConfig.lidar);
-        initOptions.deviceConfig.temperatureController =
-            sessionDeviceConnectionConfig(options.deviceConfig.temperatureController);
+        initOptions.deviceConfig.laserTemperatureController =
+            sessionDeviceConnectionConfig(options.deviceConfig.laserTemperatureController);
+        initOptions.deviceConfig.systemTemperatureController =
+            sessionDeviceConnectionConfig(options.deviceConfig.systemTemperatureController);
 
         const VaporView::Session::SessionPackageInitResult initResult =
             VaporView::Session::initializeSessionPackage(initOptions);
@@ -258,13 +273,15 @@ public:
         layout = groundLayoutFromPackage(initResult);
 
         sensorSummaryFile = std::make_unique<QFile>(layout.sensorSummaryFilename);
-        temperatureControllerFile = std::make_unique<QFile>(layout.temperatureControllerFilename);
+        temperatureControllerFile = std::make_unique<QFile>(layout.laserTemperatureControllerFilename);
+        ai8TemperatureControllerFile = std::make_unique<QFile>(layout.systemTemperatureControllerFilename);
         waveformFeaturesFile = std::make_unique<QFile>(layout.waveformFeaturesFilename);
         eventLogFile = std::make_unique<QFile>(layout.eventLogFilename);
         errorLogFile = std::make_unique<QFile>(layout.errorLogFilename);
         waveformPeaksFile = std::make_unique<QFile>(layout.waveformPeaksFilename);
         if (!sensorSummaryFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
             !temperatureControllerFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
+            !ai8TemperatureControllerFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
             !waveformFeaturesFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
             !eventLogFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
             !errorLogFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
@@ -273,7 +290,13 @@ public:
             !openRawFile(pressureRawFile, layout.pressureRawFilename, SessionRawDat::kSourcePressure) ||
             !openRawFile(temperatureHumidityRawFile, layout.temperatureHumidityRawFilename, SessionRawDat::kSourceTemperatureHumidity) ||
             !openRawFile(distanceRawFile, layout.distanceRawFilename, SessionRawDat::kSourceDistance) ||
-            !openRawFile(waveformRawFile, layout.waveformRawFilename, SessionRawDat::kSourceWaveform))
+            !openRawFile(waveformRawFile, layout.waveformRawFilename, SessionRawDat::kSourceWaveform) ||
+            !openRawFile(laserTemperatureControllerRawFile,
+                         layout.laserTemperatureControllerRawFilename,
+                         SessionRawDat::kSourceLaserTemperatureController) ||
+            !openRawFile(systemTemperatureControllerRawFile,
+                         layout.systemTemperatureControllerRawFilename,
+                         SessionRawDat::kSourceSystemTemperatureController))
         {
             if (startError) *startError = GroundRecordingStartError::OpenSessionFiles;
             if (errorMessage) *errorMessage = QStringLiteral("failed to open session files");
@@ -305,7 +328,13 @@ public:
         {
             QTextStream out(temperatureControllerFile.get());
             out.setEncoding(QStringConverter::Utf8);
-            out << VaporView::Session::temperatureControllerCsvHeader();
+            out << VaporView::Session::laserTemperatureControllerCsvHeader();
+            out.flush();
+        }
+        {
+            QTextStream out(ai8TemperatureControllerFile.get());
+            out.setEncoding(QStringConverter::Utf8);
+            out << VaporView::Session::systemTemperatureControllerCsvHeader();
             out.flush();
         }
         {
@@ -401,6 +430,8 @@ public:
         result.rawTemperatureHumidityRecords = rawTemperatureHumidityRecordCount.load();
         result.rawDistanceRecords = rawDistanceRecordCount.load();
         result.rawWaveformRecords = rawWaveformRecordCount.load();
+        result.rawLaserTemperatureControllerRecords = rawLaserTemperatureControllerRecordCount.load();
+        result.rawSystemTemperatureControllerRecords = rawSystemTemperatureControllerRecordCount.load();
         return result;
     }
 
@@ -744,6 +775,14 @@ private:
                     file = &distanceRawFile;
                     recordCount = &rawDistanceRecordCount;
                     break;
+                case SessionRawDat::kSourceLaserTemperatureController:
+                    file = &laserTemperatureControllerRawFile;
+                    recordCount = &rawLaserTemperatureControllerRecordCount;
+                    break;
+                case SessionRawDat::kSourceSystemTemperatureController:
+                    file = &systemTemperatureControllerRawFile;
+                    recordCount = &rawSystemTemperatureControllerRecordCount;
+                    break;
                 default:
                     break;
                 }
@@ -911,7 +950,8 @@ private:
         manifest.capture.telemetryEndpoint = options.deviceConfig.waveformHost;
         manifest.capture.telemetryPort = QString::number(options.deviceConfig.waveformPort);
         manifest.counts.sensorRows = static_cast<quint64>(std::max<qint64>(0, sensorRows.load()));
-        manifest.counts.temperatureControllerRows = 0;
+        manifest.counts.laserTemperatureControllerRows = 0;
+        manifest.counts.systemTemperatureControllerRows = 0;
         manifest.counts.waveformFrames = static_cast<quint64>(std::max<qint64>(0, waveformFrames.load()));
         manifest.counts.waveformFeatureRows = 0;
         manifest.counts.eventRows = eventRows.load();
@@ -921,6 +961,8 @@ private:
         manifest.rawRecords.temperatureHumidity = rawTemperatureHumidityRecordCount.load();
         manifest.rawRecords.distance = rawDistanceRecordCount.load();
         manifest.rawRecords.waveform = rawWaveformRecordCount.load();
+        manifest.rawRecords.laserTemperatureController = rawLaserTemperatureControllerRecordCount.load();
+        manifest.rawRecords.systemTemperatureController = rawSystemTemperatureControllerRecordCount.load();
         return VaporView::Session::writeSessionManifestAtomically(layout.sessionMetadataFilename,
                                                                   manifest,
                                                                   errorMessage);
@@ -934,9 +976,12 @@ private:
                             temperatureHumidityRawFile.get(),
                             distanceRawFile.get(),
                             waveformRawFile.get(),
+                            laserTemperatureControllerRawFile.get(),
+                            systemTemperatureControllerRawFile.get(),
                             waveformPeaksFile.get(),
                             sensorSummaryFile.get(),
                             temperatureControllerFile.get(),
+                            ai8TemperatureControllerFile.get(),
                             waveformFeaturesFile.get(),
                             eventLogFile.get(),
                             errorLogFile.get()})
@@ -954,12 +999,15 @@ private:
         std::lock_guard<std::mutex> lock(filesMutex);
         sensorSummaryFile.reset();
         temperatureControllerFile.reset();
+        ai8TemperatureControllerFile.reset();
         waveformFeaturesFile.reset();
         navigationRawFile.reset();
         pressureRawFile.reset();
         temperatureHumidityRawFile.reset();
         distanceRawFile.reset();
         waveformRawFile.reset();
+        laserTemperatureControllerRawFile.reset();
+        systemTemperatureControllerRawFile.reset();
         waveformPeaksFile.reset();
         eventLogFile.reset();
         errorLogFile.reset();
@@ -975,6 +1023,8 @@ private:
         rawTemperatureHumidityRecordCount.store(0);
         rawDistanceRecordCount.store(0);
         rawWaveformRecordCount.store(0);
+        rawLaserTemperatureControllerRecordCount.store(0);
+        rawSystemTemperatureControllerRecordCount.store(0);
         eventRows.store(0);
         errorRows.store(0);
         lastTcpStatusUpdateMs.store(0);
@@ -998,8 +1048,11 @@ public:
     std::unique_ptr<QFile> temperatureHumidityRawFile;
     std::unique_ptr<QFile> distanceRawFile;
     std::unique_ptr<QFile> waveformRawFile;
+    std::unique_ptr<QFile> laserTemperatureControllerRawFile;
+    std::unique_ptr<QFile> systemTemperatureControllerRawFile;
     std::unique_ptr<QFile> waveformPeaksFile;
     std::unique_ptr<QFile> temperatureControllerFile;
+    std::unique_ptr<QFile> ai8TemperatureControllerFile;
     std::unique_ptr<QFile> waveformFeaturesFile;
     std::unique_ptr<QFile> eventLogFile;
     std::unique_ptr<QFile> errorLogFile;
@@ -1016,6 +1069,8 @@ public:
     std::atomic<quint64> rawTemperatureHumidityRecordCount{0};
     std::atomic<quint64> rawDistanceRecordCount{0};
     std::atomic<quint64> rawWaveformRecordCount{0};
+    std::atomic<quint64> rawLaserTemperatureControllerRecordCount{0};
+    std::atomic<quint64> rawSystemTemperatureControllerRecordCount{0};
     std::atomic<quint64> eventRows{0};
     std::atomic<quint64> errorRows{0};
     std::atomic<qint64> lastTcpStatusUpdateMs{0};
@@ -1152,6 +1207,36 @@ bool GroundRecordingService::recordRawLidarFrame(quint64 hostTimestampUs,
                             impl_->rawDistanceRecordCount,
                             SessionRawDat::kSourceDistance,
                             protocol,
+                            0,
+                            hostTimestampUs,
+                            data,
+                            size);
+}
+
+bool GroundRecordingService::recordRawLaserTemperatureControllerResponse(quint64 hostTimestampUs,
+                                                                         quint16 recordType,
+                                                                         const void *data,
+                                                                         size_t size)
+{
+    return impl_->recordRaw(impl_->laserTemperatureControllerRawFile,
+                            impl_->rawLaserTemperatureControllerRecordCount,
+                            SessionRawDat::kSourceLaserTemperatureController,
+                            recordType,
+                            0,
+                            hostTimestampUs,
+                            data,
+                            size);
+}
+
+bool GroundRecordingService::recordRawSystemTemperatureControllerResponse(quint64 hostTimestampUs,
+                                                                          quint16 recordType,
+                                                                          const void *data,
+                                                                          size_t size)
+{
+    return impl_->recordRaw(impl_->systemTemperatureControllerRawFile,
+                            impl_->rawSystemTemperatureControllerRecordCount,
+                            SessionRawDat::kSourceSystemTemperatureController,
+                            recordType,
                             0,
                             hostTimestampUs,
                             data,

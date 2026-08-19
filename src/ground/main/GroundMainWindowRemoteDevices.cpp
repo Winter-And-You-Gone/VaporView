@@ -1832,8 +1832,8 @@ void MainWindow::updateTemperatureControllerTitleText()
     const QString portText = localSerialPortComboValue(state_->temperature_port_combo_);
     const bool hasPort = !portText.isEmpty() && !portText.startsWith(QStringLiteral("--"));
     const QString base = state_->is_english_
-        ? QStringLiteral("RD105 Laser Driver Board Temperature Controller")
-        : QStringLiteral("RD105激光驱动板温控器");
+        ? QStringLiteral("Laser Temperature Controller")
+        : QStringLiteral("激光温控");
     const QString portDisplay = hasPort
         ? portText
         : (state_->is_english_ ? QStringLiteral("No serial port") : QStringLiteral("未选择串口"));
@@ -1887,8 +1887,8 @@ void MainWindow::updateTemperatureControllerTitleText()
         scalePixels(kTemperatureTitlePortMaximumWidth));
     state_->temperature_title_port_combo_->setFixedWidth(titlePortWidth);
     const QString portToolTip = state_->is_english_
-        ? QStringLiteral("RD105 serial port: %1. Click to choose another port.").arg(portDisplay)
-        : QStringLiteral("当前 RD105 串口：%1。点击可选择其他串口。").arg(portDisplay);
+        ? QStringLiteral("Laser temperature serial port: %1. Click to choose another port.").arg(portDisplay)
+        : QStringLiteral("当前激光温控串口：%1。点击可选择其他串口。").arg(portDisplay);
     state_->temperature_title_port_combo_->setToolTip(portToolTip);
     state_->temperature_title_port_combo_->setAccessibleName(portToolTip);
     state_->temperature_title_port_combo_->updateGeometry();
@@ -2067,8 +2067,8 @@ void MainWindow::connectLocalTemperatureController()
         publishGroundLog(VaporView::LogLevel::Warning,
                          QStringLiteral("device.connection"),
                          QStringLiteral("temperature_controller_connection_rejected_missing_port"),
-                         QStringLiteral("请先选择本地 RD105 串口。"),
-                         {{QStringLiteral("device"), QStringLiteral("RD105")},
+                         QStringLiteral("请先选择本地激光温控串口。"),
+                         {{QStringLiteral("device"), QStringLiteral("laser_temperature_controller")},
                           {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
                           {QStringLiteral("reason_code"), QStringLiteral("MISSING_ENDPOINT")},
                           {QStringLiteral("ui_dedupe_key"), QStringLiteral("rd105:connect:missing_port")}});
@@ -2086,8 +2086,8 @@ void MainWindow::connectLocalTemperatureController()
         publishGroundLog(VaporView::LogLevel::Warning,
                          QStringLiteral("device.connection"),
                          QStringLiteral("temperature_controller_connection_rejected_invalid_baud"),
-                         QStringLiteral("RD105 波特率无效。"),
-                         {{QStringLiteral("device"), QStringLiteral("RD105")},
+                         QStringLiteral("激光温控波特率无效。"),
+                         {{QStringLiteral("device"), QStringLiteral("laser_temperature_controller")},
                           {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
                           {QStringLiteral("reason_code"), QStringLiteral("CONFIG_INVALID")},
                           {QStringLiteral("baud_text"), baudText},
@@ -2113,8 +2113,8 @@ void MainWindow::connectLocalTemperatureController()
     publishGroundLog(VaporView::LogLevel::Info,
                      QStringLiteral("device.connection"),
                      QStringLiteral("temperature_controller_connection_started"),
-                     QStringLiteral("正在连接本地 RD105 温控器。"),
-                     {{QStringLiteral("device"), QStringLiteral("RD105")},
+                     QStringLiteral("正在连接本地激光温控。"),
+                     {{QStringLiteral("device"), QStringLiteral("laser_temperature_controller")},
                       {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
                       {QStringLiteral("port"), port},
                       {QStringLiteral("baud"), baud},
@@ -2133,7 +2133,7 @@ void MainWindow::connectLocalTemperatureController()
         std::move(request),
         [this](bool connected, const QString& resultText) {
             QMetaObject::invokeMethod(this, [this, connected, resultText]() {
-                QVariantMap fields{{QStringLiteral("device"), QStringLiteral("RD105")},
+                QVariantMap fields{{QStringLiteral("device"), QStringLiteral("laser_temperature_controller")},
                                    {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
                                    {QStringLiteral("ui_visibility"),
                                     connected ? QStringLiteral("details") : QStringLiteral("attention")}};
@@ -2152,7 +2152,7 @@ void MainWindow::connectLocalTemperatureController()
                     publishGroundLog(VaporView::LogLevel::Info,
                                      QStringLiteral("device.connection"),
                                      QStringLiteral("temperature_controller_connected"),
-                                     QStringLiteral("本地 RD105 温控器已连接。"),
+                                     QStringLiteral("本地激光温控已连接。"),
                                      fields);
                 }
                 else
@@ -2160,7 +2160,7 @@ void MainWindow::connectLocalTemperatureController()
                     publishGroundLog(VaporView::LogLevel::Error,
                                      QStringLiteral("device.connection"),
                                      QStringLiteral("temperature_controller_connection_failed"),
-                                     QStringLiteral("本地 RD105 温控器连接失败。"),
+                                     QStringLiteral("本地激光温控连接失败。"),
                                      fields);
                 }
                 state_->connection_attempt_in_progress_ = false;
@@ -2181,7 +2181,7 @@ void MainWindow::connectLocalTemperatureController()
                          QStringLiteral("device.connection"),
                          QStringLiteral("temperature_controller_connection_rejected_busy"),
                          QStringLiteral("另一个本地连接操作正在进行中。"),
-                         {{QStringLiteral("device"), QStringLiteral("RD105")},
+                         {{QStringLiteral("device"), QStringLiteral("laser_temperature_controller")},
                           {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
                           {QStringLiteral("reason_code"), QStringLiteral("INVALID_STATE")},
                           {QStringLiteral("ui_dedupe_key"), QStringLiteral("rd105:connect:busy")}});
@@ -2208,8 +2208,8 @@ void MainWindow::disconnectLocalTemperatureController()
         publishGroundLog(VaporView::LogLevel::Info,
                          QStringLiteral("device.connection"),
                          QStringLiteral("temperature_controller_disconnected"),
-                         QStringLiteral("本地 RD105 温控器已断开。"),
-                         {{QStringLiteral("device"), QStringLiteral("RD105")},
+                         QStringLiteral("本地激光温控已断开。"),
+                         {{QStringLiteral("device"), QStringLiteral("laser_temperature_controller")},
                           {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
@@ -2340,7 +2340,7 @@ void MainWindow::onRd105SessionOperationStarted(
             temperatureCommandStatusText(command, channel, true));
     }
     QVariantMap fields = temperatureCommandLogFields(command, payload, channel);
-    fields.insert(QStringLiteral("device"), QStringLiteral("RD105"));
+    fields.insert(QStringLiteral("device"), QStringLiteral("laser_temperature_controller"));
     fields.insert(QStringLiteral("execution_path"),
                   rd105ExecutionPath(state_->rd105_device_session_
                       ? state_->rd105_device_session_->backend()
@@ -2349,7 +2349,7 @@ void MainWindow::onRd105SessionOperationStarted(
     fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("details"));
     publishTemperatureCommandLog(VaporView::LogLevel::Info,
                                  QStringLiteral("temperature_command_sent"),
-                                 QStringLiteral("RD105 温控命令已提交。"),
+                                 QStringLiteral("激光温控命令已提交。"),
                                  fields);
     restoreTemperatureCommandUi(command, channel);
 }
@@ -2411,7 +2411,7 @@ void MainWindow::onRd105SessionOperationFinished(
     }
 
     QVariantMap fields = temperatureCommandLogFields(result.command, result.payload, channel);
-    fields.insert(QStringLiteral("device"), QStringLiteral("RD105"));
+    fields.insert(QStringLiteral("device"), QStringLiteral("laser_temperature_controller"));
     fields.insert(QStringLiteral("execution_path"), rd105ExecutionPath(result.backend));
     fields.insert(QStringLiteral("request_id"), result.request_id);
     fields.insert(QStringLiteral("outcome"), rd105OutcomeName(result.outcome));
@@ -2423,7 +2423,7 @@ void MainWindow::onRd105SessionOperationFinished(
         fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("details"));
         publishTemperatureCommandLog(VaporView::LogLevel::Info,
                                      QStringLiteral("temperature_command_completed"),
-                                     QStringLiteral("RD105 温控命令执行成功。"),
+                                     QStringLiteral("激光温控命令执行成功。"),
                                      fields);
     }
     else if (result.error_code == VaporView::CommandErrorCode::DeviceNotConnected ||
@@ -2439,8 +2439,8 @@ void MainWindow::onRd105SessionOperationFinished(
             VaporView::LogLevel::Warning,
             QStringLiteral("temperature_command_rejected_not_connected"),
             result.backend == VaporView::Ground::Devices::Rd105Backend::Remote
-                ? QStringLiteral("天空端 RD105 温控器不可用，无法下发温控命令。")
-                : QStringLiteral("本地 RD105 温控器未连接，无法下发温控命令。"),
+                ? QStringLiteral("天空端激光温控不可用，无法下发温控命令。")
+                : QStringLiteral("本地激光温控未连接，无法下发温控命令。"),
             fields);
     }
     else if (result.outcome == VaporView::Ground::Devices::Rd105OperationOutcome::Timeout)
@@ -2453,7 +2453,7 @@ void MainWindow::onRd105SessionOperationFinished(
                           channel));
         publishTemperatureCommandLog(VaporView::LogLevel::Warning,
                                      QStringLiteral("temperature_command_ack_timeout"),
-                                     QStringLiteral("RD105 温控命令 ACK 等待超时。"),
+                                     QStringLiteral("激光温控命令 ACK 等待超时。"),
                                      fields);
     }
     else
@@ -2469,7 +2469,7 @@ void MainWindow::onRd105SessionOperationFinished(
                           channel));
         publishTemperatureCommandLog(VaporView::LogLevel::Error,
                                      QStringLiteral("temperature_command_failed"),
-                                     QStringLiteral("RD105 温控命令执行失败。"),
+                                     QStringLiteral("激光温控命令执行失败。"),
                                      fields);
     }
 
@@ -2500,10 +2500,10 @@ void MainWindow::sendTemperatureCommand(
         }
         publishUiTestEvent(QStringLiteral("ui_test_temperature_command_applied"),
                            QString(state_->is_english_
-                                       ? "RD105 command applied in memory: %1"
-                                       : "RD105 命令已在内存中应用：%1")
+                                       ? "Laser temperature command applied in memory: %1"
+                                       : "激光温控命令已在内存中应用：%1")
                                .arg(VaporView::commandIdName(command)),
-                           {{QStringLiteral("device"), QStringLiteral("RD105")},
+                           {{QStringLiteral("device"), QStringLiteral("laser_temperature_controller")},
                             {QStringLiteral("command"), VaporView::commandIdName(command)},
                             {QStringLiteral("channel"), channel}});
         restoreTemperatureCommandUi(command, channel);
@@ -2524,8 +2524,8 @@ void MainWindow::sendTemperatureCommand(
         : VaporView::Ground::Devices::Rd105Backend::Local;
     result.outcome = VaporView::Ground::Devices::Rd105OperationOutcome::Disconnected;
     result.error_code = VaporView::CommandErrorCode::DeviceNotConnected;
-    result.message = state_->is_english_ ? QStringLiteral("RD105 session is not initialized.")
-                                         : QStringLiteral("RD105 会话尚未初始化。");
+    result.message = state_->is_english_ ? QStringLiteral("Laser temperature session is not initialized.")
+                                         : QStringLiteral("激光温控会话尚未初始化。");
     onRd105SessionOperationFinished(result);
 }
 

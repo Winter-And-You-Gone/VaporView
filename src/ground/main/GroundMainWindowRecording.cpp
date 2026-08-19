@@ -64,7 +64,8 @@ void MainWindow::publishTemperatureCommandLog(VaporView::LogLevel level,
                                               const QString& message,
                                               QVariantMap fields)
 {
-    fields.insert(QStringLiteral("device"), fields.value(QStringLiteral("device"), QStringLiteral("RD105")));
+    fields.insert(QStringLiteral("device"),
+                  fields.value(QStringLiteral("device"), QStringLiteral("laser_temperature_controller")));
     fields.insert(QStringLiteral("device_id"),
                   fields.value(QStringLiteral("device_id"), QStringLiteral("temperature_controller")));
     publishGroundLog(level,
@@ -786,8 +787,18 @@ bool MainWindow::startRecordingSession()
     options.deviceConfig.ptb = serialConfig(state_->ptb_port_combo_, state_->ptb_baud_combo_, state_->ptb_rate_combo_);
     options.deviceConfig.hmp = serialConfig(state_->hmp_port_combo_, state_->hmp_baud_combo_, state_->hmp_rate_combo_);
     options.deviceConfig.lidar = serialConfig(state_->lidar_port_combo_, state_->lidar_baud_combo_, state_->lidar_rate_combo_);
-    options.deviceConfig.temperatureController =
+    options.deviceConfig.laserTemperatureController =
         serialConfig(state_->temperature_port_combo_, state_->temperature_baud_combo_, state_->temperature_rate_combo_);
+    options.deviceConfig.laserTemperatureController.slaveAddress =
+        QString::number(rememberedTemperatureSlaveAddress());
+    options.deviceConfig.systemTemperatureController =
+        serialConfig(state_->device_config_.ai8_temperature_port_combo,
+                     state_->device_config_.ai8_temperature_baud_combo,
+                     state_->device_config_.ai8_temperature_rate_combo);
+    options.deviceConfig.systemTemperatureController.slaveAddress =
+        QString::number(state_->ai8_temperature_controller_panel_
+                            ? state_->ai8_temperature_controller_panel_->currentPageData().global.address
+                            : 1);
 
     VaporView::Ground::Session::GroundRecordingStartError startError =
         VaporView::Ground::Session::GroundRecordingStartError::None;

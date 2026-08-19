@@ -15,8 +15,10 @@
 | `raw/temperature_humidity.dat` | 3 | 温湿度传感器完整 Modbus 数据响应帧 |
 | `raw/distance.dat` | 4 | 已识别协议且校验通过的完整测距帧 |
 | `raw/waveform.dat` | 5 | TCP 原始信号 payload 和二次谐波 payload |
+| `raw/laser_temperature_controller.dat` | 6 | 激光温控完整、已校验 Modbus RTU response frame |
+| `raw/system_temperature_controller.dat` | 7 | 系统温控完整、已校验 Modbus RTU response frame |
 
-新记录会话只写这些统一 raw DAT 文件，不再额外生成旧型号文件名或 `waveform/*.dat`。数据查看器仍保留对旧会话 `raw/epsilon.dat`、`raw/tcp_wave.dat` 和 `waveform/*.dat` 的读取兼容。缺少统一 raw magic 的历史波形文件仍按旧格式回退读取；带有合法统一 raw magic 但版本不受支持的文件会被明确拒绝，不会回退为旧格式。
+新记录会话只写这些统一 raw DAT 文件，不再额外生成旧型号文件名或 `waveform/*.dat`。数据查看器仍保留对旧会话 `raw/epsilon.dat`、`raw/tcp_wave.dat`、`raw/rd105.dat`、`raw/ai8.dat`、`raw/ai8288.dat` 和 `waveform/*.dat` 的读取兼容。缺少统一 raw magic 的历史波形文件仍按旧格式回退读取；带有合法统一 raw magic 但版本不受支持的文件会被明确拒绝，不会回退为旧格式。
 
 ## 字节序
 
@@ -62,6 +64,8 @@
 - HMP：`record_type = 0x03`，对应 Modbus function code。
 - LIDAR：`record_type` 使用程序内 `LidarProtocol` 枚举值：`1` 为历史保留值，当前不再生成；`2=TFA1500DistanceFrame`，`3=TFA1500LowFrequencyFrame`，`4=TFA1500HighFrequency`，`5=ObservedAaB7Frame`。
 - TCP 波形：`record_type = 1`，`flags` bit0 表示 payload 内含两个 length-prefixed 子 payload；`flags` bits8-9 记录 payload 浮点编码，`0=legacy/unknown`、`1=little-endian float32`、`2=big-endian float32`、`3=word-swapped float32`。
+- 激光温控：`record_type` 使用已校验 Modbus RTU response 的起始寄存器地址，`flags = 0`。
+- 系统温控：`record_type = 1` 表示 8 路测量值响应，`2` 表示报警状态响应，`3` 表示主状态响应，`4` 表示 8 路控制状态响应；`flags = 0`。
 
 ## TCP 波形 payload
 
@@ -95,5 +99,7 @@ CSV 中的 `record_timestamp_us` 和 raw DAT 记录头中的 `host_timestamp_us`
 历史路径兼容映射为：`raw/epsilon.dat` -> `raw/navigation.dat`、
 `raw/ptb.dat` -> `raw/pressure.dat`、`raw/hmp.dat` ->
 `raw/temperature_humidity.dat`、`raw/lidar.dat` -> `raw/distance.dat`、
-`raw/tcp_wave.dat` -> `raw/waveform.dat`。Reader 优先使用 manifest
+`raw/tcp_wave.dat` -> `raw/waveform.dat`、`raw/rd105.dat` ->
+`raw/laser_temperature_controller.dat`、`raw/ai8.dat` /
+`raw/ai8288.dat` -> `raw/system_temperature_controller.dat`。Reader 优先使用 manifest
 声明的路径，其次使用新默认路径，最后回退到旧路径；该回退不会重命名或修改历史文件。

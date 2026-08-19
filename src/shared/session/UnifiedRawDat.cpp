@@ -116,7 +116,7 @@ QString supportedFormatVersionsText()
 
 bool isKnownSourceId(quint16 sourceId)
 {
-    return sourceId >= kSourceNavigation && sourceId <= kSourceWaveform;
+    return sourceId >= kSourceNavigation && sourceId <= kSourceSystemTemperatureController;
 }
 
 bool isValidRecordType(quint16 sourceId, quint16 recordType)
@@ -133,6 +133,13 @@ bool isValidRecordType(quint16 sourceId, quint16 recordType)
         return recordType >= 1u && recordType <= 5u;
     case RawSourceId::Waveform:
         return recordType == kRecordTypeWaveformPayload;
+    case RawSourceId::LaserTemperatureController:
+        return recordType > 0u;
+    case RawSourceId::SystemTemperatureController:
+        return recordType == kRecordTypeSystemTemperatureMeasuredValues ||
+               recordType == kRecordTypeSystemTemperatureAlarmStatus ||
+               recordType == kRecordTypeSystemTemperatureMainStatus ||
+               recordType == kRecordTypeSystemTemperatureControlStatus;
     }
     return false;
 }

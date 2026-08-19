@@ -151,19 +151,19 @@ int main(int argc, char **argv)
     const QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
     require(paths.value(QStringLiteral("sensor_summary_csv")).toString() == QStringLiteral("sensors/sensor_summary.csv"),
             "metadata sensor summary path");
-    require(paths.value(QStringLiteral("temperature_controller_csv")).toString()
-                == QStringLiteral("sensors/temperature_controller.csv"),
-            "metadata temperature controller path");
-    require(paths.value(QStringLiteral("ai8_temperature_controller_csv")).toString()
-                == QStringLiteral("sensors/ai8_temperature_controller.csv"),
-            "metadata AI-8 temperature controller path");
+    require(paths.value(QStringLiteral("laser_temperature_controller_csv")).toString()
+                == QStringLiteral("sensors/laser_temperature_controller.csv"),
+            "metadata laser temperature controller path");
+    require(paths.value(QStringLiteral("system_temperature_controller_csv")).toString()
+                == QStringLiteral("sensors/system_temperature_controller.csv"),
+            "metadata system temperature controller path");
     require(paths.value(QStringLiteral("waveform_features_csv")).toString()
                 == QStringLiteral("sensors/waveform_features.csv"),
             "metadata waveform features path");
-    require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/temperature_controller.csv"))),
-            "temperature controller csv exists");
-    require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/ai8_temperature_controller.csv"))),
-            "AI-8 temperature controller csv exists");
+    require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/laser_temperature_controller.csv"))),
+            "laser temperature controller csv exists");
+    require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/system_temperature_controller.csv"))),
+            "system temperature controller csv exists");
     require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/waveform_features.csv"))),
             "waveform features csv exists");
 
@@ -200,9 +200,12 @@ int main(int argc, char **argv)
     require(deviceSensors.value(QStringLiteral("epsilon")).toObject()
                 .value(QStringLiteral("port")).toString() == QStringLiteral("COM7"),
             "ground device config epsilon port");
-    require(deviceSensors.value(QStringLiteral("rd105")).toObject()
+    require(deviceSensors.value(QStringLiteral("laser_temperature_controller")).toObject()
                 .value(QStringLiteral("port")).isNull(),
-            "ground device config missing rd105 port is null");
+            "ground device config missing laser temperature port is null");
+    require(deviceSensors.value(QStringLiteral("system_temperature_controller")).toObject()
+                .value(QStringLiteral("port")).isNull(),
+            "ground device config missing system temperature port is null");
 
     QFile rawFile(QDir(sessionDirectory).filePath(QStringLiteral("raw/navigation.dat")));
     require(rawFile.open(QIODevice::ReadOnly), "open navigation raw file");

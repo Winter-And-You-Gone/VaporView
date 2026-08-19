@@ -3580,8 +3580,8 @@ void MainWindow::updateDeviceConfigTexts()
             : QStringLiteral("温湿度"));
     }
     if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(QStringLiteral("TFA1500-L"));
-    if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(QStringLiteral("RD105"));
-    if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(QStringLiteral("AI-8288"));
+    if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(state_->is_english_ ? QStringLiteral("Laser Thermal") : QStringLiteral("激光温控"));
+    if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(state_->is_english_ ? QStringLiteral("System Thermal") : QStringLiteral("系统温控"));
     if (state_->device_config_.epsilon_rate_lbl) state_->device_config_.epsilon_rate_lbl->setText(QString());
     if (state_->device_config_.epsilon_packet_rates_btn)
     {
@@ -3621,7 +3621,7 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.remote_sky_services_title_lbl) state_->device_config_.remote_sky_services_title_lbl->setText(state_->is_english_ ? "Sky services" : "天空端服务");
     if (state_->device_config_.remote_sky_sync_title_lbl) state_->device_config_.remote_sky_sync_title_lbl->setText(state_->is_english_ ? "Config sync" : "配置同步");
     if (state_->device_config_.remote_sky_advanced_title_lbl) state_->device_config_.remote_sky_advanced_title_lbl->setText(state_->is_english_ ? "Advanced / diagnostics" : "高级 / 诊断");
-    if (state_->device_config_.remote_sky_rd105_slave_lbl) state_->device_config_.remote_sky_rd105_slave_lbl->setText(state_->is_english_ ? "RD105 Addr:" : "RD105 站号:");
+    if (state_->device_config_.remote_sky_rd105_slave_lbl) state_->device_config_.remote_sky_rd105_slave_lbl->setText(state_->is_english_ ? "Laser Addr:" : "激光温控站号:");
     if (state_->device_config_.remote_sky_wave_enabled_lbl) state_->device_config_.remote_sky_wave_enabled_lbl->setText(state_->is_english_ ? "Wave TCP:" : "Wave TCP:");
     if (state_->device_config_.remote_sky_wave_host_lbl) state_->device_config_.remote_sky_wave_host_lbl->setText(state_->is_english_ ? "Sky Wave Host:" : "天空端波形主机:");
     if (state_->device_config_.remote_sky_wave_port_lbl) state_->device_config_.remote_sky_wave_port_lbl->setText(state_->is_english_ ? "Sky Wave Port:" : "天空端波形端口:");
@@ -4108,10 +4108,10 @@ void MainWindow::updateAi8TemperatureTitlePortAppearance()
     combo->setFixedWidth(titlePortWidth);
     const QString selectedPort = combo->currentData().toString().trimmed();
     const QString toolTip = selectedPort.isEmpty()
-        ? (state_->is_english_ ? QStringLiteral("Select the AI-8 RS485 serial port")
-                               : QStringLiteral("选择 AI-8 的 RS485 串口"))
-        : (state_->is_english_ ? QStringLiteral("AI-8 RS485 serial port: %1").arg(selectedPort)
-                               : QStringLiteral("AI-8 RS485 串口：%1").arg(selectedPort));
+        ? (state_->is_english_ ? QStringLiteral("Select the system temperature RS485 serial port")
+                               : QStringLiteral("选择系统温控的 RS485 串口"))
+        : (state_->is_english_ ? QStringLiteral("System temperature RS485 serial port: %1").arg(selectedPort)
+                               : QStringLiteral("系统温控 RS485 串口：%1").arg(selectedPort));
     combo->setToolTip(toolTip);
     combo->setAccessibleName(toolTip);
     combo->updateGeometry();
@@ -4835,8 +4835,8 @@ void MainWindow::setupDataPanels()
                                                                        kMainPageButtonHeight,
                                                                        &temperatureOverviewTitleCluster);
     state_->temperature_overview_inline_title_lbl_->setText(state_->is_english_
-        ? QStringLiteral("Laser Driver Temperature Overview")
-        : QStringLiteral("激光驱动温控概览"));
+        ? QStringLiteral("Laser Temperature Overview")
+        : QStringLiteral("激光温控概览"));
     temperatureOverviewTitleLayout->addWidget(temperatureOverviewTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
     temperatureOverviewTitleLayout->addStretch(1);
     temperatureOverviewLayout->addWidget(temperatureOverviewTitleBar);
@@ -4849,8 +4849,8 @@ void MainWindow::setupDataPanels()
                 this,
                 state_->is_english_ ? QStringLiteral("Enable Temperature Output") : QStringLiteral("开启温控输出"),
                 state_->is_english_
-                    ? QStringLiteral("Enable RD105 output for channel %1? Confirm the target temperature is safe.").arg(channel)
-                    : QStringLiteral("确定开启 RD105 通道%1输出？请确认目标温度安全。").arg(channel));
+                    ? QStringLiteral("Enable laser temperature output for channel %1? Confirm the target temperature is safe.").arg(channel)
+                    : QStringLiteral("确定开启激光温控通道%1输出？请确认目标温度安全。").arg(channel));
             if (answer != QMessageBox::Yes)
             {
                 if (state_->temperature_overview_panel_)
@@ -5033,8 +5033,8 @@ void MainWindow::setupDataPanels()
                 this,
                 state_->is_english_ ? QStringLiteral("Enable Temperature Output") : QStringLiteral("开启温控输出"),
                 state_->is_english_
-                    ? QStringLiteral("Enable RD105 output for channel %1? Confirm the target temperature and output limit are safe.").arg(channel)
-                    : QStringLiteral("确定开启 RD105 通道%1输出？请确认目标温度和最大输出上限安全。" ).arg(channel));
+                    ? QStringLiteral("Enable laser temperature output for channel %1? Confirm the target temperature and output limit are safe.").arg(channel)
+                    : QStringLiteral("确定开启激光温控通道%1输出？请确认目标温度和最大输出上限安全。" ).arg(channel));
             if (answer != QMessageBox::Yes)
             {
                 return;
@@ -5127,8 +5127,8 @@ void MainWindow::setupDataPanels()
             this,
             state_->is_english_ ? QStringLiteral("Restore Factory Settings") : QStringLiteral("恢复出厂设置"),
             state_->is_english_
-                ? QStringLiteral("Restore RD105 factory settings? This resets the address, baud rate, and temperature parameters.")
-                : QStringLiteral("确定恢复 RD105 出厂设置？这会重置站号、波特率和温控参数。"));
+                ? QStringLiteral("Restore laser temperature controller factory settings? This resets the address, baud rate, and temperature parameters.")
+                : QStringLiteral("确定恢复激光温控出厂设置？这会重置站号、波特率和温控参数。"));
         if (answer != QMessageBox::Yes)
         {
             return;
@@ -5162,8 +5162,8 @@ void MainWindow::setupDataPanels()
         kMainPageButtonHeight,
         &ai8TitleCluster);
     const QString ai8Title = state_->is_english_
-        ? QStringLiteral("AI-8 Series Multi-loop Temperature Controller")
-        : QStringLiteral("AI-8 系列多回路智能温控器");
+        ? QStringLiteral("System Temperature Controller")
+        : QStringLiteral("系统温控");
     state_->ai8_temperature_controller_inline_title_lbl_->setText(
         QStringLiteral("%1 ·").arg(ai8Title));
     ai8TitleLayout->addWidget(ai8TitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);

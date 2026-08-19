@@ -11,14 +11,16 @@ namespace VaporView::Session
 enum class SessionFileKind
 {
     SensorSummaryCsv,
-    TemperatureControllerCsv,
-    Ai8TemperatureControllerCsv,
+    LaserTemperatureControllerCsv,
+    SystemTemperatureControllerCsv,
     WaveformFeaturesCsv,
     NavigationRaw,
     PressureRaw,
     TemperatureHumidityRaw,
     DistanceRaw,
     WaveformRaw,
+    LaserTemperatureControllerRaw,
+    SystemTemperatureControllerRaw,
     WaveformPeaksCsv
 };
 
@@ -26,14 +28,16 @@ struct SessionPackageLayout
 {
     QString manifestPath;
     QString sensorSummaryCsvPath;
-    QString temperatureControllerCsvPath;
-    QString ai8TemperatureControllerCsvPath;
+    QString laserTemperatureControllerCsvPath;
+    QString systemTemperatureControllerCsvPath;
     QString waveformFeaturesCsvPath;
     QString navigationRawPath;
     QString pressureRawPath;
     QString temperatureHumidityRawPath;
     QString distanceRawPath;
     QString waveformRawPath;
+    QString laserTemperatureControllerRawPath;
+    QString systemTemperatureControllerRawPath;
     QString waveformPeaksCsvPath;
     QString eventLogPath;
     QString errorLogPath;
@@ -66,8 +70,8 @@ const SessionPathAliases& sessionPathAliases(SessionFileKind kind);
 QString sessionPackageFilePath(const QString& sessionDirectory, const QString& relativePath);
 
 QString waveformFeaturesCsvHeader();
-QString temperatureControllerCsvHeader();
-QString ai8TemperatureControllerCsvHeader();
+QString laserTemperatureControllerCsvHeader();
+QString systemTemperatureControllerCsvHeader();
 QString waveformPeaksCsvHeader();
 QString eventLogCsvHeader();
 QString rawDatFormatDocumentText();

@@ -180,8 +180,10 @@ int main(int argc, char *argv[])
     require(QFileInfo::exists(sessionDir), "session directory");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/session.json")), "session metadata");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/sensor_summary.csv")), "sensor summary csv");
-    require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/ai8_temperature_controller.csv")),
-            "AI-8 temperature controller csv");
+    require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/laser_temperature_controller.csv")),
+            "laser temperature controller csv");
+    require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/system_temperature_controller.csv")),
+            "system temperature controller csv");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/waveform_features.csv")), "waveform features csv");
     require(!QFileInfo::exists(sessionDir + QStringLiteral("/waveform_index.csv")), "no waveform index csv");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/logs/event_log.csv")), "event log");
@@ -189,6 +191,10 @@ int main(int argc, char *argv[])
     require(!QFileInfo::exists(sessionDir + QStringLiteral("/waveforms")), "no waveform bin directory");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/navigation.dat")), "navigation raw dat");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/waveform.dat")), "waveform raw dat");
+    require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/laser_temperature_controller.dat")),
+            "laser temperature controller raw dat");
+    require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/system_temperature_controller.dat")),
+            "system temperature controller raw dat");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/waveform_peaks.csv")), "waveform peaks csv");
 
     recorder.stop();
@@ -260,27 +266,30 @@ int main(int argc, char *argv[])
     require(featureCells.at(11) == QStringLiteral("-0.750000"), "feature min csv precision");
     require(featureCells.at(12) == QStringLiteral("1.250000"), "feature max csv precision");
 
-    QFile ai8File(sessionDir + QStringLiteral("/sensors/ai8_temperature_controller.csv"));
-    require(ai8File.open(QIODevice::ReadOnly | QIODevice::Text), "open AI-8 temperature controller csv");
+    QFile ai8File(sessionDir + QStringLiteral("/sensors/system_temperature_controller.csv"));
+    require(ai8File.open(QIODevice::ReadOnly | QIODevice::Text), "open system temperature controller csv");
     const QStringList ai8Lines = QString::fromUtf8(ai8File.readAll()).trimmed().split('\n');
-    require(ai8Lines.size() == 2, "AI-8 temperature controller csv row count");
-    require(ai8Lines.at(0) + QLatin1Char('\n') == VaporView::Session::ai8TemperatureControllerCsvHeader(),
-            "AI-8 temperature controller csv header");
+    require(ai8Lines.size() == 2, "system temperature controller csv row count");
+    require(ai8Lines.at(0) + QLatin1Char('\n') == VaporView::Session::systemTemperatureControllerCsvHeader(),
+            "system temperature controller csv header");
     const QStringList ai8Cells = ai8Lines.at(1).split(',');
-    require(ai8Cells.size() == 26, "AI-8 temperature controller csv column count");
+    require(ai8Cells.size() == 27, "system temperature controller csv column count");
     require(ai8Cells.at(0) == QStringLiteral("1300") &&
                 ai8Cells.at(1) == QStringLiteral("true") &&
-                ai8Cells.at(5) == QStringLiteral("4660"),
-            "AI-8 temperature controller status fields");
-    require(ai8Cells.at(6) == QStringLiteral("20.000000") &&
-                ai8Cells.at(13) == QStringLiteral("27.000000"),
-            "AI-8 temperature controller measured channels");
-    require(ai8Cells.at(14) == QStringLiteral("apid_output") &&
-                ai8Cells.at(15) == QStringLiteral("stopped"),
-            "AI-8 temperature controller control states");
-    require(ai8Cells.at(22) == QStringLiteral("1") &&
-                ai8Cells.at(25) == QStringLiteral("4"),
-            "AI-8 temperature controller alarm registers");
+                ai8Cells.at(10) == QStringLiteral("true") &&
+                ai8Cells.at(19) == QStringLiteral("true") &&
+                ai8Cells.at(24) == QStringLiteral("true") &&
+                ai8Cells.at(25) == QStringLiteral("4660"),
+            "system temperature controller status fields");
+    require(ai8Cells.at(2) == QStringLiteral("20.000000") &&
+                ai8Cells.at(9) == QStringLiteral("27.000000"),
+            "system temperature controller measured channels");
+    require(ai8Cells.at(11) == QStringLiteral("1") &&
+                ai8Cells.at(12) == QStringLiteral("3"),
+            "system temperature controller control state codes");
+    require(ai8Cells.at(20) == QStringLiteral("1") &&
+                ai8Cells.at(23) == QStringLiteral("4"),
+            "system temperature controller alarm registers");
 
     QFile peakIndexFile(sessionDir + QStringLiteral("/raw/waveform_peaks.csv"));
     require(peakIndexFile.open(QIODevice::ReadOnly | QIODevice::Text), "open waveform peaks csv");
@@ -320,8 +329,8 @@ int main(int argc, char *argv[])
             "waveform frame count");
     require(counts.value(QStringLiteral("waveform_feature_rows")).toString().toULongLong() == 1,
             "waveform feature row count");
-    require(counts.value(QStringLiteral("ai8_temperature_controller_rows")).toString().toULongLong() == 1,
-            "AI-8 temperature controller row count");
+    require(counts.value(QStringLiteral("system_temperature_controller_rows")).toString().toULongLong() == 1,
+            "system temperature controller row count");
     require(root.value(QStringLiteral("waveform_file_count")).toString().toULongLong() == 1,
             "waveform file count");
     const QJsonObject rawFiles = root.value(QStringLiteral("raw_files")).toObject();
@@ -330,9 +339,9 @@ int main(int argc, char *argv[])
     const QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
     require(paths.value(QStringLiteral("waveform_peaks_csv")).toString() == QStringLiteral("raw/waveform_peaks.csv"),
             "metadata waveform peaks path");
-    require(paths.value(QStringLiteral("ai8_temperature_controller_csv")).toString() ==
-                QStringLiteral("sensors/ai8_temperature_controller.csv"),
-            "metadata AI-8 temperature controller path");
+    require(paths.value(QStringLiteral("system_temperature_controller_csv")).toString() ==
+                QStringLiteral("sensors/system_temperature_controller.csv"),
+            "metadata system temperature controller path");
 
     QFile eventFile(sessionDir + QStringLiteral("/logs/event_log.csv"));
     require(eventFile.open(QIODevice::ReadOnly | QIODevice::Text), "open event log");

@@ -13,6 +13,8 @@ struct DeviceConnectionConfig
     QString port;
     QString baud;
     QString rateHz;
+    bool configured = false;
+    QString slaveAddress;
 };
 
 struct SessionDeviceConfig
@@ -37,7 +39,8 @@ struct SessionDeviceConfig
     DeviceConnectionConfig ptb;
     DeviceConnectionConfig hmp;
     DeviceConnectionConfig lidar;
-    DeviceConnectionConfig temperatureController;
+    DeviceConnectionConfig laserTemperatureController;
+    DeviceConnectionConfig systemTemperatureController;
 };
 
 QJsonObject sessionDeviceConfigToJson(const SessionDeviceConfig& config);
