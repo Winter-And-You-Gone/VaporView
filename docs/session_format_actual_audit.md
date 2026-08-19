@@ -718,7 +718,7 @@ host_time_us,peak_value,peak_index,point_count,search_start_index,search_end_ind
 | `waveform_features.host_time_us` | 1787164375605000 | 1787164384267000 | 首行早于 manifest start 30,000 us，见 A-1 |
 | `waveform_peaks.host_time_us` | 1787164375656000 | 1787164383633000 | 在 manifest 记录区间内，并与 waveform RAW 时间相同 |
 | `waveform.dat.host_timestamp_us` | 1787164375656000 | 1787164383633000 | 在 manifest 记录区间内 |
-| `event_log.timestamp_us` | 1787164375653380 | 1787164384376825 | 生命周期日志；stop 日志可略晚于 manifest end 写入时刻 |
+| `event_log.timestamp_us` | 1787164375653380 | 1787164384376825 | stop 请求行比 manifest end 晚 825 us，见 A-2 |
 
 不同采样率没有被要求逐行一一对应；本次 waveform peaks 与 waveform RAW 逐帧一一对应，其他 CSV 仅做时间范围和单位一致性检查。
 
@@ -733,7 +733,14 @@ host_time_us,peak_value,peak_index,point_count,search_start_index,search_end_ind
 - 原因：Start Recording 后发送的第一条 feature 可能是 Start 前已经计算并缓存的 feature，最终落入新 session。
 - 推荐方向（待确认后实施）：在 recording start 时清除/标记缓存 feature，或在 recorder sink 丢弃 `host_time_us < recording_start_time_us` 的 feature；应补一个边界回归测试。
 
-本次没有发现 `end_time_us < start_time_us`、负 `elapsed_ms`、RAW 截断、sequence 断裂、payload 越界、waveform harmonic 点数与 manifest 不一致或 peak_index 越界。
+**A-2：Stop 请求 event 的 timestamp_us 晚于 manifest end_time_us。**
+
+- 证据：`logs/event_log.csv` 的第二行 `timestamp_us=1787164384376825`，而 `session.json.end_time_us=1787164384376000`，越界 `825 us`。
+- 定位：`src/sky/core/SkyRuntime.cpp:552-570` 先发布 `sky_recording_stop_requested`，再调用 `SkySessionRecorder::stop()`；`src/sky/recording/SkySessionRecorder.cpp:461-482` 的 event sink 可能异步落盘，导致日志行在 manifest 已写入后才追加。
+- 原因：Stop 生命周期日志和 manifest 终止时间没有共享同一个已提交的截止时间/flush 顺序。
+- 推荐方向（待确认后实施）：定义 stop event 与 manifest end 的顺序契约，并在 stop 流程中同步 event sink 或统一使用 recorder 截止时间；应补时间范围回归测试。
+
+本次没有发现 `end_time_us < start_time_us`、负 `elapsed_ms`、RAW 截断、sequence 断裂、payload 越界、waveform harmonic 点数与 manifest 不一致或 peak_index 越界；除 A-1/A-2 两个录制边界问题外，时间范围检查通过。
 
 #### B. 文档/测试缺项
 
