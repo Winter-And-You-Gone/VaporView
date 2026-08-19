@@ -3708,8 +3708,8 @@ void TemperatureControllerPanel::updateChannelTexts()
         controller_mode_combo_->setItemText(2, is_english_ ? QStringLiteral("CH2 output follows CH1") : QStringLiteral("通道2跟随输出"));
         controller_mode_combo_->setItemText(3, is_english_ ? QStringLiteral("Combined") : QStringLiteral("温差控制+跟随输出"));
         controller_mode_combo_->setToolTip(is_english_
-            ? QStringLiteral("RD105 CONTMODE. Modes 2 and 3 require a resistor temperature sensor on channel 2.")
-            : QStringLiteral("RD105 CONTMODE。使用模式2和3时，通道2传感器接口应接入电阻温度传感器。"));
+            ? QStringLiteral("Laser temperature controller CONTMODE. Modes 2 and 3 require a resistor temperature sensor on channel 2.")
+            : QStringLiteral("激光温控 CONTMODE。使用模式2和3时，通道2传感器接口应接入电阻温度传感器。"));
         fitControllerModeComboWidth();
     }
     if (channel_button_1_) channel_button_1_->setText(is_english_ ? QStringLiteral("Channel 1") : QStringLiteral("通道1"));
@@ -3862,8 +3862,8 @@ void TemperatureControllerPanel::updateChannelTexts()
             channel.auto_pid_combo->setItemText(2, is_english_ ? QStringLiteral("Realtime optimize (reserved)") : QStringLiteral("实时优化(预留)"));
             fitTemperatureComboWidth(channel.auto_pid_combo, kTemperatureControllerAutoPidTextWidthReserve);
             channel.auto_pid_combo->setToolTip(is_english_
-                ? QStringLiteral("RD105 AUTOPID: off, PID auto-tune, or reserved realtime optimization.")
-                : QStringLiteral("RD105 AUTOPID：关闭、PID自整定，或预留的实时优化。"));
+                ? QStringLiteral("Laser temperature controller AUTOPID: off, PID auto-tune, or reserved realtime optimization.")
+                : QStringLiteral("激光温控 AUTOPID：关闭、PID自整定，或预留的实时优化。"));
         }
         if (channel.sensor_model_group)
         {
@@ -3874,8 +3874,8 @@ void TemperatureControllerPanel::updateChannelTexts()
                 QStringLiteral("MF501"),
             };
             const QString tooltip = is_english_
-                ? QStringLiteral("RD105 POLYOMIAL register: B-value, PT, Steinhart-Hart, or MF501 model.")
-                : QStringLiteral("RD105 POLYOMIAL 寄存器：B 值、PT、Steinhart-Hart 或 MF501 模型。");
+                ? QStringLiteral("Laser temperature controller POLYOMIAL register: B-value, PT, Steinhart-Hart, or MF501 model.")
+                : QStringLiteral("激光温控 POLYOMIAL 寄存器：B 值、PT、Steinhart-Hart 或 MF501 模型。");
             if (channel.sensor_model_selector)
             {
                 channel.sensor_model_selector->setToolTip(tooltip);
@@ -3890,7 +3890,7 @@ void TemperatureControllerPanel::updateChannelTexts()
             }
         }
     }
-    if (status_label_ && status_label_->text().isEmpty()) setCommandStatus(is_english_ ? QStringLiteral("Writes are confirmed by reading back from RD105.") : QStringLiteral("写入命令会在天空端读回确认后才返回成功。"));
+    if (status_label_ && status_label_->text().isEmpty()) setCommandStatus(is_english_ ? QStringLiteral("Writes are confirmed by reading back from the laser temperature controller.") : QStringLiteral("写入命令会在天空端读回确认后才返回成功。"));
     QTimer::singleShot(0, this, [this]() {
         const int channelIndex = std::clamp(selected_channel_index_, 0, 1);
         alignChannelTopControlFields(channelIndex);
@@ -4127,8 +4127,8 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
         error_text_label_ = new QLabel(this);
     }
     error_code_label_->setToolTip(controllerData.valid && controllerData.error_code != 0
-        ? (is_english_ ? QStringLiteral("RD105 reported an error bitmask. Check the controller/manual before enabling output.")
-                       : QStringLiteral("RD105 返回错误位掩码。开启输出前请检查温控器和手册。"))
+        ? (is_english_ ? QStringLiteral("The laser temperature controller reported an error bitmask. Check the controller/manual before enabling output.")
+                       : QStringLiteral("激光温控返回错误位掩码。开启输出前请检查温控器和手册。"))
         : (is_english_ ? QStringLiteral("No error reported") : QStringLiteral("未报告错误")));
     auto hasEditorFocus = [](QWidget *widget) {
         QWidget *focus = QApplication::focusWidget();

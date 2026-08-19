@@ -1906,8 +1906,8 @@ void MainWindow::updateAi8TemperatureTitleStatus()
         : (state_->is_english_ ? QStringLiteral("Output: --") : QStringLiteral("输出：--"));
     state_->ai8_temperature_title_status_lbl_->setText(text);
     const QString toolTip = state_->is_english_
-        ? QStringLiteral("Current AI-8 output state for the selected channel")
-        : QStringLiteral("当前选中 AI-8 通道的输出状态");
+        ? QStringLiteral("Current system temperature controller output state for the selected channel")
+        : QStringLiteral("当前选中系统温控通道的输出状态");
     state_->ai8_temperature_title_status_lbl_->setToolTip(toolTip);
     state_->ai8_temperature_title_status_lbl_->setAccessibleName(toolTip);
 }

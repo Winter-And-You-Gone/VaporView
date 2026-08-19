@@ -1183,7 +1183,7 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         if (request.device_id != SkyDeviceId::Ai8TemperatureController)
         {
             response.error_code = CommandErrorCode::InvalidDeviceId;
-            response.error_message = QStringLiteral("DeviceOperation only supports AI-8 and EPSILON.");
+            response.error_message = QStringLiteral("DeviceOperation only supports system temperature controller and EPSILON.");
             result.ack = makeAck(command, response.error_code);
             result.device_operation_response = response;
             break;
@@ -1192,7 +1192,7 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         if (!TelemetryCodec::parseAi8PageData(request.payload, requestData))
         {
             response.error_code = CommandErrorCode::InvalidPayload;
-            response.error_message = QStringLiteral("AI-8 page payload is invalid.");
+            response.error_message = QStringLiteral("System temperature controller page payload is invalid.");
             result.ack = makeAck(command, response.error_code);
             result.device_operation_response = response;
             break;
@@ -1227,7 +1227,7 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         case DeviceOperation::ConfigureEpsilonMainAntennaLeverArm:
         case DeviceOperation::ConfigureEpsilonRtcmInput:
             error = CommandErrorCode::InvalidPayload;
-            errorMessage = QStringLiteral("AI-8 does not support EPSILON DeviceOperation values.");
+            errorMessage = QStringLiteral("System temperature controller does not support EPSILON DeviceOperation values.");
             break;
         }
         response.error_code = ok ? CommandErrorCode::Ok : error;
