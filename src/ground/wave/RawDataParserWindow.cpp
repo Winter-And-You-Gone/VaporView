@@ -275,6 +275,10 @@ QString sourceName(quint16 sourceId, bool english)
         return english ? QStringLiteral("Lidar") : QStringLiteral("激光测距");
     case VaporView::SessionRawDat::kSourceWaveform:
         return english ? QStringLiteral("TCP Wave") : QStringLiteral("TCP波形");
+    case VaporView::SessionRawDat::kSourceLaserTemperatureController:
+        return english ? QStringLiteral("Laser Thermal") : QStringLiteral("激光温控");
+    case VaporView::SessionRawDat::kSourceSystemTemperatureController:
+        return english ? QStringLiteral("System Thermal") : QStringLiteral("系统温控");
     default:
         return QStringLiteral("source %1").arg(sourceId);
     }
@@ -328,6 +332,30 @@ QString recordTypeName(quint16 sourceId, quint16 recordType, bool english)
         return lidarProtocolName(recordType, english);
     case VaporView::SessionRawDat::kSourceWaveform:
         return QStringLiteral("TCP wave payload");
+    case VaporView::SessionRawDat::kSourceLaserTemperatureController:
+        return english
+            ? QStringLiteral("Laser thermal Modbus response @ %1").arg(formatHex(recordType))
+            : QStringLiteral("激光温控 Modbus 应答 @ %1").arg(formatHex(recordType));
+    case VaporView::SessionRawDat::kSourceSystemTemperatureController:
+        switch (recordType)
+        {
+        case VaporView::SessionRawDat::kRecordTypeSystemTemperatureMeasuredValues:
+            return english ? QStringLiteral("System thermal measured values")
+                           : QStringLiteral("系统温控测量值");
+        case VaporView::SessionRawDat::kRecordTypeSystemTemperatureAlarmStatus:
+            return english ? QStringLiteral("System thermal alarm status")
+                           : QStringLiteral("系统温控报警状态");
+        case VaporView::SessionRawDat::kRecordTypeSystemTemperatureMainStatus:
+            return english ? QStringLiteral("System thermal main status")
+                           : QStringLiteral("系统温控主状态");
+        case VaporView::SessionRawDat::kRecordTypeSystemTemperatureControlStatus:
+            return english ? QStringLiteral("System thermal control status")
+                           : QStringLiteral("系统温控控制状态");
+        default:
+            return english
+                ? QStringLiteral("System thermal record_type %1").arg(recordType)
+                : QStringLiteral("系统温控 record_type %1").arg(recordType);
+        }
     default:
         return QStringLiteral("record_type %1").arg(recordType);
     }
@@ -1382,7 +1410,9 @@ void RawDataParserWindow::Impl::refreshDeviceFilter()
                              VaporView::SessionRawDat::kSourcePressure,
                              VaporView::SessionRawDat::kSourceTemperatureHumidity,
                              VaporView::SessionRawDat::kSourceDistance,
-                             VaporView::SessionRawDat::kSourceWaveform})
+                             VaporView::SessionRawDat::kSourceWaveform,
+                             VaporView::SessionRawDat::kSourceLaserTemperatureController,
+                             VaporView::SessionRawDat::kSourceSystemTemperatureController})
     {
         device_combo->addItem(sourceName(sourceId, english), sourceId);
     }
