@@ -6,12 +6,14 @@
 #include "shared/session/UnifiedRawDat.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStringList>
 #include <QTemporaryDir>
+#include <QThread>
 #include <iostream>
 
 namespace
@@ -23,6 +25,108 @@ void require(bool condition, const char *message)
         std::cerr << "FAIL: " << message << '\n';
         std::exit(1);
     }
+}
+
+quint64 currentTimestampUs()
+{
+    return static_cast<quint64>(QDateTime::currentMSecsSinceEpoch()) * 1000ULL;
+}
+
+VaporView::WaveformFeature waveformFeatureAt(quint64 hostTimeUs)
+{
+    VaporView::WaveformFeature feature;
+    feature.host_time_us = hostTimeUs;
+    feature.epsilon_time_us = hostTimeUs;
+    feature.original_point_count = 50000;
+    feature.search_start_index = 0;
+    feature.search_end_index = 50000;
+    feature.channel_id = 4;
+    feature.peak = 0.125f;
+    feature.mean = 0.25f;
+    feature.rms = 0.5f;
+    feature.peak_index = 1249.0f;
+    feature.peak_x = 1249.0f;
+    feature.min_value = -0.75f;
+    feature.max_value = 1.25f;
+    return feature;
+}
+
+QStringList waveformFeatureLines(const QString& sessionDirectory)
+{
+    QFile file(sessionDirectory + QStringLiteral("/sensors/waveform_features.csv"));
+    require(file.open(QIODevice::ReadOnly | QIODevice::Text), "open waveform feature boundary csv");
+    return QString::fromUtf8(file.readAll()).trimmed().split('\n');
+}
+
+void verifyWaveformFeatureRecordingBoundaries()
+{
+    QTemporaryDir tempDir;
+    require(tempDir.isValid(), "temporary waveform feature boundary directory");
+
+    VaporView::SkySessionRecorder recorder;
+    QString error;
+    require(recorder.start(tempDir.path(), QStringLiteral("COM51"), 921600, &error),
+            "start waveform feature boundary recorder");
+    const quint64 startTimeUs = recorder.recordingStartTimeUs();
+
+    require(!VaporView::SkySessionRecorder::isTimestampInsideRecordingWindow(
+                startTimeUs - 1, startTimeUs, 0),
+            "feature before start is outside an open recording window");
+    require(VaporView::SkySessionRecorder::isTimestampInsideRecordingWindow(
+                startTimeUs, startTimeUs, 0),
+            "feature exactly at start is inside an open recording window");
+    require(VaporView::SkySessionRecorder::isTimestampInsideRecordingWindow(
+                startTimeUs + 1, startTimeUs, 0),
+            "feature after start is inside an open recording window");
+
+    recorder.recordWaveformFeature(waveformFeatureAt(startTimeUs - 30000));
+    recorder.recordWaveformFeature(waveformFeatureAt(startTimeUs));
+    QThread::msleep(15);
+    const quint64 liveFeatureTimeUs = currentTimestampUs();
+    recorder.recordWaveformFeature(waveformFeatureAt(liveFeatureTimeUs));
+    const quint64 preStopFeatureTimeUs = currentTimestampUs();
+    recorder.recordWaveformFeature(waveformFeatureAt(preStopFeatureTimeUs));
+
+    require(recorder.stop(&error), "stop waveform feature boundary recorder");
+    require(error.isEmpty(), "stop waveform feature boundary recorder error");
+    const QString sessionDirectory = recorder.sessionDirectory();
+
+    QFile manifestFile(sessionDirectory + QStringLiteral("/session.json"));
+    require(manifestFile.open(QIODevice::ReadOnly), "open waveform feature boundary manifest");
+    const QJsonObject manifest = QJsonDocument::fromJson(manifestFile.readAll()).object();
+    const quint64 endTimeUs = manifest.value(QStringLiteral("end_time_us")).toString().toULongLong();
+    require(VaporView::SkySessionRecorder::isTimestampInsideRecordingWindow(
+                endTimeUs - 10000, startTimeUs, endTimeUs),
+            "feature before stop is inside a closed recording window");
+    require(VaporView::SkySessionRecorder::isTimestampInsideRecordingWindow(
+                endTimeUs, startTimeUs, endTimeUs),
+            "feature exactly at stop is inside a closed recording window");
+    require(!VaporView::SkySessionRecorder::isTimestampInsideRecordingWindow(
+                endTimeUs + 1000, startTimeUs, endTimeUs),
+            "feature after stop is outside a closed recording window");
+
+    recorder.recordWaveformFeature(waveformFeatureAt(endTimeUs + 1000));
+    const QStringList lines = waveformFeatureLines(sessionDirectory);
+    require(lines.size() == 4, "only valid waveform features are written");
+    for (int index = 1; index < lines.size(); ++index)
+    {
+        const quint64 timestampUs = lines.at(index).section(',', 0, 0).toULongLong();
+        require(timestampUs >= startTimeUs && timestampUs <= endTimeUs,
+                "written waveform feature timestamp is inside manifest window");
+    }
+
+    VaporView::SkySessionRecorder pauseRecorder;
+    require(pauseRecorder.start(tempDir.path(), QStringLiteral("COM52"), 921600, &error),
+            "start pause resume waveform feature recorder");
+    pauseRecorder.recordWaveformFeature(waveformFeatureAt(pauseRecorder.recordingStartTimeUs()));
+    pauseRecorder.pause();
+    pauseRecorder.recordWaveformFeature(waveformFeatureAt(currentTimestampUs()));
+    require(pauseRecorder.start(tempDir.path(), QStringLiteral("COM52"), 921600, &error),
+            "resume waveform feature recorder");
+    pauseRecorder.recordWaveformFeature(waveformFeatureAt(currentTimestampUs()));
+    require(pauseRecorder.stop(&error), "stop pause resume waveform feature recorder");
+    require(waveformFeatureLines(pauseRecorder.sessionDirectory()).size() == 3,
+            "pause drops features and resume keeps new features");
 }
 
 }
@@ -42,6 +146,8 @@ int main(int argc, char *argv[])
     require(error.isEmpty(), "start recorder error text");
     require(recorder.isRecording(), "recorder state");
     require(!recorder.sessionName().isEmpty(), "session name");
+
+    verifyWaveformFeatureRecordingBoundaries();
 
     VaporView::LogRecord eventRecord;
     eventRecord.timestamp_utc = QStringLiteral("2026-07-30T12:00:00.000Z");
@@ -138,7 +244,7 @@ int main(int argc, char *argv[])
     lidar.signal_strength = 180;
     recorder.recordDeviceSnapshot(1100, 1000, epsilon, true, ptb, true, hmp, true, lidar, true);
     VaporView::WaveformFeature feature;
-    feature.host_time_us = 1200;
+    feature.host_time_us = recorder.recordingStartTimeUs();
     feature.epsilon_time_us = 900;
     feature.original_point_count = 50000;
     feature.search_start_index = 1000;

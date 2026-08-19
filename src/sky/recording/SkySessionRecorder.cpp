@@ -195,6 +195,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
         recording_start_time_us_ = now >= recording_elapsed_ms_ * 1000ULL
             ? now - recording_elapsed_ms_ * 1000ULL
             : now;
+        recording_end_time_us_ = 0;
         recording_state_ = 1;
         return true;
     }
@@ -208,6 +209,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     telemetry_transport_ = telemetryTransport.trimmed().isEmpty() ? QStringLiteral("serial") : telemetryTransport.trimmed();
     telemetry_endpoint_ = telemetryEndpoint.trimmed().isEmpty() ? telemetryPort : telemetryEndpoint.trimmed();
     recording_start_time_us_ = nowUs();
+    recording_end_time_us_ = 0;
 
     VaporView::Session::SessionPackageInitOptions initOptions;
     initOptions.origin = VaporView::Session::RecordingOrigin::Sky;
@@ -350,7 +352,11 @@ void SkySessionRecorder::pause()
 
 bool SkySessionRecorder::stop(QString *errorMessage)
 {
-    recording_elapsed_ms_ = recordingElapsedMs();
+    recording_end_time_us_ = nowUs();
+    if (recording_state_ == 1 && recording_end_time_us_ >= recording_start_time_us_)
+    {
+        recording_elapsed_ms_ = (recording_end_time_us_ - recording_start_time_us_) / 1000ULL;
+    }
     const bool metadataWritten = writeSessionMetadata(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs),
                                                       errorMessage);
     closeFiles();
@@ -390,6 +396,10 @@ quint64 SkySessionRecorder::recordingStartTimeUs() const
 
 quint64 SkySessionRecorder::recordingElapsedMs() const
 {
+    if (recording_end_time_us_ != 0)
+    {
+        return recording_elapsed_ms_;
+    }
     if (recording_state_ != 1 || recording_start_time_us_ == 0)
     {
         return recording_elapsed_ms_;
@@ -456,6 +466,13 @@ quint64 SkySessionRecorder::rawLaserTemperatureControllerRecordCount() const
 quint64 SkySessionRecorder::rawSystemTemperatureControllerRecordCount() const
 {
     return raw_system_temperature_controller_record_count_;
+}
+
+bool SkySessionRecorder::isTimestampInsideRecordingWindow(quint64 timestampUs,
+                                                          quint64 startTimeUs,
+                                                          quint64 endTimeUs)
+{
+    return timestampUs >= startTimeUs && (endTimeUs == 0 || timestampUs <= endTimeUs);
 }
 
 bool SkySessionRecorder::appendEvent(const LogRecord& record)
@@ -594,7 +611,11 @@ void SkySessionRecorder::recordDeviceSnapshot(quint64 hostTimeUs,
 
 void SkySessionRecorder::recordWaveformFeature(const WaveformFeature& feature)
 {
-    if (!isRecording() || !feature_record_file_.isOpen())
+    if (!isRecording() ||
+        !feature_record_file_.isOpen() ||
+        !isTimestampInsideRecordingWindow(feature.host_time_us,
+                                          recording_start_time_us_,
+                                          recording_end_time_us_))
     {
         return;
     }
@@ -939,7 +960,9 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
         return false;
     }
 
-    const quint64 endTimeUs = endTimeUtc.isEmpty() ? 0 : nowUs();
+    const quint64 endTimeUs = endTimeUtc.isEmpty()
+        ? 0
+        : (recording_end_time_us_ == 0 ? nowUs() : recording_end_time_us_);
     VaporView::Session::SessionManifest manifest;
     manifest.recordingOrigin = VaporView::Session::RecordingOrigin::Sky;
     manifest.sessionName = session_name_;

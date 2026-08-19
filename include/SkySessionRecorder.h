@@ -52,6 +52,10 @@ public:
     quint64 rawLaserTemperatureControllerRecordCount() const;
     quint64 rawSystemTemperatureControllerRecordCount() const;
 
+    static bool isTimestampInsideRecordingWindow(quint64 timestampUs,
+                                                 quint64 startTimeUs,
+                                                 quint64 endTimeUs);
+
     bool appendEvent(const LogRecord& record);
     bool appendError(const LogRecord& record);
 
@@ -151,6 +155,7 @@ private:
     QString telemetry_transport_ = QStringLiteral("serial");
     QString telemetry_endpoint_;
     quint64 recording_start_time_us_ = 0;
+    quint64 recording_end_time_us_ = 0;
     quint64 recording_elapsed_ms_ = 0;
     quint64 telemetry_row_count_ = 0;
     quint64 waveform_feature_count_ = 0;
