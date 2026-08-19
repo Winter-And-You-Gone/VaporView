@@ -178,6 +178,8 @@ int main(int argc, char **argv)
     require(!root.contains(QStringLiteral("mode")), "new ground metadata omits legacy mode");
     require(!root.value(QStringLiteral("end_time_utc")).toString().isEmpty(),
             "session end timestamp");
+    require(root.value(QStringLiteral("waveform_points_per_frame")).toInt() == 1,
+            "ground waveform point count comes from the harmonic payload");
     const QJsonObject counts = root.value(QStringLiteral("counts")).toObject();
     require(counts.value(QStringLiteral("sensor_rows")).toString().toULongLong() >= 2,
             "metadata sensor row count");
@@ -258,6 +260,31 @@ int main(int argc, char **argv)
             "shared reader scans ground navigation raw DAT");
     require(rawResult.fileHeader.version == VaporView::SessionRawDat::kCurrentFormatVersion,
             "ground writer uses shared current raw version");
+
+    QFile waveformFile(QDir(sessionDirectory).filePath(QStringLiteral("raw/waveform.dat")));
+    require(waveformFile.open(QIODevice::ReadOnly), "open waveform raw file");
+    VaporView::SessionRawDat::RawScanOptions waveformScanOptions;
+    waveformScanOptions.expectedSourceId = VaporView::SessionRawDat::kSourceWaveform;
+    const auto waveformRawResult = VaporView::SessionRawDat::scan(waveformFile, waveformScanOptions);
+    require(waveformRawResult.success() && waveformRawResult.records.size() == 1,
+            "shared reader scans ground waveform raw DAT");
+    const auto& waveformRecord = waveformRawResult.records.first();
+    require(waveformRecord.header.sourceId == VaporView::SessionRawDat::kSourceWaveform,
+            "ground waveform source id");
+    require(waveformRecord.header.recordType == VaporView::SessionRawDat::kRecordTypeWaveformPayload,
+            "ground waveform record type");
+    require((waveformRecord.header.flags & VaporView::SessionRawDat::kWaveformCombinedPayloadFlag) != 0,
+            "ground waveform combined flag");
+    require(waveformFile.seek(static_cast<qint64>(waveformRecord.payloadOffset)),
+            "seek ground waveform payload");
+    QByteArray expectedWaveformPayload;
+    require(VaporView::SessionRawDat::encodeWaveformPayload(
+                littleEndianFloat(1.5f),
+                littleEndianFloat(3.25f),
+                &expectedWaveformPayload),
+            "encode expected ground waveform payload");
+    require(waveformFile.read(waveformRecord.header.payloadSize) == expectedWaveformPayload,
+            "ground waveform payload remains byte-for-byte equal");
 
     auto readRawPayload = [](const QString& filename,
                              quint16 sourceId,

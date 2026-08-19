@@ -247,7 +247,7 @@ public:
         initOptions.sensorExportRateHz = options.exportRateHz;
         initOptions.otherDevicesExportRateHz = options.exportRateHz;
         initOptions.waveformExportRateHz = 0;
-        initOptions.waveformPointsPerFrame = 50000;
+        initOptions.waveformPointsPerFrame = 0;
         initOptions.capture.telemetryTransport = QStringLiteral("tcp_wave");
         initOptions.capture.telemetryEndpoint = options.deviceConfig.waveformHost;
         initOptions.capture.telemetryPort = QString::number(options.deviceConfig.waveformPort);
@@ -856,6 +856,11 @@ private:
                                    record.payload.constData(),
                                    static_cast<size_t>(record.payload.size())))
                 {
+                    const TcpWavePeakSummary summary = summarizeTcpWavePeakRecordPayload(record.payload, record.flags);
+                    if (summary.pointCount > 0)
+                    {
+                        waveformPointsPerFrame.store(summary.pointCount);
+                    }
                     appendTcpPeakIndex(record);
                     waveformFrames.fetch_add(1);
                     waveformFileCount.store(1);
@@ -944,7 +949,9 @@ private:
         manifest.sensorExportRateHz = options.exportRateHz;
         manifest.otherDevicesExportRateHz = options.exportRateHz;
         manifest.waveformExportRateHz = 0;
-        manifest.waveformPointsPerFrame = 50000;
+        manifest.waveformPointsPerFrame = static_cast<int>(std::min<quint64>(
+            waveformPointsPerFrame.load(),
+            static_cast<quint64>(std::numeric_limits<int>::max())));
         manifest.waveformFileCount = waveformFileCount.load();
         manifest.capture.telemetryTransport = QStringLiteral("tcp_wave");
         manifest.capture.telemetryEndpoint = options.deviceConfig.waveformHost;
@@ -1018,6 +1025,7 @@ private:
         sensorRows.store(0);
         waveformFrames.store(0);
         waveformFileCount.store(0);
+        waveformPointsPerFrame.store(0);
         rawNavigationRecordCount.store(0);
         rawPressureRecordCount.store(0);
         rawTemperatureHumidityRecordCount.store(0);
@@ -1064,6 +1072,7 @@ public:
     std::atomic<qint64> sensorRows{0};
     std::atomic<qint64> waveformFrames{0};
     std::atomic<qint64> waveformFileCount{0};
+    std::atomic<quint64> waveformPointsPerFrame{0};
     std::atomic<quint64> rawNavigationRecordCount{0};
     std::atomic<quint64> rawPressureRecordCount{0};
     std::atomic<quint64> rawTemperatureHumidityRecordCount{0};

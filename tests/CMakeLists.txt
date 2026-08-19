@@ -532,6 +532,15 @@ add_executable(ground_recording_service_test
 target_link_libraries(ground_recording_service_test PRIVATE vaporview_ground_session_core)
 add_test(NAME ground_recording_service_test COMMAND ground_recording_service_test)
 
+add_executable(waveform_points_per_frame_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/waveform_points_per_frame_test.cpp
+)
+target_link_libraries(waveform_points_per_frame_test PRIVATE
+    vaporview_ground_session_core
+    vaporview_sky_core
+)
+add_test(NAME waveform_points_per_frame_test COMMAND waveform_points_per_frame_test)
+
 add_executable(recording_schedule_controller_test
     ${CMAKE_CURRENT_SOURCE_DIR}/recording_schedule_controller_test.cpp
 )
