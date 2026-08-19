@@ -60,8 +60,8 @@ Ai8DeviceSession::Ai8DeviceSession(LocalAdapter localAdapter,
                     invalidPayload ? CommandErrorCode::InvalidPayload : response.error_code,
                     {},
                     invalidPayload
-                        ? (english_ ? QStringLiteral("Remote Sky returned an invalid AI-8 payload.")
-                                    : QStringLiteral("天空端返回的 AI-8 参数载荷无效。"))
+                        ? (english_ ? QStringLiteral("Remote Sky returned an invalid system thermal payload.")
+                                    : QStringLiteral("天空端返回的系统温控参数载荷无效。"))
                         : commandErrorCodeText(response.error_code, english_));
             });
     connect(remote_controller_, &RemoteSkyController::deviceOperationRejected,
@@ -85,12 +85,12 @@ Ai8DeviceSession::Ai8DeviceSession(LocalAdapter localAdapter,
                     ack.error_code,
                     {},
                     unsupported
-                        ? (english_ ? QStringLiteral("This Sky version does not support AI-8 parameter operations.")
-                                    : QStringLiteral("当前天空端版本不支持 AI-8 参数操作。"))
-                        : (english_ ? QStringLiteral("Remote Sky rejected the AI-8 request: %1")
-                                          .arg(commandErrorCodeText(ack.error_code, true))
-                                    : QStringLiteral("天空端拒绝 AI-8 请求：%1")
-                                          .arg(commandErrorCodeText(ack.error_code, false))));
+                        ? (english_ ? QStringLiteral("This Sky version does not support system thermal parameter operations.")
+                                    : QStringLiteral("当前天空端版本不支持系统温控参数操作。"))
+                        : (english_ ? QStringLiteral("Remote Sky rejected the system thermal request: %1")
+                                           .arg(commandErrorCodeText(ack.error_code, true))
+                                    : QStringLiteral("天空端拒绝系统温控请求：%1")
+                                           .arg(commandErrorCodeText(ack.error_code, false))));
             });
     connect(remote_controller_, &RemoteSkyController::deviceOperationTimedOut,
             this, [this](quint32 remoteRequestId) {
@@ -108,16 +108,16 @@ Ai8DeviceSession::Ai8DeviceSession(LocalAdapter localAdapter,
                 }
                 finishPending(pending, Ai8OperationOutcome::Timeout,
                               CommandErrorCode::InternalError, {},
-                              english_ ? QStringLiteral("Remote Sky AI-8 request timed out.")
-                                       : QStringLiteral("天空端 AI-8 请求超时。"));
+                              english_ ? QStringLiteral("Remote Sky system thermal request timed out.")
+                                       : QStringLiteral("天空端系统温控请求超时。"));
             });
     connect(remote_controller_, &RemoteSkyController::deviceOperationSupportChanged,
             this, [this](DeviceOperationSupport support) {
                 if (support == DeviceOperationSupport::Unsupported)
                 {
                     failActive(Ai8OperationOutcome::Unsupported,
-                               english_ ? QStringLiteral("This Sky version does not support AI-8 parameter operations.")
-                                        : QStringLiteral("当前天空端版本不支持 AI-8 参数操作。"));
+                                english_ ? QStringLiteral("This Sky version does not support system thermal parameter operations.")
+                                         : QStringLiteral("当前天空端版本不支持系统温控参数操作。"));
                 }
                 refreshAvailability();
             });
@@ -127,8 +127,8 @@ Ai8DeviceSession::Ai8DeviceSession(LocalAdapter localAdapter,
                 {
                     remote_available_ = false;
                     failActive(Ai8OperationOutcome::Disconnected,
-                               english_ ? QStringLiteral("Remote Sky disconnected during the AI-8 operation.")
-                                        : QStringLiteral("AI-8 操作期间天空端链路已断开。"));
+                                english_ ? QStringLiteral("Remote Sky disconnected during the system thermal operation.")
+                                         : QStringLiteral("系统温控操作期间天空端链路已断开。"));
                 }
                 refreshAvailability();
             });
@@ -158,8 +158,8 @@ void Ai8DeviceSession::setBackend(Ai8Backend backend)
         return;
     }
     failActive(Ai8OperationOutcome::Disconnected,
-               english_ ? QStringLiteral("The AI-8 backend changed before the operation completed.")
-                        : QStringLiteral("AI-8 后端已切换，未完成的操作已取消。"));
+               english_ ? QStringLiteral("The system thermal backend changed before the operation completed.")
+                        : QStringLiteral("系统温控后端已切换，未完成的操作已取消。"));
     ++session_generation_;
     backend_ = backend;
     refreshAvailability();
@@ -186,8 +186,8 @@ void Ai8DeviceSession::setLocalAvailable(bool available, const QString& detail)
     if (!available && backend_ == Ai8Backend::Local)
     {
         failActive(Ai8OperationOutcome::Disconnected,
-                   english_ ? QStringLiteral("Local AI-8 disconnected during the operation.")
-                            : QStringLiteral("操作期间本地 AI-8 已断开。"));
+                    english_ ? QStringLiteral("Local system thermal disconnected during the operation.")
+                             : QStringLiteral("操作期间本地系统温控已断开。"));
     }
     refreshAvailability();
 }
@@ -203,8 +203,8 @@ void Ai8DeviceSession::setRemoteAvailable(bool available, const QString& detail)
     if (!available && backend_ == Ai8Backend::Remote)
     {
         failActive(Ai8OperationOutcome::Disconnected,
-                   english_ ? QStringLiteral("Remote Sky AI-8 is disconnected or stale.")
-                            : QStringLiteral("天空端 AI-8 已断开或数据已过期。"));
+                    english_ ? QStringLiteral("Remote Sky system thermal is disconnected or stale.")
+                             : QStringLiteral("天空端系统温控已断开或数据已过期。"));
     }
     refreshAvailability();
 }
@@ -287,8 +287,8 @@ quint64 Ai8DeviceSession::beginOperation(
         result.outcome = Ai8OperationOutcome::Unsupported;
         result.error_code = CommandErrorCode::UnknownCommand;
         result.requested = requested;
-        result.message = english_ ? QStringLiteral("Local AI-8 factory reset is not supported.")
-                                  : QStringLiteral("本地 AI-8 暂不支持恢复出厂设置。");
+        result.message = english_ ? QStringLiteral("Local system thermal factory reset is not supported.")
+                                  : QStringLiteral("本地系统温控暂不支持恢复出厂设置。");
         emit operationFinished(result);
         return requestId;
     }
@@ -343,7 +343,7 @@ void Ai8DeviceSession::dispatchLocal(PendingOperation pending)
         }
         else
         {
-            localResult.message = QStringLiteral("AI-8 operation is not supported by the local backend.");
+            localResult.message = QStringLiteral("System thermal operation is not supported by the local backend.");
         }
         if (!guard)
         {
@@ -465,8 +465,8 @@ QString Ai8DeviceSession::unavailableReason() const
 {
     if (!pending_operations_.isEmpty())
     {
-        return english_ ? QStringLiteral("Waiting for the AI-8 operation to complete.")
-                        : QStringLiteral("正在等待 AI-8 操作完成。");
+        return english_ ? QStringLiteral("Waiting for the system thermal operation to complete.")
+                        : QStringLiteral("正在等待系统温控操作完成。");
     }
     if (backend_ == Ai8Backend::Local)
     {
@@ -474,21 +474,21 @@ QString Ai8DeviceSession::unavailableReason() const
         {
             return local_detail_;
         }
-        return english_ ? QStringLiteral("Local AI-8 is not connected.")
-                        : QStringLiteral("本地 AI-8 尚未连接。");
+        return english_ ? QStringLiteral("Local system thermal is not connected.")
+                        : QStringLiteral("本地系统温控尚未连接。");
     }
     if (remote_controller_ &&
         remote_controller_->deviceOperationSupport() == DeviceOperationSupport::Unsupported)
     {
-        return english_ ? QStringLiteral("This Sky version does not support AI-8 parameter operations.")
-                        : QStringLiteral("当前天空端版本不支持 AI-8 参数操作。");
+        return english_ ? QStringLiteral("This Sky version does not support system thermal parameter operations.")
+                        : QStringLiteral("当前天空端版本不支持系统温控参数操作。");
     }
     if (!remote_detail_.isEmpty())
     {
         return remote_detail_;
     }
-    return english_ ? QStringLiteral("Remote Sky AI-8 is disconnected or stale.")
-                    : QStringLiteral("天空端 AI-8 未连接或数据已过期。");
+    return english_ ? QStringLiteral("Remote Sky system thermal is disconnected or stale.")
+                    : QStringLiteral("天空端系统温控未连接或数据已过期。");
 }
 
 QString Ai8DeviceSession::pageKey(

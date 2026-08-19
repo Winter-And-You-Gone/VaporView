@@ -157,7 +157,7 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
             }};
     };
     auto makeTemperatureProbe = [&](const QString& baud) {
-        return ProbeSpec{QStringLiteral("temperature"), QStringLiteral("RD105"), baud,
+        return ProbeSpec{QStringLiteral("temperature"), QStringLiteral("激光温控"), baud,
             [cancelRequested, baud, slaveAddress = request.temperatureSlaveAddress](const QString& port) {
                 auto collector = std::make_unique<TemperatureControllerCollector>();
                 collector->setSlaveAddress(static_cast<uint8_t>(slaveAddress));
@@ -168,7 +168,7 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
             }};
     };
     auto makeAi8TemperatureProbe = [&](const QString& baud) {
-        return ProbeSpec{QStringLiteral("ai8"), QStringLiteral("AI-8288"), baud,
+        return ProbeSpec{QStringLiteral("ai8"), QStringLiteral("系统温控"), baud,
             [cancelRequested, baud, slaveAddress = request.ai8SlaveAddress](const QString& port) {
                 auto collector = std::make_unique<Ai8TemperatureControllerCollector>();
                 collector->setSlaveAddress(static_cast<quint8>(slaveAddress));
@@ -381,8 +381,8 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
         {QStringLiteral("ptb"), QStringLiteral("PTB210")},
         {QStringLiteral("hmp"), QStringLiteral("HMP3")},
         {QStringLiteral("lidar"), QStringLiteral("TFA1500-L")},
-        {QStringLiteral("temperature"), QStringLiteral("RD105")},
-        {QStringLiteral("ai8"), QStringLiteral("AI-8288")},
+        {QStringLiteral("temperature"), QStringLiteral("激光温控")},
+        {QStringLiteral("ai8"), QStringLiteral("系统温控")},
     };
     for (auto it = labels.cbegin(); it != labels.cend(); ++it)
     {

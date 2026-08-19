@@ -86,7 +86,7 @@ int main()
     const LogRecord disconnectedRecord = MainSupport::makeTemperatureCommandLogRecord(
         LogLevel::Warning,
         QStringLiteral("temperature_command_rejected_not_connected"),
-        QStringLiteral("本地 RD105 温控器未连接，无法下发温控命令。"),
+        QStringLiteral("本地激光温控未连接，无法下发温控命令。"),
         disconnectedFields);
     require(disconnectedRecord.level == LogLevel::Warning,
             "rd105DisconnectedCommandIsWarning");
@@ -112,7 +112,7 @@ int main()
     const LogRecord failedRecord = MainSupport::makeTemperatureCommandLogRecord(
         LogLevel::Error,
         QStringLiteral("temperature_command_failed"),
-        QStringLiteral("RD105 温控命令执行失败：写入或读回确认失败。"),
+        QStringLiteral("激光温控命令执行失败：写入或读回确认失败。"),
         failedFields);
     require(failedRecord.level == LogLevel::Error &&
                 failedRecord.fields.value(QStringLiteral("error_code")).toString() ==
@@ -126,7 +126,7 @@ int main()
     const LogRecord successRecord = MainSupport::makeTemperatureCommandLogRecord(
         LogLevel::Info,
         QStringLiteral("temperature_command_completed"),
-        QStringLiteral("RD105 温控命令执行成功。"),
+        QStringLiteral("激光温控命令执行成功。"),
         successFields);
     require(successRecord.level == LogLevel::Info &&
                 successRecord.fields.value(QStringLiteral("ui_visibility")).toString() ==

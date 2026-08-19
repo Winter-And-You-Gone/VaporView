@@ -113,8 +113,8 @@ Rd105DeviceSession::Rd105DeviceSession(LocalAdapter localAdapter,
                 finishPending(pending,
                               Rd105OperationOutcome::Timeout,
                               CommandErrorCode::InternalError,
-                              english_ ? QStringLiteral("Remote Sky RD105 request timed out.")
-                                       : QStringLiteral("天空端 RD105 请求超时。"));
+                              english_ ? QStringLiteral("Remote Sky laser thermal request timed out.")
+                                       : QStringLiteral("天空端激光温控请求超时。"));
             });
     connect(remote_controller_, &RemoteSkyController::linkOpenChanged,
             this, [this](bool open) {
@@ -122,8 +122,8 @@ Rd105DeviceSession::Rd105DeviceSession(LocalAdapter localAdapter,
                 {
                     remote_available_ = false;
                     failActive(Rd105OperationOutcome::Disconnected,
-                               english_ ? QStringLiteral("Remote Sky disconnected during the RD105 command.")
-                                        : QStringLiteral("RD105 命令执行期间天空端链路已断开。"));
+                               english_ ? QStringLiteral("Remote Sky disconnected during the laser thermal command.")
+                                        : QStringLiteral("激光温控命令执行期间天空端链路已断开。"));
                 }
                 refreshAvailability();
             });
@@ -143,8 +143,8 @@ void Rd105DeviceSession::setBackend(Rd105Backend backend)
         return;
     }
     failActive(Rd105OperationOutcome::Disconnected,
-               english_ ? QStringLiteral("The RD105 backend changed before the command completed.")
-                        : QStringLiteral("RD105 后端已切换，未完成的命令已取消。"));
+               english_ ? QStringLiteral("The laser thermal backend changed before the command completed.")
+                        : QStringLiteral("激光温控后端已切换，未完成的命令已取消。"));
     ++session_generation_;
     backend_ = backend;
     refreshAvailability();
@@ -162,8 +162,8 @@ void Rd105DeviceSession::setLocalAvailable(bool available, const QString& detail
     if (!available && backend_ == Rd105Backend::Local)
     {
         failActive(Rd105OperationOutcome::Disconnected,
-                   english_ ? QStringLiteral("Local RD105 disconnected during the command.")
-                            : QStringLiteral("命令执行期间本地 RD105 已断开。"));
+                   english_ ? QStringLiteral("Local laser thermal disconnected during the command.")
+                            : QStringLiteral("命令执行期间本地激光温控已断开。"));
     }
     refreshAvailability();
 }
@@ -175,8 +175,8 @@ void Rd105DeviceSession::setRemoteAvailable(bool available, const QString& detai
     if (!available && backend_ == Rd105Backend::Remote)
     {
         failActive(Rd105OperationOutcome::Disconnected,
-                   english_ ? QStringLiteral("Remote Sky RD105 is disconnected or stale.")
-                            : QStringLiteral("天空端 RD105 已断开或数据已过期。"));
+                   english_ ? QStringLiteral("Remote Sky laser thermal is disconnected or stale.")
+                            : QStringLiteral("天空端激光温控已断开或数据已过期。"));
     }
     refreshAvailability();
 }
@@ -306,18 +306,18 @@ QString Rd105DeviceSession::unavailableReason() const
 {
     if (!pending_commands_.isEmpty())
     {
-        return english_ ? QStringLiteral("Waiting for the RD105 command to complete.")
-                        : QStringLiteral("正在等待 RD105 命令完成。");
+        return english_ ? QStringLiteral("Waiting for the laser thermal command to complete.")
+                        : QStringLiteral("正在等待激光温控命令完成。");
     }
     if (backend_ == Rd105Backend::Local)
     {
         if (!local_detail_.isEmpty()) return local_detail_;
-        return english_ ? QStringLiteral("Local RD105 is not connected.")
-                        : QStringLiteral("本地 RD105 尚未连接。");
+        return english_ ? QStringLiteral("Local laser thermal is not connected.")
+                        : QStringLiteral("本地激光温控尚未连接。");
     }
     if (!remote_detail_.isEmpty()) return remote_detail_;
-    return english_ ? QStringLiteral("Remote Sky RD105 is disconnected or stale.")
-                    : QStringLiteral("天空端 RD105 未连接或数据已过期。");
+    return english_ ? QStringLiteral("Remote Sky laser thermal is disconnected or stale.")
+                    : QStringLiteral("天空端激光温控未连接或数据已过期。");
 }
 
 }  // namespace VaporView::Ground::Devices

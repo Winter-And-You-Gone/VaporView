@@ -322,8 +322,8 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
     if (!result.ai8Temperature.valid)
     {
         result.ai8Temperature.errorMessage = stalled
-            ? QStringLiteral("UI test AI-8 data stalled")
-            : QStringLiteral("UI test AI-8 device disconnected");
+            ? QStringLiteral("UI test system thermal data stalled")
+            : QStringLiteral("UI test system thermal device disconnected");
     }
 
     result.rawWaveform.reserve(512);
