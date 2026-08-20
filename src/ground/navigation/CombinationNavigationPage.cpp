@@ -11,6 +11,7 @@
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QLayout>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
@@ -37,6 +38,31 @@ constexpr int kSectionGap = 12;
 constexpr int kNavigationBarHeight = 36;
 constexpr int kNavigationRowHeight = kNavigationBarHeight + (kPageVerticalInset * 2);
 constexpr int kNavigationSelectionAnimationDurationMs = 240;
+
+void prepareStackPageForShow(QStackedWidget *stack, QWidget *page)
+{
+    if (!stack || !page)
+    {
+        return;
+    }
+
+    const QRect targetGeometry = stack->contentsRect();
+    if (targetGeometry.isEmpty())
+    {
+        return;
+    }
+
+    if (page->geometry() != targetGeometry)
+    {
+        page->setGeometry(targetGeometry);
+    }
+    if (QLayout *pageLayout = page->layout())
+    {
+        pageLayout->invalidate();
+        pageLayout->activate();
+    }
+    page->updateGeometry();
+}
 
 void prepareStyledBackground(QWidget *widget)
 {
@@ -362,6 +388,16 @@ void CombinationNavigationPage::setCurrentSection(Section section)
     }
 
     const bool changed = stack_->currentIndex() != index;
+    const bool freezeUpdatesForSwitch =
+        changed && section == Section::Differential && updatesEnabled();
+    if (freezeUpdatesForSwitch)
+    {
+        setUpdatesEnabled(false);
+    }
+    if (changed)
+    {
+        prepareStackPageForShow(stack_, stack_->widget(index));
+    }
     stack_->setCurrentIndex(index);
     if (QPushButton *button = qobject_cast<QPushButton *>(section_group_->button(index)))
     {
@@ -376,6 +412,11 @@ void CombinationNavigationPage::setCurrentSection(Section section)
     if (changed)
     {
         emit currentSectionChanged(section);
+    }
+    if (freezeUpdatesForSwitch)
+    {
+        setUpdatesEnabled(true);
+        update();
     }
 }
 
