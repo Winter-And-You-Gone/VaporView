@@ -65,6 +65,13 @@ void require(bool condition, const char *message)
     }
 }
 
+VaporView::Ground::Widgets::SegmentedSwitchButton *findHomeSourceModeSwitch(QWidget *root)
+{
+    return root ? root->findChild<VaporView::Ground::Widgets::SegmentedSwitchButton *>(
+                      QStringLiteral("sourceModeOverviewSwitch"))
+                : nullptr;
+}
+
 using SettingsSnapshot = QMap<QString, QVariant>;
 
 SettingsSnapshot snapshot(const QString& application)
@@ -665,18 +672,7 @@ int main(int argc, char **argv)
                 homeBottomFade->geometry().bottom() == homeScrollArea->viewport()->rect().bottom(),
             "home bottom fade stays attached to the viewport edge above the reserved content inset");
 
-    VaporView::Ground::Widgets::SegmentedSwitchButton *sourceModeSwitch = nullptr;
-    for (auto *candidate : window->findChildren<VaporView::Ground::Widgets::SegmentedSwitchButton *>())
-    {
-        if ((candidate->leftSegmentText().contains(QStringLiteral("本地")) ||
-             candidate->leftSegmentText().contains(QStringLiteral("Local"))) &&
-            (candidate->rightSegmentText().contains(QStringLiteral("远程")) ||
-             candidate->rightSegmentText().contains(QStringLiteral("Remote"))))
-        {
-            sourceModeSwitch = candidate;
-            break;
-        }
-    }
+    auto *sourceModeSwitch = findHomeSourceModeSwitch(window);
     require(sourceModeSwitch, "home source mode switch exists");
     QGroupBox *homeConfigCard = nullptr;
     for (QWidget *ancestor = sourceModeSwitch->parentWidget(); ancestor && !homeConfigCard;
@@ -1331,11 +1327,11 @@ int main(int argc, char **argv)
     QWidget *deviceConfigPage = window->findChild<QWidget *>(QStringLiteral("deviceConfigPage"));
     require(deviceConfigPage && deviceConfigPage->isVisible(),
             "unified device configuration page is visible in UI test mode");
-    QComboBox *deviceSourceMode =
-        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceDataSourceModeCombo"));
-    require(deviceSourceMode && deviceSourceMode->count() >= 2,
-            "unified device configuration page exposes the source-mode selector");
-    deviceSourceMode->setCurrentIndex(1);
+    auto *deviceSourceMode =
+        deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceConfigSourceModeOverviewSwitch"));
+    require(deviceSourceMode && deviceSourceMode->property("segmentedSwitchControl").toBool(),
+            "unified device configuration page exposes the segmented source-mode selector");
+    deviceSourceMode->click();
     processEvents();
     auto *deviceRemoteCard =
         deviceConfigPage->findChild<QGroupBox *>(QStringLiteral("deviceRemoteSkyConfigCard"));
@@ -1542,18 +1538,7 @@ int main(int argc, char **argv)
         auto *connectionWindow = new MainWindow();
         connectionWindow->show();
         processEvents();
-        VaporView::Ground::Widgets::SegmentedSwitchButton *connectionSourceModeSwitch = nullptr;
-        for (auto *candidate : connectionWindow->findChildren<VaporView::Ground::Widgets::SegmentedSwitchButton *>())
-        {
-            if ((candidate->leftSegmentText().contains(QStringLiteral("本地")) ||
-                 candidate->leftSegmentText().contains(QStringLiteral("Local"))) &&
-                (candidate->rightSegmentText().contains(QStringLiteral("远程")) ||
-                 candidate->rightSegmentText().contains(QStringLiteral("Remote"))))
-            {
-                connectionSourceModeSwitch = candidate;
-                break;
-            }
-        }
+        auto *connectionSourceModeSwitch = findHomeSourceModeSwitch(connectionWindow);
         require(connectionSourceModeSwitch != nullptr,
                 "normal-mode source mode switch exists");
         if (connectionSourceModeSwitch->switchChecked())
@@ -1701,18 +1686,7 @@ int main(int argc, char **argv)
         auto *failedConnectionWindow = new MainWindow();
         failedConnectionWindow->show();
         processEvents();
-        VaporView::Ground::Widgets::SegmentedSwitchButton *failedSourceModeSwitch = nullptr;
-        for (auto *candidate : failedConnectionWindow->findChildren<VaporView::Ground::Widgets::SegmentedSwitchButton *>())
-        {
-            if ((candidate->leftSegmentText().contains(QStringLiteral("本地")) ||
-                 candidate->leftSegmentText().contains(QStringLiteral("Local"))) &&
-                (candidate->rightSegmentText().contains(QStringLiteral("远程")) ||
-                 candidate->rightSegmentText().contains(QStringLiteral("Remote"))))
-            {
-                failedSourceModeSwitch = candidate;
-                break;
-            }
-        }
+        auto *failedSourceModeSwitch = findHomeSourceModeSwitch(failedConnectionWindow);
         require(failedSourceModeSwitch != nullptr,
                 "failed-path normal-mode source mode switch exists");
         if (failedSourceModeSwitch->switchChecked())

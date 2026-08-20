@@ -2446,16 +2446,22 @@ void MainWindow::setupDeviceConfigPage()
     connect(state_->device_config_.auto_detect_ports_btn, &QPushButton::clicked, this, &MainWindow::onAutoDetectPortsClicked);
     serialTitleLayout->addWidget(state_->device_config_.auto_detect_ports_btn, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
-    state_->device_config_.data_source_mode_lbl = new QLabel(serialTitleBar);
-    state_->device_config_.data_source_mode_lbl->setObjectName(QStringLiteral("fieldLabel"));
-    state_->device_config_.data_source_mode_combo = createSingleLevelPopupComboBox(serialTitleBar);
-    state_->device_config_.data_source_mode_combo->setObjectName(QStringLiteral("deviceDataSourceModeCombo"));
-    state_->device_config_.data_source_mode_combo->setFixedHeight(kMainPageInputHeight);
-    state_->device_config_.data_source_mode_combo->setFixedWidth(kDeviceConfigSourceModeComboWidth);
-    state_->device_config_.data_source_mode_combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    serialTitleLayout->addWidget(state_->device_config_.data_source_mode_lbl, 0, Qt::AlignVCenter | Qt::AlignRight);
-    serialTitleLayout->addWidget(state_->device_config_.data_source_mode_combo, 0, Qt::AlignVCenter);
     serialTitleLayout->addStretch(1);
+    state_->device_config_.data_source_mode_switch = createSourceModeOverviewSwitchButton(serialTitleBar);
+    state_->device_config_.data_source_mode_switch->setObjectName(QStringLiteral("deviceConfigSourceModeOverviewSwitch"));
+    state_->device_config_.data_source_mode_switch->setFixedSize(128, kMainPageButtonHeight);
+    state_->device_config_.data_source_mode_switch->setEnglish(state_->is_english_);
+    connect(state_->device_config_.data_source_mode_switch,
+            &VaporView::Ground::Widgets::SegmentedSwitchButton::selectionRequested,
+            this,
+            [this](bool remoteSelected) {
+                if (!state_->data_source_mode_combo_)
+                {
+                    return;
+                }
+                state_->data_source_mode_combo_->setCurrentIndex(remoteSelected ? 1 : 0);
+            });
+    serialTitleLayout->addWidget(state_->device_config_.data_source_mode_switch, 0, Qt::AlignVCenter | Qt::AlignRight);
     serialLayout->addWidget(serialTitleBar);
 
     auto *skyTelemetryRow = new QWidget(serialCard);
@@ -3304,7 +3310,6 @@ void MainWindow::setupDeviceConfigPage()
             syncDeviceConfigPageFromHome();
         });
     };
-    mirrorComboToHome(state_->device_config_.data_source_mode_combo, state_->data_source_mode_combo_);
     mirrorComboToHome(state_->device_config_.sky_telemetry_transport_combo, state_->sky_telemetry_transport_combo_);
     mirrorComboToHome(state_->device_config_.sky_telemetry_port_combo, state_->sky_telemetry_port_combo_);
     mirrorComboToHome(state_->device_config_.sky_telemetry_baud_combo, state_->sky_telemetry_baud_combo_);
@@ -3449,7 +3454,6 @@ void MainWindow::syncDeviceConfigPageFromHome()
         }
     };
 
-    copyCombo(state_->data_source_mode_combo_, state_->device_config_.data_source_mode_combo);
     copyCombo(state_->sky_telemetry_transport_combo_, state_->device_config_.sky_telemetry_transport_combo);
     copyCombo(state_->sky_telemetry_port_combo_, state_->device_config_.sky_telemetry_port_combo);
     copyCombo(state_->sky_telemetry_baud_combo_, state_->device_config_.sky_telemetry_baud_combo);
@@ -3508,7 +3512,7 @@ void MainWindow::updateDeviceConfigTexts()
             ? (state_->is_english_ ? "Device Configuration [Remote]" : "设备配置 [远程]")
             : (state_->is_english_ ? "Device Configuration [Local]" : "设备配置 [本机]"));
     }
-    if (state_->device_config_.data_source_mode_lbl) state_->device_config_.data_source_mode_lbl->setText(state_->is_english_ ? "Target:" : "目标:");
+    if (state_->device_config_.data_source_mode_switch) state_->device_config_.data_source_mode_switch->setEnglish(state_->is_english_);
     if (state_->device_config_.sky_telemetry_transport_lbl) state_->device_config_.sky_telemetry_transport_lbl->setText(state_->is_english_ ? "Sky Link:" : "天地链路:");
     updateSkyTelemetryTransportComboTexts(state_->device_config_.sky_telemetry_transport_combo, state_->is_english_);
     if (state_->device_config_.sky_telemetry_tcp_host_lbl) state_->device_config_.sky_telemetry_tcp_host_lbl->setText(state_->is_english_ ? "Sky IP:" : "天空端IP:");
@@ -3711,7 +3715,13 @@ void MainWindow::updateDeviceConfigState()
         }
     }
 
-    if (state_->device_config_.data_source_mode_combo) state_->device_config_.data_source_mode_combo->setEnabled(state_->data_source_mode_combo_ && state_->data_source_mode_combo_->isEnabled());
+    if (state_->device_config_.data_source_mode_switch)
+    {
+        state_->device_config_.data_source_mode_switch->setEnabled(state_->source_mode_switch_ && state_->source_mode_switch_->isEnabled());
+        state_->device_config_.data_source_mode_switch->setSwitchChecked(
+            remote,
+            state_->device_config_.data_source_mode_switch->switchChecked() != remote);
+    }
     if (state_->device_config_.sky_telemetry_transport_combo) state_->device_config_.sky_telemetry_transport_combo->setEnabled(remoteInputsEnabled);
     if (state_->device_config_.sky_telemetry_port_combo) state_->device_config_.sky_telemetry_port_combo->setEnabled(remoteInputsEnabled && !tcpTelemetry);
     if (state_->device_config_.sky_telemetry_baud_combo) state_->device_config_.sky_telemetry_baud_combo->setEnabled(remoteInputsEnabled && !tcpTelemetry);

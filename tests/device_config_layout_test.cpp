@@ -610,8 +610,8 @@ int main(int argc, char **argv)
     requireLabelFits(findExactLabel(serialCard, QStringLiteral("温湿度")),
                      "humidity device row remains target-neutral while the source field carries the model");
 
-    auto *dataSourceModeCombo =
-        serialCard->findChild<QComboBox *>(QStringLiteral("deviceDataSourceModeCombo"));
+    auto *dataSourceModeSwitch =
+        serialCard->findChild<QPushButton *>(QStringLiteral("deviceConfigSourceModeOverviewSwitch"));
     auto *epsilonPortCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
     auto *epsilonBaudCombo =
@@ -640,9 +640,13 @@ int main(int argc, char **argv)
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureBaudCombo"));
     auto *ai8RateCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureRateCombo"));
-    require(dataSourceModeCombo && epsilonPortCombo && epsilonBaudCombo && epsilonRateCombo &&
+    require(dataSourceModeSwitch && epsilonPortCombo && epsilonBaudCombo && epsilonRateCombo &&
                 epsilonPacketRatesButton,
             "shared device config controls exist for target switching");
+    require(dataSourceModeSwitch->property("segmentedSwitchControl").toBool() &&
+                dataSourceModeSwitch->text().contains(QStringLiteral("数据源")) &&
+                dataSourceModeSwitch->focusPolicy() == Qt::TabFocus,
+            "device configuration target switching reuses the home segmented source switch");
     require(!epsilonRateCombo->isVisible() &&
                 !epsilonRateCombo->isEnabled() &&
                 epsilonPacketRatesButton->isVisible() &&
@@ -699,7 +703,7 @@ int main(int argc, char **argv)
     require(epsilonPortCombo->currentText() == QStringLiteral("COM7"),
             "local EPSILON port is visible before remote switch");
 
-    dataSourceModeCombo->setCurrentIndex(1);
+    dataSourceModeSwitch->click();
     VaporViewTest::processEventsFor(160);
     activateLayouts(&window);
     require(scrollArea->horizontalScrollBar() &&
@@ -1010,7 +1014,7 @@ int main(int argc, char **argv)
             }),
             "remote link close keeps loaded values visible but makes remote fields non-writable");
 
-    dataSourceModeCombo->setCurrentIndex(0);
+    dataSourceModeSwitch->click();
     VaporViewTest::processEventsFor(160);
     require(epsilonPortCombo->currentText() == QStringLiteral("COM7"),
             "switching back to Local restores the local EPSILON serial port");

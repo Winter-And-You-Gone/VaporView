@@ -9529,12 +9529,19 @@ int main(int argc, char **argv)
     }
 
     QComboBox *deviceSourceModeCombo = findSourceModeCombo(deviceConfigPage);
-    require(deviceSourceModeCombo != nullptr,
-            "device configuration source mode combo exists");
-    require(deviceSourceModeCombo->property("usesSingleLevelPopupMenu").toBool(),
-            "device configuration source mode combo uses the shared single-level popup");
-    require(deviceSourceModeCombo->width() == 94,
-            "device configuration source mode combo uses the requested three-fifths width");
+    require(deviceSourceModeCombo == nullptr,
+            "device configuration no longer exposes the title-bar source mode combo");
+    auto *deviceSourceModeSwitch =
+        deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceConfigSourceModeOverviewSwitch"));
+    require(deviceSourceModeSwitch != nullptr &&
+                deviceSourceModeSwitch->property("segmentedSwitchControl").toBool() &&
+                deviceSourceModeSwitch->focusPolicy() == Qt::TabFocus,
+            "device configuration source mode uses the shared segmented switch");
+    auto *homeSourceModeSwitch =
+        window.findChild<QPushButton *>(QStringLiteral("sourceModeOverviewSwitch"));
+    require(homeSourceModeSwitch != nullptr &&
+                deviceSourceModeSwitch->size() == homeSourceModeSwitch->size(),
+            "device configuration source switch reuses the home title-bar switch size");
     QComboBox *pressureSourceCombo =
         findComboWithData(deviceConfigPage, QStringLiteral("bmp390"));
     QComboBox *humiditySourceCombo =
