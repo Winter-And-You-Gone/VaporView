@@ -37,6 +37,38 @@ int main(int argc, char **argv)
     require(firstSnapshot.rawWaveform.size() == 512, "normal scenario supplies raw waveform");
     require(firstSnapshot.harmonicWaveform.size() == 512, "normal scenario supplies harmonic waveform");
     require(firstSnapshot.ai8Temperature.valid, "normal scenario supplies AI-8 temperature data");
+    require(firstSnapshot.epsilon.utc_unix_s > 0 &&
+                firstSnapshot.epsilon.device_timestamp_us > 0,
+            "normal scenario supplies EPSILON UTC and device timestamps");
+    require(firstSnapshot.epsilon.filter_status_bits != 0 &&
+                firstSnapshot.epsilon.update_status_bits != 0,
+            "normal scenario supplies EPSILON filter/update status bits");
+    require(firstSnapshot.epsilon.quat_orien_valid &&
+                std::isfinite(firstSnapshot.epsilon.attitude_delta_max_deg) &&
+                std::isfinite(firstSnapshot.epsilon.attitude_delta_ahrs_euler_deg) &&
+                std::isfinite(firstSnapshot.epsilon.attitude_delta_ahrs_quat_deg) &&
+                std::isfinite(firstSnapshot.epsilon.attitude_delta_euler_quat_deg),
+            "normal scenario supplies all EPSILON attitude consistency fields");
+    require(firstSnapshot.epsilon.raw_gnss_packet_rate_hz > 0.0 &&
+                firstSnapshot.epsilon.satellite_packet_rate_hz > 0.0 &&
+                firstSnapshot.epsilon.geodetic_packet_rate_hz > 0.0 &&
+                firstSnapshot.epsilon.ecef_packet_rate_hz > 0.0,
+            "normal scenario supplies detailed EPSILON packet-rate fields");
+    require(!firstSnapshot.gnss.heading_type.empty() &&
+                firstSnapshot.gnss.num_satellites_tracked > firstSnapshot.gnss.num_satellites_used &&
+                firstSnapshot.gnss.vel_ground > 0.0 &&
+                firstSnapshot.gnss.sigma_lat > 0.0 &&
+                firstSnapshot.gnss.sigma_lon > 0.0 &&
+                firstSnapshot.gnss.sigma_alt > 0.0 &&
+                firstSnapshot.gnss.gdop > 0.0 &&
+                firstSnapshot.gnss.pdop > 0.0 &&
+                firstSnapshot.gnss.htdop > 0.0 &&
+                firstSnapshot.gnss.tdop > 0.0,
+            "normal scenario supplies representative GNSS detail fields");
+    require(firstSnapshot.imu.system_time_ms > 0 &&
+                std::abs(firstSnapshot.imu.quaternion[0]) > 0.1 &&
+                std::isfinite(firstSnapshot.imu.air_pressure),
+            "normal scenario supplies representative IMU time/quaternion/environment fields");
     require(firstSnapshot.epsilon.latitude_deg == secondSnapshot.epsilon.latitude_deg,
             "same elapsed time produces deterministic navigation data");
     require(firstSnapshot.rawWaveform == secondSnapshot.rawWaveform,

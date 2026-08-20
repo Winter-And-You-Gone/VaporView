@@ -1,6 +1,7 @@
 #include "ground/devices/UiTestDataModel.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -37,6 +38,38 @@ double boundedRandom(qint64 elapsedMs, int salt, double minimum, double maximum)
     const double unit =
         static_cast<double>(value & 0xFFFFFFull) / static_cast<double>(0xFFFFFFull);
     return minimum + ((maximum - minimum) * unit);
+}
+
+std::array<double, 4> quaternionFromEulerDeg(double rollDeg, double pitchDeg, double yawDeg)
+{
+    const double roll = rollDeg * kPi / 180.0;
+    const double pitch = pitchDeg * kPi / 180.0;
+    const double yaw = yawDeg * kPi / 180.0;
+    const double cr = std::cos(roll * 0.5);
+    const double sr = std::sin(roll * 0.5);
+    const double cp = std::cos(pitch * 0.5);
+    const double sp = std::sin(pitch * 0.5);
+    const double cy = std::cos(yaw * 0.5);
+    const double sy = std::sin(yaw * 0.5);
+    return {
+        cr * cp * cy + sr * sp * sy,
+        sr * cp * cy - cr * sp * sy,
+        cr * sp * cy + sr * cp * sy,
+        cr * cp * sy - sr * sp * cy
+    };
+}
+
+double attitudeDeltaDeg(double lhsRoll,
+                        double lhsPitch,
+                        double lhsYaw,
+                        double rhsRoll,
+                        double rhsPitch,
+                        double rhsYaw)
+{
+    const double dRoll = lhsRoll - rhsRoll;
+    const double dPitch = lhsPitch - rhsPitch;
+    const double dYaw = lhsYaw - rhsYaw;
+    return std::sqrt(dRoll * dRoll + dPitch * dPitch + dYaw * dYaw);
 }
 
 } // namespace
@@ -177,6 +210,7 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
     const bool stalled = scenario_ == UiTestScenario::DataStalled &&
         elapsedMs - scenario_started_ms_ >= 3000;
     const qint64 sampleElapsedMs = stalled ? scenario_started_ms_ + 3000 : elapsedMs;
+    const qint64 nonNegativeElapsedMs = std::max<qint64>(0, sampleElapsedMs);
     const double seconds = std::max<qint64>(0, sampleElapsedMs) / 1000.0;
     const double slow = std::sin(seconds * 0.35);
     const double medium = std::sin(seconds * 0.9);
@@ -215,7 +249,54 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
     result.epsilon.system_state_roll_deg = result.epsilon.roll_deg;
     result.epsilon.system_state_pitch_deg = result.epsilon.pitch_deg;
     result.epsilon.system_state_yaw_deg = result.epsilon.yaw_deg;
+    result.epsilon.quat_orien_valid = result.epsilon.valid;
+    result.epsilon.quat_orien_roll_deg = result.epsilon.roll_deg - 0.01;
+    result.epsilon.quat_orien_pitch_deg = result.epsilon.pitch_deg + 0.02;
+    result.epsilon.quat_orien_yaw_deg = result.epsilon.yaw_deg - 0.02;
+    const auto epsilonQuaternion = quaternionFromEulerDeg(
+        result.epsilon.quat_orien_roll_deg,
+        result.epsilon.quat_orien_pitch_deg,
+        result.epsilon.quat_orien_yaw_deg);
+    result.epsilon.quat_orien_w = epsilonQuaternion[0];
+    result.epsilon.quat_orien_x = epsilonQuaternion[1];
+    result.epsilon.quat_orien_y = epsilonQuaternion[2];
+    result.epsilon.quat_orien_z = epsilonQuaternion[3];
+    result.epsilon.quat_w = epsilonQuaternion[0];
+    result.epsilon.quat_x = epsilonQuaternion[1];
+    result.epsilon.quat_y = epsilonQuaternion[2];
+    result.epsilon.quat_z = epsilonQuaternion[3];
     result.epsilon.attitude_source_count = 3;
+    result.epsilon.attitude_delta_ahrs_euler_deg =
+        attitudeDeltaDeg(result.epsilon.ahrs_roll_deg,
+                         result.epsilon.ahrs_pitch_deg,
+                         result.epsilon.ahrs_yaw_deg,
+                         result.epsilon.euler_orien_roll_deg,
+                         result.epsilon.euler_orien_pitch_deg,
+                         result.epsilon.euler_orien_yaw_deg);
+    result.epsilon.attitude_delta_ahrs_quat_deg =
+        attitudeDeltaDeg(result.epsilon.ahrs_roll_deg,
+                         result.epsilon.ahrs_pitch_deg,
+                         result.epsilon.ahrs_yaw_deg,
+                         result.epsilon.quat_orien_roll_deg,
+                         result.epsilon.quat_orien_pitch_deg,
+                         result.epsilon.quat_orien_yaw_deg);
+    result.epsilon.attitude_delta_euler_quat_deg =
+        attitudeDeltaDeg(result.epsilon.euler_orien_roll_deg,
+                         result.epsilon.euler_orien_pitch_deg,
+                         result.epsilon.euler_orien_yaw_deg,
+                         result.epsilon.quat_orien_roll_deg,
+                         result.epsilon.quat_orien_pitch_deg,
+                         result.epsilon.quat_orien_yaw_deg);
+    result.epsilon.attitude_delta_max_deg =
+        std::max({result.epsilon.attitude_delta_ahrs_euler_deg,
+                  result.epsilon.attitude_delta_ahrs_quat_deg,
+                  result.epsilon.attitude_delta_euler_quat_deg});
+    result.epsilon.device_timestamp_us =
+        500'000'000ULL + static_cast<uint64_t>(nonNegativeElapsedMs) * 1000ULL;
+    result.epsilon.utc_unix_s =
+        1'787'184'000ULL + static_cast<uint64_t>(nonNegativeElapsedMs / 1000);
+    result.epsilon.utc_microseconds =
+        static_cast<uint32_t>((nonNegativeElapsedMs % 1000) * 1000);
     result.epsilon.gnss_fix_code = 4;
     result.epsilon.gnss_fix_text = "RTK Fixed (UI Test)";
     result.epsilon.gnss_satellites = 24;
@@ -227,10 +308,18 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
     result.epsilon.imu_temp_c = 34.0 + slow;
     result.epsilon.pressure_pa = 101325.0 + medium * 25.0;
     result.epsilon.raw_frame_count = static_cast<uint64_t>(seconds * 100.0);
+    result.epsilon.system_status_bits = 0x0000;
+    result.epsilon.filter_status_bits =
+        static_cast<uint16_t>((result.epsilon.gnss_fix_code & 0x0F) << 4);
+    result.epsilon.update_status_bits = 0x0007;
     result.epsilon.imu_packet_rate_hz = result.epsilon.valid ? 100.0 : 0.0;
     result.epsilon.ahrs_packet_rate_hz = result.epsilon.valid ? 100.0 : 0.0;
     result.epsilon.insgps_packet_rate_hz = result.epsilon.valid ? 20.0 : 0.0;
     result.epsilon.sys_state_packet_rate_hz = result.epsilon.valid ? 20.0 : 0.0;
+    result.epsilon.raw_gnss_packet_rate_hz = result.epsilon.valid ? 5.0 : 0.0;
+    result.epsilon.satellite_packet_rate_hz = result.epsilon.valid ? 1.0 : 0.0;
+    result.epsilon.geodetic_packet_rate_hz = result.epsilon.valid ? 20.0 : 0.0;
+    result.epsilon.ecef_packet_rate_hz = result.epsilon.valid ? 20.0 : 0.0;
     if (!result.epsilon.valid)
     {
         result.epsilon.error_message = stalled ? "UI test data stalled" : "UI test device disconnected";
@@ -241,10 +330,30 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
     result.gnss.latitude = result.epsilon.latitude_deg;
     result.gnss.longitude = result.epsilon.longitude_deg;
     result.gnss.altitude = result.epsilon.height_m;
+    result.gnss.vel_north = result.epsilon.vel_n_mps;
+    result.gnss.vel_east = result.epsilon.vel_e_mps;
+    result.gnss.vel_down = result.epsilon.vel_d_mps;
+    result.gnss.vel_ground = std::hypot(result.gnss.vel_north, result.gnss.vel_east);
     result.gnss.heading = result.epsilon.yaw_deg;
+    result.gnss.heading_pitch = result.epsilon.pitch_deg;
+    result.gnss.heading_length = 1.425;
+    result.gnss.heading_type = "RTK_DUAL";
+    result.gnss.heading_trackedsvs = 28;
+    result.gnss.heading_solnsvs = 18;
+    result.gnss.sigma_lat = result.epsilon.hacc_m;
+    result.gnss.sigma_lon = result.epsilon.hacc_m * 1.15;
+    result.gnss.sigma_alt = result.epsilon.vacc_m;
     result.gnss.position_status = "RTK_FIXED";
     result.gnss.num_satellites_used = 24;
+    result.gnss.num_satellites_tracked = 28;
+    result.gnss.gdop = 1.12;
+    result.gnss.pdop = 1.04;
     result.gnss.hdop = result.epsilon.hdop;
+    result.gnss.htdop = 0.74;
+    result.gnss.tdop = 0.52;
+    result.gnss.diff_age = 0.4 + std::abs(slow) * 0.2;
+    result.gnss.undulation = 8.72;
+    result.gnss.elevation_cutoff = 10.0;
 
     result.imu.valid = result.epsilon.valid;
     result.imu.timestamp = timestamp;
@@ -257,7 +366,14 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
     result.imu.rpy = {result.epsilon.roll_deg,
                       result.epsilon.pitch_deg,
                       result.epsilon.yaw_deg};
+    result.imu.quaternion = quaternionFromEulerDeg(result.imu.rpy[0],
+                                                   result.imu.rpy[1],
+                                                   result.imu.rpy[2]);
     result.imu.temperature = result.epsilon.imu_temp_c;
+    result.imu.air_pressure = result.epsilon.pressure_pa;
+    result.imu.system_time_ms = static_cast<uint32_t>(std::min<qint64>(
+        nonNegativeElapsedMs,
+        std::numeric_limits<uint32_t>::max()));
     result.imu.frame_type = ImuFrameType::HI91;
 
     result.ptb.valid = connected(deviceState(SkyDeviceId::Ptb)) && !stalled;

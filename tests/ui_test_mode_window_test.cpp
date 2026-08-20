@@ -50,6 +50,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <set>
 #include <tuple>
 
@@ -553,6 +554,101 @@ void requireUiTestHomeTelemetryCapsulesCovered(QWidget *homeConfigCard, const ch
     }
 }
 
+QMap<QString, QString> epsilonPanelFieldValues(QWidget *epsilonPanel)
+{
+    QMap<QString, QString> result;
+    if (!epsilonPanel)
+    {
+        return result;
+    }
+
+    const QList<QLabel *> fieldLabels =
+        epsilonPanel->findChildren<QLabel *>(QStringLiteral("fieldLabel"));
+    const QList<QLabel *> valueLabels =
+        epsilonPanel->findChildren<QLabel *>(QStringLiteral("valueLabel"));
+    for (QLabel *fieldLabel : fieldLabels)
+    {
+        if (!fieldLabel)
+        {
+            continue;
+        }
+        const QRect fieldRect(fieldLabel->mapTo(epsilonPanel, QPoint(0, 0)),
+                              fieldLabel->size());
+        QLabel *bestValue = nullptr;
+        int bestDistance = std::numeric_limits<int>::max();
+        for (QLabel *valueLabel : valueLabels)
+        {
+            if (!valueLabel)
+            {
+                continue;
+            }
+            const QRect valueRect(valueLabel->mapTo(epsilonPanel, QPoint(0, 0)),
+                                  valueLabel->size());
+            if (valueRect.left() <= fieldRect.left() ||
+                std::abs(valueRect.center().y() - fieldRect.center().y()) > 4)
+            {
+                continue;
+            }
+            const int distance = valueRect.left() - fieldRect.right();
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                bestValue = valueLabel;
+            }
+        }
+        result.insert(fieldLabel->text(), bestValue ? bestValue->text() : QString());
+    }
+    return result;
+}
+
+void requireUiTestEpsilonPanelFieldsCovered(QWidget *epsilonPanel)
+{
+    const QMap<QString, QString> values = epsilonPanelFieldValues(epsilonPanel);
+    const QStringList requiredFields{
+        QStringLiteral("UTC时间:"),
+        QStringLiteral("设备时间戳:"),
+        QStringLiteral("原始帧/丢帧:"),
+        QStringLiteral("系统状态:"),
+        QStringLiteral("滤波状态:"),
+        QStringLiteral("航向有效:"),
+        QStringLiteral("GNSS状态:"),
+        QStringLiteral("卫星数:"),
+        QStringLiteral("纬度[deg]:"),
+        QStringLiteral("经度[deg]:"),
+        QStringLiteral("高度[m]:"),
+        QStringLiteral("hAcc/vAcc:"),
+        QStringLiteral("NED速度[m/s][N/E/D]:"),
+        QStringLiteral("IMU加速度[m/s²][X/Y/Z]:"),
+        QStringLiteral("IMU角速度[rad/s][X/Y/Z]:"),
+        QStringLiteral("姿态角[deg][Roll/Pitch/Yaw]:"),
+        QStringLiteral("姿态来源[0x41/0x63/0x64]:"),
+        QStringLiteral("姿态一致性[最大差值]:")
+    };
+    for (const QString& field : requiredFields)
+    {
+        const QString value = values.value(field);
+        if (value.isEmpty() || value == QStringLiteral("--"))
+        {
+            std::cerr << "UI-test EPSILON field not covered: "
+                      << field.toStdString()
+                      << " value='" << value.toStdString() << "'\n";
+        }
+        require(!value.isEmpty() && value != QStringLiteral("--"),
+                "UI test mode populates every EPSILON home panel field");
+    }
+
+    const QString filterStatus = values.value(QStringLiteral("滤波状态:"));
+    require(filterStatus.contains(QStringLiteral("定位融合中")) &&
+                !filterStatus.contains(QStringLiteral("未初始化")),
+            "UI-test EPSILON filter status matches the RTK fixed sample");
+    const QString attitudeConsistency = values.value(QStringLiteral("姿态一致性[最大差值]:"));
+    require(attitudeConsistency.contains(QStringLiteral("最大")) &&
+                attitudeConsistency.contains(QStringLiteral("41-63")) &&
+                attitudeConsistency.contains(QStringLiteral("41-64")) &&
+                attitudeConsistency.contains(QStringLiteral("63-64")),
+            "UI-test EPSILON attitude consistency covers all three attitude sources");
+}
+
 bool temperatureOverviewOutputPercentShows(QLabel *pill, const QString& expectedValue)
 {
     return pill &&
@@ -752,6 +848,10 @@ int main(int argc, char **argv)
     requireUiTestHomeTelemetryCapsulesCovered(
         homeConfigCard,
         "UI-test home telemetry summary capsules stay covered after dynamic refresh");
+    QWidget *epsilonPanel = window->findChild<QWidget *>(QStringLiteral("epsilonPanel"));
+    require(epsilonPanel && epsilonPanel->isVisible(),
+            "UI test mode exposes the EPSILON home panel");
+    requireUiTestEpsilonPanelFieldsCovered(epsilonPanel);
 
     auto *temperatureOutputPercentPill =
         window->findChild<QLabel *>(QStringLiteral("temperatureOverviewOutputPercentPill"));
