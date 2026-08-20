@@ -1488,14 +1488,19 @@ void requireRtkSidebarPage(
     auto *preRtcmCard = findCardByTitle(preDialog,
                                         {QStringLiteral("RTCM 输出配置"),
                                          QStringLiteral("RTCM Output Configuration")});
-    require(preGgaCard != nullptr && preLogCard != nullptr && preRtcmCard != nullptr,
+    auto *preGgaSourceCombo =
+        preDialog->findChild<QComboBox *>(QStringLiteral("rtkGgaPortCombo"));
+    require(preGgaCard != nullptr && preLogCard != nullptr && preRtcmCard != nullptr &&
+                preGgaSourceCombo != nullptr,
             "RTK cards exist before sidebar click for resize sampling");
     ResizeWidthRecorder ggaResizeRecorder(preGgaCard);
     ResizeWidthRecorder rtcmResizeRecorder(preRtcmCard);
     ResizeWidthRecorder logResizeRecorder(preLogCard);
+    ResizeWidthRecorder ggaSourceComboResizeRecorder(preGgaSourceCombo);
     preGgaCard->installEventFilter(&ggaResizeRecorder);
     preRtcmCard->installEventFilter(&rtcmResizeRecorder);
     preLogCard->installEventFilter(&logResizeRecorder);
+    preGgaSourceCombo->installEventFilter(&ggaSourceComboResizeRecorder);
     clickWidget(rtkButton, 0);
     processEventsFor(150);
     auto *combinationPage = qobject_cast<VaporView::Ground::Navigation::CombinationNavigationPage *>(
@@ -1705,14 +1710,16 @@ void requireRtkSidebarPage(
     ggaResizeRecorder.reset();
     rtcmResizeRecorder.reset();
     logResizeRecorder.reset();
+    ggaSourceComboResizeRecorder.reset();
     clickWidget(differentialButton, 0);
     processEventsFor(150);
     require(combinationStack->currentWidget() == preDialog && differentialButton->isChecked(),
             "combination navigation switches directly from status to differential positioning");
     require(!ggaResizeRecorder.observedWidthDifferentFrom(preGgaCard->width()) &&
                 !rtcmResizeRecorder.observedWidthDifferentFrom(preRtcmCard->width()) &&
-                !logResizeRecorder.observedWidthDifferentFrom(preLogCard->width()),
-            "status to differential first show keeps RTK card widths stable");
+                !logResizeRecorder.observedWidthDifferentFrom(preLogCard->width()) &&
+                !ggaSourceComboResizeRecorder.observedWidthDifferentFrom(preGgaSourceCombo->width()),
+            "status to differential first show keeps RTK cards and GGA source combo widths stable");
     clickWidget(statusButton, 0);
     processEventsFor(50);
     require(combinationStack->currentWidget() == statusPage && statusButton->isChecked(),
@@ -1744,6 +1751,7 @@ void requireRtkSidebarPage(
             "combination navigation settles the selected thumb on the new section");
     ggaResizeRecorder.reset();
     logResizeRecorder.reset();
+    ggaSourceComboResizeRecorder.reset();
     statusSummaryResizeRecorder.reset();
     epsilonOutputResizeRecorder.reset();
     differentialGgaResizeRecorder.reset();
@@ -1757,6 +1765,8 @@ void requireRtkSidebarPage(
             "combination navigation switches from EPSILON to the original RTK page");
     require(!differentialGgaResizeRecorder.observedWidthDifferentFrom(preGgaCard->width()),
             "EPSILON to differential switching keeps the RTK card width stable");
+    require(!ggaSourceComboResizeRecorder.observedWidthDifferentFrom(preGgaSourceCombo->width()),
+            "EPSILON to differential switching keeps the GGA source combo width stable");
     require(unsavedRtkServerEdit->text() == unsavedRtkServer,
             "switching internal pages preserves unsaved RTK input");
     clickWidget(epsilonButton, 0);

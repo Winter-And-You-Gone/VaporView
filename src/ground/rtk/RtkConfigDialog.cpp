@@ -2449,14 +2449,13 @@ void RtkConfigDialog::applyScaledUiMetrics()
     {
         const QFontMetrics metrics(gga_port_combo_->font());
         const int sourceMinimumWidth = compactLayout ? 80 : 120;
-        const int sourceExtraWidth = compactLayout ? 20 : 56;
+        const int sourceExtraWidth = compactLayout ? 20 : 40;
         const int desiredWidth = metrics.horizontalAdvance(mainGgaSourceLabel()) + scalePixels(sourceExtraWidth);
         const int targetWidth = std::min(scalePixels(compactLayout ? 140 : 200),
                                          std::max(scalePixels(sourceMinimumWidth), desiredWidth));
-        gga_port_combo_->setMinimumWidth(scalePixels(sourceMinimumWidth));
-        gga_port_combo_->setMaximumWidth(targetWidth);
+        gga_port_combo_->setFixedWidth(targetWidth);
         gga_port_combo_->setFixedHeight(scalePixels(kRtkInputHeight));
-        gga_port_combo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        gga_port_combo_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         gga_port_combo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         if (QLineEdit *edit = gga_port_combo_->lineEdit())
         {
