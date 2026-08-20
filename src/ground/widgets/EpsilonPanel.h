@@ -35,6 +35,7 @@ constexpr int kEpsilonMotionValueColumnWidth = 145;
 constexpr int kEpsilonFieldBaseSpacing = 2;
 constexpr int kEpsilonMotionFieldSpacing = 8;
 constexpr int kEpsilonFieldMinimumHeight = 20;
+constexpr int kEpsilonThreeColumnContentReserve = 96;
 
 inline QFont numericFontFrom(const QFont& base)
 {
@@ -412,14 +413,23 @@ private:
         int availableWidth = contentsRect().width();
         if (const QWidget *parent = parentWidget())
         {
-            int parentWidth = parent->contentsRect().width() - 4;
-            if (const QWidget *grandParent = parent->parentWidget())
-            {
-                parentWidth = std::max(parentWidth, grandParent->contentsRect().width() - 8);
-            }
+            const int parentWidth = parent->contentsRect().width() - 4;
             if (parentWidth > 0)
             {
-                availableWidth = std::max(availableWidth, parentWidth);
+                availableWidth = availableWidth > 0
+                    ? std::min(availableWidth, parentWidth)
+                    : parentWidth;
+            }
+            if (availableWidth <= 0)
+            {
+                if (const QWidget *grandParent = parent->parentWidget())
+                {
+                    const int grandParentWidth = grandParent->contentsRect().width() - 8;
+                    if (grandParentWidth > 0)
+                    {
+                        availableWidth = grandParentWidth;
+                    }
+                }
             }
         }
         return availableWidth;
@@ -431,15 +441,11 @@ private:
         {
             return 1;
         }
-        if (!compact_layout_)
-        {
-            return 3;
-        }
 
         const int availableWidth = availableCardWidth();
         if (availableWidth <= 0)
         {
-            return compact_layout_ ? 1 : 3;
+            return compact_layout_ ? 1 : std::min(2, static_cast<int>(section_cards_.size()));
         }
 
         const QVector<int> widths = standardCardWidths();
@@ -451,7 +457,7 @@ private:
             allWidth += width;
         }
         allWidth += gap * std::max(0, cardCount - 1);
-        if (cardCount >= 3 && availableWidth >= allWidth)
+        if (cardCount >= 3 && availableWidth >= allWidth + kEpsilonThreeColumnContentReserve)
         {
             return 3;
         }
