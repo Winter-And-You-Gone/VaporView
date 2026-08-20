@@ -118,12 +118,18 @@ public:
 
     void updateData(const VaporView::EpsilonData& epsilon_data)
     {
-        auto setValue = [this](const QString& key, const QString& value) {
+        bool layoutWidthDirty = false;
+        auto setValue = [this, &layoutWidthDirty](const QString& key, const QString& value) {
             if (QLabel *label = value_labels_.value(key, nullptr))
             {
                 const QString display_text = value.isEmpty() ? QStringLiteral("--") : value;
                 label->setText(display_text);
                 label->setToolTip(display_text);
+                label->ensurePolished();
+                if (label->fontMetrics().horizontalAdvance(display_text) + 2 > label->minimumWidth())
+                {
+                    layoutWidthDirty = true;
+                }
             }
         };
         if (!epsilon_data.valid)
@@ -256,6 +262,10 @@ public:
                      : QStringLiteral("原始 %1 / 丢帧 %2")
                            .arg(epsilon_data.raw_frame_count)
                            .arg(epsilon_data.dropped_frame_count));
+        if (layoutWidthDirty)
+        {
+            updateCardGridLayout(true);
+        }
     }
 
 protected:
@@ -541,10 +551,17 @@ private:
         }
         if (key == QStringLiteral("motion"))
         {
-            return QStringList{QStringLiteral("-12.345/12.345/-12.345"),
-                               QStringLiteral("-12.345/-12.345/12.345"),
-                               QStringLiteral("-0.1234/-0.1234/0.1234"),
-                               QStringLiteral("-179.99/-89.99/359.99")};
+            return is_english_
+                ? QStringList{QStringLiteral("-12.345/12.345/-12.345"),
+                              QStringLiteral("-12.345/-12.345/12.345"),
+                              QStringLiteral("-0.1234/-0.1234/0.1234"),
+                              QStringLiteral("-179.99/-89.99/359.99"),
+                              QStringLiteral("max 999.999° (41-63 999.999°, 41-64 999.999°, 63-64 999.999°)")}
+                : QStringList{QStringLiteral("-12.345/12.345/-12.345"),
+                              QStringLiteral("-12.345/-12.345/12.345"),
+                              QStringLiteral("-0.1234/-0.1234/0.1234"),
+                              QStringLiteral("-179.99/-89.99/359.99"),
+                              QStringLiteral("最大 999.999°（41-63 999.999°，41-64 999.999°，63-64 999.999°）")};
         }
         return {};
     }

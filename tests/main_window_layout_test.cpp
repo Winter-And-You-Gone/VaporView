@@ -3337,13 +3337,26 @@ bool epsilonSectionTitlesContain(QWidget *epsilonPanel, const QString& token)
     });
 }
 
-bool epsilonSectionCardsShareRow(QWidget *epsilonPanel)
+QList<QFrame*> sortedEpsilonSectionCards(QWidget *epsilonPanel)
 {
     if (!epsilonPanel)
     {
-        return false;
+        return {};
     }
-    const QList<QFrame*> cards = epsilonPanel->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
+    QList<QFrame*> cards = epsilonPanel->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
+    std::sort(cards.begin(), cards.end(), [](const QFrame *lhs, const QFrame *rhs) {
+        if (std::abs(lhs->y() - rhs->y()) > 4)
+        {
+            return lhs->y() < rhs->y();
+        }
+        return lhs->x() < rhs->x();
+    });
+    return cards;
+}
+
+bool epsilonSectionCardsShareRow(QWidget *epsilonPanel)
+{
+    const QList<QFrame*> cards = sortedEpsilonSectionCards(epsilonPanel);
     if (cards.size() != 3)
     {
         return false;
@@ -3352,6 +3365,87 @@ bool epsilonSectionCardsShareRow(QWidget *epsilonPanel)
     return std::all_of(cards.cbegin(), cards.cend(), [epsilonPanel, firstTop](const QFrame *card) {
         return card && std::abs(card->mapTo(epsilonPanel, QPoint(0, 0)).y() - firstTop) <= 2;
     });
+}
+
+bool epsilonSectionCardsUseWrappedMotionRow(QWidget *epsilonPanel)
+{
+    const QList<QFrame*> cards = sortedEpsilonSectionCards(epsilonPanel);
+    if (cards.size() != 3)
+    {
+        return false;
+    }
+    const QRect first(cards.at(0)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(0)->size());
+    const QRect second(cards.at(1)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(1)->size());
+    const QRect third(cards.at(2)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(2)->size());
+    return std::abs(first.top() - second.top()) <= 4 &&
+           second.left() > first.right() &&
+           third.top() > first.bottom() &&
+           third.left() <= first.left() + 2 &&
+           third.right() >= second.right() - 2;
+}
+
+void requireEpsilonSectionCardsUseWrappedMotionRow(QWidget *epsilonPanel, const char *message)
+{
+    if (!epsilonSectionCardsUseWrappedMotionRow(epsilonPanel))
+    {
+        const QList<QFrame*> cards = sortedEpsilonSectionCards(epsilonPanel);
+        std::cerr << "EPSILON card geometry:";
+        for (const QFrame *card : cards)
+        {
+            const QRect rect(card->mapTo(epsilonPanel, QPoint(0, 0)), card->size());
+            std::cerr << " [" << rect.x() << ',' << rect.y() << ' '
+                      << rect.width() << 'x' << rect.height()
+                      << " min=" << card->minimumWidth() << ']';
+        }
+        std::cerr << '\n';
+    }
+    require(epsilonSectionCardsUseWrappedMotionRow(epsilonPanel), message);
+}
+
+QLabel *epsilonValueLabelForField(QWidget *epsilonPanel, const QString& fieldText)
+{
+    if (!epsilonPanel)
+    {
+        return nullptr;
+    }
+    QLabel *fieldLabel = nullptr;
+    const QList<QLabel*> fieldLabels = epsilonPanel->findChildren<QLabel *>(QStringLiteral("fieldLabel"));
+    for (QLabel *label : fieldLabels)
+    {
+        if (label && label->text() == fieldText)
+        {
+            fieldLabel = label;
+            break;
+        }
+    }
+    if (!fieldLabel)
+    {
+        return nullptr;
+    }
+
+    const QRect fieldRect(fieldLabel->mapTo(epsilonPanel, QPoint(0, 0)), fieldLabel->size());
+    QLabel *bestValue = nullptr;
+    int bestDistance = std::numeric_limits<int>::max();
+    const QList<QLabel*> valueLabels = epsilonPanel->findChildren<QLabel *>(QStringLiteral("valueLabel"));
+    for (QLabel *valueLabel : valueLabels)
+    {
+        if (!valueLabel)
+        {
+            continue;
+        }
+        const QRect valueRect(valueLabel->mapTo(epsilonPanel, QPoint(0, 0)), valueLabel->size());
+        if (std::abs(valueRect.center().y() - fieldRect.center().y()) > std::max(fieldRect.height(), valueRect.height()))
+        {
+            continue;
+        }
+        const int distance = valueRect.left() - fieldRect.right();
+        if (distance >= 0 && distance < bestDistance)
+        {
+            bestDistance = distance;
+            bestValue = valueLabel;
+        }
+    }
+    return bestValue;
 }
 
 void requireHomeOverviewLanguageWidthRoundTrip()
@@ -3388,8 +3482,27 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     const QVector<TelemetryPillWidthSnapshotItem> initialTelemetryPillWidths =
         telemetryPillWidthSnapshot(languageTelemetrySummaryContainer);
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
-    require(epsilonSectionCardsShareRow(languageEpsilonPanel),
-            "language overview EPSILON Chinese cards start in one row");
+    requireEpsilonSectionCardsUseWrappedMotionRow(
+        languageEpsilonPanel,
+        "language overview EPSILON Chinese cards start with motion details on the second row");
+    QLabel *attitudeConsistencyValue = epsilonValueLabelForField(
+        languageEpsilonPanel,
+        QStringLiteral("姿态一致性[最大差值]:"));
+    require(attitudeConsistencyValue != nullptr,
+            "language overview exposes the EPSILON attitude consistency value label");
+    attitudeConsistencyValue->setText(
+        QStringLiteral("最大 0.066°（41-63 0.037°，41-64 0.030°，63-64 0.066°）"));
+    attitudeConsistencyValue->setToolTip(attitudeConsistencyValue->text());
+    attitudeConsistencyValue->updateGeometry();
+    activateLayouts(&languageOverviewWindow);
+    processEventsFor(50);
+    activateLayouts(languageDeviceOverviewCard);
+    requireEpsilonSectionCardsUseWrappedMotionRow(
+        languageEpsilonPanel,
+        "language overview keeps attitude consistency on the expanded second row after data arrives");
+    const QRect attitudeConsistencyBounds = wrappedTextBounds(attitudeConsistencyValue);
+    require(attitudeConsistencyBounds.height() <= attitudeConsistencyValue->height() + 2,
+            "language overview shows the full EPSILON attitude consistency value without clipping");
     requireHomeDeviceColumnsAligned(&languageOverviewWindow);
     requireHomeDeviceMinimumWidthMatchesControls(&languageOverviewWindow);
 
@@ -3495,8 +3608,9 @@ void requireHomeOverviewLanguageWidthRoundTrip()
         telemetryPillWidthSnapshot(languageTelemetrySummaryContainer),
         "language overview telemetry capsule widths do not exceed their initial Chinese widths");
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
-    require(epsilonSectionCardsShareRow(languageEpsilonPanel),
-            "language overview EPSILON cards return to one row after switching back to Chinese");
+    requireEpsilonSectionCardsUseWrappedMotionRow(
+        languageEpsilonPanel,
+        "language overview EPSILON cards return to the wrapped motion row after switching back to Chinese");
     languageOverviewWindow.close();
     require(processEventsUntil(1000, [&languageOverviewWindow]() {
                 return !languageOverviewWindow.isVisible();
@@ -9741,43 +9855,47 @@ int main(int argc, char **argv)
         require(epsilonGroup->width() >= environmentGroup->width() * 3.6,
                 "EPSILON card keeps an approximately 4:1 width relationship against environment card");
     }
-    QList<QFrame*> wideCards = dataGroup->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
+    auto *wideEpsilonPanel = dataGroup->findChild<QWidget *>(QStringLiteral("epsilonPanel"));
+    require(wideEpsilonPanel != nullptr, "wide EPSILON panel exists");
+    QList<QFrame*> wideCards = sortedEpsilonSectionCards(wideEpsilonPanel);
     require(wideCards.size() == 3, "three EPSILON section cards at wide window size");
-    std::sort(wideCards.begin(), wideCards.end(), [](const QFrame *lhs, const QFrame *rhs) {
-        if (std::abs(lhs->y() - rhs->y()) > 4)
+    if (epsilonSectionCardsShareRow(wideEpsilonPanel))
+    {
+        int wideCardsRight = 0;
+        int wideCardsTotalWidth = 0;
+        int wideCardsTotalMinimumWidth = 0;
+        for (const QFrame *card : wideCards)
         {
-            return lhs->y() < rhs->y();
+            wideCardsRight = std::max(wideCardsRight,
+                                      card->mapTo(epsilonGroup, QPoint(card->width(), 0)).x());
+            wideCardsTotalWidth += card->width();
+            wideCardsTotalMinimumWidth += card->minimumWidth();
+            require(card->width() + 2 >= card->minimumWidth(),
+                    "EPSILON section cards keep their content-driven minimum width at wide window size");
         }
-        return lhs->x() < rhs->x();
-    });
-    int wideCardsRight = 0;
-    int wideCardsTotalWidth = 0;
-    int wideCardsTotalMinimumWidth = 0;
-    for (const QFrame *card : wideCards)
-    {
-        wideCardsRight = std::max(wideCardsRight,
-                                  card->mapTo(epsilonGroup, QPoint(card->width(), 0)).x());
-        wideCardsTotalWidth += card->width();
-        wideCardsTotalMinimumWidth += card->minimumWidth();
-        require(card->width() + 2 >= card->minimumWidth(),
-                "EPSILON section cards keep their content-driven minimum width at wide window size");
+        require(wideCardsRight >= epsilonGroup->contentsRect().right() - 8,
+                "EPSILON section cards expand to fill the available group width at wide window size");
+        require(wideCardsTotalWidth > wideCardsTotalMinimumWidth + 24,
+                "EPSILON section cards grow beyond their minimum widths at wide window size");
+        for (const QFrame *card : wideCards)
+        {
+            const double actualRatio =
+                static_cast<double>(card->width()) / static_cast<double>(wideCardsTotalWidth);
+            const double minimumRatio =
+                static_cast<double>(card->minimumWidth()) / static_cast<double>(wideCardsTotalMinimumWidth);
+            require(std::abs(actualRatio - minimumRatio) <= 0.06,
+                    "EPSILON section cards expand proportionally to their content widths");
+        }
+        require(std::abs(wideCards.at(0)->height() - wideCards.at(1)->height()) <= 2 &&
+                    std::abs(wideCards.at(0)->height() - wideCards.at(2)->height()) <= 2,
+                "EPSILON section cards have matching heights at wide window size");
     }
-    require(wideCardsRight >= epsilonGroup->contentsRect().right() - 8,
-            "EPSILON section cards expand to fill the available group width at wide window size");
-    require(wideCardsTotalWidth > wideCardsTotalMinimumWidth + 24,
-            "EPSILON section cards grow beyond their minimum widths at wide window size");
-    for (const QFrame *card : wideCards)
+    else
     {
-        const double actualRatio =
-            static_cast<double>(card->width()) / static_cast<double>(wideCardsTotalWidth);
-        const double minimumRatio =
-            static_cast<double>(card->minimumWidth()) / static_cast<double>(wideCardsTotalMinimumWidth);
-        require(std::abs(actualRatio - minimumRatio) <= 0.06,
-                "EPSILON section cards expand proportionally to their content widths");
+        requireEpsilonSectionCardsUseWrappedMotionRow(
+            wideEpsilonPanel,
+            "wide EPSILON panel wraps motion details when the full fields cannot fit three columns");
     }
-    require(std::abs(wideCards.at(0)->height() - wideCards.at(1)->height()) <= 2 &&
-                std::abs(wideCards.at(0)->height() - wideCards.at(2)->height()) <= 2,
-            "EPSILON section cards have matching heights at wide window size");
 
     const QRect wideEpsilonGeometry = epsilonGroup->geometry();
     const QRect wideEnvironmentGeometry = environmentGroup->geometry();
@@ -9802,26 +9920,12 @@ int main(int argc, char **argv)
                    QMargins(2, 2, 2, 2),
                    "EPSILON panel content rhythm remains the reference");
 
-    QList<QFrame*> cards = dataGroup->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
+    QList<QFrame*> cards = sortedEpsilonSectionCards(epsilonPanel);
     require(cards.size() == 3, "three EPSILON section cards");
-    std::sort(cards.begin(), cards.end(), [](const QFrame *lhs, const QFrame *rhs) {
-        if (std::abs(lhs->y() - rhs->y()) > 4)
-        {
-            return lhs->y() < rhs->y();
-        }
-        return lhs->x() < rhs->x();
-    });
 
-    const int rowTolerance = 4;
-    require(std::abs(cards.at(0)->y() - cards.at(1)->y()) <= rowTolerance,
-            "EPSILON first and second cards are on one row at default window size");
-    require(std::abs(cards.at(0)->y() - cards.at(2)->y()) <= rowTolerance,
-            "EPSILON third card is on the same row at default window size");
-    require(cards.at(1)->x() > cards.at(0)->x(), "EPSILON second card is to the right of the first");
-    require(cards.at(2)->x() > cards.at(1)->x(), "EPSILON third card is to the right of the second");
-    require(std::abs(cards.at(0)->height() - cards.at(1)->height()) <= 2 &&
-                std::abs(cards.at(0)->height() - cards.at(2)->height()) <= 2,
-            "EPSILON section cards have matching heights at default window size");
+    requireEpsilonSectionCardsUseWrappedMotionRow(
+        epsilonPanel,
+        "EPSILON motion details use the second row at the default window size");
 
     for (QTimer *timer : window.findChildren<QTimer *>())
     {
