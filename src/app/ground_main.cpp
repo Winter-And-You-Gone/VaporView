@@ -169,7 +169,7 @@ void applyStartupTheme(QApplication& app, bool darkThemeEnabled)
 constexpr qint64 kMinimumSplashVisibleMs = 600;
 constexpr int kWindowTransitionDurationMs = 200;
 
-void showMainWindow(MainWindow& window, VaporView::StartupSplash *splash)
+void fadeInMainWindow(MainWindow& window)
 {
     window.setWindowOpacity(0.0);
     window.show();
@@ -185,15 +185,23 @@ void showMainWindow(MainWindow& window, VaporView::StartupSplash *splash)
         window.activateWindow();
     });
 
+    mainWindowFade->start(QAbstractAnimation::DeleteWhenStopped);
+}
+
+void showMainWindow(MainWindow& window, VaporView::StartupSplash *splash)
+{
     if (splash)
     {
         QObject::connect(splash, &VaporView::StartupSplash::fadeOutFinished,
-                         &window, [splash]() {
+                         &window, [splash, &window]() {
                              splash->deleteLater();
+                             fadeInMainWindow(window);
                          });
         splash->fadeOutAndClose(kWindowTransitionDurationMs);
+        return;
     }
-    mainWindowFade->start(QAbstractAnimation::DeleteWhenStopped);
+
+    fadeInMainWindow(window);
 }
 
 void startAi8RemoteE2e(QApplication& app, MainWindow& window, const QString& outputPath)
