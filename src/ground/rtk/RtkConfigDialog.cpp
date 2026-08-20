@@ -1303,7 +1303,12 @@ void RtkConfigDialog::resizeEvent(QResizeEvent *event)
         return;
     }
 
-    const bool compactLayout = width() > 0 && width() < scalePixels(900);
+    int layoutWidth = width();
+    if (QWidget *parent = parentWidget())
+    {
+        layoutWidth = std::max(layoutWidth, parent->width());
+    }
+    const bool compactLayout = layoutWidth > 0 && layoutWidth < scalePixels(900);
     if (compactLayout == compact_layout_)
     {
         return;
@@ -2202,9 +2207,15 @@ void RtkConfigDialog::applyScaledUiMetrics()
             ? embeddedTopInset
             : scalePixels(kEmbeddedTopLevelCardChromeInset);
         const int embeddedLeftInset = compactLayout ? 4 : kEmbeddedMainContentLeftCardInset;
+        const auto *scrollArea =
+            embedded_ ? findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea")) : nullptr;
+        const bool reservedScrollBarRail =
+            scrollArea && scrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn;
         const int embeddedRightInset = compactLayout
             ? 0
-            : kEmbeddedMainContentRightInsetWithHiddenScrollBar;
+            : (reservedScrollBarRail
+                  ? kEmbeddedMainContentRightCardInset
+                  : kEmbeddedMainContentRightInsetWithHiddenScrollBar);
         main_layout_->setSpacing(scalePixels(kEmbeddedTopLevelCardGap));
         main_layout_->setContentsMargins(scalePixels(embedded_
                                              ? embeddedLeftInset

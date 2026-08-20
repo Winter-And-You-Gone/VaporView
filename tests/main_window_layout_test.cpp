@@ -1485,11 +1485,16 @@ void requireRtkSidebarPage(
     auto *preLogCard = findCardByTitle(preDialog,
                                        {QStringLiteral("RTK 服务日志"),
                                         QStringLiteral("RTK Service Log")});
-    require(preGgaCard != nullptr && preLogCard != nullptr,
+    auto *preRtcmCard = findCardByTitle(preDialog,
+                                        {QStringLiteral("RTCM 输出配置"),
+                                         QStringLiteral("RTCM Output Configuration")});
+    require(preGgaCard != nullptr && preLogCard != nullptr && preRtcmCard != nullptr,
             "RTK cards exist before sidebar click for resize sampling");
     ResizeWidthRecorder ggaResizeRecorder(preGgaCard);
+    ResizeWidthRecorder rtcmResizeRecorder(preRtcmCard);
     ResizeWidthRecorder logResizeRecorder(preLogCard);
     preGgaCard->installEventFilter(&ggaResizeRecorder);
+    preRtcmCard->installEventFilter(&rtcmResizeRecorder);
     preLogCard->installEventFilter(&logResizeRecorder);
     clickWidget(rtkButton, 0);
     processEventsFor(150);
@@ -1697,6 +1702,21 @@ void requireRtkSidebarPage(
                 positioningMode->text() == QStringLiteral("--") &&
                 longitudeValue->text() == QStringLiteral("--"),
             "local provider keeps GNSS fix and position unavailable without field-level freshness");
+    ggaResizeRecorder.reset();
+    rtcmResizeRecorder.reset();
+    logResizeRecorder.reset();
+    clickWidget(differentialButton, 0);
+    processEventsFor(150);
+    require(combinationStack->currentWidget() == preDialog && differentialButton->isChecked(),
+            "combination navigation switches directly from status to differential positioning");
+    require(!ggaResizeRecorder.observedWidthDifferentFrom(preGgaCard->width()) &&
+                !rtcmResizeRecorder.observedWidthDifferentFrom(preRtcmCard->width()) &&
+                !logResizeRecorder.observedWidthDifferentFrom(preLogCard->width()),
+            "status to differential first show keeps RTK card widths stable");
+    clickWidget(statusButton, 0);
+    processEventsFor(50);
+    require(combinationStack->currentWidget() == statusPage && statusButton->isChecked(),
+            "combination navigation returns to status after first-show width sampling");
     auto *unsavedRtkServerEdit =
         preDialog->findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
     require(unsavedRtkServerEdit != nullptr,
