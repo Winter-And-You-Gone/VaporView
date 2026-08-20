@@ -21,6 +21,7 @@
 #include <QKeyEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QRect>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSettings>
@@ -647,6 +648,26 @@ int main(int argc, char **argv)
                 dataSourceModeSwitch->text().contains(QStringLiteral("数据源")) &&
                 dataSourceModeSwitch->focusPolicy() == Qt::TabFocus,
             "device configuration target switching reuses the home segmented source switch");
+    QPushButton *autoDetectButton = nullptr;
+    for (QPushButton *button : serialCard->findChildren<QPushButton *>())
+    {
+        if (button->isVisible() &&
+            (button->text().contains(QStringLiteral("自动识别")) ||
+             button->text().contains(QStringLiteral("Auto Detect"))))
+        {
+            autoDetectButton = button;
+            break;
+        }
+    }
+    require(autoDetectButton != nullptr,
+            "device configuration exposes the title-bar auto-detect button");
+    const QRect autoDetectRect(autoDetectButton->mapTo(serialCard, QPoint(0, 0)),
+                               autoDetectButton->size());
+    const QRect sourceModeSwitchRect(dataSourceModeSwitch->mapTo(serialCard, QPoint(0, 0)),
+                                     dataSourceModeSwitch->size());
+    require(sourceModeSwitchRect.left() > autoDetectRect.right() &&
+                sourceModeSwitchRect.left() - autoDetectRect.right() <= 16,
+            "device configuration target switch is left-aligned beside auto-detect");
     require(!epsilonRateCombo->isVisible() &&
                 !epsilonRateCombo->isEnabled() &&
                 epsilonPacketRatesButton->isVisible() &&

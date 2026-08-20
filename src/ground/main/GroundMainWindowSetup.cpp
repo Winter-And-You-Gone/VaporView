@@ -2446,7 +2446,6 @@ void MainWindow::setupDeviceConfigPage()
     connect(state_->device_config_.auto_detect_ports_btn, &QPushButton::clicked, this, &MainWindow::onAutoDetectPortsClicked);
     serialTitleLayout->addWidget(state_->device_config_.auto_detect_ports_btn, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
-    serialTitleLayout->addStretch(1);
     state_->device_config_.data_source_mode_switch = createSourceModeOverviewSwitchButton(serialTitleBar);
     state_->device_config_.data_source_mode_switch->setObjectName(QStringLiteral("deviceConfigSourceModeOverviewSwitch"));
     state_->device_config_.data_source_mode_switch->setFixedSize(128, kMainPageButtonHeight);
@@ -2461,7 +2460,8 @@ void MainWindow::setupDeviceConfigPage()
                 }
                 state_->data_source_mode_combo_->setCurrentIndex(remoteSelected ? 1 : 0);
             });
-    serialTitleLayout->addWidget(state_->device_config_.data_source_mode_switch, 0, Qt::AlignVCenter | Qt::AlignRight);
+    serialTitleLayout->addWidget(state_->device_config_.data_source_mode_switch, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    serialTitleLayout->addStretch(1);
     serialLayout->addWidget(serialTitleBar);
 
     auto *skyTelemetryRow = new QWidget(serialCard);
