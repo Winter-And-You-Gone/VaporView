@@ -6,6 +6,7 @@
 
 #include <QApplication>
 #include <QButtonGroup>
+#include <QCoreApplication>
 #include <QEvent>
 #include <QFocusEvent>
 #include <QFrame>
@@ -62,6 +63,17 @@ void prepareStackPageForShow(QStackedWidget *stack, QWidget *page)
         pageLayout->activate();
     }
     page->updateGeometry();
+}
+
+void settleStackPageForShow(QStackedWidget *stack, QWidget *page)
+{
+    prepareStackPageForShow(stack, page);
+    QCoreApplication::sendPostedEvents(page, QEvent::LayoutRequest);
+    for (QObject *child : page->findChildren<QObject *>())
+    {
+        QCoreApplication::sendPostedEvents(child, QEvent::LayoutRequest);
+    }
+    prepareStackPageForShow(stack, page);
 }
 
 void prepareStyledBackground(QWidget *widget)
@@ -399,6 +411,10 @@ void CombinationNavigationPage::setCurrentSection(Section section)
         prepareStackPageForShow(stack_, stack_->widget(index));
     }
     stack_->setCurrentIndex(index);
+    if (freezeUpdatesForSwitch)
+    {
+        settleStackPageForShow(stack_, stack_->widget(index));
+    }
     if (QPushButton *button = qobject_cast<QPushButton *>(section_group_->button(index)))
     {
         const QSignalBlocker blocker(button);

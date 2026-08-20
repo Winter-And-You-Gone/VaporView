@@ -97,6 +97,7 @@ private:
     QStringList getAvailablePorts() const;
     QString textFor(const QString& english, const QString& chinese) const;
     int scalePixels(int pixels) const;
+    bool shouldUseCompactEmbeddedLayout() const;
     void applyScaledUiMetrics();
     void updateMountpointComboWidth();
     void startGgaMonitor();

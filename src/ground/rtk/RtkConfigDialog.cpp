@@ -1193,6 +1193,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     setObjectName(QStringLiteral("rtkConfigDialog"));
     setSizeGripEnabled(false);
 
+    compact_layout_ = shouldUseCompactEmbeddedLayout();
     setupUi();
     if (!embedded_)
     {
@@ -1303,12 +1304,7 @@ void RtkConfigDialog::resizeEvent(QResizeEvent *event)
         return;
     }
 
-    int layoutWidth = width();
-    if (QWidget *parent = parentWidget())
-    {
-        layoutWidth = std::max(layoutWidth, parent->width());
-    }
-    const bool compactLayout = layoutWidth > 0 && layoutWidth < scalePixels(900);
+    const bool compactLayout = shouldUseCompactEmbeddedLayout();
     if (compactLayout == compact_layout_)
     {
         return;
@@ -2144,6 +2140,25 @@ void RtkConfigDialog::setCombinationNavigationTopInset(int pixels)
 int RtkConfigDialog::scalePixels(int pixels) const
 {
     return static_cast<int>(std::lround(pixels * font_scale_percent_ / 100.0));
+}
+
+bool RtkConfigDialog::shouldUseCompactEmbeddedLayout() const
+{
+    if (!embedded_)
+    {
+        return false;
+    }
+
+    int layoutWidth = width();
+    if (QWidget *parent = parentWidget())
+    {
+        layoutWidth = std::max(layoutWidth, parent->width());
+    }
+    if (layoutWidth <= 0)
+    {
+        return true;
+    }
+    return layoutWidth < scalePixels(900);
 }
 
 void RtkConfigDialog::applyScaledUiMetrics()

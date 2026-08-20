@@ -190,6 +190,8 @@ public:
     void reset()
     {
         observed_widths_.clear();
+        observed_paintable_widths_.clear();
+        observed_width_details_.clear();
     }
 
     bool observedWidthDifferentFrom(int expectedWidth) const
@@ -202,20 +204,57 @@ public:
             });
     }
 
+    bool observedPaintableWidthDifferentFrom(int expectedWidth) const
+    {
+        return std::any_of(
+            observed_paintable_widths_.cbegin(),
+            observed_paintable_widths_.cend(),
+            [expectedWidth](int width) {
+                return width != expectedWidth;
+            });
+    }
+
+    QString observedWidthDetailsSummary() const
+    {
+        return observed_width_details_.join(QLatin1Char(','));
+    }
+
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override
     {
         if (watched == target_ && event->type() == QEvent::Resize)
         {
-            observed_widths_.append(
-                static_cast<QResizeEvent *>(event)->size().width());
+            const int width = static_cast<QResizeEvent *>(event)->size().width();
+            observed_widths_.append(width);
+            const bool paintable = isEffectivelyPaintable();
+            if (paintable)
+            {
+                observed_paintable_widths_.append(width);
+            }
+            observed_width_details_.append(QStringLiteral("%1:p%2")
+                                               .arg(width)
+                                               .arg(paintable ? 1 : 0));
         }
         return QObject::eventFilter(watched, event);
     }
 
 private:
+    bool isEffectivelyPaintable() const
+    {
+        for (QWidget *widget = target_; widget; widget = widget->parentWidget())
+        {
+            if (!widget->isVisible() || !widget->updatesEnabled())
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     QWidget *target_;
     QVector<int> observed_widths_;
+    QVector<int> observed_paintable_widths_;
+    QStringList observed_width_details_;
 };
 
 QAction *findAboutAction(MainWindow *window)
@@ -1493,6 +1532,8 @@ void requireRtkSidebarPage(
     require(preGgaCard != nullptr && preLogCard != nullptr && preRtcmCard != nullptr &&
                 preGgaSourceCombo != nullptr,
             "RTK cards exist before sidebar click for resize sampling");
+    require(preGgaSourceCombo->width() <= 140,
+            "RTK GGA source combo starts compact before the differential page is first shown");
     ResizeWidthRecorder ggaResizeRecorder(preGgaCard);
     ResizeWidthRecorder rtcmResizeRecorder(preRtcmCard);
     ResizeWidthRecorder logResizeRecorder(preLogCard);
@@ -1715,10 +1756,24 @@ void requireRtkSidebarPage(
     processEventsFor(150);
     require(combinationStack->currentWidget() == preDialog && differentialButton->isChecked(),
             "combination navigation switches directly from status to differential positioning");
-    require(!ggaResizeRecorder.observedWidthDifferentFrom(preGgaCard->width()) &&
-                !rtcmResizeRecorder.observedWidthDifferentFrom(preRtcmCard->width()) &&
-                !logResizeRecorder.observedWidthDifferentFrom(preLogCard->width()) &&
-                !ggaSourceComboResizeRecorder.observedWidthDifferentFrom(preGgaSourceCombo->width()),
+    const bool statusToDifferentialWidthsStable =
+        !ggaResizeRecorder.observedPaintableWidthDifferentFrom(preGgaCard->width()) &&
+        !rtcmResizeRecorder.observedPaintableWidthDifferentFrom(preRtcmCard->width()) &&
+        !logResizeRecorder.observedPaintableWidthDifferentFrom(preLogCard->width()) &&
+        !ggaSourceComboResizeRecorder.observedPaintableWidthDifferentFrom(preGgaSourceCombo->width());
+    if (!statusToDifferentialWidthsStable)
+    {
+        std::cerr << "RTK status->differential widths: gga="
+                  << ggaResizeRecorder.observedWidthDetailsSummary().toStdString()
+                  << " final " << preGgaCard->width()
+                  << " rtcm=" << rtcmResizeRecorder.observedWidthDetailsSummary().toStdString()
+                  << " final " << preRtcmCard->width()
+                  << " log=" << logResizeRecorder.observedWidthDetailsSummary().toStdString()
+                  << " final " << preLogCard->width()
+                  << " combo=" << ggaSourceComboResizeRecorder.observedWidthDetailsSummary().toStdString()
+                  << " final " << preGgaSourceCombo->width() << '\n';
+    }
+    require(statusToDifferentialWidthsStable,
             "status to differential first show keeps RTK cards and GGA source combo widths stable");
     clickWidget(statusButton, 0);
     processEventsFor(50);
