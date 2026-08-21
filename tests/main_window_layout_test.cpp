@@ -8560,8 +8560,8 @@ int main(int argc, char **argv)
     const QList<QLabel*> tcpTitleBarLabels = tcpWaveTitleBar->findChildren<QLabel *>();
     for (QLabel *label : tcpTitleBarLabels)
     {
-        if (label->text() == QStringLiteral("TCP波形监视") ||
-            label->text() == QStringLiteral("TCP Wave Monitor"))
+        if (label->text() == QStringLiteral("波形监视") ||
+            label->text() == QStringLiteral("Wave Monitor"))
         {
             tcpWaveTitleLabel = label;
         }

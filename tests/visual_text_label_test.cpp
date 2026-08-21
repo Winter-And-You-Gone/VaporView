@@ -36,7 +36,7 @@ void testVisualCentering()
     font.setPointSize(16);
     font.setBold(true);
     const QFontMetrics metrics(font);
-    const QRect textBounds = metrics.tightBoundingRect(QStringLiteral("TCP波形监视"));
+    const QRect textBounds = metrics.tightBoundingRect(QStringLiteral("波形监视"));
     require(!textBounds.isEmpty(), "text bounds available");
 
     const QRect area(0, 0, 240, 36);
