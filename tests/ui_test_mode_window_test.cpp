@@ -1447,15 +1447,17 @@ int main(int argc, char **argv)
         deviceConfigPage->findChild<QPlainTextEdit *>(QStringLiteral("deviceRemoteSkyRawJsonEdit"));
     auto *deviceRemoteStatus =
         deviceConfigPage->findChild<QLabel *>(QStringLiteral("deviceRemoteSkyConfigStatus"));
-    auto *deviceRemoteRd105Slave =
-        deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyRd105SlaveSpin"));
+    auto *deviceRemoteWavePort =
+        deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyWavePortSpin"));
     auto *deviceEpsilonPort =
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
     require(deviceRemoteCard && deviceRemoteCard->isVisible() &&
                 deviceRemoteRead && deviceRemoteApply && deviceRemoteSave &&
                 deviceRemoteRaw && deviceRemoteRawJson && deviceRemoteStatus &&
-                deviceRemoteRd105Slave && deviceEpsilonPort,
+                deviceRemoteWavePort && deviceEpsilonPort,
             "remote sky configuration controls live on the unified device configuration page");
+    require(deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyRd105SlaveSpin")) == nullptr,
+            "Remote Sky RD105 address is configured from the temperature page, not Device Config");
     deviceRemoteRead->click();
     require(VaporViewTest::processEventsUntil(1500, [deviceEpsilonPort]() {
                 return deviceEpsilonPort->currentText() == QStringLiteral("UI-TEST-EPSILON");
@@ -1463,19 +1465,24 @@ int main(int argc, char **argv)
             "UI-test Remote Sky read loads a fixed config into the shared device rows");
     require(deviceRemoteStatus->property("status").toString() == QStringLiteral("success"),
             "UI-test Remote Sky read uses the synced/success status vocabulary");
-    deviceRemoteRd105Slave->setValue(23);
+    deviceRemoteRaw->click();
+    require(VaporViewTest::processEventsUntil(800, [deviceRemoteRawJson]() {
+                return deviceRemoteRawJson->isVisible() &&
+                    deviceRemoteRawJson->toPlainText().contains(QStringLiteral("\"wave_tcp\"")) &&
+                    deviceRemoteRawJson->toPlainText().contains(QStringLiteral("\"slave_address\": 1"));
+            }),
+            "unified device configuration exposes Remote Sky Raw JSON round-trip without a duplicate RD105 address editor");
+    deviceRemoteRaw->click();
+    require(VaporViewTest::processEventsUntil(800, [deviceRemoteRawJson]() {
+                return !deviceRemoteRawJson->isVisible();
+            }),
+            "Remote Sky raw JSON can return to visual mode");
+    deviceRemoteWavePort->setValue(deviceRemoteWavePort->value() + 1);
     processEvents();
     require(deviceRemoteApply->isEnabled(),
             "editing Remote Sky fields marks the unified page dirty and enables Apply in UI test mode");
     require(deviceRemoteStatus->property("status").toString() == QStringLiteral("dirty"),
             "UI-test Remote Sky edit uses the dirty status vocabulary");
-    deviceRemoteRaw->click();
-    require(VaporViewTest::processEventsUntil(800, [deviceRemoteRawJson]() {
-                return deviceRemoteRawJson->isVisible() &&
-                    deviceRemoteRawJson->toPlainText().contains(QStringLiteral("\"wave_tcp\"")) &&
-                    deviceRemoteRawJson->toPlainText().contains(QStringLiteral("\"slave_address\": 23"));
-            }),
-            "unified device configuration exposes Remote Sky Raw JSON round-trip");
     deviceRemoteApply->click();
     require(VaporViewTest::processEventsUntil(800, [deviceRemoteStatus]() {
                 const QString text = deviceRemoteStatus->text();

@@ -468,7 +468,6 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
                  config.hmp.source.isEmpty() ? QStringLiteral("hmp3") : config.hmp.source);
 
     const QList<QPair<QSpinBox *, int>> intSpins = {
-        {state_->device_config_.remote_sky_rd105_slave_spin, config.temperature_controller.slave_address},
         {state_->device_config_.remote_sky_wave_port_spin, config.wave_tcp.port},
         {state_->device_config_.remote_sky_wave_downsample_spin, config.wave_tcp.downsample_ratio}
     };
@@ -628,11 +627,6 @@ VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *erro
     {
         config.ai8_temperature_controller.slave_address =
             state_->ai8_temperature_controller_panel_->currentPageData().global.address;
-    }
-    if (state_->device_config_.remote_sky_rd105_slave_spin)
-    {
-        config.temperature_controller.slave_address =
-            state_->device_config_.remote_sky_rd105_slave_spin->value();
     }
     if (state_->device_config_.remote_sky_wave_enabled_check) config.wave_tcp.enabled = state_->device_config_.remote_sky_wave_enabled_check->isChecked();
     if (state_->device_config_.remote_sky_wave_host_edit) config.wave_tcp.host = state_->device_config_.remote_sky_wave_host_edit->text().trimmed();
@@ -841,7 +835,6 @@ void MainWindow::updateRemoteSkyConfigControlsState()
                             static_cast<QWidget *>(state_->device_config_.lidar_enabled_check),
                             static_cast<QWidget *>(state_->device_config_.temperature_enabled_check),
                             static_cast<QWidget *>(state_->device_config_.ai8_temperature_enabled_check),
-                            static_cast<QWidget *>(state_->device_config_.remote_sky_rd105_slave_spin),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_wave_enabled_check),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_wave_host_edit),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_wave_port_spin),

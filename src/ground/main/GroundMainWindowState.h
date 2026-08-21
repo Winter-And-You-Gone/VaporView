@@ -78,7 +78,6 @@ struct DeviceConfigPageWidgets
     QLabel *remote_sky_sync_title_lbl = nullptr;
     QLabel *remote_sky_advanced_title_lbl = nullptr;
     QLabel *remote_sky_config_status_lbl = nullptr;
-    QLabel *remote_sky_rd105_slave_lbl = nullptr;
     QLabel *remote_sky_wave_enabled_lbl = nullptr;
     QLabel *remote_sky_wave_host_lbl = nullptr;
     QLabel *remote_sky_wave_port_lbl = nullptr;
@@ -124,7 +123,6 @@ struct DeviceConfigPageWidgets
     QCheckBox *lidar_enabled_check = nullptr;
     QCheckBox *temperature_enabled_check = nullptr;
     QCheckBox *ai8_temperature_enabled_check = nullptr;
-    QSpinBox *remote_sky_rd105_slave_spin = nullptr;
     QCheckBox *remote_sky_wave_enabled_check = nullptr;
     QLineEdit *remote_sky_wave_host_edit = nullptr;
     QSpinBox *remote_sky_wave_port_spin = nullptr;

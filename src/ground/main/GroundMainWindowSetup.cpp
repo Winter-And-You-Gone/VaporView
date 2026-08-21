@@ -3005,26 +3005,14 @@ void MainWindow::setupDeviceConfigPage()
         createSectionLabel(QStringLiteral("services"));
     remoteGrid->addWidget(state_->device_config_.remote_sky_services_title_lbl, 0, 0, 1, 6);
 
-    state_->device_config_.remote_sky_rd105_slave_lbl = createFieldLabel();
-    state_->device_config_.remote_sky_rd105_slave_spin = new QSpinBox(remoteBody);
-    state_->device_config_.remote_sky_rd105_slave_spin->setObjectName(QStringLiteral("deviceRemoteSkyRd105SlaveSpin"));
-    state_->device_config_.remote_sky_rd105_slave_spin->setRange(1, 247);
-    state_->device_config_.remote_sky_rd105_slave_spin->setFixedHeight(kMainPageInputHeight);
-    state_->device_config_.remote_sky_rd105_slave_spin->setFixedWidth(80);
-    addPair(state_->device_config_.remote_sky_rd105_slave_lbl,
-            state_->device_config_.remote_sky_rd105_slave_spin,
-            1,
-            0,
-            1);
-
     state_->device_config_.remote_sky_wave_enabled_lbl = createFieldLabel();
     state_->device_config_.remote_sky_wave_enabled_check = new QCheckBox(remoteBody);
     state_->device_config_.remote_sky_wave_enabled_check->setObjectName(QStringLiteral("deviceRemoteSkyWaveEnabledCheck"));
     addPair(state_->device_config_.remote_sky_wave_enabled_lbl,
             state_->device_config_.remote_sky_wave_enabled_check,
             1,
-            2,
-            3);
+            0,
+            1);
 
     state_->device_config_.remote_sky_wave_host_lbl = createFieldLabel();
     state_->device_config_.remote_sky_wave_host_edit = new QLineEdit(remoteBody);
@@ -3035,8 +3023,8 @@ void MainWindow::setupDeviceConfigPage()
     addPair(state_->device_config_.remote_sky_wave_host_lbl,
             state_->device_config_.remote_sky_wave_host_edit,
             1,
-            4,
-            5);
+            2,
+            3);
 
     state_->device_config_.remote_sky_wave_port_lbl = createFieldLabel();
     state_->device_config_.remote_sky_wave_port_spin = new QSpinBox(remoteBody);
@@ -3046,9 +3034,9 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.remote_sky_wave_port_spin->setFixedWidth(92);
     addPair(state_->device_config_.remote_sky_wave_port_lbl,
             state_->device_config_.remote_sky_wave_port_spin,
-            2,
-            0,
-            1);
+            1,
+            4,
+            5);
 
     state_->device_config_.remote_sky_wave_downsample_lbl = createFieldLabel();
     state_->device_config_.remote_sky_wave_downsample_spin = new QSpinBox(remoteBody);
@@ -3163,8 +3151,7 @@ void MainWindow::setupDeviceConfigPage()
     remoteConfigLayout->addWidget(remoteBody);
 
     const auto markRemoteDirty = [this]() { markRemoteSkyConfigDirty(); };
-    for (QSpinBox *spin : {state_->device_config_.remote_sky_rd105_slave_spin,
-                           state_->device_config_.remote_sky_wave_port_spin,
+    for (QSpinBox *spin : {state_->device_config_.remote_sky_wave_port_spin,
                            state_->device_config_.remote_sky_wave_downsample_spin})
     {
         connect(spin, QOverload<int>::of(&QSpinBox::valueChanged), this, markRemoteDirty);
@@ -3626,7 +3613,6 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.remote_sky_services_title_lbl) state_->device_config_.remote_sky_services_title_lbl->setText(state_->is_english_ ? "Sky services" : "天空端服务");
     if (state_->device_config_.remote_sky_sync_title_lbl) state_->device_config_.remote_sky_sync_title_lbl->setText(state_->is_english_ ? "Config sync" : "配置同步");
     if (state_->device_config_.remote_sky_advanced_title_lbl) state_->device_config_.remote_sky_advanced_title_lbl->setText(state_->is_english_ ? "Advanced / diagnostics" : "高级 / 诊断");
-    if (state_->device_config_.remote_sky_rd105_slave_lbl) state_->device_config_.remote_sky_rd105_slave_lbl->setText(state_->is_english_ ? "RD105 Addr:" : "RD105 站号:");
     if (state_->device_config_.remote_sky_wave_enabled_lbl) state_->device_config_.remote_sky_wave_enabled_lbl->setText(state_->is_english_ ? "Wave TCP:" : "Wave TCP:");
     if (state_->device_config_.remote_sky_wave_host_lbl) state_->device_config_.remote_sky_wave_host_lbl->setText(state_->is_english_ ? "Sky Wave Host:" : "天空端波形主机:");
     if (state_->device_config_.remote_sky_wave_port_lbl) state_->device_config_.remote_sky_wave_port_lbl->setText(state_->is_english_ ? "Sky Wave Port:" : "天空端波形端口:");

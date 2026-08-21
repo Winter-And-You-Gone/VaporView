@@ -2409,6 +2409,18 @@ void MainWindow::onRd105SessionOperationFinished(
                 state_->current_temperature_controller_);
         }
     }
+    else if (result.success() &&
+             result.command == VaporView::CommandId::SetTemperatureDeviceAddress &&
+             state_->remote_sky_config_loaded_)
+    {
+        state_->remote_sky_config_.temperature_controller.slave_address =
+            static_cast<int>(result.payload.device_address);
+        if (!state_->remote_sky_config_dirty_)
+        {
+            state_->remote_sky_baseline_config_.temperature_controller.slave_address =
+                state_->remote_sky_config_.temperature_controller.slave_address;
+        }
+    }
 
     QVariantMap fields = temperatureCommandLogFields(result.command, result.payload, channel);
     fields.insert(QStringLiteral("device"), QStringLiteral("RD105"));

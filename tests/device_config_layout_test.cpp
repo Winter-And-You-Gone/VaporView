@@ -728,9 +728,10 @@ int main(int argc, char **argv)
     QLabel *syncLabel = findSubsectionLabel(remoteCard, QStringLiteral("sync"));
     QLabel *advancedLabel = findSubsectionLabel(remoteCard, QStringLiteral("advanced"));
     require(remoteCard && remoteStatus && remoteApplyButton && remoteSaveButton &&
-                rawModeButton && rawJsonEdit && rd105SlaveSpin &&
-                servicesLabel && syncLabel && advancedLabel,
+                rawModeButton && rawJsonEdit && servicesLabel && syncLabel && advancedLabel,
             "remote sky service, sync, and diagnostics controls exist on the unified page");
+    require(rd105SlaveSpin == nullptr,
+            "remote RD105 address setting is removed from Device Config; use the RD105 temperature page instead");
     QLabel *remoteTitleIcon = nullptr;
     for (QLabel *iconLabel : remoteCard->findChildren<QLabel *>(QStringLiteral("sectionTitleIcon")))
     {
@@ -939,8 +940,8 @@ int main(int argc, char **argv)
     require(epsilonPortCombo->findText(QStringLiteral("手动添加")) >= 0 ||
                 epsilonPortCombo->findText(QStringLiteral("Add Port")) >= 0,
             "remote sky port combo keeps manual entry available");
-    require(rd105SlaveSpin->value() == 9,
-            "remote-only RD105 slave address is loaded into the unified page");
+    require(deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyRd105SlaveSpin")) == nullptr,
+            "remote-only RD105 slave address is not duplicated on the unified page");
     require(pressureSourceCombo->currentData().toString() == QStringLiteral("ptb210") &&
                 humiditySourceCombo->currentData().toString() == QStringLiteral("hmp3"),
             "remote SkyConfig restores pressure and humidity source selections");
@@ -982,7 +983,6 @@ int main(int argc, char **argv)
     QApplication::sendEvent(epsilonPortCombo->lineEdit(), &acceptManualPort);
     VaporViewTest::processEventsFor(80);
     epsilonBaudCombo->setCurrentText(QStringLiteral("115200"));
-    rd105SlaveSpin->setValue(17);
     selectComboData(pressureSourceCombo, QStringLiteral("bmp390"),
                     "remote pressure source can be edited to BMP390");
     selectComboData(humiditySourceCombo, QStringLiteral("sht45"),
@@ -1005,8 +1005,8 @@ int main(int argc, char **argv)
             "remote edited baud is serialized into SetSkyConfig JSON");
     require(!uiJson.value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
             "remote EPSILON SkyConfig omits the legacy single frequency while packet rates are edited in Combination Navigation");
-    require(uiJson.value(QStringLiteral("temperature_controller")).toObject().value(QStringLiteral("slave_address")).toInt() == 17,
-            "remote-only RD105 field is serialized into SkyConfig JSON");
+    require(uiJson.value(QStringLiteral("temperature_controller")).toObject().value(QStringLiteral("slave_address")).toInt() == 9,
+            "Device Config preserves the loaded RD105 slave address instead of editing it");
     require(uiJson.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("source")).toString() ==
                 QStringLiteral("bmp390"),
             "remote edited pressure source is serialized into SkyConfig JSON");
