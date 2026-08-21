@@ -510,12 +510,12 @@ int main(int argc, char **argv)
     }
 
     const QStringList formattedDeviceLabels{
-        QStringLiteral("EPSILON2 组合导航"),
+        QStringLiteral("EPSILON2-D4G 组合导航"),
         QStringLiteral("PTB210 气压计"),
         QStringLiteral("HMP3 温湿度计"),
         QStringLiteral("TFA1500-L 激光测距"),
         QStringLiteral("RD105 温控器"),
-        QStringLiteral("AI-8288D92J0G71G71S2-24VDC 八路温控器"),
+        QStringLiteral("AI-8288D92J0 八路温控器"),
     };
     for (const QString& labelText : formattedDeviceLabels)
     {
@@ -558,7 +558,7 @@ int main(int argc, char **argv)
         serialCard->findChild<QPushButton *>(QStringLiteral("deviceEpsilonPacketRatesButton"));
     requireHeaderAboveWidget(serialCard,
                              findExactLabel(serialCard, QStringLiteral("设备")),
-                             findExactLabel(serialCard, QStringLiteral("EPSILON2 组合导航")),
+                             findExactLabel(serialCard, QStringLiteral("EPSILON2-D4G 组合导航")),
                              "device column header sits above the device names");
     requireHeaderAboveWidget(serialCard,
                              findExactLabel(serialCard, QStringLiteral("串口")),
