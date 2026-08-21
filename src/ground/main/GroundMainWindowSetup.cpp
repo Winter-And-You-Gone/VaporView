@@ -2722,6 +2722,7 @@ void MainWindow::setupDeviceConfigPage()
         {
             state_->rtk_config_nav_btn_->setChecked(true);
         }
+        updateSidebarNavIcons();
         updateCustomTitleBarTexts();
     });
     formLayout->addWidget(state_->device_config_.epsilon_packet_rates_btn,

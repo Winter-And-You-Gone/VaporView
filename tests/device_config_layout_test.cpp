@@ -13,6 +13,7 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHostAddress>
+#include <QIcon>
 #include <QJsonDocument>
 #include <QLabel>
 #include <QLayout>
@@ -74,7 +75,7 @@ void activateLayouts(QWidget *widget)
     }
 }
 
-QPushButton *findDeviceConfigNav(MainWindow& window)
+QPushButton *findSidebarNav(MainWindow& window, const QStringList& accessibleNames)
 {
     for (QPushButton *button : window.findChildren<QPushButton *>())
     {
@@ -82,13 +83,28 @@ QPushButton *findDeviceConfigNav(MainWindow& window)
         {
             continue;
         }
-        if (button->accessibleName() == QStringLiteral("设备配置") ||
-            button->accessibleName() == QStringLiteral("Device"))
+        if (accessibleNames.contains(button->accessibleName()))
         {
             return button;
         }
     }
     return nullptr;
+}
+
+QPushButton *findDeviceConfigNav(MainWindow& window)
+{
+    return findSidebarNav(window, {
+        QStringLiteral("设备配置"),
+        QStringLiteral("Device"),
+    });
+}
+
+QPushButton *findCombinationNavigationNav(MainWindow& window)
+{
+    return findSidebarNav(window, {
+        QStringLiteral("组合导航"),
+        QStringLiteral("Combination Navigation"),
+    });
 }
 
 QFrame *findLinkStatusCard(QWidget *deviceConfigPage)
@@ -365,6 +381,9 @@ int main(int argc, char **argv)
 
     QPushButton *deviceConfigNav = findDeviceConfigNav(window);
     require(deviceConfigNav != nullptr, "device configuration nav button exists");
+    QPushButton *combinationNavigationNav = findCombinationNavigationNav(window);
+    require(combinationNavigationNav != nullptr,
+            "combination navigation nav button exists");
     deviceConfigNav->click();
     VaporViewTest::processEventsFor(180);
     activateLayouts(&window);
@@ -682,12 +701,22 @@ int main(int argc, char **argv)
         window.findChild<VaporView::Ground::Navigation::CombinationNavigationPage *>();
     require(mainPageStackForEpsilonButton && combinationPageForEpsilonButton,
             "combination navigation page is available for the EPSILON packet-rate jump");
+    require(deviceConfigNav->isChecked() && !deviceConfigNav->icon().isNull(),
+            "device configuration sidebar button starts selected with an icon");
+    const qint64 selectedDeviceConfigIconKey =
+        deviceConfigNav->icon().pixmap(deviceConfigNav->iconSize()).cacheKey();
     epsilonPacketRatesButton->click();
     VaporViewTest::processEventsFor(120);
     require(mainPageStackForEpsilonButton->currentWidget() == combinationPageForEpsilonButton &&
                 combinationPageForEpsilonButton->currentSection() ==
                     VaporView::Ground::Navigation::CombinationNavigationPage::Section::Epsilon,
             "EPSILON packet-rate button jumps to Combination Navigation EPSILON settings");
+    require(!deviceConfigNav->isChecked() &&
+                combinationNavigationNav->isChecked() &&
+                !deviceConfigNav->icon().isNull() &&
+                deviceConfigNav->icon().pixmap(deviceConfigNav->iconSize()).cacheKey() !=
+                    selectedDeviceConfigIconKey,
+            "EPSILON packet-rate jump refreshes the previous device-config sidebar icon");
     mainPageStackForEpsilonButton->setCurrentWidget(deviceConfigPage);
     VaporViewTest::processEventsFor(80);
     auto *skyTelemetryTransportCombo =
