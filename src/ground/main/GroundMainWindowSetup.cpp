@@ -3571,10 +3571,10 @@ void MainWindow::updateDeviceConfigTexts()
             ? QStringLiteral("HMP3 Temp/Humidity")
             : QStringLiteral("HMP3 温湿度计"));
     }
-    if (state_->device_config_.epsilon_lbl) state_->device_config_.epsilon_lbl->setText(state_->is_english_ ? QStringLiteral("EPSILON Nav") : QStringLiteral("EPSILON 组合导航"));
+    if (state_->device_config_.epsilon_lbl) state_->device_config_.epsilon_lbl->setText(state_->is_english_ ? QStringLiteral("EPSILON2 Integrated Navigation") : QStringLiteral("EPSILON2 组合导航"));
     if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(state_->is_english_ ? QStringLiteral("TFA1500-L LiDAR") : QStringLiteral("TFA1500-L 激光测距"));
     if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(state_->is_english_ ? QStringLiteral("RD105 Thermal") : QStringLiteral("RD105 温控器"));
-    if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(state_->is_english_ ? QStringLiteral("AI-8288 8-Channel Thermal") : QStringLiteral("AI-8288 八路温控器"));
+    if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(state_->is_english_ ? QStringLiteral("AI-8288D92J0G71G71S2-24VDC 8-Channel Thermal") : QStringLiteral("AI-8288D92J0G71G71S2-24VDC 八路温控器"));
     if (state_->device_config_.epsilon_rate_lbl) state_->device_config_.epsilon_rate_lbl->setText(QString());
     if (state_->device_config_.epsilon_packet_rates_btn)
     {
