@@ -737,6 +737,12 @@ int main(int argc, char **argv)
     QWidget *skyTelemetryRow = skyTelemetryTransportCombo ? skyTelemetryTransportCombo->parentWidget() : nullptr;
     require(skyTelemetryRow && !skyTelemetryRow->isVisible(),
             "local mode hides sky-ground link editing controls from the unified device table");
+    QWidget *serialFormRow =
+        epsilonPortCombo && epsilonPortCombo->parentWidget() ? epsilonPortCombo->parentWidget()->parentWidget() : nullptr;
+    QLayout *serialCardLayout = serialCard ? serialCard->layout() : nullptr;
+    require(serialFormRow && serialCardLayout &&
+                serialCardLayout->indexOf(skyTelemetryRow) > serialCardLayout->indexOf(serialFormRow),
+            "sky-ground link fields are placed below the device serial configuration rows");
     QLabel *servicesLabel = findSubsectionLabel(remoteCard, QStringLiteral("services"));
     QLabel *syncLabel = findSubsectionLabel(remoteCard, QStringLiteral("sync"));
     QLabel *advancedLabel = findSubsectionLabel(remoteCard, QStringLiteral("advanced"));

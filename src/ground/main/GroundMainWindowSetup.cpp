@@ -2518,7 +2518,6 @@ void MainWindow::setupDeviceConfigPage()
     skyTelemetryLayout->addWidget(state_->device_config_.sky_telemetry_baud_lbl, 0, Qt::AlignVCenter | Qt::AlignLeft);
     skyTelemetryLayout->addWidget(state_->device_config_.sky_telemetry_baud_combo, 0, Qt::AlignVCenter);
     skyTelemetryLayout->addStretch(1);
-    serialLayout->addWidget(skyTelemetryRow);
 
     auto *formRowWidget = new QWidget(serialCard);
     auto *formRowLayout = new QVBoxLayout(formRowWidget);
@@ -2906,6 +2905,7 @@ void MainWindow::setupDeviceConfigPage()
 
     formRowLayout->addWidget(formWidget, 0, Qt::AlignTop | Qt::AlignLeft);
     serialLayout->addWidget(formRowWidget, 0, Qt::AlignTop);
+    serialLayout->addWidget(skyTelemetryRow);
 
     state_->device_config_.data_telemetry_summary_card = new QFrame(content);
     state_->device_config_.data_telemetry_summary_card->setObjectName(QStringLiteral("epsilonSectionCard"));
