@@ -1446,6 +1446,50 @@ void MainWindow::setWaveformRecordingRateHz(int rate, bool should_log)
     }
 }
 
+void MainWindow::loadLocalDeviceEnabledState()
+{
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
+
+    auto loadCheck = [&settings](QCheckBox *check, const QString& key) {
+        if (!check)
+        {
+            return;
+        }
+        const QSignalBlocker blocker(check);
+        check->setChecked(settings.value(key, true).toBool());
+    };
+    loadCheck(state_->device_config_.epsilon_enabled_check, QStringLiteral("local_enabled/epsilon"));
+    loadCheck(state_->device_config_.ptb_enabled_check, QStringLiteral("local_enabled/ptb"));
+    loadCheck(state_->device_config_.hmp_enabled_check, QStringLiteral("local_enabled/hmp"));
+    loadCheck(state_->device_config_.lidar_enabled_check, QStringLiteral("local_enabled/lidar"));
+    loadCheck(state_->device_config_.temperature_enabled_check, QStringLiteral("local_enabled/temperature"));
+    loadCheck(state_->device_config_.ai8_temperature_enabled_check, QStringLiteral("local_enabled/ai8_temperature"));
+}
+
+void MainWindow::saveLocalDeviceEnabledState() const
+{
+    if (state_->restoring_persistent_settings_)
+    {
+        return;
+    }
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
+
+    auto saveCheck = [&settings](const QString& key, QCheckBox *check) {
+        if (check)
+        {
+            VaporView::setPersistentSetting(settings, key, check->isChecked());
+        }
+    };
+    saveCheck(QStringLiteral("local_enabled/epsilon"), state_->device_config_.epsilon_enabled_check);
+    saveCheck(QStringLiteral("local_enabled/ptb"), state_->device_config_.ptb_enabled_check);
+    saveCheck(QStringLiteral("local_enabled/hmp"), state_->device_config_.hmp_enabled_check);
+    saveCheck(QStringLiteral("local_enabled/lidar"), state_->device_config_.lidar_enabled_check);
+    saveCheck(QStringLiteral("local_enabled/temperature"), state_->device_config_.temperature_enabled_check);
+    saveCheck(QStringLiteral("local_enabled/ai8_temperature"), state_->device_config_.ai8_temperature_enabled_check);
+}
+
 void MainWindow::loadRememberedInputState()
 {
     QSettings settings = VaporView::applicationConfigSettings();
@@ -1503,6 +1547,7 @@ void MainWindow::loadRememberedInputState()
     loadCombo(state_->hmp_rate_combo_, QStringLiteral("rate/hmp"));
     loadCombo(state_->lidar_rate_combo_, QStringLiteral("rate/lidar"));
     loadCombo(state_->temperature_rate_combo_, QStringLiteral("rate/temperature"));
+    loadLocalDeviceEnabledState();
     QString pressureSource = QStringLiteral("ptb210");
     if (state_->device_config_.ptb_source_combo)
     {
@@ -1672,6 +1717,7 @@ void MainWindow::saveRememberedInputState() const
         saveCombo(QStringLiteral("rate/hmp"), state_->hmp_rate_combo_);
         saveCombo(QStringLiteral("rate/lidar"), state_->lidar_rate_combo_);
         saveCombo(QStringLiteral("rate/temperature"), state_->temperature_rate_combo_);
+        saveLocalDeviceEnabledState();
         if (state_->device_config_.ptb_source_combo)
         {
             VaporView::setPersistentSetting(settings, QStringLiteral("sensor/pressure_source"), state_->device_config_.ptb_source_combo->currentData());

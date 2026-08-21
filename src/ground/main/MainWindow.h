@@ -310,6 +310,9 @@ private:
     void stopRecording(bool announce = true);
     void updateConnectionStatus(bool connected);
     bool homeDeviceConnected(VaporView::SkyDeviceId device) const;
+    bool localDeviceEnabled(VaporView::SkyDeviceId device) const;
+    void loadLocalDeviceEnabledState();
+    void saveLocalDeviceEnabledState() const;
     bool homeDevicePortSelected(VaporView::SkyDeviceId device) const;
     VaporView::DeviceState homeDeviceActionState(VaporView::SkyDeviceId device) const;
     void triggerHomeDeviceAction(VaporView::SkyDeviceId device);

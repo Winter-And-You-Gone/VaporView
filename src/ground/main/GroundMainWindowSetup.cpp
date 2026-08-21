@@ -2827,7 +2827,7 @@ void MainWindow::setupDeviceConfigPage()
         state_->device_config_.temperature_baud_combo->setObjectName(QStringLiteral("deviceTemperatureBaudCombo"));
     }
 
-    auto addRemoteEnabledCheck = [this, formLayout, formWidget](
+    auto addDeviceEnabledCheck = [this, formLayout, formWidget](
             QCheckBox *&checkBox,
             int row,
             const QString& objectName) {
@@ -2835,23 +2835,31 @@ void MainWindow::setupDeviceConfigPage()
         checkBox->setObjectName(objectName);
         checkBox->setFocusPolicy(Qt::TabFocus);
         checkBox->setText(QString());
-        checkBox->setVisible(false);
+        checkBox->setChecked(true);
         formLayout->addWidget(checkBox, row + 1, 5, Qt::AlignVCenter | Qt::AlignHCenter);
         connect(checkBox, &QCheckBox::toggled, this, [this](bool) {
-            markRemoteSkyConfigDirty();
+            if (isRemoteSkyMode())
+            {
+                markRemoteSkyConfigDirty();
+                return;
+            }
+            saveRememberedInputState();
+            updateHomeDeviceStatusCapsules();
+            updateTemperatureTitleButtonsState();
+            updateDeviceConfigState();
         });
     };
-    addRemoteEnabledCheck(state_->device_config_.epsilon_enabled_check, 0,
+    addDeviceEnabledCheck(state_->device_config_.epsilon_enabled_check, 0,
                           QStringLiteral("deviceRemoteEpsilonEnabledCheck"));
-    addRemoteEnabledCheck(state_->device_config_.ptb_enabled_check, 1,
+    addDeviceEnabledCheck(state_->device_config_.ptb_enabled_check, 1,
                           QStringLiteral("deviceRemotePressureEnabledCheck"));
-    addRemoteEnabledCheck(state_->device_config_.hmp_enabled_check, 2,
+    addDeviceEnabledCheck(state_->device_config_.hmp_enabled_check, 2,
                           QStringLiteral("deviceRemoteHumidityEnabledCheck"));
-    addRemoteEnabledCheck(state_->device_config_.lidar_enabled_check, 3,
+    addDeviceEnabledCheck(state_->device_config_.lidar_enabled_check, 3,
                           QStringLiteral("deviceRemoteLidarEnabledCheck"));
-    addRemoteEnabledCheck(state_->device_config_.temperature_enabled_check, 4,
+    addDeviceEnabledCheck(state_->device_config_.temperature_enabled_check, 4,
                           QStringLiteral("deviceRemoteTemperatureEnabledCheck"));
-    addRemoteEnabledCheck(state_->device_config_.ai8_temperature_enabled_check, 5,
+    addDeviceEnabledCheck(state_->device_config_.ai8_temperature_enabled_check, 5,
                           QStringLiteral("deviceRemoteAi8TemperatureEnabledCheck"));
 
     auto addDeviceRemoteButton = [this, formLayout, formWidget](
@@ -3575,6 +3583,29 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(state_->is_english_ ? QStringLiteral("TFA1500-L LiDAR") : QStringLiteral("TFA1500-L 激光测距"));
     if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(state_->is_english_ ? QStringLiteral("RD105 Thermal") : QStringLiteral("RD105 温控器"));
     if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(state_->is_english_ ? QStringLiteral("AI-8288D92J0G71G71S2-24VDC 8-Channel Thermal") : QStringLiteral("AI-8288D92J0G71G71S2-24VDC 八路温控器"));
+    auto updateEnabledCheckPresentation = [this](QCheckBox *check, const QString& deviceName) {
+        if (!check)
+        {
+            return;
+        }
+        const QString name = deviceName;
+        check->setAccessibleName(state_->is_english_
+            ? QStringLiteral("Enable %1").arg(name)
+            : QStringLiteral("启用%1").arg(name));
+        check->setToolTip(isRemoteSkyMode()
+            ? (state_->is_english_
+                ? QStringLiteral("Include %1 when Remote Sky connects its devices.").arg(name)
+                : QStringLiteral("控制天空端连接设备时是否启用%1。").arg(name))
+            : (state_->is_english_
+                ? QStringLiteral("Skip %1 during local connection while keeping its serial settings.").arg(name)
+                : QStringLiteral("本地连接时跳过%1，但保留串口配置。").arg(name)));
+    };
+    updateEnabledCheckPresentation(state_->device_config_.epsilon_enabled_check, QStringLiteral("EPSILON"));
+    updateEnabledCheckPresentation(state_->device_config_.ptb_enabled_check, state_->is_english_ ? QStringLiteral("Pressure") : QStringLiteral("气压"));
+    updateEnabledCheckPresentation(state_->device_config_.hmp_enabled_check, state_->is_english_ ? QStringLiteral("Humidity") : QStringLiteral("温湿度"));
+    updateEnabledCheckPresentation(state_->device_config_.lidar_enabled_check, QStringLiteral("TFA1500-L"));
+    updateEnabledCheckPresentation(state_->device_config_.temperature_enabled_check, QStringLiteral("RD105"));
+    updateEnabledCheckPresentation(state_->device_config_.ai8_temperature_enabled_check, QStringLiteral("AI-8288"));
     if (state_->device_config_.epsilon_rate_lbl) state_->device_config_.epsilon_rate_lbl->setText(QString());
     if (state_->device_config_.epsilon_packet_rates_btn)
     {
@@ -3735,7 +3766,7 @@ void MainWindow::updateDeviceConfigState()
         state_->device_config_.epsilon_packet_rates_btn->setVisible(true);
         state_->device_config_.epsilon_packet_rates_btn->setEnabled(epsilonConfigEnabled);
     }
-    if (state_->device_config_.enabled_header_lbl) state_->device_config_.enabled_header_lbl->setVisible(remote);
+    if (state_->device_config_.enabled_header_lbl) state_->device_config_.enabled_header_lbl->setVisible(true);
     if (state_->device_config_.source_header_lbl) state_->device_config_.source_header_lbl->setVisible(true);
     if (state_->device_config_.ptb_source_combo) state_->device_config_.ptb_source_combo->setVisible(true);
     if (state_->device_config_.hmp_source_combo) state_->device_config_.hmp_source_combo->setVisible(true);
@@ -3748,7 +3779,8 @@ void MainWindow::updateDeviceConfigState()
     {
         if (check)
         {
-            check->setVisible(remote);
+            check->setVisible(true);
+            check->setEnabled(remote ? remoteInputsEnabled : localInputsEnabled);
         }
     }
     const QList<QWidget *> ai8Widgets = {

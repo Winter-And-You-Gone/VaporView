@@ -139,6 +139,38 @@ bool MainWindow::homeDeviceConnected(VaporView::SkyDeviceId device) const
     return false;
 }
 
+bool MainWindow::localDeviceEnabled(VaporView::SkyDeviceId device) const
+{
+    if (isUiTestMode() || isRemoteSkyMode() || device == VaporView::SkyDeviceId::WaveTcp)
+    {
+        return true;
+    }
+
+    auto checkedOrDefault = [](const QCheckBox *check) {
+        return !check || check->isChecked();
+    };
+
+    switch (device)
+    {
+    case VaporView::SkyDeviceId::Epsilon:
+        return checkedOrDefault(state_->device_config_.epsilon_enabled_check);
+    case VaporView::SkyDeviceId::Ptb:
+        return checkedOrDefault(state_->device_config_.ptb_enabled_check);
+    case VaporView::SkyDeviceId::Hmp:
+        return checkedOrDefault(state_->device_config_.hmp_enabled_check);
+    case VaporView::SkyDeviceId::Lidar:
+        return checkedOrDefault(state_->device_config_.lidar_enabled_check);
+    case VaporView::SkyDeviceId::TemperatureController:
+        return checkedOrDefault(state_->device_config_.temperature_enabled_check);
+    case VaporView::SkyDeviceId::Ai8TemperatureController:
+        return checkedOrDefault(state_->device_config_.ai8_temperature_enabled_check);
+    case VaporView::SkyDeviceId::All:
+    case VaporView::SkyDeviceId::WaveTcp:
+        return true;
+    }
+    return true;
+}
+
 bool MainWindow::homeDevicePortSelected(VaporView::SkyDeviceId device) const
 {
     if (device == VaporView::SkyDeviceId::WaveTcp)
@@ -214,6 +246,10 @@ VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId 
     if (homeDeviceConnected(device))
     {
         return VaporView::DeviceState::Connected;
+    }
+    if (!localDeviceEnabled(device))
+    {
+        return VaporView::DeviceState::Disabled;
     }
     if (!homeDevicePortSelected(device))
     {
@@ -325,7 +361,9 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
                                                      VaporView::SkyDeviceId::TemperatureController,
                                                      VaporView::SkyDeviceId::Ai8TemperatureController})
             {
-                if (homeDevicePortSelected(candidate) && !homeDeviceConnected(candidate))
+                if (localDeviceEnabled(candidate) &&
+                    homeDevicePortSelected(candidate) &&
+                    !homeDeviceConnected(candidate))
                 {
                     startHomeDeviceActionSpinner(candidate);
                 }
@@ -1345,7 +1383,15 @@ void MainWindow::onConnectClicked()
     settings.beginGroup(QStringLiteral("MainWindow"));
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
         effectiveEpsilonPacketRates(settings);
-    if (!epsilonPort.isEmpty() &&
+    const bool epsilonEnabled = localDeviceEnabled(VaporView::SkyDeviceId::Epsilon);
+    const bool ptbEnabled = localDeviceEnabled(VaporView::SkyDeviceId::Ptb);
+    const bool hmpEnabled = localDeviceEnabled(VaporView::SkyDeviceId::Hmp);
+    const bool lidarEnabled = localDeviceEnabled(VaporView::SkyDeviceId::Lidar);
+    const bool temperatureEnabled = localDeviceEnabled(VaporView::SkyDeviceId::TemperatureController);
+    const bool ai8TemperatureEnabled = localDeviceEnabled(VaporView::SkyDeviceId::Ai8TemperatureController);
+
+    if (epsilonEnabled &&
+        !epsilonPort.isEmpty() &&
         epsilonPort != selectText &&
         !validateEpsilonPacketBandwidth(epsilonDesiredPacketRates, epsilonBaudText, true))
     {
@@ -1357,6 +1403,7 @@ void MainWindow::onConnectClicked()
     const QString epsilonDesiredPacketSignature = epsilonPacketRatesSignature(epsilonDesiredPacketRates);
     const QString epsilonDesiredPacketSummary = epsilonPacketRatesSummary(epsilonDesiredPacketRates);
     const bool epsilonConfigLikelyMatches =
+        epsilonEnabled &&
         !epsilonPort.isEmpty() &&
         epsilonPort != selectText &&
         settings.value("epsilon_last_config_apply_version").toInt() ==
@@ -1375,22 +1422,35 @@ void MainWindow::onConnectClicked()
     VaporView::Ground::Devices::LocalConnectionRequest request;
     request.english = english;
     request.selectText = selectText;
-    request.epsilon = {epsilonPort, epsilonBaudText, epsilonCallbackRate, false};
-    request.ptb = {ptbPort, ptbBaudText, ptbRate, skipPtbDeviceRate};
-    request.hmp = {hmpPort, hmpBaudText, hmpRate, skipHmpDeviceRate};
-    request.lidar = {lidarPort, lidarBaudText, lidarRate, skipLidarDeviceRate};
-    request.temperatureController = {
+    auto localSettings = [](bool enabled,
+                            const QString& port,
+                            const QString& baud,
+                            int sampleRate,
+                            bool skipDeviceRate) {
+        VaporView::Ground::Devices::LocalSerialDeviceSettings settings;
+        settings.enabled = enabled;
+        settings.port = port;
+        settings.baudText = baud;
+        settings.sampleRateHz = sampleRate;
+        settings.skipDeviceRate = skipDeviceRate;
+        return settings;
+    };
+    request.epsilon = localSettings(epsilonEnabled, epsilonPort, epsilonBaudText, epsilonCallbackRate, false);
+    request.ptb = localSettings(ptbEnabled, ptbPort, ptbBaudText, ptbRate, skipPtbDeviceRate);
+    request.hmp = localSettings(hmpEnabled, hmpPort, hmpBaudText, hmpRate, skipHmpDeviceRate);
+    request.lidar = localSettings(lidarEnabled, lidarPort, lidarBaudText, lidarRate, skipLidarDeviceRate);
+    request.temperatureController = localSettings(
+        temperatureEnabled,
         temperaturePort,
         temperatureBaudText,
         temperatureRate,
-        skipTemperatureDeviceRate
-    };
-    request.ai8TemperatureController = {
+        skipTemperatureDeviceRate);
+    request.ai8TemperatureController = localSettings(
+        ai8TemperatureEnabled,
         ai8TemperaturePort,
         ai8TemperatureBaudText,
         ai8TemperatureRate,
-        false
-    };
+        false);
     request.pressureProtocol = pressureProtocol;
     request.humidityProtocol = humidityProtocol;
     request.temperatureSlaveAddress = rememberedTemperatureSlaveAddress();

@@ -545,6 +545,7 @@ int main(int argc, char **argv)
         QStringLiteral("串口"),
         QStringLiteral("波特率"),
         QStringLiteral("频率/轮询"),
+        QStringLiteral("启用"),
         QStringLiteral("来源"),
         QStringLiteral("操作"),
     };
@@ -578,6 +579,7 @@ int main(int argc, char **argv)
     QLabel *actionHeader = findExactLabel(serialCard, QStringLiteral("操作"));
     require(actionHeader != nullptr, "link-action column header exists");
     int centeredActionCount = 0;
+    QToolButton *temperatureActionButton = nullptr;
     const QRect actionHeaderRect(actionHeader->mapTo(serialCard, QPoint(0, 0)), actionHeader->size());
     for (QToolButton *button : serialCard->findChildren<QToolButton *>())
     {
@@ -594,10 +596,17 @@ int main(int argc, char **argv)
         }
         require(std::abs(buttonRect.center().x() - actionHeaderRect.center().x()) <= 1,
                 "link-action icons are centered under the link-action column header");
+        if (button->property("deviceConfigRemoteDevice").toInt() ==
+            static_cast<int>(VaporView::SkyDeviceId::TemperatureController))
+        {
+            temperatureActionButton = button;
+        }
         ++centeredActionCount;
     }
     require(centeredActionCount == 6,
             "serial configuration exposes all six centered link-action icons");
+    require(temperatureActionButton != nullptr,
+            "serial configuration exposes the RD105 link-action icon");
     auto *pressureSourceCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("devicePressureSourceCombo"));
     auto *humiditySourceCombo =
@@ -654,6 +663,10 @@ int main(int argc, char **argv)
         deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyRd105SlaveSpin"));
     auto *ai8EnabledCheck =
         serialCard->findChild<QCheckBox *>(QStringLiteral("deviceRemoteAi8TemperatureEnabledCheck"));
+    auto *temperatureEnabledCheck =
+        serialCard->findChild<QCheckBox *>(QStringLiteral("deviceRemoteTemperatureEnabledCheck"));
+    auto *temperaturePortCombo =
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceTemperaturePortCombo"));
     auto *ai8PortCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperaturePortCombo"));
     auto *ai8BaudCombo =
@@ -747,6 +760,27 @@ int main(int argc, char **argv)
             "local mode hides the remote-only Sky services/config card");
     require(!rawJsonEdit->isVisible(),
             "SkyConfig JSON starts hidden instead of acting as a primary configuration area");
+    require(temperatureEnabledCheck && temperatureEnabledCheck->isVisible() &&
+                temperatureEnabledCheck->isEnabled() &&
+                temperatureEnabledCheck->isChecked(),
+            "local mode exposes the same enabled toggle used by remote serial rows");
+    require(temperaturePortCombo != nullptr,
+            "local mode exposes the RD105 serial port combo");
+    selectComboText(temperaturePortCombo, QStringLiteral("COM7"),
+                    "local RD105 serial combo can select a retained port before disabling");
+    VaporViewTest::processEventsFor(80);
+    require(temperatureActionButton->isEnabled(),
+            "local RD105 action is enabled before the enabled toggle is cleared");
+    const QString originalTemperaturePort = temperaturePortCombo->currentText();
+    temperatureEnabledCheck->setChecked(false);
+    VaporViewTest::processEventsFor(80);
+    require(!temperatureActionButton->isEnabled() &&
+                temperaturePortCombo->currentText() == originalTemperaturePort,
+            "local enabled toggle disables RD105 connection without clearing the serial selection");
+    temperatureEnabledCheck->setChecked(true);
+    VaporViewTest::processEventsFor(80);
+    require(temperatureActionButton->isEnabled(),
+            "local enabled toggle restores the RD105 connection action");
 
     selectComboText(epsilonPortCombo, QStringLiteral("COM7"),
                     "local EPSILON port can be set before switching targets");

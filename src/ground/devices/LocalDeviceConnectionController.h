@@ -30,6 +30,7 @@ enum class LocalDeviceKind
 
 struct LocalSerialDeviceSettings
 {
+    bool enabled = true;
     QString port;
     QString baudText;
     int sampleRateHz = 1;

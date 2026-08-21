@@ -622,6 +622,15 @@ private:
                                     auto *collector,
                                     const SerialConfig& serialConfig,
                                     auto&& onReady) -> int {
+            if (!settings.enabled)
+            {
+                postConnectionLog(VaporView::LogLevel::Info,
+                        QStringLiteral("local_device_connection_skipped"),
+                        QStringLiteral("本地设备未启用，已跳过连接。"),
+                        {{QStringLiteral("device"), tag},
+                         {QStringLiteral("reason_code"), QStringLiteral("DEVICE_DISABLED")}});
+                return 0;
+            }
             if (settings.port == request.selectText || settings.port.isEmpty())
             {
                 postConnectionLog(VaporView::LogLevel::Info,

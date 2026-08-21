@@ -317,6 +317,7 @@ void MainWindow::enterLocalDeviceConfigMode()
             installLocalSerialPortComboBehavior(combo);
         }
     }
+    loadLocalDeviceEnabledState();
 }
 
 void MainWindow::enterRemoteSkyDeviceConfigMode()
@@ -793,6 +794,9 @@ void MainWindow::updateRemoteSkyConfigControlsState()
                          state_->remote_sky_config_applying_ ||
                          state_->remote_sky_config_saving_;
     const bool fieldsEnabled = hasConfig && linkOpen && !pending;
+    const bool localInputsEnabled = !remote && (isUiTestMode() || !state_->is_connected_) &&
+        !state_->connection_attempt_in_progress_ && !state_->port_detection_in_progress_ &&
+        !state_->epsilon_reconfigure_in_progress_;
     const QList<QWidget *> targetWidgets = {
         state_->device_config_.epsilon_port_combo,
         state_->device_config_.epsilon_baud_combo,
@@ -829,13 +833,20 @@ void MainWindow::updateRemoteSkyConfigControlsState()
         state_->device_config_.epsilon_rate_combo->setEnabled(false);
     }
 
-    for (QWidget *widget : {static_cast<QWidget *>(state_->device_config_.epsilon_enabled_check),
-                            static_cast<QWidget *>(state_->device_config_.ptb_enabled_check),
-                            static_cast<QWidget *>(state_->device_config_.hmp_enabled_check),
-                            static_cast<QWidget *>(state_->device_config_.lidar_enabled_check),
-                            static_cast<QWidget *>(state_->device_config_.temperature_enabled_check),
-                            static_cast<QWidget *>(state_->device_config_.ai8_temperature_enabled_check),
-                            static_cast<QWidget *>(state_->device_config_.remote_sky_wave_enabled_check),
+    for (QCheckBox *check : {state_->device_config_.epsilon_enabled_check,
+                             state_->device_config_.ptb_enabled_check,
+                             state_->device_config_.hmp_enabled_check,
+                             state_->device_config_.lidar_enabled_check,
+                             state_->device_config_.temperature_enabled_check,
+                             state_->device_config_.ai8_temperature_enabled_check})
+    {
+        if (check)
+        {
+            check->setEnabled(remote ? fieldsEnabled : localInputsEnabled);
+        }
+    }
+
+    for (QWidget *widget : {static_cast<QWidget *>(state_->device_config_.remote_sky_wave_enabled_check),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_wave_host_edit),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_wave_port_spin),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_wave_downsample_spin),
