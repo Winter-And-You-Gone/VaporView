@@ -509,22 +509,22 @@ int main(int argc, char **argv)
         previousRight = subRect.right();
     }
 
-    const QStringList compactDeviceLabels{
-        QStringLiteral("EPSILON"),
-        QStringLiteral("气压"),
-        QStringLiteral("温湿度"),
-        QStringLiteral("TFA1500-L"),
-        QStringLiteral("RD105"),
-        QStringLiteral("AI-8288"),
+    const QStringList formattedDeviceLabels{
+        QStringLiteral("EPSILON 组合导航"),
+        QStringLiteral("PTB210 气压计"),
+        QStringLiteral("HMP3 温湿度计"),
+        QStringLiteral("TFA1500-L 激光测距"),
+        QStringLiteral("RD105 温控器"),
+        QStringLiteral("AI-8288 八路温控器"),
     };
-    for (const QString& labelText : compactDeviceLabels)
+    for (const QString& labelText : formattedDeviceLabels)
     {
         requireLabelFits(findExactLabel(serialCard, labelText),
-                         "serial configuration uses compact target-neutral device labels without clipping");
+                         "serial configuration uses model-plus-device labels without clipping");
     }
     int widestDeviceLabelText = 0;
     int deviceLabelWidth = -1;
-    for (const QString& labelText : compactDeviceLabels)
+    for (const QString& labelText : formattedDeviceLabels)
     {
         QLabel *label = findExactLabel(serialCard, labelText);
         require(label != nullptr, "serial configuration device label exists for width measurement");
@@ -539,7 +539,7 @@ int main(int argc, char **argv)
     }
     require(deviceLabelWidth >= widestDeviceLabelText &&
                 deviceLabelWidth <= widestDeviceLabelText + 2,
-            "serial configuration device column uses the widest compact label without extra width");
+            "serial configuration device column uses the widest formatted label without extra width");
     const QStringList serialColumnHeaders{
         QStringLiteral("设备"),
         QStringLiteral("串口"),
@@ -557,7 +557,7 @@ int main(int argc, char **argv)
         serialCard->findChild<QPushButton *>(QStringLiteral("deviceEpsilonPacketRatesButton"));
     requireHeaderAboveWidget(serialCard,
                              findExactLabel(serialCard, QStringLiteral("设备")),
-                             findExactLabel(serialCard, QStringLiteral("EPSILON")),
+                             findExactLabel(serialCard, QStringLiteral("EPSILON 组合导航")),
                              "device column header sits above the device names");
     requireHeaderAboveWidget(serialCard,
                              findExactLabel(serialCard, QStringLiteral("串口")),
@@ -625,10 +625,10 @@ int main(int argc, char **argv)
     require(humiditySourceCombo->toolTip().contains(QStringLiteral("SHT45")) &&
                 !humiditySourceCombo->toolTip().contains(QStringLiteral("HMP3")),
             "humidity source tooltip follows SHT45 selection");
-    requireLabelFits(findExactLabel(serialCard, QStringLiteral("气压")),
-                     "pressure device row remains target-neutral while the source field carries the model");
-    requireLabelFits(findExactLabel(serialCard, QStringLiteral("温湿度")),
-                     "humidity device row remains target-neutral while the source field carries the model");
+    requireLabelFits(findExactLabel(serialCard, QStringLiteral("PTB210 气压计")),
+                     "pressure device row restores the model-plus-device label");
+    requireLabelFits(findExactLabel(serialCard, QStringLiteral("HMP3 温湿度计")),
+                     "humidity device row restores the model-plus-device label");
 
     auto *dataSourceModeSwitch =
         serialCard->findChild<QPushButton *>(QStringLiteral("deviceConfigSourceModeOverviewSwitch"));
