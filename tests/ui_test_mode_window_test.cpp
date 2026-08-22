@@ -1536,7 +1536,11 @@ int main(int argc, char **argv)
                     recordingStatus->text().contains(QStringLiteral("会话：UI-TEST-SESSION")) &&
                     recordingStatus->text().contains(QStringLiteral("设备行数：")) &&
                     !recordingStatus->text().contains(QStringLiteral("设备行数：0\n")) &&
-                    recordingStatus->text().contains(QStringLiteral("已记录：\nRAWEPSILON：")) &&
+                    recordingStatus->text().contains(QStringLiteral("已记录：\nRAWEPSILON2-D4G：")) &&
+                    recordingStatus->text().contains(QStringLiteral("RAW PTB210：")) &&
+                    recordingStatus->text().contains(QStringLiteral("RAWHMP3：")) &&
+                    recordingStatus->text().contains(QStringLiteral("RAW TFA1500-L：")) &&
+                    recordingStatus->text().contains(QStringLiteral("RAWTCP：")) &&
                     !recordingStatus->text().contains(QStringLiteral("已记录 RAW")) &&
                     recordingStatus->text().contains(QStringLiteral("文件写入：无（仅内存模拟）"));
             }),

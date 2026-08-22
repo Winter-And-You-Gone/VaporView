@@ -4354,12 +4354,19 @@ int main(int argc, char **argv)
                 logPanelFrame != nullptr,
             "right-side recording and log cards exist for outer-margin checks");
     const QString recordingStatusDetail = recordingStatusLabel->toolTip();
-    require(recordingStatusDetail.contains(QStringLiteral("RAWRD105双路精密温控器")) &&
-                recordingStatusDetail.contains(QStringLiteral("RAWAI-8288D92J08路温控器")),
-            "recording status identifies temperature controllers by hardware model");
+    require(recordingStatusDetail.contains(QStringLiteral("RAWEPSILON2-D4G")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAW PTB210")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAWHMP3")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAW TFA1500-L")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAWTCP")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAWRD105")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAW AI-8288")),
+            "recording status uses hardware model names");
     require(!recordingStatusDetail.contains(QStringLiteral("RAW 激光温控")) &&
-                !recordingStatusDetail.contains(QStringLiteral("RAW 系统温控")),
-            "recording status does not replace temperature-controller models with semantic names");
+                !recordingStatusDetail.contains(QStringLiteral("RAW 系统温控")) &&
+                !recordingStatusDetail.contains(QStringLiteral("双路精密温控器")) &&
+                !recordingStatusDetail.contains(QStringLiteral("8路温控器")),
+            "recording status does not show semantic temperature-controller names");
     requireTopLevelCardElevation(recordingStatusCard,
                                  1.0,
                                  "recording status card uses the shared soft elevation");
