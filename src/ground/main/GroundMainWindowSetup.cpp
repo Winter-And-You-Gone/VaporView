@@ -2525,7 +2525,10 @@ void MainWindow::setupDeviceConfigPage()
     formRowLayout->setSpacing(6);
 
     auto *formWidget = new QWidget(formRowWidget);
-    formWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Minimum);
+    // Keep all device rows at their content height while the parent card grows
+    // for the optional Sky-link row; allowing this widget to shrink clips the
+    // last AI-8288 row during a local-to-remote switch.
+    formWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     auto *formLayout = new QGridLayout(formWidget);
     formLayout->setContentsMargins(6, 4, 6, 8);
     formLayout->setHorizontalSpacing(6);
