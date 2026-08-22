@@ -180,6 +180,49 @@ bool MainWindow::isRemoteSkyTcpMode() const
 
 void MainWindow::onDataSourceModeChanged(int index)
 {
+    // Switching targets updates the shared serial card in several stages (local
+    // values, remote values, row visibility, and enabled states). Keep the page
+    // from painting those intermediate layouts; otherwise the card briefly
+    // disappears while the sky-link row is being inserted below the device rows.
+    QWidget *deviceConfigPage = state_->device_config_.page;
+    QScrollArea *deviceConfigScrollArea = deviceConfigPage
+        ? deviceConfigPage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"))
+        : nullptr;
+    const bool pageUpdatesEnabled = deviceConfigPage && deviceConfigPage->updatesEnabled();
+    const bool scrollUpdatesEnabled = deviceConfigScrollArea && deviceConfigScrollArea->updatesEnabled();
+    const bool viewportUpdatesEnabled = deviceConfigScrollArea && deviceConfigScrollArea->viewport()->updatesEnabled();
+    if (pageUpdatesEnabled)
+    {
+        deviceConfigPage->setUpdatesEnabled(false);
+    }
+    if (scrollUpdatesEnabled)
+    {
+        deviceConfigScrollArea->setUpdatesEnabled(false);
+    }
+    if (viewportUpdatesEnabled)
+    {
+        deviceConfigScrollArea->viewport()->setUpdatesEnabled(false);
+    }
+    const auto restoreDeviceConfigUpdates = qScopeGuard(
+        [deviceConfigPage, deviceConfigScrollArea, pageUpdatesEnabled, scrollUpdatesEnabled,
+         viewportUpdatesEnabled]() {
+            if (viewportUpdatesEnabled && deviceConfigScrollArea)
+            {
+                deviceConfigScrollArea->viewport()->setUpdatesEnabled(true);
+                deviceConfigScrollArea->viewport()->update();
+            }
+            if (scrollUpdatesEnabled && deviceConfigScrollArea)
+            {
+                deviceConfigScrollArea->setUpdatesEnabled(true);
+                deviceConfigScrollArea->update();
+            }
+            if (pageUpdatesEnabled && deviceConfigPage)
+            {
+                deviceConfigPage->setUpdatesEnabled(true);
+                deviceConfigPage->update();
+            }
+        });
+
     state_->remote_sky_mode_ = index == 1;
     if (state_->ai8_device_session_)
     {
