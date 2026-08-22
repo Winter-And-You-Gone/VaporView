@@ -1534,8 +1534,8 @@ int main(int argc, char **argv)
     require(VaporViewTest::processEventsUntil(1500, [recordingStatus]() {
                 return recordingStatus->text().contains(QStringLiteral("记录：进行中（界面测试）")) &&
                     recordingStatus->text().contains(QStringLiteral("会话：UI-TEST-SESSION")) &&
-                    recordingStatus->text().contains(QStringLiteral("设备行数：")) &&
-                    !recordingStatus->text().contains(QStringLiteral("设备行数：0\n")) &&
+                    recordingStatus->text().contains(QStringLiteral("外部设备记录：")) &&
+                    !recordingStatus->text().contains(QStringLiteral("外部设备记录：0\n")) &&
                     recordingStatus->text().contains(QStringLiteral("已记录：\nRAW EPSILON：")) &&
                     recordingStatus->text().contains(QStringLiteral("RAW PTB210：")) &&
                     recordingStatus->text().contains(QStringLiteral("RAW HMP3：")) &&
@@ -1566,7 +1566,7 @@ int main(int argc, char **argv)
             "simulated recording stop slot invoked");
     processEvents();
     require(recordingStatus->text().contains(QStringLiteral("记录：未记录（界面测试）")) &&
-                recordingStatus->text().contains(QStringLiteral("设备行数：0")) &&
+                recordingStatus->text().contains(QStringLiteral("外部设备记录：0")) &&
                 recordingStatus->text().contains(QStringLiteral("文件写入：无（仅内存模拟）")),
             "stopping simulated recording clears only its in-memory counters");
     require(QMetaObject::invokeMethod(window, "onDisconnectClicked", Qt::DirectConnection),
