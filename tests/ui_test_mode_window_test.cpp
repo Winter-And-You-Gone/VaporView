@@ -1541,6 +1541,7 @@ int main(int argc, char **argv)
                     recordingStatus->text().contains(QStringLiteral("RAW HMP3：")) &&
                     recordingStatus->text().contains(QStringLiteral("RAW TFA1500：")) &&
                     recordingStatus->text().contains(QStringLiteral("RAW TCP：")) &&
+                    recordingStatus->text().contains(QStringLiteral("RAW 记录总数：")) &&
                     !recordingStatus->text().contains(QStringLiteral("已记录 RAW")) &&
                     recordingStatus->text().contains(QStringLiteral("文件写入：无（仅内存模拟）"));
             }),

@@ -442,6 +442,8 @@ void MainWindow::updateRecordingStatusLabel()
         const auto countAtRate = [elapsedMs](qint64 rateHz) {
             return static_cast<qulonglong>(std::max<qint64>(0, elapsedMs) * rateHz / 1000);
         };
+        const qulonglong rawTotal = countAtRate(100) + countAtRate(10) + countAtRate(2) +
+                                    countAtRate(20) + countAtRate(10);
         const char *visual = state_->ui_test_recording_state_ == 1
             ? "connected" : state_->ui_test_recording_state_ == 2 ? "connecting" : "disconnected";
         const QString stateText = state_->ui_test_recording_state_ == 1
@@ -456,7 +458,7 @@ void MainWindow::updateRecordingStatusLabel()
             ? QStringLiteral("--")
             : QStringLiteral("UI-TEST-SESSION");
         const QString detail = state_->is_english_
-            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3\nWaveform frames: %4\nRecorded RAW EPSILON: %5\nRecorded RAW PTB210: %6\nRecorded RAW HMP3: %7\nRecorded RAW TFA1500: %8\nRecorded RAW TCP: %9\nFile output: none (memory only)")
+            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3\nWaveform frames: %4\nRecorded RAW EPSILON: %5\nRecorded RAW PTB210: %6\nRecorded RAW HMP3: %7\nRecorded RAW TFA1500: %8\nRecorded RAW TCP: %9\nRecorded RAW total: %10\nFile output: none (memory only)")
                   .arg(session)
                   .arg(formatElapsedCompact(static_cast<quint64>(std::max<qint64>(0, elapsedMs))))
                   .arg(countAtRate(20))
@@ -466,7 +468,8 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(countAtRate(2))
                   .arg(countAtRate(20))
                   .arg(countAtRate(10))
-            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3\n波形帧数：%4\n已记录：\nRAW EPSILON：%5\nRAW PTB210：%6\nRAW HMP3：%7\nRAW TFA1500：%8\nRAW TCP：%9\n文件写入：无（仅内存模拟）")
+                  .arg(rawTotal)
+            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3\n波形帧数：%4\n已记录：\nRAW EPSILON：%5\nRAW PTB210：%6\nRAW HMP3：%7\nRAW TFA1500：%8\nRAW TCP：%9\nRAW 记录总数：%10\n文件写入：无（仅内存模拟）")
                   .arg(session)
                   .arg(formatElapsedCompact(static_cast<quint64>(std::max<qint64>(0, elapsedMs))))
                   .arg(countAtRate(20))
@@ -475,7 +478,8 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(countAtRate(10))
                   .arg(countAtRate(2))
                   .arg(countAtRate(20))
-                  .arg(countAtRate(10));
+                  .arg(countAtRate(10))
+                  .arg(rawTotal);
         const QString text = QStringLiteral("%1\n%2").arg(stateText, detail);
         setSectionTitleIconName(state_->recording_status_title_lbl_,
                                 state_->ui_test_recording_state_ == 1
@@ -524,6 +528,7 @@ void MainWindow::updateRecordingStatusLabel()
         }
     };
     auto localDetailText = [this](const QString& session,
+                                  const QString& elapsed,
                                   qlonglong sensorRows,
                                   qlonglong waveformFrames,
                                   qulonglong rawEpsilon,
@@ -532,10 +537,12 @@ void MainWindow::updateRecordingStatusLabel()
                                   qulonglong rawLidar,
                                   qulonglong rawWaveform,
                                   qulonglong rawLaserTemperature,
-                                  qulonglong rawSystemTemperature) {
+                                  qulonglong rawSystemTemperature,
+                                  qulonglong rawTotal) {
         return state_->is_english_
-            ? QStringLiteral("Session: %1\nExternal device records: %2\nWaveform frames: %3\nRecorded RAW EPSILON: %4\nRecorded RAW PTB210: %5\nRecorded RAW HMP3: %6\nRecorded RAW TFA1500: %7\nRecorded RAW TCP: %8\nRecorded RAW RD105: %9\nRecorded RAW AI-8288: %10")
+            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3\nWaveform frames: %4\nRecorded RAW EPSILON: %5\nRecorded RAW PTB210: %6\nRecorded RAW HMP3: %7\nRecorded RAW TFA1500: %8\nRecorded RAW TCP: %9\nRecorded RAW RD105: %10\nRecorded RAW AI-8288: %11\nRecorded RAW total: %12")
                   .arg(session)
+                  .arg(elapsed)
                   .arg(sensorRows)
                   .arg(waveformFrames)
                   .arg(rawEpsilon)
@@ -545,8 +552,10 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(rawWaveform)
                   .arg(rawLaserTemperature)
                   .arg(rawSystemTemperature)
-            : QStringLiteral("会话：%1\n外部设备记录：%2\n波形帧数：%3\n已记录：\nRAW EPSILON：%4\nRAW PTB210：%5\nRAW HMP3：%6\nRAW TFA1500：%7\nRAW TCP：%8\nRAW RD105：%9\nRAW AI-8288：%10")
+                  .arg(rawTotal)
+            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3\n波形帧数：%4\n已记录：\nRAW EPSILON：%5\nRAW PTB210：%6\nRAW HMP3：%7\nRAW TFA1500：%8\nRAW TCP：%9\nRAW RD105：%10\nRAW AI-8288：%11\nRAW 记录总数：%12")
                   .arg(session)
+                  .arg(elapsed)
                   .arg(sensorRows)
                   .arg(waveformFrames)
                   .arg(rawEpsilon)
@@ -555,7 +564,8 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(rawLidar)
                   .arg(rawWaveform)
                   .arg(rawLaserTemperature)
-                  .arg(rawSystemTemperature);
+                  .arg(rawSystemTemperature)
+                  .arg(rawTotal);
     };
     auto appendScheduledLine = [this](const QString& text) {
         const QString scheduledLine = state_->recording_schedule_controller_
@@ -592,7 +602,7 @@ void MainWindow::updateRecordingStatusLabel()
             ? QStringLiteral("--")
             : displayStatus.session_name;
         const QString detail = state_->is_english_
-            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3\nWave features: %4\nWave snapshots: %5\nRecorded RAW EPSILON: %6\nRecorded RAW PTB210: %7\nRecorded RAW HMP3: %8\nRecorded RAW TFA1500: %9\nRecorded RAW TCP: %10\nRecorded RAW RD105: %11\nRecorded RAW AI-8288: %12")
+            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3\nWave features: %4\nWaveform frames: %5\nRecorded RAW EPSILON: %6\nRecorded RAW PTB210: %7\nRecorded RAW HMP3: %8\nRecorded RAW TFA1500: %9\nRecorded RAW TCP: %10\nRecorded RAW RD105: %11\nRecorded RAW AI-8288: %12\nRecorded RAW total: %13")
                   .arg(session)
                   .arg(elapsed)
                   .arg(displayStatus.telemetry_record_count)
@@ -605,7 +615,8 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(displayStatus.raw_waveform_record_count)
                   .arg(displayStatus.raw_laser_temperature_controller_record_count)
                   .arg(displayStatus.raw_system_temperature_controller_record_count)
-            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3\n波形特征：%4\n波形快照：%5\n已记录：\nRAW EPSILON：%6\nRAW PTB210：%7\nRAW HMP3：%8\nRAW TFA1500：%9\nRAW TCP：%10\nRAW RD105：%11\nRAW AI-8288：%12")
+                  .arg(rawTotal)
+            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3\n波形特征：%4\n波形帧数：%5\n已记录：\nRAW EPSILON：%6\nRAW PTB210：%7\nRAW HMP3：%8\nRAW TFA1500：%9\nRAW TCP：%10\nRAW RD105：%11\nRAW AI-8288：%12\nRAW 记录总数：%13")
                   .arg(session)
                   .arg(elapsed)
                   .arg(displayStatus.telemetry_record_count)
@@ -617,42 +628,38 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(displayStatus.raw_distance_record_count)
                   .arg(displayStatus.raw_waveform_record_count)
                   .arg(displayStatus.raw_laser_temperature_controller_record_count)
-                  .arg(displayStatus.raw_system_temperature_controller_record_count);
+                  .arg(displayStatus.raw_system_temperature_controller_record_count)
+                  .arg(rawTotal);
         const QString detailWithSchedule = appendScheduledLine(detail);
-        state_->recording_status_label_->setToolTip(detailWithSchedule);
-        if (state_->recording_status_card_)
-        {
-            state_->recording_status_card_->setToolTip(detailWithSchedule);
-        }
         if (state_->remote_recording_state_ == 1)
         {
             setRecordingTitleIcon(true);
             state_->recording_status_label_->setText(
-                QString(state_->is_english_ ? "Sky Recording: On\n%1\nRecorded RAW total: %2"
-                                    : "天空端记录：进行中\n%1\nRAW 记录总数：%2")
-                    .arg(detailWithSchedule)
-                    .arg(rawTotal));
+                QString(state_->is_english_ ? "Sky Recording: On\n%1" : "天空端记录：进行中\n%1")
+                    .arg(detailWithSchedule));
             setVisualStatus("connected");
         }
         else if (state_->remote_recording_state_ == 2)
         {
             setRecordingTitleIcon(false);
             state_->recording_status_label_->setText(
-                QString(state_->is_english_ ? "Sky Recording: Paused\n%1\nRecorded RAW total: %2"
-                                    : "天空端记录：已暂停\n%1\nRAW 记录总数：%2")
-                    .arg(detailWithSchedule)
-                    .arg(rawTotal));
+                QString(state_->is_english_ ? "Sky Recording: Paused\n%1" : "天空端记录：已暂停\n%1")
+                    .arg(detailWithSchedule));
             setVisualStatus("connecting");
         }
         else
         {
             setRecordingTitleIcon(false);
             state_->recording_status_label_->setText(
-                QString(state_->is_english_ ? "Sky Recording: Off\n%1\nRecorded RAW total: %2"
-                                    : "天空端记录：未记录\n%1\nRAW 记录总数：%2")
-                    .arg(detailWithSchedule)
-                    .arg(rawTotal));
+                QString(state_->is_english_ ? "Sky Recording: Off\n%1" : "天空端记录：未记录\n%1")
+                    .arg(detailWithSchedule));
             setVisualStatus("disconnected");
+        }
+        const QString summary = state_->recording_status_label_->text();
+        state_->recording_status_label_->setToolTip(summary);
+        if (state_->recording_status_card_)
+        {
+            state_->recording_status_card_->setToolTip(summary);
         }
         polishVisualStatus();
         updateRecordingActionStates();
@@ -663,8 +670,17 @@ void MainWindow::updateRecordingStatusLabel()
     const QString session = recordingStatus.sessionName.isEmpty()
         ? QStringLiteral("--")
         : recordingStatus.sessionName;
+    const quint64 rawTotal =
+        recordingStatus.rawNavigationRecords +
+        recordingStatus.rawPressureRecords +
+        recordingStatus.rawTemperatureHumidityRecords +
+        recordingStatus.rawDistanceRecords +
+        recordingStatus.rawWaveformRecords +
+        recordingStatus.rawLaserTemperatureControllerRecords +
+        recordingStatus.rawSystemTemperatureControllerRecords;
     const QString detail = localDetailText(
         session,
+        formatElapsedCompact(recordingStatus.recordingElapsedMs),
         static_cast<qlonglong>(recordingStatus.sensorRows),
         static_cast<qlonglong>(recordingStatus.waveformFrames),
         static_cast<qulonglong>(recordingStatus.rawNavigationRecords),
@@ -673,7 +689,8 @@ void MainWindow::updateRecordingStatusLabel()
         static_cast<qulonglong>(recordingStatus.rawDistanceRecords),
         static_cast<qulonglong>(recordingStatus.rawWaveformRecords),
         static_cast<qulonglong>(recordingStatus.rawLaserTemperatureControllerRecords),
-        static_cast<qulonglong>(recordingStatus.rawSystemTemperatureControllerRecords));
+        static_cast<qulonglong>(recordingStatus.rawSystemTemperatureControllerRecords),
+        rawTotal);
     if (recordingStatus.sessionOpen)
     {
         if (recordingStatus.paused)

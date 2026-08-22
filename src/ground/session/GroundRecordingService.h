@@ -60,6 +60,7 @@ struct GroundRecordingStatus
     bool paused = false;
     QString sessionName;
     QString sessionDirectory;
+    quint64 recordingElapsedMs = 0;
     qint64 sensorRows = 0;
     qint64 waveformFrames = 0;
     quint64 rawNavigationRecords = 0;

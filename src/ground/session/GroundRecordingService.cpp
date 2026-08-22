@@ -225,6 +225,9 @@ public:
             {
                 return true;
             }
+            const quint64 nowUs = GroundRecordingService::currentTimestampUs();
+            const quint64 elapsedUs = recordingElapsedMs * 1000ULL;
+            sessionStartTimeUs = nowUs >= elapsedUs ? nowUs - elapsedUs : nowUs;
             startWorkers();
             notifyStatus();
             return true;
@@ -365,6 +368,11 @@ public:
         {
             return false;
         }
+        const quint64 nowUs = GroundRecordingService::currentTimestampUs();
+        if (sessionStartTimeUs > 0 && nowUs >= sessionStartTimeUs)
+        {
+            recordingElapsedMs = (nowUs - sessionStartTimeUs) / 1000ULL;
+        }
         stopWorkers();
         paused.store(true);
         if (!writeSessionMetadata())
@@ -423,6 +431,15 @@ public:
         result.paused = paused.load();
         result.sessionName = layout.sessionName;
         result.sessionDirectory = layout.sessionDirectory;
+        result.recordingElapsedMs = recordingElapsedMs;
+        if (!result.paused && sessionStartTimeUs > 0)
+        {
+            const quint64 nowUs = GroundRecordingService::currentTimestampUs();
+            if (nowUs >= sessionStartTimeUs)
+            {
+                result.recordingElapsedMs = (nowUs - sessionStartTimeUs) / 1000ULL;
+            }
+        }
         result.sensorRows = sensorRows.load();
         result.waveformFrames = waveformFrames.load();
         result.rawNavigationRecords = rawNavigationRecordCount.load();
@@ -1022,6 +1039,7 @@ private:
 
     void resetCurrentCounts()
     {
+        recordingElapsedMs = 0;
         sensorRows.store(0);
         waveformFrames.store(0);
         waveformFileCount.store(0);
@@ -1049,6 +1067,7 @@ public:
     std::chrono::system_clock::time_point systemClockAnchor;
     QString sessionStartTimeUtc;
     quint64 sessionStartTimeUs = 0;
+    quint64 recordingElapsedMs = 0;
 
     std::unique_ptr<QFile> sensorSummaryFile;
     std::unique_ptr<QFile> navigationRawFile;

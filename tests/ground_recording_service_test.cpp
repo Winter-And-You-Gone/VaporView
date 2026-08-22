@@ -113,6 +113,7 @@ int main(int argc, char **argv)
     require(recorder.isSessionOpen(), "session remains open while paused");
     require(recorder.isPaused(), "paused state");
     const auto pausedStatus = recorder.status();
+    require(pausedStatus.recordingElapsedMs > 0, "paused recording preserves elapsed time");
     require(!recorder.recordRawLaserTemperatureControllerResponse(
                 1'000'200,
                 0x0121,
@@ -132,6 +133,8 @@ int main(int argc, char **argv)
     std::this_thread::sleep_for(std::chrono::milliseconds(35));
 
     const auto beforeStop = recorder.status();
+    require(beforeStop.recordingElapsedMs >= pausedStatus.recordingElapsedMs,
+            "resumed recording keeps elapsed time monotonic");
     require(beforeStop.sensorRows >= 2, "sensor rows written");
     require(beforeStop.rawNavigationRecords == 1, "raw epsilon count");
     require(beforeStop.rawWaveformRecords == 1, "raw TCP wave count");
