@@ -845,12 +845,16 @@ private:
         else if (columns == 2 && section_cards_.size() >= 3)
         {
             setCardsExpandable(true);
+            // Keep the short top cards content-sized; the motion card still spans both columns.
+            section_cards_.at(0)->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+            section_cards_.at(1)->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
             cards_layout_->setColumnMinimumWidth(0, widths.at(0));
             cards_layout_->setColumnMinimumWidth(1, widths.at(1));
-            cards_layout_->setColumnStretch(0, std::max(1, widths.at(0)));
-            cards_layout_->setColumnStretch(1, std::max(1, widths.at(1)));
-            cards_layout_->addWidget(section_cards_.at(0), 0, 0);
-            cards_layout_->addWidget(section_cards_.at(1), 0, 1);
+            cards_layout_->setColumnStretch(0, 0);
+            cards_layout_->setColumnStretch(1, 0);
+            cards_layout_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+            cards_layout_->addWidget(section_cards_.at(0), 0, 0, Qt::AlignLeft | Qt::AlignTop);
+            cards_layout_->addWidget(section_cards_.at(1), 0, 1, Qt::AlignLeft | Qt::AlignTop);
             cards_layout_->addWidget(section_cards_.at(2), 1, 0, 1, 2);
         }
         else

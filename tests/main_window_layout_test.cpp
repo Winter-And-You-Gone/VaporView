@@ -3498,6 +3498,23 @@ void requireEpsilonSectionCardsStayInsidePanel(QWidget *epsilonPanel, const char
     require(inside, message);
 }
 
+void requireEpsilonSectionCardsUseContentWidth(QWidget *epsilonPanel, const char *message)
+{
+    const QList<QFrame*> cards = sortedEpsilonSectionCards(epsilonPanel);
+    require(epsilonPanel != nullptr && cards.size() == 3,
+            "EPSILON section cards exist for content-width check");
+    bool contentSized = true;
+    for (const QFrame *card : cards)
+    {
+        if (!card || card->width() > card->minimumWidth() + 2)
+        {
+            contentSized = false;
+            break;
+        }
+    }
+    require(contentSized, message);
+}
+
 QLabel *epsilonValueLabelForField(QWidget *epsilonPanel, const QString& fieldText)
 {
     if (!epsilonPanel)
@@ -3743,6 +3760,9 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireEpsilonSectionCardsStayInsidePanel(
         wideEpsilonPanel,
         "wide overview EPSILON section cards stay inside the EPSILON panel");
+    requireEpsilonSectionCardsUseContentWidth(
+        wideEpsilonPanel,
+        "wide overview EPSILON section cards stay close to their content minimum widths");
     requireEpsilonSectionCardsUseWrappedMotionRow(
         wideEpsilonPanel,
         "wide overview wraps motion details instead of overflowing into the environment card");
