@@ -1863,7 +1863,7 @@ void TcpWavePanel::setEnglish(bool english)
     is_english_ = english;
     if (panel_title_label_)
     {
-        panel_title_label_->setText(english ? "Wave Monitor" : "波形监视");
+        panel_title_label_->setText(english ? "Wave Monitor" : "波形监控");
         if (auto *titleLabel = dynamic_cast<WaveDisplayTitleLabel *>(panel_title_label_))
         {
             titleLabel->refreshFixedWidth();
