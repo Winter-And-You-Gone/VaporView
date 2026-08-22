@@ -210,17 +210,30 @@ void MainWindow::onDataSourceModeChanged(int index)
         ? deviceConfigScrollArea->widget()
         : nullptr;
     const bool serialCardHeightLocked = serialCard && serialCard->isVisible();
+    const bool serialCardUpdatesEnabled = serialCard && serialCard->updatesEnabled();
+    const int serialCardCurrentHeight = serialCardHeightLocked ? serialCard->height() : 0;
     const int serialCardMinimumHeight = serialCardHeightLocked
         ? serialCard->minimumHeight()
         : 0;
     const int serialCardMaximumHeight = serialCardHeightLocked
         ? serialCard->maximumHeight()
         : QWIDGETSIZE_MAX;
+    if (serialCardUpdatesEnabled && serialCard)
+    {
+        serialCard->setUpdatesEnabled(false);
+    }
     if (serialCardHeightLocked)
     {
         // The parent content layout can otherwise overwrite the card geometry
         // with its pre-switch size before the newly visible row is measured.
-        serialCard->setFixedHeight(serialCard->height());
+        serialCard->setFixedHeight(serialCardCurrentHeight);
+        if (index == 1 && !state_->remote_sky_mode_ && state_->device_config_.sky_telemetry_row_widget)
+        {
+            const QWidget *skyTelemetryRow = state_->device_config_.sky_telemetry_row_widget;
+            const int skyRowHeight = std::max(skyTelemetryRow->sizeHint().height(),
+                                              skyTelemetryRow->minimumSizeHint().height());
+            serialCard->setFixedHeight(serialCardCurrentHeight + skyRowHeight);
+        }
     }
     QList<QLayout *> deviceConfigLayouts = {
         serialCard ? serialCard->layout() : nullptr,
@@ -253,7 +266,7 @@ void MainWindow::onDataSourceModeChanged(int index)
         [deviceConfigPage, deviceConfigScrollArea, pageUpdatesEnabled, scrollUpdatesEnabled,
          viewportUpdatesEnabled, disabledDeviceConfigLayouts, serialCard,
          serialCardHeightLocked, serialCardMinimumHeight, serialCardMaximumHeight,
-         deviceConfigContent]() {
+         serialCardUpdatesEnabled, deviceConfigContent]() {
             for (QLayout *layout : disabledDeviceConfigLayouts)
             {
                 layout->setEnabled(true);
@@ -294,6 +307,11 @@ void MainWindow::onDataSourceModeChanged(int index)
                 const int targetHeight = std::max(serialCard->sizeHint().height(),
                                                   serialCard->minimumSizeHint().height());
                 serialCard->setFixedHeight(targetHeight);
+            }
+            if (serialCardUpdatesEnabled && serialCard)
+            {
+                serialCard->setUpdatesEnabled(true);
+                serialCard->update();
             }
             if (viewportUpdatesEnabled && deviceConfigScrollArea)
             {
