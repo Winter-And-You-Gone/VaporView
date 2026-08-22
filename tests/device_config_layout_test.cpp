@@ -795,6 +795,8 @@ int main(int argc, char **argv)
             "local EPSILON port is visible before remote switch");
 
     dataSourceModeSwitch->click();
+    require(serialCard->height() >= serialCard->sizeHint().height() - 1,
+            "local-to-remote switch applies the expanded device card geometry before repaint");
     VaporViewTest::processEventsFor(160);
     activateLayouts(&window);
     require(scrollArea->horizontalScrollBar() &&
@@ -1105,6 +1107,8 @@ int main(int argc, char **argv)
             "remote link close keeps loaded values visible but makes remote fields non-writable");
 
     dataSourceModeSwitch->click();
+    require(serialCard->height() >= serialCard->sizeHint().height() - 1,
+            "remote-to-local switch keeps the compact device card geometry stable before repaint");
     VaporViewTest::processEventsFor(160);
     require(epsilonPortCombo->currentText() == QStringLiteral("COM7"),
             "switching back to Local restores the local EPSILON serial port");
