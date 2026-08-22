@@ -801,10 +801,16 @@ int main(int argc, char **argv)
     require(ai8DeviceLabel && ai8DeviceLabel->isVisible() &&
                 ai8DeviceLabel->mapTo(serialCard, QPoint(0, 0)).y() + ai8DeviceLabel->height() <= serialCard->height(),
             "local-to-remote switch keeps the AI-8288 row inside the device card before repaint");
+    require(!remoteCard->isVisible() ||
+                remoteCard->geometry().top() >= serialCard->geometry().bottom() + 1,
+            "local-to-remote switch positions the remote card below all device rows before repaint");
     VaporViewTest::processEventsFor(16);
     require(ai8DeviceLabel && ai8DeviceLabel->isVisible() &&
                 ai8DeviceLabel->mapTo(serialCard, QPoint(0, 0)).y() + ai8DeviceLabel->height() <= serialCard->height(),
             "local-to-remote switch keeps the AI-8288 row inside the device card during the first repaint frame");
+    require(!remoteCard->isVisible() ||
+                remoteCard->geometry().top() >= serialCard->geometry().bottom() + 1,
+            "first repaint frame keeps the remote card below the device rows");
     VaporViewTest::processEventsFor(160);
     activateLayouts(&window);
     require(scrollArea->horizontalScrollBar() &&

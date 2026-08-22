@@ -206,11 +206,14 @@ void MainWindow::onDataSourceModeChanged(int index)
     QWidget *serialCard = state_->device_config_.sky_telemetry_row_widget
         ? state_->device_config_.sky_telemetry_row_widget->parentWidget()
         : nullptr;
+    QWidget *remoteSkyConfigCard = state_->device_config_.remote_sky_config_card;
     QWidget *deviceConfigContent = deviceConfigScrollArea
         ? deviceConfigScrollArea->widget()
         : nullptr;
     const bool serialCardHeightLocked = serialCard && serialCard->isVisible();
     const bool serialCardUpdatesEnabled = serialCard && serialCard->updatesEnabled();
+    const bool remoteSkyConfigCardUpdatesEnabled =
+        remoteSkyConfigCard && remoteSkyConfigCard->updatesEnabled();
     const int serialCardCurrentHeight = serialCardHeightLocked ? serialCard->height() : 0;
     const int serialCardMinimumHeight = serialCardHeightLocked
         ? serialCard->minimumHeight()
@@ -221,6 +224,12 @@ void MainWindow::onDataSourceModeChanged(int index)
     if (serialCardUpdatesEnabled && serialCard)
     {
         serialCard->setUpdatesEnabled(false);
+    }
+    if (remoteSkyConfigCardUpdatesEnabled && remoteSkyConfigCard)
+    {
+        // Its old geometry still points at the five-row local card. Keep it
+        // from painting over the AI-8288 row until the content layout catches up.
+        remoteSkyConfigCard->setUpdatesEnabled(false);
     }
     if (serialCardHeightLocked)
     {
@@ -266,7 +275,8 @@ void MainWindow::onDataSourceModeChanged(int index)
         [deviceConfigPage, deviceConfigScrollArea, pageUpdatesEnabled, scrollUpdatesEnabled,
          viewportUpdatesEnabled, disabledDeviceConfigLayouts, serialCard,
          serialCardHeightLocked, serialCardMinimumHeight, serialCardMaximumHeight,
-         serialCardUpdatesEnabled, deviceConfigContent]() {
+         serialCardUpdatesEnabled, remoteSkyConfigCard, remoteSkyConfigCardUpdatesEnabled,
+         deviceConfigContent]() {
             for (QLayout *layout : disabledDeviceConfigLayouts)
             {
                 layout->setEnabled(true);
@@ -307,6 +317,35 @@ void MainWindow::onDataSourceModeChanged(int index)
                 const int targetHeight = std::max(serialCard->sizeHint().height(),
                                                   serialCard->minimumSizeHint().height());
                 serialCard->setFixedHeight(targetHeight);
+            }
+            if (deviceConfigContent)
+            {
+                if (QLayout *layout = deviceConfigContent->layout())
+                {
+                    // Reposition the newly visible remote card after the final
+                    // serial-card height is known, while painting is still blocked.
+                    layout->invalidate();
+                    layout->setGeometry(deviceConfigContent->rect());
+                    layout->activate();
+                }
+            }
+            if (remoteSkyConfigCard && remoteSkyConfigCard->isVisible() &&
+                serialCard && deviceConfigContent)
+            {
+                // A fixed-height serial card can change after the content
+                // layout's cached item geometry was calculated. Align the
+                // remote card explicitly before either card is repainted.
+                const int spacing = deviceConfigContent->layout()
+                    ? deviceConfigContent->layout()->spacing()
+                    : 0;
+                QPoint remotePosition = remoteSkyConfigCard->pos();
+                remotePosition.setY(serialCard->geometry().bottom() + 1 + std::max(0, spacing));
+                remoteSkyConfigCard->move(remotePosition);
+            }
+            if (remoteSkyConfigCardUpdatesEnabled && remoteSkyConfigCard)
+            {
+                remoteSkyConfigCard->setUpdatesEnabled(true);
+                remoteSkyConfigCard->update();
             }
             if (serialCardUpdatesEnabled && serialCard)
             {
