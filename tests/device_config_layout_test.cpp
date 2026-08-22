@@ -647,6 +647,7 @@ int main(int argc, char **argv)
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceEpsilonBaudCombo"));
     auto *epsilonRateCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceEpsilonRateCombo"));
+    auto *ai8DeviceLabel = findExactLabel(serialCard, QStringLiteral("AI-8288D92J0 八路温控器"));
     auto *remoteCard =
         deviceConfigPage->findChild<QGroupBox *>(QStringLiteral("deviceRemoteSkyConfigCard"));
     auto *remoteStatus =
@@ -797,6 +798,9 @@ int main(int argc, char **argv)
     dataSourceModeSwitch->click();
     require(serialCard->height() >= serialCard->sizeHint().height() - 1,
             "local-to-remote switch applies the expanded device card geometry before repaint");
+    require(ai8DeviceLabel && ai8DeviceLabel->isVisible() &&
+                ai8DeviceLabel->mapTo(serialCard, QPoint(0, 0)).y() + ai8DeviceLabel->height() <= serialCard->height(),
+            "local-to-remote switch keeps the AI-8288 row inside the device card before repaint");
     VaporViewTest::processEventsFor(160);
     activateLayouts(&window);
     require(scrollArea->horizontalScrollBar() &&

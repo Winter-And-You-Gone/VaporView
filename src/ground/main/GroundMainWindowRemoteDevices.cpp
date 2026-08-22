@@ -222,10 +222,24 @@ void MainWindow::onDataSourceModeChanged(int index)
         // with its pre-switch size before the newly visible row is measured.
         serialCard->setFixedHeight(serialCard->height());
     }
-    const QList<QLayout *> deviceConfigLayouts = {
+    QList<QLayout *> deviceConfigLayouts = {
         serialCard ? serialCard->layout() : nullptr,
         deviceConfigContent ? deviceConfigContent->layout() : nullptr,
         deviceConfigPage ? deviceConfigPage->layout() : nullptr};
+    for (QWidget *root : {serialCard})
+    {
+        if (!root)
+        {
+            continue;
+        }
+        for (QLayout *layout : root->findChildren<QLayout *>())
+        {
+            if (!deviceConfigLayouts.contains(layout))
+            {
+                deviceConfigLayouts.append(layout);
+            }
+        }
+    }
     QList<QLayout *> disabledDeviceConfigLayouts;
     for (QLayout *layout : deviceConfigLayouts)
     {
