@@ -4354,8 +4354,8 @@ int main(int argc, char **argv)
                 logPanelFrame != nullptr,
             "right-side recording and log cards exist for outer-margin checks");
     const QString recordingStatusDetail = recordingStatusLabel->toolTip();
-    require(recordingStatusDetail.contains(QStringLiteral("RD105 双路精密温控器")) &&
-                recordingStatusDetail.contains(QStringLiteral("AI-8288D92J0 8路温控器")),
+    require(recordingStatusDetail.contains(QStringLiteral("RAWRD105双路精密温控器")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAWAI-8288D92J08路温控器")),
             "recording status identifies temperature controllers by hardware model");
     require(!recordingStatusDetail.contains(QStringLiteral("RAW 激光温控")) &&
                 !recordingStatusDetail.contains(QStringLiteral("RAW 系统温控")),
