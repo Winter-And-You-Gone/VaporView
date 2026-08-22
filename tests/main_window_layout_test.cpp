@@ -4354,12 +4354,12 @@ int main(int argc, char **argv)
                 logPanelFrame != nullptr,
             "right-side recording and log cards exist for outer-margin checks");
     const QString recordingStatusDetail = recordingStatusLabel->toolTip();
-    require(recordingStatusDetail.contains(QStringLiteral("RAWEPSILON2-D4G")) &&
+    require(recordingStatusDetail.contains(QStringLiteral("RAW EPSILON")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW PTB210")) &&
-                recordingStatusDetail.contains(QStringLiteral("RAWHMP3")) &&
-                recordingStatusDetail.contains(QStringLiteral("RAW TFA1500-L")) &&
-                recordingStatusDetail.contains(QStringLiteral("RAWTCP")) &&
-                recordingStatusDetail.contains(QStringLiteral("RAWRD105")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAW HMP3")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAW TFA1500")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAW TCP")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAW RD105")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW AI-8288")),
             "recording status uses hardware model names");
     require(!recordingStatusDetail.contains(QStringLiteral("RAW 激光温控")) &&
