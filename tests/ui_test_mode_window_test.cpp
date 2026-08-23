@@ -1535,13 +1535,16 @@ int main(int argc, char **argv)
                 return recordingStatus->text().contains(QStringLiteral("记录：进行中（界面测试）")) &&
                     recordingStatus->text().contains(QStringLiteral("会话：UI-TEST-SESSION")) &&
                     recordingStatus->text().contains(QStringLiteral("外部设备记录：")) &&
-                    !recordingStatus->text().contains(QStringLiteral("外部设备记录：0\n")) &&
+                    !recordingStatus->text().contains(QStringLiteral("外部设备记录：0 行\n")) &&
+                    recordingStatus->text().contains(QStringLiteral("波形帧数：")) &&
+                    recordingStatus->text().contains(QStringLiteral(" 帧\n已记录：")) &&
                     recordingStatus->text().contains(QStringLiteral("已记录：\nRAW EPSILON：")) &&
-                    recordingStatus->text().contains(QStringLiteral("RAW PTB210：")) &&
-                    recordingStatus->text().contains(QStringLiteral("RAW HMP3：")) &&
-                    recordingStatus->text().contains(QStringLiteral("RAW TFA1500：")) &&
-                    recordingStatus->text().contains(QStringLiteral("RAW TCP：")) &&
+                    recordingStatus->text().contains(QStringLiteral(" 条\nRAW PTB210：")) &&
+                    recordingStatus->text().contains(QStringLiteral(" 条\nRAW HMP3：")) &&
+                    recordingStatus->text().contains(QStringLiteral(" 条\nRAW TFA1500：")) &&
+                    recordingStatus->text().contains(QStringLiteral(" 条\nRAW TCP：")) &&
                     recordingStatus->text().contains(QStringLiteral("RAW 记录总数：")) &&
+                    recordingStatus->text().contains(QStringLiteral(" 条\n文件写入：无（仅内存模拟）")) &&
                     !recordingStatus->text().contains(QStringLiteral("已记录 RAW")) &&
                     recordingStatus->text().contains(QStringLiteral("文件写入：无（仅内存模拟）"));
             }),
@@ -1567,7 +1570,7 @@ int main(int argc, char **argv)
             "simulated recording stop slot invoked");
     processEvents();
     require(recordingStatus->text().contains(QStringLiteral("记录：未记录（界面测试）")) &&
-                recordingStatus->text().contains(QStringLiteral("外部设备记录：0")) &&
+                recordingStatus->text().contains(QStringLiteral("外部设备记录：0 行")) &&
                 recordingStatus->text().contains(QStringLiteral("文件写入：无（仅内存模拟）")),
             "stopping simulated recording clears only its in-memory counters");
     require(QMetaObject::invokeMethod(window, "onDisconnectClicked", Qt::DirectConnection),

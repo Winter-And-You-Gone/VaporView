@@ -159,6 +159,8 @@ protected:
         clearTrackKeyboardFocusIndicators();
         setKeyboardFocusIndicatorVisible(false);
         QPushButton::mousePressEvent(event);
+        clearTrackKeyboardFocusIndicators();
+        setKeyboardFocusIndicatorVisible(false);
     }
 
     void mouseReleaseEvent(QMouseEvent *event) override
@@ -186,12 +188,12 @@ private:
 
     void setKeyboardFocusIndicatorVisible(bool visible)
     {
+        setProperty("combinationNavigationKeyboardFocus", visible);
         if (keyboard_focus_indicator_visible_ == visible)
         {
             return;
         }
         keyboard_focus_indicator_visible_ = visible;
-        setProperty("combinationNavigationKeyboardFocus", visible);
         update();
     }
 

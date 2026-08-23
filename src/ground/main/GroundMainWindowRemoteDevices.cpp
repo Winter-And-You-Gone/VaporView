@@ -396,7 +396,6 @@ void MainWindow::onDataSourceModeChanged(int index)
                 ? VaporView::Ground::Devices::Rd105Backend::Remote
                 : VaporView::Ground::Devices::Rd105Backend::Local);
     }
-    saveRememberedInputState();
     clearRemoteSkyDataUi();
     syncDeviceConfigEpsilonPanelFromSettings();
     if (state_->tcp_wave_panel_)
@@ -411,6 +410,7 @@ void MainWindow::onDataSourceModeChanged(int index)
     {
         syncDeviceConfigPageFromHome();
     }
+    saveRememberedInputState();
     updateDeviceConfigTexts();
     updateSourceModeUi();
     requestRemoteSkyConfigIfAvailable(false);

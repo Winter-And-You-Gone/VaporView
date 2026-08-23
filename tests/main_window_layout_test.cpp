@@ -4005,6 +4005,12 @@ int main(int argc, char **argv)
         applicationSettings.setValue(QStringLiteral("serial/ptb_baud"), QStringLiteral("9600"));
         applicationSettings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("hmp3"));
         applicationSettings.setValue(QStringLiteral("serial/hmp_baud"), QStringLiteral("19200"));
+        applicationSettings.setValue(QStringLiteral("local_enabled/epsilon"), true);
+        applicationSettings.setValue(QStringLiteral("local_enabled/ptb"), true);
+        applicationSettings.setValue(QStringLiteral("local_enabled/hmp"), true);
+        applicationSettings.setValue(QStringLiteral("local_enabled/lidar"), true);
+        applicationSettings.setValue(QStringLiteral("local_enabled/temperature"), true);
+        applicationSettings.setValue(QStringLiteral("local_enabled/ai8_temperature"), true);
         applicationSettings.remove(QStringLiteral("serial/ptb210_baud"));
         applicationSettings.remove(QStringLiteral("serial/bmp390_baud"));
         applicationSettings.remove(QStringLiteral("serial/hmp3_baud"));
