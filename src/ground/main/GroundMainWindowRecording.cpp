@@ -72,7 +72,7 @@ QString recordingStatusHtmlFromPlainText(const QString& plainText)
         html += QStringLiteral(
             "<tr>"
             "<td style=\"white-space:nowrap;\">%1</td>"
-            "<td align=\"right\" style=\"white-space:nowrap; padding-left:8px;\">%2</td>"
+            "<td align=\"right\" style=\"white-space:nowrap; padding-left:8px; padding-right:6px;\">%2</td>"
             "</tr>")
             .arg(label.toHtmlEscaped(),
                  displayedValue.toHtmlEscaped());

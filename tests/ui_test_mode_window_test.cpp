@@ -25,6 +25,7 @@
 #include <QHostAddress>
 #include <QImage>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QListView>
 #include <QMenu>
@@ -1587,6 +1588,10 @@ int main(int argc, char **argv)
             "recording card title identifies UI test mode");
     require(VaporViewTest::processEventsUntil(1500, [recordingStatus]() {
                 const QString text = recordingStatus->toolTip();
+                const QLayout *recordingStatusLayout =
+                    recordingStatus->parentWidget() ? recordingStatus->parentWidget()->layout() : nullptr;
+                const bool hasRightSafeInset =
+                    recordingStatusLayout && recordingStatusLayout->contentsMargins().right() >= 20;
                 return text.contains(QStringLiteral("记录：进行中（界面测试）")) &&
                     text.contains(QStringLiteral("会话：UI-TEST-SESSION")) &&
                     text.contains(QStringLiteral("外部设备记录：")) &&
@@ -1603,6 +1608,8 @@ int main(int argc, char **argv)
                     !text.contains(QStringLiteral("已记录 RAW")) &&
                     text.contains(QStringLiteral("文件写入：无（仅内存模拟）")) &&
                     recordingStatus->text().contains(QStringLiteral("align=\"right\"")) &&
+                    recordingStatus->text().contains(QStringLiteral("padding-right:6px")) &&
+                    hasRightSafeInset &&
                     recordingStatus->text().contains(QStringLiteral(" 行</td>")) &&
                     recordingStatus->text().contains(QStringLiteral(" 条</td>"));
             }),
