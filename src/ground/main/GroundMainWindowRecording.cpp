@@ -25,7 +25,7 @@ QString recordingStatusHtmlFromPlainText(const QString& plainText)
         if (fullWidthLine)
         {
             html += QStringLiteral(
-                        "<tr><td colspan=\"3\" style=\"white-space:nowrap; padding-top:%1px;\">%2</td></tr>")
+                        "<tr><td colspan=\"2\" style=\"white-space:nowrap; padding-top:%1px;\">%2</td></tr>")
                         .arg(row == 0 ? 0 : 4)
                         .arg(trimmed.toHtmlEscaped());
             continue;
@@ -41,7 +41,7 @@ QString recordingStatusHtmlFromPlainText(const QString& plainText)
         if (separator < 0)
         {
             html += QStringLiteral(
-                        "<tr><td colspan=\"3\" style=\"white-space:nowrap;\">%1</td></tr>")
+                        "<tr><td colspan=\"2\" style=\"white-space:nowrap;\">%1</td></tr>")
                         .arg(trimmed.toHtmlEscaped());
             continue;
         }
@@ -65,16 +65,17 @@ QString recordingStatusHtmlFromPlainText(const QString& plainText)
                 value = value.left(unitSeparator).trimmed();
             }
         }
+        const QString displayedValue = unit.isEmpty()
+            ? value
+            : QStringLiteral("%1 %2").arg(value, unit);
 
         html += QStringLiteral(
             "<tr>"
             "<td style=\"white-space:nowrap;\">%1</td>"
             "<td align=\"right\" style=\"white-space:nowrap; padding-left:8px;\">%2</td>"
-            "<td width=\"42\" align=\"right\" style=\"white-space:nowrap; padding-left:4px;\">%3</td>"
             "</tr>")
             .arg(label.toHtmlEscaped(),
-                 value.toHtmlEscaped(),
-                 unit.toHtmlEscaped());
+                 displayedValue.toHtmlEscaped());
     }
     html += QStringLiteral("</table>");
     return html;
