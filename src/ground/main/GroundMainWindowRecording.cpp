@@ -5,162 +5,80 @@
 namespace
 {
 
-bool splitRecordingStatusFieldLine(const QString& line,
-                                   QString *label,
-                                   QString *value,
-                                   QString *unit)
+QString recordingStatusHtmlFromPlainText(const QString& plainText)
 {
-    int separator = line.indexOf(QChar(0xFF1A));
-    int separatorWidth = 1;
-    if (separator < 0)
-    {
-        separator = line.indexOf(QStringLiteral(": "));
-        separatorWidth = 2;
-    }
-    if (separator < 0)
-    {
-        return false;
-    }
-
-    *label = line.left(separator + 1).trimmed();
-    *value = line.mid(separator + separatorWidth).trimmed();
-    unit->clear();
-
-    const int unitSeparator = value->lastIndexOf(QLatin1Char(' '));
-    if (unitSeparator > 0)
-    {
-        const QString candidate = value->mid(unitSeparator + 1);
-        if (candidate == QStringLiteral("行") ||
-            candidate == QStringLiteral("帧") ||
-            candidate == QStringLiteral("条") ||
-            candidate == QStringLiteral("rows") ||
-            candidate == QStringLiteral("frames") ||
-            candidate == QStringLiteral("features") ||
-            candidate == QStringLiteral("records"))
-        {
-            *unit = candidate;
-            *value = value->left(unitSeparator).trimmed();
-        }
-    }
-    return true;
-}
-
-QLabel *createRecordingStatusCell(QLabel *container,
-                                  const QString& text,
-                                  const QString& objectName,
-                                  Qt::Alignment alignment)
-{
-    auto *cell = new QLabel(container);
-    cell->setObjectName(objectName);
-    cell->setText(text);
-    cell->setAlignment(alignment | Qt::AlignVCenter);
-    cell->setTextFormat(Qt::PlainText);
-    cell->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    cell->setWordWrap(false);
-    cell->setMinimumWidth(0);
-    cell->setFont(container->font());
-    cell->setPalette(container->palette());
-    cell->setStyleSheet(QStringLiteral("background-color: transparent; border: none;"));
-    cell->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    return cell;
-}
-
-void populateRecordingStatusGrid(QLabel *container, const QString& plainText)
-{
-    if (!container)
-    {
-        return;
-    }
-
-    container->clear();
-    auto *grid = qobject_cast<QGridLayout *>(container->layout());
-    if (!grid)
-    {
-        if (QLayout *oldLayout = container->layout())
-        {
-            delete oldLayout;
-        }
-        grid = new QGridLayout(container);
-        grid->setContentsMargins(0, 0, 0, 0);
-    }
-    while (QLayoutItem *item = grid->takeAt(0))
-    {
-        if (QWidget *widget = item->widget())
-        {
-            delete widget;
-        }
-        delete item;
-    }
-    grid->setHorizontalSpacing(4);
-    grid->setVerticalSpacing(0);
-    grid->setColumnStretch(0, 1);
-    grid->setColumnStretch(1, 0);
-    grid->setColumnStretch(2, 0);
-
-    int row = 0;
+    QString html = QStringLiteral(
+        "<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\">");
     const QStringList lines = plainText.split(QLatin1Char('\n'));
-    for (int lineIndex = 0; lineIndex < lines.size(); ++lineIndex)
+    for (int row = 0; row < lines.size(); ++row)
     {
-        const QString line = lines.at(lineIndex);
+        const QString line = lines.at(row);
         const QString trimmed = line.trimmed();
         if (trimmed.isEmpty())
         {
+            html += QStringLiteral("<tr><td colspan=\"3\">&nbsp;</td></tr>");
             continue;
         }
 
-        const bool fullWidthLine = lineIndex == 0 || trimmed.endsWith(QChar(0xFF1A)) ||
+        const bool fullWidthLine = row == 0 || trimmed.endsWith(QChar(0xFF1A)) ||
                                    trimmed.endsWith(QLatin1Char(':'));
         if (fullWidthLine)
         {
-            auto *cell = createRecordingStatusCell(container,
-                                                   trimmed,
-                                                   QStringLiteral("recordingStatusSectionLabel"),
-                                                   Qt::AlignLeft);
-            if (row > 0)
-            {
-                cell->setContentsMargins(0, 4, 0, 0);
-            }
-            grid->addWidget(cell, row++, 0, 1, 3);
+            html += QStringLiteral(
+                        "<tr><td colspan=\"2\" style=\"white-space:nowrap; padding-top:%1px;\">%2</td></tr>")
+                        .arg(row == 0 ? 0 : 4)
+                        .arg(trimmed.toHtmlEscaped());
             continue;
         }
 
-        QString label;
-        QString value;
-        QString unit;
-        if (!splitRecordingStatusFieldLine(line, &label, &value, &unit))
+        int separator = line.indexOf(QChar(0xFF1A));
+        int separatorWidth = 1;
+        if (separator < 0)
         {
-            grid->addWidget(createRecordingStatusCell(container,
-                                                      trimmed,
-                                                      QStringLiteral("recordingStatusSectionLabel"),
-                                                      Qt::AlignLeft),
-                            row++,
-                            0,
-                            1,
-                            3);
+            separator = line.indexOf(QStringLiteral(": "));
+            separatorWidth = 2;
+        }
+        if (separator < 0)
+        {
+            html += QStringLiteral(
+                        "<tr><td colspan=\"2\" style=\"white-space:nowrap;\">%1</td></tr>")
+                        .arg(trimmed.toHtmlEscaped());
             continue;
         }
 
-        auto *labelCell = createRecordingStatusCell(container,
-                                                    label,
-                                                    QStringLiteral("recordingStatusFieldLabel"),
-                                                    Qt::AlignLeft);
-        labelCell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        auto *valueCell = createRecordingStatusCell(container,
-                                                    value,
-                                                    QStringLiteral("recordingStatusValueLabel"),
-                                                    Qt::AlignRight);
-        valueCell->setMinimumWidth(valueCell->fontMetrics().horizontalAdvance(QStringLiteral("0000")));
-        auto *unitCell = createRecordingStatusCell(container,
-                                                   unit,
-                                                   QStringLiteral("recordingStatusUnitLabel"),
-                                                   Qt::AlignRight);
-        unitCell->setMinimumWidth(std::max(unitCell->fontMetrics().horizontalAdvance(QStringLiteral("records")),
-                                           unitCell->fontMetrics().horizontalAdvance(QStringLiteral("条"))));
-        grid->addWidget(labelCell, row, 0);
-        grid->addWidget(valueCell, row, 1);
-        grid->addWidget(unitCell, row, 2);
-        ++row;
+        const QString label = line.left(separator + 1).trimmed();
+        QString value = line.mid(separator + separatorWidth).trimmed();
+        QString unit;
+        const int unitSeparator = value.lastIndexOf(QLatin1Char(' '));
+        if (unitSeparator > 0)
+        {
+            const QString candidate = value.mid(unitSeparator + 1);
+            if (candidate == QStringLiteral("行") ||
+                candidate == QStringLiteral("帧") ||
+                candidate == QStringLiteral("条") ||
+                candidate == QStringLiteral("rows") ||
+                candidate == QStringLiteral("frames") ||
+                candidate == QStringLiteral("features") ||
+                candidate == QStringLiteral("records"))
+            {
+                unit = candidate;
+                value = value.left(unitSeparator).trimmed();
+            }
+        }
+        const QString displayedValue = unit.isEmpty()
+            ? value
+            : QStringLiteral("%1 %2").arg(value, unit);
+
+        html += QStringLiteral(
+            "<tr>"
+            "<td style=\"white-space:nowrap;\">%1</td>"
+            "<td align=\"right\" style=\"white-space:nowrap; padding-left:8px;\">%2</td>"
+            "</tr>")
+            .arg(label.toHtmlEscaped(),
+                 displayedValue.toHtmlEscaped());
     }
+    html += QStringLiteral("</table>");
+    return html;
 }
 
 
@@ -595,7 +513,7 @@ void MainWindow::updateRecordingStatusLabel()
     }
 
     auto applyRecordingStatusText = [this](const QString& plainText) {
-        populateRecordingStatusGrid(state_->recording_status_label_, plainText);
+        state_->recording_status_label_->setText(recordingStatusHtmlFromPlainText(plainText));
         state_->recording_status_label_->setToolTip(plainText);
         if (state_->recording_status_card_)
         {
