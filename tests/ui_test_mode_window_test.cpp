@@ -649,6 +649,61 @@ void requireUiTestEpsilonPanelFieldsCovered(QWidget *epsilonPanel)
             "UI-test EPSILON attitude consistency covers all three attitude sources");
 }
 
+QList<QFrame *> sortedEpsilonSectionCards(QWidget *epsilonPanel)
+{
+    if (!epsilonPanel)
+    {
+        return {};
+    }
+
+    QList<QFrame *> cards =
+        epsilonPanel->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
+    std::sort(cards.begin(), cards.end(), [epsilonPanel](QFrame *lhs, QFrame *rhs) {
+        const QPoint lhsPos = lhs->mapTo(epsilonPanel, QPoint(0, 0));
+        const QPoint rhsPos = rhs->mapTo(epsilonPanel, QPoint(0, 0));
+        if (std::abs(lhsPos.y() - rhsPos.y()) > 4)
+        {
+            return lhsPos.y() < rhsPos.y();
+        }
+        return lhsPos.x() < rhsPos.x();
+    });
+    return cards;
+}
+
+void requireUiTestEpsilonPanelWrappedTopRowFilled(QWidget *epsilonPanel)
+{
+    const QList<QFrame *> cards = sortedEpsilonSectionCards(epsilonPanel);
+    require(epsilonPanel != nullptr && cards.size() == 3,
+            "UI-test EPSILON panel exposes three section cards");
+
+    const QRect first(cards.at(0)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(0)->size());
+    const QRect second(cards.at(1)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(1)->size());
+    const QRect third(cards.at(2)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(2)->size());
+    const QRect bounds = epsilonPanel->contentsRect();
+    const int topRowJoinGap = second.left() - first.right() - 1;
+    const bool fillsTopRow =
+        std::abs(first.top() - second.top()) <= 4 &&
+        topRowJoinGap >= 0 &&
+        topRowJoinGap <= 1 &&
+        first.left() <= bounds.left() + 6 &&
+        third.top() > first.bottom() &&
+        third.left() <= first.left() + 2 &&
+        std::abs(second.right() - third.right()) <= 2 &&
+        second.right() >= bounds.right() - 6;
+    if (!fillsTopRow)
+    {
+        std::cerr << "UI-test EPSILON wrapped row geometry: bounds=" << bounds.width()
+                  << " first=[" << first.x() << ',' << first.y() << ' '
+                  << first.width() << 'x' << first.height() << ']'
+                  << " second=[" << second.x() << ',' << second.y() << ' '
+                  << second.width() << 'x' << second.height() << ']'
+                  << " third=[" << third.x() << ',' << third.y() << ' '
+                  << third.width() << 'x' << third.height() << "]\n";
+    }
+    require(fillsTopRow,
+            "UI-test EPSILON top-row cards fill the outer card width without a center gap");
+}
+
 bool temperatureOverviewOutputPercentShows(QLabel *pill, const QString& expectedValue)
 {
     return pill &&
@@ -852,6 +907,7 @@ int main(int argc, char **argv)
     require(epsilonPanel && epsilonPanel->isVisible(),
             "UI test mode exposes the EPSILON home panel");
     requireUiTestEpsilonPanelFieldsCovered(epsilonPanel);
+    requireUiTestEpsilonPanelWrappedTopRowFilled(epsilonPanel);
 
     auto *temperatureOutputPercentPill =
         window->findChild<QLabel *>(QStringLiteral("temperatureOverviewOutputPercentPill"));

@@ -36,7 +36,7 @@ constexpr int kEpsilonFieldBaseSpacing = 2;
 constexpr int kEpsilonMotionFieldSpacing = 8;
 constexpr int kEpsilonValueColumnSlack = 14;
 constexpr int kEpsilonFieldMinimumHeight = 20;
-constexpr int kEpsilonThreeColumnContentReserve = 96;
+constexpr int kEpsilonThreeColumnContentReserve = 180;
 
 inline QFont numericFontFrom(const QFont& base)
 {
@@ -565,12 +565,12 @@ private:
         {
             return is_english_
                 ? QStringList{QStringLiteral("2026-07-01T23:59:59.999Z"),
-                              QStringLiteral("1782934672910000 us"),
+                              QStringLiteral("999999999 us"),
                               QStringLiteral("raw 9999 / dropped 999"),
                               QStringLiteral("0X0060 initialized / position fusion active"),
                               QStringLiteral("Yes")}
                 : QStringList{QStringLiteral("2026-07-01T23:59:59.999Z"),
-                              QStringLiteral("1782934672910000 us"),
+                              QStringLiteral("999999999 us"),
                               QStringLiteral("原始 9999 / 丢帧 999"),
                               QStringLiteral("0X0060 已初始化 / 定位融合中"),
                               QStringLiteral("是")};
@@ -590,12 +590,12 @@ private:
                               QStringLiteral("-12.345/-12.345/12.345"),
                               QStringLiteral("-0.1234/-0.1234/0.1234"),
                               QStringLiteral("-179.99/-89.99/359.99"),
-                              QStringLiteral("max 999.999° (41-63 999.999°, 41-64 999.999°, 63-64 999.999°)")}
+                              QStringLiteral("max 0.999° (41-63 0.999°, 41-64 0.999°, 63-64 0.999°)")}
                 : QStringList{QStringLiteral("-12.345/12.345/-12.345"),
                               QStringLiteral("-12.345/-12.345/12.345"),
                               QStringLiteral("-0.1234/-0.1234/0.1234"),
                               QStringLiteral("-179.99/-89.99/359.99"),
-                              QStringLiteral("最大 999.999°（41-63 999.999°，41-64 999.999°，63-64 999.999°）")};
+                              QStringLiteral("最大 0.999°（41-63 0.999°，41-64 0.999°，63-64 0.999°）")};
         }
         return {};
     }
@@ -732,10 +732,10 @@ private:
                 if (i < section_cards_.size() &&
                     section_cards_.at(i) &&
                     (section_cards_.at(i)->minimumWidth() != standardWidth ||
-                     section_cards_.at(i)->maximumWidth() != standardWidth))
+                     section_cards_.at(i)->maximumWidth() != QWIDGETSIZE_MAX))
                 {
                     section_cards_.at(i)->setMinimumWidth(standardWidth);
-                    section_cards_.at(i)->setMaximumWidth(standardWidth);
+                    section_cards_.at(i)->setMaximumWidth(QWIDGETSIZE_MAX);
                     changed = true;
                 }
                 if (section_card_value_widths_.at(i) != valueWidth)
@@ -835,6 +835,7 @@ private:
 
         cards_layout_->setHorizontalSpacing(0);
         cards_layout_->setVerticalSpacing(compact_layout_ ? 4 : 2);
+        cards_layout_->setAlignment(Qt::Alignment());
         const bool titleWidthsChanged = syncSectionTitleWidths();
         const bool columnWidthsChanged = syncSectionColumnWidths();
         const bool widthsChanged = titleWidthsChanged || columnWidthsChanged;
@@ -861,41 +862,38 @@ private:
 
         if (columns >= 3)
         {
-            setCardsExpandable(false);
-            cards_layout_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+            setCardsExpandable(true);
             for (int i = 0; i < section_cards_.size(); ++i)
             {
                 if (i < widths.size())
                 {
                     cards_layout_->setColumnMinimumWidth(i, widths.at(i));
-                    cards_layout_->setColumnStretch(i, 0);
+                    cards_layout_->setColumnStretch(i, std::max(1, widths.at(i)));
                 }
-                cards_layout_->addWidget(section_cards_.at(i), 0, i, Qt::AlignLeft | Qt::AlignTop);
+                cards_layout_->addWidget(section_cards_.at(i), 0, i);
             }
         }
         else if (columns == 2 && section_cards_.size() >= 3)
         {
-            setCardsExpandable(false);
-            // Keep the top cards touching and content-sized; the motion card wraps to the next row.
-            section_cards_.at(0)->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
-            section_cards_.at(1)->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+            setCardsExpandable(true);
+            // Keep the top cards touching while letting them fill the wrapped row.
+            section_cards_.at(0)->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+            section_cards_.at(1)->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
             cards_layout_->setColumnMinimumWidth(0, widths.at(0));
             cards_layout_->setColumnMinimumWidth(1, widths.at(1));
-            cards_layout_->setColumnStretch(0, 0);
-            cards_layout_->setColumnStretch(1, 0);
-            cards_layout_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-            cards_layout_->addWidget(section_cards_.at(0), 0, 0, Qt::AlignLeft | Qt::AlignTop);
-            cards_layout_->addWidget(section_cards_.at(1), 0, 1, Qt::AlignLeft | Qt::AlignTop);
-            cards_layout_->addWidget(section_cards_.at(2), 1, 0, 1, 2, Qt::AlignLeft | Qt::AlignTop);
+            cards_layout_->setColumnStretch(0, std::max(1, widths.at(0)));
+            cards_layout_->setColumnStretch(1, std::max(1, widths.at(1)));
+            cards_layout_->addWidget(section_cards_.at(0), 0, 0);
+            cards_layout_->addWidget(section_cards_.at(1), 0, 1);
+            cards_layout_->addWidget(section_cards_.at(2), 1, 0, 1, 2);
         }
         else
         {
-            setCardsExpandable(false);
-            cards_layout_->setColumnStretch(0, 0);
-            cards_layout_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+            setCardsExpandable(true);
+            cards_layout_->setColumnStretch(0, 1);
             for (int i = 0; i < section_cards_.size(); ++i)
             {
-                cards_layout_->addWidget(section_cards_.at(i), i, 0, Qt::AlignLeft | Qt::AlignTop);
+                cards_layout_->addWidget(section_cards_.at(i), i, 0);
             }
         }
 

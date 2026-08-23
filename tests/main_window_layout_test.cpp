@@ -3454,7 +3454,8 @@ bool epsilonSectionCardsUseWrappedMotionRow(QWidget *epsilonPanel)
            second.left() > first.right() &&
            second.left() - first.right() <= 1 &&
            third.top() > first.bottom() &&
-           third.left() <= first.left() + 2;
+           third.left() <= first.left() + 2 &&
+           third.right() >= second.right() - 2;
 }
 
 void requireEpsilonSectionCardsUseWrappedMotionRow(QWidget *epsilonPanel, const char *message)
@@ -3506,21 +3507,35 @@ void requireEpsilonSectionCardsStayInsidePanel(QWidget *epsilonPanel, const char
     require(inside, message);
 }
 
-void requireEpsilonSectionCardsUseContentWidth(QWidget *epsilonPanel, const char *message)
+void requireEpsilonSectionCardsFillWrappedTopRow(QWidget *epsilonPanel, const char *message)
 {
     const QList<QFrame*> cards = sortedEpsilonSectionCards(epsilonPanel);
     require(epsilonPanel != nullptr && cards.size() == 3,
-            "EPSILON section cards exist for content-width check");
-    bool contentSized = true;
-    for (const QFrame *card : cards)
+            "EPSILON section cards exist for wrapped-row fill check");
+    const QRect first(cards.at(0)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(0)->size());
+    const QRect second(cards.at(1)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(1)->size());
+    const QRect third(cards.at(2)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(2)->size());
+    const QRect bounds = epsilonPanel->contentsRect();
+    const int topRowJoinGap = second.left() - first.right() - 1;
+    const bool fillsWrappedRow =
+        std::abs(first.top() - second.top()) <= 4 &&
+        topRowJoinGap >= 0 &&
+        topRowJoinGap <= 1 &&
+        first.left() <= bounds.left() + 6 &&
+        third.left() <= first.left() + 2 &&
+        std::abs(second.right() - third.right()) <= 2 &&
+        second.right() >= bounds.right() - 6;
+    if (!fillsWrappedRow)
     {
-        if (!card || card->width() > card->minimumWidth() + 2)
-        {
-            contentSized = false;
-            break;
-        }
+        std::cerr << "EPSILON wrapped fill geometry: bounds=" << bounds.width()
+                  << " first=[" << first.x() << ',' << first.y() << ' '
+                  << first.width() << 'x' << first.height() << ']'
+                  << " second=[" << second.x() << ',' << second.y() << ' '
+                  << second.width() << 'x' << second.height() << ']'
+                  << " third=[" << third.x() << ',' << third.y() << ' '
+                  << third.width() << 'x' << third.height() << "]\n";
     }
-    require(contentSized, message);
+    require(fillsWrappedRow, message);
 }
 
 QLabel *epsilonValueLabelForField(QWidget *epsilonPanel, const QString& fieldText)
@@ -3768,9 +3783,9 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireEpsilonSectionCardsStayInsidePanel(
         wideEpsilonPanel,
         "wide overview EPSILON section cards stay inside the EPSILON panel");
-    requireEpsilonSectionCardsUseContentWidth(
+    requireEpsilonSectionCardsFillWrappedTopRow(
         wideEpsilonPanel,
-        "wide overview EPSILON section cards stay close to their content minimum widths");
+        "wide overview EPSILON first-row cards fill the wrapped row without a center gap");
     requireEpsilonSectionCardsUseWrappedMotionRow(
         wideEpsilonPanel,
         "wide overview wraps motion details instead of overflowing into the environment card");
@@ -10090,6 +10105,9 @@ int main(int argc, char **argv)
     requireEpsilonSectionCardsUseWrappedMotionRow(
         epsilonPanel,
         "EPSILON motion details use the second row at the default window size");
+    requireEpsilonSectionCardsFillWrappedTopRow(
+        epsilonPanel,
+        "EPSILON first-row cards fill the outer card width without a center gap");
 
     for (QTimer *timer : window.findChildren<QTimer *>())
     {
