@@ -8,7 +8,7 @@ namespace
 QString recordingStatusHtmlFromPlainText(const QString& plainText)
 {
     QString html = QStringLiteral(
-        "<table width=\"92%\" cellspacing=\"0\" cellpadding=\"0\">");
+        "<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\">");
     const QStringList lines = plainText.split(QLatin1Char('\n'));
     for (int row = 0; row < lines.size(); ++row)
     {
@@ -68,6 +68,8 @@ QString recordingStatusHtmlFromPlainText(const QString& plainText)
         const QString displayedValue = unit.isEmpty()
             ? value
             : QStringLiteral("%1 %2").arg(value, unit);
+        const QString displayedValueHtml =
+            displayedValue.toHtmlEscaped() + QStringLiteral("&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;");
 
         html += QStringLiteral(
             "<tr>"
@@ -75,7 +77,7 @@ QString recordingStatusHtmlFromPlainText(const QString& plainText)
             "<td align=\"right\" style=\"white-space:nowrap; padding-left:8px;\">%2</td>"
             "</tr>")
             .arg(label.toHtmlEscaped(),
-                 displayedValue.toHtmlEscaped());
+                 displayedValueHtml);
     }
     html += QStringLiteral("</table>");
     return html;

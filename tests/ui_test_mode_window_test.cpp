@@ -1603,9 +1603,9 @@ int main(int argc, char **argv)
                     !text.contains(QStringLiteral("已记录 RAW")) &&
                     text.contains(QStringLiteral("文件写入：无（仅内存模拟）")) &&
                     recordingStatus->text().contains(QStringLiteral("align=\"right\"")) &&
-                    recordingStatus->text().contains(QStringLiteral("width=\"92%\"")) &&
-                    recordingStatus->text().contains(QStringLiteral(" 行</td>")) &&
-                    recordingStatus->text().contains(QStringLiteral(" 条</td>"));
+                    recordingStatus->text().contains(QStringLiteral("width=\"100%\"")) &&
+                    recordingStatus->text().contains(QStringLiteral(" 行&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>")) &&
+                    recordingStatus->text().contains(QStringLiteral(" 条&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>"));
             }),
             "UI test mode immediately covers recording status with aligned non-zero counters");
     require(QMetaObject::invokeMethod(window, "onPauseRecordingClicked", Qt::DirectConnection),
