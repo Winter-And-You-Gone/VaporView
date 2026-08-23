@@ -5388,15 +5388,8 @@ void MainWindow::setupLogPanel()
     recordingStatusLayout->setContentsMargins(10, 8, 10, 8);
     recordingStatusLayout->setSpacing(0);
 
-    state_->recording_status_label_ = new QLabel(recordingBody);
-    state_->recording_status_label_->setObjectName(QStringLiteral("recordingStatusLabel"));
-    state_->recording_status_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    state_->recording_status_label_->setTextFormat(Qt::RichText);
-    state_->recording_status_label_->setWordWrap(true);
-    state_->recording_status_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    state_->recording_status_label_->setMinimumWidth(0);
-    state_->recording_status_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
-    recordingStatusLayout->addWidget(state_->recording_status_label_);
+    state_->recording_status_view_ = new RecordingStatusView(recordingBody);
+    recordingStatusLayout->addWidget(state_->recording_status_view_);
     recordingCardLayout->addWidget(recordingBody);
     logSideLayout->addWidget(state_->recording_status_card_, 0);
 

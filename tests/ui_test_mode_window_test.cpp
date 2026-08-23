@@ -1572,7 +1572,7 @@ int main(int argc, char **argv)
     processEvents();
 
     auto *recordingCard = window->findChild<QFrame *>(QStringLiteral("recordingStatusCard"));
-    auto *recordingStatus = window->findChild<QLabel *>(QStringLiteral("recordingStatusLabel"));
+    auto *recordingStatus = window->findChild<QWidget *>(QStringLiteral("recordingStatusView"));
     require(recordingCard && recordingStatus, "recording status card exists");
     QLabel *recordingTitle = nullptr;
     for (QLabel *label : recordingCard->findChildren<QLabel *>())
@@ -1585,7 +1585,47 @@ int main(int argc, char **argv)
     }
     require(recordingTitle && recordingTitle->text() == QStringLiteral("记录状态（界面测试）"),
             "recording card title identifies UI test mode");
-    require(VaporViewTest::processEventsUntil(1500, [recordingStatus]() {
+    auto recordingStatusUnitColumnIsStable = [recordingStatus]() {
+        const QList<QLabel *> units =
+            recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusUnitLabel"));
+        QList<QLabel *> visibleUnits;
+        for (QLabel *unit : units)
+        {
+            if (unit->isVisible())
+            {
+                visibleUnits.append(unit);
+            }
+        }
+        if (visibleUnits.size() < 6)
+        {
+            return false;
+        }
+        int rightEdge = -1;
+        for (QLabel *unit : visibleUnits)
+        {
+            if (!unit->alignment().testFlag(Qt::AlignRight) ||
+                unit->fontMetrics().horizontalAdvance(unit->text()) > unit->width() + 1)
+            {
+                return false;
+            }
+            const QRect unitRect(unit->mapTo(recordingStatus, QPoint(0, 0)), unit->size());
+            if (!recordingStatus->rect().contains(unitRect.topLeft()) ||
+                unitRect.right() > recordingStatus->rect().right())
+            {
+                return false;
+            }
+            if (rightEdge < 0)
+            {
+                rightEdge = unitRect.right();
+            }
+            else if (std::abs(rightEdge - unitRect.right()) > 1)
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+    require(VaporViewTest::processEventsUntil(1500, [recordingStatus, recordingStatusUnitColumnIsStable]() {
                 const QString text = recordingStatus->toolTip();
                 return text.contains(QStringLiteral("记录：进行中（界面测试）")) &&
                     text.contains(QStringLiteral("会话：UI-TEST-SESSION")) &&
@@ -1602,10 +1642,7 @@ int main(int argc, char **argv)
                     text.contains(QStringLiteral(" 条\n文件写入：无（仅内存模拟）")) &&
                     !text.contains(QStringLiteral("已记录 RAW")) &&
                     text.contains(QStringLiteral("文件写入：无（仅内存模拟）")) &&
-                    recordingStatus->text().contains(QStringLiteral("align=\"right\"")) &&
-                    recordingStatus->text().contains(QStringLiteral("width=\"100%\"")) &&
-                    recordingStatus->text().contains(QStringLiteral(" 行&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>")) &&
-                    recordingStatus->text().contains(QStringLiteral(" 条&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>"));
+                    recordingStatusUnitColumnIsStable();
             }),
             "UI test mode immediately covers recording status with aligned non-zero counters");
     require(QMetaObject::invokeMethod(window, "onPauseRecordingClicked", Qt::DirectConnection),

@@ -10,6 +10,8 @@
 namespace VaporView::Ground::Main
 {
 
+class RecordingStatusView;
+
 enum class AppSidebarMode
 {
     Collapsed,
@@ -198,7 +200,7 @@ struct MainWindowState
     QToolButton *log_clear_btn_;
     QFrame *recording_status_card_;
     QLabel *recording_status_title_lbl_;
-    QLabel *recording_status_label_;
+    RecordingStatusView *recording_status_view_;
     QPushButton *auto_detect_ports_btn_;
 
     QComboBox *epsilon_port_combo_;

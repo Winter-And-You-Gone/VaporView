@@ -57,6 +57,8 @@ set(NAV_WINDOW_SOURCES
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowTelemetry.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowUiTestMode.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowImplementation.h
+    ${CMAKE_SOURCE_DIR}/src/ground/main/RecordingStatusView.cpp
+    ${CMAKE_SOURCE_DIR}/src/ground/main/RecordingStatusView.h
     ${CMAKE_SOURCE_DIR}/src/ground/main/UiLogModel.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/UiLogModel.h
 )

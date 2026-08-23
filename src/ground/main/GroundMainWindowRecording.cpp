@@ -5,85 +5,6 @@
 namespace
 {
 
-QString recordingStatusHtmlFromPlainText(const QString& plainText)
-{
-    QString html = QStringLiteral(
-        "<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\">");
-    const QStringList lines = plainText.split(QLatin1Char('\n'));
-    for (int row = 0; row < lines.size(); ++row)
-    {
-        const QString line = lines.at(row);
-        const QString trimmed = line.trimmed();
-        if (trimmed.isEmpty())
-        {
-            html += QStringLiteral("<tr><td colspan=\"3\">&nbsp;</td></tr>");
-            continue;
-        }
-
-        const bool fullWidthLine = row == 0 || trimmed.endsWith(QChar(0xFF1A)) ||
-                                   trimmed.endsWith(QLatin1Char(':'));
-        if (fullWidthLine)
-        {
-            html += QStringLiteral(
-                        "<tr><td colspan=\"2\" style=\"white-space:nowrap; padding-top:%1px;\">%2</td></tr>")
-                        .arg(row == 0 ? 0 : 4)
-                        .arg(trimmed.toHtmlEscaped());
-            continue;
-        }
-
-        int separator = line.indexOf(QChar(0xFF1A));
-        int separatorWidth = 1;
-        if (separator < 0)
-        {
-            separator = line.indexOf(QStringLiteral(": "));
-            separatorWidth = 2;
-        }
-        if (separator < 0)
-        {
-            html += QStringLiteral(
-                        "<tr><td colspan=\"2\" style=\"white-space:nowrap;\">%1</td></tr>")
-                        .arg(trimmed.toHtmlEscaped());
-            continue;
-        }
-
-        const QString label = line.left(separator + 1).trimmed();
-        QString value = line.mid(separator + separatorWidth).trimmed();
-        QString unit;
-        const int unitSeparator = value.lastIndexOf(QLatin1Char(' '));
-        if (unitSeparator > 0)
-        {
-            const QString candidate = value.mid(unitSeparator + 1);
-            if (candidate == QStringLiteral("行") ||
-                candidate == QStringLiteral("帧") ||
-                candidate == QStringLiteral("条") ||
-                candidate == QStringLiteral("rows") ||
-                candidate == QStringLiteral("frames") ||
-                candidate == QStringLiteral("features") ||
-                candidate == QStringLiteral("records"))
-            {
-                unit = candidate;
-                value = value.left(unitSeparator).trimmed();
-            }
-        }
-        const QString displayedValue = unit.isEmpty()
-            ? value
-            : QStringLiteral("%1 %2").arg(value, unit);
-        const QString displayedValueHtml =
-            displayedValue.toHtmlEscaped() + QStringLiteral("&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;");
-
-        html += QStringLiteral(
-            "<tr>"
-            "<td style=\"white-space:nowrap;\">%1</td>"
-            "<td align=\"right\" style=\"white-space:nowrap; padding-left:8px;\">%2</td>"
-            "</tr>")
-            .arg(label.toHtmlEscaped(),
-                 displayedValueHtml);
-    }
-    html += QStringLiteral("</table>");
-    return html;
-}
-
-
 void publishPendingUiLogDropNotice(quint64 dropped)
 {
     if (dropped == 0)
@@ -509,14 +430,13 @@ void MainWindow::updateRecordingStatusLabel()
                 : (isUiTestMode() ? QStringLiteral("记录状态（界面测试）")
                                   : QStringLiteral("记录状态")));
     }
-    if (!state_->recording_status_label_)
+    if (!state_->recording_status_view_)
     {
         return;
     }
 
     auto applyRecordingStatusText = [this](const QString& plainText) {
-        state_->recording_status_label_->setText(recordingStatusHtmlFromPlainText(plainText));
-        state_->recording_status_label_->setToolTip(plainText);
+        state_->recording_status_view_->setStatusText(plainText);
         if (state_->recording_status_card_)
         {
             state_->recording_status_card_->setToolTip(plainText);
@@ -576,9 +496,9 @@ void MainWindow::updateRecordingStatusLabel()
                                     : QStringLiteral("pencil"),
                                 state_->dark_theme_enabled_);
         const QString visualStatus = QString::fromLatin1(visual);
-        const bool visualChanged = state_->recording_status_label_->property("status").toString() != visualStatus;
+        const bool visualChanged = state_->recording_status_view_->property("status").toString() != visualStatus;
         applyRecordingStatusText(text);
-        state_->recording_status_label_->setProperty("status", visualStatus);
+        state_->recording_status_view_->setProperty("status", visualStatus);
         if (state_->recording_status_card_)
         {
             state_->recording_status_card_->setProperty("status", visualStatus);
@@ -590,8 +510,8 @@ void MainWindow::updateRecordingStatusLabel()
                 state_->recording_status_card_->style()->unpolish(state_->recording_status_card_);
                 state_->recording_status_card_->style()->polish(state_->recording_status_card_);
             }
-            state_->recording_status_label_->style()->unpolish(state_->recording_status_label_);
-            state_->recording_status_label_->style()->polish(state_->recording_status_label_);
+            state_->recording_status_view_->style()->unpolish(state_->recording_status_view_);
+            state_->recording_status_view_->style()->polish(state_->recording_status_view_);
         }
         updateRecordingActionStates();
         return;
@@ -599,15 +519,15 @@ void MainWindow::updateRecordingStatusLabel()
 
     auto setVisualStatus = [this](const char *status) {
         const QString statusValue = QString::fromLatin1(status);
-        state_->recording_status_label_->setProperty("status", statusValue);
+        state_->recording_status_view_->setProperty("status", statusValue);
         if (state_->recording_status_card_)
         {
             state_->recording_status_card_->setProperty("status", statusValue);
         }
     };
     auto polishVisualStatus = [this]() {
-        state_->recording_status_label_->style()->unpolish(state_->recording_status_label_);
-        state_->recording_status_label_->style()->polish(state_->recording_status_label_);
+        state_->recording_status_view_->style()->unpolish(state_->recording_status_view_);
+        state_->recording_status_view_->style()->polish(state_->recording_status_view_);
         if (state_->recording_status_card_)
         {
             state_->recording_status_card_->style()->unpolish(state_->recording_status_card_);

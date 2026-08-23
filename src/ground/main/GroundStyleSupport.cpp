@@ -580,12 +580,21 @@ QWidget#recordingStatusBody {
     border-bottom-left-radius: 7px;
     border-bottom-right-radius: 7px;
 }
-QLabel#recordingStatusLabel {
+QWidget#recordingStatusView {
+    background-color: transparent;
+    border: none;
+}
+QWidget#recordingStatusView QLabel {
     background-color: transparent;
     border: none;
     color: @vv-white;
     font-size: 14px;
     font-weight: 600;
+    padding: 0px;
+    margin: 0px;
+}
+QWidget#recordingStatusView QLabel#recordingStatusValueLabel {
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
 }
 QWidget#sectionTitleBar,
 QLabel#sectionTitleLabel {

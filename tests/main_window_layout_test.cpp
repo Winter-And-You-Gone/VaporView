@@ -4397,14 +4397,14 @@ int main(int argc, char **argv)
                             "light sidebar uses a complete rounded card border");
     auto *recordingStatusCard =
         window.findChild<QFrame *>(QStringLiteral("recordingStatusCard"));
-    auto *recordingStatusLabel =
-        window.findChild<QLabel *>(QStringLiteral("recordingStatusLabel"));
+    auto *recordingStatusView =
+        window.findChild<QWidget *>(QStringLiteral("recordingStatusView"));
     auto *logPanelFrame =
         window.findChild<QFrame *>(QStringLiteral("logPanelFrame"));
-    require(recordingStatusCard != nullptr && recordingStatusLabel != nullptr &&
+    require(recordingStatusCard != nullptr && recordingStatusView != nullptr &&
                 logPanelFrame != nullptr,
             "right-side recording and log cards exist for outer-margin checks");
-    const QString recordingStatusDetail = recordingStatusLabel->toolTip();
+    const QString recordingStatusDetail = recordingStatusView->toolTip();
     require(recordingStatusDetail.contains(QStringLiteral("RAW EPSILON")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW PTB210")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW HMP3")) &&
@@ -9872,6 +9872,19 @@ int main(int argc, char **argv)
     require(homeSourceModeSwitch != nullptr &&
                 deviceSourceModeSwitch->size() == homeSourceModeSwitch->size(),
             "device configuration source switch reuses the home title-bar switch size");
+    auto setDeviceSourceModeRemote = [&](bool remote) {
+        if (deviceSourceModeSwitch->isChecked() != remote)
+        {
+            const QPoint target(remote ? deviceSourceModeSwitch->width() * 3 / 4
+                                       : deviceSourceModeSwitch->width() / 4,
+                                deviceSourceModeSwitch->height() / 2);
+            clickWidgetAt(deviceSourceModeSwitch, target, 0);
+        }
+        processEventsFor(150);
+        activateLayouts(&window);
+        require(deviceSourceModeSwitch->isChecked() == remote,
+                "device configuration source switch reaches the requested source mode");
+    };
     QComboBox *pressureSourceCombo =
         findComboWithData(deviceConfigPage, QStringLiteral("bmp390"));
     QComboBox *humiditySourceCombo =
@@ -9946,9 +9959,7 @@ int main(int argc, char **argv)
     requireSkyTelemetryTransportLabels(deviceSkyTelemetry, false);
     require(deviceSkyTelemetry.row && !deviceSkyTelemetry.row->isVisible(),
             "local device configuration hides sky-ground telemetry edit controls");
-    deviceSourceModeCombo->setCurrentIndex(1);
-    processEventsFor(150);
-    activateLayouts(&window);
+    setDeviceSourceModeRemote(true);
     require(deviceSkyTelemetry.row->isVisible(),
             "remote device configuration shows sky-ground telemetry edit controls");
     setSkyTelemetryTransport(deviceSkyTelemetry.transportCombo, QStringLiteral("tcp"));
@@ -9978,9 +9989,7 @@ int main(int argc, char **argv)
                     "EPSILON configuration panel geometry is stable in sky-ground remote mode");
     requireSameRect(deviceTelemetrySummaryCard->geometry(), localTelemetrySummaryRect, 2,
                     "device telemetry summary geometry is stable in sky-ground remote mode");
-    deviceSourceModeCombo->setCurrentIndex(0);
-    processEventsFor(150);
-    activateLayouts(&window);
+    setDeviceSourceModeRemote(false);
     require(epsilonConfigCard->isEnabled(),
             "EPSILON configuration panel is available after switching back to local mode");
     require(deviceTelemetrySummaryCard->isVisible(),
